@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'ANXI 驗屋系統',
         short_name: 'ANXI',
-        start_url: '/',
+        start_url: '/anxi-app/',
         display: 'standalone',
         background_color: '#1976D2',
         theme_color: '#1976D2',
