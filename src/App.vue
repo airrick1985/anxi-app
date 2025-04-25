@@ -21,13 +21,13 @@
 <script setup>
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
+import { useRouter } from 'vue-router';
 
 const userStore = useUserStore();
 const { user } = storeToRefs(userStore);
-</script>
 
-<style>
-body {
-  margin: 0;
+const router = useRouter();
+if (!user.value && router.currentRoute.value.path === '/') {
+  router.replace('/login');
 }
-</style>
+</script>
