@@ -6,39 +6,38 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-    // Handle preflight
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
     }
   
-    // Only allow POST
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
   
     const { name, password } = req.body;
-    const gasUrl = 'https://script.google.com/macros/s/AKfycbz5lJN8Ep66o7JktZf6FYXzLOPv9KP5-ihLbSRqoBqh4RmhebjmQ3QTiCcTthhXJwg2/exec';
+    const gasUrl = 'https://script.google.com/macros/s/AKfycbz5lJN8Ep66o7JktZf6FYXzLOPv9KP5-ihLbSRqoBqh4RmhebjmQ3QTiCcTthhXJwg2/exec'; // ← 換成你正確的 EXEC 連結
   
     try {
-      const gasResponse = await fetch(gasUrl, {
+      const response = await fetch(gasUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password }),
+        body: JSON.stringify({ name, password })
       });
   
-      const text = await gasResponse.text();
+      const text = await response.text();
       console.log('🟢 GAS raw response:', text);
   
       let result;
       try {
         result = JSON.parse(text);
-      } catch (err) {
-        throw new Error('GAS 回傳非 JSON：' + text.slice(0, 100));
+      } catch {
+        console.error('🔴 回傳不是 JSON，內容如下：', text);
+        throw new Error('GAS 回傳非 JSON，請檢查 Apps Script 部署與權限設定。');
       }
   
       return res.status(200).json(result);
     } catch (err) {
-      console.error('🔴 Proxy error:', err.message);
+      console.error('🔥 Proxy error:', err.message);
       return res.status(500).json({ status: 'error', message: err.message });
     }
   }
