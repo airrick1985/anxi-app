@@ -1,25 +1,22 @@
 // src/main.js
 import { createApp } from 'vue'
 import App from './App.vue'
-import vuetify, { loadFonts } from './plugins/vuetify'
+// 修改這一行 VVV
+// import vuetify, { loadFonts } from './plugins/vuetify' // 移除 loadFonts 的導入
+import vuetify from './plugins/vuetify'                     // 只導入 vuetify 實例
 import router from './router'
-// import store from './store' // <--- 刪除或註釋掉這一行錯誤的導入
 import axios from 'axios'
 import VueAxios from 'vue-axios'
-import '@mdi/font/css/materialdesignicons.css' // <-- 確保這個導入 MDI 的還在
-
-// 1. 導入 createPinia
+import '@mdi/font/css/materialdesignicons.css'
 import { createPinia } from 'pinia'
 
-// 2. 創建 Pinia 實例
 const pinia = createPinia()
 
-loadFonts()
+// loadFonts() // <--- 刪除或註釋掉這一行，不再需要調用它
 
 createApp(App)
   .use(router)
-  // .use(store) // <--- 刪除或註釋掉這一行
   .use(vuetify)
   .use(VueAxios, axios)
-  .use(pinia) // <--- 3. 將 Pinia 實例 use 到 app 中
+  .use(pinia)
   .mount('#app')
