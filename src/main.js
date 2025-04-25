@@ -5,7 +5,7 @@ import App from './App.vue';
 import router from './router';
 import vuetify from './plugins/vuetify';
 import '@mdi/font/css/materialdesignicons.css';
-import './registerServiceWorker';  // 新增 PWA Service Worker 註冊
+import '../Public/registerServiceWorker';  // 新增 PWA Service Worker 註冊
 
 const app = createApp(App);
 app.use(createPinia());
