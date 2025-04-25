@@ -1,11 +1,12 @@
+// public/service-worker.js
 const CACHE_NAME = 'anxi-app-cache-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  // 你也可以加入更多靜態資源，如 CSS、JS bundle
+  './',              // 等同 /anxi-app/，缓存首页
+  './index.html',    // 等同 /anxi-app/index.html
+  './manifest.json', // 等同 /anxi-app/manifest.json
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
+  // 其他静态资源，例如 JS、CSS bundle，也都可以加上 './你的路径'
 ];
 
 self.addEventListener('install', event => {
