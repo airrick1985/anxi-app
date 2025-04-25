@@ -19,7 +19,7 @@
     </v-app-bar>
 
     <v-main>
-      <router-view />
+      <router-view @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
     </v-main>
 
     <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
