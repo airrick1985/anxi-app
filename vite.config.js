@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/anxi-app/',    // ← 加上這一行
   plugins: [
     vue(),
     VitePWA({
