@@ -1,7 +1,7 @@
 {
     "name": "ANXI 驗屋系統",
     "short_name": "ANXI",
-    "start_url": "./",
+    "start_url": "/anxi-app/",
     "display": "standalone",
     "orientation": "portrait",
     "background_color": "#1976D2",
