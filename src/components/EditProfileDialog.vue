@@ -14,7 +14,7 @@
       <v-card-actions>
         <v-spacer />
         <v-btn text @click="dialog = false">取消</v-btn>
-        <v-btn color="primary" @click="submit">儲存</v-btn>
+        <v-btn color="primary" :loading="saving" @click="submit">儲存</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -26,7 +26,7 @@ import { useUserStore } from '../store/user';
 import { updateUserProfile } from '../api';
 
 const props = defineProps({ dialog: Boolean });
-const emit = defineEmits(['update:dialog']);
+const emit = defineEmits(['update:dialog', 'start-loading', 'stop-loading', 'notify']);
 
 const dialog = ref(props.dialog);
 watch(() => props.dialog, val => dialog.value = val);
@@ -37,9 +37,13 @@ const newName = ref(userStore.user?.name || '');
 const oldPassword = ref('');
 const newPassword = ref('');
 const errorMsg = ref('');
+const saving = ref(false);
 
 const submit = async () => {
   errorMsg.value = '';
+  saving.value = true;
+  emit('start-loading');
+
   const result = await updateUserProfile({
     originalName: userStore.user.name,
     originalPassword: oldPassword.value,
@@ -47,8 +51,12 @@ const submit = async () => {
     newPassword: newPassword.value
   });
 
+  saving.value = false;
+  emit('stop-loading');
+
   if (result.status === 'success') {
     userStore.setUser({ name: newName.value });
+    emit('notify', '修改成功');
     dialog.value = false;
   } else {
     errorMsg.value = result.message || '修改失敗';
