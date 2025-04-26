@@ -11,7 +11,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: {
         name: 'ANXI 驗屋系統',
-        short_name: 'ANXI',
+        short_name: 'ANXI驗屋系統',
         start_url: '/anxi-app/',
         display: 'standalone',
         background_color: '#1976D2',
