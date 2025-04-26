@@ -1,3 +1,5 @@
+2025-04-26-1514
+// src/components/EditProfileDialog.vue
 <template>
   <v-dialog v-model="dialog" max-width="500px">
     <v-card>
@@ -5,15 +7,6 @@
       <v-card-text>
         <v-form @submit.prevent="submit">
           <v-text-field v-model="newName" label="姓名" required />
-          <!-- ++ 新增 Email 輸入框 ++ -->
-          <v-text-field 
-            v-model="newEmail" 
-            label="Email" 
-            required 
-            type="email" 
-            :rules="[v => !!v || 'Email 為必填欄位', v => /.+@.+\..+/.test(v) || 'Email 格式不正確']" 
-          /> 
-          <!-- ++ End of 新增 ++ -->
           <v-text-field v-model="oldPassword" label="原密碼" type="password" required />
           <v-text-field v-model="newPassword" label="新密碼 (可留空)" type="password" />
           <v-alert v-if="errorMsg" type="error" dense class="mt-2">{{ errorMsg }}</v-alert>
@@ -30,8 +23,8 @@
 
 <script setup>
 import { ref, watch } from 'vue';
-import { useUserStore } from '../store/user'; // 假設你的 store 路徑是這個
-import { updateUserProfile } from '../api'; // 假設你的 api 呼叫函數是這個
+import { useUserStore } from '../store/user';
+import { updateUserProfile } from '../api';
 
 const props = defineProps({ dialog: Boolean });
 const emit = defineEmits(['update:dialog', 'start-loading', 'stop-loading', 'notify']);
@@ -41,38 +34,29 @@ watch(() => props.dialog, val => dialog.value = val);
 watch(dialog, val => emit('update:dialog', val));
 
 const userStore = useUserStore();
-console.log('檢查 userStore.user:', userStore.user);
 const newName = ref(userStore.user?.name || '');
-// ++ 新增 Email 的 ref，並從 store 初始化 (假設 store 中有 email) ++
-const newEmail = ref(userStore.user?.email || ''); 
-// ++ End of 新增 ++
 const oldPassword = ref('');
 const newPassword = ref('');
 const errorMsg = ref('');
 const saving = ref(false);
 
-// --- 注意：submit 函數還需要修改才能真正儲存 Email ---
 const submit = async () => {
-  // 這裡暫時保持不動，下一步再修改 submit 函數
   errorMsg.value = '';
   saving.value = true;
   emit('start-loading');
 
-  // **** 這裡的 updateUserProfile 呼叫需要加入 email ****
   const result = await updateUserProfile({
-    originalName: userStore.user.name, // 或是用 email 作為識別？目前還是用 name
+    originalName: userStore.user.name,
     originalPassword: oldPassword.value,
     newName: newName.value,
-    newEmail: newEmail.value, // <-- 下一步要傳遞這個值
-    newPassword: newPassword.value 
+    newPassword: newPassword.value
   });
 
   saving.value = false;
   emit('stop-loading');
 
   if (result.status === 'success') {
-    // **** 這裡更新 userStore 也需要加入 email ****
-    userStore.setUser({ name: newName.value, email: newEmail.value }); // <-- 下一步要更新這裡
+    userStore.setUser({ name: newName.value });
     emit('notify', '修改成功');
     dialog.value = false;
   } else {
