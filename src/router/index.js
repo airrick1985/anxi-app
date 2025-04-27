@@ -1,7 +1,7 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router';
-import Login from '../views/Login.vue';
-import Home from '../views/Home.vue';
+import Login from '@/views/Login.vue';
+import Home from '@/views/Home.vue';
 import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
 

@@ -1,10 +1,11 @@
-//vite.config.js
+// vite.config.js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
+import path from 'path'; // ✅ 要加這行才能設定 alias
 
 export default defineConfig({
-  base: '/anxi-app/',    // ← 加上這一行
+  base: '/anxi-app/', // ✅ 你的 GitHub Pages 項目目錄
   plugins: [
     vue(),
     VitePWA({
@@ -30,5 +31,10 @@ export default defineConfig({
         ],
       },
     })
-  ]
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src') // ✅ 加上 alias 設定，讓 @ 指向 src
+    }
+  }
 });
