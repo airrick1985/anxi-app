@@ -1,29 +1,28 @@
 <template>
   <v-app>
-    <!-- 更新對話框：若有新版本可用，強制更新後才能繼續 -->
-    <v-dialog
-      v-model="showUpdateDialog"
-      persistent
-      max-width="400"
-    >
+    <!-- 更新版本通知 Dialog -->
+    <v-dialog v-model="showUpdateDialog" persistent max-width="400">
       <v-card>
-        <v-card-title>有新版本 {{ releaseVersion }} 可用</v-card-title>
+        <v-card-title>新版本 {{ releaseVersion }} 已推出</v-card-title>
         <v-card-text>
           <div v-html="formattedNotes"></div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" @click="doUpdate">更新並重啟</v-btn>
+          <v-btn color="primary" @click="doUpdate">立即更新</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
+    <!-- Loading 遮罩 -->
     <v-overlay :model-value="loading" class="d-flex align-center justify-center" persistent>
       <v-progress-circular indeterminate size="64" color="primary" />
     </v-overlay>
 
+    <!-- 通知訊息 -->
     <v-snackbar v-model="snackbar" :timeout="3000">{{ snackbarMessage }}</v-snackbar>
 
+    <!-- 頂部 App Bar -->
     <v-app-bar app color="primary" dark>
       <v-toolbar-title>ANXI 驗屋系統</v-toolbar-title>
       <v-spacer />
@@ -35,6 +34,7 @@
       </template>
     </v-app-bar>
 
+    <!-- 主要頁面內容 -->
     <v-main>
       <router-view
         @start-loading="loading = true"
@@ -43,7 +43,7 @@
       />
     </v-main>
 
-    <!-- 底部 Tab Bar 快捷連結 -->
+    <!-- 底部快捷選單 -->
     <BottomNavBar v-if="showBottomNav" />
 
     <EditProfileDialog
@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
 import { useRouter, useRoute } from 'vue-router';
@@ -65,7 +65,7 @@ import { getLatestRelease } from '@/api';
 import EditProfileDialog from './components/EditProfileDialog.vue';
 import BottomNavBar from './components/BottomNavBar.vue';
 
-// 使用者狀態
+// 用戶資料
 const userStore = useUserStore();
 const { user } = storeToRefs(userStore);
 const dialog = ref(false);
@@ -73,56 +73,77 @@ const loading = ref(false);
 const snackbar = ref(false);
 const snackbarMessage = ref('');
 
+// Router
+const router = useRouter();
+const route = useRoute();
+
+// 顯示 Bottom Nav 的條件
+const showBottomNav = computed(() => 
+  user.value && ['Home', 'InspectionRecord', 'InspectionOverview'].includes(route.name)
+);
+
+// 未登入跳轉回 login
+onMounted(() => {
+  if (!user.value && route.name !== 'Login') {
+    router.replace({ name: 'Login' });
+  }
+});
+
 // 顯示 Snackbar
 const showSnackbar = (message) => {
   snackbarMessage.value = message;
   snackbar.value = true;
 };
 
-// Router & Route
-const router = useRouter();
-const route = useRoute();
-
-// 底部導航列顯示條件
-const showBottomNav = computed(() =>
-  user.value &&
-  ['Home', 'InspectionRecord', 'InspectionOverview'].includes(route.name)
-);
-
-// 未登入導回
-if (!user.value && route.name !== 'Login') {
-  router.replace({ name: 'Login' });
-}
-
-// PWA 自動更新機制
+// PWA 更新機制
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
 const showUpdateDialog = ref(false);
 const releaseVersion = ref('');
 const releaseNotes = ref('');
 
-// 當偵測到新版時，從 GitHub Releases 拉版本和說明
+// 偵測新版本
 watch(needRefresh, async (val) => {
   if (val) {
-    const { version, notes } = await getLatestRelease();
-    releaseVersion.value = version;
-    releaseNotes.value = notes;
-    showUpdateDialog.value = true;
+    try {
+      const { version, notes } = await getLatestRelease();
+      releaseVersion.value = version;
+      releaseNotes.value = notes;
+      showUpdateDialog.value = true;
+    } catch (err) {
+      console.error('載入 release notes 失敗', err);
+      releaseVersion.value = '';
+      releaseNotes.value = '有新版本可用，請更新應用程式。';
+      showUpdateDialog.value = true;
+    }
   }
 });
 
-// 格式化換行
-const formattedNotes = computed(() =>
-  releaseNotes.value.replace(/\n/g, '<br/>')
-);
+// 格式化 notes 顯示
+const formattedNotes = computed(() => {
+  if (Array.isArray(releaseNotes.value)) {
+    return releaseNotes.value.map(note => `• ${note}`).join('<br/>');
+  } else if (typeof releaseNotes.value === 'string') {
+    return releaseNotes.value.replace(/\n/g, '<br/>');
+  }
+  return '';
+});
 
-// 執行更新並重載
+// ✅ 點擊更新時：登出 → 顯示提示 → 1 秒後 reload
 const doUpdate = async () => {
-  await updateServiceWorker(true);
-  window.location.reload();
+  userStore.clearUser(); // 清空登入資料
+  await updateServiceWorker(true); // 強制啟用新版
+  showSnackbar('更新成功，請重新登入');
+  setTimeout(() => {
+    window.location.reload();
+  }, 1000); // 延遲1秒 reload
 };
 </script>
 
 <style>
-body { margin: 0; }
-.clickable { cursor: pointer; }
+body {
+  margin: 0;
+}
+.clickable {
+  cursor: pointer;
+}
 </style>
