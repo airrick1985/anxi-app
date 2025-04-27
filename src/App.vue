@@ -1,5 +1,23 @@
 <template>
   <v-app>
+    <!-- 更新對話框：若有新版本可用，強制更新後才能繼續 -->
+    <v-dialog
+      v-model="showUpdateDialog"
+      persistent
+      max-width="400"
+    >
+      <v-card>
+        <v-card-title>有新版本可用</v-card-title>
+        <v-card-text>
+          更新內容如下：<br />{{ releaseNotes }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" @click="doUpdate">更新並重啟</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-overlay :model-value="loading" class="d-flex align-center justify-center" persistent>
       <v-progress-circular indeterminate size="64" color="primary" />
     </v-overlay>
@@ -34,13 +52,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
 import { useRouter, useRoute } from 'vue-router';
+import { useRegisterSW } from 'virtual:pwa-register/vue';
 import EditProfileDialog from './components/EditProfileDialog.vue';
-import BottomNavBar from './components/BottomNavBar.vue'; // 新增底部導航條元件
+import BottomNavBar from './components/BottomNavBar.vue';
 
+// 使用者相關
 const userStore = useUserStore();
 const { user } = storeToRefs(userStore);
 const dialog = ref(false);
@@ -48,31 +68,51 @@ const loading = ref(false);
 const snackbar = ref(false);
 const snackbarMessage = ref('');
 
+// 顯示Snackbar
 const showSnackbar = (message) => {
   snackbarMessage.value = message;
   snackbar.value = true;
 };
 
+// Router & Route
 const router = useRouter();
 const route = useRoute();
 
-// 只有已登入且在特定頁面時顯示底部 Tab Bar
+// 底部導航列顯示條件
 const showBottomNav = computed(() => {
-  return user.value && 
-    ['Home','InspectionRecord','InspectionOverview'].includes(route.name);
+  return user.value && ['Home','InspectionRecord','InspectionOverview'].includes(route.name);
 });
 
-// 頁面進入檢查，未登入自動重導
-if (!user.value && router.currentRoute.value.path === '/') {
-  router.replace('/login');
+// 未登入導回
+if (!user.value && route.name !== 'Login') {
+  router.replace({ name: 'Login' });
 }
+
+// PWA 自動更新機制
+const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
+const showUpdateDialog = ref(false);
+const releaseNotes = ref('');
+
+// 監聽是否需要更新
+watch(needRefresh, (val) => {
+  if (val) {
+    // 載入更新說明，可從外部 JSON 或後端 API 取得
+    fetch('/release-notes.json?v=' + Date.now())
+      .then(res => res.text())
+      .then(text => releaseNotes.value = text)
+      .catch(() => releaseNotes.value = '有新版本可用，請更新');
+    showUpdateDialog.value = true;
+  }
+});
+
+// 更新並重啟
+const doUpdate = async () => {
+  await updateServiceWorker(true);
+  window.location.reload();
+};
 </script>
 
 <style>
-body {
-  margin: 0;
-}
-.clickable {
-  cursor: pointer;
-}
+body { margin: 0; }
+.clickable { cursor: pointer; }
 </style>
