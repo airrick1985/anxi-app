@@ -100,9 +100,19 @@ export async function forgotPasswordUser(key) {
  */
 export async function fetchUnitList() {
   try {
-    const response = await fetch(GET_UNIT_LIST_API);
+    const response = await fetch(GET_UNIT_LIST_API, {
+      method: 'POST',                       // ← 改为 POST
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_unit_list' })  // ← 加上 action
+    });
+
+    if (!response.ok) {
+      return { status: 'error', message: `HTTP error! status: ${response.status}` };
+    }
+
     const data = await response.json();
     return data;
+
   } catch (e) {
     console.error('fetchUnitList error:', e);
     return { status: 'error', message: e.message };
