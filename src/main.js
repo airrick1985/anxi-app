@@ -1,22 +1,25 @@
 // src/main.js
 import { createApp } from 'vue'
 import App from './App.vue'
-// 修改這一行 VVV
-// import vuetify, { loadFonts } from './plugins/vuetify' // 移除 loadFonts 的導入
-import vuetify from './plugins/vuetify'                     // 只導入 vuetify 實例
+import vuetify from './plugins/vuetify' 
 import router from './router'
 import axios from 'axios'
 import VueAxios from 'vue-axios'
-import '@mdi/font/css/materialdesignicons.css'
+import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導入
+
+// --- Pinia 和 持久化插件 ---
 import { createPinia } from 'pinia'
+import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. 導入插件
 
 const pinia = createPinia()
+pinia.use(piniaPluginPersistedstate) // <--- 2. 使用插件
 
-// loadFonts() // <--- 刪除或註釋掉這一行，不再需要調用它
-
+// --- 創建和掛載 Vue 應用 ---
 createApp(App)
-  .use(router)
-  .use(vuetify)
-  .use(VueAxios, axios)
-  .use(pinia)
+  .use(router)       // 使用路由
+  .use(vuetify)      // 使用 Vuetify
+  .use(VueAxios, axios) // 使用 VueAxios (如果你的 API 調用依賴它)
+  .use(pinia)        // <--- 3. 使用配置好插件的 Pinia 實例
   .mount('#app')
+
+// 注意：你之前註釋掉的 loadFonts() 是正確的，如果 vuetify 插件內部處理了字體加載。

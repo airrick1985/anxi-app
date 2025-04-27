@@ -1,4 +1,3 @@
-2025-04-26-1514
 // src/components/EditProfileDialog.vue
 <template>
   <v-dialog v-model="dialog" max-width="500px">
