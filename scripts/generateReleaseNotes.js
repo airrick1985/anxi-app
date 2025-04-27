@@ -1,4 +1,4 @@
-// scripts/generateReleaseNotes.js
+// scripts/generateReleaseNotes.js (ESM版)
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -8,34 +8,32 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // 1. 讀取 CHANGELOG.md
-const changelogPath = resolve(__dirname, '../CHANGELOG.md');
-const changelog = readFileSync(changelogPath, 'utf-8');
+const changelog = readFileSync(resolve(__dirname, '../CHANGELOG.md'), 'utf-8');
 
-// 2. 解析出最新區塊
-const match = changelog.match(/^## \[(.*?)\] - (\d{4}-\d{2}-\d{2})\n([\s\S]*?)(?=^## \[|\s*$)/m);
+// 2. 找到最新一版的段落（從第一個 ## 開始到下一個 ##）
+const [firstSection] = changelog.split(/^## \[/m).slice(1); // 第一個版本
+const [headerLine, ...restLines] = firstSection.split('\n');
 
-if (!match) {
-  console.error('❌ 找不到有效的 CHANGELOG 版本段落！請檢查格式是否正確。');
-  process.exit(1);
-}
+// 3. 從 restLines 中過濾出 - 開頭的行，拿掉前面的 - 和空白
+const notes = restLines
+  .map(line => line.trim())
+  .filter(line => line.startsWith('- '))
+  .map(line => line.slice(2).trim());
 
-const [, versionInChangelog, dateInChangelog, notesBlock] = match;
+// 4. 從 headerLine 取出版本號和日期
+const match = headerLine.match(/^([^\]]+)\] - (\d{4}-\d{2}-\d{2})/);
+const versionFromChangelog = match?.[1] ?? pkg.version;
+const dateFromChangelog = match?.[2] ?? new Date().toISOString().slice(0, 10);
 
-// 3. 抓出每一條 "- " 的 notes
-const notes = notesBlock
-  .split('\n')
-  .filter(line => line.trim().startsWith('- '))
-  .map(line => line.trim().replace(/^- /, ''));
-
-// 4. 組成 release-notes.json 格式
+// 5. 組成 release-notes.json
 const output = {
-  version: versionInChangelog || pkg.version,
-  date: dateInChangelog,
+  version: versionFromChangelog,
+  date: dateFromChangelog,
   notes
 };
 
-// 5. 寫入 public/release-notes.json
-const targetPath = resolve(__dirname, '../public/release-notes.json');
-writeFileSync(targetPath, JSON.stringify(output, null, 2), 'utf-8');
+// 6. 寫入 public/release-notes.json
+const outputPath = resolve(__dirname, '../public/release-notes.json');
+writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
 
-console.log(`🎉 已產生 release-notes.json：v${output.version} (${output.date})`);
+console.log(`🎉 成功產生 release-notes.json v${output.version} (${output.date})`);
