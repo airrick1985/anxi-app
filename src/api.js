@@ -3,6 +3,9 @@
 const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';
 const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile';
 const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password'; // ✅ 注意換成你的 Proxy URL
+const GET_UNIT_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-unit-list';
+
+
 /**
  * 呼叫登入 API
  */
@@ -87,6 +90,21 @@ export async function forgotPasswordUser(key) {
 
   } catch (e) {
     console.error('forgotPassword fetch error:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+
+/**
+ * 呼叫戶別選單 API
+ */
+export async function fetchUnitList() {
+  try {
+    const response = await fetch(GET_UNIT_LIST_API);
+    const data = await response.json();
+    return data;
+  } catch (e) {
+    console.error('fetchUnitList error:', e);
     return { status: 'error', message: e.message };
   }
 }
