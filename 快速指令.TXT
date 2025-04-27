@@ -5,3 +5,11 @@ git add . \
 
 npm run build
 npm run deploy
+
+指令	功能說明
+npm run build-and-push	
+小版號 +1 ➔ build ➔ git commit ➔ push
+（但不自動 deploy）
+
+npm run build-and-deploy	
+小版號 +1 ➔ build ➔ git commit ➔ push ➔ 自動上 GitHub Pages！
