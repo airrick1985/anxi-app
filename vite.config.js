@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import manifest from './public/manifest.json'; // ✅ 加這行
 
 export default defineConfig({
   base: '/anxi-app/',
@@ -18,26 +19,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true
       },
-      manifest: {
-        name: 'ANXI 驗屋系統',
-        short_name: 'ANXI驗屋系統',
-        start_url: '/anxi-app/',
-        display: 'standalone',
-        background_color: '#1976D2',
-        theme_color: '#1976D2',
-        icons: [
-          {
-            src: 'icons/icon-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'icons/icon-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-        ],
-      }
+      manifest // ✅ 直接使用外部讀進來的 manifest
     })
   ]
 });

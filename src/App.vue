@@ -24,7 +24,10 @@
 
     <!-- 頂部 App Bar -->
     <v-app-bar app color="primary" dark>
-      <v-toolbar-title>ANXI 驗屋系統</v-toolbar-title>
+      <v-toolbar-title @mousedown="startForceUpdate" @mouseup="cancelForceUpdate" @mouseleave="cancelForceUpdate">
+        ANXI 驗屋系統
+      </v-toolbar-title>
+
       <v-spacer />
       <template v-if="user">
         <v-btn icon @click="dialog = true">
@@ -52,6 +55,18 @@
       @stop-loading="loading = false"
       @notify="showSnackbar"
     />
+
+    <!-- 底部 Footer -->
+    <v-footer app color="grey lighten-4" height="60" class="footer-text">
+      <v-container class="text-center">
+        <div>
+          <strong>ANXI 驗屋系統</strong> ｜ 版本 v{{ appVersion }}
+        </div>
+        <div class="text-caption">
+          &copy; {{ currentYear }} ANXI. All rights reserved.
+        </div>
+      </v-container>
+    </v-footer>
   </v-app>
 </template>
 
@@ -64,8 +79,13 @@ import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease } from '@/api';
 import EditProfileDialog from './components/EditProfileDialog.vue';
 import BottomNavBar from './components/BottomNavBar.vue';
+import manifest from '../public/manifest.json'; // 讀取版本
 
-// 用戶資料
+// 版本與年份
+const appVersion = manifest.version;
+const currentYear = new Date().getFullYear();
+
+// 狀態管理
 const userStore = useUserStore();
 const { user } = storeToRefs(userStore);
 const dialog = ref(false);
@@ -77,17 +97,10 @@ const snackbarMessage = ref('');
 const router = useRouter();
 const route = useRoute();
 
-// 顯示 Bottom Nav 的條件
-const showBottomNav = computed(() => 
+// 底部導航列顯示條件
+const showBottomNav = computed(() =>
   user.value && ['Home', 'InspectionRecord', 'InspectionOverview'].includes(route.name)
 );
-
-// 未登入跳轉回 login
-onMounted(() => {
-  if (!user.value && route.name !== 'Login') {
-    router.replace({ name: 'Login' });
-  }
-});
 
 // 顯示 Snackbar
 const showSnackbar = (message) => {
@@ -95,13 +108,20 @@ const showSnackbar = (message) => {
   snackbar.value = true;
 };
 
-// PWA 更新機制
+// 未登入自動跳 login
+onMounted(() => {
+  if (!user.value && route.name !== 'Login') {
+    router.replace({ name: 'Login' });
+  }
+});
+
+// PWA 監聽
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
 const showUpdateDialog = ref(false);
 const releaseVersion = ref('');
 const releaseNotes = ref('');
 
-// 偵測新版本
+// 更新版本提示
 watch(needRefresh, async (val) => {
   if (val) {
     try {
@@ -110,15 +130,15 @@ watch(needRefresh, async (val) => {
       releaseNotes.value = notes;
       showUpdateDialog.value = true;
     } catch (err) {
-      console.error('載入 release notes 失敗', err);
+      console.error('讀取 release notes 錯誤:', err);
       releaseVersion.value = '';
-      releaseNotes.value = '有新版本可用，請更新應用程式。';
+      releaseNotes.value = '有新版本可用，請更新應用程式';
       showUpdateDialog.value = true;
     }
   }
 });
 
-// 格式化 notes 顯示
+// 格式化更新內容
 const formattedNotes = computed(() => {
   if (Array.isArray(releaseNotes.value)) {
     return releaseNotes.value.map(note => `• ${note}`).join('<br/>');
@@ -128,22 +148,40 @@ const formattedNotes = computed(() => {
   return '';
 });
 
-// ✅ 點擊更新時：登出 → 顯示提示 → 1 秒後 reload
+// 點擊更新按鈕
 const doUpdate = async () => {
-  userStore.clearUser(); // 清空登入資料
-  await updateServiceWorker(true); // 強制啟用新版
-  showSnackbar('更新成功，請重新登入');
-  setTimeout(() => {
+  userStore.clearUser(); // 登出
+  await updateServiceWorker(true); // 更新 SW
+  showSnackbar('更新完成，請重新登入');
+  setTimeout(() => window.location.reload(), 1000);
+};
+
+// 長按標題強制更新
+let forceUpdateTimer = null;
+
+const startForceUpdate = () => {
+  forceUpdateTimer = setTimeout(async () => {
+    console.log('⏰ 偵測到長按 3 秒，強制更新 Service Worker');
+    await updateServiceWorker(true);
     window.location.reload();
-  }, 1000); // 延遲1秒 reload
+  }, 3000);
+};
+
+const cancelForceUpdate = () => {
+  clearTimeout(forceUpdateTimer);
+  forceUpdateTimer = null;
 };
 </script>
 
-<style>
+<style scoped>
 body {
   margin: 0;
 }
 .clickable {
   cursor: pointer;
+}
+.footer-text {
+  font-size: 0.8rem;
+  color: #555;
 }
 </style>
