@@ -1,7 +1,7 @@
 {
   "name": "anxi-app",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "homepage": "https://airrick1985.github.io/anxi-app/",
   "scripts": {
@@ -9,8 +9,8 @@
     "build": "npm run generate:release-notes && vite build",
     "preview": "vite preview",
     "generate:release-notes": "node scripts/generateReleaseNotes.js",
-    "build-and-push": "npm run bump-version && npm run build && node scripts/autoPush.js",
-    "bump-version": "node scripts/bumpVersion.js",
+    "bump-version": "npm version patch --no-git-tag-version",
+    "build-and-push": "npm run bump-version && npm run build && git add . && git commit -m \"🔖 Bump版本＆更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
