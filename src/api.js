@@ -2,9 +2,9 @@
 
 const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';
 const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile';
-const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password'; // ✅ 注意換成你的 Proxy URL
+const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password';
 const GET_UNIT_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-unit-list';
-
+const GET_BUILDING_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-building-list';
 
 /**
  * 呼叫登入 API
@@ -16,20 +16,10 @@ export async function loginUser(key, password) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, password })
     });
-
     const text = await response.text();
     console.log('Login API Response Text:', text);
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error('登入回傳不是有效 JSON:', text);
-      throw new Error('登入回傳不是有效 JSON');
-    }
-
+    const data = JSON.parse(text);
     return data;
-
   } catch (e) {
     console.error('Login fetch error:', e);
     return { status: 'error', message: e.message };
@@ -46,20 +36,9 @@ export async function updateUserProfile(payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'update_profile', ...payload })
     });
-
     const text = await response.text();
     console.log('Update Profile API Response Text:', text);
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error('更新回傳不是有效 JSON:', text);
-      throw new Error('更新回傳不是有效 JSON');
-    }
-
-    return data;
-
+    return JSON.parse(text);
   } catch (e) {
     console.error('Update profile fetch error:', e);
     return { status: 'error', message: e.message };
@@ -74,26 +53,15 @@ export async function forgotPasswordUser(key) {
     const response = await fetch(FORGOT_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }) // ✅ 只傳 key，不用 password
+      body: JSON.stringify({ key })
     });
-
     const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error('忘記密碼回傳不是有效JSON:', text);
-      throw new Error('忘記密碼回傳無效');
-    }
-
-    return data;
-
+    return JSON.parse(text);
   } catch (e) {
     console.error('forgotPassword fetch error:', e);
     return { status: 'error', message: e.message };
   }
 }
-
 
 /**
  * 呼叫戶別選單 API
@@ -101,18 +69,12 @@ export async function forgotPasswordUser(key) {
 export async function fetchUnitList() {
   try {
     const response = await fetch(GET_UNIT_LIST_API, {
-      method: 'POST',                       // ← 改为 POST
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_unit_list' })  // ← 加上 action
+      body: JSON.stringify({ action: 'get_unit_list' })
     });
-
-    if (!response.ok) {
-      return { status: 'error', message: `HTTP error! status: ${response.status}` };
-    }
-
-    const data = await response.json();
-    return data;
-
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
   } catch (e) {
     console.error('fetchUnitList error:', e);
     return { status: 'error', message: e.message };
@@ -124,21 +86,36 @@ export async function fetchUnitList() {
  */
 export async function getBuildingList() {
   try {
-    const response = await fetch('https://你的vercel-domain.vercel.app/api/get-building-list', {
+    const response = await fetch(GET_BUILDING_LIST_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'get_building_list' })
     });
-
-    if (!response.ok) {
-      return { status: 'error', message: `HTTP error! status: ${response.status}` };
-    }
-
-    const data = await response.json();
-    return data;
-
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
   } catch (e) {
     console.error('getBuildingList API error:', e);
     return { status: 'error', message: e.message };
+  }
+}
+
+/**
+ * 取得 GitHub Releases 最新版本號與更新說明
+ */
+export async function getLatestRelease() {
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/airrick1985/anxi-app/releases/latest',
+      { headers: { Accept: 'application/vnd.github.v3+json' } }
+    );
+    if (!response.ok) throw new Error(`GitHub API ${response.status}`);
+    const json = await response.json();
+    return {
+      version: json.tag_name || '',
+      notes: json.body || ''
+    };
+  } catch (e) {
+    console.error('getLatestRelease error:', e);
+    return { version: '', notes: '', error: e.message };
   }
 }

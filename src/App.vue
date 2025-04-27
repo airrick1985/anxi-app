@@ -7,9 +7,9 @@
       max-width="400"
     >
       <v-card>
-        <v-card-title>有新版本可用</v-card-title>
+        <v-card-title>有新版本 {{ releaseVersion }} 可用</v-card-title>
         <v-card-text>
-          更新內容如下：<br />{{ releaseNotes }}
+          <div v-html="formattedNotes"></div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -36,7 +36,11 @@
     </v-app-bar>
 
     <v-main>
-      <router-view @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
+      <router-view
+        @start-loading="loading = true"
+        @stop-loading="loading = false"
+        @notify="showSnackbar"
+      />
     </v-main>
 
     <!-- 底部 Tab Bar 快捷連結 -->
@@ -52,15 +56,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
+import { getLatestRelease } from '@/api';
 import EditProfileDialog from './components/EditProfileDialog.vue';
 import BottomNavBar from './components/BottomNavBar.vue';
 
-// 使用者相關
+// 使用者狀態
 const userStore = useUserStore();
 const { user } = storeToRefs(userStore);
 const dialog = ref(false);
@@ -68,7 +73,7 @@ const loading = ref(false);
 const snackbar = ref(false);
 const snackbarMessage = ref('');
 
-// 顯示Snackbar
+// 顯示 Snackbar
 const showSnackbar = (message) => {
   snackbarMessage.value = message;
   snackbar.value = true;
@@ -79,9 +84,10 @@ const router = useRouter();
 const route = useRoute();
 
 // 底部導航列顯示條件
-const showBottomNav = computed(() => {
-  return user.value && ['Home','InspectionRecord','InspectionOverview'].includes(route.name);
-});
+const showBottomNav = computed(() =>
+  user.value &&
+  ['Home', 'InspectionRecord', 'InspectionOverview'].includes(route.name)
+);
 
 // 未登入導回
 if (!user.value && route.name !== 'Login') {
@@ -91,21 +97,25 @@ if (!user.value && route.name !== 'Login') {
 // PWA 自動更新機制
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
 const showUpdateDialog = ref(false);
+const releaseVersion = ref('');
 const releaseNotes = ref('');
 
-// 監聽是否需要更新
-watch(needRefresh, (val) => {
+// 當偵測到新版時，從 GitHub Releases 拉版本和說明
+watch(needRefresh, async (val) => {
   if (val) {
-    // 載入更新說明，可從外部 JSON 或後端 API 取得
-    fetch('/release-notes.json?v=' + Date.now())
-      .then(res => res.text())
-      .then(text => releaseNotes.value = text)
-      .catch(() => releaseNotes.value = '有新版本可用，請更新');
+    const { version, notes } = await getLatestRelease();
+    releaseVersion.value = version;
+    releaseNotes.value = notes;
     showUpdateDialog.value = true;
   }
 });
 
-// 更新並重啟
+// 格式化換行
+const formattedNotes = computed(() =>
+  releaseNotes.value.replace(/\n/g, '<br/>')
+);
+
+// 執行更新並重載
 const doUpdate = async () => {
   await updateServiceWorker(true);
   window.location.reload();
