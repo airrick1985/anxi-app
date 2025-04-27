@@ -1,3 +1,7 @@
 git add . \
 && git commit -m "更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" \
 && git push
+
+
+npm run build
+npm run deploy
