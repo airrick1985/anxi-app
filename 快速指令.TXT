@@ -1,15 +1,10 @@
-git add . \
-&& git commit -m "更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" \
-&& git push
+開發階段 ➔ npm run dev
 
+打包測試 ➔ npm run build && npm run preview
 
-npm run build
-npm run deploy
+正式發佈上線 ➔ npm run build-and-deploy
 
-指令	功能說明
-npm run build-and-push	
-小版號 +1 ➔ build ➔ git commit ➔ push
-（但不自動 deploy）
+發佈前升版 ➔ npm run bump-version → npm run build-and-deploy
 
-npm run build-and-deploy	
-小版號 +1 ➔ build ➔ git commit ➔ push ➔ 自動上 GitHub Pages！
+有修改要同步 GitHub ➔ npm run build-and-push
+
