@@ -108,3 +108,27 @@ export async function fetchUnitList() {
     return { status: 'error', message: e.message };
   }
 }
+
+/**
+ * 棟別選單 API
+ */
+export async function getBuildingList() {
+  try {
+    const response = await fetch('https://你的vercel-domain.vercel.app/api/get-building-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_building_list' })
+    });
+
+    if (!response.ok) {
+      return { status: 'error', message: `HTTP error! status: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+
+  } catch (e) {
+    console.error('getBuildingList API error:', e);
+    return { status: 'error', message: e.message };
+  }
+}

@@ -4,6 +4,7 @@
         <v-col cols="12" sm="8" md="6">
           <h2 class="text-center mb-6">選擇驗屋戶別</h2>
   
+          <!-- 棟別選單 -->
           <v-select
             v-model="selectedBuilding"
             :items="buildingList"
@@ -11,8 +12,11 @@
             outlined
             dense
             required
+            :loading="loading"
+            :error-messages="errorMessage"
           />
   
+          <!-- 戶別選單 -->
           <v-select
             v-model="selectedUnit"
             :items="unitList"
@@ -23,6 +27,7 @@
             :disabled="!selectedBuilding"
           />
   
+          <!-- 確認按鈕 -->
           <v-btn
             color="primary"
             block
@@ -40,28 +45,51 @@
   <script setup>
   import { ref, computed, onMounted } from 'vue';
   import { useRouter } from 'vue-router';
-  import { fetchUnitList } from '../api'; // ✅ 這個 api 我等下也幫你寫好
+  import { fetchUnitList } from '@/api'; // ✅ 請確認有這支 API 函式
   
   const router = useRouter();
+  
+  // 狀態變數
   const unitsData = ref({});
   const selectedBuilding = ref('');
   const selectedUnit = ref('');
+  const loading = ref(false);
+  const errorMessage = ref('');
   
+  // 計算棟別、戶別選項
   const buildingList = computed(() => Object.keys(unitsData.value));
   const unitList = computed(() => unitsData.value[selectedBuilding.value] || []);
   
+  // 送出
   const confirm = () => {
     console.log('選擇：', selectedBuilding.value, selectedUnit.value);
-    router.push('/inspection-detail'); // ⚡ 之後換成你要跳的頁
+    router.push('/inspection-detail'); // ⚡ 之後這邊換成你要跳到的驗屋填寫頁
   };
   
-  onMounted(async () => {
-    const result = await fetchUnitList();
-    if (result.status === 'success') {
-      unitsData.value = result.units;
-    } else {
-      console.error('載入戶別資料失敗:', result.message);
+  // 載入棟別+戶別資料
+  const loadUnits = async () => {
+    loading.value = true;
+    errorMessage.value = '';
+    try {
+      const result = await fetchUnitList();
+      console.log('戶別資料回傳:', result);
+  
+      if (result.status === 'success') {
+        unitsData.value = result.units || {};
+      } else {
+        errorMessage.value = result.message || '取得棟別戶別資料失敗';
+      }
+    } catch (e) {
+      console.error('載入戶別失敗:', e);
+      errorMessage.value = '伺服器錯誤，無法載入棟別資料';
+    } finally {
+      loading.value = false;
     }
+  };
+  
+  // 頁面初始化就載入
+  onMounted(() => {
+    loadUnits();
   });
   </script>
   
