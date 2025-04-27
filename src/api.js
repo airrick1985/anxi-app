@@ -1,71 +1,92 @@
 // src/api.js
 
-// !! 確認這些 Proxy URL 和路徑是否正確 !!
-// !! loginUser 調用的 URL 可能需要改成與 updateUserProfile 不同的路徑，或者後端 doPost 需要 action 參數 !!
-const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';       // <--- 確認這個路徑是處理登入的
-const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile'; // <--- 確認這個路徑是處理更新的
-
+const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';
+const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile';
+const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password'; // ✅ 注意換成你的 Proxy URL
 /**
  * 呼叫登入 API
- * @param {string} key - 用戶的手機號碼
- * @param {string} password - 用戶的密碼
- * @returns {Promise<object>} - API 的回應結果 { status: '...', user: {...}, message?: '...' }
  */
 export async function loginUser(key, password) {
   try {
-    const response = await fetch('/api/login', {
+    const response = await fetch(LOGIN_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key,
-        password
-        // 前端這裡可以不用 action，讓 proxy 裡 login.js 幫你補 action: 'login'
-      })
+      body: JSON.stringify({ key, password })
     });
-    const data = await response.json();
+
+    const text = await response.text();
+    console.log('Login API Response Text:', text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error('登入回傳不是有效 JSON:', text);
+      throw new Error('登入回傳不是有效 JSON');
+    }
+
     return data;
+
   } catch (e) {
+    console.error('Login fetch error:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-
 /**
  * 呼叫更新個人資料 API
- * @param {object} payload - 包含更新所需數據的物件 { key, originalPassword, newName, newEmail, newPassword }
- * @returns {Promise<object>} - API 的回應結果 { status: '...', message?: '...' }
  */
-export async function updateUserProfile(payload) { // <--- payload 應包含 key, newEmail 等
+export async function updateUserProfile(payload) {
   try {
-    console.log(`Calling Update Profile API: ${UPDATE_API} with payload:`, payload); // 增加 Log
     const response = await fetch(UPDATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // **確保發送 action 和完整的 payload**
-      body: JSON.stringify({
-          action: 'update_profile', // <--- 告訴後端執行更新操作
-          ...payload               // <--- 將 payload 內容 ({ key, originalPassword, ... }) 包含進去
-      })
+      body: JSON.stringify({ action: 'update_profile', ...payload })
     });
 
-    // 檢查回應是否 OK
-    if (!response.ok) {
-        let errorData = { status: 'error', message: `HTTP error! status: ${response.status}` };
-        try {
-            errorData = await response.json();
-        } catch (jsonError) {
-            console.error("Failed to parse update error response as JSON", jsonError);
-        }
-        console.error("Update Profile API response not OK:", errorData);
-        return errorData;
+    const text = await response.text();
+    console.log('Update Profile API Response Text:', text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error('更新回傳不是有效 JSON:', text);
+      throw new Error('更新回傳不是有效 JSON');
     }
 
-    const data = await response.json();
-    console.log("Update Profile API success response:", data); // 增加 Log
     return data;
 
   } catch (e) {
     console.error('Update profile fetch error:', e);
-    return { status: 'error', message: '網路請求失敗: ' + e.message };
+    return { status: 'error', message: e.message };
+  }
+}
+
+/**
+ * 呼叫忘記密碼 API
+ */
+export async function forgotPasswordUser(key) {
+  try {
+    const response = await fetch(FORGOT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }) // ✅ 只傳 key，不用 password
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error('忘記密碼回傳不是有效JSON:', text);
+      throw new Error('忘記密碼回傳無效');
+    }
+
+    return data;
+
+  } catch (e) {
+    console.error('forgotPassword fetch error:', e);
+    return { status: 'error', message: e.message };
   }
 }
