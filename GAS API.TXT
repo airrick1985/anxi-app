@@ -1,0 +1,314 @@
+// --- 常數設定 ---
+const SPREADSHEET_ID = '1j__Y6H7xtBbkSr7Gwr2On3qUi53Cwov4dyh8wbryhus'; // 你的 Google Sheet ID
+const SHEET_NAME = '用戶資料'; // 你的工作表名稱
+
+// --- 欄位索引 (從 0 開始) ---
+// 假設 A欄: Key (手機號碼), B欄: Email, C欄: Name, D欄: Password
+const KEY_COL_INDEX = 0;
+const EMAIL_COL_INDEX = 1;
+const NAME_COL_INDEX = 2;
+const PASSWORD_COL_INDEX = 3;
+
+/**
+ * 處理 HTTP GET 請求 (通常用於簡單測試或非敏感數據)
+ * 建議登入等操作使用 POST
+ */
+function doGet(e) {
+  Logger.log("doGet triggered with parameters: " + JSON.stringify(e ? e.parameter : {}));
+  
+  // 建議 GET 只用於簡單測試或狀態檢查，避免傳輸敏感數據
+  // 以下是基於 key/password 的示例，但請注意安全風險
+  const key = e?.parameter?.key; 
+  const password = e?.parameter?.password;
+
+  // 簡單回傳一個確認訊息，或執行一個安全的讀取操作
+  if (key && password) {
+    // 可以選擇性地加入讀取邏輯，但建議移至 doPost
+     return handleLogin(key, password); // 複用登入邏輯 (注意安全)
+  } else {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'info', message: 'API is active (GET). Provide key and password for login test via GET.' }))
+                       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * 處理 HTTP POST 請求 (用於登入和更新個人資料)
+ */
+function doPost(e) {
+  let payload;
+  let action;
+
+  // 1. 安全地解析請求內容 (Payload)
+  try {
+    if (!e || !e.postData || typeof e.postData.contents === 'undefined') {
+      throw new Error("請求中缺少有效的 postData");
+    }
+    payload = JSON.parse(e.postData.contents);
+    action = payload.action; // 從 payload 中獲取 action
+    Logger.log("doPost triggered. Action: " + action + ", Payload: " + JSON.stringify(payload));
+
+    if (!action) {
+       // 如果前端沒有傳 action，我們可以預設為登入
+       Logger.log("No action provided, assuming 'login'.");
+       action = 'login'; // 設為預設動作
+    }
+
+  } catch (err) {
+    Logger.log("Error parsing payload: " + err);
+    return createJsonResponse({ status: 'error', message: '無效的請求資料: ' + err.message });
+  }
+
+  // 2. 根據 action 執行不同操作
+  try {
+    switch (action) {
+
+      case 'get_unit_list':
+        return handleGetUnitList();
+
+        case 'get_building_list':
+  return handleGetBuildingList();
+
+      case 'forgot_password':
+        return handleForgotPassword(payload.key);
+
+      case 'update_profile':
+        return handleUpdateProfile(payload);
+
+      case 'login': // 或者如果沒有 action 也執行登入
+      default: // 預設處理登入
+       const key = payload.key;
+const password = payload.password;
+const userAgent = payload.userAgent || '';
+const ip = payload.ip || '';
+
+if (!key || !password) {
+   return createJsonResponse({ status: 'error', message: '登入請求缺少 key 或 password' });
+}
+return handleLogin(key, password, userAgent, ip);
+
+    }
+  } catch (err) {
+      Logger.log("Error during action processing (" + action + "): " + err);
+      return createJsonResponse({ status: 'error', message: '處理請求時發生內部錯誤: ' + err.message });
+  }
+}
+
+// --- 輔助函數 ---
+
+/**
+ * 建立標準化的 JSON 回應
+ * @param {object} resultObject - 要轉換為 JSON 的物件
+ * @returns {ContentService.TextOutput} - Apps Script 的 JSON 回應物件
+ */
+function createJsonResponse(resultObject) {
+  return ContentService
+    .createTextOutput(JSON.stringify(resultObject))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * 處理登入邏輯
+ * @param {string} key - 用戶的手機號碼
+ * @param {string} password - 用戶的密碼
+ * @returns {ContentService.TextOutput} - JSON 回應
+ */
+function handleLogin(key, password, userAgent, ip) {
+  Logger.log("Handling login for key: " + key);
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  let result = { status: 'not_found', message: '手機號碼不存在或錯誤' };
+  let loginStatus = '帳號不存在';
+  let userName = '';
+
+  for (let i = 1; i < data.length; i++) { 
+    if (data[i][KEY_COL_INDEX] === key) { 
+      userName = data[i][NAME_COL_INDEX];
+      if (data[i][PASSWORD_COL_INDEX] === password) { 
+        result = {
+          status: 'success',
+          user: {
+            key: data[i][KEY_COL_INDEX],
+            email: data[i][EMAIL_COL_INDEX],
+            name: data[i][NAME_COL_INDEX]
+          }
+        };
+        Logger.log("Login successful for key: " + key);
+        loginStatus = '成功';
+      } else {
+        result = { status: 'wrong_password', message: '密碼錯誤' };
+        Logger.log("Wrong password for key: " + key);
+        loginStatus = '密碼錯誤';
+      }
+      break;
+    }
+  }
+  
+  logLoginRecord(userName || key, loginStatus, userAgent, ip); // ✅ 不論成功失敗都記錄
+  return createJsonResponse(result);
+}
+
+
+
+/**
+ * 處理更新個人資料邏輯
+ * @param {object} payload - 包含更新所需數據的物件 { key, originalPassword, newName, newEmail, newPassword }
+ * @returns {ContentService.TextOutput} - JSON 回應
+ */
+function handleUpdateProfile(payload) {
+  Logger.log("Handling update profile for key: " + payload?.key);
+  const { key, originalPassword, newName, newEmail, newPassword } = payload;
+
+  // 基本驗證
+  if (!key || !originalPassword || !newName || !newEmail) {
+     return createJsonResponse({ status: 'error', message: '更新請求缺少必要欄位 (key, originalPassword, newName, newEmail)' });
+  }
+
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  let userFound = false;
+  let rowIndex = -1; // 記錄找到的行索引 (從 0 開始)
+
+  // 1. 查找用戶並驗證原密碼
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][KEY_COL_INDEX] === key) { // 使用 Key 查找
+      userFound = true;
+      rowIndex = i; // 數據陣列中的索引
+      if (data[i][PASSWORD_COL_INDEX] !== originalPassword) {
+        Logger.log("Original password mismatch for key: " + key);
+        return createJsonResponse({ status: 'error', message: '原密碼錯誤' });
+      }
+      // 密碼驗證成功，跳出查找迴圈
+      break;
+    }
+  }
+
+  // 2. 如果找不到用戶
+  if (!userFound) {
+    Logger.log("User not found for update with key: " + key);
+    return createJsonResponse({ status: 'error', message: '無法找到對應的使用者' });
+  }
+
+  // 3. 執行更新 (如果用戶存在且密碼正確)
+  try {
+    // 注意：sheet.getRange 的行號需要是實際行號 (rowIndex + 1)，列號從 1 開始
+    const sheetRow = rowIndex + 1; 
+    
+    // 更新 Name (C欄, 列索引+1 = 3)
+    sheet.getRange(sheetRow, NAME_COL_INDEX + 1).setValue(newName);
+    Logger.log("Updated Name for key " + key + " to: " + newName);
+
+    // 更新 Email (B欄, 列索引+1 = 2)
+    sheet.getRange(sheetRow, EMAIL_COL_INDEX + 1).setValue(newEmail);
+     Logger.log("Updated Email for key " + key + " to: " + newEmail);
+
+    // 更新 Password (D欄, 列索引+1 = 4)，只有在提供了新密碼時才更新
+    if (newPassword && newPassword.trim() !== '') { // 檢查是否為空或只有空格
+      sheet.getRange(sheetRow, PASSWORD_COL_INDEX + 1).setValue(newPassword);
+      Logger.log("Updated Password for key: " + key);
+    } else {
+      Logger.log("No new password provided, keeping original password for key: " + key);
+    }
+
+    // 更新成功
+    return createJsonResponse({ status: 'success' });
+
+  } catch (err) {
+      Logger.log("Error updating sheet for key " + key + ": " + err);
+      return createJsonResponse({ status: 'error', message: '更新資料時發生錯誤: ' + err.message });
+  }
+}
+
+/**
+ * 處理忘記密碼邏輯
+ * @param {string} key - 用戶手機號碼
+ * @returns {ContentService.TextOutput} - JSON 回應
+ */
+function handleForgotPassword(key) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][KEY_COL_INDEX] === key) {
+      const email = data[i][EMAIL_COL_INDEX];
+      const password = data[i][PASSWORD_COL_INDEX];
+
+      if (!email || !password) {
+        return createJsonResponse({ status: 'error', message: '查無有效Email或密碼' });
+      }
+
+      // 發送 Email（這裡用 MailApp）
+      MailApp.sendEmail({
+        to: email,
+        subject: '【ANXI驗屋APP】忘記密碼通知',
+        htmlBody: `親愛的用戶您好，<br><br>您申請的密碼是：<b>${password}</b><br><br>請妥善保存。`,
+        name:'ANXI驗屋APP'
+      });
+
+      return createJsonResponse({ status: 'success', message: '密碼已寄出到您的Email' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應手機號碼' });
+}
+
+
+/**
+ * 取得棟別資料
+ */
+function handleGetBuildingList() {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('戶別選單');
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]; // 第一列
+  const buildingList = headerRow.filter(col => col !== ''); // 過濾掉空白
+  
+  return createJsonResponse({ status: 'success', data: buildingList });
+}
+
+
+/**
+ * 取得棟別-戶別資料
+ */
+function handleGetUnitList() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+const sheet = ss.getSheetByName('戶別選單');
+
+  const data = sheet.getDataRange().getValues();
+
+  const units = {};
+
+  if (data.length > 1) {
+    const header = data[0]; // 第一列是棟別名稱
+
+    for (let col = 0; col < header.length; col++) {
+      const building = header[col];
+      if (!building) continue;
+
+      units[building] = [];
+
+      for (let row = 1; row < data.length; row++) {
+        const unit = data[row][col];
+        if (unit) {
+          units[building].push(unit);
+        }
+      }
+    }
+  }
+
+  return createJsonResponse({ status: 'success', units });
+}
+
+
+/**
+ * 紀錄登入資訊
+ */
+function logLoginRecord(name, status, userAgent, ip) {
+  try {
+    const logSheet = SpreadsheetApp.openById('1j__Y6H7xtBbkSr7Gwr2On3qUi53Cwov4dyh8wbryhus').getSheetByName('登入LOG');
+    const now = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
+    logSheet.appendRow([now, name, status, userAgent || '未知', ip || '未知']);
+    Logger.log(`已紀錄登入: ${name}, ${status}`);
+  } catch (e) {
+    Logger.log("寫入登入LOG失敗: " + e);
+  }
+}
+
+

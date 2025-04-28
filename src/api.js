@@ -1,10 +1,11 @@
 // src/api.js
-
+const BASE_API_URL = 'https://vercel-proxy-api2.vercel.app/api';
 const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';
 const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile';
 const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password';
 const GET_UNIT_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-unit-list';
 const GET_BUILDING_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-building-list';
+const GET_HOUSE_DETAIL_API = 'https://vercel-proxy-api2.vercel.app/api/get-house-detail';
 
 /**
  * 呼叫登入 API
@@ -16,12 +17,10 @@ export async function loginUser(key, password) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, password })
     });
-    const text = await response.text();
-    console.log('Login API Response Text:', text);
-    const data = JSON.parse(text);
+    const data = await response.json();
     return data;
   } catch (e) {
-    console.error('Login fetch error:', e);
+    console.error('loginUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
@@ -36,11 +35,10 @@ export async function updateUserProfile(payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'update_profile', ...payload })
     });
-    const text = await response.text();
-    console.log('Update Profile API Response Text:', text);
-    return JSON.parse(text);
+    const data = await response.json();
+    return data;
   } catch (e) {
-    console.error('Update profile fetch error:', e);
+    console.error('updateUserProfile 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
@@ -55,16 +53,16 @@ export async function forgotPasswordUser(key) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key })
     });
-    const text = await response.text();
-    return JSON.parse(text);
+    const data = await response.json();
+    return data;
   } catch (e) {
-    console.error('forgotPassword fetch error:', e);
+    console.error('forgotPasswordUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
 /**
- * 呼叫戶別選單 API
+ * 取得棟別+戶別資料
  */
 export async function fetchUnitList() {
   try {
@@ -73,10 +71,10 @@ export async function fetchUnitList() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'get_unit_list' })
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
+    const data = await response.json();
+    return data;
   } catch (e) {
-    console.error('fetchUnitList error:', e);
+    console.error('fetchUnitList 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
@@ -117,5 +115,25 @@ export async function getLatestRelease() {
   } catch (e) {
     console.error('getLatestRelease error:', e);
     return { version: '', notes: '', error: e.message };
+  }
+}
+
+/**
+ * 🔥 新增：查詢單一戶別詳細資料
+ * @param {string} unit 戶別 (例如 "A1-04")
+ * @param {string} token 安全驗證 (固定是 anxi111003)
+ */
+export async function fetchHouseDetail(unit, token) {
+  try {
+    const response = await fetch(GET_HOUSE_DETAIL_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unit, token })
+    });
+    const data = await response.json();
+    return data;
+  } catch (e) {
+    console.error('fetchHouseDetail 錯誤:', e);
+    return { status: 'error', message: e.message };
   }
 }
