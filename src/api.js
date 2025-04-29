@@ -137,3 +137,23 @@ export async function fetchHouseDetail(unit, token) {
     return { status: 'error', message: e.message };
   }
 }
+
+// 撈取驗屋紀錄
+export async function fetchInspectionRecords(unitId) {
+  try {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbxpEwvLYOpeDHdzT0t1Y-Ybhn3rzwJ4wH65GNWax9j7VdAft7zsM2wmpGCSfEXIkDq1MA/exec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get_inspection_records', // ✅ 這個 action 名字跟 GAS 要對上
+        unitId
+      })
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (err) {
+    console.error('fetchInspectionRecords error:', err);
+    return { status: 'error', message: err.message };
+  }
+}
