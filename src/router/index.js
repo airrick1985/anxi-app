@@ -4,7 +4,8 @@ import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
 import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
-import InspectionDetail from '@/views/InspectionDetail.vue'; // ✅ 新增
+import InspectionDetail from '@/views/InspectionDetail.vue';
+import InspectionRecordTable from '@/views/InspectionRecordTable.vue'; // ✅ 新增
 
 const routes = [
   { path: '/', redirect: '/login' },
@@ -13,10 +14,16 @@ const routes = [
   { path: '/inspection-record', name: 'InspectionRecord', component: InspectionRecord },
   { path: '/inspection-overview', name: 'InspectionOverview', component: InspectionOverview },
   { 
-    path: '/inspection-detail/:unitId', // ✅ 新增這條
+    path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',
     component: InspectionDetail,
-    props: true   // ✅ 讓 unitId 直接以 props 傳入
+    props: true
+  },
+  { 
+    path: '/inspection-record-table/:unitId', // ✅ 新增這條
+    name: 'InspectionRecordTable',
+    component: InspectionRecordTable,
+    props: true
   },
   { path: '/:pathMatch(.*)*', redirect: '/login' }
 ];

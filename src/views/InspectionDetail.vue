@@ -123,13 +123,27 @@ const loadHouseDetail = async () => {
 
 // 查看驗屋紀錄按鈕動作
 const handleViewRecord = async () => {
-  viewRecordLoading.value = true;
-  setTimeout(() => {
-    viewRecordLoading.value = false;
-    snackbarMessage.value = '查看驗屋紀錄功能待開發';
+  if (!unitId) {
+    snackbarMessage.value = '查無戶別資訊，無法查看驗屋紀錄';
     snackbar.value = true;
-  }, 1000);
+    return;
+  }
+
+  viewRecordLoading.value = true;
+  try {
+    await router.push({
+      name: 'InspectionRecordTable',  // ⚡ 請確保 router 有這個 name
+      params: { unitId }
+    });
+  } catch (err) {
+    console.error('❌ 跳轉失敗:', err);
+    snackbarMessage.value = '跳轉驗屋紀錄失敗';
+    snackbar.value = true;
+  } finally {
+    viewRecordLoading.value = false;
+  }
 };
+
 
 onMounted(() => {
   loadHouseDetail();
