@@ -10,4 +10,4 @@ npm run bump-version && npm run build-and-deploy && git push
 有修改要同步 GitHub ➔ npm run build-and-push
 
 存檔到GIT倉庫
-git status && git add . && git commit -m "$(date '+%Y-%m-%d %H:%M:%S')" && git push
+git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" && git push
