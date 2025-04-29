@@ -6,6 +6,7 @@ const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password';
 const GET_UNIT_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-unit-list';
 const GET_BUILDING_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-building-list';
 const GET_HOUSE_DETAIL_API = 'https://vercel-proxy-api2.vercel.app/api/get-house-detail';
+const GET_INSPECTION_RECORDS_API = 'https://vercel-proxy-api2.vercel.app/api/get-inspection-records';
 
 /**
  * 呼叫登入 API
@@ -141,12 +142,12 @@ export async function fetchHouseDetail(unit, token) {
 // 撈取驗屋紀錄
 export async function fetchInspectionRecords(unitId) {
   try {
-    const response = await fetch('https://script.google.com/macros/s/AKfycbxpEwvLYOpeDHdzT0t1Y-Ybhn3rzwJ4wH65GNWax9j7VdAft7zsM2wmpGCSfEXIkDq1MA/exec', {
+    const response = await fetch(GET_INSPECTION_RECORDS_API, { // ✅ 正確指到 Vercel Proxy domain
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'get_inspection_records', // ✅ 這個 action 名字跟 GAS 要對上
-        unitId
+        unit: unitId,
+        token: 'anxi111003'
       })
     });
 
@@ -157,3 +158,5 @@ export async function fetchInspectionRecords(unitId) {
     return { status: 'error', message: err.message };
   }
 }
+
+
