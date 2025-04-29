@@ -71,7 +71,7 @@ const houseDetailFields = computed(() => {
   return {
     棟別: houseDetail.value.building,
     門牌: houseDetail.value.address,
-    房別: houseDetail.value.unit,
+    戶別: houseDetail.value.unit,
     車位: houseDetail.value.parking,
     屋主: houseDetail.value.owner,
     電話: houseDetail.value.phone 
