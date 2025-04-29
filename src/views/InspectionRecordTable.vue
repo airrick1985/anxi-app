@@ -20,24 +20,28 @@
             :rows="records"
             :search-options="{ enabled: true }"
             :pagination-options="{ enabled: true, perPage: 10 }"
-            :select-options="{ enabled: true }" 
-            @on-row-click="viewDetail"
           >
+            <!-- 完全自定義每一列，包裹在 <tr>，並綁定點擊事件 -->
             <template #table-row="props">
-              <span v-if="props.column.field === 'photos'">
-                <v-btn
-                  v-if="props.row.photos.length"
-                  size="x-small"
-                  color="primary"
-                  @click.stop="openPhotos(props.row.photos)"
-                >
-                  查看照片
-                </v-btn>
-                <span v-else>無</span>
-              </span>
-              <span v-else>
-                {{ props.formattedRow[props.column.field] }}
-              </span>
+              <tr @click="viewDetail(props.row)" style="cursor: pointer;">
+                <td v-for="col in props.columns" :key="col.field">
+                  <span v-if="col.field === 'photos'">
+                    <!-- 只有有照片才顯示按鈕 -->
+                    <v-btn
+                      v-if="props.row.photos && props.row.photos.length"
+                      size="x-small"
+                      color="primary"
+                      @click.stop="openPhotos(props.row.photos)"
+                    >
+                      查看照片
+                    </v-btn>
+                    <span v-else>無</span>
+                  </span>
+                  <span v-else>
+                    {{ props.row[col.field] }}
+                  </span>
+                </td>
+              </tr>
             </template>
           </vue-good-table>
         </div>
@@ -87,13 +91,14 @@ import 'vue-good-table-next/dist/vue-good-table-next.css';
 
 const route = useRoute();
 const unitId = route.params.unitId;
+
 const records = ref([]);
 const photoDialog = ref(false);
 const currentPhotos = ref([]);
 const detailDialog = ref(false);
 const selectedRow = ref({});
 
-// 大螢幕完整欄位
+// 定義桌機和手機要用的兩組欄位
 const fullColumns = [
   { label: '建檔時間', field: 'createdAt' },
   { label: '驗屋日期', field: 'inspectionDate' },
@@ -111,8 +116,6 @@ const fullColumns = [
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '照片', field: 'photos' }
 ];
-
-// 小螢幕縮減欄位
 const smallScreenColumns = [
   { label: '戶別', field: 'unit' },
   { label: '檢查區域', field: 'area' },
@@ -122,7 +125,9 @@ const smallScreenColumns = [
 ];
 
 const windowWidth = ref(window.innerWidth);
-const currentColumns = computed(() => windowWidth.value <= 768 ? smallScreenColumns : fullColumns);
+const currentColumns = computed(() =>
+  windowWidth.value <= 768 ? smallScreenColumns : fullColumns
+);
 
 const handleResize = () => {
   windowWidth.value = window.innerWidth;
@@ -132,31 +137,31 @@ onMounted(() => {
   loadRecords();
   window.addEventListener('resize', handleResize);
 });
-
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
 });
 
-const loadRecords = async () => {
-  const result = await fetchInspectionRecords(unitId);
-  if (result.status === 'success') {
-    records.value = result.records.map(row => ({
-      ...row,
-      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean),
+async function loadRecords() {
+  const res = await fetchInspectionRecords(unitId);
+  if (res.status === 'success') {
+    records.value = res.records.map(r => ({
+      ...r,
+      photos: [r.photo1, r.photo2, r.photo3, r.photo4].filter(Boolean)
     }));
   }
-};
+}
 
-const openPhotos = (photos) => {
+function openPhotos(photos) {
   currentPhotos.value = photos;
   photoDialog.value = true;
-};
+}
 
-const viewDetail = (row) => {
+function viewDetail(row) {
   selectedRow.value = row;
   detailDialog.value = true;
-};
+}
 
+// 欄位中文對照
 const columnNameMap = {
   createdAt: '建檔時間',
   inspectionDate: '驗屋日期',
@@ -174,14 +179,17 @@ const columnNameMap = {
   repairStatus: '檢修狀態'
 };
 
-const exportToExcel = () => {
+function exportToExcel() {
   const now = new Date();
-  const timestamp = now.toLocaleString('sv-TW', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  }).replace(/:/g, '-').replace(' ', '_');
+  const ts = now
+    .toLocaleString('sv-TW', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    })
+    .replace(/:/g, '-')
+    .replace(' ', '_');
 
-  const exportData = records.value.map(r => ({
+  const data = records.value.map(r => ({
     '建檔時間': r.createdAt,
     '驗屋日期': r.inspectionDate,
     '驗屋階段': r.inspectionStage,
@@ -198,13 +206,11 @@ const exportToExcel = () => {
     '檢修狀態': r.repairStatus
   }));
 
-  const worksheet = utils.json_to_sheet(exportData);
-  const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, '驗屋紀錄');
-
-  const filename = `驗屋紀錄_${unitId}_${timestamp}.xlsx`;
-  writeFile(workbook, filename);
-};
+  const ws = utils.json_to_sheet(data);
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, ws, '驗屋紀錄');
+  writeFile(wb, `驗屋紀錄_${unitId}_${ts}.xlsx`);
+}
 </script>
 
 <style scoped>
