@@ -1,34 +1,56 @@
 <template>
-  <v-bottom-navigation app color="primary" grow>
-    <!-- 首頁 -->
-    <v-btn @click="handleHomeClick" stacked>
-      <v-icon>mdi-home</v-icon>
-      首頁
-    </v-btn>
+  <div class="bottom-nav-wrapper">
+    <v-bottom-navigation
+      app
+      color="white"
+      grow
+      height="65"
+      class="bottom-nav-float"
+      elevation="12"
+    >
+      <v-btn
+        :class="{ 'active-btn': isActive('/home') }"
+        stacked
+        :ripple="true"
+        @click="handleHomeClick"
+      >
+        <v-icon>mdi-home</v-icon>
+        首頁
+      </v-btn>
 
-    <!-- 驗屋紀錄 -->
-    <v-btn @click="router.push('/inspection-record')" stacked>
-      <v-icon>mdi-clipboard-text</v-icon>
-      驗屋紀錄
-    </v-btn>
+      <v-btn
+        :class="{ 'active-btn': isActive('/inspection-record') }"
+        stacked
+        :ripple="true"
+        @click="navigate('/inspection-record')"
+      >
+        <v-icon>mdi-clipboard-text</v-icon>
+        查看戶別
+      </v-btn>
 
-    <!-- 驗屋總覽 -->
-    <v-btn @click="router.push('/inspection-overview')" stacked>
-      <v-icon>mdi-file-document-multiple</v-icon>
-      驗屋總覽
-    </v-btn>
-  </v-bottom-navigation>
+      <v-btn
+        :class="{ 'active-btn': isActive('/inspection-overview') }"
+        stacked
+        :ripple="true"
+        @click="navigate('/inspection-overview')"
+      >
+        <v-icon>mdi-file-document-multiple</v-icon>
+        驗屋總覽
+      </v-btn>
+    </v-bottom-navigation>
+  </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 
 const router = useRouter();
+const route = useRoute();
 const { updateServiceWorker } = useRegisterSW({ immediate: true });
 
-// === 連點 Home 按鈕 5次快速觸發更新 ===
+// === 點擊 Home 5次快速更新 ===
 const homeClickCount = ref(0);
 let clickTimer = null;
 
@@ -43,19 +65,63 @@ const handleHomeClick = () => {
     homeClickCount.value = 0;
     clearTimeout(clickTimer);
   } else {
-    // 正常跳回首頁
-    router.push('/home');
-
+    if (route.path !== '/home') {
+      router.push('/home');
+    }
     if (clickTimer) clearTimeout(clickTimer);
     clickTimer = setTimeout(() => {
       homeClickCount.value = 0;
-    }, 3000); // 3秒沒連點自動重置
+    }, 3000);
   }
 };
+
+// === 通用跳頁
+const navigate = (path) => {
+  if (route.path !== path) {
+    router.push(path);
+  } else {
+    // 如果已在該頁，執行小彈跳動畫
+    const navBtn = document.querySelector(`a[href='${path}']`)?.parentElement;
+    if (navBtn) {
+      navBtn.classList.add('bounce');
+      setTimeout(() => navBtn.classList.remove('bounce'), 400);
+    }
+  }
+};
+
+// === 判斷高亮
+const isActive = (path) => route.path === path;
 </script>
 
 <style scoped>
-.v-bottom-navigation {
-  height: 60px;
+.bottom-nav-wrapper {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 95%;
+  max-width: 500px;
+  z-index: 99;
+}
+
+.bottom-nav-float {
+  border-radius: 20px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* 當前頁面高亮 */
+.active-btn {
+  color: #1976d2 !important; /* 主題色 */
+}
+
+/* 彈跳動畫 */
+@keyframes bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.bounce {
+  animation: bounce 0.4s ease;
 }
 </style>

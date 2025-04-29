@@ -25,7 +25,7 @@
         @click="navigate('/inspection-record')"
       >
         <v-icon>mdi-clipboard-text</v-icon>
-        驗屋紀錄
+        查看戶別
       </v-btn>
 
       <v-btn
@@ -50,13 +50,11 @@ const router = useRouter();
 const route = useRoute();
 const { updateServiceWorker } = useRegisterSW({ immediate: true });
 
-// === 點擊 Home 5次快速更新 ===
 const homeClickCount = ref(0);
 let clickTimer = null;
 
 const handleHomeClick = () => {
   homeClickCount.value++;
-
   if (homeClickCount.value >= 5) {
     console.log('🔄 觸發強制更新');
     updateServiceWorker(true).then(() => {
@@ -75,12 +73,10 @@ const handleHomeClick = () => {
   }
 };
 
-// === 通用跳頁
 const navigate = (path) => {
   if (route.path !== path) {
     router.push(path);
   } else {
-    // 如果已在該頁，執行小彈跳動畫
     const navBtn = document.querySelector(`a[href='${path}']`)?.parentElement;
     if (navBtn) {
       navBtn.classList.add('bounce');
@@ -89,7 +85,6 @@ const navigate = (path) => {
   }
 };
 
-// === 判斷高亮
 const isActive = (path) => route.path === path;
 </script>
 
@@ -110,17 +105,16 @@ const isActive = (path) => route.path === path;
   overflow: hidden;
 }
 
-/* 當前頁面高亮 */
 .active-btn {
-  color: #1976d2 !important; /* 主題色 */
+  color: #1976d2 !important;
 }
 
-/* 彈跳動畫 */
 @keyframes bounce {
   0% { transform: scale(1); }
   50% { transform: scale(1.15); }
   100% { transform: scale(1); }
 }
+
 .bounce {
   animation: bounce 0.4s ease;
 }

@@ -10,7 +10,7 @@
           @click="goTo('inspection')"
         >
           <v-icon start size="28">mdi-home-search</v-icon>
-          驗屋紀錄
+          查看戶別
         </v-btn>
       </v-col>
 

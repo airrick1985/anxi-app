@@ -40,7 +40,8 @@
         @stop-loading="loading = false"
         @notify="showSnackbar"
       />
-
+<!-- 浮動式 BottomNavBar -->
+<BottomNavBar v-if="showBottomNav" />
       <!-- Footer -->
       <v-footer
         color="grey lighten-4"
@@ -58,9 +59,6 @@
         </v-container>
       </v-footer>
     </v-main>
-
-    <!-- 浮動式 BottomNavBar -->
-    <BottomNavBar v-if="showBottomNav" />
 
     <!-- 個人資料 Dialog -->
     <EditProfileDialog
@@ -128,8 +126,9 @@ const route = useRoute();
 
 // 底部導航顯示條件
 const showBottomNav = computed(() => 
-  user.value && ['Home', 'InspectionRecord', 'InspectionOverview'].includes(route.name)
+  user.value && route.name !== 'Login'
 );
+
 
 // 強制更新連點
 const homeClickCount = ref(0);

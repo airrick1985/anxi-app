@@ -45,7 +45,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { fetchUnitList } from '@/api';
+import { fetchUnitList } from '@/api'; // ✅ 請確保有這支 API 函式
 
 const router = useRouter();
 
@@ -62,9 +62,16 @@ const unitList = computed(() => unitsData.value[selectedBuilding.value] || []);
 
 // 送出
 const confirm = () => {
-  console.log('選擇：', selectedBuilding.value, selectedUnit.value);
-  const token = 'anxi111003'; // 加密 token
-  router.push(`/inspection-detail/${selectedUnit.value}?token=${token}`);
+  if (!selectedBuilding.value || !selectedUnit.value) {
+    console.error('請選擇棟別與戶別');
+    return;
+  }
+  const token = 'anxi111003'; // ✅ 固定密碼
+  const unit = selectedUnit.value; // ✅ 取得選中的戶別
+
+  console.log('✅ 選擇棟別戶別:', selectedBuilding.value, unit);
+
+  router.push(`/inspection-detail/${unit}?token=${token}`);
 };
 
 // 載入棟別+戶別資料
@@ -73,7 +80,7 @@ const loadUnits = async () => {
   errorMessage.value = '';
   try {
     const result = await fetchUnitList();
-    console.log('戶別資料回傳:', result);
+    console.log('📦 戶別資料回傳:', result);
 
     if (result.status === 'success') {
       unitsData.value = result.units || {};
@@ -81,7 +88,7 @@ const loadUnits = async () => {
       errorMessage.value = result.message || '取得棟別戶別資料失敗';
     }
   } catch (e) {
-    console.error('載入戶別失敗:', e);
+    console.error('❌ 載入戶別失敗:', e);
     errorMessage.value = '伺服器錯誤，無法載入棟別資料';
   } finally {
     loading.value = false;
