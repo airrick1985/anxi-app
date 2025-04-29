@@ -4,63 +4,65 @@
       <v-card-title class="d-flex justify-space-between align-center">
         <span>驗屋紀錄（戶別：{{ unitId }}）</span>
         <div>
-          <v-btn color="primary" size="small" icon @click="loadRecords">
-            <v-icon>mdi-refresh</v-icon>
-          </v-btn>
-          <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
-            <v-icon left>mdi-download</v-icon> 匯出 Excel
+          <v-btn icon @click="fetchData"><v-icon>mdi-refresh</v-icon></v-btn>
+          <v-btn small @click="exportToExcel">
+            <v-icon left>mdi-download</v-icon>匯出 Excel
           </v-btn>
         </div>
       </v-card-title>
 
       <v-card-text>
+        <v-text-field
+          v-model="search"
+          label="搜尋"
+          prepend-inner-icon="mdi-magnify"
+          outlined
+          dense
+          hide-details
+          class="mb-4"
+        />
         <div class="table-wrapper">
-          <vue-good-table
-            :columns="currentColumns"
-            :rows="records"
-            :search-options="{ enabled: true }"
-            :pagination-options="{ enabled: true, perPage: 10 }"
+          <v-data-table
+            :headers="computedHeaders"
+            :items="records"
+            :search="search"
+            class="elevation-1"
           >
-            <!-- 完全自定義每一列，包裹在 <tr>，並綁定點擊事件 -->
-            <template #table-row="props">
-              <tr @click="viewDetail(props.row)" style="cursor: pointer;">
-                <td v-for="col in props.columns" :key="col.field">
-                  <span v-if="col.field === 'photos'">
-                    <!-- 只有有照片才顯示按鈕 -->
-                    <v-btn
-                      v-if="props.row.photos && props.row.photos.length"
-                      size="x-small"
-                      color="primary"
-                      @click.stop="openPhotos(props.row.photos)"
-                    >
-                      查看照片
-                    </v-btn>
-                    <span v-else>無</span>
-                  </span>
-                  <span v-else>
-                    {{ props.row[col.field] }}
-                  </span>
-                </td>
-              </tr>
+            <!-- 照片欄 -->
+            <template #item.photos="{ item }">
+              <v-btn
+                v-if="item.photos.length"
+                small
+                text
+                @click="openPhotos(item.photos)"
+              >查看照片</v-btn>
+              <span v-else>—</span>
             </template>
-          </vue-good-table>
+            <!-- 操作欄：打開詳細資料 -->
+            <template #item.actions="{ item }">
+              <v-btn small text @click="viewDetail(item)">詳情</v-btn>
+            </template>
+            <template #no-data>
+              <v-alert type="info">目前尚無驗屋紀錄</v-alert>
+            </template>
+          </v-data-table>
         </div>
       </v-card-text>
     </v-card>
 
     <!-- 詳細資料 Dialog -->
-    <v-dialog v-model="detailDialog" max-width="600">
+    <v-dialog v-model="detailDialog" max-width="500">
       <v-card>
-        <v-card-title class="text-h6">詳細資料</v-card-title>
-        <v-divider></v-divider>
+        <v-card-title>詳細資料</v-card-title>
+        <v-divider />
         <v-card-text>
           <div v-for="(value, key) in selectedRow" :key="key" class="mb-2">
-            <strong>{{ columnNameMap[key] || key }}：</strong> {{ value }}
+            <strong>{{ labelMap[key] || key }}：</strong> {{ value }}
           </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" text @click="detailDialog = false">關閉</v-btn>
+          <v-btn text @click="detailDialog = false">關閉</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -70,10 +72,10 @@
       <v-card>
         <v-carousel hide-delimiter-background height="400">
           <v-carousel-item
-            v-for="(photoUrl, index) in currentPhotos"
-            :key="index"
+            v-for="(url, i) in currentPhotos"
+            :key="i"
           >
-            <v-img :src="photoUrl" aspect-ratio="1.6" />
+            <v-img :src="url" aspect-ratio="1.6" />
           </v-carousel-item>
         </v-carousel>
       </v-card>
@@ -82,66 +84,71 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
-import { VueGoodTable } from 'vue-good-table-next';
-import 'vue-good-table-next/dist/vue-good-table-next.css';
 
 const route = useRoute();
 const unitId = route.params.unitId;
 
+const search = ref('');
 const records = ref([]);
-const photoDialog = ref(false);
-const currentPhotos = ref([]);
 const detailDialog = ref(false);
 const selectedRow = ref({});
+const photoDialog = ref(false);
+const currentPhotos = ref([]);
 
-// 定義桌機和手機要用的兩組欄位
-const fullColumns = [
-  { label: '建檔時間', field: 'createdAt' },
-  { label: '驗屋日期', field: 'inspectionDate' },
-  { label: '驗屋階段', field: 'inspectionStage' },
-  { label: '驗屋人', field: 'inspector' },
-  { label: '產權人', field: 'owner' },
-  { label: '戶別', field: 'unit' },
-  { label: '檢查區域', field: 'area' },
-  { label: '分類', field: 'category' },
-  { label: '細項', field: 'subcategory' },
-  { label: '檢查狀態', field: 'inspectionStatus' },
-  { label: '缺失等級', field: 'defectLevel' },
-  { label: '檢查說明', field: 'description' },
-  { label: '檢修時間', field: 'repairDate' },
-  { label: '檢修狀態', field: 'repairStatus' },
-  { label: '照片', field: 'photos' }
+// 完整欄位與手機版要保留的欄位
+const allHeaders = [
+  { text: '建檔時間', value: 'createdAt' },
+  { text: '驗屋日期', value: 'inspectionDate' },
+  { text: '驗屋階段', value: 'inspectionStage' },
+  { text: '驗屋人', value: 'inspector' },
+  { text: '產權人', value: 'owner' },
+  { text: '戶別', value: 'unit' },
+  { text: '檢查區域', value: 'area' },
+  { text: '分類', value: 'category' },
+  { text: '細項', value: 'subcategory' },
+  { text: '檢查狀態', value: 'inspectionStatus' },
+  { text: '缺失等級', value: 'defectLevel' },
+  { text: '檢查說明', value: 'description' },
+  { text: '檢修時間', value: 'repairDate' },
+  { text: '檢修狀態', value: 'repairStatus' },
+  { text: '照片', value: 'photos', sortable: false },
+  { text: '操作', value: 'actions', sortable: false }
 ];
-const smallScreenColumns = [
-  { label: '戶別', field: 'unit' },
-  { label: '檢查區域', field: 'area' },
-  { label: '細項', field: 'subcategory' },
-  { label: '檢查狀態', field: 'inspectionStatus' },
-  { label: '缺失等級', field: 'defectLevel' }
+const mobileFields = [
+  'unit',
+  'area',
+  'subcategory',
+  'inspectionStatus',
+  'defectLevel',
+  'photos',
+  'actions'
 ];
 
 const windowWidth = ref(window.innerWidth);
-const currentColumns = computed(() =>
-  windowWidth.value <= 768 ? smallScreenColumns : fullColumns
+const computedHeaders = computed(() =>
+  windowWidth.value <= 768
+    ? allHeaders.filter(h => mobileFields.includes(h.value))
+    : allHeaders
 );
 
-const handleResize = () => {
+function onResize() {
   windowWidth.value = window.innerWidth;
-};
+}
 
 onMounted(() => {
-  loadRecords();
-  window.addEventListener('resize', handleResize);
+  window.addEventListener('resize', onResize);
+  fetchData();
 });
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('resize', onResize);
 });
 
-async function loadRecords() {
+// 讀取資料並加工 photos 陣列
+async function fetchData() {
   const res = await fetchInspectionRecords(unitId);
   if (res.status === 'success') {
     records.value = res.records.map(r => ({
@@ -151,34 +158,25 @@ async function loadRecords() {
   }
 }
 
-function openPhotos(photos) {
-  currentPhotos.value = photos;
-  photoDialog.value = true;
-}
-
-function viewDetail(row) {
-  selectedRow.value = row;
+// 打開詳細 Dialog
+function viewDetail(item) {
+  selectedRow.value = item;
   detailDialog.value = true;
 }
 
-// 欄位中文對照
-const columnNameMap = {
-  createdAt: '建檔時間',
-  inspectionDate: '驗屋日期',
-  inspectionStage: '驗屋階段',
-  inspector: '驗屋人',
-  owner: '產權人',
-  unit: '戶別',
-  area: '檢查區域',
-  category: '分類',
-  subcategory: '細項',
-  inspectionStatus: '檢查狀態',
-  defectLevel: '缺失等級',
-  description: '檢查說明',
-  repairDate: '檢修時間',
-  repairStatus: '檢修狀態'
-};
+// 打開照片相簿
+function openPhotos(list) {
+  currentPhotos.value = list;
+  photoDialog.value = true;
+}
 
+// 欄位中文對照
+const labelMap = allHeaders.reduce((map, h) => {
+  map[h.value] = h.text;
+  return map;
+}, {});
+
+// 匯出 Excel
 function exportToExcel() {
   const now = new Date();
   const ts = now

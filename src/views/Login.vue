@@ -5,7 +5,7 @@
     <v-row align="center" justify="center">
       <v-col cols="12" sm="8" md="4">
         <v-card class="pa-4">
-          <v-card-title class="text-center">登入</v-card-title>
+          <v-card-title class="text-center">登入-富宇富御</v-card-title>
           <v-card-text>
             <v-form @submit.prevent="submit">
               <!-- **** 修改這裡：使用手機號碼登入 **** -->
