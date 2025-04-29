@@ -3,28 +3,46 @@
     <v-card>
       <v-card-title class="d-flex justify-space-between align-center">
         <span>驗屋紀錄（戶別：{{ unitId }}）</span>
-        <v-btn color="primary" @click="exportToExcel">匯出 Excel</v-btn>
+        <div>
+          <v-btn color="primary" size="small" icon @click="loadRecords">
+            <v-icon>mdi-refresh</v-icon>
+          </v-btn>
+          <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
+            <v-icon left>mdi-download</v-icon> 匯出 Excel
+          </v-btn>
+        </div>
       </v-card-title>
+
       <v-card-text>
-        <vue-good-table
-          :columns="columns"
-          :rows="records"
-          :search-options="{ enabled: true }"
-          :pagination-options="{ enabled: true, perPage: 10 }"
-        >
-          <template #table-row="props">
-            <span v-if="props.column.field === 'photos'">
-              <v-btn size="x-small" color="primary" @click="openPhotos(props.row.photos)">
-                查看照片
-              </v-btn>
-            </span>
-            <span v-else>
-              {{ props.formattedRow[props.column.field] }}
-            </span>
-          </template>
-        </vue-good-table>
+        <div class="table-wrapper">
+          <vue-good-table
+            :columns="displayColumns"
+            :rows="records"
+            :search-options="{ enabled: true }"
+            :pagination-options="{ enabled: true, perPage: 10 }"
+            @on-row-click="viewDetail"
+          >
+          </vue-good-table>
+        </div>
       </v-card-text>
     </v-card>
+
+    <!-- 詳細資料 Dialog -->
+    <v-dialog v-model="detailDialog" max-width="600">
+      <v-card>
+        <v-card-title class="text-h6">詳細資料</v-card-title>
+        <v-divider></v-divider>
+        <v-card-text>
+          <div v-for="(value, key) in selectedRow" :key="key" class="mb-2">
+            <strong>{{ columnNameMap[key] || key }}：</strong> {{ value }}
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" text @click="detailDialog = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 照片 Dialog -->
     <v-dialog v-model="photoDialog" max-width="600">
@@ -47,30 +65,42 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
+import { VueGoodTable } from 'vue-good-table-next';
+import 'vue-good-table-next/dist/vue-good-table-next.css';
 
 const route = useRoute();
 const unitId = route.params.unitId;
 const records = ref([]);
 const photoDialog = ref(false);
 const currentPhotos = ref([]);
+const detailDialog = ref(false);
+const selectedRow = ref({});
 
-const columns = [
-  { label: '建檔時間', field: 'createdAt' },
-  { label: '驗屋日期', field: 'inspectionDate' },
-  { label: '驗屋階段', field: 'inspectionStage' },
-  { label: '驗屋人', field: 'inspector' },
-  { label: '產權人', field: 'owner' },
+const displayColumns = [
   { label: '戶別', field: 'unit' },
   { label: '檢查區域', field: 'area' },
-  { label: '分類', field: 'category' },
   { label: '細項', field: 'subcategory' },
   { label: '檢查狀態', field: 'inspectionStatus' },
-  { label: '缺失等級', field: 'defectLevel' },
-  { label: '檢查說明', field: 'description' },
-  { label: '檢修時間', field: 'repairDate' },
-  { label: '檢修狀態', field: 'repairStatus' },
-  { label: '照片', field: 'photos' },
+  { label: '缺失等級', field: 'defectLevel' }
 ];
+
+// 中文欄位名稱對照表
+const columnNameMap = {
+  createdAt: '建檔時間',
+  inspectionDate: '驗屋日期',
+  inspectionStage: '驗屋階段',
+  inspector: '驗屋人',
+  owner: '產權人',
+  unit: '戶別',
+  area: '檢查區域',
+  category: '分類',
+  subcategory: '細項',
+  inspectionStatus: '檢查狀態',
+  defectLevel: '缺失等級',
+  description: '檢查說明',
+  repairDate: '檢修時間',
+  repairStatus: '檢修狀態'
+};
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(unitId);
@@ -87,12 +117,41 @@ const openPhotos = (photos) => {
   photoDialog.value = true;
 };
 
+const viewDetail = (row) => {
+  selectedRow.value = row;
+  detailDialog.value = true;
+};
+
 const exportToExcel = () => {
-  const data = records.value.map(({ photo1, photo2, photo3, photo4, ...rest }) => rest);
-  const worksheet = utils.json_to_sheet(data);
+  const now = new Date();
+  const timestamp = now.toLocaleString('sv-TW', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  }).replace(/:/g, '-').replace(' ', '_');
+
+  const exportData = records.value.map(r => ({
+    '建檔時間': r.createdAt,
+    '驗屋日期': r.inspectionDate,
+    '驗屋階段': r.inspectionStage,
+    '驗屋人': r.inspector,
+    '產權人': r.owner,
+    '戶別': r.unit,
+    '檢查區域': r.area,
+    '分類': r.category,
+    '細項': r.subcategory,
+    '檢查狀態': r.inspectionStatus,
+    '缺失等級': r.defectLevel,
+    '檢查說明': r.description,
+    '檢修時間': r.repairDate,
+    '檢修狀態': r.repairStatus
+  }));
+
+  const worksheet = utils.json_to_sheet(exportData);
   const workbook = utils.book_new();
   utils.book_append_sheet(workbook, worksheet, '驗屋紀錄');
-  writeFile(workbook, `驗屋紀錄_${unitId}.xlsx`);
+
+  const filename = `驗屋紀錄_${unitId}_${timestamp}.xlsx`;
+  writeFile(workbook, filename);
 };
 
 onMounted(() => {
@@ -103,5 +162,11 @@ onMounted(() => {
 <style scoped>
 .v-card {
   margin-top: 20px;
+}
+.v-card-text {
+  padding-top: 10px;
+}
+.table-wrapper {
+  overflow-x: auto;
 }
 </style>
