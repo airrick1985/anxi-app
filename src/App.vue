@@ -3,7 +3,7 @@
     <!-- 頂部 App Bar -->
     <v-app-bar app color="primary" dark>
       <v-toolbar-title @mousedown="startForceUpdate" @mouseup="cancelForceUpdate" @mouseleave="cancelForceUpdate">
-        ANXI 驗屋系統
+        ANXI 驗屋系統(富宇富御專用)
       </v-toolbar-title>
       <v-spacer />
 

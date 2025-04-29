@@ -16,12 +16,29 @@
       <v-card-text>
         <div class="table-wrapper">
           <vue-good-table
-            :columns="displayColumns"
+            :columns="currentColumns"
             :rows="records"
             :search-options="{ enabled: true }"
             :pagination-options="{ enabled: true, perPage: 10 }"
+            :select-options="{ enabled: true }" 
             @on-row-click="viewDetail"
           >
+            <template #table-row="props">
+              <span v-if="props.column.field === 'photos'">
+                <v-btn
+                  v-if="props.row.photos.length"
+                  size="x-small"
+                  color="primary"
+                  @click.stop="openPhotos(props.row.photos)"
+                >
+                  查看照片
+                </v-btn>
+                <span v-else>無</span>
+              </span>
+              <span v-else>
+                {{ props.formattedRow[props.column.field] }}
+              </span>
+            </template>
           </vue-good-table>
         </div>
       </v-card-text>
@@ -44,7 +61,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- 照片 Dialog -->
+    <!-- 照片相簿 Dialog -->
     <v-dialog v-model="photoDialog" max-width="600">
       <v-card>
         <v-carousel hide-delimiter-background height="400">
@@ -61,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
@@ -76,7 +93,27 @@ const currentPhotos = ref([]);
 const detailDialog = ref(false);
 const selectedRow = ref({});
 
-const displayColumns = [
+// 大螢幕完整欄位
+const fullColumns = [
+  { label: '建檔時間', field: 'createdAt' },
+  { label: '驗屋日期', field: 'inspectionDate' },
+  { label: '驗屋階段', field: 'inspectionStage' },
+  { label: '驗屋人', field: 'inspector' },
+  { label: '產權人', field: 'owner' },
+  { label: '戶別', field: 'unit' },
+  { label: '檢查區域', field: 'area' },
+  { label: '分類', field: 'category' },
+  { label: '細項', field: 'subcategory' },
+  { label: '檢查狀態', field: 'inspectionStatus' },
+  { label: '缺失等級', field: 'defectLevel' },
+  { label: '檢查說明', field: 'description' },
+  { label: '檢修時間', field: 'repairDate' },
+  { label: '檢修狀態', field: 'repairStatus' },
+  { label: '照片', field: 'photos' }
+];
+
+// 小螢幕縮減欄位
+const smallScreenColumns = [
   { label: '戶別', field: 'unit' },
   { label: '檢查區域', field: 'area' },
   { label: '細項', field: 'subcategory' },
@@ -84,23 +121,21 @@ const displayColumns = [
   { label: '缺失等級', field: 'defectLevel' }
 ];
 
-// 中文欄位名稱對照表
-const columnNameMap = {
-  createdAt: '建檔時間',
-  inspectionDate: '驗屋日期',
-  inspectionStage: '驗屋階段',
-  inspector: '驗屋人',
-  owner: '產權人',
-  unit: '戶別',
-  area: '檢查區域',
-  category: '分類',
-  subcategory: '細項',
-  inspectionStatus: '檢查狀態',
-  defectLevel: '缺失等級',
-  description: '檢查說明',
-  repairDate: '檢修時間',
-  repairStatus: '檢修狀態'
+const windowWidth = ref(window.innerWidth);
+const currentColumns = computed(() => windowWidth.value <= 768 ? smallScreenColumns : fullColumns);
+
+const handleResize = () => {
+  windowWidth.value = window.innerWidth;
 };
+
+onMounted(() => {
+  loadRecords();
+  window.addEventListener('resize', handleResize);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
+});
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(unitId);
@@ -120,6 +155,23 @@ const openPhotos = (photos) => {
 const viewDetail = (row) => {
   selectedRow.value = row;
   detailDialog.value = true;
+};
+
+const columnNameMap = {
+  createdAt: '建檔時間',
+  inspectionDate: '驗屋日期',
+  inspectionStage: '驗屋階段',
+  inspector: '驗屋人',
+  owner: '產權人',
+  unit: '戶別',
+  area: '檢查區域',
+  category: '分類',
+  subcategory: '細項',
+  inspectionStatus: '檢查狀態',
+  defectLevel: '缺失等級',
+  description: '檢查說明',
+  repairDate: '檢修時間',
+  repairStatus: '檢修狀態'
 };
 
 const exportToExcel = () => {
@@ -153,10 +205,6 @@ const exportToExcel = () => {
   const filename = `驗屋紀錄_${unitId}_${timestamp}.xlsx`;
   writeFile(workbook, filename);
 };
-
-onMounted(() => {
-  loadRecords();
-});
 </script>
 
 <style scoped>
