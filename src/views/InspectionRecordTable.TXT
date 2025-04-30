@@ -1,144 +1,155 @@
 <template>
-  <v-container>
-    <v-card>
-      <v-card-title class="d-flex justify-space-between align-center">
-        <span>驗屋紀錄（戶別：{{ unitId }}）</span>
-        <div>
-          <v-btn color="primary" size="small" icon @click="loadRecords">
-            <v-icon>mdi-refresh</v-icon>
-          </v-btn>
-          <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
-            <v-icon left>mdi-download</v-icon> 匯出 Excel
-          </v-btn>
-        </div>
-      </v-card-title>
+  <!-- 上方選單區 -->
+  <v-container class="mb-8" fluid>
+    <v-row justify="center" align="center">
+      <v-col cols="12" sm="8" md="6">
+        <h2 class="text-center mb-6">選擇驗屋戶別</h2>
 
-      <v-card-text>
-        <vue-good-table
-          :columns="columns"
-          :rows="records"
-          :search-options="{ enabled: true }"
-          :pagination-options="{ enabled: true, perPage: 10 }"
+        <v-select
+          v-model="selectedBuilding"
+          :items="buildingList"
+          label="請選擇棟別"
+          outlined
+          dense
+          required
+          :loading="loading"
+          :error-messages="errorMessage"
+        />
+
+        <v-select
+          v-model="selectedUnit"
+          :items="unitList"
+          label="請選擇戶別"
+          outlined
+          dense
+          required
+          :disabled="!selectedBuilding"
+        />
+
+        <v-btn
+          color="primary"
+          block
+          class="mt-4"
+          :disabled="!selectedBuilding || !selectedUnit"
+          @click="confirm"
         >
-          <template #table-row="props">
-            <span v-if="props.column.field === 'photos'">
-              <v-btn size="x-small" color="primary" @click="openPhotos(props.row.photos)">
-                查看照片
-              </v-btn>
-            </span>
-            <span v-else>
-              {{ props.formattedRow[props.column.field] }}
-            </span>
-          </template>
-        </vue-good-table>
-      </v-card-text>
-    </v-card>
+          查詢驗屋紀錄
+        </v-btn>
 
-    <!-- 照片 Dialog -->
-    <v-dialog v-model="photoDialog" max-width="600">
-      <v-card>
-        <v-carousel hide-delimiter-background height="400">
-          <v-carousel-item
-            v-for="(photoUrl, index) in currentPhotos"
-            :key="index"
-          >
-            <v-img :src="photoUrl" aspect-ratio="1.6" />
-          </v-carousel-item>
-        </v-carousel>
-      </v-card>
-    </v-dialog>
+        <v-btn
+          color="secondary"
+          block
+          class="mt-2"
+          v-if="selectedUnit"
+          @click="showDetail = !showDetail"
+        >
+          {{ showDetail ? '隱藏戶別資料' : '顯示戶別資料' }}
+        </v-btn>
+      </v-col>
+    </v-row>
+  </v-container>
+
+  <!-- 下方：戶別詳細資料卡片 -->
+  <v-container fluid v-if="showDetail">
+    <v-row justify="center">
+      <v-col cols="12" sm="10" md="10">
+        <InspectionDetailCard :detail="currentHouseDetail" />
+      </v-col>
+    </v-row>
+  </v-container>
+
+  <!-- 下方：驗屋紀錄表格 -->
+  <v-container fluid v-if="selectedUnit">
+    <v-row justify="center">
+      <v-col cols="12" sm="10" md="10">
+        <InspectionRecordTable :unit-id="selectedUnit" :records="records" />
+      </v-col>
+    </v-row>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { fetchInspectionRecords } from '@/api';
-import { utils, writeFile } from 'xlsx';
-import { VueGoodTable } from 'vue-good-table-next';
-import 'vue-good-table-next/dist/vue-good-table-next.css'; // 記得要引入CSS
+import { ref, computed, onMounted } from 'vue';
+import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
+import InspectionDetailCard from '@/components/InspectionDetailCard.vue';
+import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails } from '@/api';
 
-const route = useRoute();
-const unitId = route.params.unitId;
+const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
+
+
+const unitsData = ref({});
+const allHouseDetails = ref({}); // ✅ 所有戶別詳細資料快取
+const selectedBuilding = ref('');
+const selectedUnit = ref('');
+const loading = ref(false);
+const errorMessage = ref('');
 const records = ref([]);
-const photoDialog = ref(false);
-const currentPhotos = ref([]);
+const showDetail = ref(false);
 
-const columns = [
-  { label: '建檔時間', field: 'createdAt' },
-  { label: '驗屋日期', field: 'inspectionDate' },
-  { label: '驗屋階段', field: 'inspectionStage' },
-  { label: '驗屋人', field: 'inspector' },
-  { label: '產權人', field: 'owner' },
-  { label: '戶別', field: 'unit' },
-  { label: '檢查區域', field: 'area' },
-  { label: '分類', field: 'category' },
-  { label: '細項', field: 'subcategory' },
-  { label: '檢查狀態', field: 'inspectionStatus' },
-  { label: '缺失等級', field: 'defectLevel' },
-  { label: '檢查說明', field: 'description' },
-  { label: '檢修時間', field: 'repairDate' },
-  { label: '檢修狀態', field: 'repairStatus' },
-  { label: '照片', field: 'photos' }
-];
 
-const loadRecords = async () => {
-  const result = await fetchInspectionRecords(unitId);
-  if (result.status === 'success') {
-    records.value = result.records.map(row => ({
-      ...row,
-      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean),
-    }));
+// ✅ 回傳目前選擇的戶別詳細資料
+const currentHouseDetail = computed(() => allHouseDetails.value[selectedUnit.value] || {});
+
+// 棟別與戶別選單資料
+const buildingList = computed(() => Object.keys(unitsData.value));
+const unitList = computed(() => unitsData.value[selectedBuilding.value] || []);
+
+// 撈取驗屋紀錄資料
+const confirm = async () => {
+  if (!selectedUnit.value) return;
+
+  loading.value = true;
+  try {
+    const result = await fetchInspectionRecords(selectedUnit.value);
+    if (result.status === 'success') {
+      records.value = result.records;
+    } else {
+      records.value = [];
+      alert('查詢失敗：' + result.message);
+    }
+  } catch (err) {
+    console.error('❌ 查詢驗屋紀錄失敗:', err);
+    alert('伺服器錯誤，請稍後再試');
+  } finally {
+    loading.value = false;
   }
 };
 
-const openPhotos = (photos) => {
-  currentPhotos.value = photos;
-  photoDialog.value = true;
-};
+// 載入所有棟別與戶別資料（含戶別詳細）
+const loadUnits = async () => {
+  loading.value = true;
+  errorMessage.value = '';
+  try {
+    const [unitResult, detailResult] = await Promise.all([
+      fetchUnitList(),
+      fetchAllHouseDetails()
+    ]);
 
-const exportToExcel = () => {
-  const now = new Date();
-  const timestamp = now.toLocaleString('sv-TW', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  }).replace(/:/g, '-').replace(' ', '_');
+    if (unitResult.status === 'success') {
+      unitsData.value = unitResult.units || {};
+    } else {
+      errorMessage.value = unitResult.message || '取得棟別戶別資料失敗';
+    }
 
-  const exportData = records.value.map(r => ({
-    '建檔時間': r.createdAt,
-    '驗屋日期': r.inspectionDate,
-    '驗屋階段': r.inspectionStage,
-    '驗屋人': r.inspector,
-    '產權人': r.owner,
-    '戶別': r.unit,
-    '檢查區域': r.area,
-    '分類': r.category,
-    '細項': r.subcategory,
-    '檢查狀態': r.inspectionStatus,
-    '缺失等級': r.defectLevel,
-    '檢查說明': r.description,
-    '檢修時間': r.repairDate,
-    '檢修狀態': r.repairStatus
-  }));
-
-  const worksheet = utils.json_to_sheet(exportData);
-  const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, '驗屋紀錄');
-
-  const filename = `驗屋紀錄_${unitId}_${timestamp}.xlsx`;
-  writeFile(workbook, filename);
+    if (detailResult.status === 'success') {
+      allHouseDetails.value = detailResult.data || {};
+    } else {
+      console.warn('⚠️ 未能載入全部戶別詳細資料:', detailResult.message);
+    }
+  } catch (e) {
+    errorMessage.value = '伺服器錯誤，無法載入棟別與戶別資料';
+  } finally {
+    loading.value = false;
+  }
 };
 
 onMounted(() => {
-  loadRecords();
+  loadUnits();
 });
 </script>
 
 <style scoped>
-.v-card {
-  margin-top: 20px;
-}
-.v-card-text {
-  padding-top: 10px;
+.mb-6 {
+  margin-bottom: 1.5rem;
 }
 </style>

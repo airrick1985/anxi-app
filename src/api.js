@@ -124,14 +124,15 @@ export async function fetchAllHouseDetails() {
     const response = await fetch(GET_ALL_HOUSE_DETAILS_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_all_house_details' })
+      body: JSON.stringify({ token: 'anxi111003' })
     });
+
     return await response.json();
   } catch (e) {
-    console.error('fetchAllHouseDetails 錯誤:', e);
-    return { status: 'error', message: e.message };
-  }
+    return { status: 'error', message: e.message }; // 🔥 這是第 132 行
+  } // ✅ ← 檢查這裡有沒有多餘 } 或漏掉 }
 }
+
 
 // 查詢驗屋紀錄
 export async function fetchInspectionRecords(unitId) {
@@ -150,3 +151,4 @@ export async function fetchInspectionRecords(unitId) {
     return { status: 'error', message: err.message };
   }
 }
+
