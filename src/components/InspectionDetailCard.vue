@@ -7,13 +7,13 @@
     <v-divider class="mb-3" />
 
     <v-list dense>
-      <v-list-item v-for="(value, label) in houseDetailFields" :key="label">
-        <v-list-item-title>
-          <span class="label-box">{{ label }}</span>
-        </v-list-item-title>
-        <v-list-item-subtitle>
-          <span class="value" v-html="value"></span>
-        </v-list-item-subtitle>
+      <v-list-item
+        v-for="(value, label) in houseDetailFields"
+        :key="label"
+        class="info-row"
+      >
+        <span class="label-box">{{ label }}</span>
+        <span class="value" v-html="value"></span>
       </v-list-item>
     </v-list>
   </v-card>
@@ -33,7 +33,7 @@ const houseDetailFields = computed(() => {
     門牌: d.address,
     戶別: d.unit,
     車位: d.parking,
-    屋主: d.owner,
+    產權人: d.owner,
     電話: d.phone
       ? `📞 <a href="tel:${d.phone}">${d.phone}</a>`
       : '',
@@ -58,22 +58,34 @@ const houseDetailFields = computed(() => {
   box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.04);
 }
 
-/* Label 樣式：灰底、圓角、強調 */
+/* 每列橫向排版：label 左、value 右 */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-bottom: 1px dashed #eee;
+  gap: 10px;
+}
+
+/* 左側 Label */
 .label-box {
-  display: inline-block;
+  color: #212121;
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-right: 12px; /* ✅ 加這行讓 LABEL 與 VALUE 有間距 */
+}
+
+/* 右側 Value：灰底圓角 */
+.value {
   background-color: #f5f5f5;
-  color: #555;
-  font-weight: bold;
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 0.95rem;
-}
-
-/* Value 樣式：黑字、清晰可讀 */
-.value {
   color: #212121;
-  font-size: 0.95rem;
+  text-align: right;
   word-break: break-word;
+  max-width: 60%;
 }
 
 .value a {
