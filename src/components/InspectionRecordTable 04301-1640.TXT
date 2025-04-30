@@ -29,7 +29,7 @@
             </template>
             <template v-else-if="props.column.field === 'actions'">
               <v-btn size="x-small" color="secondary" @click="openDetailDialog(props.row)">
-                詳細
+                修改
               </v-btn>
             </template>
             <template v-else>
@@ -125,7 +125,8 @@ const baseColumns = [
   { label: '檢修時間', field: 'repairDate' },
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '檢修說明', field: 'repairDescription' }, // ✅ 新增
-  { label: '照片', field: 'photos' }
+  { label: '照片', field: 'photos' },
+  { label: '操作', field: 'actions' } 
 
 ];
 

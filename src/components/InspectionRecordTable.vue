@@ -17,20 +17,21 @@
         <vue-good-table
           v-if="displayRecords.length > 0"
           :columns="responsiveColumns"
-  :rows="displayRecords"
-  :search-options="{ enabled: true }"
-  :pagination-options="paginationOptions"
+          :rows="displayRecords"
+          :search-options="{ enabled: true }"
+          :pagination-options="paginationOptions"
         >
           <template #table-row="props">
             <template v-if="props.column.field === 'photos'">
-              <v-btn size="x-small" color="primary" @click="openPhotos(props.row.photos)">
+              <v-btn size="small" color="primary" @click="openPhotos(props.row.photos)">
                 查看照片
               </v-btn>
             </template>
             <template v-else-if="props.column.field === 'actions'">
-              <v-btn size="x-small" color="secondary" @click="openDetailDialog(props.row)">
+              <v-btn size="small" color="secondary" class="mr-1" @click="openDetailDialog(props.row)">
                 詳細
               </v-btn>
+              
             </template>
             <template v-else>
               {{ props.formattedRow[props.column.field] }}
@@ -56,35 +57,32 @@
     </v-dialog>
 
     <!-- 詳細 Dialog -->
-<!-- 詳細 Dialog -->
-<v-dialog v-model="detailDialog" max-width="600">
-  <v-card>
-    <v-card-title>詳細資料</v-card-title>
-    <v-card-text>
-      <v-list dense>
-        <v-list-item
-          v-for="field in columnFields"
-          :key="field"
-        >
-          <v-list-item-title>
-            <strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}
-          </v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </v-card-text>
-    <v-card-actions>
-      <v-btn color="primary" text @click="openPhotos(selectedRecord.photos)">查看照片</v-btn>
-      <v-spacer></v-spacer>
-      <v-btn color="secondary" text @click="detailDialog = false">關閉</v-btn>
-    </v-card-actions>
-  </v-card>
-</v-dialog>
-
+    <v-dialog v-model="detailDialog" max-width="600">
+      <v-card>
+        <v-card-title>詳細資料</v-card-title>
+        <v-card-text>
+          <v-list dense>
+            <v-list-item
+              v-for="field in detailFields"
+              :key="field"
+            >
+              <v-list-item-title>
+                <strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn color="primary" text @click="openPhotos(selectedRecord.photos)">查看照片</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="secondary" text @click="detailDialog = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
 <script setup>
-
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
@@ -108,7 +106,6 @@ const windowWidth = ref(window.innerWidth);
 
 const isMobile = computed(() => windowWidth.value < 600);
 
-
 const baseColumns = [
   { label: '建檔時間', field: 'createdAt' },
   { label: '驗屋日期', field: 'inspectionDate' },
@@ -124,12 +121,13 @@ const baseColumns = [
   { label: '檢查說明', field: 'description' },
   { label: '檢修時間', field: 'repairDate' },
   { label: '檢修狀態', field: 'repairStatus' },
-  { label: '檢修說明', field: 'repairDescription' }, // ✅ 新增
-  { label: '照片', field: 'photos' }
-
+  { label: '檢修說明', field: 'repairDescription' },
+  { label: '照片', field: 'photos' },
+  { label: '操作', field: 'actions' }
 ];
 
-const columnFields = baseColumns.map(col => col.field).filter(f => f !== 'photos'); // 若照片另處理可排除
+const columnFields = baseColumns.map(col => col.field).filter(f => f !== 'photos' && f !== 'actions');
+const detailFields = columnFields; // ✅ 詳細 Dialog 專用欄位（不含 actions）
 
 const responsiveColumns = computed(() => {
   if (isMobile.value) {
@@ -176,6 +174,10 @@ const openDetailDialog = (row) => {
   detailDialog.value = true;
 };
 
+const editRecord = (row) => {
+  openDetailDialog(row);
+};
+
 const formatLabel = (key) => {
   const labels = {
     createdAt: '建檔時間',
@@ -192,11 +194,10 @@ const formatLabel = (key) => {
     description: '檢查說明',
     repairDate: '檢修時間',
     repairStatus: '檢修狀態',
-    repairDescription: '檢修說明' // ✅ 新增這一行
+    repairDescription: '檢修說明'
   };
   return labels[key] || key;
 };
-
 
 const exportToExcel = () => {
   const now = new Date();
@@ -220,7 +221,7 @@ const exportToExcel = () => {
     '檢查說明': r.description,
     '檢修時間': r.repairDate,
     '檢修狀態': r.repairStatus,
-    '檢修說明': r.repairDescription 
+    '檢修說明': r.repairDescription
   }));
 
   const worksheet = utils.json_to_sheet(exportData);
@@ -230,8 +231,6 @@ const exportToExcel = () => {
   const filename = `驗屋紀錄_${props.unitId}_${timestamp}.xlsx`;
   writeFile(workbook, filename);
 };
-
-
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(props.unitId);
@@ -253,9 +252,8 @@ const paginationOptions = {
   rowsPerPageLabel: '每頁筆數',
   ofLabel: '共',
   allLabel: '全部',
-  pageLabel: '頁碼',
+  pageLabel: '頁碼'
 };
-
 </script>
 
 <style scoped>
@@ -276,5 +274,4 @@ const paginationOptions = {
   line-height: 1.4;
   white-space: pre-line;
 }
-
 </style>
