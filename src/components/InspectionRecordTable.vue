@@ -1,15 +1,23 @@
 <template>
   <v-container>
-  <v-snackbar v-model="showSnackbar" timeout="3000" color="green">
-    儲存成功！
-  </v-snackbar>
+    <!-- Snackbar -->
+    <v-snackbar v-model="showSnackbar" timeout="3000" :color="snackbarColor">
+      {{ snackbarMessage }}
+    </v-snackbar>
+
+    <!-- 操作區塊 -->
     <v-card>
-        <v-overlay :model-value="isSaving" persistent class="d-flex justify-center align-center">
-          <v-progress-circular indeterminate size="64" color="primary" />
-        </v-overlay>
+      <v-overlay :model-value="isSaving" persistent class="d-flex justify-center align-center">
+        <v-progress-circular indeterminate size="64" color="primary" />
+      </v-overlay>
+
       <v-card-title class="d-flex flex-wrap justify-space-between align-center">
         <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
         <div class="btn-group">
+                  <!-- 新增驗屋紀錄按鈕 -->
+<v-btn color="success" class="my-4" @click="openCreateDialog">
+  <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
+</v-btn>
           <v-btn color="primary" size="small" icon @click="loadRecords">
             <v-icon>mdi-refresh</v-icon>
           </v-btn>
@@ -56,8 +64,13 @@
         <v-card-title>
           詳細資料
           <v-spacer></v-spacer>
-          
         </v-card-title>
+
+        <!-- 新增驗屋紀錄按鈕 -->
+<v-btn color="success" class="my-4" @click="openCreateDialog">
+  <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
+</v-btn>
+
 
         <v-card-text>
           <div v-for="field in detailFields" :key="field" class="py-1">
@@ -90,18 +103,79 @@
         </v-card-text>
 
         <v-card-actions class="d-flex justify-space-between">
-  <v-btn v-if="!editMode" color="primary" text @click="editMode = true">
-    填寫檢修狀況
-  </v-btn>
-  <div>
-    <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-    <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-  </div>
-</v-card-actions>
+          <v-btn v-if="!editMode" color="primary" text @click="editMode = true">填寫檢修狀況</v-btn>
+          <div>
+            <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
+            <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
+          </div>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 新增驗屋紀錄按鈕 -->
+    <v-btn color="success" class="my-4" @click="openCreateDialog">
+      <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
+    </v-btn>
+
+    <!-- 新增驗屋紀錄 Dialog -->
+    <v-dialog v-model="createDialog" max-width="800">
+      <v-card>
+        <v-card-title>新增驗屋紀錄</v-card-title>
+        <v-card-text>
+          <v-form ref="formRef" lazy-validation>
+            <v-row dense>
+              <v-col cols="12" sm="6">
+                <v-text-field label="驗屋人" v-model="newRecord.inspector" readonly required></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field label="戶別" v-model="newRecord.unit" readonly></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field label="產權人" v-model="newRecord.owner" readonly></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field label="建檔時間" v-model="newRecord.createdAt" readonly></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field label="驗屋日期" v-model="newRecord.inspectionDate" type="date" required></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="驗屋階段" v-model="newRecord.inspectionStage" :items="['初驗','複驗']" required></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="檢查區域" v-model="newRecord.area" :items="areaOptions" required></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="分類" v-model="newRecord.category" :items="categoryOptions" required></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="細項" v-model="newRecord.subcategory" :items="subcategoryOptions" required></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="檢查狀態" v-model="newRecord.inspectionStatus" :items="statusOptions" required></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select label="缺失等級" v-model="newRecord.defectLevel" :items="levelOptions" required></v-select>
+              </v-col>
+              <v-col cols="12">
+                <v-textarea label="檢查說明" v-model="newRecord.description" rows="3"></v-textarea>
+              </v-col>
+              <v-col cols="12" sm="3" v-for="n in 4" :key="n">
+                <v-file-input v-model="newRecord[`photo${n}`]" label="照片{{n}}" accept="image/*" prepend-icon="mdi-camera"></v-file-input>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn text @click="createDialog = false">取消</v-btn>
+          <v-btn color="primary" text @click="submitRecord">儲存</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
   </v-container>
 </template>
+
 
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
@@ -109,9 +183,25 @@ import { fetchInspectionRecords, updateInspectionRecord, getRepairStatusOptions 
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
+import { useUserStore } from '@/store/user';
+
+const user = useUserStore();
+
+const createDialog = ref(false);
+const newRecord = ref({});
+const formRef = ref(null);
+
+// ✅ 模擬資料，後續改從 API 讀取
+const areaOptions = ref([]);
+const categoryOptions = ref([]);
+const statusOptions = ref([]);
+const levelOptions = ref([]);
+const subcategoryOptions = ref([]);
 
 const isSaving = ref(false);
 const showSnackbar = ref(false);
+const snackbarMessage = ref('');
+const snackbarColor = ref('green');
 
 const props = defineProps({
   unitId: String,
@@ -207,13 +297,18 @@ const saveRecord = async () => {
   const res = await updateInspectionRecord(payload);
   if (res.status === 'success') {
     await loadRecords();
+    snackbarMessage.value = '儲存成功！';
+    snackbarColor.value = 'green';
     showSnackbar.value = true;
     detailDialog.value = false;
   } else {
-    alert('儲存失敗：' + res.message);
+    snackbarMessage.value = '儲存失敗：' + res.message;
+snackbarColor.value = 'red';
+showSnackbar.value = true;
   }
   isSaving.value = false;
 };
+
 
 
 
@@ -288,6 +383,44 @@ const exportToExcel = () => {
   const filename = `驗屋紀錄_${props.unitId}_${timestamp}.xlsx`;
   writeFile(workbook, filename);
 };
+
+
+
+const openCreateDialog = () => {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('sv-TW').replace(/:/g, '');
+  const dateStr = now.toISOString().slice(0, 10);
+
+  newRecord.value = {
+    key: `${props.unitId}_${dateStr}_${timeStr}`,
+    inspector: user?.name || '',
+    unit: props.unitId,
+    owner: props.records[0]?.owner || '',
+    createdAt: now.toLocaleString('sv-TW').replace(' ', ' '),
+    inspectionDate: dateStr,
+    inspectionStage: '',
+    area: '',
+    category: '',
+    subcategory: '',
+    inspectionStatus: '',
+    defectLevel: '',
+    description: '',
+    photo1: null,
+    photo2: null,
+    photo3: null,
+    photo4: null
+  };
+
+  createDialog.value = true;
+};
+
+const submitRecord = () => {
+  if (formRef.value?.validate()) {
+    console.log('📝 新增資料：', newRecord.value);
+    createDialog.value = false;
+  }
+};
+
 </script>
 
 <style scoped>
@@ -295,4 +428,6 @@ const exportToExcel = () => {
 .v-card-text { padding-top: 10px; }
 .v-list-item { padding-top: 2px !important; padding-bottom: 2px !important; min-height: unset !important; }
 .v-list-item-title { font-size: 0.9em; line-height: 1.4; white-space: pre-line; }
+.v-btn + .v-btn { margin-left: 8px; }
 </style>
+

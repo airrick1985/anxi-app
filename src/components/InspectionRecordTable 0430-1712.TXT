@@ -1,7 +1,7 @@
 <template>
   <v-container>
-  <v-snackbar v-model="showSnackbar" timeout="3000" color="green">
-    儲存成功！
+  <v-snackbar v-model="showSnackbar" timeout="3000" :color="snackbarColor">
+    {{ snackbarMessage }}
   </v-snackbar>
     <v-card>
         <v-overlay :model-value="isSaving" persistent class="d-flex justify-center align-center">
@@ -103,6 +103,7 @@
   </v-container>
 </template>
 
+
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { fetchInspectionRecords, updateInspectionRecord, getRepairStatusOptions } from '@/api';
@@ -112,6 +113,8 @@ import 'vue-good-table-next/dist/vue-good-table-next.css';
 
 const isSaving = ref(false);
 const showSnackbar = ref(false);
+const snackbarMessage = ref('');
+const snackbarColor = ref('green');
 
 const props = defineProps({
   unitId: String,
@@ -207,13 +210,18 @@ const saveRecord = async () => {
   const res = await updateInspectionRecord(payload);
   if (res.status === 'success') {
     await loadRecords();
+    snackbarMessage.value = '儲存成功！';
+    snackbarColor.value = 'green';
     showSnackbar.value = true;
     detailDialog.value = false;
   } else {
-    alert('儲存失敗：' + res.message);
+    snackbarMessage.value = '儲存失敗：' + res.message;
+snackbarColor.value = 'red';
+showSnackbar.value = true;
   }
   isSaving.value = false;
 };
+
 
 
 
