@@ -6,7 +6,10 @@ const GET_UNIT_LIST_API = `${BASE_API_URL}/get-unit-list`;
 const GET_BUILDING_LIST_API = `${BASE_API_URL}/get-building-list`;
 const GET_HOUSE_DETAIL_API = `${BASE_API_URL}/get-house-detail`;
 const GET_INSPECTION_RECORDS_API = `${BASE_API_URL}/get-inspection-records`;
-const GET_ALL_HOUSE_DETAILS_API = `${BASE_API_URL}/get-all-house-details`; // 🔥 新增 API URL
+const GET_ALL_HOUSE_DETAILS_API = `${BASE_API_URL}/get-all-house-details`; 
+const UPDATE_INSPECTION_RECORD_API = `${BASE_API_URL}/update-inspection-record`; 
+const GET_REPAIR_STATUS_OPTIONS_API = `${BASE_API_URL}/get-repair-status-options`;
+
 
 // 登入
 export async function loginUser(key, password) {
@@ -152,3 +155,41 @@ export async function fetchInspectionRecords(unitId) {
   }
 }
 
+
+
+// 🔧 更新驗屋紀錄（僅限檢修資料）
+export async function updateInspectionRecord({ key, repairDate, repairStatus, repairDescription }) {
+  try {
+    const response = await fetch(UPDATE_INSPECTION_RECORD_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key,
+        repairDate,
+        repairStatus,
+        repairDescription,
+        token: 'anxi111003' // 🔒 固定驗證碼
+      })
+    });
+    return await response.json();
+  } catch (e) {
+    console.error('updateInspectionRecord 錯誤:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+//請求並讀取 參數!F2:F =檢修狀態選項
+export async function getRepairStatusOptions() {
+  try {
+    const res = await fetch(GET_REPAIR_STATUS_OPTIONS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'anxi111003' })
+    });
+    const result = await res.json();
+    return result.status === 'success' ? result.options : [];
+  } catch (e) {
+    console.error('getRepairStatusOptions 錯誤:', e);
+    return [];
+  }
+}
