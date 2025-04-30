@@ -1,6 +1,12 @@
 <template>
   <v-container>
+  <v-snackbar v-model="showSnackbar" timeout="3000" color="green">
+    儲存成功！
+  </v-snackbar>
     <v-card>
+        <v-overlay :model-value="isSaving" persistent class="d-flex justify-center align-center">
+          <v-progress-circular indeterminate size="64" color="primary" />
+        </v-overlay>
       <v-card-title class="d-flex flex-wrap justify-space-between align-center">
         <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
         <div class="btn-group">
@@ -50,40 +56,48 @@
         <v-card-title>
           詳細資料
           <v-spacer></v-spacer>
-          <v-btn v-if="!editMode" icon @click="editMode = true">
-            <v-icon>mdi-pencil</v-icon>
-          </v-btn>
+          
         </v-card-title>
 
         <v-card-text>
-          <v-list dense v-if="!editMode">
-            <v-list-item v-for="field in detailFields" :key="field">
-              <v-list-item-title>
-                <strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-
-          <div v-else>
-            <v-text-field v-model="selectedRecord.repairDate" label="檢修時間" type="date"></v-text-field>
-            <v-select
-              v-model="selectedRecord.repairStatus"
-              :items="repairStatusOptions"
-              label="檢修狀態"
-              dense
-            ></v-select>
-            <v-textarea
-              v-model="selectedRecord.repairDescription"
-              label="檢修說明"
-              rows="3"
-            ></v-textarea>
+          <div v-for="field in detailFields" :key="field" class="py-1">
+            <template v-if="editMode && ['repairDate', 'repairStatus', 'repairDescription'].includes(field)">
+              <v-text-field
+                v-if="field === 'repairDate'"
+                v-model="selectedRecord.repairDate"
+                label="檢修時間"
+                type="date"
+                dense
+              />
+              <v-select
+                v-else-if="field === 'repairStatus'"
+                v-model="selectedRecord.repairStatus"
+                :items="repairStatusOptions"
+                label="檢修狀態"
+                dense
+              />
+              <v-textarea
+                v-else-if="field === 'repairDescription'"
+                v-model="selectedRecord.repairDescription"
+                label="檢修說明"
+                rows="3"
+              />
+            </template>
+            <template v-else>
+              <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+            </template>
           </div>
         </v-card-text>
 
-        <v-card-actions>
-          <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-          <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-        </v-card-actions>
+        <v-card-actions class="d-flex justify-space-between">
+  <v-btn v-if="!editMode" color="primary" text @click="editMode = true">
+    填寫檢修狀況
+  </v-btn>
+  <div>
+    <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
+    <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
+  </div>
+</v-card-actions>
       </v-card>
     </v-dialog>
   </v-container>
@@ -96,10 +110,14 @@ import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
 
+const isSaving = ref(false);
+const showSnackbar = ref(false);
+
 const props = defineProps({
   unitId: String,
   records: { type: Array, default: () => [] }
 });
+
 
 const displayRecords = ref([]);
 const photoDialog = ref(false);
@@ -177,6 +195,7 @@ const closeDetailDialog = () => {
 };
 
 const saveRecord = async () => {
+  isSaving.value = true;
   const { key, repairDate, repairStatus, repairDescription } = selectedRecord.value;
   const payload = {
     action: 'update_inspection_record',
@@ -188,11 +207,16 @@ const saveRecord = async () => {
   const res = await updateInspectionRecord(payload);
   if (res.status === 'success') {
     await loadRecords();
+    showSnackbar.value = true;
     detailDialog.value = false;
   } else {
     alert('儲存失敗：' + res.message);
   }
+  isSaving.value = false;
 };
+
+
+
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(props.unitId);
@@ -230,6 +254,39 @@ const paginationOptions = {
   ofLabel: '共',
   allLabel: '全部',
   pageLabel: '頁碼'
+};
+
+const exportToExcel = () => {
+  const now = new Date();
+  const timestamp = now.toLocaleString('sv-TW', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  }).replace(/:/g, '-').replace(' ', '_');
+
+  const exportData = displayRecords.value.map(r => ({
+    '建檔時間': r.createdAt,
+    '驗屋日期': r.inspectionDate,
+    '驗屋階段': r.inspectionStage,
+    '驗屋人': r.inspector,
+    '產權人': r.owner,
+    '戶別': r.unit,
+    '檢查區域': r.area,
+    '分類': r.category,
+    '細項': r.subcategory,
+    '檢查狀態': r.inspectionStatus,
+    '缺失等級': r.defectLevel,
+    '檢查說明': r.description,
+    '檢修時間': r.repairDate,
+    '檢修狀態': r.repairStatus,
+    '檢修說明': r.repairDescription
+  }));
+
+  const worksheet = utils.json_to_sheet(exportData);
+  const workbook = utils.book_new();
+  utils.book_append_sheet(workbook, worksheet, '驗屋紀錄');
+
+  const filename = `驗屋紀錄_${props.unitId}_${timestamp}.xlsx`;
+  writeFile(workbook, filename);
 };
 </script>
 
