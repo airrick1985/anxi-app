@@ -5,8 +5,7 @@ import Home from '@/views/Home.vue';
 import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
-import InspectionRecordTable from '@/views/InspectionRecordTable.vue'; // ✅ 新增
-
+import InspectionRecordTable from '@/components/InspectionRecordTable.vue'; // ✅ 修改路徑到 components
 const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'Login', component: Login },

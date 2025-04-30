@@ -14,9 +14,11 @@
       </v-card-title>
 
       <v-card-text>
+        <!-- ✅ 有資料顯示表格 -->
         <vue-good-table
+          v-if="displayRecords.length > 0"
           :columns="columns"
-          :rows="records"
+          :rows="displayRecords"
           :search-options="{ enabled: true }"
           :pagination-options="{ enabled: true, perPage: 10 }"
         >
@@ -31,6 +33,11 @@
             </span>
           </template>
         </vue-good-table>
+
+        <!-- ❌ 沒資料顯示提示 -->
+        <div v-else class="text-center text-grey py-10 text-subtitle-1">
+          無驗屋紀錄
+        </div>
       </v-card-text>
     </v-card>
 
@@ -38,10 +45,7 @@
     <v-dialog v-model="photoDialog" max-width="600">
       <v-card>
         <v-carousel hide-delimiter-background height="400">
-          <v-carousel-item
-            v-for="(photoUrl, index) in currentPhotos"
-            :key="index"
-          >
+          <v-carousel-item v-for="(photoUrl, index) in currentPhotos" :key="index">
             <v-img :src="photoUrl" aspect-ratio="1.6" />
           </v-carousel-item>
         </v-carousel>
@@ -51,18 +55,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, watch } from 'vue';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
-import 'vue-good-table-next/dist/vue-good-table-next.css'; // 記得要引入CSS
+import 'vue-good-table-next/dist/vue-good-table-next.css';
 
-const route = useRoute();
-const unitId = route.params.unitId;
-const records = ref([]);
-const photoDialog = ref(false);
-const currentPhotos = ref([]);
+const props = defineProps({
+  unitId: String,
+  records: {
+    type: Array,
+    default: () => []
+  }
+});
+
+const displayRecords = ref([]);
+
+watch(
+  () => props.records,
+  (newVal) => {
+    displayRecords.value = newVal.map(row => ({
+      ...row,
+      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean)
+    }));
+  },
+  { immediate: true }
+);
 
 const columns = [
   { label: '建檔時間', field: 'createdAt' },
@@ -82,15 +100,8 @@ const columns = [
   { label: '照片', field: 'photos' }
 ];
 
-const loadRecords = async () => {
-  const result = await fetchInspectionRecords(unitId);
-  if (result.status === 'success') {
-    records.value = result.records.map(row => ({
-      ...row,
-      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean),
-    }));
-  }
-};
+const photoDialog = ref(false);
+const currentPhotos = ref([]);
 
 const openPhotos = (photos) => {
   currentPhotos.value = photos;
@@ -104,7 +115,7 @@ const exportToExcel = () => {
     hour: '2-digit', minute: '2-digit'
   }).replace(/:/g, '-').replace(' ', '_');
 
-  const exportData = records.value.map(r => ({
+  const exportData = displayRecords.value.map(r => ({
     '建檔時間': r.createdAt,
     '驗屋日期': r.inspectionDate,
     '驗屋階段': r.inspectionStage,
@@ -125,13 +136,19 @@ const exportToExcel = () => {
   const workbook = utils.book_new();
   utils.book_append_sheet(workbook, worksheet, '驗屋紀錄');
 
-  const filename = `驗屋紀錄_${unitId}_${timestamp}.xlsx`;
+  const filename = `驗屋紀錄_${props.unitId}_${timestamp}.xlsx`;
   writeFile(workbook, filename);
 };
 
-onMounted(() => {
-  loadRecords();
-});
+const loadRecords = async () => {
+  const result = await fetchInspectionRecords(props.unitId);
+  if (result.status === 'success') {
+    displayRecords.value = result.records.map(row => ({
+      ...row,
+      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean)
+    }));
+  }
+};
 </script>
 
 <style scoped>
