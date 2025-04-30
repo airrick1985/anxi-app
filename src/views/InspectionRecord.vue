@@ -36,7 +36,6 @@
           確認
         </v-btn>
 
-        <!-- ✅ 戶別資料開關按鈕 -->
         <v-btn
           color="secondary"
           block
@@ -54,7 +53,7 @@
   <v-container fluid v-if="showDetail">
     <v-row justify="center">
       <v-col cols="12" sm="10" md="10">
-        <InspectionDetailCard :unit-id="selectedUnit" />
+        <InspectionDetailCard :detail="currentHouseDetail" />
       </v-col>
     </v-row>
   </v-container>
@@ -73,21 +72,27 @@
 import { ref, computed, onMounted } from 'vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import InspectionDetailCard from '@/components/InspectionDetailCard.vue';
-import { fetchUnitList, fetchInspectionRecords } from '@/api';
+import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails } from '@/api';
 
 const unitsData = ref({});
+const allHouseDetails = ref({}); // ✅ 所有戶別詳細資料快取
 const selectedBuilding = ref('');
 const selectedUnit = ref('');
 const loading = ref(false);
 const errorMessage = ref('');
 const records = ref([]);
-const showDetail = ref(false); // ✅ 控制戶別資料卡片顯示
+const showDetail = ref(false);
 
+// ✅ 回傳目前選擇的戶別詳細資料
+const currentHouseDetail = computed(() => allHouseDetails.value[selectedUnit.value] || {});
+
+// 棟別與戶別選單資料
 const buildingList = computed(() => Object.keys(unitsData.value));
 const unitList = computed(() => unitsData.value[selectedBuilding.value] || []);
 
+// 撈取驗屋紀錄資料
 const confirm = async () => {
-  if (!selectedBuilding.value || !selectedUnit.value) return;
+  if (!selectedUnit.value) return;
 
   loading.value = true;
   try {
@@ -106,18 +111,29 @@ const confirm = async () => {
   }
 };
 
+// 載入所有棟別與戶別資料（含戶別詳細）
 const loadUnits = async () => {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const result = await fetchUnitList();
-    if (result.status === 'success') {
-      unitsData.value = result.units || {};
+    const [unitResult, detailResult] = await Promise.all([
+      fetchUnitList(),
+      fetchAllHouseDetails()
+    ]);
+
+    if (unitResult.status === 'success') {
+      unitsData.value = unitResult.units || {};
     } else {
-      errorMessage.value = result.message || '取得棟別戶別資料失敗';
+      errorMessage.value = unitResult.message || '取得棟別戶別資料失敗';
+    }
+
+    if (detailResult.status === 'success') {
+      allHouseDetails.value = detailResult.data || {};
+    } else {
+      console.warn('⚠️ 未能載入全部戶別詳細資料:', detailResult.message);
     }
   } catch (e) {
-    errorMessage.value = '伺服器錯誤，無法載入棟別資料';
+    errorMessage.value = '伺服器錯誤，無法載入棟別與戶別資料';
   } finally {
     loading.value = false;
   }

@@ -1,16 +1,14 @@
-// src/api.js
 const BASE_API_URL = 'https://vercel-proxy-api2.vercel.app/api';
-const LOGIN_API = 'https://vercel-proxy-api2.vercel.app/api/login';
-const UPDATE_API = 'https://vercel-proxy-api2.vercel.app/api/update-profile';
-const FORGOT_API = 'https://vercel-proxy-api2.vercel.app/api/forgot-password';
-const GET_UNIT_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-unit-list';
-const GET_BUILDING_LIST_API = 'https://vercel-proxy-api2.vercel.app/api/get-building-list';
-const GET_HOUSE_DETAIL_API = 'https://vercel-proxy-api2.vercel.app/api/get-house-detail';
-const GET_INSPECTION_RECORDS_API = 'https://vercel-proxy-api2.vercel.app/api/get-inspection-records';
+const LOGIN_API = `${BASE_API_URL}/login`;
+const UPDATE_API = `${BASE_API_URL}/update-profile`;
+const FORGOT_API = `${BASE_API_URL}/forgot-password`;
+const GET_UNIT_LIST_API = `${BASE_API_URL}/get-unit-list`;
+const GET_BUILDING_LIST_API = `${BASE_API_URL}/get-building-list`;
+const GET_HOUSE_DETAIL_API = `${BASE_API_URL}/get-house-detail`;
+const GET_INSPECTION_RECORDS_API = `${BASE_API_URL}/get-inspection-records`;
+const GET_ALL_HOUSE_DETAILS_API = `${BASE_API_URL}/get-all-house-details`; // 🔥 新增 API URL
 
-/**
- * 呼叫登入 API
- */
+// 登入
 export async function loginUser(key, password) {
   try {
     const response = await fetch(LOGIN_API, {
@@ -18,17 +16,14 @@ export async function loginUser(key, password) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, password })
     });
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
     console.error('loginUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-/**
- * 呼叫更新個人資料 API
- */
+// 更新個人資料
 export async function updateUserProfile(payload) {
   try {
     const response = await fetch(UPDATE_API, {
@@ -36,17 +31,14 @@ export async function updateUserProfile(payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'update_profile', ...payload })
     });
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
     console.error('updateUserProfile 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-/**
- * 呼叫忘記密碼 API
- */
+// 忘記密碼
 export async function forgotPasswordUser(key) {
   try {
     const response = await fetch(FORGOT_API, {
@@ -54,17 +46,14 @@ export async function forgotPasswordUser(key) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key })
     });
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
     console.error('forgotPasswordUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-/**
- * 取得棟別+戶別資料
- */
+// 取得棟別+戶別清單
 export async function fetchUnitList() {
   try {
     const response = await fetch(GET_UNIT_LIST_API, {
@@ -72,17 +61,14 @@ export async function fetchUnitList() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'get_unit_list' })
     });
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
     console.error('fetchUnitList 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-/**
- * 棟別選單 API
- */
+// 取得棟別清單
 export async function getBuildingList() {
   try {
     const response = await fetch(GET_BUILDING_LIST_API, {
@@ -98,9 +84,7 @@ export async function getBuildingList() {
   }
 }
 
-/**
- * 取得 GitHub Releases 最新版本號與更新說明
- */
+// GitHub 最新版本（可選）
 export async function getLatestRelease() {
   try {
     const response = await fetch(
@@ -119,11 +103,7 @@ export async function getLatestRelease() {
   }
 }
 
-/**
- * 🔥 新增：查詢單一戶別詳細資料
- * @param {string} unit 戶別 (例如 "A1-04")
- * @param {string} token 安全驗證 (固定是 anxi111003)
- */
+// 🔥 查詢單一戶別詳細資料（傳 token）
 export async function fetchHouseDetail(unit, token) {
   try {
     const response = await fetch(GET_HOUSE_DETAIL_API, {
@@ -131,18 +111,32 @@ export async function fetchHouseDetail(unit, token) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unit, token })
     });
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
     console.error('fetchHouseDetail 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-// 撈取驗屋紀錄
+// 🔥 查詢所有戶別資料（一次撈完）
+export async function fetchAllHouseDetails() {
+  try {
+    const response = await fetch(GET_ALL_HOUSE_DETAILS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_all_house_details' })
+    });
+    return await response.json();
+  } catch (e) {
+    console.error('fetchAllHouseDetails 錯誤:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+// 查詢驗屋紀錄
 export async function fetchInspectionRecords(unitId) {
   try {
-    const response = await fetch(GET_INSPECTION_RECORDS_API, { // ✅ 正確指到 Vercel Proxy domain
+    const response = await fetch(GET_INSPECTION_RECORDS_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -150,13 +144,9 @@ export async function fetchInspectionRecords(unitId) {
         token: 'anxi111003'
       })
     });
-
-    const result = await response.json();
-    return result;
+    return await response.json();
   } catch (err) {
     console.error('fetchInspectionRecords error:', err);
     return { status: 'error', message: err.message };
   }
 }
-
-
