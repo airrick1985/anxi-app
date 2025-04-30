@@ -17,9 +17,9 @@
         <vue-good-table
           v-if="displayRecords.length > 0"
           :columns="responsiveColumns"
-          :rows="displayRecords"
-          :search-options="{ enabled: true }"
-          :pagination-options="{ enabled: true, perPage: 10 }"
+  :rows="displayRecords"
+  :search-options="{ enabled: true }"
+  :pagination-options="paginationOptions"
         >
           <template #table-row="props">
             <template v-if="props.column.field === 'photos'">
@@ -56,29 +56,35 @@
     </v-dialog>
 
     <!-- 詳細 Dialog -->
-    <v-dialog v-model="detailDialog" max-width="600">
-      <v-card>
-        <v-card-title>詳細資料</v-card-title>
-        <v-card-text>
-          <v-list dense>
-            <v-list-item v-for="(value, key) in selectedRecord" :key="key">
-              <v-list-item-title>
-                <strong>{{ formatLabel(key) }}：</strong> {{ value }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-card-text>
-        <v-card-actions>
-          <v-btn color="primary" text @click="openPhotos(selectedRecord.photos)">查看照片</v-btn>
-          <v-spacer></v-spacer>
-          <v-btn color="secondary" text @click="detailDialog = false">關閉</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+<!-- 詳細 Dialog -->
+<v-dialog v-model="detailDialog" max-width="600">
+  <v-card>
+    <v-card-title>詳細資料</v-card-title>
+    <v-card-text>
+      <v-list dense>
+        <v-list-item
+          v-for="field in columnFields"
+          :key="field"
+        >
+          <v-list-item-title>
+            <strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}
+          </v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-card-text>
+    <v-card-actions>
+      <v-btn color="primary" text @click="openPhotos(selectedRecord.photos)">查看照片</v-btn>
+      <v-spacer></v-spacer>
+      <v-btn color="secondary" text @click="detailDialog = false">關閉</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
   </v-container>
 </template>
 
 <script setup>
+
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { fetchInspectionRecords } from '@/api';
 import { utils, writeFile } from 'xlsx';
@@ -102,6 +108,7 @@ const windowWidth = ref(window.innerWidth);
 
 const isMobile = computed(() => windowWidth.value < 600);
 
+
 const baseColumns = [
   { label: '建檔時間', field: 'createdAt' },
   { label: '驗屋日期', field: 'inspectionDate' },
@@ -119,6 +126,8 @@ const baseColumns = [
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '照片', field: 'photos' }
 ];
+
+const columnFields = baseColumns.map(col => col.field).filter(f => f !== 'photos'); // 若照片另處理可排除
 
 const responsiveColumns = computed(() => {
   if (isMobile.value) {
@@ -226,6 +235,20 @@ const loadRecords = async () => {
     }));
   }
 };
+
+const paginationOptions = {
+  enabled: true,
+  perPage: 10,
+  perPageDropdown: [10, 20, 50],
+  dropdownAllowAll: false,
+  nextLabel: '下一頁',
+  prevLabel: '上一頁',
+  rowsPerPageLabel: '每頁筆數',
+  ofLabel: '共',
+  allLabel: '全部',
+  pageLabel: '頁碼',
+};
+
 </script>
 
 <style scoped>
@@ -235,4 +258,16 @@ const loadRecords = async () => {
 .v-card-text {
   padding-top: 10px;
 }
+
+.v-list-item {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  min-height: unset !important;
+}
+.v-list-item-title {
+  font-size: 0.9em;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
 </style>
