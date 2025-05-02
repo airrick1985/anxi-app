@@ -1,12 +1,12 @@
 <template>
-  <v-container>
+  <v-container fluid class="pa-0 ma-0">
     <!-- Snackbar -->
     <v-snackbar v-model="showSnackbar" timeout="3000" :color="snackbarColor">
       {{ snackbarMessage }}
     </v-snackbar>
 
     <!-- 操作區塊 -->
-    <v-card>
+    <v-card style="width: 100%; margin: 0;">
       <v-overlay :model-value="isSaving" persistent class="d-flex justify-center align-center">
         <v-progress-circular indeterminate size="64" color="primary" />
       </v-overlay>
@@ -14,13 +14,10 @@
       <v-card-title class="d-flex flex-wrap justify-space-between align-center">
         <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
         <div class="btn-group">
-                  <!-- 新增驗屋紀錄按鈕 -->
-<v-btn color="success" class="my-4" @click="openCreateDialog">
-  <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-</v-btn>
-          <v-btn color="primary" size="small" icon @click="loadRecords">
-            <v-icon>mdi-refresh</v-icon>
+          <v-btn color="success" class="my-4" @click="openCreateDialog">
+            <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
           </v-btn>
+  
           <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
             <v-icon left>mdi-download</v-icon> 匯出 Excel
           </v-btn>
@@ -34,6 +31,7 @@
           :rows="displayRecords"
           :search-options="{ enabled: true }"
           :pagination-options="paginationOptions"
+          style="width: 100%"
         >
           <template #table-row="props">
             <template v-if="props.column.field === 'photos'">
@@ -47,7 +45,7 @@
               </v-btn>
             </template>
             <template v-else>
-              {{ props.formattedRow[props.column.field] }}
+              <span class="table-text">{{ props.formattedRow[props.column.field] }}</span>
             </template>
           </template>
         </vue-good-table>
@@ -65,12 +63,6 @@
           詳細資料
           <v-spacer></v-spacer>
         </v-card-title>
-
-        <!-- 新增驗屋紀錄按鈕 -->
-<v-btn color="success" class="my-4" @click="openCreateDialog">
-  <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-</v-btn>
-
 
         <v-card-text>
           <div v-for="field in detailFields" :key="field" class="py-1">
@@ -179,7 +171,7 @@
 
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
-import { fetchInspectionRecords, updateInspectionRecord, getRepairStatusOptions } from '@/api';
+import { fetchInspectionRecords, updateInspectionRecord, getRepairStatusOptions, uploadPhotoToDrive, addInspectionRecord, fetchDropdownOptions, fetchSubcategories } from '@/api';
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
@@ -191,7 +183,6 @@ const createDialog = ref(false);
 const newRecord = ref({});
 const formRef = ref(null);
 
-// ✅ 模擬資料，後續改從 API 讀取
 const areaOptions = ref([]);
 const categoryOptions = ref([]);
 const statusOptions = ref([]);
@@ -207,7 +198,6 @@ const props = defineProps({
   unitId: String,
   records: { type: Array, default: () => [] }
 });
-
 
 const displayRecords = ref([]);
 const photoDialog = ref(false);
@@ -257,6 +247,7 @@ const responsiveColumns = computed(() => isMobile.value
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth);
   loadRepairStatusOptions();
+  loadDropdownOptions();
 });
 onUnmounted(() => window.removeEventListener('resize', updateWindowWidth));
 const updateWindowWidth = () => windowWidth.value = window.innerWidth;
@@ -268,13 +259,32 @@ watch(() => props.records, (newVal) => {
   }));
 }, { immediate: true });
 
+watch(() => newRecord.value.category, async (val) => {
+  if (!val) {
+    subcategoryOptions.value = [];
+    return;
+  }
+  const res = await fetchSubcategories(val);
+  subcategoryOptions.value = res.status === 'success' ? res.subcategories : [];
+});
+
+const loadDropdownOptions = async () => {
+  const result = await fetchDropdownOptions();
+  if (result.status === 'success') {
+    areaOptions.value = result.data.areaOptions;
+    categoryOptions.value = result.data.categoryOptions;
+    statusOptions.value = result.data.statusOptions;
+    levelOptions.value = result.data.levelOptions;
+  }
+};
+
 const openPhotos = (photos) => {
   currentPhotos.value = photos;
   photoDialog.value = true;
 };
 
 const openDetailDialog = (row) => {
-  selectedRecord.value = { ...row }; // 保留 key
+  selectedRecord.value = { ...row };
   editMode.value = false;
   detailDialog.value = true;
 };
@@ -303,15 +313,11 @@ const saveRecord = async () => {
     detailDialog.value = false;
   } else {
     snackbarMessage.value = '儲存失敗：' + res.message;
-snackbarColor.value = 'red';
-showSnackbar.value = true;
+    snackbarColor.value = 'red';
+    showSnackbar.value = true;
   }
   isSaving.value = false;
 };
-
-
-
-
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(props.unitId);
@@ -384,8 +390,6 @@ const exportToExcel = () => {
   writeFile(workbook, filename);
 };
 
-
-
 const openCreateDialog = () => {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('sv-TW').replace(/:/g, '');
@@ -414,13 +418,68 @@ const openCreateDialog = () => {
   createDialog.value = true;
 };
 
-const submitRecord = () => {
-  if (formRef.value?.validate()) {
-    console.log('📝 新增資料：', newRecord.value);
-    createDialog.value = false;
+const submitRecord = async () => {
+  if (!(formRef.value?.validate())) return;
+
+  isSaving.value = true;
+
+  try {
+    const photos = [];
+
+    for (let i = 1; i <= 4; i++) {
+      const file = newRecord.value[`photo${i}`];
+      if (!file) {
+        photos.push('');
+        continue;
+      }
+
+      const readerResult = await readFileAsBase64(file);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `${newRecord.value.unit}_${newRecord.value.inspectionStage}_${newRecord.value.area}_${newRecord.value.category}_${newRecord.value.subcategory}_${newRecord.value.inspectionStatus}_${newRecord.value.defectLevel}_照片${i}_${newRecord.value.inspector}_${timestamp}.jpg`;
+
+      const res = await uploadPhotoToDrive(filename, readerResult);
+      photos.push(res.status === 'success' ? res.url : '');
+    }
+
+    const payload = {
+      ...newRecord.value,
+      photo1: photos[0],
+      photo2: photos[1],
+      photo3: photos[2],
+      photo4: photos[3]
+    };
+
+    const res = await addInspectionRecord(payload);
+    if (res.status === 'success') {
+      snackbarMessage.value = '新增驗屋紀錄成功！';
+      snackbarColor.value = 'green';
+      createDialog.value = false;
+      await loadRecords();
+    } else {
+      snackbarMessage.value = `新增失敗：${res.message}`;
+      snackbarColor.value = 'red';
+    }
+  } catch (e) {
+    console.error('submitRecord 錯誤:', e);
+    snackbarMessage.value = '新增時發生錯誤';
+    snackbarColor.value = 'red';
   }
+
+  showSnackbar.value = true;
+  isSaving.value = false;
 };
 
+const readFileAsBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 </script>
 
 <style scoped>
@@ -429,5 +488,18 @@ const submitRecord = () => {
 .v-list-item { padding-top: 2px !important; padding-bottom: 2px !important; min-height: unset !important; }
 .v-list-item-title { font-size: 0.9em; line-height: 1.4; white-space: pre-line; }
 .v-btn + .v-btn { margin-left: 8px; }
+
+/* ✅ 表格字體大小設定為 12px */
+::v-deep(.vue-good-table .vgt-table) {
+  font-size: 14px !important;
+  line-height: 1.5;
+}
+::v-deep(.vue-good-table .vgt-table td) {
+  font-size: 12px !important;
+  padding: 8px 6px;
+}
+.table-text {
+  font-size: 14px;
+}
 </style>
 

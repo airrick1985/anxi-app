@@ -61,7 +61,7 @@
     <!-- 下方：驗屋紀錄表格 -->
     <v-container fluid v-if="selectedUnit">
       <v-row justify="center">
-        <v-col cols="12" sm="10" md="10">
+        <v-col cols="12" sm="12" md="12">
           <InspectionRecordTable :unit-id="selectedUnit" :records="records" />
         </v-col>
       </v-row>

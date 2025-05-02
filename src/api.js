@@ -9,6 +9,10 @@ const GET_INSPECTION_RECORDS_API = `${BASE_API_URL}/get-inspection-records`;
 const GET_ALL_HOUSE_DETAILS_API = `${BASE_API_URL}/get-all-house-details`; 
 const UPDATE_INSPECTION_RECORD_API = `${BASE_API_URL}/update-inspection-record`; 
 const GET_REPAIR_STATUS_OPTIONS_API = `${BASE_API_URL}/get-repair-status-options`;
+const UPLOAD_PHOTO_API = `${BASE_API_URL}/upload-photo`;
+const ADD_INSPECTION_RECORD_API = `${BASE_API_URL}/add-inspection-record`;
+const GET_DROPDOWN_OPTIONS_API = `${BASE_API_URL}/get-dropdown-options`;
+const GET_SUBCATEGORIES_API = `${BASE_API_URL}/get-subcategories`;
 
 
 // 登入
@@ -191,5 +195,61 @@ export async function getRepairStatusOptions() {
   } catch (e) {
     console.error('getRepairStatusOptions 錯誤:', e);
     return [];
+  }
+}
+
+export async function uploadPhotoToDrive(filename, base64) {
+  try {
+    const res = await fetch(UPLOAD_PHOTO_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, base64, token: 'anxi111003' })
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('uploadPhotoToDrive error:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+export async function addInspectionRecord(payload) {
+  try {
+    const res = await fetch(ADD_INSPECTION_RECORD_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'anxi111003', ...payload })
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('addInspectionRecord error:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+export async function fetchDropdownOptions() {
+  try {
+    const res = await fetch(GET_DROPDOWN_OPTIONS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'anxi111003' })
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('fetchDropdownOptions error:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+export async function fetchSubcategories(category) {
+  try {
+    const res = await fetch(GET_SUBCATEGORIES_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, token: 'anxi111003' })
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('fetchSubcategories error:', e);
+    return { status: 'error', message: e.message };
   }
 }
