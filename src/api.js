@@ -1,97 +1,134 @@
 const BASE_API_URL = 'https://vercel-proxy-api2.vercel.app/api';
-const LOGIN_API = `${BASE_API_URL}/login`;
-const UPDATE_API = `${BASE_API_URL}/update-profile`;
-const FORGOT_API = `${BASE_API_URL}/forgot-password`;
-const GET_UNIT_LIST_API = `${BASE_API_URL}/get-unit-list`;
-const GET_BUILDING_LIST_API = `${BASE_API_URL}/get-building-list`;
-const GET_HOUSE_DETAIL_API = `${BASE_API_URL}/get-house-detail`;
-const GET_INSPECTION_RECORDS_API = `${BASE_API_URL}/get-inspection-records`;
-const GET_ALL_HOUSE_DETAILS_API = `${BASE_API_URL}/get-all-house-details`; 
-const UPDATE_INSPECTION_RECORD_API = `${BASE_API_URL}/update-inspection-record`; 
-const GET_REPAIR_STATUS_OPTIONS_API = `${BASE_API_URL}/get-repair-status-options`;
-const UPLOAD_PHOTO_API = `${BASE_API_URL}/upload-photo`;
-const ADD_INSPECTION_RECORD_API = `${BASE_API_URL}/add-inspection-record`;
-const GET_DROPDOWN_OPTIONS_API = `${BASE_API_URL}/get-dropdown-options`;
-const GET_SUBCATEGORIES_API = `${BASE_API_URL}/get-subcategories`;
+const INSPECTION_API = `${BASE_API_URL}/inspection`;
+const DROPDOWN_API = `${BASE_API_URL}/dropdown`;
+const USER_API = `${BASE_API_URL}/user`;
+const METADATA_API = `${BASE_API_URL}/metadata`;
+const UPLOAD_API = `${BASE_API_URL}/upload`;
 
-
-// 登入
+// 🔐 使用者登入
 export async function loginUser(key, password) {
   try {
-    const response = await fetch(LOGIN_API, {
+    const res = await fetch(USER_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, password })
+      body: JSON.stringify({ action: 'login', key, password })
     });
-    return await response.json();
+    return await res.json();
   } catch (e) {
     console.error('loginUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-// 更新個人資料
+// 🔧 修改使用者個人資料
 export async function updateUserProfile(payload) {
   try {
-    const response = await fetch(UPDATE_API, {
+    const res = await fetch(USER_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'update_profile', ...payload })
     });
-    return await response.json();
+    return await res.json();
   } catch (e) {
     console.error('updateUserProfile 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-// 忘記密碼
+// 🔑 忘記密碼
 export async function forgotPasswordUser(key) {
   try {
-    const response = await fetch(FORGOT_API, {
+    const res = await fetch(USER_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key })
+      body: JSON.stringify({ action: 'forgot_password', key })
     });
-    return await response.json();
+    return await res.json();
   } catch (e) {
     console.error('forgotPasswordUser 錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
 
-// 取得棟別+戶別清單
+// 📋 查詢所有戶別清單
 export async function fetchUnitList() {
-  try {
-    const response = await fetch(GET_UNIT_LIST_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_unit_list' })
-    });
-    return await response.json();
-  } catch (e) {
-    console.error('fetchUnitList 錯誤:', e);
-    return { status: 'error', message: e.message };
-  }
+  return fetchPost({ action: 'get_unit_list' }, METADATA_API);
 }
 
-// 取得棟別清單
+// 📋 查詢所有棟別
 export async function getBuildingList() {
+  return fetchPost({ action: 'get_building_list' }, METADATA_API);
+}
+
+// 📋 查詢單一戶別詳細資料
+export async function fetchHouseDetail(unit, token) {
+  return fetchPost({ action: 'get_house_detail', unit, token }, METADATA_API);
+}
+
+// 📋 查詢所有戶別資料（初始載入）
+export async function fetchAllHouseDetails() {
+  return fetchPost({ action: 'get_all_house_details', token: 'anxi111003' }, METADATA_API);
+}
+
+// 🧾 查詢驗屋紀錄
+export async function fetchInspectionRecords(unitId) {
+  return fetchPost({ action: 'get_inspection_records', unitId, token: 'anxi111003' }, INSPECTION_API);
+}
+
+// 🧾 新增驗屋紀錄
+export async function addInspectionRecord(payload) {
+  return fetchPost({ action: 'add_inspection_record', token: 'anxi111003', ...payload }, INSPECTION_API);
+}
+
+// 🧾 更新檢修欄位
+export async function updateInspectionRecord({ key, repairDate, repairStatus, repairDescription }) {
+  return fetchPost({
+    action: 'update_inspection_record',
+    key,
+    repairDate,
+    repairStatus,
+    repairDescription,
+    token: 'anxi111003'
+  }, INSPECTION_API);
+}
+
+// 📦 選單參數（area/category/status/level）
+export async function fetchDropdownOptions() {
+  return fetchPost({ action: 'get_dropdown_options', token: 'anxi111003' }, DROPDOWN_API);
+}
+
+// 📦 細項選單依分類
+export async function fetchSubcategories(category) {
+  return fetchPost({ action: 'get_subcategories', category, token: 'anxi111003' }, DROPDOWN_API);
+}
+
+// 📦 檢修狀態選項
+export async function getRepairStatusOptions() {
+  const res = await fetchPost({ action: 'get_repair_status_options', token: 'anxi111003' }, DROPDOWN_API);
+  return res.status === 'success' ? res.options : [];
+}
+
+// 🖼️ 上傳圖片
+export async function uploadPhotoToDrive(filename, base64) {
+  return fetchPost({ filename, base64, token: 'anxi111003' }, UPLOAD_API);
+}
+
+// 🌐 通用 POST 發送函數
+async function fetchPost(body, url) {
   try {
-    const response = await fetch(GET_BUILDING_LIST_API, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_building_list' })
+      body: JSON.stringify(body)
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
+    return await res.json();
   } catch (e) {
-    console.error('getBuildingList API error:', e);
+    console.error(`${body.action || 'unknown'} API error:`, e);
     return { status: 'error', message: e.message };
   }
 }
 
-// GitHub 最新版本（可選）
+// 🚀 取得 GitHub 最新版本資訊（PWA 更新用）
 export async function getLatestRelease() {
   try {
     const response = await fetch(
@@ -107,149 +144,5 @@ export async function getLatestRelease() {
   } catch (e) {
     console.error('getLatestRelease error:', e);
     return { version: '', notes: '', error: e.message };
-  }
-}
-
-// 🔥 查詢單一戶別詳細資料（傳 token）
-export async function fetchHouseDetail(unit, token) {
-  try {
-    const response = await fetch(GET_HOUSE_DETAIL_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unit, token })
-    });
-    return await response.json();
-  } catch (e) {
-    console.error('fetchHouseDetail 錯誤:', e);
-    return { status: 'error', message: e.message };
-  }
-}
-
-// 🔥 查詢所有戶別資料（一次撈完）
-export async function fetchAllHouseDetails() {
-  try {
-    const response = await fetch(GET_ALL_HOUSE_DETAILS_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'anxi111003' })
-    });
-
-    return await response.json();
-  } catch (e) {
-    return { status: 'error', message: e.message }; // 🔥 這是第 132 行
-  } // ✅ ← 檢查這裡有沒有多餘 } 或漏掉 }
-}
-
-
-// 查詢驗屋紀錄
-export async function fetchInspectionRecords(unitId) {
-  try {
-    const response = await fetch(GET_INSPECTION_RECORDS_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        unit: unitId,
-        token: 'anxi111003'
-      })
-    });
-    return await response.json();
-  } catch (err) {
-    console.error('fetchInspectionRecords error:', err);
-    return { status: 'error', message: err.message };
-  }
-}
-
-
-
-// 🔧 更新驗屋紀錄（僅限檢修資料）
-export async function updateInspectionRecord({ key, repairDate, repairStatus, repairDescription }) {
-  try {
-    const response = await fetch(UPDATE_INSPECTION_RECORD_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key,
-        repairDate,
-        repairStatus,
-        repairDescription,
-        token: 'anxi111003' // 🔒 固定驗證碼
-      })
-    });
-    return await response.json();
-  } catch (e) {
-    console.error('updateInspectionRecord 錯誤:', e);
-    return { status: 'error', message: e.message };
-  }
-}
-
-//請求並讀取 參數!F2:F =檢修狀態選項
-export async function getRepairStatusOptions() {
-  try {
-    const res = await fetch(GET_REPAIR_STATUS_OPTIONS_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'anxi111003' })
-    });
-    const result = await res.json();
-    return result.status === 'success' ? result.options : [];
-  } catch (e) {
-    console.error('getRepairStatusOptions 錯誤:', e);
-    return [];
-  }
-}
-
-export async function uploadPhotoToDrive(filename, base64) {
-  try {
-    const res = await fetch(UPLOAD_PHOTO_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, base64, token: 'anxi111003' })
-    });
-    return await res.json();
-  } catch (e) {
-    console.error('uploadPhotoToDrive error:', e);
-    return { status: 'error', message: e.message };
-  }
-}
-
-export async function addInspectionRecord(payload) {
-  try {
-    const res = await fetch(ADD_INSPECTION_RECORD_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'anxi111003', ...payload })
-    });
-    return await res.json();
-  } catch (e) {
-    console.error('addInspectionRecord error:', e);
-    return { status: 'error', message: e.message };
-  }
-}
-
-export async function fetchDropdownOptions() {
-  try {
-    const res = await fetch(GET_DROPDOWN_OPTIONS_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'anxi111003' })
-    });
-    return await res.json();
-  } catch (e) {
-    console.error('fetchDropdownOptions error:', e);
-    return { status: 'error', message: e.message };
-  }
-}
-
-export async function fetchSubcategories(category) {
-  try {
-    const res = await fetch(GET_SUBCATEGORIES_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, token: 'anxi111003' })
-    });
-    return await res.json();
-  } catch (e) {
-    console.error('fetchSubcategories error:', e);
-    return { status: 'error', message: e.message };
   }
 }
