@@ -133,13 +133,14 @@ const submit = async () => {
 
   try {
     // 5. 準備要發送到 API 的資料
-    const payload = {
-      key: userKey,               // <--- **使用 Key 作為識別碼**
-      originalPassword: oldPassword.value, // 用於後端驗證身份
-      newName: newName.value,
-      newEmail: newEmail.value,    // <--- **加入 Email**
-      newPassword: newPassword.value  // 新密碼，即使為空也傳遞，後端判斷是否更新
-    };
+   const payload = {
+  key: userKey,
+  oldPassword: oldPassword.value, 
+  name: newName.value,            
+  email: newEmail.value,          
+  newPassword: newPassword.value  
+};
+
 
     // 6. 呼叫 API 函數
     const result = await updateUserProfile(payload);

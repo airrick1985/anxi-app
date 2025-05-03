@@ -26,7 +26,12 @@ export async function updateUserProfile(payload) {
     const res = await fetch(USER_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update_profile', ...payload })
+      body: JSON.stringify({
+        action: 'update_profile',
+        ...payload,
+        oldPassword: payload.oldPassword ? String(payload.oldPassword) : '',
+        newPassword: payload.newPassword ? String(payload.newPassword) : ''
+      })
     });
     return await res.json();
   } catch (e) {
@@ -34,6 +39,7 @@ export async function updateUserProfile(payload) {
     return { status: 'error', message: e.message };
   }
 }
+
 
 // 🔑 忘記密碼
 export async function forgotPasswordUser(key) {
