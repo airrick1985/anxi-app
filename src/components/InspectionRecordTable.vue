@@ -35,9 +35,10 @@
         >
           <template #table-row="props">
             <template v-if="props.column.field === 'photos'">
-              <v-btn size="small" color="primary" @click="openPhotos(props.row.photos)">
-                查看照片
-              </v-btn>
+              <v-btn size="small" color="primary" @click="openPhotos(props.row)">
+  查看照片
+</v-btn>
+
             </template>
             <template v-else-if="props.column.field === 'actions'">
               <v-btn size="small" color="secondary" class="mr-1" @click="openDetailDialog(props.row)">
@@ -131,93 +132,104 @@
     </v-card-title>
 
     <v-card-text>
-  <v-row dense>
-    <!-- ✅ 區塊一：基本資料 -->
-    <v-col cols="12">
-      <div class="section-title">基本資料</div>
-    </v-col>
-    <v-col cols="12" sm="6" v-for="field in ['createdAt', 'inspectionDate', 'inspectionStage', 'inspector', 'owner']" :key="field">
-      <template v-if="editMode">
-        <v-text-field
-          v-model="selectedRecord[field]"
-          :label="formatLabel(field)"
-          :readonly="['createdAt', 'inspector', 'owner'].includes(field)"
-          :type="field.includes('Date') ? 'date' : 'text'"
-          dense
-        />
-      </template>
-      <template v-else>
-        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
-      </template>
-    </v-col>
+      <v-row dense>
 
-    <!-- ✅ 區塊二：檢查內容 -->
-    <v-col cols="12">
-      <div class="section-title">檢查內容</div>
-    </v-col>
-    <v-col cols="12" sm="6" v-for="field in ['unit', 'area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel', 'description']" :key="field">
-      <template v-if="editMode">
-        <v-select
-          v-if="['area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel'].includes(field)"
-          v-model="selectedRecord[field]"
-          :items="getOptionsForField(field)"
-          :label="formatLabel(field)"
-          dense
-        />
-        <v-textarea
-          v-else-if="field === 'description'"
-          v-model="selectedRecord[field]"
-          :label="formatLabel(field)"
-          rows="2"
-          dense
-        />
-        <v-text-field
-          v-else
-          v-model="selectedRecord[field]"
-          :label="formatLabel(field)"
-          dense
-        />
-      </template>
-      <template v-else>
-        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
-      </template>
-    </v-col>
+        <!-- ✅ 區塊一：基本資料 -->
+<v-col cols="12">
+  <div class="section-title">基本資料</div>
+</v-col>
+<v-col cols="12" sm="6" v-for="field in ['createdAt', 'inspectionDate', 'inspectionStage', 'inspector', 'owner']" :key="field">
+  <template v-if="editMode">
+    <v-select
+      v-if="field === 'inspectionStage'"
+      v-model="selectedRecord[field]"
+      :items="['初驗','複驗']"
+      :label="formatLabel(field)"
+      dense
+    />
+    <v-text-field
+      v-else
+      v-model="selectedRecord[field]"
+      :label="formatLabel(field)"
+      :readonly="['createdAt', 'inspector', 'owner'].includes(field)"
+      :type="field.includes('Date') ? 'date' : 'text'"
+      dense
+    />
+  </template>
+  <template v-else>
+    <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+  </template>
+</v-col>
 
-    <!-- ✅ 區塊三：檢修處理 -->
-    <v-col cols="12">
-      <div class="section-title">檢修處理</div>
-    </v-col>
-    <v-col cols="12" sm="6" v-for="field in ['repairDate', 'repairStatus', 'repairDescription']" :key="field">
-      <template v-if="editMode">
-        <v-text-field
-          v-if="field === 'repairDate'"
-          v-model="selectedRecord[field]"
-          :label="formatLabel(field)"
-          type="date"
-          dense
-        />
-        <v-select
-          v-else-if="field === 'repairStatus'"
-          v-model="selectedRecord[field]"
-          :items="repairStatusOptions"
-          :label="formatLabel(field)"
-          dense
-        />
-        <v-textarea
-          v-else
-          v-model="selectedRecord[field]"
-          :label="formatLabel(field)"
-          rows="2"
-          dense
-        />
-      </template>
-      <template v-else>
-        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
-      </template>
-    </v-col>
-  </v-row>
-</v-card-text>
+<!-- ✅ 區塊二：檢查內容 -->
+<v-col cols="12">
+  <div class="section-title">檢查內容</div>
+</v-col>
+<v-col cols="12" sm="6" v-for="field in ['unit', 'area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel', 'description']" :key="field">
+  <template v-if="editMode">
+    <v-select
+      v-if="['area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel'].includes(field)"
+      v-model="selectedRecord[field]"
+      :items="getOptionsForField(field)"
+      :label="formatLabel(field)"
+      :readonly="['unit'].includes(field)"
+      dense
+    />
+    <v-textarea
+      v-else-if="field === 'description'"
+      v-model="selectedRecord[field]"
+      :label="formatLabel(field)"
+      rows="2"
+      dense
+    />
+    <v-text-field
+      v-else
+      v-model="selectedRecord[field]"
+      :label="formatLabel(field)"
+      :readonly="['unit'].includes(field)"
+      dense
+    />
+  </template>
+  <template v-else>
+    <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+  </template>
+</v-col>
 
+<!-- ✅ 區塊三：檢修處理 -->
+<v-col cols="12">
+  <div class="section-title">檢修處理</div>
+</v-col>
+<v-col cols="12" sm="6" v-for="field in ['repairDate', 'repairStatus', 'repairDescription']" :key="field">
+  <template v-if="editMode">
+    <v-text-field
+      v-if="field === 'repairDate'"
+      v-model="selectedRecord[field]"
+      :label="formatLabel(field)"
+      type="date"
+      dense
+    />
+    <v-select
+      v-else-if="field === 'repairStatus'"
+      v-model="selectedRecord[field]"
+      :items="repairStatusOptions"
+      :label="formatLabel(field)"
+      dense
+    />
+    <v-textarea
+      v-else
+      v-model="selectedRecord[field]"
+      :label="formatLabel(field)"
+      rows="2"
+      dense
+    />
+  </template>
+  <template v-else>
+    <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+  </template>
+</v-col>
+
+      </v-row>
+    </v-card-text>
 
     <v-card-actions class="d-flex justify-space-between">
       <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
@@ -230,6 +242,58 @@
 </v-dialog>
 
 
+<!-- 查看照片 Dialog -->
+<v-dialog v-model="photoDialog" max-width="800">
+  <v-card>
+    <v-card-title>查看照片</v-card-title>
+    <v-card-text>
+      <v-carousel
+        v-if="currentPhotos.length"
+        hide-delimiters
+        height="400"
+        show-arrows
+      >
+        <v-carousel-item
+          v-for="(url, index) in currentPhotos"
+          :key="index"
+        >
+        <img
+  :src="url"
+  style="max-height: 400px; width: 100%; object-fit: contain; cursor: zoom-in;"
+  @click="zoomImageUrl = url; zoomImageDialog = true"
+/>
+
+//加入全螢幕 Dialog 來顯示放大圖片
+<v-dialog v-model="zoomImageDialog" fullscreen hide-overlay transition="dialog-bottom-transition">
+  <v-card>
+    <v-toolbar dark color="primary">
+      <v-btn icon @click="zoomImageDialog = false">
+        <v-icon>mdi-close</v-icon>
+      </v-btn>
+      <v-toolbar-title>{{ zoomImageCaption }}</v-toolbar-title>
+      <v-spacer></v-spacer>
+    </v-toolbar>
+    <v-card-text class="d-flex justify-center align-center" style="height: 100%;">
+      <img :src="zoomImageUrl" style="max-width: 90vw; max-height: 90vh; object-fit: contain;" />
+    </v-card-text>
+  </v-card>
+</v-dialog>
+
+
+        </v-carousel-item>
+      </v-carousel>
+      <div v-else class="text-center py-5 text-subtitle-1">
+        無照片可顯示
+      </div>
+    </v-card-text>
+    <v-card-actions>
+      <v-spacer></v-spacer>
+      <v-btn text color="primary" @click="photoDialog = false">關閉</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+
 
   </v-container>
 </template>
@@ -237,7 +301,13 @@
 
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
-import { fetchInspectionRecords, updateInspectionRecord, getRepairStatusOptions, uploadPhotoToDrive, addInspectionRecord, fetchDropdownOptions, fetchSubcategories } from '@/api';
+import { fetchInspectionRecords, 
+  getRepairStatusOptions, 
+  uploadPhotoToDrive, 
+  addInspectionRecord, 
+  fetchDropdownOptions, 
+  fetchSubcategories,
+  fetchInspectionUpdate } from '@/api';
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
@@ -259,6 +329,8 @@ const isSaving = ref(false);
 const showSnackbar = ref(false);
 const snackbarMessage = ref('');
 const snackbarColor = ref('green');
+
+const selectedSubcategoryOptions = ref([]);
 
 const props = defineProps({
   unitId: String,
@@ -325,6 +397,7 @@ watch(() => props.records, (newVal) => {
   }));
 }, { immediate: true });
 
+
 watch(() => newRecord.value.category, async (val) => {
   if (!val) {
     subcategoryOptions.value = [];
@@ -333,6 +406,17 @@ watch(() => newRecord.value.category, async (val) => {
   const res = await fetchSubcategories(val);
   subcategoryOptions.value = res.status === 'success' ? res.subcategories : [];
 });
+
+// 補上 selectedRecord.category 監聽細項資料載入
+watch(() => selectedRecord.value.category, async (val) => {
+  if (!val) {
+    selectedSubcategoryOptions.value = [];
+    return;
+  }
+  const res = await fetchSubcategories(val);
+  selectedSubcategoryOptions.value = res.status === 'success' ? res.subcategories : [];
+});
+
 
 const loadDropdownOptions = async () => {
   const result = await fetchDropdownOptions();
@@ -344,10 +428,37 @@ const loadDropdownOptions = async () => {
   }
 };
 
-const openPhotos = (photos) => {
-  currentPhotos.value = photos;
+const zoomImageDialog = ref(false);
+const zoomImageUrl = ref('');
+const zoomImageCaption = ref(''); // 新增：顯示檢查說明
+
+
+const openPhotos = (row) => {
+  const extractedUrls = row.photos?.filter(Boolean) || [];
+  console.log('🧩 原始照片 URLs：', extractedUrls);
+
+  currentPhotos.value = extractedUrls.map((url) => {
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)\//);
+    if (match && match[1]) {
+      const fileId = match[1];
+      const previewUrl = `https://lh3.googleusercontent.com/d/${fileId}=w800`;
+      console.log('✅ 轉換後 Google image embed URL:', previewUrl);
+      return previewUrl;
+    } else {
+      console.warn('⚠️ 無法轉換 URL：', url);
+      return '';
+    }
+  }).filter(Boolean);
+
+  // ✨ 改為取 row.description
+  zoomImageCaption.value = row.description || '放大檢視';
+
   photoDialog.value = true;
 };
+
+
+
+
 
 const openDetailDialog = (row) => {
   selectedRecord.value = { ...row };
@@ -362,15 +473,9 @@ const closeDetailDialog = () => {
 
 const saveRecord = async () => {
   isSaving.value = true;
-  const { key, repairDate, repairStatus, repairDescription } = selectedRecord.value;
-  const payload = {
-    action: 'update_inspection_record',
-    key,
-    repairDate,
-    repairStatus,
-    repairDescription
-  };
-  const res = await updateInspectionRecord(payload);
+
+  const res = await fetchInspectionUpdate(selectedRecord.value); // ✅ 改成這行
+
   if (res.status === 'success') {
     await loadRecords();
     snackbarMessage.value = '儲存成功！';
@@ -382,8 +487,11 @@ const saveRecord = async () => {
     snackbarColor.value = 'red';
     showSnackbar.value = true;
   }
+
   isSaving.value = false;
 };
+
+
 
 const loadRecords = async () => {
   const result = await fetchInspectionRecords(props.unitId);
@@ -517,15 +625,17 @@ const submitRecord = async () => {
     };
 
     const res = await addInspectionRecord(payload);
-    if (res.status === 'success') {
-      snackbarMessage.value = '新增驗屋紀錄成功！';
-      snackbarColor.value = 'green';
-      createDialog.value = false;
-      await loadRecords();
-    } else {
-      snackbarMessage.value = `新增失敗：${res.message}`;
-      snackbarColor.value = 'red';
-    }
+console.log('🔍 新增 API 回傳結果:', res);
+
+if (res?.status?.toLowerCase() === 'success') {
+  snackbarMessage.value = '新增驗屋紀錄成功！';
+  snackbarColor.value = 'green';
+  createDialog.value = false;
+  await loadRecords();
+} else {
+  snackbarMessage.value = `新增失敗：${res.message || '未知錯誤'}`;
+  snackbarColor.value = 'red';
+}
   } catch (e) {
     console.error('submitRecord 錯誤:', e);
     snackbarMessage.value = '新增時發生錯誤';
@@ -551,11 +661,12 @@ const readFileAsBase64 = (file) => {
 const getOptionsForField = (field) => {
   if (field === 'area') return areaOptions.value;
   if (field === 'category') return categoryOptions.value;
-  if (field === 'subcategory') return subcategoryOptions.value;
+  if (field === 'subcategory') return editMode.value ? selectedSubcategoryOptions.value : subcategoryOptions.value;
   if (field === 'inspectionStatus') return statusOptions.value;
   if (field === 'defectLevel') return levelOptions.value;
   return [];
 };
+
 
 </script>
 
