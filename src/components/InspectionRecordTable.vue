@@ -56,109 +56,16 @@
       </v-card-text>
     </v-card>
 
-  <!-- 詳細 Dialog -->
-<v-dialog v-model="detailDialog" max-width="800">
-  <v-card>
-    <v-card-title>
-      詳細資料
-      <v-spacer></v-spacer>
-    </v-card-title>
 
-    <v-card-text>
-      <v-row dense>
-        <v-col cols="12" sm="6" v-for="field in detailFields" :key="field">
-          <template v-if="editMode">
-            <v-text-field
-              v-if="['createdAt', 'inspectionDate', 'inspector', 'owner', 'unit'].includes(field)"
-              v-model="selectedRecord[field]"
-              :label="formatLabel(field)"
-              :readonly="['createdAt', 'inspector', 'owner', 'unit'].includes(field)"
-              type="date"
-            />
-            <v-select
-              v-else-if="field === 'inspectionStage'"
-              v-model="selectedRecord.inspectionStage"
-              :items="['初驗','複驗']"
-              label="驗屋階段"
-            />
-            <v-select
-              v-else-if="field === 'area'"
-              v-model="selectedRecord.area"
-              :items="areaOptions"
-              label="檢查區域"
-            />
-            <v-select
-              v-else-if="field === 'category'"
-              v-model="selectedRecord.category"
-              :items="categoryOptions"
-              label="分類"
-            />
-            <v-select
-              v-else-if="field === 'subcategory'"
-              v-model="selectedRecord.subcategory"
-              :items="subcategoryOptions"
-              label="細項"
-            />
-            <v-select
-              v-else-if="field === 'inspectionStatus'"
-              v-model="selectedRecord.inspectionStatus"
-              :items="statusOptions"
-              label="檢查狀態"
-            />
-            <v-select
-              v-else-if="field === 'defectLevel'"
-              v-model="selectedRecord.defectLevel"
-              :items="levelOptions"
-              label="缺失等級"
-            />
-            <v-select
-              v-else-if="field === 'repairStatus'"
-              v-model="selectedRecord.repairStatus"
-              :items="repairStatusOptions"
-              label="檢修狀態"
-            />
-            <v-text-field
-              v-else-if="field === 'repairDate'"
-              v-model="selectedRecord.repairDate"
-              label="檢修時間"
-              type="date"
-            />
-            <v-textarea
-              v-else-if="field === 'repairDescription' || field === 'description'"
-              v-model="selectedRecord[field]"
-              :label="formatLabel(field)"
-              rows="2"
-            />
-            <v-text-field
-              v-else
-              v-model="selectedRecord[field]"
-              :label="formatLabel(field)"
-            />
-          </template>
-          <template v-else>
-            <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
-          </template>
-        </v-col>
-      </v-row>
-    </v-card-text>
-
-    <v-card-actions class="d-flex justify-space-between">
-      <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
-      <div>
-        <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-        <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-      </div>
-    </v-card-actions>
-  </v-card>
-</v-dialog>
 
     <!-- 新增驗屋紀錄按鈕 -->
     <v-btn color="success" class="my-4" @click="openCreateDialog">
       <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
     </v-btn>
 
-    <!-- 新增驗屋紀錄 Dialog -->
-    <v-dialog v-model="createDialog" max-width="800">
+    <!-- ✅ 新增驗屋紀錄 Dialog -->
+<!-- 新增驗屋紀錄 Dialog -->
+<v-dialog v-model="createDialog" max-width="800">
       <v-card>
         <v-card-title>新增驗屋紀錄</v-card-title>
         <v-card-text>
@@ -213,6 +120,117 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+
+<!-- 詳細 Dialog -->
+<v-dialog v-model="detailDialog" max-width="800">
+  <v-card>
+    <v-card-title>
+      詳細資料
+      <v-spacer></v-spacer>
+    </v-card-title>
+
+    <v-card-text>
+  <v-row dense>
+    <!-- ✅ 區塊一：基本資料 -->
+    <v-col cols="12">
+      <div class="section-title">基本資料</div>
+    </v-col>
+    <v-col cols="12" sm="6" v-for="field in ['createdAt', 'inspectionDate', 'inspectionStage', 'inspector', 'owner']" :key="field">
+      <template v-if="editMode">
+        <v-text-field
+          v-model="selectedRecord[field]"
+          :label="formatLabel(field)"
+          :readonly="['createdAt', 'inspector', 'owner'].includes(field)"
+          :type="field.includes('Date') ? 'date' : 'text'"
+          dense
+        />
+      </template>
+      <template v-else>
+        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+      </template>
+    </v-col>
+
+    <!-- ✅ 區塊二：檢查內容 -->
+    <v-col cols="12">
+      <div class="section-title">檢查內容</div>
+    </v-col>
+    <v-col cols="12" sm="6" v-for="field in ['unit', 'area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel', 'description']" :key="field">
+      <template v-if="editMode">
+        <v-select
+          v-if="['area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel'].includes(field)"
+          v-model="selectedRecord[field]"
+          :items="getOptionsForField(field)"
+          :label="formatLabel(field)"
+          dense
+        />
+        <v-textarea
+          v-else-if="field === 'description'"
+          v-model="selectedRecord[field]"
+          :label="formatLabel(field)"
+          rows="2"
+          dense
+        />
+        <v-text-field
+          v-else
+          v-model="selectedRecord[field]"
+          :label="formatLabel(field)"
+          dense
+        />
+      </template>
+      <template v-else>
+        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+      </template>
+    </v-col>
+
+    <!-- ✅ 區塊三：檢修處理 -->
+    <v-col cols="12">
+      <div class="section-title">檢修處理</div>
+    </v-col>
+    <v-col cols="12" sm="6" v-for="field in ['repairDate', 'repairStatus', 'repairDescription']" :key="field">
+      <template v-if="editMode">
+        <v-text-field
+          v-if="field === 'repairDate'"
+          v-model="selectedRecord[field]"
+          :label="formatLabel(field)"
+          type="date"
+          dense
+        />
+        <v-select
+          v-else-if="field === 'repairStatus'"
+          v-model="selectedRecord[field]"
+          :items="repairStatusOptions"
+          :label="formatLabel(field)"
+          dense
+        />
+        <v-textarea
+          v-else
+          v-model="selectedRecord[field]"
+          :label="formatLabel(field)"
+          rows="2"
+          dense
+        />
+      </template>
+      <template v-else>
+        <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+      </template>
+    </v-col>
+  </v-row>
+</v-card-text>
+
+
+    <v-card-actions class="d-flex justify-space-between">
+      <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
+      <div>
+        <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
+        <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
+      </div>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+
+
   </v-container>
 </template>
 
@@ -529,6 +547,16 @@ const readFileAsBase64 = (file) => {
     reader.readAsDataURL(file);
   });
 };
+
+const getOptionsForField = (field) => {
+  if (field === 'area') return areaOptions.value;
+  if (field === 'category') return categoryOptions.value;
+  if (field === 'subcategory') return subcategoryOptions.value;
+  if (field === 'inspectionStatus') return statusOptions.value;
+  if (field === 'defectLevel') return levelOptions.value;
+  return [];
+};
+
 </script>
 
 <style scoped>
@@ -550,4 +578,27 @@ const readFileAsBase64 = (file) => {
 .table-text {
   font-size: 14px;
 }
+
+/* 加強表單欄位排版可讀性 */
+.v-card-text .v-col {
+  margin-bottom: 8px;
+}
+
+.v-card-text .v-input {
+  font-size: 14px;
+}
+.v-card-text .v-label {
+  font-weight: 500;
+}
+
+.section-title {
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin: 24px 0 8px;
+  padding-left: 12px;
+  border-left: 4px solid #1976d2;
+  color: #1976d2;
+}
+
+
 </style>
