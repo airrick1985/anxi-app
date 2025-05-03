@@ -57,7 +57,7 @@ export async function fetchUnitList() {
 
 // 📋 查詢所有棟別
 export async function getBuildingList() {
-  return fetchPost({ action: 'get_building_list' }, METADATA_API);
+  return fetchPost({ action: 'get_building_list', token: 'anxi111003' }, METADATA_API);
 }
 
 // 📋 查詢單一戶別詳細資料

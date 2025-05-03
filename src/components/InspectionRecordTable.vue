@@ -397,7 +397,7 @@ const openCreateDialog = () => {
 
   newRecord.value = {
     key: `${props.unitId}_${dateStr}_${timeStr}`,
-    inspector: user?.name || '',
+    inspector: user.user?.name || '', // ✅ 修正這一行
     unit: props.unitId,
     owner: props.records[0]?.owner || '',
     createdAt: now.toLocaleString('sv-TW').replace(' ', ' '),
@@ -417,6 +417,7 @@ const openCreateDialog = () => {
 
   createDialog.value = true;
 };
+
 
 const submitRecord = async () => {
   if (!(formRef.value?.validate())) return;
@@ -502,4 +503,3 @@ const readFileAsBase64 = (file) => {
   font-size: 14px;
 }
 </style>
-
