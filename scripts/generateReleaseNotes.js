@@ -22,7 +22,13 @@ if (!sectionMatch) {
   process.exit(1);
 }
 
-const [, versionFromChangelog, dateFromChangelog, notesBlock] = sectionMatch;
+const [, versionFromChangelog, , notesBlock] = sectionMatch;
+
+// ✅ 新增：產生現在時間 yyyy-mm-dd-hh-mm-ss
+const now = new Date();
+const pad = (n) => String(n).padStart(2, '0');
+const dateFromChangelog = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours()+8)}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
 
 // 3. 解析 notes
 const notes = notesBlock

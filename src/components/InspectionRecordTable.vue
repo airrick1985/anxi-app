@@ -108,9 +108,25 @@
               <v-col cols="12">
                 <v-textarea label="檢查說明" v-model="newRecord.description" rows="3"></v-textarea>
               </v-col>
-              <v-col cols="12" sm="3" v-for="n in 4" :key="n">
-                <v-file-input v-model="newRecord[`photo${n}`]" label="照片{{n}}" accept="image/*" prepend-icon="mdi-camera"></v-file-input>
-              </v-col>
+<!-- 照片上傳與預覽縮圖 -->
+<v-col cols="12" sm="3" v-for="n in 4" :key="n">
+  <v-file-input
+  :label="`照片${n}`"
+  accept="image/*"
+  prepend-icon="mdi-camera"
+  :model-value="newRecord[`photo${n}`]"
+  @update:model-value="file => handleFileChange(file, n)"
+/>
+
+  <div v-if="previewUrls[n]" class="mt-2 text-center">
+    <img
+      :src="previewUrls[n]"
+      style="max-width: 100%; max-height: 100px; object-fit: contain; border: 1px solid #ccc; border-radius: 4px;"
+    />
+  </div>
+</v-col>
+
+
             </v-row>
           </v-form>
         </v-card-text>
@@ -161,6 +177,8 @@
   </template>
 </v-col>
 
+
+
 <!-- ✅ 區塊二：檢查內容 -->
 <v-col cols="12">
   <div class="section-title">檢查內容</div>
@@ -194,6 +212,9 @@
     <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
   </template>
 </v-col>
+
+<v-btn color="info" text @click="openPhotos(selectedRecord)">查看照片</v-btn>
+
 
 <!-- ✅ 區塊三：檢修處理 -->
 <v-col cols="12">
@@ -665,6 +686,35 @@ const getOptionsForField = (field) => {
   if (field === 'inspectionStatus') return statusOptions.value;
   if (field === 'defectLevel') return levelOptions.value;
   return [];
+};
+const previewUrls = ref({});
+
+const previewImage = (file, index) => {
+  if (!file) {
+    previewUrls.value[index] = null;
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    previewUrls.value[index] = reader.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+const handleFileChange = (file, index) => {
+  newRecord.value[`photo${index}`] = file;
+
+  if (!(file instanceof Blob)) {
+    previewUrls.value[index] = null;
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    previewUrls.value[index] = reader.result;
+  };
+  reader.readAsDataURL(file);
 };
 
 
