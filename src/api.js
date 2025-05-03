@@ -76,10 +76,13 @@ export async function fetchAllHouseDetails() {
   return fetchPost({ action: 'get_all_house_details', token: 'anxi111003' }, METADATA_API);
 }
 
+
 // 🧾 查詢驗屋紀錄
 export async function fetchInspectionRecords(unitId) {
   return fetchPost({ action: 'get_inspection_records', unitId, token: 'anxi111003' }, INSPECTION_API);
 }
+
+
 
 // 🧾 新增驗屋紀錄
 export async function addInspectionRecord(payload) {
@@ -97,6 +100,16 @@ export async function updateInspectionRecord({ key, repairDate, repairStatus, re
     token: 'anxi111003'
   }, INSPECTION_API);
 }
+
+// 🧾 修改驗屋紀錄（編輯模式用）
+export async function fetchInspectionUpdate(payload) {
+  return fetchPost({
+    action: 'edit_inspection_record',
+    token: 'anxi111003',
+    ...payload
+  }, INSPECTION_API);
+}
+
 
 // 📦 選單參數（area/category/status/level）
 export async function fetchDropdownOptions() {

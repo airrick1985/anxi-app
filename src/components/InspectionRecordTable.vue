@@ -56,53 +56,101 @@
       </v-card-text>
     </v-card>
 
-    <!-- 詳細 Dialog -->
-    <v-dialog v-model="detailDialog" max-width="600">
-      <v-card>
-        <v-card-title>
-          詳細資料
-          <v-spacer></v-spacer>
-        </v-card-title>
+  <!-- 詳細 Dialog -->
+<v-dialog v-model="detailDialog" max-width="800">
+  <v-card>
+    <v-card-title>
+      詳細資料
+      <v-spacer></v-spacer>
+    </v-card-title>
 
-        <v-card-text>
-          <div v-for="field in detailFields" :key="field" class="py-1">
-            <template v-if="editMode && ['repairDate', 'repairStatus', 'repairDescription'].includes(field)">
-              <v-text-field
-                v-if="field === 'repairDate'"
-                v-model="selectedRecord.repairDate"
-                label="檢修時間"
-                type="date"
-                dense
-              />
-              <v-select
-                v-else-if="field === 'repairStatus'"
-                v-model="selectedRecord.repairStatus"
-                :items="repairStatusOptions"
-                label="檢修狀態"
-                dense
-              />
-              <v-textarea
-                v-else-if="field === 'repairDescription'"
-                v-model="selectedRecord.repairDescription"
-                label="檢修說明"
-                rows="3"
-              />
-            </template>
-            <template v-else>
-              <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
-            </template>
-          </div>
-        </v-card-text>
+    <v-card-text>
+      <v-row dense>
+        <v-col cols="12" sm="6" v-for="field in detailFields" :key="field">
+          <template v-if="editMode">
+            <v-text-field
+              v-if="['createdAt', 'inspectionDate', 'inspector', 'owner', 'unit'].includes(field)"
+              v-model="selectedRecord[field]"
+              :label="formatLabel(field)"
+              :readonly="['createdAt', 'inspector', 'owner', 'unit'].includes(field)"
+              type="date"
+            />
+            <v-select
+              v-else-if="field === 'inspectionStage'"
+              v-model="selectedRecord.inspectionStage"
+              :items="['初驗','複驗']"
+              label="驗屋階段"
+            />
+            <v-select
+              v-else-if="field === 'area'"
+              v-model="selectedRecord.area"
+              :items="areaOptions"
+              label="檢查區域"
+            />
+            <v-select
+              v-else-if="field === 'category'"
+              v-model="selectedRecord.category"
+              :items="categoryOptions"
+              label="分類"
+            />
+            <v-select
+              v-else-if="field === 'subcategory'"
+              v-model="selectedRecord.subcategory"
+              :items="subcategoryOptions"
+              label="細項"
+            />
+            <v-select
+              v-else-if="field === 'inspectionStatus'"
+              v-model="selectedRecord.inspectionStatus"
+              :items="statusOptions"
+              label="檢查狀態"
+            />
+            <v-select
+              v-else-if="field === 'defectLevel'"
+              v-model="selectedRecord.defectLevel"
+              :items="levelOptions"
+              label="缺失等級"
+            />
+            <v-select
+              v-else-if="field === 'repairStatus'"
+              v-model="selectedRecord.repairStatus"
+              :items="repairStatusOptions"
+              label="檢修狀態"
+            />
+            <v-text-field
+              v-else-if="field === 'repairDate'"
+              v-model="selectedRecord.repairDate"
+              label="檢修時間"
+              type="date"
+            />
+            <v-textarea
+              v-else-if="field === 'repairDescription' || field === 'description'"
+              v-model="selectedRecord[field]"
+              :label="formatLabel(field)"
+              rows="2"
+            />
+            <v-text-field
+              v-else
+              v-model="selectedRecord[field]"
+              :label="formatLabel(field)"
+            />
+          </template>
+          <template v-else>
+            <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
+          </template>
+        </v-col>
+      </v-row>
+    </v-card-text>
 
-        <v-card-actions class="d-flex justify-space-between">
-          <v-btn v-if="!editMode" color="primary" text @click="editMode = true">填寫檢修狀況</v-btn>
-          <div>
-            <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-            <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-          </div>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <v-card-actions class="d-flex justify-space-between">
+      <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
+      <div>
+        <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
+        <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
+      </div>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
 
     <!-- 新增驗屋紀錄按鈕 -->
     <v-btn color="success" class="my-4" @click="openCreateDialog">
