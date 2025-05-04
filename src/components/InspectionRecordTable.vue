@@ -1,4 +1,6 @@
 <template>
+
+  
   <v-container fluid class="pa-0 ma-0">
     <!-- Snackbar -->
     <v-snackbar v-model="showSnackbar" timeout="3000" :color="snackbarColor">
@@ -324,8 +326,33 @@
 </v-dialog>
 
 
+<v-btn color="red" class="mb-2" @click="openTrashDialog">
+      🗑️ 垃圾桶
+    </v-btn>
+
+    <v-dialog v-model="trashDialog" max-width="800px">
+      <v-card>
+        <v-card-title>
+          已刪除紀錄
+          <v-spacer></v-spacer>
+          <v-btn icon @click="trashDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-data-table :headers="trashHeaders" :items="deletedRecords" dense>
+            <template v-slot:item.action="{ item }">
+              <v-btn color="primary" @click="restoreRecord(item.key)">復原</v-btn>
+            </template>
+          </v-data-table>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
 
   </v-container>
+
+
 </template>
 
 
@@ -339,8 +366,18 @@ import {
   addInspectionRecord, 
   fetchDropdownOptions, 
   fetchInspectionUpdate,
-  fetchAllSubcategories // ✅ 補上這行
+  fetchAllSubcategories,
+  fetchDeletedInspectionRecords, 
+  restoreInspectionRecord
 } from '@/api';
+// ✅ fetchPost 原本就已定義於 '@/api'
+
+import { useToast } from 'vue-toastification';
+
+const toast = useToast();
+const trashDialog = ref(false);
+const deletedRecords = ref([]);
+
 
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
@@ -369,8 +406,10 @@ const selectedSubcategoryOptions = ref([]);
 
 const props = defineProps({
   unitId: String,
-  records: { type: Array, default: () => [] }
+  records: { type: Array, default: () => [] },
+  owner: String // 👈 新增這行
 });
+
 
 const displayRecords = ref([]);
 const photoDialog = ref(false);
@@ -623,7 +662,7 @@ const openCreateDialog = () => {
     key: `${props.unitId}_${dateStr}_${timeStr}`,
     inspector: user.user?.name || '', // ✅ 修正這一行
     unit: props.unitId,
-    owner: props.records[0]?.owner || '',
+    owner: props.owner || '',
     createdAt: now.toLocaleString('sv-TW').replace(' ', ' '),
     inspectionDate: dateStr,
     inspectionStage: '',
@@ -784,6 +823,43 @@ const confirmDeleteRecord = async (record) => {
   showSnackbar.value = true;
   detailDialog.value = false;
   isSaving.value = false;
+};
+
+const trashHeaders = [
+  { text: '建檔時間', value: 'createdAt' },
+  { text: '戶別', value: 'unit' },
+  { text: '分類', value: 'category' },
+  { text: '細項', value: 'subcategory' },
+  { text: '檢查說明', value: 'description' },
+  { text: '動作', value: 'action', sortable: false },
+];
+
+const openTrashDialog = async () => {
+  trashDialog.value = true;
+  await loadDeletedRecords();
+};
+
+const loadDeletedRecords = async () => {
+  const res = await fetchDeletedInspectionRecords();
+  if (res.status === 'success') {
+    deletedRecords.value = res.data;
+  } else {
+    toast.error(res.message || '無法取得刪除紀錄');
+  }
+};
+
+const restoreRecord = async (key) => {
+  try {
+    const res = await restoreInspectionRecord(key);
+    if (res.status === 'success') {
+      toast.success('已復原');
+      await loadDeletedRecords();
+    } else {
+      toast.error(res.message || '復原失敗');
+    }
+  } catch (err) {
+    toast.error('復原失敗');
+  }
 };
 
 </script>

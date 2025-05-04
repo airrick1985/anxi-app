@@ -183,3 +183,13 @@ export async function deleteInspectionRecord(key) {
     token: 'anxi111003'
   }, INSPECTION_API);
 }
+
+// 🗑️ 取得已刪除的驗屋紀錄
+export async function fetchDeletedInspectionRecords() {
+  return fetchPost({ action: 'get_deleted_inspection_records', token: 'anxi111003' }, INSPECTION_API);
+}
+
+// ♻️ 復原刪除的驗屋紀錄
+export async function restoreInspectionRecord(key) {
+  return fetchPost({ action: 'restore_inspection_record', key, token: 'anxi111003' }, INSPECTION_API);
+}

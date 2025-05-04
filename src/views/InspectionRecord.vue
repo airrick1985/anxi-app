@@ -62,7 +62,11 @@
   <v-container fluid v-if="selectedUnit">
     <v-row justify="center">
       <v-col cols="12" sm="12" md="12">
-        <InspectionRecordTable :unit-id="selectedUnit" :records="records" />
+        <InspectionRecordTable
+          :unit-id="selectedUnit"
+          :records="records"
+          :owner="currentHouseDetail.owner || ''"
+        />
       </v-col>
     </v-row>
   </v-container>

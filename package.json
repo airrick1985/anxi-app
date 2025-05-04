@@ -1,7 +1,7 @@
 {
   "name": "anxi-app",
   "private": true,
-  "version": "0.0.45",
+  "version": "0.0.46",
   "type": "module",
   "homepage": "https://airrick1985.github.io/anxi-app/",
   "scripts": {
@@ -27,6 +27,7 @@
     "vue-good-table": "^2.21.11",
     "vue-good-table-next": "^0.2.2",
     "vue-router": "^4.5.0",
+    "vue-toastification": "^2.0.0-rc.5",
     "vuetify": "^3.8.2",
     "xlsx": "^0.18.5"
   },
