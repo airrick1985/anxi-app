@@ -10,6 +10,18 @@
       <div v-for="(value, label) in houseDetailFields" :key="label" class="info-row">
         <span class="label">{{ label }}</span>
         <span class="colon">：</span>
+<!-- 驗屋文件 -->
+<span class="value" v-if="label === '驗屋文件' && detail.docUrl">
+          📄 <span class="link" @click="openLink(detail.docUrl)">點我查看驗屋文件</span>
+        </span>
+        <span class="value" v-else-if="label === '驗屋文件'">無</span>
+
+        <!-- 驗屋報告 -->
+        <span class="value" v-else-if="label === '驗屋報告' && detail.reportUrl">
+          📄 <span class="link" @click="openLink(detail.reportUrl)">點我查看驗屋報告</span>
+        </span>
+        <span class="value" v-else-if="label === '驗屋報告'">無</span>
+
         <span class="value" v-html="value" />
       </div>
     </div>
@@ -37,14 +49,19 @@ const houseDetailFields = computed(() => {
     驗屋階段: d.inspectionStage,
     預約日期: d.appointmentDate || '尚未預約',
     預約時段: d.appointmentTime || '尚未預約',
-    驗屋文件: d.docUrl
-      ? `📄 <a href="${d.docUrl}" target="_blank">點我查看驗屋文件</a>`
-      : '無',
+    驗屋文件: d.docUrl,
     驗屋報告: d.reportUrl
-      ? `📄 <a href="${d.reportUrl}" target="_blank">點我查看驗屋報告</a>`
-      : '無'
   };
 });
+
+const openLink = (url) => {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isStandalone) {
+    window.location.href = url;
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+};
 </script>
 
 <style scoped>
@@ -97,5 +114,11 @@ const houseDetailFields = computed(() => {
 .value a {
   color: #1976D2;
   text-decoration: none;
+}
+
+.link {
+  color: #1976D2;
+  text-decoration: underline;
+  cursor: pointer;
 }
 </style>
