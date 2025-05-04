@@ -33,7 +33,7 @@
           v-if="displayRecords.length > 0"
           :columns="[{ label: '', field: 'checkbox', width: '30px' }, ...responsiveColumns]"
           :rows="displayRecords"
-          :search-options="searchOptions"
+          :search-options="{ enabled: true }"
           :pagination-options="paginationOptions"
           style="width: 100%"
         >
@@ -104,7 +104,6 @@
               </v-col>
               <v-col cols="12" sm="6">
                 <v-select label="細項" v-model="newRecord.subcategory" :items="subcategoryOptions" required></v-select>
-
               </v-col>
               <v-col cols="12" sm="6">
                 <v-select label="檢查狀態" v-model="newRecord.inspectionStatus" :items="statusOptions" required></v-select>
@@ -331,17 +330,13 @@
 
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
-import { 
-  fetchInspectionRecords, 
-  getRepairStatusOptions, 
-  deleteInspectionRecord, 
+import { fetchInspectionRecords, 
+  getRepairStatusOptions, deleteInspectionRecord, 
   uploadPhotoToDrive, 
   addInspectionRecord, 
   fetchDropdownOptions, 
-  fetchInspectionUpdate,
-  fetchAllSubcategories // ✅ 補上這行
-} from '@/api';
-
+  fetchSubcategories,
+  fetchInspectionUpdate } from '@/api';
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
@@ -358,7 +353,6 @@ const categoryOptions = ref([]);
 const statusOptions = ref([]);
 const levelOptions = ref([]);
 const subcategoryOptions = ref([]);
-const allSubcategoryMap = ref({}); // ✅ 新增快取物件
 
 const isSaving = ref(false);
 const showSnackbar = ref(false);
@@ -435,41 +429,35 @@ watch(() => props.records, (newVal) => {
 }, { immediate: true });
 
 
-watch(() => newRecord.value.category, (val) => {
+watch(() => newRecord.value.category, async (val) => {
   if (!val) {
     subcategoryOptions.value = [];
     return;
   }
-  subcategoryOptions.value = allSubcategoryMap.value[val] || [];
+  const res = await fetchSubcategories(val);
+  subcategoryOptions.value = res.status === 'success' ? res.subcategories : [];
 });
 
-
-// ✅ 改成使用快取載入細項資料
-watch(() => selectedRecord.value.category, (val) => {
+// 補上 selectedRecord.category 監聽細項資料載入
+watch(() => selectedRecord.value.category, async (val) => {
   if (!val) {
     selectedSubcategoryOptions.value = [];
     return;
   }
-  selectedSubcategoryOptions.value = allSubcategoryMap.value[val] || [];
+  const res = await fetchSubcategories(val);
+  selectedSubcategoryOptions.value = res.status === 'success' ? res.subcategories : [];
 });
 
 
 const loadDropdownOptions = async () => {
   const result = await fetchDropdownOptions();
-  const subResult = await fetchAllSubcategories(); // 取得細項對應表
-
   if (result.status === 'success') {
     areaOptions.value = result.data.areaOptions;
     categoryOptions.value = result.data.categoryOptions;
     statusOptions.value = result.data.statusOptions;
     levelOptions.value = result.data.levelOptions;
   }
-
-  if (subResult.status === 'success') {
-    allSubcategoryMap.value = subResult.data || {}; // ✅ 這才正確
-  }
 };
-
 
 const zoomImageDialog = ref(false);
 const zoomImageUrl = ref('');
@@ -574,11 +562,6 @@ const paginationOptions = {
   ofLabel: '共',
   allLabel: '全部',
   pageLabel: '頁碼'
-};
-
-const searchOptions = {
-  enabled: true,
-  placeholder: '搜尋表格內容...'
 };
 
 const exportToExcel = () => {

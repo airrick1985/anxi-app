@@ -1,7 +1,7 @@
 {
   "name": "anxi-app",
   "private": true,
-  "version": "0.0.44",
+  "version": "0.0.45",
   "type": "module",
   "homepage": "https://airrick1985.github.io/anxi-app/",
   "scripts": {

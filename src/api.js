@@ -119,9 +119,16 @@ export async function fetchDropdownOptions() {
 }
 
 // 📦 細項選單依分類
-export async function fetchSubcategories(category) {
-  return fetchPost({ action: 'get_subcategories', category, token: 'anxi111003' }, DROPDOWN_API);
+//export async function fetchSubcategories(category) {
+  //return fetchPost({ action: 'get_subcategories', category, token: 'anxi111003' }, DROPDOWN_API);
+//}
+
+// 📦 所有分類對應細項一次載入
+export async function fetchAllSubcategories() {
+  return fetchPost({ action: 'get_all_subcategories', token: 'anxi111003' }, DROPDOWN_API);
 }
+
+
 
 // 📦 檢修狀態選項
 export async function getRepairStatusOptions() {
@@ -166,4 +173,13 @@ export async function getLatestRelease() {
     console.error('getLatestRelease error:', e);
     return { version: '', notes: '', error: e.message };
   }
+}
+
+// 🗑️ 刪除驗屋紀錄（軟刪除）
+export async function deleteInspectionRecord(key) {
+  return fetchPost({
+    action: 'delete_inspection_record',
+    key,
+    token: 'anxi111003'
+  }, INSPECTION_API);
 }
