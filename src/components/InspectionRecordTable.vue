@@ -396,6 +396,7 @@ import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
 import { useUserStore } from '@/store/user';
+import { compressToFile } from '@/utils/canvasCompress';
 
 const user = useUserStore();
 
@@ -529,19 +530,22 @@ const zoomImageCaption = ref(''); // 新增：顯示檢查說明
 
 
 const openPhotos = (row) => {
+  // ① 把當前 row 設成選中紀錄，供 deletePhoto() 使用
+  selectedRecord.value = { ...row };
+
   currentPhotos.value = ['photo1', 'photo2', 'photo3', 'photo4']
     .map(field => {
       const originalUrl = row[field];
       if (!originalUrl) return null;
 
-      // 取出 fileId
-      const m = originalUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || originalUrl.match(/\/d=([a-zA-Z0-9_-]+)/);
+      const m = originalUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+                originalUrl.match(/\/d=([a-zA-Z0-9_-]+)/);
       if (!m) return null;
 
       return {
         preview: `https://lh3.googleusercontent.com/d/${m[1]}=w800`,
-        fileId : m[1],        // ⭐ 之後要靠它比對
-        field  : field        // ⭐ photo1~4
+        fileId : m[1],
+        field  : field
       };
     })
     .filter(Boolean);
@@ -549,6 +553,7 @@ const openPhotos = (row) => {
   zoomImageCaption.value = row.description || '放大檢視';
   photoDialog.value = true;
 };
+
 
 
 
@@ -783,19 +788,19 @@ const previewImage = (file, index) => {
   reader.readAsDataURL(file);
 };
 
-const handleFileChange = (file, index) => {
-  newRecord.value[`photo${index}`] = file;
-
-  if (!(file instanceof Blob)) {
+const handleFileChange = async (file, index) => {
+ if (!(file instanceof Blob)) {
     previewUrls.value[index] = null;
+    newRecord.value[`photo${index}`] = null;
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    previewUrls.value[index] = reader.result;
-  };
-  reader.readAsDataURL(file);
+  // 先做縮圖＋壓縮（1280px / 0.8 quality ← 可視需求調整）
+  const compressed = await compressToFile(file, 1280, 0.8);
+  newRecord.value[`photo${index}`] = compressed;
+
+  // 產生預覽（因為已經是縮圖後的檔案，所以看得到真正上傳的大小）
+  previewUrls.value[index] = URL.createObjectURL(compressed);
 };
 
 // ✅ 新增多筆選取用 state
