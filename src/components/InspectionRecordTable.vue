@@ -276,54 +276,64 @@
 
 <!-- 查看照片 Dialog -->
 <v-dialog v-model="photoDialog" max-width="800">
-  <v-card>
-    <v-card-title>查看照片</v-card-title>
-    <v-card-text>
-      <v-carousel
-        v-if="currentPhotos.length"
-        hide-delimiters
-        height="400"
-        show-arrows
+    <v-card>
+      <v-card-title>查看照片</v-card-title>
+      <v-card-text>
+
+        <v-carousel
+  v-if="currentPhotos.length"
+  hide-delimiters
+  height="400"
+  show-arrows
+>
+  <v-carousel-item
+    v-for="(photo, idx) in currentPhotos"
+    :key="idx"
+  >
+    <div class="d-flex flex-column align-center justify-center" style="height:100%">
+      <img
+        :src="photo.preview"
+        style="max-height:300px;width:100%;object-fit:contain;cursor:zoom-in"
+        @click="zoomImageUrl = photo.preview; zoomImageDialog = true"
+      />
+      <v-btn
+        color="error"
+        class="mt-2"
+        size="small"
+        @click="deletePhoto(photo)"     
       >
-        <v-carousel-item
-          v-for="(url, index) in currentPhotos"
-          :key="index"
-        >
-        <img
-  :src="url"
-  style="max-height: 400px; width: 100%; object-fit: contain; cursor: zoom-in;"
-  @click="zoomImageUrl = url; zoomImageDialog = true"
-/>
-
-//加入全螢幕 Dialog 來顯示放大圖片
-<v-dialog v-model="zoomImageDialog" fullscreen hide-overlay transition="dialog-bottom-transition">
-  <v-card>
-    <v-toolbar dark color="primary">
-      <v-btn icon @click="zoomImageDialog = false">
-        <v-icon>mdi-close</v-icon>
+        <v-icon left>mdi-delete</v-icon> 刪除照片
       </v-btn>
-      <v-toolbar-title>{{ zoomImageCaption }}</v-toolbar-title>
-      <v-spacer></v-spacer>
-    </v-toolbar>
-    <v-card-text class="d-flex justify-center align-center" style="height: 100%;">
-      <img :src="zoomImageUrl" style="max-width: 90vw; max-height: 90vh; object-fit: contain;" />
-    </v-card-text>
-  </v-card>
-</v-dialog>
+    </div>
+  </v-carousel-item>
+</v-carousel>
 
+        <div v-else class="text-center py-5 text-subtitle-1">
+          無照片可顯示
+        </div>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn text color="primary" @click="photoDialog = false">關閉</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
-        </v-carousel-item>
-      </v-carousel>
-      <div v-else class="text-center py-5 text-subtitle-1">
-        無照片可顯示
-      </div>
-    </v-card-text>
-    <v-card-actions>
-      <v-spacer></v-spacer>
-      <v-btn text color="primary" @click="photoDialog = false">關閉</v-btn>
-    </v-card-actions>
-  </v-card>
-</v-dialog>
+  <!-- //加入全螢幕 Dialog 來顯示放大圖片 -->
+  <v-dialog v-model="zoomImageDialog" fullscreen hide-overlay transition="dialog-bottom-transition">
+    <v-card>
+      <v-toolbar dark color="primary">
+        <v-btn icon @click="zoomImageDialog = false">
+          <v-icon>mdi-close</v-icon>
+        </v-btn>
+        <v-toolbar-title>{{ zoomImageCaption }}</v-toolbar-title>
+        <v-spacer></v-spacer>
+      </v-toolbar>
+      <v-card-text class="d-flex justify-center align-center" style="height: 100%;">
+        <img :src="zoomImageUrl" style="max-width: 90vw; max-height: 90vh; object-fit: contain;" />
+      </v-card-text>
+    </v-card>
+  </v-dialog>
 
 
 <v-btn color="red" class="mb-2" @click="openTrashDialog">
@@ -331,23 +341,25 @@
     </v-btn>
 
     <v-dialog v-model="trashDialog" max-width="800px">
-      <v-card>
-        <v-card-title>
-          已刪除紀錄
-          <v-spacer></v-spacer>
-          <v-btn icon @click="trashDialog = false">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-        </v-card-title>
-        <v-card-text>
-          <v-data-table :headers="trashHeaders" :items="deletedRecords" dense>
-            <template v-slot:item.action="{ item }">
-              <v-btn color="primary" @click="restoreRecord(item.key)">復原</v-btn>
-            </template>
-          </v-data-table>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+  <v-card>
+    <v-card-title>
+      <div class="d-flex justify-space-between align-center w-100">
+        <span>已刪除紀錄</span>
+        <v-btn icon @click="trashDialog = false">
+          <v-icon>mdi-close</v-icon>
+        </v-btn>
+      </div>
+    </v-card-title>
+    <v-card-text>
+      <v-data-table :headers="trashHeaders" :items="deletedRecords" dense>
+        <template v-slot:item.action="{ item }">
+          <v-btn color="primary" @click="restoreRecord(item.key)">復原</v-btn>
+        </template>
+      </v-data-table>
+    </v-card-text>
+  </v-card>
+</v-dialog>
+
 
 
   </v-container>
@@ -368,7 +380,8 @@ import {
   fetchInspectionUpdate,
   fetchAllSubcategories,
   fetchDeletedInspectionRecords, 
-  restoreInspectionRecord
+  restoreInspectionRecord,
+  deletePhotoFromRecord
 } from '@/api';
 // ✅ fetchPost 原本就已定義於 '@/api'
 
@@ -516,27 +529,27 @@ const zoomImageCaption = ref(''); // 新增：顯示檢查說明
 
 
 const openPhotos = (row) => {
-  const extractedUrls = row.photos?.filter(Boolean) || [];
-  console.log('🧩 原始照片 URLs：', extractedUrls);
+  currentPhotos.value = ['photo1', 'photo2', 'photo3', 'photo4']
+    .map(field => {
+      const originalUrl = row[field];
+      if (!originalUrl) return null;
 
-  currentPhotos.value = extractedUrls.map((url) => {
-    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)\//);
-    if (match && match[1]) {
-      const fileId = match[1];
-      const previewUrl = `https://lh3.googleusercontent.com/d/${fileId}=w800`;
-      console.log('✅ 轉換後 Google image embed URL:', previewUrl);
-      return previewUrl;
-    } else {
-      console.warn('⚠️ 無法轉換 URL：', url);
-      return '';
-    }
-  }).filter(Boolean);
+      // 取出 fileId
+      const m = originalUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || originalUrl.match(/\/d=([a-zA-Z0-9_-]+)/);
+      if (!m) return null;
 
-  // ✨ 改為取 row.description
+      return {
+        preview: `https://lh3.googleusercontent.com/d/${m[1]}=w800`,
+        fileId : m[1],        // ⭐ 之後要靠它比對
+        field  : field        // ⭐ photo1~4
+      };
+    })
+    .filter(Boolean);
+
   zoomImageCaption.value = row.description || '放大檢視';
-
   photoDialog.value = true;
 };
+
 
 
 
@@ -699,7 +712,7 @@ const submitRecord = async () => {
 
       const readerResult = await readFileAsBase64(file);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `${newRecord.value.unit}_${newRecord.value.inspectionStage}_${newRecord.value.area}_${newRecord.value.category}_${newRecord.value.subcategory}_${newRecord.value.inspectionStatus}_${newRecord.value.defectLevel}_照片${i}_${newRecord.value.inspector}_${timestamp}.jpg`;
+      const filename = `${newRecord.value.key}_照片${i}.jpg`;
 
       const res = await uploadPhotoToDrive(filename, readerResult);
       photos.push(res.status === 'success' ? res.url : '');
@@ -861,6 +874,39 @@ const restoreRecord = async (key) => {
     toast.error('復原失敗');
   }
 };
+
+const deletePhoto = async (photoObj) => {
+  if (!window.confirm('確定要刪除此照片嗎？')) return;
+
+  const { fileId, field } = photoObj;
+  const key = selectedRecord.value.key;
+
+  // 雙保險：確認欄位真的含這個 fileId
+  if (!selectedRecord.value[field] || !selectedRecord.value[field].includes(fileId)) {
+    alert('找不到對應欄位，無法刪除');
+    return;
+  }
+
+  try {
+    // ✔ 用已經封裝好的函式，才會打到 vercel‐proxy 的網址
+    const res = await deletePhotoFromRecord(key, field);
+
+    if (res.status === 'success') {
+      // 移除 carousel 中的圖
+      currentPhotos.value = currentPhotos.value.filter(p => p.fileId !== fileId);
+      await loadRecords();            // 重新抓最新資料
+      alert(res.message || '照片已刪除');
+    } else {
+      alert(res.message || '刪除失敗');
+    }
+  } catch (e) {
+    console.error(e);
+    alert('刪除過程出錯');
+  }
+};
+
+
+
 
 </script>
 

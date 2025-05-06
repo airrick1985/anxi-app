@@ -193,3 +193,13 @@ export async function fetchDeletedInspectionRecords() {
 export async function restoreInspectionRecord(key) {
   return fetchPost({ action: 'restore_inspection_record', key, token: 'anxi111003' }, INSPECTION_API);
 }
+
+// 🖼️ 刪除單張照片 (包含 Drive 刪除)
+export async function deletePhotoFromRecord(key, photoField) {
+  return fetchPost({
+    action: 'delete_photo_from_record',
+    key,
+    photoField,
+    token: 'anxi111003'
+  }, INSPECTION_API);
+}
