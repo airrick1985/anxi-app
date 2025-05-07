@@ -23,15 +23,30 @@
         <v-btn icon @click="selectTool('line')">
           <v-icon :color="currentTool === 'line' ? 'yellow lighten-3' : ''">mdi-minus</v-icon>
         </v-btn>
-        <v-btn icon @click="selectTool('arrow')">
-          <v-icon :color="currentTool === 'arrow' ? 'yellow lighten-3' : ''">mdi-arrow-top-right</v-icon>
-        </v-btn>
+        
+   
         <v-btn icon @click="selectTool('pencil')">
           <v-icon :color="currentTool === 'pencil' ? 'yellow lighten-3' : ''">mdi-pencil</v-icon>
         </v-btn>
+
+        
         <v-btn icon @click="selectTool('text')">
           <v-icon :color="currentTool === 'text' ? 'yellow lighten-3' : ''">mdi-format-text</v-icon>
         </v-btn>
+        <v-menu>
+  <template #activator="{ props }">
+    <v-btn icon v-bind="props"><v-icon>mdi-emoticon-outline</v-icon></v-btn>
+  </template>
+  <v-list>
+    <v-list-item
+      v-for="emoji in ['➡︎','⭥','⚠️','⚡','❌','⭕']"
+      :key="emoji"
+      @click="selectEmoji(emoji)"
+    >
+      <v-list-item-title>{{ emoji }}</v-list-item-title>
+    </v-list-item>
+  </v-list>
+</v-menu>
 
         <v-menu>
           <template #activator="{ props }">
@@ -40,16 +55,21 @@
           <v-color-picker v-model="strokeColor" hide-inputs hide-mode-switch />
         </v-menu>
 
+        
+
         <v-slider
-          v-model="strokeWidth"
-          min="1"
-          max="20"
-          step="1"
-          class="mx-3"
-          style="max-width:120px"
-          hide-details
-          :style="`--v-slider-track-active-color:${strokeColor}`"
-        />
+  v-model="strokeWidth"
+  min="1"
+  max="20"
+  step="1"
+  class="mx-3"
+  style="max-width:120px"
+  hide-details
+  track-color="white"
+  track-fill-color="white"
+  thumb-color="white"
+/>
+
 
         <v-spacer></v-spacer>
         <v-btn text @click="$emit('cancel')">取消</v-btn>
@@ -246,6 +266,27 @@ onUnmounted(() => {
 
   // 文字創建處理
   canvas.on('mouse:down', e => {
+    if (currentTool.value === 'emoji' && selectedEmoji.value) {
+  if (e.e) e.e.stopPropagation();
+
+  const pointer = canvas.getPointer(e.e);
+  const t = new fabric.IText(selectedEmoji.value, {
+    left: pointer.x,
+    top: pointer.y,
+    fill: strokeColor.value,
+    fontSize: 36,
+    editable: true,
+    selectable: true
+  });
+
+  canvas.add(t).setActiveObject(t);
+  canvas.renderAll();
+
+  selectedEmoji.value = null;
+  currentTool.value = null;
+  return;
+}
+
     if (currentTool.value === 'text') {
       // 阻止事件冒泡
       if (e.e) {
@@ -405,6 +446,14 @@ onUnmounted(() => {
     canvas = null;
   }
 });
+
+const selectedEmoji = ref(null); // 儲存使用者選擇的 emoji
+
+function selectEmoji(emoji) {
+  selectedEmoji.value = emoji;
+  currentTool.value = 'emoji';
+}
+
 </script>
 
 <style scoped>

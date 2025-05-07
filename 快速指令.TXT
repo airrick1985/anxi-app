@@ -5,8 +5,7 @@
 正式發佈上線 ➔ npm run build-and-deploy
 
 發佈前升版存檔到GIT倉庫 ➔ 
-npm run bump-version && git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" && git push
- npm run build-and-deploy 
+npm run bump-version && git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" && git push && npm run build-and-deploy 
 
 有修改要同步 GitHub ➔ npm run build-and-push
 
