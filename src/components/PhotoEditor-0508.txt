@@ -13,48 +13,28 @@
   >
     <v-card class="d-flex flex-column" style="overflow: hidden;"> 
       <v-toolbar flat color="primary" dark density="comfortable" ref="toolbarRef">
-        <!-- 工具選單 -->
+        <!-- 工具按鈕區 -->
         <v-menu>
-          <template #activator="{ props }">
-            <v-btn icon v-bind="props">
-              <v-icon>mdi-wrench</v-icon>
-            </v-btn>
-          </template>
-          <v-list dense>
-            <v-list-item
-              v-for="t in tools"
-              :key="t.tool"
-              @click="t.isEmoji ? selectEmoji(t.tool) : selectTool(t.tool)"
-            >
-              <v-list-item-title>
-                <v-icon :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">{{ t.icon }}</v-icon>
-                {{ t.name }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
+  <template #activator="{ props }">
+    <v-btn icon v-bind="props">
+      <v-icon>mdi-wrench</v-icon> <!-- 你也可換成 mdi-tools 等 icon -->
+    </v-btn>
+  </template>
 
-        <!-- 清除選單 -->
-        <v-menu>
-          <template #activator="{ props }">
-            <v-btn icon v-bind="props">
-              <v-icon>mdi-delete</v-icon>
-            </v-btn>
-          </template>
-          <v-list dense>
-            <v-list-item @click="clearSelected">
-              <v-list-item-title>清除選取物件</v-list-item-title>
-            </v-list-item>
-            <v-list-item @click="clearAllObjects">
-              <v-list-item-title>清除所有物件</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
+  <v-list dense>
+    <v-list-item
+      v-for="t in tools"
+      :key="t.tool"
+      @click="t.isEmoji ? selectEmoji(t.tool) : selectTool(t.tool)"
+    >
+      <v-list-item-title>
+        <v-icon :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">{{ t.icon }}</v-icon>
+        {{ t.name }}
+      </v-list-item-title>
+    </v-list-item>
+  </v-list>
+</v-menu>
 
-        <!-- Undo 按鈕 -->
-        <v-btn icon @click="undo">
-          <v-icon>mdi-undo</v-icon>
-        </v-btn>
 
         <v-menu>
           <template #activator="{ props }">
@@ -102,7 +82,6 @@ watch(open, v => emit('update:modelValue', v))
 const canvasEl = ref(null)
 let canvas = null
 const strokeColor = ref('#f00')
-strokeColor.value = '#f00'
 const strokeWidth = ref(3)
 const currentTool = ref(null)
 let startX = 0
@@ -128,11 +107,11 @@ const tools = [
   { name: '箭頭', icon: 'mdi-arrow-right-bold', tool: '➡︎', isEmoji: true }
 ]
 
+
 const selectedEmoji = ref(null)
 function selectEmoji(emoji) {
   selectedEmoji.value = emoji
   currentTool.value = 'emoji'
-  updateCursor()
 }
 
 function selectTool(tool) {
@@ -148,31 +127,11 @@ function selectTool(tool) {
     }
   }
   currentTool.value = tool
-  updateCursor()
-}
-
-function updateCursor() {
-  if (!canvasEl.value) return
-  const cursorMap = {
-    rect: 'crosshair',
-    circle: 'crosshair',
-    line: 'crosshair',
-    pencil: 'url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/svgs/solid/pen.svg") 2 32, auto',
-    text: 'text',
-    emoji: 'crosshair'
-  }
-  canvasEl.value.style.cursor = cursorMap[currentTool.value] || 'default'
 }
 
 watch(strokeColor, (newColor) => {
   if (canvas && currentTool.value === 'pencil') {
     canvas.freeDrawingBrush.color = newColor
-  }
-
-  const activeObj = canvas?.getActiveObject()
-  if (activeObj && activeObj.set && activeObj.type !== 'image') {
-    activeObj.set('stroke', newColor)
-    canvas.renderAll()
   }
 })
 
@@ -180,13 +139,8 @@ watch(strokeWidth, (newWidth) => {
   if (canvas && currentTool.value === 'pencil') {
     canvas.freeDrawingBrush.width = parseInt(newWidth, 10)
   }
-
-  const activeObj = canvas?.getActiveObject()
-  if (activeObj && activeObj.set && activeObj.type !== 'image') {
-    activeObj.set('strokeWidth', parseInt(newWidth, 10))
-    canvas.renderAll()
-  }
 })
+
 async function exportImage() {
   if (!canvas) return
   canvas.discardActiveObject().renderAll()
@@ -199,17 +153,22 @@ async function exportImage() {
 
 function resizeCanvasAndBackground() {
   if (!canvas || !canvas.backgroundImage || !editorWrapperRef.value) return
+
   const fabricImage = canvas.backgroundImage
   const imageOriginalWidth = fabricImage.width
   const imageOriginalHeight = fabricImage.height
+
   const wrapper = editorWrapperRef.value
   const availableWidth = wrapper.clientWidth
   const availableHeight = wrapper.clientHeight
+
   const scaleX = availableWidth / imageOriginalWidth
   const scaleY = availableHeight / imageOriginalHeight
   const scale = Math.min(scaleX, scaleY)
+
   const newCanvasWidth = imageOriginalWidth * scale
   const newCanvasHeight = imageOriginalHeight * scale
+
   canvas.setWidth(newCanvasWidth)
   canvas.setHeight(newCanvasHeight)
   fabricImage.scale(scale)
@@ -223,12 +182,15 @@ function initCanvas() {
     canvas.dispose()
     canvas = null
   }
+
   canvas = new fabric.Canvas(canvasEl.value, { 
     selection: true,
     fireRightClick: true,  
     stopContextMenu: true  
   })
+
   canvas.upperCanvasEl.removeAttribute('tabindex')
+
   const url = URL.createObjectURL(props.file)
   fabric.Image.fromURL(url, (img) => {
     img.set({ selectable: false, evented: false })
@@ -237,11 +199,13 @@ function initCanvas() {
       canvas.renderAll()
     })
   }, { crossOrigin: 'anonymous' })
+
   watch(open, (isOpen) => {
     if (isOpen) {
       nextTick(() => resizeCanvasAndBackground())
     }
   })
+
   let resizeObserver = null
   onMounted(() => {
     if (editorWrapperRef.value) {
@@ -249,6 +213,7 @@ function initCanvas() {
       resizeObserver.observe(editorWrapperRef.value)
     }
   })
+
   onUnmounted(() => {
     if (canvas) {
       canvas.dispose()
@@ -261,6 +226,7 @@ function initCanvas() {
       resizeObserver.disconnect()
     }
   })
+
   const originalEnterEditing = fabric.IText.prototype.enterEditing
   fabric.IText.prototype.enterEditing = function(e) {
     const result = originalEnterEditing.call(this, e)
@@ -270,6 +236,7 @@ function initCanvas() {
     }
     return result
   }
+
   canvas.on('mouse:dblclick', function(e) {
     if (e.target && e.target.type === 'i-text') {
       if (e.e) e.e.stopPropagation()
@@ -278,27 +245,26 @@ function initCanvas() {
       canvas.renderAll()
     }
   })
+
   canvas.on('mouse:down', e => {
     if (currentTool.value === 'emoji' && selectedEmoji.value) {
       if (e.e) e.e.stopPropagation()
       const pointer = canvas.getPointer(e.e)
-      const fontSize = selectedEmoji.value === '➡︎' ? 120 : 60
-
-const t = new fabric.IText(selectedEmoji.value, {
-  left: pointer.x,
-  top: pointer.y,
-  fill: strokeColor.value,
-  fontSize,
-  editable: true,
-  selectable: true
-})
-
+      const t = new fabric.IText(selectedEmoji.value, {
+        left: pointer.x,
+        top: pointer.y,
+        fill: strokeColor.value,
+        fontSize: 36,
+        editable: true,
+        selectable: true
+      })
       canvas.add(t).setActiveObject(t)
       canvas.renderAll()
       selectedEmoji.value = null
       currentTool.value = null
       return
     }
+
     if (currentTool.value === 'text') {
       if (e.e) e.e.stopPropagation()
       const pointer = canvas.getPointer(e.e)
@@ -306,7 +272,7 @@ const t = new fabric.IText(selectedEmoji.value, {
         left: pointer.x,
         top: pointer.y,
         fill: strokeColor.value,
-        fontSize: 36,
+        fontSize: 24,
         editable: true,
         selectable: true
       })
@@ -319,10 +285,13 @@ const t = new fabric.IText(selectedEmoji.value, {
       currentTool.value = null
       return
     }
+
     if (!currentTool.value || currentTool.value === 'pencil') return
+
     const pointer = canvas.getPointer(e.e)
     startX = pointer.x
     startY = pointer.y
+
     switch (currentTool.value) {
       case 'rect':
         tempObject = new fabric.Rect({
@@ -355,11 +324,13 @@ const t = new fabric.IText(selectedEmoji.value, {
     }
     canvas.add(tempObject)
   })
+
   canvas.on('mouse:move', e => {
     if (!tempObject) return
     const pointer = canvas.getPointer(e.e)
     const w = pointer.x - startX
     const h = pointer.y - startY
+
     if (tempObject.type === 'rect') {
       tempObject.set({ width: Math.abs(w), height: Math.abs(h), left: w < 0 ? pointer.x : startX, top: h < 0 ? pointer.y : startY })
     } else if (tempObject.type === 'ellipse') {
@@ -369,71 +340,14 @@ const t = new fabric.IText(selectedEmoji.value, {
     }
     canvas.renderAll()
   })
+
   canvas.on('mouse:up', () => {
     tempObject = null
     if (currentTool.value !== 'pencil') currentTool.value = null
   })
+
   canvas.on('text:editing:exited', function(e) {})
 }
-
-const historyStack = ref([])
-
-function pushHistory() {
-  if (canvas) {
-    historyStack.value.push(JSON.stringify(canvas.toDatalessJSON()))
-    if (historyStack.value.length > 20) historyStack.value.shift()
-  }
-}
-
-function undo() {
-  if (!canvas || historyStack.value.length === 0) return
-  const lastState = historyStack.value.pop()
-  canvas.loadFromJSON(lastState, () => canvas.renderAll())
-}
-
-function clearSelected() {
-  const activeObject = canvas?.getActiveObject()
-  if (activeObject) {
-    pushHistory()
-    canvas.remove(activeObject)
-    canvas.renderAll()
-  }
-}
-
-function clearAllObjects() {
-  if (!canvas) return
-  pushHistory()
-  canvas.getObjects().forEach(obj => {
-    if (obj !== canvas.backgroundImage) canvas.remove(obj)
-  })
-  canvas.renderAll()
-}
-
-// 鍵盤刪除快捷鍵
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
-
-function handleKeydown(e) {
-  // Ctrl+Z 或 Cmd+Z 執行 Undo
-  const isUndo = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'
-  if (isUndo) {
-    e.preventDefault()
-    undo()
-    return
-  }
-
-  // Delete 鍵刪除選取物件
-  if (e.key === 'Delete' && canvas?.getActiveObject()) {
-    e.preventDefault()
-    clearSelected()
-  }
-}
-
 </script>
 
 <style scoped>
