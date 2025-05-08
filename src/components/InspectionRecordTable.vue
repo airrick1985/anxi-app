@@ -45,7 +45,7 @@
             </template>
             <template v-else-if="props.column.field === 'photos'">
               <v-btn size="small" color="primary" @click="openPhotos(props.row)">
-                查看照片
+                缺失照片
               </v-btn>
             </template>
             <template v-else-if="props.column.field === 'actions'">
@@ -120,12 +120,13 @@
 <!-- 照片上傳與預覽縮圖 -->
 <v-col cols="12" sm="3" v-for="n in 4" :key="n">
   <v-file-input
+  v-model="newRecord[`photo${n}`]"
   :label="`照片${n}`"
   accept="image/*"
   prepend-icon="mdi-camera"
-  :model-value="newRecord[`photo${n}`]"
   @update:model-value="file => handleFileChange(file, n)"
 />
+
 
   <div v-if="previewUrls[n]" class="mt-2 text-center">
     <img
@@ -222,7 +223,7 @@
   </template>
 </v-col>
 
-<v-btn color="info" text @click="openPhotos(selectedRecord)">查看照片</v-btn>
+<v-btn color="info" text @click="openPhotos(selectedRecord)">缺失照片</v-btn>
 
 
 <!-- ✅ 區塊三：檢修處理 -->
@@ -274,10 +275,10 @@
 </v-dialog>
 
 
-<!-- 查看照片 Dialog -->
+<!-- 缺失照片 Dialog -->
 <v-dialog v-model="photoDialog" max-width="800">
     <v-card>
-      <v-card-title>查看照片</v-card-title>
+      <v-card-title>缺失照片</v-card-title>
       <v-card-text>
 
         <v-carousel
@@ -407,26 +408,27 @@ import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
 import { useUserStore } from '@/store/user';
-import { compressToFile } from '@/utils/canvasCompress';
+
 
 const onEditorDone = async (annotatedFile) => {
-  // 1. 壓縮（維持原本 1024px、0.92 品質或你自訂）
-  const compressed = await compressToFile(annotatedFile, {
-    maxWidth : 1024,
-    mimeType : 'image/jpeg',
-    quality  : 0.92
-  })
+  if (!annotatedFile || !(annotatedFile instanceof File)) {
+    toast.error('編輯後的圖片無效');
+    return;
+  }
 
-  // 2. 存回 newRecord
-  const idx = editingIdx.value
-  newRecord.value[`photo${idx}`] = compressed
+  const idx = editingIdx.value;
+  if (!idx) return;
 
-  // 3. 產生預覽圖
-  previewImage(compressed, idx)
+  // 1. 儲存編輯後的圖片到 newRecord
+  newRecord.value[`photo${idx}`] = annotatedFile;
 
-  // 4. 關 Dialog
-  showEditor.value = false
+  // 2. 顯示預覽圖
+  previewImage(annotatedFile, idx);
+
+  // 3. 關閉編輯器
+  showEditor.value = false;
 }
+
 
 
 const user = useUserStore();
@@ -483,7 +485,7 @@ const baseColumns = [
   { label: '檢修時間', field: 'repairDate' },
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '檢修說明', field: 'repairDescription' },
-  { label: '照片', field: 'photos' },
+  { label: '缺失照片', field: 'photos' },
   { label: '操作', field: 'actions' }
 ];
 
@@ -818,10 +820,14 @@ const previewImage = (file, index) => {
 
 
 const handleFileChange = (file, idx) => {
-  if (!file) return;          // 使用者按「清除」不動作
-  editingIdx.value = idx      // 記住是哪一格
-  tempFile.value   = file     // 把原檔傳進 PhotoEditor
-  showEditor.value = true     // 打開 Dialog
+  if (!file) {
+    previewUrls.value[idx] = null
+    newRecord.value[`photo${idx}`] = null
+    return
+  }
+  editingIdx.value = idx
+  tempFile.value = file
+  showEditor.value = true
 }
 
 
@@ -844,9 +850,7 @@ const confirmBulkDelete = async () => {
   selectedKeys.value = [];
   await loadRecords();
 
-  snackbarMessage.value = '刪除完成';
-  snackbarColor.value = 'green';
-  showSnackbar.value = true;
+  toast.success('刪除完成');
   isSaving.value = false;
 };
 
@@ -915,6 +919,8 @@ const deletePhoto = async (photoObj) => {
     return;
   }
 
+  isSaving.value = true; // ✅ 開始 loading
+
   try {
     // ✔ 用已經封裝好的函式，才會打到 vercel‐proxy 的網址
     const res = await deletePhotoFromRecord(key, field);
@@ -923,14 +929,17 @@ const deletePhoto = async (photoObj) => {
       // 移除 carousel 中的圖
       currentPhotos.value = currentPhotos.value.filter(p => p.fileId !== fileId);
       await loadRecords();            // 重新抓最新資料
-      alert(res.message || '照片已刪除');
+      toast.success(res.message || '照片已刪除'); // ✅ 改用 toast 成功訊息
     } else {
-      alert(res.message || '刪除失敗');
+      toast.error(res.message || '刪除失敗'); // ✅ 改用 toast
     }
   } catch (e) {
     console.error(e);
     alert('刪除過程出錯');
   }
+
+  isSaving.value = false; // ✅ 結束 loading
+
 };
 
 

@@ -8,79 +8,102 @@
     :attach="'body'"
     :retain-focus="false"
     content-class="image-editor-dialog-content"
-    :max-width="isMobile ? '95vw' : '1000px'" 
+    :max-width="isMobile ? '95vw' : '1000px'"
     :fullscreen="isMobile"
   >
-    <v-card class="d-flex flex-column" style="overflow: hidden;"> 
-      <v-toolbar flat color="primary" dark density="comfortable" ref="toolbarRef">
-        <!-- 工具選單 -->
-        <v-menu>
-          <template #activator="{ props }">
-            <v-btn icon v-bind="props">
-              <v-icon>mdi-wrench</v-icon>
-            </v-btn>
-          </template>
-          <v-list dense>
-            <v-list-item
-              v-for="t in tools"
-              :key="t.tool"
-              @click="t.isEmoji ? selectEmoji(t.tool) : selectTool(t.tool)"
-            >
-              <v-list-item-title>
-                <v-icon :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">{{ t.icon }}</v-icon>
-                {{ t.name }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
+    <v-card class="d-flex flex-column" style="overflow: hidden;">
+      <!-- 第一排工具列 -->
+<!-- 第一排工具列 -->
+<v-toolbar flat color="primary" dark density="comfortable" ref="toolbarRef">
+  <div class="toolbar-row d-flex flex-wrap align-center">
+    <!-- 工具選單 -->
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn icon v-bind="props"><v-icon>mdi-wrench</v-icon></v-btn>
+      </template>
+      <v-list dense>
+        <v-list-item
+          v-for="t in tools"
+          :key="t.tool"
+          @click="t.isEmoji ? selectEmoji(t.tool) : selectTool(t.tool)"
+        >
+          <v-list-item-title>
+            <v-icon :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">{{ t.icon }}</v-icon>
+            {{ t.name }}
+          </v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
 
-        <!-- 清除選單 -->
-        <v-menu>
-          <template #activator="{ props }">
-            <v-btn icon v-bind="props">
-              <v-icon>mdi-delete</v-icon>
-            </v-btn>
-          </template>
-          <v-list dense>
-            <v-list-item @click="clearSelected">
-              <v-list-item-title>清除選取物件</v-list-item-title>
-            </v-list-item>
-            <v-list-item @click="clearAllObjects">
-              <v-list-item-title>清除所有物件</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
+    <!-- 🔥 獨立刪除物件工具按鈕 -->
+    <v-btn icon @click="selectTool('removeOne')" :title="'橡皮擦（刪除物件）'">
+  <v-icon :color="currentTool === 'removeOne' ? 'yellow lighten-3' : ''">mdi-eraser</v-icon>
+</v-btn>
 
-        <!-- Undo 按鈕 -->
-        <v-btn icon @click="undo">
-          <v-icon>mdi-undo</v-icon>
-        </v-btn>
 
-        <v-menu>
-          <template #activator="{ props }">
-            <v-btn icon v-bind="props"><v-icon>mdi-palette</v-icon></v-btn>
-          </template>
-          <v-color-picker v-model="strokeColor" hide-inputs hide-mode-switch />
-        </v-menu>
 
-        <v-slider
-          v-model="strokeWidth"
-          min="1"
-          max="20"
-          step="1"
-          class="mx-3"
-          style="max-width:120px"
-          hide-details
-          track-color="white"
-          track-fill-color="white"
-          thumb-color="white"
-        />
+    <!-- 刪除選單 -->
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn icon v-bind="props"><v-icon>mdi-delete</v-icon></v-btn>
+      </template>
+      <v-list dense>
+        <v-list-item @click="clearSelected">
+          <v-list-item-title>清除選取物件</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="clearAllObjects">
+          <v-list-item-title>清除所有物件</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
 
-        <v-spacer></v-spacer>
-        <v-btn text @click="$emit('cancel')">取消</v-btn>
-        <v-btn text @click="exportImage">確定</v-btn>
-      </v-toolbar>
+    <!-- Undo -->
+    <v-btn icon @click="undo">
+      <v-icon>mdi-undo</v-icon>
+    </v-btn>
+  </div>
+</v-toolbar>
 
+<!-- 第二排工具列 -->
+<v-toolbar flat color="primary" dark density="comfortable">
+  <div class="toolbar-row d-flex flex-wrap align-center w-100">
+    <!-- 顏色選擇 -->
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn icon v-bind="props"><v-icon>mdi-palette</v-icon></v-btn>
+      </template>
+      <v-color-picker
+        v-model="strokeColor"
+        hide-inputs
+        hide-mode-switch
+        style="max-width: 250px"
+      />
+    </v-menu>
+
+    <!-- 筆刷粗細 -->
+    <v-slider
+      v-model="strokeWidth"
+      min="1"
+      max="20"
+      step="1"
+      class="mx-3"
+      style="max-width:120px"
+      hide-details
+      track-color="white"
+      track-fill-color="white"
+      thumb-color="white"
+    />
+
+    <v-spacer></v-spacer>
+
+    <!-- 操作按鈕靠右 -->
+    <v-btn text @click="$emit('cancel')">取消</v-btn>
+    <v-btn text @click="exportImage">確定</v-btn>
+  </div>
+</v-toolbar>
+
+
+      <!-- 編輯畫布 -->
       <div class="editor-wrapper" ref="editorWrapperRef">
         <canvas ref="canvasEl" class="editor-canvas" />
       </div>
@@ -88,9 +111,11 @@
   </v-dialog>
 </template>
 
+
 <script setup lang="js">
 import { ref, onMounted, nextTick, watch, onUnmounted, computed } from 'vue'
 import { fabric } from 'fabric'
+import { compressToFile } from '@/utils/canvasCompress';
 
 const props = defineProps(['file', 'modelValue'])
 const emit = defineEmits(['update:modelValue', 'done', 'cancel'])
@@ -164,6 +189,7 @@ function updateCursor() {
   canvasEl.value.style.cursor = cursorMap[currentTool.value] || 'default'
 }
 
+
 watch(strokeColor, (newColor) => {
   if (canvas && currentTool.value === 'pencil') {
     canvas.freeDrawingBrush.color = newColor
@@ -187,15 +213,7 @@ watch(strokeWidth, (newWidth) => {
     canvas.renderAll()
   }
 })
-async function exportImage() {
-  if (!canvas) return
-  canvas.discardActiveObject().renderAll()
-  await new Promise(resolve => setTimeout(resolve, 50))
-  const dataURL = canvas.toDataURL({ format: 'jpeg', quality: 0.92 })
-  const blob = await (await fetch(dataURL)).blob()
-  emit('done', new File([blob], props.file.name, { type: 'image/jpeg' }))
-  open.value = false
-}
+
 
 function resizeCanvasAndBackground() {
   if (!canvas || !canvas.backgroundImage || !editorWrapperRef.value) return
@@ -279,6 +297,17 @@ function initCanvas() {
     }
   })
   canvas.on('mouse:down', e => {
+    if (currentTool.value === 'removeOne') {
+  if (e.target && e.target !== canvas.backgroundImage) {
+    canvas.remove(e.target);
+    canvas.renderAll();
+    //currentTool.value = null;
+    toast.success('已刪除選取物件');
+  }
+  return;
+}
+
+
     if (currentTool.value === 'emoji' && selectedEmoji.value) {
       if (e.e) e.e.stopPropagation()
       const pointer = canvas.getPointer(e.e)
@@ -371,7 +400,7 @@ const t = new fabric.IText(selectedEmoji.value, {
   })
   canvas.on('mouse:up', () => {
     tempObject = null
-    if (currentTool.value !== 'pencil') currentTool.value = null
+    //if (currentTool.value !== 'pencil') currentTool.value = null
   })
   canvas.on('text:editing:exited', function(e) {})
 }
@@ -434,6 +463,25 @@ function handleKeydown(e) {
   }
 }
 
+async function exportImage() {
+  if (!canvas) return
+
+  canvas.discardActiveObject().renderAll()
+  await new Promise(resolve => setTimeout(resolve, 50))
+
+  const dataURL = canvas.toDataURL({ format: 'image/jpeg', quality: 0.92 })
+  const blob = await (await fetch(dataURL)).blob()
+
+  // ✅ 轉成 File 才能傳給 compressToFile
+  const originalFile = new File([blob], props.file?.name || 'annotated.jpg', { type: 'image/jpeg' })
+
+  // ✅ 傳入正確類型
+  const compressed = await compressToFile(originalFile, 1024, 0.85); // ✅ 修正傳參數方式
+console.log('[📤 emit] done:', compressed); // ✅ debug 訊息
+emit('done', compressed);
+open.value = false;
+}
+
 </script>
 
 <style scoped>
@@ -460,4 +508,11 @@ function handleKeydown(e) {
   height: 100%;
   border-radius: 0 !important;
 }
+
+.toolbar-row {
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 </style>

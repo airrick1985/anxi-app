@@ -120,12 +120,13 @@
 <!-- 照片上傳與預覽縮圖 -->
 <v-col cols="12" sm="3" v-for="n in 4" :key="n">
   <v-file-input
+  v-model="newRecord[`photo${n}`]"
   :label="`照片${n}`"
   accept="image/*"
   prepend-icon="mdi-camera"
-  :model-value="newRecord[`photo${n}`]"
   @update:model-value="file => handleFileChange(file, n)"
 />
+
 
   <div v-if="previewUrls[n]" class="mt-2 text-center">
     <img
@@ -364,11 +365,19 @@
 
   </v-container>
 
+  <PhotoEditor
+  v-if="showEditor"       
+  v-model="showEditor"
+  :file="tempFile"
+  @done="onEditorDone"
+  @cancel="showEditor = false"
+/>
 
 </template>
 
 
 <script setup>
+import PhotoEditor from '@/components/PhotoEditor.vue' 
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { 
   fetchInspectionRecords, 
@@ -391,11 +400,36 @@ const toast = useToast();
 const trashDialog = ref(false);
 const deletedRecords = ref([]);
 
+const showEditor   = ref(false)   // 控制 Dialog
+const editingIdx   = ref(null)    // 1~4，正在編輯哪一張
+const tempFile     = ref(null)    // 使用者剛挑的原始檔
 
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
 import { useUserStore } from '@/store/user';
+
+
+const onEditorDone = async (annotatedFile) => {
+  if (!annotatedFile || !(annotatedFile instanceof File)) {
+    toast.error('編輯後的圖片無效');
+    return;
+  }
+
+  const idx = editingIdx.value;
+  if (!idx) return;
+
+  // 1. 儲存編輯後的圖片到 newRecord
+  newRecord.value[`photo${idx}`] = annotatedFile;
+
+  // 2. 顯示預覽圖
+  previewImage(annotatedFile, idx);
+
+  // 3. 關閉編輯器
+  showEditor.value = false;
+}
+
+
 
 const user = useUserStore();
 
@@ -774,33 +808,29 @@ const getOptionsForField = (field) => {
 };
 const previewUrls = ref({});
 
+
 const previewImage = (file, index) => {
+  // 清除舊 objectURL，避免 memory leak
+  if (previewUrls.value[index]) {
+    URL.revokeObjectURL(previewUrls.value[index])
+  }
+
+  previewUrls.value[index] = file ? URL.createObjectURL(file) : null
+}
+
+
+const handleFileChange = (file, idx) => {
   if (!file) {
-    previewUrls.value[index] = null;
-    return;
+    previewUrls.value[idx] = null
+    newRecord.value[`photo${idx}`] = null
+    return
   }
+  editingIdx.value = idx
+  tempFile.value = file
+  showEditor.value = true
+}
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    previewUrls.value[index] = reader.result;
-  };
-  reader.readAsDataURL(file);
-};
 
-const handleFileChange = (file, index) => {
-  newRecord.value[`photo${index}`] = file;
-
-  if (!(file instanceof Blob)) {
-    previewUrls.value[index] = null;
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    previewUrls.value[index] = reader.result;
-  };
-  reader.readAsDataURL(file);
-};
 
 // ✅ 新增多筆選取用 state
 const selectedKeys = ref([]);
