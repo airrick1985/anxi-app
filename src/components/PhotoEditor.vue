@@ -11,15 +11,38 @@
     :max-width="isMobile ? '95vw' : '1000px'"
     :fullscreen="isMobile"
   >
-    <v-card class="d-flex flex-column" style="overflow: hidden;">
-      <!-- 第一排工具列 -->
-<!-- 第一排工具列 -->
-<v-toolbar flat color="primary" dark density="comfortable" ref="toolbarRef">
-  <div class="toolbar-row d-flex flex-wrap align-center">
+    <v-card class="d-flex flex-column" style="overflow: hidden; position: relative;">
+      
+      <!-- ✅ 操作按鈕放右上角 -->
+      <div style="position: absolute; top: 8px; right: 8px; z-index: 10;">
+        <v-btn icon @click="$emit('cancel')">
+          <v-icon>mdi-close</v-icon>
+        </v-btn>
+        <v-btn icon color="primary" @click="exportImage">
+          <v-icon>mdi-check</v-icon>
+        </v-btn>
+      </div>
+
+      <!-- 編輯畫布 -->
+      <div class="editor-wrapper" ref="editorWrapperRef">
+        <canvas ref="canvasEl" class="editor-canvas" />
+      </div>
+
+      <!-- ✅ 工具列放底部一排 -->
+      <v-toolbar
+  flat
+  color="primary"
+  dark
+  density="compact"
+  class="editor-toolbar-bottom"
+>
+  <div class="toolbar-row d-flex align-center flex-wrap w-100">
     <!-- 工具選單 -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon v-bind="props"><v-icon>mdi-wrench</v-icon></v-btn>
+        <v-btn icon density="compact" v-bind="props">
+          <v-icon small>mdi-wrench</v-icon>
+        </v-btn>
       </template>
       <v-list dense>
         <v-list-item
@@ -28,29 +51,28 @@
           @click="t.isEmoji ? selectEmoji(t.tool) : selectTool(t.tool)"
         >
           <v-list-item-title>
-            <v-icon :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">{{ t.icon }}</v-icon>
+            <v-icon small :color="currentTool === t.tool ? 'yellow lighten-3' : ''" class="mr-2">
+              {{ t.icon }}
+            </v-icon>
             {{ t.name }}
           </v-list-item-title>
         </v-list-item>
       </v-list>
     </v-menu>
 
-    <!-- 🔥 獨立刪除物件工具按鈕 -->
-    <v-btn icon @click="selectTool('removeOne')" :title="'橡皮擦（刪除物件）'">
-  <v-icon :color="currentTool === 'removeOne' ? 'yellow lighten-3' : ''">mdi-eraser</v-icon>
-</v-btn>
+    <!-- 橡皮擦 -->
+    <v-btn icon density="compact" @click="selectTool('removeOne')" :title="'橡皮擦（刪除物件）'">
+      <v-icon small :color="currentTool === 'removeOne' ? 'yellow lighten-3' : ''">mdi-eraser</v-icon>
+    </v-btn>
 
-
-
-    <!-- 刪除選單 -->
+    <!-- 清除功能 -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon v-bind="props"><v-icon>mdi-delete</v-icon></v-btn>
+        <v-btn icon density="compact" v-bind="props">
+          <v-icon small>mdi-delete</v-icon>
+        </v-btn>
       </template>
       <v-list dense>
-        <v-list-item @click="clearSelected">
-          <v-list-item-title>清除選取物件</v-list-item-title>
-        </v-list-item>
         <v-list-item @click="clearAllObjects">
           <v-list-item-title>清除所有物件</v-list-item-title>
         </v-list-item>
@@ -58,19 +80,16 @@
     </v-menu>
 
     <!-- Undo -->
-    <v-btn icon @click="undo">
-      <v-icon>mdi-undo</v-icon>
+    <v-btn icon density="compact" @click="undo" :title="'復原'">
+      <v-icon small>mdi-undo</v-icon>
     </v-btn>
-  </div>
-</v-toolbar>
 
-<!-- 第二排工具列 -->
-<v-toolbar flat color="primary" dark density="comfortable">
-  <div class="toolbar-row d-flex flex-wrap align-center w-100">
     <!-- 顏色選擇 -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon v-bind="props"><v-icon>mdi-palette</v-icon></v-btn>
+        <v-btn icon density="compact" v-bind="props">
+          <v-icon small>mdi-palette</v-icon>
+        </v-btn>
       </template>
       <v-color-picker
         v-model="strokeColor"
@@ -82,72 +101,60 @@
 
     <!-- 筆刷粗細 -->
     <v-menu>
-  <template #activator="{ props }">
-    <v-btn icon v-bind="props" :title="'畫筆粗細'">
-      <v-icon>mdi-pencil</v-icon>
-    </v-btn>
-  </template>
-  <div class="custom-slider-popup">
-    <span class="text-caption text-white">筆刷粗細：{{ strokeWidth }}</span>
-    <v-slider
-      v-model="strokeWidth"
-      min="1"
-      max="20"
-      step="1"
-      hide-details
-      density="compact"
-      track-color="white"
-      track-fill-color="white"
-      thumb-color="white"
-    />
-  </div>
-</v-menu>
+      <template #activator="{ props }">
+        <v-btn icon density="compact" v-bind="props" :title="'畫筆粗細'">
+          <v-icon small>mdi-pencil</v-icon>
+        </v-btn>
+      </template>
+      <div class="custom-slider-popup">
+        <span class="text-caption text-white">筆刷粗細：{{ strokeWidth }}</span>
+        <v-slider
+          v-model="strokeWidth"
+          min="1"
+          max="20"
+          step="1"
+          hide-details
+          density="compact"
+          track-color="white"
+          track-fill-color="white"
+          thumb-color="white"
+        />
+      </div>
+    </v-menu>
 
-  <v-menu>
-  <template #activator="{ props }">
-    <v-btn icon v-bind="props" :title="'縮放畫布'">
-      <v-icon>mdi-magnify-plus</v-icon>
-    </v-btn>
-  </template>
-  <div class="custom-slider-popup">
-    <span class="text-caption text-white">縮放：x{{ canvasZoom.toFixed(1) }}</span>
-    <v-slider
-      v-model="canvasZoom"
-      :min="1"
-      :max="3"
-      :step="0.1"
-      hide-details
-      density="compact"
-      track-color="white"
-      track-fill-color="white"
-      thumb-color="white"
-      @update:model-value="updateZoom"
-    />
-  </div>
-</v-menu>
+    <!-- 縮放 -->
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn icon density="compact" v-bind="props" :title="'縮放畫布'">
+          <v-icon small>mdi-magnify-plus</v-icon>
+        </v-btn>
+      </template>
+      <div class="custom-slider-popup">
+        <span class="text-caption text-white">縮放：x{{ canvasZoom.toFixed(1) }}</span>
+        <v-slider
+          v-model="canvasZoom"
+          :min="1"
+          :max="3"
+          :step="0.1"
+          hide-details
+          density="compact"
+          track-color="white"
+          track-fill-color="white"
+          thumb-color="white"
+          @update:model-value="updateZoom"
+        />
+      </div>
+    </v-menu>
 
-<span class="text-white">x{{ canvasZoom.toFixed(1) }}</span>
-
-<v-btn icon @click="selectTool('move')" :title="'移動畫布'">
-  <v-icon :color="currentTool === 'move' ? 'yellow lighten-3' : ''">mdi-hand-back-left</v-icon>
-</v-btn>
-
-    <v-spacer></v-spacer>
-
-    <!-- 操作按鈕靠右 -->
-    <v-btn text @click="$emit('cancel')">取消</v-btn>
-    <v-btn text @click="exportImage">確定</v-btn>
+    <!-- 顯示倍率 -->
+    <span class="text-white text-caption">x{{ canvasZoom.toFixed(1) }}</span>
   </div>
 </v-toolbar>
 
-
-      <!-- 編輯畫布 -->
-      <div class="editor-wrapper" ref="editorWrapperRef">
-        <canvas ref="canvasEl" class="editor-canvas" />
-      </div>
     </v-card>
   </v-dialog>
 </template>
+
 
 
 <script setup lang="js">
@@ -156,6 +163,7 @@ import { fabric } from 'fabric'
 import { compressToFile } from '@/utils/canvasCompress';
 
 const isPanning = ref(false); // 是否正在拖動畫布
+let lastPanPoint = null; 
 
 const props = defineProps(['file', 'modelValue'])
 const emit = defineEmits(['update:modelValue', 'done', 'cancel'])
@@ -201,21 +209,46 @@ function selectEmoji(emoji) {
 }
 
 function selectTool(tool) {
-  const activeObj = canvas?.getActiveObject()
-  if (activeObj && activeObj.type === 'i-text' && activeObj.isEditing) return
-  document.activeElement?.blur()
+  const activeObj = canvas?.getActiveObject();
+  if (activeObj && activeObj.type === 'i-text' && activeObj.isEditing) return;
+  document.activeElement?.blur();
+
+  currentTool.value = tool;
 
   if (canvas) {
-    canvas.isDrawingMode = tool === 'pencil'
+    canvas.isDrawingMode = tool === 'pencil';
     if (tool === 'pencil') {
-      canvas.freeDrawingBrush.color = strokeColor.value
-      canvas.freeDrawingBrush.width = parseInt(strokeWidth.value, 10)
+      canvas.freeDrawingBrush.color = strokeColor.value;
+      canvas.freeDrawingBrush.width = parseInt(strokeWidth.value, 10);
+    }
+
+    if (tool === 'move') {
+      canvas.selection = false;
+      canvas.defaultCursor = 'grab';
+      canvas.setCursor('grab');
+      canvas.forEachObject(obj => {
+        obj.selectable = false;
+        obj.evented = false;
+      });
+    } else {
+      canvas.selection = true;
+      canvas.defaultCursor = 'default';
+      canvas.forEachObject(obj => {
+        if (obj !== canvas.backgroundImage) {
+          obj.selectable = true;
+          obj.evented = true;
+        }
+      });
+      updateCursor();
     }
   }
-  currentTool.value = tool
-  updateCursor()
-}
 
+  if (tool !== 'move') {
+    updateCursor();
+  } else if (!tool) {
+    updateCursor();
+  }
+}
 function updateCursor() {
   if (!canvasEl.value) return
   const cursorMap = {
@@ -288,30 +321,35 @@ function initCanvas() {
     canvas.dispose();
     canvas = null;
   }
+  historyStack.value = []; // 重置歷史
 
   canvas = new fabric.Canvas(canvasEl.value, {
     selection: true,
     fireRightClick: true,
-    stopContextMenu: true
+    stopContextMenu: true,
+    imageSmoothingEnabled: true,
   });
 
   canvas.upperCanvasEl.removeAttribute('tabindex');
 
   const url = URL.createObjectURL(props.file);
   fabric.Image.fromURL(url, (img) => {
-    img.set({
-  selectable: false,
-  evented: false,
-  hasBorders: false,
-  hasControls: false,
-  hoverCursor: 'default'
-});
+  img.set({
+    selectable: false,
+    evented: false,
+    hasBorders: false,
+    hasControls: false,
+    hoverCursor: 'default'
+  });
 
-    canvas.setBackgroundImage(img, () => {
-      nextTick(() => resizeCanvasAndBackground());
-      canvas.renderAll();
-    });
-  }, { crossOrigin: 'anonymous' });
+  canvas.setBackgroundImage(img, () => {
+    nextTick(() => resizeCanvasAndBackground());
+    canvas.renderAll();
+  });
+
+  // 強制放到 object list 的最底層（避免被選中）
+  canvas.sendToBack(img);
+}, { crossOrigin: 'anonymous' });
 
   // ResizeObserver
   let resizeObserver = null;
@@ -341,29 +379,40 @@ function initCanvas() {
   canvas.on('mouse:down', (e) => {
   const pointer = canvas.getPointer(e.e);
 
-  // ✋【平移模式（手工具 或 Alt 鍵）】
-  if (currentTool.value === 'move' || e.e.altKey) {
+  // 🚨 防呆：避免 NaN 座標導致畫布錯亂
+  if (!pointer || isNaN(pointer.x) || isNaN(pointer.y)) {
+    console.warn('[⚠️ pointer 無效] ', pointer);
+    return;
+  }
+
+  const target = e.target;
+
+  // 🧽 橡皮擦工具：刪除單一物件
+  if (currentTool.value === 'removeOne') {
+    if (
+      target &&
+      target instanceof fabric.Object &&
+      target !== canvas.backgroundImage &&
+      target !== canvas.getObjects().find(obj => obj === canvas.backgroundImage)
+    ) {
+      canvas.remove(target);
+      canvas.renderAll();
+      toast.success('已刪除選取物件');
+    } else {
+      console.warn('[🛡️ Skip Remove] 不合法 target 或背景圖被忽略', target);
+    }
+    return;
+  }
+
+  // ✋ 平移模式（含觸控模式）
+  if (currentTool.value === 'move' || e.e.altKey || e.e.pointerType === 'touch') {
     isPanning.value = true;
     canvas.setCursor('grab');
     canvas.renderAll();
     return;
   }
 
-  // 🔧【刪除單一物件（橡皮擦工具）】
-  if (currentTool.value === 'removeOne') {
-    if (
-      e.target &&
-      e.target !== canvas.backgroundImage &&
-      e.target.type !== 'backgroundImage'
-    ) {
-      canvas.remove(e.target);
-      canvas.renderAll();
-      toast.success('已刪除選取物件');
-    }
-    return;
-  }
-
-  // 😊【插入 Emoji】
+  // 😊 插入 Emoji
   if (currentTool.value === 'emoji' && selectedEmoji.value) {
     const fontSize = selectedEmoji.value === '➡︎' ? 120 : 60;
     const t = new fabric.IText(selectedEmoji.value, {
@@ -381,7 +430,7 @@ function initCanvas() {
     return;
   }
 
-  // ✍️【插入文字】
+  // ✍️ 插入文字
   if (currentTool.value === 'text') {
     const t = new fabric.IText('請輸入文字', {
       left: pointer.x,
@@ -401,9 +450,18 @@ function initCanvas() {
     return;
   }
 
-  // 🖌️【繪製圖形】
+  // 🖌️ 若不是畫圖工具則結束
   if (!currentTool.value || currentTool.value === 'pencil') return;
 
+  // 🔍 保底：若背景圖意外被移除，補回
+  if (!canvas.backgroundImage) {
+    console.warn('⚠️ 背景圖消失，自動補回');
+    fabric.Image.fromURL(URL.createObjectURL(props.file), (img) => {
+      canvas.setBackgroundImage(img, () => canvas.renderAll(), { crossOrigin: 'anonymous' });
+    });
+  }
+
+  // 🎯 開始繪圖
   startX = pointer.x;
   startY = pointer.y;
 
@@ -440,6 +498,8 @@ function initCanvas() {
 
   if (tempObject) canvas.add(tempObject);
 });
+
+
 
 
 
@@ -565,14 +625,6 @@ function undo() {
   canvas.loadFromJSON(lastState, () => canvas.renderAll())
 }
 
-function clearSelected() {
-  const activeObject = canvas?.getActiveObject()
-  if (activeObject) {
-    pushHistory()
-    canvas.remove(activeObject)
-    canvas.renderAll()
-  }
-}
 
 function clearAllObjects() {
   if (!canvas) return
@@ -650,28 +702,30 @@ function updateZoom(value) {
   overflow: auto;
   min-height: 0;
   background-color: #f0f0f0;
-  padding: 10px;
+  padding: 10px 10px 40px 10px; /* ✅ 原為 60px，減少底部預留 */
 }
+
 .editor-canvas {
-  box-shadow: 0 0 5px rgba(0,0,0,0.2);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
 }
+
 :global(.image-editor-dialog-content) {
   margin: 0 !important;
   height: 100% !important;
   max-height: 100% !important;
   overflow-y: hidden;
 }
+
 :global(.image-editor-dialog-content > .v-card) {
   height: 100%;
   border-radius: 0 !important;
 }
 
 .toolbar-row {
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
-
 
 .custom-slider-popup {
   background-color: rgba(0, 0, 0, 0.6); /* 60% 黑底 */
@@ -680,4 +734,14 @@ function updateZoom(value) {
   width: 180px;
 }
 
+:deep(.editor-toolbar-bottom) {
+  padding: 6px 20px !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  min-height: 48px !important;
+  justify-content: space-between !important;
+}
+
+
 </style>
+
