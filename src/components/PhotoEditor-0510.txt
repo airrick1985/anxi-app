@@ -271,11 +271,6 @@ function resizeCanvasAndBackground() {
 onMounted(() => nextTick(initCanvas))
 
 function initCanvas() {
-  if (!canvasEl.value) {
-    console.warn('⚠️ canvas DOM 未準備好，跳過初始化');
-    return;
-  }
-
   if (canvas) {
     canvas.dispose();
     canvas = null;
@@ -283,27 +278,10 @@ function initCanvas() {
 
   canvas = new fabric.Canvas(canvasEl.value, {
     selection: true,
-    stopContextMenu: true,
     fireRightClick: true,
-    imageSmoothingEnabled: true
+    stopContextMenu: true,
+    imageSmoothingEnabled: true,
   });
-
-canvas.on('touch:gesture', function (opt) {
-  if (opt.e.touches && opt.e.touches.length === 2) {
-    const zoom = canvas.getZoom();
-    const delta = opt.e.scale;
-    let newZoom = zoom * delta;
-
-    newZoom = Math.max(0.5, Math.min(3, newZoom));
-    canvas.zoomToPoint({ x: opt.self.x, y: opt.self.y }, newZoom);
-    limitViewportWithinCanvas();
-    opt.e.preventDefault();
-    opt.e.stopPropagation();
-  }
-});
-
-
-
 
   canvas.upperCanvasEl.removeAttribute('tabindex');
 
@@ -442,69 +420,37 @@ canvas.on('touch:gesture', function (opt) {
     if (tempObject) canvas.add(tempObject);
   });
 
-let lastPosX = 0;
-let lastPosY = 0;
-
-canvas.on('mouse:move', (e) => {
-  const evt = e.e;
-
-  // ✅ 拖動畫布（支援滑鼠與觸控）
-  if (isPanning.value && evt) {
-    let delta;
-
-    // 滑鼠
-    if (evt.movementX !== undefined && evt.movementY !== undefined) {
-      delta = new fabric.Point(evt.movementX, evt.movementY);
-    }
-    // 觸控：手動計算 delta
-    else if (evt.touches && evt.touches.length === 1) {
-      const touch = evt.touches[0];
-      if (lastPosX && lastPosY) {
-        delta = new fabric.Point(touch.clientX - lastPosX, touch.clientY - lastPosY);
-      }
-      lastPosX = touch.clientX;
-      lastPosY = touch.clientY;
+  canvas.on('mouse:move', (e) => {
+    if (isPanning.value && e.e) {
+      canvas.relativePan(new fabric.Point(e.e.movementX, e.e.movementY));
+      return;
     }
 
-    if (delta) {
-      canvas.relativePan(delta);
-      limitViewportWithinCanvas?.(); // 保持畫布不拖出邊界
+    if (!tempObject) return;
+    const pointer = canvas.getPointer(e.e);
+    const w = pointer.x - startX;
+    const h = pointer.y - startY;
+
+    if (tempObject.type === 'rect') {
+      tempObject.set({
+        width: Math.abs(w),
+        height: Math.abs(h),
+        left: w < 0 ? pointer.x : startX,
+        top: h < 0 ? pointer.y : startY
+      });
+    } else if (tempObject.type === 'ellipse') {
+      tempObject.set({
+        rx: Math.abs(w) / 2,
+        ry: Math.abs(h) / 2,
+        left: Math.min(startX, pointer.x),
+        top: Math.min(startY, pointer.y)
+      });
+    } else if (tempObject.type === 'line') {
+      tempObject.set({ x2: pointer.x, y2: pointer.y });
     }
 
-    return;
-  }
-
-  // 清除 touch pan 座標紀錄（結束時）
-  lastPosX = 0;
-  lastPosY = 0;
-
-  // ✅ 畫圖邏輯
-  if (!tempObject) return;
-  const pointer = canvas.getPointer(evt);
-  const w = pointer.x - startX;
-  const h = pointer.y - startY;
-
-  if (tempObject.type === 'rect') {
-    tempObject.set({
-      width: Math.abs(w),
-      height: Math.abs(h),
-      left: w < 0 ? pointer.x : startX,
-      top: h < 0 ? pointer.y : startY
-    });
-  } else if (tempObject.type === 'ellipse') {
-    tempObject.set({
-      rx: Math.abs(w) / 2,
-      ry: Math.abs(h) / 2,
-      left: Math.min(startX, pointer.x),
-      top: Math.min(startY, pointer.y)
-    });
-  } else if (tempObject.type === 'line') {
-    tempObject.set({ x2: pointer.x, y2: pointer.y });
-  }
-
-  canvas.renderAll();
-});
-
+    canvas.renderAll();
+  });
 
   canvas.on('mouse:up', () => {
     tempObject = null;
@@ -625,11 +571,7 @@ async function exportImage() {
 
 
 <style scoped>
-html, body {
-  touch-action: none;
-}
 .editor-wrapper {
-touch-action: none;
   flex-grow: 1;
   display: flex;
   justify-content: center;
