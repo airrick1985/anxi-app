@@ -1,7 +1,12 @@
 <template>
   <v-app>
+  
     <!-- 頂部 App Bar -->
     <v-app-bar app color="primary" dark>
+  <!-- 🔵 新增：首頁按鈕 -->
+  <v-btn icon @click="goHome" class="me-2">
+    <v-icon>mdi-home</v-icon>
+  </v-btn>
       <v-toolbar-title @mousedown="startForceUpdate" @mouseup="cancelForceUpdate" @mouseleave="cancelForceUpdate">
         ANXI 驗屋系統(富宇富御專用)
       </v-toolbar-title>
@@ -41,7 +46,8 @@
         @notify="showSnackbar"
       />
 <!-- 浮動式 BottomNavBar -->
-<BottomNavBar v-if="showBottomNav" />
+<//BottomNavBar v-if="showBottomNav" />
+      
       <!-- Footer -->
 <v-footer
   v-if="isLoginPage"
@@ -209,6 +215,12 @@ const confirmLogout = async () => {
   await userStore.clearUser();
   await router.push('/login');
   showSnackbar('已成功登出');
+};
+
+const goHome = () => {
+  if (route.path !== '/home') {
+    router.push('/home');
+  }
 };
 
 </script>

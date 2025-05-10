@@ -15,25 +15,49 @@
 
 <v-card-title class="d-flex flex-wrap justify-space-between align-center">
   <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
-  <div class="btn-group">
+
+  <div v-if="!isMobile" class="btn-group">
     <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
       <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
     </v-btn>
-
     <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
       <v-icon left>mdi-download</v-icon> 匯出 Excel
     </v-btn>
-
     <v-btn color="red" size="small" class="ml-2" :disabled="selectedKeys.length === 0" @click="confirmBulkDelete">
       <v-icon left>mdi-delete</v-icon> 刪除選取
     </v-btn>
-
-    <!-- ✅ 移入這裡 -->
     <v-btn color="grey" size="small" class="ml-2" @click="openTrashDialog">
       <v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶
     </v-btn>
   </div>
+
+  <!-- ✅ 手機版選單 -->
+  <div v-else class="my-2">
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn v-bind="props" icon>
+          <v-icon>mdi-dots-vertical</v-icon>
+        </v-btn>
+      </template>
+
+      <v-list dense>
+        <v-list-item @click="openCreateDialog">
+          <v-list-item-title><v-icon left>mdi-plus</v-icon> 新增驗屋紀錄</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="exportToExcel">
+          <v-list-item-title><v-icon left>mdi-download</v-icon> 匯出 Excel</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="confirmBulkDelete" :disabled="selectedKeys.length === 0">
+          <v-list-item-title><v-icon left>mdi-delete</v-icon> 刪除選取</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="openTrashDialog">
+          <v-list-item-title><v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+  </div>
 </v-card-title>
+
 
       <v-card-text>
         <vue-good-table
@@ -363,6 +387,19 @@
   </v-card>
 </v-dialog>
 
+<!-- ✅ 右下角浮動 + 按鈕 -->
+<v-btn
+  v-if="props.unitId && !createDialog && !detailDialog"
+  icon
+  color="success"
+  class="fab"
+  @click="openCreateDialog"
+>
+  <v-icon>mdi-plus</v-icon>
+</v-btn>
+
+
+
 
 
   </v-container>
@@ -374,6 +411,8 @@
   @done="onEditorDone"
   @cancel="showEditor = false"
 />
+
+
 
 </template>
 
@@ -468,7 +507,6 @@ const selectedRecord = ref({});
 const repairStatusOptions = ref([]);
 const editMode = ref(false);
 const windowWidth = ref(window.innerWidth);
-
 const isMobile = computed(() => windowWidth.value < 600);
 
 const baseColumns = [
@@ -998,6 +1036,15 @@ const deletePhoto = async (photoObj) => {
 ::v-deep(.v-data-table thead th) {
   background-color: #f5f5f5;
   font-weight: bold;
+}
+
+
+.fab {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 </style>
