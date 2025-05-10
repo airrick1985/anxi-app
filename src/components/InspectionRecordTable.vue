@@ -17,6 +17,7 @@
   <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
 
   <div v-if="!isMobile" class="btn-group">
+  
     <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
       <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
     </v-btn>
@@ -29,6 +30,15 @@
     <v-btn color="grey" size="small" class="ml-2" @click="openTrashDialog">
       <v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶
     </v-btn>
+    <v-btn
+  color="teal"
+  size="small"
+  class="ml-2"
+  @click="openShareDialog"
+>
+  <v-icon left>mdi-share-variant</v-icon> 產出分享頁
+</v-btn>
+
   </div>
 
   <!-- ✅ 手機版選單 -->
@@ -412,12 +422,28 @@
   @cancel="showEditor = false"
 />
 
+<v-dialog v-model="shareDialog" max-width="500px">
+  <v-card>
+    <v-card-title class="text-h6">驗屋分享頁面</v-card-title>
+    <v-card-text>
+      <p class="mb-2">請掃描 QR Code 或複製網址分享給客戶：</p>
+      <div class="text-center mb-4">
+        <img :src="qrCodeDataUrl" alt="QR Code" style="width: 200px;" />
+      </div>
+      <v-text-field v-model="shareUrl" readonly append-icon="mdi-content-copy" @click:append="copyShareUrl" />
+    </v-card-text>
+    <v-card-actions class="justify-end">
+      <v-btn text @click="shareDialog = false">關閉</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
 
 
 </template>
 
 
 <script setup>
+
 import PhotoEditor from '@/components/PhotoEditor.vue' 
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { 
@@ -433,7 +459,7 @@ import {
   restoreInspectionRecord,
   deletePhotoFromRecord
 } from '@/api';
-// ✅ fetchPost 原本就已定義於 '@/api'
+
 
 import { useToast } from 'vue-toastification';
 
@@ -981,7 +1007,41 @@ const deletePhoto = async (photoObj) => {
 
 };
 
+import { generateShareUrl } from '@/api';
+import QRCode from 'qrcode'
 
+const shareDialog = ref(false);
+const shareUrl = ref('');
+const qrCodeDataUrl = ref('');
+
+const openShareDialog = async () => {
+  if (!props.unitId) return;
+
+  isSaving.value = true;
+  try {
+    const res = await generateShareUrl(props.unitId);
+    if (res.status === 'success') {
+      shareUrl.value = res.url;
+      qrCodeDataUrl.value = await QRCode.toDataURL(res.url); // 轉成 base64 QR 圖片
+      shareDialog.value = true;
+    } else {
+      toast.error(res.message || '產生失敗');
+    }
+  } catch (e) {
+    console.error(e);
+    toast.error('產出分享頁錯誤');
+  }
+  isSaving.value = false;
+};
+
+const copyShareUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value);
+    toast.success('已複製分享連結');
+  } catch (e) {
+    toast.error('複製失敗');
+  }
+};
 
 
 </script>

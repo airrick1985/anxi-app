@@ -203,3 +203,12 @@ export async function deletePhotoFromRecord(key, photoField) {
     token: 'anxi111003'
   }, INSPECTION_API);
 }
+
+// ✅ 產出分享網址
+export async function generateShareUrl(unitId) {
+  return fetchPost({
+    action: 'generate_share_url',
+    unitId,
+    token: 'anxi111003'
+  }, INSPECTION_API);
+}
