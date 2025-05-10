@@ -16,7 +16,7 @@
       <v-card-title class="d-flex flex-wrap justify-space-between align-center">
         <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
         <div class="btn-group">
-          <v-btn color="success" class="my-4" @click="openCreateDialog">
+          <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
             <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
           </v-btn>
 
@@ -72,14 +72,15 @@
       <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
     </v-btn>
 
-    <!-- ✅ 新增驗屋紀錄 Dialog -->
+   
 <!-- 新增驗屋紀錄 Dialog -->
 <v-dialog v-model="createDialog" max-width="800">
-      <v-card>
-        <v-card-title>新增驗屋紀錄</v-card-title>
-        <v-card-text>
-          <v-form ref="formRef" lazy-validation>
-            <v-row dense>
+  <v-card class="d-flex flex-column" style="height: 90vh;">
+    <v-card-title>新增驗屋紀錄</v-card-title>
+
+    <v-card-text class="flex-grow-1 overflow-y-auto" style="padding-bottom: 100px;">
+      <v-form ref="formRef" lazy-validation>
+        <v-row dense>
               <v-col cols="12" sm="6">
                 <v-text-field label="驗屋人" v-model="newRecord.inspector" readonly required></v-text-field>
               </v-col>
@@ -135,29 +136,29 @@
     />
   </div>
 </v-col>
-
-
             </v-row>
           </v-form>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn text @click="createDialog = false">取消</v-btn>
-          <v-btn color="primary" text @click="submitRecord">儲存</v-btn>
-        </v-card-actions>
+      <v-card-actions
+      class="justify-end px-4 py-3"
+      style="position: sticky; bottom: 0; background: white; border-top: 1px solid #ddd; z-index: 2;"
+    >
+      <v-btn text @click="createDialog = false">取消</v-btn>
+      <v-btn color="primary" text @click="submitRecord">儲存</v-btn>
+    </v-card-actions>
       </v-card>
     </v-dialog>
 
 
 <!-- 詳細 Dialog -->
 <v-dialog v-model="detailDialog" max-width="800">
-  <v-card>
+  <v-card class="d-flex flex-column" style="height: 90vh;">
     <v-card-title>
       詳細資料
       <v-spacer></v-spacer>
     </v-card-title>
 
-    <v-card-text>
+    <v-card-text class="flex-grow-1 overflow-y-auto" style="padding-bottom: 100px;">
       <v-row dense>
 
         <!-- ✅ 區塊一：基本資料 -->
@@ -262,15 +263,17 @@
       </v-row>
     </v-card-text>
 
-    <v-card-actions class="d-flex justify-space-between">
+<v-card-actions
+  class="px-4 py-3"
+  style="position: sticky; bottom: 0; background: white; border-top: 1px solid #ddd; z-index: 2; justify-content: flex-end;"
+>
   <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
-  <div>
-    <!-- ✅ 新增：單筆刪除按鈕 -->
-    <v-btn color="error" text @click="confirmDeleteRecord(selectedRecord)">刪除</v-btn>
-    <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-    <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-  </div>
+  <v-btn v-if="!editMode" color="error" text @click="confirmDeleteRecord(selectedRecord)">刪除</v-btn>
+  <v-btn text @click="closeDetailDialog">關閉</v-btn>
+  <v-btn v-if="editMode" color="primary" text @click="saveRecord">儲存</v-btn>
+
 </v-card-actions>
+
   </v-card>
 </v-dialog>
 
@@ -337,8 +340,8 @@
   </v-dialog>
 
 
-<v-btn color="red" class="mb-2" @click="openTrashDialog">
-      🗑️ 垃圾桶
+<v-btn color="red" size="small" class="mb-2" @click="openTrashDialog">
+      垃圾桶
     </v-btn>
 
     <v-dialog v-model="trashDialog" max-width="800px">
@@ -870,15 +873,14 @@ const confirmDeleteRecord = async (record) => {
   isSaving.value = false;
 };
 
-const trashHeaders = [
-  { text: '建檔時間', value: 'createdAt' },
-  { text: '戶別', value: 'unit' },
-  { text: '分類', value: 'category' },
-  { text: '細項', value: 'subcategory' },
-  { text: '檢查說明', value: 'description' },
-  { text: '動作', value: 'action', sortable: false },
-];
-
+const trashHeaders = ref([ 
+  { title: '建檔時間', key: 'createdAt', value: 'createdAt' }, // key 是必須的, value 也可以加上以兼容舊的 slot 寫法
+  { title: '戶別', key: 'unit', value: 'unit' },
+  { title: '分類', key: 'category', value: 'category' },
+  { title: '細項', key: 'subcategory', value: 'subcategory' },
+  { title: '檢查說明', key: 'description', value: 'description' },
+  { title: '動作', key: 'action', value: 'action', sortable: false },
+]);
 const openTrashDialog = async () => {
   trashDialog.value = true;
   await loadDeletedRecords();
@@ -988,5 +990,15 @@ const deletePhoto = async (photoObj) => {
   color: #1976d2;
 }
 
+@media (max-width: 600px) {
+  .v-card-actions.sticky-actions {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+::v-deep(.v-data-table thead th) {
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
 
 </style>

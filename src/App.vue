@@ -43,21 +43,24 @@
 <!-- 浮動式 BottomNavBar -->
 <BottomNavBar v-if="showBottomNav" />
       <!-- Footer -->
-      <v-footer
-        color="grey lighten-4"
-        height="80"
-        class="footer-text"
-        padless
-      >
-        <v-container class="text-center py-2">
-          <div>
-            <strong>ANXI 驗屋系統</strong> ｜ 版本 v{{ appVersion }}
-          </div>
-          <div class="text-caption">
-            &copy; {{ currentYear }} ANXI. All rights reserved.
-          </div>
-        </v-container>
-      </v-footer>
+<v-footer
+  v-if="isLoginPage"
+  color="grey lighten-4"
+  height="80"
+  class="footer-text"
+  padless
+>
+  <v-container class="text-center py-2">
+    <div>
+      <strong>ANXI 驗屋系統</strong> ｜ 版本 v{{ appVersion }}
+    </div>
+    <div class="text-caption">
+      &copy; {{ currentYear }} ANXI. All rights reserved.
+    </div>
+  </v-container>
+</v-footer>
+
+
     </v-main>
 
     <!-- 個人資料 Dialog -->
@@ -104,6 +107,8 @@ import EditProfileDialog from './components/EditProfileDialog.vue';
 import BottomNavBar from './components/BottomNavBar.vue';
 import UpdateDialog from './components/UpdateDialog.vue';
 import manifest from '../public/manifest.json';
+
+const isLoginPage = computed(() => route.name === 'Login');
 
 
 const userStore = useUserStore();
