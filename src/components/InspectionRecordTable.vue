@@ -13,23 +13,28 @@
         <v-progress-circular indeterminate size="64" color="primary" />
       </v-overlay>
 
-      <v-card-title class="d-flex flex-wrap justify-space-between align-center">
-        <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
-        <div class="btn-group">
-          <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
-            <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-          </v-btn>
+<v-card-title class="d-flex flex-wrap justify-space-between align-center">
+  <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
+  <div class="btn-group">
+    <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
+      <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
+    </v-btn>
 
-          <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
-            <v-icon left>mdi-download</v-icon> 匯出 Excel
-          </v-btn>
+    <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
+      <v-icon left>mdi-download</v-icon> 匯出 Excel
+    </v-btn>
 
-          <!-- ✅ 多筆刪除按鈕 -->
-          <v-btn color="red" size="small" class="ml-2" :disabled="selectedKeys.length === 0" @click="confirmBulkDelete">
-            <v-icon left>mdi-delete</v-icon> 刪除選取
-          </v-btn>
-        </div>
-      </v-card-title>
+    <v-btn color="red" size="small" class="ml-2" :disabled="selectedKeys.length === 0" @click="confirmBulkDelete">
+      <v-icon left>mdi-delete</v-icon> 刪除選取
+    </v-btn>
+
+    <!-- ✅ 移入這裡 -->
+    <v-btn color="grey" size="small" class="ml-2" @click="openTrashDialog">
+      <v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶
+    </v-btn>
+  </div>
+</v-card-title>
+
       <v-card-text>
         <vue-good-table
           v-if="displayRecords.length > 0"
@@ -67,10 +72,6 @@
 
 
 
-    <!-- 新增驗屋紀錄按鈕 -->
-    <v-btn color="success" class="my-4" @click="openCreateDialog">
-      <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-    </v-btn>
 
    
 <!-- 新增驗屋紀錄 Dialog -->
@@ -340,9 +341,7 @@
   </v-dialog>
 
 
-<v-btn color="red" size="small" class="mb-2" @click="openTrashDialog">
-      垃圾桶
-    </v-btn>
+
 
     <v-dialog v-model="trashDialog" max-width="800px">
   <v-card>
