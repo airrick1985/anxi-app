@@ -260,6 +260,29 @@
 
 <v-btn color="info" text @click="openPhotos(selectedRecord)">缺失照片</v-btn>
 
+<!-- ✅ 新增缺失照片（僅編輯模式下顯示） -->
+<template v-if="editMode">
+  <v-col cols="12">
+    <div class="section-title">新增缺失照片</div>
+  </v-col>
+
+  <v-col cols="12" sm="3" v-for="n in 4" :key="'detail-photo-' + n">
+    <v-file-input
+      :label="`上傳照片${n}`"
+      v-model="selectedRecord[`newPhoto${n}`]"
+      accept="image/*"
+      prepend-icon="mdi-camera"
+      @update:model-value="file => handleFileChange(file, n)"
+    />
+    <div v-if="previewUrls[n]" class="mt-2 text-center">
+      <img
+        :src="previewUrls[n]"
+        style="max-width: 100%; max-height: 100px; object-fit: contain; border: 1px solid #ccc; border-radius: 4px;"
+      />
+    </div>
+  </v-col>
+</template>
+
 
 <!-- ✅ 區塊三：檢修處理 -->
 <v-col cols="12">
@@ -456,7 +479,8 @@ import {
   fetchAllSubcategories,
   fetchDeletedInspectionRecords, 
   restoreInspectionRecord,
-  deletePhotoFromRecord
+  deletePhotoFromRecord,
+  fetchInspectionUpdateWithPhotos
 } from '@/api';
 
 
@@ -485,13 +509,14 @@ const onEditorDone = async (annotatedFile) => {
   const idx = editingIdx.value;
   if (!idx) return;
 
-  // 1. 儲存編輯後的圖片到 newRecord
-  newRecord.value[`photo${idx}`] = annotatedFile;
+  // 判斷目前處在哪個 dialog 中
+  if (createDialog.value) {
+    newRecord.value[`photo${idx}`] = annotatedFile;
+  } else if (detailDialog.value) {
+    selectedRecord.value[`newPhoto${idx}`] = annotatedFile;
+  }
 
-  // 2. 顯示預覽圖
-  previewImage(annotatedFile, idx);
-
-  // 3. 關閉編輯器
+  previewImage(annotatedFile, idx); // 顯示預覽圖
   showEditor.value = false;
 }
 
@@ -665,29 +690,84 @@ const openDetailDialog = (row) => {
 };
 
 const closeDetailDialog = () => {
+  // 清空暫存 newPhoto 與預覽圖
+  for (let i = 1; i <= 4; i++) {
+    delete selectedRecord.value[`newPhoto${i}`];
+
+    if (previewUrls.value[i]) {
+      URL.revokeObjectURL(previewUrls.value[i]);
+      delete previewUrls.value[i];
+    }
+  }
+
   detailDialog.value = false;
   editMode.value = false;
 };
 
+
 const saveRecord = async () => {
   isSaving.value = true;
 
-  const res = await fetchInspectionUpdate(selectedRecord.value); // ✅ 改成這行
+  try {
+    const record = { ...selectedRecord.value };
+    const photos = [];
 
-  if (res.status === 'success') {
-    await loadRecords();
-    snackbarMessage.value = '儲存成功！';
-    snackbarColor.value = 'green';
-    showSnackbar.value = true;
-    detailDialog.value = false;
-  } else {
-    snackbarMessage.value = '儲存失敗：' + res.message;
+    // 處理四張照片
+    for (let i = 1; i <= 4; i++) {
+      const newFile = record[`newPhoto${i}`];
+
+      if (!newFile) {
+        photos.push(record[`photo${i}`] || ''); // 保留原圖或空值
+        continue;
+      }
+
+      const readerResult = await readFileAsBase64(newFile);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `${record.key}_照片${i}.jpg`;
+
+      const res = await uploadPhotoToDrive(filename, readerResult);
+      photos.push(res.status === 'success' ? res.url : '');
+    }
+
+    const payload = {
+      ...record,
+      photo1: photos[0],
+      photo2: photos[1],
+      photo3: photos[2],
+      photo4: photos[3]
+    };
+
+    const res = await fetchInspectionUpdateWithPhotos(payload);
+
+    // 清空 newPhoto 欄位與預覽圖
+for (let i = 1; i <= 4; i++) {
+  delete selectedRecord.value[`newPhoto${i}`];
+
+  if (previewUrls.value[i]) {
+    URL.revokeObjectURL(previewUrls.value[i]);
+    delete previewUrls.value[i];
+  }
+}
+
+    if (res.status === 'success') {
+      await loadRecords();
+      snackbarMessage.value = '儲存成功！';
+      snackbarColor.value = 'green';
+      detailDialog.value = false;
+    } else {
+      snackbarMessage.value = '儲存失敗：' + res.message;
+      snackbarColor.value = 'red';
+    }
+  } catch (err) {
+    console.error(err);
+    snackbarMessage.value = '儲存時發生錯誤';
     snackbarColor.value = 'red';
-    showSnackbar.value = true;
   }
 
+  showSnackbar.value = true;
   isSaving.value = false;
 };
+
 
 
 
@@ -886,14 +966,21 @@ const previewImage = (file, index) => {
 
 const handleFileChange = (file, idx) => {
   if (!file) {
-    previewUrls.value[idx] = null
-    newRecord.value[`photo${idx}`] = null
-    return
+    previewUrls.value[idx] = null;
+
+    if (createDialog.value) {
+      newRecord.value[`photo${idx}`] = null;
+    } else if (detailDialog.value) {
+      selectedRecord.value[`newPhoto${idx}`] = null;
+    }
+    return;
   }
-  editingIdx.value = idx
-  tempFile.value = file
-  showEditor.value = true
-}
+
+  editingIdx.value = idx;
+  tempFile.value = file;
+  showEditor.value = true;
+};
+
 
 
 

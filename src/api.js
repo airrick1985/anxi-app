@@ -212,3 +212,11 @@ export async function generateShareUrl(unitId) {
     token: 'anxi111003'
   }, INSPECTION_API);
 }
+
+export async function fetchInspectionUpdateWithPhotos(payload) {
+  return fetchPost({
+    action: 'edit_inspection_record_with_photos',
+    token: 'anxi111003',
+    ...payload
+  }, INSPECTION_API);
+}
