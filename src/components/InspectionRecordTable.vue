@@ -86,6 +86,12 @@
                 缺失照片
               </v-btn>
             </template>
+            <template v-else-if="props.column.field === 'repairPhotos'">
+              <v-btn size="small" color="indigo" @click="openPhotos(props.row, true)">
+                檢修照片
+              </v-btn>
+            </template>
+
             <template v-else-if="props.column.field === 'actions'">
               <v-btn size="small" color="secondary" class="mr-1" @click="openDetailDialog(props.row)">
                 詳細
@@ -226,7 +232,8 @@
 
 <!-- ✅ 區塊二：檢查內容 -->
 <v-col cols="12">
-  <div class="section-title">檢查內容</div>
+  <div class="section-title">檢查內容</div><v-btn color="info" text @click="openPhotos(selectedRecord)">缺失照片</v-btn>
+
 </v-col>
 <v-col cols="12" sm="6" v-for="field in ['unit', 'area', 'category', 'subcategory', 'inspectionStatus', 'defectLevel', 'description']" :key="field">
   <template v-if="editMode">
@@ -258,7 +265,6 @@
   </template>
 </v-col>
 
-<v-btn color="info" text @click="openPhotos(selectedRecord)">缺失照片</v-btn>
 
 <!-- ✅ 新增缺失照片（僅編輯模式下顯示） -->
 <template v-if="editMode">
@@ -286,8 +292,10 @@
 
 <!-- ✅ 區塊三：檢修處理 -->
 <v-col cols="12">
-  <div class="section-title">檢修處理</div>
+  <div class="section-title">檢修處理</div>      <v-btn color="indigo" text @click="openPhotos(selectedRecord, true)">檢修照片</v-btn>
+
 </v-col>
+
 <v-col cols="12" sm="6" v-for="field in ['repairDate', 'repairStatus', 'repairDescription']" :key="field">
   <template v-if="editMode">
     <v-text-field
@@ -316,10 +324,36 @@
     <div><strong>{{ formatLabel(field) }}：</strong> {{ selectedRecord[field] || '—' }}</div>
   </template>
 </v-col>
-
       </v-row>
-    </v-card-text>
+      
 
+
+<!-- ✅ 區塊四：新增檢修照片（editMode 時可見） -->
+<template v-if="editMode">
+  <v-col cols="12">
+    <div class="section-title">新增檢修照片</div>
+  </v-col>
+
+  <v-col cols="12" sm="3" v-for="n in 4" :key="'repair-photo-' + n">
+    <v-file-input
+      v-model="selectedRecord[`repairPhoto${n}`]"
+      :label="`檢修照片${n}`"
+      accept="image/*"
+      prepend-icon="mdi-camera"
+      @update:model-value="file => handleRepairPhotoChange(file, n)"
+    />
+    <div v-if="previewRepairUrls[n]" class="mt-2 text-center">
+      <img
+        :src="previewRepairUrls[n]"
+        style="max-width: 100%; max-height: 100px; object-fit: contain; border: 1px solid #ccc; border-radius: 4px;"
+      />
+    </div>
+  </v-col>
+</template>
+
+
+      
+    </v-card-text>
 <v-card-actions
   class="px-4 py-3"
   style="position: sticky; bottom: 0; background: white; border-top: 1px solid #ddd; z-index: 2; justify-content: flex-end;"
@@ -338,9 +372,8 @@
 <!-- 缺失照片 Dialog -->
 <v-dialog v-model="photoDialog" max-width="800">
     <v-card>
-      <v-card-title>缺失照片</v-card-title>
+      <v-card-title>{{ isRepairView ? '檢修照片' : '缺失照片' }}</v-card-title>
       <v-card-text>
-
         <v-carousel
   v-if="currentPhotos.length"
   hide-delimiters
@@ -387,7 +420,14 @@
         <v-btn icon @click="zoomImageDialog = false">
           <v-icon>mdi-close</v-icon>
         </v-btn>
-        <v-toolbar-title>{{ zoomImageCaption }}</v-toolbar-title>
+<div
+  class="custom-toolbar-title"
+  :style="{ fontSize: isMobile.value ? '0.8rem' : '1.2rem' }"
+>
+  {{ zoomImageCaption }}
+</div>
+
+
         <v-spacer></v-spacer>
       </v-toolbar>
       <v-card-text class="d-flex justify-center align-center" style="height: 100%;">
@@ -489,10 +529,12 @@ import { useToast } from 'vue-toastification';
 const toast = useToast();
 const trashDialog = ref(false);
 const deletedRecords = ref([]);
-
 const showEditor   = ref(false)   // 控制 Dialog
 const editingIdx   = ref(null)    // 1~4，正在編輯哪一張
 const tempFile     = ref(null)    // 使用者剛挑的原始檔
+const previewRepairUrls = ref({});
+const isRepairPhoto = ref(false); // ✅ 判斷是否為檢修照片模式
+
 
 import { utils, writeFile } from 'xlsx';
 import { VueGoodTable } from 'vue-good-table-next';
@@ -509,16 +551,23 @@ const onEditorDone = async (annotatedFile) => {
   const idx = editingIdx.value;
   if (!idx) return;
 
-  // 判斷目前處在哪個 dialog 中
   if (createDialog.value) {
     newRecord.value[`photo${idx}`] = annotatedFile;
+    previewImage(annotatedFile, idx);
   } else if (detailDialog.value) {
-    selectedRecord.value[`newPhoto${idx}`] = annotatedFile;
+    if (isRepairPhoto.value) {
+      selectedRecord.value[`repairPhoto${idx}`] = annotatedFile;
+      previewRepairUrls.value[idx] = URL.createObjectURL(annotatedFile);
+    } else {
+      selectedRecord.value[`newPhoto${idx}`] = annotatedFile;
+      previewImage(annotatedFile, idx);
+    }
   }
 
-  previewImage(annotatedFile, idx); // 顯示預覽圖
   showEditor.value = false;
-}
+  isRepairPhoto.value = false;
+};
+
 
 
 
@@ -558,6 +607,9 @@ const repairStatusOptions = ref([]);
 const editMode = ref(false);
 const windowWidth = ref(window.innerWidth);
 const isMobile = computed(() => windowWidth.value < 600);
+onMounted(() => window.addEventListener('resize', () => (windowWidth.value = window.innerWidth)));
+onUnmounted(() => window.removeEventListener('resize', () => (windowWidth.value = window.innerWidth)));
+
 
 const baseColumns = [
   { label: '建檔時間', field: 'createdAt' },
@@ -576,6 +628,7 @@ const baseColumns = [
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '檢修說明', field: 'repairDescription' },
   { label: '缺失照片', field: 'photos' },
+  { label: '檢修照片', field: 'repairPhotos' }, 
   { label: '操作', field: 'actions' }
 ];
 
@@ -602,12 +655,14 @@ onUnmounted(() => window.removeEventListener('resize', updateWindowWidth));
 const updateWindowWidth = () => windowWidth.value = window.innerWidth;
 
 watch(() => props.records, (newVal) => {
-  displayRecords.value = newVal
-  .filter(r => r.deleted !== 'Y') 
+displayRecords.value = newVal
+  .filter(r => r.deleted !== 'Y')
   .map(row => ({
     ...row,
-    photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean)
+    photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean),
+    repairPhotos: [row.defectPhoto1, row.defectPhoto2, row.defectPhoto3, row.defectPhoto4].filter(Boolean)
   }));
+
 }, { immediate: true });
 
 
@@ -650,32 +705,38 @@ const loadDropdownOptions = async () => {
 const zoomImageDialog = ref(false);
 const zoomImageUrl = ref('');
 const zoomImageCaption = ref(''); // 新增：顯示檢查說明
+const isRepairView = ref(false);
 
-
-const openPhotos = (row) => {
-  // ① 把當前 row 設成選中紀錄，供 deletePhoto() 使用
+const openPhotos = (row, isRepair = false) => {
   selectedRecord.value = { ...row };
+  isRepairView.value = isRepair;
 
-  currentPhotos.value = ['photo1', 'photo2', 'photo3', 'photo4']
+  const photoFields = isRepair
+    ? ['defectPhoto1', 'defectPhoto2', 'defectPhoto3', 'defectPhoto4']
+    : ['photo1', 'photo2', 'photo3', 'photo4'];
+
+  currentPhotos.value = photoFields
     .map(field => {
-      const originalUrl = row[field];
-      if (!originalUrl) return null;
+      const url = row[field];
+      if (!url) return null;
 
-      const m = originalUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
-                originalUrl.match(/\/d=([a-zA-Z0-9_-]+)/);
+      const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
       if (!m) return null;
 
       return {
         preview: `https://lh3.googleusercontent.com/d/${m[1]}=w800`,
-        fileId : m[1],
-        field  : field
+        fileId: m[1],
+        field
       };
     })
     .filter(Boolean);
 
-  zoomImageCaption.value = row.description || '放大檢視';
+  zoomImageCaption.value = isRepair
+  ? `${row.unit}-${row.area}-${row.category}-${row.subcategory}-${row.repairStatus}-${row.repairDescription}`
+  : `${row.unit}-${row.area}-${row.category}-${row.subcategory}-${row.inspectionStatus}-${row.description}`;
   photoDialog.value = true;
 };
+
 
 
 
@@ -693,10 +754,16 @@ const closeDetailDialog = () => {
   // 清空暫存 newPhoto 與預覽圖
   for (let i = 1; i <= 4; i++) {
     delete selectedRecord.value[`newPhoto${i}`];
-
     if (previewUrls.value[i]) {
       URL.revokeObjectURL(previewUrls.value[i]);
       delete previewUrls.value[i];
+    }
+
+    // ✅ 清除檢修照片的暫存與預覽圖
+    delete selectedRecord.value[`repairPhoto${i}`];
+    if (previewRepairUrls.value[i]) {
+      URL.revokeObjectURL(previewRepairUrls.value[i]);
+      delete previewRepairUrls.value[i];
     }
   }
 
@@ -705,37 +772,54 @@ const closeDetailDialog = () => {
 };
 
 
+
+
 const saveRecord = async () => {
   isSaving.value = true;
 
   try {
     const record = { ...selectedRecord.value };
     const photos = [];
+    const repairPhotos = [];  
 
-    // 處理四張照片
-    for (let i = 1; i <= 4; i++) {
-      const newFile = record[`newPhoto${i}`];
 
-      if (!newFile) {
-        photos.push(record[`photo${i}`] || ''); // 保留原圖或空值
-        continue;
-      }
 
-      const readerResult = await readFileAsBase64(newFile);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `${record.key}_照片${i}.jpg`;
+for (let i = 1; i <= 4; i++) {
+  // 處理主照片（photo1 ~ photo4）
+  const newFile = record[`newPhoto${i}`];
+  if (!newFile) {
+    photos.push(record[`photo${i}`] || '');
+  } else {
+    const readerResult = await readFileAsBase64(newFile);
+    const filename = `${record.key}_照片${i}.jpg`;
+    const res = await uploadPhotoToDrive(filename, readerResult);
+    photos.push(res.status === 'success' ? res.url : '');
+  }
 
-      const res = await uploadPhotoToDrive(filename, readerResult);
-      photos.push(res.status === 'success' ? res.url : '');
-    }
+  // 處理檢修照片（repairPhoto1 ~ repairPhoto4）
+  const repairFile = record[`repairPhoto${i}`];
+  if (!repairFile) {
+    repairPhotos.push(record[`defectPhoto${i}`] || '');
+  } else {
+    const readerResult = await readFileAsBase64(repairFile);
+    const filename = `${record.key}_缺失照片${i}.jpg`;
+    const res = await uploadPhotoToDrive(filename, readerResult);
+    repairPhotos.push(res.status === 'success' ? res.url : '');
+  }
+}
 
-    const payload = {
-      ...record,
-      photo1: photos[0],
-      photo2: photos[1],
-      photo3: photos[2],
-      photo4: photos[3]
-    };
+const payload = {
+  ...record,
+  photo1: photos[0],
+  photo2: photos[1],
+  photo3: photos[2],
+  photo4: photos[3],
+  defectPhoto1: repairPhotos[0],
+  defectPhoto2: repairPhotos[1],
+  defectPhoto3: repairPhotos[2],
+  defectPhoto4: repairPhotos[3]
+};
+
 
     const res = await fetchInspectionUpdateWithPhotos(payload);
 
@@ -746,6 +830,16 @@ for (let i = 1; i <= 4; i++) {
   if (previewUrls.value[i]) {
     URL.revokeObjectURL(previewUrls.value[i]);
     delete previewUrls.value[i];
+  }
+}
+
+// 清除暫存 repairPhoto 與預覽
+for (let i = 1; i <= 4; i++) {
+  delete selectedRecord.value[`repairPhoto${i}`];
+
+  if (previewRepairUrls.value[i]) {
+    URL.revokeObjectURL(previewRepairUrls.value[i]);
+    delete previewRepairUrls.value[i];
   }
 }
 
@@ -775,13 +869,15 @@ const loadRecords = async () => {
   const result = await fetchInspectionRecords(props.unitId);
   if (result.status === 'success') {
     displayRecords.value = result.records
-    .filter(r => r.deleted !== 'Y') 
-    .map(row => ({
-      ...row,
-      photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean)
-    }));
+      .filter(r => r.deleted !== 'Y') 
+      .map(row => ({
+        ...row,
+        photos: [row.photo1, row.photo2, row.photo3, row.photo4].filter(Boolean),
+        repairPhotos: [row.defectPhoto1, row.defectPhoto2, row.defectPhoto3, row.defectPhoto4].filter(Boolean)
+      }));
   }
 };
+
 
 const loadRepairStatusOptions = async () => {
   repairStatusOptions.value = await getRepairStatusOptions();
@@ -1064,34 +1160,44 @@ const deletePhoto = async (photoObj) => {
   const { fileId, field } = photoObj;
   const key = selectedRecord.value.key;
 
-  // 雙保險：確認欄位真的含這個 fileId
+  // 保險：確認欄位值含有該 fileId
   if (!selectedRecord.value[field] || !selectedRecord.value[field].includes(fileId)) {
     alert('找不到對應欄位，無法刪除');
     return;
   }
 
-  isSaving.value = true; // ✅ 開始 loading
+  isSaving.value = true;
 
   try {
-    // ✔ 用已經封裝好的函式，才會打到 vercel‐proxy 的網址
     const res = await deletePhotoFromRecord(key, field);
 
     if (res.status === 'success') {
-      // 移除 carousel 中的圖
+      // ✅ 從 currentPhotos 中移除
       currentPhotos.value = currentPhotos.value.filter(p => p.fileId !== fileId);
-      await loadRecords();            // 重新抓最新資料
-      toast.success(res.message || '照片已刪除'); // ✅ 改用 toast 成功訊息
+
+      // ✅ 清空欄位
+      selectedRecord.value[field] = '';
+
+      // ✅ 清空預覽（根據欄位是主照還是檢修）
+      const idx = field.replace(/[^\d]/g, '');
+      if (isRepairView.value) {
+        delete previewRepairUrls.value[idx];
+      } else {
+        delete previewUrls.value[idx];
+      }
+
+      toast.success('照片已刪除');
     } else {
-      toast.error(res.message || '刪除失敗'); // ✅ 改用 toast
+      toast.error(res.message || '刪除失敗');
     }
   } catch (e) {
     console.error(e);
-    alert('刪除過程出錯');
+    toast.error('刪除過程出錯');
   }
 
-  isSaving.value = false; // ✅ 結束 loading
-
+  isSaving.value = false;
 };
+
 
 import { generateShareUrl } from '@/api';
 import QRCode from 'qrcode'
@@ -1128,6 +1234,23 @@ const copyShareUrl = async () => {
     toast.error('複製失敗');
   }
 };
+
+const handleRepairPhotoChange = (file, idx) => {
+  if (!file) {
+    previewRepairUrls.value[idx] = null;
+    selectedRecord.value[`repairPhoto${idx}`] = null;
+    return;
+  }
+
+  isRepairPhoto.value = true;
+  editingIdx.value = idx;
+  tempFile.value = file;
+  showEditor.value = true;
+};
+
+const zoomTitleClass = computed(() => {
+  return isMobile.value ? 'zoom-title-mobile' : 'zoom-title-desktop';
+});
 
 
 </script>
@@ -1193,22 +1316,31 @@ const copyShareUrl = async () => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-/* 讓TABLE所有欄位文字置中 */
-::v-deep(.vue-good-table .vgt-table th) { /* 表頭文字置中 */
-  text-align: center !important;
-  vertical-align: middle !important;
+::v-deep(.v-toolbar-title) {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  display: block !important; /* 有助於換行顯示 */
+  line-height: 1.4 !important;
 }
 
-::v-deep(.vue-good-table .vgt-table td) {
-  text-align: center !important; /* 針對普通文字內容 */
-  vertical-align: middle !important;
-  
-  /* 新增：使用 flex 居中按鈕等子元素 */
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.zoom-title-mobile {
+  font-size: 0.8rem;
+  white-space: normal;
+  line-height: 1.4;
 }
 
+.zoom-title-desktop {
+  font-size: 1.2rem;
+  white-space: normal;
+  line-height: 1.4;
+}
 
+.custom-toolbar-title {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+  max-width: 80vw;
+}
 
 </style>
