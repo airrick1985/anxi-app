@@ -37,6 +37,9 @@ const houseDetailFields = computed(() => {
     電話: d.phone
       ? `📞 <a href="tel:${d.phone}">${d.phone}</a>`
       : '',
+    EMAIL: d.email
+      ? `📧 <a href="mailto:${d.email}">${d.email}</a>`
+      : '',
     驗屋階段: d.inspectionStage,
     預約日期: d.appointmentDate || '尚未預約',
     預約時段: d.appointmentTime || '尚未預約',
@@ -48,6 +51,7 @@ const houseDetailFields = computed(() => {
       : '無'
   };
 });
+
 </script>
 
 <style scoped>
