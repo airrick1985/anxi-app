@@ -13,23 +13,61 @@
         <v-progress-circular indeterminate size="64" color="primary" />
       </v-overlay>
 
-      <v-card-title class="d-flex flex-wrap justify-space-between align-center">
-        <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
-        <div class="btn-group">
-          <v-btn color="success" class="my-4" @click="openCreateDialog">
-            <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-          </v-btn>
+<v-card-title class="d-flex flex-wrap justify-space-between align-center">
+  <span class="text-title">驗屋紀錄（戶別：{{ unitId }}）</span>
 
-          <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
-            <v-icon left>mdi-download</v-icon> 匯出 Excel
-          </v-btn>
+  <div v-if="!isMobile" class="btn-group">
+  
+    <v-btn color="success" size="small" class="my-4" @click="openCreateDialog">
+      <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
+    </v-btn>
+    <v-btn color="primary" size="small" class="ml-2" @click="exportToExcel">
+      <v-icon left>mdi-download</v-icon> 匯出 Excel
+    </v-btn>
+    <v-btn color="red" size="small" class="ml-2" :disabled="selectedKeys.length === 0" @click="confirmBulkDelete">
+      <v-icon left>mdi-delete</v-icon> 刪除選取
+    </v-btn>
+    <v-btn color="grey" size="small" class="ml-2" @click="openTrashDialog">
+      <v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶
+    </v-btn>
+    <v-btn color="teal" size="small" class="ml-2" @click="openShareDialog">
+  <v-icon left>mdi-share-variant</v-icon> 產出分享頁
+</v-btn>
+  </div>
 
-          <!-- ✅ 多筆刪除按鈕 -->
-          <v-btn color="red" size="small" class="ml-2" :disabled="selectedKeys.length === 0" @click="confirmBulkDelete">
-            <v-icon left>mdi-delete</v-icon> 刪除選取
-          </v-btn>
-        </div>
-      </v-card-title>
+  <!-- ✅ 手機版選單 -->
+  <div v-else class="my-2">
+    <v-menu>
+      <template #activator="{ props }">
+        <v-btn v-bind="props" icon>
+          <v-icon>mdi-dots-vertical</v-icon>
+        </v-btn>
+      </template>
+
+      <v-list dense>
+        <v-list-item @click="openCreateDialog">
+          <v-list-item-title><v-icon left>mdi-plus</v-icon> 新增驗屋紀錄</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="exportToExcel">
+          <v-list-item-title><v-icon left>mdi-download</v-icon> 匯出 Excel</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="confirmBulkDelete" :disabled="selectedKeys.length === 0">
+          <v-list-item-title><v-icon left>mdi-delete</v-icon> 刪除選取</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="openTrashDialog">
+          <v-list-item-title><v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="openShareDialog">
+        <v-list-item-title>
+          <v-icon left>mdi-share-variant</v-icon> 產出分享頁
+        </v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+  </div>
+</v-card-title>
+
+
       <v-card-text>
         <vue-good-table
           v-if="displayRecords.length > 0"
@@ -45,7 +83,7 @@
             </template>
             <template v-else-if="props.column.field === 'photos'">
               <v-btn size="small" color="primary" @click="openPhotos(props.row)">
-                查看照片
+                缺失照片
               </v-btn>
             </template>
             <template v-else-if="props.column.field === 'actions'">
@@ -67,19 +105,16 @@
 
 
 
-    <!-- 新增驗屋紀錄按鈕 -->
-    <v-btn color="success" class="my-4" @click="openCreateDialog">
-      <v-icon left>mdi-plus</v-icon> 新增驗屋紀錄
-    </v-btn>
 
-    <!-- ✅ 新增驗屋紀錄 Dialog -->
+   
 <!-- 新增驗屋紀錄 Dialog -->
 <v-dialog v-model="createDialog" max-width="800">
-      <v-card>
-        <v-card-title>新增驗屋紀錄</v-card-title>
-        <v-card-text>
-          <v-form ref="formRef" lazy-validation>
-            <v-row dense>
+  <v-card class="d-flex flex-column" style="height: 90vh;">
+    <v-card-title>新增驗屋紀錄</v-card-title>
+
+    <v-card-text class="flex-grow-1 overflow-y-auto" style="padding-bottom: 100px;">
+      <v-form ref="formRef" lazy-validation>
+        <v-row dense>
               <v-col cols="12" sm="6">
                 <v-text-field label="驗屋人" v-model="newRecord.inspector" readonly required></v-text-field>
               </v-col>
@@ -135,29 +170,29 @@
     />
   </div>
 </v-col>
-
-
             </v-row>
           </v-form>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn text @click="createDialog = false">取消</v-btn>
-          <v-btn color="primary" text @click="submitRecord">儲存</v-btn>
-        </v-card-actions>
+      <v-card-actions
+      class="justify-end px-4 py-3"
+      style="position: sticky; bottom: 0; background: white; border-top: 1px solid #ddd; z-index: 2;"
+    >
+      <v-btn text @click="createDialog = false">取消</v-btn>
+      <v-btn color="primary" text @click="submitRecord">儲存</v-btn>
+    </v-card-actions>
       </v-card>
     </v-dialog>
 
 
 <!-- 詳細 Dialog -->
 <v-dialog v-model="detailDialog" max-width="800">
-  <v-card>
+  <v-card class="d-flex flex-column" style="height: 90vh;">
     <v-card-title>
       詳細資料
       <v-spacer></v-spacer>
     </v-card-title>
 
-    <v-card-text>
+    <v-card-text class="flex-grow-1 overflow-y-auto" style="padding-bottom: 100px;">
       <v-row dense>
 
         <!-- ✅ 區塊一：基本資料 -->
@@ -223,7 +258,7 @@
   </template>
 </v-col>
 
-<v-btn color="info" text @click="openPhotos(selectedRecord)">查看照片</v-btn>
+<v-btn color="info" text @click="openPhotos(selectedRecord)">缺失照片</v-btn>
 
 
 <!-- ✅ 區塊三：檢修處理 -->
@@ -262,23 +297,25 @@
       </v-row>
     </v-card-text>
 
-    <v-card-actions class="d-flex justify-space-between">
+<v-card-actions
+  class="px-4 py-3"
+  style="position: sticky; bottom: 0; background: white; border-top: 1px solid #ddd; z-index: 2; justify-content: flex-end;"
+>
   <v-btn v-if="!editMode" color="primary" text @click="editMode = true">編輯</v-btn>
-  <div>
-    <!-- ✅ 新增：單筆刪除按鈕 -->
-    <v-btn color="error" text @click="confirmDeleteRecord(selectedRecord)">刪除</v-btn>
-    <v-btn color="primary" text v-if="editMode" @click="saveRecord">儲存</v-btn>
-    <v-btn color="secondary" text @click="closeDetailDialog">關閉</v-btn>
-  </div>
+  <v-btn v-if="!editMode" color="error" text @click="confirmDeleteRecord(selectedRecord)">刪除</v-btn>
+  <v-btn text @click="closeDetailDialog">關閉</v-btn>
+  <v-btn v-if="editMode" color="primary" text @click="saveRecord">儲存</v-btn>
+
 </v-card-actions>
+
   </v-card>
 </v-dialog>
 
 
-<!-- 查看照片 Dialog -->
+<!-- 缺失照片 Dialog -->
 <v-dialog v-model="photoDialog" max-width="800">
     <v-card>
-      <v-card-title>查看照片</v-card-title>
+      <v-card-title>缺失照片</v-card-title>
       <v-card-text>
 
         <v-carousel
@@ -337,9 +374,7 @@
   </v-dialog>
 
 
-<v-btn color="red" class="mb-2" @click="openTrashDialog">
-      🗑️ 垃圾桶
-    </v-btn>
+
 
     <v-dialog v-model="trashDialog" max-width="800px">
   <v-card>
@@ -361,6 +396,19 @@
   </v-card>
 </v-dialog>
 
+<!-- ✅ 右下角浮動 + 按鈕 -->
+<v-btn
+  v-if="props.unitId && !createDialog && !detailDialog"
+  icon
+  color="success"
+  class="fab"
+  @click="openCreateDialog"
+>
+  <v-icon>mdi-plus</v-icon>
+</v-btn>
+
+
+
 
 
   </v-container>
@@ -373,10 +421,28 @@
   @cancel="showEditor = false"
 />
 
+<v-dialog v-model="shareDialog" max-width="500px">
+  <v-card>
+    <v-card-title class="text-h6">驗屋分享頁面</v-card-title>
+    <v-card-text>
+      <p class="mb-2">請掃描 QR Code 或複製網址分享給客戶：</p>
+      <div class="text-center mb-4">
+        <img :src="qrCodeDataUrl" alt="QR Code" style="width: 200px;" />
+      </div>
+      <v-text-field v-model="shareUrl" readonly append-icon="mdi-content-copy" @click:append="copyShareUrl" />
+    </v-card-text>
+    <v-card-actions class="justify-end">
+      <v-btn text @click="shareDialog = false">關閉</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+
 </template>
 
 
 <script setup>
+
 import PhotoEditor from '@/components/PhotoEditor.vue' 
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { 
@@ -392,7 +458,7 @@ import {
   restoreInspectionRecord,
   deletePhotoFromRecord
 } from '@/api';
-// ✅ fetchPost 原本就已定義於 '@/api'
+
 
 import { useToast } from 'vue-toastification';
 
@@ -466,7 +532,6 @@ const selectedRecord = ref({});
 const repairStatusOptions = ref([]);
 const editMode = ref(false);
 const windowWidth = ref(window.innerWidth);
-
 const isMobile = computed(() => windowWidth.value < 600);
 
 const baseColumns = [
@@ -485,7 +550,7 @@ const baseColumns = [
   { label: '檢修時間', field: 'repairDate' },
   { label: '檢修狀態', field: 'repairStatus' },
   { label: '檢修說明', field: 'repairDescription' },
-  { label: '照片', field: 'photos' },
+  { label: '缺失照片', field: 'photos' },
   { label: '操作', field: 'actions' }
 ];
 
@@ -850,9 +915,7 @@ const confirmBulkDelete = async () => {
   selectedKeys.value = [];
   await loadRecords();
 
-  snackbarMessage.value = '刪除完成';
-  snackbarColor.value = 'green';
-  showSnackbar.value = true;
+  toast.success('刪除完成');
   isSaving.value = false;
 };
 
@@ -872,15 +935,14 @@ const confirmDeleteRecord = async (record) => {
   isSaving.value = false;
 };
 
-const trashHeaders = [
-  { text: '建檔時間', value: 'createdAt' },
-  { text: '戶別', value: 'unit' },
-  { text: '分類', value: 'category' },
-  { text: '細項', value: 'subcategory' },
-  { text: '檢查說明', value: 'description' },
-  { text: '動作', value: 'action', sortable: false },
-];
-
+const trashHeaders = ref([ 
+  { title: '建檔時間', key: 'createdAt', value: 'createdAt' }, // key 是必須的, value 也可以加上以兼容舊的 slot 寫法
+  { title: '戶別', key: 'unit', value: 'unit' },
+  { title: '分類', key: 'category', value: 'category' },
+  { title: '細項', key: 'subcategory', value: 'subcategory' },
+  { title: '檢查說明', key: 'description', value: 'description' },
+  { title: '動作', key: 'action', value: 'action', sortable: false },
+]);
 const openTrashDialog = async () => {
   trashDialog.value = true;
   await loadDeletedRecords();
@@ -921,6 +983,8 @@ const deletePhoto = async (photoObj) => {
     return;
   }
 
+  isSaving.value = true; // ✅ 開始 loading
+
   try {
     // ✔ 用已經封裝好的函式，才會打到 vercel‐proxy 的網址
     const res = await deletePhotoFromRecord(key, field);
@@ -929,17 +993,54 @@ const deletePhoto = async (photoObj) => {
       // 移除 carousel 中的圖
       currentPhotos.value = currentPhotos.value.filter(p => p.fileId !== fileId);
       await loadRecords();            // 重新抓最新資料
-      alert(res.message || '照片已刪除');
+      toast.success(res.message || '照片已刪除'); // ✅ 改用 toast 成功訊息
     } else {
-      alert(res.message || '刪除失敗');
+      toast.error(res.message || '刪除失敗'); // ✅ 改用 toast
     }
   } catch (e) {
     console.error(e);
     alert('刪除過程出錯');
   }
+
+  isSaving.value = false; // ✅ 結束 loading
+
 };
 
+import { generateShareUrl } from '@/api';
+import QRCode from 'qrcode'
 
+const shareDialog = ref(false);
+const shareUrl = ref('');
+const qrCodeDataUrl = ref('');
+
+const openShareDialog = async () => {
+  if (!props.unitId) return;
+
+  isSaving.value = true;
+  try {
+    const res = await generateShareUrl(props.unitId);
+    if (res.status === 'success') {
+      shareUrl.value = res.url;
+      qrCodeDataUrl.value = await QRCode.toDataURL(res.url); // 轉成 base64 QR 圖片
+      shareDialog.value = true;
+    } else {
+      toast.error(res.message || '產生失敗');
+    }
+  } catch (e) {
+    console.error(e);
+    toast.error('產出分享頁錯誤');
+  }
+  isSaving.value = false;
+};
+
+const copyShareUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value);
+    toast.success('已複製分享連結');
+  } catch (e) {
+    toast.error('複製失敗');
+  }
+};
 
 
 </script>
@@ -984,6 +1085,43 @@ const deletePhoto = async (photoObj) => {
   border-left: 4px solid #1976d2;
   color: #1976d2;
 }
+
+@media (max-width: 600px) {
+  .v-card-actions.sticky-actions {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+::v-deep(.v-data-table thead th) {
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
+
+
+.fab {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* 讓TABLE所有欄位文字置中 */
+::v-deep(.vue-good-table .vgt-table th) { /* 表頭文字置中 */
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+::v-deep(.vue-good-table .vgt-table td) {
+  text-align: center !important; /* 針對普通文字內容 */
+  vertical-align: middle !important;
+  
+  /* 新增：使用 flex 居中按鈕等子元素 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 
 
 </style>

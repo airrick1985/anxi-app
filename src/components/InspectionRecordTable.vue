@@ -30,15 +30,9 @@
     <v-btn color="grey" size="small" class="ml-2" @click="openTrashDialog">
       <v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶
     </v-btn>
-    <v-btn
-  color="teal"
-  size="small"
-  class="ml-2"
-  @click="openShareDialog"
->
+    <v-btn color="teal" size="small" class="ml-2" @click="openShareDialog">
   <v-icon left>mdi-share-variant</v-icon> 產出分享頁
 </v-btn>
-
   </div>
 
   <!-- ✅ 手機版選單 -->
@@ -62,6 +56,11 @@
         </v-list-item>
         <v-list-item @click="openTrashDialog">
           <v-list-item-title><v-icon left>mdi-trash-can-outline</v-icon> 垃圾桶</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="openShareDialog">
+        <v-list-item-title>
+          <v-icon left>mdi-share-variant</v-icon> 產出分享頁
+        </v-list-item-title>
         </v-list-item>
       </v-list>
     </v-menu>
@@ -1106,5 +1105,23 @@ const copyShareUrl = async () => {
   z-index: 999;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
+
+/* 讓TABLE所有欄位文字置中 */
+::v-deep(.vue-good-table .vgt-table th) { /* 表頭文字置中 */
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+::v-deep(.vue-good-table .vgt-table td) {
+  text-align: center !important; /* 針對普通文字內容 */
+  vertical-align: middle !important;
+  
+  /* 新增：使用 flex 居中按鈕等子元素 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+
 
 </style>
