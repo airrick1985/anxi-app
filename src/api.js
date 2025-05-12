@@ -118,10 +118,6 @@ export async function fetchDropdownOptions() {
   return fetchPost({ action: 'get_dropdown_options', token: 'anxi111003' }, DROPDOWN_API);
 }
 
-// 📦 細項選單依分類
-//export async function fetchSubcategories(category) {
-  //return fetchPost({ action: 'get_subcategories', category, token: 'anxi111003' }, DROPDOWN_API);
-//}
 
 // 📦 所有分類對應細項一次載入
 export async function fetchAllSubcategories() {
@@ -218,5 +214,16 @@ export async function fetchInspectionUpdateWithPhotos(payload) {
     action: 'edit_inspection_record_with_photos',
     token: 'anxi111003',
     ...payload
+  }, INSPECTION_API);
+}
+
+
+// ✅ 產出驗屋 PDF
+export async function fetchGenerateInspectionPdf(unitId, overwrite = false) {
+  return fetchPost({
+    action: 'generate_inspection_pdf',
+    unitId,
+    overwrite,
+    token: 'anxi111003'
   }, INSPECTION_API);
 }

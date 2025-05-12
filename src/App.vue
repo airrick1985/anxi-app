@@ -8,7 +8,7 @@
     <v-icon>mdi-home</v-icon>
   </v-btn>
       <v-toolbar-title @mousedown="startForceUpdate" @mouseup="cancelForceUpdate" @mouseleave="cancelForceUpdate">
-        ANXI 驗屋系統(富宇富御專用)
+        ANXI 驗屋系統(富宇富御)
       </v-toolbar-title>
       <v-spacer />
 

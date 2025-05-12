@@ -33,6 +33,10 @@
     <v-btn color="teal" size="small" class="ml-2" @click="openShareDialog">
   <v-icon left>mdi-share-variant</v-icon> 產出分享頁
 </v-btn>
+<v-btn color="purple" size="small" class="ml-2" @click="handleExportPdf">
+  <v-icon left>mdi-file-pdf-box</v-icon> 匯出驗屋紀錄PDF
+</v-btn>
+
   </div>
 
   <!-- ✅ 手機版選單 -->
@@ -60,6 +64,11 @@
         <v-list-item @click="openShareDialog">
         <v-list-item-title>
           <v-icon left>mdi-share-variant</v-icon> 產出分享頁
+        </v-list-item-title>
+        </v-list-item>
+         <v-list-item @click="handleExportPdf">
+        <v-list-item-title>
+          <v-icon left>mdi-file-pdf-box</v-icon> 匯出驗屋紀錄PDF
         </v-list-item-title>
         </v-list-item>
       </v-list>
@@ -470,9 +479,13 @@
   <v-icon>mdi-plus</v-icon>
 </v-btn>
 
-
-
-
+<!-- ✅ PDF產出中提示 -->
+<v-dialog v-model="pdfGenerating" persistent max-width="300px">
+  <v-card class="pa-4 d-flex flex-column align-center justify-center">
+    <v-progress-circular indeterminate color="primary" size="48" />
+    <div class="mt-4 text-center">產出中，請稍候...</div>
+  </v-card>
+</v-dialog>
 
   </v-container>
 
@@ -520,7 +533,8 @@ import {
   fetchDeletedInspectionRecords, 
   restoreInspectionRecord,
   deletePhotoFromRecord,
-  fetchInspectionUpdateWithPhotos
+  fetchInspectionUpdateWithPhotos,
+  fetchGenerateInspectionPdf 
 } from '@/api';
 
 
@@ -534,6 +548,7 @@ const editingIdx   = ref(null)    // 1~4，正在編輯哪一張
 const tempFile     = ref(null)    // 使用者剛挑的原始檔
 const previewRepairUrls = ref({});
 const isRepairPhoto = ref(false); // ✅ 判斷是否為檢修照片模式
+const pdfGenerating = ref(false);
 
 
 import { utils, writeFile } from 'xlsx';
@@ -1251,6 +1266,34 @@ const handleRepairPhotoChange = (file, idx) => {
 const zoomTitleClass = computed(() => {
   return isMobile.value ? 'zoom-title-mobile' : 'zoom-title-desktop';
 });
+
+const handleExportPdf = async () => {
+  if (!props.unitId) return;
+
+  pdfGenerating.value = true; // 👉 開啟提示
+
+  const res = await fetchGenerateInspectionPdf(props.unitId);
+  if (res.status === 'exists') {
+    const confirmOverwrite = window.confirm(res.message + '\n\n是否要覆蓋？');
+    if (!confirmOverwrite) {
+      pdfGenerating.value = false; // 關閉提示
+      return;
+    }
+
+    const overwriteRes = await fetchGenerateInspectionPdf(props.unitId, true);
+    if (overwriteRes.status === 'success') {
+      window.open(overwriteRes.url, '_blank');
+    } else {
+      toast.error(overwriteRes.message || '覆蓋產生 PDF 失敗');
+    }
+  } else if (res.status === 'success') {
+    window.open(res.url, '_blank');
+  } else {
+    toast.error(res.message || '產出 PDF 失敗');
+  }
+
+  pdfGenerating.value = false; // 👉 關閉提示
+};
 
 
 </script>
