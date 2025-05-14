@@ -2,13 +2,18 @@
   <v-app>
   
     <!-- 頂部 App Bar -->
-    <v-app-bar app color="primary" dark>
+    <v-app-bar app color="black" dark>
   <!-- 🔵 新增：首頁按鈕 -->
   <v-btn icon @click="goHome" class="me-2">
     <v-icon>mdi-home</v-icon>
   </v-btn>
-      <v-toolbar-title @mousedown="startForceUpdate" @mouseup="cancelForceUpdate" @mouseleave="cancelForceUpdate">
-        ANXI 驗屋系統(富宇富御)
+     <v-toolbar-title
+        class="app-bar-title"
+        @mousedown="startForceUpdate"
+        @mouseup="cancelForceUpdate"
+        @mouseleave="cancelForceUpdate"
+      >
+        安熙智慧驗屋系統
       </v-toolbar-title>
       <v-spacer />
 
@@ -226,6 +231,32 @@ const goHome = () => {
 </script>
 
 <style scoped>
+
+.app-bar-title {
+  /* 確保文字可以換行並完整顯示 */
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important; /* 或者 initial/unset */
+  line-height: 1.3; /* 調整行高以適應可能的換行 */
+  /* 確保標題不會被 flex item 的默認行為壓縮 */
+  flex-grow: 1; /* 讓標題嘗試佔據可用空間 */
+  flex-shrink: 1; /* 允許標題在空間不足時收縮（但配合換行） */
+  min-width: 0; /* 允許 flex item 收縮到其內容大小以下 */
+}
+
+/* 針對手機屏幕調整字體大小 */
+@media (max-width: 599px) { /* 假設手機屏幕寬度小於 600px */
+  .app-bar-title {
+    font-size: 0.9rem !important; /* 調整為適合手機的字體大小 */
+  }
+  /* 你可能還需要調整 v-app-bar 的 padding 或按鈕的大小來騰出更多空間 */
+  /* 例如：
+  .v-app-bar .v-btn {
+    font-size: 0.8rem;
+  }
+  */
+}
+
 .footer-text {
   font-size: 0.8rem;
   color: #555;
@@ -239,4 +270,7 @@ body {
 .clickable {
   cursor: pointer;
 }
+
+
+
 </style>

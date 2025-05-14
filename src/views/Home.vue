@@ -15,6 +15,8 @@
       </v-col>
 
       <v-col cols="12" sm="6" md="4">
+      
+        <!--驗屋紀錄總覽停用  
         <v-btn
           class="feature-button"
           color="success"
@@ -22,9 +24,11 @@
           large
           @click="goTo('overview')"
         >
-          <v-icon start size="28">mdi-view-list</v-icon>
-          驗屋紀錄總覽
+         <v-icon start size="28">mdi-view-list</v-icon>
+         驗屋紀錄總覽
         </v-btn>
+        !-->
+
       </v-col>
     </v-row>
   </v-container>

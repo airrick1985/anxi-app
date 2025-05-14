@@ -28,7 +28,7 @@ createApp(App)
   
   // ✅ 加入 Toast 註冊
 .use(Toast, {
-  timeout: 3000,
+  timeout: 10000,
   position: 'top-right',
   closeOnClick: true,
   pauseOnHover: true

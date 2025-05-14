@@ -8,9 +8,9 @@ import { defineStore } from 'pinia';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-    /**
+     /**
      * 用戶資料
-     * @type {{ key: string|null, email: string|null, name: string|null }|null}
+     * @type {{ key: string|null, email: string|null, name: string|null, projectName: string|null }|null}
      */
     user: null
   }),
@@ -26,7 +26,8 @@ export const useUserStore = defineStore('user', {
         this.user = {
           key: userData.key,
           email: userData.email || null,
-          name: userData.name || null
+          name: userData.name || null,
+          projectName: userData.projectName || null 
         };
         console.log("✅ User state updated:", JSON.parse(JSON.stringify(this.user)));
       } else {
@@ -41,7 +42,7 @@ export const useUserStore = defineStore('user', {
     clearUser() {
       console.log("🚪 clearUser called, logging out...");
       this.user = null;
-      localStorage.removeItem('anxi-user-session'); // 確保清除 localStorage 的持久化資訊
+     
     }
   },
 

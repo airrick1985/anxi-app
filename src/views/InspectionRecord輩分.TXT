@@ -26,14 +26,25 @@
           :disabled="!selectedBuilding"
         />
 
-        <v-btn
+    <v-btn
           color="primary"
           block
           class="mt-4"
           :disabled="!selectedBuilding || !selectedUnit"
           @click="confirm"
         >
-          查詢驗屋紀錄
+          查詢單一戶別
+        </v-btn>
+
+        <v-btn
+          color="deep-purple"
+          dark
+          block
+          class="mt-2"
+          :loading="loadingAllRecords"
+          @click="fetchAllRecordsForProject"
+        >
+          查詢所有戶別
         </v-btn>
 
         <v-btn
@@ -62,7 +73,11 @@
   <v-container fluid v-if="selectedUnit">
     <v-row justify="center">
       <v-col cols="12" sm="12" md="12">
-        <InspectionRecordTable :unit-id="selectedUnit" :records="records" />
+        <InspectionRecordTable
+          :unit-id="selectedUnit"
+          :records="records"
+          :owner="currentHouseDetail.owner || ''"
+        />
       </v-col>
     </v-row>
   </v-container>
@@ -72,9 +87,11 @@
 import { ref, computed, watch } from 'vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import InspectionDetailCard from '@/components/InspectionDetailCard.vue';
-import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails } from '@/api';
+import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails,fetchAllProjectInspectionRecords } from '@/api';
 import { useUserStore } from '@/store/user';
+import { useToast } from 'vue-toastification'; // 假設你使用 toast
 
+const toast = useToast(); // 假設你使用 toast
 const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
 const userStore = useUserStore();
 
@@ -83,6 +100,7 @@ const allHouseDetails = ref({});
 const selectedBuilding = ref('');
 const selectedUnit = ref('');
 const loading = ref(false);
+const loadingAllRecords = ref(false); // 新增：用於查詢所有記錄
 const errorMessage = ref('');
 const records = ref([]);
 const showDetail = ref(false);
@@ -96,7 +114,19 @@ const confirm = async () => {
   if (!selectedUnit.value) return;
   loading.value = true;
   try {
-    const result = await fetchInspectionRecords(selectedUnit.value);
+    const currentProjectName = userStore.user ? userStore.user.projectName : null; // 從 store 獲取 projectName
+    console.log(`[InspectionRecord.vue] confirm - Calling fetchInspectionRecords with unitId: ${selectedUnit.value}, projectName: ${currentProjectName}`); // 添加日誌
+
+    if (!currentProjectName) {
+      alert('查詢失敗：無法獲取建案資訊，請重新登入。');
+      console.error("[InspectionRecord.vue] confirm: projectName is missing from user store before calling fetchInspectionRecords.");
+      loading.value = false;
+      return;
+    }
+
+    // 將 projectName 傳遞給 fetchInspectionRecords
+    const result = await fetchInspectionRecords(selectedUnit.value, currentProjectName);
+
     if (result.status === 'success') {
       records.value = result.records;
     } else {
@@ -116,9 +146,11 @@ const loadUnits = async () => {
   loading.value = true;
   errorMessage.value = '';
   try {
+    const projectName = userStore.user.projectName; // ✅ 從登入資料取出 projectName
+
     const [unitResult, detailResult] = await Promise.all([
-      fetchUnitList(),
-      fetchAllHouseDetails()
+      fetchUnitList(projectName),
+      fetchAllHouseDetails(projectName)
     ]);
 
     if (unitResult.status === 'success') {
@@ -138,6 +170,7 @@ const loadUnits = async () => {
     loading.value = false;
   }
 };
+
 
 // ✅ 等待 user 登入完成才載入資料
 watch(
