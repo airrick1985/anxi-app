@@ -80,6 +80,7 @@
           :records="records" 
           :owner="selectedUnit ? (currentHouseDetail.owner || '') : ''"
           :display-mode="currentDisplayMode"
+          @records-updated="handleRecordsUpdated"
         />
      </v-col>
     </v-row>
@@ -100,107 +101,146 @@
 import { ref, computed, watch } from 'vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import InspectionDetailCard from '@/components/InspectionDetailCard.vue';
-import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails,fetchAllProjectInspectionRecords } from '@/api';
+import { fetchUnitList, fetchInspectionRecords, fetchAllHouseDetails, fetchAllProjectInspectionRecords } from '@/api';
 import { useUserStore } from '@/store/user';
-import { useToast } from 'vue-toastification'; // 假設你使用 toast
+import { useToast } from 'vue-toastification';
 
 const currentDisplayMode = ref('singleUnit'); // 初始為單一戶別
-const toast = useToast(); // 假設你使用 toast
-const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
+const toast = useToast();
+// emit 定義移到父組件，如果父組件也需要向上 emit (此組件目前看起來不需要)
+// const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
 const userStore = useUserStore();
 
 const unitsData = ref({});
 const allHouseDetails = ref({});
 const selectedBuilding = ref('');
 const selectedUnit = ref('');
-const loading = ref(false);
-const loadingAllRecords = ref(false); // 新增：用於查詢所有記錄
+const loading = ref(false); // 用於單一戶別查詢的 loading 狀態
+const loadingAllRecords = ref(false); // 用於所有戶別查詢的 loading 狀態
 const errorMessage = ref('');
 const records = ref([]);
 const showDetail = ref(false);
-const initialLoadDone = ref(false); // 新增：用於初始提示
+const initialLoadDone = ref(false); // 標記是否已執行過至少一次查詢或初始加載
 
 const currentHouseDetail = computed(() => allHouseDetails.value[selectedUnit.value] || {});
 const buildingList = computed(() => Object.keys(unitsData.value));
 const unitList = computed(() => unitsData.value[selectedBuilding.value] || []);
 
-// 查詢單一戶別驗屋紀錄 (原 confirm 函數)
-const confirm = async () => {
-  
-  if (!selectedUnit.value) return;
-  loading.value = true;
-  records.value = []; // 清空之前的記錄
-  currentDisplayMode.value = 'singleUnit'; // 查詢單一戶別時設置
-  try {
-    const currentProjectName = userStore.user?.projectName;
-    if (!currentProjectName) {
-      toast.error("無法獲取建案資訊。");
-      loading.value = false;
-      initialLoadDone.value = true; // 即使失敗也標記查詢已執行
-      return;
-    }
-    const result = await fetchInspectionRecords(selectedUnit.value, currentProjectName);
-    if (result.status === 'success') {
-      records.value = result.records || [];
-      if (records.value.length === 0) {
-        toast.info(`戶別 ${selectedUnit.value} 尚無驗屋紀錄。`);
-      }
-    } else {
-      toast.error(`查詢失敗：${result.message || '未知錯誤'}`);
-    }
-  } catch (err) {
-    console.error('❌ 查詢單一戶別驗屋紀錄失敗:', err);
-    toast.error('伺服器錯誤，請稍後再試');
-  } finally {
+// --- 統一的刷新記錄函數 ---
+const refreshRecords = async () => {
+  const currentProjectName = userStore.user?.projectName;
+  if (!currentProjectName) {
+    toast.error("無法獲取建案資訊，無法刷新記錄。");
+    records.value = []; // 清空記錄
+    initialLoadDone.value = true; // 標記為已嘗試加載，即使失敗
+    // 確保 loading 狀態被重置
     loading.value = false;
-    initialLoadDone.value = true; // 標記查詢已執行
-  }
-};
-
-// 新增：查詢該建案所有戶別的驗屋紀錄
-const fetchAllRecordsForProject = async () => {
-  
-  loadingAllRecords.value = true;
-  records.value = []; // 清空之前的記錄
-  currentDisplayMode.value = 'allUnits'; // 查詢所有戶別時設置
-  try {
-    const currentProjectName = userStore.user?.projectName;
-    if (!currentProjectName) {
-      toast.error("無法獲取建案資訊。");
-      loadingAllRecords.value = false;
-      initialLoadDone.value = true; // 即使失敗也標記查詢已執行
-      return;
-    }
-    const result = await fetchAllProjectInspectionRecords(currentProjectName);
-    if (result.status === 'success') {
-      records.value = result.records || [];
-      selectedUnit.value = ''; // 清空單一戶別選擇
-      showDetail.value = false; // 隱藏單一戶別的詳細資料
-      if (records.value.length === 0) {
-        toast.info(`建案 ${currentProjectName} 尚無任何驗屋紀錄。`);
-      } else {
-        toast.success(`已載入建案 ${currentProjectName} 的 ${records.value.length} 筆驗屋紀錄。`);
-      }
-  
-    } else {
-      toast.error(`查詢所有記錄失敗：${result.message || '未知錯誤'}`);
-    }
-  } catch (err) {
-    console.error('❌ 查詢所有戶別驗屋紀錄失敗:', err);
-    toast.error('伺服器錯誤，請稍後再試');
-  } finally {
     loadingAllRecords.value = false;
-    initialLoadDone.value = true; // 標記查詢已執行
+    return;
   }
+
+  let result;
+  // 在請求前清空當前記錄，避免看到舊數據閃爍
+  records.value = [];
+
+  if (currentDisplayMode.value === 'allUnits') {
+    loadingAllRecords.value = true;
+    try {
+      result = await fetchAllProjectInspectionRecords(currentProjectName);
+      if (result.status === 'success') {
+        records.value = result.records || [];
+        if (records.value.length === 0) {
+          toast.info(`建案 ${currentProjectName} 尚無任何驗屋紀錄。`);
+        } else {
+          // 刷新成功後可以不顯示 toast，避免過多提示
+          // toast.success(`已刷新建案 ${currentProjectName} 的 ${records.value.length} 筆驗屋紀錄。`);
+        }
+      } else {
+        // records.value = []; // 已在 try 之前清空
+        toast.error(`查詢所有記錄失敗：${result.message || '未知錯誤'}`);
+      }
+    } catch (err) {
+      // records.value = []; // 已在 try 之前清空
+      console.error('❌ 刷新所有戶別驗屋紀錄失敗:', err);
+      toast.error('伺服器錯誤，刷新失敗');
+    } finally {
+      loadingAllRecords.value = false;
+    }
+  } else if (currentDisplayMode.value === 'singleUnit' && selectedUnit.value) {
+    loading.value = true;
+    try {
+      result = await fetchInspectionRecords(selectedUnit.value, currentProjectName);
+      if (result.status === 'success') {
+        records.value = result.records || [];
+        if (records.value.length === 0) {
+          toast.info(`戶別 ${selectedUnit.value} 尚無驗屋紀錄。`);
+        }
+      } else {
+        // records.value = []; // 已在 try 之前清空
+        toast.error(`查詢失敗：${result.message || '未知錯誤'}`);
+      }
+    } catch (err) {
+      // records.value = []; // 已在 try 之前清空
+      console.error(`❌ 查詢戶別 ${selectedUnit.value} 驗屋紀錄失敗:`, err);
+      toast.error('伺服器錯誤，刷新失敗');
+    } finally {
+      loading.value = false;
+    }
+  } else {
+    // 如果模式是 singleUnit 但 selectedUnit 為空，或未知模式，則確保 records 為空
+    // records.value = []; // 已在 try 之前清空
+    if (currentDisplayMode.value === 'singleUnit' && !selectedUnit.value) {
+        console.log("[InspectionRecord.vue] refreshRecords: Mode is singleUnit but no unit selected. Records cleared.");
+    } else {
+        console.warn("[InspectionRecord.vue] refreshRecords: Cannot refresh due to invalid state (currentDisplayMode or selectedUnit). Records cleared.");
+    }
+  }
+  initialLoadDone.value = true; // 無論結果如何，都標記查詢已執行過
 };
 
-// 載入棟別與戶別資料
-const loadUnits = async () => {
-  loading.value = true;
-  errorMessage.value = '';
-  try {
-    const projectName = userStore.user.projectName; // ✅ 從登入資料取出 projectName
+// --- 事件處理函數，由子組件 InspectionRecordTable 觸發 ---
+const handleRecordsUpdated = () => {
+  console.log('[InspectionRecord.vue] Received records-updated event, refreshing records...');
+  refreshRecords();
+};
 
+// --- 修改後的查詢函數 ---
+const confirm = async () => {
+  if (!selectedUnit.value) {
+    toast.info("請先選擇一個戶別。");
+    // 如果希望即使未選擇戶別也觸發 "無記錄" 狀態的顯示，可以這樣做：
+    // records.value = [];
+    // currentDisplayMode.value = 'singleUnit'; // 保持模式
+    // initialLoadDone.value = true;
+    return;
+  }
+  currentDisplayMode.value = 'singleUnit';
+  // showDetail.value = false; // 可選：每次查詢單一戶別時，先隱藏詳細資料
+  await refreshRecords();
+};
+
+const fetchAllRecordsForProject = async () => {
+  currentDisplayMode.value = 'allUnits';
+  selectedUnit.value = ''; // 清空單一戶別選擇
+  showDetail.value = false; // 隱藏單一戶別的詳細資料
+  await refreshRecords();
+};
+
+// --- 載入棟別與戶別資料 ---
+const loadUnits = async () => {
+  loading.value = true; // 可以共用 loading 狀態
+  errorMessage.value = '';
+  // initialLoadDone.value = false; // 在開始加載時重置
+  try {
+    const projectName = userStore.user?.projectName;
+    if (!projectName) {
+        errorMessage.value = '無法獲取建案資訊 (projectName missing from store)';
+        unitsData.value = {};
+        allHouseDetails.value = {};
+        loading.value = false; // 確保重置 loading
+        // initialLoadDone.value = true; // 如果希望此時也標記為已嘗試加載
+        return;
+    }
     const [unitResult, detailResult] = await Promise.all([
       fetchUnitList(projectName),
       fetchAllHouseDetails(projectName)
@@ -216,31 +256,56 @@ const loadUnits = async () => {
       allHouseDetails.value = detailResult.data || {};
     } else {
       console.warn('⚠️ 未能載入戶別詳細資料:', detailResult.message);
+      // 即使戶別詳細資料加載失敗，也可能希望戶別選單能用
     }
   } catch (e) {
     errorMessage.value = '伺服器錯誤，無法載入棟別與戶別資料';
   } finally {
     loading.value = false;
-    initialLoadDone.value = true; // 確保在初始加載棟別/戶別後也標記
+    // 不在這裡設置 initialLoadDone，讓它由明確的查詢操作觸發
+    // 或者，如果希望 loadUnits 完成後就認為初始加載完成（即使還沒有記錄），則設置：
+    // initialLoadDone.value = true;
   }
 };
 
-
-// ✅ 等待 user 登入完成才載入資料
+// --- 監聽用戶登入狀態 ---
 watch(() => userStore.user, (newUser) => {
-    if (newUser && newUser.key && newUser.projectName) { // 確保 projectName 也存在
-        initialLoadDone.value = false; // 用戶切換或登入時，重置查詢狀態
+    if (newUser && newUser.key && newUser.projectName) {
+        initialLoadDone.value = false; // 重置查詢完成狀態
         records.value = []; // 清空舊記錄
-        loadUnits();
+        selectedBuilding.value = ''; // 重置棟別選擇
+        selectedUnit.value = '';   // 重置戶別選擇
+        showDetail.value = false;   // 隱藏詳細資料
+        currentDisplayMode.value = 'singleUnit'; // 重置顯示模式
+        loadUnits(); // 加載新的建案相關資料
     } else {
+        // 用戶登出或信息不完整
         unitsData.value = {};
         allHouseDetails.value = {};
         records.value = [];
         selectedBuilding.value = '';
         selectedUnit.value = '';
-        initialLoadDone.value = false; // 沒有用戶，不應顯示表格
+        showDetail.value = false;
+        initialLoadDone.value = false; // 沒有用戶，不應顯示表格或“無記錄”
+        currentDisplayMode.value = 'singleUnit';
     }
 }, { immediate: true });
+
+// --- 監聽戶別選擇變化 ---
+watch(selectedUnit, (newUnit, oldUnit) => {
+  if (newUnit && newUnit !== oldUnit) {
+    // 當用戶手動選擇了一個新的戶別時
+    records.value = []; // 清空當前記錄，因為它們屬於舊戶別或所有戶別
+    initialLoadDone.value = false; // 需要用戶點擊查詢按鈕來加載新戶別的記錄
+    currentDisplayMode.value = 'singleUnit'; // 默認為單一戶別查詢模式
+    showDetail.value = false; // 隱藏可能來自舊戶別的詳細資料
+  } else if (!newUnit && oldUnit && currentDisplayMode.value === 'singleUnit') {
+    // 如果戶別被清空 (例如，如果下拉選單允許)，並且之前是單一戶別模式
+    // records.value = []; // 可以選擇清空記錄
+    // initialLoadDone.value = false; // 可能需要重置
+  }
+  // 如果是從 "查詢所有戶別" 後 selectedUnit 被程序設為 ''，則不需要額外操作
+});
 
 </script>
 
