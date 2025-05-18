@@ -1,13 +1,13 @@
 {
-  "name": "ANXI 驗屋系統",
+  "name": "ANXI 安熙智慧驗屋系統",
   "short_name": "ANXI",
   "start_url": "/anxi-app/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#1976D2",
-  "theme_color": "#1976D2",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "scope": "./",
-  "description": "ANXI 驗屋 PWA 應用",
+  "description": "安熙智慧驗屋系統，提供驗屋人員使用的系統。",
   "icons": [
     {
       "src": "icons/icon-192x192.png",
@@ -20,5 +20,5 @@
       "type": "image/png"
     }
   ],
-  "version": "0.0.63"
+  "version": "0.0.64"
 }
