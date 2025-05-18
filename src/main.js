@@ -1,7 +1,7 @@
 // src/main.js
 import { createApp } from 'vue'
 import App from './App.vue'
-import vuetify from './plugins/vuetify' 
+import vuetify from './plugins/vuetify'
 import router from './router'
 import axios from 'axios'
 import VueAxios from 'vue-axios'
@@ -15,6 +15,7 @@ import 'vue-toastification/dist/index.css'
 // --- Pinia 和 持久化插件 ---
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. 導入插件
+import './registerServiceWorker'
 
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate) // <--- 2. 使用插件
