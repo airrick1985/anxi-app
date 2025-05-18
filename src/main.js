@@ -15,26 +15,70 @@ import 'vue-toastification/dist/index.css'
 // --- Pinia 和 持久化插件 ---
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. 導入插件
-import './registerServiceWorker'
+
+// 2. 導入 vite-plugin-pwa 提供的註冊模組
+import { registerSW } from 'virtual:pwa-register' // <--- 添加這一行
+
+
 
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate) // <--- 2. 使用插件
 
-// --- 創建和掛載 Vue 應用 ---
-createApp(App)
-  .use(router)       // 使用路由
-  .use(vuetify)      // 使用 Vuetify
-  .use(VueAxios, axios) // 使用 VueAxios (如果你的 API 調用依賴它)
-  .use(pinia)        // <--- 3. 使用配置好插件的 Pinia 實例
-  
-  // ✅ 加入 Toast 註冊
-.use(Toast, {
-  timeout: 10000,
-  position: 'top-right',
-  closeOnClick: true,
-  pauseOnHover: true
-})
-  
-  .mount('#app')
+const app = createApp(App) // 先創建 app 實例
 
-// 注意：你之前註釋掉的 loadFonts() 是正確的，如果 vuetify 插件內部處理了字體加載。
+// 3. 註冊 Service Worker (通常在創建 app 之後，掛載之前)
+registerSW({
+  onNeedRefresh() {
+    // 這裡可以彈出一個 Toast 通知用戶有新版本
+    const toast = app.config.globalProperties.$toast; // 假設 Toast 被正確註冊到全局
+    if (toast && typeof toast.info === 'function') {
+      toast.info('New content available. Please reload.', {
+        timeout: 0, // 永不自動關閉
+        closeButton: 'button',
+        icon: true,
+        actions: [
+          {
+            text: 'Reload',
+            onClick: (e, toastObject) => {
+              toastObject.goAway(0); // 立即關閉 toast
+              window.location.reload();
+            }
+          }
+        ]
+      });
+    } else {
+      // 降級處理，如果 Toast 無法使用
+      if (confirm('New content available. Reload?')) {
+        window.location.reload();
+      }
+    }
+    console.log('New content available, please refresh.');
+  },
+  onOfflineReady() {
+    // 這裡可以彈出一個 Toast 通知用戶應用已可離線使用
+    const toast = app.config.globalProperties.$toast;
+    if (toast && typeof toast.success === 'function') {
+      toast.success('App is ready to work offline!', {
+        timeout: 5000
+      });
+    }
+    console.log('App is ready to work offline.');
+  }
+})
+
+// --- 使用插件和掛載 Vue 應用 ---
+app
+  .use(router)
+  .use(vuetify)
+  .use(VueAxios, axios)
+  .use(pinia)
+  .use(Toast, { // Toast 插件的註冊可以放在這裡
+    timeout: 10000, // Toast 預設超時時間
+    position: 'top-right',
+    closeOnClick: true,
+    pauseOnHover: true
+    // 你可能需要確保 Toast 插件的 $toast 實例在 registerSW 回調中可用
+    // 如果 registerSW 執行時 Toast 還未完全初始化，直接使用 confirm 可能更可靠
+    // 或者將 Toast 實例傳遞給 registerSW
+  })
+  .mount('#app')
