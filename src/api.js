@@ -7,11 +7,19 @@ const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
 
 
-// 📋 查詢建案清單 (通常不需要 projectName，因為是獲取所有建案)
-export async function getProjectList() {
-  console.log('[api.js] getProjectList called');
-  return fetchPost({ action: 'get_project_list' }, USER_API);
+export async function getProjectList(userKey) { 
+  console.log('[api.js] getProjectList called with :', userKey); 
+
+  if (!userKey) {
+    console.error("[api.js] getProjectList: userKey is missing!");
+    // 返回一個與 fetchPost 失敗時結構類似的 Promise，方便呼叫端統一處理
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 getProjectList 時缺少 userKey。' });
+  }
+  // 將 userKey 包含在傳遞給 fetchPost 的 body 中
+  return fetchPost({ action: 'get_project_list', key: userKey }, USER_API);
+  
 }
+
 
 
 // 🔐 使用者登入

@@ -27,7 +27,7 @@ export const useUserStore = defineStore('user', {
           key: userData.key,
           email: userData.email || null,
           name: userData.name || null,
-          projectName: userData.projectName || null 
+          projectName: userData.projectName || null // Explicitly set to null if not provided
         };
         console.log("✅ User state updated:", JSON.parse(JSON.stringify(this.user)));
       } else {
@@ -43,6 +43,15 @@ export const useUserStore = defineStore('user', {
       console.log("🚪 clearUser called, logging out...");
       this.user = null;
      
+    },
+
+    setProjectName(projectName) {
+      if (this.user) {
+        this.user.projectName = projectName;
+        console.log("✅ Project name updated in store:", projectName);
+      } else {
+        console.warn("⚠️ User not set, cannot update project name.");
+      }
     }
   },
 

@@ -5,20 +5,9 @@
     <v-row align="center" justify="center">
       <v-col cols="12" sm="8" md="4">
         <v-card class="pa-4">
-          <v-card-title class="text-center">選擇您要登入的建案</v-card-title>
+          <v-card-title class="text-center">登入</v-card-title>
           <v-card-text>
             <v-form @submit.prevent="submit">
-
-              <v-select
-  v-model="projectName"
-  :items="projectOptions"
-  label="請選擇建案"
-  item-title="text"
-  item-value="value"
-  required
-  :rules="[v => !!v || '建案為必選欄位']"
-  class="mb-2"
-/>
 
               <!-- **** 修改這裡：使用手機號碼登入 **** -->
               <v-text-field
@@ -78,18 +67,7 @@
 </template>
 
 <script setup>
-import { getProjectList } from '../api'; 
-
-onMounted(async () => {
-  const result = await getProjectList();
-  if (result.status === 'success') {
-    projectOptions.value = result.projects;
-  } else {
-    error.value = result.message || '無法載入建案清單';
-  }
-});
-
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser } from '../api'; 
@@ -99,8 +77,6 @@ import { checkUpdate } from '@/utils/swHelper'; // ✅ 加這行
 const emit = defineEmits(['start-loading', 'stop-loading', 'notify']);
 const key = ref(''); 
 const password = ref('');
-const projectName = ref('');            
-const projectOptions = ref([]);         
 const error = ref('');
 const loading = ref(false);
 const router = useRouter();
@@ -108,7 +84,7 @@ const userStore = useUserStore();
 const submit = async () => {
   error.value = ''; 
 
-  if (!key.value || !password.value) {
+  if (!key.value || !password.value) { // Removed projectName validation
     error.value = '手機號碼和密碼皆須輸入';
     return;
   }
@@ -118,7 +94,7 @@ const submit = async () => {
 
   try {
    
-    const result = await loginUser(key.value, password.value, projectName.value);
+    const result = await loginUser(key.value, password.value); // Removed projectName.value
   
 
     console.log("Login API Result:", result); 
