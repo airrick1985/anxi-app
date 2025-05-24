@@ -1,19 +1,19 @@
 <template>
   <div class="home-container">
     <button class="icon-button" @click="goToInspectionSystem">
-      <span class="icon">🏠</span>
-      <span class="text">驗屋系統</span>
+      <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
+       <span class="text">驗屋系統</span>
     </button>
     <button class="icon-button">
-      <span class="icon">📊</span>
+       <img src="/img/icons/tablet.svg" alt="銷控系統圖標" class="icon" />
       <span class="text">銷控系統</span>
     </button>
     <button class="icon-button">
-      <span class="icon">👥</span>
-      <span class="text">客戶管理系統</span>
+      <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />
+      <span class="text">客戶管理</span>
     </button>
     <button class="icon-button">
-      <span class="icon">🔄</span>
+      <img src="/img/icons/blueprint.svg" alt="客戶管理圖標" class="icon" />
       <span class="text">客變系統</span>
     </button>
   </div>
@@ -25,11 +25,21 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 
 const goToInspectionSystem = () => {
-  router.push({ name: 'InspectionSystem' }); // 假設路由名稱將是 'InspectionSystem'
+  router.push({ name: 'InspectionSystem' }); 
 };
 </script>
 
 <style scoped>
+
+.icon{
+  width: 50px; /* 圖標寬度 */
+  height: 50px; /* 圖標高度 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
 .home-container {
   display: flex;
   flex-wrap: wrap;
@@ -43,7 +53,7 @@ const goToInspectionSystem = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 120px; /* 或適合的寬度 */
+  width: 100px; /* 或適合的寬度 */
   height: 100px; /* 或適合的高度 */
   padding: 10px;
   border: 1px solid #ccc;

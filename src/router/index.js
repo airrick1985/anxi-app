@@ -2,19 +2,19 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';        
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
-import InspectionSystem from '@/views/InspectionSystem.vue'; // Added
+import InspectionSystem from '@/views/InspectionSystem.vue'; 
 import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
-import InspectionRecordTable from '@/components/InspectionRecordTable.vue'; // ✅ 修改路徑到 components
+import InspectionRecordTable from '@/components/InspectionRecordTable.vue'; 
 const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home },
   {
-    path: '/inspectionsystem', // Added
-    name: 'InspectionSystem',  // Added
-    component: InspectionSystem // Added
+    path: '/inspectionsystem', 
+    name: 'InspectionSystem',  
+    component: InspectionSystem 
   },
   { path: '/inspection-record', name: 'InspectionRecord', component: InspectionRecord },
   { path: '/inspection-overview', name: 'InspectionOverview', component: InspectionOverview },
@@ -25,7 +25,7 @@ const routes = [
     props: true
   },
   { 
-    path: '/inspection-record-table/:unitId', // ✅ 新增這條
+    path: '/inspection-record-table/:unitId', 
     name: 'InspectionRecordTable',
     component: InspectionRecordTable,
     props: true

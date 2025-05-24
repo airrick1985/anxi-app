@@ -239,9 +239,9 @@ function handleForgotPassword(key) {
       // 發送 Email（這裡用 MailApp）
       MailApp.sendEmail({
         to: email,
-        subject: '【ANXI驗屋APP】忘記密碼通知',
+        subject: '【安熙智慧建案管理系統】忘記密碼通知',
         htmlBody: `親愛的用戶您好，<br><br>您申請的密碼是：<b>${password}</b><br><br>請妥善保存。`,
-        name:'ANXI驗屋APP'
+        name:'安熙智慧建案管理系統'
       });
 
       return createJsonResponse({ status: 'success', message: '密碼已寄出到您的Email' });

@@ -19,6 +19,18 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. �
 // 2. 導入 vite-plugin-pwa 提供的註冊模組
 import { registerSW } from 'virtual:pwa-register' // <--- 添加這一行
 
+/* import the fontawesome core */
+import { library } from '@fortawesome/fontawesome-svg-core';
+
+/* import font awesome icon component */
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+
+/* import specific icons */
+// 在這裡導入您將要使用的圖標，例如：
+import { faHouse, faChartLine, faUsers, faExchangeAlt } from '@fortawesome/free-solid-svg-icons';
+
+// /* add icons to the library */
+ library.add(faHouse, faChartLine, faUsers, faExchangeAlt); // 將您選擇的圖標添加到庫中
 
 
 const pinia = createPinia()
@@ -68,6 +80,7 @@ registerSW({
 
 // --- 使用插件和掛載 Vue 應用 ---
 app
+  .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
   .use(router)
   .use(vuetify)
   .use(VueAxios, axios)

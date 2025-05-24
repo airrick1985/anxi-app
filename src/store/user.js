@@ -12,7 +12,8 @@ export const useUserStore = defineStore('user', {
      * 用戶資料
      * @type {{ key: string|null, email: string|null, name: string|null, projectName: string|null }|null}
      */
-    user: null
+    user: null,
+    permissions: [] // Added permissions state
   }),
 
   actions: {
@@ -29,10 +30,19 @@ export const useUserStore = defineStore('user', {
           name: userData.name || null,
           projectName: userData.projectName || null // Explicitly set to null if not provided
         };
+        // Handle permissions
+        if (Array.isArray(userData.permissions)) {
+          this.permissions = userData.permissions;
+          console.log("✅ User permissions updated in store:", JSON.parse(JSON.stringify(this.permissions)));
+        } else {
+          this.permissions = [];
+          console.log("⚡ User permissions reset in store (no valid permissions data or not an array)");
+        }
         console.log("✅ User state updated:", JSON.parse(JSON.stringify(this.user)));
       } else {
         this.user = null;
-        console.log("⚡ User state cleared (no valid data)");
+        this.permissions = []; // Also clear permissions when user data is invalid
+        console.log("⚡ User state and permissions cleared (no valid data)");
       }
     },
 
@@ -42,7 +52,7 @@ export const useUserStore = defineStore('user', {
     clearUser() {
       console.log("🚪 clearUser called, logging out...");
       this.user = null;
-     
+      this.permissions = []; // Clear permissions on logout
     },
 
     setProjectName(projectName) {
@@ -55,9 +65,21 @@ export const useUserStore = defineStore('user', {
     }
   },
 
+  getters: {
+    /**
+     * 檢查用戶是否擁有特定權限
+     * @param {object} state - The store's state.
+     * @returns {function(string): boolean} - A function that takes a permission name and returns true if the user has it.
+     */
+    hasPermission: (state) => (permissionName) => {
+      // Check if user is loaded, permissions is an array, and then check for the specific permission.
+      return !!state.user && Array.isArray(state.permissions) && state.permissions.includes(permissionName);
+    }
+  },
+
   persist: {
     key: 'anxi-user-session', 
     storage: localStorage,
-    paths: ['user']
+    paths: ['user', 'permissions'] // Added 'permissions' to persisted paths
   }
 });
