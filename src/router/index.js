@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';        
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
+import InspectionSystem from '@/views/InspectionSystem.vue'; // Added
 import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
@@ -10,6 +11,11 @@ const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home },
+  {
+    path: '/inspectionsystem', // Added
+    name: 'InspectionSystem',  // Added
+    component: InspectionSystem // Added
+  },
   { path: '/inspection-record', name: 'InspectionRecord', component: InspectionRecord },
   { path: '/inspection-overview', name: 'InspectionOverview', component: InspectionOverview },
   { 
