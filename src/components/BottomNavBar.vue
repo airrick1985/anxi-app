@@ -19,6 +19,7 @@
       </v-btn>
 
       <v-btn
+        v-if="userStore.hasPermission('驗屋系統')"
         :class="{ 'active-btn': isActive('/inspection-record') }"
         stacked
         :ripple="true"
@@ -29,6 +30,7 @@
       </v-btn>
 
       <v-btn
+        v-if="userStore.hasPermission('驗屋系統')"
         :class="{ 'active-btn': isActive('/inspection-overview') }"
         stacked
         :ripple="true"
@@ -45,10 +47,12 @@
 import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
+import { useUserStore } from '../store/user'; // Added import
 
 const router = useRouter();
 const route = useRoute();
 const { updateServiceWorker } = useRegisterSW({ immediate: true });
+const userStore = useUserStore(); // Instantiated userStore
 
 const homeClickCount = ref(0);
 let clickTimer = null;

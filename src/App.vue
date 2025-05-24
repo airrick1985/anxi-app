@@ -19,25 +19,41 @@
 
       <template v-if="user">
         <v-menu
-  offset-y
-  :close-on-content-click="false"
-  v-model="menu"
-  :activator="menuActivator"
->
-  <v-list>
-    <v-list-item @click="dialog = true">
-      <v-list-item-title>個人資料</v-list-item-title>
-    </v-list-item>
-    <v-list-item @click="logoutDialog = true">
-      <v-list-item-title>登出</v-list-item-title>
-    </v-list-item>
-  </v-list>
-</v-menu>
+          offset-y
+          :close-on-content-click="false" 
+          v-model="menu"
+          :activator="menuActivator"
+        >
+          <v-list>
+            <v-list-item @click="dialog = true">
+              <v-list-item-title>個人資料</v-list-item-title>
+            </v-list-item>
 
-<v-btn icon ref="menuActivator">
-  <v-icon>mdi-dots-vertical</v-icon>
-</v-btn>
+            <!-- New Item: Customer Management -->
+            <v-list-item 
+              v-if="userStore.hasPermission('客戶管理')" 
+              @click="navigateTo('/customer-management')" 
+            >
+              <v-list-item-title>客戶管理</v-list-item-title>
+            </v-list-item>
 
+            <!-- New Item: Sales Control System -->
+            <v-list-item 
+              v-if="userStore.hasPermission('銷控系統')" 
+              @click="navigateTo('/sales-control')" 
+            >
+              <v-list-item-title>銷控系統</v-list-item-title>
+            </v-list-item>
+            
+            <v-list-item @click="logoutDialog = true">
+              <v-list-item-title>登出</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+
+        <v-btn icon ref="menuActivator">
+          <v-icon>mdi-dots-vertical</v-icon>
+        </v-btn>
 
         <span class="me-4 clickable" @click="dialog = true">{{ user.name }}</span>
       </template>
@@ -145,6 +161,11 @@ const showBottomNav = computed(() =>
   user.value && route.name !== 'Login'
 );
 
+// Function to handle navigation from menu
+const navigateTo = (path) => {
+  router.push(path);
+  menu.value = false; // Close menu after navigation
+};
 
 // 強制更新連點
 const homeClickCount = ref(0);

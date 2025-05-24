@@ -21,6 +21,7 @@
     <v-row align="center" justify="center" class="text-center">
       <v-col cols="12" sm="6" md="4">
         <v-btn
+          v-if="userStore.hasPermission('驗屋系統')"
           class="feature-button"
           color="primary"
           block
