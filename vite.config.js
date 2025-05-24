@@ -20,6 +20,7 @@ export default defineConfig({
         swDest: 'dist/sw.js',    // 打包後 Service Worker 的輸出路徑
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB
          },
       workbox: {
         skipWaiting: true,
