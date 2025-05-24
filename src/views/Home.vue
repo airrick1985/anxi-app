@@ -1,19 +1,19 @@
 <template>
   <div class="home-container">
-    <button class="icon-button" @click="goToInspectionSystem">
+    <button class="icon-button" v-if="userStore.hasPermission('驗屋系統')" @click="goToInspectionSystem">
       <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
        <span class="text">驗屋系統</span>
     </button>
-    <button class="icon-button">
+    <button class="icon-button" v-if="userStore.hasPermission('銷控系統')">
        <img src="/img/icons/tablet.svg" alt="銷控系統圖標" class="icon" />
       <span class="text">銷控系統</span>
     </button>
-    <button class="icon-button">
+    <button class="icon-button" v-if="userStore.hasPermission('客戶管理')">
       <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />
       <span class="text">客戶管理</span>
     </button>
-    <button class="icon-button">
-      <img src="/img/icons/blueprint.svg" alt="客戶管理圖標" class="icon" />
+    <button class="icon-button" v-if="userStore.hasPermission('客變系統')">
+      <img src="/img/icons/blueprint.svg" alt="客變系統圖標" class="icon" />
       <span class="text">客變系統</span>
     </button>
   </div>
@@ -21,8 +21,10 @@
 
 <script setup>
 import { useRouter } from 'vue-router';
+import { useUserStore } from '../store/user';
 
 const router = useRouter();
+const userStore = useUserStore();
 
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 

@@ -3,6 +3,7 @@
   
     <!-- 頂部 App Bar -->
     <v-app-bar app color="black" dark>
+      <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
   <!-- 🔵 新增：首頁按鈕 -->
   <v-btn icon @click="goHome" class="me-2">
     <v-icon>mdi-home</v-icon>
@@ -13,51 +14,64 @@
         @mouseup="cancelForceUpdate"
         @mouseleave="cancelForceUpdate"
       >
-        安熙智慧驗屋系統
+        安熙智慧建案管理系統
       </v-toolbar-title>
       <v-spacer />
 
       <template v-if="user">
         <v-menu
-          offset-y
-          :close-on-content-click="false" 
-          v-model="menu"
-          :activator="menuActivator"
-        >
-          <v-list>
-            <v-list-item @click="dialog = true">
-              <v-list-item-title>個人資料</v-list-item-title>
-            </v-list-item>
+  offset-y
+  :close-on-content-click="false"
+  v-model="menu"
+  :activator="menuActivator"
+>
+  <v-list>
+    <v-list-item @click="dialog = true">
+      <v-list-item-title>個人資料</v-list-item-title>
+    </v-list-item>
+    <v-list-item @click="logoutDialog = true">
+      <v-list-item-title>登出</v-list-item-title>
+    </v-list-item>
+  </v-list>
+</v-menu>
 
-            <!-- New Item: Customer Management -->
-            <v-list-item 
-              v-if="userStore.hasPermission('客戶管理')" 
-              @click="navigateTo('/customer-management')" 
-            >
-              <v-list-item-title>客戶管理</v-list-item-title>
-            </v-list-item>
+<v-btn icon ref="menuActivator">
+  <v-icon>mdi-dots-vertical</v-icon>
+</v-btn>
 
-            <!-- New Item: Sales Control System -->
-            <v-list-item 
-              v-if="userStore.hasPermission('銷控系統')" 
-              @click="navigateTo('/sales-control')" 
-            >
-              <v-list-item-title>銷控系統</v-list-item-title>
-            </v-list-item>
-            
-            <v-list-item @click="logoutDialog = true">
-              <v-list-item-title>登出</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
-
-        <v-btn icon ref="menuActivator">
-          <v-icon>mdi-dots-vertical</v-icon>
-        </v-btn>
 
         <span class="me-4 clickable" @click="dialog = true">{{ user.name }}</span>
       </template>
     </v-app-bar>
+
+    <v-navigation-drawer v-model="drawer" width="150" temporary>
+      <v-list nav dense>
+        <v-list-item 
+          prepend-icon="mdi-home-search" 
+          title="驗屋系統" 
+          v-if="userStore.hasPermission('驗屋系統')"
+          @click="navigateTo('InspectionSystem')">
+        </v-list-item>
+        <v-list-item 
+          prepend-icon="mdi-table-large" 
+          title="銷控系統" 
+          v-if="userStore.hasPermission('銷控系統')"
+          @click="drawer = false">
+        </v-list-item>
+        <v-list-item 
+          prepend-icon="mdi-account-group" 
+          title="客戶管理" 
+          v-if="userStore.hasPermission('客戶管理')"
+          @click="drawer = false">
+        </v-list-item>
+        <v-list-item 
+          prepend-icon="mdi-floor-plan" 
+          title="客變系統" 
+          v-if="userStore.hasPermission('客變系統')"
+          @click="drawer = false">
+        </v-list-item>
+      </v-list>
+    </v-navigation-drawer>
 
     <!-- 主要頁面 -->
     <v-main>
@@ -79,10 +93,10 @@
 >
   <v-container class="text-center py-2">
     <div>
-      <strong>ANXI 驗屋系統</strong> ｜ 版本 v{{ appVersion }}
+      <strong>安熙智慧建案管理系統</strong> ｜ 版本 v{{ appVersion }}
     </div>
     <div class="text-caption">
-      &copy; {{ currentYear }} ANXI. All rights reserved.
+      &copy; {{ currentYear }} ANXISMART. All rights reserved.
     </div>
   </v-container>
 </v-footer>
@@ -125,6 +139,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
+const drawer = ref(false);
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
 import { useRouter, useRoute } from 'vue-router';
@@ -161,11 +176,6 @@ const showBottomNav = computed(() =>
   user.value && route.name !== 'Login'
 );
 
-// Function to handle navigation from menu
-const navigateTo = (path) => {
-  router.push(path);
-  menu.value = false; // Close menu after navigation
-};
 
 // 強制更新連點
 const homeClickCount = ref(0);
@@ -247,6 +257,13 @@ const goHome = () => {
   if (route.path !== '/home') {
     router.push('/home');
   }
+};
+
+const navigateTo = (routeName) => {
+  if (route.name !== routeName) {
+    router.push({ name: routeName });
+  }
+  drawer.value = false; // drawer is already defined
 };
 
 </script>
