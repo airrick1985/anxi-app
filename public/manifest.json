@@ -1,5 +1,5 @@
 {
-  "name": "ANXI 安熙智慧建案管理系統",
+  "name": "安熙智慧建案管理系統",
   "short_name": "ANXI",
   "start_url": "/anxi-app/",
   "display": "standalone",
@@ -20,5 +20,5 @@
       "type": "image/png"
     }
   ],
-  "version": "0.0.67"
+  "version": "0.0.68"
 }

@@ -79,7 +79,7 @@ export const useUserStore = defineStore('user', {
 
   persist: {
     key: 'anxi-user-session', 
-    storage: localStorage,
+    storage: sessionStorage,
     paths: ['user', 'permissions'] // Added 'permissions' to persisted paths
   }
 });
