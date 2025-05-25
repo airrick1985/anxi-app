@@ -8,14 +8,18 @@
   <v-btn icon @click="goHome" class="me-2">
     <v-icon>mdi-home</v-icon>
   </v-btn>
-     <v-toolbar-title
-        class="app-bar-title"
-        @mousedown="startForceUpdate"
-        @mouseup="cancelForceUpdate"
-        @mouseleave="cancelForceUpdate"
-      >
-        安熙智慧建案管理系統
-      </v-toolbar-title>
+      <v-spacer />
+      <div class="d-flex align-center">
+        <v-img src="/img/icons/LOGO.svg" max-height="32" contain class="mr-2"></v-img>
+        <v-toolbar-title
+          class="app-bar-title d-none d-sm-flex"
+          @mousedown="startForceUpdate"
+          @mouseup="cancelForceUpdate"
+          @mouseleave="cancelForceUpdate"
+        >
+          安熙智慧建案管理系統
+        </v-toolbar-title>
+      </div>
       <v-spacer />
 
       <template v-if="user">
