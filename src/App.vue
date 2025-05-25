@@ -8,17 +8,20 @@
   <v-btn icon @click="goHome" class="me-2">
     <v-icon>mdi-home</v-icon>
   </v-btn>
-      <v-spacer />
+<v-spacer />
       <div class="d-flex align-center">
-        <v-img src="/img/icons/LOGO.svg" max-height="32" contain class="mr-2"></v-img>
-        <v-toolbar-title
-          class="app-bar-title d-none d-sm-flex"
-          @mousedown="startForceUpdate"
-          @mouseup="cancelForceUpdate"
-          @mouseleave="cancelForceUpdate"
-        >
+        <!-- 使用修正後的 src 路徑 -->
+        <v-img src="public/icons/LOGO.svg"
+       max-height="60"
+       contain
+       class="mr-2"
+       style="min-width: 50px; min-height: 50px; border: 1px solid transparent;" >
+</v-img>
+
+     <span class="app-bar-title text-h6 d-none d-sm-inline-block" 
+              style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           安熙智慧建案管理系統
-        </v-toolbar-title>
+        </span>
       </div>
       <v-spacer />
 
@@ -281,7 +284,7 @@ const navigateTo = (routeName) => {
   text-overflow: clip !important; /* 或者 initial/unset */
   line-height: 1.3; /* 調整行高以適應可能的換行 */
   /* 確保標題不會被 flex item 的默認行為壓縮 */
-  flex-grow: 1; /* 讓標題嘗試佔據可用空間 */
+  flex-grow: 0; /* 讓標題嘗試佔據可用空間 */
   flex-shrink: 1; /* 允許標題在空間不足時收縮（但配合換行） */
   min-width: 0; /* 允許 flex item 收縮到其內容大小以下 */
 }
@@ -289,14 +292,16 @@ const navigateTo = (routeName) => {
 /* 針對手機屏幕調整字體大小 */
 @media (max-width: 599px) { /* 假設手機屏幕寬度小於 600px */
   .app-bar-title {
-    font-size: 0.9rem !important; /* 調整為適合手機的字體大小 */
+    font-size: 0.85rem !important; /* 調整為適合手機的字體大小 */
+    line-height: 1.1;
   }
   /* 你可能還需要調整 v-app-bar 的 padding 或按鈕的大小來騰出更多空間 */
-  /* 例如：
+
   .v-app-bar .v-btn {
     font-size: 0.8rem;
+    max-height: 28px !important;
   }
-  */
+
 }
 
 .footer-text {
