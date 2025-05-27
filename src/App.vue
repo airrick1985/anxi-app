@@ -11,7 +11,7 @@
 <v-spacer />
       <div class="d-flex align-center">
         <!-- 使用修正後的 src 路徑 -->
-        <v-img src="public/icons/LOGO.svg"
+        <v-img src="/icons/LOGO.svg"
        max-height="60"
        contain
        class="mr-2"
