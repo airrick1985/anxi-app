@@ -7,30 +7,62 @@ import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue'; 
+import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
+// import SalesControlSystem from '@/views/SalesControlSystem.vue'; // 銷控系統主頁面，稍後創建時取消註釋
+
 const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'Login', component: Login },
-  { path: '/home', name: 'Home', component: Home },
+  { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } }, // 建議 Home 頁也需要登入
   {
-    path: '/inspectionsystem', 
-    name: 'InspectionSystem',  
-    component: InspectionSystem 
+    path: '/inspectionsystem',
+    name: 'InspectionSystem',
+    component: InspectionSystem,
+    meta: { requiresAuth: true } // 假設進入系統選擇頁需要登入
   },
-  { path: '/inspection-record', name: 'InspectionRecord', component: InspectionRecord },
-  { path: '/inspection-overview', name: 'InspectionOverview', component: InspectionOverview },
-  { 
+  {
+    path: '/inspection-record',
+    name: 'InspectionRecord',
+    component: InspectionRecord,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/inspection-overview',
+    name: 'InspectionOverview',
+    component: InspectionOverview,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',
     component: InspectionDetail,
-    props: true
+    props: true,
+    meta: { requiresAuth: true }
   },
-  { 
-    path: '/inspection-record-table/:unitId', 
+  {
+    path: '/inspection-record-table/:unitId',
     name: 'InspectionRecordTable',
     component: InspectionRecordTable,
-    props: true
+    props: true,
+    meta: { requiresAuth: true }
   },
-  { path: '/:pathMatch(.*)*', redirect: '/login' }
+
+  // 🔵 新增：銷控系統的路由
+  {
+    path: '/sales-control-entry', // 銷控系統的建案選擇入口頁路徑
+    name: 'SalesControlSystemEntry',
+    component: SalesControlSystemEntry,
+    meta: { requiresAuth: true } // 假設也需要登入
+  },
+  {
+    path: '/sales-control-system', // 銷控系統主功能頁面的路徑 (示例)
+    name: 'SalesControlSystem',
+    // component: SalesControlSystem, // 稍後創建組件時取消註釋並導入
+    component: () => import('@/views/SalesControlSystem.vue'), // 或者使用路由懶加載
+    meta: { requiresAuth: true }
+  },
+
+  { path: '/:pathMatch(.*)*', redirect: '/login' } // 捕獲所有未匹配路由，重定向到登入
 ];
 
 const router = createRouter({
@@ -38,14 +70,22 @@ const router = createRouter({
   routes
 });
 
-// 路由守衛：未登入只能進 Login
+// 路由守衛：未登入只能進 Login (保持不變)
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore();
-  const isLoggedIn = !!userStore.user;  
-  if (!isLoggedIn && to.name !== 'Login') {
-    return next({ name: 'Login' });
+  const isLoggedIn = !!userStore.user;
+  // 檢查目標路由是否需要認證
+  if (to.meta.requiresAuth && !isLoggedIn) {
+    // 如果需要認證但用戶未登入，重定向到登入頁面
+    // 同時可以保存用戶原本想去的頁面路徑，以便登入後跳轉回去
+    next({ name: 'Login', query: { redirect: to.fullPath } });
+  } else if (isLoggedIn && to.name === 'Login') {
+    // 如果用戶已登入但嘗試訪問登入頁，重定向到首頁
+    next({ name: 'Home' });
   }
-  next();
+  else {
+    next(); // 正常導航
+  }
 });
 
 export default router;

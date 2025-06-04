@@ -8,6 +8,12 @@
        <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
       <span class="text">報價系統</span>
     </button>
+
+     <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToSalesControlSystemEntry">
+      <img src="/img/icons/sales.svg" alt="銷控系統圖標" class="icon" /> 
+      <span class="text">銷控系統</span>
+    </button>
+
     <button class="icon-button" v-if="userStore.hasPermission('客戶管理')">
       <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />
       <span class="text">客戶管理</span>
@@ -28,6 +34,11 @@ const userStore = useUserStore();
 
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
+};
+
+const goToSalesControlSystemEntry = () => {
+  console.log('[Home.vue] goToSalesControlSystemEntry function called'); 
+  router.push({ name: 'SalesControlSystemEntry' });
 };
 </script>
 

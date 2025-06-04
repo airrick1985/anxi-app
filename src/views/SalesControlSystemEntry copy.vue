@@ -1,19 +1,21 @@
+// src/views/SalesControlSystemEntry.vue
 <template>
   <v-container fluid class="fill-height primary lighten-4">
+     <h1>這裡是銷控系統入口頁面 (SalesControlSystemEntry.vue)</h1>
     <v-row align="center" justify="center">
       <v-col cols="12" sm="10" md="8" lg="5" xl="4">
         <v-card class="elevation-12 rounded-lg">
-          <v-toolbar color="primary" dark flat>
+          <v-toolbar color="deep-purple" dark flat> <!-- 更改顏色以區分 -->
             <v-toolbar-title class="font-weight-medium">
-              <v-icon left large>mdi-home-search</v-icon>
-              驗屋系統
+              <v-icon left large>mdi-chart-line</v-icon> <!-- 使用與 App.vue 中一致的圖標 -->
+              銷控系統
             </v-toolbar-title>
           </v-toolbar>
 
           <v-card-text class="pa-5">
             <div v-if="!userStore.user" class="text-center my-5">
-              <p class="text-subtitle-1">請先登入以使用驗屋系統。</p>
-              <v-btn color="primary" @click="goToLogin">
+              <p class="text-subtitle-1">請先登入以使用銷控系統。</p>
+              <v-btn color="deep-purple" @click="goToLogin"> <!-- 更改顏色 -->
                 前往登入
               </v-btn>
             </div>
@@ -23,33 +25,32 @@
                 歡迎，{{ userStore.user.name || userStore.user.key }}！請選擇您要進入的建案：
               </p>
 
-           <v-select
-    v-model="selectedProject"
-    :items="projectOptions"
-    label="選擇建案"
-    outlined
-    dense
-    :loading="loadingProjects"
-    :disabled="loadingProjects || projectOptions.length === 0"
-    no-data-text="您在此系統無可用建案或載入失敗"
-    class="mb-4"
-    hide-details="auto"
-    item-title="text"  
-    item-value="value" 
-   
-  >
-    <template v-slot:prepend-item v-if="loadingProjects">
-      <v-list-item>
-        <v-list-item-title class="text-center">
-          <v-progress-circular indeterminate color="primary" size="24"></v-progress-circular>
-          <span class="ml-2">載入建案中...</span>
-        </v-list-item-title>
-      </v-list-item>
-    </template>
-  </v-select>
+              <v-select
+                v-model="selectedProject"
+                :items="projectOptions"
+                label="選擇建案"
+                outlined
+                dense
+                :loading="loadingProjects"
+                :disabled="loadingProjects || projectOptions.length === 0"
+                no-data-text="您在此系統無可用建案或載入失敗"
+                class="mb-4"
+                hide-details="auto"
+                item-title="text"
+                item-value="value"
+              >
+                <template v-slot:prepend-item v-if="loadingProjects">
+                  <v-list-item>
+                    <v-list-item-title class="text-center">
+                      <v-progress-circular indeterminate color="deep-purple" size="24"></v-progress-circular>
+                      <span class="ml-2">載入建案中...</span>
+                    </v-list-item-title>
+                  </v-list-item>
+                </template>
+              </v-select>
 
               <v-btn
-                color="primary"
+                color="deep-purple" <!-- 更改顏色 -->
                 block
                 x-large
                 @click="enterProject"
@@ -83,21 +84,20 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/user'; // 確保路徑正確
 import { getProjectsBySystemPermission } from '@/api'; // 確保路徑正確
 
 const router = useRouter();
 const userStore = useUserStore();
 
-const selectedProject = ref(null); // 存儲選中的建案 value
-const projectOptions = ref([]); // 存儲 v-select 的 items [{ text: '建案A', value: '建案A' }, ...]
+const selectedProject = ref(null);
+const projectOptions = ref([]);
 const loadingProjects = ref(false);
 const error = ref('');
 
-const SYSTEM_NAME = '驗屋系統'; // 定義當前系統的名稱
+// 🔴 關鍵修改：定義當前系統的名稱
+const SYSTEM_NAME = '銷控系統'; 
 
-// 計算屬性，用於按鈕上顯示的建案名稱 (如果 selectedProject 存的是 ID，而顯示需要名稱)
-// 在這個例子中，text 和 value 相同，所以可以直接用 selectedProject
 const selectedProjectDisplayName = computed(() => {
   const project = projectOptions.value.find(p => p.value === selectedProject.value);
   return project ? project.text : '建案';
@@ -113,41 +113,37 @@ async function loadProjectsForSystem() {
 
   loadingProjects.value = true;
   error.value = '';
-  projectOptions.value = []; // 清空舊選項
-  selectedProject.value = null; // 清空已選項目
+  projectOptions.value = [];
+  selectedProject.value = null;
 
   try {
-    console.log(`[InspectionSystem] Loading projects for user: ${userStore.user.key}, system: ${SYSTEM_NAME}`);
+    console.log(`[SalesControlSystemEntry] Loading projects for user: ${userStore.user.key}, system: ${SYSTEM_NAME}`);
     const response = await getProjectsBySystemPermission(userStore.user.key, SYSTEM_NAME);
-    console.log('[InspectionSystem] API response for projects:', response);
+    console.log('[SalesControlSystemEntry] API response for projects:', response);
 
     if (response.status === 'success' && Array.isArray(response.projects)) {
       projectOptions.value = response.projects.map(p => ({
-        text: p.text || p.value, // 確保有 text 和 value
+        text: p.text || p.value,
         value: p.value
       }));
 
       if (projectOptions.value.length > 0) {
-        // 嘗試恢復上次選擇的建案，或選擇第一個
-        const lastSelectedProjectName = userStore.user.projectName; // 從 store 讀取上次選擇的建案
+        const lastSelectedProjectName = userStore.user.projectName;
         if (lastSelectedProjectName && projectOptions.value.some(p => p.value === lastSelectedProjectName)) {
           selectedProject.value = lastSelectedProjectName;
-          console.log(`[InspectionSystem] Restored last selected project: ${lastSelectedProjectName}`);
         } else {
           selectedProject.value = projectOptions.value[0].value;
-          console.log(`[InspectionSystem] Selected first available project: ${selectedProject.value}`);
         }
+        console.log(`[SalesControlSystemEntry] Selected project: ${selectedProject.value}`);
       } else {
         error.value = `您在 "${SYSTEM_NAME}" 中沒有可操作的建案。`;
-        console.log(`[InspectionSystem] No projects available for user ${userStore.user.key} in ${SYSTEM_NAME}.`);
       }
     } else {
       error.value = response.message || `載入建案列表失敗 (${SYSTEM_NAME})。`;
-      console.error('[InspectionSystem] Failed to load projects:', response.message);
     }
   } catch (err) {
     error.value = `載入建案列表時發生網路或系統錯誤 (${SYSTEM_NAME})。`;
-    console.error('[InspectionSystem] Error loading projects:', err);
+    console.error('[SalesControlSystemEntry] Error loading projects:', err);
   } finally {
     loadingProjects.value = false;
   }
@@ -155,11 +151,11 @@ async function loadProjectsForSystem() {
 
 function enterProject() {
   if (selectedProject.value) {
-    userStore.setProjectName(selectedProject.value); // 更新 Pinia store 中的當前建案名稱
-    console.log(`[InspectionSystem] Entering project: ${selectedProject.value} for ${SYSTEM_NAME}. Stored in Pinia.`);
-    // 導航到該建案的驗屋主頁面或儀表板
-    // 假設 'Dashboard' 路由會根據 userStore.user.projectName 顯示對應建案的內容
-    router.push({ name: 'InspectionRecord' });
+    userStore.setProjectName(selectedProject.value);
+    console.log(`[SalesControlSystemEntry] Entering project: ${selectedProject.value} for ${SYSTEM_NAME}. Stored in Pinia.`);
+    
+    // 🔴 關鍵修改：跳轉到銷控系統的主頁面路由
+    router.push({ name: 'SalesControlSystem' }); 
   } else {
     error.value = '請先選擇一個建案。';
   }
@@ -174,32 +170,24 @@ function goHome() {
 }
 
 onMounted(() => {
-  console.log('[InspectionSystem] Component mounted.');
+  console.log('[SalesControlSystemEntry] Component mounted. User:', JSON.parse(JSON.stringify(userStore.user)));
   if (userStore.user && userStore.user.key) {
     loadProjectsForSystem();
-  } else {
-    console.log('[InspectionSystem] User not logged in on mount, redirecting to Login may be needed or handled by router guard.');
-    // 可以選擇在這裡強制跳轉，或者依賴路由守衛
-    // goToLogin();
   }
 });
 
-// 監聽 userStore.user 的變化 (例如，用戶登入/登出後)
 watch(() => userStore.user, (newUser, oldUser) => {
-  console.log('[InspectionSystem] User store changed:', newUser);
+  console.log('[SalesControlSystemEntry] User store changed. New User:', JSON.parse(JSON.stringify(newUser)));
   if (newUser && newUser.key) {
-    // 如果是新用戶登入，或者用戶信息發生了有意義的變化
-    if (!oldUser || newUser.key !== oldUser.key) {
+    if (!oldUser || newUser.key !== oldUser.key || newUser.projectName !== oldUser?.projectName) { // 也監聽 projectName 變化，雖然此頁面主要由 user key 觸發
       loadProjectsForSystem();
     }
   } else {
-    // 用戶已登出
     projectOptions.value = [];
     selectedProject.value = null;
-    error.value = ''; // 清除可能存在的錯誤信息
-    console.log('[InspectionSystem] User logged out, cleared project options.');
+    error.value = '';
   }
-}, { deep: true }); // deep watch 可能不是必須的，如果只關心 user 對象本身是否改變
+}, { deep: true });
 
 </script>
 

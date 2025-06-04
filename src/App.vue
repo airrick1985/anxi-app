@@ -2,7 +2,8 @@
   <v-app>
   
     <!-- 頂部 App Bar -->
-    <v-app-bar app color="black" dark>
+   <v-app-bar app dark class="custom-app-bar">
+            
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
   <!-- 🔵 新增：首頁按鈕 -->
   <v-btn icon @click="goHome" class="me-2">
@@ -25,30 +26,30 @@
       </div>
       <v-spacer />
 
-      <template v-if="user">
-        <v-menu
-  offset-y
-  :close-on-content-click="false"
-  v-model="menu"
-  :activator="menuActivator"
->
-  <v-list>
-    <v-list-item @click="dialog = true">
-      <v-list-item-title>個人資料</v-list-item-title>
-    </v-list-item>
-    <v-list-item @click="logoutDialog = true">
-      <v-list-item-title>登出</v-list-item-title>
-    </v-list-item>
-  </v-list>
-</v-menu>
-
-<v-btn icon ref="menuActivator">
-  <v-icon>mdi-dots-vertical</v-icon>
-</v-btn>
-
-
-        <span class="me-4 clickable" @click="dialog = true">{{ user.name }}</span>
+<template v-if="user">
+  <div class="d-flex align-center">
+    <span class="me-2 clickable" @click="dialog = true" title="個人資料">{{ user.name }}</span>
+    <v-menu
+      offset-y
+      :close-on-content-click="false" 
+      v-model="menu"
+    >
+      <template v-slot:activator="{ props }">
+        <v-btn icon v-bind="props">
+          <v-icon>mdi-dots-vertical</v-icon>
+        </v-btn>
       </template>
+      <v-list>
+        <v-list-item @click="dialog = true">
+          <v-list-item-title>個人資料</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="logoutDialog = true">
+          <v-list-item-title>登出</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+  </div>
+</template>
     </v-app-bar>
 
     <v-navigation-drawer v-model="drawer" width="150" temporary>
@@ -65,6 +66,14 @@
           v-if="userStore.hasPermission('報價系統')"
           @click="drawer = false">
         </v-list-item>
+
+<v-list-item 
+  prepend-icon="mdi-chart-line" 
+  title="銷控系統" 
+  v-if="userStore.hasPermission('銷控系統')"
+  @click="navigateTo('SalesControlSystemEntry')">
+</v-list-item>
+
         <v-list-item 
           prepend-icon="mdi-account-group" 
           title="客戶管理" 
@@ -87,8 +96,7 @@
         @stop-loading="loading = false"
         @notify="showSnackbar"
       />
-<!-- 浮動式 BottomNavBar -->
-<//BottomNavBar v-if="showBottomNav" />
+
       
       <!-- Footer -->
 <v-footer
@@ -276,6 +284,27 @@ const navigateTo = (routeName) => {
 </script>
 
 <style scoped>
+.custom-app-bar {
+  background-image: linear-gradient(135deg, #1A2980 0%, #26D0CE 100%) !important; /* 可以嘗試加 !important 提高優先級 */
+}
+
+/* 🔵 修改 v-app-bar 內部元素的顏色 */
+
+/* 導航抽屜圖標 和 首頁圖標 (通常 v-btn icon 內的 v-icon) */
+:deep(.custom-app-bar .v-btn--icon .v-icon),
+:deep(.custom-app-bar .v-app-bar-nav-icon .v-icon) { /* 更精確地選中 nav-icon 內的圖標 */
+  color: white !important; /* 或者你想要的亮色，例如 #E0E0E0 */
+}
+
+/* 應用欄標題 */
+:deep(.custom-app-bar .app-bar-title) { /* 你已經為標題定義了 app-bar-title class */
+  color: white !important;
+}
+
+/* 用戶名 */
+:deep(.custom-app-bar span.clickable) { /* 假設用戶名是 span 且有 clickable class */
+  color: white !important;
+}
 
 .app-bar-title {
   /* 確保文字可以換行並完整顯示 */
@@ -288,6 +317,8 @@ const navigateTo = (routeName) => {
   flex-shrink: 1; /* 允許標題在空間不足時收縮（但配合換行） */
   min-width: 0; /* 允許 flex item 收縮到其內容大小以下 */
 }
+
+
 
 /* 針對手機屏幕調整字體大小 */
 @media (max-width: 599px) { /* 假設手機屏幕寬度小於 600px */
