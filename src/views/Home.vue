@@ -4,9 +4,9 @@
       <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
        <span class="text">驗屋系統</span>
     </button>
-    <button class="icon-button" v-if="userStore.hasPermission('銷控系統')">
-       <img src="/img/icons/tablet.svg" alt="銷控系統圖標" class="icon" />
-      <span class="text">銷控系統</span>
+    <button class="icon-button" v-if="userStore.hasPermission('報價系統')">
+       <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
+      <span class="text">報價系統</span>
     </button>
     <button class="icon-button" v-if="userStore.hasPermission('客戶管理')">
       <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />

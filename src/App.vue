@@ -61,8 +61,8 @@
         </v-list-item>
         <v-list-item 
           prepend-icon="mdi-table-large" 
-          title="銷控系統" 
-          v-if="userStore.hasPermission('銷控系統')"
+          title="報價系統" 
+          v-if="userStore.hasPermission('報價系統')"
           @click="drawer = false">
         </v-list-item>
         <v-list-item 

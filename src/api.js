@@ -404,3 +404,12 @@ export async function fetchAllProjectInspectionRecords(projectName) {
     token: 'anxi111003' // 假設也需要 token
   }, INSPECTION_API);
 }
+
+export async function getProjectsBySystemPermission(userKey, systemName) {
+  console.log(`[api.js] getProjectsBySystemPermission called with userKey: ${userKey}, systemName: ${systemName}`);
+  if (!userKey || !systemName) {
+    console.error("[api.js] getProjectsBySystemPermission: userKey or systemName is missing!");
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 getProjectsBySystemPermission 時缺少 userKey 或 systemName。' });
+  }
+  return fetchPost({ action: 'get_projects_by_system_permission', key: userKey, systemName }, USER_API); // 假設此 action 屬於 USER_API 範疇
+}
