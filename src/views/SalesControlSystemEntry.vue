@@ -135,13 +135,17 @@ async function loadProjectsForSystem() {
 
 function enterProject() {
   if (selectedProject.value) {
+    // 雖然也更新了 Pinia store，但路由跳轉更依賴直接傳遞的參數
     userStore.setProjectName(selectedProject.value);
-    console.log(`[SalesControlSystemEntry] Entering project: ${selectedProject.value} for ${SYSTEM_NAME}. Stored in Pinia.`);
-    
-    // 🔴 關鍵修改：跳轉到銷控系統的主頁面路由
-    router.push({ name: 'SalesControlSystem' }); 
-  } else {
-    error.value = '請先選擇一個建案。';
+    console.log(`[SalesControlSystemEntry] Navigating to SalesControlSystem with projectName: ${selectedProject.value}`);
+
+    // ✅ 關鍵修改：使用 params 將 projectName 傳遞給路由
+    router.push({
+      name: 'SalesControlSystem',
+      params: {
+        projectName: selectedProject.value
+      }
+    });
   }
 }
 

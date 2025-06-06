@@ -5,6 +5,8 @@ const DROPDOWN_API = `${BASE_API_URL}/dropdown`;
 const USER_API = `${BASE_API_URL}/user`;
 const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
+const SALES_API = `${BASE_API_URL}/sales`;
+
 
 
 export async function getProjectList(userKey) { 
@@ -412,4 +414,17 @@ export async function getProjectsBySystemPermission(userKey, systemName) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 getProjectsBySystemPermission 時缺少 userKey 或 systemName。' });
   }
   return fetchPost({ action: 'get_projects_by_system_permission', key: userKey, systemName }, USER_API); // 假設此 action 屬於 USER_API 範疇
+}
+
+export async function fetchSalesControlData(projectName) {
+  console.log(`[api.js] fetchSalesControlData called with projectName: ${projectName}`);
+  if (!projectName) {
+    console.error("[api.js] fetchSalesControlData: projectName is missing!");
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesControlData 時缺少 projectName。' });
+  }
+  return fetchPost({
+    action: 'get_sales_control_data',
+    projectName,
+    token: 'anxi111003' // 假設代理層需要 token
+  }, SALES_API); // 假設此 action 屬於一個新的 SALES_API 端點
 }

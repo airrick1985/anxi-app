@@ -8,7 +8,7 @@ import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue'; 
 import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
-// import SalesControlSystem from '@/views/SalesControlSystem.vue'; // 銷控系統主頁面，稍後創建時取消註釋
+
 
 const routes = [
   { path: '/', redirect: '/login' },
@@ -55,12 +55,11 @@ const routes = [
     meta: { requiresAuth: true } // 假設也需要登入
   },
   {
-    path: '/sales-control-system', // 銷控系統主功能頁面的路徑 (示例)
-    name: 'SalesControlSystem',
-    // component: SalesControlSystem, // 稍後創建組件時取消註釋並導入
-    component: () => import('@/views/SalesControlSystem.vue'), // 或者使用路由懶加載
-    meta: { requiresAuth: true }
-  },
+  path: '/sales-control/:projectName',
+  name: 'SalesControlSystem',
+  component: () => import('@/views/SalesControlSystem.vue'),
+  meta: { requiresAuth: true }
+},
 
   { path: '/:pathMatch(.*)*', redirect: '/login' } // 捕獲所有未匹配路由，重定向到登入
 ];
