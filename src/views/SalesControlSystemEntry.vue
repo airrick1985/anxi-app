@@ -56,9 +56,16 @@
                 <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
                 進入 {{ selectedProjectDisplayName }}
               </v-btn>
-              
-            </div>
+             </div>
           </v-card-text>
+          <v-divider v-if="userStore.user"></v-divider>
+          <v-card-actions v-if="userStore.user" class="pa-3 grey lighten-4">
+            <v-spacer></v-spacer>
+            <v-btn text color="secondary" @click="goHome">
+              <v-icon left>mdi-home</v-icon>
+              返回主選單
+            </v-btn>
+          </v-card-actions>
         </v-card>
       </v-col>
     </v-row>

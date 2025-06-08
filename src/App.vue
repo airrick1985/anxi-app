@@ -283,6 +283,9 @@ const navigateTo = (routeName) => {
 
 </script>
 
+
+
+
 <style scoped>
 .custom-app-bar {
   background-image: linear-gradient(135deg, #1A2980 0%, #26D0CE 100%) !important; /* 可以嘗試加 !important 提高優先級 */
