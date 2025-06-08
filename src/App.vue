@@ -284,7 +284,36 @@ const navigateTo = (routeName) => {
 </script>
 
 
+<style>
+/* 
+  全局佈局與滾動重置 
+*/
 
+/* 1. 禁用瀏覽器預設的滾動行為 */
+html {
+  overflow-y: auto !important; /* 確保 html 自身不顯示滾動條 */
+}
+
+/* 2. 讓 VMain 成為唯一的滾動容器 */
+.v-main {
+  /* 讓 VMain 的高度能被計算 */
+  height: 100vh;
+  /* 讓 VMain 內部可以垂直滾動 */
+  overflow-y: auto;
+}
+
+/* 3. (可選但推薦) 讓滾動條更好看 */
+.v-main::-webkit-scrollbar {
+  width: 8px;
+}
+.v-main::-webkit-scrollbar-thumb {
+  background: #90A4AE;
+  border-radius: 4px;
+}
+.v-main::-webkit-scrollbar-track {
+  background: #CFD8DC;
+}
+</style>
 
 <style scoped>
 .custom-app-bar {
