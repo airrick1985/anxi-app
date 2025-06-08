@@ -4,16 +4,18 @@
       <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
        <span class="text">驗屋系統</span>
     </button>
-    <button class="icon-button" v-if="userStore.hasPermission('報價系統')">
+    
+     <!-- ✅ 修改：報價系統按鈕 -->
+    <button class="icon-button" v-if="userStore.hasPermission('報價系統')" @click="goToEntryPage('quote')">
        <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
       <span class="text">報價系統</span>
     </button>
 
-     <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToSalesControlSystemEntry">
+     <!-- ✅ 修改：銷控系統按鈕 -->
+     <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToEntryPage('sales')">
       <img src="/img/icons/sales.svg" alt="銷控系統圖標" class="icon" /> 
       <span class="text">銷控系統</span>
     </button>
-
     <button class="icon-button" v-if="userStore.hasPermission('客戶管理')">
       <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />
       <span class="text">客戶管理</span>
@@ -36,9 +38,14 @@ const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
 };
 
-const goToSalesControlSystemEntry = () => {
-  console.log('[Home.vue] goToSalesControlSystemEntry function called'); 
-  router.push({ name: 'SalesControlSystemEntry' });
+// ✅ 修改：讓這個函數更通用
+const goToEntryPage = (mode) => {
+  console.log(`[Home.vue] Navigating to entry page with mode: ${mode}`); 
+  router.push({ 
+    name: 'SalesControlSystemEntry',
+    // ✅ 關鍵：附加查詢參數
+    query: { viewMode: mode } 
+  });
 };
 </script>
 

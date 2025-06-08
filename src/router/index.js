@@ -55,11 +55,23 @@ const routes = [
     meta: { requiresAuth: true } // 假設也需要登入
   },
   {
-  path: '/sales-control/:projectName',
-  name: 'SalesControlSystem',
-  component: () => import('@/views/SalesControlSystem.vue'),
-  meta: { requiresAuth: true }
-},
+    path: '/sales-control/:projectName',
+    name: 'SalesControlSystem', // 這是銷控系統的入口
+    component: () => import('@/views/SalesControlSystem.vue'),
+    meta: { 
+      requiresAuth: true,
+      viewMode: 'sales' // ✅ 銷控模式
+    }
+  },
+  {
+    path: '/quote-system/:projectName', // 為報價系統定義一個不同的路徑
+    name: 'QuoteSystem', // 新的路由名稱
+    component: () => import('@/views/SalesControlSystem.vue'), // ✅ 指向同一個組件
+    meta: {
+      requiresAuth: true,
+      viewMode: 'quote' // ✅ 報價模式
+    }
+  },
 
   { path: '/:pathMatch(.*)*', redirect: '/login' } // 捕獲所有未匹配路由，重定向到登入
 ];

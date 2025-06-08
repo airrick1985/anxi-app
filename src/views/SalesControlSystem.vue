@@ -26,9 +26,10 @@
           
           
           
-           <div v-if="item.data"
-               class="unit-card"
-               :style="{ backgroundColor: statusColorMap.get(item.data['銷控後台狀態']) || '#ffffff' }"
+       <!-- ✅ 關鍵修改：將寫死的欄位名替換為動態的 statusField 變數 -->
+          <div v-if="item.data" 
+               class="unit-card" 
+               :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
                @click="openUnitDetail(item.data)">
             <span class="unit-name">{{ item.data['戶別'] }}</span>
             <span class="unit-total-price">{{ item.data['房屋總表價'] }} 萬</span>
@@ -147,10 +148,20 @@ const flatGridData = computed(() => {
   return items;
 });
 
+// ✅ 確保這個計算屬性存在
+const statusField = computed(() => {
+  if (route.meta.viewMode === 'quote') {
+    return '銷控狀態'; // 報價系統模式
+  }
+  return '銷控後台狀態'; // 預設為銷控系統模式
+});
+
+// ✅ 確保 statusColorMap 的鍵是從 '參數' 工作表的 '銷控狀態' 欄位讀取的
 const statusColorMap = computed(() => {
   const paramsData = allData.value['參數'] || [];
   const map = new Map();
   for (const item of paramsData) {
+    // 這個鍵名 '銷控狀態' 是固定的，因為它對應參數表的表頭
     const status = item['銷控狀態']; 
     const color = item['色碼'];
     if (status && color) {

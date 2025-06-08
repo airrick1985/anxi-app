@@ -1,23 +1,27 @@
-// src/views/SalesControlSystemEntry.vue
+<!-- /src/views/SalesControlSystemEntry.vue -->
 <template>
   <v-container fluid class="fill-height primary lighten-4">
     <v-row align="center" justify="center">
       <v-col cols="12" sm="10" md="8" lg="5" xl="4">
         <v-card class="elevation-12 rounded-lg">
+          <!-- ✅ 標題和圖標現在是動態的 -->
           <v-toolbar color="deep-purple" dark flat>
             <v-toolbar-title class="font-weight-medium">
-              <v-icon left large>mdi-chart-line</v-icon>
-              銷控系統
+              <v-icon left large>{{ pageIcon }}</v-icon>
+              {{ pageTitle }}
             </v-toolbar-title>
           </v-toolbar>
+
          <v-card-text class="pa-5">
             <div v-if="!userStore.user" class="text-center my-5">
-              <p class="text-subtitle-1">請先登入以使用銷控系統。</p>
+              <!-- ✅ 提示文字也是動態的 -->
+              <p class="text-subtitle-1">請先登入以使用{{ pageTitle }}。</p>
               <v-btn color="deep-purple" @click="goToLogin">
                 前往登入
               </v-btn>
             </div>
-          <div v-else>
+
+            <div v-else>
               <p class="text-subtitle-1 mb-4">
                 歡迎，{{ userStore.user.name || userStore.user.key }}！請選擇您要進入的建案：
               </p>
@@ -29,7 +33,7 @@
                 dense
                 :loading="loadingProjects"
                 :disabled="loadingProjects || projectOptions.length === 0"
-                no-data-text="您在此系統無可用建案或載入失敗"
+                :no-data-text="`您在 ${pageTitle} 無可用建案或載入失敗`"
                 class="mb-4"
                 hide-details="auto"
                 item-title="text"
@@ -54,10 +58,14 @@
                 class="font-weight-bold"
               >
                 <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
-                進入 {{ selectedProjectDisplayName }}
+                <!-- ✅ 按鈕文字也是動態的 -->
+                進入 {{ selectedProjectDisplayName }} 的{{ pageTitle }}
               </v-btn>
+
+              <v-alert v-if="error" type="error" dense class="mt-4">{{ error }}</v-alert>
              </div>
           </v-card-text>
+
           <v-divider v-if="userStore.user"></v-divider>
           <v-card-actions v-if="userStore.user" class="pa-3 grey lighten-4">
             <v-spacer></v-spacer>
@@ -74,11 +82,12 @@
 
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user'; // 確保路徑正確
-import { getProjectsBySystemPermission } from '@/api'; // 確保路徑正確
+import { useRoute, useRouter } from 'vue-router';
+import { useUserStore } from '@/store/user';
+import { getProjectsBySystemPermission } from '@/api';
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStore();
 
 const selectedProject = ref(null);
@@ -86,8 +95,28 @@ const projectOptions = ref([]);
 const loadingProjects = ref(false);
 const error = ref('');
 
-// 🔴 關鍵修改：定義當前系統的名稱
-const SYSTEM_NAME = '銷控系統'; 
+// --- ✅ 動態內容的核心邏輯 ---
+
+// 1. 獲取從 Home.vue 傳來的 viewMode 查詢參數
+const currentViewMode = computed(() => route.query.viewMode || 'sales');
+
+// 2. 根據 viewMode 動態生成頁面標題
+const pageTitle = computed(() => {
+  if (currentViewMode.value === 'quote') {
+    return '報價系統';
+  }
+  return '銷控系統';
+});
+
+// 3. 根據 viewMode 動態生成頁面圖標
+const pageIcon = computed(() => {
+  if (currentViewMode.value === 'quote') {
+    return 'mdi-table-large';
+  }
+  return 'mdi-chart-line';
+});
+
+// --- 已有邏輯的適配修改 ---
 
 const selectedProjectDisplayName = computed(() => {
   const project = projectOptions.value.find(p => p.value === selectedProject.value);
@@ -97,8 +126,6 @@ const selectedProjectDisplayName = computed(() => {
 async function loadProjectsForSystem() {
   if (!userStore.user || !userStore.user.key) {
     error.value = '無法獲取用戶資訊，請重新登入。';
-    projectOptions.value = [];
-    selectedProject.value = null;
     return;
   }
 
@@ -108,8 +135,11 @@ async function loadProjectsForSystem() {
   selectedProject.value = null;
 
   try {
-    console.log(`[SalesControlSystemEntry] Loading projects for user: ${userStore.user.key}, system: ${SYSTEM_NAME}`);
-    const response = await getProjectsBySystemPermission(userStore.user.key, SYSTEM_NAME);
+    // ✅ 使用動態的 pageTitle.value 來獲取對應系統的權限
+    const systemNameForPermission = pageTitle.value;
+    console.log(`[SalesControlSystemEntry] Loading projects for user: ${userStore.user.key}, system: ${systemNameForPermission}`);
+    
+    const response = await getProjectsBySystemPermission(userStore.user.key, systemNameForPermission);
     console.log('[SalesControlSystemEntry] API response for projects:', response);
 
     if (response.status === 'success' && Array.isArray(response.projects)) {
@@ -127,13 +157,13 @@ async function loadProjectsForSystem() {
         }
         console.log(`[SalesControlSystemEntry] Selected project: ${selectedProject.value}`);
       } else {
-        error.value = `您在 "${SYSTEM_NAME}" 中沒有可操作的建案。`;
+        error.value = `您在 "${systemNameForPermission}" 中沒有可操作的建案。`;
       }
     } else {
-      error.value = response.message || `載入建案列表失敗 (${SYSTEM_NAME})。`;
+      error.value = response.message || `載入建案列表失敗 (${systemNameForPermission})。`;
     }
   } catch (err) {
-    error.value = `載入建案列表時發生網路或系統錯誤 (${SYSTEM_NAME})。`;
+    error.value = `載入建案列表時發生網路或系統錯誤 (${systemNameForPermission})。`;
     console.error('[SalesControlSystemEntry] Error loading projects:', err);
   } finally {
     loadingProjects.value = false;
@@ -142,13 +172,15 @@ async function loadProjectsForSystem() {
 
 function enterProject() {
   if (selectedProject.value) {
-    // 雖然也更新了 Pinia store，但路由跳轉更依賴直接傳遞的參數
     userStore.setProjectName(selectedProject.value);
-    console.log(`[SalesControlSystemEntry] Navigating to SalesControlSystem with projectName: ${selectedProject.value}`);
+    
+    // ✅ 根據 viewMode 動態決定要跳轉到的路由名稱
+    const targetRouteName = currentViewMode.value === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
+    
+    console.log(`[SalesControlSystemEntry] Entering project: ${selectedProject.value}. Mode: ${currentViewMode.value}. Target Route: ${targetRouteName}`);
 
-    // ✅ 關鍵修改：使用 params 將 projectName 傳遞給路由
     router.push({
-      name: 'SalesControlSystem',
+      name: targetRouteName,
       params: {
         projectName: selectedProject.value
       }
@@ -164,6 +196,7 @@ function goHome() {
   router.push({ name: 'Home' });
 }
 
+// --- 生命週期鉤子 (不變) ---
 onMounted(() => {
   console.log('[SalesControlSystemEntry] Component mounted. User:', JSON.parse(JSON.stringify(userStore.user)));
   if (userStore.user && userStore.user.key) {
@@ -174,7 +207,7 @@ onMounted(() => {
 watch(() => userStore.user, (newUser, oldUser) => {
   console.log('[SalesControlSystemEntry] User store changed. New User:', JSON.parse(JSON.stringify(newUser)));
   if (newUser && newUser.key) {
-    if (!oldUser || newUser.key !== oldUser.key || newUser.projectName !== oldUser?.projectName) { // 也監聽 projectName 變化，雖然此頁面主要由 user key 觸發
+    if (!oldUser || newUser.key !== oldUser.key) {
       loadProjectsForSystem();
     }
   } else {
@@ -183,7 +216,6 @@ watch(() => userStore.user, (newUser, oldUser) => {
     error.value = '';
   }
 }, { deep: true });
-
 </script>
 
 <style scoped>
