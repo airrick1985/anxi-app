@@ -60,19 +60,19 @@
           v-if="userStore.hasPermission('驗屋系統')"
           @click="navigateTo('InspectionSystem')">
         </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-table-large" 
-          title="報價系統" 
-          v-if="userStore.hasPermission('報價系統')"
-          @click="drawer = false">
-        </v-list-item>
+     <v-list-item 
+      prepend-icon="mdi-table-large" 
+      title="報價系統" 
+      v-if="userStore.hasPermission('報價系統')"
+      @click="goToEntryPage('quote')">
+    </v-list-item>
 
-<v-list-item 
-  prepend-icon="mdi-chart-line" 
-  title="銷控系統" 
-  v-if="userStore.hasPermission('銷控系統')"
-  @click="navigateTo('SalesControlSystemEntry')">
-</v-list-item>
+     <v-list-item 
+      prepend-icon="mdi-chart-line" 
+      title="銷控系統" 
+      v-if="userStore.hasPermission('銷控系統')"
+      @click="goToEntryPage('sales')">
+    </v-list-item>
 
         <v-list-item 
           prepend-icon="mdi-account-group" 
@@ -279,6 +279,16 @@ const navigateTo = (routeName) => {
     router.push({ name: routeName });
   }
   drawer.value = false; // drawer is already defined
+};
+
+
+// ✅ 新增：一個專門用於跳轉到入口頁的函數
+const goToEntryPage = (mode) => {
+  router.push({
+    name: 'SalesControlSystemEntry',
+    query: { viewMode: mode }
+  });
+  drawer.value = false; // 關閉抽屜
 };
 
 </script>

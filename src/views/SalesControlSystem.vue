@@ -32,9 +32,17 @@
                :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
                @click="openUnitDetail(item.data)">
             <span class="unit-name">{{ item.data['戶別'] }}</span>
-            <span class="unit-total-price">{{ item.data['房屋總表價'] }} 萬</span>
-            <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
-            <span class="unit-per-price">{{ item.data['房屋單價(表價)'] }} 萬/坪</span>
+            <!-- ✅ 關鍵修改：使用 v-if 進行條件渲染 -->
+            <template v-if="statusField === '銷控狀態' && item.data['銷控狀態'] === '已售'">
+              <span class="unit-total-price sold-text">已售</span>
+              <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
+              <span class="unit-per-price"></span> <!-- 顯示一個空的 span 來佔位 -->
+            </template>
+            <template v-else>
+              <span class="unit-total-price">{{ item.data['房屋總表價'] }} 萬</span>
+              <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
+              <span class="unit-per-price">{{ item.data['房屋單價(表價)'] }} 萬/坪</span>
+            </template>
           </div>
           <div v-else class="unit-card empty"></div>
         </div>
@@ -42,10 +50,11 @@
     </div>
 
  <!-- ✅ 5. 在頁面底部放置 Modal 組件 -->
-    <UnitDetailModal 
-      v-model:show="isModalVisible" 
-      :unit-data="selectedUnitData" 
-    />
+  <UnitDetailModal 
+    v-model:show="isModalVisible" 
+    :unit-data="selectedUnitData"
+    :view-mode="currentViewMode" 
+  />
 
     <!-- 加載和錯誤狀態遮罩層 -->
     <div v-if="loading || error" class="status-overlay">
@@ -65,13 +74,15 @@ const route = useRoute();
 const loading = ref(true);
 const error = ref(null);
 const allData = ref({});
+const currentViewMode = computed(() => route.meta.viewMode || 'sales');
 
-// --- Refs for DOM elements ---
 const headerTopRef = ref(null);
 const headerLeftRef = ref(null);
 const mainGridRef = ref(null);
+const isModalVisible = ref(false);
+const selectedUnitData = ref(null);
 
-// --- 數據處理 ---
+// --- 數據處理 (已修正) ---
 const salesRawData = computed(() => allData.value['銷控'] || []);
 
 const filteredSalesData = computed(() => {
@@ -90,46 +101,47 @@ const floorHeaders = computed(() => {
   return Array.from(floors).sort((a, b) => b - a);
 });
 
-const priceMap = computed(() => {
-  const priceData = allData.value['價格'] || [];
-  const map = new Map();
-  for (const item of priceData) {
-    if (item['戶別']) {
-      map.set(item['戶別'], item);
-    }
-  }
-  return map;
-});
-
-const areaMap = computed(() => {
-  const areaData = allData.value['面積'] || [];
-  const map = new Map();
-  for (const item of areaData) {
-    if (item['戶別']) {
-      map.set(item['戶別'], item);
-    }
-  }
-  return map;
-});
-
+// ✅ 修正後的 gridData 計算屬性
 const gridData = computed(() => {
+  // 1. 先獲取所有需要的數據源
+  const priceData = allData.value['價格'] || [];
+  const areaData = allData.value['面積'] || [];
+  const floorplanData = allData.value['平面圖'] || [];
+
+  // 2. 提前創建好所有映射表，提高效能
+  const priceMap = new Map(priceData.map(item => [item['戶別'], item]));
+  const areaMap = new Map(areaData.map(item => [item['戶別'], item]));
+  const floorplanMap = new Map(floorplanData.map(item => [item['戶別'], item]));
+
   const dataMap = {};
+  
+  // 3. 遍歷銷控數據，開始合併
   for (const record of filteredSalesData.value) {
     const floor = record['樓層'];
     const building = record['棟別'];
-    const unitId = record['戶別'];
+    const unitId = record['戶別']; // 在這裡獲取 unitId
 
-    const priceInfo = priceMap.value.get(unitId) || {};
-    const areaInfo = areaMap.value.get(unitId) || {};
+    // ✅ 4. 將解析邏輯移到循環內部
+    const floorplanItem = floorplanMap.get(unitId);
+    let parsedFloorplans = [];
+    if (floorplanItem && floorplanItem['平面圖URL列表']) {
+      try {
+        parsedFloorplans = JSON.parse(floorplanItem['平面圖URL列表']);
+      } catch (e) {
+        console.error(`解析戶別 ${unitId} 的平面圖URL列表時失敗:`, e);
+      }
+    }
 
     if (!dataMap[floor]) {
       dataMap[floor] = {};
     }
     
+    // 5. 合併所有數據
     dataMap[floor][building] = {
       ...record,
-      ...priceInfo,
-      ...areaInfo
+      ...(priceMap.get(unitId) || {}),
+      ...(areaMap.get(unitId) || {}),
+      floorplans: parsedFloorplans // 使用解析後的數據
     };
   }
   return dataMap;
@@ -148,20 +160,14 @@ const flatGridData = computed(() => {
   return items;
 });
 
-// ✅ 確保這個計算屬性存在
 const statusField = computed(() => {
-  if (route.meta.viewMode === 'quote') {
-    return '銷控狀態'; // 報價系統模式
-  }
-  return '銷控後台狀態'; // 預設為銷控系統模式
+  return route.meta.viewMode === 'quote' ? '銷控狀態' : '銷控後台狀態';
 });
 
-// ✅ 確保 statusColorMap 的鍵是從 '參數' 工作表的 '銷控狀態' 欄位讀取的
 const statusColorMap = computed(() => {
   const paramsData = allData.value['參數'] || [];
   const map = new Map();
   for (const item of paramsData) {
-    // 這個鍵名 '銷控狀態' 是固定的，因為它對應參數表的表頭
     const status = item['銷控狀態']; 
     const color = item['色碼'];
     if (status && color) {
@@ -171,7 +177,7 @@ const statusColorMap = computed(() => {
   return map;
 });
 
-// --- 滾動同步邏輯 ---
+// --- 函數 (不變) ---
 function handleScroll(event) {
   if (headerTopRef.value) {
     headerTopRef.value.scrollLeft = event.target.scrollLeft;
@@ -181,20 +187,15 @@ function handleScroll(event) {
   }
 }
 
-// ✅ 2. 新增兩個 ref 來控制 Modal
-const isModalVisible = ref(false); // 控制 Modal 是否顯示
-const selectedUnitData = ref(null); // 存儲被點擊的那個戶別的完整數據
-
-// ✅ 3. 新增打開 Modal 的函數
 function openUnitDetail(unitData) {
   if (unitData) {
-    selectedUnitData.value = unitData; // 將數據存起來
-    isModalVisible.value = true;      // 打開 Modal
+    selectedUnitData.value = unitData;
+    isModalVisible.value = true;
     console.log('Opening details for:', unitData['戶別']);
   }
 }
 
-// --- 生命週期鉤子 ---
+// --- 生命週期鉤子 (不變) ---
 onMounted(async () => {
   const projectName = route.params.projectName;
   if (!projectName) {
@@ -377,4 +378,12 @@ onMounted(async () => {
   background-color: rgba(240, 242, 245, 0.8);
   z-index: 10;
 }
+
+/* 新增：已售文字的樣式 */
+.sold-text {
+  font-weight: 700;
+  color: #ff0000; /* 深灰色 */
+  letter-spacing: 2px; /* 增加字間距 */
+}
+
 </style>
