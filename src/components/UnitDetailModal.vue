@@ -88,6 +88,15 @@
                   </div>
                 </v-col>
               </v-row>
+
+              <v-divider class="my-4" v-if="viewMode === 'sales'"></v-divider>
+              
+              <!-- ✅ 3. 條件渲染新的銷售資訊組件 -->
+              <SalesInfoSection 
+                v-if="viewMode === 'sales'" 
+                :sales-data="unitData" 
+              />
+
             </div>
             <div v-else class="text-center pa-5">
               <p>沒有可顯示的資料。</p>
@@ -142,7 +151,7 @@
 
 <script setup>
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
-// ✅ 1. 從 api.js 導入我們新定義的常量
+import SalesInfoSection from './SalesInfoSection.vue';
 import { IMAGE_PROXY_BASE_URL } from '@/api';
 
 const props = defineProps({
