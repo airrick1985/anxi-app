@@ -1,7 +1,7 @@
 // scripts/updateManifestVersion.js
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import pkg from '../package.json' assert { type: 'json' };
+import pkg from '../package.json' with { type: 'json' };
 
 const manifestPath = resolve('public', 'manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
