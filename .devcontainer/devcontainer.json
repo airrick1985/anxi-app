@@ -1,0 +1,20 @@
+{
+  "name": "Node.js & Vue",
+  // 使用一個專為 Node.js 開發準備的、更輕量的鏡像
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        // 在這裡可以預先配置好你的 VS Code 設置
+        "typescript.tsdk": "node_modules/typescript/lib"
+      },
+      "extensions": [
+        "Vue.volar" // 預先安裝 Volar 插件
+      ]
+    }
+  },
+
+  // 在容器創建後自動執行 npm install
+  "postCreateCommand": "npm install"
+}
