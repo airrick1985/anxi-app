@@ -64,32 +64,82 @@ const goToEntryPage = (mode) => {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  align-items: flex-start; /* 或者 center，根據視覺需求調整 */
-  padding: 20px;
-  gap: 20px; /* 按鈕之間的間距 */
+  align-items: flex-start;
+  padding: 40px;
+  gap: 30px;
+  min-height: 100vh;
+  box-sizing: border-box; /* 確保 padding 不會讓容器超出 100vh */
+
+  /* ✅ --- 背景圖片的核心樣式 --- ✅ */
+  
+  /* 1. 設置背景圖片的路徑 */
+  /* URL 相對於 public 文件夾的根路徑 */
+  background-image: url('/background.png'); 
+  
+  /* 2. 讓背景圖片覆蓋整個容器 */
+  background-size: cover;
+  
+  /* 3. 將背景圖片居中顯示 */
+  background-position: center center;
+  
+  /* 4. (可選但推薦) 固定背景，使其在滾動時不移動，產生視差效果 */
+  background-attachment: fixed; 
 }
+
+
+/* ✅ 應用液態玻璃風格 */
 .icon-button {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100px; /* 或適合的寬度 */
-  height: 100px; /* 或適合的高度 */
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-  cursor: pointer;
+  width: 150px;   /* 稍微加大尺寸 */
+  height: 150px;
+  padding: 20px;
   text-align: center;
+  
+  /* 核心樣式 */
+  background: rgba(255, 255, 255, 0.3); /* 半透明背景 */
+  backdrop-filter: blur(15px); /* 背景模糊，實現磨砂玻璃效果 */
+  border: 2px solid rgba(255, 255, 255, 0.2); /* 邊緣高光 */
+  border-radius: 20px; /* 更大的圓角 */
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15); /* 更柔和的陰影 */
+  
+  cursor: pointer;
+  /* 關鍵：使用 all 來讓所有屬性（包括 box-shadow, transform）都平滑過渡 */
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
+
 .icon-button:hover {
-  background-color: #e9e9e9;
+  /* 互動時「浮起」，並增加光暈效果 */
+  transform: translateY(-8px) scale(1.05);
+  box-shadow: 0 16px 40px 0 rgba(31, 38, 135, 0.2), 
+              0 0 20px rgba(255, 255, 255, 0.6); /* 增加白色光暈 */
+  background: rgba(255, 255, 255, 0.7);
 }
-.icon-button .icon {
-  font-size: 2em; /* 圖標大小 */
-  margin-bottom: 8px;
+
+.icon {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 12px;
+
+  /* ✅ 關鍵修改：使用 drop-shadow 和透明度 */
+
+  /* 1. 使用 drop-shadow 創建一個向下的、深色的內陰影，模擬蝕刻感 */
+  /* 參數: [x-offset] [y-offset] [blur-radius] [color] */
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.2));
+  
+  /* 2. 降低圖標自身的不透明度，讓它更好地融入玻璃背景 */
+  opacity: 0.8;
+
+  transition: all 0.3s ease;
 }
-.icon-button .text {
-  font-size: 0.9em; /* 文字大小 */
+
+.text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a237e;
+  /* 給文字也加上一點陰影，增加可讀性 */
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
 }
 </style>
