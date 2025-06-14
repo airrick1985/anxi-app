@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.81",
+  "version": "0.0.82",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vite build",
@@ -39,6 +39,7 @@
     "@vitejs/plugin-vue": "^5.2.2",
     "@vue/cli-plugin-pwa": "~5.0.0",
     "gh-pages": "^6.3.0",
+    "typescript": "^5.8.3",
     "vite": "^6.3.1",
     "vite-plugin-pwa": "^1.0.0"
   },

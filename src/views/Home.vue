@@ -28,6 +28,7 @@
 </template>
 
 <script setup>
+// @ts-ignore 
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 
