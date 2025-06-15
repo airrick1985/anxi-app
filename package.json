@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.85",
+  "version": "0.0.86",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
@@ -39,10 +39,9 @@
     "@vitejs/plugin-vue": "^5.2.2",
     "@vue/cli-plugin-pwa": "~5.0.0",
     "gh-pages": "^6.3.0",
-    "typescript": "^5.8.3",
-    "vue-tsc": "^2.0.21",
     "vite": "^6.3.1",
-    "vite-plugin-pwa": "^1.0.0"
+    "vite-plugin-pwa": "^1.0.0",
+    "vue-tsc": "^2.0.21"
   },
   "homepage": "https://airrick1985.github.io/anxi-app/",
   "type": "module"

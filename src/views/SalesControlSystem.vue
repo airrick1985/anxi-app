@@ -3,15 +3,31 @@
   <div class="sales-control-page">
     
     <!-- ✅ 新增：工具欄區域 -->
-    <div class="toolbar">
+ <div class="toolbar">
       <span class="toolbar-title">{{ pageTitle }} - {{ projectName }}</span>
       <v-spacer></v-spacer>
+
+      <!-- ✅ 5. 新增「查看報價單」按鈕 -->
+ <v-badge
+        :content="itemCount"
+        :model-value="itemCount > 0"
+        color="error"
+      >
+        <!-- ✅ 修改按鈕的點擊事件，直接打開側邊欄 -->
+        <v-btn 
+          icon="mdi-file-document-outline"
+          @click="isQuoteSidebarOpen = true"
+          title="查看報價單"
+        ></v-btn>
+      </v-badge>
+
       <v-btn-toggle
         v-model="displayType"
         color="primary"
         variant="outlined"
         density="compact"
         mandatory
+        class="ml-4"
       >
         <v-btn value="住家">住家</v-btn>
         <v-btn value="店面">店面</v-btn>
@@ -41,10 +57,12 @@
       <div ref="mainGridRef" @scroll="handleScroll" class="main-grid-container">
         <div class="grid-table">
           <div v-for="item in flatGridData" :key="item.key" class="data-cell">
-            <div v-if="item.data" 
-                 class="unit-card" 
-                 :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
-                 @click="openUnitDetail(item.data)">
+            <div v-if="item.data"
+  class="unit-card"
+  :class="{ 'in-quote': quoteStore.isItemInQuote(item.data['戶別']) }"
+  :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
+  @click="openUnitDetail(item.data)"
+>
               <span class="unit-name">{{ item.data['戶別'] }}</span>
               <template v-if="statusField === '銷控狀態' && item.data['銷控狀態'] === '已售'">
                 <span class="unit-total-price sold-text">已售</span>
@@ -70,6 +88,9 @@
       :view-mode="currentViewMode" 
     />
 
+     <!-- ✅ 在頁面中放置新的側邊欄組件 -->
+    <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
+
     <!-- 加載和錯誤狀態遮罩層 -->
     <div v-if="loading || error" class="status-overlay">
       <p v-if="loading">正在載入銷控資料...</p>
@@ -80,9 +101,21 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { fetchSalesControlData } from '@/api';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
+import { useQuoteStore } from '@/store/quoteStore';
+import QuoteSidebar from '@/components/QuoteSidebar.vue';
+
+const router = useRouter(); // 確保 router 已實例化
+const quoteStore = useQuoteStore(); // ✅ 2. 實例化 store
+
+// ✅ 新增一個 ref 來控制側邊欄的開關
+const isQuoteSidebarOpen = ref(false);
+
+// ✅ 3. 新增計算屬性，獲取數量
+const quoteItemCount = computed(() => quoteStore.itemCount);
+
 
 const route = useRoute();
 const loading = ref(true);
@@ -236,6 +269,10 @@ function handleScroll(event) {
 
 function openUnitDetail(unitData) {
   if (unitData) {
+    // ✅ 關鍵偵錯：打印傳遞給 Modal 的完整數據
+    console.log('--- 準備打開 Modal，傳遞的數據 (unitData): ---');
+    console.log(JSON.parse(JSON.stringify(unitData))); // 使用 JSON 轉換來避免打印出 Proxy 物件
+
     selectedUnitData.value = unitData;
     isModalVisible.value = true;
   }
@@ -273,7 +310,7 @@ onMounted(async () => {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 /* ✅ 新增：工具欄樣式 */
@@ -293,7 +330,7 @@ onMounted(async () => {
 .layout-grid {
   flex-grow: 1; /* 關鍵 */
   display: grid;
-  grid-template-columns: 20px 70px 1fr;
+   grid-template-columns: 0px 40px 1fr;
   grid-template-rows: 50px 1fr;
   overflow: hidden;
 }
@@ -360,7 +397,7 @@ onMounted(async () => {
   margin-left: 12px;
 }
 .header-left-container .header-cell {
-  width: 60px;
+  width: 40px;
   height: 90px;
 }
 .grid-table {
@@ -372,6 +409,7 @@ onMounted(async () => {
   grid-auto-rows: 90px;
 }
 .unit-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -379,13 +417,39 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   border-radius: 6px;
+  border: 2px solid transparent; 
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   padding: 6px 4px;
   box-sizing: border-box;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+   transition: all 0.2s ease-in-out;
   text-align: center;
 }
+
+/* ✅ 新增：已加入報價籃的單元格樣式 */
+.unit-card.in-quote {
+  /* 方案A：高亮邊框 */
+  border-color: #ff9800; /* 一個醒目的橙色 */
+  box-shadow: 0 0 10px rgba(255, 152, 0, 0.5); /* 增加光暈效果 */
+}
+
+/* 方案B：在右上角添加一個小圖標 (可與方案A同時使用) */
+.unit-card.in-quote::after {
+  content: '✔'; /* 或者用 mdi-icon 的 content: '\F012C'; */
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  color: white;
+  background-color: #ff9800;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  font-weight: bold;
+}
+
 .unit-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);

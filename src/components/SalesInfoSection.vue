@@ -31,21 +31,41 @@
           </v-list-item>
         </v-col>
 
-        <!-- 右半部分 -->
-        <v-col cols="12" sm="6">
-          <v-list-item title="小訂日期" :subtitle="salesData['小訂日期'] || 'N/A'"></v-list-item>
-          <v-list-item title="補足日期" :subtitle="salesData['補足日期'] || 'N/A'"></v-list-item>
-          <v-list-item title="簽約日期" :subtitle="salesData['簽約日期'] || 'N/A'"></v-list-item>
-        </v-col>
-      </v-row>
+       <v-col cols="12" sm="6">
+        <!-- ✅ 應用 formatDate 函數 -->
+        <v-list-item 
+          title="小訂日期" 
+          :subtitle="formatDate(salesData['小訂日期'])"
+        ></v-list-item>
+        <v-list-item 
+          title="補足日期" 
+          :subtitle="formatDate(salesData['補足日期'])"
+        ></v-list-item>
+        <v-list-item 
+          title="簽約日期" 
+          :subtitle="formatDate(salesData['簽約日期'])"
+        ></v-list-item>
+      </v-col>
+    </v-row>
       
       <v-divider class="my-2"></v-divider>
 
       <!-- 金額部分 -->
-      <v-row dense>
-        <v-col cols="4"><v-list-item title="小訂金額" :subtitle="`${formatNumber(salesData['小訂金額'])} 元`"></v-list-item></v-col>
-        <v-col cols="4"><v-list-item title="補足金額" :subtitle="`${formatNumber(salesData['補足金額'])} 元`"></v-list-item></v-col>
-        <v-col cols="4"><v-list-item title="簽約金額" :subtitle="`${formatNumber(salesData['簽約金額'])} 元`"></v-list-item></v-col>
+    <v-row dense>
+        <!-- 
+          ✅ 關鍵修改：
+          - cols="12": 在最小的螢幕上 (xs)，每欄佔滿 12 格寬度，即換行。
+          - sm="4": 在 sm (small) 及更大的螢幕上，每欄佔 4 格寬度，恢復三欄佈局。
+        -->
+        <v-col cols="12" sm="4">
+          <v-list-item title="小訂金額" :subtitle="`${formatNumber(salesData['小訂金額'])} 元`"></v-list-item>
+        </v-col>
+        <v-col cols="12" sm="4">
+          <v-list-item title="補足金額" :subtitle="`${formatNumber(salesData['補足金額'])} 元`"></v-list-item>
+        </v-col>
+        <v-col cols="12" sm="4">
+          <v-list-item title="簽約金額" :subtitle="`${formatNumber(salesData['簽約金額'])} 元`"></v-list-item>
+        </v-col>
       </v-row>
 
       <v-divider class="my-2"></v-divider>
@@ -61,7 +81,7 @@
 </template>
 
 <script setup>
-import { defineProps } from 'vue';
+import { computed, defineProps } from 'vue';
 
 const props = defineProps({
   salesData: {
@@ -69,6 +89,36 @@ const props = defineProps({
     required: true,
   }
 });
+
+// ✅ 新增：日期格式化輔助函數
+function formatDate(dateString) {
+  // 如果傳入的日期字符串是空的或無效的，直接返回 'N/A'
+  if (!dateString || typeof dateString !== 'string') {
+    return 'N/A';
+  }
+
+  try {
+    const date = new Date(dateString);
+    // 檢查轉換後的日期是否有效
+    if (isNaN(date.getTime())) {
+      // 如果無效，可能是一個非標準格式，直接返回原始字符串或 'N/A'
+      return dateString; 
+    }
+
+    const year = date.getFullYear();
+    // getMonth() 返回的是 0-11，所以需要 +1
+    // String(...).padStart(2, '0') 確保月份和日期是兩位數，例如 07, 09
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    // 返回我們想要的格式
+    return `${year}/${month}/${day}`;
+
+  } catch (error) {
+    console.error(`日期格式化失敗: ${dateString}`, error);
+    return dateString; // 如果發生未知錯誤，返回原始字符串
+  }
+}
 
 function openFolderUrl() {
   if (props.salesData && props.salesData['資料夾URL']) {

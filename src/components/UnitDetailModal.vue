@@ -1,11 +1,9 @@
 <!-- /src/components/UnitDetailModal.vue -->
 <template>
-  <!-- 移除 v-dialog 上的 scrollable prop -->
   <v-dialog :model-value="show" @update:model-value="close" max-width="80vw" height="90vh">
-    <!-- ✅ 讓 v-card 自己成為一個 Flexbox 容器，並處理滾動 -->
     <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
       
-      <!-- 1. 固定的頭部區域 (不參與滾動) -->
+      <!-- 1. 固定的頭部區域 -->
       <div class="header-section">
         <v-card-title class="d-flex justify-space-between align-center text-h5">
           <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
@@ -77,20 +75,19 @@
             <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
           </v-window-item>
 
-          <!-- 平面圖分頁 -->
+         <!-- ✅ --- 平面圖分頁 (結構簡化) --- ✅ -->
           <v-window-item value="floorplans" class="fill-height">
-            <div v-if="hasFloorplans" class="floorplan-viewer">
-              
-              <div class="preview-area">
-                <template v-if="selectedPlan">
-                  <img v-if="selectedPlan.type === 'image'" :src="proxiedImageUrl" class="preview-content" alt="平面圖預覽"/>
-                  <a v-if="selectedPlan.type === 'pdf'" :href="selectedPlan.originalUrl" target="_blank" class="pdf-link">在新分頁中打開 PDF: {{ selectedPlan.name }}</a>
-                </template>
-                <div v-else class="text-center text-grey">
-                  <v-icon size="large">mdi-selection-search</v-icon>
-                  <p>請從左側選擇要預覽的圖檔</p>
-                </div>
-              </div>
+            <div v-if="hasFloorplans" class="preview-area-full">
+              <!-- 直接顯示第一張圖 -->
+              <img 
+                v-if="firstPlan.type === 'image'" 
+                :src="proxiedFirstImageUrl" 
+                class="preview-content" 
+                alt="平面圖預覽"
+              />
+              <a v-if="firstPlan.type === 'pdf'" :href="firstPlan.url" target="_blank" class="pdf-link">
+                在新分頁中打開 PDF: {{ firstPlan.name }}
+              </a>
             </div>
             <div v-else class="text-center pa-5 text-grey d-flex flex-column justify-center align-center fill-height">
               <v-icon size="x-large">mdi-image-off</v-icon>
@@ -100,11 +97,24 @@
         </v-window>
       </v-card-text>
       
-      <!-- 3. 固定的底部區域 (不參與滾動) -->
+ <!-- 3. 固定的底部區域 -->
       <div class="footer-section">
         <v-divider></v-divider>
         <v-card-actions>
           <v-spacer></v-spacer>
+          
+          <!-- ✅ 6. 新增「加入報價」按鈕 -->
+          <v-btn 
+            v-if="viewMode === 'quote'" 
+            color="success" 
+            variant="flat" 
+            @click="handleAddToQuote"
+            :disabled="!canAddToQuote"
+          >
+            <v-icon left>mdi-plus-box-outline</v-icon>
+            {{ addToQuoteButtonText }}
+          </v-btn>
+
           <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
         </v-card-actions>
       </div>
@@ -116,12 +126,43 @@
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import SalesInfoSection from './SalesInfoSection.vue';
 import { IMAGE_PROXY_BASE_URL } from '@/api';
+import { useQuoteStore } from '@/store/quoteStore'; 
+const quoteStore = useQuoteStore();
 
 const props = defineProps({
   show: { type: Boolean, required: true },
   unitData: { type: Object, default: () => null },
   viewMode: { type: String, default: 'sales' }
 });
+
+// ✅ 3. 新增計算屬性，判斷此戶別能否被加入報價
+const canAddToQuote = computed(() => {
+  if (!props.unitData) return false;
+  
+  // 檢查是否已在報價單中
+  if (quoteStore.isItemInQuote(props.unitData['戶別'])) {
+    return false;
+  }
+
+  // 檢查銷控狀態
+  const salesStatus = props.unitData['銷控狀態'] || '';
+  const backendStatus = props.unitData['銷控後台狀態'] || '';
+  
+  return salesStatus === '' && backendStatus === '';
+});
+
+// ✅ 4. 新增一個計算屬性，用於按鈕文本
+const addToQuoteButtonText = computed(() => {
+    if (!props.unitData) return '';
+    return quoteStore.isItemInQuote(props.unitData['戶別']) ? '已在報價單中' : '加入報價';
+});
+
+// ✅ 5. 創建處理點擊事件的函數
+function handleAddToQuote() {
+  if (props.unitData) {
+    quoteStore.addItem(props.unitData);
+  }
+}
 
 const emit = defineEmits(['update:show']);
 
@@ -130,12 +171,27 @@ const selectedPlanIndex = ref(0);
 
 const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
 
-const selectedPlan = computed(() => {
-  if (hasFloorplans.value) {
-    return props.unitData.floorplans[selectedPlanIndex.value];
-  }
-  return null;
+// 1. 新增：直接獲取第一張平面圖的數據
+const firstPlan = computed(() => {
+  const plan = hasFloorplans.value ? props.unitData.floorplans[0] : null;
+  // ✅ 關鍵偵錯：打印第一張圖的詳細資訊
+  console.log('--- Modal 內部 ---');
+  console.log('第一張平面圖數據 (firstPlan):', JSON.parse(JSON.stringify(plan)));
+  return plan;
 });
+
+// 2. 新增：為第一張圖生成代理 URL
+const proxiedFirstImageUrl = computed(() => {
+  if (firstPlan.value && firstPlan.value.type === 'image' && firstPlan.value.url) {
+    const finalUrl = `${IMAGE_PROXY_BASE_URL}/api/image-proxy?url=${encodeURIComponent(firstPlan.value.url)}`;
+    // ✅ 關鍵偵錯：打印最終生成的 URL
+    console.log('最終生成的代理 URL (proxiedFirstImageUrl):', finalUrl);
+    return finalUrl;
+  }
+  return '';
+});
+
+// `selectedPlanIndex` 和 `selectedPlan` 不再需要，可以刪除
 
 const shouldHidePrice = computed(() => {
   return props.viewMode === 'quote' && props.unitData?.['銷控狀態'] === '已售';
@@ -144,15 +200,8 @@ const shouldHidePrice = computed(() => {
 watch(() => props.show, (newVal) => {
   if (newVal) {
     tab.value = 'info';
-    selectedPlanIndex.value = 0;
+    // selectedPlanIndex.value = 0; <-- 也不再需要
   }
-});
-
-const proxiedImageUrl = computed(() => {
-  if (selectedPlan.value && selectedPlan.value.type === 'image' && selectedPlan.value.originalUrl) {
-    return `${IMAGE_PROXY_BASE_URL}/image-proxy?url=${encodeURIComponent(selectedPlan.value.originalUrl)}`;
-  }
-  return '';
 });
 
 function close() { emit('update:show', false); }
@@ -184,8 +233,9 @@ function formatPercentage(value) {
 
 /* 主要內容區域 */
 .main-content {
-  flex-grow: 1; /* 佔據所有剩餘空間 */
-  overflow-y: auto; /* ✅ 讓這個區域自己滾動 */
+  flex-grow: 1;
+  overflow-y: auto;
+  position: relative; /* ✅ 關鍵：為絕對定位的子元素提供定位的「邊界」*/
 }
 
 /* 固定的底部 */
@@ -237,32 +287,45 @@ function formatPercentage(value) {
   line-clamp: unset !important;
 }
 
-/* 平面圖查看器佈局 */
-.floorplan-viewer {
-  display: flex;
-  height: 100%;
+/* 平面圖分頁的容器 */
+.v-window-item[value="floorplans"] {
+  /* 讓它可以作為絕對定位元素的容器 */
+  position: relative;
+  height: auto;
 }
-.floorplan-list {
-  width: 250px;
-  flex-shrink: 0;
-  border-right: 1px solid #e0e0e0;
-  overflow-y: auto;
-}
-.preview-area {
-  flex-grow: 1;
-  display: flex;
+
+/* 預覽區域的容器 */
+.preview-area-full {
+  display: flex; /* 使用 Flexbox 進行居中 */
   justify-content: center;
   align-items: center;
-  padding: 8px;
+  
+  width: auto;; /* 寬度佔滿 */
+  height: auto; /* 高度佔滿 */
+  
+  padding: 16px; /* 內邊距，讓圖片與邊框有間距 */
+  box-sizing: border-box; /* 確保 padding 不會讓容器超出 100% */
+  
   background-color: #eceff1;
+  overflow: hidden; /* 關鍵：絕對不允許這個容器自己產生滾動條 */
 }
+
+/* 預覽的圖片本身 */
 .preview-content {
+  /* 關鍵 1：限制最大尺寸為其父容器的 100% */
   max-width: 100%;
-  max-height: 100%;
-  width: 100%;
-  height: 100%;
-  border: none;
+  max-height: 650px;
+
+  /* 關鍵 2：移除固定的 width 和 height，讓其自由縮放 */
+  width: auto;
+  height: auto;
+  
+  /* 關鍵 3：確保圖片保持比例並完整顯示 */
   object-fit: contain;
+
+  /* 其他樣式 */
+  display: block; /* 確保 img 是塊級元素，避免下方有不明間隙 */
+  border: none;
 }
 
 /* 手機響應式 */

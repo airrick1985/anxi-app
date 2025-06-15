@@ -72,6 +72,14 @@ const routes = [
       viewMode: 'quote' // ✅ 報價模式
     }
   },
+   {
+    path: '/quote-summary',
+    name: 'QuoteSummary',
+    component: () => import('@/views/QuoteSummary.vue'),
+    meta: { 
+      requiresAuth: true // 假設這個頁面也需要登入才能訪問
+    }
+  },
 
   { path: '/:pathMatch(.*)*', redirect: '/login' } // 捕獲所有未匹配路由，重定向到登入
 ];

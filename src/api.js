@@ -1,12 +1,13 @@
 // /workspaces/anxi-app/src/api.js
-const BASE_API_URL = 'https://vercel-proxy-api2.vercel.app/api';
+export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
+const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
 const INSPECTION_API = `${BASE_API_URL}/inspection`;
 const DROPDOWN_API = `${BASE_API_URL}/dropdown`;
 const USER_API = `${BASE_API_URL}/user`;
 const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
-export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app/api';
+
 
 
 export async function getProjectList(userKey) { 
