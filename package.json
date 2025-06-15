@@ -1,9 +1,9 @@
 {
   "name": "anxi-app",
-  "version": "0.0.84",
+  "version": "0.0.85",
   "private": true,
   "scripts": {
-    "build": "npm run update:manifest-version && npm run generate:release-notes && vite build",
+    "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
     "deploy": "npm run build && gh-pages -d dist",
     "build-and-deploy": "npm run build && npm run deploy",
     "build-and-push": "npm run build && git add . && git commit -m \"更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push",
@@ -40,6 +40,7 @@
     "@vue/cli-plugin-pwa": "~5.0.0",
     "gh-pages": "^6.3.0",
     "typescript": "^5.8.3",
+    "vue-tsc": "^2.0.21",
     "vite": "^6.3.1",
     "vite-plugin-pwa": "^1.0.0"
   },
