@@ -92,9 +92,16 @@
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
     <!-- 加載和錯誤狀態遮罩層 -->
-    <div v-if="loading || error" class="status-overlay">
-      <p v-if="loading">正在載入銷控資料...</p>
-      <p v-if="error">錯誤: {{ error }}</p>
+   <div v-if="loading || error" class="status-overlay">
+      
+      <!-- 只有在 loading 時，才顯示動畫 -->
+      <div v-if="loading" class="loading-container">
+        <span class="loader"></span>
+        <p class="loading-text">正在載入銷控資料...</p>
+      </div>
+
+      <!-- 只有在 error 時，才顯示錯誤信息 -->
+      <p v-if="error" class="error-text">錯誤: {{ error }}</p>
     </div>
   </div>
 </template>
@@ -493,8 +500,67 @@ onMounted(async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 1.2rem;
-  background-color: rgba(240, 242, 245, 0.8);
+  background-color: rgba(240, 242, 245, 0.9); /* 背景可以更實一點 */
   z-index: 10;
+  /* 為內容切換添加一個平滑的淡入淡出效果 */
+  transition: opacity 0.3s ease;
 }
+
+/* ✅ --- 新增的加載動畫樣式 --- ✅ */
+
+/* 加載動畫的容器 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 加載動畫下方的文字 */
+.loading-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #37474f;
+}
+
+/* 錯誤文字的樣式 */
+.error-text {
+  font-size: 1.2rem;
+  color: #d32f2f;
+  font-weight: bold;
+  padding: 16px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* 你提供的 Loader CSS */
+.loader {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      position: relative;
+      animation: rotate 1s linear infinite
+    }
+    .loader::before {
+      content: "";
+      box-sizing: border-box;
+      position: absolute;
+      inset: 0px;
+      border-radius: 50%;
+      border: 5px solid #00a6ff;
+      animation: prixClipFix 2s linear infinite ;
+    }
+
+    @keyframes rotate {
+      100%   {transform: rotate(360deg)}
+    }
+
+    @keyframes prixClipFix {
+        0%   {clip-path:polygon(50% 50%,0 0,0 0,0 0,0 0,0 0)}
+        25%  {clip-path:polygon(50% 50%,0 0,100% 0,100% 0,100% 0,100% 0)}
+        50%  {clip-path:polygon(50% 50%,0 0,100% 0,100% 100%,100% 100%,100% 100%)}
+        75%  {clip-path:polygon(50% 50%,0 0,100% 0,100% 100%,0 100%,0 100%)}
+        100% {clip-path:polygon(50% 50%,0 0,100% 0,100% 100%,0 100%,0 0)}
+    }
 </style>

@@ -28,6 +28,12 @@
 
 <template v-if="user">
   <div class="d-flex align-center">
+     <!-- ✅ 3. 添加全螢幕按鈕 -->
+          <v-btn icon @click="toggleFullscreen" class="me-2">
+            <!-- 根據 isFullscreen 狀態動態切換圖標 -->
+            <v-icon>{{ isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen' }}</v-icon>
+          </v-btn>
+          
     <span class="me-2 clickable" @click="dialog = true" title="個人資料">{{ user.name }}</span>
     <v-menu
       offset-y
@@ -154,6 +160,8 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
+import { useFullscreen } from './composables/useFullscreen';
+
 const drawer = ref(false);
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
@@ -185,6 +193,8 @@ const menuActivator = ref(null);  // 綁定 activator
 // Router
 const router = useRouter();
 const route = useRoute();
+
+const { isFullscreen, toggleFullscreen } = useFullscreen();
 
 // 底部導航顯示條件
 const showBottomNav = computed(() => 
