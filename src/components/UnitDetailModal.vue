@@ -157,10 +157,17 @@ const addToQuoteButtonText = computed(() => {
     return quoteStore.isItemInQuote(props.unitData['戶別']) ? '已在報價單中' : '加入報價';
 });
 
+const addToQuoteIcon = computed(() => {
+    if (!props.unitData) return 'mdi-plus-box-outline';
+    return quoteStore.isItemInQuote(props.unitData['戶別']) ? 'mdi-check-all' : 'mdi-plus-box-outline';
+});
+
 // ✅ 5. 創建處理點擊事件的函數
 function handleAddToQuote() {
-  if (props.unitData) {
+  if (props.unitData && canAddToQuote.value) {
     quoteStore.addItem(props.unitData);
+    // (可選) 加入後可以自動關閉 Modal
+    close(); 
   }
 }
 

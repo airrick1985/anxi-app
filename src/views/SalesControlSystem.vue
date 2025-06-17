@@ -287,14 +287,21 @@ function openUnitDetail(unitData) {
 
 // --- 生命週期鉤子 ---
 onMounted(async () => {
-  if (!projectName.value) {
+  // ✅ 3. 在 onMounted 的最開始，調用清空方法
+  console.log('[SalesControlSystem] Component mounted. Clearing quote store...');
+  quoteStore.clearQuote();
+
+  // --- 後續的數據加載邏輯保持不變 ---
+  const projectName = route.params.projectName;
+  if (!projectName) {
     error.value = '未指定建案名稱。';
     loading.value = false;
     return;
   }
-
+  
+  loading.value = true; // 將 loading 狀態移到這裡
   try {
-    const response = await fetchSalesControlData(projectName.value);
+    const response = await fetchSalesControlData(projectName);
     if (response.status === 'success') {
       allData.value = response.data;
     } else {
@@ -548,7 +555,7 @@ onMounted(async () => {
       position: absolute;
       inset: 0px;
       border-radius: 50%;
-      border: 5px solid #00a6ff;
+      border: 5px solid #008cff;
       animation: prixClipFix 2s linear infinite ;
     }
 

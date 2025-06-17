@@ -9,6 +9,41 @@ const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
 
 
+/**
+ * 獲取指定建案的所有車位資料
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function fetchParkingList(projectName) {
+  console.log(`[api.js] fetchParkingList called with projectName: ${projectName}`);
+  if (!projectName) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchParkingList 時缺少 projectName。' });
+  }
+  return fetchPost({
+    action: 'get_parking_list',
+    projectName,
+    token: 'anxi111003'
+  }, SALES_API); // 假設這個 action 也屬於 SALES_API 端點
+}
+
+/**
+ * 獲取報價人員列表和當前用戶的編輯權限
+ * @param {string} projectName 建案名稱
+ * @param {string} currentUserKey 當前登入用戶的手機號碼
+ * @returns {Promise<object>} API 響應
+ */
+export async function fetchQuotePersonnelList(projectName, currentUserKey) {
+  console.log(`[api.js] fetchQuotePersonnelList called for project: ${projectName}`);
+  if (!projectName || !currentUserKey) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchQuotePersonnelList 時缺少參數。' });
+  }
+  return fetchPost({
+    action: 'get_quote_personnel_list',
+    projectName,
+    currentUserKey,
+    token: 'anxi111003'
+  }, USER_API); // 這個 action 與用戶相關，放在 USER_API 端點可能更合適
+}
 
 export async function getProjectList(userKey) { 
   console.log('[api.js] getProjectList called with :', userKey); 
