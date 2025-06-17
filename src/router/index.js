@@ -72,6 +72,19 @@ const routes = [
       viewMode: 'quote' // ✅ 報價模式
     }
   },
+
+    {
+    path: '/quote-settings/:projectName', 
+    name: 'QuoteSettings',
+    component: () => import('@/views/QuoteSettings.vue'),
+    // ✅ 關鍵：讓這個路由可以通過 props 接收參數，更清晰
+    props: true, 
+    meta: { 
+      requiresAuth: true 
+      
+    }
+  },
+
    {
     path: '/quote-summary',
     name: 'QuoteSummary',
@@ -81,7 +94,11 @@ const routes = [
     }
   },
 
+
+
   { path: '/:pathMatch(.*)*', redirect: '/login' } // 捕獲所有未匹配路由，重定向到登入
+
+
 ];
 
 const router = createRouter({

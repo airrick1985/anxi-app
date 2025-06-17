@@ -29,20 +29,20 @@ export async function fetchParkingList(projectName) {
 /**
  * 獲取報價人員列表和當前用戶的編輯權限
  * @param {string} projectName 建案名稱
- * @param {string} currentUserKey 當前登入用戶的手機號碼
+ * @param {string} userKey 當前登入用戶的手機號碼 (⬅️ 函數參數名也改得更清晰)
  * @returns {Promise<object>} API 響應
  */
-export async function fetchQuotePersonnelList(projectName, currentUserKey) {
+export async function fetchQuotePersonnelList(projectName, userKey) {
   console.log(`[api.js] fetchQuotePersonnelList called for project: ${projectName}`);
-  if (!projectName || !currentUserKey) {
+  if (!projectName || !userKey) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchQuotePersonnelList 時缺少參數。' });
   }
   return fetchPost({
     action: 'get_quote_personnel_list',
     projectName,
-    currentUserKey,
+    key: userKey, // ✅ 關鍵修改：將 currentUserKey 改為 key
     token: 'anxi111003'
-  }, USER_API); // 這個 action 與用戶相關，放在 USER_API 端點可能更合適
+  }, USER_API);
 }
 
 export async function getProjectList(userKey) { 

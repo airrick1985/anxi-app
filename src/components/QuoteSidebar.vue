@@ -66,13 +66,14 @@
 <script setup>
 import { defineProps, defineEmits } from 'vue';
 import { useQuoteStore } from '@/store/quoteStore';
-import { useRouter } from 'vue-router'; // 引入 useRouter
+import { useRoute, useRouter } from 'vue-router'; // 引入 useRouter
 
 const props = defineProps({ isOpen: Boolean });
 const emit = defineEmits(['update:isOpen']);
 
 const quoteStore = useQuoteStore();
-const router = useRouter(); // 實例化 router
+const router = useRouter();
+const route = useRoute(); // ✅ 獲取當前路由信息
 
 // removeItem 和 clearQuote 可以直接從 store 中解構
 const { removeItem, clearQuote } = quoteStore;
@@ -89,10 +90,17 @@ function handleClearQuote() {
 }
 
 function goToQuoteSettings() {
-  // 假設報價設定頁的路由名稱是 QuoteSettings
-  // 你需要確保在 router/index.js 中有這個路由定義
-  router.push({ name: 'QuoteSettings' });
-  emit('update:isOpen', false); // 點擊後關閉側邊欄
+  const projectName = route.params.projectName;
+  // ✅ 從當前路由的 meta 中獲取 viewMode
+  const currentMode = route.meta.viewMode; 
+
+  router.push({ 
+    name: 'QuoteSettings', 
+    params: { projectName },
+    // ✅ 關鍵：將當前的 mode 作為 query 參數傳遞下去
+    query: { viewMode: currentMode } 
+  });
+  emit('update:isOpen', false);
 }
 
 function formatNumber(value) {

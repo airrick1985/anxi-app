@@ -1,9 +1,15 @@
 <!-- /src/views/QuoteSettings.vue -->
 <template>
-  <v-container fluid>
-    <div class="page-header">
-      <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
-      <p class="text-grey-darken-1">專案: {{ projectName }}</p>
+
+    <v-container fluid>
+    <div class="page-header d-flex align-center">
+   
+      <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
+      <div>
+        
+        <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
+        <p class="text-grey-darken-1">建案: {{ projectName }}</p>
+      </div>
     </div>
 
     <!-- 卡片一：主要內容區域 -->
@@ -159,8 +165,13 @@ onMounted(async () => {
 
 // --- 方法 ---
 function goBack() {
+  // ✅ 關鍵修改：從 route.query 中讀取 viewMode
+  const sourceMode = route.query.viewMode;
+  const projectName = route.params.projectName;
+
   // 根據來源模式決定返回到哪個頁面
-  const backRouteName = route.meta.viewMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
+  const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
+  
   router.push({ name: backRouteName, params: { projectName } });
 }
 </script>
