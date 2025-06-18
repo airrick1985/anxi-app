@@ -1,9 +1,35 @@
+<!-- /src/components/QuoteItem.vue -->
 <template>
+  <!-- 在手機等小螢幕上使用垂直佈局 -->
   <div v-if="isMobile" class="quote-item-mobile">
-    <v-col cols="6">總價: <strong class="highlight">{{ finalTotalPrice.toLocaleString() }} 萬</strong></v-col>
-    <v-col cols="12">配套價: <strong class="highlight">{{ packagePrice.toLocaleString() }} 萬</strong></v-col>
+    <div class="d-flex justify-space-between align-center mb-2">
+      <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
+      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove', item.unitId)"></v-btn>
     </div>
+    <v-row dense>
+      <v-col cols="6">房屋總價: <strong class="highlight">{{ displayHousePrice }} 萬</strong></v-col>
+      <v-col cols="6">單價: <strong>{{ displayUnitPrice }} 萬/坪</strong></v-col>
+      <v-col cols="6">面積: <strong>{{ item.unitDetails['房屋面積(坪)'] }} 坪</strong></v-col>
+      <v-col cols="6">總價: <strong class="highlight">{{ finalTotalPrice.toLocaleString() }} 萬</strong></v-col>
+      <v-col cols="12">車位: 
+        <v-btn size="small" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn>
+      </v-col>
+      <v-col cols="6">
+        <v-switch v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details></v-switch>
+      </v-col>
+      <v-col cols="6">
+        <span class="text-caption">配套價:</span> <strong>{{ packagePrice.toLocaleString() }} 萬</strong>
+      </v-col>
+      <v-col cols="12">
+        <v-radio-group v-model="isFirstTimeBuyerModel" inline label="首購" density="compact" hide-details>
+          <v-radio label="是" value="是"></v-radio>
+          <v-radio label="否" value="否"></v-radio>
+        </v-radio-group>
+      </v-col>
+    </v-row>
+  </div>
 
+  <!-- 桌面端使用水平佈局 -->
   <div v-else class="quote-item-row">
     <div class="item-cell flex-1 font-weight-bold">{{ item.unitId }}</div>
     <div class="item-cell flex-1">{{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪</div>
@@ -12,24 +38,19 @@
     <div class="item-cell flex-2">
       <v-btn density="compact" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn>
     </div>
-    <div class="item-cell flex-1 highlight">
-      <span>{{ formattedParkingPrice }}</span> 
-    </div>
     <div class="item-cell flex-1">
       <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
         <v-radio label="是" value="是"></v-radio>
         <v-radio label="否" value="否"></v-radio>
       </v-radio-group>
     </div>
-    
-    <div class="item-cell flex-1 highlight">{{ finalTotalPrice.toLocaleString() }} 萬</div>
     <div class="item-cell flex-1">
       <v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox>
     </div>
-    <div class="item-cell flex-1 highlight">{{ packagePrice.toLocaleString() }} 萬</div>
-
+    <div class="item-cell flex-1">{{ packagePrice.toLocaleString() }} 萬</div>
+    <div class="item-cell flex-1 highlight">{{ finalTotalPrice.toLocaleString() }} 萬</div>
     <div class="item-cell flex-shrink-0">
-      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.instanceId)"></v-btn>
+      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.unitId)"></v-btn>
     </div>
   </div>
 </template>
@@ -45,10 +66,11 @@ const props = defineProps({
 
 const emit = defineEmits(['remove', 'open-parking-modal']);
 const quoteStore = useQuoteStore();
-const { mobile } = useDisplay();
+const { mobile } = useDisplay(); // Vuetify 的斷點輔助 hook
 
 const isMobile = computed(() => mobile.value);
 
+// --- 雙向綁定 Store 的狀態 ---
 const isFirstTimeBuyerModel = computed({
   get: () => props.item.isFirstTimeBuyer,
   set: (value) => quoteStore.updateUnitField(props.item.unitId, 'isFirstTimeBuyer', value)
@@ -58,51 +80,32 @@ const usePackageDealModel = computed({
   set: (value) => quoteStore.updateUnitField(props.item.unitId, 'usePackageDeal', value)
 });
 
-const packagePrice = computed(() => {
-  if (!quoteStore || typeof quoteStore.getPackagePrice?.value !== 'function') return 0;
-  return quoteStore.getPackagePrice.value(props.item.unitId) || 0;
-});
+// --- 從 Getters 獲取動態計算的值 ---
+const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.unitId));
+const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.unitId));
 
-const finalTotalPrice = computed(() => {
-  if (!quoteStore || typeof quoteStore.getFinalTotalPrice?.value !== 'function') return 0;
-  return quoteStore.getFinalTotalPrice.value(props.item.unitId) || 0;
-});
-
+// --- 顯示邏輯 ---
 const displayHousePrice = computed(() => {
-  const details = props.item.unitDetails || props.item;
   const price = props.item.usePackageDeal 
-    ? details['配套房屋總價'] 
-    : details['房屋總表價'];
+    ? props.item.unitDetails['配套房屋總價'] 
+    : props.item.unitDetails['房屋總表價'];
   return formatNumber(price);
 });
 
 const displayUnitPrice = computed(() => {
-  const details = props.item.unitDetails || props.item;
   const price = props.item.usePackageDeal 
-    ? details['配套房屋單價'] 
-    : details['房屋單價(表價)'];
+    ? props.item.unitDetails['配套房屋單價'] 
+    : props.item.unitDetails['房屋單價(表價)'];
   return formatNumber(price);
 });
 
 const parkingDisplayText = computed(() => {
-  if (!props.item.selectedParking || props.item.selectedParking.length === 0) return '新增車位';
+  if (props.item.selectedParking.length === 0) return '新增車位';
   return props.item.selectedParking.map(p => p['車位編號']).join(', ');
 });
 
-const formattedParkingPrice = computed(() => {
-  if (!props.item.selectedParking || props.item.selectedParking.length === 0) {
-    return '—';
-  }
-  const totalPrice = props.item.selectedParking.reduce((sum, parking) => {
-    return sum + (Number(parking['車位表價']) || 0);
-  }, 0);
-  return totalPrice > 0 ? `${totalPrice.toLocaleString()} 萬` : '—';
-});
-
-const formatNumber = (val) => {
-  const num = parseFloat(val);
-  return isNaN(num) ? '0' : num.toLocaleString();
-};
+// 輔助函數
+const formatNumber = (val) => val ? parseFloat(val).toLocaleString() : '0';
 </script>
 
 <style scoped>
