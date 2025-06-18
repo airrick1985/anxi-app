@@ -86,8 +86,19 @@ const usePackageDealModel = computed({
   set: (value) => quoteStore.updateUnitField(props.item.unitId, 'usePackageDeal', value)
 });
 
-const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.unitId));
-const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.unitId));
+const packagePrice = computed(() => {
+  // 檢查 store 和 getter 是否存在
+  if (!quoteStore || typeof quoteStore.getPackagePrice?.value !== 'function') return 0;
+  // 使用 .value 呼叫 getter，並提供預設值 0
+  return quoteStore.getPackagePrice.value(props.item.unitId) || 0;
+});
+
+const finalTotalPrice = computed(() => {
+  // 檢查 store 和 getter 是否存在
+  if (!quoteStore || typeof quoteStore.getFinalTotalPrice?.value !== 'function') return 0;
+  // 使用 .value 呼叫 getter，並提供預設值 0
+  return quoteStore.getFinalTotalPrice.value(props.item.unitId) || 0;
+});
 
 const displayHousePrice = computed(() => {
   const price = props.item.usePackageDeal 

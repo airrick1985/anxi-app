@@ -125,70 +125,48 @@ const props = defineProps({
   viewMode: { type: String, default: 'sales' }
 });
 
-// ✅ 3. 新增計算屬性，判斷此戶別能否被加入報價
-const canAddToQuote = computed(() => {
-  if (!props.unitData) return false;
-  
-  // 檢查是否已在報價單中
-  if (quoteStore.isItemInQuote(props.unitData['戶別'])) {
-    return false;
-  }
-
-  // 檢查銷控狀態
-  const salesStatus = props.unitData['銷控狀態'] || '';
-  const backendStatus = props.unitData['銷控後台狀態'] || '';
-  
-  return salesStatus === '' && backendStatus === '';
-});
-
-// ✅ 4. 新增一個計算屬性，用於按鈕文本
-const addToQuoteButtonText = computed(() => {
-    if (!props.unitData) return '';
-    return quoteStore.isItemInQuote(props.unitData['戶別']) ? '已在報價單中' : '加入報價';
-});
-
-const addToQuoteIcon = computed(() => {
-    if (!props.unitData) return 'mdi-plus-box-outline';
-    return quoteStore.isItemInQuote(props.unitData['戶別']) ? 'mdi-check-all' : 'mdi-plus-box-outline';
-});
-
-// ✅ 5. 創建處理點擊事件的函數
-function handleAddToQuote() {
-  if (props.unitData && canAddToQuote.value) {
-    quoteStore.addItem(props.unitData);
-    // (可選) 加入後可以自動關閉 Modal
-    close(); 
-  }
-}
-
 const emit = defineEmits(['update:show']);
 
 const tab = ref('info');
-const selectedPlanIndex = ref(0);
 
 const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
 
-// 1. 新增：直接獲取第一張平面圖的數據
-const firstPlan = computed(() => {
-  const plan = hasFloorplans.value ? props.unitData.floorplans[0] : null;
-  // ✅ 關鍵偵錯：打印第一張圖的詳細資訊
-  console.log('--- Modal 內部 ---');
-  console.log('第一張平面圖數據 (firstPlan):', JSON.parse(JSON.stringify(plan)));
-  return plan;
+// ✅ --- START: 按鈕邏輯修改 --- ✅
+// 計算此戶別能否被加入報價
+const canAddToQuote = computed(() => {
+  if (!props.unitData) return false;
+  
+  // 唯一的限制：銷控狀態不能是「已售」
+  return props.unitData['銷控狀態'] !== '已售';
 });
 
-// 2. 新增：為第一張圖生成代理 URL
+// 計算按鈕上應顯示的文字
+const addToQuoteButtonText = computed(() => {
+  // 因為現在允許可重複加入，所以文字永遠是「加入報價」
+  return '加入報價';
+});
+
+// 處理點擊事件的函數
+function handleAddToQuote() {
+  // 使用 canAddToQuote 來判斷是否執行
+  if (props.unitData && canAddToQuote.value) {
+    quoteStore.addItem(props.unitData);
+    // 可選擇加入後不關閉彈窗，方便用戶重複加入
+    // close(); 
+  }
+}
+// ✅ --- END: 按鈕邏輯修改 --- ✅
+
+const firstPlan = computed(() => {
+  return hasFloorplans.value ? props.unitData.floorplans[0] : null;
+});
+
 const proxiedFirstImageUrl = computed(() => {
   if (firstPlan.value && firstPlan.value.type === 'image' && firstPlan.value.url) {
-    const finalUrl = `${IMAGE_PROXY_BASE_URL}/api/image-proxy?url=${encodeURIComponent(firstPlan.value.url)}`;
-    // ✅ 關鍵偵錯：打印最終生成的 URL
-    console.log('最終生成的代理 URL (proxiedFirstImageUrl):', finalUrl);
-    return finalUrl;
+    return `${IMAGE_PROXY_BASE_URL}/api/image-proxy?url=${encodeURIComponent(firstPlan.value.url)}`;
   }
   return '';
 });
-
-// `selectedPlanIndex` 和 `selectedPlan` 不再需要，可以刪除
 
 const shouldHidePrice = computed(() => {
   return props.viewMode === 'quote' && props.unitData?.['銷控狀態'] === '已售';
@@ -197,17 +175,18 @@ const shouldHidePrice = computed(() => {
 watch(() => props.show, (newVal) => {
   if (newVal) {
     tab.value = 'info';
-    // selectedPlanIndex.value = 0; <-- 也不再需要
   }
 });
 
 function close() { emit('update:show', false); }
+
 function formatNumber(value) {
   const num = parseFloat(value);
   if (isNaN(num)) return 'N/A';
   if (num % 1 === 0) return num.toLocaleString();
   return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
+
 function formatPercentage(value) {
   const num = parseFloat(value);
   return isNaN(num) ? 'N/A' : `${(num * 100).toFixed(2)} %`;
@@ -217,7 +196,7 @@ function formatPercentage(value) {
 <style scoped>
 /* 固定的頭部 */
 .header-section {
-  flex-shrink: 0; /* 防止被壓縮 */
+  flex-shrink: 0;
   position: relative;
   z-index: 2;
   background-color: white;
@@ -227,20 +206,14 @@ function formatPercentage(value) {
   background-color: #1a3a6e;
   color: white;
 }
-
-/* 主要內容區域 */
 .main-content {
   flex-grow: 1;
   overflow-y: auto;
-  position: relative; /* ✅ 關鍵：為絕對定位的子元素提供定位的「邊界」*/
+  position: relative;
 }
-
-/* 固定的底部 */
 .footer-section {
-  flex-shrink: 0; /* 防止被壓縮 */
+  flex-shrink: 0;
 }
-
-/* 資訊區塊樣式 */
 .info-section {
   padding: 8px;
   border: 1px solid #e0e0e0;
@@ -255,8 +228,6 @@ function formatPercentage(value) {
   padding-bottom: 8px;
   border-bottom: 2px solid #1a3a6e;
 }
-
-/* 總面積卡片樣式 */
 .total-area-card {
   display: flex;
   align-items: center;
@@ -267,15 +238,11 @@ function formatPercentage(value) {
 }
 .total-area-title { font-size: 0.9rem; color: #5c6bc0; }
 .total-area-value { font-size: 1.8rem; font-weight: 700; color: #1a237e; }
-
-/* 價格突出顯示樣式 */
 .highlight-price {
   font-size: 1.8rem !important;
   font-weight: 700 !important;
   color: #ff0000 !important;
 }
-
-/* Vuetify 列表微調 */
 :deep(.v-list-item-title) { font-size: 0.9rem; }
 :deep(.v-list-item--density-compact .v-list-item-title) { font-size: 0.85rem; }
 :deep(.v-list-item-subtitle) {
@@ -283,57 +250,28 @@ function formatPercentage(value) {
   -webkit-line-clamp: unset !important;
   line-clamp: unset !important;
 }
-
-/* 平面圖分頁的容器 */
 .v-window-item[value="floorplans"] {
-  /* 讓它可以作為絕對定位元素的容器 */
   position: relative;
   height: auto;
 }
-
-/* 預覽區域的容器 */
 .preview-area-full {
-  display: flex; /* 使用 Flexbox 進行居中 */
+  display: flex;
   justify-content: center;
   align-items: center;
-  
-  width: auto;; /* 寬度佔滿 */
-  height: auto; /* 高度佔滿 */
-  
-  padding: 16px; /* 內邊距，讓圖片與邊框有間距 */
-  box-sizing: border-box; /* 確保 padding 不會讓容器超出 100% */
-  
-  background-color: #eceff1;
-  overflow: hidden; /* 關鍵：絕對不允許這個容器自己產生滾動條 */
-}
-
-/* 預覽的圖片本身 */
-.preview-content {
-  /* 關鍵 1：限制最大尺寸為其父容器的 100% */
-  max-width: 100%;
-  max-height: 650px;
-
-  /* 關鍵 2：移除固定的 width 和 height，讓其自由縮放 */
   width: auto;
   height: auto;
-  
-  /* 關鍵 3：確保圖片保持比例並完整顯示 */
-  object-fit: contain;
-
-  /* 其他樣式 */
-  display: block; /* 確保 img 是塊級元素，避免下方有不明間隙 */
-  border: none;
+  padding: 16px;
+  box-sizing: border-box;
+  background-color: #eceff1;
+  overflow: hidden;
 }
-
-/* 手機響應式 */
-@media (max-width: 768px) {
-  .floorplan-viewer { flex-direction: column; }
-  .floorplan-list {
-    width: 100%;
-    height: auto;
-    max-height: 150px;
-    border-right: none;
-    border-bottom: 1px solid #e0e0e0;
-  }
+.preview-content {
+  max-width: 100%;
+  max-height: 650px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border: none;
 }
 </style>
