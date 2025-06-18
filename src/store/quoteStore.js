@@ -1,26 +1,20 @@
 // /src/store/quoteStore.js
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue'; // ✅ 引入 ref 和 computed
+import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 
 const toast = useToast();
 
-// ✅ 使用 Setup Store 的寫法
 export const useQuoteStore = defineStore('quote', () => {
-  // --- 1. State: 使用 ref() 定義 ---
+  // --- State ---
   const items = ref([]);
   const maxItems = ref(5);
   const personnelName = ref('');
   const personnelPhone = ref('');
 
-  // --- 2. Getters: 使用 computed() 定義 ---
-  const itemCount = computed(() => items.value.length);
+  // --- Getters ---
 
-  const isItemInQuote = computed(() => {
-    const itemIds = new Set(items.value.map(item => item.unitId));
-    return (unitId) => itemIds.has(unitId);
-  });
-
+  // (Helper) 計算車位總價，此 getter 保持不變
   const getParkingTotalPrice = computed(() => {
     return (unitId) => {
       const item = items.value.find(item => item.unitId === unitId);
@@ -29,37 +23,55 @@ export const useQuoteStore = defineStore('quote', () => {
     }
   });
 
-  // ✨ 注意：在 Setup Store 中，可以直接調用其他的 computed getter
-  const getPackagePrice = computed(() => {
-    return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
-      if (!item || !item.usePackageDeal) return 0;
-      
-      const parkingTotal = getParkingTotalPrice.value(unitId); // ✅ 直接調用
-      
-      const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
-      const packageHousePrice = parseFloat(item.unitDetails['配套房屋總價']) || 0;
-      
-      return (originalHousePrice + parkingTotal) - packageHousePrice;
-    }
-  });
-
+  // ✅ START: 總價邏輯修改
+  // getter: 計算最終總價
   const getFinalTotalPrice = computed(() => {
     return (unitId) => {
       const item = items.value.find(item => item.unitId === unitId);
       if (!item) return 0;
-      
-      const parkingTotal = getParkingTotalPrice.value(unitId); // ✅ 直接調用
-      
-      const housePrice = item.usePackageDeal 
-        ? (parseFloat(item.unitDetails['配套房屋總價']) || 0)
-        : (parseFloat(item.unitDetails['房屋總表價']) || 0);
 
-      return housePrice + parkingTotal;
-    }
+      if (item.usePackageDeal) {
+        // 若配套=true, 總價 = 配套房屋總價
+        return parseFloat(item.unitDetails['配套房屋總價']) || 0;
+      } else {
+        // 若配套=false, 總價 = 房屋總表價 + 車位價格
+        const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
+        const parkingTotal = getParkingTotalPrice.value(unitId);
+        return originalHousePrice + parkingTotal;
+      }
+    };
+  });
+  // ✅ END: 總價邏輯修改
+
+  // ✅ START: 配套價邏輯修改
+  // getter: 計算配套價
+  const getPackagePrice = computed(() => {
+    return (unitId) => {
+      const item = items.value.find(item => item.unitId === unitId);
+      if (!item) return 0;
+
+      if (item.usePackageDeal) {
+        // 若配套=true, 配套價 = (房屋總表價 + 車位價格) - 配套房屋總價
+        const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
+        const parkingTotal = getParkingTotalPrice.value(unitId);
+        const packageHousePrice = parseFloat(item.unitDetails['配套房屋總價']) || 0;
+        return (originalHousePrice + parkingTotal) - packageHousePrice;
+      } else {
+        // 若配套=false, 配套價 = 0
+        return 0;
+      }
+    };
+  });
+  // ✅ END: 配套價邏輯修改
+
+  const itemCount = computed(() => items.value.length);
+
+  const isItemInQuote = computed(() => {
+    const itemIds = new Set(items.value.map(item => item.unitId));
+    return (unitId) => itemIds.has(unitId);
   });
 
-  // --- 3. Actions: 定義為普通函式 ---
+  // --- Actions ---
   function addItem(unitData) {
     if (items.value.length >= maxItems.value) {
       toast.warning(`報價單已滿，最多只能加入 ${maxItems.value} 戶！`);
@@ -111,10 +123,9 @@ export const useQuoteStore = defineStore('quote', () => {
     items.value = [];
     personnelName.value = '';
     personnelPhone.value = '';
-    // toast.info('報價單已清空。');  // 根據 SalesControlSystem.vue 的 console.log，這裡可能不需要重複提示
+    // toast.info('報價單已清空。');
   }
 
-  // --- 4. Return: 將需要暴露出去的 state, getters, actions 返回 ---
   return {
     items,
     maxItems,
@@ -129,7 +140,7 @@ export const useQuoteStore = defineStore('quote', () => {
     removeItem,
     updateUnitField,
     updateParking,
-    clearQuote // ✅ 確保 clearQuote 函式被返回
+    clearQuote
   };
 
 }, {
