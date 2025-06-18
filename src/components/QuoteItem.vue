@@ -25,8 +25,9 @@
       <v-col cols="6">
         <v-switch v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details></v-switch>
       </v-col>
+
       <v-col cols="12">
-        <span class="text-caption">配套價:</span> <strong>{{ packagePrice.toLocaleString() }} 萬</strong>
+        配套價: <strong class="highlight">{{ packagePrice.toLocaleString() }} 萬</strong>
       </v-col>
       </v-row>
   </div>
@@ -53,7 +54,8 @@
     <div class="item-cell flex-1">
       <v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox>
     </div>
-    <div class="item-cell flex-1">{{ packagePrice.toLocaleString() }} 萬</div>
+
+    <div class="item-cell flex-1 highlight">{{ packagePrice.toLocaleString() }} 萬</div>
     <div class="item-cell flex-shrink-0">
       <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.unitId)"></v-btn>
     </div>
