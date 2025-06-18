@@ -1,36 +1,8 @@
 <template>
   <div v-if="isMobile" class="quote-item-mobile">
-<div class="d-flex justify-space-between align-center mb-2">
-      <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
-      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove', item.instanceId)"></v-btn>
+    <v-col cols="6">總價: <strong class="highlight">{{ finalTotalPrice.toLocaleString() }} 萬</strong></v-col>
+    <v-col cols="12">配套價: <strong class="highlight">{{ packagePrice.toLocaleString() }} 萬</strong></v-col>
     </div>
-    <v-row dense>
-      <v-col cols="6">房屋總價: <strong class="highlight">{{ displayHousePrice }} 萬</strong></v-col>
-      <v-col cols="6">單價: <strong>{{ displayUnitPrice }} 萬/坪</strong></v-col>
-      <v-col cols="6">面積: <strong>{{ item.unitDetails['房屋面積(坪)'] }} 坪</strong></v-col>
-      <v-col cols="12">車位: 
-        <v-btn size="small" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn>
-      </v-col>
-      <v-col cols="12">
-        車位價格: <strong class="highlight">{{ formattedParkingPrice }}</strong>
-      </v-col>
-      <v-col cols="12">
-        <v-radio-group v-model="isFirstTimeBuyerModel" inline label="首購" density="compact" hide-details>
-          <v-radio label="是" value="是"></v-radio>
-          <v-radio label="否" value="否"></v-radio>
-        </v-radio-group>
-      </v-col>
-      
-      <v-col cols="6">總價: <strong class="highlight">{{ finalTotalPrice.toLocaleString() }} 萬</strong></v-col>
-      <v-col cols="6">
-        <v-switch v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details></v-switch>
-      </v-col>
-
-      <v-col cols="12">
-        配套價: <strong class="highlight">{{ packagePrice.toLocaleString() }} 萬</strong>
-      </v-col>
-      </v-row>
-  </div>
 
   <div v-else class="quote-item-row">
     <div class="item-cell flex-1 font-weight-bold">{{ item.unitId }}</div>
@@ -54,9 +26,9 @@
     <div class="item-cell flex-1">
       <v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox>
     </div>
-
     <div class="item-cell flex-1 highlight">{{ packagePrice.toLocaleString() }} 萬</div>
-<div class="item-cell flex-shrink-0">
+
+    <div class="item-cell flex-shrink-0">
       <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.instanceId)"></v-btn>
     </div>
   </div>
@@ -87,35 +59,33 @@ const usePackageDealModel = computed({
 });
 
 const packagePrice = computed(() => {
-  // 檢查 store 和 getter 是否存在
   if (!quoteStore || typeof quoteStore.getPackagePrice?.value !== 'function') return 0;
-  // 使用 .value 呼叫 getter，並提供預設值 0
   return quoteStore.getPackagePrice.value(props.item.unitId) || 0;
 });
 
 const finalTotalPrice = computed(() => {
-  // 檢查 store 和 getter 是否存在
   if (!quoteStore || typeof quoteStore.getFinalTotalPrice?.value !== 'function') return 0;
-  // 使用 .value 呼叫 getter，並提供預設值 0
   return quoteStore.getFinalTotalPrice.value(props.item.unitId) || 0;
 });
 
 const displayHousePrice = computed(() => {
+  const details = props.item.unitDetails || props.item;
   const price = props.item.usePackageDeal 
-    ? props.item.unitDetails['配套房屋總價'] 
-    : props.item.unitDetails['房屋總表價'];
+    ? details['配套房屋總價'] 
+    : details['房屋總表價'];
   return formatNumber(price);
 });
 
 const displayUnitPrice = computed(() => {
+  const details = props.item.unitDetails || props.item;
   const price = props.item.usePackageDeal 
-    ? props.item.unitDetails['配套房屋單價'] 
-    : props.item.unitDetails['房屋單價(表價)'];
+    ? details['配套房屋單價'] 
+    : details['房屋單價(表價)'];
   return formatNumber(price);
 });
 
 const parkingDisplayText = computed(() => {
-  if (props.item.selectedParking.length === 0) return '新增車位';
+  if (!props.item.selectedParking || props.item.selectedParking.length === 0) return '新增車位';
   return props.item.selectedParking.map(p => p['車位編號']).join(', ');
 });
 
@@ -123,15 +93,16 @@ const formattedParkingPrice = computed(() => {
   if (!props.item.selectedParking || props.item.selectedParking.length === 0) {
     return '—';
   }
-  
   const totalPrice = props.item.selectedParking.reduce((sum, parking) => {
     return sum + (Number(parking['車位表價']) || 0);
   }, 0);
-
   return totalPrice > 0 ? `${totalPrice.toLocaleString()} 萬` : '—';
 });
 
-const formatNumber = (val) => val ? parseFloat(val).toLocaleString() : '0';
+const formatNumber = (val) => {
+  const num = parseFloat(val);
+  return isNaN(num) ? '0' : num.toLocaleString();
+};
 </script>
 
 <style scoped>
