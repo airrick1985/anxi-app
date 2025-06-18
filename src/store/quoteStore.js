@@ -5,10 +5,7 @@ import { useToast } from 'vue-toastification';
 
 const toast = useToast();
 
-// 使用 Setup Store 的寫法，這是目前 Vue 3 + Pinia 的主流和推薦寫法
 export const useQuoteStore = defineStore('quote', () => {
-  // --- State ---
-  // 使用 ref() 定義狀態，等同於 state 屬性
   const items = ref([]);
   const maxItems = ref(5);
   const personnelName = ref('');
@@ -20,10 +17,12 @@ export const useQuoteStore = defineStore('quote', () => {
   /**
    * (輔助 Getter) 計算指定戶別的車位總價
    */
-  const getParkingTotalPrice = computed(() => {
+ const getParkingTotalPrice = computed(() => {
     return (unitId) => {
       const item = items.value.find(i => i.unitId === unitId);
-      if (!item || !item.selectedParking) return 0;
+      if (!item) return 0;
+      // 兼容舊資料結構：如果 item.selectedParking 不存在，則回傳 0
+      if (!item.selectedParking) return 0;
       return item.selectedParking.reduce((sum, p) => sum + (Number(p['車位表價']) || 0), 0);
     };
   });
@@ -32,17 +31,18 @@ export const useQuoteStore = defineStore('quote', () => {
    * 計算「最終總價」
    * 根據我們最終確定的邏輯進行計算
    */
-  const getFinalTotalPrice = computed(() => {
+ const getFinalTotalPrice = computed(() => {
     return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
-      if (!item || !item.unitDetails) return 0; // 防呆，避免資料不完整時出錯
+      const item = items.value.find(i => i.unitId === unitId);
+      if (!item) return 0;
+      
+      // 自動偵測新舊資料結構
+      const details = item.unitDetails || item; 
 
       if (item.usePackageDeal) {
-        // 若配套=true, 總價 = 配套房屋總價
-        return parseFloat(item.unitDetails['配套房屋總價']) || 0;
+        return parseFloat(details['配套房屋總價']) || 0;
       } else {
-        // 若配套=false, 總價 = 房屋總表價 + 車位價格
-        const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
+        const originalHousePrice = parseFloat(details['房屋總表價']) || 0;
         const parkingTotal = getParkingTotalPrice.value(unitId);
         return originalHousePrice + parkingTotal;
       }
@@ -53,19 +53,20 @@ export const useQuoteStore = defineStore('quote', () => {
    * 計算「配套價」
    * 這是為了顯示在配套價欄位的數字，根據最終規則計算
    */
-  const getPackagePrice = computed(() => {
+ const getPackagePrice = computed(() => {
     return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
-      if (!item || !item.unitDetails) return 0; // 防呆
+      const item = items.value.find(i => i.unitId === unitId);
+      if (!item) return 0;
+      
+      // 自動偵測新舊資料結構
+      const details = item.unitDetails || item;
 
       if (item.usePackageDeal) {
-        // 若配套=true, 配套價 = (房屋總表價 + 車位價格) - 配套房屋總價
-        const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
+        const originalHousePrice = parseFloat(details['房屋總表價']) || 0;
         const parkingTotal = getParkingTotalPrice.value(unitId);
-        const packageHousePrice = parseFloat(item.unitDetails['配套房屋總價']) || 0;
+        const packageHousePrice = parseFloat(details['配套房屋總價']) || 0;
         return (originalHousePrice + parkingTotal) - packageHousePrice;
       } else {
-        // 若配套=false, 配套價 = 0
         return 0;
       }
     };
@@ -81,32 +82,38 @@ export const useQuoteStore = defineStore('quote', () => {
   // --- Actions ---
   // 定義為普通函式，等同於 actions
   
+
+// --- ✅✅✅ 偵錯重點 ✅✅✅ ---
   /**
    * 加入一個戶別到報價單
    */
   function addItem(unitData) {
+    // 在函式最開頭，印出收到的資料
+    console.log("--- DEBUG: 正要加入報價單的資料(unitData) ---");
+    console.log(JSON.parse(JSON.stringify(unitData)));
+    console.log("------------------------------------------");
+
     if (items.value.length >= maxItems.value) {
       toast.warning(`報價單已滿，最多只能加入 ${maxItems.value} 戶！`);
       return;
     }
 
-    // 唯一的限制：銷控狀態為「已售」時，不可加入
     if (unitData['銷控狀態'] === '已售') {
       toast.error(`戶別 ${unitData['戶別']} 為「已售」狀態，不可加入報價。`);
       return;
     }
 
-    // 允許重複加入，並為每個項目實例產生唯一的ID
     items.value.push({
-      instanceId: crypto.randomUUID(), // 為每個項目實例產生一個唯一的ID
+      instanceId: crypto.randomUUID(),
       unitId: unitData['戶別'],
-      unitDetails: unitData,
+      unitDetails: unitData, // 我們將 unitData 整個存入 unitDetails
       isFirstTimeBuyer: '否',
       usePackageDeal: false,
       selectedParking: []
     });
     toast.success(`戶別 ${unitData['戶別']} 已成功加入報價單！`);
   }
+  // --- ✅✅✅ 偵錯結束 ✅✅✅ ---
 
   /**
    * 從報價單移除一個項目

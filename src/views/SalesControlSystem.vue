@@ -121,7 +121,7 @@ const quoteStore = useQuoteStore(); // ✅ 2. 實例化 store
 const isQuoteSidebarOpen = ref(false);
 
 // ✅ 3. 新增計算屬性，獲取數量
-const quoteItemCount = computed(() => quoteStore.itemCount);
+const itemCount = computed(() => quoteStore.itemCount);
 
 
 const route = useRoute();
