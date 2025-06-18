@@ -1,8 +1,8 @@
 <template>
   <div v-if="isMobile" class="quote-item-mobile">
-    <div class="d-flex justify-space-between align-center mb-2">
+<div class="d-flex justify-space-between align-center mb-2">
       <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
-      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove', item.unitId)"></v-btn>
+      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove', item.instanceId)"></v-btn>
     </div>
     <v-row dense>
       <v-col cols="6">房屋總價: <strong class="highlight">{{ displayHousePrice }} 萬</strong></v-col>
@@ -56,8 +56,8 @@
     </div>
 
     <div class="item-cell flex-1 highlight">{{ packagePrice.toLocaleString() }} 萬</div>
-    <div class="item-cell flex-shrink-0">
-      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.unitId)"></v-btn>
+<div class="item-cell flex-shrink-0">
+      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.instanceId)"></v-btn>
     </div>
   </div>
 </template>

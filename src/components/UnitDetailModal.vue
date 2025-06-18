@@ -1,9 +1,7 @@
-<!-- /src/components/UnitDetailModal.vue -->
 <template>
   <v-dialog :model-value="show" @update:model-value="close" max-width="80vw" height="90vh">
     <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
       
-      <!-- 1. 固定的頭部區域 -->
       <div class="header-section">
         <v-card-title class="d-flex justify-space-between align-center text-h5">
           <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
@@ -17,27 +15,24 @@
         <v-divider></v-divider>
       </div>
 
-      <!-- 2. 主要內容區域 (唯一可滾動的區域) -->
       <v-card-text class="main-content">
         <v-window v-model="tab">
-          <!-- 詳細資訊分頁 -->
           <v-window-item value="info">
-        <div v-if="unitData" class="pa-2">
-          <v-row>
-            <!-- 左側：價格資訊 -->
-            <v-col cols="12" md="6">
-          <div class="info-section">
-            <div class="section-title">價格資訊</div>
-            <template v-if="shouldHidePrice">
-              <div class="pa-4 text-center">
-            <v-icon size="x-large" color="grey">mdi-currency-off</v-icon>
-            <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
-              </div>
-            </template>
-            <template v-else>
-              <v-list lines="two" dense>
-            <v-list-item title="房價">
-              <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋總表價']) }} 萬</span></template>
+            <div v-if="unitData" class="pa-2">
+              <v-row>
+                <v-col cols="12" md="6">
+                  <div class="info-section">
+                    <div class="section-title">價格資訊</div>
+                    <template v-if="shouldHidePrice">
+                      <div class="pa-4 text-center">
+                        <v-icon size="x-large" color="grey">mdi-currency-off</v-icon>
+                        <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <v-list lines="two" dense>
+                        <v-list-item title="房價">
+                          <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋總表價']) }} 萬</span></template>
                           <template v-slot:prepend><v-icon>mdi-cash-multiple</v-icon></template>
                         </v-list-item>
                         <v-list-item title="單價">
@@ -48,7 +43,6 @@
                     </template>
                   </div>
                 </v-col>
-                <!-- 右側：面積資訊 -->
                 <v-col cols="12" md="6">
                   <div class="info-section">
                     <div class="section-title">面積資訊</div>
@@ -75,10 +69,8 @@
             <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
           </v-window-item>
 
-         <!-- ✅ --- 平面圖分頁 (結構簡化) --- ✅ -->
           <v-window-item value="floorplans" class="fill-height">
             <div v-if="hasFloorplans" class="preview-area-full">
-              <!-- 直接顯示第一張圖 -->
               <img 
                 v-if="firstPlan.type === 'image'" 
                 :src="proxiedFirstImageUrl" 
@@ -97,13 +89,11 @@
         </v-window>
       </v-card-text>
       
- <!-- 3. 固定的底部區域 -->
       <div class="footer-section">
         <v-divider></v-divider>
         <v-card-actions>
           <v-spacer></v-spacer>
           
-          <!-- ✅ 6. 新增「加入報價」按鈕 -->
           <v-btn 
             v-if="viewMode === 'quote'" 
             color="success" 

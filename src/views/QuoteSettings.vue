@@ -38,15 +38,13 @@
           </div>
 
           <!-- 循環渲染每一行 -->
-          <v-card 
+      <v-card 
             v-for="item in quoteStore.items" 
-            :key="item.unitId" 
-            class="quote-item-card"
+            :key="item.instanceId" class="quote-item-card"
           >
             <QuoteItem 
               :item="item" 
-              @remove="quoteStore.removeItem(item.unitId)"
-              @open-parking-modal="openParkingModal(item.unitId)"
+              @remove="quoteStore.removeItem(item.instanceId)" @open-parking-modal="openParkingModal(item.unitId)"
             />
           </v-card>
         </div>
