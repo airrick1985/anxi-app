@@ -101,10 +101,14 @@ const itemProps = (item) => {
 };
 
 function addParking() {
-  if (newParkingSelection.value) {
-    localSelectedParking.value.push(newParkingSelection.value);
+
+  // 檢查是否有選擇值，並且該值包含 originalData
+  if (newParkingSelection.value && newParkingSelection.value.originalData) {
+    // 將原始的車位資料物件推進陣列
+    localSelectedParking.value.push(newParkingSelection.value.originalData);
     newParkingSelection.value = null; // 清空選擇
   }
+
 }
 
 function removeParking(index) {

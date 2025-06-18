@@ -23,16 +23,17 @@
         <!-- 報價列表 -->
         <div v-else class="quote-list">
           <!-- 表頭 (只在桌面顯示) -->
-          <div class="quote-item-header d-none d-md-flex">
+       <div class="quote-item-header d-none d-md-flex">
             <div class="item-cell flex-1">戶別</div>
             <div class="item-cell flex-1">面積(坪)</div>
             <div class="item-cell flex-1">房屋總價</div>
             <div class="item-cell flex-1">單價(表價)</div>
             <div class="item-cell flex-2">車位</div>
+            <div class="item-cell flex-1">車位價格</div>
             <div class="item-cell flex-1">首購</div>
+            <div class="item-cell flex-1">總價</div>
             <div class="item-cell flex-1">配套</div>
             <div class="item-cell flex-1">配套價</div>
-            <div class="item-cell flex-1">總價</div>
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
 
