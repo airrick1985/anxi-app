@@ -121,7 +121,7 @@ const quoteStore = useQuoteStore(); // ✅ 2. 實例化 store
 const isQuoteSidebarOpen = ref(false);
 
 // ✅ 3. 新增計算屬性，獲取數量
-const quoteItemCount = computed(() => quoteStore.itemCount);
+const itemCount = computed(() => quoteStore.itemCount);
 
 
 const route = useRoute();
@@ -555,7 +555,7 @@ onMounted(async () => {
       position: absolute;
       inset: 0px;
       border-radius: 50%;
-      border: 5px solid #ffffff;
+      border: 5px solid #008cff;
       animation: prixClipFix 2s linear infinite ;
     }
 
