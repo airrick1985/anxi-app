@@ -1,13 +1,24 @@
 <template>
-    <v-container fluid>
+  <v-container fluid>
     <div class="page-header d-flex align-center">
-   
+    
       <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
       <div>
         
         <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
         <p class="text-grey-darken-1">建案: {{ projectName }}</p>
       </div>
+      <v-spacer></v-spacer>
+      <v-btn
+        prepend-icon="mdi-presentation"
+        color="info"
+        variant="tonal"
+        @click="openSlideViewer(quoteParkingSlideId)"
+        :disabled="!quoteParkingSlideId"
+        title="查看車位圖譜"
+      >
+        車位圖譜
+      </v-btn>
     </div>
 
     <v-card class="mt-4">
@@ -69,7 +80,20 @@
       :all-parking-data="allParkingData"
       :initial-selected-parking="currentInitialParking"
       @confirm="handleParkingConfirm"
+      @request-open-slide="openSlideViewer(quoteParkingSlideId)"
     />
+
+    <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+      <v-card>
+        <v-toolbar dark color="primary">
+          <v-btn icon dark @click="isSlideDialogVisible = false"><v-icon>mdi-close</v-icon></v-btn>
+          <v-toolbar-title>車位配置圖</v-toolbar-title>
+        </v-toolbar>
+        <div class="iframe-container">
+          <iframe v-if="slideEmbedUrl" :src="slideEmbedUrl" frameborder="0" allowfullscreen></iframe>
+        </div>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -78,7 +102,8 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
-import { fetchParkingList, fetchQuotePersonnelList } from '@/api';
+import { fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList } from '@/api'; // 引入 fetchSalesControlData
+import { useSlideViewer } from '@/composables/useSlideViewer'; // 引入 Composable
 import QuoteItem from '@/components/QuoteItem.vue';
 import ParkingSelectionModal from '@/components/ParkingSelectionModal.vue';
 
@@ -86,6 +111,7 @@ const route = useRoute();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
+const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer(); // 使用 Composable
 
 // --- 頁面狀態 ---
 const loading = ref(true);
@@ -98,25 +124,23 @@ const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
+const quoteParkingSlideId = ref(''); // 本地 ref 儲存報價用 ID
 
-// ✅ 修改 #4: 變數與相關邏輯全部從 unitId 改為 internalId
 const isParkingModalVisible = ref(false);
-const currentEditingInternalId = ref(null); // 變數改名
+const currentEditingInternalId = ref(null);
 
 const currentInitialParking = computed(() => {
   if (!currentEditingInternalId.value) return [];
-  // 用 internalId 查找
   const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
   return item ? item.selectedParking : [];
 });
 
-function openParkingModal(internalId) { // 接收 internalId
+function openParkingModal(internalId) {
   currentEditingInternalId.value = internalId;
   isParkingModalVisible.value = true;
 }
 
 function handleParkingConfirm(parkingList) {
-  // 使用 internalId 更新 store
   quoteStore.updateParking(currentEditingInternalId.value, parkingList);
   isParkingModalVisible.value = false;
 }
@@ -125,10 +149,20 @@ function handleParkingConfirm(parkingList) {
 onMounted(async () => {
   loading.value = true;
   try {
-    const [parkingRes, personnelRes] = await Promise.all([
+    // ✅ 4. 並行獲取所有需要的資料
+    const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
+      fetchSalesControlData(projectName),
       fetchParkingList(projectName),
       fetchQuotePersonnelList(projectName, userStore.user.key)
     ]);
+
+    // ✅ 5. 解析報價用的 Slide ID
+    if (salesControlRes.status === 'success' && salesControlRes.data.車位SLIDE?.length > 0) {
+      const slideInfo = salesControlRes.data.車位SLIDE[0];
+      quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
+    } else {
+      console.warn("未能在銷控資料中找到 '車位SLIDE' 工作表數據。");
+    }
 
     if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
     else throw new Error('無法獲取車位列表: ' + parkingRes.message);
@@ -169,26 +203,36 @@ function goBack() {
   background-color: #f5f5f5;
   border-radius: 4px;
   margin-bottom: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
-.flex-1 { flex: 1; }
-.flex-2 { flex: 2; }
-.flex-shrink-0 { flex-shrink: 0; }
-
-.quote-item-card {
-  margin-bottom: 12px;
-  /* ✅ 修改：移除 quote-item-card 的 padding，交給內部的 QuoteItem 處理 */
-  /* padding: 16px; */
-  transition: box-shadow 0.2s ease-in-out;
-}
-.quote-item-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-/* ✅ 新增：讓表頭內的 .item-cell 置中對齊 */
 .quote-item-header .item-cell {
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
+}
+.flex-1 { flex: 1; }
+.flex-2 { flex: 2; }
+.flex-shrink-0 { flex-shrink: 0; }
+.quote-item-card {
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s ease-in-out;
+}
+.quote-item-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+/* ✅ 6. 確保 iframe 樣式存在 */
+.iframe-container {
+  width: 100%;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+}
+.iframe-container iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
 }
 </style>
