@@ -7,7 +7,7 @@
         <!-- 已選車位列表 -->
         <v-table v-if="localSelectedParking.length > 0" density="compact">
           <thead>
-            <tr><th>車位編號</th><th>尺寸</th><th>表價(萬)</th><th>操作</th></tr>
+            <tr><th>車位編號</th><th>尺寸</th><th>車位價格(萬)</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="(p, index) in localSelectedParking" :key="p['車位編號']">
