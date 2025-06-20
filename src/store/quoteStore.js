@@ -1,4 +1,3 @@
-// /src/store/quoteStore.js
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
@@ -7,65 +6,54 @@ const toast = useToast();
 
 export const useQuoteStore = defineStore('quote', () => {
   // --- State ---
+  // 報價項目、最大數量、業務員姓名和電話
   const items = ref([]);
   const maxItems = ref(5);
   const personnelName = ref('');
   const personnelPhone = ref('');
 
   // --- Getters ---
-
-  // (Helper) 計算車位總價，此 getter 保持不變
+  // ✅ 修改：所有 Getter 都改用 internalId 來查找項目
   const getParkingTotalPrice = computed(() => {
-    return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
+    return (internalId) => {
+      const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
       return item.selectedParking.reduce((sum, parking) => sum + (parseFloat(parking['車位表價']) || 0), 0);
     }
   });
 
-  // ✅ START: 總價邏輯修改
-  // getter: 計算最終總價
   const getFinalTotalPrice = computed(() => {
-    return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
+    return (internalId) => {
+      const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
-
       if (item.usePackageDeal) {
-        // 若配套=true, 總價 = 配套房屋總價
         return parseFloat(item.unitDetails['配套房屋總價']) || 0;
       } else {
-        // 若配套=false, 總價 = 房屋總表價 + 車位價格
         const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
-        const parkingTotal = getParkingTotalPrice.value(unitId);
+        const parkingTotal = getParkingTotalPrice.value(internalId);
         return originalHousePrice + parkingTotal;
       }
     };
   });
-  // ✅ END: 總價邏輯修改
 
-  // ✅ START: 配套價邏輯修改
-  // getter: 計算配套價
   const getPackagePrice = computed(() => {
-    return (unitId) => {
-      const item = items.value.find(item => item.unitId === unitId);
+    return (internalId) => {
+      const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
-
       if (item.usePackageDeal) {
-        // 若配套=true, 配套價 = (房屋總表價 + 車位價格) - 配套房屋總價
         const originalHousePrice = parseFloat(item.unitDetails['房屋總表價']) || 0;
-        const parkingTotal = getParkingTotalPrice.value(unitId);
+        const parkingTotal = getParkingTotalPrice.value(internalId);
         const packageHousePrice = parseFloat(item.unitDetails['配套房屋總價']) || 0;
         return (originalHousePrice + parkingTotal) - packageHousePrice;
       } else {
-        // 若配套=false, 配套價 = 0
         return 0;
       }
     };
   });
-  // ✅ END: 配套價邏輯修改
-
+  
   const itemCount = computed(() => items.value.length);
-
+  
+  // isItemInQuote 邏輯不變，因為它只檢查戶別名稱是否存在，用於初始加入前的判斷
   const isItemInQuote = computed(() => {
     const itemIds = new Set(items.value.map(item => item.unitId));
     return (unitId) => itemIds.has(unitId);
@@ -77,18 +65,21 @@ export const useQuoteStore = defineStore('quote', () => {
       toast.warning(`報價單已滿，最多只能加入 ${maxItems.value} 戶！`);
       return;
     }
-    if (isItemInQuote.value(unitData['戶別'])) {
-      toast.info(`戶別 ${unitData['戶別']} 已在您的報價單中。`);
-      return;
-    }
+
     const salesStatus = unitData['銷控狀態'] || '';
     const backendStatus = unitData['銷控後台狀態'] || '';
-    if (salesStatus !== '' || backendStatus !== '') {
-      toast.error(`戶別 ${unitData['戶別']} 為「${salesStatus || backendStatus}」狀態，不可加入報價。`);
+
+    if (salesStatus === '已售' || backendStatus === '已售') {
+      toast.error(`戶別 ${unitData['戶別']} 為「已售」狀態，不可加入報價。`);
       return;
     }
+
+    // ✅ 核心修改：為每個項目建立唯一的 internalId
+    const uniqueId = `${unitData['戶別']}-${Date.now()}`;
+
     items.value.push({
-      unitId: unitData['戶別'],
+      internalId: uniqueId, // 唯一識別碼
+      unitId: unitData['戶別'], // 戶別名稱，供顯示使用
       unitDetails: unitData,
       isFirstTimeBuyer: '否',
       usePackageDeal: false,
@@ -97,25 +88,28 @@ export const useQuoteStore = defineStore('quote', () => {
     toast.success(`戶別 ${unitData['戶別']} 已成功加入報價單！`);
   }
 
-  function removeItem(unitId) {
-    const initialLength = items.value.length;
-    items.value = items.value.filter(item => item.unitId !== unitId);
-    if (items.value.length < initialLength) {
-      toast.error(`戶別 ${unitId} 已從報價單中移除。`);
+  // ✅ 修改：改用 internalId 來移除項目
+  function removeItem(internalId) {
+    const index = items.value.findIndex(item => item.internalId === internalId);
+    if (index !== -1) {
+      items.value.splice(index, 1);
+      toast.info('已從報價單移除');
     }
   }
 
-  function updateUnitField(unitId, field, value) {
-    const item = items.value.find(item => item.unitId === unitId);
+  // ✅ 修改：改用 internalId 來更新欄位
+  function updateUnitField(internalId, field, value) {
+    const item = items.value.find(i => i.internalId === internalId);
     if (item) {
       item[field] = value;
     }
   }
-
-  function updateParking(unitId, parkingList) {
-    const item = items.value.find(item => item.unitId === unitId);
+  
+  // ✅ 修改：改用 internalId 來更新車位
+  function updateParking(internalId, newParking) {
+    const item = items.value.find(i => i.internalId === internalId);
     if (item) {
-      item.selectedParking = parkingList;
+      item.selectedParking = newParking;
     }
   }
 
@@ -123,7 +117,7 @@ export const useQuoteStore = defineStore('quote', () => {
     items.value = [];
     personnelName.value = '';
     personnelPhone.value = '';
-    // toast.info('報價單已清空。');
+    toast.info('報價單已清空');
   }
 
   return {
@@ -142,7 +136,6 @@ export const useQuoteStore = defineStore('quote', () => {
     updateParking,
     clearQuote
   };
-
 }, {
   persist: true
 });

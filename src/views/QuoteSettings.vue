@@ -1,6 +1,4 @@
-<!-- /src/views/QuoteSettings.vue -->
 <template>
-
     <v-container fluid>
     <div class="page-header d-flex align-center">
    
@@ -12,7 +10,6 @@
       </div>
     </div>
 
-    <!-- 卡片一：主要內容區域 -->
     <v-card class="mt-4">
       <v-card-text>
         <div v-if="quoteStore.items.length === 0" class="text-center py-10">
@@ -20,10 +17,8 @@
           <v-btn color="primary" class="mt-4" @click="goBack">返回銷控表</v-btn>
         </div>
 
-        <!-- 報價列表 -->
         <div v-else class="quote-list">
-          <!-- 表頭 (只在桌面顯示) -->
-       <div class="quote-item-header d-none d-md-flex">
+          <div class="quote-item-header d-none d-md-flex">
             <div class="item-cell flex-1">戶別</div>
             <div class="item-cell flex-1">面積(坪)</div>
             <div class="item-cell flex-1">房屋總價</div>
@@ -37,24 +32,21 @@
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
 
-          <!-- 循環渲染每一行 -->
           <v-card 
             v-for="item in quoteStore.items" 
-            :key="item.unitId" 
+            :key="item.internalId" 
             class="quote-item-card"
           >
             <QuoteItem 
               :item="item" 
-              @remove="quoteStore.removeItem(item.unitId)"
-              @open-parking-modal="openParkingModal(item.unitId)"
+              @remove="quoteStore.removeItem(item.internalId)"
+              @open-parking-modal="openParkingModal(item.internalId)"
             />
           </v-card>
         </div>
       </v-card-text>
     </v-card>
     
-    <!-- ✅ 關鍵修改：將報價人員卡片移到外面，與上面的卡片平級 -->
-    <!-- 卡片二：下方報價人員區塊 -->
     <v-card class="mt-4" v-if="quoteStore.items.length > 0">
       <v-card-text>
         <v-row align="center">
@@ -71,10 +63,9 @@
       </v-card-text>
     </v-card>
 
-    <!-- Modal 組件的放置位置不影響佈局，可以放在這裡 -->
     <ParkingSelectionModal 
       v-model:show="isParkingModalVisible"
-      :unit-id="currentEditingUnitId"
+      :unit-id="currentEditingInternalId" 
       :all-parking-data="allParkingData"
       :initial-selected-parking="currentInitialParking"
       @confirm="handleParkingConfirm"
@@ -83,33 +74,13 @@
 </template>
 
 <script setup>
-import QuoteItem from '@/components/QuoteItem.vue';
-import ParkingSelectionModal from '@/components/ParkingSelectionModal.vue';
-
-const isParkingModalVisible = ref(false);
-const currentEditingUnitId = ref(null);
-
-const currentInitialParking = computed(() => {
-  if (!currentEditingUnitId.value) return [];
-  const item = quoteStore.items.find(i => i.unitId === currentEditingUnitId.value);
-  return item ? item.selectedParking : [];
-});
-
-function openParkingModal(unitId) {
-  currentEditingUnitId.value = unitId;
-  isParkingModalVisible.value = true;
-}
-
-function handleParkingConfirm(parkingList) {
-  quoteStore.updateParking(currentEditingUnitId.value, parkingList);
-  isParkingModalVisible.value = false;
-}
-
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
 import { fetchParkingList, fetchQuotePersonnelList } from '@/api';
+import QuoteItem from '@/components/QuoteItem.vue';
+import ParkingSelectionModal from '@/components/ParkingSelectionModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -126,33 +97,47 @@ const allParkingData = ref([]);
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
-
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
+
+// ✅ 修改 #4: 變數與相關邏輯全部從 unitId 改為 internalId
+const isParkingModalVisible = ref(false);
+const currentEditingInternalId = ref(null); // 變數改名
+
+const currentInitialParking = computed(() => {
+  if (!currentEditingInternalId.value) return [];
+  // 用 internalId 查找
+  const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
+  return item ? item.selectedParking : [];
+});
+
+function openParkingModal(internalId) { // 接收 internalId
+  currentEditingInternalId.value = internalId;
+  isParkingModalVisible.value = true;
+}
+
+function handleParkingConfirm(parkingList) {
+  // 使用 internalId 更新 store
+  quoteStore.updateParking(currentEditingInternalId.value, parkingList);
+  isParkingModalVisible.value = false;
+}
 
 // --- 生命週期鉤子 ---
 onMounted(async () => {
   loading.value = true;
   try {
-    // 並行獲取車位和報價人員數據
     const [parkingRes, personnelRes] = await Promise.all([
       fetchParkingList(projectName),
       fetchQuotePersonnelList(projectName, userStore.user.key)
     ]);
 
-    if (parkingRes.status === 'success') {
-      allParkingData.value = parkingRes.data;
-    } else {
-      throw new Error('無法獲取車位列表: ' + parkingRes.message);
-    }
+    if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
+    else throw new Error('無法獲取車位列表: ' + parkingRes.message);
 
     if (personnelRes.status === 'success') {
       personnelOptions.value = personnelRes.data.personnelList;
       canEditPersonnel.value = personnelRes.data.canEdit;
-      // 預設選中當前登入用戶
       const currentUser = personnelRes.data.personnelList.find(p => p.phone === userStore.user.key);
-      if (currentUser) {
-        selectedPersonnel.value = currentUser;
-      }
+      if (currentUser) selectedPersonnel.value = currentUser;
     } else {
       throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
     }
@@ -166,13 +151,9 @@ onMounted(async () => {
 
 // --- 方法 ---
 function goBack() {
-  // ✅ 關鍵修改：從 route.query 中讀取 viewMode
   const sourceMode = route.query.viewMode;
   const projectName = route.params.projectName;
-
-  // 根據來源模式決定返回到哪個頁面
   const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-  
   router.push({ name: backRouteName, params: { projectName } });
 }
 </script>
