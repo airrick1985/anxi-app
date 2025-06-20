@@ -45,7 +45,7 @@
           color="info"
           @click="$emit('request-open-slide')"
         >
-          查看圖譜
+          車位表
         </v-btn>
         <v-spacer></v-spacer>
         <v-btn variant="text" @click="close">取消</v-btn>

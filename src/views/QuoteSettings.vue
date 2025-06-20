@@ -10,14 +10,14 @@
       </div>
       <v-spacer></v-spacer>
       <v-btn
-        prepend-icon="mdi-presentation"
+        
         color="info"
         variant="tonal"
         @click="openSlideViewer(quoteParkingSlideId)"
         :disabled="!quoteParkingSlideId"
-        title="查看車位圖譜"
+        title="車位表"
       >
-        車位圖譜
+        車位表
       </v-btn>
     </div>
 
@@ -87,7 +87,7 @@
       <v-card>
         <v-toolbar dark color="primary">
           <v-btn icon dark @click="isSlideDialogVisible = false"><v-icon>mdi-close</v-icon></v-btn>
-          <v-toolbar-title>車位配置圖</v-toolbar-title>
+          <v-toolbar-title>車位表</v-toolbar-title>
         </v-toolbar>
         <div class="iframe-container">
           <iframe v-if="slideEmbedUrl" :src="slideEmbedUrl" frameborder="0" allowfullscreen></iframe>

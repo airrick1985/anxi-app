@@ -2,7 +2,7 @@
   <div class="sales-control-page">
     
     <div class="toolbar">
-      <span class="toolbar-title">{{ pageTitle }} - {{ projectName }}</span>
+     <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
       <v-spacer></v-spacer>
 
       <v-badge
@@ -17,15 +17,15 @@
         ></v-btn>
       </v-badge>
     <v-btn
-        prepend-icon="mdi-presentation"
+        
         color="info"
         variant="tonal"
         class="ml-4"
         @click="openSlideViewer(parkingSlideId)"
         :disabled="!parkingSlideId"
-        title="查看車位圖譜"
+        title="車位表"
       >
-        車位圖譜
+        車位表
       </v-btn>
 
       <v-btn-toggle
@@ -95,7 +95,7 @@
       <v-card>
         <v-toolbar dark color="primary">
           <v-btn icon dark @click="isSlideDialogVisible = false"><v-icon>mdi-close</v-icon></v-btn>
-          <v-toolbar-title>車位配置圖</v-toolbar-title>
+          <v-toolbar-title>車位表</v-toolbar-title>
         </v-toolbar>
         <div class="iframe-container">
           <iframe :src="slideEmbedUrl" frameborder="0" allowfullscreen></iframe>
@@ -119,15 +119,15 @@ import { useRouter, useRoute } from 'vue-router';
 import { fetchSalesControlData } from '@/api';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
-import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useSlideViewer } from '@/composables/useSlideViewer';
+import QuoteSidebar from '@/components/QuoteSidebar.vue';
 
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
 const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
 
-// --- 既有狀態 ---
+// --- 狀態 ---
 const loading = ref(true);
 const error = ref(null);
 const allData = ref({});
@@ -138,9 +138,7 @@ const isModalVisible = ref(false);
 const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const displayType = ref('住家');
-
-// ✅ 本地 ref，用來儲存此頁面對應的 Slide ID
-const parkingSlideId = ref('');
+const parkingSlideId = ref(''); // 本地 ref，用來儲存此頁面對應的 Slide ID
 
 // --- 計算屬性 ---
 const itemCount = computed(() => quoteStore.itemCount);
@@ -150,14 +148,7 @@ const pageTitle = computed(() => {
   const baseTitle = currentViewMode.value === 'quote' ? '報價系統' : '銷控系統';
   return `${baseTitle} (${displayType.value})`;
 });
-
-// ✅ 新增 #4: 計算 Slide 的嵌入 URL
-const slideEmbedUrl = computed(() => {
-  if (!parkingSlideId.value) return '';
-  return `https://docs.google.com/presentation/d/${parkingSlideId.value}/embed?start=false&loop=false&delayms=3000`;
-});
-
-// --- 數據處理相關的計算屬性 (維持不變) ---
+// ... 其餘計算屬性維持不變 ...
 const salesRawData = computed(() => allData.value['銷控'] || []);
 const filteredSalesData = computed(() => {
   if (displayType.value === '店面') {
@@ -241,6 +232,7 @@ const statusColorMap = computed(() => {
   return map;
 });
 
+
 // --- 方法 ---
 function handleScroll(event) {
   if (headerTopRef.value) {
@@ -274,37 +266,33 @@ onMounted(async () => {
     if (response.status === 'success') {
       allData.value = response.data;
       
-      // ✅ 新增 #5: 在獲取到資料後，解析 Slide ID
-   const slideSheetData = response.data['車位SLIDE'];
+      const slideSheetData = response.data['車位SLIDE'];
       if (slideSheetData && slideSheetData.length > 0) {
         const slideInfo = slideSheetData[0];
         
-        // ✅ 核心修正：根據 currentViewMode 動態決定要讀取哪個欄位
-        const slideIdKey = currentViewMode.value === 'quote' 
+        const targetKeyName = currentViewMode.value === 'quote' 
           ? '報價車位SLIDEID' 
           : '銷控車位SLIDEID';
-          
-        parkingSlideId.value = slideInfo[slideIdKey] || '';
         
+        // ✅ 唯一的修改在這裡：優化讀取邏輯
+        // 1. 取得 API 回傳物件的所有 keys
+        const actualKeys = Object.keys(slideInfo);
+        // 2. 找到 trimming (去除前後空白) 後與目標 key 相同的那個 key
+        const foundKey = actualKeys.find(k => k.trim() === targetKeyName);
+
+        if (foundKey) {
+          // 3. 使用找到的、正確的 key 來取值
+          parkingSlideId.value = slideInfo[foundKey] || '';
+        }
+
         if (!parkingSlideId.value) {
-          console.warn(`在 '車位SLIDE' 工作表中找到了，但 '${slideIdKey}' 欄位為空或不存在。`);
+          console.warn(`在 '車位SLIDE' 工作表中，欄位 '${targetKeyName}' 不存在或其值為空。`);
         }
       } else {
         console.warn("API 回應中未包含 '車位SLIDE' 資料或該工作表為空。");
       }
 
-    try {
-    const response = await fetchSalesControlData(projectNameParam);
-    if (response.status === 'success') {
-      allData.value = response.data;
-      
-      const slideSheetData = response.data['車位SLIDE'];
-      if (slideSheetData && slideSheetData.length > 0) {
-        const slideInfo = slideSheetData[0];
-        // ✅ 只讀取銷控的 ID
-        salesParkingSlideId.value = slideInfo['銷控車位SLIDEID'] || '';
-      }
-    }  else {
+    } else {
       throw new Error(response.message || '無法獲取銷控資料。');
     }
   } catch (err) {

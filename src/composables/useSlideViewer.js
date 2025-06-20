@@ -21,7 +21,7 @@ export function useSlideViewer() {
       isSlideDialogVisible.value = true;
     } else {
       // 可以在這裡加一個提示，例如用 toast
-      console.warn('無法開啟車位圖譜，因為未提供 Slide ID。');
+      console.warn('無法開啟車位表，因為未提供 Slide ID。');
     }
   }
 
