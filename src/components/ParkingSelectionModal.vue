@@ -2,7 +2,7 @@
 <template>
   <v-dialog :model-value="show" @update:model-value="close" max-width="800px" persistent>
     <v-card>
-      <v-card-title>為 {{ unitId }} 選擇車位</v-card-title>
+      <v-card-title>為 {{ displayUnitId }} 選擇車位</v-card-title>
       <v-card-text>
         <!-- 已選車位列表 -->
         <v-table v-if="localSelectedParking.length > 0" density="compact">
@@ -72,6 +72,22 @@ watch(() => props.show, (newVal) => {
     newParkingSelection.value = null;
   }
 });
+
+// ✅ 關鍵修改：使用 lastIndexOf 確保能處理像 D-17 這樣的戶別
+const displayUnitId = computed(() => {
+  if (!props.unitId) return '';
+
+  const lastHyphenIndex = props.unitId.lastIndexOf('-');
+  
+  // 如果找不到 '-' 或 '-' 在第一個位置，則返回原字串 (安全機制)
+  // 否則，返回從頭到最後一個 '-' 位置前的子字串
+  if (lastHyphenIndex > 0) {
+    return props.unitId.substring(0, lastHyphenIndex);
+  }
+  
+  return props.unitId; // Fallback to the original string
+});
+
 
 const availableParkingOptions = computed(() => {
   const selectedIds = new Set(localSelectedParking.value.map(p => p['車位編號']));

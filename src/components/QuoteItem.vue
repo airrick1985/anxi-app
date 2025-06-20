@@ -2,7 +2,7 @@
   <div v-if="isMobile" class="quote-item-mobile">
     <div class="d-flex justify-space-between align-center mb-2">
       <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
-      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove', item.unitId)"></v-btn>
+      <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove')"></v-btn>
     </div>
     <v-row dense>
       <v-col cols="6">房屋總價: <strong class="highlight">{{ displayHousePrice }} 萬</strong></v-col>
@@ -26,7 +26,7 @@
         <v-switch v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details></v-switch>
       </v-col>
       <v-col cols="12">
-        <span class="text-caption">配套價:</span> <strong>{{ packagePrice.toLocaleString() }} 萬</strong>
+        配套價:<strong  class="highlight">{{ packagePrice.toLocaleString() }} 萬</strong>
       </v-col>
       </v-row>
   </div>
@@ -50,12 +50,12 @@
     </div>
     
     <div class="item-cell flex-1 highlight">{{ finalTotalPrice.toLocaleString() }} 萬</div>
-    <div class="item-cell flex-1">
+    <div class="item-cell flex-1 ">
       <v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox>
     </div>
-    <div class="item-cell flex-1">{{ packagePrice.toLocaleString() }} 萬</div>
+    <div class="item-cell flex-1 highlight">{{ packagePrice.toLocaleString() }} 萬</div>
     <div class="item-cell flex-shrink-0">
-      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove', item.unitId)"></v-btn>
+      <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove')"></v-btn>
     </div>
   </div>
 </template>
@@ -77,16 +77,21 @@ const isMobile = computed(() => mobile.value);
 
 const isFirstTimeBuyerModel = computed({
   get: () => props.item.isFirstTimeBuyer,
-  set: (value) => quoteStore.updateUnitField(props.item.unitId, 'isFirstTimeBuyer', value)
+  // ✅ 修改 #3: 使用 props.item.internalId 更新 store
+  set: (value) => quoteStore.updateUnitField(props.item.internalId, 'isFirstTimeBuyer', value)
 });
 const usePackageDealModel = computed({
   get: () => props.item.usePackageDeal,
-  set: (value) => quoteStore.updateUnitField(props.item.unitId, 'usePackageDeal', value)
+  // ✅ 修改 #4: 使用 props.item.internalId 更新 store
+  set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
 });
 
-const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.unitId));
-const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.unitId));
+// ✅ 修改 #5: 使用 props.item.internalId 從 store 獲取價格
+const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.internalId));
+// ✅ 修改 #6: 使用 props.item.internalId 從 store 獲取價格
+const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.internalId));
 
+// 以下計算屬性不依賴 store 查找，維持原樣
 const displayHousePrice = computed(() => {
   const price = props.item.usePackageDeal 
     ? props.item.unitDetails['配套房屋總價'] 
@@ -122,6 +127,7 @@ const formatNumber = (val) => val ? parseFloat(val).toLocaleString() : '0';
 </script>
 
 <style scoped>
+/* 樣式維持不變 */
 .quote-item-row { display: flex; align-items: center; width: 100%; }
 .item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
 .highlight { font-weight: bold; color: #D32F2F; font-size: 1.1rem; }
