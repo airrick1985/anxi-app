@@ -176,10 +176,19 @@ function goBack() {
 
 .quote-item-card {
   margin-bottom: 12px;
-  padding: 16px;
+  /* ✅ 修改：移除 quote-item-card 的 padding，交給內部的 QuoteItem 處理 */
+  /* padding: 16px; */
   transition: box-shadow 0.2s ease-in-out;
 }
 .quote-item-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* ✅ 新增：讓表頭內的 .item-cell 置中對齊 */
+.quote-item-header .item-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 </style>

@@ -32,7 +32,7 @@
   </div>
 
   <div v-else class="quote-item-row">
-    <div class="item-cell flex-1 font-weight-bold">{{ item.unitId }}</div>
+    <div class="item-cell flex-1 text-h6 font-weight-bold text-primary">{{ item.unitId }}</div>
     <div class="item-cell flex-1">{{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪</div>
     <div class="item-cell flex-1 highlight">{{ displayHousePrice }} 萬</div>
     <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
@@ -127,12 +127,38 @@ const formatNumber = (val) => val ? parseFloat(val).toLocaleString() : '0';
 </script>
 
 <style scoped>
-/* 樣式維持不變 */
-.quote-item-row { display: flex; align-items: center; width: 100%; }
-.item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
-.highlight { font-weight: bold; color: #D32F2F; font-size: 1.1rem; }
+.quote-item-row { 
+  display: flex; 
+  align-items: center; 
+  width: 100%; 
+  /* ✅ 新增：為整行增加上下 padding，取代原先在父層的 padding */
+  padding: 16px 0;
+}
+
+.item-cell { 
+  padding: 0 8px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  text-align: center; 
+}
+
+.item-cell > .v-input {
+  flex: none;
+}
+.highlight { 
+  font-weight: bold; 
+  color: #D32F2F; 
+  font-size: 1.1rem; 
+}
+
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 .flex-shrink-0 { flex-shrink: 0; }
-.quote-item-mobile { border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; }
+
+.quote-item-mobile { 
+  border-bottom: 1px solid #eee; 
+  padding-bottom: 8px; 
+  margin-bottom: 8px; 
+}
 </style>
