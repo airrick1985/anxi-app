@@ -111,9 +111,9 @@ const pageTitle = computed(() => {
 // 3. 根據 viewMode 動態生成頁面圖標
 const pageIcon = computed(() => {
   if (currentViewMode.value === 'quote') {
-    return 'mdi-table-large';
+    return 'mdi-currency-usd';
   }
-  return 'mdi-chart-line';
+  return 'mdi-table-edit';
 });
 
 // --- 已有邏輯的適配修改 ---

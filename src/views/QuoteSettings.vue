@@ -102,8 +102,8 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
-import { fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList } from '@/api'; // 引入 fetchSalesControlData
-import { useSlideViewer } from '@/composables/useSlideViewer'; // 引入 Composable
+import { fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList } from '@/api';
+import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteItem from '@/components/QuoteItem.vue';
 import ParkingSelectionModal from '@/components/ParkingSelectionModal.vue';
 
@@ -111,7 +111,7 @@ const route = useRoute();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
-const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer(); // 使用 Composable
+const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
 
 // --- 頁面狀態 ---
 const loading = ref(true);
@@ -124,7 +124,7 @@ const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
-const quoteParkingSlideId = ref(''); // 本地 ref 儲存報價用 ID
+const quoteParkingSlideId = ref('');
 
 const isParkingModalVisible = ref(false);
 const currentEditingInternalId = ref(null);
@@ -149,14 +149,12 @@ function handleParkingConfirm(parkingList) {
 onMounted(async () => {
   loading.value = true;
   try {
-    // ✅ 4. 並行獲取所有需要的資料
     const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
       fetchSalesControlData(projectName),
       fetchParkingList(projectName),
       fetchQuotePersonnelList(projectName, userStore.user.key)
     ]);
 
-    // ✅ 5. 解析報價用的 Slide ID
     if (salesControlRes.status === 'success' && salesControlRes.data.車位SLIDE?.length > 0) {
       const slideInfo = salesControlRes.data.車位SLIDE[0];
       quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
@@ -224,7 +222,6 @@ function goBack() {
 .quote-item-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-/* ✅ 6. 確保 iframe 樣式存在 */
 .iframe-container {
   width: 100%;
   height: calc(100vh - 48px);

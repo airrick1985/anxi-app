@@ -1,18 +1,43 @@
+好的，這很合理，將主畫面的背景也變成動態的，可以讓整個系統感覺更有活力。
+
+我將完全依照您提供的 `Home.vue` 檔案內容，為其整合先前我們在登入頁面使用的 Unsplash 隨機背景圖功能。
+
+-----
+
+### **前置作業提醒：API 金鑰**
+
+與登入頁面一樣，這個功能需要一組 Unsplash 的 **Access Key**。如果您尚未設定，請參考以下步驟：
+
+1.  前往 [Unsplash Developer](https://unsplash.com/developers) 網站註冊並建立一個應用程式，取得您的 Access Key。
+2.  在專案根目錄建立 `.env.local` 檔案。
+3.  在檔案中加入以下內容（將金鑰貼上）：
+    ```
+    VITE_UNSPLASH_ACCESS_KEY=your_unsplash_access_key_here
+    ```
+
+-----
+
+### **修改 `/src/views/Home.vue`**
+
+**請將您現有的 `/src/views/Home.vue` 完整內容替換為以下程式碼：**
+
+```vue
 <template>
-  <div class="home-container">
+  <div 
+    class="home-container"
+    :style="{ backgroundImage: `url(${backgroundImageUrl})` }"
+  >
     <button class="icon-button" v-if="userStore.hasPermission('驗屋系統')" @click="goToInspectionSystem">
       <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
-       <span class="text">驗屋系統</span>
+        <span class="text">驗屋系統</span>
     </button>
     
-     <!-- ✅ 修改：報價系統按鈕 -->
     <button class="icon-button" v-if="userStore.hasPermission('報價系統')" @click="goToEntryPage('quote')">
-       <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
+        <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
       <span class="text">報價系統</span>
     </button>
 
-     <!-- ✅ 修改：銷控系統按鈕 -->
-     <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToEntryPage('sales')">
+    <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToEntryPage('sales')">
       <img src="/img/icons/sales.svg" alt="銷控系統圖標" class="icon" /> 
       <span class="text">銷控系統</span>
     </button>
@@ -28,6 +53,8 @@
 </template>
 
 <script setup>
+// ✅ 2. 引入 ref 和 onMounted
+import { ref, onMounted } from 'vue';
 // @ts-ignore 
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
@@ -35,32 +62,54 @@ import { useUserStore } from '../store/user';
 const router = useRouter();
 const userStore = useUserStore();
 
+// ✅ 3. 新增 ref 儲存背景圖 URL，並以現有圖片為預設值
+const backgroundImageUrl = ref('/background.png');
+
+// ✅ 4. 新增獲取隨機背景的函式
+async function fetchRandomBackground() {
+  const unsplashAccessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+  
+  if (!unsplashAccessKey) {
+    console.error('Unsplash API Key 未在 .env.local 中設定');
+    return;
+  }
+
+  try {
+    // 獲取主題為 "building", "modern", "architecture" 的隨機圖片
+    const response = await fetch(
+      `https://api.unsplash.com/photos/random?query=building,modern,architecture&orientation=landscape&client_id=${unsplashAccessKey}`
+    );
+    
+    if (!response.ok) throw new Error('無法從 Unsplash 獲取圖片');
+    
+    const data = await response.json();
+    backgroundImageUrl.value = data.urls.regular;
+
+  } catch (err) {
+    console.error('獲取背景圖片失敗:', err);
+    // 失敗時，會繼續使用預設的 '/background.png'
+  }
+}
+
+// ✅ 5. 在元件掛載時呼叫函式
+onMounted(() => {
+  fetchRandomBackground();
+});
+
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
 };
 
-// ✅ 修改：讓這個函數更通用
 const goToEntryPage = (mode) => {
   console.log(`[Home.vue] Navigating to entry page with mode: ${mode}`); 
   router.push({ 
     name: 'SalesControlSystemEntry',
-    // ✅ 關鍵：附加查詢參數
     query: { viewMode: mode } 
   });
 };
 </script>
 
 <style scoped>
-
-.icon{
-  width: 50px; /* 圖標寬度 */
-  height: 50px; /* 圖標高度 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-
 .home-container {
   display: flex;
   flex-wrap: wrap;
@@ -69,78 +118,57 @@ const goToEntryPage = (mode) => {
   padding: 40px;
   gap: 30px;
   min-height: 100vh;
-  box-sizing: border-box; /* 確保 padding 不會讓容器超出 100vh */
-
-  /* ✅ --- 背景圖片的核心樣式 --- ✅ */
+  box-sizing: border-box;
   
-  /* 1. 設置背景圖片的路徑 */
-  /* URL 相對於 public 文件夾的根路徑 */
+  /* --- 背景圖片的核心樣式 --- */
   background-image: url('/background.png'); 
-  
-  /* 2. 讓背景圖片覆蓋整個容器 */
   background-size: cover;
-  
-  /* 3. 將背景圖片居中顯示 */
   background-position: center center;
-  
-  /* 4. (可選但推薦) 固定背景，使其在滾動時不移動，產生視差效果 */
   background-attachment: fixed; 
+
+  /* ✅ 6. 加上 transition 讓背景圖切換時有平滑過渡效果 */
+  transition: background-image 1s ease-in-out;
 }
 
-
-/* ✅ 應用液態玻璃風格 */
+/* icon-button 的樣式維持不變 */
 .icon-button {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 150px;   /* 稍微加大尺寸 */
-  height: 150px;
-  padding: 20px;
+  width: 120px;
+  height: 120px;
+  padding: 10px;
   text-align: center;
-  
-  /* 核心樣式 */
-  background: rgba(255, 255, 255, 0.3); /* 半透明背景 */
-  backdrop-filter: blur(15px); /* 背景模糊，實現磨砂玻璃效果 */
-  border: 2px solid rgba(255, 255, 255, 0.2); /* 邊緣高光 */
-  border-radius: 20px; /* 更大的圓角 */
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15); /* 更柔和的陰影 */
-  
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
   cursor: pointer;
-  /* 關鍵：使用 all 來讓所有屬性（包括 box-shadow, transform）都平滑過渡 */
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .icon-button:hover {
-  /* 互動時「浮起」，並增加光暈效果 */
   transform: translateY(-8px) scale(1.05);
   box-shadow: 0 16px 40px 0 rgba(31, 38, 135, 0.2), 
-              0 0 20px rgba(255, 255, 255, 0.6); /* 增加白色光暈 */
-  background: rgba(255, 255, 255, 0.7);
+              0 0 20px rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.496);
 }
 
 .icon {
   width: 60px;
   height: 60px;
   margin-bottom: 12px;
-
-  /* ✅ 關鍵修改：使用 drop-shadow 和透明度 */
-
-  /* 1. 使用 drop-shadow 創建一個向下的、深色的內陰影，模擬蝕刻感 */
-  /* 參數: [x-offset] [y-offset] [blur-radius] [color] */
   filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.2));
-  
-  /* 2. 降低圖標自身的不透明度，讓它更好地融入玻璃背景 */
-  opacity: 0.8;
-
+  opacity: 0.6;
   transition: all 0.3s ease;
 }
 
 .text {
   font-size: 1rem;
-  font-weight: 600;
-  color: #1a237e;
-  /* 給文字也加上一點陰影，增加可讀性 */
+  font-weight: 400;
+  color: #000000;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
 }
 </style>
