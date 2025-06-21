@@ -1,13 +1,16 @@
 <template>
   <v-container fluid>
     <div class="page-header d-flex align-center">
+    
       <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
       <div>
+        
         <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
         <p class="text-grey-darken-1">建案: {{ projectName }}</p>
       </div>
       <v-spacer></v-spacer>
       <v-btn
+        
         color="info"
         variant="tonal"
         @click="openSlideViewer(quoteParkingSlideId)"
@@ -35,16 +38,23 @@
             <div class="item-cell flex-1">車位價格</div>
             <div class="item-cell flex-1">首購</div>
             <div class="item-cell flex-1">總價</div>
-            <div class="item-cell flex-1">配套</div>
-            <div class="item-cell flex-1">配套價</div>
+            <template v-if="showPackageDealColumns">
+              <div class="item-cell flex-1">配套</div>
+              <div class="item-cell flex-1">配套價</div>
+            </template>
             <div class="item-cell flex-1">付款方式</div>
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
 
-          <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
+          <v-card 
+            v-for="item in quoteStore.items" 
+            :key="item.internalId" 
+            class="quote-item-card"
+          >
             <QuoteItem 
-              :item="item"
+              :item="item" 
               :payment-terms-data="paymentTermsData"
+              :show-package-deal="showPackageDealColumns"
               @remove="quoteStore.removeItem(item.internalId)"
               @open-parking-modal="openParkingModal(item.internalId)"
             />
@@ -119,6 +129,14 @@ const quoteParkingSlideId = ref('');
 const isParkingModalVisible = ref(false);
 const currentEditingInternalId = ref(null);
 const paymentTermsData = ref([]);
+
+// ✅ showPackageDealColumns 的計算邏輯是正確的
+const showPackageDealColumns = computed(() => {
+  if (quoteStore.items.length === 0) return false;
+  return quoteStore.items.some(
+    item => item.unitDetails && item.unitDetails['配套房屋總價']
+  );
+});
 
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
 const currentInitialParking = computed(() => {
