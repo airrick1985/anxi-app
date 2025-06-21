@@ -1,16 +1,13 @@
 <template>
   <v-container fluid>
     <div class="page-header d-flex align-center">
-    
       <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
       <div>
-        
         <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
         <p class="text-grey-darken-1">建案: {{ projectName }}</p>
       </div>
       <v-spacer></v-spacer>
       <v-btn
-        
         color="info"
         variant="tonal"
         @click="openSlideViewer(quoteParkingSlideId)"
@@ -40,16 +37,14 @@
             <div class="item-cell flex-1">總價</div>
             <div class="item-cell flex-1">配套</div>
             <div class="item-cell flex-1">配套價</div>
+            <div class="item-cell flex-1">付款方式</div>
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
 
-          <v-card 
-            v-for="item in quoteStore.items" 
-            :key="item.internalId" 
-            class="quote-item-card"
-          >
+          <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
             <QuoteItem 
-              :item="item" 
+              :item="item"
+              :payment-terms-data="paymentTermsData"
               @remove="quoteStore.removeItem(item.internalId)"
               @open-parking-modal="openParkingModal(item.internalId)"
             />
@@ -113,22 +108,19 @@ const quoteStore = useQuoteStore();
 const userStore = useUserStore();
 const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
 
-// --- 頁面狀態 ---
 const loading = ref(true);
 const error = ref(null);
 const projectName = route.params.projectName;
-
-// --- 數據存儲 ---
 const allParkingData = ref([]);
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
-const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
 const quoteParkingSlideId = ref('');
-
 const isParkingModalVisible = ref(false);
 const currentEditingInternalId = ref(null);
+const paymentTermsData = ref([]);
 
+const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
 const currentInitialParking = computed(() => {
   if (!currentEditingInternalId.value) return [];
   const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
@@ -139,13 +131,11 @@ function openParkingModal(internalId) {
   currentEditingInternalId.value = internalId;
   isParkingModalVisible.value = true;
 }
-
 function handleParkingConfirm(parkingList) {
   quoteStore.updateParking(currentEditingInternalId.value, parkingList);
   isParkingModalVisible.value = false;
 }
 
-// --- 生命週期鉤子 ---
 onMounted(async () => {
   loading.value = true;
   try {
@@ -154,12 +144,13 @@ onMounted(async () => {
       fetchParkingList(projectName),
       fetchQuotePersonnelList(projectName, userStore.user.key)
     ]);
-
-    if (salesControlRes.status === 'success' && salesControlRes.data.車位SLIDE?.length > 0) {
-      const slideInfo = salesControlRes.data.車位SLIDE[0];
-      quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
-    } else {
-      console.warn("未能在銷控資料中找到 '車位SLIDE' 工作表數據。");
+    
+    if (salesControlRes.status === 'success' && salesControlRes.data) {
+      paymentTermsData.value = salesControlRes.data.期款比例 || [];
+      if (salesControlRes.data.車位SLIDE?.length > 0) {
+        const slideInfo = salesControlRes.data.車位SLIDE[0];
+        quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
+      }
     }
 
     if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
@@ -173,7 +164,6 @@ onMounted(async () => {
     } else {
       throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
     }
-    
   } catch (err) {
     error.value = err.message;
   } finally {
@@ -181,16 +171,15 @@ onMounted(async () => {
   }
 });
 
-// --- 方法 ---
 function goBack() {
   const sourceMode = route.query.viewMode;
-  const projectName = route.params.projectName;
   const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
   router.push({ name: backRouteName, params: { projectName } });
 }
 </script>
 
 <style scoped>
+/* Style 內容維持原樣 */
 .page-header {
   padding-bottom: 16px;
   border-bottom: 2px solid #e0e0e0;
@@ -201,10 +190,6 @@ function goBack() {
   background-color: #f5f5f5;
   border-radius: 4px;
   margin-bottom: 8px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
 }
 .quote-item-header .item-cell {
   display: flex;
