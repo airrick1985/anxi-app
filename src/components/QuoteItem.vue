@@ -169,33 +169,31 @@ const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
 
+// ✅ 使用優化後的 formatNumber 函式
+const formatNumber = (val, frac = 2) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return 'N/A';
+    // 使用 toLocaleString 來自動處理小數和千分位
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
+};
+
 const isFirstTimeBuyerModel = computed({
   get: () => props.item.isFirstTimeBuyer,
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'isFirstTimeBuyer', value)
 });
+
 const usePackageDealModel = computed({
   get: () => props.item.usePackageDeal,
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
 });
+
+// ✅ 採用從 store 直接獲取計算值的簡潔寫法
 const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.internalId));
 const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.internalId));
 const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.item.internalId));
+const displayHousePrice = computed(() => formatNumber(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
+const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPrice(props.item.internalId), 2));
 
-const rawDisplayHousePrice = computed(() => {
-  if (usePackageDealModel.value) {
-    const packageTotal = Number(props.item.unitDetails['配套房屋總價']) || 0;
-    return packageTotal - parkingTotalPrice.value;
-  } else {
-    return Number(props.item.unitDetails['房屋總表價']) || 0;
-  }
-});
-const displayHousePrice = computed(() => formatNumber(rawDisplayHousePrice.value));
-const displayUnitPrice = computed(() => {
-  const area = Number(props.item.unitDetails['房屋面積(坪)']);
-  if (!area || area === 0) return '0';
-  const unitPrice = rawDisplayHousePrice.value / area;
-  return formatNumber(unitPrice.toFixed(2));
-});
 const activePaymentTerm = computed(() => {
   if (!props.paymentTermsData || props.paymentTermsData.length === 0) return null;
   const priceCondition = finalTotalPrice.value < 4000 ? '<4000' : '>=4000';
@@ -204,15 +202,18 @@ const activePaymentTerm = computed(() => {
     String(term['總價']).trim() === priceCondition && String(term['是否首購']).trim() === buyerCondition
   );
 });
+
 const parkingDisplayText = computed(() => {
   if (props.item.selectedParking.length === 0) return '新增車位';
   return props.item.selectedParking.map(p => p['車位編號']).join(', ');
 });
+
 const formattedParkingPrice = computed(() => {
-  if (!props.item.selectedParking || props.item.selectedParking.length === 0) return '—';
+  if (parkingTotalPrice.value === 0) return '—';
   return `${parkingTotalPrice.value.toLocaleString()} 萬`;
 });
 
+// ✅ 新增回來的 areaDetails，確保「詳細面積」功能正常
 const areaDetails = computed(() => {
   const details = props.item.unitDetails;
   if (!details) return [];
@@ -226,12 +227,7 @@ const areaDetails = computed(() => {
   return areaItems.filter(item => item.value !== null && item.value !== undefined && item.value !== '');
 });
 
-const formatNumber = (val) => {
-    const num = parseFloat(val);
-    if (isNaN(num)) return 'N/A';
-    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-};
-
+// ✅ 新增回來的 formatPercentage，供 areaDetails 使用
 function formatPercentage(value) {
   const num = parseFloat(value);
   return isNaN(num) ? 'N/A' : `${(num * 100).toFixed(2)} %`;

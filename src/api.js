@@ -464,3 +464,14 @@ export async function fetchSalesControlData(projectName) {
     token: 'anxi111003' // 假設代理層需要 token
   }, SALES_API); // 假設此 action 屬於一個新的 SALES_API 端點
 }
+
+export async function generateQuotePdf(payload) {
+  console.log('[api.js] generateQuotePdf called with payload:', payload);
+  // 這個功能的 action 通常與銷售相關，所以我們發到 sales 端點
+  const body = {
+    action: 'generate_quote_pdf',
+    token: 'anxi111003', // 遵循您專案的慣例，加上 token
+    ...payload
+  };
+  return fetchPost(body, SALES_API); // 使用已定義的 SALES_API 常數
+}
