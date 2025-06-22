@@ -5,14 +5,14 @@
       <v-card-text>
         <v-table v-if="localSelectedParking.length > 0" density="compact">
           <thead>
-            <tr><th>車位編號</th><th>尺寸</th><th>車位價格(萬)</th><th>操作</th></tr>
+            <tr><th>車位編號</th><th>尺寸</th><th>車位價格(萬)</th><th>刪除</th></tr>
           </thead>
           <tbody>
             <tr v-for="(p, index) in localSelectedParking" :key="p['車位編號']">
               <td>{{ p['車位編號'] }}</td>
               <td>{{ p['車位尺寸'] }}</td>
               <td>{{ p['車位表價'] }}</td>
-              <td><v-btn icon="mdi-delete" size="x-small" variant="text" color="red" @click="removeParking(index)"></v-btn></td>
+              <td><v-btn icon="mdi-close-circle-outline" size="M-small" variant="text" color="red" @click="removeParking(index)"></v-btn></td>
             </tr>
           </tbody>
         </v-table>

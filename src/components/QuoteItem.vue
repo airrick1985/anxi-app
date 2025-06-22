@@ -3,8 +3,14 @@
     <div v-if="isMobile" class="quote-item-mobile">
       <div class="d-flex justify-space-between align-center mb-2">
         <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
-        <v-btn icon="mdi-delete" variant="text" color="grey" size="small" @click="emit('remove')"></v-btn>
-      </div>
+<v-btn
+          color="red"
+          variant="flat"
+          size="small"
+          @click="emit('remove')"
+        >
+          刪除
+        </v-btn>      </div>
       <v-list lines="one" density="compact" class="bg-transparent">
         <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong></template></v-list-item>
         <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
@@ -15,7 +21,7 @@
           <template v-slot:append>
             <v-menu open-on-click location="top">
               <template v-slot:activator="{ props: menuProps }">
-                <v-btn v-bind="menuProps" size="small" variant="tonal" density="comfortable">
+                <v-btn v-bind="menuProps" size="medium" variant="tonal" density="comfortable">
                   {{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪
                   <v-icon end>mdi-information-outline</v-icon>
                 </v-btn>
@@ -48,8 +54,9 @@
         <v-list-item class="pl-0"><v-list-item-title>車位</v-list-item-title><template v-slot:append><v-btn size="small" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn></template></v-list-item>
         <v-list-item class="pl-0"><v-list-item-title>車位價格</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ formattedParkingPrice }}</strong></template></v-list-item>
         <v-divider class="my-2"></v-divider>
-        <v-list-item v-if="showPackageDeal" class="pl-0">
-          <template v-slot:prepend>
+        
+        <v-list-item class="pl-0">
+          <template v-if="showPackageDeal" v-slot:prepend>
             <v-switch class="mr-4" v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details inset></v-switch>
           </template>
           <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
@@ -58,13 +65,7 @@
             <v-radio label="否" value="否" density="compact"></v-radio>
           </v-radio-group>
         </v-list-item>
-        <v-list-item v-else class="pl-0">
-           <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
-            <template v-slot:label><span class="text-body-2">首購:</span></template>
-            <v-radio label="是" value="是" density="compact"></v-radio>
-            <v-radio label="否" value="否" density="compact"></v-radio>
-          </v-radio-group>
-        </v-list-item>
+        
         <v-divider class="my-2"></v-divider>
         <v-list-item v-if="showPackageDeal" class="pl-0"><v-list-item-title>配套價</v-list-item-title><template v-slot:append><strong class="final-price">{{ packagePrice.toLocaleString() }} 萬</strong></template></v-list-item>
         <v-list-item class="pl-0"><v-list-item-title class="font-weight-bold">總價</v-list-item-title><template v-slot:append><strong class="final-price">{{ finalTotalPrice.toLocaleString() }} 萬</strong></template></v-list-item>
@@ -118,21 +119,19 @@
         </v-radio-group>
       </div>
       <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
+      
       <template v-if="showPackageDeal">
         <div class="item-cell flex-1"><v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox></div>
         <div class="item-cell flex-1 final-price">{{ packagePrice.toLocaleString() }} 萬</div>
       </template>
-      <template v-else>
-        <div class="item-cell flex-1"></div>
-        <div class="item-cell flex-1"></div>
-      </template>
+
       <div class="item-cell flex-1">
         <v-btn @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" size="small" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
           付款方式
         </v-btn>
       </div>
       <div class="item-cell flex-shrink-0">
-        <v-btn icon="mdi-delete" variant="text" color="grey" @click="emit('remove')"></v-btn>
+        <v-btn icon="mdi-close-circle-outline" variant="text" color="red" @click="emit('remove')"></v-btn>
       </div>
     </div>
 
@@ -227,7 +226,11 @@ const areaDetails = computed(() => {
   return areaItems.filter(item => item.value !== null && item.value !== undefined && item.value !== '');
 });
 
-const formatNumber = (val) => val ? parseFloat(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : 'N/A';
+const formatNumber = (val) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return 'N/A';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
 
 function formatPercentage(value) {
   const num = parseFloat(value);
@@ -236,7 +239,6 @@ function formatPercentage(value) {
 </script>
 
 <style scoped>
-/* Style 內容維持不變 */
 .quote-item-row { display: flex; align-items: center; width: 100%; padding: 8px 0; border-bottom: 1px solid #eee; }
 .item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
 .flex-1 { flex: 1; }
