@@ -11,6 +11,8 @@ import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導�
 import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 
+import '@andy922200/vue-tw-zip-code-selector/dist/vue-tw-zip-code-selector.css'
+import VueTwZipCodeSelector from '@andy922200/vue-tw-zip-code-selector'
 
 // --- Pinia 和 持久化插件 ---
 import { createPinia } from 'pinia'
@@ -82,6 +84,7 @@ registerSW({
 app
   .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
   .use(router)
+  .use(VueTwZipCodeSelector)
   .use(vuetify)
   .use(VueAxios, axios)
   .use(pinia)

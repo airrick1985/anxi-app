@@ -475,3 +475,13 @@ export async function generateQuotePdf(payload) {
   };
   return fetchPost(body, SALES_API); // 使用已定義的 SALES_API 常數
 }
+
+export async function updateSalesData(payload) {
+  console.log('[api.js] updateSalesData called with payload:', payload);
+  const body = {
+    action: 'update_sales_data',
+    token: 'anxi111003',
+    ...payload
+  };
+  return fetchPost(body, SALES_API);
+}

@@ -16,7 +16,7 @@
           title="查看報價單"
         ></v-btn>
       </v-badge>
-    <v-btn
+      <v-btn
         
         color="info"
         variant="tonal"
@@ -43,7 +43,6 @@
 
     <div class="layout-grid">
       <div class="header-top-left"></div>
-
       <div ref="headerTopRef" class="header-top-container">
         <div v-for="building in buildingHeaders" :key="building" class="header-cell">
           {{ building }}
@@ -84,9 +83,12 @@
     </div>
 
     <UnitDetailModal 
+      v-if="isModalVisible"
       v-model:show="isModalVisible" 
       :unit-data="selectedUnitData"
-      :view-mode="currentViewMode" 
+      :view-mode="currentViewMode"
+      :all-data="allData"
+      @data-updated="fetchData"
     />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
@@ -127,7 +129,6 @@ const quoteStore = useQuoteStore();
 const route = useRoute();
 const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
 
-// --- 狀態 ---
 const loading = ref(true);
 const error = ref(null);
 const allData = ref({});
@@ -138,9 +139,8 @@ const isModalVisible = ref(false);
 const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const displayType = ref('住家');
-const parkingSlideId = ref(''); // 本地 ref，用來儲存此頁面對應的 Slide ID
+const parkingSlideId = ref('');
 
-// --- 計算屬性 ---
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
@@ -148,7 +148,6 @@ const pageTitle = computed(() => {
   const baseTitle = currentViewMode.value === 'quote' ? '報價系統' : '銷控系統';
   return `${baseTitle} (${displayType.value})`;
 });
-// ... 其餘計算屬性維持不變 ...
 const salesRawData = computed(() => allData.value['銷控'] || []);
 const filteredSalesData = computed(() => {
   if (displayType.value === '店面') {
@@ -159,9 +158,7 @@ const filteredSalesData = computed(() => {
 const buildingHeaders = computed(() => {
   if (filteredSalesData.value.length === 0) return [];
   const buildings = new Set(filteredSalesData.value.map(item => item['棟別']));
-  return Array.from(buildings).sort((a, b) => {
-    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-  });
+  return Array.from(buildings).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 });
 const floorHeaders = computed(() => {
   if (filteredSalesData.value.length === 0) return [];
@@ -183,27 +180,29 @@ const gridData = computed(() => {
     const floor = record['樓層'];
     const building = record['棟別'];
     const unitId = record['戶別'];
-    if (!dataMap[floor]) {
-      dataMap[floor] = {};
-    }
-    const floorplanItem = floorplanMap.get(unitId);
+    if (!dataMap[floor]) dataMap[floor] = {};
+    
     let parsedFloorplans = [];
+    const floorplanItem = floorplanMap.get(unitId);
     if (floorplanItem && floorplanItem['平面圖URL列表']) {
       try {
         const parsed = JSON.parse(floorplanItem['平面圖URL列表']);
-        if (Array.isArray(parsed)) {
-          parsedFloorplans = parsed;
-        }
+        if (Array.isArray(parsed)) parsedFloorplans = parsed;
       } catch (e) {
         console.error(`解析戶別 ${unitId} 的平面圖URL列表時失敗:`, e);
       }
     }
+    
+    const { '備註': salesNote, ...restOfRecord } = record;
+    const buyerInfo = buyerMap.get(unitId) || {};
+
     dataMap[floor][building] = {
-      ...record,
+      ...restOfRecord,
       ...(priceMap.get(unitId) || {}),
       ...(areaMap.get(unitId) || {}),
       floorplans: parsedFloorplans,
-      ...(buyerMap.get(unitId) || {})
+      ...buyerInfo,
+      '備註': salesNote || buyerInfo['備註'] || ''
     };
   }
   return dataMap;
@@ -220,82 +219,45 @@ const flatGridData = computed(() => {
   });
   return items;
 });
-const statusField = computed(() => {
-  return route.meta.viewMode === 'quote' ? '銷控狀態' : '銷控後台狀態';
-});
+const statusField = computed(() => route.meta.viewMode === 'quote' ? '銷控狀態' : '銷控後台狀態');
 const statusColorMap = computed(() => {
   const paramsData = allData.value['參數'] || [];
   const map = new Map();
   for (const item of paramsData) {
-    const status = item['銷控狀態'];
-    const color = item['色碼'];
-    if (status && color) {
-      map.set(status, color);
+    if (item['銷控狀態'] && item['色碼']) {
+      map.set(item['銷控狀態'], item['色碼']);
     }
   }
   return map;
 });
 
-
-// --- 方法 ---
 function handleScroll(event) {
-  if (headerTopRef.value) {
-    headerTopRef.value.scrollLeft = event.target.scrollLeft;
-  }
-  if (headerLeftRef.value) {
-    headerLeftRef.value.scrollTop = event.target.scrollTop;
-  }
+  if (headerTopRef.value) headerTopRef.value.scrollLeft = event.target.scrollLeft;
+  if (headerLeftRef.value) headerLeftRef.value.scrollTop = event.target.scrollTop;
 }
 function openUnitDetail(unitData) {
   if (unitData) {
-    console.log('--- 準備打開 Modal，傳遞的數據 (unitData): ---', JSON.parse(JSON.stringify(unitData)));
     selectedUnitData.value = unitData;
     isModalVisible.value = true;
   }
 }
 
-// --- 生命週期鉤子 ---
-onMounted(async () => {
-  console.log('[SalesControlSystem] Component mounted. Clearing quote store...');
-  quoteStore.clearQuote();
-  const projectNameParam = route.params.projectName;
-  if (!projectNameParam) {
-    error.value = '未指定建案名稱。';
-    loading.value = false;
-    return;
-  }
+// ✅ 將資料獲取邏輯獨立成一個函式
+async function fetchData() {
   loading.value = true;
+  error.value = null;
   try {
-    const response = await fetchSalesControlData(projectNameParam);
+    const response = await fetchSalesControlData(projectName.value);
     if (response.status === 'success') {
       allData.value = response.data;
-      
       const slideSheetData = response.data['車位SLIDE'];
       if (slideSheetData && slideSheetData.length > 0) {
         const slideInfo = slideSheetData[0];
-        
-        const targetKeyName = currentViewMode.value === 'quote' 
-          ? '報價車位SLIDEID' 
-          : '銷控車位SLIDEID';
-        
-        // ✅ 唯一的修改在這裡：優化讀取邏輯
-        // 1. 取得 API 回傳物件的所有 keys
+        const targetKeyName = currentViewMode.value === 'quote' ? '報價車位SLIDEID' : '銷控車位SLIDEID';
         const actualKeys = Object.keys(slideInfo);
-        // 2. 找到 trimming (去除前後空白) 後與目標 key 相同的那個 key
         const foundKey = actualKeys.find(k => k.trim() === targetKeyName);
-
-        if (foundKey) {
-          // 3. 使用找到的、正確的 key 來取值
-          parkingSlideId.value = slideInfo[foundKey] || '';
-        }
-
-        if (!parkingSlideId.value) {
-          console.warn(`在 '車位SLIDE' 工作表中，欄位 '${targetKeyName}' 不存在或其值為空。`);
-        }
-      } else {
-        console.warn("API 回應中未包含 '車位SLIDE' 資料或該工作表為空。");
+        if (foundKey) parkingSlideId.value = slideInfo[foundKey] || '';
       }
-
     } else {
       throw new Error(response.message || '無法獲取銷控資料。');
     }
@@ -304,6 +266,11 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+}
+
+onMounted(() => {
+  quoteStore.clearQuote();
+  fetchData();
 });
 </script>
 
