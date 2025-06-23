@@ -1,62 +1,23 @@
-<!-- /src/components/SalesInfoSection.vue -->
 <template>
-  <div class="info-section mt-4">
+  <div v-if="salesData" class="info-section mt-4">
     <div class="section-title">
-      <v-icon left>mdi-information-outline</v-icon>
+      <v-icon>mdi-information-outline</v-icon>
       銷售資訊
     </div>
-    
-    <v-list lines="one" dense>
+    <v-list lines="one" density="compact" class="bg-transparent">
       <v-row>
-        <!-- 左半部分 -->
         <v-col cols="12" sm="6">
           <v-list-item title="後台狀態" :subtitle="salesData['銷控後台狀態'] || 'N/A'"></v-list-item>
           <v-list-item title="銷售人員" :subtitle="salesData['銷售'] || 'N/A'"></v-list-item>
-          <v-list-item title="買方姓名" :subtitle="salesData['買方姓名'] || 'N/A'"></v-list-item>
-          
-          <!-- 資料夾連結 -->
-          <v-list-item v-if="salesData['資料夾URL']">
-            <template v-slot:prepend>
-              <v-btn 
-                icon 
-                variant="text" 
-                color="info" 
-                @click="openFolderUrl"
-                title="打開雲端資料夾"
-              >
-                <v-icon>mdi-folder-open</v-icon>
-              </v-btn>
-            </template>
-            <v-list-item-title>相關文件資料夾</v-list-item-title>
-          </v-list-item>
+          <v-list-item title="持有車位" :subtitle="salesData['車位'] || '無'"></v-list-item>
         </v-col>
-
-       <v-col cols="12" sm="6">
-        <!-- ✅ 應用 formatDate 函數 -->
-        <v-list-item 
-          title="小訂日期" 
-          :subtitle="formatDate(salesData['小訂日期'])"
-        ></v-list-item>
-        <v-list-item 
-          title="補足日期" 
-          :subtitle="formatDate(salesData['補足日期'])"
-        ></v-list-item>
-        <v-list-item 
-          title="簽約日期" 
-          :subtitle="formatDate(salesData['簽約日期'])"
-        ></v-list-item>
-      </v-col>
-    </v-row>
-      
-      <v-divider class="my-2"></v-divider>
-
-      <!-- 金額部分 -->
-    <v-row dense>
-        <!-- 
-          ✅ 關鍵修改：
-          - cols="12": 在最小的螢幕上 (xs)，每欄佔滿 12 格寬度，即換行。
-          - sm="4": 在 sm (small) 及更大的螢幕上，每欄佔 4 格寬度，恢復三欄佈局。
-        -->
+        <v-col cols="12" sm="6">
+          <v-list-item title="小訂日期" :subtitle="formatDate(salesData['小訂日期'])"></v-list-item>
+          <v-list-item title="補足日期" :subtitle="formatDate(salesData['補足日期'])"></v-list-item>
+          <v-list-item title="簽約日期" :subtitle="formatDate(salesData['簽約日期'])"></v-list-item>
+        </v-col>
+      </v-row>
+      <v-row dense>
         <v-col cols="12" sm="4">
           <v-list-item title="小訂金額" :subtitle="`${formatNumber(salesData['小訂金額'])} 元`"></v-list-item>
         </v-col>
@@ -67,16 +28,76 @@
           <v-list-item title="簽約金額" :subtitle="`${formatNumber(salesData['簽約金額'])} 元`"></v-list-item>
         </v-col>
       </v-row>
-
-      <v-divider class="my-2"></v-divider>
-      
-      <!-- 備註部分 -->
-      <div class="note-section pa-2">
-        <div class="note-title">備註</div>
-        <p class="note-content">{{ salesData['備註'] || '無' }}</p>
-      </div>
-
     </v-list>
+
+     <div class="section-title mt-4">
+       <v-icon>mdi-currency-usd</v-icon>
+       成交資訊
+    </div>
+    <v-list lines="one" density="compact" class="bg-transparent">
+       <v-row>
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="房屋成交價" :subtitle="`${formatNumber(salesData['房屋成交價'])} 萬`"></v-list-item>
+        </v-col>  
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="房屋成交單價" :subtitle="`${formatNumber(salesData['房屋成交單價'], 2)} 萬/坪`"></v-list-item>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="車位成交價" :subtitle="`${formatNumber(salesData['車位成交價'])} 萬`"></v-list-item>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="成交總價" class="font-weight-bold">
+             <template #subtitle><span class="text-blue font-weight-bold text-h6">{{ formatNumber(salesData['成交總價']) }} 萬</span></template>
+          </v-list-item>
+        </v-col>
+      
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="溢差價">
+            <template #subtitle><span :class="priceDifference.color" class="font-weight-bold text-h6">{{ priceDifference.text }}</span></template>
+          </v-list-item>
+        </v-col>
+       </v-row>
+    </v-list>
+
+    <div class="section-title mt-4">
+      <v-icon>mdi-account-details</v-icon>
+      買方資訊
+    </div>
+    <v-list lines="one" density="compact" class="bg-transparent">
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-list-item title="買方姓名" :subtitle="salesData['買方姓名'] || 'N/A'"></v-list-item>
+          <v-list-item title="身分證字號" :subtitle="salesData['身分證字號'] || 'N/A'"></v-list-item>
+          <v-list-item title="出生年月日" :subtitle="formatDate(salesData['出生年月日'])"></v-list-item>
+          <v-list-item title="聯絡電話" :subtitle="salesData['電話'] || 'N/A'"></v-list-item>
+          <v-list-item title="EMAIL" :subtitle="salesData['EMAIL'] || 'N/A'"></v-list-item>
+          <v-list-item title="通訊地址" :subtitle="salesData['通訊地址'] || 'N/A'"></v-list-item>
+          <v-list-item title="戶籍地址" :subtitle="salesData['戶籍地址'] || 'N/A'"></v-list-item>
+          <v-list-item title="介紹人姓名" :subtitle="salesData['介紹人姓名'] || 'N/A'"></v-list-item>
+          <v-list-item title="介紹人電話" :subtitle="salesData['介紹人電話'] || 'N/A'"></v-list-item>
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-list-item title="性別" :subtitle="salesData['性別'] || 'N/A'"></v-list-item>
+          <v-list-item title="婚姻狀況" :subtitle="salesData['婚姻狀況'] || 'N/A'"></v-list-item>
+          <v-list-item title="行業別" :subtitle="salesData['行業別'] || 'N/A'"></v-list-item>
+          <v-list-item title="職務" :subtitle="salesData['職務'] || 'N/A'"></v-list-item>
+          <v-list-item title="購買用途" :subtitle="salesData['購買用途'] || 'N/A'"></v-list-item>
+          <v-list-item title="曾否購買富宇房子" :subtitle="salesData['已購買富宇房子'] || 'N/A'"></v-list-item>
+          <v-list-item title="緊急聯絡人" :subtitle="salesData['緊急聯絡人'] || 'N/A'"></v-list-item>
+          <v-list-item title="緊急聯絡人電話" :subtitle="salesData['緊急聯絡人電話'] || 'N/A'"></v-list-item>
+          <v-list-item title="緊急聯絡人關係" :subtitle="salesData['緊急聯絡人關係'] || 'N/A'"></v-list-item>
+        </v-col>
+      </v-row>
+    </v-list>
+    
+   
+
+    <v-divider class="my-2"></v-divider>
+    
+    <div class="note-section pa-2">
+      <div class="note-title">備註</div>
+      <p class="note-content">{{ salesData['備註'] || '無' }}</p>
+    </div>
   </div>
 </template>
 
@@ -90,33 +111,17 @@ const props = defineProps({
   }
 });
 
-// ✅ 新增：日期格式化輔助函數
 function formatDate(dateString) {
-  // 如果傳入的日期字符串是空的或無效的，直接返回 'N/A'
-  if (!dateString || typeof dateString !== 'string') {
-    return 'N/A';
-  }
-
+  if (!dateString || typeof dateString !== 'string') return 'N/A';
   try {
     const date = new Date(dateString);
-    // 檢查轉換後的日期是否有效
-    if (isNaN(date.getTime())) {
-      // 如果無效，可能是一個非標準格式，直接返回原始字符串或 'N/A'
-      return dateString; 
-    }
-
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    // getMonth() 返回的是 0-11，所以需要 +1
-    // String(...).padStart(2, '0') 確保月份和日期是兩位數，例如 07, 09
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-
-    // 返回我們想要的格式
     return `${year}/${month}/${day}`;
-
   } catch (error) {
-    console.error(`日期格式化失敗: ${dateString}`, error);
-    return dateString; // 如果發生未知錯誤，返回原始字符串
+    return dateString;
   }
 }
 
@@ -126,11 +131,28 @@ function openFolderUrl() {
   }
 }
 
-// 輔助函數：格式化數字
-function formatNumber(value) {
+function formatNumber(value, frac = 0) {
   const num = parseFloat(value);
-  return isNaN(num) ? '0' : num.toLocaleString();
+  if (isNaN(num)) return '0';
+  return num.toLocaleString('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac });
 }
+
+const priceDifference = computed(() => {
+  if (!props.salesData || props.salesData['溢差價'] === undefined) {
+    return { text: 'N/A', color: 'text-grey' };
+  }
+  const value = parseFloat(props.salesData['溢差價']);
+  if (isNaN(value)) return { text: 'N/A', color: 'text-grey' };
+  
+  const formattedValue = formatNumber(Math.abs(value));
+  if (value > 0) {
+    return { text: `+${formattedValue}`, color: 'text-blue' };
+  } else if (value < 0) {
+    return { text: `-${formattedValue}`, color: 'text-red' };
+  } else {
+    return { text: formatNumber(value), color: 'text-grey' };
+  }
+});
 </script>
 
 <style scoped>
@@ -145,7 +167,10 @@ function formatNumber(value) {
   color: #1a3a6e;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 2px solid #1a3a6e;
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .note-section {
   background-color: #fafafa;
@@ -158,12 +183,21 @@ function formatNumber(value) {
 }
 .note-content {
   font-size: 0.9rem;
-  white-space: pre-wrap; /* 讓備註可以自動換行 */
+  white-space: pre-wrap;
   word-break: break-all;
 }
-:deep(.v-list-item-subtitle) {
-  font-size: 1rem;
-  font-weight: 500;
-  color: #333;
+:deep(.v-list-item-title) {
+  font-size: 0.8rem;
+  color: #555;
+  margin-bottom: 2px;
+}
+:deep(.v-list-item-subtitle), .text-h6 {
+  font-size: 1rem !important; /* 原本是 1.1rem，微調成 1rem */
+  font-weight: 500 !important;
+  color: #212121 !important;
+  line-height: 1.4 !important;
+}
+.v-list-item {
+    padding: 4px 8px !important;
 }
 </style>

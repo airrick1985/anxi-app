@@ -39,6 +39,19 @@
                           <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋單價(表價)']) }} 萬/坪</span></template>
                           <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
                         </v-list-item>
+
+                        <template v-if="viewMode === 'sales'">
+                          <v-divider class="my-2"></v-divider>
+                          <v-list-item title="房價 (底價)" class="mt-2">
+                            <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData['房屋總底價']) }} 萬</span></template>
+                            <template v-slot:prepend><v-icon color="grey-darken-1">mdi-alpha-b-box-outline</v-icon></template>
+                          </v-list-item>
+                          <v-list-item title="單價 (底價)">
+                            <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData['房屋單價(底價)']) }} 萬/坪</span></template>
+                            <template v-slot:prepend><v-icon color="grey-darken-1">mdi-chart-line-variant</v-icon></template>
+                          </v-list-item>
+                        </template>
+                        
                       </v-list>
                     </template>
                   </div>
@@ -131,31 +144,20 @@ const tab = ref('info');
 
 const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
 
-// ✅ --- START: 按鈕邏輯修改 --- ✅
-// 計算此戶別能否被加入報價
 const canAddToQuote = computed(() => {
   if (!props.unitData) return false;
-  
-  // 唯一的限制：銷控狀態不能是「已售」
   return props.unitData['銷控狀態'] !== '已售';
 });
 
-// 計算按鈕上應顯示的文字
 const addToQuoteButtonText = computed(() => {
-  // 因為現在允許可重複加入，所以文字永遠是「加入報價」
   return '加入報價';
 });
 
-// 處理點擊事件的函數
 function handleAddToQuote() {
-  // 使用 canAddToQuote 來判斷是否執行
   if (props.unitData && canAddToQuote.value) {
     quoteStore.addItem(props.unitData);
-    // 可選擇加入後不關閉彈窗，方便用戶重複加入
-    // close(); 
   }
 }
-// ✅ --- END: 按鈕邏輯修改 --- ✅
 
 const firstPlan = computed(() => {
   return hasFloorplans.value ? props.unitData.floorplans[0] : null;
@@ -241,7 +243,13 @@ function formatPercentage(value) {
 .highlight-price {
   font-size: 1.8rem !important;
   font-weight: 700 !important;
-  color: #ff0000 !important;
+  color: #c62828 !important; /* Slightly darker red */
+}
+/* ✅ 新增底價的樣式 */
+.highlight-price-base {
+  font-size: 1.5rem !important;
+  font-weight: 500 !important;
+  color: #455a64 !important; /* Blue Grey Darken-2 */
 }
 :deep(.v-list-item-title) { font-size: 0.9rem; }
 :deep(.v-list-item--density-compact .v-list-item-title) { font-size: 0.85rem; }

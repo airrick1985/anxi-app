@@ -172,9 +172,12 @@ const gridData = computed(() => {
   const priceData = allData.value['價格'] || [];
   const areaData = allData.value['面積'] || [];
   const floorplanData = allData.value['平面圖'] || [];
+  const buyerData = allData.value['買方資料'] || [];
   const priceMap = new Map(priceData.map(item => [item['戶別'], item]));
   const areaMap = new Map(areaData.map(item => [item['戶別'], item]));
   const floorplanMap = new Map(floorplanData.map(item => [item['戶別'], item]));
+  const buyerMap = new Map(buyerData.map(item => [item['戶別'], item]));
+
   const dataMap = {};
   for (const record of filteredSalesData.value) {
     const floor = record['樓層'];
@@ -199,7 +202,8 @@ const gridData = computed(() => {
       ...record,
       ...(priceMap.get(unitId) || {}),
       ...(areaMap.get(unitId) || {}),
-      floorplans: parsedFloorplans
+      floorplans: parsedFloorplans,
+      ...(buyerMap.get(unitId) || {})
     };
   }
   return dataMap;
