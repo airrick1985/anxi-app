@@ -102,14 +102,28 @@
 </template>
 
 <script setup>
-import { computed, defineProps } from 'vue';
+import { computed, defineProps, watch } from 'vue'; 
 
 const props = defineProps({
-  salesData: {
-    type: Object,
-    required: true,
-  }
+  salesData: { type: Object, required: true },
+  allParkingData: { type: Array, default: () => [] } 
 });
+
+watch(() => props.salesData, (newData) => {
+  if (newData) {
+    console.log('--- [偵錯日誌] SalesInfoSection 元件收到的資料 ---');
+    console.log('完整的 salesData prop:', newData);
+    
+    const hasTotalPrice = newData.hasOwnProperty('成交總價');
+    console.log(`是否存在 '成交總價' 欄位? -> ${hasTotalPrice}`, `值為:`, hasTotalPrice ? newData['成交總價'] : '不存在');
+    
+    const hasPriceDiff = newData.hasOwnProperty('溢差價');
+    console.log(`是否存在 '溢差價' 欄位? -> ${hasPriceDiff}`, `值為:`, hasPriceDiff ? newData['溢差價'] : '不存在');
+    
+    console.log('-------------------------------------------------');
+  }
+}, { immediate: true, deep: true });
+
 
 function formatDate(dateString) {
   if (!dateString || typeof dateString !== 'string') return 'N/A';
@@ -138,12 +152,10 @@ function formatNumber(value, frac = 0) {
 }
 
 const priceDifference = computed(() => {
-  if (!props.salesData || props.salesData['溢差價'] === undefined) {
+  const value = parseFloat(props.salesData['溢差價']);
+  if (props.salesData['溢差價'] === undefined || isNaN(value)) {
     return { text: 'N/A', color: 'text-grey' };
   }
-  const value = parseFloat(props.salesData['溢差價']);
-  if (isNaN(value)) return { text: 'N/A', color: 'text-grey' };
-  
   const formattedValue = formatNumber(Math.abs(value));
   if (value > 0) {
     return { text: `+${formattedValue}`, color: 'text-blue' };

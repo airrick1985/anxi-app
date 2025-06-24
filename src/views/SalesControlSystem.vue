@@ -82,12 +82,13 @@
       </div>
     </div>
 
- <UnitDetailModal 
-      v-if="isModalVisible"
+<UnitDetailModal 
+      v-show="isModalVisible" 
       v-model:show="isModalVisible" 
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
       :all-data="allData"
+      :project-name="projectName"
       @data-updated="fetchData"
       @request-open-slide="openSlideViewer(parkingSlideId)"
     />
@@ -194,20 +195,45 @@ const gridData = computed(() => {
       }
     }
     
-    const { '備註': salesNote, ...restOfRecord } = record;
-    const buyerInfo = buyerMap.get(unitId) || {};
+  // ✅ --- 核心修正：採用更安全的合併邏輯 ---
+    // 1. 先以「銷控」表的記錄為基礎，建立一個可修改的副本
+    const mergedData = { ...record };
 
-    dataMap[floor][building] = {
-      ...restOfRecord,
+    // 2. 從「買方資料」Map 中查找對應的買方資訊
+    const buyerInfo = buyerMap.get(unitId);
+    
+    // 3. 如果找到了買方資訊，只更新我們確定要從「買方資料」來的欄位
+    if (buyerInfo) {
+      // 這個陣列定義了所有應該以「買方資料」表為準的欄位
+      const buyerKeys = [
+        '買方姓名', '身分證字號', '出生年月日', '電話', 'EMAIL', 
+        '通訊地址', '戶籍地址', '性別', '婚姻狀況', '行業別', 
+        '職務', '購買用途', '已購買富宇房子', '緊急聯絡人', 
+        '緊急聯絡人電話', '緊急聯絡人關係', '介紹人姓名', '介紹人電話'
+      ];
+      
+      buyerKeys.forEach(key => {
+        // 只有當 buyerInfo 中確實存在該欄位時，才進行覆蓋
+        if (buyerInfo[key] !== undefined) {
+          mergedData[key] = buyerInfo[key];
+        }
+      });
+    }
+    
+    // 4. 最後組合所有資料
+dataMap[floor][building] = {
+      // 先放入來自「價格」和「面積」表的資料
       ...(priceMap.get(unitId) || {}),
       ...(areaMap.get(unitId) || {}),
-      floorplans: parsedFloorplans,
-      ...buyerInfo,
-      '備註': salesNote || buyerInfo['備註'] || ''
+      // 然後放入我們手動合併好的、以「銷控」表為主的資料
+      ...mergedData, 
+      // 最後放入平面圖資料
+      floorplans: parsedFloorplans
     };
   }
   return dataMap;
 });
+
 const flatGridData = computed(() => {
   const items = [];
   floorHeaders.value.forEach(floor => {

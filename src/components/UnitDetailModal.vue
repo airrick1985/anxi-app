@@ -102,7 +102,11 @@
                 </v-row>
                 <div v-if="viewMode === 'sales'">
                   <v-divider class="my-4"></v-divider>
-                  <SalesInfoSection :sales-data="unitData" />
+                <SalesInfoSection
+  v-if="viewMode === 'sales'"
+  :sales-data="unitData"
+  :all-parking-data="allData['車位'] || []"
+/>
                 </div>
               </div>
               <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
@@ -157,7 +161,9 @@ const props = defineProps({
   unitData: { type: Object, default: () => null },
   viewMode: { type: String, default: 'sales' },
   allData: { type: Object, default: () => ({}) },
+  projectName: { type: String, required: true }, 
 });
+
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
@@ -195,26 +201,41 @@ function cancelEditing() {
 async function saveChanges() {
   if (!editingData.value) return;
   isSaving.value = true;
-
   try {
     const data = editingData.value;
     const parkingSalePrice = (data['持有車位'] || []).reduce((sum, p) => sum + (Number(p.車位成交價) || 0), 0);
     const totalSalePrice = (Number(data['房屋成交價']) || 0) + parkingSalePrice;
+    const houseArea = Number(props.unitData['房屋面積(坪)']);
+    const unitSalePrice = houseArea > 0 ? ((Number(data['房屋成交價']) || 0) / houseArea) : 0;
+    const baseHousePrice = Number(props.unitData['房屋總底價']) || 0;
+    const baseParkingPrice = (data['持有車位'] || []).reduce((sum, p) => {
+        const originalSpot = props.allData['車位'].find(op => op['車位編號'] === p['車位編號']);
+        return sum + (Number(originalSpot?.['車位底價']) || 0);
+    }, 0);
+    const priceDifference = totalSalePrice - (baseHousePrice + baseParkingPrice);
 
+    // ✅ 準備要發送的 payload
     const payload = {
-      projectName: data['建案名稱'] || props.unitData['建案名稱'],
-      unitId: data['戶別'],
+      projectName: props.projectName,
+      unitId: props.unitData['戶別'],
       salesData: {
         '銷控後台狀態': data['銷控後台狀態'], '銷售': data['銷售'],
         '小訂日期': data['小訂日期'], '補足日期': data['補足日期'], '簽約日期': data['簽約日期'],
         '小訂金額': data['小訂金額'], '補足金額': data['補足金額'], '簽約金額': data['簽約金額'],
-        '房屋成交價': data['房屋成交價'], '車位成交價': parkingSalePrice, '成交總價': totalSalePrice,
-        '備註': data['備註']
+        '房屋成交價': data['房屋成交價'], '備註': data['備註'],
+        '車位': (data['持有車位'] || []).map(p => p.車位編號).join(','),
+        '車位成交價': parkingSalePrice,
+        '成交總價': totalSalePrice,
+        '房屋成交單價': unitSalePrice,
+        '溢差價': priceDifference,
       },
       buyerData: {
         '買方姓名': data['買方姓名'], '身分證字號': data['身分證字號'], '出生年月日': data['出生年月日'],
         '電話': data['電話'], 'EMAIL': data['EMAIL'],
-        '通訊地址': data['通訊地址'], '戶籍地址': data['戶籍地址'],
+        '通訊地址': `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`,
+        '戶籍地址': data.戶籍地址_同通訊地址 
+          ? `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`
+          : `${data['戶籍地址_縣市'] || ''}${data['戶籍地址_區域'] || ''}${data['戶籍地址_詳細'] || ''}`,
         '性別': data['性別'], '婚姻狀況': data['婚姻狀況'], '行業別': data['行業別'], '職務': data['職務'],
         '購買用途': data['購買用途'], '已購買富宇房子': data['已購買富宇房子'],
         '緊急聯絡人': data['緊急聯絡人'], '緊急聯絡人電話': data['緊急聯絡人電話'], '緊急聯絡人關係': data['緊急聯絡人關係'],
@@ -224,14 +245,11 @@ async function saveChanges() {
     };
     
     const result = await updateSalesData(payload);
-    if (result.status !== 'success') {
-      throw new Error(result.message);
-    }
+    if (result.status !== 'success') throw new Error(result.message);
     
     alert('儲存成功！');
-    emit('data-updated'); // 通知父層 SalesControlSystem 刷新資料
+    emit('data-updated');
     close();
-
   } catch (error) {
     console.error('儲存失敗:', error);
     alert(`儲存失敗: ${error.message}`);

@@ -26,7 +26,7 @@
          <v-row>
             <v-col cols="12" sm="6" md="4"><v-text-field label="房屋成交價(萬)" v-model.number="editableData['房屋成交價']" type="number" :min="0"></v-text-field></v-col>
             <v-col cols="12" sm="6" md="4"><v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="由編輯車位彈窗自動計算" persistent-hint></v-text-field></v-col>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="成交總價(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
+            <v-col cols="12" sm="6" md="4"><v-text-field label="(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
             <v-col cols="12" sm="6" md="4"><v-text-field label="房屋成交單價(萬/坪)" :model-value="unitSalePrice" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
             <v-col cols="12" sm="6" md="4"><v-text-field label="溢差價" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
          </v-row>
