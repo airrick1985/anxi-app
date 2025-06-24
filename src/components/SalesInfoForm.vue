@@ -61,17 +61,18 @@
 
     </v-form>
     
-    <ParkingEditModal 
+  <ParkingEditModal 
         v-model:show="isParkingModalOpen"
         :all-parking-data="allParkingDataForModal"
         :initial-selected-parking="editableData['持有車位'] || []"
         @confirm="handleParkingUpdate"
+        @request-open-slide="$emit('request-open-slide')"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, defineAsyncComponent } from 'vue';
+import { ref, computed, watch, defineAsyncComponent, defineProps, defineEmits } from 'vue';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 
@@ -85,25 +86,30 @@ const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
   statusOptions: { type: Array, default: () => [] },
   personnelOptions: { type: Array, default: () => [] },
-  allParkingData: { type: Array, default: () => [] }, // 接收所有車位資料
+  allParkingData: { type: Array, default: () => [] },
+  buyerInfoOptions: { type: Object, default: () => ({}) }
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'request-open-slide']);
 
 const isParkingModalOpen = ref(false);
 const isPermanentSameAsMailing = ref(false);
-const editableData = ref({});
+const otherIndustry = ref('');
+const otherPurchasePurpose = ref('');
 
-watch(() => props.modelValue, (newVal) => {
-  if (newVal) {
-    editableData.value = JSON.parse(JSON.stringify(newVal)); // 深拷貝
+
+// ✅ --- 核心修正：用一個可寫的 computed 取代兩個 watch ---
+const editableData = computed({
+  get() {
+    // 當模板讀取資料時，直接回傳父層傳來的 prop
+    return props.modelValue;
+  },
+  set(newValue) {
+    // 當模板中的 v-model 嘗試修改資料時，發出事件通知父層
+    emit('update:modelValue', newValue);
   }
-}, { immediate: true, deep: true });
-
-watch(editableData, (newVal) => {
-    emit('update:modelValue', newVal);
-}, { deep: true });
-
+});
+// ✅ --- 修正結束 ---
 // --- 車位相關 ---
 const allParkingDataForModal = computed(() => props.allParkingData);
 const parkingDisplayText = computed(() => {
@@ -112,7 +118,8 @@ const parkingDisplayText = computed(() => {
     return parking.map(p => p.車位編號).join(', ');
 });
 function handleParkingUpdate(updatedParkingList) {
-    editableData.value['持有車位'] = updatedParkingList;
+    const newData = { ...editableData.value, '持有車位': updatedParkingList };
+    emit('update:modelValue', newData);
 }
 
 // --- 成交資訊計算 ---

@@ -13,7 +13,7 @@
         <v-card-title class="d-flex justify-space-between align-center text-h5">
           <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
           <div>
-            <v-btn v-if="viewMode === 'sales' && !isEditing" color="indigo" variant="text" @click="startEditing">
+            <v-btn v-if="viewMode === 'sales' && !isEditing" color="white" variant="text" @click="startEditing">
               <v-icon left>mdi-pencil</v-icon>
               修改銷控
             </v-btn>
@@ -29,7 +29,7 @@
         <v-divider></v-divider>
       </div>
 
-      <v-card-text class="main-content">
+       <v-card-text class="main-content">
         <v-window v-model="tab">
           <v-window-item value="info">
             <template v-if="isEditing">
@@ -40,6 +40,7 @@
                 :personnel-options="personnelOptions"
                 :buyer-info-options="buyerInfoOptions"
                 :all-parking-data="allData['車位'] || []"
+                @request-open-slide="$emit('request-open-slide')"
               />
             </template>
             <template v-else>
@@ -158,7 +159,7 @@ const props = defineProps({
   allData: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['update:show', 'data-updated']);
+const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
 const tab = ref('info');
 const isEditing = ref(false);
@@ -166,7 +167,7 @@ const isSaving = ref(false);
 const editingData = ref(null);
 
 // ✅ 從 allData prop 中解析出下拉選單需要的選項
-const statusOptions = computed(() => (props.allData['參數'] || []).filter(p => p['分類'] === '銷控狀態').map(p => p['項目']));
+const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p['銷控狀態']));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
     const options = {};

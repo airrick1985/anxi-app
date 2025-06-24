@@ -1,21 +1,31 @@
 <template>
-  <v-dialog :model-value="show" @update:model-value="$emit('update:show', $event)" max-width="800px" persistent>
+  <v-dialog :model-value="show" @update:model-value="close" max-width="800px" persistent>
     <v-card>
-      <v-card-title>編輯持有車位</v-card-title>
+      <v-card-title class="d-flex justify-space-between align-center">
+        <span>編輯持有車位</span>
+        <v-btn 
+          prepend-icon="mdi-presentation" 
+          variant="tonal" 
+          color="info"
+          @click="$emit('request-open-slide')"
+        >
+          車位總表
+        </v-btn>
+      </v-card-title>
       <v-card-text>
         <v-table v-if="localParking.length > 0" density="compact">
           <thead>
             <tr>
               <th>車位編號</th>
-              <th>車位價格(萬)</th>
-              <th style="width: 150px;">車位成交價(萬)</th>
+              <th>底價</th>
+              <th style="width: 150px;">成交價</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(p, index) in localParking" :key="p['車位編號']">
               <td>{{ p['車位編號'] }}</td>
-              <td>{{ p['車位表價'] }}</td>
+              <td>{{ p['車位底價'] }}</td>
               <td>
                 <v-text-field
                   v-model.number="p['車位成交價']"
@@ -26,15 +36,13 @@
                 ></v-text-field>
               </td>
               <td>
-                <v-btn icon="mdi-delete" size="x-small" variant="text" color="red" @click="removeParking(index)"></v-btn>
+                <v-btn icon="mdi-close-circle-outline" size="M-small" variant="text" color="red" @click="removeParking(index)"></v-btn>
               </td>
             </tr>
           </tbody>
         </v-table>
         <p v-else class="text-center text-grey my-4">尚未選擇任何車位</p>
-        
         <v-divider class="my-4"></v-divider>
-
         <v-row align="center" dense>
           <v-col cols="8">
             <v-select
@@ -42,8 +50,10 @@
               :items="availableParkingOptions"
               v-model="newParkingSelection"
               item-title="displayText"
+              :item-props="itemProps"
               return-object
               hide-details
+              no-data-text="沒有可選擇的車位"
             ></v-select>
           </v-col>
           <v-col cols="4">
@@ -61,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -69,14 +79,14 @@ const props = defineProps({
   initialSelectedParking: { type: Array, default: () => [] }
 });
 
-const emit = defineEmits(['update:show', 'confirm']);
+// ✅ 2. 在 defineEmits 中加入 'request-open-slide'
+const emit = defineEmits(['update:show', 'confirm', 'request-open-slide']);
 
 const localParking = ref([]);
 const newParkingSelection = ref(null);
 
 watch(() => props.show, (newVal) => {
   if (newVal) {
-    // 使用深拷貝，確保每個物件都是獨立的
     localParking.value = JSON.parse(JSON.stringify(props.initialSelectedParking));
     newParkingSelection.value = null;
   }
@@ -85,17 +95,26 @@ watch(() => props.show, (newVal) => {
 const availableParkingOptions = computed(() => {
   const selectedIds = new Set(localParking.value.map(p => p['車位編號']));
   return props.allParkingData
-    .filter(p => !selectedIds.has(p['車位編號']) && p['銷控狀態'] !== '已售')
-    .map(p => ({
-      displayText: `${p['車位編號']} (定價: ${p['車位表價']}萬)`,
-      originalData: p
-    }));
+    .filter(p => !selectedIds.has(p['車位編號']))
+    .map(p => {
+      const isSold = p['銷控狀態'] === '已售';
+      const backendStatusText = p['銷控後台狀態'] ? ` - ${p['銷控後台狀態']}` : '';
+      return {
+        displayText: `${p['車位編號']} (表價: ${p['車位表價']}萬)${isSold ? ' - 已售' : ''}${backendStatusText}`,
+        originalData: p,
+        disabled: isSold
+      };
+    });
+});
+
+const itemProps = (item) => ({
+  disabled: item.disabled,
+  class: item.disabled ? 'text-grey' : ''
 });
 
 function addParking() {
   if (newParkingSelection.value && newParkingSelection.value.originalData) {
     const newSpot = { ...newParkingSelection.value.originalData };
-    // 新增時，預設成交價等於表價
     if (!newSpot['車位成交價']) {
       newSpot['車位成交價'] = newSpot['車位表價'];
     }

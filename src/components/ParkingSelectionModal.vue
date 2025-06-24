@@ -1,7 +1,17 @@
 <template>
   <v-dialog :model-value="show" @update:model-value="close" max-width="800px" persistent>
     <v-card>
-      <v-card-title>為 {{ displayUnitId }} 選擇車位</v-card-title>
+      <v-card-title class="d-flex justify-space-between align-center">為 {{ displayUnitId }} 選擇車位
+         <v-btn 
+          prepend-icon="mdi-presentation" 
+          variant="tonal" 
+          color="info"
+          @click="$emit('request-open-slide')"
+        >
+          車位總表
+        </v-btn>
+      </v-card-title>
+      
       <v-card-text>
         <v-table v-if="localSelectedParking.length > 0" density="compact">
           <thead>
@@ -39,14 +49,7 @@
         </v-row>
       </v-card-text>
       <v-card-actions>
-        <v-btn 
-          prepend-icon="mdi-presentation" 
-          variant="tonal" 
-          color="info"
-          @click="$emit('request-open-slide')"
-        >
-          車位表
-        </v-btn>
+       
         <v-spacer></v-spacer>
         <v-btn variant="text" @click="close">取消</v-btn>
         <v-btn color="success" @click="confirm">確定</v-btn>

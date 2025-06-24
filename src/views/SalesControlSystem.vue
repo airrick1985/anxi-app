@@ -82,13 +82,14 @@
       </div>
     </div>
 
-    <UnitDetailModal 
+ <UnitDetailModal 
       v-if="isModalVisible"
       v-model:show="isModalVisible" 
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
       :all-data="allData"
       @data-updated="fetchData"
+      @request-open-slide="openSlideViewer(parkingSlideId)"
     />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
