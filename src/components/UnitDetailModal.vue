@@ -189,7 +189,72 @@ const buyerInfoOptions = computed(() => {
 
 
 function startEditing() {
+  // 深拷貝一份 unitData 到 editingData，這是表單操作的基礎
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
+
+  // 確保 editingData.value 不是 null
+  if (!editingData.value) {
+    editingData.value = {};
+  }
+
+  // 獲取當前戶別ID
+  const currentUnitId = props.unitData ? props.unitData['戶別'] : null;
+  
+  // 獲取建案的所有車位資料
+  const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
+
+  // 檢查 props.unitData 中是否已存在 '持有車位' 且不為空
+  // 這是為了尊重可能已經在「銷控」表中手動維護的車位數據
+  const hasExistingParkingInUnitData = props.unitData && props.unitData['持有車位'] && Array.isArray(props.unitData['持有車位']) && props.unitData['持有車位'].length > 0;
+
+  if (currentUnitId && allParkingLotsForProject.length > 0 && !hasExistingParkingInUnitData) {
+    const assignedParkings = allParkingLotsForProject
+      .filter(parkingLot => parkingLot['購買戶別'] === currentUnitId)
+      .map(parkingLot => {
+        // 確保返回的物件結構與 ParkingEditModal 和 SalesInfoForm 期望的一致
+        // ParkingEditModal 需要 '車位編號', '車位坪數', '車位總價'(表價), '車位狀態', '車位底價' (用於計算), '車位成交價' (用於編輯)
+        // SalesInfoForm 的計算依賴 '車位編號', '車位成交價', '車位底價'
+        return {
+          '車位編號': parkingLot['車位編號'],
+          '車位區域': parkingLot['車位區域'],
+          '車位類別': parkingLot['車位類別'],
+          '車位坪數': parkingLot['車位坪數'],
+          '車位總價': parkingLot['車位總價'], // 假設這是表價
+          '車位底價': parkingLot['車位底價'], // 用於計算溢差價
+          '車位狀態': parkingLot['銷控狀態'], // 假設車位表中的銷控狀態就是車位本身的狀態
+          '車位成交價': parkingLot['車位成交價'] || parkingLot['車位總價'] || 0, // 初始化成交價，若無則用表價，再無則0
+          // 其他可能需要的欄位，可以從 parkingLot 添加
+          // ...parkingLot // 如果 parkingLot 的其他欄位也需要，可以展開
+        };
+      });
+    
+    // 賦值給 editingData.value['持有車位']
+    // 如果 editingData.value['持有車位'] 之前不存在，這會創建它
+    editingData.value['持有車位'] = assignedParkings;
+    
+  } else if (hasExistingParkingInUnitData) {
+    // 如果 props.unitData 中已有 '持有車位'，則 editingData.value['持有車位'] 應該已經從深拷貝中獲得了
+    // 但我們需要確保這些已有的車位數據也包含所有必要欄位，特別是那些可能不存在於原始 '銷控' 表 '車位' 欄位中的詳細車位屬性
+    // 例如，銷控表的 '車位' 可能只存了車位編號，但我們需要從 allParkingLotsForProject 補充其他信息
+    const enrichedExistingParkings = (props.unitData['持有車位'] || []).map(existingParking => {
+      const fullParkingData = allParkingLotsForProject.find(p => p['車位編號'] === existingParking['車位編號']);
+      if (fullParkingData) {
+        return {
+          ...fullParkingData, // 從車位總表獲取完整資訊
+          ...existingParking, // 用已有的 (可能包含成交價等) 覆蓋
+          '車位成交價': existingParking['車位成交價'] !== undefined ? existingParking['車位成交價'] : (fullParkingData['車位總價'] || 0),
+        };
+      }
+      return existingParking; // 如果在總表中找不到，則保留原樣
+    });
+    editingData.value['持有車位'] = enrichedExistingParkings;
+
+  } else if (!editingData.value['持有車位']) {
+    // 如果上述條件都不滿足 (例如沒有 currentUnitId，或沒有車位總表數據，或銷控表也沒有車位數據)，
+    // 確保 '持有車位' 至少是一個空陣列，以避免後續操作出錯
+    editingData.value['持有車位'] = [];
+  }
+
   isEditing.value = true;
 }
 

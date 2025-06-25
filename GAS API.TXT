@@ -1,0 +1,2360 @@
+// ✅ 改為套用 ssId 機制版本
+const FIXED_ACCOUNT_SHEET_ID = '1j__Y6H7xtBbkSr7Gwr2On3qUi53Cwov4dyh8wbryhus';
+const LOG_SHEET_ID = '1HzEtHNDl-z2Y2TCU4KnOROwFa8rwh-bw8ghTzE9PG7M';
+
+/**
+ * 一個強大的日誌函數，將資訊寫入到指定的 Sheet 中。
+ * @param {*} message - 你想要記錄的主要訊息。
+ * @param {*} [details={}] - (可選) 一個物件，包含你想看的變數或詳細資訊。
+ */
+function writeToSheetLog(message, details = {}) {
+  try {
+    const sheet = SpreadsheetApp.openById(LOG_SHEET_ID).getSheetByName('日誌'); // 假設工作表叫「日誌」
+    if (!sheet) return; // 如果找不到，就靜默失敗
+
+    const timestamp = new Date();
+    const detailsString = JSON.stringify(details, null, 2); // 格式化 JSON
+    
+    sheet.appendRow([timestamp, message, detailsString]);
+  } catch (e) {
+    // 如果連寫日誌都出錯，就在內建日誌中記錄下來
+    Logger.log(`[writeToSheetLog FAILED] ${e.toString()}`);
+  }
+}
+
+function doPost(e) {
+  let payload;
+  try {
+    payload = JSON.parse(e.postData.contents);
+    Logger.log('[doPost] 接收到 payload: ' + JSON.stringify(payload));
+  } catch (error) {
+    Logger.log('[doPost] ❌ JSON 解析錯誤: ' + e.postData.contents);
+    return createJsonResponse({ status: 'error', message: '無效的請求資料' });
+  }
+
+  const action = payload.action;
+  const projectNameFromPayload = payload.projectName;
+  Logger.log('[doPost] Action: ' + action);
+  Logger.log('[doPost] ProjectName from payload: ' + projectNameFromPayload);
+
+  let ssId = null;
+
+  const actionsRequiringSsId = [
+    'get_unit_list', 'get_building_list', 'get_house_detail', 'get_inspection_records',
+    'get_all_house_details', 'update_inspection_record', 'get_repair_status_options',
+    'add_inspection_record', 'get_dropdown_options', 'edit_inspection_record',
+    'delete_inspection_record', 'get_all_subcategories', 'get_deleted_inspection_records',
+    'restore_inspection_record', 'delete_photo_from_record', 'generate_share_url',
+    'get_shared_inspection_records', 'edit_inspection_record_with_photos',
+    'confirm_inspection', 'generate_inspection_pdf', 'get_all_project_inspection_records'
+    // 確保這裡列出了所有需要 ssId 的 action
+  ];
+
+  if (actionsRequiringSsId.includes(action)) {
+    if (!projectNameFromPayload) {
+      Logger.log('[doPost] ❌ Action "' + action + '" 需要 projectName，但 payload 中未提供。');
+      return createJsonResponse({ status: 'error', message: '請求缺少建案名稱 (projectName) 參數。' });
+    }
+    try {
+      Logger.log('[doPost] 嘗試為建案 "' + projectNameFromPayload + '" 獲取 ssId...');
+      ssId = getSpreadsheetIdByProjectName(projectNameFromPayload);
+      Logger.log('[doPost] ✅ 獲取到的 ssId: "' + ssId + '" (類型: ' + typeof ssId + ') 對於建案: "' + projectNameFromPayload + '"');
+
+      if (!ssId || String(ssId).trim() === "") {
+        Logger.log('[doPost] ❌ 獲取的 ssId 為空或無效，對於建案: ' + projectNameFromPayload);
+        return createJsonResponse({ status: 'error', message: `系統錯誤：找不到建案 "${projectNameFromPayload}" 的配置或配置為空。` });
+      }
+    } catch (err) {
+      Logger.log('[doPost] ❌ 獲取 ssId 時發生錯誤，建案: ' + projectNameFromPayload + '. 錯誤: ' + err.message + ' Stack: ' + err.stack);
+      return createJsonResponse({ status: 'error', message: `獲取建案 "${projectNameFromPayload}" 資料時發生錯誤: ${err.message}` });
+    }
+  }
+
+  Object.keys(payload).forEach(key => {
+    Logger.log(`[doPost] payload key-value: ${key} = ${payload[key]}`);
+  });
+
+  switch (action) {
+    case 'login': return handleLogin(payload);
+    case 'get_project_list': return handleGetProjectList(payload);
+    case 'forgot_password': return handleForgotPassword(payload);
+    case 'get_unit_list': return handleGetUnitList(ssId);
+    case 'get_building_list': return handleGetBuildingList(payload, ssId);
+    case 'get_house_detail': return handleGetHouseDetail(payload, ssId);
+    case 'update_profile': return handleUpdateProfile(payload);
+    case 'get_all_project_inspection_records': return handleGetAllInspectionRecordsForProject(ssId);
+    case 'get_inspection_records': return handleGetInspectionRecords(payload, ssId);
+    case 'get_all_house_details': return handleGetAllHouseDetails(ssId);
+    case 'update_inspection_record': return handleUpdateInspectionRecord(payload, ssId);
+    case 'get_repair_status_options': return handleGetRepairStatusOptions(ssId);
+    case 'add_inspection_record': return handleAddInspectionRecord(payload, ssId);
+    case 'upload_photo': return handleUploadPhoto(payload); // 假設 upload_photo 不需要 ssId
+    case 'get_dropdown_options': return handleGetDropdownOptions(ssId);
+    case 'edit_inspection_record': return handleEditInspectionRecord(payload, ssId);
+    case 'delete_inspection_record': return handleDeleteInspectionRecord(payload, ssId);
+    case 'get_all_subcategories': return handleGetAllSubcategories(ssId);
+    case 'get_deleted_inspection_records': return handleGetDeletedInspectionRecords(ssId);
+    case 'restore_inspection_record': return handleRestoreInspectionRecord(payload, ssId);
+    case 'delete_photo_from_record': return handleDeletePhotoFromRecord(payload, ssId);
+    case 'generate_share_url': return handleGenerateShareUrl(payload, ssId);
+    case 'get_shared_inspection_records': return handleGetSharedInspectionRecords(payload, ssId);
+    case 'edit_inspection_record_with_photos': return handleEditInspectionRecordWithPhotos(payload, ssId);
+    case 'upload_signature': return handleUploadSignature(payload); // 假設 upload_signature 不需要 ssId
+    case 'confirm_inspection': return handleConfirmInspection(payload, ssId);
+    case 'generate_inspection_pdf': return handleGenerateInspectionPdf(payload, ssId);
+    case 'get_projects_by_system_permission':return handleGetProjectsBySystemPermission(payload);
+    case 'get_sales_control_data':return handleGetSalesControlData(payload);
+    case 'get_parking_list':return handleGetParkingList(payload);
+    case 'get_quote_personnel_list':return handleGetQuotePersonnelList(payload);
+    case 'generate_quote_pdf': return handleGenerateQuotePdf(payload); 
+    case 'update_sales_data': return handleUpdateSalesData(payload); 
+
+    default:
+      Logger.log('[doPost] ❌ 未知的 action: ' + action);
+      return createJsonResponse({ status: 'error', message: '未知的 action: ' + action });
+  }
+}
+
+function createJsonResponse(obj) { // 確保你有這個函數
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+
+function getSpreadsheetIdByProjectName(projectName) {
+  Logger.log('[getSpreadsheetIdByProjectName] 正在查找建案: "' + projectName + '"');
+  try {
+    const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('建案選單');
+    if (!sheet) {
+      Logger.log('[getSpreadsheetIdByProjectName] ❌ 找不到 "建案選單" 工作表。');
+      throw new Error('找不到 "建案選單" 工作表配置。');
+    }
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const nameIndex = headers.indexOf('建案名稱');
+    const idIndex = headers.indexOf('SheetID');
+
+    if (nameIndex === -1 || idIndex === -1) {
+        Logger.log(`[getSpreadsheetIdByProjectName] ❌ "建案選單" 表頭配置錯誤。nameIndex: ${nameIndex}, idIndex: ${idIndex}`);
+        throw new Error('"建案選單" 表頭配置不正確 (找不到 "建案名稱" 或 "SheetID")。');
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) { // 沒有數據行
+        Logger.log('[getSpreadsheetIdByProjectName] ❌ "建案選單" 工作表中沒有數據。');
+        throw new Error(`在 "建案選單" 中找不到建案名稱：${projectName} (無數據)。`);
+    }
+
+    const nameColumn = sheet.getRange(2, nameIndex + 1, lastRow - 1).getValues().flat();
+    const idColumn = sheet.getRange(2, idIndex + 1, lastRow - 1).getValues().flat();
+
+    for (let i = 0; i < nameColumn.length; i++) {
+      Logger.log('[getSpreadsheetIdByProjectName] 比較: "' + nameColumn[i] + '" 與 "' + projectName + '"');
+      if (nameColumn[i] === projectName) {
+        const foundSsId = idColumn[i];
+        Logger.log('[getSpreadsheetIdByProjectName] ✅ 找到匹配! 建案: "' + projectName + '", SheetID: "' + foundSsId + '"');
+        if (!foundSsId || String(foundSsId).trim() === "") {
+            Logger.log('[getSpreadsheetIdByProjectName] ⚠️ 找到建案 "' + projectName + '" 但其 SheetID 為空。');
+            throw new Error(`建案 "${projectName}" 的 SheetID 未設定或為空。`);
+        }
+        return String(foundSsId).trim(); // 確保返回的是字符串且去除前後空格
+      }
+    }
+
+    Logger.log('[getSpreadsheetIdByProjectName] ❌ 未找到建案名稱："' + projectName + '" 在 "建案選單" 中。');
+    throw new Error(`在 "建案選單" 中找不到建案名稱：${projectName}`);
+  } catch (err) {
+    Logger.log('[getSpreadsheetIdByProjectName] 內部錯誤: ' + err.message + ' Stack: ' + err.stack);
+    throw err;
+  }
+}
+
+
+
+
+
+function formatSheetDate(value) {
+  const FUNCTION_NAME = 'formatSheetDate'; // 用於日誌
+  const scriptTimeZone = Session.getScriptTimeZone();
+
+  if (!value) { // 處理 null, undefined, 空字符串
+    return '';
+  }
+
+  if (value instanceof Date) {
+    try {
+      return Utilities.formatDate(value, scriptTimeZone, 'yyyy-MM-dd');
+    } catch (e) {
+      Logger.log(`[${FUNCTION_NAME}] Error formatting Date object: ${value}. Error: ${e.message}`);
+      return value.toString(); // 或返回 ''
+    }
+  }
+
+  if (typeof value === 'number') {
+    // 25569 是 1970/1/1 和 1899/12/30 的天數差 (Excel/Sheets 日期基准)
+    // 40000 大約是 2009年，一個合理的下限，避免將小數字誤認為日期
+    if (value > 25569 && value < 70000) { // 70000 大約是 2190 年
+      try {
+        // (value - 25569) * 24 * 60 * 60 * 1000
+        return Utilities.formatDate(new Date((value - 25569) * 86400000), scriptTimeZone, 'yyyy-MM-dd');
+      } catch (e) {
+        Logger.log(`[${FUNCTION_NAME}] Error formatting number ${value} as date. Error: ${e.message}`);
+        return value.toString();
+      }
+    } else {
+      // Logger.log(`[${FUNCTION_NAME}] Number ${value} is not in typical date serial range.`);
+      return value.toString(); // 不是典型日期序列號，返回原樣
+    }
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const dateObject = new Date(value);
+      if (!isNaN(dateObject.valueOf())) { // 檢查是否為有效日期
+        return Utilities.formatDate(dateObject, scriptTimeZone, 'yyyy-MM-dd');
+      } else {
+        // Logger.log(`[${FUNCTION_NAME}] Could not parse string "${value}" into a valid Date.`);
+        return value; // 如果無法解析，返回原始字符串
+      }
+    } catch (e) {
+      // Logger.log(`[${FUNCTION_NAME}] Exception parsing string "${value}". Error: ${e.message}`);
+      return value; // 解析異常，返回原始字符串
+    }
+  }
+
+  // 對於其他未知類型，返回其字符串表示或空字符串
+  Logger.log(`[${FUNCTION_NAME}] Unhandled value type: ${typeof value}, value: ${value}. Returning as string or empty.`);
+  return value ? String(value) : '';
+}
+
+
+// GAS
+function handleGetAllInspectionRecordsForProject(ssId) {
+  Logger.log('[handleGetAllInspectionRecordsForProject] Received ssId: ' + ssId);
+  if (!ssId) {
+    Logger.log('[handleGetAllInspectionRecordsForProject] ❌ Invalid ssId.');
+    return createJsonResponse({ status: 'error', message: 'System error: Cannot identify target sheet (ssId invalid).' });
+  }
+  try {
+    const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+    if (!sheet) {
+      Logger.log('[handleGetAllInspectionRecordsForProject] ❌ "驗屋紀錄" sheet not found in ssId: ' + ssId);
+      return createJsonResponse({ status: 'error', message: 'System configuration error: Inspection records sheet not found.' });
+    }
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    const records = [];
+
+    const col = (name) => header.indexOf(name);
+    const deletedColumnName = '已刪除'; // 確認你的欄位名
+    const deletedIndex = header.indexOf(deletedColumnName);
+
+    // 建議檢查所有必要的欄位索引是否為 -1
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      // 如果有已刪除欄位，則過濾掉已刪除的
+      if (deletedIndex !== -1 && row[deletedIndex] === 'Y') {
+        continue;
+      }
+
+      records.push({
+        createdAt: formatSheetDate(row[col('建檔時間')]),
+        key: row[col('KEY')],
+        inspectionDate: formatSheetDate(row[col('驗屋日期')]),
+        inspectionStage: row[col('驗屋階段')],
+        inspector: row[col('驗屋人')],
+        owner: row[col('產權人')],
+        unit: row[col('戶別')], // 包含戶別信息很重要
+        area: row[col('檢查區域')],
+        category: row[col('分類')],
+        subcategory: row[col('細項')],
+        inspectionStatus: row[col('檢查狀態')],
+        defectLevel: row[col('缺失等級')],
+        description: row[col('檢查說明')],
+        repairDate: formatSheetDate(row[col('檢修時間')]),
+        repairStatus: row[col('檢修狀態')],
+        repairDescription: row[col('檢修說明')],
+        photo1: row[col('缺失照片1')],
+        photo2: row[col('缺失照片2')],
+        photo3: row[col('缺失照片3')],
+        photo4: row[col('缺失照片4')],
+        defectPhoto1: row[col('檢修照片1')],
+        defectPhoto2: row[col('檢修照片2')],
+        defectPhoto3: row[col('檢修照片3')],
+        defectPhoto4: row[col('檢修照片4')],
+        deleted: row[col('已刪除')] || '' // 即使過濾了，也可能想保留這個字段
+      });
+    }
+    Logger.log('[handleGetAllInspectionRecordsForProject] ✅ Found ' + records.length + ' records for project.');
+    return createJsonResponse({ status: 'success', records });
+  } catch (err) {
+    Logger.log('[handleGetAllInspectionRecordsForProject] ❌ Error: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: 'Error fetching all inspection records: ' + err.message });
+  }
+}
+
+// ==== 驗屋相關 ====
+function handleGetInspectionRecords({ unitId },ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const records = [];
+
+  // 尋找欄位位置
+  const col = (name) => header.indexOf(name);
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[col('戶別')] === unitId) {
+      records.push({
+        createdAt: formatSheetDate(row[col('建檔時間')]),
+        key: row[col('KEY')],
+        inspectionDate: formatSheetDate(row[col('驗屋日期')]),
+        inspectionStage: row[col('驗屋階段')],
+        inspector: row[col('驗屋人')],
+        owner: row[col('產權人')],
+        unit: row[col('戶別')],
+        area: row[col('檢查區域')],
+        category: row[col('分類')],
+        subcategory: row[col('細項')],
+        inspectionStatus: row[col('檢查狀態')],
+        defectLevel: row[col('缺失等級')],
+        description: row[col('檢查說明')],
+        repairDate: formatSheetDate(row[col('檢修時間')]),
+        repairStatus: row[col('檢修狀態')],
+        repairDescription: row[col('檢修說明')],
+        photo1: row[col('缺失照片1')],
+        photo2: row[col('缺失照片2')],
+        photo3: row[col('缺失照片3')],
+        photo4: row[col('缺失照片4')],
+        defectPhoto1: row[col('檢修照片1')],
+        defectPhoto2: row[col('檢修照片2')],
+        defectPhoto3: row[col('檢修照片3')],
+        defectPhoto4: row[col('檢修照片4')],
+        deleted: row[col('已刪除')] || ''
+      });
+    }
+  }
+
+  return createJsonResponse({ status: 'success', records });
+}
+
+
+function handleGetSharedInspectionRecords({ unitId, token }, ssId) {
+  if (!unitId || !token) {
+    return createJsonResponse({ status: 'error', message: '缺少 unitId 或 token' });
+  }
+
+  const ss = SpreadsheetApp.openById(ssId);
+  const shareSheet = ss.getSheetByName('驗屋分享網址');
+  const shareData = shareSheet.getDataRange().getValues();
+
+  let tokenMatched = false;
+  for (let i = 1; i < shareData.length; i++) {
+    if (shareData[i][0] === unitId && shareData[i][1] === token) {
+      tokenMatched = true;
+      break;
+    }
+  }
+
+  if (!tokenMatched) {
+    return createJsonResponse({ status: 'error', message: '無效的分享連結' });
+  }
+
+  const sheet = ss.getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const getIndex = (name) => header.indexOf(name);
+
+const formatDriveUrl = (url) => {
+  if (!url) return '';
+  const patterns = [
+    /\/file\/d\/([a-zA-Z0-9_-]+)\//,  // for /file/d/xxx/view
+    /id=([a-zA-Z0-9_-]+)/             // for /open?id=xxx
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) {
+      return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+    }
+  }
+  return '';
+};
+
+
+  const records = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[getIndex('戶別')] !== unitId) continue;
+    if (row[getIndex('已刪除')] === 'Y') continue;
+
+    records.push({
+      createdAt: formatSheetDate(row[getIndex('建檔時間')]),
+      key: row[getIndex('KEY')],
+      inspectionDate: formatSheetDate(row[getIndex('驗屋日期')]),
+      inspectionStage: row[getIndex('驗屋階段')],
+      area: row[getIndex('檢查區域')],
+      category: row[getIndex('分類')],
+      subcategory: row[getIndex('細項')],
+      description: row[getIndex('檢查說明')],
+      photo1: formatDriveUrl(row[getIndex('缺失照片1')]),
+      photo2: formatDriveUrl(row[getIndex('缺失照片2')]),
+      photo3: formatDriveUrl(row[getIndex('缺失照片3')]),
+      photo4: formatDriveUrl(row[getIndex('缺失照片4')]),
+    });
+  }
+
+  return createJsonResponse({ status: 'success', records });
+}
+
+
+
+function handleAddInspectionRecord(payload, ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const values = [
+    payload.createdAt, payload.key, payload.inspectionDate, payload.inspectionStage,
+    payload.inspector, payload.owner, payload.unit, payload.area, payload.category,
+    payload.subcategory, payload.inspectionStatus, payload.defectLevel, payload.description,
+    '', '', '', // 檢修欄位
+    payload.photo1, payload.photo2, payload.photo3, payload.photo4
+  ];
+  sheet.appendRow(values);
+  return createJsonResponse({ status: 'success', message: '已新增紀錄' });
+}
+
+//填寫檢修
+function handleUpdateInspectionRecord({ key, repairDate, repairStatus, repairDescription },ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][1] === key) {
+      if (repairDate) sheet.getRange(i + 1, 14).setValue(repairDate);
+      sheet.getRange(i + 1, 15).setValue(repairStatus || '');
+      sheet.getRange(i + 1, 16).setValue(repairDescription || '');
+      return createJsonResponse({ status: 'success' });
+    }
+  }
+  return createJsonResponse({ status: 'error', message: '找不到對應資料 (key 不存在)' });
+}
+
+//修改驗屋紀錄
+function handleEditInspectionRecord(payload , ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+
+  const { key } = payload;
+  if (!key) return createJsonResponse({ status: 'error', message: '缺少 key 參數' });
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][1] === key) {
+      // 依照你現有欄位順序：第 1 欄是 createdAt，第 2 欄是 key，第 3~15 欄依序更新
+      sheet.getRange(i + 1, 3).setValue(payload.inspectionDate || '');
+      sheet.getRange(i + 1, 4).setValue(payload.inspectionStage || '');
+      sheet.getRange(i + 1, 5).setValue(payload.inspector || '');
+      sheet.getRange(i + 1, 6).setValue(payload.owner || '');
+      sheet.getRange(i + 1, 7).setValue(payload.unit || '');
+      sheet.getRange(i + 1, 8).setValue(payload.area || '');
+      sheet.getRange(i + 1, 9).setValue(payload.category || '');
+      sheet.getRange(i + 1, 10).setValue(payload.subcategory || '');
+      sheet.getRange(i + 1, 11).setValue(payload.inspectionStatus || '');
+      sheet.getRange(i + 1, 12).setValue(payload.defectLevel || '');
+      sheet.getRange(i + 1, 13).setValue(payload.description || '');
+      sheet.getRange(i + 1, 14).setValue(payload.repairDate || '');
+      sheet.getRange(i + 1, 15).setValue(payload.repairStatus || '');
+      sheet.getRange(i + 1, 16).setValue(payload.repairDescription || '');
+      return createJsonResponse({ status: 'success', message: '驗屋紀錄已更新' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應驗屋紀錄（key 不存在）' });
+}
+
+
+
+function handleUploadPhoto({ filename, base64 }) {
+  if (!filename || !base64) return createJsonResponse({ status: 'error', message: '缺少參數' });
+
+  const blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg', filename);
+  const file = DriveApp.getFolderById('1js6n9EOFaiN1YrPKIgR3-_d-Gc5b8Lma').createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return createJsonResponse({ status: 'success', url: file.getUrl(), name: file.getName(), id: file.getId() });
+}
+
+function handleGetAllHouseDetails(ssId) {
+  Logger.log('[handleGetAllHouseDetails] 接收到的 ssId: "' + ssId + '" (類型: ' + typeof ssId + ')');
+  if (!ssId || String(ssId).trim() === "") {
+    Logger.log('[handleGetAllHouseDetails] ❌ 無效的 ssId (空或未定義)。');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤：無法確定目標資料表 (ssId is invalid for get_all_house_details)。' });
+  }
+  try {
+    const sheet = SpreadsheetApp.openById(ssId).getSheetByName('戶別資料');
+    if (!sheet) {
+        Logger.log('[handleGetAllHouseDetails] ❌ 找不到 "戶別資料" 工作表於 ssId: ' + ssId);
+        return createJsonResponse({ status: 'error', message: '系統配置錯誤：找不到戶別資料表。' });
+    }
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    const allDetails = {};
+
+    const getIndex = (label) => header.indexOf(label);
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const unitId = row[getIndex('戶別')];
+      if (!unitId) continue;
+
+      const appointmentDate = formatSheetDate(row[getIndex('狀態日期')]);
+      const key = `${unitId}_${appointmentDate}`; // 這個 key 的用途？
+      allDetails[unitId] = {
+        key,
+        unit: unitId,
+        reportUrl: row[getIndex('驗屋報告')],
+        docUrl: row[getIndex('驗屋文件')],
+        building: row[getIndex('棟別')],
+        owner: row[getIndex('買方姓名')],
+        phone: row[getIndex('電話')],
+        email: row[getIndex('EMAIL')],
+        parking: row[getIndex('車位')],
+        inspectionStage: row[getIndex('目前狀態-合併欄位')],
+        appointmentDate,
+        appointmentTime: row[getIndex('狀態時段')],
+        address: row[getIndex('門牌')],
+        enableInitialInspection: (row[getIndex('初驗報告上傳開關')] || '').toString().toUpperCase() === 'ON',
+        enableReinspection: (row[getIndex('複驗報告上傳開關')] || '').toString().toUpperCase() === 'ON'
+      };
+    }
+    Logger.log('[handleGetAllHouseDetails] ✅ 成功獲取所有戶別資料，數量: ' + Object.keys(allDetails).length);
+    return createJsonResponse({ status: 'success', data: allDetails });
+  } catch (err) {
+    Logger.log('[handleGetAllHouseDetails] ❌ 執行時發生錯誤: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '讀取所有戶別資料時發生錯誤: ' + err.message });
+  }
+}
+
+
+function handleGetRepairStatusOptions(ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('參數');
+  const values = sheet.getRange('F2:F').getValues().flat().filter(v => v);
+  return createJsonResponse({ status: 'success', options: values });
+}
+
+function handleGetDropdownOptions(ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('參數');
+
+  const areaOptions = sheet.getRange('B2:B').getValues().flat().filter(v => v);
+  const categoryOptions = sheet.getRange('C2:C').getValues().flat().filter(v => v);
+  const statusOptions = sheet.getRange('D2:D').getValues().flat().filter(v => v);
+  const levelOptions = sheet.getRange('E2:E').getValues().flat().filter(v => v);
+
+  // 🧩 讀取「細項」對應表
+  const detailSheet = SpreadsheetApp.openById(ssId).getSheetByName('細項');
+  const detailData = detailSheet.getDataRange().getValues();
+  const subcategoryMap = {};
+
+  for (let i = 1; i < detailData.length; i++) {
+    const [category, sub] = detailData[i];
+    if (!category || !sub) continue;
+    if (!subcategoryMap[category]) subcategoryMap[category] = [];
+    subcategoryMap[category].push(sub);
+  }
+
+  return createJsonResponse({
+    status: 'success',
+    data: {
+      areaOptions,
+      categoryOptions,
+      statusOptions,
+      levelOptions,
+      subcategoryMap // ✅ 加入這行
+    }
+  });
+}
+
+
+function handleGetSubcategoriesByCategory({ category },ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('細項');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const colIndex = headers.indexOf(category);
+  if (colIndex === -1) return createJsonResponse({ status: 'error', message: '分類無效' });
+
+  const values = sheet.getRange(2, colIndex + 1, sheet.getLastRow() - 1).getValues().flat().filter(v => v);
+  return createJsonResponse({ status: 'success', subcategories: values });
+}
+
+// ==== 用戶系統 ====
+function handleLogin(payload) {
+  Logger.log("[handleLogin] Handling login for key: " + payload.key + ", projectName: " + payload.projectName);
+
+  const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const phoneIndex = header.indexOf('手機號碼');
+  const emailIndex = header.indexOf('EMAIL');
+  const nameIndex = header.indexOf('NAME');
+  const passwordIndex = header.indexOf('密碼');
+  const projectIndex = header.indexOf('建案權限'); 
+  const permissionsIndex = header.indexOf('功能權限'); // Added: Get permissions column index
+
+  let result = { status: 'not_found', message: '手機號碼不存在或錯誤' };
+  let loginStatus = '帳號不存在';
+  let userName = '';
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[phoneIndex] === payload.key) {
+      userName = row[nameIndex];
+      Logger.log("[handleLogin] Found user: " + userName + " for key: " + payload.key);
+
+      if (row[passwordIndex] !== payload.password) {
+        result = { status: 'wrong_password', message: '密碼錯誤' };
+        loginStatus = '密碼錯誤';
+        Logger.log("[handleLogin] Password mismatch for user: " + userName);
+        break;
+      }
+      Logger.log("[handleLogin] Password matched for user: " + userName);
+
+      // Added: Process permissions
+      let userPermissions = [];
+      if (permissionsIndex !== -1) {
+        const rawPermissions = row[permissionsIndex];
+        if (rawPermissions && typeof rawPermissions === 'string' && rawPermissions.trim() !== '') {
+          userPermissions = rawPermissions.split(',').map(p => p.trim());
+          Logger.log("[handleLogin] User " + userName + " raw permissions: '" + rawPermissions + "', parsed: [" + userPermissions.join(', ') + "]");
+        } else {
+          Logger.log("[handleLogin] User " + userName + " permissions cell is empty, not a string. Defaulting to []. Cell content: " + rawPermissions);
+        }
+      } else {
+        Logger.log("[handleLogin] '功能權限' column not found. Defaulting to [] for user " + userName);
+      }
+
+      // If projectName is provided, validate it
+      if (payload.projectName) {
+        const allowedProjects = (row[projectIndex] || '').split(',').map(p => p.trim());
+        const requestedProject = payload.projectName;
+        Logger.log("[handleLogin] User " + userName + " allowed projects: [" + allowedProjects.join(', ') + "], requested: " + requestedProject);
+
+        if (!allowedProjects.includes(requestedProject)) {
+          result = { status: 'no_permission', message: '無此建案權限' };
+          loginStatus = '建案權限不足';
+          Logger.log("[handleLogin] Permission denied for user: " + userName + " on project: " + requestedProject);
+          break; 
+        }
+        Logger.log("[handleLogin] Permission granted for user: " + userName + " on project: " + requestedProject);
+        result = {
+          status: 'success',
+          user: {
+            key: row[phoneIndex],
+            email: row[emailIndex],
+            name: row[nameIndex],
+            projectName: payload.projectName,
+            permissions: userPermissions // Added: permissions
+          }
+        };
+      } else {
+        Logger.log("[handleLogin] Basic login successful for user: " + userName + ". No specific project selected at login.");
+        result = {
+          status: 'success',
+          user: {
+            key: row[phoneIndex],
+            email: row[emailIndex],
+            name: row[nameIndex],
+            projectName: null, 
+            permissions: userPermissions // Added: permissions
+          }
+        };
+      }
+      loginStatus = '成功';
+      Logger.log("[handleLogin] Login process completed for user: " + userName + ". Returning user data: " + JSON.stringify(result.user));
+      break; 
+    }
+  }
+
+  logLoginRecord(userName || payload.key, loginStatus, payload.userAgent, payload.ip);
+  return createJsonResponse(result);
+}
+
+
+
+
+
+
+function handleForgotPassword(payload) {
+  const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const phoneIndex = header.indexOf('手機號碼');
+  const emailIndex = header.indexOf('EMAIL');
+  const passwordIndex = header.indexOf('密碼');
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[phoneIndex] === payload.key) {
+      const email = row[emailIndex];
+      const password = row[passwordIndex];
+      MailApp.sendEmail({
+        to: email,
+        subject: '【安熙智慧建案管理系統】忘記密碼通知',
+        htmlBody: `親愛的用戶您好，<br><br>您申請的密碼是：<b>${password}</b><br><br>請妥善保存。`,
+        name: '安熙智慧建案管理系統'
+      });
+      return createJsonResponse({ status: 'success', message: '密碼已寄出' });
+    }
+  }
+  return createJsonResponse({ status: 'error', message: '找不到對應手機號碼' });
+}
+
+
+function handleGetUnitList(ssId) {
+  Logger.log('[handleGetUnitList] 接收到的 ssId: "' + ssId + '" (類型: ' + typeof ssId + ')');
+  if (!ssId || String(ssId).trim() === "") {
+    Logger.log('[handleGetUnitList] ❌ 無效的 ssId (空或未定義)。');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤：無法確定目標資料表 (ssId is invalid for get_unit_list)。' });
+  }
+  try {
+    const sheet = SpreadsheetApp.openById(ssId).getSheetByName('戶別選單');
+    if (!sheet) {
+        Logger.log('[handleGetUnitList] ❌ 找不到 "戶別選單" 工作表於 ssId: ' + ssId);
+        return createJsonResponse({ status: 'error', message: '系統配置錯誤：找不到戶別選單資料表。' });
+    }
+    const data = sheet.getDataRange().getValues();
+    const units = {};
+    const header = data[0];
+
+    for (let col = 0; col < header.length; col++) {
+      const building = header[col];
+      if (!building) continue;
+      units[building] = [];
+      for (let row = 1; row < data.length; row++) {
+        const unit = data[row][col];
+        if (unit) units[building].push(unit);
+      }
+    }
+    Logger.log('[handleGetUnitList] ✅ 成功獲取戶別選單: ' + JSON.stringify(units).substring(0, 500));
+    return createJsonResponse({ status: 'success', units });
+  } catch (err) {
+    Logger.log('[handleGetUnitList] ❌ 執行時發生錯誤: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '讀取戶別選單時發生錯誤: ' + err.message });
+  }
+}
+
+function handleGetBuildingList(payload, ssId) {
+  const EXPECTED_TOKEN = 'anxi111003';
+  if (payload.token !== EXPECTED_TOKEN) {
+    return createJsonResponse({ status: 'error', message: 'Token 驗證失敗' });
+  }
+
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('戶別選單');
+  const buildings = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].filter(Boolean);
+  return createJsonResponse({ status: 'success', data: buildings });
+}
+
+
+function handleGetHouseDetail({ unitId, token },ssId) {
+  const EXPECTED_TOKEN = 'anxi111003';
+  if (!unitId || token !== EXPECTED_TOKEN) {
+    return createJsonResponse({ status: 'error', message: '參數錯誤或無效Token' });
+  }
+
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('戶別資料');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const getIndex = (name) => header.indexOf(name);
+
+  const colMap = {
+    unit: getIndex('戶別'),
+    owner: getIndex('買方姓名'),
+    phone: getIndex('電話'),
+    email: getIndex('EMAIL'),
+    building: getIndex('棟別'),
+    parking: getIndex('車位'),
+    inspectionStage: getIndex('目前狀態-合併欄位'),
+    appointmentDate: getIndex('狀態日期'),
+    appointmentTime: getIndex('狀態時段'),
+    address: getIndex('門牌'),
+    docUrl: getIndex('驗屋文件'),
+    reportUrl: getIndex('驗屋報告'),
+    enableInitialInspection: getIndex('初驗報告上傳開關'),
+    enableReinspection: getIndex('複驗報告上傳開關'),
+    email: getIndex('EMAIL')
+  };
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[colMap.unit] === unitId) {
+      return createJsonResponse({
+        status: 'success',
+        data: {
+          unit: row[colMap.unit],
+          owner: row[colMap.owner],
+          phone: row[colMap.phone],
+          email: row[colMap.email],
+          building: row[colMap.building],
+          parking: row[colMap.parking],
+          inspectionStage: row[colMap.inspectionStage],
+          appointmentDate: formatSheetDate(row[colMap.appointmentDate]),
+          appointmentTime: row[colMap.appointmentTime],
+          address: row[colMap.address],
+          docUrl: row[colMap.docUrl],
+          reportUrl: row[colMap.reportUrl],
+          enableInitialInspection: (row[colMap.enableInitialInspection] || '').toString().toUpperCase() === 'ON',
+          enableReinspection: (row[colMap.enableReinspection] || '').toString().toUpperCase() === 'ON'
+        }
+      });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應戶別資料' });
+}
+
+
+function logLoginRecord(name, status, userAgent, ip) {
+  try {
+    const logSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('登入LOG');
+    const now = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
+    logSheet.appendRow([now, name, status, userAgent || '未知', ip || '未知']);
+    Logger.log(`已紀錄登入: ${name}, ${status}`);
+  } catch (e) {
+    Logger.log("寫入登入LOG失敗: " + e);
+  }
+}
+
+
+function handleUpdateProfile(payload) {
+  const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const phoneIndex = header.indexOf('手機號碼');
+  const emailIndex = header.indexOf('EMAIL');
+  const nameIndex = header.indexOf('NAME');
+  const passwordIndex = header.indexOf('密碼');
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[phoneIndex] === payload.key) {
+      const currentPassword = row[passwordIndex];
+      Logger.log(`比對密碼：輸入=${payload.oldPassword}, 原始=${currentPassword}`);
+
+      if (currentPassword !== payload.oldPassword) {
+        return createJsonResponse({ status: 'error', message: '原密碼錯誤' });
+      }
+
+      // 更新 Email 與 name
+      sheet.getRange(i + 1, emailIndex + 1).setValue(payload.email);
+      sheet.getRange(i + 1, nameIndex + 1).setValue(payload.name);
+
+      if (payload.newPassword) {
+        sheet.getRange(i + 1, passwordIndex + 1).setValue(payload.newPassword);
+      }
+
+      return createJsonResponse({ status: 'success', message: '資料已更新' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到用戶資料' });
+}
+
+
+function handleDeleteInspectionRecord({ key },ssId) {
+  if (!key) return createJsonResponse({ status: 'error', message: '缺少 key 參數' });
+
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][1] === key) { // B欄 = key
+      sheet.getRange(i + 1, 21).setValue('Y'); // U欄 = 第21欄
+      return createJsonResponse({ status: 'success', message: '已標記刪除' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應紀錄（key 不存在）' });
+}
+
+function handleGetAllSubcategories(ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('細項');
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+
+  const headers = data[0]; // 第一列是分類名稱
+
+  for (let col = 0; col < headers.length; col++) {
+    const category = headers[col];
+    if (!category) continue;
+
+    result[category] = [];
+
+    for (let row = 1; row < data.length; row++) {
+      const sub = data[row][col];
+      if (sub) result[category].push(sub);
+    }
+  }
+
+  Logger.log('✅ 細項結果（改為以欄為分類）: ' + JSON.stringify(result));
+  return createJsonResponse({ status: 'success', data: result });
+}
+
+
+function handleGetDeletedInspectionRecords(ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+
+  const keyIndex = header.indexOf('KEY');
+  const createdAtIndex = header.indexOf('建檔時間');
+  const unitIndex = header.indexOf('戶別');
+  const areaIndex = header.indexOf('檢查區域');
+  const categoryIndex = header.indexOf('分類');
+  const subcategoryIndex = header.indexOf('細項');
+  const descriptionIndex = header.indexOf('檢查說明');
+  const deletedIndex = header.indexOf('已刪除');
+
+  const deletedRecords = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[deletedIndex] === 'Y') {
+      deletedRecords.push({
+        key: row[keyIndex],
+        createdAt: formatDateTime(row[createdAtIndex]),
+        unit: row[unitIndex],
+        area: row[areaIndex],
+        category: row[categoryIndex],
+        subcategory: row[subcategoryIndex],
+        description: row[descriptionIndex],
+      });
+    }
+  }
+
+  return createJsonResponse({ status: 'success', data: deletedRecords });
+}
+
+//restore_inspection_record
+function handleRestoreInspectionRecord(payload,ssId) {
+  const key = payload.key; // ⬅ 取代 e.key 更語意清楚
+  if (!key) {
+    return createJsonResponse({ status: 'error', message: '缺少 KEY' });
+  }
+
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const keyIndex = header.indexOf('KEY');
+  const deletedIndex = header.indexOf('已刪除');
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][keyIndex] === key) {
+      sheet.getRange(i + 1, deletedIndex + 1).setValue('');
+      return createJsonResponse({ status: 'success' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應紀錄' });
+}
+
+function handleDeletePhotoFromRecord(payload, ssId) { // <--- 接收 payload 和 ssId
+  const key = payload.key;                 // 從 payload 中獲取 key
+  const photoField = payload.photoField;   // 從 payload 中獲取 photoField
+
+  Logger.log(`[handleDeletePhotoFromRecord] Received key: ${key}, photoField: ${photoField}, ssId: ${ssId}`);
+
+  if (!key || !photoField) {
+    Logger.log('[handleDeletePhotoFromRecord] ❌ 缺少參數 (key / photoField)');
+    return createJsonResponse({ status: 'error', message: '缺少參數（key / photoField）' });
+  }
+
+  if (!ssId) { // 額外檢查 ssId 是否有效
+    Logger.log('[handleDeletePhotoFromRecord] ❌ 無效的 ssId');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤：無法確定目標資料表 (ssId is invalid for delete_photo_from_record)。' });
+  }
+
+  const fieldToTitle = {
+    photo1: '缺失照片1',
+    photo2: '缺失照片2',
+    photo3: '缺失照片3',
+    photo4: '缺失照片4',
+    defectPhoto1: '檢修照片1',
+    defectPhoto2: '檢修照片2',
+    defectPhoto3: '檢修照片3',
+    defectPhoto4: '檢修照片4'
+  };
+
+  const targetTitle = fieldToTitle[photoField];
+  if (!targetTitle) {
+    Logger.log('[handleDeletePhotoFromRecord] ❌ 無效的 photo 欄位名稱: ' + photoField);
+    return createJsonResponse({ status: 'error', message: '無效的 photo 欄位名稱' });
+  }
+
+  try {
+    const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+    if (!sheet) {
+        Logger.log('[handleDeletePhotoFromRecord] ❌ 找不到 "驗屋紀錄" 工作表於 ssId: ' + ssId);
+        return createJsonResponse({ status: 'error', message: '系統配置錯誤：找不到驗屋紀錄資料表。' });
+    }
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+
+    const keyIndex = header.indexOf('KEY');
+    const colIndex = header.indexOf(targetTitle);
+
+    if (keyIndex === -1) {
+        Logger.log('[handleDeletePhotoFromRecord] ❌ "驗屋紀錄" 表中找不到 "KEY" 欄位');
+        return createJsonResponse({ status: 'error', message: '系統配置錯誤：KEY 欄位不存在。' });
+    }
+    if (colIndex === -1) {
+        Logger.log(`[handleDeletePhotoFromRecord] ❌ "驗屋紀錄" 表中找不到 "${targetTitle}" 欄位`);
+        return createJsonResponse({ status: 'error', message: `系統配置錯誤：照片欄位 "${targetTitle}" 不存在。` });
+    }
+
+
+    let foundRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][keyIndex] === key) {
+        sheet.getRange(i + 1, colIndex + 1).setValue(''); 
+        foundRow = i;
+        Logger.log(`[handleDeletePhotoFromRecord] ✅ 已清除試算表欄位: row ${i+1}, col ${colIndex+1} (key: ${key}, photoField: ${photoField})`);
+        break;
+      }
+    }
+
+    if (foundRow === -1) {
+      Logger.log(`[handleDeletePhotoFromRecord] ⚠️ 找不到對應資料 (key: ${key} 不存在)`);
+      
+    }
+
+        let filenameToDelete = "";
+    const photoNum = photoField.replace(/\D/g, ''); // "1", "2", "3", "4"
+
+    if (photoField.startsWith('photo')) { 
+        filenameToDelete = `${key}_缺失照片${photoNum}.jpg`;
+    } else if (photoField.startsWith('defectPhoto')) { 
+        filenameToDelete = `${key}_檢修照片${photoNum}.jpg`; 
+    }
+
+    if (!filenameToDelete) {
+        Logger.log(`[handleDeletePhotoFromRecord] ⚠️ 無法確定要刪除的 Drive 文件名，photoField: ${photoField}`);
+        return createJsonResponse({
+            status: 'warning', // 或 'success' 如果試算表已清除
+            message: `試算表欄位已清除，但無法確定 Drive 文件名。`
+        });
+    }
+
+    Logger.log(`[handleDeletePhotoFromRecord] 準備從 Drive 刪除文件: ${filenameToDelete}`);
+    const folder = DriveApp.getFolderById('1js6n9EOFaiN1YrPKIgR3-_d-Gc5b8Lma'); // 確保這是正確的 Folder ID
+    const files = folder.getFilesByName(filenameToDelete);
+    let fileDeleted = false;
+
+    while (files.hasNext()) {
+      const file = files.next();
+      file.setTrashed(true);
+      fileDeleted = true;
+      Logger.log(`[handleDeletePhotoFromRecord] ✅ 已將 Drive 文件 ${file.getName()} (ID: ${file.getId()}) 移至垃圾桶`);
+    }
+
+    if (foundRow === -1 && !fileDeleted) {
+        return createJsonResponse({ status: 'error', message: `找不到對應資料 (key: ${key}) 且 Drive 中未找到文件 ${filenameToDelete}` });
+    }
+
+    return createJsonResponse({
+      status: 'success',
+      message: (foundRow !== -1 ? '試算表欄位已清除。' : `試算表中未找到 key: ${key}。`) +
+               (fileDeleted ? `Drive 文件 ${filenameToDelete} 已刪除。` : (filenameToDelete ? `Drive 中未找到文件 ${filenameToDelete}。` : ''))
+    });
+
+  } catch (err) {
+    Logger.log('[handleDeletePhotoFromRecord] ❌ 執行時發生錯誤: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '刪除照片過程中發生錯誤: ' + err.message });
+  }
+}
+
+
+// GAS - handleGenerateShareUrl (如果分享表在各自建案的 ssId 下)
+function handleGenerateShareUrl(payload, ssId) {
+  const unitId = payload.unitId;
+  const projectName = payload.projectName;
+
+  Logger.log(`[handleGenerateShareUrl] Received unitId: ${unitId}, projectName: ${projectName}, ssId: ${ssId}`);
+
+  if (!unitId) { /* ... */ }
+  if (!projectName) { /* ... */ }
+  if (!ssId) { // 現在 ssId 至關重要
+    Logger.log('[handleGenerateShareUrl] ❌ Invalid ssId. Cannot open project-specific share sheet.');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤 (無法定位建案資料表)' });
+  }
+
+  try {
+    const projectSpreadsheet = SpreadsheetApp.openById(ssId); // ✅ 使用傳入的 ssId 打開建案試算表
+    const sheet = projectSpreadsheet.getSheetByName('驗屋分享網址'); // ✅ 從該建案試算表中獲取工作表
+
+    if (!sheet) {
+      Logger.log(`[handleGenerateShareUrl] ❌ "驗屋分享網址" sheet not found in spreadsheet with ID: ${ssId}`);
+      return createJsonResponse({ status: 'error', message: `建案 ${projectName} 配置錯誤：找不到分享資料表。` });
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+
+    // 戶別和 Token 列的索引 (projectName 列可能就不再需要了，因為表本身就是特定建案的)
+    const unitIdColIndex = header.indexOf('戶別');
+    const tokenColIndex = header.indexOf('Token');
+    // const projectNameColIndex = header.indexOf('建案名稱'); // 如果表是建案特定的，這一列可以省略
+
+    if (unitIdColIndex === -1 || tokenColIndex === -1 ) {
+        Logger.log(`[handleGenerateShareUrl] ❌ "驗屋分享網址" 表頭配置錯誤 in ssId ${ssId}.`);
+        return createJsonResponse({ status: 'error', message: '分享資料表表頭配置不正確。' });
+    }
+
+    // 1️⃣ 檢查是否已有對應該 unitId 的 token (在此建案的表中)
+    for (let i = 1; i < data.length; i++) {
+      const rowUnitId = data[i][unitIdColIndex];
+      const existingToken = data[i][tokenColIndex];
+      // const rowProjectName = data[i][projectNameColIndex]; // 如果表中仍有此列
+
+      // 如果表是建案特定的，則不再需要比較 projectName
+      if (rowUnitId === unitId && existingToken) {
+        Logger.log(`[handleGenerateShareUrl] ✅ Found existing token for unitId: ${unitId} in project: ${projectName}`);
+        const encodedProjectName = encodeURIComponent(projectName); // URL 中仍然需要 projectName
+        const url = `https://airrick1985.github.io/anxi-report/#/report?u=${unitId}&t=${existingToken}&p=${encodedProjectName}`;
+        return createJsonResponse({ status: 'success', url });
+      }
+    }
+
+    // 2️⃣ 沒有就產生新 token
+    const token = generateRandomToken(12);
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+
+    const newRowData = [];
+    newRowData[unitIdColIndex] = unitId;
+    newRowData[tokenColIndex] = token;
+    // if (projectNameColIndex !== -1) newRowData[projectNameColIndex] = projectName; // 如果表中仍有此列
+    const timestampColIndex = header.indexOf('建立時間');
+    if (timestampColIndex !== -1) newRowData[timestampColIndex] = now;
+
+    for (let k = 0; k < header.length; k++) {
+        if (newRowData[k] === undefined) newRowData[k] = '';
+    }
+    sheet.appendRow(newRowData);
+    Logger.log(`[handleGenerateShareUrl] ✅ Generated new token for unitId: ${unitId} in project: ${projectName}. Appended to sheet in ssId ${ssId}.`);
+
+    const encodedProjectNameForNewUrl = encodeURIComponent(projectName);
+    const newUrl = `https://airrick1985.github.io/anxi-report/#/report?u=${unitId}&t=${token}&p=${encodedProjectNameForNewUrl}`;
+    return createJsonResponse({ status: 'success', url: newUrl });
+
+  } catch (err) {
+    Logger.log('[handleGenerateShareUrl] ❌ Error: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '產生分享連結時發生錯誤: ' + err.message });
+  }
+}
+
+
+function generateRandomToken(length) {
+  let result = '';
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const charactersLength = characters.length;
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+
+
+function formatDateTime(value) {
+  if (value instanceof Date) {
+    const yyyy = value.getFullYear();
+    const mm = String(value.getMonth() + 1).padStart(2, '0');
+    const dd = String(value.getDate()).padStart(2, '0');
+    const hh = String(value.getHours()).padStart(2, '0');
+    const mi = String(value.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+  return value || '';
+}
+
+function handleEditInspectionRecordWithPhotos(payload ,ssId) {
+  const sheet = SpreadsheetApp.openById(ssId).getSheetByName('驗屋紀錄');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0]; // 第一列為表頭
+  const { key } = payload;
+
+  if (!key) return createJsonResponse({ status: 'error', message: '缺少 key 參數' });
+
+  // 把欄位位置建立對照表
+  const colMap = {};
+  [
+    '驗屋日期', '驗屋階段', '驗屋人', '產權人', '戶別', '檢查區域', '分類', '細項',
+    '檢查狀態', '缺失等級', '檢查說明', '檢修時間', '檢修狀態', '檢修說明',
+    '缺失照片1', '缺失照片2', '缺失照片3', '缺失照片4',
+    '檢修照片1', '檢修照片2', '檢修照片3', '檢修照片4'
+  ].forEach(field => {
+    colMap[field] = header.indexOf(field);
+  });
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][header.indexOf('KEY')] === key) {
+      const rowIdx = i + 1;
+
+      // 主要欄位寫入
+      if (colMap['驗屋日期'] !== -1) sheet.getRange(rowIdx, colMap['驗屋日期'] + 1).setValue(payload.inspectionDate || '');
+      if (colMap['驗屋階段'] !== -1) sheet.getRange(rowIdx, colMap['驗屋階段'] + 1).setValue(payload.inspectionStage || '');
+      if (colMap['驗屋人'] !== -1)   sheet.getRange(rowIdx, colMap['驗屋人'] + 1).setValue(payload.inspector || '');
+      if (colMap['產權人'] !== -1)   sheet.getRange(rowIdx, colMap['產權人'] + 1).setValue(payload.owner || '');
+      if (colMap['戶別'] !== -1)     sheet.getRange(rowIdx, colMap['戶別'] + 1).setValue(payload.unit || '');
+      if (colMap['檢查區域'] !== -1) sheet.getRange(rowIdx, colMap['檢查區域'] + 1).setValue(payload.area || '');
+      if (colMap['分類'] !== -1)     sheet.getRange(rowIdx, colMap['分類'] + 1).setValue(payload.category || '');
+      if (colMap['細項'] !== -1)     sheet.getRange(rowIdx, colMap['細項'] + 1).setValue(payload.subcategory || '');
+      if (colMap['檢查狀態'] !== -1) sheet.getRange(rowIdx, colMap['檢查狀態'] + 1).setValue(payload.inspectionStatus || '');
+      if (colMap['缺失等級'] !== -1) sheet.getRange(rowIdx, colMap['缺失等級'] + 1).setValue(payload.defectLevel || '');
+      if (colMap['檢查說明'] !== -1) sheet.getRange(rowIdx, colMap['檢查說明'] + 1).setValue(payload.description || '');
+      if (colMap['檢修時間'] !== -1) sheet.getRange(rowIdx, colMap['檢修時間'] + 1).setValue(payload.repairDate || '');
+      if (colMap['檢修狀態'] !== -1) sheet.getRange(rowIdx, colMap['檢修狀態'] + 1).setValue(payload.repairStatus || '');
+      if (colMap['檢修說明'] !== -1) sheet.getRange(rowIdx, colMap['檢修說明'] + 1).setValue(payload.repairDescription || '');
+
+      // 照片寫入（payload.photo1 ~ photo4）
+      for (let j = 1; j <= 4; j++) {
+        const label = `缺失照片${j}`;
+        const val = payload[`photo${j}`] || '';
+        if (colMap[label] !== -1) sheet.getRange(rowIdx, colMap[label] + 1).setValue(val);
+      }
+
+      // 檢修照片寫入（payload.defectPhoto1 ~ 4）
+      for (let j = 1; j <= 4; j++) {
+        const label = `檢修照片${j}`;
+        const val = payload[`defectPhoto${j}`] || '';
+        if (colMap[label] !== -1) sheet.getRange(rowIdx, colMap[label] + 1).setValue(val);
+      }
+
+      return createJsonResponse({ status: 'success', message: '驗屋紀錄已更新（含檢修照片）' });
+    }
+  }
+
+  return createJsonResponse({ status: 'error', message: '找不到對應驗屋紀錄（key 不存在）' });
+}
+
+// ✅ 1. GAS：簽名圖上傳
+function handleUploadSignature({ filename, base64 }) {
+  if (!filename || !base64) return createJsonResponse({ status: 'error', message: '缺少參數' });
+  try {
+    const folder = DriveApp.getFolderById('15Y3URN9S-0e_OrQdufDNFUrGxkQitNKZ');
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/png', filename);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return createJsonResponse({ status: 'success', url: file.getUrl(), id: file.getId(), name: file.getName() });
+  } catch (err) {
+    return createJsonResponse({ status: 'error', message: '上傳簽名圖失敗: ' + err });
+  }
+}
+
+
+// ✅ 2. GAS：寫入確認驗屋紀錄 + 更新驗屋紀錄欄位
+// GAS - handleConfirmInspection
+function handleConfirmInspection(payload, ssId) { // ✅ 接收 payload 和 ssId
+  const { unitId, owner, phone, email, signatureUrl } = payload; // 從 payload 解構
+
+  Logger.log(`[handleConfirmInspection] Received unitId: ${unitId}, owner: ${owner}, phone: ${phone}, email: ${email}, signatureUrl: ${signatureUrl}, ssId: ${ssId}`);
+
+  if (!unitId || !owner || !phone || !email || !signatureUrl) {
+    Logger.log('[handleConfirmInspection] ❌ Missing parameters.');
+    return createJsonResponse({ status: 'error', message: '參數不完整 (unitId, owner, phone, email, or signatureUrl missing)' });
+  }
+  if (!ssId) {
+    Logger.log('[handleConfirmInspection] ❌ Invalid ssId.');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤：無法定位建案資料表 (ssId invalid for confirm_inspection)。' });
+  }
+
+  try {
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss'); // 使用 Session.getScriptTimeZone() 更佳
+    const projectSpreadsheet = SpreadsheetApp.openById(ssId); // ✅ 使用傳入的 ssId
+
+    // ✅ 寫入「確認驗屋紀錄」
+    const confirmRecordSheetName = '確認驗屋紀錄'; // 將表名定義為常量
+    const confirmSheet = projectSpreadsheet.getSheetByName(confirmRecordSheetName);
+    if (!confirmSheet) {
+      Logger.log(`[handleConfirmInspection] ❌ Sheet "${confirmRecordSheetName}" not found in ssId: ${ssId}`);
+      return createJsonResponse({ status: 'error', message: `系統配置錯誤：找不到 "${confirmRecordSheetName}" 資料表。` });
+    }
+    confirmSheet.appendRow([now, unitId, owner, phone, email, signatureUrl]);
+    Logger.log(`[handleConfirmInspection] ✅ Appended to "${confirmRecordSheetName}" sheet.`);
+
+    // ✅ 更新「驗屋紀錄」表格中的「產權人確認」欄位為 Y
+    const inspectionRecordSheetName = '驗屋紀錄'; // 將表名定義為常量
+    const recordSheet = projectSpreadsheet.getSheetByName(inspectionRecordSheetName);
+    if (!recordSheet) {
+      Logger.log(`[handleConfirmInspection] ❌ Sheet "${inspectionRecordSheetName}" not found in ssId: ${ssId}`);
+      // 即使這個表找不到，上面的 appendRow 可能已經成功，所以這裡可以考慮返回一個警告或部分成功的消息
+      return createJsonResponse({ status: 'warning', message: `確認記錄已寫入，但找不到 "${inspectionRecordSheetName}" 資料表以更新狀態。` });
+    }
+
+    const data = recordSheet.getDataRange().getValues();
+    if (data.length === 0) {
+        Logger.log(`[handleConfirmInspection] ⚠️ Sheet "${inspectionRecordSheetName}" is empty, cannot update status.`);
+        return createJsonResponse({ status: 'success', message: '已完成確認紀錄 (但驗屋紀錄表為空，未更新狀態)。' });
+    }
+    const header = data[0];
+    const unitColName = '戶別';
+    const ownerConfirmColName = '產權人確認'; // 確認你的欄位名
+
+    const unitIndex = header.indexOf(unitColName);
+    const confirmIndex = header.indexOf(ownerConfirmColName);
+
+    if (unitIndex === -1) {
+      Logger.log(`[handleConfirmInspection] ❌ Column "${unitColName}" not found in "${inspectionRecordSheetName}" header.`);
+      return createJsonResponse({ status: 'warning', message: `確認記錄已寫入，但 "${inspectionRecordSheetName}" 表缺少 "${unitColName}" 欄。` });
+    }
+    if (confirmIndex === -1) {
+      Logger.log(`[handleConfirmInspection] ❌ Column "${ownerConfirmColName}" not found in "${inspectionRecordSheetName}" header.`);
+      return createJsonResponse({ status: 'warning', message: `確認記錄已寫入，但 "${inspectionRecordSheetName}" 表缺少 "${ownerConfirmColName}" 欄。` });
+    }
+
+    let updated = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][unitIndex] === unitId) {
+        recordSheet.getRange(i + 1, confirmIndex + 1).setValue('Y'); // 或者 true
+        updated = true;
+        Logger.log(`[handleConfirmInspection] ✅ Updated "${ownerConfirmColName}" to "Y" for unitId: ${unitId} in "${inspectionRecordSheetName}" sheet.`);
+        // 如果一個戶別只應該有一條主記錄被標記，可以在這裡 break
+        // break;
+      }
+    }
+    if (!updated && data.length > 1) { // data.length > 1 確保不是只有表頭
+        Logger.log(`[handleConfirmInspection] ⚠️ UnitId "${unitId}" not found in "${inspectionRecordSheetName}" sheet to update status.`);
+    }
+
+    return createJsonResponse({ status: 'success', message: '已完成確認紀錄。' + (!updated && data.length > 1 ? ` (但未在驗屋紀錄表中找到戶別 ${unitId} 更新狀態)` : '') });
+
+  } catch (err) {
+    Logger.log('[handleConfirmInspection] ❌ Error: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '寫入確認紀錄時發生錯誤: ' + err.message });
+  }
+}
+
+function handleGenerateInspectionPdf(payload, ssId) { // payload 包含 unitId, overwrite
+  const { unitId, overwrite } = payload; // 從 payload 解構
+
+  Logger.log(`[handleGenerateInspectionPdf] Received unitId: ${unitId}, overwrite: ${overwrite}, ssId: ${ssId}`);
+
+  if (!unitId) {
+    Logger.log('[handleGenerateInspectionPdf] ❌ Missing unitId parameter.');
+    return createJsonResponse({ status: 'error', message: '缺少 unitId 參數' });
+  }
+  if (!ssId) {
+    Logger.log('[handleGenerateInspectionPdf] ❌ Invalid ssId.');
+    return createJsonResponse({ status: 'error', message: '系統內部錯誤：無法定位建案資料表 (ssId invalid for generate_inspection_pdf)。' });
+  }
+
+  try {
+    // ✅ 將 ssId 傳遞給 createPdfFromTemplate
+    const result = createPdfFromTemplate(unitId, overwrite || false, ssId); // 確保 overwrite 有默認值
+    return createJsonResponse(result);
+  } catch (err) {
+    Logger.log('[handleGenerateInspectionPdf] ❌ Error generating PDF: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '產出 PDF 錯誤: ' + err.message });
+  }
+}
+
+
+
+
+function handleGetProjectList(payload) {
+  Logger.log("[handleGetProjectList] Called with payload: " + JSON.stringify(payload));
+  const userKey = payload.key; // User's phone number
+
+  if (!userKey) {
+    return createJsonResponse({ status: 'error', message: 'User key not provided for getProjectList' });
+  }
+
+  const userSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料'); // Assuming FIXED_ACCOUNT_SHEET_ID is defined
+  const userData = userSheet.getDataRange().getValues();
+  const userHeader = userData[0];
+  const userPhoneIndex = userHeader.indexOf('手機號碼');
+  const userProjectPermissionsIndex = userHeader.indexOf('建案權限');
+
+  if (userPhoneIndex === -1 || userProjectPermissionsIndex === -1) {
+    return createJsonResponse({ status: 'error', message: 'Required columns (手機號碼 or 建案權限) not found in 用戶資料 sheet.' });
+  }
+
+  let projects = [];
+  let foundUser = false;
+  for (let i = 1; i < userData.length; i++) {
+    if (userData[i][userPhoneIndex] === userKey) {
+      foundUser = true;
+      const permissionsString = userData[i][userProjectPermissionsIndex];
+      if (permissionsString && typeof permissionsString === 'string') {
+        const projectNames = permissionsString.split(',').map(p => p.trim()).filter(p => p);
+        // Format for v-select: { text: 'Name', value: 'Name' }
+        projects = projectNames.map(name => ({ text: name, value: name }));
+      }
+      Logger.log("[handleGetProjectList] User " + userKey + " has permissions: " + permissionsString + ", formatted projects: " + JSON.stringify(projects));
+      break;
+    }
+  }
+
+  if (!foundUser) {
+    Logger.log("[handleGetProjectList] User key " + userKey + " not found in 用戶資料.");
+    // Return empty list or error, depending on desired behavior
+    return createJsonResponse({ status: 'success', projects: [] }); // Or status: 'error', message: 'User not found'
+  }
+
+  return createJsonResponse({ status: 'success', projects: projects });
+}
+
+
+
+
+
+
+
+// --- 輔助函數 (確保已定義) ---
+function writeToSheetLog(level, functionName, message, details) {
+  // (函數實現如前)
+  try {
+    const spreadsheet = SpreadsheetApp.openById(LOG_SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName(LOG_SHEET_NAME);
+    if (!sheet) {
+      console.error(`Log sheet "${LOG_SHEET_NAME}" not found. Logging to Logger.log.`);
+      Logger.log(`[${level}] ${functionName}: ${message} ${details ? JSON.stringify(details) : ''}`);
+      return;
+    }
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss:SSS');
+    const detailsString = details ? JSON.stringify(details) : '';
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['Timestamp', 'Level', 'Function', 'Message', 'Details']);
+    }
+    sheet.appendRow([timestamp, level, functionName, message, detailsString]);
+  } catch (e) {
+    console.error(`Failed to write to sheet log: ${e.toString()}. Logging to Logger.log.`);
+    Logger.log(`[${level} - SHEET_LOG_FALLBACK] ${functionName}: ${message} ${details ? JSON.stringify(details) : ''}`);
+  }
+}
+
+// --- 全局日誌配置 (如果使用 writeToSheetLog) ---
+const LOG_SPREADSHEET_ID = '1QPNfsgbE6gu19zr4HuHZDu04reGki86zq0_J9vsvV_U'; // 🔴 替換為你的日誌 Spreadsheet ID
+const LOG_SHEET_NAME = 'log'; // 🔴 替換為你的日誌工作表名稱
+
+/**
+ * 將日誌信息附加到指定的 Google Sheet。
+ * @param {string} level 日誌級別 (例如 "INFO", "ERROR", "DEBUG", "WARN").
+ * @param {string} functionName 產生此日誌的函數名稱。
+ * @param {string} message 日誌消息。
+ * @param {object} [details] (可選) 包含額外詳細信息的對象，會被轉換為 JSON 字符串。
+ */
+function writeToSheetLog(level, functionName, message, details) {
+  try {
+    // 嘗試打開日誌工作表，如果失敗則不執行任何操作，避免影響主流程
+    // 你也可以選擇在失敗時回退到 Logger.log
+    const spreadsheet = SpreadsheetApp.openById(LOG_SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName(LOG_SHEET_NAME);
+
+    if (!sheet) {
+      // 如果工作表不存在，可以選擇創建它或僅記錄到 Logger
+      console.error(`Log sheet "${LOG_SHEET_NAME}" not found in spreadsheet ID "${LOG_SPREADSHEET_ID}". Logging to Logger.log instead.`);
+      Logger.log(`[${level}] ${functionName}: ${message} ${details ? JSON.stringify(details) : ''}`);
+      return;
+    }
+
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss:SSS');
+    const detailsString = details ? JSON.stringify(details) : '';
+
+    // 確保表頭存在，如果不存在則添加
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['Timestamp', 'Level', 'Function', 'Message', 'Details']);
+    }
+
+    sheet.appendRow([timestamp, level, functionName, message, detailsString]);
+
+  } catch (e) {
+    // 如果寫入工作表失敗，回退到 Logger.log，避免日誌丟失或導致主流程失敗
+    console.error(`Failed to write to sheet log: ${e.toString()}. Logging to Logger.log instead.`);
+    Logger.log(`[${level} - SHEET_LOG_FALLBACK] ${functionName}: ${message} ${details ? JSON.stringify(details) : ''}`);
+  }
+}
+
+
+
+function formatDriveUrlForEmbed(originalUrl, type = "image") {
+  const FUNCTION_NAME = 'formatDriveUrlForEmbed';
+  if (!originalUrl || typeof originalUrl !== 'string' || originalUrl.trim() === '') {
+    Logger.log(`[${FUNCTION_NAME} - ${type}] Input URL is invalid or empty: '${originalUrl}'`);
+    return '';
+  }
+  if (originalUrl.includes('drive.google.com/uc?export=view&id=')) return originalUrl;
+  const patterns = [ /\/file\/d\/([a-zA-Z0-9_-]{25,})\//i, /id=([a-zA-Z0-9_-]{25,})/i, /\/d\/([a-zA-Z0-9_-]{25,})/i, /uc\?id=([a-zA-Z0-9_-]{25,})/i ];
+  for (const pattern of patterns) {
+    const match = originalUrl.match(pattern);
+    if (match && match[1]) {
+      const fileId = match[1];
+      const convertedUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+      Logger.log(`[${FUNCTION_NAME} - ${type}] Converted URL: ${convertedUrl} from Original: ${originalUrl} using pattern: ${pattern.toString()}`);
+      return convertedUrl;
+    }
+  }
+  Logger.log(`[${FUNCTION_NAME} - ${type}] Could not convert URL: ${originalUrl}. No pattern matched. Returning original URL.`);
+  return originalUrl;
+}
+
+const SLIDE_TEMPLATE_ID = '1KV2hkyd6axhFQWBoMdCWpGlvl-ZUf-igRNCY_PlW188'; // 你的 Google Slides 模板 ID
+const RECORD_DETAIL_TEMPLATE_SLIDE_IDENTIFIER = "驗屋紀錄內頁"; // 用於標識記錄模板幻燈片的文本 (在形狀內或備註中)
+const PHOTO_SHAPE_ALT_TEXT_PREFIX = "缺失照片"; // 照片形狀 Alt Text (說明) 的前綴
+const SIGNATURE_SHAPE_ALT_TEXT = "簽名欄位"; // 假設封面簽名形狀的 Alt Text
+
+/**
+ * 從 Google Slides 模板創建包含封面和所有驗屋記錄詳情的 PDF。
+ * @param {string} unitId 要生成報告的戶別 ID。
+ * @param {boolean} [overwrite=false] 如果目標文件夾中已存在同名 PDF，是否覆蓋。
+ * @param {string} ssId 包含建案數據 (戶別資料, 確認驗屋紀錄, 驗屋紀錄) 的 Spreadsheet ID。
+ * @return {object} 包含 status 和 url (如果成功) 或 message (如果失敗) 的對象。
+ */
+function createPdfFromTemplate(unitId, overwrite = false, ssId) {
+  const FUNCTION_NAME = 'createPdfFromTemplate_UsingSlides';
+  Logger.log(`--- ${FUNCTION_NAME} Start --- Unit: ${unitId}, Overwrite: ${overwrite}, DataSource SsId: ${ssId}`);
+  let tempPresentationFileId = null;
+
+  try {
+    // --- 1. 獲取數據 ---
+    const projectDataSpreadsheet = SpreadsheetApp.openById(ssId);
+    const folderSheet = projectDataSpreadsheet.getSheetByName('戶別資料');
+    const confirmSheet = projectDataSpreadsheet.getSheetByName('確認驗屋紀錄');
+    const inspectionSheet = projectDataSpreadsheet.getSheetByName('驗屋紀錄');
+    const pdfLogSheet = projectDataSpreadsheet.getSheetByName('驗屋紀錄PDF');
+
+    if (!folderSheet || !confirmSheet || !inspectionSheet || !pdfLogSheet) {
+        const missing = [!folderSheet && "戶別資料",!confirmSheet && "確認驗屋紀錄",!inspectionSheet && "驗屋紀錄",!pdfLogSheet && "驗屋紀錄PDF"].filter(Boolean).join(', ');
+        throw new Error(`數據源 Spreadsheet (ID: ${ssId}) 中找不到必要的工作表: ${missing}`);
+    }
+
+    const folderDataValues = folderSheet.getDataRange().getValues();
+    if (folderDataValues.length < 1) throw new Error('工作表 "戶別資料" 為空。');
+    const folderHeader = folderDataValues[0];
+    const getFIndex = (label) => { const i = folderHeader.indexOf(label); if (i === -1) throw new Error(`"戶別資料" 表頭找不到: "${label}"`); return i; };
+    const houseDataRow = folderDataValues.slice(1).find(r => r[getFIndex('戶別')] === unitId);
+    if (!houseDataRow) throw new Error(`在 "戶別資料" 中找不到戶別: ${unitId}`);
+
+    const building = houseDataRow[getFIndex('棟別')] || '';
+    // unitId 參數即為戶別
+    const parking = houseDataRow[getFIndex('車位')] || '';
+    const address = houseDataRow[getFIndex('門牌')] || '';
+    const owner = houseDataRow[getFIndex('買方姓名')] || '';
+    const phone = houseDataRow[getFIndex('電話')] || '';
+    const email = houseDataRow[getFIndex('EMAIL')] || '';
+    const appointmentDate = formatSheetDate(houseDataRow[getFIndex('狀態日期')]);
+    const appointmentTime = houseDataRow[getFIndex('狀態時段')] || '';
+    const targetFolderUrl = houseDataRow[getFIndex('驗屋文件')];
+
+    if (!targetFolderUrl) throw new Error(`戶別 ${unitId} 的 "驗屋文件" 資料夾網址未設定。`);
+    const folderIdMatch = targetFolderUrl.match(/[-\w]{25,}/);
+    const targetFolderId = folderIdMatch ? folderIdMatch[0] : null;
+    if (!targetFolderId) throw new Error(`無法從 "${targetFolderUrl}" 中提取有效的 Google Drive 資料夾 ID。`);
+    const outputFolder = DriveApp.getFolderById(targetFolderId);
+
+   let signatureUrl = ''; // 初始化為空
+    // const mockSignatureUrl = null; // 在生產函數中，我們不應該依賴 mock
+
+    // 從 "確認驗屋紀錄" 工作表獲取最新的簽名 URL
+    const confirmValues = confirmSheet.getDataRange().getValues();
+    if (confirmValues.length > 1) { // 確保至少有表頭和一行數據
+      const confirmHeader = confirmValues[0];
+      const getCIndex = (label) => {
+          const i = confirmHeader.indexOf(label);
+          // 如果找不到關鍵列，則記錄警告，但不拋出錯誤，因為簽名可能是可選的
+          if (i === -1 && (label === '戶別' || label === '簽名圖檔URL' || label === '建立時間')) {
+              Logger.log(`[${FUNCTION_NAME}] Warning: "確認驗屋紀錄" 表頭找不到關鍵欄位: "${label}". 將無法獲取簽名。`);
+          }
+          return i;
+      };
+
+      const unitIdColConfirm = getCIndex('戶別');
+      const signatureUrlColConfirm = getCIndex('簽名圖檔URL');
+      const createdAtColConfirm = getCIndex('建立時間'); // 假設表頭是 '建立時間'
+
+      if (unitIdColConfirm !== -1 && signatureUrlColConfirm !== -1 && createdAtColConfirm !== -1) {
+        const confirmDataForUnit = confirmValues
+          .slice(1) // 跳過表頭
+          .filter(r => r[unitIdColConfirm] === unitId && r[signatureUrlColConfirm] && String(r[signatureUrlColConfirm]).trim() !== '') // 篩選出當前戶別且有簽名URL的記錄
+          .map(r => {
+            let createdAtDate = null;
+            try {
+              createdAtDate = new Date(r[createdAtColConfirm]); // 將建立時間轉換為 Date 對象以便排序
+              if (isNaN(createdAtDate.valueOf())) createdAtDate = null; // 無效日期處理
+            } catch (e) {
+              Logger.log(`[${FUNCTION_NAME}] Warning: Could not parse date "${r[createdAtColConfirm]}" for signature record. Unit: ${unitId}`);
+            }
+            return {
+              url: r[signatureUrlColConfirm],
+              createdAt: createdAtDate
+            };
+          })
+          .filter(r => r.createdAt); // 只保留有有效建立時間的記錄
+
+        if (confirmDataForUnit.length > 0) {
+          // 按建立時間降序排序，最新的在最前面
+          confirmDataForUnit.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          const latestSignatureRecord = confirmDataForUnit[0];
+          signatureUrl = formatDriveUrlForEmbed(latestSignatureRecord.url, "signature_from_sheet"); // 使用輔助函數轉換 URL
+          Logger.log(`[${FUNCTION_NAME}] Found latest signature for unit ${unitId} from: ${latestSignatureRecord.createdAt.toISOString()}, Original URL: ${latestSignatureRecord.url}, Processed URL: ${signatureUrl}`);
+        } else {
+          Logger.log(`[${FUNCTION_NAME}] No valid signature records with creation date found for unit ${unitId}.`);
+        }
+      } else {
+        Logger.log(`[${FUNCTION_NAME}] "確認驗屋紀錄" 表缺少必要的列 (戶別, 簽名圖檔URL, 建立時間) 或表頭不匹配，無法獲取簽名。`);
+      }
+    } else {
+      Logger.log(`[${FUNCTION_NAME}] "確認驗屋紀錄" 工作表為空或只有表頭，無法獲取簽名。`);
+    }
+    
+    var records = [];
+    const inspectionDataValues = inspectionSheet.getDataRange().getValues();
+    if (inspectionDataValues.length > 1) {
+        const inspectHeader = inspectionDataValues[0];
+        const getIIndex = (label) => { const i = inspectHeader.indexOf(label); if (i === -1) throw new Error(`"驗屋紀錄" 表頭找不到: "${label}"`); return i; };
+        const dataRows = inspectionDataValues.slice(1).filter(r => r[getIIndex('戶別')] === unitId && r[getIIndex('已刪除')] !== 'Y');
+        records = dataRows.map((row, i) => ({
+            index: i + 1, unit: getIIndex('戶別') > -1 ? (row[getIIndex('戶別')] || '') : unitId, ownerFromRecord: getIIndex('產權人') > -1 ? (row[getIIndex('產權人')] || '') : owner, // 避免與封面的 owner 衝突
+            inspectionStage: getIIndex('驗屋階段') > -1 ? (row[getIIndex('驗屋階段')] || '') : '',
+            inspectionDate: formatSheetDate(getIIndex('驗屋日期') > -1 ? row[getIIndex('驗屋日期')] : ''),
+            area: getIIndex('檢查區域') > -1 ? (row[getIIndex('檢查區域')] || '') : '',
+            category: getIIndex('分類') > -1 ? (row[getIIndex('分類')] || '') : '',
+            subcategory: getIIndex('細項') > -1 ? (row[getIIndex('細項')] || '') : '',
+            inspectionStatus: getIIndex('檢查狀態') > -1 ? (row[getIIndex('檢查狀態')] || '') : '',
+            description: getIIndex('檢查說明') > -1 ? (row[getIIndex('檢查說明')] || '') : '',
+            photo1: formatDriveUrlForEmbed(getIIndex('缺失照片1') > -1 ? row[getIIndex('缺失照片1')] : '', `r${i+1}p1`),
+            photo2: formatDriveUrlForEmbed(getIIndex('缺失照片2') > -1 ? row[getIIndex('缺失照片2')] : '', `r${i+1}p2`),
+            photo3: formatDriveUrlForEmbed(getIIndex('缺失照片3') > -1 ? row[getIIndex('缺失照片3')] : '', `r${i+1}p3`),
+            photo4: formatDriveUrlForEmbed(getIIndex('缺失照片4') > -1 ? row[getIIndex('缺失照片4')] : '', `r${i+1}p4`),
+        }));
+    }
+    Logger.log(`Fetched ${records.length} inspection records for PDF generation.`);
+
+    // --- 2. 複製模板演示文稿 ---
+    const nowForFile = new Date(); // 用於文件名和時間戳
+    const todayForFile = Utilities.formatDate(nowForFile, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    const tempPresentationName = `Temp_PDF_Slides_${unitId}_${nowForFile.getTime()}`;
+    const templateFile = DriveApp.getFileById(SLIDE_TEMPLATE_ID);
+    const tempPresentationFile = templateFile.makeCopy(tempPresentationName, DriveApp.getRootFolder());
+    tempPresentationFileId = tempPresentationFile.getId();
+    const presentation = SlidesApp.openById(tempPresentationFileId);
+    Logger.log(`Temporary presentation created: ${tempPresentationName} (ID: ${tempPresentationFileId})`);
+
+    // --- 3. 填充第一張封面幻燈片 ---
+    const coverSlide = presentation.getSlides()[0];
+    if (!coverSlide) throw new Error("模板中找不到封面幻燈片。");
+    const mainInfoPlaceholders = {
+      '{{building}}': building, '{{unit}}': unitId, '{{parking}}': parking, '{{address}}': address,
+      '{{owner}}': owner, '{{phone}}': phone, '{{email}}': email,
+      '{{appointmentDate}}': appointmentDate, '{{appointmentTime}}': appointmentTime
+    };
+    for (const ph in mainInfoPlaceholders) coverSlide.replaceAllText(ph, mainInfoPlaceholders[ph] || '');
+    if (signatureUrl) {
+      const shapes = coverSlide.getShapes(); let sigShape = null;
+      for (let i = 0; i < shapes.length; i++) { if (shapes[i].getDescription() === SIGNATURE_SHAPE_ALT_TEXT || shapes[i].getTitle() === SIGNATURE_SHAPE_ALT_TEXT) { sigShape = shapes[i]; break; } }
+      if (sigShape) {
+        const l = sigShape.getLeft(), t = sigShape.getTop(), w = sigShape.getWidth(), h = sigShape.getHeight();
+        sigShape.remove();
+        try {
+          const blob = UrlFetchApp.fetch(signatureUrl).getBlob(); const img = coverSlide.insertImage(blob, l, t, w, h);
+          const oW = img.getInherentWidth(), oH = img.getInherentHeight();
+          if (oW > 0 && oH > 0) { const sAR = w/h, iAR = oW/oH; let nW,nH; if(iAR > sAR){nW=w;nH=w/iAR;}else{nH=h;nW=h*iAR;} img.setWidth(nW);img.setHeight(nH); img.setLeft(l+(w-nW)/2);img.setTop(t+(h-nH)/2); }
+        } catch (e) { Logger.log(`Error inserting signature: ${e.message}`); /* coverSlide.insertTextBox('⚠ 簽名無法載入', l,t,w,h); */ }
+      } else { Logger.log(`Shape with AltText "${SIGNATURE_SHAPE_ALT_TEXT}" not found for signature.`); }
+    } else { /* 處理無簽名 */ }
+    Logger.log("Cover slide processed.");
+
+    // --- 4. 查找“記錄模板幻燈片” ---
+    let recordTemplateSlide = null;
+    let originalTemplateSlideIndex = -1;
+    const slides = presentation.getSlides();
+    for (let i = 0; i < slides.length; i++) {
+      const shapes = slides[i].getShapes();
+      for (let j = 0; j < shapes.length; j++) {
+        if (shapes[j].getText && shapes[j].getText().asString().trim() === RECORD_DETAIL_TEMPLATE_SLIDE_IDENTIFIER) {
+          recordTemplateSlide = slides[i]; originalTemplateSlideIndex = i; break;
+        }
+      }
+      if (recordTemplateSlide) break;
+    }
+    if (!recordTemplateSlide && records.length > 0) throw new Error(`模板中找不到標識為 "${RECORD_DETAIL_TEMPLATE_SLIDE_IDENTIFIER}" 的記錄詳情模板幻燈片。`);
+
+    // --- 5. 為每條記錄創建和填充詳情幻燈片 ---
+    if (recordTemplateSlide && records.length > 0) {
+      records.forEach((record, recIdx) => {
+        Logger.log(`Processing record ${record.index} for slide.`);
+        const newDetailSlide = recordTemplateSlide.duplicate(); // 新幻燈片會添加到末尾
+
+        newDetailSlide.replaceAllText('{{record_index}}', record.index.toString());
+        newDetailSlide.replaceAllText('{{unit}}', record.unit || unitId); // 優先用記錄中的，否則用封面的 unitId
+        newDetailSlide.replaceAllText('{{owner}}', record.ownerFromRecord || owner); // 優先用記錄中的，否則用封面的 owner
+        newDetailSlide.replaceAllText('{{record_inspectionStage}}', record.inspectionStage || '');
+        newDetailSlide.replaceAllText('{{record_inspectionDate}}', record.inspectionDate || '');
+        newDetailSlide.replaceAllText('{{record_area}}', record.area || '');
+        newDetailSlide.replaceAllText('{{record_category}}', record.category || '');
+        newDetailSlide.replaceAllText('{{record_subcategory}}', record.subcategory || '');
+        newDetailSlide.replaceAllText('{{record_inspectionStatus}}', record.inspectionStatus || '');
+        newDetailSlide.replaceAllText('{{record_description}}', record.description || '');
+
+        const recordPhotos = [record.photo1, record.photo2, record.photo3, record.photo4];
+        recordPhotos.forEach((photoUrl, photoIdx) => {
+          const photoShapeAltText = `${PHOTO_SHAPE_ALT_TEXT_PREFIX}${photoIdx + 1}`;
+          const shapesOnNewSlide = newDetailSlide.getShapes();
+          let targetPhotoShape = null;
+          for (let s = 0; s < shapesOnNewSlide.length; s++) {
+            if (shapesOnNewSlide[s].getDescription() === photoShapeAltText || shapesOnNewSlide[s].getTitle() === photoShapeAltText) {
+              targetPhotoShape = shapesOnNewSlide[s]; break;
+            }
+          }
+          if (targetPhotoShape) {
+            if (photoUrl) {
+              try {
+                const imageBlob = UrlFetchApp.fetch(photoUrl).getBlob();
+                const l=targetPhotoShape.getLeft(), t=targetPhotoShape.getTop(), w=targetPhotoShape.getWidth(), h=targetPhotoShape.getHeight();
+                targetPhotoShape.remove();
+                const image = newDetailSlide.insertImage(imageBlob, l, t, w, h);
+                const oW=image.getInherentWidth(), oH=image.getInherentHeight();
+                if(oW>0 && oH>0){const sAR=w/h, iAR=oW/oH; let nW,nH; if(iAR>sAR){nW=w;nH=w/iAR;}else{nH=h;nW=h*iAR;} image.setWidth(nW);image.setHeight(nH); image.setLeft(l+(w-nW)/2);image.setTop(t+(h-nH)/2);}
+              } catch (e) { Logger.log(`Error processing image for ${photoShapeAltText} (Rec ${record.index}): ${e.message}`); try{targetPhotoShape.getText().setText('⚠ 圖無法載入');}catch(e2){} }
+            } else { targetPhotoShape.remove(); }
+          } else { Logger.log(`Photo shape "${photoShapeAltText}" not found for record ${record.index}.`); }
+        });
+      });
+      if (originalTemplateSlideIndex !== -1 && presentation.getSlides().length > 1) {
+        presentation.getSlides()[originalTemplateSlideIndex].remove(); // 刪除原始模板幻燈片
+      }
+    } else if (records.length === 0 && recordTemplateSlide && presentation.getSlides().length > 1) {
+        recordTemplateSlide.remove(); // 如果沒有記錄，也刪除模板幻燈片
+    }
+
+    presentation.saveAndClose();
+    Logger.log(`All slides processed in temporary presentation.`);
+
+    // --- 6. 導出為 PDF ---
+    const pdfFileName = `${unitId}_${owner}_驗屋紀錄_${todayForFile}.pdf`;
+    Logger.log(`Attempting to export PDF: ${pdfFileName}`);
+    const pdfBlob = DriveApp.getFileById(tempPresentationFileId).getAs('application/pdf');
+    pdfBlob.setName(pdfFileName);
+
+    // 檢查 PDF 是否已存在於目標文件夾
+    const filesInOutputFolder = outputFolder.getFilesByName(pdfFileName);
+    if (filesInOutputFolder.hasNext()) {
+      if (!overwrite) {
+        const existingPdfUrl = filesInOutputFolder.next().getUrl();
+        Logger.log(`PDF "${pdfFileName}" already exists in target folder. Overwrite not set.`);
+        // 在 finally 中刪除臨時演示文稿
+        return { status: 'exists', message: `${pdfFileName} 已存在，是否覆蓋？`, url: existingPdfUrl };
+      }
+      Logger.log(`Overwriting existing PDF "${pdfFileName}" in target folder.`);
+      while (filesInOutputFolder.hasNext()) filesInOutputFolder.next().setTrashed(true);
+    }
+
+    const savedPdfFile = outputFolder.createFile(pdfBlob);
+    Logger.log(`SUCCESS: PDF "${pdfFileName}" generated. URL: ${savedPdfFile.getUrl()}`);
+    const timezone = Session.getScriptTimeZone();
+    const timestamp = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd HH:mm:ss');
+    pdfLogSheet.appendRow([timestamp, unitId, owner, email, savedPdfFile.getUrl()]);
+
+    return { status: 'success', url: savedPdfFile.getUrl() };
+
+  } catch (e) {
+    Logger.log(`ERROR in ${FUNCTION_NAME}: ${e.toString()} \nStack: ${e.stack}`);
+    throw e;
+  } finally {
+    if (tempPresentationFileId) {
+      try {
+        DriveApp.getFileById(tempPresentationFileId).setTrashed(true);
+        Logger.log(`Temporary Google Slides (ID: ${tempPresentationFileId}) deleted.`);
+      } catch (deleteError) {
+        Logger.log(`Failed to delete temporary Google Slides (ID: ${tempPresentationFileId}): ${deleteError.toString()}`);
+      }
+    }
+    Logger.log(`--- ${FUNCTION_NAME} Test Finished ---`);
+  }
+}
+
+
+function handleGetProjectsBySystemPermission(payload) {
+  const userKey = payload.key;
+  const systemName = payload.systemName; // 例如 "驗屋系統"
+
+  if (!userKey || !systemName) {
+    Logger.log('[handleGetProjectsBySystemPermission] ❌ Missing userKey or systemName.');
+    return createJsonResponse({ status: 'error', message: '缺少用戶識別碼或系統名稱參數。' });
+  }
+
+  Logger.log(`[handleGetProjectsBySystemPermission] UserKey: ${userKey}, SystemName: ${systemName}`);
+
+  try {
+    const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('權限管理');
+    if (!sheet) {
+      Logger.log('[handleGetProjectsBySystemPermission] ❌ "權限管理" sheet not found.');
+      return createJsonResponse({ status: 'error', message: '系統配置錯誤：找不到權限管理資料表。' });
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) { // 至少要有表頭和一行數據
+      Logger.log('[handleGetProjectsBySystemPermission] "權限管理" sheet has no data or only header.');
+      return createJsonResponse({ status: 'success', projects: [] });
+    }
+
+    const header = data[0];
+    const phoneIndex = header.indexOf('手機號碼');
+    const projectNameIndex = header.indexOf('建案名稱');
+    const systemFunctionIndex = header.indexOf('系統功能');
+    const permissionIndex = header.indexOf('權限');
+
+    if (phoneIndex === -1 || projectNameIndex === -1 || systemFunctionIndex === -1 || permissionIndex === -1) {
+      Logger.log('[handleGetProjectsBySystemPermission] ❌ "權限管理" sheet header misconfigured.');
+      return createJsonResponse({ status: 'error', message: '權限管理資料表表頭配置錯誤。' });
+    }
+
+    const allowedProjectNames = new Set(); // 使用 Set 確保建案名稱唯一
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[phoneIndex] === userKey &&
+          row[systemFunctionIndex] === systemName &&
+          String(row[permissionIndex]).toUpperCase() === 'Y') {
+        if (row[projectNameIndex]) {
+          allowedProjectNames.add(row[projectNameIndex]);
+        }
+      }
+    }
+
+    const projects = Array.from(allowedProjectNames).map(name => ({ text: name, value: name }));
+    Logger.log(`[handleGetProjectsBySystemPermission] ✅ Found ${projects.length} projects for ${userKey} in ${systemName}: ${JSON.stringify(projects)}`);
+    return createJsonResponse({ status: 'success', projects: projects });
+
+  } catch (err) {
+    Logger.log('[handleGetProjectsBySystemPermission] ❌ Error: ' + err.message + ' Stack: ' + err.stack);
+    return createJsonResponse({ status: 'error', message: '查詢系統建案權限時發生錯誤: ' + err.message });
+  }
+}
+
+function getSalesControlSheetId(projectName) {
+  Logger.log('[getSalesControlSheetId] 正在查找銷控表ID，建案: "' + projectName + '"');
+  try {
+    const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('建案選單');
+    if (!sheet) throw new Error('找不到 "建案選單" 工作表配置。');
+
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const nameIndex = headers.indexOf('建案名稱');
+    const idIndex = headers.indexOf('銷控SheetID'); 
+
+    if (nameIndex === -1 || idIndex === -1) {
+      throw new Error('"建案選單" 表頭配置不正確 (找不到 "建案名稱" 或 "銷控SheetID")。');
+    }
+
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+    const values = dataRange.getValues();
+
+    for (const row of values) {
+      if (row[nameIndex] === projectName) {
+        const foundSsId = String(row[idIndex] || '').trim();
+        if (!foundSsId) {
+          throw new Error(`建案 "${projectName}" 的銷控SheetID未設定或為空。`);
+        }
+        Logger.log(`[getSalesControlSheetId] ✅ 找到匹配! SheetID: "${foundSsId}"`);
+        return foundSsId;
+      }
+    }
+
+    throw new Error(`在 "建案選單" 中找不到建案名稱：${projectName}`);
+  } catch (err) {
+    Logger.log('[getSalesControlSheetId] 內部錯誤: ' + err.message);
+    throw err;
+  }
+}
+
+
+// 輔助函數：將工作表數據轉換為物件陣列
+function sheetDataToObjects(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const header = values[0];
+  return values.slice(1).map(row => {
+    const obj = {};
+    header.forEach((col, index) => {
+      if (col) obj[col] = row[index];
+    });
+    return obj;
+  });
+}
+
+function handleGetSalesControlData(payload) {
+  const { projectName } = payload;
+  if (!projectName) {
+    return createJsonResponse({ status: 'error', message: '缺少建案名稱 (projectName)。' });
+  }
+
+  try {
+    const ssId = getSalesControlSheetId(projectName);
+    const spreadsheet = SpreadsheetApp.openById(ssId);
+    const allData = {};
+ 
+    const sheetNames = ['銷控', '平面圖', '價格', '面積', '參數', '車位SLIDE','車位', '期款比例', '買方資料', '銷售人員', '買方其他資訊'];
+
+    sheetNames.forEach(name => {
+      const sheet = spreadsheet.getSheetByName(name);
+      if (sheet) {
+        allData[name] = sheetDataToObjects(sheet);
+      } else {
+        // 如果找不到某個工作表，也返回一個空陣列，避免前端出錯
+        writeToSheetLog('WARN', 'handleGetSalesControlData', `在建案 "${projectName}" (ssId: ${ssId}) 中找不到工作表: "${name}"`, {});
+        allData[name] = [];
+      }
+    });
+
+    return createJsonResponse({ status: 'success', data: allData });
+  } catch (err) {
+    // 使用詳細日誌記錄錯誤
+    writeToSheetLog('ERROR', 'handleGetSalesControlData', `獲取銷控資料時發生錯誤: ${err.message}`, { projectName, stack: err.stack });
+    return createJsonResponse({ status: 'error', message: '獲取銷控資料時發生錯誤: ' + err.message });
+  }
+}
+
+
+// 在你的 GAS 腳本中添加這個輔助函數
+function getEmbeddableDriveInfo(file) {
+  const fileId = file.getId();
+  const name = file.getName();
+  const mimeType = file.getMimeType();
+  let embedUrl = '';
+  let type = 'other';
+
+  if (mimeType.startsWith('image/')) {
+    // 圖片格式
+    type = 'image';
+    embedUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+  } else if (mimeType === MimeType.PDF) {
+    // PDF 格式
+    type = 'pdf';
+    embedUrl = `https://docs.google.com/gview?url=https://drive.google.com/uc?id=${fileId}&embedded=true`;
+  } else {
+    // 其他文件類型，提供一個標準的查看鏈接
+    embedUrl = file.getUrl();
+  }
+
+  return {
+    name: name,
+    embedUrl: embedUrl,
+    type: type,
+    originalUrl: file.getUrl() // 保留原始鏈接以備用
+  };
+}
+
+/**
+ * 根據建案名稱，獲取其所有的車位資料。
+ * @param {object} payload 包含 projectName 的請求體。
+ * @returns {ContentService.TextOutput} 包含車位資料陣列的 JSON 響應。
+ */
+function handleGetParkingList(payload) {
+  const { projectName } = payload;
+  if (!projectName) {
+    return createJsonResponse({ status: 'error', message: '獲取車位列表時缺少建案名稱 (projectName)。' });
+  }
+  Logger.log(`[handleGetParkingList] 正在為建案 "${projectName}" 獲取車位列表...`);
+
+  try {
+    // 使用我們已有的函數來獲取銷控專用的 Sheet ID
+    const ssId = getSalesControlSheetId(projectName);
+    const spreadsheet = SpreadsheetApp.openById(ssId);
+    const sheet = spreadsheet.getSheetByName('車位');
+
+    if (!sheet) {
+      Logger.log(`[handleGetParkingList] ⚠️ 在 Sheet ID ${ssId} 中找不到 "車位" 工作表，將返回空陣列。`);
+      return createJsonResponse({ status: 'success', data: [] });
+    }
+
+    // 重用 sheetDataToObjects 輔助函數將工作表數據轉換為物件陣列
+    const data = sheetDataToObjects(sheet);
+    Logger.log(`[handleGetParkingList] ✅ 成功讀取 "${projectName}" 的車位資料，共 ${data.length} 筆。`);
+    return createJsonResponse({ status: 'success', data: data });
+
+  } catch (err) {
+    Logger.log(`[handleGetParkingList] ❌ 執行時發生錯誤: ${err.message}`);
+    return createJsonResponse({ status: 'error', message: '獲取車位列表時發生錯誤: ' + err.message });
+  }
+}
+
+/**
+ * 獲取有權限的報價人員列表，並判斷當前用戶是否可編輯該列表。
+ * (使用 writeToSheetLog 進行詳細日誌記錄)
+ * @param {object} payload 包含 projectName 和 currentUserKey 的請求體。
+ * @returns {ContentService.TextOutput} 包含人員列表和編輯權限的 JSON 響應。
+ */
+function handleGetQuotePersonnelList(payload) {
+  const functionName = 'handleGetQuotePersonnelList';
+  // 記錄函數開始和傳入的參數
+  writeToSheetLog(`--- ${functionName} 開始 ---`, { payload }); 
+  
+  const { projectName, key: currentUserKey } = payload; 
+
+  if (!projectName || !currentUserKey) {
+    const errorMsg = '獲取報價人員時缺少建案名稱或當前用戶資訊。';
+    writeToSheetLog(`❌ ${functionName} 參數錯誤`, { error: errorMsg });
+     return createJsonResponse({ status: 'error', message: '獲取報價人員時缺少建案名稱或當前用戶資訊。' });
+  }
+
+  Logger.log(`接收到的 currentUserKey (來自 payload.key): "${currentUserKey}"`);
+
+  try {
+    const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+    if (!sheet) throw new Error('找不到 "用戶資料" 工作表。');
+
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    writeToSheetLog('工作表表頭讀取成功', { header });
+
+    // 獲取所有需要的欄位索引
+    const nameIndex = header.indexOf('NAME');
+    const phoneIndex = header.indexOf('手機號碼');
+    const projectPermissionIndex = header.indexOf('建案權限');
+    const functionPermissionIndex = header.indexOf('功能權限');
+    const canEditSaleMenuIndex = header.indexOf('報價系統銷售選單');
+
+    // 記錄每個表頭的查找結果
+    const headerIndexes = {
+      nameIndex, phoneIndex, projectPermissionIndex, 
+      functionPermissionIndex, canEditSaleMenuIndex
+    };
+    writeToSheetLog('表頭索引查找結果', headerIndexes);
+
+    // 檢查是否有任何索引為 -1
+    if (Object.values(headerIndexes).includes(-1)) {
+      throw new Error('用戶資料表缺少必要的欄位。請檢查日誌中的索引值。');
+    }
+
+    const personnelList = [];
+    let currentUserCanEdit = false;
+
+    // 從第二行開始遍歷所有用戶
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const userName = row[nameIndex];
+      
+      const projectPermissions = (row[projectPermissionIndex] || '').split(/,|，/).map(p => p.trim()).filter(Boolean);
+      const functionPermissions = (row[functionPermissionIndex] || '').split(/,|，/).map(p => p.trim()).filter(Boolean);
+
+      const projectMatch = projectPermissions.includes(projectName);
+      const functionMatch = functionPermissions.includes('報價系統');
+
+      // 將每一行的詳細檢查過程記錄到 Sheet
+      writeToSheetLog(`正在檢查用戶: ${userName}`, {
+        rowNumber: i + 1,
+        rawData: {
+          project: row[projectPermissionIndex],
+          function: row[functionPermissionIndex]
+        },
+        parsedPermissions: {
+          project: projectPermissions,
+          function: functionPermissions
+        },
+        matchResult: {
+          project: projectMatch,
+          function: functionMatch,
+          isQualified: projectMatch && functionMatch
+        }
+      });
+      
+      if (projectMatch && functionMatch) {
+        personnelList.push({ name: userName, phone: row[phoneIndex] });
+      }
+
+      // 檢查當前登入用戶是否具有編輯權限
+      if (row[phoneIndex] === currentUserKey) {
+        if (String(row[canEditSaleMenuIndex]).toUpperCase() === 'Y') {
+          currentUserCanEdit = true;
+        }
+      }
+    }
+    
+    writeToSheetLog(`--- ${functionName} 執行完畢 ---`, {
+      foundPersonnelCount: personnelList.length,
+      currentUserCanEdit: currentUserCanEdit
+    });
+    
+    return createJsonResponse({
+      status: 'success',
+      data: {
+        personnelList: personnelList,
+        canEdit: currentUserCanEdit
+      }
+    });
+
+  } catch (err) {
+    // 如果 try 塊中任何地方出錯，都會在這裡被捕獲並記錄
+    writeToSheetLog(`❌ ${functionName} 捕獲到嚴重錯誤`, { 
+      error: err.message, 
+      stack: err.stack 
+    });
+    return createJsonResponse({ status: 'error', message: `獲取報價人員列表時發生嚴重錯誤: ${err.message}` });
+  }
+}
+
+// ✅ 1. 新增這個主要的函式來處理報價單生成
+function handleGenerateQuotePdf(payload) {
+  const functionName = 'handleGenerateQuotePdf';
+  Logger.log(`--- ${functionName} 開始 ---`);
+  
+  const { projectName, personnelName, personnelPhone, items } = payload;
+  if (!projectName || !personnelName || !items || items.length === 0) {
+    return createJsonResponse({ status: 'error', message: '請求的資料不完整(缺少建案、報價人員或項目)。' });
+  }
+
+  let tempSlideFileId = null;
+
+  try {
+    const ssId = getSalesControlSheetId(projectName);
+    const spreadsheet = SpreadsheetApp.openById(ssId);
+    
+    // --- 獲取設定 ---
+    const configSheet = spreadsheet.getSheetByName('報價單付款表ID');
+    if (!configSheet) throw new Error('找不到名為 "報價單付款表ID" 的設定工作表。');
+    
+    const configHeader = configSheet.getRange(1, 1, 1, configSheet.getLastColumn()).getValues()[0];
+    const configData = configSheet.getRange(2, 1, 1, configSheet.getLastColumn()).getValues()[0];
+
+    const templateIdIndex = configHeader.indexOf('報價單SLIDEID');
+    const folderIdIndex = configHeader.indexOf('報價單DRIVEID');
+
+    if (templateIdIndex === -1 || folderIdIndex === -1) throw new Error('設定工作表中找不到 "報價單SLIDEID" 或 "報價單DRIVEID" 的表頭。');
+    
+    const slideTemplateId = configData[templateIdIndex];
+    const targetFolderId = configData[folderIdIndex];
+
+    if (!slideTemplateId || !targetFolderId) throw new Error('Slide 模板 ID 或 Drive 資料夾 ID 未設定。');
+
+    // --- 寫入報價紀錄 ---
+    const logSheet = spreadsheet.getSheetByName('報價紀錄');
+    if (logSheet) {
+      const timestamp = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
+      const joinValues = (key) => items.map(item => item[key] || '').join('\n');
+      
+      logSheet.appendRow([
+        timestamp, projectName, personnelName, personnelPhone,
+        joinValues('戶別'), joinValues('房屋總面積'), joinValues('房屋總價'),
+        joinValues('單價'), joinValues('車位編號'), joinValues('車位價格'),
+        joinValues('總價'), joinValues('配套價')
+      ]);
+    } else {
+      Logger.log('找不到名為 "報價紀錄" 的工作表，跳過寫入日誌。');
+    }
+    
+    // --- 處理 Slide ---
+    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMdd-HHMMSS");
+    const tempSlideName = `${projectName}_報價單_${today}_${new Date().getTime()}`;
+    const tempSlideFile = DriveApp.getFileById(slideTemplateId).makeCopy(tempSlideName);
+    tempSlideFileId = tempSlideFile.getId();
+    
+    const presentation = SlidesApp.openById(tempSlideFileId);
+    const slide = presentation.getSlides()[0]; // 假設所有內容都在第一頁
+
+    // 替換通用資訊
+    slide.replaceAllText('{{建案名稱}}', projectName || '');
+    slide.replaceAllText('{{報價人員}}', personnelName || '');
+    slide.replaceAllText('{{連絡電話}}', personnelPhone || '');
+    slide.replaceAllText('{{報價日期}}', Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy/MM/dd"));
+
+    const MAX_ITEMS = 5;
+
+    // 填入項目資料
+    items.forEach((item, index) => {
+      const i = index + 1;
+      const fields = ['戶別', '是否首購', '房屋總面積', '房屋總價', '單價', '車位編號', '車位價格', '配套價', '總價', '訂金', '訂金金額', '簽約金%', '簽約金金額', '工程期款%', '工程期款金額', '使照取得%', '使照取得金額', '交屋款%', '交屋款金額', '銀行貸款%', '銀行貸款金額'];
+      fields.forEach(field => {
+        slide.replaceAllText(`{{${field}_${i}}}`, item[field] !== undefined ? item[field] : '');
+      });
+    });
+
+    // 清理多餘的佔位符
+    for (let i = items.length; i < MAX_ITEMS; i++) {
+      const k = i + 1;
+      const fields = ['戶別', '是否首購', '房屋總面積', '房屋總價', '單價', '車位編號', '車位價格', '配套價', '總價', '訂金', '訂金金額', '簽約金%', '簽約金金額', '工程期款%', '工程期款金額', '使照取得%', '使照取得金額', '交屋款%', '交屋款金額', '銀行貸款%', '銀行貸款金額'];
+      fields.forEach(field => {
+        slide.replaceAllText(`{{${field}_${k}}}`, '');
+      });
+    }
+
+    presentation.saveAndClose();
+
+    // --- 產出 PDF 並儲存 ---
+    const pdfBlob = tempSlideFile.getAs('application/pdf');
+    const pdfFileName = `${personnelName}_${projectName}_報價單_${today}.pdf`;
+    const targetFolder = DriveApp.getFolderById(targetFolderId);
+    
+    // 如果已存在同名檔案，先刪除舊檔
+    const existingFiles = targetFolder.getFilesByName(pdfFileName);
+    while (existingFiles.hasNext()) {
+       existingFiles.next().setTrashed(true);
+    }
+    
+    const pdfFile = targetFolder.createFile(pdfBlob).setName(pdfFileName);
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    Logger.log(`✅ PDF 產出成功: ${pdfFile.getUrl()}`);
+    return createJsonResponse({ status: 'success', url: pdfFile.getUrl() });
+
+  } catch (err) {
+    Logger.log(`❌ ${functionName} 執行錯誤: ${err.message} \nStack: ${err.stack}`);
+    return createJsonResponse({ status: 'error', message: `產生報價單失敗: ${err.message}` });
+  } finally {
+    // --- 清理臨時檔案 ---
+    if (tempSlideFileId) {
+      try {
+        DriveApp.getFileById(tempSlideFileId).setTrashed(true);
+      } catch (e) {}
+    }
+  }
+}
+
+
+function handleUpdateSalesData(payload) {
+  const functionName = 'handleUpdateSalesData';
+  Logger.log(`--- ${functionName} 開始 ---`);
+  
+  const { projectName, unitId, salesData, buyerData, parkingData } = payload;
+  if (!projectName || !unitId) {
+    return createJsonResponse({ status: 'error', message: '請求的資料不完整(缺少建案或戶別)。' });
+  }
+
+  try {
+    const ssId = getSalesControlSheetId(projectName);
+    const spreadsheet = SpreadsheetApp.openById(ssId);
+
+    // --- 1. 更新「銷控」工作表 ---
+    const salesSheet = spreadsheet.getSheetByName('銷控');
+    if (salesSheet && salesData) {
+      const salesHeader = salesSheet.getRange(1, 1, 1, salesSheet.getLastColumn()).getValues()[0];
+      const unitIdCol = salesHeader.indexOf('戶別');
+      if (unitIdCol === -1) throw new Error('銷控表中找不到 "戶別" 欄位');
+      
+      const dataRange = salesSheet.getRange(2, 1, salesSheet.getLastRow() - 1, salesSheet.getLastColumn());
+      const salesValues = dataRange.getValues();
+
+      for (let i = 0; i < salesValues.length; i++) {
+        if (salesValues[i][unitIdCol] === unitId) {
+          const rowIdx = i + 2;
+          
+          // ✅ 修正 #1：如果後台狀態有值，則將「銷控狀態」設為 "已售"
+          if (salesData['銷控後台狀態'] && String(salesData['銷控後台狀態']).trim() !== '') {
+            salesData['銷控狀態'] = '已售';
+          }
+          
+          Object.keys(salesData).forEach(key => {
+            const colIdx = salesHeader.indexOf(key);
+            if (colIdx !== -1) {
+              let value = salesData[key];
+              // ✅ 修正 #5：統一處理日期格式
+              if (['小訂日期', '補足日期', '簽約日期'].includes(key) && value) {
+                  try {
+                      value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd");
+                  } catch (e) { /* 忽略無效日期 */ }
+              }
+              salesSheet.getRange(rowIdx, colIdx + 1).setValue(value);
+            }
+          });
+          break;
+        }
+      }
+    }
+    
+    // --- 2. 更新「買方資料」工作表 ---
+    const buyerSheet = spreadsheet.getSheetByName('買方資料');
+    if (buyerSheet && buyerData) {
+        const buyerHeader = buyerSheet.getRange(1, 1, 1, buyerSheet.getLastColumn()).getValues()[0];
+        const unitIdCol = buyerHeader.indexOf('戶別');
+        if(unitIdCol === -1) throw new Error('買方資料表中找不到 "戶別" 欄位');
+        const dataRange = buyerSheet.getRange(2, 1, Math.max(1, buyerSheet.getLastRow() - 1), buyerSheet.getLastColumn());
+        const buyerValues = dataRange.getValues();
+        let buyerRowFound = false;
+
+        for (let i = 0; i < buyerValues.length; i++) {
+            if (buyerValues[i] && buyerValues[i][unitIdCol] === unitId) {
+                const rowIdx = i + 2;
+                Object.keys(buyerData).forEach(key => {
+                    const colIdx = buyerHeader.indexOf(key);
+                    if (colIdx !== -1) {
+                        let value = buyerData[key];
+                        // ✅ 修正：統一處理日期格式
+                        if (key === '出生年月日' && value) {
+                            try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch (e) {}
+                        }
+                        buyerSheet.getRange(rowIdx, colIdx + 1).setValue(value);
+                    }
+                });
+                buyerRowFound = true;
+                break;
+            }
+        }
+        if (!buyerRowFound) {
+            const newRow = buyerHeader.map(header => {
+                let value = buyerData[header] || (header === '戶別' ? unitId : '');
+                if (header === '出生年月日' && value) {
+                    try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch(e) {}
+                }
+                return value;
+            });
+            buyerSheet.appendRow(newRow);
+        }
+    }
+
+    // --- 3. 更新「車位」工作表 ---
+const parkingSheet = spreadsheet.getSheetByName('車位');
+if (parkingSheet) {
+    const parkingHeader = parkingSheet.getRange(1, 1, 1, parkingSheet.getLastColumn()).getValues()[0];
+    const parkingIdCol = parkingHeader.indexOf('車位編號');
+    const unitColParking = parkingHeader.indexOf('購買戶別'); // 車位表中的購買戶別欄
+    const statusColParking = parkingHeader.indexOf('銷控狀態'); // 車位表中的銷控狀態欄
+    const backendStatusColParking = parkingHeader.indexOf('銷控後台狀態'); // 車位表中的後台狀態欄
+    const priceColParking = parkingHeader.indexOf('車位成交價'); // 車位表中的成交價欄
+
+    if (parkingIdCol !== -1 && unitColParking !== -1) {
+        const allParkingValues = parkingSheet.getRange(2, 1, parkingSheet.getLastRow() - 1, parkingSheet.getLastColumn()).getValues();
+        
+        // 獲取 payload 中最終確認持有的車位編號列表
+        const finalSelectedParkingIds = (parkingData || []).map(p => p['車位編號']);
+
+        // 遍歷車位表，處理需要取消關聯的車位
+        for (let i = 0; i < allParkingValues.length; i++) {
+            const row = allParkingValues[i];
+            const currentParkingIdInSheet = row[parkingIdCol];
+            const currentUnitIdInSheet = row[unitColParking];
+
+            // 情況1: 這個車位之前是屬於當前 unitId 的，但現在不在最終選擇列表裡了 -> 需要清除關聯
+            if (currentUnitIdInSheet === unitId && !finalSelectedParkingIds.includes(currentParkingIdInSheet)) {
+                const rowIdxToClear = i + 2;
+                if (unitColParking !== -1) parkingSheet.getRange(rowIdxToClear, unitColParking + 1).setValue(''); // 清空購買戶別
+                if (statusColParking !== -1) parkingSheet.getRange(rowIdxToClear, statusColParking + 1).setValue('未售'); // 或其他預設狀態
+                if (backendStatusColParking !== -1) parkingSheet.getRange(rowIdxToClear, backendStatusColParking + 1).setValue(''); // 清空後台狀態
+                if (priceColParking !== -1) parkingSheet.getRange(rowIdxToClear, priceColParking + 1).setValue(''); // 清空成交價
+                // 可以根據需要清除更多欄位
+                Logger.log(`已清除車位 ${currentParkingIdInSheet} 與戶別 ${unitId} 的關聯。`);
+            }
+        }
+
+        // 更新 payload.parkingData 中指定的車位 (這部分是您原有的邏輯，稍作調整以使用已獲取的欄位索引)
+        if (parkingData && parkingData.length > 0) {
+            parkingData.forEach(p_item => {
+                for (let i = 0; i < allParkingValues.length; i++) { // 注意這裡的 allParkingValues 已經讀取過了
+                    if (allParkingValues[i][parkingIdCol] === p_item['車位編號']) {
+                        const rowIdxToUpdate = i + 2;
+                        // 更新狀態、戶別、成交價
+                        if (statusColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, statusColParking + 1).setValue('已售'); // 或者從 p_item 獲取狀態
+                        if (backendStatusColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, backendStatusColParking + 1).setValue(salesData['銷控後台狀態']); // salesData 應可訪問
+                        if (unitColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, unitColParking + 1).setValue(unitId);
+                        if (priceColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, priceColParking + 1).setValue(p_item['車位成交價']);
+                        break;
+                    }
+                }
+            });
+        }
+    }
+}
+    
+   SpreadsheetApp.flush();
+    return createJsonResponse({ status: 'success', message: '資料更新成功！' });
+
+  } catch (err) {
+    Logger.log(`❌ ${functionName} 執行錯誤: ${err.message} \nStack: ${err.stack}`);
+    return createJsonResponse({ status: 'error', message: `儲存銷控資料失敗: ${err.message}` });
+  }
+}
