@@ -10,10 +10,11 @@
       
       <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent scrim="grey-darken-3">
         <div class="d-flex flex-column align-center">
-          <v-progress-circular indeterminate size="64" color="white" class="mb-4"></v-progress-circular>
-          <p class="text-h6 text-white">儲存中，請稍候...</p>
+          <v-progress-circular indeterminate size="48" color="#008cff" class="mb-4"></v-progress-circular>
+          <p class="text-h6 text-black">儲存中，請稍候...</p>
         </div>
       </v-overlay>
+      
       
       <div class="header-section">
         <v-card-title class="d-flex justify-space-between align-center text-h5">
@@ -198,6 +199,8 @@ const buyerInfoOptions = computed(() => {
 
 
 function startEditing() {
+  //待刪
+  console.log('傳入 UnitDetailModal 的 unitData:', props.unitData);
   // 深拷貝一份 unitData 到 editingData，這是表單操作的基礎
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
 
@@ -288,6 +291,7 @@ async function saveChanges() {
     }, 0);
     const priceDifference = totalSalePrice - (baseHousePrice + baseParkingPrice);
 
+    // ▼▼▼ 【主要修改區域】 ▼▼▼
     // 準備要發送的 payload
     const payload = {
       projectName: props.projectName,
@@ -304,12 +308,23 @@ async function saveChanges() {
         '溢差價': priceDifference,
       },
       buyerData: {
+        // --- 基本買方資料 ---
         '買方姓名': data['買方姓名'], '身分證字號': data['身分證字號'], '出生年月日': data['出生年月日'],
         '電話': data['電話'], 'EMAIL': data['EMAIL'],
+        
+        // --- 【修正】地址欄位：將拆分的欄位全部發送 ---
+        '通訊地址_縣市': data['通訊地址_縣市'] || '',
+        '通訊地址_區域': data['通訊地址_區域'] || '',
+        '通訊地址_詳細': data['通訊地址_詳細'] || '',
+        '戶籍地址_縣市': data['戶籍地址_縣市'] || '',
+        '戶籍地址_區域': data['戶籍地址_區域'] || '',
+        '戶籍地址_詳細': data['戶籍地址_詳細'] || '',
+        
+        // --- 為了安全起見，也保留合併後的欄位 ---
         '通訊地址': `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`,
-        '戶籍地址': data.戶籍地址_同通訊地址 
-          ? `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`
-          : `${data['戶籍地址_縣市'] || ''}${data['戶籍地址_區域'] || ''}${data['戶籍地址_詳細'] || ''}`,
+        '戶籍地址': `${data['戶籍地址_縣市'] || ''}${data['戶籍地址_區域'] || ''}${data['戶籍地址_詳細'] || ''}`,
+        
+        // --- 其他買方資料 ---
         '性別': data['性別'], '婚姻狀況': data['婚姻狀況'], '行業別': data['行業別'], '職務': data['職務'],
         '購買用途': data['購買用途'], '已購買富宇房子': data['已購買富宇房子'],
         '緊急聯絡人': data['緊急聯絡人'], '緊急聯絡人電話': data['緊急聯絡人電話'], '緊急聯絡人關係': data['緊急聯絡人關係'],
@@ -317,8 +332,9 @@ async function saveChanges() {
       },
       parkingData: data['持有車位'] || []
     };
+    // ▲▲▲ 【主要修改區域】 ▲▲▲
     
-    const result = await updateSalesData(payload);
+    const result = await updateSalesData(payload); //
     if (result.status !== 'success') throw new Error(result.message);
     
     alert('儲存成功！');

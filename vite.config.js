@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import manifest from './public/manifest.json';
 
+
 export default defineConfig({
   base: '/anxi-app/',
   resolve: {
@@ -12,6 +13,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+
+  server: {
+    proxy: {
+      // 將 /api-nlsc 的請求代理到國土測繪中心的 API
+      '/api-nlsc': {
+        target: 'https://api.nlsc.gov.tw',
+        changeOrigin: true, // 必須為 true
+        rewrite: (path) => path.replace(/^\/api-nlsc/, '') // 移除請求路徑中的 /api-nlsc 前綴
+      }
+    }
+  },
+  
   plugins: [
     vue(),
     VitePWA({

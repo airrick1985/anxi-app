@@ -42,13 +42,67 @@
             <v-col cols="12" md="8"><v-text-field label="EMAIL" v-model="editableData['EMAIL']" type="email"></v-text-field></v-col>
             <v-col cols="12">
                 <label class="form-label">通訊地址</label>
-                <VueTwZipCodeSelector @getSelectedZone="handleMailingAddressSelect" class="my-2" />
+                <v-row dense>
+                    <v-col cols="6">
+                        <v-select
+                            v-model="mailingCounty"
+                            :items="counties"
+                            item-title="name"
+                            item-value="code"
+                            label="縣市"
+                            :loading="loadingCounties"
+                            density="compact"
+                            variant="outlined"
+                        ></v-select>
+                    </v-col>
+                    <v-col cols="6">
+                        <v-select
+                            :key="`mailing-towns-${mailingCounty}`"
+                            v-model="mailingTown"
+                            :items="mailingTowns"
+                            item-title="name"
+                            item-value="name"
+                            label="鄉鎮市區"
+                            :loading="loadingMailingTowns"
+                            :disabled="!mailingCounty"
+                            density="compact"
+                            variant="outlined"
+                        ></v-select>
+                    </v-col>
+                </v-row>
                 <v-text-field label="詳細地址" v-model="editableData['通訊地址_詳細']" density="compact" variant="outlined"></v-text-field>
             </v-col>
             <v-col cols="12"><v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox></v-col>
             <v-col cols="12" v-if="!isPermanentSameAsMailing">
               <label class="form-label">戶籍地址</label>
-              <VueTwZipCodeSelector @getSelectedZone="handlePermanentAddressSelect" class="my-2" />
+              <v-row dense>
+                  <v-col cols="6">
+                      <v-select
+                          v-model="permanentCounty"
+                          :items="counties"
+                          item-title="name"
+                          item-value="code"
+                          label="縣市"
+                          :loading="loadingCounties"
+                          density="compact"
+                          variant="outlined"
+                      ></v-select>
+                  </v-col>
+                  <v-col cols="6">
+                      <v-select
+                          :key="`permanent-towns-${permanentCounty}`"
+                          v-model="permanentTown"
+                          :items="permanentTowns"
+                          item-title="name"
+                          item-value="name"
+                          label="鄉鎮市區"
+                          :loading="loadingPermanentTowns"
+                          :disabled="!permanentCounty"
+                          density="compact"
+                          variant="outlined"
+                      ></v-select>
+                  </v-col>
+              </v-row>
               <v-text-field label="詳細地址" v-model="editableData['戶籍地址_詳細']" density="compact" variant="outlined"></v-text-field>
             </v-col>
         </v-row>
@@ -72,14 +126,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, defineAsyncComponent, defineProps, defineEmits } from 'vue';
+import { ref, computed, watch, defineAsyncComponent, defineProps, defineEmits, onMounted, nextTick } from 'vue';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
+import axios from 'axios';
 
-// 非同步載入，因為地址選擇器可能不是每個頁面都需要
-const VueTwZipCodeSelector = defineAsyncComponent(() => 
-  import('@andy922200/vue-tw-zip-code-selector').then(m => m.VueTwZipCodeSelector)
-);
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
 const props = defineProps({
@@ -94,23 +145,149 @@ const emit = defineEmits(['update:modelValue', 'request-open-slide']);
 
 const isParkingModalOpen = ref(false);
 const isPermanentSameAsMailing = ref(false);
-const otherIndustry = ref('');
-const otherPurchasePurpose = ref('');
 
-
-// ✅ --- 核心修正：用一個可寫的 computed 取代兩個 watch ---
 const editableData = computed({
-  get() {
-    // 當模板讀取資料時，直接回傳父層傳來的 prop
-    return props.modelValue;
-  },
-  set(newValue) {
-    // 當模板中的 v-model 嘗試修改資料時，發出事件通知父層
-    emit('update:modelValue', newValue);
+  get: () => props.modelValue,
+  set: (newValue) => emit('update:modelValue', newValue)
+});
+
+const counties = ref([]);
+const mailingTowns = ref([]);
+const permanentTowns = ref([]);
+const mailingCounty = ref(null);
+const mailingTown = ref(null);
+const permanentCounty = ref(null);
+const permanentTown = ref(null);
+const loadingCounties = ref(false);
+const loadingMailingTowns = ref(false);
+const loadingPermanentTowns = ref(false);
+
+// 【恢復】XML 解析函數，僅供 fetchCounties 使用
+const parseXml = (xmlString) => {
+    const parser = new DOMParser();
+    return parser.parseFromString(xmlString, "application/xml");
+};
+
+// 【恢復】獲取縣市列表 (XML 版本)
+const fetchCounties = async () => {
+    loadingCounties.value = true;
+    try {
+        const response = await axios.get('/api-nlsc/other/ListCounty');
+        const xmlDoc = parseXml(response.data);
+        const countyNodes = xmlDoc.querySelectorAll('countyItem'); 
+        counties.value = Array.from(countyNodes).map(node => ({
+            name: node.querySelector('countyname').textContent,
+            code: node.querySelector('countycode').textContent
+        }));
+    } catch (error) {
+        console.error("無法獲取縣市列表:", error);
+    } finally {
+        loadingCounties.value = false;
+    }
+};
+
+// 【維持】獲取鄉鎮市區列表 (JSON 版本)
+const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
+    if (!countyCode) {
+        targetTownsRef.value = [];
+        return;
+    };
+    loadingRef.value = true;
+    targetTownsRef.value = [];
+    try {
+        const url = `/api-nlsc/other/ListTown1/${countyCode}`;
+        const response = await axios.get(url);
+        // 直接使用回傳的 JSON 陣列
+        targetTownsRef.value = response.data.map(item => ({
+            name: item.townname,
+            code: item.towncode,
+        }));
+    } catch (error) {
+        console.error(`無法獲取鄉鎮市區列表 (代碼: ${countyCode}):`, error);
+    } finally {
+        loadingRef.value = false;
+    }
+};
+
+const initializeAddress = async () => {
+    const initialData = editableData.value;
+    if (!initialData || !counties.value.length) return;
+
+    const mailingCountyName = initialData['通訊地址_縣市'];
+    if (mailingCountyName) {
+        const county = counties.value.find(c => c.name === mailingCountyName);
+        if (county) {
+            mailingCounty.value = county.code;
+            const unwatch = watch(loadingMailingTowns, (isLoading) => {
+                if (!isLoading) {
+                    nextTick(() => {
+                        mailingTown.value = initialData['通訊地址_區域'];
+                    });
+                    unwatch();
+                }
+            });
+        }
+    }
+
+    const permanentCountyName = initialData['戶籍地址_縣市'];
+    if (permanentCountyName) {
+      const county = counties.value.find(c => c.name === permanentCountyName);
+      if (county) {
+        permanentCounty.value = county.code;
+        const unwatch = watch(loadingPermanentTowns, (isLoading) => {
+            if (!isLoading) {
+                nextTick(() => {
+                    permanentTown.value = initialData['戶籍地址_區域'];
+                });
+                unwatch();
+            }
+        });
+      }
+    }
+}
+
+onMounted(async () => {
+    await fetchCounties();
+    await initializeAddress();
+});
+
+watch(mailingCounty, (newCountyCode, oldCountyCode) => {
+    const selectedCounty = counties.value.find(c => c.code === newCountyCode);
+    editableData.value['通訊地址_縣市'] = selectedCounty ? selectedCounty.name : '';
+    if (newCountyCode !== oldCountyCode) {
+       mailingTown.value = null;
+    }
+    fetchTowns(newCountyCode, mailingTowns, loadingMailingTowns);
+});
+
+watch(mailingTown, (newTownName) => {
+    editableData.value['通訊地址_區域'] = newTownName || '';
+});
+watch(permanentCounty, (newCountyCode, oldCountyCode) => {
+    const selectedCounty = counties.value.find(c => c.code === newCountyCode);
+    editableData.value['戶籍地址_縣市'] = selectedCounty ? selectedCounty.name : '';
+    if (newCountyCode !== oldCountyCode) {
+        permanentTown.value = null;
+    }
+    fetchTowns(newCountyCode, permanentTowns, loadingPermanentTowns);
+});
+watch(permanentTown, (newTownName) => {
+    editableData.value['戶籍地址_區域'] = newTownName || '';
+});
+watch(isPermanentSameAsMailing, (isSame) => {
+  if (isSame) {
+    permanentCounty.value = mailingCounty.value;
+    editableData.value['戶籍地址_詳細'] = editableData.value['通訊地址_詳細'];
+    const unwatch = watch(loadingPermanentTowns, (isLoading) => {
+        if (!isLoading) {
+            nextTick(() => {
+                permanentTown.value = mailingTown.value;
+            });
+            unwatch();
+        }
+    });
   }
 });
-// ✅ --- 修正結束 ---
-// --- 車位相關 ---
 const allParkingDataForModal = computed(() => props.allParkingData);
 const parkingDisplayText = computed(() => {
     const parking = editableData.value?.['持有車位'] || [];
@@ -121,8 +298,6 @@ function handleParkingUpdate(updatedParkingList) {
     const newData = { ...editableData.value, '持有車位': updatedParkingList };
     emit('update:modelValue', newData);
 }
-
-// --- 成交資訊計算 ---
 const parkingSalePrice = computed(() => {
     const parking = editableData.value?.['持有車位'] || [];
     return parking.reduce((sum, p) => sum + (Number(p.車位成交價) || 0), 0);
@@ -139,28 +314,6 @@ const priceDifference = computed(() => {
     const parking = editableData.value?.['持有車位'] || [];
     const baseParking = parking.reduce((sum, p) => sum + (Number(p.車位底價) || 0), 0);
     return totalSalePrice.value - (baseHouse + baseParking);
-});
-
-
-// --- 地址選擇器相關 ---
-function handleMailingAddressSelect(zoneObject) {
-  if (zoneObject) {
-    editableData.value['通訊地址_縣市'] = zoneObject.county;
-    editableData.value['通訊地址_區域'] = zoneObject.district;
-  }
-}
-function handlePermanentAddressSelect(zoneObject) {
-  if (zoneObject) {
-    editableData.value['戶籍地址_縣市'] = zoneObject.county;
-    editableData.value['戶籍地址_區域'] = zoneObject.district;
-  }
-}
-watch(isPermanentSameAsMailing, (isSame) => {
-  if (isSame) {
-    editableData.value['戶籍地址_縣市'] = editableData.value['通訊地址_縣市'];
-    editableData.value['戶籍地址_區域'] = editableData.value['通訊地址_區域'];
-    editableData.value['戶籍地址_詳細'] = editableData.value['通訊地址_詳細'];
-  }
 });
 </script>
 

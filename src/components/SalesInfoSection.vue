@@ -71,9 +71,14 @@
           <v-list-item title="出生年月日" :subtitle="formatDate(salesData['出生年月日'])"></v-list-item>
           <v-list-item title="聯絡電話" :subtitle="salesData['電話'] || 'N/A'"></v-list-item>
           <v-list-item title="EMAIL" :subtitle="salesData['EMAIL'] || 'N/A'"></v-list-item>
-          <v-list-item title="通訊地址" :subtitle="salesData['通訊地址'] || 'N/A'"></v-list-item>
-          <v-list-item title="戶籍地址" :subtitle="salesData['戶籍地址'] || 'N/A'"></v-list-item>
-          <v-list-item title="介紹人姓名" :subtitle="salesData['介紹人姓名'] || 'N/A'"></v-list-item>
+<v-list-item 
+    title="通訊地址" 
+    :subtitle="(salesData['通訊地址_縣市'] || '') + (salesData['通訊地址_區域'] || '')+ (salesData['通訊地址_詳細'] || '') || 'N/A'">
+</v-list-item> 
+<v-list-item 
+    title="戶籍地址" 
+    :subtitle="(salesData['戶籍地址_縣市'] || '') + (salesData['戶籍址_區域'] || '')+ (salesData['戶籍地址_詳細'] || '') || 'N/A'">
+</v-list-item>           <v-list-item title="介紹人姓名" :subtitle="salesData['介紹人姓名'] || 'N/A'"></v-list-item>
           <v-list-item title="介紹人電話" :subtitle="salesData['介紹人電話'] || 'N/A'"></v-list-item>
         </v-col>
         <v-col cols="12" md="6">
