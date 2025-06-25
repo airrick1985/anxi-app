@@ -1,5 +1,11 @@
 <template>
-  <v-dialog :model-value="show" @update:model-value="close" max-width="80vw" height="90vh">
+  <v-dialog
+    :model-value="show"
+    @update:model-value="close"
+    :fullscreen="isMobile"
+    :max-width="isMobile ? '100%' : '80vw'"
+    :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'"
+  >
     <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
       
       <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent scrim="grey-darken-3">
@@ -103,10 +109,10 @@
                 <div v-if="viewMode === 'sales'">
                   <v-divider class="my-4"></v-divider>
                 <SalesInfoSection
-  v-if="viewMode === 'sales'"
-  :sales-data="unitData"
-  :all-parking-data="allData['車位'] || []"
-/>
+                  v-if="viewMode === 'sales'"
+                  :sales-data="unitData"
+                  :all-parking-data="allData['車位'] || []"
+                />
                 </div>
               </div>
               <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
@@ -149,10 +155,13 @@
 
 <script setup>
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
+import { useDisplay } from 'vuetify'; // 匯入 useDisplay
 import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
+
+const { mobile: isMobile } = useDisplay(); // 設置 isMobile 變數
 
 const quoteStore = useQuoteStore();
 
@@ -172,7 +181,7 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
 
-// ✅ 從 allData prop 中解析出下拉選單需要的選項
+// 從 allData prop 中解析出下拉選單需要的選項
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p['銷控狀態']));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
@@ -279,7 +288,7 @@ async function saveChanges() {
     }, 0);
     const priceDifference = totalSalePrice - (baseHousePrice + baseParkingPrice);
 
-    // ✅ 準備要發送的 payload
+    // 準備要發送的 payload
     const payload = {
       projectName: props.projectName,
       unitId: props.unitData['戶別'],
