@@ -31,3 +31,9 @@ pnpm-debug.log*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# 忽略 Google Cloud SDK 資料夾
+google-cloud-sdk/
+
+# 忽略大型壓縮檔
+*.tar.gz

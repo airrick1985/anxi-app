@@ -12,9 +12,30 @@
                 <v-btn class="ml-2" @click="isParkingModalOpen = true">編輯車位</v-btn>
              </div>
           </v-col>
-          <v-col cols="12" sm="4"><VueDatePicker v-model="editableData['小訂日期']" placeholder="小訂日期" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
-          <v-col cols="12" sm="4"><VueDatePicker v-model="editableData['補足日期']" placeholder="補足日期" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
-          <v-col cols="12" sm="4"><VueDatePicker v-model="editableData['簽約日期']" placeholder="簽約日期" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
+<v-col cols="12" sm="4">
+  <label class="v-label text-caption">小訂日期</label>
+  <VueDatePicker :locale="'zh-TW'" v-model="editableData['小訂日期']"
+    auto-apply
+    :enable-time-picker="false"
+    format="yyyy/MM/dd"
+  ></VueDatePicker>
+</v-col>          
+<v-col cols="12" sm="4">
+  <label class="v-label text-caption">補足日期</label>
+  <VueDatePicker :locale="'zh-TW'" v-model="editableData['補足日期']"
+    auto-apply
+    :enable-time-picker="false"
+    format="yyyy/MM/dd"
+  ></VueDatePicker>
+</v-col>  
+         <v-col cols="12" sm="4">
+  <label class="v-label text-caption">簽約日期</label>
+  <VueDatePicker :locale="'zh-TW'" v-model="editableData['簽約日期']"
+    auto-apply
+    :enable-time-picker="false"
+    format="yyyy/MM/dd"
+  ></VueDatePicker>
+</v-col> 
           <v-col cols="12" sm="4"><v-text-field label="小訂金額" v-model.number="editableData['小訂金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="補足金額" v-model.number="editableData['補足金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="簽約金額" v-model.number="editableData['簽約金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
@@ -37,7 +58,7 @@
         <v-row>
             <v-col cols="12" md="4"><v-text-field label="買方姓名" v-model="editableData['買方姓名']"></v-text-field></v-col>
             <v-col cols="12" md="4"><v-text-field label="身分證字號" v-model="editableData['身分證字號']"></v-text-field></v-col>
-            <v-col cols="12" md="4"><VueDatePicker v-model="editableData['出生年月日']" placeholder="出生年月日" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
+            <v-col cols="12" md="4"><VueDatePicker :locale="'zh-TW'" v-model="editableData['出生年月日']" placeholder="出生年月日" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
             <v-col cols="12" md="4"><v-text-field label="聯絡電話" v-model="editableData['電話']" type="tel"></v-text-field></v-col>
             <v-col cols="12" md="8"><v-text-field label="EMAIL" v-model="editableData['EMAIL']" type="email"></v-text-field></v-col>
             <v-col cols="12">
@@ -131,6 +152,16 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 
+// ▼▼▼ 【核心修正】 ▼▼▼
+// 根據環境變數，決定 API 的基礎路徑
+// 在正式版 (PROD)，使用完整的 API 網址
+// 在開發版 (DEV)，使用代理路徑
+const NLSC_API_BASE_URL = import.meta.env.PROD 
+  ? 'https://api.nlsc.gov.tw' 
+  : '/api-nlsc';
+// ▲▲▲ 【核心修正】 ▲▲▲
+
+
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
 const props = defineProps({
@@ -162,17 +193,16 @@ const loadingCounties = ref(false);
 const loadingMailingTowns = ref(false);
 const loadingPermanentTowns = ref(false);
 
-// 【恢復】XML 解析函數，僅供 fetchCounties 使用
 const parseXml = (xmlString) => {
     const parser = new DOMParser();
     return parser.parseFromString(xmlString, "application/xml");
 };
 
-// 【恢復】獲取縣市列表 (XML 版本)
 const fetchCounties = async () => {
     loadingCounties.value = true;
     try {
-        const response = await axios.get('/api-nlsc/other/ListCounty');
+        // 【修正】使用新的基礎路徑變數
+        const response = await axios.get(`${NLSC_API_BASE_URL}/other/ListCounty`);
         const xmlDoc = parseXml(response.data);
         const countyNodes = xmlDoc.querySelectorAll('countyItem'); 
         counties.value = Array.from(countyNodes).map(node => ({
@@ -186,7 +216,6 @@ const fetchCounties = async () => {
     }
 };
 
-// 【維持】獲取鄉鎮市區列表 (JSON 版本)
 const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     if (!countyCode) {
         targetTownsRef.value = [];
@@ -195,9 +224,9 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     loadingRef.value = true;
     targetTownsRef.value = [];
     try {
-        const url = `/api-nlsc/other/ListTown1/${countyCode}`;
+        // 【修正】使用新的基礎路徑變數
+        const url = `${NLSC_API_BASE_URL}/other/ListTown1/${countyCode}`;
         const response = await axios.get(url);
-        // 直接使用回傳的 JSON 陣列
         targetTownsRef.value = response.data.map(item => ({
             name: item.townname,
             code: item.towncode,

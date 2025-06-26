@@ -21,7 +21,7 @@
 
      <span class="app-bar-title text-h6 d-none d-sm-inline-block" 
               style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-          安熙智慧建案管理系統
+          ANXI建案管理系統
         </span>
       </div>
       <v-spacer />
@@ -114,7 +114,7 @@
 >
   <v-container class="text-center py-2">
     <div>
-      <strong>安熙智慧建案管理系統</strong> ｜ 版本 v{{ appVersion }}
+      <strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}
     </div>
     <div class="text-caption">
       &copy; {{ currentYear }} ANXISMART. All rights reserved.

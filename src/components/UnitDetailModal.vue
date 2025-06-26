@@ -58,7 +58,7 @@
                       <div class="section-title">價格資訊</div>
                       <template v-if="shouldHidePrice">
                         <div class="pa-4 text-center">
-                          <v-icon size="x-large" color="grey">mdi-currency-off</v-icon>
+                          <v-icon size="x-large" color="grey">mdi-currency-usd-off</v-icon>
                           <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
                         </div>
                       </template>
