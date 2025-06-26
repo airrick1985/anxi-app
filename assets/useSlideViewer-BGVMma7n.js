@@ -1,1 +1,0 @@
-import{i as r,c as i}from"./index-B6EL-OIg.js";function a(){const l=r(!1),e=r(""),s=i(()=>e.value?`https://docs.google.com/presentation/d/${e.value}/embed?start=false&loop=false&delayms=3000`:"");function t(o){o?(e.value=o,l.value=!0):console.warn("無法開啟車位表，因為未提供 Slide ID。")}return{isSlideDialogVisible:l,slideEmbedUrl:s,openSlideViewer:t}}export{a as u};
