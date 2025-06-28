@@ -46,6 +46,7 @@
                 :status-options="statusOptions"
                 :personnel-options="personnelOptions"
                 :buyer-info-options="buyerInfoOptions"
+                :project-name="projectName"
                 :all-parking-data="allData['車位'] || []"
                 @request-open-slide="$emit('request-open-slide')"
               />
@@ -306,6 +307,8 @@ async function saveChanges() {
         '成交總價': totalSalePrice,
         '房屋成交單價': unitSalePrice,
         '溢差價': priceDifference,
+        '合約方式': data['合約方式'],
+        '是否首購': data['是否首購'],
       },
       buyerData: {
         // --- 基本買方資料 ---

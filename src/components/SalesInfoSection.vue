@@ -6,73 +6,83 @@
     </div>
     <v-list lines="one" density="compact" class="bg-transparent">
       <v-row>
-        <v-col cols="12" sm="6">
+        <v-col cols="6" sm="3">
           <v-list-item title="後台狀態" :subtitle="salesData['銷控後台狀態'] || 'N/A'"></v-list-item>
           <v-list-item title="銷售人員" :subtitle="salesData['銷售'] || 'N/A'"></v-list-item>
           <v-list-item title="持有車位" :subtitle="salesData['車位'] || '無'"></v-list-item>
+          <v-list-item title="合約方式" :subtitle="salesData['合約方式'] || 'N/A'"></v-list-item>
+        <v-list-item title="是否首購" :subtitle="salesData['是否首購'] || 'N/A'"></v-list-item>
         </v-col>
-        <v-col cols="12" sm="6">
+        <v-col cols="6" sm="3">
           <v-list-item title="小訂日期" :subtitle="formatDate(salesData['小訂日期'])"></v-list-item>
           <v-list-item title="補足日期" :subtitle="formatDate(salesData['補足日期'])"></v-list-item>
           <v-list-item title="簽約日期" :subtitle="formatDate(salesData['簽約日期'])"></v-list-item>
         </v-col>
       </v-row>
       <v-row dense>
-        <v-col cols="12" sm="4">
+        <v-col cols="6" sm="3">
           <v-list-item title="小訂金額" :subtitle="`${formatNumber(salesData['小訂金額'])} 元`"></v-list-item>
         </v-col>
-        <v-col cols="12" sm="4">
+        <v-col cols="6" sm="3">
           <v-list-item title="補足金額" :subtitle="`${formatNumber(salesData['補足金額'])} 元`"></v-list-item>
         </v-col>
-        <v-col cols="12" sm="4">
+        <v-col cols="6" sm="2">
           <v-list-item title="簽約金額" :subtitle="`${formatNumber(salesData['簽約金額'])} 元`"></v-list-item>
         </v-col>
+     
       </v-row>
     </v-list>
 
-     <div class="section-title mt-4">
+    <div class="section-title mt-4">
       <v-icon>mdi-currency-usd</v-icon>
       成交資訊
     </div>
     <v-list lines="one" density="compact" class="bg-transparent">
       <v-row dense>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="房屋成交價" :subtitle="`${formatNumber(salesData['房屋成交價'])} 萬`"></v-list-item>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="房屋底價" class="base-price-field">
-            <template #subtitle><span class="highlight-price-base">{{ formatNumber(houseBasePrice) }} 萬</span></template>
-          </v-list-item>
-        </v-col>
-         <v-col cols="12" sm="6" md="4">
-          <v-list-item title="房屋成交單價" :subtitle="`${formatNumber(unitSalePrice, 2)} 萬/坪`"></v-list-item>
+        <v-col cols="12" md="2">
+          <div class="price-group">
+            <div class="price-group-title">房屋價格</div>
+            <v-list-item title="房屋成交價" :subtitle="`${formatNumber(salesData['房屋成交價'])} 萬`" density="compact"></v-list-item>
+            <v-list-item title="房屋底價" class="base-price-field" density="compact">
+              <template #subtitle><span class="highlight-price-base">{{ formatNumber(houseBasePrice) }} 萬</span></template>
+            </v-list-item>
+            <v-list-item title="房屋成交單價" :subtitle="`${formatNumber(unitSalePrice, 2)} 萬/坪`" density="compact"></v-list-item>
+          </div>
         </v-col>
 
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="車位成交價" :subtitle="`${formatNumber(parkingSalePrice)} 萬`"></v-list-item>
+        <v-col cols="12" md="2">
+           <div class="price-group">
+            <div class="price-group-title">車位價格</div>
+            <v-list-item title="車位成交價" :subtitle="`${formatNumber(parkingSalePrice)} 萬`" density="compact"></v-list-item>
+            <v-list-item title="車位底價" class="base-price-field" density="compact">
+              <template #subtitle><span class="highlight-price-base">{{ formatNumber(parkingBasePrice) }} 萬</span></template>
+            </v-list-item>
+          </div>
         </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="車位底價" class="base-price-field">
-             <template #subtitle><span class="highlight-price-base">{{ formatNumber(parkingBasePrice) }} 萬</span></template>
-          </v-list-item>
-        </v-col>
-        <v-col cols="12" sm="6" md="4"></v-col> <v-col cols="12" sm="6" md="4">
-          <v-list-item title="成交總價" class="font-weight-bold">
-             <template #subtitle><span class="text-blue font-weight-bold text-h6">{{ formatNumber(totalSalePrice) }} 萬</span></template>
-          </v-list-item>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="總底價" class="base-price-field">
-             <template #subtitle><span class="highlight-price-base font-weight-bold text-h6">{{ formatNumber(totalBasePrice) }} 萬</span></template>
-          </v-list-item>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="溢差價">
-            <template #subtitle><span :class="priceDifference.color" class="font-weight-bold text-h6">{{ priceDifference.text }}</span></template>
-          </v-list-item>
+
+      
+ 
+   <v-col cols="12" md="2">
+           <div class="price-group summary-highlight">
+                <div class="summary-item">
+                    <span class="summary-label">成交總價</span>
+                    <span class="summary-value text-blue">{{ formatNumber(totalSalePrice) }} 萬</span>
+                </div>
+                <v-divider class="my-1"></v-divider>
+                <div class="summary-item">
+                    <span class="summary-label">總底價</span>
+                    <span class="summary-value highlight-price-base">{{ formatNumber(totalBasePrice) }} 萬</span>
+                </div>
+                <v-divider class="my-1"></v-divider>
+                <div class="summary-item">
+                    <span class="summary-label">溢差價</span>
+                    <span class="summary-value" :class="priceDifference.color">{{ priceDifference.text }}</span>
+                </div>
+           </div>
         </v-col>
       </v-row>
     </v-list>
+  
 
     <div class="section-title mt-4">
       <v-icon>mdi-account-details</v-icon>
@@ -307,4 +317,69 @@ function formatNumber(value, frac = 0) {
     font-weight: 500 !important;
     color: #ff0000 !important;
 }
+
+/* 【新增樣式】用於價格分組 */
+.price-group {
+  padding: 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.price-group-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #37474F; /* Blue Grey Darken-3 */
+  margin-bottom: 4px;
+  padding-left: 8px;
+}
+
+.base-price-field .highlight-price-base {
+  color: #ff0000 !important; /* Blue Darken-4, 讓底價顏色更沉穩 */
+}
+
+.summary-group {
+    background-color: #ECEFF1; /* Blue Grey Lighten-4 */
+    
+}
+
+.summary-highlight {
+  padding: 8px 12px; /* 增加內邊距，讓大字體有呼吸空間 */
+  background-color: #ECEFF1; /* Blue Grey Lighten-4 */
+  border-radius: 6px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 垂直置中內容 */
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline; /* 基線對齊，讓「萬」字對齊 */
+}
+
+.summary-label {
+  font-size: 0.9rem;
+  color: #37474F;
+  white-space: nowrap;
+}
+
+.summary-value {
+  font-size: 1.6rem; /* <<< 大幅增加字體大小 */
+  font-weight: 700;  /* 加粗 */
+  line-height: 1.3;  /* 調整行高 */
+}
+
+/* 確保顏色正確套用 */
+.summary-value.text-blue {
+  color: #1976D2 !important;
+}
+.summary-value.text-red {
+  color: #D32F2F !important;
+}
+.summary-value.highlight-price-base {
+  color: #D32F2F !important; /* 底價和溢差價的負值都用紅色，更醒目 */
+}
+
 </style>

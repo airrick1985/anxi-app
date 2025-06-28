@@ -485,3 +485,22 @@ export async function updateSalesData(payload) {
   };
   return fetchPost(body, SALES_API);
 }
+
+/**
+ * 獲取銷售下拉選單選項 (合約方式、是否首購)
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function fetchSalesOptions(projectName) {
+  console.log(`[api.js] fetchSalesOptions called for project: ${projectName}`);
+  if (!projectName) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesOptions 時缺少 projectName。' });
+  }
+  // 這個 action 會透過 SALES_API 或 DROPDOWN_API 端點發送
+  // 這裡我們假設它屬於 DROPDOWN_API 範疇
+  return fetchPost({
+    action: 'get_sales_options',
+    projectName,
+    token: 'anxi111003' // 如果需要 token 的話
+  }, SALES_API); 
+}

@@ -6,6 +6,8 @@
         <v-row>
           <v-col cols="12" sm="6" md="4"><v-select label="後台狀態" :items="statusOptions" v-model="editableData['銷控後台狀態']"></v-select></v-col>
           <v-col cols="12" sm="6" md="4"><v-select label="銷售人員" :items="personnelOptions" v-model="editableData['銷售']"></v-select></v-col>
+          
+          
           <v-col cols="12" sm="12" md="4">
              <div class="d-flex align-center">
                 <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
@@ -39,7 +41,27 @@
           <v-col cols="12" sm="4"><v-text-field label="小訂金額" v-model.number="editableData['小訂金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="補足金額" v-model.number="editableData['補足金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="簽約金額" v-model.number="editableData['簽約金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
+                <v-col cols="12" sm="6" md="4">
+            <v-select
+              label="合約方式"
+              :items="contractTypeOptions"
+              v-model="editableData['合約方式']"
+              :loading="loadingOptions"
+            ></v-select>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-select
+              label="是否首購"
+              :items="firstPurchaseOptions"
+              v-model="editableData['是否首購']"
+              :loading="loadingOptions"
+            ></v-select>
+          </v-col>
+        
         </v-row>
+
+
+
       </div>
 
       <div class="info-section mt-4">
@@ -222,6 +244,8 @@ import { ref, computed, watch, defineAsyncComponent, defineProps, defineEmits, o
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
+import { fetchSalesOptions } from '@/api'; 
+import { useUserStore } from '@/store/user';
 
 // ▼▼▼ 【核心修正】 ▼▼▼
 // 根據環境變數，決定 API 的基礎路徑
@@ -240,7 +264,8 @@ const props = defineProps({
   statusOptions: { type: Array, default: () => [] },
   personnelOptions: { type: Array, default: () => [] },
   allParkingData: { type: Array, default: () => [] },
-  buyerInfoOptions: { type: Object, default: () => ({}) }
+  buyerInfoOptions: { type: Object, default: () => ({}) },
+  projectName: { type: String, required: true } // ✅ 確保父組件有傳入 projectName
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide']);
@@ -251,6 +276,33 @@ const isPermanentSameAsMailing = ref(false);
 const editableData = computed({
   get: () => props.modelValue,
   set: (newValue) => emit('update:modelValue', newValue)
+});
+
+// ✅ 新增 loading 和選項的 ref
+const loadingOptions = ref(false);
+const contractTypeOptions = ref([]);
+const firstPurchaseOptions = ref([]);
+
+// ✅ 在組件掛載時獲取選項資料
+onMounted(async () => {
+  if (!props.projectName) {
+    console.error("SalesInfoForm: 未提供 projectName prop，無法獲取下拉選項。");
+    return;
+  }
+  loadingOptions.value = true;
+  try {
+    const res = await fetchSalesOptions(props.projectName);
+    if (res.status === 'success' && res.data) {
+      contractTypeOptions.value = res.data.contractTypes || [];
+      firstPurchaseOptions.value = res.data.firstPurchaseOptions || [];
+    } else {
+      console.error("無法獲取合約方式與首購選項:", res.message);
+    }
+  } catch (error) {
+    console.error("獲取銷售選項時出錯:", error);
+  } finally {
+    loadingOptions.value = false;
+  }
 });
 
 // 房屋底價 (從資料來源讀取)
