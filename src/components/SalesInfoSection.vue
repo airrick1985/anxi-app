@@ -31,32 +31,47 @@
     </v-list>
 
      <div class="section-title mt-4">
-       <v-icon>mdi-currency-usd</v-icon>
-       成交資訊
+      <v-icon>mdi-currency-usd</v-icon>
+      成交資訊
     </div>
     <v-list lines="one" density="compact" class="bg-transparent">
-       <v-row>
+      <v-row dense>
         <v-col cols="12" sm="6" md="4">
           <v-list-item title="房屋成交價" :subtitle="`${formatNumber(salesData['房屋成交價'])} 萬`"></v-list-item>
-        </v-col>  
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="房屋成交單價" :subtitle="`${formatNumber(salesData['房屋成交單價'], 2)} 萬/坪`"></v-list-item>
         </v-col>
         <v-col cols="12" sm="6" md="4">
-          <v-list-item title="車位成交價" :subtitle="`${formatNumber(salesData['車位成交價'])} 萬`"></v-list-item>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <v-list-item title="成交總價" class="font-weight-bold">
-             <template #subtitle><span class="text-blue font-weight-bold text-h6">{{ formatNumber(salesData['成交總價']) }} 萬</span></template>
+          <v-list-item title="房屋底價" class="base-price-field">
+            <template #subtitle><span class="highlight-price-base">{{ formatNumber(houseBasePrice) }} 萬</span></template>
           </v-list-item>
         </v-col>
-      
+         <v-col cols="12" sm="6" md="4">
+          <v-list-item title="房屋成交單價" :subtitle="`${formatNumber(unitSalePrice, 2)} 萬/坪`"></v-list-item>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="車位成交價" :subtitle="`${formatNumber(parkingSalePrice)} 萬`"></v-list-item>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="車位底價" class="base-price-field">
+             <template #subtitle><span class="highlight-price-base">{{ formatNumber(parkingBasePrice) }} 萬</span></template>
+          </v-list-item>
+        </v-col>
+        <v-col cols="12" sm="6" md="4"></v-col> <v-col cols="12" sm="6" md="4">
+          <v-list-item title="成交總價" class="font-weight-bold">
+             <template #subtitle><span class="text-blue font-weight-bold text-h6">{{ formatNumber(totalSalePrice) }} 萬</span></template>
+          </v-list-item>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-list-item title="總底價" class="base-price-field">
+             <template #subtitle><span class="highlight-price-base font-weight-bold text-h6">{{ formatNumber(totalBasePrice) }} 萬</span></template>
+          </v-list-item>
+        </v-col>
         <v-col cols="12" sm="6" md="4">
           <v-list-item title="溢差價">
             <template #subtitle><span :class="priceDifference.color" class="font-weight-bold text-h6">{{ priceDifference.text }}</span></template>
           </v-list-item>
         </v-col>
-       </v-row>
+      </v-row>
     </v-list>
 
     <div class="section-title mt-4">
@@ -114,6 +129,64 @@ const props = defineProps({
   allParkingData: { type: Array, default: () => [] } 
 });
 
+// 房屋底價
+const houseBasePrice = computed(() => {
+  return Number(props.salesData?.['房屋底價'] || 0);
+});
+
+// 車位成交價
+const parkingSalePrice = computed(() => {
+    const parking = props.salesData?.['車位'] || [];
+    // 如果持有車位是字串，則需解析
+    if (typeof parking === 'string' && parking) {
+      // 假設車位資訊是以逗號分隔的編號
+      // 這部分邏輯需要根據您 '持有車位' 欄位的實際格式調整
+      const parkingIds = parking.split(',');
+      return props.allParkingData
+        .filter(p => parkingIds.includes(p['車位編號']))
+        .reduce((sum, p) => sum + (Number(p['車位成交價']) || 0), 0);
+    }
+    // 如果是陣列 (來自編輯後的資料)
+    if (Array.isArray(parking)) {
+      return parking.reduce((sum, p) => sum + (Number(p['車位成交價']) || 0), 0);
+    }
+    return 0;
+});
+
+// 車位底價
+const parkingBasePrice = computed(() => {
+    const parking = props.salesData?.['車位'] || [];
+    if (typeof parking === 'string' && parking) {
+        const parkingIds = parking.split(',');
+        return props.allParkingData
+            .filter(p => parkingIds.includes(p['車位編號']))
+            .reduce((sum, p) => sum + (Number(p['車位底價']) || 0), 0);
+    }
+    if (Array.isArray(parking)) {
+        return parking.reduce((sum, p) => sum + (Number(p['車位底價']) || 0), 0);
+    }
+    return 0;
+});
+
+// 成交總價
+const totalSalePrice = computed(() => {
+  const housePrice = Number(props.salesData?.['房屋成交價'] || 0);
+  return housePrice + parkingSalePrice.value;
+});
+
+// 總底價
+const totalBasePrice = computed(() => {
+    return houseBasePrice.value + parkingBasePrice.value;
+});
+
+// 房屋成交單價
+const unitSalePrice = computed(() => {
+    const housePrice = Number(props.salesData?.['房屋成交價']) || 0;
+    const area = Number(props.salesData?.['房屋面積(坪)']);
+    if (!area) return 0;
+    return (housePrice / area);
+});
+
 watch(() => props.salesData, (newData) => {
   if (newData) {
     console.log('--- [偵錯日誌] SalesInfoSection 元件收到的資料 ---');
@@ -130,6 +203,7 @@ watch(() => props.salesData, (newData) => {
 }, { immediate: true, deep: true });
 
 
+// 格式化日期
 function formatDate(dateString) {
   if (!dateString || typeof dateString !== 'string') return 'N/A';
   try {
@@ -150,26 +224,29 @@ function openFolderUrl() {
   }
 }
 
+// 溢差價
+const priceDifference = computed(() => {
+  const diff = totalSalePrice.value - totalBasePrice.value;
+  if (isNaN(diff)) {
+    return { text: 'N/A', color: 'text-grey' };
+  }
+  const formattedValue = formatNumber(Math.abs(diff));
+  if (diff > 0) {
+    return { text: `+${formattedValue}`, color: 'text-blue' };
+  } else if (diff < 0) {
+    return { text: `-${formattedValue}`, color: 'text-red' };
+  } else {
+    return { text: formatNumber(diff), color: 'text-grey' };
+  }
+});
+
+
+// 格式化數字
 function formatNumber(value, frac = 0) {
   const num = parseFloat(value);
   if (isNaN(num)) return '0';
   return num.toLocaleString('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac });
 }
-
-const priceDifference = computed(() => {
-  const value = parseFloat(props.salesData['溢差價']);
-  if (props.salesData['溢差價'] === undefined || isNaN(value)) {
-    return { text: 'N/A', color: 'text-grey' };
-  }
-  const formattedValue = formatNumber(Math.abs(value));
-  if (value > 0) {
-    return { text: `+${formattedValue}`, color: 'text-blue' };
-  } else if (value < 0) {
-    return { text: `-${formattedValue}`, color: 'text-red' };
-  } else {
-    return { text: formatNumber(value), color: 'text-grey' };
-  }
-});
 </script>
 
 <style scoped>
@@ -215,6 +292,19 @@ const priceDifference = computed(() => {
   line-height: 1.4 !important;
 }
 .v-list-item {
-    padding: 4px 8px !important;
+    padding: 4px px !important;
+     
+}
+
+.base-price-field :deep(.v-list-item__subtitle) {
+  background-color: #e3f2fd; /* Vuetify 的 blue-lighten-5 顏色 */
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.highlight-price-base {
+    font-weight: 500 !important;
+    color: #ff0000 !important;
 }
 </style>

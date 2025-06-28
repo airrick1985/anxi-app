@@ -64,11 +64,11 @@
                       </template>
                       <template v-else>
                         <v-list lines="two" dense>
-                          <v-list-item title="房價 (表價)">
+                          <v-list-item title="房價">
                             <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋總表價']) }} 萬</span></template>
                             <template v-slot:prepend><v-icon>mdi-cash-multiple</v-icon></template>
                           </v-list-item>
-                          <v-list-item title="單價 (表價)">
+                          <v-list-item title="單價">
                             <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋單價(表價)']) }} 萬/坪</span></template>
                             <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
                           </v-list-item>

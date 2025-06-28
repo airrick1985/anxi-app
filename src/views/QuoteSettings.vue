@@ -101,7 +101,7 @@
         <v-card-text class="text-center">
           <p class="mb-4">您可以點擊下方連結查看，或使用手機掃描QR Code。</p>
           <v-btn :href="generatedPdfUrl" target="_blank" color="primary" class="mb-4" prepend-icon="mdi-open-in-new">
-            點此開啟PDF報價單
+            開啟報價單
           </v-btn>
           <div class="d-flex justify-center qr-code-container">
              <qrcode-vue :value="generatedPdfUrl" :size="200" level="H" />
@@ -305,8 +305,10 @@ function goBack() {
 .iframe-container iframe { width: 100%; height: 100%; border: none; }
 .qr-code-container { border: 1px solid #e0e0e0; padding: 16px; border-radius: 8px; background-color: white; }
 .blur-background :deep(.v-overlay__scrim) {
-  background: rgba(30, 30, 30, 0.5) !important; 
-  backdrop-filter: blur(20px); /* 模糊半徑，可自行調整 */
-  -webkit-backdrop-filter: blur(20px); /* 兼容 Safari */
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  opacity: 0.9 !important; /* << 新增這一行 */
+ 
 }
 </style>

@@ -43,15 +43,86 @@
       </div>
 
       <div class="info-section mt-4">
-         <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
-         <v-row>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="房屋成交價(萬)" v-model.number="editableData['房屋成交價']" type="number" :min="0"></v-text-field></v-col>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="由編輯車位彈窗自動計算" persistent-hint></v-text-field></v-col>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="房屋成交單價(萬/坪)" :model-value="unitSalePrice" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
-            <v-col cols="12" sm="6" md="4"><v-text-field label="溢差價" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field></v-col>
-         </v-row>
-      </div>
+    <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
+    <v-row>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="房屋成交價(萬)"
+          v-model.number="editableData['房屋成交價']"
+          type="number"
+          :min="0"
+        ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="房屋底價(萬)"
+          :model-value="houseBasePrice"
+          readonly
+          hint="自動帶入"
+          persistent-hint
+          class="base-price-field" ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4"></v-col>
+
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="車位成交價(萬)"
+          :model-value="parkingSalePrice"
+          readonly
+          hint="由編輯車位彈窗自動計算"
+          persistent-hint
+        ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="車位底價(萬)"
+          :model-value="parkingBasePrice"
+          readonly
+          hint="由編輯車位彈窗自動計算"
+          persistent-hint
+          class="base-price-field" ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4"></v-col>
+
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="成交總價(萬)"
+          :model-value="totalSalePrice"
+          readonly
+          hint="自動計算"
+          persistent-hint
+        ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="總底價(萬)"
+          :model-value="totalBasePrice"
+          readonly
+          hint="自動計算"
+          persistent-hint
+          class="base-price-field" ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="溢差價(萬)"
+          :model-value="priceDifference"
+          readonly
+          hint="自動計算"
+          persistent-hint
+        ></v-text-field>
+      </v-col>
+
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field
+          label="房屋成交單價(萬/坪)"
+          :model-value="unitSalePrice"
+          readonly
+          hint="自動計算"
+          persistent-hint
+        ></v-text-field>
+      </v-col>
+    </v-row>
+  </div>
 
       <div class="info-section mt-4">
         <div class="section-title"><v-icon>mdi-account-details</v-icon> 買方資訊</div>
@@ -181,6 +252,29 @@ const editableData = computed({
   get: () => props.modelValue,
   set: (newValue) => emit('update:modelValue', newValue)
 });
+
+// 房屋底價 (從資料來源讀取)
+const houseBasePrice = computed(() => {
+  return editableData.value?.['房屋底價'] || 0;
+});
+
+// 車位底價 (從持有車位資料中加總)
+const parkingBasePrice = computed(() => {
+  // 注意：這裡假設您的車位資料結構是 editableData.value.持有車位
+  // 且為一個包含 { '車位底價': ... } 物件的陣列。請根據您的實際情況調整。
+  if (!editableData.value?.持有車位 || !Array.isArray(editableData.value.持有車位)) {
+    return 0;
+  }
+  return editableData.value.持有車位.reduce((sum, parking) => {
+    return sum + (Number(parking['車位底價']) || 0);
+  }, 0);
+});
+
+// 總底價 (房屋底價 + 車位底價)
+const totalBasePrice = computed(() => {
+  return houseBasePrice.value + parkingBasePrice.value;
+});
+
 
 const counties = ref([]);
 const mailingTowns = ref([]);
@@ -338,11 +432,11 @@ const unitSalePrice = computed(() => {
     if (!area) return 0;
     return (housePrice / area).toFixed(2);
 });
+// 更新後的溢差價 (成交總價 - 總底價)
 const priceDifference = computed(() => {
-    const baseHouse = Number(props.modelValue?.['房屋總底價']) || 0;
-    const parking = editableData.value?.['持有車位'] || [];
-    const baseParking = parking.reduce((sum, p) => sum + (Number(p.車位底價) || 0), 0);
-    return totalSalePrice.value - (baseHouse + baseParking);
+  // 請用此版本取代您舊的 priceDifference
+  if (!totalSalePrice.value || !totalBasePrice.value) return 0;
+  return totalSalePrice.value - totalBasePrice.value;
 });
 </script>
 
@@ -350,4 +444,7 @@ const priceDifference = computed(() => {
 .info-section { padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
+.base-price-field :deep(.v-field) {
+  background-color: #feb1b1; /* Vuetify 的 blue-lighten-5 顏色 */
+}
 </style>
