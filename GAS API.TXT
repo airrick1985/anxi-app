@@ -594,8 +594,8 @@ function handleLogin(payload) {
   const emailIndex = header.indexOf('EMAIL');
   const nameIndex = header.indexOf('NAME');
   const passwordIndex = header.indexOf('密碼');
-  const projectIndex = header.indexOf('建案權限'); 
-  const permissionsIndex = header.indexOf('功能權限'); // Added: Get permissions column index
+  const projectIndex = header.indexOf('建案權限');
+  // const permissionsIndex = header.indexOf('功能權限'); // 舊邏輯，不再需要
 
   let result = { status: 'not_found', message: '手機號碼不存在或錯誤' };
   let loginStatus = '帳號不存在';
@@ -615,21 +615,48 @@ function handleLogin(payload) {
       }
       Logger.log("[handleLogin] Password matched for user: " + userName);
 
-      // Added: Process permissions
+      // --- 權限新邏輯開始 ---
+      // 從 '權限管理' 工作表獲取功能權限
       let userPermissions = [];
-      if (permissionsIndex !== -1) {
-        const rawPermissions = row[permissionsIndex];
-        if (rawPermissions && typeof rawPermissions === 'string' && rawPermissions.trim() !== '') {
-          userPermissions = rawPermissions.split(',').map(p => p.trim());
-          Logger.log("[handleLogin] User " + userName + " raw permissions: '" + rawPermissions + "', parsed: [" + userPermissions.join(', ') + "]");
-        } else {
-          Logger.log("[handleLogin] User " + userName + " permissions cell is empty, not a string. Defaulting to []. Cell content: " + rawPermissions);
-        }
-      } else {
-        Logger.log("[handleLogin] '功能權限' column not found. Defaulting to [] for user " + userName);
-      }
+      try {
+        const permissionSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('權限管理');
+        if (permissionSheet) {
+          const permissionData = permissionSheet.getDataRange().getValues();
+          if (permissionData.length > 1) { // 至少要有表頭和一筆資料
+            const permissionHeader = permissionData[0];
+            const pPhoneIndex = permissionHeader.indexOf('手機號碼');
+            const pSystemFunctionIndex = permissionHeader.indexOf('系統功能');
+            const pPermissionIndex = permissionHeader.indexOf('權限');
 
-      // If projectName is provided, validate it
+            // 確認所有必要的欄位都存在
+            if (pPhoneIndex !== -1 && pSystemFunctionIndex !== -1 && pPermissionIndex !== -1) {
+              const allowedPermissions = new Set(); // 使用 Set 來確保權限名稱不重複
+              for (let j = 1; j < permissionData.length; j++) {
+                const pRow = permissionData[j];
+                // 檢查 手機號碼相符 且 權限為 Y
+                if (pRow[pPhoneIndex] === payload.key && String(pRow[pPermissionIndex]).toUpperCase() === 'Y') {
+                  if (pRow[pSystemFunctionIndex]) { // 確保系統功能欄位有值
+                    allowedPermissions.add(pRow[pSystemFunctionIndex].trim());
+                  }
+                }
+              }
+              userPermissions = Array.from(allowedPermissions); // 將 Set 轉回陣列
+              Logger.log(`[handleLogin] User ${userName} permissions from '權限管理' sheet: [${userPermissions.join(', ')}]`);
+            } else {
+              Logger.log("[handleLogin] ❌ '權限管理' sheet header misconfigured.");
+            }
+          }
+        } else {
+          Logger.log("[handleLogin] ⚠️ '權限管理' sheet not found.");
+        }
+      } catch (err) {
+        Logger.log(`[handleLogin] ❌ Error fetching permissions from '權限管理' sheet: ${err.message}`);
+        // 在發生錯誤時，給予空權限，以避免登入流程完全失敗
+        userPermissions = [];
+      }
+      // --- 權限新邏輯結束 ---
+
+      // 如果有提供建案名稱，則驗證建案權限
       if (payload.projectName) {
         const allowedProjects = (row[projectIndex] || '').split(',').map(p => p.trim());
         const requestedProject = payload.projectName;
@@ -639,7 +666,7 @@ function handleLogin(payload) {
           result = { status: 'no_permission', message: '無此建案權限' };
           loginStatus = '建案權限不足';
           Logger.log("[handleLogin] Permission denied for user: " + userName + " on project: " + requestedProject);
-          break; 
+          break;
         }
         Logger.log("[handleLogin] Permission granted for user: " + userName + " on project: " + requestedProject);
         result = {
@@ -649,10 +676,11 @@ function handleLogin(payload) {
             email: row[emailIndex],
             name: row[nameIndex],
             projectName: payload.projectName,
-            permissions: userPermissions // Added: permissions
+            permissions: userPermissions // ✅ 使用新邏輯的權限
           }
         };
       } else {
+        // 如果未提供建案名稱 (例如，初次登入選擇建案之前)
         Logger.log("[handleLogin] Basic login successful for user: " + userName + ". No specific project selected at login.");
         result = {
           status: 'success',
@@ -660,14 +688,14 @@ function handleLogin(payload) {
             key: row[phoneIndex],
             email: row[emailIndex],
             name: row[nameIndex],
-            projectName: null, 
-            permissions: userPermissions // Added: permissions
+            projectName: null,
+            permissions: userPermissions // ✅ 使用新邏輯的權限
           }
         };
       }
       loginStatus = '成功';
       Logger.log("[handleLogin] Login process completed for user: " + userName + ". Returning user data: " + JSON.stringify(result.user));
-      break; 
+      break;
     }
   }
 
@@ -696,9 +724,9 @@ function handleForgotPassword(payload) {
       const password = row[passwordIndex];
       MailApp.sendEmail({
         to: email,
-        subject: '【ANXI建案管理系統】忘記密碼通知',
+        subject: '【安熙智慧建案管理系統】忘記密碼通知',
         htmlBody: `親愛的用戶您好，<br><br>您申請的密碼是：<b>${password}</b><br><br>請妥善保存。`,
-        name: 'ANXI建案管理系統'
+        name: '安熙智慧建案管理系統'
       });
       return createJsonResponse({ status: 'success', message: '密碼已寄出' });
     }
@@ -1890,7 +1918,7 @@ function handleGetSalesControlData(payload) {
     const spreadsheet = SpreadsheetApp.openById(ssId);
     const allData = {};
  
-    const sheetNames = ['銷控', '平面圖', '價格', '面積', '參數', '車位SLIDE','車位', '期款比例', '買方資料', '銷售人員', '買方其他資訊'];
+    const sheetNames = ['銷控', '平面圖', '價格', '面積', '參數', '車位SLIDE','車位', '期款比例', '買方資料', '銷售人員', '買方其他資訊','合約方式及是否首購'];
 
     sheetNames.forEach(name => {
       const sheet = spreadsheet.getSheetByName(name);
@@ -1976,102 +2004,145 @@ function handleGetParkingList(payload) {
 }
 
 /**
- * 獲取有權限的報價人員列表，並判斷當前用戶是否可編輯該列表。
- * (使用 writeToSheetLog 進行詳細日誌記錄)
- * @param {object} payload 包含 projectName 和 currentUserKey 的請求體。
+ * 獲取報價人員列表。
+ * - 如果用戶有編輯權限，則從建案的 '銷售人員' 工作表獲取完整列表（包含姓名和電話）。
+ * - 如果沒有，則列表只包含用戶本人。
+ * @param {object} payload 包含 projectName 和 key (currentUserKey) 的請求體。
  * @returns {ContentService.TextOutput} 包含人員列表和編輯權限的 JSON 響應。
  */
 function handleGetQuotePersonnelList(payload) {
   const functionName = 'handleGetQuotePersonnelList';
-  // 記錄函數開始和傳入的參數
-  writeToSheetLog(`--- ${functionName} 開始 ---`, { payload }); 
-  
-  const { projectName, key: currentUserKey } = payload; 
+  writeToSheetLog(`--- ${functionName} 開始 ---`, { payload });
+
+  const { projectName, key: currentUserKey } = payload;
 
   if (!projectName || !currentUserKey) {
     const errorMsg = '獲取報價人員時缺少建案名稱或當前用戶資訊。';
     writeToSheetLog(`❌ ${functionName} 參數錯誤`, { error: errorMsg });
-     return createJsonResponse({ status: 'error', message: '獲取報價人員時缺少建案名稱或當前用戶資訊。' });
+    return createJsonResponse({ status: 'error', message: errorMsg });
   }
 
-  Logger.log(`接收到的 currentUserKey (來自 payload.key): "${currentUserKey}"`);
-
   try {
-    const sheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
-    if (!sheet) throw new Error('找不到 "用戶資料" 工作表。');
-
-    const data = sheet.getDataRange().getValues();
-    const header = data[0];
-    writeToSheetLog('工作表表頭讀取成功', { header });
-
-    // 獲取所有需要的欄位索引
-    const nameIndex = header.indexOf('NAME');
-    const phoneIndex = header.indexOf('手機號碼');
-    const projectPermissionIndex = header.indexOf('建案權限');
-    const functionPermissionIndex = header.indexOf('功能權限');
-    const canEditSaleMenuIndex = header.indexOf('報價系統銷售選單');
-
-    // 記錄每個表頭的查找結果
-    const headerIndexes = {
-      nameIndex, phoneIndex, projectPermissionIndex, 
-      functionPermissionIndex, canEditSaleMenuIndex
-    };
-    writeToSheetLog('表頭索引查找結果', headerIndexes);
-
-    // 檢查是否有任何索引為 -1
-    if (Object.values(headerIndexes).includes(-1)) {
-      throw new Error('用戶資料表缺少必要的欄位。請檢查日誌中的索引值。');
-    }
-
-    const personnelList = [];
+    let personnelList = [];
     let currentUserCanEdit = false;
 
-    // 從第二行開始遍歷所有用戶
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const userName = row[nameIndex];
-      
-      const projectPermissions = (row[projectPermissionIndex] || '').split(/,|，/).map(p => p.trim()).filter(Boolean);
-      const functionPermissions = (row[functionPermissionIndex] || '').split(/,|，/).map(p => p.trim()).filter(Boolean);
+    // --- 步驟 1: 判斷用戶是否有編輯權限 (邏輯不變) ---
+    const permissionSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('權限管理');
+    if (permissionSheet) {
+      const permissionData = permissionSheet.getDataRange().getValues();
+      const permissionHeader = permissionData[0];
+      const pPhoneIndex = permissionHeader.indexOf('手機號碼');
+      const pProjectNameIndex = permissionHeader.indexOf('建案名稱');
+      const pSystemFunctionIndex = permissionHeader.indexOf('系統功能');
+      const pPermissionIndex = permissionHeader.indexOf('權限');
 
-      const projectMatch = projectPermissions.includes(projectName);
-      const functionMatch = functionPermissions.includes('報價系統');
-
-      // 將每一行的詳細檢查過程記錄到 Sheet
-      writeToSheetLog(`正在檢查用戶: ${userName}`, {
-        rowNumber: i + 1,
-        rawData: {
-          project: row[projectPermissionIndex],
-          function: row[functionPermissionIndex]
-        },
-        parsedPermissions: {
-          project: projectPermissions,
-          function: functionPermissions
-        },
-        matchResult: {
-          project: projectMatch,
-          function: functionMatch,
-          isQualified: projectMatch && functionMatch
+      if (pPhoneIndex !== -1 && pProjectNameIndex !== -1 && pSystemFunctionIndex !== -1 && pPermissionIndex !== -1) {
+        for (let i = 1; i < permissionData.length; i++) {
+          const pRow = permissionData[i];
+          if (pRow[pPhoneIndex] === currentUserKey &&
+              pRow[pSystemFunctionIndex] === '報價系統銷售選單' &&
+              pRow[pProjectNameIndex] === projectName &&
+              String(pRow[pPermissionIndex]).toUpperCase() === 'Y') {
+            currentUserCanEdit = true;
+            Logger.log(`[${functionName}] ✅ Permission GRANTED for user ${currentUserKey} to edit sales menu in project ${projectName}.`);
+            break;
+          }
         }
-      });
-      
-      if (projectMatch && functionMatch) {
-        personnelList.push({ name: userName, phone: row[phoneIndex] });
+      } else {
+        Logger.log(`[${functionName}] "權限管理" 表頭配置錯誤。`);
+      }
+    } else {
+      Logger.log(`[${functionName}] ⚠️ 找不到 "權限管理" 工作表，無法判斷編輯權限。`);
+    }
+
+    // --- 步驟 2: 根據編輯權限，決定人員列表的來源 ---
+    if (currentUserCanEdit) {
+      // **最終新邏輯**: 有權限，直接從建案的「銷售人員」工作表同時讀取姓名與電話
+      Logger.log(`[${functionName}] 用戶有編輯權限，從 "${projectName}" 的 "銷售人員" 表獲取列表。`);
+      try {
+        const salesSsId = getSalesControlSheetId(projectName);
+        const salesSpreadsheet = SpreadsheetApp.openById(salesSsId);
+        const salesPersonnelSheet = salesSpreadsheet.getSheetByName('銷售人員');
+        
+        if (salesPersonnelSheet) {
+          const salesData = salesPersonnelSheet.getDataRange().getValues();
+          if (salesData.length > 1) {
+            const salesHeader = salesData[0];
+            // 同時取得 "銷售人員" 和 "銷售電話" 的欄位索引
+            const salesPersonColIndex = salesHeader.indexOf('銷售人員');
+            const salesPhoneColIndex = salesHeader.indexOf('銷售電話'); // ✅ 新增
+
+            if (salesPersonColIndex !== -1 && salesPhoneColIndex !== -1) { // ✅ 確保兩個欄位都存在
+              for(let i = 1; i < salesData.length; i++) {
+                const row = salesData[i];
+                const personName = row[salesPersonColIndex];
+                const personPhone = row[salesPhoneColIndex]; // ✅ 讀取電話
+
+                if(personName && String(personName).trim() !== '') {
+                   // 直接組合姓名和電話
+                  personnelList.push({ 
+                    name: String(personName).trim(), 
+                    phone: String(personPhone || '').trim() // ✅ 如果電話為空，給予空字串
+                  });
+                }
+              }
+               Logger.log(`[${functionName}] 從銷售人員列表成功獲取 ${personnelList.length} 位人員。`);
+            } else {
+               Logger.log(`[${functionName}] "銷售人員" 工作表中找不到 "銷售人員" 或 "銷售電話" 欄位。`);
+            }
+          }
+        } else {
+          Logger.log(`[${functionName}] 在建案 "${projectName}" 中找不到 "銷售人員" 工作表。`);
+        }
+      } catch (e) {
+         Logger.log(`[${functionName}] 讀取銷售人員列表時出錯: ${e.message}`);
+         personnelList = [];
       }
 
-      // 檢查當前登入用戶是否具有編輯權限
-      if (row[phoneIndex] === currentUserKey) {
-        if (String(row[canEditSaleMenuIndex]).toUpperCase() === 'Y') {
-          currentUserCanEdit = true;
+    } else {
+      // **無權限**: 列表只包含用戶自己 (邏輯不變)
+      Logger.log(`[${functionName}] 用戶無編輯權限，列表預設為用戶本人。`);
+      const userSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+      if (userSheet) {
+        const userData = userSheet.getDataRange().getValues();
+        const userHeader = userData[0];
+        const nameIndex = userHeader.indexOf('NAME');
+        const phoneIndex = userHeader.indexOf('手機號碼');
+
+        if (nameIndex !== -1 && phoneIndex !== -1) {
+          for (let i = 1; i < userData.length; i++) {
+            if (userData[i][phoneIndex] === currentUserKey) {
+              const currentUserName = userData[i][nameIndex];
+              personnelList.push({ name: currentUserName, phone: currentUserKey });
+              break;
+            }
+          }
         }
       }
     }
     
+    // **備援機制**: 如果在任何情況下列表都是空的，至少要確保當前使用者在裡面
+    if (personnelList.length === 0) {
+        Logger.log(`[${functionName}] 經過所有邏輯後，人員列表仍為空。再次嘗試將當前用戶作為預設值。`);
+        const userSheet = SpreadsheetApp.openById(FIXED_ACCOUNT_SHEET_ID).getSheetByName('用戶資料');
+        const userData = userSheet.getDataRange().getValues();
+        const userHeader = userData[0];
+        const nameIndex = userHeader.indexOf('NAME');
+        const phoneIndex = userHeader.indexOf('手機號碼');
+        for (let i = 1; i < userData.length; i++) {
+            if (userData[i][phoneIndex] === currentUserKey) {
+                personnelList.push({ name: userData[i][nameIndex], phone: currentUserKey });
+                break;
+            }
+        }
+    }
+
     writeToSheetLog(`--- ${functionName} 執行完畢 ---`, {
       foundPersonnelCount: personnelList.length,
-      currentUserCanEdit: currentUserCanEdit
+      currentUserCanEdit: currentUserCanEdit,
+      finalList: JSON.stringify(personnelList)
     });
-    
+
     return createJsonResponse({
       status: 'success',
       data: {
@@ -2081,15 +2152,13 @@ function handleGetQuotePersonnelList(payload) {
     });
 
   } catch (err) {
-    // 如果 try 塊中任何地方出錯，都會在這裡被捕獲並記錄
-    writeToSheetLog(`❌ ${functionName} 捕獲到嚴重錯誤`, { 
-      error: err.message, 
-      stack: err.stack 
+    writeToSheetLog(`❌ ${functionName} 捕獲到嚴重錯誤`, {
+      error: err.message,
+      stack: err.stack
     });
     return createJsonResponse({ status: 'error', message: `獲取報價人員列表時發生嚴重錯誤: ${err.message}` });
   }
 }
-
 // ✅ 1. 新增這個主要的函式來處理報價單生成
 function handleGenerateQuotePdf(payload) {
   const functionName = 'handleGenerateQuotePdf';
@@ -2209,10 +2278,11 @@ function handleGenerateQuotePdf(payload) {
 
 function handleUpdateSalesData(payload) {
   const functionName = 'handleUpdateSalesData';
-  Logger.log(`--- ${functionName} 開始 ---`);
+  Logger.log(`--- ${functionName} 開始 --- Payload: ${JSON.stringify(payload)}`);
   
-  const { projectName, unitId, salesData, buyerData, parkingData } = payload;
+  const { projectName, unitId, salesData, buyerData, parkingData } = payload; // parkingData 是最終選定的車位列表
   if (!projectName || !unitId) {
+    Logger.log(`[${functionName}] ❌ 請求的資料不完整(缺少建案或戶別)。`);
     return createJsonResponse({ status: 'error', message: '請求的資料不完整(缺少建案或戶別)。' });
   }
 
@@ -2224,137 +2294,182 @@ function handleUpdateSalesData(payload) {
     const salesSheet = spreadsheet.getSheetByName('銷控');
     if (salesSheet && salesData) {
       const salesHeader = salesSheet.getRange(1, 1, 1, salesSheet.getLastColumn()).getValues()[0];
-      const unitIdCol = salesHeader.indexOf('戶別');
-      if (unitIdCol === -1) throw new Error('銷控表中找不到 "戶別" 欄位');
-      
-      const dataRange = salesSheet.getRange(2, 1, salesSheet.getLastRow() - 1, salesSheet.getLastColumn());
-      const salesValues = dataRange.getValues();
-
-      for (let i = 0; i < salesValues.length; i++) {
-        if (salesValues[i][unitIdCol] === unitId) {
-          const rowIdx = i + 2;
-          
-          // ✅ 修正 #1：如果後台狀態有值，則將「銷控狀態」設為 "已售"
-          if (salesData['銷控後台狀態'] && String(salesData['銷控後台狀態']).trim() !== '') {
-            salesData['銷控狀態'] = '已售';
-          }
-          
-          Object.keys(salesData).forEach(key => {
-            const colIdx = salesHeader.indexOf(key);
-            if (colIdx !== -1) {
-              let value = salesData[key];
-              // ✅ 修正 #5：統一處理日期格式
-              if (['小訂日期', '補足日期', '簽約日期'].includes(key) && value) {
-                  try {
-                      value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd");
-                  } catch (e) { /* 忽略無效日期 */ }
-              }
-              salesSheet.getRange(rowIdx, colIdx + 1).setValue(value);
-            }
-          });
-          break;
-        }
+      const unitIdColSales = salesHeader.indexOf('戶別');
+      if (unitIdColSales === -1) {
+        Logger.log(`[${functionName}] ❌ 銷控表中找不到 "戶別" 欄位`);
+        throw new Error('銷控表中找不到 "戶別" 欄位');
       }
+      
+      const lastRowSales = salesSheet.getLastRow();
+      if (lastRowSales > 1) {
+        const dataRangeSales = salesSheet.getRange(2, 1, lastRowSales - 1, salesSheet.getLastColumn());
+        const salesValues = dataRangeSales.getValues();
+
+        for (let i = 0; i < salesValues.length; i++) {
+          if (salesValues[i][unitIdColSales] === unitId) {
+            const rowIdx = i + 2;
+            Logger.log(`[${functionName}] 更新銷控表，戶別: ${unitId}, 列: ${rowIdx}`);
+            
+            if (salesData['銷控後台狀態'] && String(salesData['銷控後台狀態']).trim() !== '') {
+              salesData['銷控狀態'] = '已售';
+            }
+            
+            Object.keys(salesData).forEach(key => {
+              const colIdx = salesHeader.indexOf(key);
+              if (colIdx !== -1) {
+                let value = salesData[key];
+                if (['小訂日期', '補足日期', '簽約日期'].includes(key) && value) {
+                    try {
+                        value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd");
+                    } catch (e) { Logger.log(`[${functionName}] 日期轉換錯誤 for key ${key}, value ${salesData[key]}: ${e.message}`); }
+                }
+                salesSheet.getRange(rowIdx, colIdx + 1).setValue(value);
+              }
+            });
+            break;
+          }
+        }
+      } else {
+        Logger.log(`[${functionName}] 銷控表為空或只有表頭，跳過更新。`);
+      }
+    } else {
+      Logger.log(`[${functionName}] 找不到銷控表或 salesData 為空，跳過銷控表更新。`);
     }
     
     // --- 2. 更新「買方資料」工作表 ---
     const buyerSheet = spreadsheet.getSheetByName('買方資料');
     if (buyerSheet && buyerData) {
         const buyerHeader = buyerSheet.getRange(1, 1, 1, buyerSheet.getLastColumn()).getValues()[0];
-        const unitIdCol = buyerHeader.indexOf('戶別');
-        if(unitIdCol === -1) throw new Error('買方資料表中找不到 "戶別" 欄位');
-        const dataRange = buyerSheet.getRange(2, 1, Math.max(1, buyerSheet.getLastRow() - 1), buyerSheet.getLastColumn());
-        const buyerValues = dataRange.getValues();
+        const unitIdColBuyer = buyerHeader.indexOf('戶別');
+        if(unitIdColBuyer === -1) {
+          Logger.log(`[${functionName}] ❌ 買方資料表中找不到 "戶別" 欄位`);
+          throw new Error('買方資料表中找不到 "戶別" 欄位');
+        }
+        
+        const lastRowBuyer = buyerSheet.getLastRow();
         let buyerRowFound = false;
-
-        for (let i = 0; i < buyerValues.length; i++) {
-            if (buyerValues[i] && buyerValues[i][unitIdCol] === unitId) {
-                const rowIdx = i + 2;
-                Object.keys(buyerData).forEach(key => {
-                    const colIdx = buyerHeader.indexOf(key);
-                    if (colIdx !== -1) {
-                        let value = buyerData[key];
-                        // ✅ 修正：統一處理日期格式
-                        if (key === '出生年月日' && value) {
-                            try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch (e) {}
+        
+        if (lastRowBuyer > 1) {
+            const dataRangeBuyer = buyerSheet.getRange(2, 1, lastRowBuyer - 1, buyerSheet.getLastColumn());
+            const buyerValues = dataRangeBuyer.getValues();
+            for (let i = 0; i < buyerValues.length; i++) {
+                if (buyerValues[i] && buyerValues[i][unitIdColBuyer] === unitId) {
+                    const rowIdx = i + 2;
+                    Logger.log(`[${functionName}] 更新買方資料表，戶別: ${unitId}, 列: ${rowIdx}`);
+                    Object.keys(buyerData).forEach(key => {
+                        const colIdx = buyerHeader.indexOf(key);
+                        if (colIdx !== -1) {
+                            let value = buyerData[key];
+                            if (key === '出生年月日' && value) {
+                                try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch (e) { Logger.log(`[${functionName}] 出生年月日轉換錯誤 for value ${buyerData[key]}: ${e.message}`);}
+                            }
+                            buyerSheet.getRange(rowIdx, colIdx + 1).setValue(value);
                         }
-                        buyerSheet.getRange(rowIdx, colIdx + 1).setValue(value);
-                    }
-                });
-                buyerRowFound = true;
-                break;
+                    });
+                    buyerRowFound = true;
+                    break;
+                }
             }
         }
+
         if (!buyerRowFound) {
+            Logger.log(`[${functionName}] 在買方資料表中未找到戶別 ${unitId}，準備新增一列。`);
             const newRow = buyerHeader.map(header => {
-                let value = buyerData[header] || (header === '戶別' ? unitId : '');
+                let value = buyerData[header] !== undefined ? buyerData[header] : (header === '戶別' ? unitId : '');
                 if (header === '出生年月日' && value) {
-                    try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch(e) {}
+                    try { value = Utilities.formatDate(new Date(value), "Asia/Taipei", "yyyy/MM/dd"); } catch(e) { Logger.log(`[${functionName}] 新增買方-出生年月日轉換錯誤 for value ${value}: ${e.message}`);}
                 }
                 return value;
             });
             buyerSheet.appendRow(newRow);
+            Logger.log(`[${functionName}] 已新增買方資料列 for ${unitId}。`);
         }
+    } else {
+      Logger.log(`[${functionName}] 找不到買方資料表或 buyerData 為空，跳過買方資料表更新。`);
     }
 
     // --- 3. 更新「車位」工作表 ---
-const parkingSheet = spreadsheet.getSheetByName('車位');
-if (parkingSheet) {
-    const parkingHeader = parkingSheet.getRange(1, 1, 1, parkingSheet.getLastColumn()).getValues()[0];
-    const parkingIdCol = parkingHeader.indexOf('車位編號');
-    const unitColParking = parkingHeader.indexOf('購買戶別'); // 車位表中的購買戶別欄
-    const statusColParking = parkingHeader.indexOf('銷控狀態'); // 車位表中的銷控狀態欄
-    const backendStatusColParking = parkingHeader.indexOf('銷控後台狀態'); // 車位表中的後台狀態欄
-    const priceColParking = parkingHeader.indexOf('車位成交價'); // 車位表中的成交價欄
+    const parkingSheet = spreadsheet.getSheetByName('車位');
+    if (parkingSheet) {
+        const parkingHeader = parkingSheet.getRange(1, 1, 1, parkingSheet.getLastColumn()).getValues()[0];
+        const parkingIdCol = parkingHeader.indexOf('車位編號');
+        const unitColParking = parkingHeader.indexOf('購買戶別');
+        const statusColParking = parkingHeader.indexOf('銷控狀態');
+        const backendStatusColParking = parkingHeader.indexOf('銷控後台狀態');
+        const priceColParking = parkingHeader.indexOf('車位成交價');
 
-    if (parkingIdCol !== -1 && unitColParking !== -1) {
-        const allParkingValues = parkingSheet.getRange(2, 1, parkingSheet.getLastRow() - 1, parkingSheet.getLastColumn()).getValues();
-        
-        // 獲取 payload 中最終確認持有的車位編號列表
-        const finalSelectedParkingIds = (parkingData || []).map(p => p['車位編號']);
-
-        // 遍歷車位表，處理需要取消關聯的車位
-        for (let i = 0; i < allParkingValues.length; i++) {
-            const row = allParkingValues[i];
-            const currentParkingIdInSheet = row[parkingIdCol];
-            const currentUnitIdInSheet = row[unitColParking];
-
-            // 情況1: 這個車位之前是屬於當前 unitId 的，但現在不在最終選擇列表裡了 -> 需要清除關聯
-            if (currentUnitIdInSheet === unitId && !finalSelectedParkingIds.includes(currentParkingIdInSheet)) {
-                const rowIdxToClear = i + 2;
-                if (unitColParking !== -1) parkingSheet.getRange(rowIdxToClear, unitColParking + 1).setValue(''); // 清空購買戶別
-                if (statusColParking !== -1) parkingSheet.getRange(rowIdxToClear, statusColParking + 1).setValue('未售'); // 或其他預設狀態
-                if (backendStatusColParking !== -1) parkingSheet.getRange(rowIdxToClear, backendStatusColParking + 1).setValue(''); // 清空後台狀態
-                if (priceColParking !== -1) parkingSheet.getRange(rowIdxToClear, priceColParking + 1).setValue(''); // 清空成交價
-                // 可以根據需要清除更多欄位
-                Logger.log(`已清除車位 ${currentParkingIdInSheet} 與戶別 ${unitId} 的關聯。`);
+        if (parkingIdCol !== -1 && unitColParking !== -1) {
+            const lastRowParking = parkingSheet.getLastRow();
+            let allParkingValues = [];
+            if (lastRowParking > 1) {
+                allParkingValues = parkingSheet.getRange(2, 1, lastRowParking - 1, parkingSheet.getLastColumn()).getValues();
             }
-        }
+            
+            const finalSelectedParkingIds = (parkingData || []).map(p => p['車位編號']);
+            Logger.log(`[${functionName}] 戶別 ${unitId} 最終持有車位: ${JSON.stringify(finalSelectedParkingIds)}`);
 
-        // 更新 payload.parkingData 中指定的車位 (這部分是您原有的邏輯，稍作調整以使用已獲取的欄位索引)
-        if (parkingData && parkingData.length > 0) {
-            parkingData.forEach(p_item => {
-                for (let i = 0; i < allParkingValues.length; i++) { // 注意這裡的 allParkingValues 已經讀取過了
-                    if (allParkingValues[i][parkingIdCol] === p_item['車位編號']) {
-                        const rowIdxToUpdate = i + 2;
-                        // 更新狀態、戶別、成交價
-                        if (statusColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, statusColParking + 1).setValue('已售'); // 或者從 p_item 獲取狀態
-                        if (backendStatusColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, backendStatusColParking + 1).setValue(salesData['銷控後台狀態']); // salesData 應可訪問
-                        if (unitColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, unitColParking + 1).setValue(unitId);
-                        if (priceColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, priceColParking + 1).setValue(p_item['車位成交價']);
-                        break;
-                    }
+            // 遍歷車位表，處理需要取消關聯的車位
+            for (let i = 0; i < allParkingValues.length; i++) {
+                const rowParking = allParkingValues[i];
+                const currentParkingIdInSheet = rowParking[parkingIdCol];
+                const currentUnitIdInSheet = rowParking[unitColParking];
+
+                if (currentUnitIdInSheet === unitId && !finalSelectedParkingIds.includes(currentParkingIdInSheet)) {
+                    const rowIdxToClear = i + 2;
+                    Logger.log(`[${functionName}] 準備清除車位 ${currentParkingIdInSheet} (原屬戶別 ${unitId}) 的關聯。位於列 ${rowIdxToClear}`);
+                    if (unitColParking !== -1) parkingSheet.getRange(rowIdxToClear, unitColParking + 1).setValue('');
+                    if (statusColParking !== -1) parkingSheet.getRange(rowIdxToClear, statusColParking + 1).setValue(''); 
+                    if (backendStatusColParking !== -1) parkingSheet.getRange(rowIdxToClear, backendStatusColParking + 1).setValue('');
+                    if (priceColParking !== -1) parkingSheet.getRange(rowIdxToClear, priceColParking + 1).setValue('');
+                    Logger.log(`[${functionName}] 已清除車位 ${currentParkingIdInSheet} 與戶別 ${unitId} 的關聯。`);
                 }
-            });
+            }
+
+            // 更新 payload.parkingData 中指定的車位
+            if (parkingData && parkingData.length > 0) {
+                parkingData.forEach(p_item => {
+                    let foundInSheet = false;
+                    for (let i = 0; i < allParkingValues.length; i++) {
+                        if (allParkingValues[i][parkingIdCol] === p_item['車位編號']) {
+                            const rowIdxToUpdate = i + 2;
+                            Logger.log(`[${functionName}] 準備更新車位 ${p_item['車位編號']} 給戶別 ${unitId}。位於列 ${rowIdxToUpdate}`);
+                            if (statusColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, statusColParking + 1).setValue('已售');
+                            
+                            let backendStatusToSet = '已售'; // Default backend status
+                            if (salesData && salesData['銷控後台狀態'] !== undefined && String(salesData['銷控後台狀態']).trim() !== '') {
+                                backendStatusToSet = salesData['銷控後台狀態'];
+                            }
+                            if (backendStatusColParking !== -1) {
+                                parkingSheet.getRange(rowIdxToUpdate, backendStatusColParking + 1).setValue(backendStatusToSet);
+                            }
+
+                            if (unitColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, unitColParking + 1).setValue(unitId);
+                            if (priceColParking !== -1) parkingSheet.getRange(rowIdxToUpdate, priceColParking + 1).setValue(p_item['車位成交價']);
+                            foundInSheet = true;
+                            break;
+                        }
+                    }
+                    if (!foundInSheet) {
+                        Logger.log(`[${functionName}] 警告：車位 ${p_item['車位編號']} 在「車位」表中未找到，無法更新其為戶別 ${unitId} 持有。`);
+                    }
+                });
+            }
+        } else {
+            Logger.log(`[${functionName}] 「車位」表中缺少 '車位編號' (索引 ${parkingIdCol}) 或 '購買戶別' (索引 ${unitColParking}) 欄位，跳過車位更新。`);
         }
+    } else {
+        Logger.log(`[${functionName}] 找不到「車位」工作表，跳過車位更新。`);
     }
-}
     
-   SpreadsheetApp.flush();
+    SpreadsheetApp.flush();
+    Logger.log(`[${functionName}] --- 資料更新成功 ---`);
     return createJsonResponse({ status: 'success', message: '資料更新成功！' });
 
   } catch (err) {
-    Logger.log(`❌ ${functionName} 執行錯誤: ${err.message} \nStack: ${err.stack}`);
+    Logger.log(`[${functionName}] ❌ 執行錯誤: ${err.message} \nStack: ${err.stack}`);
     return createJsonResponse({ status: 'error', message: `儲存銷控資料失敗: ${err.message}` });
   }
 }
+
+    
+   
