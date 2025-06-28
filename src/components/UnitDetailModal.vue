@@ -36,7 +36,7 @@
         <v-divider></v-divider>
       </div>
 
-       <v-card-text class="main-content">
+      <v-card-text class="main-content">
         <v-window v-model="tab">
           <v-window-item value="info">
             <template v-if="isEditing">
@@ -88,33 +88,97 @@
                       </template>
                     </div>
                   </v-col>
+
                   <v-col cols="12" md="6">
                     <div class="info-section">
-                      <div class="section-title">面積資訊</div>
-                      <div class="total-area-card">
-                        <v-icon size="large" class="mr-3">mdi-texture-box</v-icon>
-                        <div>
-                          <div class="total-area-title">房屋總面積</div>
-                          <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)']) }} 坪</div>
-                        </div>
+                     <div class="section-title">面積資訊</div>
+
+<div class="total-area-card">
+  <div class="area-summary-item">
+   
+    <div>
+      <div class="total-area-title">房屋總面積</div>
+      <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)'], 2) }} 坪</div>
+      <div class="total-area-subtitle">{{ formatNumber(unitData['房屋面積(平方公尺)'], 2) }} m²</div>
+    </div>
+  </div>
+  <v-divider vertical class="mx-4"></v-divider>
+  <div class="area-summary-item">
+   
+    <div>
+      <div class="total-area-title">公設比</div>
+      <div class="total-area-value">{{ formatPercentage(unitData['公設比']) }}</div>
+      <div class="total-area-subtitle">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<div class="area-details mt-3">
+  <div class="area-group">
+    
+    <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
+      建物面積明細</div>
+    <div class="area-item-header">
+      <span>項目</span>
+      <span>坪數</span>
+      <span>m²</span>
+    </div>
+    <div class="area-item">
+      <span>主建物 (室內)</span>
+      <span class="area-ping-value">{{ formatNumber(unitData['主建物面積(坪)'], 2) }}</span>
+      <span>{{ formatNumber(unitData['主建物面積(平方公尺)'], 2) }}</span>
+    </div>
+    <div class="area-item">
+      <span>附屬建物 (陽台)</span>
+      <span class="area-ping-value">{{ formatNumber(unitData['附屬建物面積(坪)'], 2) }}</span>
+      <span>{{ formatNumber(unitData['附屬建物面積(平方公尺)'], 2) }}</span>
+    </div>
+    <div class="area-item">
+      <span>共用部分 (公設)</span>
+      <span class="area-ping-value">{{ formatNumber(unitData['共用部分面積(坪)'], 2) }}</span>
+      <span>{{ formatNumber(unitData['共用部分面積(平方公尺)'], 2) }}</span>
+    </div>
+    <div class="area-item">
+      <span>露臺 (不計坪)</span>
+      <span class="area-ping-value">{{ formatNumber(unitData['露臺(坪)'], 2) }}</span>
+      <span>-</span>
+    </div>
+  </div>
+</div>
+
+<div class="area-details mt-2">
+  <div class="area-group">
+    <div class="area-group-title">
+        <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+        土地持分資訊
+    </div>
+    <div class="area-item-header">
+      <span>項目</span>
+      <span>坪數</span>
+      <span>m²</span>
+    </div>
+    <div class="area-item">
+      <span>土地持分面積</span>
+      <span class="area-ping-value">{{ formatNumber(unitData['土地持分面積(坪)'], 2) }}</span>
+      <span>{{ formatNumber(unitData['土地持分面積(平方公尺)'], 2) }}</span>
+    </div>
+    <div class="area-item">
+      <span>土地持分</span>
+      <span class="font-weight-medium">十萬分之 {{ unitData['土地持分'] || 'N/A' }}</span>
+      <span>-</span>
+    </div>
+  </div>
+</div>
                       </div>
-                      <v-list lines="one" dense class="mt-2">
-                        <v-list-item><v-list-item-title>主建物(室內)</v-list-item-title><template v-slot:append><span>{{ formatNumber(unitData['主建物面積(坪)']) }} 坪</span></template></v-list-item>
-                        <v-list-item><v-list-item-title>附屬建物(陽台)</v-list-item-title><template v-slot:append><span>{{ formatNumber(unitData['附屬建物面積(坪)']) }} 坪</span></template></v-list-item>
-                        <v-list-item><v-list-item-title>共用部分(公設)</v-list-item-title><template v-slot:append><span>{{ formatNumber(unitData['共用部分面積(坪)']) }} 坪</span></template></v-list-item>
-                        <v-list-item><v-list-item-title>露臺(不計坪)</v-list-item-title><template v-slot:append><span>{{ formatNumber(unitData['露臺(坪)']) }} 坪</span></template></v-list-item>
-                        <v-list-item><v-list-item-title class="font-weight-bold">公設比</v-list-item-title><template v-slot:append><span class="font-weight-bold">{{ formatPercentage(unitData['公設比']) }}</span></template></v-list-item>
-                      </v-list>
-                    </div>
                   </v-col>
                 </v-row>
+
                 <div v-if="viewMode === 'sales'">
                   <v-divider class="my-4"></v-divider>
-                <SalesInfoSection
-                  v-if="viewMode === 'sales'"
-                  :sales-data="unitData"
-                  :all-parking-data="allData['車位'] || []"
-                />
+                  <SalesInfoSection
+                    :sales-data="unitData"
+                    :all-parking-data="allData['車位'] || []"
+                  />
                 </div>
               </div>
               <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
@@ -157,13 +221,13 @@
 
 <script setup>
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
-import { useDisplay } from 'vuetify'; // 匯入 useDisplay
+import { useDisplay } from 'vuetify';
 import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
 
-const { mobile: isMobile } = useDisplay(); // 設置 isMobile 變數
+const { mobile: isMobile } = useDisplay();
 
 const quoteStore = useQuoteStore();
 
@@ -183,7 +247,6 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
 
-// 從 allData prop 中解析出下拉選單需要的選項
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p['銷控狀態']));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
@@ -200,71 +263,51 @@ const buyerInfoOptions = computed(() => {
 
 
 function startEditing() {
-  //待刪
   console.log('傳入 UnitDetailModal 的 unitData:', props.unitData);
-  // 深拷貝一份 unitData 到 editingData，這是表單操作的基礎
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
 
-  // 確保 editingData.value 不是 null
   if (!editingData.value) {
     editingData.value = {};
   }
 
-  // 獲取當前戶別ID
   const currentUnitId = props.unitData ? props.unitData['戶別'] : null;
-  
-  // 獲取建案的所有車位資料
   const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
 
-  // 檢查 props.unitData 中是否已存在 '持有車位' 且不為空
-  // 這是為了尊重可能已經在「銷控」表中手動維護的車位數據
   const hasExistingParkingInUnitData = props.unitData && props.unitData['持有車位'] && Array.isArray(props.unitData['持有車位']) && props.unitData['持有車位'].length > 0;
 
   if (currentUnitId && allParkingLotsForProject.length > 0 && !hasExistingParkingInUnitData) {
     const assignedParkings = allParkingLotsForProject
       .filter(parkingLot => parkingLot['購買戶別'] === currentUnitId)
       .map(parkingLot => {
-        // 確保返回的物件結構與 ParkingEditModal 和 SalesInfoForm 期望的一致
-        // ParkingEditModal 需要 '車位編號', '車位坪數', '車位總價'(表價), '車位狀態', '車位底價' (用於計算), '車位成交價' (用於編輯)
-        // SalesInfoForm 的計算依賴 '車位編號', '車位成交價', '車位底價'
         return {
           '車位編號': parkingLot['車位編號'],
           '車位區域': parkingLot['車位區域'],
           '車位類別': parkingLot['車位類別'],
           '車位坪數': parkingLot['車位坪數'],
-          '車位總價': parkingLot['車位總價'], // 假設這是表價
-          '車位底價': parkingLot['車位底價'], // 用於計算溢差價
-          '車位狀態': parkingLot['銷控狀態'], // 假設車位表中的銷控狀態就是車位本身的狀態
-          '車位成交價': parkingLot['車位成交價'] || parkingLot['車位總價'] || 0, // 初始化成交價，若無則用表價，再無則0
-          // 其他可能需要的欄位，可以從 parkingLot 添加
-          // ...parkingLot // 如果 parkingLot 的其他欄位也需要，可以展開
+          '車位總價': parkingLot['車位總價'],
+          '車位底價': parkingLot['車位底價'],
+          '車位狀態': parkingLot['銷控狀態'],
+          '車位成交價': parkingLot['車位成交價'] || parkingLot['車位總價'] || 0,
         };
       });
     
-    // 賦值給 editingData.value['持有車位']
-    // 如果 editingData.value['持有車位'] 之前不存在，這會創建它
     editingData.value['持有車位'] = assignedParkings;
     
   } else if (hasExistingParkingInUnitData) {
-    // 如果 props.unitData 中已有 '持有車位'，則 editingData.value['持有車位'] 應該已經從深拷貝中獲得了
-    // 但我們需要確保這些已有的車位數據也包含所有必要欄位，特別是那些可能不存在於原始 '銷控' 表 '車位' 欄位中的詳細車位屬性
-    // 例如，銷控表的 '車位' 可能只存了車位編號，但我們需要從 allParkingLotsForProject 補充其他信息
     const enrichedExistingParkings = (props.unitData['持有車位'] || []).map(existingParking => {
       const fullParkingData = allParkingLotsForProject.find(p => p['車位編號'] === existingParking['車位編號']);
       if (fullParkingData) {
         return {
-          ...fullParkingData, // 從車位總表獲取完整資訊
-          ...existingParking, // 用已有的 (可能包含成交價等) 覆蓋
+          ...fullParkingData,
+          ...existingParking,
           '車位成交價': existingParking['車位成交價'] !== undefined ? existingParking['車位成交價'] : (fullParkingData['車位總價'] || 0),
         };
       }
-      return existingParking; // 如果在總表中找不到，則保留原樣
+      return existingParking;
     });
     editingData.value['持有車位'] = enrichedExistingParkings;
 
   } else if (!editingData.value['持有車位']) {
-    // 如果上述條件都不滿足 (例如沒有 currentUnitId，或沒有車位總表數據，或銷控表也沒有車位數據)，
-    // 確保 '持有車位' 至少是一個空陣列，以避免後續操作出錯
     editingData.value['持有車位'] = [];
   }
 
@@ -292,8 +335,6 @@ async function saveChanges() {
     }, 0);
     const priceDifference = totalSalePrice - (baseHousePrice + baseParkingPrice);
 
-    // ▼▼▼ 【主要修改區域】 ▼▼▼
-    // 準備要發送的 payload
     const payload = {
       projectName: props.projectName,
       unitId: props.unitData['戶別'],
@@ -311,23 +352,16 @@ async function saveChanges() {
         '是否首購': data['是否首購'],
       },
       buyerData: {
-        // --- 基本買方資料 ---
         '買方姓名': data['買方姓名'], '身分證字號': data['身分證字號'], '出生年月日': data['出生年月日'],
         '電話': data['電話'], 'EMAIL': data['EMAIL'],
-        
-        // --- 【修正】地址欄位：將拆分的欄位全部發送 ---
         '通訊地址_縣市': data['通訊地址_縣市'] || '',
         '通訊地址_區域': data['通訊地址_區域'] || '',
         '通訊地址_詳細': data['通訊地址_詳細'] || '',
         '戶籍地址_縣市': data['戶籍地址_縣市'] || '',
         '戶籍地址_區域': data['戶籍地址_區域'] || '',
         '戶籍地址_詳細': data['戶籍地址_詳細'] || '',
-        
-        // --- 為了安全起見，也保留合併後的欄位 ---
         '通訊地址': `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`,
         '戶籍地址': `${data['戶籍地址_縣市'] || ''}${data['戶籍地址_區域'] || ''}${data['戶籍地址_詳細'] || ''}`,
-        
-        // --- 其他買方資料 ---
         '性別': data['性別'], '婚姻狀況': data['婚姻狀況'], '行業別': data['行業別'], '職務': data['職務'],
         '購買用途': data['購買用途'], '已購買富宇房子': data['已購買富宇房子'],
         '緊急聯絡人': data['緊急聯絡人'], '緊急聯絡人電話': data['緊急聯絡人電話'], '緊急聯絡人關係': data['緊急聯絡人關係'],
@@ -335,9 +369,8 @@ async function saveChanges() {
       },
       parkingData: data['持有車位'] || []
     };
-    // ▲▲▲ 【主要修改區域】 ▲▲▲
     
-    const result = await updateSalesData(payload); //
+    const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message);
     
     alert('儲存成功！');
@@ -377,15 +410,29 @@ function close() {
   if (isEditing.value) cancelEditing();
   emit('update:show', false);
 }
-function formatNumber(value) {
-  const num = parseFloat(value);
+
+function formatNumber(value, frac = 0) {
+  // 增加對空值或 undefined 的處理
+  if (value === null || value === undefined || String(value).trim() === '') {
+    // 如果要求小數位數，則返回 0.00, 否則返回 0
+    return frac > 0 ? (0).toFixed(frac) : '0';
+  }
+  
+  const num = Number(value);
   if (isNaN(num)) return 'N/A';
-  if (num % 1 === 0) return num.toLocaleString();
-  return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  // 使用 toLocaleString 並設定最小和最大小數位數，來強制顯示
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: frac,
+    maximumFractionDigits: frac
+  });
 }
+
 function formatPercentage(value) {
-  const num = parseFloat(value);
-  return isNaN(num) ? 'N/A' : `${(num * 100).toFixed(2)} %`;
+  if (typeof value !== 'number' || isNaN(value)) {
+    return 'N/A';
+  }
+  return `${(value * 100).toFixed(2)}%`;
 }
 </script>
 
@@ -395,12 +442,9 @@ function formatPercentage(value) {
 .header-section .v-card-title { background-color: #1a3a6e; color: white; }
 .main-content { flex-grow: 1; overflow-y: auto; position: relative; }
 .footer-section { flex-shrink: 0; }
-.info-section { padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; }
+.info-section { padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; height: 100%; }
 .top-info-row .info-section { height: 100%; }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #1a3a6e; }
-.total-area-card { display: flex; align-items: center; background-color: #e8eaf6; padding: 16px; border-radius: 6px; border-left: 5px solid #3f51b5; }
-.total-area-title { font-size: 0.9rem; color: #5c6bc0; }
-.total-area-value { font-size: 1.8rem; font-weight: 700; color: #1a237e; }
 .highlight-price { font-size: 1.8rem !important; font-weight: 700 !important; color: #c62828 !important; }
 .highlight-price-base { font-size: 1.5rem !important; font-weight: 500 !important; color: #455a64 !important; }
 :deep(.v-list-item-title) { font-size: 0.9rem; }
@@ -413,4 +457,86 @@ function formatPercentage(value) {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+
+.total-area-card {
+  display: flex;
+  align-items: center;
+  background-color: #F5F5F5;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.area-summary-item {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+.total-area-title {
+  font-size: 0.9rem;
+  color: #555;
+}
+.total-area-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1A237E;
+  line-height: 1.2;
+}
+.total-area-subtitle {
+  font-size: 0.8rem;
+  color: #777;
+}
+
+.area-details {
+  font-size: 0.9rem;
+}
+.area-group {
+  border: 1px solid #ECEFF1;
+  border-radius: 6px;
+  padding: 8px;
+  height: 100%;
+}
+.area-group-title {
+  font-weight: 600;
+  color: #37474F;
+  margin-bottom: 8px;
+}
+.area-item-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  font-weight: 500;
+  color: #78909C;
+  padding: 2px 4px;
+  border-bottom: 1px solid #CFD8DC;
+  font-size: 0.8rem;
+}
+.area-item-header span:not(:first-child),
+.area-item span:not(:first-child) {
+  text-align: right;
+}
+.area-item {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  padding: 4px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.area-item:last-child {
+  border-bottom: none;
+}
+.area-item-header-two-col,
+.area-item-two-col {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+}
+
+.area-item-two-col span:last-child {
+  text-align: left;
+  font-weight: 500;
+}
+
+.area-ping-value {
+  font-weight: 600 !important;
+  font-size: 1.2em;
+  color: #1A237E;
+}
+
+
 </style>
