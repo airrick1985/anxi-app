@@ -207,7 +207,7 @@
             <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
           </template>
           <template v-else>
-            <v-btn v-if="viewMode === 'quote'" color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
+            <v-btn  color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
               <v-icon left>mdi-plus-box-outline</v-icon>
               {{ addToQuoteButtonText }}
             </v-btn>

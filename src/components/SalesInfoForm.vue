@@ -1,47 +1,39 @@
 <template>
-   <div class="pa-2" :class="{ 'mb-8': isMobile }">
+  <div class="pa-2" :class="{ 'mb-8': isMobile }">
     <v-form>
       <div class="info-section">
         <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
         <v-row>
           <v-col cols="12" sm="6" md="4"><v-select label="後台狀態" :items="statusOptions" v-model="editableData['銷控後台狀態']"></v-select></v-col>
           <v-col cols="12" sm="6" md="4"><v-select label="銷售人員" :items="personnelOptions" v-model="editableData['銷售']"></v-select></v-col>
-          
-          
           <v-col cols="12" sm="12" md="4">
-             <div class="d-flex align-center">
-                <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
-                <v-btn class="ml-2" @click="isParkingModalOpen = true">編輯車位</v-btn>
-             </div>
+            <div class="d-flex align-center">
+              <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
+              <v-btn class="ml-2" @click="isParkingModalOpen = true">編輯車位</v-btn>
+            </div>
           </v-col>
-<v-col cols="12" sm="4">
-  <label class="v-label text-caption">小訂日期</label>
-  <VueDatePicker :locale="'zh-TW'" v-model="editableData['小訂日期']"
-    auto-apply
-    :enable-time-picker="false"
-    format="yyyy/MM/dd"
-  ></VueDatePicker>
-</v-col>          
-<v-col cols="12" sm="4">
-  <label class="v-label text-caption">補足日期</label>
-  <VueDatePicker :locale="'zh-TW'" v-model="editableData['補足日期']"
-    auto-apply
-    :enable-time-picker="false"
-    format="yyyy/MM/dd"
-  ></VueDatePicker>
-</v-col>  
- <v-col cols="12" sm="4">
-  <label class="v-label text-caption">簽約日期</label>
-  <VueDatePicker :locale="'zh-TW'" v-model="editableData['簽約日期']"
-    auto-apply
-    :enable-time-picker="false"
-    format="yyyy/MM/dd"
-  ></VueDatePicker>
-</v-col> 
+          <v-col cols="12" sm="4">
+            <label class="v-label text-caption">小訂日期</label>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData['小訂日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
+          </v-col>
+          <v-col cols="12" sm="4">
+            <label class="v-label text-caption">補足日期</label>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData['補足日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
+          </v-col>
+          <v-col cols="12" sm="4">
+            <label class="v-label text-caption">簽約日期</label>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData['簽約日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
+          </v-col>
           <v-col cols="12" sm="4"><v-text-field label="小訂金額" v-model.number="editableData['小訂金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="補足金額" v-model.number="editableData['補足金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
           <v-col cols="12" sm="4"><v-text-field label="簽約金額" v-model.number="editableData['簽約金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
-                <v-col cols="12" sm="6" md="4">
+        </v-row>
+      </div>
+
+      <div class="info-section mt-4">
+        <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
+        <v-row>
+          <v-col cols="12" sm="6" md="4">
             <v-select
               label="合約方式"
               :items="contractTypeOptions"
@@ -57,168 +49,158 @@
               :loading="loadingOptions"
             ></v-select>
           </v-col>
-        
+          <v-col cols="12" sm="6" md="4"></v-col> <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="房屋成交價(萬)"
+              v-model.number="editableData['房屋成交價']"
+              type="number"
+              :min="0"
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="房屋底價(萬)"
+              :model-value="houseBasePrice"
+              readonly
+              hint="自動帶入"
+              persistent-hint
+              class="base-price-field" ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4"></v-col>
+
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="車位成交價(萬)"
+              :model-value="parkingSalePrice"
+              readonly
+              hint="由編輯車位彈窗自動計算"
+              persistent-hint
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="車位底價(萬)"
+              :model-value="parkingBasePrice"
+              readonly
+              hint="由編輯車位彈窗自動計算"
+              persistent-hint
+              class="base-price-field" ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4"></v-col>
+
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="成交總價(萬)"
+              :model-value="totalSalePrice"
+              readonly
+              hint="自動計算"
+              persistent-hint
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="總底價(萬)"
+              :model-value="totalBasePrice"
+              readonly
+              hint="自動計算"
+              persistent-hint
+              class="base-price-field" ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="溢差價(萬)"
+              :model-value="priceDifference"
+              readonly
+              hint="自動計算"
+              persistent-hint
+            ></v-text-field>
+          </v-col>
+
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              label="房屋成交單價(萬/坪)"
+              :model-value="unitSalePrice"
+              readonly
+              hint="自動計算"
+              persistent-hint
+            ></v-text-field>
+          </v-col>
         </v-row>
-
-
-
       </div>
-
-      <div class="info-section mt-4">
-    <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
-    <v-row>
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="房屋成交價(萬)"
-          v-model.number="editableData['房屋成交價']"
-          type="number"
-          :min="0"
-        ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="房屋底價(萬)"
-          :model-value="houseBasePrice"
-          readonly
-          hint="自動帶入"
-          persistent-hint
-          class="base-price-field" ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4"></v-col>
-
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="車位成交價(萬)"
-          :model-value="parkingSalePrice"
-          readonly
-          hint="由編輯車位彈窗自動計算"
-          persistent-hint
-        ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="車位底價(萬)"
-          :model-value="parkingBasePrice"
-          readonly
-          hint="由編輯車位彈窗自動計算"
-          persistent-hint
-          class="base-price-field" ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4"></v-col>
-
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="成交總價(萬)"
-          :model-value="totalSalePrice"
-          readonly
-          hint="自動計算"
-          persistent-hint
-        ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="總底價(萬)"
-          :model-value="totalBasePrice"
-          readonly
-          hint="自動計算"
-          persistent-hint
-          class="base-price-field" ></v-text-field>
-      </v-col>
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="溢差價(萬)"
-          :model-value="priceDifference"
-          readonly
-          hint="自動計算"
-          persistent-hint
-        ></v-text-field>
-      </v-col>
-
-      <v-col cols="12" sm="6" md="4">
-        <v-text-field
-          label="房屋成交單價(萬/坪)"
-          :model-value="unitSalePrice"
-          readonly
-          hint="自動計算"
-          persistent-hint
-        ></v-text-field>
-      </v-col>
-    </v-row>
-  </div>
 
       <div class="info-section mt-4">
         <div class="section-title"><v-icon>mdi-account-details</v-icon> 買方資訊</div>
         <v-row>
-            <v-col cols="12" md="4"><v-text-field label="買方姓名" v-model="editableData['買方姓名']"></v-text-field></v-col>
-            <v-col cols="12" md="4"><v-text-field label="身分證字號" v-model="editableData['身分證字號']"></v-text-field></v-col>
-            <v-col cols="12" md="4"><VueDatePicker :locale="'zh-TW'" v-model="editableData['出生年月日']" placeholder="出生年月日" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
-            <v-col cols="12" md="4"><v-text-field label="聯絡電話" v-model="editableData['電話']" type="tel"></v-text-field></v-col>
-            <v-col cols="12" md="8"><v-text-field label="EMAIL" v-model="editableData['EMAIL']" type="email"></v-text-field></v-col>
-            <v-col cols="12">
-                <label class="form-label">通訊地址</label>
-                <v-row dense>
-                    <v-col cols="6">
-                        <v-select
-                            v-model="mailingCounty"
-                            :items="counties"
-                            item-title="name"
-                            item-value="code"
-                            label="縣市"
-                            :loading="loadingCounties"
-                            density="compact"
-                            variant="outlined"
-                        ></v-select>
-                    </v-col>
-                    <v-col cols="6">
-                        <v-select
-                            :key="`mailing-towns-${mailingCounty}`"
-                            v-model="mailingTown"
-                            :items="mailingTowns"
-                            item-title="name"
-                            item-value="name"
-                            label="鄉鎮市區"
-                            :loading="loadingMailingTowns"
-                            :disabled="!mailingCounty"
-                            density="compact"
-                            variant="outlined"
-                        ></v-select>
-                    </v-col>
-                </v-row>
-                <v-text-field label="詳細地址" v-model="editableData['通訊地址_詳細']" density="compact" variant="outlined"></v-text-field>
-            </v-col>
-            <v-col cols="12"><v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox></v-col>
-            <v-col cols="12" v-if="!isPermanentSameAsMailing">
-              <label class="form-label">戶籍地址</label>
-              <v-row dense>
-                  <v-col cols="6">
-                      <v-select
-                          v-model="permanentCounty"
-                          :items="counties"
-                          item-title="name"
-                          item-value="code"
-                          label="縣市"
-                          :loading="loadingCounties"
-                          density="compact"
-                          variant="outlined"
-                      ></v-select>
-                  </v-col>
-                  <v-col cols="6">
-                      <v-select
-                          :key="`permanent-towns-${permanentCounty}`"
-                          v-model="permanentTown"
-                          :items="permanentTowns"
-                          item-title="name"
-                          item-value="name"
-                          label="鄉鎮市區"
-                          :loading="loadingPermanentTowns"
-                          :disabled="!permanentCounty"
-                          density="compact"
-                          variant="outlined"
-                      ></v-select>
-                  </v-col>
-              </v-row>
-              <v-text-field label="詳細地址" v-model="editableData['戶籍地址_詳細']" density="compact" variant="outlined"></v-text-field>
-            </v-col>
+          <v-col cols="12" md="4"><v-text-field label="買方姓名" v-model="editableData['買方姓名']"></v-text-field></v-col>
+          <v-col cols="12" md="4"><v-text-field label="身分證字號" v-model="editableData['身分證字號']"></v-text-field></v-col>
+          <v-col cols="12" md="4"><VueDatePicker :locale="'zh-TW'" v-model="editableData['出生年月日']" placeholder="出生年月日" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
+          <v-col cols="12" md="4"><v-text-field label="聯絡電話" v-model="editableData['電話']" type="tel"></v-text-field></v-col>
+          <v-col cols="12" md="8"><v-text-field label="EMAIL" v-model="editableData['EMAIL']" type="email"></v-text-field></v-col>
+          <v-col cols="12">
+            <label class="form-label">通訊地址</label>
+            <v-row dense>
+              <v-col cols="6">
+                <v-select
+                  v-model="mailingCounty"
+                  :items="counties"
+                  item-title="name"
+                  item-value="code"
+                  label="縣市"
+                  :loading="loadingCounties"
+                  density="compact"
+                  variant="outlined"
+                ></v-select>
+              </v-col>
+              <v-col cols="6">
+                <v-select
+                  :key="`mailing-towns-${mailingCounty}`"
+                  v-model="mailingTown"
+                  :items="mailingTowns"
+                  item-title="name"
+                  item-value="name"
+                  label="鄉鎮市區"
+                  :loading="loadingMailingTowns"
+                  :disabled="!mailingCounty"
+                  density="compact"
+                  variant="outlined"
+                ></v-select>
+              </v-col>
+            </v-row>
+            <v-text-field label="詳細地址" v-model="editableData['通訊地址_詳細']" density="compact" variant="outlined"></v-text-field>
+          </v-col>
+          <v-col cols="12"><v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox></v-col>
+          <v-col cols="12" v-if="!isPermanentSameAsMailing">
+            <label class="form-label">戶籍地址</label>
+            <v-row dense>
+              <v-col cols="6">
+                <v-select
+                  v-model="permanentCounty"
+                  :items="counties"
+                  item-title="name"
+                  item-value="code"
+                  label="縣市"
+                  :loading="loadingCounties"
+                  density="compact"
+                  variant="outlined"
+                ></v-select>
+              </v-col>
+              <v-col cols="6">
+                <v-select
+                  :key="`permanent-towns-${permanentCounty}`"
+                  v-model="permanentTown"
+                  :items="permanentTowns"
+                  item-title="name"
+                  item-value="name"
+                  label="鄉鎮市區"
+                  :loading="loadingPermanentTowns"
+                  :disabled="!permanentCounty"
+                  density="compact"
+                  variant="outlined"
+                ></v-select>
+              </v-col>
+            </v-row>
+            <v-text-field label="詳細地址" v-model="editableData['戶籍地址_詳細']" density="compact" variant="outlined"></v-text-field>
+          </v-col>
         </v-row>
       </div>
 
@@ -226,15 +208,14 @@
         <div class="section-title"><v-icon>mdi-comment-text-outline</v-icon> 備註</div>
         <v-textarea label="備註" v-model="editableData['備註']" rows="3" auto-grow></v-textarea>
       </div>
-
     </v-form>
     
-  <ParkingEditModal 
-        v-model:show="isParkingModalOpen"
-        :all-parking-data="allParkingDataForModal"
-        :initial-selected-parking="editableData['持有車位'] || []"
-        @confirm="handleParkingUpdate"
-        @request-open-slide="$emit('request-open-slide')"
+    <ParkingEditModal 
+      v-model:show="isParkingModalOpen"
+      :all-parking-data="allParkingDataForModal"
+      :initial-selected-parking="editableData['持有車位'] || []"
+      @confirm="handleParkingUpdate"
+      @request-open-slide="$emit('request-open-slide')"
     />
   </div>
 </template>

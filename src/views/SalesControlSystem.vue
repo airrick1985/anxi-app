@@ -1,8 +1,8 @@
 <template>
   <div class="sales-control-page">
     
-    <div class="toolbar">
-     <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
+    <div class="toolbar d-none d-md-flex">
+      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
       <v-spacer></v-spacer>
 
       <v-badge
@@ -17,7 +17,6 @@
         ></v-btn>
       </v-badge>
       <v-btn
-        
         color="info"
         variant="tonal"
         class="ml-4"
@@ -82,7 +81,48 @@
       </div>
     </div>
 
-<UnitDetailModal 
+    <v-bottom-navigation
+      v-if="isMobile"
+      :active="true"
+      color="primary"
+      app
+    >
+      <v-btn @click="isQuoteSidebarOpen = true">
+        <v-badge
+          :content="itemCount"
+          :model-value="itemCount > 0"
+          color="error"
+        >
+          <v-icon>mdi-file-document-outline</v-icon>
+        </v-badge>
+        <span>報價單</span>
+      </v-btn>
+
+      <v-btn @click="openSlideViewer(parkingSlideId)" :disabled="!parkingSlideId">
+        <v-icon>mdi-parking</v-icon>
+        <span>車位表</span>
+      </v-btn>
+
+       <v-menu top>
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props">
+            <v-icon>mdi-home-city-outline</v-icon>
+            <span>{{ displayType }}</span>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item @click="displayType = '住家'">
+            <v-list-item-title>住家</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="displayType = '店面'">
+            <v-list-item-title>店面</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+
+    </v-bottom-navigation>
+
+    <UnitDetailModal 
       v-show="isModalVisible" 
       v-model:show="isModalVisible" 
       :unit-data="selectedUnitData"
@@ -92,9 +132,7 @@
       @data-updated="fetchData"
       @request-open-slide="openSlideViewer(parkingSlideId)"
     />
-
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
-
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card>
         <v-toolbar dark color="primary">
@@ -125,6 +163,11 @@ import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
+// 匯入 useDisplay
+import { useDisplay } from 'vuetify';
+
+// 取得 isMobile
+const { mobile: isMobile } = useDisplay();
 
 const router = useRouter();
 const quoteStore = useQuoteStore();
@@ -195,16 +238,10 @@ const gridData = computed(() => {
       }
     }
     
-  // ✅ --- 核心修正：採用更安全的合併邏輯 ---
-    // 1. 先以「銷控」表的記錄為基礎，建立一個可修改的副本
     const mergedData = { ...record };
-
-    // 2. 從「買方資料」Map 中查找對應的買方資訊
     const buyerInfo = buyerMap.get(unitId);
     
-    // 3. 如果找到了買方資訊，只更新我們確定要從「買方資料」來的欄位
     if (buyerInfo) {
-      // 這個陣列定義了所有應該以「買方資料」表為準的欄位
       const buyerKeys = [
         '買方姓名', '身分證字號', '出生年月日', '電話', 'EMAIL', 
         '通訊地址_縣市','通訊地址_區域','通訊地址_詳細',  '戶籍地址_縣市', '戶籍地址_區域','戶籍地址_詳細', '性別', '婚姻狀況', '行業別', 
@@ -213,21 +250,16 @@ const gridData = computed(() => {
       ];
       
       buyerKeys.forEach(key => {
-        // 只有當 buyerInfo 中確實存在該欄位時，才進行覆蓋
         if (buyerInfo[key] !== undefined) {
           mergedData[key] = buyerInfo[key];
         }
       });
     }
     
-    // 4. 最後組合所有資料
-dataMap[floor][building] = {
-      // 先放入來自「價格」和「面積」表的資料
+    dataMap[floor][building] = {
       ...(priceMap.get(unitId) || {}),
       ...(areaMap.get(unitId) || {}),
-      // 然後放入我們手動合併好的、以「銷控」表為主的資料
       ...mergedData, 
-      // 最後放入平面圖資料
       floorplans: parsedFloorplans
     };
   }
@@ -269,7 +301,6 @@ function openUnitDetail(unitData) {
   }
 }
 
-// ✅ 將資料獲取邏輯獨立成一個函式
 async function fetchData() {
   loading.value = true;
   error.value = null;
@@ -302,7 +333,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 原有樣式保持不變 */
 .sales-control-page {
   height: calc(100vh - 56px);
   background-color: #f0f2f5;
@@ -311,6 +341,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 為手機版底部導覽列預留更多空間 */
+  padding-bottom: 40px; 
 }
 .toolbar {
   display: flex;
@@ -523,15 +555,44 @@ onMounted(() => {
   100% {clip-path:polygon(50% 50%,0 0,100% 0,100% 100%,0 100%,0 0)}
 }
 
-/* ✅ 新增 #6: Iframe 容器樣式 */
 .iframe-container {
   width: 100%;
-  height: calc(100vh - 48px); /* 48px 是 v-toolbar 的常見高度 */
+  height: calc(100vh - 48px);
   overflow: hidden;
 }
 .iframe-container iframe {
   width: 100%;
   height: 100%;
-  border: none; /* 移除 iframe 預設邊框 */
+  border: none;
 }
+
+.v-bottom-navigation {
+  /* 使用 RGBA 設置帶有透明度的背景色 */
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  /* 毛玻璃/模糊效果，提升質感 */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+
+  /* --- 以下是新的修改 --- */
+
+  /* 直接設定一個較高的 height，
+    並透過 padding-bottom 將按鈕向上推，
+    這樣下方就會留出空白區域。
+    calc(56px + 20px) -> 56px是vuetify預設高度, 20px是我們要增加的底部空間
+  */
+  height: calc(56px + 20px); 
+  padding-bottom: 70px;
+}
+
+
+/* 確保按鈕內的文字可見 */
+.v-bottom-navigation .v-btn > .v-btn__content > span {
+    font-size: 0.8rem;
+}
+
+/* 確保 v-badge 不會影響排版 */
+.v-bottom-navigation .v-btn {
+    padding-top: 30px;
+}
+
 </style>

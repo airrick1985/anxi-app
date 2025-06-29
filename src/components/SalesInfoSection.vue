@@ -10,8 +10,6 @@
           <v-list-item title="後台狀態" :subtitle="salesData['銷控後台狀態'] || 'N/A'"></v-list-item>
           <v-list-item title="銷售人員" :subtitle="salesData['銷售'] || 'N/A'"></v-list-item>
           <v-list-item title="持有車位" :subtitle="salesData['車位'] || '無'"></v-list-item>
-          <v-list-item title="合約方式" :subtitle="salesData['合約方式'] || 'N/A'"></v-list-item>
-        <v-list-item title="是否首購" :subtitle="salesData['是否首購'] || 'N/A'"></v-list-item>
         </v-col>
         <v-col cols="6" sm="3">
           <v-list-item title="小訂日期" :subtitle="formatDate(salesData['小訂日期'])"></v-list-item>
@@ -29,7 +27,6 @@
         <v-col cols="6" sm="2">
           <v-list-item title="簽約金額" :subtitle="`${formatNumber(salesData['簽約金額'])} 元`"></v-list-item>
         </v-col>
-     
       </v-row>
     </v-list>
 
@@ -38,6 +35,14 @@
       成交資訊
     </div>
     <v-list lines="one" density="compact" class="bg-transparent">
+      <v-row>
+        <v-col cols="6" sm="3">
+          <v-list-item title="合約方式" :subtitle="salesData['合約方式'] || 'N/A'"></v-list-item>
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-list-item title="是否首購" :subtitle="salesData['是否首購'] || 'N/A'"></v-list-item>
+        </v-col>
+      </v-row>
       <v-row dense>
         <v-col cols="12" md="2">
           <div class="price-group">
@@ -51,7 +56,7 @@
         </v-col>
 
         <v-col cols="12" md="2">
-           <div class="price-group">
+          <div class="price-group">
             <div class="price-group-title">車位價格</div>
             <v-list-item title="車位成交價" :subtitle="`${formatNumber(parkingSalePrice)} 萬`" density="compact"></v-list-item>
             <v-list-item title="車位底價" class="base-price-field" density="compact">
@@ -60,29 +65,26 @@
           </div>
         </v-col>
 
-      
- 
-   <v-col cols="12" md="2">
-           <div class="price-group summary-highlight">
-                <div class="summary-item">
-                    <span class="summary-label">成交總價</span>
-                    <span class="summary-value text-blue">{{ formatNumber(totalSalePrice) }} 萬</span>
-                </div>
-                <v-divider class="my-1"></v-divider>
-                <div class="summary-item">
-                    <span class="summary-label">總底價</span>
-                    <span class="summary-value highlight-price-base">{{ formatNumber(totalBasePrice) }} 萬</span>
-                </div>
-                <v-divider class="my-1"></v-divider>
-                <div class="summary-item">
-                    <span class="summary-label">溢差價</span>
-                    <span class="summary-value" :class="priceDifference.color">{{ priceDifference.text }}</span>
-                </div>
-           </div>
+        <v-col cols="12" md="2">
+          <div class="price-group summary-highlight">
+            <div class="summary-item">
+              <span class="summary-label">成交總價</span>
+              <span class="summary-value text-blue">{{ formatNumber(totalSalePrice) }} 萬</span>
+            </div>
+            <v-divider class="my-1"></v-divider>
+            <div class="summary-item">
+              <span class="summary-label">總底價</span>
+              <span class="summary-value highlight-price-base">{{ formatNumber(totalBasePrice) }} 萬</span>
+            </div>
+            <v-divider class="my-1"></v-divider>
+            <div class="summary-item">
+              <span class="summary-label">溢差價</span>
+              <span class="summary-value" :class="priceDifference.color">{{ priceDifference.text }}</span>
+            </div>
+          </div>
         </v-col>
       </v-row>
     </v-list>
-  
 
     <div class="section-title mt-4">
       <v-icon>mdi-account-details</v-icon>
@@ -96,14 +98,15 @@
           <v-list-item title="出生年月日" :subtitle="formatDate(salesData['出生年月日'])"></v-list-item>
           <v-list-item title="聯絡電話" :subtitle="salesData['電話'] || 'N/A'"></v-list-item>
           <v-list-item title="EMAIL" :subtitle="salesData['EMAIL'] || 'N/A'"></v-list-item>
-<v-list-item 
-    title="通訊地址" 
-    :subtitle="(salesData['通訊地址_縣市'] || '') + (salesData['通訊地址_區域'] || '')+ (salesData['通訊地址_詳細'] || '') || 'N/A'">
-</v-list-item> 
-<v-list-item 
-    title="戶籍地址" 
-    :subtitle="(salesData['戶籍地址_縣市'] || '') + (salesData['戶籍址_區域'] || '')+ (salesData['戶籍地址_詳細'] || '') || 'N/A'">
-</v-list-item>           <v-list-item title="介紹人姓名" :subtitle="salesData['介紹人姓名'] || 'N/A'"></v-list-item>
+          <v-list-item
+            title="通訊地址"
+            :subtitle="(salesData['通訊地址_縣市'] || '') + (salesData['通訊地址_區域'] || '')+ (salesData['通訊地址_詳細'] || '') || 'N/A'">
+          </v-list-item>
+          <v-list-item
+            title="戶籍地址"
+            :subtitle="(salesData['戶籍地址_縣市'] || '') + (salesData['戶籍址_區域'] || '')+ (salesData['戶籍地址_詳細'] || '') || 'N/A'">
+          </v-list-item>
+          <v-list-item title="介紹人姓名" :subtitle="salesData['介紹人姓名'] || 'N/A'"></v-list-item>
           <v-list-item title="介紹人電話" :subtitle="salesData['介紹人電話'] || 'N/A'"></v-list-item>
         </v-col>
         <v-col cols="12" md="6">
@@ -119,11 +122,9 @@
         </v-col>
       </v-row>
     </v-list>
-    
-   
 
     <v-divider class="my-2"></v-divider>
-    
+
     <div class="note-section pa-2">
       <div class="note-title">備註</div>
       <p class="note-content">{{ salesData['備註'] || '無' }}</p>
@@ -191,7 +192,7 @@ const totalBasePrice = computed(() => {
 
 // 房屋成交單價
 const unitSalePrice = computed(() => {
-    const housePrice = Number(props.salesData?.['房屋成交價']) || 0;
+    const housePrice = Number(props.salesData?.['房屋成交價'] || 0);
     const area = Number(props.salesData?.['房屋面積(坪)']);
     if (!area) return 0;
     return (housePrice / area);
@@ -303,7 +304,7 @@ function formatNumber(value, frac = 0) {
 }
 .v-list-item {
     padding: 4px px !important;
-     
+    
 }
 
 .base-price-field :deep(.v-list-item__subtitle) {
