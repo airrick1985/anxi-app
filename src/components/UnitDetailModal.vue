@@ -200,7 +200,7 @@
       
       <div class="footer-section">
         <v-divider></v-divider>
-        <v-card-actions>
+        <v-card-actions :class="{ 'mb-8': isMobile }">
           <v-spacer></v-spacer>
           <template v-if="isEditing">
             <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
@@ -227,6 +227,7 @@ import SalesInfoForm from './SalesInfoForm.vue';
 import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
 
+// ✅ 1. 引入 useDisplay 並解構 isMobile
 const { mobile: isMobile } = useDisplay();
 
 const quoteStore = useQuoteStore();
@@ -537,6 +538,4 @@ function formatPercentage(value) {
   font-size: 1.2em;
   color: #1A237E;
 }
-
-
 </style>

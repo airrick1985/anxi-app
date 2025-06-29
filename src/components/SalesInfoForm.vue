@@ -1,5 +1,5 @@
 <template>
-  <div class="pa-2">
+   <div class="pa-2" :class="{ 'mb-8': isMobile }">
     <v-form>
       <div class="info-section">
         <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
@@ -30,7 +30,7 @@
     format="yyyy/MM/dd"
   ></VueDatePicker>
 </v-col>  
-         <v-col cols="12" sm="4">
+ <v-col cols="12" sm="4">
   <label class="v-label text-caption">簽約日期</label>
   <VueDatePicker :locale="'zh-TW'" v-model="editableData['簽約日期']"
     auto-apply
@@ -246,16 +246,11 @@ import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 import { fetchSalesOptions } from '@/api'; 
 import { useUserStore } from '@/store/user';
+import { useDisplay } from 'vuetify';
 
-// ▼▼▼ 【核心修正】 ▼▼▼
-// 根據環境變數，決定 API 的基礎路徑
-// 在正式版 (PROD)，使用完整的 API 網址
-// 在開發版 (DEV)，使用代理路徑
 const NLSC_API_BASE_URL = import.meta.env.PROD 
   ? 'https://api.nlsc.gov.tw' 
   : '/api-nlsc';
-// ▲▲▲ 【核心修正】 ▲▲▲
-
 
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
@@ -265,10 +260,13 @@ const props = defineProps({
   personnelOptions: { type: Array, default: () => [] },
   allParkingData: { type: Array, default: () => [] },
   buyerInfoOptions: { type: Object, default: () => ({}) },
-  projectName: { type: String, required: true } // ✅ 確保父組件有傳入 projectName
+  projectName: { type: String, required: true } 
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide']);
+
+const { mobile } = useDisplay(); 
+const isMobile = computed(() => mobile.value); 
 
 const isParkingModalOpen = ref(false);
 const isPermanentSameAsMailing = ref(false);
@@ -278,42 +276,15 @@ const editableData = computed({
   set: (newValue) => emit('update:modelValue', newValue)
 });
 
-// ✅ 新增 loading 和選項的 ref
 const loadingOptions = ref(false);
 const contractTypeOptions = ref([]);
 const firstPurchaseOptions = ref([]);
 
-// ✅ 在組件掛載時獲取選項資料
-onMounted(async () => {
-  if (!props.projectName) {
-    console.error("SalesInfoForm: 未提供 projectName prop，無法獲取下拉選項。");
-    return;
-  }
-  loadingOptions.value = true;
-  try {
-    const res = await fetchSalesOptions(props.projectName);
-    if (res.status === 'success' && res.data) {
-      contractTypeOptions.value = res.data.contractTypes || [];
-      firstPurchaseOptions.value = res.data.firstPurchaseOptions || [];
-    } else {
-      console.error("無法獲取合約方式與首購選項:", res.message);
-    }
-  } catch (error) {
-    console.error("獲取銷售選項時出錯:", error);
-  } finally {
-    loadingOptions.value = false;
-  }
-});
-
-// 房屋底價 (從資料來源讀取)
 const houseBasePrice = computed(() => {
   return editableData.value?.['房屋底價'] || 0;
 });
 
-// 車位底價 (從持有車位資料中加總)
 const parkingBasePrice = computed(() => {
-  // 注意：這裡假設您的車位資料結構是 editableData.value.持有車位
-  // 且為一個包含 { '車位底價': ... } 物件的陣列。請根據您的實際情況調整。
   if (!editableData.value?.持有車位 || !Array.isArray(editableData.value.持有車位)) {
     return 0;
   }
@@ -322,11 +293,9 @@ const parkingBasePrice = computed(() => {
   }, 0);
 });
 
-// 總底價 (房屋底價 + 車位底價)
 const totalBasePrice = computed(() => {
   return houseBasePrice.value + parkingBasePrice.value;
 });
-
 
 const counties = ref([]);
 const mailingTowns = ref([]);
@@ -339,6 +308,35 @@ const loadingCounties = ref(false);
 const loadingMailingTowns = ref(false);
 const loadingPermanentTowns = ref(false);
 
+// ▼▼▼ 【合併後的 onMounted】 ▼▼▼
+onMounted(async () => {
+  // 1. 獲取銷售相關下拉選單的邏輯
+  if (!props.projectName) {
+    console.error("SalesInfoForm: 未提供 projectName prop，無法獲取下拉選項。");
+  } else {
+    loadingOptions.value = true;
+    try {
+      const res = await fetchSalesOptions(props.projectName);
+      if (res.status === 'success' && res.data) {
+        contractTypeOptions.value = res.data.contractTypes || [];
+        firstPurchaseOptions.value = res.data.firstPurchaseOptions || [];
+      } else {
+        console.error("無法獲取合約方式與首購選項:", res.message);
+      }
+    } catch (error) {
+      console.error("獲取銷售選項時出錯:", error);
+    } finally {
+      loadingOptions.value = false;
+    }
+  }
+  
+  // 2. 獲取地址相關下拉選單並初始化的邏輯
+  await fetchCounties();
+  await initializeAddress();
+});
+// ▲▲▲ 【合併後的 onMounted】 ▲▲▲
+
+
 const parseXml = (xmlString) => {
     const parser = new DOMParser();
     return parser.parseFromString(xmlString, "application/xml");
@@ -347,7 +345,6 @@ const parseXml = (xmlString) => {
 const fetchCounties = async () => {
     loadingCounties.value = true;
     try {
-        // 【修正】使用新的基礎路徑變數
         const response = await axios.get(`${NLSC_API_BASE_URL}/other/ListCounty`);
         const xmlDoc = parseXml(response.data);
         const countyNodes = xmlDoc.querySelectorAll('countyItem'); 
@@ -370,7 +367,6 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     loadingRef.value = true;
     targetTownsRef.value = [];
     try {
-        // 【修正】使用新的基礎路徑變數
         const url = `${NLSC_API_BASE_URL}/other/ListTown1/${countyCode}`;
         const response = await axios.get(url);
         targetTownsRef.value = response.data.map(item => ({
@@ -420,11 +416,6 @@ const initializeAddress = async () => {
       }
     }
 }
-
-onMounted(async () => {
-    await fetchCounties();
-    await initializeAddress();
-});
 
 watch(mailingCounty, (newCountyCode, oldCountyCode) => {
     const selectedCounty = counties.value.find(c => c.code === newCountyCode);
@@ -484,9 +475,7 @@ const unitSalePrice = computed(() => {
     if (!area) return 0;
     return (housePrice / area).toFixed(2);
 });
-// 更新後的溢差價 (成交總價 - 總底價)
 const priceDifference = computed(() => {
-  // 請用此版本取代您舊的 priceDifference
   if (!totalSalePrice.value || !totalBasePrice.value) return 0;
   return totalSalePrice.value - totalBasePrice.value;
 });
@@ -497,6 +486,6 @@ const priceDifference = computed(() => {
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
 .base-price-field :deep(.v-field) {
-  background-color: #feb1b1; /* Vuetify 的 blue-lighten-5 顏色 */
+  background-color: #fce4ec; /* 接近粉色的背景，表示為底價 */
 }
 </style>

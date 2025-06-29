@@ -79,8 +79,10 @@ const route = useRoute(); // ✅ 獲取當前路由信息
 const { removeItem, clearQuote } = quoteStore;
 
 function handleRemoveItem(unitId) {
-  if (confirm(`確定要從報價單中移除 ${unitId} 嗎？`)) {
-    removeItem(unitId);
+  const itemToRemove = quoteStore.items.find(item => item.unitId === unitId);
+  if (itemToRemove && confirm(`確定要從報價單中移除 ${unitId} 嗎？`)) {
+    // 使用 item 的 internalId 來呼叫 store action
+    removeItem(itemToRemove.internalId);
   }
 }
 function handleClearQuote() {
