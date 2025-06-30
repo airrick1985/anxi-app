@@ -1,257 +1,220 @@
 <template>
-  <div class="payment-details-container">
-    <div class="payment-list">
-      <div v-for="payment in paymentBreakdown" :key="payment.name" class="payment-item-wrapper">
- <div class="payment-row">
-  <div class="payment-info">
-    <div class="payment-name">{{ payment.name }}</div>
-    <div class="payment-percentage">{{ payment.percentage }}</div>
-  </div>
+  <div>
+    <div class="payment-row header">
+      <div class="payment-name">項目</div>
+      <div class="payment-display-value">設定值</div>
+      <div class="payment-amount">金額 (萬)</div>
+    </div>
 
-  <div class="payment-value-group">
-    <div class="payment-amount">{{ payment.amount.toLocaleString() }} 萬</div>
-    
-    <v-btn
-      v-if="payment.name === '工程期款' && detailedInstallments.length > 0"
-      :icon="isExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-      variant="text"
-      size="small"
-      @click="isExpanded = !isExpanded"
-      class="expand-button"
-    ></v-btn>
-    <div v-else class="expand-button-placeholder"></div>
-  </div>
-        </div>
+    <div v-for="(item, index) in paymentBreakdown" :key="index" class="payment-row">
+      <div class="payment-name">{{ item.name }}</div>
+      <div class="payment-display-value">{{ item.displayValue }}</div>
+      <div class="payment-amount">{{ item.formattedAmount }}</div>
+    </div>
 
-        <v-expand-transition>
-          <div v-if="payment.name === '工程期款' && isExpanded" class="installment-details">
-            <div v-for="installment in detailedInstallments" :key="installment.period" class="installment-row">
-              <span class="installment-period">第 {{ installment.period }} 期</span>
-              <span class="installment-amount">{{ installment.amount.toLocaleString() }} 萬</span>
-            </div>
-             <div class="installment-row total">
-              <span>合計</span>
-              <span>{{ totalInstallmentFromDetails.toLocaleString() }} 萬</span>
-            </div>
-          </div>
-        </v-expand-transition>
-      </div>
+    <hr class="my-2">
 
-      <v-divider class="my-2"></v-divider>
-
-      <div v-if="packagePrice > 0" class="payment-row">
-        <div class="payment-info">
-          <div class="payment-name text-blue-darken-2">配套方案</div>
-        </div>
-        <div class="payment-amount text-blue-darken-2">+ {{ packagePrice.toLocaleString() }} 萬</div>
-      </div>
-
-      <v-divider class="my-2"></v-divider>
-
-      <div class="payment-row total-row">
-        <div class="payment-info">
-          <div class="payment-name font-weight-bold">總價 (含車位)</div>
-        </div>
-        <div class="final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
-      </div>
+    <div class="payment-row total">
+      <div class="payment-name">總計</div>
+      <div class="payment-display-value"></div>
+      <div class="payment-amount">{{ formattedTotalAmount }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 
 const props = defineProps({
-  finalTotalPrice: { type: Number, required: true },
-  packagePrice: { type: Number, required: true },
-  paymentTermRow: { type: Object, default: null },
-  // ✅ 新增 prop 來接收期款比例資料，以便讀取 "工程期數"
-  paymentTermsData: { type: Array, default: () => [] }
+  paymentTermsData: { type: Array, required: true, default: () => [] },
+  finalTotalPrice: { type: Number, required: true, default: 0 },
+  isFirstTimeBuyer: { type: Boolean, required: true, default: false }
 });
 
-const isExpanded = ref(false);
-
-const depositAmount = computed(() => props.paymentTermRow ? Number(props.paymentTermRow['訂金']) : 0);
-const contractAmount = computed(() => {
-  if (!props.paymentTermRow) return 0;
-  const percent = Number(props.paymentTermRow['簽約金%']) || 0;
- 
-  return Math.ceil(props.finalTotalPrice * percent) - (depositAmount.value );
-});
-const installmentAmountTotal = computed(() => {
-  if (!props.paymentTermRow) return 0;
-  const percent = Number(props.paymentTermRow['工程期款%']) || 0;
-  return Math.round(props.finalTotalPrice  * percent);
-});
-const licenseAmount = computed(() => {
-  if (!props.paymentTermRow) return 0;
-  const percent = Number(props.paymentTermRow['使照取得%']) || 0;
-  return Math.round(props.finalTotalPrice * percent);
-});
-const handoverAmount = computed(() => {
-  if (!props.paymentTermRow) return 0;
-  const percent = Number(props.paymentTermRow['交屋款%']) || 0;
-  return Math.ceil(props.finalTotalPrice  * percent);
-});
-const loanAmount = computed(() => {
-  if (!props.paymentTermRow) return 0;
-  const percent = Number(props.paymentTermRow['銀行貸款%']) || 0;
-  return Math.floor(props.finalTotalPrice  * percent);
+const conditionColumn = computed(() => {
+  const priceCondition = props.finalTotalPrice >= 4000 ? '>=4000' : '<4000';
+  const buyerCondition = props.isFirstTimeBuyer ? '首購' : '非首購';
+  return `${priceCondition}${buyerCondition}`;
 });
 
-// ✅ 從傳入的 paymentTermsData 中獲取工程總期數
-const engineeringInstallmentCount = computed(() => {
-  if (props.paymentTermsData.length > 0 && props.paymentTermsData[0]['工程期數']) {
-    const count = parseInt(props.paymentTermsData[0]['工程期數'], 10);
-    return isNaN(count) ? 0 : count;
+
+// --- 主要修改區域 START ---
+
+/**
+ * ✅ 核心修正：此函式現在確保回傳的「數字」本身就已經是精確的
+ * 它將計算結果轉換為指定精度的字串後，再轉回數字，從而完成精確的四捨五入或截斷
+ */
+function applyRounding(value, method, precisionSpec) {
+  if (!method || method === '固定金額') {
+    // 對於固定金額，如果 precisionSpec 有定義，也應用其精度
+    const defaultPrecision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+    return Number(value.toFixed(defaultPrecision));
   }
-  return 0;
-});
 
-const detailedInstallments = computed(() => {
-  const N = engineeringInstallmentCount.value;
-  // 至少要有2期才能分
-  if (N < 2) return [];
-
-  const totalInstallment = installmentAmountTotal.value;
+  const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+  const multiplier = Math.pow(10, precision);
+  let roundedValue;
   
-  // 計算第一期至倒數第二期的金額，並四捨五入到萬位
-  const amountPerInstallmentRaw = totalInstallment / (N );
-  const pricePerInstallmentRoundedToTenThousand = Math.round(amountPerInstallmentRaw );
-  
-  const installments = [];
-  let sumOfFirstInstallments = 0;
+  // 為了避免浮點數誤差，先將數值轉為整數進行運算
+  const valToProcess = value * multiplier;
 
-  // 生成第一期至倒數第二期的款項
-  for (let i = 1; i < N; i++) {
-    installments.push({ period: i, amount: pricePerInstallmentRoundedToTenThousand });
-    sumOfFirstInstallments += pricePerInstallmentRoundedToTenThousand;
+  switch (method) {
+    case '無條件進位':
+      roundedValue = Math.ceil(valToProcess) / multiplier;
+      break;
+    case '四捨五入':
+      roundedValue = Math.round(valToProcess) / multiplier;
+      break;
+    case '無條件捨去':
+      roundedValue = Math.floor(valToProcess) / multiplier;
+      break;
+    default:
+      roundedValue = value;
   }
   
-  // 計算最後一期的金額
-  const lastInstallmentAmount = installmentAmountTotal.value - sumOfFirstInstallments;
+  // ✅ 關鍵步驟：使用 toFixed 將數字轉換為具有正確小數位數的字串，
+  // 然後再用 Number() 轉回數字。這一步確保了計算值的精度。
+  return Number(roundedValue.toFixed(precision));
+}
 
-// 將最後一期加入陣列
-installments.push({ period: N, amount: lastInstallmentAmount });
 
-  return installments;
-});
-
-// ✅ 計算詳細分期加總，用於驗證
-const totalInstallmentFromDetails = computed(() => {
-  return detailedInstallments.value.reduce((sum, item) => sum + item.amount, 0);
-});
+/**
+ * 顯示專用函式：將已計算好的精確數字，格式化為帶有千分位和正確小數點的字串
+ */
+function formatAmount(value, precisionSpec) {
+    if (typeof value !== 'number') return value;
+    const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+    
+    return value.toLocaleString('en-US', {
+        minimumFractionDigits: precision,
+        maximumFractionDigits: precision,
+    });
+}
 
 
 const paymentBreakdown = computed(() => {
-  if (!props.paymentTermRow) return [];
-  const formatPercent = (val) => `${Math.round((Number(val) || 0) * 100)}%`;
+  const breakdown = [];
+  if (!props.paymentTermsData || props.paymentTermsData.length === 0) {
+    return breakdown;
+  }
 
-  return [
-    // 訂金通常是整數萬，所以不用動
-    { name: '訂金', percentage: `${depositAmount.value.toLocaleString()} 萬`, amount: depositAmount.value },
+  props.paymentTermsData.forEach(term => {
+    const itemName = term['項目名稱'];
+    const type = term['類型'];
+    const value = term[conditionColumn.value];
+    const roundingMethod = term['進位方式'];
+    const roundingPrecision = term['進位值'];
+    const installments = term['工程期數'];
+
+    if (value === undefined || value === null || value === '' || !itemName) {
+      return;
+    }
+
+    let displayValue = '';
+    let amount = 0; // 這是用於計算的、已確保精度的數字
+    const numericValue = parseFloat(value) || 0;
+
+    if (type === '百分比') {
+      displayValue = `${(numericValue * 100).toFixed(2).replace(/\.00$/, '')}%`;
+      const calculatedAmount = props.finalTotalPrice * numericValue;
+      // 計算結果立刻通過 applyRounding 確保其精度
+      amount = applyRounding(calculatedAmount, roundingMethod, roundingPrecision);
+    } else if (type === '固定金額') {
+      displayValue = numericValue.toLocaleString('en-US');
+      // 固定金額也通過 applyRounding 來確保其符合定義的精度
+      amount = applyRounding(numericValue, roundingMethod, roundingPrecision);
+    }
     
-    // ✅ 對每個計算結果，除以10000後，立即進行四捨五入
-    { name: '簽約金', percentage: formatPercent(props.paymentTermRow['簽約金%']), amount: Math.ceil(contractAmount.value ) },
-    { name: '工程期款', percentage: formatPercent(props.paymentTermRow['工程期款%']), amount: Math.round(installmentAmountTotal.value ) },
-    { name: '使照取得款', percentage: formatPercent(props.paymentTermRow['使照取得%']), amount: Math.round(licenseAmount.value ) },
-    { name: '交屋款', percentage: formatPercent(props.paymentTermRow['交屋款%']), amount: Math.round(handoverAmount.value ) },
-    { name: '銀行貸款', percentage: formatPercent(props.paymentTermRow['銀行貸款%']), amount: Math.round(loanAmount.value ) },
-  ];
-  // 註：因為已經取整，最後的 .map(...) 就不再需要了，可以刪除，讓程式碼更乾淨。
+    if (itemName === '工程期款' && installments > 0) {
+      // 'amount' 已是進位後的總工程款
+      const singleInstallmentRaw = amount / installments;
+      // ✅ 修正點: 對每一期的基礎金額也進行精確的進位處理
+      const singleInstallmentRounded = applyRounding(singleInstallmentRaw, roundingMethod, roundingPrecision);
+
+      let accumulatedAmount = 0;
+      for (let i = 1; i < installments; i++) {
+        accumulatedAmount += singleInstallmentRounded;
+        breakdown.push({
+          name: `${itemName} (第 ${i} 期)`,
+          displayValue: ``,
+          amount: singleInstallmentRounded,
+          formattedAmount: formatAmount(singleInstallmentRounded, roundingPrecision)
+        });
+      }
+      
+      // ✅ 修正點: 最後一期用總額減去前面期數的總和，並再次確保其精度
+      const lastInstallmentAmount = amount - accumulatedAmount;
+      const finalLastInstallment = applyRounding(lastInstallmentAmount, '四捨五入', roundingPrecision);
+      
+      breakdown.push({
+        name: `${itemName} (第 ${installments} 期)`,
+        displayValue: ``,
+        amount: finalLastInstallment,
+        formattedAmount: formatAmount(finalLastInstallment, roundingPrecision)
+      });
+    } else {
+      breakdown.push({
+        name: itemName,
+        displayValue: displayValue,
+        amount: amount, // 'amount' 已經是具有正確精度的數字
+        formattedAmount: formatAmount(amount, roundingPrecision)
+      });
+    }
+  });
+
+  return breakdown;
 });
+
+
+const totalAmount = computed(() => {
+  // ✅ 總計直接加總 paymentBreakdown 中已經過精度處理的 amount 值，結果自然正確
+  return paymentBreakdown.value.reduce((sum, item) => sum + item.amount, 0);
+});
+
+
+const formattedTotalAmount = computed(() => {
+    // 總金額預設顯示到小數點第二位
+    const totalPrecisionSpec = "0.00"; 
+    // ✅ 修正點: 對最終的總金額也應用一次 rounding，確保其精度
+    const roundedTotal = applyRounding(totalAmount.value, '四捨五入', totalPrecisionSpec);
+    return formatAmount(roundedTotal, totalPrecisionSpec);
+});
+
+// --- 主要修改區域 END ---
 </script>
 
 <style scoped>
-.payment-details-container {
-  padding: 8px 16px 16px 16px;
-  background-color: #f7f9fc;
-  border-top: 1px dashed #ccc;
-  display: flex;
-  justify-content: center;
-}
-.payment-list {
-  width: 100%;
-  max-width: 400px;
-}
-.payment-item-wrapper {
-  display: flex;
-  flex-direction: column;
-}
 .payment-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 6px 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+  align-items: center; /* 垂直置中 */
 }
-.payment-info {
-  text-align: left;
+.payment-row.header {
+  font-weight: bold;
+}
+.payment-row.total {
+  font-weight: bold;
+  font-size: 1.1em;
+  border-top: 2px solid #333;
+  border-bottom: none;
 }
 .payment-name {
-  font-size: 1rem;
-  color: #333;
+  flex: 2; /* 佔用較多空間 */
+  text-align: left;
 }
-.payment-percentage {
-  font-size: 0.85rem;
-  color: #555;
+/* MODIFICATION START: 新增 '設定值' 欄位樣式 */
+.payment-display-value {
+  flex: 1;
+  text-align: center; /* 置中對齊 */
+  color: #888; /* 使用灰色以區分 */
+  font-size: 0.9em;
 }
+/* MODIFICATION END */
 .payment-amount {
-  font-size: 1rem;
+  flex: 1.5; /* 佔用中等空間 */
+  text-align: right;
   font-weight: 600;
-  color: #111;
-  min-width: 100px; 
-  text-align: right;
-}
-.total-row .payment-name {
-  font-size: 1.1rem;
-}
-.final-price {
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: #1E88E5;
-  min-width: 100px;
-  text-align: right;
-}
-.expand-button {
-  margin-left: 8px;
-  min-width: 40px; /* 確保按鈕有足夠空間 */
-}
-.expand-button-placeholder {
-  width: 40px;
-  margin-left: 8px;
-}
-.installment-details {
-  padding: 8px 16px 8px 32px; /* 增加左側內縮 */
-  background-color: #ffffff;
-  border-radius: 4px;
-  margin-top: 4px;
-  border: 1px solid #e0e0e0;
-}
-.installment-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.9rem;
-  color: #424242;
-}
-.installment-row.total {
-  font-weight: bold;
-  color: #000;
-  border-top: 1px solid #ccc;
-  margin-top: 4px;
-  padding-top: 6px;
-}
-
-/* ✅ 新增這個 class */
-.payment-value-group {
-  display: flex;
-  align-items: center;
-}
-
-.payment-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 4px;
 }
 </style>
