@@ -342,7 +342,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 10px;
   /* 為手機版底部導覽列預留更多空間 */
-  padding-bottom: 40px; 
+  padding-bottom: 20px; 
 }
 .toolbar {
   display: flex;
@@ -567,32 +567,22 @@ onMounted(() => {
 }
 
 .v-bottom-navigation {
-  /* 使用 RGBA 設置帶有透明度的背景色 */
   background-color: rgba(255, 255, 255, 0.75) !important;
-  /* 毛玻璃/模糊效果，提升質感 */
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 
-  /* --- 以下是新的修改 --- */
-
-  /* 直接設定一個較高的 height，
-    並透過 padding-bottom 將按鈕向上推，
-    這樣下方就會留出空白區域。
-    calc(56px + 20px) -> 56px是vuetify預設高度, 20px是我們要增加的底部空間
-  */
-  height: calc(56px + 20px); 
-  padding-bottom: 70px;
+  /* 總高度 = 預設 56px + 想要的底部空間 20px */
+  height: calc(56px + 20px) !important; 
+  
+  /* 在內部增加與額外高度相同的 padding，將按鈕向上推 */
+  padding-bottom: 20px !important; 
 }
-
 
 /* 確保按鈕內的文字可見 */
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
 }
 
-/* 確保 v-badge 不會影響排版 */
-.v-bottom-navigation .v-btn {
-    padding-top: 30px;
-}
+
 
 </style>

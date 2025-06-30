@@ -1,3 +1,4 @@
+
 <template>
   <div>
     <div v-if="isMobile" class="quote-item-mobile">
@@ -142,6 +143,7 @@
           :final-total-price="finalTotalPrice"
           :package-price="packagePrice"
           :payment-term-row="activePaymentTerm"
+          :payment-terms-data="paymentTermsData"
         />
         <div v-else class="text-center pa-4 text-red bg-grey-lighten-4">
           找不到對應的付款條件設定 (總價: {{ finalTotalPrice }}萬, 首購: {{ isFirstTimeBuyerModel }})
