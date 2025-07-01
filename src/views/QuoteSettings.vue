@@ -55,13 +55,13 @@
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
-            <QuoteItem 
-              :item="item"
-              :payment-terms-data="paymentTermsData"
-              :show-package-deal="showPackageDealColumns"
-              @remove="quoteStore.removeItem(item.internalId)"
-              @open-parking-modal="openParkingModal(item.internalId)"
-            />
+    <QuoteItem 
+      :item="item"
+      :payment-terms-data="paymentTermsData"
+      :package-terms-data="packageTermsData"  :show-package-deal="showPackageDealColumns"
+      @remove="quoteStore.removeItem(item.internalId)"
+      @open-parking-modal="openParkingModal(item.internalId)"
+    />
           </v-card>
         </div>
       </v-card-text>
@@ -145,6 +145,7 @@ const quoteParkingSlideId = ref('');
 const isParkingModalVisible = ref(false);
 const currentEditingInternalId = ref(null);
 const paymentTermsData = ref([]);
+const packageTermsData = ref([]); 
 
 const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
@@ -311,6 +312,7 @@ onMounted(async () => {
         ]);
         if (salesControlRes.status === 'success' && salesControlRes.data) {
             paymentTermsData.value = salesControlRes.data.期款比例 || [];
+            packageTermsData.value = salesControlRes.data.配套期款 || []; 
             if (salesControlRes.data.車位SLIDE?.length > 0) {
                 const slideInfo = salesControlRes.data.車位SLIDE[0];
                 quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';

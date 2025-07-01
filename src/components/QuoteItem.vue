@@ -136,22 +136,31 @@
    </div>
     </div>
 
-    <v-expand-transition>
-      <div v-show="isPaymentDetailsVisible">
-        <div v-if="paymentTermsData && paymentTermsData.length > 0" class="pa-2 bg-grey-lighten-5">
-       <PaymentDetails
-  :payment-terms-data="paymentTermsData"
-  :final-total-price="finalTotalPrice"
-  :is-first-time-buyer="isFirstTimeBuyerBoolean"
-  :use-package-deal="usePackageDealModel" 
-  :package-price="packagePrice"
-/>
-        </div>
-        <div v-else class="text-center pa-4 text-red bg-grey-lighten-4">
-          缺少有效的期款比例設定，請至後台確認。
-        </div>
-      </div>
-    </v-expand-transition>
+<v-expand-transition>
+  <div v-show="isPaymentDetailsVisible">
+
+    <div v-if="isLoading" class="text-center pa-4">
+      <v-progress-circular indeterminate color="primary"></v-progress-circular>
+      <div class="mt-2 text-caption">付款方式計算中...</div>
+    </div>
+
+    <div v-else-if="paymentTermsData && paymentTermsData.length > 0" class="pa-2 bg-grey-lighten-5">
+      <PaymentDetails
+        :payment-terms-data="paymentTermsData"
+        :package-terms-data="packageTermsData"
+        :final-total-price="finalTotalPrice"
+        :is-first-time-buyer="isFirstTimeBuyerBoolean"
+        :use-package-deal="usePackageDealModel"
+        :package-price="packagePrice"
+      />
+    </div>
+
+    <div v-else class="text-center pa-4 text-red bg-grey-lighten-4">
+      缺少有效的期款比例設定，請至後台確認。
+    </div>
+
+  </div>
+</v-expand-transition>
     </div>
 </template>
 
@@ -164,9 +173,10 @@ import PaymentDetails from './PaymentDetails.vue'; // Assumes this is the correc
 const props = defineProps({
   item: { type: Object, required: true },
   paymentTermsData: { type: Array, default: () => [] },
-  showPackageDeal: { type: Boolean, default: true }
+  packageTermsData: { type: Array, default: () => [] }, // ✅ 在此處加上這一行
+  showPackageDeal: { type: Boolean, default: true },
+  isLoading: { type: Boolean, default: false }
 });
-
 const emit = defineEmits(['remove', 'open-parking-modal']);
 const quoteStore = useQuoteStore();
 const { mobile } = useDisplay();

@@ -15,7 +15,7 @@
         v-for="(item, index) in paymentBreakdown"
         :key="item.id || index"
         class="payment-row"
-        :class="{ 'child-item': item.isChild }"
+        :class="{ 'child-item': item.isChild, 'package-deal-row': item.isPackageDeal }"
       >
         <div class="payment-name">
           <div>
@@ -40,11 +40,6 @@
         <div class="payment-amount">{{ item.formattedAmount }}</div>
       </div>
 
-      <div v-if="usePackageDeal" class="payment-row package-deal-row">
-          <div class="payment-name">配套</div>
-          <div class="payment-amount">{{ formatAmount(packagePrice, "0") }}</div>
-      </div>
-
       <hr class="my-2">
 
       <div class="payment-row total">
@@ -59,17 +54,21 @@
 import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
+  // 常規期款
   paymentTermsData: { type: Array, required: true, default: () => [] },
   finalTotalPrice: { type: Number, required: true, default: 0 },
   isFirstTimeBuyer: { type: Boolean, required: true, default: false },
-  // ✅ 新增 Props
+
+  // 配套期款
   usePackageDeal: { type: Boolean, default: false },
-  packagePrice: { type: Number, default: 0 }
+  packagePrice: { type: Number, default: 0 },
+  packageTermsData: { type: Array, default: () => [] }
 });
 
 // --- 狀態管理 ---
 const expandedItems = ref(new Set());
 const calculatedAmounts = ref({});
+const calculatedPackageAmounts = ref({});
 const error = ref(null);
 
 function toggleExpansion(itemId) {
@@ -80,11 +79,15 @@ function toggleExpansion(itemId) {
   }
 }
 
-// --- 核心計算引擎 (此區塊不變) ---
+// --- 核心計算引擎 ---
 function parseFormula(formula, context) {
   let expression = String(formula);
-  expression = expression.replace(/總價/g, context.finalTotalPrice);
-  expression = expression.replace(/條件設定值/g, context.currentTermValue);
+  expression = expression.replace(new RegExp(context.priceKeyword, 'g'), context.priceValue);
+  
+  // ✅ 只有當公式中真的有「條件設定值」時才替換
+  if (expression.includes('條件設定值')) {
+      expression = expression.replace(/條件設定值/g, context.currentTermValue);
+  }
 
   const references = expression.match(/[A-Z]/g) || [];
   for (const refId of references) {
@@ -101,15 +104,9 @@ function parseFormula(formula, context) {
   }
 }
 
-function calculateAllItems() {
-  error.value = null;
+function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
   const results = {};
-  const terms = props.paymentTermsData;
-  if (!terms || terms.length === 0) return {};
-
-  const conditionCol = props.isFirstTimeBuyer ?
-    (props.finalTotalPrice >= 4000 ? '>=4000首購' : '<4000首購') :
-    (props.finalTotalPrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+  if (!terms || terms.length === 0) return results;
 
   const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
   let calculationMadeInLoop = true;
@@ -118,13 +115,19 @@ function calculateAllItems() {
   while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
     calculationMadeInLoop = false;
     loops++;
-
     pendingTerms.forEach((term, id) => {
       if (!term['計算方式']) return;
       try {
+        let currentTermValue = 0;
+        // ✅ 只有在需要時 (處理期款比例) 才讀取條件欄
+        if (conditionContext && term[conditionContext.conditionCol]) {
+            currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
+        }
+
         const context = {
-          finalTotalPrice: props.finalTotalPrice,
-          currentTermValue: parseFloat(term[conditionCol]) || 0,
+          priceValue: priceValue,
+          priceKeyword: priceKeyword,
+          currentTermValue: currentTermValue,
           results: results
         };
         const amount = parseFormula(term['計算方式'], context);
@@ -139,49 +142,61 @@ function calculateAllItems() {
 
   if (pendingTerms.size > 0) {
     const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
-    error.value = `計算錯誤：項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`;
-    console.error(error.value);
+    throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
   }
-
   return results;
 }
 
 watch(
-  () => [props.paymentTermsData, props.finalTotalPrice, props.isFirstTimeBuyer],
+  () => [props.paymentTermsData, props.finalTotalPrice, props.isFirstTimeBuyer, props.packageTermsData, props.packagePrice, props.usePackageDeal],
   () => {
-    calculatedAmounts.value = calculateAllItems();
+    try {
+      error.value = null;
+      const conditionCol = props.isFirstTimeBuyer ?
+        (props.finalTotalPrice >= 4000 ? '>=4000首購' : '<4000首購') :
+        (props.finalTotalPrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+      
+      const conditionContext = { conditionCol };
+
+      calculatedAmounts.value = runCalculationEngine(props.paymentTermsData, props.finalTotalPrice, '總價', conditionContext);
+      
+      if (props.usePackageDeal) {
+        // ✅ 修正：計算配套期款時，不再傳遞 conditionContext
+        calculatedPackageAmounts.value = runCalculationEngine(props.packageTermsData, props.packagePrice, '配套金額');
+      }
+    } catch (e) {
+      error.value = e.message;
+      console.error(e);
+    }
   },
   { immediate: true, deep: true }
 );
 
-// --- 顯示邏輯 (此區塊不變) ---
+// --- 顯示邏輯 ---
 const paymentBreakdown = computed(() => {
+  if (error.value) return [];
   const breakdown = [];
-  const allCalculated = calculatedAmounts.value;
-  if (Object.keys(allCalculated).length === 0 && props.paymentTermsData.length > 0) return [];
-
   const conditionCol = props.isFirstTimeBuyer ?
     (props.finalTotalPrice >= 4000 ? '>=4000首購' : '<4000首購') :
     (props.finalTotalPrice >= 4000 ? '>=4000非首購' : '<4000非首購');
 
-  const parentIds = new Set(props.paymentTermsData.map(t => t['子項目']).filter(Boolean));
-  const childrenMap = new Map();
+  // --- 處理常規期款 ---
+  const regularParentIds = new Set(props.paymentTermsData.map(t => t['子項目']).filter(Boolean));
+  const regularChildrenMap = new Map();
   props.paymentTermsData.forEach(term => {
     const parentId = term['子項目'];
     if (parentId) {
-      if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
-      childrenMap.get(parentId).push(term);
+      if (!regularChildrenMap.has(parentId)) regularChildrenMap.set(parentId, []);
+      regularChildrenMap.get(parentId).push(term);
     }
   });
 
   props.paymentTermsData.forEach(term => {
     if (term['子項目']) return;
-
     const id = term['編號'];
-    const amount = allCalculated[id] ?? 0;
-    const isParent = parentIds.has(id);
+    const amount = calculatedAmounts.value[id] ?? 0;
+    const isParent = regularParentIds.has(id);
     const isExpanded = expandedItems.value.has(id);
-
     const termValue = parseFloat(term[conditionCol]) || 0;
     let displayValue = '';
     if (term['類型'] === '百分比') {
@@ -190,54 +205,49 @@ const paymentBreakdown = computed(() => {
         displayValue = `${termValue.toLocaleString('en-US')} 萬`;
     }
 
-    breakdown.push({
-      id: id,
-      name: term['項目名稱'],
-      amount: amount,
-      formattedAmount: formatAmount(amount, term['進位值']),
-      displayValue: displayValue,
-      isExpandable: isParent,
-      isExpanded: isParent && isExpanded,
-    });
-
+    breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue, isExpandable: isParent, isExpanded });
+    
     if (isParent && isExpanded) {
-      const children = childrenMap.get(id) || [];
+      const children = regularChildrenMap.get(id) || [];
       children.forEach(childTerm => {
         const childId = childTerm['編號'];
-        const childAmount = allCalculated[childId] ?? 0;
-
-        breakdown.push({
-          id: childId,
-          name: childTerm['項目名稱'],
-          amount: childAmount,
-          formattedAmount: formatAmount(childAmount, childTerm['進位值']),
-          displayValue: '',
-          isChild: true,
-        });
+        const childAmount = calculatedAmounts.value[childId] ?? 0;
+        breakdown.push({ id: childId, name: childTerm['項目名稱'], amount: childAmount, formattedAmount: formatAmount(childAmount, childTerm['進位值']), displayValue: '', isChild: true });
       });
     }
   });
+  
+  // --- 處理配套期款 ---
+  if (props.usePackageDeal) {
+    const isPackageExpanded = expandedItems.value.has('__PACKAGE_DEAL__');
+    breakdown.push({
+      id: '__PACKAGE_DEAL__',
+      name: '配套',
+      amount: props.packagePrice,
+      formattedAmount: formatAmount(props.packagePrice, '0'),
+      isExpandable: props.packageTermsData.length > 0,
+      isExpanded: isPackageExpanded,
+      isPackageDeal: true
+    });
+    
+    if (isPackageExpanded && props.packageTermsData.length > 0) {
+      props.packageTermsData.forEach(term => {
+        const id = term['編號'];
+        const amount = calculatedPackageAmounts.value[id] ?? 0;
+        breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue: '', isChild: true, isPackageDeal: true });
+      });
+    }
+  }
 
   return breakdown;
 });
 
 // --- 總金額計算 ---
 const totalAmount = computed(() => {
-    const childIds = new Set(
-        props.paymentTermsData.map(term => term['子項目']).filter(Boolean)
-    );
-
-    // 計算基礎總和 (不含子項目)
-    let baseTotal = Object.entries(calculatedAmounts.value)
-      .filter(([id, amount]) => !childIds.has(id))
-      .reduce((sum, [id, amount]) => sum + amount, 0);
-      
-    // ✅ 新增：如果啟用配套，則加上配套金額
-    if (props.usePackageDeal) {
-        baseTotal += props.packagePrice;
-    }
-    
-    return baseTotal;
+    // ✅ Bug 2 修正：直接加總 paymentBreakdown 中非子項目的金額
+    return paymentBreakdown.value
+        .filter(item => !item.isChild)
+        .reduce((sum, item) => sum + item.amount, 0);
 });
 
 const formattedTotalAmount = computed(() => {
@@ -245,7 +255,7 @@ const formattedTotalAmount = computed(() => {
     return formatAmount(roundedTotal, "0");
 });
 
-// --- Helper 函式 (此區塊不變) ---
+// --- Helper 函式 (不變) ---
 function applyRounding(value, method, precisionSpec) {
     const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
     if (!method) return Number(value.toFixed(precision));
@@ -259,7 +269,6 @@ function applyRounding(value, method, precisionSpec) {
     }
     return Number(roundedValue.toFixed(precision));
 }
-
 function formatAmount(value, precisionSpec) {
     if (typeof value !== 'number') return value;
     const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
@@ -271,6 +280,7 @@ function formatAmount(value, precisionSpec) {
 </script>
 
 <style scoped>
+/* ... 樣式與前一版相同 ... */
 .payment-details-container {
   max-width: 500px;
   margin: 0 auto;
@@ -283,14 +293,16 @@ function formatAmount(value, precisionSpec) {
 }
 .payment-row.header { font-weight: bold; }
 
-/* ✅ 新增：為配套項目增加樣式 */
-.package-deal-row {
-    font-weight: 500;
-    color: #000000; /* 您可以自訂顏色 */
-}
+.package-deal-row .payment-name,
 .package-deal-row .payment-amount {
-    font-weight: 700;
+    font-weight: 500;
+    color: #00897B;
 }
+.package-deal-row.child-item .payment-name,
+.package-deal-row.child-item .payment-amount {
+    color: #00897B;
+}
+
 
 .payment-row.total {
   font-weight: bold;
