@@ -165,18 +165,24 @@
 </template>
 
 <script setup>
-import { ref, computed, defineProps, defineEmits } from 'vue';
+import { ref, computed, defineProps, defineEmits, onMounted } from 'vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useDisplay } from 'vuetify';
-import PaymentDetails from './PaymentDetails.vue'; // Assumes this is the correct path
+import PaymentDetails from './PaymentDetails.vue';
 
 const props = defineProps({
   item: { type: Object, required: true },
   paymentTermsData: { type: Array, default: () => [] },
-  packageTermsData: { type: Array, default: () => [] }, // ✅ 在此處加上這一行
+  packageTermsData: { type: Array, default: () => [] }, // 確保接收
   showPackageDeal: { type: Boolean, default: true },
-  isLoading: { type: Boolean, default: false }
+  isLoading: { type: Boolean, default: false } // 接收載入狀態
 });
+
+// (可選) 增加一個 console.log 來進行調試
+onMounted(() => {
+  console.log(`QuoteItem for ${props.item.unitId} received packageTermsData:`, props.packageTermsData);
+});
+
 const emit = defineEmits(['remove', 'open-parking-modal']);
 const quoteStore = useQuoteStore();
 const { mobile } = useDisplay();

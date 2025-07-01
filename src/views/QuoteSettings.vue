@@ -55,10 +55,12 @@
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
-    <QuoteItem 
+<QuoteItem 
       :item="item"
       :payment-terms-data="paymentTermsData"
-      :package-terms-data="packageTermsData"  :show-package-deal="showPackageDealColumns"
+      :package-terms-data="packageTermsData"  
+      :show-package-deal="showPackageDealColumns"
+      :is-loading="loading" 
       @remove="quoteStore.removeItem(item.internalId)"
       @open-parking-modal="openParkingModal(item.internalId)"
     />

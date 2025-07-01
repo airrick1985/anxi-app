@@ -54,12 +54,9 @@
 import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
-  // 常規期款
   paymentTermsData: { type: Array, required: true, default: () => [] },
   finalTotalPrice: { type: Number, required: true, default: 0 },
   isFirstTimeBuyer: { type: Boolean, required: true, default: false },
-
-  // 配套期款
   usePackageDeal: { type: Boolean, default: false },
   packagePrice: { type: Number, default: 0 },
   packageTermsData: { type: Array, default: () => [] }
@@ -79,16 +76,13 @@ function toggleExpansion(itemId) {
   }
 }
 
-// --- 核心計算引擎 ---
+// --- 核心計算引擎 (此區塊不變) ---
 function parseFormula(formula, context) {
   let expression = String(formula);
   expression = expression.replace(new RegExp(context.priceKeyword, 'g'), context.priceValue);
-  
-  // ✅ 只有當公式中真的有「條件設定值」時才替換
   if (expression.includes('條件設定值')) {
       expression = expression.replace(/條件設定值/g, context.currentTermValue);
   }
-
   const references = expression.match(/[A-Z]/g) || [];
   for (const refId of references) {
     if (context.results[refId] === undefined) {
@@ -96,7 +90,6 @@ function parseFormula(formula, context) {
     }
     expression = expression.replace(new RegExp(refId, 'g'), context.results[refId]);
   }
-
   try {
     return new Function(`return ${expression}`)();
   } catch (e) {
@@ -107,11 +100,9 @@ function parseFormula(formula, context) {
 function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
   const results = {};
   if (!terms || terms.length === 0) return results;
-
   const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
   let calculationMadeInLoop = true;
   let loops = 0;
-
   while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
     calculationMadeInLoop = false;
     loops++;
@@ -119,11 +110,9 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
       if (!term['計算方式']) return;
       try {
         let currentTermValue = 0;
-        // ✅ 只有在需要時 (處理期款比例) 才讀取條件欄
         if (conditionContext && term[conditionContext.conditionCol]) {
             currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
         }
-
         const context = {
           priceValue: priceValue,
           priceKeyword: priceKeyword,
@@ -134,12 +123,9 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
         results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
         pendingTerms.delete(id);
         calculationMadeInLoop = true;
-      } catch (e) {
-        // 暫時忽略
-      }
+      } catch (e) { /* 忽略 */ }
     });
   }
-
   if (pendingTerms.size > 0) {
     const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
     throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
@@ -147,21 +133,20 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
   return results;
 }
 
+// --- 監聽與計算 ---
 watch(
-  () => [props.paymentTermsData, props.finalTotalPrice, props.isFirstTimeBuyer, props.packageTermsData, props.packagePrice, props.usePackageDeal],
+  () => [props.paymentTermsData, props.packageTermsData, props.finalTotalPrice, props.packagePrice, props.isFirstTimeBuyer, props.usePackageDeal],
   () => {
     try {
       error.value = null;
       const conditionCol = props.isFirstTimeBuyer ?
         (props.finalTotalPrice >= 4000 ? '>=4000首購' : '<4000首購') :
         (props.finalTotalPrice >= 4000 ? '>=4000非首購' : '<4000非首購');
-      
       const conditionContext = { conditionCol };
 
       calculatedAmounts.value = runCalculationEngine(props.paymentTermsData, props.finalTotalPrice, '總價', conditionContext);
       
       if (props.usePackageDeal) {
-        // ✅ 修正：計算配套期款時，不再傳遞 conditionContext
         calculatedPackageAmounts.value = runCalculationEngine(props.packageTermsData, props.packagePrice, '配套金額');
       }
     } catch (e) {
@@ -172,7 +157,30 @@ watch(
   { immediate: true, deep: true }
 );
 
-// --- 顯示邏輯 ---
+// ✅ --- 重構後的顯示與總計邏輯 ---
+
+// Helper function to create a display item
+function createDisplayItem(term, amount, conditionCol, isChild = false, isPackage = false) {
+    let displayValue = '';
+    if (!isChild) { // 子項目不顯示設定值
+        if (term['類型'] === '百分比') {
+            const termValue = parseFloat(term[conditionCol]) || 0;
+            displayValue = `${(termValue * 100).toFixed(2).replace(/\.00$/, '')}%`;
+        } else if (term['類型'] === '固定金額') {
+            displayValue = `${(parseFloat(term[conditionCol]) || 0).toLocaleString('en-US')} 萬`;
+        }
+    }
+    return {
+        id: term['編號'],
+        name: term['項目名稱'],
+        amount: amount,
+        formattedAmount: formatAmount(amount, term['進位值']),
+        displayValue: displayValue,
+        isChild: isChild,
+        isPackageDeal: isPackage,
+    };
+}
+
 const paymentBreakdown = computed(() => {
   if (error.value) return [];
   const breakdown = [];
@@ -180,14 +188,13 @@ const paymentBreakdown = computed(() => {
     (props.finalTotalPrice >= 4000 ? '>=4000首購' : '<4000首購') :
     (props.finalTotalPrice >= 4000 ? '>=4000非首購' : '<4000非首購');
 
-  // --- 處理常規期款 ---
+  // --- 1. 處理常規期款 ---
   const regularParentIds = new Set(props.paymentTermsData.map(t => t['子項目']).filter(Boolean));
   const regularChildrenMap = new Map();
   props.paymentTermsData.forEach(term => {
-    const parentId = term['子項目'];
-    if (parentId) {
-      if (!regularChildrenMap.has(parentId)) regularChildrenMap.set(parentId, []);
-      regularChildrenMap.get(parentId).push(term);
+    if (term['子項目']) {
+      if (!regularChildrenMap.has(term['子項目'])) regularChildrenMap.set(term['子項目'], []);
+      regularChildrenMap.get(term['子項目']).push(term);
     }
   });
 
@@ -197,27 +204,22 @@ const paymentBreakdown = computed(() => {
     const amount = calculatedAmounts.value[id] ?? 0;
     const isParent = regularParentIds.has(id);
     const isExpanded = expandedItems.value.has(id);
-    const termValue = parseFloat(term[conditionCol]) || 0;
-    let displayValue = '';
-    if (term['類型'] === '百分比') {
-        displayValue = `${(termValue * 100).toFixed(2).replace(/\.00$/, '')}%`;
-    } else if (term['類型'] === '固定金額') {
-        displayValue = `${termValue.toLocaleString('en-US')} 萬`;
-    }
-
-    breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue, isExpandable: isParent, isExpanded });
+    
+    const item = createDisplayItem(term, amount, conditionCol);
+    item.isExpandable = isParent;
+    item.isExpanded = isExpanded;
+    breakdown.push(item);
     
     if (isParent && isExpanded) {
       const children = regularChildrenMap.get(id) || [];
       children.forEach(childTerm => {
-        const childId = childTerm['編號'];
-        const childAmount = calculatedAmounts.value[childId] ?? 0;
-        breakdown.push({ id: childId, name: childTerm['項目名稱'], amount: childAmount, formattedAmount: formatAmount(childAmount, childTerm['進位值']), displayValue: '', isChild: true });
+        const childAmount = calculatedAmounts.value[childTerm['編號']] ?? 0;
+        breakdown.push(createDisplayItem(childTerm, childAmount, conditionCol, true));
       });
     }
   });
   
-  // --- 處理配套期款 ---
+  // --- 2. 處理配套期款 ---
   if (props.usePackageDeal) {
     const isPackageExpanded = expandedItems.value.has('__PACKAGE_DEAL__');
     breakdown.push({
@@ -227,14 +229,14 @@ const paymentBreakdown = computed(() => {
       formattedAmount: formatAmount(props.packagePrice, '0'),
       isExpandable: props.packageTermsData.length > 0,
       isExpanded: isPackageExpanded,
-      isPackageDeal: true
+      isPackageDeal: true,
+      displayValue: ''
     });
     
     if (isPackageExpanded && props.packageTermsData.length > 0) {
       props.packageTermsData.forEach(term => {
-        const id = term['編號'];
-        const amount = calculatedPackageAmounts.value[id] ?? 0;
-        breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue: '', isChild: true, isPackageDeal: true });
+        const amount = calculatedPackageAmounts.value[term['編號']] ?? 0;
+        breakdown.push(createDisplayItem(term, amount, conditionCol, true, true));
       });
     }
   }
@@ -242,9 +244,9 @@ const paymentBreakdown = computed(() => {
   return breakdown;
 });
 
-// --- 總金額計算 ---
+// ✅ Bug 2 修正：總計直接依賴 paymentBreakdown，只加總非子項目
 const totalAmount = computed(() => {
-    // ✅ Bug 2 修正：直接加總 paymentBreakdown 中非子項目的金額
+    if (error.value) return 0;
     return paymentBreakdown.value
         .filter(item => !item.isChild)
         .reduce((sum, item) => sum + item.amount, 0);
@@ -280,82 +282,42 @@ function formatAmount(value, precisionSpec) {
 </script>
 
 <style scoped>
-/* ... 樣式與前一版相同 ... */
+/* 樣式不變 */
 .payment-details-container {
-  max-width: 500px;
-  margin: 0 auto;
+  max-width: 500px; margin: 0 auto;
 }
 .payment-row {
-  display: flex;
-  padding: 6px 0;
-  border-bottom: 1px solid #eee;
-  align-items: center;
+  display: flex; padding: 6px 0; border-bottom: 1px solid #eee; align-items: center;
 }
 .payment-row.header { font-weight: bold; }
-
-.package-deal-row .payment-name,
-.package-deal-row .payment-amount {
-    font-weight: 500;
+.package-deal-row .payment-name, .package-deal-row .payment-amount {
+    font-weight: 500; color: #00897B;
+}
+.package-deal-row.child-item .payment-name, .package-deal-row.child-item .payment-amount {
     color: #00897B;
 }
-.package-deal-row.child-item .payment-name,
-.package-deal-row.child-item .payment-amount {
-    color: #00897B;
-}
-
-
 .payment-row.total {
-  font-weight: bold;
-  border-top: 2px solid #333;
-  border-bottom: none;
-  margin-top: 8px;
+  font-weight: bold; border-top: 2px solid #333; border-bottom: none; margin-top: 8px;
 }
-
 .payment-name {
-  flex: 1;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  margin-right: 16px;
+  flex: 1; text-align: left; display: flex; flex-direction: column; justify-content: center; margin-right: 16px;
 }
 .payment-amount {
-  flex: 0 0 120px;
-  text-align: right;
-  font-weight: 600;
-  color: #333;
+  flex: 0 0 120px; text-align: right; font-weight: 600; color: #333;
 }
-
 .item-subtitle {
-  color: #888;
-  font-size: 0.85em;
-  margin-top: 2px;
+  color: #888; font-size: 0.85em; margin-top: 2px;
 }
-
 .expand-button {
-  padding: 0 !important;
-  min-width: 0 !important;
-  text-transform: none;
-  font-weight: normal;
-  letter-spacing: normal;
-  color: inherit;
-  justify-content: flex-start;
-  width: 100%;
+  padding: 0 !important; min-width: 0 !important; text-transform: none; font-weight: normal; letter-spacing: normal; color: inherit; justify-content: flex-start; width: 100%;
 }
-
 .child-item .payment-name {
   padding-left: 24px;
 }
-
 .child-item .payment-amount {
-  font-weight: 400;
-  color: #666;
-  font-size: 0.95em;
+  font-weight: 400; color: #666; font-size: 0.95em;
 }
-
 .payment-amount.final-total {
-  font-size: 1.5em;
-  font-weight: bold;
-  color: #1E88E5;
+  font-size: 1.5em; font-weight: bold; color: #1E88E5;
 }
 </style>
