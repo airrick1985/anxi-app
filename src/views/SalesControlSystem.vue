@@ -40,6 +40,8 @@
       </v-btn-toggle>
     </div>
 
+   <div class="grid-wrapper">
+
     <div class="layout-grid">
       <div class="header-top-left"></div>
       <div ref="headerTopRef" class="header-top-container">
@@ -80,6 +82,7 @@
         </div>
       </div>
     </div>
+     </div>
 
     <v-bottom-navigation
       v-if="isMobile"
@@ -344,6 +347,14 @@ onMounted(() => {
   /* 為手機版底部導覽列預留更多空間 */
   padding-bottom: 20px; 
 }
+
+.grid-wrapper {
+  flex-grow: 1;          /* 讓它填滿父層剩餘的垂直空間 */
+  display: flex;         /* 使用 flex 佈局 */
+  justify-content: center; /* 將其唯一的子項目（.layout-grid）水平置中 */
+  overflow: hidden;      /* 隱藏任何可能超出的滾動條 */
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -356,12 +367,16 @@ onMounted(() => {
   color: #37474f;
 }
 .layout-grid {
-  flex-grow: 1;
+  /* flex-grow: 1;  <-- 移除這一行，讓它不再填滿寬度 */
   display: grid;
   grid-template-columns: 0px 40px 1fr;
   grid-template-rows: 50px 1fr;
   overflow: hidden;
+  
+  /* 加上最大寬度限制 */
+  max-width: 95vw; /* 例如，最大寬度不超過螢幕的 95% */
 }
+
 .header-top-left {
   grid-column: 2;
   grid-row: 1;
@@ -420,7 +435,7 @@ onMounted(() => {
 .grid-table {
   display: grid;
   gap: 10px 12px;
-  padding: 5px 0 5px 12px;
+  padding: 5px 16px 5px 12px;
   width: max-content;
   grid-template-columns: repeat(v-bind('buildingHeaders.length'), 120px);
   grid-auto-rows: 90px;
