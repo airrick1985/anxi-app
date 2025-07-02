@@ -184,124 +184,93 @@ const formatNumber = (val, frac = 2) => {
 // ✅ 重構核心：handleGenerateQuote
 // =======================================================
 async function handleGenerateQuote() {
-  if (!selectedPersonnel.value) {
-    alert('請先選擇報價人員');
-    return;
+if (!selectedPersonnel.value) {
+ alert('請先選擇報價人員');
+ return;
+}
+isGeneratingPdf.value = true;
+
+try {
+ const payload = {
+ projectName: projectName,
+ personnelName: selectedPersonnel.value.name,
+ personnelPhone: selectedPersonnel.value.phone,
+ items: quoteStore.items.map(item => {
+     // --- 1. 付款條件的計算邏輯 (這部分是正確的，保持不變) ---
+  const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
+  const pricePart = finalTotal >= 4000 ? 'gte4000' : 'lt4000';
+  const buyerPart = item.isFirstTimeBuyer ? 'first' : 'not_first';
+  const valueKey = `${pricePart}_${buyerPart}`;
+  const paymentCalculations = {};
+  let totalSelfPayment = 0;
+  let depositAmount = 0;
+
+  paymentTermsData.value.forEach(term => {
+    if (!term.item_name) return;
+    const value = Number(term[valueKey]) || 0;
+    if (value === 0 && term.item_name !== '銀行貸款') return;
+    let amount = (term.type === '百分比') ? (finalTotal * value) : value;
+    if (term.item_name === '訂金') { depositAmount = amount; }
+    if (term.item_name === '簽約金') { amount -= depositAmount; }
+    const roundingMethod = (term.item_name === '簽約金') ? 'ceil' : 'round';
+    paymentCalculations[term.item_name] = { amount: Math[roundingMethod](amount), percent: value };
+    if (term.item_name !== '銀行貸款') { totalSelfPayment += paymentCalculations[term.item_name].amount; }
+  });
+
+  const loanAmount = finalTotal - totalSelfPayment;
+  if(paymentCalculations['銀行貸款']) {
+   paymentCalculations['銀行貸款'].amount = loanAmount;
   }
-  isGeneratingPdf.value = true;
   
-  try {
-    const payload = {
-      projectName: projectName,
-      personnelName: selectedPersonnel.value.name,
-      personnelPhone: selectedPersonnel.value.phone,
-      items: quoteStore.items.map(item => {
-        // --- 開始與 PaymentDetails 同步的動態計算 ---
-        const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
-        
-        // 1. 決定趴數欄位
-        const pricePart = finalTotal >= 4000 ? 'gte4000' : 'lt4000';
-        const buyerPart = item.isFirstTimeBuyer ? 'first' : 'not_first';
-        const valueKey = `${pricePart}_${buyerPart}`;
+    // ★★★★★【這是最重要的修改部分】★★★★★
 
-        const paymentCalculations = {};
-        let totalSelfPayment = 0;
-        let depositAmount = 0;
+  // --- 2. 建立固定欄位的物件 ---
+  const fixedPayload = {
+   '戶別': item.unitId,
+   '是否首購': item.isFirstTimeBuyer ? '是' : '否',
+   '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
+   '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
+   '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
+   '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
+   '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
+   '配套價': quoteStore.getPackagePrice(item.internalId).toLocaleString(),
+   '總價': finalTotal.toLocaleString(),
+  };
 
-        // 2. 遍歷規則，計算每一項的金額 (單位：萬)
-        paymentTermsData.value.forEach(term => {
-          if (!term.item_name) return;
-          
-          const value = Number(term[valueKey]) || 0;
-          if (value === 0 && term.item_name !== '銀行貸款') return;
+  // --- 3. 將計算好的付款項目，動態地轉換成 Key-Value 物件 ---
+  const dynamicPayments = Object.keys(paymentCalculations).reduce((acc, termName) => {
+   const termData = paymentCalculations[termName];
+   const formatPercent = (val) => `${Math.round((Number(val) || 0) * 100)}%`;
 
-          let amount = 0;
-          if (term.type === '固定金額') {
-            amount = value;
-          } else if (term.type === '百分比') {
-            // 注意：PDF Payload 需要以「萬」為單位
-            amount = finalTotal * value;
-          }
+   // 為每個付款條件，產生 "%" 和 "金額" 兩個欄位
+   // 例如 acc['訂金%'] = '10%'; acc['訂金金額'] = '100,000';
+   acc[`${termName}%`] = formatPercent(termData.percent);
+   acc[`${termName}金額`] = termData.amount.toLocaleString();
+   
+   return acc;
+  }, {});
 
-          if (term.item_name === '訂金') {
-            depositAmount = amount;
-          }
-          if (term.item_name === '簽約金') {
-            amount -= depositAmount;
-          }
-          
-          // 處理取整
-          if (term.item_name === '簽約金') {
-             paymentCalculations[term.item_name] = { amount: Math.ceil(amount), percent: value };
-          } else {
-             paymentCalculations[term.item_name] = { amount: Math.round(amount), percent: value };
-          }
-          
-          if (term.item_name !== '銀行貸款') {
-            totalSelfPayment += paymentCalculations[term.item_name].amount;
-          }
-        });
+  // --- 4. 將固定欄位和動態付款項目合併，回傳最終的 item 物件 ---
+  return {
+   ...fixedPayload,
+   ...dynamicPayments,
+  };
+ })
+ };
 
-        // 3. 計算銀行貸款
-        const loanAmount = finalTotal - totalSelfPayment;
-        if(paymentCalculations['銀行貸款']) {
-          paymentCalculations['銀行貸款'].amount = loanAmount;
-        }
-        // --- 動態計算結束 ---
-        
-        // 4. 組合最終給 PDF 的 payload
-        const formatPercent = (val) => `${Math.round((Number(val) || 0) * 100)}%`;
-        const getPaymentValue = (name, key) => {
-            if (!paymentCalculations[name]) return key === 'amount' ? '0' : '0%';
-            return key === 'amount' 
-                ? paymentCalculations[name].amount.toLocaleString()
-                : formatPercent(paymentCalculations[name].percent);
-        };
-
-        return {
-          '戶別': item.unitId,
-          '是否首購': item.isFirstTimeBuyer ? '是' : '否',
-          '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
-          '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
-          '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-          '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
-          '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
-          '配套價': quoteStore.getPackagePrice(item.internalId).toLocaleString(),
-          '總價': finalTotal.toLocaleString(),
-          
-          // 動態生成付款項目
-          '訂金%': getPaymentValue('訂金', 'percent'), // 訂金的 percent 欄位比較特殊
-          '訂金金額': getPaymentValue('訂金', 'amount'),
-          '簽約金%': getPaymentValue('簽約金', 'percent'),
-          '簽約金金額': getPaymentValue('簽約金', 'amount'),
-          '工程期款%': getPaymentValue('工程期款', 'percent'),
-          '工程期款金額': getPaymentValue('工程期款', 'amount'),
-          '使照取得款%': getPaymentValue('使照取得款', 'percent'),
-          '使照取得款金額': getPaymentValue('使照取得款', 'amount'),
-          '交屋款%': getPaymentValue('交屋款', 'percent'),
-          '交屋款金額': getPaymentValue('交屋款', 'amount'),
-          '銀行貸款%': getPaymentValue('銀行貸款', 'percent'),
-          '銀行貸款金額': getPaymentValue('銀行貸款', 'amount'),
-          // 如果有其他款項，也可以用同樣方式加入
-          '開工款%': getPaymentValue('開工款', 'percent'),
-          '開工款金額': getPaymentValue('開工款', 'amount'),
-        };
-      })
-    };
-
-    const result = await generateQuotePdf(payload);
-    if (result.status === 'success' && result.url) {
-      generatedPdfUrl.value = result.url;
-      pdfResultDialog.value = true;
-    } else {
-      throw new Error(result.message || '後端未返回有效的URL');
-    }
-  } catch (err) {
-    console.error('產生報價單失敗:', err);
-    alert(`產生報價單失敗: ${err.message}`);
-  } finally {
-    isGeneratingPdf.value = false;
-  }
+ const result = await generateQuotePdf(payload);
+ if (result.status === 'success' && result.url) {
+   generatedPdfUrl.value = result.url;
+   pdfResultDialog.value = true;
+ } else {
+   throw new Error(result.message || '後端未返回有效的URL');
+ }
+} catch (err) {
+ console.error('產生報價單失敗:', err);
+ alert(`產生報價單失敗: ${err.message}`);
+} finally {
+ isGeneratingPdf.value = false;
+}
 }
 
 onMounted(async () => {
