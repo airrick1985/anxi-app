@@ -1,5 +1,6 @@
 <template>
   <div class="payment-details-container">
+
     <div v-if="error" class="pa-4 text-center text-red bg-red-lighten-5">
       <p class="font-weight-bold">計算時發生錯誤</p>
       <p class="text-caption">{{ error }}</p>
@@ -40,13 +41,12 @@
         <div class="payment-amount">{{ item.formattedAmount }}</div>
       </div>
 
-      <hr class="my-2">
-
       <div class="payment-row total">
         <div class="payment-name">總計</div>
         <div class="payment-amount final-total">{{ formattedTotalAmount }}</div>
       </div>
     </div>
+    
   </div>
 </template>
 
@@ -275,25 +275,26 @@ function formatAmount(value, precisionSpec) {
 <style scoped>
 /* 樣式不變 */
 .payment-details-container {
-  max-width: 500px; margin: 0 auto;
+  max-width: 300px; margin: 0 auto;
 }
 .payment-row {
   display: flex; padding: 6px 0; border-bottom: 1px solid #eee; align-items: center;
 }
+
+/* ✅ 新增這一小段規則 */
+.payment-row:last-of-type {
+  border-bottom: none;
+}
+
 .payment-row.header { font-weight: bold; }
-
-/* ✅ 修正點：將配套父項的 font-weight 從 500 改為 600 */
 .package-deal-row .payment-name, .package-deal-row .payment-amount {
-    font-weight: 00; /* 父項目為 600 */
+    font-weight: 600;
     color: #ff0000;
 }
-
-/* ✅ 修正點：為配套子項新增 font-weight: 500 */
 .package-deal-row.child-item .payment-name, .package-deal-row.child-item .payment-amount {
-    font-weight: 300; /* 子項目為 500 */
+    font-weight: 300;
     color: #ff0000;
 }
-
 .payment-row.total {
   font-weight: bold; border-top: 2px solid #333; border-bottom: none; margin-top: 8px;
 }
@@ -312,12 +313,9 @@ function formatAmount(value, precisionSpec) {
 .child-item .payment-name {
   padding-left: 24px;
 }
-
-/* 常規子項目的金額樣式 */
 .child-item .payment-amount {
   font-weight: 400; color: #666; font-size: 0.95em;
 }
-
 .payment-amount.final-total {
   font-size: 1.5em; font-weight: bold; color: #1E88E5;
 }

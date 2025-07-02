@@ -72,13 +72,13 @@
     <v-card class="mt-4" v-if="quoteStore.items.length > 0">
       <v-card-text>
         <v-row align="center">
-          <v-col cols="12" md="5">
+          <v-col cols="12" md="2">
             <v-select label="報價人員" :items="personnelOptions" v-model="selectedPersonnel" :readonly="!canEditPersonnel" item-title="name" return-object></v-select>
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="2">
             <v-text-field label="聯絡電話" :model-value="personnelPhone" readonly></v-text-field>
           </v-col>
-          <v-col cols="12" md="4" class="text-right">
+          <v-col cols="12" md="8" class="text-right">
             <v-btn 
               color="success" size="large"
               @click="handleGenerateQuote"
