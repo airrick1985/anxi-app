@@ -9,7 +9,7 @@
           <v-col cols="12" sm="12" md="4">
             <div class="d-flex align-center">
               <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
-              <v-btn class="ml-2" @click="isParkingModalOpen = true">編輯車位</v-btn>
+              <v-btn class="ml-2" color="primary" @click="isParkingModalOpen = true"><v-icon left>mdi-pencil</v-icon>編輯車位</v-btn>
             </div>
           </v-col>
           <v-col cols="12" sm="4">
