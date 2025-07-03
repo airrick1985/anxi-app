@@ -4,25 +4,25 @@
     :style="containerStyle"
   >
     <button class="icon-button" v-if="userStore.hasPermission('驗屋系統')" @click="goToInspectionSystem">
-      <img src="/img/icons/property.svg" alt="驗屋系統圖標" class="icon" />
+      <img src="/img/icons/property.png" alt="驗屋系統圖標" class="icon" />
       <span class="text">驗屋系統</span>
     </button>
     
     <button class="icon-button" v-if="userStore.hasPermission('報價系統')" @click="goToEntryPage('quote')">
-      <img src="/img/icons/tablet.svg" alt="報價系統圖標" class="icon" />
+      <img src="/img/icons/price.png" alt="報價系統圖標" class="icon" />
       <span class="text">報價系統</span>
     </button>
 
     <button class="icon-button" v-if="userStore.hasPermission('銷控系統')" @click="goToEntryPage('sales')">
-      <img src="/img/icons/sales.svg" alt="銷控系統圖標" class="icon" /> 
+      <img src="/img/icons/table.png" alt="銷控系統圖標" class="icon" /> 
       <span class="text">銷控系統</span>
     </button>
     <button class="icon-button" v-if="userStore.hasPermission('客戶管理')">
-      <img src="/img/icons/customer.svg" alt="客戶管理圖標" class="icon" />
+      <img src="/img/icons/customer.png" alt="客戶管理圖標" class="icon" />
       <span class="text">客戶管理</span>
     </button>
     <button class="icon-button" v-if="userStore.hasPermission('客變系統')">
-      <img src="/img/icons/blueprint.svg" alt="客變系統圖標" class="icon" />
+      <img src="/img/icons/blueprint.png" alt="客變系統圖標" class="icon" />
       <span class="text">客變系統</span>
     </button>
   </div>
