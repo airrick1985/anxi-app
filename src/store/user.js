@@ -1,85 +1,76 @@
-import { defineStore } from 'pinia';
+// src/store/user.js
 
-// 確保你的 main.js 有使用 pinia-plugin-persistedstate
-// import { createPinia } from 'pinia';
-// import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
-// const pinia = createPinia();
-// pinia.use(piniaPluginPersistedstate);
+import { defineStore } from 'pinia';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-     /**
-     * 用戶資料
-     * @type {{ key: string|null, email: string|null, name: string|null, projectName: string|null }|null}
-     */
     user: null,
-    permissions: [] // Added permissions state
+    // ✨ 新增 state，用來儲存從 API 來的詳細權限列表
+    detailedPermissions: [] 
   }),
 
   actions: {
-    /**
-     * 設定用戶資料
-     * @param {object|null} userData
-     */
     setUser(userData) {
-      console.log("✅ setUser called with:", userData);
       if (userData && typeof userData === 'object' && userData.key) {
         this.user = {
           key: userData.key,
           email: userData.email || null,
           name: userData.name || null,
-          projectName: userData.projectName || null // Explicitly set to null if not provided
+          projectName: userData.projectName || null
         };
-        // Handle permissions
-        if (Array.isArray(userData.permissions)) {
-          this.permissions = userData.permissions;
-          console.log("✅ User permissions updated in store:", JSON.parse(JSON.stringify(this.permissions)));
+        // ✨ 當設定使用者時，同時儲存詳細權限
+        if (Array.isArray(userData.detailedPermissions)) {
+          this.detailedPermissions = userData.detailedPermissions;
+          console.log("✅ 已更新詳細權限列表至 Store:", JSON.parse(JSON.stringify(this.detailedPermissions)));
         } else {
-          this.permissions = [];
-          console.log("⚡ User permissions reset in store (no valid permissions data or not an array)");
+          this.detailedPermissions = [];
         }
-        console.log("✅ User state updated:", JSON.parse(JSON.stringify(this.user)));
       } else {
         this.user = null;
-        this.permissions = []; // Also clear permissions when user data is invalid
-        console.log("⚡ User state and permissions cleared (no valid data)");
+        this.detailedPermissions = [];
       }
     },
-
-    /**
-     * 清除用戶資料（登出）
-     */
     clearUser() {
-      console.log("🚪 clearUser called, logging out...");
       this.user = null;
-      this.permissions = []; // Clear permissions on logout
+      this.detailedPermissions = []; // ✨ 登出時清空
     },
-
     setProjectName(projectName) {
       if (this.user) {
         this.user.projectName = projectName;
-        console.log("✅ Project name updated in store:", projectName);
-      } else {
-        console.warn("⚠️ User not set, cannot update project name.");
       }
     }
   },
 
   getters: {
     /**
-     * 檢查用戶是否擁有特定權限
-     * @param {object} state - The store's state.
-     * @returns {function(string): boolean} - A function that takes a permission name and returns true if the user has it.
+     * ✨ 新增：兩層權限檢查 Getter
+     * @param state
+     * @returns (system: string, projectName: string) => boolean
      */
-    hasPermission: (state) => (permissionName) => {
-      // Check if user is loaded, permissions is an array, and then check for the specific permission.
-      return !!state.user && Array.isArray(state.permissions) && state.permissions.includes(permissionName);
+    hasProjectPermission: (state) => (system, projectName) => {
+      if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
+        return false;
+      }
+      // 在詳細權限列表中查找是否有匹配的項目
+      return state.detailedPermissions.some(
+        p => p.system === system && p.projectName === projectName && p.access === 'Y'
+      );
+    },
+    
+    /**
+     * (可選) 舊的 hasPermission，現在用來檢查使用者是否"至少有一個"建案對該系統有權限
+     */
+    hasPermission: (state) => (systemName) => {
+        if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
+            return false;
+        }
+        return state.detailedPermissions.some(p => p.system === systemName && p.access === 'Y');
     }
   },
 
   persist: {
-    key: 'anxi-user-session', 
+    key: 'anxi-user-session',
     storage: sessionStorage,
-    paths: ['user', 'permissions'] // Added 'permissions' to persisted paths
+    paths: ['user', 'detailedPermissions'] // ✨ 記得將新 state 加入持久化
   }
 });

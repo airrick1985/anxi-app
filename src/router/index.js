@@ -14,11 +14,14 @@ const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } }, // 建議 Home 頁也需要登入
-  {
+ {
     path: '/inspectionsystem',
     name: 'InspectionSystem',
     component: InspectionSystem,
-    meta: { requiresAuth: true } // 假設進入系統選擇頁需要登入
+    meta: { 
+        requiresAuth: true,
+        requiredSystem: '驗屋系統' // ✨ 新增
+    }
   },
   {
     path: '/inspection-record',
@@ -54,34 +57,34 @@ const routes = [
     component: SalesControlSystemEntry,
     meta: { requiresAuth: true } // 假設也需要登入
   },
-  {
+ {
     path: '/sales-control/:projectName',
-    name: 'SalesControlSystem', // 這是銷控系統的入口
+    name: 'SalesControlSystem',
     component: () => import('@/views/SalesControlSystem.vue'),
     meta: { 
       requiresAuth: true,
-      viewMode: 'sales' // ✅ 銷控模式
+      viewMode: 'sales',
+      requiredSystem: '銷控系統' // ✨ 新增：定義此路由需要的系統權限
     }
   },
   {
-    path: '/quote-system/:projectName', // 為報價系統定義一個不同的路徑
-    name: 'QuoteSystem', // 新的路由名稱
-    component: () => import('@/views/SalesControlSystem.vue'), // ✅ 指向同一個組件
+    path: '/quote-system/:projectName',
+    name: 'QuoteSystem',
+    component: () => import('@/views/SalesControlSystem.vue'),
     meta: {
       requiresAuth: true,
-      viewMode: 'quote' // ✅ 報價模式
+      viewMode: 'quote',
+      requiredSystem: '報價系統' // ✨ 新增
     }
   },
-
-    {
+  {
     path: '/quote-settings/:projectName', 
     name: 'QuoteSettings',
     component: () => import('@/views/QuoteSettings.vue'),
-    // ✅ 關鍵：讓這個路由可以通過 props 接收參數，更清晰
     props: true, 
     meta: { 
-      requiresAuth: true 
-      
+      requiresAuth: true,
+      requiredSystem: '報價系統' // ✨ 新增 (假設設定頁也屬於報價系統)
     }
   },
 
@@ -106,22 +109,52 @@ const router = createRouter({
   routes
 });
 
-// 路由守衛：未登入只能進 Login (保持不變)
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore();
   const isLoggedIn = !!userStore.user;
-  // 檢查目標路由是否需要認證
+
+  // 1. 檢查是否需要登入 (邏輯不變)
   if (to.meta.requiresAuth && !isLoggedIn) {
-    // 如果需要認證但用戶未登入，重定向到登入頁面
-    // 同時可以保存用戶原本想去的頁面路徑，以便登入後跳轉回去
-    next({ name: 'Login', query: { redirect: to.fullPath } });
-  } else if (isLoggedIn && to.name === 'Login') {
-    // 如果用戶已登入但嘗試訪問登入頁，重定向到首頁
-    next({ name: 'Home' });
+    return next({ name: 'Login', query: { redirect: to.fullPath } });
   }
-  else {
-    next(); // 正常導航
+
+  // 2. 檢查已登入者是否訪問登入頁 (邏輯不變)
+  if (isLoggedIn && to.name === 'Login') {
+    return next({ name: 'Home' });
   }
+
+  // ✨ 3. 新的兩層權限檢查邏輯
+  const requiredSystem = to.meta.requiredSystem;
+
+  if (isLoggedIn && requiredSystem) {
+    const projectName = to.params.projectName;
+
+    // A. 如果路由包含建案名稱 (例如 /sales-control/富宇首馥)
+    if (projectName) {
+      if (userStore.hasProjectPermission(requiredSystem, projectName)) {
+        // 有權限，放行
+        return next(); 
+      } else {
+        // 無權限，提示並導回首頁
+        alert(`權限不足：您沒有進入建案「${projectName}」的「${requiredSystem}」權限。`);
+        return next({ name: 'Home' });
+      }
+    } 
+    // B. 如果路由不含建案名稱，但需要系統權限 (例如 /inspectionsystem 這種入口頁)
+    else {
+      if (userStore.hasPermission(requiredSystem)) {
+        // 只要對該系統有任何一個建案的權限，就放行
+        return next();
+      } else {
+        // 完全沒有該系統的權限，提示並導回首頁
+        alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+        return next({ name: 'Home' });
+      }
+    }
+  }
+
+  // 4. 如果路由不需要任何權限，直接放行
+  return next();
 });
 
 export default router;
