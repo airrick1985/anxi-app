@@ -56,6 +56,7 @@
                                         <v-col cols="12" sm="6">
                                             <v-text-field
                                                 v-model.number="formData.房屋成交價"
+                                                class="price-value"
                                                 label="房屋成交價"
                                                 variant="outlined"
                                                 dense
@@ -96,8 +97,8 @@
                                                         <p>{{ formatNumber(parking['車位底價']) }} 萬</p>
                                                     </v-col>
                                                     <v-col cols="6" sm="4" class="text-sm-right">
-                                                        <p class="text-caption text-red-darken-2 mb-n1">成交價</p>
-                                                        <p class="font-weight-bold text-red-darken-2">{{ formatNumber(parking['車位成交價']) }} 萬</p>
+                                                        <p class="text-caption text-blue-darken-2 mb-n1">成交價</p>
+                                                        <p class="font-weight-bold text-blue-darken-2">{{ formatNumber(parking['車位成交價']) }} 萬</p>
                                                     </v-col>
                                                 </v-row>
                                             </v-list-item>
@@ -151,42 +152,65 @@
                                 </v-card-item>
                                 <v-divider></v-divider>
                                 <div class="price-summary">
-                                    <div class="price-item">
-                                        <span class="price-label">房屋成交單價</span>
-                                        <span class="price-value">{{ formatNumber(calculated.houseSaleUnitPrice, 2) }} 萬/坪</span>
-                                    </div>
-                                    <div class="price-item">
-                                        <span class="price-label">房屋底價單價</span>
-                                        <span class="price-value price-value-secondary">{{ formatNumber(calculated.houseBaseUnitPrice, 2) }} 萬/坪</span>
-                                    </div>
-                                    <v-divider class="my-2"></v-divider>
-                                    <div class="price-item">
-                                        <span class="price-label">車位總成交價</span>
-                                        <span class="price-value">{{ formatNumber(calculated.totalParkingSalePrice) }} 萬</span>
-                                    </div>
-                                    <div class="price-item">
-                                        <span class="price-label">車位總底價</span>
-                                        <span class="price-value price-value-secondary">{{ formatNumber(calculated.totalParkingBasePrice) }} 萬</span>
-                                    </div>
-                                    <v-divider class="my-2 thick-divider"></v-divider>
-                                    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
-                                        <span class="price-label">配套價</span>
-                                        <span class="price-value">{{ formatNumber(formData['配套價']) }} 萬</span>
-                                    </div>
-                                    <div class="price-item total">
-                                        <span class="price-label">成交總價</span>
-                                        <span class="price-value total-value">{{ formatNumber(calculated.grandTotalSalePrice) }} 萬</span>
-                                    </div>
-                                    <div class="price-item total">
-                                        <span class="price-label">總底價</span>
-                                        <span class="price-value total-value price-value-secondary">{{ formatNumber(calculated.grandTotalBasePrice) }} 萬</span>
-                                    </div>
-                                    <v-divider class="my-2"></v-divider>
-                                    <div class="price-item difference" :class="calculated.priceDifference >= 0 ? 'positive' : 'negative'">
-                                        <span class="price-label">溢差價</span>
-                                        <span class="price-value">{{ formatNumber(calculated.priceDifference) }} 萬</span>
-                                    </div>
-                                </div>
+    <div class="price-item">
+        <span class="price-label">房屋成交價</span>
+        <div class="d-flex flex-column align-end">
+            <span class="price-value">{{ formatNumber(formData.房屋成交價) }} 萬</span>
+            <small class="text-grey">{{ formatNumber(calculated.houseSaleUnitPrice, 2) }} 萬/坪</small>
+        </div>
+    </div>
+
+    <div class="price-item">
+        <span class="price-label">房屋底價</span>
+        <div class="d-flex flex-column align-end">
+            <span class="price-value price-value-secondary">{{ formatNumber(formData['房屋總底價']) }} 萬</span>
+            <small class="text-grey">{{ formatNumber(calculated.houseBaseUnitPrice, 2) }} 萬/坪</small>
+        </div>
+    </div>
+
+    <v-divider class="my-2"></v-divider>
+
+    <div class="price-item">
+        <span class="price-label">車位總成交價</span>
+        <span class="price-value">{{ formatNumber(calculated.totalParkingSalePrice) }} 萬</span>
+    </div>
+
+    <div class="price-item">
+        <span class="price-label">車位總底價</span>
+        <span class="price-value price-value-secondary">{{ formatNumber(calculated.totalParkingBasePrice) }} 萬</span>
+    </div>
+
+    <v-divider class="my-2"></v-divider>
+
+    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+        <span class="price-label">配套房屋總價</span>
+        <span class="price-value">{{ formatNumber(formData['配套房屋總價']) }} 萬</span>
+    </div>
+
+    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+        <span class="price-label">配套價</span>
+        <span class="price-value">{{ formatNumber(calculated.packagePrice) }} 萬</span>
+    </div>
+
+    <v-divider class="my-2 thick-divider"></v-divider>
+
+    <div class="price-item total">
+        <span class="price-label">成交總價</span>
+        <span class="price-value total-value">{{ formatNumber(calculated.grandTotalSalePrice) }} 萬</span>
+    </div>
+
+    <div class="price-item total">
+        <span class="price-label">總底價</span>
+        <span class="price-value total-value text-red">{{ formatNumber(calculated.grandTotalBasePrice) }} 萬</span>
+    </div>
+
+    <v-divider class="my-2"></v-divider>
+
+    <div class="price-item difference" :class="calculated.priceDifference >= 0 ? 'positive' : 'negative'">
+        <span class="price-label">溢差價</span>
+        <span class="price-value">{{ formatNumber(calculated.priceDifference) }} 萬</span>
+    </div>
+</div>
                             </v-card>
                             
                             <v-card elevation="2" class="mb-5">
@@ -397,43 +421,59 @@ const salesPhone = computed(() => {
 
 // --- 計算屬性 (Computed Properties) ---
 const calculated = computed(() => {
-       if (!formData.value) {
-            return {
-                        houseSaleUnitPrice: 0, houseBaseUnitPrice: 0,
-                        totalParkingSalePrice: 0, totalParkingBasePrice: 0,
-                        grandTotalSalePrice: 0, grandTotalBasePrice: 0,
-                        priceDifference: 0,
-            };
-       }
-       const data = formData.value;
-       const houseArea = Number(data['房屋面積(坪)']) || 0;
-       const houseSalePrice = Number(data.房屋成交價) || 0;
-       const houseBasePrice = Number(data['房屋總底價']) || 0;
-       const houseSaleUnitPrice = houseArea > 0 ? houseSalePrice / houseArea : 0;
-       const houseBaseUnitPrice = houseArea > 0 ? houseBasePrice / houseArea : 0;
-       const totalParkingSalePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位成交價']) || 0), 0);
-       const totalParkingBasePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位底價']) || 0), 0);
-       
-    let grandTotalSalePrice = houseSalePrice + totalParkingSalePrice;
-    if (data.合約方式 === '毛胚合約') {
-        grandTotalSalePrice += (Number(data['配套價']) || 0);
+    if (!formData.value) {
+        return {
+            houseSaleUnitPrice: 0, houseBaseUnitPrice: 0,
+            totalParkingSalePrice: 0, totalParkingBasePrice: 0,
+            grandTotalSalePrice: 0, grandTotalBasePrice: 0,
+            priceDifference: 0,
+            packagePrice: 0 // 新增配套價的預設回傳
+        };
     }
+    const data = formData.value;
+    const houseArea = Number(data['房屋面積(坪)']) || 0;
+    const houseSalePrice = Number(data.房屋成交價) || 0;
+    const houseBasePrice = Number(data['房屋總底價']) || 0;
+
+    const houseSaleUnitPrice = houseArea > 0 ? houseSalePrice / houseArea : 0;
+    const houseBaseUnitPrice = houseArea > 0 ? houseBasePrice / houseArea : 0;
+
+    const totalParkingSalePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位成交價']) || 0), 0);
+    const totalParkingBasePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位底價']) || 0), 0);
     
-       const grandTotalBasePrice = houseBasePrice + totalParkingBasePrice;
-       const priceDifference = grandTotalSalePrice - grandTotalBasePrice;
-       return {
-            houseSaleUnitPrice, houseBaseUnitPrice,
-            totalParkingSalePrice, totalParkingBasePrice,
-            grandTotalSalePrice, grandTotalBasePrice,
-            priceDifference,
-       };
+    // ==================== 修改開始 ====================
+
+    // 規則 1: '成交總價' = 房屋成交價 + 車位總成交價
+    const grandTotalSalePrice = houseSalePrice + totalParkingSalePrice;
+
+    // 規則 2: 計算 '配套價'
+    let packagePrice = 0; // 非毛胚合約時，配套價為 0
+    if (data.合約方式 === '毛胚合約') {
+        const packageHouseTotalPrice = Number(data['配套房屋總價']) || 0;
+        // 毛胚合約時，配套價 = 成交總價 - 配套房屋總價
+        packagePrice = grandTotalSalePrice - packageHouseTotalPrice;
+    }
+
+    // ==================== 修改結束 ====================
+    
+    const grandTotalBasePrice = houseBasePrice + totalParkingBasePrice;
+    const priceDifference = grandTotalSalePrice - grandTotalBasePrice;
+
+    return {
+        houseSaleUnitPrice, houseBaseUnitPrice,
+        totalParkingSalePrice, totalParkingBasePrice,
+        grandTotalSalePrice, // 回傳計算後的成交總價
+        grandTotalBasePrice,
+        priceDifference,
+        packagePrice // 將計算好的配套價回傳
+    };
 });
 
 // --- 監聽器 (Watchers) ---
 watch(() => props.show, (newVal) => {
     if (newVal) {
         const defaultStructure = {
-            '戶別': 'N/A', '房屋成交價': 0, '配套價': 0,
+            '戶別': 'N/A', '房屋成交價': 0, '配套價': 0,'配套房屋總價': 0, 
             '合約方式': contractTypeOptions.value.length > 0 ? contractTypeOptions.value[0] : '',
             '是否首購': firstPurchaseOptions.value.length > 0 ? firstPurchaseOptions.value[0] : '',
             '銷售': personnelOptions.value.length > 0 ? personnelOptions.value[0] : '',
@@ -451,36 +491,69 @@ watch(() => props.show, (newVal) => {
     }
 }, { immediate: true });
 
+watch(() => formData.value.合約方式, (newVal) => {
+    if (newVal !== '毛胚合約') {
+        // 如果合約方式不是 '毛胚合約'，就將配套房屋總價設為 0
+        formData.value['配套房屋總價'] = 0;
+    } else {
+        // 如果切換回合約方式為 '毛胚合約'，則從原始資料中還原數值
+        // 確保 props.unitData 存在且有值，否則設為 0
+        formData.value['配套房屋總價'] = props.unitData?.['配套房屋總價'] || 0;
+    }
+});
+
 watch(
     () => [
-    formData.value,
-    props.allData['期款比例'], 
-    props.allData['配套期款']
-  ],
+        formData.value,
+        props.allData['期款比例'], 
+        props.allData['配套期款']
+    ],
     () => {
-    if (!formData.value) return;
+        if (!formData.value) return;
         try {
-        paymentError.value = null;
-      const usePackageDeal = formData.value.合約方式 === '毛胚合約';
-      const isFirstTimeBuyer = formData.value.是否首購 === '是';
-      
-        const conditionCol = isFirstTimeBuyer
-           ? (calculated.value.grandTotalSalePrice >= 4000 ? '>=4000首購' : '<4000首購')
-           : (calculated.value.grandTotalSalePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
-        const conditionContext = { conditionCol };
+            paymentError.value = null;
+            const usePackageDeal = formData.value.合約方式 === '毛胚合約';
+            const isFirstTimeBuyer = formData.value.是否首購 === '是';
+            
+            // 步驟 1: 根據合約方式，決定唯一的計算基準價
+            let calculationBasePrice;
+            if (usePackageDeal) {
+                // 若為 '毛胚合約', 所有計算與判斷的基礎都是 '配套房屋總價'
+                calculationBasePrice = Number(formData.value['配套房屋總價']) || 0;
+            } else {
+                // 其他合約方式, 計算與判斷的基礎為 '成交總價'
+                calculationBasePrice = calculated.value.grandTotalSalePrice;
+            }
 
-      const paymentTermsData = props.allData['期款比例'] || [];
-      const packageTermsData = props.allData['配套期款'] || [];
-      
-        calculatedAmounts.value = runCalculationEngine(paymentTermsData, calculated.value.grandTotalSalePrice, '總價', conditionContext);
-        if (usePackageDeal) {
-        const packagePrice = formData.value['配套價'] || 0;
+            // ==================== 修改重點 ====================
+
+            // 步驟 2: 使用上面決定的 "calculationBasePrice" 來判斷要套用哪一組期款規則
+            const conditionCol = isFirstTimeBuyer
+                ? (calculationBasePrice >= 4000 ? '>=4000首購' : '<4000首購')
+                : (calculationBasePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+            
+            // =================================================
+
+            const conditionContext = { conditionCol };
+            const paymentTermsData = props.allData['期款比例'] || [];
+            const packageTermsData = props.allData['配套期款'] || [];
+            
+            // 步驟 3: 將同一個基準價 (calculationBasePrice) 送入計算引擎
+            calculatedAmounts.value = runCalculationEngine(
+                paymentTermsData, 
+                calculationBasePrice, // 使用動態基準價
+                '總價', 
+                conditionContext
+            );
+
+            if (usePackageDeal) {
+                const packagePrice = calculated.value.packagePrice;
                 calculatedPackageAmounts.value = runCalculationEngine(packageTermsData, packagePrice, '配套金額');
+            }
+        } catch (e) {
+            paymentError.value = e.message;
+            console.error(e);
         }
-       } catch (e) {
-        paymentError.value = e.message;
-        console.error(e);
-       }
     },
     { immediate: true, deep: true }
 );
@@ -494,10 +567,25 @@ const paymentBreakdown = computed(() => {
     const usePackageDeal = formData.value.合約方式 === '毛胚合約';
     const isFirstTimeBuyer = formData.value.是否首購 === '是';
     
-    const conditionCol = isFirstTimeBuyer
-        ? (calculated.value.grandTotalSalePrice >= 4000 ? '>=4000首購' : '<4000首購')
-        : (calculated.value.grandTotalSalePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+    // ==================== 修改開始 ====================
+
+    // 步驟 1: 在此處也建立動態基準價，與 watch 中的邏輯保持一致
+    let calculationBasePrice;
+    if (usePackageDeal) {
+        // 若為 '毛胚合約', 顯示的規則判斷基礎為 '配套房屋總價'
+        calculationBasePrice = Number(formData.value['配套房屋總價']) || 0;
+    } else {
+        // 其他合約方式, 顯示的規則判斷基礎為 '成交總價'
+        calculationBasePrice = calculated.value.grandTotalSalePrice;
+    }
     
+    // 步驟 2: 使用新的動態基準價來決定要顯示哪一欄的百分比/金額
+    const conditionCol = isFirstTimeBuyer
+        ? (calculationBasePrice >= 4000 ? '>=4000首購' : '<4000首購')
+        : (calculationBasePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+    
+    // ==================== 修改結束 ====================
+
     const paymentTermsData = props.allData['期款比例'] || [];
     const packageTermsData = props.allData['配套期款'] || [];
     
@@ -516,6 +604,8 @@ const paymentBreakdown = computed(() => {
         const amount = calculatedAmounts.value[id] ?? 0;
         const isParent = regularParentIds.has(id);
         const isExpanded = expandedItems.value.has(id);
+        
+        // 這裡的 term[conditionCol] 會因為上面的修改而取到正確的值
         const termValue = parseFloat(term[conditionCol]) || 0;
         let displayValue = '';
         if (term['類型'] === '百分比') {
@@ -523,6 +613,7 @@ const paymentBreakdown = computed(() => {
         } else if (term['類型'] === '固定金額') {
             displayValue = `${termValue.toLocaleString('en-US')} 萬`;
         }
+        
         breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue, isExpandable: isParent, isExpanded });
         
         if (isParent && isExpanded) {
@@ -535,7 +626,7 @@ const paymentBreakdown = computed(() => {
     });
     
     if (usePackageDeal) {
-        const packagePrice = formData.value['配套價'] || 0;
+        const packagePrice = calculated.value.packagePrice;
         const isPackageExpanded = expandedItems.value.has('__PACKAGE_DEAL__');
         breakdown.push({
             id: '__PACKAGE_DEAL__',
@@ -745,7 +836,7 @@ function formatPercentage(value) {
        color: #212121;
 }
 .total .total-value {
-       color: #D32F2F;
+       color: #1E88E5;
        font-size: 1.3rem;
 }
 .difference {
