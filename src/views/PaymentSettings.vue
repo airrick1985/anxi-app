@@ -221,51 +221,97 @@
                                     </v-card-title>
                                 </v-card-item>
                                 <v-divider></v-divider>
-                                <v-card-text>
-                                    <div class="payment-details-container">
-                                        <div v-if="paymentError" class="pa-4 text-center text-red bg-red-lighten-5">
-                                            <p class="font-weight-bold">計算時發生錯誤</p>
-                                            <p class="text-caption">{{ paymentError }}</p>
-                                        </div>
-                                        <div v-else>
-                                            <div class="payment-row header">
-                                                <div class="payment-name">項目</div>
-                                                <div class="payment-amount">金額 (萬)</div>
-                                            </div>
-                                            <div
-                                                v-for="(item, index) in paymentBreakdown"
-                                                :key="item.id || index"
-                                                class="payment-row"
-                                                :class="{ 'child-item': item.isChild, 'package-deal-row': item.isPackageDeal }"
-                                            >
-                                                <div class="payment-name">
-                                                    <div>
-                                                        <v-btn
-                                                            v-if="item.isExpandable"
-                                                            variant="text"
-                                                            density="compact"
-                                                            class="expand-button"
-                                                            @click="toggleExpansion(item.id)"
-                                                            :ripple="false"
-                                                        >
-                                                            {{ item.name }}
-                                                            <v-icon end>{{ item.isExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-                                                        </v-btn>
-                                                        <span v-else>{{ item.name }}</span>
-                                                    </div>
-                                                    <small v-if="item.displayValue" class="item-subtitle">
-                                                        {{ item.displayValue }}
-                                                    </small>
-                                                </div>
-                                                <div class="payment-amount">{{ item.formattedAmount }}</div>
-                                            </div>
-                                            <div class="payment-row total">
-                                                <div class="payment-name">總計</div>
-                                                <div class="payment-amount final-total">{{ formattedTotalAmount }}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </v-card-text>
+                            <v-card-text>
+    <div v-if="paymentError" class="pa-4 text-center text-red bg-red-lighten-5">
+        <p class="font-weight-bold">計算時發生錯誤</p>
+        <p class="text-caption">{{ paymentError }}</p>
+    </div>
+
+    <v-table v-else class="payment-table">
+        <thead>
+            <tr>
+                <th class="text-left" style="width: 45%;">項目</th>
+                <th class="text-right" style="width: 25%;">比例 (%)</th>
+                <th class="text-right" style="width: 30%;">金額 (萬)</th>
+            </tr>
+        </thead>
+        
+        <tbody>
+            <template v-for="item in paymentItems" :key="item.id">
+                <tr :class="{ 'package-item-row': item.isPackageItem, 'parent-row': item.children.length > 0 }">
+                    <td>
+                        <div class="d-flex align-center">
+                            <v-btn
+                                v-if="item.children.length > 0"
+                                :icon="item.isExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"
+                                variant="text" density="compact" class="mr-1 expand-toggle-btn"
+                                @click="toggleExpansion(item.id)"
+                            ></v-btn>
+                            <span :class="{ 'pl-9': item.children.length === 0 }">{{ item.name }}</span>
+                            <v-btn icon="mdi-restart" variant="text" density="compact" color="grey" class="ml-1" @click="resetItem(item)">
+                                <v-tooltip activator="parent" location="top">重置</v-tooltip>
+                            </v-btn>
+                        </div>
+                    </td>
+                    <td>
+                        <v-text-field
+                            v-model.number="item.userRatio"
+                            @update:model-value="handleRatioChange(item)"
+                            :readonly="item.children.length > 0"
+                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
+                            density="compact" hide-details type="number"
+                            class="text-right" suffix="%"
+                        ></v-text-field>
+                    </td>
+                    <td>
+                        <v-text-field
+                            v-model.number="item.userAmount"
+                            @update:model-value="handleAmountChange(item)"
+                            :readonly="item.children.length > 0"
+                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
+                            density="compact" hide-details type="number"
+                            class="text-right font-weight-bold"
+                        ></v-text-field>
+                    </td>
+                </tr>
+
+                <template v-if="item.isExpanded">
+                    <tr v-for="child in item.children" :key="child.id" class="child-row" :class="{ 'package-item-row': child.isPackageItem }">
+                        <td class="pl-12">{{ child.name }}</td>
+                        <td>
+                            </td>
+                        <td>
+                            <v-text-field
+                                v-model.number="child.userAmount"
+                                @update:model-value="updateParentState(item)"
+                                variant="underlined" density="compact" hide-details
+                                type="number" class="text-right"
+                            ></v-text-field>
+                        </td>
+                    </tr>
+                </template>
+            </template>
+        </tbody>
+
+        <tfoot>
+             <tr class="summary-row target-total">
+                <td class="font-weight-bold" colspan="2">應付總額</td>
+                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.targetTotal, 2) }}</td>
+            </tr>
+            <tr class="summary-row">
+                <td colspan="2">目前總計</td>
+                <td class="text-right">{{ formatNumber(paymentSummary.currentTotalAmount, 2) }}</td>
+            </tr>
+            <tr 
+                class="summary-row difference-row" 
+                :class="{ 'text-red': paymentSummary.difference !== 0, 'text-green': paymentSummary.difference === 0 }"
+            >
+                <td class="font-weight-bold" colspan="2">差額 (待分配)</td>
+                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.difference, 2) }}</td>
+            </tr>
+        </tfoot>
+    </v-table>
+</v-card-text>
                             </v-card>
                         </v-col>
 
@@ -376,35 +422,40 @@
         />
     </v-dialog>
 </template>
+
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
 
+// --- Display & Props & Emits ---
 const { mobile: isMobile } = useDisplay();
-
 const props = defineProps({
-       show: Boolean,
-       unitData: { type: Object, default: () => null },
-       projectName: { type: String, required: true },
-       allData: { type: Object, required: true },
+    show: Boolean,
+    unitData: { type: Object, default: () => null },
+    projectName: { type: String, required: true },
+    allData: { type: Object, required: true },
 });
-
 const emit = defineEmits(['update:show', 'request-open-slide']);
 
 // --- 主要表單狀態 ---
 const formData = ref(null);
 const parkingEditDialog = ref(false);
-
-// --- 付款明細相關狀態 ---
-const expandedItems = ref(new Set());
-const calculatedAmounts = ref({});
-const calculatedPackageAmounts = ref({});
 const paymentError = ref(null);
 
-// --- Options ---
-const personnelOptions = computed(() => 
-       (props.allData['銷售人員'] || []).map(p => p['銷售人員']).filter(Boolean)
+// --- 全新的付款明細核心狀態 ---
+const paymentItems = ref([]);
+const expandedItems = ref(new Set());
+const paymentSummary = ref({
+    targetTotal: 0,
+    currentTotalAmount: 0,
+    difference: 0,
+});
+
+
+// --- Options (下拉選單選項) ---
+const personnelOptions = computed(() =>
+    (props.allData['銷售人員'] || []).map(p => p['銷售人員']).filter(Boolean)
 );
 const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []);
 const contractTypeOptions = computed(() => {
@@ -414,47 +465,36 @@ const firstPurchaseOptions = computed(() => {
     return [...new Set(salesOptionsData.value.map(item => item['是否首購']).filter(Boolean))]
 });
 const salesPhone = computed(() => {
-       if (!formData.value || !formData.value.銷售) return '';
-       const personnel = (props.allData['銷售人員'] || []).find(p => p['銷售人員'] === formData.value.銷售);
-       return personnel ? personnel['銷售電話'] : '';
+    if (!formData.value || !formData.value.銷售) return '';
+    const personnel = (props.allData['銷售人員'] || []).find(p => p['銷售人員'] === formData.value.銷售);
+    return personnel ? personnel['銷售電話'] : '';
 });
 
-// --- 計算屬性 (Computed Properties) ---
+// --- 主要計算屬性 (金額總覽) ---
 const calculated = computed(() => {
     if (!formData.value) {
         return {
             houseSaleUnitPrice: 0, houseBaseUnitPrice: 0,
             totalParkingSalePrice: 0, totalParkingBasePrice: 0,
             grandTotalSalePrice: 0, grandTotalBasePrice: 0,
-            priceDifference: 0,
-            packagePrice: 0 // 新增配套價的預設回傳
+            priceDifference: 0, packagePrice: 0
         };
     }
     const data = formData.value;
     const houseArea = Number(data['房屋面積(坪)']) || 0;
     const houseSalePrice = Number(data.房屋成交價) || 0;
     const houseBasePrice = Number(data['房屋總底價']) || 0;
-
     const houseSaleUnitPrice = houseArea > 0 ? houseSalePrice / houseArea : 0;
     const houseBaseUnitPrice = houseArea > 0 ? houseBasePrice / houseArea : 0;
-
     const totalParkingSalePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位成交價']) || 0), 0);
     const totalParkingBasePrice = (data.持有車位 || []).reduce((sum, p) => sum + (Number(p['車位底價']) || 0), 0);
-    
-    // ==================== 修改開始 ====================
-
-    // 規則 1: '成交總價' = 房屋成交價 + 車位總成交價
     const grandTotalSalePrice = houseSalePrice + totalParkingSalePrice;
 
-    // 規則 2: 計算 '配套價'
-    let packagePrice = 0; // 非毛胚合約時，配套價為 0
+    let packagePrice = 0;
     if (data.合約方式 === '毛胚合約') {
         const packageHouseTotalPrice = Number(data['配套房屋總價']) || 0;
-        // 毛胚合約時，配套價 = 成交總價 - 配套房屋總價
         packagePrice = grandTotalSalePrice - packageHouseTotalPrice;
     }
-
-    // ==================== 修改結束 ====================
     
     const grandTotalBasePrice = houseBasePrice + totalParkingBasePrice;
     const priceDifference = grandTotalSalePrice - grandTotalBasePrice;
@@ -462,10 +502,8 @@ const calculated = computed(() => {
     return {
         houseSaleUnitPrice, houseBaseUnitPrice,
         totalParkingSalePrice, totalParkingBasePrice,
-        grandTotalSalePrice, // 回傳計算後的成交總價
-        grandTotalBasePrice,
-        priceDifference,
-        packagePrice // 將計算好的配套價回傳
+        grandTotalSalePrice, grandTotalBasePrice,
+        priceDifference, packagePrice
     };
 });
 
@@ -477,11 +515,11 @@ watch(() => props.show, (newVal) => {
             '合約方式': contractTypeOptions.value.length > 0 ? contractTypeOptions.value[0] : '',
             '是否首購': firstPurchaseOptions.value.length > 0 ? firstPurchaseOptions.value[0] : '',
             '銷售': personnelOptions.value.length > 0 ? personnelOptions.value[0] : '',
-            '持有車位': [], '房屋總底價': 0, '房屋總表價': 0,
-            '房屋面積(坪)': 0, '房屋面積(平方公尺)': 0, '公設比': 0,
-            '主建物面積(坪)': 0, '主建物面積(平方公尺)': 0, '附屬建物面積(坪)': 0,
-            '附屬建物面積(平方公尺)': 0, '共用部分面積(坪)': 0, '共用部分面積(平方公尺)': 0,
-            '露臺(坪)': 0, '土地持分面積(坪)': 0, '土地持分面積(平方公尺)': 0, '土地持分': 'N/A'
+            '持有車位': [], '房屋總底價': 0, '房屋總表價': 0, '房屋面積(坪)': 0,
+            '房屋面積(平方公尺)': 0, '公設比': 0, '主建物面積(坪)': 0, '主建物面積(平方公尺)': 0,
+            '附屬建物面積(坪)': 0, '附屬建物面積(平方公尺)': 0, '共用部分面積(坪)': 0,
+            '共用部分面積(平方公尺)': 0, '露臺(坪)': 0, '土地持分面積(坪)': 0,
+            '土地持分面積(平方公尺)': 0, '土地持分': 'N/A'
         };
         const initialData = { ...defaultStructure, ...(props.unitData || {}) };
         if (props.unitData && !initialData.房屋成交價) {
@@ -491,176 +529,241 @@ watch(() => props.show, (newVal) => {
     }
 }, { immediate: true });
 
-watch(() => formData.value.合約方式, (newVal) => {
+watch(() => formData.value?.合約方式, (newVal) => {
+    if (!formData.value) return;
     if (newVal !== '毛胚合約') {
-        // 如果合約方式不是 '毛胚合約'，就將配套房屋總價設為 0
         formData.value['配套房屋總價'] = 0;
     } else {
-        // 如果切換回合約方式為 '毛胚合約'，則從原始資料中還原數值
-        // 確保 props.unitData 存在且有值，否則設為 0
         formData.value['配套房屋總價'] = props.unitData?.['配套房屋總價'] || 0;
     }
 });
 
-watch(
-    () => [
-        formData.value,
-        props.allData['期款比例'], 
-        props.allData['配套期款']
-    ],
-    () => {
-        if (!formData.value) return;
-        try {
-            paymentError.value = null;
-            const usePackageDeal = formData.value.合約方式 === '毛胚合約';
-            const isFirstTimeBuyer = formData.value.是否首購 === '是';
-            
-            // 步驟 1: 根據合約方式，決定唯一的計算基準價
-            let calculationBasePrice;
-            if (usePackageDeal) {
-                // 若為 '毛胚合約', 所有計算與判斷的基礎都是 '配套房屋總價'
-                calculationBasePrice = Number(formData.value['配套房屋總價']) || 0;
-            } else {
-                // 其他合約方式, 計算與判斷的基礎為 '成交總價'
-                calculationBasePrice = calculated.value.grandTotalSalePrice;
-            }
-
-            // ==================== 修改重點 ====================
-
-            // 步驟 2: 使用上面決定的 "calculationBasePrice" 來判斷要套用哪一組期款規則
-            const conditionCol = isFirstTimeBuyer
-                ? (calculationBasePrice >= 4000 ? '>=4000首購' : '<4000首購')
-                : (calculationBasePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
-            
-            // =================================================
-
-            const conditionContext = { conditionCol };
-            const paymentTermsData = props.allData['期款比例'] || [];
-            const packageTermsData = props.allData['配套期款'] || [];
-            
-            // 步驟 3: 將同一個基準價 (calculationBasePrice) 送入計算引擎
-            calculatedAmounts.value = runCalculationEngine(
-                paymentTermsData, 
-                calculationBasePrice, // 使用動態基準價
-                '總價', 
-                conditionContext
-            );
-
-            if (usePackageDeal) {
-                const packagePrice = calculated.value.packagePrice;
-                calculatedPackageAmounts.value = runCalculationEngine(packageTermsData, packagePrice, '配套金額');
-            }
-        } catch (e) {
-            paymentError.value = e.message;
-            console.error(e);
-        }
-    },
-    { immediate: true, deep: true }
+watch(() => [
+        formData.value?.合約方式, 
+        formData.value?.是否首購,
+        calculated.value.grandTotalSalePrice,
+        calculated.value.packagePrice
+    ],() => {
+        initializePaymentItems();
+    },{ deep: true, immediate: true }
 );
 
-// --- 付款明細計算屬性 ---
-const paymentBreakdown = computed(() => {
-    if (paymentError.value) return [];
-    if (!formData.value) return [];
+// --- 全新最終版：付款明細處理函式 (請用這整段替換舊的) ---
 
-    const breakdown = [];
+/**
+ * 主要的初始化函式
+ */
+function initializePaymentItems() {
+    if (!formData.value) return;
+
+    try {
+        paymentError.value = null;
+        const rawPaymentTerms = props.allData['期款比例'] || [];
+        const rawPackageTerms = props.allData['配套期款'] || [];
+        const context = buildCalculationContext();
+        
+        const initialAmounts = runCalculationEngine(rawPaymentTerms, context.basePrice, '總價', context);
+        const initialPackageAmounts = context.usePackageDeal
+            ? runCalculationEngine(rawPackageTerms, context.packageBasePrice, '配套金額')
+            : {};
+
+        const itemsMap = new Map();
+        const topLevelItems = [];
+
+        // 處理一般期款
+        rawPaymentTerms.forEach(term => {
+            const amount = initialAmounts[term['編號']] || 0;
+        const ratio = context.basePrice > 0 ? Math.round((amount / context.basePrice) * 100) : 0;
+            itemsMap.set(term['編號'], {
+                id: term['編號'],
+                name: term['項目名稱'],
+                parentId: term['子項目'] || null,
+                userAmount: amount,
+                originalAmount: amount,
+                userRatio: ratio,
+                originalRatio: ratio,
+                isPackageItem: false,
+                children: [],
+                isExpanded: expandedItems.value.has(term['編號']),
+            });
+        });
+
+        // 處理配套款項 (如果有的話)
+        if (context.usePackageDeal) {
+            const packageParentItem = {
+                id: '__PACKAGE_DEAL__', name: '配套', parentId: null,
+                userAmount: context.packageBasePrice, originalAmount: context.packageBasePrice,
+                userRatio: context.basePrice > 0 ? (context.packageBasePrice / context.basePrice) * 100 : 0,
+                originalRatio: context.basePrice > 0 ? (context.packageBasePrice / context.basePrice) * 100 : 0,
+                isPackageItem: true, children: [], 
+                isExpanded: expandedItems.value.has('__PACKAGE_DEAL__')
+            };
+            itemsMap.set(packageParentItem.id, packageParentItem);
+
+            rawPackageTerms.forEach(term => {
+                // BUG 1 修正：為配套款項的 ID 加上前綴，避免與一般款項衝突
+                const uniqueId = `pkg_${term['編號']}`;
+                const amount = initialPackageAmounts[term['編號']] || 0;
+                const ratio = context.packageBasePrice > 0 ? (amount / context.packageBasePrice) * 100 : 0;
+                itemsMap.set(uniqueId, {
+                    id: uniqueId, name: term['項目名稱'], parentId: '__PACKAGE_DEAL__',
+                    userAmount: amount, originalAmount: amount,
+                    userRatio: ratio, originalRatio: ratio, // 子項目的比例是相對於其父層(配套總價)
+                    isPackageItem: true, children: [],
+                });
+            });
+        }
+        
+        itemsMap.forEach(item => {
+            if (item.parentId && itemsMap.has(item.parentId)) {
+                itemsMap.get(item.parentId).children.push(item);
+            } else {
+                topLevelItems.push(item);
+            }
+        });
+
+        paymentItems.value = topLevelItems;
+        updateSummary();
+
+    } catch (e) {
+        paymentError.value = e.message;
+        paymentItems.value = [];
+    }
+}
+
+/**
+ * 處理金額變動 (適用於可編輯的項目)
+ */
+function handleAmountChange(item) {
+    const isChildOfPackage = item.parentId === '__PACKAGE_DEAL__';
+    const basePrice = isChildOfPackage ? calculated.value.packagePrice : getBasePrice();
+
+    if (basePrice > 0) {
+        item.userRatio = Math.round((item.userAmount / basePrice) * 100);
+    } else {
+        item.userRatio = 0;
+    }
+    
+    // 如果是子項目，還需要更新父層的總額
+    if (item.parentId) {
+        const parent = findItemRecursive(paymentItems.value, item.parentId);
+        if (parent) {
+            updateParentState(parent);
+        }
+    }
+    updateSummary();
+}
+
+/**
+ * 處理比例變動 (適用於可編輯的項目)
+ */
+function handleRatioChange(item) {
+    const basePrice = getBasePrice(); // 頂層項目的比例永遠相對於主基準價
+    const newAmount = basePrice * (item.userRatio / 100);
+    item.userAmount = newAmount; // 暫時不四捨五入，讓使用者看到直接結果
+    updateSummary();
+}
+
+
+/**
+ * 更新父項目的狀態 (金額與比例)
+ */
+function updateParentState(parentItem) {
+    // 父項目的金額是子項目金額的總和
+    parentItem.userAmount = parentItem.children.reduce((sum, child) => sum + (Number(child.userAmount) || 0), 0);
+
+    // 父項目的比例是其總金額相對於主基準價的比例
+    const mainBasePrice = getBasePrice();
+    if (mainBasePrice > 0) {
+        parentItem.userRatio = Math.round((parentItem.userAmount / mainBasePrice) * 100);
+    } else {
+        parentItem.userRatio = 0;
+    }
+}
+
+
+/**
+ * 重置項目
+ */
+function resetItem(itemToReset) {
+    if (itemToReset.children.length > 0) { // 如果是父項目
+        itemToReset.children.forEach(child => {
+            child.userAmount = child.originalAmount;
+            child.userRatio = child.originalRatio;
+        });
+        updateParentState(itemToReset);
+    } else { // 如果是子項目或獨立項目
+        itemToReset.userAmount = itemToReset.originalAmount;
+        itemToReset.userRatio = itemToReset.originalRatio;
+        if (itemToReset.parentId) {
+            const parent = findItemRecursive(paymentItems.value, itemToReset.parentId);
+            if (parent) updateParentState(parent);
+        }
+    }
+    updateSummary();
+}
+
+
+/**
+ * 更新總計與差額
+ */
+function updateSummary() {
+    const context = buildCalculationContext();
+    const targetTotal = context.basePrice + (context.usePackageDeal ? context.packageBasePrice : 0);
+    const currentTotalAmount = paymentItems.value.reduce((sum, item) => sum + (Number(item.userAmount) || 0), 0);
+    paymentSummary.value = {
+        targetTotal,
+        currentTotalAmount,
+        difference: targetTotal - currentTotalAmount
+    };
+}
+
+/**
+ * 展開/閉合項目
+ */
+function toggleExpansion(itemId) {
+    if (expandedItems.value.has(itemId)) {
+        expandedItems.value.delete(itemId);
+    } else {
+        expandedItems.value.add(itemId);
+    }
+    const item = findItemRecursive(paymentItems.value, itemId);
+    if (item) item.isExpanded = !item.isExpanded;
+}
+
+
+// --- 輔助函式 (無變動) ---
+function buildCalculationContext() {
+    if (!formData.value) return {};
     const usePackageDeal = formData.value.合約方式 === '毛胚合約';
     const isFirstTimeBuyer = formData.value.是否首購 === '是';
-    
-    // ==================== 修改開始 ====================
-
-    // 步驟 1: 在此處也建立動態基準價，與 watch 中的邏輯保持一致
-    let calculationBasePrice;
-    if (usePackageDeal) {
-        // 若為 '毛胚合約', 顯示的規則判斷基礎為 '配套房屋總價'
-        calculationBasePrice = Number(formData.value['配套房屋總價']) || 0;
-    } else {
-        // 其他合約方式, 顯示的規則判斷基礎為 '成交總價'
-        calculationBasePrice = calculated.value.grandTotalSalePrice;
-    }
-    
-    // 步驟 2: 使用新的動態基準價來決定要顯示哪一欄的百分比/金額
+    const basePrice = getBasePrice();
+    const packageBasePrice = calculated.value.packagePrice;
     const conditionCol = isFirstTimeBuyer
-        ? (calculationBasePrice >= 4000 ? '>=4000首購' : '<4000首購')
-        : (calculationBasePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
-    
-    // ==================== 修改結束 ====================
+        ? (basePrice >= 4000 ? '>=4000首購' : '<4000首購')
+        : (basePrice >= 4000 ? '>=4000非首購' : '<4000非首購');
+    return { usePackageDeal, basePrice, packageBasePrice, conditionCol };
+}
 
-    const paymentTermsData = props.allData['期款比例'] || [];
-    const packageTermsData = props.allData['配套期款'] || [];
-    
-    const regularParentIds = new Set(paymentTermsData.map(t => t['子項目']).filter(Boolean));
-    const regularChildrenMap = new Map();
-    paymentTermsData.forEach(term => {
-        if (term['子項目']) {
-            if (!regularChildrenMap.has(term['子項目'])) regularChildrenMap.set(term['子項目'], []);
-            regularChildrenMap.get(term['子項目']).push(term);
-        }
-    });
+function getBasePrice() {
+    if (!formData.value) return 0;
+    return formData.value.合約方式 === '毛胚合約'
+        ? (Number(formData.value['配套房屋總價']) || 0)
+        : calculated.value.grandTotalSalePrice;
+}
 
-    paymentTermsData.forEach(term => {
-        if (term['子項目']) return;
-        const id = term['編號'];
-        const amount = calculatedAmounts.value[id] ?? 0;
-        const isParent = regularParentIds.has(id);
-        const isExpanded = expandedItems.value.has(id);
-        
-        // 這裡的 term[conditionCol] 會因為上面的修改而取到正確的值
-        const termValue = parseFloat(term[conditionCol]) || 0;
-        let displayValue = '';
-        if (term['類型'] === '百分比') {
-            displayValue = `${(termValue * 100).toFixed(2).replace(/\.00$/, '')}%`;
-        } else if (term['類型'] === '固定金額') {
-            displayValue = `${termValue.toLocaleString('en-US')} 萬`;
-        }
-        
-        breakdown.push({ id, name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue, isExpandable: isParent, isExpanded });
-        
-        if (isParent && isExpanded) {
-            const children = regularChildrenMap.get(id) || [];
-            children.forEach(childTerm => {
-                const childAmount = calculatedAmounts.value[childTerm['編號']] ?? 0;
-                breakdown.push({ id: childTerm['編號'], name: childTerm['項目名稱'], amount: childAmount, formattedAmount: formatAmount(childAmount, childTerm['進位值']), displayValue: '', isChild: true });
-            });
-        }
-    });
-    
-    if (usePackageDeal) {
-        const packagePrice = calculated.value.packagePrice;
-        const isPackageExpanded = expandedItems.value.has('__PACKAGE_DEAL__');
-        breakdown.push({
-            id: '__PACKAGE_DEAL__',
-            name: '配套',
-            amount: packagePrice,
-            formattedAmount: formatAmount(packagePrice, '0'),
-            isExpandable: packageTermsData.length > 0,
-            isExpanded: isPackageExpanded,
-            isPackageDeal: true,
-            displayValue: ''
-        });
-        if (isPackageExpanded && packageTermsData.length > 0) {
-            packageTermsData.forEach(term => {
-                const amount = calculatedPackageAmounts.value[term['編號']] ?? 0;
-                breakdown.push({ id: term['編號'], name: term['項目名稱'], amount, formattedAmount: formatAmount(amount, term['進位值']), displayValue: '', isChild: true, isPackageDeal: true });
-            });
+function findItemRecursive(items, id) {
+    for (const item of items) {
+        if (item.id === id) return item;
+        if (item.children && item.children.length > 0) {
+            const found = findItemRecursive(item.children, id);
+            if (found) return found;
         }
     }
-    return breakdown;
-});
+    return null;
+}
+// --- 其他方法 ---
 
-const totalAmount = computed(() => {
-        if (paymentError.value) return 0;
-        return paymentBreakdown.value
-                .filter(item => !item.isChild)
-                .reduce((sum, item) => sum + item.amount, 0);
-});
-
-const formattedTotalAmount = computed(() => {
-        const roundedTotal = applyRounding(totalAmount.value, '四捨五入', "0");
-        return formatAmount(roundedTotal, "0");
-});
-
-// --- Methods ---
 function handleContractTypeChange(type) {
     const isPackage = type === '毛胚合約'; 
     console.log(`合約方式改為: ${type}, 套用配套: ${isPackage}`);
@@ -676,12 +779,45 @@ function updateSelectedParking(newParkingList) {
     }
 }
 
-function toggleExpansion(itemId) {
-    if (expandedItems.value.has(itemId)) {
-       expandedItems.value.delete(itemId);
-    } else {
-       expandedItems.value.add(itemId);
+function save() {
+    alert('儲存功能待實現！');
+    console.log('準備儲存的資料:', {
+        ...formData.value,
+        paymentItems: paymentItems.value // 包含手動修改後的付款明細
+    });
+}
+
+// --- 底層計算引擎 (無變動) ---
+
+function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
+    const results = {};
+    if (!terms || terms.length === 0) return results;
+    const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
+    let calculationMadeInLoop = true;
+    let loops = 0;
+    while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
+        calculationMadeInLoop = false;
+        loops++;
+        pendingTerms.forEach((term, id) => {
+            if (!term['計算方式']) return;
+            try {
+                let currentTermValue = 0;
+                if (conditionContext && term[conditionContext.conditionCol]) {
+                    currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
+                }
+                const context = { priceValue, priceKeyword, currentTermValue, results };
+                const amount = parseFormula(term['計算方式'], context);
+                results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
+                pendingTerms.delete(id);
+                calculationMadeInLoop = true;
+            } catch (e) { /* ... */ }
+        });
     }
+    if (pendingTerms.size > 0) {
+        const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
+        throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
+    }
+    return results;
 }
 
 function parseFormula(formula, context) {
@@ -705,86 +841,41 @@ function parseFormula(formula, context) {
     }
 }
 
-function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
-    const results = {};
-    if (!terms || terms.length === 0) return results;
-    const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
-    let calculationMadeInLoop = true;
-    let loops = 0;
-    while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
-        calculationMadeInLoop = false;
-        loops++;
-        pendingTerms.forEach((term, id) => {
-            if (!term['計算方式']) return;
-            try {
-                let currentTermValue = 0;
-                if (conditionContext && term[conditionContext.conditionCol]) {
-                    currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
-                }
-                const context = { priceValue, priceKeyword, currentTermValue, results };
-                const amount = parseFormula(term['計算方式'], context);
-                results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
-                pendingTerms.delete(id);
-                calculationMadeInLoop = true;
-            } catch (e) {
-                // console.warn(`暫時跳過 ${id}:`, e.message);
-            }
-        });
-    }
-    if (pendingTerms.size > 0) {
-        const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
-        throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
-    }
-    return results;
-}
+// --- 格式化工具函式 (無變動) ---
 
 function applyRounding(value, method, precisionSpec) {
-        const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
-        if (!method) return Number(value.toFixed(precision));
-        const multiplier = Math.pow(10, precision);
-        let roundedValue;
-        switch (method) {
-                case '無條件進位': roundedValue = Math.ceil(value * multiplier) / multiplier; break;
-                case '四捨五入': roundedValue = Math.round(value * multiplier) / multiplier; break;
-                case '無條件捨去': roundedValue = Math.floor(value * multiplier) / multiplier; break;
-                default: roundedValue = value;
-        }
-        return Number(roundedValue.toFixed(precision));
-}
-
-function formatAmount(value, precisionSpec) {
-        if (typeof value !== 'number') return value;
-        const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
-        return value.toLocaleString('en-US', {
-                minimumFractionDigits: precision,
-                maximumFractionDigits: precision,
-        });
-}
-
-function save() {
-       alert('儲存功能待實現！');
-       console.log('準備儲存的資料:', formData.value);
-       console.log('最終計算結果:', calculated.value);
+    const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+    if (!method) return Number(value.toFixed(precision));
+    const multiplier = Math.pow(10, precision);
+    let roundedValue;
+    switch (method) {
+        case '無條件進位': roundedValue = Math.ceil(value * multiplier) / multiplier; break;
+        case '四捨五入': roundedValue = Math.round(value * multiplier) / multiplier; break;
+        case '無條件捨去': roundedValue = Math.floor(value * multiplier) / multiplier; break;
+        default: roundedValue = value;
+    }
+    return Number(roundedValue.toFixed(precision));
 }
 
 function formatNumber(value, frac = 0) {
-       if (value === null || value === undefined || String(value).trim() === '') {
-            return frac > 0 ? (0).toFixed(frac) : '0';
-       }
-       const num = Number(value);
-       if (isNaN(num)) return 'N/A';
-       return num.toLocaleString('en-US', {
-            minimumFractionDigits: frac,
-            maximumFractionDigits: frac
-       });
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return frac > 0 ? (0).toFixed(frac) : '0';
+    }
+    const num = Number(value);
+    if (isNaN(num)) return 'N/A';
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: frac,
+        maximumFractionDigits: frac
+    });
 }
 
 function formatPercentage(value) {
-       if (typeof value !== 'number' || isNaN(value)) {
-            return 'N/A';
-       }
-       return `${(value * 100).toFixed(2)}%`;
+    if (typeof value !== 'number' || isNaN(value)) {
+        return 'N/A';
+    }
+    return `${(value * 100).toFixed(2)}%`;
 }
+
 </script>
 
 <style scoped>
@@ -997,5 +1088,27 @@ function formatPercentage(value) {
     font-size: 1.5em; 
     font-weight: bold; 
     color: #1E88E5;
+}
+
+.payment-table {
+    font-size: 0.9rem;
+}
+.payment-table .v-text-field {
+    font-size: 0.9rem;
+}
+.payment-table .v-text-field input {
+    text-align: right;
+}
+.package-item-row {
+    background-color: #FFF8E1; /* 淡黃色背景以區分配套款 */
+}
+.summary-row td {
+    padding-top: 8px !important;
+}
+.target-total {
+    border-top: 2px solid #BDBDBD;
+}
+.difference-row {
+    font-size: 1.1em;
 }
 </style>
