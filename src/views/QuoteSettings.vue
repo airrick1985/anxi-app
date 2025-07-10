@@ -151,6 +151,8 @@ const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 
+
+
 // =======================================================
 // ✅ 核心修正：從 PaymentDetails.vue 複製過來的完整計算引擎
 // =======================================================

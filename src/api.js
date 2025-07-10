@@ -504,3 +504,36 @@ export async function fetchSalesOptions(projectName) {
     token: 'anxi111003' // 如果需要 token 的話
   }, SALES_API); 
 }
+
+
+/**
+ * 傳送付款表（包含檔案連結）給指定的收件人
+ * @param {object} payload - 包含 projectName, recipients, files, unitId 等資訊
+ * @returns {Promise<object>} API 響應
+ */
+export async function sendPaymentScheduleEmail(payload) {
+    console.log('[api.js] sendPaymentScheduleEmail called with payload:', payload);
+    
+    // 我們可以將這個新功能歸類在銷售相關的 API 端點
+    return fetchPost({
+        action: 'send_payment_schedule_email',
+        token: 'anxi111003', // 遵循您專案的慣例
+        ...payload
+    }, SALES_API);
+}
+
+/**
+ * 製作付款表 (Word & PDF)
+ * @param {object} payload - 包含 projectName, contractType, data 的物件
+ * @returns {Promise<object>} API 響應
+ */
+export async function generatePaymentSchedule(payload) {
+  console.log('[api.js] generatePaymentSchedule called with payload:', payload);
+  const body = {
+    action: 'generate_payment_schedule',
+    token: 'anxi111003',
+    ...payload
+  };
+  // 這個功能的 action 通常與銷售相關，所以我們發到 SALES_API 端點
+  return fetchPost(body, SALES_API);
+}

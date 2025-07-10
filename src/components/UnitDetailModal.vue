@@ -1,230 +1,240 @@
 <template>
   <v-dialog
-      :model-value="show"
-      @update:model-value="close"
-      :fullscreen="isMobile"
-      :max-width="isMobile ? '100%' : '80vw'"
-      :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'"
+    :model-value="show"
+    @update:model-value="close"
+    :fullscreen="isMobile"
+    :max-width="isMobile ? '100%' : '80vw'"
+    :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'"
   >
-      <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
-          
-          <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent scrim="grey-darken-3">
-              <div class="d-flex flex-column align-center">
-                  <v-progress-circular indeterminate size="48" color="#008cff" class="mb-4"></v-progress-circular>
-                  <p class="text-h6 text-black">儲存中，請稍候...</p>
-              </div>
-          </v-overlay>
-          
-          
-          <div class="header-section">
-              <v-card-title class="d-flex justify-space-between align-center text-h5">
-                  <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
-                  <div>
-                      <v-btn v-if="viewMode === 'sales' && !isEditing" color="white" variant="text" @click="startEditing">
-                          <v-icon left>mdi-pencil</v-icon>
-                          修改銷控
-                      </v-btn>
-                      <v-btn v-if="isEditing" variant="text" @click="cancelEditing">取消編輯</v-btn>
-                      <v-btn icon="mdi-close" variant="text" @click="close"></v-btn>
-                  </div>
-              </v-card-title>
-              <v-divider></v-divider>
-              <v-tabs v-model="tab" color="primary" grow :disabled="isEditing">
-                  <v-tab value="info">詳細資訊</v-tab>
-                  <v-tab value="floorplans" :disabled="!hasFloorplans">平面圖</v-tab>
-              </v-tabs>
-              <v-divider></v-divider>
+    <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
+        
+        <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent scrim="grey-darken-3">
+          <div class="d-flex flex-column align-center">
+              <v-progress-circular indeterminate size="48" color="#008cff" class="mb-4"></v-progress-circular>
+              <p class="text-h6 text-black">儲存中，請稍候...</p>
           </div>
+        </v-overlay>
+        
+        
+        <div class="header-section">
+            <v-card-title class="d-flex justify-space-between align-center text-h5">
+                <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
+                <div>
+                    <v-btn v-if="viewMode === 'sales' && !isEditing" color="white" variant="text" @click="startEditing">
+                        <v-icon left>mdi-pencil</v-icon>
+                        修改銷控
+                    </v-btn>
+                    <v-btn v-if="isEditing" variant="text" @click="cancelEditing">取消編輯</v-btn>
+                    <v-btn icon="mdi-close" variant="text" @click="close"></v-btn>
+                </div>
+            </v-card-title>
+            <v-divider></v-divider>
+            <v-tabs v-model="tab" color="primary" grow :disabled="isEditing">
+                <v-tab value="info">詳細資訊</v-tab>
+                <v-tab value="floorplans" :disabled="!hasFloorplans">平面圖</v-tab>
+            </v-tabs>
+            <v-divider></v-divider>
+        </div>
 
-          <v-card-text class="main-content">
-              <v-window v-model="tab">
-                  <v-window-item value="info">
-                      <template v-if="isEditing">
-                          <SalesInfoForm 
-                              v-if="editingData"
-                              v-model="editingData"
-                              :status-options="statusOptions"
-                              :personnel-options="personnelOptions"
-                              :buyer-info-options="buyerInfoOptions"
-                              :project-name="projectName"
-                              :all-parking-data="allData['車位'] || []"
-                              @request-open-slide="$emit('request-open-slide')"
-                          />
-                      </template>
-                      <template v-else>
-                          <div v-if="unitData" class="pa-2">
-                              <v-row class="top-info-row">
-                                  <v-col cols="12" md="6">
-                                      <div class="info-section">
-                                          <div class="section-title">價格資訊</div>
-                                          <template v-if="shouldHidePrice">
-                                              <div class="pa-4 text-center">
-                                                  <v-icon size="x-large" color="grey">mdi-currency-usd-off</v-icon>
-                                                  <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
-                                              </div>
-                                          </template>
-                                          <template v-else>
-                                              <v-list lines="two" dense>
-                                                  <v-list-item title="房價">
-                                                      <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋總表價']) }} 萬</span></template>
-                                                      <template v-slot:prepend><v-icon>mdi-cash-multiple</v-icon></template>
-                                                  </v-list-item>
-                                                  <v-list-item title="單價">
-                                                      <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋單價(表價)']) }} 萬/坪</span></template>
-                                                      <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
-                                                  </v-list-item>
-                                                  <template v-if="viewMode === 'sales'">
-                                                      <v-divider class="my-2"></v-divider>
-                                                      <v-list-item title="房價 (底價)" class="mt-2">
-                                                          <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData['房屋總底價']) }} 萬</span></template>
-                                                          <template v-slot:prepend><v-icon color="grey-darken-1">mdi-alpha-b-box-outline</v-icon></template>
-                                                      </v-list-item>
-                                                      <v-list-item title="單價 (底價)">
-                                                          <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData['房屋單價(底價)']) }} 萬/坪</span></template>
-                                                          <template v-slot:prepend><v-icon color="grey-darken-1">mdi-chart-line-variant</v-icon></template>
-                                                      </v-list-item>
-                                                  </template>
-                                              </v-list>
-                                          </template>
-                                      </div>
-                                  </v-col>
+        <v-card-text class="main-content">
+            <v-window v-model="tab">
+                <v-window-item value="info">
+                    <template v-if="isEditing">
+                        <SalesInfoForm 
+                            v-if="editingData"
+                            v-model="editingData"
+                            :status-options="statusOptions"
+                            :personnel-options="personnelOptions"
+                            :buyer-info-options="buyerInfoOptions"
+                            :project-name="projectName"
+                            :all-parking-data="allData['車位'] || []"
+                            @request-open-slide="$emit('request-open-slide')"
+                        />
+                    </template>
+                    <template v-else>
+                        <div v-if="unitData" class="pa-2">
+                            <v-row class="top-info-row">
+                                <v-col cols="12" md="6">
+                                    <div class="info-section">
+                                        <div class="section-title">價格資訊</div>
+                                        <template v-if="shouldHidePrice">
+                                            <div class="pa-4 text-center">
+                                                <v-icon size="x-large" color="grey">mdi-currency-usd-off</v-icon>
+                                                <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <v-list lines="two" dense>
+                                                <v-list-item title="房價">
+                                                    <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData['房屋總表價']) }} 萬</span></template>
+                                                    <template v-slot:prepend><v-icon>mdi-cash-multiple</v-icon></template>
+                                                </v-list-item>
+                                                <v-list-item title="單價">
+                                                    <template v-slot:subtitle><span class="highlight-price">{{ calculatedUnitPrice }} 萬/坪</span></template>
+                                                    <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
+                                                </v-list-item>
+                                                <template v-if="viewMode === 'sales'">
+                                                    <v-divider class="my-2"></v-divider>
+                                                    <v-list-item title="房價 (底價)" class="mt-2">
+                                                        <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData['房屋總底價']) }} 萬</span></template>
+                                                        <template v-slot:prepend><v-icon color="grey-darken-1">mdi-alpha-b-box-outline</v-icon></template>
+                                                    </v-list-item>
+                                                    <v-list-item title="單價 (底價)">
+                                                        <template v-slot:subtitle><span class="highlight-price-base">{{ calculatedBaseUnitPrice }} 萬/坪</span></template>
+                                                        <template v-slot:prepend><v-icon color="grey-darken-1">mdi-chart-line-variant</v-icon></template>
+                                                    </v-list-item>
+                                                </template>
+                                            </v-list>
+                                        </template>
+                                    </div>
+                                </v-col>
 
-                                  <v-col cols="12" md="6">
-                                      <div class="info-section">
-                                         <div class="section-title">面積資訊</div>
-                      <div class="total-area-card">
-                        <div class="area-summary-item">
-                          <div>
-                            <div class="total-area-title">房屋總面積</div>
-                            <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)'], 2) }} 坪</div>
-                            <div class="total-area-subtitle">{{ formatNumber(unitData['房屋面積(平方公尺)'], 2) }} m²</div>
-                          </div>
+                                <v-col cols="12" md="6">
+                                    <div class="info-section">
+                                       <div class="section-title">面積資訊</div>
+                         <div class="total-area-card">
+                           <div class="area-summary-item">
+                             <div>
+                               <div class="total-area-title">房屋總面積</div>
+                               <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)'], 2) }} 坪</div>
+                               <div class="total-area-subtitle">{{ formatNumber(unitData['房屋面積(平方公尺)'], 2) }} m²</div>
+                             </div>
+                           </div>
+                           <v-divider vertical class="mx-4"></v-divider>
+                           <div class="area-summary-item">
+                             <div>
+                               <div class="total-area-title">公設比</div>
+                               <div class="total-area-value">{{ formatPercentage(unitData['公設比']) }}</div>
+                               <div class="total-area-subtitle">&nbsp;</div>
+                             </div>
+                           </div>
+                         </div>
+                         <div class="area-details mt-3">
+                           <div class="area-group">
+                             <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
+                               建物面積明細</div>
+                             <div class="area-item-header">
+                               <span>項目</span>
+                               <span>坪數</span>
+                               <span>m²</span>
+                             </div>
+                             <div class="area-item">
+                               <span>主建物 (室內)</span>
+                               <span class="area-ping-value">{{ formatNumber(unitData['主建物面積(坪)'], 2) }}</span>
+                               <span>{{ formatNumber(unitData['主建物面積(平方公尺)'], 2) }}</span>
+                             </div>
+                             <div class="area-item">
+                               <span>附屬建物 (陽台)</span>
+                               <span class="area-ping-value">{{ formatNumber(unitData['附屬建物面積(坪)'], 2) }}</span>
+                               <span>{{ formatNumber(unitData['附屬建物面積(平方公尺)'], 2) }}</span>
+                             </div>
+                             <div class="area-item">
+                               <span>共用部分 (公設)</span>
+                               <span class="area-ping-value">{{ formatNumber(unitData['共用部分面積(坪)'], 2) }}</span>
+                               <span>{{ formatNumber(unitData['共用部分面積(平方公尺)'], 2) }}</span>
+                             </div>
+                             <div class="area-item">
+                               <span>露臺 (不計坪)</span>
+                               <span class="area-ping-value">{{ formatNumber(unitData['露臺(坪)'], 2) }}</span>
+                               <span>-</span>
+                             </div>
+                           </div>
+                         </div>
+                         <div class="area-details mt-2">
+                           <div class="area-group">
+                             <div class="area-group-title">
+                                 <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+                                 土地持分資訊
+                             </div>
+                             <div class="area-item-header">
+                               <span>項目</span>
+                               <span>坪數</span>
+                               <span>m²</span>
+                             </div>
+                             <div class="area-item">
+                               <span>土地持分面積</span>
+                               <span class="area-ping-value">{{ formatNumber(unitData['土地持分面積(坪)'], 2) }}</span>
+                               <span>{{ formatNumber(unitData['土地持分面積(平方公尺)'], 2) }}</span>
+                             </div>
+                             <div class="area-item">
+                               <span>土地持分</span>
+                               <span class="font-weight-medium">十萬分之 {{ unitData['土地持分'] || 'N/A' }}</span>
+                               <span>-</span>
+                             </div>
+                           </div>
+                         </div>
+                                    </div>
+                                </v-col>
+                            </v-row>
+
+                            <div v-if="viewMode === 'sales'">
+                                <v-divider class="my-4"></v-divider>
+                                <SalesInfoSection
+                                    :sales-data="unitData"
+                                    :all-parking-data="allData['車位'] || []"
+                                />
+                            </div>
                         </div>
-                        <v-divider vertical class="mx-4"></v-divider>
-                        <div class="area-summary-item">
-                          <div>
-                            <div class="total-area-title">公設比</div>
-                            <div class="total-area-value">{{ formatPercentage(unitData['公設比']) }}</div>
-                            <div class="total-area-subtitle">&nbsp;</div>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="area-details mt-3">
-                        <div class="area-group">
-                          <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
-                            建物面積明細</div>
-                          <div class="area-item-header">
-                            <span>項目</span>
-                            <span>坪數</span>
-                            <span>m²</span>
-                          </div>
-                          <div class="area-item">
-                            <span>主建物 (室內)</span>
-                            <span class="area-ping-value">{{ formatNumber(unitData['主建物面積(坪)'], 2) }}</span>
-                            <span>{{ formatNumber(unitData['主建物面積(平方公尺)'], 2) }}</span>
-                          </div>
-                          <div class="area-item">
-                            <span>附屬建物 (陽台)</span>
-                            <span class="area-ping-value">{{ formatNumber(unitData['附屬建物面積(坪)'], 2) }}</span>
-                            <span>{{ formatNumber(unitData['附屬建物面積(平方公尺)'], 2) }}</span>
-                          </div>
-                          <div class="area-item">
-                            <span>共用部分 (公設)</span>
-                            <span class="area-ping-value">{{ formatNumber(unitData['共用部分面積(坪)'], 2) }}</span>
-                            <span>{{ formatNumber(unitData['共用部分面積(平方公尺)'], 2) }}</span>
-                          </div>
-                          <div class="area-item">
-                            <span>露臺 (不計坪)</span>
-                            <span class="area-ping-value">{{ formatNumber(unitData['露臺(坪)'], 2) }}</span>
-                            <span>-</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="area-details mt-2">
-                        <div class="area-group">
-                          <div class="area-group-title">
-                              <v-icon size="small" class="mr-1">mdi-earth</v-icon>
-                              土地持分資訊
-                          </div>
-                          <div class="area-item-header">
-                            <span>項目</span>
-                            <span>坪數</span>
-                            <span>m²</span>
-                          </div>
-                          <div class="area-item">
-                            <span>土地持分面積</span>
-                            <span class="area-ping-value">{{ formatNumber(unitData['土地持分面積(坪)'], 2) }}</span>
-                            <span>{{ formatNumber(unitData['土地持分面積(平方公尺)'], 2) }}</span>
-                          </div>
-                          <div class="area-item">
-                            <span>土地持分</span>
-                            <span class="font-weight-medium">十萬分之 {{ unitData['土地持分'] || 'N/A' }}</span>
-                            <span>-</span>
-                          </div>
-                        </div>
-                      </div>
-                                          </div>
-                                  </v-col>
-                              </v-row>
+                        <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
+                    </template>
+                </v-window-item>
 
-                              <div v-if="viewMode === 'sales'">
-                                  <v-divider class="my-4"></v-divider>
-                                  <SalesInfoSection
-                                      :sales-data="unitData"
-                                      :all-parking-data="allData['車位'] || []"
-                                  />
-                              </div>
-                          </div>
-                          <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
-                      </template>
-                  </v-window-item>
+                <v-window-item value="floorplans" class="fill-height">
+                    <div v-if="hasFloorplans" class="preview-area-full">
+                        <img v-if="firstPlan.type === 'image'" :src="proxiedFirstImageUrl" class="preview-content" alt="平面圖預覽" />
+                        <a v-if="firstPlan.type === 'pdf'" :href="firstPlan.url" target="_blank" class="pdf-link">在新分頁中打開 PDF: {{ firstPlan.name }}</a>
+                    </div>
+                    <div v-else class="text-center pa-5 text-grey d-flex flex-column justify-center align-center fill-height">
+                        <v-icon size="x-large">mdi-image-off</v-icon>
+                        <p class="mt-2">此戶別尚無平面圖資料</p>
+                    </div>
+                </v-window-item>
+            </v-window>
+        </v-card-text>
+        
+        <div class="footer-section">
+            <v-divider></v-divider>
+     <v-card-actions :class="{ 'mb-8': isMobile }">
+   <v-spacer></v-spacer>
+   <template v-if="isEditing">
+       <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
+       <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
+   </template>
+   <template v-else>
+    <v-btn
+   v-if="viewMode === 'sales' && unitData && unitData['資料夾URL']"
+   color="teal"
+   variant="flat"
+   :href="unitData['資料夾URL']"
+   target="_blank"
+>
+        <v-icon left>mdi-folder-google-drive</v-icon>
+        {{ unitData['戶別'] }} 資料夾
+       </v-btn>
+       <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
+           <v-icon left>mdi-plus-box-outline</v-icon>
+           {{ addToQuoteButtonText }}
+       </v-btn>
+       <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
+           <v-icon left>mdi-cash-register</v-icon>
+           付款表設定
+       </v-btn>
+       <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
+   </template>
+</v-card-actions>
+        </div>
+    </v-card>
 
-                  <v-window-item value="floorplans" class="fill-height">
-                      <div v-if="hasFloorplans" class="preview-area-full">
-                          <img v-if="firstPlan.type === 'image'" :src="proxiedFirstImageUrl" class="preview-content" alt="平面圖預覽" />
-                          <a v-if="firstPlan.type === 'pdf'" :href="firstPlan.url" target="_blank" class="pdf-link">在新分頁中打開 PDF: {{ firstPlan.name }}</a>
-                      </div>
-                      <div v-else class="text-center pa-5 text-grey d-flex flex-column justify-center align-center fill-height">
-                          <v-icon size="x-large">mdi-image-off</v-icon>
-                          <p class="mt-2">此戶別尚無平面圖資料</p>
-                      </div>
-                  </v-window-item>
-              </v-window>
-          </v-card-text>
-          
-          <div class="footer-section">
-              <v-divider></v-divider>
-              <v-card-actions :class="{ 'mb-8': isMobile }">
-                  <v-spacer></v-spacer>
-                  <template v-if="isEditing">
-                      <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
-                      <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
-                  </template>
-                  <template v-else>
-                      <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
-                          <v-icon left>mdi-plus-box-outline</v-icon>
-                          {{ addToQuoteButtonText }}
-                      </v-btn>
-            <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
-              <v-icon left>mdi-cash-register</v-icon>
-              付款表設定
-            </v-btn>
-                                    <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
-                  </template>
-              </v-card-actions>
-          </div>
-      </v-card>
-
-    <PaymentSettings
-      v-if="paymentSettingsDialog"
-      :show="paymentSettingsDialog"
-      @update:show="paymentSettingsDialog = $event"
-      :unit-data="enrichedUnitData"
-      :project-name="projectName"
-      :all-data="allData"
-      @request-open-slide="$emit('request-open-slide')"
-    />
-        </v-dialog>
+   <PaymentSettings
+     v-if="paymentSettingsDialog"
+     :show="paymentSettingsDialog"
+     @update:show="paymentSettingsDialog = $event"
+     :unit-data="enrichedUnitData"
+     :project-name="projectName"
+     :all-data="allData"
+     @request-open-slide="$emit('request-open-slide')"
+   />
+      </v-dialog>
 </template>
 
 <script setup>
@@ -246,6 +256,29 @@ const props = defineProps({
   allData: { type: Object, default: () => ({}) },
   projectName: { type: String, required: true }, 
 });
+
+// REMOVED old computed properties
+// ADDED new computed properties
+const calculatedUnitPrice = computed(() => {
+  const price = props.unitData?.['房屋總表價'];
+  const area = props.unitData?.['房屋面積(坪)'];
+  if (price && area > 0) {
+    const value = price / area;
+    return formatNumber(value, 2); // Use existing format function
+  }
+  return 'N/A';
+});
+
+const calculatedBaseUnitPrice = computed(() => {
+  const price = props.unitData?.['房屋總底價'];
+  const area = props.unitData?.['房屋面積(坪)'];
+  if (price && area > 0) {
+    const value = price / area;
+    return formatNumber(value, 2); // Use existing format function
+  }
+  return 'N/A';
+});
+
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
@@ -296,10 +329,10 @@ const buyerInfoOptions = computed(() => {
       const options = {};
       const buyerInfoSheet = props.allData['買方其他資訊'] || [];
       if (buyerInfoSheet.length > 0) {
-              const headers = Object.keys(buyerInfoSheet[0]);
-              headers.forEach(key => {
-                      options[key] = [...new Set(buyerInfoSheet.map(row => row[key]).filter(Boolean))];
-              });
+            const headers = Object.keys(buyerInfoSheet[0]);
+            headers.forEach(key => {
+                    options[key] = [...new Set(buyerInfoSheet.map(row => row[key]).filter(Boolean))];
+            });
       }
       return options;
 });

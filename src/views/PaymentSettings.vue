@@ -21,395 +21,457 @@
             <v-divider></v-divider>
 
             <v-card-text style="overflow-y: auto; flex-grow: 1;">
-                <v-container fluid v-if="formData">
+           <v-container fluid v-if="formData">
+    <v-row>
+        <v-col cols="12" md="4">
+            <v-card class="mb-5" elevation="2">
+                <v-card-item class="card-header">
+                    <v-card-title>
+                        <v-icon start>mdi-file-sign</v-icon>
+                        成交資訊
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text>
                     <v-row>
-                        <v-col cols="12" md="4">
-                            <v-card class="mb-5" elevation="2">
-                                <v-card-item class="card-header">
-                                    <v-card-title>
-                                        <v-icon start>mdi-file-sign</v-icon>
-                                        成交資訊
-                                    </v-card-title>
-                                </v-card-item>
-                                <v-divider></v-divider>
-                                <v-card-text>
-                                    <v-row>
-                                        <v-col cols="12" sm="6">
-                                            <v-select
-                                                v-model="formData.合約方式"
-                                                :items="contractTypeOptions"
-                                                label="合約方式"
-                                                variant="outlined"
-                                                dense
-                                                @update:model-value="handleContractTypeChange"
-                                            ></v-select>
-                                        </v-col>
-                                        <v-col cols="12" sm="6">
-                                            <v-select
-                                                v-model="formData.是否首購"
-                                                :items="firstPurchaseOptions"
-                                                label="是否首購"
-                                                variant="outlined"
-                                                dense
-                                            ></v-select>
-                                        </v-col>
-                                        <v-col cols="12" sm="6">
-                                            <v-text-field
-                                                v-model.number="formData.房屋成交價"
-                                                class="price-value"
-                                                label="房屋成交價"
-                                                variant="outlined"
-                                                dense
-                                                suffix="萬"
-                                                type="number"
-                                            ></v-text-field>
-                                        </v-col>
-                                        <v-col cols="12" sm="6">
-                                            <v-text-field
-                                                :model-value="formatNumber(formData['房屋總底價'])"
-                                                label="房屋底價"
-                                                variant="outlined"
-                                                dense
-                                                readonly
-                                                suffix="萬"
-                                            ></v-text-field>
-                                        </v-col>
-                                    </v-row>
-                                    
-                                    <v-divider class="my-3"></v-divider>
-
-                                    <div class="d-flex justify-space-between align-center mb-2">
-                                        <span class="text-subtitle-1">持有車位</span>
-                                        <v-btn size="small" color="primary" @click="openParkingEditModal">
-                                            <v-icon left>mdi-pencil</v-icon>編輯車位
-                                        </v-btn>
-                                    </div>
-                                    <v-list lines="two" dense v-if="formData.持有車位 && formData.持有車位.length > 0" class="pa-0">
-                                        <template v-for="(parking, index) in formData.持有車位" :key="parking['車位編號']">
-                                            <v-list-item class="pa-0">
-                                                <v-row align="center" no-gutters>
-                                                    <v-col cols="12" sm="5">
-                                                        <p class="font-weight-bold text-subtitle-1">{{ parking['車位編號'] }}</p>
-                                                        <p class="text-caption text-grey-darken-1">{{ parking['車位尺寸'] || '標準' }}</p>
-                                                    </v-col>
-                                                    <v-col cols="6" sm="3" class="text-sm-right">
-                                                        <p class="text-caption text-grey-darken-1 mb-n1">底價</p>
-                                                        <p>{{ formatNumber(parking['車位底價']) }} 萬</p>
-                                                    </v-col>
-                                                    <v-col cols="6" sm="4" class="text-sm-right">
-                                                        <p class="text-caption text-blue-darken-2 mb-n1">成交價</p>
-                                                        <p class="font-weight-bold text-blue-darken-2">{{ formatNumber(parking['車位成交價']) }} 萬</p>
-                                                    </v-col>
-                                                </v-row>
-                                            </v-list-item>
-                                            <v-divider v-if="index < formData.持有車位.length - 1"></v-divider>
-                                        </template>
-                                    </v-list>
-                                    <p v-else class="text-center text-grey-darken-1 py-4">-- 無持有車位 --</p>
-                                </v-card-text>
-                            </v-card>
-                            
-                            <v-card class="mb-5" elevation="2">
-                                <v-card-item class="card-header">
-                                    <v-card-title>
-                                        <v-icon start>mdi-account-tie</v-icon>
-                                        銷售人員
-                                    </v-card-title>
-                                </v-card-item>
-                                <v-divider></v-divider>
-                                <v-card-text>
-                                    <v-row>
-                                        <v-col cols="12" sm="6">
-                                            <v-select
-                                                v-model="formData.銷售"
-                                                :items="personnelOptions"
-                                                label="銷售人員"
-                                                variant="outlined"
-                                                dense
-                                            ></v-select>
-                                        </v-col>
-                                        <v-col cols="12" sm="6">
-                                            <v-text-field
-                                                :model-value="salesPhone"
-                                                label="聯絡電話"
-                                                variant="outlined"
-                                                dense
-                                                readonly
-                                            ></v-text-field>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
+                        <v-col cols="12" sm="6">
+                            <v-select
+                                v-model="formData.合約方式"
+                                :items="contractTypeOptions"
+                                label="合約方式"
+                                variant="outlined"
+                                dense
+                                @update:model-value="handleContractTypeChange"
+                            ></v-select>
                         </v-col>
-
-                        <v-col cols="12" md="4">
-                            <v-card class="mb-5" elevation="2">
-                                <v-card-item class="card-header-accent">
-                                    <v-card-title>
-                                        <v-icon start>mdi-calculator-variant</v-icon>
-                                        金額總覽
-                                    </v-card-title>
-                                </v-card-item>
-                                <v-divider></v-divider>
-                                <div class="price-summary">
-    <div class="price-item">
-        <span class="price-label">房屋成交價</span>
-        <div class="d-flex flex-column align-end">
-            <span class="price-value">{{ formatNumber(formData.房屋成交價) }} 萬</span>
-            <small class="text-grey">{{ formatNumber(calculated.houseSaleUnitPrice, 2) }} 萬/坪</small>
-        </div>
-    </div>
-
-    <div class="price-item">
-        <span class="price-label">房屋底價</span>
-        <div class="d-flex flex-column align-end">
-            <span class="price-value price-value-secondary">{{ formatNumber(formData['房屋總底價']) }} 萬</span>
-            <small class="text-grey">{{ formatNumber(calculated.houseBaseUnitPrice, 2) }} 萬/坪</small>
-        </div>
-    </div>
-
-    <v-divider class="my-2"></v-divider>
-
-    <div class="price-item">
-        <span class="price-label">車位總成交價</span>
-        <span class="price-value">{{ formatNumber(calculated.totalParkingSalePrice) }} 萬</span>
-    </div>
-
-    <div class="price-item">
-        <span class="price-label">車位總底價</span>
-        <span class="price-value price-value-secondary">{{ formatNumber(calculated.totalParkingBasePrice) }} 萬</span>
-    </div>
-
-    <v-divider class="my-2"></v-divider>
-
-    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
-        <span class="price-label">配套房屋總價</span>
-        <span class="price-value">{{ formatNumber(formData['配套房屋總價']) }} 萬</span>
-    </div>
-
-    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
-        <span class="price-label">配套價</span>
-        <span class="price-value">{{ formatNumber(calculated.packagePrice) }} 萬</span>
-    </div>
-
-    <v-divider class="my-2 thick-divider"></v-divider>
-
-    <div class="price-item total">
-        <span class="price-label">成交總價</span>
-        <span class="price-value total-value">{{ formatNumber(calculated.grandTotalSalePrice) }} 萬</span>
-    </div>
-
-    <div class="price-item total">
-        <span class="price-label">總底價</span>
-        <span class="price-value total-value text-red">{{ formatNumber(calculated.grandTotalBasePrice) }} 萬</span>
-    </div>
-
-    <v-divider class="my-2"></v-divider>
-
-    <div class="price-item difference" :class="calculated.priceDifference >= 0 ? 'positive' : 'negative'">
-        <span class="price-label">溢差價</span>
-        <span class="price-value">{{ formatNumber(calculated.priceDifference) }} 萬</span>
-    </div>
-</div>
-                            </v-card>
-                            
-                            <v-card elevation="2" class="mb-5">
-                                <v-card-item class="card-header-accent">
-                                    <v-card-title>
-                                        <v-icon start>mdi-cash-clock</v-icon>
-                                        付款明細
-                                    </v-card-title>
-                                </v-card-item>
-                                <v-divider></v-divider>
-                            <v-card-text>
-    <div v-if="paymentError" class="pa-4 text-center text-red bg-red-lighten-5">
-        <p class="font-weight-bold">計算時發生錯誤</p>
-        <p class="text-caption">{{ paymentError }}</p>
-    </div>
-
-    <v-table v-else class="payment-table">
-        <thead>
-            <tr>
-                <th class="text-left" style="width: 45%;">項目</th>
-                <th class="text-right" style="width: 25%;">比例 (%)</th>
-                <th class="text-right" style="width: 30%;">金額 (萬)</th>
-            </tr>
-        </thead>
-        
-        <tbody>
-            <template v-for="item in paymentItems" :key="item.id">
-                <tr :class="{ 'package-item-row': item.isPackageItem, 'parent-row': item.children.length > 0 }">
-                    <td>
-                        <div class="d-flex align-center">
-                            <v-btn
-                                v-if="item.children.length > 0"
-                                :icon="item.isExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"
-                                variant="text" density="compact" class="mr-1 expand-toggle-btn"
-                                @click="toggleExpansion(item.id)"
-                            ></v-btn>
-                            <span :class="{ 'pl-9': item.children.length === 0 }">{{ item.name }}</span>
-                            <v-btn icon="mdi-restart" variant="text" density="compact" color="grey" class="ml-1" @click="resetItem(item)">
-                                <v-tooltip activator="parent" location="top">重置</v-tooltip>
-                            </v-btn>
-                        </div>
-                    </td>
-                    <td>
-                        <v-text-field
-                            v-model.number="item.userRatio"
-                            @update:model-value="handleRatioChange(item)"
-                            :readonly="item.children.length > 0"
-                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
-                            density="compact" hide-details type="number"
-                            class="text-right" suffix="%"
-                        ></v-text-field>
-                    </td>
-                    <td>
-                        <v-text-field
-                            v-model.number="item.userAmount"
-                            @update:model-value="handleAmountChange(item)"
-                            :readonly="item.children.length > 0"
-                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
-                            density="compact" hide-details type="number"
-                            class="text-right font-weight-bold"
-                        ></v-text-field>
-                    </td>
-                </tr>
-
-                <template v-if="item.isExpanded">
-                    <tr v-for="child in item.children" :key="child.id" class="child-row" :class="{ 'package-item-row': child.isPackageItem }">
-                        <td class="pl-12">{{ child.name }}</td>
-                        <td>
-                            </td>
-                        <td>
+                        <v-col cols="12" sm="6">
+                            <v-select
+                                v-model="formData.是否首購"
+                                :items="firstPurchaseOptions"
+                                label="是否首購"
+                                variant="outlined"
+                                dense
+                            ></v-select>
+                        </v-col>
+                        <v-col cols="12" sm="6">
                             <v-text-field
-                                v-model.number="child.userAmount"
-                                @update:model-value="updateParentState(item)"
-                                variant="underlined" density="compact" hide-details
-                                type="number" class="text-right"
+                                v-model.number="formData.房屋成交價"
+                                class="price-value"
+                                label="房屋成交價"
+                                variant="outlined"
+                                dense
+                                suffix="萬"
+                                type="number"
                             ></v-text-field>
-                        </td>
-                    </tr>
-                </template>
-            </template>
-        </tbody>
-
-        <tfoot>
-             <tr class="summary-row target-total">
-                <td class="font-weight-bold" colspan="2">應付總額</td>
-                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.targetTotal, 2) }}</td>
-            </tr>
-            <tr class="summary-row">
-                <td colspan="2">目前總計</td>
-                <td class="text-right">{{ formatNumber(paymentSummary.currentTotalAmount, 2) }}</td>
-            </tr>
-            <tr 
-                class="summary-row difference-row" 
-                :class="{ 'text-red': paymentSummary.difference !== 0, 'text-green': paymentSummary.difference === 0 }"
-            >
-                <td class="font-weight-bold" colspan="2">差額 (待分配)</td>
-                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.difference, 2) }}</td>
-            </tr>
-        </tfoot>
-    </v-table>
-</v-card-text>
-                            </v-card>
                         </v-col>
-
-                        <v-col cols="12" md="4">
-                            <v-card elevation="2" class="mb-5">
-                                <v-card-item class="card-header">
-                                    <v-card-title>
-                                        <v-icon start>mdi-texture-box</v-icon>
-                                        面積資訊
-                                    </v-card-title>
-                                </v-card-item>
-                                <v-divider></v-divider>
-                                <v-card-text>
-                                    <div class="total-area-card mb-4">
-                                        <div class="area-summary-item">
-                                            <div>
-                                                <div class="total-area-title">房屋總面積</div>
-                                                <div class="total-area-value">{{ formatNumber(formData['房屋面積(坪)'], 2) }} 坪</div>
-                                                <div class="total-area-subtitle">{{ formatNumber(formData['房屋面積(平方公尺)'], 2) }} m²</div>
-                                            </div>
-                                        </div>
-                                        <v-divider vertical class="mx-4"></v-divider>
-                                        <div class="area-summary-item">
-                                            <div>
-                                                <div class="total-area-title">公設比</div>
-                                                <div class="total-area-value">{{ formatPercentage(formData['公設比']) }}</div>
-                                                <div class="total-area-subtitle">&nbsp;</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="area-details mt-3">
-                                        <div class="area-group">
-                                            <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
-                                                建物面積明細</div>
-                                            <div class="area-item-header">
-                                                <span>項目</span>
-                                                <span>坪數</span>
-                                                <span>m²</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>主建物 (室內)</span>
-                                                <span class="area-ping-value">{{ formatNumber(formData['主建物面積(坪)'], 2) }}</span>
-                                                <span>{{ formatNumber(formData['主建物面積(平方公尺)'], 2) }}</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>附屬建物 (陽台)</span>
-                                                <span class="area-ping-value">{{ formatNumber(formData['附屬建物面積(坪)'], 2) }}</span>
-                                                <span>{{ formatNumber(formData['附屬建物面積(平方公尺)'], 2) }}</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>共用部分 (公設)</span>
-                                                <span class="area-ping-value">{{ formatNumber(formData['共用部分面積(坪)'], 2) }}</span>
-                                                <span>{{ formatNumber(formData['共用部分面積(平方公尺)'], 2) }}</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>露臺 (不計坪)</span>
-                                                <span class="area-ping-value">{{ formatNumber(formData['露臺(坪)'], 2) }}</span>
-                                                <span>-</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="area-details mt-2">
-                                        <div class="area-group">
-                                            <div class="area-group-title">
-                                                <v-icon size="small" class="mr-1">mdi-earth</v-icon>
-                                                土地持分資訊
-                                            </div>
-                                            <div class="area-item-header">
-                                                <span>項目</span>
-                                                <span>坪數</span>
-                                                <span>m²</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>土地持分面積</span>
-                                                <span class="area-ping-value">{{ formatNumber(formData['土地持分面積(坪)'], 2) }}</span>
-                                                <span>{{ formatNumber(formData['土地持分面積(平方公尺)'], 2) }}</span>
-                                            </div>
-                                            <div class="area-item">
-                                                <span>土地持分</span>
-                                                <span class="font-weight-medium">十萬分之 {{ formData['土地持分'] || 'N/A' }}</span>
-                                                <span>-</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </v-card-text>
-                            </v-card>
+                        <v-col cols="12" sm="6">
+                            <v-text-field
+                                :model-value="formatNumber(formData['房屋總底價'])"
+                                label="房屋底價"
+                                variant="outlined"
+                                dense
+                                readonly
+                                suffix="萬"
+                            ></v-text-field>
                         </v-col>
                     </v-row>
-                </v-container>
+                    
+                    <v-divider class="my-3"></v-divider>
+
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <span class="text-subtitle-1">持有車位</span>
+                        <v-btn size="small" color="primary" @click="openParkingEditModal">
+                            <v-icon left>mdi-pencil</v-icon>編輯車位
+                        </v-btn>
+                    </div>
+                    <v-list lines="two" dense v-if="formData.持有車位 && formData.持有車位.length > 0" class="pa-0">
+                        <template v-for="(parking, index) in formData.持有車位" :key="parking['車位編號']">
+                            <v-list-item class="pa-0">
+                                <v-row align="center" no-gutters>
+                                    <v-col cols="12" sm="5">
+                                        <p class="font-weight-bold text-subtitle-1">{{ parking['車位編號'] }}</p>
+                                        <p class="text-caption text-grey-darken-1">{{ parking['車位尺寸'] || '標準' }}</p>
+                                    </v-col>
+                                    <v-col cols="6" sm="3" class="text-sm-right">
+                                        <p class="text-caption text-grey-darken-1 mb-n1">底價</p>
+                                        <p>{{ formatNumber(parking['車位底價']) }} 萬</p>
+                                    </v-col>
+                                    <v-col cols="6" sm="4" class="text-sm-right">
+                                        <p class="text-caption text-blue-darken-2 mb-n1">成交價</p>
+                                        <p class="font-weight-bold text-blue-darken-2">{{ formatNumber(parking['車位成交價']) }} 萬</p>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-divider v-if="index < formData.持有車位.length - 1"></v-divider>
+                        </template>
+                    </v-list>
+                    <p v-else class="text-center text-grey-darken-1 py-4">-- 無持有車位 --</p>
+                </v-card-text>
+            </v-card>
+            
+            <v-card class="mb-5" elevation="2">
+                <v-card-item class="card-header">
+                    <v-card-title>
+                        <v-icon start>mdi-account-tie</v-icon>
+                        銷售人員
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text>
+                    <v-row>
+                        <v-col cols="12" sm="6">
+                            <v-select
+                                v-model="formData.銷售"
+                                :items="personnelOptions"
+                                label="銷售人員"
+                                variant="outlined"
+                                dense
+                            ></v-select>
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                            <v-text-field
+                                :model-value="salesPhone"
+                                label="聯絡電話"
+                                variant="outlined"
+                                dense
+                                readonly
+                            ></v-text-field>
+                        </v-col>
+                    </v-row>
+                </v-card-text>
+            </v-card>
+            
+ <v-card class="mb-5" elevation="2">
+                <v-card-item class="card-header">
+                    <v-card-title>
+                        <v-icon start>mdi-bank-transfer</v-icon>
+                        匯款帳號
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text>
+                    <v-row>
+                        <v-col cols="12">
+                            <v-text-field
+                                :model-value="remittanceAccountInfo['繳款銀行名稱']"
+                                label="繳款銀行名稱"
+                                variant="outlined"
+                                dense
+                                readonly
+                            ></v-text-field>
+                        </v-col>
+                        <v-col cols="12">
+                            <v-text-field
+                                :model-value="remittanceAccountInfo['戶名']"
+                                label="戶名"
+                                variant="outlined"
+                                dense
+                                readonly
+                            ></v-text-field>
+                        </v-col>
+                        <v-col cols="12">
+                            <v-text-field
+                                :model-value="remittanceAccountInfo['匯款帳號']"
+                                label="匯款帳號"
+                                variant="outlined"
+                                dense
+                                readonly
+                            ></v-text-field>
+                        </v-col>
+                    </v-row>
+                </v-card-text>
+            </v-card>
+
+        </v-col>
+
+        <v-col cols="12" md="4">
+             <v-card elevation="2" class="mb-5">
+                <v-card-item class="card-header-accent">
+                    <v-card-title>
+                        <div class="d-flex justify-space-between align-center">
+                            <span>
+                                <v-icon start>mdi-cash-clock</v-icon>
+                                付款明細
+                            </span>
+                            <v-btn
+                                color="blue-grey"
+                                variant="outlined"
+                                size="small"
+                                @click="resetAllPayments"
+                            >
+                                <v-icon start>mdi-restore</v-icon>
+                                恢復預設
+                            </v-btn>
+                        </div>
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text>
+                    <div v-if="paymentError" class="pa-4 text-center text-red bg-red-lighten-5">
+                        <p class="font-weight-bold">計算時發生錯誤</p>
+                        <p class="text-caption">{{ paymentError }}</p>
+                    </div>
+                    <v-table v-else class="payment-table">
+                        <thead>
+                            <tr>
+                                <th class="text-left" style="width: 45%;">項目</th>
+                                <th class="text-right" style="width: 25%;">比例 (%)</th>
+                                <th class="text-right" style="width: 30%;">金額 (萬)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template v-for="item in paymentItems" :key="item.id">
+                                <tr :class="{ 'package-item-row': item.isPackageItem, 'parent-row': item.children.length > 0 }">
+                                    <td>
+                                        <div class="d-flex align-center">
+                                            <v-btn
+                                                v-if="item.children.length > 0"
+                                                :icon="item.isExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"
+                                                variant="text" density="compact" class="mr-1 expand-toggle-btn"
+                                                @click="toggleExpansion(item.id)"
+                                            ></v-btn>
+                                            <span :class="{ 'pl-9': item.children.length === 0 }">{{ item.name }}</span>
+                                            <v-btn icon="mdi-restart" variant="text" density="compact" color="grey" class="ml-1" @click="resetItem(item)">
+                                                <v-tooltip activator="parent" location="top">重置</v-tooltip>
+                                            </v-btn>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <v-text-field
+                                            v-model.number="item.userRatio"
+                                            @update:model-value="handleRatioChange(item)"
+                                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
+                                            density="compact" hide-details type="number"
+                                            class="text-right" suffix="%"
+                                        ></v-text-field>
+                                    </td>
+                                    <td>
+                                        <v-text-field
+                                            v-model.number="item.userAmount"
+                                            @update:model-value="handleAmountChange(item)"
+                                            :readonly="item.children.length > 0"
+                                            :variant="item.children.length > 0 ? 'plain' : 'underlined'"
+                                            density="compact" hide-details type="number"
+                                            class="text-right font-weight-bold"
+                                        ></v-text-field>
+                                    </td>
+                                </tr>
+                                <template v-if="item.isExpanded">
+                                    <tr v-for="child in item.children" :key="child.id" class="child-row" :class="{ 'package-item-row': child.isPackageItem }">
+                                        <td class="pl-12">{{ child.name }}</td>
+                                        <td></td>
+                                        <td>
+                                            <v-text-field
+                                                v-model.number="child.userAmount"
+                                                @update:model-value="updateParentState(item)"
+                                                variant="underlined" density="compact" hide-details
+                                                type="number" class="text-right"
+                                            ></v-text-field>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </template>
+                        </tbody>
+                        <tfoot>
+                            <tr class="summary-row target-total">
+                                <td class="font-weight-bold" colspan="2">應付總額</td>
+                                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.targetTotal, 2) }}</td>
+                            </tr>
+                            <tr class="summary-row">
+                                <td colspan="2">目前總計</td>
+                                <td class="text-right">{{ formatNumber(paymentSummary.currentTotalAmount, 2) }}</td>
+                            </tr>
+                            <tr class="summary-row difference-row" :class="{ 'text-red': paymentSummary.difference !== 0, 'text-green': paymentSummary.difference === 0 }">
+                                <td class="font-weight-bold" colspan="2">差額 (待分配)</td>
+                                <td class="text-right font-weight-bold">{{ formatNumber(paymentSummary.difference, 2) }}</td>
+                            </tr>
+                        </tfoot>
+                    </v-table>
+                </v-card-text>
+            </v-card>
+        </v-col>
+
+        <v-col cols="12" md="4">
+            <v-card class="mb-5" elevation="2">
+                <v-card-item class="card-header-accent">
+                    <v-card-title>
+                        <v-icon start>mdi-calculator-variant</v-icon>
+                        金額總覽
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text class="price-summary">
+                    <div class="price-item">
+                        <span class="price-label">房屋成交價</span>
+                        <div class="d-flex flex-column align-end">
+                            <span class="price-value">{{ formatNumber(formData.房屋成交價) }} 萬</span>
+                            <small class="text-grey">{{ formatNumber(calculated.houseSaleUnitPrice, 2) }} 萬/坪</small>
+                        </div>
+                    </div>
+                    <div class="price-item">
+                        <span class="price-label">房屋底價</span>
+                        <div class="d-flex flex-column align-end">
+                            <span class="price-value price-value-secondary">{{ formatNumber(formData['房屋總底價']) }} 萬</span>
+                            <small class="text-grey">{{ formatNumber(calculated.houseBaseUnitPrice, 2) }} 萬/坪</small>
+                        </div>
+                    </div>
+                    <v-divider class="my-2"></v-divider>
+                    <div class="price-item">
+                        <span class="price-label">車位總成交價</span>
+                        <span class="price-value">{{ formatNumber(calculated.totalParkingSalePrice) }} 萬</span>
+                    </div>
+                    <div class="price-item">
+                        <span class="price-label">車位總底價</span>
+                        <span class="price-value price-value-secondary">{{ formatNumber(calculated.totalParkingBasePrice) }} 萬</span>
+                    </div>
+                    <v-divider class="my-2"></v-divider>
+                    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+                        <span class="price-label">配套房屋總價</span>
+                        <span class="price-value">{{ formatNumber(formData['配套房屋總價']) }} 萬</span>
+                    </div>
+                    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+                        <span class="price-label">配套價</span>
+                        <span class="price-value">{{ formatNumber(calculated.packagePrice) }} 萬</span>
+                    </div>
+                    <v-divider class="my-2 thick-divider"></v-divider>
+                    <div class="price-item total">
+                        <span class="price-label">成交總價</span>
+                        <span class="price-value total-value">{{ formatNumber(calculated.grandTotalSalePrice) }} 萬</span>
+                    </div>
+                    <div class="price-item total">
+                        <span class="price-label">總底價</span>
+                        <span class="price-value total-value text-red">{{ formatNumber(calculated.grandTotalBasePrice) }} 萬</span>
+                    </div>
+                    <v-divider class="my-2"></v-divider>
+<div class="price-item difference" :class="{ 'positive': calculated.priceDifference >= 0, 'negative': calculated.priceDifference < 0 }">                        <span class="price-label">溢差價</span>
+                        <span class="price-value">{{ formatNumber(calculated.priceDifference) }} 萬</span>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-col>
+    </v-row>
+
+    <v-row>
+<v-col cols="12" md="4">
+            <v-card elevation="2" class="mb-5">
+                <v-card-item class="card-header">
+                    <v-card-title>
+                        <v-icon start>mdi-texture-box</v-icon>
+                        面積資訊
+                    </v-card-title>
+                </v-card-item>
+                <v-divider></v-divider>
+                <v-card-text>
+                    <div class="total-area-card mb-4">
+                        <div class="area-summary-item">
+                            <div>
+                                <div class="total-area-title">房屋總面積</div>
+                                <div class="total-area-value">{{ formatNumber(formData['房屋面積(坪)'], 2) }} 坪</div>
+                                <div class="total-area-subtitle">{{ formatNumber(formData['房屋面積(平方公尺)'], 2) }} m²</div>
+                            </div>
+                        </div>
+                        <v-divider vertical class="mx-4"></v-divider>
+                        <div class="area-summary-item">
+                            <div>
+                                <div class="total-area-title">公設比</div>
+                                <div class="total-area-value">{{ formatPercentage(formData['公設比']) }}</div>
+                                <div class="total-area-subtitle">&nbsp;</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="area-details mt-3">
+                        <div class="area-group">
+                            <div class="area-group-title">
+                                <v-icon size="small" class="mr-1">mdi-home</v-icon>
+                                建物面積明細
+                            </div>
+                            <div class="area-item-header">
+                                <span>項目</span>
+                                <span>坪數</span>
+                                <span>m²</span>
+                            </div>
+                            <div class="area-item">
+                                <span>主建物 (室內)</span>
+                                <span class="area-ping-value">{{ formatNumber(formData['主建物面積(坪)'], 2) }}</span>
+                                <span>{{ formatNumber(formData['主建物面積(平方公尺)'], 2) }}</span>
+                            </div>
+                            <div class="area-item">
+                                <span>附屬建物 (陽台)</span>
+                                <span class="area-ping-value">{{ formatNumber(formData['附屬建物面積(坪)'], 2) }}</span>
+                                <span>{{ formatNumber(formData['附屬建物面積(平方公尺)'], 2) }}</span>
+                            </div>
+                            <div class="area-item">
+                                <span>共用部分 (公設)</span>
+                                <span class="area-ping-value">{{ formatNumber(formData['共用部分面積(坪)'], 2) }}</span>
+                                <span>{{ formatNumber(formData['共用部分面積(平方公尺)'], 2) }}</span>
+                            </div>
+                            <div class="area-item">
+                                <span>露臺 (不計坪)</span>
+                                <span class="area-ping-value">{{ formatNumber(formData['露臺(坪)'], 2) }}</span>
+                                <span>-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="area-details mt-2">
+                        <div class="area-group">
+                            <div class="area-group-title">
+                                <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+                                土地持分資訊
+                            </div>
+                             <div class="area-item-header">
+                                <span>項目</span>
+                                <span>坪數</span>
+                                <span>m²</span>
+                            </div>
+                            <div class="area-item">
+                                <span>土地持分面積</span>
+                                <span class="area-ping-value">{{ formatNumber(formData['土地持分面積(坪)'], 2) }}</span>
+                                <span>{{ formatNumber(formData['土地持分面積(平方公尺)'], 2) }}</span>
+                            </div>
+                            <div class="area-item">
+                                <span>土地持分</span>
+                                <span class="font-weight-medium">十萬分之 {{ formData['土地持分'] || 'N/A' }}</span>
+                                <span>-</span>
+                            </div>
+                        </div>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-col>
+    </v-row>
+</v-container>
             </v-card-text>
 
             <v-divider></v-divider>
             
-            <v-card-actions class="pa-4 footer-sticky">
-                <v-spacer></v-spacer>
-                <v-btn color="grey-darken-1" variant="text" @click="$emit('update:show', false)">取消</v-btn>
-                <v-btn color="success" variant="flat" @click="save">儲存</v-btn>
-            </v-card-actions>
+<v-card-actions class="pa-4 footer-sticky" :class="{ 'mobile-footer': isMobile }">
+    <v-spacer></v-spacer>
+
+    <v-btn
+        v-if="unitData && unitData['資料夾URL']"
+        color="teal"
+        variant="flat"
+        :href="unitData['資料夾URL']"
+        target="_blank"
+    >
+        <v-icon start>mdi-folder-google-drive</v-icon>
+         {{ unitData['戶別'] }}資料夾
+    </v-btn>
+
+    <v-btn
+        color="indigo"
+        variant="flat"
+        @click="handleGenerateDocument"
+        :loading="isGenerating"
+        :disabled="isGenerating"
+    >
+        <v-icon start>mdi-file-document-edit-outline</v-icon>
+        製作付款表
+    </v-btn>
+
+    <v-btn color="primary" variant="text" @click="$emit('update:show', false)">關閉</v-btn>
+
+</v-card-actions>
         </v-card>
 
         <ParkingEditModal
@@ -421,12 +483,100 @@
             @request-open-slide="$emit('request-open-slide')"
         />
     </v-dialog>
+
+<v-dialog 
+    v-model="showEmailModal" 
+    max-width="600px" 
+    persistent
+>
+    <v-card>
+        <v-card-title class="d-flex align-center">
+            <v-icon start color="primary">mdi-email-send-outline</v-icon>
+            <span class="text-h6">傳送付款表</span>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" variant="text" @click="showEmailModal = false"></v-btn>
+        </v-card-title>
+
+        <v-divider></v-divider>
+
+        <v-card-text>
+            <div class="mb-4">
+                <p class="font-weight-bold mb-2">已產生下列檔案：</p>
+                <div>
+                    <v-chip
+                        v-for="file in generatedFiles"
+                        :key="file.name"
+                        class="mr-2 mb-2"
+                        :color="file.type === 'pdf' ? 'red-darken-1' : 'blue-darken-1'"
+                        label
+                        link
+                        :href="file.url"
+                        target="_blank"
+                    >
+                        <v-icon start>
+                            {{ file.type === 'pdf' ? 'mdi-file-pdf-box' : 'mdi-file-word-box' }}
+                        </v-icon>
+                        {{ file.name }}
+                    </v-chip>
+                </div>
+            </div>
+
+            <v-divider class="my-4"></v-divider>
+
+            <div>
+                <p class="font-weight-bold mb-1">請勾選要傳送通知的對象：</p>
+                <p class="text-caption text-grey-darken-1 mb-3">系統已根據預設規則自動勾選。</p>
+
+                <div class="email-list-container">
+                    <v-list-item 
+                        v-for="recipient in emailRecipients" 
+                        :key="recipient.email"
+                        density="compact"
+                    >
+                        <template v-slot:prepend>
+                            <v-checkbox-btn v-model="recipient.selected"></v-checkbox-btn>
+                        </template>
+                        <v-list-item-title>{{ recipient.name }}</v-list-item-title>
+                        <v-list-item-subtitle>{{ recipient.email }}</v-list-item-subtitle>
+                    </v-list-item>
+                </div>
+            </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+
+        <v-card-actions class="pa-4">
+            <v-spacer></v-spacer>
+            <v-btn 
+                color="grey-darken-1" 
+                variant="text" 
+                @click="showEmailModal = false"
+                :disabled="isSendingEmail"
+            >
+                稍後再傳
+            </v-btn>
+            <v-btn
+                color="primary"
+                variant="flat"
+                @click="sendEmails"
+                :loading="isSendingEmail"
+                :disabled="isSendingEmail"
+            >
+                <v-icon start>mdi-send</v-icon>
+                傳送
+            </v-btn>
+        </v-card-actions>
+    </v-card>
+</v-dialog>
+
 </template>
 
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
+import { generatePaymentSchedule, sendPaymentScheduleEmail } from '@/api.js'; 
+
 
 // --- Display & Props & Emits ---
 const { mobile: isMobile } = useDisplay();
@@ -468,6 +618,27 @@ const salesPhone = computed(() => {
     if (!formData.value || !formData.value.銷售) return '';
     const personnel = (props.allData['銷售人員'] || []).find(p => p['銷售人員'] === formData.value.銷售);
     return personnel ? personnel['銷售電話'] : '';
+});
+
+// [新增這段] 計算對應的匯款帳號資訊
+const remittanceAccountInfo = computed(() => {
+    // 確保 formData 和匯款帳號資料都已載入
+    if (!formData.value || !props.allData['匯款帳號']) {
+        return { '繳款銀行名稱': 'N/A', '戶名': 'N/A', '匯款帳號': 'N/A' };
+    }
+
+    const currentUnitId = formData.value['戶別'];
+    const accountData = props.allData['匯款帳號'] || [];
+
+    // 使用當前的戶別去查找對應的帳號資料
+    const foundAccount = accountData.find(acc => acc['戶別'] === currentUnitId);
+
+    if (foundAccount) {
+        return foundAccount;
+    }
+
+    // 如果找不到，回傳預設值
+    return { '繳款銀行名稱': '查無資料', '戶名': '查無資料', '匯款帳號': '查無資料' };
 });
 
 // --- 主要計算屬性 (金額總覽) ---
@@ -655,12 +826,43 @@ function handleAmountChange(item) {
 }
 
 /**
- * 處理比例變動 (適用於可編輯的項目)
+ * 處理比例變動 (全新版本)
  */
 function handleRatioChange(item) {
-    const basePrice = getBasePrice(); // 頂層項目的比例永遠相對於主基準價
-    const newAmount = basePrice * (item.userRatio / 100);
-    item.userAmount = newAmount; // 暫時不四捨五入，讓使用者看到直接結果
+    // 邏輯 1: 如果修改的是父項目 (如：工程期款)
+    if (item.children && item.children.length > 0) {
+        const mainBasePrice = getBasePrice();
+        if (mainBasePrice === 0) return;
+
+        const oldParentAmount = item.children.reduce((sum, child) => sum + child.userAmount, 0);
+        const newParentAmount = mainBasePrice * (item.userRatio / 100);
+        const delta = newParentAmount - oldParentAmount;
+
+        // 按比例分配差額給子項目
+        if (oldParentAmount > 0) {
+            item.children.forEach(child => {
+                const proportion = child.userAmount / oldParentAmount;
+                child.userAmount += delta * proportion;
+            });
+        } else if (item.children.length > 0) {
+            // 如果原始金額為0，則平均分配
+            const amountPerChild = newParentAmount / item.children.length;
+            item.children.forEach(child => {
+                child.userAmount = amountPerChild;
+            });
+        }
+
+        // 分配完後，更新父層的總額，以確保其為子項目的精確加總
+        updateParentState(item);
+    }
+    // 邏輯 2: 如果修改的是獨立項目 (沒有子項目，也沒有父項目)
+    else if (!item.parentId) {
+        const mainBasePrice = getBasePrice();
+        const newAmount = mainBasePrice * (item.userRatio / 100);
+        item.userAmount = newAmount;
+    }
+    // 子項目的比例不應被直接修改，所以此處不處理
+
     updateSummary();
 }
 
@@ -779,12 +981,204 @@ function updateSelectedParking(newParkingList) {
     }
 }
 
-function save() {
-    alert('儲存功能待實現！');
-    console.log('準備儲存的資料:', {
-        ...formData.value,
-        paymentItems: paymentItems.value // 包含手動修改後的付款明細
-    });
+// --- [新增] 文件產出相關狀態 ---
+const isGenerating = ref(false); // 控制按鈕的 loading 狀態
+const generatedFiles = ref([]);  // 用於儲存產出檔案的連結
+const showEmailModal = ref(false); // 控制 Email 彈出視窗的顯示
+const isSendingEmail = ref(false);    // 控制 Email 發送按鈕的 loading 狀態
+const emailRecipients = ref([]); // 存放 Email 勾選列表
+
+/**
+ * [最終修正版] 準備要發送到後端 GAS 的資料 payload
+ * 這個版本會正確地攤平父子項目，解決摺疊項目資料遺失的問題。
+ * @returns {object} 包含所有模板所需資訊的物件
+ */
+function prepareDocumentPayload() {
+    // --- 準備「一般付款表」資料 ---
+    const generalPaymentList = [];
+    paymentItems.value
+        .filter(item => !item.isPackageItem) // 過濾掉所有配套相關的
+        .forEach(item => {
+            // 先將父項目或獨立項目加進來
+            generalPaymentList.push({
+                項目名稱: item.name,
+                項目比例: Math.round(item.userRatio),
+                項目金額: item.userAmount
+            });
+            // 如果這個項目有子項目，就遍歷並把子項目也加進來
+            if (item.children && item.children.length > 0) {
+                item.children.forEach(child => {
+                    // 在子項目前面加上縮排，使其在文件上看起來有層級感
+                    generalPaymentList.push({
+                        項目名稱: `    - ${child.name}`, // 加上縮排
+                        項目比例: '', // 子項目沒有比例
+                        項目金額: child.userAmount
+                    });
+                });
+            }
+        });
+
+    const generalData = {
+        戶別: formData.value['戶別'],
+        銷售人員: formData.value['銷售'],
+        聯絡電話: salesPhone.value,
+        成交總價: calculated.value.grandTotalSalePrice,
+        房屋總面積_坪: formData.value['房屋面積(坪)'],
+        房屋總面積_M2: formData.value['房屋面積(平方公尺)'],
+        主建物面積_坪: formData.value['主建物面積(坪)'],
+        主建物面積_M2: formData.value['主建物面積(平方公尺)'],
+        附屬建物面積_坪: formData.value['附屬建物面積(坪)'],
+        附屬建物面積_M2: formData.value['附屬建物面積(平方公尺)'],
+        共用部分面積_坪: formData.value['共用部分面積(坪)'],
+        共用部分面積_M2: formData.value['共用部分面積(平方公尺)'],
+        露臺面積_坪: formData.value['露臺(坪)'],
+        土地持分面積_坪: formData.value['土地持分面積(坪)'],
+        土地持分面積_M2: formData.value['土地持分面積(平方公尺)'],
+        土地持分比例: formData.value['土地持分'],
+        繳款銀行名稱: remittanceAccountInfo.value['繳款銀行名稱'],
+        戶名: remittanceAccountInfo.value['戶名'],
+        匯款帳號: remittanceAccountInfo.value['匯款帳號'],
+        車位列表: (formData.value['持有車位'] || []).map(p => ({
+            車位編號: p['車位編號'],
+            車位成交價: p['車位成交價']
+        })),
+        付款項目列表: generalPaymentList // 使用我們剛剛攤平的列表
+    };
+
+    // --- 準備「裝修付款表」資料 ---
+    const packagePaymentList = [];
+    const packageParentItem = paymentItems.value.find(item => item.id === '__PACKAGE_DEAL__');
+    
+    if (packageParentItem && packageParentItem.children) {
+        // 直接遍歷配套父項的子項目
+        packageParentItem.children.forEach(child => {
+            packagePaymentList.push({
+                配套項目名稱: child.name,
+                配套項目比例: Math.round(child.userRatio),
+                配套項目金額: child.userAmount
+            });
+        });
+    }
+
+    const packageData = {
+        戶別: formData.value['戶別'],
+        銷售人員: formData.value['銷售'],
+        聯絡電話: salesPhone.value,
+        房屋總面積_坪: formData.value['房屋面積(坪)'],
+        配套總價: calculated.value.packagePrice,
+        配套項目列表: packagePaymentList
+    };
+
+    return { generalData, packageData };
+}
+
+/**
+ * [主函式] 當點擊「製作付款表」按鈕時觸發
+ */
+async function handleGenerateDocument() {
+    isGenerating.value = true;
+    generatedFiles.value = []; // 清空上次的結果
+
+    // 準備要發送到後端的資料
+    const payload = {
+        projectName: props.projectName,
+        contractType: formData.value.合約方式,
+        data: prepareDocumentPayload()
+    };
+    
+    console.log("準備發送到後端的 Payload:", JSON.stringify(payload, null, 2));
+
+    try {
+        // [正式呼叫] 呼叫 api.js 中定義的函式
+        const result = await generatePaymentSchedule(payload);
+        
+        if (result.status === 'success') {
+            generatedFiles.value = result.files;
+            alert('文件製作成功！'); 
+            
+            // 接著準備彈出 Email 視窗
+            prepareAndShowEmailModal();
+        } else {
+            throw new Error(result.message || '後端發生未知錯誤');
+        }
+    } catch (error) {
+        console.error('製作文件時發生錯誤:', error);
+        alert(`製作失敗: ${error.message}`);
+    } finally {
+        isGenerating.value = false;
+    }
+}
+
+/**
+ * 準備並顯示 Email 發送視窗
+ */
+function prepareAndShowEmailModal() {
+    console.log("準備彈出 Email 視窗...");
+    const salesPersonnel = props.allData['銷售人員'] || [];
+    const currentSalesperson = formData.value.銷售;
+
+    const recipients = salesPersonnel.map(person => {
+        const name = person['銷售人員'];
+        const email = person['EMAIL'];
+
+        // 檢查此人是否需要被預設勾選
+        const isPreset = person['付款表預選'] === 'Y';
+        const isCurrent = name === currentSalesperson;
+        
+        return {
+            name: name,
+            email: email,
+            selected: isPreset || isCurrent // 規則：預選或當前銷售人員，則勾選
+        };
+    }).filter(person => person.email); // 過濾掉沒有 Email 的人員
+
+    emailRecipients.value = recipients;
+    showEmailModal.value = true;
+}
+
+
+/**
+ * [新增] 點擊「傳送」按鈕後觸發
+ */
+async function sendEmails() {
+    isSendingEmail.value = true;
+
+    // 收集所有被勾選的 Email 地址
+    const selectedEmails = emailRecipients.value
+        .filter(r => r.selected)
+        .map(r => r.email);
+
+    if (selectedEmails.length === 0) {
+        alert('請至少選擇一位收件人！');
+        isSendingEmail.value = false;
+        return;
+    }
+    
+    // 準備要發送到後端的資料
+    const payload = {
+        projectName: props.projectName,
+        recipients: selectedEmails,
+        files: generatedFiles.value, // 已產生的檔案列表
+        unitId: formData.value['戶別']
+    };
+
+    try {
+        // [正式呼叫] 呼叫 api.js 中定義的函式
+        const result = await sendPaymentScheduleEmail(payload);
+
+        if (result.status === 'success') {
+            alert(result.message || '郵件已成功寄出！');
+            showEmailModal.value = false; // 成功後關閉視窗
+        } else {
+            throw new Error(result.message || '後端發生未知錯誤');
+        }
+
+    } catch (error) {
+        console.error('發送郵件時發生錯誤:', error);
+        alert(`發送失敗: ${error.message}`);
+    } finally {
+        isSendingEmail.value = false;
+    }
 }
 
 // --- 底層計算引擎 (無變動) ---
@@ -874,6 +1268,15 @@ function formatPercentage(value) {
         return 'N/A';
     }
     return `${(value * 100).toFixed(2)}%`;
+}
+
+/**
+ * 按下「恢復預設」按鈕時呼叫
+ * 直接重新執行初始化函式，即可將所有項目還原
+ */
+function resetAllPayments() {
+    console.log('將所有付款項目恢復到初始設定...');
+    initializePaymentItems();
 }
 
 </script>
@@ -1110,5 +1513,19 @@ function formatPercentage(value) {
 }
 .difference-row {
     font-size: 1.1em;
+}
+
+.email-list-container {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+.mobile-footer {
+    /* 增加最小高度，確保在手機上有足夠的操作空間 */
+    min-height: 80px; 
+
+    /* 您也可以用 padding 來調整，例如增加底部空間 */
+
 }
 </style>
