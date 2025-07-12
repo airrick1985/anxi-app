@@ -151,8 +151,6 @@ const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 
-
-
 // =======================================================
 // ✅ 核心修正：從 PaymentDetails.vue 複製過來的完整計算引擎
 // =======================================================
@@ -230,86 +228,104 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
 // =======================================================
 async function handleGenerateQuote() {
     if (!selectedPersonnel.value) {
-       alert('請先選擇報價人員');
-       return;
+        alert('請先選擇報價人員');
+        return;
     }
     isGeneratingPdf.value = true;
     
     try {
-       const payload = {
-           projectName: projectName,
-           personnelName: selectedPersonnel.value.name,
-           personnelPhone: selectedPersonnel.value.phone,
-           items: quoteStore.items.map(item => {
-      // --- 1. 使用與 PaymentDetails.vue 完全相同的計算引擎 ---
-            const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
-      
-      // ★★★【BUG 已修正】★★★
-      // 明確判斷 isFirstTimeBuyer 是否等於 "是"
-      const conditionCol = item.isFirstTimeBuyer === '是' ?
-                (finalTotal >= 4000 ? '>=4000首購' : '<4000首購') :
-                (finalTotal >= 4000 ? '>=4000非首購' : '<4000非首購');
-            const conditionContext = { conditionCol };
+        const payload = {
+            projectName: projectName,
+            personnelName: selectedPersonnel.value.name,
+            personnelPhone: selectedPersonnel.value.phone,
+            items: quoteStore.items.map(item => {
+                // --- 一般付款期數計算 (不變) ---
+              const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
+              const conditionCol = item.isFirstTimeBuyer === '是' ?
+                   (finalTotal >= 4000 ? '>=4000首購' : '<4000首購') :
+                   (finalTotal >= 4000 ? '>=4000非首購' : '<4000非首購');
+              const conditionContext = { conditionCol };
+              const calculatedAmounts = runCalculationEngine(paymentTermsData.value, finalTotal, '總價', conditionContext);
 
-            // 執行真正的公式引擎，獲取每個項目編號對應的金額
-            const calculatedAmounts = runCalculationEngine(paymentTermsData.value, finalTotal, '總價', conditionContext);
+                const dynamicPayments = paymentTermsData.value.reduce((acc, term) => {
+                    const termName = term['項目名稱'];
+                    const termId = term['編號'];
+                    if (termName && calculatedAmounts[termId] !== undefined) {
+                        const amount = calculatedAmounts[termId];
+                        let percentDisplay = '0%';
+                        if (term['類型'] === '百分比') {
+                            const termValue = parseFloat(term[conditionCol]) || 0;
+                            percentDisplay = `${Math.round(termValue * 100)}%`;
+                        }
+                        acc[`${termName}%`] = percentDisplay;
+                        acc[`${termName}金額`] = amount.toLocaleString();
+                    }
+                    return acc;
+                }, {});
 
-      // --- 2. 組合 Payload ---
-            const fixedPayload = {
-                   '戶別': item.unitId,
-          // ★★★【BUG 已修正】★★★
-          // 直接使用 isFirstTimeBuyer 的值
-                   '是否首購': item.isFirstTimeBuyer, 
-                   '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
-                   '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
-                   '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-                   '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
-                   '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
-                   '配套價': quoteStore.getPackagePrice(item.internalId).toLocaleString(),
-                   '總價': finalTotal.toLocaleString(),
-            };
+                // ★★★★★【新增計算邏輯 - 開始】★★★★★
 
-            const dynamicPayments = paymentTermsData.value.reduce((acc, term) => {
-              const termName = term['項目名稱'];
-              const termId = term['編號'];
-            
-              if (termName && calculatedAmounts[termId] !== undefined) {
-                  const amount = calculatedAmounts[termId];
-                  let percentDisplay = '0%'; // Default
+                // 取得已在 QuoteItem.vue 中計算好並存入 store 的 packageItems
+                const dynamicPackageItems = item.packageItems || {};
                 
-                  if (term['類型'] === '百分比') {
-                          const termValue = parseFloat(term[conditionCol]) || 0;
-                          percentDisplay = `${Math.round(termValue * 100)}%`;
-                  }
+                let packageItemsSum = 0;
+                let packagePriceRemainder = 0;
+                const packagePriceTotal = quoteStore.getPackagePrice(item.internalId);
 
-                  acc[`${termName}%`] = percentDisplay;
-                  acc[`${termName}金額`] = amount.toLocaleString();
-              }
-              return acc;
-          }, {});
+                // 只有在有配套價時才進行計算
+                if (packagePriceTotal > 0 && packageTermsData.value.length > 0) {
+                    // 根據 packageTermsData 的順序，找到前兩項的名稱
+                    const firstTermName = packageTermsData.value[0]?.['項目名稱'];
+                    const secondTermName = packageTermsData.value[1]?.['項目名稱'];
 
-            return {
-                   ...fixedPayload,
-                   ...dynamicPayments,
-            };
-         })
-     };
+                    // 從已計算好的 dynamicPackageItems 中取出對應的值
+                    const firstTermValue = firstTermName ? (dynamicPackageItems[firstTermName] || 0) : 0;
+                    const secondTermValue = secondTermName ? (dynamicPackageItems[secondTermName] || 0) : 0;
 
-    console.log("準備發送到後端的最終 Payload:", JSON.stringify(payload, null, 2));
+                    packageItemsSum = firstTermValue + secondTermValue;
+                    packagePriceRemainder = packagePriceTotal - packageItemsSum;
+                }
+                
+                // ★★★★★【新增計算邏輯 - 結束】★★★★★
 
-    const result = await generateQuotePdf(payload);
-    if (result.status === 'success' && result.url) {
-        generatedPdfUrl.value = result.url;
-        pdfResultDialog.value = true;
-    } else {
-        throw new Error(result.message || '後端未返回有效的URL');
+              // --- 組合最終 Payload ---
+              return {
+                    // 固定欄位
+                  '戶別': item.unitId,
+                  '是否首購': item.isFirstTimeBuyer, 
+                  '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
+                  '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
+                  '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
+                  '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
+                  '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
+                  '配套價': packagePriceTotal.toLocaleString(),
+                  '總價': finalTotal.toLocaleString(),
+                    // 一般期款
+                  ...dynamicPayments,
+                    // 配套價子項目 (完整的)
+                  packageItems: dynamicPackageItems,
+                    // ✅ 新增的計算欄位
+                    packageItemsSum: packageItemsSum.toLocaleString(),
+                    packagePriceRemainder: packagePriceRemainder.toLocaleString()
+              };
+            })
+        };
+
+        console.log("準備發送到後端的最終 Payload:", JSON.stringify(payload, null, 2));
+
+        const result = await generateQuotePdf(payload);
+        if (result.status === 'success' && result.url) {
+            generatedPdfUrl.value = result.url;
+            pdfResultDialog.value = true;
+        } else {
+            throw new Error(result.message || '後端未返回有效的URL');
+        }
+    } catch (err) {
+        console.error('產生報價單失敗:', err);
+        alert(`產生報價單失敗: ${err.message}`);
+    } finally {
+        isGeneratingPdf.value = false;
     }
-   } catch (err) {
-       console.error('產生報價單失敗:', err);
-       alert(`產生報價單失敗: ${err.message}`);
-   } finally {
-       isGeneratingPdf.value = false;
-   }
 }
 
 // =================================================================

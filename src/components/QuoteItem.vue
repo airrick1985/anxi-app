@@ -164,8 +164,10 @@
     </div>
 </template>
 
+// /src/components/QuoteItem.vue
+
 <script setup>
-import { ref, computed, defineProps, defineEmits, onMounted } from 'vue';
+import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
 import { useQuoteStore } from '@/store/quoteStore';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
@@ -173,14 +175,9 @@ import PaymentDetails from './PaymentDetails.vue';
 const props = defineProps({
   item: { type: Object, required: true },
   paymentTermsData: { type: Array, default: () => [] },
-  packageTermsData: { type: Array, default: () => [] }, // 確保接收
+  packageTermsData: { type: Array, default: () => [] },
   showPackageDeal: { type: Boolean, default: true },
-  isLoading: { type: Boolean, default: false } // 接收載入狀態
-});
-
-// (可選) 增加一個 console.log 來進行調試
-onMounted(() => {
-  console.log(`QuoteItem for ${props.item.unitId} received packageTermsData:`, props.packageTermsData);
+  isLoading: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['remove', 'open-parking-modal']);
@@ -188,6 +185,77 @@ const quoteStore = useQuoteStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
+
+// ★★★ 2. 新增：從 QuoteSettings 搬過來的計算引擎 ★★★
+// (理想上應該放在共用的 utils 或 composable 中，但為求簡單先放這裡)
+function applyRounding(value, method, precisionSpec) {
+    const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+    if (!method) return Number(value.toFixed(precision));
+    const multiplier = Math.pow(10, precision);
+    let roundedValue;
+    switch (method) {
+        case '無條件進位': roundedValue = Math.ceil(value * multiplier) / multiplier; break;
+        case '四捨五入': roundedValue = Math.round(value * multiplier) / multiplier; break;
+        case '無條件捨去': roundedValue = Math.floor(value * multiplier) / multiplier; break;
+        default: roundedValue = value;
+    }
+    return Number(roundedValue.toFixed(precision));
+}
+
+function parseFormula(formula, context) {
+    let expression = String(formula);
+    expression = expression.replace(/(\d+(\.\d+)?)%/g, (match, number) => `(${number}/100)`);
+    expression = expression.replace(new RegExp(context.priceKeyword, 'g'), context.priceValue);
+    if (expression.includes('條件設定值')) {
+        expression = expression.replace(/條件設定值/g, context.currentTermValue);
+    }
+    const references = expression.match(/[A-Z]/g) || [];
+    for (const refId of references) {
+        if (context.results[refId] === undefined) {
+            throw new Error(`公式無法計算，因為參照的項目 '${refId}' 尚未被計算。`);
+        }
+        expression = expression.replace(new RegExp(refId, 'g'), context.results[refId]);
+    }
+    try {
+        return new Function(`return ${expression}`)();
+    } catch (e) {
+        throw new Error(`公式錯誤 "${formula}" -> 最終表達式 "${expression}": ${e.message}`);
+    }
+}
+
+function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
+    const results = {};
+    if (!terms || terms.length === 0 || !priceValue) return results;
+    const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
+    let calculationMadeInLoop = true;
+    let loops = 0;
+    while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
+        calculationMadeInLoop = false;
+        loops++;
+        pendingTerms.forEach((term, id) => {
+            if (!term['計算方式']) return;
+            try {
+                let currentTermValue = 0;
+                if (conditionContext && term[conditionContext.conditionCol]) {
+                    currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
+                }
+                const context = { priceValue, priceKeyword, currentTermValue, results };
+                const amount = parseFormula(term['計算方式'], context);
+                results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
+                pendingTerms.delete(id);
+                calculationMadeInLoop = true;
+            } catch (e) {
+                // Silent catch
+            }
+        });
+    }
+    if (pendingTerms.size > 0) {
+        // 在正式環境中，可以選擇不拋出錯誤，只在 console 提示
+        console.warn(`項目 ${Array.from(pendingTerms.keys()).join(', ')} 可能存在循環依賴或公式錯誤。`);
+    }
+    return results;
+}
+
 
 const formatNumber = (val, frac = 2) => {
   const num = parseFloat(val);
@@ -200,7 +268,6 @@ const isFirstTimeBuyerModel = computed({
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'isFirstTimeBuyer', value)
 });
 
-// ✅ NEW: Convert "是"/"否" to a boolean for the PaymentDetails component
 const isFirstTimeBuyerBoolean = computed(() => isFirstTimeBuyerModel.value === '是');
 
 const usePackageDealModel = computed({
@@ -214,17 +281,38 @@ const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.i
 const displayHousePrice = computed(() => formatNumber(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
 const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPrice(props.item.internalId), 2));
 
-// ❌ REMOVED: This logic is now inside PaymentDetails.vue
-/*
-const activePaymentTerm = computed(() => {
-  if (!props.paymentTermsData || props.paymentTermsData.length === 0) return null;
-  const priceCondition = finalTotalPrice.value < 4000 ? '<4000' : '>=4000';
-  const buyerCondition = isFirstTimeBuyerModel.value;
-  return props.paymentTermsData.find(term => 
-    String(term['總價']).trim() === priceCondition && String(term['是否首購']).trim() === buyerCondition
-  );
+
+// ★★★ 3. 新增：計算配套價子項目的 computed 屬性 ★★★
+const calculatedPackageItems = computed(() => {
+    // 如果不使用配套，或配套價為0，或沒有設定規則，則返回空物件
+    if (!usePackageDealModel.value || packagePrice.value <= 0 || !props.packageTermsData || props.packageTermsData.length === 0) {
+        return {};
+    }
+
+    // 使用公式引擎計算
+    // 注意：這裡假設公式中使用的關鍵字是 '配套總價'
+    const calculatedAmounts = runCalculationEngine(props.packageTermsData, packagePrice.value, '配套金額');
+
+    // 將結果轉換為 { "項目名稱": 金額 } 的格式
+    return props.packageTermsData.reduce((acc, term) => {
+        const termName = term['項目名稱'];
+        const termId = term['編號'];
+        if (termName && calculatedAmounts[termId] !== undefined) {
+            acc[termName] = calculatedAmounts[termId];
+        }
+        return acc;
+    }, {});
 });
-*/
+
+// ★★★ 4. 新增：使用 watch 監聽計算結果，並更新到 store 中 ★★★
+watch(calculatedPackageItems, (newPackageItems) => {
+    // 呼叫 store 的 action 來更新
+    quoteStore.updateItemPackageItems(props.item.internalId, newPackageItems);
+}, {
+    deep: true, // 深度監聽，確保物件內部變化也能被偵測到
+    immediate: true // 立即執行一次，確保初始值也被寫入 store
+});
+
 
 const parkingDisplayText = computed(() => {
   if (props.item.selectedParking.length === 0) return '新增車位';

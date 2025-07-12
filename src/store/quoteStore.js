@@ -42,7 +42,6 @@ export const useQuoteStore = defineStore('quote', () => {
     };
   });
 
-  // ✅ --- 確保這些計算價格的 Getter 都存在 --- ✅
   const getRawDisplayHousePrice = computed(() => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
@@ -69,7 +68,6 @@ export const useQuoteStore = defineStore('quote', () => {
 
   const itemCount = computed(() => items.value.length);
   
-  // ✅ 確保 isItemInQuote 的定義正確
   const isItemInQuote = computed(() => {
     const itemIds = new Set(items.value.map(item => item.unitId));
     return (unitId) => itemIds.has(unitId);
@@ -93,7 +91,9 @@ export const useQuoteStore = defineStore('quote', () => {
       unitDetails: unitData,
       isFirstTimeBuyer: '否',
       usePackageDeal: false,
-      selectedParking: []
+      selectedParking: [],
+      // ★★★ 1. 新增：初始化 packageItems 屬性 ★★★
+      packageItems: {}
     });
     toast.success(`戶別 ${unitData['戶別']} 已成功加入報價單！`);
   }
@@ -120,11 +120,18 @@ export const useQuoteStore = defineStore('quote', () => {
     }
   }
 
+  // ★★★ 2. 新增：更新配套價子項目的 action ★★★
+  function updateItemPackageItems(internalId, newPackageItems) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.packageItems = newPackageItems;
+    }
+  }
+
   function clearQuote() {
     items.value = [];
   }
 
-  // ✅ 確保所有需要的 Getters 和 Actions 都在這裡被回傳
   return {
     items,
     personnelName,
@@ -141,6 +148,8 @@ export const useQuoteStore = defineStore('quote', () => {
     updateUnitField,
     updateParking,
     clearQuote,
+    // ★★★ 3. 新增：將新的 action 回傳出去 ★★★
+    updateItemPackageItems,
   };
 }, {
   persist: true
