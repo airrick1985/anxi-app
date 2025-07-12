@@ -503,21 +503,21 @@
             <div class="mb-4">
                 <p class="font-weight-bold mb-2">已產生下列檔案：</p>
                 <div>
-                    <v-chip
-                        v-for="file in generatedFiles"
-                        :key="file.name"
-                        class="mr-2 mb-2"
-                        :color="file.type === 'pdf' ? 'red-darken-1' : 'blue-darken-1'"
-                        label
-                        link
-                        :href="file.url"
-                        target="_blank"
-                    >
-                        <v-icon start>
-                            {{ file.type === 'pdf' ? 'mdi-file-pdf-box' : 'mdi-file-word-box' }}
-                        </v-icon>
-                        {{ file.name }}
-                    </v-chip>
+             <v-chip
+    v-for="file in generatedFiles"
+    :key="file.name"
+    class="mr-2 mb-2"
+    :color="getChipStyle(file.type).color"
+    label
+    link
+    :href="file.url"
+    target="_blank"
+>
+    <v-icon start>
+        {{ getChipStyle(file.type).icon }}
+    </v-icon>
+    {{ file.name }}
+</v-chip>
                 </div>
             </div>
 
@@ -1277,6 +1277,24 @@ function formatPercentage(value) {
 function resetAllPayments() {
     console.log('將所有付款項目恢復到初始設定...');
     initializePaymentItems();
+}
+
+/**
+ * 根據檔案類型回傳對應的顏色與圖示
+ * @param {string} type - 檔案類型 ('pdf', 'excel', etc.)
+ * @returns {{color: string, icon: string}}
+ */
+function getChipStyle(type) {
+    switch (type) {
+        case 'pdf':
+            return { color: 'red-darken-1', icon: 'mdi-file-pdf-box' };
+        case 'excel':
+            return { color: 'green-darken-1', icon: 'mdi-file-excel-box' };
+        case 'word':
+             return { color: 'blue-darken-1', icon: 'mdi-file-word-box' };
+        default:
+            return { color: 'grey-darken-1', icon: 'mdi-file-document-box' };
+    }
 }
 
 </script>

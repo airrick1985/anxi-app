@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.121",
+  "version": "0.0.122",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
