@@ -15,7 +15,6 @@
           </div>
         </v-overlay>
         
-        
         <div class="header-section">
             <v-card-title class="d-flex justify-space-between align-center text-h5">
                 <span>{{ unitData ? unitData['戶別'] : '詳細資訊' }}</span>
@@ -92,77 +91,77 @@
                                 <v-col cols="12" md="6">
                                     <div class="info-section">
                                        <div class="section-title">面積資訊</div>
-                         <div class="total-area-card">
-                           <div class="area-summary-item">
-                             <div>
-                               <div class="total-area-title">房屋總面積</div>
-                               <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)'], 2) }} 坪</div>
-                               <div class="total-area-subtitle">{{ formatNumber(unitData['房屋面積(平方公尺)'], 2) }} m²</div>
-                             </div>
-                           </div>
-                           <v-divider vertical class="mx-4"></v-divider>
-                           <div class="area-summary-item">
-                             <div>
-                               <div class="total-area-title">公設比</div>
-                               <div class="total-area-value">{{ formatPercentage(unitData['公設比']) }}</div>
-                               <div class="total-area-subtitle">&nbsp;</div>
-                             </div>
-                           </div>
-                         </div>
-                         <div class="area-details mt-3">
-                           <div class="area-group">
-                             <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
-                               建物面積明細</div>
-                             <div class="area-item-header">
-                               <span>項目</span>
-                               <span>坪數</span>
-                               <span>m²</span>
-                             </div>
-                             <div class="area-item">
-                               <span>主建物 (室內)</span>
-                               <span class="area-ping-value">{{ formatNumber(unitData['主建物面積(坪)'], 2) }}</span>
-                               <span>{{ formatNumber(unitData['主建物面積(平方公尺)'], 2) }}</span>
-                             </div>
-                             <div class="area-item">
-                               <span>附屬建物 (陽台)</span>
-                               <span class="area-ping-value">{{ formatNumber(unitData['附屬建物面積(坪)'], 2) }}</span>
-                               <span>{{ formatNumber(unitData['附屬建物面積(平方公尺)'], 2) }}</span>
-                             </div>
-                             <div class="area-item">
-                               <span>共用部分 (公設)</span>
-                               <span class="area-ping-value">{{ formatNumber(unitData['共用部分面積(坪)'], 2) }}</span>
-                               <span>{{ formatNumber(unitData['共用部分面積(平方公尺)'], 2) }}</span>
-                             </div>
-                             <div class="area-item">
-                               <span>露臺 (不計坪)</span>
-                               <span class="area-ping-value">{{ formatNumber(unitData['露臺(坪)'], 2) }}</span>
-                               <span>-</span>
-                             </div>
-                           </div>
-                         </div>
-                         <div class="area-details mt-2">
-                           <div class="area-group">
-                             <div class="area-group-title">
-                                 <v-icon size="small" class="mr-1">mdi-earth</v-icon>
-                                 土地持分資訊
-                             </div>
-                             <div class="area-item-header">
-                               <span>項目</span>
-                               <span>坪數</span>
-                               <span>m²</span>
-                             </div>
-                             <div class="area-item">
-                               <span>土地持分面積</span>
-                               <span class="area-ping-value">{{ formatNumber(unitData['土地持分面積(坪)'], 2) }}</span>
-                               <span>{{ formatNumber(unitData['土地持分面積(平方公尺)'], 2) }}</span>
-                             </div>
-                             <div class="area-item">
-                               <span>土地持分</span>
-                               <span class="font-weight-medium">十萬分之 {{ unitData['土地持分'] || 'N/A' }}</span>
-                               <span>-</span>
-                             </div>
-                           </div>
-                         </div>
+                                       <div class="total-area-card">
+                                          <div class="area-summary-item">
+                                             <div>
+                                                <div class="total-area-title">房屋總面積</div>
+                                                <div class="total-area-value">{{ formatNumber(unitData['房屋面積(坪)'], 2) }} 坪</div>
+                                                <div class="total-area-subtitle">{{ formatNumber(unitData['房屋面積(平方公尺)'], 2) }} m²</div>
+                                             </div>
+                                          </div>
+                                          <v-divider vertical class="mx-4"></v-divider>
+                                          <div class="area-summary-item">
+                                             <div>
+                                                <div class="total-area-title">公設比</div>
+                                                <div class="total-area-value">{{ formatPercentage(unitData['公設比']) }}</div>
+                                                <div class="total-area-subtitle">&nbsp;</div>
+                                             </div>
+                                          </div>
+                                       </div>
+                                       <div class="area-details mt-3">
+                                          <div class="area-group">
+                                             <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
+                                                建物面積明細</div>
+                                             <div class="area-item-header">
+                                                <span>項目</span>
+                                                <span>坪數</span>
+                                                <span>m²</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>主建物 (室內)</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData['主建物面積(坪)'], 2) }}</span>
+                                                <span>{{ formatNumber(unitData['主建物面積(平方公尺)'], 2) }}</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>附屬建物 (陽台)</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData['附屬建物面積(坪)'], 2) }}</span>
+                                                <span>{{ formatNumber(unitData['附屬建物面積(平方公尺)'], 2) }}</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>共用部分 (公設)</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData['共用部分面積(坪)'], 2) }}</span>
+                                                <span>{{ formatNumber(unitData['共用部分面積(平方公尺)'], 2) }}</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>露臺 (不計坪)</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData['露臺(坪)'], 2) }}</span>
+                                                <span>-</span>
+                                             </div>
+                                          </div>
+                                       </div>
+                                       <div class="area-details mt-2">
+                                          <div class="area-group">
+                                             <div class="area-group-title">
+                                                <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+                                                土地持分資訊
+                                             </div>
+                                             <div class="area-item-header">
+                                                <span>項目</span>
+                                                <span>坪數</span>
+                                                <span>m²</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>土地持分面積</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData['土地持分面積(坪)'], 2) }}</span>
+                                                <span>{{ formatNumber(unitData['土地持分面積(平方公尺)'], 2) }}</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>土地持分</span>
+                                                <span class="font-weight-medium">十萬分之 {{ unitData['土地持分'] || 'N/A' }}</span>
+                                                <span>-</span>
+                                             </div>
+                                          </div>
+                                       </div>
                                     </div>
                                 </v-col>
                             </v-row>
@@ -179,10 +178,21 @@
                     </template>
                 </v-window-item>
 
-                <v-window-item value="floorplans" class="fill-height">
+                <v-window-item value="floorplans" class="fill-height pa-0">
                     <div v-if="hasFloorplans" class="preview-area-full">
                         <img v-if="firstPlan.type === 'image'" :src="proxiedFirstImageUrl" class="preview-content" alt="平面圖預覽" />
                         <a v-if="firstPlan.type === 'pdf'" :href="firstPlan.url" target="_blank" class="pdf-link">在新分頁中打開 PDF: {{ firstPlan.name }}</a>
+                        
+                        <v-btn
+                          color="blue-darken-2"
+                          variant="flat"
+                          @click="openSizingTool"
+                          class="sizing-tool-btn"
+                          elevation="4"
+                        >
+                            <v-icon left>mdi-ruler-square-compass</v-icon>
+                            測量工具
+                        </v-btn>
                     </div>
                     <div v-else class="text-center pa-5 text-grey d-flex flex-column justify-center align-center fill-height">
                         <v-icon size="x-large">mdi-image-off</v-icon>
@@ -194,57 +204,74 @@
         
         <div class="footer-section">
             <v-divider></v-divider>
-     <v-card-actions :class="{ 'mb-8': isMobile }">
-   <v-spacer></v-spacer>
-   <template v-if="isEditing">
-       <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
-       <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
-   </template>
-   <template v-else>
-    <v-btn
-   v-if="viewMode === 'sales' && unitData && unitData['資料夾URL']"
-   color="teal"
-   variant="flat"
-   :href="unitData['資料夾URL']"
-   target="_blank"
->
-        <v-icon left>mdi-folder-google-drive</v-icon>
-        {{ unitData['戶別'] }} 資料夾
-       </v-btn>
-       <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
-           <v-icon left>mdi-plus-box-outline</v-icon>
-           {{ addToQuoteButtonText }}
-       </v-btn>
-       <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
-           <v-icon left>mdi-cash-register</v-icon>
-           付款表設定
-       </v-btn>
-       <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
-   </template>
-</v-card-actions>
+             <v-card-actions :class="{ 'mb-8': isMobile }">
+              <v-spacer></v-spacer>
+              <template v-if="isEditing">
+                  <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
+                  <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
+              </template>
+              <template v-else>
+               <v-btn
+                  v-if="viewMode === 'sales' && unitData && unitData['資料夾URL']"
+                  color="teal"
+                  variant="flat"
+                  :href="unitData['資料夾URL']"
+                  target="_blank"
+                >
+                    <v-icon left>mdi-folder-google-drive</v-icon>
+                    {{ unitData['戶別'] }} 資料夾
+                  </v-btn>
+                  <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
+                      <v-icon left>mdi-plus-box-outline</v-icon>
+                      {{ addToQuoteButtonText }}
+                  </v-btn>
+                  <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
+                      <v-icon left>mdi-cash-register</v-icon>
+                      付款表設定
+                  </v-btn>
+                  <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
+              </template>
+            </v-card-actions>
         </div>
     </v-card>
+  </v-dialog>
 
-   <PaymentSettings
-     v-if="paymentSettingsDialog"
-     :show="paymentSettingsDialog"
-     @update:show="paymentSettingsDialog = $event"
-     :unit-data="enrichedUnitData"
-     :project-name="projectName"
-     :all-data="allData"
-     @request-open-slide="$emit('request-open-slide')"
-   />
-      </v-dialog>
+  <v-dialog
+    v-model="sizingToolDialog"
+    fullscreen
+    hide-overlay
+    transition="dialog-bottom-transition"
+    scrim="false"
+  >
+    <v-card class="d-flex flex-column" style="height:100vh; width:100vw;">
+      <v-toolbar dark color="primary" density="compact">
+        <v-toolbar-title>平面圖測量工具 - {{ unitData ? unitData['戶別'] : '' }}</v-toolbar-title>
+        <v-spacer></v-spacer>
+        <v-btn icon dark @click="sizingToolDialog = false">
+          <v-icon>mdi-close</v-icon>
+        </v-btn>
+      </v-toolbar>
+      <div style="flex-grow: 1; position: relative; height: calc(100vh - 48px);">
+        <FloorplanSizing 
+          v-if="sizingToolDialog"
+          :unit-data="unitData"
+          :project-name="props.projectName"
+        />
+      </div>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
+// ✨ Script 區塊維持您提供的完整版本，只新增 sizingToolDialog 相關邏輯 ✨
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
-import PaymentSettings from '@/views/PaymentSettings.vue'; // ✅ 引入 PaymentSettings
+import PaymentSettings from '@/views/PaymentSettings.vue'; 
+import FloorplanSizing from './FloorplanSizing.vue';
 
 const { mobile: isMobile } = useDisplay();
 const quoteStore = useQuoteStore();
@@ -257,14 +284,12 @@ const props = defineProps({
   projectName: { type: String, required: true }, 
 });
 
-// REMOVED old computed properties
-// ADDED new computed properties
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.['房屋總表價'];
   const area = props.unitData?.['房屋面積(坪)'];
   if (price && area > 0) {
     const value = price / area;
-    return formatNumber(value, 2); // Use existing format function
+    return formatNumber(value, 2);
   }
   return 'N/A';
 });
@@ -274,11 +299,10 @@ const calculatedBaseUnitPrice = computed(() => {
   const area = props.unitData?.['房屋面積(坪)'];
   if (price && area > 0) {
     const value = price / area;
-    return formatNumber(value, 2); // Use existing format function
+    return formatNumber(value, 2);
   }
   return 'N/A';
 });
-
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
@@ -286,18 +310,19 @@ const tab = ref('info');
 const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
-const paymentSettingsDialog = ref(false); // ✅ 控制付款表設定視窗
+const paymentSettingsDialog = ref(false);
 
-// ✅ START: 建立一個包含完整車位資訊的計算屬性
+const sizingToolDialog = ref(false); // 控制新 Dialog 的 Ref
+
+function openSizingTool() { // 開啟新 Dialog 的函式
+  sizingToolDialog.value = true;
+}
+
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
-
-  // 深度複製以避免直接修改 props
   const enriched = JSON.parse(JSON.stringify(props.unitData));
-  
   const allParkingLotsForProject = props.allData?.['車位'] || [];
   const currentUnitId = props.unitData['戶別'];
-
   if (currentUnitId && allParkingLotsForProject.length > 0) {
     const assignedParkings = allParkingLotsForProject
       .filter(parkingLot => parkingLot['購買戶別'] === currentUnitId)
@@ -311,30 +336,25 @@ const enrichedUnitData = computed(() => {
         '車位狀態': parkingLot['銷控狀態'],
         '車位成交價': parkingLot['車位成交價'] !== undefined ? parkingLot['車位成交價'] : (parkingLot['車位總價'] || 0),
       }));
-    
-    // 將找到的車位資訊賦予到新物件上
     enriched['持有車位'] = assignedParkings;
   } else if (!enriched['持有車位']) {
-    // 確保持有車位這個鍵存在，即使是空陣列
     enriched['持有車位'] = [];
   }
-
   return enriched;
 });
-// ❌ END: 建立計算屬性
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p['銷控狀態']));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
-      const options = {};
-      const buyerInfoSheet = props.allData['買方其他資訊'] || [];
-      if (buyerInfoSheet.length > 0) {
-            const headers = Object.keys(buyerInfoSheet[0]);
-            headers.forEach(key => {
-                    options[key] = [...new Set(buyerInfoSheet.map(row => row[key]).filter(Boolean))];
-            });
-      }
-      return options;
+    const options = {};
+    const buyerInfoSheet = props.allData['買方其他資訊'] || [];
+    if (buyerInfoSheet.length > 0) {
+        const headers = Object.keys(buyerInfoSheet[0]);
+        headers.forEach(key => {
+            options[key] = [...new Set(buyerInfoSheet.map(row => row[key]).filter(Boolean))];
+        });
+    }
+    return options;
 });
 
 function openPaymentSettings() {
@@ -342,18 +362,13 @@ function openPaymentSettings() {
 }
 
 function startEditing() {
-  console.log('傳入 UnitDetailModal 的 unitData:', props.unitData);
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
-
   if (!editingData.value) {
       editingData.value = {};
   }
-
   const currentUnitId = props.unitData ? props.unitData['戶別'] : null;
   const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
-
   const hasExistingParkingInUnitData = props.unitData && props.unitData['持有車位'] && Array.isArray(props.unitData['持有車位']) && props.unitData['持有車位'].length > 0;
-
   if (currentUnitId && allParkingLotsForProject.length > 0 && !hasExistingParkingInUnitData) {
       const assignedParkings = allParkingLotsForProject
           .filter(parkingLot => parkingLot['購買戶別'] === currentUnitId)
@@ -369,9 +384,7 @@ function startEditing() {
                   '車位成交價': parkingLot['車位成交價'] || parkingLot['車位總價'] || 0,
               };
           });
-      
       editingData.value['持有車位'] = assignedParkings;
-      
   } else if (hasExistingParkingInUnitData) {
       const enrichedExistingParkings = (props.unitData['持有車位'] || []).map(existingParking => {
           const fullParkingData = allParkingLotsForProject.find(p => p['車位編號'] === existingParking['車位編號']);
@@ -385,11 +398,9 @@ function startEditing() {
           return existingParking;
       });
       editingData.value['持有車位'] = enrichedExistingParkings;
-
   } else if (!editingData.value['持有車位']) {
       editingData.value['持有車位'] = [];
   }
-
   isEditing.value = true;
 }
 
@@ -409,11 +420,10 @@ async function saveChanges() {
       const unitSalePrice = houseArea > 0 ? ((Number(data['房屋成交價']) || 0) / houseArea) : 0;
       const baseHousePrice = Number(props.unitData['房屋總底價']) || 0;
       const baseParkingPrice = (data['持有車位'] || []).reduce((sum, p) => {
-              const originalSpot = props.allData['車位'].find(op => op['車位編號'] === p['車位編號']);
-              return sum + (Number(originalSpot?.['車位底價']) || 0);
+          const originalSpot = props.allData['車位'].find(op => op['車位編號'] === p['車位編號']);
+          return sum + (Number(originalSpot?.['車位底價']) || 0);
       }, 0);
       const priceDifference = totalSalePrice - (baseHousePrice + baseParkingPrice);
-
       const payload = {
           projectName: props.projectName,
           unitId: props.unitData['戶別'],
@@ -433,12 +443,8 @@ async function saveChanges() {
           buyerData: {
               '買方姓名': data['買方姓名'], '身分證字號': data['身分證字號'], '出生年月日': data['出生年月日'],
               '電話': data['電話'], 'EMAIL': data['EMAIL'],
-              '通訊地址_縣市': data['通訊地址_縣市'] || '',
-              '通訊地址_區域': data['通訊地址_區域'] || '',
-              '通訊地址_詳細': data['通訊地址_詳細'] || '',
-              '戶籍地址_縣市': data['戶籍地址_縣市'] || '',
-              '戶籍地址_區域': data['戶籍地址_區域'] || '',
-              '戶籍地址_詳細': data['戶籍地址_詳細'] || '',
+              '通訊地址_縣市': data['通訊地址_縣市'] || '', '通訊地址_區域': data['通訊地址_區域'] || '', '通訊地址_詳細': data['通訊地址_詳細'] || '',
+              '戶籍地址_縣市': data['戶籍地址_縣市'] || '', '戶籍地址_區域': data['戶籍地址_區域'] || '', '戶籍地址_詳細': data['戶籍地址_詳細'] || '',
               '通訊地址': `${data['通訊地址_縣市'] || ''}${data['通訊地址_區域'] || ''}${data['通訊地址_詳細'] || ''}`,
               '戶籍地址': `${data['戶籍地址_縣市'] || ''}${data['戶籍地址_區域'] || ''}${data['戶籍地址_詳細'] || ''}`,
               '性別': data['性別'], '婚姻狀況': data['婚姻狀況'], '行業別': data['行業別'], '職務': data['職務'],
@@ -494,10 +500,8 @@ function formatNumber(value, frac = 0) {
   if (value === null || value === undefined || String(value).trim() === '') {
       return frac > 0 ? (0).toFixed(frac) : '0';
   }
-  
   const num = Number(value);
   if (isNaN(num)) return 'N/A';
-
   return num.toLocaleString('en-US', {
       minimumFractionDigits: frac,
       maximumFractionDigits: frac
@@ -513,7 +517,6 @@ function formatPercentage(value) {
 </script>
 
 <style scoped>
-/* style 內容維持不變 */
 .header-section { flex-shrink: 0; position: relative; z-index: 2; background-color: white; box-shadow: 0 2px 4px -1px rgba(0,0,0,0.2); }
 .header-section .v-card-title { background-color: #1a3a6e; color: white; }
 .main-content { flex-grow: 1; overflow-y: auto; position: relative; }
@@ -526,78 +529,49 @@ function formatPercentage(value) {
 :deep(.v-list-item-title) { font-size: 0.9rem; }
 :deep(.v-list-item--density-compact .v-list-item-title) { font-size: 0.85rem; }
 :deep(.v-list-item-subtitle) { line-height: normal; -webkit-line-clamp: unset !important; line-clamp: unset !important; }
-.preview-area-full { display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; background-color: #eceff1; }
-.preview-content { max-width: 100%; max-height: 650px; object-fit: contain; display: block; border: none; }
+.preview-area-full { 
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  padding: 16px; 
+  box-sizing: border-box; 
+  background-color: #eceff1; 
+}
+.preview-content { 
+  max-width: 100%; 
+  max-height: 100%; 
+  object-fit: contain; 
+  display: block; 
+  border: none; 
+}
 .blur-background :deep(.v-overlay__scrim) {
   background: rgba(30, 30, 30, 0.5) !important;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-.total-area-card {
-  display: flex;
-  align-items: center;
-  background-color: #F5F5F5;
-  padding: 12px 16px;
-  border-radius: 8px;
-}
-.area-summary-item {
-  display: flex;
-  align-items: center;
-  flex: 1;
-}
-.total-area-title {
-  font-size: 0.9rem;
-  color: #555;
-}
-.total-area-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #1A237E;
-  line-height: 1.2;
-}
-.total-area-subtitle {
-  font-size: 0.8rem;
-  color: #777;
-}
-.area-details {
-  font-size: 0.9rem;
-}
-.area-group {
-  border: 1px solid #ECEFF1;
-  border-radius: 6px;
-  padding: 8px;
-  height: 100%;
-}
-.area-group-title {
-  font-weight: 600;
-  color: #37474F;
-  margin-bottom: 8px;
-}
-.area-item-header {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  font-weight: 500;
-  color: #78909C;
-  padding: 2px 4px;
-  border-bottom: 1px solid #CFD8DC;
-  font-size: 0.8rem;
-}
+.total-area-card { display: flex; align-items: center; background-color: #F5F5F5; padding: 12px 16px; border-radius: 8px; }
+.area-summary-item { display: flex; align-items: center; flex: 1; }
+.total-area-title { font-size: 0.9rem; color: #555; }
+.total-area-value { font-size: 1.5rem; font-weight: 700; color: #1A237E; line-height: 1.2; }
+.total-area-subtitle { font-size: 0.8rem; color: #777; }
+.area-details { font-size: 0.9rem; }
+.area-group { border: 1px solid #ECEFF1; border-radius: 6px; padding: 8px; height: 100%; }
+.area-group-title { font-weight: 600; color: #37474F; margin-bottom: 8px; }
+.area-item-header { display: grid; grid-template-columns: 2fr 1fr 1fr; font-weight: 500; color: #78909C; padding: 2px 4px; border-bottom: 1px solid #CFD8DC; font-size: 0.8rem; }
 .area-item-header span:not(:first-child),
-.area-item span:not(:first-child) {
-  text-align: right;
-}
-.area-item {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  padding: 4px;
-  border-bottom: 1px solid #f0f0f0;
-}
-.area-item:last-child {
-  border-bottom: none;
-}
-.area-ping-value {
-  font-weight: 600 !important;
-  font-size: 1.2em;
-  color: #1A237E;
+.area-item span:not(:first-child) { text-align: right; }
+.area-item { display: grid; grid-template-columns: 2fr 1fr 1fr; padding: 4px; border-bottom: 1px solid #f0f0f0; }
+.area-item:last-child { border-bottom: none; }
+.area-ping-value { font-weight: 600 !important; font-size: 1.2em; color: #1A237E; }
+
+/* ✨ 新增的浮動按鈕樣式 */
+.sizing-tool-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1;
 }
 </style>

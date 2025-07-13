@@ -537,3 +537,23 @@ export async function generatePaymentSchedule(payload) {
   // 這個功能的 action 通常與銷售相關，所以我們發到 SALES_API 端點
   return fetchPost(body, SALES_API);
 }
+
+/**
+ * 從指定的 Google Drive 資料夾 URL 中獲取唯一的 SVG 檔案內容
+ * @param {string} folderUrl Google Drive 的資料夾連結
+ * @returns {Promise<object>} API 響應，成功時 data 中應包含 svgContent
+ */
+export async function fetchSvgFromDrive(folderUrl) {
+  console.log(`[api.js] fetchSvgFromDrive called with folderUrl: ${folderUrl}`);
+  if (!folderUrl) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSvgFromDrive 時缺少 folderUrl。' });
+  }
+
+  // 我們可以將這個功能歸類在 SALES_API 或一個新的專用端點
+  // 這裡暫時使用 SALES_API
+  return fetchPost({
+    action: 'get_svg_from_folder', // 這是我們要在 GAS 中新增的 action
+    folderUrl: folderUrl,
+    token: 'anxi111003' // 遵循專案慣例
+  }, SALES_API);
+}
