@@ -16,16 +16,15 @@
           title="查看報價單"
         ></v-btn>
       </v-badge>
-      <v-btn
-        color="info"
-        variant="tonal"
-        class="ml-4"
-        @click="openSlideViewer(parkingSlideId)"
-        :disabled="!parkingSlideId"
-        title="車位表"
-      >
-        車位表
-      </v-btn>
+<v-btn
+  color="info"
+  variant="tonal"
+  class="ml-4"
+  @click="handleOpenSlideViewer" :loading="isLoadingSlide"
+  title="車位表"
+>
+  車位表
+</v-btn>
 
       <v-btn-toggle
         v-model="displayType"
@@ -101,10 +100,9 @@
         <span>報價單</span>
       </v-btn>
 
-      <v-btn @click="openSlideViewer(parkingSlideId)" :disabled="!parkingSlideId">
-        <v-icon>mdi-parking</v-icon>
-        <span>車位表</span>
-      </v-btn>
+  <v-btn @click="handleOpenSlideViewer" :loading="isLoadingSlide"> <v-icon>mdi-parking</v-icon>
+    <span>車位表</span>
+  </v-btn>
 
        <v-menu top>
         <template v-slot:activator="{ props }">
@@ -133,21 +131,57 @@
       :all-data="allData"
       :project-name="projectName"
       @data-updated="fetchData"
-      @request-open-slide="openSlideViewer(parkingSlideId)"
-    />
-    <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
-    <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-      <v-card>
-        <v-toolbar dark color="primary">
-          <v-btn icon dark @click="isSlideDialogVisible = false"><v-icon>mdi-close</v-icon></v-btn>
-          <v-toolbar-title>車位表</v-toolbar-title>
-        </v-toolbar>
-        <div class="iframe-container">
-          <iframe :src="slideEmbedUrl" frameborder="0" allowfullscreen></iframe>
-        </div>
-      </v-card>
-    </v-dialog>
+       @request-open-slide="handleOpenSlideViewer" />
 
+    <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
+
+<v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+  <v-card class="d-flex flex-column">
+    <v-toolbar dark color="primary" density="compact">
+      <v-btn icon dark @click="isSlideDialogVisible = false">
+        <v-icon>mdi-close</v-icon>
+      </v-btn>
+      <v-toolbar-title>車位表</v-toolbar-title>
+    </v-toolbar>
+
+    <div class="flex-grow-1" style="position: relative;">
+
+      <v-overlay
+        :model-value="isLoadingSlide"
+        class="align-center justify-center"
+        persistent
+        scrim="rgba(0, 0, 0, 0.6)"
+      >
+        <div class="text-center">
+          <v-progress-circular
+            indeterminate
+            color="#008CFF"
+            size="64"
+          ></v-progress-circular>
+          <p class="mt-4 text-body-1 text-black">正在載入最新車位表...</p>
+        </div>
+      </v-overlay>
+
+      <div v-if="isContentLoaded" class="fill-height">
+        <iframe
+          v-if="slideEmbedUrl"
+          :src="slideEmbedUrl"
+          frameborder="0"
+          width="100%"
+          height="100%"
+          allowfullscreen="true"
+          style="display: block;"
+        ></iframe>
+        <div v-else class="d-flex flex-column justify-center align-center fill-height">
+          <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+          <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
+          <p class="text-body-1 text-grey">點擊左上角關閉按鈕，或稍後再試。</p>
+        </div>
+      </div>
+      
+    </div>
+  </v-card>
+</v-dialog>
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -175,7 +209,14 @@ const { mobile: isMobile } = useDisplay();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
-const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
+
+const { 
+  isSlideDialogVisible, 
+  slideEmbedUrl, 
+  openSlideViewer,
+  isLoadingSlide,
+  isContentLoaded 
+} = useSlideViewer();
 
 const loading = ref(true);
 const error = ref(null);
@@ -333,6 +374,12 @@ onMounted(() => {
   quoteStore.clearQuote();
   fetchData();
 });
+
+function handleOpenSlideViewer() {
+  // 這個函式的工作很單純，就是去呼叫從 composable 拿到的 openSlideViewer
+  // 把參數傳進去即可
+  openSlideViewer(parkingSlideId.value, currentViewMode.value);
+}
 </script>
 
 <style scoped>

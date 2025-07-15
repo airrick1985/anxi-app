@@ -24,9 +24,12 @@
       </div>
       <v-spacer></v-spacer>
       <v-btn
-        color="info" variant="tonal"
-        @click="openSlideViewer(quoteParkingSlideId)"
-        :disabled="!quoteParkingSlideId" title="車位表">
+        color="info"
+        variant="tonal"
+        @click="handleOpenSlideViewer"
+        :disabled="!quoteParkingSlideId"
+        :loading="isLoadingSlide" title="車位表"
+      >
         車位表
       </v-btn>
     </div>
@@ -55,15 +58,15 @@
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
-<QuoteItem 
-      :item="item"
-      :payment-terms-data="paymentTermsData"
-      :package-terms-data="packageTermsData"  
-      :show-package-deal="showPackageDealColumns"
-      :is-loading="loading" 
-      @remove="quoteStore.removeItem(item.internalId)"
-      @open-parking-modal="openParkingModal(item.internalId)"
-    />
+            <QuoteItem 
+              :item="item"
+              :payment-terms-data="paymentTermsData"
+              :package-terms-data="packageTermsData"  
+              :show-package-deal="showPackageDealColumns"
+              :is-loading="loading" 
+              @remove="quoteStore.removeItem(item.internalId)"
+              @open-parking-modal="openParkingModal(item.internalId)"
+            />
           </v-card>
         </div>
       </v-card-text>
@@ -91,8 +94,62 @@
       </v-card-text>
     </v-card>
 
-    <ParkingSelectionModal v-model:show="isParkingModalVisible" :unit-id="currentEditingInternalId" :all-parking-data="allParkingData" :initial-selected-parking="currentInitialParking" @confirm="handleParkingConfirm" @request-open-slide="openSlideViewer(quoteParkingSlideId)" />
-    <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition"><v-card><v-toolbar dark color="primary"><v-btn icon dark @click="isSlideDialogVisible = false"><v-icon>mdi-close</v-icon></v-btn><v-toolbar-title>車位表</v-toolbar-title></v-toolbar><div class="iframe-container"><iframe v-if="slideEmbedUrl" :src="slideEmbedUrl" frameborder="0" allowfullscreen></iframe></div></v-card></v-dialog>
+    <ParkingSelectionModal 
+      v-model:show="isParkingModalVisible" 
+      :unit-id="currentEditingInternalId" 
+      :all-parking-data="allParkingData" 
+      :initial-selected-parking="currentInitialParking" 
+      @confirm="handleParkingConfirm" 
+      @request-open-slide="handleOpenSlideViewer"
+    />
+
+    <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+  <v-card class="d-flex flex-column">
+    <v-toolbar dark color="primary" density="compact">
+      <v-btn icon dark @click="isSlideDialogVisible = false">
+        <v-icon>mdi-close</v-icon>
+      </v-btn>
+      <v-toolbar-title>車位表</v-toolbar-title>
+    </v-toolbar>
+
+    <div class="flex-grow-1" style="position: relative;">
+
+      <v-overlay
+        :model-value="isLoadingSlide"
+        class="align-center justify-center"
+        persistent
+        scrim="rgba(0, 0, 0, 0.6)"
+      >
+        <div class="text-center">
+          <v-progress-circular
+            indeterminate
+            color="#008CFF"
+            size="64"
+          ></v-progress-circular>
+          <p class="mt-4 text-body-1 text-black">正在載入最新車位表...</p>
+        </div>
+      </v-overlay>
+
+      <div v-if="isContentLoaded" class="fill-height">
+        <iframe
+          v-if="slideEmbedUrl"
+          :src="slideEmbedUrl"
+          frameborder="0"
+          width="100%"
+          height="100%"
+          allowfullscreen="true"
+          style="display: block;"
+        ></iframe>
+        <div v-else class="d-flex flex-column justify-center align-center fill-height">
+          <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+          <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
+          <p class="text-body-1 text-grey">點擊左上角關閉按鈕，或稍後再試。</p>
+        </div>
+      </div>
+      
+    </div>
+  </v-card>
+</v-dialog>
     
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
@@ -133,7 +190,14 @@ const route = useRoute();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
-const { isSlideDialogVisible, slideEmbedUrl, openSlideViewer } = useSlideViewer();
+
+const { 
+  isSlideDialogVisible, 
+  slideEmbedUrl, 
+  openSlideViewer,
+  isLoadingSlide,
+  isContentLoaded
+} = useSlideViewer();
 
 const loading = ref(true);
 const error = ref(null);
@@ -152,79 +216,76 @@ const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 
 // =======================================================
-// ✅ 核心修正：從 PaymentDetails.vue 複製過來的完整計算引擎
+// 計算引擎 (保持不變)
 // =======================================================
-
 function applyRounding(value, method, precisionSpec) {
-   const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
-   if (!method) return Number(value.toFixed(precision));
-   const multiplier = Math.pow(10, precision);
-   let roundedValue;
-   switch (method) {
-         case '無條件進位': roundedValue = Math.ceil(value * multiplier) / multiplier; break;
-         case '四捨五入': roundedValue = Math.round(value * multiplier) / multiplier; break;
-         case '無條件捨去': roundedValue = Math.floor(value * multiplier) / multiplier; break;
-         default: roundedValue = value;
-   }
-   return Number(roundedValue.toFixed(precision));
+    const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
+    if (!method) return Number(value.toFixed(precision));
+    const multiplier = Math.pow(10, precision);
+    let roundedValue;
+    switch (method) {
+          case '無條件進位': roundedValue = Math.ceil(value * multiplier) / multiplier; break;
+          case '四捨五入': roundedValue = Math.round(value * multiplier) / multiplier; break;
+          case '無條件捨去': roundedValue = Math.floor(value * multiplier) / multiplier; break;
+          default: roundedValue = value;
+    }
+    return Number(roundedValue.toFixed(precision));
 }
-
 function parseFormula(formula, context) {
-   let expression = String(formula);
-   expression = expression.replace(/(\d+(\.\d+)?)%/g, (match, number) => `(${number}/100)`);
-   expression = expression.replace(new RegExp(context.priceKeyword, 'g'), context.priceValue);
-   if (expression.includes('條件設定值')) {
-      expression = expression.replace(/條件設定值/g, context.currentTermValue);
-   }
-   const references = expression.match(/[A-Z]/g) || [];
-   for (const refId of references) {
-      if (context.results[refId] === undefined) {
-         throw new Error(`公式無法計算，因為參照的項目 '${refId}' 尚未被計算。`);
-      }
-      expression = expression.replace(new RegExp(refId, 'g'), context.results[refId]);
-   }
-   try {
-      return new Function(`return ${expression}`)();
-   } catch (e) {
-      throw new Error(`公式錯誤 "${formula}" -> 最終表達式 "${expression}": ${e.message}`);
-   }
+    let expression = String(formula);
+    expression = expression.replace(/(\d+(\.\d+)?)%/g, (match, number) => `(${number}/100)`);
+    expression = expression.replace(new RegExp(context.priceKeyword, 'g'), context.priceValue);
+    if (expression.includes('條件設定值')) {
+       expression = expression.replace(/條件設定值/g, context.currentTermValue);
+    }
+    const references = expression.match(/[A-Z]/g) || [];
+    for (const refId of references) {
+       if (context.results[refId] === undefined) {
+          throw new Error(`公式無法計算，因為參照的項目 '${refId}' 尚未被計算。`);
+       }
+       expression = expression.replace(new RegExp(refId, 'g'), context.results[refId]);
+    }
+    try {
+       return new Function(`return ${expression}`)();
+    } catch (e) {
+       throw new Error(`公式錯誤 "${formula}" -> 最終表達式 "${expression}": ${e.message}`);
+    }
 }
-
 function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext = null) {
-   const results = {};
-   if (!terms || terms.length === 0) return results;
-   const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
-   let calculationMadeInLoop = true;
-   let loops = 0;
-   while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
-      calculationMadeInLoop = false;
-      loops++;
-      pendingTerms.forEach((term, id) => {
-         if (!term['計算方式']) return;
-         try {
-            let currentTermValue = 0;
-            if (conditionContext && term[conditionContext.conditionCol]) {
-               currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
-            }
-            const context = { priceValue, priceKeyword, currentTermValue, results };
-            const amount = parseFormula(term['計算方式'], context);
-            results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
-            pendingTerms.delete(id);
-            calculationMadeInLoop = true;
-         } catch (e) {
-        // Silent catch
-         }
-      });
-   }
-   if (pendingTerms.size > 0) {
-      const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
-      throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
-   }
-   return results;
+    const results = {};
+    if (!terms || terms.length === 0) return results;
+    const pendingTerms = new Map(terms.map(t => [t['編號'], t]));
+    let calculationMadeInLoop = true;
+    let loops = 0;
+    while (pendingTerms.size > 0 && calculationMadeInLoop && loops < terms.length + 5) {
+       calculationMadeInLoop = false;
+       loops++;
+       pendingTerms.forEach((term, id) => {
+          if (!term['計算方式']) return;
+          try {
+             let currentTermValue = 0;
+             if (conditionContext && term[conditionContext.conditionCol]) {
+                currentTermValue = parseFloat(term[conditionContext.conditionCol]) || 0;
+             }
+             const context = { priceValue, priceKeyword, currentTermValue, results };
+             const amount = parseFormula(term['計算方式'], context);
+             results[id] = applyRounding(amount, term['進位方式'], term['進位值']);
+             pendingTerms.delete(id);
+             calculationMadeInLoop = true;
+          } catch (e) {
+         // Silent catch
+          }
+       });
+    }
+    if (pendingTerms.size > 0) {
+       const unresolvedIds = Array.from(pendingTerms.keys()).join(', ');
+       throw new Error(`項目 ${unresolvedIds} 可能存在循環依賴或公式錯誤。`);
+    }
+    return results;
 }
 
 // =======================================================
-// ✅ 最終修正版：handleGenerateQuote
+// 產生報價單 (保持不變)
 // =======================================================
 async function handleGenerateQuote() {
     if (!selectedPersonnel.value) {
@@ -239,14 +300,12 @@ async function handleGenerateQuote() {
             personnelName: selectedPersonnel.value.name,
             personnelPhone: selectedPersonnel.value.phone,
             items: quoteStore.items.map(item => {
-                // --- 一般付款期數計算 (不變) ---
-              const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
-              const conditionCol = item.isFirstTimeBuyer === '是' ?
-                   (finalTotal >= 4000 ? '>=4000首購' : '<4000首購') :
-                   (finalTotal >= 4000 ? '>=4000非首購' : '<4000非首購');
-              const conditionContext = { conditionCol };
-              const calculatedAmounts = runCalculationEngine(paymentTermsData.value, finalTotal, '總價', conditionContext);
-
+                const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
+                const conditionCol = item.isFirstTimeBuyer === '是' ?
+                    (finalTotal >= 4000 ? '>=4000首購' : '<4000首購') :
+                    (finalTotal >= 4000 ? '>=4000非首購' : '<4000非首購');
+                const conditionContext = { conditionCol };
+                const calculatedAmounts = runCalculationEngine(paymentTermsData.value, finalTotal, '總價', conditionContext);
                 const dynamicPayments = paymentTermsData.value.reduce((acc, term) => {
                     const termName = term['項目名稱'];
                     const termId = term['編號'];
@@ -262,57 +321,35 @@ async function handleGenerateQuote() {
                     }
                     return acc;
                 }, {});
-
-                // ★★★★★【新增計算邏輯 - 開始】★★★★★
-
-                // 取得已在 QuoteItem.vue 中計算好並存入 store 的 packageItems
                 const dynamicPackageItems = item.packageItems || {};
-                
                 let packageItemsSum = 0;
                 let packagePriceRemainder = 0;
                 const packagePriceTotal = quoteStore.getPackagePrice(item.internalId);
-
-                // 只有在有配套價時才進行計算
                 if (packagePriceTotal > 0 && packageTermsData.value.length > 0) {
-                    // 根據 packageTermsData 的順序，找到前兩項的名稱
                     const firstTermName = packageTermsData.value[0]?.['項目名稱'];
                     const secondTermName = packageTermsData.value[1]?.['項目名稱'];
-
-                    // 從已計算好的 dynamicPackageItems 中取出對應的值
                     const firstTermValue = firstTermName ? (dynamicPackageItems[firstTermName] || 0) : 0;
                     const secondTermValue = secondTermName ? (dynamicPackageItems[secondTermName] || 0) : 0;
-
                     packageItemsSum = firstTermValue + secondTermValue;
                     packagePriceRemainder = packagePriceTotal - packageItemsSum;
                 }
-                
-                // ★★★★★【新增計算邏輯 - 結束】★★★★★
-
-              // --- 組合最終 Payload ---
-              return {
-                    // 固定欄位
-                  '戶別': item.unitId,
-                  '是否首購': item.isFirstTimeBuyer, 
-                  '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
-                  '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
-                  '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-                  '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
-                  '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
-                  '配套價': packagePriceTotal.toLocaleString(),
-                  '總價': finalTotal.toLocaleString(),
-                    // 一般期款
-                  ...dynamicPayments,
-                    // 配套價子項目 (完整的)
-                  packageItems: dynamicPackageItems,
-                    // ✅ 新增的計算欄位
+                return {
+                    '戶別': item.unitId,
+                    '是否首購': item.isFirstTimeBuyer, 
+                    '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
+                    '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
+                    '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
+                    '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
+                    '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
+                    '配套價': packagePriceTotal.toLocaleString(),
+                    '總價': finalTotal.toLocaleString(),
+                    ...dynamicPayments,
+                    packageItems: dynamicPackageItems,
                     packageItemsSum: packageItemsSum.toLocaleString(),
                     packagePriceRemainder: packagePriceRemainder.toLocaleString()
-              };
+                };
             })
         };
-
-        console.log("準備發送到後端的最終 Payload:", JSON.stringify(payload, null, 2));
-
         const result = await generateQuotePdf(payload);
         if (result.status === 'success' && result.url) {
             generatedPdfUrl.value = result.url;
@@ -329,73 +366,73 @@ async function handleGenerateQuote() {
 }
 
 // =================================================================
-// 其他既有程式碼 (保持不變)
+// 其他程式碼
 // =================================================================
-const showPackageDealColumns = computed(() => {
-   if (quoteStore.items.length === 0) return false;
-   return quoteStore.items.some(item => item.unitDetails && item.unitDetails['配套房屋總價']);
-});
 
+// ✅ 新增包裝函式
+function handleOpenSlideViewer() {
+  openSlideViewer(quoteParkingSlideId.value, 'quote');
+}
+
+const showPackageDealColumns = computed(() => {
+    if (quoteStore.items.length === 0) return false;
+    return quoteStore.items.some(item => item.unitDetails && item.unitDetails['配套房屋總價']);
+});
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
 const currentInitialParking = computed(() => {
-   if (!currentEditingInternalId.value) return [];
-   const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
-   return item ? item.selectedParking : [];
+    if (!currentEditingInternalId.value) return [];
+    const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
+    return item ? item.selectedParking : [];
 });
-
 function openParkingModal(internalId) {
-   currentEditingInternalId.value = internalId;
-   isParkingModalVisible.value = true;
+    currentEditingInternalId.value = internalId;
+    isParkingModalVisible.value = true;
 }
-
 function handleParkingConfirm(parkingList) {
-   quoteStore.updateParking(currentEditingInternalId.value, parkingList);
-   isParkingModalVisible.value = false;
+    quoteStore.updateParking(currentEditingInternalId.value, parkingList);
+    isParkingModalVisible.value = false;
 }
-
 const formatNumber = (val, frac = 2) => {
-      const num = parseFloat(val);
-      if (isNaN(num)) return '';
-      return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
+    const num = parseFloat(val);
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
 };
-
 onMounted(async () => {
-      loading.value = true;
-      try {
-            const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
-                  fetchSalesControlData(projectName),
-                  fetchParkingList(projectName),
-                  fetchQuotePersonnelList(projectName, userStore.user.key)
-            ]);
-            if (salesControlRes.status === 'success' && salesControlRes.data) {
-                  paymentTermsData.value = salesControlRes.data.期款比例 || [];
-                  packageTermsData.value = salesControlRes.data.配套期款 || []; 
-                  if (salesControlRes.data.車位SLIDE?.length > 0) {
-                        const slideInfo = salesControlRes.data.車位SLIDE[0];
-                        quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
-                  }
+    loading.value = true;
+    try {
+        const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
+            fetchSalesControlData(projectName),
+            fetchParkingList(projectName),
+            fetchQuotePersonnelList(projectName, userStore.user.key)
+        ]);
+        if (salesControlRes.status === 'success' && salesControlRes.data) {
+            paymentTermsData.value = salesControlRes.data.期款比例 || [];
+            packageTermsData.value = salesControlRes.data.配套期款 || []; 
+            if (salesControlRes.data.車位SLIDE?.length > 0) {
+                const slideInfo = salesControlRes.data.車位SLIDE[0];
+                quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
             }
-            if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
-            else throw new Error('無法獲取車位列表: ' + parkingRes.message);
-            if (personnelRes.status === 'success') {
-                  personnelOptions.value = personnelRes.data.personnelList;
-                  canEditPersonnel.value = personnelRes.data.canEdit;
-                  const currentUser = personnelRes.data.personnelList.find(p => p.phone === userStore.user.key);
-                  if (currentUser) selectedPersonnel.value = currentUser;
-            } else {
-                  throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
-            }
-      } catch (err) {
-            error.value = err.message;
-      } finally {
-            loading.value = false;
-      }
+        }
+        if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
+        else throw new Error('無法獲取車位列表: ' + parkingRes.message);
+        if (personnelRes.status === 'success') {
+            personnelOptions.value = personnelRes.data.personnelList;
+            canEditPersonnel.value = personnelRes.data.canEdit;
+            const currentUser = personnelRes.data.personnelList.find(p => p.phone === userStore.user.key);
+            if (currentUser) selectedPersonnel.value = currentUser;
+        } else {
+            throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
+        }
+    } catch (err) {
+        error.value = err.message;
+    } finally {
+        loading.value = false;
+    }
 });
-
 function goBack() {
-   const sourceMode = route.query.viewMode;
-   const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-   router.push({ name: backRouteName, params: { projectName } });
+    const sourceMode = route.query.viewMode;
+    const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
+    router.push({ name: backRouteName, params: { projectName } });
 }
 </script>
 

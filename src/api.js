@@ -557,3 +557,22 @@ export async function fetchSvgFromDrive(folderUrl) {
     token: 'anxi111003' // 遵循專案慣例
   }, SALES_API);
 }
+
+/**
+ * 觸發後端更新停車位銷控圖，並回傳最新的 Slide ID
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>} API 響應，成功時 data 中應包含 slideId
+ */
+export async function updateAndGetParkingSlide(projectName, slideType) {
+  console.log(`[api.js] updateAndGetParkingSlide called for project: ${projectName}, type: ${slideType}`);
+  // ✅ 增加對 slideType 的檢查
+  if (!projectName || !slideType) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫時缺少 projectName 或 slideType。' });
+  }
+  return fetchPost({
+    action: 'update_parking_slide',
+    projectName,
+    slideType, 
+    token: 'anxi111003' 
+  }, SALES_API); 
+}
