@@ -29,41 +29,24 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+// ✅ 核心修改：Script 變得非常乾淨
+import { ref, computed } from 'vue'; // 移除了 onMounted
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 
 const router = useRouter();
 const userStore = useUserStore();
 
-// ✅ 2. 新增背景圖相關邏輯
-const backgroundImageUrl = ref('/background.png');
+// 1. 直接將圖片路徑寫在這裡
+// 這個路徑是相對於 public 資料夾的根目錄
+const backgroundImageUrl = ref('login-bg.jpg'); // 使用我們修正過的相對路徑
 
+// 2. containerStyle 的邏輯完全不變
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-async function fetchRandomBackground() {
-  const unsplashAccessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
-  if (!unsplashAccessKey) {
-    console.error('Unsplash API Key 未在 .env.local 中設定');
-    return;
-  }
-  try {
-    const response = await fetch(
-      `https://api.unsplash.com/photos/random?query=building,modern,architecture&orientation=landscape&client_id=${unsplashAccessKey}`
-    );
-    if (!response.ok) throw new Error('無法從 Unsplash 獲取圖片');
-    const data = await response.json();
-    backgroundImageUrl.value = data.urls.full;
-  } catch (err) {
-    console.error('獲取背景圖片失敗:', err);
-  }
-}
-
-onMounted(() => {
-  fetchRandomBackground();
-});
+// 3. 原本的 fetchRandomBackground 和 onMounted 已被移除
 
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
@@ -89,16 +72,18 @@ const goToEntryPage = (mode) => {
   min-height: 100vh;
   box-sizing: border-box;
 
-  /* ✅ 3. 修改 background-image，使用漸層遮罩 + CSS 變數 */
+  /* ✅ CSS 的部分完全不需要修改，它會自動讀取 JS 中的變數 */
   background-image: 
-    linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
-    var(--bg-image-url, url('/background.png'));
+    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
+    var(--bg-image-url, url('/background.png')); /* background.png 是備用圖 */
   
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;
   transition: background-image 1s ease-in-out;
 }
+
+/* --- 其他所有 style 內容維持原樣即可 --- */
 
 .icon-button {
   display: flex;
@@ -137,7 +122,6 @@ const goToEntryPage = (mode) => {
 .text {
   font-size: 1rem;
   font-weight: 400;
-  /* ✅ 4. 將文字改為白色並加強陰影，以適應變暗的背景 */
   color: #ffffff;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }

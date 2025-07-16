@@ -20,8 +20,8 @@
   color="info"
   variant="tonal"
   class="ml-4"
-  @click="handleOpenSlideViewer" :loading="isLoadingSlide"
-  title="車位表"
+  @click="handleOpenSlideViewer" 
+  :loading="false" title="車位表"
 >
   車位表
 </v-btn>
@@ -142,10 +142,20 @@
         <v-icon>mdi-close</v-icon>
       </v-btn>
       <v-toolbar-title>車位表</v-toolbar-title>
+      <v-spacer></v-spacer>
+      
+      <v-btn 
+        icon 
+        dark 
+        @click="handleRefreshSlide"
+        :disabled="isLoadingSlide"
+      >
+        <v-icon>mdi-refresh</v-icon>
+      </v-btn>
+
     </v-toolbar>
 
     <div class="flex-grow-1" style="position: relative;">
-
       <v-overlay
         :model-value="isLoadingSlide"
         class="align-center justify-center"
@@ -155,10 +165,10 @@
         <div class="text-center">
           <v-progress-circular
             indeterminate
-            color="#008CFF"
+            color="#008cff"
             size="64"
           ></v-progress-circular>
-          <p class="mt-4 text-body-1 text-black">正在載入最新車位表...</p>
+          <p class="mt-4 text-body-1 text-blcak">正在載入最新車位表...</p>
         </div>
       </v-overlay>
 
@@ -175,13 +185,13 @@
         <div v-else class="d-flex flex-column justify-center align-center fill-height">
           <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
           <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
-          <p class="text-body-1 text-grey">點擊左上角關閉按鈕，或稍後再試。</p>
+          <p class="text-body-1 text-grey">點擊右上角關閉按鈕，或手動重新整理。</p>
         </div>
       </div>
-      
     </div>
   </v-card>
 </v-dialog>
+
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -195,7 +205,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { fetchSalesControlData } from '@/api';
+import { fetchSalesControlData, updateAndGetParkingSlide } from '@/api';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -213,9 +223,10 @@ const route = useRoute();
 const { 
   isSlideDialogVisible, 
   slideEmbedUrl, 
-  openSlideViewer,
   isLoadingSlide,
-  isContentLoaded 
+  isContentLoaded,
+  openSlideViewer, 
+  refreshSlide
 } = useSlideViewer();
 
 const loading = ref(true);
@@ -348,6 +359,14 @@ function openUnitDetail(unitData) {
 async function fetchData() {
   loading.value = true;
   error.value = null;
+
+  updateAndGetParkingSlide(projectName.value, 'sales').catch(err => {
+      console.warn('背景更新銷控模式車位表失敗:', err.message);
+  });
+  updateAndGetParkingSlide(projectName.value, 'quote').catch(err => {
+      console.warn('背景更新報價模式車位表失敗:', err.message);
+  });
+  
   try {
     const response = await fetchSalesControlData(projectName.value);
     if (response.status === 'success') {
@@ -376,10 +395,14 @@ onMounted(() => {
 });
 
 function handleOpenSlideViewer() {
-  // 這個函式的工作很單純，就是去呼叫從 composable 拿到的 openSlideViewer
-  // 把參數傳進去即可
-  openSlideViewer(parkingSlideId.value, currentViewMode.value);
+  openSlideViewer(parkingSlideId.value);
 }
+
+function handleRefreshSlide() {
+  // 呼叫新的 refreshSlide 函式，並傳入當前的模式
+  refreshSlide(currentViewMode.value);
+}
+
 </script>
 
 <style scoped>

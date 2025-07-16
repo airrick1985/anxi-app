@@ -78,7 +78,8 @@ const userStore = useUserStore();
 // 1. 直接將圖片路徑寫在這裡
 // 這個路徑是相對於 public 資料夾的根目錄
 // 如果您的檔名是 login-bg.jpg，就寫 '/login-bg.jpg'
-const backgroundImageUrl = ref('/login-bg.jpg'); 
+const backgroundImageUrl = ref('login-bg.jpg'); 
+
 
 // 2. containerStyle 的邏輯完全不變，它會將上面的路徑設定到 CSS 變數中
 const containerStyle = computed(() => ({
@@ -154,7 +155,7 @@ const submitForgotPassword = async () => {
   /* ✅ 核心修改：CSS var() 的第二個參數是備用圖片 */
   /* 當 JS 還沒載入完成時，會先顯示這個備用圖 */
   background-image: 
-    linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
+    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
     var(--bg-image-url, url('/background.png')); /* 這裡的 background.png 是舊的備用圖 */
   
   background-size: cover;

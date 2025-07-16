@@ -19,25 +19,34 @@ export function useSlideViewer() {
     return `https://docs.google.com/presentation/d/${currentSlideId.value}/embed?start=false&loop=false&delayms=3000`;
   });
 
-  async function openSlideViewer(initialSlideId, viewMode) {
-    // 1. 重設所有狀態
+ function openSlideViewer(initialSlideId) {
+    if (!initialSlideId) {
+      toast.error('無法開啟車位表：未提供 Slide ID。');
+      return;
+    }
+    
+    // 重設狀態並立即開啟
+    isLoadingSlide.value = false; // 一開始不載入
+    isContentLoaded.value = true;   // 直接顯示內容
+    currentSlideId.value = initialSlideId;
     isSlideDialogVisible.value = true;
-    isLoadingSlide.value = true;
-    isContentLoaded.value = false; // ✅ 每次打開都重設為 false
-    currentSlideId.value = '';
+  }
 
+  // 這個函式專門負責「手動刷新」，它包含了完整的後端更新與載入流程
+  async function refreshSlide(viewMode) {
     const userStore = useUserStore();
     const projectName = userStore.user?.projectName;
-    
+
     if (!projectName || !viewMode) {
-      // ... 錯誤處理 ...
-      toast.error('無法啟動車位表：缺少建案名稱或模式。');
-      isSlideDialogVisible.value = false;
-      isLoadingSlide.value = false;
+      toast.error('無法刷新：缺少建案名稱或模式。');
       return;
     }
 
-    toast.info('正在更新車位表，請稍候...');
+    isLoadingSlide.value = true;
+    isContentLoaded.value = false; // 先隱藏內容，準備顯示載入動畫
+    
+    // 使用 nextTick 確保畫面已更新
+    await nextTick();
 
     try {
       const response = await updateAndGetParkingSlide(projectName, viewMode);
@@ -48,14 +57,13 @@ export function useSlideViewer() {
         throw new Error(response.message || '後端未返回有效的 Slide ID。');
       }
     } catch (err) {
-      console.error('更新車位表失敗:', err);
-      toast.error(`無法更新車位表: ${err.message}`);
-      currentSlideId.value = ''; 
+      console.error('刷新車位表失敗:', err);
+      toast.error(`刷新失敗: ${err.message}`);
+      // 失敗時，可以選擇關閉視窗或顯示舊的 ID
+      // isSlideDialogVisible.value = false; 
     } finally {
-      // 2. 載入流程結束
       isLoadingSlide.value = false;
-      // ✅ 在載入動畫消失後，才允許內容區塊被渲染
-      isContentLoaded.value = true;
+      isContentLoaded.value = true; // 重新顯示內容區塊
     }
   }
 
@@ -64,6 +72,7 @@ export function useSlideViewer() {
     slideEmbedUrl,
     isLoadingSlide,
     isContentLoaded,
-    openSlideViewer,
+    openSlideViewer, 
+    refreshSlide,   
   };
 }

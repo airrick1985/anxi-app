@@ -28,7 +28,8 @@
         variant="tonal"
         @click="handleOpenSlideViewer"
         :disabled="!quoteParkingSlideId"
-        :loading="isLoadingSlide" title="車位表"
+        :loading="false" 
+        title="車位表"
       >
         車位表
       </v-btn>
@@ -93,7 +94,7 @@
         </v-row>
       </v-card-text>
     </v-card>
-
+    
     <ParkingSelectionModal 
       v-model:show="isParkingModalVisible" 
       :unit-id="currentEditingInternalId" 
@@ -104,52 +105,59 @@
     />
 
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-  <v-card class="d-flex flex-column">
-    <v-toolbar dark color="primary" density="compact">
-      <v-btn icon dark @click="isSlideDialogVisible = false">
-        <v-icon>mdi-close</v-icon>
-      </v-btn>
-      <v-toolbar-title>車位表</v-toolbar-title>
-    </v-toolbar>
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="primary" density="compact">
+          <v-btn icon dark @click="isSlideDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>車位表</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn 
+            icon 
+            dark 
+            @click="handleRefreshSlide"
+            :disabled="isLoadingSlide"
+          >
+            <v-icon>mdi-refresh</v-icon>
+          </v-btn>
+        </v-toolbar>
 
-    <div class="flex-grow-1" style="position: relative;">
+        <div class="flex-grow-1" style="position: relative;">
+          <v-overlay
+            :model-value="isLoadingSlide"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(0, 0, 0, 0.6)"
+          >
+            <div class="text-center">
+              <v-progress-circular
+                indeterminate
+                color="#008CFF"
+                size="64"
+              ></v-progress-circular>
+              <p class="mt-4 text-body-1 text-black">正在載入最新車位表...</p>
+            </div>
+          </v-overlay>
 
-      <v-overlay
-        :model-value="isLoadingSlide"
-        class="align-center justify-center"
-        persistent
-        scrim="rgba(0, 0, 0, 0.6)"
-      >
-        <div class="text-center">
-          <v-progress-circular
-            indeterminate
-            color="#008CFF"
-            size="64"
-          ></v-progress-circular>
-          <p class="mt-4 text-body-1 text-black">正在載入最新車位表...</p>
+          <div v-if="isContentLoaded" class="fill-height">
+            <iframe
+              v-if="slideEmbedUrl"
+              :src="slideEmbedUrl"
+              frameborder="0"
+              width="100%"
+              height="100%"
+              allowfullscreen="true"
+              style="display: block;"
+            ></iframe>
+            <div v-else class="d-flex flex-column justify-center align-center fill-height">
+              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+              <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
+              <p class="text-body-1 text-grey">點擊左上角關閉按鈕，或手動重新整理。</p>
+            </div>
+          </div>
         </div>
-      </v-overlay>
-
-      <div v-if="isContentLoaded" class="fill-height">
-        <iframe
-          v-if="slideEmbedUrl"
-          :src="slideEmbedUrl"
-          frameborder="0"
-          width="100%"
-          height="100%"
-          allowfullscreen="true"
-          style="display: block;"
-        ></iframe>
-        <div v-else class="d-flex flex-column justify-center align-center fill-height">
-          <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
-          <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
-          <p class="text-body-1 text-grey">點擊左上角關閉按鈕，或稍後再試。</p>
-        </div>
-      </div>
-      
-    </div>
-  </v-card>
-</v-dialog>
+      </v-card>
+    </v-dialog>
     
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
@@ -180,7 +188,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
-import { generateQuotePdf, fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList } from '@/api';
+import { generateQuotePdf, fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList, updateAndGetParkingSlide } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
@@ -191,14 +199,17 @@ const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
 
+// ✅ 修正：從 useSlideViewer 解構出所有需要的變數，確保沒有重複宣告
 const { 
   isSlideDialogVisible, 
   slideEmbedUrl, 
   openSlideViewer,
   isLoadingSlide,
-  isContentLoaded
+  isContentLoaded,
+  refreshSlide
 } = useSlideViewer();
 
+// --- 所有其他 ref 和 computed ---
 const loading = ref(true);
 const error = ref(null);
 const projectName = route.params.projectName;
@@ -215,9 +226,7 @@ const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 
-// =======================================================
-// 計算引擎 (保持不變)
-// =======================================================
+// --- 計算引擎 ---
 function applyRounding(value, method, precisionSpec) {
     const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
     if (!method) return Number(value.toFixed(precision));
@@ -284,9 +293,7 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
     return results;
 }
 
-// =======================================================
-// 產生報價單 (保持不變)
-// =======================================================
+// --- 產生報價單 ---
 async function handleGenerateQuote() {
     if (!selectedPersonnel.value) {
         alert('請先選擇報價人員');
@@ -365,13 +372,15 @@ async function handleGenerateQuote() {
     }
 }
 
-// =================================================================
-// 其他程式碼
-// =================================================================
+// --- 其他所有函式 ---
 
-// ✅ 新增包裝函式
+// ✅ 唯一的包裝函式，確保不會重複宣告
 function handleOpenSlideViewer() {
-  openSlideViewer(quoteParkingSlideId.value, 'quote');
+  openSlideViewer(quoteParkingSlideId.value);
+}
+
+function handleRefreshSlide() {
+  refreshSlide('quote');
 }
 
 const showPackageDealColumns = computed(() => {
@@ -399,6 +408,11 @@ const formatNumber = (val, frac = 2) => {
 };
 onMounted(async () => {
     loading.value = true;
+    
+    updateAndGetParkingSlide(projectName.value, 'quote').catch(err => {
+      console.warn('背景更新報價模式車位表失敗:', err.message);
+    });
+
     try {
         const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
             fetchSalesControlData(projectName),

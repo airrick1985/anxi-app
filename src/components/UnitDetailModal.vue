@@ -11,7 +11,7 @@
         <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent scrim="grey-darken-3">
           <div class="d-flex flex-column align-center">
               <v-progress-circular indeterminate size="48" color="#008cff" class="mb-4"></v-progress-circular>
-              <p class="text-h6 text-black">儲存中，請稍候...</p>
+              <p class="text-h6 text-black">{{ savingText }}</p>
           </div>
         </v-overlay>
         
@@ -72,6 +72,7 @@
                                                     <template v-slot:subtitle><span class="highlight-price">{{ calculatedUnitPrice }} 萬/坪</span></template>
                                                     <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
                                                 </v-list-item>
+                                                
                                                 <template v-if="viewMode === 'sales'">
                                                     <v-divider class="my-2"></v-divider>
                                                     <v-list-item title="房價 (底價)" class="mt-2">
@@ -82,6 +83,18 @@
                                                         <template v-slot:subtitle><span class="highlight-price-base">{{ calculatedBaseUnitPrice }} 萬/坪</span></template>
                                                         <template v-slot:prepend><v-icon color="grey-darken-1">mdi-chart-line-variant</v-icon></template>
                                                     </v-list-item>
+
+                                                    <template v-if="unitData['房屋成交價']">
+                                                        <v-divider class="my-2"></v-divider>
+                                                        <v-list-item title="房價 (成交價)" class="mt-2">
+                                                            <template v-slot:subtitle><span class="highlight-price-final">{{ formatNumber(unitData['房屋成交價']) }} 萬</span></template>
+                                                            <template v-slot:prepend><v-icon color="success">mdi-check-decagram-outline</v-icon></template>
+                                                        </v-list-item>
+                                                        <v-list-item title="單價 (成交價)">
+                                                            <template v-slot:subtitle><span class="highlight-price-final">{{ calculatedTransactionUnitPrice }} 萬/坪</span></template>
+                                                            <template v-slot:prepend><v-icon color="success">mdi-calculator-variant-outline</v-icon></template>
+                                                        </v-list-item>
+                                                    </template>
                                                 </template>
                                             </v-list>
                                         </template>
@@ -204,14 +217,23 @@
         
         <div class="footer-section">
             <v-divider></v-divider>
-             <v-card-actions :class="{ 'mb-8': isMobile }">
-              <v-spacer></v-spacer>
+             <v-card-actions :class="{ 'flex-column align-stretch pa-4 ga-3': isMobile, 'mb-0': !isMobile }">
+              <v-spacer v-if="!isMobile"></v-spacer>
               <template v-if="isEditing">
                   <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
-                  <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving">儲存變更</v-btn>
+                  <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving" size="large">儲存變更</v-btn>
               </template>
               <template v-else>
-               <v-btn
+                <v-btn
+                  v-if="viewMode === 'sales' && isSold" 
+                  color="error"
+                  variant="outlined"
+                  @click="openCancelPurchaseDialog"
+                >
+                  <v-icon left>mdi-account-cancel-outline</v-icon>
+                  辦理退戶
+                </v-btn>
+                <v-btn
                   v-if="viewMode === 'sales' && unitData && unitData['資料夾URL']"
                   color="teal"
                   variant="flat"
@@ -235,6 +257,18 @@
         </div>
     </v-card>
   </v-dialog>
+
+  <ConfirmationDialog
+    :show="showCancelDialog"
+    @update:show="showCancelDialog = $event"
+    title="確認辦理退戶"
+    :message="cancelDialogMessage"
+    confirm-text="確認退戶"
+    confirm-color="error"
+    :loading="isSaving"
+    @confirm="handleConfirmCancelPurchase"
+    @cancel="showCancelDialog = false"
+  />
 
   <PaymentSettings
     v-if="paymentSettingsDialog"
@@ -274,15 +308,74 @@
 
 <script setup>
 // ✅ (2/2) Script 區塊 (合併後的版本)
-import { useRouter } from 'vue-router';
+import { useRouter } from 'vue-router'; 
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
+import { useUserStore } from '@/store/user'; // 引入 userStore
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase } from '@/api'; // 引入 cancelPurchase
 import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
-import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
-import PaymentSettings from '@/views/PaymentSettings.vue'; // 引入 PaymentSettings
-import FloorplanSizing from './FloorplanSizing.vue'; // 引入 FloorplanSizing
+import PaymentSettings from '@/views/PaymentSettings.vue'; 
+import FloorplanSizing from './FloorplanSizing.vue';
+import ConfirmationDialog from './ConfirmationDialog.vue'; // 引入確認對話框
+
+const userStore = useUserStore(); // 建立 userStore 實例
+
+// ✅ 新增：退戶相關的狀態
+const showCancelDialog = ref(false);
+const savingText = ref('儲存中，請稍候...');
+
+// ✅ 新增：計算屬性，判斷此戶是否已售
+const isSold = computed(() => {
+  return props.unitData && props.unitData['銷控後台狀態'];
+});
+
+// ✅ 新增：動態產生確認對話框的訊息
+const cancelDialogMessage = computed(() => {
+  const unitId = props.unitData ? `【${props.unitData['戶別']}】` : '';
+  return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>此操作將會清除所有相關的銷售、客戶資料，並將車位釋出。<b>此動作無法復原。</b>`;
+});
+
+// ✅ 新增：打開確認對話框的函式
+function openCancelPurchaseDialog() {
+  showCancelDialog.value = true;
+}
+
+// ✅ 新增：使用者確認後，執行退戶的函式
+async function handleConfirmCancelPurchase() {
+  if (!props.unitData || !userStore.user) {
+    alert('缺少必要資訊，無法執行退戶。');
+    return;
+  }
+
+  isSaving.value = true;
+  savingText.value = '正在辦理退戶...';
+  showCancelDialog.value = false;
+
+  try {
+    const result = await cancelPurchase(
+      props.projectName,
+      props.unitData['戶別'],
+      userStore.user.name // 操作人員名稱
+    );
+
+    if (result.status !== 'success') {
+      throw new Error(result.message);
+    }
+    
+    alert('退戶成功！'); // 或使用您的 Toast 通知
+    emit('data-updated');
+    close();
+
+  } catch (error) {
+    console.error('退戶失敗:', error);
+    alert(`退戶失敗: ${error.message}`);
+  } finally {
+    isSaving.value = false;
+    savingText.value = '儲存中，請稍候...';
+  }
+}
 
 // 建立 router 和 display 實例
 const router = useRouter();
@@ -319,6 +412,15 @@ const calculatedUnitPrice = computed(() => {
 
 const calculatedBaseUnitPrice = computed(() => {
   const price = props.unitData?.['房屋總底價'];
+  const area = props.unitData?.['房屋面積(坪)'];
+  if (price && area > 0) {
+    return formatNumber(price / area, 2);
+  }
+  return 'N/A';
+});
+
+const calculatedTransactionUnitPrice = computed(() => {
+  const price = props.unitData?.['房屋成交價'];
   const area = props.unitData?.['房屋面積(坪)'];
   if (price && area > 0) {
     return formatNumber(price / area, 2);
@@ -429,6 +531,7 @@ function cancelEditing() {
 async function saveChanges() {
   if (!editingData.value) return;
   isSaving.value = true;
+  savingText.value = '儲存中，請稍候...';
   try {
       const data = editingData.value;
       const parkingSalePrice = (data['持有車位'] || []).reduce((sum, p) => sum + (Number(p.車位成交價) || 0), 0);
@@ -546,6 +649,14 @@ function formatPercentage(value) {
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #1a3a6e; }
 .highlight-price { font-size: 1.8rem !important; font-weight: 700 !important; color: #c62828 !important; }
 .highlight-price-base { font-size: 1.5rem !important; font-weight: 500 !important; color: #455a64 !important; }
+/* ✅ 新增：成交價的 CSS 樣式 */
+.highlight-price-final { 
+  font-size: 1.5rem !important; 
+  font-weight: 700 !important; 
+  color: #2E7D32 !important; 
+}
+
+
 :deep(.v-list-item-title) { font-size: 0.9rem; }
 :deep(.v-list-item--density-compact .v-list-item-title) { font-size: 0.85rem; }
 :deep(.v-list-item-subtitle) { line-height: normal; -webkit-line-clamp: unset !important; line-clamp: unset !important; }

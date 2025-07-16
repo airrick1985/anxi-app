@@ -576,3 +576,20 @@ export async function updateAndGetParkingSlide(projectName, slideType) {
     token: 'anxi111003' 
   }, SALES_API); 
 }
+
+/**
+ * 請求後端執行退戶操作
+ * @param {string} projectName - 建案名稱
+ * @param {string} unitId - 要退戶的戶別 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ * @returns {Promise<object>}
+ */
+export async function cancelPurchase(projectName, unitId, operatorName) {
+  return fetchPost({
+    action: 'cancel_purchase',
+    projectName,
+    unitId,
+    operatorName,
+    token: 'anxi111003' // 遵循您的慣例
+  }, SALES_API);
+}
