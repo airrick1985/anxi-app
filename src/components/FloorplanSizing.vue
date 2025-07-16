@@ -49,7 +49,7 @@
         <div v-if="isCalibrating || isMeasuringDistance || isMeasuringArea || tool === 'pan'" class="action-prompt">
             <v-icon color="white" class="mr-2">mdi-gesture-tap</v-icon>
             <span v-if="tool === 'pan'">(按住 Alt 鍵可拖曳平移，滾輪可縮放)</span>
-            <span v-if="isCalibrating">請點擊 600cm 線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
+            <span v-if="isCalibrating">請點擊圖面上有標記距離線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
             <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
             <span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】，點擊起點或雙擊可封閉圖形</span>
 <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="small" variant="text" @click="resetCalibration" class="ml-4">重設</v-btn>

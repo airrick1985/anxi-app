@@ -87,7 +87,16 @@ const routes = [
       requiredSystem: '報價系統' // ✨ 新增 (假設設定頁也屬於報價系統)
     }
   },
-
+{
+  path: '/payment-settings/:projectName/:unitId', // 路徑中包含參數
+  name: 'PaymentSettings',
+  component: () => import('@/views/PaymentSettings.vue'),
+  props: true, // 允許將路由參數作為 props 傳遞給元件
+  meta: { 
+    requiresAuth: true,
+   requiredSystem: '銷控系統' 
+  }
+},
    {
     path: '/quote-summary',
     name: 'QuoteSummary',

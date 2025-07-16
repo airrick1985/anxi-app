@@ -60,8 +60,8 @@
 </template>
 
 <script setup>
-// ✅ 2. 引入 computed
-import { ref, onMounted, computed } from 'vue';
+// ✅ 核心修改：Script 變得非常乾淨
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
@@ -75,34 +75,17 @@ const loading = ref(false);
 const router = useRouter();
 const userStore = useUserStore();
 
-const backgroundImageUrl = ref('/background.png');
+// 1. 直接將圖片路徑寫在這裡
+// 這個路徑是相對於 public 資料夾的根目錄
+// 如果您的檔名是 login-bg.jpg，就寫 '/login-bg.jpg'
+const backgroundImageUrl = ref('/login-bg.jpg'); 
 
-// ✅ 3. 新增 containerStyle 來設置 CSS 變數
+// 2. containerStyle 的邏輯完全不變，它會將上面的路徑設定到 CSS 變數中
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-async function fetchRandomBackground() {
-  const unsplashAccessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
-  if (!unsplashAccessKey) {
-    console.error('Unsplash API Key 未設定，請檢查您的 .env.local 檔案');
-    return;
-  }
-  try {
-    const response = await fetch(
-      `https://api.unsplash.com/photos/random?query=architecture,wallpaper&orientation=landscape&client_id=${unsplashAccessKey}`
-    );
-    if (!response.ok) throw new Error('無法從 Unsplash 獲取圖片');
-    const data = await response.json();
-    backgroundImageUrl.value = data.urls.full;
-  } catch (err) {
-    console.error('獲取背景圖片失敗:', err);
-  }
-}
-
-onMounted(() => {
-  fetchRandomBackground();
-});
+// 3. 原本的 fetchRandomBackground 和 onMounted 已被移除
 
 const submit = async () => {
   error.value = '';
@@ -168,17 +151,19 @@ const submitForgotPassword = async () => {
 
 <style scoped>
 .login-container {
-  /* ✅ 4. 修改 background-image，使用漸層遮罩 + CSS 變數 */
-  /* var() 第二個參數是備用圖片，在 API 失敗或載入時顯示 */
+  /* ✅ 核心修改：CSS var() 的第二個參數是備用圖片 */
+  /* 當 JS 還沒載入完成時，會先顯示這個備用圖 */
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
-    var(--bg-image-url, url('/background.png'));
+    var(--bg-image-url, url('/background.png')); /* 這裡的 background.png 是舊的備用圖 */
   
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;
   transition: background-image 1s ease-in-out;
 }
+
+/* --- 其他所有 style 內容維持原樣即可 --- */
 
 .glass-card {
   background: rgba(255, 255, 255, 0.4);

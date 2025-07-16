@@ -236,6 +236,16 @@
     </v-card>
   </v-dialog>
 
+  <PaymentSettings
+    v-if="paymentSettingsDialog"
+    :show="paymentSettingsDialog"
+    @update:show="paymentSettingsDialog = $event"
+    :unit-data="enrichedUnitData"
+    :project-name="projectName"
+    :all-data="allData"
+    @request-open-slide="$emit('request-open-slide')"
+  />
+
   <v-dialog
     v-model="sizingToolDialog"
     fullscreen
@@ -263,19 +273,23 @@
 </template>
 
 <script setup>
-// ✨ Script 區塊維持您提供的完整版本，只新增 sizingToolDialog 相關邏輯 ✨
+// ✅ (2/2) Script 區塊 (合併後的版本)
+import { useRouter } from 'vue-router';
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { IMAGE_PROXY_BASE_URL, updateSalesData } from '@/api';
 import { useQuoteStore } from '@/store/quoteStore'; 
-import PaymentSettings from '@/views/PaymentSettings.vue'; 
-import FloorplanSizing from './FloorplanSizing.vue';
+import PaymentSettings from '@/views/PaymentSettings.vue'; // 引入 PaymentSettings
+import FloorplanSizing from './FloorplanSizing.vue'; // 引入 FloorplanSizing
 
+// 建立 router 和 display 實例
+const router = useRouter();
 const { mobile: isMobile } = useDisplay();
 const quoteStore = useQuoteStore();
 
+// 定義 props 和 emits
 const props = defineProps({
   show: { type: Boolean, required: true },
   unitData: { type: Object, default: () => null },
@@ -283,13 +297,22 @@ const props = defineProps({
   allData: { type: Object, default: () => ({}) },
   projectName: { type: String, required: true }, 
 });
+const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
+// 定義所有 ref 狀態
+const tab = ref('info');
+const isEditing = ref(false);
+const isSaving = ref(false);
+const editingData = ref(null);
+const paymentSettingsDialog = ref(false); // 付款表設定 Dialog
+const sizingToolDialog = ref(false);      // 測量工具 Dialog
+
+// 價格計算屬性
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.['房屋總表價'];
   const area = props.unitData?.['房屋面積(坪)'];
   if (price && area > 0) {
-    const value = price / area;
-    return formatNumber(value, 2);
+    return formatNumber(price / area, 2);
   }
   return 'N/A';
 });
@@ -298,26 +321,12 @@ const calculatedBaseUnitPrice = computed(() => {
   const price = props.unitData?.['房屋總底價'];
   const area = props.unitData?.['房屋面積(坪)'];
   if (price && area > 0) {
-    const value = price / area;
-    return formatNumber(value, 2);
+    return formatNumber(price / area, 2);
   }
   return 'N/A';
 });
 
-const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
-
-const tab = ref('info');
-const isEditing = ref(false);
-const isSaving = ref(false);
-const editingData = ref(null);
-const paymentSettingsDialog = ref(false);
-
-const sizingToolDialog = ref(false); // 控制新 Dialog 的 Ref
-
-function openSizingTool() { // 開啟新 Dialog 的函式
-  sizingToolDialog.value = true;
-}
-
+// ✅ 這是從舊版複製過來的、正確的 enrichedUnitData
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
   const enriched = JSON.parse(JSON.stringify(props.unitData));
@@ -343,6 +352,8 @@ const enrichedUnitData = computed(() => {
   return enriched;
 });
 
+
+// 其他選項計算屬性
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p['銷控狀態']));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
@@ -357,7 +368,13 @@ const buyerInfoOptions = computed(() => {
     return options;
 });
 
+// ✅ 函式區
+function openSizingTool() {
+  sizingToolDialog.value = true;
+}
+
 function openPaymentSettings() {
+  // 舊版是直接打開 Dialog，這是比較好的作法，因為 PaymentSettings 本身就是一個 Dialog 元件
   paymentSettingsDialog.value = true;
 }
 
@@ -472,9 +489,11 @@ async function saveChanges() {
 const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
 const canAddToQuote = computed(() => (props.unitData && props.unitData['銷控狀態'] !== '已售'));
 const addToQuoteButtonText = computed(() => '加入報價');
+
 function handleAddToQuote() {
   if (props.unitData && canAddToQuote.value) quoteStore.addItem(props.unitData);
 }
+
 const firstPlan = computed(() => hasFloorplans.value ? props.unitData.floorplans[0] : null);
 const proxiedFirstImageUrl = computed(() => {
   if (firstPlan.value && firstPlan.value.type === 'image' && firstPlan.value.url) {
@@ -482,6 +501,7 @@ const proxiedFirstImageUrl = computed(() => {
   }
   return '';
 });
+
 const shouldHidePrice = computed(() => props.viewMode === 'quote' && props.unitData?.['銷控狀態'] === '已售');
 
 watch(() => props.show, (newVal) => {
@@ -542,7 +562,7 @@ function formatPercentage(value) {
 }
 .preview-content { 
   max-width: 100%; 
-  max-height: 100%; 
+  max-height: 75vh; 
   object-fit: contain; 
   display: block; 
   border: none; 
@@ -567,7 +587,6 @@ function formatPercentage(value) {
 .area-item:last-child { border-bottom: none; }
 .area-ping-value { font-weight: 600 !important; font-size: 1.2em; color: #1A237E; }
 
-/* ✨ 新增的浮動按鈕樣式 */
 .sizing-tool-btn {
   position: absolute;
   bottom: 24px;
