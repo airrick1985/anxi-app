@@ -34,19 +34,21 @@ import { ref, computed } from 'vue'; // 移除了 onMounted
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 
+// ✅ 1. 從 @/assets/ 資料夾直接匯入您的圖片
+import myBackgroundImage from '@/assets/login-bg.jpg';
+
 const router = useRouter();
 const userStore = useUserStore();
 
-// 1. 直接將圖片路徑寫在這裡
-// 這個路徑是相對於 public 資料夾的根目錄
-const backgroundImageUrl = ref('login-bg.jpg'); // 使用我們修正過的相對路徑
+// ✅ 2. 直接將匯入的圖片路徑賦值給 backgroundImageUrl
+const backgroundImageUrl = ref(myBackgroundImage);
 
-// 2. containerStyle 的邏輯完全不變
+// 3. containerStyle 的邏輯完全不變
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-// 3. 原本的 fetchRandomBackground 和 onMounted 已被移除
+// 4. 原本的 fetchRandomBackground 和 onMounted 已被移除
 
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
@@ -75,7 +77,7 @@ const goToEntryPage = (mode) => {
   /* ✅ CSS 的部分完全不需要修改，它會自動讀取 JS 中的變數 */
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    var(--bg-image-url, url('/background.png')); /* background.png 是備用圖 */
+    var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
   
   background-size: cover;
   background-position: center center;

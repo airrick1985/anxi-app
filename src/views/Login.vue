@@ -61,11 +61,14 @@
 
 <script setup>
 // ✅ 核心修改：Script 變得非常乾淨
-import { ref, computed } from 'vue';
+import { ref, computed } from 'vue'; // 移除了 onMounted
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
 import { checkUpdate } from '@/utils/swHelper';
+
+// ✅ 1. 從 @/assets/ 資料夾直接匯入您的圖片
+import myBackgroundImage from '@/assets/login-bg.jpg';
 
 const emit = defineEmits(['start-loading', 'stop-loading', 'notify']);
 const key = ref('');
@@ -75,18 +78,15 @@ const loading = ref(false);
 const router = useRouter();
 const userStore = useUserStore();
 
-// 1. 直接將圖片路徑寫在這裡
-// 這個路徑是相對於 public 資料夾的根目錄
-// 如果您的檔名是 login-bg.jpg，就寫 '/login-bg.jpg'
-const backgroundImageUrl = ref('login-bg.jpg'); 
+// ✅ 2. 直接將匯入的圖片路徑賦值給 backgroundImageUrl
+const backgroundImageUrl = ref(myBackgroundImage);
 
-
-// 2. containerStyle 的邏輯完全不變，它會將上面的路徑設定到 CSS 變數中
+// ✅ 3. containerStyle 的邏輯完全不變，它會將上面的路徑設定到 CSS 變數中
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-// 3. 原本的 fetchRandomBackground 和 onMounted 已被移除
+// ✅ 4. 原本的 fetchRandomBackground 和 onMounted 已被移除
 
 const submit = async () => {
   error.value = '';
@@ -152,11 +152,10 @@ const submitForgotPassword = async () => {
 
 <style scoped>
 .login-container {
-  /* ✅ 核心修改：CSS var() 的第二個參數是備用圖片 */
-  /* 當 JS 還沒載入完成時，會先顯示這個備用圖 */
+  /* ✅ CSS 的部分完全不需要修改 */
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    var(--bg-image-url, url('/background.png')); /* 這裡的 background.png 是舊的備用圖 */
+    var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
   
   background-size: cover;
   background-position: center center;
