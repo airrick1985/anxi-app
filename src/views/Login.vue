@@ -154,7 +154,7 @@ const submitForgotPassword = async () => {
 .login-container {
   /* ✅ CSS 的部分完全不需要修改 */
   background-image: 
-    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
+    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0)),
     var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
   
   background-size: cover;
@@ -178,7 +178,7 @@ const submitForgotPassword = async () => {
 .card-title {
   font-size: 2rem;
   font-weight: 700;
-  color: #1a237e;
+  color: #000000;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
   padding-bottom: 20px;
 }
@@ -188,7 +188,7 @@ const submitForgotPassword = async () => {
   font-size: 1.1rem;
   font-weight: bold;
   border-radius: 10px;
-  background-image: linear-gradient(135deg, #4a6a8a, #2a4a7e);
+  background-image: linear-gradient(135deg, #000000, #000000);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
   color: white;
@@ -200,7 +200,7 @@ const submitForgotPassword = async () => {
 }
 
 .forgot-password-btn {
-  color: #3f51b5;
+  color: #000000;
   font-weight: 500;
   text-transform: none;
 }
@@ -211,7 +211,7 @@ const submitForgotPassword = async () => {
 
 :deep(.v-text-field .v-field) {
   background-color: rgba(255, 255, 255, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  border: 1px solid rgba(0, 0, 0, 0.4) !important;
   box-shadow: none !important;
   border-radius: 12px !important;
   transition: background-color 0.3s ease, border-color 0.3s ease !important;
@@ -223,7 +223,7 @@ const submitForgotPassword = async () => {
 }
 
 :deep(.v-text-field:not(.v-field--focused) .v-field--dirty) {
-  background-color: rgba(255, 255, 255, 0.45) !important;
+  background-color: rgba(255, 255, 255, 0) !important;
 }
 
 :deep(.v-text-field .v-field__overlay) {
@@ -231,13 +231,13 @@ const submitForgotPassword = async () => {
 }
 
 :deep(.v-text-field .v-label) {
-  color: #1a237e !important;
+  color: #6c6c6c !important;
   opacity: 1 !important;
   font-weight: 500;
 }
 
 :deep(.v-text-field .v-label.v-field-label--floating) {
-  color: #3f51b5 !important;
+  color: #6c6c6c !important;
 }
 
 :deep(.v-text-field input) {

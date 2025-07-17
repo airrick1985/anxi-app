@@ -337,7 +337,7 @@ html {
 
 <style scoped>
 .custom-app-bar {
-  background-image: linear-gradient(135deg, #1A2980 0%, #26D0CE 100%) !important; /* 可以嘗試加 !important 提高優先級 */
+  background-image: linear-gradient(135deg, #ffffff 0%, #c3c3c3 100%) !important; /* 可以嘗試加 !important 提高優先級 */
 }
 
 /* 🔵 修改 v-app-bar 內部元素的顏色 */
@@ -345,17 +345,17 @@ html {
 /* 導航抽屜圖標 和 首頁圖標 (通常 v-btn icon 內的 v-icon) */
 :deep(.custom-app-bar .v-btn--icon .v-icon),
 :deep(.custom-app-bar .v-app-bar-nav-icon .v-icon) { /* 更精確地選中 nav-icon 內的圖標 */
-  color: white !important; /* 或者你想要的亮色，例如 #E0E0E0 */
+  color: rgb(0, 0, 0) !important; /* 或者你想要的亮色，例如 #E0E0E0 */
 }
 
 /* 應用欄標題 */
 :deep(.custom-app-bar .app-bar-title) { /* 你已經為標題定義了 app-bar-title class */
-  color: white !important;
+  color: rgb(0, 0, 0) !important;
 }
 
 /* 用戶名 */
 :deep(.custom-app-bar span.clickable) { /* 假設用戶名是 span 且有 clickable class */
-  color: white !important;
+  color: rgb(0, 0, 0) !important;
 }
 
 .app-bar-title {

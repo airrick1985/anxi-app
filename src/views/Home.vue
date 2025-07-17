@@ -76,7 +76,7 @@ const goToEntryPage = (mode) => {
 
   /* ✅ CSS 的部分完全不需要修改，它會自動讀取 JS 中的變數 */
   background-image: 
-    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
+    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0)),
     var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
   
   background-size: cover;
@@ -123,8 +123,8 @@ const goToEntryPage = (mode) => {
 
 .text {
   font-size: 1rem;
-  font-weight: 400;
-  color: #ffffff;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  font-weight: 500;
+  color: #000000;
+  
 }
 </style>
