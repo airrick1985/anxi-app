@@ -45,6 +45,8 @@
         item-value="statusId"
         @click:row="handleRowClick"
         hover
+          items-per-page-text="每頁顯示："
+  :page-text="`第 {0} - {1} 則，共 {2} 則`"
       >
    <template v-slot:item.isImportant="{ item }">
           <v-btn

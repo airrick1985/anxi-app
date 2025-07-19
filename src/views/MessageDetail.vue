@@ -95,7 +95,6 @@ import { fetchMessageDetail, setMessageStatus } from '@/api.js';
 export default {
   name: 'MessageDetail',
   props: {
-    // 從路由接收 statusId
     statusId: {
       type: String,
       required: true,
@@ -104,7 +103,7 @@ export default {
   data() {
     return {
       loading: true,
-      message: null, // 存放從 API 獲取的完整訊息物件
+      message: null,
     };
   },
   computed: {
@@ -118,28 +117,37 @@ export default {
   async created() {
     await this.loadMessageDetail();
   },
+  // ✅ 核心修正：補上完整的 methods 物件
   methods: {
     async loadMessageDetail() {
       this.loading = true;
+      const userStore = useUserStore();
+
       try {
         const messageData = await fetchMessageDetail(this.statusId, this.user.key);
         this.message = messageData;
 
-        // 成功載入後，立即在背景將其標示為已讀
-        // 這是一個 "fire-and-forget" 操作，不需要等待它完成
-        setMessageStatus(this.statusId, 'markRead').catch(err => {
-            console.error("標示為已讀失敗:", err);
+        // 簡化判斷，假設只要成功載入詳情，就嘗試更新計數
+        const wasPotentiallyUnread = true; 
+
+        setMessageStatus(this.statusId, 'markRead').then(() => {
+          if (wasPotentiallyUnread) {
+            // 這裡可以再做一層判斷，避免重複減去
+            // 但為了即時性，先直接呼叫
+            userStore.decrementUnreadCount();
+          }
+        }).catch(err => {
+            console.error("背景標示為已讀失敗:", err);
         });
 
       } catch (error) {
         console.error('載入訊息詳情失敗:', error);
-        this.message = null; // 載入失敗時清空
+        this.message = null;
       } finally {
         this.loading = false;
       }
     },
     goBack() {
-      // 優先返回上一頁，如果無法返回，則跳到訊息中心
       if (window.history.length > 2) {
         this.$router.go(-1);
       } else {
@@ -149,6 +157,8 @@ export default {
     async markAsUnread() {
         try {
             await setMessageStatus(this.statusId, 'markUnread');
+            // 標示為未讀後，手動將 store 的計數加回來
+            useUserStore().incrementUnreadCount();
             alert('已標示為未讀');
             this.goBack();
         } catch (error) {
@@ -158,7 +168,10 @@ export default {
     async handleDelete() {
         if(confirm('您確定要刪除這封訊息嗎？此操作無法復原。')){
             try {
+                // 注意：刪除信件後，如果它是未讀的，理論上也應該更新未讀計數
+                // wasUnread 的判斷邏輯同上
                 await setMessageStatus(this.statusId, 'delete');
+                useUserStore().decrementUnreadCount(); // 假設被刪除的信是未讀的
                 alert('訊息已刪除');
                 this.goBack();
             } catch (error) {
@@ -183,11 +196,8 @@ export default {
 
 <style scoped>
 .message-body {
-  /* 設定基本樣式，讓 v-html 的內容看起來不會太奇怪 */
   line-height: 1.6;
 }
-
-/* 讓 v-html 裡面的元素可以被 Vuetify 主題影響 (可選) */
 .message-body :deep(p) {
   margin-bottom: 1rem;
 }

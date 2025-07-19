@@ -5,12 +5,12 @@ import { defineStore } from 'pinia';
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null,
-    // ✨ 您的 detailedPermissions state 維持不變
-    detailedPermissions: [] 
+    detailedPermissions: [],
+    // ✅ 新增 state 來儲存未讀數量
+    unreadCount: 0,
   }),
 
   actions: {
-    // 您的 actions 維持不變
     setUser(userData) {
       if (userData && typeof userData === 'object' && userData.key) {
         this.user = {
@@ -33,34 +33,45 @@ export const useUserStore = defineStore('user', {
     clearUser() {
       this.user = null;
       this.detailedPermissions = [];
+      // ✅ 登出時也清空未讀數
+      this.unreadCount = 0;
     },
     setProjectName(projectName) {
       if (this.user) {
         this.user.projectName = projectName;
       }
+    },
+    
+    // ✅ 新增 action 來從外部設定未讀數量 (例如，從 API 初始化時)
+    setUnreadCount(count) {
+      if (typeof count === 'number' && count >= 0) {
+        this.unreadCount = count;
+      }
+    },
+    
+    // ✅ 新增 action 來將未讀數量減一 (例如，讀取信件後)
+    decrementUnreadCount() {
+      if (this.unreadCount > 0) {
+        this.unreadCount--;
+      }
+    },
+
+    // ✅ 新增 action 來將未讀數量加一 (未來可能用於收到新訊息通知)
+    incrementUnreadCount() {
+      this.unreadCount++;
     }
   },
 
   getters: {
-    /**
-     * ✅ 新增：簡單判斷是否登入的 getter
-     */
     isLoggedIn: (state) => !!state.user,
-    
-    /**
-     * ✅ 新增：檢查用戶是否擁有任何一個建案的「寄信」權限
-     */
     canSendMessage: (state) => {
       if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
         return false;
       }
-      // 只要 detailedPermissions 陣列中，存在任何一個 system 以 "寄信-" 開頭且權限為 'Y' 的項目，就回傳 true
       return state.detailedPermissions.some(
         perm => perm.system && perm.system.startsWith('寄信-') && perm.access === 'Y'
       );
     },
-
-    // 您的 hasProjectPermission getter 維持不變
     hasProjectPermission: (state) => (system, projectName) => {
       if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
         return false;
@@ -69,8 +80,6 @@ export const useUserStore = defineStore('user', {
         p => p.system === system && p.projectName === projectName && p.access === 'Y'
       );
     },
-    
-    // 您的 hasPermission getter 維持不變
     hasPermission: (state) => (systemName) => {
         if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
             return false;
@@ -79,10 +88,10 @@ export const useUserStore = defineStore('user', {
     }
   },
 
-  // 您的 persist 設定維持不變
   persist: {
     key: 'anxi-user-session',
     storage: sessionStorage,
-    paths: ['user', 'detailedPermissions']
+    // ✅ 將 unreadCount 加入持久化，這樣用戶重整頁面時數字不會馬上消失
+    paths: ['user', 'detailedPermissions', 'unreadCount']
   }
 });

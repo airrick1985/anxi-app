@@ -60,7 +60,6 @@
           v-if="user"
           @click="navigateTo('MessageCenter')">
         </v-list-item>
-
         <v-list-item 
           prepend-icon="mdi-home-search" 
           title="驗屋系統" 
@@ -102,7 +101,7 @@
       />
     </v-main>
     
-    <v-footer v-if="isLoginPage" color="white lighten-4" height="80" class="footer-text" padless>
+    <v-footer v-if="isLoginPage" color="white" height="80" class="footer-text" padless>
         <v-container class="text-center py-2">
             <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
             <div class="text-caption">&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
@@ -126,22 +125,23 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue'; // ✅ onUnmounted 已不再需要
 import { useFullscreen } from './composables/useFullscreen';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from './store/user';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
-import { getLatestRelease, fetchUnreadMessageCount } from '@/api'; // 引入修正後的函式
+import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
 import EditProfileDialog from './components/EditProfileDialog.vue';
 import BottomNavBar from './components/BottomNavBar.vue';
 import UpdateDialog from './components/UpdateDialog.vue';
 import manifest from '../public/manifest.json';
 
-// --- 現有邏輯 (維持不變) ---
 const drawer = ref(false);
 const userStore = useUserStore();
-const { user } = storeToRefs(userStore);
+// ✅ 核心修改：直接從 store 解構出 unreadCount
+const { user, unreadCount } = storeToRefs(userStore); 
+
 const dialog = ref(false);
 const logoutDialog = ref(false);
 const loading = ref(false);
@@ -154,24 +154,39 @@ const router = useRouter();
 const route = useRoute();
 const { isFullscreen, toggleFullscreen } = useFullscreen();
 const isLoginPage = computed(() => route.name === 'Login');
-const showBottomNav = computed(() => user.value && route.name !== 'Login');
-const homeClickCount = ref(0);
-let clickTimer = null;
-const showUpdateDialog = ref(false);
-const releaseVersion = ref('');
-const releaseNotes = ref('');
 
 const showSnackbar = (message) => {
   snackbarMessage.value = message;
   snackbar.value = true;
 };
+
+// --- PWA 更新相關邏輯 (維持不變) ---
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
+const showUpdateDialog = ref(false);
+const releaseVersion = ref('');
+const releaseNotes = ref('');
+watch(needRefresh, async (val) => {
+  if (val) {
+    try {
+      const { version, notes } = await getLatestRelease();
+      releaseVersion.value = version;
+      releaseNotes.value = notes;
+      showUpdateDialog.value = true;
+    } catch (err) {
+      console.error('讀取 Release Notes 錯誤:', err);
+      releaseNotes.value = '有新版本可用，請更新應用程式';
+      showUpdateDialog.value = true;
+    }
+  }
+});
 const doUpdate = async () => {
   userStore.clearUser(); 
   await updateServiceWorker(true);
   showSnackbar('更新完成，請重新登入');
   setTimeout(() => window.location.reload(), 1000);
 };
+
+// --- 登出與導航 (維持不變) ---
 const confirmLogout = async () => {
   logoutDialog.value = false;
   await userStore.clearUser();
@@ -193,73 +208,42 @@ const goToEntryPage = (mode) => {
   router.push({ name: 'SalesControlSystemEntry', query: { viewMode: mode } });
   drawer.value = false;
 };
-
-// ✅ 新增訊息系統的邏輯
-const unreadCount = ref(0);
-const pollingInterval = ref(null);
-
-const updateUnreadCount = async () => {
-  if (user.value && user.value.key) {
-    try {
-      // ✅ 這裡現在會直接收到一個數字，不再是物件
-      unreadCount.value = await fetchUnreadMessageCount(user.value.key);
-    } catch (error) {
-      console.error('獲取未讀訊息數量失敗:', error);
-      unreadCount.value = 0;
-    }
-  } else {
-    unreadCount.value = 0;
-  }
-};
-
 const goToMessageCenter = () => {
   router.push('/messages');
 };
 
-// --- onMounted & onUnmounted (生命週期鉤子) ---
-onMounted(() => {
-  if (user.value) { // 確保登入後才開始輪詢
-    updateUnreadCount();
-    pollingInterval.value = setInterval(updateUnreadCount, 60000); // 每分鐘輪詢一次
+// ✅ 核心修改：簡化後的未讀訊息邏輯
+const initializeUnreadCount = async () => {
+  if (user.value && user.value.key) {
+    try {
+      const count = await fetchUnreadMessageCount(user.value.key);
+      // 呼叫 store 的 action 來設定初始值
+      userStore.setUnreadCount(count);
+    } catch (error) {
+      console.error('初始化未讀訊息數量失敗:', error);
+      userStore.setUnreadCount(0);
+    }
   }
-  
+};
+
+// --- 生命週期與監聽器 ---
+onMounted(() => {
+  // 應用程式載入時，如果已登入，就去後端拿一次最新的數字
+  if (user.value) {
+    initializeUnreadCount();
+  }
   window.addEventListener('triggerUpdateDialog', () => {
     showUpdateDialog.value = true;
   });
 });
 
-onUnmounted(() => {
-  clearInterval(pollingInterval.value); // 清除定時器
-});
-
-// --- watch (監聽器) ---
-watch(needRefresh, async (val) => {
-  if (val) {
-    try {
-      const { version, notes } = await getLatestRelease();
-      releaseVersion.value = version;
-      releaseNotes.value = notes;
-      showUpdateDialog.value = true;
-    } catch (err) {
-      console.error('讀取 Release Notes 錯誤:', err);
-      releaseVersion.value = '';
-      releaseNotes.value = '有新版本可用，請更新應用程式';
-      showUpdateDialog.value = true;
-    }
-  }
-});
-
-// ✅ 監聽 user 的變化，當登入或登出時，控制定時器的啟動與停止
+// ✅ 監聽 user 的變化，只在登入時初始化一次
 watch(user, (newUser, oldUser) => {
   if (newUser && !oldUser) {
-    // 從未登入變為登入
-    updateUnreadCount();
-    pollingInterval.value = setInterval(updateUnreadCount, 60000);
-  } else if (!newUser && oldUser) {
-    // 從登入變為登出
-    unreadCount.value = 0;
-    clearInterval(pollingInterval.value);
+    // 從「未登入」變為「登入」狀態時，初始化未讀計數
+    initializeUnreadCount();
   }
+  // 登出時，store 的 clearUser action 會自動清空數字，這裡不需處理
 });
 </script>
 
@@ -318,8 +302,8 @@ html {
   font-size: 0.8rem;
   color: #555;
   padding-bottom: 0px;
-   flex: 0 0 auto;
-    max-height: 60px;
+  flex: 0 0 auto;
+  max-height: 60px;
 }
 body {
   margin: 0;
