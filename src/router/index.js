@@ -13,6 +13,7 @@ import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
 const MessageCenter = () => import('@/views/MessageCenter.vue');
 const SendMessage = () => import('@/views/SendMessage.vue');
 const MessageDetail = () => import('@/views/MessageDetail.vue');
+const UserManagement = () => import('@/views/UserManagement.vue');
 
 const routes = [
   { path: '/', redirect: '/home' }, // 調整：通常登入後會導向 /home
@@ -133,6 +134,16 @@ const routes = [
       requiresPermission: 'canSendMessage' // 觸發我們在 store 中定義的 getter
     }
   },
+
+  {
+        path: '/user-management',
+        name: 'UserManagement',
+        component: UserManagement,
+        meta: {
+            requiresAuth: true,
+            requiredSystem: '人員管理' 
+        }
+    },
 
   // 捕獲所有未匹配的路由，導向首頁或登入頁
   { path: '/:pathMatch(.*)*', redirect: '/home' }

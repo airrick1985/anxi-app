@@ -28,6 +28,11 @@
       <span class="text">客變系統</span>
     </button>
 
+      <button class="icon-button" v-if="userStore.hasPermission('人員管理')" @click="goToUserManagement">
+      <img src="/img/icons/user-management.png" alt="人員管理圖標" class="icon" />
+      <span class="text">人員管理</span>
+    </button>
+
      <button class="icon-button" @click="goToMessageCenter">
       <img src="/img/icons/email.png" alt="訊息中心圖標" class="icon" />
       <span class="text">訊息中心</span>
@@ -79,6 +84,12 @@ const goToMessageCenter = () => {
 const goToSendMessage = () => {
   router.push({ name: 'SendMessage' });
 };
+
+// ✅ 新增：導航到人員管理頁面的函式
+const goToUserManagement = () => {
+  router.push({ name: 'UserManagement' });
+};
+
 
 </script>
 

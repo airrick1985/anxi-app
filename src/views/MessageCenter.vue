@@ -3,7 +3,7 @@
     <v-card class="mx-auto">
       <v-toolbar color="secondary" dark>
         <v-toolbar-title>
-          <v-icon left>mdi-inbox</v-icon>
+          <v-icon left>mdi-email-outline</v-icon>
           訊息中心
         </v-toolbar-title>
         <v-spacer></v-spacer>

@@ -8,6 +8,7 @@ const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
 const MESSAGE_API = `${BASE_API_URL}/message`; 
+const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
 
 
 /**
@@ -689,4 +690,39 @@ export async function setMessageStatus(statusId, actionType) {
         // ✅ 修正：將 'action' key 改名為 'statusAction'
         statusAction: actionType 
     }, MESSAGE_API);
+}
+
+// ===============================================
+// /  人員管理系統 API
+// ===============================================
+
+/**
+ * 獲取當前管理員的權限範圍 (可管理的建案和可指派的權限)
+ * @param {string} adminKey - 管理員自己的手機號碼
+ * @returns {Promise<object>} - 返回管理範圍物件
+ */
+export async function fetchAdminScope(adminKey) {
+    const result = await fetchPost({ action: 'get_admin_scope', adminKey }, USER_MANAGEMENT_API);
+    return result.status === 'success' ? result.data : {};
+}
+
+/**
+ * 管理員查詢特定用戶的詳細資料
+ * @param {string} targetUserKey - 被查詢者的手機號碼
+ * @param {string} adminKey - 管理員自己的手機號碼
+ * @returns {Promise<object|null>} - 返回用戶資料物件或 null
+ */
+export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
+    const result = await fetchPost({ action: 'fetch_user_details_for_admin', targetUserKey, adminKey }, USER_MANAGEMENT_API);
+    // 如果成功，回傳 data，否則直接回傳整個 result 讓元件可以判斷錯誤類型
+    return result.status === 'success' ? result.data : result;
+}
+
+/**
+ * 管理員更新用戶資料
+ * @param {object} updatePayload - 包含 targetUserKey, adminKey, basicInfo, permissionsData 的物件
+ * @returns {Promise<object>} - 返回操作結果
+ */
+export async function updateUserDetailsForAdmin(updatePayload) {
+    return fetchPost({ action: 'update_user_details_for_admin', ...updatePayload }, USER_MANAGEMENT_API);
 }
