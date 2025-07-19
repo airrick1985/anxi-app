@@ -205,7 +205,7 @@ watch(() => userStore.user, (newUser, oldUser) => {
 
 <style scoped>
 .fill-height {
-  min-height: 100vh;
+  min-height: 100%;
 }
 .v-card {
   transition: box-shadow .3s ease-in-out;

@@ -7,6 +7,7 @@ const USER_API = `${BASE_API_URL}/user`;
 const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
+const MESSAGE_API = `${BASE_API_URL}/message`; 
 
 
 /**
@@ -592,4 +593,100 @@ export async function cancelPurchase(projectName, unitId, operatorName) {
     operatorName,
     token: 'anxi111003' // 遵循您的慣例
   }, SALES_API);
+}
+
+// ===============================================
+// /  訊息系統 API (修正版)
+// ===============================================
+
+/**
+ * 獲取當前用戶的發信權限 (可選的建案與系統)
+ * @param {string} userKey - 用戶的手機號碼
+ * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ */
+export async function fetchMessagePermissionOptions(userKey) {
+    const result = await fetchPost({ action: 'get_message_permission_options', key: userKey }, MESSAGE_API);
+    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空物件
+    return result.status === 'success' ? result.data : {};
+}
+
+/**
+ * 根據建案和系統功能獲取收件人列表
+ * @param {string} projectName 
+ * @param {string} systemFunction - e.g., '銷控', '驗屋'
+ * @returns {Promise<Array>} - ✅ 直接回傳 data 陣列
+ */
+export async function fetchRecipientList(projectName, systemFunction) {
+    const result = await fetchPost({ action: 'get_recipient_list', projectName, systemFunction }, MESSAGE_API);
+    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空陣列
+    return result.status === 'success' ? result.data : [];
+}
+
+/**
+ * 上傳單一附件檔案
+ * @param {string} filename 
+ * @param {string} base64 - Base64 編碼的檔案內容
+ * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ */
+export async function uploadMessageAttachment(filename, base64) {
+    const result = await fetchPost({ action: 'upload_attachment', filename, base64 }, MESSAGE_API);
+    // ✅ 修正：只回傳 data 部分
+    return result.status === 'success' ? result.data : null;
+}
+
+/**
+ * 發送訊息
+ * @param {object} messageData - 包含所有訊息內容的物件
+ */
+export async function sendMessage(messageData) {
+    // 這個函式通常只關心成功或失敗，回傳整個 result 即可
+    return fetchPost({ action: 'send_message', ...messageData }, MESSAGE_API);
+}
+
+/**
+ * 獲取我的收件匣列表
+ * @param {string} userKey 
+ * @returns {Promise<Array>} - ✅ 直接回傳 data 陣列
+ */
+export async function fetchMyMessages(userKey) {
+    const result = await fetchPost({ action: 'get_my_messages', key: userKey }, MESSAGE_API);
+    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空陣列
+    return result.status === 'success' ? result.data : [];
+}
+
+/**
+ * 獲取單一訊息的詳細內容
+ * @param {string} statusId 
+ * @param {string} userKey 
+ * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ */
+export async function fetchMessageDetail(statusId, userKey) {
+    const result = await fetchPost({ action: 'get_message_detail', statusId, key: userKey }, MESSAGE_API);
+    // ✅ 修正：只回傳 data 部分
+    return result.status === 'success' ? result.data : null;
+}
+
+/**
+ * 獲取未讀訊息數量
+ * @param {string} userKey 
+ * @returns {Promise<number>} - ✅ 直接回傳 count 數字
+ */
+export async function fetchUnreadMessageCount(userKey) {
+    const result = await fetchPost({ action: 'get_unread_message_count', key: userKey }, MESSAGE_API);
+    // ✅ 修正：只回傳 count 部分，如果失敗則回傳 0
+    return result.status === 'success' ? result.count : 0;
+}
+
+/**
+ * 設定訊息狀態 - ✅ 修正版
+ * @param {string} statusId 
+ * @param {string} actionType - 'markRead', 'markUnread', 'toggleImportant', 'delete'
+ */
+export async function setMessageStatus(statusId, actionType) {
+    return fetchPost({
+        action: 'set_message_status', // 這是給代理層看的主要 action
+        statusId: statusId,
+        // ✅ 修正：將 'action' key 改名為 'statusAction'
+        statusAction: actionType 
+    }, MESSAGE_API);
 }

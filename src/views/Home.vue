@@ -3,6 +3,8 @@
     class="home-container"
     :style="containerStyle"
   >
+   
+
     <button class="icon-button" v-if="userStore.hasPermission('驗屋系統')" @click="goToInspectionSystem">
       <img src="/img/icons/property.png" alt="驗屋系統圖標" class="icon" />
       <span class="text">驗屋系統</span>
@@ -25,30 +27,36 @@
       <img src="/img/icons/blueprint.png" alt="客變系統圖標" class="icon" />
       <span class="text">客變系統</span>
     </button>
+
+     <button class="icon-button" @click="goToMessageCenter">
+      <img src="/img/icons/email.png" alt="訊息中心圖標" class="icon" />
+      <span class="text">訊息中心</span>
+    </button>
+    
+    <button class="icon-button" v-if="userStore.canSendMessage" @click="goToSendMessage">
+      <img src="/img/icons/send-email.png" alt="發送訊息圖標" class="icon" />
+      <span class="text">發送訊息</span>
+    </button>
+
+    
   </div>
 </template>
 
 <script setup>
-// ✅ 核心修改：Script 變得非常乾淨
-import { ref, computed } from 'vue'; // 移除了 onMounted
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
-
-// ✅ 1. 從 @/assets/ 資料夾直接匯入您的圖片
 import myBackgroundImage from '@/assets/login-bg.jpg';
 
 const router = useRouter();
 const userStore = useUserStore();
-
-// ✅ 2. 直接將匯入的圖片路徑賦值給 backgroundImageUrl
 const backgroundImageUrl = ref(myBackgroundImage);
 
-// 3. containerStyle 的邏輯完全不變
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-// 4. 原本的 fetchRandomBackground 和 onMounted 已被移除
+// --- Navigation Functions ---
 
 const goToInspectionSystem = () => {
   router.push({ name: 'InspectionSystem' }); 
@@ -61,31 +69,38 @@ const goToEntryPage = (mode) => {
     query: { viewMode: mode } 
   });
 };
+
+// ✅ 新增：導航到訊息中心的函式
+const goToMessageCenter = () => {
+  router.push({ name: 'MessageCenter' });
+};
+
+// ✅ 新增：導航到發送訊息頁面的函式
+const goToSendMessage = () => {
+  router.push({ name: 'SendMessage' });
+};
+
 </script>
 
 <style scoped>
+/* 您的所有樣式都維持不變 */
 .home-container {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   padding: 40px;
   gap: 30px;
-  min-height: 100vh;
+  min-height: 100%;
   box-sizing: border-box;
-
-  /* ✅ CSS 的部分完全不需要修改，它會自動讀取 JS 中的變數 */
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0)),
-    var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
-  
+    var(--bg-image-url, url('/img/background.png'));
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;
   transition: background-image 1s ease-in-out;
 }
-
-/* --- 其他所有 style 內容維持原樣即可 --- */
 
 .icon-button {
   display: flex;
@@ -125,6 +140,5 @@ const goToEntryPage = (mode) => {
   font-size: 1rem;
   font-weight: 500;
   color: #000000;
-  
 }
 </style>

@@ -5,11 +5,12 @@ import { defineStore } from 'pinia';
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null,
-    // ✨ 新增 state，用來儲存從 API 來的詳細權限列表
+    // ✨ 您的 detailedPermissions state 維持不變
     detailedPermissions: [] 
   }),
 
   actions: {
+    // 您的 actions 維持不變
     setUser(userData) {
       if (userData && typeof userData === 'object' && userData.key) {
         this.user = {
@@ -18,7 +19,6 @@ export const useUserStore = defineStore('user', {
           name: userData.name || null,
           projectName: userData.projectName || null
         };
-        // ✨ 當設定使用者時，同時儲存詳細權限
         if (Array.isArray(userData.detailedPermissions)) {
           this.detailedPermissions = userData.detailedPermissions;
           console.log("✅ 已更新詳細權限列表至 Store:", JSON.parse(JSON.stringify(this.detailedPermissions)));
@@ -32,7 +32,7 @@ export const useUserStore = defineStore('user', {
     },
     clearUser() {
       this.user = null;
-      this.detailedPermissions = []; // ✨ 登出時清空
+      this.detailedPermissions = [];
     },
     setProjectName(projectName) {
       if (this.user) {
@@ -43,23 +43,34 @@ export const useUserStore = defineStore('user', {
 
   getters: {
     /**
-     * ✨ 新增：兩層權限檢查 Getter
-     * @param state
-     * @returns (system: string, projectName: string) => boolean
+     * ✅ 新增：簡單判斷是否登入的 getter
      */
+    isLoggedIn: (state) => !!state.user,
+    
+    /**
+     * ✅ 新增：檢查用戶是否擁有任何一個建案的「寄信」權限
+     */
+    canSendMessage: (state) => {
+      if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
+        return false;
+      }
+      // 只要 detailedPermissions 陣列中，存在任何一個 system 以 "寄信-" 開頭且權限為 'Y' 的項目，就回傳 true
+      return state.detailedPermissions.some(
+        perm => perm.system && perm.system.startsWith('寄信-') && perm.access === 'Y'
+      );
+    },
+
+    // 您的 hasProjectPermission getter 維持不變
     hasProjectPermission: (state) => (system, projectName) => {
       if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
         return false;
       }
-      // 在詳細權限列表中查找是否有匹配的項目
       return state.detailedPermissions.some(
         p => p.system === system && p.projectName === projectName && p.access === 'Y'
       );
     },
     
-    /**
-     * (可選) 舊的 hasPermission，現在用來檢查使用者是否"至少有一個"建案對該系統有權限
-     */
+    // 您的 hasPermission getter 維持不變
     hasPermission: (state) => (systemName) => {
         if (!state.detailedPermissions || state.detailedPermissions.length === 0) {
             return false;
@@ -68,9 +79,10 @@ export const useUserStore = defineStore('user', {
     }
   },
 
+  // 您的 persist 設定維持不變
   persist: {
     key: 'anxi-user-session',
     storage: sessionStorage,
-    paths: ['user', 'detailedPermissions'] // ✨ 記得將新 state 加入持久化
+    paths: ['user', 'detailedPermissions']
   }
 });
