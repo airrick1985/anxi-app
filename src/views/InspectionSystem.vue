@@ -22,31 +22,29 @@
               <p class="text-subtitle-1 mb-4">
                 歡迎，{{ userStore.user.name || userStore.user.key }}！請選擇您要進入的建案：
               </p>
-
-           <v-select
-    v-model="selectedProject"
-    :items="projectOptions"
-    label="選擇建案"
-    outlined
-    dense
-    :loading="loadingProjects"
-    :disabled="loadingProjects || projectOptions.length === 0"
-    no-data-text="您在此系統無可用建案或載入失敗"
-    class="mb-4"
-    hide-details="auto"
-    item-title="text"  
-    item-value="value" 
-   
-  >
-    <template v-slot:prepend-item v-if="loadingProjects">
-      <v-list-item>
-        <v-list-item-title class="text-center">
-          <v-progress-circular indeterminate color="primary" size="24"></v-progress-circular>
-          <span class="ml-2">載入建案中...</span>
-        </v-list-item-title>
-      </v-list-item>
-    </template>
-  </v-select>
+               <v-select
+                  v-model="selectedProject"
+                  :items="projectOptions"
+                  label="選擇建案"
+                  outlined
+                  dense
+                  :loading="loadingProjects"
+                  :disabled="loadingProjects || projectOptions.length === 0"
+                  no-data-text="您在此系統無可用建案或載入失敗"
+                  class="mb-4"
+                  hide-details="auto"
+                  item-title="text"  
+                  item-value="value" 
+                >
+                <template v-slot:prepend-item v-if="loadingProjects">
+                  <v-list-item>
+                    <v-list-item-title class="text-center">
+                      <v-progress-circular indeterminate color="primary" size="24"></v-progress-circular>
+                      <span class="ml-2">載入建案中...</span>
+                    </v-list-item-title>
+                  </v-list-item>
+                </template>
+              </v-select>
 
               <v-btn
                 color="primary"
@@ -54,6 +52,7 @@
                 x-large
                 @click="enterProject"
                 :disabled="!selectedProject || loadingProjects"
+                :loading="isValidating"
                 class="font-weight-bold"
               >
                 <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
@@ -84,7 +83,8 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { getProjectsBySystemPermission } from '@/api'; // 確保路徑正確
+import { getProjectsBySystemPermission, fetchAllHouseDetails } from '@/api';
+
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -93,6 +93,8 @@ const selectedProject = ref(null); // 存儲選中的建案 value
 const projectOptions = ref([]); // 存儲 v-select 的 items [{ text: '建案A', value: '建案A' }, ...]
 const loadingProjects = ref(false);
 const error = ref('');
+const isValidating = ref(false); // ✅ 新增：用於進入按鈕的 loading 狀態
+
 
 const SYSTEM_NAME = '驗屋系統'; // 定義當前系統的名稱
 
@@ -153,15 +155,38 @@ async function loadProjectsForSystem() {
   }
 }
 
-function enterProject() {
-  if (selectedProject.value) {
-    userStore.setProjectName(selectedProject.value); // 更新 Pinia store 中的當前建案名稱
-    console.log(`[InspectionSystem] Entering project: ${selectedProject.value} for ${SYSTEM_NAME}. Stored in Pinia.`);
-    // 導航到該建案的驗屋主頁面或儀表板
-    // 假設 'Dashboard' 路由會根據 userStore.user.projectName 顯示對應建案的內容
-    router.push({ name: 'InspectionRecord' });
-  } else {
+// ✅ 核心修改：更新 enterProject 函式
+async function enterProject() {
+  if (!selectedProject.value) {
     error.value = '請先選擇一個建案。';
+    return;
+  }
+  
+  isValidating.value = true;
+  error.value = ''; // 清除舊的錯誤訊息
+
+  try {
+    // 試探性地呼叫一個需要該建案 SheetID 的 API
+    // fetchAllHouseDetails 是一個很好的選擇
+    const response = await fetchAllHouseDetails(selectedProject.value);
+
+    // 檢查 API 回傳的結果，如果 status 不是 success，代表有問題
+    // (api.js 的 fetchPost 已經處理了網路錯誤，這裡處理的是 GAS 回傳的業務邏輯錯誤)
+    if (response.status !== 'success') {
+      // 將後端回傳的錯誤訊息顯示出來
+      throw new Error(response.message);
+    }
+    
+    // 驗證成功，執行跳轉
+    userStore.setProjectName(selectedProject.value);
+    router.push({ name: 'InspectionRecord' });
+
+  } catch (err) {
+    // 捕捉所有錯誤，包括服務到期的特定錯誤
+    error.value = err.message || '無法進入建案，請稍後再試。';
+    console.error(`[InspectionSystem] Error entering project:`, err);
+  } finally {
+    isValidating.value = false;
   }
 }
 

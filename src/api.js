@@ -9,6 +9,7 @@ const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
 const MESSAGE_API = `${BASE_API_URL}/message`; 
 const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
+const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`; 
 
 
 /**
@@ -725,4 +726,64 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
  */
 export async function updateUserDetailsForAdmin(updatePayload) {
     return fetchPost({ action: 'update_user_details_for_admin', ...updatePayload }, USER_MANAGEMENT_API);
+}
+
+// ===============================================
+// /  訂閱管理系統 API
+// ===============================================
+
+/**
+ * 獲取所有訂閱紀錄
+ * @param {string} adminKey - 超級管理員的手機號碼
+ */
+export async function fetchAllSubscriptions(adminKey) {
+    const result = await fetchPost({ action: 'get_all_subscriptions', adminKey }, SUBSCRIPTION_API);
+    return result.status === 'success' ? result.data : [];
+}
+
+/**
+ * 獲取用於訂閱表單的下拉選單資料 (建案、系統列表)
+ * @param {string} adminKey - 超級管理員的手機號碼
+ */
+export async function fetchMasterDataForSubscriptionForm(adminKey) {
+    const result = await fetchPost({ action: 'get_master_data_for_subscription_form', adminKey }, SUBSCRIPTION_API);
+    return result.status === 'success' ? result.data : { projectNames: [], systemFunctions: [] };
+}
+
+/**
+ * 新增一筆訂閱紀錄
+ * @param {object} subscriptionData - 要新增的訂閱資料
+ * @param {string} adminKey - 超級管理員的手機號碼
+ */
+export async function addSubscription(subscriptionData, adminKey) {
+    return fetchPost({ action: 'add_subscription', subscriptionData, adminKey }, SUBSCRIPTION_API);
+}
+
+/**
+ * 更新一筆訂閱紀錄
+ * @param {string} subscriptionId - 要更新的紀錄 ID
+ * @param {object} subscriptionData - 要更新的訂閱資料
+ * @param {string} adminKey - 超級管理員的手機號碼
+ */
+export async function updateSubscription(subscriptionId, subscriptionData, adminKey) {
+    return fetchPost({ action: 'update_subscription', subscriptionId, subscriptionData, adminKey }, SUBSCRIPTION_API);
+}
+
+/**
+ * 刪除一筆訂閱紀錄
+ * @param {string} subscriptionId - 要刪除的紀錄 ID
+ * @param {string} adminKey - 超級管理員的手機號碼
+ */
+export async function deleteSubscription(subscriptionId, adminKey) {
+    return fetchPost({ action: 'delete_subscription', subscriptionId, adminKey }, SUBSCRIPTION_API);
+}
+
+/**
+ * ✅ 新增：獲取當前用戶可查看的訂閱狀態
+ * @param {string} userKey - 當前登入用戶的手機號碼
+ */
+export async function fetchMySubscriptionStatus(userKey) {
+    const result = await fetchPost({ action: 'get_my_subscription_status', userKey }, SUBSCRIPTION_API);
+    // 如果成功，回傳 data 物件，否則回傳空物件以避免前端出錯
+    return result.status === 'success' ? result.data : {};
 }

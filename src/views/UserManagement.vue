@@ -44,11 +44,11 @@
           <v-card-text>
             <v-row>
               <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.手機號碼" label="手機號碼" variant="outlined" dense readonly hint="手機號碼為唯一識別碼，不可修改"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.NAME" label="姓名" variant="outlined" dense></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.EMAIL" label="Email" variant="outlined" dense></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.密碼" label="密碼" variant="outlined" dense></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司名稱" label="公司名稱" variant="outlined" dense></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司統編" label="公司統編" variant="outlined" dense></v-text-field></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.NAME" label="姓名" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.EMAIL" label="Email" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.密碼" label="密碼" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司名稱" label="公司名稱" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司統編" label="公司統編" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
             </v-row>
           </v-card-text>
         </v-form>
@@ -84,7 +84,7 @@
         <v-card-actions class="pa-4">
           <v-spacer></v-spacer>
           <v-btn color="grey" @click="targetUser = null">取消</v-btn>
-          <v-btn color="success" :loading="saving" @click="handleSave">{{ isNewUser ? '建立新人員' : '儲存變更' }}</v-btn>
+          <v-btn color="success" :loading="saving" :disabled="!isFormValid" @click="handleSave">{{ isNewUser ? '建立新人員' : '儲存變更' }}</v-btn>
         </v-card-actions>
       </div>
 
@@ -127,10 +127,18 @@ const managedProjects = ref([]);
 
 const targetUser = ref(null);
 const permissionMatrix = ref({});
-const isFormValid = ref(true);
+const basicInfoForm = ref(null);    // ✅ 新增：用來獲取 form 的實例
+const isFormValid = ref(false);     // ✅ 修改：初始值設為 false，由 v-form 控制
 
-const showCreateUserDialog = ref(false); // ✅ 控制新增人員對話框的顯示
-const isNewUser = ref(false); // ✅ 標記當前是否為新增人員模式
+const showCreateUserDialog = ref(false);
+const isNewUser = ref(false);
+
+// ✅ 核心修改：定義驗證規則
+const rules = {
+  required: [
+    value => !!value || '此欄位為必填項。',
+  ],
+};
 
 onMounted(async () => {
   if (adminKey.value) {
@@ -148,7 +156,6 @@ const adminCanAssign = (project, system) => {
   return adminScope.value[project]?.includes(system);
 };
 
-// ✅ 核心修改：更新查詢邏輯
 const handleSearchUser = async () => {
   if (!searchPhone.value.trim()) {
     errorMessage.value = '請輸入手機號碼。';
@@ -163,14 +170,13 @@ const handleSearchUser = async () => {
   try {
     const result = await fetchUserDetailsForAdmin(searchPhone.value, adminKey.value);
     if (result.status === 'error') {
-      // 如果錯誤訊息是「找不到人員」，就彈出新增對話框
       if (result.message.includes('找不到手機號碼')) {
         showCreateUserDialog.value = true;
       } else {
         throw new Error(result.message);
       }
     } else {
-      isNewUser.value = false; // 這是現有人員
+      isNewUser.value = false;
       targetUser.value = result;
       buildPermissionMatrix(result.permissions);
     }
@@ -182,27 +188,18 @@ const handleSearchUser = async () => {
   }
 };
 
-// ✅ 新增：處理建立新人員的邏輯
 const startCreateNewUser = () => {
   showCreateUserDialog.value = false;
-  isNewUser.value = true; // 進入新增模式
-  
-  // 建立一個空的人員資料結構
+  isNewUser.value = true;
   targetUser.value = {
     basicInfo: {
       '手機號碼': searchPhone.value,
-      'NAME': '',
-      'EMAIL': '',
-      '密碼': '',
-      '公司名稱': '',
-      '公司統編': ''
+      'NAME': '', 'EMAIL': '', '密碼': '', '公司名稱': '', '公司統編': ''
     },
-    permissions: [] // 新人員沒有任何權限
+    permissions: []
   };
-  // 建立一個全空的權限矩陣
   buildPermissionMatrix([]);
 };
-
 
 const buildPermissionMatrix = (permissions) => {
   const matrix = {};
@@ -223,8 +220,17 @@ const buildPermissionMatrix = (permissions) => {
   permissionMatrix.value = matrix;
 };
 
+// ✅ 核心修改：在儲存前再次驗證表單
 const handleSave = async () => {
     if (!targetUser.value) return;
+
+    // 手動觸發表單驗證
+    const { valid } = await basicInfoForm.value.validate();
+    if (!valid) {
+        alert('請檢查並填寫所有必填欄位。');
+        return;
+    }
+
     saving.value = true;
 
     const permissionsData = [];
@@ -264,7 +270,6 @@ const handleSave = async () => {
         saving.value = false;
     }
 };
-
 </script>
 
 <style scoped>
@@ -280,15 +285,10 @@ const handleSave = async () => {
   background-color: #f5f5f5;
   z-index: 1;
 }
-
-
-/* ✅【核心修改】新增這個 class 的樣式 */
 .td-center {
-  text-align: center; /* 讓 icon 也置中 */
+  text-align: center;
 }
-/* 讓 checkbox 在 td 內完美置中 */
 .td-center :deep(.v-checkbox) {
   display: inline-flex;
 }
-
 </style>

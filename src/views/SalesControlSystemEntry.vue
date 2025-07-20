@@ -1,10 +1,8 @@
-<!-- /src/views/SalesControlSystemEntry.vue -->
 <template>
   <v-container fluid class="fill-height primary lighten-4">
     <v-row align="center" justify="center">
       <v-col cols="12" sm="10" md="8" lg="5" xl="4">
         <v-card class="elevation-12 rounded-lg">
-          <!-- ✅ 標題和圖標現在是動態的 -->
           <v-toolbar color="deep-purple" dark flat>
             <v-toolbar-title class="font-weight-medium">
               <v-icon left large>{{ pageIcon }}</v-icon>
@@ -14,7 +12,6 @@
 
          <v-card-text class="pa-5">
             <div v-if="!userStore.user" class="text-center my-5">
-              <!-- ✅ 提示文字也是動態的 -->
               <p class="text-subtitle-1">請先登入以使用{{ pageTitle }}。</p>
               <v-btn color="deep-purple" @click="goToLogin">
                 前往登入
@@ -49,16 +46,16 @@
                 </template>
               </v-select>
 
-                   <v-btn
+              <v-btn
                 color="deep-purple" 
                 block
                 x-large
                 @click="enterProject"
                 :disabled="!selectedProject || loadingProjects"
+                :loading="isValidating"
                 class="font-weight-bold"
               >
                 <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
-                <!-- ✅ 按鈕文字也是動態的 -->
                 進入 {{ selectedProjectDisplayName }} 的{{ pageTitle }}
               </v-btn>
 
@@ -84,7 +81,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { getProjectsBySystemPermission } from '@/api';
+import { getProjectsBySystemPermission, fetchSalesControlData } from '@/api';
 
 const router = useRouter();
 const route = useRoute();
@@ -94,60 +91,36 @@ const selectedProject = ref(null);
 const projectOptions = ref([]);
 const loadingProjects = ref(false);
 const error = ref('');
+const isValidating = ref(false); // 這個 ref 已經存在，我們只需要在 template 中使用它
 
-// --- ✅ 動態內容的核心邏輯 ---
-
-// 1. 獲取從 Home.vue 傳來的 viewMode 查詢參數
+// --- 動態內容的核心邏輯 (維持不變) ---
 const currentViewMode = computed(() => route.query.viewMode || 'sales');
-
-// 2. 根據 viewMode 動態生成頁面標題
-const pageTitle = computed(() => {
-  if (currentViewMode.value === 'quote') {
-    return '報價系統';
-  }
-  return '銷控系統';
-});
-
-// 3. 根據 viewMode 動態生成頁面圖標
-const pageIcon = computed(() => {
-  if (currentViewMode.value === 'quote') {
-    return 'mdi-currency-usd';
-  }
-  return 'mdi-table-edit';
-});
-
-// --- 已有邏輯的適配修改 ---
+const pageTitle = computed(() => currentViewMode.value === 'quote' ? '報價系統' : '銷控系統');
+const pageIcon = computed(() => currentViewMode.value === 'quote' ? 'mdi-currency-usd' : 'mdi-table-edit');
 
 const selectedProjectDisplayName = computed(() => {
   const project = projectOptions.value.find(p => p.value === selectedProject.value);
   return project ? project.text : '建案';
 });
 
+// --- 函式邏輯維持不變 ---
 async function loadProjectsForSystem() {
   if (!userStore.user || !userStore.user.key) {
     error.value = '無法獲取用戶資訊，請重新登入。';
     return;
   }
-
   loadingProjects.value = true;
   error.value = '';
   projectOptions.value = [];
   selectedProject.value = null;
-
   try {
-    // ✅ 使用動態的 pageTitle.value 來獲取對應系統的權限
     const systemNameForPermission = pageTitle.value;
-    console.log(`[SalesControlSystemEntry] Loading projects for user: ${userStore.user.key}, system: ${systemNameForPermission}`);
-    
     const response = await getProjectsBySystemPermission(userStore.user.key, systemNameForPermission);
-    console.log('[SalesControlSystemEntry] API response for projects:', response);
-
     if (response.status === 'success' && Array.isArray(response.projects)) {
       projectOptions.value = response.projects.map(p => ({
         text: p.text || p.value,
         value: p.value
       }));
-
       if (projectOptions.value.length > 0) {
         const lastSelectedProjectName = userStore.user.projectName;
         if (lastSelectedProjectName && projectOptions.value.some(p => p.value === lastSelectedProjectName)) {
@@ -155,7 +128,6 @@ async function loadProjectsForSystem() {
         } else {
           selectedProject.value = projectOptions.value[0].value;
         }
-        console.log(`[SalesControlSystemEntry] Selected project: ${selectedProject.value}`);
       } else {
         error.value = `您在 "${systemNameForPermission}" 中沒有可操作的建案。`;
       }
@@ -164,27 +136,36 @@ async function loadProjectsForSystem() {
     }
   } catch (err) {
     error.value = `載入建案列表時發生網路或系統錯誤 (${systemNameForPermission})。`;
-    console.error('[SalesControlSystemEntry] Error loading projects:', err);
   } finally {
     loadingProjects.value = false;
   }
 }
 
-function enterProject() {
-  if (selectedProject.value) {
+async function enterProject() {
+  if (!selectedProject.value) {
+    error.value = '請先選擇一個建案。';
+    return;
+  }
+  isValidating.value = true;
+  error.value = '';
+  try {
+    const response = await fetchSalesControlData(selectedProject.value);
+    if (response.status !== 'success') {
+      throw new Error(response.message);
+    }
     userStore.setProjectName(selectedProject.value);
-    
-    // ✅ 根據 viewMode 動態決定要跳轉到的路由名稱
     const targetRouteName = currentViewMode.value === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-    
-    console.log(`[SalesControlSystemEntry] Entering project: ${selectedProject.value}. Mode: ${currentViewMode.value}. Target Route: ${targetRouteName}`);
-
     router.push({
       name: targetRouteName,
       params: {
         projectName: selectedProject.value
       }
     });
+  } catch (err) {
+    error.value = err.message || '無法進入建案，請稍後再試。';
+    console.error('[SalesControlSystemEntry] Error entering project:', err);
+  } finally {
+    isValidating.value = false;
   }
 }
 
@@ -196,16 +177,13 @@ function goHome() {
   router.push({ name: 'Home' });
 }
 
-// --- 生命週期鉤子 (不變) ---
 onMounted(() => {
-  console.log('[SalesControlSystemEntry] Component mounted. User:', JSON.parse(JSON.stringify(userStore.user)));
   if (userStore.user && userStore.user.key) {
     loadProjectsForSystem();
   }
 });
 
 watch(() => userStore.user, (newUser, oldUser) => {
-  console.log('[SalesControlSystemEntry] User store changed. New User:', JSON.parse(JSON.stringify(newUser)));
   if (newUser && newUser.key) {
     if (!oldUser || newUser.key !== oldUser.key) {
       loadProjectsForSystem();

@@ -2,7 +2,7 @@
   <v-app>
  
     <v-app-bar app dark class="custom-app-bar">
-      <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+     
       <v-btn icon @click="goHome" class="me-2">
         <v-icon>mdi-home</v-icon>
       </v-btn>
@@ -52,47 +52,7 @@
       </template>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="drawer" width="150" temporary>
-      <v-list nav dense>
-        <v-list-item 
-          prepend-icon="mdi-email" 
-          title="訊息中心" 
-          v-if="user"
-          @click="navigateTo('MessageCenter')">
-        </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-home-search" 
-          title="驗屋系統" 
-          v-if="userStore.hasPermission('驗屋系統')"
-          @click="navigateTo('InspectionSystem')">
-        </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-table-large" 
-          title="報價系統" 
-          v-if="userStore.hasPermission('報價系統')"
-          @click="goToEntryPage('quote')">
-        </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-chart-line" 
-          title="銷控系統" 
-          v-if="userStore.hasPermission('銷控系統')"
-          @click="goToEntryPage('sales')">
-        </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-account-group" 
-          title="客戶管理" 
-          v-if="userStore.hasPermission('客戶管理')"
-          @click="drawer = false">
-        </v-list-item>
-        <v-list-item 
-          prepend-icon="mdi-floor-plan" 
-          title="客變系統" 
-          v-if="userStore.hasPermission('客變系統')"
-          @click="drawer = false">
-        </v-list-item>
-      </v-list>
-    </v-navigation-drawer>
-
+    
     <v-main>
       <router-view
         @start-loading="loading = true"

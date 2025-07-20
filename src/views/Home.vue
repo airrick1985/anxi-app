@@ -4,6 +4,10 @@
     :style="containerStyle"
   >
    
+ <button class="icon-button" v-if="userStore.hasProjectPermission('訂閱管理', '安熙智慧')" @click="goToSubscriptionManagement">
+      <img src="/img/icons/subscription.png" alt="訂閱管理圖標" class="icon" />
+      <span class="text">訂閱管理</span>
+    </button>
 
     <button class="icon-button" v-if="userStore.hasPermission('驗屋系統')" @click="goToInspectionSystem">
       <img src="/img/icons/property.png" alt="驗屋系統圖標" class="icon" />
@@ -43,7 +47,11 @@
       <span class="text">發送訊息</span>
     </button>
 
-    
+     <button class="icon-button" v-if="userStore.hasPermission('訂閱查詢')" @click="goToSubscriptionStatus">
+      <img src="/img/icons/status.png" alt="訂閱查詢圖標" class="icon" />
+      <span class="text">訂閱查詢</span>
+    </button>
+
   </div>
 </template>
 
@@ -68,9 +76,16 @@ const goToInspectionSystem = () => {
 };
 
 const goToEntryPage = (mode) => {
-  console.log(`[Home.vue] Navigating to entry page with mode: ${mode}`); 
+  // 根據傳入的 mode，決定要跳轉到哪個路由
+  const targetRouteName = mode === 'quote' 
+    ? 'QuoteSystemEntry' // 如果是 quote，就跳到我們新建的報價系統入口
+    : 'SalesControlSystemEntry'; // 否則，跳到原本的銷控系統入口
+
+  console.log(`[Home.vue] Navigating to entry page with mode: ${mode}, target route: ${targetRouteName}`); 
+
   router.push({ 
-    name: 'SalesControlSystemEntry',
+    name: targetRouteName,
+    // 查詢參數 viewMode 依然保留，因為元件需要它來顯示正確的標題
     query: { viewMode: mode } 
   });
 };
@@ -90,6 +105,15 @@ const goToUserManagement = () => {
   router.push({ name: 'UserManagement' });
 };
 
+// ✅ 新增：導航到訂閱管理頁面的函式
+const goToSubscriptionManagement = () => {
+  router.push({ name: 'SubscriptionManagement' });
+};
+
+// ✅ 新增：導航到訂閱查詢頁面的函式
+const goToSubscriptionStatus = () => {
+  router.push({ name: 'SubscriptionStatus' });
+};
 
 </script>
 
