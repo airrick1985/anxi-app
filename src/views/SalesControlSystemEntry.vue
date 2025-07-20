@@ -46,18 +46,30 @@
                 </template>
               </v-select>
 
-              <v-btn
-                color="deep-purple" 
-                block
-                x-large
-                @click="enterProject"
-                :disabled="!selectedProject || loadingProjects"
-                :loading="isValidating"
-                class="font-weight-bold"
-              >
-                <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
-                進入 {{ selectedProjectDisplayName }} 的{{ pageTitle }}
-              </v-btn>
+         <v-btn
+  color="deep-purple" 
+  block
+  x-large
+  @click="enterProject"
+  :disabled="!selectedProject || loadingProjects"
+  :loading="isValidating"
+  class="font-weight-bold"
+>
+  <template v-if="!isValidating">
+    <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
+    進入 {{ selectedProjectDisplayName }} 的{{ pageTitle }}
+  </template>
+
+  <template v-slot:loader>
+    <v-progress-circular
+      indeterminate
+      size="24"
+      width="2"
+      class="me-2"
+    ></v-progress-circular>
+    <span>驗證中...</span>
+  </template>
+</v-btn>
 
               <v-alert v-if="error" type="error" dense class="mt-4">{{ error }}</v-alert>
              </div>

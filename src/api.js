@@ -728,6 +728,17 @@ export async function updateUserDetailsForAdmin(updatePayload) {
     return fetchPost({ action: 'update_user_details_for_admin', ...updatePayload }, USER_MANAGEMENT_API);
 }
 
+/**
+ * 獲取管理者可管理的人員列表 (姓名+電話)
+ * @param {string} adminKey - 管理員自己的手機號碼
+ * @returns {Promise<Array>} - 返回可管理人員的陣列
+ */
+export async function fetchManageableUsersForAdmin(adminKey) {
+    const result = await fetchPost({ action: 'get_manageable_users_for_admin', adminKey }, USER_MANAGEMENT_API);
+    return result.status === 'success' ? result.data : [];
+}
+
+
 // ===============================================
 // /  訂閱管理系統 API
 // ===============================================
