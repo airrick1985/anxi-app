@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.134",
+  "version": "0.0.135",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
@@ -41,6 +41,7 @@
     "vue-good-table-next": "^0.2.2",
     "vue-router": "^4.5.0",
     "vue-toastification": "^2.0.0-rc.5",
+    "vuedraggable": "^4.1.0",
     "vuetify": "^3.8.2",
     "xlsx": "^0.17.0"
   },
