@@ -50,7 +50,7 @@ const containerStyle = computed(() => ({
 const allButtons = ref([
   { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'project', permissionArgs: ['訂閱管理', '安熙智慧'], nav: { name: 'SubscriptionManagement' } },
   // ✅【核心修改】將 nav.name 從 'PersonnelManagement' 改回 'UserManagement'
-  { id: 'personnelManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
+  { id: 'UserManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
   { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
   { id: 'messageCenter', text: '訊息中心', icon: emailIcon, permissionType: 'loggedIn', nav: { name: 'MessageCenter' } },
   { id: 'sendMessage', text: '發送訊息', icon: sendEmailIcon, permissionType: 'getter', permissionArgs: ['canSendMessage'], nav: { name: 'SendMessage' } },
