@@ -14,7 +14,7 @@
           <v-card-text>
             <v-form @submit.prevent="submit">
 
-              <v-text-field v-model="key" label="手機號碼" required placeholder="請輸入註冊的手機號碼" type="tel"
+              <v-text-field v-model="key" label="手機號碼" required placeholder="請輸入註冊的手機號碼" type="text"
                 :rules="[v => !!v || '手機號碼為必填欄位']" class="mb-4" variant="solo" density="comfortable"
                 hide-details="auto" />
 
