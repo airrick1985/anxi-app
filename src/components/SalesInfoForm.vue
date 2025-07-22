@@ -240,8 +240,10 @@ const props = defineProps({
   statusOptions: { type: Array, default: () => [] },
   personnelOptions: { type: Array, default: () => [] },
   allParkingData: { type: Array, default: () => [] },
-  buyerInfoOptions: { type: Object, default: () => ({}) },
-  projectName: { type: String, required: true } 
+  projectName: { type: String, required: true },
+ 
+  contractTypeOptions: { type: Array, default: () => [] },
+  firstPurchaseOptions: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide']);
@@ -257,9 +259,6 @@ const editableData = computed({
   set: (newValue) => emit('update:modelValue', newValue)
 });
 
-const loadingOptions = ref(false);
-const contractTypeOptions = ref([]);
-const firstPurchaseOptions = ref([]);
 
 const houseBasePrice = computed(() => {
   return editableData.value?.['房屋底價'] || 0;
@@ -289,33 +288,13 @@ const loadingCounties = ref(false);
 const loadingMailingTowns = ref(false);
 const loadingPermanentTowns = ref(false);
 
-// ▼▼▼ 【合併後的 onMounted】 ▼▼▼
+
 onMounted(async () => {
-  // 1. 獲取銷售相關下拉選單的邏輯
-  if (!props.projectName) {
-    console.error("SalesInfoForm: 未提供 projectName prop，無法獲取下拉選項。");
-  } else {
-    loadingOptions.value = true;
-    try {
-      const res = await fetchSalesOptions(props.projectName);
-      if (res.status === 'success' && res.data) {
-        contractTypeOptions.value = res.data.contractTypes || [];
-        firstPurchaseOptions.value = res.data.firstPurchaseOptions || [];
-      } else {
-        console.error("無法獲取合約方式與首購選項:", res.message);
-      }
-    } catch (error) {
-      console.error("獲取銷售選項時出錯:", error);
-    } finally {
-      loadingOptions.value = false;
-    }
-  }
   
-  // 2. 獲取地址相關下拉選單並初始化的邏輯
   await fetchCounties();
   await initializeAddress();
 });
-// ▲▲▲ 【合併後的 onMounted】 ▲▲▲
+
 
 
 const parseXml = (xmlString) => {

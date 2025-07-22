@@ -48,6 +48,8 @@
                             :project-name="projectName"
                             :all-parking-data="allData['車位'] || []"
                             @request-open-slide="$emit('request-open-slide')"
+                            :contract-type-options="contractTypeOptions"
+                            :first-purchase-options="firstPurchaseOptions"
                         />
                     </template>
                     <template v-else>
@@ -391,6 +393,18 @@ const props = defineProps({
   projectName: { type: String, required: true }, 
 });
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
+
+// 新增 computed 屬性來從 allData 提取選項
+const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []);
+
+const contractTypeOptions = computed(() => {
+    return [...new Set(salesOptionsData.value.map(item => item['合約方式']).filter(Boolean))]
+});
+
+const firstPurchaseOptions = computed(() => {
+    return [...new Set(salesOptionsData.value.map(item => item['是否首購']).filter(Boolean))]
+});
+
 
 // 定義所有 ref 狀態
 const tab = ref('info');
