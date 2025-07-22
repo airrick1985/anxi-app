@@ -839,3 +839,78 @@ export async function updateParkingLotDetails(payload) {
     ...payload
   }, SALES_API);
 }
+
+/**
+ * ===============================================
+ * /  ✅ 新增：銷控資料更新 API
+ * ===============================================
+ */
+
+/**
+ * 請求後端產生並下載指定的 Excel 工作表
+ * @param {string} projectName 建案名稱
+ * @param {Array<string>} sheetNames 要下載的工作表名稱陣列
+ * @returns {Promise<object>} API 響應
+ */
+export async function downloadSheetsAsExcel(projectName, sheetNames) {
+  console.log(`[api.js] downloadSheetsAsExcel called for project: ${projectName}, sheets: ${sheetNames}`);
+  if (!projectName || !sheetNames || sheetNames.length === 0) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 downloadSheetsAsExcel 時缺少參數。' });
+  }
+  return fetchPost({
+    action: 'download_sheets_as_excel',
+    projectName,
+    sheetNames, // 確保這個 key 是 'sheetNames'
+    token: 'anxi111003'
+  }, SALES_API);
+}
+/**
+ * 上傳 Excel 檔案以覆蓋線上資料
+ * @param {string} projectName 建案名稱
+ * @param {string} fileId 上傳到 Google Drive 後的檔案 ID
+ * @returns {Promise<object>} API 響應
+ */
+export async function uploadExcelToOverwrite(projectName, fileId) {
+    console.log(`[api.js] uploadExcelToOverwrite called for project: ${projectName}`);
+    if (!projectName || !fileId) {
+        return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadExcelToOverwrite 時缺少參數。' });
+    }
+    // 注意：這個 action 可能會執行很久，前端需要有良好的等待提示
+    return fetchPost({
+        action: 'upload_excel_to_overwrite',
+        projectName,
+        fileId,
+        token: 'anxi111003'
+    }, SALES_API);
+}
+
+/**
+ * ✅ 新版：上傳檔案到後端暫存區 (給「更新銷控」功能專用)
+ * @param {string} filename 檔名
+ * @param {string} base64 Base64 編碼的檔案內容
+ * @returns {Promise<object>} API 響應，包含 fileId
+ */
+export async function uploadFile(filename, base64) {
+    console.log(`[api.js] uploadFile (for overwrite) called with filename: ${filename}`);
+    // 這個 action 我們明確地讓它走銷售系統的 API 端點
+    return fetchPost({ 
+        action: 'upload_excel_for_overwrite', // <--- 使用新的 action
+        filename, 
+        base64, 
+        token: 'anxi111003' 
+    }, SALES_API); // <--- 使用 SALES_API
+}
+
+/**
+ * 請求後端備份當前的銷控 SpreadSheet
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function backupSpreadsheet(projectName) {
+    console.log(`[api.js] backupSpreadsheet called for project: ${projectName}`);
+    return fetchPost({
+        action: 'backup_spreadsheet',
+        projectName,
+        token: 'anxi111003'
+    }, SALES_API);
+}

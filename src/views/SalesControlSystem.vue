@@ -16,6 +16,18 @@
           title="查看報價單"
         ></v-btn>
       </v-badge>
+
+      <v-btn
+       v-if="currentViewMode === 'sales'"
+    color="info"
+    variant="tonal"
+    class="ml-4"
+    @click="isUpdateControlDialogVisible = true"
+    
+  >
+    更新銷控
+  </v-btn>
+
 <v-btn
   color="info"
   variant="tonal"
@@ -100,7 +112,18 @@
         <span>報價單</span>
       </v-btn>
 
-  <v-btn @click="handleOpenSlideViewer" :loading="isLoadingSlide"> <v-icon>mdi-parking</v-icon>
+     
+  <v-btn
+   v-if="currentViewMode === 'sales'"
+    @click="isUpdateControlDialogVisible = true"
+    prepend-icon="mdi-database-arrow-up-outline"
+  >更新銷控
+  </v-btn>
+
+  <v-btn 
+  @click="handleOpenSlideViewer" 
+  :loading="isLoadingSlide"> 
+  <v-icon>mdi-parking</v-icon>
     <span>車位表</span>
   </v-btn>
 
@@ -205,6 +228,10 @@
     <ParkingControl @close="isParkingControlDialogVisible = false" />
 </v-dialog>
 
+<v-dialog v-model="isUpdateControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+    <UpdateControl @close="isUpdateControlDialogVisible = false" />
+</v-dialog>
+
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -225,9 +252,14 @@ import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
 import ParkingControl from './ParkingControl.vue'; 
+import UpdateControl from './UpdateControl.vue'; 
+
 
 // === ref 來控制 ParkingControl Dialog 的開關 ===
 const isParkingControlDialogVisible = ref(false);
+
+// === 新增一個 ref 來控制 UpdateControl Dialog 的開關 ===
+const isUpdateControlDialogVisible = ref(false);
 
 // 取得 isMobile
 const { mobile: isMobile } = useDisplay();
