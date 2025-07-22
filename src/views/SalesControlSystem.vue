@@ -143,6 +143,15 @@
       </v-btn>
       <v-toolbar-title>車位表</v-toolbar-title>
       <v-spacer></v-spacer>
+
+     <v-btn 
+   v-if="currentViewMode === 'sales'"
+   prepend-icon="mdi-table-edit"
+   @click="isParkingControlDialogVisible = true"
+   variant="tonal"
+ >
+   車位銷控
+ </v-btn>
       
       <v-btn 
         icon 
@@ -192,6 +201,10 @@
   </v-card>
 </v-dialog>
 
+<v-dialog v-model="isParkingControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+    <ParkingControl @close="isParkingControlDialogVisible = false" />
+</v-dialog>
+
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -210,8 +223,11 @@ import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
-// 匯入 useDisplay
 import { useDisplay } from 'vuetify';
+import ParkingControl from './ParkingControl.vue'; 
+
+// === ref 來控制 ParkingControl Dialog 的開關 ===
+const isParkingControlDialogVisible = ref(false);
 
 // 取得 isMobile
 const { mobile: isMobile } = useDisplay();

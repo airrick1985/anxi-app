@@ -544,20 +544,21 @@ export async function generatePaymentSchedule(payload) {
 /**
  * 從指定的 Google Drive 資料夾 URL 中獲取唯一的 SVG 檔案內容
  * @param {string} folderUrl Google Drive 的資料夾連結
- * @returns {Promise<object>} API 響應，成功時 data 中應包含 svgContent
+ * @param {string} projectName 建案名稱 (後端驗證需要)
+ * @returns {Promise<object>} API 響應
  */
-export async function fetchSvgFromDrive(folderUrl) {
-  console.log(`[api.js] fetchSvgFromDrive called with folderUrl: ${folderUrl}`);
-  if (!folderUrl) {
-    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSvgFromDrive 時缺少 folderUrl。' });
+export async function fetchSvgFromDrive(folderUrl, projectName) {
+  console.log(`[api.js] fetchSvgFromDrive called with folderUrl: ${folderUrl}, projectName: ${projectName}`);
+  if (!folderUrl || !projectName) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSvgFromDrive 時缺少 folderUrl 或 projectName。' });
   }
 
-  // 我們可以將這個功能歸類在 SALES_API 或一個新的專用端點
-  // 這裡暫時使用 SALES_API
+  // 將 projectName 一起傳入 payload
   return fetchPost({
-    action: 'get_svg_from_folder', // 這是我們要在 GAS 中新增的 action
+    action: 'get_svg_from_folder',
     folderUrl: folderUrl,
-    token: 'anxi111003' // 遵循專案慣例
+    projectName: projectName, // <--- 關鍵新增
+    token: 'anxi111003'
   }, SALES_API);
 }
 
@@ -797,4 +798,44 @@ export async function fetchMySubscriptionStatus(userKey) {
     const result = await fetchPost({ action: 'get_my_subscription_status', userKey }, SUBSCRIPTION_API);
     // 如果成功，回傳 data 物件，否則回傳空物件以避免前端出錯
     return result.status === 'success' ? result.data : {};
+}
+
+/**
+ * ===============================================
+ * /  ✅ 新增：車位銷控管理 API
+ * ===============================================
+ */
+
+/**
+ * 獲取指定建案所有的「車位」詳細資料，用於銷控管理表格。
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function fetchParkingLotDetails(projectName) {
+  console.log(`[api.js] fetchParkingLotDetails called with projectName: ${projectName}`);
+  if (!projectName) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchParkingLotDetails 時缺少 projectName。' });
+  }
+  return fetchPost({
+    action: 'get_parking_lot_details',
+    projectName,
+    token: 'anxi111003' // 遵循專案慣例
+  }, SALES_API); 
+}
+
+/**
+ * 更新單筆車位的銷控資料 (例如：買方姓名、備註、後台狀態)
+ * @param {object} payload 包含 projectName, key (車位編號), 和 data (要更新的資料物件)
+ * @returns {Promise<object>} API 響應
+ */
+export async function updateParkingLotDetails(payload) {
+  console.log('[api.js] updateParkingLotDetails called with payload:', payload);
+  if (!payload.projectName || !payload.key || !payload.data) {
+      return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 updateParkingLotDetails 時缺少參數。' });
+  }
+  return fetchPost({
+    action: 'update_parking_lot_details',
+    token: 'anxi111003', // 遵循專案慣例
+    ...payload
+  }, SALES_API);
 }

@@ -14,36 +14,36 @@
     <div v-else class="d-flex flex-column fill-height">
         <div class="toolbar">
              <v-btn-toggle v-model="tool" color="primary" variant="outlined" density="compact" mandatory>
-                <v-btn value="pan">
-                    <v-icon>mdi-cursor-move</v-icon>
-                    <span class="d-none d-sm-inline ml-2">拖曳/縮放</span>
-                </v-btn>
-                <v-btn value="calibrate">
-                    <v-icon>mdi-ruler-square</v-icon>
-                    <span class="d-none d-sm-inline ml-2">校準</span>
-                </v-btn>
-                <v-btn value="distance" :disabled="!isCalibrated">
-                    <v-icon>mdi-ruler</v-icon>
-                    <span class="d-none d-sm-inline ml-2">測量距離</span>
-                </v-btn>
-                <v-btn value="area" :disabled="!isCalibrated">
-                    <v-icon>mdi-texture-box</v-icon>
-                    <span class="d-none d-sm-inline ml-2">測量面積</span>
-                </v-btn>
-            </v-btn-toggle>
-            <v-spacer></v-spacer>
-            <v-btn v-if="hasMeasurements" @click="clearMeasurements" variant="text" color="error" size="small">
-                <v-icon left>mdi-delete-sweep</v-icon>
-                清除標記
-            </v-btn>
-            <div v-if="isCalibrated" class="scale-info text-success">
-                <v-icon color="success">mdi-check-circle</v-icon>
-                <span class="ml-1">已校準</span>
-            </div>
-             <div v-else class="scale-info text-warning">
-                <v-icon color="warning">mdi-alert</v-icon>
-                <span class="ml-1">未校準</span>
-            </div>
+                 <v-btn value="pan">
+                     <v-icon>mdi-cursor-move</v-icon>
+                     <span class="d-none d-sm-inline ml-2">拖曳/縮放</span>
+                 </v-btn>
+                 <v-btn value="calibrate">
+                     <v-icon>mdi-ruler-square</v-icon>
+                     <span class="d-none d-sm-inline ml-2">校準</span>
+                 </v-btn>
+                 <v-btn value="distance" :disabled="!isCalibrated">
+                     <v-icon>mdi-ruler</v-icon>
+                     <span class="d-none d-sm-inline ml-2">測量距離</span>
+                 </v-btn>
+                 <v-btn value="area" :disabled="!isCalibrated">
+                     <v-icon>mdi-texture-box</v-icon>
+                     <span class="d-none d-sm-inline ml-2">測量面積</span>
+                 </v-btn>
+             </v-btn-toggle>
+             <v-spacer></v-spacer>
+             <v-btn v-if="hasMeasurements" @click="clearMeasurements" variant="text" color="error" size="small">
+                 <v-icon left>mdi-delete-sweep</v-icon>
+                 清除標記
+             </v-btn>
+             <div v-if="isCalibrated" class="scale-info text-success">
+                 <v-icon color="success">mdi-check-circle</v-icon>
+                 <span class="ml-1">已校準</span>
+             </div>
+              <div v-else class="scale-info text-warning">
+                 <v-icon color="warning">mdi-alert</v-icon>
+                 <span class="ml-1">未校準</span>
+             </div>
         </div>
         
         <div v-if="isCalibrating || isMeasuringDistance || isMeasuringArea || tool === 'pan'" class="action-prompt">
@@ -481,7 +481,10 @@ async function fetchSvgContent() {
     if (salesControlResponse.status !== 'success' || !salesControlResponse.data?.['銷控']) throw new Error('無法獲取銷控資料');
     const unitRow = salesControlResponse.data['銷控'].find(row => row['戶別'] === props.unitData['戶別']);
     if (!unitRow || !unitRow['平面圖SVG資料夾']) throw new Error(`找不到戶別 ${props.unitData['戶別']} 的平面圖資料夾`);
-    const svgResponse = await fetchSvgFromDrive(unitRow['平面圖SVG資料夾']);
+    
+    // ✅ 核心修正：在呼叫 fetchSvgFromDrive 時，傳入 props.projectName
+    const svgResponse = await fetchSvgFromDrive(unitRow['平面圖SVG資料夾'], props.projectName);
+
     if (svgResponse.status !== 'success' || !svgResponse.data?.svgContent) throw new Error(svgResponse.message || '獲取 SVG 內容失敗');
     
     const svgData = svgResponse.data.svgContent;
