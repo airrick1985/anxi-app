@@ -24,6 +24,15 @@
       </div>
       <v-spacer></v-spacer>
       <v-btn
+        color="teal"
+        variant="tonal"
+        class="mr-4"
+        @click="handleOpenActivityMessage"
+        title="活動訊息"
+      >
+        活動訊息
+      </v-btn>
+      <v-btn
         color="info"
         variant="tonal"
         @click="handleOpenSlideViewer"
@@ -159,6 +168,47 @@
       </v-card>
     </v-dialog>
     
+    <!-- 新增：活動訊息彈窗 -->
+    <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="teal" density="compact">
+          <v-btn icon dark @click="isActivityDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>活動訊息</v-toolbar-title>
+        </v-toolbar>
+        <div class="flex-grow-1" style="position: relative;">
+          <v-overlay
+            :model-value="isActivityLoading"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(0, 0, 0, 0.6)"
+          >
+            <div class="text-center">
+              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
+              <p class="mt-4 text-body-1">正在載入活動訊息...</p>
+            </div>
+          </v-overlay>
+          <div v-if="!isActivityLoading" class="fill-height">
+            <iframe
+              v-if="activitySlideEmbedUrl"
+              :src="activitySlideEmbedUrl"
+              frameborder="0"
+              width="100%"
+              height="100%"
+              allowfullscreen="true"
+              style="display: block;"
+            ></iframe>
+            <div v-else class="d-flex flex-column justify-center align-center fill-height">
+              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+              <p class="mt-4 text-h6 text-grey">無法載入活動訊息</p>
+              <p class="text-body-1 text-grey">請確認後台是否已設定活動訊息 SLIDE ID。</p>
+            </div>
+          </div>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
         <v-card-title class="d-flex justify-space-between align-center">
@@ -188,7 +238,14 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
-import { generateQuotePdf, fetchSalesControlData, fetchParkingList, fetchQuotePersonnelList, updateAndGetParkingSlide } from '@/api';
+import { 
+  generateQuotePdf, 
+  fetchSalesControlData, 
+  fetchParkingList, 
+  fetchQuotePersonnelList, 
+  updateAndGetParkingSlide,
+  fetchActivityMessageSlideId // 匯入新 API
+} from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
@@ -199,7 +256,6 @@ const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
 
-// ✅ 修正：從 useSlideViewer 解構出所有需要的變數，確保沒有重複宣告
 const { 
   isSlideDialogVisible, 
   slideEmbedUrl, 
@@ -209,7 +265,6 @@ const {
   refreshSlide
 } = useSlideViewer();
 
-// --- 所有其他 ref 和 computed ---
 const loading = ref(true);
 const error = ref(null);
 const projectName = route.params.projectName;
@@ -226,7 +281,17 @@ const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 
-// --- 計算引擎 ---
+// --- 新增：活動訊息相關狀態 ---
+const isActivityDialogVisible = ref(false);
+const activitySlideId = ref('');
+const isActivityLoading = ref(false);
+
+const activitySlideEmbedUrl = computed(() => {
+  if (!activitySlideId.value) return '';
+  return `https://docs.google.com/presentation/d/${activitySlideId.value}/embed?start=true&loop=true&delayms=3000`;
+});
+
+// --- 計算引擎 (維持不變) ---
 function applyRounding(value, method, precisionSpec) {
     const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
     if (!method) return Number(value.toFixed(precision));
@@ -374,13 +439,27 @@ async function handleGenerateQuote() {
 
 // --- 其他所有函式 ---
 
-// ✅ 唯一的包裝函式，確保不會重複宣告
 function handleOpenSlideViewer() {
   openSlideViewer(quoteParkingSlideId.value);
 }
 
 function handleRefreshSlide() {
   refreshSlide('quote');
+}
+
+// --- 新增：處理活動訊息點擊事件 ---
+async function handleOpenActivityMessage() {
+  isActivityLoading.value = true;
+  isActivityDialogVisible.value = true;
+  activitySlideId.value = ''; // 重置舊的 ID
+  try {
+    const slideId = await fetchActivityMessageSlideId(projectName);
+    activitySlideId.value = slideId;
+  } catch (err) {
+    console.error('獲取活動訊息失敗:', err);
+  } finally {
+    isActivityLoading.value = false;
+  }
 }
 
 const showPackageDealColumns = computed(() => {
@@ -409,7 +488,7 @@ const formatNumber = (val, frac = 2) => {
 onMounted(async () => {
     loading.value = true;
     
-    updateAndGetParkingSlide(projectName.value, 'quote').catch(err => {
+    updateAndGetParkingSlide(projectName, 'quote').catch(err => {
       console.warn('背景更新報價模式車位表失敗:', err.message);
     });
 

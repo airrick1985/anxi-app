@@ -126,7 +126,7 @@ import { downloadSheetsAsExcel, uploadFile, uploadExcelToOverwrite, backupSpread
 const emit = defineEmits(['close']);
 const route = useRoute();
 const projectName = computed(() => route.params.projectName);
-const title = computed(() => `${projectName.value} | 更新銷控資訊`);
+const title = computed(() => `${projectName.value} | 修改銷控資料`);
 
 const availableSheets = ref([
   { label: '面積', value: '面積' },

@@ -3,7 +3,34 @@
     
     <div class="toolbar d-none d-md-flex">
       <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
+       <v-btn-toggle
+        v-model="displayType"
+        color="primary"
+        variant="outlined"
+        density="compact"
+        mandatory
+        class="ml-4"
+      >
+        <v-btn value="住家">住家</v-btn>
+        <v-btn value="店面">店面</v-btn>
+      </v-btn-toggle>
+      
       <v-spacer></v-spacer>
+
+      <!-- 修改：價格顯示切換器 (桌面版) -->
+      <v-btn-toggle
+        v-if="currentViewMode === 'sales'"
+        v-model="priceDisplayMode"
+        color="info"
+        variant="outlined"
+        density="compact"
+        mandatory
+        class="mr-4"
+      >
+        <v-btn value="list" size="small">表價</v-btn>
+        <v-btn value="floor" size="small">底價</v-btn>
+        <v-btn value="transaction" size="small">成交價</v-btn>
+      </v-btn-toggle>
 
       <v-badge
         :content="itemCount"
@@ -16,43 +43,43 @@
           title="查看報價單"
         ></v-btn>
       </v-badge>
+      
+      <v-btn
+        color="info"
+        variant="tonal"
+        class="ml-4"
+        @click="handleOpenSlideViewer" 
+        :loading="false" title="車位銷控"
+      >
+        車位銷控
+      </v-btn>
+
+            <!-- 新增：活動訊息按鈕 -->
+      <v-btn
+        color="info"
+        variant="tonal"
+        class="ml-4"
+        @click="handleOpenActivityMessage"
+        title="最新活動訊息"
+      >
+        活動訊息
+      </v-btn>
 
       <v-btn
-       v-if="currentViewMode === 'sales'"
-    color="info"
-    variant="tonal"
-    class="ml-4"
-    @click="isUpdateControlDialogVisible = true"
-    
-  >
-    更新銷控
-  </v-btn>
-
-<v-btn
-  color="info"
-  variant="tonal"
-  class="ml-4"
-  @click="handleOpenSlideViewer" 
-  :loading="false" title="車位表"
->
-  車位表
-</v-btn>
-
-      <v-btn-toggle
-        v-model="displayType"
-        color="primary"
-        variant="outlined"
-        density="compact"
-        mandatory
+        v-if="currentViewMode === 'sales'"
+        color="teal"
+        variant="tonal"
         class="ml-4"
+        @click="isUpdateControlDialogVisible = true"
+        title="修改面積底價資料"
       >
-        <v-btn value="住家">住家</v-btn>
-        <v-btn value="店面">店面</v-btn>
-      </v-btn-toggle>
+        修改資料
+      </v-btn>
+
+     
     </div>
 
    <div class="grid-wrapper">
-
     <div class="layout-grid">
       <div class="header-top-left"></div>
       <div ref="headerTopRef" class="header-top-container">
@@ -83,9 +110,9 @@
                 <span class="unit-per-price"></span>
               </template>
               <template v-else>
-                <span class="unit-total-price">{{ item.data['房屋總表價'] }} 萬</span>
+                <span class="unit-total-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
                 <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
-                <span class="unit-per-price">{{ item.data['房屋單價(表價)'] }} 萬/坪</span>
+                <span class="unit-per-price">{{ calculateUnitPrice(item.data) }} 萬/坪</span>
               </template>
             </div>
             <div v-else class="unit-card empty"></div>
@@ -95,7 +122,7 @@
     </div>
      </div>
 
-    <v-bottom-navigation
+   <v-bottom-navigation
       v-if="isMobile"
       :active="true"
       color="primary"
@@ -112,22 +139,14 @@
         <span>報價單</span>
       </v-btn>
 
-     
-  <v-btn
-   v-if="currentViewMode === 'sales'"
-    @click="isUpdateControlDialogVisible = true"
-    prepend-icon="mdi-database-arrow-up-outline"
-  >更新銷控
-  </v-btn>
+      <v-btn 
+        @click="handleOpenSlideViewer" 
+        :loading="isLoadingSlide"> 
+        <v-icon>mdi-parking</v-icon>
+        <span>車位表</span>
+      </v-btn>
 
-  <v-btn 
-  @click="handleOpenSlideViewer" 
-  :loading="isLoadingSlide"> 
-  <v-icon>mdi-parking</v-icon>
-    <span>車位表</span>
-  </v-btn>
-
-       <v-menu top>
+      <v-menu top>
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props">
             <v-icon>mdi-home-city-outline</v-icon>
@@ -140,6 +159,49 @@
           </v-list-item>
           <v-list-item @click="displayType = '店面'">
             <v-list-item-title>店面</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+      
+      <v-menu top v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props">
+            <v-icon>mdi-currency-usd</v-icon>
+            <span>{{ priceDisplayLabel }}</span>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item @click="priceDisplayMode = 'list'">
+            <v-list-item-title>顯示表價</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="priceDisplayMode = 'floor'">
+            <v-list-item-title>顯示底價</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="priceDisplayMode = 'transaction'">
+            <v-list-item-title>顯示成交價</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+
+      <v-menu top v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props">
+            <v-icon>mdi-dots-vertical</v-icon>
+            <span>更多</span>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item @click="handleOpenActivityMessage">
+            <template v-slot:prepend>
+              <v-icon>mdi-bullhorn-outline</v-icon>
+            </template>
+            <v-list-item-title>活動訊息</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="isUpdateControlDialogVisible = true">
+            <template v-slot:prepend>
+              <v-icon>mdi-database-refresh-outline</v-icon>
+            </template>
+            <v-list-item-title>修改資料</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
@@ -158,79 +220,111 @@
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
-<v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-  <v-card class="d-flex flex-column">
-    <v-toolbar dark color="primary" density="compact">
-      <v-btn icon dark @click="isSlideDialogVisible = false">
-        <v-icon>mdi-close</v-icon>
-      </v-btn>
-      <v-toolbar-title>車位表</v-toolbar-title>
-      <v-spacer></v-spacer>
-
-     <v-btn 
-   v-if="currentViewMode === 'sales'"
-   prepend-icon="mdi-table-edit"
-   @click="isParkingControlDialogVisible = true"
-   variant="tonal"
- >
-   車位銷控
- </v-btn>
-      
-      <v-btn 
-        icon 
-        dark 
-        @click="handleRefreshSlide"
-        :disabled="isLoadingSlide"
-      >
-        <v-icon>mdi-refresh</v-icon>
-      </v-btn>
-
-    </v-toolbar>
-
-    <div class="flex-grow-1" style="position: relative;">
-      <v-overlay
-        :model-value="isLoadingSlide"
-        class="align-center justify-center"
-        persistent
-        scrim="rgba(0, 0, 0, 0.6)"
-      >
-        <div class="text-center">
-          <v-progress-circular
-            indeterminate
-            color="#008cff"
-            size="64"
-          ></v-progress-circular>
-          <p class="mt-4 text-body-1 text-blcak">正在載入最新車位表...</p>
+    <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="primary" density="compact">
+          <v-btn icon dark @click="isSlideDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>車位表</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn 
+            v-if="currentViewMode === 'sales'"
+            prepend-icon="mdi-table-edit"
+            @click="isParkingControlDialogVisible = true"
+            variant="tonal"
+          >
+            車位銷控
+          </v-btn>
+          <v-btn 
+            icon 
+            dark 
+            @click="handleRefreshSlide"
+            :disabled="isLoadingSlide"
+          >
+            <v-icon>mdi-refresh</v-icon>
+          </v-btn>
+        </v-toolbar>
+        <div class="flex-grow-1" style="position: relative;">
+          <v-overlay
+            :model-value="isLoadingSlide"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(0, 0, 0, 0.6)"
+          >
+            <div class="text-center">
+              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
+              <p class="mt-4 text-body-1 text-blcak">正在載入最新車位表...</p>
+            </div>
+          </v-overlay>
+          <div v-if="isContentLoaded" class="fill-height">
+            <iframe
+              v-if="slideEmbedUrl"
+              :src="slideEmbedUrl"
+              frameborder="0"
+              width="100%"
+              height="100%"
+              allowfullscreen="true"
+              style="display: block;"
+            ></iframe>
+            <div v-else class="d-flex flex-column justify-center align-center fill-height">
+              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+              <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
+              <p class="text-body-1 text-grey">點擊右上角關閉按鈕，或手動重新整理。</p>
+            </div>
+          </div>
         </div>
-      </v-overlay>
-
-      <div v-if="isContentLoaded" class="fill-height">
-        <iframe
-          v-if="slideEmbedUrl"
-          :src="slideEmbedUrl"
-          frameborder="0"
-          width="100%"
-          height="100%"
-          allowfullscreen="true"
-          style="display: block;"
-        ></iframe>
-        <div v-else class="d-flex flex-column justify-center align-center fill-height">
-          <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
-          <p class="mt-4 text-h6 text-grey">無法載入車位表</p>
-          <p class="text-body-1 text-grey">點擊右上角關閉按鈕，或手動重新整理。</p>
+      </v-card>
+    </v-dialog>
+    
+    <!-- 新增：活動訊息彈窗 -->
+    <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="teal" density="compact">
+          <v-btn icon dark @click="isActivityDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>活動訊息</v-toolbar-title>
+        </v-toolbar>
+        <div class="flex-grow-1" style="position: relative;">
+          <v-overlay
+            :model-value="isActivityLoading"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(0, 0, 0, 0.6)"
+          >
+            <div class="text-center">
+              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
+              <p class="mt-4 text-body-1">正在載入活動訊息...</p>
+            </div>
+          </v-overlay>
+          <div v-if="!isActivityLoading" class="fill-height">
+            <iframe
+              v-if="activitySlideEmbedUrl"
+              :src="activitySlideEmbedUrl"
+              frameborder="0"
+              width="100%"
+              height="100%"
+              allowfullscreen="true"
+              style="display: block;"
+            ></iframe>
+            <div v-else class="d-flex flex-column justify-center align-center fill-height">
+              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
+              <p class="mt-4 text-h6 text-grey">無法載入活動訊息</p>
+              <p class="text-body-1 text-grey">請確認後台是否已設定活動訊息 SLIDE ID。</p>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </v-card>
-</v-dialog>
+      </v-card>
+    </v-dialog>
 
-<v-dialog v-model="isParkingControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-    <ParkingControl @close="isParkingControlDialogVisible = false" />
-</v-dialog>
+    <v-dialog v-model="isParkingControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+        <ParkingControl @close="isParkingControlDialogVisible = false" />
+    </v-dialog>
 
-<v-dialog v-model="isUpdateControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-    <UpdateControl @close="isUpdateControlDialogVisible = false" />
-</v-dialog>
+    <v-dialog v-model="isUpdateControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+        <UpdateControl @close="isUpdateControlDialogVisible = false" />
+    </v-dialog>
 
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
@@ -245,7 +339,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { fetchSalesControlData, updateAndGetParkingSlide } from '@/api';
+// --- 核心修改：在此處匯入新的 API 函式 ---
+import { fetchSalesControlData, updateAndGetParkingSlide, fetchActivityMessageSlideId } from '@/api';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -254,16 +349,9 @@ import { useDisplay } from 'vuetify';
 import ParkingControl from './ParkingControl.vue'; 
 import UpdateControl from './UpdateControl.vue'; 
 
-
-// === ref 來控制 ParkingControl Dialog 的開關 ===
 const isParkingControlDialogVisible = ref(false);
-
-// === 新增一個 ref 來控制 UpdateControl Dialog 的開關 ===
 const isUpdateControlDialogVisible = ref(false);
-
-// 取得 isMobile
 const { mobile: isMobile } = useDisplay();
-
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
@@ -288,6 +376,17 @@ const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const displayType = ref('住家');
 const parkingSlideId = ref('');
+const priceDisplayMode = ref('list');
+
+// --- 新增：活動訊息相關狀態 ---
+const isActivityDialogVisible = ref(false);
+const activitySlideId = ref('');
+const isActivityLoading = ref(false);
+
+const activitySlideEmbedUrl = computed(() => {
+  if (!activitySlideId.value) return '';
+  return `https://docs.google.com/presentation/d/${activitySlideId.value}/embed?start=true&loop=true&delayms=3000`;
+});
 
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => route.params.projectName);
@@ -393,6 +492,42 @@ const statusColorMap = computed(() => {
   return map;
 });
 
+const priceDisplayLabel = computed(() => {
+  if (priceDisplayMode.value === 'list') return '表價';
+  if (priceDisplayMode.value === 'floor') return '底價';
+  if (priceDisplayMode.value === 'transaction') return '成交價';
+  return '價格';
+});
+
+const getDisplayTotalPrice = (itemData) => {
+  if (currentViewMode.value !== 'sales') {
+    return itemData['房屋總表價'];
+  }
+  switch (priceDisplayMode.value) {
+    case 'floor':
+      return itemData['房屋總底價'] || itemData['房屋總表價'];
+    case 'transaction':
+      const canShowTransactionPrice = 
+        ['小訂', '補足', '簽約'].includes(itemData['銷控後台狀態']) &&
+        itemData['房屋成交價'];
+      return canShowTransactionPrice ? itemData['房屋成交價'] : itemData['房屋總表價'];
+    case 'list':
+    default:
+      return itemData['房屋總表價'];
+  }
+};
+
+const calculateUnitPrice = (itemData) => {
+  const priceToShow = getDisplayTotalPrice(itemData);
+  const totalPrice = parseFloat(priceToShow);
+  const area = parseFloat(itemData['房屋面積(坪)']);
+  if (isNaN(totalPrice) || isNaN(area) || area === 0) {
+    return '-';
+  }
+  const unitPrice = totalPrice / area;
+  return unitPrice.toFixed(1);
+};
+
 function handleScroll(event) {
   if (headerTopRef.value) headerTopRef.value.scrollLeft = event.target.scrollLeft;
   if (headerLeftRef.value) headerLeftRef.value.scrollTop = event.target.scrollTop;
@@ -407,14 +542,12 @@ function openUnitDetail(unitData) {
 async function fetchData() {
   loading.value = true;
   error.value = null;
-
   updateAndGetParkingSlide(projectName.value, 'sales').catch(err => {
       console.warn('背景更新銷控模式車位表失敗:', err.message);
   });
   updateAndGetParkingSlide(projectName.value, 'quote').catch(err => {
       console.warn('背景更新報價模式車位表失敗:', err.message);
   });
-  
   try {
     const response = await fetchSalesControlData(projectName.value);
     if (response.status === 'success') {
@@ -447,13 +580,29 @@ function handleOpenSlideViewer() {
 }
 
 function handleRefreshSlide() {
-  // 呼叫新的 refreshSlide 函式，並傳入當前的模式
   refreshSlide(currentViewMode.value);
+}
+
+// --- 新增：處理活動訊息點擊事件 ---
+async function handleOpenActivityMessage() {
+  isActivityLoading.value = true;
+  isActivityDialogVisible.value = true;
+  activitySlideId.value = ''; // 重置舊的 ID
+  try {
+    const slideId = await fetchActivityMessageSlideId(projectName.value);
+    activitySlideId.value = slideId;
+  } catch (err) {
+    console.error('獲取活動訊息失敗:', err);
+    // 可選：在此處顯示錯誤訊息給用戶
+  } finally {
+    isActivityLoading.value = false;
+  }
 }
 
 </script>
 
 <style scoped>
+/* (您的 CSS 樣式維持不變) */
 .sales-control-page {
   height: calc(100vh - 56px);
   background-color: #f0f2f5;
@@ -462,17 +611,14 @@ function handleRefreshSlide() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* 為手機版底部導覽列預留更多空間 */
   padding-bottom: 20px; 
 }
-
 .grid-wrapper {
-  flex-grow: 1;          /* 讓它填滿父層剩餘的垂直空間 */
-  display: flex;         /* 使用 flex 佈局 */
-  justify-content: center; /* 將其唯一的子項目（.layout-grid）水平置中 */
-  overflow: hidden;      /* 隱藏任何可能超出的滾動條 */
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
 }
-
 .toolbar {
   display: flex;
   align-items: center;
@@ -485,16 +631,12 @@ function handleRefreshSlide() {
   color: #37474f;
 }
 .layout-grid {
-  /* flex-grow: 1;  <-- 移除這一行，讓它不再填滿寬度 */
   display: grid;
   grid-template-columns: 0px 40px 1fr;
   grid-template-rows: 50px 1fr;
   overflow: hidden;
-  
-  /* 加上最大寬度限制 */
-  max-width: 95vw; /* 例如，最大寬度不超過螢幕的 95% */
+  max-width: 95vw;
 }
-
 .header-top-left {
   grid-column: 2;
   grid-row: 1;
@@ -703,19 +845,11 @@ function handleRefreshSlide() {
   background-color: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-
-  /* 總高度 = 預設 56px + 想要的底部空間 20px */
   height: calc(56px + 20px) !important; 
-  
-  /* 在內部增加與額外高度相同的 padding，將按鈕向上推 */
   padding-bottom: 20px !important; 
 }
 
-/* 確保按鈕內的文字可見 */
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
 }
-
-
-
 </style>

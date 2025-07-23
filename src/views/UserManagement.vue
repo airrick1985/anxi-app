@@ -6,11 +6,15 @@
           <v-icon left>mdi-account-cog</v-icon>
           人員管理
         </v-toolbar-title>
+        <v-spacer></v-spacer>
+        <v-btn icon :loading="loading" @click="loadInitialData">
+          <v-icon>mdi-refresh</v-icon>
+        </v-btn>
       </v-toolbar>
 
-            <v-card-text>
+      <v-card-text>
         <v-row align="start">
-                    <v-col cols="12" md="6">
+          <v-col cols="12" md="6">
             <v-select
               v-model="selectedUserPhone"
               :items="manageableUsers"
@@ -30,7 +34,7 @@
               </template>
             </v-select>
           </v-col>
-                    <v-col cols="12" md="6">
+          <v-col cols="12" md="6">
             <v-text-field
               v-model="searchPhone"
               label="或輸入手機號碼查詢 / 新增"
@@ -52,7 +56,7 @@
       
       <v-divider v-if="targetUser"></v-divider>
 
-            <div v-if="isEditingUser">
+      <div v-if="isEditingUser">
         <v-card-title class="mt-4">
           <span v-if="isNewUser">新增人員：{{ targetUser.basicInfo.手機號碼 }}</span>
           <span v-else>編輯人員： {{ targetUser.basicInfo.NAME }} ({{ targetUser.basicInfo.手機號碼 }})</span>
@@ -106,12 +110,12 @@
         </v-card-actions>
       </div>
       
-            <div v-if="loadingDetails" class="text-center pa-10">
+      <div v-if="loadingDetails" class="text-center pa-10">
         <v-progress-circular indeterminate size="64" color="primary"></v-progress-circular>
         <p class="mt-4">正在載入人員資料...</p>
       </div>
 
-            <v-dialog v-model="showCreateUserDialog" persistent max-width="400">
+      <v-dialog v-model="showCreateUserDialog" persistent max-width="400">
         <v-card>
           <v-card-title>此號碼資料不存在</v-card-title>
           <v-card-text>
@@ -171,9 +175,17 @@ const rules = {
   required: [ value => !!value || '此欄位為必填項。' ],
 };
 
-onMounted(async () => {
+// --- 抽離出的共用函式 ---
+const loadInitialData = async () => {
   if (!adminKey.value) return;
   loading.value = true;
+  // 重置狀態以提供乾淨的刷新體驗
+  targetUser.value = null;
+  selectedUserPhone.value = null;
+  searchPhone.value = '';
+  errorMessage.value = '';
+  showErrorAlert.value = false;
+
   try {
     const [scope, users] = await Promise.all([
       fetchAdminScope(adminKey.value),
@@ -189,12 +201,14 @@ onMounted(async () => {
     allSystemFunctions.value = Array.from(systems).sort();
 
   } catch (error) {
-    errorMessage.value = `初始化頁面失敗: ${error.message}`;
+    errorMessage.value = `初始化或重新整理失敗: ${error.message}`;
     showErrorAlert.value = true;
   } finally {
     loading.value = false;
   }
-});
+};
+
+onMounted(loadInitialData);
 
 const adminCanAssign = (project, system) => {
   return adminScope.value[project]?.includes(system);
@@ -306,12 +320,9 @@ const handleSave = async () => {
         });
         if (result.status === 'success') {
             alert(isNewUser.value ? '新人員建立成功！' : '人員資料更新成功！');
-            targetUser.value = null; 
-            searchPhone.value = '';
-            selectedUserPhone.value = null;
             isNewUser.value = false;
-            // 重新載入可管理人員列表，以包含新建立的人員
-            await onMounted();
+            // 重新載入可管理人員列表
+            await loadInitialData();
         } else {
             throw new Error(result.message);
         }

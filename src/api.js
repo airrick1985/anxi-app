@@ -914,3 +914,19 @@ export async function backupSpreadsheet(projectName) {
         token: 'anxi111003'
     }, SALES_API);
 }
+
+/**
+ * 獲取活動訊息的 Google Slide ID
+ * @param {string} projectName - 建案名稱
+ */
+export async function fetchActivityMessageSlideId(projectName) {
+  const response = await fetchPost({
+    action: 'get_activity_message_slide_id',
+    projectName,
+    token: 'anxi111003'
+  }, SALES_API);
+  if (response.status === 'success') {
+    return response.data.slideId;
+  }
+  throw new Error(response.message || '無法獲取活動訊息 Slide ID。');
+}
