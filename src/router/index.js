@@ -16,7 +16,8 @@ const MessageDetail = () => import('@/views/MessageDetail.vue');
 const UserManagement = () => import('@/views/UserManagement.vue');
 const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue');
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
-
+const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
+const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 
 const routes = [
   { path: '/', redirect: '/home' }, // 調整：通常登入後會導向 /home
@@ -28,34 +29,46 @@ const routes = [
     component: InspectionSystem,
     meta: {
       requiresAuth: true,
-      requiredSystem: '驗屋系統'
+      requiredSystem: '驗屋系統',
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
   {
     path: '/inspection-record',
     name: 'InspectionRecord',
     component: InspectionRecord,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+ 
+      layout: DefaultLayout // 指定使用預設佈局
+
+
+    }
   },
   {
     path: '/inspection-overview',
     name: 'InspectionOverview',
     component: InspectionOverview,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+      layout: DefaultLayout // 指定使用預設佈局
+     }
   },
   {
     path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',
     component: InspectionDetail,
     props: true,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+      layout: DefaultLayout // 指定使用預設佈局
+     }
   },
   {
     path: '/inspection-record-table/:unitId',
     name: 'InspectionRecordTable',
     component: InspectionRecordTable,
     props: true,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+      layout: DefaultLayout // 指定使用預設佈局
+     }
   },
  {
     path: '/sales-control-entry',
@@ -63,7 +76,8 @@ const routes = [
     component: SalesControlSystemEntry,
     meta: { 
       requiresAuth: true, 
-      requiredSystem: '銷控系統' // 這裡正確地要求銷控系統權限
+      requiredSystem: '銷控系統', // 這裡正確地要求銷控系統權限
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
   // 2. 這是為報價系統新增的專屬入口
@@ -73,7 +87,8 @@ const routes = [
     component: SalesControlSystemEntry, // 指向的依然是同一個 Vue 元件
     meta: { 
       requiresAuth: true, 
-      requiredSystem: '報價系統' // 這裡正確地要求報價系統權限
+      requiredSystem: '報價系統', // 這裡正確地要求報價系統權限
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
   {
@@ -84,7 +99,9 @@ const routes = [
     meta: {
       requiresAuth: true,
       viewMode: 'sales',
-      requiredSystem: '銷控系統'
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout // 指定使用預設佈局
+      
     }
   },
   {
@@ -95,7 +112,8 @@ const routes = [
     meta: {
       requiresAuth: true,
       viewMode: 'quote',
-      requiredSystem: '報價系統'
+      requiredSystem: '報價系統',
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
   {
@@ -105,7 +123,8 @@ const routes = [
     props: true,
     meta: {
       requiresAuth: true,
-      requiredSystem: '報價系統'
+      requiredSystem: '報價系統',
+      
     }
   },
   {
@@ -115,7 +134,8 @@ const routes = [
     props: true,
     meta: {
       requiresAuth: true,
-      requiredSystem: '銷控系統'
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
   {
@@ -123,7 +143,8 @@ const routes = [
     name: 'QuoteSummary',
     component: () => import('@/views/QuoteSummary.vue'),
     meta: {
-      requiresAuth: true
+      requiresAuth: true,
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
 
@@ -132,14 +153,18 @@ const routes = [
     path: '/messages',
     name: 'MessageCenter',
     component: MessageCenter,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+            layout: DefaultLayout // 指定使用預設佈局
+     }
   },
   {
     path: '/message/:statusId',
     name: 'MessageDetail',
     component: MessageDetail,
     props: true, // 讓 statusId 可以作為 props 傳入
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true,
+            layout: DefaultLayout // 指定使用預設佈局 
+     }
   },
   {
     path: '/send-message',
@@ -147,7 +172,8 @@ const routes = [
     component: SendMessage,
     meta: {
       requiresAuth: true,
-      requiresPermission: 'canSendMessage' // 觸發我們在 store 中定義的 getter
+      requiresPermission: 'canSendMessage', 
+      layout: DefaultLayout // 指定使用預設佈局
     }
   },
 
@@ -157,7 +183,8 @@ const routes = [
         component: UserManagement,
         meta: {
             requiresAuth: true,
-            requiredSystem: '人員管理' 
+            requiredSystem: '人員管理',
+            layout: DefaultLayout // 指定使用預設佈局 
         }
     },
     // ✅ 新增訂閱管理頁面的路由
@@ -169,7 +196,9 @@ const routes = [
             requiresAuth: true,
             // 權限檢查：檢查使用者是否對「安熙智慧」建案擁有「訂閱管理」權限
             requiredSystem: '訂閱管理',
-            requiredProjectForSystem: '安熙智慧' // 我們可以新增一個 meta 屬性來處理這種特殊情況
+            requiredProjectForSystem: '安熙智慧',
+            layout: DefaultLayout // 指定使用預設佈局
+
         }
     },
 
@@ -181,7 +210,18 @@ const routes = [
     component: SubscriptionStatus, 
     meta: {
       requiresAuth: true,
-      requiredSystem: '訂閱查詢'
+      requiredSystem: '訂閱查詢',
+      layout: DefaultLayout // 指定使用預設佈局
+    }
+  },
+
+  {
+    path: '/booking/:projectId',
+    name: 'PublicBookingPage',
+    component: () => import('@/views/BookingPage.vue'), // 假設預約頁面元件路徑
+    props: true,
+    meta: { 
+      layout: PublicLayout // 指定使用公開佈局 (沒有 requiresAuth: true)
     }
   },
 

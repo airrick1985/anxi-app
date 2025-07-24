@@ -930,3 +930,103 @@ export async function fetchActivityMessageSlideId(projectName) {
   }
   throw new Error(response.message || '無法獲取活動訊息 Slide ID。');
 }
+
+
+// =============================================
+// ✅ 公開預約系統 API
+// =============================================
+
+/**
+ * 獲取預約頁面初始化資料 (棟別、設定等)
+ * @param {string} projectName 建案名稱
+ */
+export async function getBookingInitialData(projectName) {
+  // 注意：公開功能，理論上不需 token，但我們會在 proxy 層處理
+  return fetchPost({
+    action: 'get_booking_initial_data',
+    projectName: projectName,
+  }, INSPECTION_API); // 繼續使用您現有的 API 端點
+};
+/**
+ * 根據棟別獲取戶別列表
+ * @param {string} projectName 建案名稱
+ * @param {string} building 棟別
+ */
+export async function getUnitsByBuilding(projectName, building) {
+  return fetchPost({
+    action: 'get_units_by_building',
+    projectName: projectName,
+    building: building,
+  }, INSPECTION_API);
+};
+
+
+/**
+ * 檢查是否已有有效預約
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別
+ * @param {string} bookingType 預約項目 (e.g., '初驗')
+ */
+export async function checkExistingBooking(projectName, unitId, bookingType) {
+  return fetchPost({
+    action: 'check_existing_booking',
+    projectName: projectName,
+    unitId: unitId,
+    bookingType: bookingType,
+  }, INSPECTION_API);
+};
+
+/**
+ * 獲取可預約的日期和時段
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別
+ * @param {string} bookingType 預約項目
+ * @param {string} bookingMethod 驗屋方式  
+ */
+export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod) => { // ✅ 新增此參數
+  return fetchPost({
+    action: 'get_booking_slots',
+    projectName,
+    unitId,
+    bookingType,
+    bookingMethod, 
+  }, INSPECTION_API);
+};
+/**
+ * 儲存預約資料
+ * @param {string} projectName 建案名稱
+ * @param {object} bookingData 表單資料
+ */
+export const saveBooking = async (projectName, bookingData) => {
+  return fetchPost({
+    action: 'save_booking',
+    projectName,
+    bookingData,
+  }, INSPECTION_API);
+};
+
+/**
+ * 取消預約
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別
+ * @param {string} bookingType 預約項目
+ */
+export const cancelBooking = async (projectName, unitId, bookingType) => {
+  return fetchPost({
+    action: 'cancel_booking',
+    projectName,
+    unitId,
+    bookingType,
+  }, INSPECTION_API);
+};
+
+/**
+ * 一次性獲取所有可預約的戶別資料
+ * @param {string} projectName 建案名稱
+ */
+export const fetchAllUnitsForBooking = async (projectName) => {
+  return fetchPost({
+    action: 'get_all_units_for_booking',
+    projectName: projectName,
+  }, INSPECTION_API);
+};

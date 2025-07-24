@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.142",
+  "version": "0.0.143",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
@@ -30,6 +30,7 @@
     "axios": "^1.10.0",
     "fabric": "^5.5.2",
     "file-saver": "^2.0.5",
+    "html2canvas": "^1.4.1",
     "pinia": "^3.0.2",
     "pinia-plugin-persistedstate": "^4.3.0",
     "qrcode": "^1.5.4",
