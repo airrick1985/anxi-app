@@ -491,8 +491,20 @@ const handleGoBackAndRefresh = async () => {
 const submitBooking = async () => {
   isLoading.value = true;
   try {
-    const payload = { 戶別: finalBookingData.value.戶別, 姓名: finalBookingData.value.姓名, 電話: finalBookingData.value.電話, EMAIL: finalBookingData.value.EMAIL, 預約項目: finalBookingData.value.bookingType, 預約日期: finalBookingData.value.預約日期, 預約時段: finalBookingData.value.預約時段, 驗屋方式: finalBookingData.value.bookingMethod, 受託人姓名: '', 受託人電話: '' };
-    const res = await saveBooking(projectConfig.value.projectName, payload);
+const payload = {
+            戶別: finalBookingData.value.戶別,
+            門牌: finalBookingData.value.address,
+            姓名: finalBookingData.value.姓名,
+            電話: finalBookingData.value.電話,
+            EMAIL: finalBookingData.value.EMAIL,
+            預約項目: finalBookingData.value.bookingType,
+            預約日期: finalBookingData.value.預約日期,
+            預約時段: finalBookingData.value.預約時段,
+            驗屋方式: finalBookingData.value.bookingMethod,
+            受託人姓名: '',
+            受託人電話: '',
+        }    
+const res = await saveBooking(projectConfig.value.projectName, payload);
     if (res.status === 'success') {
       step.value = 4;
     } else {
