@@ -2,44 +2,41 @@
   <v-container>
     <v-row justify="center">
       <v-col cols="12" md="8" lg="6">
-        
-        <v-card class="mx-auto" :loading="isLoading">
-          <v-card-title class="text-h5 font-weight-bold text-center py-4">
-            富宇上城 後陽台門鎖更換預約
+                <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
+                    <v-card-title class="text-h5 font-weight-bold text-center py-4">
+            {{ projectConfig.pageTitle }}
           </v-card-title>
           
           <v-divider></v-divider>
 
-          <v-card-text v-if="step < 3">
-            <div class="prose">
-              <p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>
-              <p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>
-              <v-alert
-                color="#C51162"
-                type="warning"
-                class="mb-4"
-                border="start"
-                density="compact"
-              >
-                預約截止時間為 <strong>7月30日（星期二）晚間 23:00</strong>。
-                <br>
-                逾期未預約者，將需自行聯繫配合廠商安排施工，並須自付相關更換費用。
-              </v-alert>
-              <p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p>
-              <p>感謝您的配合與支持！</p>
-              <p class="contact-info">
-                富宇建設新竹辦公室 03-6588882
-              </p>
-            </div>
-          </v-card-text>
+                    <v-card-text v-if="step < 3">
+    <div class="prose">
+        <div v-html="projectConfig.intro.greeting"></div>
+        <div v-html="projectConfig.intro.body"></div>
+
+        <v-alert
+            v-if="projectConfig.intro.alert.show"
+            :color="projectConfig.intro.alert.color"
+            :type="projectConfig.intro.alert.type"
+            class="mb-4"
+            border="start"
+            density="compact"
+        >
+            <div v-html="projectConfig.intro.alert.text"></div>
+        </v-alert>
+
+        <div v-html="projectConfig.intro.footer"></div>
+        <div v-html="projectConfig.intro.contact"></div>
+    </div>
+</v-card-text>
           
           <v-divider v-if="step < 3"></v-divider>
 
-          <div v-if="step === 1 && !existingBookingInfo">
+                    <div v-if="step === 1 && !existingBookingInfo">
             <v-card-text>
               <h3 class="text-h6 mb-4">步驟一：請選擇您的預約項目與戶別</h3>
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
-                                <v-select
+                <v-select
                   v-model="formStep1.building"
                   :items="initialData.buildings"
                   label="棟別"
@@ -49,7 +46,7 @@
                   @update:model-value="onBuildingChange"
                 ></v-select>
 
-                                <v-select
+                <v-select
                   v-model="formStep1.unit"
                   :items="unitList"
                   item-title="unit"
@@ -72,14 +69,14 @@
                   no-data-text="請先選擇戶別"
                 ></v-select>
                 
-                 <v-select
-                   v-if="false" 
+                <v-select
+                  v-if="false"
                   v-model="formStep1.bookingMethod"
                   :items="['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司']"
-                 label="驗屋方式"
-                 variant="outlined"
-                :rules="[v => !!v || '驗屋方式為必填項']"
-                 :disabled="isLoading || !formStep1.unit"
+                  label="驗屋方式"
+                  variant="outlined"
+                  :rules="[v => !!v || '驗屋方式為必填項']"
+                  :disabled="isLoading || !formStep1.unit"
                 ></v-select>
 
                 <v-text-field
@@ -101,95 +98,40 @@
             </v-card-text>
             <v-card-actions class="pa-4">
               <v-spacer></v-spacer>
-              <v-btn
-                color="primary"
-                size="large"
-                @click="handleStep1Submit"
-                :loading="isLoading"
-                variant="elevated"
-              >
-                確認戶別，下一步
-              </v-btn>
+              <v-btn color="primary" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
             </v-card-actions>
           </div>
           
-    <div v-if="existingBookingInfo && step === 1">
-  <v-card-text>
-    <v-alert type="info" variant="tonal" border="start" class="mb-4">
-      <h3 class="text-h6 mb-2">您已完成預約</h3>
-      <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
-    </v-alert>
-    
-    <v-list lines="two" class="text-left" density="compact">
-      <v-list-item 
-        title="建案名稱" 
-        subtitle="富宇上城"
-        prepend-icon="mdi-domain"
-      ></v-list-item>
+                    <div v-if="existingBookingInfo && step === 1">
+            <v-card-text>
+              <v-alert type="info" variant="tonal" border="start" class="mb-4">
+                <h3 class="text-h6 mb-2">您已完成預約</h3>
+                <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
+              </v-alert>
+              <v-list lines="two" class="text-left" density="compact">
+                <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
+                <v-list-item title="戶別" :subtitle="existingBookingInfo['戶別']" prepend-icon="mdi-home-variant-outline"></v-list-item>
+                <v-list-item title="姓名" :subtitle="existingBookingInfo['姓名']" prepend-icon="mdi-account-outline"></v-list-item>
+                <v-list-item title="電話" :subtitle="existingBookingInfo['電話']" prepend-icon="mdi-phone-outline"></v-list-item>
+                <v-list-item title="EMAIL" :subtitle="existingBookingInfo['EMAIL']" prepend-icon="mdi-email-outline"></v-list-item>
+                <v-divider class="my-2"></v-divider>
+                <v-list-item title="預約項目" :subtitle="existingBookingInfo['預約項目']" prepend-icon="mdi-format-list-checks"></v-list-item>
+                <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo['預約日期'])" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+                <v-list-item title="預約時段" :subtitle="existingBookingInfo['預約時段']" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
+                <v-list-item title="預約狀態" :subtitle="existingBookingInfo['預約狀態']" prepend-icon="mdi-list-status">
+                  <template v-slot:subtitle="{ subtitle }">
+                    <v-chip color="info" size="small" label>{{ subtitle }}</v-chip>
+                  </template>
+                </v-list-item>
+              </v-list>
+            </v-card-text>
+            <v-card-actions class="pa-4">
+              <v-spacer></v-spacer>
+              <v-btn color="error" size="large" variant="elevated" @click="confirmCancelBooking" :loading="isCanceling">取消預約</v-btn>
+            </v-card-actions>
+          </div>
 
-      <v-list-item 
-        title="戶別" 
-        :subtitle="existingBookingInfo['戶別']"
-        prepend-icon="mdi-home-variant-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="姓名" 
-        :subtitle="existingBookingInfo['姓名']"
-        prepend-icon="mdi-account-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="電話" 
-        :subtitle="existingBookingInfo['電話']"
-        prepend-icon="mdi-phone-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="EMAIL" 
-        :subtitle="existingBookingInfo['EMAIL']"
-        prepend-icon="mdi-email-outline"
-      ></v-list-item>
-
-      <v-divider class="my-2"></v-divider>
-
-      <v-list-item 
-        title="預約項目" 
-        :subtitle="existingBookingInfo['預約項目']"
-        prepend-icon="mdi-format-list-checks"
-      ></v-list-item>
-
-    <v-list-item 
-  title="預約日期" 
-  :subtitle="formatDisplayDate(existingBookingInfo['預約日期'])"
-  prepend-icon="mdi-calendar-check-outline"
-></v-list-item>
-
-      <v-list-item 
-        title="預約時段" 
-        :subtitle="existingBookingInfo['預約時段']"
-        prepend-icon="mdi-clock-time-four-outline"
-      ></v-list-item>
-        
-      <v-list-item 
-        title="預約狀態"
-        :subtitle="existingBookingInfo['預約狀態']"
-        prepend-icon="mdi-list-status"
-      >
-        <template v-slot:subtitle="{ subtitle }">
-            <v-chip color="info" size="small" label>{{ subtitle }}</v-chip>
-        </template>
-      </v-list-item>
-    </v-list>
-  </v-card-text>
-
-  <v-card-actions class="pa-4">
-    <v-spacer></v-spacer>
-    <v-btn color="error" size="large" variant="elevated" @click="confirmCancelBooking" :loading="isCanceling">取消預約</v-btn>
-  </v-card-actions>
-</div>
-
-          <div v-if="step === 2">
+                    <div v-if="step === 2">
              <v-card-text>
                 <h3 class="text-h6 mb-4">步驟二：填寫您的聯絡資訊與預約時段</h3>
                 <v-form ref="step2Form" @submit.prevent="handleStep2Submit">
@@ -231,96 +173,57 @@
             </v-card-actions>
           </div>
 
-          <div v-if="step === 3">
+                    <div v-if="step === 3">
               <v-card-text>
                   <v-alert type="info" variant="tonal" border="start" class="mb-4">
                       <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
                       <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
                   </v-alert>
                   <v-list lines="two">
+                      <v-list-item title="建案名稱" :subtitle="projectConfig.projectName"></v-list-item>
                       <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
                       <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
                       <v-list-item title="電話" :subtitle="finalBookingData.電話"></v-list-item>
                       <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>
                       <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
-                        <v-list-item title="驗屋方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
                       <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
                       <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
                   </v-list>
               </v-card-text>
               <v-card-actions class="pa-4">
-              <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
+                  <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
                   <v-spacer></v-spacer>
                   <v-btn color="success" size="large" @click="submitBooking" :loading="isLoading" variant="elevated">送出預約</v-btn>
               </v-card-actions>
           </div>
 
- <div v-if="step === 4">
-  <v-card-text class="text-center py-8" ref="bookingResultCard">
-    <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
-    <h3 class="text-h5 mb-2">預約成功！</h3>
-    <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
-    
-    <v-list lines="two" class="text-left" density="compact">
-      <v-list-item 
-        title="建案名稱" 
-        subtitle="富宇上城"
-        prepend-icon="mdi-domain"
-      ></v-list-item>
-
-      <v-list-item 
-        title="戶別" 
-        :subtitle="finalBookingData.戶別"
-        prepend-icon="mdi-home-variant-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="姓名" 
-        :subtitle="finalBookingData.姓名"
-        prepend-icon="mdi-account-outline"
-      ></v-list-item>
-      
-      <v-list-item 
-        title="電話" 
-        :subtitle="finalBookingData.電話"
-        prepend-icon="mdi-phone-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="EMAIL" 
-        :subtitle="finalBookingData.EMAIL"
-        prepend-icon="mdi-email-outline"
-      ></v-list-item>
-
-      <v-divider class="my-2"></v-divider>
-
-      <v-list-item 
-        title="預約項目" 
-        :subtitle="finalBookingData.bookingType"
-        prepend-icon="mdi-format-list-checks"
-      ></v-list-item>
-
-      <v-list-item 
-        title="預約日期" 
-        :subtitle="finalBookingData.預約日期"
-        prepend-icon="mdi-calendar-check-outline"
-      ></v-list-item>
-
-      <v-list-item 
-        title="預約時段" 
-        :subtitle="finalBookingData.預約時段"
-        prepend-icon="mdi-clock-time-four-outline"
-      ></v-list-item>
-    </v-list>
-  </v-card-text>
-
-  <v-card-actions class="pa-4 d-flex justify-space-around">
-    <v-btn prepend-icon="mdi-camera" color="primary" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
-    <v-btn prepend-icon="mdi-calendar-plus" color="primary" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
-  </v-card-actions>
-</div>
-
+                    <div v-if="step === 4">
+              <v-card-text class="text-center py-8" ref="bookingResultCard">
+                  <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
+                  <h3 class="text-h5 mb-2">預約成功！</h3>
+                  <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
+                  <v-list lines="two" class="text-left" density="compact">
+                    <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
+                    <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
+                    <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
+                    <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
+                    <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
+                    <v-divider class="my-2"></v-divider>
+                    <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
+                    <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+                    <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
+                  </v-list>
+              </v-card-text>
+              <v-card-actions class="pa-4 d-flex justify-space-around">
+                  <v-btn prepend-icon="mdi-camera" color="primary" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
+                  <v-btn prepend-icon="mdi-calendar-plus" color="primary" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
+              </v-card-actions>
+          </div>
         </v-card>
+
+        <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent>
+          錯誤：找不到對應的建案設定，請確認網址是否正確。
+        </v-alert>
       </v-col>
     </v-row>
   </v-container>
@@ -333,6 +236,57 @@ import { getBookingInitialData, fetchAllUnitsForBooking, checkExistingBooking, g
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
 
+// --- 模組化核心：建案設定檔 ---
+const projectConfigurations = {
+  'fuyu56': {
+    projectName: '富宇上城',
+    pageTitle: '富宇上城 後陽台門鎖更換預約',
+    intro: {
+      greeting: '<p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>',
+      body: `
+        <p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>
+      `,
+         alert: {
+        show: true, // 控制是否顯示
+        color: '#C51162',
+        type: 'warning',
+        text: `
+          預約截止時間為 <strong>7月30日(星期二)晚間 23:00</strong>。
+          <br>
+          逾期未預約者，將需自行聯繫配合廠商安排施工，並須自付相關更換費用。
+        `
+      },
+      footer: `
+        <p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p>
+        <p>感謝您的配合與支持！</p>
+      `,
+      contact: '<p class="contact-info">富宇建設新竹辦公室 03-6588882</p>'
+    }
+  },
+  'fuyu1750': {
+    projectName: '富宇首馥',
+    pageTitle: '富宇首馥 貴賓驗屋預約',
+    intro: {
+      greeting: '<p>親愛的<strong>富宇首馥貴賓</strong>您好：</p>',
+      body: `
+        <p>歡迎使用「富宇首馥」線上驗屋預約系統，請依下方步驟完成您的預約。</p>
+      `,
+   
+      alert: {
+        show: true,
+        color: 'info',
+        type: 'info',
+        text: '請注意，此處的公告文字可以為每個建案完全客製化。'
+      },
+      footer: `
+        <p>如有任何疑問，請洽您的專屬服務人員。</p>
+      `,
+      contact: '<p class="contact-info">富宇建設 總部 04-2258-XXXX</p>'
+    }
+  }
+  // 未來可在此處擴充更多建案
+};
+
 const route = useRoute();
 const dateAdapter = useDate();
 const step1Form = ref(null);
@@ -344,6 +298,7 @@ const isLoading = ref(true);
 const isCanceling = ref(false);
 const step = ref(1);
 const projectId = ref('');
+const projectConfig = ref(null); // 存放當前建案的設定
 
 const initialData = ref({
   buildings: [],
@@ -380,7 +335,7 @@ const formStep2 = ref({
 });
 const existingBookingInfo = ref(null);
 
-// ✅ 這個函式是我們解決問題的關鍵，它能正確處理本地日期
+// --- Helper Functions ---
 const formatDateToYYYYMMDD = (date) => {
     if (!date) return '';
     const year = date.getFullYear();
@@ -402,7 +357,6 @@ const finalBookingData = computed(() => ({
     預約日期: formStep2.value.預約日期 ? dateAdapter.format(formStep2.value.預約日期, 'keyboardDate') : null,
 }));
 
-// ✅ [修改] 同樣使用正確的格式化函式，確保邏輯統一
 const availableTimeSlots = computed(() => {
     if (!formStep2.value.預約日期) return [];
     const dateKey = formatDateToYYYYMMDD(formStep2.value.預約日期);
@@ -410,8 +364,6 @@ const availableTimeSlots = computed(() => {
 });
 
 // --- Methods ---
-
-// ✅ [修改] 使用 formatDateToYYYYMMDD 取代 .toISOString()，解決時區問題
 const isDateAllowed = (date) => {
     const dateStr = formatDateToYYYYMMDD(date);
     return !bookingSlots.value.unavailableDates.includes(dateStr);
@@ -419,11 +371,14 @@ const isDateAllowed = (date) => {
 
 onMounted(async () => {
   projectId.value = route.params.projectId;
-  if (projectId.value === 'fuyu56') {
+  const config = projectConfigurations[projectId.value];
+
+  if (config) {
+    projectConfig.value = config;
     try {
         const [initialRes, unitsRes] = await Promise.all([
-            getBookingInitialData('富宇上城'),
-            fetchAllUnitsForBooking('富宇上城')
+            getBookingInitialData(projectConfig.value.projectName),
+            fetchAllUnitsForBooking(projectConfig.value.projectName)
         ]);
 
         if (initialRes && initialRes.status === 'success' && initialRes.data) {
@@ -445,8 +400,8 @@ onMounted(async () => {
       isLoading.value = false;
     }
   } else {
-     alert("無效的建案預約路徑");
-     isLoading.value = false;
+    alert("無效的建案預約路徑");
+    isLoading.value = false;
   }
 });
 
@@ -456,12 +411,10 @@ const onBuildingChange = (building) => {
   formStep1.value.bookingType = null;
   existingBookingInfo.value = null;
   step.value = 1;
-
   if (!building) {
     unitList.value = [];
     return;
   }
-  
   unitList.value = allUnitsData.value[building] || [];
 };
 
@@ -486,14 +439,14 @@ const handleStep1Submit = async () => {
     existingBookingInfo.value = null;
     try {
         if (initialData.value.checkDuplicate === 'ON') {
-            const res = await checkExistingBooking('富宇上城', formStep1.value.unit, formStep1.value.bookingType);
+            const res = await checkExistingBooking(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType);
             if (res.status === 'success' && res.data.status === 'found') {
                 existingBookingInfo.value = res.data.booking;
                 return;
             }
         }
         const res = await getBookingSlots(
-          '富宇上城', 
+          projectConfig.value.projectName, 
           formStep1.value.unit, 
           formStep1.value.bookingType, 
           formStep1.value.bookingMethod
@@ -518,24 +471,19 @@ const handleStep2Submit = async () => {
     step.value = 3;
 }
 
-// 處理「返回修改」並刷新時段資料的函式
 const handleGoBackAndRefresh = async () => {
     isLoading.value = true;
     try {
-        // 重新呼叫 API 以獲取最新的可預約時段
         const res = await getBookingSlots(
-            '富宇上城', 
+            projectConfig.value.projectName, 
             formStep1.value.unit, 
             formStep1.value.bookingType, 
             formStep1.value.bookingMethod
         );
-        
         if (res.status === 'success' && res.data) {
-            // 更新時段資料並返回步驟二
             bookingSlots.value = res.data;
             step.value = 2;
         } else {
-            // 如果刷新失敗，提示使用者並留在原頁面
             throw new Error(res.message || '無法刷新預約時段，請稍後再試');
         }
     } catch (error) {
@@ -545,7 +493,6 @@ const handleGoBackAndRefresh = async () => {
         isLoading.value = false;
     }
 }
-
 
 const submitBooking = async () => {
     isLoading.value = true;
@@ -562,7 +509,7 @@ const submitBooking = async () => {
             受託人姓名: '',
             受託人電話: '',
         }
-        const res = await saveBooking('富宇上城', payload);
+        const res = await saveBooking(projectConfig.value.projectName, payload);
         if (res.status === 'success') {
             step.value = 4;
         } else {
@@ -585,7 +532,7 @@ const confirmCancelBooking = () => {
 const handleCancelBooking = async () => {
     isCanceling.value = true;
     try {
-        const res = await cancelBooking('富宇上城', formStep1.value.unit, existingBookingInfo.value['預約項目']);
+        const res = await cancelBooking(projectConfig.value.projectName, formStep1.value.unit, existingBookingInfo.value['預約項目']);
         if (res.status === 'success') {
             alert("預約已成功取消！");
             existingBookingInfo.value = null;
@@ -607,7 +554,7 @@ const captureAndSave = async () => {
         const imageURL = canvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = imageURL;
-        link.download = `富宇上城預約紀錄_${finalBookingData.value.戶別}.png`;
+        link.download = `${projectConfig.value.projectName}預約紀錄_${finalBookingData.value.戶別}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -618,13 +565,13 @@ const captureAndSave = async () => {
 }
 
 const addToCalendar = () => {
-    const title = `富宇上城-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
+    const title = `${projectConfig.value.projectName}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
     const dateStr = finalBookingData.value.預約日期;
     const timeStr = finalBookingData.value.預約時段.split('-')[0].trim();
     const startDate = new Date(`${dateStr.replace(/\//g, '-')}T${timeStr}`);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
     const formatDate = (date) => date.toISOString().replace(/-|:|\.\d\d\d/g, "");
-    const googleCalendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatDate(startDate)}/${formatDate(endDate)}&details=${encodeURIComponent(`戶別：${finalBookingData.value.戶別}`)}&location=${encodeURIComponent('富宇上城')}`;
+    const googleCalendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatDate(startDate)}/${formatDate(endDate)}&details=${encodeURIComponent(`戶別：${finalBookingData.value.戶別}`)}&location=${encodeURIComponent(projectConfig.value.projectName)}`;
     window.open(googleCalendarUrl, '_blank');
 }
 </script>
