@@ -297,8 +297,8 @@ const projectConfigurations = {
         show: true,
         type: 'warning',
         color: '#C51162',
-        title: '預約即將截止',
-        text: `預約截止時間為 <strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，將需自行聯繫配合廠商安排施工，並須自付相關更換費用。`
+        title: '預約截止時間',
+        text: `<strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，將需自行聯繫配合廠商安排施工，並須自付相關更換費用。`
       },
       footer: `<p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p><p>感謝您的配合與支持！如有任何疑問，請洽：</p>`,
       contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
