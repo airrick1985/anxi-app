@@ -120,14 +120,14 @@
                 ></v-select>
                 
                 <v-select
-                  v-if="false"
-                  v-model="formStep1.bookingMethod"
-                  :items="['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司']"
-                  label="驗屋方式"
-                  variant="outlined"
-                  :rules="[v => !!v || '驗屋方式為必填項']"
-                  :disabled="isLoading || !formStep1.unit || !isBookingActive"
-                ></v-select>
+         v-if="projectConfig.showBookingMethod"
+         v-model="formStep1.bookingMethod"
+         :items="projectConfig.bookingMethodOptions"
+         label="驗屋方式"
+         variant="outlined"
+         :rules="[v => !!v || '驗屋方式為必填項']"
+         :disabled="isLoading || !formStep1.unit || !isBookingActive"
+        ></v-select>
 
                 <v-text-field
                   v-model="formStep1.address"
@@ -297,6 +297,8 @@ const projectConfigurations = {
     themeColor: '#005A9E',
     projectName: '富宇上城',
     pageTitle: '富宇上城 後陽台門鎖更換預約',
+    showBookingMethod: false, // 不需要顯示驗屋方式
+    bookingMethodOptions: ['屋主自驗'], //可新增選項
     logoUrl: '/anxi-app/img/logo_fuyu.png',
     intro: {
       greeting: '<p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>',
@@ -322,6 +324,8 @@ const projectConfigurations = {
     themeColor: '#005A9E',
     projectName: '富宇首馥',
     pageTitle: '富宇首馥 貴賓驗屋預約',
+    showBookingMethod: true, // 富宇首馥需要顯示
+    bookingMethodOptions: ['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司'], // 並提供完整的選項
     intro: {
       greeting: '<p>親愛的<strong>富宇首馥貴賓</strong>您好：</p>',
       body: '<p>歡迎使用「富宇首馥」線上驗屋預約系統，請依下方步驟完成您的預約。</p>',
