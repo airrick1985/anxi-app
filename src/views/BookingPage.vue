@@ -1,14 +1,18 @@
 <template>
-  <v-container>
-    <v-row justify="center">
-      <v-col cols="12" md="8" lg="6">
-                <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
-                    <v-card-title 
-            class="text-h5 font-weight-bold text-center py-4"
+ <v-container>
+  <v-row justify="center">
+   <v-col cols="12" md="8" lg="6">
+        <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
+          <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
+        </div>
+
+    <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
+               <v-card-title 
+            class="text-h5 font-weight-bold text-center py-2"
             :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
           >
-            {{ projectConfig.pageTitle }}
-          </v-card-title>
+      {{ projectConfig.pageTitle }}
+     </v-card-title>
           
           <v-divider></v-divider>
 
@@ -80,6 +84,8 @@
             <v-card-text>
               <h3 class="text-h6 mb-4">步驟一：請選擇您的預約項目與戶別</h3>
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
+
+              
                 <v-select
                   v-model="formStep1.building"
                   :items="initialData.buildings"
@@ -131,18 +137,19 @@
                   disabled
                 ></v-text-field>
                  
-                <v-text-field
-                  v-model="formStep1.idNumber"
-                  label="輸入身分證字號 (非必填)"
-                  variant="outlined"
-                  :disabled="isLoading || !isBookingActive"
-                ></v-text-field>
+                 <v-text-field
+         v-model="formStep1.idNumber"
+         :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
+                  :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
+         variant="outlined"
+         :disabled="isLoading || !isBookingActive"
+        ></v-text-field>
               </v-form>
             </v-card-text>
             <v-card-actions class="pa-4">
-              <v-spacer></v-spacer>
-              <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
-            </v-card-actions>
+       <v-spacer></v-spacer>
+       <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
+      </v-card-actions>
           </div>
           
                     <div v-if="existingBookingInfo && step === 1">
@@ -278,7 +285,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { getBookingInitialData, fetchAllUnitsForBooking, checkExistingBooking, getBookingSlots, saveBooking, cancelBooking } from '@/api';
+import { getBookingInitialData, fetchAllUnitsForBooking, checkExistingBooking, validateId, getBookingSlots, saveBooking, cancelBooking } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
 
@@ -290,6 +297,7 @@ const projectConfigurations = {
     themeColor: '#005A9E',
     projectName: '富宇上城',
     pageTitle: '富宇上城 後陽台門鎖更換預約',
+    logoUrl: '/anxi-app/img/logo_fuyu.png',
     intro: {
       greeting: '<p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>',
       body: '<p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>',
@@ -303,7 +311,7 @@ const projectConfigurations = {
       footer: `<p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p><p>感謝您的配合與支持！如有任何疑問，請洽：</p>`,
       contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
       faq: [
-        { q: "更換門鎖需要花費多久時間？", a: "預計每戶施工時間約為 60 分鐘。" },
+        { q: "更換門鎖需要花費多久時間？", a: "預計每戶施工時間約為 10-20 分鐘。" },
         { q: "如果預約時段臨時有事怎麼辦？", a: "您可直接取消預約後重新預約時間，或洽詢03-658-8882為您服務。" }
       ]
     }
@@ -341,13 +349,14 @@ const step1Form = ref(null);
 const step2Form = ref(null);
 const bookingResultCard = ref(null);
 
+// --- State ---
 const isLoading = ref(true);
 const isCanceling = ref(false);
 const step = ref(1);
 const projectId = ref('');
 const projectConfig = ref(null);
 
-const initialData = ref({ buildings: [], checkDuplicate: 'OFF', bookingTypes: [] });
+const initialData = ref({ buildings: [], checkDuplicate: 'OFF', bookingTypes: [], validateId: 'OFF' });
 const allUnitsData = ref({});
 const unitList = ref([]);
 const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [], timeSlotsByDate: {}, bookingOptions: {} });
@@ -355,6 +364,7 @@ const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMe
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null });
 const existingBookingInfo = ref(null);
 
+// --- Helper Functions  ---
 const formatDateToYYYYMMDD = (date) => {
   if (!date) return '';
   const year = date.getFullYear();
@@ -367,6 +377,7 @@ const formatDisplayDate = (dateString) => {
   return dateAdapter.format(new Date(dateString), 'keyboardDate');
 };
 
+// --- Computed Properties ---
 const isBookingActive = computed(() => {
   if (!projectConfig.value) return false;
   if (!projectConfig.value.isPublished) return false;
@@ -375,6 +386,12 @@ const isBookingActive = computed(() => {
   }
   return true;
 });
+
+// computed 方便判斷是否需要驗證
+const isIdValidationRequired = computed(() => {
+  return initialData.value.validateId === 'ON';
+});
+
 const finalBookingData = computed(() => ({
   ...formStep1.value,
   ...formStep2.value,
@@ -387,6 +404,7 @@ const availableTimeSlots = computed(() => {
   return bookingSlots.value.timeSlotsByDate[dateKey] || [];
 });
 
+// --- Methods ---
 const isDateAllowed = (date) => {
   const dateStr = formatDateToYYYYMMDD(date);
   return !bookingSlots.value.unavailableDates.includes(dateStr);
@@ -440,31 +458,50 @@ const onUnitChange = (unitValue) => {
 const onDateChange = () => { formStep2.value.預約時段 = null; };
 
 const handleStep1Submit = async () => {
-  const { valid } = await step1Form.value.validate();
-  if (!valid) return;
-  isLoading.value = true;
-  existingBookingInfo.value = null;
-  try {
-    if (initialData.value.checkDuplicate === 'ON') {
-      const res = await checkExistingBooking(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType);
-      if (res.status === 'success' && res.data.status === 'found') {
-        existingBookingInfo.value = res.data.booking;
-        return;
+ const { valid } = await step1Form.value.validate();
+ if (!valid) return;
+
+ isLoading.value = true;
+ existingBookingInfo.value = null;
+
+ try {
+    // --- 步驟 1: 身分驗證 (如果需要) ---
+    if (isIdValidationRequired.value) {
+      const validationRes = await validateId(
+        projectConfig.value.projectName,
+        formStep1.value.unit,
+        formStep1.value.idNumber
+      );
+      // 如果驗證失敗，就拋出錯誤並中斷流程
+      if (validationRes.status !== 'success') {
+        throw new Error(validationRes.message || '身分驗證失敗');
       }
     }
-    const res = await getBookingSlots(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType, formStep1.value.bookingMethod);
-    if (res.status === 'success' && res.data) {
-      bookingSlots.value = res.data;
-      step.value = 2;
-    } else {
-      throw new Error(res.message || '無法獲取可預約時段');
-    }
-  } catch (error) {
-    console.error("步驟一處理失敗:", error);
-    alert(`操作失敗：${error.message}`);
-  } finally {
-    isLoading.value = false;
+
+    // --- 步驟 2: 檢查現有預約 (身分驗證通過後執行) ---
+  if (initialData.value.checkDuplicate === 'ON') {
+   const res = await checkExistingBooking(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType);
+   if (res.status === 'success' && res.data.status === 'found') {
+    existingBookingInfo.value = res.data.booking;
+        isLoading.value = false; // 找到預約，結束 loading
+    return; // 中斷流程
+   }
   }
+
+    // --- 步驟 3: 獲取可預約時段 (前面都通過後執行) ---
+  const res = await getBookingSlots(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType, formStep1.value.bookingMethod);
+  if (res.status === 'success' && res.data) {
+   bookingSlots.value = res.data;
+   step.value = 2;
+  } else {
+   throw new Error(res.message || '無法獲取可預約時段');
+  }
+ } catch (error) {
+  console.error("步驟一處理失敗:", error);
+  alert(`操作失敗：${error.message}`);
+ } finally {
+  isLoading.value = false;
+ }
 };
 const handleStep2Submit = async () => {
   const { valid } = await step2Form.value.validate();

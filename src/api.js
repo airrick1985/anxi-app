@@ -1030,3 +1030,18 @@ export const fetchAllUnitsForBooking = async (projectName) => {
     projectName: projectName,
   }, INSPECTION_API);
 };
+
+/**
+ * ✅ [新增] 驗證身分證與戶別是否相符
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別
+ * @param {string} idNumber 身分證號碼
+ */
+export const validateId = async (projectName, unitId, idNumber) => {
+  return fetchPost({
+    action: 'validate_id',
+    projectName,
+    unitId,
+    idNumber,
+  }, INSPECTION_API);
+};
