@@ -9,7 +9,7 @@
       <v-spacer />
 
       <div class="d-flex align-center">
-        <v-img src="public/img/icons/anxi logo.png"
+        <v-img :src="logoUrl"
                max-height="60"
                contain class="mr-2"
                style="min-width: 70px; min-height: 50px; border: 1px solid transparent;">
@@ -46,7 +46,7 @@
           <v-list>
             <v-list-item @click="mortgageDialog = true">
               <template v-slot:prepend><v-icon>mdi-calculator-variant-outline</v-icon></template>
-              <v-list-item-title>房貸試算機</v-list-item-title>
+              <v-list-item-title>房貸試算</v-list-item-title>
             </v-list-item>
 
              <v-list-item @click="contactDialog = true">
@@ -58,8 +58,8 @@
               <template v-slot:prepend>
               <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
               <v-icon>mdi-email-outline</v-icon>
-               </v-badge>
-               </template>
+                </v-badge>
+                </template>
             <v-list-item-title>訊息中心</v-list-item-title>
             </v-list-item>
 
@@ -106,8 +106,28 @@
     </v-dialog>
     <v-snackbar v-model="snackbar" :timeout="3000">{{ snackbarMessage }}</v-snackbar>
     
-    <v-dialog v-model="contactDialog" max-width="500px">
-      </v-dialog>
+ <v-dialog v-model="contactDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon left class="mr-2">mdi-face-agent</v-icon>
+          <span class="headline">聯絡客服</span>
+          <v-spacer></v-spacer>
+          <v-btn icon @click="contactDialog = false" variant="text">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="text-center py-8">
+          <p class="mb-4 text-h6">安熙智慧系統 官方LINE</p>
+          <a href="https://lin.ee/zC5ANvL" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 12px 24px; background-color: #00B900; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 1rem;">
+            加入 LINE 官方好友
+          </a>
+          <p style="margin-top: 24px;"></p>
+          <img src="https://qr-official.line.me/gs/M_749vjisf_GW.png?oat_content=qr" width="150" alt="LINE QR Code" style="margin-top: 8px; border: 1px solid #eee;">
+        </v-card-text>
+        <v-divider></v-divider>
+       </v-card>
+    </v-dialog>
 
     <v-dialog v-model="mortgageDialog" max-width="800px" scrollable>
       <MortgageCalculator @close="mortgageDialog = false" />
@@ -115,7 +135,6 @@
 
   </v-app>
 </template>
-
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { useFullscreen } from '../composables/useFullscreen';
@@ -128,9 +147,12 @@ import EditProfileDialog from '../components/EditProfileDialog.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
 import manifest from '../../public/manifest.json';
-import { useDisplay } from 'vuetify'; // 導入 useDisplay
+import { useDisplay } from 'vuetify';
 
-const display = useDisplay(); // 初始化 useDisplay
+// 【已修正】從新的 src/assets 位置 import 圖片
+import logoUrl from '@/assets/images/anxi-logo.png';
+
+const display = useDisplay();
 
 const userStore = useUserStore();
 const { user, unreadCount } = storeToRefs(userStore); 
@@ -224,15 +246,11 @@ watch(user, (newUser, oldUser) => {
 </script>
 
 <style scoped>
+/* 樣式部分保持不變 */
 .custom-app-bar {
-  /* 【主要修正】強制背景顏色為透明 */
   background-color: transparent !important;
-
-  /* 使用 rgba 設定帶有透明度的漸層背景圖 */
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(195, 195, 195, 0.7) 100%) !important;
-
-  /* 設定背景模糊 (毛玻璃) 效果 */
-  -webkit-backdrop-filter: blur(8px); /* 針對 Safari 等瀏覽器 */
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 :deep(.custom-app-bar .v-btn--icon .v-icon),
