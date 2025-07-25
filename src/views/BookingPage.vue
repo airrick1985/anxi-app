@@ -308,13 +308,14 @@ const projectConfigurations = {
         type: 'warning',
         color: '#C51162',
         title: '預約截止時間',
-        text: `<strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，將需自行聯繫配合廠商安排施工，並須自付相關更換費用。`
+        text: `<strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，視同自動放棄．若需更換則自行聯繫配合廠商安排施工，並自付相關費用。`
       },
       footer: `<p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p><p>感謝您的配合與支持！如有任何疑問，請洽：</p>`,
       contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
       faq: [
         { q: "更換門鎖需要花費多久時間？", a: "預計每戶施工時間約為 10-20 分鐘。" },
-        { q: "如果預約時段臨時有事怎麼辦？", a: "您可直接取消預約後重新預約時間，或洽詢03-658-8882為您服務。" }
+        { q: "如果預約時段臨時有事怎麼辦？", a: "您可直接取消預約後重新預約時間，或洽詢03-658-8882為您服務。" },
+        { q: "自行聯繫廠商聯絡方式？", a: "廠商聯絡窗口 : 永欣鋁窗  曾建維 0930302923" }
       ]
     }
   },
@@ -484,8 +485,14 @@ const handleStep1Submit = async () => {
 
     // --- 步驟 2: 檢查現有預約 (身分驗證通過後執行) ---
   if (initialData.value.checkDuplicate === 'ON') {
-   const res = await checkExistingBooking(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType);
-   if (res.status === 'success' && res.data.status === 'found') {
+const res = await checkExistingBooking(
+        projectConfig.value.projectName, 
+        formStep1.value.unit, 
+        formStep1.value.bookingType,
+        formStep1.value.idNumber
+      );
+      
+if (res.status === 'success' && res.data.status === 'found') {
     existingBookingInfo.value = res.data.booking;
         isLoading.value = false; // 找到預約，結束 loading
     return; // 中斷流程
@@ -538,6 +545,7 @@ const payload = {
             姓名: finalBookingData.value.姓名,
             電話: finalBookingData.value.電話,
             EMAIL: finalBookingData.value.EMAIL,
+            身分證: finalBookingData.value.idNumber, 
             預約項目: finalBookingData.value.bookingType,
             預約日期: finalBookingData.value.預約日期,
             預約時段: finalBookingData.value.預約時段,

@@ -967,12 +967,13 @@ export async function getUnitsByBuilding(projectName, building) {
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目 (e.g., '初驗')
  */
-export async function checkExistingBooking(projectName, unitId, bookingType) {
+export async function checkExistingBooking(projectName, unitId, bookingType, idNumber) {
   return fetchPost({
     action: 'check_existing_booking',
     projectName: projectName,
     unitId: unitId,
     bookingType: bookingType,
+    idNumber: idNumber,
   }, INSPECTION_API);
 };
 
