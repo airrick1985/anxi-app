@@ -1,62 +1,79 @@
 <template>
   <v-app>
     <v-app-bar app dark class="custom-app-bar">
-      
-      <v-menu offset-y>
-        <template v-slot:activator="{ props }">
-          <v-btn icon v-bind="props" class="me-2" title="小工具">
-            <v-icon>mdi-menu</v-icon>
-          </v-btn>
-        </template>
-        <v-list>
-          <v-list-item @click="mortgageDialog = true">
-            <template v-slot:prepend>
-              <v-icon>mdi-calculator-variant-outline</v-icon>
-            </template>
-            <v-list-item-title>房貸試算機</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
 
-      <v-btn icon @click="goHome" class="me-2" title="功能選單">
+      <v-btn icon @click="goHome" class="me-2" title="首頁">
         <v-icon>mdi-home</v-icon>
-      </v-btn>
-      <v-btn icon @click="contactDialog = true" title="聯絡客服">
-        <v-icon>mdi-message-question</v-icon>
       </v-btn>
 
       <v-spacer />
+
       <div class="d-flex align-center">
-        <v-img src="public/img/icons/LOGO.svg" max-height="60" contain class="mr-2" style="min-width: 50px; min-height: 50px; border: 1px solid transparent;"></v-img>
-        <span class="app-bar-title text-h6 d-none d-sm-inline-block" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            ANXI建案管理系統
-        </span>
+        <v-img src="public/img/icons/anxi logo.png"
+               max-height="60"
+               contain class="mr-2"
+               style="min-width: 70px; min-height: 50px; border: 1px solid transparent;">
+        </v-img>
       </div>
+
       <v-spacer />
 
       <template v-if="user">
-        <div class="d-flex align-center">
+        <div v-if="display.mdAndUp.value" class="d-flex align-center">
+          <v-btn icon @click="mortgageDialog = true" title="房貸試算" class="me-2">
+             <v-icon>mdi-calculator-variant-outline</v-icon>
+          </v-btn>
+           <v-btn icon @click="contactDialog = true" title="聯絡客服" class="me-2">
+            <v-icon>mdi-message-question</v-icon>
+          </v-btn>
           <v-btn icon @click="toggleFullscreen" class="me-2" title="全螢幕模式">
             <v-icon>{{ isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen' }}</v-icon>
           </v-btn>
-
           <v-btn icon @click="goToMessageCenter" class="me-2" title="訊息中心">
-            <v-badge
-              :content="unreadCount"
-              :model-value="unreadCount > 0"
-              color="red"
-              overlap
-            >
+            <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
               <v-icon>mdi-email-outline</v-icon>
             </v-badge>
           </v-btn>
-          
           <span class="me-2 clickable" @click="dialog = true" title="個人資料">{{ user.name }}</span>
-          
-          <v-btn icon @click="logoutDialog = true" title="登出">
-            <v-icon color="error">mdi-logout</v-icon>
-          </v-btn>
         </div>
+
+        <v-menu v-if="display.smAndDown.value" offset-y>
+          <template v-slot:activator="{ props }">
+            <v-btn icon v-bind="props" title="更多功能">
+              <v-icon>mdi-menu</v-icon>
+            </v-btn>
+          </template>
+          <v-list>
+            <v-list-item @click="mortgageDialog = true">
+              <template v-slot:prepend><v-icon>mdi-calculator-variant-outline</v-icon></template>
+              <v-list-item-title>房貸試算機</v-list-item-title>
+            </v-list-item>
+
+             <v-list-item @click="contactDialog = true">
+              <template v-slot:prepend><v-icon>mdi-message-question</v-icon></template>
+              <v-list-item-title>聯絡客服</v-list-item-title>
+            </v-list-item>
+
+            <v-list-item @click="goToMessageCenter">
+              <template v-slot:prepend>
+              <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
+              <v-icon>mdi-email-outline</v-icon>
+               </v-badge>
+               </template>
+            <v-list-item-title>訊息中心</v-list-item-title>
+            </v-list-item>
+
+            <v-list-item @click="dialog = true">
+                <template v-slot:prepend><v-icon>mdi-account-circle-outline</v-icon></template>
+                <v-list-item-title>個人資料 ({{ user.name }})</v-list-item-title>
+            </v-list-item>
+
+          </v-list>
+        </v-menu>
+
+        <v-btn icon @click="logoutDialog = true" title="登出">
+          <v-icon color="error">mdi-logout</v-icon>
+        </v-btn>
       </template>
     </v-app-bar>
 
@@ -69,11 +86,11 @@
     </v-main>
 
      <v-footer v-if="isLoginPage" color="white" class="footer-text" padless>
-  <v-container class="text-center py-2">
-    <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
-    <div>&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
-  </v-container>
-</v-footer>
+        <v-container class="text-center py-2">
+            <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
+            <div>&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
+        </v-container>
+    </v-footer>
     
     <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
     <UpdateDialog v-model="showUpdateDialog" :release-version="releaseVersion" :release-notes="releaseNotes" @confirm="doUpdate" />
@@ -100,20 +117,20 @@
 </template>
 
 <script setup>
-// 4. 所有相關的 script 內容也都移到這裡
-import { ref, computed, watch, onMounted } from 'vue'; // 確保 computed 被導入
-import { useFullscreen } from '../composables/useFullscreen'; // 注意路徑變化
+import { ref, computed, watch, onMounted } from 'vue';
+import { useFullscreen } from '../composables/useFullscreen';
 import { storeToRefs } from 'pinia';
-import { useUserStore } from '../store/user'; // 注意路徑變化
+import { useUserStore } from '../store/user';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
-import EditProfileDialog from '../components/EditProfileDialog.vue'; // 注意路徑變化
-import UpdateDialog from '../components/UpdateDialog.vue'; // 注意路徑變化
-import MortgageCalculator from '../components/MortgageCalculator.vue'; // 注意路徑變化
-import manifest from '../../public/manifest.json'; // 注意路徑變化
+import EditProfileDialog from '../components/EditProfileDialog.vue';
+import UpdateDialog from '../components/UpdateDialog.vue';
+import MortgageCalculator from '../components/MortgageCalculator.vue';
+import manifest from '../../public/manifest.json';
+import { useDisplay } from 'vuetify'; // 導入 useDisplay
 
-
+const display = useDisplay(); // 初始化 useDisplay
 
 const userStore = useUserStore();
 const { user, unreadCount } = storeToRefs(userStore); 
@@ -134,13 +151,10 @@ const showSnackbar = (message) => {
   snackbar.value = true;
 };
 
-// --- Footer 相關邏輯 ---
 const appVersion = ref(manifest.version);
 const currentYear = ref(new Date().getFullYear());
-// 判斷是否為登入頁，以決定是否顯示 Footer
 const isLoginPage = computed(() => route.name === 'Login');
 
-// PWA 更新相關邏輯
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
 const showUpdateDialog = ref(false);
 const releaseVersion = ref('');
@@ -166,7 +180,6 @@ const doUpdate = async () => {
   setTimeout(() => window.location.reload(), 1000);
 };
 
-// 登出與導航
 const confirmLogout = async () => {
   logoutDialog.value = false;
   await userStore.clearUser();
@@ -194,7 +207,6 @@ const initializeUnreadCount = async () => {
   }
 };
 
-// 生命週期與監聽器
 onMounted(() => {
   if (user.value) {
     initializeUnreadCount();
@@ -212,9 +224,16 @@ watch(user, (newUser, oldUser) => {
 </script>
 
 <style scoped>
-/* 5. 所有相關的 scoped 樣式也都移到這裡 */
 .custom-app-bar {
-  background-image: linear-gradient(135deg, #ffffff 0%, #c3c3c3 100%) !important;
+  /* 【主要修正】強制背景顏色為透明 */
+  background-color: transparent !important;
+
+  /* 使用 rgba 設定帶有透明度的漸層背景圖 */
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(195, 195, 195, 0.7) 100%) !important;
+
+  /* 設定背景模糊 (毛玻璃) 效果 */
+  -webkit-backdrop-filter: blur(8px); /* 針對 Safari 等瀏覽器 */
+  backdrop-filter: blur(8px);
 }
 :deep(.custom-app-bar .v-btn--icon .v-icon),
 :deep(.custom-app-bar .v-app-bar-nav-icon .v-icon) {
