@@ -610,24 +610,25 @@ const windowWidth = ref(window.innerWidth);
 const isMobile = computed(() => windowWidth.value < 600);
 
 const baseColumns = [
-  { label: '建檔時間', field: 'createdAt', width: '150px' },
-  { label: '驗屋日期', field: 'inspectionDate', width: '120px' },
-  { label: '驗屋階段', field: 'inspectionStage', width: '100px' },
-  { label: '驗屋人', field: 'inspector', width: '100px' },
-  { label: '產權人', field: 'owner', width: '100px' },
-  { label: '戶別', field: 'unit', width: '100px' },
-  { label: '檢查區域', field: 'area', width: '120px' },
-  { label: '分類', field: 'category', width: '120px' },
-  { label: '細項', field: 'subcategory', width: '120px' },
-  { label: '檢查狀態', field: 'inspectionStatus', width: '100px' },
-  { label: '缺失等級', field: 'defectLevel', width: '100px' },
-  { label: '檢查說明', field: 'description', width: '200px' },
-  { label: '檢修時間', field: 'repairDate', width: '120px' },
-  { label: '檢修狀態', field: 'repairStatus', width: '100px' },
-  { label: '檢修說明', field: 'repairDescription', width: '200px' },
-  { label: '缺失照片', field: 'photos', sortable: false, width: '120px' },
-  { label: '檢修照片', field: 'repairPhotos', sortable: false, width: '120px' },
-  { label: '操作', field: 'actions', sortable: false, width: '100px' }
+  { label: '建檔時間', field: 'createdAt' },
+  { label: '驗屋日期', field: 'inspectionDate' },
+  { label: '驗屋階段', field: 'inspectionStage' },
+  { label: '驗屋人', field: 'inspector' },
+  { label: '產權人', field: 'owner' },
+  { label: '戶別', field: 'unit' },
+  { label: '檢查區域', field: 'area' },
+  { label: '分類', field: 'category' },
+  { label: '細項', field: 'subcategory' },
+  { label: '檢查狀態', field: 'inspectionStatus' },
+  { label: '缺失等級', field: 'defectLevel' },
+  { label: '檢查說明', field: 'description' },
+  { label: '檢修時間', field: 'repairDate' },
+  { label: '檢修狀態', field: 'repairStatus' },
+  { label: '檢修說明', field: 'repairDescription' },
+  // 只保留功能性欄位的固定寬度
+  { label: '缺失照片', field: 'photos', sortable: false, width: '110px' },
+  { label: '檢修照片', field: 'repairPhotos', sortable: false, width: '110px' },
+  { label: '操作', field: 'actions', sortable: false, width: '80px' }
 ];
 
 const responsiveColumns = computed(() => isMobile.value
@@ -1032,6 +1033,8 @@ const handleExportPdf = async () => {
 ::v-deep(.vue-good-table .vgt-table td) {
   font-size: 12px !important;
   padding: 8px 6px;
+  word-break: break-all;
+
 }
 .table-text {
   font-size: 14px;

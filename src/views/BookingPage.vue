@@ -140,7 +140,7 @@
                  <v-text-field
          v-model="formStep1.idNumber"
          :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
-                  :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
+        :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
          variant="outlined"
          :disabled="isLoading || !isBookingActive"
         ></v-text-field>

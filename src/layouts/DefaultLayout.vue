@@ -5,16 +5,16 @@
       <v-btn icon @click="goHome" class="me-2" title="首頁">
         <v-icon>mdi-home</v-icon>
       </v-btn>
-
-      <v-spacer />
-
-      <div class="d-flex align-center">
+<div class="d-flex align-center">
         <v-img :src="logoUrl"
                max-height="60"
                contain class="mr-2"
                style="min-width: 70px; min-height: 50px; border: 1px solid transparent;">
         </v-img>
       </div>
+      <v-spacer />
+
+      
 
       <v-spacer />
 

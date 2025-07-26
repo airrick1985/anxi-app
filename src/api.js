@@ -1046,3 +1046,16 @@ export const validateId = async (projectName, unitId, idNumber) => {
     idNumber,
   }, INSPECTION_API);
 };
+
+
+/**
+ * 獲取指定建案的所有驗屋預約紀錄 (供公開行事曆使用)
+ * @param {string} projectName 建案名稱
+ * @returns {Promise<object>}
+ */
+export const fetchInspectionAppointments = async (projectName) => {
+  return fetchPost({
+    action: 'get_inspection_appointments',
+    projectName: projectName,
+  }, INSPECTION_API);
+};

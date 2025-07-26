@@ -8,6 +8,8 @@ import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
+import InspectionCalendar from '@/views/public/InspectionCalendar.vue';
+
 
 // ✅ 懶加載 (Lazy Loading) 新的訊息頁面元件
 const MessageCenter = () => import('@/views/MessageCenter.vue');
@@ -148,7 +150,7 @@ const routes = [
     }
   },
 
-  // ✅ 新增的訊息系統路由
+  // 訊息系統路由
   {
     path: '/messages',
     name: 'MessageCenter',
@@ -187,7 +189,7 @@ const routes = [
             layout: DefaultLayout // 指定使用預設佈局 
         }
     },
-    // ✅ 新增訂閱管理頁面的路由
+    // 訂閱管理頁面的路由
     {
         path: '/subscription-management',
         name: 'SubscriptionManagement',
@@ -202,11 +204,11 @@ const routes = [
         }
     },
 
-    // ✅ 新增訂閱查詢頁面的路由
+    //  新增訂閱查詢頁面的路由
  {
     path: '/subscription-status',
     name: 'SubscriptionStatus',
-    // ✅ 核心修改：直接使用變數
+    //直接使用變數
     component: SubscriptionStatus, 
     meta: {
       requiresAuth: true,
@@ -221,9 +223,21 @@ const routes = [
     component: () => import('@/views/BookingPage.vue'), // 假設預約頁面元件路徑
     props: true,
     meta: { 
-      layout: PublicLayout // 指定使用公開佈局 (沒有 requiresAuth: true)
+    layout: PublicLayout // 指定使用公開佈局 (沒有 requiresAuth: true)
     }
   },
+
+  //驗屋預約表的路由設定
+{
+        path: '/inspection-calendar/:projectId',
+        name: 'InspectionCalendar',
+        component: InspectionCalendar,
+        meta: {
+          title: '驗屋預約表',
+          layout: PublicLayout
+        }
+      },
+
 
   // 捕獲所有未匹配的路由，導向首頁或登入頁
   { path: '/:pathMatch(.*)*', redirect: '/home' }
@@ -234,7 +248,7 @@ const router = createRouter({
   routes
 });
 
-// ✅ 整合後的路由守衛
+// 整合後的路由守衛
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore();
   const isLoggedIn = userStore.isLoggedIn;
@@ -268,7 +282,7 @@ router.beforeEach((to, from, next) => {
     
     // B. 檢查系統/建案權限
     if (requiredSystem) {
-       // ✅ 新增：處理需要特定建案才有權限的特殊系統
+       // 處理需要特定建案才有權限的特殊系統
             if (requiredProject) {
                 if (userStore.hasProjectPermission(requiredSystem, requiredProject)) {
                     return next(); // 有權限，放行

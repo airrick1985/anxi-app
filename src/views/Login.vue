@@ -43,13 +43,21 @@
         <v-card-title>忘記密碼</v-card-title>
         <v-card-text>
           <v-form @submit.prevent="submitForgotPassword">
-            <v-text-field v-model="forgotKey" label="手機號碼" placeholder="請輸入註冊手機號碼" type="tel"
-              :rules="[v => !!v || '手機號碼必填']" hide-details="auto" />
+          <v-text-field
+  v-model="forgotKey"
+  label="手機號碼"
+  placeholder="請輸入註冊手機號碼"
+  type="text"
+  hide-details="auto"
+  variant="solo"
+  density="comfortable"
+  class="mb-2"
+/>
           </v-form>
           <v-alert v-if="forgotError" type="error" dense class="mt-3">{{ forgotError }}</v-alert>
           <v-alert v-if="forgotSuccess" type="success" dense class="mt-3">{{ forgotSuccess }}</v-alert>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="border-0">
           <v-spacer />
           <v-btn text @click="forgotDialog = false">取消</v-btn>
           <v-btn color="primary" :loading="forgotLoading" @click="submitForgotPassword">送出</v-btn>
