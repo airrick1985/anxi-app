@@ -66,35 +66,40 @@
                  <h3 class="text-h6 mb-2">
                     時間範圍: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
                 </h3>
-                <v-table fixed-header class="custom-calendar-table">
-                    <thead>
-                        <tr>
-                        <th class="time-header">時間</th>
-                        <th v-for="day in chunk" :key="day.fullDate" class="day-header">
-                            <div>{{ day.dayName }}</div>
-                            <div>{{ day.date }}</div>
-                        </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="timeSlot in timeSlots" :key="timeSlot">
-                        <td class="time-cell">{{ timeSlot }}</td>
-                        <td v-for="day in chunk" :key="day.fullDate" class="event-cell">
-                            <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
-                            <div
-                                v-for="event in groupedEvents[day.fullDate][timeSlot]"
-                                :key="event.id"
-                                class="event-item"
-                                :style="getEventStyle(event)"
-                                @click="handleCustomEventClick(event)"
-                            >
-                                {{ event['戶別'] }} - {{ event.displayText }}
-                            </div>
-                            </div>
-                        </td>
-                        </tr>
-                    </tbody>
-                </v-table>
+<v-table fixed-header class="custom-calendar-table">
+    <thead>
+        <tr>
+            <th class="time-header">時間</th>
+            <th v-for="day in chunk" :key="day.fullDate" class="day-header">
+                <div v-if="day.isInRange">
+                    <div>{{ day.dayName }}</div>
+                    <div>{{ day.date }}</div>
+                </div>
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr v-for="timeSlot in timeSlots" :key="timeSlot">
+            <td class="time-cell">{{ timeSlot }}</td>
+            <td v-for="day in chunk" :key="day.fullDate" 
+                :class="['event-cell', { 'disabled-cell': !day.isInRange }]">
+                <div v-if="day.isInRange" class="event-cell-content">
+                    <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
+                        <div
+                            v-for="event in groupedEvents[day.fullDate][timeSlot]"
+                            :key="event.id"
+                            class="event-item"
+                            :style="getEventStyle(event)"
+                            @click="handleCustomEventClick(event)"
+                        >
+                            {{ event['戶別'] }} - {{ event.displayText }}
+                        </div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</v-table>
             </div>
         </div>
       </div>
@@ -195,6 +200,10 @@
                     <div class="text-caption text-grey-darken-1">備註</div>
                     <div class="text-body-1">{{ selectedEvent['備註'] }}</div>
                 </v-col>
+                 <v-col v-if="selectedEvent['驗屋人員']" cols="12">
+                    <div class="text-caption text-grey-darken-1">驗屋人員</div>
+                    <div class="text-body-1">{{ selectedEvent['驗屋人員'] }}</div>
+                </v-col>
             </v-row>
             <v-divider class="my-4"></v-divider>
             <div v-if="selectedEvent['委託人姓名']">
@@ -279,23 +288,26 @@ const projectId = ref(route.params.projectId);
 const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 
-// --- ✅ [核心修改] 動態產生7天一組的日期區塊 ---
 const dateChunks = computed(() => {
     if (!startDate.value || !endDate.value) return [];
     
     const chunks = [];
-    let current = new Date(startDate.value);
+    // ✅ 核心修改 3: 從選定範圍的第一天的「週一」開始計算
+    let current = startOfWeek(new Date(startDate.value), { weekStartsOn: 1 });
 
+    // 迴圈的結束條件是當週的週一已經超過了結束日期
     while (current <= endDate.value) {
         const chunk = [];
         for (let i = 0; i < 7; i++) {
             const date = addDays(current, i);
-            if (date > endDate.value) break;
+            // 判斷這一天是否在使用者選擇的範圍內
+            const isInRange = date >= startDate.value && date <= endDate.value;
             chunk.push({
                 dateObj: date,
                 dayName: format(date, 'EEEE', { locale: zhTW }),
                 date: format(date, 'M/d'),
                 fullDate: format(date, 'yyyy-MM-dd'),
+                isInRange: isInRange // 增加一個狀態旗標
             });
         }
         chunks.push(chunk);
@@ -406,7 +418,16 @@ function processAppointments(rawAppointments) {
                     allocationDate.setHours(0, 0, 0, 0);
                     isAllocated = bookingDate.getTime() >= allocationDate.getTime();
                 }
-                let itemText = appt['預約項目'];
+                 // 組合事件標題文字
+                const titleParts = [
+                    appt['預約項目'],
+                    appt['驗屋方式'],
+                    appt['代驗公司名稱'],
+                    // 如果有驗屋人員，就加上括號
+                    appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null 
+                ].filter(Boolean); // 過濾掉 null 或空字串的項目
+                
+                let itemText = titleParts.join(' - '); // 用 ' - ' 連接
                 let fullTextForSearch = itemText;
                 if (isAllocated) {
                     itemText += ' (已撥款)';
@@ -626,7 +647,7 @@ onMounted(() => {
 </script>
 
 <style>
-/* 原始樣式 */
+/* 原始樣式 (標準日曆) */
 .fc .fc-button-primary { background-color: #1a73e8; border-color: #1a73e8; }
 .fc .fc-button-primary:hover { background-color: #1765c6; border-color: #1765c6; }
 .fc-event { cursor: pointer; font-size: 0.8rem; padding: 2px 4px; }
@@ -639,20 +660,84 @@ onMounted(() => {
 #calendar-container { overflow-x: auto; overflow-y: hidden; }
 .fc-timeGridWeek-view .fc-scrollgrid, .fc-timeGridDay-view .fc-scrollgrid { width: 2000px; }
 
-/* 自訂週視圖樣式 */
-.custom-calendar-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
-.custom-calendar-table th, .custom-calendar-table td { border: 1px solid #e0e0e0; padding: 4px; vertical-align: top; }
-.time-header { width: 100px; text-align: center !important; background-color: #f5f5f5; }
-.day-header { text-align: center !important; background-color: #f5f5f5; font-weight: bold; }
-.day-header div:last-child { font-size: 0.9em; font-weight: normal; }
-.time-cell { text-align: center; font-weight: bold; font-size: 0.9em; background-color: #f9f9f9; padding-top: 8px !important; }
-.event-cell { height: 100px; padding: 4px !important; }
-.event-item { padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; font-size: 0.85em; cursor: pointer; transition: opacity 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.event-item:hover { opacity: 0.8; }
+/* --- ✅ 全新、最終版的自訂週視圖樣式 --- */
 
-/* ✅ [新功能] 為 PDF 列印的 chunk 增加邊距 */
+/* 1. 在這裡調整寬度 */
+:root {
+  --day-column-width: 220px;  /* ⭐ 在這裡調整每日欄位的寬度 ⭐ */
+}
+
+/* 2. 容器：負責產生滾動條 */
+#custom-calendar-container {
+  overflow-x: auto;
+  border: 1px solid #e0e0e8;
+  border-radius: 4px;
+}
+
+/* 3. 表格：寬度由內容決定，不再設定 100% */
+.custom-calendar-table {
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+/* 4. 表頭與儲存格 */
+.custom-calendar-table th, 
+.custom-calendar-table td {
+  border: 1px solid #e0e0e0;
+  vertical-align: top;
+  padding: 4px;
+}
+
+.time-header, .time-cell {
+  width: 100px; /* 固定時間欄寬度 */
+  min-width: 100px; /* 確保最小寬度 */
+}
+
+.day-header, .event-cell {
+  width: var(--day-column-width); /* ⭐ 直接使用變數設定固定寬度 */
+  min-width: var(--day-column-width); /* 確保最小寬度 */
+}
+
+.time-header, .day-header {
+  text-align: center;
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
+.day-header div:last-child {
+  font-size: 0.9em;
+  font-weight: normal;
+}
+.time-cell {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.9em;
+  background-color: #f9f9f9;
+}
+
+.event-cell {
+  height: 120px;
+}
+
+/* 5. 事件項目：負責換行 */
+.event-item {
+  white-space: normal;
+  word-wrap: break-word; /* 允許長單字換行 */
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.event-item:hover {
+  opacity: 0.8;
+}
 .table-chunk {
-    page-break-inside: avoid; /* 避免在 PDF 中被切斷 */
+  page-break-inside: avoid;
+}
+
+.disabled-cell {
+  background-color: #fafafa; /* 給予一個淺灰色背景 */
 }
 
 </style>
