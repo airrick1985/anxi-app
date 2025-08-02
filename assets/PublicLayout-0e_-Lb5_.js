@@ -1,0 +1,1 @@
+import{_ as o,r as t,A as c,o as s,a}from"./index-DVSelg4z.js";const r={name:"PublicLayout"},n={class:"public-layout"};function _(u,i,p,l,d,m){const e=t("router-view");return s(),c("div",n,[a(e)])}const v=o(r,[["render",_]]);export{v as default};
