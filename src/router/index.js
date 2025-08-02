@@ -238,6 +238,16 @@ const routes = [
         }
       },
 
+       {
+    path: '/privacy',
+    name: 'PrivacyPolicy',
+    component: () => import('@/views/public/PrivacyPolicy.vue'),
+    meta: {
+      title: '隱私權政策',
+      layout: PublicLayout // 使用公開佈局，不需要登入
+    }
+  },
+
 
   // 捕獲所有未匹配的路由，導向首頁或登入頁
   { path: '/:pathMatch(.*)*', redirect: '/home' }
