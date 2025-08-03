@@ -3,22 +3,15 @@
     <v-card class="pa-4">
       <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
         {{ pageTitle }}
-        <div class="d-flex align-center">
-          <v-btn-toggle v-model="currentView" mandatory variant="outlined" density="compact" class="mr-4">
-            <v-btn value="fullcalendar">標準日曆</v-btn>
-            <v-btn value="customWeek">自訂週視圖</v-btn>
-          </v-btn-toggle>
-
-          <v-btn
-            color="primary"
-            @click="handleDownloadPdf"
-            :loading="isDownloadingPdf"
-            prepend-icon="mdi-download"
-          >
-            <span v-if="!isDownloadingPdf">下載時間表 (PDF)</span>
-            <span v-else>{{ pdfDownloadProgress }}</span>
-          </v-btn>
-        </div>
+ <v-btn
+  color="primary"
+  @click="handleDownloadPdf"
+  :loading="isDownloadingPdf"
+  prepend-icon="mdi-download"
+>
+  <span v-if="!isDownloadingPdf" class="btn-text">下載時間表</span>
+  <span v-else class="btn-text">{{ pdfDownloadProgress }}</span>
+</v-btn>
       </v-card-title>
 
       <v-alert
@@ -34,230 +27,263 @@
         <div class="mt-4">資料載入中...</div>
       </div>
 
-      <div v-show="!isLoading && !error && currentView === 'fullcalendar'" id="calendar-container">
-        <FullCalendar ref="fullCalendar" :options="calendarOptions" />
-      </div>
-
-      <div v-if="!isLoading && !error && currentView === 'customWeek'" >
-        <v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded">
-          <v-col cols="12" md="4">
-             <v-text-field
-                v-model="startDateFormatted"
-                label="開始日期"
-                type="date"
-                density="compact"
-                hide-details
-              ></v-text-field>
-          </v-col>
-          <v-col cols="12" md="4">
-              <v-text-field
-                v-model="endDateFormatted"
-                label="結束日期"
-                type="date"
-                density="compact"
-                hide-details
-              ></v-text-field>
-          </v-col>
-     
-        </v-row>
+      <div v-if="!isLoading && !error">
+<v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded">
+  <v-col cols="12" md="4">
+      <v-text-field
+        v-model="startDateFormatted"
+        label="開始日期"
+        type="date"
+        density="compact"
+        hide-details
+      ></v-text-field>
+  </v-col>
+  <v-col cols="12" md="4">
+    <v-text-field
+      v-model="endDateFormatted"
+      label="結束日期"
+      type="date"
+      density="compact"
+      hide-details
+    ></v-text-field>
+  </v-col>
+  
+  <v-col cols="12" md="4">
+    <v-text-field
+      v-model="searchQuery"
+      label="關鍵字搜尋 (戶別/姓名/電話...)"
+      prepend-inner-icon="mdi-magnify"
+      density="compact"
+      hide-details
+      clearable
+      flat
+      variant="solo-filled"
+    ></v-text-field>
+  </v-col>
+  </v-row>
         
         <div id="custom-calendar-container">
-            <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
-                 <h3 class="text-h6 mb-2">
-                    時間範圍: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
-                </h3>
-<v-table fixed-header class="custom-calendar-table">
-    <thead>
-        <tr>
-            <th class="time-header">時間</th>
-            <th v-for="day in chunk" :key="day.fullDate" class="day-header">
-                <div v-if="day.isInRange">
-                    <div>{{ day.dayName }}</div>
-                    <div>{{ day.date }}</div>
-                </div>
-            </th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr v-for="timeSlot in timeSlots" :key="timeSlot">
-            <td class="time-cell">{{ timeSlot }}</td>
-            <td v-for="day in chunk" :key="day.fullDate" 
-                :class="['event-cell', { 'disabled-cell': !day.isInRange }]">
-                <div v-if="day.isInRange" class="event-cell-content">
-                    <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
-                        <div
-                            v-for="event in groupedEvents[day.fullDate][timeSlot]"
-                            :key="event.id"
-                            class="event-item"
-                            :style="getEventStyle(event)"
-                            @click="handleCustomEventClick(event)"
-                        >
-                            {{ event['戶別'] }} - {{ event.displayText }}
-                        </div>
+          <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
+            <h3 class="text-h6 mb-2">
+              時間範圍: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
+            </h3>
+            <v-table class="custom-calendar-table">
+              <thead>
+                <tr>
+                  <th class="time-header" >時間</th>
+                    <th v-for="day in chunk" :key="day.fullDate" class="day-header"
+                          :class="{ 
+                                    'today-column': day.isToday, 
+                                    'weekend-column': day.isWeekend 
+                             }">
+                        <div v-if="day.isInRange">
+                      <div>{{ day.dayName }}</div>
+                      <div>{{ day.date }}</div>
                     </div>
-                </div>
-            </td>
-        </tr>
-    </tbody>
-</v-table>
-            </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="timeSlot in timeSlots" :key="timeSlot">
+                  <td class="time-cell">{{ timeSlot }}</td>
+              <td v-for="day in chunk" :key="day.fullDate" 
+    :class="['event-cell', { 
+      'disabled-cell': !day.isInRange,
+      'today-column': day.isToday,
+      'weekend-column': day.isWeekend
+    }]">
+                    <div v-if="day.isInRange" class="event-cell-content">
+                      <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
+                        <div
+                          v-for="event in groupedEvents[day.fullDate][timeSlot]"
+                          :key="event.id"
+                          class="event-item"
+                          :style="getEventStyle(event)"
+                          @click="handleCustomEventClick(event)"
+                        >
+                      <strong class="event-household">{{ event['戶別'] }}</strong> - {{ event.displayText }}                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
         </div>
       </div>
     </v-card>
 
-    <v-dialog v-model="isDialogVisible" max-width="800px">
-     <v-card>
-        <v-card-title class="text-h6 primary-bg">
-          <v-icon start>mdi-calendar-text</v-icon>
-            預約詳細資訊
-        </v-card-title>
-        <v-divider></v-divider>
-        <v-card-text v-if="selectedEvent" class="py-4 px-5">
-            <p class="text-subtitle-1 font-weight-bold mb-2">基本資料</p>
-            <v-row dense>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">戶別</div>
-                    <div class="text-body-1">{{ selectedEvent['戶別'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">門牌</div>
-                    <div class="text-body-1">{{ selectedEvent['門牌'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">姓名</div>
-                    <div class="text-body-1">{{ selectedEvent['姓名'] }}</div>
-                </v-col>
-            </v-row>
-            <v-divider class="my-4"></v-divider>
+<v-dialog v-model="isDialogVisible" max-width="800px">
+  <v-card>
+    <v-card-title class="text-h6 primary-bg d-flex align-center">
+      <v-icon start>mdi-calendar-text</v-icon>
+      <span>預約詳細資訊</span>
+      <v-spacer></v-spacer>
+      <v-btn
+        variant="text"
+        icon="mdi-close"
+        density="compact"
+        @click="isDialogVisible = false"
+      ></v-btn>
+    </v-card-title>
+    <v-divider></v-divider>
+    <v-card-text v-if="selectedEvent" class="py-4 px-5">
+      <p class="text-subtitle-1 font-weight-bold mb-2">基本資料</p>
+      <v-row dense>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">戶別</div>
+          <div class="text-body-1">{{ selectedEvent['戶別'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">門牌</div>
+          <div class="text-body-1">{{ selectedEvent['門牌'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">車位</div>
+          <div class="text-body-1">{{ selectedEvent['車位'] || '無' }}</div>
+        </v-col>
+      </v-row>
+        <div v-if="selectedEvent['備註']">
+        <v-divider class="my-4"></v-divider>
+        <p class="text-subtitle-1 font-weight-bold mb-2">備註</p>
+        <div class="remarks-text">{{ selectedEvent['備註'] }}</div>
+      </div>
+      <v-divider class="my-4"></v-divider>
 
-            <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊</p>
-            <v-row dense>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">電話</div>
-                    <div class="text-body-1">{{ selectedEvent['電話'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">EMAIL</div>
-                    <div class="text-body-1">{{ selectedEvent['EMAIL'] || 'N/A' }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">身分證</div>
-                    <div class="text-body-1">{{ selectedEvent['身分證'] }}</div>
-                </v-col>
-            </v-row>
-            <v-divider class="my-4"></v-divider>
-            
-            <div v-if="selectedEvent['撥款日期']">
-                <p class="text-subtitle-1 font-weight-bold mb-2">撥款資訊</p>
-                <v-row dense>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">撥款日期</div>
-                        <div class="text-body-1">{{ format(new Date(selectedEvent['撥款日期']), 'yyyy-MM-dd') }}</div>
-                    </v-col>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">銀行</div>
-                        <div class="text-body-1">{{ selectedEvent['銀行'] }}</div>
-                    </v-col>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">銀行窗口</div>
-                        <div class="text-body-1">{{ selectedEvent['銀行窗口'] }}</div>
-                    </v-col>
-                </v-row>
-                <v-divider class="my-4"></v-divider>
-            </div>
+      <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊</p>
+      <v-row dense>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">姓名</div>
+          <div class="text-body-1">{{ selectedEvent['姓名'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">電話</div>
+          <div class="text-body-1">{{ selectedEvent['電話'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">EMAIL</div>
+          <div class="text-body-1">{{ selectedEvent['EMAIL'] || 'N/A' }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">身分證</div>
+          <div class="text-body-1">{{ selectedEvent['身分證'] }}</div>
+        </v-col>
+      </v-row>
+      <v-divider class="my-4"></v-divider>
+      
+      <div v-if="selectedEvent['撥款日期']">
+        </div>
 
-            <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
-            <v-row dense>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">預約項目</div>
-                    <div class="text-body-1">{{ selectedEvent['預約項目'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">預約日期</div>
-                    <div class="text-body-1">{{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : 'N/A' }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">預約時段</div>
-                    <div class="text-body-1">{{ selectedEvent['預約時段'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">驗屋方式</div>
-                    <div class="text-body-1">{{ selectedEvent['驗屋方式'] }}</div>
-                </v-col>
-                <v-col v-if="selectedEvent['代驗公司名稱']" cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">代驗公司</div>
-                    <div class="text-body-1">{{ selectedEvent['代驗公司名稱'] }}</div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">預約狀態</div>
-                    <div><v-chip color="success" size="small">{{ selectedEvent['預約狀態'] }}</v-chip></div>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                    <div class="text-caption text-grey-darken-1">填表時間</div>
-                    <div class="text-body-1">{{ selectedEvent['填表時間'] ? format(new Date(selectedEvent['填表時間']), 'yyyy-MM-dd HH:mm:ss') : 'N/A' }}</div>
-                </v-col>
-                <v-col v-if="selectedEvent['備註']" cols="12">
-                    <div class="text-caption text-grey-darken-1">備註</div>
-                    <div class="text-body-1">{{ selectedEvent['備註'] }}</div>
-                </v-col>
-                 <v-col v-if="selectedEvent['驗屋人員']" cols="12">
-                    <div class="text-caption text-grey-darken-1">驗屋人員</div>
-                    <div class="text-body-1">{{ selectedEvent['驗屋人員'] }}</div>
-                </v-col>
-            </v-row>
-            <v-divider class="my-4"></v-divider>
-            <div v-if="selectedEvent['委託人姓名']">
-                <p class="text-subtitle-1 font-weight-bold mb-2">授權委託資料</p>
-                <v-row dense>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">委託人姓名</div>
-                        <div class="text-body-1">{{ selectedEvent['委託人姓名'] }}</div>
-                    </v-col>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">委託人身分證</div>
-                        <div class="text-body-1">{{ selectedEvent['委託人身分證'] }}</div>
-                    </v-col>
-                     <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">受託人姓名</div>
-                        <div class="text-body-1">{{ selectedEvent['受託人姓名'] }}</div>
-                    </v-col>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">受託人身分證</div>
-                        <div class="text-body-1">{{ selectedEvent['受託人身分證'] }}</div>
-                    </v-col>
-                    <v-col cols="12" sm="6" md="4">
-                        <div class="text-caption text-grey-darken-1">授權書</div>
-                        <div>
-                            <v-btn v-if="selectedEvent['驗屋授權書url']" color="primary" size="small" variant="tonal" @click="() => openUrl(selectedEvent['驗屋授權書url'])">
-                                查看授權書
-                            </v-btn>
-                            <span v-else>未提供</span>
-                        </div>
-                    </v-col>
-                </v-row>
-            </div>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions>
-            <v-spacer></v-spacer>
-            <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+      <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
+      <v-row dense>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">預約項目</div>
+          <div>
+            <span :style="getAppointmentItemStyle(selectedEvent['預約項目'])">
+              {{ selectedEvent['預約項目'] }}
+            </span>
+          </div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">預約日期</div>
+          <div class="text-body-1">{{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : 'N/A' }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">預約時段</div>
+          <div class="text-body-1">{{ selectedEvent['預約時段'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">驗屋方式</div>
+          <div class="text-body-1">{{ selectedEvent['驗屋方式'] }}</div>
+        </v-col>
+        <v-col v-if="selectedEvent['代驗公司名稱']" cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">代驗公司</div>
+          <div class="text-body-1">{{ selectedEvent['代驗公司名稱'] }}</div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">預約狀態</div>
+          <div><v-chip color="success" size="small">{{ selectedEvent['預約狀態'] }}</v-chip></div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">填表時間</div>
+          <div class="text-body-1">{{ selectedEvent['填表時間'] ? format(new Date(selectedEvent['填表時間']), 'yyyy-MM-dd HH:mm:ss') : 'N/A' }}</div>
+        </v-col>
+        <v-col v-if="selectedEvent['驗屋人員']" cols="12">
+          <div class="text-caption text-grey-darken-1">驗屋人員</div>
+          <div class="d-flex flex-wrap ga-2 mt-1">
+            <v-chip
+              v-for="(person, index) in selectedEvent['驗屋人員'].split(',').filter(p => p.trim())"
+              :key="index"
+              color="primary"
+              variant="elevated"
+              size="small"
+            >
+              <v-icon start icon="mdi-account"></v-icon>
+              {{ person.trim() }}
+            </v-chip>
+          </div>
+        </v-col>
+      </v-row>
+      <v-divider class="my-4"></v-divider>
+      
+      <div v-if="selectedEvent['委託人姓名']">
+         </div>
+
+      <p class="text-subtitle-1 font-weight-bold mb-2">相關文件</p>
+      <v-row dense>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">驗屋文件</div>
+          <div>
+            <v-btn
+              v-if="selectedEvent['驗屋文件']"
+              color="primary"
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-google-drive"
+              @click="openUrl(selectedEvent['驗屋文件'])"
+            >
+              {{ selectedEvent['戶別'] }}文件
+            </v-btn>
+            <span v-else class="text-body-1">未提供</span>
+          </div>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <div class="text-caption text-grey-darken-1">驗屋報告</div>
+          <div>
+            <v-btn
+              v-if="selectedEvent['驗屋報告']"
+              color="red-darken-4"
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-google-drive"
+              @click="openUrl(selectedEvent['驗屋報告'])"
+            >
+              {{ selectedEvent['戶別'] }}報告
+            </v-btn>
+            <span v-else class="text-body-1">未提供</span>
+          </div>
+        </v-col>
+      </v-row>
+
+    
+
+    </v-card-text>
+    <v-divider></v-divider>
+    <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { fetchInspectionAppointments } from '@/api';
-import { format, startOfWeek, endOfWeek, addDays, subDays, differenceInDays } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
-import FullCalendar from '@fullcalendar/vue3';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin from '@fullcalendar/interaction';
-import listPlugin from '@fullcalendar/list';
+import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday } from 'date-fns';import { zhTW } from 'date-fns/locale';
+// --- FullCalendar 相關引用已移除 ---
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -266,16 +292,16 @@ const route = useRoute();
 const isLoading = ref(true);
 const error = ref(null);
 const appointments = ref([]);
-const fullCalendar = ref(null);
 const isDialogVisible = ref(false);
 const selectedEvent = ref(null);
 const isDownloadingPdf = ref(false);
-const currentView = ref('fullcalendar');
+const pdfDownloadProgress = ref('');
+const searchQuery = ref(''); 
 
-// --- ✅ [新功能] 日期範圍相關狀態 ---
+
+// --- 日期範圍相關狀態 ---
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
-const pdfDownloadProgress = ref('');
 
 // --- 常數與計算屬性 ---
 const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu1750: '富宇首馥' };
@@ -288,72 +314,141 @@ const projectId = ref(route.params.projectId);
 const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 
-const dateChunks = computed(() => {
-    if (!startDate.value || !endDate.value) return [];
-    
-    const chunks = [];
-    // ✅ 核心修改 3: 從選定範圍的第一天的「週一」開始計算
-    let current = startOfWeek(new Date(startDate.value), { weekStartsOn: 1 });
+// START: 請用此版本完整取代舊的 filteredAppointments
+const filteredAppointments = computed(() => {
+  // 先執行 processAppointments，確保所有欄位 (包含合併來的) 都已存在
+  const allProcessedAppointments = processAppointments(appointments.value);
 
-    // 迴圈的結束條件是當週的週一已經超過了結束日期
-    while (current <= endDate.value) {
-        const chunk = [];
-        for (let i = 0; i < 7; i++) {
-            const date = addDays(current, i);
-            // 判斷這一天是否在使用者選擇的範圍內
-            const isInRange = date >= startDate.value && date <= endDate.value;
-            chunk.push({
-                dateObj: date,
-                dayName: format(date, 'EEEE', { locale: zhTW }),
-                date: format(date, 'M/d'),
-                fullDate: format(date, 'yyyy-MM-dd'),
-                isInRange: isInRange // 增加一個狀態旗標
-            });
-        }
-        chunks.push(chunk);
-        current = addDays(current, 7);
-    }
-    return chunks;
+  const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
+  if (!query) {
+    // 如果沒有搜尋文字，回傳處理過的完整列表
+    return allProcessedAppointments;
+  }
+
+  // 如果有搜尋文字，則過濾處理過的列表
+  return allProcessedAppointments.filter(appt => {
+    const fieldsToSearch = [
+      appt['戶別'],
+      appt['門牌'],
+      appt['姓名'],
+      appt['電話'],
+      appt['預約項目'],
+      appt['驗屋方式'],
+      appt['代驗公司名稱'],
+      appt['驗屋人員'],
+      appt['備註'],
+      appt['車位'],
+      appt['銀行'],
+      appt['銀行窗口']
+    ];
+
+    return fieldsToSearch.some(field => 
+      field && String(field).toLowerCase().includes(query)
+    );
+  });
+});
+// END: 取代結束
+
+const foundDates = computed(() => {
+  // 只有在有搜尋文字時才執行
+  if (!searchQuery.value) return [];
+  // 從過濾後的預約中，提取所有不重複的日期
+  const dates = filteredAppointments.value.map(appt => format(appt.start, 'yyyy-MM-dd'));
+  return [...new Set(dates)];
 });
 
-// ✅ [新功能] 為 v-text-field[type=date] 綁定計算屬性
+// START: 請用此版本完整取代舊的 dateChunks
+const dateChunks = computed(() => {
+  const query = searchQuery.value ? searchQuery.value.trim() : '';
+
+  // 判斷是否處於搜尋模式
+  if (query && foundDates.value.length > 0) {
+    // --- 搜尋模式 ---
+    // 1. 取得所有包含搜尋結果的「週一」日期
+    const startOfWeeks = [...new Set(foundDates.value.map(dateStr => {
+      const date = new Date(dateStr);
+      return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    }))].sort();
+
+    // 2. 根據這些「週一」來產生週視圖區塊
+    return startOfWeeks.map(weekStartStr => {
+      const chunk = [];
+      const current = new Date(weekStartStr);
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(current, i);
+        chunk.push({
+          dateObj: date,
+          dayName: format(date, 'EEEE', { locale: zhTW }),
+          date: format(date, 'M/d'),
+          fullDate: format(date, 'yyyy-MM-dd'),
+          isInRange: true, // 在搜尋模式下，所有顯示的日期都視為在範圍內
+          isToday: isToday(date),
+          isWeekend: isSaturday(date) || isSunday(date)
+        });
+      }
+      return chunk;
+    });
+
+  } else {
+    // --- 正常模式 (無搜尋文字或無結果) ---
+    if (!startDate.value || !endDate.value) return [];
+
+    const chunks = [];
+    let current = startOfWeek(new Date(startDate.value), { weekStartsOn: 1 });
+
+    while (current <= endDate.value) {
+      const chunk = [];
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(current, i);
+        const isInRange = date >= startDate.value && date <= endDate.value;
+        chunk.push({
+          dateObj: date,
+          dayName: format(date, 'EEEE', { locale: zhTW }),
+          date: format(date, 'M/d'),
+          fullDate: format(date, 'yyyy-MM-dd'),
+          isInRange: isInRange,
+          isToday: isToday(date),
+          isWeekend: isSaturday(date) || isSunday(date)
+        });
+      }
+      chunks.push(chunk);
+      current = addDays(current, 7);
+    }
+    return chunks;
+  }
+});
+// END: 取代結束
+
 const startDateFormatted = computed({
   get: () => format(startDate.value, 'yyyy-MM-dd'),
-  set: (val) => { startDate.value = new Date(val); }
+  set: (val) => { 
+    const [year, month, day] = val.split('-').map(Number);
+    startDate.value = new Date(year, month - 1, day); 
+  }
 });
 const endDateFormatted = computed({
   get: () => format(endDate.value, 'yyyy-MM-dd'),
-  set: (val) => { endDate.value = new Date(val); }
+  set: (val) => { 
+    const [year, month, day] = val.split('-').map(Number);
+    endDate.value = new Date(year, month - 1, day);
+  }
 });
 
-// 產生時間軸 (維持不變)
 const timeSlots = computed(() => {
     const slots = [];
-    const min = 8; // 08:00
-    const max = 18; // 18:00
+    const min = 8;
+    const max = 18;
     for (let i = min; i < max; i++) {
         slots.push(`${String(i).padStart(2, '0')}:00`);
     }
     return slots;
 });
 
-// 組合好的事件，用於 FullCalendar
-const calendarEvents = computed(() => {
-  return processAppointments(appointments.value).map(event => ({
-    id: event.id,
-    title: `${event['戶別']} - ${event.displayText}`,
-    start: event.start,
-    end: event.end,
-    allDay: false,
-    extendedProps: event,
-    ...getEventStyle(event)
-  }));
-});
+// --- 為 FullCalendar 準備的 calendarEvents 已移除 ---
 
-// 將事件分組，用於自訂表格視圖
 const groupedEvents = computed(() => {
   const grouped = {};
-  const processed = processAppointments(appointments.value);
+const processed = filteredAppointments.value;
   processed.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
     const timeKey = format(event.start, 'HH:00');
@@ -364,37 +459,7 @@ const groupedEvents = computed(() => {
   return grouped;
 });
 
-
-// --- FullCalendar 設定 (維持不變) ---
-const calendarOptions = ref({
-  plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin],
-  initialView: 'dayGridMonth', locale: 'zh-tw', firstDay: 1, weekends: true,
-  headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek,listDay' },
-  buttonText: { today: '今天', month: '月', week: '週', day: '日', listWeek: '週列表', listDay: '日列表' },
-  slotMinTime: '08:00:00', slotMaxTime: '18:00:00', events: [],
-  eventClick: handleEventClick, height: '80vh', allDaySlot: false,
-  slotLabelFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
-  eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
-  eventContent: (arg) => { /* ... 內容不變 ... */ 
-    const props = arg.event.extendedProps;
-    const itemText = props.displayText;
-    let timeText = arg.timeText;
-    let htmlContent = '';
-    if (arg.view.type === 'dayGridMonth') {
-      htmlContent = `<div class="fc-event-main-custom"><div class="fc-event-time">${timeText}</div> <div class="fc-event-title">${props['戶別']} ${itemText}</div></div>`;
-    } else if (arg.view.type === 'timeGridWeek') {
-      htmlContent = `<div class="fc-event-main-custom"><div class="fc-event-title-full">${props['戶別']}</div><div class="fc-event-title-full">${itemText}</div></div>`;
-    } else if (arg.view.type === 'timeGridDay') {
-      const mainInfoParts = [ props['戶別'], props['姓名'], props['預約項目'], props['驗屋方式'], props['代驗公司名稱']].filter(Boolean);
-      htmlContent = `<div class="fc-event-main-custom"><div class="fc-event-title-full">${mainInfoParts.join(' - ')}</div>`;
-      if (props['備註']) { htmlContent += `<div class="fc-event-title-full">備註：${props['備註']}</div>`; }
-      htmlContent += '</div>';
-    } else {
-      htmlContent = `<div class="fc-event-main-custom"><div class="fc-event-title-full"><b>${timeText}</b> ${props['戶別']} ${props['姓名']}</div><div class="fc-event-title-full">${itemText}</div></div>`;
-    }
-    return { html: htmlContent };
-  }
-});
+// --- FullCalendar 的 calendarOptions 物件已完全移除 ---
 
 // --- 方法 ---
 
@@ -410,6 +475,7 @@ function processAppointments(rawAppointments) {
                 const times = timeSlot.split('-').map(t => t.trim());
                 const startTime = times[0];
                 const endTime = times.length > 1 ? times[1] : `${String(parseInt(startTime.split(':')[0]) + 1).padStart(2, '0')}:00`;
+                
                 const bookingDate = new Date(appt['預約日期']);
                 const allocationDate = appt['撥款日期'] ? new Date(appt['撥款日期']) : null;
                 let isAllocated = false;
@@ -418,16 +484,15 @@ function processAppointments(rawAppointments) {
                     allocationDate.setHours(0, 0, 0, 0);
                     isAllocated = bookingDate.getTime() >= allocationDate.getTime();
                 }
-                 // 組合事件標題文字
+
                 const titleParts = [
                     appt['預約項目'],
                     appt['驗屋方式'],
                     appt['代驗公司名稱'],
-                    // 如果有驗屋人員，就加上括號
                     appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null 
-                ].filter(Boolean); // 過濾掉 null 或空字串的項目
+                ].filter(Boolean);
                 
-                let itemText = titleParts.join(' - '); // 用 ' - ' 連接
+                let itemText = titleParts.join(' - ');
                 let fullTextForSearch = itemText;
                 if (isAllocated) {
                     itemText += ' (已撥款)';
@@ -450,41 +515,17 @@ function getEventStyle(event) {
     return {};
 }
 
-function handleEventClick(clickInfo) {
-  selectedEvent.value = clickInfo.event.extendedProps;
-  isDialogVisible.value = true;
-}
+// --- handleEventClick (FullCalendar用) 已移除 ---
 
 function handleCustomEventClick(event) {
   selectedEvent.value = event;
   isDialogVisible.value = true;
 }
 
-// ✅ [新功能] 套用日期範圍 (此函式是為了確保響應性，實際上計算屬性已處理)
-function applyDateRange() {
-  // 觸發響應式更新
-  startDate.value = new Date(startDate.value);
-  endDate.value = new Date(endDate.value);
-}
-
-
-// ✅ [核心修改] 全新優化的 PDF 下載邏輯
 async function handleDownloadPdf() {
   isDownloadingPdf.value = true;
   pdfDownloadProgress.value = '準備中...';
 
-  // 根據當前視圖選擇要列印的容器ID
-  const containerId = currentView.value === 'fullcalendar' ? 'calendar-container' : 'custom-calendar-container';
-  
-  // 如果是標準日曆，使用單頁下載邏輯
-  if (currentView.value === 'fullcalendar') {
-    await downloadSingleElementPdf(containerId);
-    isDownloadingPdf.value = false;
-    pdfDownloadProgress.value = '';
-    return;
-  }
-
-  // 如果是自訂視圖，使用新的多頁下載邏輯
   const tableChunks = document.querySelectorAll('#custom-calendar-container .table-chunk');
   if (!tableChunks || tableChunks.length === 0) {
     isDownloadingPdf.value = false;
@@ -499,7 +540,6 @@ async function handleDownloadPdf() {
       const element = tableChunks[i];
       pdfDownloadProgress.value = `正在產生第 ${i + 1} / ${tableChunks.length} 頁...`;
       
-      // 儲存原始樣式
       const originalStyle = {
         width: element.style.width,
         height: element.style.height,
@@ -508,26 +548,23 @@ async function handleDownloadPdf() {
         top: element.style.top,
       };
 
-      // 為了完整擷取，暫時將元素移到左上角並給予超大寬度
       element.style.position = 'absolute';
       element.style.left = '0px';
       element.style.top = '0px';
       element.style.width = '3000px'; 
       element.style.height = 'auto';
 
-      await new Promise(resolve => setTimeout(resolve, 100)); // 等待DOM渲染
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
-        // 關鍵：讓 canvas 根據內容的實際寬度來決定大小
         width: element.scrollWidth,
         height: element.scrollHeight,
         windowWidth: element.scrollWidth,
         windowHeight: element.scrollHeight
       });
 
-      // 擷取完畢後立刻恢復原始樣式
       element.style.width = originalStyle.width;
       element.style.height = originalStyle.height;
       element.style.position = originalStyle.position;
@@ -559,55 +596,7 @@ async function handleDownloadPdf() {
   }
 }
 
-// 單頁下載邏輯也一併優化
-async function downloadSingleElementPdf(elementId) {
-    const elementToPrint = document.getElementById(elementId);
-    if (!elementToPrint) return;
-    
-    const originalStyle = { width: elementToPrint.style.width, height: elementToPrint.style.height };
-    try {
-        // 同樣給予超大寬度以確保擷取完整
-        elementToPrint.style.width = '3000px';
-        elementToPrint.style.height = 'auto';
-
-        if (fullCalendar.value) { fullCalendar.value.getApi().updateSize(); }
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const canvas = await html2canvas(elementToPrint, { 
-            scale: 2, 
-            useCORS: true, 
-            width: elementToPrint.scrollWidth, 
-            height: elementToPrint.scrollHeight 
-        });
-        
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('landscape', 'mm', 'a3');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const imgProps = pdf.getImageProperties(imgData);
-        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        
-        let heightLeft = imgHeight, position = 0;
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-        heightLeft -= pdfHeight;
-        
-        while (heightLeft > 0) {
-            position -= pdfHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-            heightLeft -= pdfHeight;
-        }
-        pdf.save(`${projectName.value}_驗屋預約表_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
-    } catch(err) {
-      console.error("PDF 產生失敗:", err);
-      error.value = "產生 PDF 失敗，請稍後再試。"
-    } finally {
-        elementToPrint.style.width = originalStyle.width;
-        elementToPrint.style.height = originalStyle.height;
-        if (fullCalendar.value) { fullCalendar.value.getApi().updateSize(); }
-    }
-}
-
+// --- downloadSingleElementPdf (FullCalendar用) 已移除 ---
 
 function openUrl(url) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer');
@@ -631,9 +620,32 @@ async function fetchData() {
   }
 }
 
-watch(calendarEvents, (newEvents) => {
-  if (fullCalendar.value) calendarOptions.value.events = newEvents;
-});
+// 請將此函式加入到 <script setup> 的方法區塊
+function getAppointmentItemStyle(itemText) {
+  if (!itemText) return {};
+  const found = KEYWORD_COLOR_MAP.find(config => itemText.includes(config.keyword));
+  if (found) {
+    return {
+      backgroundColor: found.backgroundColor,
+      color: found.textColor,
+      padding: '4px 10px',
+      borderRadius: '16px', // 膠囊形狀
+      fontSize: '0.875rem',
+      fontWeight: 'bold',
+      display: 'inline-block'
+    };
+  }
+  // 如果不是關鍵字，也給一個預設樣式
+  return {
+    backgroundColor: '#E0E0E0', // 灰色
+    color: '#212121',
+    padding: '4px 10px',
+    borderRadius: '16px',
+    fontSize: '0.875rem',
+    fontWeight: 'bold',
+    display: 'inline-block'
+  };
+}
 
 onMounted(() => {
   if (PROJECT_NAME_MAP[projectId.value]) {
@@ -647,81 +659,100 @@ onMounted(() => {
 </script>
 
 <style>
-/* 原始樣式 (標準日曆) */
-.fc .fc-button-primary { background-color: #1a73e8; border-color: #1a73e8; }
-.fc .fc-button-primary:hover { background-color: #1765c6; border-color: #1765c6; }
-.fc-event { cursor: pointer; font-size: 0.8rem; padding: 2px 4px; }
+/* --- 全局樣式 --- */
 .primary-bg { background-color: #1a73e8; color: white; }
-.fc-event-main-custom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-event-main-custom .fc-event-time { font-weight: bold; margin-right: 5px; }
-.fc-event-main-custom .fc-event-title { display: inline; vertical-align: top; }
-.fc-timeGridWeek-view .fc-timegrid-slot-lane { height: 4.5em; }
-.fc-timeGridDay-view .fc-timegrid-slot-lane { height: 2.5em; }
-#calendar-container { overflow-x: auto; overflow-y: hidden; }
-.fc-timeGridWeek-view .fc-scrollgrid, .fc-timeGridDay-view .fc-scrollgrid { width: 2000px; }
 
-/* --- ✅ 全新、最終版的自訂週視圖樣式 --- */
+/* --- 自訂週視圖樣式 (手動實現凍結版) --- */
 
-/* 1. 在這裡調整寬度 */
 :root {
-  --day-column-width: 220px;  /* ⭐ 在這裡調整每日欄位的寬度 ⭐ */
+  --day-column-width: 220px;
+  --header-bg-color: #f5f5f5;
+  --time-col-bg-color: #f9f9f9;
+  --today-highlight-bg: #e3f2fd;
+  --today-highlight-text: #1976d2;
+  --weekend-bg-color: #fafafa;
+  --border-color: #e0e0e0;
 }
 
-/* 2. 容器：負責產生滾動條 */
+/* 1. 建立滾動容器 */
 #custom-calendar-container {
-  overflow-x: auto;
-  border: 1px solid #e0e0e8;
+  overflow: auto;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
+  max-height: 75vh; 
 }
 
-/* 3. 表格：寬度由內容決定，不再設定 100% */
 .custom-calendar-table {
   table-layout: fixed;
   border-collapse: collapse;
 }
 
-/* 4. 表頭與儲存格 */
+/* 基礎儲存格 */
 .custom-calendar-table th, 
 .custom-calendar-table td {
-  border: 1px solid #e0e0e0;
-  vertical-align: top;
+  border: 1px solid var(--border-color);
   padding: 4px;
 }
-
+.time-header, .time-cell, .day-header {
+  vertical-align: middle;
+  
+}
 .time-header, .time-cell {
-  width: 100px; /* 固定時間欄寬度 */
-  min-width: 100px; /* 確保最小寬度 */
+  width: 100px;
+  min-width: 100px;
+  text-align: center;
+  font-weight: bold;
 }
-
 .day-header, .event-cell {
-  width: var(--day-column-width); /* ⭐ 直接使用變數設定固定寬度 */
-  min-width: var(--day-column-width); /* 確保最小寬度 */
+  width: var(--day-column-width);
+  min-width: var(--day-column-width);
 }
 
-.time-header, .day-header {
-  text-align: center;
-  background-color: #f5f5f5;
-  font-weight: bold;
-}
-.day-header div:last-child {
-  font-size: 0.9em;
-  font-weight: normal;
-}
-.time-cell {
-  text-align: center;
-  font-weight: bold;
-  font-size: 0.9em;
-  background-color: #f9f9f9;
+/* --- 手動實現凍結窗格 --- */
+
+/* 2. 凍結上方日期列 */
+.custom-calendar-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--header-bg-color);
+  box-shadow: 0 2px 5px -2px rgba(0,0,0,0.1);
 }
 
+/* 3. 凍結左側整個時間欄 */
+.custom-calendar-table th:first-child,
+.custom-calendar-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background-color: var(--time-col-bg-color);
+  box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1);
+}
+
+/* 4. 將左上角"時間"格的層級設為最高 */
+.custom-calendar-table thead th:first-child {
+  z-index: 4;
+  box-shadow: 2px 2px 5px -2px rgba(0,0,0,0.15);
+}
+
+/* --- 視覺優化樣式 (維持不變) --- */
 .event-cell {
   height: 120px;
+  vertical-align: top;
 }
-
-/* 5. 事件項目：負責換行 */
+.weekend-column {
+  background-color: var(--weekend-bg-color) !important;
+}
+.today-column {
+  background-color: var(--today-highlight-bg) !important;
+}
+.day-header.today-column div {
+  color: var(--today-highlight-text);
+  font-weight: 900;
+}
 .event-item {
   white-space: normal;
-  word-wrap: break-word; /* 允許長單字換行 */
+  word-wrap: break-word;
   padding: 4px 6px;
   margin-bottom: 4px;
   border-radius: 4px;
@@ -735,9 +766,38 @@ onMounted(() => {
 .table-chunk {
   page-break-inside: avoid;
 }
-
 .disabled-cell {
-  background-color: #fafafa; /* 給予一個淺灰色背景 */
+  background-color: #f8f9fa;
+}
+
+/* --- 文字置中最終修正 --- */
+/* 透過提高 CSS Selector 的優先級，強制覆蓋 Vuetify 的預設靠左對齊 */
+.custom-calendar-table .time-header,
+.custom-calendar-table .day-header {
+  text-align: center !important;
+}
+
+.event-household {
+  font-size: 1.2em; /* 讓字體比周圍文字大 10% */
+}
+
+/* 請將此段 CSS 加入到 <style> 區塊 */
+.remarks-text {
+  color: #C62828; /* 深紅色文字 */
+  background-color: #FFEBEE; /* 淡紅色背景 */
+  padding: 12px;
+  border-radius: 4px;
+  font-weight: 500;
+  border-left: 5px solid #D32F2F; /* 左側加上紅色粗線，更醒目 */
+  line-height: 1.6;
+}
+
+/* --- 手機版按鈕響應式優化 --- */
+/* 當螢幕寬度小於 600px 時 (Vuetify 的 xs 尺寸) */
+@media (max-width: 599px) {
+  .btn-text {
+    display: none; /* 隱藏按鈕內的文字 */
+  }
 }
 
 </style>
