@@ -65,7 +65,7 @@
         <div id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
             <h3 class="text-h6 mb-2">
-              時間範圍: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
+              　 {{ projectName }} - 驗屋時間表: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
             </h3>
             <v-table class="custom-calendar-table">
               <thead>
@@ -306,15 +306,15 @@ const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 // --- 常數與計算屬性 ---
 const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu1750: '富宇首馥' };
 const KEYWORD_COLOR_MAP = [
-  { keyword: '已撥款', backgroundColor: '#ffc107', textColor: '#212529' },
-  { keyword: '初驗', backgroundColor: '#d4edda', textColor: '#155724' },
-  { keyword: '複驗', backgroundColor: '#f8d7da', textColor: '#721c24' },
+  { keyword: '已撥款', backgroundColor: '#ffc107', textColor: '#212529', borderColor: '#e0a800' }, // 稍深的黃色
+  { keyword: '初驗', backgroundColor: '#d4edda', textColor: '#155724', borderColor: '#b1dfbb' }, // 稍深的綠色
+  { keyword: '複驗', backgroundColor: '#f8d7da', textColor: '#721c24', borderColor: '#f1b0b7' }, // 稍深的紅色
 ];
 const projectId = ref(route.params.projectId);
 const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 
-// START: 請用此版本完整取代舊的 filteredAppointments
+
 const filteredAppointments = computed(() => {
   // 先執行 processAppointments，確保所有欄位 (包含合併來的) 都已存在
   const allProcessedAppointments = processAppointments(appointments.value);
@@ -347,7 +347,7 @@ const filteredAppointments = computed(() => {
     );
   });
 });
-// END: 取代結束
+
 
 const foundDates = computed(() => {
   // 只有在有搜尋文字時才執行
@@ -357,7 +357,6 @@ const foundDates = computed(() => {
   return [...new Set(dates)];
 });
 
-// START: 請用此版本完整取代舊的 dateChunks
 const dateChunks = computed(() => {
   const query = searchQuery.value ? searchQuery.value.trim() : '';
 
@@ -417,7 +416,7 @@ const dateChunks = computed(() => {
     return chunks;
   }
 });
-// END: 取代結束
+
 
 const startDateFormatted = computed({
   get: () => format(startDate.value, 'yyyy-MM-dd'),
@@ -507,15 +506,28 @@ function processAppointments(rawAppointments) {
 }
 
 function getEventStyle(event) {
-    for (const config of KEYWORD_COLOR_MAP) {
-        if (event.fullTextForSearch.includes(config.keyword)) {
-            return { backgroundColor: config.backgroundColor, color: config.textColor, borderColor: config.backgroundColor };
-        }
+  for (const config of KEYWORD_COLOR_MAP) {
+    if (event.fullTextForSearch.includes(config.keyword)) {
+      return {
+        backgroundColor: config.backgroundColor,
+        color: config.textColor,
+        borderColor: config.borderColor, 
+        borderWidth: '2px',
+        borderStyle: 'solid'
+      };
     }
-    return {};
+  }
+  
+  // 預設樣式 
+  return {
+    backgroundColor: '#EEEEEE',
+    color: '#212121',
+    borderColor: '#E0E0E0',
+    borderWidth: '2px',
+    borderStyle: 'solid'
+  };
 }
 
-// --- handleEventClick (FullCalendar用) 已移除 ---
 
 function handleCustomEventClick(event) {
   selectedEvent.value = event;
@@ -534,6 +546,9 @@ async function handleDownloadPdf() {
   }
 
   const pdf = new jsPDF('landscape', 'mm', 'a4');
+  
+  // 您可以在這裡自由調整邊界大小，單位是 mm
+  const margin = 5; 
 
   try {
     for (let i = 0; i < tableChunks.length; i++) {
@@ -571,17 +586,20 @@ async function handleDownloadPdf() {
       element.style.left = originalStyle.left;
       element.style.top = originalStyle.top;
 
+      // 👇 這就是之前遺漏的關鍵行
       const imgData = canvas.toDataURL('image/png');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
+
+      const pdfPageWidth = pdf.internal.pageSize.getWidth();
       const imgProps = pdf.getImageProperties(imgData);
       
-      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const imageWidth = pdfPageWidth - (margin * 2);
+      const imageHeight = (imgProps.height * imageWidth) / imgProps.width;
 
       if (i > 0) {
         pdf.addPage();
       }
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', margin, margin, imageWidth, imageHeight);
     }
     
     const fileName = `${projectName.value}_驗屋預約表_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
@@ -670,7 +688,7 @@ onMounted(() => {
   --time-col-bg-color: #f9f9f9;
   --today-highlight-bg: #e3f2fd;
   --today-highlight-text: #1976d2;
-  --weekend-bg-color: #fafafa;
+  --weekend-bg-color: #fc6a6a;
   --border-color: #e0e0e0;
 }
 
@@ -740,10 +758,10 @@ onMounted(() => {
   height: 120px;
   vertical-align: top;
 }
-.weekend-column {
+.day-header.weekend-column {
   background-color: var(--weekend-bg-color) !important;
 }
-.today-column {
+.day-header.today-column {
   background-color: var(--today-highlight-bg) !important;
 }
 .day-header.today-column div {
@@ -754,6 +772,7 @@ onMounted(() => {
   white-space: normal;
   word-wrap: break-word;
   padding: 4px 6px;
+  margin-top: 4px;
   margin-bottom: 4px;
   border-radius: 4px;
   font-size: 0.85em;
