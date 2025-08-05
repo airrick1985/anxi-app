@@ -38,6 +38,7 @@ import priceIcon from '@/assets/icons/price.png';
 import tableIcon from '@/assets/icons/table.png';
 import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
+import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -49,7 +50,6 @@ const containerStyle = computed(() => ({
 
 const allButtons = ref([
   { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'project', permissionArgs: ['訂閱管理', '安熙智慧'], nav: { name: 'SubscriptionManagement' } },
-  // ✅【核心修改】將 nav.name 從 'PersonnelManagement' 改回 'UserManagement'
   { id: 'UserManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
   { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
   { id: 'messageCenter', text: '訊息中心', icon: emailIcon, permissionType: 'loggedIn', nav: { name: 'MessageCenter' } },
@@ -59,6 +59,8 @@ const allButtons = ref([
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
   { id: 'customerManagement', text: '客戶管理', icon: customerIcon, permissionType: 'system', permissionArgs: ['客戶管理'], nav: null },
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
+  { id: 'inspectionTimetable', text: '驗屋時間表', icon: inspectionCalenderIcon, permissionType: 'system', permissionArgs:  ['驗屋時間表-修改', '驗屋時間表-檢視'], nav: { name: 'ProjectSelector' } // 點擊後會前往我們即將建立的「建案選擇頁」
+  },
 ]);
 
 const visibleButtons = ref([]);
@@ -85,8 +87,15 @@ onMounted(() => {
     switch(button.permissionType) {
       case 'project':
         return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
-      case 'system':
-        return userStore.hasPermission(button.permissionArgs[0]);
+    case 'system':
+  const args = button.permissionArgs[0];
+  if (Array.isArray(args)) {
+    // 如果傳入的是陣列，就用 some 檢查是否有任一權限即可
+    return args.some(permissionName => userStore.hasPermission(permissionName));
+  } else {
+    // 如果是單一字串，維持原本的行為
+    return userStore.hasPermission(args);
+  }
       case 'getter':
         return userStore[button.permissionArgs[0]];
       case 'loggedIn':
@@ -171,7 +180,7 @@ const handleNavigation = (button) => {
   color: #000000;
 }
 
-/* ✅ 核心修改：為 draggable 元件提供一個 flex 容器 */
+/* 為 draggable 元件提供一個 flex 容器 */
 .draggable-container {
   display: flex;
   flex-wrap: wrap;

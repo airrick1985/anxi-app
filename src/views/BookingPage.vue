@@ -293,7 +293,7 @@ import html2canvas from 'html2canvas';
 const projectConfigurations = {
   'fuyu56': {
     isPublished: true,
-    bookingDeadline: '2025-07-30T23:00:00+08:00',//截止日期設定
+    bookingDeadline: '2025-08-30T23:00:00+08:00',//截止日期設定
     themeColor: '#005A9E',
     projectName: '富宇上城',
     pageTitle: '富宇上城 後陽台門鎖更換預約',

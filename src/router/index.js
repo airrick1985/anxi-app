@@ -9,6 +9,8 @@ import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
 import InspectionCalendar from '@/views/public/InspectionCalendar.vue';
+const InspectionCalendarEntry = () => import('@/views/inspectionCalenderEntry.vue');
+
 
 
 // ✅ 懶加載 (Lazy Loading) 新的訊息頁面元件
@@ -20,6 +22,7 @@ const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue'
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
 const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
 const PublicLayout = () => import('@/layouts/PublicLayout.vue');
+
 
 const routes = [
   { path: '/', redirect: '/home' }, // 調整：通常登入後會導向 /home
@@ -203,6 +206,7 @@ const routes = [
 
         }
     },
+    
 
     //  新增訂閱查詢頁面的路由
  {
@@ -248,6 +252,26 @@ const routes = [
     }
   },
 
+  {
+    path: '/inspection-calendar-entry',
+    name: 'ProjectSelector', // 對應 Home.vue 按鈕的 nav.name
+    component: InspectionCalendarEntry,
+    meta: {
+      requiresAuth: true,
+      requiredAnySystem: ['驗屋時間表-修改', '驗屋時間表-檢視'],      layout: DefaultLayout
+    }
+  },
+  {
+    path: '/internal/inspection-calendar/:projectId', // 內部用的獨立路徑
+    name: 'InternalInspectionCalendar', // 給 Entry 頁面跳轉時使用
+    component: InspectionCalendar, // ✅ 重用同一個日曆元件
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredAnySystem: ['驗屋時間表-修改', '驗屋時間表-檢視'],      layout: DefaultLayout
+    }
+  },
+
 
   // 捕獲所有未匹配的路由，導向首頁或登入頁
   { path: '/:pathMatch(.*)*', redirect: '/home' }
@@ -272,6 +296,21 @@ router.beforeEach((to, from, next) => {
   if (isLoggedIn && to.name === 'Login') {
     return next({ name: 'Home' });
   }
+
+  //「多重權限 OR 檢查」邏輯
+  const requiredAny = to.meta.requiredAnySystem;
+    if (requiredAny && Array.isArray(requiredAny)) {
+      // 直接在這裡用 .some() 檢查，而不是呼叫 store 的函式
+      const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
+      
+      if (hasAccess) {
+        return next(); // 擁有任一權限，放行
+      } else {
+        alert(`權限不足：您沒有進入此系統的權限。`);
+        return next({ name: 'Home' });
+      }
+    }
+
 
   // 3. 權限檢查 (合併版)
   if (isLoggedIn) {
