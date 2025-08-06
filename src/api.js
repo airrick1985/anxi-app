@@ -1007,31 +1007,31 @@ export const saveBooking = async (projectName, bookingData) => {
 };
 
 /**
- * 取消一筆預約紀錄
+ * 取消預約 - ✅ 修改為使用預約代碼
  * @param {string} projectName 建案名稱
- * @param {object} identifier 唯一識別碼 { timestamp, unitId }
+ * @param {string} bookingCode 預約代碼
  */
-export const cancelBooking = async (projectName, identifier) => {
+export const cancelBooking = async (projectName, bookingCode) => {
   return fetchPost({
     action: 'cancel_booking',
     projectName,
-    identifier,
-  });
+    bookingCode,
+  }, INSPECTION_API);
 };
 
 /**
- * 更新一筆預約紀錄
+ * 更新一筆預約紀錄 - ✅ 修改為使用預約代碼
  * @param {string} projectName 建案名稱
- * @param {object} identifier 唯一識別碼 { timestamp, unitId }
+ * @param {string} bookingCode 預約代碼
  * @param {object} updatedData 要更新的資料物件
  */
-export const updateBooking = async (projectName, identifier, updatedData) => {
+export const updateBooking = async (projectName, bookingCode, updatedData) => {
   return fetchPost({
     action: 'update_booking',
     projectName,
-    identifier,
+    bookingCode,    // 將 identifier 替換為 bookingCode
     updatedData,
-  });
+  }, INSPECTION_API);
 };
 
 /**

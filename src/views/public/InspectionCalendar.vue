@@ -132,6 +132,8 @@
     <v-card-text v-if="!isEditMode" class="py-4 px-5">
       <p class="text-subtitle-1 font-weight-bold mb-2">基本資料</p>
       <v-row dense>
+ 
+
         <v-col cols="12" sm="6" md="4">
           <div class="text-caption text-grey-darken-1">戶別</div>
           <div class="text-body-1">{{ selectedEvent['戶別'] }}</div>
@@ -172,6 +174,11 @@
 
       <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
       <v-row dense>
+              <v-col cols="12" sm="6" md="4">
+        <div class="text-caption text-grey-darken-1">預約代碼</div>
+        <div class="text-body-1 font-weight-bold text-red-darken-2">{{ selectedEvent['預約代碼'] }}</div>
+    </v-col>
+
         <v-col cols="12" sm="6" md="4">
           <div class="text-caption text-grey-darken-1">預約項目</div>
           <div>
@@ -295,34 +302,87 @@
           </v-select>
         </v-col>
       </v-row>
-      <v-divider class="my-4"></v-divider>
-      
-      <p class="text-subtitle-1 font-weight-bold mb-2">授權委託資料</p>
-      <v-row dense>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['委託人姓名']" label="委託人姓名" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['委託人身分證']" label="委託人身分證" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['受託人姓名']" label="受託人姓名" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['受託人身分證']" label="受託人身分證" density="default"></v-text-field></v-col>
-      </v-row>
     </v-card-text>
 
     <v-divider></v-divider>
     <v-card-actions class="pa-3">
       <div v-if="!isEditMode" class="d-flex w-100">
-        <v-btn v-if="canEdit" color="red" variant="tonal" :loading="isCancelling" @click="handleCancelBooking">取消此預約</v-btn>
-        <v-spacer></v-spacer>
+<v-btn v-if="canEdit" color="red" variant="tonal" @click="promptCancelBooking(selectedEvent)">取消此預約</v-btn>        <v-spacer></v-spacer>
         <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
         <v-btn v-if="canEdit" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
       </div>
       <div v-else class="d-flex w-100">
         <v-spacer></v-spacer>
-        <v-btn color="grey-darken-1" variant="text" @click="isEditMode = false">取消編輯</v-btn>
-        <v-btn color="success" variant="flat" :loading="isSaving" @click="saveChanges">儲存變更</v-btn>
+        <v-btn color="grey-darken-1" variant="text" @click="isEditMode = false">取消</v-btn>
+        <v-btn color="success" variant="flat" :loading="isSaving" @click="saveChanges">儲存</v-btn>
       </div>
     </v-card-actions>
   </v-card>
 </v-dialog>
   </v-container>
+
+
+  <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
+  <v-card v-if="eventToCancel">
+    <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+      <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+      <span>確認取消預約</span>
+    </v-card-title>
+    
+    <v-divider></v-divider>
+
+    <v-card-text class="py-4">
+      <p class="mb-4">您確定要取消以下這筆預約紀錄嗎？</p>
+      
+      <v-list density="compact" class="bg-red-lighten-5 rounded">
+    <v-list-item
+        :title="`${eventToCancel['戶別']} (${eventToCancel['姓名']})`"
+        prepend-icon="mdi-home-account"
+    >
+        <template v-slot:subtitle>
+            <div class="font-weight-medium">{{ eventToCancel['預約項目'] }}</div>
+        </template>
+    </v-list-item>
+    <v-list-item
+        prepend-icon="mdi-calendar-clock-outline"
+    >
+        <template v-slot:title>
+            <div>{{ format(new Date(eventToCancel['預約日期']), 'yyyy-MM-dd') }}</div>
+        </template>
+        <template v-slot:subtitle>
+            <div class="font-weight-medium">{{ eventToCancel['預約時段'] }}</div>
+        </template>
+    </v-list-item>
+</v-list>
+      
+      <div class="text-red-darken-2 font-weight-bold mt-4">
+        此操作無法復原！
+      </div>
+    </v-card-text>
+    
+    <v-divider></v-divider>
+    
+    <v-card-actions class="pa-3">
+      <v-spacer></v-spacer>
+      <v-btn
+        variant="text"
+        @click="isCancelConfirmDialogVisible = false"
+      >
+        返回
+      </v-btn>
+      <v-btn
+        color="red-darken-1"
+        variant="flat"
+        :loading="isCancelling"
+        @click="handleCancelBooking"
+      >
+        確定取消
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+
 </template>
 
 <script setup>
@@ -350,6 +410,8 @@ const pdfDownloadProgress = ref('');
 const searchQuery = ref('');
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
+const isCancelConfirmDialogVisible = ref(false);
+const eventToCancel = ref(null); 
 
 // --- 編輯模式相關狀態 ---
 const isEditMode = ref(false);
@@ -385,7 +447,7 @@ const filteredAppointments = computed(() => {
     const fieldsToSearch = [
       appt['戶別'], appt['門牌'], appt['姓名'], appt['電話'], appt['預約項目'],
       appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'], appt['備註'],
-      appt['車位'], appt['銀行'], appt['銀行窗口']
+      appt['車位'], appt['銀行'], appt['銀行窗口'],appt['預約代碼'],appt['預約日期']
     ];
     return fieldsToSearch.some(field => field && String(field).toLowerCase().includes(query));
   });
@@ -465,6 +527,12 @@ const groupedEvents = computed(() => {
 });
 
 // --- 方法 ---
+
+// 用於打開確認對話框
+function promptCancelBooking(event) {
+  eventToCancel.value = event; // 暫存要被取消的事件
+  isCancelConfirmDialogVisible.value = true;
+}
 
 function processAppointments(rawAppointments) {
     return rawAppointments
@@ -548,41 +616,44 @@ async function saveChanges() {
   isSaving.value = true;
   error.value = null;
   try {
-    // START: ✅ 修正點 1 - 保護 new Date()
-    if (!editableEvent.value['填表時間'] || !editableEvent.value['預約日期']) {
-        throw new Error('填表時間和預約日期為必填欄位。');
+    if (!editableEvent.value['預約日期']) { // 簡化了判斷
+        throw new Error('預約日期為必填欄位。');
     }
-    // END: ✅ 修正點 1
 
-    const identifier = {
-      timestamp: format(new Date(editableEvent.value['填表時間']), 'yyyy/MM/dd HH:mm:ss'),
-      unitId: editableEvent.value['戶別']
-    };
-    
+ 
+
+
+    // 準備更新資料
     const staff = Array.isArray(editableEvent.value['驗屋人員'])
       ? editableEvent.value['驗屋人員'].join(',')
       : editableEvent.value['驗屋人員'];
 
     const updatedData = {
-      '姓名': editableEvent.value['姓名'],
-      '電話': editableEvent.value['電話'],
-      'EMAIL': editableEvent.value['EMAIL'],
-      '驗屋方式': editableEvent.value['驗屋方式'],
-      '代驗公司名稱': editableEvent.value['代驗公司名稱'],
-      '驗屋人員': staff,
-      '預約日期': format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd'),
-      '預約時段': editableEvent.value['預約時段'],
-      '委託人姓名': editableEvent.value['委託人姓名'],
-      '委託人身分證': editableEvent.value['委託人身分證'],
-      '受託人姓名': editableEvent.value['受託人姓名'],
-      '受託人身分證': editableEvent.value['受託人身分證'],
+        '姓名': editableEvent.value['姓名'],
+        '電話': editableEvent.value['電話'],
+        'EMAIL': editableEvent.value['EMAIL'],
+        '驗屋方式': editableEvent.value['驗屋方式'],
+        '代驗公司名稱': editableEvent.value['代驗公司名稱'],
+        '驗屋人員': staff,
+        '預約日期': format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd'),
+        '預約時段': editableEvent.value['預約時段'],
+        '委託人姓名': editableEvent.value['委託人姓名'],
+        '委託人身分證': editableEvent.value['委託人身分證'],
+        '受託人姓名': editableEvent.value['受託人姓名'],
+        '受託人身分證': editableEvent.value['受託人身分證'],
     };
 
-    const response = await updateBooking(projectName.value, identifier, updatedData);
+    // 呼叫 updateBooking 時，直接傳遞預約代碼
+    const response = await updateBooking(
+        projectName.value, 
+        editableEvent.value['預約代碼'], // 使用 '預約代碼' 作為 KEY
+        updatedData
+    );
+
     if (response.status === 'success') {
       alert('儲存成功！');
-      isDialogVisible.value = false; // 關閉彈窗
-      await fetchData(); // START: ✅ 修正點 2 - 重新獲取最新資料
+      isDialogVisible.value = false;
+      await fetchData();
     } else {
       throw new Error(response.message || '更新失敗');
     }
@@ -595,21 +666,22 @@ async function saveChanges() {
 }
 
 async function handleCancelBooking() {
-  if (!confirm(`確定要取消戶別 ${selectedEvent.value['戶別']} 的這筆預約嗎？\n此操作無法復原。`)) {
-    return;
-  }
+  if (!eventToCancel.value) return;
+
   isCancelling.value = true;
   error.value = null;
+  
   try {
-    const identifier = {
-      timestamp: format(new Date(selectedEvent.value['填表時間']), 'yyyy/MM/dd HH:mm:ss'),
-      unitId: selectedEvent.value['戶別']
-    };
-    const response = await cancelBooking(projectName.value, identifier);
+    const response = await cancelBooking(
+      projectName.value, 
+      eventToCancel.value['預約代碼'] // 使用預約代碼作為 KEY
+    );
+
     if (response.status === 'success') {
-      alert('預約已取消！');
-      isDialogVisible.value = false; // 關閉彈窗
-      await fetchData(); // START: ✅ 修正點 3 - 重新獲取最新資料
+      alert('預約已成功取消！');
+      isDialogVisible.value = false; // 關閉主要的詳細資訊對話框
+      isCancelConfirmDialogVisible.value = false; // 關閉確認對話框
+      await fetchData(); // 重新獲取最新資料並更新畫面
     } else {
       throw new Error(response.message || '取消失敗');
     }
@@ -618,9 +690,9 @@ async function handleCancelBooking() {
     alert(`取消預約失敗: ${err.message}`);
   } finally {
     isCancelling.value = false;
+    eventToCancel.value = null; // 完成後清空
   }
 }
-
 async function handleDownloadPdf() {
   isDownloadingPdf.value = true;
   pdfDownloadProgress.value = '準備中...';

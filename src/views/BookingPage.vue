@@ -154,26 +154,34 @@
           
                     <div v-if="existingBookingInfo && step === 1">
             <v-card-text>
-              <v-alert type="info" variant="tonal" border="start" class="mb-4">
-                <h3 class="text-h6 mb-2">您已完成預約</h3>
-                <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
-              </v-alert>
-              <v-list lines="two" class="text-left" density="compact">
-                <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
-                <v-list-item title="戶別" :subtitle="existingBookingInfo['戶別']" prepend-icon="mdi-home-variant-outline"></v-list-item>
-                <v-list-item title="姓名" :subtitle="existingBookingInfo['姓名']" prepend-icon="mdi-account-outline"></v-list-item>
-                <v-list-item title="電話" :subtitle="existingBookingInfo['電話']" prepend-icon="mdi-phone-outline"></v-list-item>
-                <v-list-item title="EMAIL" :subtitle="existingBookingInfo['EMAIL']" prepend-icon="mdi-email-outline"></v-list-item>
-                <v-divider class="my-2"></v-divider>
-                <v-list-item title="預約項目" :subtitle="existingBookingInfo['預約項目']" prepend-icon="mdi-format-list-checks"></v-list-item>
-                <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo['預約日期'])" prepend-icon="mdi-calendar-check-outline"></v-list-item>
-                <v-list-item title="預約時段" :subtitle="existingBookingInfo['預約時段']" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
-                <v-list-item title="預約狀態" :subtitle="existingBookingInfo['預約狀態']" prepend-icon="mdi-list-status">
-                  <template v-slot:subtitle="{ subtitle }">
-                    <v-chip color="info" size="small" label>{{ subtitle }}</v-chip>
-                  </template>
-                </v-list-item>
-              </v-list>
+     <v-alert type="info" variant="tonal" border="start" class="mb-4">
+    <h3 class="text-h6 mb-2">您已完成預約</h3>
+    <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
+</v-alert>
+
+<v-list lines="two" class="text-left" density="compact">
+    
+    <v-list-item title="預約代碼" :subtitle="existingBookingInfo['預約代碼']" prepend-icon="mdi-pound-box-outline">
+        <template v-slot:subtitle="{ subtitle }">
+            <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
+        </template>
+    </v-list-item>
+
+    <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
+    <v-list-item title="戶別" :subtitle="existingBookingInfo['戶別']" prepend-icon="mdi-home-variant-outline"></v-list-item>
+    <v-list-item title="姓名" :subtitle="existingBookingInfo['姓名']" prepend-icon="mdi-account-outline"></v-list-item>
+    <v-list-item title="電話" :subtitle="existingBookingInfo['電話']" prepend-icon="mdi-phone-outline"></v-list-item>
+    <v-list-item title="EMAIL" :subtitle="existingBookingInfo['EMAIL']" prepend-icon="mdi-email-outline"></v-list-item>
+    <v-divider class="my-2"></v-divider>
+    <v-list-item title="預約項目" :subtitle="existingBookingInfo['預約項目']" prepend-icon="mdi-format-list-checks"></v-list-item>
+    <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo['預約日期'])" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+    <v-list-item title="預約時段" :subtitle="existingBookingInfo['預約時段']" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
+    <v-list-item title="預約狀態" :subtitle="existingBookingInfo['預約狀態']" prepend-icon="mdi-list-status">
+        <template v-slot:subtitle="{ subtitle }">
+            <v-chip color="info" size="small" label>{{ subtitle }}</v-chip>
+        </template>
+    </v-list-item>
+</v-list>
             </v-card-text>
             <v-card-actions class="pa-4">
               <v-spacer></v-spacer>
@@ -247,23 +255,31 @@
               </v-card-actions>
           </div>
 
-                    <div v-if="step === 4">
-              <v-card-text class="text-center py-8" ref="bookingResultCard">
-                  <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
-                  <h3 class="text-h5 mb-2">預約成功！</h3>
-                  <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
-                  <v-list lines="two" class="text-left" density="compact">
-                    <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
-                    <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
-                    <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
-                    <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
-                    <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
-                    <v-divider class="my-2"></v-divider>
-                    <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
-                    <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
-                    <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
-                  </v-list>
-              </v-card-text>
+   <div v-if="step === 4">
+    <v-card-text class="text-center py-8" ref="bookingResultCard">
+        <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
+        <h3 class="text-h5 mb-2">預約成功！</h3>
+        <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
+        
+        <v-list lines="two" class="text-left" density="compact">
+            
+            <v-list-item title="預約代碼" :subtitle="savedBookingCode" prepend-icon="mdi-pound-box-outline">
+                <template v-slot:subtitle="{ subtitle }">
+                    <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
+                </template>
+            </v-list-item>
+
+            <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
+            <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
+            <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
+            <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
+            <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
+            <v-divider class="my-2"></v-divider>
+            <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
+            <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+            <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
+        </v-list>
+    </v-card-text>
               <v-card-actions class="pa-4 d-flex justify-space-around">
                   <v-btn prepend-icon="mdi-camera" :color="projectConfig.themeColor" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
                   <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
@@ -358,6 +374,7 @@ const bookingResultCard = ref(null);
 const isLoading = ref(true);
 const isCanceling = ref(false);
 const step = ref(1);
+const savedBookingCode = ref(''); 
 const projectId = ref('');
 const projectConfig = ref(null);
 
@@ -553,8 +570,13 @@ const payload = {
             受託人姓名: '',
             受託人電話: '',
         }    
-const res = await saveBooking(projectConfig.value.projectName, payload);
+ const res = await saveBooking(projectConfig.value.projectName, payload);
+
     if (res.status === 'success') {
+      // 【修改】從 res.data 中取得後端回傳的 bookingCode
+      if (res.data && res.data.bookingCode) {
+        savedBookingCode.value = res.data.bookingCode;
+      }
       step.value = 4;
     } else {
       throw new Error(res.message || '預約失敗');
@@ -566,16 +588,24 @@ const res = await saveBooking(projectConfig.value.projectName, payload);
     isLoading.value = false;
   }
 };
+
 const confirmCancelBooking = () => {
   if (confirm("您確定要取消這個預約嗎？此操作無法復原。")) handleCancelBooking();
 };
+// 在您的 Vue 元件 <script setup> 中
+
 const handleCancelBooking = async () => {
   isCanceling.value = true;
   try {
-    const res = await cancelBooking(projectConfig.value.projectName, existingBookingInfo.value['戶別'], existingBookingInfo.value['預約項目']);
+    // 【修改】這裡的參數要與新的 api.js 函式匹配
+    const res = await cancelBooking(
+        projectConfig.value.projectName, 
+        existingBookingInfo.value['預約代碼'] // 使用 '預約代碼' 作為唯一的 KEY
+    );
+
     if (res.status === 'success') {
       alert("預約已成功取消！");
-      existingBookingInfo.value = null;
+      existingBookingInfo.value = null; // 成功後清空現有預約資訊，畫面會自動更新
     } else {
       throw new Error(res.message || '取消失敗');
     }
