@@ -3,15 +3,15 @@
     <v-card class="pa-4">
       <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
         {{ pageTitle }}
- <v-btn
-  color="primary"
-  @click="handleDownloadPdf"
-  :loading="isDownloadingPdf"
-  prepend-icon="mdi-download"
->
-  <span v-if="!isDownloadingPdf" class="btn-text">下載時間表</span>
-  <span v-else class="btn-text">{{ pdfDownloadProgress }}</span>
-</v-btn>
+        <v-btn
+          color="primary"
+          @click="handleDownloadPdf"
+          :loading="isDownloadingPdf"
+          prepend-icon="mdi-download"
+        >
+          <span v-if="!isDownloadingPdf" class="btn-text">下載時間表</span>
+          <span v-else class="btn-text">{{ pdfDownloadProgress }}</span>
+        </v-btn>
       </v-card-title>
 
       <v-alert
@@ -28,39 +28,39 @@
       </div>
 
       <div v-if="!isLoading && !error">
-<v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded">
-  <v-col cols="12" md="4">
-      <v-text-field
-        v-model="startDateFormatted"
-        label="開始日期"
-        type="date"
-        density="compact"
-        hide-details
-      ></v-text-field>
-  </v-col>
-  <v-col cols="12" md="4">
-    <v-text-field
-      v-model="endDateFormatted"
-      label="結束日期"
-      type="date"
-      density="compact"
-      hide-details
-    ></v-text-field>
-  </v-col>
-  
-  <v-col cols="12" md="4">
-    <v-text-field
-      v-model="searchQuery"
-      label="關鍵字搜尋 (戶別/姓名/電話...)"
-      prepend-inner-icon="mdi-magnify"
-      density="compact"
-      hide-details
-      clearable
-      flat
-      variant="solo-filled"
-    ></v-text-field>
-  </v-col>
-  </v-row>
+        <v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded">
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="startDateFormatted"
+              label="開始日期"
+              type="date"
+              density="compact"
+              hide-details
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="endDateFormatted"
+              label="結束日期"
+              type="date"
+              density="compact"
+              hide-details
+            ></v-text-field>
+          </v-col>
+          
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="searchQuery"
+              label="關鍵字搜尋 (戶別/姓名/電話...)"
+              prepend-inner-icon="mdi-magnify"
+              density="compact"
+              hide-details
+              clearable
+              flat
+              variant="solo-filled"
+            ></v-text-field>
+          </v-col>
+        </v-row>
         
         <div id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
@@ -73,9 +73,9 @@
                   <th class="time-header" >時間</th>
                     <th v-for="day in chunk" :key="day.fullDate" class="day-header"
                           :class="{ 
-                                    'today-column': day.isToday, 
-                                    'weekend-column': day.isWeekend 
-                             }">
+                                'today-column': day.isToday, 
+                                'weekend-column': day.isWeekend 
+                            }">
                         <div v-if="day.isInRange">
                       <div>{{ day.dayName }}</div>
                       <div>{{ day.date }}</div>
@@ -86,12 +86,12 @@
               <tbody>
                 <tr v-for="timeSlot in timeSlots" :key="timeSlot">
                   <td class="time-cell">{{ timeSlot }}</td>
-              <td v-for="day in chunk" :key="day.fullDate" 
-    :class="['event-cell', { 
-      'disabled-cell': !day.isInRange,
-      'today-column': day.isToday,
-      'weekend-column': day.isWeekend
-    }]">
+                  <td v-for="day in chunk" :key="day.fullDate" 
+                      :class="['event-cell', { 
+                        'disabled-cell': !day.isInRange,
+                        'today-column': day.isToday,
+                        'weekend-column': day.isWeekend
+                      }]">
                     <div v-if="day.isInRange" class="event-cell-content">
                       <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
                         <div
@@ -101,7 +101,8 @@
                           :style="getEventStyle(event)"
                           @click="handleCustomEventClick(event)"
                         >
-                      <strong class="event-household">{{ event['戶別'] }}</strong> - {{ event.displayText }}                        </div>
+                        <strong class="event-household">{{ event['戶別'] }}</strong> - {{ event.displayText }}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -113,276 +114,229 @@
       </div>
     </v-card>
 
-<v-dialog v-model="isDialogVisible" max-width="800px" persistent>
-  <v-card v-if="selectedEvent">
-    <v-card-title class="text-h6 primary-bg d-flex align-center">
-      <v-icon start>mdi-calendar-text</v-icon>
-      <span>預約詳細資訊</span>
-      <v-spacer></v-spacer>
-      <v-btn
-        variant="text"
-        icon="mdi-close"
-        density="compact"
-        @click="isDialogVisible = false"
-      ></v-btn>
-    </v-card-title>
-    
-    <v-divider></v-divider>
+    <v-snackbar v-model="snackbar" :timeout="2000" color="success">
+      {{ snackbarText }}
+    </v-snackbar>
 
-    <v-card-text v-if="!isEditMode" class="py-4 px-5">
-      <p class="text-subtitle-1 font-weight-bold mb-2">基本資料</p>
-      <v-row dense>
- 
+    <v-dialog v-model="isDialogVisible" max-width="800px" persistent>
+      <v-card v-if="selectedEvent">
+        <v-card-title class="text-h6 primary-bg d-flex align-center">
+          <v-icon start>mdi-calendar-text</v-icon>
+          <span>預約詳細資訊</span>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" icon="mdi-close" density="compact" @click="isDialogVisible = false"></v-btn>
+        </v-card-title>
+        
+        <template v-if="!isEditMode">
+          <v-card-text class="bg-grey-lighten-5 pa-4">
+            <v-row align="center">
+              <v-col cols="12" sm="4">
+                <div class="text-caption text-grey-darken-1">戶別</div>
+                <div class="text-h5 font-weight-bold text-primary">{{ selectedEvent['戶別'] }}</div>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <div class="text-caption text-grey-darken-1">預約日期與時段</div>
+                <div class="text-body-1 font-weight-medium">
+                  {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
+                  {{ selectedEvent['預約時段'] }}
+                </div>
+              </v-col>
+              <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2">
+                 <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
+                    {{ selectedEvent['預約項目'] }}
+                 </v-chip>
+                 <v-chip color="success" size="small" label>
+                    <v-icon start icon="mdi-check-circle-outline"></v-icon>
+                    {{ selectedEvent['預約狀態'] }}
+                 </v-chip>
+              </v-col>
+            </v-row>
+          </v-card-text>
+          <v-divider></v-divider>
 
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">戶別</div>
-          <div class="text-body-1">{{ selectedEvent['戶別'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">門牌</div>
-          <div class="text-body-1">{{ selectedEvent['門牌'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">車位</div>
-          <div class="text-body-1">{{ selectedEvent['車位'] || '無' }}</div>
-        </v-col>
-      </v-row>
-      <v-divider class="my-4"></v-divider>
+          <v-card-text class="pa-0">
+            <v-expansion-panels v-model="panels" multiple variant="accordion">
+              <v-expansion-panel v-for="group in projectFieldConfig" :key="group.title">
+                <v-expansion-panel-title class="font-weight-bold">{{ group.title }}</v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-list lines="two" density="compact">
+                    <template v-for="(field, index) in group.fields" :key="field.key">
+                       <div v-if="field.type === 'remark' && selectedEvent[field.key]" class="remarks-text ma-2 pa-3">
+                         <p class="font-weight-bold mb-1">{{ field.label }}</p>
+                         {{ selectedEvent[field.key] }}
+                      </div>
 
-      <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊</p>
-      <v-row dense>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">姓名</div>
-          <div class="text-body-1">{{ selectedEvent['姓名'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">電話</div>
-          <div class="text-body-1">{{ selectedEvent['電話'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">EMAIL</div>
-          <div class="text-body-1">{{ selectedEvent['EMAIL'] || 'N/A' }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">身分證</div>
-          <div class="text-body-1">{{ selectedEvent['身分證'] }}</div>
-        </v-col>
-      </v-row>
-      <v-divider class="my-4"></v-divider>
-      
-      <div v-if="selectedEvent['撥款日期']"></div>
+                       <v-list-item v-else-if="field.type === 'chips'">
+                        <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
+                        <v-list-item-title class="font-weight-medium">{{ field.label }}</v-list-item-title>
+                        <v-list-item-subtitle>
+                          <div v-if="selectedEvent[field.key]" class="d-flex flex-wrap ga-1 mt-1">
+                             <v-chip v-for="item in String(selectedEvent[field.key]).split(',').filter(i=>i.trim())" :key="item" size="small" color="primary" variant="elevated">
+                                {{ item.trim() }}
+                             </v-chip>
+                          </div>
+                          <span v-else>無</span>
+                        </v-list-item-subtitle>
+                      </v-list-item>
 
-      <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
-      <v-row dense>
-              <v-col cols="12" sm="6" md="4">
-        <div class="text-caption text-grey-darken-1">預約代碼</div>
-        <div class="text-body-1 font-weight-bold text-red-darken-2">{{ selectedEvent['預約代碼'] }}</div>
-    </v-col>
+                       <v-list-item v-else-if="field.type !== 'remark'">
+                        <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
+                        <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
+                        
+                        <v-list-item-title>
+                           <template v-if="field.type === 'button'">
+                              <v-btn v-if="selectedEvent[field.key]" :color="field.key === '驗屋報告' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
+                                 <v-icon start icon="mdi-launch"></v-icon>
+                                 開啟{{ field.label }}
+                              </v-btn>
+                              <span v-else>未提供</span>
+                           </template>
+                           <template v-else-if="(field.type === 'date' || field.type === 'datetime') && selectedEvent[field.key]">
+                              {{ format(new Date(selectedEvent[field.key]), field.type === 'date' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss') }}
+                           </template>
+                           <template v-else>
+                              {{ selectedEvent[field.key] || '無' }}
+                           </template>
+                        </v-list-item-title>
 
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">預約項目</div>
-          <div>
-            <span :style="getAppointmentItemStyle(selectedEvent['預約項目'])">
-              {{ selectedEvent['預約項目'] }}
-            </span>
+                        <template v-if="field.copyable && selectedEvent[field.key]" v-slot:append>
+                           <v-btn icon="mdi-content-copy" variant="text" size="x-small" @click="handleCopy(selectedEvent[field.key])"></v-btn>
+                        </template>
+                      </v-list-item>
+                      <v-divider v-if="index < group.fields.length -1"></v-divider>
+                    </template>
+                  </v-list>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </v-card-text>
+        </template>
+        
+        <v-card-text v-else-if="editableEvent" class="py-4 px-5">
+           <v-alert v-if="error" type="error" density="compact" class="mb-4">{{ error }}</v-alert>
+          
+          <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊</p>
+          <v-row dense>
+            <v-col cols="12" md="6"><v-text-field v-model="editableEvent['姓名']" label="姓名" density="default"></v-text-field></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="editableEvent['電話']" label="電話" density="default"></v-text-field></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="editableEvent['EMAIL']" label="EMAIL" density="default"></v-text-field></v-col>
+          </v-row>
+          
+          <v-divider class="my-4"></v-divider>
+          
+          <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
+          <v-row dense>
+            <v-col cols="12" md="6"><v-text-field v-model="editableEvent['預約日期']" label="預約日期" type="date" density="default"></v-text-field></v-col>
+            <v-col cols="12" md="6"><v-text-field v-model="editableEvent['預約時段']" label="預約時段" density="default" hint="格式範例: 09:00-10:00"></v-text-field></v-col>
+            <v-col cols="12" md="6"><v-select v-model="editableEvent['驗屋方式']" :items="bookingOptions.inspectionMethods" label="驗屋方式" density="default"></v-select></v-col>
+            <v-col v-if="editableEvent['驗屋方式'] === '代驗公司'" cols="12" md="6"><v-text-field v-model="editableEvent['代驗公司名稱']" label="代驗公司名稱" density="default"></v-text-field></v-col>
+            <v-col cols="12" md="6">
+              <v-select 
+                v-model="editableEvent['驗屋人員']" 
+                :items="bookingOptions.inspectionStaff" 
+                label="驗屋人員" 
+                density="default" 
+                multiple 
+                chips 
+                clearable>
+              </v-select>
+            </v-col>
+          </v-row>
+
+          <v-divider class="my-4"></v-divider>
+          
+          <p class="text-subtitle-1 font-weight-bold mb-2">本次預約備註</p>
+          <v-row dense>
+            <v-col cols="12">
+              <v-textarea
+                v-model="editableEvent['預約備註']"
+                label="備註內容"
+                variant="outlined"
+                rows="4"
+                auto-grow
+                clearable
+              ></v-textarea>
+            </v-col>
+          </v-row>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3">
+          <div v-if="!isEditMode" class="d-flex w-100">
+            <v-btn v-if="canEdit" color="red" variant="tonal" @click="promptCancelBooking(selectedEvent)">取消此預約</v-btn>
+            <v-spacer></v-spacer>
+            <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
+            <v-btn v-if="canEdit" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
           </div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">預約日期</div>
-          <div class="text-body-1">{{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : 'N/A' }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">預約時段</div>
-          <div class="text-body-1">{{ selectedEvent['預約時段'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">驗屋方式</div>
-          <div class="text-body-1">{{ selectedEvent['驗屋方式'] }}</div>
-        </v-col>
-        <v-col v-if="selectedEvent['代驗公司名稱']" cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">代驗公司</div>
-          <div class="text-body-1">{{ selectedEvent['代驗公司名稱'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">預約狀態</div>
-          <div><v-chip color="success" size="small">{{ selectedEvent['預約狀態'] }}</v-chip></div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">填表時間</div>
-          <div class="text-body-1">{{ selectedEvent['填表時間'] ? format(new Date(selectedEvent['填表時間']), 'yyyy-MM-dd HH:mm:ss') : 'N/A' }}</div>
-        </v-col>
-        <v-col v-if="selectedEvent['驗屋人員']" cols="12">
-          <div class="text-caption text-grey-darken-1">驗屋人員</div>
-          <div class="d-flex flex-wrap ga-2 mt-1">
-            <v-chip
-              v-for="(person, index) in String(selectedEvent['驗屋人員']).split(',').filter(p => p.trim())"
-              :key="index"
-              color="primary"
-              variant="elevated"
-              size="small"
+          <div v-else class="d-flex w-100">
+            <v-spacer></v-spacer>
+            <v-btn color="grey-darken-1" variant="text" @click="isEditMode = false">取消</v-btn>
+            <v-btn color="success" variant="flat" :loading="isSaving" @click="saveChanges">儲存</v-btn>
+          </div>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
+      <v-card v-if="eventToCancel">
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          <span>確認取消預約</span>
+        </v-card-title>
+        
+        <v-divider></v-divider>
+
+        <v-card-text class="py-4">
+          <p class="mb-4">您確定要取消以下這筆預約紀錄嗎？</p>
+          
+          <v-list density="compact" class="bg-red-lighten-5 rounded">
+            <v-list-item
+              :title="`${eventToCancel['戶別']} (${eventToCancel['姓名']})`"
+              prepend-icon="mdi-home-account"
             >
-              <v-icon start icon="mdi-account"></v-icon>
-              {{ person.trim() }}
-            </v-chip>
-          </div>
-        </v-col>
-      </v-row>
-      <v-divider class="my-4"></v-divider>
-      
-      <div v-if="selectedEvent['委託人姓名']"></div>
-
-      <p class="text-subtitle-1 font-weight-bold mb-2">相關文件</p>
-      <v-row dense>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">驗屋文件</div>
-          <div>
-            <v-btn
-              v-if="selectedEvent['驗屋文件']"
-              color="primary"
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-google-drive"
-              @click="openUrl(selectedEvent['驗屋文件'])"
+              <template v-slot:subtitle>
+                <div class="font-weight-medium">{{ eventToCancel['預約項目'] }}</div>
+              </template>
+            </v-list-item>
+            <v-list-item
+              prepend-icon="mdi-calendar-clock-outline"
             >
-              {{ selectedEvent['戶別'] }}文件
-            </v-btn>
-            <span v-else class="text-body-1">未提供</span>
+              <template v-slot:title>
+                <div>{{ format(new Date(eventToCancel['預約日期']), 'yyyy-MM-dd') }}</div>
+              </template>
+              <template v-slot:subtitle>
+                <div class="font-weight-medium">{{ eventToCancel['預約時段'] }}</div>
+              </template>
+            </v-list-item>
+        </v-list>
+          
+          <div class="text-red-darken-2 font-weight-bold mt-4">
+            此操作無法復原！
           </div>
-        </v-col>
-        <v-col cols="12" sm="6" md="4">
-          <div class="text-caption text-grey-darken-1">驗屋報告</div>
-          <div>
-            <v-btn
-              v-if="selectedEvent['驗屋報告']"
-              color="red-darken-4"
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-google-drive"
-              @click="openUrl(selectedEvent['驗屋報告'])"
-            >
-              {{ selectedEvent['戶別'] }}報告
-            </v-btn>
-            <span v-else class="text-body-1">未提供</span>
-          </div>
-        </v-col>
-      </v-row>
-
-      <div v-if="selectedEvent['備註']">
-        <v-divider class="my-4"></v-divider>
-        <p class="text-subtitle-1 font-weight-bold mb-2">備註</p>
-        <div class="remarks-text">{{ selectedEvent['備註'] }}</div>
-      </div>
-    </v-card-text>
-
-    <v-card-text v-else-if="editableEvent" class="py-4 px-5">
-      <v-alert v-if="error" type="error" density="compact" class="mb-4">{{ error }}</v-alert>
-      <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊</p>
-      <v-row dense>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['姓名']" label="姓名" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['電話']" label="電話" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['EMAIL']" label="EMAIL" density="default"></v-text-field></v-col>
-      </v-row>
-      <v-divider class="my-4"></v-divider>
-      
-      <p class="text-subtitle-1 font-weight-bold mb-2">預約詳情</p>
-      <v-row dense>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['預約日期']" label="預約日期" type="date" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-text-field v-model="editableEvent['預約時段']" label="預約時段" density="default" hint="格式範例: 09:00-10:00"></v-text-field></v-col>
-        <v-col cols="12" md="6"><v-select v-model="editableEvent['驗屋方式']" :items="bookingOptions.inspectionMethods" label="驗屋方式" density="default"></v-select></v-col>
-        <v-col v-if="editableEvent['驗屋方式'] === '代驗公司'" cols="12" md="6"><v-text-field v-model="editableEvent['代驗公司名稱']" label="代驗公司名稱" density="default"></v-text-field></v-col>
-        <v-col cols="12" md="6">
-          <v-select 
-            v-model="editableEvent['驗屋人員']" 
-            :items="bookingOptions.inspectionStaff" 
-            label="驗屋人員" 
-            density="default" 
-            multiple 
-            chips 
-            clearable>
-          </v-select>
-        </v-col>
-      </v-row>
-    </v-card-text>
-
-    <v-divider></v-divider>
-    <v-card-actions class="pa-3">
-      <div v-if="!isEditMode" class="d-flex w-100">
-<v-btn v-if="canEdit" color="red" variant="tonal" @click="promptCancelBooking(selectedEvent)">取消此預約</v-btn>        <v-spacer></v-spacer>
-        <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
-        <v-btn v-if="canEdit" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
-      </div>
-      <div v-else class="d-flex w-100">
-        <v-spacer></v-spacer>
-        <v-btn color="grey-darken-1" variant="text" @click="isEditMode = false">取消</v-btn>
-        <v-btn color="success" variant="flat" :loading="isSaving" @click="saveChanges">儲存</v-btn>
-      </div>
-    </v-card-actions>
-  </v-card>
-</v-dialog>
+        </v-card-text>
+        
+        <v-divider></v-divider>
+        
+        <v-card-actions class="pa-3">
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="isCancelConfirmDialogVisible = false"
+          >
+            返回
+          </v-btn>
+          <v-btn
+            color="red-darken-1"
+            variant="flat"
+            :loading="isCancelling"
+            @click="handleCancelBooking"
+          >
+            確定取消
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
-
-
-  <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
-  <v-card v-if="eventToCancel">
-    <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
-      <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
-      <span>確認取消預約</span>
-    </v-card-title>
-    
-    <v-divider></v-divider>
-
-    <v-card-text class="py-4">
-      <p class="mb-4">您確定要取消以下這筆預約紀錄嗎？</p>
-      
-      <v-list density="compact" class="bg-red-lighten-5 rounded">
-    <v-list-item
-        :title="`${eventToCancel['戶別']} (${eventToCancel['姓名']})`"
-        prepend-icon="mdi-home-account"
-    >
-        <template v-slot:subtitle>
-            <div class="font-weight-medium">{{ eventToCancel['預約項目'] }}</div>
-        </template>
-    </v-list-item>
-    <v-list-item
-        prepend-icon="mdi-calendar-clock-outline"
-    >
-        <template v-slot:title>
-            <div>{{ format(new Date(eventToCancel['預約日期']), 'yyyy-MM-dd') }}</div>
-        </template>
-        <template v-slot:subtitle>
-            <div class="font-weight-medium">{{ eventToCancel['預約時段'] }}</div>
-        </template>
-    </v-list-item>
-</v-list>
-      
-      <div class="text-red-darken-2 font-weight-bold mt-4">
-        此操作無法復原！
-      </div>
-    </v-card-text>
-    
-    <v-divider></v-divider>
-    
-    <v-card-actions class="pa-3">
-      <v-spacer></v-spacer>
-      <v-btn
-        variant="text"
-        @click="isCancelConfirmDialogVisible = false"
-      >
-        返回
-      </v-btn>
-      <v-btn
-        color="red-darken-1"
-        variant="flat"
-        :loading="isCancelling"
-        @click="handleCancelBooking"
-      >
-        確定取消
-      </v-btn>
-    </v-card-actions>
-  </v-card>
-</v-dialog>
-
-
 </template>
 
 <script setup>
@@ -394,6 +348,7 @@ import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday 
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { useClipboard } from '@vueuse/core'; // 導入 useClipboard
 
 // --- Store 和路由 ---
 const route = useRoute();
@@ -412,6 +367,11 @@ const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null); 
+
+// --- Dialog UI 優化相關狀態 ---
+const snackbar = ref(false);
+const snackbarText = ref('');
+const panels = ref([0, 1]); // 預設展開第一個和第二個面板
 
 // --- 編輯模式相關狀態 ---
 const isEditMode = ref(false);
@@ -434,12 +394,78 @@ const projectId = ref(route.params.projectId);
 const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 
+// --- 優化後的 Field Config ---
+const fieldConfig = {
+  default: [
+    { title: '基本資料', fields: [
+      { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
+      { key: '車位', label: '車位', icon: 'mdi-car-outline' },
+      { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
+      { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
+    ]},
+    { title: '預約人資料', fields: [
+      { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
+      { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
+      { key: 'EMAIL', label: 'EMAIL', icon: 'mdi-email-outline', copyable: true },
+      { key: '身分證', label: '身分證', icon: 'mdi-card-account-details-outline' },
+    ]},
+    { title: '驗屋與預約詳情', fields: [
+      { key: '初驗批次', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' },
+      { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' },
+      { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' },
+      { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' },
+      { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true },
+      { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' },
+      { key: '驗屋人員', label: '驗屋人員', icon: 'mdi-account-group-outline', type: 'chips' },
+    ]},
+    { title: '相關文件', fields: [
+      { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' },
+      { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button' },
+      { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button' },
+    ]},
+    { title: '備註事項', fields: [
+      { key: '備註', label: '重要備註', type: 'remark' },
+      { key: '預約備註', label: '本次預約備註', type: 'remark' },
+    ]},
+  ],
+  // 可以為特定專案覆寫設定
+  '富宇富御': [
+     { title: '基本資料', fields: [
+      { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
+      { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
+      { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
+    ]},
+     { title: '預約人資料', fields: [
+      { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
+      { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
+    ]},
+     { title: '驗屋與預約詳情', fields: [
+      { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true },
+      { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' },
+    ]},
+  ],
+};
+
+const projectFieldConfig = computed(() => {
+  return fieldConfig[projectName.value] || fieldConfig.default;
+});
+
+
 // --- 權限計算屬性 ---
 const canEdit = computed(() => {
   return userStore.hasProjectPermission('驗屋時間表-修改', projectName.value);
 });
 
+// --- 一鍵複製功能 ---
+function handleCopy(value) {
+  const { copy } = useClipboard({ source: value });
+  copy(value);
+  snackbarText.value = '已複製到剪貼簿！';
+  snackbar.value = true;
+}
+
 const filteredAppointments = computed(() => {
+  
   const allProcessedAppointments = processAppointments(appointments.value);
   const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
   if (!query) return allProcessedAppointments;
@@ -454,12 +480,14 @@ const filteredAppointments = computed(() => {
 });
 
 const foundDates = computed(() => {
+  
   if (!searchQuery.value) return [];
   const dates = filteredAppointments.value.map(appt => format(appt.start, 'yyyy-MM-dd'));
   return [...new Set(dates)];
 });
 
 const dateChunks = computed(() => {
+  
   const query = searchQuery.value ? searchQuery.value.trim() : '';
   if (query && foundDates.value.length > 0) {
     const startOfWeeks = [...new Set(foundDates.value.map(dateStr => format(startOfWeek(new Date(dateStr), { weekStartsOn: 1 }), 'yyyy-MM-dd')))].sort();
@@ -499,22 +527,26 @@ const dateChunks = computed(() => {
 });
 
 const startDateFormatted = computed({
+  
   get: () => format(startDate.value, 'yyyy-MM-dd'),
   set: (val) => { const [y, m, d] = val.split('-').map(Number); startDate.value = new Date(y, m - 1, d); }
 });
 
 const endDateFormatted = computed({
+  
   get: () => format(endDate.value, 'yyyy-MM-dd'),
   set: (val) => { const [y, m, d] = val.split('-').map(Number); endDate.value = new Date(y, m - 1, d); }
 });
 
 const timeSlots = computed(() => {
+  
   const slots = [];
   for (let i = 8; i < 18; i++) { slots.push(`${String(i).padStart(2, '0')}:00`); }
   return slots;
 });
 
 const groupedEvents = computed(() => {
+  
   const grouped = {};
   filteredAppointments.value.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
@@ -527,54 +559,54 @@ const groupedEvents = computed(() => {
 });
 
 // --- 方法 ---
-
-// 用於打開確認對話框
+// ... 此處省略所有未變更的方法，如 processAppointments, getEventStyle, enterEditMode, saveChanges, handleCancelBooking, handleDownloadPdf, fetchData 等...
+// 只需要保留 handleCustomEventClick 和 openUrl
 function promptCancelBooking(event) {
-  eventToCancel.value = event; // 暫存要被取消的事件
+  eventToCancel.value = event;
   isCancelConfirmDialogVisible.value = true;
 }
 
 function processAppointments(rawAppointments) {
-    return rawAppointments
-        .filter(appt => appt['預約狀態'] === '預約中')
-        .map(appt => {
-            try {
-                const rawDateObject = new Date(appt['預約日期']);
-                if (isNaN(rawDateObject.getTime())) return null;
-                const date = format(rawDateObject, 'yyyy-MM-dd');
-                const timeSlot = appt['預約時段'] ? String(appt['預約時段']).replace(/：/g, ':') : '00:00';
-                const times = timeSlot.split('-').map(t => t.trim());
-                const startTime = times[0] || '00:00';
-                const endTime = times.length > 1 ? (times[1] || `${String(parseInt(startTime.split(':')[0]) + 1).padStart(2, '0')}:00`) : `${String(parseInt(startTime.split(':')[0]) + 1).padStart(2, '0')}:00`;
-                
-                const bookingDate = new Date(appt['預約日期']);
-                const allocationDate = appt['撥款日期'] ? new Date(appt['撥款日期']) : null;
-                let isAllocated = false;
-                if (allocationDate && !isNaN(bookingDate.getTime()) && !isNaN(allocationDate.getTime())) {
-                    bookingDate.setHours(0, 0, 0, 0);
-                    allocationDate.setHours(0, 0, 0, 0);
-                    isAllocated = bookingDate.getTime() >= allocationDate.getTime();
-                }
+  return rawAppointments
+      .filter(appt => appt['預約狀態'] === '預約中')
+      .map(appt => {
+          try {
+              const rawDateObject = new Date(appt['預約日期']);
+              if (isNaN(rawDateObject.getTime())) return null;
+              const date = format(rawDateObject, 'yyyy-MM-dd');
+              const timeSlot = appt['預約時段'] ? String(appt['預約時段']).replace(/：/g, ':') : '00:00';
+              const times = timeSlot.split('-').map(t => t.trim());
+              const startTime = times[0] || '00:00';
+              const endTime = times.length > 1 ? (times[1] || `${String(parseInt(startTime.split(':')[0]) + 1).padStart(2, '0')}:00`) : `${String(parseInt(startTime.split(':')[0]) + 1).padStart(2, '0')}:00`;
+              
+              const bookingDate = new Date(appt['預約日期']);
+              const allocationDate = appt['撥款日期'] ? new Date(appt['撥款日期']) : null;
+              let isAllocated = false;
+              if (allocationDate && !isNaN(bookingDate.getTime()) && !isNaN(allocationDate.getTime())) {
+                  bookingDate.setHours(0, 0, 0, 0);
+                  allocationDate.setHours(0, 0, 0, 0);
+                  isAllocated = bookingDate.getTime() >= allocationDate.getTime();
+              }
 
-                const titleParts = [
-                    appt['預約項目'],
-                    appt['驗屋方式'],
-                    appt['代驗公司名稱'],
-                    appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null 
-                ].filter(Boolean);
-                
-                let itemText = titleParts.join(' - ');
-                let fullTextForSearch = itemText;
-                if (isAllocated) {
-                    itemText += ' (已撥款)';
-                    fullTextForSearch += ' 已撥款';
-                }
-                return { ...appt, id: `${appt['填表時間']}_${appt['戶別']}`, start: new Date(`${date}T${startTime}`), end: new Date(`${date}T${endTime}`), displayText: itemText, fullTextForSearch: fullTextForSearch };
-            } catch (e) {
-                console.warn(`處理預約資料時發生錯誤: ${e.message}`, appt);
-                return null;
-            }
-        }).filter(event => event !== null);
+              const titleParts = [
+                  appt['預約項目'],
+                  appt['驗屋方式'],
+                  appt['代驗公司名稱'],
+                  appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null 
+              ].filter(Boolean);
+              
+              let itemText = titleParts.join(' - ');
+              let fullTextForSearch = itemText;
+              if (isAllocated) {
+                  itemText += ' (已撥款)';
+                  fullTextForSearch += ' 已撥款';
+              }
+              return { ...appt, id: `${appt['填表時間']}_${appt['戶別']}`, start: new Date(`${date}T${startTime}`), end: new Date(`${date}T${endTime}`), displayText: itemText, fullTextForSearch: fullTextForSearch };
+          } catch (e) {
+              console.warn(`處理預約資料時發生錯誤: ${e.message}`, appt);
+              return null;
+          }
+      }).filter(event => event !== null);
 }
 
 function getEventStyle(event) {
@@ -616,14 +648,10 @@ async function saveChanges() {
   isSaving.value = true;
   error.value = null;
   try {
-    if (!editableEvent.value['預約日期']) { // 簡化了判斷
+    if (!editableEvent.value['預約日期']) {
         throw new Error('預約日期為必填欄位。');
     }
 
- 
-
-
-    // 準備更新資料
     const staff = Array.isArray(editableEvent.value['驗屋人員'])
       ? editableEvent.value['驗屋人員'].join(',')
       : editableEvent.value['驗屋人員'];
@@ -637,16 +665,12 @@ async function saveChanges() {
         '驗屋人員': staff,
         '預約日期': format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd'),
         '預約時段': editableEvent.value['預約時段'],
-        '委託人姓名': editableEvent.value['委託人姓名'],
-        '委託人身分證': editableEvent.value['委託人身分證'],
-        '受託人姓名': editableEvent.value['受託人姓名'],
-        '受託人身分證': editableEvent.value['受託人身分證'],
+        '預約備註': editableEvent.value['預約備註'],
     };
 
-    // 呼叫 updateBooking 時，直接傳遞預約代碼
     const response = await updateBooking(
         projectName.value, 
-        editableEvent.value['預約代碼'], // 使用 '預約代碼' 作為 KEY
+        editableEvent.value['預約代碼'],
         updatedData
     );
 
@@ -674,14 +698,14 @@ async function handleCancelBooking() {
   try {
     const response = await cancelBooking(
       projectName.value, 
-      eventToCancel.value['預約代碼'] // 使用預約代碼作為 KEY
+      eventToCancel.value['預約代碼']
     );
 
     if (response.status === 'success') {
       alert('預約已成功取消！');
-      isDialogVisible.value = false; // 關閉主要的詳細資訊對話框
-      isCancelConfirmDialogVisible.value = false; // 關閉確認對話框
-      await fetchData(); // 重新獲取最新資料並更新畫面
+      isDialogVisible.value = false;
+      isCancelConfirmDialogVisible.value = false;
+      await fetchData();
     } else {
       throw new Error(response.message || '取消失敗');
     }
@@ -690,7 +714,7 @@ async function handleCancelBooking() {
     alert(`取消預約失敗: ${err.message}`);
   } finally {
     isCancelling.value = false;
-    eventToCancel.value = null; // 完成後清空
+    eventToCancel.value = null;
   }
 }
 async function handleDownloadPdf() {
@@ -741,6 +765,7 @@ async function handleDownloadPdf() {
       pdfDownloadProgress.value = '';
   }
 }
+
 
 function openUrl(url) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer');

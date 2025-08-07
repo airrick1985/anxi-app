@@ -59,7 +59,7 @@ const allButtons = ref([
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
   { id: 'customerManagement', text: '客戶管理', icon: customerIcon, permissionType: 'system', permissionArgs: ['客戶管理'], nav: null },
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
-  { id: 'inspectionTimetable', text: '驗屋時間表', icon: inspectionCalenderIcon, permissionType: 'system', permissionArgs:  ['驗屋時間表-修改', '驗屋時間表-檢視'], nav: { name: 'ProjectSelector' } // 點擊後會前往我們即將建立的「建案選擇頁」
+  { id: 'inspectionTimetable', text: '驗屋時間表', icon: inspectionCalenderIcon, permissionType: 'system', permissionArgs:  ['驗屋時間表-修改', '驗屋時間表-檢視'], nav: { name: 'ProjectSelector' } 
   },
 ]);
 
@@ -87,15 +87,15 @@ onMounted(() => {
     switch(button.permissionType) {
       case 'project':
         return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
-    case 'system':
-  const args = button.permissionArgs[0];
-  if (Array.isArray(args)) {
-    // 如果傳入的是陣列，就用 some 檢查是否有任一權限即可
-    return args.some(permissionName => userStore.hasPermission(permissionName));
-  } else {
-    // 如果是單一字串，維持原本的行為
-    return userStore.hasPermission(args);
-  }
+ case 'system':
+        const permissions = button.permissionArgs; 
+        if (Array.isArray(permissions)) {
+          // 如果是陣列，就用 .some 檢查是否有任一權限
+          return permissions.some(permissionName => userStore.hasPermission(permissionName));
+        } else {
+          // 如果是單一字串，維持原本的行為
+          return userStore.hasPermission(permissions);
+        }
       case 'getter':
         return userStore[button.permissionArgs[0]];
       case 'loggedIn':
