@@ -496,10 +496,10 @@ const projectId = ref(route.params.projectId);
 const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 
-// --- 新增的預約項目設定物件 ---
+// --- 預約項目設定物件 ---
 const PROJECT_TYPE_OPTIONS = {
-  '富宇上城': ['初驗', '複驗'],
-  '富宇富御': ['初驗', '複驗', '其他預約'], // 範例：富御多一個選項
+  '富宇上城': ['初驗', '複驗', '後陽台門鎖更換'],
+  '富宇富御': ['初驗', '複驗', '其他預約'], 
   '富宇首馥': ['初驗', '複驗'],
   'default': ['初驗', '複驗'] // 當找不到對應建案時的預設值
 };
@@ -624,7 +624,7 @@ const filteredAppointments = computed(() => {
     const queryMatch = !query || [
       appt['戶別'], appt['門牌'], appt['姓名'], appt['電話'], appt['預約項目'],
       appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'], appt['備註'],
-      appt['車位'], appt['銀行'], appt['銀行窗口'],appt['預約代碼'],appt['預約日期']
+      appt['車位'], appt['銀行'], appt['銀行窗口'],appt['預約代碼'],appt['預約日期'],appt['預約狀態']
     ].some(field => field && String(field).toLowerCase().includes(query));
 
     return statusMatch && typeMatch && queryMatch;
