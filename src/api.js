@@ -1072,3 +1072,18 @@ export const fetchInspectionAppointments = async (projectName) => {
     projectName: projectName,
   }, INSPECTION_API);
 };
+
+/**
+ * 更新一筆戶別資料 (用於修改 `戶別資料` 工作表)
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別 ID (作為這張表的唯一識別碼)
+ * @param {object} updatedData 要更新的資料物件
+ */
+export const updateHouseholdData = async (projectName, unitId, updatedData) => {
+  return fetchPost({
+    action: 'update_household_data',
+    projectName,
+    unitId,
+    updatedData,
+  }, INSPECTION_API);
+};
