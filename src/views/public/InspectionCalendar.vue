@@ -218,82 +218,171 @@
       <div class="text-caption text-grey-darken-1">預約日期與時段</div>
       <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
         {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
+        <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
         {{ selectedEvent['預約時段'] }}
       </div>
-<div v-else>
-            <v-alert
-              v-if="slotsError"
-              type="error"
-              density="compact"
-              variant="tonal"
-              class="mb-2 text-caption"
-            >
-              {{ slotsError }}
-            </v-alert>
-
-             <div class="d-flex ga-2">
-    <v-menu :close-on-content-click="false">
-      <template v-slot:activator="{ props }">
-<v-text-field
-  :model-value="safeFormatDate(editableEvent['預約日期'], 'yyyy-MM-dd')"
-  label="預約日期"
-  prepend-inner-icon="mdi-calendar"
-  readonly
-  v-bind="props"
-  density="compact"
-  hide-details="auto"
-  :loading="isSlotsLoading"
-  :disabled="isSlotsLoading"
-  style="min-width: 155px;"
-></v-text-field>
-      </template>
-      <v-date-picker
-        v-model="editableEvent['預約日期']"
-        :min="bookingSlotsData?.startDate"
-        :max="bookingSlotsData?.endDate"
-        :allowed-dates="isDateAllowed"
-        @update:model-value="menu = false"
-        hide-header
-      ></v-date-picker>
-    </v-menu>
-    
-<v-select
-  v-model="editableEvent['預約時段']"
-  :items="availableTimeSlots"
-  label="預約時段"
-  :loading="isSlotsLoading"
-  :disabled="isSlotsLoading || !editableEvent['預約日期']"
-  density="compact"
-  hide-details="auto"
-  no-data-text="請先選擇日期"
-  style="min-width: 200px;"
->
-  <template v-slot:item="{ props, item }">
-    <v-list-item 
-      v-bind="props" 
-      :disabled="item.raw.includes('已額滿')"
-    ></v-list-item>
-  </template>
-</v-select>
-  </div>
-</div>
+      <div v-else>
+        <v-alert
+          v-if="slotsError"
+          type="error"
+          density="compact"
+          variant="tonal"
+          class="mb-2 text-caption"
+        >
+          {{ slotsError }}
+        </v-alert>
+        <div class="d-flex ga-2">
+          <v-menu :close-on-content-click="false">
+            <template v-slot:activator="{ props }">
+              <v-text-field
+                :model-value="safeFormatDate(editableEvent['預約日期'], 'yyyy-MM-dd')"
+                label="預約日期"
+                prepend-inner-icon="mdi-calendar"
+                readonly
+                v-bind="props"
+                density="compact"
+                hide-details="auto"
+                :loading="isSlotsLoading"
+                :disabled="isSlotsLoading"
+                style="min-width: 155px;"
+              ></v-text-field>
+            </template>
+            <v-date-picker
+              v-model="editableEvent['預約日期']"
+              :min="bookingSlotsData?.startDate"
+              :max="bookingSlotsData?.endDate"
+              :allowed-dates="isDateAllowed"
+              @update:model-value="menu = false"
+              hide-header
+            ></v-date-picker>
+          </v-menu>
+          
+          <v-select
+            v-model="editableEvent['預約時段']"
+            :items="availableTimeSlots"
+            label="預約時段"
+            :loading="isSlotsLoading"
+            :disabled="isSlotsLoading || !editableEvent['預約日期']"
+            density="compact"
+            hide-details="auto"
+            no-data-text="請先選擇日期"
+            style="min-width: 200px;"
+          >
+            <template v-slot:item="{ props, item }">
+              <v-list-item 
+                v-bind="props" 
+                :disabled="item.raw.includes('已額滿')"
+              ></v-list-item>
+            </template>
+          </v-select>
+        </div>
+      </div>
     </v-col>
 
-<v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-end">
-        <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
-        {{ selectedEvent['預約項目'] }}
-      </v-chip>
-      <v-chip v-if="selectedEvent['預約狀態'] === '預約中'" color="success" size="small" label variant="flat">
-        <v-icon start icon="mdi-check-circle-outline"></v-icon>
-        {{ selectedEvent['預約狀態'] }}
-      </v-chip>
-      <v-chip v-else-if="selectedEvent['預約狀態'] === '取消'" color="red-darken-1" size="small" label variant="tonal">
-        <v-icon start icon="mdi-close-circle-outline"></v-icon>
-        {{ selectedEvent['預約狀態'] }}
-      </v-chip>
+<v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
+          <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
+          {{ selectedEvent['預約項目'] }}
+        </v-chip>
+        <v-chip v-if="selectedEvent['預約狀態'] === '預約中'" color="success" size="small" label variant="flat">
+          <v-icon start icon="mdi-check-circle-outline"></v-icon>
+          {{ selectedEvent['預約狀態'] }}
+        </v-chip>
+        <v-chip v-else-if="selectedEvent['預約狀態'] === '取消'" color="red-darken-1" size="small" label variant="tonal">
+          <v-icon start icon="mdi-close-circle-outline"></v-icon>
+          {{ selectedEvent['預約狀態'] }}
+        </v-chip>
     </v-col>
   </v-row>
+  
+  <v-row dense class="mt-3">
+    <v-col cols="12">
+      <div v-if="!isEditMode">
+        <div v-if="selectedEvent['驗屋人員']" class="d-flex flex-wrap align-center ga-2">
+          <div class="text-caption font-weight-bold text-grey-darken-2">驗屋人員:</div>
+          <v-chip
+            v-for="staff in String(selectedEvent['驗屋人員']).split(',').filter(s => s.trim())"
+            :key="staff"
+            color="teal"
+            variant="flat"
+            size="small"
+            label
+          >
+            <v-icon start icon="mdi-account-circle-outline"></v-icon>
+            {{ staff.trim() }}
+          </v-chip>
+        </div>
+      </div>
+      <div v-else>
+        <v-select
+            v-model="editableEvent['驗屋人員']"
+            :items="bookingOptions.inspectionStaff"
+            label="驗屋人員"
+            density="compact"
+            multiple
+            chips
+            clearable
+            hide-details
+            variant="outlined"
+        ></v-select>
+      </div>
+    </v-col>
+  </v-row>
+
+  <v-row v-if="!isEditMode" dense class="mt-3">
+    <v-col v-if="selectedEvent['預約備註']" cols="12">
+        <v-alert
+          density="compact"
+          color="blue-lighten-5"
+          class="remark-alert"
+        >
+          <template v-slot:prepend>
+            <v-icon color="blue-darken-2">mdi-information-outline</v-icon>
+          </template>
+          <div class="text-caption font-weight-bold text-blue-darken-3">本次預約備註</div>
+          <div class="alert-content">{{ selectedEvent['預約備註'] }}</div>
+        </v-alert>
+    </v-col>
+    <v-col v-if="selectedEvent['備註']" cols="12">
+        <v-alert
+          density="compact"
+          color="orange-lighten-5"
+          class="remark-alert"
+        >
+          <template v-slot:prepend>
+            <v-icon color="orange-darken-3">mdi-alert-circle-outline</v-icon>
+          </template>
+          <div class="text-caption font-weight-bold text-orange-darken-4">重要備註</div>
+          <div class="alert-content">{{ selectedEvent['備註'] }}</div>
+        </v-alert>
+    </v-col>
+  </v-row>
+
+  <v-row v-else dense class="mt-4">
+      <v-col cols="12" md="6">
+        <v-textarea
+          v-model="editableEvent['預約備註']"
+          label="本次預約備註"
+          rows="2"
+          auto-grow
+          density="compact"
+          variant="outlined"
+          hide-details
+        ></v-textarea>
+      </v-col>
+      <v-col cols="12" md="6">
+        <v-textarea
+          v-model="editableEvent['備註']"
+          label="重要備註"
+          rows="2"
+          auto-grow
+          density="compact"
+          variant="outlined"
+          hide-details
+        ></v-textarea>
+      </v-col>
+  </v-row>
 </v-card-text>
+
     <v-divider></v-divider>
 
     <v-card-text class="pa-0">
@@ -332,101 +421,101 @@
           </template>
           <template v-else>
             <v-expansion-panel-title class="font-weight-bold">{{ panel.title }}</v-expansion-panel-title>
-            <v-expansion-panel-text>
-              <v-list lines="two" density="compact">
-                <template v-for="(field, index) in panel.fields" :key="field.key">
-                  <div v-if="field.type === 'remark'" class="py-2 px-4">
-                      <p class="text-subtitle-2 font-weight-bold mb-1 text-grey-darken-2">{{ field.label }}</p>
-                      <div v-if="!isEditMode" :class="selectedEvent[field.key] ? 'remarks-text pa-0' : 'text-grey'">
-                        <div style="white-space: pre-wrap;">{{ selectedEvent[field.key] || '無' }}</div>
-                      </div>
-                      <v-textarea
-                      v-else
-                      v-model="editableEvent[field.key]"
-                      :label="field.label"
-                      variant="outlined"
-                      density="compact"
-                      rows="3"
-                      auto-grow
-                      hide-details
-                      ></v-textarea>
-                  </div>
-                  <v-list-item v-else-if="field.type === 'chips'">
-                    <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
-                    <v-list-item-title class="font-weight-medium">{{ field.label }}</v-list-item-title>
-                    <v-list-item-subtitle>
-                      <div v-if="!isEditMode">
-                        <div v-if="selectedEvent[field.key]" class="d-flex flex-wrap ga-1 mt-1">
-                          <v-chip v-for="item in String(selectedEvent[field.key]).split(',').filter(i=>i.trim())" :key="item" size="small" color="primary" variant="elevated">
-                            {{ item.trim() }}
-                          </v-chip>
-                        </div>
-                        <span v-else>無</span>
-                      </div>
-                      <v-select
-                        v-else
-                        v-model="editableEvent[field.key]"
-                        :items="bookingOptions.inspectionStaff"
-                        :label="field.label"
-                        density="compact"
-                        multiple
-                        chips
-                        clearable
-                        hide-details
-                        class="mt-2"
-                      ></v-select>
-                    </v-list-item-subtitle>
-                  </v-list-item>
-                  <v-list-item v-else>
-                    <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
-                    <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
-                    
-                  <v-list-item-title v-if="!isEditMode || field.readOnly">
-                      <template v-if="field.type === 'button'">
-                        <v-btn v-if="selectedEvent[field.key]" :color="field.key === '驗屋報告' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
-                          <v-icon start icon="mdi-launch"></v-icon>開啟{{ field.label }}
-                        </v-btn>
-                        <span v-else>未提供</span>
-                      </template>
-                      <template v-else-if="field.type === 'date' || field.type === 'datetime'">
-                        {{ safeFormatDate(selectedEvent[field.key], field.type === 'date' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss') }}
-                      </template>
-                      <template v-else>{{ selectedEvent[field.key] || '無' }}</template>
-                    </v-list-item-title>
-                    
-                    <div v-else class="mt-1">
-                      <v-select
-                        v-if="field.key === '驗屋方式'"
-                        v-model="editableEvent[field.key]"
-                        :items="bookingOptions.inspectionMethods"
-                        :label="field.label"
-                        density="compact"
-                        hide-details
-                      ></v-select>
-                      <v-text-field
-                        v-else-if="field.type === 'date'"
-                        v-model="editableEvent[field.key]"
-                        :label="field.label"
-                        type="date"
-                        density="compact"
-                        hide-details
-                      ></v-text-field>
-                      <v-text-field
-                        v-else
-                        v-model="editableEvent[field.key]"
-                        :label="field.label"
-                        density="compact"
-                        hide-details
-                      ></v-text-field>
-                    </div>
-                    <template v-if="field.copyable && selectedEvent[field.key] && !isEditMode" v-slot:append>
-                      <v-btn icon="mdi-content-copy" variant="text" size="x-small" @click="handleCopy(selectedEvent[field.key])"></v-btn>
-                    </template>
-                  </v-list-item>
-                  <v-divider v-if="index < panel.fields.length -1"></v-divider>
-                </template>
-              </v-list>
-            </v-expansion-panel-text>
+      <v-expansion-panel-text>
+  <v-list lines="two" density="compact">
+    <template v-for="(field, index) in getVisibleFields(panel.fields)" :key="field.key">
+      <div v-if="field.type === 'remark'" class="py-2 px-4">
+          <p class="text-subtitle-2 font-weight-bold mb-1 text-grey-darken-2">{{ field.label }}</p>
+          <div v-if="!isEditMode" :class="selectedEvent[field.key] ? 'remarks-text pa-0' : 'text-grey'">
+            <div style="white-space: pre-wrap;">{{ selectedEvent[field.key] || '無' }}</div>
+          </div>
+          <v-textarea
+          v-else
+          v-model="editableEvent[field.key]"
+          :label="field.label"
+          variant="outlined"
+          density="compact"
+          rows="3"
+          auto-grow
+          hide-details
+          ></v-textarea>
+      </div>
+      <v-list-item v-else-if="field.type === 'chips'">
+        <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
+        <v-list-item-title class="font-weight-medium">{{ field.label }}</v-list-item-title>
+        <v-list-item-subtitle>
+          <div v-if="!isEditMode">
+            <div v-if="selectedEvent[field.key]" class="d-flex flex-wrap ga-1 mt-1">
+              <v-chip v-for="item in String(selectedEvent[field.key]).split(',').filter(i=>i.trim())" :key="item" size="small" color="primary" variant="elevated">
+                {{ item.trim() }}
+              </v-chip>
+            </div>
+            <span v-else>無</span>
+          </div>
+          <v-select
+            v-else
+            v-model="editableEvent[field.key]"
+            :items="bookingOptions.inspectionStaff"
+            :label="field.label"
+            density="compact"
+            multiple
+            chips
+            clearable
+            hide-details
+            class="mt-2"
+          ></v-select>
+        </v-list-item-subtitle>
+      </v-list-item>
+      <v-list-item v-else>
+        <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
+        <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
+        
+      <v-list-item-title v-if="!isEditMode || field.readOnly">
+          <template v-if="field.type === 'button'">
+            <v-btn v-if="selectedEvent[field.key]" :color="field.key === '驗屋報告' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
+              <v-icon start icon="mdi-launch"></v-icon>開啟{{ field.label }}
+            </v-btn>
+            <span v-else>未提供</span>
+          </template>
+          <template v-else-if="field.type === 'date' || field.type === 'datetime'">
+            {{ safeFormatDate(selectedEvent[field.key], field.type === 'date' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss') }}
+          </template>
+          <template v-else>{{ selectedEvent[field.key] || '無' }}</template>
+        </v-list-item-title>
+        
+        <div v-else class="mt-1">
+          <v-select
+            v-if="field.key === '驗屋方式'"
+            v-model="editableEvent[field.key]"
+            :items="bookingOptions.inspectionMethods"
+            :label="field.label"
+            density="compact"
+            hide-details
+          ></v-select>
+          <v-text-field
+            v-else-if="field.type === 'date'"
+            v-model="editableEvent[field.key]"
+            :label="field.label"
+            type="date"
+            density="compact"
+            hide-details
+          ></v-text-field>
+          <v-text-field
+            v-else
+            v-model="editableEvent[field.key]"
+            :label="field.label"
+            density="compact"
+            hide-details
+          ></v-text-field>
+        </div>
+        <template v-if="field.copyable && selectedEvent[field.key] && !isEditMode" v-slot:append>
+          <v-btn icon="mdi-content-copy" variant="text" size="x-small" @click="handleCopy(selectedEvent[field.key])"></v-btn>
+        </template>
+      </v-list-item>
+      <v-divider v-if="index < getVisibleFields(panel.fields).length -1"></v-divider>
+    </template>
+  </v-list>
+</v-expansion-panel-text>
           </template>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -629,7 +718,7 @@ const userStore = useUserStore();
 
 // --- 定義欄位應更新到哪張工作表 ---
 // 屬於「驗交屋預約紀錄」工作表的欄位
-const BOOKING_RECORD_FIELDS = ['姓名', '電話', 'EMAIL', '預約日期', '預約時段', '驗屋方式', '代驗公司名稱', '驗屋人員', '預約備註'];
+const BOOKING_RECORD_FIELDS = ['姓名', '電話', 'EMAIL', '預約日期', '預約時段', '驗屋方式', '代驗公司名稱', '驗屋人員', '預約備註', '受託人姓名', '受託人電話'];
 // 屬於「戶別資料」工作表的欄位
 const HOUSEHOLD_DATA_FIELDS = ['門牌', '車位', '買方姓名', '買方電話', '撥款日期', '銀行', '銀行窗口', '備註', '驗屋文件', '驗屋報告', '初驗批次', '複驗批次'];
 
@@ -656,7 +745,7 @@ const isFilterDrawerVisible = ref(false);// 控制篩選器抽屜的顯示狀態
 // --- Dialog UI 優化相關狀態 ---
 const snackbar = ref(false);
 const snackbarText = ref('');
-const panels = ref([0, 1]); 
+const panels = ref([]); 
 
 // --- 編輯模式相關狀態 ---
 const isEditMode = ref(false);
@@ -690,7 +779,7 @@ const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 // --- 預約項目設定物件 ---
 const PROJECT_TYPE_OPTIONS = {
   '富宇上城': ['初驗', '複驗', '後陽台門鎖更換'],
-  '富宇富御': ['初驗', '複驗', '其他預約'], 
+  '富宇富御': ['初驗', '複驗', ], 
   '富宇首馥': ['初驗', '複驗'],
   'default': ['初驗', '複驗'] // 當找不到對應建案時的預設值
 };
@@ -723,12 +812,15 @@ const fieldConfig = {
       { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' },
       { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' },
       { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' },
+      { key: '受託人姓名', label: '受託人姓名', icon: 'mdi-account-tie-outline' },
+      { key: '受託人電話', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', copyable: true },
       { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true, readOnly: true }, // <-- 在此加上 readOnly: true
       { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' ,readOnly: true},
-      { key: '驗屋人員', label: '驗屋人員', icon: 'mdi-account-group-outline', type: 'chips' },
-    ]},
+        ]},
 { title: '相關文件', fields: [
       { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' },
+      { key: '銀行', label: '銀行', icon: 'mdi-bank-outline' },
+      { key: '銀行窗口', label: '銀行窗口', icon: 'mdi-account-tie-outline' },
       { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true },
       { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true },
     ]},
@@ -736,19 +828,37 @@ const fieldConfig = {
   // 可以為特定專案覆寫設定
   '富宇富御': [
      { title: '基本資料', fields: [
-       { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
-       { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
-       { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
-     ]},
-     { title: '預約人資料', fields: [
-       { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
-       { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
-     ]},
-     { title: '驗屋與預約詳情', fields: [
-       { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true },
-       { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' },
-     ]},
+      { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
+      { key: '車位', label: '車位', icon: 'mdi-car-outline' },
+      { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
+      { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
+    ]},
+    { title: '預約人資料', fields: [
+      { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
+      { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
+      { key: 'EMAIL', label: 'EMAIL', icon: 'mdi-email-outline', copyable: true },
+      { key: '身分證', label: '身分證', icon: 'mdi-card-account-details-outline' },
+    ]},
+{ title: '驗屋與預約詳情', fields: [
+      { key: '初驗批次', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' },
+      { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' },
+      { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' },
+      { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' },
+      { key: '受託人姓名', label: '受託人姓名', icon: 'mdi-account-tie-outline' },
+      { key: '受託人電話', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', copyable: true },
+      { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true, readOnly: true }, // <-- 在此加上 readOnly: true
+      { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' ,readOnly: true},
+        ]},
+{ title: '相關文件', fields: [
+      { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' },
+      { key: '銀行', label: '銀行', icon: 'mdi-bank-outline' },
+      { key: '銀行窗口', label: '銀行窗口', icon: 'mdi-account-tie-outline' },
+      { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true },
+      { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true },
+    ]},
   ],
+// 可以為特定專案覆寫設定
+
 };
 
 const projectFieldConfig = computed(() => {
@@ -970,6 +1080,7 @@ function getEventStyle(event) {
 function handleCustomEventClick(event) {
   selectedEvent.value = event;
   isEditMode.value = false;
+  panels.value = [];
   isDialogVisible.value = true;
 }
 
@@ -1323,6 +1434,27 @@ function safeFormatDate(value, formatString = 'yyyy-MM-dd') {
   return format(date, formatString);
 }
 
+/**
+ * 根據當前模式（查看/編輯）過濾應顯示的欄位
+ * @param {Array} fields - 某個面板的原始欄位陣列
+ * @returns {Array} 過濾後的欄位陣列
+ */
+const getVisibleFields = (fields) => {
+  // 如果是編輯模式，永遠顯示所有欄位
+  if (isEditMode.value) {
+    return fields;
+  }
+  // 如果是查看模式，則進行過濾
+  return fields.filter(field => {
+    // 檢查特定欄位是否有資料
+    if (['受託人姓名', '受託人電話'].includes(field.key)) {
+      return selectedEvent.value && selectedEvent.value[field.key];
+    }
+    // 其他欄位一律顯示
+    return true;
+  });
+};
+
 watch(currentTypeOptions, (newOptions) => {
   selectedTypes.value = [...newOptions];
 }, { immediate: true });
@@ -1346,6 +1478,8 @@ watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
     }
   }
 });
+
+
 </script>
 
 
@@ -1495,4 +1629,17 @@ watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
   text-decoration: line-through;
   opacity: 0.8; /* 稍微降低透明度，讓視覺效果更柔和 */
 }
+
+.remark-alert {
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.remark-alert .alert-content {
+  white-space: pre-wrap; /* 讓換行符號 (\n) 生效 */
+  word-wrap: break-word; /* 讓過長的單字或網址可以換行 */
+  color: #212121;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
 </style>
