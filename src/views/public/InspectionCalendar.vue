@@ -2,16 +2,53 @@
   <v-container fluid>
     <v-card class="pa-4">
       <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
-        {{ pageTitle }}
-        <v-btn
-          color="primary"
-          @click="handleDownloadPdf"
-          :loading="isDownloadingPdf"
-          prepend-icon="mdi-download"
-        >
-          <span v-if="!isDownloadingPdf" class="btn-text">下載時間表</span>
-          <span v-else class="btn-text">{{ pdfDownloadProgress }}</span>
-        </v-btn>
+        <span>{{ pageTitle }}</span>
+
+        <div>
+          <div class="d-none d-md-flex ga-2">
+            <v-btn
+              color="primary"
+              @click="handleDownloadPdf"
+              :loading="isDownloadingPdf"
+              prepend-icon="mdi-download"
+            >
+              下載時間表
+            </v-btn>
+          </div>
+
+          <div class="d-md-none">
+            <v-menu location="bottom end">
+              <template v-slot:activator="{ props }">
+                <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
+              </template>
+
+              <v-list density="compact">
+                <v-list-item
+                  prepend-icon="mdi-filter-variant"
+                  title="篩選"
+                  @click="isFilterDrawerVisible = true"
+                ></v-list-item>
+                
+                <v-list-item
+                  prepend-icon="mdi-download"
+                  title="下載時間表"
+                  @click="handleDownloadPdf"
+                  :disabled="isDownloadingPdf"
+                >
+                  <template v-slot:append>
+                    <v-progress-circular
+                      v-if="isDownloadingPdf"
+                      indeterminate
+                      color="primary"
+                      size="20"
+                      width="2"
+                    ></v-progress-circular>
+                  </template>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </div>
+        </div>
       </v-card-title>
 
       <v-alert
@@ -28,7 +65,7 @@
       </div>
 
       <div v-if="!isLoading && !error">
-        <v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded" dense>
+        <v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
           <v-col cols="12" sm="4" md="2">
             <v-text-field
               v-model="startDateFormatted"
@@ -170,50 +207,93 @@
       <v-btn variant="text" icon="mdi-close" density="compact" @click="isDialogVisible = false"></v-btn>
     </v-card-title>
     
-    <v-card-text class="bg-grey-lighten-5 pa-4">
-      <v-row align="center">
-        <v-col cols="12" sm="4">
-          <div class="text-caption text-grey-darken-1">戶別</div>
-          <div class="text-h5 font-weight-bold text-primary">{{ selectedEvent['戶別'] }}</div>
-        </v-col>
-        <v-col cols="12" sm="4">
-          <div class="text-caption text-grey-darken-1">預約日期與時段</div>
-          <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
-            {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
-            {{ selectedEvent['預約時段'] }}
-          </div>
-          <div v-else class="d-flex ga-2">
-            <v-text-field
-              v-model="editableEvent['預約日期']"
-              type="date"
+<v-card-text class="bg-grey-lighten-5 pa-4">
+  <v-row align="center" dense>
+    <v-col cols="12" sm="2">
+      <div class="text-caption text-grey-darken-1">戶別</div>
+      <div class="text-h5 font-weight-bold text-primary">{{ selectedEvent['戶別'] }}</div>
+    </v-col>
+    
+    <v-col cols="12" sm="5">
+      <div class="text-caption text-grey-darken-1">預約日期與時段</div>
+      <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
+        {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
+        {{ selectedEvent['預約時段'] }}
+      </div>
+<div v-else>
+            <v-alert
+              v-if="slotsError"
+              type="error"
               density="compact"
-              hide-details
-              style="min-width: 140px;"
-            ></v-text-field>
-            <v-text-field
-              v-model="editableEvent['預約時段']"
-              density="compact"
-              hide-details
-              hint="格式: HH:mm-HH:mm"
-              style="min-width: 120px;"
-            ></v-text-field>
-          </div>
-        </v-col>
-        <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2">
-          <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
-            {{ selectedEvent['預約項目'] }}
-          </v-chip>
-          <v-chip v-if="selectedEvent['預約狀態'] === '預約中'" color="success" size="small" label variant="flat">
-            <v-icon start icon="mdi-check-circle-outline"></v-icon>
-            {{ selectedEvent['預約狀態'] }}
-          </v-chip>
-          <v-chip v-else-if="selectedEvent['預約狀態'] === '取消'" color="red-darken-1" size="small" label variant="tonal">
-            <v-icon start icon="mdi-close-circle-outline"></v-icon>
-            {{ selectedEvent['預約狀態'] }}
-          </v-chip>
-        </v-col>
-      </v-row>
-    </v-card-text>
+              variant="tonal"
+              class="mb-2 text-caption"
+            >
+              {{ slotsError }}
+            </v-alert>
+
+             <div class="d-flex ga-2">
+    <v-menu :close-on-content-click="false">
+      <template v-slot:activator="{ props }">
+<v-text-field
+  :model-value="safeFormatDate(editableEvent['預約日期'], 'yyyy-MM-dd')"
+  label="預約日期"
+  prepend-inner-icon="mdi-calendar"
+  readonly
+  v-bind="props"
+  density="compact"
+  hide-details="auto"
+  :loading="isSlotsLoading"
+  :disabled="isSlotsLoading"
+  style="min-width: 155px;"
+></v-text-field>
+      </template>
+      <v-date-picker
+        v-model="editableEvent['預約日期']"
+        :min="bookingSlotsData?.startDate"
+        :max="bookingSlotsData?.endDate"
+        :allowed-dates="isDateAllowed"
+        @update:model-value="menu = false"
+        hide-header
+      ></v-date-picker>
+    </v-menu>
+    
+<v-select
+  v-model="editableEvent['預約時段']"
+  :items="availableTimeSlots"
+  label="預約時段"
+  :loading="isSlotsLoading"
+  :disabled="isSlotsLoading || !editableEvent['預約日期']"
+  density="compact"
+  hide-details="auto"
+  no-data-text="請先選擇日期"
+  style="min-width: 200px;"
+>
+  <template v-slot:item="{ props, item }">
+    <v-list-item 
+      v-bind="props" 
+      :disabled="item.raw.includes('已額滿')"
+    ></v-list-item>
+  </template>
+</v-select>
+  </div>
+</div>
+    </v-col>
+
+<v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-end">
+        <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
+        {{ selectedEvent['預約項目'] }}
+      </v-chip>
+      <v-chip v-if="selectedEvent['預約狀態'] === '預約中'" color="success" size="small" label variant="flat">
+        <v-icon start icon="mdi-check-circle-outline"></v-icon>
+        {{ selectedEvent['預約狀態'] }}
+      </v-chip>
+      <v-chip v-else-if="selectedEvent['預約狀態'] === '取消'" color="red-darken-1" size="small" label variant="tonal">
+        <v-icon start icon="mdi-close-circle-outline"></v-icon>
+        {{ selectedEvent['預約狀態'] }}
+      </v-chip>
+    </v-col>
+  </v-row>
+</v-card-text>
     <v-divider></v-divider>
 
     <v-card-text class="pa-0">
@@ -428,6 +508,107 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-navigation-drawer
+      v-model="isFilterDrawerVisible"
+      location="right"
+      temporary
+      width="300"
+    >
+      <v-sheet class="d-flex flex-column h-100">
+        <v-list-item title="篩選條件" subtitle="請選擇您的篩選範圍" class="bg-grey-lighten-3">
+          <template v-slot:append>
+            <v-btn
+              variant="text"
+              icon="mdi-close"
+              @click="isFilterDrawerVisible = false"
+            ></v-btn>
+          </template>
+        </v-list-item>
+        <v-divider></v-divider>
+
+        <div class="pa-4" style="overflow-y: auto;">
+          <v-label class="mb-2">日期範圍</v-label>
+          <v-text-field
+            v-model="startDateFormatted"
+            label="開始日期"
+            type="date"
+            density="compact"
+            class="mb-3"
+          ></v-text-field>
+          <v-text-field
+            v-model="endDateFormatted"
+            label="結束日期"
+            type="date"
+            density="compact"
+            class="mb-3"
+          ></v-text-field>
+          
+          <v-divider class="my-3"></v-divider>
+          
+          <v-text-field
+            v-model="searchQuery"
+            label="關鍵字搜尋..."
+            prepend-inner-icon="mdi-magnify"
+            density="compact"
+            clearable
+            variant="outlined"
+            color="primary"
+            class="mb-3"
+          ></v-text-field>
+
+          <v-divider class="my-3"></v-divider>
+
+          <div>
+            <v-label class="mb-2">狀態</v-label>
+            <v-checkbox
+              v-model="selectedStatuses"
+              label="預約中"
+              value="預約中"
+              density="compact"
+              hide-details
+              color="primary"
+            ></v-checkbox>
+            <v-checkbox
+              v-model="selectedStatuses"
+              label="取消"
+              value="取消"
+              density="compact"
+              hide-details
+              color="error"
+            ></v-checkbox>
+          </div>
+
+          <v-divider class="my-3"></v-divider>
+          
+          <div>
+            <v-label class="mb-2">項目</v-label>
+            <v-checkbox
+              v-for="itemType in currentTypeOptions"
+              :key="itemType"
+              v-model="selectedTypes"
+              :label="itemType"
+              :value="itemType"
+              density="compact"
+              hide-details
+              color="teal-darken-1"
+            ></v-checkbox>
+          </div>
+        </div>
+
+        <v-spacer></v-spacer>
+
+        <div class="pa-2 bg-grey-lighten-4">
+          <v-btn
+            color="primary"
+            block
+            @click="isFilterDrawerVisible = false"
+          >
+            完成
+          </v-btn>
+        </div>
+      </v-sheet>
+    </v-navigation-drawer>
   </v-container>
 </template>
 
@@ -435,7 +616,7 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { fetchInspectionAppointments, getBookingInitialData, updateBooking, cancelBooking, updateHouseholdData } from '@/api';
+import { fetchInspectionAppointments, getBookingInitialData, getBookingSlots, updateBooking, cancelBooking, updateHouseholdData } from '@/api';
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -469,6 +650,8 @@ const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null); 
+const isFilterDrawerVisible = ref(false);// 控制篩選器抽屜的顯示狀態
+
 
 // --- Dialog UI 優化相關狀態 ---
 const snackbar = ref(false);
@@ -484,6 +667,14 @@ const bookingOptions = ref({
   inspectionMethods: [],
   inspectionStaff: []
 });
+
+// 儲存動態時段的相關狀態
+const isSlotsLoading = ref(false); // 控制下拉選單的載入動畫
+const bookingSlotsData = ref(null); // 儲存完整的時段規則物件
+const availableDates = ref([]);      // 儲存可選的日期列表 (for v-select)
+const availableTimeSlots = ref([]);  // 儲存可選的時段列表 (for v-select)
+const timeSlotsByDate = ref({});     // 儲存從API獲取的完整 日期->時段 對應物件
+const slotsError = ref(null);        // 儲存獲取時段失敗時的錯誤訊息
 
 // --- 常數與計算屬性 ---
 const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu61: '富宇富御', fuyu1750: '富宇首馥' };
@@ -782,6 +973,55 @@ function handleCustomEventClick(event) {
   isDialogVisible.value = true;
 }
 
+/**
+ * 進入編輯模式時，獲取此預約可用的日期和時段
+ */
+async function fetchAvailableSlotsForEditing() {
+  if (!selectedEvent.value) return;
+
+  isSlotsLoading.value = true;
+  slotsError.value = null;
+  // 清空舊資料
+  bookingSlotsData.value = null;
+  availableTimeSlots.value = [];
+  timeSlotsByDate.value = {};
+
+  try { // <--- TRY 區塊開始
+    const { 
+      '戶別': unitId, 
+      '預約項目': bookingType, 
+      '驗屋方式': bookingMethod 
+    } = selectedEvent.value;
+
+    if (!bookingMethod) {
+      throw new Error('缺少「驗屋方式」，無法獲取可選時段。');
+    }
+
+    const response = await getBookingSlots(projectName.value, unitId, bookingType, bookingMethod);
+    
+    if (response.status === 'success' && response.data) {
+      // 將完整的時段規則存起來
+      bookingSlotsData.value = response.data;
+      
+      // 直接使用 timeSlotsByDate 這個 ref
+      timeSlotsByDate.value = response.data.timeSlotsByDate || {};
+
+      // 如果當前已有選定日期，立即載入對應時段
+      if (editableEvent.value?.['預約日期']) {
+        const currentFormattedDate = format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd');
+        availableTimeSlots.value = timeSlotsByDate.value[currentFormattedDate] || [];
+      }
+    } else {
+      throw new Error(response.message || '無法獲取可選時段資料。');
+    }
+  } catch (err) { // <--- CATCH 區塊，用來捕捉 try 中發生的錯誤
+    console.error("獲取可選時段失敗:", err);
+    slotsError.value = err.message;
+  } finally { // <--- FINALLY 區塊，無論成功或失敗都會執行
+    isSlotsLoading.value = false;
+  }
+}
+
 function enterEditMode() {
   // 深度複製一份 selectedEvent，避免在儲存前就改動到原始資料
   const eventCopy = JSON.parse(JSON.stringify(selectedEvent.value));
@@ -809,6 +1049,9 @@ function enterEditMode() {
   
   editableEvent.value = eventCopy;
   isEditMode.value = true;
+
+  // 呼叫函式來獲取下拉選單的選項
+  fetchAvailableSlotsForEditing();
 }
 
 async function saveChanges() {
@@ -1028,6 +1271,32 @@ function getAppointmentItemStyle(itemText) {
   };
 }
 
+
+/**
+ * 將日期物件格式化為 'YYYY-MM-DD' 字串
+ */
+const formatDateToYYYYMMDD = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * 供 v-date-picker 使用，判斷日期是否可選
+ */
+const isDateAllowed = (date) => {
+  if (!bookingSlotsData.value || !bookingSlotsData.value.unavailableDates) {
+    return true; // 如果規則還沒載入，暫時都允許
+  }
+  const dateStr = formatDateToYYYYMMDD(date);
+  // 如果日期不在 "不可預約" 列表內，則為可選
+  return !bookingSlotsData.value.unavailableDates.includes(dateStr);
+};
+
+
 onMounted(() => {
   if (PROJECT_NAME_MAP[projectId.value]) {
     fetchData();
@@ -1057,6 +1326,26 @@ function safeFormatDate(value, formatString = 'yyyy-MM-dd') {
 watch(currentTypeOptions, (newOptions) => {
   selectedTypes.value = [...newOptions];
 }, { immediate: true });
+
+
+// 監聽編輯中的日期變化，以更新可選時段列表
+watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
+  // 確保是在編輯模式下，且 newDate 是一個有效值
+  if (isEditMode.value && newDate) {
+    // [修正] 無論新舊日期是物件還是字串，都先格式化為 'YYYY-MM-DD' 字串
+    const newDateKey = formatDateToYYYYMMDD(newDate);
+    const oldDateKey = oldDate ? formatDateToYYYYMMDD(oldDate) : null;
+    
+    // 使用正確的 string key 來獲取時段列表
+    availableTimeSlots.value = timeSlotsByDate.value[newDateKey] || [];
+    
+    // [修正] 比較格式化後的字串 key，如果不同，才清空時段
+    // 這樣可以避免在初次載入時就清空既有值，也解決了類型不符的錯誤
+    if (newDateKey !== oldDateKey && editableEvent.value) {
+      editableEvent.value['預約時段'] = ''; 
+    }
+  }
+});
 </script>
 
 
