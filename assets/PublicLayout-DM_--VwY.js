@@ -1,0 +1,1 @@
+import{_ as o,b as t,i as c,e as s,f as a}from"./index-flsgYEXv.js";const n={name:"PublicLayout"},r={class:"public-layout"};function _(i,u,p,l,d,f){const e=t("router-view");return s(),c("div",r,[a(e)])}const b=o(n,[["render",_]]);export{b as default};
