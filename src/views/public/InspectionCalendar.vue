@@ -213,69 +213,58 @@
     </v-col>
     
     <v-col cols="12" sm="5">
-      <div class="text-caption text-grey-darken-1">預約日期與時段</div>
-      <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
-        {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
-        <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
-        {{ selectedEvent['預約時段'] }}
-      </div>
-      <div v-else>
-        <v-alert
-          v-if="slotsError"
-          type="error"
-          density="compact"
-          variant="tonal"
-          class="mb-2 text-caption"
-        >
-          {{ slotsError }}
-        </v-alert>
-        <div class="d-flex ga-2">
-          <v-menu :close-on-content-click="false">
-            <template v-slot:activator="{ props }">
-              <v-text-field
-                :model-value="safeFormatDate(editableEvent['預約日期'], 'yyyy-MM-dd')"
-                label="預約日期"
-                prepend-inner-icon="mdi-calendar"
-                readonly
-                v-bind="props"
-                density="compact"
-                hide-details="auto"
-                :loading="isSlotsLoading"
-                :disabled="isSlotsLoading"
-                style="min-width: 155px;"
-              ></v-text-field>
-            </template>
-            <v-date-picker
-              v-model="editableEvent['預約日期']"
-              :min="bookingSlotsData?.startDate"
-              :max="bookingSlotsData?.endDate"
-              :allowed-dates="isDateAllowed"
-              @update:model-value="menu = false"
-              hide-header
-            ></v-date-picker>
-          </v-menu>
-          
-          <v-select
-            v-model="editableEvent['預約時段']"
-            :items="availableTimeSlots"
-            label="預約時段"
-            :loading="isSlotsLoading"
-            :disabled="isSlotsLoading || !editableEvent['預約日期']"
+  <div class="text-caption text-grey-darken-1">預約日期與時段</div>
+  <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
+    {{ selectedEvent['預約日期'] ? format(new Date(selectedEvent['預約日期']), 'yyyy-MM-dd') : '' }}
+    <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
+    {{ selectedEvent['預約時段'] }}
+  </div>
+  <div v-else>
+    <div class="d-flex ga-2">
+      <v-menu :close-on-content-click="false">
+        <template v-slot:activator="{ props }">
+          <v-text-field
+            :model-value="safeFormatDate(editableEvent['預約日期'], 'yyyy-MM-dd')"
+            label="預約日期"
+            prepend-inner-icon="mdi-calendar"
+            readonly
+            v-bind="props"
             density="compact"
             hide-details="auto"
-            no-data-text="請先選擇日期"
-            style="min-width: 200px;"
-          >
-            <template v-slot:item="{ props, item }">
-              <v-list-item 
-                v-bind="props" 
-                :disabled="item.raw.includes('已額滿')"
-              ></v-list-item>
-            </template>
-          </v-select>
-        </div>
-      </div>
-    </v-col>
+            :disabled="!currentBookingRules"
+            style="min-width: 155px;"
+          ></v-text-field>
+        </template>
+        <v-date-picker
+          v-model="editableEvent['預約日期']"
+          :min="currentBookingRules?.startDate"
+          :max="currentBookingRules?.endDate"
+          :allowed-dates="isDateAllowed"
+          @update:model-value="menu = false"
+          hide-header
+        ></v-date-picker>
+      </v-menu>
+      
+      <v-select
+        v-model="editableEvent['預約時段']"
+        :items="availableTimeSlots"
+        label="預約時段"
+        :disabled="!editableEvent['預約日期'] || !currentBookingRules"
+        density="compact"
+        hide-details="auto"
+        no-data-text="請先選擇日期"
+        style="min-width: 200px;"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item
+            v-bind="props"
+            :disabled="item.raw.includes('額滿')"
+          ></v-list-item>
+        </template>
+      </v-select>
+    </div>
+  </div>
+</v-col>
 
 <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
           <v-chip :style="getAppointmentItemStyle(selectedEvent['預約項目'])" size="small" label>
@@ -703,28 +692,21 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { fetchInspectionAppointments, getBookingInitialData, getBookingSlots, updateBooking, cancelBooking, updateHouseholdData } from '@/api';
-import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval } from 'date-fns';
+// ✨ 引入新的 API
+import { fetchInspectionAppointments, getBookingInitialData, getAllBookingRules, updateBooking, cancelBooking, updateHouseholdData } from '@/api';
+import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useClipboard } from '@vueuse/core';
-
-
 
 // --- Store 和路由 ---
 const route = useRoute();
 const userStore = useUserStore();
 
 // --- 定義欄位應更新到哪張工作表 ---
-// 屬於「驗交屋預約紀錄」工作表的欄位
 const BOOKING_RECORD_FIELDS = ['姓名', '電話', 'EMAIL', '預約日期', '預約時段', '驗屋方式', '代驗公司名稱', '驗屋人員', '預約備註', '受託人姓名', '受託人電話'];
-// 屬於「戶別資料」工作表的欄位
-const HOUSEHOLD_DATA_FIELDS = ['門牌', '車位', '買方姓名', '買方電話', '撥款日期', '銀行', '銀行窗口', '備註', '驗屋文件', '驗屋報告', '初驗批次', '複驗批次'];
-
-// --- 篩選器狀態 ---
-const statusOptions = ['預約中', '取消'];
-const selectedStatuses = ref(['預約中', '取消']); // 預設全選
+const HOUSEHOLD_DATA_FIELDS = ['門牌', '車位', '買方姓名', '買方電話', '撥款日期', '銀行', '銀行窗口', '備註', '驗屋文件', '驗屋報告', '初驗批次', '複驗批次', '後陽台門鎖更換批次'];
 
 // --- 響應式狀態 ---
 const isLoading = ref(true);
@@ -733,16 +715,12 @@ const appointments = ref([]);
 const isDialogVisible = ref(false);
 const selectedEvent = ref(null);
 const isDownloadingPdf = ref(false);
-const pdfDownloadProgress = ref('');
 const searchQuery = ref('');
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
-const isFilterDrawerVisible = ref(false);// 控制篩選器抽屜的顯示狀態
-
-
-// --- Dialog UI 優化相關狀態 ---
+const isFilterDrawerVisible = ref(false);
 const snackbar = ref(false);
 const snackbarText = ref('');
 const panels = ref([]);
@@ -757,207 +735,57 @@ const bookingOptions = ref({
   inspectionStaff: []
 });
 
-// 儲存動態時段的相關狀態
-const isSlotsLoading = ref(false); // 控制下拉選單的載入動畫
-const bookingSlotsData = ref(null); // 儲存完整的時段規則物件
-const availableDates = ref([]);      // 儲存可選的日期列表 (for v-select)
-const availableTimeSlots = ref([]);  // 儲存可選的時段列表 (for v-select)
-const timeSlotsByDate = ref({});      // 儲存從API獲取的完整 日期->時段 對應物件
-const slotsError = ref(null);        // 儲存獲取時段失敗時的錯誤訊息
+// ✨ --- 新的預約規則相關狀態 ---
+const allBookingRules = ref(null); // 儲存從後端獲取的所有規則
 
 // --- 常數與計算屬性 ---
 const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu61: '富宇富御', fuyu1750: '富宇首馥' };
-
-// --- ✅ [新增] 不同建案的時間欄位設定 ---
 const PROJECT_TIME_SLOTS = {
-  '富宇上城': [
-    '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'
-  ],
-  '富宇富御': [
-    '09:30', '10:00', '11:00', '13:30', '14:00','14:30'
-  ],
-
-  'default': [ // 當找不到對應建案時的預設時間
-    '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'
-  ]
+  '富宇上城': ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'],
+  '富宇富御': ['09:30', '10:00', '11:00', '13:30', '14:00','14:30'],
+  'default': ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 };
-
-
-// --- 事件標題設定 ---
 const EVENT_DISPLAY_CONFIG = {
-  '富宇富御': (appt) => [
-    appt['特殊備註'] ? `(${appt['特殊備註']})` : null,
-    appt['預約項目'],
-    appt['特殊備註2'],
-    appt['驗屋方式'],
-    appt['代驗公司名稱'],
-    appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null
-  ],
-  // 其他未定義的案名會使用這個預設格式
-  'default': (appt) => [
-    appt['預約項目'],
-    appt['驗屋方式'],
-    appt['代驗公司名稱'],
-    appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null
-  ]
+  '富宇富御': (appt) => [appt['特殊備註'] ? `(${appt['特殊備註']})` : null, appt['預約項目'], appt['特殊備註2'], appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null],
+  'default': (appt) => [appt['預約項目'], appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null]
 };
-
 const KEYWORD_COLOR_MAP = [
   { keyword: '已撥款', backgroundColor: '#ffc107', textColor: '#212529', borderColor: '#e0a800' },
   { keyword: '交屋', backgroundColor: '#ffc107', textColor: '#212529', borderColor: '#e0a800' },
   { keyword: '初驗', backgroundColor: '#d4edda', textColor: '#155724', borderColor: '#b1dfbb' },
   { keyword: '複驗', backgroundColor: '#f8d7da', textColor: '#721c24', borderColor: '#f1b0b7' },
 ];
-const projectId = ref(route.params.projectId);
-const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
-const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
-
-// --- 預約項目設定物件 ---
 const PROJECT_TYPE_OPTIONS = {
   '富宇上城': ['初驗', '複驗', '後陽台門鎖更換'],
   '富宇富御': ['初驗', '複驗', ],
   '富宇首馥': ['初驗', '複驗'],
-  'default': ['初驗', '複驗'] // 當找不到對應建案時的預設值
+  'default': ['初驗', '複驗']
 };
-
-// --- 新的計算屬性，用來動態獲取當前建案的選項 ---
-const currentTypeOptions = computed(() => {
-  return PROJECT_TYPE_OPTIONS[projectName.value] || PROJECT_TYPE_OPTIONS.default;
-});
-
-// --- 新的 selectedTypes 狀態，其預設值會根據計算屬性動態產生 ---
-const selectedTypes = ref(currentTypeOptions.value);
-
-// --- 優化後的 Field Config ---
 const fieldConfig = {
   default: [
-    { title: '基本資料', fields: [
-      { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
-      { key: '車位', label: '車位', icon: 'mdi-car-outline' },
-      { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
-      { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
-    ]},
-    { title: '預約人資料', fields: [
-      { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
-      { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
-      { key: 'EMAIL', label: 'EMAIL', icon: 'mdi-email-outline', copyable: true },
-      { key: '身分證', label: '身分證', icon: 'mdi-card-account-details-outline' },
-    ]},
-{ title: '驗屋與預約詳情', fields: [
-      { key: '初驗批次', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' },
-      { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' },
-      { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' },
-      { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' },
-      { key: '受託人姓名', label: '受託人姓名', icon: 'mdi-account-tie-outline' },
-      { key: '受託人電話', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', copyable: true },
-      { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true, readOnly: true }, // <-- 在此加上 readOnly: true
-      { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' ,readOnly: true},
-        ]},
-{ title: '相關文件', fields: [
-      { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' },
-      { key: '銀行', label: '銀行', icon: 'mdi-bank-outline' },
-      { key: '銀行窗口', label: '銀行窗口', icon: 'mdi-account-tie-outline' },
-      { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true },
-      { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true },
-    ]},
-  ],
-  // 可以為特定專案覆寫設定
-  '富宇富御': [
-     { title: '基本資料', fields: [
-      { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' },
-      { key: '車位', label: '車位', icon: 'mdi-car-outline' },
-      { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' },
-      { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true },
-    ]},
-    { title: '預約人資料', fields: [
-      { key: '姓名', label: '姓名', icon: 'mdi-account-outline' },
-      { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true },
-      { key: 'EMAIL', label: 'EMAIL', icon: 'mdi-email-outline', copyable: true },
-      { key: '身分證', label: '身分證', icon: 'mdi-card-account-details-outline' },
-    ]},
-{ title: '驗屋與預約詳情', fields: [
-      { key: '初驗批次', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' },
-      { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' },
-      { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' },
-      { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' },
-      { key: '受託人姓名', label: '受託人姓名', icon: 'mdi-account-tie-outline' },
-      { key: '受託人電話', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', copyable: true },
-      { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true, readOnly: true }, // <-- 在此加上 readOnly: true
-      { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' ,readOnly: true},
-        ]},
-{ title: '相關文件', fields: [
-      { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' },
-      { key: '銀行', label: '銀行', icon: 'mdi-bank-outline' },
-      { key: '銀行窗口', label: '銀行窗口', icon: 'mdi-account-tie-outline' },
-      { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true },
-      { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true },
-    ]},
-  ],
-// 可以為特定專案覆寫設定
-
+    { title: '基本資料', fields: [ { key: '門牌', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: '車位', label: '車位', icon: 'mdi-car-outline' }, { key: '買方姓名', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: '買方電話', label: '買方電話', icon: 'mdi-phone-outline', copyable: true }, ]},
+    { title: '預約人資料', fields: [ { key: '姓名', label: '姓名', icon: 'mdi-account-outline' }, { key: '電話', label: '電話', icon: 'mdi-cellphone', copyable: true }, { key: 'EMAIL', label: 'EMAIL', icon: 'mdi-email-outline', copyable: true }, { key: '身分證', label: '身分證', icon: 'mdi-card-account-details-outline' }, ]},
+    { title: '驗屋與預約詳情', fields: [ { key: '初驗批次', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: '複驗批次', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, { key: '驗屋方式', label: '驗屋方式', icon: 'mdi-cog-outline' }, { key: '代驗公司名稱', label: '代驗公司', icon: 'mdi-domain' }, { key: '受託人姓名', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: '受託人電話', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', copyable: true }, { key: '預約代碼', label: '預約代碼', icon: 'mdi-barcode-scan', copyable: true, readOnly: true }, { key: '填表時間', label: '填表時間', icon: 'mdi-calendar-edit', type: 'datetime' ,readOnly: true}, ]},
+    { title: '相關文件', fields: [ { key: '撥款日期', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' }, { key: '銀行', label: '銀行', icon: 'mdi-bank-outline' }, { key: '銀行窗口', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: '驗屋文件', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true }, { key: '驗屋報告', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true }, ]},
+  ]
 };
 
-const projectFieldConfig = computed(() => {
-  return fieldConfig[projectName.value] || fieldConfig.default;
-});
-
-/**
- * [新增] 計算屬性：獲取當前選中戶別的所有歷史預約紀錄
- */
-const bookingHistory = computed(() => {
-  if (!selectedEvent.value) {
-    return [];
-  }
-  const householdId = selectedEvent.value['戶別'];
-  return appointments.value
-    .filter(appt => appt['戶別'] === householdId)
-    .sort((a, b) => {
-      const dateA = new Date(a['預約日期']);
-      const dateB = new Date(b['預約日期']);
-      return dateA - dateB;
-    });
-});
-
-/**
- * [新增] 計算屬性：整合所有要在對話框中顯示的面板
- */
-const displayPanels = computed(() => {
-  const panels = [...projectFieldConfig.value];
-  if (bookingHistory.value.length > 0) {
-    panels.push({
-      title: '歷次預約紀錄',
-      isHistoryPanel: true
-    });
-  }
-  return panels;
-});
-
-// --- 權限計算屬性 ---
-const canEdit = computed(() => {
-  return userStore.hasProjectPermission('驗屋時間表-修改', projectName.value);
-});
-
-// --- 一鍵複製功能 ---
-function handleCopy(value) {
-  const { copy } = useClipboard({ source: value });
-  copy(value);
-  snackbarText.value = '已複製到剪貼簿！';
-  snackbar.value = true;
-}
+const projectId = ref(route.params.projectId);
+const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
+const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
+const currentTypeOptions = computed(() => PROJECT_TYPE_OPTIONS[projectName.value] || PROJECT_TYPE_OPTIONS.default);
+const selectedTypes = ref(currentTypeOptions.value);
+const selectedStatuses = ref(['預約中', '取消']);
+const projectFieldConfig = computed(() => fieldConfig[projectName.value] || fieldConfig.default);
+const canEdit = computed(() => userStore.hasProjectPermission('驗屋時間表-修改', projectName.value));
 
 const filteredAppointments = computed(() => {
   const allProcessedAppointments = processAppointments(appointments.value);
   const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
 
   return allProcessedAppointments.filter(appt => {
-    const statusMatch = selectedStatuses.value.length === 0
-      ? false
-      : selectedStatuses.value.includes(appt['預約狀態']);
-
-    const typeMatch = selectedTypes.value.length === 0
-      ? false
-      : selectedTypes.value.includes(appt['預約項目']);
-
+    const statusMatch = selectedStatuses.value.length === 0 ? false : selectedStatuses.value.includes(appt['預約狀態']);
+    const typeMatch = selectedTypes.value.length === 0 ? false : selectedTypes.value.includes(appt['預約項目']);
     const queryMatch = !query || [
       appt['戶別'], appt['門牌'], appt['姓名'], appt['電話'], appt['預約項目'],
       appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'], appt['備註'],
@@ -1023,24 +851,17 @@ const endDateFormatted = computed({
   set: (val) => { const [y, m, d] = val.split('-').map(Number); endDate.value = new Date(y, m - 1, d); }
 });
 
-// --- ❗ [修改] timeSlots 計算屬性，使其動態化 ---
-const timeSlots = computed(() => {
-  // 🗣 從 PROJECT_TIME_SLOTS 物件中，根據當前專案名稱查找對應的時間列表
-  // 🗣 如果找不到特定專案的設定，則使用 'default' 的時間列表
-  return PROJECT_TIME_SLOTS[projectName.value] || PROJECT_TIME_SLOTS.default;
-});
+const timeSlots = computed(() => PROJECT_TIME_SLOTS[projectName.value] || PROJECT_TIME_SLOTS.default);
 
 const groupedEvents = computed(() => {
   const grouped = {};
   filteredAppointments.value.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
-    // ❗ [修改] 為了能對應到非整點的時間(如08:30)，這裡需要更精確的匹配
-    // 🗣 我們遍歷專案的時間列表，看事件的開始時間在哪個區間內
     const eventStartTime = format(event.start, 'HH:mm');
     const timeKey = timeSlots.value.find((slot, index) => {
         const nextSlot = timeSlots.value[index + 1] || '23:59';
         return eventStartTime >= slot && eventStartTime < nextSlot;
-    }) || timeSlots.value[0]; // 如果找不到，就歸類到第一個
+    }) || timeSlots.value[0];
 
     if (!grouped[dateKey]) grouped[dateKey] = {};
     if (!grouped[dateKey][timeKey]) grouped[dateKey][timeKey] = [];
@@ -1049,78 +870,95 @@ const groupedEvents = computed(() => {
   return grouped;
 });
 
-// --- 方法 ---
-function promptCancelBooking(event) {
-  eventToCancel.value = event;
-  isCancelConfirmDialogVisible.value = true;
-}
+const bookingHistory = computed(() => {
+  if (!selectedEvent.value) return [];
+  const householdId = selectedEvent.value['戶別'];
+  return appointments.value
+    .filter(appt => appt['戶別'] === householdId)
+    .sort((a, b) => new Date(a['預約日期']) - new Date(b['預約日期']));
+});
 
+const displayPanels = computed(() => {
+  const panels = [...projectFieldConfig.value];
+  if (bookingHistory.value.length > 0) {
+    panels.push({ title: '歷次預約紀錄', isHistoryPanel: true });
+  }
+  return panels;
+});
+
+// ✨ --- 新的計算屬性，用於即時計算可用的預約規則 ---
+const currentBookingRules = computed(() => {
+    if (!isEditMode.value || !editableEvent.value || !allBookingRules.value) {
+        return null;
+    }
+
+    const { '戶別': unitId, '預約項目': bookingType, '驗屋方式': bookingMethod } = editableEvent.value;
+    const { batchRules, timeSlotRules } = allBookingRules.value;
+
+    if (!unitId || !bookingType || !bookingMethod || !batchRules || !timeSlotRules) {
+        return null;
+    }
+
+    // 1. 找到對應的批次名稱
+    const batchKey = `${bookingType}批次`; // e.g., '初驗批次'
+    const batchName = editableEvent.value[batchKey];
+    if (!batchName) return null;
+
+    // 2. 從 batchRules 中獲取日期規則
+    const dateRule = batchRules[batchName];
+    if (!dateRule) return null;
+
+    // 3. 組合 key 來查找時段規則
+    const simplifiedMethod = (bookingMethod === '代驗公司') ? '代驗' : '自驗';
+    const timeSlotKey = `${bookingType}-${simplifiedMethod}`; // e.g., '初驗-自驗'
+    const timeSlotsByDate = timeSlotRules[timeSlotKey] || {};
+
+    return {
+        startDate: dateRule.startDate,
+        endDate: dateRule.endDate,
+        unavailableDates: dateRule.unavailableDates || [],
+        timeSlotsByDate: timeSlotsByDate,
+    };
+});
+
+// ✨ --- 新的計算屬性，用於提供時段下拉選單的選項 ---
+const availableTimeSlots = computed(() => {
+    if (!isEditMode.value || !editableEvent.value?.['預約日期'] || !currentBookingRules.value) {
+        return [];
+    }
+    const selectedDate = format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd');
+    return currentBookingRules.value.timeSlotsByDate[selectedDate] || [];
+});
+
+// --- 方法 ---
 function processAppointments(rawAppointments) {
-  // 根據當前專案名稱，取得對應的格式化函式，若找不到則使用預設值
   const getTitlePartsFn = EVENT_DISPLAY_CONFIG[projectName.value] || EVENT_DISPLAY_CONFIG.default;
 
  return rawAppointments
     .map(appt => {
       try {
+        if (!appt['預約日期']) return null;
         const rawDateObject = new Date(appt['預約日期']);
         if (isNaN(rawDateObject.getTime())) return null;
+
         const date = format(rawDateObject, 'yyyy-MM-dd');
         const timeSlot = appt['預約時段'] ? String(appt['預約時段']).replace(/：/g, ':') : '00:00';
-        const times = timeSlot.split('-').map(t => t.trim());
-        const startTime = times[0] || '00:00';
-        // ❗ [修改] 結束時間的計算邏輯保持彈性
-        const startHour = parseInt(startTime.split(':')[0]);
-        const startMinute = parseInt(startTime.split(':')[1] || 0);
-        const endTime = times.length > 1 ? (times[1] || `${String(startHour + 1).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`) : `${String(startHour + 1).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
+        const startTime = timeSlot.split('-')[0]?.trim() || '00:00';
+        
+        const titleParts = getTitlePartsFn(appt).filter(Boolean);
+        const itemText = titleParts.join(' - ');
 
-        const bookingDate = new Date(appt['預約日期']);
-        const allocationDate = appt['撥款日期'] ? new Date(appt['撥款日期']) : null;
-        let isAllocated = false;
-        if (allocationDate && !isNaN(bookingDate.getTime()) && !isNaN(allocationDate.getTime())) {
-          bookingDate.setHours(0, 0, 0, 0);
-          allocationDate.setHours(0, 0, 0, 0);
-          isAllocated = bookingDate.getTime() >= allocationDate.getTime();
-        }
-
-                // 使用專案對應的函式來產生 titleParts 陣列
-                const titleParts = getTitlePartsFn(appt).filter(Boolean);
-
-        let itemText = titleParts.join(' - ');
-        let fullTextForSearch = itemText;
-        if (isAllocated) {
-          itemText += ' (已撥款)';
-          fullTextForSearch += ' 已撥款';
-        }
-        return { ...appt, id: `${appt['填表時間']}_${appt['戶別']}`, start: new Date(`${date}T${startTime}`), end: new Date(`${date}T${endTime}`), displayText: itemText, fullTextForSearch: fullTextForSearch };
+        return { 
+            ...appt, 
+            id: `${appt['填表時間']}_${appt['戶別']}`, 
+            start: parseISO(`${date}T${startTime}`), 
+            displayText: itemText, 
+        };
       } catch (e) {
         console.warn(`處理預約資料時發生錯誤: ${e.message}`, appt);
         return null;
       }
     }).filter(event => event !== null);
-}
-
-function getEventStyle(event) {
-  if (event['預約狀態'] === '取消') {
-    return {
-      backgroundColor: '#f5f5f5',
-      color: '#9e9e9e',
-      borderColor: '#e0e0e0',
-      borderWidth: '2px',
-      borderStyle: 'solid'
-    };
-  }
-  for (const config of KEYWORD_COLOR_MAP) {
-    if (event.fullTextForSearch.includes(config.keyword)) {
-      return {
-        backgroundColor: config.backgroundColor, color: config.textColor, borderColor: config.borderColor,
-        borderWidth: '2px', borderStyle: 'solid'
-      };
-    }
-  }
-  return {
-    backgroundColor: '#EEEEEE', color: '#212121', borderColor: '#E0E0E0',
-    borderWidth: '2px', borderStyle: 'solid'
-  };
 }
 
 function handleCustomEventClick(event) {
@@ -1130,111 +968,48 @@ function handleCustomEventClick(event) {
   isDialogVisible.value = true;
 }
 
-/**
- * 進入編輯模式時，獲取此預約可用的日期和時段
- */
-async function fetchAvailableSlotsForEditing() {
-  if (!selectedEvent.value) return;
-
-  isSlotsLoading.value = true;
-  slotsError.value = null;
-  // 清空舊資料
-  bookingSlotsData.value = null;
-  availableTimeSlots.value = [];
-  timeSlotsByDate.value = {};
-
-  try { // <--- TRY 區塊開始
-    const {
-      '戶別': unitId,
-      '預約項目': bookingType,
-      '驗屋方式': bookingMethod
-    } = selectedEvent.value;
-
-    if (!bookingMethod) {
-      throw new Error('缺少「驗屋方式」，無法獲取可選時段。');
-    }
-
-    const response = await getBookingSlots(projectName.value, unitId, bookingType, bookingMethod);
-
-    if (response.status === 'success' && response.data) {
-      // 將完整的時段規則存起來
-      bookingSlotsData.value = response.data;
-
-      // 直接使用 timeSlotsByDate 這個 ref
-      timeSlotsByDate.value = response.data.timeSlotsByDate || {};
-
-      // 如果當前已有選定日期，立即載入對應時段
-      if (editableEvent.value?.['預約日期']) {
-        const currentFormattedDate = format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd');
-        availableTimeSlots.value = timeSlotsByDate.value[currentFormattedDate] || [];
-      }
-    } else {
-      throw new Error(response.message || '無法獲取可選時段資料。');
-    }
-  } catch (err) { // <--- CATCH 區塊，用來捕捉 try 中發生的錯誤
-    console.error("獲取可選時段失敗:", err);
-    slotsError.value = err.message;
-  } finally { // <--- FINALLY 區塊，無論成功或失敗都會執行
-    isSlotsLoading.value = false;
-  }
-}
-
 function enterEditMode() {
-  // 深度複製一份 selectedEvent，避免在儲存前就改動到原始資料
   const eventCopy = JSON.parse(JSON.stringify(selectedEvent.value));
-
-  // 統一格式化所有日期欄位，以符合 <input type="date"> 的格式
   const dateFields = ['預約日期', '撥款日期'];
   dateFields.forEach(key => {
-    // 確保有值才格式化
     if (eventCopy[key] && !isNaN(new Date(eventCopy[key]).getTime())) {
       eventCopy[key] = format(new Date(eventCopy[key]), 'yyyy-MM-dd');
     } else {
-      eventCopy[key] = ''; // 如果是無效日期或空值，設為空字串
+      eventCopy[key] = '';
     }
   });
 
-  // 統一處理多選欄位 (將字串轉為陣列)
   const multiSelectFields = ['驗屋人員'];
   multiSelectFields.forEach(key => {
     if (eventCopy[key] && typeof eventCopy[key] === 'string') {
       eventCopy[key] = eventCopy[key].split(',').map(name => name.trim()).filter(Boolean);
     } else if (!eventCopy[key]) {
-      eventCopy[key] = []; // 如果沒有值，確保是空陣列
+      eventCopy[key] = [];
     }
   });
 
   editableEvent.value = eventCopy;
   isEditMode.value = true;
-
-  // 呼叫函式來獲取下拉選單的選項
-  fetchAvailableSlotsForEditing();
 }
 
 async function saveChanges() {
   isSaving.value = true;
-  error.value = null; // 清除舊的錯誤訊息
+  error.value = null;
 
   try {
-    // --- 1. 建立兩個獨立的 payload 物件 ---
     const bookingUpdatePayload = {};
     const householdUpdatePayload = {};
-
-    // --- 2. 遍歷所有可編輯欄位，將變動分配到對應的 payload ---
     const allEditableFields = [...BOOKING_RECORD_FIELDS, ...HOUSEHOLD_DATA_FIELDS];
 
     for (const key of allEditableFields) {
-      // 確保 editableEvent 中有這個欄位
       if (editableEvent.value.hasOwnProperty(key)) {
         let originalValue = selectedEvent.value[key];
         let editedValue = editableEvent.value[key];
 
-        // 特殊處理：將多選陣列轉回字串以便比較和儲存
         if (key === '驗屋人員') {
           editedValue = Array.isArray(editableEvent.value[key]) ? editableEvent.value[key].join(',') : editableEvent.value[key];
         }
 
-        // 僅當值發生改變時才加入 payload
         if (originalValue !== editedValue) {
           if (BOOKING_RECORD_FIELDS.includes(key)) {
             bookingUpdatePayload[key] = editedValue;
@@ -1245,37 +1020,18 @@ async function saveChanges() {
       }
     }
 
-    // --- 3. 根據 payload 建立 API 呼叫的 Promise 陣列 ---
     const apiPromises = [];
-
-    // 如果有屬於「預約紀錄」的更新
     if (Object.keys(bookingUpdatePayload).length > 0) {
-      apiPromises.push(updateBooking(
-        projectName.value,
-        editableEvent.value['預約代碼'],
-        bookingUpdatePayload
-      ));
+      apiPromises.push(updateBooking(projectName.value, editableEvent.value['預約代碼'], bookingUpdatePayload));
     }
-
-    // 如果有屬於「戶別資料」的更新
     if (Object.keys(householdUpdatePayload).length > 0) {
-      apiPromises.push(updateHouseholdData(
-        projectName.value,
-        editableEvent.value['戶別'], // 使用「戶別」作為識別碼
-        householdUpdatePayload
-      ));
+      apiPromises.push(updateHouseholdData(projectName.value, editableEvent.value['戶別'], householdUpdatePayload));
     }
 
-    // --- 4. 執行所有 API 呼叫 ---
     if (apiPromises.length > 0) {
       const responses = await Promise.all(apiPromises);
-
-      // 檢查是否有任何一個 API 呼叫失敗
       const failedResponse = responses.find(res => res.status !== 'success');
-      if (failedResponse) {
-        throw new Error(failedResponse.message || '部分或全部資料更新失敗');
-      }
-
+      if (failedResponse) throw new Error(failedResponse.message || '部分或全部資料更新失敗');
       snackbarText.value = '儲存成功！';
       snackbar.value = true;
     } else {
@@ -1283,15 +1039,12 @@ async function saveChanges() {
       snackbar.value = true;
     }
 
-    // --- 5. 成功後關閉對話框並重新整理資料 ---
     isDialogVisible.value = false;
     isEditMode.value = false;
     await fetchData();
 
   } catch (err) {
-    // 如果出錯，將錯誤訊息顯示在 Dialog 內的 v-alert 中
     error.value = `儲存失敗: ${err.message}`;
-    // 此處不再使用 alert，讓使用者留在編輯畫面查看錯誤
   } finally {
     isSaving.value = false;
   }
@@ -1302,10 +1055,7 @@ async function handleCancelBooking() {
   isCancelling.value = true;
   error.value = null;
   try {
-    const response = await cancelBooking(
-      projectName.value,
-      eventToCancel.value['預約代碼']
-    );
+    const response = await cancelBooking(projectName.value, eventToCancel.value['預約代碼']);
     if (response.status === 'success') {
       alert('預約已成功取消！');
       isDialogVisible.value = false;
@@ -1323,9 +1073,111 @@ async function handleCancelBooking() {
   }
 }
 
+async function fetchData() {
+  isLoading.value = true;
+  error.value = null;
+  try {
+    // ✨ 平行發送所有請求
+    const [appointmentsResponse, optionsResponse, rulesResponse] = await Promise.all([
+      fetchInspectionAppointments(projectName.value),
+      getBookingInitialData(projectName.value),
+      getAllBookingRules(projectName.value) // ✨ 新增的 API 請求
+    ]);
+
+    // 處理預約資料
+    if (appointmentsResponse.status === 'success') {
+      appointments.value = appointmentsResponse.data;
+    } else {
+      throw new Error(appointmentsResponse.message || '無法獲取預約資料');
+    }
+
+    // 處理下拉選單選項
+    if (optionsResponse.status === 'success') {
+      bookingOptions.value.inspectionMethods = optionsResponse.data.inspectionMethods || [];
+      bookingOptions.value.inspectionStaff = optionsResponse.data.inspectionStaff || [];
+    } else {
+      console.warn('無法獲取表單選項資料:', optionsResponse.message);
+    }
+    
+    // ✨ 處理預約規則
+    if (rulesResponse.status === 'success') {
+        allBookingRules.value = rulesResponse.data;
+    } else {
+        console.warn('無法獲取預約規則資料:', rulesResponse.message);
+        // 即使規則獲取失敗，也讓頁面繼續載入，只是編輯時無法選擇時段
+        allBookingRules.value = null; 
+    }
+
+  } catch (err) {
+    console.error('獲取資料失敗:', err);
+    error.value = err.message;
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// ✨ --- 新的日期可用性判斷函式 ---
+const isDateAllowed = (date) => {
+  if (!currentBookingRules.value) return false;
+  const dateStr = format(date, 'yyyy-MM-dd');
+  return !currentBookingRules.value.unavailableDates.includes(dateStr);
+};
+
+// 監聽編輯中的日期變化，以清空時段
+watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
+  if (isEditMode.value && newDate !== oldDate && editableEvent.value) {
+      editableEvent.value['預約時段'] = '';
+  }
+});
+
+watch(currentTypeOptions, (newOptions) => {
+  selectedTypes.value = [...newOptions];
+}, { immediate: true });
+
+
+onMounted(() => {
+  if (PROJECT_NAME_MAP[projectId.value]) {
+    fetchData();
+  } else {
+    error.value = `無效的建案ID: ${projectId.value}`;
+    isLoading.value = false;
+  }
+});
+
+
+// --- 其他輔助函式 ---
+function promptCancelBooking(event) { eventToCancel.value = event; isCancelConfirmDialogVisible.value = true; }
+function handleCopy(value) { const { copy } = useClipboard({ source: value }); copy(value); snackbarText.value = '已複製到剪貼簿！'; snackbar.value = true; }
+function openUrl(url) { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
+function getEventStyle(event) {
+  if (event['預約狀態'] === '取消') return { backgroundColor: '#f5f5f5', color: '#9e9e9e', borderColor: '#e0e0e0', borderWidth: '2px', borderStyle: 'solid' };
+  const combinedText = event.displayText + (event['預約項目'] || '');
+  for (const config of KEYWORD_COLOR_MAP) {
+    if (combinedText.includes(config.keyword)) return { backgroundColor: config.backgroundColor, color: config.textColor, borderColor: config.borderColor, borderWidth: '2px', borderStyle: 'solid' };
+  }
+  return { backgroundColor: '#EEEEEE', color: '#212121', borderColor: '#E0E0E0', borderWidth: '2px', borderStyle: 'solid' };
+}
+function getAppointmentItemStyle(itemText) {
+  if (!itemText) return {};
+  const found = KEYWORD_COLOR_MAP.find(config => itemText.includes(config.keyword));
+  if (found) return { backgroundColor: found.backgroundColor, color: found.textColor, padding: '4px 10px', borderRadius: '16px', fontSize: '0.875rem', fontWeight: 'bold', display: 'inline-block' };
+  return { backgroundColor: '#E0E0E0', color: '#212121', padding: '4px 10px', borderRadius: '16px', fontSize: '0.875rem', fontWeight: 'bold', display: 'inline-block' };
+}
+function safeFormatDate(value, formatString = 'yyyy-MM-dd') {
+  if (!value || String(value).trim() === '') return '無';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return value;
+  return format(date, formatString);
+}
+const getVisibleFields = (fields) => {
+  if (isEditMode.value) return fields;
+  return fields.filter(field => {
+    if (['受託人姓名', '受託人電話'].includes(field.key)) return selectedEvent.value && selectedEvent.value[field.key];
+    return true;
+  });
+};
 async function handleDownloadPng() {
  isDownloadingPdf.value = true;
- pdfDownloadProgress.value = '準備中...';
 
  const chunkArray = (array, size) => {
   const chunkedArr = [];
@@ -1355,7 +1207,6 @@ async function handleDownloadPng() {
   const groupedEventsInRange = {};
   eventsInRange.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
-    // ❗ [修改] PNG下載功能中的分組邏輯，與主畫面保持一致
     const eventStartTime = format(event.start, 'HH:mm');
     const timeKey = timeSlots.value.find((slot, index) => {
         const nextSlot = timeSlots.value[index + 1] || '23:59';
@@ -1398,25 +1249,21 @@ async function handleDownloadPng() {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
 
-        // ★★★ 標頭修改區塊 (<thead>) ★★★
-        // 不再建立單一的時間欄，而是在迴圈中為每一天建立 [時間 | 日期] 組合
     chunk.forEach(date => {
-            // 建立時間標頭
       const timeHeaderCell = document.createElement('th');
       timeHeaderCell.textContent = '時間';
       Object.assign(timeHeaderCell.style, {
-        width: '70px', // 調整時間欄寬度
-                border: '1px solid #dee2e6', padding: '8px',
+        width: '70px',
+        border: '1px solid #dee2e6', padding: '8px',
         backgroundColor: '#f8f9fa', fontWeight: 'bold', textAlign: 'center'
       });
       headerRow.appendChild(timeHeaderCell);
 
-            // 建立日期標頭
       const dayHeaderCell = document.createElement('th');
       dayHeaderCell.innerHTML = `<div>${format(date, 'EEEE', { locale: zhTW })}</div><div>${format(date, 'M/d')}</div>`;
       Object.assign(dayHeaderCell.style, {
-        width: 'auto', // 讓內容欄自動分配寬度
-                border: '1px solid #dee2e6', padding: '8px',
+        width: 'auto',
+        border: '1px solid #dee2e6', padding: '8px',
         backgroundColor: '#f8f9fa', fontWeight: 'bold', textAlign: 'center'
       });
       if (isToday(date)) dayHeaderCell.style.backgroundColor = '#e3f2fd';
@@ -1427,14 +1274,9 @@ async function handleDownloadPng() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    // ❗ [修改] 使用動態的 timeSlots.value 來產生表格的每一行
     timeSlots.value.forEach(timeSlot => {
       const bodyRow = document.createElement('tr');
-
-            // ★★★ 表格內容修改區塊 (<tbody>) ★★★
-            // 同樣地，在迴圈中為每一天建立 [時間 | 內容] 組合
       chunk.forEach(date => {
-                // 建立時間儲存格
         const timeCell = document.createElement('td');
         timeCell.textContent = timeSlot;
         Object.assign(timeCell.style, {
@@ -1442,8 +1284,6 @@ async function handleDownloadPng() {
           fontWeight: 'bold', backgroundColor: '#f8f9fa'
         });
         bodyRow.appendChild(timeCell);
-
-                // 建立事件內容儲存格
         const eventCell = document.createElement('td');
         Object.assign(eventCell.style, {
           border: '1px solid #dee2e6', padding: '4px', verticalAlign: 'top', minHeight: '10px',
@@ -1474,14 +1314,12 @@ async function handleDownloadPng() {
 
   document.body.appendChild(tempContainer);
 
-  pdfDownloadProgress.value = '正在產生圖片...';
   await new Promise(resolve => setTimeout(resolve, 100));
 
   const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
 
   document.body.removeChild(tempContainer);
 
-  pdfDownloadProgress.value = '準備下載...';
   const imageURL = canvas.toDataURL('image/png');
   const link = document.createElement('a');
   link.href = imageURL;
@@ -1498,163 +1336,8 @@ async function handleDownloadPng() {
   error.value = `產生圖片失敗: ${err.message}`;
  } finally {
   isDownloadingPdf.value = false;
-  pdfDownloadProgress.value = '';
  }
 }
-
-
-function openUrl(url) {
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-async function fetchData() {
-  isLoading.value = true;
-  error.value = null;
-  try {
-    const [appointmentsResponse, optionsResponse] = await Promise.all([
-      fetchInspectionAppointments(projectName.value),
-      getBookingInitialData(projectName.value)
-    ]);
-    if (appointmentsResponse.status === 'success') {
-      appointments.value = appointmentsResponse.data;
-    } else {
-      throw new Error(appointmentsResponse.message || '無法獲取預約資料');
-    }
-    if (optionsResponse.status === 'success') {
-      bookingOptions.value.inspectionMethods = optionsResponse.data.inspectionMethods || [];
-      bookingOptions.value.inspectionStaff = optionsResponse.data.inspectionStaff || [];
-    } else {
-      console.warn('無法獲取表單選項資料:', optionsResponse.message);
-    }
-  } catch (err) {
-    console.error('獲取資料失敗:', err);
-    error.value = err.message;
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-function getAppointmentItemStyle(itemText) {
-  if (!itemText) return {};
-  const found = KEYWORD_COLOR_MAP.find(config => itemText.includes(config.keyword));
-  if (found) {
-    return {
-      backgroundColor: found.backgroundColor,
-      color: found.textColor,
-      padding: '4px 10px',
-      borderRadius: '16px',
-      fontSize: '0.875rem',
-      fontWeight: 'bold',
-      display: 'inline-block'
-    };
-  }
-  return {
-    backgroundColor: '#E0E0E0',
-    color: '#212121',
-    padding: '4px 10px',
-    borderRadius: '16px',
-    fontSize: '0.875rem',
-    fontWeight: 'bold',
-    display: 'inline-block'
-  };
-}
-
-
-/**
- * 將日期物件格式化為 'YYYY-MM-DD' 字串
- */
-const formatDateToYYYYMMDD = (date) => {
-  if (!date) return '';
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-/**
- * 供 v-date-picker 使用，判斷日期是否可選
- */
-const isDateAllowed = (date) => {
-  if (!bookingSlotsData.value || !bookingSlotsData.value.unavailableDates) {
-    return true; // 如果規則還沒載入，暫時都允許
-  }
-  const dateStr = formatDateToYYYYMMDD(date);
-  // 如果日期不在 "不可預約" 列表內，則為可選
-  return !bookingSlotsData.value.unavailableDates.includes(dateStr);
-};
-
-
-onMounted(() => {
-  if (PROJECT_NAME_MAP[projectId.value]) {
-    fetchData();
-  } else {
-    error.value = `無效的建案ID: ${projectId.value}`;
-    isLoading.value = false;
-  }
-});
-
-/**
- * 安全地格式化日期，避免因無效日期值而導致程式崩潰
- * @param {string | Date | null} value - 原始日期值
- * @param {string} formatString - 目標格式
- * @returns {string} 格式化後的日期字串，或原始值/空字串
- */
-function safeFormatDate(value, formatString = 'yyyy-MM-dd') {
-  if (!value || String(value).trim() === '') {
-    return '無';
-  }
-  const date = new Date(value);
-  if (isNaN(date.getTime())) {
-    return value;
-  }
-  return format(date, formatString);
-}
-
-/**
- * 根據當前模式（查看/編輯）過濾應顯示的欄位
- * @param {Array} fields - 某個面板的原始欄位陣列
- * @returns {Array} 過濾後的欄位陣列
- */
-const getVisibleFields = (fields) => {
-  // 如果是編輯模式，永遠顯示所有欄位
-  if (isEditMode.value) {
-    return fields;
-  }
-  // 如果是查看模式，則進行過濾
-  return fields.filter(field => {
-    // 檢查特定欄位是否有資料
-    if (['受託人姓名', '受託人電話'].includes(field.key)) {
-      return selectedEvent.value && selectedEvent.value[field.key];
-    }
-    // 其他欄位一律顯示
-    return true;
-  });
-};
-
-watch(currentTypeOptions, (newOptions) => {
-  selectedTypes.value = [...newOptions];
-}, { immediate: true });
-
-
-// 監聽編輯中的日期變化，以更新可選時段列表
-watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
-  // 確保是在編輯模式下，且 newDate 是一個有效值
-  if (isEditMode.value && newDate) {
-    // [修正] 無論新舊日期是物件還是字串，都先格式化為 'YYYY-MM-DD' 字串
-    const newDateKey = formatDateToYYYYMMDD(newDate);
-    const oldDateKey = oldDate ? formatDateToYYYYMMDD(oldDate) : null;
-
-    // 使用正確的 string key 來獲取時段列表
-    availableTimeSlots.value = timeSlotsByDate.value[newDateKey] || [];
-
-    // [修正] 比較格式化後的字串 key，如果不同，才清空時段
-    // 這樣可以避免在初次載入時就清空既有值，也解決了類型不符的錯誤
-    if (newDateKey !== oldDateKey && editableEvent.value) {
-      editableEvent.value['預約時段'] = '';
-    }
-  }
-});
 </script>
 
 

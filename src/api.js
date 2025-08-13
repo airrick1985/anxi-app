@@ -947,6 +947,7 @@ export async function getBookingInitialData(projectName) {
     projectName: projectName,
   }, INSPECTION_API); // 繼續使用您現有的 API 端點
 };
+
 /**
  * 根據棟別獲取戶別列表
  * @param {string} projectName 建案名稱
@@ -993,6 +994,19 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
     bookingMethod, 
   }, INSPECTION_API);
 };
+
+/**
+ * ✨ [新增] 獲取所有預約規則，供前端計算
+ * @param {string} projectName 建案名稱
+ */
+export const getAllBookingRules = async (projectName) => {
+    return fetchPost({
+        action: 'get_all_booking_rules',
+        projectName,
+    }, INSPECTION_API);
+};
+
+
 /**
  * 儲存預約資料
  * @param {string} projectName 建案名稱
@@ -1029,7 +1043,7 @@ export const updateBooking = async (projectName, bookingCode, updatedData) => {
   return fetchPost({
     action: 'update_booking',
     projectName,
-    bookingCode,    // 將 identifier 替換為 bookingCode
+    bookingCode,      // 將 identifier 替換為 bookingCode
     updatedData,
   }, INSPECTION_API);
 };
@@ -1086,4 +1100,32 @@ export const updateHouseholdData = async (projectName, unitId, updatedData) => {
     unitId,
     updatedData,
   }, INSPECTION_API);
+};
+
+
+/**
+ * 上傳驗屋授權書 (透過 Vercel Proxy)
+ * @param {string} base64Data - 產生的圖檔的 Base64 Data URL
+ * @param {string} fileName - 指定的檔案名稱
+ * @param {string} projectName - 當前建案名稱
+ * @param {string} unitId - 當前選擇的戶別
+ * @returns {Promise<object>} - 回傳包含 { status, message, url } 的物件
+ */
+export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId) => {
+  // 1. 去除 Base64 URL 的前綴
+  const pureBase64 = base64Data.split(',')[1];
+  
+  // 2. 準備要傳送給 Proxy 的 payload
+  const payload = {
+    action: 'upload_auth_letter', // 後端 GAS 會根據此 action 執行對應函式
+    filename: fileName,
+    base64: pureBase64,
+    projectName: projectName,
+    unitId: unitId
+    // 注意：這裡不需要 token，因為我們已在 Vercel Proxy 將此 action 設為公開
+  };
+
+  // 3. 使用您既有的 fetchPost 輔助函式，並指向 INSPECTION_API 端點
+  //    Proxy 會接收此請求，並轉發給後端的 Google Apps Script
+  return fetchPost(payload, INSPECTION_API);
 };

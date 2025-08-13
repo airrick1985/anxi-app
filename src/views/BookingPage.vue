@@ -111,7 +111,7 @@
 
                 <v-select
                   v-model="formStep1.bookingType"
-                  :items="initialData.bookingTypes"
+                 :items="projectConfig.bookingTypes" 
                   label="預約項目"
                   variant="outlined"
                   :rules="[v => !!v || '預約項目為必填項']"
@@ -196,7 +196,35 @@
                     <v-text-field label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="電話" v-model="formStep2.電話" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="EMAIL" v-model="formStep2.EMAIL" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined"></v-text-field>
-                    
+                    <template v-if="formStep1.bookingMethod === '授權驗屋'">
+                    <v-divider class="my-4"></v-divider>
+                      <p class="mb-2 text-subtitle-1 font-weight-medium">授權驗屋資訊</p>
+                      <v-text-field 
+                        label="受託人姓名" 
+                        v-model="formStep2.受託人姓名" 
+                        :rules="[v => !!v || '必填']" 
+                        variant="outlined"
+                      ></v-text-field>
+                      <v-text-field 
+                        label="受託人電話" 
+                        v-model="formStep2.受託人電話" 
+                        :rules="[v => !!v || '必填']" 
+                        variant="outlined"
+                      ></v-text-field>
+                      <v-btn 
+                        :color="isAuthLetterGenerated ? 'success' : projectConfig.themeColor" 
+                        @click="openAuthDialog" 
+                        block 
+                        class="mb-4"
+                        variant="tonal"
+                        size="large"
+                      >
+                        <v-icon left>{{ isAuthLetterGenerated ? 'mdi-check-circle' : 'mdi-draw' }}</v-icon>
+                        {{ isAuthLetterGenerated ? '已填妥授權書 (可重新產生)' : '填寫驗屋授權書' }}
+                      </v-btn>
+
+                      <v-divider class="my-4"></v-divider>
+                    </template>
                     <v-date-picker
                         v-model="formStep2.預約日期"
                         :min="bookingSlots.startDate"
@@ -237,16 +265,24 @@
                       <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
                       <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
                   </v-alert>
-                  <v-list lines="two">
-                      <v-list-item title="建案名稱" :subtitle="projectConfig.projectName"></v-list-item>
-                      <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
-                      <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
-                      <v-list-item title="電話" :subtitle="finalBookingData.電話"></v-list-item>
-                      <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>
-                      <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
-                      <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
-                      <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
-                  </v-list>
+                <v-list lines="two">
+                <v-list-item title="建案名稱" :subtitle="projectConfig.projectName"></v-list-item>
+                <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
+                <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
+                <v-list-item title="電話" :subtitle="finalBookingData.電話"></v-list-item>
+                <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>
+                
+                <template v-if="finalBookingData.bookingMethod === '授權驗屋'">
+                  <v-divider class="my-2"></v-divider>
+                  <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"></v-list-item>
+                  <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話"></v-list-item>
+                </template>
+                
+                <v-divider class="my-2"></v-divider>
+                <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
+                <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
+                <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
+              </v-list>
               </v-card-text>
               <v-card-actions class="pa-4">
                   <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
@@ -273,8 +309,21 @@
             <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
             <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
             <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
+            <template v-if="finalBookingData.bookingMethod === '授權驗屋'">
+            <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名" prepend-icon="mdi-account-tie"></v-list-item>
+            <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話" prepend-icon="mdi-phone-forward"></v-list-item>
+            </template>
             <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
             <v-divider class="my-2"></v-divider>
+
+           <v-list-item v-if="finalAuthLetterUrl">
+              <v-btn :href="finalAuthLetterUrl" target="_blank" color="teal" variant="outlined" block>
+                <v-icon left>mdi-file-check-outline</v-icon>
+                查看已上傳的授權書
+              </v-btn>
+            </v-list-item>
+
+
             <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
             <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
             <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
@@ -295,15 +344,110 @@
         </v-alert>
       </v-col>
     </v-row>
-  </v-container>
+
+<v-dialog v-model="isAuthDialogVisible" persistent max-width="800px">
+  <v-card>
+    <v-card-title class="text-h5">驗屋授權書內容填寫</v-card-title>
+    <v-card-text>
+      <v-form ref="authForm">
+        <v-row>
+          <v-col cols="12" md="6">
+            <p class="text-subtitle-1 font-weight-bold mb-2">委託人資訊 (屋主)</p>
+            <v-text-field v-model="authFormData.委託人姓名" label="委託人姓名" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.委託人身分證" label="委託人身分證" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.委託人戶籍地" label="委託人戶籍地" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+          </v-col>
+          <v-col cols="12" md="6">
+            <p class="text-subtitle-1 font-weight-bold mb-2">受託人資訊</p>
+            <v-text-field v-model="authFormData.受託人姓名" label="受託人姓名" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.受託人身分證" label="受託人身分證" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.受託人戶籍地" label="受託人戶籍地" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.受託人電話" label="受託人電話" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+          </v-col>
+        </v-row>
+       <v-row>
+  <v-col cols="12" md="6">
+    <v-card variant="outlined">
+      <div class="d-flex justify-space-between align-center pa-4 pb-0">
+        <v-card-title class="text-subtitle-1 pa-0">委託人簽名</v-card-title>
+        <v-btn variant="tonal" size="small" @click="clearDelegatorSignature">
+          <v-icon start>mdi-eraser</v-icon>
+          清除
+        </v-btn>
+      </div>
+      <v-card-text>
+        <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
+      </v-card-text>
+    </v-card>
+  </v-col>
+  <v-col cols="12" md="6">
+    <v-card variant="outlined">
+      <div class="d-flex justify-space-between align-center pa-4 pb-0">
+        <v-card-title class="text-subtitle-1 pa-0">受託人簽名</v-card-title>
+        <v-btn variant="tonal" size="small" @click="clearDelegateeSignature">
+          <v-icon start>mdi-eraser</v-icon>
+          清除
+        </v-btn>
+      </div>
+      <v-card-text>
+        <VueSignaturePad ref="delegateeSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
+      </v-card-text>
+    </v-card>
+  </v-col>
+</v-row>
+      </v-form>
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn color="grey" @click="closeAuthDialog">關閉</v-btn>
+      <v-btn color="success" @click="handleGenerateLetter" variant="elevated">確認已填妥並產生授權書</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+
+<div 
+  ref="authLetterRenderRef" 
+  style="position: absolute; left: -9999px; top: -9999px; width: 794px; background-color: white;"
+></div>
+
+
+<v-dialog v-model="isPreviewDialogVisible" max-width="820px">
+  <v-card>
+    <v-card-title>授權書預覽</v-card-title>
+    <v-card-text class="text-center">
+      <img :src="generatedAuthLetterUrl" alt="授權書預覽" style="max-width: 100%; border: 1px solid #ccc;" />
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn color="grey" @click="isPreviewDialogVisible = false">關閉預覽</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
+</v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick } from 'vue'; 
 import { useRoute } from 'vue-router';
-import { getBookingInitialData, fetchAllUnitsForBooking, checkExistingBooking, validateId, getBookingSlots, saveBooking, cancelBooking } from '@/api';
+import { getBookingInitialData, 
+  fetchAllUnitsForBooking,
+  checkExistingBooking, 
+  validateId, 
+  getBookingSlots, 
+  saveBooking, 
+  cancelBooking,
+  uploadAuthLetter } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
+import { VueSignaturePad } from 'vue-signature-pad';
+
+// 儲存上傳後的 URL
+const finalAuthLetterUrl = ref('');
+
+
+
 
 // --- 模組化核心：建案設定檔 ---
 const projectConfigurations = {
@@ -313,9 +457,58 @@ const projectConfigurations = {
     themeColor: '#005A9E',
     projectName: '富宇上城',
     pageTitle: '富宇上城 後陽台門鎖更換預約',
-    showBookingMethod: false, // 不需要顯示驗屋方式
-    bookingMethodOptions: ['屋主自驗'], //可新增選項
+    bookingTypes: ['初驗','複驗'], 
+    showBookingMethod: true, // 是否顯示驗屋方式
+    bookingMethodOptions: ['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司'],  //可新增選項
     logoUrl: '/anxi-app/img/logo_fuyu.png',
+    // --- 驗屋授權書開始 ---
+    authLetterTemplate: `
+       <div style="font-family: 'kaiu', 'BiauKai', '標楷體', serif; color: black; padding: 40px; text-align: center;">
+        
+       <div style="text-align: left; margin-bottom: 10px;">
+          <img src="{logoUrl}" alt="Project Logo" style="max-height: 30px; object-fit: contain;" />
+        </div>
+        <h1 style="font-size: 28px; font-weight: bold; margin-bottom: 40px;">授 &nbsp; 權 &nbsp; 書</h1>
+        <div style="text-align: left; font-size: 18px; line-height: 2.5; margin-bottom: 40px;">
+          <p style="text-indent: 2em;">
+            立書人 {委託人姓名} 玆就購買富宇建設興建之【{建案名稱}】編號 {戶別} 房地壹戶，因故無法親自辦理房屋驗屋相關事宜，特此委任 {受託人姓名} 代為簽署上述事務之有關一切文件，本人亦同意日後不對受託人所簽署之文件提出任何異議，特立此授權書以資證明。
+          </p>
+          <p style="margin-top: 40px;">此 致</p>
+          <p>富宇建設股份有限公司</p>
+        </div>
+        <table style="width: 100%; margin-top: 60px; font-size: 18px; text-align: left; border-collapse: collapse;">
+          <tr>
+            <td style="width: 120px;"><strong>委託人:</strong></td>
+            <td><img src="{委託人簽名圖檔}" alt="委託人簽名" style="height: 50px;"/></td>
+          </tr>
+          <tr>
+            <td><strong>身分證字號:</strong></td>
+            <td>{委託人身分證字號}</td>
+          </tr>
+          <tr>
+            <td><strong>戶籍地址:</strong></td>
+            <td>{委託人戶籍地址}</td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 20px 0;"></td>
+          </tr>
+          <tr>
+            <td><strong>受託人:</strong></td>
+            <td><img src="{受託人簽名圖檔}" alt="受託人簽名" style="height: 50px;"/></td>
+          </tr>
+          <tr>
+            <td><strong>身分證字號:</strong></td>
+            <td>{受託人身分證字號}</td>
+          </tr>
+          <tr>
+            <td><strong>戶籍地址:</strong></td>
+            <td>{受託人戶籍地址}</td>
+          </tr>
+        </table>
+        <div style="text-align: right; font-size: 18px; margin-top: 80px;">{TODAY}</div>
+      </div>
+    `,
+    // 驗屋授權書結束
     intro: {
       greeting: '<p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>',
       body: '<p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>',
@@ -343,6 +536,7 @@ const projectConfigurations = {
     pageTitle: '富宇首馥 貴賓驗屋預約',
     showBookingMethod: true, // 富宇首馥需要顯示
     bookingMethodOptions: ['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司'], // 並提供完整的選項
+    logoUrl: '/anxi-app/img/logo_fuyu.png',
     intro: {
       greeting: '<p>親愛的<strong>富宇首馥貴賓</strong>您好：</p>',
       body: '<p>歡迎使用「富宇首馥」線上驗屋預約系統，請依下方步驟完成您的預約。</p>',
@@ -383,7 +577,7 @@ const allUnitsData = ref({});
 const unitList = ref([]);
 const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [], timeSlotsByDate: {}, bookingOptions: {} });
 const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: '屋主自驗', address: '', idNumber: '' });
-const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null });
+const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
 
 // --- Helper Functions  ---
@@ -430,6 +624,129 @@ const availableTimeSlots = computed(() => {
 const isDateAllowed = (date) => {
   const dateStr = formatDateToYYYYMMDD(date);
   return !bookingSlots.value.unavailableDates.includes(dateStr);
+};
+
+ // 授權書對話框狀態
+ const isAuthDialogVisible = ref(false);
+ const isAuthLetterGenerated = ref(false); // 用於追蹤授權書是否已產生
+ const generatedAuthLetterUrl = ref(''); // 用於存放產生的授權書圖片 URL 以供預覽
+ const authForm = ref(null); // 為 v-form 建立 ref
+ const authLetterRenderRef = ref(null); // 為渲染授權書的隱藏 div 建立 ref
+ const isPreviewDialogVisible = ref(false); // 控制預覽對話框的顯示
+
+ // 獲取民國年日期
+const getMinguoDate = () => {
+  const date = new Date();
+  const year = date.getFullYear() - 1911;
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `中華民國 ${year} 年 ${month} 月 ${day} 日`;
+};
+
+ // 授權書表單資料
+ const authFormData = ref({
+   委託人姓名: '',
+   委託人身分證: '',
+   委託人戶籍地: '',
+   受託人姓名: '',
+   受託人身分證: '',
+   受託人戶籍地: '',
+   受託人電話: ''
+ });
+
+ // 簽名版元件的 ref
+ const delegatorSignaturePad = ref(null);
+ const delegateeSignaturePad = ref(null);
+
+
+ // 打開授權書對話框
+ const openAuthDialog = () => {
+   // 自動帶入已填寫的受託人資訊
+   authFormData.value.受託人姓名 = formStep2.value.受託人姓名;
+   authFormData.value.受託人電話 = formStep2.value.受託人電話;
+   isAuthDialogVisible.value = true;
+ };
+
+ // 關閉對話框
+ const closeAuthDialog = () => {
+   isAuthDialogVisible.value = false;
+ };
+
+ //清除委託人簽名
+ const clearDelegatorSignature = () => {
+  if (delegatorSignaturePad.value) {
+    delegatorSignaturePad.value.clearSignature();
+  }
+};
+
+//清除受託人簽名
+const clearDelegateeSignature = () => {
+  if (delegateeSignaturePad.value) {
+    delegateeSignaturePad.value.clearSignature();
+  }
+};
+
+
+ // 處理產生授權書的邏輯 (此為下一階段的預留函式)
+const handleGenerateLetter = async () => {
+  // 1. 表單驗證
+  const { valid } = await authForm.value.validate();
+  if (!valid) {
+    alert('所有欄位皆為必填，請檢查後再試。');
+    return;
+  }
+
+  // 2. 簽名驗證
+  if (delegatorSignaturePad.value.isEmpty() || delegateeSignaturePad.value.isEmpty()) {
+    alert('委託人與受託人皆須簽名。');
+    return;
+  }
+
+  // 3. 儲存簽名為 Base64
+  const delegatorSignature = delegatorSignaturePad.value.saveSignature('image/png');
+  const delegateeSignature = delegateeSignaturePad.value.saveSignature('image/png');
+
+  // 4. 準備填充範本
+  let template = projectConfig.value.authLetterTemplate;
+  if (!template) {
+    alert('此建案未設定授權書範本。');
+    return;
+  }
+  
+  const populatedHtml = template
+    .replace(/{logoUrl}/g, projectConfig.value.logoUrl)
+    .replace(/{委託人姓名}/g, authFormData.value.委託人姓名)
+    .replace(/{建案名稱}/g, projectConfig.value.projectName)
+    .replace(/{戶別}/g, formStep1.value.unit)
+    .replace(/{受託人姓名}/g, authFormData.value.受託人姓名)
+    .replace(/{委託人簽名圖檔}/g, delegatorSignature.data)
+    .replace(/{委託人身分證字號}/g, authFormData.value.委託人身分證)
+    .replace(/{委託人戶籍地址}/g, authFormData.value.委託人戶籍地)
+    .replace(/{受託人簽名圖檔}/g, delegateeSignature.data)
+    .replace(/{受託人身分證字號}/g, authFormData.value.受託人身分證)
+    .replace(/{受託人戶籍地址}/g, authFormData.value.受託人戶籍地)
+    .replace(/{TODAY}/g, getMinguoDate());
+
+  // 5. 將內容渲染至隱藏的 div，並使用 html2canvas 產生圖片
+  authLetterRenderRef.value.innerHTML = populatedHtml;
+  
+  await nextTick(); // 等待 DOM 更新
+
+  try {
+    const canvas = await html2canvas(authLetterRenderRef.value, { 
+      scale: 2, // 提高解析度
+      useCORS: true // 允許跨域圖片 (如果有的話)
+    });
+    generatedAuthLetterUrl.value = canvas.toDataURL('image/png');
+    isAuthLetterGenerated.value = true;
+    closeAuthDialog(); // 關閉填寫視窗
+    isPreviewDialogVisible.value = true; // 打開預覽視窗
+  } catch (error) {
+    console.error('產生授權書失敗:', error);
+    alert('產生授權書圖片失敗，請稍後再試。');
+  } finally {
+    authLetterRenderRef.value.innerHTML = ''; // 清空隱藏的 div
+  }
 };
 
 onMounted(async () => {
@@ -534,7 +851,15 @@ if (res.status === 'success' && res.data.status === 'found') {
 const handleStep2Submit = async () => {
   const { valid } = await step2Form.value.validate();
   if (!valid) return;
-  step.value = 3;
+
+  // 檢查：如果選擇了「授權驗屋」，則必須先完成授權書的產生
+  if (formStep1.value.bookingMethod === '授權驗屋' && !isAuthLetterGenerated.value) {
+    alert('您選擇了「授權驗屋」，請務必先完成「填寫驗屋授權書」。');
+    return; // 中斷執行，停留在步驟二
+  }
+  // --- 新增結束 ---
+
+  step.value = 3; // 所有檢查都通過，才前往步驟三
 };
 const handleGoBackAndRefresh = async () => {
   isLoading.value = true;
@@ -553,27 +878,62 @@ const handleGoBackAndRefresh = async () => {
     isLoading.value = false;
   }
 };
+
 const submitBooking = async () => {
   isLoading.value = true;
+  let authLetterFinalUrl = ''; 
+
   try {
-const payload = {
-            戶別: finalBookingData.value.戶別,
-            門牌: finalBookingData.value.address,
-            姓名: finalBookingData.value.姓名,
-            電話: finalBookingData.value.電話,
-            EMAIL: finalBookingData.value.EMAIL,
-            身分證: finalBookingData.value.idNumber, 
-            預約項目: finalBookingData.value.bookingType,
-            預約日期: finalBookingData.value.預約日期,
-            預約時段: finalBookingData.value.預約時段,
-            驗屋方式: finalBookingData.value.bookingMethod,
-            受託人姓名: '',
-            受託人電話: '',
-        }    
- const res = await saveBooking(projectConfig.value.projectName, payload);
+    // --- 步驟 A: 如果有產生授權書，先上傳檔案 ---
+    if (isAuthLetterGenerated.value && generatedAuthLetterUrl.value) {
+      // 1. 產生檔案名稱
+      const today = new Date();
+      const yyyymmdd = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+      const fileName = `${formStep1.value.unit}驗屋授權書${yyyymmdd}.png`;
+      
+  
+  // 呼叫 API 時，補上 projectConfig.value.projectName 和 formStep1.value.unit
+      const uploadRes = await uploadAuthLetter(
+        generatedAuthLetterUrl.value,
+        fileName,
+        projectConfig.value.projectName,
+        formStep1.value.unit 
+      );
+      
+      if (uploadRes.status !== 'success') {
+        throw new Error(uploadRes.message || '授權書上傳失敗');
+      }
+
+      authLetterFinalUrl = uploadRes.url; 
+      finalAuthLetterUrl.value = uploadRes.url; 
+    }
+
+    // --- 步驟 B: 組合預約資料並送出 (此部分不變) ---
+    const payload = {
+      action: 'save_booking', // 這是儲存預約資料的 action
+      projectName: projectConfig.value.projectName,
+      bookingData: {
+        戶別: finalBookingData.value.戶別,
+        門牌: finalBookingData.value.address,
+        姓名: finalBookingData.value.姓名,
+        電話: finalBookingData.value.電話,
+        EMAIL: finalBookingData.value.EMAIL,
+        身分證: finalBookingData.value.idNumber, 
+        預約項目: finalBookingData.value.bookingType,
+        預約日期: finalBookingData.value.預約日期,
+        預約時段: finalBookingData.value.預約時段,
+        驗屋方式: finalBookingData.value.bookingMethod,
+        受託人姓名: finalBookingData.value.受託人姓名,
+        受託人電話: finalBookingData.value.受託人電話,
+        授權書路徑: authLetterFinalUrl, // 將上傳後的 URL 加入 payload
+      }
+    };
+    
+    // 呼叫原本的 save_booking API
+    // (這裡假設您有一個通用的 API 呼叫函式，如果沒有，請比照 uploadFile 的 fetch 寫法)
+const res = await saveBooking(projectConfig.value.projectName, payload.bookingData);
 
     if (res.status === 'success') {
-      // 【修改】從 res.data 中取得後端回傳的 bookingCode
       if (res.data && res.data.bookingCode) {
         savedBookingCode.value = res.data.bookingCode;
       }
@@ -592,7 +952,7 @@ const payload = {
 const confirmCancelBooking = () => {
   if (confirm("您確定要取消這個預約嗎？此操作無法復原。")) handleCancelBooking();
 };
-// 在您的 Vue 元件 <script setup> 中
+
 
 const handleCancelBooking = async () => {
   isCanceling.value = true;
