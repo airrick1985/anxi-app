@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.172",
+  "version": "0.0.173",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
@@ -53,7 +53,7 @@
     "vue-toastification": "^2.0.0-rc.5",
     "vuedraggable": "^4.1.0",
     "vuetify": "^3.8.2",
-    "xlsx": "^0.17.0"
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.2",

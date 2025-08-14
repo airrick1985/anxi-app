@@ -5,31 +5,71 @@
         <span>{{ pageTitle }}</span>
 
         <div>
-          <div class="d-none d-md-flex ga-2">
-        <v-btn
-  color="primary"
-  @click="handleDownloadPng"  :loading="isDownloadingPdf"
-  prepend-icon="mdi-image-area" >
-  下載時間表 (PNG)
-</v-btn>
-          </div>
+                <div class="d-none d-md-flex ga-2">
+          <v-tooltip text="重新整理資料" location="bottom">
+            <template v-slot:activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-refresh"
+                variant="text"
+                @click="handleRefresh"
+                :loading="isLoading"
+              ></v-btn>
+            </template>
+          </v-tooltip>
 
+          <v-divider vertical class="mx-2"></v-divider>
+
+          <v-btn
+            color="primary"
+            @click="handleDownloadPng"
+            :loading="isDownloadingPdf"
+            prepend-icon="mdi-image-area"
+          >
+            下載時間表 (PNG)
+          </v-btn>
+          <v-btn
+            color="teal-darken-1"
+            @click="handleDownloadExcel"
+            :loading="isDownloadingExcel"
+            prepend-icon="mdi-microsoft-excel"
+          >
+            下載時間表 (Excel)
+          </v-btn>
+        </div>
           <div class="d-md-none">
             <v-menu location="bottom end">
               <template v-slot:activator="{ props }">
                 <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
               </template>
 
-              <v-list density="compact">
-                <v-list-item
-                  prepend-icon="mdi-filter-variant"
-                  title="篩選"
-                  @click="isFilterDrawerVisible = true"
-                ></v-list-item>
+            <v-list density="compact">
+            <v-list-item
+              prepend-icon="mdi-refresh"
+              title="重新整理"
+              @click="handleRefresh"
+              :disabled="isLoading"
+            >
+              <template v-slot:append>
+                <v-progress-circular
+                  v-if="isLoading"
+                  indeterminate
+                  color="grey"
+                  size="20"
+                  width="2"
+                ></v-progress-circular>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              prepend-icon="mdi-filter-variant"
+              title="篩選"
+              @click="isFilterDrawerVisible = true"
+            ></v-list-item>
                 
                 <v-list-item
-                  prepend-icon="mdi-download"
-                  title="下載時間表"
+                  prepend-icon="mdi-image-area"
+                  title="下載時間表 (PNG)"
                   @click="handleDownloadPng"
                   :disabled="isDownloadingPdf"
                 >
@@ -38,6 +78,22 @@
                       v-if="isDownloadingPdf"
                       indeterminate
                       color="primary"
+                      size="20"
+                      width="2"
+                    ></v-progress-circular>
+                  </template>
+                </v-list-item>
+                <v-list-item
+                  prepend-icon="mdi-microsoft-excel"
+                  title="下載時間表 (Excel)"
+                  @click="handleDownloadExcel"
+                  :disabled="isDownloadingExcel"
+                >
+                  <template v-slot:append>
+                    <v-progress-circular
+                      v-if="isDownloadingExcel"
+                      indeterminate
+                      color="teal-darken-1"
                       size="20"
                       width="2"
                     ></v-progress-circular>
@@ -130,6 +186,23 @@
               ></v-checkbox>
             </div>
           </v-col>
+           <v-col cols="12" class="mt-2 pt-0">
+             <v-divider></v-divider>
+             <div class="d-flex align-center flex-wrap">
+              <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
+              <v-checkbox
+                v-for="field in displayFieldOptions"
+                :key="field.key"
+                v-model="selectedDisplayFields"
+                :label="field.label"
+                :value="field.key"
+                density="compact"
+                hide-details
+                color="indigo"
+                class="mt-2"
+              ></v-checkbox>
+            </div>
+          </v-col>
         </v-row>
         
         <div id="custom-calendar-container">
@@ -179,7 +252,11 @@
                           >
                             mdi-close-circle-outline
                           </v-icon>
-                          <strong class="event-household">{{ event['戶別'] }}</strong> - {{ event.displayText }}
+                          <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
+                            <strong v-if="part.isHousehold" class="event-household">{{ part.text }}</strong>
+                            <span v-else>{{ part.text }}</span>
+                            <span v-if="partIndex < event.displayParts.length - 1"> - </span>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -670,6 +747,22 @@
               color="teal-darken-1"
             ></v-checkbox>
           </div>
+
+          <v-divider class="my-3"></v-divider>
+
+          <div>
+            <v-label class="mb-2">標題顯示</v-label>
+              <v-checkbox
+                v-for="field in displayFieldOptions"
+                :key="field.key"
+                v-model="selectedDisplayFields"
+                :label="field.label"
+                :value="field.key"
+                density="compact"
+                hide-details
+                color="indigo"
+              ></v-checkbox>
+          </div>
         </div>
 
         <v-spacer></v-spacer>
@@ -692,13 +785,13 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
-// ✨ 引入新的 API
 import { fetchInspectionAppointments, getBookingInitialData, getAllBookingRules, updateBooking, cancelBooking, updateHouseholdData } from '@/api';
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useClipboard } from '@vueuse/core';
+import * as XLSX from 'xlsx-js-style';
 
 // --- Store 和路由 ---
 const route = useRoute();
@@ -715,6 +808,9 @@ const appointments = ref([]);
 const isDialogVisible = ref(false);
 const selectedEvent = ref(null);
 const isDownloadingPdf = ref(false);
+
+// ✨ 修改：新增 Excel 下載狀態的響應式變數。
+const isDownloadingExcel = ref(false); 
 const searchQuery = ref('');
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -735,8 +831,8 @@ const bookingOptions = ref({
   inspectionStaff: []
 });
 
-// ✨ --- 新的預約規則相關狀態 ---
-const allBookingRules = ref(null); // 儲存從後端獲取的所有規則
+// --- 新的預約規則相關狀態 ---
+const allBookingRules = ref(null);
 
 // --- 常數與計算屬性 ---
 const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu61: '富宇富御', fuyu1750: '富宇首馥' };
@@ -745,15 +841,34 @@ const PROJECT_TIME_SLOTS = {
   '富宇富御': ['09:30', '10:00', '11:00', '13:30', '14:00','14:30'],
   'default': ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 };
-const EVENT_DISPLAY_CONFIG = {
-  '富宇富御': (appt) => [appt['特殊備註'] ? `(${appt['特殊備註']})` : null, appt['預約項目'], appt['特殊備註2'], appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null],
-  'default': (appt) => [appt['預約項目'], appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'] ? `(${appt['驗屋人員']})` : null]
-};
-const KEYWORD_COLOR_MAP = [
-  { keyword: '已撥款', backgroundColor: '#ffc107', textColor: '#212529', borderColor: '#e0a800' },
-  { keyword: '交屋', backgroundColor: '#ffc107', textColor: '#212529', borderColor: '#e0a800' },
-  { keyword: '初驗', backgroundColor: '#d4edda', textColor: '#155724', borderColor: '#b1dfbb' },
-  { keyword: '複驗', backgroundColor: '#f8d7da', textColor: '#721c24', borderColor: '#f1b0b7' },
+// --- ✨ 新增：標題顯示選項 ---
+const displayFieldOptions = ref([
+  { key: '戶別', label: '戶別' },
+  { key: '買方姓名', label: '買方姓名' },
+  { key: '預約項目', label: '預約項目' },
+  { key: '驗屋方式', label: '驗屋方式' },
+  { key: '代驗公司名稱', label: '代驗公司名稱' },
+  { key: '特殊備註', label: '特殊備註' },
+  { key: '特殊備註2', label: '特殊備註2' },
+  { key: '驗屋人員', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
+]);
+// --- ✨ 新增：儲存使用者勾選的標題欄位，並設定預設值 ---
+const selectedDisplayFields = ref(['戶別', '預約項目', '驗屋人員']);
+
+// ✨ 修改：建立專門給 CSS 使用的顏色設定 (包含 #)
+const CSS_KEYWORD_COLOR_MAP = [
+  { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' },
+  { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' },
+  { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' },
+  { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' },
+];
+
+// ✨ 修改：建立專門給 Excel 使用的顏色設定 (不含 #)
+const EXCEL_KEYWORD_COLOR_MAP = [
+  { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' },
+  { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' },
+  { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' },
+  { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' },
 ];
 const PROJECT_TYPE_OPTIONS = {
   '富宇上城': ['初驗', '複驗', '後陽台門鎖更換'],
@@ -779,13 +894,12 @@ const selectedStatuses = ref(['預約中', '取消']);
 const projectFieldConfig = computed(() => fieldConfig[projectName.value] || fieldConfig.default);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋時間表-修改', projectName.value));
 
+// 優化計算屬性，將 processAppointments 移入，確保過濾的資料來源永遠是最新且格式一致的。
 const filteredAppointments = computed(() => {
-  const allProcessedAppointments = processAppointments(appointments.value);
-  const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
-
-  return allProcessedAppointments.filter(appt => {
+    return processAppointments(appointments.value).filter(appt => {
     const statusMatch = selectedStatuses.value.length === 0 ? false : selectedStatuses.value.includes(appt['預約狀態']);
     const typeMatch = selectedTypes.value.length === 0 ? false : selectedTypes.value.includes(appt['預約項目']);
+    const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
     const queryMatch = !query || [
       appt['戶別'], appt['門牌'], appt['姓名'], appt['電話'], appt['預約項目'],
       appt['驗屋方式'], appt['代驗公司名稱'], appt['驗屋人員'], appt['備註'],
@@ -885,34 +999,20 @@ const displayPanels = computed(() => {
   }
   return panels;
 });
-
-// ✨ --- 新的計算屬性，用於即時計算可用的預約規則 ---
+// --- 新的計算屬性，用於即時計算可用的預約規則 ---
 const currentBookingRules = computed(() => {
-    if (!isEditMode.value || !editableEvent.value || !allBookingRules.value) {
-        return null;
-    }
-
+    if (!isEditMode.value || !editableEvent.value || !allBookingRules.value) return null;
     const { '戶別': unitId, '預約項目': bookingType, '驗屋方式': bookingMethod } = editableEvent.value;
     const { batchRules, timeSlotRules } = allBookingRules.value;
-
-    if (!unitId || !bookingType || !bookingMethod || !batchRules || !timeSlotRules) {
-        return null;
-    }
-
-    // 1. 找到對應的批次名稱
-    const batchKey = `${bookingType}批次`; // e.g., '初驗批次'
+    if (!unitId || !bookingType || !bookingMethod || !batchRules || !timeSlotRules) return null;
+    const batchKey = `${bookingType}批次`;
     const batchName = editableEvent.value[batchKey];
     if (!batchName) return null;
-
-    // 2. 從 batchRules 中獲取日期規則
     const dateRule = batchRules[batchName];
     if (!dateRule) return null;
-
-    // 3. 組合 key 來查找時段規則
     const simplifiedMethod = (bookingMethod === '代驗公司') ? '代驗' : '自驗';
-    const timeSlotKey = `${bookingType}-${simplifiedMethod}`; // e.g., '初驗-自驗'
+    const timeSlotKey = `${bookingType}-${simplifiedMethod}`;
     const timeSlotsByDate = timeSlotRules[timeSlotKey] || {};
-
     return {
         startDate: dateRule.startDate,
         endDate: dateRule.endDate,
@@ -920,21 +1020,16 @@ const currentBookingRules = computed(() => {
         timeSlotsByDate: timeSlotsByDate,
     };
 });
-
-// ✨ --- 新的計算屬性，用於提供時段下拉選單的選項 ---
+// --- 新的計算屬性，用於提供時段下拉選單的選項 ---
 const availableTimeSlots = computed(() => {
-    if (!isEditMode.value || !editableEvent.value?.['預約日期'] || !currentBookingRules.value) {
-        return [];
-    }
+    if (!isEditMode.value || !editableEvent.value?.['預約日期'] || !currentBookingRules.value) return [];
     const selectedDate = format(new Date(editableEvent.value['預約日期']), 'yyyy-MM-dd');
     return currentBookingRules.value.timeSlotsByDate[selectedDate] || [];
 });
 
 // --- 方法 ---
 function processAppointments(rawAppointments) {
-  const getTitlePartsFn = EVENT_DISPLAY_CONFIG[projectName.value] || EVENT_DISPLAY_CONFIG.default;
-
- return rawAppointments
+  return rawAppointments
     .map(appt => {
       try {
         if (!appt['預約日期']) return null;
@@ -944,15 +1039,25 @@ function processAppointments(rawAppointments) {
         const date = format(rawDateObject, 'yyyy-MM-dd');
         const timeSlot = appt['預約時段'] ? String(appt['預約時段']).replace(/：/g, ':') : '00:00';
         const startTime = timeSlot.split('-')[0]?.trim() || '00:00';
-        
-        const titleParts = getTitlePartsFn(appt).filter(Boolean);
-        const itemText = titleParts.join(' - ');
+         // --- ✨ 核心修改處：產生 displayParts 陣列 ---
+        const displayParts = displayFieldOptions.value
+          .filter(option => selectedDisplayFields.value.includes(option.key))
+          .map(option => {
+            const value = appt[option.key];
+            if (!value) return null;
+            const formattedValue = option.formatter ? option.formatter(value) : String(value);
+            return {
+              text: formattedValue,
+              isHousehold: option.key === '戶別',
+            };
+          })
+          .filter(Boolean);
 
         return { 
             ...appt, 
             id: `${appt['填表時間']}_${appt['戶別']}`, 
             start: parseISO(`${date}T${startTime}`), 
-            displayText: itemText, 
+            displayParts: displayParts,
         };
       } catch (e) {
         console.warn(`處理預約資料時發生錯誤: ${e.message}`, appt);
@@ -995,21 +1100,17 @@ function enterEditMode() {
 async function saveChanges() {
   isSaving.value = true;
   error.value = null;
-
   try {
     const bookingUpdatePayload = {};
     const householdUpdatePayload = {};
     const allEditableFields = [...BOOKING_RECORD_FIELDS, ...HOUSEHOLD_DATA_FIELDS];
-
     for (const key of allEditableFields) {
       if (editableEvent.value.hasOwnProperty(key)) {
         let originalValue = selectedEvent.value[key];
         let editedValue = editableEvent.value[key];
-
         if (key === '驗屋人員') {
           editedValue = Array.isArray(editableEvent.value[key]) ? editableEvent.value[key].join(',') : editableEvent.value[key];
         }
-
         if (originalValue !== editedValue) {
           if (BOOKING_RECORD_FIELDS.includes(key)) {
             bookingUpdatePayload[key] = editedValue;
@@ -1019,7 +1120,6 @@ async function saveChanges() {
         }
       }
     }
-
     const apiPromises = [];
     if (Object.keys(bookingUpdatePayload).length > 0) {
       apiPromises.push(updateBooking(projectName.value, editableEvent.value['預約代碼'], bookingUpdatePayload));
@@ -1027,7 +1127,6 @@ async function saveChanges() {
     if (Object.keys(householdUpdatePayload).length > 0) {
       apiPromises.push(updateHouseholdData(projectName.value, editableEvent.value['戶別'], householdUpdatePayload));
     }
-
     if (apiPromises.length > 0) {
       const responses = await Promise.all(apiPromises);
       const failedResponse = responses.find(res => res.status !== 'success');
@@ -1038,11 +1137,9 @@ async function saveChanges() {
       snackbarText.value = '沒有偵測到任何變更。';
       snackbar.value = true;
     }
-
     isDialogVisible.value = false;
     isEditMode.value = false;
     await fetchData();
-
   } catch (err) {
     error.value = `儲存失敗: ${err.message}`;
   } finally {
@@ -1077,37 +1174,28 @@ async function fetchData() {
   isLoading.value = true;
   error.value = null;
   try {
-    // ✨ 平行發送所有請求
     const [appointmentsResponse, optionsResponse, rulesResponse] = await Promise.all([
       fetchInspectionAppointments(projectName.value),
       getBookingInitialData(projectName.value),
-      getAllBookingRules(projectName.value) // ✨ 新增的 API 請求
+      getAllBookingRules(projectName.value)
     ]);
-
-    // 處理預約資料
     if (appointmentsResponse.status === 'success') {
       appointments.value = appointmentsResponse.data;
     } else {
       throw new Error(appointmentsResponse.message || '無法獲取預約資料');
     }
-
-    // 處理下拉選單選項
     if (optionsResponse.status === 'success') {
       bookingOptions.value.inspectionMethods = optionsResponse.data.inspectionMethods || [];
       bookingOptions.value.inspectionStaff = optionsResponse.data.inspectionStaff || [];
     } else {
       console.warn('無法獲取表單選項資料:', optionsResponse.message);
     }
-    
-    // ✨ 處理預約規則
     if (rulesResponse.status === 'success') {
         allBookingRules.value = rulesResponse.data;
     } else {
         console.warn('無法獲取預約規則資料:', rulesResponse.message);
-        // 即使規則獲取失敗，也讓頁面繼續載入，只是編輯時無法選擇時段
         allBookingRules.value = null; 
     }
-
   } catch (err) {
     console.error('獲取資料失敗:', err);
     error.value = err.message;
@@ -1116,14 +1204,12 @@ async function fetchData() {
   }
 }
 
-// ✨ --- 新的日期可用性判斷函式 ---
 const isDateAllowed = (date) => {
   if (!currentBookingRules.value) return false;
   const dateStr = format(date, 'yyyy-MM-dd');
   return !currentBookingRules.value.unavailableDates.includes(dateStr);
 };
 
-// 監聽編輯中的日期變化，以清空時段
 watch(() => editableEvent.value?.['預約日期'], (newDate, oldDate) => {
   if (isEditMode.value && newDate !== oldDate && editableEvent.value) {
       editableEvent.value['預約時段'] = '';
@@ -1149,20 +1235,73 @@ onMounted(() => {
 function promptCancelBooking(event) { eventToCancel.value = event; isCancelConfirmDialogVisible.value = true; }
 function handleCopy(value) { const { copy } = useClipboard({ source: value }); copy(value); snackbarText.value = '已複製到剪貼簿！'; snackbar.value = true; }
 function openUrl(url) { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
+
+// ✨ 修改：讓 getEventStyle 只使用 CSS_KEYWORD_COLOR_MAP
 function getEventStyle(event) {
-  if (event['預約狀態'] === '取消') return { backgroundColor: '#f5f5f5', color: '#9e9e9e', borderColor: '#e0e0e0', borderWidth: '2px', borderStyle: 'solid' };
-  const combinedText = event.displayText + (event['預約項目'] || '');
-  for (const config of KEYWORD_COLOR_MAP) {
-    if (combinedText.includes(config.keyword)) return { backgroundColor: config.backgroundColor, color: config.textColor, borderColor: config.borderColor, borderWidth: '2px', borderStyle: 'solid' };
+  if (!event || Object.keys(event).length === 0) {
+    return { backgroundColor: '#FFFFFF', color: '#000000' };
   }
-  return { backgroundColor: '#EEEEEE', color: '#212121', borderColor: '#E0E0E0', borderWidth: '2px', borderStyle: 'solid' };
+  if (event['預約狀態'] === '取消') {
+    return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
+  }
+  
+  const textToSearch = [
+    event['預約項目'], event['驗屋方式'],
+    event['特殊備註'], event['特殊備註2']
+  ].join(' ');
+
+  for (const config of CSS_KEYWORD_COLOR_MAP) {
+    if (config.keyword && textToSearch.includes(config.keyword)) {
+      // 直接回傳 CSS 可用的顏色物件
+      return { 
+        backgroundColor: config.backgroundColor, 
+        color: config.color
+      };
+    }
+  }
+
+  return { backgroundColor: '#EEEEEE', color: '#212121' };
 }
+
+// ✨ 修改：讓 getAppointmentItemStyle 只使用 CSS_KEYWORD_COLOR_MAP
 function getAppointmentItemStyle(itemText) {
   if (!itemText) return {};
-  const found = KEYWORD_COLOR_MAP.find(config => itemText.includes(config.keyword));
-  if (found) return { backgroundColor: found.backgroundColor, color: found.textColor, padding: '4px 10px', borderRadius: '16px', fontSize: '0.875rem', fontWeight: 'bold', display: 'inline-block' };
-  return { backgroundColor: '#E0E0E0', color: '#212121', padding: '4px 10px', borderRadius: '16px', fontSize: '0.875rem', fontWeight: 'bold', display: 'inline-block' };
+  const found = CSS_KEYWORD_COLOR_MAP.find(config => itemText.includes(config.keyword));
+  if (found) {
+    return { backgroundColor: found.backgroundColor, color: found.color };
+  }
+  return { backgroundColor: '#E0E0E0', color: '#212121'};
 }
+
+// ✨ 修改：新增一個專門為 Excel 判斷顏色的輔助函式
+function getExcelRowStyle(event) {
+  if (!event || Object.keys(event).length === 0) {
+    return { backgroundColor: 'FFFFFF', textColor: '000000' };
+  }
+  if (event['預約狀態'] === '取消') {
+    return { backgroundColor: 'F5F5F5', textColor: '9E9E9E' };
+  }
+
+  const textToSearch = [
+    event['預約項目'], event['驗屋方式'], 
+    event['特殊備註'], event['特殊備註2']
+  ].join(' ');
+
+  for (const config of EXCEL_KEYWORD_COLOR_MAP) {
+    if (config.keyword && textToSearch.includes(config.keyword)) {
+      return { 
+        backgroundColor: config.backgroundColor, 
+        textColor: config.textColor 
+      };
+    }
+  }
+  
+  return { backgroundColor: 'EEEEEE', textColor: '212121' };
+}
+
+
+
+
 function safeFormatDate(value, formatString = 'yyyy-MM-dd') {
   if (!value || String(value).trim() === '') return '無';
   const date = new Date(value);
@@ -1301,7 +1440,17 @@ async function handleDownloadPng() {
            eventItem.style.textDecoration = 'line-through';
            eventItem.style.opacity = '0.7';
           }
-          eventItem.innerHTML = `<strong style="font-size: 1.1em;">${event['戶別']}</strong> - ${event.displayText}`;
+          
+          // --- ✨ 修改後：使用 displayParts 產生 HTML 字串 ---
+          const titleHTML = event.displayParts.map(part => {
+            if (part.isHousehold) {
+              return `<strong style="font-size: 1.1em;">${part.text}</strong>`;
+            }
+            return part.text;
+          }).join(' - ');
+          eventItem.innerHTML = titleHTML;
+          // --- ✨ 修改結束 ---
+
           eventCell.appendChild(eventItem);
         });
         bodyRow.appendChild(eventCell);
@@ -1338,6 +1487,246 @@ async function handleDownloadPng() {
   isDownloadingPdf.value = false;
  }
 }
+
+
+async function handleDownloadExcel() {
+  isDownloadingExcel.value = true;
+  try {
+    const start = startDate.value;
+    const end = endDate.value;
+    if (!start || !end) throw new Error("請先選擇有效的開始與結束日期。");
+
+    const allDates = eachDayOfInterval({ start, end });
+    if (allDates.length === 0) throw new Error("沒有有效的日期範圍可供匯出。");
+
+    // --- 1. 動態決定要匯出的欄位 ---
+    const selectedOptions = displayFieldOptions.value
+      .filter(option => selectedDisplayFields.value.includes(option.key));
+
+    const excelHeaders = [
+      { key: '預約時段', label: '時間', wch: 12 },
+      ...selectedOptions.map(option => ({
+        key: option.key,
+        label: option.label,
+        wch: 20
+      })),
+      { key: '預約狀態', label: '狀態', wch: 12 },
+    ];
+    const headerLabels = excelHeaders.map(h => h.label);
+    const numColumns = excelHeaders.length;
+
+    // --- 2. 準備 Workbook 和 Worksheet ---
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    const merges = [];
+
+    // --- 3. 樣式定義 ---
+    const mainTitleStyle = {
+      font: { name: '標楷體', bold: true, sz: 16, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: "005B9A" } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    };
+    const headerStyle = {
+      font: { name: '標楷體', bold: true, sz: 12 },
+      fill: { patternType: "solid", fgColor: { rgb: "E0E0E0" } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+    const defaultCellStyle = {
+      font: { name: '標楷體' },
+      alignment: { vertical: 'center', wrapText: true },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    // --- 4. 寫入總標題 (A1:E1 合併) ---
+    ws['A1'] = { v: `${projectName.value} - 驗屋時間表`, t: 's', s: mainTitleStyle };
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
+    
+    let currentRow = 1; // 內容從第 2 列開始
+    let maxCol = 0;
+
+    // --- 5. 遍歷資料並寫入儲存格 ---
+    const dateChunks = allDates.reduce((acc, _, i) => (i % 3 ? acc : [...acc, allDates.slice(i, i + 3)]), []);
+    
+    dateChunks.forEach((chunk) => {
+      let currentColumn = 0;
+      let maxAppointmentsInChunk = 0;
+      chunk.forEach(date => {
+        const appointmentsForDay = filteredAppointments.value.filter(a => format(a.start, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+        if (appointmentsForDay.length > maxAppointmentsInChunk) {
+          maxAppointmentsInChunk = appointmentsForDay.length;
+        }
+      });
+      const blockHeight = 1 + 1 + maxAppointmentsInChunk;
+
+      chunk.forEach(date => {
+        // 寫入每日標頭
+        ws[XLSX.utils.encode_cell({ r: currentRow, c: currentColumn })] = { v: format(date, 'yyyy/MM/dd (EEE)', { locale: zhTW }), t: 's', s: headerStyle };
+        merges.push({ s: { r: currentRow, c: currentColumn }, e: { r: currentRow, c: currentColumn + numColumns - 1 } });
+        
+        // 寫入資料欄位標頭
+        headerLabels.forEach((label, idx) => {
+          ws[XLSX.utils.encode_cell({ r: currentRow + 1, c: currentColumn + idx })] = { v: label, t: 's', s: headerStyle };
+        });
+
+        // 寫入每日的預約資料
+        const appointmentsForDay = filteredAppointments.value
+          .filter(a => format(a.start, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'))
+          .sort((a, b) => a.start - b.start);
+        
+        for (let i = 0; i < maxAppointmentsInChunk; i++) {
+          const event = appointmentsForDay[i];
+          excelHeaders.forEach((header, idx) => {
+            const cellRef = XLSX.utils.encode_cell({ r: currentRow + 2 + i, c: currentColumn + idx });
+            if (event) {
+              const rowStyle = getExcelRowStyle(event);
+              let finalCellStyle = JSON.parse(JSON.stringify(defaultCellStyle));
+              finalCellStyle.fill = { patternType: "solid", fgColor: { rgb: rowStyle.backgroundColor } };
+              finalCellStyle.font.color = { rgb: rowStyle.textColor };
+              ws[cellRef] = { v: event[header.key] || '', t: 's', s: finalCellStyle };
+            } else {
+              ws[cellRef] = { v: '', t: 's', s: defaultCellStyle };
+            }
+          });
+        }
+        currentColumn += numColumns;
+      });
+      
+      if (currentColumn > maxCol) maxCol = currentColumn;
+      currentRow += blockHeight;
+    });
+
+    // --- 6. 設定工作表範圍與欄寬 ---
+    ws['!ref'] = XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: maxCol - 1, r: currentRow -1 } });
+    ws['!merges'] = merges;
+      // =================> 最終版：自動計算欄寬的邏輯 <=================
+
+      // 1. 建立一個陣列，用來儲存工作表中「每一個」欄位的實際最大內容寬度
+      const colWidths = [];
+
+      // 2. 遍歷所有儲存格，找出每一欄的最大寬度
+      Object.keys(ws).forEach(cellRef => {
+        // 忽略所有非儲存格的特殊屬性 (例如 !ref, !merges)
+        if (cellRef.startsWith('!')) return;
+
+        const decodedCell = XLSX.utils.decode_cell(cellRef);
+        const colIndex = decodedCell.c;
+
+        // 判斷此儲存格是否為合併儲存格 (用來排除最上方的總標題和每日標題)
+        const isMerged = merges.some(m => 
+          colIndex >= m.s.c && colIndex <= m.e.c && 
+          decodedCell.r >= m.s.r && decodedCell.r <= m.e.r
+        );
+        // 如果是合併儲存格，就跳過，不參與寬度計算
+        if (isMerged) return;
+
+        const cellValue = ws[cellRef].v || '';
+        // 將中文字元算為2個字元寬度，計算更準確
+        const contentLength = cellValue.toString().replace(/[^\x00-\xff]/g, "xx").length;
+
+        // 如果目前儲存格的內容長度 > 該欄已記錄的最大長度，就更新它
+        if (!colWidths[colIndex] || contentLength > colWidths[colIndex]) {
+          colWidths[colIndex] = contentLength;
+        }
+      });
+
+      // 3. 將計算出的寬度陣列，轉換成 xlsx 需要的格式
+      const newCols = colWidths.map(width => {
+        // 在最大內容寬度的基礎上，再加 2 個字元的邊距，避免文字太貼邊
+        return { wch: width + 2 };
+      });
+
+      // 4. 將新的、動態計算出的欄寬設定賦予工作表
+      ws['!cols'] = newCols;
+
+      // =================>↑↑↑↑最終版：自動計算欄寬的邏輯↑↑↑ <=================
+
+    // --- 7. 產生並下載檔案 ---
+    XLSX.utils.book_append_sheet(wb, ws, "驗屋時間表");
+    const fileName = `${projectName.value}_驗屋預約表_${format(new Date(), 'yyyyMMdd')}.xlsx`;
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error("Excel 產生失敗:", err);
+    error.value = `產生 Excel 失敗: ${err.message}`;
+  } finally {
+    isDownloadingExcel.value = false;
+  }
+}
+
+/**
+ * 最簡化的顏色測試函式
+ * @description 建立一個 A1:A3 分別為紅黃藍背景的 Excel 檔
+ */
+async function handleDownloadSimpleColorTest() {
+  try {
+    // 1. 建立一個新的空白活頁簿 (Workbook) 和工作表 (Worksheet)
+    const wb = XLSX.utils.book_new();
+    const ws = {}; // 使用稀疏模式建立工作表
+
+    // 2. 定義三種顏色樣式，包含最關鍵的 patternType: 'solid'
+    const redStyle = {
+      fill: { patternType: 'solid', fgColor: { rgb: 'FF0000' } }
+    };
+    const yellowStyle = {
+      fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }
+    };
+    const blueStyle = {
+      fill: { patternType: 'solid', fgColor: { rgb: '0000FF' } }
+    };
+
+    // 3. 建立儲存格物件，並直接賦予樣式
+    //    v: value (值), t: type (類型 's'為字串), s: style (樣式)
+    ws['A1'] = { v: '紅色背景', t: 's', s: redStyle };
+    ws['A2'] = { v: '黃色背景', t: 's', s: yellowStyle };
+    ws['A3'] = { v: '藍色背景', t: 's', s: blueStyle };
+
+    // 4. 定義工作表的有效範圍，這一步非常重要！
+    const range = { s: { c: 0, r: 0 }, e: { c: 0, r: 2 } }; // 從 A1 到 A3
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    // 5. 將工作表加入到活頁簿中
+    XLSX.utils.book_append_sheet(wb, ws, "顏色測試");
+
+    // 6. 使用最穩定的方式產生並下載檔案
+    const fileName = "SimpleColorTest.xlsx";
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error("簡單顏色測試 Excel 產生失敗:", err);
+  }
+}
+
+/**
+ * 處理重新整理按鈕點擊事件
+ */
+async function handleRefresh() {
+  // 直接呼叫既有的 fetchData 函式，它會處理所有載入狀態和API請求
+  await fetchData();
+
+  // (可選) 透過 snackbar 給予使用者明確的回饋
+  snackbarText.value = '日曆資料已更新';
+  snackbar.value = true;
+}
+
 </script>
 
 
@@ -1353,7 +1742,7 @@ async function handleDownloadPng() {
   --time-col-bg-color: #f9f9f9;
   --today-highlight-bg: #e3f2fd;
   --today-highlight-text: #1976d2;
-  --weekend-bg-color: #fc6a6a;
+  --weekend-bg-color: #fce4e4;
   --border-color: #e0e0e0;
 }
 

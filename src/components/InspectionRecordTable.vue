@@ -540,7 +540,7 @@ import {
 } from '@/api';
 
 import { useToast } from 'vue-toastification';
-import { utils, writeFile } from 'xlsx';
+import { utils, writeFile } from 'xlsx-js-style';
 import { VueGoodTable } from 'vue-good-table-next';
 import 'vue-good-table-next/dist/vue-good-table-next.css';
 import { useUserStore } from '@/store/user';
