@@ -1129,3 +1129,68 @@ export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId
   //    Proxy 會接收此請求，並轉發給後端的 Google Apps Script
   return fetchPost(payload, INSPECTION_API);
 };
+
+/**
+ * ===============================================
+ * /  ✅ 後台行事曆 - 新增預約功能 API
+ * ===============================================
+ */
+
+/**
+ * [後台用] 獲取所有棟別與其對應的戶別資料
+ * @param {string} projectName 建案名稱
+ */
+export async function fetchBuildingsAndUnitsAdmin(projectName) {
+  return fetchPost({
+    action: 'get_buildings_and_units_admin',
+    projectName,
+    token: 'anxi111003' 
+  }, INSPECTION_API);
+}
+
+/**
+ * [後台用] 檢查是否有重複的有效預約
+ * @param {string} projectName 建案名稱
+ * @param {string} unitId 戶別
+ * @param {string} bookingType 預約項目
+ */
+export async function checkDuplicateAdmin(projectName, unitId, bookingType) {
+  return fetchPost({
+    action: 'check_duplicate_appointment_admin',
+    projectName,
+    unitId,
+    bookingType,
+    token: 'anxi111003'
+  }, INSPECTION_API);
+}
+
+/**
+ * [後台用] 新增一筆預約紀錄
+ * @param {string} projectName 建案名稱
+ * @param {object} newBookingData 新預約的完整資料
+ * @param {string|null} cancelBookingCode (可選) 要同時取消的舊預約代碼
+ */
+export async function addAppointmentAdmin(projectName, newBookingData, cancelBookingCode = null) {
+  return fetchPost({
+    action: 'add_appointment_admin',
+    projectName,
+    newBookingData,
+    cancelBookingCode,
+    token: 'anxi111003'
+  }, INSPECTION_API);
+}
+
+
+/**
+ * [後台用] 根據前端指定的欄位列表，一次性獲取所有戶別的對應資料。
+ * @param {string} projectName 建案名稱
+ * @param {string[]} fields 要獲取的欄位(中文)列表
+ */
+export async function fetchSpecifiedHouseDetails(projectName, fields) {
+  return fetchPost({
+    action: 'get_specified_house_details',
+    projectName,
+    fields, // 將欄位列表作為 payload 的一部分傳遞
+    token: 'anxi111003' 
+  }, INSPECTION_API);
+}
