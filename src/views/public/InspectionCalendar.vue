@@ -1,109 +1,129 @@
 <template>
   <v-container fluid>
     <v-card class="pa-4">
-      <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
-        <span>{{ pageTitle }}</span>
+          <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
+          <span>{{ pageTitle }}</span>
 
-        <div>
-                <div class="d-none d-md-flex ga-2">
-          <v-tooltip text="重新整理資料" location="bottom">
-            <template v-slot:activator="{ props }">
+          <div id="action-buttons">
+            <div class="d-none d-md-flex ga-2 align-center">
+              
+              <v-tooltip text="操作說明" location="bottom">
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-help-circle-outline"
+                    variant="text"
+                    @click="startTour"
+                  ></v-btn>
+                </template>
+              </v-tooltip>
+
+              <v-tooltip text="重新整理資料" location="bottom">
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-refresh"
+                    variant="text"
+                    @click="handleRefresh"
+                    :loading="isLoading"
+                  ></v-btn>
+                </template>
+              </v-tooltip>
+
+              <v-divider vertical class="mx-2"></v-divider>
+
               <v-btn
-                v-bind="props"
-                icon="mdi-refresh"
-                variant="text"
-                @click="handleRefresh"
-                :loading="isLoading"
-              ></v-btn>
-            </template>
-          </v-tooltip>
+                color="primary"
+                @click="handleDownloadPng"
+                :loading="isDownloadingPdf"
+                prepend-icon="mdi-image-area"
+              >
+                下載時間表 (PNG)
+              </v-btn>
+              <v-btn
+                color="teal-darken-1"
+                @click="handleDownloadExcel"
+                :loading="isDownloadingExcel"
+                prepend-icon="mdi-microsoft-excel"
+              >
+                下載時間表 (Excel)
+              </v-btn>
+            </div>
 
-          <v-divider vertical class="mx-2"></v-divider>
+            <div class="d-md-none">
+              <v-menu location="bottom end">
+                <template v-slot:activator="{ props }">
+                  <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
+                </template>
 
-          <v-btn
-            color="primary"
-            @click="handleDownloadPng"
-            :loading="isDownloadingPdf"
-            prepend-icon="mdi-image-area"
-          >
-            下載時間表 (PNG)
-          </v-btn>
-          <v-btn
-            color="teal-darken-1"
-            @click="handleDownloadExcel"
-            :loading="isDownloadingExcel"
-            prepend-icon="mdi-microsoft-excel"
-          >
-            下載時間表 (Excel)
-          </v-btn>
-        </div>
-          <div class="d-md-none">
-            <v-menu location="bottom end">
-              <template v-slot:activator="{ props }">
-                <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
-              </template>
+                <v-list density="compact">
+                  <v-list-item
+                    prepend-icon="mdi-help-circle-outline"
+                    title="操作說明"
+                    @click="startTour"
+                  ></v-list-item>
 
-            <v-list density="compact">
-            <v-list-item
-              prepend-icon="mdi-refresh"
-              title="重新整理"
-              @click="handleRefresh"
-              :disabled="isLoading"
-            >
-              <template v-slot:append>
-                <v-progress-circular
-                  v-if="isLoading"
-                  indeterminate
-                  color="grey"
-                  size="20"
-                  width="2"
-                ></v-progress-circular>
-              </template>
-            </v-list-item>
+                  <v-list-item
+                    prepend-icon="mdi-refresh"
+                    title="重新整理"
+                    @click="handleRefresh"
+                    :disabled="isLoading"
+                  >
+                    <template v-slot:append>
+                      <v-progress-circular
+                        v-if="isLoading"
+                        indeterminate
+                        color="grey"
+                        size="20"
+                        width="2"
+                      ></v-progress-circular>
+                    </template>
+                  </v-list-item>
 
-            <v-list-item
-              prepend-icon="mdi-filter-variant"
-              title="篩選"
-              @click="isFilterDrawerVisible = true"
-            ></v-list-item>
-                
-                <v-list-item
-                  prepend-icon="mdi-image-area"
-                  title="下載時間表 (PNG)"
-                  @click="handleDownloadPng"
-                  :disabled="isDownloadingPdf"
-                >
-                  <template v-slot:append>
-                    <v-progress-circular
-                      v-if="isDownloadingPdf"
-                      indeterminate
-                      color="primary"
-                      size="20"
-                      width="2"
-                    ></v-progress-circular>
-                  </template>
-                </v-list-item>
-                <v-list-item
-                  prepend-icon="mdi-microsoft-excel"
-                  title="下載時間表 (Excel)"
-                  @click="handleDownloadExcel"
-                  :disabled="isDownloadingExcel"
-                >
-                  <template v-slot:append>
-                    <v-progress-circular
-                      v-if="isDownloadingExcel"
-                      indeterminate
-                      color="teal-darken-1"
-                      size="20"
-                      width="2"
-                    ></v-progress-circular>
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-menu>
+                  <v-list-item
+                    prepend-icon="mdi-filter-variant"
+                    title="篩選"
+                    @click="isFilterDrawerVisible = true"
+                  ></v-list-item>
+                  
+                  <v-list-item
+                    prepend-icon="mdi-image-area"
+                    title="下載時間表 (PNG)"
+                    @click="handleDownloadPng"
+                    :disabled="isDownloadingPdf"
+                  >
+                    <template v-slot:append>
+                      <v-progress-circular
+                        v-if="isDownloadingPdf"
+                        indeterminate
+                        color="primary"
+                        size="20"
+                        width="2"
+                      ></v-progress-circular>
+                    </template>
+                  </v-list-item>
+
+                  <v-list-item
+                    prepend-icon="mdi-microsoft-excel"
+                    title="下載時間表 (Excel)"
+                    @click="handleDownloadExcel"
+                    :disabled="isDownloadingExcel"
+                  >
+                    <template v-slot:append>
+                      <v-progress-circular
+                        v-if="isDownloadingExcel"
+                        indeterminate
+                        color="teal-darken-1"
+                        size="20"
+                        width="2"
+                      ></v-progress-circular>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
           </div>
-        </div>
-      </v-card-title>
+        </v-card-title>
 
       <v-alert
         v-if="error"
@@ -119,7 +139,7 @@
       </div>
 
       <div v-if="!isLoading && !error">
-        <v-row class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
+        <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
           <v-col cols="12" sm="4" md="2">
             <v-text-field
               v-model="startDateFormatted"
@@ -188,8 +208,8 @@
           </v-col>
            <v-col cols="12" class="mt-2 pt-0">
              <v-divider></v-divider>
-             <div class="d-flex align-center flex-wrap">
-              <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
+            <div id="display-options-panel" class="d-flex align-center flex-wrap">
+            <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
               <v-checkbox
                 v-for="field in displayFieldOptions"
                 :key="field.key"
@@ -782,6 +802,9 @@
 </template>
 
 <script setup>
+import Shepherd from 'shepherd.js';
+import 'shepherd.js/dist/css/shepherd.css';
+
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
@@ -1726,6 +1749,82 @@ async function handleRefresh() {
   snackbarText.value = '日曆資料已更新';
   snackbar.value = true;
 }
+
+// --- ✨ 新增：操作說明的邏輯 ✨ ---
+
+// 建立一個導覽實體
+const tour = new Shepherd.Tour({
+  useModalOverlay: true, // 讓背景變暗，凸顯目標
+  defaultStepOptions: {
+    cancelIcon: {
+      enabled: true
+    },
+    classes: 'shepherd-theme-arrows',
+    scrollTo: { behavior: 'smooth', block: 'center' }
+  }
+});
+
+// 定義導覽的步驟 (將我們先前的說明文字放入)
+const tourSteps = [
+  {
+    id: 'step1-overview',
+    title: '總覽與基本操作',
+    text: '這裡是預約總覽日曆，您可以一目了然地看到每日的排程。直接點擊任一則預約，即可彈出視窗查看完整資訊。',
+    attachTo: {
+      element: '#custom-calendar-container', // 附加到日曆容器上
+      on: 'bottom'
+    },
+    buttons: [{ text: '下一步', action: tour.next }]
+  },
+  {
+    id: 'step2-filters',
+    title: '篩選與搜尋功能',
+    text: '透過上方的篩選列，可以快速精準地找到您需要的資料，包含：日期範圍、關鍵字、預約狀態與項目。',
+    attachTo: {
+      element: '#filter-panel', // 附加到篩選面板上
+      on: 'bottom'
+    },
+    buttons: [
+      { text: '上一步', action: tour.back },
+      { text: '下一步', action: tour.next }
+    ]
+  },
+  {
+    id: 'step3-display-options',
+    title: '自訂日曆顯示內容',
+    text: '透過勾選「標題顯示」的項目，您可以自由決定要在日曆的預約方塊上顯示哪些資訊，讓畫面更符合您的需求。',
+    attachTo: {
+      element: '#display-options-panel', // 附加到標題顯示區塊上
+      on: 'top'
+    },
+    buttons: [
+      { text: '上一步', action: tour.back },
+      { text: '下一步', action: tour.next }
+    ]
+  },
+  {
+    id: 'step4-actions',
+    title: '功能按鈕',
+    text: '這裡提供了重新整理、下載圖片(PNG)和下載客製化報表(Excel)等實用功能。',
+    attachTo: {
+      element: '#action-buttons', // 附加到功能按鈕區塊上
+      on: 'bottom'
+    },
+    buttons: [
+      { text: '上一步', action: tour.back },
+      { text: '完成', action: tour.complete }
+    ]
+  }
+];
+
+// 將步驟加入導覽實體
+tour.addSteps(tourSteps);
+
+// 建立一個啟動導覽的函式
+function startTour() {
+  tour.start();
+}
+// --- ✨ 操作說明邏輯結束 ✨ ---
 
 </script>
 
