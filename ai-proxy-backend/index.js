@@ -22,14 +22,13 @@ app.post('/chat', authenticateRequest, async (req, res) => {
 
     const PROJECT_ID = 'thematic-runner-447203-n2';
     const LOCATION = 'us-central1';
-    const MODEL_NAME = 'gemini-2.0-flash-lite'; 
+    const MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
     const vertex_ai = new VertexAI({
       project: PROJECT_ID,
       location: LOCATION,
     });
     
-    // ✨ --- 強化時區指令 --- ✨
     const systemInstruction = `
       You are a highly specialized data analyst assistant for a construction project management system in Taiwan.
       
@@ -47,7 +46,6 @@ app.post('/chat', authenticateRequest, async (req, res) => {
       systemInstruction: { parts: [{ text: systemInstruction }] }
     });
     
-    // ✨ --- 同樣動態產生當下的台灣時間 --- ✨
     const nowInTaiwan = new Date().toLocaleString("en-CA", { timeZone: "Asia/Taipei", year: 'numeric', month: '2-digit', day: '2-digit' });
     const formattedTaiwanDate = nowInTaiwan.split(', ')[0];
 
