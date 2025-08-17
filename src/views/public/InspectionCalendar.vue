@@ -874,9 +874,10 @@
 </template>
 
 <script setup>
+import { usePageContextStore } from '@/store/pageContextStore';
 import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
-import { ref, onMounted, computed, watch, reactive } from 'vue';
+import { ref, onMounted, computed, watch, reactive, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { 
@@ -901,6 +902,7 @@ import * as XLSX from 'xlsx-js-style';
 // --- Store 和路由 ---
 const route = useRoute();
 const userStore = useUserStore();
+const pageContextStore = usePageContextStore();
 
 // --- 定義欄位應更新到哪張工作表 ---
 const BOOKING_RECORD_FIELDS = ['預約人姓名', '預約人電話', '預約人身分證' ,'預約人EMAIL', '預約日期', '預約時段', '驗屋方式', '代驗公司名稱', '驗屋人員', '預約備註', '受託人姓名', '受託人電話'];
@@ -1466,7 +1468,29 @@ async function fetchData() {
     ]);
 
     if (appointmentsResponse.status === 'success') {
+      if (appointmentsResponse.status === 'success') {
       appointments.value = appointmentsResponse.data;
+      
+      // ✨ --- 3. 核心修改：在設定情境前，預先處理日期 --- ✨
+      const contextForAI = appointments.value.map(appt => {
+        // 確保 '預約日期' 存在且有效
+        const appointmentDate = appt['預約日期'] ? new Date(appt['預約日期']) : null;
+        
+        return {
+          戶別: appt['戶別'],
+          預約項目: appt['預約項目'],
+          // 如果日期有效，就格式化為 'yyyy-MM-dd' 的台灣日期字串
+          預約日期: appointmentDate && !isNaN(appointmentDate) 
+                      ? format(appointmentDate, 'yyyy-MM-dd') 
+                      : '無效日期',
+          預約時段: appt['預約時段'],
+          預約狀態: appt['預約狀態'],
+          驗屋人員: appt['驗屋人員'],
+          預約備註: appt['預約備註']
+        };
+      });
+      pageContextStore.setContext('驗屋行事曆', contextForAI);
+
     } else throw new Error(appointmentsResponse.message || '無法獲取預約資料');
 
     if (optionsResponse.status === 'success') {
@@ -1518,6 +1542,11 @@ onMounted(() => {
     error.value = `無效的建案ID: ${projectId.value}`;
     isLoading.value = false;
   }
+});
+
+// ✨ --- 在元件卸載時，清除情境 --- ✨
+onUnmounted(() => {
+  pageContextStore.clearContext();
 });
 
 // --- 其他輔助函式 ---

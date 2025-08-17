@@ -11,3 +11,14 @@ npm run bump-version && git status && git add . && git commit -m "$(TZ='Asia/Tai
 
 存檔到GIT倉庫
 git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" && git push
+
+
+部署AI助理 
+gcloud functions deploy aiProxy \
+  --gen2 \
+  --runtime=nodejs20 \
+  --region=us-central1 \
+  --source=. \
+  --entry-point=aiProxy \
+  --trigger-http \
+  --allow-unauthenticated
