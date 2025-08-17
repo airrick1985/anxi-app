@@ -5,7 +5,7 @@
       <v-btn icon @click="goHome" class="me-2" title="首頁">
         <v-icon>mdi-home</v-icon>
       </v-btn>
-<div class="d-flex align-center">
+      <div class="d-flex align-center">
         <v-img :src="logoUrl"
                max-height="60"
                contain class="mr-2"
@@ -21,9 +21,9 @@
       <template v-if="user">
         <div v-if="display.mdAndUp.value" class="d-flex align-center">
           <v-btn icon @click="mortgageDialog = true" title="房貸試算" class="me-2">
-             <v-icon>mdi-calculator-variant-outline</v-icon>
+              <v-icon>mdi-calculator-variant-outline</v-icon>
           </v-btn>
-           <v-btn icon @click="contactDialog = true" title="聯絡客服" class="me-2">
+          <v-btn icon @click="contactDialog = true" title="聯絡客服" class="me-2">
             <v-icon>mdi-message-question</v-icon>
           </v-btn>
           <v-btn icon @click="toggleFullscreen" class="me-2" title="全螢幕模式">
@@ -49,7 +49,7 @@
               <v-list-item-title>房貸試算</v-list-item-title>
             </v-list-item>
 
-             <v-list-item @click="contactDialog = true">
+              <v-list-item @click="contactDialog = true">
               <template v-slot:prepend><v-icon>mdi-message-question</v-icon></template>
               <v-list-item-title>聯絡客服</v-list-item-title>
             </v-list-item>
@@ -60,7 +60,7 @@
               <v-icon>mdi-email-outline</v-icon>
                 </v-badge>
                 </template>
-            <v-list-item-title>訊息中心</v-list-item-title>
+              <v-list-item-title>訊息中心</v-list-item-title>
             </v-list-item>
 
             <v-list-item @click="dialog = true">
@@ -85,11 +85,11 @@
       />
     </v-main>
 
-     <v-footer v-if="isLoginPage" color="white" class="footer-text" padless>
-        <v-container class="text-center py-2">
-            <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
-            <div>&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
-        </v-container>
+    <v-footer v-if="isLoginPage" color="white" class="footer-text" padless>
+      <v-container class="text-center py-2">
+          <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
+          <div>&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
+      </v-container>
     </v-footer>
     
     <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
@@ -133,8 +133,11 @@
       <MortgageCalculator @close="mortgageDialog = false" />
     </v-dialog>
 
+    <AiAssistant />
+
   </v-app>
 </template>
+
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { useFullscreen } from '../composables/useFullscreen';
@@ -151,6 +154,8 @@ import { useDisplay } from 'vuetify';
 
 // 【已修正】從新的 src/assets 位置 import 圖片
 import logoUrl from '@/assets/images/anxi-logo.png';
+// 引入我們的新元件
+import AiAssistant from '../components/AiAssistant.vue';
 
 const display = useDisplay();
 

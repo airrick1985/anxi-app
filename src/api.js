@@ -1194,3 +1194,44 @@ export async function fetchSpecifiedHouseDetails(projectName, fields) {
     token: 'anxi111003' 
   }, INSPECTION_API);
 }
+
+
+/**
+ * ===============================================
+ * /  ✅  AI 代理後端
+ * ===============================================
+ */
+
+
+/**
+ * 呼叫 AI 代理後端，發送聊天訊息。
+ * @param {object} payload - 包含 { prompt, history, projectData } 的物件。
+ * @returns {Promise<object>} - AI 的回應。
+ */
+export async function postToAiAssistant(payload) {
+  // 【重要】這就是我們之前部署的 Cloud Function URL
+  const API_URL = 'https://us-central1-thematic-runner-447203-n2.cloudfunctions.net/aiProxy/chat';
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // TODO: 未來在這裡加入 Authorization token 進行安全性驗證
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      // 嘗試解析後端回傳的錯誤訊息
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `AI 服務錯誤: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('與 AI 助理通訊失敗:', error);
+    // 將更詳細的錯誤訊息回傳給前端
+    return { error: error.message || '無法連接至 AI 助理，請稍後再試。' };
+  }
+}
