@@ -133,7 +133,9 @@
       <MortgageCalculator @close="mortgageDialog = false" />
     </v-dialog>
 
-    <AiAssistant />
+   
+   <AiAssistant v-if="showAiAssistant" />
+
 
   </v-app>
 </template>
@@ -172,6 +174,8 @@ const route = useRoute();
 const { isFullscreen, toggleFullscreen } = useFullscreen();
 const contactDialog = ref(false);
 const mortgageDialog = ref(false);
+const showAiAssistant = ref(false); // AI助理false=隱藏
+
 
 const showSnackbar = (message) => {
   snackbarMessage.value = message;

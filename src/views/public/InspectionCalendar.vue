@@ -1468,7 +1468,6 @@ async function fetchData() {
     ]);
 
     if (appointmentsResponse.status === 'success') {
-      if (appointmentsResponse.status === 'success') {
       appointments.value = appointmentsResponse.data;
       
       // ✨ --- 3. 核心修改：在設定情境前，預先處理日期 --- ✨
@@ -1485,11 +1484,36 @@ async function fetchData() {
                       : '無效日期',
           預約時段: appt['預約時段'],
           預約狀態: appt['預約狀態'],
+          買方姓名: appt['買方姓名'],
+          買方電話: appt['買方電話'],
+          買方EMAIL: appt['買方EMAIL'],
+          買方身分證: appt['買方身分證'], 
+          預約人姓名: appt['預約人姓名'],
+          預約人電話: appt['預約人電話'],
+          預約人EMAIL: appt['預約人EMAIL'],
+          預約人身分證: appt['預約人身分證'],
+          車位: appt['車位'],
+          門牌: appt['門牌'],
+          撥款日期: appt['撥款日期'] ? format(new Date(appt['撥款日期']), 'yyyy-MM-dd') : '',
+          銀行: appt['銀行'],
+          銀行窗口: appt['銀行窗口'],
+          驗屋報告: appt['驗屋報告'],
+          驗屋文件: appt['驗屋文件'],
+          初驗批次: appt['初驗批次'],
+          複驗批次: appt['複驗批次'],
+          後陽台門鎖更換批次: appt['後陽台門鎖更換批次'],
+          備註: appt['備註'],
+          預約代碼: appt['預約代碼'],
+          驗屋方式: appt['驗屋方式'],
+          代驗公司名稱: appt['代驗公司名稱'],
+          受託人姓名: appt['受託人姓名'],
+          受託人電話: appt['受託人電話'],     
           驗屋人員: appt['驗屋人員'],
           預約備註: appt['預約備註']
         };
       });
       pageContextStore.setContext('驗屋行事曆', contextForAI);
+      // ✨ --- 修改結束 --- ✨
 
     } else throw new Error(appointmentsResponse.message || '無法獲取預約資料');
 
@@ -1521,6 +1545,7 @@ async function fetchData() {
     isLoading.value = false;
   }
 }
+
 const isDateAllowed = (date) => {
   if (!currentBookingRules.value) return false;
   const dateStr = format(date, 'yyyy-MM-dd');

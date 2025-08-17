@@ -14,6 +14,8 @@ git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:
 
 
 部署AI助理 
+cd ai-proxy-backend
+
 gcloud functions deploy aiProxy \
   --gen2 \
   --runtime=nodejs20 \

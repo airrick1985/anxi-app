@@ -56,24 +56,27 @@
 <script setup>
 import { ref, watch, nextTick } from 'vue';
 import { useAiStore } from '@/store/aiStore';
-import { useUserStore } from '@/store/user'; // 引入 user store
+import { useUserStore } from '@/store/user';
+import { usePageContextStore } from '@/store/pageContextStore'; // 
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 const aiStore = useAiStore();
-const userStore = useUserStore(); // 使用 user store
+const userStore = useUserStore();
+const pageContextStore = usePageContextStore(); // 2. 初始化 store
 const userInput = ref('');
 const chatMessages = ref(null);
 
 const handleSendMessage = () => {
   if (!userInput.value.trim()) return;
 
-  // 示例：傳入一些基本的用戶和專案數據
-  // 您可以根據當前頁面的內容，動態傳入更豐富的 projectData
+  // 3. 組合要傳送給 AI 的所有情境數據
   const contextData = {
     currentUser: userStore.user?.name,
     currentProject: userStore.user?.projectName,
-    // 在這裡可以加入更多從其他 store 或頁面取得的數據
+    // 從 pageContextStore 讀取當前頁面的情境
+    currentPage: pageContextStore.contextName,
+    pageData: pageContextStore.contextData,
   };
 
   aiStore.sendMessage(userInput.value, contextData);
