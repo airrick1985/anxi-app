@@ -121,21 +121,23 @@
           </template>
 
           <template v-else>
-       <v-card-title 
-              class="text-h5 font-weight-bold py-2 d-flex align-center"
-              :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
-            >
-              <span>{{ projectConfig.pageTitle }}</span>
-              <v-spacer></v-spacer>
-              <v-btn
-                v-if="step === 1"
-                prepend-icon="mdi-file-upload-outline"
-                variant="outlined"
-                @click="isUploadMode = true"
-              >
-                上傳驗屋報告
-              </v-btn>
-            </v-card-title>
+<v-card-title 
+       class="text-h5 font-weight-bold py-2 d-sm-flex align-center"
+       :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
+      >
+       <span>{{ projectConfig.pageTitle }}</span>
+       <v-spacer class="d-none d-sm-flex"></v-spacer>
+       <v-btn
+        v-if="step === 1 && projectConfig.showReportUploadButton"        
+        prepend-icon="mdi-file-upload-outline"
+        variant="elevated"
+        @click="isUploadMode = true"
+        class="mt-3 mt-sm-0"
+        :block="$vuetify.display.xs"
+       >
+        上傳驗屋報告
+       </v-btn>
+      </v-card-title>
             <v-divider></v-divider>
 
             <v-card-text v-if="step < 3">
@@ -269,7 +271,6 @@
               </v-form>
             </v-card-text>
             <v-card-actions class="pa-4">
-       <v-btn prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
        <v-spacer></v-spacer>
        <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
       </v-card-actions>
@@ -307,7 +308,7 @@
 </v-list>
             </v-card-text>
             <v-card-actions class="pa-4">
-              <v-btn prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
+              <v-btn v-if="projectConfig.showReportUploadButton" prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
               <v-spacer></v-spacer>
               <v-btn color="error" size="large" variant="elevated" @click="confirmCancelBooking" :loading="isCanceling" :disabled="!isBookingActive">取消預約</v-btn>
             </v-card-actions>
@@ -581,6 +582,23 @@
   </v-card>
 </v-dialog>
 
+<v-dialog v-model="isUploadErrorDialogVisible" max-width="500px" persistent>
+  <v-card>
+    <v-card-title class="d-flex align-center bg-warning">
+      <v-icon class="mr-3">mdi-alert-outline</v-icon>
+      <span class="text-h5">無法上傳</span>
+    </v-card-title>
+    <v-card-text class="pt-4 text-body-1" v-html="uploadErrorDialogMessage">
+    </v-card-text>
+    <v-card-actions>
+      <v-spacer></v-spacer>
+      <v-btn color="grey-darken-1" variant="text" @click="isUploadErrorDialogVisible = false">
+        關閉
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
 </v-container>
 </template>
 
@@ -631,6 +649,7 @@ const finalAuthLetterUrl = ref('');
 const projectConfigurations = {
   'fuyu56': {
     isPublished: true,
+    showReportUploadButton: false, //上傳驗屋報告按鈕開關
     bookingDeadline: '2025-08-30T23:00:00+08:00',//截止日期設定
     themeColor: '#005A9E',
     projectName: '富宇上城',
@@ -692,8 +711,8 @@ const projectConfigurations = {
       body: '<p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>',
       alert: {
         show: true,
-        type: 'warning',
-        color: '#C51162',
+        type: 'info',
+        color: 'error',
         title: '預約截止時間',
         text: `<strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，視同自動放棄．若需更換則自行聯繫配合廠商安排施工，並自付相關費用。`
       },
@@ -715,7 +734,7 @@ const projectConfigurations = {
       alert: {
         show: true,
         type: 'info',
-        color: 'primary',
+        color: 'error',
         title: '上傳須知',
         text: '初驗報告及複驗報告每戶僅限上傳一份，若報告有修改需重新上傳，請洽服務電話：<a href="tel:03-6588882">03-658-8882</a>。如果您的檔案超過30MB，請先至 <a href="https://www.ilovepdf.com/zh-tw/compress_pdf" target="_blank">ilovepdf.com</a> 進行壓縮。'
       }
@@ -724,6 +743,7 @@ const projectConfigurations = {
 
   'fuyu61': {
     isPublished: true,
+    showReportUploadButton: true, // 上傳驗屋報告按鈕開關
     bookingDeadline: null,
     themeColor: '#005A9E',
     projectName: '富宇富御',
@@ -737,7 +757,7 @@ const projectConfigurations = {
        body: '<p>歡迎使用「富宇富御」線上驗屋預約系統，請依下方步驟完成您的預約。</p>',
        alert: {
             show: true,
-            color: '#C51162',
+            color: 'error',
             type: 'info',
             title: '驗屋說明',
             text: `
@@ -779,7 +799,7 @@ const projectConfigurations = {
       alert: {
         show: true,
         type: 'info',
-        color: 'red-darken-4',
+        color: 'error',
         title: '上傳須知',
         text: '初驗與複驗報告若有修改皆可重新上傳，系統將以最新版本為主。若檔案超過30MB，請先至 <a href="https://www.ilovepdf.com/zh-tw/compress_pdf" target="_blank">ilovepdf.com</a> 進行壓縮。'
       }
@@ -1325,11 +1345,15 @@ const handleUploadSubmit = async () => {
     if (res.status === 'success') {
       uploadSuccess.value = true;
     } else {
-      throw new Error(res.message || '上傳失敗，請稍後再試。');
+      // ✅ 捕捉後端回傳的業務邏輯錯誤
+      uploadErrorDialogMessage.value = res.message.replace(/\n/g, '<br>'); // 將換行符轉為HTML換行
+      isUploadErrorDialogVisible.value = true;
     }
   } catch (error) {
+    // ✅ 捕捉網路或程式執行錯誤
     console.error('上傳報告失敗:', error);
-    alert(`上傳失敗：${error.message}`);
+    uploadErrorDialogMessage.value = `上傳失敗：${error.message}`;
+    isUploadErrorDialogVisible.value = true;
   } finally {
     isLoading.value = false;
   }
