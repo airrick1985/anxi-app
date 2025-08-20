@@ -1235,3 +1235,27 @@ export async function postToAiAssistant(payload) {
     return { error: error.message || '無法連接至 AI 助理，請稍後再試。' };
   }
 }
+
+
+/**
+ * ===============================================
+ * /  ✅ 新增：驗屋報告上傳 API
+ * ===============================================
+ */
+
+/**
+ * 上傳驗屋報告 (PDF) 及相關資料
+ * @param {object} payload - 包含所有表單資料和檔案 base64 內容的物件
+ * @returns {Promise<object>} - API 響應
+ */
+export async function uploadInspectionReport(payload) {
+  console.log('[api.js] uploadInspectionReport called with payload:', payload.unit);
+  if (!payload.projectName || !payload.file) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadInspectionReport 時缺少參數。' });
+  }
+  // 這個 action 屬於公開預約系統的一部分，所以發到 INSPECTION_API
+  return fetchPost({
+    action: 'upload_inspection_report',
+    ...payload
+  }, INSPECTION_API);
+}
