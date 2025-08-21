@@ -58,8 +58,8 @@
 
       <div v-if="isEditingUser">
         <v-card-title class="mt-4">
-          <span v-if="isNewUser">新增人員：{{ targetUser.basicInfo.手機號碼 }}</span>
-          <span v-else>編輯人員： {{ targetUser.basicInfo.NAME }} ({{ targetUser.basicInfo.手機號碼 }})</span>
+          <span v-if="isNewUser">新增人員：{{ targetUser.basicInfo.phone }}</span>
+          <span v-else>編輯人員： {{ targetUser.basicInfo.name }} ({{ targetUser.basicInfo.phone }})</span>
         </v-card-title>
         
         <v-form ref="basicInfoForm" v-model="isFormValid">

@@ -74,41 +74,100 @@ export async function getProjectList(userKey) {
 
 
 
-// 🔐 使用者登入
-export async function loginUser(key, password, projectName) {
-  console.log(`[api.js] loginUser called with key: ${key}, projectName: ${projectName}`);
+// 🔐 [Firestore 版] - 使用者登入
+export async function loginUser(key, password) {
+  console.log(`[api.js] Firestore loginUser called with key: ${key}`);
   try {
-    const res = await fetch(USER_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'login', key, password, projectName })
+    // 步驟 1: 從 'users' 集合中查找使用者文件
+    const userDocRef = doc(db, "users", key);
+    const userDocSnap = await getDoc(userDocRef);
+
+    // 檢查使用者是否存在
+    if (!userDocSnap.exists()) {
+      return { status: 'error', message: '手機號碼不存在或錯誤' };
+    }
+
+    const userData = userDocSnap.data();
+    // 檢查密碼是否相符 (注意：實際線上專案應使用更安全的密碼驗證機制)
+    if (userData.password !== String(password)) {
+      return { status: 'error', message: '密碼錯誤' };
+    }
+
+    // 步驟 2: 驗證成功後，從 'permissions' 集合獲取使用者權限
+    const permissionsRef = collection(db, "permissions");
+    const q = query(permissionsRef, where("userPhone", "==", key), where("access", "==", true));
+    const permissionsSnapshot = await getDocs(q);
+
+    const detailedPermissions = [];
+    permissionsSnapshot.forEach(doc => {
+      const perm = doc.data();
+      detailedPermissions.push({
+        projectName: perm.projectName,
+        system: perm.system,
+        access: 'Y' // 因為我們只查詢 access 為 true 的權限
+      });
     });
-    return await res.json();
+
+    // 步驟 3: 組合前端 userStore 需要的使用者物件
+    const userObject = {
+      key: key,
+      email: userData.email,
+      name: userData.name,
+      detailedPermissions: detailedPermissions
+    };
+
+    // 回傳與舊版 API 結構相容的成功物件
+    return { status: 'success', user: userObject };
+
   } catch (e) {
-    console.error('loginUser 錯誤:', e);
-    return { status: 'error', message: e.message };
+    console.error('Firestore loginUser 錯誤:', e);
+    // 回傳一個通用的錯誤訊息
+    return { status: 'error', message: `登入時發生錯誤: ${e.message}` };
   }
 }
 
 
-// 🔧 修改使用者個人資料 (通常與用戶身份綁定，不直接依賴單個建案的 ssId)
+// 🔧 [Firestore 版] - 修改使用者個人資料
 export async function updateUserProfile(payload) {
-  console.log('[api.js] updateUserProfile called with payload:', payload);
+  const { key, oldPassword, name, email, newPassword } = payload;
+  console.log(`[api.js] Firestore updateUserProfile called for key: ${key}`);
+
   try {
-    const res = await fetch(USER_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update_profile',
-        ...payload,
-        oldPassword: payload.oldPassword ? String(payload.oldPassword) : '',
-        newPassword: payload.newPassword ? String(payload.newPassword) : ''
-      })
-    });
-    return await res.json();
+    // 步驟 1: 獲取使用者文件參考
+    const userDocRef = doc(db, "users", key);
+    const userDocSnap = await getDoc(userDocRef);
+
+    // 步驟 2: 驗證使用者是否存在及舊密碼是否正確
+    if (!userDocSnap.exists()) {
+      return { status: 'error', message: '找不到用戶資料，請重新登入' };
+    }
+
+    const userData = userDocSnap.data();
+    if (userData.password !== String(oldPassword)) {
+      return { status: 'error', message: '原密碼錯誤，無法更新資料' };
+    }
+
+    // 步驟 3: 準備要更新的資料
+    const dataToUpdate = {
+      name: name,
+      email: email,
+    };
+
+    // 如果有提供新密碼，才將其加入待更新的資料中
+    if (newPassword && String(newPassword).trim() !== '') {
+      dataToUpdate.password = String(newPassword);
+    }
+
+    // 步驟 4: 執行更新
+    await updateDoc(userDocRef, dataToUpdate);
+
+    // 步驟 5: 回傳成功訊息
+    console.log(`[api.js] User profile for ${key} updated successfully.`);
+    return { status: 'success', message: '個人資料已更新' };
+
   } catch (e) {
-    console.error('updateUserProfile 錯誤:', e);
-    return { status: 'error', message: e.message };
+    console.error('Firestore updateUserProfile 錯誤:', e);
+    return { status: 'error', message: `更新資料時發生錯誤: ${e.message}` };
   }
 }
 
