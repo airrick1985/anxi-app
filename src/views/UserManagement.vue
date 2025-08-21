@@ -65,12 +65,14 @@
         <v-form ref="basicInfoForm" v-model="isFormValid">
           <v-card-text>
             <v-row>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.手機號碼" label="手機號碼" variant="outlined" dense readonly hint="手機號碼為唯一識別碼，不可修改"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.NAME" label="姓名" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.EMAIL" label="Email" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.密碼" label="密碼" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司名稱" label="公司名稱" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.公司統編" label="公司統編" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model="searchPhone" label="手機號碼" variant="outlined" dense readonly hint="手機號碼為唯一識別碼，不可修改"></v-text-field>
+            </v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.name" label="姓名" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.email" label="Email" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.password" label="密碼" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.companyName" label="公司名稱" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="targetUser.basicInfo.companyTaxId" label="公司統編" variant="outlined" dense :rules="rules.required"></v-text-field></v-col>
             </v-row>
           </v-card-text>
         </v-form>

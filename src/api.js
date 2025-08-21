@@ -1,4 +1,9 @@
 // /workspaces/anxi-app/src/api.js
+
+
+import { db } from '@/firebase'; // 引入我們設定好的 firestore 實例
+import { collection, doc, getDoc, getDocs, query, where, writeBatch, setDoc } from "firebase/firestore";
+
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
 const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
 const INSPECTION_API = `${BASE_API_URL}/inspection`;
@@ -699,46 +704,233 @@ export async function setMessageStatus(statusId, actionType) {
 // ===============================================
 
 /**
- * 獲取當前管理員的權限範圍 (可管理的建案和可指派的權限)
+ * [Firestore 版] 獲取當前管理員的權限範圍 (可管理的建案和可指派的權限)
  * @param {string} adminKey - 管理員自己的手機號碼
  * @returns {Promise<object>} - 返回管理範圍物件
  */
 export async function fetchAdminScope(adminKey) {
-    const result = await fetchPost({ action: 'get_admin_scope', adminKey }, USER_MANAGEMENT_API);
-    return result.status === 'success' ? result.data : {};
+  const permissionsRef = collection(db, "permissions");
+
+  // 步驟 1: 找出管理員有 "人員管理" 權限的所有建案
+  const managementQuery = query(permissionsRef, 
+    where("userPhone", "==", adminKey), 
+    where("system", "==", "人員管理"), 
+    where("access", "==", true)
+  );
+  
+  const managementSnapshot = await getDocs(managementQuery);
+  if (managementSnapshot.empty) {
+    return {}; // 沒有任何管理權限
+  }
+  
+  const managedProjects = managementSnapshot.docs.map(d => d.data().projectName);
+
+  // 步驟 2: 獲取在這些建案中，管理員擁有的所有權限
+  const scopeQuery = query(permissionsRef,
+    where("userPhone", "==", adminKey),
+    where("projectName", "in", managedProjects),
+    where("access", "==", true)
+  );
+
+  const scopeSnapshot = await getDocs(scopeQuery);
+  const adminScope = {};
+
+  scopeSnapshot.forEach(doc => {
+    const perm = doc.data();
+    if (!adminScope[perm.projectName]) {
+      adminScope[perm.projectName] = [];
+    }
+    adminScope[perm.projectName].push(perm.system);
+  });
+
+  return adminScope;
 }
 
 /**
- * 管理員查詢特定用戶的詳細資料
+ * [Firestore 版] 管理員查詢特定用戶的詳細資料
  * @param {string} targetUserKey - 被查詢者的手機號碼
  * @param {string} adminKey - 管理員自己的手機號碼
- * @returns {Promise<object|null>} - 返回用戶資料物件或 null
+ * @returns {Promise<object|null>} - 返回用戶資料物件或 result 物件
  */
 export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
-    const result = await fetchPost({ action: 'fetch_user_details_for_admin', targetUserKey, adminKey }, USER_MANAGEMENT_API);
-    // 如果成功，回傳 data，否則直接回傳整個 result 讓元件可以判斷錯誤類型
-    return result.status === 'success' ? result.data : result;
+  // 權限檢查：再次確認 admin 有權管理 targetUser
+  const manageableUsers = await fetchManageableUsersForAdmin(adminKey);
+  const isManageable = manageableUsers.some(u => u.phone === targetUserKey);
+  
+  // 新增用戶時，還沒有權限，所以要放行
+  // 檢查 user collection 是否存在此用戶
+  const userDocRefCheck = doc(db, "users", targetUserKey);
+  const userDocSnapCheck = await getDoc(userDocRefCheck);
+  
+  if (!userDocSnapCheck.exists()) {
+    return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
+  }
+  
+  if (!isManageable && userDocSnapCheck.exists()) {
+     // 如果用戶存在但不可管理
+     const PROTECTED_USERS_BLACKLIST = ['60763998'];
+     if (!PROTECTED_USERS_BLACKLIST.includes(targetUserKey)) {
+        return { status: 'error', message: '權限不足，您無法查詢或管理此人員的資料。' };
+     }
+  }
+
+  // 1. 獲取基本資料
+  const userDocRef = doc(db, "users", targetUserKey);
+  const userDocSnap = await getDoc(userDocRef);
+  if (!userDocSnap.exists()) {
+    return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
+  }
+
+  // 2. 獲取權限資料
+  const permissionsRef = collection(db, "permissions");
+  const permissionsQuery = query(permissionsRef, where("userPhone", "==", targetUserKey));
+  const permissionsSnapshot = await getDocs(permissionsQuery);
+  
+  const permissions = permissionsSnapshot.docs.map(d => {
+    const data = d.data();
+    // 轉換回舊格式以相容 Vue 組件
+    return {
+      '手機號碼': data.userPhone,
+      'NAME': data.userName,
+      '建案名稱': data.projectName,
+      '系統功能': data.system,
+      '權限': data.access ? 'Y' : 'N'
+    };
+  });
+  
+  const basicInfo = userDocSnap.data();
+  // 轉換回舊格式
+  const formattedBasicInfo = {
+    '手機號碼': targetUserKey,
+    'NAME': basicInfo.name,
+    'EMAIL': basicInfo.email,
+    '密碼': basicInfo.password,
+    '公司名稱': basicInfo.companyName,
+    '公司統編': basicInfo.companyTaxId,
+    '角色': basicInfo.role
+  };
+
+  return { 
+    status: 'success', 
+    data: {
+      basicInfo: formattedBasicInfo,
+      permissions: permissions
+    }
+  };
 }
 
 /**
- * 管理員更新用戶資料
+ * [Firestore 版] 管理員更新用戶資料
  * @param {object} updatePayload - 包含 targetUserKey, adminKey, basicInfo, permissionsData 的物件
  * @returns {Promise<object>} - 返回操作結果
  */
 export async function updateUserDetailsForAdmin(updatePayload) {
-    return fetchPost({ action: 'update_user_details_for_admin', ...updatePayload }, USER_MANAGEMENT_API);
-}
+  const { targetUserKey, adminKey, basicInfo, permissionsData } = updatePayload;
 
+  try {
+    const batch = writeBatch(db);
+
+    // 步驟 1: 更新或建立 users 集合中的基本資料
+    const userDocRef = doc(db, "users", targetUserKey);
+    // 將中文 key 轉回英文 key
+    const newBasicInfo = {
+      name: basicInfo.NAME,
+      email: basicInfo.EMAIL,
+      password: String(basicInfo.密碼),
+      companyName: basicInfo.公司名稱,
+      companyTaxId: basicInfo.公司統編,
+      role: basicInfo.角色 || '' // 確保有值
+      // 如果要記錄修改者，可以在此加入
+      // lastModifiedBy: adminName,
+      // lastModifiedByPhone: adminKey
+    };
+    batch.set(userDocRef, newBasicInfo, { merge: true }); // merge: true 確保只更新傳入的欄位
+
+    // 步驟 2: 刪除該用戶在管理者權限範圍內的所有舊權限
+    const adminScope = await fetchAdminScope(adminKey);
+    const managedProjects = Object.keys(adminScope);
+
+    if (managedProjects.length > 0) {
+      const permissionsRef = collection(db, "permissions");
+      const oldPermsQuery = query(permissionsRef, 
+        where("userPhone", "==", targetUserKey),
+        where("projectName", "in", managedProjects)
+      );
+      const oldPermsSnapshot = await getDocs(oldPermsQuery);
+      oldPermsSnapshot.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+    }
+
+    // 步驟 3: 新增前端傳來的新權限
+    permissionsData.forEach(perm => {
+      // 只新增 access 為 true ('Y') 的權限
+      if (perm.permission === 'Y') {
+        const newPermDocRef = doc(collection(db, "permissions")); // 建立一個新的文件參照
+        batch.set(newPermDocRef, {
+          userPhone: perm.phone,
+          userName: perm.name,
+          projectName: perm.projectName,
+          system: perm.systemFunction,
+          access: true
+        });
+      }
+    });
+
+    // 步驟 4: 提交所有操作
+    await batch.commit();
+
+    return { status: 'success' };
+  } catch (e) {
+    console.error("更新 Firestore 資料失敗: ", e);
+    return { status: 'error', message: e.message };
+  }
+}
 /**
- * 獲取管理者可管理的人員列表 (姓名+電話)
+ * [Firestore 版] 獲取管理者可管理的人員列表 (姓名+電話)
  * @param {string} adminKey - 管理員自己的手機號碼
  * @returns {Promise<Array>} - 返回可管理人員的陣列
  */
 export async function fetchManageableUsersForAdmin(adminKey) {
-    const result = await fetchPost({ action: 'get_manageable_users_for_admin', adminKey }, USER_MANAGEMENT_API);
-    return result.status === 'success' ? result.data : [];
-}
+  // 先獲取管理者能管理的建案
+  const scope = await fetchAdminScope(adminKey);
+  const managedProjects = Object.keys(scope);
 
+  if (managedProjects.length === 0) {
+    return [];
+  }
+
+  // 查詢所有在這些建案中有權限的用戶
+  const permissionsRef = collection(db, "permissions");
+  const usersQuery = query(permissionsRef,
+    where("projectName", "in", managedProjects),
+    where("access", "==", true)
+  );
+
+  const usersSnapshot = await getDocs(usersQuery);
+  
+  // 使用 Map 來過濾掉重複的用戶
+  const usersMap = new Map();
+  usersSnapshot.forEach(doc => {
+    const perm = doc.data();
+    // 排除管理員自己和受保護的用戶
+    const PROTECTED_USERS_BLACKLIST = ['60763998']; // 與後端一致
+    if (perm.userPhone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(perm.userPhone)) {
+      if (!usersMap.has(perm.userPhone)) {
+        usersMap.set(perm.userPhone, {
+          name: perm.userName,
+          phone: perm.userPhone
+        });
+      }
+    }
+  });
+
+  const manageableUsers = Array.from(usersMap.values());
+  // 筆劃排序
+  manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+
+  return manageableUsers;
+}
 
 // ===============================================
 // /  訂閱管理系統 API
@@ -1259,3 +1451,4 @@ export async function uploadInspectionReport(payload) {
     ...payload
   }, INSPECTION_API);
 }
+
