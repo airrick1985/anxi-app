@@ -1,8 +1,14 @@
 // /workspaces/anxi-app/src/api.js
 
 
-import { db } from '@/firebase'; // 引入我們設定好的 firestore 實例
-import { collection, doc, getDoc, getDocs, query, where, writeBatch, setDoc } from "firebase/firestore";
+// ✅ 在檔案頂部，引入所有需要的函式
+import { db, storage } from '@/firebase'; // 引入 db 和新的 storage
+import { 
+  collection, query, where, getDocs, getDoc, doc, updateDoc, 
+  serverTimestamp, getCountFromServer, documentId, orderBy, writeBatch
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
 const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
@@ -604,101 +610,277 @@ export async function cancelPurchase(projectName, unitId, operatorName) {
 }
 
 // ===============================================
-// /  訊息系統 API (修正版)
+// /  訊息系統 API (Firestore 遷移版)
 // ===============================================
 
 /**
- * 獲取當前用戶的發信權限 (可選的建案與系統)
+ * [Firestore 版] 獲取當前用戶的發信權限 (可選的建案與系統)
  * @param {string} userKey - 用戶的手機號碼
- * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ * @returns {Promise<object>} - 返回權限物件 { projectName: [system1, system2] }
  */
 export async function fetchMessagePermissionOptions(userKey) {
-    const result = await fetchPost({ action: 'get_message_permission_options', key: userKey }, MESSAGE_API);
-    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空物件
-    return result.status === 'success' ? result.data : {};
+    const permissionsRef = collection(db, "permissions");
+    const q = query(
+        permissionsRef, 
+        where("userPhone", "==", userKey), 
+        where("access", "==", true)
+    );
+    const querySnapshot = await getDocs(q);
+    const permissions = {};
+
+    querySnapshot.forEach(doc => {
+        const perm = doc.data();
+        if (perm.system && perm.system.startsWith('寄信-')) {
+            const projectName = perm.projectName;
+            const readableSystemName = perm.system.replace('寄信-', '');
+            if (!permissions[projectName]) {
+                permissions[projectName] = [];
+            }
+            permissions[projectName].push(readableSystemName);
+        }
+    });
+    return permissions;
 }
 
 /**
- * 根據建案和系統功能獲取收件人列表
+ * [Firestore 版] 根據建案和系統功能獲取收件人列表
  * @param {string} projectName 
  * @param {string} systemFunction - e.g., '銷控', '驗屋'
- * @returns {Promise<Array>} - ✅ 直接回傳 data 陣列
+ * @returns {Promise<Array>} - 返回收件人陣列 [{ name, phone }]
  */
 export async function fetchRecipientList(projectName, systemFunction) {
-    const result = await fetchPost({ action: 'get_recipient_list', projectName, systemFunction }, MESSAGE_API);
-    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空陣列
-    return result.status === 'success' ? result.data : [];
+    const targetPermission = `收信-${systemFunction}`;
+    const permissionsRef = collection(db, "permissions");
+    const q = query(
+        permissionsRef,
+        where("projectName", "==", projectName),
+        where("system", "==", targetPermission),
+        where("access", "==", true)
+    );
+    const permSnapshot = await getDocs(q);
+    if (permSnapshot.empty) return [];
+
+    const userPhones = [...new Set(permSnapshot.docs.map(doc => doc.data().userPhone))];
+    
+    if (userPhones.length === 0) return [];
+
+    const usersRef = collection(db, "users");
+    // 使用 'in' 查詢一次性獲取所有用戶的資料
+    const usersQuery = query(usersRef, where(documentId(), 'in', userPhones));
+    const usersSnapshot = await getDocs(usersQuery);
+
+    const recipients = [];
+    usersSnapshot.forEach(doc => {
+        recipients.push({
+            name: doc.data().name,
+            phone: doc.id
+        });
+    });
+
+    return recipients;
 }
 
 /**
- * 上傳單一附件檔案
- * @param {string} filename 
- * @param {string} base64 - Base64 編碼的檔案內容
- * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ * [Firebase Storage 版] 上傳單一附件檔案
+ * @param {File} file - 從 input 取得的原始 File 物件
+ * @returns {Promise<object>} - 返回包含 { name, url, path } 的物件
  */
-export async function uploadMessageAttachment(filename, base64) {
-    const result = await fetchPost({ action: 'upload_attachment', filename, base64 }, MESSAGE_API);
-    // ✅ 修正：只回傳 data 部分
-    return result.status === 'success' ? result.data : null;
+export async function uploadMessageAttachment(file) {
+    // 建立一個對 Firebase Storage 的引用
+    const storageRef = ref(storage, `attachments/${Date.now()}_${file.name}`);
+    
+    // 上傳檔案
+    const snapshot = await uploadBytes(storageRef, file);
+    
+    // 獲取下載 URL
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    // 回傳包含檔案資訊的物件，供後續使用
+    return {
+        name: file.name,
+        url: downloadURL,
+        path: snapshot.ref.fullPath // 儲存完整路徑以便未來管理 (例如刪除)
+    };
 }
 
+
 /**
- * 發送訊息
+ * [Firestore 版] 發送訊息
  * @param {object} messageData - 包含所有訊息內容的物件
  */
 export async function sendMessage(messageData) {
-    // 這個函式通常只關心成功或失敗，回傳整個 result 即可
-    return fetchPost({ action: 'send_message', ...messageData }, MESSAGE_API);
-}
+    // 1. 建立一個批次寫入操作，確保資料一致性
+    const batch = writeBatch(db);
 
+    // 2. 在 'messages' 集合中建立一個新文件並取得其 ID
+    const messageRef = doc(collection(db, 'messages'));
+    const messageId = messageRef.id;
+
+    // 3. 準備要寫入 'messages' 集合的資料
+    const messagePayload = {
+        senderKey: messageData.senderKey,
+        senderName: messageData.senderName,
+        sentTimestamp: serverTimestamp(), // 使用伺服器時間，更準確
+        projectName: messageData.projectName,
+        systemFunction: messageData.systemFunction,
+        subject: messageData.subject,
+        body: messageData.body,
+        attachments: JSON.stringify(messageData.attachments) // 將附件陣列轉為 JSON 字串儲存
+    };
+    batch.set(messageRef, messagePayload);
+
+    // 4. 為每一位收件人（包含寄件人自己）在 'messageStatus' 集合中建立對應的狀態文件
+    messageData.recipientPhones.forEach(phone => {
+        const statusRef = doc(collection(db, 'messageStatus')); // 自動產生唯一 ID
+        const statusPayload = {
+            messageId: messageId,
+            recipientPhone: phone,
+            readTimestamp: null,
+            isImportant: false,
+            isDeleted: false
+        };
+        batch.set(statusRef, statusPayload);
+    });
+
+    // 5. 提交所有寫入操作
+    await batch.commit();
+}
 /**
- * 獲取我的收件匣列表
+ * [Firestore 版] 獲取我的收件匣列表
  * @param {string} userKey 
- * @returns {Promise<Array>} - ✅ 直接回傳 data 陣列
+ * @returns {Promise<Array>}
  */
 export async function fetchMyMessages(userKey) {
-    const result = await fetchPost({ action: 'get_my_messages', key: userKey }, MESSAGE_API);
-    // ✅ 修正：只回傳 data 部分，如果失敗則回傳空陣列
-    return result.status === 'success' ? result.data : [];
+    // 1. 查詢 messageStatus 集合，找到所有屬於該用戶且未刪除的訊息狀態
+    const statusRef = collection(db, "messageStatus");
+    const statusQuery = query(
+        statusRef,
+        where("recipientPhone", "==", userKey),
+        where("isDeleted", "==", false)
+    );
+    const statusSnapshot = await getDocs(statusQuery);
+    if (statusSnapshot.empty) return [];
+
+    // 2. 從狀態中提取所有不重複的 messageId
+    const messageStatusMap = new Map();
+    statusSnapshot.forEach(doc => {
+        messageStatusMap.set(doc.data().messageId, { id: doc.id, ...doc.data() });
+    });
+    const messageIds = Array.from(messageStatusMap.keys());
+    if (messageIds.length === 0) return [];
+    
+    // 3. 使用 'in' 查詢，一次性從 messages 集合獲取所有相關的訊息主體
+    const messagesRef = collection(db, "messages");
+    const messagesQuery = query(
+        messagesRef, 
+        where(documentId(), 'in', messageIds),
+        orderBy("sentTimestamp", "desc") // 直接在查詢時排序
+    );
+    const messagesSnapshot = await getDocs(messagesQuery);
+
+    // 4. 組合訊息主體和個人狀態，回傳給前端
+    const myMessages = messagesSnapshot.docs.map(doc => {
+        const message = doc.data();
+        const status = messageStatusMap.get(doc.id);
+
+        return {
+            statusId: status.id,
+            messageId: doc.id,
+            senderName: message.senderName,
+            subject: message.subject,
+            sentTimestamp: message.sentTimestamp?.toDate(), // 將 Firestore Timestamp 轉為 JS Date
+            isRead: !!status.readTimestamp,
+            isImportant: status.isImportant,
+            projectName: message.projectName,
+            systemFunction: message.systemFunction
+        };
+    });
+
+    return myMessages;
 }
 
 /**
- * 獲取單一訊息的詳細內容
+ * [Firestore 版] 獲取單一訊息的詳細內容
  * @param {string} statusId 
  * @param {string} userKey 
- * @returns {Promise<object>} - ✅ 直接回傳 data 物件
+ * @returns {Promise<object|null>}
  */
 export async function fetchMessageDetail(statusId, userKey) {
-    const result = await fetchPost({ action: 'get_message_detail', statusId, key: userKey }, MESSAGE_API);
-    // ✅ 修正：只回傳 data 部分
-    return result.status === 'success' ? result.data : null;
+    // 1. 獲取狀態文件，並驗證所有權
+    const statusDocRef = doc(db, "messageStatus", statusId);
+    const statusDocSnap = await getDoc(statusDocRef);
+
+    if (!statusDocSnap.exists() || statusDocSnap.data().recipientPhone !== userKey) {
+        console.error("權限不足或找不到訊息狀態");
+        return null;
+    }
+
+    // 2. 根據狀態文件中的 messageId 獲取訊息主體
+    const messageId = statusDocSnap.data().messageId;
+    const messageDocRef = doc(db, "messages", messageId);
+    const messageDocSnap = await getDoc(messageDocRef);
+
+    if (!messageDocSnap.exists()) {
+        console.error("找不到對應的訊息主體");
+        return null;
+    }
+
+    const message = messageDocSnap.data();
+    return {
+        messageId: messageDocSnap.id,
+        senderName: message.senderName,
+        sentTimestamp: message.sentTimestamp?.toDate(),
+        subject: message.subject,
+        body: message.body,
+        attachments: JSON.parse(message.attachments || '[]')
+    };
 }
 
 /**
- * 獲取未讀訊息數量
+ * [Firestore 版] 獲取未讀訊息數量
  * @param {string} userKey 
- * @returns {Promise<number>} - ✅ 直接回傳 count 數字
+ * @returns {Promise<number>}
  */
 export async function fetchUnreadMessageCount(userKey) {
-    const result = await fetchPost({ action: 'get_unread_message_count', key: userKey }, MESSAGE_API);
-    // ✅ 修正：只回傳 count 部分，如果失敗則回傳 0
-    return result.status === 'success' ? result.count : 0;
+    const statusRef = collection(db, "messageStatus");
+    const q = query(
+        statusRef,
+        where("recipientPhone", "==", userKey),
+        where("isDeleted", "==", false),
+        where("readTimestamp", "==", null)
+    );
+    
+    // 使用 getCountFromServer 效能更好
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
 }
 
 /**
- * 設定訊息狀態 - ✅ 修正版
+ * [Firestore 版] 設定訊息狀態
  * @param {string} statusId 
  * @param {string} actionType - 'markRead', 'markUnread', 'toggleImportant', 'delete'
  */
 export async function setMessageStatus(statusId, actionType) {
-    return fetchPost({
-        action: 'set_message_status', // 這是給代理層看的主要 action
-        statusId: statusId,
-        // ✅ 修正：將 'action' key 改名為 'statusAction'
-        statusAction: actionType 
-    }, MESSAGE_API);
-}
+    const docRef = doc(db, "messageStatus", statusId);
 
+    switch (actionType) {
+        case 'markRead':
+            return updateDoc(docRef, { readTimestamp: serverTimestamp() });
+        case 'markUnread':
+            return updateDoc(docRef, { readTimestamp: null });
+        case 'toggleImportant': {
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const currentStatus = docSnap.data().isImportant;
+                return updateDoc(docRef, { isImportant: !currentStatus });
+            }
+            break;
+        }
+        case 'delete':
+            return updateDoc(docRef, { isDeleted: true });
+    }
+    return Promise.resolve(); // 如果 actionType 無效，返回一個 resolved promise
+}
 // ===============================================
 // /  人員管理系統 API
 // ===============================================
@@ -798,16 +980,16 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
     };
   });
   
-  const basicInfo = userDocSnap.data();
-  // 轉換回舊格式
+ const basicInfo = userDocSnap.data();
+  // ✅ 修改這裡，將 key 改為與前端 v-model 一致的小寫英文
   const formattedBasicInfo = {
-    '手機號碼': targetUserKey,
-    'NAME': basicInfo.name,
-    'EMAIL': basicInfo.email,
-    '密碼': basicInfo.password,
-    '公司名稱': basicInfo.companyName,
-    '公司統編': basicInfo.companyTaxId,
-    '角色': basicInfo.role
+    phone: targetUserKey, // 雖然手機號碼欄位是 readonly，但統一格式比較好
+    name: basicInfo.name,
+    email: basicInfo.email,
+    password: String(basicInfo.password || ''), // 確保密碼是字串
+    companyName: basicInfo.companyName,
+    companyTaxId: String(basicInfo.companyTaxId || ''), // 確保統編是字串
+    role: basicInfo.role
   };
 
   return { 
@@ -825,7 +1007,7 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
  * @returns {Promise<object>} - 返回操作結果
  */
 export async function updateUserDetailsForAdmin(updatePayload) {
-  const { targetUserKey, adminKey, basicInfo, permissionsData } = updatePayload;
+  const { targetUserKey, adminKey, adminName, basicInfo, permissionsData } = updatePayload;
 
   try {
     const batch = writeBatch(db);
@@ -834,15 +1016,14 @@ export async function updateUserDetailsForAdmin(updatePayload) {
     const userDocRef = doc(db, "users", targetUserKey);
     // 將中文 key 轉回英文 key
     const newBasicInfo = {
-      name: basicInfo.NAME,
-      email: basicInfo.EMAIL,
-      password: String(basicInfo.密碼),
-      companyName: basicInfo.公司名稱,
-      companyTaxId: basicInfo.公司統編,
-      role: basicInfo.角色 || '' // 確保有值
-      // 如果要記錄修改者，可以在此加入
-      // lastModifiedBy: adminName,
-      // lastModifiedByPhone: adminKey
+      name: basicInfo.name,
+      email: basicInfo.email,
+      password: String(basicInfo.password || ''),
+      companyName: basicInfo.companyName,
+      companyTaxId: String(basicInfo.companyTaxId || ''),
+      role: basicInfo.role || '',
+      lastModifiedBy: adminName, // 現在 adminName 有值了
+      lastModifiedByPhone: adminKey
     };
     batch.set(userDocRef, newBasicInfo, { merge: true }); // merge: true 確保只更新傳入的欄位
 

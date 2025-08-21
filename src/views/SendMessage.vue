@@ -65,6 +65,7 @@
   </v-container>
 </template>
 
+
 <script>
 import { useUserStore } from '@/store/user';
 import { 
@@ -74,36 +75,30 @@ import {
     sendMessage 
 } from '@/api.js';
 
-// ✅【核心修改】引入我們自己的 TiptapEditor 元件
 import TiptapEditor from '@/components/TiptapEditor.vue';
 
 export default {
   name: 'SendMessage',
   components: {
-    // ✅【核心修改】註冊 TiptapEditor
     TiptapEditor
   },
   data() {
     return {
-      // ... 其他 data 維持不變 ...
       loading: false,
       loadingRecipients: false,
       isUploading: false,
-      permissionOptions: {}, // 初始為空物件
-      recipients: [],      // 初始為空陣列
+      permissionOptions: {},
+      recipients: [],
       selectedProject: null,
       selectedSystem: null,
-      recipients: [],
       selectedRecipients: [],
       isAllSelected: false,
       subject: '',
-      body: '', // 綁定 TiptapEditor
-      filesToUpload: [],
-      attachments: [], 
-      
+      body: '',
+      filesToUpload: [], // 用於 v-file-input
+      attachments: [],   // 儲存已上傳成功的檔案資訊
     };
   },
-  // ... computed, created, methods, watch 都維持不變 ...
   computed: {
     userStore() {
       return useUserStore();
@@ -115,10 +110,7 @@ export default {
       return Object.keys(this.permissionOptions);
     },
     availableSystems() {
-      if (this.selectedProject) {
-        return this.permissionOptions[this.selectedProject] || [];
-      }
-      return [];
+      return this.selectedProject ? (this.permissionOptions[this.selectedProject] || []) : [];
     },
     isFormValid() {
       return (
@@ -126,7 +118,7 @@ export default {
         this.selectedSystem &&
         this.selectedRecipients.length > 0 &&
         this.subject.trim() !== '' &&
-        this.body.trim() !== '' &&
+        this.body.trim() !== '<p></p>' && // Tiptap 空白時的內容
         !this.isUploading
       );
     }
@@ -134,11 +126,10 @@ export default {
   async created() {
     await this.loadPermissionOptions();
   },
- methods: {
+  methods: {
     async loadPermissionOptions() {
       if (this.user && this.user.key) {
         try {
-          // ✅ 這裡現在會直接收到權限物件，不再是 {status, data}
           this.permissionOptions = await fetchMessagePermissionOptions(this.user.key);
         } catch (error) {
           alert('載入發信權限失敗，請稍後再試。');
@@ -152,14 +143,13 @@ export default {
       this.selectedRecipients = [];
       this.isAllSelected = false;
     },
-async fetchRecipients() {
+    async fetchRecipients() {
         if (!this.selectedProject || !this.selectedSystem) return;
         this.loadingRecipients = true;
         this.recipients = [];
         this.selectedRecipients = [];
         this.isAllSelected = false;
         try {
-            // ✅ 這裡現在會直接收到收件人陣列
             this.recipients = await fetchRecipientList(this.selectedProject, this.selectedSystem);
         } catch (error) {
             alert('載入收件人列表失敗，請稍後再試。');
@@ -169,36 +159,27 @@ async fetchRecipients() {
         }
     },
     toggleSelectAll() {
-      if (this.isAllSelected) {
-        this.selectedRecipients = this.recipients.map(r => r.phone);
-      } else {
-        this.selectedRecipients = [];
-      }
+      this.selectedRecipients = this.isAllSelected ? this.recipients.map(r => r.phone) : [];
     },
     async handleFileUpload(files) {
         if (!files || files.length === 0) return;
         this.isUploading = true;
         try {
-            const uploadPromises = files.map(file => this.uploadSingleFile(file));
-            await Promise.all(uploadPromises);
+            // 使用 Promise.all 來並行上傳所有檔案
+            const uploadPromises = files.map(file => uploadMessageAttachment(file));
+            const uploadedFiles = await Promise.all(uploadPromises);
+            // 將所有成功上傳的檔案資訊加入 attachments 陣列
+            this.attachments.push(...uploadedFiles);
         } catch (error) {
             alert('部分或全部檔案上傳失敗，請檢查網路連線並重試。');
             console.error(error);
         } finally {
             this.isUploading = false;
-            this.filesToUpload = [];
-        }
-    },
-    async uploadSingleFile(file) {
-        const base64 = await this.toBase64(file);
-        const result = await uploadMessageAttachment(file.name, base64);
-        if (result && result.fileId) {
-            this.attachments.push(result);
-        } else {
-            throw new Error(`檔案 ${file.name} 上傳後未收到有效回應。`);
+            this.filesToUpload = []; // 清空 v-file-input
         }
     },
     removeAttachment(index) {
+      // 這裡未來可以加上從 Firebase Storage 刪除檔案的邏輯
       this.attachments.splice(index, 1);
     },
     async handleSendMessage() {
@@ -219,16 +200,16 @@ async fetchRecipients() {
                 systemFunction: this.selectedSystem,
                 subject: this.subject,
                 body: this.body,
-                recipientPhones: this.selectedRecipients,
-                attachments: this.attachments
+                recipientPhones: [...this.selectedRecipients], // 確保傳入的是一個陣列
+                attachments: this.attachments // 傳入已上傳的檔案資訊陣列
             };
-            const result = await sendMessage(messageData);
-            if (result.status === 'success') {
-                alert('訊息已成功發送！');
-                this.$router.push('/messages');
-            } else {
-                throw new Error(result.message);
-            }
+            
+            // ✅ 新的 sendMessage 函式在成功時不會回傳任何東西，失敗時會拋出錯誤
+            await sendMessage(messageData);
+            
+            alert('訊息已成功發送！');
+            this.$router.push({ name: 'MessageCenter' }); // 建議使用具名路由跳轉
+
         } catch (error) {
             alert(`訊息發送失敗: ${error.message}`);
             console.error(error);
@@ -236,22 +217,11 @@ async fetchRecipients() {
             this.loading = false;
         }
     },
-    toBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-      });
-    },
+    // toBase64 函式已不再需要，可以刪除
   },
   watch: {
     selectedRecipients(newValue) {
-      if (this.recipients.length > 0 && newValue.length === this.recipients.length) {
-        this.isAllSelected = true;
-      } else {
-        this.isAllSelected = false;
-      }
+      this.isAllSelected = this.recipients.length > 0 && newValue.length === this.recipients.length;
     }
   }
 };

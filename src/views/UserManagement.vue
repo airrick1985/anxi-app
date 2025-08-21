@@ -245,11 +245,13 @@ const handleSearchUser = async () => {
       } else {
         throw new Error(result.message);
       }
-    } else {
+  } else {
       isNewUser.value = false;
-      targetUser.value = result;
+      // ✅ 只將回傳結果中的 data 物件賦值給 targetUser
+      targetUser.value = result.data; 
       selectedUserPhone.value = phoneToSearch;
-      buildPermissionMatrix(result.permissions);
+      // ✅ 同樣地，權限資料也應從 result.data 中取得
+      buildPermissionMatrix(result.data.permissions);
     }
   } catch (error) {
     errorMessage.value = `查詢失敗：${error.message}`;
@@ -259,18 +261,27 @@ const handleSearchUser = async () => {
   }
 };
 
+// UserManagement.vue - script setup
+
 const startCreateNewUser = () => {
   showCreateUserDialog.value = false;
   isNewUser.value = true;
   targetUser.value = {
+    // 改為英文 key
     basicInfo: {
-      '手機號碼': searchPhone.value,
-      'NAME': '', 'EMAIL': '', '密碼': '', '公司名稱': '', '公司統編': ''
+      name: '', 
+      email: '', 
+      password: '', 
+      companyName: '', 
+      companyTaxId: '',
+      role: ''
     },
     permissions: []
   };
   buildPermissionMatrix([]);
 };
+
+
 
 const buildPermissionMatrix = (permissions) => {
   const matrix = {};
@@ -293,19 +304,27 @@ const buildPermissionMatrix = (permissions) => {
 
 const handleSave = async () => {
     if (!targetUser.value) return;
+
+    // 1. 執行 Vuetify 表單驗證
     const { valid } = await basicInfoForm.value.validate();
     if (!valid) {
         alert('請檢查並填寫所有必填欄位。');
         return;
     }
+
+    // 2. 開啟儲存中的 Loading 狀態
     saving.value = true;
+
+    // 3. 組合要發送到後端的權限資料
     const permissionsData = [];
+    const targetPhone = targetUser.value.basicInfo.手機號碼 || searchPhone.value;
+    
     for (const system of allSystemFunctions.value) {
         for (const project of managedProjects.value) {
             if (adminCanAssign(project, system)) {
                 permissionsData.push({
-                    phone: targetUser.value.basicInfo.手機號碼,
-                    name: targetUser.value.basicInfo.NAME,
+                    phone: targetPhone,
+                    name: targetUser.value.basicInfo.name, // 假設 NAME 是必填
                     projectName: project,
                     systemFunction: system,
                     permission: permissionMatrix.value[system][project] ? 'Y' : 'N'
@@ -313,24 +332,43 @@ const handleSave = async () => {
             }
         }
     }
+
+    // 4. 準備完整的 payload
+const payload = {
+        targetUserKey: targetPhone,
+        adminKey: adminKey.value,
+        adminName: userStore.user?.name, // 從 userStore 獲取當前管理員的姓名
+        basicInfo: targetUser.value.basicInfo,
+        permissionsData: permissionsData
+    };
+
+    // 5. 呼叫 API 並處理後續操作
     try {
-        const result = await updateUserDetailsForAdmin({
-            targetUserKey: targetUser.value.basicInfo.手機號碼,
-            adminKey: adminKey.value,
-            basicInfo: targetUser.value.basicInfo,
-            permissionsData: permissionsData
-        });
+        const result = await updateUserDetailsForAdmin(payload);
+        
+        // 檢查後端回傳的結果
         if (result.status === 'success') {
+            // --- 這裡是處理成功的地方 ---
             alert(isNewUser.value ? '新人員建立成功！' : '人員資料更新成功！');
+            
+            // 將 isNewUser 狀態改回 false
             isNewUser.value = false;
-            // 重新載入可管理人員列表
+            
+            // 重新載入整個元件的初始資料 (包含最新的可管理人員列表)
             await loadInitialData();
+            
         } else {
-            throw new Error(result.message);
+            // --- 這裡是處理後端回報錯誤的地方 ---
+            // 如果後端回傳 status: 'error'，則拋出錯誤，讓 catch 區塊接手
+            throw new Error(result.message || '發生未知的錯誤');
         }
     } catch (error) {
+        // --- 這裡是處理網路錯誤或上面拋出的錯誤 ---
         alert(`儲存失敗：${error.message}`);
+        errorMessage.value = `儲存失敗：${error.message}`;
+        showErrorAlert.value = true;
     } finally {
+        // --- 無論成功或失敗，最後都要關閉 Loading ---
         saving.value = false;
     }
 };
