@@ -2,29 +2,24 @@
 
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
-
-// ✅ 1. 從 v2/https 引入 onCall 和 HttpsError，這是新版 SDK 的語法
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { Firestore } = require("@google-cloud/firestore");
 
 admin.initializeApp();
-const db = admin.firestore();
 
-// 定義您在 Secret Manager 中建立的密鑰名稱 (這部分不變)
+const db = new Firestore({
+    databaseId: 'anxi-app'
+});
+
+// 定義函式需要從 Secret Manager 讀取的密鑰名稱
 const gmailSecrets = [
-    "GMAIL_CLIENT_ID",
-    "GMAIL_CLIENT_SECRET",
-    "GMAIL_REFRESH_TOKEN",
-    "SENDER_EMAIL"
+    "SENDER_EMAIL",
+    "GMAIL_APP_PASSWORD" 
 ];
 
-// ✅ 2. 使用新的 v2 語法來定義函式和綁定密鑰
-// 將 { secrets: ... } 作為第一個參數傳入 onCall
 exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request) => {
-    
-    // ✅ 3. 在 v2 函式中，前端傳來的資料在 request.data 中
     const userPhone = request.data.key;
     if (!userPhone) {
-        // 在 v2 中，我們用拋出 HttpsError 的方式回傳錯誤給前端
         throw new HttpsError('invalid-argument', '缺少手機號碼(key)');
     }
 
@@ -41,17 +36,12 @@ exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request)
             throw new HttpsError('failed-precondition', '用戶資料不完整，缺少Email或密碼');
         }
 
-        // 使用 process.env 的方式讀取密鑰 (這部分不變)
+        // 設定 Nodemailer 使用 Gmail 和應用程式密碼
         let transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            secure: true,
+            service: 'gmail',
             auth: {
-                type: 'OAuth2',
                 user: process.env.SENDER_EMAIL,
-                clientId: process.env.GMAIL_CLIENT_ID,
-                clientSecret: process.env.GMAIL_CLIENT_SECRET,
-                refreshToken: process.env.GMAIL_REFRESH_TOKEN
+                pass: process.env.GMAIL_APP_PASSWORD 
             }
         });
 
@@ -65,16 +55,13 @@ exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request)
         await transporter.sendMail(mailOptions);
         
         console.log(`密碼已成功發送至 ${userEmail}`);
-        // 在 v2 函式中，直接 return 物件即可
         return { status: 'success', message: '密碼已寄到您的Email，請查收' };
 
     } catch (error) {
         console.error('forgotPasswordSender 函式錯誤:', error);
-        // 如果錯誤本身就是 HttpsError，直接重新拋出
         if (error instanceof HttpsError) {
             throw error;
         }
-        // 對於其他未知錯誤，包裝成 internal 錯誤
         throw new HttpsError('internal', '處理請求時發生未知的錯誤');
     }
 });

@@ -23,4 +23,6 @@ gcloud functions deploy aiProxy \
   --source=. \
   --entry-point=aiProxy \
   --trigger-http \
-  --allow-unauthenticated
+
+//function發布指令
+firebase deploy --only functions
