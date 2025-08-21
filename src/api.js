@@ -8,6 +8,9 @@ import {
   serverTimestamp, getCountFromServer, documentId, orderBy, writeBatch
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { functions } from '@/firebase'; 
+import { httpsCallable } from 'firebase/functions';
+
 
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
@@ -172,18 +175,22 @@ export async function updateUserProfile(payload) {
 }
 
 
-// 🔑 忘記密碼 (通常與用戶身份綁定)
+// 🔑 忘記密碼 (呼叫 Firebase Cloud Function)
 export async function forgotPasswordUser(key) {
   console.log(`[api.js] forgotPasswordUser called with key: ${key}`);
   try {
-    const res = await fetch(USER_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'forgot_password', key })
-    });
-    return await res.json();
+    // 獲取 Cloud Function 的引用
+    const forgotPasswordSender = httpsCallable(functions, 'forgotPasswordSender');
+    
+    // 呼叫 Cloud Function 並傳遞資料
+    const result = await forgotPasswordSender({ key: key });
+
+    // httpsCallable 回傳的結果直接就在 result.data 中
+    return result.data;
+
   } catch (e) {
     console.error('forgotPasswordUser 錯誤:', e);
+    // Cloud Function 拋出的錯誤可以被捕捉到
     return { status: 'error', message: e.message };
   }
 }
