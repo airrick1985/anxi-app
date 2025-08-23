@@ -2,14 +2,29 @@
 
 
 // ✅ 在檔案頂部，引入所有需要的函式
-import { db, storage } from '@/firebase'; // 引入 db 和新的 storage
+import { db, storage, functions } from '@/firebase'; 
+
 import { 
-  collection, query, where, getDocs, getDoc, doc, updateDoc, 
-  serverTimestamp, getCountFromServer, documentId, orderBy, writeBatch
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  updateDoc, 
+  serverTimestamp, 
+  getCountFromServer, 
+  documentId, 
+  orderBy, 
+  writeBatch,
+  setDoc,         
+  deleteDoc,      
+  Timestamp
 } from "firebase/firestore";
+
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { functions } from '@/firebase'; 
 import { httpsCallable } from 'firebase/functions';
+
 
 
 
@@ -1190,59 +1205,252 @@ export async function fetchManageableUsersForAdmin(adminKey) {
 // ===============================================
 
 /**
- * 獲取所有訂閱紀錄
+ * [輔助函式] 檢查呼叫者是否為超級管理員
+ * @param {string} adminKey - 要檢查的手機號碼
+ * @returns {Promise<boolean>}
+ */
+async function isSuperAdmin(adminKey) {
+    if (!adminKey) return false;
+    const permissionsRef = collection(db, "permissions");
+    const q = query(
+        permissionsRef,
+        where("userPhone", "==", adminKey),
+        where("projectName", "==", "安熙智慧"),
+        where("system", "==", "訂閱管理"),
+        where("access", "==", true)
+    );
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+}
+
+/**
+ * [Firestore 版] 獲取所有訂閱紀錄
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function fetchAllSubscriptions(adminKey) {
-    const result = await fetchPost({ action: 'get_all_subscriptions', adminKey }, SUBSCRIPTION_API);
-    return result.status === 'success' ? result.data : [];
+    if (!await isSuperAdmin(adminKey)) {
+        throw new Error("權限不足。");
+    }
+    const subscriptionsRef = collection(db, "subscriptions");
+    const snapshot = await getDocs(subscriptionsRef);
+    const subscriptions = [];
+    
+    // ✅ 【核心修改點 1】建立一個代表今天「開始」的日期物件
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    snapshot.forEach(doc => {
+        const record = { id: doc.id, ...doc.data() };
+        
+        const startDateValue = record.startDate?.toDate();
+        const endDateValue = record.endDate?.toDate();
+        
+        // ✅ 【核心修改點 2】同樣地，也建立啟用日期的「開始」物件來進行比較
+        let normalizedStartDate = null;
+        if (startDateValue) {
+            normalizedStartDate = new Date(startDateValue);
+            normalizedStartDate.setHours(0, 0, 0, 0);
+        }
+        
+        let status = '狀態不明';
+        let color = 'grey';
+        
+        // ✅ 【核心修改點 3】使用正規化後的日期進行比較
+        if (normalizedStartDate && endDateValue) {
+            if (today < normalizedStartDate) {
+                status = '尚未啟用';
+                color = 'blue-grey';
+            } else if (today > endDateValue) { // 停用日期通常比較當天的結束，所以這裡不用改
+                status = '已到期';
+                color = 'red';
+            } else {
+                const diffTime = endDateValue.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays <= 14) {
+                    status = `即將到期 (${diffDays}天)`;
+                    color = 'orange';
+                } else {
+                    status = '啟用中';
+                    color = 'green';
+                }
+            }
+        } else {
+            status = '日期不完整';
+            color = 'orange';
+        }
+        
+        record.status = status;
+        record.color = color;
+        
+        // 格式化日期以便顯示
+        record.paymentDate = record.paymentDate?.toDate().toISOString().split('T')[0];
+        record.startDate = startDateValue?.toISOString().split('T')[0];
+        record.endDate = endDateValue?.toISOString().split('T')[0];
+
+        subscriptions.push(record);
+    });
+    return subscriptions;
 }
 
 /**
- * 獲取用於訂閱表單的下拉選單資料 (建案、系統列表)
+ * [Firestore 版] 獲取用於訂閱表單的下拉選單資料 (建案、系統列表)
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function fetchMasterDataForSubscriptionForm(adminKey) {
-    const result = await fetchPost({ action: 'get_master_data_for_subscription_form', adminKey }, SUBSCRIPTION_API);
-    return result.status === 'success' ? result.data : { projectNames: [], systemFunctions: [] };
+    if (!await isSuperAdmin(adminKey)) {
+        throw new Error("權限不足。");
+    }
+    // 從 permissions 集合中動態獲取所有不重複的建案名稱
+    const permissionsRef = collection(db, "permissions");
+    const snapshot = await getDocs(permissionsRef);
+    const projectNames = new Set();
+    snapshot.forEach(doc => {
+        projectNames.add(doc.data().projectName);
+    });
+    
+    const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理'];
+
+    return { 
+        projectNames: Array.from(projectNames).sort(), 
+        systemFunctions: systemFunctions 
+    };
 }
 
 /**
- * 新增一筆訂閱紀錄
+ * [Firestore 版] 新增一筆訂閱紀錄
+ * @param {string} subscriptionId - 新紀錄的 ID
  * @param {object} subscriptionData - 要新增的訂閱資料
  * @param {string} adminKey - 超級管理員的手機號碼
  */
-export async function addSubscription(subscriptionData, adminKey) {
-    return fetchPost({ action: 'add_subscription', subscriptionData, adminKey }, SUBSCRIPTION_API);
+export async function addSubscription(subscriptionId, subscriptionData, adminKey) {
+    if (!await isSuperAdmin(adminKey)) {
+        throw new Error("權限不足。");
+    }
+    
+    const dataToSave = { ...subscriptionData };
+    // ✅ 從要儲存的資料中移除 id 欄位，因為 ID 已經用作文件名，不應重複儲存
+    delete dataToSave.id; 
+
+    // 處理日期轉換
+    ['paymentDate', 'startDate', 'endDate'].forEach(field => {
+        if (dataToSave[field]) {
+            dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
+        } else {
+            dataToSave[field] = null;
+        }
+    });
+
+    const docRef = doc(db, "subscriptions", subscriptionId);
+    await setDoc(docRef, dataToSave); // 使用 setDoc 來建立新文件
+    return { status: 'success' };
 }
 
+
 /**
- * 更新一筆訂閱紀錄
+ * [Firestore 版] 更新一筆訂閱紀錄
  * @param {string} subscriptionId - 要更新的紀錄 ID
  * @param {object} subscriptionData - 要更新的訂閱資料
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function updateSubscription(subscriptionId, subscriptionData, adminKey) {
-    return fetchPost({ action: 'update_subscription', subscriptionId, subscriptionData, adminKey }, SUBSCRIPTION_API);
+    if (!await isSuperAdmin(adminKey)) {
+        throw new Error("權限不足。");
+    }
+
+    const dataToUpdate = { ...subscriptionData };
+    // ✅ 從要更新的資料中移除 id 欄位
+    delete dataToUpdate.id; 
+
+    // 處理日期轉換
+    ['paymentDate', 'startDate', 'endDate'].forEach(field => {
+        if (dataToUpdate[field]) {
+            dataToUpdate[field] = Timestamp.fromDate(new Date(dataToUpdate[field]));
+        } else {
+            dataToUpdate[field] = null;
+        }
+    });
+    
+    const docRef = doc(db, "subscriptions", subscriptionId);
+    await updateDoc(docRef, dataToUpdate);
+    return { status: 'success' };
 }
 
 /**
- * 刪除一筆訂閱紀錄
- * @param {string} subscriptionId - 要刪除的紀錄 ID
+ * [Firestore 版] 刪除一筆訂閱紀錄
+ * @param {string} subscriptionId - 要刪除的紀錄 ID (SubscriptionID)
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function deleteSubscription(subscriptionId, adminKey) {
-    return fetchPost({ action: 'delete_subscription', subscriptionId, adminKey }, SUBSCRIPTION_API);
+    if (!await isSuperAdmin(adminKey)) {
+        throw new Error("權限不足。");
+    }
+    const docRef = doc(db, "subscriptions", subscriptionId);
+    await deleteDoc(docRef);
+    return { status: 'success' };
 }
 
 /**
- * ✅ 新增：獲取當前用戶可查看的訂閱狀態
+ * [Firestore 版] 獲取當前用戶可查看的訂閱狀態
  * @param {string} userKey - 當前登入用戶的手機號碼
  */
 export async function fetchMySubscriptionStatus(userKey) {
-    const result = await fetchPost({ action: 'get_my_subscription_status', userKey }, SUBSCRIPTION_API);
-    // 如果成功，回傳 data 物件，否則回傳空物件以避免前端出錯
-    return result.status === 'success' ? result.data : {};
+    // 1. 查詢 permissions 集合，找到該用戶有權限的所有建案
+    const permissionsRef = collection(db, "permissions");
+    const permQuery = query(
+        permissionsRef, 
+        where("userPhone", "==", userKey), 
+        where("access", "==", true)
+    );
+    const permSnapshot = await getDocs(permQuery);
+    const accessibleProjects = [...new Set(permSnapshot.docs.map(d => d.data().projectName))];
+
+    if (accessibleProjects.length === 0) return {};
+
+    // 2. 根據有權限的建案列表，去 subscriptions 集合中查找對應的訂閱紀錄
+    const subsRef = collection(db, "subscriptions");
+    const subsQuery = query(subsRef, where("projectName", "in", accessibleProjects));
+    const subsSnapshot = await getDocs(subsQuery);
+
+    const subscriptionsByProject = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    subsSnapshot.forEach(doc => {
+        const sub = doc.data();
+        if (!subscriptionsByProject[sub.projectName]) {
+            subscriptionsByProject[sub.projectName] = [];
+        }
+
+        // 計算狀態...
+        const startDate = sub.startDate?.toDate();
+        const endDate = sub.endDate?.toDate();
+        let status = '日期不完整';
+        let color = 'orange';
+
+        if (startDate && endDate) {
+            if (today < startDate) {
+                status = '尚未啟用';
+                color = 'blue-grey';
+            } else if (today > endDate) {
+                status = '已到期';
+                color = 'red';
+            } else {
+                status = '啟用中';
+                color = 'green';
+            }
+        }
+
+        subscriptionsByProject[sub.projectName].push({
+            system: sub.systemFunction,
+            status: status,
+            color: color,
+            validityPeriod: `${startDate ? startDate.toISOString().split('T')[0] : 'N/A'} ~ ${endDate ? endDate.toISOString().split('T')[0] : 'N/A'}`,
+            contact: sub.contactName || '-',
+            contactPhone: sub.contactPhone || '-'
+        });
+    });
+
+    return subscriptionsByProject;
 }
 
 /**

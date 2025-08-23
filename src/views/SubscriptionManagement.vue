@@ -57,16 +57,32 @@
         <v-card-text>
           <v-container>
             <v-row>
-              <v-col cols="12" sm="6"><v-select v-model="editedItem.建案名稱" :items="masterData.projectNames" label="建案名稱*" :rules="rules.required"></v-select></v-col>
-              <v-col cols="12" sm="6"><v-select v-model="editedItem.系統功能" :items="masterData.systemFunctions" label="系統功能*" :rules="rules.required"></v-select></v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.聯絡人" label="聯絡人"></v-text-field></v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.聯絡人手機" label="聯絡人手機"></v-text-field></v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.訂閱類型" label="訂閱類型 (例如: 年繳)"></v-text-field></v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.繳費金額" label="繳費金額" type="number"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.繳費日期" label="繳費日期" type="date"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.啟用日期" label="啟用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.停用日期" label="停用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12"><v-textarea v-model="editedItem.備註" label="備註" rows="2"></v-textarea></v-col>
+              <v-col cols="12" sm="6"><v-select v-model="editedItem.projectName" :items="masterData.projectNames" label="建案名稱*" :rules="rules.required"></v-select></v-col>
+              <v-col cols="12" sm="6"><v-select v-model="editedItem.systemFunction" :items="masterData.systemFunctions" label="系統功能*" :rules="rules.required"></v-select></v-col>
+              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactName" label="聯絡人"></v-text-field></v-col>
+              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機"></v-text-field></v-col>
+              
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="subscriptionTypeSelection"
+                  :items="['月繳', '年繳', '季繳', '試用', '其他']"
+                  label="訂閱類型"
+                ></v-select>
+                <v-text-field
+                  v-if="subscriptionTypeSelection === '其他'"
+                  v-model="otherSubscriptionType"
+                  label="請輸入其他類型"
+                  class="mt-2"
+                  variant="outlined"
+                  dense
+                ></v-text-field>
+              </v-col>
+              
+              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.paymentAmount" label="繳費金額" type="number"></v-text-field></v-col>
+              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.paymentDate" label="繳費日期" type="date"></v-text-field></v-col>
+              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.startDate" label="啟用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.endDate" label="停用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12"><v-textarea v-model="editedItem.remarks" label="備註" rows="2"></v-textarea></v-col>
             </v-row>
           </v-container>
           <small>* 為必填欄位</small>
@@ -84,8 +100,8 @@
           <v-card-title class="text-h5">確認刪除</v-card-title>
           <v-card-text>
             您確定要刪除這筆訂閱紀錄嗎？<br>
-            <strong>建案:</strong> {{ itemToDelete.建案名稱 }} <br>
-            <strong>系統:</strong> {{ itemToDelete.系統功能 }} <br>
+            <strong>建案:</strong> {{ itemToDelete.projectName }} <br>
+            <strong>系統:</strong> {{ itemToDelete.systemFunction }} <br>
             此操作無法復原。
           </v-card-text>
           <v-card-actions>
@@ -101,7 +117,6 @@
 <script setup>
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { useUserStore } from '@/store/user';
-// 假設您的 api.js 匯出了這些函式
 import { 
     fetchAllSubscriptions,
     fetchMasterDataForSubscriptionForm,
@@ -121,13 +136,13 @@ const masterData = ref({ projectNames: [], systemFunctions: [] });
 
 const headers = [
     { title: '狀態', key: 'status', sortable: false },
-    { title: '建案名稱', key: '建案名稱' },
-    { title: '系統功能', key: '系統功能' },
-    { title: '啟用日期', key: '啟用日期' },
-    { title: '停用日期', key: '停用日期' },
-    { title: '聯絡人', key: '聯絡人' },
-    { title: '聯絡人手機', key: '聯絡人手機' },
-    { title: '訂閱類型', key: '訂閱類型' },
+    { title: '建案名稱', key: 'projectName' },
+    { title: '系統功能', key: 'systemFunction' },
+    { title: '啟用日期', key: 'startDate' },
+    { title: '停用日期', key: 'endDate' },
+    { title: '聯絡人', key: 'contactName' },
+    { title: '聯絡人手機', key: 'contactPhone' },
+    { title: '訂閱類型', key: 'subscriptionType' },
     { title: '操作', key: 'actions', sortable: false },
 ];
 
@@ -136,11 +151,24 @@ const deleteDialog = ref(false);
 const isEditing = ref(false);
 
 const defaultItem = {
-    SubscriptionID: null, 建案名稱: '', 系統功能: '', 聯絡人: '', 聯絡人手機: '',
-    繳費日期: '', 訂閱類型: '', 啟用日期: '', 停用日期: '', 繳費金額: '', 備註: ''
+    id: null,
+    projectName: '', 
+    systemFunction: '', 
+    contactName: '', 
+    contactPhone: '',
+    paymentDate: '', 
+    subscriptionType: '', 
+    startDate: '', 
+    endDate: '', 
+    paymentAmount: '', 
+    remarks: ''
 };
 const editedItem = ref({ ...defaultItem });
 const itemToDelete = ref({});
+
+const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
+const subscriptionTypeSelection = ref('');
+const otherSubscriptionType = ref('');
 
 const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
@@ -169,11 +197,22 @@ async function loadData() {
 
 onMounted(loadData);
 
-
 function openEditDialog(item) {
     isEditing.value = !!item;
-    // 使用 v-model 綁定中文鍵名，這裡可以直接複製
     editedItem.value = item ? { ...item } : { ...defaultItem };
+    
+    const currentType = editedItem.value.subscriptionType;
+    if (currentType && subscriptionTypeOptions.includes(currentType)) {
+        subscriptionTypeSelection.value = currentType;
+        otherSubscriptionType.value = '';
+    } else if (currentType) {
+        subscriptionTypeSelection.value = '其他';
+        otherSubscriptionType.value = currentType;
+    } else {
+        subscriptionTypeSelection.value = '';
+        otherSubscriptionType.value = '';
+    }
+    
     dialog.value = true;
 }
 
@@ -193,40 +232,41 @@ function closeDeleteDialog() {
     });
 }
 
-// 輔助函式：格式化日期，如果日期無效則返回 null
-function formatDate(dateString) {
-    if (!dateString) return null;
-    const date = new Date(dateString);
-    // 檢查日期是否有效
-    if (isNaN(date.getTime())) return null;
-    // 格式化為 YYYY-MM-DD，這是 GAS 最容易處理的格式
-    return date.toISOString().split('T')[0];
-}
-
 async function save() {
     saving.value = true;
     
-    // ★★★ 核心修改點 ★★★
-    // 在發送前，建立一個乾淨且格式正確的 payload
     const payloadData = { ...editedItem.value };
-    payloadData.繳費日期 = formatDate(payloadData.繳費日期);
-    payloadData.啟用日期 = formatDate(payloadData.啟用日期);
-    payloadData.停用日期 = formatDate(payloadData.停用日期);
-    // 可選：確保金額是數字或 null
-    payloadData.繳費金額 = payloadData.繳費金額 ? Number(payloadData.繳費金額) : null;
 
+    if (subscriptionTypeSelection.value === '其他') {
+        payloadData.subscriptionType = otherSubscriptionType.value;
+    } else {
+        payloadData.subscriptionType = subscriptionTypeSelection.value;
+    }
 
     try {
         if (isEditing.value) {
-            // 在呼叫 updateSubscription 時，傳入整理過的 payloadData
-            await updateSubscription(payloadData.SubscriptionID, payloadData, adminKey.value);
+            await updateSubscription(payloadData.id, payloadData, adminKey.value);
         } else {
-            // 在呼叫 addSubscription 時，也傳入整理過的 payloadData
-            await addSubscription(payloadData, adminKey.value);
+            // ✅ 【核心修改點】在新增訂閱前，檢查是否存在重複的有效訂閱
+            const isDuplicate = subscriptions.value.some(sub => 
+                sub.projectName === payloadData.projectName &&
+                sub.systemFunction === payloadData.systemFunction &&
+                (sub.status === '啟用中' || sub.status.startsWith('即將到期'))
+            );
+
+            if (isDuplicate) {
+                alert(`錯誤：建案「${payloadData.projectName}」的「${payloadData.systemFunction}」已有一個有效的訂閱。請勿重複建立。`);
+                saving.value = false; // 停止 loading
+                return; // 中斷儲存操作
+            }
+            
+            const newId = `SUB-${Date.now()}`;
+            payloadData.id = newId;
+            await addSubscription(newId, payloadData, adminKey.value);
         }
         alert('儲存成功！');
         closeDialog();
-        await loadData(); // 重新載入所有資料
+        await loadData();
     } catch (error) {
         console.error("儲存失敗:", error);
         alert('儲存失敗: ' + error.message);
@@ -238,10 +278,10 @@ async function save() {
 async function confirmDelete() {
     saving.value = true;
     try {
-        await deleteSubscription(itemToDelete.value.SubscriptionID, adminKey.value);
+        await deleteSubscription(itemToDelete.value.id, adminKey.value);
         alert('刪除成功！');
         closeDeleteDialog();
-        await loadData(); // 重新載入所有資料
+        await loadData();
     } catch (error) {
         console.error("刪除失敗:", error);
         alert('刪除失敗: ' + error.message);
