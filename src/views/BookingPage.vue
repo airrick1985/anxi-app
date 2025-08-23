@@ -606,7 +606,6 @@
 import { ref, onMounted, computed, nextTick } from 'vue'; 
 import { useRoute } from 'vue-router';
 import { 
-  getBookingInitialData, 
   fetchAllUnitsForBooking,
   checkExistingBooking, 
   validateId, 
