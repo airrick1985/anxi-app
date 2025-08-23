@@ -40,6 +40,32 @@ const MESSAGE_API = `${BASE_API_URL}/message`;
 const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
 const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`; 
 
+/**
+ * [Firestore 版] 獲取所有專案的基本資料列表
+ * 用於取代前端寫死的 PROJECT_NAME_MAP
+ * @returns {Promise<Array>} 返回專案陣列 [{ id, name, ... }]
+ */
+export async function fetchAllProjects() {
+  console.log(`[api.js] fetchAllProjects called`);
+  try {
+    const projectsRef = collection(db, "projects");
+    const querySnapshot = await getDocs(projectsRef);
+    
+    const projects = [];
+    querySnapshot.forEach((doc) => {
+      projects.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return projects;
+  } catch (e) {
+    console.error('Firestore fetchAllProjects 錯誤:', e);
+    // 返回空陣列或拋出錯誤，讓呼叫端處理
+    return []; 
+  }
+}
 
 /**
  * 獲取指定建案的所有車位資料
@@ -1132,15 +1158,18 @@ export async function updateUserDetailsForAdmin(updatePayload) {
 
       if (perm.permission === 'Y' && isAdminAllowedToAssign) {
         const newPermDocRef = doc(collection(db, "permissions"));
+   // ✅ 確保寫入 Firestore 的是這份完整資料
         batch.set(newPermDocRef, {
           userPhone: perm.phone,
           userName: perm.name,
           projectName: perm.projectName,
+          projectId: perm.projectId,            
           system: perm.systemFunction,
-          access: true
+          access: true,
+          lastModifiedBy: adminName,          
+          lastModifiedByPhone: adminKey,       
         });
       }
-      // 💥 --- 邏輯修正結束 --- 💥
     });
 
     // 步驟 4: 提交所有操作
@@ -1586,20 +1615,209 @@ export async function fetchActivityMessageSlideId(projectName) {
 
 
 // =============================================
-// ✅ 公開預約系統 API
+// ✅ 驗屋預約系統 API (Firestore 遷移版)
 // =============================================
 
 /**
- * 獲取預約頁面初始化資料 (棟別、設定等)
- * @param {string} projectName 建案名稱
+ * [Firestore 版] 獲取使用者有權限查看驗屋時間表的建案列表
+ * @param {string} userKey 
+ * @returns {Promise<Array>} - 返回建案選項陣列 [{ text, value }]
  */
-export async function getBookingInitialData(projectName) {
-  // 注意：公開功能，理論上不需 token，但我們會在 proxy 層處理
-  return fetchPost({
-    action: 'get_booking_initial_data',
-    projectName: projectName,
-  }, INSPECTION_API); // 繼續使用您現有的 API 端點
-};
+export async function getProjectsForInspectionCalendar(userKey) {
+    // 1. 查找使用者擁有 '驗屋時間表-修改' 或 '驗屋時間表-檢視' 權限的建案 ID
+    const permissionsRef = collection(db, "permissions");
+    const permQuery = query(
+        permissionsRef,
+        where("userPhone", "==", userKey),
+        where("system", "in", ['驗屋時間表-修改', '驗屋時間表-檢視']),
+        where("access", "==", true)
+    );
+    const permSnapshot = await getDocs(permQuery);
+    if (permSnapshot.empty) return [];
+
+    // ✅ 【核心修改點】在映射後，過濾掉所有無效的 projectId (undefined, null, 空字串)
+    const projectIds = [...new Set(
+        permSnapshot.docs
+            .map(doc => doc.data().projectId)
+            .filter(id => id) // .filter(Boolean) 的簡寫，會移除所有 falsy 值
+    )];
+    
+    if (projectIds.length === 0) return [];
+
+    // 2. 根據這些 ID 去 projects 集合中查找對應的建案名稱
+    const projectsRef = collection(db, "projects");
+    const projectsQuery = query(projectsRef, where(documentId(), 'in', projectIds));
+    const projectsSnapshot = await getDocs(projectsQuery);
+
+    const projectOptions = projectsSnapshot.docs.map(doc => ({
+        text: doc.data().name,
+        value: doc.id
+    }));
+    
+    return projectOptions;
+}
+
+/**
+ * [Firestore 版] 獲取指定建案的所有預約紀錄與戶別資料
+ * @param {string} projectId 
+ * @returns {Promise<Array>}
+ */
+export async function fetchCalendarData(projectId) {
+    // 1. 一次性獲取該建案所有的 appointments 和 households 資料
+    const appointmentsRef = collection(db, "appointments");
+    const householdsRef = collection(db, "households");
+
+    const appointmentsQuery = query(appointmentsRef, where("projectId", "==", projectId));
+    const householdsQuery = query(householdsRef, where("projectId", "==", projectId));
+
+    const [appointmentsSnapshot, householdsSnapshot] = await Promise.all([
+        getDocs(appointmentsQuery),
+        getDocs(householdsQuery)
+    ]);
+
+    // 2. 將戶別資料整理成一個 Map，方便快速查找
+    const householdsMap = new Map();
+    householdsSnapshot.forEach(doc => {
+        // 使用 projectId_unitId 作為 key
+        householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
+    });
+
+    // 3. 組合預約紀錄與對應的戶別資料
+    const combinedData = appointmentsSnapshot.docs.map(doc => {
+        const appointment = { id: doc.id, ...doc.data() };
+        const householdKey = `${appointment.projectId}_${appointment.unitId}`;
+        const householdData = householdsMap.get(householdKey) || {};
+        
+        // 將戶別資料合併到預約物件中，預約物件本身的資料優先
+        return { ...householdData, ...appointment };
+    });
+
+    return combinedData;
+}
+
+/**
+ * [Firestore 版] 獲取新增/編輯預約時所需的下拉選單等選項
+ * @param {string} projectId 
+ * @returns {Promise<object>}
+ */
+export async function fetchBookingOptions(projectId) {
+    // 範例：這裡的資料未來可以改為從 `projects` 集合的某個欄位讀取
+    const inspectionMethods = ['自驗', '代驗公司'];
+    const inspectionStaff = ['林經理', '張主任', '陳先生']; // 範例人員
+    
+    // 獲取棟別與戶別資料
+    const householdsRef = collection(db, "households");
+    const q = query(householdsRef, where("projectId", "==", projectId));
+    const snapshot = await getDocs(q);
+    const buildingsAndUnits = {};
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.building && data.unitId) {
+            if (!buildingsAndUnits[data.building]) {
+                buildingsAndUnits[data.building] = [];
+            }
+            buildingsAndUnits[data.building].push(data.unitId);
+        }
+    });
+
+    return { inspectionMethods, inspectionStaff, buildingsAndUnits };
+}
+
+/**
+ * [Firestore 版] 新增一筆預約紀錄
+ * @param {string} projectId 
+ * @param {object} newBookingData - 包含所有欄位的預約資料
+ * @param {string|null} cancelBookingCode - 可選，要同時取消的舊預約代碼
+ */
+export async function addAppointmentAdmin(projectId, newBookingData, cancelBookingCode = null) {
+    const batch = writeBatch(db);
+
+    // 1. 如果需要，先將舊的預約標記為取消
+    if (cancelBookingCode) {
+        const appointmentsRef = collection(db, "appointments");
+        const q = query(appointmentsRef, where("bookingCode", "==", cancelBookingCode), where("projectId", "==", projectId));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+            const oldDocRef = snapshot.docs[0].ref;
+            batch.update(oldDocRef, { status: "取消", cancelledAt: serverTimestamp() });
+        }
+    }
+    
+    // 2. 準備要寫入的新資料
+    const dataToSave = { ...newBookingData, projectId }; // 確保 projectId 被寫入
+    // 將所有日期字串轉換為 Timestamp
+    ['appointmentDate', 'handoverTime', 'createdAt'].forEach(field => {
+        if (dataToSave[field]) {
+            dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
+        }
+    });
+    
+    // 3. 新增一筆預約紀錄
+    const newDocRef = doc(collection(db, "appointments"));
+    batch.set(newDocRef, dataToSave);
+
+    await batch.commit();
+    return { status: 'success' };
+}
+
+/**
+ * [Firestore 版] 更新預約紀錄 (可同時更新 appointments 和 households)
+ * @param {string} appointmentId - 預約紀錄的文件 ID
+ * @param {object} bookingUpdatePayload - 要更新到 appointments 集合的資料
+ * @param {string} householdDocId - 戶別資料的文件 ID (projectId_unitId)
+ * @param {object} householdUpdatePayload - 要更新到 households 集合的資料
+ */
+export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload) {
+    const batch = writeBatch(db);
+
+    // 處理日期轉換
+    ['appointmentDate'].forEach(field => {
+        if (bookingUpdatePayload[field]) {
+            bookingUpdatePayload[field] = Timestamp.fromDate(new Date(bookingUpdatePayload[field]));
+        }
+    });
+     ['appropriationDate'].forEach(field => {
+        if (householdUpdatePayload[field]) {
+            householdUpdatePayload[field] = Timestamp.fromDate(new Date(householdUpdatePayload[field]));
+        }
+    });
+
+    if (appointmentId && Object.keys(bookingUpdatePayload).length > 0) {
+        const appointmentRef = doc(db, "appointments", appointmentId);
+        batch.update(appointmentRef, bookingUpdatePayload);
+    }
+    if (householdDocId && Object.keys(householdUpdatePayload).length > 0) {
+        const householdRef = doc(db, "households", householdDocId);
+        batch.update(householdRef, householdUpdatePayload);
+    }
+
+    if (batch._mutations.length > 0) {
+        await batch.commit();
+        return { status: 'success' };
+    }
+    
+    return { status: 'no_changes' };
+}
+
+/**
+ * [Firestore 版] 取消一筆預約
+ * @param {string} appointmentId 
+ */
+export async function cancelAppointment(appointmentId) {
+    if (!appointmentId) throw new Error("缺少預約紀錄 ID。");
+    const docRef = doc(db, "appointments", appointmentId);
+    await updateDoc(docRef, {
+        status: "取消",
+        cancelledAt: serverTimestamp()
+    });
+    return { status: 'success' };
+}
+
+// =============================================
+// ✅ 公開預約系統 API
+// =============================================
+
+
 
 /**
  * 根據棟別獲取戶別列表
@@ -1673,33 +1891,8 @@ export const saveBooking = async (projectName, bookingData) => {
   }, INSPECTION_API);
 };
 
-/**
- * 取消預約 - ✅ 修改為使用預約代碼
- * @param {string} projectName 建案名稱
- * @param {string} bookingCode 預約代碼
- */
-export const cancelBooking = async (projectName, bookingCode) => {
-  return fetchPost({
-    action: 'cancel_booking',
-    projectName,
-    bookingCode,
-  }, INSPECTION_API);
-};
 
-/**
- * 更新一筆預約紀錄 - ✅ 修改為使用預約代碼
- * @param {string} projectName 建案名稱
- * @param {string} bookingCode 預約代碼
- * @param {object} updatedData 要更新的資料物件
- */
-export const updateBooking = async (projectName, bookingCode, updatedData) => {
-  return fetchPost({
-    action: 'update_booking',
-    projectName,
-    bookingCode,      // 將 identifier 替換為 bookingCode
-    updatedData,
-  }, INSPECTION_API);
-};
+
 
 /**
  * 一次性獲取所有可預約的戶別資料
@@ -1728,32 +1921,7 @@ export const validateId = async (projectName, unitId, idNumber) => {
 };
 
 
-/**
- * 獲取指定建案的所有驗屋預約紀錄 (供公開行事曆使用)
- * @param {string} projectName 建案名稱
- * @returns {Promise<object>}
- */
-export const fetchInspectionAppointments = async (projectName) => {
-  return fetchPost({
-    action: 'get_inspection_appointments',
-    projectName: projectName,
-  }, INSPECTION_API);
-};
 
-/**
- * 更新一筆戶別資料 (用於修改 `戶別資料` 工作表)
- * @param {string} projectName 建案名稱
- * @param {string} unitId 戶別 ID (作為這張表的唯一識別碼)
- * @param {object} updatedData 要更新的資料物件
- */
-export const updateHouseholdData = async (projectName, unitId, updatedData) => {
-  return fetchPost({
-    action: 'update_household_data',
-    projectName,
-    unitId,
-    updatedData,
-  }, INSPECTION_API);
-};
 
 
 /**
@@ -1789,64 +1957,13 @@ export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId
  * ===============================================
  */
 
-/**
- * [後台用] 獲取所有棟別與其對應的戶別資料
- * @param {string} projectName 建案名稱
- */
-export async function fetchBuildingsAndUnitsAdmin(projectName) {
-  return fetchPost({
-    action: 'get_buildings_and_units_admin',
-    projectName,
-    token: 'anxi111003' 
-  }, INSPECTION_API);
-}
-
-/**
- * [後台用] 檢查是否有重複的有效預約
- * @param {string} projectName 建案名稱
- * @param {string} unitId 戶別
- * @param {string} bookingType 預約項目
- */
-export async function checkDuplicateAdmin(projectName, unitId, bookingType) {
-  return fetchPost({
-    action: 'check_duplicate_appointment_admin',
-    projectName,
-    unitId,
-    bookingType,
-    token: 'anxi111003'
-  }, INSPECTION_API);
-}
-
-/**
- * [後台用] 新增一筆預約紀錄
- * @param {string} projectName 建案名稱
- * @param {object} newBookingData 新預約的完整資料
- * @param {string|null} cancelBookingCode (可選) 要同時取消的舊預約代碼
- */
-export async function addAppointmentAdmin(projectName, newBookingData, cancelBookingCode = null) {
-  return fetchPost({
-    action: 'add_appointment_admin',
-    projectName,
-    newBookingData,
-    cancelBookingCode,
-    token: 'anxi111003'
-  }, INSPECTION_API);
-}
 
 
-/**
- * [後台用] 根據前端指定的欄位列表，一次性獲取所有戶別的對應資料。
- * @param {string} projectName 建案名稱
- * @param {string[]} fields 要獲取的欄位(中文)列表
- */
-export async function fetchSpecifiedHouseDetails(projectName, fields) {
-  return fetchPost({
-    action: 'get_specified_house_details',
-    projectName,
-    fields, // 將欄位列表作為 payload 的一部分傳遞
-    token: 'anxi111003' 
-  }, INSPECTION_API);
-}
+
+
+
+
+
 
 
 /**

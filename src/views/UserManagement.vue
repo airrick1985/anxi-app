@@ -144,6 +144,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
 import { 
   fetchAdminScope, 
   fetchUserDetailsForAdmin, 
@@ -152,6 +153,7 @@ import {
 } from '@/api.js';
 
 const userStore = useUserStore();
+const projectStore = useProjectStore(); // ✅ 2. 獲取 projectStore 的實例
 const adminKey = computed(() => userStore.user?.key);
 
 // --- Component State Refs ---
@@ -234,7 +236,6 @@ const adminCanAssign = (project, system) => {
 // --- Dialog and Editing Logic ---
 
 const openEditDialog = async (phone) => {
-  // 從本地的 manageableUsers 陣列中安全地找到使用者物件
   const userFromTable = manageableUsers.value.find(u => u.phone === phone);
   if (!userFromTable) {
     errorMessage.value = `在列表中找不到手機為 ${phone} 的使用者。`;
@@ -245,19 +246,18 @@ const openEditDialog = async (phone) => {
   isNewUser.value = false;
   dialogVisible.value = true;
   loadingDetails.value = true;
-  targetUser.value = null; // Clear previous data
+  targetUser.value = null;
 
   try {
     const result = await fetchUserDetailsForAdmin(phone, adminKey.value);
     if (result.status === 'success') {
       targetUser.value = result.data;
-      targetUser.value.basicInfo.phone = phone; // 使用傳入的 phone
+      targetUser.value.basicInfo.phone = phone;
       buildPermissionMatrix(result.data.permissions);
     } else {
       throw new Error(result.message);
     }
   } catch (error) {
-    // 現在可以安全地使用從本地陣列中找到的 userFromTable 物件
     errorMessage.value = `查詢 ${userFromTable.name} 的資料失敗: ${error.message}`;
     showErrorAlert.value = true;
     closeDialog();
@@ -295,7 +295,7 @@ const openCreateDialog = (phone = '') => {
 const closeDialog = () => {
   dialogVisible.value = false;
   targetUser.value = null;
-  searchPhone.value = ''; // Clear search phone on close
+  searchPhone.value = '';
   resetPhoneValidation();
 };
 
@@ -307,14 +307,13 @@ const handleSearchUser = async () => {
     return;
   }
 
-  // --- 黑名單檢查邏輯 ---
   if (blacklist.includes(phoneToSearch) && phoneToSearch !== adminKey.value) {
     errorMessage.value = `您無權查詢或新增此號碼 (${phoneToSearch}) 的相關資料。`;
     showErrorAlert.value = true;
     return;
   }
 
-  loadingDetails.value = true; // Use dialog loading indicator
+  loadingDetails.value = true;
   errorMessage.value = '';
   showErrorAlert.value = false;
   
@@ -322,13 +321,11 @@ const handleSearchUser = async () => {
     const result = await fetchUserDetailsForAdmin(phoneToSearch, adminKey.value);
     if (result.status === 'error') {
       if (result.message.includes('找不到手機號碼')) {
-        // Not found, open create dialog with the searched phone number
         openCreateDialog(phoneToSearch);
       } else {
         throw new Error(result.message);
       }
     } else {
-      // Found, open edit dialog
       isNewUser.value = false;
       targetUser.value = result.data;
       targetUser.value.basicInfo.phone = phoneToSearch;
@@ -365,7 +362,6 @@ const buildPermissionMatrix = (permissions) => {
 const handleSave = async () => {
     if (!targetUser.value) return;
 
-    // 1. 執行 Vuetify 表單驗證
     const { valid } = await basicInfoForm.value.validate();
     if (!valid) {
         alert('請檢查並填寫所有必填欄位。');
@@ -375,60 +371,49 @@ const handleSave = async () => {
     saving.value = true;
     const targetPhone = targetUser.value.basicInfo.phone?.trim();
 
-    // --- 新功能：僅在「新增人員」模式下，檢查手機號碼是否已存在 ---
     if (isNewUser.value) {
+      if (phoneValidationError.value) {
+          alert('手機號碼已被註冊，請更換號碼後再儲存。');
+          saving.value = false;
+          return;
+      }
+      
+      if (!targetPhone) {
+          alert('手機號碼為必填項。');
+          saving.value = false;
+          return;
+      }
+      
+      try {
+          const checkResult = await fetchUserDetailsForAdmin(targetPhone, adminKey.value);
+          
+          if (checkResult.status === 'success') {
+              alert(`錯誤：手機號碼 ${targetPhone} 已被註冊，無法新增。`);
+              saving.value = false;
+              return;
+          }
 
-       // 快速檢查：如果即時驗證已顯示錯誤，則直接中斷
-    if (phoneValidationError.value) {
-        alert('手機號碼已被註冊，請更換號碼後再儲存。');
-        saving.value = false;
-        return;
+          if (checkResult.status === 'error' && !checkResult.message.includes('找不到手機號碼')) {
+               throw new Error(`驗證號碼時出錯: ${checkResult.message}`);
+          }
+      } catch (e) {
+          alert(`儲存失敗：${e.message}`);
+          saving.value = false;
+          return;
+      }
     }
-    
-        if (!targetPhone) {
-            alert('手機號碼為必填項。');
-            saving.value = false;
-            return;
-        }
-        
-        try {
-            // 我們可以複用 fetchUserDetailsForAdmin 來檢查用戶是否存在
-            const checkResult = await fetchUserDetailsForAdmin(targetPhone, adminKey.value);
-            
-            // 如果 API 呼叫成功 (status === 'success')，表示此用戶已存在
-            if (checkResult.status === 'success') {
-                alert(`錯誤：手機號碼 ${targetPhone} 已被註冊，無法新增。`);
-                saving.value = false; // 關閉 Loading
-                return; // 中斷儲存程序
-            }
 
-            // 如果 API 回報的是其他錯誤 (非「找不到手機號碼」)，也應中斷
-            if (checkResult.status === 'error' && !checkResult.message.includes('找不到手機號碼')) {
-                 throw new Error(`驗證號碼時出錯: ${checkResult.message}`);
-            }
-            // 如果 API 回報的是「找不到手機號碼」，則是我們期望的結果，可以繼續執行儲存。
-
-        } catch (e) {
-            // 處理檢查過程中可能發生的網路錯誤等
-            alert(`儲存失敗：${e.message}`);
-            saving.value = false;
-            return;
-        }
-    }
-    // --- 檢查結束 ---
-
-
-    // --- 原有的儲存邏輯 ---
-    // (如果上面的檢查通過，才會執行到這裡)
     try {
         const permissionsData = [];
         for (const system of allSystemFunctions.value) {
             for (const project of managedProjects.value) {
                 if (adminCanAssign(project, system)) {
+                    // ✅ 3. 在此處使用 projectStore 動態查找 projectId
                     permissionsData.push({
                         phone: targetPhone,
                         name: targetUser.value.basicInfo.name,
                         projectName: project,
+                        projectId: projectStore.nameToIdMap[project] || '', // <-- 主要修改點
                         systemFunction: system,
                         permission: permissionMatrix.value[system][project] ? 'Y' : 'N'
                     });
@@ -448,7 +433,7 @@ const handleSave = async () => {
         if (result.status === 'success') {
             alert(isNewUser.value ? '新人員建立成功！' : '人員資料更新成功！');
             closeDialog();
-            await loadInitialData(); // Refresh the main table
+            await loadInitialData();
         } else {
             throw new Error(result.message || '發生未知的錯誤');
         }
@@ -459,18 +444,13 @@ const handleSave = async () => {
     }
 };
 
-// --- 新增的即時驗證函式 ---
 const validatePhoneNumber = async () => {
-  // 只在新增人員模式下才執行
   if (!isNewUser.value) return;
-
   const phone = targetUser.value.basicInfo.phone?.trim();
   
-  // 清空舊的驗證訊息
   phoneValidationError.value = '';
   phoneValidationSuccess.value = '';
 
-  // 如果號碼為空，則不進行驗證
   if (!phone) return;
 
   phoneValidationLoading.value = true;
@@ -481,7 +461,6 @@ const validatePhoneNumber = async () => {
     } else if (checkResult.status === 'error' && checkResult.message.includes('找不到手機號碼')) {
       phoneValidationSuccess.value = '此手機號碼可使用。';
     } else {
-      // 其他 API 錯誤
       phoneValidationError.value = '驗證時發生錯誤。';
     }
   } catch (e) {
@@ -490,7 +469,6 @@ const validatePhoneNumber = async () => {
     phoneValidationLoading.value = false;
   }
 };
-
 </script>
 
 <style scoped>

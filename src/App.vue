@@ -5,11 +5,15 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent } from 'vue'; // 導入 defineAsyncComponent
+import { computed, defineAsyncComponent,onMounted } from 'vue'; // 導入 defineAsyncComponent
 import { useRoute } from 'vue-router';
 import DefaultLayout from './layouts/DefaultLayout.vue';
+import { useProjectStore } from '@/store/projectStore';
+
 
 const route = useRoute();
+const projectStore = useProjectStore();
+
 
 const layoutComponent = computed(() => {
   const layoutLoader = route.meta.layout;
@@ -25,6 +29,12 @@ const layoutComponent = computed(() => {
   // 如果路由沒有指定 layout，則回傳靜態載入的 DefaultLayout
   return DefaultLayout;
 });
+
+onMounted(() => {
+  // 當應用程式掛載時，觸發 action 來獲取所有專案資料
+  projectStore.fetchProjects();
+});
+
 </script>
 
 <style>

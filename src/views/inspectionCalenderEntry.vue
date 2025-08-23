@@ -72,69 +72,39 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
+import { getProjectsForInspectionCalendar } from '@/api'; // ✅ 引入新的 API
 
 const router = useRouter();
 const userStore = useUserStore();
 
-// --- 頁面基本資訊 ---
 const pageTitle = ref('驗屋時間表');
 const pageIcon = ref('mdi-calendar-check');
 
-// --- 響應式狀態 ---
 const selectedProject = ref(null);
 const projectOptions = ref([]);
 const loadingProjects = ref(true);
 const error = ref(null);
 
-// --- 靜態資料 ---
-const PROJECT_ID_MAP = {
-  '富宇上城': 'fuyu56',
-  '富宇富御': 'fuyu61',
-    // 如果有其他建案，請在此處添加
-};
-
-// --- 計算屬性 ---
 const selectedProjectDisplayName = computed(() => {
   if (!selectedProject.value) return '...';
   const found = projectOptions.value.find(p => p.value === selectedProject.value);
   return found ? found.text : '...';
 });
 
-// --- 生命週期鉤子 ---
-onMounted(() => {
+onMounted(async () => {
   if (!userStore.user) {
     loadingProjects.value = false;
     return;
   }
   
   try {
- 
-    const accessibleProjects = userStore.detailedPermissions
-      // 篩選出系統為「修改」或「檢視」，且權限為 'Y' 的項目
-      .filter(perm => 
-        ['驗屋時間表-修改', '驗屋時間表-檢視'].includes(perm.system) && perm.access === 'Y'
-      )
-      // 接下來的 .map() 和 .filter(Boolean) 邏輯不變
-      .map(perm => {
-        const projectName = perm.projectName;
-        const projectId = PROJECT_ID_MAP[projectName];
-        if (projectId) {
-          return { text: projectName, value: projectId };
-        }
-        return null;
-      })
-      .filter(Boolean);
+    // ✅ 使用新的 API 來獲取使用者有權限的建案列表
+    const projects = await getProjectsForInspectionCalendar(userStore.user.key);
+    projectOptions.value = projects;
 
-
-    // 使用 Set 來確保建案列表不重複 (以防同一個建案同時有修改和檢視權限)
-    const uniqueProjects = [...new Map(accessibleProjects.map(item => [item.value, item])).values()];
-
-    projectOptions.value = uniqueProjects;
-
-    if (uniqueProjects.length === 1) {
-      selectedProject.value = uniqueProjects[0].value;
+    if (projects.length === 1) {
+      selectedProject.value = projects[0].value;
     }
-
   } catch (e) {
     error.value = '讀取建案權限時發生錯誤。';
     console.error(e);
@@ -143,7 +113,6 @@ onMounted(() => {
   }
 });
 
-// --- 方法 ---
 const enterProject = () => {
   if (selectedProject.value) {
     router.push({ 
@@ -153,13 +122,8 @@ const enterProject = () => {
   }
 };
 
-const goHome = () => {
-  router.push({ name: 'Home' });
-};
-
-const goToLogin = () => {
-  router.push({ name: 'Login' });
-};
+const goHome = () => router.push({ name: 'Home' });
+const goToLogin = () => router.push({ name: 'Login' });
 </script>
 
 <style scoped>
