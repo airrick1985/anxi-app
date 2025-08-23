@@ -995,41 +995,35 @@ export async function fetchAdminScope(adminKey) {
 }
 
 /**
- * [Firestore 版] 管理員查詢特定用戶的詳細資料
+ * [Firestore 版] 管理員查詢特定用戶的詳細資料 (新版邏輯)
+ * - 允許管理員查詢任何存在的用戶，除非該用戶在特殊黑名單中。
  * @param {string} targetUserKey - 被查詢者的手機號碼
  * @param {string} adminKey - 管理員自己的手機號碼
  * @returns {Promise<object|null>} - 返回用戶資料物件或 result 物件
  */
 export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
-  // 權限檢查：再次確認 admin 有權管理 targetUser
-  const manageableUsers = await fetchManageableUsersForAdmin(adminKey);
-  const isManageable = manageableUsers.some(u => u.phone === targetUserKey);
-  
-  // 新增用戶時，還沒有權限，所以要放行
-  // 檢查 user collection 是否存在此用戶
-  const userDocRefCheck = doc(db, "users", targetUserKey);
-  const userDocSnapCheck = await getDoc(userDocRefCheck);
-  
-  if (!userDocSnapCheck.exists()) {
-    return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
-  }
-  
-  if (!isManageable && userDocSnapCheck.exists()) {
-     // 如果用戶存在但不可管理
-     const PROTECTED_USERS_BLACKLIST = ['60763998'];
-     if (!PROTECTED_USERS_BLACKLIST.includes(targetUserKey)) {
-        return { status: 'error', message: '權限不足，您無法查詢或管理此人員的資料。' };
-     }
-  }
+  // 💥 --- 邏輯修正開始 --- 💥
+  // 移除了 isManageable 和 isQueryingSelf 的複雜權限檢查。
+  // 現在的邏輯是：只要用戶存在，就可以查詢。
 
-  // 1. 獲取基本資料
+  // 1. 直接獲取用戶基本資料的文檔參照
   const userDocRef = doc(db, "users", targetUserKey);
   const userDocSnap = await getDoc(userDocRef);
+
+  // 2. 如果用戶不存在，直接返回錯誤
   if (!userDocSnap.exists()) {
     return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
   }
+  
+  // (可選) 如果您仍想保留一個不可被查詢的超級管理員或特殊用戶列表，可以保留這個檢查
+  const PROTECTED_USERS_BLACKLIST = ['60763998']; 
+  if (PROTECTED_USERS_BLACKLIST.includes(targetUserKey) && targetUserKey !== adminKey) {
+      return { status: 'error', message: '權限不足，您無法查詢此特定人員的資料。' };
+  }
+  // 💥 --- 邏輯修正結束 --- 💥
 
-  // 2. 獲取權限資料
+
+  // 3. 獲取用戶權限資料 (此部分邏輯不變)
   const permissionsRef = collection(db, "permissions");
   const permissionsQuery = query(permissionsRef, where("userPhone", "==", targetUserKey));
   const permissionsSnapshot = await getDocs(permissionsQuery);
@@ -1046,15 +1040,15 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
     };
   });
   
- const basicInfo = userDocSnap.data();
-  // ✅ 修改這裡，將 key 改為與前端 v-model 一致的小寫英文
+  // 4. 組合回傳的資料 (此部分邏輯不變)
+  const basicInfo = userDocSnap.data();
   const formattedBasicInfo = {
-    phone: targetUserKey, // 雖然手機號碼欄位是 readonly，但統一格式比較好
+    phone: targetUserKey,
     name: basicInfo.name,
     email: basicInfo.email,
-    password: String(basicInfo.password || ''), // 確保密碼是字串
+    password: String(basicInfo.password || ''),
     companyName: basicInfo.companyName,
-    companyTaxId: String(basicInfo.companyTaxId || ''), // 確保統編是字串
+    companyTaxId: String(basicInfo.companyTaxId || ''),
     role: basicInfo.role
   };
 
@@ -1076,11 +1070,19 @@ export async function updateUserDetailsForAdmin(updatePayload) {
   const { targetUserKey, adminKey, adminName, basicInfo, permissionsData } = updatePayload;
 
   try {
+    // 首先，獲取執行此操作的管理員的完整權限範圍
+    const adminScope = await fetchAdminScope(adminKey);
+    const managedProjects = Object.keys(adminScope);
+
+    // 如果管理員沒有任何建案的管理權，則直接拒絕操作
+    if (managedProjects.length === 0) {
+      return { status: 'error', message: '您沒有管理任何建案的權限，無法執行此操作。' };
+    }
+
     const batch = writeBatch(db);
 
     // 步驟 1: 更新或建立 users 集合中的基本資料
     const userDocRef = doc(db, "users", targetUserKey);
-    // 將中文 key 轉回英文 key
     const newBasicInfo = {
       name: basicInfo.name,
       email: basicInfo.email,
@@ -1088,32 +1090,33 @@ export async function updateUserDetailsForAdmin(updatePayload) {
       companyName: basicInfo.companyName,
       companyTaxId: String(basicInfo.companyTaxId || ''),
       role: basicInfo.role || '',
-      lastModifiedBy: adminName, // 現在 adminName 有值了
+      lastModifiedBy: adminName,
       lastModifiedByPhone: adminKey
     };
-    batch.set(userDocRef, newBasicInfo, { merge: true }); // merge: true 確保只更新傳入的欄位
+    batch.set(userDocRef, newBasicInfo, { merge: true });
 
     // 步驟 2: 刪除該用戶在管理者權限範圍內的所有舊權限
-    const adminScope = await fetchAdminScope(adminKey);
-    const managedProjects = Object.keys(adminScope);
+    // 這樣可以處理權限被移除（從 'Y' 變 'N'）的情況
+    const permissionsRef = collection(db, "permissions");
+    const oldPermsQuery = query(permissionsRef, 
+      where("userPhone", "==", targetUserKey),
+      where("projectName", "in", managedProjects)
+    );
+    const oldPermsSnapshot = await getDocs(oldPermsQuery);
+    oldPermsSnapshot.forEach(doc => {
+      batch.delete(doc.ref);
+    });
 
-    if (managedProjects.length > 0) {
-      const permissionsRef = collection(db, "permissions");
-      const oldPermsQuery = query(permissionsRef, 
-        where("userPhone", "==", targetUserKey),
-        where("projectName", "in", managedProjects)
-      );
-      const oldPermsSnapshot = await getDocs(oldPermsQuery);
-      oldPermsSnapshot.forEach(doc => {
-        batch.delete(doc.ref);
-      });
-    }
-
-    // 步驟 3: 新增前端傳來的新權限
+    // 步驟 3: 新增前端傳來的新權限，並在後端進行最終驗證
     permissionsData.forEach(perm => {
-      // 只新增 access 為 true ('Y') 的權限
-      if (perm.permission === 'Y') {
-        const newPermDocRef = doc(collection(db, "permissions")); // 建立一個新的文件參照
+      // 💥 --- 邏輯修正開始 --- 💥
+      // 核心安全檢查：
+      // 1. 只處理權限為 'Y' 的資料。
+      // 2. 必須再次驗證提交的每一筆權限，是否都在當前管理員的管轄範圍 (adminScope) 之內。
+      const isAdminAllowedToAssign = adminScope[perm.projectName]?.includes(perm.systemFunction);
+
+      if (perm.permission === 'Y' && isAdminAllowedToAssign) {
+        const newPermDocRef = doc(collection(db, "permissions"));
         batch.set(newPermDocRef, {
           userPhone: perm.phone,
           userName: perm.name,
@@ -1122,6 +1125,7 @@ export async function updateUserDetailsForAdmin(updatePayload) {
           access: true
         });
       }
+      // 💥 --- 邏輯修正結束 --- 💥
     });
 
     // 步驟 4: 提交所有操作
@@ -1133,6 +1137,8 @@ export async function updateUserDetailsForAdmin(updatePayload) {
     return { status: 'error', message: e.message };
   }
 }
+
+
 /**
  * [Firestore 版] 獲取管理者可管理的人員列表 (姓名+電話)
  * @param {string} adminKey - 管理員自己的手機號碼
