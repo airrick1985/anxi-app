@@ -323,7 +323,7 @@ router.beforeEach(async (to, from, next) => {
             return next({ name: 'Home' });
         }
 
-        if (userStore.hasProjectPreflight(requiredSystem, fullProjectName)) {
+        if (userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
           return next();
         } else {
           alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);

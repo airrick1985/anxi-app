@@ -611,7 +611,6 @@ import {
   validateId, 
   getBookingSlots, 
   saveBooking, 
-  cancelBooking,
   uploadAuthLetter,
   uploadInspectionReport // <-- ✅ 引入新的 API 函式
 } from '@/api';

@@ -3,29 +3,11 @@
     <v-card>
       <v-card-title class="d-flex align-center text-h5 text-primary">
         <v-icon start>mdi-cogs</v-icon>
-        <span>預約規則設定</span>
-        <v-spacer></v-spacer>
-        <v-select
-          v-model="selectedProject"
-          :items="projectOptions"
-          item-title="text"
-          item-value="value"
-          label="請選擇建案"
-          density="compact"
-          hide-details
-          class="flex-grow-0"
-          style="max-width: 250px"
-          :disabled="isLoading"
-        ></v-select>
+        <span>預約規則設定：{{ projectName || '讀取中...' }}</span> 
       </v-card-title>
       <v-divider></v-divider>
 
-      <div v-if="!selectedProject" class="text-center pa-10 text-grey-darken-1">
-        <v-icon size="48" class="mb-2">mdi-office-building-cog-outline</v-icon>
-        <div>請先從右上角選擇一個建案以開始設定規則。</div>
-      </div>
-      
-      <div v-else-if="isLoading" class="text-center pa-10">
+      <div v-if="isLoading" class="text-center pa-10">
         <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
         <div class="mt-4">資料載入中...</div>
       </div>
@@ -42,7 +24,7 @@
           </v-tab>
           <v-tab value="capacity">
             <v-icon start>mdi-account-group-outline</v-icon>
-            每日名額設定
+            時段名額設定
           </v-tab>
         </v-tabs>
         <v-divider></v-divider>
@@ -293,19 +275,21 @@
 </template>
 
 <script setup>
-import { ref, watch, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
+
+// --- Component State ---
+const route = useRoute();
+const projectStore = useProjectStore(); // ✅ 2. 獲取 projectStore 實例
+
+const projectId = ref(route.params.projectId); // 從路由參數獲取 projectId
 
 // --- MOCK API Functions ---
 // 實際開發時，這些會從 @/api.js 引入並呼叫後端
 const mockApi = {
-  fetchProjects: async () => {
-    console.log('[API] Fetching projects...');
-    await new Promise(r => setTimeout(r, 500));
-    return [
-      { text: '富宇上城', value: 'fuyu56' },
-      { text: '富宇富御', value: 'fuyu61' },
-    ];
-  },
+  // ❌ 不再需要 fetchProjectName，因為可以從 store 拿到
+  // fetchProjectName: async (projectId) => { ... }, 
   fetchBookingBatches: async (projectId) => {
     console.log(`[API] Fetching batches for ${projectId}...`);
     await new Promise(r => setTimeout(r, 800));
@@ -357,8 +341,6 @@ const mockApi = {
 
 // --- Component State ---
 const isLoading = ref(false);
-const selectedProject = ref(null);
-const projectOptions = ref([]);
 const activeTab = ref('batches');
 
 // --- Snackbar ---
@@ -420,6 +402,10 @@ const isCapacitySaving = ref(false);
 const selectedCapacityDate = ref(null);
 const timeSlotForCapacity = ref([]);
 
+// ✅ 3. 將 projectName 改為 computed 屬性，它會自動從 store 中反應最新值
+const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
+
+
 // --- Computed Properties ---
 const unavailableDatesForPicker = computed({
     get() {
@@ -453,18 +439,39 @@ async function loadInitialData() {
   projectOptions.value = await mockApi.fetchProjects();
 }
 
-async function loadDataForProject(projectId) {
-  if (!projectId) return;
+// ✅ 4. 修改主要的資料載入函式
+async function loadDataForProject() {
+  if (!projectId.value) {
+    showSnackbar('錯誤：缺少建案 ID', 'error');
+    isLoading.value = false;
+    return;
+  }
+  
   isLoading.value = true;
   try {
-    await Promise.all([
-      loadBatches(projectId),
-      loadAllSlotRules(projectId),
+    // ✅ 5. 在載入頁面資料前，先確保 ProjectStore 的資料已存在
+    // fetchProjects 內部有防呆，不會重複請求 API
+    await projectStore.fetchProjects(); 
+    
+    // 現在可以安全地從 store 獲取建案名稱，並載入其他資料
+    if (!projectName.value) {
+        throw new Error(`在 store 中找不到 ID 為 ${projectId.value} 的建案`);
+    }
+
+    // 平行載入此頁面需要的資料
+    const [batches, rules] = await Promise.all([
+      mockApi.fetchBookingBatches(projectId.value),
+      mockApi.fetchTimeSlotRules(projectId.value),
     ]);
-    // Resetting states for other tabs
+    
+    bookingBatches.value = batches;
+    allSlotRules.value = rules;
+
+    // Resetting states
     selectedCapacityDate.value = null;
     timeSlotForCapacity.value = [];
     Object.assign(selectedSlotRule, { bookingType: null, inspectionMethod: null, timeSlots: [] });
+
   } catch (error) {
     showSnackbar(`載入建案資料失敗: ${error.message}`, 'error');
   } finally {
@@ -492,23 +499,22 @@ async function handleSaveBatch() {
   const { valid } = await batchForm.value.validate();
   if (!valid) return;
   
-  const payload = { ...editedBatch.value, projectId: selectedProject.value };
+const payload = { ...editedBatch.value, projectId: projectId.value };
   const res = await mockApi.saveBookingBatch(payload);
   if (res.status === 'success') {
     showSnackbar('儲存成功！');
     isBatchDialogVisible.value = false;
-    loadBatches(selectedProject.value);
+    loadBatches(projectId.value);
   } else {
     showSnackbar('儲存失敗', 'error');
   }
 }
-
 function handleDeleteBatch(item) {
     if(confirm(`確定要刪除「${item.batchCode}」這個批次嗎？`)){
         mockApi.deleteBookingBatch(item.id).then(res => {
             if (res.status === 'success') {
                 showSnackbar('刪除成功');
-                loadBatches(selectedProject.value);
+                loadBatches(projectId.value);
             } else {
                 showSnackbar('刪除失敗', 'error');
             }
@@ -533,19 +539,21 @@ function updateSelectedSlotRule() {
   } else {
     selectedSlotRule.timeSlots = [];
   }
-}
 
+}
+onMounted(() => {
+  loadDataForProject();
+});
 async function handleSaveSlotRule() {
   isSlotSaving.value = true;
   const payload = {
     ...selectedSlotRule,
-    projectId: selectedProject.value,
+    projectId: projectId.value,
   };
   const res = await mockApi.saveTimeSlotRule(payload);
   if (res.status === 'success') {
     showSnackbar('時段規則儲存成功');
-    // Reload all rules to reflect the change
-    await loadAllSlotRules(selectedProject.value);
+    allSlotRules.value = await mockApi.fetchTimeSlotRules(projectId.value);
   } else {
     showSnackbar('儲存失敗', 'error');
   }
@@ -573,9 +581,9 @@ function executeCopy() {
 
 // Capacity Functions
 async function loadCapacitiesForDate(date) {
-  if (!date || !selectedProject.value) return;
+  if (!date || !projectId.value) return;
   isCapacityLoading.value = true;
-  timeSlotForCapacity.value = await mockApi.fetchDateCapacities(selectedProject.value, formatDate(date));
+  timeSlotForCapacity.value = await mockApi.fetchDateCapacities(projectId.value, formatDate(date));
   isCapacityLoading.value = false;
 }
 
@@ -583,7 +591,7 @@ async function handleSaveCapacities() {
   if (!selectedCapacityDate.value) return;
   isCapacitySaving.value = true;
   const dateStr = formatDate(selectedCapacityDate.value);
-  const res = await mockApi.saveDateCapacities(selectedProject.value, dateStr, timeSlotForCapacity.value);
+  const res = await mockApi.saveDateCapacities(projectId.value, dateStr, timeSlotForCapacity.value);
   if (res.status === 'success') {
       showSnackbar(`${dateStr} 的名額設定已儲存`);
   } else {
@@ -592,11 +600,12 @@ async function handleSaveCapacities() {
   isCapacitySaving.value = false;
 }
 
-
-// --- Watchers ---
-watch(selectedProject, (newProjectId) => {
-  loadDataForProject(newProjectId);
+// ✅ 6. onMounted 函式現在只呼叫一個函式
+onMounted(() => {
+  loadDataForProject();
 });
+
+
 
 watch([() => selectedSlotRule.bookingType, () => selectedSlotRule.inspectionMethod], () => {
   updateSelectedSlotRule();
@@ -606,9 +615,6 @@ watch(selectedCapacityDate, (newDate) => {
     loadCapacitiesForDate(newDate);
 })
 
-
-// --- Lifecycle ---
-loadInitialData();
 
 </script>
 

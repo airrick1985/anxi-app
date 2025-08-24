@@ -43,6 +43,7 @@
                 <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
               </template>
               <v-list density="compact">
+                <v-list-item v-if="canEdit" prepend-icon="mdi-cogs" title="預約規則設定" @click="navigateToRuleManager"></v-list-item>
                 <v-list-item v-if="canEdit" prepend-icon="mdi-calendar-plus" title="新增預約" @click="handleOpenAddDialog"></v-list-item>
                 <v-list-item prepend-icon="mdi-refresh" title="重新整理" @click="handleRefresh" :disabled="isLoading">
                   <template v-slot:append>
