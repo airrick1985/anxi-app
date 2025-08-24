@@ -3,7 +3,6 @@
 
 // ✅ 在檔案頂部，引入所有需要的函式
 import { db, storage, functions } from '@/firebase'; 
-
 import { 
   collection, 
   query, 
@@ -13,14 +12,16 @@ import {
   doc, 
   updateDoc, 
   serverTimestamp, 
-  getCountFromServer, 
-  documentId, 
+  getCountFromServer,  
+  documentId,          
   orderBy, 
   writeBatch,
   setDoc,         
   deleteDoc,      
-  Timestamp
+  Timestamp,
+  addDoc,
 } from "firebase/firestore";
+
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from 'firebase/functions';
@@ -2030,3 +2031,249 @@ export async function uploadInspectionReport(payload) {
   }, INSPECTION_API);
 }
 
+
+/**
+ * ===============================================
+ * /  ✅ 預約批次規則管理 API
+ * ===============================================
+ */
+
+
+/**
+ * [Firestore] 儲存或更新一筆預約批次規則 (新版)
+ * 這個函式現在只負責儲存批次本身的基本資訊。
+ * @param {object} batchData - 包含批次詳細資訊的物件 (不含每日規則)
+ * @returns {Promise<object>} - 返回操作結果，包含 status 和 id
+ */
+export async function saveBookingBatch(batchData) {
+    try {
+        const isNew = !batchData.id;
+        const docRef = isNew
+            ? doc(collection(db, "bookingBatches"))
+            : doc(db, "bookingBatches", batchData.id);
+
+        const dataToSave = { ...batchData };
+        
+        if (isNew) {
+            dataToSave.createdAt = serverTimestamp();
+            delete dataToSave.id; 
+        }
+        dataToSave.lastModified = serverTimestamp();
+        // 移除從 payload 傳過來的每日規則，避免存到主文件裡
+        delete dataToSave.dailyRules; 
+
+        await setDoc(docRef, dataToSave, { merge: true });
+
+        return { status: 'success', id: docRef.id };
+    } catch (e) {
+        console.error("儲存預約批次時發生錯誤: ", e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * ✅ [新增] 儲存指定批次的每日時段與名額規則
+ * @param {string} batchId - 批次的文件 ID
+ * @param {object} dailyRules - 以日期為 key 的規則物件 e.g., { '2025-09-01': { slots: {...} }, ... }
+ * @returns {Promise<object>}
+ */
+export async function saveDailyRules(batchId, dailyRules) {
+    try {
+        const batch = writeBatch(db);
+
+        for (const date in dailyRules) {
+            const ruleData = dailyRules[date];
+            // 建立指向子集合中文件的參照，文件 ID 就是日期
+            const dailyRuleRef = doc(db, "bookingBatches", batchId, "dailyRules", date);
+            batch.set(dailyRuleRef, ruleData);
+        }
+
+        await batch.commit();
+        return { status: 'success' };
+    } catch (e) {
+        console.error(`儲存批次 ${batchId} 的每日規則時發生錯誤:`, e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * ✅ [新增] 獲取指定批次的所有每日規則
+ * @param {string} batchId - 批次的文件 ID
+ * @returns {Promise<object>} - 返回以日期為 key 的規則物件
+ */
+export async function fetchDailyRules(batchId) {
+    try {
+        const dailyRulesRef = collection(db, "bookingBatches", batchId, "dailyRules");
+        const snapshot = await getDocs(dailyRulesRef);
+        const rules = {};
+        snapshot.forEach(doc => {
+            rules[doc.id] = doc.data(); // doc.id 就是日期 'YYYY-MM-DD'
+        });
+        return rules;
+    } catch (e) {
+        console.error(`獲取批次 ${batchId} 的每日規則時發生錯誤:`, e);
+        return {};
+    }
+}
+
+/**
+ * [Firestore] 獲取指定建案的所有預約批次
+ * @param {string} projectId - 建案的 ID
+ * @returns {Promise<Array>} - 返回批次資料陣列
+ */
+export async function fetchBookingBatches(projectId) {
+    try {
+        const batchesRef = collection(db, "bookingBatches");
+        // 建立查詢，篩選出符合 projectId 的資料，並依照申請開始日期降冪排序
+        const q = query(
+            batchesRef,
+            where("projectId", "==", projectId),
+            orderBy("bookingStart", "desc")
+        );
+
+        const querySnapshot = await getDocs(q);
+        const batches = [];
+        querySnapshot.forEach((doc) => {
+            // 將文件 ID 和文件內容組合回傳
+            batches.push({ id: doc.id, ...doc.data() });
+        });
+        return batches;
+    } catch (e) {
+        console.error(`獲取建案 ${projectId} 的預約批次時發生錯誤:`, e);
+        return []; // 發生錯誤時回傳空陣列
+    }
+}
+
+
+/**
+ * [Firestore] 獲取指定建案的所有時段規則
+ * @param {string} projectId - 建案的 ID
+ * @returns {Promise<Array>}
+ */
+export async function fetchTimeSlotRules(projectId) {
+    const rulesRef = collection(db, "timeSlotRules");
+    const q = query(rulesRef, where("projectId", "==", projectId));
+    const snapshot = await getDocs(q);
+    const rules = [];
+    snapshot.forEach(doc => {
+        rules.push({ id: doc.id, ...doc.data() });
+    });
+    return rules;
+}
+
+/**
+ * [Firestore] 儲存一筆時段規則 (會自動判斷新增或更新)
+ * @param {object} ruleData - 包含 projectId, bookingType, inspectionMethod, timeSlots 的物件
+ * @returns {Promise<object>}
+ */
+export async function saveTimeSlotRule(ruleData) {
+    const rulesRef = collection(db, "timeSlotRules");
+    // 查詢是否已存在相同 (projectId, bookingType, inspectionMethod) 的規則
+    const q = query(
+        rulesRef,
+        where("projectId", "==", ruleData.projectId),
+        where("bookingType", "==", ruleData.bookingType),
+        where("inspectionMethod", "==", ruleData.inspectionMethod)
+    );
+
+    try {
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+            // 不存在，新增一筆
+            const docRef = await addDoc(rulesRef, { ...ruleData, createdAt: serverTimestamp() });
+            return { status: 'success', id: docRef.id };
+        } else {
+            // 已存在，更新第一筆找到的資料
+            const docId = snapshot.docs[0].id;
+            await updateDoc(doc(db, "timeSlotRules", docId), {
+                timeSlots: ruleData.timeSlots,
+                lastModified: serverTimestamp()
+            });
+            return { status: 'success', id: docId };
+        }
+    } catch (e) {
+        console.error("儲存時段規則時發生錯誤:", e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * [Firestore] 獲取指定日期的名額設定
+ * @param {string} projectId - 建案 ID
+ * @param {string} date - 日期字串 (YYYY-MM-DD)
+ * @returns {Promise<Array>}
+ */
+export async function fetchDateCapacities(projectId, date) {
+    // 我們將每日的名額存在一個文件中，文件ID格式為 'projectId_date'
+    const docId = `${projectId}_${date}`;
+    const docRef = doc(db, "dailyCapacities", docId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+        const data = docSnap.data().slots; // { "09:00": 5, "10:00": 3 }
+        // 將其轉換回元件習慣的陣列格式
+        return Object.entries(data).map(([timeSlot, capacity]) => ({ timeSlot, capacity }));
+    } else {
+        return []; // 如果文件不存在，回傳空陣列
+    }
+}
+
+/**
+ * [Firestore] 儲存指定日期的名額設定
+ * @param {string} projectId - 建案 ID
+ * @param {string} date - 日期字串 (YYYY-MM-DD)
+ * @param {Array} capacities - 包含 { timeSlot, capacity } 的陣列
+ * @returns {Promise<object>}
+ */
+export async function saveDateCapacities(projectId, date, capacities) {
+    const docId = `${projectId}_${date}`;
+    const docRef = doc(db, "dailyCapacities", docId);
+    
+    // 將陣列轉換為 Firestore 中儲存的 map 格式
+    const slotsMap = capacities.reduce((acc, curr) => {
+        acc[curr.timeSlot] = Number(curr.capacity) || 0;
+        return acc;
+    }, {});
+
+    try {
+        await setDoc(docRef, {
+            projectId,
+            date,
+            slots: slotsMap,
+            lastModified: serverTimestamp()
+        }, { merge: true }); // merge:true 確保我們只更新 slots 欄位
+        return { status: 'success' };
+    } catch (e) {
+        console.error("儲存每日名額時發生錯誤:", e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * ✅ [新增] [Firestore] 刪除一筆預約批次及其所有每日規則
+ * @param {string} batchId - 批次的文件 ID
+ * @returns {Promise<object>}
+ */
+export async function deleteBookingBatch(batchId) {
+    try {
+        const batch = writeBatch(db);
+
+        // 1. 找到並準備刪除子集合 'dailyRules' 中的所有文件
+        const dailyRulesRef = collection(db, "bookingBatches", batchId, "dailyRules");
+        const dailyRulesSnapshot = await getDocs(dailyRulesRef);
+        dailyRulesSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 2. 準備刪除主文件
+        const batchDocRef = doc(db, "bookingBatches", batchId);
+        batch.delete(batchDocRef);
+
+        // 3. 一次性提交所有刪除操作
+        await batch.commit();
+        return { status: 'success' };
+    } catch (e) {
+        console.error(`刪除批次 ${batchId} 時發生錯誤:`, e);
+        return { status: 'error', message: e.message };
+    }
+}

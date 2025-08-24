@@ -21,7 +21,7 @@
             <v-divider vertical class="mx-2"></v-divider>
 
            <v-btn v-if="canEdit" color="deep-purple-lighten-1" @click="navigateToRuleManager" prepend-icon="mdi-cogs">
-              預約規則設定
+              預約批次管理
             </v-btn>
             
 
@@ -43,7 +43,7 @@
                 <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
               </template>
               <v-list density="compact">
-                <v-list-item v-if="canEdit" prepend-icon="mdi-cogs" title="預約規則設定" @click="navigateToRuleManager"></v-list-item>
+                <v-list-item v-if="canEdit" prepend-icon="mdi-cogs" title="預約批次管理" @click="navigateToRuleManager"></v-list-item>
                 <v-list-item v-if="canEdit" prepend-icon="mdi-calendar-plus" title="新增預約" @click="handleOpenAddDialog"></v-list-item>
                 <v-list-item prepend-icon="mdi-refresh" title="重新整理" @click="handleRefresh" :disabled="isLoading">
                   <template v-slot:append>
