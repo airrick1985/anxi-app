@@ -1,0 +1,1 @@
+import{n as d,c as l}from"./normalizeDates-COOkawF1.js";function m(n,e){const[t,s]=d(n,e.start,e.end);return{start:t,end:s}}function D(n,e){const{start:t,end:s}=m(e==null?void 0:e.in,n);let a=+t>+s;const o=a?+t:+s,r=a?s:t;r.setHours(0,0,0,0);let u=1;const c=[];for(;+r<=o;)c.push(l(t,r)),r.setDate(r.getDate()+u),r.setHours(0,0,0,0);return a?c.reverse():c}export{D as e,m as n};
