@@ -49,16 +49,41 @@
       </v-data-table>
     </v-card>
 
-    <v-dialog v-model="dialog" persistent max-width="800px">
+   <v-dialog v-model="dialog" persistent max-width="800px">
       <v-card>
-        <v-card-title>
+        <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
           <span class="text-h5">{{ isEditing ? '編輯訂閱' : '新增訂閱' }}</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
         </v-card-title>
         <v-card-text>
           <v-container>
             <v-row>
-              <v-col cols="12" sm="6"><v-select v-model="editedItem.projectName" :items="masterData.projectNames" label="建案名稱*" :rules="rules.required"></v-select></v-col>
-              <v-col cols="12" sm="6"><v-select v-model="editedItem.systemFunction" :items="masterData.systemFunctions" label="系統功能*" :rules="rules.required"></v-select></v-col>
+              <v-col cols="12" sm="6">
+                <v-combobox
+                  v-model="editedItem.projectName"
+                  :items="masterData.projectNames"
+                  label="建案名稱*"
+                  :rules="rules.required"
+                  hint="可從選單選取或手動輸入"
+                  persistent-hint
+                ></v-combobox>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="editedItem.systemFunction"
+                  :items="masterData.systemFunctions"
+                  label="系統功能*"
+                  :rules="rules.requiredArray"
+                  multiple
+                  chips
+                  closable-chips
+                  :disabled="isEditing"
+                  :hint="isEditing ? '編輯模式下無法修改系統功能' : ''"
+                  :persistent-hint="isEditing"
+                ></v-select>
+              </v-col>
               <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactName" label="聯絡人"></v-text-field></v-col>
               <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機"></v-text-field></v-col>
               
@@ -97,11 +122,16 @@
 
     <v-dialog v-model="deleteDialog" persistent max-width="400">
         <v-card>
-          <v-card-title class="text-h5">確認刪除</v-card-title>
+          <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          確認刪除訂閱
+        </v-card-title>
           <v-card-text>
             您確定要刪除這筆訂閱紀錄嗎？<br>
+            <br>
             <strong>建案:</strong> {{ itemToDelete.projectName }} <br>
             <strong>系統:</strong> {{ itemToDelete.systemFunction }} <br>
+            <br>
             此操作無法復原。
           </v-card-text>
           <v-card-actions>
@@ -150,10 +180,11 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const isEditing = ref(false);
 
+// ✅ 修改點: defaultItem 的 systemFunction 初始化為空陣列
 const defaultItem = {
     id: null,
     projectName: '', 
-    systemFunction: '', 
+    systemFunction: [], 
     contactName: '', 
     contactPhone: '',
     paymentDate: '', 
@@ -170,9 +201,12 @@ const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他
 const subscriptionTypeSelection = ref('');
 const otherSubscriptionType = ref('');
 
+// ✅ 修改點: 新增陣列驗證規則
 const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
+    requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
 };
+
 
 async function loadData() {
     if (!adminKey.value) {
@@ -197,11 +231,23 @@ async function loadData() {
 
 onMounted(loadData);
 
+// ✅ 修改點: openEditDialog 需處理 systemFunction 的資料格式
 function openEditDialog(item) {
     isEditing.value = !!item;
-    editedItem.value = item ? { ...item } : { ...defaultItem };
     
-    const currentType = editedItem.value.subscriptionType;
+    if (item) {
+        // 編輯模式：複製資料，並確保 systemFunction 是陣列
+        editedItem.value = { ...item };
+        if (typeof editedItem.value.systemFunction === 'string') {
+            editedItem.value.systemFunction = [editedItem.value.systemFunction];
+        }
+    } else {
+        // 新增模式：使用預設值
+        editedItem.value = { ...defaultItem };
+    }
+    
+    // 處理訂閱類型顯示的邏輯不變
+    const currentType = item ? item.subscriptionType : '';
     if (currentType && subscriptionTypeOptions.includes(currentType)) {
         subscriptionTypeSelection.value = currentType;
         otherSubscriptionType.value = '';
@@ -232,39 +278,59 @@ function closeDeleteDialog() {
     });
 }
 
+// ✅ 修改點: save 函式需處理多筆建立的邏輯
 async function save() {
     saving.value = true;
     
-    const payloadData = { ...editedItem.value };
+    const basePayload = { ...editedItem.value };
 
     if (subscriptionTypeSelection.value === '其他') {
-        payloadData.subscriptionType = otherSubscriptionType.value;
+        basePayload.subscriptionType = otherSubscriptionType.value;
     } else {
-        payloadData.subscriptionType = subscriptionTypeSelection.value;
+        basePayload.subscriptionType = subscriptionTypeSelection.value;
     }
 
     try {
         if (isEditing.value) {
+            // 編輯模式：僅更新單筆資料
+            const payloadData = { ...basePayload };
+            // 從陣列取回單一值進行儲存
+            payloadData.systemFunction = basePayload.systemFunction[0] || ''; 
             await updateSubscription(payloadData.id, payloadData, adminKey.value);
+            alert('儲存成功！');
         } else {
-            // ✅ 【核心修改點】在新增訂閱前，檢查是否存在重複的有效訂閱
-            const isDuplicate = subscriptions.value.some(sub => 
-                sub.projectName === payloadData.projectName &&
-                sub.systemFunction === payloadData.systemFunction &&
-                (sub.status === '啟用中' || sub.status.startsWith('即將到期'))
-            );
+            // 新增模式：為每個選擇的系統建立一筆訂閱
+            const selectedSystems = basePayload.systemFunction;
 
-            if (isDuplicate) {
-                alert(`錯誤：建案「${payloadData.projectName}」的「${payloadData.systemFunction}」已有一個有效的訂閱。請勿重複建立。`);
-                saving.value = false; // 停止 loading
-                return; // 中斷儲存操作
+            if (!selectedSystems || selectedSystems.length === 0) {
+                alert('請至少選擇一個系統功能。');
+                saving.value = false;
+                return;
             }
-            
-            const newId = `SUB-${Date.now()}`;
-            payloadData.id = newId;
-            await addSubscription(newId, payloadData, adminKey.value);
+
+            const creationPromises = selectedSystems.map((system, index) => {
+                const payloadData = { ...basePayload, systemFunction: system };
+
+                const isDuplicate = subscriptions.value.some(sub => 
+                    sub.projectName === payloadData.projectName &&
+                    sub.systemFunction === payloadData.systemFunction &&
+                    (sub.status === '啟用中' || sub.status.startsWith('即將到期'))
+                );
+
+                if (isDuplicate) {
+                    throw new Error(`錯誤：建案「${payloadData.projectName}」的「${payloadData.systemFunction}」已有一個有效的訂閱。`);
+                }
+                
+                const newId = `SUB-${Date.now()}-${index}`;
+                payloadData.id = newId;
+                
+                return addSubscription(newId, payloadData, adminKey.value);
+            });
+
+            await Promise.all(creationPromises);
+            alert(`成功新增 ${creationPromises.length} 筆訂閱！`);
         }
-        alert('儲存成功！');
+        
         closeDialog();
         await loadData();
     } catch (error) {
