@@ -198,8 +198,32 @@
           </v-card-title>
           <v-card-text class="pt-4">
             您確定要永久刪除「<strong>{{ batchToDelete.bookingType }}</strong>」批次「<strong>{{ batchToDelete.batchCode }}</strong>」嗎？
-            <br>
-            所有與此批次相關的每日規則也將一併被刪除，此操作無法復原。
+            
+            <v-divider class="my-3"></v-divider>
+
+            <div v-if="isDeleteDatesLoading" class="text-center pa-4">
+              <v-progress-circular indeterminate color="grey"></v-progress-circular>
+              <p class="text-caption mt-2">正在讀取相關日期...</p>
+            </div>
+            <div v-else>
+              <p v-if="deleteBatchDates.length > 0" class="mb-2">
+                此操作將一併刪除以下 <strong>{{ deleteBatchDates.length }}</strong> 天的預約規則：
+              </p>
+              <p v-else class="text-grey-darken-1">
+                此批次目前沒有設定任何可預約日期。
+              </p>
+              <v-list v-if="deleteBatchDates.length > 0" dense class="border rounded" style="max-height: 600px; overflow-y: auto;">
+                <v-list-item v-for="day in deleteBatchDates" :key="day">
+                  <v-list-item-title>
+                    <span :class="{ 'weekend-highlight': isWeekend(day) }">
+                      {{ formatDateWithWeekday(day) }}
+                    </span>
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </div>
+            <p class="mt-4">此操作無法復原。</p>
+
           </v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
@@ -250,15 +274,147 @@
             <v-divider class="my-2"></v-divider>
             <v-row>
               <v-col cols="12" sm="6" md="3">
-                <v-text-field v-model="editedBatch.applicationStart" label="預約開放起始時間" type="datetime-local" :rules="[v => !!v || '必填']"></v-text-field>
+                <v-menu
+                  v-model="menuAppStart"
+                  :close-on-content-click="false"
+                  location="bottom"
+                  transition="scale-transition"
+                >
+                  <template v-slot:activator="{ props }">
+                    <v-text-field
+                      :model-value="formatDisplayDateTime(editedBatch.applicationStart)"
+                      label="預約開放起始時間"
+                      prepend-inner-icon="mdi-calendar-clock"
+                      readonly
+                      v-bind="props"
+                      :rules="[v => !!v || '必填']"
+                      variant="outlined"
+                    ></v-text-field>
+                  </template>
+                  <v-card min-width="300">
+                    <v-tabs v-model="activePickerTabStart" grow>
+                      <v-tab><v-icon start>mdi-calendar</v-icon>日期</v-tab>
+                      <v-tab><v-icon start>mdi-clock-outline</v-icon>時間</v-tab>
+                    </v-tabs>
+                    <v-window v-model="activePickerTabStart">
+                      <v-window-item :value="0">
+                        <v-date-picker 
+                          v-model="tempDateStart"
+                          @update:model-value="activePickerTabStart = 1"
+                          hide-header
+                        ></v-date-picker>
+                      </v-window-item>
+                      <v-window-item :value="1">
+                        <v-time-picker v-model="tempTimeStart" format="24hr"></v-time-picker>
+                      </v-window-item>
+                    </v-window>
+                    <v-divider></v-divider>
+                    <v-card-actions>
+                      <v-spacer></v-spacer>
+                      <v-btn text @click="menuAppStart = false">取消</v-btn>
+                      <v-btn color="primary" @click="saveApplicationStart">確定</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-menu>
               </v-col>
               <v-col cols="12" sm="6" md="3">
-                <v-text-field v-model="editedBatch.applicationEnd" label="預約開放結束時間" type="datetime-local" :rules="[v => !!v || '必填']"></v-text-field>
+                <v-menu
+                  v-model="menuAppEnd"
+                  :close-on-content-click="false"
+                  location="bottom"
+                  transition="scale-transition"
+                >
+                  <template v-slot:activator="{ props }">
+                    <v-text-field
+                      :model-value="formatDisplayDateTime(editedBatch.applicationEnd)"
+                      label="預約開放結束時間"
+                      prepend-inner-icon="mdi-calendar-clock"
+                      readonly
+                      v-bind="props"
+                      :rules="[v => !!v || '必填']"
+                      variant="outlined"
+                    ></v-text-field>
+                  </template>
+                   <v-card min-width="300">
+                    <v-tabs v-model="activePickerTabEnd" grow>
+                      <v-tab><v-icon start>mdi-calendar</v-icon>日期</v-tab>
+                      <v-tab><v-icon start>mdi-clock-outline</v-icon>時間</v-tab>
+                    </v-tabs>
+                    <v-window v-model="activePickerTabEnd">
+                      <v-window-item :value="0">
+                        <v-date-picker 
+                          v-model="tempDateEnd"
+                          @update:model-value="activePickerTabEnd = 1"
+                           hide-header
+                        ></v-date-picker>
+                      </v-window-item>
+                      <v-window-item :value="1">
+                        <v-time-picker v-model="tempTimeEnd" format="24hr"></v-time-picker>
+                      </v-window-item>
+                    </v-window>
+                    <v-divider></v-divider>
+                    <v-card-actions>
+                      <v-spacer></v-spacer>
+                      <v-btn text @click="menuAppEnd = false">取消</v-btn>
+                      <v-btn color="primary" @click="saveApplicationEnd">確定</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-menu>
               </v-col>
-              <v-col cols="12" sm="6" md="3"><v-text-field v-model="editedBatch.bookingStart" label="可驗屋起始日" type="date" :rules="[v => !!v || '必填']"></v-text-field></v-col>
-              <v-col cols="12" sm="6" md="3"><v-text-field v-model="editedBatch.bookingEnd" label="可驗屋結束日" type="date" :rules="[v => !!v || '必填']"></v-text-field></v-col>
+              <v-col cols="12" sm="6" md="3">
+                 <v-menu
+                  v-model="menuBookingStart"
+                  :close-on-content-click="false"
+                  location="bottom"
+                  transition="scale-transition"
+                >
+                  <template v-slot:activator="{ props }">
+                    <v-text-field
+                      v-model="editedBatch.bookingStart"
+                      label="可驗屋起始日"
+                      prepend-inner-icon="mdi-calendar"
+                      readonly
+                      v-bind="props"
+                      :rules="[v => !!v || '必填']"
+                       variant="outlined"
+                    ></v-text-field>
+                  </template>
+                  <v-date-picker
+                    v-model="tempBookingStartDate"
+                    @update:model-value="menuBookingStart = false"
+                    title="選擇起始日"
+                    hide-header
+                  ></v-date-picker>
+                </v-menu>
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <v-menu
+                  v-model="menuBookingEnd"
+                  :close-on-content-click="false"
+                  location="bottom"
+                  transition="scale-transition"
+                >
+                  <template v-slot:activator="{ props }">
+                    <v-text-field
+                      v-model="editedBatch.bookingEnd"
+                      label="可驗屋結束日"
+                      prepend-inner-icon="mdi-calendar"
+                      readonly
+                      v-bind="props"
+                      :rules="[v => !!v || '必填']"
+                      variant="outlined"
+                    ></v-text-field>
+                  </template>
+                  <v-date-picker
+                    v-model="tempBookingEndDate"
+                    @update:model-value="menuBookingEnd = false"
+                    title="選擇結束日"
+                    hide-header
+                  ></v-date-picker>
+                </v-menu>
+              </v-col>
             </v-row>
-          </v-form>
+            </v-form>
 
           <v-divider class="my-4"></v-divider>
           
@@ -296,12 +452,11 @@
                     v-model="currentDaySlots"
                     :items="timeSlotPresets"
                     :rules="[timeArrayRule]"
-                    label="點選選擇或輸入時段 (例如: 09:00)"
+                    label="選擇或輸入時段 (例如: 09:00)"
                     chips
                     clearable
                     multiple
                     closable-chips  
-                    append-icon="mdi-plus-circle-outline"
                     hint="輸入後按 Enter 新增"
                     persistent-hint
                   ></v-combobox>
@@ -323,17 +478,18 @@
                 >
                   <div class="d-flex justify-space-between align-center">
                     <span class="font-weight-bold text-h6 text-grey-darken-2">{{ slot }}</span>
-                    <v-text-field
+                   <v-combobox
                       label="名額"
                       :model-value="getCapacityForSlot(slot)"
                       @update:model-value="setCapacityForSlot(slot, $event)"
+                      :items="capacityPresets"
                       type="number"
                       min="0"
                       variant="outlined"
                       density="compact"
                       hide-details
                       style="max-width: 120px;"
-                    ></v-text-field>
+                    ></v-combobox>
                   </div>
                   <v-divider class="my-2"></v-divider>
                   <div>
@@ -372,12 +528,49 @@
           </v-row>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="grey-darken-1" variant="text" @click="isBatchDialogVisible = false">取消</v-btn>
-          <v-btn color="success" variant="flat" @click="handleSaveBatch" :loading="isSaving">儲存</v-btn>
-        </v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="grey-darken-1" variant="text" @click="isBatchDialogVisible = false">取消</v-btn>
+        <v-btn color="success" variant="flat" @click="openConfirmSaveDialog" :loading="isSaving">儲存</v-btn>
+      </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="isConfirmSaveDialogVisible" max-width="500px" persistent>
+  <v-card v-if="editedBatch">
+  <v-card-title class="text-h6 d-flex align-center bg-green-lighten-4">
+      <v-icon start>mdi-checkbox-marked-circle-outline</v-icon>
+      請確認預約批次日期
+    </v-card-title>
+    <v-card-text class="pt-4">
+      <p class="mb-3">
+        您已選擇 <strong>{{ selectedDaysForEditing.length }}</strong> 天：
+      </p>
+        <v-list dense class="mb-3" style="max-height: 600px; overflow-y: auto;">
+        <v-list-item v-for="day in selectedDaysForEditing" :key="day">
+          <v-list-item-title>
+            <span :class="{ 'weekend-highlight': isWeekend(day) }">
+              {{ formatDateWithWeekday(day) }}
+            </span>
+          </v-list-item-title>
+        </v-list-item>
+      </v-list>
+      <p>
+        以上日期將套用
+        <strong>{{ editedBatch.bookingType === '其他' ? customBookingType : editedBatch.bookingType }} ({{ editedBatch.batchCode }})</strong>
+        的預約批次設定。
+      </p>
+      <p class="mt-4 font-weight-bold">
+        確定要儲存嗎？
+      </p>
+    </v-card-text>
+    <v-card-actions>
+      <v-spacer></v-spacer>
+      <v-btn color="grey-darken-1" variant="text" @click="isConfirmSaveDialogVisible = false">取消</v-btn>
+      <v-btn color="success" variant="flat" :loading="isSaving" @click="confirmAndSaveBatch">確定儲存</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
   </v-container>
 </template>
 
@@ -414,32 +607,49 @@ const isDeleteDialogVisible = ref(false);
 const batchToDelete = ref(null);
 const isDeleting = ref(false);
 
-// ✅ 1. 新增管理「預覽」功能的狀態
 const isPreviewDialogVisible = ref(false);
 const batchToPreview = ref(null);
 const previewData = ref({});
 const isPreviewLoading = ref(false);
 
 
-// ✅ 【新增】定義所有可用的驗屋方式選項
+// ✅ [新增] 確認儲存的 Dialog 狀態
+const isConfirmSaveDialogVisible = ref(false);
+
+// ✅ [新增] 刪除確認 Dialog 用的狀態
+const deleteBatchDates = ref([]);
+const isDeleteDatesLoading = ref(false);
+
+
 const allMethodOptions = ['代驗公司', '屋主自驗', '授權驗屋', '設計師陪驗'];
 
+// ✅ [新增] Date Time Picker 相關狀態
+const menuAppStart = ref(false);
+const menuAppEnd = ref(false);
+const menuBookingStart = ref(false);
+const menuBookingEnd = ref(false);
+
+const activePickerTabStart = ref(0);
+const tempDateStart = ref(null);
+const tempTimeStart = ref(null);
+
+const activePickerTabEnd = ref(0);
+const tempDateEnd = ref(null);
+const tempTimeEnd = ref(null);
 
 
-// ✅ 更新預設資料結構
 const defaultBatch = {
   id: null,
   batchCode: '',
   bookingType: null,
-  applicationStart: '', // 預約開放起始時間
-  applicationEnd: '',   // 預約開放結束時間
-  bookingStart: '',     // 可驗屋起始日
-  bookingEnd: '',       // 可驗屋結束日
+  applicationStart: '', 
+  applicationEnd: '',   
+  bookingStart: '',     
+  bookingEnd: '',       
   dailyRules: {}, 
 };
 const editedBatch = ref({ ...defaultBatch });
-// ✅ [修改] 將 selectedDayForEditing (單數) 改為 selectedDaysForEditing (複數) 並初始化為空陣列
-const selectedDaysForEditing = ref([]); // 日曆上選擇的天
+const selectedDaysForEditing = ref([]); 
 
 // --- Computed Properties ---
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
@@ -448,58 +658,72 @@ const batchHeaders = [
   { title: '預約項目', key: 'bookingType' },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
   { title: '可驗屋區間', key: 'bookingWindow', sortable: false },
-  { title: '狀態', key: 'statusText', sortable: true }, // <--- 修改點
+  { title: '狀態', key: 'statusText', sortable: true }, 
   { title: '操作', key: 'actions', sortable: false, align: 'end' },
 ];
 
-// ✅ 【新增】2. 建立一個處理過的列表，為每筆資料加上 statusText 屬性
 const processedBookingBatches = computed(() => {
   return bookingBatches.value.map(item => ({
     ...item,
-    // 將 getBatchStatus 回傳的文字作為一個新屬性
     statusText: getBatchStatus(item).text 
   }));
 });
 
+// ✅ [新增] Computed property for date-only pickers to handle Date object vs String
+const tempBookingStartDate = computed({
+    get: () => editedBatch.value.bookingStart ? new Date(editedBatch.value.bookingStart) : null,
+    set: (val) => {
+        if (val) {
+            // 將 Date 物件轉為 YYYY-MM-DD 格式的字串
+            const year = val.getFullYear();
+            const month = (val.getMonth() + 1).toString().padStart(2, '0');
+            const day = val.getDate().toString().padStart(2, '0');
+            editedBatch.value.bookingStart = `${year}-${month}-${day}`;
+        }
+    }
+});
+
+const tempBookingEndDate = computed({
+    get: () => editedBatch.value.bookingEnd ? new Date(editedBatch.value.bookingEnd) : null,
+    set: (val) => {
+        if (val) {
+            const year = val.getFullYear();
+            const month = (val.getMonth() + 1).toString().padStart(2, '0');
+            const day = val.getDate().toString().padStart(2, '0');
+            editedBatch.value.bookingEnd = `${year}-${month}-${day}`;
+        }
+    }
+});
+
+// ✅ 【新增】提供給 v-combobox 的快選名額選項
+const capacityPresets = Array.from({ length: 9 }, (_, i) => i + 1);
+
 const timeSlotPresets = Array.from({ length: 24 }, (_, i) => {
   const hour = i.toString().padStart(2, '0');
   return [`${hour}:00`, `${hour}:30`];
-}).flat().slice(18, 35); // 截取 08:00 到 17:30
+}).flat().slice(18, 35); 
 
 
-// ✅ 【新增】提供給 v-combobox 的預設時間選項
 const timeArrayRule = (values) => {
   const pattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
-  
-  // 檢查陣列中的每一個值是否都通過正則表達式測試
   const isValid = values.every(v => pattern.test(v));
-  
   if (!isValid) {
-    // 如果有任何一個不符合，就回傳錯誤訊息
     return '格式錯誤，請移除不符合 HH:MM 格式的項目';
   }
-  
-  // 如果全部都符合，回傳 true
   return true;
 };
 
 // --- Functions for Daily Rule Editing ---
-// ✅ [修改] 重構 currentDaySlots 以支援多選
 const currentDaySlots = computed({
   get() {
-    // 如果沒有選擇任何日期，返回空陣列
     if (selectedDaysForEditing.value.length === 0) return [];
-    
-    // 以選擇的第一個日期作為顯示範本
     const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
     const slots = editedBatch.value.dailyRules[firstDateKey]?.slots || {};
     return Object.keys(slots);
   },
   set(newSlots) {
-    // 如果沒有選擇任何日期，不執行任何操作
     if (selectedDaysForEditing.value.length === 0) return;
 
-    // 遍歷所有選中的日期，並將新的時段設定應用於每一天
     selectedDaysForEditing.value.forEach(day => {
         const dateKey = formatDate(day);
         if (!editedBatch.value.dailyRules[dateKey]) {
@@ -510,7 +734,6 @@ const currentDaySlots = computed({
         const newSlotsData = {};
 
         newSlots.forEach(slot => {
-            // 如果是舊的時段，保留其資料；如果是新的，則初始化
             newSlotsData[slot] = oldSlotsData[slot] || { capacity: 0, methods: [] };
         });
         editedBatch.value.dailyRules[dateKey].slots = newSlotsData;
@@ -520,15 +743,13 @@ const currentDaySlots = computed({
 
 const sortedCurrentDaySlots = computed(() => [...currentDaySlots.value].sort());
 
-// ✅ [修改] 更新 getCapacityForSlot，使其讀取第一個選中日期的資料作為UI顯示
+
 function getCapacityForSlot(slot) {
   if (selectedDaysForEditing.value.length === 0) return 0;
   const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
   return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.capacity || 0;
 }
 
-
-// ✅ [修改] 更新 setCapacityForSlot，使其遍歷所有選中日期並設定名額
 function setCapacityForSlot(slot, capacity) {
   const cap = Number(capacity) || 0;
   selectedDaysForEditing.value.forEach(day => {
@@ -540,14 +761,12 @@ function setCapacityForSlot(slot, capacity) {
   });
 }
 
-// ✅ [新增] 檢查特定時段的特定方法是否被選中（用於 UI 顯示）
 function isMethodSelectedForSlot(slot, method) {
     if (selectedDaysForEditing.value.length === 0) return false;
     const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
     return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.methods.includes(method) || false;
 }
 
-// ✅ [新增] 更新所有選中日期的特定時段的預約方式
 function updateMethodsForSlot(slot, method, isSelected) {
  selectedDaysForEditing.value.forEach(day => {
   const dateKey = formatDate(day);
@@ -563,8 +782,6 @@ function updateMethodsForSlot(slot, method, isSelected) {
    daySlot.methods = methods.filter(m => m !== method);
   }
  });
-
-  // ✅ [最終修正] 透過替換 dailyRules 物件，精準觸發 UI 更新
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
 
@@ -574,92 +791,86 @@ const isDayConfigured = (day) => {
     return slots && Object.keys(slots).length > 0;
 }
 
-// ✅ 【新增】檢查批次唯一性的驗證規則
 const batchUniquenessRule = (value) => {
-  // value 參數會是批次代號輸入框的目前值
   const currentCode = value;
-  // 獲取目前選擇的預約項目
   const currentType = editedBatch.value.bookingType === '其他' 
     ? customBookingType.value 
     : editedBatch.value.bookingType;
 
-  // 如果代號或項目任一為空，暫不驗證
   if (!currentCode || !currentType) {
     return true;
   }
   
-  // 在現有的所有批次中查找
   const isDuplicate = bookingBatches.value.some(batch => {
-    // 關鍵：在編輯模式下，要排除正在編輯的那一筆資料本身
     if (editedBatch.value.id && batch.id === editedBatch.value.id) {
       return false;
     }
-    // 檢查「預約項目」和「批次代號」是否都相同
     return batch.bookingType === currentType && batch.batchCode === currentCode;
   });
 
-  // 如果找到重複的，就回傳錯誤訊息
   if (isDuplicate) {
     return `「${currentType}」項目已存在相同的批次代號`;
   }
-
-  // 如果沒問題，回傳 true
   return true;
 };
 
 // --- Main Functions ---
-// ✅ 【修改】修正 formatDate 函式，避免時區轉換問題
 function formatDate(date) {
   if (!date) return '';
-  // 如果傳入的是 Date 物件 (來自 v-date-picker)，則取其年月日
   if (date instanceof Date) {
     const year = date.getFullYear();
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
-  // 如果傳入的已經是字串，直接回傳 (去除可能的時間部分)
   return String(date).split('T')[0];
 }
 
-// ✅ 【修正】此函式，使其能正確處理 Date 物件
 function formatDateWithWeekday(dateInput) {
   if (!dateInput) return '';
-  
-  // 1. 將傳入的任何格式（Date 物件或字串）都先統一轉為 Date 物件
   const date = new Date(dateInput);
-
-  // 2. 從 Date 物件中提取年月日，格式化為 YYYY-MM-DD 字串
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   const dateString = `${year}-${month}-${day}`;
-  
-  // 3. 獲取星期幾
   const weekday = new Intl.DateTimeFormat('zh-TW', { weekday: 'short' }).format(date);
-  
-  // 4. 組合回傳
   return `${dateString} (${weekday})`;
 }
 
-// ✅ 新增：格式化日期時間以供顯示
 function formatDisplayDateTime(dateTimeString) {
   if (!dateTimeString) return '';
   return dateTimeString.replace('T', ' ');
 }
 
+// ✅ [新增] 儲存 applicationStart 的值
+function saveApplicationStart() {
+  if (tempDateStart.value && tempTimeStart.value) {
+    // 將 Date 物件轉為 YYYY-MM-DD 格式
+    const dateStr = formatDate(tempDateStart.value);
+    editedBatch.value.applicationStart = `${dateStr}T${tempTimeStart.value}`;
+  }
+  menuAppStart.value = false;
+}
+
+// ✅ [新增] 儲存 applicationEnd 的值
+function saveApplicationEnd() {
+  if (tempDateEnd.value && tempTimeEnd.value) {
+    const dateStr = formatDate(tempDateEnd.value);
+    editedBatch.value.applicationEnd = `${dateStr}T${tempTimeEnd.value}`;
+  }
+  menuAppEnd.value = false;
+}
+
+
 function getBatchStatus(item) {
-  // 如果沒有設定預約開放區間，則顯示特定狀態
   if (!item.applicationStart || !item.applicationEnd) {
     return { text: '時間未設定', color: 'grey-darken-2' };
   }
   
-  // 直接使用當前台灣時間進行比較 (new Date() 會依據瀏覽器時區)
   const now = new Date(); 
   const start = new Date(item.applicationStart);
   const end = new Date(item.applicationEnd);
 
-  // 檢查日期是否有效
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return { text: '日期格式錯誤', color: 'orange' };
   }
@@ -675,21 +886,17 @@ function showSnackbar(text, color = 'success') {
   snackbar.show = true;
 }
 
-// ✅ 【修改】此函式，加入資料結構轉換邏輯
 async function openBatchDialog(item = null) {
   customBookingType.value = '';
   if (item) {
     const dailyRules = await fetchDailyRules(item.id);
 
-    // ✅ 【新增】資料結構轉換邏輯
-    // 為了相容舊資料，檢查並轉換 dailyRules 的結構
     for (const date in dailyRules) {
       const slots = dailyRules[date].slots;
       for (const time in slots) {
-        // 如果時段的值是數字 (代表是舊結構)，則轉換為新的物件結構
         if (typeof slots[time] === 'number') {
           const capacity = slots[time];
-          slots[time] = { capacity: capacity, methods: [] }; // 執行轉換
+          slots[time] = { capacity: capacity, methods: [] }; 
         }
       }
     }
@@ -704,18 +911,18 @@ async function openBatchDialog(item = null) {
   } else {
     editedBatch.value = { ...defaultBatch, dailyRules: {} };
   }
-  selectedDaysForEditing.value = []; // ✅ 重置為空陣列
+  selectedDaysForEditing.value = []; 
   isBatchDialogVisible.value = true;
 }
 
+// ✅ [修改] 原本的儲存函式
 async function handleSaveBatch() {
-  const { valid } = await batchForm.value.validate();
-  if (!valid) return;
+  // const { valid } = await batchForm.value.validate(); // 驗證移到 openConfirmSaveDialog
+  // if (!valid) return;
   isSaving.value = true;
 
   const batchPayload = { ...editedBatch.value };
   
-  // 如果選擇了「其他」，則使用自訂輸入框的值
   if (batchPayload.bookingType === '其他') {
     batchPayload.bookingType = customBookingType.value;
   }
@@ -732,6 +939,7 @@ async function handleSaveBatch() {
     if (rulesRes.status !== 'success') throw new Error(rulesRes.message);
 
     showSnackbar('儲存成功！');
+    isConfirmSaveDialogVisible.value = false; // ✅ [新增] 關閉確認 Dialog
     isBatchDialogVisible.value = false;
     bookingBatches.value = await fetchBookingBatches(projectId.value);
   } catch(error) {
@@ -753,17 +961,33 @@ async function loadDataForProject() {
   isLoading.value = false;
 }
 
-// ✅ 3. 新增刪除相關的函式
-function openDeleteDialog(item) {
+// ✅ [修改] openDeleteDialog 函式
+async function openDeleteDialog(item) {
   batchToDelete.value = item;
   isDeleteDialogVisible.value = true;
+  isDeleteDatesLoading.value = true;
+  deleteBatchDates.value = []; // 先清空舊資料
+
+  try {
+    const dailyRules = await fetchDailyRules(item.id);
+    const configuredDates = Object.keys(dailyRules).filter(dateKey => {
+      const dayData = dailyRules[dateKey];
+      return dayData && dayData.slots && Object.keys(dayData.slots).length > 0;
+    }).sort();
+    deleteBatchDates.value = configuredDates;
+  } catch (error) {
+    showSnackbar(`讀取批次日期失敗: ${error.message}`, 'error');
+  } finally {
+    isDeleteDatesLoading.value = false;
+  }
 }
 
+// ✅ [修改] closeDeleteDialog 函式
 function closeDeleteDialog() {
   batchToDelete.value = null;
+  deleteBatchDates.value = []; // 清空日期
   isDeleteDialogVisible.value = false;
 }
-
 async function handleConfirmDelete() {
   if (!batchToDelete.value) return;
   isDeleting.value = true;
@@ -771,7 +995,6 @@ async function handleConfirmDelete() {
     const res = await deleteBookingBatch(batchToDelete.value.id);
     if (res.status !== 'success') throw new Error(res.message);
 
-    // 從前端列表中直接移除，避免重新 call API，體驗更好
     const index = bookingBatches.value.findIndex(b => b.id === batchToDelete.value.id);
     if (index > -1) {
       bookingBatches.value.splice(index, 1);
@@ -786,7 +1009,6 @@ async function handleConfirmDelete() {
   }
 }
 
-// ✅ 【修改】openPreviewDialog，使用 date-fns 進行安全的日期迴圈
 async function openPreviewDialog(item) {
   batchToPreview.value = item;
   isPreviewDialogVisible.value = true;
@@ -794,7 +1016,6 @@ async function openPreviewDialog(item) {
   try {
     const dailyRules = await fetchDailyRules(item.id);
 
-    // 資料結構轉換邏輯 (維持不變)
     for (const date in dailyRules) {
       const slots = dailyRules[date].slots;
       for (const time in slots) {
@@ -807,14 +1028,13 @@ async function openPreviewDialog(item) {
     
     const formattedData = {};
     if (item.bookingStart && item.bookingEnd) {
-      // ✅ 使用 eachDayOfInterval 進行安全的日期遍歷
       const intervalDates = eachDayOfInterval({
         start: parseISO(item.bookingStart),
         end: parseISO(item.bookingEnd)
       });
 
       for (const dateObj of intervalDates) {
-        const dateKey = formatDate(dateObj); // 使用修正後的 formatDate
+        const dateKey = formatDate(dateObj); 
         const ruleForDay = dailyRules[dateKey];
         const slotsData = [];
         if (ruleForDay && ruleForDay.slots) {
@@ -840,11 +1060,9 @@ async function openPreviewDialog(item) {
   }
 }
 
-// ✅ [修改] handleSelectAll，使其能批次處理所有選中日期的「全選」
 function handleSelectAll(isChecked, slot) {
  selectedDaysForEditing.value.forEach(day => {
   const dateKey = formatDate(day);
-    // ✅ 為了安全起見，稍微修改取值方式
   const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
   if (!daySlot) return;
 
@@ -855,11 +1073,9 @@ function handleSelectAll(isChecked, slot) {
   }
  });
   
-  // ✅ [最終修正] 透過替換 dailyRules 物件，精準觸發 UI 更新
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
 
-// ✅ [修改] getSelectAllState，使其根據第一個選中日期來判斷「全選」的狀態
 function getSelectAllState(slot) {
   if (selectedDaysForEditing.value.length === 0) return { checked: false, indeterminate: false };
   
@@ -876,6 +1092,29 @@ function getSelectAllState(slot) {
   };
 }
 
+// ✅ [新增] 打開確認 Dialog 的函式
+async function openConfirmSaveDialog() {
+  const { valid } = await batchForm.value.validate();
+  if (!valid) return;
+  isConfirmSaveDialogVisible.value = true;
+}
+
+// ✅ [新增] 確認後執行的儲存函式
+async function confirmAndSaveBatch() {
+  // `handleSaveBatch` 函式現在只處理儲存邏輯，不再做表單驗證
+  await handleSaveBatch(); 
+}
+
+
+// ✅ [新增] 判斷是否為週末的函式
+function isWeekend(dateInput) {
+  if (!dateInput) return false;
+  const date = new Date(dateInput);
+  const day = date.getDay();
+  return day === 0 || day === 6; // 0 是星期日, 6 是星期六
+}
+
+
 function goBack() {
   router.back();
 }
@@ -883,28 +1122,51 @@ function goBack() {
 onMounted(loadDataForProject);
 
 
-
-// ✅ [修改] 監聽起訖日期變化時，清空 selectedDaysForEditing 陣列
 watch(() => [editedBatch.value.bookingStart, editedBatch.value.bookingEnd], () => {
     selectedDaysForEditing.value = [];
 });
 
-
-// ✅ 【新增】監聽「預約項目」的變化
 watch(() => editedBatch.value.bookingType, (newValue, oldValue) => {
-  // 當 bookingType 改變時 (且表單已渲染)，觸發表單驗證
   if (newValue !== oldValue && batchForm.value) {
     batchForm.value.validate();
   }
 });
 
-// ✅ 【新增】監聽「自訂項目名稱」的變化
 watch(customBookingType, (newValue, oldValue) => {
-  // 當 customBookingType 改變時 (且表單已渲染)，觸發表單驗證
   if (newValue !== oldValue && batchForm.value) {
     batchForm.value.validate();
   }
 });
+
+// ✅ [新增] Watcher for datetime picker initialization
+watch(menuAppStart, (isOpen) => {
+  if (isOpen) {
+    activePickerTabStart.value = 0; // 每次打開都先顯示日期
+    if (editedBatch.value.applicationStart) {
+      const [datePart, timePart] = editedBatch.value.applicationStart.split('T');
+      tempDateStart.value = new Date(datePart);
+      tempTimeStart.value = timePart || '09:00';
+    } else {
+      tempDateStart.value = new Date();
+      tempTimeStart.value = '09:00';
+    }
+  }
+});
+
+watch(menuAppEnd, (isOpen) => {
+  if (isOpen) {
+    activePickerTabEnd.value = 0;
+    if (editedBatch.value.applicationEnd) {
+      const [datePart, timePart] = editedBatch.value.applicationEnd.split('T');
+      tempDateEnd.value = new Date(datePart);
+      tempTimeEnd.value = timePart || '17:00';
+    } else {
+      tempDateEnd.value = new Date();
+      tempTimeEnd.value = '17:00';
+    }
+  }
+});
+
 
 </script>
 
@@ -916,4 +1178,10 @@ watch(customBookingType, (newValue, oldValue) => {
 .v-data-table-header__cell {
     background-color: #f5f5f5;
 }
+
+.weekend-highlight {
+  color: red;
+  font-weight: bold;
+}
+
 </style>
