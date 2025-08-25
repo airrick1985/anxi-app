@@ -2032,15 +2032,242 @@ export async function uploadInspectionReport(payload) {
 }
 
 
+// ===============================================
+// /  ✅ 預約批次規則管理 API (混合模式新版)
+// ===============================================
+
 /**
- * ===============================================
- * /  ✅ 預約批次規則管理 API
- * ===============================================
+ * ❗注意：以下函式是基於「共享/獨立」混合模式的新資料庫結構。
+ * 新結構包含：
+ * 1. `bookingBatches`: 批次主資料 (與舊版類似，但不含規則)。
+ * 2. `dateRules`: 頂層集合，存放所有每日規則。規則分為 isShared:true (共享) 和 isShared:false (獨立)。
+ * 3. `batchRuleLinks`: 頂層集合，用來建立「批次」與「每日規則」的多對多關聯。
  */
 
+/**
+ * [新] 檢查日期是否存在「基礎共享規則」 (V2 - 修正版，會回傳詳細批次名稱)
+ * @param {string} projectId 
+ * @param {Array<string>} dates - 要檢查的日期陣列 ['2025-08-25', ...]
+ * @param {string|null} currentBatchId - 編輯模式下傳入，以排除自身
+ * @returns {Promise<object>}
+ */
+export async function checkDateConflicts(projectId, dates, currentBatchId = null) {
+    if (!dates || dates.length === 0) {
+        return { conflictingDates: [], nonConflictingDates: [] };
+    }
+    try {
+        // 步驟 1: 查找在指定日期中已存在的「共享規則」
+        const rulesRef = collection(db, "dateRules");
+        const rulesQuery = query(rulesRef,
+            where("projectId", "==", projectId),
+            where("isShared", "==", true),
+            where("date", "in", dates)
+        );
+        const rulesSnapshot = await getDocs(rulesQuery);
+        if (rulesSnapshot.empty) {
+            return { conflictingDates: [], nonConflictingDates: dates };
+        }
+
+        const conflictingRulesMap = new Map();
+        rulesSnapshot.forEach(doc => {
+            conflictingRulesMap.set(doc.id, { ruleId: doc.id, ...doc.data(), sharedBy: [] });
+        });
+        const ruleIds = Array.from(conflictingRulesMap.keys());
+
+        // 步驟 2: 根據找到的規則 ID，查找所有關聯的批次 ID
+        const linksRef = collection(db, "batchRuleLinks");
+        const linksQuery = query(linksRef, where("ruleId", "in", ruleIds));
+        const linksSnapshot = await getDocs(linksQuery);
+        if (linksSnapshot.empty) {
+            return { conflictingDates: [], nonConflictingDates: dates };
+        }
+
+        const batchIds = new Set();
+        const ruleToBatchIdsMap = new Map();
+        linksSnapshot.forEach(doc => {
+            const { ruleId, batchId } = doc.data();
+            batchIds.add(batchId);
+            if (!ruleToBatchIdsMap.has(ruleId)) {
+                ruleToBatchIdsMap.set(ruleId, []);
+            }
+            ruleToBatchIdsMap.get(ruleId).push(batchId);
+        });
+
+        // 步驟 3: 根據批次 ID，一次性獲取所有批次的詳細資料
+        const batchesRef = collection(db, "bookingBatches");
+        const batchesQuery = query(batchesRef, where(documentId(), 'in', Array.from(batchIds)));
+        const batchesSnapshot = await getDocs(batchesQuery);
+        const batchDetailsMap = new Map();
+        batchesSnapshot.forEach(doc => {
+            batchDetailsMap.set(doc.id, doc.data());
+        });
+
+        // 步驟 4: 組合出前端需要的 "預約項目(批次代號)" 格式
+        conflictingRulesMap.forEach((rule, ruleId) => {
+            const linkedBatchIds = ruleToBatchIdsMap.get(ruleId) || [];
+            rule.sharedBy = linkedBatchIds.map(batchId => {
+                const details = batchDetailsMap.get(batchId);
+                return details ? `${details.bookingType}(${details.batchCode})` : '未知批次';
+            }).filter(name => name !== '未知批次');
+        });
+
+        // 步驟 5: 格式化最終回傳給前端的資料
+        const conflictingDates = [];
+        const foundDates = new Set();
+        conflictingRulesMap.forEach(rule => {
+            conflictingDates.push({
+                date: rule.date,
+                existingRule: {
+                    ruleId: rule.ruleId,
+                    rule: rule.slots,
+                    sharedBy: rule.sharedBy
+                }
+            });
+            foundDates.add(rule.date);
+        });
+
+        const nonConflictingDates = dates.filter(d => !foundDates.has(d));
+        
+        return { conflictingDates, nonConflictingDates };
+
+    } catch (e) {
+        console.error("檢查日期衝突時發生錯誤:", e);
+        return { conflictingDates: [], nonConflictingDates: dates };
+    }
+}
 
 /**
- * [Firestore] 儲存或更新一筆預約批次規則 (新版)
+ * [新] 儲存批次與其關聯的每日規則 (混合模式)
+ * @param {object} payload - 包含 { batchData, resolutions } 的物件
+ * @returns {Promise<object>}
+ */
+export async function saveBatchWithRules(payload) {
+    const { batchData, resolutions } = payload;
+    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id;
+
+    try {
+        const batch = writeBatch(db);
+        const batchDocRef = doc(db, "bookingBatches", batchId);
+
+        // 步驟 1: 新增/更新 bookingBatches 主文件
+        const dataToSave = { ...batchData, id: batchId };
+        dataToSave.lastModified = serverTimestamp();
+        if (!batchData.id) dataToSave.createdAt = serverTimestamp();
+        delete dataToSave.dailyRules;
+        batch.set(batchDocRef, dataToSave, { merge: true });
+
+        // 步驟 2: 處理規則，先刪除此批次在此次異動日期中的所有舊關聯
+        const datesToUpdate = Object.keys(resolutions);
+        if (datesToUpdate.length > 0) {
+            const oldLinksQuery = query(collection(db, "batchRuleLinks"),
+                where("batchId", "==", batchId),
+                where("date", "in", datesToUpdate)
+            );
+            const oldLinksSnapshot = await getDocs(oldLinksQuery);
+            oldLinksSnapshot.forEach(doc => batch.delete(doc.ref));
+        }
+
+        // 步驟 3: 根據 resolutions 建立新規則或新關聯
+        for (const date in resolutions) {
+            const resolution = resolutions[date];
+            const ruleContent = batchData.dailyRules[date];
+
+            if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) {
+                continue;
+            }
+
+            if (resolution.mode === 'link' && resolution.targetRuleId) {
+                // 模式 A: 連結至現有規則
+                const linkDocRef = doc(collection(db, "batchRuleLinks"));
+                batch.set(linkDocRef, {
+                    batchId: batchId,
+                    ruleId: resolution.targetRuleId,
+                    date: date,
+                    projectId: batchData.projectId,
+                });
+
+            } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
+                // ✅ [新增] 模式 C: 更新現有共享規則，然後連結
+                const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
+                batch.update(ruleToUpdateRef, {
+                    slots: ruleContent.slots,
+                    lastModified: serverTimestamp()
+                });
+
+                const linkDocRef = doc(collection(db, "batchRuleLinks"));
+                batch.set(linkDocRef, {
+                    batchId: batchId,
+                    ruleId: resolution.targetRuleId,
+                    date: date,
+                    projectId: batchData.projectId,
+                });
+
+            } else if (resolution.mode === 'create_independent' || resolution.mode === 'create_shared') {
+                // 模式 B (獨立) 或新日期的共享規則
+                const newRuleDocRef = doc(collection(db, "dateRules"));
+                batch.set(newRuleDocRef, {
+                    slots: ruleContent.slots,
+                    date: date,
+                    projectId: batchData.projectId,
+                    isShared: resolution.mode === 'create_shared',
+                    createdAt: serverTimestamp(),
+                });
+
+                const linkDocRef = doc(collection(db, "batchRuleLinks"));
+                batch.set(linkDocRef, {
+                    batchId: batchId,
+                    ruleId: newRuleDocRef.id,
+                    date: date,
+                    projectId: batchData.projectId,
+                });
+            }
+        }
+
+        await batch.commit();
+        return { status: 'success', id: batchId };
+
+    } catch (e) {
+        console.error(`儲存批次 ${batchId} 與規則時發生錯誤:`, e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * [新] 獲取指定批次的所有每日規則 (給編輯畫面使用)
+ * @param {string} batchId - 批次的文件 ID
+ * @returns {Promise<object>} - 返回以日期為 key 的規則物件
+ */
+export async function fetchRulesForBatch(batchId) {
+    try {
+        // 1. 透過 batchId 查找所有關聯的 ruleId
+        const linksRef = collection(db, "batchRuleLinks");
+        const linksQuery = query(linksRef, where("batchId", "==", batchId));
+        const linksSnapshot = await getDocs(linksQuery);
+
+        if (linksSnapshot.empty) return {};
+
+        const ruleIds = linksSnapshot.docs.map(doc => doc.data().ruleId);
+
+        // 2. 透過 ruleIds 一次性獲取所有規則的內容
+        const rulesRef = collection(db, "dateRules");
+        const rulesQuery = query(rulesRef, where(documentId(), 'in', ruleIds));
+        const rulesSnapshot = await getDocs(rulesQuery);
+
+        const rules = {};
+        rulesSnapshot.forEach(doc => {
+            const data = doc.data();
+            rules[data.date] = { slots: data.slots }; // 回傳前端習慣的格式
+        });
+        
+        return rules;
+    } catch (e) {
+        console.error(`獲取批次 ${batchId} 的每日規則時發生錯誤:`, e);
+        return {};
+    }
+}
+
+/**
+ * [舊版][Firestore] 儲存或更新一筆預約批次規則 [舊版]
  * 這個函式現在只負責儲存批次本身的基本資訊。
  * @param {object} batchData - 包含批次詳細資訊的物件 (不含每日規則)
  * @returns {Promise<object>} - 返回操作結果，包含 status 和 id
@@ -2072,7 +2299,7 @@ export async function saveBookingBatch(batchData) {
 }
 
 /**
- * ✅ [新增] 儲存指定批次的每日時段與名額規則
+ * [舊版]　儲存指定批次的每日時段與名額規則
  * @param {string} batchId - 批次的文件 ID
  * @param {object} dailyRules - 以日期為 key 的規則物件 e.g., { '2025-09-01': { slots: {...} }, ... }
  * @returns {Promise<object>}
@@ -2097,7 +2324,7 @@ export async function saveDailyRules(batchId, dailyRules) {
 }
 
 /**
- * ✅ [新增] 獲取指定批次的所有每日規則
+ * ［舊版] 獲取指定批次的所有每日規則
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>} - 返回以日期為 key 的規則物件
  */
@@ -2117,14 +2344,13 @@ export async function fetchDailyRules(batchId) {
 }
 
 /**
- * [Firestore] 獲取指定建案的所有預約批次
+ * [Firestore] 獲取指定建案的所有預約批次 (此函式維持不變，因為它只讀取主資料)
  * @param {string} projectId - 建案的 ID
  * @returns {Promise<Array>} - 返回批次資料陣列
  */
 export async function fetchBookingBatches(projectId) {
     try {
         const batchesRef = collection(db, "bookingBatches");
-        // 建立查詢，篩選出符合 projectId 的資料，並依照申請開始日期降冪排序
         const q = query(
             batchesRef,
             where("projectId", "==", projectId),
@@ -2134,13 +2360,12 @@ export async function fetchBookingBatches(projectId) {
         const querySnapshot = await getDocs(q);
         const batches = [];
         querySnapshot.forEach((doc) => {
-            // 將文件 ID 和文件內容組合回傳
             batches.push({ id: doc.id, ...doc.data() });
         });
         return batches;
     } catch (e) {
         console.error(`獲取建案 ${projectId} 的預約批次時發生錯誤:`, e);
-        return []; // 發生錯誤時回傳空陣列
+        return [];
     }
 }
 
@@ -2250,26 +2475,51 @@ export async function saveDateCapacities(projectId, date, capacities) {
 }
 
 /**
- * ✅ [新增] [Firestore] 刪除一筆預約批次及其所有每日規則
+ * [Firestore] 刪除一筆預約批次及其所有關聯 (V2 - 包含孤兒規則清理)
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>}
  */
 export async function deleteBookingBatch(batchId) {
     try {
         const batch = writeBatch(db);
+        const linksRef = collection(db, "batchRuleLinks");
 
-        // 1. 找到並準備刪除子集合 'dailyRules' 中的所有文件
-        const dailyRulesRef = collection(db, "bookingBatches", batchId, "dailyRules");
-        const dailyRulesSnapshot = await getDocs(dailyRulesRef);
-        dailyRulesSnapshot.forEach(doc => {
+        // 步驟 1: 找到此批次關聯的所有規則 ID
+        const linksQuery = query(linksRef, where("batchId", "==", batchId));
+        const linksSnapshot = await getDocs(linksQuery);
+        
+        const ruleIdsToCheck = [];
+        linksSnapshot.forEach(doc => {
+            ruleIdsToCheck.push(doc.data().ruleId);
+            // 準備刪除這些關聯
             batch.delete(doc.ref);
         });
 
-        // 2. 準備刪除主文件
+        // 步驟 2: 檢查這些規則是否還有被其他批次使用
+        if (ruleIdsToCheck.length > 0) {
+            for (const ruleId of ruleIdsToCheck) {
+                // 查詢是否還存在其他連結指向這個 ruleId
+                const otherLinksQuery = query(linksRef, 
+                    where("ruleId", "==", ruleId),
+                    where("batchId", "!=", batchId) // 關鍵：排除當前要被刪除的批次
+                );
+                
+                // 使用 getCountFromServer 進行高效能計數
+                const countSnapshot = await getCountFromServer(otherLinksQuery);
+                
+                // 如果計數為 0，代表這個規則已成為孤兒，可以刪除
+                if (countSnapshot.data().count === 0) {
+                    const orphanRuleRef = doc(db, "dateRules", ruleId);
+                    batch.delete(orphanRuleRef);
+                }
+            }
+        }
+        
+        // 步驟 3: 準備刪除批次主文件
         const batchDocRef = doc(db, "bookingBatches", batchId);
         batch.delete(batchDocRef);
 
-        // 3. 一次性提交所有刪除操作
+        // 步驟 4: 一次性提交所有刪除操作
         await batch.commit();
         return { status: 'success' };
     } catch (e) {
