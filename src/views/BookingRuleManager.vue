@@ -684,82 +684,101 @@
 
       <v-divider class="my-6"></v-divider>
 
-            <p class="text-subtitle-1 font-weight-bold mb-2">頁面內容設定</p>
+            <div class="d-flex justify-space-between align-center">
+  <label class="v-label text-caption">招呼語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')">套用範本</v-btn>
+</div>
+<RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
 
-            <label class="v-label text-caption">招呼語</label>
-            <RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
+<div class="d-flex justify-space-between align-center">
+  <label class="v-label text-caption">內文說明</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')">套用範本</v-btn>
+</div>
+<RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
 
-            <label class="v-label text-caption">內文說明</label>
-            <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
+<div class="d-flex justify-space-between align-center">
+  <label class="v-label text-caption">頁尾文字</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')">套用範本</v-btn>
+</div>
+<RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
 
-            <label class="v-label text-caption">頁尾文字</label>
-            <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
+<v-divider class="my-6"></v-divider>
+<p class="text-subtitle-1 font-weight-bold mb-2">提示框設定</p>
 
-            <v-divider class="my-6"></v-divider>
-            <p class="text-subtitle-1 font-weight-bold mb-2">提示框設定</p>
+<v-switch
+  v-model="projectSettings.intro.alert.show"
+  label="顯示提示框"
+  color="primary"
+  inset
+></v-switch>
 
-            <v-switch
-              v-model="projectSettings.intro.alert.show"
-              label="顯示提示框"
-              color="primary"
-              inset
-            ></v-switch>
+<v-text-field
+  v-model="projectSettings.intro.alert.title"
+  label="提示框標題"
+  variant="outlined"
+  density="compact"
+  class="mt-2"
+  :disabled="!projectSettings.intro.alert.show"
+></v-text-field>
 
-            <v-text-field
-              v-model="projectSettings.intro.alert.title"
-              label="提示框標題"
-              variant="outlined"
-              density="compact"
-              class="mt-2"
-              :disabled="!projectSettings.intro.alert.show"
-            ></v-text-field>
-            
-            <label class="v-label text-caption">提示框內容</label>
-            <RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
+<div class="d-flex justify-space-between align-center">
+  <label class="v-label text-caption">提示框內容</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('alertText')" :disabled="!projectSettings.intro.alert.show">套用範本</v-btn>
+</div>
+<RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
 
-            <v-divider class="my-6"></v-divider>
-            <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
-            
-            <v-text-field
-              v-model="projectSettings.intro.contact.name"
-              label="聯絡單位名稱"
-              variant="outlined"
-              density="compact"
-            ></v-text-field>
-            <v-text-field
-              v-model="projectSettings.intro.contact.phone"
-              label="聯絡電話"
-              variant="outlined"
-              density="compact"
-              class="mt-2"
-            ></v-text-field>
+<v-divider class="my-6"></v-divider>
+<p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+<v-text-field
+  v-model="projectSettings.intro.contact.name"
+  label="聯絡單位名稱"
+  variant="outlined"
+  density="compact"
+></v-text-field>
+<v-text-field
+  v-model="projectSettings.intro.contact.phone"
+  label="聯絡電話"
+  variant="outlined"
+  density="compact"
+  class="mt-2"
+></v-text-field>
 
-            <v-divider class="my-6"></v-divider>
-            <div class="d-flex justify-space-between align-center mb-2">
-                <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
-                <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
-            </div>
 
-            <div v-if="projectSettings.intro.faq.length === 0" class="text-center text-grey pa-4 border rounded">
-                點擊「新增問答」來建立 FAQ
-            </div>
-            <div v-else>
-                <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4">
-                    <div class="d-flex justify-space-between align-center mb-3">
-                        <span class="font-weight-bold">問題 {{ index + 1 }}</span>
-                        <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
-                    </div>
-                    <v-text-field
-                        v-model="item.q"
-                        label="問題 (Q)"
-                        variant="outlined"
-                        density="compact"
-                    ></v-text-field>
-                    <label class="v-label text-caption">回答 (A)</label>
-                    <RichTextEditor v-model="item.a" class="mt-1" />
-                </v-sheet>
-            </div>
+<v-divider class="my-6"></v-divider>
+<div class="d-flex justify-space-between align-center mb-2">
+    <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
+    <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
+</div>
 
+<div v-if="projectSettings.intro.faq.length === 0" class="text-center text-grey pa-4 border rounded">
+    點擊「新增問答」來建立 FAQ
+</div>
+<div v-else>
+    <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <span class="font-weight-bold">問題 {{ index + 1 }}</span>
+            <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
+        </div>
+        <v-text-field
+            v-model="item.q"
+            label="問題 (Q)"
+            variant="outlined"
+            density="compact"
+        ></v-text-field>
+        
+        <div class="d-flex justify-space-between align-center mt-2">
+          <label class="v-label text-caption">回答 (A)</label>
+        </div>
+        <v-textarea
+            v-model="item.a"
+            variant="outlined"
+            density="compact"
+            class="mt-1"
+            rows="3"
+            auto-grow
+        ></v-textarea>
+    </v-sheet>
+</div>
           </v-form>
         </v-card-text>
 
@@ -1468,6 +1487,33 @@ async function saveSettings() {
     } finally {
         isSavingSettings.value = false;
     }
+}
+
+
+// ✅ 新增：套用範本的通用函式
+function applyTemplate(fieldName, index = -1) {
+  const sourceIntro = defaultSettings.value.intro;
+  const targetIntro = projectSettings.value.intro;
+
+  switch(fieldName) {
+    case 'greeting':
+      targetIntro.greeting = sourceIntro.greeting;
+      break;
+    case 'body':
+      targetIntro.body = sourceIntro.body;
+      break;
+    case 'footer':
+      targetIntro.footer = sourceIntro.footer;
+      break;
+    case 'alertText':
+      targetIntro.alert.text = sourceIntro.alert.text;
+      break;
+    case 'faqAnswer':
+      if (index > -1 && sourceIntro.faq[index]) {
+        targetIntro.faq[index].a = sourceIntro.faq[index].a;
+      }
+      break;
+  }
 }
 
 // --- Lifecycle & Watchers ---
