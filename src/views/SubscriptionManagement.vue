@@ -24,7 +24,7 @@
         ></v-text-field>
       </v-card-title>
 
-      <v-data-table
+<v-data-table
         :headers="headers"
         :items="subscriptions"
         :search="search"
@@ -35,6 +35,13 @@
       >
         <template v-slot:item.status="{ item }">
           <v-chip :color="item.color" size="small" label>{{ item.status }}</v-chip>
+        </template>
+        
+        <template v-slot:item.durationDays="{ item }">
+          <v-chip v-if="typeof item.durationDays === 'number'" color="blue-grey" size="small" label>
+            {{ item.durationDays }} 天
+          </v-chip>
+          <span v-else class="text-grey">{{ item.durationDays }}</span>
         </template>
         
         <template v-slot:item.actions="{ item }">
@@ -86,7 +93,13 @@
               </v-col>
               <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactName" label="聯絡人"></v-text-field></v-col>
               <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機"></v-text-field></v-col>
-              
+              <v-col cols="12">
+                              <v-text-field 
+                                v-model="editedItem.contactEmail" 
+                                label="聯絡人Email"
+                                :rules="rules.email"
+                              ></v-text-field>
+                            </v-col>
               <v-col cols="12" sm="6">
                 <v-select
                   v-model="subscriptionTypeSelection"
@@ -170,6 +183,7 @@ const headers = [
     { title: '系統功能', key: 'systemFunction' },
     { title: '啟用日期', key: 'startDate' },
     { title: '停用日期', key: 'endDate' },
+    { title: '訂閱天數', key: 'durationDays' },
     { title: '聯絡人', key: 'contactName' },
     { title: '聯絡人手機', key: 'contactPhone' },
     { title: '訂閱類型', key: 'subscriptionType' },
@@ -186,6 +200,7 @@ const defaultItem = {
     projectName: '', 
     systemFunction: [], 
     contactName: '', 
+    contactEmail: '', 
     contactPhone: '',
     paymentDate: '', 
     subscriptionType: '', 
@@ -205,6 +220,7 @@ const otherSubscriptionType = ref('');
 const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
     requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
+    email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ] 
 };
 
 
@@ -219,7 +235,22 @@ async function loadData() {
             fetchAllSubscriptions(adminKey.value),
             fetchMasterDataForSubscriptionForm(adminKey.value)
         ]);
-        subscriptions.value = subs;
+        
+        // ✅ 計算每筆訂閱的天數並附加到物件中
+        subscriptions.value = subs.map(sub => {
+            if (sub.startDate && sub.endDate) {
+                const startDate = new Date(sub.startDate);
+                const endDate = new Date(sub.endDate);
+                if (!isNaN(startDate) && !isNaN(endDate)) {
+                    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+                    // +1 使其包含起訖日
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    return { ...sub, durationDays: diffDays };
+                }
+            }
+            return { ...sub, durationDays: 'N/A' };
+        });
+
         masterData.value = mData;
     } catch (error) {
         console.error("載入資料失敗:", error);

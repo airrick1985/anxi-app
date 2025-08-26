@@ -16,6 +16,17 @@
 
         <v-icon start>mdi-cogs</v-icon>
         <span>預約批次管理：{{ projectName || '讀取中...' }}</span> 
+          <v-spacer></v-spacer>
+
+        <v-btn 
+                  color="primary"
+                  variant="outlined"
+                  prepend-icon="mdi-cog"
+                  @click="openSettingsDrawer"
+                >
+                  預約設定
+                </v-btn>
+
       </v-card-title>
       <v-divider></v-divider>
       
@@ -39,6 +50,7 @@
                 style="max-width: 350px;"
               ></v-text-field>
               <v-spacer></v-spacer>
+              
               <v-btn color="primary" @click="openBatchDialog()" prepend-icon="mdi-plus">新增批次</v-btn>
             </v-toolbar>
 
@@ -126,18 +138,18 @@
                           <span class="font-weight-regular">{{ slot.capacity }} 名</span>
                         </v-chip>
                         <div class="pl-2 d-flex flex-wrap ga-2">
-                            <v-chip
-                                  v-for="method in allMethodOptions"
-                                  :key="method"
-                                  :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
-                                  :color="slot.methods.includes(method) ? 'green' : 'grey'"
-                                  size="x-small"
-                                  label
-                                >
-                                  {{ method }}
-                                </v-chip>
-                          <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
-                        </div>
+                     <v-chip
+                              v-for="method in projectSettings.bookingMethodOptions"
+                              :key="method"
+                              :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
+                              :color="slot.methods.includes(method) ? 'green' : 'grey'"
+                              size="x-small"
+                              label
+                            >
+                              {{ method }}
+                            </v-chip>
+                      <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
+                    </div>
                     </div>
                   </div>
                   <div v-else class="text-grey-darken-1">
@@ -241,7 +253,7 @@
                   <template v-slot:activator="{ props }">
                     <v-text-field
                       :model-value="formatDisplayDateTime(editedBatch.applicationStart)"
-                      label="預約起始時間"
+                      label="預約開放時間"
                       prepend-inner-icon="mdi-calendar-clock"
                       readonly
                       v-bind="props"
@@ -407,26 +419,26 @@
                     <div>
                       <div class="text-caption mb-1 ml-1">可預約方式</div>
                       <div class="d-flex flex-wrap align-center">
-                        <v-checkbox
-                          :model-value="getSelectAllState(slot).checked"
-                          :indeterminate="getSelectAllState(slot).indeterminate"
-                          label="全選"
-                          density="compact"
-                          hide-details
-                          class="d-inline-block mr-2 font-weight-bold"
-                          @update:model-value="handleSelectAll($event, slot)"
-                        ></v-checkbox>
-                        <v-divider vertical class="mx-2 d-none d-sm-flex"></v-divider>
-                        <v-checkbox
-                          v-for="method in allMethodOptions"
-                          :key="method"
-                          :model-value="isMethodSelectedForSlot(slot, method)"
-                          @update:model-value="updateMethodsForSlot(slot, method, $event)"
-                          :label="method"
-                          density="compact"
-                          hide-details
-                          class="d-inline-block mr-2"
-                        ></v-checkbox>
+                      <v-checkbox
+                        :model-value="getSelectAllState(slot).checked"
+                        :indeterminate="getSelectAllState(slot).indeterminate"
+                        label="全選"
+                        density="compact"
+                        hide-details
+                        class="d-inline-block mr-2 font-weight-bold"
+                        @update:model-value="handleSelectAll($event, slot)"
+                      ></v-checkbox>
+                      <v-divider vertical class="mx-2 d-none d-sm-flex"></v-divider>
+                      <v-checkbox
+                        v-for="method in projectSettings.bookingMethodOptions"
+                        :key="method"
+                        :model-value="isMethodSelectedForSlot(slot, method)"
+                        @update:model-value="updateMethodsForSlot(slot, method, $event)"
+                        :label="method"
+                        density="compact"
+                        hide-details
+                        class="d-inline-block mr-2"
+                      ></v-checkbox>
                       </div>
                     </div>
                   </v-sheet>
@@ -566,21 +578,235 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+        <v-navigation-drawer
+      v-model="isSettingsDrawerOpen"
+      location="end"
+      temporary
+      width="450"
+      class="d-flex flex-column"
+    >
+      <v-card flat class="d-flex flex-column flex-grow-1">
+        <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
+            <span class="text-h6">公開預約頁面設定</span>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" variant="text" @click="isSettingsDrawerOpen = false"></v-btn>
+        </v-card-title>
+        
+        <v-divider></v-divider>
+
+        <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        </div>
+        
+        <v-card-text v-else class="flex-grow-1" style="overflow-y: auto;">
+          <v-form>
+            <v-switch
+              v-model="projectSettings.isPublished"
+              :label="`開放 ${projectName} 預約系統`"
+              color="success"
+              inset
+              hint="開啟後，客戶即可透過預約系統進行預約"
+              persistent-hint
+            ></v-switch>
+
+            <v-divider class="my-6"></v-divider>
+
+             <v-combobox
+            v-model="projectSettings.bookingTypes"
+            :items="defaultBookingTypes"  
+            label="預約項目"
+            hint="可從下拉選單快選，或輸入文字後按 Enter 新增"
+            persistent-hint
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+          ></v-combobox>
+
+            <v-switch
+              v-model="projectSettings.validateId"
+              label="啟用身分證驗證"
+              true-value="ON"
+              false-value="OFF"
+              color="primary"
+              inset
+              hint="啟用後，客戶在預約時需輸入與產權人相符身分證號，以免預約時戶別及產權人不符"
+              persistent-hint
+            ></v-switch>
+            
+            <v-switch
+              v-model="projectSettings.checkDuplicate"
+              label="檢查重複預約"
+              true-value="ON"
+              false-value="OFF"
+              color="primary"
+              inset
+              hint="啟用後，系統會檢查同一戶別、同一預約項目是否已有有效預約"
+              persistent-hint
+              class="mt-4"
+            ></v-switch>
+
+
+            <v-switch
+          v-model="projectSettings.showBookingMethod"
+          label="顯示驗屋方式選項"
+          color="primary"
+          inset
+          class="mt-4"
+        ></v-switch>
+                        
+          <v-combobox
+            v-model="projectSettings.bookingMethodOptions"
+            :items="defaultBookingMethods"
+            label="編輯驗屋方式選項"
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            :disabled="!projectSettings.showBookingMethod"
+            hint="可從下拉選單快選，或輸入文字後按 Enter 新增"
+            persistent-hint
+          >
+            <template v-slot:selection="{ attrs, item, parent }">
+              <v-chip
+                v-bind="attrs"
+                :model-value="true"
+                closable
+                @click:close="parent.selectItem(item)"
+              >
+                {{ item.title }}
+              </v-chip>
+            </template>
+          </v-combobox>
+
+      <v-divider class="my-6"></v-divider>
+
+            <p class="text-subtitle-1 font-weight-bold mb-2">頁面內容設定</p>
+
+            <label class="v-label text-caption">招呼語</label>
+            <RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
+
+            <label class="v-label text-caption">內文說明</label>
+            <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
+
+            <label class="v-label text-caption">頁尾文字</label>
+            <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
+
+            <v-divider class="my-6"></v-divider>
+            <p class="text-subtitle-1 font-weight-bold mb-2">提示框設定</p>
+
+            <v-switch
+              v-model="projectSettings.intro.alert.show"
+              label="顯示提示框"
+              color="primary"
+              inset
+            ></v-switch>
+
+            <v-text-field
+              v-model="projectSettings.intro.alert.title"
+              label="提示框標題"
+              variant="outlined"
+              density="compact"
+              class="mt-2"
+              :disabled="!projectSettings.intro.alert.show"
+            ></v-text-field>
+            
+            <label class="v-label text-caption">提示框內容</label>
+            <RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
+
+            <v-divider class="my-6"></v-divider>
+            <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+            
+            <v-text-field
+              v-model="projectSettings.intro.contact.name"
+              label="聯絡單位名稱"
+              variant="outlined"
+              density="compact"
+            ></v-text-field>
+            <v-text-field
+              v-model="projectSettings.intro.contact.phone"
+              label="聯絡電話"
+              variant="outlined"
+              density="compact"
+              class="mt-2"
+            ></v-text-field>
+
+            <v-divider class="my-6"></v-divider>
+            <div class="d-flex justify-space-between align-center mb-2">
+                <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
+                <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
+            </div>
+
+            <div v-if="projectSettings.intro.faq.length === 0" class="text-center text-grey pa-4 border rounded">
+                點擊「新增問答」來建立 FAQ
+            </div>
+            <div v-else>
+                <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4">
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <span class="font-weight-bold">問題 {{ index + 1 }}</span>
+                        <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
+                    </div>
+                    <v-text-field
+                        v-model="item.q"
+                        label="問題 (Q)"
+                        variant="outlined"
+                        density="compact"
+                    ></v-text-field>
+                    <label class="v-label text-caption">回答 (A)</label>
+                    <RichTextEditor v-model="item.a" class="mt-1" />
+                </v-sheet>
+            </div>
+
+          </v-form>
+        </v-card-text>
+
+        <v-divider></v-divider>
+
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn 
+            color="primary" 
+            variant="elevated"
+            @click="saveSettings"
+            :loading="isSavingSettings"
+            size="large"
+          >
+            儲存設定
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-navigation-drawer>
+
+
   </v-container>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
+import RichTextEditor from '@/components/RichTextEditor.vue'; 
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
+
+// ✅ 將所有來自 '@/api' 的引入合併成這一個
 import {
+  updateProjectSettings,   
+  fetchProjectConfig,      
   checkDateConflicts,
   saveBatchWithRules,
   fetchRulesForBatch,
   fetchBookingBatches,
   deleteBookingBatch,
 } from '@/api';
+
+
+
+// --- Computed Properties ---
+const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
+
 
 // --- Component State ---
 const route = useRoute();
@@ -596,6 +822,64 @@ const isBatchDialogVisible = ref(false);
 const batchForm = ref(null);
 const bookingBatches = ref([]);
 const bookingTypeOptions = ref(['初驗', '複驗', '其他']);
+
+// ✅ 將 defaultSettings 從 const 常數改為 computed 屬性
+const defaultSettings = computed(() => ({
+    isPublished: false,
+    checkDuplicate: "OFF",
+    validateId: "OFF",
+    bookingTypes: [],
+    showBookingMethod: false,
+    bookingMethodOptions: [],
+    // ✅ intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
+    intro: {
+      greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
+      body: `<p>歡迎使用「${projectName.value}」線上驗屋預約系統，請依下方步驟完成您的預約。</p>`,
+      alert: {
+        show: true,
+        color: 'error',
+        type: 'info',
+        title: '驗屋說明',
+        text: `
+          <p>親愛的客戶，感謝您承購「${projectName.value}」，本案已於114/03/06取得使用執照，並於室內屋況完成後進行驗收。</p>
+          <p>因驗屋時段分別，請盡早填妥以下資訊預約，以便為您事先安排服務人員，謝謝您的配合。</p>
+          <ul class="pl-5 mt-4" style="list-style-type: none;">
+            <li class="mb-2"><strong>⚠️</strong> 驗屋公司因驗屋時間需求僅開放預約9:30或13:30。</li>
+            <li class="mb-2"><strong>⚠️</strong> 若有驗屋公司請於驗屋系統填寫驗屋公司名稱。</li>
+            <li class="mb-2"><strong>⚠️</strong> 驗屋公司-自行檢測水電及弱電。</li>
+            <li class="mb-2"><strong>⚠️</strong> 屋主自驗或設計師陪驗 - 水電及弱電驗屋流程將由建設公司提供專業測試流程。</li>
+            <li class="mb-2"><strong>⚠️</strong> 產權人若無法親自驗屋,需填寫授權書屋主及受託人雙方均需簽名。</li>
+            <li class="mb-2"><strong>⚠️</strong> 非屋主關係或驗屋人員謝絕參與。</li>
+            <li class="mb-2"><strong>⚠️</strong> 針對陽台及浴室基於合理使用房屋之正常狀況，不同意進行淹水測試，驗屋方式請以房屋使用合理性為原則。</li>
+            <li class="mb-2"><strong>⚠️</strong> 如有相關廠商(廚具、空調、衛浴等)/ 設計師丈量需求，請安排於初驗時一同前來，之後不另開放。</li>
+          </ul>
+          <p class="mt-6"><strong>有關買賣合約特記事項提醒 :</strong></p>
+          <ol class="pl-5 mt-4">
+            <li class="mb-3">石材為天然化石積壓而生，切割後表面易出現結晶體及放射狀紋或裂紋之天然色澤紋路，因季節變化或時間因素致使有受潮含水、自然裂紋變形等情況係自然現象，選擇天然石材為鋪面應有認知，如有上述情形，非賣方之故意，買方同意應以施工當時色澤紋為主；亦不得將上列情形視為瑕疵而作任何主張或請求。</li>
+            <li class="mb-3">本案所使用之拋光石英磚及地壁磚建材因釉料及高溫窯燒，製程中因熱脹冷縮產生細微翹曲，無法達到每一片接合之平整性，及地壁磚微量之色差，另因石英磚地坪施作工法改良後，為因增加黏著點而使用鋸齒狀刮刀，致使產生水泥收縮後黏著微量不平均，以致在敲打時會有些微不同之聲音，（單片敲打不同之聲音不得超過三分之一以上），係屬無法抗拒之正常現象，如有上述情形，非賣方之故意，買方同意亦不得將上列情形視為瑕疵而作任何主張或請求。</li>
+            <li class="mb-3">室內隔間採用輕質隔間牆，其與樑下或不同構造之建材相接處做退縮處理，以降低因建築物產生自然載量及層間變位等因素，而造成牆面不規則龜裂情形，係屬正常施工規範。</li>
+          </ol>
+        `
+      },
+      footer: '<p>如有任何疑問，請洽您的專屬服務人員或撥打以下電話：</p>',
+      contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
+      attachments: [],
+      faq: [
+        { q: "整個驗屋流程大約需要多久？", a: "依據不同房型，完整的初驗流程預計需要 1.5 至 2.5 小時。" },
+        { q: "驗屋時可以找親友或設計師陪同嗎？", a: "當然可以，歡迎您邀請親友或您的設計師一同前來，但請以兩人為限，以維持現場驗屋品質。" }
+      ]
+    }
+}));
+
+// ✅ 修改 projectSettings 的初始值，加上 .value
+const projectSettings = ref(JSON.parse(JSON.stringify(defaultSettings.value))); 
+
+
+// ✅ --- 新增：預約設定抽屜相關的狀態與邏輯 ---
+const isSettingsDrawerOpen = ref(false);
+const isSettingsLoading = ref(false);
+const isSavingSettings = ref(false);
+
 const customBookingType = ref('');
 const searchQuery = ref('');
 
@@ -619,8 +903,6 @@ const dateResolutions = reactive({});
 const deleteBatchDates = ref([]);
 const isDeleteDatesLoading = ref(false);
 
-// Appointment methods
-const allMethodOptions = ['代驗公司', '屋主自驗', '授權驗屋', '設計師陪驗'];
 
 // Date Time Picker states
 const menuAppStart = ref(false);
@@ -633,6 +915,12 @@ const tempTimeStart = ref(null);
 const activePickerTabEnd = ref(0);
 const tempDateEnd = ref(null);
 const tempTimeEnd = ref(null);
+
+// ✅ --- 新增：公開預約設定選項 ---
+const defaultBookingTypes = ref(['初驗', '複驗']);
+const defaultBookingMethods = ref(['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司']);
+
+
 
 // Default batch object
 const defaultBatch = {
@@ -648,8 +936,7 @@ const defaultBatch = {
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]); 
 
-// --- Computed Properties ---
-const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
+
 
 const batchHeaders = [
   { title: '批次代號', key: 'batchCode' },
@@ -703,7 +990,7 @@ const batchUniquenessRule = (value) => {
     batch.batchCode === currentCode
   );
 
-  return !isDuplicate || `「${currentType}」項目已存在相同的批次代號`;
+  return !isDuplicate || `⚠️「${currentType}」批次代號重複。`;
 };
 
 
@@ -1054,7 +1341,8 @@ const isDayConfigured = (day) => {
 function handleSelectAll(isChecked, slot) {
   selectedDaysForEditing.value.forEach(day => {
     const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
-    if (daySlot) daySlot.methods = isChecked ? [...allMethodOptions] : [];
+    // ✅ 將 allMethodOptions 改為 projectSettings.bookingMethodOptions
+    if (daySlot) daySlot.methods = isChecked ? [...projectSettings.value.bookingMethodOptions] : [];
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
@@ -1066,10 +1354,11 @@ function getSelectAllState(slot) {
   if (!methodsArray) return { checked: false, indeterminate: false };
 
   const selectedCount = methodsArray.length;
-  const totalCount = allMethodOptions.length;
+  // ✅ 將 allMethodOptions 改為從 projectSettings 中讀取，並加上 .value
+  const totalCount = projectSettings.value.bookingMethodOptions.length;
 
   return {
-    checked: selectedCount === totalCount,
+    checked: selectedCount === totalCount && totalCount > 0,
     indeterminate: selectedCount > 0 && selectedCount < totalCount,
   };
 }
@@ -1112,6 +1401,73 @@ function extractBookingType(sharedByArray) {
     return firstItem.substring(0, separatorIndex);
   }
   return firstItem; // 如果沒有 '('，則返回整個字串
+}
+
+
+async function openSettingsDrawer() {
+    isSettingsDrawerOpen.value = true;
+    isSettingsLoading.value = true;
+    projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value)); 
+
+    if (projectId.value) {
+        try {
+            const settings = await fetchProjectConfig(projectId.value);
+            if (settings) {
+                // 使用 Object.assign 和深層合併來安全地填充資料
+                projectSettings.value.isPublished = settings.isPublished || false;
+                projectSettings.value.checkDuplicate = settings.checkDuplicate || "OFF";
+                projectSettings.value.validateId = settings.validateId || "OFF";
+                projectSettings.value.bookingTypes = settings.bookingTypes || [];
+                projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
+                projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
+                
+                  // ✅ 修改：合併 intro 物件時，來源也要加上 .value
+                      projectSettings.value.intro = {
+                    ...defaultSettings.value.intro,
+                    ...(settings.intro || {}),
+                    alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
+                    contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) }
+                };
+            }
+        } catch (error) {
+            showSnackbar(`載入專案設定失敗: ${error.message}`, 'error');
+        } finally {
+            isSettingsLoading.value = false;
+        }
+    }
+}
+
+function addFaqItem() {
+  if (!projectSettings.value.intro.faq) {
+    projectSettings.value.intro.faq = [];
+  }
+  projectSettings.value.intro.faq.push({ q: '', a: '' });
+}
+
+function removeFaqItem(index) {
+  projectSettings.value.intro.faq.splice(index, 1);
+}
+
+
+async function saveSettings() {
+    if (!projectId.value) {
+        showSnackbar("請先選擇一個建案！", 'error');
+        return;
+    }
+    isSavingSettings.value = true;
+    try {
+        const result = await updateProjectSettings(projectId.value, projectSettings.value);
+        if (result.status === 'success') {
+            showSnackbar("設定儲存成功！", 'success');
+            isSettingsDrawerOpen.value = false; // 成功後關閉抽屜
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        showSnackbar(`儲存失敗: ${error.message}`, 'error');
+    } finally {
+        isSavingSettings.value = false;
+    }
 }
 
 // --- Lifecycle & Watchers ---

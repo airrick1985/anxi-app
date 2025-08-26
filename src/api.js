@@ -24,9 +24,7 @@ import {
 
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { httpsCallable } from 'firebase/functions';
-
-
+import { httpsCallable } from "firebase/functions"; 
 
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
@@ -1265,9 +1263,9 @@ export async function fetchAllSubscriptions(adminKey) {
     const snapshot = await getDocs(subscriptionsRef);
     const subscriptions = [];
     
-    // ✅ 【核心修改點 1】建立一個代表今天「開始」的日期物件
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // ✅ 【核心修改點】強制使用台灣時區來定義「今天」
+    const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    const today = new Date(taiwanDateString);
 
     snapshot.forEach(doc => {
         const record = { id: doc.id, ...doc.data() };
@@ -1275,29 +1273,27 @@ export async function fetchAllSubscriptions(adminKey) {
         const startDateValue = record.startDate?.toDate();
         const endDateValue = record.endDate?.toDate();
         
-        // ✅ 【核心修改點 2】同樣地，也建立啟用日期的「開始」物件來進行比較
-        let normalizedStartDate = null;
-        if (startDateValue) {
-            normalizedStartDate = new Date(startDateValue);
-            normalizedStartDate.setHours(0, 0, 0, 0);
-        }
+        // 這裡的 startDateValue 本身就是一個帶有時區資訊的物件，
+        // 與我們新定義的 today 比較時，會得到正確的結果。
+        // 因此下方原有的 normalizedStartDate 邏輯可以簡化或維持不變。
         
         let status = '狀態不明';
         let color = 'grey';
         
-        // ✅ 【核心修改點 3】使用正規化後的日期進行比較
-        if (normalizedStartDate && endDateValue) {
-            if (today < normalizedStartDate) {
+        if (startDateValue && endDateValue) {
+            if (today < startDateValue) {
                 status = '尚未啟用';
                 color = 'blue-grey';
-            } else if (today > endDateValue) { // 停用日期通常比較當天的結束，所以這裡不用改
+            } else if (today > endDateValue) {
                 status = '已到期';
                 color = 'red';
             } else {
                 const diffTime = endDateValue.getTime() - today.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                // ✅ 天數計算改為四捨五入，避免日光節約時間問題
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
                 if (diffDays <= 14) {
-                    status = `即將到期 (${diffDays}天)`;
+                    // ✅ 顯示剩餘天數，至少為 0 天
+                    status = `即將到期 (${Math.max(0, diffDays)}天)`;
                     color = 'orange';
                 } else {
                     status = '啟用中';
@@ -1312,7 +1308,6 @@ export async function fetchAllSubscriptions(adminKey) {
         record.status = status;
         record.color = color;
         
-        // 格式化日期以便顯示
         record.paymentDate = record.paymentDate?.toDate().toISOString().split('T')[0];
         record.startDate = startDateValue?.toISOString().split('T')[0];
         record.endDate = endDateValue?.toISOString().split('T')[0];
@@ -1424,6 +1419,7 @@ export async function deleteSubscription(subscriptionId, adminKey) {
  * @param {string} userKey - 當前登入用戶的手機號碼
  */
 export async function fetchMySubscriptionStatus(userKey) {
+    // ✅ 【修正】恢復查詢權限並定義 permSnapshot 的程式碼
     // 1. 查詢 permissions 集合，找到該用戶有權限的所有建案
     const permissionsRef = collection(db, "permissions");
     const permQuery = query(
@@ -1442,8 +1438,10 @@ export async function fetchMySubscriptionStatus(userKey) {
     const subsSnapshot = await getDocs(subsQuery);
 
     const subscriptionsByProject = {};
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    
+    // ✅ 強制使用台灣時區
+    const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    const today = new Date(taiwanDateString);
 
     subsSnapshot.forEach(doc => {
         const sub = doc.data();
@@ -1451,7 +1449,6 @@ export async function fetchMySubscriptionStatus(userKey) {
             subscriptionsByProject[sub.projectName] = [];
         }
 
-        // 計算狀態...
         const startDate = sub.startDate?.toDate();
         const endDate = sub.endDate?.toDate();
         let status = '日期不完整';
@@ -1815,8 +1812,57 @@ export async function cancelAppointment(appointmentId) {
 }
 
 // =============================================
-// ✅ 公開預約系統 API
+// ✅ 公開預約系統 API (Firebase 遷移版)
 // =============================================
+
+// ✅ [新增] 獲取預約頁面初始化所需的資料
+export async function getBookingInitialData(projectName, projectId) {
+  const doGetInitialData = httpsCallable(functions, 'getBookingInitialData');
+  try {
+    const result = await doGetInitialData({ projectId });
+    // 為了與舊版前端的格式相容，回傳包含 status 和 data 的物件
+    return { status: 'success', data: result.data };
+  } catch (error) {
+    console.error("API getBookingInitialData 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [Firestore 版] 更新指定建案的公開預約頁面設定
+ * @param {string} projectId - 要更新的建案 ID
+ * @param {object} settingsData - 包含要更新設定的物件
+ * @returns {Promise<object>} - 返回操作結果
+ */
+export async function updateProjectSettings(projectId, settingsData) {
+    if (!projectId || !settingsData) {
+        return { status: 'error', message: '缺少 projectId 或設定資料。' };
+    }
+    try {
+        const projectDocRef = doc(db, "projects", projectId);
+        await updateDoc(projectDocRef, settingsData);
+        return { status: 'success' };
+    } catch (e) {
+        console.error('更新專案設定時發生錯誤:', e);
+        return { status: 'error', message: e.message };
+    }
+}
+
+/**
+ * ✅ [新增] 從 Firestore 獲取建案的公開設定
+ * @param {string} projectId 建案 ID
+ */
+export async function fetchProjectConfig(projectId) {
+  const getProjectConfig = httpsCallable(functions, 'getProjectConfig');
+  try {
+    const result = await getProjectConfig({ projectId });
+    return result.data;
+  } catch (error) {
+    console.error("API fetchProjectConfig 錯誤:", error);
+    // 回傳 null 或拋出錯誤，讓前端頁面可以處理加載失敗的情況
+    return null; 
+  }
+}
 
 
 
@@ -1835,36 +1881,42 @@ export async function getUnitsByBuilding(projectName, building) {
 
 
 /**
- * 檢查是否已有有效預約
- * @param {string} projectName 建案名稱
+ * ✅ [修改] 檢查是否已有有效預約
+ * @param {string} projectName (舊參數，後端已不使用)
  * @param {string} unitId 戶別
- * @param {string} bookingType 預約項目 (e.g., '初驗')
+ * @param {string} bookingType 預約項目
+ * @param {string} idNumber 身分證號碼
+ * @param {string} projectId 建案 ID
  */
-export async function checkExistingBooking(projectName, unitId, bookingType, idNumber) {
-  return fetchPost({
-    action: 'check_existing_booking',
-    projectName: projectName,
-    unitId: unitId,
-    bookingType: bookingType,
-    idNumber: idNumber,
-  }, INSPECTION_API);
+export async function checkExistingBooking(projectName, unitId, bookingType, idNumber, projectId) {
+  const doCheck = httpsCallable(functions, 'checkExistingBooking');
+  try {
+    const result = await doCheck({ projectId, unitId, bookingType, idNumber });
+    return result.data; // 直接回傳後端組合好的 { status, data: { status, booking? } }
+  } catch (error) {
+    console.error("API checkExistingBooking 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
 };
 
 /**
- * 獲取可預約的日期和時段
- * @param {string} projectName 建案名稱
+ * ✅ [修改] 獲取可預約的日期和時段
+ * @param {string} projectName (舊參數)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
- * @param {string} bookingMethod 驗屋方式  
+ * @param {string} bookingMethod 驗屋方式
+ * @param {string} projectId 建案 ID
  */
-export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod) => { // ✅ 新增此參數
-  return fetchPost({
-    action: 'get_booking_slots',
-    projectName,
-    unitId,
-    bookingType,
-    bookingMethod, 
-  }, INSPECTION_API);
+export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
+  const doGetAvailableSlots = httpsCallable(functions, 'getAvailableSlots');
+  try {
+    const result = await doGetAvailableSlots({ projectId, unitId, bookingType, bookingMethod });
+    // 為了與舊版前端的格式相容，我們仍然回傳一個包含 status 和 data 的物件
+    return { status: 'success', data: result.data };
+  } catch (error) {
+    console.error("API getBookingSlots 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
 };
 
 /**
@@ -1896,31 +1948,43 @@ export const saveBooking = async (projectName, bookingData) => {
 
 
 /**
- * 一次性獲取所有可預約的戶別資料
- * @param {string} projectName 建案名稱
+ * ✅ [修改] 一次性獲取所有可預約的戶別資料
+ * @param {string} projectName (雖然函式仍接收 projectName，但後端已改用 projectId)
+ * @param {string} projectId 建案 ID
  */
-export const fetchAllUnitsForBooking = async (projectName) => {
-  return fetchPost({
-    action: 'get_all_units_for_booking',
-    projectName: projectName,
-  }, INSPECTION_API);
+export const fetchAllUnitsForBooking = async (projectName, projectId) => {
+  // 注意：我們現在需要傳遞 projectId
+  const getAllUnitsForBooking = httpsCallable(functions, 'getAllUnitsForBooking');
+  try {
+    const result = await getAllUnitsForBooking({ projectId: projectId });
+    // 為了與舊版前端的格式相容，我們仍然回傳一個包含 status 和 data 的物件
+    return { status: 'success', data: result.data };
+  } catch (error) {
+    console.error("API fetchAllUnitsForBooking 錯誤:", error);
+    return { status: 'error', message: error.message, data: {} };
+  }
 };
+
 
 /**
- * ✅ [新增] 驗證身分證與戶別是否相符
- * @param {string} projectName 建案名稱
+ * ✅ [修改] 驗證身分證與戶別是否相符
+ * @param {string} projectName (舊參數，後端已不使用但保留以相容舊呼叫)
  * @param {string} unitId 戶別
  * @param {string} idNumber 身分證號碼
+ * @param {string} projectId 建案 ID
  */
-export const validateId = async (projectName, unitId, idNumber) => {
-  return fetchPost({
-    action: 'validate_id',
-    projectName,
-    unitId,
-    idNumber,
-  }, INSPECTION_API);
+export const validateId = async (projectName, unitId, idNumber, projectId) => {
+  const doValidateId = httpsCallable(functions, 'validateId');
+  try {
+    await doValidateId({ projectId, unitId, idNumber });
+    // 成功時，Cloud Function 不會回傳 data，直接 resolve
+    return { status: 'success' };
+  } catch (error) {
+    console.error("API validateId 錯誤:", error);
+    // HttpsError 的 message 會直接是後端拋出的錯誤訊息
+    return { status: 'error', message: error.message };
+  }
 };
-
 
 
 
@@ -2527,3 +2591,6 @@ export async function deleteBookingBatch(batchId) {
         return { status: 'error', message: e.message };
     }
 }
+
+
+

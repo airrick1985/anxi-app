@@ -62,9 +62,11 @@
 
       <v-dialog v-model="dialogVisible" persistent max-width="1000px">
         <v-card>
-          <v-card-title>
+              <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
             <span class="text-h5">{{ isNewUser ? '新增人員' : '編輯人員' }}</span>
-          </v-card-title>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
+        </v-card-title>
           
           <div v-if="loadingDetails" class="text-center pa-10">
             <v-progress-circular indeterminate size="64" color="primary"></v-progress-circular>

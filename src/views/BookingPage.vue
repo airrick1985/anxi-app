@@ -606,13 +606,15 @@
 import { ref, onMounted, computed, nextTick } from 'vue'; 
 import { useRoute } from 'vue-router';
 import { 
+ fetchProjectConfig,
+  getBookingInitialData,
   fetchAllUnitsForBooking,
   checkExistingBooking, 
   validateId, 
   getBookingSlots, 
   saveBooking, 
   uploadAuthLetter,
-  uploadInspectionReport // <-- ✅ 引入新的 API 函式
+  uploadInspectionReport
 } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
@@ -999,23 +1001,37 @@ const handleGenerateLetter = async () => {
 
 onMounted(async () => {
   projectId.value = route.params.projectId;
-  const config = projectConfigurations[projectId.value];
+  // ✅ 修改點: 此處不再從靜態物件讀取 config，而是等待 API 回應
+  // const config = projectConfigurations[projectId.value];
+  
+  // ✅ 新增: 呼叫新的 fetchProjectConfig API
+  const config = await fetchProjectConfig(projectId.value);
+
   if (config) {
     projectConfig.value = config;
     if (config.isPublished) {
       try {
+          // ✅ 修改點: 在呼叫時傳入 projectId.value
           const [initialRes, unitsRes] = await Promise.all([
-            getBookingInitialData(projectConfig.value.projectName),
-            fetchAllUnitsForBooking(projectConfig.value.projectName)
+            getBookingInitialData(projectConfig.value.projectName, projectId.value),
+            fetchAllUnitsForBooking(projectConfig.value.projectName, projectId.value)
           ]);
+
           if (initialRes && initialRes.status === 'success' && initialRes.data) {
                       if (Array.isArray(initialRes.data.buildings)) {
                         initialRes.data.buildings.sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
                       }
-                      initialData.value = initialRes.data;}          
-                    else throw new Error(initialRes.message || '無法獲取建案資料');
-          if (unitsRes && unitsRes.status === 'success' && unitsRes.data) allUnitsData.value = unitsRes.data;
-          else throw new Error(unitsRes.message || '無法獲取戶別資料');
+                      initialData.value = initialRes.data;
+          } else {
+            throw new Error(initialRes.message || '無法獲取建案資料');
+          }
+
+          if (unitsRes && unitsRes.status === 'success' && unitsRes.data) {
+            allUnitsData.value = unitsRes.data;
+          } else {
+            throw new Error(unitsRes.message || '無法獲取戶別資料');
+          }
+
       } catch (error) {
         console.error("讀取初始資料失敗:", error);
         alert("系統忙碌中，無法讀取預約資料，請稍後再試。");
@@ -1061,45 +1077,54 @@ const handleStep1Submit = async () => {
       const validationRes = await validateId(
         projectConfig.value.projectName,
         formStep1.value.unit,
-        formStep1.value.idNumber
+        formStep1.value.idNumber,
+        projectId.value // 傳入 projectId
       );
-      // 如果驗證失敗，就拋出錯誤並中斷流程
       if (validationRes.status !== 'success') {
         throw new Error(validationRes.message || '身分驗證失敗');
       }
     }
 
-    // --- 步驟 2: 檢查現有預約 (身分驗證通過後執行) ---
-  if (initialData.value.checkDuplicate === 'ON') {
-const res = await checkExistingBooking(
+    // --- 步驟 2: 檢查現有預約 ---
+    if (initialData.value.checkDuplicate === 'ON') {
+      const res = await checkExistingBooking(
+          projectConfig.value.projectName, 
+          formStep1.value.unit, 
+          formStep1.value.bookingType,
+          formStep1.value.idNumber,
+          projectId.value // 傳入 projectId
+        );
+        
+      if (res.status === 'success' && res.data.status === 'found') {
+          existingBookingInfo.value = res.data.booking;
+          isLoading.value = false;
+          return;
+      }
+    }
+
+    // --- 步驟 3: 獲取可預約時段 ---
+    const res = await getBookingSlots(
         projectConfig.value.projectName, 
         formStep1.value.unit, 
-        formStep1.value.bookingType,
-        formStep1.value.idNumber
+        formStep1.value.bookingType, 
+        formStep1.value.bookingMethod,
+        projectId.value // 傳入 projectId
       );
-      
-if (res.status === 'success' && res.data.status === 'found') {
-    existingBookingInfo.value = res.data.booking;
-        isLoading.value = false; // 找到預約，結束 loading
-    return; // 中斷流程
-   }
-  }
 
-    // --- 步驟 3: 獲取可預約時段 (前面都通過後執行) ---
-  const res = await getBookingSlots(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType, formStep1.value.bookingMethod);
-  if (res.status === 'success' && res.data) {
-   bookingSlots.value = res.data;
-   step.value = 2;
-  } else {
-   throw new Error(res.message || '無法獲取可預約時段');
-  }
- } catch (error) {
+    if (res.status === 'success' && res.data) {
+     bookingSlots.value = res.data;
+     step.value = 2;
+    } else {
+     throw new Error(res.message || '無法獲取可預約時段');
+    }
+ } catch (error) { // ✅ 確保 catch 區塊存在
   console.error("步驟一處理失敗:", error);
   alert(`操作失敗：${error.message}`);
- } finally {
+ } finally { // ✅ 確保 finally 區塊存在
   isLoading.value = false;
  }
 };
+
 const handleStep2Submit = async () => {
   const { valid } = await step2Form.value.validate();
   if (!valid) return;
