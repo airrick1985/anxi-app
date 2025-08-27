@@ -772,18 +772,29 @@
 ></v-text-field>
 
 <v-divider class="my-6"></v-divider>
-<p class="text-subtitle-1 font-weight-bold mb-2">提示框設定</p>
+<p class="text-subtitle-1 font-weight-bold mb-2">驗屋說明設定</p>
 
 <v-switch
   v-model="projectSettings.intro.alert.show"
-  label="顯示提示框"
+  label="顯示驗屋說明"
   color="primary"
   inset
 ></v-switch>
 
+<v-switch
+  v-model="projectSettings.intro.alert.showConfirmation"
+  label="須勾選「我已閱讀」後才可開始預約"
+  color="primary"
+  inset
+
+  persistent-hint
+  :disabled="!projectSettings.intro.alert.show"
+></v-switch>
+
+
 <v-text-field
   v-model="projectSettings.intro.alert.title"
-  label="提示框標題"
+  label="驗屋說明標題"
   variant="outlined"
   density="compact"
   class="mt-2"
@@ -901,7 +912,7 @@ const bookingTypeOptions = ref(['初驗', '複驗', '其他']);
 const defaultSettings = computed(() => ({
     pageTitle: `${projectName.value} 線上預約系統`, 
     titleColor: '#FFFFFF',
-    themeColor: 'blue-darken-4',
+    themeColor: '#0D47A1',
     logoUrl: '', 
     checkDuplicate: "OFF",
     validateId: "OFF",
@@ -915,16 +926,17 @@ const defaultSettings = computed(() => ({
       body: `<p>歡迎使用「${projectName.value}」線上驗屋預約系統，請依下方步驟完成您的預約。</p>`,
       alert: {
         show: true,
+        showConfirmation: false,
         color: 'error',
         type: 'info',
         title: '驗屋說明',
         text: `
-          <p>親愛的客戶，感謝您承購「${projectName.value}」，本案已於114/03/06取得使用執照，並於室內屋況完成後進行驗收。</p>
+          <p>親愛的客戶，感謝您承購「${projectName.value}」，本案已於2025/XX/XX取得使用執照，並於室內屋況完成後進行驗收。</p>
           <p>因驗屋時段分別，請盡早填妥以下資訊預約，以便為您事先安排服務人員，謝謝您的配合。</p>
           <ul class="pl-5 mt-4" style="list-style-type: none;">
-            <li class="mb-2"><strong>⚠️</strong> 驗屋公司因驗屋時間需求僅開放預約9:30或13:30。</li>
-            <li class="mb-2"><strong>⚠️</strong> 若有驗屋公司請於驗屋系統填寫驗屋公司名稱。</li>
-            <li class="mb-2"><strong>⚠️</strong> 驗屋公司-自行檢測水電及弱電。</li>
+            <li class="mb-2"><strong>⚠️</strong> 代驗公司因驗屋時間需求僅開放預約9:30或13:30。</li>
+            <li class="mb-2"><strong>⚠️</strong> 若有代驗公司請於預約系統填寫代驗公司名稱。</li>
+            <li class="mb-2"><strong>⚠️</strong> 代驗公司-自行檢測水電及弱電。</li>
             <li class="mb-2"><strong>⚠️</strong> 屋主自驗或設計師陪驗 - 水電及弱電驗屋流程將由建設公司提供專業測試流程。</li>
             <li class="mb-2"><strong>⚠️</strong> 產權人若無法親自驗屋,需填寫授權書屋主及受託人雙方均需簽名。</li>
             <li class="mb-2"><strong>⚠️</strong> 非屋主關係或驗屋人員謝絕參與。</li>
@@ -940,7 +952,7 @@ const defaultSettings = computed(() => ({
         `
       },
       footer: '<p>如有任何疑問，請洽您的專屬服務人員或撥打以下電話：</p>',
-      contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
+      contact: { name: "XX建設", phone: "" },
       attachments: [],
       faq: [
         { q: "整個驗屋流程大約需要多久？", a: "依據不同房型，完整的初驗流程預計需要 1.5 至 2.5 小時。" },

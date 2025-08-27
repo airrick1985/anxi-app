@@ -8,7 +8,7 @@
 
         <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
           <template v-if="isUploadMode">
-     <v-card-title 
+            <v-card-title 
               class="text-h5 font-weight-bold py-2 d-flex align-center"
               :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
             >
@@ -100,7 +100,7 @@
                   
                 </v-form>
               </v-card-text>
-       <v-card-actions class="pa-4">
+              <v-card-actions class="pa-4">
                 <v-spacer></v-spacer>
                 <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadSubmit" :loading="isLoading" variant="elevated">
                   <v-icon left>mdi-upload</v-icon>
@@ -117,62 +117,85 @@
                 <v-btn :color="projectConfig.themeColor" size="large" @click="resetUploadMode" variant="elevated">返回上傳頁面</v-btn>
               </v-card-text>
             </div>
-
           </template>
 
           <template v-else>
-<v-card-title 
-       class="text-h5 font-weight-bold py-2 d-sm-flex align-center"
-       :style="{ backgroundColor: projectConfig.themeColor, color: projectConfig.titleColor }"
-      >
-       <span>{{ projectConfig.pageTitle }}</span>
-       <v-spacer class="d-none d-sm-flex"></v-spacer>
-       <v-btn
-        v-if="step === 1 && projectConfig.showReportUploadButton"        
-        prepend-icon="mdi-file-upload-outline"
-        variant="elevated"
-        @click="isUploadMode = true"
-        class="mt-3 mt-sm-0"
-        :block="$vuetify.display.xs"
-       >
-        上傳驗屋報告
-       </v-btn>
-      </v-card-title>
+          <v-card-title 
+           class="text-h5 font-weight-bold py-2 d-sm-flex align-center text-center text-sm-left"
+            :style="{ backgroundColor: projectConfig.themeColor, color: projectConfig.titleColor }"
+          >
+              <span>{{ projectConfig.pageTitle }}</span>
+              <v-spacer class="d-none d-sm-flex"></v-spacer>
+              <v-btn
+                v-if="step === 1 && projectConfig.showReportUploadButton"        
+                prepend-icon="mdi-file-upload-outline"
+                variant="elevated"
+                @click="isUploadMode = true"
+                class="mt-3 mt-sm-0"
+                :block="$vuetify.display.xs"
+              >
+                上傳驗屋報告
+              </v-btn>
+            </v-card-title>
             <v-divider></v-divider>
 
-                 <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
-          找不到對應的建案設定，請確認網址是否正確。
-        </v-alert>
-        <v-alert v-if="projectConfig && !projectConfig.isPublished && !isLoading" type="error" border="start" prominent title="預約未開放">
-          此建案的預約尚未開始，請等候通知。
-        </v-alert>
+            <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
+              找不到對應的建案設定，請確認網址是否正確。
+            </v-alert>
+            <v-alert v-if="projectConfig && !projectConfig.isPublished && !isLoading" type="error" border="start" prominent title="預約未開放">
+              此建案的預約尚未開始，請等候通知。
+            </v-alert>
 
             <v-card-text v-if="step < 3">
-           
-            <div class="prose">
+              <div class="prose">
                 <div v-html="projectConfig.intro.greeting"></div>
                 <div v-html="projectConfig.intro.body"></div>
 
-                <v-alert
-                    v-if="projectConfig.intro.alert.show"
-                    :color="projectConfig.intro.alert.color"
-                    :type="projectConfig.intro.alert.type"
-                    class="mb-4"
-                    border="start"
-                    density="compact"
-                >
-                    <template v-slot:title>
-                      <div v-if="projectConfig.intro.alert.title" class="font-weight-bold">{{ projectConfig.intro.alert.title }}</div>
-                    </template>
-                    <div v-html="projectConfig.intro.alert.text"></div>
-                </v-alert>
+                <div v-if="projectConfig.intro.alert.show && projectConfig.intro.alert.showConfirmation">
+  
+                  <v-btn
+                    block
+                    variant="outlined"
+                    class="mb-2"
+                    @click="isInstructionsDialogVisible = true"
+                  >
+                    <v-icon start>mdi-file-document-outline</v-icon>
+                    點此閱讀驗屋說明
+                  </v-btn>
 
-                <div v-html="projectConfig.intro.footer"></div>
-                
-                <div class="contact-info" v-if="projectConfig.intro.contact">
-                  {{ projectConfig.intro.contact.name }}: 
-                  <a :href="'tel:' + projectConfig.intro.contact.phone.replace(/-/g, '')">{{ projectConfig.intro.contact.phone }}</a>
+                  <v-checkbox
+                    v-model="isInstructionsConfirmed"
+                    label="我已詳細閱讀並了解以上驗屋說明"
+                    :color="projectConfig.themeColor"
+                    class="mb-4"
+                    hide-details
+                    :disabled="!isInstructionsConfirmed"
+                  ></v-checkbox>
                 </div>
+
+                <v-dialog v-model="isInstructionsDialogVisible" max-width="800px" persistent>
+                  <v-card>
+                    <v-card-title class="text-h5 font-weight-bold text-center bg-red-darken-2">
+                    {{ projectConfig.intro.alert.title }}
+                  </v-card-title>
+                    <v-divider></v-divider>
+                    <v-card-text style="max-height: 60vh; overflow-y: auto;">
+                      <div v-html="projectConfig.intro.alert.text" class="prose"></div>
+                    </v-card-text>
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-4">
+                      <v-spacer></v-spacer>
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        size="large"
+                        @click="() => { isInstructionsConfirmed = true; isInstructionsDialogVisible = false; }"
+                      >
+                        我已閱讀並同意
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
 
                 <div v-if="projectConfig.intro.attachments && projectConfig.intro.attachments.length > 0" class="mt-6">
                     <v-list-subheader>相關附件</v-list-subheader>
@@ -202,15 +225,15 @@
                     ></v-expansion-panel>
                   </v-expansion-panels>
                 </div>
-            </div>
-          </v-card-text>
-          
-          <v-divider v-if="step < 3"></v-divider>
+              </div>
+            </v-card-text>
+            <v-divider v-if="step < 3"></v-divider>
 
-                    <div v-if="step === 1 && !existingBookingInfo">
-            <v-card-text>
-           
-              <h3 class="text-h6 mb-2">步驟一：請選擇您的預約項目與戶別</h3>
+            <div v-if="!projectConfig.intro.alert.showConfirmation || isInstructionsConfirmed">
+              
+              <div v-if="step === 1 && !existingBookingInfo">
+                <v-card-text>
+                  <h3 class="text-h6 mb-2">步驟一：請選擇您的預約項目與戶別</h3>
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
               
                 <v-select
@@ -263,21 +286,20 @@
                   readonly
                   disabled
                 ></v-text-field>
-                 
-                 <v-text-field
-         v-model="formStep1.idNumber"
-         :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
-        :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
-         variant="outlined"
-         :disabled="isLoading || !isBookingActive"
-        ></v-text-field>
-              </v-form>
-            </v-card-text>
-            <v-card-actions class="pa-4">
-       <v-spacer></v-spacer>
-       <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
-      </v-card-actions>
-          </div>
+                    <v-text-field
+                      v-model="formStep1.idNumber"
+                      :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
+                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
+                      variant="outlined"
+                      :disabled="isLoading || !isBookingActive"
+                    ></v-text-field>
+                  </v-form>
+                </v-card-text>
+                <v-card-actions class="pa-4">
+                  <v-spacer></v-spacer>
+                  <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large" @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
+                </v-card-actions>
+              </div>
           
                     <div v-if="existingBookingInfo && step === 1">
             <v-card-text>
@@ -462,6 +484,7 @@
                   <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
               </v-card-actions>
           </div>
+          </div>
           </template>
         </v-card>
 
@@ -643,6 +666,11 @@ const uploadForm = ref({ ...initialUploadFormState });
 // 儲存上傳後的 URL
 const finalAuthLetterUrl = ref('');
 
+// ✅ 新增一個 ref 來追蹤勾選狀態
+const isInstructionsConfirmed = ref(false);
+
+// ✅ 在 isInstructionsConfirmed 下方新增一個 ref
+const isInstructionsDialogVisible = ref(false);
 
 const route = useRoute();
 const dateAdapter = useDate();
