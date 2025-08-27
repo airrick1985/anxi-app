@@ -155,7 +155,7 @@ import {
 } from '@/api.js';
 
 const userStore = useUserStore();
-const projectStore = useProjectStore(); // ✅ 2. 獲取 projectStore 的實例
+const projectStore = useProjectStore();
 const adminKey = computed(() => userStore.user?.key);
 
 // --- Component State Refs ---
@@ -210,7 +210,8 @@ const loadInitialData = async () => {
   try {
     const [scope, users] = await Promise.all([
       fetchAdminScope(adminKey.value),
-      fetchManageableUsersForAdmin(adminKey.value)
+      fetchManageableUsersForAdmin(adminKey.value),
+      projectStore.fetchProjects() 
     ]);
     
     adminScope.value = scope;

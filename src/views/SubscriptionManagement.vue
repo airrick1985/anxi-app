@@ -67,15 +67,27 @@
           <v-container>
             <v-row>
               <v-col cols="12" sm="6">
-                <v-combobox
+             <v-combobox
                   v-model="editedItem.projectName"
                   :items="masterData.projectNames"
                   label="建案名稱*"
                   :rules="rules.required"
-                  hint="可從選單選取或手動輸入"
+                  hint="可從選單選取或手動輸入新名稱"
                   persistent-hint
                 ></v-combobox>
               </v-col>
+
+               <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model="editedItem.projectId"
+                  label="建案 ID*"
+                  :rules="!isProjectIdDisabled ? rules.projectId : []"
+                  :disabled="isProjectIdDisabled"
+                  :hint="isProjectIdDisabled ? '系統已有ID，不可任意修改' : '請為新專案設定一個唯一ID，英文及數字組合'"
+                  persistent-hint
+                ></v-text-field>
+              </v-col>
+
 
               <v-col cols="12" sm="6">
                 <v-select
@@ -158,7 +170,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue';
+import { ref, onMounted, computed, nextTick, watch } from 'vue'; // ✅ 引入 watch
 import { useUserStore } from '@/store/user';
 import { 
     fetchAllSubscriptions,
@@ -176,6 +188,7 @@ const saving = ref(false);
 const search = ref('');
 const subscriptions = ref([]);
 const masterData = ref({ projectNames: [], systemFunctions: [] });
+const projects = ref([]);
 
 const headers = [
     { title: '狀態', key: 'status', sortable: false },
@@ -198,6 +211,7 @@ const isEditing = ref(false);
 const defaultItem = {
     id: null,
     projectName: '', 
+    projectId: '', 
     systemFunction: [], 
     contactName: '', 
     contactEmail: '', 
@@ -216,13 +230,45 @@ const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他
 const subscriptionTypeSelection = ref('');
 const otherSubscriptionType = ref('');
 
-// ✅ 修改點: 新增陣列驗證規則
+
 const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
     requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
-    email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ] 
+    email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ],
+    // ✅ 新增 projectId 的驗證規則，用於手動輸入新ID時
+    projectId: [
+      v => !!v || '建案 ID 為必填項。',
+      v => !projects.value.some(p => p.id === v) || '此建案 ID 已存在，請使用別的 ID。'
+    ],
 };
 
+// ✅ [新增] computed 屬性，用來判斷當前輸入的建案名稱是否已存在
+const isProjectNameExisting = computed(() => {
+  return !!editedItem.value.projectName && projects.value.some(p => p.name === editedItem.value.projectName);
+});
+
+// ✅ [新增] computed 屬性，用來決定建案 ID 欄位是否應該禁用
+const isProjectIdDisabled = computed(() => {
+  // 編輯模式，或者選擇了現有的建案時，都禁用
+  return isEditing.value || isProjectNameExisting.value;
+});
+
+// ✅ [新增] 這是實現連動的核心邏輯
+watch(() => editedItem.value.projectName, (newName) => {
+  // 在編輯模式下，不自動變更 ID
+  if (isEditing.value) return;
+
+  // 從完整的 projects 列表中尋找匹配的建案
+  const existingProject = projects.value.find(p => p.name === newName);
+  
+  if (existingProject) {
+    // 如果找到了，自動填入對應的 projectId
+    editedItem.value.projectId = existingProject.id;
+  } else {
+    // 如果沒找到 (代表是手動輸入的新建案)，則清空 projectId 讓使用者自行填寫
+    editedItem.value.projectId = '';
+  }
+});
 
 async function loadData() {
     if (!adminKey.value) {
@@ -251,7 +297,13 @@ async function loadData() {
             return { ...sub, durationDays: 'N/A' };
         });
 
-        masterData.value = mData;
+// ✅ [修正] 正確處理 API 回傳的資料
+        projects.value = mData.projects; // 儲存完整的專案列表 {id, name}
+        masterData.value = {
+            projectNames: mData.projects.map(p => p.name), // 只取出 name 陣列給下拉選單用
+            systemFunctions: mData.systemFunctions
+        };
+
     } catch (error) {
         console.error("載入資料失敗:", error);
         alert('載入資料失敗: ' + error.message);
@@ -353,7 +405,7 @@ async function save() {
                 }
                 
                 const newId = `SUB-${Date.now()}-${index}`;
-                payloadData.id = newId;
+                // payloadData.id = newId; // ✅ 註解此行，ID 由後端API參數傳入
                 
                 return addSubscription(newId, payloadData, adminKey.value);
             });

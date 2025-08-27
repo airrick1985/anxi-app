@@ -543,6 +543,7 @@
 
 <script setup>
 import { usePageContextStore } from '@/store/pageContextStore';
+import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
 import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
 import { ref, onMounted, computed, watch, reactive, onUnmounted } from 'vue';
@@ -569,6 +570,7 @@ const route = useRoute();
 const router = useRouter(); // ✅ 【新增】獲取 router 實例
 const userStore = useUserStore();
 const pageContextStore = usePageContextStore();
+const projectStore = useProjectStore(); // ✅ 2. 建立 store 實例
 const projectId = ref(route.params.projectId);
 
 // --- 定義欄位應更新到哪個集合 ---
@@ -625,7 +627,7 @@ const newAppointmentData = reactive({
 });
 
 // --- 常數與計算屬性 ---
-const PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu61: '富宇富御', fuyu1750: '富宇首馥' };
+// PROJECT_NAME_MAP = { fuyu56: '富宇上城', fuyu61: '富宇富御', fuyu1750: '富宇首馥' };
 const PROJECT_TIME_SLOTS = {
   '富宇上城': ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'],
   '富宇富御': ['09:30', '10:00', '11:00', '13:30', '14:00','14:30'],
@@ -649,7 +651,7 @@ const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bo
 const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' }, { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' }, ];
 const EXCEL_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' }, { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' }, ];
 const selectedDisplayFields = ref(['unitId', 'bookingType', 'inspectors']);
-const projectName = computed(() => PROJECT_NAME_MAP[projectId.value] || '未知建案');
+const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
 const currentTypeOptions = computed(() => PROJECT_TYPE_OPTIONS[projectName.value] || PROJECT_TYPE_OPTIONS.default);
 const selectedTypes = ref(currentTypeOptions.value);
@@ -809,13 +811,18 @@ async function fetchData() {
   isLoading.value = true;
   error.value = null;
   try {
+    // 首先，確保 projectStore 已載入所有專案資料
+    await projectStore.fetchProjects();
+
+    // 當 projectStore 準備好後，projectName.value 就會有正確的值
+    // 然後再繼續獲取日曆頁面需要的其他資料
     const [calendarData, optionsData, rulesData] = await Promise.all([
       fetchCalendarData(projectId.value),
       fetchBookingOptions(projectId.value),
       getAllBookingRules(projectName.value)
     ]);
     allAppointments.value = calendarData;
-    // 將戶別資料陣列轉為以複合ID為key的物件，方便快速查找
+    
     allHouseholdData.value = calendarData.reduce((acc, curr) => {
         const householdId = `${curr.projectId}_${curr.unitId}`;
         if (!acc[householdId]) {
@@ -1075,10 +1082,10 @@ async function handleConfirmCancelBooking() {
 }
 
 onMounted(() => {
-  if (PROJECT_NAME_MAP[projectId.value]) {
+  if (projectId.value) {
     fetchData();
   } else {
-    error.value = `無效的建案ID: ${projectId.value}`;
+    error.value = `未提供建案ID`;
     isLoading.value = false;
   }
 });

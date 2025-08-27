@@ -703,6 +703,22 @@
 <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
 
 <v-divider class="my-6"></v-divider>
+<p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+<v-text-field
+  v-model="projectSettings.intro.contact.name"
+  label="聯絡單位名稱"
+  variant="outlined"
+  density="compact"
+></v-text-field>
+<v-text-field
+  v-model="projectSettings.intro.contact.phone"
+  label="聯絡電話"
+  variant="outlined"
+  density="compact"
+  class="mt-2"
+></v-text-field>
+
+<v-divider class="my-6"></v-divider>
 <p class="text-subtitle-1 font-weight-bold mb-2">提示框設定</p>
 
 <v-switch
@@ -727,21 +743,7 @@
 </div>
 <RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
 
-<v-divider class="my-6"></v-divider>
-<p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
-<v-text-field
-  v-model="projectSettings.intro.contact.name"
-  label="聯絡單位名稱"
-  variant="outlined"
-  density="compact"
-></v-text-field>
-<v-text-field
-  v-model="projectSettings.intro.contact.phone"
-  label="聯絡電話"
-  variant="outlined"
-  density="compact"
-  class="mt-2"
-></v-text-field>
+
 
 
 <v-divider class="my-6"></v-divider>

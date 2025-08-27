@@ -1110,18 +1110,15 @@ export async function updateUserDetailsForAdmin(updatePayload) {
   const { targetUserKey, adminKey, adminName, basicInfo, permissionsData } = updatePayload;
 
   try {
-    // 首先，獲取執行此操作的管理員的完整權限範圍
     const adminScope = await fetchAdminScope(adminKey);
     const managedProjects = Object.keys(adminScope);
 
-    // 如果管理員沒有任何建案的管理權，則直接拒絕操作
     if (managedProjects.length === 0) {
       return { status: 'error', message: '您沒有管理任何建案的權限，無法執行此操作。' };
     }
 
     const batch = writeBatch(db);
 
-    // 步驟 1: 更新或建立 users 集合中的基本資料
     const userDocRef = doc(db, "users", targetUserKey);
     const newBasicInfo = {
       name: basicInfo.name,
@@ -1135,8 +1132,6 @@ export async function updateUserDetailsForAdmin(updatePayload) {
     };
     batch.set(userDocRef, newBasicInfo, { merge: true });
 
-    // 步驟 2: 刪除該用戶在管理者權限範圍內的所有舊權限
-    // 這樣可以處理權限被移除（從 'Y' 變 'N'）的情況
     const permissionsRef = collection(db, "permissions");
     const oldPermsQuery = query(permissionsRef, 
       where("userPhone", "==", targetUserKey),
@@ -1147,17 +1142,25 @@ export async function updateUserDetailsForAdmin(updatePayload) {
       batch.delete(doc.ref);
     });
 
-    // 步驟 3: 新增前端傳來的新權限，並在後端進行最終驗證
+    let permissionCounter = 1;
+
+    const now = new Date();
+    const pad = (num) => String(num).padStart(2, '0');
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
     permissionsData.forEach(perm => {
-      // 💥 --- 邏輯修正開始 --- 💥
-      // 核心安全檢查：
-      // 1. 只處理權限為 'Y' 的資料。
-      // 2. 必須再次驗證提交的每一筆權限，是否都在當前管理員的管轄範圍 (adminScope) 之內。
       const isAdminAllowedToAssign = adminScope[perm.projectName]?.includes(perm.systemFunction);
 
       if (perm.permission === 'Y' && isAdminAllowedToAssign) {
-        const newPermDocRef = doc(collection(db, "permissions"));
-   // ✅ 確保寫入 Firestore 的是這份完整資料
+        
+        const sequence = String(permissionCounter).padStart(2, '0');
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+        
+        // ✅ 核心修改點：調整 ID 組合順序以符合您的新要求
+        const docId = `${timestamp}-${milliseconds}_${perm.projectId}_${sequence}`;
+
+        const newPermDocRef = doc(db, "permissions", docId);
+        
         batch.set(newPermDocRef, {
           userPhone: perm.phone,
           userName: perm.name,
@@ -1168,10 +1171,11 @@ export async function updateUserDetailsForAdmin(updatePayload) {
           lastModifiedBy: adminName,          
           lastModifiedByPhone: adminKey,       
         });
+
+        permissionCounter++;
       }
     });
 
-    // 步驟 4: 提交所有操作
     await batch.commit();
 
     return { status: 'success' };
@@ -1325,18 +1329,19 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
     if (!await isSuperAdmin(adminKey)) {
         throw new Error("權限不足。");
     }
-    // 從 permissions 集合中動態獲取所有不重複的建案名稱
-    const permissionsRef = collection(db, "permissions");
-    const snapshot = await getDocs(permissionsRef);
-    const projectNames = new Set();
+    // ✅ 從 projects 集合中動態獲取所有建案的完整資料 (ID + name)
+    const projectsRef = collection(db, "projects");
+    const snapshot = await getDocs(projectsRef);
+    const projects = [];
     snapshot.forEach(doc => {
-        projectNames.add(doc.data().projectName);
+        projects.push({ id: doc.id, ...doc.data() });
     });
     
     const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理'];
 
+    // ✅ 回傳完整的 projects 陣列，而非只有名稱
     return { 
-        projectNames: Array.from(projectNames).sort(), 
+        projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')), 
         systemFunctions: systemFunctions 
     };
 }
@@ -1345,18 +1350,23 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
  * [Firestore 版] 新增一筆訂閱紀錄
  * @param {string} subscriptionId - 新紀錄的 ID
  * @param {object} subscriptionData - 要新增的訂閱資料
- * @param {string} adminKey - 超級管理員的手機號碼
+ * @param {string} adminKey - 超級管理員的手機號
  */
 export async function addSubscription(subscriptionId, subscriptionData, adminKey) {
     if (!await isSuperAdmin(adminKey)) {
         throw new Error("權限不足。");
     }
     
+    // ✅ 新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
+    if (subscriptionData.projectId && subscriptionData.projectName) {
+        const projectDocRef = doc(db, "projects", subscriptionData.projectId);
+        // 使用 setDoc + merge:true 可以同時處理新增和更新，確保資料存在
+        await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
+    }
+
     const dataToSave = { ...subscriptionData };
-    // ✅ 從要儲存的資料中移除 id 欄位，因為 ID 已經用作文件名，不應重複儲存
     delete dataToSave.id; 
 
-    // 處理日期轉換
     ['paymentDate', 'startDate', 'endDate'].forEach(field => {
         if (dataToSave[field]) {
             dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
@@ -1366,7 +1376,7 @@ export async function addSubscription(subscriptionId, subscriptionData, adminKey
     });
 
     const docRef = doc(db, "subscriptions", subscriptionId);
-    await setDoc(docRef, dataToSave); // 使用 setDoc 來建立新文件
+    await setDoc(docRef, dataToSave);
     return { status: 'success' };
 }
 
@@ -1382,11 +1392,15 @@ export async function updateSubscription(subscriptionId, subscriptionData, admin
         throw new Error("權限不足。");
     }
 
-    const dataToUpdate = { ...subscriptionData };
-    // ✅ 從要更新的資料中移除 id 欄位
-    delete dataToUpdate.id; 
+    // ✅ 新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
+    if (subscriptionData.projectId && subscriptionData.projectName) {
+        const projectDocRef = doc(db, "projects", subscriptionData.projectId);
+        await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
+    }
 
-    // 處理日期轉換
+    const dataToUpdate = { ...subscriptionData };
+    delete dataToUpdate.id;
+
     ['paymentDate', 'startDate', 'endDate'].forEach(field => {
         if (dataToUpdate[field]) {
             dataToUpdate[field] = Timestamp.fromDate(new Date(dataToUpdate[field]));
