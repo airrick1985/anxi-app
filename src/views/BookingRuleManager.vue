@@ -588,7 +588,7 @@
     >
       <v-card flat class="d-flex flex-column flex-grow-1">
         <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
-            <span class="text-h6">公開預約頁面設定</span>
+            <span class="text-h6">預約系統頁面設定</span>
             <v-spacer></v-spacer>
             <v-btn icon="mdi-close" variant="text" @click="isSettingsDrawerOpen = false"></v-btn>
         </v-card-title>
@@ -601,6 +601,7 @@
         
         <v-card-text v-else class="flex-grow-1" style="overflow-y: auto;">
           <v-form>
+          
             <v-switch
               v-model="projectSettings.isPublished"
               :label="`開放 ${projectName} 預約系統`"
@@ -610,7 +611,49 @@
               persistent-hint
             ></v-switch>
 
-            <v-divider class="my-6"></v-divider>
+   <v-divider class="my-6"></v-divider>
+
+   <p class="text-subtitle-1 font-weight-bold mb-2">Logo 上傳</p>
+        <v-sheet border rounded class="pa-4 text-center">
+          <v-img
+            :src="projectSettings.logoUrl"
+            height="60"
+            contain
+            class="mb-4 bg-grey-lighten-4"
+          >
+            <template v-slot:placeholder>
+              <div class="d-flex align-center justify-center fill-height">
+                <span class="text-grey-darken-1">圖片檔案大小請勿超過 1MB</span>
+              </div>
+            </template>
+          </v-img>
+
+          
+
+          <v-file-input
+            label="選擇 Logo 圖片"
+            accept="image/*"
+            variant="outlined"
+            density="compact"
+            prepend-icon="mdi-camera"
+            hide-details
+            @change="handleLogoUpload"
+          ></v-file-input>
+        </v-sheet>
+
+   <v-divider class="my-6"></v-divider>
+   
+              <v-text-field
+          v-model="projectSettings.pageTitle"
+          label="預約頁面大標題"
+          variant="outlined"
+          density="compact"
+          hint="顯示在預約頁面最上方的標題文字"
+          persistent-hint
+          class="mb-6"
+        ></v-text-field>
+        
+   
 
              <v-combobox
             v-model="projectSettings.bookingTypes"
@@ -647,6 +690,16 @@
               persistent-hint
               class="mt-4"
             ></v-switch>
+
+            <v-switch
+          v-model="projectSettings.showReportUploadButton"
+          label="啟用上傳驗屋報告功能"
+          color="primary"
+          inset
+          hint="啟用後，客戶在預約頁面可以看到「上傳驗屋報告」的按鈕"
+          persistent-hint
+          class="mt-4"
+        ></v-switch>
 
 
             <v-switch
@@ -846,11 +899,15 @@ const bookingTypeOptions = ref(['初驗', '複驗', '其他']);
 
 // ✅ 將 defaultSettings 從 const 常數改為 computed 屬性
 const defaultSettings = computed(() => ({
-    isPublished: false,
+    pageTitle: `${projectName.value} 線上預約系統`, 
+    titleColor: '#FFFFFF',
+    themeColor: 'blue-darken-4',
+    logoUrl: '', 
     checkDuplicate: "OFF",
     validateId: "OFF",
     bookingTypes: [],
     showBookingMethod: false,
+    showReportUploadButton: false, 
     bookingMethodOptions: [],
     // ✅ intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
@@ -1435,11 +1492,16 @@ async function openSettingsDrawer() {
             const settings = await fetchProjectConfig(projectId.value);
             if (settings) {
                 // 使用 Object.assign 和深層合併來安全地填充資料
+                projectSettings.value.logoUrl = settings.logoUrl || ''; 
+                projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle; 
+                projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
+                projectSettings.value.themeColor = settings.themeColor || defaultSettings.value.themeColor; 
                 projectSettings.value.isPublished = settings.isPublished || false;
                 projectSettings.value.checkDuplicate = settings.checkDuplicate || "OFF";
                 projectSettings.value.validateId = settings.validateId || "OFF";
                 projectSettings.value.bookingTypes = settings.bookingTypes || [];
                 projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
+                projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
                 projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
                 
                   // ✅ 修改：合併 intro 物件時，來源也要加上 .value
@@ -1516,6 +1578,34 @@ function applyTemplate(fieldName, index = -1) {
       }
       break;
   }
+}
+
+
+// ✅ 新增處理圖片上傳的函式
+function handleLogoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  // 限制檔案類型為圖片
+  if (!file.type.startsWith('image/')) {
+    showSnackbar('請選擇圖片檔案 (jpg, png, gif, svg)', 'error');
+    return;
+  }
+
+  // 限制檔案大小 (例如 1MB)
+  if (file.size > 1 * 1024 * 1024) {
+    showSnackbar('圖片檔案大小請勿超過 1MB', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // 將讀取的 Base64 字串存入 projectSettings
+    projectSettings.value.logoUrl = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 // --- Lifecycle & Watchers ---

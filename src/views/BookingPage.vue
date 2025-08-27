@@ -123,7 +123,7 @@
           <template v-else>
 <v-card-title 
        class="text-h5 font-weight-bold py-2 d-sm-flex align-center"
-       :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
+       :style="{ backgroundColor: projectConfig.themeColor, color: projectConfig.titleColor }"
       >
        <span>{{ projectConfig.pageTitle }}</span>
        <v-spacer class="d-none d-sm-flex"></v-spacer>
@@ -140,12 +140,15 @@
       </v-card-title>
             <v-divider></v-divider>
 
+                 <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
+          找不到對應的建案設定，請確認網址是否正確。
+        </v-alert>
+        <v-alert v-if="projectConfig && !projectConfig.isPublished && !isLoading" type="error" border="start" prominent title="預約未開放">
+          此建案的預約尚未開始，請等候通知。
+        </v-alert>
+
             <v-card-text v-if="step < 3">
-            <div v-if="!isBookingActive" class="mb-4">
-              <v-alert type="error" prominent border="start" title="預約已截止">
-                此預約已結束，如有疑問請洽服務人員。
-              </v-alert>
-            </div>
+           
             <div class="prose">
                 <div v-html="projectConfig.intro.greeting"></div>
                 <div v-html="projectConfig.intro.body"></div>
@@ -462,12 +465,7 @@
           </template>
         </v-card>
 
-        <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
-          找不到對應的建案設定，請確認網址是否正確。
-        </v-alert>
-        <v-alert v-if="projectConfig && !projectConfig.isPublished && !isLoading" type="warning" border="start" prominent title="預約未開放">
-          此建案的預約活動尚未開始或已關閉，請静候通知。
-        </v-alert>
+   
       </v-col>
     </v-row>
 
@@ -645,167 +643,6 @@ const uploadForm = ref({ ...initialUploadFormState });
 // 儲存上傳後的 URL
 const finalAuthLetterUrl = ref('');
 
-// --- 模組化核心：建案設定檔 ---
-const projectConfigurations = {
-  'fuyu56': {
-    isPublished: true,
-    showReportUploadButton: false, //上傳驗屋報告按鈕開關
-    bookingDeadline: '2025-08-30T23:00:00+08:00',//截止日期設定
-    themeColor: '#005A9E',
-    projectName: '富宇上城',
-    pageTitle: '富宇上城 後陽台門鎖更換預約',
-    bookingTypes: ['初驗','複驗'], 
-    showBookingMethod: true,// 是否顯示驗屋方式
-    bookingMethodOptions: ['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司'],
-    logoUrl: '/anxi-app/img/logo_fuyu.png',
- // --- 驗屋授權書開始 ---
-    authLetterTemplate: `
-       <div style="font-family: 'kaiu', 'BiauKai', '標楷體', serif; color: black; padding: 40px; text-align: center;">
-        
-       <div style="text-align: left; margin-bottom: 10px;">
-          <img src="{logoUrl}" alt="Project Logo" style="max-height: 30px; object-fit: contain;" />
-        </div>
-        <h1 style="font-size: 28px; font-weight: bold; margin-bottom: 40px;">授 &nbsp; 權 &nbsp; 書</h1>
-        <div style="text-align: left; font-size: 18px; line-height: 2.5; margin-bottom: 40px;">
-          <p style="text-indent: 2em;">
-            立書人 {委託人姓名} 玆就購買富宇建設興建之【{建案名稱}】編號 {戶別} 房地壹戶，因故無法親自辦理房屋驗屋相關事宜，特此委任 {受託人姓名} 代為簽署上述事務之有關一切文件，本人亦同意日後不對受託人所簽署之文件提出任何異議，特立此授權書以資證明。
-          </p>
-          <p style="margin-top: 40px;">此 致</p>
-          <p>富宇建設股份有限公司</p>
-        </div>
-        <table style="width: 100%; margin-top: 60px; font-size: 18px; text-align: left; border-collapse: collapse;">
-          <tr>
-            <td style="width: 120px;"><strong>委託人:</strong></td>
-            <td><img src="{委託人簽名圖檔}" alt="委託人簽名" style="height: 50px;"/></td>
-          </tr>
-          <tr>
-            <td><strong>身分證字號:</strong></td>
-            <td>{委託人身分證字號}</td>
-          </tr>
-          <tr>
-            <td><strong>戶籍地址:</strong></td>
-            <td>{委託人戶籍地址}</td>
-          </tr>
-          <tr>
-            <td colspan="2" style="padding: 20px 0;"></td>
-          </tr>
-          <tr>
-            <td><strong>受託人:</strong></td>
-            <td><img src="{受託人簽名圖檔}" alt="受託人簽名" style="height: 50px;"/></td>
-          </tr>
-          <tr>
-            <td><strong>身分證字號:</strong></td>
-            <td>{受託人身分證字號}</td>
-          </tr>
-          <tr>
-            <td><strong>戶籍地址:</strong></td>
-            <td>{受託人戶籍地址}</td>
-          </tr>
-        </table>
-        <div style="text-align: right; font-size: 18px; margin-top: 80px;">{TODAY}</div>
-      </div>
-    `,
-    // 驗屋授權書結束    
-    intro: {
-      greeting: '<p>親愛的<strong>富宇上城1至3樓住戶</strong>您好：</p>',
-      body: '<p>為強化社區安全，本公司將辦理後陽台門鎖頭更換作業，敬請貴戶儘速預約施工時段。</p>',
-      alert: {
-        show: true,
-        type: 'info',
-        color: 'error',
-        title: '預約截止時間',
-        text: `<strong>7月30日(星期二)晚間 23:00</strong>。<br>逾期未預約者，視同自動放棄．若需更換則自行聯繫配合廠商安排施工，並自付相關費用。`
-      },
-      footer: `<p><strong>提醒您</strong>，完成預約後，請於預約時段內<strong>全時段留在室內</strong>，靜候廠商上門更換。</p><p>感謝您的配合與支持！如有任何疑問，請洽：</p>`,
-      contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
-       attachments: [
-        { title: "初驗注意事項.pdf", url: "/anxi-app/downloads/fuyu1750-inspection-notes.pdf" },
-        { title: "標準建材配置表.pdf", url: "/anxi-app/downloads/fuyu1750-materials.pdf" }
-      ],
-      faq: [
-        { q: "更換門鎖需要花費多久時間？", a: "預計每戶施工時間約為 10-20 分鐘。" },
-        { q: "如果預約時段臨時有事怎麼辦？", a: "您可直接取消預約後重新預約時間，或洽詢03-658-8882為您服務。" },
-        { q: "自行聯繫廠商聯絡方式？", a: "廠商聯絡窗口 : 永欣鋁窗  曾建維 0930302923" }
-      ]
-    },
-    // ✅ 新增: 上傳報告頁面的說明文字
-    reportUploadIntro: {
-      body: '<p>請填寫以下資訊並上傳您的驗屋報告電子檔(PDF)。</p>',
-      alert: {
-        show: true,
-        type: 'info',
-        color: 'error',
-        title: '上傳須知',
-        text: '初驗報告及複驗報告每戶僅限上傳一份，若報告有修改需重新上傳，請洽服務電話：<a href="tel:03-6588882">03-658-8882</a>。如果您的檔案超過30MB，請先至 <a href="https://www.ilovepdf.com/zh-tw/compress_pdf" target="_blank">ilovepdf.com</a> 進行壓縮。'
-      }
-    }
-  },
-
-  'fuyu61': {
-    isPublished: true,
-    showReportUploadButton: true, // 上傳驗屋報告按鈕開關
-    bookingDeadline: null,
-    themeColor: '#005A9E',
-    projectName: '富宇富御',
-    pageTitle: '富宇富御 貴賓驗屋預約',
-    bookingTypes: ['初驗','複驗'], 
-    showBookingMethod: true,
-    bookingMethodOptions: ['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司'],
-    logoUrl: '/anxi-app/img/logo_fuyu.png',
-    intro: {
-       greeting: '<p>親愛的<strong>富宇富御貴賓</strong>您好：</p>',
-       body: '<p>歡迎使用「富宇富御」線上驗屋預約系統，請依下方步驟完成您的預約。</p>',
-       alert: {
-            show: true,
-            color: 'error',
-            type: 'info',
-            title: '驗屋說明',
-            text: `
-              <p>親愛的客戶，感謝您承購「富宇富御」，本案已於114/03/06取得使用執照，並於室內屋況完成後進行驗收。</p>
-              <p>因驗屋時段分別，請盡早填妥以下資訊預約，以便為您事先安排服務人員，謝謝您的配合。</p>
-              
-              <ul class="pl-5 mt-4" style="list-style-type: none;">
-                <li class="mb-2"><strong>⚠️</strong> 驗屋公司因驗屋時間需求僅開放預約9:30或13:30。</li>
-                <li class="mb-2"><strong>⚠️</strong> 若有驗屋公司請於驗屋系統填寫驗屋公司名稱。</li>
-                <li class="mb-2"><strong>⚠️</strong> 驗屋公司-自行檢測水電及弱電。</li>
-                <li class="mb-2"><strong>⚠️</strong> 屋主自驗或設計師陪驗 - 水電及弱電驗屋流程將由建設公司提供專業測試流程。</li>
-                <li class="mb-2"><strong>⚠️</strong> 產權人若無法親自驗屋,需填寫授權書屋主及受託人雙方均需簽名。</li>
-                <li class="mb-2"><strong>⚠️</strong> 非屋主關係或驗屋人員謝絕參與。</li>
-                <li class="mb-2"><strong>⚠️</strong> 針對陽台及浴室基於合理使用房屋之正常狀況，不同意進行淹水測試，驗屋方式請以房屋使用合理性為原則。</li>
-                <li class="mb-2"><strong>⚠️</strong> 如有相關廠商(廚具、空調、衛浴等)/ 設計師丈量需求，請安排於初驗時一同前來，之後不另開放。</li>
-              </ul>
-
-              <p class="mt-6"><strong>有關買賣合約特記事項提醒 :</strong></p>
-              <ol class="pl-5 mt-4">
-                <li class="mb-3">石材為天然化石積壓而生，切割後表面易出現結晶體及放射狀紋或裂紋之天然色澤紋路，因季節變化或時間因素致使有受潮含水、自然裂紋變形等情況係自然現象，選擇天然石材為鋪面應有認知，如有上述情形，非賣方之故意，買方同意應以施工當時色澤紋為主；亦不得將上列情形視為瑕疵而作任何主張或請求。</li>
-                <li class="mb-3">本案所使用之拋光石英磚及地壁磚建材因釉料及高溫窯燒，製程中因熱脹冷縮產生細微翹曲，無法達到每一片接合之平整性，及地壁磚微量之色差，另因石英磚地坪施作工法改良後，為因增加黏著點而使用鋸齒狀刮刀，致使產生水泥收縮後黏著微量不平均，以致在敲打時會有些微不同之聲音，（單片敲打不同之聲音不得超過三分之一以上），係屬無法抗拒之正常現象，如有上述情形，非賣方之故意，買方同意亦不得將上列情形視為瑕疵而作任何主張或請求。</li>
-                <li class="mb-3">室內隔間採用輕質隔間牆，其與樑下或不同構造之建材相接處做退縮處理，以降低因建築物產生自然載量及層間變位等因素，而造成牆面不規則龜裂情形，係屬正常施工規範。</li>
-              </ol>
-            `
-          },
-      footer: '<p>如有任何疑問，請洽您的專屬服務人員或撥打以下電話：</p>',
-      contact: { name: "富宇建設-新竹辦公室", phone: "03-658-8882" },
-      attachments: [
-       //無附件
-      ],
-      faq: [
-        { q: "整個驗屋流程大約需要多久？", a: "依據不同房型，完整的初驗流程預計需要 1.5 至 2.5 小時。" },
-        { q: "驗屋時可以找親友或設計師陪同嗎？", a: "當然可以，歡迎您邀請親友或您的設計師一同前來，但請以兩人為限，以維持現場驗屋品質。" }
-      ]
-    },
-     // ✅ 新增: 上傳報告頁面的說明文字
-    reportUploadIntro: {
-      body: '<p>請填寫以下資訊並上傳您的驗屋報告電子檔(PDF)。</p>',
-      alert: {
-        show: true,
-        type: 'info',
-        color: 'error',
-        title: '上傳須知',
-        text: '初驗與複驗報告若有修改皆可重新上傳，系統將以最新版本為主。若檔案超過30MB，請先至 <a href="https://www.ilovepdf.com/zh-tw/compress_pdf" target="_blank">ilovepdf.com</a> 進行壓縮。'
-      }
-    }
-  }
-};
 
 const route = useRoute();
 const dateAdapter = useDate();
