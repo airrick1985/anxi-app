@@ -85,7 +85,7 @@
       />
     </v-main>
 
-    <v-footer v-if="isLoginPage" color="white" class="footer-text" padless>
+    <v-footer v-if="showFooter" color="white" class="footer-text" padless>
       <v-container class="text-center py-2">
           <div><strong>ANXI建案管理系統</strong> ｜ 版本 v{{ appVersion }}</div>
           <div>&copy; {{ currentYear }} ANXISMART. All rights reserved.</div>
@@ -184,7 +184,10 @@ const showSnackbar = (message) => {
 
 const appVersion = ref(manifest.version);
 const currentYear = ref(new Date().getFullYear());
-const isLoginPage = computed(() => route.name === 'Login');
+const showFooter = computed(() => {
+  const targetRoutes = ['Login', 'Home'];
+  return targetRoutes.includes(route.name);
+});
 
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
 const showUpdateDialog = ref(false);

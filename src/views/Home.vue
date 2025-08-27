@@ -25,6 +25,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import draggable from 'vuedraggable';
+import manifest from '../../public/manifest.json';
+
 
 // 引入所有需要的圖片
 import myBackgroundImage from '@/assets/login-bg.jpg';
@@ -43,6 +45,10 @@ import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 const router = useRouter();
 const userStore = useUserStore();
 const backgroundImageUrl = ref(myBackgroundImage);
+
+// ✅ 新增 footer 所需的響應式變數
+const appVersion = ref(manifest.version);
+const currentYear = ref(new Date().getFullYear());
 
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
