@@ -1,1 +1,0 @@
-import{_ as o,b as t,j as c,e as s,f as a}from"./index-Dv4zPQ2T.js";const n={name:"PublicLayout"},r={class:"public-layout"};function _(u,i,p,l,d,f){const e=t("router-view");return s(),c("div",r,[a(e)])}const b=o(n,[["render",_]]);export{b as default};
