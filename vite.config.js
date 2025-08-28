@@ -34,14 +34,13 @@ export default defineConfig({
         swDest: 'dist/sw.js',
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        // 從 injectManifest 中移除 maximumFileSizeToCacheInBytes
+        // ✅ 【修改】將 maximumFileSizeToCacheInBytes 移至此處
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 設定為 5 MB
       },
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
-        // 將 maximumFileSizeToCacheInBytes 放在這裡
-        // 這與錯誤訊息 "workbox.maximumFileSizeToCacheInBytes" 的提示一致
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 設定為 4MB (4 * 1024 * 1024 bytes)
+        // ✅ 【修改】從此處移除 maximumFileSizeToCacheInBytes
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
