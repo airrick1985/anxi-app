@@ -5,7 +5,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import manifest from './public/manifest.json';
 
-
 export default defineConfig({
   base: '/anxi-app/',
   resolve: {
@@ -13,18 +12,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
-
   server: {
     proxy: {
-      // 將 /api-nlsc 的請求代理到國土測繪中心的 API
       '/api-nlsc': {
         target: 'https://api.nlsc.gov.tw',
-        changeOrigin: true, // 必須為 true
-        rewrite: (path) => path.replace(/^\/api-nlsc/, '') // 移除請求路徑中的 /api-nlsc 前綴
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-nlsc/, '')
       }
     }
   },
-  
   plugins: [
     vue(),
     VitePWA({
@@ -34,13 +30,11 @@ export default defineConfig({
         swDest: 'dist/sw.js',
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        // ✅ 【修改】將 maximumFileSizeToCacheInBytes 移至此處
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 設定為 5 MB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
-        // ✅ 【修改】從此處移除 maximumFileSizeToCacheInBytes
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
@@ -64,5 +58,27 @@ export default defineConfig({
       },
       manifest
     })
-  ]
+  ],
+
+    // 【關鍵】請確保這段 build 設定存在且位置正確
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('ag-grid-enterprise')) {
+              return 'ag-grid';
+            }
+            if (id.includes('xlsx-js-style')) {
+              return 'xlsx';
+            }
+            if (id.includes('vuetify')) {
+              return 'vuetify';
+            }
+            if (id.includes('node_modules')) {
+              return 'vendor';
+            }
+          }
+        }
+      }
+    }
 });
