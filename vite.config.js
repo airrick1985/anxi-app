@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import manifest from './public/manifest.json';
 
+// 最終修正的設定
 export default defineConfig({
   base: '/anxi-app/',
   resolve: {
@@ -30,9 +31,12 @@ export default defineConfig({
         swDest: 'dist/sw.js',
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // ✅ 根據文件，保留此處設定
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       workbox: {
+        // ✅ 【關鍵修改】根據錯誤訊息，也在此處加入設定
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
@@ -60,25 +64,31 @@ export default defineConfig({
     })
   ],
 
-    // 【關鍵】請確保這段 build 設定存在且位置正確
-    build: {
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('ag-grid-enterprise')) {
-              return 'ag-grid';
-            }
-            if (id.includes('xlsx-js-style')) {
-              return 'xlsx';
-            }
-            if (id.includes('vuetify')) {
-              return 'vuetify';
-            }
-            if (id.includes('node_modules')) {
-              return 'vendor';
-            }
+  // 保留已優化的程式碼分割設定
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('ag-grid')) {
+            return 'ag-grid';
+          }
+          if (id.includes('firebase')) {
+            return 'firebase';
+          }
+          if (id.includes('date-fns')) {
+            return 'date-fns';
+          }
+          if (id.includes('xlsx')) {
+            return 'xlsx';
+          }
+          if (id.includes('vuetify')) {
+            return 'vuetify';
+          }
+          if (id.includes('node_modules')) {
+            return 'vendor';
           }
         }
       }
     }
+  }
 });
