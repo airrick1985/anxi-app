@@ -20,6 +20,10 @@
 
             <v-divider vertical class="mx-2"></v-divider>
 
+             <v-btn color="blue-grey" @click="navigateToHouseholdGrid" prepend-icon="mdi-table-large">
+              戶別資料管理
+            </v-btn>
+
            <v-btn v-if="canEdit" color="deep-purple-lighten-1" @click="navigateToRuleManager" prepend-icon="mdi-cogs">
               預約批次管理
             </v-btn>
@@ -652,7 +656,7 @@ const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc10
 const EXCEL_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' }, { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' }, ];
 const selectedDisplayFields = ref(['unitId', 'bookingType', 'inspectors']);
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
-const pageTitle = computed(() => `${projectName.value} - 驗屋預約總表`);
+const pageTitle = computed(() => `${projectName.value} - 驗屋預約時間表`);
 const currentTypeOptions = computed(() => PROJECT_TYPE_OPTIONS[projectName.value] || PROJECT_TYPE_OPTIONS.default);
 const selectedTypes = ref(currentTypeOptions.value);
 const selectedStatuses = ref(['預約中']);
@@ -1173,6 +1177,15 @@ const tourSteps = [ /* ... */ ];
 tour.addSteps(tourSteps);
 function startTour() { tour.start(); }
 // --- 操作說明邏輯結束 ---
+
+// ✅【新增】導航到戶別資料 Grid 頁面的函式
+function navigateToHouseholdGrid() {
+  router.push({ 
+    name: 'HouseholdGrid', 
+    params: { projectId: projectId.value } 
+  });
+}
+
 
 </script>
 

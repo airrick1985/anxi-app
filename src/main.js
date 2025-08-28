@@ -7,6 +7,13 @@ import axios from 'axios'
 import VueAxios from 'vue-axios'
 import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導入
 
+
+// ✅【新增】AG Grid 模組註冊
+import { ModuleRegistry } from 'ag-grid-community';
+import { AllEnterpriseModule } from 'ag-grid-enterprise'; // 引入企業版所有模組
+
+ModuleRegistry.registerModules([ AllEnterpriseModule ]); // 註冊所有模組
+
 // ✅ 加入 Toast 套件
 import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'

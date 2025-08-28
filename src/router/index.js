@@ -21,6 +21,8 @@ const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
 const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
+import HouseholdGrid from '@/views/HouseholdGrid.vue';
+
 
 
 const routes = [
@@ -248,8 +250,24 @@ const routes = [
       layout: DefaultLayout
     }
   },
+
+  {
+    path: '/project/:projectId/households',
+    name: 'HouseholdGrid',
+    component: HouseholdGrid,
+    props: true, // 讓 Vue Router 自動將 projectId 作為 prop 傳入元件
+    meta: {
+      requiresAuth: true,
+      // 假設查看戶別總表也需要 '驗屋時間表-檢視' 或更高權限
+      requiredAnySystem: ['驗屋時間表-修改'],
+      layout: DefaultLayout
+    }
+  },
+
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
+
+
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),

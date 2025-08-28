@@ -2608,3 +2608,59 @@ export async function deleteBookingBatch(batchId) {
 
 
 
+
+// ✅ ===============================================
+// /  ✅ 戶別資料管理 (AG Grid) API
+// ✅ ===============================================
+
+/**
+ * [Firestore 版] 根據建案 ID 獲取所有戶別資料，用於 AG Grid
+ * @param {string} projectId 
+ * @returns {Promise<Array>} 返回戶別資料陣列
+ */
+export async function fetchAllHouseholds(projectId) {
+  try {
+    const householdsRef = collection(db, "households");
+    const q = query(householdsRef, where("projectId", "==", projectId));
+    const querySnapshot = await getDocs(q);
+    
+    const households = [];
+    querySnapshot.forEach((doc) => {
+      // 將 Firestore Timestamp 轉換為 JavaScript Date 物件，AG Grid 更易處理
+      const data = doc.data();
+      const formattedData = { ...data };
+      ['initialInspectionDate', 'reInspectionDate', 'statusDate', 'appropriationDate'].forEach(key => {
+        if (data[key] && typeof data[key].toDate === 'function') {
+          formattedData[key] = data[key].toDate();
+        }
+      });
+      households.push({
+        // 將 Firestore document ID 也存起來，方便更新
+        _docId: doc.id, 
+        ...formattedData
+      });
+    });
+    return households;
+  } catch (e) {
+    console.error(`獲取建案 ${projectId} 的戶別資料時發生錯誤:`, e);
+    return [];
+  }
+}
+
+/**
+ * [Firestore 版] 更新單一戶別的特定欄位資料
+ * @param {string} householdDocId - Firestore 文件 ID
+ * @param {object} dataToUpdate - e.g., { buyerName: '新名字' }
+ * @returns {Promise<object>}
+ */
+export async function updateHouseholdData(householdDocId, dataToUpdate) {
+  try {
+    if (!householdDocId) throw new Error("缺少戶別文件 ID。");
+    const docRef = doc(db, "households", householdDocId);
+    await updateDoc(docRef, dataToUpdate);
+    return { status: 'success' };
+  } catch (e) {
+    console.error(`更新戶別 ${householdDocId} 資料時發生錯誤:`, e);
+    return { status: 'error', message: e.message };
+  }
+}

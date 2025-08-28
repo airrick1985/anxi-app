@@ -18,14 +18,29 @@
         <span>預約批次管理：{{ projectName || '讀取中...' }}</span> 
           <v-spacer></v-spacer>
 
-        <v-btn 
-                  color="primary"
-                  variant="outlined"
-                  prepend-icon="mdi-cog"
-                  @click="openSettingsDrawer"
-                >
-                  預約設定
-                </v-btn>
+      <v-btn 
+          color="primary"
+          variant="outlined"
+          prepend-icon="mdi-cog"
+          @click="openSettingsDrawer"
+          class="d-none d-sm-flex"
+        >
+          預約設定
+        </v-btn>
+        
+        <v-tooltip text="預約設定" location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="primary"
+              icon="mdi-cog"
+              variant="text"
+              class="d-sm-none"
+              @click="openSettingsDrawer"
+            ></v-btn>
+          </template>
+        </v-tooltip>
+
 
       </v-card-title>
       <v-divider></v-divider>

@@ -18,6 +18,11 @@
       </template>
     </draggable>
   </div>
+
+  <v-btn color="red" @click="setFirstAdmin">
+  【僅限開發】將我設為系統管理員
+</v-btn>
+
 </template>
 
 <script setup>
@@ -26,6 +31,10 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import draggable from 'vuedraggable';
 import manifest from '../../public/manifest.json';
+
+import { getFunctions, httpsCallable } from "firebase/functions";
+
+
 
 
 // 引入所有需要的圖片
@@ -124,6 +133,27 @@ const handleNavigation = (button) => {
     alert('此功能尚未開放');
   }
 };
+
+async function setFirstAdmin() {
+  if (!confirm('您確定要將自己的帳號設為第一位系統管理員嗎？')) return;
+
+  try {
+    const functions = getFunctions();
+    const setUserRole = httpsCallable(functions, 'setUserRole');
+    
+    // 👇 請將這裡換成您要設為管理員的帳號 Email
+    const adminEmail = 'your-admin-email@example.com'; 
+
+    console.log(`正在嘗試將 ${adminEmail} 設為 系統管理員...`);
+    const result = await setUserRole({ email: adminEmail, role: '系統管理員' });
+    
+    console.log('Cloud Function 回應:', result.data);
+    alert('設定成功！請登出後再重新登入以讓權限生效。');
+  } catch (error) {
+    console.error('設定管理員時發生錯誤:', error);
+    alert(`設定失敗: ${error.message}`);
+  }
+}
 
 </script>
 <style scoped>
