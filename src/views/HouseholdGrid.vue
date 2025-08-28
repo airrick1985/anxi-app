@@ -127,31 +127,27 @@ const onGridReady = (params) => {
 
 // 當儲存格資料被修改時觸發
 async function onCellValueChanged(event) {
-    if (event.source !== 'edit') {
-    return;
-  }
+  // ✅ 【修改】移除 event.source 的檢查，因為 AG Grid v30+ 已棄用 'edit' source
+  // if (event.source !== 'edit') {
+  //   return;
+  // }
 
-      console.log('AG Grid 儲存格變更事件觸發:', event);
-
-  const { data, colDef, newValue } = event;
+  const { data, colDef, newValue, oldValue } = event; // ✅ 【修改】多解構一個 oldValue
   const field = colDef.field;
   
-  if (data[field] === newValue) {
+  // ✅ 【修改】移除導致提前退出的判斷式，改用更可靠的 oldValue !== newValue 判斷
+  if (oldValue === newValue) {
     return;
   }
 
   const householdDocId = data._docId;
   const updatePayload = { [field]: newValue };
 
-    // ✅ 【新增】除錯訊息
-  console.log(`準備更新 Firestore 文件 ID: ${householdDocId}`);
-  console.log('準備送出的更新內容:', updatePayload);
-
 
   try {
     await updateHouseholdData(householdDocId, updatePayload);
-    data[field] = newValue;
-    gridApi.value.applyTransaction({ update: [data] });
+    // data[field] = newValue; // 這行可以省略，因為 AG Grid 已經更新了 data 物件
+    // gridApi.value.applyTransaction({ update: [data] }); // 這行也可以省略，除非有特殊刷新需求
     
     snackbar.text = `戶別 [${data.unitId}] 的 [${colDef.headerName}] 已更新成功！`;
     snackbar.color = 'success';
@@ -160,7 +156,9 @@ async function onCellValueChanged(event) {
     snackbar.text = `更新失敗: ${err.message}`;
     snackbar.color = 'error';
     snackbar.show = true;
-    data[field] = event.oldValue;
+    
+    // 更新失敗時，將資料還原
+    data[field] = oldValue;
     gridApi.value.applyTransaction({ update: [data] });
   }
 }
