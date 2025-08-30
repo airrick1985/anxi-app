@@ -131,6 +131,16 @@ const routes = [
     }
   },
   {
+  path: '/sales-settings/:projectId',
+  name: 'SalesSettings',
+  component: () => import('@/views/SalesSettings.vue'),
+  meta: {
+    requiresAuth: true, // 假設此頁面需要登入
+    requiredSystem: '銷控系統',
+    title: '銷控設定'
+  }
+},
+  {
     path: '/quote-summary',
     name: 'QuoteSummary',
     component: () => import('@/views/QuoteSummary.vue'),

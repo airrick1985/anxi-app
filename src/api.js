@@ -22,6 +22,8 @@ import {
   Timestamp,
   addDoc,
 } from "firebase/firestore";
+import { format } from 'date-fns';
+
 
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -1670,6 +1672,7 @@ export async function getProjectsForInspectionCalendar(userKey) {
     return projectOptions;
 }
 
+
 /**
  * [Firestore 版] 獲取指定建案的所有預約紀錄與戶別資料
  * @param {string} projectId 
@@ -2858,4 +2861,174 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
   });
 
   return unsubscribe;
+};
+
+
+// =================================================================
+// ✓ 【新增】銷控設定頁面專用 API
+// =================================================================
+
+/**
+ * 獲取單一專案的設定
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<object|null>}
+ */
+export const getProjectSettings = async (projectId) => {
+  if (!projectId) return null;
+  const projectRef = doc(db, 'projects', projectId);
+  const docSnap = await getDoc(projectRef);
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() };
+  } else {
+    console.warn(`在 projects 集合中找不到文件: ${projectId}`);
+    return null;
+  }
+};
+
+/**
+ * 更新專案設定
+ * @param {string} projectId - 專案 ID
+ * @param {object} dataToUpdate - 要更新的資料物件
+ * @returns {Promise<void>}
+ */
+export const updateProjectSalesSettings = async (projectId, dataToUpdate) => {
+  const projectRef = doc(db, 'projects', projectId);
+  await updateDoc(projectRef, dataToUpdate);
+};
+
+/**
+ * 即時監聽銷控狀態參數 (偵錯版本)
+ * @param {string} projectId - 專案 ID
+ * @param {function} callback - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToSalesParameters = (projectId, callback) => {
+  // ✓ 【偵錯日誌 1】確認函式是否被呼叫，以及 projectId 是否正確
+  console.log(`[API] 正在為專案 ID "${projectId}" 建立 salesParameters 監聽器...`);
+
+  const q = query(
+    collection(db, 'salesParameters'),
+    where('projectId', '==', projectId),
+    orderBy('order', 'asc')
+  );
+
+  const unsubscribe = onSnapshot(q, 
+    (querySnapshot) => {
+      // ✓ 【偵錯日誌 2】如果這行有印出，代表成功收到 Firestore 的資料回呼
+      console.log(`[API] 監聽器成功收到資料快照，包含 ${querySnapshot.size} 筆文件。`);
+      
+      const parameters = [];
+      querySnapshot.forEach((doc) => {
+        parameters.push({ id: doc.id, ...doc.data() });
+      });
+      callback(parameters);
+    },
+    (error) => {
+      // ✓ 【偵錯日誌 3】如果 Firestore 發生權限或其它錯誤，這裡會印出
+      console.error("[API] 監聽 salesParameters 時發生錯誤:", error);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * 新增一個銷控狀態參數
+ * @param {string} projectId - 專案 ID
+ * @param {object} data - { statusName, colorCode, order }
+ * @returns {Promise<void>}
+ */
+export const addSalesParameter = async (projectId, data) => {
+  // ✓ 產生您指定的自訂文件 ID
+  const timestamp = format(new Date(), 'yyyyMMddHHmmss');
+  const randomSuffix = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  const customDocId = `${projectId}${timestamp}${randomSuffix}`;
+
+  const docRef = doc(db, 'salesParameters', customDocId);
+  await setDoc(docRef, {
+    projectId: projectId,
+    ...data
+  });
+};
+
+/**
+ * 更新銷控狀態參數
+ * @param {string} docId - salesParameters 集合中的文件 ID
+ * @param {object} dataToUpdate - 要更新的資料
+ * @returns {Promise<void>}
+ */
+export const updateSalesParameter = async (docId, dataToUpdate) => {
+  const docRef = doc(db, 'salesParameters', docId);
+  await updateDoc(docRef, dataToUpdate);
+};
+
+/**
+ * 刪除銷控狀態參數
+ * @param {string} docId - salesParameters 集合中的文件 ID
+ * @returns {Promise<void>}
+ */
+export const deleteSalesParameter = async (docId) => {
+  const docRef = doc(db, 'salesParameters', docId);
+  await deleteDoc(docRef);
+};
+
+
+/**
+ * ✓ 【新增】即時監聽銷控系統所需的所有資料
+ * @param {string} projectId - 專案 ID (e.g., "fuyu61")
+ * @param {function} onDataChange - 收到更新資料時的回呼函式
+ * @param {function} onError - 發生錯誤時的回呼函式
+ * @returns {function} - 一個可以用來停止所有監聽的 unsubscribe 函式
+ */
+export const listenToSalesControlData = (projectId, onDataChange, onError) => {
+  const projectDocRef = doc(db, 'projects', projectId);
+  const parametersQuery = query(collection(db, 'salesParameters'), where('projectId', '==', projectId));
+  const householdsQuery = query(collection(db, 'salesHouseholds'), where('projectId', '==', projectId));
+
+  let combinedData = {
+    project: null,
+    parameters: [],
+    households: []
+  };
+  
+  let projectLoaded = false;
+  let paramsLoaded = false;
+  let householdsLoaded = false;
+
+  const checkAndEmitData = () => {
+    // 確保所有監聽器都至少回傳過一次資料後 (即使是空的)，才呼叫回呼函式
+    if (projectLoaded && paramsLoaded && householdsLoaded) {
+      onDataChange(combinedData);
+    }
+  };
+  
+  const unsubProject = onSnapshot(projectDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      combinedData.project = docSnap.data();
+    } else {
+      console.warn(`[API] 找不到專案文件: ${projectId}`);
+      combinedData.project = {}; // 即使找不到，也標記為已載入
+    }
+    projectLoaded = true;
+    checkAndEmitData();
+  }, onError);
+
+  const unsubParams = onSnapshot(parametersQuery, (snapshot) => {
+    combinedData.parameters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    paramsLoaded = true;
+    checkAndEmitData();
+  }, onError);
+
+  const unsubHouseholds = onSnapshot(householdsQuery, (snapshot) => {
+    combinedData.households = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    householdsLoaded = true;
+    checkAndEmitData();
+  }, onError);
+
+  // 回傳一個函式，用於一次性地停止所有三個監聽器
+  return () => {
+    unsubProject();
+    unsubParams();
+    unsubHouseholds();
+  };
 };

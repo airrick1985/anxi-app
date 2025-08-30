@@ -2,7 +2,7 @@
   <div class="sales-control-page">
     
     <div class="toolbar d-none d-md-flex">
-      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
+      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ project.name }}</span>
        <v-btn-toggle
         v-model="displayType"
         color="primary"
@@ -17,7 +17,6 @@
       
       <v-spacer></v-spacer>
 
-      <!-- 修改：價格顯示切換器 (桌面版) -->
       <v-btn-toggle
         v-if="currentViewMode === 'sales'"
         v-model="priceDisplayMode"
@@ -54,8 +53,7 @@
         車位銷控
       </v-btn>
 
-            <!-- 新增：活動訊息按鈕 -->
-      <v-btn
+            <v-btn
         color="info"
         variant="tonal"
         class="ml-4"
@@ -63,6 +61,18 @@
         title="最新活動訊息"
       >
         活動訊息
+      </v-btn>
+      
+      <v-btn
+        v-if="currentViewMode === 'sales'"
+        color="deep-purple"
+        variant="tonal"
+        class="ml-4"
+        @click="navigateToSalesSettings"
+        title="銷控設定"
+        prepend-icon="mdi-cog"
+      >
+        銷控設定
       </v-btn>
 
       <v-btn
@@ -75,8 +85,7 @@
       >
         修改資料
       </v-btn>
-
-     
+      
     </div>
 
    <div class="grid-wrapper">
@@ -99,19 +108,19 @@
           <div v-for="item in flatGridData" :key="item.key" class="data-cell">
             <div v-if="item.data"
               class="unit-card"
-              :class="{ 'in-quote': quoteStore.isItemInQuote(item.data['戶別']) }"
+              :class="{ 'in-quote': quoteStore.isItemInQuote(item.data.unitId) }"
               :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
               @click="openUnitDetail(item.data)"
             >
-              <span class="unit-name">{{ item.data['戶別'] }}</span>
-              <template v-if="statusField === '銷控狀態' && item.data['銷控狀態'] === '已售'">
+              <span class="unit-name">{{ item.data.unitId }}</span>
+              <template v-if="statusField === 'salesStatus_quote' && item.data.salesStatus_quote === '已售'">
                 <span class="unit-total-price sold-text">已售</span>
-                <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
+                <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
                 <span class="unit-per-price"></span>
               </template>
               <template v-else>
                 <span class="unit-total-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
-                <span class="unit-area">{{ item.data['房屋面積(坪)'] }} 坪</span>
+                <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
                 <span class="unit-per-price">{{ calculateUnitPrice(item.data) }} 萬/坪</span>
               </template>
             </div>
@@ -203,20 +212,24 @@
             </template>
             <v-list-item-title>修改資料</v-list-item-title>
           </v-list-item>
+          <v-list-item @click="navigateToSalesSettings">
+            <template v-slot:prepend>
+              <v-icon>mdi-cog-outline</v-icon>
+            </template>
+            <v-list-item-title>銷控設定</v-list-item-title>
+          </v-list-item>
         </v-list>
       </v-menu>
 
     </v-bottom-navigation>
 
     <UnitDetailModal 
-      v-show="isModalVisible" 
+      v-if="isModalVisible"
       v-model:show="isModalVisible" 
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
-      :all-data="allData"
-      :project-name="projectName"
-      @data-updated="fetchData"
-       @request-open-slide="handleOpenSlideViewer" />
+      :project-name="project.name"
+      @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
@@ -277,7 +290,6 @@
       </v-card>
     </v-dialog>
     
-    <!-- 新增：活動訊息彈窗 -->
     <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
         <v-toolbar dark color="teal" density="compact">
@@ -337,10 +349,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-// --- 核心修改：在此處匯入新的 API 函式 ---
-import { fetchSalesControlData, updateAndGetParkingSlide, fetchActivityMessageSlideId } from '@/api';
+import { listenToSalesControlData } from '@/api';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -365,9 +376,15 @@ const {
   refreshSlide
 } = useSlideViewer();
 
+// --- State ---
 const loading = ref(true);
 const error = ref(null);
-const allData = ref({});
+let unsubscribe = null;
+
+const project = ref({ name: '讀取中...' });
+const salesParameters = ref([]);
+const salesHouseholds = ref([]);
+
 const headerTopRef = ref(null);
 const headerLeftRef = ref(null);
 const mainGridRef = ref(null);
@@ -375,95 +392,50 @@ const isModalVisible = ref(false);
 const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const displayType = ref('住家');
-const parkingSlideId = ref('');
 const priceDisplayMode = ref('list');
 
-// --- 新增：活動訊息相關狀態 ---
 const isActivityDialogVisible = ref(false);
-const activitySlideId = ref('');
 const isActivityLoading = ref(false);
 
 const activitySlideEmbedUrl = computed(() => {
-  if (!activitySlideId.value) return '';
-  return `https://docs.google.com/presentation/d/${activitySlideId.value}/embed?start=true&loop=true&delayms=3000`;
+  const slideId = project.value.activityMessageSlideId;
+  if (!slideId) return '';
+  return `https://docs.google.com/presentation/d/${slideId}/embed?start=true&loop=true&delayms=3000`;
 });
 
-const itemCount = computed(() => quoteStore.itemCount);
-const projectName = computed(() => route.params.projectName);
+// --- Computed Properties ---
+const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
-const pageTitle = computed(() => {
-  const baseTitle = currentViewMode.value === 'quote' ? '報價系統' : '銷控系統';
-  return `${baseTitle} (${displayType.value})`;
-});
-const salesRawData = computed(() => allData.value['銷控'] || []);
-const filteredSalesData = computed(() => {
+const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統') + ` (${displayType.value})`);
+const itemCount = computed(() => quoteStore.itemCount);
+const projectName = computed(() => project.value.name);
+
+// ✓ 【核心修改】修正篩選邏輯，使用 `layout` 欄位
+const filteredHouseholds = computed(() => {
   if (displayType.value === '店面') {
-    return salesRawData.value.filter(item => item['房型'] === '店面');
+    return salesHouseholds.value.filter(item => item.layout === '店面');
   }
-  return salesRawData.value.filter(item => item['房型'] !== '店面');
+  // 其他所有 layout 不等於 '店面' 的都視為 '住家'
+  return salesHouseholds.value.filter(item => item.layout !== '店面');
 });
+
 const buildingHeaders = computed(() => {
-  if (filteredSalesData.value.length === 0) return [];
-  const buildings = new Set(filteredSalesData.value.map(item => item['棟別']));
+  const buildings = new Set(filteredHouseholds.value.map(item => item.building));
   return Array.from(buildings).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 });
+
 const floorHeaders = computed(() => {
-  if (filteredSalesData.value.length === 0) return [];
-  const floors = new Set(filteredSalesData.value.map(item => parseInt(item['樓層'], 10)));
+  const floors = new Set(filteredHouseholds.value.map(item => parseInt(item.floor, 10)));
   return Array.from(floors).sort((a, b) => b - a);
 });
-const gridData = computed(() => {
-  const priceData = allData.value['價格'] || [];
-  const areaData = allData.value['面積'] || [];
-  const floorplanData = allData.value['平面圖'] || [];
-  const buyerData = allData.value['買方資料'] || [];
-  const priceMap = new Map(priceData.map(item => [item['戶別'], item]));
-  const areaMap = new Map(areaData.map(item => [item['戶別'], item]));
-  const floorplanMap = new Map(floorplanData.map(item => [item['戶別'], item]));
-  const buyerMap = new Map(buyerData.map(item => [item['戶別'], item]));
 
+const gridData = computed(() => {
   const dataMap = {};
-  for (const record of filteredSalesData.value) {
-    const floor = record['樓層'];
-    const building = record['棟別'];
-    const unitId = record['戶別'];
+  for (const household of filteredHouseholds.value) {
+    const floor = household.floor;
+    const building = household.building;
     if (!dataMap[floor]) dataMap[floor] = {};
-    
-    let parsedFloorplans = [];
-    const floorplanItem = floorplanMap.get(unitId);
-    if (floorplanItem && floorplanItem['平面圖URL列表']) {
-      try {
-        const parsed = JSON.parse(floorplanItem['平面圖URL列表']);
-        if (Array.isArray(parsed)) parsedFloorplans = parsed;
-      } catch (e) {
-        console.error(`解析戶別 ${unitId} 的平面圖URL列表時失敗:`, e);
-      }
-    }
-    
-    const mergedData = { ...record };
-    const buyerInfo = buyerMap.get(unitId);
-    
-    if (buyerInfo) {
-      const buyerKeys = [
-        '買方姓名', '身分證字號', '出生年月日', '電話', 'EMAIL', 
-        '通訊地址_縣市','通訊地址_區域','通訊地址_詳細',  '戶籍地址_縣市', '戶籍地址_區域','戶籍地址_詳細', '性別', '婚姻狀況', '行業別', 
-        '職務', '購買用途', '已購買富宇房子', '緊急聯絡人', 
-        '緊急聯絡人電話', '緊急聯絡人關係', '介紹人姓名', '介紹人電話'
-      ];
-      
-      buyerKeys.forEach(key => {
-        if (buyerInfo[key] !== undefined) {
-          mergedData[key] = buyerInfo[key];
-        }
-      });
-    }
-    
-    dataMap[floor][building] = {
-      ...(priceMap.get(unitId) || {}),
-      ...(areaMap.get(unitId) || {}),
-      ...mergedData, 
-      floorplans: parsedFloorplans
-    };
+    dataMap[floor][building] = household;
   }
   return dataMap;
 });
@@ -480,15 +452,14 @@ const flatGridData = computed(() => {
   });
   return items;
 });
-const statusField = computed(() => route.meta.viewMode === 'quote' ? '銷控狀態' : '銷控後台狀態');
+
+const statusField = computed(() => currentViewMode.value === 'quote' ? 'salesStatus_quote' : 'salesStatus_backend');
+
 const statusColorMap = computed(() => {
-  const paramsData = allData.value['參數'] || [];
   const map = new Map();
-  for (const item of paramsData) {
-    if (item['銷控狀態'] && item['色碼']) {
-      map.set(item['銷控狀態'], item['色碼']);
-    }
-  }
+  salesParameters.value.forEach(item => {
+    map.set(item.statusName, item.colorCode);
+  });
   return map;
 });
 
@@ -499,105 +470,94 @@ const priceDisplayLabel = computed(() => {
   return '價格';
 });
 
+// --- Methods ---
 const getDisplayTotalPrice = (itemData) => {
+  const priceInWan = (price) => (price / 10000).toFixed(0);
+  
+  // ✓ 【修改】對應新的 Firestore 欄位名稱
   if (currentViewMode.value !== 'sales') {
-    return itemData['房屋總表價'];
+    return priceInWan(itemData.price_list_house_total);
   }
   switch (priceDisplayMode.value) {
     case 'floor':
-      return itemData['房屋總底價'] || itemData['房屋總表價'];
+      return priceInWan(itemData.price_floor_house_total || itemData.price_list_house_total);
     case 'transaction':
-      const canShowTransactionPrice = 
-        ['小訂', '補足', '簽約'].includes(itemData['銷控後台狀態']) &&
-        itemData['房屋成交價'];
-      return canShowTransactionPrice ? itemData['房屋成交價'] : itemData['房屋總表價'];
-    case 'list':
+      const canShow = ['小訂', '補足', '簽約'].includes(itemData.salesStatus_backend) && itemData.price_transaction_house;
+      return canShow ? priceInWan(itemData.price_transaction_house) : priceInWan(itemData.price_list_house_total);
     default:
-      return itemData['房屋總表價'];
+      return priceInWan(itemData.price_list_house_total);
   }
 };
 
 const calculateUnitPrice = (itemData) => {
-  const priceToShow = getDisplayTotalPrice(itemData);
-  const totalPrice = parseFloat(priceToShow);
-  const area = parseFloat(itemData['房屋面積(坪)']);
-  if (isNaN(totalPrice) || isNaN(area) || area === 0) {
-    return '-';
-  }
-  const unitPrice = totalPrice / area;
-  return unitPrice.toFixed(1);
+  const totalPriceInWan = parseFloat(getDisplayTotalPrice(itemData));
+  // ✓ 【修改】對應新的 Firestore 欄位名稱
+  const area = parseFloat(itemData.area_house_ping);
+  if (isNaN(totalPriceInWan) || isNaN(area) || area === 0) return '-';
+  return (totalPriceInWan / area).toFixed(1);
 };
 
 function handleScroll(event) {
   if (headerTopRef.value) headerTopRef.value.scrollLeft = event.target.scrollLeft;
   if (headerLeftRef.value) headerLeftRef.value.scrollTop = event.target.scrollTop;
 }
+
 function openUnitDetail(unitData) {
   if (unitData) {
-    selectedUnitData.value = unitData;
+    selectedUnitData.value = { ...unitData };
     isModalVisible.value = true;
   }
 }
 
-async function fetchData() {
-  loading.value = true;
-  error.value = null;
-  updateAndGetParkingSlide(projectName.value, 'sales').catch(err => {
-      console.warn('背景更新銷控模式車位表失敗:', err.message);
-  });
-  updateAndGetParkingSlide(projectName.value, 'quote').catch(err => {
-      console.warn('背景更新報價模式車位表失敗:', err.message);
-  });
-  try {
-    const response = await fetchSalesControlData(projectName.value);
-    if (response.status === 'success') {
-      allData.value = response.data;
-      const slideSheetData = response.data['車位SLIDE'];
-      if (slideSheetData && slideSheetData.length > 0) {
-        const slideInfo = slideSheetData[0];
-        const targetKeyName = currentViewMode.value === 'quote' ? '報價車位SLIDEID' : '銷控車位SLIDEID';
-        const actualKeys = Object.keys(slideInfo);
-        const foundKey = actualKeys.find(k => k.trim() === targetKeyName);
-        if (foundKey) parkingSlideId.value = slideInfo[foundKey] || '';
-      }
-    } else {
-      throw new Error(response.message || '無法獲取銷控資料。');
-    }
-  } catch (err) {
-    error.value = err.message;
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(() => {
-  quoteStore.clearQuote();
-  fetchData();
-});
-
 function handleOpenSlideViewer() {
-  openSlideViewer(parkingSlideId.value);
+  const slideId = currentViewMode.value === 'quote' ? project.value.parkingSlideId_quote : project.value.parkingSlideId_sales;
+  openSlideViewer(slideId);
 }
 
 function handleRefreshSlide() {
-  refreshSlide(currentViewMode.value);
+  const slideId = currentViewMode.value === 'quote' ? project.value.parkingSlideId_quote : project.value.parkingSlideId_sales;
+  refreshSlide(slideId);
 }
 
-// --- 新增：處理活動訊息點擊事件 ---
-async function handleOpenActivityMessage() {
-  isActivityLoading.value = true;
-  isActivityDialogVisible.value = true;
-  activitySlideId.value = ''; // 重置舊的 ID
-  try {
-    const slideId = await fetchActivityMessageSlideId(projectName.value);
-    activitySlideId.value = slideId;
-  } catch (err) {
-    console.error('獲取活動訊息失敗:', err);
-    // 可選：在此處顯示錯誤訊息給用戶
-  } finally {
-    isActivityLoading.value = false;
+function handleOpenActivityMessage() {
+  openSlideViewer(project.value.activityMessageSlideId);
+}
+
+function navigateToSalesSettings() {
+  if (projectId.value) {
+    router.push({
+      name: 'SalesSettings',
+      params: { projectId: projectId.value }
+    });
   }
 }
+
+// --- Lifecycle Hooks ---
+onMounted(() => {
+  quoteStore.clearQuote();
+  loading.value = true;
+  
+  unsubscribe = listenToSalesControlData(
+    projectId.value,
+    (data) => {
+      project.value = data.project || { name: '專案資料載入失敗' };
+      salesParameters.value = data.parameters || [];
+      salesHouseholds.value = data.households || [];
+      if(loading.value) loading.value = false;
+    },
+    (err) => {
+      error.value = `讀取銷控資料時發生錯誤: ${err.message}`;
+      loading.value = false;
+      console.error('銷控資料監聽失敗:', err);
+    }
+  );
+});
+
+onUnmounted(() => {
+  if (unsubscribe) {
+    unsubscribe();
+  }
+});
 
 </script>
 
