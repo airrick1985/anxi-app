@@ -6,18 +6,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
+import { useRoute } from 'vue-router';
+import { listenToHouseholdsForCalendar, updateHouseholdInspectionDate } from '@/api';
+
+
+
 
 // --- 請將此處的網址換成您自己部署的 GAS 網路應用程式網址 ---
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbyyLduEI4eZT5NsQGUVCQFMML_aKFMChk43bcr50Z814NYOTzOKxdmrARpC19DrWBml/exec';
 // -------------------------------------------------------------
 
-// 名額限制
+// --- 元件狀態 ---
+const route = useRoute();
+const projectId = ref(route.params.projectId);
 const SLOT_LIMIT = 2; // 假設每個時段最多2個名額
+let unsubscribeFromHouseholds = null;
+
 
 const calendarOptions = ref({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
@@ -29,21 +38,113 @@ const calendarOptions = ref({
   },
   events: [],
   editable: true,
-  droppable: true,
   locale: 'zh-tw',
-  buttonText: {
-    today: '今天',
-    month: '月',
-    week: '週',
-    day: '日',
-  },
-  eventContent: handleEventContent,
+  buttonText: { today: '今天', month: '月', week: '週', day: '日' },
   eventDrop: handleEventDrop,
+  eventContent: handleEventContent,
   eventAllow: handleEventAllow,
-  eventDidMount: handleEventDidMount, // ✅ 新增：在事件掛載後執行
-});
+  eventDidMount: handleEventDidMount, 
+  });
+
+// ✓ Firebase Timestamp 轉為 JS Date 物件
+function toDate(timestamp) {
+  if (timestamp && typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  }
+  return null;
+}
+
+// ✓ 處理從 Firestore 來的戶別資料，轉換成日曆事件
+function processHouseholdData(households) {
+  const events = [];
+  households.forEach(h => {
+    const time = h.statusTimeSlot || '09：30'; // 如果沒有時間，給個預設值
+    const [hour, minute] = time.replace('：', ':').split(':');
+
+    // 處理初驗事件
+    const initialDate = toDate(h.initialInspectionDate);
+    if (initialDate) {
+      initialDate.setHours(parseInt(hour, 10), parseInt(minute, 10), 0);
+      events.push({
+        id: `${h.id}_initial`, // ✓ 組合唯一 ID
+        title: `(初) ${h.unitId} - ${h.buyerName}`,
+        start: initialDate,
+        end: new Date(initialDate.getTime() + 60 * 60 * 1000), // ✓ 預設1小時
+        backgroundColor: '#3788d8',
+        borderColor: '#3788d8',
+        extendedProps: { docId: h.id, type: 'initial', ...h },
+      });
+    }
+
+    // 處理複驗事件
+    const reDate = toDate(h.reInspectionDate);
+    if (reDate) {
+      reDate.setHours(parseInt(hour, 10), parseInt(minute, 10), 0);
+      events.push({
+        id: `${h.id}_re`, // ✓ 組合唯一 ID
+        title: `(複) ${h.unitId} - ${h.buyerName}`,
+        start: reDate,
+        end: new Date(reDate.getTime() + 60 * 60 * 1000), // ✓ 預設1小時
+        backgroundColor: '#4caf50',
+        borderColor: '#4caf50',
+        extendedProps: { docId: h.id, type: 're', ...h },
+      });
+    }
+  });
+  calendarOptions.value.events = events;
+}
 
 let eventCounts = {};
+
+
+// ✓ 建立一個統一的資料處理函式
+function processBookingData(data) {
+    eventCounts = {};
+    data.forEach(event => {
+        // ✓ 欄位名稱請根據您 Firestore 中的實際名稱調整
+        const dateStr = event.bookingDate ? formatDate(new Date(event.bookingDate)) : null;
+        const timeSlot = event.bookingTimeSlot;
+        if (dateStr && timeSlot) {
+            const key = `${dateStr}_${timeSlot}`;
+            eventCounts[key] = (eventCounts[key] || 0) + 1;
+        }
+    });
+
+    const events = data.map(event => {
+        const date = event.bookingDate ? new Date(event.bookingDate) : null;
+        const timeSlot = event.bookingTimeSlot;
+
+        if (!date || !timeSlot) return null;
+
+        const dateStr = formatDate(date);
+        const [startTimeStr, endTimeStr] = timeSlot.split(' - ').map(s => s.replace('：', ':'));
+        
+        if (!startTimeStr || !endTimeStr) return null;
+
+        const startDateTime = new Date(`${dateStr}T${startTimeStr}:00`);
+        const endDateTime = new Date(`${dateStr}T${endTimeStr}:00`);
+
+        const key = `${dateStr}_${timeSlot}`;
+        const isFull = (eventCounts[key] || 0) >= SLOT_LIMIT;
+
+        return {
+            id: event.id, // Firestore 文件 ID
+            title: `${event.unitId} - ${event.customerName}`, // ✓ 欄位名稱請根據您 Firestore 中的實際名稱調整
+            start: startDateTime,
+            end: endDateTime,
+            extendedProps: {
+                ...event,
+                isFull: isFull,
+            },
+            backgroundColor: isFull ? 'red' : '#3788d8',
+            borderColor: isFull ? 'darkred' : '#3788d8',
+        };
+    }).filter(Boolean);
+
+    calendarOptions.value.events = events;
+}
+
+
 
 function formatDate(date) {
     const d = new Date(date);
@@ -113,40 +214,25 @@ async function fetchAndProcessEvents() {
         alert('無法從 Google Sheet 獲取資料，請檢查 GAS 網址是否正確並已授權。');
     }
 }
-
+// ✓ 當事件被拖曳時，更新 Firestore
 async function handleEventDrop(dropInfo) {
   const event = dropInfo.event;
-  const newStart = event.start;
+  const newStartDate = event.start;
+  const { docId, type } = event.extendedProps;
 
-  const newDate = formatDate(newStart);
-  const newStartTime = newStart.toTimeString().substring(0, 5);
-
-  const newEnd = new Date(newStart.getTime() + 60 * 60 * 1000);
-  const newEndTime = newEnd.toTimeString().substring(0, 5);
+  if (!docId || !type) {
+    console.error("事件缺少必要資訊(docId, type)，無法更新");
+    dropInfo.revert();
+    return;
+  }
 
   try {
-    const response = await fetch(GAS_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-            id: event.id,
-            newDate: newDate,
-            newStartTime: newStartTime,
-            newEndTime: newEndTime,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-    });
-
-    const result = await response.json();
-    if (result.status === 'success') {
-        alert('更新成功！');
-        fetchAndProcessEvents();
-    } else {
-        alert(`更新失敗: ${result.message}`);
-        dropInfo.revert();
-    }
+    await updateHouseholdInspectionDate(docId, type, newStartDate);
+    alert('更新成功！');
+    // 資料會透過 onSnapshot 自動刷新，無需手動處理
   } catch (error) {
-    console.error('更新請求失敗:', error);
-    alert('更新請求失敗');
+    console.error('更新戶別日期失敗:', error);
+    alert(`更新失敗: ${error.message}`);
     dropInfo.revert();
   }
 }
@@ -220,10 +306,30 @@ function handleEventDidMount(arg) {
 }
 
 
+// --- 生命週期鉤子 ---
 onMounted(() => {
-    fetchAndProcessEvents();
-    setInterval(fetchAndProcessEvents, 30000);
+  if (projectId.value) {
+    unsubscribeFromHouseholds = listenToHouseholdsForCalendar(
+      projectId.value,
+      (households) => {
+        console.log("接收到戶別即時資料:", households);
+        processHouseholdData(households);
+      },
+      (error) => {
+        alert('無法監聽預約資料，請檢查主控台錯誤。');
+      }
+    );
+  } else {
+    alert('錯誤：未提供專案 ID，無法載入預約資料。');
+  }
 });
+
+nUnmounted(() => {
+  if (unsubscribeFromHouseholds) {
+    unsubscribeFromHouseholds();
+  }
+});
+
 </script>
 
 <style>

@@ -6,7 +6,8 @@ import { db, storage, functions } from '@/firebase';
 import { 
   collection, 
   query, 
-  where, 
+  where,
+  onSnapshot,
   getDocs, 
   getDoc, 
   doc, 
@@ -2718,3 +2719,103 @@ export async function batchUpdateHouseholds(updates) {
     return { status: 'error', message: e.message };
   }
 }
+
+
+/**
+ * 監聽驗屋預約集合的即時變動
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 當資料變動時要執行的回呼函式，會傳入最新的事件陣列
+ * @param {function} onError - 當發生錯誤時執行的回呼函式
+ * @returns {function} - 一個可以用來停止監聽的 unsubscribe 函式
+ */
+export const listenToBookings = (projectId, onDataChange, onError) => {
+  // ✓ 建立一個指向特定專案下 `bookings` 集合的查詢
+  //   請注意：這裡的 'projects', projectId, 'bookings' 是假設的資料庫路徑，
+  //   您需要根據您實際的 Firestore 資料結構進行調整。
+  const bookingsCol = collection(db, 'projects', projectId, 'bookings');
+  const q = query(bookingsCol);
+
+  // ✓ 建立 onSnapshot 監聽器
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const bookings = [];
+    querySnapshot.forEach((doc) => {
+      bookings.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    // ✓ 當資料更新時，呼叫傳入的回呼函式
+    onDataChange(bookings);
+  }, (error) => {
+    // ✓ 處理監聽時發生的錯誤
+    console.error("Error listening to bookings collection: ", error);
+    if (onError) {
+      onError(error);
+    }
+  });
+
+  // ✓ 回傳 unsubscribe 函式，讓呼叫者可以在需要時停止監聽
+  return unsubscribe;
+};
+
+
+
+/**
+ * ✓ (新) 監聽指定專案的戶別資料以用於日曆
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 資料變動時的回呼函式
+ * @param {function} onError - 錯誤時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToHouseholdsForCalendar = (projectId, onDataChange, onError) => {
+  // ✓ 建立查詢，只撈取符合目前 projectId 的戶別
+  const householdsCol = collection(db, 'households');
+  const q = query(householdsCol, where("projectId", "==", projectId));
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const households = [];
+    querySnapshot.forEach((doc) => {
+      households.push({
+        id: doc.id, // ✓ 將文件的 ID 也一併傳出去
+        ...doc.data()
+      });
+    });
+    onDataChange(households);
+  }, (error) => {
+    console.error("監聽戶別資料時發生錯誤: ", error);
+    if (onError) {
+      onError(error);
+    }
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * ✓ (新) 更新戶別的驗屋日期與時段
+ * @param {string} docId - Firestore 文件的 ID
+ * @param {'initial' | 're'} inspectionType - 要更新的是 '初驗' 還是 '複驗'
+ * @param {Date} newDate - 新的日期時間物件
+ * @returns {Promise<void>}
+ */
+export const updateHouseholdInspectionDate = async (docId, inspectionType, newDate) => {
+  const householdRef = doc(db, 'households', docId);
+
+  // ✓ 從新的日期物件中，格式化出日期和時間
+  const newStartTime = newDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '：');
+
+  const updatePayload = {};
+
+  // ✓ 根據是初驗還是複驗，決定要更新哪個欄位
+  if (inspectionType === 'initial') {
+    updatePayload.initialInspectionDate = Timestamp.fromDate(newDate);
+  } else {
+    updatePayload.reInspectionDate = Timestamp.fromDate(newDate);
+  }
+
+  // ✓ 根據您的資料結構，似乎只有一個 `statusTimeSlot` 欄位
+  //   這裡我們假設拖曳任何事件都是更新這一個時間欄位
+  updatePayload.statusTimeSlot = newStartTime;
+
+  await updateDoc(householdRef, updatePayload);
+};
