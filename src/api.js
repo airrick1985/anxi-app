@@ -2634,6 +2634,16 @@ export async function fetchAllHouseholds(projectId) {
           formattedData[key] = data[key].toDate();
         }
       });
+
+    // 為了向下相容，將資料庫中可能存為 "ON" / "OFF" 的字串轉換為布林值
+      ['initialReportUploadSwitch', 'reInspectionReportUploadSwitch', 'showInMenu'].forEach(key => { 
+        if (formattedData[key] === 'ON') {
+          formattedData[key] = true;
+        } else if (formattedData[key] === 'OFF') {
+          formattedData[key] = false;
+        }
+      });
+      
       households.push({
         // 將 Firestore document ID 也存起來，方便更新
         _docId: doc.id, 
@@ -2656,11 +2666,55 @@ export async function fetchAllHouseholds(projectId) {
 export async function updateHouseholdData(householdDocId, dataToUpdate) {
   try {
     if (!householdDocId) throw new Error("缺少戶別文件 ID。");
+    
+    const processedData = { ...dataToUpdate };
+    const dateFields = ['initialInspectionDate', 'reInspectionDate', 'statusDate', 'appropriationDate'];
+
+    for (const key in processedData) {
+      if (dateFields.includes(key)) {
+        const value = processedData[key];
+        // 如果使用者清空日期，則存為 null；否則轉換為 Timestamp
+        if (value) {
+          processedData[key] = Timestamp.fromDate(new Date(value));
+        } else {
+          processedData[key] = null;
+        }
+      }
+    }
+
     const docRef = doc(db, "households", householdDocId);
-    await updateDoc(docRef, dataToUpdate);
+    await updateDoc(docRef, processedData); // ✓ 使用處理過的資料
     return { status: 'success' };
   } catch (e) {
     console.error(`更新戶別 ${householdDocId} 資料時發生錯誤:`, e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+/**
+ * [Firestore 版] 批次更新多筆戶別資料的特定欄位
+ * @param {Array<Object>} updates - 更新內容的陣列，格式為 [{ docId: string, data: object }]
+ * @returns {Promise<object>}
+ */
+export async function batchUpdateHouseholds(updates) {
+  if (!updates || updates.length === 0) {
+    return { status: 'success', message: '沒有需要更新的資料。' };
+  }
+
+  const batch = writeBatch(db);
+  
+  updates.forEach(update => {
+    if (update.docId && update.data) {
+      const docRef = doc(db, "households", update.docId);
+      batch.update(docRef, update.data);
+    }
+  });
+
+  try {
+    await batch.commit();
+    return { status: 'success' };
+  } catch (e) {
+    console.error("批次更新戶別資料時發生錯誤:", e);
     return { status: 'error', message: e.message };
   }
 }
