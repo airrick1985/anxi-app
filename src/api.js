@@ -2819,3 +2819,43 @@ export const updateHouseholdInspectionDate = async (docId, inspectionType, newDa
 
   await updateDoc(householdRef, updatePayload);
 };
+
+
+/**
+ * ✓ (新) 監聽指定專案的所有戶別資料 (用於 AG Grid)
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 資料變動時的回呼函式，會傳入最新的戶別資料陣列
+ * @param {function} onError - 發生錯誤時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
+  const householdsCol = collection(db, 'households');
+  // ✓ 建立查詢，篩選出符合當前 projectId 的所有文件
+  const q = query(householdsCol, where("projectId", "==", projectId));
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const households = [];
+    // ✓ 我們可以從 snapshot.docChanges() 中獲取更詳細的變動類型
+    snapshot.docChanges().forEach((change) => {
+        // 這部分邏輯先在 Vue 元件中處理，以簡化 API
+    });
+
+    // 為了簡化初版，我們先回傳完整資料列表
+    snapshot.forEach((doc) => {
+      households.push({
+        _docId: doc.id, // ✓ 將文件 ID 命名為 _docId 以匹配您原有的程式碼
+        ...doc.data()
+      });
+    });
+
+    onDataChange(households);
+
+  }, (error) => {
+    console.error("監聽戶別總表時發生錯誤: ", error);
+    if (onError) {
+      onError(error);
+    }
+  });
+
+  return unsubscribe;
+};

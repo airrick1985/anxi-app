@@ -17,10 +17,6 @@ import { listenToHouseholdsForCalendar, updateHouseholdInspectionDate } from '@/
 
 
 
-// --- 請將此處的網址換成您自己部署的 GAS 網路應用程式網址 ---
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyyLduEI4eZT5NsQGUVCQFMML_aKFMChk43bcr50Z814NYOTzOKxdmrARpC19DrWBml/exec';
-// -------------------------------------------------------------
-
 // --- 元件狀態 ---
 const route = useRoute();
 const projectId = ref(route.params.projectId);
@@ -161,59 +157,7 @@ function formatDate(date) {
 }
 
 
-async function fetchAndProcessEvents() {
-    try {
-        const response = await fetch(GAS_URL);
-        const data = await response.json();
 
-        eventCounts = {};
-        data.forEach(event => {
-            const dateStr = event['預約日期'] ? formatDate(new Date(event['預約日期'])) : null;
-            const timeSlot = event['預約時段'];
-            if (dateStr && timeSlot) {
-                const key = `${dateStr}_${timeSlot}`;
-                eventCounts[key] = (eventCounts[key] || 0) + 1;
-            }
-        });
-
-        const events = data.map(event => {
-            const date = event['預約日期'] ? new Date(event['預約日期']) : null;
-            const timeSlot = event['預約時段'];
-
-            if (!date || !timeSlot) return null;
-
-            const dateStr = formatDate(date);
-            const [startTimeStr, endTimeStr] = timeSlot.split(' - ').map(s => s.replace('：', ':'));
-            
-            if (!startTimeStr || !endTimeStr) return null;
-
-            const startDateTime = new Date(`${dateStr}T${startTimeStr}:00`);
-            const endDateTime = new Date(`${dateStr}T${endTimeStr}:00`);
-
-            const key = `${dateStr}_${timeSlot}`;
-            const isFull = (eventCounts[key] || 0) >= SLOT_LIMIT;
-
-            return {
-                id: event.id,
-                title: `${event['戶別']} - ${event['姓名']}`,
-                start: startDateTime,
-                end: endDateTime,
-                extendedProps: {
-                    ...event,
-                    isFull: isFull,
-                },
-                backgroundColor: isFull ? 'red' : '#3788d8',
-                borderColor: isFull ? 'darkred' : '#3788d8',
-            };
-        }).filter(Boolean);
-
-        calendarOptions.value.events = events;
-
-    } catch (error) {
-        console.error('獲取資料失敗:', error);
-        alert('無法從 Google Sheet 獲取資料，請檢查 GAS 網址是否正確並已授權。');
-    }
-}
 // ✓ 當事件被拖曳時，更新 Firestore
 async function handleEventDrop(dropInfo) {
   const event = dropInfo.event;

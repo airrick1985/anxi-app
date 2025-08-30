@@ -2,51 +2,51 @@
 <v-container fluid>
 <v-card class="pa-4">
 <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
-<span>{{ pageTitle }}</span>
-
-    <div class="d-flex align-center ga-2">
-      <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline">
-        返回時間表
-      </v-btn>
-      <v-btn icon="mdi-refresh" variant="text" @click="fetchData" :loading="isLoading"></v-btn>
-    </div>
-  </v-card-title>
-
-  <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
-
-  <div v-if="isLoading" class="text-center pa-10">
-    <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-    <div class="mt-4">戶別資料載入中...</div>
+  <span>{{ pageTitle }}</span>
+  <div class="d-flex align-center ga-2">
+    <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline">
+      返回時間表
+    </v-btn>
   </div>
+</v-card-title>
 
-  <div v-if="!isLoading && !error" style="height: 75vh;">
-    <ag-grid-vue
-      class="ag-theme-alpine"
-      style="width: 100%; height: 100%;"
-      :columnDefs="colDefs"
-      :rowData="rowData"
-      :defaultColDef="defaultColDef"
-      :sideBar="true"
-      :localeText="AG_GRID_LOCALE_TW"
-      @grid-ready="onGridReady"
-      @cell-value-changed="onCellValueChanged"
-    >
-    </ag-grid-vue>
-  </div>
+<v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
+
+<div v-if="isLoading" class="text-center pa-10">
+  <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+  <div class="mt-4">戶別資料載入中...</div>
+</div>
+
+<div v-if="!isLoading && !error" style="height: 75vh;">
+  <ag-grid-vue
+    v-if="hasInitialDataLoaded"
+    class="ag-theme-alpine"
+    style="width: 100%; height: 100%;"
+    :columnDefs="colDefs"
+    :rowData="rowData"
+    :defaultColDef="defaultColDef"
+    :sideBar="true"
+    :localeText="AG_GRID_LOCALE_TW"
+    @grid-ready="onGridReady"
+    @cell-value-changed="onCellValueChanged"
+    :getRowId="getRowId"
+  >
+  </ag-grid-vue>
+</div>
+
 </v-card>
 <v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
   {{ snackbar.text }}
 </v-snackbar>
-
 </v-container>
 </template>
 
+
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue';
-// ✅ 【修改】引入 useRouter
+import { ref, onMounted, onUnmounted, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
-import { fetchAllHouseholds, updateHouseholdData, batchUpdateHouseholds } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds } from '@/api';
 
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "ag-grid-enterprise";
@@ -56,51 +56,44 @@ import { format } from 'date-fns';
 
 // --- Store 和路由 ---
 const route = useRoute();
-const router = useRouter(); // ✅ 【修改】建立 router 實例
+const router = useRouter();
 const projectStore = useProjectStore();
 const projectId = ref(route.params.projectId);
 
 // --- AG Grid 狀態 ---
 const gridApi = ref(null);
 const rowData = ref([]);
-const colDefs = ref([]);
+const hasInitialDataLoaded = ref(false); // ✓ 用此旗標控制 Grid 的渲染
 
 // --- 頁面狀態 ---
 const isLoading = ref(true);
 const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
+let unsubscribe = null;
 
 // --- 計算屬性 ---
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
 const pageTitle = computed(() => `${projectName.value} - 戶別資料總表`);
+const getRowId = (params) => params.data._docId;
 
 // --- AG Grid 設定 ---
 const defaultColDef = {
-sortable: true,
-resizable: true,
-filter: true,
-floatingFilter: true,
-flex: 1,
-minWidth: 150,
+  sortable: true,
+  resizable: true,
+  filter: true,
+  floatingFilter: true,
+  flex: 1,
+  minWidth: 150,
 };
-
 const dateFormatter = (params) => {
-if (!params.value) return '';
-try {
-return format(new Date(params.value), 'yyyy/MM/dd');
-} catch (e) {
-return '';
-}
+  if (!params.value) return '';
+  try { return format(new Date(params.value), 'yyyy/MM/dd'); }
+  catch (e) { return ''; }
 };
-
 const linkRenderer = (params) => {
   if (!params.value) return '<span>-</span>';
   return `<a href="${params.value}" target="_blank" rel="noopener noreferrer">開啟連結</a>`;
 };
-
-
-
-// ✓ 新版：表頭全選 Switch 組件 (兩行顯示)
 const SwitchHeaderRenderer = {
   template: `
     <div class="d-flex flex-column align-center justify-center w-100 h-100">
@@ -190,7 +183,7 @@ const SwitchHeaderRenderer = {
   }
 };
 
-// ✓ 新版：v-switch 顯示組件 (可直接互動)
+// v-switch 顯示組件 (可直接互動)
 const SwitchRenderer = {
   template: `
     <div class="d-flex justify-center align-center w-100 h-100" @click.stop>
@@ -213,152 +206,110 @@ const SwitchRenderer = {
   },
 };
 
+const colDefs = ref([
+    // ✓ 【修改】將 colDefs 的定義移出 onMounted
+   { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+   { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
+   { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
+   { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
+   { headerName: '買方姓名', field: 'buyerName', editable: true },
+   { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
+   { headerName: '買方Email', field: 'buyerEmail', editable: true, minWidth: 200 },
+   { headerName: '買方身分證', field: 'buyerIdNumber', editable: true },
+   { headerName: '車位', field: 'parkingLots', editable: true },
+   { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
+   { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
+   { headerName: '銀行', field: 'bank', editable: true },
+   { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
+   { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
+   { headerName: '初驗方式', field: 'initialInspectionMethod' },
+   { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
+   { headerName: '複驗日期', field: 'reInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
+   { headerName: '複驗方式', field: 'reInspectionMethod' },
+   { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+   { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+   { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, flex: 1.5 },
+   { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: linkRenderer, flex: 1.5 },
+   { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
+]);
 
 
-
-// ✅ 【新增】導航函式
+// --- 導航函式 ---
 function navigateBackToCalendar() {
-router.push({
-name: 'InternalInspectionCalendar',
-params: { projectId: projectId.value }
-});
+  router.push({
+    name: 'InternalInspectionCalendar',
+    params: { projectId: projectId.value }
+  });
 }
 
-// 載入資料
-async function fetchData() {
-  isLoading.value = true;
-  error.value = null;
-  try {
-    await projectStore.fetchProjects();
-    const data = await fetchAllHouseholds(projectId.value);
-    rowData.value = data;
-  } catch (err) {
-    error.value = `資料載入失敗: ${err.message}`;
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-// Grid 準備就緒
+// ✓ 【修改】簡化 onGridReady，只用來獲取 gridApi
 const onGridReady = (params) => {
-gridApi.value = params.api;
+  console.log("AG Grid 已就緒");
+  gridApi.value = params.api;
 };
-
 
 // 當儲存格資料被修改時觸發
 async function onCellValueChanged(event) {
+  // ✓ 【新增】最重要的偵錯日誌，用來確認此事件是否有被觸發
+  console.log('onCellValueChanged 事件已觸發!', event);
   const { data, colDef, newValue, oldValue } = event;
   const field = colDef.field;
+  if (oldValue === newValue) return;
 
-  if (oldValue === newValue) {
-    return;
-  }
-
-  // 增加 ID 檢查，確保 _docId 存在
   if (!data || !data._docId) {
-    console.error("更新失敗：找不到該行的 document ID (_docId)。", data);
     snackbar.text = `更新失敗：內部錯誤，找不到行資料 ID。`;
     snackbar.color = 'error';
     snackbar.show = true;
     return;
   }
-
   const householdDocId = data._docId;
   const updatePayload = { [field]: newValue };
-
   try {
     await updateHouseholdData(householdDocId, updatePayload);
-    
     snackbar.text = `戶別 [${data.unitId}] 的 [${colDef.headerName}] 已更新成功！`;
     snackbar.color = 'success';
     snackbar.show = true;
   } catch (err) {
-    console.error("更新戶別資料時發生錯誤:", err); // 在 console 印出完整錯誤
+    console.error("更新戶別資料時發生錯誤:", err);
     snackbar.text = `更新失敗: ${err.message}`;
     snackbar.color = 'error';
-    snackbar.show = true;
-    
-    // 更新失敗時，將資料還原
-    data[field] = oldValue;
-    gridApi.value.applyTransaction({ update: [data] });
+     snackbar.show = true;
+    // 更新失敗時，讓監聽器自動從 Firestore 把值還原回來，無需手動操作
   }
 }
 
-onMounted(() => {
-  colDefs.value = [
-   { 
-      headerName: '預約系統開關', 
-      pinned: 'left',
-      field: 'showInMenu', 
-      editable: true,
-      width: 180,
-      cellRenderer: SwitchRenderer, 
-      headerComponent: SwitchHeaderRenderer,
-    },
-    { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
-    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
-    { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
-    { headerName: '買方姓名', field: 'buyerName', editable: true },
-    { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
-    { headerName: '買方Email', field: 'buyerEmail', editable: true, minWidth: 200 },
-    { headerName: '買方身分證', field: 'buyerIdNumber', editable: true },
-    { headerName: '車位', field: 'parkingLots', editable: true },
-    { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
-    { 
-      headerName: '撥款日', 
-      field: 'appropriationDate', 
-      filter: 'agDateColumnFilter', 
-      valueFormatter: dateFormatter, 
-      editable: true,
-      cellEditor: 'agDateCellEditor' 
-    },
-    { headerName: '銀行', field: 'bank', editable: true },
-    { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
-    { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-    { headerName: '初驗方式', field: 'initialInspectionMethod' },
-    { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
-    { headerName: '複驗日期', field: 'reInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-    { headerName: '複驗方式', field: 'reInspectionMethod' },
-    { 
-      headerName: '初驗報告上傳開關', 
-      field: 'initialReportUploadSwitch', 
-      editable: true,
-      width: 180,
-      cellRenderer: SwitchRenderer, 
-      headerComponent: SwitchHeaderRenderer, 
-    },
-    { 
-      headerName: '複驗報告上傳開關', 
-      field: 'reInspectionReportUploadSwitch', 
-      editable: true,
-      width: 180,
-      cellRenderer: SwitchRenderer, 
-      headerComponent: SwitchHeaderRenderer, 
-    },
-    { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, flex: 1.5 },
-    { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: linkRenderer, flex: 1.5 },
-    { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
-  ];
-
+// ✓ 【修改】生命週期鉤子，採用 v-if 模式
+onMounted(async () => {
   if (projectId.value) {
-    fetchData();
+    await projectStore.fetchProjects();
+
+    unsubscribe = listenToAllHouseholds(
+      projectId.value,
+      (households) => {
+        console.log('接收到 Firestore 資料更新...');
+        rowData.value = households; // ✓ 只需更新響應式資料
+
+        if (!hasInitialDataLoaded.value) {
+          hasInitialDataLoaded.value = true; // ✓ 設定旗標，觸發 Grid 渲染
+          isLoading.value = false; // ✓ 隱藏載入動畫
+        }
+      },
+      (err) => {
+        error.value = `資料監聽失敗: ${err.message}`;
+        isLoading.value = false;
+      }
+    );
   } else {
     error.value = "未提供建案 ID";
     isLoading.value = false;
   }
 });
 
+onUnmounted(() => {
+  if (unsubscribe) {
+    console.log('停止監聽戶別總表');
+    unsubscribe();
+  }
+});
+
 </script>
-
-<style>
-
-.ag-input-field-input {
-  padding-left: 25px !important;
-}
-
-
-.ag-input-field-input[aria-label="戶號 Filter Input"] {
-  padding-left: 5px !important;
-}
-
-</style>
