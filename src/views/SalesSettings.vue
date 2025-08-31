@@ -1,5 +1,19 @@
 <template>
   <v-container>
+
+      <v-row class="mb-4">
+      <v-col>
+        <v-btn
+          @click="goBackToSalesControl"
+          color="grey-darken-1"
+          variant="outlined"
+          prepend-icon="mdi-arrow-left"
+        >
+          返回銷控系統
+        </v-btn>
+      </v-col>
+    </v-row>
+    
     <v-row>
       <v-col cols="12" md="6">
         <v-card class="pa-4" elevation="2">
@@ -208,7 +222,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import {
   getProjectSettings, 
@@ -220,6 +234,7 @@ import {
 } from '@/api';
 
 const route = useRoute();
+const router = useRouter(); 
 const toast = useToast();
 const projectId = ref(route.params.projectId);
 
@@ -249,6 +264,17 @@ const snackbar = ref({ show: false, text: '', color: 'success' });
 
 
 // --- Methods ---
+
+const goBackToSalesControl = () => {
+  if (projectId.value) {
+    router.push({
+      name: 'SalesControlSystem',
+      params: {
+        projectName: projectId.value
+      }
+    });
+  }
+};
 
 const loadProjectSettings = async () => {
   projectLoading.value = true;

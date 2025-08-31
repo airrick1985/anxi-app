@@ -2,7 +2,7 @@
   <div class="sales-control-page">
     
     <div class="toolbar d-none d-md-flex">
-      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ project.name }}</span>
+      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
        <v-btn-toggle
         v-model="displayType"
         color="primary"
@@ -74,8 +74,8 @@
       >
         銷控設定
       </v-btn>
-
-      <v-btn
+      
+        <v-btn
         v-if="currentViewMode === 'sales'"
         color="teal"
         variant="tonal"
@@ -348,6 +348,7 @@
   </div>
 </template>
 
+
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
@@ -472,20 +473,21 @@ const priceDisplayLabel = computed(() => {
 
 // --- Methods ---
 const getDisplayTotalPrice = (itemData) => {
-  const priceInWan = (price) => (price / 10000).toFixed(0);
-  
+  // ✓ 【修改】priceInWan 輔助函式現在只做格式化，不再除以 10000
+  const formatPrice = (price) => Math.round(price || 0);
+
   // ✓ 【修改】對應新的 Firestore 欄位名稱
   if (currentViewMode.value !== 'sales') {
-    return priceInWan(itemData.price_list_house_total);
+    return formatPrice(itemData.price_list_house_total);
   }
   switch (priceDisplayMode.value) {
     case 'floor':
-      return priceInWan(itemData.price_floor_house_total || itemData.price_list_house_total);
+      return formatPrice(itemData.price_floor_house_total || itemData.price_list_house_total);
     case 'transaction':
       const canShow = ['小訂', '補足', '簽約'].includes(itemData.salesStatus_backend) && itemData.price_transaction_house;
-      return canShow ? priceInWan(itemData.price_transaction_house) : priceInWan(itemData.price_list_house_total);
-    default:
-      return priceInWan(itemData.price_list_house_total);
+      return canShow ? formatPrice(itemData.price_transaction_house) : formatPrice(itemData.price_list_house_total);
+    default: // list
+      return formatPrice(itemData.price_list_house_total);
   }
 };
 
@@ -520,7 +522,13 @@ function handleRefreshSlide() {
 }
 
 function handleOpenActivityMessage() {
-  openSlideViewer(project.value.activityMessageSlideId);
+  isActivityLoading.value = true;
+  isActivityDialogVisible.value = true;
+  
+  // 模擬載入時間，讓使用者看到 progress circle
+  setTimeout(() => {
+    isActivityLoading.value = false;
+  }, 1200);
 }
 
 function navigateToSalesSettings() {

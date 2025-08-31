@@ -5,6 +5,8 @@ const nodemailer = require("nodemailer");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { Firestore } = require("@google-cloud/firestore");
+const {google} = require("googleapis");
+
 
 admin.initializeApp();
 
@@ -453,3 +455,164 @@ exports.getBookingInitialData = onCall(async (request) => {
 });
 
 
+/**
+ * ✓ 【Firebase Function 版】更新車位銷控圖
+ * 核心邏輯：
+ * 1. 從 Firestore 'projects' 集合讀取 Google Slide ID。
+ * 2. 從 Firestore 'salesParkings' 集合讀取所有車位資料。
+ * 3. 使用 Google Slides API 將最新的車位狀態渲染到簡報的圖形上。
+ */
+exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => {
+  const {projectId, slideType} = request.data;
+
+  if (!projectId || !slideType) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectId 或 slideType。");
+  }
+
+  // 使用 anxi-app 資料庫
+  const db = new Firestore({databaseId: "anxi-app"});
+  const functionName = `updateParkingSlide (Project: ${projectId})`;
+
+  try {
+    // --- 步驟 1: 從 Firestore 讀取專案設定，取得 Slide ID ---
+    console.log(`[${functionName}] 步驟 1/3: 正在讀取專案設定...`);
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    if (!projectDoc.exists) {
+      throw new HttpsError("not-found", `在 projects 集合中找不到 ID 為 ${projectId} 的建案。`);
+    }
+    const projectData = projectDoc.data();
+    const presentationId = slideType === "quote" ?
+      projectData.parkingSlideId_quote :
+      projectData.parkingSlideId_sales;
+
+    if (!presentationId) {
+      throw new HttpsError("not-found", `專案 ${projectId} 缺少 ${slideType} 模式的 Slide ID 設定。`);
+    }
+
+    // --- 步驟 2: 從 Firestore 讀取所有車位資料 ---
+    console.log(`[${functionName}] 步驟 2/3: 正在讀取車位資料...`);
+    const parkingSnapshot = await db.collection("salesParkings")
+        .where("projectId", "==", projectId).get();
+    if (parkingSnapshot.empty) {
+      console.warn(`[${functionName}] 警告：在 salesParkings 集合中找不到任何屬於 ${projectId} 的車位。`);
+    }
+
+    const parkingDataMap = new Map();
+    parkingSnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.slidePosition) {
+        parkingDataMap.set(data.slidePosition, data);
+      }
+    });
+
+    // --- 步驟 3: 使用 Google Slides API 更新簡報 ---
+    console.log(`[${functionName}] 步驟 3/3: 正在更新 Google Slide (ID: ${presentationId})...`);
+
+ // 初始化 Google API 客戶端
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/presentations"],
+    });
+    const authClient = await auth.getClient();
+    const slides = google.slides({version: "v1", auth: authClient});
+
+    // 獲取簡報中的所有頁面元素
+    const presentation = await slides.presentations.get({
+      presentationId: presentationId,
+      fields: "slides(pageElements(objectId,shape(text)))",
+    });
+
+    const requests = []; // 準備批次更新請求
+    let shapeCounter = 0;
+
+    presentation.data.slides.forEach((slide, slideIndex) => {
+      slide.pageElements?.forEach((element, shapeIndex) => {
+        // GAS 的 shapeIndex 是從 1 開始且連續的，但 API 的 objectId 是唯一的字串
+        // 為了相容您舊的 slidePosition, 我們繼續用索引來模擬
+        shapeCounter++;
+        const identifier = `Slide${slideIndex + 1}-Shape${shapeCounter}`;
+        const data = parkingDataMap.get(identifier);
+        const objectId = element.objectId;
+
+        let newText = "";
+        let fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 1}}}; // 預設白色
+        let isTransparent = true;
+
+        if (data) {
+          if (slideType === "quote") {
+            // --- 報價模式邏輯 ---
+            if (!data.status_backend) { // 可售
+              newText = String(data.price_list || "");
+              isTransparent = true;
+            } else { // 已售/保留
+              newText = `${data.spotId || ""}\n${data.status || ""}`;
+              fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 0}}}; // 黃色
+              isTransparent = false;
+            }
+          } else {
+            // --- 銷控模式邏輯 ---
+            if (!data.status_backend) { // 可售
+              newText = String(data.price_list || "");
+              isTransparent = true;
+            } else { // 已售/保留
+              newText = `${data.spotId || ""}\n${data.price_list || ""}\n${data.buyerUnitId || ""}\n${data.buyerName || ""}\n${data.salesperson || ""}`;
+              
+              if (String(data.buyerName).includes("保留")) {
+                fillColor = {opaqueColor: {rgbColor: {red: 0.643, green: 0.761, blue: 0.957}}}; // 藍色 #a4c2f4
+              } else if (String(data.buyerName).includes("現場銷控")) {
+                fillColor = {opaqueColor: {rgbColor: {red: 0.8, green: 0.753, blue: 0.851}}}; // 紫色 #ccc0d9
+              } else {
+                fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 0}}}; // 黃色
+              }
+              isTransparent = false;
+            }
+          }
+        }
+
+        // 產生刪除舊文字的請求
+        requests.push({
+          deleteText: {objectId: objectId, textRange: {type: "ALL"}},
+        });
+
+        // 產生插入新文字的請求
+        if (newText) {
+          requests.push({
+            insertText: {objectId: objectId, text: newText, insertionIndex: 0},
+          });
+        }
+
+        // 產生更新背景顏色的請求
+        requests.push({
+          updateShapeProperties: {
+            objectId: objectId,
+            shapeProperties: {
+              shapeBackgroundFill: {
+                solidFill: isTransparent ? null : fillColor,
+              },
+            },
+            fields: "shapeBackgroundFill.solidFill",
+          },
+        });
+      });
+      shapeCounter = 0; // 每個 slide 重新計數
+    });
+
+    // 如果有需要更新的內容，才執行批次更新
+    if (requests.length > 0) {
+      await slides.presentations.batchUpdate({
+        presentationId: presentationId,
+        requestBody: {requests: requests},
+      });
+    }
+
+    console.log(`[${functionName}] Google Slide 更新成功！`);
+    return {status: "success", slideId: presentationId};
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    } else {
+      throw new HttpsError("internal", `更新停車位銷控圖時發生錯誤: ${error.message}`);
+    }
+  }
+});
