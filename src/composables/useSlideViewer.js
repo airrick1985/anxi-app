@@ -1,4 +1,4 @@
-// /src/composables/useSlideViewer.js (V4 - 最終防閃爍版)
+// /src/composables/useSlideViewer.js 
 
 import { ref, computed, nextTick } from 'vue';
 import { updateAndGetParkingSlide } from '@/api';

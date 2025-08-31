@@ -1,268 +1,400 @@
 <template>
   <v-card class="d-flex flex-column" style="height: 100vh; overflow: hidden;">
     <v-card-title class="d-flex align-center pe-2 flex-shrink-0">
-      <v-icon icon="mdi-car-brake-parking"></v-icon> &nbsp;
-      車位銷控管理
+       <template v-if="!mdAndUp && isSearching">
+        <v-text-field
+          v-model="search"
+          density="compact"
+          placeholder="搜尋 (可搜號碼、戶別、買方...)"
+          prepend-inner-icon="mdi-arrow-left"
+          @click:prepend-inner="isSearching = false"
+          variant="solo-filled"
+          autofocus
+          flat
+          hide-details
+          single-line
+        ></v-text-field>
+      </template>
+      
+       <template v-else>
+        <v-icon icon="mdi-car-brake-parking"></v-icon> &nbsp;
+        <span class="font-weight-bold text-primary">{{ projectName }}</span>
+        <span class="mx-2 d-none d-sm-inline">|</span>
+        <span class="d-none d-sm-inline">車位銷控管理</span>
+        <v-spacer></v-spacer>
 
-      <v-spacer></v-spacer>
+        <template v-if="mdAndUp">
+          <v-btn
+            color="teal"
+            variant="outlined"
+            class="me-2"
+            @click="exportToExcel"
+            prepend-icon="mdi-file-excel"
+          >
+            匯出 EXCEL
+          </v-btn>
+          <v-btn
+            color="red-darken-2"
+            variant="outlined"
+            @click="uploadDialog = true"
+            prepend-icon="mdi-upload"
+          >
+            上傳車位資料
+          </v-btn>
+          <v-text-field
+            v-model="search"
+            density="compact"
+            label="搜尋 (可搜號碼、戶別、買方...)"
+            prepend-inner-icon="mdi-magnify"
+            variant="solo-filled"
+            flat
+            hide-details
+            single-line
+            class="ms-4"
+            style="max-width: 350px;"
+          ></v-text-field>
+        </template>
 
-      <v-text-field
-        v-model="search"
-        density="compact"
-        label="搜尋 (可搜號碼、戶別、買方)"
-        prepend-inner-icon="mdi-magnify"
-        variant="solo-filled"
-        flat
-        hide-details
-        single-line
-        style="max-width: 350px;"
-      ></v-text-field>
-      <v-btn class="ml-2" icon="mdi-close" @click="$emit('close')"></v-btn>
+        <template v-else>
+          <v-btn icon="mdi-magnify" variant="text" @click="isSearching = true"></v-btn>
+          <v-menu location="bottom end">
+            <template v-slot:activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item @click="exportToExcel">
+                <template v-slot:prepend>
+                  <v-icon icon="mdi-file-excel" color="teal"></v-icon>
+                </template>
+                <v-list-item-title>匯出 EXCEL</v-list-item-title>
+              </v-list-item>
+              <v-list-item @click="uploadDialog = true">
+                <template v-slot:prepend>
+                  <v-icon icon="mdi-upload" color="red-darken-2"></v-icon>
+                </template>
+                <v-list-item-title>上傳車位資料</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+        </template>
+        
+        <v-btn class="ml-2" icon="mdi-close" @click="$emit('close')"></v-btn>
+      </template>
     </v-card-title>
 
     <v-divider></v-divider>
     
     <div class="table-container flex-grow-1 pa-10">
       <v-data-table
-        v-model:items-per-page="itemsPerPage"
+         v-model:items-per-page="itemsPerPage"
         :headers="headers"
         :items="allItems"
         :search="search"
         :loading="loading"
         class="elevation-1"
-        item-value="車位編號"
+        item-value="docId"
         density="compact"
         hover
+        :sort-by="[{ key: 'number', order: 'asc' }]"
         fixed-header
-        height="calc(80vh - 60px)" 
+        height="calc(85vh - 60px)" 
         items-per-page-text="每頁數量："
         :page-text="'{0}-{1} 共 {2} 車'"
-        :items-per-page-options="[{value: 10, title: '10'}, {value: 25, title: '25'}, {value: 50, title: '50'}, {value: -1, title: '全部'}]"
-
-  >
-        <template v-slot:item.銷控後台狀態="{ value }">
-          <v-chip :color="getStatusColor(value)" size="small" label>
-            {{ value || '可售' }}
-          </v-chip>
+        :items-per-page-options="[{value: 10, title: '10'}, {value: 25, title: '25'}, {value: 50, title: '50'},{value: 100, title: '100'}, {value: -1, title: '全部'}]"
+      >
+        <template v-slot:item.price_list="{ value }">
+          {{ formatPrice(value) }}
         </template>
-
-        <template v-slot:item.車位表價="{ value }">
-          <span class="text-grey-darken-1">{{ formatPrice(value) }}</span>
+        <template v-slot:item.price_floor="{ value }">
+          {{ formatPrice(value) }}
         </template>
-        <template v-slot:item.車位底價="{ value }">
-          <span class="text-grey-darken-1">{{ formatPrice(value) }}</span>
+        <template v-slot:item.price_transaction="{ value }">
+          {{ formatPrice(value) }}
         </template>
-        <template v-slot:item.車位成交價="{ value }">
-          <span class="text-blue-darken-2 font-weight-bold">{{ formatPrice(value) }}</span>
+        <template v-slot:item.status_backend="{ value }">
+          <v-chip :color="getStatusColor(value)" size="small">{{ value || '可售' }}</v-chip>
         </template>
-
-        <template v-slot:item.購買戶別="{ value }">
-          {{ value || '-' }}
-        </template>
-         <template v-slot:item.買方姓名="{ value }">
-          {{ value || '-' }}
-        </template>
-          <template v-slot:item.備註="{ value }">
-           <div class="text-truncate" style="max-width: 150px;" :title="value">
-              {{ value || '-' }}
-           </div>
-        </template>
-
-        <template v-slot:item.操作="{ item }">
-          <v-icon
-            size="small"
-            class="me-2"
-            @click="editItem(item)"
-            title="編輯"
-          >
-            mdi-pencil
-          </v-icon>
-        </template>
-
-        <template v-slot:no-data>
-          <v-btn color="primary" @click="initialize">
-            重新載入
-          </v-btn>
+        <template v-slot:item.actions="{ item }">
+          <v-icon size="small" @click="editItem(item)">mdi-pencil</v-icon>
         </template>
       </v-data-table>
     </div>
 
-    <v-dialog v-model="dialog" max-width="700px" persistent>
+     <v-dialog v-model="dialog" max-width="700px" persistent>
       <v-card>
-        <v-card-title class="text-h6 font-weight-bold bg-grey-lighten-4">
-          編輯車位資訊
+        <v-card-title class="bg-primary">
+          <span class="text-h5">編輯車位資訊 ({{ editedItem.spotId }})</span>
         </v-card-title>
-        <v-divider></v-divider>
-        <v-card-text class="py-4">
+
+        <v-card-text class="pt-4">
           <v-container>
             <v-row>
-              <v-col cols="12">
-                <div class="form-section-title">基礎資訊</div>
-              </v-col>
-              <v-col cols="12" sm="6" md="3">
-                <v-text-field label="車位樓層" :model-value="editedItem.車位樓層" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6" md="3">
-                <v-text-field label="號碼" :model-value="editedItem.號碼" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6" md="3">
-                <v-text-field label="車位編號" :model-value="editedItem.車位編號" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="3" md="1.5">
-                <v-text-field label="類型" :model-value="editedItem.類型" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="3" md="1.5">
-                <v-text-field label="尺寸" :model-value="editedItem.車位尺寸" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-
-              <v-col cols="12">
-                <div class="form-section-title mt-3">價格資訊</div>
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field label="車位表價" :model-value="editedItem.車位表價" readonly variant="outlined" density="compact" suffix="萬" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field label="車位底價" :model-value="editedItem.車位底價" readonly variant="outlined" density="compact" suffix="萬" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field label="車位成交價" :model-value="editedItem.車位成交價" readonly variant="outlined" density="compact" suffix="萬" class="readonly-field"></v-text-field>
-              </v-col>
-
-              <v-col cols="12">
-                <div class="form-section-title mt-3">銷控資訊</div>
+              <v-col cols="12" sm="6">
+                <div class="form-section-title">基本資料</div>
+                <v-text-field v-model="editedItem.spotId" label="車位編號" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model="editedItem.type" label="類型" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model="editedItem.size" label="車位尺寸" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
-                <v-text-field label="銷控狀態" v-model="derivedSalesStatus" readonly variant="outlined" density="compact" hint="此欄位由後台狀態自動產生" class="readonly-field"></v-text-field>
+                <div class="form-section-title">價格資訊</div>
+                <v-text-field v-model.number="editedItem.price_list" label="車位表價" type="number" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model.number="editedItem.price_floor" label="車位底價" type="number" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model.number="editedItem.price_transaction" label="車位成交價" type="number" variant="outlined" density="compact"></v-text-field>
               </v-col>
+              <v-col cols="12">
+                <v-divider class="my-2"></v-divider>
+                <div class="form-section-title">銷控資訊</div>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field v-model="editedItem.buyerUnitId" label="購買戶別" variant="outlined" density="compact"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field v-model="editedItem.buyerName" label="買方姓名" variant="outlined" density="compact"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field v-model="editedItem.salesperson" label="銷售人員" variant="outlined" density="compact"></v-text-field>
+              </v-col>
+              
               <v-col cols="12" sm="6">
                 <v-select
-                  v-model="editedItem.銷控後台狀態"
-                  :items="['', '保留', '現場銷控']"
-                  label="銷控後台狀態"
-                  :readonly="isBackendStatusLocked"
-                  :hint="isBackendStatusLocked ? '此狀態為系統自動更新，無法手動變更' : ''"
-                  persistent-hint
+                  v-model="editedItem.status"
+                  :items="['已售']"
+                  label="銷控狀態 (報價系統)"
                   variant="outlined"
                   density="compact"
-                  clearable
-                  :class="isBackendStatusLocked ? 'readonly-field' : 'editable-field'"
+                  readonly
+                  class="readonly-field"
+                  hint="此欄位會根據後台狀態自動變更"
+                  persistent-hint
                 ></v-select>
               </v-col>
               <v-col cols="12" sm="6">
-                <v-text-field label="購買戶別" :model-value="editedItem.購買戶別" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-text-field
-                  v-model="editedItem.買方姓名"
-                  label="買方姓名"
+                <v-select
+                  v-model="editedItem.status_backend"
+                  :items="backendStatusOptions"
+                  label="銷控後台狀態"
                   variant="outlined"
                   density="compact"
-                  class="editable-field"
-                ></v-text-field>
+                  clearable
+                ></v-select>
               </v-col>
               <v-col cols="12">
-                <v-textarea
-                  v-model="editedItem.備註"
-                  label="備註"
-                  variant="outlined"
-                  rows="3"
-                  class="editable-field"
-                ></v-textarea>
+                <v-textarea v-model="editedItem.remarks" label="備註" variant="outlined" rows="3"></v-textarea>
               </v-col>
             </v-row>
           </v-container>
         </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-grey-lighten-5">
+
+        <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="grey-darken-1" variant="text" @click="close">取消</v-btn>
-          <v-btn color="primary" variant="elevated" :loading="saving" @click="save">儲存</v-btn>
+          <v-btn color="grey" variant="text" @click="close">取消</v-btn>
+          <v-btn color="primary" variant="flat" @click="saveItem" :loading="isSaving">儲存</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-     <v-snackbar
-      v-model="snackbar.visible"
-      :timeout="2000"
-      :color="snackbar.color"
-    >
-      {{ snackbar.text }}
-    </v-snackbar>
+
+    <v-dialog v-model="uploadDialog" max-width="600px" persistent>
+        <v-card>
+            <v-card-title class="bg-red-darken-2">
+                <span class="text-h5">上傳 Excel 更新車位資料</span>
+            </v-card-title>
+            <v-card-text class="pt-4">
+
+                <v-alert
+                  type="warning"
+                  color="error"
+                  variant="tonal"
+                  class="mb-4"
+                  title="重要提示"
+                  text="上傳的 Excel 將會根據「車位編號」覆蓋現有資料。為避免資料遺失，強烈建議您先匯出目前的資料作為備份。"
+                ></v-alert>
+
+                <v-btn 
+                  color="teal" 
+                  @click="exportToExcel" 
+                  block 
+                  class="mb-6"
+                  prepend-icon="mdi-download"
+                >
+                  匯出目前車位資料 (備份)
+                </v-btn>
+
+                <v-file-input
+                    v-model="uploadedFile"
+                    label="選擇 Excel 檔案"
+                    accept=".xlsx, .xls"
+                    variant="outlined"
+                    density="compact"
+                    :loading="isParsing"
+                    @change="handleFileChange"
+                ></v-file-input>
+
+             <v-alert
+             v-if="uploadMessage"
+             :type="uploadMessageType"
+             variant="tonal"
+             class="mt-4 pre-wrap-alert" 
+             density="compact"
+           
+           >
+             {{ uploadMessage }}
+           </v-alert>
+
+
+            </v-card-text>
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn color="grey" variant="text" @click="closeUploadDialog">取消</v-btn>
+                <v-btn 
+                  color="error" 
+                  variant="flat" 
+                  @click="uploadData" 
+                  :loading="isUploading"
+                  :disabled="parsedData.length === 0"
+                >
+                  確認上傳
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
   </v-card>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { fetchParkingLotDetails, updateParkingLotDetails } from '@/api';
+import { useDisplay } from 'vuetify';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore';
+import { useToast } from 'vue-toastification';
+import { listenToParkingLots, updateParkingLot, uploadParkingLots } from '@/api';
+import * as XLSX from 'xlsx-js-style';
 
 const emit = defineEmits(['close']);
-const route = useRoute();
-const itemsPerPage = ref(-1);
+const { mdAndUp } = useDisplay();
+const isSearching = ref(false);
+const userStore = useUserStore();
+const projectStore = useProjectStore(); 
+const toast = useToast();
 
-const headers = ref([
-  { title: '操作', key: '操作', sortable: false, align: 'center', width: '2%' },
-  { title: '樓層', key: '車位樓層', align: 'center',width: '5%' },
-  { title: '號碼', key: '號碼', align: 'center',width: '5%' },
-  { title: '後台狀態', key: '銷控後台狀態', align: 'center',width: '5%' },
-  { title: '表價', key: '車位表價', align: 'end',width: '5%' },
-  { title: '底價', key: '車位底價', align: 'end',width: '5%' },
-  { title: '成交價', key: '車位成交價', align: 'end',width: '5%' },
-  { title: '購買戶別', key: '購買戶別', align: 'center',width: '5%' },
-  { title: '買方', key: '買方姓名', align: 'center',width: '5%' },
-  { title: '備註', key: '備註', align: 'start', sortable: false,width: '15%'},
-  
-]);
+//  =================================================================
+// /  1.【核心修改】建立唯一的標頭定義來源 (Single Source of Truth)
+//  =================================================================
+const COLUMN_DEFINITIONS = [
+    { key: 'floor', title: '樓層' },
+     { 
+        key: 'number', 
+        title: '號碼',
+        // 【新增】自訂排序函式，啟用數字感知排序 (Natural Sort)
+        sort: (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'zh-TW', { numeric: true, sensitivity: 'base' })
+    },
+    { key: 'spotId', title: '車位編號' },
+    { key: 'size', title: '車位尺寸' },
+    { key: 'price_list', title: '車位表價', align: 'end' },    
+    { key: 'price_floor', title: '車位底價', align: 'end' },   
+    { key: 'price_transaction', title: '車位成交價', align: 'end' },
+    { key: 'status_backend', title: '銷控後台狀態' },
+    { key: 'status', title: '銷控狀態(報價系統)' },
+    { key: 'buyerUnitId', title: '購買戶別' },
+    { key: 'buyerName', title: '買方姓名' },
+    { key: 'salesperson', title: '銷售人員' },
+    { key: 'remarks', title: '備註', cellClass: 'text-truncate' },
+    { key: 'actions', title: '操作', sortable: false, width: '80px', align: 'center', exportable: false },
+];
 
-const allItems = ref([]);
-const loading = ref(true);
-const saving = ref(false);
+//  =================================================================
+// /  2. 從唯一定義來源，動態產生所有需要的變數
+//  =================================================================
+
+// 用於 v-data-table 的標頭
+const headers = computed(() => COLUMN_DEFINITIONS);
+
+// 過濾掉不需匯出/匯入的欄位 (例如 "操作")
+const exportableColumns = COLUMN_DEFINITIONS.filter(c => c.exportable !== false);
+
+// 用於中英文轉換的 mapping 物件
+const fieldMapping = computed(() => Object.fromEntries(
+    exportableColumns.map(col => [col.key, col.title])
+));
+
+// 用於匯出的中文標頭陣列
+const chineseHeaders = computed(() => exportableColumns.map(c => c.title));
+
+// 用於匯出的資料排序鍵名陣列
+const exportOrder = computed(() => exportableColumns.map(c => c.key));
+
+
+// =================================================================
+// / Vue 相關 state
+// =================================================================
+const projectName = computed(() => {
+  const projectId = userStore.user?.projectName;
+  return projectStore.idToNameMap[projectId] || '';
+});
+
 const search = ref('');
+const itemsPerPage = ref(-1);
+const loading = ref(true);
+const allItems = ref([]);
+let unsubscribe = null;
 const dialog = ref(false);
+const isSaving = ref(false);
 const editedItem = ref({});
-const snackbar = ref({ visible: false, text: '', color: 'success' });
+const originalItem = ref({});
+const uploadDialog = ref(false);
+const uploadedFile = ref(null);
+const parsedData = ref([]);
+const isParsing = ref(false);
+const isUploading = ref(false);
+const uploadMessage = ref('');
+const uploadMessageType = ref('success');
+const backendStatusOptions = ['小訂', '補足', '簽約', '保留'];
 
-const isBackendStatusLocked = computed(() => {
-  const status = editedItem.value.銷控後台狀態_original;
-  return ['簽約', '小訂', '補足'].includes(status);
-});
 
-const derivedSalesStatus = computed(() => {
-    if (editedItem.value.銷控後台狀態) {
-        return '已售';
-    }
-    return '';
-});
-
-const loadItems = async () => {
-  loading.value = true;
-  try {
-    const projectName = route.params.projectName;
-    const response = await fetchParkingLotDetails(projectName);
-    
-    if (response.status === 'success') {
-      allItems.value = response.data.items;
-    } else {
-      throw new Error(response.message || '無法取得車位資料');
-    }
-  } catch (error) {
-    console.error("Error loading items:", error);
-    showSnackbar(`資料載入失敗: ${error.message}`, 'error');
-  } finally {
+// =================================================================
+// / 生命週期鉤子
+// =================================================================
+onMounted(() => {
+  projectStore.fetchProjects();
+  const projectId = userStore.user?.projectName;
+  if (projectId) {
+    loading.value = true;
+    unsubscribe = listenToParkingLots(
+      projectId,
+      (data) => {
+        allItems.value = data;
+        if (loading.value) loading.value = false;
+      },
+      (error) => {
+        toast.error(`讀取車位資料失敗: ${error.message}`);
+        loading.value = false;
+      }
+    );
+  } else {
+    toast.error('無法獲取建案資訊，請重新登入。');
     loading.value = false;
   }
-};
-
-onMounted(() => {
-  loadItems();
 });
 
-const initialize = () => {
-  loadItems();
-};
+onUnmounted(() => {
+  if (unsubscribe) {
+    unsubscribe();
+  }
+});
+
+// =================================================================
+// / 方法
+// =================================================================
+watch(() => editedItem.value.status_backend, (newValue) => {
+  if (editedItem.value) {
+    editedItem.value.status = newValue ? '已售' : '';
+  }
+});
 
 const editItem = (item) => {
-  editedItem.value = { ...item, 銷控後台狀態_original: item.銷控後台狀態 };
+  originalItem.value = item;
+  editedItem.value = { ...item };
   dialog.value = true;
 };
 
@@ -270,57 +402,24 @@ const close = () => {
   dialog.value = false;
 };
 
-const save = async () => {
-  saving.value = true;
+const saveItem = async () => {
+  isSaving.value = true;
   try {
-    const projectName = route.params.projectName;
-    const payload = {
-      projectName,
-      key: editedItem.value.車位編號,
-      data: {
-        銷控後台狀態: editedItem.value.銷控後台狀態,
-        買方姓名: editedItem.value.買方姓名,
-        備註: editedItem.value.備註,
-        銷控狀態: derivedSalesStatus.value 
-      }
-    };
-
-    const response = await updateParkingLotDetails(payload);
-    if (response.status !== 'success') {
-      throw new Error(response.message || '更新失敗');
-    }
-    
-    const index = allItems.value.findIndex(item => item.車位編號 === editedItem.value.車位編號);
-    if (index !== -1) {
-      allItems.value[index].銷控後台狀態 = editedItem.value.銷控後台狀態;
-      allItems.value[index].買方姓名 = editedItem.value.買方姓名;
-      allItems.value[index].備註 = editedItem.value.備註;
-      allItems.value[index].銷控狀態 = derivedSalesStatus.value;
-    }
-    
-    showSnackbar('儲存成功', 'success');
+    const { docId, ...dataToUpdate } = editedItem.value;
+    await updateParkingLot(docId, dataToUpdate);
+    toast.success(`車位 ${editedItem.value.spotId} 的資料已更新`);
     close();
-  } catch (error) {
-     console.error("Error saving item:", error);
-     showSnackbar(`儲存失敗: ${error.message}`, 'error');
+  } catch (err) {
+    toast.error(`更新失敗: ${err.message}`);
   } finally {
-      saving.value = false;
+    isSaving.value = false;
   }
-};
-
-const showSnackbar = (text, color = 'success') => {
-  snackbar.value.text = text;
-  snackbar.value.color = color;
-  snackbar.value.visible = true;
 };
 
 const getStatusColor = (status) => {
   switch (status) {
-    case '小訂': return '#c0392b';
-    case '補足': return '#c0392b';
-    case '簽約': return '#c0392b';
-    case '保留': return '#b4a7d6';
-    case '現場銷控': return '#b4a7d6';
+    case '小訂': case '補足': case '簽約': return '#c0392b';
+    case '保留': case '現場銷控': return '#b4a7d6';
     case '已售': return 'grey';
     default: return '#239b56';
   }
@@ -328,26 +427,176 @@ const getStatusColor = (status) => {
 
 const formatPrice = (value) => {
   if (value === null || value === undefined || value === '') return '-';
-  const price = new Intl.NumberFormat().format(value);
-  return `${price} 萬`;
+  if(isNaN(value)) return '-';
+  return `${new Intl.NumberFormat().format(value)} 萬`;
+};
+
+const exportToExcel = () => {
+    if (allItems.value.length === 0) {
+        toast.info('目前沒有資料可匯出。');
+        return;
+    }
+    const sortedItems = [...allItems.value].sort((a, b) => {
+        return String(a.number ?? '').localeCompare(String(b.number ?? ''), 'zh-TW', { numeric: true, sensitivity: 'base' });
+    });
+
+    const dataAsArray = sortedItems.map(item => {
+        return exportOrder.value.map(key => item[key]);
+    });
+
+    const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
+    const dataWithHeader = [warningRow, chineseHeaders.value, ...dataAsArray];
+    const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
+
+    const warningStyle = { font: { color: { rgb: "FFFF0000" }, bold: true }, fill: { fgColor: { rgb: "FFFFFF00" } } };
+    ws['A1'].s = warningStyle;
+    
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: exportOrder.value.length - 1 } });
+
+    const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FFD3D3D3" } } };
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        const address = XLSX.utils.encode_cell({ r: 1, c: C });
+        if(ws[address]) {
+            ws[address].s = headerStyle;
+        }
+    }
+    ws['!freeze'] = { ySplit: 2 };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '車位資料');
+    const exportFileName = projectName.value || 'unknown-project';
+    XLSX.writeFile(wb, `${exportFileName}_車位資料備份_${new Date().toISOString().slice(0, 10)}.xlsx`);
+};
+
+const closeUploadDialog = () => {
+    uploadDialog.value = false;
+    uploadedFile.value = null;
+    parsedData.value = [];
+    uploadMessage.value = '';
+};
+
+const handleFileChange = () => {
+    uploadMessage.value = ''; 
+    const file = uploadedFile.value;
+    if (!file) {
+        parsedData.value = [];
+        return;
+    }
+    isParsing.value = true;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+
+            // 至少要有一行標頭，如果沒有則 dataAsArrays 會是空陣列
+            if (dataAsArrays.length < 1) {
+                 // 直接拋出所有必要標頭，因為檔案是空的
+                 throw new Error(`檔案缺少所有必要標頭: ${chineseHeaders.value.join('、')}`);
+            }
+            
+             // ========================================================
+             // 4.【核心修改】統一的、更詳細的標頭驗證邏輯
+             // ========================================================
+            const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
+            const requiredHeaders = chineseHeaders.value;
+
+            // 找出所有「缺少」的標頭
+            const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
+            // 找出所有「多餘」的標頭 (過濾掉空字串)
+            const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
+
+            // 只要有任何缺少或多餘的標頭，就組合詳細錯誤訊息並拋出
+            if (missingHeaders.length > 0 || extraHeaders.length > 0) {
+                let errorMessage = '檔案標頭不符。';
+                if (missingHeaders.length > 0) {
+                    errorMessage += `\n缺少必要標頭: ${missingHeaders.join('、')}`;
+                }
+                if (extraHeaders.length > 0) {
+                    errorMessage += `\n發現非預期標頭: ${extraHeaders.join('、')}`;
+                }
+                throw new Error(errorMessage);
+            }
+
+            const dataRows = dataAsArrays.slice(1);
+
+            const nonEmptyRows = dataRows.filter(row => 
+                row.some(cell => cell !== null && cell !== undefined && cell !== '')
+            );
+
+
+          const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+                const newRow = {};
+                exportOrder.value.forEach((key, index) => {
+                    // 增加保護：如果 excel 的 cell 是空的，給定一個 null 值
+                    newRow[key] = rowArray[index] ?? null;
+                });
+                return newRow;
+            });
+
+            parsedData.value = jsonDataWithEnglishKeys;
+            uploadMessageType.value = 'success';
+            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+            
+        } catch (err) {
+            uploadMessageType.value = 'error';
+            uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
+            parsedData.value = [];
+        } finally {
+            isParsing.value = false;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+const uploadData = async () => {
+    if (parsedData.value.length === 0) {
+        uploadMessageType.value = 'warning';
+        uploadMessage.value = '沒有可上傳的資料。';
+        return;
+    }
+    isUploading.value = true;
+    uploadMessage.value = '';
+    try {
+        const projectId = userStore.user?.projectName;
+        const result = await uploadParkingLots(projectId, parsedData.value);
+        
+        if (result.status === 'success') {
+          uploadMessageType.value = 'success';
+          uploadMessage.value = result.message || '車位資料已成功上傳更新！';
+          setTimeout(() => {
+            closeUploadDialog();
+          }, 2000); 
+        } else {
+          throw new Error(result.message || '發生未知錯誤');
+        }
+    } catch (err) {
+        uploadMessageType.value = 'error';
+        uploadMessage.value = `上傳失敗: ${err.message}`;
+    } finally {
+        isUploading.value = false;
+    }
 };
 </script>
+
 
 <style scoped>
 .table-container {
   overflow-y: auto;
 }
-
 :deep(tbody tr:hover) {
     background-color: #E3F2FD !important;
 }
-
 .text-truncate {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
 .form-section-title {
     font-size: 1rem;
     font-weight: 600;
@@ -356,29 +605,12 @@ const formatPrice = (value) => {
     padding-left: 8px;
     margin-bottom: 12px;
 }
-
-/* 優化 #2: 新增欄位顏色區隔 */
 :deep(.readonly-field .v-field) {
   background-color: #f5f5f5 !important;
-  color: #616161 !important;
+  color: #757575 !important;
 }
 
-:deep(.editable-field .v-field) {
-  background-color: #E3F2FD !important;
-}
-
-/* --- ✅ 新版：表頭顏色優化 (更高優先級) --- */
-:deep(.v-data-table > .v-table__wrapper > table > thead > tr > th) {
-  background-color: #1A3A6E !important;
-  color: white !important;
-}
-
-:deep(.v-data-table > .v-table__wrapper > table > thead > tr > th .v-data-table-header__content span) {
-  color: white !important;
-  font-weight: 600 !important;
-}
-
-:deep(.v-data-table > .v-table__wrapper > table > thead > tr > th i) {
-  color: white !important;
+.pre-wrap-alert {
+   white-space: pre-wrap;
 }
 </style>

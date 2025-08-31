@@ -1511,9 +1511,52 @@ export async function fetchMySubscriptionStatus(userKey) {
 
 /**
  * ===============================================
- * /  ✅ 新增：車位銷控管理 API
+ * /  車位銷控管理 API
  * ===============================================
  */
+
+/**
+ * ✓ 【新增】即時監聽指定建案的所有車位資料
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToParkingLots = (projectId, onDataChange, onError) => {
+  const q = query(
+    collection(db, "salesParkings"), 
+    where("projectId", "==", projectId),
+    orderBy("spotId", "asc") // 依照車位編號排序
+  );
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const parkingLots = [];
+    querySnapshot.forEach((doc) => {
+      // 將 Firestore 文件 ID 也一併傳給前端，方便更新
+      parkingLots.push({ docId: doc.id, ...doc.data() });
+    });
+    onDataChange(parkingLots);
+  }, (error) => {
+    console.error(`監聽專案 ${projectId} 的車位資料時發生錯誤:`, error);
+    if (onError) {
+      onError(error);
+    }
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * ✓ 【新增】更新單筆車位的銷控資料
+ * @param {string} docId - salesParkings 集合中的文件 ID
+ * @param {object} dataToUpdate - 要更新的資料物件
+ * @returns {Promise<void>}
+ */
+export const updateParkingLot = async (docId, dataToUpdate) => {
+  if (!docId) throw new Error("缺少車位文件 ID。");
+  
+  const docRef = doc(db, "salesParkings", docId);
+  await updateDoc(docRef, dataToUpdate);
+};
 
 /**
  * 獲取指定建案所有的「車位」詳細資料，用於銷控管理表格。
@@ -3043,4 +3086,27 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
     unsubParams();
     unsubHouseholds();
   };
+};
+
+
+
+/**
+ * ✓ 【新增】呼叫 Firebase Function 來批次上傳車位資料
+ * @param {string} projectId - 專案 ID
+ * @param {Array<object>} parkingData - 從 Excel 解析出的車位資料陣列
+ * @returns {Promise<object>}
+ */
+export const uploadParkingLots = async (projectId, parkingData) => {
+  if (!projectId || !parkingData) {
+    return { status: "error", message: "前端錯誤：缺少 projectId 或車位資料。" };
+  }
+  
+  try {
+    const uploadFunction = httpsCallable(functions, 'uploadParkingLots');
+    const result = await uploadFunction({ projectId, parkingData });
+    return result.data; // 直接回傳 Cloud Function 的 { status, message }
+  } catch (error) {
+    console.error("呼叫 uploadParkingLots 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
 };

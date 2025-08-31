@@ -48,9 +48,9 @@
         variant="tonal"
         class="ml-4"
         @click="handleOpenSlideViewer" 
-        :loading="false" title="車位銷控"
+        :loading="false" title="車位銷控管理"
       >
-        車位銷控
+        車位銷控管理
       </v-btn>
 
             <v-btn
@@ -247,7 +247,7 @@
             @click="isParkingControlDialogVisible = true"
             variant="tonal"
           >
-            車位銷控
+            車位銷控管理
           </v-btn>
           <v-btn 
             icon 
@@ -517,8 +517,8 @@ function handleOpenSlideViewer() {
 }
 
 function handleRefreshSlide() {
-  const slideId = currentViewMode.value === 'quote' ? project.value.parkingSlideId_quote : project.value.parkingSlideId_sales;
-  refreshSlide(slideId);
+  // ✓ 【修正】確保傳遞的是 'sales' 或 'quote'，而不是 Slide ID
+  refreshSlide(currentViewMode.value);
 }
 
 function handleOpenActivityMessage() {

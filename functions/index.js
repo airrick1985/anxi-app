@@ -123,12 +123,12 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
     }
 });
 
-// ✅ =================================================================
-// /  ✅ BookingPage.vue 公開預約系統 API
-// ✅ =================================================================
+//  =================================================================
+// /   BookingPage.vue 公開預約系統 API
+//  =================================================================
 
 /**
- * ✅ 獲取建案的公開設定 (取代 Vue 檔中的 projectConfigurations 物件)
+ *  獲取建案的公開設定 (取代 Vue 檔中的 projectConfigurations 物件)
  */
 exports.getProjectConfig = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -149,7 +149,7 @@ exports.getProjectConfig = onCall(async (request) => {
 });
 
 /**
- * ✅ 獲取所有可預約的戶別資料，並按棟別分組
+ *  獲取所有可預約的戶別資料，並按棟別分組
  */
 exports.getAllUnitsForBooking = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -188,7 +188,7 @@ exports.getAllUnitsForBooking = onCall(async (request) => {
 
 
 /**
- * ✅ 驗證戶別與身分證號碼是否相符
+ *  驗證戶別與身分證號碼是否相符
  */
 exports.validateId = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -228,7 +228,7 @@ exports.validateId = onCall(async (request) => {
 
 
 /**
- * ✅ 檢查指定戶別是否有有效預約
+ *  檢查指定戶別是否有有效預約
  */
 exports.checkExistingBooking = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -273,7 +273,7 @@ exports.checkExistingBooking = onCall(async (request) => {
 
 
 /**
- * ✅ [核心] 獲取可預約的日期與時段 (取代 GAS 的 get_booking_slots)
+ *  [核心] 獲取可預約的日期與時段 (取代 GAS 的 get_booking_slots)
  * 這是最複雜的函式，會執行以下一連串的資料庫查詢：
  * 1. 從 `households` 找到該戶別被指定的 `batchCode` (批次代號)。
  * 2. 用 `batchCode` 從 `bookingBatches` 找到對應批次的 ID 和起訖日期。
@@ -403,7 +403,7 @@ exports.getAvailableSlots = onCall(async (request) => {
 
 
 /**
- * ✅ 獲取預約頁面初始化所需的資料 (棟別列表、預約設定)
+ *  獲取預約頁面初始化所需的資料 (棟別列表、預約設定)
  */
 exports.getBookingInitialData = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -469,12 +469,11 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
     throw new HttpsError("invalid-argument", "請求缺少 projectId 或 slideType。");
   }
 
-  // 使用 anxi-app 資料庫
   const db = new Firestore({databaseId: "anxi-app"});
   const functionName = `updateParkingSlide (Project: ${projectId})`;
 
   try {
-    // --- 步驟 1: 從 Firestore 讀取專案設定，取得 Slide ID ---
+    // --- 步驟 1 & 2: 讀取資料 (邏輯不變) ---
     console.log(`[${functionName}] 步驟 1/3: 正在讀取專案設定...`);
     const projectDoc = await db.collection("projects").doc(projectId).get();
     if (!projectDoc.exists) {
@@ -489,14 +488,10 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
       throw new HttpsError("not-found", `專案 ${projectId} 缺少 ${slideType} 模式的 Slide ID 設定。`);
     }
 
-    // --- 步驟 2: 從 Firestore 讀取所有車位資料 ---
     console.log(`[${functionName}] 步驟 2/3: 正在讀取車位資料...`);
     const parkingSnapshot = await db.collection("salesParkings")
         .where("projectId", "==", projectId).get();
-    if (parkingSnapshot.empty) {
-      console.warn(`[${functionName}] 警告：在 salesParkings 集合中找不到任何屬於 ${projectId} 的車位。`);
-    }
-
+    
     const parkingDataMap = new Map();
     parkingSnapshot.forEach((doc) => {
       const data = doc.data();
@@ -505,102 +500,141 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
       }
     });
 
-    // --- 步驟 3: 使用 Google Slides API 更新簡報 ---
+    // --- 步驟 3: 更新 Google Slide ---
     console.log(`[${functionName}] 步驟 3/3: 正在更新 Google Slide (ID: ${presentationId})...`);
 
- // 初始化 Google API 客戶端
     const auth = new google.auth.GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/presentations"],
     });
     const authClient = await auth.getClient();
     const slides = google.slides({version: "v1", auth: authClient});
 
-    // 獲取簡報中的所有頁面元素
     const presentation = await slides.presentations.get({
       presentationId: presentationId,
       fields: "slides(pageElements(objectId,shape(text)))",
     });
 
-    const requests = []; // 準備批次更新請求
+    const requests = [];
     let shapeCounter = 0;
 
+    const fillColors = {
+      yellow: {rgbColor: {red: 1, green: 1, blue: 0}},
+      blue: {rgbColor: {red: 0.643, green: 0.761, blue: 0.957}},
+      purple: {rgbColor: {red: 0.8, green: 0.753, blue: 0.851}},
+    };
+    const textColors = {
+      red: {opaqueColor: {rgbColor: {red: 1, green: 0, blue: 0}}},
+      black: {opaqueColor: {rgbColor: {red: 0, green: 0, blue: 0}}},
+    };
+
     presentation.data.slides.forEach((slide, slideIndex) => {
-      slide.pageElements?.forEach((element, shapeIndex) => {
-        // GAS 的 shapeIndex 是從 1 開始且連續的，但 API 的 objectId 是唯一的字串
-        // 為了相容您舊的 slidePosition, 我們繼續用索引來模擬
+      slide.pageElements?.forEach((element) => {
+        if (!element.shape || !element.shape.text) return;
+        
         shapeCounter++;
         const identifier = `Slide${slideIndex + 1}-Shape${shapeCounter}`;
         const data = parkingDataMap.get(identifier);
         const objectId = element.objectId;
 
         let newText = "";
-        let fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 1}}}; // 預設白色
-        let isTransparent = true;
+        let shapeFill = {shapeBackgroundFill: {}};
+        const styleRequests = [];
+
+        requests.push({deleteText: {objectId, textRange: {type: "ALL"}}});
 
         if (data) {
           if (slideType === "quote") {
-            // --- 報價模式邏輯 ---
-            if (!data.status_backend) { // 可售
-              newText = String(data.price_list || "");
-              isTransparent = true;
-            } else { // 已售/保留
-              newText = `${data.spotId || ""}\n${data.status || ""}`;
-              fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 0}}}; // 黃色
-              isTransparent = false;
-            }
-          } else {
-            // --- 銷控模式邏輯 ---
-            if (!data.status_backend) { // 可售
-              newText = String(data.price_list || "");
-              isTransparent = true;
-            } else { // 已售/保留
-              newText = `${data.spotId || ""}\n${data.price_list || ""}\n${data.buyerUnitId || ""}\n${data.buyerName || ""}\n${data.salesperson || ""}`;
-              
-              if (String(data.buyerName).includes("保留")) {
-                fillColor = {opaqueColor: {rgbColor: {red: 0.643, green: 0.761, blue: 0.957}}}; // 藍色 #a4c2f4
-              } else if (String(data.buyerName).includes("現場銷控")) {
-                fillColor = {opaqueColor: {rgbColor: {red: 0.8, green: 0.753, blue: 0.851}}}; // 紫色 #ccc0d9
-              } else {
-                fillColor = {opaqueColor: {rgbColor: {red: 1, green: 1, blue: 0}}}; // 黃色
+            if (!data.status_backend) {
+              // ✓ 將 data.spotId 改為 data.number
+              const spotId = String(data.number || "");
+              const priceList = String(data.price_list || "");
+              newText = `${spotId}\n${priceList}`;
+
+              let startIndex = 0;
+              if (spotId.length > 0) {
+                styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length}, style: {foregroundColor: textColors.black, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
               }
-              isTransparent = false;
+              startIndex += spotId.length + 1;
+              if (priceList.length > 0) {
+                 styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + priceList.length}, style: {foregroundColor: textColors.red, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              }
+            } else {
+              // ✓ 將 data.spotId 改為 data.number
+              const spotId = String(data.number || "");
+              const status = String(data.status || "");
+              newText = `${spotId}\n${status}`;
+              shapeFill = {shapeBackgroundFill: {solidFill: {color: fillColors.yellow}}};
+
+              let startIndex = 0;
+              if (spotId.length > 0) {
+                styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length}, style: {foregroundColor: textColors.black, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              }
+              startIndex += spotId.length + 1;
+              if (status.length > 0) {
+                 styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + status.length}, style: {foregroundColor: textColors.red, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              }
+            }
+          } else { // 銷控模式
+            if (!data.status_backend) {
+              // ✓ 將 data.spotId 改為 data.number
+              const spotId = String(data.number || "");
+              const priceList = String(data.price_list || "");
+              newText = `${spotId}\n${priceList}`;
+
+              let startIndex = 0;
+              if (spotId.length > 0) {
+                styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length}, style: {foregroundColor: textColors.black, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              }
+              startIndex += spotId.length + 1;
+              if (priceList.length > 0) {
+                 styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + priceList.length}, style: {foregroundColor: textColors.red, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              }
+            } else {
+              const lines = [
+                // ✓ 將 data.spotId 改為 data.number
+                String(data.number || ""), String(data.price_list || ""),
+                String(data.buyerUnitId || ""), String(data.buyerName || ""),
+                String(data.salesperson || ""),
+              ];
+              newText = lines.join("\n");
+              
+              let finalColor = fillColors.yellow;
+              if (lines[3].includes("保留")) finalColor = fillColors.blue;
+              if (lines[3].includes("現場銷控")) finalColor = fillColors.purple;
+              shapeFill = {shapeBackgroundFill: {solidFill: {color: finalColor}}};
+
+              let startIndex = 0;
+              if(lines[0].length > 0) styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + lines[0].length}, style: {foregroundColor: textColors.black, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              startIndex += lines[0].length + 1;
+              
+              if(lines[1].length > 0) styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + lines[1].length}, style: {foregroundColor: textColors.red, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+              startIndex += lines[1].length + 1;
+              
+              [lines[2], lines[3], lines[4]].forEach(line => {
+                if (line.length > 0) {
+                   styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + line.length}, style: {foregroundColor: textColors.black, bold: false, fontSize: {magnitude: 6, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
+                }
+                startIndex += line.length + 1;
+              });
             }
           }
         }
-
-        // 產生刪除舊文字的請求
-        requests.push({
-          deleteText: {objectId: objectId, textRange: {type: "ALL"}},
-        });
-
-        // 產生插入新文字的請求
+        
         if (newText) {
-          requests.push({
-            insertText: {objectId: objectId, text: newText, insertionIndex: 0},
-          });
+          requests.push({insertText: {objectId, text: newText, insertionIndex: 0}});
         }
-
-        // 產生更新背景顏色的請求
         requests.push({
-          updateShapeProperties: {
-            objectId: objectId,
-            shapeProperties: {
-              shapeBackgroundFill: {
-                solidFill: isTransparent ? null : fillColor,
-              },
-            },
-            fields: "shapeBackgroundFill.solidFill",
-          },
+          updateShapeProperties: {objectId, shapeProperties: shapeFill, fields: "shapeBackgroundFill"},
         });
+        requests.push(...styleRequests);
       });
-      shapeCounter = 0; // 每個 slide 重新計數
+      shapeCounter = 0;
     });
 
-    // 如果有需要更新的內容，才執行批次更新
     if (requests.length > 0) {
       await slides.presentations.batchUpdate({
         presentationId: presentationId,
-        requestBody: {requests: requests},
+        requestBody: {requests},
       });
     }
 
@@ -609,10 +643,89 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
 
   } catch (error) {
     console.error(`[${functionName}] 發生錯誤:`, error);
-    if (error instanceof HttpsError) {
-      throw error;
-    } else {
-      throw new HttpsError("internal", `更新停車位銷控圖時發生錯誤: ${error.message}`);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `更新停車位銷控圖時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * ✓ 【新增】 上傳車位資料 更新firestore
+ * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesParkings 集合
+ * (V2 - 支援中文表頭)
+ */
+exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
+  const {projectId, parkingData} = request.data;
+  const functionName = `uploadParkingLots (Project: ${projectId})`;
+
+  if (!projectId || !Array.isArray(parkingData) || parkingData.length === 0) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectId 或有效的車位資料。");
+  }
+
+  const db = new Firestore({databaseId: "anxi-app"});
+
+  try {
+    console.log(`[${functionName}] 開始執行，準備更新 ${parkingData.length} 筆車位資料...`);
+
+    const existingLotsSnapshot = await db.collection("salesParkings")
+        .where("projectId", "==", projectId)
+        .get();
+
+    const existingLotsMap = new Map();
+    existingLotsSnapshot.forEach((doc) => {
+      existingLotsMap.set(doc.data().spotId, doc.id);
+    });
+    console.log(`[${functionName}] 找到 ${existingLotsMap.size} 筆現有車位資料。`);
+
+    let batch = db.batch();
+    let operationsCount = 0;
+    const MAX_OPERATIONS_PER_BATCH = 499;
+
+    console.log(`[${functionName}] 步驟 2/3: 正在遍歷上傳的資料並準備寫入...`);
+
+    for (const row of parkingData) {
+       // 【修改】直接使用前端傳來且已轉換為英文的 'spotId' 作為主 Key
+       const spotId = row.spotId;
+      if (!spotId) {
+         console.warn(`[${functionName}] 警告：發現一筆資料缺少 'spotId'，已跳過。`, row);
+        continue;
+      }
+
+       // 【修改】資料已經是英文鍵，直接準備儲存，只需處理數字格式
+      const dataToSave = { ...row }; // 複製一份，避免修改原始物件
+      
+      // 確保價格欄位是數字
+      if (dataToSave.price_list) dataToSave.price_list = Number(dataToSave.price_list) || 0;
+      if (dataToSave.price_floor) dataToSave.price_floor = Number(dataToSave.price_floor) || 0;
+      if (dataToSave.price_transaction) dataToSave.price_transaction = Number(dataToSave.price_transaction) || 0;
+
+      dataToSave.projectId = projectId; // 確保 projectId 被寫入
+
+      const existingDocId = existingLotsMap.get(String(spotId));
+      const docRef = existingDocId ?
+        db.collection("salesParkings").doc(existingDocId) :
+        db.collection("salesParkings").doc(`${projectId}_${spotId}`);
+
+      batch.set(docRef, dataToSave, {merge: true});
+      operationsCount++;
+
+      if (operationsCount >= MAX_OPERATIONS_PER_BATCH) {
+        await batch.commit();
+        console.log(`[${functionName}] 已提交 ${operationsCount} 筆操作...`);
+        batch = db.batch();
+        operationsCount = 0;
+      }
     }
+
+    if (operationsCount > 0) {
+      await batch.commit();
+      console.log(`[${functionName}] 已提交最後 ${operationsCount} 筆操作。`);
+    }
+
+    console.log(`[${functionName}] 步驟 3/3:  更新成功！`);
+    return {status: "success", message: `成功更新或新增了 ${parkingData.length} 筆車位資料。`};
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `更新車位資料時發生錯誤: ${error.message}`);
   }
 });
