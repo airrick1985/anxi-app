@@ -729,3 +729,95 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
     throw new HttpsError("internal", `更新車位資料時發生錯誤: ${error.message}`);
   }
 });
+
+/**
+ * ✅ 【新增】 上傳戶別資料並更新 Firestore
+ * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesHouseholds 集合
+ */
+exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => {
+  const { projectId, householdsData } = request.data;
+  const functionName = `uploadHouseholds (Project: ${projectId})`;
+
+  if (!projectId || !Array.isArray(householdsData) || householdsData.length === 0) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectId 或有效的戶別資料。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始執行，準備更新 ${householdsData.length} 筆戶別資料...`);
+
+    let batch = db.batch();
+    let operationsCount = 0;
+    const MAX_OPERATIONS_PER_BATCH = 499;
+
+    const numericFields = [
+      'area_ancillary_ping', 'area_ancillary_sqm', 'area_balcony_ping', 'area_common_ping', 
+      'area_common_sqm', 'area_house_ping', 'area_house_sqm', 'area_main_ping', 
+      'area_main_sqm', 'land_share_ping', 'land_share_sqm', 'payment_contract_amount', 
+      'payment_deposit_amount', 'payment_supplement_amount', 'price_diff', 'price_floor_ancillary', 
+      'price_floor_balcony', 'price_floor_house_only', 'price_floor_house_total', 'price_list_ancillary', 
+      'price_list_balcony', 'price_list_balcony_unit', 'price_list_house_only', 
+      'price_list_house_total', 'price_package_deal', 'price_transaction_house', 'price_transaction_total'
+    ];
+    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date'];
+
+    for (const row of householdsData) {
+      const unitId = row.unitId;
+      if (!unitId) {
+        console.warn(`[${functionName}] 警告：發現一筆資料缺少 '戶別(unitId)'，已跳過。`, row);
+        continue;
+      }
+
+      const dataToSave = { ...row, projectId }; // 確保 projectId 被寫入
+
+      // --- 資料型別轉換 ---
+      for (const field of numericFields) {
+        if (dataToSave[field] !== null && dataToSave[field] !== undefined) {
+          const num = Number(dataToSave[field]);
+          dataToSave[field] = isNaN(num) ? null : num;
+        }
+      }
+      for (const field of dateFields) {
+         if (dataToSave[field]) {
+            const date = new Date(dataToSave[field]);
+            // 檢查是否為有效的日期物件
+            if (!isNaN(date.getTime())) {
+                dataToSave[field] = admin.firestore.Timestamp.fromDate(date);
+            } else {
+                dataToSave[field] = null; // 如果是無效日期則存為 null
+            }
+        }
+      }
+      if (dataToSave.isFirstTimeBuyer !== undefined) {
+        const val = String(dataToSave.isFirstTimeBuyer).toUpperCase();
+        dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y');
+      }
+
+      const docId = `${projectId}_${unitId}`;
+      const docRef = db.collection("salesHouseholds").doc(docId);
+      
+      batch.set(docRef, dataToSave, { merge: true });
+      operationsCount++;
+
+      if (operationsCount >= MAX_OPERATIONS_PER_BATCH) {
+        await batch.commit();
+        console.log(`[${functionName}] 已提交 ${operationsCount} 筆操作...`);
+        batch = db.batch();
+        operationsCount = 0;
+      }
+    }
+
+    if (operationsCount > 0) {
+      await batch.commit();
+      console.log(`[${functionName}] 已提交最後 ${operationsCount} 筆操作。`);
+    }
+
+    console.log(`[${functionName}] 更新成功！`);
+    return { status: "success", message: `成功更新或新增了 ${householdsData.length} 筆戶別資料。` };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `更新戶別資料時發生錯誤: ${error.message}`);
+  }
+});

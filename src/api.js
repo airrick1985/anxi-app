@@ -3110,3 +3110,27 @@ export const uploadParkingLots = async (projectId, parkingData) => {
     return { status: "error", message: error.message };
   }
 };
+
+
+
+
+/**
+ * ✅ 【新增】呼叫 Firebase Function 來批次上傳戶別資料
+ * @param {string} projectId - 專案 ID
+ * @param {Array<object>} householdsData - 從 Excel 解析出的戶別資料陣列
+ * @returns {Promise<object>}
+ */
+export const uploadHouseholds = async (projectId, householdsData) => {
+  if (!projectId || !householdsData) {
+    return { status: "error", message: "前端錯誤：缺少 projectId 或戶別資料。" };
+  }
+  
+  try {
+    const uploadFunction = httpsCallable(functions, 'uploadHouseholds');
+    const result = await uploadFunction({ projectId, householdsData });
+    return result.data; // 直接回傳 Cloud Function 的 { status, message }
+  } catch (error) {
+    console.error("呼叫 uploadHouseholds 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+};

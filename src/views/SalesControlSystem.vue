@@ -74,16 +74,28 @@
       >
         銷控設定
       </v-btn>
+  
       
-        <v-btn
+      <v-btn
         v-if="currentViewMode === 'sales'"
-        color="teal"
+        color="green"
         variant="tonal"
         class="ml-4"
-        @click="isUpdateControlDialogVisible = true"
-        title="修改面積底價資料"
+        @click="exportToExcel"
+        prepend-icon="mdi-file-excel"
       >
-        修改資料
+        匯出 EXCEL
+      </v-btn>
+
+      <v-btn
+        v-if="currentViewMode === 'sales'"
+        color="error"
+        variant="tonal"
+        class="ml-4"
+        @click="uploadDialog = true"
+        prepend-icon="mdi-upload"
+      >
+        上傳戶別資料
       </v-btn>
       
     </div>
@@ -200,17 +212,24 @@
           </v-btn>
         </template>
         <v-list>
+          <v-list-item @click="exportToExcel">
+            <template v-slot:prepend>
+              <v-icon color="green">mdi-file-excel</v-icon>
+            </template>
+            <v-list-item-title>匯出 EXCEL</v-list-item-title>
+          </v-list-item>
+           <v-list-item @click="uploadDialog = true">
+            <template v-slot:prepend>
+              <v-icon color="error">mdi-upload</v-icon>
+            </template>
+            <v-list-item-title>上傳戶別資料</v-list-item-title>
+          </v-list-item>
+          <v-divider></v-divider>
           <v-list-item @click="handleOpenActivityMessage">
             <template v-slot:prepend>
               <v-icon>mdi-bullhorn-outline</v-icon>
             </template>
             <v-list-item-title>活動訊息</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="isUpdateControlDialogVisible = true">
-            <template v-slot:prepend>
-              <v-icon>mdi-database-refresh-outline</v-icon>
-            </template>
-            <v-list-item-title>修改資料</v-list-item-title>
           </v-list-item>
           <v-list-item @click="navigateToSalesSettings">
             <template v-slot:prepend>
@@ -334,8 +353,67 @@
         <ParkingControl @close="isParkingControlDialogVisible = false" />
     </v-dialog>
 
-    <v-dialog v-model="isUpdateControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-        <UpdateControl @close="isUpdateControlDialogVisible = false" />
+
+
+    <v-dialog v-model="uploadDialog" max-width="600px" persistent>
+      <v-card>
+            <v-card-title class="bg-red-darken-2">
+          <span class="text-h5">上傳 Excel 更新戶別資料</span>
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <v-alert
+            type="warning"
+            color="error"
+            variant="tonal"
+            class="mb-4"
+            title="重要提示"
+            text="上傳的 Excel 將會根據「戶別」覆蓋現有資料。為避免資料遺失，強烈建議您先匯出目前的資料作為備份。"
+          ></v-alert>
+
+          <v-btn 
+            color="green" 
+            @click="exportToExcel" 
+            block 
+            class="mb-6"
+            prepend-icon="mdi-download"
+          >
+            匯出目前戶別資料 (備份)
+          </v-btn>
+
+          <v-file-input
+            v-model="uploadedFile"
+            label="選擇 Excel 檔案"
+            accept=".xlsx, .xls"
+            variant="outlined"
+            density="compact"
+            :loading="isParsing"
+            @change="handleFileChange"
+          ></v-file-input>
+
+          <v-alert
+            v-if="uploadMessage"
+            :type="uploadMessageType"
+            variant="tonal"
+            class="mt-4 pre-wrap-alert" 
+            density="compact"
+          >
+            {{ uploadMessage }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="closeUploadDialog">取消</v-btn>
+          <v-btn 
+            color="orange" 
+            variant="flat" 
+            @click="uploadData" 
+            :loading="isUploading"
+            :disabled="parsedData.length === 0"
+          >
+            確認上傳
+          </v-btn>
+        </v-card-actions>
+      </v-card>
     </v-dialog>
 
     <div v-if="loading || error" class="status-overlay">
@@ -352,7 +430,10 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { listenToSalesControlData } from '@/api';
+// ✅ 新增：引入上傳 API 和 toast
+import { listenToSalesControlData, uploadHouseholds } from '@/api';
+import { useToast } from 'vue-toastification';
+import * as XLSX from 'xlsx-js-style';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -361,12 +442,59 @@ import { useDisplay } from 'vuetify';
 import ParkingControl from './ParkingControl.vue'; 
 import UpdateControl from './UpdateControl.vue'; 
 
+// ✅ 新增：定義 EXCEL 匯出/上傳的欄位
+const COLUMN_DEFINITIONS = [
+    { key: 'building', title: '棟別' },
+    { key: 'floor', title: '樓層' },
+    { key: 'unitId', title: '戶別' },
+    { key: 'layout', title: '格局' },
+    { key: 'salesStatus_backend', title: '銷控後台狀態' },
+    { key: 'salesStatus_quote', title: '報價系統狀態' },
+    { key: 'buyerName', title: '買方姓名' },
+    { key: 'buyerPhone', title: '買方電話' },
+    { key: 'salesperson', title: '銷售人員' },
+    { key: 'contractType', title: '合約方式' },
+    { key: 'isFirstTimeBuyer', title: '是否首購' },
+    { key: 'price_list_house_total', title: '房屋總表價(萬)' },
+    { key: 'price_list_house_only', title: '房屋表價(萬)' },
+    { key: 'price_list_balcony', title: '陽台表價(萬)' },
+    { key: 'price_floor_house_total', title: '房屋總底價(萬)' },
+    { key: 'price_floor_house_only', title: '房屋底價(萬)' },
+    { key: 'price_floor_balcony', title: '陽台底價(萬)' },
+    { key: 'price_transaction_total', title: '總成交價(萬)' },
+    { key: 'price_transaction_house', 'title': '房屋成交價(萬)' },
+    { key: 'price_diff', title: '價差' },
+    { key: 'price_package_deal', title: '打包價' },
+    { key: 'area_house_ping', title: '權狀坪數(坪)' },
+    { key: 'area_main_ping', title: '主建坪數(坪)' },
+    { key: 'area_ancillary_ping', title: '附屬坪數(坪)' },
+    { key: 'area_balcony_ping', title: '陽台坪數(坪)' },
+    { key: 'area_common_ping', title: '公設坪數(坪)' },
+    { key: 'common_area_ratio', title: '公設比' },
+    { key: 'land_share_ping', title: '土地持分(坪)' },
+    { key: 'payment_deposit_date', title: '小訂日期' },
+    { key: 'payment_supplement_date', title: '補足日期' },
+    { key: 'payment_contract_date', title: '簽約日期' },
+    { key: 'payment_deposit_amount', title: '小訂金額' },
+    { key: 'payment_supplement_amount', title: '補足金額' },
+    { key: 'payment_contract_amount', title: '簽約金額' },
+    { key: 'remarks', title: '備註' },
+    { key: 'driveFolderUrl', title: '戶別資料夾位置' },
+];
+
+// ✅ 新增：從唯一定義來源，動態產生所有需要的變數
+const exportableColumns = computed(() => COLUMN_DEFINITIONS.filter(c => c.exportable !== false));
+const fieldMapping = computed(() => Object.fromEntries(exportableColumns.value.map(col => [col.key, col.title])));
+const chineseHeaders = computed(() => exportableColumns.value.map(c => c.title));
+const exportOrder = computed(() => exportableColumns.value.map(c => c.key));
+
+
 const isParkingControlDialogVisible = ref(false);
-const isUpdateControlDialogVisible = ref(false);
 const { mobile: isMobile } = useDisplay();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
+const toast = useToast(); // ✅ 新增
 
 const { 
   isSlideDialogVisible, 
@@ -398,6 +526,16 @@ const priceDisplayMode = ref('list');
 const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
 
+// ✅ 新增：上傳相關 state
+const uploadDialog = ref(false);
+const uploadedFile = ref(null);
+const parsedData = ref([]);
+const isParsing = ref(false);
+const isUploading = ref(false);
+const uploadMessage = ref('');
+const uploadMessageType = ref('success');
+
+
 const activitySlideEmbedUrl = computed(() => {
   const slideId = project.value.activityMessageSlideId;
   if (!slideId) return '';
@@ -411,12 +549,10 @@ const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => project.value.name);
 
-// ✓ 【核心修改】修正篩選邏輯，使用 `layout` 欄位
 const filteredHouseholds = computed(() => {
   if (displayType.value === '店面') {
     return salesHouseholds.value.filter(item => item.layout === '店面');
   }
-  // 其他所有 layout 不等於 '店面' 的都視為 '住家'
   return salesHouseholds.value.filter(item => item.layout !== '店面');
 });
 
@@ -473,10 +609,8 @@ const priceDisplayLabel = computed(() => {
 
 // --- Methods ---
 const getDisplayTotalPrice = (itemData) => {
-  // ✓ 【修改】priceInWan 輔助函式現在只做格式化，不再除以 10000
   const formatPrice = (price) => Math.round(price || 0);
 
-  // ✓ 【修改】對應新的 Firestore 欄位名稱
   if (currentViewMode.value !== 'sales') {
     return formatPrice(itemData.price_list_house_total);
   }
@@ -493,7 +627,6 @@ const getDisplayTotalPrice = (itemData) => {
 
 const calculateUnitPrice = (itemData) => {
   const totalPriceInWan = parseFloat(getDisplayTotalPrice(itemData));
-  // ✓ 【修改】對應新的 Firestore 欄位名稱
   const area = parseFloat(itemData.area_house_ping);
   if (isNaN(totalPriceInWan) || isNaN(area) || area === 0) return '-';
   return (totalPriceInWan / area).toFixed(1);
@@ -517,7 +650,6 @@ function handleOpenSlideViewer() {
 }
 
 function handleRefreshSlide() {
-  // ✓ 【修正】確保傳遞的是 'sales' 或 'quote'，而不是 Slide ID
   refreshSlide(currentViewMode.value);
 }
 
@@ -525,7 +657,6 @@ function handleOpenActivityMessage() {
   isActivityLoading.value = true;
   isActivityDialogVisible.value = true;
   
-  // 模擬載入時間，讓使用者看到 progress circle
   setTimeout(() => {
     isActivityLoading.value = false;
   }, 1200);
@@ -566,6 +697,158 @@ onUnmounted(() => {
     unsubscribe();
   }
 });
+
+
+// 新增：匯出與上傳相關的所有方法
+const exportToExcel = () => {
+    // 確保無論當前顯示的是「住家」還是「店面」，都能匯出完整的戶別資料。
+    if (salesHouseholds.value.length === 0) {
+        toast.info('目前沒有資料可匯出。');
+        return;
+    }
+    const sortedItems = [...salesHouseholds.value].sort((a, b) => {
+        const buildingCompare = String(a.building).localeCompare(String(b.building), 'zh-TW', { numeric: true });
+        if (buildingCompare !== 0) return buildingCompare;
+        return String(a.unitId).localeCompare(String(b.unitId), 'zh-TW', { numeric: true });
+    });
+
+    const dataAsArray = sortedItems.map(item => {
+        return exportOrder.value.map(key => {
+            const value = item[key];
+            if (value instanceof Date) {
+                return value.toISOString().split('T')[0];
+            }
+            if (typeof value === 'boolean') {
+                return value ? 'TRUE' : 'FALSE';
+            }
+            if (value && typeof value.toDate === 'function') { // Firestore Timestamp
+                return value.toDate().toISOString().split('T')[0];
+            }
+            return value;
+        });
+    });
+
+    const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
+    const dataWithHeader = [warningRow, chineseHeaders.value, ...dataAsArray];
+    const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
+
+    const warningStyle = { font: { color: { rgb: "FFFF0000" }, bold: true }, fill: { fgColor: { rgb: "FFFFFF00" } } };
+    ws['A1'].s = warningStyle;
+    
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: exportOrder.value.length - 1 } });
+
+    const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FFD3D3D3" } } };
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        const address = XLSX.utils.encode_cell({ r: 1, c: C });
+        if(ws[address]) ws[address].s = headerStyle;
+    }
+    ws['!freeze'] = { ySplit: 2 };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '戶別資料');
+    const exportFileName = projectName.value || 'unknown-project';
+    XLSX.writeFile(wb, `${exportFileName}_戶別資料備份_${new Date().toISOString().slice(0, 10)}.xlsx`);
+};
+
+const closeUploadDialog = () => {
+    uploadDialog.value = false;
+    uploadedFile.value = null;
+    parsedData.value = [];
+    uploadMessage.value = '';
+};
+
+const handleFileChange = () => {
+    uploadMessage.value = ''; 
+    const file = uploadedFile.value;
+    if (!file) {
+        parsedData.value = [];
+        return;
+    }
+    isParsing.value = true;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+
+            if (dataAsArrays.length < 1) {
+                 throw new Error(`檔案缺少所有必要標頭: ${chineseHeaders.value.join('、')}`);
+            }
+            
+            const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
+            const requiredHeaders = chineseHeaders.value;
+            const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
+            const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
+
+            if (missingHeaders.length > 0 || extraHeaders.length > 0) {
+                let errorMessage = '檔案標頭不符。';
+                if (missingHeaders.length > 0) errorMessage += `\n缺少必要標頭: ${missingHeaders.join('、')}`;
+                if (extraHeaders.length > 0) errorMessage += `\n發現非預期標頭: ${extraHeaders.join('、')}`;
+                throw new Error(errorMessage);
+            }
+
+            const dataRows = dataAsArrays.slice(1);
+            const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
+            
+            const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+                const newRow = {};
+                exportOrder.value.forEach((key, index) => {
+                    newRow[key] = rowArray[index] ?? null;
+                });
+                return newRow;
+            });
+            
+            if (jsonDataWithEnglishKeys.some(row => !row.unitId)) {
+                throw new Error("資料驗證失敗：每一列都必須包含『戶別』。請檢查上傳的檔案。");
+            }
+
+            parsedData.value = jsonDataWithEnglishKeys;
+            uploadMessageType.value = 'success';
+            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+            
+        } catch (err) {
+            uploadMessageType.value = 'error';
+            uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
+            parsedData.value = [];
+        } finally {
+            isParsing.value = false;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+const uploadData = async () => {
+    if (parsedData.value.length === 0) {
+        uploadMessageType.value = 'warning';
+        uploadMessage.value = '沒有可上傳的資料。';
+        return;
+    }
+    isUploading.value = true;
+    uploadMessage.value = '';
+    try {
+        const result = await uploadHouseholds(projectId.value, parsedData.value);
+        
+        if (result.status === 'success') {
+          uploadMessageType.value = 'success';
+          uploadMessage.value = result.message || '戶別資料已成功上傳更新！';
+          setTimeout(() => {
+            closeUploadDialog();
+          }, 2000); 
+        } else {
+          throw new Error(result.message || '發生未知錯誤');
+        }
+    } catch (err) {
+        uploadMessageType.value = 'error';
+        uploadMessage.value = `上傳失敗: ${err.message}`;
+    } finally {
+        isUploading.value = false;
+    }
+};
 
 </script>
 
@@ -819,5 +1102,9 @@ onUnmounted(() => {
 
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
+}
+/* ✅ 新增：上傳提示框的樣式 */
+.pre-wrap-alert {
+   white-space: pre-wrap;
 }
 </style>
