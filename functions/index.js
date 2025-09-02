@@ -752,13 +752,14 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
     const MAX_OPERATIONS_PER_BATCH = 499;
 
     const numericFields = [
-      'area_ancillary_ping', 'area_ancillary_sqm', 'area_balcony_ping', 'area_common_ping', 
+      'area_ancillary_ping', 'area_ancillary_sqm', 'area_terrace_ping', 'area_common_ping', 
       'area_common_sqm', 'area_house_ping', 'area_house_sqm', 'area_main_ping', 
-      'area_main_sqm', 'land_share_ping', 'land_share_sqm', 'payment_contract_amount', 
-      'payment_deposit_amount', 'payment_supplement_amount', 'price_diff', 'price_floor_ancillary', 
-      'price_floor_balcony', 'price_floor_house_only', 'price_floor_house_total', 'price_list_ancillary', 
-      'price_list_balcony', 'price_list_balcony_unit', 'price_list_house_only', 
-      'price_list_house_total', 'price_package_deal', 'price_transaction_house', 'price_transaction_total'
+      'area_main_sqm', 'land_share_ping', 'land_share_sqm', 'land_share_ratio', 'common_area_ratio',
+      'payment_contract_amount', 'payment_deposit_amount', 'payment_supplement_amount', 
+      'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only', 
+      'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit', 
+      'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
+      'price_transaction_house', 'price_transaction_total'
     ];
     const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date'];
 
