@@ -139,13 +139,18 @@
                                              </div>
                                              <div class="area-item">
                                                 <span>附屬建物 (陽台)</span>
-                                                <span class="area-ping-value">{{ formatNumber(totalAncillaryAreaPing, 2) }}</span>
-                                                <span>{{ formatNumber(totalAncillaryAreaSqm, 2) }}</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData.area_ancillary_ping, 2) }}</span>
+                                                <span>{{ formatNumber(unitData.area_ancillary_sqm, 2) }}</span>
                                              </div>
                                              <div class="area-item">
                                                 <span>共用部分 (公設)</span>
                                                 <span class="area-ping-value">{{ formatNumber(unitData.area_common_ping, 2) }}</span>
                                                 <span>{{ formatNumber(unitData.area_common_sqm, 2) }}</span>
+                                             </div>
+                                             <div class="area-item">
+                                                <span>露臺 (不計坪)</span>
+                                                <span class="area-ping-value">{{ formatNumber(unitData.area_terrace_ping, 2) }}</span>
+                                                
                                              </div>
                                           </div>
                                        </div>
@@ -173,10 +178,78 @@
 
                             <div v-if="viewMode === 'sales'">
                                 <v-divider class="my-4"></v-divider>
-                                <SalesInfoSection
-                                    :sales-data="unitData"
-                                    :all-parking-data="allData['車位'] || []"
-                                />
+                                <v-row>
+                                  <v-col cols="12" md="4">
+                                    <div class="info-section">
+                                      <div class="section-title">成交總覽</div>
+                                      <v-list dense>
+                                        <v-list-item title="房屋成交價" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item title="車位總價(成交)" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item class="font-weight-bold total-price-item">
+                                            <v-list-item-title>最終成交總價</v-list-item-title>
+                                            <template v-slot:append>
+                                                <span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span>
+                                            </template>
+                                        </v-list-item>
+                                        <v-list-item class="font-weight-bold total-price-item"> 
+                                            <v-list-item-title>合計底價</v-list-item-title>
+                                            <template v-slot:append>
+                                                <span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span>
+                                            </template>
+                                        </v-list-item>
+                                        <v-list-item title="溢差價" class="premium-price-item">
+                                            <template v-slot:append>
+                                                <span :class="pricePremium >= 0 ? 'text-success' : 'text-error'" style="font-size: 1.1rem; font-weight: 600;">
+                                                  {{ formatNumber(pricePremium, 0) }} 萬
+                                                </span>
+                                            </template>
+                                        </v-list-item>
+                                        </v-list>
+                                      
+                                      <div class="section-subtitle mt-4">持有車位詳情</div>
+                                      <v-alert v-if="assignedParkingLots.length === 0" type="info" variant="tonal" dense class="mt-2">
+                                        此戶別未購買車位
+                                      </v-alert>
+                                      <div v-else class="parking-list">
+                                        <div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item">
+                                          <p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})</p>
+                                          <p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p>
+                                          <p>成交價: {{ formatNumber(parking['車位成交價']) }} 萬</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </v-col>
+
+                                  <v-col cols="12" md="4">
+                                    <div class="info-section">
+                                      <div class="section-title">銷售資訊</div>
+                                      <v-list dense>
+                                        <v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item>
+                                        <v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item>
+                                        <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
+                                        <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
+                                        <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
+                                        <v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
+                                        <v-list-item title="備註">
+                                          <v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                      </v-list>
+                                    </div>
+                                  </v-col>
+
+                                  <v-col cols="12" md="4">
+                                    <div class="info-section">
+                                      <div class="section-title">買方資訊</div>
+                                      <v-list dense>
+                                        <v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item>
+                                        <v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item>
+                                        <v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item>
+                                        <v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item>
+                                        <v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item>
+                                      </v-list>
+                                    </div>
+                                  </v-col>
+                                </v-row>
                             </div>
                         </div>
                         <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
@@ -305,7 +378,6 @@ import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 // ✅【待辦】下一步我們將會修改 updateSalesData 和 cancelPurchase
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase } from '@/api'; 
-import SalesInfoSection from './SalesInfoSection.vue';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
@@ -419,46 +491,76 @@ const calculatedTransactionUnitPrice = computed(() => {
   return 'N/A';
 });
 
-// ✅ 新增：計算附屬建物總面積 (陽台+其他)
-const totalAncillaryAreaPing = computed(() => {
-    if (!props.unitData) return 0;
-    return (props.unitData.area_terrace_ping || 0) + (props.unitData.area_ancillary_ping || 0);
-});
-const totalAncillaryAreaSqm = computed(() => {
-    if (!props.unitData) return 0;
-    return (props.unitData.area_terrace_sqm || 0) + (props.unitData.area_ancillary_sqm || 0);
-});
-
-
 // ✅ 修改：更新 enrichedUnitData 以匹配 salesParkings 結構
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
   const enriched = JSON.parse(JSON.stringify(props.unitData));
   const allParkingLotsForProject = props.allData?.['車位'] || [];
   const currentUnitId = props.unitData.unitId;
-  if (currentUnitId && allParkingLotsForProject.length > 0) {
-    const assignedParkings = allParkingLotsForProject
-      .filter(parkingLot => parkingLot.buyerUnitId === currentUnitId)
-      .map(parkingLot => ({
-        '車位編號': parkingLot.spotId,
-        '車位尺寸': parkingLot.size,
-        '車位類別': parkingLot.type,
-        '車位坪數': parkingLot.area_ping || 'N/A', // 注意：新結構中無坪數，暫時替代
-        '車位總價': parkingLot.price_list,
-        '車位底價': parkingLot.price_floor,
-        '車位狀態': parkingLot.status,
-        '車位成交價': parkingLot.price_transaction !== undefined ? parkingLot.price_transaction : (parkingLot.price_list || 0),
-      }));
-    enriched['持有車位'] = assignedParkings;
-  } else if (!enriched.parkingSpots) { // 使用 Firestore 的 parkingSpots 陣列作為後備
-    enriched['持有車位'] = enriched.parkingSpots || [];
-  }
+
+  const assignedParkings = allParkingLotsForProject
+    .filter(parkingLot => parkingLot.buyerUnitId === currentUnitId)
+    .map(parkingLot => ({
+      '車位編號': parkingLot.spotId,
+      '車位尺寸': parkingLot.size,
+      '車位類別': parkingLot.type,
+      '車位坪數': parkingLot.area_ping || 'N/A',
+      '車位總價': parkingLot.price_list,
+      '車位底價': parkingLot.price_floor,
+      '車位狀態': parkingLot.status,
+      '車位成交價': parkingLot.price_transaction !== undefined && parkingLot.price_transaction !== null 
+                    ? parkingLot.price_transaction 
+                    : (parkingLot.price_list || 0),
+    }));
+
+  enriched['持有車位'] = assignedParkings;
+
   return enriched;
 });
 
-// ✅ 修改：更新 statusOptions 以匹配 salesParameters 結構
+const assignedParkingLots = computed(() => enrichedUnitData.value?.['持有車位'] || []);
+
+const houseTransactionPrice = computed(() => Number(props.unitData?.price_transaction_house) || 0);
+
+const parkingTotalTransactionPrice = computed(() => {
+  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) {
+    return 0;
+  }
+  return assignedParkingLots.value.reduce((total, parking) => {
+    return total + (Number(parking['車位成交價']) || 0);
+  }, 0);
+});
+
+const grandTotalTransactionPrice = computed(() => {
+  return houseTransactionPrice.value + parkingTotalTransactionPrice.value;
+});
+
+// ✅ START: 新增底價與溢價相關的 Computed Properties
+const houseFloorPrice = computed(() => Number(props.unitData?.price_floor_house_total) || 0);
+
+const parkingTotalFloorPrice = computed(() => {
+  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) {
+    return 0;
+  }
+  return assignedParkingLots.value.reduce((total, parking) => {
+    return total + (Number(parking['車位底價']) || 0);
+  }, 0);
+});
+
+const totalFloorPrice = computed(() => {
+  return houseFloorPrice.value + parkingTotalFloorPrice.value;
+});
+
+const pricePremium = computed(() => {
+  // 只有在成交價和底價都有效時才計算
+  if (grandTotalTransactionPrice.value > 0 && totalFloorPrice.value > 0) {
+    return grandTotalTransactionPrice.value - totalFloorPrice.value;
+  }
+  return 0;
+});
+// ✅ END: 新增底價與溢價相關的 Computed Properties
+
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
-// ✅【待辦】銷售人員資料來源待確認，暫時維持舊邏輯
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
 const buyerInfoOptions = computed(() => {
     const options = {};
@@ -480,7 +582,6 @@ function openPaymentSettings() {
   paymentSettingsDialog.value = true;
 }
 
-// ✅ 修改：更新 startEditing 以匹配新欄位
 function startEditing() {
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
   if (!editingData.value) {
@@ -489,7 +590,6 @@ function startEditing() {
   const currentUnitId = props.unitData ? props.unitData.unitId : null;
   const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
   
-  // 檢查 enrichedUnitData 是否已經有車位資料
   const existingParkings = enrichedUnitData.value ? enrichedUnitData.value['持有車位'] : [];
   
   if (existingParkings && existingParkings.length > 0) {
@@ -507,22 +607,18 @@ function cancelEditing() {
   editingData.value = null;
 }
 
-// ✅【待辦】此函式將在下一步驟中被重構，以串接新的後端 API
 async function saveChanges() {
   if (!editingData.value) return;
   isSaving.value = true;
   savingText.value = '儲存中，請稍候...';
   try {
       const data = editingData.value;
-      // ... 舊的 payload 組合邏輯暫時保留 ...
-      // 我們會在下一步驟完全替換掉這裡的 payload 和 API call
       const payload = {
           projectName: props.projectName,
           unitId: props.unitData.unitId, 
-          // ... 其他舊資料 ...
       };
       
-      const result = await updateSalesData(payload); // 呼叫舊 API (下一步會換掉)
+      const result = await updateSalesData(payload); 
       if (result.status !== 'success') throw new Error(result.message);
       
       alert('儲存成功！');
@@ -536,9 +632,7 @@ async function saveChanges() {
   }
 }
 
-// ✅ 修改：hasFloorplans 的來源可能也需要更新
 const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
-// ✅ 修改：使用 salesStatus_quote
 const canAddToQuote = computed(() => (props.unitData && props.unitData.salesStatus_quote !== '已售'));
 const addToQuoteButtonText = computed(() => '加入報價');
 
@@ -554,7 +648,6 @@ const proxiedFirstImageUrl = computed(() => {
   return '';
 });
 
-// ✅ 修改：使用 salesStatus_quote
 const shouldHidePrice = computed(() => props.viewMode === 'quote' && props.unitData?.salesStatus_quote === '已售');
 
 watch(() => props.show, (newVal) => {
@@ -582,12 +675,37 @@ function formatNumber(value, frac = 0) {
 }
 
 function formatPercentage(value) {
-    // ✅ 修改：百分比欄位現在是字串，需先轉換為數字
   const num = parseFloat(value);
   if (isNaN(num)) {
       return 'N/A';
   }
   return `${(num * 100).toFixed(2)}%`;
+}
+
+function formatBoolean(value) {
+  if (value === true) return '是';
+  if (value === false) return '否';
+  return '-';
+}
+
+function formatDate(timestamp) {
+  if (!timestamp || typeof timestamp.toDate !== 'function') {
+    return '-';
+  }
+  try {
+    return timestamp.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (e) {
+    return '無效日期';
+  }
+}
+
+function formatAddress(data, type) {
+    if (!data) return '-';
+    const city = data[`buyer${type}AddressCity`] || '';
+    const district = data[`buyer${type}AddressDistrict`] || '';
+    const detail = data[`buyer${type}AddressDetail`] || '';
+    const fullAddress = `${city}${district}${detail}`;
+    return fullAddress || '-';
 }
 </script>
 
@@ -599,10 +717,11 @@ function formatPercentage(value) {
 .info-section { padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; height: 100%; }
 .top-info-row .info-section { height: 100%; }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #1a3a6e; }
+.section-subtitle { font-size: 1rem; font-weight: 500; color: #37474f; margin-bottom: 8px; }
 .highlight-price { font-size: 1.8rem !important; font-weight: 700 !important; color: #c62828 !important; }
 .highlight-price-base { font-size: 1.5rem !important; font-weight: 500 !important; color: #455a64 !important; }
 .highlight-price-final { 
-  font-size: 1.5rem !important; 
+  font-size: 1.8rem !important; 
   font-weight: 700 !important; 
   color: #2E7D32 !important; 
 }
@@ -655,4 +774,41 @@ function formatPercentage(value) {
   right: 24px;
   z-index: 1;
 }
+
+.total-price-item {
+  border-top: 1px solid #e0e0e0;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.parking-list {
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.parking-item {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.parking-item p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.parking-title {
+  font-weight: 600;
+  color: #1a3a6e;
+}
+/* ✅ START: 新增樣式 */
+.base-price-item, .premium-price-item {
+  border-top: 1px solid #eee;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+/* ✅ END: 新增樣式 */
 </style>

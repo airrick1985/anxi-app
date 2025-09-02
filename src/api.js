@@ -3029,7 +3029,7 @@ export const deleteSalesParameter = async (docId) => {
 
 
 /**
- * ✓ 【新增】即時監聽銷控系統所需的所有資料
+ * ✅ 【新增】即時監聽銷控系統所需的所有資料
  * @param {string} projectId - 專案 ID (e.g., "fuyu61")
  * @param {function} onDataChange - 收到更新資料時的回呼函式
  * @param {function} onError - 發生錯誤時的回呼函式
@@ -3039,20 +3039,24 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   const projectDocRef = doc(db, 'projects', projectId);
   const parametersQuery = query(collection(db, 'salesParameters'), where('projectId', '==', projectId));
   const householdsQuery = query(collection(db, 'salesHouseholds'), where('projectId', '==', projectId));
+  // ✅ 取得同專案的所有車位資料
+  const parkingsQuery = query(collection(db, 'salesParkings'), where('projectId', '==', projectId)); 
 
   let combinedData = {
     project: null,
     parameters: [],
-    households: []
+    households: [],
+    parkings: [] // ✅ 新增 parkings 屬性
   };
   
   let projectLoaded = false;
   let paramsLoaded = false;
   let householdsLoaded = false;
+  let parkingsLoaded = false; // ✅ 新增 parkings 載入旗標
 
   const checkAndEmitData = () => {
-    // 確保所有監聽器都至少回傳過一次資料後 (即使是空的)，才呼叫回呼函式
-    if (projectLoaded && paramsLoaded && householdsLoaded) {
+    // ✅ 確保所有監聽器都至少回傳過一次資料後才呼叫回呼函式
+    if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded) {
       onDataChange(combinedData);
     }
   };
@@ -3062,7 +3066,7 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
       combinedData.project = docSnap.data();
     } else {
       console.warn(`[API] 找不到專案文件: ${projectId}`);
-      combinedData.project = {}; // 即使找不到，也標記為已載入
+      combinedData.project = {}; 
     }
     projectLoaded = true;
     checkAndEmitData();
@@ -3080,11 +3084,19 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
     checkAndEmitData();
   }, onError);
 
-  // 回傳一個函式，用於一次性地停止所有三個監聽器
+  // ✅ 新增對 salesParkings 的監聽
+  const unsubParkings = onSnapshot(parkingsQuery, (snapshot) => {
+    combinedData.parkings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    parkingsLoaded = true;
+    checkAndEmitData();
+  }, onError);
+
+  // ✅ 回傳一個函式，用於一次性地停止所有監聽器
   return () => {
     unsubProject();
     unsubParams();
     unsubHouseholds();
+    unsubParkings(); // ✅ 確保停止車位監聽
   };
 };
 

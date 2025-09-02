@@ -1,219 +1,120 @@
 <template>
   <div class="pa-2" :class="{ 'mb-8': isMobile }">
     <v-form>
-      <div class="info-section">
-        <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
-        <v-row>
-          <v-col cols="12" sm="6" md="4"><v-select label="後台狀態" :items="statusOptions" v-model="editableData['銷控後台狀態']"></v-select></v-col>
-          <v-col cols="12" sm="6" md="4"><v-select label="銷售人員" :items="personnelOptions" v-model="editableData['銷售']"></v-select></v-col>
-          <v-col cols="12" sm="12" md="4">
-            <div class="d-flex align-center">
+      <v-row>
+        <v-col cols="12" md="4">
+          <div class="info-section">
+            <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
+            <v-select label="後台狀態" :items="statusOptions" v-model="editableData.salesStatus_backend" class="mb-4"></v-select>
+            <v-select label="銷售人員" :items="personnelOptions" v-model="editableData.salesperson" class="mb-4"></v-select>
+            <div class="d-flex align-center mb-4">
               <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
-              <v-btn class="ml-2" color="primary" @click="isParkingModalOpen = true"><v-icon left>mdi-pencil</v-icon>編輯車位</v-btn>
+              <v-btn class="ml-2" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
             </div>
-          </v-col>
-          <v-col cols="12" sm="4">
             <label class="v-label text-caption">小訂日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData['小訂日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
-          </v-col>
-          <v-col cols="12" sm="4">
-            <label class="v-label text-caption">補足日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData['補足日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
-          </v-col>
-          <v-col cols="12" sm="4">
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData['簽約日期']" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
-          </v-col>
-          <v-col cols="12" sm="4"><v-text-field label="小訂金額" v-model.number="editableData['小訂金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
-          <v-col cols="12" sm="4"><v-text-field label="補足金額" v-model.number="editableData['補足金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
-          <v-col cols="12" sm="4"><v-text-field label="簽約金額" v-model.number="editableData['簽約金額']" type="number" prefix="NT$" :min="0"></v-text-field></v-col>
-        </v-row>
-      </div>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
+          </div>
+        </v-col>
 
-      <div class="info-section mt-4">
-        <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
-        <v-row>
-          <v-col cols="12" sm="6" md="4">
-            <v-select
-              label="合約方式"
-              :items="contractTypeOptions"
-              v-model="editableData['合約方式']"
-              :loading="loadingOptions"
-            ></v-select>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-select
-              label="是否首購"
-              :items="firstPurchaseOptions"
-              v-model="editableData['是否首購']"
-              :loading="loadingOptions"
-            ></v-select>
-          </v-col>
-          <v-col cols="12" sm="6" md="4"></v-col> <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="房屋成交價(萬)"
-              v-model.number="editableData['房屋成交價']"
-              type="number"
-              :min="0"
-            ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="房屋底價(萬)"
-              :model-value="houseBasePrice"
-              readonly
-              hint="自動帶入"
-              persistent-hint
-              class="base-price-field" ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4"></v-col>
+        <v-col cols="12" md="4">
+          <div class="info-section">
+            <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
+            <v-select label="合約方式" :items="contractTypeOptions" v-model="editableData.contractType" class="mb-4"></v-select>
+            <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
+              <v-radio label="是" :value="true"></v-radio>
+              <v-radio label="否" :value="false"></v-radio>
+            </v-radio-group>
+            <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="mb-2"></v-text-field>
+            <v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="由編輯車位彈窗自動計算" persistent-hint class="mb-2"></v-text-field>
+            <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
+            <v-text-field label="溢差價(萬)" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field>
+          </div>
+          <div class="info-section mt-4">
+             <div class="section-title"><v-icon>mdi-comment-text-outline</v-icon> 備註</div>
+             <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>
+          </div>
+        </v-col>
 
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="車位成交價(萬)"
-              :model-value="parkingSalePrice"
-              readonly
-              hint="由編輯車位彈窗自動計算"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="車位底價(萬)"
-              :model-value="parkingBasePrice"
-              readonly
-              hint="由編輯車位彈窗自動計算"
-              persistent-hint
-              class="base-price-field" ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4"></v-col>
+        <v-col cols="12" md="4">
+          <div class="info-section">
+            <div class="section-title"><v-icon>mdi-account-details</v-icon> 買方資訊</div>
+            <v-text-field label="買方姓名" v-model="editableData.buyerName" class="mb-2"></v-text-field>
+            <v-text-field label="聯絡電話" v-model="editableData.buyerPhone" type="tel" class="mb-2"></v-text-field>
+            <v-text-field label="身分證字號" v-model="editableData.buyerIdNumber" class="mb-2"></v-text-field>
+            <label class="v-label text-caption">出生年月日</label>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.buyerDateOfBirth" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-2"></VueDatePicker>
+            <v-text-field label="EMAIL" v-model="editableData.buyerEmail" type="email" class="mb-4"></v-text-field>
+            
+            <div>
+              <label class="form-label">通訊地址</label>
+              <v-row dense>
+                <v-col cols="6">
+                  <v-select
+                    v-model="mailingCounty"
+                    :items="counties"
+                    label="縣市"
+                    :loading="loadingCounties"
+                    density="compact"
+                    variant="outlined"
+                  ></v-select>
+                </v-col>
+                <v-col cols="6">
+                  <v-select
+                    :key="`mailing-towns-${mailingCounty}`"
+                    v-model="mailingTown"
+                    :items="mailingTowns"
+                    label="鄉鎮市區"
+                    :loading="loadingMailingTowns"
+                    :disabled="!mailingCounty"
+                    density="compact"
+                    variant="outlined"
+                  ></v-select>
+                </v-col>
+              </v-row>
+              <v-text-field label="詳細地址" v-model="editableData.buyerMailingAddressDetail" density="compact" variant="outlined"></v-text-field>
+            </div>
 
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="成交總價(萬)"
-              :model-value="totalSalePrice"
-              readonly
-              hint="自動計算"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="總底價(萬)"
-              :model-value="totalBasePrice"
-              readonly
-              hint="自動計算"
-              persistent-hint
-              class="base-price-field" ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="溢差價(萬)"
-              :model-value="priceDifference"
-              readonly
-              hint="自動計算"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field
-              label="房屋成交單價(萬/坪)"
-              :model-value="unitSalePrice"
-              readonly
-              hint="自動計算"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-        </v-row>
-      </div>
-
-      <div class="info-section mt-4">
-        <div class="section-title"><v-icon>mdi-account-details</v-icon> 買方資訊</div>
-        <v-row>
-          <v-col cols="12" md="4"><v-text-field label="買方姓名" v-model="editableData['買方姓名']"></v-text-field></v-col>
-          <v-col cols="12" md="4"><v-text-field label="身分證字號" v-model="editableData['身分證字號']"></v-text-field></v-col>
-          <v-col cols="12" md="4"><VueDatePicker :locale="'zh-TW'" v-model="editableData['出生年月日']" placeholder="出生年月日" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker></v-col>
-          <v-col cols="12" md="4"><v-text-field label="聯絡電話" v-model="editableData['電話']" type="tel"></v-text-field></v-col>
-          <v-col cols="12" md="8"><v-text-field label="EMAIL" v-model="editableData['EMAIL']" type="email"></v-text-field></v-col>
-          <v-col cols="12">
-            <label class="form-label">通訊地址</label>
-            <v-row dense>
-              <v-col cols="6">
-                <v-select
-                  v-model="mailingCounty"
-                  :items="counties"
-                  item-title="name"
-                  item-value="code"
-                  label="縣市"
-                  :loading="loadingCounties"
-                  density="compact"
-                  variant="outlined"
-                ></v-select>
-              </v-col>
-              <v-col cols="6">
-                <v-select
-                  :key="`mailing-towns-${mailingCounty}`"
-                  v-model="mailingTown"
-                  :items="mailingTowns"
-                  item-title="name"
-                  item-value="name"
-                  label="鄉鎮市區"
-                  :loading="loadingMailingTowns"
-                  :disabled="!mailingCounty"
-                  density="compact"
-                  variant="outlined"
-                ></v-select>
-              </v-col>
-            </v-row>
-            <v-text-field label="詳細地址" v-model="editableData['通訊地址_詳細']" density="compact" variant="outlined"></v-text-field>
-          </v-col>
-          <v-col cols="12"><v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox></v-col>
-          <v-col cols="12" v-if="!isPermanentSameAsMailing">
-            <label class="form-label">戶籍地址</label>
-            <v-row dense>
-              <v-col cols="6">
-                <v-select
-                  v-model="permanentCounty"
-                  :items="counties"
-                  item-title="name"
-                  item-value="code"
-                  label="縣市"
-                  :loading="loadingCounties"
-                  density="compact"
-                  variant="outlined"
-                ></v-select>
-              </v-col>
-              <v-col cols="6">
-                <v-select
-                  :key="`permanent-towns-${permanentCounty}`"
-                  v-model="permanentTown"
-                  :items="permanentTowns"
-                  item-title="name"
-                  item-value="name"
-                  label="鄉鎮市區"
-                  :loading="loadingPermanentTowns"
-                  :disabled="!permanentCounty"
-                  density="compact"
-                  variant="outlined"
-                ></v-select>
-              </v-col>
-            </v-row>
-            <v-text-field label="詳細地址" v-model="editableData['戶籍地址_詳細']" density="compact" variant="outlined"></v-text-field>
-          </v-col>
-        </v-row>
-      </div>
-
-      <div class="info-section mt-4">
-        <div class="section-title"><v-icon>mdi-comment-text-outline</v-icon> 備註</div>
-        <v-textarea label="備註" v-model="editableData['備註']" rows="3" auto-grow></v-textarea>
-      </div>
+            <v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox>
+            
+            <div v-if="!isPermanentSameAsMailing">
+              <label class="form-label">戶籍地址</label>
+              <v-row dense>
+                <v-col cols="6">
+                  <v-select
+                    v-model="permanentCounty"
+                    :items="counties"
+                    label="縣市"
+                    :loading="loadingCounties"
+                    density="compact"
+                    variant="outlined"
+                  ></v-select>
+                </v-col>
+                <v-col cols="6">
+                  <v-select
+                    :key="`permanent-towns-${permanentCounty}`"
+                    v-model="permanentTown"
+                    :items="permanentTowns"
+                    label="鄉鎮市區"
+                    :loading="loadingPermanentTowns"
+                    :disabled="!permanentCounty"
+                    density="compact"
+                    variant="outlined"
+                  ></v-select>
+                </v-col>
+              </v-row>
+              <v-text-field label="詳細地址" v-model="editableData.buyerPermanentAddressDetail" density="compact" variant="outlined"></v-text-field>
+            </div>
+            </div>
+        </v-col>
+      </v-row>
     </v-form>
     
     <ParkingEditModal 
       v-model:show="isParkingModalOpen"
-      :all-parking-data="allParkingDataForModal"
-      :initial-selected-parking="editableData['持有車位'] || []"
+      :all-parking-data="allParkingData"
+      :initial-selected-parking="editableData.parkingSpots || []"
       @confirm="handleParkingUpdate"
       @request-open-slide="$emit('request-open-slide')"
     />
@@ -225,13 +126,10 @@ import { ref, computed, watch, defineAsyncComponent, defineProps, defineEmits, o
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
-import { fetchSalesOptions } from '@/api'; 
-import { useUserStore } from '@/store/user';
 import { useDisplay } from 'vuetify';
 
-const NLSC_API_BASE_URL = import.meta.env.PROD 
-  ? 'https://api.nlsc.gov.tw' 
-  : '/api-nlsc';
+// ✅ 假設您的 vite.config.js 中已設定好代理
+const NLSC_API_BASE_URL = '/api-nlsc'; 
 
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
@@ -241,7 +139,6 @@ const props = defineProps({
   personnelOptions: { type: Array, default: () => [] },
   allParkingData: { type: Array, default: () => [] },
   projectName: { type: String, required: true },
- 
   contractTypeOptions: { type: Array, default: () => [] },
   firstPurchaseOptions: { type: Array, default: () => [] },
 });
@@ -259,24 +156,7 @@ const editableData = computed({
   set: (newValue) => emit('update:modelValue', newValue)
 });
 
-
-const houseBasePrice = computed(() => {
-  return editableData.value?.['房屋底價'] || 0;
-});
-
-const parkingBasePrice = computed(() => {
-  if (!editableData.value?.持有車位 || !Array.isArray(editableData.value.持有車位)) {
-    return 0;
-  }
-  return editableData.value.持有車位.reduce((sum, parking) => {
-    return sum + (Number(parking['車位底價']) || 0);
-  }, 0);
-});
-
-const totalBasePrice = computed(() => {
-  return houseBasePrice.value + parkingBasePrice.value;
-});
-
+// ✅ START: 新增地址相關的 ref
 const counties = ref([]);
 const mailingTowns = ref([]);
 const permanentTowns = ref([]);
@@ -287,30 +167,27 @@ const permanentTown = ref(null);
 const loadingCounties = ref(false);
 const loadingMailingTowns = ref(false);
 const loadingPermanentTowns = ref(false);
-
+// ✅ END: 新增地址相關的 ref
 
 onMounted(async () => {
-  
+  // ✅ 載入元件時獲取縣市列表並初始化地址
   await fetchCounties();
-  await initializeAddress();
+  initializeAddress();
 });
 
-
-
-const parseXml = (xmlString) => {
-    const parser = new DOMParser();
-    return parser.parseFromString(xmlString, "application/xml");
-};
-
+// ✅ START: 新增地址相關的所有函式與監聽器
 const fetchCounties = async () => {
     loadingCounties.value = true;
     try {
         const response = await axios.get(`${NLSC_API_BASE_URL}/other/ListCounty`);
-        const xmlDoc = parseXml(response.data);
-        const countyNodes = xmlDoc.querySelectorAll('countyItem'); 
+        // API 回傳的是 XML，需要解析
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(response.data, "application/xml");
+        const countyNodes = xmlDoc.querySelectorAll('countyItem');
+        // 將 XML 節點轉換為 Vuetify select 需要的格式
         counties.value = Array.from(countyNodes).map(node => ({
-            name: node.querySelector('countyname').textContent,
-            code: node.querySelector('countycode').textContent
+            title: node.querySelector('countyname').textContent,
+            value: node.querySelector('countycode').textContent
         }));
     } catch (error) {
         console.error("無法獲取縣市列表:", error);
@@ -329,9 +206,10 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     try {
         const url = `${NLSC_API_BASE_URL}/other/ListTown1/${countyCode}`;
         const response = await axios.get(url);
+        // API 回傳的是 JSON 陣列
         targetTownsRef.value = response.data.map(item => ({
-            name: item.townname,
-            code: item.towncode,
+            title: item.townname,
+            value: item.townname, // 直接用中文名稱當作 value
         }));
     } catch (error) {
         console.error(`無法獲取鄉鎮市區列表 (代碼: ${countyCode}):`, error);
@@ -340,98 +218,100 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     }
 };
 
-const initializeAddress = async () => {
-    const initialData = editableData.value;
-    if (!initialData || !counties.value.length) return;
+// 初始化地址：當編輯的資料載入時，設定好地址選單的預設值
+const initializeAddress = () => {
+    const data = editableData.value;
+    if (!data || counties.value.length === 0) return;
 
-    const mailingCountyName = initialData['通訊地址_縣市'];
+    // 設定通訊地址
+    const mailingCountyName = data.buyerMailingAddressCity;
     if (mailingCountyName) {
-        const county = counties.value.find(c => c.name === mailingCountyName);
+        const county = counties.value.find(c => c.title === mailingCountyName);
         if (county) {
-            mailingCounty.value = county.code;
+            mailingCounty.value = county.value;
+            // 監聽 mailingTowns 載入完成後，再設定鄉鎮的預設值
             const unwatch = watch(loadingMailingTowns, (isLoading) => {
                 if (!isLoading) {
-                    nextTick(() => {
-                        mailingTown.value = initialData['通訊地址_區域'];
-                    });
+                    nextTick(() => { mailingTown.value = data.buyerMailingAddressDistrict; });
                     unwatch();
                 }
             });
         }
     }
 
-    const permanentCountyName = initialData['戶籍地址_縣市'];
+    // 設定戶籍地址
+    const permanentCountyName = data.buyerPermanentAddressCity;
     if (permanentCountyName) {
-      const county = counties.value.find(c => c.name === permanentCountyName);
+      const county = counties.value.find(c => c.title === permanentCountyName);
       if (county) {
-        permanentCounty.value = county.code;
+        permanentCounty.value = county.value;
         const unwatch = watch(loadingPermanentTowns, (isLoading) => {
             if (!isLoading) {
-                nextTick(() => {
-                    permanentTown.value = initialData['戶籍地址_區域'];
-                });
+                nextTick(() => { permanentTown.value = data.buyerPermanentAddressDistrict; });
                 unwatch();
             }
         });
       }
     }
-}
+};
 
-watch(mailingCounty, (newCountyCode, oldCountyCode) => {
-    const selectedCounty = counties.value.find(c => c.code === newCountyCode);
-    editableData.value['通訊地址_縣市'] = selectedCounty ? selectedCounty.name : '';
-    if (newCountyCode !== oldCountyCode) {
-       mailingTown.value = null;
-    }
+// 監聽縣市選擇的變化，並更新到 editableData
+watch(mailingCounty, (newCountyCode) => {
+    const selectedCounty = counties.value.find(c => c.value === newCountyCode);
+    editableData.value.buyerMailingAddressCity = selectedCounty ? selectedCounty.title : '';
+    mailingTown.value = null; // 清空鄉鎮選擇
     fetchTowns(newCountyCode, mailingTowns, loadingMailingTowns);
 });
-
 watch(mailingTown, (newTownName) => {
-    editableData.value['通訊地址_區域'] = newTownName || '';
+    editableData.value.buyerMailingAddressDistrict = newTownName || '';
 });
-watch(permanentCounty, (newCountyCode, oldCountyCode) => {
-    const selectedCounty = counties.value.find(c => c.code === newCountyCode);
-    editableData.value['戶籍地址_縣市'] = selectedCounty ? selectedCounty.name : '';
-    if (newCountyCode !== oldCountyCode) {
-        permanentTown.value = null;
-    }
+
+watch(permanentCounty, (newCountyCode) => {
+    const selectedCounty = counties.value.find(c => c.value === newCountyCode);
+    editableData.value.buyerPermanentAddressCity = selectedCounty ? selectedCounty.title : '';
+    permanentTown.value = null;
     fetchTowns(newCountyCode, permanentTowns, loadingPermanentTowns);
 });
 watch(permanentTown, (newTownName) => {
-    editableData.value['戶籍地址_區域'] = newTownName || '';
+    editableData.value.buyerPermanentAddressDistrict = newTownName || '';
 });
+
+// 監聽 "地址相同" checkbox 的變化
 watch(isPermanentSameAsMailing, (isSame) => {
   if (isSame) {
     permanentCounty.value = mailingCounty.value;
-    editableData.value['戶籍地址_詳細'] = editableData.value['通訊地址_詳細'];
+    editableData.value.buyerPermanentAddressDetail = editableData.value.buyerMailingAddressDetail;
     const unwatch = watch(loadingPermanentTowns, (isLoading) => {
         if (!isLoading) {
-            nextTick(() => {
-                permanentTown.value = mailingTown.value;
-            });
+            nextTick(() => { permanentTown.value = mailingTown.value; });
             unwatch();
         }
     });
   }
 });
-const allParkingDataForModal = computed(() => props.allParkingData);
+// ✅ END: 新增地址相關的所有函式與監聽器
+
+
+// (以下是價格計算的 computed 屬性，維持不變)
+const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
+const parkingBasePrice = computed(() => {
+  if (!editableData.value?.parkingSpots || !Array.isArray(editableData.value.parkingSpots)) return 0;
+  return editableData.value.parkingSpots.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
+});
+const totalBasePrice = computed(() => houseBasePrice.value + parkingBasePrice.value);
 const parkingDisplayText = computed(() => {
-    const parking = editableData.value?.['持有車位'] || [];
+    const parking = editableData.value?.parkingSpots || [];
     if (parking.length === 0) return '尚未設定';
-    return parking.map(p => p.車位編號).join(', ');
+    return parking.map(p => p.spotId).join(', ');
 });
-function handleParkingUpdate(updatedParkingList) {
-    const newData = { ...editableData.value, '持有車位': updatedParkingList };
-    emit('update:modelValue', newData);
-}
 const parkingSalePrice = computed(() => {
-    const parking = editableData.value?.['持有車位'] || [];
-    return parking.reduce((sum, p) => sum + (Number(p.車位成交價) || 0), 0);
+    const parking = editableData.value?.parkingSpots || [];
+    return parking.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
 });
-const totalSalePrice = computed(() => (Number(editableData.value?.['房屋成交價']) || 0) + parkingSalePrice.value);
+const totalSalePrice = computed(() => (Number(editableData.value?.price_transaction_house) || 0) + parkingSalePrice.value);
 const unitSalePrice = computed(() => {
-    const housePrice = Number(editableData.value?.['房屋成交價']) || 0;
-    const area = Number(props.modelValue?.['房屋面積(坪)']);
+    const housePrice = Number(editableData.value?.price_transaction_house) || 0;
+    const area = Number(editableData.value?.area_house_ping);
     if (!area) return 0;
     return (housePrice / area).toFixed(2);
 });
@@ -439,13 +319,28 @@ const priceDifference = computed(() => {
   if (!totalSalePrice.value || !totalBasePrice.value) return 0;
   return totalSalePrice.value - totalBasePrice.value;
 });
+function handleParkingUpdate(updatedParkingList) {
+    const newData = { ...editableData.value, parkingSpots: updatedParkingList };
+    emit('update:modelValue', newData);
+}
 </script>
 
 <style scoped>
-.info-section { padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; }
+.info-section { 
+  padding: 16px; 
+  border: 1px solid #e0e0e0; 
+  border-radius: 8px; 
+  height: 100%;
+}
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
 .base-price-field :deep(.v-field) {
-  background-color: #fce4ec; /* 接近粉色的背景，表示為底價 */
+  background-color: #fce4ec; 
+}
+.mb-4 {
+  margin-bottom: 16px;
+}
+.mb-2 {
+  margin-bottom: 8px;
 }
 </style>

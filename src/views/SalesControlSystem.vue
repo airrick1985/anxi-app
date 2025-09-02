@@ -248,6 +248,7 @@
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
       :project-name="project.name"
+      :all-data="allDataForModal"
       @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
@@ -404,7 +405,7 @@
           <v-spacer></v-spacer>
           <v-btn color="grey" variant="text" @click="closeUploadDialog">取消</v-btn>
           <v-btn 
-            color="orange" 
+            color="error" 
             variant="flat" 
             @click="uploadData" 
             :loading="isUploading"
@@ -452,10 +453,32 @@ const COLUMN_DEFINITIONS = [
     { key: 'salesStatus_quote', title: '報價系統狀態' },
     { key: 'buyerName', title: '買方姓名' },
     { key: 'buyerPhone', title: '買方電話' },
+    // ✅ 新增：詳細買方資料欄位
+    { key: 'buyerIdNumber', title: '身分證字號' },
+    { key: 'buyerDateOfBirth', title: '出生年月日' },
+    { key: 'buyerEmail', title: 'EMAIL' },
+    { key: 'buyerMailingAddressCity', title: '通訊地址_縣市' },
+    { key: 'buyerMailingAddressDistrict', title: '通訊地址_區域' },
+    { key: 'buyerMailingAddressDetail', title: '通訊地址_詳細' },
+    { key: 'buyerPermanentAddressCity', title: '戶籍地址_縣市' },
+    { key: 'buyerPermanentAddressDistrict', title: '戶籍地址_區域' },
+    { key: 'buyerPermanentAddressDetail', title: '戶籍地址_詳細' },
+    { key: 'buyerGender', title: '性別' },
+    { key: 'buyerMaritalStatus', title: '婚姻狀況' },
+    { key: 'buyerOccupationIndustry', title: '行業別' },
+    { key: 'buyerOccupationTitle', title: '職務' },
+    { key: 'buyerPurchasePurpose', title: '購買用途' },
+    { key: 'buyerHasPurchasedFuyu', title: '已購買富宇房子' },
+    { key: 'buyerEmergencyContactName', title: '緊急聯絡人' },
+    { key: 'buyerEmergencyContactPhone', title: '緊急聯絡人電話' },
+    { key: 'buyerEmergencyContactRelationship', title: '緊急聯絡人關係' },
+    { key: 'referrerName', title: '介紹人姓名' },
+    { key: 'referrerPhone', title: '介紹人電話' },
+    // --- 原有欄位 ---
     { key: 'salesperson', title: '銷售人員' },
     { key: 'contractType', title: '合約方式' },
     { key: 'isFirstTimeBuyer', title: '是否首購' },
-    // --- 新增的面積與價格欄位 ---
+    // --- 面積與價格欄位 ---
     { key: 'area_house_sqm', title: '房屋面積(平方公尺)' },
     { key: 'area_house_ping', title: '房屋面積(坪)' },
     { key: 'area_main_sqm', title: '主建物面積(平方公尺)' },
@@ -478,6 +501,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'price_floor_terrace', title: '露臺底價' },
     { key: 'price_floor_ancillary', title: '其他附屬底價' },
     { key: 'price_floor_house_total', title: '房屋總底價' },
+    { key: 'price_transaction_house', title: '房屋成交價' }, 
     { key: 'price_package_deal', title: '配套房屋總價' },
     { key: 'price_package', title: '配套價格' },
     // --- 其他欄位 ---
@@ -522,6 +546,8 @@ let unsubscribe = null;
 const project = ref({ name: '讀取中...' });
 const salesParameters = ref([]);
 const salesHouseholds = ref([]);
+const salesParkings = ref([]); // ✅ 新增一個 ref 來儲存車位資料
+
 
 const headerTopRef = ref(null);
 const headerLeftRef = ref(null);
@@ -544,6 +570,12 @@ const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
 
+// ✅ 新增一個 computed 屬性，將 modal 需要的所有資料打包
+const allDataForModal = computed(() => ({
+  '參數': salesParameters.value,
+  '車位': salesParkings.value,
+  // 未來如果 modal 需要其他資料，也可以從這裡加入
+}));
 
 const activitySlideEmbedUrl = computed(() => {
   const slideId = project.value.activityMessageSlideId;
@@ -691,6 +723,7 @@ onMounted(() => {
       project.value = data.project || { name: '專案資料載入失敗' };
       salesParameters.value = data.parameters || [];
       salesHouseholds.value = data.households || [];
+      salesParkings.value = data.parkings || []; // ✅ 接收 API 回傳的車位資料
       if(loading.value) loading.value = false;
     },
     (err) => {

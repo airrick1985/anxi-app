@@ -23,12 +23,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(p, index) in localParking" :key="p['車位編號']">
-              <td>{{ p['車位編號'] }}</td>
-              <td>{{ p['車位底價'] }}</td>
+            <tr v-for="(p, index) in localParking" :key="p.spotId">
+              <td>{{ p.spotId }}</td>
+              <td>{{ p.price_floor }}</td>
               <td>
                 <v-text-field
-                  v-model.number="p['車位成交價']"
+                  v-model.number="p.price_transaction"
                   type="number"
                   density="compact"
                   hide-details
@@ -36,7 +36,7 @@
                 ></v-text-field>
               </td>
               <td>
-                <v-btn icon="mdi-close-circle-outline" size="M-small" variant="text" color="red" @click="removeParking(index)"></v-btn>
+                <v-btn icon="mdi-close-circle-outline" size="small" variant="text" color="red" @click="removeParking(index)"></v-btn>
               </td>
             </tr>
           </tbody>
@@ -79,7 +79,6 @@ const props = defineProps({
   initialSelectedParking: { type: Array, default: () => [] }
 });
 
-// ✅ 2. 在 defineEmits 中加入 'request-open-slide'
 const emit = defineEmits(['update:show', 'confirm', 'request-open-slide']);
 
 const localParking = ref([]);
@@ -87,20 +86,22 @@ const newParkingSelection = ref(null);
 
 watch(() => props.show, (newVal) => {
   if (newVal) {
+    // ✅ 深拷貝傳入的車位資料，確保是獨立副本
     localParking.value = JSON.parse(JSON.stringify(props.initialSelectedParking));
     newParkingSelection.value = null;
   }
 });
 
+// ✅ 更新 computed 屬性，使其讀取 Firestore 欄位
 const availableParkingOptions = computed(() => {
-  const selectedIds = new Set(localParking.value.map(p => p['車位編號']));
+  const selectedIds = new Set(localParking.value.map(p => p.spotId));
   return props.allParkingData
-    .filter(p => !selectedIds.has(p['車位編號']))
+    .filter(p => !selectedIds.has(p.spotId))
     .map(p => {
-      const isSold = p['銷控狀態'] === '已售';
-      const backendStatusText = p['銷控後台狀態'] ? ` - ${p['銷控後台狀態']}` : '';
+      const isSold = p.status === '已售';
+      const backendStatusText = p.status_backend ? ` - ${p.status_backend}` : '';
       return {
-        displayText: `${p['車位編號']} (表價: ${p['車位表價']}萬)${isSold ? ' - 已售' : ''}${backendStatusText}`,
+        displayText: `${p.spotId} (表價: ${p.price_list}萬)${isSold ? ' - 已售' : ''}${backendStatusText}`,
         originalData: p,
         disabled: isSold
       };
@@ -112,12 +113,22 @@ const itemProps = (item) => ({
   class: item.disabled ? 'text-grey' : ''
 });
 
+// ✅ 更新新增邏輯，使其使用 Firestore 欄位
 function addParking() {
   if (newParkingSelection.value && newParkingSelection.value.originalData) {
-    const newSpot = { ...newParkingSelection.value.originalData };
-    if (!newSpot['車位成交價']) {
-      newSpot['車位成交價'] = newSpot['車位表價'];
-    }
+    const newSpotData = newParkingSelection.value.originalData;
+    const newSpot = {
+      // ✅ 只選擇必要的欄位加入，避免汙染
+      spotId: newSpotData.spotId,
+      size: newSpotData.size,
+      type: newSpotData.type,
+      price_list: newSpotData.price_list,
+      price_floor: newSpotData.price_floor,
+      // ✅ 如果成交價不存在，預設帶入表價
+      price_transaction: (newSpotData.price_transaction !== undefined && newSpotData.price_transaction !== null) 
+                         ? newSpotData.price_transaction 
+                         : newSpotData.price_list,
+    };
     localParking.value.push(newSpot);
     newParkingSelection.value = null;
   }
@@ -132,6 +143,7 @@ function close() {
 }
 
 function confirm() {
+  // ✅ 回傳的 localParking.value 已是符合 Firestore 結構的資料
   emit('confirm', localParking.value);
   close();
 }
