@@ -1,24 +1,24 @@
 // /workspaces/anxi-app/src/api.js
 
 
-// ✅ 在檔案頂部，引入所有需要的函式
-import { db, storage, functions } from '@/firebase'; 
-import { 
-  collection, 
-  query, 
+//  在檔案頂部，引入所有需要的函式
+import { db, storage, functions } from '@/firebase';
+import {
+  collection,
+  query,
   where,
   onSnapshot,
-  getDocs, 
-  getDoc, 
-  doc, 
-  updateDoc, 
-  serverTimestamp, 
-  getCountFromServer,  
-  documentId,          
-  orderBy, 
+  getDocs,
+  getDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  getCountFromServer,
+  documentId,
+  orderBy,
   writeBatch,
-  setDoc,         
-  deleteDoc,      
+  setDoc,
+  deleteDoc,
   Timestamp,
   addDoc,
 } from "firebase/firestore";
@@ -43,30 +43,13 @@ const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
 const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`; 
 
 /**
- * [Firestore 版] 獲取所有專案的基本資料列表
- * 用於取代前端寫死的 PROJECT_NAME_MAP
- * @returns {Promise<Array>} 返回專案陣列 [{ id, name, ... }]
+ * 獲取所有建案的基礎列表
  */
 export async function fetchAllProjects() {
-  console.log(`[api.js] fetchAllProjects called`);
-  try {
-    const projectsRef = collection(db, "projects");
-    const querySnapshot = await getDocs(projectsRef);
-    
-    const projects = [];
-    querySnapshot.forEach((doc) => {
-      projects.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return projects;
-  } catch (e) {
-    console.error('Firestore fetchAllProjects 錯誤:', e);
-    // 返回空陣列或拋出錯誤，讓呼叫端處理
-    return []; 
-  }
+  const projectsCollection = collection(db, 'projects');
+  const projectSnapshot = await getDocs(projectsCollection);
+  const projectsList = projectSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return projectsList;
 }
 
 /**
@@ -100,7 +83,7 @@ export async function fetchQuotePersonnelList(projectName, userKey) {
   return fetchPost({
     action: 'get_quote_personnel_list',
     projectName,
-    key: userKey, // ✅ 關鍵修改：將 currentUserKey 改為 key
+    key: userKey, //  關鍵修改：將 currentUserKey 改為 key
     token: 'anxi111003'
   }, USER_API);
 }
@@ -121,12 +104,19 @@ export async function getProjectList(userKey) {
 
 
 
-// 🔐 [Firestore 版] - 使用者登入
+/**
+ * [新] 登入時，獲取使用者的基本資料與重構後的權限
+ */
 export async function loginUser(key, password) {
-  console.log(`[api.js] Firestore loginUser called with key: ${key}`);
+  console.log(`[api.js] New loginUser called with key: ${key}`);
   try {
     const userDocRef = doc(db, "users", key);
-    const userDocSnap = await getDoc(userDocRef);
+    const permissionDocRef = doc(db, "userPermissions", key);
+
+    const [userDocSnap, permissionDocSnap] = await Promise.all([
+      getDoc(userDocRef),
+      getDoc(permissionDocRef)
+    ]);
 
     if (!userDocSnap.exists()) {
       return { status: 'error', message: '手機號碼不存在或錯誤' };
@@ -137,33 +127,38 @@ export async function loginUser(key, password) {
       return { status: 'error', message: '密碼錯誤' };
     }
 
-    const permissionsRef = collection(db, "permissions");
-    const q = query(permissionsRef, where("userPhone", "==", key), where("access", "==", true));
-    const permissionsSnapshot = await getDocs(q);
-
     const detailedPermissions = [];
-    permissionsSnapshot.forEach(doc => {
-      const perm = doc.data();
-      detailedPermissions.push({
-        projectName: perm.projectName,
-        system: perm.system,
-        access: 'Y'
-      });
-    });
+    if (permissionDocSnap.exists()) {
+      const perms = permissionDocSnap.data().permissions || {};
+      for (const projectId in perms) {
+        const project = perms[projectId];
 
-    // ✅ 核心修改點：在回傳的 user 物件中加入 roles 欄位
+        //  【錯誤修復】 增加一個判斷，確保 project.systems 是一個陣列後才進行 forEach
+        // 這樣即使有不完整的資料，程式碼也不會崩潰。
+        if (project && Array.isArray(project.systems)) {
+          project.systems.forEach(system => {
+            detailedPermissions.push({
+              projectId: projectId,
+              projectName: project.projectName,
+              system: system,
+              access: 'Y'
+            });
+          });
+        }
+      }
+    }
+
     const userObject = {
       key: key,
       email: userData.email,
       name: userData.name,
-      roles: userData.roles || [], // <-- 如果沒有 roles 欄位，則回傳空陣列
+      roles: userData.roles || [],
       detailedPermissions: detailedPermissions
     };
 
     return { status: 'success', user: userObject };
-
   } catch (e) {
-    console.error('Firestore loginUser 錯誤:', e);
+    console.error('New loginUser 錯誤:', e);
     return { status: 'error', message: `登入時發生錯誤: ${e.message}` };
   }
 }
@@ -481,7 +476,7 @@ export async function deletePhotoFromRecord(key, photoField, projectName) {
   }, INSPECTION_API);
 }
 
-// ✅ 產出分享網址
+//  產出分享網址
 export async function generateShareUrl(unitId, projectName) {
   console.log(`[api.js] generateShareUrl called with unitId: ${unitId}, projectName: ${projectName}`);
   if (!projectName) {
@@ -511,13 +506,13 @@ export async function fetchInspectionUpdateWithPhotos(payload, projectName) {
   }, INSPECTION_API);
 }
 
-// ✅ 上傳簽名圖 (假設不需要 projectName，如果需要，請添加)
+//  上傳簽名圖 (假設不需要 projectName，如果需要，請添加)
 export async function uploadSignature(filename, base64) {
     console.log(`[api.js] uploadSignature called with filename: ${filename}`);
     return fetchPost({ action: 'upload_signature', filename, base64, token: 'anxi111003' }, UPLOAD_API); // GAS doPost 的 upload_signature case 沒有接收 ssId
 }
 
-// ✅ 確認驗屋 (將簽名等資訊寫入)
+//  確認驗屋 (將簽名等資訊寫入)
 export async function confirmInspection(payload, projectName) {
     console.log(`[api.js] confirmInspection called with projectName: ${projectName}, payload:`, payload);
     if (!projectName) {
@@ -532,7 +527,7 @@ export async function confirmInspection(payload, projectName) {
     }, INSPECTION_API);
 }
 
-// ✅ 產出驗屋 PDF
+//  產出驗屋 PDF
 export async function fetchGenerateInspectionPdf(unitId, projectName, overwrite = false) {
   console.log(`[api.js] fetchGenerateInspectionPdf called with unitId: ${unitId}, projectName: ${projectName}, overwrite: ${overwrite}`);
   if (!projectName) {
@@ -730,67 +725,67 @@ export async function cancelPurchase(projectName, unitId, operatorName) {
 // ===============================================
 
 /**
- * [Firestore 版] 獲取當前用戶的發信權限 (可選的建案與系統)
+ *  [已修正] 獲取當前用戶的發信權限 (可選的建案與系統)
  * @param {string} userKey - 用戶的手機號碼
  * @returns {Promise<object>} - 返回權限物件 { projectName: [system1, system2] }
  */
 export async function fetchMessagePermissionOptions(userKey) {
-    const permissionsRef = collection(db, "permissions");
-    const q = query(
-        permissionsRef, 
-        where("userPhone", "==", userKey), 
-        where("access", "==", true)
-    );
-    const querySnapshot = await getDocs(q);
-    const permissions = {};
+    // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
+    const permissionDocRef = doc(db, "userPermissions", userKey);
+    const docSnap = await getDoc(permissionDocRef);
 
-    querySnapshot.forEach(doc => {
-        const perm = doc.data();
-        if (perm.system && perm.system.startsWith('寄信-')) {
-            const projectName = perm.projectName;
-            const readableSystemName = perm.system.replace('寄信-', '');
-            if (!permissions[projectName]) {
-                permissions[projectName] = [];
+    if (!docSnap.exists()) {
+        return {}; // 如果沒有權限文件，直接回傳空物件
+    }
+
+    const permissions = {};
+    const perms = docSnap.data().permissions || {};
+
+    // 2. 遍歷權限物件，篩選出 "寄信-" 開頭的權限
+    for (const projectId in perms) {
+        const project = perms[projectId];
+        if (project && project.projectName && Array.isArray(project.systems)) {
+            const sendingSystems = project.systems
+                .filter(system => system.startsWith('寄信-'))
+                .map(system => system.replace('寄信-', '')); // 移除 "寄信-" 前綴
+
+            if (sendingSystems.length > 0) {
+                permissions[project.projectName] = sendingSystems;
             }
-            permissions[projectName].push(readableSystemName);
         }
-    });
+    }
     return permissions;
 }
 
 /**
- * [Firestore 版] 根據建案和系統功能獲取收件人列表
- * @param {string} projectName 
- * @param {string} systemFunction - e.g., '銷控', '驗屋'
- * @returns {Promise<Array>} - 返回收件人陣列 [{ name, phone }]
+ *  [已修正] 根據建案和系統功能獲取收件人列表
  */
 export async function fetchRecipientList(projectName, systemFunction) {
     const targetPermission = `收信-${systemFunction}`;
-    const permissionsRef = collection(db, "permissions");
-    const q = query(
-        permissionsRef,
-        where("projectName", "==", projectName),
-        where("system", "==", targetPermission),
-        where("access", "==", true)
-    );
-    const permSnapshot = await getDocs(q);
-    if (permSnapshot.empty) return [];
+    const permissionsRef = collection(db, "userPermissions");
 
-    const userPhones = [...new Set(permSnapshot.docs.map(doc => doc.data().userPhone))];
-    
+    const snapshot = await getDocs(permissionsRef);
+    const userPhones = [];
+
+    snapshot.forEach(doc => {
+        const perms = doc.data().permissions || {};
+        for (const projectId in perms) {
+            if (perms[projectId].projectName === projectName && perms[projectId].systems.includes(targetPermission)) {
+                userPhones.push(doc.id);
+                break;
+            }
+        }
+    });
+
     if (userPhones.length === 0) return [];
 
     const usersRef = collection(db, "users");
-    // 使用 'in' 查詢一次性獲取所有用戶的資料
-    const usersQuery = query(usersRef, where(documentId(), 'in', userPhones));
+    const usersQuery = query(usersRef, where(documentId(), 'in', [...new Set(userPhones)]));
     const usersSnapshot = await getDocs(usersQuery);
 
     const recipients = [];
     usersSnapshot.forEach(doc => {
-        recipients.push({
-            name: doc.data().name,
-            phone: doc.id
-        });
+        recipients.push({ name: doc.data().name, phone: doc.id });
     });
 
     return recipients;
@@ -997,65 +992,112 @@ export async function setMessageStatus(statusId, actionType) {
     }
     return Promise.resolve(); // 如果 actionType 無效，返回一個 resolved promise
 }
+
+// =================================================================
+// / 【新功能】角色權限管理 (RBAC) API
+// =================================================================
+
+/**
+ * 獲取所有角色的設定
+ * @returns {Promise<Array>}
+ */
+export async function fetchAllRoles() {
+    const rolesCollection = collection(db, 'roles');
+    const rolesSnapshot = await getDocs(rolesCollection);
+    return rolesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+/**
+ * 更新或建立一個角色
+ * @param {string} roleId - 角色名稱 (文件 ID)
+ * @param {object} roleData - 角色的資料物件 (現在只包含 grantableRoles 和 fieldPermissions)
+ */
+export async function updateRole(roleId, roleData) {
+    const roleDocRef = doc(db, "roles", roleId);
+    // 確保只儲存我們定義的欄位
+    const dataToSave = {
+      name: roleData.name,
+      grantableRoles: roleData.grantableRoles || [],
+      fieldPermissions: roleData.fieldPermissions || {}
+    };
+    await setDoc(roleDocRef, dataToSave, { merge: true });
+}
+
+/**
+ * 刪除一個角色
+ * @param {string} roleId - 角色名稱 (文件 ID)
+ */
+export async function deleteRole(roleId) {
+    const roleDocRef = doc(db, "roles", roleId);
+    await deleteDoc(roleDocRef);
+}
 // ===============================================
 // /  人員管理系統 API
 // ===============================================
 
 /**
- * ✅ 【新函式】獲取管理者可管理的人員列表 (包含角色等詳細資料)
- * @param {string} adminKey - 管理員自己的手機號碼
- * @returns {Promise<Array>} - 返回可管理人員的陣列，包含 { phone, name, roles }
+ * [新] 獲取管理者可管理的人員列表
  */
 export async function fetchManageableUsersWithDetails(adminKey) {
-  // 1. 先獲取管理者能管理的建案
-  const scope = await fetchAdminScope(adminKey);
-  const managedProjects = Object.keys(scope);
-  if (managedProjects.length === 0) return [];
+  const adminPermDoc = await getDoc(doc(db, "userPermissions", adminKey));
+  if (!adminPermDoc.exists()) return [];
+  const adminProjects = Object.keys(adminPermDoc.data().permissions || {});
+  if (adminProjects.length === 0) return [];
 
-  // 2. 查詢所有在這些建案中有權限的用戶 phone
-  const permissionsRef = collection(db, "permissions");
-  const usersQuery = query(permissionsRef,
-    where("projectName", "in", managedProjects),
-    where("access", "==", true)
+  const queries = adminProjects.map(projectId =>
+    query(collection(db, "userPermissions"), where(`permissions.${projectId}`, '!=', null))
   );
-  const usersSnapshot = await getDocs(usersQuery);
-  
-  // 3. 過濾掉重複的用戶 phone，並排除管理員自己和受保護的用戶
+
+  const queryResults = await Promise.all(queries.map(q => getDocs(q)));
+
   const PROTECTED_USERS_BLACKLIST = ['60763998'];
-  const userPhones = [...new Set(
-    usersSnapshot.docs
-      .map(doc => doc.data().userPhone)
-      .filter(phone => phone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(phone))
-  )];
+  const usersMap = new Map();
 
-  if (userPhones.length === 0) return [];
-  
-  // 4. 使用 'in' 查詢，一次性從 users 集合獲取所有用戶的詳細資料
-  const usersRef = collection(db, "users");
-  const usersDetailsQuery = query(usersRef, where(documentId(), 'in', userPhones));
-  const usersDetailsSnapshot = await getDocs(usersDetailsQuery);
-
-  const manageableUsers = [];
-  usersDetailsSnapshot.forEach(doc => {
-    const userData = doc.data();
-    manageableUsers.push({
-      phone: doc.id,
-      name: userData.name || 'N/A',
-      roles: userData.roles || [] // ✅ 確保回傳 roles 陣列
+  queryResults.forEach(snapshot => {
+    snapshot.forEach(docSnap => {
+      const userPhone = docSnap.id;
+      if (userPhone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(userPhone) && !usersMap.has(userPhone)) {
+        const userData = docSnap.data();
+         usersMap.set(userPhone, {
+            phone: userPhone,
+            name: userData.userName || 'N/A',
+            roles: []
+        });
+      }
     });
   });
 
-  // 5. 筆劃排序
+  const userPhones = Array.from(usersMap.keys());
+  if (userPhones.length > 0) {
+      const chunks = [];
+      for (let i = 0; i < userPhones.length; i += 30) {
+          chunks.push(userPhones.slice(i, i + 30));
+      }
+
+      const userDetailsPromises = chunks.map(chunk =>
+        getDocs(query(collection(db, "users"), where(documentId(), 'in', chunk)))
+      );
+
+      const userDetailsSnapshots = await Promise.all(userDetailsPromises);
+
+      userDetailsSnapshots.forEach(snapshot => {
+        snapshot.forEach(doc => {
+            const user = usersMap.get(doc.id);
+            if (user) {
+                user.roles = doc.data().roles || [];
+            }
+        });
+      });
+  }
+
+  const manageableUsers = Array.from(usersMap.values());
   manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+
   return manageableUsers;
 }
 
-
 /**
- * ✅ 【新函式】更新指定使用者的角色列表
- * @param {string} userPhone - 使用者的手機號碼 (文件 ID)
- * @param {Array<string>} roles - 最新的角色陣列
- * @returns {Promise<void>}
+ * [新] 更新指定使用者的角色列表
  */
 export async function updateUserRoles(userPhone, roles) {
   if (!userPhone) throw new Error("缺少使用者手機號碼。");
@@ -1064,269 +1106,236 @@ export async function updateUserRoles(userPhone, roles) {
     roles: roles
   });
 }
-
 /**
- * [Firestore 版] 獲取當前管理員的權限範圍 (可管理的建案和可指派的權限)
- * @param {string} adminKey - 管理員自己的手機號碼
- * @returns {Promise<object>} - 返回管理範圍物件
+ * [新] 獲取管理員自身的權限範圍 (可管理的建案和可指派的權限)
  */
 export async function fetchAdminScope(adminKey) {
-  const permissionsRef = collection(db, "permissions");
+  const permissionDocRef = doc(db, "userPermissions", adminKey);
+  const docSnap = await getDoc(permissionDocRef);
 
-  // 步驟 1: 找出管理員有 "人員管理" 權限的所有建案
-  const managementQuery = query(permissionsRef, 
-    where("userPhone", "==", adminKey), 
-    where("system", "==", "人員管理"), 
-    where("access", "==", true)
-  );
-  
-  const managementSnapshot = await getDocs(managementQuery);
-  if (managementSnapshot.empty) {
-    return {}; // 沒有任何管理權限
-  }
-  
-  const managedProjects = managementSnapshot.docs.map(d => d.data().projectName);
+  if (!docSnap.exists()) return {};
 
-  // 步驟 2: 獲取在這些建案中，管理員擁有的所有權限
-  const scopeQuery = query(permissionsRef,
-    where("userPhone", "==", adminKey),
-    where("projectName", "in", managedProjects),
-    where("access", "==", true)
-  );
-
-  const scopeSnapshot = await getDocs(scopeQuery);
+  const perms = docSnap.data().permissions || {};
   const adminScope = {};
 
-  scopeSnapshot.forEach(doc => {
-    const perm = doc.data();
-    if (!adminScope[perm.projectName]) {
-      adminScope[perm.projectName] = [];
+  for (const projectId in perms) {
+    const project = perms[projectId];
+    if (project && project.projectName && Array.isArray(project.systems)) {
+       adminScope[project.projectName] = project.systems;
     }
-    adminScope[perm.projectName].push(perm.system);
-  });
-
+  }
   return adminScope;
 }
 
 /**
- * [Firestore 版] 管理員查詢特定用戶的詳細資料 (新版邏輯)
- * - 允許管理員查詢任何存在的用戶，除非該用戶在特殊黑名單中。
- * @param {string} targetUserKey - 被查詢者的手機號碼
- * @param {string} adminKey - 管理員自己的手機號碼
- * @returns {Promise<object|null>} - 返回用戶資料物件或 result 物件
+ * [新] 管理員查詢特定用戶的詳細資料
  */
-export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
-  // 💥 --- 邏輯修正開始 --- 💥
-  // 移除了 isManageable 和 isQueryingSelf 的複雜權限檢查。
-  // 現在的邏輯是：只要用戶存在，就可以查詢。
-
-  // 1. 直接獲取用戶基本資料的文檔參照
-  const userDocRef = doc(db, "users", targetUserKey);
-  const userDocSnap = await getDoc(userDocRef);
-
-  // 2. 如果用戶不存在，直接返回錯誤
-  if (!userDocSnap.exists()) {
-    return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
-  }
-  
-  // (可選) 如果您仍想保留一個不可被查詢的超級管理員或特殊用戶列表，可以保留這個檢查
-  const PROTECTED_USERS_BLACKLIST = ['60763998']; 
-  if (PROTECTED_USERS_BLACKLIST.includes(targetUserKey) && targetUserKey !== adminKey) {
-      return { status: 'error', message: '權限不足，您無法查詢此特定人員的資料。' };
-  }
-  // 💥 --- 邏輯修正結束 --- 💥
-
-
-  // 3. 獲取用戶權限資料 (此部分邏輯不變)
-  const permissionsRef = collection(db, "permissions");
-  const permissionsQuery = query(permissionsRef, where("userPhone", "==", targetUserKey));
-  const permissionsSnapshot = await getDocs(permissionsQuery);
-  
-  const permissions = permissionsSnapshot.docs.map(d => {
-    const data = d.data();
-    // 轉換回舊格式以相容 Vue 組件
-    return {
-      '手機號碼': data.userPhone,
-      'NAME': data.userName,
-      '建案名稱': data.projectName,
-      '系統功能': data.system,
-      '權限': data.access ? 'Y' : 'N'
-    };
-  });
-  
-  // 4. 組合回傳的資料 (此部分邏輯不變)
-  const basicInfo = userDocSnap.data();
-  const formattedBasicInfo = {
-    phone: targetUserKey,
-    name: basicInfo.name,
-    email: basicInfo.email,
-    password: String(basicInfo.password || ''),
-    companyName: basicInfo.companyName,
-    companyTaxId: String(basicInfo.companyTaxId || ''),
-    role: basicInfo.role
-  };
-
-  return { 
-    status: 'success', 
-    data: {
-      basicInfo: formattedBasicInfo,
-      permissions: permissions
-    }
-  };
-}
-
-/**
- * [Firestore 版] 管理員更新用戶資料
- * @param {object} updatePayload - 包含 targetUserKey, adminKey, basicInfo, permissionsData 的物件
- * @returns {Promise<object>} - 返回操作結果
- */
-export async function updateUserDetailsForAdmin(updatePayload) {
-  const { targetUserKey, adminKey, adminName, basicInfo, permissionsData } = updatePayload;
-
-  try {
-    const adminScope = await fetchAdminScope(adminKey);
-    const managedProjects = Object.keys(adminScope);
-
-    if (managedProjects.length === 0) {
-      return { status: 'error', message: '您沒有管理任何建案的權限，無法執行此操作。' };
-    }
-
-    const batch = writeBatch(db);
-
+export async function fetchUserDetailsForAdmin(targetUserKey) {
     const userDocRef = doc(db, "users", targetUserKey);
-    const newBasicInfo = {
-      name: basicInfo.name,
-      email: basicInfo.email,
-      password: String(basicInfo.password || ''),
-      companyName: basicInfo.companyName,
-      companyTaxId: String(basicInfo.companyTaxId || ''),
-      role: basicInfo.role || '',
-      lastModifiedBy: adminName,
-      lastModifiedByPhone: adminKey
-    };
-    batch.set(userDocRef, newBasicInfo, { merge: true });
+    const permissionDocRef = doc(db, "userPermissions", targetUserKey);
 
-    const permissionsRef = collection(db, "permissions");
-    const oldPermsQuery = query(permissionsRef, 
-      where("userPhone", "==", targetUserKey),
-      where("projectName", "in", managedProjects)
-    );
-    const oldPermsSnapshot = await getDocs(oldPermsQuery);
-    oldPermsSnapshot.forEach(doc => {
-      batch.delete(doc.ref);
-    });
+    try {
+        const [userDocSnap, permissionDocSnap] = await Promise.all([
+            getDoc(userDocRef),
+            getDoc(permissionDocRef)
+        ]);
 
-    let permissionCounter = 1;
+        if (!userDocSnap.exists()) {
+            return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
+        }
 
-    const now = new Date();
-    const pad = (num) => String(num).padStart(2, '0');
-    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+        const basicInfo = userDocSnap.data();
+        const permissions = permissionDocSnap.exists() ? permissionDocSnap.data().permissions : {};
 
-    permissionsData.forEach(perm => {
-      const isAdminAllowedToAssign = adminScope[perm.projectName]?.includes(perm.systemFunction);
-
-      if (perm.permission === 'Y' && isAdminAllowedToAssign) {
-        
-        const sequence = String(permissionCounter).padStart(2, '0');
-        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-        
-        // ✅ 核心修改點：調整 ID 組合順序以符合您的新要求
-        const docId = `${timestamp}-${milliseconds}_${perm.projectId}_${sequence}`;
-
-        const newPermDocRef = doc(db, "permissions", docId);
-        
-        batch.set(newPermDocRef, {
-          userPhone: perm.phone,
-          userName: perm.name,
-          projectName: perm.projectName,
-          projectId: perm.projectId,            
-          system: perm.systemFunction,
-          access: true,
-          lastModifiedBy: adminName,          
-          lastModifiedByPhone: adminKey,       
-        });
-
-        permissionCounter++;
-      }
-    });
-
-    await batch.commit();
-
-    return { status: 'success' };
-  } catch (e) {
-    console.error("更新 Firestore 資料失敗: ", e);
-    return { status: 'error', message: e.message };
-  }
+        return {
+            status: 'success',
+            data: {
+                basicInfo: {
+                    phone: targetUserKey,
+                    name: basicInfo.name,
+                    email: basicInfo.email,
+                    password: String(basicInfo.password || ''),
+                    companyName: basicInfo.companyName,
+                    companyTaxId: String(basicInfo.companyTaxId || ''),
+                    roles: basicInfo.roles || []
+                },
+                permissions: permissions
+            }
+        };
+    } catch (error) {
+         console.error(`查詢用戶 ${targetUserKey} 資料時出錯:`, error);
+         return { status: 'error', message: `查詢用戶資料時出錯: ${error.message}` };
+    }
 }
-
 
 /**
- * [Firestore 版] 獲取管理者可管理的人員列表 (姓名+電話)
- * @param {string} adminKey - 管理員自己的手機號碼
- * @returns {Promise<Array>} - 返回可管理人員的陣列
+ * [新] 管理員更新用戶資料 (包含後端欄位權限驗證)
  */
-export async function fetchManageableUsersForAdmin(adminKey) {
-  // 先獲取管理者能管理的建案
-  const scope = await fetchAdminScope(adminKey);
-  const managedProjects = Object.keys(scope);
+export async function updateUserDetailsForAdmin(payload) {
+    // ✅ 接收 isNewUser 參數
+    const { targetUserKey, adminKey, adminName, basicInfo, permissions, isNewUser } = payload;
 
-  if (managedProjects.length === 0) {
-    return [];
-  }
+    try {
+        const adminUserDoc = await getDoc(doc(db, "users", adminKey));
+        const adminRoles = adminUserDoc.exists() ? adminUserDoc.data().roles || [] : [];
+        
+        let finalBasicInfo = { ...basicInfo };
+        let mergedFieldPerms = {};
 
-  // 查詢所有在這些建案中有權限的用戶
-  const permissionsRef = collection(db, "permissions");
-  const usersQuery = query(permissionsRef,
-    where("projectName", "in", managedProjects),
-    where("access", "==", true)
-  );
+        if (!adminRoles.includes('超級管理員')) {
+            const rolesDocs = await getDocs(query(collection(db, 'roles'), where('name', 'in', adminRoles)));
+            
+            rolesDocs.forEach(roleDoc => {
+                const perms = roleDoc.data().fieldPermissions?.UserManagement || {};
+                Object.assign(mergedFieldPerms, perms);
+            });
+            
+            const allowedBasicInfo = {};
+            for (const key in basicInfo) {
+                const perm = mergedFieldPerms[key];
+                
+                // ✅ 核心修改點：根據 isNewUser 執行不同的權限判斷
+                const canWrite = 
+                    (isNewUser && (perm === 'RU' || perm === 'C')) || // 新建模式: RU 或 C 都可以寫
+                    (!isNewUser && perm === 'RU');                     // 編輯模式: 只有 RU 可以寫
 
-  const usersSnapshot = await getDocs(usersQuery);
-  
-  // 使用 Map 來過濾掉重複的用戶
-  const usersMap = new Map();
-  usersSnapshot.forEach(doc => {
-    const perm = doc.data();
-    // 排除管理員自己和受保護的用戶
-    const PROTECTED_USERS_BLACKLIST = ['60763998']; // 與後端一致
-    if (perm.userPhone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(perm.userPhone)) {
-      if (!usersMap.has(perm.userPhone)) {
-        usersMap.set(perm.userPhone, {
-          name: perm.userName,
-          phone: perm.userPhone
-        });
-      }
+                if (canWrite) {
+                    allowedBasicInfo[key] = basicInfo[key];
+                }
+            }
+            // 確保 phone 和 name 總是存在，因為它們是基礎欄位
+            allowedBasicInfo.phone = basicInfo.phone; 
+            allowedBasicInfo.name = basicInfo.name;
+            finalBasicInfo = allowedBasicInfo;
+        }
+
+        const batch = writeBatch(db);
+        const userDocRef = doc(db, "users", targetUserKey);
+        
+        const infoToSave = {
+            ...finalBasicInfo,
+            lastModifiedBy: adminName,
+            lastModifiedByPhone: adminKey
+        };
+        
+        // 密碼處理邏輯維持不變：只有在有內容時才寫入
+        if (!infoToSave.password) {
+            delete infoToSave.password;
+        }
+
+        batch.set(userDocRef, infoToSave, { merge: true });
+
+        // 系統權限的儲存邏輯維持不變
+        if (adminRoles.includes('超級管理員') || (mergedFieldPerms && mergedFieldPerms['permissions'] === 'RU')) {
+            const permissionDocRef = doc(db, "userPermissions", targetUserKey);
+            batch.set(permissionDocRef, {
+                userName: basicInfo.name,
+                permissions: permissions,
+                lastModifiedBy: adminName,
+                lastModifiedAt: serverTimestamp()
+            }, { merge: true });
+        }
+
+        await batch.commit();
+        return { status: 'success' };
+    } catch (e) {
+        console.error("更新 Firestore 資料失敗: ", e);
+        return { status: 'error', message: e.message };
     }
-  });
-
-  const manageableUsers = Array.from(usersMap.values());
-  // 筆劃排序
-  manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
-
-  return manageableUsers;
 }
+
 
 // ===============================================
 // /  訂閱管理系統 API
 // ===============================================
 
 /**
- * [輔助函式] 檢查呼叫者是否為超級管理員
- * @param {string} adminKey - 要檢查的手機號碼
- * @returns {Promise<boolean>}
+ *  [已修正] 檢查指定用戶是否為超級管理員 (依角色判斷)
  */
-async function isSuperAdmin(adminKey) {
-    if (!adminKey) return false;
-    const permissionsRef = collection(db, "permissions");
-    const q = query(
-        permissionsRef,
-        where("userPhone", "==", adminKey),
-        where("projectName", "==", "安熙智慧"),
-        where("system", "==", "訂閱管理"),
-        where("access", "==", true)
-    );
-    const snapshot = await getDocs(q);
-    return !snapshot.empty;
+async function isSuperAdmin(userKey) {
+    if (!userKey) return false;
+    try {
+        const userDocRef = doc(db, "users", userKey);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            return false;
+        }
+        const userData = userDocSnap.data();
+        const roles = userData.roles || [];
+        return Array.isArray(roles) && roles.includes("超級管理員");
+    } catch (error) {
+        console.error(`檢查使用者 ${userKey} 超級管理員權限時出錯:`, error);
+        return false;
+    }
+}
+
+/**
+ *  [已修正] 獲取擁有特定系統權限的所有使用者
+ */
+export async function getUsersWithSystemPermission(systemName) {
+    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+    const users = [];
+    permissionsSnapshot.forEach(doc => {
+        const perms = doc.data().permissions || {};
+        for (const projectId in perms) {
+            const project = perms[projectId];
+            if (project && Array.isArray(project.systems) && project.systems.includes(systemName)) {
+                users.push({
+                    phone: doc.id,
+                    name: doc.data().userName || 'N/A',
+                    projectName: project.projectName
+                });
+            }
+        }
+    });
+    return users;
+}
+
+/**
+ *  [已修正] 獲取所有建案的訂閱狀況
+ */
+export async function fetchUsersForSubscriptionManagement() {
+    const projectsSnapshot = await getDocs(collection(db, "projects"));
+    const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+
+    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+    const permissionsByUser = new Map();
+    permissionsSnapshot.forEach(doc => {
+        permissionsByUser.set(doc.id, doc.data().permissions || {});
+    });
+
+    const result = [];
+    permissionsByUser.forEach((perms, userPhone) => {
+        for (const projectId in perms) {
+            const project = perms[projectId];
+            if (project && project.projectName) {
+                 result.push({
+                    userPhone: userPhone,
+                    projectName: project.projectName,
+                    systems: project.systems || []
+                });
+            }
+        }
+    });
+    return result;
+}
+
+/**
+ *  [已修正] 獲取所有存在於系統中的系統功能名稱
+ */
+export async function getAllSystemFunctions() {
+    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+    const systemFunctions = new Set();
+    permissionsSnapshot.forEach(doc => {
+        const perms = doc.data().permissions || {};
+        for (const projectId in perms) {
+            if (perms[projectId] && Array.isArray(perms[projectId].systems)) {
+                perms[projectId].systems.forEach(system => systemFunctions.add(system));
+            }
+        }
+    });
+    return Array.from(systemFunctions).sort();
 }
 
 /**
@@ -1341,7 +1350,7 @@ export async function fetchAllSubscriptions(adminKey) {
     const snapshot = await getDocs(subscriptionsRef);
     const subscriptions = [];
     
-    // ✅ 【核心修改點】強制使用台灣時區來定義「今天」
+    //  【核心修改點】強制使用台灣時區來定義「今天」
     const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
     const today = new Date(taiwanDateString);
 
@@ -1367,10 +1376,10 @@ export async function fetchAllSubscriptions(adminKey) {
                 color = 'red';
             } else {
                 const diffTime = endDateValue.getTime() - today.getTime();
-                // ✅ 天數計算改為四捨五入，避免日光節約時間問題
+                //  天數計算改為四捨五入，避免日光節約時間問題
                 const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
                 if (diffDays <= 14) {
-                    // ✅ 顯示剩餘天數，至少為 0 天
+                    //  顯示剩餘天數，至少為 0 天
                     status = `即將到期 (${Math.max(0, diffDays)}天)`;
                     color = 'orange';
                 } else {
@@ -1403,7 +1412,7 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
     if (!await isSuperAdmin(adminKey)) {
         throw new Error("權限不足。");
     }
-    // ✅ 從 projects 集合中動態獲取所有建案的完整資料 (ID + name)
+    //  從 projects 集合中動態獲取所有建案的完整資料 (ID + name)
     const projectsRef = collection(db, "projects");
     const snapshot = await getDocs(projectsRef);
     const projects = [];
@@ -1413,7 +1422,7 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
     
     const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理'];
 
-    // ✅ 回傳完整的 projects 陣列，而非只有名稱
+    //  回傳完整的 projects 陣列，而非只有名稱
     return { 
         projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')), 
         systemFunctions: systemFunctions 
@@ -1431,7 +1440,7 @@ export async function addSubscription(subscriptionId, subscriptionData, adminKey
         throw new Error("權限不足。");
     }
     
-    // ✅ 新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
+    //  新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
     if (subscriptionData.projectId && subscriptionData.projectName) {
         const projectDocRef = doc(db, "projects", subscriptionData.projectId);
         // 使用 setDoc + merge:true 可以同時處理新增和更新，確保資料存在
@@ -1466,7 +1475,7 @@ export async function updateSubscription(subscriptionId, subscriptionData, admin
         throw new Error("權限不足。");
     }
 
-    // ✅ 新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
+    //  新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
     if (subscriptionData.projectId && subscriptionData.projectName) {
         const projectDocRef = doc(db, "projects", subscriptionData.projectId);
         await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
@@ -1503,31 +1512,34 @@ export async function deleteSubscription(subscriptionId, adminKey) {
 }
 
 /**
- * [Firestore 版] 獲取當前用戶可查看的訂閱狀態
+ *  [已修正] 獲取當前用戶可查看的訂閱狀態
  * @param {string} userKey - 當前登入用戶的手機號碼
  */
 export async function fetchMySubscriptionStatus(userKey) {
-    // ✅ 【修正】恢復查詢權限並定義 permSnapshot 的程式碼
-    // 1. 查詢 permissions 集合，找到該用戶有權限的所有建案
-    const permissionsRef = collection(db, "permissions");
-    const permQuery = query(
-        permissionsRef, 
-        where("userPhone", "==", userKey), 
-        where("access", "==", true)
-    );
-    const permSnapshot = await getDocs(permQuery);
-    const accessibleProjects = [...new Set(permSnapshot.docs.map(d => d.data().projectName))];
+    // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
+    const permissionDocRef = doc(db, "userPermissions", userKey);
+    const docSnap = await getDoc(permissionDocRef);
 
-    if (accessibleProjects.length === 0) return {};
+    if (!docSnap.exists()) {
+        return {}; // 如果沒有權限文件，直接回傳空物件
+    }
 
-    // 2. 根據有權限的建案列表，去 subscriptions 集合中查找對應的訂閱紀錄
+    // 2. 從權限文件中解析出使用者有權限的所有建案名稱
+    const perms = docSnap.data().permissions || {};
+    const accessibleProjects = Object.values(perms).map(p => p.projectName);
+
+    if (accessibleProjects.length === 0) {
+        return {};
+    }
+
+    // 3. 根據有權限的建案列表，去 subscriptions 集合中查找對應的訂閱紀錄
     const subsRef = collection(db, "subscriptions");
     const subsQuery = query(subsRef, where("projectName", "in", accessibleProjects));
     const subsSnapshot = await getDocs(subsQuery);
 
     const subscriptionsByProject = {};
-    
-    // ✅ 強制使用台灣時區
+
+    // 4. (維持不變) 處理訂閱狀態與日期格式
     const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
     const today = new Date(taiwanDateString);
 
@@ -1653,7 +1665,7 @@ export async function updateParkingLotDetails(payload) {
 
 /**
  * ===============================================
- * /  ✅ 新增：銷控資料更新 API
+ * /   新增：銷控資料更新 API
  * ===============================================
  */
 
@@ -1696,7 +1708,7 @@ export async function uploadExcelToOverwrite(projectName, fileId) {
 }
 
 /**
- * ✅ 新版：上傳檔案到後端暫存區 (給「更新銷控」功能專用)
+ *  新版：上傳檔案到後端暫存區 (給「更新銷控」功能專用)
  * @param {string} filename 檔名
  * @param {string} base64 Base64 編碼的檔案內容
  * @returns {Promise<object>} API 響應，包含 fileId
@@ -1744,45 +1756,26 @@ export async function fetchActivityMessageSlideId(projectName) {
 
 
 // =============================================
-// ✅ 驗屋預約系統 API (Firestore 遷移版)
+//  驗屋預約系統 API (Firestore 遷移版)
 // =============================================
 
 /**
- * [Firestore 版] 獲取使用者有權限查看驗屋時間表的建案列表
- * @param {string} userKey 
- * @returns {Promise<Array>} - 返回建案選項陣列 [{ text, value }]
+ *  [已修正] 獲取使用者有權限查看驗屋時間表的建案列表
  */
 export async function getProjectsForInspectionCalendar(userKey) {
-    // 1. 查找使用者擁有 '驗屋時間表-修改' 或 '驗屋時間表-檢視' 權限的建案 ID
-    const permissionsRef = collection(db, "permissions");
-    const permQuery = query(
-        permissionsRef,
-        where("userPhone", "==", userKey),
-        where("system", "in", ['驗屋時間表-修改', '驗屋時間表-檢視']),
-        where("access", "==", true)
-    );
-    const permSnapshot = await getDocs(permQuery);
-    if (permSnapshot.empty) return [];
+    const permissionDocRef = doc(db, "userPermissions", userKey);
+    const docSnap = await getDoc(permissionDocRef);
+    if (!docSnap.exists()) return [];
 
-    // ✅ 【核心修改點】在映射後，過濾掉所有無效的 projectId (undefined, null, 空字串)
-    const projectIds = [...new Set(
-        permSnapshot.docs
-            .map(doc => doc.data().projectId)
-            .filter(id => id) // .filter(Boolean) 的簡寫，會移除所有 falsy 值
-    )];
-    
-    if (projectIds.length === 0) return [];
+    const perms = docSnap.data().permissions || {};
+    const projectOptions = [];
 
-    // 2. 根據這些 ID 去 projects 集合中查找對應的建案名稱
-    const projectsRef = collection(db, "projects");
-    const projectsQuery = query(projectsRef, where(documentId(), 'in', projectIds));
-    const projectsSnapshot = await getDocs(projectsQuery);
-
-    const projectOptions = projectsSnapshot.docs.map(doc => ({
-        text: doc.data().name,
-        value: doc.id
-    }));
-    
+    for (const projectId in perms) {
+        const project = perms[projectId];
+        if (project.systems.includes('驗屋時間表-修改') || project.systems.includes('驗屋時間表-檢視')) {
+            projectOptions.push({ text: project.projectName, value: projectId });
+        }
+    }
     return projectOptions;
 }
 
@@ -1944,10 +1937,10 @@ export async function cancelAppointment(appointmentId) {
 }
 
 // =============================================
-// ✅ 公開預約系統 API (Firebase 遷移版)
+//  公開預約系統 API (Firebase 遷移版)
 // =============================================
 
-// ✅ [新增] 獲取預約頁面初始化所需的資料
+//  [新增] 獲取預約頁面初始化所需的資料
 export async function getBookingInitialData(projectName, projectId) {
   const doGetInitialData = httpsCallable(functions, 'getBookingInitialData');
   try {
@@ -1981,7 +1974,7 @@ export async function updateProjectSettings(projectId, settingsData) {
 }
 
 /**
- * ✅ [新增] 從 Firestore 獲取建案的公開設定
+ *  [新增] 從 Firestore 獲取建案的公開設定
  * @param {string} projectId 建案 ID
  */
 export async function fetchProjectConfig(projectId) {
@@ -2013,7 +2006,7 @@ export async function getUnitsByBuilding(projectName, building) {
 
 
 /**
- * ✅ [修改] 檢查是否已有有效預約
+ *  [修改] 檢查是否已有有效預約
  * @param {string} projectName (舊參數，後端已不使用)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
@@ -2032,7 +2025,7 @@ export async function checkExistingBooking(projectName, unitId, bookingType, idN
 };
 
 /**
- * ✅ [修改] 獲取可預約的日期和時段
+ *  [修改] 獲取可預約的日期和時段
  * @param {string} projectName (舊參數)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
@@ -2080,7 +2073,7 @@ export const saveBooking = async (projectName, bookingData) => {
 
 
 /**
- * ✅ [修改] 一次性獲取所有可預約的戶別資料
+ *  [修改] 一次性獲取所有可預約的戶別資料
  * @param {string} projectName (雖然函式仍接收 projectName，但後端已改用 projectId)
  * @param {string} projectId 建案 ID
  */
@@ -2099,7 +2092,7 @@ export const fetchAllUnitsForBooking = async (projectName, projectId) => {
 
 
 /**
- * ✅ [修改] 驗證身分證與戶別是否相符
+ *  [修改] 驗證身分證與戶別是否相符
  * @param {string} projectName (舊參數，後端已不使用但保留以相容舊呼叫)
  * @param {string} unitId 戶別
  * @param {string} idNumber 身分證號碼
@@ -2150,7 +2143,7 @@ export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId
 
 /**
  * ===============================================
- * /  ✅ 後台行事曆 - 新增預約功能 API
+ * /   後台行事曆 - 新增預約功能 API
  * ===============================================
  */
 
@@ -2165,7 +2158,7 @@ export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId
 
 /**
  * ===============================================
- * /  ✅  AI 代理後端
+ * /    AI 代理後端
  * ===============================================
  */
 
@@ -2206,7 +2199,7 @@ export async function postToAiAssistant(payload) {
 
 /**
  * ===============================================
- * /  ✅ 新增：驗屋報告上傳 API
+ * /   新增：驗屋報告上傳 API
  * ===============================================
  */
 
@@ -2229,7 +2222,7 @@ export async function uploadInspectionReport(payload) {
 
 
 // ===============================================
-// /  ✅ 預約批次規則管理 API (混合模式新版)
+// /   預約批次規則管理 API (混合模式新版)
 // ===============================================
 
 /**
@@ -2383,7 +2376,7 @@ export async function saveBatchWithRules(payload) {
                 });
 
             } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
-                // ✅ [新增] 模式 C: 更新現有共享規則，然後連結
+                //  [新增] 模式 C: 更新現有共享規則，然後連結
                 const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
                 batch.update(ruleToUpdateRef, {
                     slots: ruleContent.slots,
@@ -2727,9 +2720,9 @@ export async function deleteBookingBatch(batchId) {
 
 
 
-// ✅ ===============================================
-// /  ✅ 戶別資料管理 (AG Grid) API
-// ✅ ===============================================
+//  ===============================================
+// /   戶別資料管理 (AG Grid) API
+//  ===============================================
 
 /**
  * [Firestore 版] 根據建案 ID 獲取所有戶別資料，用於 AG Grid
@@ -3088,7 +3081,7 @@ export const deleteSalesParameter = async (docId) => {
 
 
 /**
- * ✅ 【新增】即時監聽銷控系統所需的所有資料
+ *  【新增】即時監聽銷控系統所需的所有資料
  * @param {string} projectId - 專案 ID (e.g., "fuyu61")
  * @param {function} onDataChange - 收到更新資料時的回呼函式
  * @param {function} onError - 發生錯誤時的回呼函式
@@ -3098,23 +3091,23 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   const projectDocRef = doc(db, 'projects', projectId);
   const parametersQuery = query(collection(db, 'salesParameters'), where('projectId', '==', projectId));
   const householdsQuery = query(collection(db, 'salesHouseholds'), where('projectId', '==', projectId));
-  // ✅ 取得同專案的所有車位資料
+  //  取得同專案的所有車位資料
   const parkingsQuery = query(collection(db, 'salesParkings'), where('projectId', '==', projectId)); 
 
   let combinedData = {
     project: null,
     parameters: [],
     households: [],
-    parkings: [] // ✅ 新增 parkings 屬性
+    parkings: [] //  新增 parkings 屬性
   };
   
   let projectLoaded = false;
   let paramsLoaded = false;
   let householdsLoaded = false;
-  let parkingsLoaded = false; // ✅ 新增 parkings 載入旗標
+  let parkingsLoaded = false; //  新增 parkings 載入旗標
 
   const checkAndEmitData = () => {
-    // ✅ 確保所有監聽器都至少回傳過一次資料後才呼叫回呼函式
+    //  確保所有監聽器都至少回傳過一次資料後才呼叫回呼函式
     if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded) {
       onDataChange(combinedData);
     }
@@ -3143,19 +3136,19 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
     checkAndEmitData();
   }, onError);
 
-  // ✅ 新增對 salesParkings 的監聽
+  //  新增對 salesParkings 的監聽
   const unsubParkings = onSnapshot(parkingsQuery, (snapshot) => {
     combinedData.parkings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     parkingsLoaded = true;
     checkAndEmitData();
   }, onError);
 
-  // ✅ 回傳一個函式，用於一次性地停止所有監聽器
+  //  回傳一個函式，用於一次性地停止所有監聽器
   return () => {
     unsubProject();
     unsubParams();
     unsubHouseholds();
-    unsubParkings(); // ✅ 確保停止車位監聽
+    unsubParkings(); //  確保停止車位監聽
   };
 };
 
@@ -3186,7 +3179,7 @@ export const uploadParkingLots = async (projectId, parkingData) => {
 
 
 /**
- * ✅ 【新增】呼叫 Firebase Function 來批次上傳戶別資料
+ *  【新增】呼叫 Firebase Function 來批次上傳戶別資料
  * @param {string} projectId - 專案 ID
  * @param {Array<object>} householdsData - 從 Excel 解析出的戶別資料陣列
  * @returns {Promise<object>}

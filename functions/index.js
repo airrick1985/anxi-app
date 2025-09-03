@@ -64,7 +64,7 @@ exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request)
 
 
 // =================================================================
-// / 自動為超級管理員授權
+// / 自動為超級管理員授權 (新版 - 依角色動態查找)
 // =================================================================
 
 const ALL_SYSTEM_PERMISSIONS = [ '人員管理', '報價系統', '銷控系統', '報價系統銷售選單', '客戶管理', '客變系統', '寄信-銷控', '寄信-驗屋', '收信-銷控', '收信-驗屋', '訂閱查詢', '驗屋時間表-修改', '驗屋時間表-檢視', '驗屋系統' ];
@@ -76,48 +76,55 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
         console.log("事件中沒有文件資料，中止操作。");
         return;
     }
+
     const newSubscription = snap.data();
     const { projectName, projectId } = newSubscription;
-    const SUPER_ADMIN_PHONE = '60763998';
-    if (!projectName) {
-        console.log('新的訂閱紀錄缺少 projectName，中止操作。');
+
+    if (!projectName || !projectId) {
+        console.log('新的訂閱紀錄缺少 projectName 或 projectId，中止操作。');
         return;
     }
+
     try {
-        const userDoc = await anxiDb.collection('users').doc(SUPER_ADMIN_PHONE).get();
-        if (!userDoc.exists) {
-            console.error(`超級管理員 ${SUPER_ADMIN_PHONE} 不存在於 users 集合中。`);
+        // ✅ 1. 查詢 users 集合，找出所有 roles 陣列中包含 "超級管理員" 的使用者
+        const usersRef = anxiDb.collection('users');
+        const superAdminQuery = usersRef.where('roles', 'array-contains', '超級管理員');
+        const superAdminSnapshot = await superAdminQuery.get();
+
+        if (superAdminSnapshot.empty) {
+            console.log("找不到任何擁有「超級管理員」角色的使用者，中止操作。");
             return;
         }
-        const adminUserName = userDoc.data().name || 'Super Admin';
-        const batch = anxiDb.batch();
-        const permissionsRef = anxiDb.collection('permissions');
-        for (const system of ALL_SYSTEM_PERMISSIONS) {
-            const querySnapshot = await permissionsRef
-                .where('userPhone', '==', SUPER_ADMIN_PHONE)
-                .where('projectName', '==', projectName)
-                .where('system', '==', system)
-                .limit(1)
-                .get();
-            if (querySnapshot.empty) {
-                const newPermRef = permissionsRef.doc();
-                batch.set(newPermRef, {
-                    userPhone: SUPER_ADMIN_PHONE,
-                    userName: adminUserName,
-                    projectName: projectName,
-                    projectId: projectId || '',
-                    system: system,
-                    access: true,
-                    lastModifiedBy: 'System Automation',
-                    lastModifiedAt: Firestore.FieldValue.serverTimestamp()
-                });
-            } else {
-                const existingDocRef = querySnapshot.docs[0].ref;
-                batch.update(existingDocRef, { access: true });
+        
+        // ✅ 2. 遍歷所有找到的超級管理員
+        const permissionPromises = superAdminSnapshot.docs.map(async (userDoc) => {
+            const adminPhone = userDoc.id;
+            const permissionDocRef = anxiDb.collection('userPermissions').doc(adminPhone);
+            const permissionDoc = await permissionDocRef.get();
+
+            let currentPermissions = {};
+            if (permissionDoc.exists) {
+                currentPermissions = permissionDoc.data().permissions || {};
             }
-        }
-        await batch.commit();
-        console.log(`成功為超級管理員 [${SUPER_ADMIN_PHONE}] 在建案 [${projectName}] 開啟所有權限。`);
+
+            // 更新權限物件：新增或覆蓋這個新專案的權限
+            currentPermissions[projectId] = {
+                projectName: projectName,
+                systems: ALL_SYSTEM_PERMISSIONS
+            };
+
+            // 將更新後的整個權限物件寫回 Firestore
+            return permissionDocRef.set({
+                permissions: currentPermissions,
+                userName: userDoc.data().name || 'Super Admin' // 同步更新名稱
+            }, { merge: true });
+        });
+        
+        // ✅ 3. 等待所有超級管理員的權限都更新完成
+        await Promise.all(permissionPromises);
+
+        console.log(`✅ 成功為 ${superAdminSnapshot.size} 位超級管理員在新專案 [${projectName}] (${projectId}) 更新所有權限。`);
+
     } catch (error) {
         console.error('為超級管理員授權時發生錯誤:', error);
     }
