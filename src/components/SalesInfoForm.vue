@@ -1,7 +1,7 @@
 <template>
   <div class="pa-2" :class="{ 'mb-8': isMobile }">
     <v-form>
-      <v-row>
+       <v-row>
         <v-col cols="12" md="4">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
@@ -14,7 +14,8 @@
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd"></VueDatePicker>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
+            <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>
           </div>
         </v-col>
 
@@ -30,10 +31,6 @@
             <v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="由編輯車位彈窗自動計算" persistent-hint class="mb-2"></v-text-field>
             <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
             <v-text-field label="溢差價(萬)" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field>
-          </div>
-          <div class="info-section mt-4">
-             <div class="section-title"><v-icon>mdi-comment-text-outline</v-icon> 備註</div>
-             <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>
           </div>
         </v-col>
 

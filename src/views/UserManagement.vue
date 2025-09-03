@@ -51,16 +51,41 @@
           items-per-page-text="每頁筆數："
           :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
         >
+          <template v-slot:item.roles="{ item }">
+            <v-combobox
+              :model-value="item.roles"
+              @update:model-value="newRoles => handleRolesChange(item, newRoles)"
+              :items="ALL_ROLES"
+              multiple
+              chips
+              closable-chips
+              variant="outlined"
+              density="compact"
+              hide-details
+              placeholder="點此新增角色"
+              :loading="item.rolesLoading"
+              class="py-2"
+            >
+              <template v-slot:selection="{ item: chipItem, index }">
+                <v-chip
+                  :key="index"
+                  closable
+                  @click:close="removeRole(item, chipItem.title)"
+                >
+                  {{ chipItem.title }}
+                </v-chip>
+              </template>
+            </v-combobox>
+          </template>
           <template v-slot:item.actions="{ item }">
-          <v-btn small color="primary" @click="openEditDialog(item.phone)">
+            <v-btn small color="primary" @click="openEditDialog(item.phone)">
               編輯
             </v-btn>
           </template>
         </v-data-table>
 
       </v-card-text>
-
-      <v-dialog v-model="dialogVisible" persistent max-width="1000px">
+       <v-dialog v-model="dialogVisible" persistent max-width="1000px">
         <v-card>
               <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
             <span class="text-h5">{{ isNewUser ? '新增人員' : '編輯人員' }}</span>
@@ -138,29 +163,39 @@
           </div>
         </v-card>
       </v-dialog>
-
-    </v-card>
+      </v-card>
   </v-container>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useUserStore } from '@/store/user';
-import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
+import { useProjectStore } from '@/store/projectStore';
 import { 
   fetchAdminScope, 
   fetchUserDetailsForAdmin, 
   updateUserDetailsForAdmin,
-  fetchManageableUsersForAdmin
+  // ✅ 修改引入的函式
+  fetchManageableUsersWithDetails,
+  updateUserRoles,
 } from '@/api.js';
+import { useToast } from 'vue-toastification'; // ✅ 引入 useToast
 
 const userStore = useUserStore();
 const projectStore = useProjectStore();
+const toast = useToast(); // ✅ 初始化 toast
 const adminKey = computed(() => userStore.user?.key);
+
+// ✅ 新增所有可選的角色列表
+const ALL_ROLES = [
+  '超級管理員', '系統管理員', '銷售主管', '客服主管',
+  '客服', '工務', '銷售', '工務主管'
+];
 
 // --- Component State Refs ---
 const loading = ref(true);
 const loadingDetails = ref(false); // For dialog loading
+// ... (其他 state refs 維持不變)
 const saving = ref(false);
 const errorMessage = ref('');
 const showErrorAlert = ref(false);
@@ -170,17 +205,17 @@ const adminScope = ref({});
 const allSystemFunctions = ref([]);
 const managedProjects = ref([]);
 const manageableUsers = ref([]);
+// ... (其他 data refs 維持不變)
 const searchPhone = ref('');
 const targetUser = ref(null);
 const permissionMatrix = ref({});
 
 // --- UI Control Refs ---
 const dialogVisible = ref(false);
+// ... (其他 UI refs 維持不變)
 const isNewUser = ref(false);
 const basicInfoForm = ref(null);
 const isFormValid = ref(false);
-
-// --- 新增的狀態變數 ---
 const phoneValidationLoading = ref(false);
 const phoneValidationError = ref('');
 const phoneValidationSuccess = ref('');
@@ -188,15 +223,15 @@ const phoneValidationSuccess = ref('');
 const rules = {
   required: [ value => !!value || '此欄位為必填項。' ],
 };
-
 // --- 黑名單模組 ---
 const blacklist = ['60763998', '0980371014'];
 
 // --- Data Table Headers ---
 const tableHeaders = ref([
-  { title: '姓名', align: 'start', key: 'name' },
-  { title: '手機號碼', key: 'phone' },
-  { title: '操作', key: 'actions', sortable: false, align: 'center' },
+  { title: '姓名', align: 'start', key: 'name', width: '20%' },
+  { title: '手機號碼', key: 'phone', width: '25%' },
+  { title: '角色', key: 'roles', sortable: false, width: '40%' }, // ✅ 新增角色欄位
+  { title: '操作', key: 'actions', sortable: false, align: 'center', width: '15%' },
 ]);
 
 // --- Core Logic Functions ---
@@ -210,12 +245,13 @@ const loadInitialData = async () => {
   try {
     const [scope, users] = await Promise.all([
       fetchAdminScope(adminKey.value),
-      fetchManageableUsersForAdmin(adminKey.value),
+      fetchManageableUsersWithDetails(adminKey.value), // ✅ 改用新的 API 函式
       projectStore.fetchProjects() 
     ]);
     
     adminScope.value = scope;
-    manageableUsers.value = users;
+    // ✅ 為每個 user 物件加上 rolesLoading 屬性以控制載入狀態
+    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false }));
     managedProjects.value = Object.keys(scope);
     
     const systems = new Set();
@@ -232,12 +268,46 @@ const loadInitialData = async () => {
 
 onMounted(loadInitialData);
 
+// ✅ START: 新增角色即時更新的相關函式
+const handleRolesChange = async (user, newRoles) => {
+  // 防止 combobox 在 chips 模式下，刪除時觸發兩次事件
+  if (JSON.stringify(user.roles) === JSON.stringify(newRoles)) return;
+  
+  const userInTable = manageableUsers.value.find(u => u.phone === user.phone);
+  if (!userInTable) return;
+
+  userInTable.rolesLoading = true;
+  try {
+    await updateUserRoles(user.phone, newRoles);
+    // 成功後更新本地資料
+    userInTable.roles = newRoles;
+    toast.success(`已更新 ${user.name} 的角色`);
+  } catch (error) {
+    toast.error(`更新角色失敗: ${error.message}`);
+    // 如果失敗，則恢復成舊的 roles，讓 UI 同步
+    // 這一步是可選的，但能確保 UI 與後端資料一致
+    const originalUser = await fetchUserDetailsForAdmin(user.phone, adminKey.value);
+    if(originalUser.status === 'success') {
+        userInTable.roles = originalUser.data.basicInfo.roles || [];
+    }
+  } finally {
+    userInTable.rolesLoading = false;
+  }
+};
+
+// Combobox 的 closable-chips 在點擊關閉時會直接從 model-value 移除
+// 我們需要一個獨立的函式來觸發更新
+const removeRole = (user, roleToRemove) => {
+  const newRoles = user.roles.filter(r => r !== roleToRemove);
+  handleRolesChange(user, newRoles);
+};
+// ✅ END: 新增角色即時更新的相關函式
+
+// --- (底下所有函式，包括 Dialog and Editing Logic，都維持原樣不變) ---
+
 const adminCanAssign = (project, system) => {
   return adminScope.value[project]?.includes(system);
 };
-
-// --- Dialog and Editing Logic ---
-
 const openEditDialog = async (phone) => {
   const userFromTable = manageableUsers.value.find(u => u.phone === phone);
   if (!userFromTable) {
@@ -268,13 +338,11 @@ const openEditDialog = async (phone) => {
     loadingDetails.value = false;
   }
 };
-
 const resetPhoneValidation = () => {
   phoneValidationLoading.value = false;
   phoneValidationError.value = '';
   phoneValidationSuccess.value = '';
 };
-
 
 const openCreateDialog = (phone = '') => {
   resetPhoneValidation();
@@ -301,7 +369,6 @@ const closeDialog = () => {
   searchPhone.value = '';
   resetPhoneValidation();
 };
-
 const handleSearchUser = async () => {
   const phoneToSearch = searchPhone.value.trim();
   if (!phoneToSearch) {
@@ -342,7 +409,6 @@ const handleSearchUser = async () => {
     loadingDetails.value = false;
   }
 };
-
 const buildPermissionMatrix = (permissions) => {
   const matrix = {};
   allSystemFunctions.value.forEach(system => {
@@ -446,7 +512,6 @@ const handleSave = async () => {
         saving.value = false;
     }
 };
-
 const validatePhoneNumber = async () => {
   if (!isNewUser.value) return;
   const phone = targetUser.value.basicInfo.phone?.trim();
@@ -472,12 +537,14 @@ const validatePhoneNumber = async () => {
     phoneValidationLoading.value = false;
   }
 };
+
 </script>
 
 <style scoped>
+/* ... (所有 style 維持不變) ... */
 .permission-matrix {
   border: 1px solid #e0e0e0;
-  max-height: 400px; /* Add scroll for long permission lists */
+  max-height: 400px;
   overflow: auto;
 }
 .permission-matrix th, .permission-matrix td {

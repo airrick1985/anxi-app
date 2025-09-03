@@ -67,7 +67,7 @@ const allButtons = ref([
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
   { id: 'customerManagement', text: '客戶管理', icon: customerIcon, permissionType: 'system', permissionArgs: ['客戶管理'], nav: null },
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
-  { id: 'inspectionTimetable', text: '驗屋時間表', icon: inspectionCalenderIcon, permissionType: 'system', permissionArgs:  ['驗屋時間表-修改', '驗屋時間表-檢視'], nav: { name: 'ProjectSelector' } 
+  { id: 'inspectionTimetable', text: '驗屋時間表', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋時間表-修改', '驗屋時間表-檢視'], nav: { name: 'ProjectSelector' } 
   },
 ]);
 
@@ -91,19 +91,16 @@ onMounted(() => {
     }
   });
 
-  visibleButtons.value = sortedButtons.filter(button => {
+   visibleButtons.value = sortedButtons.filter(button => {
     switch(button.permissionType) {
       case 'project':
         return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
- case 'system':
-        const permissions = button.permissionArgs; 
-        if (Array.isArray(permissions)) {
-          // 如果是陣列，就用 .some 檢查是否有任一權限
-          return permissions.some(permissionName => userStore.hasPermission(permissionName));
-        } else {
-          // 如果是單一字串，維持原本的行為
-          return userStore.hasPermission(permissions);
-        }
+      // ✅ 核心修改點：新增一個 case 來處理 'anySystem' 類型
+      case 'anySystem':
+        return userStore.hasAnyPermission(button.permissionArgs);
+      case 'system':
+        // 此處邏輯維持不變，但現在只會處理 permissionArgs 是單一字串的情況 (更簡潔)
+        return userStore.hasPermission(button.permissionArgs[0]);
       case 'getter':
         return userStore[button.permissionArgs[0]];
       case 'loggedIn':

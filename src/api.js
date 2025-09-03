@@ -120,26 +120,23 @@ export async function getProjectList(userKey) {
 
 
 
+
 // 🔐 [Firestore 版] - 使用者登入
 export async function loginUser(key, password) {
   console.log(`[api.js] Firestore loginUser called with key: ${key}`);
   try {
-    // 步驟 1: 從 'users' 集合中查找使用者文件
     const userDocRef = doc(db, "users", key);
     const userDocSnap = await getDoc(userDocRef);
 
-    // 檢查使用者是否存在
     if (!userDocSnap.exists()) {
       return { status: 'error', message: '手機號碼不存在或錯誤' };
     }
 
     const userData = userDocSnap.data();
-    // 檢查密碼是否相符 (注意：實際線上專案應使用更安全的密碼驗證機制)
     if (userData.password !== String(password)) {
       return { status: 'error', message: '密碼錯誤' };
     }
 
-    // 步驟 2: 驗證成功後，從 'permissions' 集合獲取使用者權限
     const permissionsRef = collection(db, "permissions");
     const q = query(permissionsRef, where("userPhone", "==", key), where("access", "==", true));
     const permissionsSnapshot = await getDocs(q);
@@ -150,28 +147,26 @@ export async function loginUser(key, password) {
       detailedPermissions.push({
         projectName: perm.projectName,
         system: perm.system,
-        access: 'Y' // 因為我們只查詢 access 為 true 的權限
+        access: 'Y'
       });
     });
 
-    // 步驟 3: 組合前端 userStore 需要的使用者物件
+    // ✅ 核心修改點：在回傳的 user 物件中加入 roles 欄位
     const userObject = {
       key: key,
       email: userData.email,
       name: userData.name,
+      roles: userData.roles || [], // <-- 如果沒有 roles 欄位，則回傳空陣列
       detailedPermissions: detailedPermissions
     };
 
-    // 回傳與舊版 API 結構相容的成功物件
     return { status: 'success', user: userObject };
 
   } catch (e) {
     console.error('Firestore loginUser 錯誤:', e);
-    // 回傳一個通用的錯誤訊息
     return { status: 'error', message: `登入時發生錯誤: ${e.message}` };
   }
 }
-
 
 // 🔧 [Firestore 版] - 修改使用者個人資料
 export async function updateUserProfile(payload) {
@@ -1005,6 +1000,70 @@ export async function setMessageStatus(statusId, actionType) {
 // ===============================================
 // /  人員管理系統 API
 // ===============================================
+
+/**
+ * ✅ 【新函式】獲取管理者可管理的人員列表 (包含角色等詳細資料)
+ * @param {string} adminKey - 管理員自己的手機號碼
+ * @returns {Promise<Array>} - 返回可管理人員的陣列，包含 { phone, name, roles }
+ */
+export async function fetchManageableUsersWithDetails(adminKey) {
+  // 1. 先獲取管理者能管理的建案
+  const scope = await fetchAdminScope(adminKey);
+  const managedProjects = Object.keys(scope);
+  if (managedProjects.length === 0) return [];
+
+  // 2. 查詢所有在這些建案中有權限的用戶 phone
+  const permissionsRef = collection(db, "permissions");
+  const usersQuery = query(permissionsRef,
+    where("projectName", "in", managedProjects),
+    where("access", "==", true)
+  );
+  const usersSnapshot = await getDocs(usersQuery);
+  
+  // 3. 過濾掉重複的用戶 phone，並排除管理員自己和受保護的用戶
+  const PROTECTED_USERS_BLACKLIST = ['60763998'];
+  const userPhones = [...new Set(
+    usersSnapshot.docs
+      .map(doc => doc.data().userPhone)
+      .filter(phone => phone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(phone))
+  )];
+
+  if (userPhones.length === 0) return [];
+  
+  // 4. 使用 'in' 查詢，一次性從 users 集合獲取所有用戶的詳細資料
+  const usersRef = collection(db, "users");
+  const usersDetailsQuery = query(usersRef, where(documentId(), 'in', userPhones));
+  const usersDetailsSnapshot = await getDocs(usersDetailsQuery);
+
+  const manageableUsers = [];
+  usersDetailsSnapshot.forEach(doc => {
+    const userData = doc.data();
+    manageableUsers.push({
+      phone: doc.id,
+      name: userData.name || 'N/A',
+      roles: userData.roles || [] // ✅ 確保回傳 roles 陣列
+    });
+  });
+
+  // 5. 筆劃排序
+  manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+  return manageableUsers;
+}
+
+
+/**
+ * ✅ 【新函式】更新指定使用者的角色列表
+ * @param {string} userPhone - 使用者的手機號碼 (文件 ID)
+ * @param {Array<string>} roles - 最新的角色陣列
+ * @returns {Promise<void>}
+ */
+export async function updateUserRoles(userPhone, roles) {
+  if (!userPhone) throw new Error("缺少使用者手機號碼。");
+  const userDocRef = doc(db, "users", userPhone);
+  await updateDoc(userDocRef, {
+    roles: roles
+  });
+}
 
 /**
  * [Firestore 版] 獲取當前管理員的權限範圍 (可管理的建案和可指派的權限)

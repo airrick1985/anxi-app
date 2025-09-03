@@ -61,11 +61,46 @@
               hint="Google Slide 網址中的 ID"
               persistent-hint
             ></v-text-field>
+
+            <v-divider class="my-4"></v-divider>
+            <div class="mb-4">
+              <p class="text-subtitle-1 mb-2">合約方式設定</p>
+              <div class="mb-2">
+                <v-chip
+                  v-for="cType in project.contractTypes"
+                  :key="cType"
+                  class="mr-2 mb-2"
+                  :closable="cType !== '一般合約'"
+                  @click:close="removeContractType(cType)"
+                  label
+                >
+                  {{ cType }}
+                </v-chip>
+              </div>
+              <div class="d-flex align-center">
+                <v-text-field
+                  v-model="newContractType"
+                  label="新增合約方式"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  @keydown.enter.prevent="addContractType"
+                ></v-text-field>
+                <v-btn
+                  class="ml-2"
+                  icon="mdi-plus"
+                  color="primary"
+                  @click="addContractType"
+                  variant="tonal"
+                ></v-btn>
+              </div>
+            </div>
             <v-btn
               color="primary"
               @click="saveProjectSettings"
               :loading="isSavingProject"
               block
+              class="mt-4"
             >
               儲存專案設定
             </v-btn>
@@ -242,6 +277,7 @@ const projectId = ref(route.params.projectId);
 const project = ref(null);
 const projectLoading = ref(true);
 const isSavingProject = ref(false);
+const newContractType = ref(''); // ✅ 新增 contract type 輸入框的狀態
 
 // Sales Parameters State
 const salesParameters = ref([]);
@@ -280,6 +316,13 @@ const loadProjectSettings = async () => {
   projectLoading.value = true;
   try {
     project.value = await getProjectSettings(projectId.value);
+    // ✅ 初始化或確保 contractTypes 陣列及預設值存在
+    if (project.value && (!project.value.contractTypes || !Array.isArray(project.value.contractTypes))) {
+      project.value.contractTypes = ['一般合約'];
+    } else if (project.value) {
+      const uniqueTypes = new Set(['一般合約', ...project.value.contractTypes]);
+      project.value.contractTypes = Array.from(uniqueTypes);
+    }
   } catch (error) {
     toast.error(`載入專案設定失敗: ${error.message}`);
   } finally {
@@ -291,7 +334,6 @@ const saveProjectSettings = async () => {
   isSavingProject.value = true;
   try {
     const { id, ...dataToUpdate } = project.value;
-    // ✓ 呼叫更名後的 updateProjectSalesSettings
     await updateProjectSalesSettings(id, dataToUpdate);
     toast.success('專案設定已成功儲存！');
   } catch (error) {
@@ -300,6 +342,26 @@ const saveProjectSettings = async () => {
     isSavingProject.value = false;
   }
 };
+
+// ✅ START: 新增合約方式的處理函式
+const addContractType = () => {
+  const value = newContractType.value.trim();
+  if (value && !project.value.contractTypes.includes(value)) {
+    project.value.contractTypes.push(value);
+    newContractType.value = ''; // 清空輸入框
+  } else if (value) {
+    toast.warning(`「${value}」已存在`);
+  }
+};
+
+const removeContractType = (typeToRemove) => {
+  if (typeToRemove === '一般合約') {
+    toast.error('「一般合約」為預設項目，不可刪除');
+    return;
+  }
+  project.value.contractTypes = project.value.contractTypes.filter(t => t !== typeToRemove);
+};
+// ✅ END: 新增合約方式的處理函式
 
 const setupParamsListener = () => {
   paramsLoading.value = true;
@@ -336,11 +398,9 @@ const saveParameter = async () => {
   try {
     const { id, ...data } = editingParameter.value;
     if (id) {
-      // Update
       await updateSalesParameter(id, data);
       toast.success('狀態已成功更新！');
     } else {
-      // Add
       await addSalesParameter(projectId.value, data);
       toast.success('已成功新增狀態！');
     }
