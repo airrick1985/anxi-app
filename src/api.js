@@ -26,7 +26,7 @@ import { format } from 'date-fns';
 
 
 
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { httpsCallable } from "firebase/functions"; 
 
 
@@ -3197,4 +3197,77 @@ export const uploadHouseholds = async (projectId, householdsData) => {
     console.error("呼叫 uploadHouseholds 雲端函式時發生錯誤:", error);
     return { status: "error", message: error.message };
   }
+};
+
+
+// =================================================================
+// / ✓ 【新增】銷控圖片管理 API
+// =================================================================
+
+/**
+ * 即時監聽指定建案的所有銷控圖片資料
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @param {function} onError - 發生錯誤時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToSalesImages = (projectId, onDataChange, onError) => {
+  const q = query(
+    collection(db, "salesImages"),
+    where("projectId", "==", projectId),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const images = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    onDataChange(images);
+  }, (error) => {
+    console.error(`監聽銷控圖片時發生錯誤 (Project: ${projectId}):`, error);
+    if (onError) onError(error);
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * 上傳銷控圖片檔案至 Firebase Storage
+ * @param {string} storagePath - 在 Storage 中的完整儲存路徑
+ * @param {File} file - 要上傳的檔案物件
+ * @returns {Promise<string>} - 返回檔案的下載 URL
+ */
+export const uploadSalesImage = async (storagePath, file) => {
+  const imageRef = ref(storage, storagePath);
+  await uploadBytes(imageRef, file);
+  return getDownloadURL(imageRef);
+};
+
+/**
+ * 在 Firestore 中建立或更新銷控圖片的中繼資料
+ * @param {string} docId - 文件 ID (格式: projectId_imageName)
+ * @param {object} metadata - 要儲存的圖片資料
+ * @returns {Promise<void>}
+ */
+export const setSalesImageMetadata = async (docId, metadata) => {
+  const docRef = doc(db, "salesImages", docId);
+  // 使用 setDoc 搭配 merge:true，無論是新增還是覆蓋(重新上傳)都能處理
+  await setDoc(docRef, metadata, { merge: true });
+};
+
+/**
+ * 刪除一張銷控圖片 (包含 Storage 檔案和 Firestore 記錄)
+ * @param {string} docId - Firestore 的文件 ID
+ * @param {string} storagePath - Storage 中的檔案完整路徑
+ * @returns {Promise<void>}
+ */
+export const deleteSalesImage = async (docId, storagePath) => {
+  if (!storagePath) {
+    throw new Error('缺少 storagePath，無法刪除 Storage 中的檔案。');
+  }
+  // 1. 刪除 Storage 中的檔案
+  const imageRef = ref(storage, storagePath);
+  await deleteObject(imageRef);
+
+  // 2. 刪除 Firestore 中的文件
+  const docRef = doc(db, "salesImages", docId);
+  await deleteDoc(docRef);
 };

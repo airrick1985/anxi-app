@@ -777,7 +777,7 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
         continue;
       }
 
-      const dataToSave = { ...row, projectId }; // 確保 projectId 被寫入
+      const dataToSave = { ...row, projectId }; 
 
       // --- 資料型別轉換 ---
       for (const field of numericFields) {
@@ -789,11 +789,10 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
       for (const field of dateFields) {
          if (dataToSave[field]) {
             const date = new Date(dataToSave[field]);
-            // 檢查是否為有效的日期物件
             if (!isNaN(date.getTime())) {
                 dataToSave[field] = admin.firestore.Timestamp.fromDate(date);
             } else {
-                dataToSave[field] = null; // 如果是無效日期則存為 null
+                dataToSave[field] = null;
             }
         }
       }
@@ -801,6 +800,19 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
         const val = String(dataToSave.isFirstTimeBuyer).toUpperCase();
         dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y');
       }
+
+      // ✅ --- 新增：處理銷控圖片欄位 ---
+      if (typeof dataToSave.salesImages === 'string' && dataToSave.salesImages.trim() !== '') {
+        // 將逗號分隔的字串，轉換為一個經過 trim 處理且移除非空字串的陣列
+        dataToSave.salesImages = dataToSave.salesImages
+          .split(',')
+          .map(name => name.trim())
+          .filter(name => name); 
+      } else if (!dataToSave.salesImages) {
+        // 如果欄位不存在或為空，確保它是一個空陣列，以維持資料格式一致性
+        dataToSave.salesImages = [];
+      }
+      // ✅ --- 處理結束 ---
 
       const docId = `${projectId}_${unitId}`;
       const docRef = db.collection("salesHouseholds").doc(docId);
