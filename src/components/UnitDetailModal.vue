@@ -101,9 +101,26 @@
                                         <div class="area-item"><span>共用部分 (公設)</span><span class="area-ping-value">{{ formatNumber(unitData.area_common_ping, 2) }}</span><span>{{ formatNumber(unitData.area_common_sqm, 2) }}</span></div>
                                         <div class="area-item"><span>露臺 (不計坪)</span><span class="area-ping-value">{{ formatNumber(unitData.area_terrace_ping, 2) }}</span></div>
                                     </div>
-                                </div>
-                            </div>
-                        </v-col>
+                                </div> <div class="area-details mt-2">
+            <div class="area-group">
+                <div class="area-group-title">
+                    <v-icon size="small" class="mr-1">mdi-earth</v-icon>
+                    土地持分資訊
+                </div>
+                <div class="area-item-header">
+                    <span>項目</span>
+                    <span>坪數</span>
+                    <span>m²</span>
+                </div>
+                <div class="area-item">
+                    <span>土地持分面積</span>
+                    <span class="area-ping-value">{{ formatNumber(unitData.land_share_ping, 2) }}</span>
+                    <span>{{ formatNumber(unitData.land_share_sqm, 2) }}</span>
+                </div>
+            </div>
+        </div>
+        </div>
+</v-col>
                     </v-row>
 
                     <v-row class="mt-2">
