@@ -431,8 +431,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-// ✅ 新增：引入上傳 API 和 toast
-import { listenToSalesControlData, uploadHouseholds } from '@/api';
+//  新增：引入上傳 API 和 toast
+import { listenToSalesControlData, uploadHouseholds , listenToSalesImages } from '@/api';
 import { useToast } from 'vue-toastification';
 import * as XLSX from 'xlsx-js-style';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
@@ -443,7 +443,7 @@ import { useDisplay } from 'vuetify';
 import ParkingControl from './ParkingControl.vue'; 
 import UpdateControl from './UpdateControl.vue'; 
 
-// ✅ 新增：定義 EXCEL 匯出/上傳的欄位
+//  新增：定義 EXCEL 匯出/上傳的欄位
 const COLUMN_DEFINITIONS = [
     { key: 'building', title: '棟別' },
     { key: 'floor', title: '樓層' },
@@ -453,7 +453,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'salesStatus_quote', title: '報價系統狀態' },
     { key: 'buyerName', title: '買方姓名' },
     { key: 'buyerPhone', title: '買方電話' },
-    // ✅ 新增：詳細買方資料欄位
+    //  新增：詳細買方資料欄位
     { key: 'buyerIdNumber', title: '身分證字號' },
     { key: 'buyerDateOfBirth', title: '出生年月日' },
     { key: 'buyerEmail', title: 'EMAIL' },
@@ -512,10 +512,11 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_supplement_amount', title: '補足金額' },
     { key: 'payment_contract_amount', title: '簽約金額' },
     { key: 'remarks', title: '備註' },
+    { key: 'salesImages', title: '戶別圖片' },
     { key: 'driveFolderUrl', title: '戶別資料夾位置' },
 ];
 
-// ✅ 新增：從唯一定義來源，動態產生所有需要的變數
+//  新增：從唯一定義來源，動態產生所有需要的變數
 const exportableColumns = computed(() => COLUMN_DEFINITIONS.filter(c => c.exportable !== false));
 const fieldMapping = computed(() => Object.fromEntries(exportableColumns.value.map(col => [col.key, col.title])));
 const chineseHeaders = computed(() => exportableColumns.value.map(c => c.title));
@@ -527,7 +528,7 @@ const { mobile: isMobile } = useDisplay();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
-const toast = useToast(); // ✅ 新增
+const toast = useToast(); //  新增
 
 const { 
   isSlideDialogVisible, 
@@ -546,7 +547,9 @@ let unsubscribe = null;
 const project = ref({ name: '讀取中...' });
 const salesParameters = ref([]);
 const salesHouseholds = ref([]);
-const salesParkings = ref([]); // ✅ 新增一個 ref 來儲存車位資料
+const salesParkings = ref([]); //  新增一個 ref 來儲存車位資料
+const salesImages = ref([]); // 用於存放所有銷控圖片
+
 
 
 const headerTopRef = ref(null);
@@ -561,7 +564,7 @@ const priceDisplayMode = ref('list');
 const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
 
-// ✅ 新增：上傳相關 state
+//  新增：上傳相關 state
 const uploadDialog = ref(false);
 const uploadedFile = ref(null);
 const parsedData = ref([]);
@@ -570,10 +573,11 @@ const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
 
-// ✅ 新增一個 computed 屬性，將 modal 需要的所有資料打包
+//  新增一個 computed 屬性，將 modal 需要的所有資料打包
 const allDataForModal = computed(() => ({
   '參數': salesParameters.value,
   '車位': salesParkings.value,
+  '銷控圖片': salesImages.value,
   // 未來如果 modal 需要其他資料，也可以從這裡加入
 }));
 
@@ -713,25 +717,51 @@ function navigateToSalesSettings() {
 }
 
 // --- Lifecycle Hooks ---
+
 onMounted(() => {
   quoteStore.clearQuote();
   loading.value = true;
-  
-  unsubscribe = listenToSalesControlData(
-    projectId.value,
-    (data) => {
-      project.value = data.project || { name: '專案資料載入失敗' };
-      salesParameters.value = data.parameters || [];
-      salesHouseholds.value = data.households || [];
-      salesParkings.value = data.parkings || []; // ✅ 接收 API 回傳的車位資料
+
+//  用 Promise.all 來同時啟動兩個監聽器
+  const salesDataPromise = new Promise((resolve, reject) => {
+    unsubscribe = listenToSalesControlData(
+      projectId.value,
+      (data) => {
+        project.value = data.project || { name: '專案資料載入失敗' };
+        salesParameters.value = data.parameters || [];
+        salesHouseholds.value = data.households || [];
+        salesParkings.value = data.parkings || [];
+        resolve(); // 資料首次載入後 resolve
+      },
+      (err) => reject(err)
+    );
+  });
+
+  const imagesDataPromise = new Promise((resolve, reject) => {
+    // 假設我們需要另一個 unsubscribe 變數
+    const unsubscribeImages = listenToSalesImages(
+        projectId.value,
+        (data) => {
+            salesImages.value = data;
+            resolve(); // 圖片資料首次載入後 resolve
+        },
+        (err) => reject(err)
+    );
+    // 我們需要確保這個也能被取消訂閱
+    onUnmounted(unsubscribeImages);
+  });
+
+  Promise.all([salesDataPromise, imagesDataPromise])
+    .then(() => {
       if(loading.value) loading.value = false;
-    },
-    (err) => {
+    })
+    .catch((err) => {
       error.value = `讀取銷控資料時發生錯誤: ${err.message}`;
       loading.value = false;
-      console.error('銷控資料監聽失敗:', err);
-    }
-  );
+      console.error('銷控資料或圖片監聽失敗:', err);
+    });
+
+  // onUnmounted 中已有的 unsubscribe 將繼續作用於 listenToSalesControlData
 });
 
 onUnmounted(() => {
@@ -757,6 +787,9 @@ const exportToExcel = () => {
     const dataAsArray = sortedItems.map(item => {
         return exportOrder.value.map(key => {
             const value = item[key];
+            if (key === 'salesImages' && Array.isArray(value)) {
+                return value.join(','); // 將圖片陣列轉成逗號分隔的字串
+            }
             if (value instanceof Date) {
                 return value.toISOString().split('T')[0];
             }
@@ -1145,7 +1178,7 @@ const uploadData = async () => {
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
 }
-/* ✅ 新增：上傳提示框的樣式 */
+/*  新增：上傳提示框的樣式 */
 .pre-wrap-alert {
    white-space: pre-wrap;
 }

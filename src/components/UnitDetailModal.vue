@@ -37,224 +37,150 @@
 
         <v-card-text class="main-content">
             <v-window v-model="tab">
-                <v-window-item value="info">
-                    <template v-if="isEditing">
-                        <SalesInfoForm 
-                            v-if="editingData"
-                            v-model="editingData"
-                            :status-options="statusOptions"
-                            :personnel-options="personnelOptions"
-                            :buyer-info-options="buyerInfoOptions"
-                            :project-name="projectName"
-                            :all-parking-data="allData['車位'] || []"
-                            @request-open-slide="$emit('request-open-slide')"
-                            :contract-type-options="contractTypeOptions"
-                            :first-purchase-options="firstPurchaseOptions"
-                        />
-                    </template>
-                    <template v-else>
-                        <div v-if="unitData" class="pa-2">
-                            <v-row class="top-info-row">
-                                <v-col cols="12" md="6">
-                                    <div class="info-section">
-                                        <div class="section-title">價格資訊</div>
-                                        <template v-if="shouldHidePrice">
-                                            <div class="pa-4 text-center">
-                                                <v-icon size="x-large" color="grey">mdi-currency-usd-off</v-icon>
-                                                <p class="text-grey mt-2">此戶別已售，價格不顯示</p>
-                                            </div>
-                                        </template>
-                                        <template v-else>
-                                            <v-list lines="two" dense>
-                                                <v-list-item title="房價">
-                                                    <template v-slot:subtitle><span class="highlight-price">{{ formatNumber(unitData.price_list_house_total) }} 萬</span></template>
-                                                    <template v-slot:prepend><v-icon>mdi-cash-multiple</v-icon></template>
-                                                </v-list-item>
-                                                <v-list-item title="單價">
-                                                    <template v-slot:subtitle><span class="highlight-price">{{ calculatedUnitPrice }} 萬/坪</span></template>
-                                                    <template v-slot:prepend><v-icon>mdi-chart-line</v-icon></template>
-                                                </v-list-item>
-                                                
-                                                <template v-if="viewMode === 'sales'">
-                                                    <v-divider class="my-2"></v-divider>
-                                                    <v-list-item title="房價 (底價)" class="mt-2">
-                                                        <template v-slot:subtitle><span class="highlight-price-base">{{ formatNumber(unitData.price_floor_house_total) }} 萬</span></template>
-                                                        <template v-slot:prepend><v-icon color="grey-darken-1">mdi-alpha-b-box-outline</v-icon></template>
-                                                    </v-list-item>
-                                                    <v-list-item title="單價 (底價)">
-                                                        <template v-slot:subtitle><span class="highlight-price-base">{{ calculatedBaseUnitPrice }} 萬/坪</span></template>
-                                                        <template v-slot:prepend><v-icon color="grey-darken-1">mdi-chart-line-variant</v-icon></template>
-                                                    </v-list-item>
-
-                                                    <template v-if="unitData.price_transaction_house">
-                                                        <v-divider class="my-2"></v-divider>
-                                                        <v-list-item title="房價 (成交價)" class="mt-2">
-                                                            <template v-slot:subtitle><span class="highlight-price-final">{{ formatNumber(unitData.price_transaction_house) }} 萬</span></template>
-                                                            <template v-slot:prepend><v-icon color="success">mdi-check-decagram-outline</v-icon></template>
-                                                        </v-list-item>
-                                                        <v-list-item title="單價 (成交價)">
-                                                            <template v-slot:subtitle><span class="highlight-price-final">{{ calculatedTransactionUnitPrice }} 萬/坪</span></template>
-                                                            <template v-slot:prepend><v-icon color="success">mdi-calculator-variant-outline</v-icon></template>
-                                                        </v-list-item>
-                                                    </template>
-                                                </template>
-                                            </v-list>
-                                        </template>
+                     <v-window-item value="info">
+            <template v-if="isEditing">
+                <SalesInfoForm 
+                    v-if="editingData"
+                    v-model="editingData"
+                    :status-options="statusOptions"
+                    :personnel-options="personnelOptions"
+                    :all-sales-images="allProjectImages"
+                    :all-parking-data="allData['車位'] || []"
+                    @request-open-slide="$emit('request-open-slide')"
+                    :contract-type-options="contractTypeOptions"
+                    :first-purchase-options="firstPurchaseOptions"
+                />
+            </template>
+            <template v-else>
+                <div v-if="unitData" class="pa-2">
+                    <v-row>
+                        <v-col cols="12" md="7">
+                            <div v-if="householdImages.length > 0" class="carousel-viewer-container">
+                                <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
+                                    <v-carousel-item v-for="image in householdImages" :key="image.id">
+                                        <v-img :src="image.downloadURL" class="main-carousel-image" contain @click="openFullscreenViewer" style="cursor: zoom-in;"></v-img>
+                                    </v-carousel-item>
+                                </v-carousel>
+                                <div class="small-thumbnails-strip">
+                                    <div v-for="(image, index) in householdImages" :key="image.id" class="small-thumbnail-wrapper" :class="{ 'thumbnail-active': index === currentImageIndex }" @click="currentImageIndex = index">
+                                        <v-img :src="image.downloadURL" aspect-ratio="16/9" cover></v-img>
                                     </div>
-                                </v-col>
+                                </div>
+                            </div>
+                            <div v-else class="info-section d-flex align-center justify-center text-grey-darken-1" style="height: 100%; min-height: 250px;">
+                                <span><v-icon class="mr-2">mdi-image-multiple-outline</v-icon>此戶別尚無圖片</span>
+                            </div>
+                        </v-col>
 
-                                <v-col cols="12" md="6">
-                                    <div class="info-section">
-                                       <div class="section-title">面積資訊</div>
-                                       <div class="total-area-card">
-                                          <div class="area-summary-item">
-                                             <div>
-                                                <div class="total-area-title">房屋總面積</div>
-                                                <div class="total-area-value">{{ formatNumber(unitData.area_house_ping, 2) }} 坪</div>
-                                                <div class="total-area-subtitle">{{ formatNumber(unitData.area_house_sqm, 2) }} m²</div>
-                                             </div>
-                                          </div>
-                                          <v-divider vertical class="mx-4"></v-divider>
-                                          <div class="area-summary-item">
-                                             <div>
-                                                <div class="total-area-title">公設比</div>
-                                                <div class="total-area-value">{{ formatPercentage(unitData.common_area_ratio) }}</div>
-                                                <div class="total-area-subtitle">&nbsp;</div>
-                                             </div>
-                                          </div>
-                                       </div>
-                                       <div class="area-details mt-3">
-                                          <div class="area-group">
-                                             <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>
-                                                建物面積明細</div>
-                                             <div class="area-item-header">
-                                                <span>項目</span>
-                                                <span>坪數</span>
-                                                <span>m²</span>
-                                             </div>
-                                             <div class="area-item">
-                                                <span>主建物 (室內)</span>
-                                                <span class="area-ping-value">{{ formatNumber(unitData.area_main_ping, 2) }}</span>
-                                                <span>{{ formatNumber(unitData.area_main_sqm, 2) }}</span>
-                                             </div>
-                                             <div class="area-item">
-                                                <span>附屬建物 (陽台)</span>
-                                                <span class="area-ping-value">{{ formatNumber(unitData.area_ancillary_ping, 2) }}</span>
-                                                <span>{{ formatNumber(unitData.area_ancillary_sqm, 2) }}</span>
-                                             </div>
-                                             <div class="area-item">
-                                                <span>共用部分 (公設)</span>
-                                                <span class="area-ping-value">{{ formatNumber(unitData.area_common_ping, 2) }}</span>
-                                                <span>{{ formatNumber(unitData.area_common_sqm, 2) }}</span>
-                                             </div>
-                                             <div class="area-item">
-                                                <span>露臺 (不計坪)</span>
-                                                <span class="area-ping-value">{{ formatNumber(unitData.area_terrace_ping, 2) }}</span>
-                                                
-                                             </div>
-                                          </div>
-                                       </div>
-                                       <div class="area-details mt-2">
-                                          <div class="area-group">
-                                             <div class="area-group-title">
-                                                <v-icon size="small" class="mr-1">mdi-earth</v-icon>
-                                                土地持分資訊
-                                             </div>
-                                             <div class="area-item-header">
-                                                <span>項目</span>
-                                                <span>坪數</span>
-                                                <span>m²</span>
-                                             </div>
-                                             <div class="area-item">
-                                                <span>土地持分面積</span>
-                                                 <span class="area-ping-value">{{ formatNumber(unitData.land_share_ping, 2) }}</span>
-                                                <span>{{ formatNumber(unitData.land_share_sqm, 2) }}</span>
-                                             </div>
-                                          </div>
-                                       </div>
-                                    </div>
-                                </v-col>
-                            </v-row>
-
-                            <div v-if="viewMode === 'sales'">
-                                <v-divider class="my-4"></v-divider>
-                                <v-row>
-                                  <v-col cols="12" md="4">
-                                    <div class="info-section">
-                                      <div class="section-title">成交總覽</div>
-                                      <v-list dense>
-                                        <v-list-item title="房屋成交價" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
-                                        <v-list-item title="車位總價(成交)" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
-                                        <v-list-item class="font-weight-bold total-price-item">
-                                            <v-list-item-title>最終成交總價</v-list-item-title>
-                                            <template v-slot:append>
-                                                <span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span>
-                                            </template>
-                                        </v-list-item>
-                                        <v-list-item class="font-weight-bold total-price-item"> 
-                                            <v-list-item-title>合計底價</v-list-item-title>
-                                            <template v-slot:append>
-                                                <span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span>
-                                            </template>
-                                        </v-list-item>
-                                        <v-list-item title="溢差價" class="premium-price-item">
-                                            <template v-slot:append>
-                                                <span :class="pricePremium >= 0 ? 'text-success' : 'text-error'" style="font-size: 1.1rem; font-weight: 600;">
-                                                  {{ formatNumber(pricePremium, 0) }} 萬
-                                                </span>
-                                            </template>
-                                        </v-list-item>
-                                        </v-list>
-                                      
-                                      <div class="section-subtitle mt-4">持有車位詳情</div>
-                                      <v-alert v-if="assignedParkingLots.length === 0" type="info" variant="tonal" dense class="mt-2">
-                                        此戶別未購買車位
-                                      </v-alert>
-                                      <div v-else class="parking-list">
-                                        <div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item">
-                                          <p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})</p>
-                                          <p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p>
-                                          <p>成交價: {{ formatNumber(parking['車位成交價']) }} 萬</p>
+                        <v-col cols="12" md="5">
+                            <div class="info-section">
+                                <div class="section-title">面積資訊</div>
+                                <div class="total-area-card">
+                                    <div class="area-summary-item">
+                                        <div>
+                                            <div class="total-area-title">房屋總面積</div>
+                                            <div class="total-area-value">{{ formatNumber(unitData.area_house_ping, 2) }} 坪</div>
+                                            <div class="total-area-subtitle">{{ formatNumber(unitData.area_house_sqm, 2) }} m²</div>
                                         </div>
-                                      </div>
                                     </div>
-                                  </v-col>
+                                    <v-divider vertical class="mx-4"></v-divider>
+                                    <div class="area-summary-item">
+                                        <div>
+                                            <div class="total-area-title">公設比</div>
+                                            <div class="total-area-value">{{ formatPercentage(unitData.common_area_ratio) }}</div>
+                                            <div class="total-area-subtitle">&nbsp;</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="area-details mt-3">
+                                    <div class="area-group">
+                                        <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>建物面積明細</div>
+                                        <div class="area-item-header"><span>項目</span><span>坪數</span><span>m²</span></div>
+                                        <div class="area-item"><span>主建物 (室內)</span><span class="area-ping-value">{{ formatNumber(unitData.area_main_ping, 2) }}</span><span>{{ formatNumber(unitData.area_main_sqm, 2) }}</span></div>
+                                        <div class="area-item"><span>附屬建物 (陽台)</span><span class="area-ping-value">{{ formatNumber(unitData.area_ancillary_ping, 2) }}</span><span>{{ formatNumber(unitData.area_ancillary_sqm, 2) }}</span></div>
+                                        <div class="area-item"><span>共用部分 (公設)</span><span class="area-ping-value">{{ formatNumber(unitData.area_common_ping, 2) }}</span><span>{{ formatNumber(unitData.area_common_sqm, 2) }}</span></div>
+                                        <div class="area-item"><span>露臺 (不計坪)</span><span class="area-ping-value">{{ formatNumber(unitData.area_terrace_ping, 2) }}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </v-col>
+                    </v-row>
 
-                                  <v-col cols="12" md="4">
-                                    <div class="info-section">
-                                      <div class="section-title">銷售資訊</div>
-                                      <v-list dense>
-                                        <v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item>
-                                        <v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item>
-                                        <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
-                                        <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
-                                        <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
-                                        <v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
-                                        <v-list-item title="備註">
-                                          <v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle>
-                                        </v-list-item>
-                                      </v-list>
-                                    </div>
-                                  </v-col>
-
-                                  <v-col cols="12" md="4">
-                                    <div class="info-section">
-                                      <div class="section-title">買方資訊</div>
-                                      <v-list dense>
-                                        <v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item>
-                                        <v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item>
-                                        <v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item>
-                                        <v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item>
-                                        <v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item>
-                                      </v-list>
-                                    </div>
-                                  </v-col>
+                    <v-row class="mt-2">
+                        <v-col cols="12">
+                            <div class="info-section">
+                                <div class="section-title">價格資訊</div>
+                                <v-row dense>
+                                    <v-col cols="12" sm="4">
+                                        <div class="price-block">
+                                            <div class="price-block-title">房屋表價</div>
+                                            <div class="price-block-value text-red-darken-2">
+                                                {{ formatNumber(unitData.price_list_house_total) }} <span class="price-block-currency">萬</span>
+                                            </div>
+                                            <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                                        </div>
+                                    </v-col>
+                                    <v-col v-if="viewMode === 'sales'" cols="12" sm="4">
+                                        <div class="price-block">
+                                            <div class="price-block-title">房屋底價</div>
+                                            <div class="price-block-value text-grey-darken-2">
+                                                {{ formatNumber(unitData.price_floor_house_total) }} <span class="price-block-currency">萬</span>
+                                            </div>
+                                            <div class="price-block-unit">({{ calculatedBaseUnitPrice }} 萬/坪)</div>
+                                        </div>
+                                    </v-col>
+                                    <v-col v-if="viewMode === 'sales' && unitData.price_transaction_house" cols="12" sm="4">
+                                        <div class="price-block">
+                                            <div class="price-block-title">房屋成交價</div>
+                                            <div class="price-block-value text-green-darken-2">
+                                                {{ formatNumber(unitData.price_transaction_house) }} <span class="price-block-currency">萬</span>
+                                            </div>
+                                            <div class="price-block-unit">({{ calculatedTransactionUnitPrice }} 萬/坪)</div>
+                                        </div>
+                                    </v-col>
                                 </v-row>
                             </div>
-                        </div>
-                        <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
-                    </template>
-                </v-window-item>
+                        </v-col>
+                    </v-row>
+                    
+                    <div v-if="viewMode === 'sales'">
+                        <v-divider class="my-4"></v-divider>
+                        <v-row>
+                            <v-col cols="12" md="4">
+                                <div class="info-section">
+                                    <div class="section-title">成交總覽</div>
+                                    <v-list dense>
+                                        <v-list-item title="房屋成交價" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item title="車位總價(成交)" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item class="font-weight-bold total-price-item"><v-list-item-title>最終成交總價</v-list-item-title><template v-slot:append><span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span></template></v-list-item>
+                                        <v-list-item class="font-weight-bold total-price-item"><v-list-item-title>合計底價</v-list-item-title><template v-slot:append><span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span></template></v-list-item>
+                                        <v-list-item title="溢差價" class="premium-price-item"><template v-slot:append><span :class="pricePremium >= 0 ? 'text-success' : 'text-error'" style="font-size: 1.1rem; font-weight: 600;">{{ formatNumber(pricePremium, 0) }} 萬</span></template></v-list-item>
+                                    </v-list>
+                                    <div class="section-subtitle mt-4">持有車位詳情</div>
+                                    <v-alert v-if="assignedParkingLots.length === 0" type="info" variant="tonal" dense class="mt-2">此戶別未購買車位</v-alert>
+                                    <div v-else class="parking-list"><div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item"><p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})</p><p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p><p>成交價: {{ formatNumber(parking['車位成交價']) }} 萬</p></div></div>
+                                </div>
+                            </v-col>
+                            <v-col cols="12" md="4">
+                                <div class="info-section">
+                                    <div class="section-title">銷售資訊</div>
+                                    <v-list dense><v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item><v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item><v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item><v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item><v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item><v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item><v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle></v-list-item></v-list>
+                                </div>
+                            </v-col>
+                            <v-col cols="12" md="4">
+                                <div class="info-section">
+                                    <div class="section-title">買方資訊</div>
+                                    <v-list dense><v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item><v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item><v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item><v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item><v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item></v-list>
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </div>
+                </div>
+                <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
+            </template>
+            </v-window-item>
+        <v-window-item value="floorplans" class="fill-height pa-0">
+            </v-window-item>
 
                 <v-window-item value="floorplans" class="fill-height pa-0">
                     <div v-if="hasFloorplans" class="preview-area-full">
@@ -369,6 +295,41 @@
       </div>
     </v-card>
   </v-dialog>
+
+ <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
+    <v-card color="black" class="fullscreen-viewer">
+      <v-img
+        v-if="currentImage"
+        :src="currentImage.downloadURL"
+        contain
+        class="fullscreen-image"
+        aspect-ratio="16/9"
+      ></v-img>
+      <template v-if="householdImages.length > 1">
+        <v-btn
+          class="image-nav-btn prev"
+          icon="mdi-chevron-left"
+          variant="flat"
+          size="large"
+          @click.stop="prevImage"
+        ></v-btn>
+        <v-btn
+          class="image-nav-btn next"
+          icon="mdi-chevron-right"
+          variant="flat"
+          size="large"
+          @click.stop="nextImage"
+        ></v-btn>
+      </template>
+      <v-btn
+        class="close-btn"
+        icon="mdi-close"
+        variant="flat"
+        @click="fullscreenViewerDialog = false"
+      ></v-btn>
+    </v-card>
+  </v-dialog>
+  
 </template>
 
 <script setup>
@@ -376,7 +337,6 @@ import { useRouter } from 'vue-router';
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-// ✅【待辦】下一步我們將會修改 updateSalesData 和 cancelPurchase
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase } from '@/api'; 
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
@@ -389,12 +349,12 @@ const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const savingText = ref('儲存中，請稍候...');
 
-// ✅ 修改：使用 salesStatus_backend
+//  修改：使用 salesStatus_backend
 const isSold = computed(() => {
   return props.unitData && props.unitData.salesStatus_backend;
 });
 
-// ✅ 修改：使用 unitId
+//  修改：使用 unitId
 const cancelDialogMessage = computed(() => {
   const unitId = props.unitData ? `【${props.unitData.unitId}】` : '';
   return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>此操作將會清除所有相關的銷售、客戶資料，並將車位釋出。<b>此動作無法復原。</b>`;
@@ -413,7 +373,7 @@ async function handleConfirmCancelPurchase() {
   savingText.value = '正在辦理退戶...';
   showCancelDialog.value = false;
   try {
-    // ✅ 修改：使用 unitId
+    //  修改：使用 unitId
     const result = await cancelPurchase(
       props.projectName,
       props.unitData.unitId,
@@ -447,7 +407,36 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
-// ✅【注意】這裡的 '合約方式及是否首購' 來源於 allData，其結構可能也需要調整
+const currentImageIndex = ref(0); // 追蹤當前顯示的主圖索引
+
+const fullscreenViewerDialog = ref(false);
+
+
+// 從傳入的 allData 中安全地取出所有專案圖片
+const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
+
+// 核心邏輯：從所有專案圖片中，篩選出此戶別關聯的圖片
+const householdImages = computed(() => {
+  // 確保 unitData 和 salesImages 陣列存在
+  if (!props.unitData?.salesImages?.length || !allProjectImages.value.length) {
+    return [];
+  }
+  // 建立一個 Map 方便快速查找，效能更佳
+  const imageMap = new Map(allProjectImages.value.map(img => [img.imageName, img]));
+  
+  // 根據戶別資料中的圖片名稱陣列，去 Map 中找出完整的圖片物件
+  return props.unitData.salesImages
+    .map(name => imageMap.get(name))
+    .filter(Boolean); // 過濾掉任何可能找不到的結果
+});
+
+// 根據當前的索引，決定要顯示哪一張主圖
+const currentImage = computed(() => {
+  if (householdImages.value.length === 0) return null;
+  return householdImages.value[currentImageIndex.value];
+});
+
+// 【注意】這裡的 '合約方式及是否首購' 來源於 allData，其結構可能也需要調整
 const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []);
 const contractTypeOptions = computed(() => {
     return [...new Set(salesOptionsData.value.map(item => item['合約方式']).filter(Boolean))]
@@ -463,7 +452,7 @@ const editingData = ref(null);
 const paymentSettingsDialog = ref(false);
 const sizingToolDialog = ref(false);
 
-// ✅ 修改：更新價格計算屬性
+//  修改：更新價格計算屬性
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.price_list_house_total;
   const area = props.unitData?.area_house_ping;
@@ -491,7 +480,7 @@ const calculatedTransactionUnitPrice = computed(() => {
   return 'N/A';
 });
 
-// ✅ 修改：更新 enrichedUnitData 以匹配 salesParkings 結構
+//  修改：更新 enrichedUnitData 以匹配 salesParkings 結構
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
   const enriched = JSON.parse(JSON.stringify(props.unitData));
@@ -535,7 +524,7 @@ const grandTotalTransactionPrice = computed(() => {
   return houseTransactionPrice.value + parkingTotalTransactionPrice.value;
 });
 
-// ✅ START: 新增底價與溢價相關的 Computed Properties
+//  START: 新增底價與溢價相關的 Computed Properties
 const houseFloorPrice = computed(() => Number(props.unitData?.price_floor_house_total) || 0);
 
 const parkingTotalFloorPrice = computed(() => {
@@ -558,7 +547,9 @@ const pricePremium = computed(() => {
   }
   return 0;
 });
-// ✅ END: 新增底價與溢價相關的 Computed Properties
+//  END: 新增底價與溢價相關的 Computed Properties
+
+
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
@@ -650,9 +641,28 @@ const proxiedFirstImageUrl = computed(() => {
 
 const shouldHidePrice = computed(() => props.viewMode === 'quote' && props.unitData?.salesStatus_quote === '已售');
 
+const nextImage = () => {
+  if (householdImages.value.length > 1) {
+    currentImageIndex.value = (currentImageIndex.value + 1) % householdImages.value.length;
+  }
+};
+
+const prevImage = () => {
+  if (householdImages.value.length > 1) {
+    currentImageIndex.value = (currentImageIndex.value - 1 + householdImages.value.length) % householdImages.value.length;
+  }
+};
+
+const openFullscreenViewer = () => {
+  if (currentImage.value) {
+    fullscreenViewerDialog.value = true;
+  }
+};
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
       tab.value = 'info';
+      currentImageIndex.value = 0; 
       if (isEditing.value) cancelEditing();
   }
 });
@@ -804,11 +814,186 @@ function formatAddress(data, type) {
   font-weight: 600;
   color: #1a3a6e;
 }
-/* ✅ START: 新增樣式 */
+/*  START: 新增樣式 */
 .base-price-item, .premium-price-item {
   border-top: 1px solid #eee;
   margin-top: 4px;
   padding-top: 4px;
 }
-/* ✅ END: 新增樣式 */
+/*  END: 新增樣式 */
+
+
+
+/*  START: 新增圖片瀏覽器樣式 */
+.image-viewer-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.main-image-wrapper {
+  background-color: #212121;
+  position: relative;
+}
+
+.main-image {
+  width: 100%;
+  height: 45vh; /* 給定一個相對視窗的高度 */
+  min-height: 300px;
+}
+
+.thumbnail-strip {
+  background-color: #f5f5f5;
+  padding: 8px;
+}
+
+thumbnail-image {
+  /* ✅ 將寬度從 120px 修改為 90px */
+  width: 90px;
+  margin: 0 4px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.thumbnail-image:hover {
+  border-color: #90caf9; /* Vuetify blue lighten-2 */
+}
+
+.thumbnail-active {
+  border-color: #1976D2; /* Vuetify primary blue */
+}
+/*  END: 新增圖片瀏覽器樣式 */
+
+/* ✅ 新增這個容器樣式 */
+.fullscreen-image-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* ✅ 修改 fullscreen-image 樣式 */
+.fullscreen-image {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: white !important;
+  z-index: 10; /* 確保按鈕在最上層 */
+}
+
+/* ✅ START: 使用全新的圖片瀏覽器樣式 */
+.carousel-viewer-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f5f5f5;
+}
+
+.main-carousel-image {
+  height: 40vh; /* 主圖高度 */
+  min-height: 250px;
+  background-color: #212121;
+}
+
+.small-thumbnails-strip {
+  display: flex;
+  overflow-x: auto;
+  padding: 8px;
+  gap: 8px; /* 縮圖之間的間距 */
+}
+
+/* 讓捲動條更好看 (可選) */
+.small-thumbnails-strip::-webkit-scrollbar {
+  height: 6px;
+}
+.small-thumbnails-strip::-webkit-scrollbar-thumb {
+  background-color: #ccc;
+  border-radius: 3px;
+}
+
+.small-thumbnail-wrapper {
+  /* ✅ 這裡控制小縮圖的大小 */
+  width: 80px; 
+  height: 45px; /* 維持 16:9 比例 */
+  flex-shrink: 0; /* 避免縮圖被壓縮 */
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s ease-in-out;
+  overflow: hidden; /* 確保圖片圓角 */
+}
+
+.small-thumbnail-wrapper:hover {
+  border-color: #90caf9;
+}
+
+.thumbnail-active {
+  border-color: #1976D2;
+}
+
+/* 輪播圖左右按鈕的樣式 (與之前相同) */
+.image-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: white !important;
+}
+.image-nav-btn.prev {
+  left: 16px;
+}
+.image-nav-btn.next {
+  right: 16px;
+}
+/* ✅ END: 樣式取代結束 */
+
+/* ✅ START: 新增價格區塊樣式 */
+.price-block {
+  padding: 12px;
+  text-align: center;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  height: 100%;
+}
+
+.price-block-title {
+  font-size: 0.9rem;
+  color: #555;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.price-block-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.price-block-currency {
+  font-size: 1rem;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.price-block-unit {
+  font-size: 0.9rem;
+  color: #757575;
+}
+/* ✅ END: 新增樣式結束 */
+
+
 </style>

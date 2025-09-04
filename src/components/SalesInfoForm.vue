@@ -7,6 +7,19 @@
             <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
             <v-select label="後台狀態" :items="statusOptions" v-model="editableData.salesStatus_backend" class="mb-4"></v-select>
             <v-select label="銷售人員" :items="personnelOptions" v-model="editableData.salesperson" class="mb-4"></v-select>
+            
+            <v-combobox
+              label="戶別圖片"
+              v-model="editableData.salesImages"
+              :items="salesImageOptions"
+              multiple
+              chips
+              clearable
+              closable-chips
+              class="mb-4"
+              hint="可從下拉選單選擇，或手動輸入後按 Enter 新增"
+              persistent-hint
+            ></v-combobox>
             <div class="d-flex align-center mb-4">
               <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
               <v-btn class="ml-2" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
@@ -125,7 +138,6 @@ import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 import { useDisplay } from 'vuetify';
 
-// ✅ 假設您的 vite.config.js 中已設定好代理
 const NLSC_API_BASE_URL = '/api-nlsc'; 
 
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
@@ -138,6 +150,8 @@ const props = defineProps({
   projectName: { type: String, required: true },
   contractTypeOptions: { type: Array, default: () => [] },
   firstPurchaseOptions: { type: Array, default: () => [] },
+  // ✅ 1. 新增 Prop
+  allSalesImages: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide']);
@@ -153,7 +167,20 @@ const editableData = computed({
   set: (newValue) => emit('update:modelValue', newValue)
 });
 
-// ✅ START: 新增地址相關的 ref
+// ✅ 2. 新增 Computed，將圖片物件陣列轉換為名稱字串陣列
+const salesImageOptions = computed(() => {
+  return props.allSalesImages.map(img => img.imageName);
+});
+
+// ✅ 3. 新增 Watcher，確保 salesImages 永遠是陣列
+watch(() => editableData.value, (newData) => {
+  if (newData && !Array.isArray(newData.salesImages)) {
+    // 如果 salesImages 不存在或不是陣列，初始化為一個空陣列
+    editableData.value.salesImages = [];
+  }
+}, { immediate: true, deep: true });
+
+
 const counties = ref([]);
 const mailingTowns = ref([]);
 const permanentTowns = ref([]);
@@ -164,24 +191,19 @@ const permanentTown = ref(null);
 const loadingCounties = ref(false);
 const loadingMailingTowns = ref(false);
 const loadingPermanentTowns = ref(false);
-// ✅ END: 新增地址相關的 ref
 
 onMounted(async () => {
-  // ✅ 載入元件時獲取縣市列表並初始化地址
   await fetchCounties();
   initializeAddress();
 });
 
-// ✅ START: 新增地址相關的所有函式與監聽器
 const fetchCounties = async () => {
     loadingCounties.value = true;
     try {
         const response = await axios.get(`${NLSC_API_BASE_URL}/other/ListCounty`);
-        // API 回傳的是 XML，需要解析
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(response.data, "application/xml");
         const countyNodes = xmlDoc.querySelectorAll('countyItem');
-        // 將 XML 節點轉換為 Vuetify select 需要的格式
         counties.value = Array.from(countyNodes).map(node => ({
             title: node.querySelector('countyname').textContent,
             value: node.querySelector('countycode').textContent
@@ -203,10 +225,9 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     try {
         const url = `${NLSC_API_BASE_URL}/other/ListTown1/${countyCode}`;
         const response = await axios.get(url);
-        // API 回傳的是 JSON 陣列
         targetTownsRef.value = response.data.map(item => ({
             title: item.townname,
-            value: item.townname, // 直接用中文名稱當作 value
+            value: item.townname,
         }));
     } catch (error) {
         console.error(`無法獲取鄉鎮市區列表 (代碼: ${countyCode}):`, error);
@@ -215,18 +236,15 @@ const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
     }
 };
 
-// 初始化地址：當編輯的資料載入時，設定好地址選單的預設值
 const initializeAddress = () => {
     const data = editableData.value;
     if (!data || counties.value.length === 0) return;
 
-    // 設定通訊地址
     const mailingCountyName = data.buyerMailingAddressCity;
     if (mailingCountyName) {
         const county = counties.value.find(c => c.title === mailingCountyName);
         if (county) {
             mailingCounty.value = county.value;
-            // 監聽 mailingTowns 載入完成後，再設定鄉鎮的預設值
             const unwatch = watch(loadingMailingTowns, (isLoading) => {
                 if (!isLoading) {
                     nextTick(() => { mailingTown.value = data.buyerMailingAddressDistrict; });
@@ -236,7 +254,6 @@ const initializeAddress = () => {
         }
     }
 
-    // 設定戶籍地址
     const permanentCountyName = data.buyerPermanentAddressCity;
     if (permanentCountyName) {
       const county = counties.value.find(c => c.title === permanentCountyName);
@@ -252,11 +269,10 @@ const initializeAddress = () => {
     }
 };
 
-// 監聽縣市選擇的變化，並更新到 editableData
 watch(mailingCounty, (newCountyCode) => {
     const selectedCounty = counties.value.find(c => c.value === newCountyCode);
     editableData.value.buyerMailingAddressCity = selectedCounty ? selectedCounty.title : '';
-    mailingTown.value = null; // 清空鄉鎮選擇
+    mailingTown.value = null;
     fetchTowns(newCountyCode, mailingTowns, loadingMailingTowns);
 });
 watch(mailingTown, (newTownName) => {
@@ -273,7 +289,6 @@ watch(permanentTown, (newTownName) => {
     editableData.value.buyerPermanentAddressDistrict = newTownName || '';
 });
 
-// 監聽 "地址相同" checkbox 的變化
 watch(isPermanentSameAsMailing, (isSame) => {
   if (isSame) {
     permanentCounty.value = mailingCounty.value;
@@ -286,10 +301,7 @@ watch(isPermanentSameAsMailing, (isSame) => {
     });
   }
 });
-// ✅ END: 新增地址相關的所有函式與監聽器
 
-
-// (以下是價格計算的 computed 屬性，維持不變)
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
 const parkingBasePrice = computed(() => {
   if (!editableData.value?.parkingSpots || !Array.isArray(editableData.value.parkingSpots)) return 0;
