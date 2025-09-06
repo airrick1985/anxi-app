@@ -568,6 +568,9 @@ import html2canvas from 'html2canvas';
 import { useClipboard } from '@vueuse/core';
 import * as XLSX from 'xlsx-js-style';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
+import { useSystemPresence } from '@/composables/useSystemPresence';
+
+
 
 // --- Store 和路由 ---
 const route = useRoute();
@@ -576,6 +579,9 @@ const userStore = useUserStore();
 const pageContextStore = usePageContextStore();
 const projectStore = useProjectStore(); // ✅ 2. 建立 store 實例
 const projectId = ref(route.params.projectId);
+
+const systemName = '驗屋時間表';
+useSystemPresence(projectId.value, systemName);
 
 // --- 定義欄位應更新到哪個集合 ---
 const APPOINTMENT_FIELDS = ['bookerName', 'bookerPhone', 'bookerIdNumber' ,'bookerEmail', 'appointmentDate', 'appointmentTimeSlot', 'inspectionMethod', 'inspectionCompanyName', 'inspectors', 'bookingRemarks', 'agentName', 'agentIdNumber', 'agentPhone', 'bookingType', 'status', 'checkInStatus', 'specialRemarks', 'specialRemarks2', 'handoverTime'];

@@ -162,7 +162,7 @@
                 >
                   <v-card-text>
                     <v-row align="center">
-                      <v-col cols="6" sm="4" md="1">
+                      <v-col cols="6" sm="4" md="2">
                         <v-text-field
                           v-model.number="tier.count"
                           label="人數"

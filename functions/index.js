@@ -845,32 +845,55 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
 });
 
 
-// ✓ 【替換】checkInToSystem 整個函式 (最終修正版)
+// ✓ 【替換】checkInToSystem 整個函式 (管理員不佔名額版)
 exports.checkInToSystem = onCall(async (request) => {
   const { projectId, system, userKey, userName } = request.data;
   const functionName = `checkInToSystem (Project: ${projectId}, System: ${system}, User: ${userKey})`;
 
-  // --- 步驟 1 & 2: 驗證輸入和業務規則 (不變) ---
   if (!projectId || !system || !userKey || !userName) {
     throw new HttpsError("invalid-argument", "缺少必要參數。");
   }
-  const targetSystem = system === '報價系統' ? '銷控系統' : system;
-  console.log(`[${functionName}] User trying to enter. Project: [${projectId}], System: [${system}], TargetSystem: [${targetSystem}]`);
+  
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  
+  // ✅ 修正點 1: 在函式一開始，就先獲取所有管理員的 User ID 列表
+  const adminUserKeys = new Set();
+  try {
+    const superAdminQuery = anxiDb.collection("users").where("roles", "array-contains", "超級管理員");
+    const sysAdminQuery = anxiDb.collection("users").where("roles", "array-contains", "系統管理員");
+    
+    const [superAdminSnapshot, sysAdminSnapshot] = await Promise.all([superAdminQuery.get(), sysAdminQuery.get()]);
+    
+    superAdminSnapshot.forEach(doc => adminUserKeys.add(doc.id));
+    sysAdminSnapshot.forEach(doc => adminUserKeys.add(doc.id));
+    console.log(`[${functionName}] Found ${adminUserKeys.size} admin users.`);
+  } catch (e) {
+      console.warn(`[${functionName}] Could not query for admin roles. Error: ${e.message}`);
+  }
+
+  // --- 檢查自身是否為管理員 ---
+  if (adminUserKeys.has(userKey)) {
+    console.log(`[${functionName}] User [${userKey}] is an Admin. Bypassing user limit check.`);
+    const userOnlineRef = rtdbAdmin.ref(`onlineStatus/${userKey}`);
+    await userOnlineRef.set({ userId: userKey, userName: userName, projectId: projectId, system: system });
+    return { status: "success", message: "管理員身分，已略過名額檢查。" };
+  }
+  
+  // --- 如果不是管理員，則繼續執行完整的名額檢查流程 ---
+  const targetSystem = system === '報價系統' ? '銷控系統'
+                     : system === '驗屋時間表' ? '預約驗屋系統'
+                     : system;
+
+  console.log(`[${functionName}] User is not an admin. Checking limits for target system: [${targetSystem}]`);
 
   try {
-    // --- 步驟 3: 查詢訂閱，計算有效的人數上限 (不變) ---
-    const anxiDb = new Firestore({ databaseId: "anxi-app" });
-    const subsQuery = await anxiDb.collection("subscriptions")
-      .where("projectId", "==", projectId)
-      .where("systemFunction", "==", targetSystem)
-      .get();
+    // ... (步驟 3: 查詢訂閱計算名額上限的邏輯，完全不變)
+    const subsQuery = await anxiDb.collection("subscriptions").where("projectId", "==", projectId).where("systemFunction", "==", targetSystem).get();
     if (subsQuery.empty) throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
-
     const subscriptionData = subsQuery.docs[0].data();
     const tiers = subscriptionData.userLimitTiers || [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     let effectiveLimit = 0;
     tiers.forEach(tier => {
       const startDate = new Date(tier.startDate);
@@ -880,10 +903,9 @@ exports.checkInToSystem = onCall(async (request) => {
       if (today >= startDate && today <= endDate) effectiveLimit += Number(tier.count) || 0;
     });
     console.log(`[${functionName}] Calculated effective user limit: ${effectiveLimit}`);
-
     if (effectiveLimit <= 0) throw new HttpsError("permission-denied", "此系統目前未設定可用人數或已到期。");
 
-    // --- ✅ 步驟 4: 修正 - 正確計算在線人數 ---
+    // --- 步驟 4: 計算在線人數 (排除管理員) ---
     const onlineStatusRef = rtdbAdmin.ref('onlineStatus');
     const onlineSnapshot = await onlineStatusRef.get();
     
@@ -892,46 +914,34 @@ exports.checkInToSystem = onCall(async (request) => {
       onlineSnapshot.forEach(childSnapshot => {
         const data = childSnapshot.val();
         
-        // 修正點 1: 判斷是否要計數
+        // ✅ 修正點 2: 在計數前，先判斷該在線使用者是否為管理員
+        if (adminUserKeys.has(data.userId)) {
+          return; // 如果是管理員，直接跳過，不計入
+        }
+
         let shouldCount = false;
         if (targetSystem === '銷控系統') {
-            // 如果檢查目標是銷控系統，則報價系統和銷控系統的用戶都要算進去
-            if (data.system === '銷控系統' || data.system === '報價系統') {
-                shouldCount = true;
-            }
+            if (data.system === '銷控系統' || data.system === '報價系統') shouldCount = true;
+        } else if (targetSystem === '預約驗屋系統') {
+            if (data.system === '預約驗屋系統' || data.system === '驗屋時間表') shouldCount = true;
         } else {
-            // 其他系統則正常比對
-            if (data.system === targetSystem) {
-                shouldCount = true;
-            }
+            if (data.system === targetSystem) shouldCount = true;
         }
-        
-        if (data.projectId === projectId && shouldCount) {
-          currentUserCount++;
-        }
+        if (data.projectId === projectId && shouldCount) currentUserCount++;
       });
     }
-    console.log(`[${functionName}] Filer finished. Total online users for this system: ${currentUserCount}`);
+    console.log(`[${functionName}] Filer finished. Total ONLINE NON-ADMIN users for this system: ${currentUserCount}`);
 
-    // --- 步驟 5: 檢查邏輯 (不變) ---
+    // --- 步驟 5 & 6: 檢查邏輯與寫入狀態 (完全不變) ---
     const userOnlineRef = rtdbAdmin.ref(`onlineStatus/${userKey}`);
     const userOnlineSnapshot = await userOnlineRef.get();
-
     if (userOnlineSnapshot.exists()) {
-       console.log(`[${functionName}] User [${userKey}] is already online. Allowing re-entry.`);
        return { status: "success", message: "已在線，重新進入成功。" };
     }
-    
     if (currentUserCount >= effectiveLimit) {
-      console.log(`[${functionName}] DENIED: User count (${currentUserCount}) meets or exceeds limit (${effectiveLimit}).`);
       throw new HttpsError("permission-denied", "使用者已達上限");
     }
-
-    // --- ✅ 步驟 6: 修正 - 寫入正確的系統名稱 ---
-    console.log(`[${functionName}] ALLOWED: User count (${currentUserCount}) is less than limit (${effectiveLimit}). Setting online status for [${userKey}].`);
-    // 修正點 2: 寫入使用者當前真正要進入的系統 (system)，而不是檢查目標 (targetSystem)
     await userOnlineRef.set({ userId: userKey, userName: userName, projectId: projectId, system: system });
-    
     return { status: "success", message: "登入系統成功" };
 
   } catch (error) {

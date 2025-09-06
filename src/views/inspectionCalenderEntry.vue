@@ -44,7 +44,7 @@
                 size="x-large"
                 @click="enterProject"
                 :disabled="!selectedProject || loadingProjects"
-                class="font-weight-bold"
+                :loading="isValidating" class="font-weight-bold"
               >
                 <v-icon start>mdi-arrow-right-bold-circle-outline</v-icon>
                 進入 {{ selectedProjectDisplayName }} 的{{ pageTitle }}
@@ -72,7 +72,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { getProjectsForInspectionCalendar } from '@/api'; // ✅ 引入新的 API
+import { getProjectsForInspectionCalendar, checkInToSystem } from '@/api';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -84,6 +84,7 @@ const selectedProject = ref(null);
 const projectOptions = ref([]);
 const loadingProjects = ref(true);
 const error = ref(null);
+const isValidating = ref(false);
 
 const selectedProjectDisplayName = computed(() => {
   if (!selectedProject.value) return '...';
@@ -98,7 +99,6 @@ onMounted(async () => {
   }
   
   try {
-    // ✅ 使用新的 API 來獲取使用者有權限的建案列表
     const projects = await getProjectsForInspectionCalendar(userStore.user.key);
     projectOptions.value = projects;
 
@@ -113,12 +113,40 @@ onMounted(async () => {
   }
 });
 
-const enterProject = () => {
-  if (selectedProject.value) {
-    router.push({ 
-      name: 'InternalInspectionCalendar', 
-      params: { projectId: selectedProject.value } 
-    });
+const enterProject = async () => {
+  if (!selectedProject.value) {
+    error.value = '請先選擇一個建案。';
+    return;
+  }
+  
+  isValidating.value = true;
+  error.value = null;
+
+  try {
+    const projectId = selectedProject.value;
+    const system = pageTitle.value; // "驗屋時間表"
+    const userKey = userStore.user?.key;
+    const userName = userStore.user?.name;
+
+    if (!userKey || !userName) {
+      throw new Error('無法獲取使用者資訊，請重新登入。');
+    }
+
+    const result = await checkInToSystem(projectId, system, userKey, userName);
+
+    if (result.status === 'success') {
+      router.push({ 
+        name: 'InternalInspectionCalendar', 
+        params: { projectId: projectId } 
+      });
+    } else {
+      error.value = result.message || '進入系統失敗。';
+    }
+  } catch (err) {
+    console.error('進入專案時發生錯誤:', err);
+    error.value = `客戶端錯誤: ${err.message}`;
+  } finally {
+    isValidating.value = false;
   }
 };
 

@@ -37,26 +37,20 @@ export const useUserStore = defineStore('user', {
     
     // ✓ START: 【新增】專門的登出動作
     async logoutUser() {
-  console.log('LOGOUT STEP 1: Starting logout process...');
   const userKey = this.user?.key;
 
   if (userKey) {
     try {
-      console.log(`LOGOUT STEP 2: Attempting to go offline for user: ${userKey}`);
       await goOffline(userKey);
-      console.log(`LOGOUT STEP 3: Successfully went offline for user: ${userKey}`);
     } catch (error) {
       console.error('LOGOUT FAILED: Could not remove online status.', error);
       // 即使失敗，我們仍然要繼續執行登出
     }
   } else {
-    console.log('LOGOUT STEP 2: No user key found, skipping offline status removal.');
   }
 
-  console.log('LOGOUT STEP 4: Clearing user state from Pinia store.');
   this.clearUser();
 
-  console.log('LOGOUT STEP 5: Redirecting to login page.');
   await router.replace('/login');
 },
     // ✓ END: 【新增】專門的登出動作
