@@ -431,6 +431,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useSystemPresence } from '@/composables/useSystemPresence'; // ✅ 1. 匯入 Composable
+
 //  新增：引入上傳 API 和 toast
 import { listenToSalesControlData, uploadHouseholds , listenToSalesImages } from '@/api';
 import { useToast } from 'vue-toastification';

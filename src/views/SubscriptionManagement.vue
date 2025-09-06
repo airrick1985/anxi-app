@@ -37,6 +37,14 @@
           <v-chip :color="item.color" size="small" label>{{ item.status }}</v-chip>
         </template>
         
+         <template v-slot:item.currentUserLimit="{ item }">
+          <v-chip v-if="typeof item.currentUserLimit === 'number'" color="primary" size="small" label>
+            <v-icon start>mdi-account-group</v-icon>
+            {{ item.currentUserLimit }} 人
+          </v-chip>
+          <span v-else class="text-grey">{{ item.currentUserLimit }}</span>
+        </template>
+
         <template v-slot:item.durationDays="{ item }">
           <v-chip v-if="typeof item.durationDays === 'number'" color="blue-grey" size="small" label>
             {{ item.durationDays }} 天
@@ -56,7 +64,7 @@
       </v-data-table>
     </v-card>
 
-   <v-dialog v-model="dialog" persistent max-width="800px">
+   <v-dialog v-model="dialog" persistent max-width="1200px">
       <v-card>
         <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
           <span class="text-h5">{{ isEditing ? '編輯訂閱' : '新增訂閱' }}</span>
@@ -132,6 +140,89 @@
               <v-col cols="12" sm="4"><v-text-field v-model="editedItem.paymentDate" label="繳費日期" type="date"></v-text-field></v-col>
               <v-col cols="12" sm="4"><v-text-field v-model="editedItem.startDate" label="啟用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
               <v-col cols="12" sm="4"><v-text-field v-model="editedItem.endDate" label="停用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
+              <v-col cols="12">
+                <v-divider class="my-4"></v-divider>
+                <div class="d-flex align-center mb-2">
+                  <h3 class="text-h6 font-weight-medium">使用者人數方案</h3>
+                  <v-spacer></v-spacer>
+                  <v-btn color="primary" @click="addUserTier" prepend-icon="mdi-plus">
+                    新增方案
+                  </v-btn>
+                </div>
+
+                <div v-if="!editedItem.userLimitTiers || editedItem.userLimitTiers.length === 0" class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
+                  尚未設定任何使用者人數方案
+                </div>
+
+                <v-card 
+                  v-for="(tier, index) in editedItem.userLimitTiers" 
+                  :key="index" 
+                  class="mb-3"
+                  variant="outlined"
+                >
+                  <v-card-text>
+                    <v-row align="center">
+                      <v-col cols="6" sm="4" md="1">
+                        <v-text-field
+                          v-model.number="tier.count"
+                          label="人數"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          persistent-hint
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="6" sm="4" md="2">
+                        <v-text-field
+                          v-model.number="tier.paymentAmount"
+                          label="付款金額"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="4" md="2">
+                        <v-text-field
+                          v-model="tier.paymentDate"
+                          label="付款日期"
+                          type="date"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6" md="2">
+                        <v-text-field
+                          v-model="tier.startDate"
+                          label="啟用日期*"
+                          type="date"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          :rules="rules.required"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6" md="2">
+                        <v-text-field
+                          v-model="tier.endDate"
+                          label="停用日期*"
+                          type="date"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          :rules="rules.required"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" md="1" class="text-center">
+                        <v-btn icon="mdi-delete" color="error" variant="text" @click="removeUserTier(index)"></v-btn>
+                      </v-col>
+                    </v-row>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              
               <v-col cols="12"><v-textarea v-model="editedItem.remarks" label="備註" rows="2"></v-textarea></v-col>
             </v-row>
           </v-container>
@@ -170,7 +261,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue'; // ✅ 引入 watch
+import { ref, onMounted, computed, nextTick, watch } from 'vue'; //  引入 watch
 import { useUserStore } from '@/store/user';
 import { 
     fetchAllSubscriptions,
@@ -194,6 +285,7 @@ const headers = [
     { title: '狀態', key: 'status', sortable: false },
     { title: '建案名稱', key: 'projectName' },
     { title: '系統功能', key: 'systemFunction' },
+    { title: '使用者上限', key: 'currentUserLimit', align: 'center' },
     { title: '啟用日期', key: 'startDate' },
     { title: '停用日期', key: 'endDate' },
     { title: '訂閱天數', key: 'durationDays' },
@@ -207,12 +299,13 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const isEditing = ref(false);
 
-// ✅ 修改點: defaultItem 的 systemFunction 初始化為空陣列
+//  修改點: defaultItem 的 systemFunction 初始化為空陣列
 const defaultItem = {
     id: null,
     projectName: '', 
     projectId: '', 
     systemFunction: [], 
+    userLimitTiers: [],
     contactName: '', 
     contactEmail: '', 
     contactPhone: '',
@@ -235,25 +328,25 @@ const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
     requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
     email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ],
-    // ✅ 新增 projectId 的驗證規則，用於手動輸入新ID時
+    //  新增 projectId 的驗證規則，用於手動輸入新ID時
     projectId: [
       v => !!v || '建案 ID 為必填項。',
       v => !projects.value.some(p => p.id === v) || '此建案 ID 已存在，請使用別的 ID。'
     ],
 };
 
-// ✅ [新增] computed 屬性，用來判斷當前輸入的建案名稱是否已存在
+//  [新增] computed 屬性，用來判斷當前輸入的建案名稱是否已存在
 const isProjectNameExisting = computed(() => {
   return !!editedItem.value.projectName && projects.value.some(p => p.name === editedItem.value.projectName);
 });
 
-// ✅ [新增] computed 屬性，用來決定建案 ID 欄位是否應該禁用
+//  [新增] computed 屬性，用來決定建案 ID 欄位是否應該禁用
 const isProjectIdDisabled = computed(() => {
   // 編輯模式，或者選擇了現有的建案時，都禁用
   return isEditing.value || isProjectNameExisting.value;
 });
 
-// ✅ [新增] 這是實現連動的核心邏輯
+//  [新增] 這是實現連動的核心邏輯
 watch(() => editedItem.value.projectName, (newName) => {
   // 在編輯模式下，不自動變更 ID
   if (isEditing.value) return;
@@ -282,22 +375,54 @@ async function loadData() {
             fetchMasterDataForSubscriptionForm(adminKey.value)
         ]);
         
-        // ✅ 計算每筆訂閱的天數並附加到物件中
+        //  計算每筆訂閱的天數並附加到物件中
         subscriptions.value = subs.map(sub => {
-            if (sub.startDate && sub.endDate) {
-                const startDate = new Date(sub.startDate);
-                const endDate = new Date(sub.endDate);
-                if (!isNaN(startDate) && !isNaN(endDate)) {
-                    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-                    // +1 使其包含起訖日
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                    return { ...sub, durationDays: diffDays };
-                }
-            }
-            return { ...sub, durationDays: 'N/A' };
-        });
+  const newSub = { ...sub };
 
-// ✅ [修正] 正確處理 API 回傳的資料
+  // --- 計算 durationDays (邏輯不變) ---
+  if (sub.startDate && sub.endDate) {
+    const startDate = new Date(sub.startDate);
+    const endDate = new Date(sub.endDate);
+    if (!isNaN(startDate) && !isNaN(endDate)) {
+      const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      newSub.durationDays = diffDays;
+    } else {
+      newSub.durationDays = 'N/A';
+    }
+  } else {
+    newSub.durationDays = 'N/A';
+  }
+
+  // ---  START: 新增計算 currentUserLimit 的邏輯 ---
+  const tiers = sub.userLimitTiers || [];
+  if (tiers.length > 0) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 標準化為當天零點
+
+    let effectiveLimit = 0;
+    tiers.forEach(tier => {
+      if (tier.startDate && tier.endDate) {
+        const tierStartDate = new Date(tier.startDate);
+        const tierEndDate = new Date(tier.endDate);
+        tierStartDate.setHours(0, 0, 0, 0);
+        tierEndDate.setHours(0, 0, 0, 0);
+
+        if (today >= tierStartDate && today <= tierEndDate) {
+          effectiveLimit += Number(tier.count) || 0;
+        }
+      }
+    });
+    newSub.currentUserLimit = effectiveLimit;
+  } else {
+    newSub.currentUserLimit = 0; // 如果沒有設定任何方案，則上限為 0
+  }
+  // ---  END: 新增計算 currentUserLimit 的邏輯 ---
+
+  return newSub;
+});
+
+//  [修正] 正確處理 API 回傳的資料
         projects.value = mData.projects; // 儲存完整的專案列表 {id, name}
         masterData.value = {
             projectNames: mData.projects.map(p => p.name), // 只取出 name 陣列給下拉選單用
@@ -314,13 +439,13 @@ async function loadData() {
 
 onMounted(loadData);
 
-// ✅ 修改點: openEditDialog 需處理 systemFunction 的資料格式
+//  修改點: openEditDialog 需處理 systemFunction 的資料格式
 function openEditDialog(item) {
     isEditing.value = !!item;
     
     if (item) {
-        // 編輯模式：複製資料，並確保 systemFunction 是陣列
-        editedItem.value = { ...item };
+        // 編輯模式：複製資料，並確保 systemFunction 和 userLimitTiers 是陣列
+        editedItem.value = { ...item, userLimitTiers: item.userLimitTiers || [] }; //  修改此行
         if (typeof editedItem.value.systemFunction === 'string') {
             editedItem.value.systemFunction = [editedItem.value.systemFunction];
         }
@@ -361,11 +486,42 @@ function closeDeleteDialog() {
     });
 }
 
-// ✅ 修改點: save 函式需處理多筆建立的邏輯
+// 新增 Tier 管理函式
+function addUserTier() {
+  if (!editedItem.value.userLimitTiers) {
+    editedItem.value.userLimitTiers = [];
+  }
+  const today = new Date().toISOString().split('T')[0];
+  editedItem.value.userLimitTiers.push({
+    count: 1,
+    paymentAmount: 0,       
+    paymentDate: today,     
+    startDate: today,
+    endDate: today,
+  });
+}
+
+function removeUserTier(index) {
+  editedItem.value.userLimitTiers.splice(index, 1);
+}
+// 新增 Tier 管理函式
+
+//  修改點: save 函式需處理多筆建立的邏輯
 async function save() {
     saving.value = true;
     
     const basePayload = { ...editedItem.value };
+
+    // 確保 userLimitTiers 中的日期是標準的 YYYY-MM-DD 格式
+    if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {
+      basePayload.userLimitTiers = basePayload.userLimitTiers.map(tier => ({
+        ...tier,
+        count: Number(tier.count) || 0, // 確保是數字
+        paymentAmount: Number(tier.paymentAmount) || 0,
+        startDate: tier.startDate ? new Date(tier.startDate).toISOString().split('T')[0] : '',
+        endDate: tier.endDate ? new Date(tier.endDate).toISOString().split('T')[0] : '',
+      })).filter(tier => tier.startDate && tier.endDate); // 過濾掉不完整的項目
+    }
 
     if (subscriptionTypeSelection.value === '其他') {
         basePayload.subscriptionType = otherSubscriptionType.value;
@@ -405,7 +561,7 @@ async function save() {
                 }
                 
                 const newId = `SUB-${Date.now()}-${index}`;
-                // payloadData.id = newId; // ✅ 註解此行，ID 由後端API參數傳入
+                // payloadData.id = newId; //  註解此行，ID 由後端API參數傳入
                 
                 return addSubscription(newId, payloadData, adminKey.value);
             });

@@ -24,6 +24,9 @@ import {
 } from "firebase/firestore";
 import { format } from 'date-fns';
 
+import { onDisconnect, set, ref as dbRef } from "firebase/database"; // ❗️注意：這裡需要從 firebase/database 引入
+import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
+
 
 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
@@ -3271,3 +3274,67 @@ export const deleteSalesImage = async (docId, storagePath) => {
   const docRef = doc(db, "salesImages", docId);
   await deleteDoc(docRef);
 };
+
+//  START: 新增 checkInToSystem API 函式
+
+/**
+ * [新] 請求後端檢查是否可以進入特定系統
+ * @param {string} projectId 建案 ID
+ * @param {string} system 系統名稱 (e.g., '銷控系統')
+ * @param {string} userKey 使用者手機
+ * @param {string} userName 使用者姓名
+ * @returns {Promise<object>}
+ */
+export async function checkInToSystem(projectId, system, userKey, userName) {
+  console.log(`[API] Calling Firebase Function 'checkInToSystem' for project: ${projectId}, system: ${system}`);
+  if (!projectId || !system || !userKey || !userName) {
+    return { status: 'error', message: '前端錯誤：呼叫 checkInToSystem 時缺少參數。' };
+  }
+
+  try {
+    const checkInFunction = httpsCallable(functions, 'checkInToSystem');
+    const result = await checkInFunction({ projectId, system, userKey, userName });
+    return result.data; // e.g., { status: 'success', message: '...' }
+  } catch (error) {
+    console.error("呼叫 checkInToSystem 雲端函式時發生錯誤:", error);
+    // 將 Firebase Function 拋出的 HttpsError 轉換為前端習慣的格式
+    return { status: 'error', message: error.message };
+  }
+}
+// ✅ END: 新增 checkInToSystem API 函式
+
+/**
+ * [新] 設定使用者的在線狀態，並可選地設定 onDisconnect 清理
+ * 我們使用 Realtime Database 來處理 onDisconnect，因為它比 Firestore 更即時可靠
+ * @param {string} userKey 
+ * @param {string} userName
+ * @param {string} projectId 
+ * @param {string} system 
+ * @param {boolean} setupOnDisconnect 是否設定離線時自動移除
+ */
+export async function setUserOnlineStatus(userKey, userName, projectId, system, setupOnDisconnect = false) {
+  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
+  const statusPayload = {
+    userId: userKey,
+    userName: userName,
+    projectId: projectId,
+    system: system,
+    lastSeen: new Date().toISOString(), // 使用 ISO String 避免 serverTimestamp 的複雜性
+  };
+
+  await set(presenceRef, statusPayload);
+
+  if (setupOnDisconnect) {
+    onDisconnect(presenceRef).remove();
+  }
+}
+
+/**
+ * [新] 主動移除使用者的在線狀態
+ * @param {string} userKey 
+ */
+export async function removeUserOnlineStatus(userKey) {
+  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
+  await set(presenceRef, null); // 在 Realtime Database 中，設為 null 等同於刪除
+}
+// ✅ END: 新增 Online Status 管理 API

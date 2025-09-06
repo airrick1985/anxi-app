@@ -95,6 +95,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 // ✓ 【修改】引入 projectStore，我們需要用它來獲取所有建案的列表
 import { useProjectStore } from '@/store/projectStore';
+import { checkInToSystem } from '@/api'; 
 
 const router = useRouter();
 const route = useRoute();
@@ -163,25 +164,51 @@ async function loadProjectsForSystem() {
   }
 }
 
-// ✓ 【確認】此函式維持不變，因為二次驗證已被移除
-function enterProject() {
+// ✓ START: 【替換】enterProject 函式，加入人數驗證邏輯
+async function enterProject() {
   if (!selectedProject.value) {
     error.value = '請先選擇一個建案。';
     return;
   }
+  
   isValidating.value = true;
-  
-  userStore.setProjectName(selectedProject.value);
-  const targetRouteName = currentViewMode.value === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-  
-  router.push({
-    name: targetRouteName,
-    params: {
-      projectName: selectedProject.value
+  error.value = ''; // 清除舊的錯誤訊息
+
+  try {
+    // 準備呼叫後端函式所需的參數
+    const projectId = selectedProject.value;
+    const system = pageTitle.value; // "銷控系統" 或 "報價系統"
+    const userKey = userStore.user?.key;
+    const userName = userStore.user?.name;
+
+    if (!userKey || !userName) {
+      throw new Error('無法獲取使用者資訊，請重新登入。');
     }
-  }).finally(() => {
-      isValidating.value = false;
-  });
+
+    // 呼叫後端進行驗證
+    const result = await checkInToSystem(projectId, system, userKey, userName);
+
+    if (result.status === 'success') {
+      // 驗證成功，執行原有的導航邏輯
+      userStore.setProjectName(projectId);
+      const targetRouteName = currentViewMode.value === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
+      
+      router.push({
+        name: targetRouteName,
+        params: {
+          projectName: projectId 
+        }
+      });
+    } else {
+      // 驗證失敗，顯示後端回傳的錯誤訊息
+      error.value = result.message || '進入系統失敗。';
+    }
+  } catch (err) {
+    console.error('進入專案時發生錯誤:', err);
+    error.value = `客戶端錯誤: ${err.message}`;
+  } finally {
+    isValidating.value = false;
+  }
 }
 
 function goToLogin() {

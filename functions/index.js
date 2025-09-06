@@ -841,3 +841,119 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
     throw new HttpsError("internal", `更新戶別資料時發生錯誤: ${error.message}`);
   }
 });
+
+
+// ✅ START: 新增 checkInToSystem 雲端函式
+
+/**
+ * [核心功能] 檢查使用者是否可以進入特定系統
+ * 執行邏輯：
+ * 1. 計算當前有效的總使用者人數上限。
+ * 2. 計算目前已在線的使用者人數。
+ * 3. 如果 (在線人數 < 人數上限)，則允許進入，並將使用者寫入 onlineStatus 集合。
+ * 4. 否則，拒絕進入。
+ */
+exports.checkInToSystem = onCall(async (request) => {
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const { projectId, system, userKey, userName } = request.data;
+  const functionName = `checkInToSystem (Project: ${projectId}, System: ${system}, User: ${userKey})`;
+
+  // --- 步驟 1: 驗證輸入 ---
+  if (!projectId || !system || !userKey || !userName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, system, userKey, or userName)。");
+  }
+
+  // --- 步驟 2: 處理特殊業務規則 ---
+  // 報價系統與銷控系統共用同一個使用者人數上限
+  const targetSystem = system === '報價系統' ? '銷控系統' : system;
+  console.log(`[${functionName}] 實際檢查的系統為: ${targetSystem}`);
+
+  try {
+    // --- 步驟 3: 查詢訂閱，計算有效的人數上限 ---
+    const subsQuery = await db.collection("subscriptions")
+      .where("projectId", "==", projectId)
+      .where("systemFunction", "==", targetSystem)
+      .get();
+
+    if (subsQuery.empty) {
+      // 找不到任何對應的訂閱，直接拒絕
+      throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
+    }
+
+    const subscriptionData = subsQuery.docs[0].data();
+    const tiers = subscriptionData.userLimitTiers || [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 標準化為當天零點
+
+    let effectiveLimit = 0;
+    tiers.forEach(tier => {
+      // 將 YYYY-MM-DD 字串轉為 Date 物件進行比較
+      const startDate = new Date(tier.startDate);
+      const endDate = new Date(tier.endDate);
+      
+      // 確保時間也被標準化
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(0, 0, 0, 0);
+
+      if (today >= startDate && today <= endDate) {
+        effectiveLimit += Number(tier.count) || 0;
+      }
+    });
+
+    console.log(`[${functionName}] 計算出今日有效人數上限為: ${effectiveLimit}`);
+    
+    // 如果計算後上限 <= 0，直接拒絕
+    if (effectiveLimit <= 0) {
+        throw new HttpsError("permission-denied", "此系統目前未設定可用人數或已到期。");
+    }
+
+    // --- 步驟 4: 查詢 onlineStatus，計算目前在線人數 ---
+    const onlineStatusRef = db.collection("onlineStatus");
+    const onlineQuery = onlineStatusRef
+        .where("projectId", "==", projectId)
+        .where("system", "==", targetSystem);
+        
+    const onlineSnapshot = await onlineQuery.get();
+    const currentUserCount = onlineSnapshot.size;
+
+    console.log(`[${functionName}] 目前系統在線人數: ${currentUserCount}`);
+
+    // --- 步驟 5: 執行檢查與登入邏輯 ---
+    // 檢查使用者本人是否已經在線上
+    const userOnlineDoc = await onlineStatusRef.doc(userKey).get();
+
+    if (userOnlineDoc.exists) {
+      // 如果使用者已經在線 (可能只是重整頁面)，直接允許，不佔用新名額
+       console.log(`[${functionName}] 使用者已在線上，直接允許進入。`);
+       return { status: "success", message: "已在線，重新進入成功。" };
+    }
+    
+    if (currentUserCount >= effectiveLimit) {
+      // 在線人數已滿，且使用者本人不在其中，則拒絕
+      console.log(`[${functionName}] 人數已滿 (${currentUserCount}/${effectiveLimit})，拒絕進入。`);
+      throw new HttpsError("permission-denied", "使用者已達上限");
+    }
+
+    // --- 步驟 6: 允許進入，更新在線狀態 ---
+    const userStatusRef = db.collection("onlineStatus").doc(userKey);
+    await userStatusRef.set({
+      userId: userKey,
+      userName: userName,
+      projectId: projectId,
+      system: targetSystem, // 記錄實際檢查的系統
+      lastSeen: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    console.log(`[${functionName}] 允許進入，已更新在線狀態。`);
+    return { status: "success", message: "登入系統成功" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", "檢查系統人數時發生未知錯誤。");
+  }
+});
+// ✅ END: 新增 checkInToSystem 雲端函式
