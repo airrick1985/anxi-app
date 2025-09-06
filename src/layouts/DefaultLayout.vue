@@ -94,13 +94,13 @@
     
     <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
     <UpdateDialog v-model="showUpdateDialog" :release-version="releaseVersion" :release-notes="releaseNotes" @confirm="doUpdate" />
-    <v-dialog v-model="logoutDialog" persistent max-width="300">
+        <v-dialog v-model="logoutDialog" persistent max-width="300">
         <v-card>
             <v-card-title>確定要登出？</v-card-title>
             <v-card-actions>
                 <v-spacer />
                 <v-btn text @click="logoutDialog = false">取消</v-btn>
-                <v-btn color="error" text @click="confirmLogout">登出</v-btn>
+                <v-btn color="error" text @click="confirmLogout" :loading="isLoggingOut">登出</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -175,6 +175,7 @@ const { isFullscreen, toggleFullscreen } = useFullscreen();
 const contactDialog = ref(false);
 const mortgageDialog = ref(false);
 const showAiAssistant = ref(false); // AI助理false=隱藏
+const isLoggingOut = ref(false); // ✅ 新增此行
 
 
 const showSnackbar = (message) => {
@@ -216,10 +217,18 @@ const doUpdate = async () => {
 
 const confirmLogout = async () => {
   logoutDialog.value = false;
-  await userStore.clearUser();
-  await router.push('/login');
-  showSnackbar('已成功登出');
+  isLoggingOut.value = true; // ✅ 在開始時設為 true
+  try {
+    await userStore.logoutUser();
+    showSnackbar('已成功登出');
+  } catch (error) {
+    console.error("登出時發生錯誤:", error);
+    showSnackbar('登出失敗，請稍後再試');
+  } finally {
+    isLoggingOut.value = false; // ✅ 無論成功或失敗，最後都設為 false
+  }
 };
+
 const goHome = () => {
   if (route.path !== '/home') {
     router.push('/home');

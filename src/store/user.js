@@ -1,17 +1,19 @@
 // src/store/user.js
 
 import { defineStore } from 'pinia';
+import { removeUserOnlineStatus } from '@/api'; // 1. 引入我們需要的主動離線函式
+import { goOffline } from '@/api'; // 確保引入的是 goOffline
+import router from '@/router'; // 2. 引入 router 以便進行導航
 
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null,
-    // detailedPermissions 格式維持不變: [{ projectId, projectName, system, access }]
     detailedPermissions: [],
     unreadCount: 0,
   }),
 
- actions: {
-setUser(userData) {
+  actions: {
+    setUser(userData) {
       if (userData && typeof userData === 'object' && userData.key) {
         this.user = {
           key: userData.key,
@@ -32,6 +34,32 @@ setUser(userData) {
       this.detailedPermissions = [];
       this.unreadCount = 0;
     },
+    
+    // ✓ START: 【新增】專門的登出動作
+    async logoutUser() {
+  console.log('LOGOUT STEP 1: Starting logout process...');
+  const userKey = this.user?.key;
+
+  if (userKey) {
+    try {
+      console.log(`LOGOUT STEP 2: Attempting to go offline for user: ${userKey}`);
+      await goOffline(userKey);
+      console.log(`LOGOUT STEP 3: Successfully went offline for user: ${userKey}`);
+    } catch (error) {
+      console.error('LOGOUT FAILED: Could not remove online status.', error);
+      // 即使失敗，我們仍然要繼續執行登出
+    }
+  } else {
+    console.log('LOGOUT STEP 2: No user key found, skipping offline status removal.');
+  }
+
+  console.log('LOGOUT STEP 4: Clearing user state from Pinia store.');
+  this.clearUser();
+
+  console.log('LOGOUT STEP 5: Redirecting to login page.');
+  await router.replace('/login');
+},
+    // ✓ END: 【新增】專門的登出動作
 
     setProjectName(projectName) {
       if (this.user) {
@@ -56,28 +84,22 @@ setUser(userData) {
    getters: {
     isLoggedIn: (state) => !!state.user,
     currentUserRoles: (state) => state.user?.roles || [],
-
-    // ✅ START: 重寫所有權限相關的 getters
     hasPermission: (state) => (systemName) => {
       if (!state.detailedPermissions) return false;
       return state.detailedPermissions.some(p => p.system === systemName);
     },
-
     hasProjectPermission: (state) => (systemName, projectName) => {
       if (!state.detailedPermissions) return false;
       return state.detailedPermissions.some(p => p.system === systemName && p.projectName === projectName);
     },
-    
     hasAnyPermission: (state) => (systemNames) => {
       if (!state.detailedPermissions || !Array.isArray(systemNames)) return false;
       return state.detailedPermissions.some(p => systemNames.includes(p.system));
     },
-
     canSendMessage: (state) => {
       if (!state.detailedPermissions) return false;
       return state.detailedPermissions.some(perm => perm.system && perm.system.startsWith('寄信-'));
     },
-    // ✅ END: 重寫所有權限相關的 getters
   },
 
   persist: {

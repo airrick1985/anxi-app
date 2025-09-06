@@ -530,7 +530,12 @@ const { mobile: isMobile } = useDisplay();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const route = useRoute();
-const toast = useToast(); //  新增
+const toast = useToast(); 
+
+// ✅ 2. 呼叫 Composable，傳入必要的參數
+const projectIdForPresence = computed(() => route.params.projectName);
+const systemNameForPresence = computed(() => route.meta.viewMode === 'quote' ? '報價系統' : '銷控系統');
+useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
 
 const { 
   isSlideDialogVisible, 

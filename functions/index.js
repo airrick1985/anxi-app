@@ -12,6 +12,8 @@ admin.initializeApp();
 
 // 這個 db 實例會指向 (default) 資料庫，我們在函式內部會建立指向 anxi-app 的實例
 const defaultDb = admin.firestore();
+const rtdbAdmin = admin.database(); 
+
 
 // 定義函式需要從 Secret Manager 讀取的密鑰名稱
 const gmailSecrets = [
@@ -86,7 +88,7 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
     }
 
     try {
-        // ✅ 1. 查詢 users 集合，找出所有 roles 陣列中包含 "超級管理員" 的使用者
+        //  1. 查詢 users 集合，找出所有 roles 陣列中包含 "超級管理員" 的使用者
         const usersRef = anxiDb.collection('users');
         const superAdminQuery = usersRef.where('roles', 'array-contains', '超級管理員');
         const superAdminSnapshot = await superAdminQuery.get();
@@ -96,7 +98,7 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
             return;
         }
         
-        // ✅ 2. 遍歷所有找到的超級管理員
+        //  2. 遍歷所有找到的超級管理員
         const permissionPromises = superAdminSnapshot.docs.map(async (userDoc) => {
             const adminPhone = userDoc.id;
             const permissionDocRef = anxiDb.collection('userPermissions').doc(adminPhone);
@@ -120,10 +122,10 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
             }, { merge: true });
         });
         
-        // ✅ 3. 等待所有超級管理員的權限都更新完成
+        //  3. 等待所有超級管理員的權限都更新完成
         await Promise.all(permissionPromises);
 
-        console.log(`✅ 成功為 ${superAdminSnapshot.size} 位超級管理員在新專案 [${projectName}] (${projectId}) 更新所有權限。`);
+        console.log(` 成功為 ${superAdminSnapshot.size} 位超級管理員在新專案 [${projectName}] (${projectId}) 更新所有權限。`);
 
     } catch (error) {
         console.error('為超級管理員授權時發生錯誤:', error);
@@ -738,7 +740,7 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
 });
 
 /**
- * ✅ 【新增】 上傳戶別資料並更新 Firestore
+ *  【新增】 上傳戶別資料並更新 Firestore
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesHouseholds 集合
  */
 exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => {
@@ -801,7 +803,7 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
         dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y');
       }
 
-      // ✅ --- 新增：處理銷控圖片欄位 ---
+      //  --- 新增：處理銷控圖片欄位 ---
       if (typeof dataToSave.salesImages === 'string' && dataToSave.salesImages.trim() !== '') {
         // 將逗號分隔的字串，轉換為一個經過 trim 處理且移除非空字串的陣列
         dataToSave.salesImages = dataToSave.salesImages
@@ -812,7 +814,7 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
         // 如果欄位不存在或為空，確保它是一個空陣列，以維持資料格式一致性
         dataToSave.salesImages = [];
       }
-      // ✅ --- 處理結束 ---
+      //  --- 處理結束 ---
 
       const docId = `${projectId}_${unitId}`;
       const docRef = db.collection("salesHouseholds").doc(docId);
@@ -843,117 +845,98 @@ exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => 
 });
 
 
-// ✅ START: 新增 checkInToSystem 雲端函式
-
-/**
- * [核心功能] 檢查使用者是否可以進入特定系統
- * 執行邏輯：
- * 1. 計算當前有效的總使用者人數上限。
- * 2. 計算目前已在線的使用者人數。
- * 3. 如果 (在線人數 < 人數上限)，則允許進入，並將使用者寫入 onlineStatus 集合。
- * 4. 否則，拒絕進入。
- */
+// ✓ 【替換】checkInToSystem 整個函式 (最終修正版)
 exports.checkInToSystem = onCall(async (request) => {
-  const db = new Firestore({ databaseId: "anxi-app" });
   const { projectId, system, userKey, userName } = request.data;
   const functionName = `checkInToSystem (Project: ${projectId}, System: ${system}, User: ${userKey})`;
 
-  // --- 步驟 1: 驗證輸入 ---
+  // --- 步驟 1 & 2: 驗證輸入和業務規則 (不變) ---
   if (!projectId || !system || !userKey || !userName) {
-    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, system, userKey, or userName)。");
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
   }
-
-  // --- 步驟 2: 處理特殊業務規則 ---
-  // 報價系統與銷控系統共用同一個使用者人數上限
   const targetSystem = system === '報價系統' ? '銷控系統' : system;
-  console.log(`[${functionName}] 實際檢查的系統為: ${targetSystem}`);
+  console.log(`[${functionName}] User trying to enter. Project: [${projectId}], System: [${system}], TargetSystem: [${targetSystem}]`);
 
   try {
-    // --- 步驟 3: 查詢訂閱，計算有效的人數上限 ---
-    const subsQuery = await db.collection("subscriptions")
+    // --- 步驟 3: 查詢訂閱，計算有效的人數上限 (不變) ---
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    const subsQuery = await anxiDb.collection("subscriptions")
       .where("projectId", "==", projectId)
       .where("systemFunction", "==", targetSystem)
       .get();
-
-    if (subsQuery.empty) {
-      // 找不到任何對應的訂閱，直接拒絕
-      throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
-    }
+    if (subsQuery.empty) throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
 
     const subscriptionData = subsQuery.docs[0].data();
     const tiers = subscriptionData.userLimitTiers || [];
-
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 標準化為當天零點
+    today.setHours(0, 0, 0, 0);
 
     let effectiveLimit = 0;
     tiers.forEach(tier => {
-      // 將 YYYY-MM-DD 字串轉為 Date 物件進行比較
       const startDate = new Date(tier.startDate);
       const endDate = new Date(tier.endDate);
-      
-      // 確保時間也被標準化
       startDate.setHours(0, 0, 0, 0);
       endDate.setHours(0, 0, 0, 0);
-
-      if (today >= startDate && today <= endDate) {
-        effectiveLimit += Number(tier.count) || 0;
-      }
+      if (today >= startDate && today <= endDate) effectiveLimit += Number(tier.count) || 0;
     });
+    console.log(`[${functionName}] Calculated effective user limit: ${effectiveLimit}`);
 
-    console.log(`[${functionName}] 計算出今日有效人數上限為: ${effectiveLimit}`);
+    if (effectiveLimit <= 0) throw new HttpsError("permission-denied", "此系統目前未設定可用人數或已到期。");
+
+    // --- ✅ 步驟 4: 修正 - 正確計算在線人數 ---
+    const onlineStatusRef = rtdbAdmin.ref('onlineStatus');
+    const onlineSnapshot = await onlineStatusRef.get();
     
-    // 如果計算後上限 <= 0，直接拒絕
-    if (effectiveLimit <= 0) {
-        throw new HttpsError("permission-denied", "此系統目前未設定可用人數或已到期。");
-    }
-
-    // --- 步驟 4: 查詢 onlineStatus，計算目前在線人數 ---
-    const onlineStatusRef = db.collection("onlineStatus");
-    const onlineQuery = onlineStatusRef
-        .where("projectId", "==", projectId)
-        .where("system", "==", targetSystem);
+    let currentUserCount = 0;
+    if (onlineSnapshot.exists()) {
+      onlineSnapshot.forEach(childSnapshot => {
+        const data = childSnapshot.val();
         
-    const onlineSnapshot = await onlineQuery.get();
-    const currentUserCount = onlineSnapshot.size;
+        // 修正點 1: 判斷是否要計數
+        let shouldCount = false;
+        if (targetSystem === '銷控系統') {
+            // 如果檢查目標是銷控系統，則報價系統和銷控系統的用戶都要算進去
+            if (data.system === '銷控系統' || data.system === '報價系統') {
+                shouldCount = true;
+            }
+        } else {
+            // 其他系統則正常比對
+            if (data.system === targetSystem) {
+                shouldCount = true;
+            }
+        }
+        
+        if (data.projectId === projectId && shouldCount) {
+          currentUserCount++;
+        }
+      });
+    }
+    console.log(`[${functionName}] Filer finished. Total online users for this system: ${currentUserCount}`);
 
-    console.log(`[${functionName}] 目前系統在線人數: ${currentUserCount}`);
+    // --- 步驟 5: 檢查邏輯 (不變) ---
+    const userOnlineRef = rtdbAdmin.ref(`onlineStatus/${userKey}`);
+    const userOnlineSnapshot = await userOnlineRef.get();
 
-    // --- 步驟 5: 執行檢查與登入邏輯 ---
-    // 檢查使用者本人是否已經在線上
-    const userOnlineDoc = await onlineStatusRef.doc(userKey).get();
-
-    if (userOnlineDoc.exists) {
-      // 如果使用者已經在線 (可能只是重整頁面)，直接允許，不佔用新名額
-       console.log(`[${functionName}] 使用者已在線上，直接允許進入。`);
+    if (userOnlineSnapshot.exists()) {
+       console.log(`[${functionName}] User [${userKey}] is already online. Allowing re-entry.`);
        return { status: "success", message: "已在線，重新進入成功。" };
     }
     
     if (currentUserCount >= effectiveLimit) {
-      // 在線人數已滿，且使用者本人不在其中，則拒絕
-      console.log(`[${functionName}] 人數已滿 (${currentUserCount}/${effectiveLimit})，拒絕進入。`);
+      console.log(`[${functionName}] DENIED: User count (${currentUserCount}) meets or exceeds limit (${effectiveLimit}).`);
       throw new HttpsError("permission-denied", "使用者已達上限");
     }
 
-    // --- 步驟 6: 允許進入，更新在線狀態 ---
-    const userStatusRef = db.collection("onlineStatus").doc(userKey);
-    await userStatusRef.set({
-      userId: userKey,
-      userName: userName,
-      projectId: projectId,
-      system: targetSystem, // 記錄實際檢查的系統
-      lastSeen: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // --- ✅ 步驟 6: 修正 - 寫入正確的系統名稱 ---
+    console.log(`[${functionName}] ALLOWED: User count (${currentUserCount}) is less than limit (${effectiveLimit}). Setting online status for [${userKey}].`);
+    // 修正點 2: 寫入使用者當前真正要進入的系統 (system)，而不是檢查目標 (targetSystem)
+    await userOnlineRef.set({ userId: userKey, userName: userName, projectId: projectId, system: system });
     
-    console.log(`[${functionName}] 允許進入，已更新在線狀態。`);
     return { status: "success", message: "登入系統成功" };
 
   } catch (error) {
-    console.error(`[${functionName}] 發生錯誤:`, error);
-    if (error instanceof HttpsError) {
-      throw error;
-    }
+    console.error(`[${functionName}] An error occurred:`, error);
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "檢查系統人數時發生未知錯誤。");
   }
 });
-// ✅ END: 新增 checkInToSystem 雲端函式

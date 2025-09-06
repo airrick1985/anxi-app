@@ -3,10 +3,11 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useUserStore } from '@/store/user';
 import { setUserOnlineStatus, removeUserOnlineStatus } from '@/api'; // 我們稍後會建立這些 API 函式
+import { goOnline, goOffline } from '@/api';
 import { useRouter } from 'vue-router';
 
-// 設定閒置超時時間 (30分鐘)
-const IDLE_TIMEOUT = 30 * 60 * 1000;
+// 設定閒置超時時間 (10分鐘)
+const IDLE_TIMEOUT = 10 * 60 * 1000;
 
 export function useSystemPresence(projectId, systemName) {
   const userStore = useUserStore();
@@ -41,7 +42,7 @@ export function useSystemPresence(projectId, systemName) {
     
     // 1. 設定 Firebase Realtime Database 或 Firestore 的 onDisconnect 事件
     //    這是為了處理使用者直接關閉瀏覽器或斷線的情況
-    setUserOnlineStatus(userKey, userName, projectId, systemName, true); // true 代表設定 onDisconnect
+    goOnline(userKey, userName, projectId, systemName);
 
     // 2. 啟動閒置計時器
     resetIdleTimer();
@@ -55,7 +56,7 @@ export function useSystemPresence(projectId, systemName) {
     console.log(`[Presence] User ${userName} leaving system.`);
 
     // 1. 主動、立即地從 onlineStatus 移除使用者紀錄
-    removeUserOnlineStatus(userKey);
+    goOffline(userKey);
 
     // 2. 清理閒置計時器和事件監聽
     clearTimeout(idleTimer);

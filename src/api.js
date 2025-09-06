@@ -24,13 +24,12 @@ import {
 } from "firebase/firestore";
 import { format } from 'date-fns';
 
-import { onDisconnect, set, ref as dbRef } from "firebase/database"; // ❗️注意：這裡需要從 firebase/database 引入
+import { onDisconnect, set, ref as dbRef, remove } from "firebase/database"; 
 import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
 
-
-
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { httpsCallable } from "firebase/functions"; 
+
+
 
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
@@ -3301,11 +3300,10 @@ export async function checkInToSystem(projectId, system, userKey, userName) {
     return { status: 'error', message: error.message };
   }
 }
-// ✅ END: 新增 checkInToSystem API 函式
+//  END: 新增 checkInToSystem API 函式
 
 /**
  * [新] 設定使用者的在線狀態，並可選地設定 onDisconnect 清理
- * 我們使用 Realtime Database 來處理 onDisconnect，因為它比 Firestore 更即時可靠
  * @param {string} userKey 
  * @param {string} userName
  * @param {string} projectId 
@@ -3313,13 +3311,13 @@ export async function checkInToSystem(projectId, system, userKey, userName) {
  * @param {boolean} setupOnDisconnect 是否設定離線時自動移除
  */
 export async function setUserOnlineStatus(userKey, userName, projectId, system, setupOnDisconnect = false) {
+  if (!userKey) return; 
   const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
   const statusPayload = {
     userId: userKey,
     userName: userName,
     projectId: projectId,
     system: system,
-    lastSeen: new Date().toISOString(), // 使用 ISO String 避免 serverTimestamp 的複雜性
   };
 
   await set(presenceRef, statusPayload);
@@ -3334,7 +3332,47 @@ export async function setUserOnlineStatus(userKey, userName, projectId, system, 
  * @param {string} userKey 
  */
 export async function removeUserOnlineStatus(userKey) {
+  if (!userKey) return; // ✅ 2. 增加安全檢查
   const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
-  await set(presenceRef, null); // 在 Realtime Database 中，設為 null 等同於刪除
+  await remove(presenceRef); // ✅ 3. 使用 remove() 語義更清晰
 }
-// ✅ END: 新增 Online Status 管理 API
+
+/**
+ * [新] 設定使用者在線，並設定 onDisconnect 清理
+ * @param {string} userKey 
+ * @param {string} userName
+ * @param {string} projectId 
+ * @param {string} system 
+ */
+export async function goOnline(userKey, userName, projectId, system) {
+  if (!userKey) return;
+  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
+  const statusPayload = {
+    userId: userKey,
+    userName: userName,
+    projectId: projectId,
+    system: system,
+  };
+
+  // onDisconnect 必須在 set() 之前設定，確保不會有遺漏
+  await onDisconnect(presenceRef).remove();
+  
+  // 將使用者狀態寫入 RTDB
+  await set(presenceRef, statusPayload);
+}
+
+/**
+ * [新] 主動讓使用者離線 (用於正常登出或離開系統)
+ * @param {string} userKey 
+ */
+export async function goOffline(userKey) {
+  if (!userKey) return;
+  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
+  
+  // 步驟 1: 明確地取消 onDisconnect 事件，避免競爭條件
+  await onDisconnect(presenceRef).cancel();
+  
+  // 步驟 2: 手動從 RTDB 刪除在線狀態
+  await remove(presenceRef);
+}
+// ✓ END: 【替換】Online Status 管理 API
