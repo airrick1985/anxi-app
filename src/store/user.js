@@ -1,19 +1,19 @@
 // src/store/user.js
 
 import { defineStore } from 'pinia';
-import { removeUserOnlineStatus } from '@/api'; // 1. 引入我們需要的主動離線函式
-import { goOffline } from '@/api'; // 確保引入的是 goOffline
-import router from '@/router'; // 2. 引入 router 以便進行導航
+import { goOffline } from '@/api'; 
+import router from '@/router'; 
 
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null,
+    sessionId: null, 
     detailedPermissions: [],
     unreadCount: 0,
   }),
 
   actions: {
-    setUser(userData) {
+    setUser(userData, sessionId) {
       if (userData && typeof userData === 'object' && userData.key) {
         this.user = {
           key: userData.key,
@@ -21,21 +21,23 @@ export const useUserStore = defineStore('user', {
           name: userData.name || null,
           roles: userData.roles || []
         };
+        this.sessionId = sessionId; // 儲存 sessionId
         this.detailedPermissions = Array.isArray(userData.detailedPermissions)
           ? userData.detailedPermissions
           : [];
       } else {
         this.user = null;
+        this.sessionId = null; // 清除 sessionId
         this.detailedPermissions = [];
       }
     },
     clearUser() {
       this.user = null;
+      this.sessionId = null; 
       this.detailedPermissions = [];
       this.unreadCount = 0;
     },
     
-    // ✓ START: 【新增】專門的登出動作
     async logoutUser() {
   const userKey = this.user?.key;
 
@@ -44,7 +46,6 @@ export const useUserStore = defineStore('user', {
       await goOffline(userKey);
     } catch (error) {
       console.error('LOGOUT FAILED: Could not remove online status.', error);
-      // 即使失敗，我們仍然要繼續執行登出
     }
   } else {
   }
@@ -53,7 +54,6 @@ export const useUserStore = defineStore('user', {
 
   await router.replace('/login');
 },
-    // ✓ END: 【新增】專門的登出動作
 
     setProjectName(projectName) {
       if (this.user) {
@@ -99,6 +99,6 @@ export const useUserStore = defineStore('user', {
   persist: {
     key: 'anxi-user-session',
     storage: sessionStorage,
-    paths: ['user', 'detailedPermissions', 'unreadCount']
+    paths: ['user', 'detailedPermissions', 'unreadCount', 'sessionId']
   }
 });

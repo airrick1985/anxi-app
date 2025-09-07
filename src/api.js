@@ -107,61 +107,26 @@ export async function getProjectList(userKey) {
 
 
 /**
- * [新] 登入時，獲取使用者的基本資料與重構後的權限
+ * [新] 登入時，呼叫後端函式進行驗證並獲取使用者資料
+ * @param {string} key - 手機號碼
+ * @param {string} password - 密碼
+ * @param {string} sessionId - 本次登入的唯一憑證
+ * @returns {Promise<object>}
  */
-export async function loginUser(key, password) {
-  console.log(`[api.js] New loginUser called with key: ${key}`);
+export async function loginUser(key, password, sessionId) {
+  console.log(`[api.js] New loginUser called with key: ${key} and sessionId: ${sessionId}`);
   try {
-    const userDocRef = doc(db, "users", key);
-    const permissionDocRef = doc(db, "userPermissions", key);
+    const handleLogin = httpsCallable(functions, 'handleLogin');
+    const result = await handleLogin({ key, password, sessionId });
+    
+    // Cloud Function 成功時，回傳的資料會在 result.data 中
+    return result.data;
 
-    const [userDocSnap, permissionDocSnap] = await Promise.all([
-      getDoc(userDocRef),
-      getDoc(permissionDocRef)
-    ]);
-
-    if (!userDocSnap.exists()) {
-      return { status: 'error', message: '手機號碼不存在或錯誤' };
-    }
-
-    const userData = userDocSnap.data();
-    if (userData.password !== String(password)) {
-      return { status: 'error', message: '密碼錯誤' };
-    }
-
-    const detailedPermissions = [];
-    if (permissionDocSnap.exists()) {
-      const perms = permissionDocSnap.data().permissions || {};
-      for (const projectId in perms) {
-        const project = perms[projectId];
-
-        //  【錯誤修復】 增加一個判斷，確保 project.systems 是一個陣列後才進行 forEach
-        // 這樣即使有不完整的資料，程式碼也不會崩潰。
-        if (project && Array.isArray(project.systems)) {
-          project.systems.forEach(system => {
-            detailedPermissions.push({
-              projectId: projectId,
-              projectName: project.projectName,
-              system: system,
-              access: 'Y'
-            });
-          });
-        }
-      }
-    }
-
-    const userObject = {
-      key: key,
-      email: userData.email,
-      name: userData.name,
-      roles: userData.roles || [],
-      detailedPermissions: detailedPermissions
-    };
-
-    return { status: 'success', user: userObject };
   } catch (e) {
     console.error('New loginUser 錯誤:', e);
-    return { status: 'error', message: `登入時發生錯誤: ${e.message}` };
+    // Cloud Function 拋出的 HttpsError 可以被捕捉到
+    // 我們將其轉換為前端習慣的格式
+    return { status: 'error', message: e.message };
   }
 }
 
@@ -3327,15 +3292,7 @@ export async function setUserOnlineStatus(userKey, userName, projectId, system, 
   }
 }
 
-/**
- * [新] 主動移除使用者的在線狀態
- * @param {string} userKey 
- */
-export async function removeUserOnlineStatus(userKey) {
-  if (!userKey) return; // ✅ 2. 增加安全檢查
-  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
-  await remove(presenceRef); // ✅ 3. 使用 remove() 語義更清晰
-}
+
 
 /**
  * [新] 設定使用者在線，並設定 onDisconnect 清理

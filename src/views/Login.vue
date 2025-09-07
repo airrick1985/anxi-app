@@ -68,15 +68,15 @@
 </template>
 
 <script setup>
-// ✅ 核心修改：Script 變得非常乾淨
 import { ref, computed } from 'vue'; // 移除了 onMounted
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
 import { checkUpdate } from '@/utils/swHelper';
 
-// ✅ 1. 從 @/assets/ 資料夾直接匯入您的圖片
 import myBackgroundImage from '@/assets/login-bg.jpg';
+
+import { v4 as uuidv4 } from 'uuid';
 
 const emit = defineEmits(['start-loading', 'stop-loading', 'notify']);
 const key = ref('');
@@ -86,15 +86,12 @@ const loading = ref(false);
 const router = useRouter();
 const userStore = useUserStore();
 
-// ✅ 2. 直接將匯入的圖片路徑賦值給 backgroundImageUrl
 const backgroundImageUrl = ref(myBackgroundImage);
 
-// ✅ 3. containerStyle 的邏輯完全不變，它會將上面的路徑設定到 CSS 變數中
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-// ✅ 4. 原本的 fetchRandomBackground 和 onMounted 已被移除
 
 const submit = async () => {
   error.value = '';
@@ -105,9 +102,15 @@ const submit = async () => {
   loading.value = true;
   emit('start-loading');
   try {
-    const result = await loginUser(key.value, password.value);
+    // 步驟 A: 在點擊登入時，產生一個新的、唯一的 sessionId
+    const sessionId = uuidv4();
+
+    // 步驟 B: 將 sessionId 一同傳遞給後端
+    const result = await loginUser(key.value, password.value, sessionId);
+
     if (result && result.status === 'success' && result.user) {
-      userStore.setUser(result.user);
+      // 步驟 C: 登入成功後，將使用者資料和 sessionId 一同存入 store
+      userStore.setUser(result.user, sessionId);
       emit('notify', '登入成功');
       await checkUpdate();
       router.push('/home');

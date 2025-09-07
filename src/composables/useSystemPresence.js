@@ -2,7 +2,6 @@
 
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useUserStore } from '@/store/user';
-import { setUserOnlineStatus, removeUserOnlineStatus } from '@/api'; // 我們稍後會建立這些 API 函式
 import { goOnline, goOffline } from '@/api';
 import { useRouter } from 'vue-router';
 

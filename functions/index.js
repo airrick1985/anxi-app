@@ -856,7 +856,7 @@ exports.checkInToSystem = onCall(async (request) => {
   
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
   
-  // ✅ 修正點 1: 在函式一開始，就先獲取所有管理員的 User ID 列表
+  //  修正點 1: 在函式一開始，就先獲取所有管理員的 User ID 列表
   const adminUserKeys = new Set();
   try {
     const superAdminQuery = anxiDb.collection("users").where("roles", "array-contains", "超級管理員");
@@ -914,7 +914,7 @@ exports.checkInToSystem = onCall(async (request) => {
       onlineSnapshot.forEach(childSnapshot => {
         const data = childSnapshot.val();
         
-        // ✅ 修正點 2: 在計數前，先判斷該在線使用者是否為管理員
+        //  修正點 2: 在計數前，先判斷該在線使用者是否為管理員
         if (adminUserKeys.has(data.userId)) {
           return; // 如果是管理員，直接跳過，不計入
         }
@@ -948,5 +948,74 @@ exports.checkInToSystem = onCall(async (request) => {
     console.error(`[${functionName}] An error occurred:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "檢查系統人數時發生未知錯誤。");
+  }
+});
+
+
+exports.handleLogin = onCall(async (request) => {
+  const { key, password, sessionId } = request.data;
+
+  if (!key || !password || !sessionId) {
+    throw new HttpsError("invalid-argument", "缺少登入所需參數 (key, password, or sessionId)。");
+  }
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const userDocRef = anxiDb.collection("users").doc(key);
+  const permissionDocRef = anxiDb.collection("userPermissions").doc(key);
+
+  try {
+    const userDocSnap = await userDocRef.get();
+
+    // 驗證使用者是否存在
+    // ✅ 修正點：將 userDocSnap.exists() 改為 userDocSnap.exists
+    if (!userDocSnap.exists) { 
+      throw new HttpsError("not-found", "手機號碼不存在或錯誤");
+    }
+
+    const userData = userDocSnap.data();
+    // 驗證密碼
+    if (userData.password !== String(password)) {
+      throw new HttpsError("unauthenticated", "密碼錯誤");
+    }
+
+    // 驗證成功，更新 activeSessionId
+    await userDocRef.update({ activeSessionId: sessionId });
+
+    // 密碼驗證通過後，組合回傳給前端的使用者物件
+    const permissionDocSnap = await permissionDocRef.get();
+    const detailedPermissions = [];
+    if (permissionDocSnap.exists) {
+      const perms = permissionDocSnap.data().permissions || {};
+      for (const projectId in perms) {
+        const project = perms[projectId];
+        if (project && Array.isArray(project.systems)) {
+          project.systems.forEach(system => {
+            detailedPermissions.push({
+              projectId: projectId,
+              projectName: project.projectName,
+              system: system,
+              access: 'Y'
+            });
+          });
+        }
+      }
+    }
+
+    const userObject = {
+      key: key,
+      email: userData.email,
+      name: userData.name,
+      roles: userData.roles || [],
+      detailedPermissions: detailedPermissions
+    };
+
+    return { status: 'success', user: userObject };
+
+  } catch (error) {
+    console.error(`Login failed for key [${key}]:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `登入時發生錯誤: ${error.message}`);
   }
 });
