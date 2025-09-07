@@ -31,6 +31,7 @@ import manifest from '../../public/manifest.json';
 
 
 // 引入所有需要的圖片
+import databaseIcon from '@/assets/icons/database.png';
 import myBackgroundImage from '@/assets/login-bg.jpg';
 import subscriptionIcon from '@/assets/icons/subscription.png';
 import userManagementIcon from '@/assets/icons/user-management.png';
@@ -57,6 +58,14 @@ const containerStyle = computed(() => ({
 }));
 
 const allButtons = ref([
+   { 
+    id: 'backupManagement', 
+    text: '資料庫管理', 
+    icon: databaseIcon, // 請替換為您的圖示
+    permissionType: 'system', 
+    permissionArgs: ['超級管理員'], // 權限檢查，只檢查 roles 是否包含 '超級管理員'
+    nav: { name: 'BackupManagement' } 
+  },
   { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'project', permissionArgs: ['訂閱管理', '安熙智慧'], nav: { name: 'SubscriptionManagement' } },
   { id: 'UserManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
   { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
@@ -92,14 +101,21 @@ onMounted(() => {
   });
 
    visibleButtons.value = sortedButtons.filter(button => {
+    // ✅ 新增：直接從 userStore 讀取角色列表
+    const userRoles = userStore.currentUserRoles;
+
     switch(button.permissionType) {
       case 'project':
         return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
-      // ✅ 核心修改點：新增一個 case 來處理 'anySystem' 類型
       case 'anySystem':
         return userStore.hasAnyPermission(button.permissionArgs);
       case 'system':
-        // 此處邏輯維持不變，但現在只會處理 permissionArgs 是單一字串的情況 (更簡潔)
+        // ✅ 修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles
+        // 如果 permissionArgs 的值是'超級管理員'或'系統管理員'等角色，就檢查 roles
+        if (['超級管理員', '系統管理員'].includes(button.permissionArgs[0])) {
+            return userRoles.includes(button.permissionArgs[0]);
+        }
+        // 否則，維持原有的系統權限檢查
         return userStore.hasPermission(button.permissionArgs[0]);
       case 'getter':
         return userStore[button.permissionArgs[0]];

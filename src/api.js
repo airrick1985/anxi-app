@@ -3350,3 +3350,146 @@ export async function searchAppointments(projectId, searchText) {
     return { status: 'error', message: error.message, data: [] };
   }
 }
+
+
+
+// 備份任務管理 API
+
+/**
+ * [新] 即時監聽所有備份任務的變化
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToBackupJobs = (onDataChange) => {
+  const jobsRef = collection(db, "backupJobs");
+  const unsubscribe = onSnapshot(jobsRef, (snapshot) => {
+    const jobs = [];
+    snapshot.forEach((doc) => {
+      jobs.push({ id: doc.id, ...doc.data() });
+    });
+    onDataChange(jobs);
+  });
+  return unsubscribe;
+};
+
+/**
+ * [新] 建立一個新的備份任務
+ * @param {object} jobData - 任務設定資料
+ */
+export async function createBackupJob(jobData) {
+  const jobsRef = collection(db, "backupJobs");
+  await addDoc(jobsRef, {
+    ...jobData,
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * [新] 更新一個備份任務
+ * @param {string} jobId 
+ * @param {object} jobData 
+ */
+export async function updateBackupJob(jobId, jobData) {
+  const jobDocRef = doc(db, "backupJobs", jobId);
+  await updateDoc(jobDocRef, jobData);
+}
+
+/**
+ * [新] 刪除一個備份任務
+ * @param {string} jobId 
+ */
+export async function deleteBackupJob(jobId) {
+  const jobDocRef = doc(db, "backupJobs", jobId);
+  await deleteDoc(jobDocRef);
+}
+
+/**
+ * [新] 手動觸發後端備份函式
+ * @param {string} jobId 
+ * @param {object} jobConfig 
+ * @returns {Promise<object>}
+ */
+export async function triggerBackupJob(jobId, jobConfig) {
+    try {
+        const runBackupJob = httpsCallable(functions, 'runBackupJob');
+        const result = await runBackupJob({ jobId, jobConfig });
+        return result.data;
+    } catch (error) {
+        console.error(`觸發備份任務 (Job ID: ${jobId}) 時發生錯誤:`, error);
+        // 將 HttpsError 轉換為前端可用的格式
+        return { status: 'error', message: error.message };
+    }
+}
+// ✅ END: 新增備份任務管理 API
+
+// ✅ START: 新增獲取集合列表的 API
+/**
+ * [新] 呼叫後端，獲取 Firestore 中所有集合的名稱列表
+ * @returns {Promise<Array>}
+ */
+export async function fetchFirestoreCollections() {
+  try {
+    const listCollections = httpsCallable(functions, 'listFirestoreCollections');
+    const result = await listCollections();
+    if (result.data.status === 'success') {
+      return result.data.data; // 回傳集合名稱的陣列
+    }
+    return [];
+  } catch (error) {
+    console.error("獲取集合列表時發生錯誤:", error);
+    return []; // 發生錯誤時回傳空陣列
+  }
+}
+// ✅ END: 新增獲取集合列表的 API
+
+// ✅ 新增觸發刪除的 API
+export async function triggerDeleteJob(jobId, jobConfig, isDryRun) {
+    try {
+        const runDeleteJob = httpsCallable(functions, 'runDeleteJob');
+        const result = await runDeleteJob({ jobId, jobConfig, isDryRun });
+        return result.data;
+    } catch (error) {
+        return { status: 'error', message: error.message };
+    }
+}
+
+// ✅ START: 新增備份檔案瀏覽 API
+/**
+ * [新] 呼叫後端，獲取 GCS 中指定路徑的檔案與資料夾列表
+ * @param {string} path - 要瀏覽的路徑，例如 "backups/"
+ * @returns {Promise<{files: Array, directories: Array}>}
+ */
+export async function fetchBackupFiles(path = '') {
+  try {
+    const listFiles = httpsCallable(functions, 'listBackupFiles');
+    const result = await listFiles({ path });
+    if (result.data.status === 'success') {
+      return result.data.data; // 回傳 { files: [...], directories: [...] }
+    }
+    return { files: [], directories: [] };
+  } catch (error) {
+    console.error(`獲取路徑 [${path}] 的檔案列表時發生錯誤:`, error);
+    return { files: [], directories: [] };
+  }
+}
+
+/**
+ * [新] 呼叫後端，獲取 GCS 檔案的預覽內容
+ * @param {string} filePath - 完整的檔案路徑
+ * @param {number} previewLines - 預計讀取的行數
+ * @returns {Promise<Array>} - 包含檔案內容逐行字串的陣列
+ */
+export async function fetchBackupFileContent(filePath, previewLines = 100) {
+  try {
+    const getFileContent = httpsCallable(functions, 'getBackupFileContent');
+    const result = await getFileContent({ filePath, previewLines });
+    if (result.data.status === 'success') {
+      return result.data.data; // 回傳 string[]
+    }
+    return [];
+  } catch (error) {
+    console.error(`獲取檔案 [${filePath}] 內容時發生錯誤:`, error);
+    return [`讀取檔案時發生錯誤: ${error.message}`];
+  }
+}
+// ✅ END: 新增備份檔案瀏覽 API

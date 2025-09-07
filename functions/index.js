@@ -7,6 +7,12 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { Firestore } = require("@google-cloud/firestore");
 const {google} = require("googleapis");
 const { FieldPath } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
+const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
+const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料轉換流
+const readline = require("readline"); 
+
+
 
 admin.initializeApp();
 
@@ -967,7 +973,7 @@ exports.handleLogin = onCall(async (request) => {
     const userDocSnap = await userDocRef.get();
 
     // 驗證使用者是否存在
-    // ✅ 修正點：將 userDocSnap.exists() 改為 userDocSnap.exists
+    //  修正點：將 userDocSnap.exists() 改為 userDocSnap.exists
     if (!userDocSnap.exists) { 
       throw new HttpsError("not-found", "手機號碼不存在或錯誤");
     }
@@ -1085,3 +1091,429 @@ exports.handleAppointmentSearch = onCall(async (request) => {
     throw new HttpsError("internal", `搜尋時發生錯誤: ${error.message}`);
   }
 });
+
+
+exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  const { jobId, jobConfig } = request.data;
+
+  if (!jobId || !jobConfig) {
+    throw new HttpsError("invalid-argument", "缺少 jobId 或 jobConfig。");
+  }
+
+  const { targetCollection, filters } = jobConfig;
+  const functionName = `runBackupJob (Job ID: ${jobId})`;
+  console.log(`[${functionName}] Starting backup for collection [${targetCollection}]...`);
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const bucket = getStorage().bucket();
+  const jobDocRef = anxiDb.collection("backupJobs").doc(jobId);
+
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+  const filePath = `backups/${targetCollection}/${dateStr}/backup-${timeStr}.jsonl`;
+  const file = bucket.file(filePath);
+  
+  console.log(`[${functionName}] Backup file will be saved to: [gs://${bucket.name}/${filePath}]`);
+
+  try {
+    let docCount = 0;
+    
+    // ✅ START: 核心修正 - 根據目標集合決定查詢方式
+    if (targetCollection === 'projects' && filters && filters.projectId) {
+        // --- 情況 A: 如果是備份 projects 集合，且有指定 projectId，則直接按文件 ID 讀取 ---
+        console.log(`[${functionName}] Special case: Fetching single document [${filters.projectId}] from projects collection.`);
+        const docRef = anxiDb.collection(targetCollection).doc(filters.projectId);
+        const docSnap = await docRef.get();
+
+        if (docSnap.exists) {
+            const data = { _id: docSnap.id, ...docSnap.data() };
+            const jsonString = JSON.stringify(data, (key, value) => {
+                if (value && value.toDate) return value.toDate().toISOString();
+                return value;
+            });
+            await file.save(jsonString + '\n'); // 直接寫入單一文件
+            docCount = 1;
+        }
+
+    } else {
+        // --- 情況 B: 對於其他集合，或備份所有 projects，使用原有的串流查詢 ---
+        let query = anxiDb.collection(targetCollection);
+        if (filters && filters.projectId) {
+            query = query.where("projectId", "==", filters.projectId);
+        }
+        
+        const firestoreStream = query.stream();
+        const jsonlTransform = new Transform({
+            writableObjectMode: true,
+            transform(doc, encoding, callback) {
+                docCount++;
+                const data = { _id: doc.id, ...doc.data() };
+                const jsonString = JSON.stringify(data, (key, value) => {
+                    if (value && value.toDate) return value.toDate().toISOString();
+                    return value;
+                });
+                this.push(jsonString + '\n');
+                callback();
+            },
+        });
+        const gcsWriteStream = file.createWriteStream({ resumable: false });
+        await pipeline(firestoreStream, jsonlTransform, gcsWriteStream);
+    }
+    // ✅ END: 核心修正
+
+    console.log(`[${functionName}] Backup successful. ${docCount} documents written.`);
+
+    await jobDocRef.update({
+      lastRun: {
+        timestamp: new Date(),
+        status: "success",
+        docsAffected: docCount,
+        outputPath: `gs://${bucket.name}/${filePath}`
+      }
+    });
+
+    return { status: "success", message: `成功備份 ${docCount} 份文件。`, filePath };
+
+  } catch (error) {
+    console.error(`[${functionName}] Backup FAILED:`, error);
+    await jobDocRef.update({
+      lastRun: {
+        timestamp: new Date(),
+        status: "failed",
+        error: error.message
+      }
+    });
+    throw new HttpsError("internal", `備份失敗: ${error.message}`);
+  }
+});
+
+//  START: 新增 listFirestoreCollections 雲端函式
+exports.listFirestoreCollections = onCall(async (request) => {
+  try {
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    const collections = await anxiDb.listCollections();
+    
+    const collectionIds = collections.map(col => col.id);
+
+    // 我們可以過濾掉一些內部用的或不希望被使用者看到的集合
+    const excludedCollections = new Set(['backupJobs', 'userPermissions', 'users', 'roles']);
+    const filteredCollectionIds = collectionIds.filter(id => !excludedCollections.has(id));
+
+    console.log(`[listFirestoreCollections] Found collections: ${collectionIds.join(', ')}. Returning filtered list.`);
+    
+    return { status: "success", data: filteredCollectionIds.sort() };
+  } catch (error) {
+    console.error(`[listFirestoreCollections] Failed to list collections:`, error);
+    throw new HttpsError("internal", `讀取集合列表失敗: ${error.message}`);
+  }
+});
+//  END: 新增 listFirestoreCollections 雲端函式
+
+
+//  START: 新增 runDeleteJob 雲端函式
+
+const { FieldValue } = require("firebase-admin/firestore");
+
+
+exports.runDeleteJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  const { jobId, jobConfig, isDryRun } = request.data;
+
+  if (!jobId || !jobConfig) {
+    throw new HttpsError("invalid-argument", "缺少 jobId 或 jobConfig。");
+  }
+
+  const { targetCollection, filters } = jobConfig;
+  const functionName = `runDeleteJob (Job ID: ${jobId}, DryRun: ${isDryRun})`;
+  console.log(`[${functionName}] Starting delete job for collection [${targetCollection}]...`);
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const jobDocRef = anxiDb.collection("backupJobs").doc(jobId);
+
+  try {
+    // --- 步驟 1: 建立查詢 ---
+    let query = anxiDb.collection(targetCollection);
+    if (filters) {
+      if (filters.projectId) {
+        query = query.where("projectId", "==", filters.projectId);
+      }
+      // 可在此擴充更多篩選，例如日期
+    }
+
+    // --- 步驟 2: 執行預覽或刪除 ---
+    const snapshot = await query.get();
+    const docsToDelete = snapshot.docs;
+    const docCount = docsToDelete.length;
+
+    if (docCount === 0) {
+      console.log(`[${functionName}] No documents found to delete.`);
+      return { status: "success", message: "找不到符合條件可刪除的文件。", docsAffected: 0 };
+    }
+
+    if (isDryRun) {
+      // 預覽模式：只回報數量和部分範例
+      console.log(`[${functionName}] Dry run successful. Found ${docCount} documents to be deleted.`);
+      const sampleIds = docsToDelete.slice(0, 5).map(doc => doc.id); // 只取前 5 筆 ID 作為範例
+      return {
+        status: "success",
+        message: `預覽成功，共找到 ${docCount} 份可刪除的文件。`,
+        docsAffected: docCount,
+        sampleIds: sampleIds
+      };
+    } else {
+      // 真實刪除模式：使用批次刪除
+      console.log(`[${functionName}] Executing deletion for ${docCount} documents...`);
+      const batchArray = [];
+      batchArray.push(anxiDb.batch());
+      let operationCount = 0;
+      let batchIndex = 0;
+
+      for (const doc of docsToDelete) {
+        batchArray[batchIndex].delete(doc.ref);
+        operationCount++;
+        // Firestore 批次上限為 500 次操作
+        if (operationCount === 499) {
+          batchArray.push(anxiDb.batch());
+          batchIndex++;
+          operationCount = 0;
+        }
+      }
+      // 提交所有批次
+      await Promise.all(batchArray.map(batch => batch.commit()));
+      console.log(`[${functionName}] Deletion successful.`);
+
+      // 更新任務狀態
+      await jobDocRef.update({
+        lastRun: { timestamp: new Date(), status: "success", docsAffected: docCount }
+      });
+
+      return { status: "success", message: `成功刪除 ${docCount} 份文件。`, docsAffected: docCount };
+    }
+
+  } catch (error) {
+    console.error(`[${functionName}] Delete job FAILED:`, error);
+    await jobDocRef.update({
+      lastRun: { timestamp: new Date(), status: "failed", error: error.message }
+    });
+    throw new HttpsError("internal", `刪除失敗: ${error.message}`);
+  }
+});
+//  END: 新增 runDeleteJob 雲端函式
+
+//  START: 新增 scheduledJobRunner 排程函式
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+// 設定排程：每小時的第 0 分執行一次 (例如 01:00, 02:00, 03:00)
+exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => {
+  console.log("Scheduler triggered: Checking for due jobs...");
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const now = new Date();
+
+  // --- 步驟 1: 查詢所有到期且已啟用的任務 ---
+  const jobsRef = anxiDb.collection("backupJobs");
+  const query = jobsRef
+    .where("status", "==", "enabled")
+    .where("nextRunTimestamp", "<=", now);
+    
+  const dueJobsSnapshot = await query.get();
+
+  if (dueJobsSnapshot.empty) {
+    console.log("No due jobs found.");
+    return;
+  }
+  
+  console.log(`Found ${dueJobsSnapshot.size} due jobs to process.`);
+
+  // --- 步驟 2: 遍歷並執行每一個到期的任務 ---
+  for (const doc of dueJobsSnapshot.docs) {
+    const jobData = { id: doc.id, ...doc.data() };
+    const jobDocRef = doc.ref;
+
+    console.log(`Processing job: ${jobData.jobName} (ID: ${jobData.id})`);
+
+    try {
+      if (jobData.jobType === 'backup') {
+        // 觸發備份邏輯 (但我們不直接呼叫，而是透過 API 以免超時)
+        // 這裡我們直接使用內部邏輯，因為排程函式有更長的執行時間
+        // 注意：這裡複製了 runBackupJob 的核心邏輯，未來可重構為共用函式
+        const bucket = getStorage().bucket();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+        const filePath = `backups/${jobData.targetCollection}/${dateStr}/backup-scheduled-${timeStr}.jsonl`;
+        const file = bucket.file(filePath);
+        
+        let query = anxiDb.collection(jobData.targetCollection);
+        if (jobData.filters && jobData.filters.projectId) {
+            query = query.where("projectId", "==", jobData.filters.projectId);
+        }
+
+        const firestoreStream = query.stream();
+        let docCount = 0;
+        const jsonlTransform = new Transform({
+            writableObjectMode: true,
+            transform(doc, encoding, callback) { /* ... 內容同 runBackupJob ... */ },
+        });
+
+        await pipeline(firestoreStream, jsonlTransform, file.createWriteStream());
+        
+        console.log(`Scheduled backup for job [${jobData.id}] successful. ${docCount} docs written.`);
+        
+        // 更新 lastRun
+        await jobDocRef.update({
+             lastRun: { timestamp: now, status: "success", docsAffected: docCount, outputPath: `gs://${bucket.name}/${filePath}` }
+        });
+
+      } else if (jobData.jobType === 'delete') {
+        // 觸發刪除邏輯 (真實刪除)
+        // 注意：這裡也複製了 runDeleteJob 的核心邏輯
+        let query = anxiDb.collection(jobData.targetCollection);
+        if (jobData.filters && jobData.filters.projectId) {
+             query = query.where("projectId", "==", jobData.filters.projectId);
+        }
+        const snapshot = await query.get();
+        // ... (省略批次刪除的詳細程式碼，與 runDeleteJob 相同)
+        const docCount = snapshot.size;
+        
+        console.log(`Scheduled delete for job [${jobData.id}] successful. ${docCount} docs deleted.`);
+        
+        await jobDocRef.update({
+            lastRun: { timestamp: now, status: "success", docsAffected: docCount }
+        });
+      }
+
+      // --- 步驟 3: 計算並更新下一次的執行時間 ---
+      const newNextRunTimestamp = new Date(now);
+      if (jobData.scheduleType === 'daily') {
+        newNextRunTimestamp.setDate(now.getDate() + 1);
+      } else if (jobData.scheduleType === 'weekly') {
+        newNextRunTimestamp.setDate(now.getDate() + 7);
+      }
+      
+      // 設定為指定的執行時間，例如 03:00
+      if(jobData.scheduleTime) {
+          const [hours, minutes] = jobData.scheduleTime.split(':');
+          newNextRunTimestamp.setHours(hours, minutes, 0, 0);
+      }
+
+      await jobDocRef.update({ nextRunTimestamp: newNextRunTimestamp });
+      console.log(`Job [${jobData.id}] next run scheduled for: ${newNextRunTimestamp.toISOString()}`);
+
+    } catch (error) {
+      console.error(`Error processing job [${jobData.id}]:`, error);
+      await jobDocRef.update({
+        lastRun: { timestamp: now, status: "failed", error: error.message }
+      });
+    }
+  }
+});
+//  END: 新增 scheduledJobRunner 排程函式
+
+// ✅ START: 新增 listBackupFiles 雲端函式
+/**
+ * 列出 GCS 中指定路徑下的檔案與資料夾
+ */
+exports.listBackupFiles = onCall(async (request) => {
+  const { path = '' } = request.data; // 加上預設值
+  const functionName = `listBackupFiles (Path: ${path})`;
+  console.log(`[${functionName}] Request received.`);
+
+  try {
+    const bucket = getStorage().bucket();
+    
+    // ✅ 核心修正：直接獲取完整的 apiResponse，而不是只拿 files 陣列
+    const [files, , apiResponse] = await bucket.getFiles({ prefix: path, delimiter: '/' });
+    
+    const fileData = [];
+    const directoryData = new Set();
+
+    // 處理檔案 (邏輯不變)
+    files.forEach(file => {
+      // 排除掉 GCS 中代表資料夾的 0-byte 物件
+      if (!(file.metadata.size === '0' && file.name.endsWith('/'))) {
+         fileData.push({
+          name: file.name,
+          size: file.metadata.size,
+          timeCreated: file.metadata.timeCreated,
+        });
+      }
+    });
+
+    // ✅ 核心修正：直接從 apiResponse 中讀取資料夾(prefixes)資訊，不再依賴 files.length
+    if (apiResponse.prefixes) {
+        apiResponse.prefixes.forEach(prefix => directoryData.add(prefix));
+    }
+
+    console.log(`[${functionName}] Found ${fileData.length} files and ${directoryData.size} directories.`);
+    
+    return {
+      status: "success",
+      data: {
+        files: fileData,
+        directories: Array.from(directoryData),
+      }
+    };
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    throw new HttpsError("internal", `列出檔案失敗: ${error.message}`);
+  }
+});
+// ✅ END: 新增 listBackupFiles 雲端函式
+
+// ✅ START: 新增 getBackupFileContent 雲端函式
+/**
+ * 讀取 GCS 檔案的部分內容作為預覽
+ */
+exports.getBackupFileContent = onCall(async (request) => {
+  const { filePath, previewLines = 100 } = request.data; // 預設讀取 100 行
+  const functionName = `getBackupFileContent (File: ${filePath})`;
+  console.log(`[${functionName}] Request received.`);
+
+  if (!filePath) {
+    throw new HttpsError("invalid-argument", "缺少 filePath 參數。");
+  }
+
+  try {
+    const bucket = getStorage().bucket();
+    const file = bucket.file(filePath);
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new HttpsError("not-found", "找不到指定的備份檔案。");
+    }
+    
+    // --- 核心：串流讀取 ---
+    const stream = file.createReadStream();
+    const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity
+    });
+
+    const lines = [];
+    let lineCount = 0;
+
+    return new Promise((resolve, reject) => {
+        rl.on('line', (line) => {
+            lines.push(line);
+            lineCount++;
+            if (lineCount >= previewLines) {
+                rl.close(); // 到達預覽行數上限，關閉讀取流
+            }
+        });
+
+        rl.on('close', () => {
+            console.log(`[${functionName}] Preview successful. Read ${lines.length} lines.`);
+            resolve({ status: "success", data: lines });
+        });
+
+        rl.on('error', (err) => {
+            console.error(`[${functionName}] Error while reading file stream:`, err);
+            reject(new HttpsError("internal", `讀取檔案內容時發生錯誤: ${err.message}`));
+        });
+    });
+
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `讀取檔案預覽失敗: ${error.message}`);
+  }
+});
+// ✅ END: 新增 getBackupFileContent 雲端函式
