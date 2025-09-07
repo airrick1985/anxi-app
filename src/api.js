@@ -1748,37 +1748,35 @@ export async function getProjectsForInspectionCalendar(userKey) {
 
 
 /**
- * [Firestore 版] 獲取指定建案的所有預約紀錄與戶別資料
+ * [Firestore 版] 根據日期範圍獲取指定建案的預約紀錄與戶別資料
  * @param {string} projectId 
+ * @param {Date} startDate - JS Date 物件
+ * @param {Date} endDate - JS Date 物件
  * @returns {Promise<Array>}
  */
-export async function fetchCalendarData(projectId) {
-    // 1. 一次性獲取該建案所有的 appointments 和 households 資料
-    const appointmentsRef = collection(db, "appointments");
+export async function fetchCalendarData(projectId, startDate, endDate) {
+    // 1. 一次性獲取該建案所有的 households 資料 (維持不變)
     const householdsRef = collection(db, "households");
-
-    const appointmentsQuery = query(appointmentsRef, where("projectId", "==", projectId));
     const householdsQuery = query(householdsRef, where("projectId", "==", projectId));
-
-    const [appointmentsSnapshot, householdsSnapshot] = await Promise.all([
-        getDocs(appointmentsQuery),
-        getDocs(householdsQuery)
-    ]);
-
-    // 2. 將戶別資料整理成一個 Map，方便快速查找
+    const householdsSnapshot = await getDocs(householdsQuery);
     const householdsMap = new Map();
     householdsSnapshot.forEach(doc => {
-        // 使用 projectId_unitId 作為 key
         householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
     });
 
-    // 3. 組合預約紀錄與對應的戶別資料
+    const appointmentsRef = collection(db, "appointments");
+    const appointmentsQuery = query(
+        appointmentsRef, 
+        where("projectId", "==", projectId),
+        where("appointmentDate", ">=", startDate),
+        where("appointmentDate", "<=", endDate)
+    );
+    const appointmentsSnapshot = await getDocs(appointmentsQuery);
+
     const combinedData = appointmentsSnapshot.docs.map(doc => {
         const appointment = { id: doc.id, ...doc.data() };
         const householdKey = `${appointment.projectId}_${appointment.unitId}`;
         const householdData = householdsMap.get(householdKey) || {};
-        
-        // 將戶別資料合併到預約物件中，預約物件本身的資料優先
         return { ...householdData, ...appointment };
     });
 
@@ -3333,3 +3331,22 @@ export async function goOffline(userKey) {
   await remove(presenceRef);
 }
 // ✓ END: 【替換】Online Status 管理 API
+
+
+/**
+ * [新] 呼叫後端函式，在指定建案中搜尋預約紀錄
+ * @param {string} projectId 
+ * @param {string} searchText 
+ * @returns {Promise<object>}
+ */
+export async function searchAppointments(projectId, searchText) {
+  console.log(`[API] Calling Firebase Function 'handleAppointmentSearch' for project: ${projectId} with query: "${searchText}"`);
+  try {
+    const searchFunction = httpsCallable(functions, 'handleAppointmentSearch');
+    const result = await searchFunction({ projectId, searchText });
+    return result.data; // 應該是 { status: 'success', data: [...] }
+  } catch (error) {
+    console.error("呼叫 handleAppointmentSearch 雲端函式時發生錯誤:", error);
+    return { status: 'error', message: error.message, data: [] };
+  }
+}

@@ -6,7 +6,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { Firestore } = require("@google-cloud/firestore");
 const {google} = require("googleapis");
-
+const { FieldPath } = require("firebase-admin/firestore");
 
 admin.initializeApp();
 
@@ -1017,5 +1017,71 @@ exports.handleLogin = onCall(async (request) => {
       throw error;
     }
     throw new HttpsError("internal", `登入時發生錯誤: ${error.message}`);
+  }
+});
+
+exports.handleAppointmentSearch = onCall(async (request) => {
+  const { projectId, searchText } = request.data;
+
+  if (!projectId || !searchText) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 searchText 參數。");
+  }
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const appointmentsRef = anxiDb.collection("appointments");
+  const householdsRef = anxiDb.collection("households");
+
+  try {
+    // Firestore 不支援對多個欄位進行 OR 或模糊搜尋
+    // 因此我們對幾個最可能的欄位分別進行查詢
+    const queryByUnitId = query(appointmentsRef, where("projectId", "==", projectId), where("unitId", "==", searchText));
+    const queryByBookerName = query(appointmentsRef, where("projectId", "==", projectId), where("bookerName", "==", searchText));
+    const queryByBookerPhone = query(appointmentsRef, where("projectId", "==", projectId), where("bookerPhone", "==", searchText));
+
+    const [unitIdResults, bookerNameResults, bookerPhoneResults] = await Promise.all([
+      queryByUnitId.get(),
+      queryByBookerName.get(),
+      queryByBookerPhone.get()
+    ]);
+
+    // 使用 Map 來合併結果並去除重複項
+    const resultsMap = new Map();
+    const processSnapshot = (snapshot) => {
+      snapshot.forEach(doc => {
+        if (!resultsMap.has(doc.id)) {
+          resultsMap.set(doc.id, { id: doc.id, ...doc.data() });
+        }
+      });
+    };
+
+    processSnapshot(unitIdResults);
+    processSnapshot(bookerNameResults);
+    processSnapshot(bookerPhoneResults);
+
+    const appointments = Array.from(resultsMap.values());
+    
+    // 如果找到了預約，我們還需要去補上戶別資料
+    if (appointments.length > 0) {
+        const householdIds = [...new Set(appointments.map(a => `${a.projectId}_${a.unitId}`))];
+        const householdsSnapshot = await anxiDb.collection("households").where(FieldPath.documentId(), 'in', householdIds).get();
+        const householdsMap = new Map();
+        householdsSnapshot.forEach(doc => {
+            householdsMap.set(doc.id, doc.data());
+        });
+
+        const combinedData = appointments.map(appt => {
+            const householdKey = `${appt.projectId}_${appt.unitId}`;
+            const householdData = householdsMap.get(householdKey) || {};
+            return { ...householdData, ...appt };
+        });
+
+        return { status: "success", data: combinedData };
+    }
+
+    return { status: "success", data: [] }; // 如果都沒找到，回傳空陣列
+
+  } catch (error) {
+    console.error(`Appointment search failed for project [${projectId}]:`, error);
+    throw new HttpsError("internal", `搜尋時發生錯誤: ${error.message}`);
   }
 });

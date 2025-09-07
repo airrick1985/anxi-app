@@ -547,7 +547,7 @@
 
 <script setup>
 import { usePageContextStore } from '@/store/pageContextStore';
-import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
+import { useProjectStore } from '@/store/projectStore'; 
 import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
 import { ref, onMounted, computed, watch, reactive, onUnmounted } from 'vue';
@@ -560,6 +560,7 @@ import {
   cancelAppointment,
   addAppointmentAdmin,
   getAllBookingRules,
+  searchAppointments,
 } from '@/api'; 
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -590,14 +591,25 @@ const HOUSEHOLD_FIELDS = ['address', 'parkingLots', 'buyerName', 'buyerPhone', '
 // --- 響應式狀態 ---
 const isLoading = ref(true);
 const error = ref(null);
+
+// ✅ --- 分頁狀態管理 ---
 const allAppointments = ref([]);
+const loadedWeeks = ref(new Set()); // 用來記錄哪些週的開始日期已經被載入
+
 const allHouseholdData = ref({});
 const isDialogVisible = ref(false);
 const isAddDialogVisible = ref(false);
 const selectedEvent = ref(null);
 const isDownloadingPdf = ref(false);
 const isDownloadingExcel = ref(false);
+
+
+// ✅ --- 搜尋狀態管理 ---
 const searchQuery = ref('');
+const isSearching = ref(false);
+const searchResults = ref(null); // null 代表不在搜尋模式，[] 代表搜尋但沒結果
+
+
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 const isCancelConfirmDialogVisible = ref(false);
@@ -672,17 +684,18 @@ const buildingOptions = computed(() => Object.keys(bookingOptions.value.building
 const unitOptions = computed(() => newAppointmentData.building ? (bookingOptions.value.buildingsAndUnits[newAppointmentData.building] || []) : []);
 const timeSlots = computed(() => PROJECT_TIME_SLOTS[projectName.value] || PROJECT_TIME_SLOTS.default);
 
+// 核心修改 filteredAppointments 現在會優先顯示搜尋結果
 const filteredAppointments = computed(() => {
-    return processAppointments(allAppointments.value).filter(appt => {
+  // 如果處於搜尋模式 (searchResults 不是 null)
+  if (searchResults.value !== null) {
+    return processAppointments(searchResults.value);
+  }
+
+  // 否則，使用舊的篩選邏輯，但作用於已載入的 allAppointments
+  return processAppointments(allAppointments.value).filter(appt => {
     const statusMatch = selectedStatuses.value.includes(appt.status);
     const typeMatch = selectedTypes.value.includes(appt.bookingType);
-    const query = searchQuery.value ? searchQuery.value.toLowerCase().trim() : '';
-    const queryMatch = !query || [
-      appt.unitId, appt.address, appt.bookerName, appt.buyerName, appt.buyerPhone, appt.bookerPhone, appt.bookerIdNumber, appt.buyerIdNumber, appt.bookingType,
-      appt.inspectionMethod, appt.inspectionCompanyName, appt.inspectors, appt.remarks,
-      appt.parkingLots, appt.bank, appt.bankContact, appt.bookingCode, appt.appointmentDate, appt.status, appt.specialRemarks, appt.specialRemarks2
-    ].some(field => field && String(field).toLowerCase().includes(query));
-    return statusMatch && typeMatch && queryMatch;
+    return statusMatch && typeMatch;
   });
 });
 
@@ -808,6 +821,37 @@ const availableTimeSlots = computed(() => {
     const selectedDate = format(new Date(currentData.appointmentDate), 'yyyy-MM-dd');
     return currentBookingRules.value.timeSlotsByDate[selectedDate] || [];
 });
+
+// ✅【新增】用於分頁讀取的新函式
+async function loadAppointmentsForDateRange(start, end) {
+  const weekStartStr = format(startOfWeek(start, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+  // 如果這一週已經載入過，就直接返回，不再重複讀取
+  if (loadedWeeks.value.has(weekStartStr)) {
+    console.log(`Week starting ${weekStartStr} is already loaded.`);
+    return;
+  }
+
+  isLoading.value = true;
+  error.value = null;
+  try {
+    const newAppointments = await fetchCalendarData(projectId.value, start, end);
+    
+    // 使用 Map 合併新舊資料，避免重複
+    const appointmentsMap = new Map(allAppointments.value.map(appt => [appt.id, appt]));
+    newAppointments.forEach(appt => appointmentsMap.set(appt.id, appt));
+    allAppointments.value = Array.from(appointmentsMap.values());
+
+    // 標記這一週為已載入
+    loadedWeeks.value.add(weekStartStr);
+    
+  } catch (err) {
+    console.error(`獲取 [${format(start, 'yyyy-MM-dd')}] 範圍的資料失敗:`, err);
+    error.value = err.message;
+  } finally {
+    isLoading.value = false;
+  }
+}
 
 //導航到規則管理頁面的函式
 function navigateToRuleManager() {
@@ -979,6 +1023,40 @@ function handleOpenAddDialog() {
     isAddDialogVisible.value = true;
 }
 
+// ✅【新增】監聽日期範圍的變化，自動載入新資料
+watch([startDate, endDate], ([newStart, newEnd]) => {
+  if (newStart && newEnd) {
+    // 當日期變化時，讀取新範圍的資料
+    loadAppointmentsForDateRange(newStart, newEnd);
+  }
+});
+
+// ✅【新增】監聽搜尋框的變化，觸發後端搜尋
+let searchTimeout = null;
+watch(searchQuery, (newQuery) => {
+  clearTimeout(searchTimeout);
+  
+  if (!newQuery) {
+    // 如果搜尋框清空，退出搜尋模式
+    searchResults.value = null;
+    isSearching.value = false;
+    return;
+  }
+
+  // Debounce: 延遲 500ms 後執行搜尋，避免使用者每打一個字就發一次請求
+  searchTimeout = setTimeout(async () => {
+    isSearching.value = true;
+    const result = await searchAppointments(projectId.value, newQuery);
+    if (result.status === 'success') {
+      searchResults.value = result.data;
+    } else {
+      error.value = result.message;
+      searchResults.value = []; // 搜尋出錯時，顯示空結果
+    }
+    isSearching.value = false;
+  }, 500);
+});
+
 watch(() => newAppointmentData.building, () => {
     newAppointmentData.unitId = null;
     newAppointmentData.bookingType = null;
@@ -1091,13 +1169,28 @@ async function handleConfirmCancelBooking() {
     }
 }
 
-onMounted(() => {
-  if (projectId.value) {
-    fetchData();
-  } else {
-    error.value = `未提供建案ID`;
-    isLoading.value = false;
+// ✅【修改】onMounted 現在只載入初始資料
+onMounted(async () => {
+  isLoading.value = true;
+  await projectStore.fetchProjects(); // 確保專案名稱已載入
+  
+  // 載入不會變動的基礎資料 (戶別、選項等)
+  try {
+    const optionsData = await fetchBookingOptions(projectId.value);
+    bookingOptions.value = optionsData;
+    const householdData = await fetchCalendarData(projectId.value, new Date(0), new Date(0));
+    allHouseholdData.value = householdData.reduce((acc, curr) => {
+        const householdId = `${curr.projectId}_${curr.unitId}`;
+        if (!acc[householdId]) { acc[householdId] = { id: householdId, ...curr }; }
+        return acc;
+    }, {});
+  } catch(e) {
+      error.value = `載入基礎資料失敗: ${e.message}`;
   }
+
+  // 最後，載入預設可見範圍的預約資料
+  await loadAppointmentsForDateRange(startDate.value, endDate.value);
+  isLoading.value = false;
 });
 
 onUnmounted(() => {
