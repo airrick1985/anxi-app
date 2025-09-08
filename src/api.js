@@ -3493,3 +3493,21 @@ export async function fetchBackupFileContent(filePath, previewLines = 100) {
   }
 }
 // ✅ END: 新增備份檔案瀏覽 API
+
+// ✅ START: 新增觸發刪除備份檔案的 API
+/**
+ * [新] 呼叫後端，刪除 GCS 中指定的備份檔案
+ * @param {string} filePath - GCS 中的完整檔案路徑
+ * @returns {Promise<object>}
+ */
+export async function triggerDeleteBackupFile(filePath) {
+  try {
+    const deleteFile = httpsCallable(functions, 'deleteBackupFile');
+    const result = await deleteFile({ filePath });
+    return result.data; // 回傳 { status, message }
+  } catch (error) {
+    console.error(`觸發刪除檔案 (File: ${filePath}) 時發生錯誤:`, error);
+    return { status: 'error', message: error.message };
+  }
+}
+// ✅ END: 新增觸發刪除備份檔案的 API

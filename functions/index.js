@@ -1093,6 +1093,7 @@ exports.handleAppointmentSearch = onCall(async (request) => {
 });
 
 
+// ✓ 【替換】runBackupJob 整個函式
 exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   const { jobId, jobConfig } = request.data;
 
@@ -1108,36 +1109,48 @@ exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (re
   const bucket = getStorage().bucket();
   const jobDocRef = anxiDb.collection("backupJobs").doc(jobId);
 
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
-  const filePath = `backups/${targetCollection}/${dateStr}/backup-${timeStr}.jsonl`;
-  const file = bucket.file(filePath);
-  
-  console.log(`[${functionName}] Backup file will be saved to: [gs://${bucket.name}/${filePath}]`);
-
   try {
+    // ✅ START: 修正點 1 - 根據 projectId 獲取建案名稱
+    let projectNameForFile = 'all-projects'; // 預設名稱
+    if (filters && filters.projectId) {
+      const projectDocRef = anxiDb.collection('projects').doc(filters.projectId);
+      const projectDocSnap = await projectDocRef.get();
+      if (projectDocSnap.exists) {
+        projectNameForFile = projectDocSnap.data().name || filters.projectId;
+      } else {
+        projectNameForFile = filters.projectId; // 如果找不到對應名稱，就用 ID 代替
+      }
+    }
+    // ✅ END: 修正點 1
+
+    // --- 步驟 1: 產生備份檔案的路徑與名稱 ---
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+    
+    // ✅ 修正點 2: 使用新的命名規則組合檔案路徑與名稱
+    const fileName = `${projectNameForFile}_${targetCollection}_${dateStr}_${timeStr}.jsonl`;
+    const filePath = `backups/${targetCollection}/${dateStr}/${fileName}`;
+    
+    const file = bucket.file(filePath);
+    console.log(`[${functionName}] Backup file will be saved to: [gs://${bucket.name}/${filePath}]`);
+
     let docCount = 0;
     
-    // ✅ START: 核心修正 - 根據目標集合決定查詢方式
+    // --- 步驟 2 & 3: 查詢與串流 (邏輯維持不變) ---
     if (targetCollection === 'projects' && filters && filters.projectId) {
-        // --- 情況 A: 如果是備份 projects 集合，且有指定 projectId，則直接按文件 ID 讀取 ---
-        console.log(`[${functionName}] Special case: Fetching single document [${filters.projectId}] from projects collection.`);
         const docRef = anxiDb.collection(targetCollection).doc(filters.projectId);
         const docSnap = await docRef.get();
-
         if (docSnap.exists) {
             const data = { _id: docSnap.id, ...docSnap.data() };
             const jsonString = JSON.stringify(data, (key, value) => {
                 if (value && value.toDate) return value.toDate().toISOString();
                 return value;
             });
-            await file.save(jsonString + '\n'); // 直接寫入單一文件
+            await file.save(jsonString + '\n');
             docCount = 1;
         }
-
     } else {
-        // --- 情況 B: 對於其他集合，或備份所有 projects，使用原有的串流查詢 ---
         let query = anxiDb.collection(targetCollection);
         if (filters && filters.projectId) {
             query = query.where("projectId", "==", filters.projectId);
@@ -1160,10 +1173,10 @@ exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (re
         const gcsWriteStream = file.createWriteStream({ resumable: false });
         await pipeline(firestoreStream, jsonlTransform, gcsWriteStream);
     }
-    // ✅ END: 核心修正
 
     console.log(`[${functionName}] Backup successful. ${docCount} documents written.`);
 
+    // --- 步驟 4: 更新任務狀態 (邏輯維持不變) ---
     await jobDocRef.update({
       lastRun: {
         timestamp: new Date(),
@@ -1517,3 +1530,47 @@ exports.getBackupFileContent = onCall(async (request) => {
   }
 });
 // ✅ END: 新增 getBackupFileContent 雲端函式
+
+// ✅ START: 新增 deleteBackupFile 雲端函式
+/**
+ * 從 GCS 刪除指定的備份檔案
+ */
+exports.deleteBackupFile = onCall(async (request) => {
+  const { filePath } = request.data;
+  const functionName = `deleteBackupFile (File: ${filePath})`;
+
+  if (!filePath) {
+    throw new HttpsError("invalid-argument", "缺少 filePath 參數。");
+  }
+
+  // 安全性檢查：確保使用者只能刪除 'backups/' 資料夾內的檔案
+  if (!filePath.startsWith('backups/')) {
+    console.error(`[${functionName}] Permission denied. Attempted to delete a file outside of the backups directory.`);
+    throw new HttpsError("permission-denied", "權限不足，只能刪除 backups 資料夾內的檔案。");
+  }
+
+  console.log(`[${functionName}] Request received to delete file.`);
+
+  try {
+    const bucket = getStorage().bucket();
+    const file = bucket.file(filePath);
+
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new HttpsError("not-found", "找不到指定的備份檔案，可能已被刪除。");
+    }
+
+    // 執行刪除
+    await file.delete();
+
+    console.log(`[${functionName}] File successfully deleted from GCS.`);
+    
+    return { status: "success", message: `檔案 ${filePath} 已成功刪除。` };
+
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `刪除檔案時發生錯誤: ${error.message}`);
+  }
+});
+// ✅ END: 新增 deleteBackupFile 雲端函式

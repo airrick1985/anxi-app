@@ -22,56 +22,140 @@
       <v-window v-model="currentTab">
         <v-window-item value="jobs">
           <v-data-table
-            :headers="headers"
-            :items="jobs"
-            :loading="isLoading"
-            item-value="id"
-            no-data-text="尚未建立任何備份或刪除任務"
-          >
-            <template v-slot:item.jobType="{ item }">
-              <v-chip :color="item.jobType === 'backup' ? 'primary' : 'error'" size="small">
-                {{ item.jobType === 'backup' ? '備份' : '刪除' }}
-              </v-chip>
-            </template>
-            <template v-slot:item.filters="{ item }">
-              <div v-if="item.filters.projectId">
-                建案: {{ projectStore.idToNameMap[item.filters.projectId] || item.filters.projectId }}
-              </div>
-            </template>
-            <template v-slot:item.scheduleType="{ item }">
-              {{ scheduleLabels[item.scheduleType] || '未知' }}
-              <span v-if="item.scheduleType !== 'manual'"> @ {{ item.scheduleTime }}</span>
-            </template>
-            <template v-slot:item.lastRun="{ item }">
-              <div v-if="item.lastRun">
-                <v-chip :color="item.lastRun.status === 'success' ? 'success' : 'error'" size="x-small" class="mb-1">
-                  {{ item.lastRun.status === 'success' ? '成功' : '失敗' }}
-                </v-chip>
-                <div class="text-caption">
-                  {{ formatTimestamp(item.lastRun.timestamp) }}
-                </div>
-              </div>
-              <span v-else class="text-grey">尚未執行</span>
-            </template>
-            <template v-slot:item.status="{ item }">
-              <v-chip :color="item.status === 'enabled' ? 'green' : 'grey'" size="small">
+  :headers="headers"
+  :items="jobs"
+  :loading="isLoading"
+  item-value="id"
+  no-data-text="尚未建立任何備份或刪除任務"
+  :class="{ 'v-data-table--mobile': mobile }"
+>
+  <template v-slot:item="{ item, columns }">
+    <tr v-if="mobile" class="v-data-table__tr">
+      <td :colspan="columns.length" class="pa-0">
+        <v-card class="my-2" variant="outlined">
+          <v-list-item>
+            <v-list-item-title class="text-h6 font-weight-bold mb-2">
+              {{ item.jobName }}
+            </v-list-item-title>
+            <template v-slot:append>
+               <v-chip :color="item.status === 'enabled' ? 'green' : 'grey'" size="small">
                 {{ item.status === 'enabled' ? '啟用中' : '已停用' }}
               </v-chip>
             </template>
-            <template v-slot:item.actions="{ item }">
-                <v-btn
-                    color="primary"
-                    size="small"
-                    variant="tonal"
-                    @click="runJobNow(item)"
-                    :loading="runningJobs[item.id]"
-                >
-                    立即執行
-                </v-btn>
-              <v-icon class="mx-1" @click="openDialog(item)">mdi-pencil</v-icon>
-              <v-icon color="error" @click="confirmDelete(item)">mdi-delete</v-icon>
-            </template>
-          </v-data-table>
+          </v-list-item>
+
+          <v-divider></v-divider>
+          
+          <div class="mobile-card-content">
+            <div>
+              <div class="label">類型</div>
+              <div class="value">
+                <v-chip :color="item.jobType === 'backup' ? 'primary' : 'error'" size="small">
+                  {{ item.jobType === 'backup' ? '備份' : '刪除' }}
+                </v-chip>
+              </div>
+            </div>
+            <div>
+              <div class="label">目標集合</div>
+              <div class="value">{{ item.targetCollection }}</div>
+            </div>
+            <div v-if="item.filters.projectId">
+              <div class="label">篩選建案</div>
+              <div class="value">{{ projectStore.idToNameMap[item.filters.projectId] || item.filters.projectId }}</div>
+            </div>
+            <div>
+              <div class="label">排程</div>
+              <div class="value">
+                {{ scheduleLabels[item.scheduleType] || '未知' }}
+                <span v-if="item.scheduleType !== 'manual'"> @ {{ item.scheduleTime }}</span>
+              </div>
+            </div>
+             <div>
+              <div class="label">上次執行</div>
+              <div class="value">
+                <div v-if="item.lastRun">
+                  <v-chip :color="item.lastRun.status === 'success' ? 'success' : 'error'" size="x-small" class="mb-1">
+                    {{ item.lastRun.status === 'success' ? '成功' : '失敗' }}
+                  </v-chip>
+                  <span class="text-caption ml-2">
+                    {{ formatTimestamp(item.lastRun.timestamp) }}
+                  </span>
+                </div>
+                <span v-else class="text-grey">尚未執行</span>
+              </div>
+            </div>
+          </div>
+
+          <v-divider></v-divider>
+          <v-card-actions class="d-flex flex-wrap ga-2 pa-3">
+             <v-btn
+                color="primary"
+                size="small"
+                variant="flat"
+                @click="runJobNow(item)"
+                :loading="runningJobs[item.id]"
+              > 立即執行
+              </v-btn>
+              <v-btn size="small" variant="tonal" @click="openDialog(item)">編輯</v-btn>
+              <v-btn size="small" variant="tonal" color="error" @click="confirmDelete(item)">刪除</v-btn>
+          </v-card-actions>
+        </v-card>
+      </td>
+    </tr>
+
+    <tr v-else>
+      <td>{{ item.jobName }}</td>
+      <td>
+        <v-chip :color="item.jobType === 'backup' ? 'primary' : 'error'" size="small">
+          {{ item.jobType === 'backup' ? '備份' : '刪除' }}
+        </v-chip>
+      </td>
+      <td>{{ item.targetCollection }}</td>
+      <td>
+        <div v-if="item.filters.projectId">
+          建案: {{ projectStore.idToNameMap[item.filters.projectId] || item.filters.projectId }}
+        </div>
+      </td>
+      <td>
+        {{ scheduleLabels[item.scheduleType] || '未知' }}
+        <span v-if="item.scheduleType !== 'manual'"> @ {{ item.scheduleTime }}</span>
+      </td>
+      <td>
+        <div v-if="item.lastRun">
+          <v-chip :color="item.lastRun.status === 'success' ? 'success' : 'error'" size="x-small" class="mb-1">
+            {{ item.lastRun.status === 'success' ? '成功' : '失敗' }}
+          </v-chip>
+          <div class="text-caption">
+            {{ formatTimestamp(item.lastRun.timestamp) }}
+          </div>
+        </div>
+        <span v-else class="text-grey">尚未執行</span>
+      </td>
+      <td>
+        <v-chip :color="item.status === 'enabled' ? 'green' : 'grey'" size="small">
+          {{ item.status === 'enabled' ? '啟用中' : '已停用' }}
+        </v-chip>
+      </td>
+      <td class="text-right">
+        <v-btn
+            color="primary"
+            size="small"
+            variant="tonal"
+            @click="runJobNow(item)"
+            :loading="runningJobs[item.id]"
+        >
+            立即執行
+        </v-btn>
+        <v-icon class="mx-1" @click="openDialog(item)">mdi-pencil</v-icon>
+        <v-icon color="error" @click="confirmDelete(item)">mdi-delete</v-icon>
+      </td>
+    </tr>
+  </template>
+
+  <template v-if="mobile" v-slot:thead></template>
+  <template v-if="mobile" v-slot:tfoot></template>
+  <template v-if="mobile" v-slot:bottom></template>
+</v-data-table>
         </v-window-item>
 
         <v-window-item value="browser">
@@ -106,7 +190,16 @@
             <v-list-item-subtitle>
               大小: {{ (file.size / 1024).toFixed(2) }} KB | 時間: {{ new Date(file.timeCreated).toLocaleString('zh-TW') }}
             </v-list-item-subtitle>
-          </v-list-item>
+
+            <template v-slot:append>
+              <v-btn
+                color="red-lighten-2"
+                icon="mdi-delete-outline"
+                variant="text"
+                @click.stop="promptDeleteFile(file)"
+              ></v-btn>
+            </template>
+            </v-list-item>
         </v-list>
          <div v-else class="text-center pa-10">
             <v-progress-circular indeterminate color="primary"></v-progress-circular>
@@ -155,10 +248,49 @@
   </v-card>
 </v-dialog>
 
+<v-dialog v-model="isDeleteConfirmDialogVisible" persistent max-width="500px">
+  <v-card v-if="fileToDelete">
+    <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+      <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+      確認刪除備份檔案？
+    </v-card-title>
+    <v-divider></v-divider>
+    <v-card-text class="py-4">
+      <p class="mb-4">您確定要永久刪除以下這個備份檔案嗎？</p>
+      <v-sheet color="grey-lighten-4" class="pa-3 rounded-lg border">
+        <div class="font-weight-bold">
+          <v-icon start>mdi-file-outline</v-icon>
+          {{ getDisplayName(fileToDelete.name) }}
+        </div>
+        <div class="text-caption text-grey-darken-1 mt-1">
+          完整路徑: {{ fileToDelete.name }}
+        </div>
+      </v-sheet>
+      <p class="font-weight-bold text-red-darken-2 mt-4">
+        此操作無法復原！
+      </p>
+    </v-card-text>
+    <v-divider></v-divider>
+    <v-card-actions class="pa-3">
+      <v-spacer></v-spacer>
+      <v-btn variant="text" @click="isDeleteConfirmDialogVisible = false">取消</v-btn>
+      <v-btn
+        color="red-darken-1"
+        variant="flat"
+        :loading="isDeletingFile"
+        @click="handleConfirmDeleteFile"
+      >
+        確定刪除
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
+import { useDisplay } from 'vuetify'; 
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import {
@@ -169,11 +301,13 @@ import {
   triggerBackupJob,
   fetchBackupFiles,
   fetchBackupFileContent,
-  fetchFirestoreCollections 
+  fetchFirestoreCollections,
+  triggerDeleteBackupFile
 } from '@/api';
 
 const projectStore = useProjectStore();
 const toast = useToast();
+const { mobile } = useDisplay(); 
 const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
 
 
@@ -195,6 +329,12 @@ const isPreviewDialogVisible = ref(false);
 const previewContent = ref('');
 const previewFileName = ref('');
 // END: 新增檔案瀏覽器需要的狀態
+
+// START: 新增刪除功能需要的狀態
+const isDeleteConfirmDialogVisible = ref(false);
+const fileToDelete = ref(null);
+const isDeletingFile = ref(false);
+//  END: 新增刪除功能需要的狀態
 
 
 const breadcrumbs = computed(() => {
@@ -245,16 +385,24 @@ const defaultItem = {
 };
 const editedItem = ref({ ...defaultItem });
 
-const headers = [
-  { title: '任務名稱', key: 'jobName' },
-  { title: '類型', key: 'jobType' },
-  { title: '目標集合', key: 'targetCollection' },
-  { title: '篩選條件', key: 'filters' },
-  { title: '排程', key: 'scheduleType' },
-  { title: '上次執行', key: 'lastRun' },
-  { title: '狀態', key: 'status' },
-  { title: '操作', key: 'actions', sortable: false },
-];
+const headers = computed(() => {
+  if (mobile.value) {
+    // 手機模式下，只回傳一個 header，內容不重要，目的是讓表格只產生一欄
+    return [{ key: 'data', sortable: false, title: '' }];
+  } else {
+    // 桌面模式下，回傳完整的 header
+    return [
+      { title: '任務名稱', key: 'jobName', minWidth: '200px' },
+      { title: '類型', key: 'jobType' },
+      { title: '目標集合', key: 'targetCollection' },
+      { title: '篩選條件', key: 'filters' },
+      { title: '排程', key: 'scheduleType' },
+      { title: '上次執行', key: 'lastRun', minWidth: '180px' },
+      { title: '狀態', key: 'status' },
+      { title: '操作', key: 'actions', sortable: false, align: 'end', minWidth: '200px' },
+    ];
+  }
+});
 
 const scheduleLabels = {
   manual: '僅手動',
@@ -445,6 +593,40 @@ async function openPreview(file) {
 }
 // END: 新增檔案瀏覽器需要的函式
 
+// ✅ START: 新增刪除流程需要的函式
+/**
+ * 彈出刪除確認視窗
+ */
+function promptDeleteFile(file) {
+  fileToDelete.value = file;
+  isDeleteConfirmDialogVisible.value = true;
+}
+
+/**
+ * 使用者確認後，執行刪除
+ */
+async function handleConfirmDeleteFile() {
+  if (!fileToDelete.value) return;
+
+  isDeletingFile.value = true;
+  try {
+    const result = await triggerDeleteBackupFile(fileToDelete.value.name);
+    if (result.status === 'success') {
+      toast.success('檔案已成功刪除！');
+      // 刪除成功後，重新整理當前的檔案列表
+      await loadFiles(currentPath.value);
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    toast.error(`刪除失敗: ${error.message}`);
+  } finally {
+    isDeletingFile.value = false;
+    isDeleteConfirmDialogVisible.value = false;
+  }
+}
+// ✅ END: 新增刪除流程需要的函式
+
 // 新增：監聽 currentTab，當切換到瀏覽器 Tab 時，才載入初始資料
 watch(currentTab, (newTab) => {
     if (newTab === 'browser' && files.value.length === 0 && directories.value.length === 0) {
@@ -455,8 +637,33 @@ watch(currentTab, (newTab) => {
 </script>
 
 <style scoped>
-/* 針對 v-breadcrumbs 元件進行樣式覆寫 */
-/* 使用 :deep() 選擇器來穿透到 Vuetify 子元件的樣式 */
+/* 移除手機版表格的內部邊框 */
+.v-data-table--mobile .v-table__wrapper > table > tbody > tr > td {
+  border-bottom: none !important;
+}
+
+.mobile-card-content {
+  padding: 12px 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-card-content > div {
+  display: flex;
+  align-items: center;
+}
+
+.mobile-card-content .label {
+  font-size: 0.8rem;
+  color: #616161;
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.mobile-card-content .value {
+  font-weight: 500;
+}
+
 
 /* 當滑鼠移到「可點擊」的麵包屑項目上時 */
 :deep(.v-breadcrumbs-item:not(.v-breadcrumbs-item--disabled)) {
