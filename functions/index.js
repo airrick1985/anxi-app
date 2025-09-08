@@ -1574,3 +1574,219 @@ exports.deleteBackupFile = onCall(async (request) => {
   }
 });
 // ✅ END: 新增 deleteBackupFile 雲端函式
+
+
+// ✅ START: 新增 generateExcelTemplate 雲端函式
+const xlsx = require("xlsx"); // 在檔案頂部加入 require
+
+exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
+  const { targetCollection, projectId, fields } = request.data;
+  const functionName = `generateExcelTemplate (Project: ${projectId})`;
+
+  if (!targetCollection || !fields || fields.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少 targetCollection 或 fields 參數。");
+  }
+
+  try {
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    const dataForExcel = [];
+
+    // 根據目標集合決定查詢方式
+    if (targetCollection === 'projects' && projectId) {
+      // 情況 A: 如果是下載單一 project，直接按文件 ID 讀取
+      const docRef = anxiDb.collection(targetCollection).doc(projectId);
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        const docData = docSnap.data();
+        const row = { _id: docSnap.id };
+        fields.forEach(field => {
+          if (docData[field] && typeof docData[field].toDate === 'function') {
+            row[field] = docData[field].toDate().toISOString().slice(0, 10);
+          } else {
+            row[field] = docData[field] !== undefined ? docData[field] : '';
+          }
+        });
+        dataForExcel.push(row);
+      }
+    } else {
+      // 情況 B: 對於其他集合，或下載所有 projects，使用 where 查詢
+      let query = anxiDb.collection(targetCollection);
+      if (projectId) {
+        query = query.where("projectId", "==", projectId);
+      }
+      const snapshot = await query.get();
+
+      // ✅ 核心修正點：確保內外層迴圈結構正確
+      snapshot.docs.forEach(doc => { // 外層迴圈：處理每一份文件
+        const docData = doc.data();
+        const row = { _id: doc.id }; // 在這裡為每一份文件建立一個 `row`
+
+        fields.forEach(field => { // 內層迴圈：處理這份文件的每一個欄位
+          // 在內層迴圈中安全地使用 `row` 變數
+          if (docData[field] && typeof docData[field].toDate === 'function') {
+            row[field] = docData[field].toDate().toISOString().slice(0, 10);
+          } else {
+            row[field] = docData[field] !== undefined ? docData[field] : '';
+          }
+        }); // 內層迴圈結束
+
+        dataForExcel.push(row);
+      }); // 外層迴圈結束
+    }
+
+    if (dataForExcel.length === 0) {
+      return { status: "success", message: "找不到符合條件的資料可供下載。" };
+    }
+
+    // --- 建立並上傳 Excel 的邏輯 (維持不變) ---
+    const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, worksheet, targetCollection);
+    const buffer = xlsx.write(workbook, { bookType: "xlsx", type: "buffer" });
+    
+    const bucket = getStorage().bucket();
+    const fileName = `template_${targetCollection}_${projectId || 'all'}_${Date.now()}.xlsx`;
+    const filePath = `temp-exports/${fileName}`;
+    const file = bucket.file(filePath);
+    
+    await file.save(buffer, {
+        metadata: {
+            contentDisposition: `attachment; filename="${fileName}"`,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+    });
+    
+    const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
+
+    return { status: "success", downloadUrl: signedUrl };
+
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    throw new HttpsError("internal", `產生 Excel 範本失敗: ${error.message}`);
+  }
+});
+
+// ✓ 【替換】updateFieldsFromExcel 整個函式 (優化版)
+exports.updateFieldsFromExcel = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  // ✅ 1. 修改：接收 fileContent (Base64字串)，而不是 filePath
+  const { fileContent, targetCollection, isDryRun } = request.data;
+  const functionName = `updateFieldsFromExcel (DryRun: ${isDryRun})`;
+
+  if (!fileContent || !targetCollection) {
+    throw new HttpsError("invalid-argument", "缺少檔案內容或目標集合參數。");
+  }
+
+  try {
+    // ✅ 2. 修改：直接將 Base64 字串轉換為 Buffer，不再需要從 GCS 下載
+    const buffer = Buffer.from(fileContent, 'base64');
+    
+    const workbook = xlsx.read(buffer);
+    const sheetName = workbook.SheetNames[0];
+    const jsonData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    // ... (以下所有的驗證、預覽、批次寫入邏輯，都維持不變)
+    if (jsonData.length === 0) {
+      return { status: "success", message: "Excel 檔案中沒有資料。", changes: [] };
+    }
+    if (!jsonData[0]._id) {
+      throw new HttpsError("invalid-argument", "Excel 檔案格式錯誤，第一欄的標頭必須是 `_id`。");
+    }
+
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    const collectionRef = anxiDb.collection(targetCollection);
+    
+    if (isDryRun) {
+      const idCounts = new Map();
+      jsonData.forEach(row => {
+        const id = row._id;
+        if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
+      });
+      const duplicateIds = Array.from(idCounts.entries()).filter(([, count]) => count > 1).map(([id]) => id);
+
+      const sampleDocs = await collectionRef.limit(5).get();
+      const existingFields = new Set();
+      sampleDocs.forEach(doc => Object.keys(doc.data()).forEach(key => existingFields.add(key)));
+      const excelHeaders = Object.keys(jsonData[0]).filter(key => key !== '_id');
+      const newFields = excelHeaders.filter(header => !existingFields.has(header));
+      
+      const docIdToUpdate = jsonData[0]._id;
+      const docSnap = await collectionRef.doc(String(docIdToUpdate)).get();
+      const changes = [];
+      if (docSnap.exists) {
+        const oldData = docSnap.data();
+        excelHeaders.forEach(header => {
+          if (jsonData[0][header] !== oldData[header]) {
+            changes.push({ field: header, oldValue: oldData[header] !== undefined ? oldData[header] : '(無)', newValue: jsonData[0][header] });
+          }
+        });
+      }
+
+      return {
+        status: "success",
+        data: { totalDocs: jsonData.length, newFields, previewDocId: docIdToUpdate, previewChanges: changes, duplicateIds }
+      };
+    } else {
+      // 真實更新模式
+      const batchArray = [];
+      batchArray.push(anxiDb.batch());
+      let operationCount = 0;
+      let batchIndex = 0;
+      for (const row of jsonData) {
+        const docId = String(row._id);
+        const dataToUpdate = { ...row };
+        delete dataToUpdate._id;
+        Object.keys(dataToUpdate).forEach(key => {
+            if (String(dataToUpdate[key]).toUpperCase() === 'TRUE') dataToUpdate[key] = true;
+            if (String(dataToUpdate[key]).toUpperCase() === 'FALSE') dataToUpdate[key] = false;
+        });
+        const docRef = collectionRef.doc(docId);
+        batchArray[batchIndex].set(docRef, dataToUpdate, { merge: true });
+        operationCount++;
+        if (operationCount >= 499) {
+          batchArray.push(anxiDb.batch());
+          batchIndex++;
+          operationCount = 0;
+        }
+      }
+      await Promise.all(batchArray.map(batch => batch.commit()));
+      return { status: "success", message: `成功更新 ${jsonData.length} 份文件。` };
+    }
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    throw new HttpsError("internal", `處理 Excel 更新時發生錯誤: ${error.message}`);
+  }
+});
+
+
+exports.getCollectionFields = onCall(async (request) => {
+  const { targetCollection, projectId } = request.data;
+  if (!targetCollection) { // projectId 在此函式中是可選的
+    throw new HttpsError("invalid-argument", "缺少 targetCollection。");
+  }
+  try {
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    let snapshot;
+    const fields = new Set(['_id']); // 預設包含 _id
+
+    if (targetCollection === 'projects' && projectId) {
+        const docSnap = await anxiDb.collection(targetCollection).doc(projectId).get();
+        if (docSnap.exists) {
+            Object.keys(docSnap.data()).forEach(key => fields.add(key));
+        }
+    } else {
+        let query = anxiDb.collection(targetCollection);
+        if (projectId) {
+            query = query.where("projectId", "==", projectId);
+        }
+        snapshot = await query.limit(20).get(); // 讀取最多 20 份文件作為欄位樣本
+        snapshot.forEach(doc => {
+            Object.keys(doc.data()).forEach(key => fields.add(key));
+        });
+    }
+    
+    return { status: "success", data: Array.from(fields).sort() };
+  } catch(e) {
+    throw new HttpsError("internal", `讀取欄位列表失敗: ${e.message}`);
+  }
+});
+// ✅ END: 新增 getCollectionFields 雲端函式

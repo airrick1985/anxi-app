@@ -207,7 +207,6 @@ const SwitchRenderer = {
 };
 
 const colDefs = ref([
-    // ✓ 【修改】將 colDefs 的定義移出 onMounted
    { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
    { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },

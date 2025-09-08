@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "https://glorious-barnacle-7rpgq4xjx4jfx79p-5173.app.github.dev"
+    ],
+    "method": ["GET"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Disposition"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

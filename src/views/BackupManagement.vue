@@ -13,11 +13,11 @@
       </v-toolbar>
 
        <v-tabs v-model="currentTab" bg-color="transparent">
-    <v-tab value="jobs">任務列表</v-tab>
-    <v-tab value="browser">備份檔案瀏覽</v-tab> 
-    <v-tab value="history">執行歷史 (待開發)</v-tab>
-  </v-tabs>
-  <v-divider></v-divider>
+  <v-tab value="jobs">任務列表</v-tab>
+  <v-tab value="update">欄位批次更新</v-tab> <v-tab value="browser">備份檔案瀏覽</v-tab>
+  <v-tab value="history">執行歷史 (待開發)</v-tab>
+</v-tabs>
+<v-divider></v-divider>
 
       <v-window v-model="currentTab">
         <v-window-item value="jobs">
@@ -158,6 +158,143 @@
 </v-data-table>
         </v-window-item>
 
+<v-window-item value="update">
+  <v-card-text>
+    <v-card v-if="batchUpdate.step === 1" variant="outlined">
+      <v-card-title class="text-h6">步驟一：選擇範圍並下載範本</v-card-title>
+      <v-divider></v-divider>
+      <v-card-text>
+        <div v-if="!collectionsLoaded" class="text-center pa-8 text-grey">
+            <v-progress-circular indeterminate color="primary" class="mb-4"></v-progress-circular>
+            <div>正在讀取資料庫集合列表...</div>
+        </div>
+        <div v-else>
+          <v-select v-model="batchUpdate.targetCollection" :items="collectionItems" label="目標集合" class="mb-4" hide-details></v-select>
+          <v-select v-model="batchUpdate.projectId" :items="projectOptions" label="篩選建案" class="mb-4" hide-details :disabled="!batchUpdate.targetCollection"></v-select>
+          <v-autocomplete
+            v-model="batchUpdate.selectedFields"
+            :items="batchUpdate.availableFields"
+            label="選擇要匯出/更新的欄位"
+            multiple chips closable-chips
+            :disabled="!batchUpdate.projectId"
+            :loading="batchUpdate.isLoadingFields"
+            no-data-text="請先選擇集合與建案"
+          ></v-autocomplete>
+        </div>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-spacer></v-spacer>
+        <v-btn
+          color="primary"
+          @click="handleDownloadTemplate"
+          :loading="batchUpdate.isDownloading"
+          :disabled="!collectionsLoaded || batchUpdate.selectedFields.length === 0"
+          variant="elevated"
+          size="large"
+        >
+          <v-icon start>mdi-download</v-icon>
+          下載 Excel 範本
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+
+    <v-card v-if="batchUpdate.step === 2" variant="outlined">
+      <v-card-title class="text-h6">步驟二：上傳修改後的檔案並預覽</v-card-title>
+      <v-divider></v-divider>
+      <v-card-text>
+        <p class="mb-4">請上傳您已修改完成的 Excel 檔案。系統將會進行預覽。</p>
+        <v-file-input
+          v-model="batchUpdate.uploadedFile"
+          label="點擊或拖曳 Excel 檔案至此"
+          accept=".xlsx, .xls"
+          variant="outlined"
+        ></v-file-input>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-btn @click="batchUpdate.step = 1">返回上一步</v-btn>
+        <v-spacer></v-spacer>
+        <v-btn
+          color="primary"
+          @click="handleUploadAndPreview"
+          :loading="batchUpdate.isPreviewing"
+          :disabled="!batchUpdate.uploadedFile"
+          variant="elevated"
+          size="large"
+        >
+          <v-icon start>mdi-cloud-upload</v-icon>
+          上傳並預覽
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+
+    <v-card v-if="batchUpdate.step === 3" variant="outlined">
+      <v-card-title class="text-h6">步驟三：預覽與最終確認</v-card-title>
+      <v-divider></v-divider>
+      <v-card-text v-if="batchUpdate.previewResult">
+        <v-alert type="info" variant="tonal" class="mb-4">
+          <h4 class="mb-2">預覽報告</h4>
+          <p>檔案解析成功，共偵測到 **{{ batchUpdate.previewResult.totalDocs }}** 筆資料。</p>
+          <div v-if="batchUpdate.previewResult.newFields.length > 0" class="mt-2">
+            <p class="font-weight-bold text-amber-darken-3">警告：偵測到 {{ batchUpdate.previewResult.newFields.length }} 個新欄位將被建立：</p>
+            <v-chip v-for="field in batchUpdate.previewResult.newFields" :key="field" size="small" color="warning" class="mr-1 mt-1">{{ field }}</v-chip>
+          </div>
+        </v-alert>
+
+        <v-alert
+            v-if="batchUpdate.previewResult.duplicateIds && batchUpdate.previewResult.duplicateIds.length > 0"
+            type="error"
+            variant="outlined"
+            class="mb-4"
+            title="偵測到重複 ID"
+          >
+            <p>警告：您的 Excel 檔案中包含以下重複的 `_id`，執行更新後，只有每個 ID 的最後一筆資料會生效。</p>
+            <div class="mt-2">
+                <v-chip
+                    v-for="id in batchUpdate.previewResult.duplicateIds"
+                    :key="id"
+                    size="small"
+                    color="error"
+                    class="mr-1 mt-1"
+                >
+                    {{ id }}
+                </v-chip>
+            </div>
+          </v-alert>
+          <v-alert type="warning" variant="tonal" class="mb-4" title="變更範例">
+            </v-alert>
+
+        <v-alert type="warning" variant="tonal" class="mb-4" title="變更範例">
+          將更新文件 **{{ batchUpdate.previewResult.previewDocId }}** 的以下欄位：
+          <v-table density="compact" class="mt-2">
+              <thead><tr><th>欄位</th><th>舊值</th><th>新值</th></tr></thead>
+              <tbody>
+                  <tr v-for="change in batchUpdate.previewResult.previewChanges" :key="change.field">
+                      <td>{{ change.field }}</td>
+                      <td>{{ change.oldValue }}</td>
+                      <td class="font-weight-bold text-primary">{{ change.newValue }}</td>
+                  </tr>
+              </tbody>
+          </v-table>
+        </v-alert>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-btn @click="batchUpdate.step = 2">返回上一步</v-btn>
+        <v-spacer></v-spacer>
+        <v-btn
+          color="error"
+          @click="handleExecuteUpdate"
+          :loading="batchUpdate.isExecuting"
+          variant="elevated"
+          size="large"
+        >
+          <v-icon start>mdi-database-check</v-icon>
+          確認執行更新
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-card-text>
+</v-window-item>
+
         <v-window-item value="browser">
       <v-card-text>
         <v-toolbar density="compact" flat class="mb-2">
@@ -218,8 +355,9 @@
           <v-form ref="form">
             <v-text-field v-model="editedItem.jobName" label="任務名稱*" :rules="[v => !!v || '必填']"></v-text-field>
             <v-select v-model="editedItem.jobType" :items="[{title: '備份', value: 'backup'}, {title: '刪除', value: 'delete'}]" label="任務類型*" :rules="[v => !!v || '必填']"></v-select>
-            <v-select v-model="editedItem.targetCollection" :items="collectionItems" label="目標集合*" :rules="[v => !!v || '必填']"></v-select>            <v-select v-model="editedItem.filters.projectId" :items="projectOptions" label="篩選建案 (可選)" clearable></v-select>
-            <v-select v-model="editedItem.scheduleType" :items="scheduleOptions" label="排程類型*" :rules="[v => !!v || '必填']"></v-select>
+           <v-select v-model="editedItem.targetCollection" :items="collectionItems" label="目標集合*" :rules="[v => !!v || '必填']"></v-select>
+          <v-select v-model="editedItem.filters.projectId" :items="projectOptions" label="篩選建案 (可選)" clearable></v-select>
+          <v-select v-model="editedItem.scheduleType" :items="scheduleOptions" label="排程類型*" :rules="[v => !!v || '必填']"></v-select>
             <v-text-field v-if="editedItem.scheduleType !== 'manual'" v-model="editedItem.scheduleTime" label="執行時間 (24小時制)*" type="time" :rules="[v => !!v || '必填']"></v-text-field>
             <v-select v-model="editedItem.status" :items="[{title: '啟用中', value: 'enabled'}, {title: '已停用', value: 'disabled'}]" label="任務狀態*" :rules="[v => !!v || '必填']"></v-select>
           </v-form>
@@ -289,38 +427,47 @@
 </template>
 
 <script setup>
+// 1. Imports (匯入)
 import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
-import { useDisplay } from 'vuetify'; 
+import { useDisplay } from 'vuetify';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import {
-  listenToBackupJobs,
-  createBackupJob,
-  updateBackupJob,
-  deleteBackupJob,
-  triggerBackupJob,
-  fetchBackupFiles,
-  fetchBackupFileContent,
-  fetchFirestoreCollections,
-  triggerDeleteBackupFile
+  listenToBackupJobs, createBackupJob, updateBackupJob, deleteBackupJob, triggerBackupJob,
+  fetchBackupFiles, fetchBackupFileContent, triggerDeleteBackupFile,
+  fetchFirestoreCollections, fetchAvailableFields,
+  triggerGenerateExcelTemplate, triggerUpdateFromExcel
 } from '@/api';
 
-const projectStore = useProjectStore();
-const toast = useToast();
-const { mobile } = useDisplay(); 
+// 2. Component Definitions (元件定義)
 const emit = defineEmits(['startLoading', 'stopLoading', 'notify']);
 
+// 3. Core Instances (核心實例)
+const projectStore = useProjectStore();
+const toast = useToast();
+const { mobile } = useDisplay();
 
-const isLoading = ref(true);
-const isSaving = ref(false);
-const jobs = ref([]);
+// 4. State (響應式狀態)
+// --- General State ---
 const currentTab = ref('jobs');
+const isLoading = ref(true);
+const collectionItems = ref([]);
+const collectionsLoaded = ref(false); // ✅ 新增一個旗標，判斷集合是否已載入
+
+
+// --- Job List & Dialog State ---
+const jobs = ref([]);
 const dialogVisible = ref(false);
 const isEditing = ref(false);
+const isSaving = ref(false);
 const runningJobs = reactive({});
-const collectionItems = ref([]); 
+const defaultItem = {
+  jobName: '', jobType: 'backup', status: 'enabled', targetCollection: null,
+  filters: { projectId: null }, scheduleType: 'manual', scheduleTime: '03:00',
+};
+const editedItem = ref({ ...defaultItem });
 
-// START: 新增檔案瀏覽器需要的狀態
+// --- File Browser State ---
 const currentPath = ref('');
 const files = ref([]);
 const directories = ref([]);
@@ -328,69 +475,25 @@ const isLoadingFiles = ref(false);
 const isPreviewDialogVisible = ref(false);
 const previewContent = ref('');
 const previewFileName = ref('');
-// END: 新增檔案瀏覽器需要的狀態
 
-// START: 新增刪除功能需要的狀態
+// --- File Delete State ---
 const isDeleteConfirmDialogVisible = ref(false);
 const fileToDelete = ref(null);
 const isDeletingFile = ref(false);
-//  END: 新增刪除功能需要的狀態
 
-
-const breadcrumbs = computed(() => {
-  const parts = currentPath.value.split('/').filter(Boolean);
-  // 1. 我們先建立一個內部用的路徑資料結構
-  const internalCrumbs = [{ title: '根目錄', disabled: false, path: '' }];
-  let currentBuildPath = '';
-  for (const part of parts) {
-    currentBuildPath += `${part}/`;
-    internalCrumbs.push({ title: part, disabled: false, path: currentBuildPath });
-  }
-
-  // 2. 將最後一個項目設為不可點擊
-  if (internalCrumbs.length > 0) {
-    internalCrumbs[internalCrumbs.length - 1].disabled = true;
-  }
-
-  // 3. ✅ 最終只回傳 <v-breadcrumbs> 需要的屬性，移除了 href
-  return internalCrumbs.map(crumb => ({
-    title: crumb.title,
-    disabled: crumb.disabled,
-    onClick: () => {
-      // 只有在項目不是 disabled 的情況下才執行導航
-      if (!crumb.disabled) {
-        navigate(crumb.path);
-      }
-    }
-  }));
+// --- Batch Update State ---
+const batchUpdate = reactive({
+  step: 1, targetCollection: null, projectId: null, availableFields: [],
+  selectedFields: [], uploadedFile: null, uploadedFilePathGCS: null,
+  previewResult: null, isLoadingFields: false, isDownloading: false,
+  isPreviewing: false, isExecuting: false,
 });
 
-const parentPath = computed(() => {
-    const parts = currentPath.value.split('/').filter(Boolean);
-    parts.pop();
-    if (parts.length === 0) {
-        return ''; // 根目錄的路徑是空字串
-    }
-    return parts.join('/') + '/';
-});
-
-const defaultItem = {
-  jobName: '',
-  jobType: 'backup',
-  status: 'enabled',
-  targetCollection: null,
-  filters: { projectId: null },
-  scheduleType: 'manual',
-  scheduleTime: '03:00',
-};
-const editedItem = ref({ ...defaultItem });
-
+// 5. Computed Properties (計算屬性)
 const headers = computed(() => {
   if (mobile.value) {
-    // 手機模式下，只回傳一個 header，內容不重要，目的是讓表格只產生一欄
     return [{ key: 'data', sortable: false, title: '' }];
   } else {
-    // 桌面模式下，回傳完整的 header
     return [
       { title: '任務名稱', key: 'jobName', minWidth: '200px' },
       { title: '類型', key: 'jobType' },
@@ -404,31 +507,90 @@ const headers = computed(() => {
   }
 });
 
-const scheduleLabels = {
-  manual: '僅手動',
-  daily: '每日',
-  weekly: '每週',
-};
+const scheduleLabels = { manual: '僅手動', daily: '每日', weekly: '每週' };
+const scheduleOptions = [ { title: '僅手動', value: 'manual' }, { title: '每日', value: 'daily' }, { title: '每週', value: 'weekly' }];
+const projectOptions = computed(() => projectStore.projectsList.map(p => ({ title: p.name, value: p.id })));
 
-const scheduleOptions = [
-  { title: '僅手動', value: 'manual' },
-  { title: '每日', value: 'daily' },
-  { title: '每週', value: 'weekly' },
-];
+const breadcrumbs = computed(() => {
+  const parts = currentPath.value.split('/').filter(Boolean);
+  const internalCrumbs = [{ title: '根目錄', disabled: false, path: '' }];
+  let currentBuildPath = '';
+  for (const part of parts) {
+    currentBuildPath += `${part}/`;
+    internalCrumbs.push({ title: part, disabled: false, path: currentBuildPath });
+  }
+  if (internalCrumbs.length > 0) {
+    internalCrumbs[internalCrumbs.length - 1].disabled = true;
+  }
+  return internalCrumbs.map(crumb => ({
+    title: crumb.title,
+    disabled: crumb.disabled,
+    onClick: () => {
+      if (!crumb.disabled) navigate(crumb.path);
+    }
+  }));
+});
 
-const projectOptions = computed(() => 
-  projectStore.projectsList.map(p => ({ title: p.name, value: p.id }))
-);
+const parentPath = computed(() => {
+    const parts = currentPath.value.split('/').filter(Boolean);
+    parts.pop();
+    if (parts.length === 0) return '';
+    return parts.join('/') + '/';
+});
 
+
+// 6. Watchers (監聽器)
+// ✅ START: 核心修正 - 使用 watch 監聽 Tab 切換來載入資料
+watch(currentTab, async (newTab) => {
+  // 當使用者點擊到需要集合列表的 Tab (`jobs` 或 `update`)，且資料尚未載入時
+  if (['jobs', 'update'].includes(newTab) && !collectionsLoaded.value) {
+    try {
+      isLoading.value = true; // 顯示載入中
+      const collections = await fetchFirestoreCollections();
+      collectionItems.value = collections;
+      collectionsLoaded.value = true; // 標記為已載入，避免重複請求
+    } catch (error) {
+      toast.error(`讀取集合列表失敗: ${error.message}`);
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // 檔案瀏覽器的邏輯維持不變
+  if (newTab === 'browser' && files.value.length === 0 && directories.value.length === 0) {
+      loadFiles(currentPath.value);
+  }
+}, { immediate: true }); // immediate: true 確保元件初次載入時就會為預設的 'jobs' Tab 執行一次
+// ✅ END: 核心修正
+
+watch([() => batchUpdate.targetCollection, () => batchUpdate.projectId], async ([collection, projectId]) => {
+  if (collection && projectId) {
+    batchUpdate.isLoadingFields = true;
+    batchUpdate.availableFields = await fetchAvailableFields(collection, projectId);
+    batchUpdate.isLoadingFields = false;
+  } else {
+    batchUpdate.availableFields = [];
+    batchUpdate.selectedFields = [];
+  }
+});
+
+
+// 7. Lifecycle Hooks (生命週期鉤子)
 let unsubscribe = null;
+
+// 在 setup 階段立即開始非同步獲取集合列表
+(async () => {
+  try {
+    const collections = await fetchFirestoreCollections();
+    collectionItems.value = collections;
+  } catch (error) {
+    toast.error(`讀取集合列表失敗: ${error.message}`);
+    console.error("讀取集合列表失敗:", error);
+  }
+})();
+
 onMounted(() => {
   projectStore.fetchProjects();
-
-  // 獲取集合列表
-  fetchFirestoreCollections().then(collections => {
-    collectionItems.value = collections;
-  });
-
   unsubscribe = listenToBackupJobs((data) => {
     jobs.value = data;
     isLoading.value = false;
@@ -439,14 +601,27 @@ onUnmounted(() => {
   if (unsubscribe) unsubscribe();
 });
 
+
+// 8. Methods (方法)
+// --- General Helper Methods ---
+function formatTimestamp(timestamp) {
+  if (!timestamp) return 'N/A';
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate().toLocaleString('zh-TW');
+  }
+  const date = new Date(timestamp);
+  if (!isNaN(date.getTime())) {
+    return date.toLocaleString('zh-TW');
+  }
+  return '無效日期';
+}
+
+// --- Job List & Dialog Methods ---
 function openDialog(item = null) {
   if (item) {
     isEditing.value = true;
     editedItem.value = JSON.parse(JSON.stringify(item));
-    // 確保 filters 物件存在
-    if (!editedItem.value.filters) {
-        editedItem.value.filters = { projectId: null };
-    }
+    if (!editedItem.value.filters) editedItem.value.filters = { projectId: null };
   } else {
     isEditing.value = false;
     editedItem.value = { ...defaultItem, filters: { ...defaultItem.filters } };
@@ -462,11 +637,7 @@ async function saveJob() {
   isSaving.value = true;
   try {
     const payload = { ...editedItem.value };
-    // 簡單清理
-    if (payload.scheduleType === 'manual') {
-      delete payload.scheduleTime;
-    }
-
+    if (payload.scheduleType === 'manual') delete payload.scheduleTime;
     if (isEditing.value) {
       await updateBackupJob(payload.id, payload);
       toast.success('任務已更新');
@@ -482,38 +653,30 @@ async function saveJob() {
   }
 }
 
-// ✓ 【替換】 runJobNow 整個函式
 async function runJobNow(item) {
     if (!confirm(`確定要立即執行 "${item.jobName}" 這個任務嗎？`)) return;
-    
     runningJobs[item.id] = true;
     try {
         let result;
         if (item.jobType === 'backup') {
             result = await triggerBackupJob(item.id, item);
         } else if (item.jobType === 'delete') {
-            // 刪除任務：第一步，先執行預覽
-            const previewResult = await triggerDeleteJob(item.id, item, true); // isDryRun = true
+            const previewResult = await triggerDeleteJob(item.id, item, true);
             if (previewResult.status !== 'success') throw new Error(previewResult.message);
-
             if (previewResult.docsAffected === 0) {
                 toast.info("預覽完成，沒有找到任何可刪除的文件。");
                 runningJobs[item.id] = false;
                 return;
             }
-
-            // 第二步，彈出確認框，讓使用者確認
             const confirmMsg = `預覽完成！\n\n共找到 ${previewResult.docsAffected} 份可刪除的文件。\n\n您確定要永久刪除這些文件嗎？此操作無法復原！`;
             if (confirm(confirmMsg)) {
-                // 第三步，使用者確認後，執行真實刪除
-                result = await triggerDeleteJob(item.id, item, false); // isDryRun = false
+                result = await triggerDeleteJob(item.id, item, false);
             } else {
                 toast.info("使用者取消了刪除操作。");
                 runningJobs[item.id] = false;
                 return;
             }
         }
-
         if (result && result.status === 'success') {
             toast.success(result.message);
         } else {
@@ -537,27 +700,7 @@ async function confirmDelete(item) {
     }
 }
 
-// ✅ START: 新增一個更安全的日期格式化函式
-function formatTimestamp(timestamp) {
-  if (!timestamp) return 'N/A';
-  
-  // 情況 A: 如果是 Firestore 的 Timestamp 物件
-  if (typeof timestamp.toDate === 'function') {
-    return timestamp.toDate().toLocaleString('zh-TW');
-  }
-  
-  // 情況 B: 如果是日期字串或已經是 Date 物件
-  const date = new Date(timestamp);
-  if (!isNaN(date.getTime())) {
-    return date.toLocaleString('zh-TW');
-  }
-
-  // 其他無法解析的情況
-  return '無效日期';
-}
-// ✅ END: 新增一個更安全的日期格式化函式
-
-// START: 新增檔案瀏覽器需要的函式
+// --- File Browser Methods ---
 function getDisplayName(fullPath) {
     return fullPath.replace(currentPath.value, '').replace('/', '');
 }
@@ -579,41 +722,27 @@ async function openPreview(file) {
     previewFileName.value = getDisplayName(file.name);
     isPreviewDialogVisible.value = true;
     previewContent.value = '讀取中...';
-    
-    const lines = await fetchBackupFileContent(file.name, 100); // 讀取前 100 行
-    
+    const lines = await fetchBackupFileContent(file.name, 100);
     try {
-        // 嘗試將每一行都格式化為美觀的 JSON
         const formattedLines = lines.map(line => JSON.stringify(JSON.parse(line), null, 2));
         previewContent.value = formattedLines.join('\n\n');
     } catch (e) {
-        // 如果解析失敗，就直接顯示純文字
         previewContent.value = lines.join('\n');
     }
 }
-// END: 新增檔案瀏覽器需要的函式
 
-// ✅ START: 新增刪除流程需要的函式
-/**
- * 彈出刪除確認視窗
- */
 function promptDeleteFile(file) {
   fileToDelete.value = file;
   isDeleteConfirmDialogVisible.value = true;
 }
 
-/**
- * 使用者確認後，執行刪除
- */
 async function handleConfirmDeleteFile() {
   if (!fileToDelete.value) return;
-
   isDeletingFile.value = true;
   try {
     const result = await triggerDeleteBackupFile(fileToDelete.value.name);
     if (result.status === 'success') {
       toast.success('檔案已成功刪除！');
-      // 刪除成功後，重新整理當前的檔案列表
       await loadFiles(currentPath.value);
     } else {
       throw new Error(result.message);
@@ -625,14 +754,101 @@ async function handleConfirmDeleteFile() {
     isDeleteConfirmDialogVisible.value = false;
   }
 }
-// ✅ END: 新增刪除流程需要的函式
 
-// 新增：監聽 currentTab，當切換到瀏覽器 Tab 時，才載入初始資料
-watch(currentTab, (newTab) => {
-    if (newTab === 'browser' && files.value.length === 0 && directories.value.length === 0) {
-        loadFiles(currentPath.value);
+// --- Batch Update Methods ---
+async function handleDownloadTemplate() {
+  batchUpdate.isDownloading = true;
+  try {
+    const result = await triggerGenerateExcelTemplate({
+      targetCollection: batchUpdate.targetCollection,
+      projectId: batchUpdate.projectId,
+      fields: batchUpdate.selectedFields.filter(f => f !== '_id'),
+    });
+    if (result.status === 'success' && result.downloadUrl) {
+      window.open(result.downloadUrl, '_blank');
+      toast.success('Excel 範本已開始下載！');
+      batchUpdate.step = 2;
+    } else {
+      throw new Error(result.message || '找不到可下載的資料。');
     }
-});
+  } catch (error) {
+    toast.error(`下載失敗: ${error.message}`);
+  } finally {
+    batchUpdate.isDownloading = false;
+  }
+}
+
+async function handleUploadAndPreview() {
+  batchUpdate.isPreviewing = true;
+  batchUpdate.previewResult = null;
+  try {
+    const file = batchUpdate.uploadedFile;
+    if (!file) {
+      toast.error("請先選擇一個檔案再上傳。");
+      return;
+    }
+
+    // ✅ 核心修正：使用 FileReader 在前端讀取檔案為 Base64
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    
+    // 建立一個 Promise 來等待 FileReader 完成
+    const fileContent = await new Promise((resolve, reject) => {
+      reader.onload = () => {
+        // 去除 Base64 URL 的前綴 (e.g., "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,")
+        resolve(reader.result.split(',')[1]);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+
+    // 直接將檔案內容傳送到後端進行預覽
+    const result = await triggerUpdateFromExcel(fileContent, batchUpdate.targetCollection, true); // DryRun = true
+    
+    if (result.status === 'success') {
+      batchUpdate.previewResult = result.data;
+      batchUpdate.step = 3;
+      toast.success('預覽成功！請確認變更內容。');
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    toast.error(`預覽失敗: ${error.message}`);
+  } finally {
+    batchUpdate.isPreviewing = false;
+  }
+}
+
+async function handleExecuteUpdate() {
+  if (!confirm("請再次確認，此操作將會覆寫資料庫中的資料，是否確定要執行？")) return;
+  
+  batchUpdate.isExecuting = true;
+  try {
+    // 與預覽函式一樣，再次從 uploadedFile 讀取內容
+    const file = batchUpdate.uploadedFile;
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    const fileContent = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = (error) => reject(error);
+    });
+
+    const result = await triggerUpdateFromExcel(fileContent, batchUpdate.targetCollection, false); // DryRun = false
+    
+    if (result.status === 'success') {
+      toast.success(result.message);
+      // 重置流程
+      batchUpdate.step = 1;
+      batchUpdate.previewResult = null;
+      batchUpdate.uploadedFile = null;
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    toast.error(`更新失敗: ${error.message}`);
+  } finally {
+    batchUpdate.isExecuting = false;
+  }
+}
 
 </script>
 

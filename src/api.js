@@ -24,6 +24,13 @@ import {
 } from "firebase/firestore";
 import { format } from 'date-fns';
 
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject 
+} from "firebase/storage";
+
 import { onDisconnect, set, ref as dbRef, remove } from "firebase/database"; 
 import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
 
@@ -3511,3 +3518,62 @@ export async function triggerDeleteBackupFile(filePath) {
   }
 }
 // ✅ END: 新增觸發刪除備份檔案的 API
+
+// ✅ START: 新增欄位批次更新 API
+/**
+ * [新] 呼叫後端，產生用於欄位更新的 Excel 範本
+ * @param {object} config - 包含 targetCollection, projectId, fields
+ * @returns {Promise<object>} - 返回包含下載連結的物件
+ */
+export async function triggerGenerateExcelTemplate(config) {
+  try {
+    const generate = httpsCallable(functions, 'generateExcelTemplate');
+    const result = await generate(config);
+    return result.data;
+  } catch (error) {
+    return { status: 'error', message: `產生範本失敗: ${error.message}` };
+  }
+}
+
+
+/**
+ * [新] 呼叫後端，執行 Excel 更新的預覽或真實更新
+ * @param {string} fileContent - Base64 編碼的檔案內容
+ * @param {string} targetCollection 
+ * @param {boolean} isDryRun 
+ * @returns {Promise<object>}
+ */
+export async function triggerUpdateFromExcel(fileContent, targetCollection, isDryRun) {
+  try {
+    const update = httpsCallable(functions, 'updateFieldsFromExcel');
+    // ✅ 修改：傳送 fileContent 而不是 filePath
+    const result = await update({ fileContent, targetCollection, isDryRun });
+    return result.data;
+  } catch (error) {
+    return { status: 'error', message: `執行更新失敗: ${error.message}` };
+  }
+}
+
+
+
+// ✅ START: 新增獲取集合欄位的 API
+/**
+ * [新] 呼叫後端，獲取指定集合的可用欄位列表
+ * @param {string} targetCollection 
+ * @param {string} projectId 
+ * @returns {Promise<Array>}
+ */
+export async function fetchAvailableFields(targetCollection, projectId) {
+  try {
+    const getFields = httpsCallable(functions, 'getCollectionFields');
+    const result = await getFields({ targetCollection, projectId });
+    if (result.data.status === 'success') {
+      return result.data.data;
+    }
+    return [];
+  } catch (error) {
+    console.error("獲取可用欄位時發生錯誤:", error);
+    return [];
+  }
+}
+// ✅ END: 新增獲取集合欄位的 API
