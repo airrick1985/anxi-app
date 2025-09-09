@@ -285,6 +285,16 @@ const routes = [
     } 
   },
 
+  {
+  // ✅ 新增特殊上傳報告頁面的路由
+  path: '/special-report-upload/:projectId',
+  name: 'SpecialReportUpload',
+  component: () => import('@/views/SpecialReportUpload.vue'),
+   meta: {
+    layout: PublicLayout
+    }
+},
+
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
 

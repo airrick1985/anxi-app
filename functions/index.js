@@ -10,9 +10,16 @@ const { FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
 const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料轉換流
+const { Readable } = require("stream"); // ✅ 新增此行，用於將 Buffer 轉為 Stream
 const readline = require("readline"); 
 
-
+const driveSecrets = [
+    "DRIVE_CLIENT_ID",
+    "DRIVE_CLIENT_SECRET",
+    "DRIVE_REFRESH_TOKEN",
+    "SENDER_EMAIL",
+    "GMAIL_APP_PASSWORD"
+];
 
 admin.initializeApp();
 
@@ -1790,3 +1797,158 @@ exports.getCollectionFields = onCall(async (request) => {
   }
 });
 // ✅ END: 新增 getCollectionFields 雲端函式
+
+exports.handleSpecialReportUpload = onCall({
+  timeoutSeconds: 540,
+  memory: "1GiB",
+  // ✓ 引用新的 secrets
+  secrets: driveSecrets 
+}, async (request) => {
+  const { projectId, email, files, mismatchedFiles, projectName, senderName, driveUrlMap } = request.data;
+  const functionName = `handleSpecialReportUpload (Project: ${projectId})`;
+
+  if (!projectId || !email || !files || !projectName || !senderName || !driveUrlMap) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  try {
+    // ✓ START: 改用 OAuth 2.0 Client 進行認證
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.DRIVE_CLIENT_ID,
+      process.env.DRIVE_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground' // 重新導向 URI 需與設定一致
+    );
+
+    oauth2Client.setCredentials({
+      refresh_token: process.env.DRIVE_REFRESH_TOKEN,
+    });
+
+    // ✓ 使用授權過的 oauth2Client 來建立 drive 實例
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    // ✓ END: 認證方式修改完成
+
+    const successfulUploads = [];
+
+    for (const file of files) {
+      const fileNameWithoutExt = file.name.replace(/\.pdf$/i, '');
+      const buildingPrefix = fileNameWithoutExt.split('-')[0];
+      const parentFolderUrl = driveUrlMap[buildingPrefix];
+
+      if (!parentFolderUrl) {
+        console.warn(`[${functionName}] 找不到戶型 [${buildingPrefix}] 的對應 Drive URL，已跳過檔案 [${file.name}]`);
+        continue;
+      }
+      
+      const parentFolderId = parentFolderUrl.split('/').pop();
+
+      // 尋找或建立以檔名命名的子資料夾
+      const searchRes = await drive.files.list({
+        q: `name='${fileNameWithoutExt}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`,
+        fields: 'files(id)',
+      });
+
+      let subFolderId;
+      if (searchRes.data.files.length > 0) {
+        subFolderId = searchRes.data.files[0].id;
+      } else {
+        const folderMetadata = {
+          name: fileNameWithoutExt,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [parentFolderId],
+        };
+        const createdFolder = await drive.files.create({
+          resource: folderMetadata,
+          fields: 'id',
+        });
+        subFolderId = createdFolder.data.id;
+      }
+      
+      // 上傳檔案
+      const fileMetadata = { name: file.name, parents: [subFolderId] };
+      const buffer = Buffer.from(file.base64, 'base64');
+      const stream = Readable.from(buffer);
+
+      const media = {
+        mimeType: 'application/pdf',
+        body: stream,
+      };
+
+      const uploadedFile = await drive.files.create({
+        resource: fileMetadata,
+        media: media,
+        fields: 'id, webViewLink', // <--- 關鍵修改點
+      });
+      
+      // ✓ 修改：將檔名和 URL 一起存入陣列
+      if (uploadedFile.data.webViewLink) {
+          successfulUploads.push({
+              name: file.name,
+              url: uploadedFile.data.webViewLink 
+          });
+      }
+    }
+
+    // functions/index.js
+
+    // --- 寄送確認 Email (HTML 格式版) ---
+    const mailTransport = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+    });
+
+    // ✓ 1. 將成功上傳的檔案列表轉換為 HTML 的超連結格式
+    const matchedText = successfulUploads.length > 0 
+      ? successfulUploads.map(file => `<li><a href="${file.url}" target="_blank">${file.name}</a></li>`).join('')
+      : '<li>無</li>';
+
+    // ✓ 2. 將不符合的檔案列表轉換為純文字列表
+    const mismatchedText = mismatchedFiles.length > 0 
+      ? mismatchedFiles.map(name => `<li>${name}</li>`).join('')
+      : '<li>無</li>';
+    
+    const mismatchedInstruction = mismatchedFiles.length > 0
+      ? `<p style="font-size: 14px; color: #555;">提醒：不符合的檔案請修改檔案名稱與戶別名稱一致，並注意大小寫（例如 A1-02、A3-15）。</p>`
+      : '';
+
+    const recipients = `${email}, amor41123@gmail.com`;
+
+    // ✓ 3. 建立完整的 HTML 信件內容
+    const emailBodyHtml = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2 style="color: #333;">驗屋報告上傳紀錄</h2>
+        <p>以下是您的上傳紀錄：</p>
+        
+        <h3 style="color: #28a745;">符合 (${successfulUploads.length} 筆):</h3>
+        <ul style="padding-left: 20px;">${matchedText}</ul>
+        
+        <h3 style="color: #dc3545;">不符合 (${mismatchedFiles.length} 筆):</h3>
+        <ul style="padding-left: 20px;">${mismatchedText}</ul>
+        
+        ${mismatchedInstruction}
+        
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"${senderName}" <${process.env.SENDER_EMAIL}>`,
+      to: recipients,
+      subject: `【系統通知】${projectName} 驗屋報告上傳紀錄(致茂)`, // 加上前綴更清晰
+      // ✓ 4. 將信件內容從 'text' 改為 'html'
+      html: emailBodyHtml 
+    };
+
+    await mailTransport.sendMail(mailOptions);
+    console.log(`[${functionName}] Confirmation HTML email sent to [${recipients}].`);
+    return { status: "success", message: "檔案上傳成功，確認信已寄出。" };
+
+  } catch (error) {
+    console.error(`[${functionName}] FAILED:`, error);
+    // ✓ 檢查是否為認證錯誤，提供更明確的提示
+    if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+        throw new HttpsError("unauthenticated", `Google Drive 認證失敗，可能是 Refresh Token 已過期或失效，請重新執行步驟二以取得新的 Token。`);
+    }
+    throw new HttpsError("internal", `處理上傳時發生錯誤: ${error.message}`);
+  }
+});

@@ -3577,3 +3577,21 @@ export async function fetchAvailableFields(targetCollection, projectId) {
   }
 }
 // ✅ END: 新增獲取集合欄位的 API
+
+// ✅ START: 新增特殊報告上傳 API
+/**
+ * [新] 呼叫後端，執行特殊驗屋報告的上傳與郵件通知
+ * @param {object} payload - 包含所有必要資訊的物件
+ * @returns {Promise<object>}
+ */
+export async function triggerSpecialReportUpload(payload) {
+  try {
+    const upload = httpsCallable(functions, 'handleSpecialReportUpload');
+    const result = await upload(payload);
+    return result.data;
+  } catch (error) {
+    console.error("觸發特殊報告上傳時發生錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+// ✅ END: 新增特殊報告上傳 API
