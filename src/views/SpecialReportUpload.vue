@@ -35,6 +35,19 @@
           <v-divider></v-divider>
 
            <v-card-text>
+
+            <v-alert
+              variant="tonal"
+              color="error"
+              icon="mdi-information-outline"
+              density="compact"
+              class="mb-6"
+            >
+              <p class="text-subtitle-2 font-weight-bold">上傳提醒</p>
+              <p class="text-body-2">
+                檔案名稱需與戶別名稱一致（例如 A1-02），並請注意英文字母大小寫需完全相符。
+              </p>
+            </v-alert>
            
           <label for="file-upload-input">
               <div
