@@ -202,15 +202,14 @@
                     <p class="text-h6 my-4">戶別平面圖測量</p>
                     <p class="text-grey-darken-2 mb-6">
                       此戶別已設定 SVG 平面圖。<br>
-                      點擊下方按鈕以在新頁面中開啟測量工具。
+                      點擊下方按鈕以開啟測量工具。
                     </p>
                     <v-btn
-                      v-if="unitData && unitData.unitId && projectName"
+                      v-if="unitData && unitData.unitId && projectId"
                       color="blue-darken-2"
                       variant="flat"
                       size="large"
-                      :to="`/sizing-tool/${projectName}/${unitData.unitId}`"
-                      target="_blank" 
+                      @click="openSizingTool"
                       elevation="4"
                       prepend-icon="mdi-launch"
                     >
@@ -324,8 +323,7 @@
         color="blue-darken-2"
         variant="flat"
         elevation="4"
-        :to="`/sizing-tool/${projectName}/${unitData.unitId}`"
-        target="_blank"
+        @click="openSizingTool"
       >
         <v-icon left>mdi-ruler-square-compass</v-icon>
         開啟測量工具
@@ -333,11 +331,25 @@
       </v-card>
   </v-dialog>
   
+  <v-dialog
+    v-model="sizingToolDialog"
+    fullscreen
+    hide-overlay
+    transition="dialog-bottom-transition"
+  >
+    <FloorplanSizingTool
+      v-if="sizingToolDialog && projectId && unitData"
+      :project-id="projectId"
+      :unit-id="unitData.unitId"
+      @close="sizingToolDialog = false"
+    />
+  </v-dialog>
+  
 </template>
 
 <script setup>
-// ✅ 移除 FloorplanSizing 的 import
-import { useRouter } from 'vue-router'; 
+import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue'; 
+import { useProjectStore } from '@/store/projectStore';
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
@@ -347,7 +359,6 @@ import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
 
-// ... (所有 props, emits, computed, methods 等邏輯維持不變) ...
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
@@ -395,7 +406,6 @@ async function handleConfirmCancelPurchase() {
   }
 }
 
-const router = useRouter();
 const { mobile: isMobile } = useDisplay();
 const quoteStore = useQuoteStore();
 
@@ -407,6 +417,10 @@ const props = defineProps({
   projectName: { type: String, required: true }, 
 });
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
+
+const sizingToolDialog = ref(false);
+const projectStore = useProjectStore();
+const projectId = computed(() => projectStore.nameToIdMap[props.projectName]);
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
@@ -440,8 +454,6 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
 const paymentSettingsDialog = ref(false);
-// ✅ 移除 sizingToolDialog
-// const sizingToolDialog = ref(false); 
 
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.price_list_house_total;
@@ -619,11 +631,20 @@ const openFullscreenViewer = () => {
   }
 };
 
+const openSizingTool = () => {
+  if (fullscreenViewerDialog.value) {
+    fullscreenViewerDialog.value = false;
+  }
+  sizingToolDialog.value = true;
+};
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
       tab.value = 'info';
       currentImageIndex.value = 0; 
       if (isEditing.value) cancelEditing();
+  } else {
+      sizingToolDialog.value = false;
   }
 });
 
@@ -766,17 +787,14 @@ function formatAddress(data, type) {
   font-weight: 600;
   color: #1a3a6e;
 }
-/*  START: 新增樣式 */
 .base-price-item, .premium-price-item {
   border-top: 1px solid #eee;
   margin-top: 4px;
   padding-top: 4px;
 }
-/*  END: 新增樣式 */
 
 
 
-/*  START: 新增圖片瀏覽器樣式 */
 .image-viewer-container {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -790,7 +808,7 @@ function formatAddress(data, type) {
 
 .main-image {
   width: 100%;
-  height: 45vh; /* 給定一個相對視窗的高度 */
+  height: 45vh; 
   min-height: 300px;
 }
 
@@ -799,8 +817,7 @@ function formatAddress(data, type) {
   padding: 8px;
 }
 
-thumbnail-image {
-  /* ✅ 將寬度從 120px 修改為 90px */
+.thumbnail-image {
   width: 90px;
   margin: 0 4px;
   border: 2px solid transparent;
@@ -810,15 +827,13 @@ thumbnail-image {
 }
 
 .thumbnail-image:hover {
-  border-color: #90caf9; /* Vuetify blue lighten-2 */
+  border-color: #90caf9;
 }
 
 .thumbnail-active {
-  border-color: #1976D2; /* Vuetify primary blue */
+  border-color: #1976D2;
 }
-/*  END: 新增圖片瀏覽器樣式 */
 
-/* ✅ 新增這個容器樣式 */
 .fullscreen-image-container {
   display: flex;
   justify-content: center;
@@ -829,7 +844,6 @@ thumbnail-image {
   box-sizing: border-box;
 }
 
-/* ✅ 修改 fullscreen-image 樣式 */
 .fullscreen-image {
   width: 100%;
   max-width: 100%;
@@ -844,10 +858,9 @@ thumbnail-image {
   right: 16px;
   background-color: rgba(0, 0, 0, 0.4) !important;
   color: white !important;
-  z-index: 10; /* 確保按鈕在最上層 */
+  z-index: 10;
 }
 
-/* ✅ START: 使用全新的圖片瀏覽器樣式 */
 .carousel-viewer-container {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -856,7 +869,7 @@ thumbnail-image {
 }
 
 .main-carousel-image {
-  height: 40vh; /* 主圖高度 */
+  height: 40vh; 
   min-height: 250px;
   background-color: #212121;
 }
@@ -865,10 +878,9 @@ thumbnail-image {
   display: flex;
   overflow-x: auto;
   padding: 8px;
-  gap: 8px; /* 縮圖之間的間距 */
+  gap: 8px;
 }
 
-/* 讓捲動條更好看 (可選) */
 .small-thumbnails-strip::-webkit-scrollbar {
   height: 6px;
 }
@@ -878,15 +890,14 @@ thumbnail-image {
 }
 
 .small-thumbnail-wrapper {
-  /* ✅ 這裡控制小縮圖的大小 */
   width: 80px; 
-  height: 45px; /* 維持 16:9 比例 */
-  flex-shrink: 0; /* 避免縮圖被壓縮 */
+  height: 45px; 
+  flex-shrink: 0; 
   border: 2px solid transparent;
   border-radius: 4px;
   cursor: pointer;
   transition: border-color 0.2s ease-in-out;
-  overflow: hidden; /* 確保圖片圓角 */
+  overflow: hidden; 
 }
 
 .small-thumbnail-wrapper:hover {
@@ -897,7 +908,6 @@ thumbnail-image {
   border-color: #1976D2;
 }
 
-/* 輪播圖左右按鈕的樣式 (與之前相同) */
 .image-nav-btn {
   position: absolute;
   top: 50%;
@@ -911,9 +921,7 @@ thumbnail-image {
 .image-nav-btn.next {
   right: 16px;
 }
-/* ✅ END: 樣式取代結束 */
 
-/* ✅ START: 新增價格區塊樣式 */
 .price-block {
   padding: 12px;
   text-align: center;
@@ -945,7 +953,5 @@ thumbnail-image {
   font-size: 0.9rem;
   color: #757575;
 }
-/* ✅ END: 新增樣式結束 */
-
 
 </style>

@@ -75,18 +75,19 @@
 <script setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { fabric } from 'fabric';
-// ✅ START: 引入路由功能和新的 API
-import { useRoute, useRouter } from 'vue-router';
+// ✅ START: 移除路由功能，引入 API
+// import { useRoute, useRouter } from 'vue-router'; // 移除
 import { getHouseholdByUnitId, getSvgBySvgName } from '@/api';
-// ✅ END: 引入
+// ✅ END: 移除
 
 // --- State and Refs ---
-// ✅ START: 移除 props，改用 route 來取得參數
-const route = useRoute();
-const router = useRouter();
-const projectId = ref(null);
-const unitId = ref(null);
-// ✅ END: 移除 props
+// ✅ START: 移除 route 相關變數，改用 defineProps 和 defineEmits
+const props = defineProps({
+  projectId: { type: String, required: true },
+  unitId: { type: String, required: true },
+});
+const emit = defineEmits(['close']);
+// ✅ END
 
 const isLoading = ref(true);
 const svgUrl = ref(null);
@@ -132,7 +133,7 @@ watch([isLoading, svgUrl], ([loading, url]) => {
     }
 });
 
-// ✅ START: 新的資料載入邏輯
+// ✅ START: 修改後的資料載入邏輯
 async function fetchSvgContent() {
   isLoading.value = true;
   error.value = null;
@@ -140,13 +141,11 @@ async function fetchSvgContent() {
   isCalibrated.value = false;
 
   try {
-    const pId = route.params.projectId;
-    const uId = route.params.unitId;
+    // ✅ 使用 props 替代 route.params
+    const pId = props.projectId;
+    const uId = props.unitId;
 
     if (!pId || !uId) throw new Error("缺少專案或戶別 ID。");
-    
-    projectId.value = pId;
-    unitId.value = uId;
 
     const householdData = await getHouseholdByUnitId(pId, uId);
     if (!householdData) throw new Error(`在資料庫中找不到戶別 ${uId} 的資料。`);
@@ -168,9 +167,9 @@ async function fetchSvgContent() {
     isLoading.value = false;
   }
 }
-// ✅ END: 新的資料載入邏輯
+// ✅ END
 
-// --- Fabric.js and Measurement Logic (您原有的成熟邏輯，保持不變) ---
+// --- Fabric.js and Measurement Logic (維持不變) ---
 function initializeFabric(imageUrl) {
     if (!canvasContainer.value) return;
     fabricCanvas = new fabric.Canvas(canvasEl.value);
@@ -437,14 +436,14 @@ function clearMeasurements() {
     }
 }
 
-// ✅ 新增 goBack 方法
+// ✅ START: 修改 goBack 方法
 const goBack = () => {
-  router.back();
+  emit('close'); // 觸發 close 事件，通知父元件關閉 Dialog
 };
+// ✅ END
 
 // --- Lifecycle Hooks ---
 onMounted(() => {
-    // ✅ 在元件掛載時，直接觸發新的資料載入函式
     fetchSvgContent();
 
     if (canvasContainer.value) {
@@ -462,12 +461,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* ✅ 調整樣式以適應全頁面佈局 */
 .floorplan-sizing-wrapper { 
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100vh;
+  /* ✅ height: 100vh 改為 100%，以適應 Dialog 容器 */
+  height: 100%;
   background-color: #f0f2f5;
 }
 .loading-container, .error-container { 
@@ -502,7 +501,8 @@ onBeforeUnmount(() => {
   text-align: center; 
   font-size: 14px; 
   position: absolute; 
-  top: 50px; /* 根據 toolbar 高度微調 */
+  /* ✅ top: 50px; 調整為 toolbar 的高度 */
+  top: 48px;
   left: 50%; 
   transform: translateX(-50%); 
   border-radius: 4px; 
