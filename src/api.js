@@ -3201,17 +3201,47 @@ export const listenToSalesImages = (projectId, onDataChange, onError) => {
   return unsubscribe;
 };
 
+
+// ✅ START: 修改圖片上傳邏輯
 /**
- * 上傳銷控圖片檔案至 Firebase Storage
- * @param {string} storagePath - 在 Storage 中的完整儲存路徑
- * @param {File} file - 要上傳的檔案物件
- * @returns {Promise<string>} - 返回檔案的下載 URL
+ * [舊] 直接上傳檔案 (現在改為備用或移除)
  */
-export const uploadSalesImage = async (storagePath, file) => {
+export const uploadSalesImage_direct = async (storagePath, file) => {
   const imageRef = ref(storage, storagePath);
   await uploadBytes(imageRef, file);
   return getDownloadURL(imageRef);
 };
+
+/**
+ * [新] 透過 Cloud Function 代理上傳銷控圖片檔案
+ * @param {string} storagePath - 在 Storage 中的完整儲存路徑
+ * @param {string} fileName - 原始檔案名稱
+ * @param {string} fileBase64 - 檔案的 Base64 內容 (不含 data:image/... 前綴)
+ * @param {string} projectId - 當前專案 ID
+ * @returns {Promise<object>} - 返回包含 downloadURL 和 storagePath 的物件
+ */
+export const uploadSalesImage = async (storagePath, fileName, fileBase64, projectId) => {
+  try {
+    const uploader = httpsCallable(functions, 'handleSalesImageUpload');
+    const result = await uploader({
+      projectId,
+      fileName,
+      fileBase64,
+      storagePath,
+    });
+    
+    if (result.data.status === 'success') {
+      return result.data; // 回傳 { downloadURL, storagePath }
+    } else {
+      throw new Error(result.data.message || 'Cloud Function 回報錯誤');
+    }
+  } catch (error) {
+    console.error("呼叫 handleSalesImageUpload 雲端函式時發生錯誤:", error);
+    // 將錯誤包裝成與前端期望的格式一致
+    throw new Error(error.message || "代理上傳失敗");
+  }
+};
+// ✅ END: 修改圖片上傳邏輯
 
 /**
  * 在 Firestore 中建立或更新銷控圖片的中繼資料
@@ -3226,22 +3256,27 @@ export const setSalesImageMetadata = async (docId, metadata) => {
 };
 
 /**
- * 刪除一張銷控圖片 (包含 Storage 檔案和 Firestore 記錄)
+ * [新] 透過 Cloud Function 代理刪除一張銷控圖片 (包含 Storage 檔案和 Firestore 記錄)
  * @param {string} docId - Firestore 的文件 ID
  * @param {string} storagePath - Storage 中的檔案完整路徑
  * @returns {Promise<void>}
  */
 export const deleteSalesImage = async (docId, storagePath) => {
-  if (!storagePath) {
-    throw new Error('缺少 storagePath，無法刪除 Storage 中的檔案。');
+  if (!docId || !storagePath) {
+    throw new Error('缺少 docId 或 storagePath，無法刪除圖片。');
   }
-  // 1. 刪除 Storage 中的檔案
-  const imageRef = ref(storage, storagePath);
-  await deleteObject(imageRef);
+  
+  try {
+    const deleter = httpsCallable(functions, 'handleSalesImageDelete');
+    const result = await deleter({ docId, storagePath });
 
-  // 2. 刪除 Firestore 中的文件
-  const docRef = doc(db, "salesImages", docId);
-  await deleteDoc(docRef);
+    if (result.data.status !== 'success') {
+      throw new Error(result.data.message || 'Cloud Function 回報刪除錯誤');
+    }
+  } catch (error) {
+    console.error("呼叫 handleSalesImageDelete 雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "代理刪除失敗");
+  }
 };
 
 //  START: 新增 checkInToSystem API 函式
@@ -3595,3 +3630,189 @@ export async function triggerSpecialReportUpload(payload) {
   }
 }
 // ✅ END: 新增特殊報告上傳 API
+
+
+// =================================================================
+// / ✅ 【新增】銷控 SVG 圖片管理 API
+// =================================================================
+
+/**
+ * [新] 透過 Cloud Function 代理上傳銷控 SVG 檔案
+ * @param {string} storagePath - 在 Storage 中的完整儲存路徑
+ * @param {string} fileName - 原始檔案名稱
+ * @param {string} fileBase64 - 檔案的 Base64 內容
+ * @param {string} projectId - 當前專案 ID
+ * @returns {Promise<object>} - 返回包含 downloadURL 和 storagePath 的物件
+ */
+export const uploadSalesSvgViaFunction = async (storagePath, fileName, fileBase64, projectId) => {
+  try {
+    // 注意：我們將在下一步為 SVG 建立一個專用的 Cloud Function
+    const uploader = httpsCallable(functions, 'handleSalesSvgUpload');
+    const result = await uploader({
+      projectId,
+      fileName,
+      fileBase64,
+      storagePath,
+    });
+    
+    if (result.data.status === 'success') {
+      return result.data; // 回傳 { downloadURL, storagePath }
+    } else {
+      throw new Error(result.data.message || 'Cloud Function 回報 SVG 上傳錯誤');
+    }
+  } catch (error) {
+    console.error("呼叫 SVG 上傳雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "代理上傳 SVG 失敗");
+  }
+};
+
+/**
+ * [新] 在 Firestore 中建立 SVG 的中繼資料
+ * @param {string} docId - 文件 ID (格式: projectId_svgName)
+ * @param {object} metadata - 要儲存的 SVG 資料 (包含 building, svgName 等)
+ * @returns {Promise<void>}
+ */
+export const setSalesSvgMetadata = async (docId, metadata) => {
+  const docRef = doc(db, "salesSVGs", docId);
+  await setDoc(docRef, metadata, { merge: true });
+};
+
+/**
+ * [新] 透過 Cloud Function 代理刪除一個 SVG (包含 Storage 檔案和 Firestore 記錄)
+ * @param {string} docId - Firestore 的文件 ID
+ * @param {string} storagePath - Storage 中的檔案完整路徑
+ * @returns {Promise<void>}
+ */
+export const deleteSalesSvgViaFunction = async (docId, storagePath) => {
+    if (!docId || !storagePath) {
+        throw new Error('缺少 docId 或 storagePath，無法刪除 SVG。');
+    }
+    try {
+        // 注意：我們將在下一步為 SVG 建立一個專用的刪除 Cloud Function
+        const deleter = httpsCallable(functions, 'handleSalesSvgDelete');
+        const result = await deleter({ docId, storagePath });
+        if (result.data.status !== 'success') {
+            throw new Error(result.data.message || 'Cloud Function 回報 SVG 刪除錯誤');
+        }
+    } catch (error) {
+        console.error("呼叫 SVG 刪除雲端函式時發生錯誤:", error);
+        throw new Error(error.message || "代理刪除 SVG 失敗");
+    }
+};
+
+/**
+ * [新] 獲取指定專案所有不重複的 SVG 棟別列表
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<Array<string>>} - 返回棟別字串陣列
+ */
+export async function getUniqueSvgBuildings(projectId) {
+  const svgRef = collection(db, "salesSVGs");
+  const q = query(svgRef, where("projectId", "==", projectId));
+  const snapshot = await getDocs(q);
+  
+  const buildings = new Set();
+  snapshot.forEach(doc => {
+    if (doc.data().building) {
+      buildings.add(doc.data().building);
+    }
+  });
+  
+  return Array.from(buildings).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+}
+
+/**
+ * [新] 即時監聽指定專案和棟別的 SVG 資料
+ * @param {string} projectId - 專案 ID
+ * @param {string} building - 棟別名稱
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToSvgsByBuilding = (projectId, building, onDataChange) => {
+  const q = query(
+    collection(db, "salesSVGs"),
+    where("projectId", "==", projectId),
+    where("building", "==", building),
+    orderBy("svgName", "asc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const svgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    onDataChange(svgs);
+  }, (error) => {
+    console.error(`監聽 SVG 時發生錯誤 (Building: ${building}):`, error);
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * [新] 透過 Cloud Function 代理批次刪除多個 SVG
+ * @param {Array<object>} svgsToDelete - 要刪除的 SVG 物件陣列, e.g., [{ docId, storagePath }]
+ * @returns {Promise<object>} - 返回 Cloud Function 的執行結果
+ */
+export const batchDeleteSalesSvgsViaFunction = async (svgsToDelete) => {
+  if (!Array.isArray(svgsToDelete) || svgsToDelete.length === 0) {
+    // 如果沒有傳入檔案，直接回傳成功，避免不必要的後端呼叫
+    return { status: "success", message: "沒有需要刪除的檔案。" };
+  }
+  try {
+    const batchDeleter = httpsCallable(functions, 'handleSalesSvgBatchDelete');
+    const result = await batchDeleter({ svgsToDelete });
+    // 直接回傳後端的完整結果，讓前端可以根據 status 決定提示訊息
+    return result.data; 
+  } catch (error) {
+    console.error("呼叫 SVG 批次刪除雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "代理批次刪除 SVG 失敗");
+  }
+};
+
+/**
+ * [新] 根據戶別 ID 獲取單一戶別的詳細資料
+ * @param {string} projectId - 專案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object|null>} - 返回戶別資料或 null
+ */
+export async function getHouseholdByUnitId(projectId, unitId) {
+  const householdsRef = collection(db, "salesHouseholds");
+  const q = query(
+    householdsRef,
+    where("projectId", "==", projectId),
+    where("unitId", "==", unitId),
+    limit(1)
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) {
+    return null;
+  }
+  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+}
+
+/**
+ * [新] 根據 SVG 名稱獲取單一 SVG 的詳細資料
+ * @param {string} projectId - 專案 ID
+ * @param {string} svgName - SVG 名稱 (例如 "A-10")
+ * @returns {Promise<object|null>} - 返回 SVG 資料或 null
+ */
+export async function getSvgBySvgName(projectId, svgName) {
+  const docId = `${projectId}_${svgName}`;
+  const docRef = doc(db, "salesSVGs", docId);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() };
+  } else {
+    // 如果用 docId 找不到，可能是舊資料，用查詢的方式再試一次
+    const svgsRef = collection(db, "salesSVGs");
+    const q = query(
+      svgsRef,
+      where("projectId", "==", projectId),
+      where("svgName", "==", svgName),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      return null;
+    }
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  }
+}

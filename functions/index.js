@@ -1952,3 +1952,241 @@ exports.handleSpecialReportUpload = onCall({
     throw new HttpsError("internal", `處理上傳時發生錯誤: ${error.message}`);
   }
 });
+
+
+exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
+  const { projectId, fileName, fileBase64, storagePath } = request.data;
+  const functionName = `handleSalesImageUpload (Project: ${projectId})`;
+
+  if (!projectId || !fileName || !fileBase64 || !storagePath) {
+    throw new HttpsError("invalid-argument", "缺少上傳所需的參數。");
+  }
+
+  try {
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(storagePath);
+
+    // 將 Base64 轉為 Buffer
+    const buffer = Buffer.from(fileBase64, 'base64');
+    
+    // 使用 stream 的方式上傳
+    const stream = Readable.from(buffer);
+    await new Promise((resolve, reject) => {
+        stream.pipe(file.createWriteStream({
+            metadata: {
+                contentType: 'image/png', // 您可以根據檔案類型動態設定
+            },
+            resumable: false
+        }))
+        .on('error', (err) => reject(err))
+        .on('finish', () => resolve());
+    });
+
+
+    // 讓檔案公開可讀，這樣才能取得 URL
+    await file.makePublic();
+    
+    // 取得公開的 URL
+    const publicUrl = file.publicUrl();
+
+    console.log(`[${functionName}] 檔案成功上傳至: ${publicUrl}`);
+
+    return {
+      status: "success",
+      downloadURL: publicUrl,
+      storagePath: storagePath
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 檔案上傳失敗:`, error);
+    throw new HttpsError("internal", `後端上傳檔案時發生錯誤: ${error.message}`);
+  }
+});
+// ✅ END: 新增代理上傳圖片的 Cloud Function
+
+// ✅ START: 新增代理刪除圖片的 Cloud Function
+exports.handleSalesImageDelete = onCall(async (request) => {
+  const { docId, storagePath } = request.data;
+  const functionName = `handleSalesImageDelete`;
+
+  if (!docId || !storagePath) {
+    throw new HttpsError("invalid-argument", "缺少刪除所需的 docId 或 storagePath 參數。");
+  }
+
+  try {
+    // 1. 從 Storage 刪除檔案
+    const bucket = admin.storage().bucket();
+    await bucket.file(storagePath).delete();
+    console.log(`[${functionName}] 成功從 Storage 刪除檔案: ${storagePath}`);
+
+    // 2. 從 Firestore 刪除紀錄
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    await anxiDb.collection("salesImages").doc(docId).delete();
+    console.log(`[${functionName}] 成功從 Firestore 刪除文件: ${docId}`);
+    
+    return { status: "success", message: "圖片已成功刪除" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 刪除圖片時發生錯誤:`, error);
+    // 如果檔案在 Storage 已不存在，也視為成功，避免前端報錯
+    if (error.code === 404) {
+        console.warn(`[${functionName}] Storage 檔案 (${storagePath}) 不存在，可能已被刪除。繼續刪除 Firestore 文件...`);
+        try {
+            const anxiDb = new Firestore({ databaseId: "anxi-app" });
+            await anxiDb.collection("salesImages").doc(docId).delete();
+            return { status: "success", message: "圖片紀錄已成功刪除" };
+        } catch (dbError) {
+             throw new HttpsError("internal", `刪除 Firestore 文件時發生錯誤: ${dbError.message}`);
+        }
+    }
+    throw new HttpsError("internal", `後端刪除圖片時發生錯誤: ${error.message}`);
+  }
+});
+// ✅ END: 新增代理刪除圖片的 Cloud Function
+
+
+// =================================================================
+// / ✅ 【新增】銷控 SVG 圖片管理代理 Cloud Functions
+// =================================================================
+
+/**
+ * [新] 代理上傳 SVG 檔案到 Firebase Storage
+ */
+exports.handleSalesSvgUpload = onCall({ memory: "1GiB" }, async (request) => {
+  const { projectId, fileName, fileBase64, storagePath } = request.data;
+  const functionName = `handleSalesSvgUpload (Project: ${projectId})`;
+
+  if (!projectId || !fileName || !fileBase64 || !storagePath) {
+    throw new HttpsError("invalid-argument", "缺少 SVG 上傳所需的參數。");
+  }
+
+  try {
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(storagePath);
+
+    const buffer = Buffer.from(fileBase64, 'base64');
+    const stream = Readable.from(buffer);
+    
+    await new Promise((resolve, reject) => {
+        stream.pipe(file.createWriteStream({
+            metadata: {
+                contentType: 'image/svg+xml', // ✅ 指定 SVG 的正確 ContentType
+            },
+            resumable: false
+        }))
+        .on('error', (err) => reject(err))
+        .on('finish', () => resolve());
+    });
+
+    await file.makePublic();
+    const publicUrl = file.publicUrl();
+
+    console.log(`[${functionName}] SVG 檔案成功上傳至: ${publicUrl}`);
+
+    return {
+      status: "success",
+      downloadURL: publicUrl,
+      storagePath: storagePath
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] SVG 檔案上傳失敗:`, error);
+    throw new HttpsError("internal", `後端上傳 SVG 檔案時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [新] 代理刪除 Firestore 中的 SVG 紀錄與 Storage 中的檔案
+ */
+exports.handleSalesSvgDelete = onCall(async (request) => {
+  const { docId, storagePath } = request.data;
+  const functionName = `handleSalesSvgDelete`;
+
+  if (!docId || !storagePath) {
+    throw new HttpsError("invalid-argument", "缺少 SVG 刪除所需的 docId 或 storagePath 參數。");
+  }
+
+  try {
+    const bucket = admin.storage().bucket();
+    await bucket.file(storagePath).delete();
+    console.log(`[${functionName}] 成功從 Storage 刪除 SVG 檔案: ${storagePath}`);
+
+    // ✅ 使用 anxi-app 資料庫實例
+    const anxiDb = new Firestore({ databaseId: "anxi-app" }); 
+    await anxiDb.collection("salesSVGs").doc(docId).delete();
+    console.log(`[${functionName}] 成功從 Firestore 刪除 SVG 文件: ${docId}`);
+    
+    return { status: "success", message: "SVG 圖片已成功刪除" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 刪除 SVG 時發生錯誤:`, error);
+    if (error.code === 404) {
+        console.warn(`[${functionName}] Storage SVG 檔案 (${storagePath}) 不存在，繼續刪除 Firestore 文件...`);
+        try {
+            const anxiDb = new Firestore({ databaseId: "anxi-app" });
+            await anxiDb.collection("salesSVGs").doc(docId).delete();
+            return { status: "success", message: "SVG 紀錄已成功刪除" };
+        } catch (dbError) {
+             throw new HttpsError("internal", `刪除 Firestore SVG 文件時發生錯誤: ${dbError.message}`);
+        }
+    }
+    throw new HttpsError("internal", `後端刪除 SVG 時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [新] 代理批次刪除多個 SVG 檔案與 Firestore 紀錄
+ */
+exports.handleSalesSvgBatchDelete = onCall(async (request) => {
+  const { svgsToDelete } = request.data; // 接收一個包含 {docId, storagePath} 的陣列
+  const functionName = `handleSalesSvgBatchDelete`;
+
+  if (!Array.isArray(svgsToDelete) || svgsToDelete.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少有效的 SVG 檔案列表。");
+  }
+
+  console.log(`[${functionName}] 準備刪除 ${svgsToDelete.length} 個 SVG 檔案...`);
+
+  const bucket = admin.storage().bucket();
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const errors = [];
+
+  // 使用 Promise.allSettled 來確保所有刪除操作都會被嘗試，即使其中有幾個失敗
+  const deletePromises = svgsToDelete.map(async (svg) => {
+    try {
+      // 1. 刪除 Storage 中的檔案
+      await bucket.file(svg.storagePath).delete();
+      // 2. 刪除 Firestore 中的文件
+      await anxiDb.collection("salesSVGs").doc(svg.docId).delete();
+    } catch (error) {
+      // 如果檔案不存在 (404)，我們視為可接受的錯誤，不回報給前端
+      if (error.code !== 404) {
+        console.error(`[${functionName}] 刪除檔案 ${svg.docId} (${svg.storagePath}) 失敗:`, error);
+        // 記錄失敗的項目
+        errors.push({ docId: svg.docId, error: error.message });
+      } else {
+        // 如果 Storage 檔案不存在，仍然嘗試刪除 Firestore 文件
+        try {
+            await anxiDb.collection("salesSVGs").doc(svg.docId).delete();
+        } catch (dbError) {
+             errors.push({ docId: svg.docId, error: dbError.message });
+        }
+      }
+    }
+  });
+
+  await Promise.allSettled(deletePromises);
+
+  if (errors.length > 0) {
+    console.error(`[${functionName}] 批次刪除完成，但有 ${errors.length} 個錯誤。`);
+    // 即使有部分失敗，我們仍然回傳一個成功的狀態，但在 message 中告知詳情
+    return { 
+      status: "partial_success", 
+      message: `成功刪除 ${svgsToDelete.length - errors.length} 個檔案，但有 ${errors.length} 個檔案刪除失敗。詳情請查看後端日誌。`,
+      errors: errors 
+    };
+  }
+
+  console.log(`[${functionName}] 成功完成所有 ${svgsToDelete.length} 個檔案的刪除。`);
+  return { status: "success", message: `已成功刪除 ${svgsToDelete.length} 個 SVG 檔案。` };
+});

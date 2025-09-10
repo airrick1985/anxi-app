@@ -30,15 +30,15 @@
             <v-divider></v-divider>
             <v-tabs v-model="tab" color="primary" grow :disabled="isEditing">
                 <v-tab value="info">詳細資訊</v-tab>
-                <v-tab value="floorplans" :disabled="!hasFloorplans">平面圖</v-tab>
+                <v-tab value="floorplans" :disabled="!unitData || !unitData.svgName">平面圖</v-tab>
             </v-tabs>
             <v-divider></v-divider>
         </div>
 
         <v-card-text class="main-content">
             <v-window v-model="tab">
-                     <v-window-item value="info">
-            <template v-if="isEditing">
+                <v-window-item value="info">
+                 <template v-if="isEditing">
                 <SalesInfoForm 
                     v-if="editingData"
                     v-model="editingData"
@@ -196,30 +196,28 @@
                 <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
             </template>
             </v-window-item>
-        <v-window-item value="floorplans" class="fill-height pa-0">
+         <v-window-item value="floorplans" class="fill-height pa-0">
+                <div class="d-flex flex-column justify-center align-center fill-height text-center pa-4" style="background-color: #eceff1;">
+                    <v-icon size="64" color="grey-darken-1">mdi-ruler-square-compass</v-icon>
+                    <p class="text-h6 my-4">戶別平面圖測量</p>
+                    <p class="text-grey-darken-2 mb-6">
+                      此戶別已設定 SVG 平面圖。<br>
+                      點擊下方按鈕以在新頁面中開啟測量工具。
+                    </p>
+                    <v-btn
+                      v-if="unitData && unitData.unitId && projectName"
+                      color="blue-darken-2"
+                      variant="flat"
+                      size="large"
+                      :to="`/sizing-tool/${projectName}/${unitData.unitId}`"
+                      target="_blank" 
+                      elevation="4"
+                      prepend-icon="mdi-launch"
+                    >
+                        開啟測量工具
+                    </v-btn>
+                </div>
             </v-window-item>
-
-                <v-window-item value="floorplans" class="fill-height pa-0">
-                    <div v-if="hasFloorplans" class="preview-area-full">
-                        <img v-if="firstPlan.type === 'image'" :src="proxiedFirstImageUrl" class="preview-content" alt="平面圖預覽" />
-                        <a v-if="firstPlan.type === 'pdf'" :href="firstPlan.url" target="_blank" class="pdf-link">在新分頁中打開 PDF: {{ firstPlan.name }}</a>
-                        
-                        <v-btn
-                          color="blue-darken-2"
-                          variant="flat"
-                          @click="openSizingTool"
-                          class="sizing-tool-btn"
-                          elevation="4"
-                        >
-                            <v-icon left>mdi-ruler-square-compass</v-icon>
-                            測量工具
-                        </v-btn>
-                    </div>
-                    <div v-else class="text-center pa-5 text-grey d-flex flex-column justify-center align-center fill-height">
-                        <v-icon size="x-large">mdi-image-off</v-icon>
-                        <p class="mt-2">此戶別尚無平面圖資料</p>
-                    </div>
-                </v-window-item>
             </v-window>
         </v-card-text>
         
@@ -288,32 +286,7 @@
     @request-open-slide="$emit('request-open-slide')"
   />
 
-  <v-dialog
-    v-model="sizingToolDialog"
-    fullscreen
-    hide-overlay
-    transition="dialog-bottom-transition"
-    scrim="false"
-  >
-    <v-card class="d-flex flex-column" style="height:100vh; width:100vw;">
-      <v-toolbar dark color="primary" density="compact">
-         <v-toolbar-title>平面圖測量工具 - {{ unitData ? unitData.unitId : '' }}</v-toolbar-title>
-        <v-spacer></v-spacer>
-        <v-btn icon dark @click="sizingToolDialog = false">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
-      </v-toolbar>
-      <div style="flex-grow: 1; position: relative; height: calc(100vh - 48px);">
-        <FloorplanSizing 
-          v-if="sizingToolDialog"
-          :unit-data="unitData"
-          :project-name="props.projectName"
-        />
-      </div>
-    </v-card>
-  </v-dialog>
-
- <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
+  <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
     <v-card color="black" class="fullscreen-viewer">
       <v-img
         v-if="currentImage"
@@ -344,12 +317,26 @@
         variant="flat"
         @click="fullscreenViewerDialog = false"
       ></v-btn>
-    </v-card>
+
+      <v-btn
+        v-if="unitData && unitData.svgName"
+        class="sizing-tool-btn"
+        color="blue-darken-2"
+        variant="flat"
+        elevation="4"
+        :to="`/sizing-tool/${projectName}/${unitData.unitId}`"
+        target="_blank"
+      >
+        <v-icon left>mdi-ruler-square-compass</v-icon>
+        開啟測量工具
+      </v-btn>
+      </v-card>
   </v-dialog>
   
 </template>
 
 <script setup>
+// ✅ 移除 FloorplanSizing 的 import
 import { useRouter } from 'vue-router'; 
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
@@ -358,20 +345,18 @@ import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
-import FloorplanSizing from './FloorplanSizing.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 
-const userStore = useUserStore();
+// ... (所有 props, emits, computed, methods 等邏輯維持不變) ...
 
+const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const savingText = ref('儲存中，請稍候...');
 
-//  修改：使用 salesStatus_backend
 const isSold = computed(() => {
   return props.unitData && props.unitData.salesStatus_backend;
 });
 
-//  修改：使用 unitId
 const cancelDialogMessage = computed(() => {
   const unitId = props.unitData ? `【${props.unitData.unitId}】` : '';
   return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>此操作將會清除所有相關的銷售、客戶資料，並將車位釋出。<b>此動作無法復原。</b>`;
@@ -390,7 +375,6 @@ async function handleConfirmCancelPurchase() {
   savingText.value = '正在辦理退戶...';
   showCancelDialog.value = false;
   try {
-    //  修改：使用 unitId
     const result = await cancelPurchase(
       props.projectName,
       props.unitData.unitId,
@@ -424,36 +408,25 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
-const currentImageIndex = ref(0); // 追蹤當前顯示的主圖索引
-
+const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
-
-
-// 從傳入的 allData 中安全地取出所有專案圖片
 const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
 
-// 核心邏輯：從所有專案圖片中，篩選出此戶別關聯的圖片
 const householdImages = computed(() => {
-  // 確保 unitData 和 salesImages 陣列存在
   if (!props.unitData?.salesImages?.length || !allProjectImages.value.length) {
     return [];
   }
-  // 建立一個 Map 方便快速查找，效能更佳
   const imageMap = new Map(allProjectImages.value.map(img => [img.imageName, img]));
-  
-  // 根據戶別資料中的圖片名稱陣列，去 Map 中找出完整的圖片物件
   return props.unitData.salesImages
     .map(name => imageMap.get(name))
-    .filter(Boolean); // 過濾掉任何可能找不到的結果
+    .filter(Boolean);
 });
 
-// 根據當前的索引，決定要顯示哪一張主圖
 const currentImage = computed(() => {
   if (householdImages.value.length === 0) return null;
   return householdImages.value[currentImageIndex.value];
 });
 
-// 【注意】這裡的 '合約方式及是否首購' 來源於 allData，其結構可能也需要調整
 const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []);
 const contractTypeOptions = computed(() => {
     return [...new Set(salesOptionsData.value.map(item => item['合約方式']).filter(Boolean))]
@@ -467,9 +440,9 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
 const paymentSettingsDialog = ref(false);
-const sizingToolDialog = ref(false);
+// ✅ 移除 sizingToolDialog
+// const sizingToolDialog = ref(false); 
 
-//  修改：更新價格計算屬性
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.price_list_house_total;
   const area = props.unitData?.area_house_ping;
@@ -497,7 +470,6 @@ const calculatedTransactionUnitPrice = computed(() => {
   return 'N/A';
 });
 
-//  修改：更新 enrichedUnitData 以匹配 salesParkings 結構
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
   const enriched = JSON.parse(JSON.stringify(props.unitData));
@@ -520,53 +492,28 @@ const enrichedUnitData = computed(() => {
     }));
 
   enriched['持有車位'] = assignedParkings;
-
   return enriched;
 });
 
 const assignedParkingLots = computed(() => enrichedUnitData.value?.['持有車位'] || []);
-
 const houseTransactionPrice = computed(() => Number(props.unitData?.price_transaction_house) || 0);
-
 const parkingTotalTransactionPrice = computed(() => {
-  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) {
-    return 0;
-  }
-  return assignedParkingLots.value.reduce((total, parking) => {
-    return total + (Number(parking['車位成交價']) || 0);
-  }, 0);
+  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) return 0;
+  return assignedParkingLots.value.reduce((total, parking) => total + (Number(parking['車位成交價']) || 0), 0);
 });
-
-const grandTotalTransactionPrice = computed(() => {
-  return houseTransactionPrice.value + parkingTotalTransactionPrice.value;
-});
-
-//  START: 新增底價與溢價相關的 Computed Properties
+const grandTotalTransactionPrice = computed(() => houseTransactionPrice.value + parkingTotalTransactionPrice.value);
 const houseFloorPrice = computed(() => Number(props.unitData?.price_floor_house_total) || 0);
-
 const parkingTotalFloorPrice = computed(() => {
-  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) {
-    return 0;
-  }
-  return assignedParkingLots.value.reduce((total, parking) => {
-    return total + (Number(parking['車位底價']) || 0);
-  }, 0);
+  if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) return 0;
+  return assignedParkingLots.value.reduce((total, parking) => total + (Number(parking['車位底價']) || 0), 0);
 });
-
-const totalFloorPrice = computed(() => {
-  return houseFloorPrice.value + parkingTotalFloorPrice.value;
-});
-
+const totalFloorPrice = computed(() => houseFloorPrice.value + parkingTotalFloorPrice.value);
 const pricePremium = computed(() => {
-  // 只有在成交價和底價都有效時才計算
   if (grandTotalTransactionPrice.value > 0 && totalFloorPrice.value > 0) {
     return grandTotalTransactionPrice.value - totalFloorPrice.value;
   }
   return 0;
 });
-//  END: 新增底價與溢價相關的 Computed Properties
-
-
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
 const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
@@ -582,9 +529,7 @@ const buyerInfoOptions = computed(() => {
     return options;
 });
 
-function openSizingTool() {
-  sizingToolDialog.value = true;
-}
+
 
 function openPaymentSettings() {
   paymentSettingsDialog.value = true;
@@ -608,7 +553,6 @@ function startEditing() {
 
   isEditing.value = true;
 }
-
 
 function cancelEditing() {
   isEditing.value = false;
@@ -640,7 +584,6 @@ async function saveChanges() {
   }
 }
 
-const hasFloorplans = computed(() => props.unitData?.floorplans && props.unitData.floorplans.length > 0);
 const canAddToQuote = computed(() => (props.unitData && props.unitData.salesStatus_quote !== '已售'));
 const addToQuoteButtonText = computed(() => '加入報價');
 
@@ -690,22 +633,15 @@ function close() {
 }
 
 function formatNumber(value, frac = 0) {
-  if (value === null || value === undefined || String(value).trim() === '') {
-      return frac > 0 ? (0).toFixed(frac) : '0';
-  }
+  if (value === null || value === undefined || String(value).trim() === '') return frac > 0 ? (0).toFixed(frac) : '0';
   const num = Number(value);
   if (isNaN(num)) return 'N/A';
-  return num.toLocaleString('en-US', {
-      minimumFractionDigits: frac,
-      maximumFractionDigits: frac
-  });
+  return num.toLocaleString('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac });
 }
 
 function formatPercentage(value) {
   const num = parseFloat(value);
-  if (isNaN(num)) {
-      return 'N/A';
-  }
+  if (isNaN(num)) return 'N/A';
   return `${(num * 100).toFixed(2)}%`;
 }
 
@@ -716,9 +652,7 @@ function formatBoolean(value) {
 }
 
 function formatDate(timestamp) {
-  if (!timestamp || typeof timestamp.toDate !== 'function') {
-    return '-';
-  }
+  if (!timestamp || typeof timestamp.toDate !== 'function') return '-';
   try {
     return timestamp.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch (e) {
@@ -737,6 +671,7 @@ function formatAddress(data, type) {
 </script>
 
 <style scoped>
+
 .header-section { flex-shrink: 0; position: relative; z-index: 2; background-color: white; box-shadow: 0 2px 4px -1px rgba(0,0,0,0.2); }
 .header-section .v-card-title { background-color: #1a3a6e; color: white; }
 .main-content { flex-grow: 1; overflow-y: auto; position: relative; }

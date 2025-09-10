@@ -14,8 +14,27 @@
       </v-col>
     </v-row>
     
-    <v-row>
-      <v-col cols="12" md="6">
+        <v-tabs v-model="tab" align-tabs="start" class="mb-4">
+      <v-tab value="settings">
+        <v-icon start>mdi-cog</v-icon>
+        建案設定
+      </v-tab>
+      <v-tab value="parameters">
+        <v-icon start>mdi-palette</v-icon>
+        銷控狀態參數
+      </v-tab>
+      <v-tab value="images">
+        <v-icon start>mdi-image-multiple</v-icon>
+        銷控圖片管理
+      </v-tab>
+      <v-tab value="svgs">
+        <v-icon start>mdi-vector-square</v-icon>
+        SVG 圖片管理
+      </v-tab>
+    </v-tabs>
+
+    <v-window v-model="tab">
+      <v-window-item value="settings">
         <v-card class="pa-4" elevation="2">
           <v-card-title class="text-h5 text-primary">
             建案設定
@@ -106,9 +125,9 @@
             </v-btn>
           </v-form>
         </v-card>
-      </v-col>
+      </v-window-item>
 
-      <v-col cols="12" md="6">
+      <v-window-item value="parameters">
         <v-card class="pa-4" elevation="2">
           <v-card-title class="text-h5 text-teal">
             銷控狀態參數
@@ -154,11 +173,9 @@
             </v-btn>
           </div>
         </v-card>
-      </v-col>
-    </v-row>
+      </v-window-item>
 
-       <v-row>
-      <v-col cols="12">
+      <v-window-item value="images">
         <v-card class="pa-4" elevation="2">
           <v-card-title class="text-h5 text-indigo">
             <v-icon start>mdi-image-multiple</v-icon>
@@ -169,108 +186,108 @@
    
           <v-divider class="my-4"></v-divider>
 
-<v-row>
-  <v-col cols="12" md="5">
-    <v-file-input
-      v-model="stagedFilesModel"
-      label="點擊選擇圖片 (可多選)"
-      variant="outlined"
-      multiple
-      accept="image/png, image/jpeg"
-      prepend-icon="mdi-camera"
-      :loading="isReadingFiles"
-      clearable
-      chips
-    ></v-file-input>
-    <v-btn
-      @click="uploadAllStagedFiles"
-      :loading="isUploading"
-      :disabled="stagedFiles.length === 0"
-      color="indigo"
-      block
-      size="large"
-      prepend-icon="mdi-upload"
-    >
-      上傳 {{ stagedFiles.length }} 個已選檔案
-    </v-btn>
-    <v-alert
-      v-if="uploadErrors.length > 0"
-      type="error"
-      variant="tonal"
-      class="mt-4"
-      density="compact"
-    >
-      <p v-for="(error, i) in uploadErrors" :key="i">{{ error }}</p>
-    </v-alert>
-  </v-col>
+          <v-row>
+            <v-col cols="12" md="5">
+              <v-file-input
+                v-model="stagedFilesModel"
+                label="點擊選擇圖片 (可多選)"
+                variant="outlined"
+                multiple
+                accept="image/png, image/jpeg"
+                prepend-icon="mdi-camera"
+                :loading="isReadingFiles"
+                clearable
+                chips
+              ></v-file-input>
+              <v-btn
+                @click="uploadAllStagedFiles"
+                :loading="isUploading"
+                :disabled="stagedFiles.length === 0"
+                color="indigo"
+                block
+                size="large"
+                prepend-icon="mdi-upload"
+              >
+                上傳 {{ stagedFiles.length }} 個已選檔案
+              </v-btn>
+              <v-alert
+                v-if="uploadErrors.length > 0"
+                type="error"
+                variant="tonal"
+                class="mt-4"
+                density="compact"
+              >
+                <p v-for="(error, i) in uploadErrors" :key="i">{{ error }}</p>
+              </v-alert>
+            </v-col>
 
-  <v-col cols="12" md="7">
-    <v-sheet
-      border
-      rounded="lg"
-      class="pa-4"
-      style="max-height: 400px; overflow-y: auto;"
-      v-if="stagedFiles.length > 0"
-    >
-      <div v-for="(item, index) in stagedFiles" :key="item.id" class="mb-4">
-        <div class="d-flex align-start">
-          <v-avatar rounded="lg" size="80" class="mr-4 elevation-1">
-            <v-img :src="item.previewUrl" cover></v-img>
-          </v-avatar>
-          <div class="flex-grow-1">
-            <v-text-field
-              v-model="item.imageName"
-              label="圖片名稱"
-              variant="outlined"
-              density="compact"
-              hide-details="auto"
-              :disabled="item.useFilename"
-              :rules="[v => !item.useFilename ? !!v || '名稱為必填' : true]"
-            ></v-text-field>
-            <v-checkbox
-              v-model="item.useFilename"
-              label="使用原始檔名作為圖片名稱"
-              density="compact"
-              hide-details
-            ></v-checkbox>
-            <div class="text-caption text-grey mt-1">
-              {{ (item.file.size / 1024).toFixed(1) }} KB | {{ item.width }}x{{ item.height }}px
-            </div>
-            <v-alert
-              v-if="item.error"
-              type="warning"
-              variant="tonal"
-              density="compact"
-              class="mt-2 text-caption"
-            >
-              {{ item.error }}
-            </v-alert>
-          </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            size="small"
-            @click="removeStagedFile(item.id)"
-          ></v-btn>
-        </div>
-        <v-divider v-if="index < stagedFiles.length - 1" class="mt-4"></v-divider>
-      </div>
-    </v-sheet>
-    <v-sheet
-      v-else
-      border
-      rounded="lg"
-      class="pa-4 d-flex justify-center align-center text-center"
-      height="100%"
-      min-height="200"
-    >
-      <div class="text-grey">
-        <v-icon size="48">mdi-image-plus-outline</v-icon>
-        <p>請從左側選擇要上傳的圖片</p>
-      </div>
-    </v-sheet>
-  </v-col>
-</v-row>
+            <v-col cols="12" md="7">
+              <v-sheet
+                border
+                rounded="lg"
+                class="pa-4"
+                style="max-height: 400px; overflow-y: auto;"
+                v-if="stagedFiles.length > 0"
+              >
+                <div v-for="(item, index) in stagedFiles" :key="item.id" class="mb-4">
+                  <div class="d-flex align-start">
+                    <v-avatar rounded="lg" size="80" class="mr-4 elevation-1">
+                      <v-img :src="item.previewUrl" cover></v-img>
+                    </v-avatar>
+                    <div class="flex-grow-1">
+                      <v-text-field
+                        v-model="item.imageName"
+                        label="圖片名稱"
+                        variant="outlined"
+                        density="compact"
+                        hide-details="auto"
+                        :disabled="item.useFilename"
+                        :rules="[v => !item.useFilename ? !!v || '名稱為必填' : true]"
+                      ></v-text-field>
+                      <v-checkbox
+                        v-model="item.useFilename"
+                        label="使用原始檔名作為圖片名稱"
+                        density="compact"
+                        hide-details
+                      ></v-checkbox>
+                      <div class="text-caption text-grey mt-1">
+                        {{ (item.file.size / 1024).toFixed(1) }} KB | {{ item.width }}x{{ item.height }}px
+                      </div>
+                      <v-alert
+                        v-if="item.error"
+                        type="warning"
+                        variant="tonal"
+                        density="compact"
+                        class="mt-2 text-caption"
+                      >
+                        {{ item.error }}
+                      </v-alert>
+                    </div>
+                    <v-btn
+                      icon="mdi-close"
+                      variant="text"
+                      size="small"
+                      @click="removeStagedFile(item.id)"
+                    ></v-btn>
+                  </div>
+                  <v-divider v-if="index < stagedFiles.length - 1" class="mt-4"></v-divider>
+                </div>
+              </v-sheet>
+              <v-sheet
+                v-else
+                border
+                rounded="lg"
+                class="pa-4 d-flex justify-center align-center text-center"
+                height="100%"
+                min-height="200"
+              >
+                <div class="text-grey">
+                  <v-icon size="48">mdi-image-plus-outline</v-icon>
+                  <p>請從左側選擇要上傳的圖片</p>
+                </div>
+              </v-sheet>
+            </v-col>
+          </v-row>
 
           <v-divider class="my-4"></v-divider>
           <h3 class="text-subtitle-1 mb-2">已上傳圖片列表</h3>
@@ -286,13 +303,13 @@
               >
                 <template v-slot:prepend>
                 <v-avatar
-                  rounded="lg"
-                  size="64"
-                  class="mr-4 elevation-1"
-                  @click="openImageViewer(image)"
-                  style="cursor: pointer;"
-                >
-                  <v-img :src="image.downloadURL" cover>
+                    rounded="lg"
+                    size="64"
+                    class="mr-4 elevation-1"
+                    @click="openImageViewer(image)"
+                    style="cursor: pointer;"
+                  >
+                    <v-img :src="`${image.downloadURL}?t=${image.updatedAt?.seconds}`" cover>
                     </v-img>
                 </v-avatar>
               </template>
@@ -343,13 +360,231 @@
             accept="image/png, image/jpeg"
             style="display: none"
           />
+        </v-card>
+      </v-window-item>
+ <v-window-item value="svgs">
+        <v-card class="pa-4" elevation="2">
+          <v-card-title class="text-h5 text-deep-purple">
+            <v-icon start>mdi-vector-square</v-icon>
+            SVG 圖片管理 (戶別平面圖)
+          </v-card-title>
+          <v-card-subtitle>上傳並管理用於銷控系統的 SVG 向量圖檔</v-card-subtitle>
+   
+          <v-divider class="my-4"></v-divider>
+          
+          <v-row>
+            <v-col cols="12" md="5">
+              <v-file-input
+                v-model="stagedSvgFilesModel"
+                label="點擊選擇 SVG 檔案 (可多選)"
+                variant="outlined"
+                multiple
+                accept="image/svg+xml"
+                prepend-icon="mdi-vector-polygon"
+                :loading="isReadingSvgFiles"
+                clearable
+                chips
+              ></v-file-input>
+              <v-btn
+                @click="uploadAllStagedSvgFiles"
+                :loading="isUploadingSvg"
+                :disabled="stagedSvgFiles.length === 0"
+                color="deep-purple"
+                block
+                size="large"
+                prepend-icon="mdi-upload"
+              >
+                上傳 {{ stagedSvgFiles.length }} 個已選檔案
+              </v-btn>
+              <v-alert
+                v-if="svgUploadErrors.length > 0"
+                type="error"
+                variant="tonal"
+                class="mt-4"
+                density="compact"
+              >
+                <p v-for="(error, i) in svgUploadErrors" :key="i">{{ error }}</p>
+              </v-alert>
+            </v-col>
 
-          </v-card>
-      </v-col>
-      
-    </v-row>
+            <v-col cols="12" md="7">
+              <v-sheet
+                border
+                rounded="lg"
+                class="pa-4"
+                style="max-height: 400px; overflow-y: auto;"
+                v-if="stagedSvgFiles.length > 0"
+              >
+                <div v-for="(item, index) in stagedSvgFiles" :key="item.id" class="mb-4">
+                  <div class="d-flex align-start">
+                    <v-avatar rounded="lg" size="80" class="mr-4 elevation-1 pa-1" color="grey-lighten-3">
+                      <v-img :src="item.previewUrl" contain></v-img>
+                    </v-avatar>
+                    <div class="flex-grow-1">
+                      <v-text-field
+                        v-model="item.svgName"
+                        label="SVG 名稱 (戶別 ID)"
+                        variant="outlined"
+                        density="compact"
+                        class="mb-2"
+                        :rules="[v => !!v || '名稱為必填']"
+                        hint="建議與檔名一致"
+                      ></v-text-field>
+                       <v-text-field
+                        v-model="item.building"
+                        label="棟別 (系統自動建議)"
+                        variant="outlined"
+                        density="compact"
+                        class="mb-2"
+                        :rules="[v => !!v || '棟別為必填']"
+                        hint="可手動修改"
+                      ></v-text-field>
+                    </div>
+                    <v-btn
+                      icon="mdi-close"
+                      variant="text"
+                      size="small"
+                      @click="removeStagedSvgFile(item.id)"
+                    ></v-btn>
+                  </div>
+                  <v-divider v-if="index < stagedSvgFiles.length - 1" class="mt-4"></v-divider>
+                </div>
+              </v-sheet>
+              <v-sheet
+                v-else
+                border
+                rounded="lg"
+                class="pa-4 d-flex justify-center align-center text-center"
+                height="100%"
+                min-height="200"
+              >
+                <div class="text-grey">
+                  <v-icon size="48">mdi-vector-square-plus</v-icon>
+                  <p>請從左側選擇要上傳的 SVG 檔案</p>
+                </div>
+              </v-sheet>
+            </v-col>
+          </v-row>
 
-   <v-dialog v-model="parameterDialog" persistent max-width="500px">
+          <v-divider class="my-4"></v-divider>
+
+          <h3 class="text-subtitle-1 mb-2">已上傳 SVG 列表</h3>
+          
+         <div v-if="!svgBuildingsLoading">
+            <div class="d-flex align-center mb-4 ga-2">
+              <v-text-field
+                v-model="svgSearchQuery"
+                label="搜尋棟別"
+                variant="outlined"
+                density="compact"
+                prepend-inner-icon="mdi-magnify"
+                clearable
+                hide-details
+                class="flex-grow-1"
+              ></v-text-field>
+              <v-btn
+                :disabled="selectedSvgs.length === 0"
+                color="error"
+                variant="tonal"
+                prepend-icon="mdi-delete-sweep"
+                @click="confirmBatchDelete"
+              >
+                刪除已選 ({{ selectedSvgs.length }})
+              </v-btn>
+            </div>
+            <v-expansion-panels v-if="filteredSvgBuildings.length > 0" v-model="expandedBuildingPanel">
+              <v-expansion-panel
+                v-for="building in filteredSvgBuildings"
+                :key="building"
+                :title="`${building} 棟`"
+                :value="building"
+              >
+                <v-expansion-panel-text>
+                  <div v-if="loadedSvgs[building] && loadedSvgs[building].length > 0">
+                    <v-checkbox
+                      :model-value="isAllSelectedInBuilding(building)"
+                      :indeterminate="isIndeterminateInBuilding(building)"
+                      :label="`全選 ${building} 棟`"
+                      @click="toggleSelectAllInBuilding(building)"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    ></v-checkbox>
+                    <v-divider></v-divider>
+                  </div>
+                  <v-list lines="two">
+                    <v-list-item
+                      v-for="svg in loadedSvgs[building]"
+                      :key="svg.id"
+                      class="mb-2"
+                      elevation="1"
+                      border
+                    >
+                      <template v-slot:prepend>
+                        <v-checkbox-btn v-model="selectedSvgs" :value="svg.id" class="mr-n2"></v-checkbox-btn>
+                        <v-avatar rounded="lg" size="64" class="mr-4 ml-2 elevation-1 pa-1" color="grey-lighten-4">
+                            <v-img :src="`${svg.downloadURL}?t=${svg.updatedAt?.seconds}`" contain></v-img>
+                        </v-avatar>
+                      </template>
+                      <v-list-item-title class="font-weight-bold">{{ svg.svgName }}</v-list-item-title>
+                      <v-list-item-subtitle>
+                        檔名: {{ svg.fileName }}
+                      </v-list-item-subtitle>
+                      <template v-slot:append>
+                        <v-btn
+                          icon="mdi-delete"
+                          variant="text"
+                          color="error"
+                          size="small"
+                          title="刪除"
+                          @click="confirmSvgDelete(svg)"
+                        ></v-btn>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+            
+            <v-alert
+              v-else
+              type="info"
+              variant="tonal"
+              border="start"
+              density="compact"
+            >
+              目前尚無 SVG 檔案，請使用上方功能上傳。
+            </v-alert>
+          </div>
+          <v-skeleton-loader v-else type="article"></v-skeleton-loader>
+        </v-card>
+      </v-window-item>
+      </v-window>
+
+    <v-dialog v-model="deleteBatchSvgDialog" persistent max-width="500px">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          確認批次刪除
+        </v-card-title>
+        <v-card-text class="pt-4">
+          您確定要永久刪除已勾選的
+          <strong class="text-red-darken-2 mx-1">{{ selectedSvgs.length }}</strong>
+          個 SVG 檔案嗎？
+          <br><br>
+          此操作將無法復原。
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" text @click="deleteBatchSvgDialog = false">取消</v-btn>
+          <v-btn color="error" text @click="executeBatchDelete" :loading="isDeletingBatchSvg">
+            確認刪除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="parameterDialog" persistent max-width="500px">
   <v-card>
     <v-card-title class="bg-primary text-white">
       <span class="text-h5">{{ editingParameter.id ? '編輯' : '新增' }}銷控狀態</span>
@@ -445,8 +680,6 @@
         {{ snackbar.text }}
     </v-snackbar>
 
-    <!-- 隱藏的 input 用於重新上傳圖片 -->
-
     <v-dialog v-model="deleteImageDialog" persistent max-width="450px">
       <v-card>
         <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
@@ -485,28 +718,22 @@
           </v-btn>
         </v-toolbar>
         <div class="flex-grow-1 d-flex justify-center align-center pa-2" style="background-color: rgba(0,0,0,0.7);">
-          <v-img
-            v-if="viewingImage"
-            :src="viewingImage.downloadURL"
-            contain
-            max-height="calc(90vh - 48px)"
-            max-width="90vw"
-          ></v-img>
-        </div>
+        <v-img
+          v-if="viewingImage"
+          :src="`${viewingImage.downloadURL}?t=${viewingImage.updatedAt?.seconds}`"
+          contain
+          max-height="calc(90vh - 48px)"
+          max-width="90vw"
+        ></v-img>
+      </div>
       </v-card>
     </v-dialog>
-
-    <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="3000">
-        {{ snackbar.text }}
-    </v-snackbar>
-
-    
     
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'; 
+import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import {
@@ -520,6 +747,12 @@ import {
   uploadSalesImage,
   setSalesImageMetadata,
   deleteSalesImage,
+   getUniqueSvgBuildings,
+  listenToSvgsByBuilding,
+  uploadSalesSvgViaFunction,
+  setSalesSvgMetadata,
+  deleteSalesSvgViaFunction,
+  batchDeleteSalesSvgsViaFunction, 
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 
@@ -529,11 +762,15 @@ const router = useRouter();
 const toast = useToast();
 const projectId = ref(route.params.projectId);
 
+// ✅ START: 新增頁籤狀態
+const tab = ref('settings');
+// ✅ END: 新增頁籤狀態
+
 // Project Settings State
 const project = ref(null);
 const projectLoading = ref(true);
 const isSavingProject = ref(false);
-const newContractType = ref(''); //  新增 contract type 輸入框的狀態
+const newContractType = ref('');
 
 
 // Sales Parameters State
@@ -555,32 +792,23 @@ const isDeleting = ref(false);
 // Snackbar State
 const snackbar = ref({ show: false, text: '', color: 'success' });
 
-//  START: 新增圖片管理相關 State
+//  Image Management State
 const salesImages = ref([]);
 const imagesLoading = ref(true);
 let unsubscribeImages = null;
-const filesToUpload = ref([]);
-const uploadQueue = ref([]); // { file, preview, imageName, useFilename, dimensions, progress, isUploading, nameError }
-const isParsingFiles = ref(false);
-const uploadQueueErrors = ref('');
 const deleteImageDialog = ref(false);
 const imageToDelete = ref({});
 const isDeletingImage = ref(false);
-const replaceFileInput = ref(null); // 用於觸發隱藏的 input
-const imageToReplace = ref(null);
-
-// 新增上傳功能需要的所有狀態
-const stagedFilesModel = ref([]); // v-file-input 的 model
-const stagedFiles = ref([]); // 存放處理過、待上傳的檔案
-const isReadingFiles = ref(false); // 正在讀取檔案中的旗標
+const stagedFilesModel = ref([]); 
+const stagedFiles = ref([]); 
+const isReadingFiles = ref(false); 
 const isUploading = ref(false);
-const uploadErrors = ref([]); // 上傳過程中的錯誤訊息
-
-const reuploadInput = ref(null); // 對應到隱藏的 input
-const reuploadTarget = ref(null); // 存放要被覆蓋的圖片物件
-const isReuploading = ref(false); // 重新上傳的 loading 狀態
+const uploadErrors = ref([]); 
+const reuploadInput = ref(null); 
+const reuploadTarget = ref(null); 
+const isReuploading = ref(false); 
 const imageViewerDialog = ref(false);
-const viewingImage = ref(null); // 存放正在檢視的圖片物件
+const viewingImage = ref(null); 
 
 
 // --- Methods ---
@@ -600,7 +828,6 @@ const loadProjectSettings = async () => {
   projectLoading.value = true;
   try {
     project.value = await getProjectSettings(projectId.value);
-    //  初始化或確保 contractTypes 陣列及預設值存在
     if (project.value && (!project.value.contractTypes || !Array.isArray(project.value.contractTypes))) {
       project.value.contractTypes = ['一般合約'];
     } else if (project.value) {
@@ -627,12 +854,11 @@ const saveProjectSettings = async () => {
   }
 };
 
-//  START: 新增合約方式的處理函式
 const addContractType = () => {
   const value = newContractType.value.trim();
   if (value && !project.value.contractTypes.includes(value)) {
     project.value.contractTypes.push(value);
-    newContractType.value = ''; // 清空輸入框
+    newContractType.value = '';
   } else if (value) {
     toast.warning(`「${value}」已存在`);
   }
@@ -645,7 +871,6 @@ const removeContractType = (typeToRemove) => {
   }
   project.value.contractTypes = project.value.contractTypes.filter(t => t !== typeToRemove);
 };
-//  END: 新增合約方式的處理函式
 
 const setupParamsListener = () => {
   paramsLoading.value = true;
@@ -654,16 +879,6 @@ const setupParamsListener = () => {
     if(paramsLoading.value) paramsLoading.value = false;
   });
 };
-
-
-// 新增圖片管理相關 Computed Properties
-const existingImageNames = computed(() => new Set(salesImages.value.map(img => img.imageName)));
-const isQueueValid = computed(() => {
-    if (uploadQueue.value.length === 0) return false;
-    // 檢查是否有檔名錯誤，或正在上傳中
-    return !uploadQueue.value.some(item => item.nameError || item.isUploading);
-});
-// END: 新增圖片管理相關 Computed Properties
 
 const openParameterDialog = () => {
   editingParameter.value = {
@@ -739,11 +954,10 @@ const setupImagesListener = () => {
   );
 };
 
-// 監聽 v-file-input 的變化
 watch(stagedFilesModel, (newFiles) => {
   if (newFiles && newFiles.length > 0) {
     processFiles(newFiles);
-    stagedFilesModel.value = []; // 清空 model 以允許重複選擇相同檔案
+    stagedFilesModel.value = []; 
   }
 });
 
@@ -752,14 +966,13 @@ const processFiles = async (files) => {
   for (const file of files) {
     const { valid, error, width, height } = await validateImage(file);
     
-    // 從檔名中移除副檔名
     const nameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
 
     stagedFiles.value.push({
       id: Date.now() + Math.random(),
       file,
       previewUrl: URL.createObjectURL(file),
-      imageName: nameWithoutExtension, // 預設名稱
+      imageName: nameWithoutExtension, 
       useFilename: false,
       error: valid ? null : error,
       width,
@@ -769,10 +982,9 @@ const processFiles = async (files) => {
   isReadingFiles.value = false;
 };
 
-// 驗證單一圖片的尺寸和大小
 const validateImage = (file) => {
   return new Promise((resolve) => {
-    if (file.size > 2 * 1024 * 1024) { // 2MB
+    if (file.size > 2 * 1024 * 1024) { 
       resolve({ valid: false, error: '檔案大小超過 2MB' });
       return;
     }
@@ -795,11 +1007,13 @@ const validateImage = (file) => {
 const removeStagedFile = (id) => {
   const fileToRemove = stagedFiles.value.find(f => f.id === id);
   if (fileToRemove) {
-    URL.revokeObjectURL(fileToRemove.previewUrl); // 釋放記憶體
+    URL.revokeObjectURL(fileToRemove.previewUrl); 
   }
   stagedFiles.value = stagedFiles.value.filter(f => f.id !== id);
 };
 
+
+// ✅ START: 修改 uploadAllStagedFiles 函式以使用新的上傳方式
 const uploadAllStagedFiles = async () => {
   isUploading.value = true;
   uploadErrors.value = [];
@@ -807,7 +1021,7 @@ const uploadAllStagedFiles = async () => {
   const existingNames = new Set(salesImages.value.map(img => img.imageName));
   const stagedNames = new Set();
   
-  // 前端驗證
+  // 前端驗證 (邏輯不變)
   for (const item of stagedFiles.value) {
     const finalName = item.useFilename ? item.file.name.split('.').slice(0, -1).join('.') : item.imageName;
     if (!finalName) {
@@ -837,13 +1051,23 @@ const uploadAllStagedFiles = async () => {
       const storagePath = `projects/${projectId.value}/salesImages/${item.file.name}`;
       
       toast.info(`正在上傳 ${finalName}...`);
-      const downloadURL = await uploadSalesImage(storagePath, item.file);
+      
+      // 1. 將檔案轉為 Base64
+      const base64 = await fileToBase64(item.file);
+      
+      // 2. 呼叫新的代理上傳 API
+      const { downloadURL } = await uploadSalesImage(
+        storagePath,
+        item.file.name,
+        base64,
+        projectId.value
+      );
 
       const metadata = {
         projectId: projectId.value,
         imageName: finalName,
         fileName: item.file.name,
-        downloadURL,
+        downloadURL, // 使用從 Cloud Function 回傳的 URL
         storagePath,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -858,9 +1082,10 @@ const uploadAllStagedFiles = async () => {
     }
   }
 
-  stagedFiles.value = []; // 清空待上傳區
+  stagedFiles.value = []; 
   isUploading.value = false;
 };
+// ✅ END: 修改 uploadAllStagedFiles
 
 const confirmImageDelete = (image) => {
   imageToDelete.value = image;
@@ -881,44 +1106,49 @@ const executeImageDelete = async () => {
   }
 };
 
-
 const triggerReupload = (image) => {
   reuploadTarget.value = image;
   
-  // 在點擊前，先確認 reuploadInput.value 是否真的存在
   if (reuploadInput.value) {
     reuploadInput.value.click();
   } else {
-    // 如果不存在，就在 console 顯示錯誤，並提示使用者
     console.error('程式無法找到 reuploadInput 元素，請檢查 template 中的 ref 是否正確。');
     toast.error('無法觸發檔案上傳，請刷新頁面後再試一次。');
   }
 };
 
+// ✅ START: 修改 handleReuploadFile 以符合新的代理上傳模式
 const handleReuploadFile = async (event) => {
   const file = event.target.files[0];
   if (!file || !reuploadTarget.value) return;
 
-  isReuploading.value = true; // 可以在此處加上一個全域的 loading 覆蓋層
+  isReuploading.value = true;
   toast.info(`正在驗證並重新上傳 "${reuploadTarget.value.imageName}"...`);
 
-  // 1. 驗證新檔案
   const { valid, error } = await validateImage(file);
   if (!valid) {
     toast.error(`驗證失敗: ${error}`);
     isReuploading.value = false;
-    reuploadInput.value.value = ''; // 清空 input，以便下次觸發
+    reuploadInput.value.value = '';
     return;
   }
 
   try {
-    // 2. 使用原路徑上傳，覆蓋舊檔案
-    const downloadURL = await uploadSalesImage(reuploadTarget.value.storagePath, file);
+    // 1. 將新檔案轉為 Base64
+    const base64 = await fileToBase64(file);
 
-    // 3. 更新 Firestore 中的 metadata
+    // 2. 呼叫新的代理上傳 API，並傳入所有必要參數
+    const { downloadURL } = await uploadSalesImage(
+      reuploadTarget.value.storagePath, // 使用舊的儲存路徑來覆蓋檔案
+      file.name,                        // 新的檔案名稱
+      base64,                           // 新檔案的 Base64 內容
+      projectId.value                   // 專案 ID
+    );
+
+    // 3. 更新 Firestore 中的 metadata (這部分邏輯不變)
     const metadataUpdate = {
       downloadURL,
-      fileName: file.name, // 更新為新檔名
+      fileName: file.name,
       updatedAt: serverTimestamp(),
     };
     await setSalesImageMetadata(reuploadTarget.value.id, metadataUpdate);
@@ -929,37 +1159,291 @@ const handleReuploadFile = async (event) => {
     toast.error(`重新上傳失敗: ${err.message}`);
   } finally {
     isReuploading.value = false;
-    reuploadInput.value.value = ''; // 清空 input
+    reuploadInput.value.value = '';
     reuploadTarget.value = null;
   }
 };
+// ✅ END: 修改 handleReuploadFile
 
 const openImageViewer = (image) => {
   viewingImage.value = image;
   imageViewerDialog.value = true;
 };
 
+// ✅ START: SVG 管理功能 State
+const stagedSvgFilesModel = ref([]);
+const stagedSvgFiles = ref([]);
+const isReadingSvgFiles = ref(false);
+const isUploadingSvg = ref(false);
+const svgUploadErrors = ref([]);
+const svgBuildings = ref([]);
+const svgBuildingsLoading = ref(true);
+const svgSearchQuery = ref('');
+const expandedBuildingPanel = ref(null);
+const loadedSvgs = reactive({});
+const svgListeners = reactive({});
+const deleteSvgDialog = ref(false);
+const svgToDelete = ref({});
+const isDeletingSvg = ref(false);
 
+// ✅ 新增批次刪除相關 State
+const selectedSvgs = ref([]); 
+const deleteBatchSvgDialog = ref(false);
+const isDeletingBatchSvg = ref(false);
+// ✅ END: SVG State
 
-// ✅ (函式結束)
+// ✅ START: 新增 SVG 相關的 Computed Property
+const filteredSvgBuildings = computed(() => {
+  if (!svgSearchQuery.value) {
+    return svgBuildings.value;
+  }
+  return svgBuildings.value.filter(b => 
+    b.toLowerCase().includes(svgSearchQuery.value.toLowerCase())
+  );
+});
+// ✅ END: SVG Computed Property
+
+// ✅ START: 新增 SVG 相關的 Methods
+
+// 將 File 物件轉為 Base64
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => {
+    const base64String = reader.result.split(',')[1];
+    resolve(base64String);
+  };
+  reader.onerror = error => reject(error);
+});
+
+// 監聽 v-file-input 的變化
+watch(stagedSvgFilesModel, (newFiles) => {
+  if (newFiles && newFiles.length > 0) {
+    processSvgFiles(newFiles);
+    stagedSvgFilesModel.value = [];
+  }
+});
+
+// 處理待上傳的 SVG 檔案
+const processSvgFiles = async (files) => {
+  isReadingSvgFiles.value = true;
+  for (const file of files) {
+    const nameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
+    
+    stagedSvgFiles.value.push({
+      id: Date.now() + Math.random(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      svgName: nameWithoutExtension,
+      building: guessBuildingFromName(nameWithoutExtension),
+    });
+  }
+  isReadingSvgFiles.value = false;
+};
+
+// 從檔名猜測棟別
+const guessBuildingFromName = (filename) => {
+  const match = filename.match(/^[a-zA-Z0-9]+/);
+  return match ? match[0].toUpperCase() : '';
+};
+
+// 從待上傳列表中移除一個 SVG
+const removeStagedSvgFile = (id) => {
+  const fileToRemove = stagedSvgFiles.value.find(f => f.id === id);
+  if (fileToRemove) {
+    URL.revokeObjectURL(fileToRemove.previewUrl);
+  }
+  stagedSvgFiles.value = stagedSvgFiles.value.filter(f => f.id !== id);
+};
+
+// 上傳所有待上傳的 SVG
+const uploadAllStagedSvgFiles = async () => {
+  isUploadingSvg.value = true;
+  svgUploadErrors.value = [];
+
+  for (const item of stagedSvgFiles.value) {
+    if (!item.svgName || !item.building) {
+      toast.error(`檔案 "${item.file.name}" 的 SVG 名稱或棟別未填寫。`);
+      isUploadingSvg.value = false;
+      return;
+    }
+    
+    try {
+      const docId = `${projectId.value}_${item.svgName}`;
+      const storagePath = `projects/${projectId.value}/salesSvgs/${item.file.name}`;
+      
+      toast.info(`正在上傳 ${item.svgName}...`);
+      
+      const base64 = await fileToBase64(item.file);
+      const { downloadURL } = await uploadSalesSvgViaFunction(storagePath, item.file.name, base64, projectId.value);
+
+      const metadata = {
+        projectId: projectId.value,
+        svgName: item.svgName,
+        building: item.building.toUpperCase(),
+        fileName: item.file.name,
+        downloadURL,
+        storagePath,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await setSalesSvgMetadata(docId, metadata);
+      toast.success(`"${item.svgName}" 上傳成功！`);
+
+    } catch (err) {
+      toast.error(`"${item.svgName}" 上傳失敗: ${err.message}`);
+      svgUploadErrors.value.push(`"${item.svgName}": ${err.message}`);
+    }
+  }
+
+  stagedSvgFiles.value = [];
+  isUploadingSvg.value = false;
+  await loadUniqueBuildings(); // 上傳成功後，重新整理棟別列表
+};
+
+// 載入所有不重複的棟別
+const loadUniqueBuildings = async () => {
+  svgBuildingsLoading.value = true;
+  try {
+    svgBuildings.value = await getUniqueSvgBuildings(projectId.value);
+  } catch (error) {
+    toast.error(`載入棟別列表失敗: ${error.message}`);
+  } finally {
+    svgBuildingsLoading.value = false;
+  }
+};
+
+// 監聽展開面板的變化，動態載入資料
+watch(expandedBuildingPanel, (newBuilding, oldBuilding) => {
+  // 取消監聽舊的面板
+  if (oldBuilding && svgListeners[oldBuilding]) {
+    svgListeners[oldBuilding]();
+    delete svgListeners[oldBuilding];
+  }
+  // 監聽新的面板
+  if (newBuilding && !loadedSvgs[newBuilding]) {
+    const unsubscribe = listenToSvgsByBuilding(projectId.value, newBuilding, (svgs) => {
+      loadedSvgs[newBuilding] = svgs;
+    });
+    svgListeners[newBuilding] = unsubscribe;
+  }
+});
+
+// 開啟刪除確認 Dialog
+const confirmSvgDelete = (svg) => {
+  svgToDelete.value = svg;
+  deleteSvgDialog.value = true;
+};
+
+// 執行刪除
+const executeSvgDelete = async () => {
+  isDeletingSvg.value = true;
+  try {
+    toast.info(`正在刪除 ${svgToDelete.value.svgName}...`);
+    await deleteSalesSvgViaFunction(svgToDelete.value.id, svgToDelete.value.storagePath);
+    toast.success(`SVG "${svgToDelete.value.svgName}" 已成功刪除！`);
+    deleteSvgDialog.value = false;
+    // 如果刪除後該棟別已無任何 SVG，需要重新整理棟別列表
+    const remainingInBuilding = loadedSvgs[svgToDelete.value.building]?.filter(s => s.id !== svgToDelete.value.id);
+    if (remainingInBuilding && remainingInBuilding.length === 0) {
+        await loadUniqueBuildings();
+    }
+  } catch (error) {
+    toast.error(`刪除失敗: ${error.message}`);
+  } finally {
+    isDeletingSvg.value = false;
+  }
+};
+
+// ✅ END: SVG Methods
+
+// ✅ 新增批次刪除相關 Methods
+
+// 確認某棟別下的 SVG 是否「全部」被選中
+const isAllSelectedInBuilding = (building) => {
+  const buildingSvgs = loadedSvgs[building] || [];
+  if (buildingSvgs.length === 0) return false;
+  return buildingSvgs.every(svg => selectedSvgs.value.includes(svg.id));
+};
+
+// 確認某棟別下的 SVG 是否為「部分」選中 (用於 checkbox 的 indeterminate 狀態)
+const isIndeterminateInBuilding = (building) => {
+  const buildingSvgs = loadedSvgs[building] || [];
+  if (buildingSvgs.length === 0) return false;
+  const selectedCount = buildingSvgs.filter(svg => selectedSvgs.value.includes(svg.id)).length;
+  return selectedCount > 0 && selectedCount < buildingSvgs.length;
+};
+
+// 切換某棟別的全選狀態
+const toggleSelectAllInBuilding = (building) => {
+  const buildingSvgs = loadedSvgs[building] || [];
+  const buildingSvgIds = buildingSvgs.map(svg => svg.id);
+  
+  if (isAllSelectedInBuilding(building)) {
+    // 如果已全選，則全部取消
+    selectedSvgs.value = selectedSvgs.value.filter(id => !buildingSvgIds.includes(id));
+  } else {
+    // 否則，將該棟別所有 SVG 加入選中列表 (使用 Set 避免重複)
+    const newSelection = new Set([...selectedSvgs.value, ...buildingSvgIds]);
+    selectedSvgs.value = Array.from(newSelection);
+  }
+};
+
+// 開啟批次刪除確認 Dialog
+const confirmBatchDelete = () => {
+  deleteBatchSvgDialog.value = true;
+};
+
+// 執行批次刪除
+const executeBatchDelete = async () => {
+  isDeletingBatchSvg.value = true;
+  
+  const allLoadedSvgs = Object.values(loadedSvgs).flat();
+  const svgsToDeletePayload = allLoadedSvgs
+    .filter(svg => selectedSvgs.value.includes(svg.id))
+    .map(svg => ({ docId: svg.id, storagePath: svg.storagePath }));
+
+  try {
+    toast.info(`正在批次刪除 ${svgsToDeletePayload.length} 個檔案...`);
+    const result = await batchDeleteSalesSvgsViaFunction(svgsToDeletePayload);
+    
+    if (result.status === 'success') {
+      toast.success(result.message);
+    } else {
+      toast.warning(result.message);
+    }
+
+    selectedSvgs.value = []; // 清空選中列表
+    await loadUniqueBuildings(); // 重新載入棟別列表
+    expandedBuildingPanel.value = null; // 關閉所有面板
+    Object.keys(loadedSvgs).forEach(key => delete loadedSvgs[key]); // 清空已載入的資料
+
+  } catch (error) {
+    toast.error(`批次刪除失敗: ${error.message}`);
+  } finally {
+    isDeletingBatchSvg.value = false;
+    deleteBatchSvgDialog.value = false;
+  }
+};
+// ✅ END: 批次刪除 Methods
+
 
 onMounted(() => {
   if (projectId.value) {
     loadProjectSettings();
     setupParamsListener();
     setupImagesListener();
+    loadUniqueBuildings();
   } else {
     toast.error('錯誤：未提供專案 ID！');
   }
 });
 
 onUnmounted(() => {
-  if (unsubscribeParams) {
-    unsubscribeParams();
-  }
-  if (unsubscribeImages) {
-    unsubscribeImages();
-  }
+  if (unsubscribeParams) unsubscribeParams();
+  if (unsubscribeImages) unsubscribeImages();
+  Object.values(svgListeners).forEach(unsubscribe => unsubscribe());
 });
 
 </script>

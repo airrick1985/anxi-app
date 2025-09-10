@@ -295,6 +295,17 @@ const routes = [
     }
 },
 
+{
+    path: '/sizing-tool/:projectId/:unitId',
+    name: 'FloorplanSizingTool',
+    component: () => import('@/views/FloorplanSizingTool.vue'),
+    meta: { 
+      requiresAuth: true,
+      // 您可以在此加入其他 meta 資訊，例如頁面標題
+      title: '平面圖測量工具' 
+    }
+  },
+
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
 

@@ -515,6 +515,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_contract_amount', title: '簽約金額' },
     { key: 'remarks', title: '備註' },
     { key: 'salesImages', title: '戶別圖片' },
+    { key: 'svgName', title: 'SVG圖檔' },
     { key: 'driveFolderUrl', title: '戶別資料夾位置' },
 ];
 

@@ -1,8 +1,16 @@
 <template>
   <div class="floorplan-sizing-wrapper fill-height">
+    <v-toolbar dark color="primary" density="compact" class="flex-shrink-0">
+      <v-btn icon="mdi-arrow-left" @click="goBack"></v-btn>
+      <v-toolbar-title>
+        平面圖測量工具 - {{ unitId || '讀取中...' }}
+      </v-toolbar-title>
+      <v-spacer></v-spacer>
+    </v-toolbar>
+
     <div v-if="isLoading" class="loading-container">
       <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-      <p class="mt-4 text-grey-darken-1">正在初始化繪圖引擎...</p>
+      <p class="mt-4 text-grey-darken-1">正在載入 SVG 圖檔...</p>
     </div>
 
     <div v-else-if="error" class="error-container">
@@ -52,7 +60,7 @@
             <span v-if="isCalibrating">請點擊圖面上有標記距離線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
             <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
             <span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】，點擊起點或雙擊可封閉圖形</span>
-<v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="small" variant="text" @click="resetCalibration" class="ml-4">重設</v-btn>
+            <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="small" variant="text" @click="resetCalibration" class="ml-4">重設</v-btn>
             <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="small" variant="text" @click="resetCurrentDistance" class="ml-4">取消本次</v-btn>
             <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="small" variant="text" @click="resetCurrentArea" class="ml-4">取消本次</v-btn>
         </div>
@@ -67,13 +75,19 @@
 <script setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { fabric } from 'fabric';
-import { fetchSalesControlData, fetchSvgFromDrive } from '@/api';
+// ✅ START: 引入路由功能和新的 API
+import { useRoute, useRouter } from 'vue-router';
+import { getHouseholdByUnitId, getSvgBySvgName } from '@/api';
+// ✅ END: 引入
 
-// --- State and Props ---
-const props = defineProps({
-  unitData: { type: Object, required: true },
-  projectName: { type: String, required: true }
-});
+// --- State and Refs ---
+// ✅ START: 移除 props，改用 route 來取得參數
+const route = useRoute();
+const router = useRouter();
+const projectId = ref(null);
+const unitId = ref(null);
+// ✅ END: 移除 props
+
 const isLoading = ref(true);
 const svgUrl = ref(null);
 const error = ref(null);
@@ -86,7 +100,6 @@ const currentDistance = ref({ p1: null, p2: null });
 const areaMeasurements = ref([]);
 const currentAreaPoints = ref([]);
 
-// --- Refs ---
 const canvasContainer = ref(null);
 const canvasEl = ref(null);
 let fabricCanvas = null;
@@ -119,24 +132,55 @@ watch([isLoading, svgUrl], ([loading, url]) => {
     }
 });
 
-watch(() => props.unitData, () => fetchSvgContent(), { immediate: true });
+// ✅ START: 新的資料載入邏輯
+async function fetchSvgContent() {
+  isLoading.value = true;
+  error.value = null;
+  destroyFabric();
+  isCalibrated.value = false;
 
+  try {
+    const pId = route.params.projectId;
+    const uId = route.params.unitId;
 
-// --- Fabric.js Initialization and Destruction ---
+    if (!pId || !uId) throw new Error("缺少專案或戶別 ID。");
+    
+    projectId.value = pId;
+    unitId.value = uId;
+
+    const householdData = await getHouseholdByUnitId(pId, uId);
+    if (!householdData) throw new Error(`在資料庫中找不到戶別 ${uId} 的資料。`);
+    if (!householdData.svgName) throw new Error(`戶別 ${uId} 尚未設定關聯的 SVG 圖檔。`);
+    
+    const svgData = await getSvgBySvgName(pId, householdData.svgName);
+    if (!svgData || !svgData.downloadURL) throw new Error(`在資料庫中找不到名為 ${householdData.svgName} 的 SVG 圖檔。`);
+
+    const response = await fetch(svgData.downloadURL);
+    if (!response.ok) throw new Error(`無法從連結下載 SVG 檔案 (HTTP ${response.status})`);
+    
+    const svgText = await response.text();
+    const svgBlob = new Blob([svgText], {type: 'image/svg+xml;charset=utf-8'});
+    svgUrl.value = URL.createObjectURL(svgBlob);
+
+  } catch (err) {
+    error.value = err.message || '發生未知錯誤';
+  } finally {
+    isLoading.value = false;
+  }
+}
+// ✅ END: 新的資料載入邏輯
+
+// --- Fabric.js and Measurement Logic (您原有的成熟邏輯，保持不變) ---
 function initializeFabric(imageUrl) {
     if (!canvasContainer.value) return;
-
     fabricCanvas = new fabric.Canvas(canvasEl.value);
-    
     resizeCanvas();
-
     fabric.Image.fromURL(imageUrl, (img) => {
         fabricCanvas.setBackgroundImage(img, () => {
             recenterBackgroundImage();
             fabricCanvas.renderAll();
         });
     });
-
     setupFabricEvents();
     tool.value = 'pan'; 
 }
@@ -186,55 +230,43 @@ function setupFabricEvents() {
         else if (isMeasuringArea.value) handleAreaClick(pos);
       }
     });
-fabricCanvas.on('mouse:move', function(opt) {
-    if (this.isDragging) {
-        const e = opt.e;
-        const vpt = this.viewportTransform;
-        vpt[4] += e.clientX - this.lastPosX;
-        vpt[5] += e.clientY - this.lastPosY;
+
+    fabricCanvas.on('mouse:move', function(opt) {
+        if (this.isDragging) {
+            const e = opt.e;
+            const vpt = this.viewportTransform;
+            vpt[4] += e.clientX - this.lastPosX;
+            vpt[5] += e.clientY - this.lastPosY;
+            this.requestRenderAll();
+            this.lastPosX = e.clientX;
+            this.lastPosY = e.clientY;
+            return;
+        }
+        const pos = this.getPointer(opt.e);
+        if (isCalibrating.value && calibrationLine) {
+            calibrationLine.set({ x2: pos.x, y2: pos.y });
+        }
+        if (isMeasuringDistance.value && currentDrawingLine) {
+            currentDrawingLine.set({ x2: pos.x, y2: pos.y });
+        }
+        if (previewPolygon) {
+            this.remove(previewPolygon);
+            previewPolygon = null;
+        }
+        if (isMeasuringArea.value && currentAreaPoints.value.length > 0) {
+            const previewPoints = [...currentAreaPoints.value, pos];
+            previewPolygon = new fabric.Polygon(previewPoints, {
+                fill: 'rgba(0,170,255,0.2)',
+                stroke: '#00aaff',
+                strokeWidth: 2,
+                selectable: false,
+                evented: false,
+                excludeFromExport: true,
+            });
+            this.add(previewPolygon);
+        }
         this.requestRenderAll();
-        this.lastPosX = e.clientX;
-        this.lastPosY = e.clientY;
-        return;
-    }
-
-    const pos = this.getPointer(opt.e);
-
-    // ✨ 新增：校準模式下的虛線預覽邏輯
-    if (isCalibrating.value && calibrationLine) {
-        calibrationLine.set({ x2: pos.x, y2: pos.y });
-    }
-
-    // --- 距離測量邏輯 (不變) ---
-    if (isMeasuringDistance.value && currentDrawingLine) {
-        currentDrawingLine.set({ x2: pos.x, y2: pos.y });
-    }
-
-    // --- 面積測量邏輯 (全新重寫) ---
-
-    // 1. 先清除上一幀的預覽圖形
-    if (previewPolygon) {
-        this.remove(previewPolygon);
-        previewPolygon = null;
-    }
-    
-    // 2. 如果正在測量面積且至少已點擊一點，則繪製新的預覽圖形
-    if (isMeasuringArea.value && currentAreaPoints.value.length > 0) {
-        const previewPoints = [...currentAreaPoints.value, pos];
-
-        previewPolygon = new fabric.Polygon(previewPoints, {
-            fill: 'rgba(0,170,255,0.2)',
-            stroke: '#00aaff',
-            strokeWidth: 2,
-            selectable: false,
-            evented: false,
-            excludeFromExport: true, // 確保這個臨時圖形不會被操作
-        });
-        this.add(previewPolygon);
-    }
-    
-    this.requestRenderAll();
-});
+    });
 
     fabricCanvas.on('mouse:up', function() {
       this.setViewportTransform(this.viewportTransform);
@@ -260,22 +292,6 @@ function destroyFabric() {
     }
 }
 
-onMounted(() => {
-    if (canvasContainer.value) {
-        resizeObserver = new ResizeObserver(resizeCanvas);
-        resizeObserver.observe(canvasContainer.value);
-    }
-});
-
-onBeforeUnmount(() => {
-    if (resizeObserver && canvasContainer.value) {
-        resizeObserver.unobserve(canvasContainer.value);
-    }
-    destroyFabric();
-});
-
-
-// --- Measurement Logic ---
 function getPixelDistance(p1, p2) {
     return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 }
@@ -290,64 +306,48 @@ function resetCalibration() {
 }
 
 function handleCalibrationClick(pos) {
-    // 當使用者點擊第一點時
     if (calibrationPoints.value.length === 0) {
         calibrationPoints.value.push(pos);
-        // 建立並顯示預覽用的虛線
         calibrationLine = new fabric.Line([pos.x, pos.y, pos.x, pos.y], {
-            stroke: '#00aaff', // 使用與測量時相同的藍色
+            stroke: '#00aaff',
             strokeWidth: 2,
             strokeDashArray: [5, 5],
             selectable: false,
             evented: false,
         });
         fabricCanvas.add(calibrationLine);
-        return; // 等待使用者點擊第二點
+        return;
     }
-
-    // 當使用者點擊第二點時
     if (calibrationPoints.value.length === 1) {
-        // 在彈出輸入框前，先移除預覽虛線
         if (calibrationLine) {
             fabricCanvas.remove(calibrationLine);
             calibrationLine = null;
-            fabricCanvas.renderAll(); // 強制渲染一次，讓虛線消失
+            fabricCanvas.renderAll();
         }
-
         const p1 = calibrationPoints.value[0];
         const pixelDistance = getPixelDistance(p1, pos);
-
         if (pixelDistance < 1) {
             alert('校準失敗：距離太近！');
-            resetCalibration(); // 使用新的重設函數
+            resetCalibration();
             return;
         }
-
-        // 彈出輸入框，讓使用者輸入實際距離
         const realDistanceStr = prompt("請輸入這兩點的實際距離 (cm)：", "");
-
-        // 如果使用者點擊「取消」或輸入為空，則中止校準
         if (realDistanceStr === null || realDistanceStr.trim() === "") {
             alert('校準已取消。');
             resetCalibration();
             return;
         }
-
         const realDistance = parseFloat(realDistanceStr);
-
-        // 驗證輸入是否為有效的正數
         if (isNaN(realDistance) || realDistance <= 0) {
             alert('輸入無效，請輸入一個大於 0 的數字。');
             resetCalibration();
             return;
         }
-
-        // 計算比例尺並完成校準
         scaleRatio.value = realDistance / pixelDistance;
         isCalibrated.value = true;
         alert(`校準成功！比例尺已設定為 1 像素 ≈ ${(scaleRatio.value).toFixed(2)} cm`);
-        calibrationPoints.value = []; // 清空紀錄
-        tool.value = 'pan'; // 切換回拖曳模式
+        calibrationPoints.value = [];
+        tool.value = 'pan';
     }
 }
 
@@ -362,40 +362,29 @@ function handleDistanceClick(pos) {
         fabricCanvas.remove(currentDrawingLine);
         const finalLine = new fabric.Line([p1.x, p1.y, p2.x, p2.y], { stroke: '#ff00ff', strokeWidth: 2.5, selectable: false, evented: false });
         const text = new fabric.Text(`${realDist.toFixed(1)} cm`, { left: (p1.x + p2.x) / 2, top: (p1.y + p2.y) / 2 - 20, fontSize: 16, fill: '#ff00ff', originX: 'center', originY: 'center', paintFirst: 'stroke', stroke: 'white', strokeWidth: 4 });
-        const group = new fabric.Group([finalLine, text], { 
-        selectable: false, 
-        evented: false,
-        isMeasurement: true
-    });
+        const group = new fabric.Group([finalLine, text], { selectable: false, evented: false, isMeasurement: true });
         fabricCanvas.add(group);
         distanceMeasurements.value.push(group);
         resetCurrentDistance();
     }
 }
 
-// 找到 handleAreaClick 函數
 function handleAreaClick(pos) {
     const startPoint = currentAreaPoints.value[0];
     if (currentAreaPoints.value.length > 2 && getPixelDistance(startPoint, pos) < 10) {
         completeAreaMeasurement();
         return;
     }
-    
-    // 唯一的任務：將點擊的座標加入陣列
     currentAreaPoints.value.push(pos);
 }
 
 function completeAreaMeasurement() {
-    // 在完成繪製前，清除最後的預覽圖形
     if (previewPolygon) {
         fabricCanvas.remove(previewPolygon);
         previewPolygon = null;
     }
-
     const points = currentAreaPoints.value;
     if (points.length < 3) { resetCurrentArea(); return; }
-    
-    // --- 面積計算邏輯 (不變) ---
     let pixelArea = 0;
     for (let i = 0; i < points.length; i++) {
         const p1 = points[i], p2 = points[(i + 1) % points.length];
@@ -404,15 +393,9 @@ function completeAreaMeasurement() {
     pixelArea = Math.abs(pixelArea) / 2;
     const realAreaM2 = (pixelArea * Math.pow(scaleRatio.value, 2)) / 10000;
     const realAreaPing = realAreaM2 * 0.3025;
-    
-    // --- 建立最終圖形與文字 (主要修改處) ---
     const finalPolygon = new fabric.Polygon(points, { fill: 'rgba(255,0,255,0.2)', stroke: '#ff00ff', strokeWidth: 2.5, selectable: false, evented: false });
     const center = finalPolygon.getCenterPoint();
-
-    // ✨ 關鍵修正 #1: 調整文字內容與格式
     const textContent = `${realAreaM2.toFixed(2)}M²\n約${realAreaPing.toFixed(2)}坪`;
-
-    // ✨ 關鍵修正 #2: 調整 Textbox 屬性以控制排版
     const text = new fabric.Textbox(textContent, { 
         left: center.x, 
         top: center.y, 
@@ -421,15 +404,10 @@ function completeAreaMeasurement() {
         originY: 'center', 
         backgroundColor: 'rgba(255,255,255,0.8)', 
         textAlign: 'center',
-        width: 90,      // 設定一個足夠的寬度，防止文字被不當換行
-        padding: 5,     // 增加一點內邊距，讓文字更好看
+        width: 90,
+        padding: 5,
     });
-
-    const group = new fabric.Group([finalPolygon, text], { 
-        selectable: false, 
-        evented: false,
-        isMeasurement: true
-    });
+    const group = new fabric.Group([finalPolygon, text], { selectable: false, evented: false, isMeasurement: true });
     fabricCanvas.add(group);
     areaMeasurements.value.push(group);
     resetCurrentArea();
@@ -442,67 +420,101 @@ function resetCurrentDistance() {
 }
 
 function resetCurrentArea() {
-    // 清除可能殘留的預覽圖形
     if (previewPolygon) {
         fabricCanvas.remove(previewPolygon);
         previewPolygon = null;
     }
-    // 清空座標紀錄
     currentAreaPoints.value = [];
-    // 舊的 currentDrawingPolygon 相關邏輯已完全移除
 }
 
 function clearMeasurements() {
     if (confirm('確定要清除所有測量標記嗎？')) {
-        // 直接從畫布上取得所有物件，然後篩選出帶有 isMeasurement 標籤的物件
-        // 這是比依賴外部陣列更可靠的方法
         const objectsToRemove = fabricCanvas.getObjects().filter(obj => obj.isMeasurement === true);
-        
-        // 遍歷篩選出來的物件並將它們從畫布上移除
         objectsToRemove.forEach(obj => fabricCanvas.remove(obj));
-        
-        // 重設追蹤陣列（這一步仍然重要，為了讓 v-if="hasMeasurements" 生效）
         distanceMeasurements.value = [];
         areaMeasurements.value = [];
-        
-        // 最後，重新渲染畫布，讓變更生效
         fabricCanvas.renderAll();
     }
 }
 
-async function fetchSvgContent() {
-  isLoading.value = true;
-  error.value = null;
-  destroyFabric();
-  isCalibrated.value = false;
-  
-  try {
-    const salesControlResponse = await fetchSalesControlData(props.projectName);
-    if (salesControlResponse.status !== 'success' || !salesControlResponse.data?.['銷控']) throw new Error('無法獲取銷控資料');
-    const unitRow = salesControlResponse.data['銷控'].find(row => row['戶別'] === props.unitData['戶別']);
-    if (!unitRow || !unitRow['平面圖SVG資料夾']) throw new Error(`找不到戶別 ${props.unitData['戶別']} 的平面圖資料夾`);
-    
-    // ✅ 核心修正：在呼叫 fetchSvgFromDrive 時，傳入 props.projectName
-    const svgResponse = await fetchSvgFromDrive(unitRow['平面圖SVG資料夾'], props.projectName);
+// ✅ 新增 goBack 方法
+const goBack = () => {
+  router.back();
+};
 
-    if (svgResponse.status !== 'success' || !svgResponse.data?.svgContent) throw new Error(svgResponse.message || '獲取 SVG 內容失敗');
-    
-    const svgData = svgResponse.data.svgContent;
-    const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
-    svgUrl.value = URL.createObjectURL(svgBlob);
-  } catch (err) {
-    error.value = err.message || '發生未知錯誤';
-  } finally {
-    isLoading.value = false;
-  }
-}
+// --- Lifecycle Hooks ---
+onMounted(() => {
+    // ✅ 在元件掛載時，直接觸發新的資料載入函式
+    fetchSvgContent();
+
+    if (canvasContainer.value) {
+        resizeObserver = new ResizeObserver(resizeCanvas);
+        resizeObserver.observe(canvasContainer.value);
+    }
+});
+
+onBeforeUnmount(() => {
+    if (resizeObserver && canvasContainer.value) {
+        resizeObserver.unobserve(canvasContainer.value);
+    }
+    destroyFabric();
+});
 </script>
 
 <style scoped>
-.floorplan-sizing-wrapper { position: relative; background-color: transparent; }
-.loading-container, .error-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; padding: 16px; text-align: center; }
-.toolbar { padding: 8px; background-color: white; border-bottom: 1px solid #ccc; display: flex; align-items: center; flex-wrap: wrap; }
-.scale-info { font-size: 14px; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; }
-.action-prompt { background-color: rgba(0, 0, 0, 0.7); color: white; padding: 8px 12px; text-align: center; font-size: 14px; position: absolute; top: 50px; left: 50%; transform: translateX(-50%); border-radius: 4px; z-index: 10; display: flex; align-items: center; }
-.canvas-container { position: relative; flex-grow: 1; width: 100%; height: 100%; overflow: hidden; }
+/* ✅ 調整樣式以適應全頁面佈局 */
+.floorplan-sizing-wrapper { 
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  background-color: #f0f2f5;
+}
+.loading-container, .error-container { 
+  display: flex; 
+  flex-direction: column; 
+  justify-content: center; 
+  align-items: center; 
+  height: 100%; 
+  padding: 16px; 
+  text-align: center; 
+}
+.toolbar { 
+  padding: 8px; 
+  background-color: white; 
+  border-bottom: 1px solid #ccc; 
+  display: flex; 
+  align-items: center; 
+  flex-wrap: wrap; 
+  flex-shrink: 0;
+}
+.scale-info { 
+  font-size: 14px; 
+  padding: 0 16px; 
+  display: flex; 
+  align-items: center; 
+  white-space: nowrap; 
+}
+.action-prompt { 
+  background-color: rgba(0, 0, 0, 0.7); 
+  color: white; 
+  padding: 8px 12px; 
+  text-align: center; 
+  font-size: 14px; 
+  position: absolute; 
+  top: 50px; /* 根據 toolbar 高度微調 */
+  left: 50%; 
+  transform: translateX(-50%); 
+  border-radius: 4px; 
+  z-index: 10; 
+  display: flex; 
+  align-items: center; 
+}
+.canvas-container { 
+  position: relative; 
+  flex-grow: 1; 
+  width: 100%; 
+  height: 100%; 
+  overflow: hidden; 
+}
 </style>
