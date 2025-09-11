@@ -13,15 +13,35 @@
         </v-btn>
       </v-col>
     </v-row>
+
+    <v-row class="mb-4 align-center">
+      <v-col>
+        <div v-if="projectLoading">
+          <v-skeleton-loader type="heading"></v-skeleton-loader>
+        </div>
+        <div v-else>
+          <h1 class="text-h4 font-weight-bold text-grey-darken-3">
+            {{ project ? project.name : '專案設定' }}
+          </h1>
+          <p class="text-grey-darken-1 mt-1">
+            您正在管理此建案的後台設定
+          </p>
+        </div>
+      </v-col>
+    </v-row>
     
         <v-tabs v-model="tab" align-tabs="start" class="mb-4">
       <v-tab value="settings">
         <v-icon start>mdi-cog</v-icon>
-        建案設定
+      建案設定
       </v-tab>
       <v-tab value="parameters">
         <v-icon start>mdi-palette</v-icon>
         銷控狀態參數
+      </v-tab>
+      <v-tab value="personnel">
+        <v-icon start>mdi-account-group</v-icon>
+        銷售人員管理
       </v-tab>
       <v-tab value="images">
         <v-icon start>mdi-image-multiple</v-icon>
@@ -59,7 +79,6 @@
               variant="outlined"
               density="compact"
               class="mb-4"
-              hint="Google Slide 網址中的 ID"
               persistent-hint
             ></v-text-field>
             <v-text-field
@@ -68,7 +87,6 @@
               variant="outlined"
               density="compact"
               class="mb-4"
-              hint="Google Slide 網址中的 ID"
               persistent-hint
             ></v-text-field>
             <v-text-field
@@ -77,7 +95,6 @@
               variant="outlined"
               density="compact"
               class="mb-4"
-              hint="Google Slide 網址中的 ID"
               persistent-hint
             ></v-text-field>
 
@@ -174,6 +191,70 @@
           </div>
         </v-card>
       </v-window-item>
+      
+       <v-window-item value="personnel">
+        <v-card class="pa-4" elevation="2">
+          <v-card-title class="text-h5 text-blue-darken-2">
+            銷售人員管理
+          </v-card-title>
+          <v-card-subtitle>管理此建案的銷售人員資料</v-card-subtitle>
+          <v-divider class="my-4"></v-divider>
+          
+          <v-skeleton-loader v-if="personnelLoading" type="list-item-two-line@5"></v-skeleton-loader>
+
+          <div v-if="!personnelLoading">
+            <v-list lines="two">
+              <v-list-item
+                v-for="person in personnelList"
+                :key="person.id"
+                class="mb-2"
+                elevation="1"
+                border
+              >
+                <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
+                <v-list-item-subtitle>
+                  {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
+                </v-list-item-subtitle>
+
+                <div class="py-1">
+                  <v-chip
+                    v-for="pos in person.positions"
+                    :key="pos"
+                    size="small"
+                    class="mr-2"
+                    label
+                  >
+                    {{ pos }}
+                  </v-chip>
+                </div>
+                
+                <template v-slot:append>
+                  <v-btn icon="mdi-pencil" variant="text" size="small" @click="openPersonnelDialog(person)"></v-btn>
+                  <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click="confirmPersonnelDelete(person)"></v-btn>
+                </template>
+              </v-list-item>
+            </v-list>
+             <v-alert
+              v-if="personnelList.length === 0"
+              type="info"
+              variant="tonal"
+            >
+              目前尚無銷售人員資料。
+            </v-alert>
+
+            <v-btn
+              color="blue-darken-2"
+              @click="openPersonnelDialog()"
+              prepend-icon="mdi-plus"
+              class="mt-4"
+              block
+            >
+              新增銷售人員
+            </v-btn>
+          </div>
+        </v-card>
+      </v-window-item>
+
 
       <v-window-item value="images">
         <v-card class="pa-4" elevation="2">
@@ -561,6 +642,35 @@
       </v-window-item>
       </v-window>
 
+        <v-dialog v-model="deleteBatchSvgDialog" persistent max-width="500px">
+      </v-dialog>
+
+    <v-dialog v-model="deleteSvgDialog" persistent max-width="450px">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          確認刪除 SVG
+        </v-card-title>
+        <v-card-text class="pt-4">
+          您確定要刪除 SVG
+          <strong class="text-red-darken-2 mx-1">「{{ svgToDelete.svgName }}」</strong>
+          嗎？
+          <br><br>
+          此操作將會從資料庫和儲存空間中永久移除檔案，無法復原。
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" text @click="deleteSvgDialog = false">取消</v-btn>
+          <v-btn color="error" text @click="executeSvgDelete" :loading="isDeletingSvg">
+            確認刪除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="parameterDialog" persistent max-width="500px">
+      </v-dialog>
+
     <v-dialog v-model="deleteBatchSvgDialog" persistent max-width="500px">
       <v-card>
         <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
@@ -675,6 +785,31 @@
             </v-card-actions>
         </v-card>
     </v-dialog>
+     <v-dialog v-model="personnelDialog" persistent max-width="500px">
+      <SalesPersonnelForm
+        v-model="editingPersonnel"
+        :loading="isSavingPersonnel"
+        @cancel="closePersonnelDialog"
+        @save="savePersonnel"
+      />
+    </v-dialog>
+
+    <v-dialog v-model="deletePersonnelDialog" persistent max-width="400px">
+        <v-card>
+            <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+              <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+              確認刪除
+            </v-card-title>
+            <v-card-text>
+                您確定要刪除「{{ personnelToDelete.name }}」嗎？此操作無法復原。
+            </v-card-text>
+            <v-card-actions>
+                <v-spacer></v-spacer>
+                <v-btn color="grey" text @click="deletePersonnelDialog = false">取消</v-btn>
+                <v-btn color="error" text @click="executePersonnelDelete" :loading="isDeletingPersonnel">確認刪除</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="3000">
         {{ snackbar.text }}
@@ -733,7 +868,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, reactive, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import {
@@ -753,18 +888,35 @@ import {
   setSalesSvgMetadata,
   deleteSalesSvgViaFunction,
   batchDeleteSalesSvgsViaFunction, 
+  listenToSalesPersonnel,
+  setSalesPersonnel,
+  updateSalesPersonnel,
+  deleteSalesPersonnel,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 
+const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
 
 const route = useRoute();
 const router = useRouter(); 
 const toast = useToast();
 const projectId = ref(route.params.projectId);
 
-// ✅ START: 新增頁籤狀態
+
 const tab = ref('settings');
-// ✅ END: 新增頁籤狀態
+
+// ✅ 6. 新增銷售人員管理的 State
+const personnelList = ref([]);
+const personnelLoading = ref(true);
+let unsubscribePersonnel = null;
+const personnelDialog = ref(false);
+const editingPersonnel = ref({});
+const isSavingPersonnel = ref(false);
+const deletePersonnelDialog = ref(false);
+const personnelToDelete = ref({});
+const isDeletingPersonnel = ref(false);
+
+
 
 // Project Settings State
 const project = ref(null);
@@ -1170,6 +1322,93 @@ const openImageViewer = (image) => {
   imageViewerDialog.value = true;
 };
 
+// ✅ 7. 新增銷售人員管理的 Methods
+const setupPersonnelListener = () => {
+  personnelLoading.value = true;
+  unsubscribePersonnel = listenToSalesPersonnel(projectId.value, (data) => {
+    personnelList.value = data;
+    if(personnelLoading.value) personnelLoading.value = false;
+  });
+};
+
+const openPersonnelDialog = (person = null) => {
+  if (person) {
+    // 編輯模式，深拷貝一份資料
+    editingPersonnel.value = JSON.parse(JSON.stringify(person));
+  } else {
+    // 新增模式，提供預設值
+    editingPersonnel.value = {
+      positions: ['銷售'],
+      name: '',
+      phone: '',
+      email: ''
+    };
+  }
+  personnelDialog.value = true;
+};
+
+const closePersonnelDialog = () => {
+  personnelDialog.value = false;
+  editingPersonnel.value = {};
+};
+
+const savePersonnel = async (data) => {
+  isSavingPersonnel.value = true;
+  try {
+    // 從表單資料中移除 id，因為我們不再使用自動產生的 ID
+    const { id, ...payload } = data; 
+    payload.projectId = projectId.value;
+
+    if (!payload.name || !payload.phone) {
+      toast.error('姓名和電話為必填欄位');
+      isSavingPersonnel.value = false;
+      return;
+    }
+    
+    // ✅ 核心修改：使用「姓名_電話」作為文件 ID
+    const docId = `${payload.name}_${payload.phone}`;
+
+    if (id) { // 編輯模式
+      // 如果是編輯，且文件ID的組合方式改變了 (例如改了姓名或電話)，
+      // 我們需要刪除舊文件並建立新文件。
+      // 但為了簡化，我們先假設編輯時不允許修改姓名和電話，或接受文件 ID 改變。
+      // 最安全的作法是統一使用 setSalesPersonnel。
+      await setSalesPersonnel(id, payload); // 這裡的 id 是舊的 docId
+      toast.success(`「${payload.name}」的資料已更新`);
+    } else { // 新增模式
+      // 確保 createdAt 只在新增時寫入
+      payload.createdAt = serverTimestamp();
+      await setSalesPersonnel(docId, payload);
+      toast.success(`已新增人員：「${payload.name}」`);
+    }
+
+    closePersonnelDialog();
+  } catch (error) {
+    toast.error(`儲存失敗: ${error.message}`);
+  } finally {
+    isSavingPersonnel.value = false;
+  }
+};
+
+const confirmPersonnelDelete = (person) => {
+  personnelToDelete.value = person;
+  deletePersonnelDialog.value = true;
+};
+
+const executePersonnelDelete = async () => {
+  isDeletingPersonnel.value = true;
+  try {
+    await deleteSalesPersonnel(personnelToDelete.value.id);
+    toast.info(`「${personnelToDelete.value.name}」已刪除`);
+    deletePersonnelDialog.value = false;
+  } catch (error) {
+    toast.error(`刪除失敗: ${error.message}`);
+  } finally {
+    isDeletingPersonnel.value = false;
+  }
+};
+
+
 // ✅ START: SVG 管理功能 State
 const stagedSvgFilesModel = ref([]);
 const stagedSvgFiles = ref([]);
@@ -1435,6 +1674,7 @@ onMounted(() => {
     setupParamsListener();
     setupImagesListener();
     loadUniqueBuildings();
+    setupPersonnelListener(); 
   } else {
     toast.error('錯誤：未提供專案 ID！');
   }
@@ -1443,6 +1683,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (unsubscribeParams) unsubscribeParams();
   if (unsubscribeImages) unsubscribeImages();
+  if (unsubscribePersonnel) unsubscribePersonnel(); 
   Object.values(svgListeners).forEach(unsubscribe => unsubscribe());
 });
 

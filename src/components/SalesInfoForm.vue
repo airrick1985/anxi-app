@@ -176,10 +176,10 @@ const salesImageOptions = computed(() => {
 watch(() => editableData.value, (newData) => {
   if (newData && !Array.isArray(newData.salesImages)) {
     // 如果 salesImages 不存在或不是陣列，初始化為一個空陣列
-    editableData.value.salesImages = [];
+    // ✅ 修改：透過 emit 更新一個新的物件，而不是直接修改舊物件的屬性
+    emit('update:modelValue', { ...newData, salesImages: [] });
   }
 }, { immediate: true, deep: true });
-
 
 const counties = ref([]);
 const mailingTowns = ref([]);

@@ -47,7 +47,7 @@
                     :all-sales-images="allProjectImages"
                     :all-parking-data="allData['車位'] || []"
                     @request-open-slide="$emit('request-open-slide')"
-                    :contract-type-options="contractTypeOptions"
+                    :contract-type-options="contractTypesFromDB"
                     :first-purchase-options="firstPurchaseOptions"
                 />
             </template>
@@ -408,7 +408,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase } from '@/api'; 
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, getProjectSettings } from '@/api'; 
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
@@ -476,6 +476,22 @@ const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 const sizingToolDialog = ref(false);
 const projectStore = useProjectStore();
 const projectId = computed(() => projectStore.nameToIdMap[props.projectName]);
+const contractTypesFromDB = ref([]); 
+
+// watch 監聽器，當 projectId 變化時，獲取專案設定
+watch(projectId, async (newId) => {
+  if (newId) {
+    const settings = await getProjectSettings(newId);
+    // 確保 settings 存在且 contractTypes 是一個陣列
+    if (settings && Array.isArray(settings.contractTypes)) {
+      contractTypesFromDB.value = settings.contractTypes;
+    } else {
+      contractTypesFromDB.value = []; // 如果沒有資料則清空
+    }
+  } else {
+    contractTypesFromDB.value = []; // projectId 為空也清空
+  }
+}, { immediate: true });
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
@@ -496,12 +512,10 @@ const currentImage = computed(() => {
   return householdImages.value[currentImageIndex.value];
 });
 
-const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []);
-const contractTypeOptions = computed(() => {
-    return [...new Set(salesOptionsData.value.map(item => item['合約方式']).filter(Boolean))]
-});
+
 const firstPurchaseOptions = computed(() => {
-    return [...new Set(salesOptionsData.value.map(item => item['是否首購']).filter(Boolean))]
+    const salesOptionsData = props.allData['合約方式及是否首購'] || [];
+    return [...new Set(salesOptionsData.map(item => item['是否首購']).filter(Boolean))]
 });
 
 const tab = ref('info');
@@ -635,6 +649,7 @@ async function saveChanges() {
       const payload = {
           projectName: props.projectName,
           unitId: props.unitData.unitId, 
+          data: data // ✅ 修改：將編輯後的資料物件作為 'data' 屬性傳遞
       };
       
       const result = await updateSalesData(payload); 

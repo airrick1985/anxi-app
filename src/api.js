@@ -3817,3 +3817,70 @@ export async function getSvgBySvgName(projectId, svgName) {
     return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
   }
 }
+
+
+// =================================================================
+// / ✅ 【新增】銷售人員管理 API
+// =================================================================
+
+/**
+ * [新] 即時監聽指定建案的所有銷售人員資料
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToSalesPersonnel = (projectId, onDataChange) => {
+  const q = query(
+    collection(db, "salesPersonnel"),
+    where("projectId", "==", projectId),
+    orderBy("name", "asc") // 依姓名筆劃排序
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const personnel = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    onDataChange(personnel);
+  }, (error) => {
+    console.error(`監聽銷售人員時發生錯誤 (Project: ${projectId}):`, error);
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * ✅ 【修改】新增或更新一筆銷售人員資料 (使用自訂文件 ID)
+ * @param {string} docId - 自訂的文件 ID (例如：姓名_電話)
+ * @param {object} personnelData - 要寫入的人員資料
+ * @returns {Promise<void>}
+ */
+export const setSalesPersonnel = (docId, personnelData) => {
+  const docRef = doc(db, "salesPersonnel", docId);
+  // 使用 setDoc 搭配 merge: true，可以同時處理新增和更新
+  return setDoc(docRef, {
+    ...personnelData,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+/**
+ * [新] 更新一筆銷售人員資料
+ * @param {string} docId - Firestore 中的文件 ID
+ * @param {object} dataToUpdate - 要更新的資料物件
+ * @returns {Promise<void>}
+ */
+export const updateSalesPersonnel = (docId, dataToUpdate) => {
+  const docRef = doc(db, "salesPersonnel", docId);
+  return updateDoc(docRef, {
+    ...dataToUpdate,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * [新] 刪除一筆銷售人員資料
+ * @param {string} docId - Firestore 中的文件 ID
+ * @returns {Promise<void>}
+ */
+export const deleteSalesPersonnel = (docId) => {
+  const docRef = doc(db, "salesPersonnel", docId);
+  return deleteDoc(docRef);
+};
