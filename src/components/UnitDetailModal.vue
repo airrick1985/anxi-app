@@ -30,7 +30,7 @@
             <v-divider></v-divider>
             <v-tabs v-model="tab" color="primary" grow :disabled="isEditing">
                 <v-tab value="info">詳細資訊</v-tab>
-                <v-tab value="floorplans" :disabled="!unitData || !unitData.svgName">平面圖</v-tab>
+               
             </v-tabs>
             <v-divider></v-divider>
         </div>
@@ -54,7 +54,7 @@
             <template v-else>
                 <div v-if="unitData" class="pa-2">
                     <v-row>
-                        <v-col cols="12" md="7">
+                        <v-col cols="12" md="6">
                             <div v-if="householdImages.length > 0" class="carousel-viewer-container">
                                 <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
                                     <v-carousel-item v-for="image in householdImages" :key="image.id">
@@ -72,9 +72,9 @@
                             </div>
                         </v-col>
 
-                        <v-col cols="12" md="5">
+                        <v-col cols="12" md="3">
                             <div class="info-section">
-                                <div class="section-title">面積資訊</div>
+                                <div class="section-title"> {{ unitData.unitId }} 面積資訊</div>
                                 <div class="total-area-card">
                                     <div class="area-summary-item">
                                         <div>
@@ -121,51 +121,49 @@
         </div>
         </div>
 </v-col>
-                    </v-row>
-
-                    <v-row class="mt-2">
-                        <v-col cols="12">
-                            <div class="info-section">
-                                <div class="section-title">價格資訊</div>
-                                <v-row dense>
-                                    <v-col cols="12" sm="4">
-                                        <div class="price-block">
-                                            <div class="price-block-title">房屋表價</div>
-                                            <div class="price-block-value text-red-darken-2">
-                                                {{ formatNumber(unitData.price_list_house_total) }} <span class="price-block-currency">萬</span>
-                                            </div>
-                                            <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
-                                        </div>
-                                    </v-col>
-                                    <v-col v-if="viewMode === 'sales'" cols="12" sm="4">
-                                        <div class="price-block">
-                                            <div class="price-block-title">房屋底價</div>
-                                            <div class="price-block-value text-grey-darken-2">
-                                                {{ formatNumber(unitData.price_floor_house_total) }} <span class="price-block-currency">萬</span>
-                                            </div>
-                                            <div class="price-block-unit">({{ calculatedBaseUnitPrice }} 萬/坪)</div>
-                                        </div>
-                                    </v-col>
-                                    <v-col v-if="viewMode === 'sales' && unitData.price_transaction_house" cols="12" sm="4">
-                                        <div class="price-block">
-                                            <div class="price-block-title">房屋成交價</div>
-                                            <div class="price-block-value text-green-darken-2">
-                                                {{ formatNumber(unitData.price_transaction_house) }} <span class="price-block-currency">萬</span>
-                                            </div>
-                                            <div class="price-block-unit">({{ calculatedTransactionUnitPrice }} 萬/坪)</div>
-                                        </div>
-                                    </v-col>
-                                </v-row>
+                  
+          <v-col cols="12" md="3">
+                <div class="info-section">
+                    <div class="section-title"> {{ unitData.unitId }} 價格資訊</div>
+                    <v-row dense>
+                        <v-col cols="12"> 
+                            <div class="price-block mb-2"> 
+                                <div class="price-block-title">房價</div>
+                                <div class="price-block-value text-red-darken-2">
+                                    {{ formatNumber(unitData.price_list_house_total) }} <span class="price-block-currency">萬</span>
+                                </div>
+                                <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                            </div>
+                        </v-col>
+                        <v-col v-if="viewMode === 'sales'" cols="12">
+                            <div class="price-block mb-2">
+                                <div class="price-block-title">房屋底價</div>
+                                <div class="price-block-value text-grey-darken-2">
+                                    {{ formatNumber(unitData.price_floor_house_total) }} <span class="price-block-currency">萬</span>
+                                </div>
+                                <div class="price-block-unit">({{ calculatedBaseUnitPrice }} 萬/坪)</div>
+                            </div>
+                        </v-col>
+                        <v-col v-if="viewMode === 'sales' && unitData.price_transaction_house" cols="12">
+                            <div class="price-block">
+                                <div class="price-block-title">房屋成交價</div>
+                                <div class="price-block-value text-green-darken-2">
+                                    {{ formatNumber(unitData.price_transaction_house) }} <span class="price-block-currency">萬</span>
+                                </div>
+                                <div class="price-block-unit">({{ calculatedTransactionUnitPrice }} 萬/坪)</div>
                             </div>
                         </v-col>
                     </v-row>
+                </div>
+            </v-col>
+        </v-row>
                     
                     <div v-if="viewMode === 'sales'">
                         <v-divider class="my-4"></v-divider>
                         <v-row>
                             <v-col cols="12" md="4">
                                 <div class="info-section">
-                                    <div class="section-title">成交總覽</div>
+                                    <div class="section-title"> {{ unitData.unitId }} 成交總覽</div>
                                     <v-list dense>
                                         <v-list-item title="房屋成交價" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
                                         <v-list-item title="車位總價(成交)" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
@@ -180,13 +178,13 @@
                             </v-col>
                             <v-col cols="12" md="4">
                                 <div class="info-section">
-                                    <div class="section-title">銷售資訊</div>
+                                    <div class="section-title">{{ unitData.unitId }} 銷售資訊</div>
                                     <v-list dense><v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item><v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item><v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item><v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item><v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item><v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item><v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle></v-list-item></v-list>
                                 </div>
                             </v-col>
                             <v-col cols="12" md="4">
                                 <div class="info-section">
-                                    <div class="section-title">買方資訊</div>
+                                    <div class="section-title">{{ unitData.unitId }} 買方資訊</div>
                                     <v-list dense><v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item><v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item><v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item><v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item><v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item></v-list>
                                 </div>
                             </v-col>
@@ -196,70 +194,127 @@
                 <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
             </template>
             </v-window-item>
-         <v-window-item value="floorplans" class="fill-height pa-0">
-                <div class="d-flex flex-column justify-center align-center fill-height text-center pa-4" style="background-color: #eceff1;">
-                    <v-icon size="64" color="grey-darken-1">mdi-ruler-square-compass</v-icon>
-                    <p class="text-h6 my-4">戶別平面圖測量</p>
-                    <p class="text-grey-darken-2 mb-6">
-                      此戶別已設定 SVG 平面圖。<br>
-                      點擊下方按鈕以開啟測量工具。
-                    </p>
-                    <v-btn
-                      v-if="unitData && unitData.unitId && projectId"
-                      color="blue-darken-2"
-                      variant="flat"
-                      size="large"
-                      @click="openSizingTool"
-                      elevation="4"
-                      prepend-icon="mdi-launch"
-                    >
-                        開啟測量工具
-                    </v-btn>
-                </div>
-            </v-window-item>
+        
             </v-window>
         </v-card-text>
         
-        <div class="footer-section">
-            <v-divider></v-divider>
-             <v-card-actions :class="{ 'flex-column align-stretch pa-4 ga-3': isMobile, 'mb-0': !isMobile }">
-              <v-spacer v-if="!isMobile"></v-spacer>
-              <template v-if="isEditing">
-                  <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
-                  <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving" size="large">儲存變更</v-btn>
-              </template>
-              <template v-else>
-                <v-btn
-                  v-if="viewMode === 'sales' && isSold" 
-                  color="error"
-                  variant="outlined"
-                  @click="openCancelPurchaseDialog"
-                >
-                  <v-icon left>mdi-account-cancel-outline</v-icon>
-                  辦理退戶
-                </v-btn>
-                <v-btn
-                  v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
-                  color="teal"
-                  variant="flat"
-                  :href="unitData.driveFolderUrl"
-                  target="_blank"
-                >
-                    <v-icon left>mdi-folder-google-drive</v-icon>
-                    {{ unitData.unitId }} 資料夾
-                  </v-btn>
-                  <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
-                      <v-icon left>mdi-plus-box-outline</v-icon>
-                      {{ addToQuoteButtonText }}
-                  </v-btn>
-                  <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
-                      <v-icon left>mdi-cash-register</v-icon>
-                      付款表設定
-                  </v-btn>
-                  <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
-              </template>
-            </v-card-actions>
+        <div class="footer-section custom-footer">
+
+    <v-divider></v-divider>
+    
+    <v-card-actions>
+      
+      <template v-if="!isMobile">
+        <v-spacer></v-spacer>
+        <template v-if="isEditing">
+            <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
+            <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving" size="large">儲存變更</v-btn>
+        </template>
+        <template v-else>
+          <v-btn
+            v-if="viewMode === 'sales' && isSold" 
+            color="error"
+            variant="outlined"
+            @click="openCancelPurchaseDialog"
+          >
+            <v-icon left>mdi-account-cancel-outline</v-icon>
+            辦理退戶
+          </v-btn>
+          <v-btn
+            v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
+            color="teal"
+            variant="flat"
+            :href="unitData.driveFolderUrl"
+            target="_blank"
+          >
+              <v-icon left>mdi-folder-google-drive</v-icon>
+              {{ unitData.unitId }} 資料夾
+            </v-btn>
+            <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
+                <v-icon left>mdi-plus-box-outline</v-icon>
+                {{ addToQuoteButtonText }}
+            </v-btn>
+            <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
+                <v-icon left>mdi-cash-register</v-icon>
+                付款表設定
+            </v-btn>
+            <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
+        </template>
+      </template>
+
+      <template v-if="isMobile">
+                <div class="d-flex justify-space-around w-100 mobile-actions-container">
+
+          <template v-if="isEditing">
+              <v-btn stacked variant="text" @click="cancelEditing" class="flex-grow-1">
+                <v-icon>mdi-cancel</v-icon>
+                <span class="text-caption">取消</span>
+              </v-btn>
+              <v-btn stacked variant="text" color="success" @click="saveChanges" :loading="isSaving" class="flex-grow-1">
+                <v-icon>mdi-check-circle-outline</v-icon>
+                <span class="text-caption">儲存</span>
+              </v-btn>
+          </template>
+          <template v-else>
+            <v-btn
+              v-if="viewMode === 'sales' && isSold"
+              stacked
+              variant="text"
+              color="error"
+              class="flex-grow-1"
+              @click="openCancelPurchaseDialog"
+            >
+              <v-icon>mdi-account-cancel-outline</v-icon>
+              <span class="text-caption">退戶</span>
+            </v-btn>
+            
+            <v-btn
+              v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
+              stacked
+              variant="text"
+              class="flex-grow-1"
+              :href="unitData.driveFolderUrl"
+              target="_blank"
+            >
+              <v-icon>mdi-folder-google-drive</v-icon>
+              <span class="text-caption">資料夾</span>
+            </v-btn>
+            <v-btn
+              stacked
+              variant="text"
+              color="success"
+              class="flex-grow-1"
+              @click="handleAddToQuote"
+              :disabled="!canAddToQuote"
+            >
+              <v-icon>mdi-plus-box-outline</v-icon>
+              <span class="text-caption">{{ addToQuoteButtonText }}</span>
+            </v-btn>
+            <v-btn
+              v-if="viewMode === 'sales'"
+              stacked
+              variant="text"
+              class="flex-grow-1"
+              @click="openPaymentSettings"
+            >
+              <v-icon>mdi-cash-register</v-icon>
+              <span class="text-caption">付款表</span>
+            </v-btn>
+            <v-btn
+              stacked
+              variant="text"
+              class="flex-grow-1"
+              @click="close"
+            >
+              <v-icon>mdi-close</v-icon>
+              <span class="text-caption">關閉</span>
+            </v-btn>
+          </template>
         </div>
+      </template>
+
+    </v-card-actions>
+      </div>
     </v-card>
   </v-dialog>
 
@@ -952,6 +1007,15 @@ function formatAddress(data, type) {
 .price-block-unit {
   font-size: 0.9rem;
   color: #757575;
+}
+
+.custom-footer {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  min-height: 30px; 
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 </style>
