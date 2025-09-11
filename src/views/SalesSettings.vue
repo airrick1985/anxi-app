@@ -33,7 +33,7 @@
         <v-tabs v-model="tab" align-tabs="start" class="mb-4">
       <v-tab value="settings">
         <v-icon start>mdi-cog</v-icon>
-      建案設定
+        建案設定
       </v-tab>
       <v-tab value="parameters">
         <v-icon start>mdi-palette</v-icon>
@@ -42,6 +42,10 @@
       <v-tab value="personnel">
         <v-icon start>mdi-account-group</v-icon>
         銷售人員管理
+      </v-tab>
+      <v-tab value="paymentTerms">
+        <v-icon start>mdi-format-list-numbered</v-icon>
+        期款設定
       </v-tab>
       <v-tab value="images">
         <v-icon start>mdi-image-multiple</v-icon>
@@ -255,6 +259,9 @@
         </v-card>
       </v-window-item>
 
+      <v-window-item value="paymentTerms">
+        <PaymentTermsSettings />
+      </v-window-item>
 
       <v-window-item value="images">
         <v-card class="pa-4" elevation="2">
@@ -894,6 +901,8 @@ import {
   deleteSalesPersonnel,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
+import PaymentTermsSettings from './PaymentTermsSettings.vue'; 
+
 
 const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
 

@@ -3884,3 +3884,70 @@ export const deleteSalesPersonnel = (docId) => {
   const docRef = doc(db, "salesPersonnel", docId);
   return deleteDoc(docRef);
 };
+
+// =================================================================
+// / ✅ 【新增】期款方式範本 (Payment Terms Template) 管理 API
+// =================================================================
+
+/**
+ * [新] 即時監聽指定建案的所有期款範本
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToPaymentTermTemplates = (projectId, onDataChange) => {
+  const q = query(
+    collection(db, "paymentTermTemplates"),
+    where("projectId", "==", projectId),
+    orderBy("templateName", "asc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    onDataChange(templates);
+  }, (error) => {
+    console.error(`監聽期款範本時發生錯誤 (Project: ${projectId}):`, error);
+  });
+
+  return unsubscribe;
+};
+
+/**
+ * ✅ 【修改】將 addPaymentTermTemplate 替換為 setPaymentTermTemplate
+ * [新] 新增或完整覆蓋一筆期款範本 (使用自訂文件 ID)
+ * @param {string} docId - 自訂的文件 ID
+ * @param {object} templateData - 要新增的範本資料物件
+ * @returns {Promise<void>}
+ */
+export const setPaymentTermTemplate = (docId, templateData) => {
+  const docRef = doc(db, "paymentTermTemplates", docId);
+  return setDoc(docRef, {
+    ...templateData,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * [新] 更新一筆期款範本
+ * @param {string} docId - Firestore 中的文件 ID
+ * @param {object} dataToUpdate - 要更新的資料物件
+ * @returns {Promise<void>}
+ */
+export const updatePaymentTermTemplate = (docId, dataToUpdate) => {
+  const docRef = doc(db, "paymentTermTemplates", docId);
+  return updateDoc(docRef, {
+    ...dataToUpdate,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * [新] 刪除一筆期款範本
+ * @param {string} docId - Firestore 中的文件 ID
+ * @returns {Promise<void>}
+ */
+export const deletePaymentTermTemplate = (docId) => {
+  const docRef = doc(db, "paymentTermTemplates", docId);
+  return deleteDoc(docRef);
+};
