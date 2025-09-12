@@ -42,13 +42,14 @@
                 <SalesInfoForm 
                     v-if="editingData"
                     v-model="editingData"
-                    :status-options="statusOptions"
-                    :personnel-options="personnelOptions"
-                    :all-sales-images="allProjectImages"
-                    :all-parking-data="allData['車位'] || []"
+                    :statusOptions="statusOptions"
+                    :personnelOptions="personnelOptions"
+                    :allSalesImages="allProjectImages"
+                    :allParkingData="allData['車位'] || []"
+                    :projectName="projectName"
                     @request-open-slide="$emit('request-open-slide')"
-                    :contract-type-options="contractTypesFromDB"
-                    :first-purchase-options="firstPurchaseOptions"
+                    :contractTypeOptions="contractTypesFromDB"
+                    :firstPurchaseOptions="firstPurchaseOptions"
                 />
             </template>
             <template v-else>
@@ -129,10 +130,18 @@
                         <v-col cols="12"> 
                             <div class="price-block mb-2"> 
                                 <div class="price-block-title">房價</div>
-                                <div class="price-block-value text-red-darken-2">
-                                    {{ formatNumber(unitData.price_list_house_total) }} <span class="price-block-currency">萬</span>
-                                </div>
-                                <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                                <template v-if="props.viewMode === 'quote' && unitData.salesStatus_quote === '已售'">
+                                    <div class="price-block-value text-grey">
+                                        已售不提供報價
+                                    </div>
+                                    <div class="price-block-unit">&nbsp;</div>
+                                </template>
+                                <template v-else>
+                                    <div class="price-block-value text-red-darken-2">
+                                        {{ formatNumber(unitData.price_list_house_total) }} <span class="price-block-currency">萬</span>
+                                    </div>
+                                    <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                                </template>
                             </div>
                         </v-col>
                         <v-col v-if="viewMode === 'sales'" cols="12">
@@ -666,11 +675,74 @@ async function saveChanges() {
   }
 }
 
-const canAddToQuote = computed(() => (props.unitData && props.unitData.salesStatus_quote !== '已售'));
-const addToQuoteButtonText = computed(() => '加入報價');
+// 取得目前單位的銷控狀態
+const currentSalesStatus = computed(() => {
+  if (!props.unitData) return '';
+  // 直接返回 backend 的銷控狀態，不設置預設值
+  return props.unitData.salesStatus_backend || '';
+});
 
+// 檢查單位是否可以加入報價
+const canAddToQuote = computed(() => {
+  if (!props.unitData) return false;
+  
+  // 在報價模式下檢查銷售狀態
+  if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售') {
+    return false;
+  }
+  
+  // 檢查必要的價格資訊
+  const hasValidPrice = props.unitData.price_list_house_total > 0;
+  
+  return hasValidPrice;
+});
+
+// 動態計算加入報價按鈕的文字
+const addToQuoteButtonText = computed(() => {
+  if (!props.unitData) return '加入報價';
+  
+  // 在銷控模式下，只有當有狀態時才顯示
+  if (props.viewMode === 'sales' && currentSalesStatus.value) {
+    return `加入報價 (${currentSalesStatus.value})`;
+  }
+  
+  return '加入報價';
+});
+
+// 處理加入報價
 function handleAddToQuote() {
-  if (props.unitData && canAddToQuote.value) quoteStore.addItem(props.unitData);
+  if (!props.unitData) {
+    toast.error('無法加入報價：缺少單位資料');
+    return;
+  }
+  
+  if (!canAddToQuote.value) {
+    if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售') {
+      toast.error('報價模式下無法加入已售出的單位');
+    } else {
+      toast.error('此單位目前無法加入報價');
+    }
+    return;
+  }
+
+  // 確保必要資料的完整性
+  console.log('Adding unit with area:', props.unitData.area_house_ping);
+  const unitData = {
+    ...props.unitData,
+    房屋總表價: props.unitData.price_list_house_total,
+    戶別: props.unitData.unitId,
+    area_house_ping: Number(props.unitData.area_house_ping),  // 主要面積，確保轉換為數字
+    area_main_ping: props.unitData.area_main_ping,  // 主建物面積
+    area_ancillary_ping: props.unitData.area_ancillary_ping,  // 附屬建物面積
+    area_common_ping: props.unitData.area_common_ping,  // 共用部分面積
+    area_terrace_ping: props.unitData.area_terrace_ping,  // 露臺面積
+    common_area_ratio: props.unitData.common_area_ratio,  // 公設比
+    area_main_sqm: props.unitData.area_main_sqm,  // 主建物平方公尺
+    area_ancillary_sqm: props.unitData.area_ancillary_sqm,  // 附屬建物平方公尺
+    area_common_sqm: props.unitData.area_common_sqm,  // 共用部分平方公尺
+  };
+
+  quoteStore.addItem(unitData);
 }
 
 const firstPlan = computed(() => hasFloorplans.value ? props.unitData.floorplans[0] : null);

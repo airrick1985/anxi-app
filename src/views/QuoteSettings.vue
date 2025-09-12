@@ -73,9 +73,10 @@
               :payment-terms-data="paymentTermsData"
               :package-terms-data="packageTermsData"  
               :show-package-deal="showPackageDealColumns"
-              :is-loading="loading" 
+              :is-loading="loading"
+              :all-parking-data="parkingStore.parkingData || []"
               @remove="quoteStore.removeItem(item.internalId)"
-              @open-parking-modal="openParkingModal(item.internalId)"
+              @request-open-slide="handleOpenSlideViewer"
             />
           </v-card>
         </div>
@@ -104,14 +105,7 @@
       </v-card-text>
     </v-card>
     
-    <ParkingSelectionModal 
-      v-model:show="isParkingModalVisible" 
-      :unit-id="currentEditingInternalId" 
-      :all-parking-data="allParkingData" 
-      :initial-selected-parking="currentInitialParking" 
-      @confirm="handleParkingConfirm" 
-      @request-open-slide="handleOpenSlideViewer"
-    />
+
 
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
@@ -234,14 +228,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore';
+import { useParkingStore } from '@/store/parkingStore';
 import { 
   generateQuotePdf, 
   fetchSalesControlData, 
-  fetchParkingList, 
   fetchQuotePersonnelList, 
   updateAndGetParkingSlide,
   fetchActivityMessageSlideId // 匯入新 API
@@ -249,12 +244,17 @@ import {
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
-import ParkingSelectionModal from '@/components/ParkingSelectionModal.vue';
 
 const route = useRoute();
 const router = useRouter();
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
+const projectStore = useProjectStore();
+const parkingStore = useParkingStore();
+
+onUnmounted(() => {
+    parkingStore.cleanup();
+});
 
 const { 
   isSlideDialogVisible, 
@@ -267,14 +267,17 @@ const {
 
 const loading = ref(true);
 const error = ref(null);
-const projectName = route.params.projectName;
-const allParkingData = ref([]);
+const projectId = computed(() => route.params.projectName);
+const projectName = computed(() => {
+  if (!projectStore.idToNameMap || !projectId.value) {
+    return '載入中...';
+  }
+  return projectStore.idToNameMap[projectId.value] || '載入中...';
+});
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
 const quoteParkingSlideId = ref('');
-const isParkingModalVisible = ref(false);
-const currentEditingInternalId = ref(null);
 const paymentTermsData = ref([]);
 const packageTermsData = ref([]); 
 const isGeneratingPdf = ref(false);
@@ -368,7 +371,7 @@ async function handleGenerateQuote() {
     
     try {
         const payload = {
-            projectName: projectName,
+            projectName: projectName.value,
             personnelName: selectedPersonnel.value.name,
             personnelPhone: selectedPersonnel.value.phone,
             items: quoteStore.items.map(item => {
@@ -405,13 +408,16 @@ async function handleGenerateQuote() {
                     packageItemsSum = firstTermValue + secondTermValue;
                     packagePriceRemainder = packagePriceTotal - packageItemsSum;
                 }
+                const totalArea = item.unitDetails && item.unitDetails.area_house_ping ? 
+                    formatNumber(item.unitDetails.area_house_ping) : 'N/A';
+
                 return {
                     '戶別': item.unitId,
                     '是否首購': item.isFirstTimeBuyer, 
-                    '房屋總面積': formatNumber(item.unitDetails['房屋面積(坪)']),
+                    '房屋總面積': totalArea,
                     '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
                     '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-                    '車位編號': item.selectedParking.map(p => p['車位編號']).join(', '),
+                    '車位編號': item.selectedParking.map(p => p.spotId).join(', '),
                     '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
                     '配套價': packagePriceTotal.toLocaleString(),
                     '總價': finalTotal.toLocaleString(),
@@ -453,7 +459,7 @@ async function handleOpenActivityMessage() {
   isActivityDialogVisible.value = true;
   activitySlideId.value = ''; // 重置舊的 ID
   try {
-    const slideId = await fetchActivityMessageSlideId(projectName);
+    const slideId = await fetchActivityMessageSlideId(projectName.value);
     activitySlideId.value = slideId;
   } catch (err) {
     console.error('獲取活動訊息失敗:', err);
@@ -464,50 +470,41 @@ async function handleOpenActivityMessage() {
 
 const showPackageDealColumns = computed(() => {
     if (quoteStore.items.length === 0) return false;
-    return quoteStore.items.some(item => item.unitDetails && item.unitDetails['配套房屋總價']);
+    return quoteStore.items.some(item => item.unitDetails && item.unitDetails.price_package_deal);
 });
 const personnelPhone = computed(() => selectedPersonnel.value?.phone || '');
-const currentInitialParking = computed(() => {
-    if (!currentEditingInternalId.value) return [];
-    const item = quoteStore.items.find(i => i.internalId === currentEditingInternalId.value);
-    return item ? item.selectedParking : [];
-});
-function openParkingModal(internalId) {
-    currentEditingInternalId.value = internalId;
-    isParkingModalVisible.value = true;
-}
-function handleParkingConfirm(parkingList) {
-    quoteStore.updateParking(currentEditingInternalId.value, parkingList);
-    isParkingModalVisible.value = false;
-}
 const formatNumber = (val, frac = 2) => {
+    if (val === null || val === undefined || val === '') return 'N/A';
     const num = parseFloat(val);
-    if (isNaN(num)) return '';
+    if (isNaN(num)) return 'N/A';
     return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
 };
 onMounted(async () => {
     loading.value = true;
     
-    updateAndGetParkingSlide(projectName, 'quote').catch(err => {
+    // 確保 projectStore 已初始化
+    if (!projectStore.idToNameMap || Object.keys(projectStore.idToNameMap).length === 0) {
+        await projectStore.fetchProjects();
+    }
+    
+    // 等待 projectStore 載入後，再取得實際的專案名稱
+    const actualProjectName = projectId.value;
+    
+    // 初始化車位資料監聽
+    parkingStore.initializeParkingData(actualProjectName);
+    
+    // 注意：updateAndGetParkingSlide 需要 projectId，不是 projectName
+    // 從 api.js 呼叫函式後更新 slideId 
+    updateAndGetParkingSlide(projectId.value, 'quote').then(result => {
+      if (result.status === 'success' && result.slideId) {
+        quoteParkingSlideId.value = result.slideId;
+      }
+    }).catch(err => {
       console.warn('背景更新報價模式車位表失敗:', err.message);
     });
 
     try {
-        const [salesControlRes, parkingRes, personnelRes] = await Promise.all([
-            fetchSalesControlData(projectName),
-            fetchParkingList(projectName),
-            fetchQuotePersonnelList(projectName, userStore.user.key)
-        ]);
-        if (salesControlRes.status === 'success' && salesControlRes.data) {
-            paymentTermsData.value = salesControlRes.data.期款比例 || [];
-            packageTermsData.value = salesControlRes.data.配套期款 || []; 
-            if (salesControlRes.data.車位SLIDE?.length > 0) {
-                const slideInfo = salesControlRes.data.車位SLIDE[0];
-                quoteParkingSlideId.value = slideInfo['報價車位SLIDEID'] || '';
-            }
-        }
-        if (parkingRes.status === 'success') allParkingData.value = parkingRes.data;
-        else throw new Error('無法獲取車位列表: ' + parkingRes.message);
+        const personnelRes = await fetchQuotePersonnelList(actualProjectName, userStore.user.key);
         if (personnelRes.status === 'success') {
             personnelOptions.value = personnelRes.data.personnelList;
             canEditPersonnel.value = personnelRes.data.canEdit;
@@ -525,7 +522,7 @@ onMounted(async () => {
 function goBack() {
     const sourceMode = route.query.viewMode;
     const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-    router.push({ name: backRouteName, params: { projectName } });
+    router.push({ name: backRouteName, params: { projectName: projectId.value } });
 }
 </script>
 

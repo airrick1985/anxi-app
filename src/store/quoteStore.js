@@ -14,7 +14,7 @@ export const useQuoteStore = defineStore('quote', () => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
-      return item.selectedParking.reduce((sum, p) => sum + (Number(p['車位表價']) || 0), 0);
+      return item.selectedParking.reduce((sum, p) => sum + (Number(p.price_list) || 0), 0);
     };
   });
 
@@ -23,9 +23,9 @@ export const useQuoteStore = defineStore('quote', () => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
-        return Number(item.unitDetails['配套房屋總價']) || 0;
+        return Number(item.unitDetails.price_package_house_total) || 0;
       } else {
-        const housePrice = Number(item.unitDetails['房屋總表價']) || 0;
+        const housePrice = Number(item.unitDetails.price_list_house_total) || 0;
         const parkingTotal = getParkingTotalPrice.value(internalId);
         return housePrice + parkingTotal;
       }
@@ -36,8 +36,8 @@ export const useQuoteStore = defineStore('quote', () => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item || !item.usePackageDeal) return 0;
-      const originalPrice = (Number(item.unitDetails['房屋總表價']) || 0) + getParkingTotalPrice.value(internalId);
-      const packagePrice = Number(item.unitDetails['配套房屋總價']) || 0;
+      const originalPrice = (Number(item.unitDetails.price_list_house_total) || 0) + getParkingTotalPrice.value(internalId);
+      const packagePrice = Number(item.unitDetails.price_package_house_total) || 0;
       return originalPrice - packagePrice;
     };
   });
@@ -47,10 +47,10 @@ export const useQuoteStore = defineStore('quote', () => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
-        const packageTotal = Number(item.unitDetails['配套房屋總價']) || 0;
+        const packageTotal = Number(item.unitDetails.price_package_house_total) || 0;
         return packageTotal - getParkingTotalPrice.value(internalId);
       } else {
-        return Number(item.unitDetails['房屋總表價']) || 0;
+        return Number(item.unitDetails.price_list_house_total) || 0;
       }
     };
   });
@@ -59,7 +59,7 @@ export const useQuoteStore = defineStore('quote', () => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
-      const area = Number(item.unitDetails['房屋面積(坪)']);
+      const area = Number(item.unitDetails.area_house_ping);
       if (!area) return 0;
       const housePrice = getRawDisplayHousePrice.value(internalId);
       return (housePrice / area);
@@ -79,11 +79,8 @@ export const useQuoteStore = defineStore('quote', () => {
       toast.warning(`報價單已滿，最多只能加入 5 戶！`);
       return;
     }
-    const salesStatus = unitData['銷控狀態'] || '';
-    if (salesStatus === '已售') {
-      toast.error(`戶別 ${unitData['戶別']} 為「已售」狀態，不可加入報價。`);
-      return;
-    }
+    
+    // 使用時間戳來確保每次添加都是唯一的
     const uniqueId = `${unitData['戶別']}-${Date.now()}`;
     items.value.push({
       internalId: uniqueId,

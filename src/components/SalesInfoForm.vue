@@ -123,10 +123,11 @@
     
     <ParkingEditModal 
       v-model:show="isParkingModalOpen"
-      :all-parking-data="allParkingData"
-      :initial-selected-parking="editableData.parkingSpots || []"
+      :allParkingData="allParkingData"
+      :initialSelectedParking="editableData.parkingSpots || []"
       @confirm="handleParkingUpdate"
       @request-open-slide="$emit('request-open-slide')"
+      mode="sales"
     />
   </div>
 </template>

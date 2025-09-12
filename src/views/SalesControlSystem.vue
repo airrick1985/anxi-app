@@ -50,7 +50,7 @@
         @click="handleOpenSlideViewer" 
         :loading="false" title="車位銷控管理"
       >
-        車位銷控管理
+        {{ currentViewMode === 'sales' ? '車位銷控管理' : '車位表' }}
       </v-btn>
 
             <v-btn

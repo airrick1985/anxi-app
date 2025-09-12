@@ -23,7 +23,7 @@
       <v-menu open-on-click location="top">
        <template v-slot:activator="{ props: menuProps }">
         <v-btn v-bind="menuProps" size="medium" variant="tonal" density="comfortable">
-         {{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪
+         {{ formatNumber(item.unitDetails.area_house_ping) }} 坪
          <v-icon end>mdi-information-outline</v-icon>
         </v-btn>
        </template>
@@ -36,7 +36,7 @@
          <tbody>
           <tr class="font-weight-bold bg-blue-grey-lighten-5">
            <td>房屋總面積</td>
-           <td class="text-right">{{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪</td>
+           <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪</td>
           </tr>
           <tr v-for="(detail, i) in areaDetails" :key="i">
            <td class="text-grey-darken-1">{{ detail.label }}</td>
@@ -52,13 +52,13 @@
     </v-list-item>
 
     <v-divider class="my-2"></v-divider>
-    <v-list-item class="pl-0"><v-list-item-title>車位</v-list-item-title><template v-slot:append><v-btn size="small" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>車位</v-list-item-title><template v-slot:append><v-btn size="small" variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>車位價格</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ formattedParkingPrice }}</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
     <v-list-item class="pl-0">
      <template v-if="showPackageDeal" v-slot:prepend>
-      <v-switch class="mr-4" v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" label="配套" color="primary" density="compact" hide-details inset></v-switch>
+      <v-switch class="mr-4" v-model="usePackageDealModel" :disabled="!item.unitDetails.price_package_deal" label="配套" color="primary" density="compact" hide-details inset></v-switch>
      </template>
      <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
       <template v-slot:label><span class="text-body-2">首購:</span></template>
@@ -83,7 +83,7 @@
     <v-menu open-on-click location="top">
      <template v-slot:activator="{ props: menuProps }">
       <v-btn v-bind="menuProps" variant="tonal" density="compact">
-       {{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪
+       {{ formatNumber(item.unitDetails.area_house_ping) }} 坪
       </v-btn>
      </template>
      <v-card min-width="300">
@@ -95,7 +95,7 @@
        <tbody>
         <tr class="font-weight-bold bg-blue-grey-lighten-5">
          <td>房屋總面積</td>
-         <td class="text-right">{{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪</td>
+         <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪</td>
         </tr>
         <tr v-for="(detail, i) in areaDetails" :key="i">
          <td class="text-grey-darken-1">{{ detail.label }}</td>
@@ -111,7 +111,7 @@
 
    <div class="item-cell flex-1 highlight-dark">{{ displayHousePrice }} 萬</div>
    <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
-   <div class="item-cell flex-2"><v-btn density="compact" variant="tonal" @click="emit('open-parking-modal')">{{ parkingDisplayText }}</v-btn></div>
+   <div class="item-cell flex-2"><v-btn density="compact" variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    <div class="item-cell flex-1">
     <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
@@ -122,7 +122,7 @@
    <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
    
    <template v-if="showPackageDeal">
-    <div class="item-cell flex-1"><v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails['配套房屋總價']" density="compact" hide-details></v-checkbox></div>
+    <div class="item-cell flex-1"><v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails.price_package_deal" density="compact" hide-details></v-checkbox></div>
     <div class="item-cell flex-1 final-price">{{ packagePrice.toLocaleString() }} 萬</div>
    </template>
 
@@ -161,6 +161,17 @@
 
   </div>
 </v-expand-transition>
+
+    <!-- 車位選擇 Modal -->
+    <ParkingEditModal 
+      v-model:show="isParkingModalOpen"
+      :allParkingData="allParkingData"
+      :initialSelectedParking="item.selectedParking || []"
+      @confirm="handleParkingUpdate"
+      mode="quote"
+      :unitId="item.internalId"
+      @request-open-slide="emit('request-open-slide')"
+    />
     </div>
 </template>
 
@@ -171,20 +182,25 @@ import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
+import ParkingEditModal from './ParkingEditModal.vue';
 
 const props = defineProps({
   item: { type: Object, required: true },
   paymentTermsData: { type: Array, default: () => [] },
   packageTermsData: { type: Array, default: () => [] },
   showPackageDeal: { type: Boolean, default: true },
-  isLoading: { type: Boolean, default: false }
+  isLoading: { type: Boolean, default: false },
+  allParkingData: { type: Array, default: () => [] } // 新增車位資料 prop
 });
 
-const emit = defineEmits(['remove', 'open-parking-modal']);
+const emit = defineEmits(['remove', 'request-open-slide']);
 const quoteStore = useQuoteStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
+
+// 車位選擇相關狀態
+const isParkingModalOpen = ref(false);
 
 // ★★★ 2. 新增：從 QuoteSettings 搬過來的計算引擎 ★★★
 // (理想上應該放在共用的 utils 或 composable 中，但為求簡單先放這裡)
@@ -328,11 +344,11 @@ const areaDetails = computed(() => {
   const details = props.item.unitDetails;
   if (!details) return [];
   const areaItems = [
-    { label: '主建物(室內)', value: details['主建物面積(坪)'], unit: '坪' },
-    { label: '附屬建物(陽台)', value: details['附屬建物面積(坪)'], unit: '坪' },
-    { label: '共用部分(公設)', value: details['共用部分面積(坪)'], unit: '坪' },
-    { label: '露臺(不計坪)', value: details['露臺(坪)'], unit: '坪' },
-    { label: '公設比', value: details['公設比'], unit: '%', isPercentage: true }
+    { label: '主建物(室內)', value: details.area_main_ping, unit: '坪' },
+    { label: '附屬建物(陽台)', value: details.area_ancillary_ping, unit: '坪' },
+    { label: '共用部分(公設)', value: details.area_common_ping, unit: '坪' },
+    { label: '露臺(不計坪)', value: details.area_terrace_ping, unit: '坪' },
+    { label: '公設比', value: details.common_area_ratio, unit: '%', isPercentage: true }
   ];
   return areaItems.filter(item => item.value !== null && item.value !== undefined && item.value !== '');
 });
@@ -340,6 +356,16 @@ const areaDetails = computed(() => {
 function formatPercentage(value) {
   const num = parseFloat(value);
   return isNaN(num) ? 'N/A' : `${(num * 100).toFixed(2)} %`;
+}
+
+// 車位選擇處理方法
+function handleParkingUpdate(updatedParkingList) {
+  quoteStore.updateParking(props.item.internalId, updatedParkingList);
+  isParkingModalOpen.value = false;
+}
+
+function openParkingModal() {
+  isParkingModalOpen.value = true;
 }
 </script>
 

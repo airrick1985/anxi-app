@@ -34,7 +34,7 @@
         >
           <v-list-item-title class="font-weight-bold">{{ item.unitId }}</v-list-item-title>
           <v-list-item-subtitle>
-            總價: {{ formatNumber(item.unitDetails['房屋總表價']) }} 萬 | 面積: {{ formatNumber(item.unitDetails['房屋面積(坪)']) }} 坪
+            總價: {{ formatNumber(item.unitDetails['房屋總表價']) }} 萬 | 面積: {{ formatNumber(item.unitDetails.area_house_ping) }} 坪
           </v-list-item-subtitle>
           <template v-slot:append>
             <v-btn 

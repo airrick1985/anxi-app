@@ -62,10 +62,6 @@ const props = defineProps({
   packageTermsData: { type: Array, default: () => [] }
 });
 
-onMounted(() => {
-  console.log('PaymentDetails mounted. Received packageTermsData:', props.packageTermsData);
-});
-
 // --- 狀態管理 (不變) ---
 const expandedItems = ref(new Set());
 const calculatedAmounts = ref({});

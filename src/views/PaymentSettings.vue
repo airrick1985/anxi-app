@@ -327,7 +327,7 @@
                     <v-divider class="my-2"></v-divider>
                     <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
                         <span class="price-label">配套房屋總價</span>
-                        <span class="price-value">{{ formatNumber(formData['配套房屋總價']) }} 萬</span>
+                        <span class="price-value">{{ formatNumber(formData.price_package_deal) }} 萬</span>
                     </div>
                     <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
                         <span class="price-label">配套價</span>
@@ -663,7 +663,7 @@ const calculated = computed(() => {
 
     let packagePrice = 0;
     if (data.合約方式 === '毛胚合約') {
-        const packageHouseTotalPrice = Number(data['配套房屋總價']) || 0;
+        const packageHouseTotalPrice = Number(data.price_package_deal) || 0;
         packagePrice = grandTotalSalePrice - packageHouseTotalPrice;
     }
     
@@ -682,7 +682,7 @@ const calculated = computed(() => {
 watch(() => props.show, (newVal) => {
     if (newVal) {
         const defaultStructure = {
-            '戶別': 'N/A', '房屋成交價': 0, '配套價': 0,'配套房屋總價': 0, 
+            '戶別': 'N/A', '房屋成交價': 0, '配套價': 0, price_package_deal: 0, 
             '合約方式': contractTypeOptions.value.length > 0 ? contractTypeOptions.value[0] : '',
             '是否首購': firstPurchaseOptions.value.length > 0 ? firstPurchaseOptions.value[0] : '',
             '銷售': personnelOptions.value.length > 0 ? personnelOptions.value[0] : '',
@@ -703,9 +703,9 @@ watch(() => props.show, (newVal) => {
 watch(() => formData.value?.合約方式, (newVal) => {
     if (!formData.value) return;
     if (newVal !== '毛胚合約') {
-        formData.value['配套房屋總價'] = 0;
+        formData.value.price_package_deal = 0;
     } else {
-        formData.value['配套房屋總價'] = props.unitData?.['配套房屋總價'] || 0;
+        formData.value.price_package_deal = props.unitData?.price_package_deal || 0;
     }
 });
 
@@ -950,7 +950,7 @@ function buildCalculationContext() {
 function getBasePrice() {
     if (!formData.value) return 0;
     return formData.value.合約方式 === '毛胚合約'
-        ? (Number(formData.value['配套房屋總價']) || 0)
+        ? (Number(formData.value.price_package_deal) || 0)
         : calculated.value.grandTotalSalePrice;
 }
 
