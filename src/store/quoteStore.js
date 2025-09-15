@@ -23,7 +23,8 @@ export const useQuoteStore = defineStore('quote', () => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
-        return Number(item.unitDetails.price_package_house_total) || 0;
+        // 使用配套價格作為最終總價
+        return Number(item.unitDetails.price_package_deal) || 0;
       } else {
         const housePrice = Number(item.unitDetails.price_list_house_total) || 0;
         const parkingTotal = getParkingTotalPrice.value(internalId);
@@ -36,8 +37,13 @@ export const useQuoteStore = defineStore('quote', () => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item || !item.usePackageDeal) return 0;
-      const originalPrice = (Number(item.unitDetails.price_list_house_total) || 0) + getParkingTotalPrice.value(internalId);
-      const packagePrice = Number(item.unitDetails.price_package_house_total) || 0;
+      
+      // 原價總和
+      const originalPrice = (Number(item.unitDetails.price_list_house_total) || 0) + 
+                           getParkingTotalPrice.value(internalId);
+      // 配套價
+      const packagePrice = Number(item.unitDetails.price_package_deal) || 0;
+      // 折扣金額
       return originalPrice - packagePrice;
     };
   });
@@ -47,7 +53,8 @@ export const useQuoteStore = defineStore('quote', () => {
       const item = items.value.find(i => i.internalId === internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
-        const packageTotal = Number(item.unitDetails.price_package_house_total) || 0;
+        // 配套模式下的房屋價格 = 配套總價 - 車位價格
+        const packageTotal = Number(item.unitDetails.price_package_deal) || 0;
         return packageTotal - getParkingTotalPrice.value(internalId);
       } else {
         return Number(item.unitDetails.price_list_house_total) || 0;
@@ -92,14 +99,12 @@ export const useQuoteStore = defineStore('quote', () => {
       // ★★★ 1. 新增：初始化 packageItems 屬性 ★★★
       packageItems: {}
     });
-    toast.success(`戶別 ${unitData['戶別']} 已成功加入報價單！`);
-  }
+     }
 
   function removeItem(internalId) {
     const index = items.value.findIndex(item => item.internalId === internalId);
     if (index !== -1) {
       items.value.splice(index, 1);
-      toast.info('已從報價單移除');
     }
   }
 

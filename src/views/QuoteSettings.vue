@@ -71,7 +71,8 @@
             <QuoteItem 
               :item="item"
               :payment-terms-data="paymentTermsData"
-              :package-terms-data="packageTermsData"  
+              :package-terms-data="packageTermsData"
+              :payment-templates="paymentTemplates"
               :show-package-deal="showPackageDealColumns"
               :is-loading="loading"
               :all-parking-data="parkingStore.parkingData || []"
@@ -224,6 +225,75 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    
+    <!-- 新增：期款範本選擇對話框 -->
+    <v-dialog v-model="templateSelectionDialog" persistent max-width="700px">
+      <v-card>
+        <v-card-title class="bg-primary text-white d-flex align-center">
+          <v-icon start>mdi-format-list-bulleted</v-icon>
+          選擇期款範本
+        </v-card-title>
+        
+        <v-card-text class="pt-4">
+          <div v-if="currentQuoteItem">
+            <v-alert type="info" class="mb-4">
+              <div class="font-weight-medium">
+                <strong>{{ currentQuoteItem.unitId }}</strong> 有多個適用的期款範本，請選擇一個：
+              </div>
+              <div class="text-caption mt-1">
+                總價：{{ quoteStore.getFinalTotalPrice(currentQuoteItem.internalId).toLocaleString() }}萬 | 
+                {{ currentQuoteItem.isFirstTimeBuyer === '是' ? '首購' : '非首購' }}
+              </div>
+            </v-alert>
+            
+            <v-radio-group v-model="selectedTemplateId" mandatory class="mt-4">
+              <v-radio
+                v-for="template in availableTemplates"
+                :key="template.id"
+                :value="template.id"
+                class="mb-3"
+              >
+                <template v-slot:label>
+                  <div class="ml-2">
+                    <div class="font-weight-medium text-h6">{{ template.templateName }}</div>
+                    <div class="text-caption text-grey-darken-1 mt-1">
+                      <v-chip size="small" color="blue" variant="outlined" class="mr-2">
+                        {{ template.minPrice.toLocaleString() }}~{{ template.maxPrice.toLocaleString() }}萬
+                      </v-chip>
+                      <v-chip size="small" color="green" variant="outlined" class="mr-2">
+                        {{ template.buyerType }}
+                      </v-chip>
+                      <v-chip size="small" color="orange" variant="outlined">
+                        {{ template.paymentCategory }}
+                      </v-chip>
+                    </div>
+                    <div class="text-caption text-grey mt-1">
+                      包含 {{ template.items?.length || 0 }} 個期款項目
+                    </div>
+                  </div>
+                </template>
+              </v-radio>
+            </v-radio-group>
+          </div>
+        </v-card-text>
+        
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="cancelTemplateSelection">
+            取消
+          </v-btn>
+          <v-btn 
+            color="primary" 
+            variant="flat"
+            @click="confirmTemplateSelection"
+            :disabled="!selectedTemplateId"
+          >
+            確認選擇
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -238,6 +308,9 @@ import {
   generateQuotePdf, 
   fetchSalesControlData, 
   fetchQuotePersonnelList, 
+  fetchSalesPersonnelList, // 新增 Firestore 版本
+  fetchPaymentTermTemplates, // 新增：期款範本 API
+  selectApplicableTemplates, // 新增：範本選擇邏輯
   updateAndGetParkingSlide,
   fetchActivityMessageSlideId // 匯入新 API
 } from '@/api';
@@ -278,11 +351,18 @@ const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
 const quoteParkingSlideId = ref('');
-const paymentTermsData = ref([]);
+const paymentTermsData = ref([]); // 保留向後相容性
 const packageTermsData = ref([]); 
 const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
+
+// --- 新增：期款範本選擇相關狀態 ---
+const paymentTemplates = ref([]); // 存放所有期款範本
+const templateSelectionDialog = ref(false); // 範本選擇對話框
+const availableTemplates = ref([]); // 符合條件的範本列表
+const selectedTemplateId = ref(''); // 使用者選擇的範本ID
+const currentQuoteItem = ref(null); // 目前處理的報價項目
 
 // --- 新增：活動訊息相關狀態 ---
 const isActivityDialogVisible = ref(false);
@@ -361,83 +441,227 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
     return results;
 }
 
+// --- 新增：適用於新資料格式的計算引擎 ---
+
+// 新的計算引擎，適用於 Firestore 期款範本格式
+function runNewCalculationEngine(templateItems, totalPrice) {
+    const results = {};
+    const calculations = {};
+    
+    // 第一步：設定基本變數
+    calculations['總價'] = totalPrice;
+    calculations['配套金額'] = 0; // 如果需要配套金額變數
+    
+    // 第二步：處理所有項目（按依賴順序）
+    const processedItems = new Set();
+    let maxIterations = templateItems.length * 3; // 防止無限循環
+    
+    while (processedItems.size < templateItems.length && maxIterations > 0) {
+        maxIterations--;
+        
+        for (const item of templateItems) {
+            if (processedItems.has(item.id)) continue;
+            
+            try {
+                // 嘗試計算這個項目
+                const result = evaluateFormula(item.formula, calculations);
+                
+                // 應用四捨五入規則
+                const roundedResult = applyNewRounding(
+                    result, 
+                    item.roundingMethod, 
+                    item.roundingValue
+                );
+                
+                calculations[item.name] = roundedResult;
+                results[item.id] = {
+                    name: item.name,
+                    value: roundedResult,
+                    formula: item.formula,
+                    parentId: item.parentId
+                };
+                
+                processedItems.add(item.id);
+                
+            } catch (error) {
+                // 如果計算失敗，可能是因為依賴項目還未計算
+                // 在下一輪迭代中再試
+                continue;
+            }
+        }
+    }
+    
+    // 檢查是否還有未處理的項目
+    if (processedItems.size < templateItems.length) {
+        const unprocessed = templateItems
+            .filter(item => !processedItems.has(item.id))
+            .map(item => item.name)
+            .join(', ');
+        throw new Error(`無法計算期款項目: ${unprocessed}。可能存在循環依賴或公式錯誤。`);
+    }
+    
+    return results;
+}
+
+// 公式計算函數
+function evaluateFormula(formula, variables) {
+    let expression = String(formula);
+    
+    console.log(`[DEBUG] 開始計算公式: ${formula}`);
+    console.log(`[DEBUG] 可用變數:`, variables);
+    
+    // 按變數名稱長度排序（長的先替換，避免部分匹配問題）
+    const sortedVars = Object.entries(variables).sort((a, b) => b[0].length - a[0].length);
+    
+    // 替換變數
+    for (const [varName, value] of sortedVars) {
+        if (typeof value === 'number' && !isNaN(value)) {
+            // 使用全域替換，但要確保變數名稱的完整匹配
+            const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`\\b${escapedVarName}\\b`, 'g');
+            expression = expression.replace(regex, value.toString());
+        }
+    }
+    
+    console.log(`[DEBUG] 變數替換後: ${expression}`);
+    
+    // 處理百分比（5% -> 0.05）
+    expression = expression.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+    
+    console.log(`[DEBUG] 百分比處理後: ${expression}`);
+    
+    // 驗證表達式只包含安全字符
+    if (!/^[0-9+\-*/.() ]+$/.test(expression)) {
+        console.warn(`[DEBUG] 表達式包含非安全字符: ${expression}`);
+        throw new Error(`公式包含不支援的字符: ${expression}`);
+    }
+    
+    try {
+        const result = Function('"use strict"; return (' + expression + ')')();
+        console.log(`[DEBUG] 計算結果: ${result}`);
+        
+        if (typeof result !== 'number' || isNaN(result)) {
+            throw new Error('計算結果不是有效數字');
+        }
+        
+        return result;
+    } catch (error) {
+        console.error(`[DEBUG] 計算錯誤:`, error);
+        throw new Error(`公式計算錯誤: "${formula}" -> "${expression}": ${error.message}`);
+    }
+}
+
+// 四捨五入規則應用（新版本）
+function applyNewRounding(value, method, roundingValue = 1) {
+    const divisor = roundingValue || 1;
+    
+    switch (method) {
+        case '四捨五入':
+            return Math.round(value / divisor) * divisor;
+        case '無條件進位':
+            return Math.ceil(value / divisor) * divisor;
+        case '無條件捨去':
+            return Math.floor(value / divisor) * divisor;
+        default:
+            return Math.round(value); // 預設四捨五入到整數
+    }
+}
+
 // --- 產生報價單 ---
+// 修改後的報價單生成函數
 async function handleGenerateQuote() {
     if (!selectedPersonnel.value) {
         alert('請先選擇報價人員');
         return;
     }
+    
+    // 驗證期款範本資料
+    if (!paymentTemplates.value || paymentTemplates.value.length === 0) {
+        alert('缺少期款範本資料，請聯繫系統管理員。');
+        return;
+    }
+    
     isGeneratingPdf.value = true;
     
     try {
-        const payload = {
-            projectName: projectName.value,
-            personnelName: selectedPersonnel.value.name,
-            personnelPhone: selectedPersonnel.value.phone,
-            items: quoteStore.items.map(item => {
-                const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
-                const conditionCol = item.isFirstTimeBuyer === '是' ?
-                    (finalTotal >= 4000 ? '>=4000首購' : '<4000首購') :
-                    (finalTotal >= 4000 ? '>=4000非首購' : '<4000非首購');
-                const conditionContext = { conditionCol };
-                const calculatedAmounts = runCalculationEngine(paymentTermsData.value, finalTotal, '總價', conditionContext);
-                const dynamicPayments = paymentTermsData.value.reduce((acc, term) => {
-                    const termName = term['項目名稱'];
-                    const termId = term['編號'];
-                    if (termName && calculatedAmounts[termId] !== undefined) {
-                        const amount = calculatedAmounts[termId];
-                        let percentDisplay = '0%';
-                        if (term['類型'] === '百分比') {
-                            const termValue = parseFloat(term[conditionCol]) || 0;
-                            percentDisplay = `${Math.round(termValue * 100)}%`;
-                        }
-                        acc[`${termName}%`] = percentDisplay;
-                        acc[`${termName}金額`] = amount.toLocaleString();
-                    }
-                    return acc;
-                }, {});
-                const dynamicPackageItems = item.packageItems || {};
-                let packageItemsSum = 0;
-                let packagePriceRemainder = 0;
-                const packagePriceTotal = quoteStore.getPackagePrice(item.internalId);
-                if (packagePriceTotal > 0 && packageTermsData.value.length > 0) {
-                    const firstTermName = packageTermsData.value[0]?.['項目名稱'];
-                    const secondTermName = packageTermsData.value[1]?.['項目名稱'];
-                    const firstTermValue = firstTermName ? (dynamicPackageItems[firstTermName] || 0) : 0;
-                    const secondTermValue = secondTermName ? (dynamicPackageItems[secondTermName] || 0) : 0;
-                    packageItemsSum = firstTermValue + secondTermValue;
-                    packagePriceRemainder = packagePriceTotal - packageItemsSum;
-                }
-                const totalArea = item.unitDetails && item.unitDetails.area_house_ping ? 
-                    formatNumber(item.unitDetails.area_house_ping) : 'N/A';
+        // 為每個報價項目檢查並選擇期款範本
+        for (const item of quoteStore.items) {
+            const template = checkAndSelectPaymentTemplate(item);
+            
+            if (!template) {
+                // 需要等待使用者選擇範本
+                isGeneratingPdf.value = false;
+                return;
+            }
+            
+            // 儲存選中的範本到項目中
+            item.selectedPaymentTemplate = template;
+        }
+        
+        // 繼續生成報價單
+        await generateQuoteWithTemplates();
+        
+    } catch (error) {
+        alert(error.message);
+        isGeneratingPdf.value = false;
+    }
+}
 
-                return {
-                    '戶別': item.unitId,
-                    '是否首購': item.isFirstTimeBuyer, 
-                    '房屋總面積': totalArea,
-                    '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
-                    '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-                    '車位編號': item.selectedParking.map(p => p.spotId).join(', '),
-                    '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
-                    '配套價': packagePriceTotal.toLocaleString(),
-                    '總價': finalTotal.toLocaleString(),
-                    ...dynamicPayments,
-                    packageItems: dynamicPackageItems,
-                    packageItemsSum: packageItemsSum.toLocaleString(),
-                    packagePriceRemainder: packagePriceRemainder.toLocaleString()
-                };
-            })
-        };
-        const result = await generateQuotePdf(payload);
+// 使用範本生成報價單的函數
+async function generateQuoteWithTemplates() {
+    const quoteData = {
+        projectName: projectName.value,
+        personnelName: selectedPersonnel.value.name,
+        personnelPhone: selectedPersonnel.value.phone,
+        items: []
+    };
+    
+    for (const item of quoteStore.items) {
+        const template = item.selectedPaymentTemplate;
+        const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
+        
+        // 使用新格式計算期款
+        const calculatedAmounts = runNewCalculationEngine(
+            template.items,
+            finalTotal
+        );
+        
+        // 轉換為舊格式以保持相容性
+        const dynamicPayments = {};
+        Object.values(calculatedAmounts).forEach(calc => {
+            dynamicPayments[`${calc.name}金額`] = calc.value.toLocaleString();
+            // 如果需要百分比顯示，可以在這裡計算
+        });
+        
+        const packagePriceTotal = quoteStore.getPackagePrice(item.internalId);
+        const totalArea = item.unitDetails?.area_house_ping ? 
+            formatNumber(item.unitDetails.area_house_ping) : 'N/A';
+
+        quoteData.items.push({
+            '戶別': item.unitId,
+            '是否首購': item.isFirstTimeBuyer, 
+            '房屋總面積': totalArea,
+            '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
+            '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
+            '車位編號': item.selectedParking.map(p => p.spotId).join(', '),
+            '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
+            '配套價': packagePriceTotal.toLocaleString(),
+            '總價': finalTotal.toLocaleString(),
+            '期款範本': template.templateName,
+            ...dynamicPayments
+        });
+    }
+    
+    try {
+        const result = await generateQuotePdf(quoteData);
         if (result.status === 'success' && result.url) {
             generatedPdfUrl.value = result.url;
             pdfResultDialog.value = true;
         } else {
             throw new Error(result.message || '後端未返回有效的URL');
         }
-    } catch (err) {
-        console.error('產生報價單失敗:', err);
-        alert(`產生報價單失敗: ${err.message}`);
+    } catch (error) {
+        alert(`生成報價單失敗: ${error.message}`);
     } finally {
         isGeneratingPdf.value = false;
     }
@@ -487,38 +711,176 @@ onMounted(async () => {
         await projectStore.fetchProjects();
     }
     
-    // 等待 projectStore 載入後，再取得實際的專案名稱
     const actualProjectName = projectId.value;
     
     // 初始化車位資料監聽
     parkingStore.initializeParkingData(actualProjectName);
     
-    // 注意：updateAndGetParkingSlide 需要 projectId，不是 projectName
-    // 從 api.js 呼叫函式後更新 slideId 
+    // 並行載入必要資料
+    try {
+        const [salesControlRes, templatesRes] = await Promise.all([
+            fetchSalesControlData(actualProjectName), // 載入戶別資料
+            fetchPaymentTermTemplates(projectId.value) // 載入期款範本
+        ]);
+        
+        // 處理銷控資料 - 更新 unitDetails
+        if (salesControlRes.status === 'success') {
+            const allUnitData = salesControlRes.data.戶別;
+            
+            // 更新 quoteStore 中每個 item 的 unitDetails
+            quoteStore.items.forEach(item => {
+                const matchedUnit = allUnitData.find(unit => unit.戶別 === item.unitId);
+                if (matchedUnit) {
+                    // 確保 price_package_deal 正確對應
+                    item.unitDetails = {
+                        ...item.unitDetails,
+                        ...matchedUnit,
+                        price_package_deal: matchedUnit.price_package_deal || matchedUnit['配套價格'] || matchedUnit['配套價']
+                    };
+                }
+            });
+            
+            // 保留配套期款範本（如果仍需要）
+            packageTermsData.value = salesControlRes.data.配套期款範本 || [];
+        }
+        
+        // 處理期款範本資料
+        if (templatesRes.status === 'success') {
+            paymentTemplates.value = templatesRes.data;
+            console.log(`載入了 ${templatesRes.data.length} 個期款範本`);
+        } else {
+            throw new Error(`載入期款範本失敗: ${templatesRes.message}`);
+        }
+        
+    } catch (err) {
+        console.error('載入資料失敗:', err);
+        error.value = err.message;
+    }
+    
+    // 更新車位表 slideId
     updateAndGetParkingSlide(projectId.value, 'quote').then(result => {
-      if (result.status === 'success' && result.slideId) {
-        quoteParkingSlideId.value = result.slideId;
-      }
+        if (result.status === 'success' && result.slideId) {
+            quoteParkingSlideId.value = result.slideId;
+        }
     }).catch(err => {
-      console.warn('背景更新報價模式車位表失敗:', err.message);
+        console.warn('背景更新報價模式車位表失敗:', err.message);
     });
 
     try {
-        const personnelRes = await fetchQuotePersonnelList(actualProjectName, userStore.user.key);
+        // 使用新的 Firestore API 獲取報價人員
+        const personnelRes = await fetchSalesPersonnelList(projectId.value);
+        
         if (personnelRes.status === 'success') {
-            personnelOptions.value = personnelRes.data.personnelList;
-            canEditPersonnel.value = personnelRes.data.canEdit;
-            const currentUser = personnelRes.data.personnelList.find(p => p.phone === userStore.user.key);
-            if (currentUser) selectedPersonnel.value = currentUser;
+            const allPersonnelList = personnelRes.data.personnelList;
+            
+            // 檢查當前用戶是否為銷售主管、系統管理員或超級管理員
+            const isSalesManager = userStore.user.roles?.includes('銷售主管') || 
+                                   userStore.user.roles?.includes('系統管理員') || 
+                                   userStore.user.roles?.includes('超級管理員');
+            
+            if (isSalesManager) {
+                // 銷售主管：可選擇所有人員
+                personnelOptions.value = allPersonnelList;
+                canEditPersonnel.value = true;
+                
+                // 預設選擇當前用戶（如果在列表中）
+                const currentUser = allPersonnelList.find(p => p.phone === userStore.user.key);
+                if (currentUser) {
+                    selectedPersonnel.value = currentUser;
+                } else if (allPersonnelList.length > 0) {
+                    // 如果當前用戶不在列表中，選擇第一個
+                    selectedPersonnel.value = allPersonnelList[0];
+                }
+                
+            } else {
+                // 一般用戶：只能使用自己的資料
+                const currentUserData = {
+                    name: userStore.user.name,
+                    phone: userStore.user.key
+                };
+                
+                personnelOptions.value = [currentUserData];
+                selectedPersonnel.value = currentUserData;
+                canEditPersonnel.value = false;
+            }
         } else {
             throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
         }
     } catch (err) {
+        console.error('載入報價人員失敗:', err);
         error.value = err.message;
     } finally {
         loading.value = false;
     }
 });
+
+// --- 新增：範本選擇邏輯函數 ---
+
+// 檢查並選擇期款範本的函數
+function checkAndSelectPaymentTemplate(item) {
+    const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
+    const buyerType = item.isFirstTimeBuyer === '是' ? '首購' : '非首購';
+    
+    // 找出符合條件的範本
+    const applicableTemplates = selectApplicableTemplates(
+        paymentTemplates.value, 
+        finalTotal, 
+        buyerType
+    );
+    
+    if (applicableTemplates.length === 0) {
+        // 沒有符合條件的範本
+        throw new Error(
+            `找不到適用於「${item.unitId}」的期款範本。\n` +
+            `條件：總價 ${finalTotal.toLocaleString()}萬、${buyerType}\n` +
+            `請至期款範本設定頁面新增對應範本。`
+        );
+    } else if (applicableTemplates.length === 1) {
+        // 只有一個符合的範本，直接使用
+        return applicableTemplates[0];
+    } else {
+        // 多個符合的範本，需要讓使用者選擇
+        currentQuoteItem.value = item;
+        availableTemplates.value = applicableTemplates;
+        templateSelectionDialog.value = true;
+        return null; // 等待使用者選擇
+    }
+}
+
+// 確認範本選擇的函數
+function confirmTemplateSelection() {
+    const selectedTemplate = availableTemplates.value.find(
+        t => t.id === selectedTemplateId.value
+    );
+    
+    if (selectedTemplate) {
+        templateSelectionDialog.value = false;
+        // 繼續生成報價單，使用選中的範本
+        continueGenerateQuote(currentQuoteItem.value, selectedTemplate);
+    }
+}
+
+// 取消範本選擇的函數
+function cancelTemplateSelection() {
+    templateSelectionDialog.value = false;
+    selectedTemplateId.value = '';
+    currentQuoteItem.value = null;
+    availableTemplates.value = [];
+    isGeneratingPdf.value = false; // 停止生成流程
+}
+
+// 繼續生成報價單（使用者選擇範本後）
+async function continueGenerateQuote(item, selectedTemplate) {
+    item.selectedPaymentTemplate = selectedTemplate;
+    
+    // 檢查是否所有項目都已選擇範本
+    const allHaveTemplates = quoteStore.items.every(i => i.selectedPaymentTemplate);
+    
+    if (allHaveTemplates) {
+        await generateQuoteWithTemplates();
+    }
+}
+
 function goBack() {
     const sourceMode = route.query.viewMode;
     const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';

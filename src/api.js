@@ -98,6 +98,110 @@ export async function fetchQuotePersonnelList(projectName, userKey) {
   }, USER_API);
 }
 
+/**
+ * 從 Firestore 獲取報價人員清單 (新版本)
+ * @param {string} projectId 專案ID
+ * @returns {Promise<object>} 包含人員清單的響應
+ */
+export async function fetchSalesPersonnelList(projectId) {
+  console.log(`[api.js] fetchSalesPersonnelList called for project: ${projectId}`);
+  if (!projectId) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesPersonnelList 時缺少 projectId。' });
+  }
+  
+  try {
+    const q = query(
+      collection(db, 'salesPersonnel'), 
+      where('projectId', '==', projectId)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const personnelList = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      personnelList.push({
+        id: doc.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        positions: data.positions
+      });
+    });
+    
+    console.log(`[api.js] fetchSalesPersonnelList found ${personnelList.length} personnel`);
+    return {
+      status: 'success',
+      data: { personnelList }
+    };
+  } catch (error) {
+    console.error('[api.js] fetchSalesPersonnelList error:', error);
+    return {
+      status: 'error',
+      message: error.message
+    };
+  }
+}
+
+/**
+ * 從 Firestore 獲取期款範本資料
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<object>}
+ */
+export async function fetchPaymentTermTemplates(projectId) {
+  console.log(`[api.js] fetchPaymentTermTemplates called for project: ${projectId}`);
+  if (!projectId) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchPaymentTermTemplates 時缺少 projectId。' });
+  }
+
+  try {
+    const q = query(
+      collection(db, 'paymentTermTemplates'), 
+      where('projectId', '==', projectId)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const templates = [];
+    querySnapshot.forEach((doc) => {
+      templates.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    console.log(`[api.js] fetchPaymentTermTemplates found ${templates.length} templates for project ${projectId}`);
+    return {
+      status: 'success',
+      data: templates
+    };
+  } catch (error) {
+    console.error('[api.js] fetchPaymentTermTemplates error:', error);
+    return {
+      status: 'error',
+      message: error.message
+    };
+  }
+}
+
+/**
+ * 根據條件選擇適用的期款範本
+ * @param {Array} templates - 所有範本列表
+ * @param {number} totalPrice - 總價（萬元）
+ * @param {string} buyerType - 購買身份："首購" 或 "非首購"
+ * @returns {Array} 符合條件的範本列表
+ */
+export function selectApplicableTemplates(templates, totalPrice, buyerType) {
+  console.log(`[api.js] selectApplicableTemplates called with totalPrice: ${totalPrice}, buyerType: ${buyerType}`);
+  
+  const applicable = templates.filter(template => 
+    template.minPrice <= totalPrice && 
+    totalPrice <= template.maxPrice && 
+    template.buyerType === buyerType
+  );
+  
+  console.log(`[api.js] selectApplicableTemplates found ${applicable.length} applicable templates`);
+  return applicable;
+}
+
 export async function getProjectList(userKey) { 
   console.log('[api.js] getProjectList called with :', userKey); 
 

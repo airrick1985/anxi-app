@@ -144,19 +144,195 @@
       <div class="mt-2 text-caption">付款方式計算中...</div>
     </div>
 
-    <div v-else-if="paymentTermsData && paymentTermsData.length > 0" class="pa-2 bg-grey-lighten-5">
-      <PaymentDetails
-        :payment-terms-data="paymentTermsData"
-        :package-terms-data="packageTermsData"
-        :final-total-price="finalTotalPrice"
-        :is-first-time-buyer="isFirstTimeBuyerBoolean"
-        :use-package-deal="usePackageDealModel"
-        :package-price="packagePrice"
-      />
+    <!-- 新的期款顯示邏輯 -->
+    <div v-else-if="hasAnyPaymentData" class="pa-2 bg-grey-lighten-5">
+      
+      <!-- 桌面模式：並排顯示 -->
+      <div v-if="!isMobile" class="d-flex ga-4 mb-2">
+        <!-- 一般期款（總價期款） - 左半邊 -->
+        <div v-if="generalPaymentCalculation.hasData" class="flex-1">
+          <v-card flat border>
+            <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1">
+              <v-icon start>mdi-calculator-variant</v-icon>
+              總價期款 ({{ generalPaymentCalculation.templateName }})
+            </v-card-title>
+            <v-card-text class="pa-2">
+              <div class="payment-items-grid">
+                <div 
+                  v-for="item in generalPaymentCalculation.items" 
+                  :key="item.id"
+                  class="payment-item d-flex align-center py-1"
+                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
+                >
+                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
+                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
+                    <v-chip 
+                      v-if="formatConditionalValue(item)" 
+                      size="x-small" 
+                      variant="outlined" 
+                      color="primary" 
+                      class="ml-2 payment-hint"
+                    >
+                      {{ formatConditionalValue(item) }}
+                    </v-chip>
+                  </span>
+                  <span class="payment-amount font-weight-medium">
+                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                  </span>
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </div>
+
+        <!-- 配套期款 - 右半邊 -->
+        <div v-if="packagePaymentCalculation.hasData" class="flex-1">
+          <v-card flat border>
+            <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
+              <v-icon start>mdi-package-variant</v-icon>
+              配套期款 ({{ packagePaymentCalculation.templateName }})
+            </v-card-title>
+            <v-card-text class="pa-2">
+              <div class="payment-items-grid">
+                <div 
+                  v-for="item in packagePaymentCalculation.items" 
+                  :key="item.id"
+                  class="payment-item d-flex align-center py-1"
+                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
+                >
+                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
+                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
+                    <v-chip 
+                      v-if="formatConditionalValue(item)" 
+                      size="x-small" 
+                      variant="outlined" 
+                      color="orange" 
+                      class="ml-2 payment-hint"
+                    >
+                      {{ formatConditionalValue(item) }}
+                    </v-chip>
+                  </span>
+                  <span class="payment-amount font-weight-medium">
+                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                  </span>
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </div>
+
+        <!-- 如果只有總價期款或只有配套期款，佔滿一半空間 -->
+        <div v-if="!generalPaymentCalculation.hasData && packagePaymentCalculation.hasData" class="flex-1"></div>
+        <div v-if="generalPaymentCalculation.hasData && !packagePaymentCalculation.hasData" class="flex-1"></div>
+      </div>
+
+      <!-- 手機模式：垂直堆疊顯示 -->
+      <template v-else>
+        <!-- 一般期款（總價期款） -->
+        <div v-if="generalPaymentCalculation.hasData" class="mb-4">
+          <v-card flat border class="mb-2">
+            <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1">
+              <v-icon start>mdi-calculator-variant</v-icon>
+              總價期款 ({{ generalPaymentCalculation.templateName }})
+            </v-card-title>
+            <v-card-text class="pa-2">
+              <div class="payment-items-grid">
+                <div 
+                  v-for="item in generalPaymentCalculation.items" 
+                  :key="item.id"
+                  class="payment-item d-flex align-center py-1"
+                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
+                >
+                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
+                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
+                    <v-chip 
+                      v-if="formatConditionalValue(item)" 
+                      size="x-small" 
+                      variant="outlined" 
+                      color="primary" 
+                      class="ml-1 payment-hint"
+                    >
+                      {{ formatConditionalValue(item) }}
+                    </v-chip>
+                  </span>
+                  <span class="payment-amount font-weight-medium">
+                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                  </span>
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </div>
+
+        <!-- 配套期款 -->
+        <div v-if="packagePaymentCalculation.hasData" class="mb-2">
+          <v-card flat border>
+            <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
+              <v-icon start>mdi-package-variant</v-icon>
+              配套期款 ({{ packagePaymentCalculation.templateName }})
+            </v-card-title>
+            <v-card-text class="pa-2">
+              <div class="payment-items-grid">
+                <div 
+                  v-for="item in packagePaymentCalculation.items" 
+                  :key="item.id"
+                  class="payment-item d-flex align-center py-1"
+                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
+                >
+                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
+                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
+                    <v-chip 
+                      v-if="formatConditionalValue(item)" 
+                      size="x-small" 
+                      variant="outlined" 
+                      color="orange" 
+                      class="ml-1 payment-hint"
+                    >
+                      {{ formatConditionalValue(item) }}
+                    </v-chip>
+                  </span>
+                  <span class="payment-amount font-weight-medium">
+                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                  </span>
+                </div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </div>
+      </template>
+
+      <!-- 向後相容性：舊版本的 PaymentDetails -->
+      <div v-if="!generalPaymentCalculation.hasData && !packagePaymentCalculation.hasData && paymentTermsData && paymentTermsData.length > 0">
+        <PaymentDetails
+          :payment-terms-data="paymentTermsData"
+          :package-terms-data="packageTermsData"
+          :final-total-price="finalTotalPrice"
+          :is-first-time-buyer="isFirstTimeBuyerBoolean"
+          :use-package-deal="usePackageDealModel"
+          :package-price="packagePrice"
+        />
+      </div>
+
+      <!-- 錯誤訊息顯示 -->
+      <div v-if="generalPaymentCalculation.error || packagePaymentCalculation.error" class="mt-2">
+        <v-alert type="warning" density="compact">
+          <div v-if="generalPaymentCalculation.error">
+            總價期款計算錯誤: {{ generalPaymentCalculation.error }}
+          </div>
+          <div v-if="packagePaymentCalculation.error">
+            配套期款計算錯誤: {{ packagePaymentCalculation.error }}
+          </div>
+        </v-alert>
+      </div>
     </div>
 
     <div v-else class="text-center pa-4 text-red bg-grey-lighten-4">
-      缺少有效的期款比例設定，請至後台確認。
+      <v-icon size="24" class="mb-2">mdi-alert-circle-outline</v-icon>
+      <div>缺少有效的期款比例設定，請至後台確認。</div>
+      <div class="text-caption mt-1">
+        條件：總價 {{ finalTotalPrice.toLocaleString() }}萬、
+        {{ isFirstTimeBuyerModel === '是' ? '首購' : '非首購' }}
+      </div>
     </div>
 
   </div>
@@ -175,8 +351,6 @@
     </div>
 </template>
 
-// /src/components/QuoteItem.vue
-
 <script setup>
 import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
 import { useQuoteStore } from '@/store/quoteStore';
@@ -186,11 +360,12 @@ import ParkingEditModal from './ParkingEditModal.vue';
 
 const props = defineProps({
   item: { type: Object, required: true },
-  paymentTermsData: { type: Array, default: () => [] },
-  packageTermsData: { type: Array, default: () => [] },
+  paymentTermsData: { type: Array, default: () => [] }, // 保留向後相容性
+  packageTermsData: { type: Array, default: () => [] }, // 保留向後相容性
+  paymentTemplates: { type: Array, default: () => [] }, // 新增：Firestore 期款範本
   showPackageDeal: { type: Boolean, default: true },
   isLoading: { type: Boolean, default: false },
-  allParkingData: { type: Array, default: () => [] } // 新增車位資料 prop
+  allParkingData: { type: Array, default: () => [] }
 });
 
 const emit = defineEmits(['remove', 'request-open-slide']);
@@ -202,8 +377,374 @@ const isPaymentDetailsVisible = ref(false);
 // 車位選擇相關狀態
 const isParkingModalOpen = ref(false);
 
-// ★★★ 2. 新增：從 QuoteSettings 搬過來的計算引擎 ★★★
-// (理想上應該放在共用的 utils 或 composable 中，但為求簡單先放這裡)
+// ★★★ 2. 新增：支援項目名稱引用的新計算引擎 ★★★
+
+/**
+ * 新的公式計算引擎，支援項目名稱引用
+ * @param {Array} templateItems - 期款範本項目列表
+ * @param {number} baseValue - 基礎金額（總價或配套價）
+ * @param {string} baseVariable - 基礎變數名稱（"總價" 或 "配套金額"）
+ * @returns {Object} 計算結果 { itemName: calculatedValue }
+ */
+function runNewCalculationEngine(templateItems, baseValue, baseVariable) {
+    if (!templateItems || templateItems.length === 0 || !baseValue) {
+        return {};
+    }
+
+    const results = {};
+    const calculations = {};
+    
+    // 設定基本變數
+    calculations[baseVariable] = baseValue;
+    
+    console.log('開始計算引擎:', {
+        baseVariable,
+        baseValue,
+        項目數量: templateItems.length,
+        項目名稱: templateItems.map(item => item.name)
+    });
+    
+    // 分析項目依賴關係
+    const analyzeDependencies = (items) => {
+        const dependencies = new Map();
+        items.forEach(item => {
+            const deps = [];
+            // 簡單的依賴分析：檢查公式中是否包含其他項目的名稱
+            items.forEach(otherItem => {
+                if (item.id !== otherItem.id && item.formula.includes(otherItem.name)) {
+                    deps.push(otherItem.id);
+                }
+            });
+            dependencies.set(item.id, deps);
+        });
+        return dependencies;
+    };
+    
+    const dependencies = analyzeDependencies(templateItems);
+    console.log('項目依賴關係:', Object.fromEntries(dependencies));
+    
+    // 處理所有項目（按依賴順序）
+    const processedItems = new Set();
+    let maxIterations = templateItems.length * 5; // 增加最大迭代次數
+    
+    while (processedItems.size < templateItems.length && maxIterations > 0) {
+        maxIterations--;
+        let progressMade = false;
+        
+        // 優先處理沒有依賴或依賴已滿足的項目
+        const sortedItems = templateItems.slice().sort((a, b) => {
+            const aDeps = dependencies.get(a.id) || [];
+            const bDeps = dependencies.get(b.id) || [];
+            const aUnmetDeps = aDeps.filter(dep => !processedItems.has(dep)).length;
+            const bUnmetDeps = bDeps.filter(dep => !processedItems.has(dep)).length;
+            return aUnmetDeps - bUnmetDeps;
+        });
+        
+        for (const item of sortedItems) {
+            if (processedItems.has(item.id)) continue;
+            
+            try {
+                console.log(`嘗試計算項目: "${item.name}", 公式: "${item.formula}"`);
+                console.log('當前可用變數:', Object.keys(calculations));
+                
+                // 檢查是否所有依賴都已滿足
+                const itemDeps = dependencies.get(item.id) || [];
+                const unmetDeps = itemDeps.filter(dep => {
+                    const depItem = templateItems.find(t => t.id === dep);
+                    return depItem && !calculations.hasOwnProperty(depItem.name);
+                });
+                
+                if (unmetDeps.length > 0) {
+                    console.log(`項目 "${item.name}" 還有未滿足的依賴，跳過此輪`);
+                    continue;
+                }
+                
+                // 嘗試計算這個項目
+                const result = evaluateFormula(item.formula, calculations);
+                
+                // 應用四捨五入規則
+                const roundedResult = applyNewRounding(
+                    result, 
+                    item.roundingMethod, 
+                    item.roundingValue || 0
+                );
+                
+                // 儲存結果
+                calculations[item.name] = roundedResult;
+                results[item.name] = {
+                    id: item.id,
+                    name: item.name,
+                    value: roundedResult,
+                    formula: item.formula,
+                    parentId: item.parentId
+                };
+                
+                console.log(`項目 "${item.name}" 計算成功: ${roundedResult}`);
+                processedItems.add(item.id);
+                progressMade = true;
+                
+            } catch (error) {
+                console.log(`項目 "${item.name}" 計算失敗: ${error.message}`);
+                // 如果計算失敗，嘗試使用默認值或跳過
+                if (error.message.includes('未替換的字符')) {
+                    console.warn(`項目 "${item.name}" 包含無法解析的引用，使用默認值 0`);
+                    calculations[item.name] = 0;
+                    results[item.name] = {
+                        id: item.id,
+                        name: item.name,
+                        value: 0,
+                        formula: item.formula,
+                        parentId: item.parentId,
+                        error: true
+                    };
+                    processedItems.add(item.id);
+                    progressMade = true;
+                }
+                continue;
+            }
+        }
+        
+        if (!progressMade) {
+            console.warn('計算引擎沒有進展，可能存在循環依賴或無法解析的公式');
+            const unprocessedItems = templateItems.filter(item => !processedItems.has(item.id));
+            console.warn('未處理的項目:', unprocessedItems.map(item => ({ 
+                name: item.name, 
+                formula: item.formula,
+                dependencies: dependencies.get(item.id) || []
+            })));
+            
+            // 對於無法處理的項目，設置為 0
+            unprocessedItems.forEach(item => {
+                calculations[item.name] = 0;
+                results[item.name] = {
+                    id: item.id,
+                    name: item.name,
+                    value: 0,
+                    formula: item.formula,
+                    parentId: item.parentId,
+                    error: true
+                };
+                processedItems.add(item.id);
+            });
+            break;
+        }
+    }
+    
+    console.log('計算引擎完成:', {
+        處理項目數: processedItems.size,
+        總項目數: templateItems.length,
+        最終結果: results
+    });
+    
+    return results;
+}
+
+/**
+ * 公式計算函數，支援項目名稱引用
+ * @param {string} formula - 公式字串
+ * @param {Object} variables - 可用變數 { 變數名: 值 }
+ * @returns {number} 計算結果
+ */
+function evaluateFormula(formula, variables) {
+    let expression = String(formula).trim();
+    
+    // 如果是純數字，直接返回
+    if (/^\d+(\.\d+)?$/.test(expression)) {
+        return parseFloat(expression);
+    }
+    
+    // 處理百分比 (例如: "5%" -> "(5/100)")
+    expression = expression.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+    
+    // 創建名稱映射表：將舊格式轉換為可能的新格式
+    const createNameMapping = (availableVars) => {
+        const mapping = {};
+        const chineseNumbers = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', 
+                               '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
+        
+        // 為每個可用變數創建可能的舊格式映射
+        availableVars.forEach(varName => {
+            // 如果變數名稱以中文數字開頭，創建對應的阿拉伯數字格式
+            chineseNumbers.forEach((chineseNum, index) => {
+                const arabicNum = index + 1;
+                
+                // 處理 "一、" -> "1." 的映射
+                if (varName.startsWith(chineseNum + '、')) {
+                    const remainder = varName.substring(chineseNum.length + 1);
+                    mapping[`${arabicNum}.${remainder}`] = varName;
+                }
+                
+                // 處理 "一" -> "1." 的映射（如果沒有頓號）
+                if (varName.startsWith(chineseNum) && !varName.includes('、')) {
+                    const remainder = varName.substring(chineseNum.length);
+                    mapping[`${arabicNum}.${remainder}`] = varName;
+                }
+            });
+        });
+        
+        return mapping;
+    };
+    
+    const nameMapping = createNameMapping(Object.keys(variables));
+    
+    console.log('開始替換變數:', { 
+        原始公式: formula, 
+        可用變數: Object.keys(variables),
+        名稱映射: nameMapping,
+        變數值: variables
+    });
+    
+    // 改進的分詞策略：考慮中文字符和標點符號
+    const operators = ['+', '-', '*', '/', '(', ')'];
+    let tokens = [];
+    let currentToken = '';
+    
+    // 將公式分解為標記（tokens）
+    for (let i = 0; i < expression.length; i++) {
+        const char = expression[i];
+        if (operators.includes(char)) {
+            if (currentToken.trim()) {
+                tokens.push(currentToken.trim());
+                currentToken = '';
+            }
+            tokens.push(char);
+        } else {
+            currentToken += char;
+        }
+    }
+    
+    // 添加最後一個標記
+    if (currentToken.trim()) {
+        tokens.push(currentToken.trim());
+    }
+    
+    console.log('分詞結果:', tokens);
+    
+    // 排序變數名稱，從長到短，避免短變數名被包含在長變數名中
+    const sortedVariableNames = Object.keys(variables).sort((a, b) => b.length - a.length);
+    
+    // 替換變數標記
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        
+        // 跳過運算符
+        if (operators.includes(token)) {
+            continue;
+        }
+        
+        // 如果是數字，跳過
+        if (/^\d+(\.\d+)?$/.test(token)) {
+            continue;
+        }
+        
+        // 檢查是否為變數名（使用排序後的變數名稱列表）
+        let replaced = false;
+        
+        // 首先檢查直接匹配
+        for (const variableName of sortedVariableNames) {
+            if (token === variableName) {
+                const value = variables[variableName];
+                tokens[i] = `(${value})`;
+                console.log(`直接替換變數 "${variableName}" -> ${value}`);
+                replaced = true;
+                break;
+            }
+        }
+        
+        // 如果直接匹配失敗，檢查名稱映射
+        if (!replaced && nameMapping[token]) {
+            const mappedName = nameMapping[token];
+            if (variables.hasOwnProperty(mappedName)) {
+                const value = variables[mappedName];
+                tokens[i] = `(${value})`;
+                console.log(`通過映射替換變數 "${token}" -> "${mappedName}" -> ${value}`);
+                replaced = true;
+            }
+        }
+        
+        if (!replaced) {
+            console.warn(`找不到變數: "${token}"`);
+            console.warn(`可用的變數名:`, Object.keys(variables));
+            console.warn(`可用的映射:`, nameMapping);
+            // 對於找不到的變數，先設為 0，讓公式能夠繼續執行
+            tokens[i] = '(0)';
+            console.warn(`將未找到的變數 "${token}" 暫時設為 0`);
+        }
+    }
+    
+    // 重新組合表達式
+    expression = tokens.join('');
+    console.log('變數替換完成:', expression);
+    
+    // 安全計算數學表達式
+    try {
+        // 檢查表達式是否只包含安全字符
+        if (!/^[0-9+\-*/().%\s]+$/.test(expression)) {
+            // 如果還有未替換的字符，記錄詳細信息
+            const remainingChars = expression.match(/[^0-9+\-*/().%\s]+/g);
+            if (remainingChars && remainingChars.length > 0) {
+                console.warn('發現未替換的字符:', remainingChars);
+                console.warn('詳細調試信息:', {
+                    原始公式: formula,
+                    可用變數: Object.keys(variables),
+                    變數值: variables,
+                    分詞結果: tokens,
+                    最終表達式: expression
+                });
+                // 不再拋出錯誤，而是返回 0 作為默認值
+                console.warn(`由於包含未替換字符，公式 "${formula}" 返回默認值 0`);
+                return 0;
+            }
+        }
+        
+        // 執行計算
+        const result = Function('"use strict"; return (' + expression + ')')();
+        
+        // 檢查結果是否有效
+        if (isNaN(result) || !isFinite(result)) {
+            throw new Error(`計算結果無效: ${result}`);
+        }
+        
+        console.log(`計算成功: ${formula} = ${result}`);
+        return result;
+    } catch (error) {
+        console.error(`公式計算詳細錯誤:`, {
+            原始公式: formula,
+            處理後表達式: expression,
+            分詞結果: tokens,
+            可用變數: variables,
+            排序後變數名: sortedVariableNames,
+            錯誤訊息: error.message
+        });
+        throw new Error(`公式計算錯誤: ${formula} -> ${expression}: ${error.message}`);
+    }
+}
+
+/**
+ * 新的四捨五入規則應用
+ * @param {number} value - 原始值
+ * @param {string} method - 四捨五入方法
+ * @param {number} roundingValue - 四捨五入精度
+ * @returns {number} 四捨五入後的值
+ */
+function applyNewRounding(value, method, roundingValue) {
+    if (!method || method === '') return Math.round(value);
+    
+    const precision = roundingValue || 1;
+    
+    switch (method) {
+        case '四捨五入':
+            return Math.round(value / precision) * precision;
+        case '無條件進位':
+            return Math.ceil(value / precision) * precision;
+        case '無條件捨去':
+            return Math.floor(value / precision) * precision;
+        default:
+            return Math.round(value);
+    }
+}
+
+// ★★★ 保留舊的計算引擎以維持向後相容性 ★★★
 function applyRounding(value, method, precisionSpec) {
     const precision = String(precisionSpec).includes('.') ? String(precisionSpec).split('.')[1].length : 0;
     if (!method) return Number(value.toFixed(precision));
@@ -272,6 +813,22 @@ function runCalculationEngine(terms, priceValue, priceKeyword, conditionContext 
     return results;
 }
 
+/**
+ * 格式化條件值提示
+ * @param {Object} item - 期款項目
+ * @returns {string} 格式化的條件值提示
+ */
+const formatConditionalValue = (item) => {
+    if (!item || !item.hasOwnProperty('conditionalValue')) return '';
+    
+    // 如果條件值為 0 或 null 或 undefined，返回空字串
+    if (item.conditionalValue === 0 || item.conditionalValue === null || item.conditionalValue === undefined) {
+        return '';
+    }
+    
+    // 返回 Firestore 中的 conditionalValue 欄位值並加上 % 符號
+    return `${item.conditionalValue}%`;
+};
 
 const formatNumber = (val, frac = 2) => {
   const num = parseFloat(val);
@@ -289,6 +846,101 @@ const isFirstTimeBuyerBoolean = computed(() => isFirstTimeBuyerModel.value === '
 const usePackageDealModel = computed({
   get: () => props.item.usePackageDeal,
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
+});
+
+// ★★★ 新增：期款範本選擇邏輯 ★★★
+
+/**
+ * 根據條件選擇適用的期款範本
+ * @param {string} paymentCategory - 期款類別 ("一般期款" 或 "配套期款")
+ * @returns {Object|null} 適用的範本
+ */
+function selectPaymentTemplate(paymentCategory) {
+    if (!props.paymentTemplates || props.paymentTemplates.length === 0) {
+        return null;
+    }
+    
+    const totalPrice = finalTotalPrice.value;
+    const buyerType = isFirstTimeBuyerModel.value === '是' ? '首購' : '非首購';
+    
+    // 找出符合條件的範本
+    const applicableTemplates = props.paymentTemplates.filter(template => 
+        template.paymentCategory === paymentCategory &&
+        template.minPrice <= totalPrice && 
+        totalPrice <= template.maxPrice && 
+        template.buyerType === buyerType
+    );
+    
+    if (applicableTemplates.length === 0) {
+        console.warn(`找不到適用的${paymentCategory}範本，條件：總價${totalPrice}萬、${buyerType}`);
+        return null;
+    }
+    
+    // 如果有多個符合的範本，選擇第一個（在實際應用中可能需要更複雜的選擇邏輯）
+    return applicableTemplates[0];
+}
+
+// ★★★ 新增：一般期款計算結果 ★★★
+const generalPaymentCalculation = computed(() => {
+    const template = selectPaymentTemplate('一般期款');
+    if (!template || !template.items) {
+        return { hasData: false, items: [], templateName: '' };
+    }
+    
+    try {
+        const results = runNewCalculationEngine(template.items, finalTotalPrice.value, '總價');
+        const itemsArray = template.items.map(item => ({
+            ...item,
+            calculatedValue: results[item.name]?.value || 0
+        }));
+        
+        return {
+            hasData: true,
+            items: itemsArray,
+            templateName: template.templateName,
+            results
+        };
+    } catch (error) {
+        console.error('一般期款計算錯誤:', error);
+        return { hasData: false, items: [], templateName: '', error: error.message };
+    }
+});
+
+// ★★★ 新增：配套期款計算結果 ★★★
+const packagePaymentCalculation = computed(() => {
+    if (!usePackageDealModel.value || packagePrice.value <= 0) {
+        return { hasData: false, items: [], templateName: '' };
+    }
+    
+    const template = selectPaymentTemplate('配套期款');
+    if (!template || !template.items) {
+        return { hasData: false, items: [], templateName: '' };
+    }
+    
+    try {
+        const results = runNewCalculationEngine(template.items, packagePrice.value, '配套金額');
+        const itemsArray = template.items.map(item => ({
+            ...item,
+            calculatedValue: results[item.name]?.value || 0
+        }));
+        
+        return {
+            hasData: true,
+            items: itemsArray,
+            templateName: template.templateName,
+            results
+        };
+    } catch (error) {
+        console.error('配套期款計算錯誤:', error);
+        return { hasData: false, items: [], templateName: '', error: error.message };
+    }
+});
+
+// ★★★ 新增：檢查是否有任何期款資料 ★★★
+const hasAnyPaymentData = computed(() => {
+    return generalPaymentCalculation.value.hasData || 
+           packagePaymentCalculation.value.hasData ||
+           (props.paymentTermsData && props.paymentTermsData.length > 0); // 向後相容性
 });
 
 const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.internalId));
@@ -381,4 +1033,68 @@ function openParkingModal() {
 .quote-item-mobile .v-list-item { padding-left: 0; padding-right: 0; min-height: 40px; }
 .highlight-dark { font-weight: 600; color: #c62828; }
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
+
+/* 新增：期款顯示樣式 */
+.payment-items-grid {
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.payment-item {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 4px 8px;
+  transition: background-color 0.2s;
+}
+
+.payment-item:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.payment-item:last-child {
+  border-bottom: none;
+}
+
+.payment-parent {
+  font-weight: 600;
+  background-color: rgba(33, 150, 243, 0.05);
+}
+
+.payment-child {
+  padding-left: 16px;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.payment-name {
+  flex: 0 1 auto;
+  text-align: left;
+  max-width: 70%;
+  margin-right: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-amount {
+  color: #1976d2;
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-align: right;
+  margin-left: auto;
+}
+
+/* 條件值提示標籤樣式 */
+.payment-hint {
+  opacity: 0.8;
+  font-size: 0.7rem;
+  height: 20px !important;
+  vertical-align: middle;
+}
+
+.payment-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 </style>

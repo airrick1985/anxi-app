@@ -30,6 +30,20 @@
                 {{ selectedTemplateId === template.id ? '正在編輯' : '期款範本' }}
               </div>
               <div class="text-h6 mb-1">{{ template.templateName }}</div>
+              <div class="d-flex flex-wrap gap-2 mb-1">
+                <v-chip size="x-small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
+                  {{ template.paymentCategory || '一般期款' }}
+                </v-chip>
+                <template v-if="template.minPrice || template.maxPrice">
+                  <v-chip size="x-small" color="primary" variant="flat">
+                    {{ template.minPrice ? `${template.minPrice}萬` : '0' }} ~ 
+                    {{ template.maxPrice ? `${template.maxPrice}萬` : '無上限' }}
+                  </v-chip>
+                </template>
+                <v-chip size="x-small" :color="template.buyerType === '首購' ? 'success' : 'info'" variant="flat">
+                  {{ template.buyerType || '非首購' }}
+                </v-chip>
+              </div>
               <div class="text-caption">{{ template.items?.length || 0 }} 個項目</div>
             </div>
           </v-card-item>
@@ -43,7 +57,7 @@
             </v-btn>
             <v-spacer></v-spacer>
             <v-btn size="small" icon="mdi-content-copy" @click.stop="copyTemplate(template)" title="複製範本"></v-btn>
-            <v-btn size="small" icon="mdi-form-textbox" @click.stop="openTemplateDialog(template)" title="重新命名"></v-btn>
+            <v-btn size="small" icon="mdi-pencil" @click.stop="openTemplateDialog(template)" title="修改"></v-btn>
             <v-btn size="small" icon="mdi-delete-outline" @click.stop="confirmDeleteTemplate(template)" title="刪除"></v-btn>
           </v-card-actions>
         </v-card>
@@ -215,7 +229,7 @@
 
     <v-dialog v-model="templateDialog.show" persistent max-width="400px">
       <v-card>
-        <v-card-title>{{ templateDialog.isEditing ? '重新命名範本' : '新增範本' }}</v-card-title>
+        <v-card-title>{{ templateDialog.isEditing ? '修改範本' : '新增範本' }}</v-card-title>
         <v-card-text>
           <v-text-field
             v-model="templateDialog.name"
@@ -223,7 +237,56 @@
             variant="outlined"
             autofocus
             @keydown.enter="handleTemplateSave"
+            :rules="[v => !!v || '必填']"
           ></v-text-field>
+          
+          <v-row>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="templateDialog.minPrice"
+                label="最低總價 (萬)"
+                type="number"
+                variant="outlined"
+                suffix="萬"
+                :rules="[
+                  v => !v || v >= 0 || '金額不能為負數',
+                  v => !v || !templateDialog.maxPrice || Number(v) <= Number(templateDialog.maxPrice) || '最低價不能大於最高價'
+                ]"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="templateDialog.maxPrice"
+                label="最高總價 (萬)"
+                type="number"
+                variant="outlined"
+                suffix="萬"
+                :rules="[
+                  v => !v || v >= 0 || '金額不能為負數',
+                  v => !v || !templateDialog.minPrice || Number(v) >= Number(templateDialog.minPrice) || '最高價不能小於最低價'
+                ]"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+
+          <v-select
+            v-model="templateDialog.buyerType"
+            label="買家類型"
+            :items="['首購', '非首購']"
+            variant="outlined"
+            class="mt-2"
+          ></v-select>
+
+          <v-combobox
+            v-model="templateDialog.paymentCategory"
+            label="期款類別"
+            :items="['一般期款', '配套期款']"
+            variant="outlined"
+            class="mt-2"
+            clearable
+            hint="可選擇預設選項或輸入自訂類別"
+            persistent-hint
+          ></v-combobox>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -276,6 +339,9 @@
                   <v-list-subheader>基本變數</v-list-subheader>
                   <v-list-item @click="addToken({type: 'variable', value: '總價', text: '總價', color: 'blue'})">
                     <v-list-item-title>總價</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="addToken({type: 'variable', value: '配套金額', text: '配套金額', color: 'blue'})">
+                    <v-list-item-title>配套金額</v-list-item-title>
                   </v-list-item>
                   
                   <v-divider></v-divider>
@@ -375,7 +441,16 @@ const selectedTemplateId = ref(null);
 let unsubscribeTemplates = null;
 
 // --- 範本管理 Dialog State ---
-const templateDialog = ref({ show: false, name: '', isEditing: false });
+const templateDialog = ref({ 
+  show: false, 
+  name: '', 
+  isEditing: false,
+  editingTemplateId: null, // 正在編輯的範本 ID
+  minPrice: '', // 最低價格
+  maxPrice: '', // 最高價格
+  buyerType: '非首購', // 預設為非首購
+  paymentCategory: '一般期款', // 期款類別
+});
 
 // --- 複製範本 Dialog State ---
 const copyDialog = ref({
@@ -435,6 +510,18 @@ const existingItems = computed(() => {
   }) || [];
 });
 
+// 獲取期款類別對應的顏色
+const getPaymentCategoryColor = (category) => {
+  switch(category) {
+    case '一般期款':
+      return 'blue-grey';
+    case '配套期款':
+      return 'deep-purple';
+    default:
+      return 'orange'; // 自訂類別使用橙色
+  }
+};
+
 // --- 範本 CRUD Methods ---
 const setupTemplatesListener = () => {
   templatesLoading.value = true;
@@ -449,9 +536,27 @@ const setupTemplatesListener = () => {
 
 const openTemplateDialog = (template = null) => {
   if (template) {
-    templateDialog.value = { show: true, name: template.templateName, isEditing: true };
+    templateDialog.value = { 
+      show: true, 
+      name: template.templateName, 
+      isEditing: true,
+      editingTemplateId: template.id, // 記錄正在編輯的範本 ID
+      minPrice: template.minPrice || '',
+      maxPrice: template.maxPrice || '',
+      buyerType: template.buyerType || '非首購',
+      paymentCategory: template.paymentCategory || '一般期款',
+    };
   } else {
-    templateDialog.value = { show: true, name: '', isEditing: false };
+    templateDialog.value = { 
+      show: true, 
+      name: '', 
+      isEditing: false,
+      editingTemplateId: null,
+      minPrice: '',
+      maxPrice: '',
+      buyerType: '非首購',
+      paymentCategory: '一般期款',
+    };
   }
 };
 
@@ -476,11 +581,15 @@ const handleCopyConfirm = async () => {
     const timestamp = getTimestampString();
     const docId = `${projectId.value}_${copyDialog.value.templateName}_${timestamp}`;
 
-    // 創建新範本對象，包含原範本的所有項目
+    // 創建新範本對象，包含原範本的所有項目和屬性
     const newTemplate = {
       projectId: projectId.value,
       templateName: copyDialog.value.templateName.trim(),
       items: JSON.parse(JSON.stringify(copyDialog.value.sourceTemplate.items || [])), // 深拷貝項目數組
+      minPrice: copyDialog.value.sourceTemplate.minPrice,
+      maxPrice: copyDialog.value.sourceTemplate.maxPrice,
+      buyerType: copyDialog.value.sourceTemplate.buyerType || '非首購',
+      paymentCategory: copyDialog.value.sourceTemplate.paymentCategory || '一般期款',
     };
 
     // 儲存新範本
@@ -498,11 +607,28 @@ const handleTemplateSave = async () => {
     toast.error("範本名稱不可為空");
     return;
   }
+
+  // 檢查價格區間合法性
+  const minPrice = templateDialog.value.minPrice ? Number(templateDialog.value.minPrice) : null;
+  const maxPrice = templateDialog.value.maxPrice ? Number(templateDialog.value.maxPrice) : null;
+  
+  if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+    toast.error("最低價不能大於最高價");
+    return;
+  }
+  
+  const templateData = {
+    templateName: name,
+    minPrice: minPrice,
+    maxPrice: maxPrice,
+    buyerType: templateDialog.value.buyerType,
+    paymentCategory: templateDialog.value.paymentCategory,
+  };
   
   if (templateDialog.value.isEditing) {
-    // 編輯模式維持不變
-    await updatePaymentTermTemplate(selectedTemplateId.value, { templateName: name });
-    toast.success("範本已重新命名");
+    // 編輯模式 - 使用正在編輯的範本 ID
+    await updatePaymentTermTemplate(templateDialog.value.editingTemplateId, templateData);
+    toast.success("範本已更新");
   } else {
     // 新增模式
     const timestamp = getTimestampString();
@@ -510,11 +636,10 @@ const handleTemplateSave = async () => {
 
     const newTemplate = {
       projectId: projectId.value,
-      templateName: name,
+      ...templateData,
       items: [],
     };
     
-    // 呼叫新的 API 函式並傳入自訂 ID
     await setPaymentTermTemplate(docId, newTemplate);
     toast.success("已新增範本");
   }
@@ -542,7 +667,7 @@ const confirmDeleteTemplate = async (template) => {
 const parseFormulaToTokens = (formula) => {
   if (!formula) return [];
   
-  // 先分隔運算符，保持項目名稱的完整性
+  // 先分隔運算符和括號，保持項目名稱的完整性
   const parts = formula.split(/([+\-*/()])/);
   const tokens = [];
   
@@ -551,13 +676,14 @@ const parseFormulaToTokens = (formula) => {
     if (!part) return;
     
     if (/^[+\-*/()]$/.test(part)) {
-      // 運算符
-      tokens.push({ type: 'operator', value: part, text: part, color: 'orange' });
-    } else if (part === '總價') {
-      // 總價變數
+      // 運算符和括號
+      const color = /^[()]$/.test(part) ? 'indigo' : 'orange'; // 括號用靛藍色，運算符用橙色
+      tokens.push({ type: 'operator', value: part, text: part, color: color });
+    } else if (part === '總價' || part === '配套金額') {
+      // 基本變數
       tokens.push({ type: 'variable', value: part, text: part, color: 'blue' });
-    } else if (/^\d+$/.test(part)) {
-      // 純數字
+    } else if (/^\d+(\.\d+)?$/.test(part)) {
+      // 純數字（包含小數）
       tokens.push({ type: 'number', value: part, text: part, color: 'purple' });
     } else {
       // 項目名稱（包含帶序號的名稱）
@@ -700,26 +826,34 @@ const validateFormula = (value) => {
   // 修正連續的運算符
   value = value.replace(/[+\-*/]{2,}/g, '-');
   
-  // 基本語法檢查：只允許總價、運算符、數字和項目名稱
-  const parts = value.split(/([+\-*/])/);
+  // 基本語法檢查：允許總價、運算符、數字、項目名稱和括號
+  const parts = value.split(/([+\-*/()])/);
   
   for (let part of parts) {
     part = part.trim();
     if (!part) continue;
     
-    // 如果是運算符，跳過
-    if (/^[+\-*/]$/.test(part)) continue;
+    // 如果是運算符或括號，跳過
+    if (/^[+\-*/()]$/.test(part)) continue;
     
     // 檢查運算元
     const isValid = 
       part === '總價' || 
+      part === '配套金額' ||
       /^\d+(\.\d+)?%?$/.test(part) ||  // 數字（可能帶有百分比）
-      /^\d+\.[^+\-*/]+$/.test(part) ||  // 帶序號的項目名稱
+      /^\d+\.[^+\-*/()]+$/.test(part) ||  // 帶序號的項目名稱
       existingItems.value.some(item => item.name === part); // 一般項目名稱
     
     if (!isValid) {
       return `運算元「${part}」不是有效的值或期款項目名稱`;
     }
+  }
+  
+  // 簡單的括號配對檢查
+  const openBrackets = (value.match(/\(/g) || []).length;
+  const closeBrackets = (value.match(/\)/g) || []).length;
+  if (openBrackets !== closeBrackets) {
+    return '括號不配對，請檢查公式';
   }
   
   return true;
