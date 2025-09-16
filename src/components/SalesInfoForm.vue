@@ -124,7 +124,7 @@
     <ParkingEditModal 
       v-model:show="isParkingModalOpen"
       :allParkingData="allParkingData"
-      :initialSelectedParking="editableData.parkingSpots || []"
+      :initialSelectedParking="ownedParkingSpots"
       @confirm="handleParkingUpdate"
       @request-open-slide="$emit('request-open-slide')"
       mode="sales"
@@ -155,7 +155,7 @@ const props = defineProps({
   allSalesImages: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['update:modelValue', 'request-open-slide']);
+const emit = defineEmits(['update:modelValue', 'request-open-slide', 'parking-updated']);
 
 const { mobile } = useDisplay(); 
 const isMobile = computed(() => mobile.value); 
@@ -303,20 +303,23 @@ watch(isPermanentSameAsMailing, (isSame) => {
   }
 });
 
+// 📋 從 salesParkings 集合中找出該戶別持有的車位
+const ownedParkingSpots = computed(() => {
+  if (!props.allParkingData || !editableData.value?.unitId) return [];
+  return props.allParkingData.filter(parking => parking.buyerUnitId === editableData.value.unitId);
+});
+
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
 const parkingBasePrice = computed(() => {
-  if (!editableData.value?.parkingSpots || !Array.isArray(editableData.value.parkingSpots)) return 0;
-  return editableData.value.parkingSpots.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
+  return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
 });
 const totalBasePrice = computed(() => houseBasePrice.value + parkingBasePrice.value);
 const parkingDisplayText = computed(() => {
-    const parking = editableData.value?.parkingSpots || [];
-    if (parking.length === 0) return '尚未設定';
-    return parking.map(p => p.spotId).join(', ');
+    if (ownedParkingSpots.value.length === 0) return '尚未設定';
+    return ownedParkingSpots.value.map(p => p.spotId).join(', ');
 });
 const parkingSalePrice = computed(() => {
-    const parking = editableData.value?.parkingSpots || [];
-    return parking.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
+    return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
 });
 const totalSalePrice = computed(() => (Number(editableData.value?.price_transaction_house) || 0) + parkingSalePrice.value);
 const unitSalePrice = computed(() => {
@@ -329,9 +332,19 @@ const priceDifference = computed(() => {
   if (!totalSalePrice.value || !totalBasePrice.value) return 0;
   return totalSalePrice.value - totalBasePrice.value;
 });
-function handleParkingUpdate(updatedParkingList) {
-    const newData = { ...editableData.value, parkingSpots: updatedParkingList };
-    emit('update:modelValue', newData);
+
+// 📋 處理車位更新：透過 API 直接更新 salesParkings 集合
+async function handleParkingUpdate(updatedParkingList) {
+    try {
+        // 觸發父元件進行車位資料更新
+        // 傳遞更新的車位清單給父元件處理
+        emit('parking-updated', {
+            unitId: editableData.value.unitId,
+            parkingList: updatedParkingList
+        });
+    } catch (error) {
+        console.error('🚗 車位更新失敗:', error);
+    }
 }
 </script>
 

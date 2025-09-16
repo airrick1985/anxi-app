@@ -34,6 +34,17 @@
             匯出 EXCEL
           </v-btn>
           <v-btn
+            v-if="isSystemAdmin"
+            color="orange"
+            variant="outlined"
+            class="me-2"
+            @click="exportAdminExcel"
+            prepend-icon="mdi-file-excel-outline"
+            title="匯出所有原始欄位數據（僅限系統管理員）"
+          >
+            匯出EXCEL(管理員)
+          </v-btn>
+          <v-btn
             color="red-darken-2"
             variant="outlined"
             @click="uploadDialog = true"
@@ -67,6 +78,12 @@
                   <v-icon icon="mdi-file-excel" color="teal"></v-icon>
                 </template>
                 <v-list-item-title>匯出 EXCEL</v-list-item-title>
+              </v-list-item>
+              <v-list-item v-if="isSystemAdmin" @click="exportAdminExcel">
+                <template v-slot:prepend>
+                  <v-icon icon="mdi-file-excel-outline" color="orange"></v-icon>
+                </template>
+                <v-list-item-title>匯出EXCEL(管理員)</v-list-item-title>
               </v-list-item>
               <v-list-item @click="uploadDialog = true">
                 <template v-slot:prepend>
@@ -333,6 +350,12 @@ const projectName = computed(() => {
   return projectStore.idToNameMap[projectId] || '';
 });
 
+// 檢查是否為系統管理員或超級管理員
+const isSystemAdmin = computed(() => {
+  return userStore.user?.roles?.includes('系統管理員') || 
+         userStore.user?.roles?.includes('超級管理員');
+});
+
 const search = ref('');
 const itemsPerPage = ref(-1);
 const loading = ref(true);
@@ -469,6 +492,66 @@ const exportToExcel = () => {
     XLSX.writeFile(wb, `${exportFileName}_車位資料備份_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
+// 管理員專用：匯出所有原始欄位的 Excel
+const exportAdminExcel = () => {
+    if (allItems.value.length === 0) {
+        toast.info('目前沒有資料可匯出。');
+        return;
+    }
+
+    // 取得第一個項目的所有欄位作為標頭（使用英文原始欄位名）
+    const firstItem = allItems.value[0];
+    const allFields = Object.keys(firstItem);
+    
+    // 按車位編號排序
+    const sortedItems = [...allItems.value].sort((a, b) => {
+        return String(a.number ?? '').localeCompare(String(b.number ?? ''), 'zh-TW', { numeric: true, sensitivity: 'base' });
+    });
+
+    // 將資料轉換為二維陣列，保持原始格式
+    const dataAsArray = sortedItems.map(item => {
+        return allFields.map(field => {
+            const value = item[field];
+            // 保持原始格式：數字保持數字，空值保持空值，布林值保持布林值
+            if (value === null || value === undefined) {
+                return '';  // 空值顯示為空白
+            }
+            return value;  // 其他值保持原樣
+        });
+    });
+
+    // 建立 Excel 工作表
+    const dataWithHeader = [allFields, ...dataAsArray];  // 使用英文欄位名作為標頭
+    const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
+
+    // 設定標頭樣式
+    const headerStyle = { 
+        font: { bold: true, color: { rgb: "FFFFFF" } }, 
+        fill: { fgColor: { rgb: "FF4472C4" } }  // 藍色背景
+    };
+    
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        const address = XLSX.utils.encode_cell({ r: 0, c: C });
+        if(ws[address]) {
+            ws[address].s = headerStyle;
+        }
+    }
+
+    // 凍結第一列標頭
+    ws['!freeze'] = { ySplit: 1 };
+    
+    // 建立工作簿並匯出
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'salesParkings_Raw_Data');
+    
+    const exportFileName = projectName.value || 'unknown-project';
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '_');
+    XLSX.writeFile(wb, `${exportFileName}_管理員原始資料_${timestamp}.xlsx`);
+    
+    toast.success(`已匯出 ${sortedItems.length} 筆原始資料`);
+};
+
 const closeUploadDialog = () => {
     uploadDialog.value = false;
     uploadedFile.value = null;
@@ -492,35 +575,97 @@ const handleFileChange = () => {
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             
-            const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+            // ========================================================
+            // 智能檔案格式檢測：支援一般匯出和管理員匯出兩種格式
+            // ========================================================
+            
+            let dataAsArrays, isAdminFormat = false;
+            
+            // 先嘗試從第一行讀取（管理員格式）
+            const adminFormatData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 0 });
+            
+            // 再嘗試從第二行讀取（一般格式，跳過警告行）
+            const normalFormatData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+            
+            // 檢測是否為管理員格式
+            if (adminFormatData.length > 0) {
+                const firstRowHeaders = adminFormatData[0].map(h => String(h || '').trim());
+                const englishFieldsCount = exportOrder.value.filter(field => firstRowHeaders.includes(field)).length;
+                
+                // 如果第一行包含一定數量的英文欄位名，判定為管理員格式
+                if (englishFieldsCount >= Math.min(5, exportOrder.value.length * 0.5)) {
+                    dataAsArrays = adminFormatData;
+                    isAdminFormat = true;
+                    console.log('檢測到管理員格式 Excel 檔案');
+                } else {
+                    dataAsArrays = normalFormatData;
+                    console.log('檢測到一般格式 Excel 檔案');
+                }
+            } else {
+                dataAsArrays = normalFormatData;
+            }
 
-            // 至少要有一行標頭，如果沒有則 dataAsArrays 會是空陣列
+            // 至少要有一行標頭
             if (dataAsArrays.length < 1) {
-                 // 直接拋出所有必要標頭，因為檔案是空的
-                 throw new Error(`檔案缺少所有必要標頭: ${chineseHeaders.value.join('、')}`);
+                throw new Error(`檔案格式錯誤或為空檔案`);
             }
             
-             // ========================================================
-             // 4.【核心修改】統一的、更詳細的標頭驗證邏輯
-             // ========================================================
+            // 根據檔案格式進行不同的標頭驗證
             const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
-            const requiredHeaders = chineseHeaders.value;
+            let requiredHeaders, headerMapping;
+            
+            if (isAdminFormat) {
+                // 管理員格式：只驗證核心必要欄位，允許額外欄位
+                const coreRequiredFields = ['spotId', 'number', 'floor', 'size'];
+                requiredHeaders = coreRequiredFields;
+                headerMapping = {}; // 管理員格式不需要固定的 mapping
+                
+                console.log('使用管理員格式驗證，核心必要欄位:', requiredHeaders);
+                console.log('檢測到的所有欄位:', uploadedHeaders);
+            } else {
+                // 一般格式：使用中文標頭驗證
+                requiredHeaders = chineseHeaders.value;
+                headerMapping = exportOrder.value.reduce((map, field, index) => {
+                    map[chineseHeaders.value[index]] = index;
+                    return map;
+                }, {});
+                
+                console.log('使用一般格式驗證，必要欄位:', requiredHeaders);
+            }
 
-            // 找出所有「缺少」的標頭
+            // 找出缺少的標頭
             const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
-            // 找出所有「多餘」的標頭 (過濾掉空字串)
-            const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
-
-            // 只要有任何缺少或多餘的標頭，就組合詳細錯誤訊息並拋出
-            if (missingHeaders.length > 0 || extraHeaders.length > 0) {
-                let errorMessage = '檔案標頭不符。';
+            
+            // 標頭驗證
+            if (isAdminFormat) {
+                // 管理員格式：只檢查必要欄位是否存在，允許額外欄位
                 if (missingHeaders.length > 0) {
-                    errorMessage += `\n缺少必要標頭: ${missingHeaders.join('、')}`;
+                    let errorMessage = `檔案標頭不符（檢測為管理員格式）。`;
+                    errorMessage += `\n缺少核心必要標頭: ${missingHeaders.join('、')}`;
+                    errorMessage += `\n\n建議解決方案:`;
+                    errorMessage += `\n1. 確認檔案包含核心欄位: ${requiredHeaders.join('、')}`;
+                    errorMessage += `\n2. 使用系統管理員匯出功能重新產生範本`;
+                    throw new Error(errorMessage);
                 }
-                if (extraHeaders.length > 0) {
-                    errorMessage += `\n發現非預期標頭: ${extraHeaders.join('、')}`;
+                console.log(`✓ 管理員格式驗證通過，包含 ${uploadedHeaders.length} 個欄位`);
+            } else {
+                // 一般格式：嚴格檢查標頭完全匹配
+                const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
+                
+                if (missingHeaders.length > 0 || extraHeaders.length > 0) {
+                    let errorMessage = `檔案標頭不符（檢測為一般格式）。`;
+                    if (missingHeaders.length > 0) {
+                        errorMessage += `\n缺少必要標頭: ${missingHeaders.join('、')}`;
+                    }
+                    if (extraHeaders.length > 0) {
+                        errorMessage += `\n發現非預期標頭: ${extraHeaders.join('、')}`;
+                    }
+                    errorMessage += `\n\n建議解決方案:`;
+                    errorMessage += `\n1. 使用系統一般匯出功能重新產生範本`;
+                    errorMessage += `\n2. 確認標頭格式與系統要求一致`;
+                    throw new Error(errorMessage);
                 }
-                throw new Error(errorMessage);
+                console.log(`✓ 一般格式驗證通過，標頭完全符合要求`);
             }
 
             const dataRows = dataAsArrays.slice(1);
@@ -529,19 +674,38 @@ const handleFileChange = () => {
                 row.some(cell => cell !== null && cell !== undefined && cell !== '')
             );
 
-
-          const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
-                const newRow = {};
-                exportOrder.value.forEach((key, index) => {
-                    // 增加保護：如果 excel 的 cell 是空的，給定一個 null 值
-                    newRow[key] = rowArray[index] ?? null;
+            // 根據檔案格式進行不同的資料解析
+            let jsonDataWithEnglishKeys;
+            
+            if (isAdminFormat) {
+                // 管理員格式：接受所有欄位，直接按英文欄位名對應
+                jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+                    const newRow = {};
+                    uploadedHeaders.forEach((header, index) => {
+                        // 管理員格式接受所有欄位，不進行篩選
+                        newRow[header] = rowArray[index] ?? null;
+                    });
+                    return newRow;
                 });
-                return newRow;
-            });
+                
+                console.log(`管理員格式解析完成，共 ${jsonDataWithEnglishKeys.length} 筆資料，包含 ${uploadedHeaders.length} 個欄位`);
+            } else {
+                // 一般格式：中文標頭轉英文欄位名
+                jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+                    const newRow = {};
+                    exportOrder.value.forEach((englishKey, index) => {
+                        // 使用中文標頭的索引來取得對應的資料
+                        newRow[englishKey] = rowArray[index] ?? null;
+                    });
+                    return newRow;
+                });
+                
+                console.log(`一般格式解析完成，共 ${jsonDataWithEnglishKeys.length} 筆資料`);
+            }
 
             parsedData.value = jsonDataWithEnglishKeys;
             uploadMessageType.value = 'success';
-            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料（${isAdminFormat ? '管理員格式' : '一般格式'}），可以開始上傳。`;
             
         } catch (err) {
             uploadMessageType.value = 'error';

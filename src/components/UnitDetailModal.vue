@@ -48,6 +48,7 @@
                     :allParkingData="allData['車位'] || []"
                     :projectName="projectName"
                     @request-open-slide="$emit('request-open-slide')"
+                    @parking-updated="handleParkingUpdate"
                     :contractTypeOptions="contractTypesFromDB"
                     :firstPurchaseOptions="firstPurchaseOptions"
                 />
@@ -417,7 +418,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { ref, watch, computed, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, getProjectSettings } from '@/api'; 
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, getProjectSettings, updateParkingLot } from '@/api'; 
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
@@ -877,6 +878,64 @@ function formatAddress(data, type) {
     const detail = data[`buyer${type}AddressDetail`] || '';
     const fullAddress = `${city}${district}${detail}`;
     return fullAddress || '-';
+}
+
+// 📋 處理車位更新事件
+async function handleParkingUpdate(parkingUpdateData) {
+    try {
+        console.log('🚗 [UnitDetailModal] 處理車位更新:', parkingUpdateData);
+        
+        const { unitId, parkingList } = parkingUpdateData;
+        const allParkingData = props.allData?.['車位'] || [];
+        
+        // 🔄 步驟1：清除該戶別原有的車位關聯
+        const currentOwnedParkings = allParkingData.filter(p => p.buyerUnitId === unitId);
+        
+        for (const parking of currentOwnedParkings) {
+            const docId = parking.id; // Firestore 文件 ID
+            if (docId) {
+                // ✅ 【修正】僅更新銷售相關欄位，不影響管理員控制的欄位
+                await updateParkingLot(docId, {
+                    buyerUnitId: null,
+                    buyerName: null,
+                    price_transaction: null,
+                    status: null,
+                    status_backend: null,
+                    salesperson: null,
+                    remarks: null,
+                    updatedAt: new Date()
+                    // 🔒 不更新以下管理員欄位：floor, number, price_floor, price_list, projectId, size, slidePosition, spotId, type
+                });
+                console.log(`🚗 清除車位 ${parking.spotId} 的買方關聯`);
+            }
+        }
+        
+        // 🔄 步驟2：設定新的車位關聯
+        for (const newParking of parkingList) {
+            // 找到對應的車位文件
+            const existingParking = allParkingData.find(p => p.spotId === newParking.spotId);
+            if (existingParking && existingParking.id) {
+                // ✅ 【修正】僅更新銷售相關欄位，不影響管理員控制的欄位
+                await updateParkingLot(existingParking.id, {
+                    buyerUnitId: unitId,
+                    buyerName: editingData.value?.buyerName || null,
+                    price_transaction: newParking.price_transaction || null,
+                    status: '已售',
+                    status_backend: editingData.value?.salesStatus_backend || null,
+                    salesperson: editingData.value?.salesperson || null,
+                    remarks: newParking.remarks || null,
+                    updatedAt: new Date()
+                    // 🔒 不更新以下管理員欄位：floor, number, price_floor, price_list, projectId, size, slidePosition, spotId, type
+                });
+                console.log(`🚗 設定車位 ${newParking.spotId} 給戶別 ${unitId}`);
+            }
+        }
+        
+        console.log('🚗 車位更新完成，資料將透過 Firestore 監聽器自動同步');
+    } catch (error) {
+        console.error('🚗 處理車位更新失敗:', error);
+        alert(`車位更新失敗: ${error.message}`);
+    }
 }
 </script>
 

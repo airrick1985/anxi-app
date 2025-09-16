@@ -572,6 +572,18 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
               const priceList = String(data.price_list || "");
               newText = `${spotId}\n${priceList}`;
 
+              // 🔑 設定透明填充
+              shapeFill = {
+                shapeBackgroundFill: {
+                  solidFill: {
+                    color: {
+                      rgbColor: {red: 1, green: 1, blue: 1}
+                    },
+                    alpha: 0.0
+                  }
+                }
+              };
+
               let startIndex = 0;
               if (spotId.length > 0) {
                 styleRequests.push({updateTextStyle: {objectId, textRange: {type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length}, style: {foregroundColor: textColors.black, bold: true, fontSize: {magnitude: 9, unit: "PT"}}, fields: "foregroundColor,bold,fontSize"}});
@@ -602,6 +614,18 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
               const spotId = String(data.number || "");
               const priceList = String(data.price_list || "");
               newText = `${spotId}\n${priceList}`;
+
+              // 🔑 設定透明填充
+              shapeFill = {
+                shapeBackgroundFill: {
+                  solidFill: {
+                    color: {
+                      rgbColor: {red: 1, green: 1, blue: 1}
+                    },
+                    alpha: 0.0
+                  }
+                }
+              };
 
               let startIndex = 0;
               if (spotId.length > 0) {
@@ -640,6 +664,18 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
               });
             }
           }
+        } else {
+          // 🔑 沒有資料的圖形也設定為透明
+          shapeFill = {
+            shapeBackgroundFill: {
+              solidFill: {
+                color: {
+                  rgbColor: {red: 1, green: 1, blue: 1}
+                },
+                alpha: 0.0
+              }
+            }
+          };
         }
         
         if (newText) {
@@ -712,21 +748,43 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
         continue;
       }
 
-       // 【修改】資料已經是英文鍵，直接準備儲存，只需處理數字格式
-      const dataToSave = { ...row }; // 複製一份，避免修改原始物件
+       // ✅ 【修正】只更新 Excel 中實際包含的欄位，保護管理員控制欄位
+      const dataToSave = {};
       
-      // 確保價格欄位是數字
-      if (dataToSave.price_list) dataToSave.price_list = Number(dataToSave.price_list) || 0;
-      if (dataToSave.price_floor) dataToSave.price_floor = Number(dataToSave.price_floor) || 0;
-      if (dataToSave.price_transaction) dataToSave.price_transaction = Number(dataToSave.price_transaction) || 0;
+      // 🔒 管理員控制的欄位列表（只有在 Excel 中明確提供時才更新）
+      const adminFields = ['floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type'];
+      
+      // 🔄 遍歷 Excel 提供的所有欄位
+      for (const [key, value] of Object.entries(row)) {
+        // 跳過空值或 undefined（保持資料庫原值）
+        if (value === null || value === undefined || value === '') {
+          console.log(`[${functionName}] 跳過空值欄位 ${key} for spotId ${spotId}`);
+          continue;
+        }
+        
+        // 🔒 如果是管理員欄位且 Excel 中有提供值，才允許更新
+        if (adminFields.includes(key)) {
+          console.log(`[${functionName}] Excel 更新管理員欄位 ${key} = ${value} for spotId ${spotId}`);
+        }
+        
+        // 處理數字格式的欄位
+        if (['price_list', 'price_floor', 'price_transaction', 'number', 'floor'].includes(key)) {
+          dataToSave[key] = Number(value) || 0;
+        } else {
+          dataToSave[key] = value;
+        }
+      }
 
-      dataToSave.projectId = projectId; // 確保 projectId 被寫入
+      // 確保 projectId 和 updatedAt 被設定
+      dataToSave.projectId = projectId;
+      dataToSave.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
       const existingDocId = existingLotsMap.get(String(spotId));
       const docRef = existingDocId ?
         db.collection("salesParkings").doc(existingDocId) :
         db.collection("salesParkings").doc(`${projectId}_${spotId}`);
 
+      // ✅ 使用 merge: true 確保只更新提供的欄位
       batch.set(docRef, dataToSave, {merge: true});
       operationsCount++;
 

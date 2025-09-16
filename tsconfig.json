@@ -4,7 +4,7 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Node",
-    "strict": true,
+    "strict": false,
     "jsx": "preserve",
     "sourceMap": true,
     "resolveJsonModule": true,
@@ -17,14 +17,35 @@
     "paths": {
       "@/*": ["src/*"]
     },
+    // 性能優化設定
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
     // 如果你寫的是純 JS，添加以下兩行
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "include": [
+    "src/**/*.js", 
+    "src/**/*.ts", 
+    "src/**/*.d.ts", 
+    "src/**/*.tsx", 
+    "src/**/*.vue"
+  ],
   
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "dist",
+    "build",
+    "dev-dist",
+    "functions",
+    "google-cloud-sdk",
+    "**/*.test.js",
+    "**/*.test.ts",
+    "**/*.spec.js",
+    "**/*.spec.ts",
+    "scripts/**/*",
+    "public/**/*",
+    ".git"
   ],
 
   "references": [{ "path": "./tsconfig.node.json" }]
