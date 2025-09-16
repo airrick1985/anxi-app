@@ -2190,3 +2190,440 @@ exports.handleSalesSvgBatchDelete = onCall(async (request) => {
   console.log(`[${functionName}] 成功完成所有 ${svgsToDelete.length} 個檔案的刪除。`);
   return { status: "success", message: `已成功刪除 ${svgsToDelete.length} 個 SVG 檔案。` };
 });
+
+/**
+ * 【新增】更新銷控資料
+ * 處理單一戶別的銷控資料更新，包含所有欄位的資料驗證和型別轉換
+ */
+exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
+  const { projectName, projectId, unitId, data } = request.data;
+  const functionName = `updateSalesData (Project: ${projectName}, Unit: ${unitId})`;
+
+  if (!projectName || !unitId || !data) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectName、unitId 或 data。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始執行銷控資料更新...`);
+    console.log(`[${functionName}] 接收到的參數:`, { projectName, projectId, unitId });
+    console.log(`[${functionName}] 接收到的資料欄位:`, Object.keys(data));
+
+    // ✅ 重構：移除後端轉換邏輯，強制要求前端提供 projectId
+    if (!projectId) {
+      throw new HttpsError("invalid-argument", `請求缺少 projectId。請確保前端已傳遞此參數。`);
+    }
+    
+    const finalProjectId = projectId;
+    const docId = `${finalProjectId}_${unitId}`;
+    
+    console.log(`[${functionName}] 使用 projectId: "${finalProjectId}"`);
+    console.log(`[${functionName}] 計算的文檔 ID: ${docId}`);
+
+    // 準備要儲存的資料
+    const dataToSave = { ...data, projectId: finalProjectId, unitId };
+    
+    console.log(`[${functionName}] 準備儲存的資料:`, JSON.stringify(dataToSave, null, 2));
+
+    // ========================================
+    // 資料型別轉換和驗證
+    // ========================================
+
+    // 數值欄位轉換
+    const numericFields = [
+      'area_ancillary_ping', 'area_ancillary_sqm', 'area_terrace_ping', 'area_common_ping', 
+      'area_common_sqm', 'area_house_ping', 'area_house_sqm', 'area_main_ping', 
+      'area_main_sqm', 'land_share_ping', 'land_share_sqm', 'land_share_ratio', 'common_area_ratio',
+      'payment_contract_amount', 'payment_deposit_amount', 'payment_supplement_amount', 
+      'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only', 
+      'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit', 
+      'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
+      'price_transaction_house', 'price_transaction_total'
+    ];
+
+    for (const field of numericFields) {
+      if (dataToSave[field] !== null && dataToSave[field] !== undefined && dataToSave[field] !== '') {
+        const num = Number(dataToSave[field]);
+        dataToSave[field] = isNaN(num) ? null : num;
+      } else {
+        dataToSave[field] = null;
+      }
+    }
+
+    // 日期欄位轉換
+    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'buyerDateOfBirth'];
+    for (const field of dateFields) {
+      if (dataToSave[field]) {
+        if (dataToSave[field] instanceof Date) {
+          // 如果已經是 Date 物件，直接轉換
+          dataToSave[field] = admin.firestore.Timestamp.fromDate(dataToSave[field]);
+        } else {
+          // 嘗試解析字串或其他格式
+          const date = new Date(dataToSave[field]);
+          if (!isNaN(date.getTime())) {
+            dataToSave[field] = admin.firestore.Timestamp.fromDate(date);
+          } else {
+            console.warn(`[${functionName}] 無法解析日期欄位 ${field}:`, dataToSave[field]);
+            dataToSave[field] = null;
+          }
+        }
+      } else {
+        dataToSave[field] = null;
+      }
+    }
+
+    // 布林欄位處理
+    if (dataToSave.isFirstTimeBuyer !== undefined) {
+      if (typeof dataToSave.isFirstTimeBuyer === 'boolean') {
+        // 已經是布林值，保持不變
+      } else {
+        const val = String(dataToSave.isFirstTimeBuyer).toUpperCase();
+        dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y' || val === '1');
+      }
+    }
+
+    // 銷控圖片欄位處理（確保是陣列）
+    if (dataToSave.salesImages) {
+      if (typeof dataToSave.salesImages === 'string') {
+        // 如果是字串，分割成陣列
+        dataToSave.salesImages = dataToSave.salesImages
+          .split(',')
+          .map(name => name.trim())
+          .filter(name => name);
+      } else if (!Array.isArray(dataToSave.salesImages)) {
+        // 如果不是陣列也不是字串，設為空陣列
+        dataToSave.salesImages = [];
+      }
+    } else {
+      dataToSave.salesImages = [];
+    }
+
+    // ========================================
+    // 車位資料特殊處理
+    // ========================================
+    
+    // 提取車位資料，準備寫入 salesParkings 集合
+    let parkingData = null;
+    if (dataToSave.parkingSpots && Array.isArray(dataToSave.parkingSpots)) {
+      parkingData = dataToSave.parkingSpots;
+      console.log(`[${functionName}] 檢測到車位資料，共 ${parkingData.length} 筆`);
+      
+      // 從 salesHouseholds 資料中移除 parkingSpots，因為它不屬於戶別文檔
+      delete dataToSave.parkingSpots;
+    }
+
+    // 字串欄位去除前後空白
+    const stringFields = [
+      'salesStatus_backend', 'salesStatus_quote', 'salesperson', 'contractType',
+      'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'remarks',
+      'buyerMailingAddressCity', 'buyerMailingAddressDistrict', 'buyerMailingAddressDetail',
+      'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail'
+    ];
+
+    for (const field of stringFields) {
+      if (dataToSave[field] && typeof dataToSave[field] === 'string') {
+        dataToSave[field] = dataToSave[field].trim();
+        // 如果只是空白字串，設為 null
+        if (dataToSave[field] === '') {
+          dataToSave[field] = null;
+        }
+      }
+    }
+
+    // 設定更新時間
+    dataToSave.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    // ========================================
+    // 儲存到 Firestore
+    // ========================================
+    
+    // 檢查資料庫連接
+    console.log(`[${functionName}] 資料庫實例:`, db.databaseId || '預設專案');
+    
+    const docRef = db.collection("salesHouseholds").doc(docId);
+    console.log(`[${functionName}] 文檔參考路徑: salesHouseholds/${docId}`);
+    
+    // 檢查文檔是否存在
+    const docSnapshot = await docRef.get();
+    console.log(`[${functionName}] 目標文檔存在:`, docSnapshot.exists);
+    if (docSnapshot.exists) {
+      console.log(`[${functionName}] 現有文檔資料欄位:`, Object.keys(docSnapshot.data()));
+    }
+    
+    // 使用 set 搭配 merge: true，確保只更新提供的欄位
+    await docRef.set(dataToSave, { merge: true });
+    console.log(`[${functionName}] 戶別資料寫入完成`);
+    
+    // ========================================
+    // 處理車位資料寫入 salesParkings
+    // ========================================
+    
+    let parkingUpdateCount = 0;
+    if (parkingData && parkingData.length > 0) {
+      console.log(`[${functionName}] 開始處理車位資料...`);
+      
+      for (const parking of parkingData) {
+        try {
+          // ✅ 修復：車位文檔 ID 格式應該是 {projectId}_{spotId}
+          const spotId = parking.spotId;
+          if (!spotId) {
+            console.warn(`[${functionName}] 車位資料缺少 spotId，跳過此筆資料:`, parking);
+            continue;
+          }
+          
+          const parkingDocId = `${finalProjectId}_${spotId}`;
+          console.log(`[${functionName}] 車位文檔 ID: ${parkingDocId} (spotId: ${spotId})`);
+          
+          if (!parkingDocId) {
+            console.warn(`[${functionName}] 無法生成車位文檔 ID，跳過此筆資料:`, parking);
+            continue;
+          }
+          
+          // ✅ 修復：準備車位資料時，只更新可變的銷售相關欄位
+          // 核心車位資料（floor, number, price_floor, price_list, projectId, 
+          // spotId, type, size, slidePosition）保持不變
+          const parkingDataToSave = {
+            // 銷售相關欄位（可更新）
+            buyerName: parking.buyerName || null,
+            buyerUnitId: unitId, // 關聯到戶別
+            price_transaction: parking.price_transaction ? Number(parking.price_transaction) : null,
+            remarks: parking.remarks || '',
+            salesperson: parking.salesperson || null,
+            status: parking.status || null,
+            status_backend: parking.status_backend || null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            
+            // 注意：以下核心欄位不會被更新，保持資料庫中的原始值
+            // floor, number, price_floor, price_list, projectId, spotId, type, size, slidePosition
+          };
+          
+          // 寫入 salesParkings 集合
+          const parkingDocRef = db.collection("salesParkings").doc(parkingDocId);
+          await parkingDocRef.set(parkingDataToSave, { merge: true });
+          
+          console.log(`[${functionName}] 車位資料更新成功: ${parkingDocId}`);
+          parkingUpdateCount++;
+          
+        } catch (parkingError) {
+          console.error(`[${functionName}] 車位資料寫入失敗:`, parkingError);
+          // 繼續處理其他車位，不中斷整個流程
+        }
+      }
+      
+      console.log(`[${functionName}] 車位資料處理完成，共更新 ${parkingUpdateCount} 筆`);
+    }
+    
+    // 驗證寫入結果
+    const verifySnapshot = await docRef.get();
+    console.log(`[${functionName}] 寫入後驗證 - 文檔存在:`, verifySnapshot.exists);
+    if (verifySnapshot.exists) {
+      console.log(`[${functionName}] 寫入後的文檔資料欄位:`, Object.keys(verifySnapshot.data()));
+      // 檢查關鍵欄位
+      const verifyData = verifySnapshot.data();
+      console.log(`[${functionName}] 關鍵欄位驗證:`, {
+        salesStatus_backend: verifyData.salesStatus_backend,
+        salesStatus_quote: verifyData.salesStatus_quote,
+        updatedAt: verifyData.updatedAt
+      });
+    }
+
+    console.log(`[${functionName}] 銷控資料更新成功！`);
+    
+    // 準備回傳訊息
+    let message = "銷控資料更新成功！";
+    if (parkingUpdateCount > 0) {
+      message += ` (包含 ${parkingUpdateCount} 筆車位資料)`;
+    }
+    
+    return { 
+      status: "success", 
+      message: message,
+      updatedFields: Object.keys(data).length,
+      parkingUpdated: parkingUpdateCount,
+      docId: docId
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error occurred:`, error);
+    throw new HttpsError("internal", `Error updating sales data: ${error.message}`);
+  }
+});
+
+/**
+ * 【新增】退戶功能
+ * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
+ */
+exports.cancelPurchase = onCall({ secrets: gmailSecrets }, async (request) => {
+  const { projectId, unitId, operatorName } = request.data;
+  const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
+
+  if (!projectId || !unitId || !operatorName) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectId、unitId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始執行退戶作業...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    // ========================================
+    // 步驟 1：讀取原始資料（用於建立退戶紀錄）
+    // ========================================
+    
+    const docId = `${projectId}_${unitId}`;
+    console.log(`[${functionName}] 目標戶別文檔 ID: ${docId}`);
+
+    // 讀取戶別原始資料
+    const householdDocRef = db.collection("salesHouseholds").doc(docId);
+    const householdSnapshot = await householdDocRef.get();
+
+    if (!householdSnapshot.exists) {
+      throw new HttpsError("not-found", `找不到戶別資料: ${docId}`);
+    }
+
+    const originalHouseholdData = householdSnapshot.data();
+    console.log(`[${functionName}] 已讀取戶別原始資料`);
+
+    // 讀取關聯車位的原始資料
+    const parkingQuery = db.collection("salesParkings").where("buyerUnitId", "==", unitId);
+    const parkingSnapshot = await parkingQuery.get();
+    
+    const originalParkingData = [];
+    parkingSnapshot.forEach(doc => {
+      originalParkingData.push({
+        docId: doc.id,
+        data: doc.data()
+      });
+    });
+
+    console.log(`[${functionName}] 已讀取 ${originalParkingData.length} 筆關聯車位資料`);
+
+    // ========================================
+    // 步驟 2：建立退戶日誌
+    // ========================================
+    
+    // 生成退戶紀錄文檔 ID (格式: projectId_unitId_YYYYMMDDHHSS)
+    const now = new Date();
+    const timestamp = now.toISOString()
+      .replace(/[-:T]/g, '')
+      .replace(/\.\d{3}Z$/, '')
+      .substring(0, 14); // YYYYMMDDHHMMSS
+    
+    const cancellationDocId = `${projectId}_${unitId}_${timestamp}`;
+    console.log(`[${functionName}] 退戶紀錄文檔 ID: ${cancellationDocId}`);
+
+    const cancellationRecord = {
+      projectId: projectId,
+      unitId: unitId,
+      operatorName: operatorName,
+      cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
+      originalHouseholdData: originalHouseholdData,
+      originalParkingData: originalParkingData,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // ========================================
+    // 步驟 3：準備資料清理操作
+    // ========================================
+
+    // 準備戶別資料清理
+    const householdResetData = {
+      // 買方基本資料
+      buyerDateOfBirth: null,
+      buyerEmail: null,
+      buyerEmergencyContactName: null,
+      buyerEmergencyContactPhone: null,
+      buyerEmergencyContactRelationship: null,
+      buyerGender: null,
+      buyerHasPurchasedFuyu: null,
+      buyerIdNumber: null,
+      buyerMailingAddressCity: null,
+      buyerMailingAddressDetail: null,
+      buyerMailingAddressDistrict: null,
+      buyerMaritalStatus: null,
+      buyerName: null,
+      buyerOccupationIndustry: null,
+      buyerOccupationTitle: null,
+      buyerPermanentAddressCity: null,
+      buyerPermanentAddressDetail: null,
+      buyerPermanentAddressDistrict: null,
+      buyerPhone: null,
+      buyerPurchasePurpose: null,
+      
+      // 合約與付款資料
+      contractType: "",
+      isFirstTimeBuyer: false,
+      payment_contract_amount: null,
+      payment_contract_date: null,
+      payment_deposit_amount: null,
+      payment_deposit_date: null,
+      payment_supplement_amount: null,
+      payment_supplement_date: null,
+      
+      // 價格與銷售狀態
+      price_package_deal: null,
+      price_transaction_house: null,
+      salesStatus_backend: null,
+      salesStatus_quote: null,
+      salesperson: null,
+      
+      // 其他
+      referrerName: null,
+      referrerPhone: null,
+      remarks: "",
+      
+      // 更新時間
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // ========================================
+    // 步驟 4：使用批次寫入執行所有操作
+    // ========================================
+    
+    const batch = db.batch();
+
+    // 1. 建立退戶紀錄
+    const cancellationDocRef = db.collection("purchaseCancellations").doc(cancellationDocId);
+    batch.set(cancellationDocRef, cancellationRecord);
+
+    // 2. 清理戶別資料
+    batch.update(householdDocRef, householdResetData);
+
+    // 3. 清理關聯車位資料
+    for (const parking of originalParkingData) {
+      const parkingDocRef = db.collection("salesParkings").doc(parking.docId);
+      const parkingResetData = {
+        buyerName: null,
+        buyerUnitId: null,
+        remarks: "",
+        salesperson: null,
+        status: null,
+        status_backend: null,
+        price_transaction: null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      batch.update(parkingDocRef, parkingResetData);
+    }
+
+    // 提交所有操作
+    await batch.commit();
+
+    console.log(`[${functionName}] 退戶作業完成！`);
+    console.log(`[${functionName}] - 已建立退戶紀錄: ${cancellationDocId}`);
+    console.log(`[${functionName}] - 已清理戶別資料: ${docId}`);
+    console.log(`[${functionName}] - 已釋出車位數量: ${originalParkingData.length}`);
+
+    return {
+      status: "success",
+      message: "退戶作業完成！",
+      cancellationId: cancellationDocId,
+      clearedParkingCount: originalParkingData.length
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error occurred:`, error);
+    throw new HttpsError("internal", `退戶作業失敗: ${error.message}`);
+  }
+});

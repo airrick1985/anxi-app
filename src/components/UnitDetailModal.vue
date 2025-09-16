@@ -450,8 +450,16 @@ async function handleConfirmCancelPurchase() {
   savingText.value = '正在辦理退戶...';
   showCancelDialog.value = false;
   try {
+    console.log('🔍 [UnitDetailModal] 準備執行退戶:', {
+      projectName: props.projectName,
+      projectId: projectId.value,
+      unitId: props.unitData.unitId,
+      operatorName: userStore.user.name
+    });
+    
     const result = await cancelPurchase(
       props.projectName,
+      projectId.value, // ✅ 新增：傳遞正確的 projectId
       props.unitData.unitId,
       userStore.user.name
     );
@@ -507,13 +515,44 @@ const fullscreenViewerDialog = ref(false);
 const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
 
 const householdImages = computed(() => {
+  // 🛠️ DEBUG: 添加調試信息
+  if (import.meta.env.DEV) {
+    console.log('🖼️ [UnitDetailModal] 圖片調試信息:', {
+      unitId: props.unitData?.unitId,
+      unitSalesImages: props.unitData?.salesImages,
+      allProjectImagesCount: allProjectImages.value.length,
+      allProjectImagesSample: allProjectImages.value.slice(0, 3).map(img => ({
+        imageName: img.imageName,
+        hasDownloadURL: !!img.downloadURL
+      }))
+    });
+  }
+
   if (!props.unitData?.salesImages?.length || !allProjectImages.value.length) {
+    if (import.meta.env.DEV) {
+      console.log('🖼️ [UnitDetailModal] 圖片載入條件不滿足:', {
+        hasSalesImages: !!props.unitData?.salesImages?.length,
+        hasAllProjectImages: !!allProjectImages.value.length
+      });
+    }
     return [];
   }
+  
   const imageMap = new Map(allProjectImages.value.map(img => [img.imageName, img]));
-  return props.unitData.salesImages
+  const matchedImages = props.unitData.salesImages
     .map(name => imageMap.get(name))
     .filter(Boolean);
+  
+  // 🛠️ DEBUG: 記錄匹配結果
+  if (import.meta.env.DEV) {
+    console.log('🖼️ [UnitDetailModal] 圖片匹配結果:', {
+      requestedImages: props.unitData.salesImages,
+      matchedCount: matchedImages.length,
+      matchedImages: matchedImages.map(img => img.imageName)
+    });
+  }
+  
+  return matchedImages;
 });
 
 const currentImage = computed(() => {
@@ -657,9 +696,17 @@ async function saveChanges() {
       const data = editingData.value;
       const payload = {
           projectName: props.projectName,
+          projectId: projectId.value, // ✅ 新增：傳遞正確的 projectId
           unitId: props.unitData.unitId, 
           data: data // ✅ 修改：將編輯後的資料物件作為 'data' 屬性傳遞
       };
+      
+      console.log('🔍 [UnitDetailModal] 準備儲存的資料:', {
+          projectName: payload.projectName,
+          projectId: payload.projectId,
+          unitId: payload.unitId,
+          dataFields: Object.keys(data)
+      });
       
       const result = await updateSalesData(payload); 
       if (result.status !== 'success') throw new Error(result.message);

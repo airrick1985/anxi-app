@@ -668,14 +668,31 @@ export async function generateQuotePdf(payload) {
   return fetchPost(body, SALES_API); // 使用已定義的 SALES_API 常數
 }
 
+/**
+ * 更新銷控資料（透過 Firebase Cloud Function）
+ * @param {object} payload - 包含 projectName, unitId, data 的物件
+ * @returns {Promise<object>} API 響應
+ */
 export async function updateSalesData(payload) {
   console.log('[api.js] updateSalesData called with payload:', payload);
-  const body = {
-    action: 'update_sales_data',
-    token: 'anxi111003',
-    ...payload
-  };
-  return fetchPost(body, SALES_API);
+  
+  if (!payload.projectName || !payload.unitId || !payload.data) {
+    return { status: "error", message: "前端錯誤：缺少 projectName、unitId 或 data。" };
+  }
+  
+  try {
+    const updateFunction = httpsCallable(functions, 'updateSalesData');
+    const result = await updateFunction({
+      projectName: payload.projectName,
+      projectId: payload.projectId, // ✅ 新增：傳遞 projectId 到 Cloud Function
+      unitId: payload.unitId,
+      data: payload.data
+    });
+    return result.data; // 直接回傳 Cloud Function 的 { status, message }
+  } catch (error) {
+    console.error("呼叫 updateSalesData 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
 }
 
 /**
@@ -785,18 +802,32 @@ export async function updateAndGetParkingSlide(projectId, slideType) {
 /**
  * 請求後端執行退戶操作
  * @param {string} projectName - 建案名稱
+ * @param {string} projectId - 專案 ID
  * @param {string} unitId - 要退戶的戶別 ID
  * @param {string} operatorName - 執行此操作的使用者名稱
  * @returns {Promise<object>}
  */
-export async function cancelPurchase(projectName, unitId, operatorName) {
-  return fetchPost({
-    action: 'cancel_purchase',
-    projectName,
-    unitId,
-    operatorName,
-    token: 'anxi111003' // 遵循您的慣例
-  }, SALES_API);
+export async function cancelPurchase(projectName, projectId, unitId, operatorName) {
+  console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName });
+  
+  if (!projectId || !unitId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少 projectId、unitId 或 operatorName。" };
+  }
+  
+  try {
+    const cancelFunction = httpsCallable(functions, 'cancelPurchase');
+    const result = await cancelFunction({
+      projectId: projectId,
+      unitId: unitId,
+      operatorName: operatorName
+    });
+    
+    console.log('[api.js] cancelPurchase success:', result.data);
+    return result.data; // 直接回傳 Cloud Function 的回應
+  } catch (error) {
+    console.error("呼叫 cancelPurchase 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
 }
 
 // ===============================================
