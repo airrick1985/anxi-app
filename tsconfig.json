@@ -24,14 +24,6 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": [
-    "src/**/*.js", 
-    "src/**/*.ts", 
-    "src/**/*.d.ts", 
-    "src/**/*.tsx", 
-    "src/**/*.vue"
-  ],
-  
   "exclude": [
     "node_modules",
     "dist",
@@ -45,7 +37,8 @@
     "**/*.spec.ts",
     "scripts/**/*",
     "public/**/*",
-    ".git"
+    ".git",
+    "test-*.js" // 新增此行以排除根目錄的測試腳本
   ],
 
   "references": [{ "path": "./tsconfig.node.json" }]

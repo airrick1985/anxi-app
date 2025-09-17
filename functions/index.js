@@ -1052,7 +1052,7 @@ exports.handleLogin = onCall(async (request) => {
     // 驗證成功，更新 activeSessionId
     await userDocRef.update({ activeSessionId: sessionId });
 
-    // 密碼驗證通過後，組合回傳給前端的使用者物件
+    // 密碼驗證通過，組合回傳給前端的使用者物件
     const permissionDocSnap = await permissionDocRef.get();
     const detailedPermissions = [];
     if (permissionDocSnap.exists) {
@@ -2691,6 +2691,82 @@ exports.cancelPurchase = onCall({ secrets: gmailSecrets }, async (request) => {
 // =================================================================
 
 /**
+ * 獲取專案的所有樓層清單
+ */
+exports.getProjectFloors = onCall(async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getProjectFloors (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 查詢專案樓層清單...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    // 從 salesParkings 集合獲取該專案的所有車位
+    const parkingSnapshot = await db.collection("salesParkings")
+      .where("projectId", "==", projectId)
+      .get();
+
+    if (parkingSnapshot.empty) {
+      console.log(`[${functionName}] 專案沒有車位資料`);
+      return { 
+        status: "error", 
+        message: "請先建立車位資料",
+        data: [] 
+      };
+    }
+
+    // 收集所有樓層並去重
+    const floorsSet = new Set();
+    parkingSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.floor) {
+        floorsSet.add(data.floor);
+      }
+    });
+
+    // 轉換為陣列並排序 (A>Z 字典序排列)
+    const floors = Array.from(floorsSet).sort();
+
+    // 獲取已建立平面圖的樓層
+    const floorPlansSnapshot = await db.collection("parkingFloorPlans")
+      .where("projectId", "==", projectId)
+      .get();
+
+    const existingFloors = new Set();
+    floorPlansSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.floor) {
+        existingFloors.add(data.floor);
+      }
+    });
+
+    // 建立樓層選項
+    const floorOptions = floors.map(floor => ({
+      value: floor,
+      text: floor, // 顯示用的純樓層名稱
+      label: existingFloors.has(floor) ? `${floor} (已建立)` : floor,
+      available: !existingFloors.has(floor)
+    }));
+
+    console.log(`[${functionName}] 找到 ${floors.length} 個樓層，其中 ${existingFloors.size} 個已建立平面圖`);
+    return { 
+      status: "success", 
+      data: floorOptions,
+      totalFloors: floors.length,
+      existingFloorPlans: existingFloors.size
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取樓層清單失敗: ${error.message}`);
+  }
+});
+
+/**
  * 獲取平面圖列表及其基本資訊
  */
 exports.getFloorPlans = onCall(async (request) => {
@@ -2717,6 +2793,7 @@ exports.getFloorPlans = onCall(async (request) => {
         id: doc.id,
         name: data.name,
         description: data.description || '',
+        floor: data.floor || '',
         backgroundImageUrl: data.backgroundImageUrl || '',
         isActive: data.isActive || false,
         createdAt: data.createdAt,
@@ -2737,38 +2814,73 @@ exports.getFloorPlans = onCall(async (request) => {
  * 創建新的平面圖
  */
 exports.createFloorPlan = onCall(async (request) => {
-  const { projectId, name, description, backgroundImageUrl } = request.data;
+  // ✅ 修改：將傳入的 floor 重新命名為 floorInput，以便處理
+  const { projectId, name, description, floor: floorInput, backgroundImageUrl } = request.data;
   const functionName = `createFloorPlan (Project: ${projectId})`;
 
-  if (!projectId || !name) {
-    throw new HttpsError("invalid-argument", "缺少 projectId 或 name 參數。");
+  // ✅ 新增：從傳入的物件或字串中提取真實的樓層字串值
+  const floor = (typeof floorInput === 'object' && floorInput !== null && floorInput.value) 
+    ? floorInput.value 
+    : floorInput;
+
+  // ✅ 修改：使用提取後的 floor 值進行驗證
+  if (!projectId || !name || !floor) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、name 或 floor 參數。");
   }
 
   try {
-    console.log(`[${functionName}] 創建新平面圖: ${name}`);
+    // ✅ 修改：日誌記錄使用提取後的 floor 值
+    console.log(`[${functionName}] 創建新平面圖: ${name} (樓層: ${floor})`);
     const db = new Firestore({ databaseId: "anxi-app" });
     
+    // ✅ 修改：檢查重複時使用提取後的 floor 值
+    const existingFloorPlan = await db.collection("parkingFloorPlans")
+      .where("projectId", "==", projectId)
+      .where("floor", "==", floor)
+      .get();
+
+    if (!existingFloorPlan.empty) {
+      throw new HttpsError("already-exists", `樓層 ${floor} 已經存在平面圖。`);
+    }
+    
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const timestamp = `${year}${month}${day}${hours}${minutes}${seconds}`;
+    
+    // ✅ 修改：文件名使用提取後的 floor 值
+    const docId = `${projectId}_${floor}_${timestamp}`;
+
     const floorPlanData = {
       projectId: projectId,
       name: name,
       description: description || '',
+      floor: floor, // ✅ 修改：儲存時使用提取後的 floor 字串值
       backgroundImageUrl: backgroundImageUrl || '',
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
-    const docRef = await db.collection("parkingFloorPlans").add(floorPlanData);
+    const docRef = db.collection("parkingFloorPlans").doc(docId);
+    await docRef.set(floorPlanData);
     
-    console.log(`[${functionName}] 平面圖創建成功，ID: ${docRef.id}`);
+    console.log(`[${functionName}] 平面圖創建成功，ID: ${docId}`);
     return { 
       status: "success", 
-      floorPlanId: docRef.id,
+      floorPlanId: docId,
       message: "平面圖創建成功" 
     };
 
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
     throw new HttpsError("internal", `創建平面圖失敗: ${error.message}`);
   }
 });
@@ -2777,7 +2889,7 @@ exports.createFloorPlan = onCall(async (request) => {
  * 更新平面圖基本資訊
  */
 exports.updateFloorPlan = onCall(async (request) => {
-  const { floorPlanId, name, description, backgroundImageUrl, isActive } = request.data;
+  const { floorPlanId, projectId, name, description, floor, backgroundImageUrl, isActive } = request.data;
   const functionName = `updateFloorPlan (ID: ${floorPlanId})`;
 
   if (!floorPlanId) {
@@ -2788,12 +2900,27 @@ exports.updateFloorPlan = onCall(async (request) => {
     console.log(`[${functionName}] 更新平面圖資訊...`);
     const db = new Firestore({ databaseId: "anxi-app" });
     
+    // 如果要更新樓層，檢查該樓層是否已被其他平面圖使用
+    if (floor !== undefined && projectId) {
+      const existingFloorPlan = await db.collection("parkingFloorPlans")
+        .where("projectId", "==", projectId)
+        .where("floor", "==", floor)
+        .get();
+
+      // 排除當前平面圖本身
+      const conflictingPlans = existingFloorPlan.docs.filter(doc => doc.id !== floorPlanId);
+      if (conflictingPlans.length > 0) {
+        throw new HttpsError("already-exists", `樓層 ${floor} 已經被其他平面圖使用。`);
+      }
+    }
+    
     const updateData = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
+    if (floor !== undefined) updateData.floor = floor;
     if (backgroundImageUrl !== undefined) updateData.backgroundImageUrl = backgroundImageUrl;
     if (isActive !== undefined) updateData.isActive = isActive;
 

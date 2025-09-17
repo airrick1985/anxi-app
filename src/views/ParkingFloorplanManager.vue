@@ -83,14 +83,16 @@
                 編輯
               </v-btn>
               <v-btn 
-                @click="deleteFloorPlan(floorPlan)" 
-                color="error" 
-                variant="outlined" 
-                size="small"
-                prepend-icon="mdi-delete"
-              >
-                刪除
-              </v-btn>
+                  @click="deleteFloorPlan(floorPlan)" 
+                  color="error" 
+                  variant="outlined" 
+                  size="small"
+                  prepend-icon="mdi-delete"
+                  :loading="deletingFloorPlanId === floorPlan.id"
+                  :disabled="deletingFloorPlanId" 
+                >
+                  刪除
+                </v-btn>
             </div>
           </div>
         </div>
@@ -266,6 +268,22 @@
               variant="outlined"
               class="mb-4"
             ></v-text-field>
+
+            <v-select
+              v-model="floorPlanForm.floor"
+              :items="processedFloorOptions"
+              :loading="loadingFloors"
+              label="選擇車位樓層"
+              placeholder="請選擇樓層"
+              variant="outlined"
+              required
+              item-title="label"
+              item-value="value"
+              item-disabled="disabled"
+              :return-object="false"
+              class="mb-4"
+            >
+            </v-select>
             
             <v-textarea
               v-model="floorPlanForm.description"
@@ -336,11 +354,21 @@ export default {
     // Dialog states
     const showFloorPlanDialog = ref(false)
     const editingFloorPlan = ref(null)
+
+
+
+
+    const deletingFloorPlanId = ref(null)
     const floorPlanForm = ref({
       name: '',
       description: '',
+      floor: '',
       isActive: true
     })
+
+    // Floor selection
+    const floorOptions = ref([])
+    const loadingFloors = ref(false)
 
     // Canvas ref
     const parkingCanvas = ref(null)
@@ -353,8 +381,54 @@ export default {
       })
     })
 
+    // 處理樓層選項，在前端控制禁用狀態
+    const processedFloorOptions = computed(() => {
+  // 建立一個正規表示式，這是我們的比對目標
+  const targetString = '(已建立)';
+  const createdRegex = /\(已建立\)/;
+
+  console.groupCollapsed('--- 開始除錯樓層選項禁用狀態 ---');
+  
+  const result = floorOptions.value.map(option => {
+    
+    // ----- 開始為單一選項除錯 -----
+    console.log(`\n選項 Label: "${option.label}"`);
+
+    // 1. 將 Label 和比對目標都轉換為字元碼(Char Code)陣列
+    const labelCharCodes = option.label.split('').map(c => c.charCodeAt(0));
+    const targetCharCodes = targetString.split('').map(c => c.charCodeAt(0));
+
+    console.log('字元碼 (Label):', labelCharCodes.join(', '));
+    console.log('字元碼 (比對目標):', targetCharCodes.join(', '));
+    
+    // 2. 執行比對
+    const isDisabled = createdRegex.test(option.label);
+    console.log(`比對結果 (是否包含 "${targetString}"):`, isDisabled);
+    // ----- 除錯結束 -----
+    
+    // 原始的編輯模式判斷邏輯 (保持不變)
+    let currentEditingFloor = null;
+    if (editingFloorPlan.value && editingFloorPlan.value.floor) {
+      const floorData = editingFloorPlan.value.floor;
+      currentEditingFloor = (typeof floorData === 'object' && floorData.value) 
+        ? floorData.value 
+        : floorData;
+    }
+    const isCurrentEditingOption = editingFloorPlan.value && (option.value === currentEditingFloor);
+
+    return {
+      ...option,
+      disabled: isDisabled && !isCurrentEditingOption
+    };
+  });
+
+  console.groupEnd();
+  return result;
+});
+
     // Cloud Functions
     const getFloorPlans = httpsCallable(functions, 'getFloorPlans')
+    const getProjectFloors = httpsCallable(functions, 'getProjectFloors')
     const createFloorPlan = httpsCallable(functions, 'createFloorPlan')
     const updateFloorPlan = httpsCallable(functions, 'updateFloorPlan')
     const deleteFloorPlanFunc = httpsCallable(functions, 'deleteFloorPlan')
@@ -363,9 +437,13 @@ export default {
     // Methods
     const onProjectChange = async () => {
       if (selectedProjectId.value) {
-        await loadFloorPlans()
+        await Promise.all([
+          loadFloorPlans(),
+          loadProjectFloors()
+        ])
       } else {
         floorPlans.value = []
+        floorOptions.value = []
         selectedFloorPlan.value = null
       }
     }
@@ -385,8 +463,34 @@ export default {
       }
     }
 
-    const refreshFloorPlans = () => {
-      loadFloorPlans()
+    const loadProjectFloors = async () => {
+      if (!selectedProjectId.value) return
+      
+      loadingFloors.value = true
+      try {
+        const result = await getProjectFloors({ projectId: selectedProjectId.value })
+        if (result.data.status === 'error') {
+          alert(result.data.message)
+          floorOptions.value = []
+        } else {
+          const floors = result.data.data || []
+          console.log('樓層資料:', floors) // 偵錯用
+          floorOptions.value = floors
+        }
+      } catch (error) {
+        console.error('載入樓層清單失敗:', error)
+        alert('載入樓層清單失敗，請稍後重試')
+        floorOptions.value = []
+      } finally {
+        loadingFloors.value = false
+      }
+    }
+
+    const refreshFloorPlans = async () => {
+      await Promise.all([
+        loadFloorPlans(),
+        loadProjectFloors()
+      ])
     }
 
     const selectFloorPlan = (floorPlan) => {
@@ -406,25 +510,43 @@ export default {
       }
     }
 
-    const createNewFloorPlan = () => {
+    const createNewFloorPlan = async () => {
       editingFloorPlan.value = null
       floorPlanForm.value = {
         name: '',
         description: '',
+        floor: '',
         isActive: true
       }
+      
+      // 只有當樓層選項為空時才載入（避免重複調用）
+      if (floorOptions.value.length === 0) {
+        await loadProjectFloors()
+      }
+      
       showFloorPlanDialog.value = true
     }
 
-    const editFloorPlan = (floorPlan) => {
-      editingFloorPlan.value = floorPlan
-      floorPlanForm.value = {
-        name: floorPlan.name,
-        description: floorPlan.description || '',
-        isActive: floorPlan.isActive
-      }
-      showFloorPlanDialog.value = true
-    }
+    const editFloorPlan = async (floorPlan) => {
+  editingFloorPlan.value = floorPlan;
+
+  const floorValue = (typeof floorPlan.floor === 'object' && floorPlan.floor !== null && floorPlan.floor.value)
+    ? floorPlan.floor.value
+    : floorPlan.floor;
+
+  floorPlanForm.value = {
+    name: floorPlan.name,
+    description: floorPlan.description || '',
+    floor: floorValue || '', 
+    isActive: floorPlan.isActive
+  };
+  
+  if (floorOptions.value.length === 0) {
+    await loadProjectFloors();
+  }
+  
+  showFloorPlanDialog.value = true;
+};
 
     const closeFloorPlanDialog = () => {
       showFloorPlanDialog.value = false
@@ -432,19 +554,33 @@ export default {
       floorPlanForm.value = {
         name: '',
         description: '',
+        floor: '',
         isActive: true
       }
     }
 
     const submitFloorPlan = async () => {
+      // 驗證必填欄位
+      if (!floorPlanForm.value.name.trim()) {
+        alert('請輸入平面圖名稱')
+        return
+      }
+      
+      if (!floorPlanForm.value.floor || (typeof floorPlanForm.value.floor === 'string' && !floorPlanForm.value.floor.trim())) {
+        alert('請選擇樓層')
+        return
+      }
+
       submitting.value = true
       try {
         if (editingFloorPlan.value) {
           // 更新現有平面圖
           await updateFloorPlan({
             floorPlanId: editingFloorPlan.value.id,
+            projectId: selectedProjectId.value,
             name: floorPlanForm.value.name,
             description: floorPlanForm.value.description,
+            floor: floorPlanForm.value.floor,
             isActive: floorPlanForm.value.isActive
           })
           
@@ -458,31 +594,41 @@ export default {
           }
         } else {
           // 創建新平面圖
-          const result = await createFloorPlan({
+          await createFloorPlan({
             projectId: selectedProjectId.value,
             name: floorPlanForm.value.name,
-            description: floorPlanForm.value.description
+            description: floorPlanForm.value.description,
+            floor: floorPlanForm.value.floor
           })
           
-          // 重新載入列表
-          await loadFloorPlans()
+          // 重新載入列表和樓層選項
+          await Promise.all([
+            loadFloorPlans(),
+            loadProjectFloors()
+          ])
         }
         
         closeFloorPlanDialog()
         alert(editingFloorPlan.value ? '平面圖更新成功！' : '平面圖建立成功！')
       } catch (error) {
         console.error('儲存平面圖失敗:', error)
-        alert('儲存失敗，請稍後重試')
+        if (error.code === 'functions/already-exists') {
+          alert(error.message)
+        } else {
+          alert('儲存失敗，請稍後重試')
+        }
       } finally {
         submitting.value = false
       }
     }
 
-    const deleteFloorPlan = async (floorPlan) => {
+     const deleteFloorPlan = async (floorPlan) => {
       if (!confirm(`確定要刪除平面圖「${floorPlan.name}」嗎？此操作無法復原。`)) {
         return
       }
-
+      
+      // ✓ 開始刪除，設定載入狀態
+      deletingFloorPlanId.value = floorPlan.id
       try {
         await deleteFloorPlanFunc({ floorPlanId: floorPlan.id })
         
@@ -492,15 +638,19 @@ export default {
           floorPlans.value.splice(index, 1)
         }
         
-        // 如果正在編輯該平面圖，返回列表
         if (selectedFloorPlan.value && selectedFloorPlan.value.id === floorPlan.id) {
           selectedFloorPlan.value = null
         }
+        
+        await loadProjectFloors()
         
         alert('平面圖刪除成功！')
       } catch (error) {
         console.error('刪除平面圖失敗:', error)
         alert('刪除失敗，請稍後重試')
+      } finally {
+        // ✓ 無論成功或失敗，最後都清除載入狀態
+        deletingFloorPlanId.value = null
       }
     }
 
@@ -635,13 +785,20 @@ export default {
       editingFloorPlan,
       floorPlanForm,
       parkingCanvas,
+      floorOptions,
+
+      loadingFloors,
+      deletingFloorPlanId, 
+
 
       // Computed
       availableProjects,
+      processedFloorOptions,
 
       // Methods
       onProjectChange,
       loadFloorPlans,
+      loadProjectFloors,
       refreshFloorPlans,
       selectFloorPlan,
       backToList,
