@@ -109,7 +109,8 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { fabric } from 'fabric'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { doc, onSnapshot, getFirestore } from 'firebase/firestore'
+import { getFirestore } from 'firebase/firestore' 
+import { db } from '@/firebase'
 
 export default {
   name: 'ParkingCanvas',
@@ -138,7 +139,6 @@ export default {
     const spotProperties = ref({})
     const spotLayouts = ref([])
     const backgroundImage = ref(null)
-    const realtimeUnsubscribe = ref(null)
     const lastUpdateTime = ref(Date.now())
 
     // Functions
@@ -171,8 +171,8 @@ export default {
       // 載入車位佈局
       await loadSpotLayouts()
       
-      // 設置即時同步
-      setupRealtimeSync()
+      // 即時同步功能已暫時移除
+      // setupRealtimeSync()
       
       emit('canvas-ready')
     }
@@ -534,31 +534,8 @@ export default {
       reader.readAsDataURL(file)
     }
 
-    // 設置即時同步
-    const setupRealtimeSync = () => {
-      if (realtimeUnsubscribe.value) {
-        realtimeUnsubscribe.value()
-      }
-
-      const docRef = doc(db, 'parkingSpotLayouts', props.floorPlan.id)
-      realtimeUnsubscribe.value = onSnapshot(docRef, (doc) => {
-        if (doc.exists()) {
-          const data = doc.data()
-          if (data.lastUpdated && data.lastUpdated > lastUpdateTime.value) {
-            lastUpdateTime.value = data.lastUpdated
-            // 重新載入車位佈局
-            if (data.layouts) {
-              spotLayouts.value = data.layouts
-              clearSpots()
-              for (const layout of data.layouts) {
-                createSpotFromLayout(layout)
-              }
-              canvas.value.renderAll()
-            }
-          }
-        }
-      })
-    }
+    // 即時同步功能已移除
+    // const setupRealtimeSync = () => { ... }
 
     // 儲存車位佈局到 Firestore
     const saveSpotLayoutsToFirestore = async () => {
@@ -617,6 +594,13 @@ export default {
     }
 
     // 監聽屬性變化
+    watch(() => props.floorPlan, (newPlan, oldPlan) => {
+      if (newPlan && oldPlan && newPlan.id !== oldPlan.id) {
+        console.log('Floor plan changed, re-initializing canvas...');
+        initCanvas();
+      }
+    }, { deep: true });
+
     watch(() => props.showGrid, updateGrid)
     
     watch(() => props.previewMode, (newValue) => {
@@ -651,9 +635,6 @@ export default {
     onUnmounted(() => {
       if (canvas.value) {
         canvas.value.dispose()
-      }
-      if (realtimeUnsubscribe.value) {
-        realtimeUnsubscribe.value()
       }
       window.removeEventListener('resize', resizeCanvas)
     })

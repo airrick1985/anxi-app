@@ -8,6 +8,8 @@ import { getFunctions } from "firebase/functions";
 import { getDatabase } from "firebase/database"; 
 
 // 您的 Web App 的 Firebase 設定 (從 Firebase 控制台複製)
+// IMPORTANT: 這是一個範例設定，請務必替換成您自己的 Firebase 專案設定。
+// 洩漏 API 金鑰可能會導致您的 Firebase 專案被濫用。
 const firebaseConfig = {
   apiKey: "AIzaSyBdE26vC0UAprsdTgBcmYrVuO67ZbccMTA",
   authDomain: "apps-script-api-443402.firebaseapp.com",
@@ -23,10 +25,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // 建立並匯出所有 Firebase 服務的實例
+// 根據 Firebase v9+ 的多資料庫設定方式
 export const db = getFirestore(app, 'anxi-app');
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
-export const rtdb = getDatabase(app); 
+export const rtdb = getDatabase(app);
+
+// Firebase 服務已成功初始化 
 
 // Google Analytics (分析) 功能是選用的，如果您暫時用不到可以先放著
 // import { getAnalytics } from "firebase/analytics";
