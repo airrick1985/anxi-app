@@ -155,7 +155,7 @@ const handleNavigation = (button) => {
   box-sizing: border-box;
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0)),
-    var(--bg-image-url, url('/img/background.png'));
+    var(--bg-image-url, url('/background.png'));
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;

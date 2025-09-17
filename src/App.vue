@@ -12,8 +12,6 @@ import { useUserStore } from '@/store/user'; // ✅ 2. 引入 userStore
 import { db } from '@/firebase'; // ✅ 3. 引入 db (Firestore 實例)
 import { doc, onSnapshot } from 'firebase/firestore'; // ✅ 4. 引入 Firestore 監聽器相關函式
 import { useToast } from 'vue-toastification'; // ✅ 5. 引入 toast 以便提示使用者
-import DefaultLayout from './layouts/DefaultLayout.vue'; 
-
 
 const route = useRoute();
 const projectStore = useProjectStore();
@@ -25,7 +23,8 @@ const layoutComponent = computed(() => {
   if (layoutLoader) {
     return defineAsyncComponent(layoutLoader);
   }
-  return DefaultLayout;
+  // 改為動態導入以避免衝突
+  return defineAsyncComponent(() => import('./layouts/DefaultLayout.vue'));
 });
 
 onMounted(() => {
