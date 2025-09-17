@@ -271,7 +271,7 @@
 
             <v-select
               v-model="floorPlanForm.floor"
-              :items="processedFloorOptions"
+              :items="floorOptions"
               :loading="loadingFloors"
               label="選擇車位樓層"
               placeholder="請選擇樓層"
@@ -279,7 +279,7 @@
               required
               item-title="label"
               item-value="value"
-              item-disabled="disabled"
+              :item-props="setItemProps"
               :return-object="false"
               class="mb-4"
             >
@@ -382,49 +382,26 @@ export default {
     })
 
     // 處理樓層選項，在前端控制禁用狀態
-    const processedFloorOptions = computed(() => {
-  // 建立一個正規表示式，這是我們的比對目標
-  const targetString = '(已建立)';
-  const createdRegex = /\(已建立\)/;
+    const setItemProps = (item) => {
+      const createdRegex = /\(已建立\)/;
 
-  console.groupCollapsed('--- 開始除錯樓層選項禁用狀態 ---');
-  
-  const result = floorOptions.value.map(option => {
-    
-    // ----- 開始為單一選項除錯 -----
-    console.log(`\n選項 Label: "${option.label}"`);
+      // 提取當前正在編輯的樓層字串值
+      let currentEditingFloor = null;
+      if (editingFloorPlan.value && editingFloorPlan.value.floor) {
+        const floorData = editingFloorPlan.value.floor;
+        currentEditingFloor = (typeof floorData === 'object' && floorData.value) 
+          ? floorData.value 
+          : floorData;
+      }
 
-    // 1. 將 Label 和比對目標都轉換為字元碼(Char Code)陣列
-    const labelCharCodes = option.label.split('').map(c => c.charCodeAt(0));
-    const targetCharCodes = targetString.split('').map(c => c.charCodeAt(0));
+      const isDisabled = createdRegex.test(item.label);
+      const isCurrentEditingOption = editingFloorPlan.value && (item.value === currentEditingFloor);
 
-    console.log('字元碼 (Label):', labelCharCodes.join(', '));
-    console.log('字元碼 (比對目標):', targetCharCodes.join(', '));
-    
-    // 2. 執行比對
-    const isDisabled = createdRegex.test(option.label);
-    console.log(`比對結果 (是否包含 "${targetString}"):`, isDisabled);
-    // ----- 除錯結束 -----
-    
-    // 原始的編輯模式判斷邏輯 (保持不變)
-    let currentEditingFloor = null;
-    if (editingFloorPlan.value && editingFloorPlan.value.floor) {
-      const floorData = editingFloorPlan.value.floor;
-      currentEditingFloor = (typeof floorData === 'object' && floorData.value) 
-        ? floorData.value 
-        : floorData;
-    }
-    const isCurrentEditingOption = editingFloorPlan.value && (option.value === currentEditingFloor);
-
-    return {
-      ...option,
-      disabled: isDisabled && !isCurrentEditingOption
+      // 直接回傳一個物件，告訴 v-select 這個 item 有哪些 props
+      return {
+        disabled: isDisabled && !isCurrentEditingOption,
+      };
     };
-  });
-
-  console.groupEnd();
-  return result;
-});
 
     // Cloud Functions
     const getFloorPlans = httpsCallable(functions, 'getFloorPlans')
@@ -570,10 +547,12 @@ export default {
         alert('請選擇樓層')
         return
       }
+  
+      const isEditingMode = !!editingFloorPlan.value;
 
       submitting.value = true
       try {
-        if (editingFloorPlan.value) {
+        if (isEditingMode) { // ✓ 使用變數來判斷
           // 更新現有平面圖
           await updateFloorPlan({
             floorPlanId: editingFloorPlan.value.id,
@@ -587,18 +566,18 @@ export default {
           // 更新本地資料
           const index = floorPlans.value.findIndex(fp => fp.id === editingFloorPlan.value.id)
           if (index !== -1) {
-            floorPlans.value[index] = {
-              ...floorPlans.value[index],
-              ...floorPlanForm.value
-            }
+            // ✓ 這裡直接使用 editingFloorPlan.value.id，因為此時狀態還沒被清除
+            floorPlans.value[index] = { ...floorPlans.value[index], ...floorPlanForm.value, id: editingFloorPlan.value.id }
           }
+          await loadProjectFloors() // ✓ 更新後也重新載入樓層選項，以更新 (已建立) 狀態
         } else {
           // 創建新平面圖
           await createFloorPlan({
             projectId: selectedProjectId.value,
             name: floorPlanForm.value.name,
             description: floorPlanForm.value.description,
-            floor: floorPlanForm.value.floor
+            floor: floorPlanForm.value.floor,
+            isActive: floorPlanForm.value.isActive // ✓ 新增時也傳遞 isActive 狀態
           })
           
           // 重新載入列表和樓層選項
@@ -609,7 +588,10 @@ export default {
         }
         
         closeFloorPlanDialog()
-        alert(editingFloorPlan.value ? '平面圖更新成功！' : '平面圖建立成功！')
+        
+        const successMessage = isEditingMode ? '平面圖更新成功！' : '平面圖建立成功！';
+        alert(successMessage);
+
       } catch (error) {
         console.error('儲存平面圖失敗:', error)
         if (error.code === 'functions/already-exists') {
@@ -745,11 +727,33 @@ export default {
       }
     }
 
-    const formatDate = (timestamp) => {
-      if (!timestamp) return ''
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
-      return date.toLocaleDateString('zh-TW')
-    }
+   const formatDate = (timestamp) => {
+      if (!timestamp) return '';
+
+      let date;
+
+      // ✅ 新增：優先處理从 Cloud Function 序列化後的時間戳格式
+      if (timestamp && typeof timestamp === 'object' && timestamp._seconds !== undefined) {
+        date = new Date(timestamp._seconds * 1000 + (timestamp._nanoseconds || 0) / 1000000);
+      } 
+      // ✓ 保留原始邏輯作為備用
+      else {
+        date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      }
+
+      // 檢查最終結果是否為有效日期
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+
+      // 使用台灣時區與格式回傳日期字串
+      return date.toLocaleDateString('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    };
 
     // 監聽專案變化
     watch(() => projectStore.projectsList, () => {
@@ -793,7 +797,7 @@ export default {
 
       // Computed
       availableProjects,
-      processedFloorOptions,
+      setItemProps,
 
       // Methods
       onProjectChange,
