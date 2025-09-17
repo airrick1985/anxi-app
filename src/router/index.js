@@ -295,7 +295,7 @@ const routes = [
     }
 },
 
-{
+  {
     path: '/sizing-tool/:projectId/:unitId',
     name: 'FloorplanSizingTool',
     component: () => import('@/views/FloorplanSizingTool.vue'),
@@ -306,7 +306,17 @@ const routes = [
     }
   },
 
-  { path: '/:pathMatch(.*)*', redirect: '/home' }
+  {
+    path: '/parking-floorplan-manager',
+    name: 'ParkingFloorplanManager',
+    component: () => import('@/views/ParkingFloorplanManager.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout,
+      title: '車位平面圖管理'
+    }
+  },  { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
 
 

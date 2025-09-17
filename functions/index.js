@@ -2685,3 +2685,396 @@ exports.cancelPurchase = onCall({ secrets: gmailSecrets }, async (request) => {
     throw new HttpsError("internal", `退戶作業失敗: ${error.message}`);
   }
 });
+
+// =================================================================
+// / ✅ 【新增】車位平面圖管理系統 Cloud Functions
+// =================================================================
+
+/**
+ * 獲取平面圖列表及其基本資訊
+ */
+exports.getFloorPlans = onCall(async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getFloorPlans (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 查詢平面圖列表...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const floorPlansSnapshot = await db.collection("parkingFloorPlans")
+      .where("projectId", "==", projectId)
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const floorPlans = [];
+    floorPlansSnapshot.forEach(doc => {
+      const data = doc.data();
+      floorPlans.push({
+        id: doc.id,
+        name: data.name,
+        description: data.description || '',
+        backgroundImageUrl: data.backgroundImageUrl || '',
+        isActive: data.isActive || false,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt
+      });
+    });
+
+    console.log(`[${functionName}] 找到 ${floorPlans.length} 個平面圖`);
+    return { status: "success", data: floorPlans };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取平面圖列表失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 創建新的平面圖
+ */
+exports.createFloorPlan = onCall(async (request) => {
+  const { projectId, name, description, backgroundImageUrl } = request.data;
+  const functionName = `createFloorPlan (Project: ${projectId})`;
+
+  if (!projectId || !name) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 name 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 創建新平面圖: ${name}`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const floorPlanData = {
+      projectId: projectId,
+      name: name,
+      description: description || '',
+      backgroundImageUrl: backgroundImageUrl || '',
+      isActive: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const docRef = await db.collection("parkingFloorPlans").add(floorPlanData);
+    
+    console.log(`[${functionName}] 平面圖創建成功，ID: ${docRef.id}`);
+    return { 
+      status: "success", 
+      floorPlanId: docRef.id,
+      message: "平面圖創建成功" 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `創建平面圖失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 更新平面圖基本資訊
+ */
+exports.updateFloorPlan = onCall(async (request) => {
+  const { floorPlanId, name, description, backgroundImageUrl, isActive } = request.data;
+  const functionName = `updateFloorPlan (ID: ${floorPlanId})`;
+
+  if (!floorPlanId) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 更新平面圖資訊...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const updateData = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (backgroundImageUrl !== undefined) updateData.backgroundImageUrl = backgroundImageUrl;
+    if (isActive !== undefined) updateData.isActive = isActive;
+
+    await db.collection("parkingFloorPlans").doc(floorPlanId).update(updateData);
+    
+    console.log(`[${functionName}] 平面圖更新成功`);
+    return { 
+      status: "success", 
+      message: "平面圖更新成功" 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `更新平面圖失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 刪除平面圖（包含所有相關的車位佈局）
+ */
+exports.deleteFloorPlan = onCall(async (request) => {
+  const { floorPlanId } = request.data;
+  const functionName = `deleteFloorPlan (ID: ${floorPlanId})`;
+
+  if (!floorPlanId) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 刪除平面圖及相關資料...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    // 查找所有相關的車位佈局
+    const spotLayoutsSnapshot = await db.collection("parkingSpotLayouts")
+      .where("floorPlanId", "==", floorPlanId)
+      .get();
+
+    const batch = db.batch();
+
+    // 刪除平面圖文檔
+    batch.delete(db.collection("parkingFloorPlans").doc(floorPlanId));
+
+    // 刪除所有相關的車位佈局
+    spotLayoutsSnapshot.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+    
+    console.log(`[${functionName}] 刪除完成，包含 ${spotLayoutsSnapshot.size} 個車位佈局`);
+    return { 
+      status: "success", 
+      message: `平面圖刪除成功，同時清除了 ${spotLayoutsSnapshot.size} 個車位佈局` 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `刪除平面圖失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 獲取特定平面圖的所有車位佈局
+ */
+exports.getSpotLayouts = onCall(async (request) => {
+  const { floorPlanId } = request.data;
+  const functionName = `getSpotLayouts (FloorPlan: ${floorPlanId})`;
+
+  if (!floorPlanId) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 查詢車位佈局...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const spotLayoutsSnapshot = await db.collection("parkingSpotLayouts")
+      .where("floorPlanId", "==", floorPlanId)
+      .get();
+
+    const spotLayouts = [];
+    spotLayoutsSnapshot.forEach(doc => {
+      const data = doc.data();
+      spotLayouts.push({
+        id: doc.id,
+        spotId: data.spotId,
+        x: data.x,
+        y: data.y,
+        width: data.width,
+        height: data.height,
+        rotation: data.rotation || 0,
+        text: data.text || '',
+        styles: data.styles || {},
+        floorPlanId: data.floorPlanId
+      });
+    });
+
+    console.log(`[${functionName}] 找到 ${spotLayouts.length} 個車位佈局`);
+    return { status: "success", data: spotLayouts };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取車位佈局失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 批量保存車位佈局（支援新增、更新、刪除）
+ */
+exports.saveSpotLayouts = onCall(async (request) => {
+  const { floorPlanId, layouts } = request.data;
+  const functionName = `saveSpotLayouts (FloorPlan: ${floorPlanId})`;
+
+  if (!floorPlanId || !Array.isArray(layouts)) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 或 layouts 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 批量保存 ${layouts.length} 個車位佈局...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const batch = db.batch();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    for (const layout of layouts) {
+      const layoutData = {
+        floorPlanId: floorPlanId,
+        spotId: layout.spotId,
+        x: Number(layout.x) || 0,
+        y: Number(layout.y) || 0,
+        width: Number(layout.width) || 50,
+        height: Number(layout.height) || 30,
+        rotation: Number(layout.rotation) || 0,
+        text: layout.text || '',
+        styles: layout.styles || {},
+        updatedAt: now
+      };
+
+      if (layout.id) {
+        // 更新現有佈局
+        batch.update(db.collection("parkingSpotLayouts").doc(layout.id), layoutData);
+      } else {
+        // 創建新佈局
+        layoutData.createdAt = now;
+        const docRef = db.collection("parkingSpotLayouts").doc();
+        batch.set(docRef, layoutData);
+      }
+    }
+
+    await batch.commit();
+    
+    console.log(`[${functionName}] 批量保存完成`);
+    return { 
+      status: "success", 
+      message: `成功保存 ${layouts.length} 個車位佈局` 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `保存車位佈局失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 刪除特定車位佈局
+ */
+exports.deleteSpotLayout = onCall(async (request) => {
+  const { layoutId } = request.data;
+  const functionName = `deleteSpotLayout (ID: ${layoutId})`;
+
+  if (!layoutId) {
+    throw new HttpsError("invalid-argument", "缺少 layoutId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 刪除車位佈局...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    await db.collection("parkingSpotLayouts").doc(layoutId).delete();
+    
+    console.log(`[${functionName}] 車位佈局刪除成功`);
+    return { 
+      status: "success", 
+      message: "車位佈局刪除成功" 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `刪除車位佈局失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 獲取平面圖參數設定
+ */
+exports.getFloorPlanParameters = onCall(async (request) => {
+  const { floorPlanId } = request.data;
+  const functionName = `getFloorPlanParameters (FloorPlan: ${floorPlanId})`;
+
+  if (!floorPlanId) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 查詢平面圖參數...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const docSnapshot = await db.collection("floorPlanParameters").doc(floorPlanId).get();
+    
+    if (!docSnapshot.exists) {
+      // 如果沒有參數，返回預設值
+      const defaultParameters = {
+        spotStyles: {
+          available: { 
+            backgroundColor: '#e8f5e8', 
+            borderColor: '#4caf50', 
+            textColor: '#000000' 
+          },
+          reserved: { 
+            backgroundColor: '#fff3cd', 
+            borderColor: '#ffc107', 
+            textColor: '#000000' 
+          },
+          sold: { 
+            backgroundColor: '#f8d7da', 
+            borderColor: '#dc3545', 
+            textColor: '#000000' 
+          }
+        },
+        defaultSpotSize: { width: 50, height: 30 },
+        gridSettings: { 
+          enabled: true, 
+          size: 10, 
+          color: '#cccccc' 
+        }
+      };
+      
+      return { status: "success", data: defaultParameters };
+    }
+
+    const parameters = docSnapshot.data();
+    console.log(`[${functionName}] 參數獲取成功`);
+    return { status: "success", data: parameters };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取平面圖參數失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 更新平面圖參數設定
+ */
+exports.updateFloorPlanParameters = onCall(async (request) => {
+  const { floorPlanId, parameters } = request.data;
+  const functionName = `updateFloorPlanParameters (FloorPlan: ${floorPlanId})`;
+
+  if (!floorPlanId || !parameters) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 或 parameters 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 更新平面圖參數...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    const parameterData = {
+      ...parameters,
+      floorPlanId: floorPlanId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    await db.collection("floorPlanParameters").doc(floorPlanId).set(parameterData, { merge: true });
+    
+    console.log(`[${functionName}] 參數更新成功`);
+    return { 
+      status: "success", 
+      message: "平面圖參數更新成功" 
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `更新平面圖參數失敗: ${error.message}`);
+  }
+});

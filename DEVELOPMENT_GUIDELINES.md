@@ -33,3 +33,446 @@
 
 3.  **直接使用**：
     *   後端應直接使用前端傳遞過來的 `projectId` 來執行所有資料庫操作（例如查詢、更新、建立文件 ID）。
+
+---
+
+## 2. 車位平面圖管理系統 (Parking Floor Plan Management System)
+
+### 系統概述
+
+車位平面圖管理系統是一個完整的視覺化車位管理解決方案，提供直覺的拖拉式編輯界面、即時協作功能、以及專業的匯出列印功能。
+
+### 技術架構
+
+#### 前端技術棧
+- **Framework**: Vue.js 3 + Composition API
+- **UI Library**: Vuetify 3 (Material Design)
+- **Canvas Library**: Fabric.js (互動式圖形編輯)
+- **Icons**: Material Design Icons (MDI)
+- **State Management**: Pinia
+- **Routing**: Vue Router 4
+
+#### 後端技術棧
+- **Backend**: Firebase Cloud Functions
+- **Database**: Firestore (即時資料庫)
+- **Storage**: Firebase Storage (圖片儲存)
+- **Authentication**: Firebase Auth
+- **Real-time Sync**: Firestore onSnapshot listeners
+
+#### 核心組件架構
+
+```
+src/views/ParkingFloorplanManager.vue    # 主管理界面
+├── src/components/ParkingCanvas.vue      # Fabric.js 畫布組件
+├── src/components/StyleEditor.vue       # 樣式編輯器
+└── src/components/FloorManager.vue      # 樓層管理組件
+```
+
+### 資料庫結構
+
+#### Firestore Collections
+
+1. **parkingFloorPlans** - 樓層平面圖基本資訊
+   ```javascript
+   {
+     id: string,                    // 平面圖 ID
+     projectId: string,             // 專案 ID
+     name: string,                  // 平面圖名稱
+     description: string,           // 描述
+     backgroundImageUrl: string,    // 背景圖片 URL
+     isActive: boolean,             // 是否啟用
+     createdAt: timestamp,          // 創建時間
+     updatedAt: timestamp,          // 更新時間
+     createdBy: string              // 創建者 UID
+   }
+   ```
+
+2. **parkingSpotLayouts** - 車位佈局資料
+   ```javascript
+   {
+     id: string,                    // 佈局 ID
+     floorPlanId: string,           // 所屬平面圖 ID
+     projectId: string,             // 專案 ID
+     layouts: [{                    // 車位佈局陣列
+       id: string,                  // 車位 ID
+       spotId: string,              // 車位編號
+       x: number,                   // X 座標
+       y: number,                   // Y 座標
+       width: number,               // 寬度
+       height: number,              // 高度
+       rotation: number,            // 旋轉角度
+       text: string,                // 顯示文字
+       styles: {                    // 樣式設定
+         backgroundColor: string,
+         borderColor: string,
+         textColor: string
+       }
+     }],
+     lastUpdated: timestamp         // 最後更新時間
+   }
+   ```
+
+3. **floorPlanParameters** - 平面圖參數設定
+   ```javascript
+   {
+     id: string,                    // 參數 ID (同 floorPlanId)
+     floorPlanId: string,           // 平面圖 ID
+     projectId: string,             // 專案 ID
+     statusColors: {                // 狀態顏色配置
+       available: string,           // 可用
+       occupied: string,            // 已佔用
+       reserved: string,            // 預約
+       maintenance: string          // 維護中
+     },
+     spotSizes: {                   // 車位尺寸設定
+       standard: { width: number, height: number },
+       compact: { width: number, height: number },
+       large: { width: number, height: number },
+       disabled: { width: number, height: number },
+       electric: { width: number, height: number }
+     },
+     gridSettings: {                // 網格設定
+       show: boolean,
+       size: number,
+       color: string
+     },
+     textStyles: {                  // 文字樣式
+       fontSize: number,
+       fontFamily: string,
+       color: string
+     }
+   }
+   ```
+
+### Cloud Functions API
+
+#### 1. 平面圖管理 API
+
+```javascript
+// 獲取專案的所有平面圖
+exports.getFloorPlans = functions.https.onCall(async (data, context) => {
+  const { projectId } = data;
+  // 返回平面圖列表
+});
+
+// 創建新平面圖
+exports.createFloorPlan = functions.https.onCall(async (data, context) => {
+  const { projectId, name, description, isActive } = data;
+  // 創建並返回新平面圖資料
+});
+
+// 更新平面圖
+exports.updateFloorPlan = functions.https.onCall(async (data, context) => {
+  const { floorPlanId, projectId, ...updateData } = data;
+  // 更新並返回平面圖資料
+});
+
+// 刪除平面圖
+exports.deleteFloorPlan = functions.https.onCall(async (data, context) => {
+  const { floorPlanId, projectId } = data;
+  // 刪除平面圖及相關資料
+});
+```
+
+#### 2. 車位佈局 API
+
+```javascript
+// 獲取車位佈局
+exports.getSpotLayouts = functions.https.onCall(async (data, context) => {
+  const { floorPlanId } = data;
+  // 返回車位佈局資料
+});
+
+// 儲存車位佈局
+exports.saveSpotLayouts = functions.https.onCall(async (data, context) => {
+  const { floorPlanId, layouts } = data;
+  // 儲存車位佈局到 Firestore
+});
+
+// 刪除車位佈局
+exports.deleteSpotLayout = functions.https.onCall(async (data, context) => {
+  const { floorPlanId, layoutId } = data;
+  // 刪除指定車位佈局
+});
+```
+
+#### 3. 參數設定 API
+
+```javascript
+// 獲取平面圖參數
+exports.getFloorPlanParameters = functions.https.onCall(async (data, context) => {
+  const { floorPlanId } = data;
+  // 返回參數設定
+});
+
+// 更新平面圖參數
+exports.updateFloorPlanParameters = functions.https.onCall(async (data, context) => {
+  const { floorPlanId, parameters } = data;
+  // 更新參數設定
+});
+```
+
+### 前端開發規範
+
+#### 1. 組件設計原則
+
+- **單一職責**: 每個組件只負責一個特定功能
+- **可重用性**: 組件應該能在不同場景下重複使用
+- **props 驗證**: 所有 props 都應該有類型驗證和預設值
+- **事件命名**: 使用 kebab-case 命名自定義事件
+
+#### 2. Vuetify 使用規範
+
+```vue
+<!-- 正確: 使用 Vuetify 組件和 MDI 圖示 -->
+<v-btn @click="action" color="primary" prepend-icon="mdi-plus">
+  新增
+</v-btn>
+
+<!-- 錯誤: 混用 Font Awesome 圖示 -->
+<v-btn @click="action" color="primary">
+  <i class="fas fa-plus"></i> 新增
+</v-btn>
+```
+
+#### 3. 圖示使用規範
+
+**統一使用 Material Design Icons (MDI)**
+
+| 功能 | MDI 圖示 | 舊 FA 圖示 |
+|------|----------|------------|
+| 新增 | `mdi-plus` | `fas fa-plus` |
+| 編輯 | `mdi-pencil` | `fas fa-edit` |
+| 刪除 | `mdi-delete` | `fas fa-trash` |
+| 儲存 | `mdi-content-save` | `fas fa-save` |
+| 重新整理 | `mdi-refresh` | `fas fa-sync-alt` |
+| 檢視 | `mdi-eye` | `fas fa-eye` |
+| 下載 | `mdi-download` | `fas fa-download` |
+| 列印 | `mdi-printer` | `fas fa-print` |
+| 圖片 | `mdi-image` | `fas fa-image` |
+| PDF | `mdi-file-pdf-box` | `fas fa-file-pdf` |
+| 網格 | `mdi-grid` | `fas fa-th` |
+| 樣式 | `mdi-palette` | `fas fa-palette` |
+| 關閉 | `mdi-close` | `fas fa-times` |
+
+#### 4. Fabric.js 開發規範
+
+```javascript
+// 創建車位物件的標準模式
+const createParkingSpot = (options = {}) => {
+  const {
+    x = 100,
+    y = 100,
+    width = 60,
+    height = 40,
+    rotation = 0,
+    spotId = '',
+    text = '',
+    styles = {}
+  } = options;
+
+  // 創建矩形背景
+  const rect = new fabric.Rect({
+    left: x,
+    top: y,
+    width: width,
+    height: height,
+    fill: styles.backgroundColor || '#e8f5e8',
+    stroke: styles.borderColor || '#4caf50',
+    strokeWidth: 2,
+    rx: 4,
+    ry: 4
+  });
+
+  // 創建文字標籤
+  const textObj = new fabric.Text(text || spotId || 'P1', {
+    left: x + width / 2,
+    top: y + height / 2,
+    fontSize: 12,
+    fill: styles.textColor || '#000000',
+    textAlign: 'center',
+    originX: 'center',
+    originY: 'center'
+  });
+
+  // 創建群組
+  const group = new fabric.Group([rect, textObj], {
+    left: x,
+    top: y,
+    angle: rotation
+  });
+
+  // 設置自定義屬性
+  group.type = 'parkingSpot';
+  group.spotId = spotId;
+  group.spotStyles = styles;
+
+  return group;
+};
+```
+
+#### 5. 即時同步實作規範
+
+```javascript
+// 設置 Firestore 即時監聽
+const setupRealtimeSync = () => {
+  const docRef = doc(db, 'parkingSpotLayouts', floorPlanId);
+  
+  const unsubscribe = onSnapshot(docRef, (doc) => {
+    if (doc.exists()) {
+      const data = doc.data();
+      if (data.lastUpdated > lastUpdateTime.value) {
+        // 更新本地狀態
+        updateLocalLayouts(data.layouts);
+        lastUpdateTime.value = data.lastUpdated;
+      }
+    }
+  });
+
+  return unsubscribe;
+};
+
+// 儲存變更到 Firestore
+const saveToFirestore = debounce(async () => {
+  try {
+    const layouts = getCurrentLayouts();
+    await saveSpotLayouts({
+      floorPlanId: floorPlanId,
+      layouts: layouts
+    });
+    lastUpdateTime.value = Date.now();
+  } catch (error) {
+    console.error('儲存失敗:', error);
+  }
+}, 1000); // 1秒防抖
+```
+
+### 匯出與列印功能
+
+#### 1. 圖片匯出
+
+```javascript
+// PNG/JPEG 匯出
+const exportAsImage = (format = 'png', quality = 1.0) => {
+  canvas.value.discardActiveObject();
+  canvas.value.renderAll();
+
+  return canvas.value.toDataURL({
+    format: format,
+    quality: quality,
+    multiplier: 2 // 高解析度
+  });
+};
+```
+
+#### 2. PDF 匯出
+
+```javascript
+// PDF 匯出 (使用 jsPDF)
+const exportAsPDF = async (filename) => {
+  const { jsPDF } = await import('jspdf');
+  const dataURL = exportAsImage('jpeg', 0.9);
+  
+  const pdf = new jsPDF('landscape', 'mm', 'a4');
+  pdf.setFontSize(20);
+  pdf.text(floorPlan.name, pageWidth / 2, 20, { align: 'center' });
+  
+  // 添加圖片並保持長寬比
+  pdf.addImage(dataURL, 'JPEG', x, y, imgWidth, imgHeight);
+  pdf.save(`${filename}.pdf`);
+};
+```
+
+#### 3. 專業列印格式
+
+```html
+<!-- 列印專用 HTML 模板 -->
+<div class="print-template">
+  <div class="header">
+    <h1>{{ floorPlan.name }}</h1>
+    <p>列印時間: {{ new Date().toLocaleString('zh-TW') }}</p>
+  </div>
+  <img src="{{ dataURL }}" class="floorplan-image" />
+  <div class="footer">
+    <p>© 安喜建設 車位管理系統</p>
+  </div>
+</div>
+
+<style>
+@page {
+  size: A4 landscape;
+  margin: 1cm;
+}
+@media print {
+  body { print-color-adjust: exact; }
+}
+</style>
+```
+
+### 效能優化指南
+
+#### 1. Canvas 渲染優化
+
+- 使用 `requestAnimationFrame` 控制渲染頻率
+- 實作物件快取機制
+- 避免頻繁的 `renderAll()` 呼叫
+
+#### 2. 即時同步優化
+
+- 使用 debounce 控制儲存頻率
+- 實作樂觀更新策略
+- 處理網路斷線情況
+
+#### 3. 記憶體管理
+
+- 及時清理 Canvas 物件
+- 取消訂閱 Firestore 監聽器
+- 清理事件監聽器
+
+### 測試策略
+
+#### 1. 單元測試
+
+- 測試 Fabric.js 物件創建
+- 測試 API 呼叫函數
+- 測試狀態管理邏輯
+
+#### 2. 整合測試
+
+- 測試即時同步功能
+- 測試多使用者協作
+- 測試匯出功能
+
+#### 3. E2E 測試
+
+- 測試完整的使用者流程
+- 測試跨瀏覽器相容性
+- 測試響應式設計
+
+### 部署與維護
+
+#### 1. Cloud Functions 部署
+
+```bash
+# 部署所有函數
+firebase deploy --only functions
+
+# 部署特定函數
+firebase deploy --only functions:getFloorPlans
+```
+
+#### 2. 前端部署
+
+```bash
+# 建置生產版本
+npm run build
+
+# 部署到 Firebase Hosting
+firebase deploy --only hosting
+```
+
+#### 3. 監控與日誌
+
+- 使用 Firebase Performance Monitoring
+- 設置 Cloud Functions 日誌監控
+- 實作錯誤追蹤機制
