@@ -166,7 +166,7 @@ const submitForgotPassword = async () => {
   /* ✅ CSS 的部分完全不需要修改 */
   background-image: 
     linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0)),
-    var(--bg-image-url, url('/background.png')); /* 保留一個備用圖 */
+    var(--bg-image-url, url('/img/background.png')); /* 保留一個備用圖 */
   
   background-size: cover;
   background-position: center center;

@@ -1,10 +1,9 @@
 {
   "name": "anxi-app",
-  "version": "0.0.220",
+  "version": "0.0.221",
   "private": true,
   "scripts": {
-    "build": "npm run update:manifest-version && npm run generate:release-notes && vite build",
-    "build-with-typecheck": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
+    "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && vite build",
     "deploy": "npm run build && gh-pages -d dist",
     "build-and-deploy": "npm run build && npm run deploy",
     "build-and-push": "npm run build && git add . && git commit -m \"更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push",
