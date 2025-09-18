@@ -568,145 +568,140 @@ export default {
     }
 
     const submitFloorPlan = async () => {
-      // 驗證必填欄位
-      if (!floorPlanForm.value.name.trim()) {
-        alert('請輸入平面圖名稱')
-        return
-      }
-      
-      if (!floorPlanForm.value.floor || (typeof floorPlanForm.value.floor === 'string' && !floorPlanForm.value.floor.trim())) {
-        alert('請選擇樓層')
-        return
-      }
-
-      // 驗證背景圖片檔案（僅在新增時需要）
-      const isEditingMode = !!editingFloorPlan.value;
-      if (!isEditingMode && (!floorPlanForm.value.backgroundImageFile || floorPlanForm.value.backgroundImageFile.length === 0)) {
-        alert('請選擇平面圖底圖檔案')
-        return
-      }
+  // 驗證必填欄位
+  if (!floorPlanForm.value.name.trim()) {
+    alert('請輸入平面圖名稱');
+    return;
+  }
   
- 
-      submitting.value = true
-      try {
-        if (isEditingMode) { // ✓ 使用變數來判斷
-          let updateData = {
-            floorPlanId: editingFloorPlan.value.id,
-            projectId: selectedProjectId.value,
-            name: floorPlanForm.value.name,
-            description: floorPlanForm.value.description,
-            floor: floorPlanForm.value.floor,
-            isActive: floorPlanForm.value.isActive
-          }
+  if (!floorPlanForm.value.floor || (typeof floorPlanForm.value.floor === 'string' && !floorPlanForm.value.floor.trim())) {
+    alert('請選擇樓層');
+    return;
+  }
 
-          // 如果用戶選擇了新的背景圖片，先上傳
-          if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
-            const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
-              ? floorPlanForm.value.backgroundImageFile[0] 
-              : floorPlanForm.value.backgroundImageFile
-            
-            try {
-              // 1. 將檔案轉換為 Base64
-              const base64 = await fileToBase64(file)
-              
-              // 2. 準備上傳參數
-              const fileName = `${Date.now()}_${file.name}`
-              const storagePath = `floorplan-backgrounds` // 修正：只傳遞資料夾路徑
-              
-              // 3. 透過代理 API 上傳
-              const { downloadURL } = await uploadSalesImage(
-                storagePath,        // storagePath
-                fileName,           // fileName
-                base64,            // fileBase64
-                selectedProjectId.value || 'default' // projectId
-              )
-              
-              updateData.backgroundImageUrl = downloadURL
-              console.log('背景圖片更新成功:', downloadURL)
-            } catch (error) {
-              console.error('圖片上傳失敗:', error)
-              alert('圖片上傳失敗，請重試')
-              return
-            }
-          }
+  // 驗證背景圖片檔案（僅在新增時為必填）
+  const isEditingMode = !!editingFloorPlan.value;
+  if (!isEditingMode && (!floorPlanForm.value.backgroundImageFile || floorPlanForm.value.backgroundImageFile.length === 0)) {
+    alert('請選擇平面圖底圖檔案');
+    return;
+  }
 
-          // 更新現有平面圖
-          await updateFloorPlan(updateData)
-          
-          // 更新本地資料
-          const index = floorPlans.value.findIndex(fp => fp.id === editingFloorPlan.value.id)
-          if (index !== -1) {
-            // ✓ 這裡直接使用 editingFloorPlan.value.id，因為此時狀態還沒被清除
-            floorPlans.value[index] = { ...floorPlans.value[index], ...floorPlanForm.value, id: editingFloorPlan.value.id }
-          }
-          await loadProjectFloors() // ✓ 更新後也重新載入樓層選項，以更新 (已建立) 狀態
-        } else {
-          // 創建新平面圖
-          let backgroundImageUrl = null
-          
-          // 上傳背景圖片
-          if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
-            const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
-              ? floorPlanForm.value.backgroundImageFile[0] 
-              : floorPlanForm.value.backgroundImageFile
-            
-            try {
-              // 1. 將檔案轉換為 Base64
-              const base64 = await fileToBase64(file)
-              
-              // 2. 準備上傳參數
-              const fileName = `${Date.now()}_${file.name}`
-              const storagePath = `floorplan-backgrounds` // 修正：只傳遞資料夾路徑
-              
-              // 3. 透過代理 API 上傳
-              const { downloadURL } = await uploadSalesImage(
-                storagePath,        // storagePath
-                fileName,           // fileName
-                base64,            // fileBase64
-                selectedProjectId.value || 'default' // projectId
-              )
-              
-              backgroundImageUrl = downloadURL
-              console.log('背景圖片上傳成功:', downloadURL)
-            } catch (error) {
-              console.error('圖片上傳失敗:', error)
-              alert('圖片上傳失敗，請重試')
-              return
-            }
-          }
+  submitting.value = true;
+  try {
+    if (isEditingMode) { // 編輯模式
+      let updateData = {
+        floorPlanId: editingFloorPlan.value.id,
+        projectId: selectedProjectId.value,
+        name: floorPlanForm.value.name,
+        description: floorPlanForm.value.description,
+        floor: floorPlanForm.value.floor,
+        isActive: floorPlanForm.value.isActive
+      };
 
-          await createFloorPlan({
-            projectId: selectedProjectId.value,
-            name: floorPlanForm.value.name,
-            description: floorPlanForm.value.description,
-            floor: floorPlanForm.value.floor,
-            isActive: floorPlanForm.value.isActive,
-            backgroundImageUrl: backgroundImageUrl // 加入背景圖片 URL
-          })
+      // 如果用戶選擇了新的背景圖片，才執行上傳
+      if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
+        const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
+          ? floorPlanForm.value.backgroundImageFile[0] 
+          : floorPlanForm.value.backgroundImageFile;
+        
+        try {
+          const base64 = await fileToBase64(file);
+          const fileName = `${Date.now()}_${file.name}`;
           
-          // 重新載入列表和樓層選項
-          await Promise.all([
-            loadFloorPlans(),
-            loadProjectFloors()
-          ])
+          // 核心修正：組合出包含檔名的完整儲存路徑
+          const storagePath = `floorplan-backgrounds/${fileName}`;
+          
+          // 透過代理 API 上傳
+          const { downloadURL } = await uploadSalesImage(
+            storagePath,
+            fileName,
+            base64,
+            selectedProjectId.value || 'default'
+          );
+          
+          updateData.backgroundImageUrl = downloadURL;
+          console.log('背景圖片更新成功:', downloadURL);
+
+        } catch (error) {
+          console.error('圖片上傳失敗:', error);
+          alert('圖片上傳失敗，請重試');
+          submitting.value = false;
+          return;
         }
+      }
+
+      // 更新現有平面圖
+      await updateFloorPlan(updateData);
+      
+      // 重新載入列表以確保資料同步
+      await loadFloorPlans();
+      await loadProjectFloors();
+
+    } else { // 新增模式
+      let backgroundImageUrl = null;
+      
+      const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
+        ? floorPlanForm.value.backgroundImageFile[0] 
+        : floorPlanForm.value.backgroundImageFile;
+      
+      try {
+        const base64 = await fileToBase64(file);
+        const fileName = `${Date.now()}_${file.name}`;
         
-        closeFloorPlanDialog()
+        // 核心修正：組合出包含檔名的完整儲存路徑
+        const storagePath = `floorplan-backgrounds/${fileName}`;
         
-        const successMessage = isEditingMode ? '平面圖更新成功！' : '平面圖建立成功！';
-        alert(successMessage);
+        // 透過代理 API 上傳
+        const { downloadURL } = await uploadSalesImage(
+          storagePath,
+          fileName,
+          base64,
+          selectedProjectId.value || 'default'
+        );
+        
+        backgroundImageUrl = downloadURL;
+        console.log('背景圖片上傳成功:', downloadURL);
 
       } catch (error) {
-        console.error('儲存平面圖失敗:', error)
-        if (error.code === 'functions/already-exists') {
-          alert(error.message)
-        } else {
-          alert('儲存失敗，請稍後重試')
-        }
-      } finally {
-        submitting.value = false
+        console.error('圖片上傳失敗:', error);
+        alert('圖片上傳失敗，請重試');
+        submitting.value = false;
+        return;
       }
+      
+      // 使用包含圖片 URL 的資料來建立新文件
+      await createFloorPlan({
+        projectId: selectedProjectId.value,
+        name: floorPlanForm.value.name,
+        description: floorPlanForm.value.description,
+        floor: floorPlanForm.value.floor,
+        isActive: floorPlanForm.value.isActive,
+        backgroundImageUrl: backgroundImageUrl
+      });
+      
+      // 重新載入列表和樓層選項
+      await Promise.all([
+        loadFloorPlans(),
+        loadProjectFloors()
+      ]);
     }
+    
+    closeFloorPlanDialog();
+    
+    const successMessage = isEditingMode ? '平面圖更新成功！' : '平面圖建立成功！';
+    alert(successMessage);
+
+  } catch (error) {
+    console.error('儲存平面圖失敗:', error);
+    if (error.code === 'functions/already-exists') {
+      alert(error.message);
+    } else {
+      alert('儲存失敗，請稍後重試');
+    }
+  } finally {
+    submitting.value = false;
+  }
+};
 
      const deleteFloorPlan = async (floorPlan) => {
       if (!confirm(`確定要刪除平面圖「${floorPlan.name}」嗎？此操作無法復原。`)) {

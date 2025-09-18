@@ -2022,7 +2022,11 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
 
   try {
     const bucket = admin.storage().bucket();
-    const file = bucket.file(storagePath);
+    // ✓ START: 修正儲存路徑組合的邏輯
+    // 組合出完整的檔案路徑，例如："floorplan-backgrounds/1678886400000_image.png"
+    const fullPath = `${storagePath}/${fileName}`; 
+    const file = bucket.file(fullPath);
+    // ✓ END: 修正
 
     // 將 Base64 轉為 Buffer
     const buffer = Buffer.from(fileBase64, 'base64');
@@ -2052,7 +2056,7 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
     return {
       status: "success",
       downloadURL: publicUrl,
-      storagePath: storagePath
+      storagePath: fullPath // ✓ 修改：回傳完整的路徑，以便未來刪除等操作使用
     };
 
   } catch (error) {
