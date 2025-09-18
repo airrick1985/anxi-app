@@ -598,8 +598,8 @@ export default {
         isActive: floorPlanForm.value.isActive
       };
 
-      // 如果用戶選擇了新的背景圖片，才執行上傳
-      if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
+      // ✓ 核心修改：修正條件判斷式，直接檢查是否有 File 物件即可
+      if (floorPlanForm.value.backgroundImageFile) {
         const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
           ? floorPlanForm.value.backgroundImageFile[0] 
           : floorPlanForm.value.backgroundImageFile;
@@ -608,10 +608,9 @@ export default {
           const base64 = await fileToBase64(file);
           const fileName = `${Date.now()}_${file.name}`;
           
-          // 核心修正：組合出包含檔名的完整儲存路徑
+          // 這部分的路徑組合邏輯已經是正確的
           const storagePath = `floorplan-backgrounds/${fileName}`;
           
-          // 透過代理 API 上傳
           const { downloadURL } = await uploadSalesImage(
             storagePath,
             fileName,
@@ -637,7 +636,7 @@ export default {
       await loadFloorPlans();
       await loadProjectFloors();
 
-    } else { // 新增模式
+    } else { // 新增模式 (此區塊邏輯已正確，無需修改)
       let backgroundImageUrl = null;
       
       const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
@@ -648,10 +647,8 @@ export default {
         const base64 = await fileToBase64(file);
         const fileName = `${Date.now()}_${file.name}`;
         
-        // 核心修正：組合出包含檔名的完整儲存路徑
         const storagePath = `floorplan-backgrounds/${fileName}`;
         
-        // 透過代理 API 上傳
         const { downloadURL } = await uploadSalesImage(
           storagePath,
           fileName,
@@ -669,7 +666,6 @@ export default {
         return;
       }
       
-      // 使用包含圖片 URL 的資料來建立新文件
       await createFloorPlan({
         projectId: selectedProjectId.value,
         name: floorPlanForm.value.name,
@@ -679,7 +675,6 @@ export default {
         backgroundImageUrl: backgroundImageUrl
       });
       
-      // 重新載入列表和樓層選項
       await Promise.all([
         loadFloorPlans(),
         loadProjectFloors()

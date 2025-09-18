@@ -13,6 +13,7 @@ const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料
 const { Readable } = require("stream"); // ✅ 新增此行，用於將 Buffer 轉為 Stream
 const readline = require("readline"); 
 
+
 const driveSecrets = [
     "DRIVE_CLIENT_ID",
     "DRIVE_CLIENT_SECRET",
@@ -33,6 +34,28 @@ const gmailSecrets = [
     "SENDER_EMAIL",
     "GMAIL_APP_PASSWORD" 
 ];
+
+// ✓ START: 新增輔助函式，從 GCS 公開 URL 解析出檔案路徑
+/**
+ * 從 Firebase Storage 的公開 URL 中提取檔案路徑
+ * @param {string} url - 例如 https://storage.googleapis.com/bucket-name/path/to/file.jpg
+ * @returns {string|null} - 返回 path/to/file.jpg 或 null
+ */
+const getStoragePathFromUrl = (url) => {
+  try {
+    if (!url || !url.startsWith('https://storage.googleapis.com/')) {
+      return null;
+    }
+    // URL 的第五個斜線之後就是檔案路徑
+    const path = url.split('/').slice(4).join('/');
+    // 解碼 URL 編碼的字元，例如空格 %20
+    return decodeURIComponent(path);
+  } catch (error) {
+    console.error("從 URL 解析路徑失敗:", error);
+    return null;
+  }
+};
+// ✓ END: 新增輔助函式
 
 // (您原有的 forgotPasswordSender 函式，保持不變)
 exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request) => {
@@ -2022,11 +2045,9 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
 
   try {
     const bucket = admin.storage().bucket();
-    // ✓ START: 修正儲存路徑組合的邏輯
-    // 組合出完整的檔案路徑，例如："floorplan-backgrounds/1678886400000_image.png"
-    const fullPath = `${storagePath}/${fileName}`; 
-    const file = bucket.file(fullPath);
-    // ✓ END: 修正
+    
+    // ✓ 核心修改：直接使用前端傳來的 storagePath 作為完整路徑，不再額外拼接
+    const file = bucket.file(storagePath);
 
     // 將 Base64 轉為 Buffer
     const buffer = Buffer.from(fileBase64, 'base64');
@@ -2036,7 +2057,7 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
     await new Promise((resolve, reject) => {
         stream.pipe(file.createWriteStream({
             metadata: {
-                contentType: 'image/png', // 您可以根據檔案類型動態設定
+                contentType: 'image/png',
             },
             resumable: false
         }))
@@ -2045,7 +2066,7 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
     });
 
 
-    // 讓檔案公開可讀，這樣才能取得 URL
+    // 讓檔案公開可讀
     await file.makePublic();
     
     // 取得公開的 URL
@@ -2056,7 +2077,7 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
     return {
       status: "success",
       downloadURL: publicUrl,
-      storagePath: fullPath // ✓ 修改：回傳完整的路徑，以便未來刪除等操作使用
+      storagePath: storagePath // ✓ 回傳前端提供的完整路徑
     };
 
   } catch (error) {
@@ -2064,7 +2085,6 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
     throw new HttpsError("internal", `後端上傳檔案時發生錯誤: ${error.message}`);
   }
 });
-// ✅ END: 新增代理上傳圖片的 Cloud Function
 
 // ✅ START: 新增代理刪除圖片的 Cloud Function
 exports.handleSalesImageDelete = onCall(async (request) => {
@@ -2903,15 +2923,44 @@ exports.updateFloorPlan = onCall(async (request) => {
   try {
     console.log(`[${functionName}] 更新平面圖資訊...`);
     const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("parkingFloorPlans").doc(floorPlanId);
     
-    // 如果要更新樓層，檢查該樓層是否已被其他平面圖使用
+    // 只有當請求中包含新的 backgroundImageUrl 時，才觸發刪除舊圖檔的流程
+    if (backgroundImageUrl) {
+      const docSnap = await docRef.get();
+      
+      // ✓ 核心修改：將 docSnap.exists() 改為 docSnap.exists
+      if (docSnap.exists) {
+        const oldData = docSnap.data();
+        const oldUrl = oldData.backgroundImageUrl;
+        
+        if (oldUrl && oldUrl !== backgroundImageUrl) {
+          const oldPath = getStoragePathFromUrl(oldUrl);
+          if (oldPath) {
+            console.log(`[${functionName}] 準備刪除舊的背景圖: ${oldPath}`);
+            try {
+              const bucket = admin.storage().bucket();
+              await bucket.file(oldPath).delete();
+              console.log(`[${functionName}] 成功刪除舊的背景圖。`);
+            } catch (deleteError) {
+              if (deleteError.code === 404) {
+                console.warn(`[${functionName}] 舊的背景圖在 Storage 中找不到，可能已被刪除。`);
+              } else {
+                console.error(`[${functionName}] 刪除舊的背景圖失敗:`, deleteError);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // 如果要更新樓層，檢查該樓層是否已被其他平面圖使用 (此部分邏輯不變)
     if (floor !== undefined && projectId) {
       const existingFloorPlan = await db.collection("parkingFloorPlans")
         .where("projectId", "==", projectId)
         .where("floor", "==", floor)
         .get();
 
-      // 排除當前平面圖本身
       const conflictingPlans = existingFloorPlan.docs.filter(doc => doc.id !== floorPlanId);
       if (conflictingPlans.length > 0) {
         throw new HttpsError("already-exists", `樓層 ${floor} 已經被其他平面圖使用。`);
@@ -2928,7 +2977,7 @@ exports.updateFloorPlan = onCall(async (request) => {
     if (backgroundImageUrl !== undefined) updateData.backgroundImageUrl = backgroundImageUrl;
     if (isActive !== undefined) updateData.isActive = isActive;
 
-    await db.collection("parkingFloorPlans").doc(floorPlanId).update(updateData);
+    await docRef.update(updateData);
     
     console.log(`[${functionName}] 平面圖更新成功`);
     return { 
@@ -2938,6 +2987,9 @@ exports.updateFloorPlan = onCall(async (request) => {
 
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
     throw new HttpsError("internal", `更新平面圖失敗: ${error.message}`);
   }
 });
@@ -2956,18 +3008,45 @@ exports.deleteFloorPlan = onCall(async (request) => {
   try {
     console.log(`[${functionName}] 刪除平面圖及相關資料...`);
     const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("parkingFloorPlans").doc(floorPlanId);
+
+    // 讀取文件以準備刪除關聯的圖檔
+    const docSnap = await docRef.get();
     
-    // 查找所有相關的車位佈局
+    // ✓ 核心修改：將 docSnap.exists() 改為 docSnap.exists
+    if (docSnap.exists) { 
+      const data = docSnap.data();
+      const imageUrl = data.backgroundImageUrl;
+      if (imageUrl) {
+        const imagePath = getStoragePathFromUrl(imageUrl);
+        if (imagePath) {
+          console.log(`[${functionName}] 準備刪除背景圖: ${imagePath}`);
+          try {
+            const bucket = admin.storage().bucket();
+            await bucket.file(imagePath).delete();
+            console.log(`[${functionName}] 成功刪除背景圖。`);
+          } catch (deleteError) {
+            if (deleteError.code === 404) {
+              console.warn(`[${functionName}] 背景圖在 Storage 中找不到，繼續執行刪除。`);
+            } else {
+              console.error(`[${functionName}] 刪除背景圖失敗:`, deleteError);
+            }
+          }
+        }
+      }
+    }
+    
+    // 查找並刪除所有相關的車位佈局
     const spotLayoutsSnapshot = await db.collection("parkingSpotLayouts")
       .where("floorPlanId", "==", floorPlanId)
       .get();
 
     const batch = db.batch();
 
-    // 刪除平面圖文檔
-    batch.delete(db.collection("parkingFloorPlans").doc(floorPlanId));
+    // 刪除平面圖文件本身
+    batch.delete(docRef);
 
-    // 刪除所有相關的車位佈局
+    // 刪除所有相關的車位佈局文件
     spotLayoutsSnapshot.forEach(doc => {
       batch.delete(doc.ref);
     });
