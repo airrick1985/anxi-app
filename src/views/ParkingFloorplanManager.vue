@@ -1,7 +1,7 @@
 <template>
   <div class="parking-floorplan-manager">
-    <!-- 頭部操作區 -->
-    <div class="manager-header">
+    <!-- 頭部操作區 - 在編輯模式時隱藏 -->
+    <div class="manager-header" v-show="!selectedFloorPlan">
       <div class="header-left">
         <h1 class="page-title">車位平面圖管理</h1>
         <div class="project-selector">
@@ -190,23 +190,7 @@
             </v-btn>
           </div>
           
-          <div class="toolbar-section">
-            <input 
-              type="file" 
-              @change="handleBackgroundUpload" 
-              accept="image/*" 
-              class="file-input"
-              ref="backgroundInput"
-            />
-            <v-btn 
-              @click="$refs.backgroundInput.click()" 
-              variant="outlined" 
-              size="small"
-              prepend-icon="mdi-image"
-            >
-              選擇背景圖
-            </v-btn>
-          </div>
+
 
           <div class="toolbar-section">
             <v-btn 
@@ -294,6 +278,18 @@
               class="mb-4"
             ></v-textarea>
             
+            <v-file-input
+              v-model="floorPlanForm.backgroundImageFile"
+              :label="editingFloorPlan ? '更換平面圖底圖（可選）' : '平面圖底圖 *'"
+              placeholder="請選擇圖片檔案"
+              accept="image/*"
+              :required="!editingFloorPlan"
+              variant="outlined"
+              prepend-icon="mdi-image"
+              class="mb-4"
+              :rules="editingFloorPlan ? backgroundImageRulesOptional : backgroundImageRules"
+            ></v-file-input>
+            
             <v-checkbox
               v-model="floorPlanForm.isActive"
               label="啟用此平面圖"
@@ -320,10 +316,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useUserStore } from '@/store/user'
 import { useProjectStore } from '@/store/projectStore'
+import { useUiStore } from '@/store/uiStore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
+import { uploadSalesImage } from '@/api'
 import ParkingCanvas from '@/components/ParkingCanvas.vue'
 import StyleEditor from '@/components/StyleEditor.vue'
 
@@ -337,6 +335,7 @@ export default {
     // Stores
     const userStore = useUserStore()
     const projectStore = useProjectStore()
+    const uiStore = useUiStore()
     const functions = getFunctions()
 
     // Reactive data
@@ -363,8 +362,31 @@ export default {
       name: '',
       description: '',
       floor: '',
-      isActive: true
+      isActive: true,
+      backgroundImageFile: null
     })
+
+    // 背景圖片檔案驗證規則（新增時必填）
+    const backgroundImageRules = [
+      value => {
+        if (!value || value.length === 0) return '請選擇平面圖底圖檔案'
+        const file = Array.isArray(value) ? value[0] : value
+        if (!file.type.startsWith('image/')) return '請選擇圖片檔案'
+        if (file.size > 10 * 1024 * 1024) return '檔案大小不可超過 10MB'
+        return true
+      }
+    ]
+
+    // 背景圖片檔案驗證規則（編輯時可選）
+    const backgroundImageRulesOptional = [
+      value => {
+        if (!value || value.length === 0) return true // 編輯時可以不選擇
+        const file = Array.isArray(value) ? value[0] : value
+        if (!file.type.startsWith('image/')) return '請選擇圖片檔案'
+        if (file.size > 10 * 1024 * 1024) return '檔案大小不可超過 10MB'
+        return true
+      }
+    ]
 
     // Floor selection
     const floorOptions = ref([])
@@ -474,6 +496,8 @@ export default {
       selectedFloorPlan.value = floorPlan
       isEditorDirty.value = false
       isPreviewMode.value = false
+      // 進入編輯模式，隱藏 App 工具列
+      uiStore.enterParkingEditMode()
     }
 
     const backToList = () => {
@@ -481,9 +505,13 @@ export default {
         if (confirm('您有未儲存的變更，確定要離開嗎？')) {
           selectedFloorPlan.value = null
           isEditorDirty.value = false
+          // 離開編輯模式，顯示 App 工具列
+          uiStore.exitParkingEditMode()
         }
       } else {
         selectedFloorPlan.value = null
+        // 離開編輯模式，顯示 App 工具列
+        uiStore.exitParkingEditMode()
       }
     }
 
@@ -493,7 +521,8 @@ export default {
         name: '',
         description: '',
         floor: '',
-        isActive: true
+        isActive: true,
+        backgroundImageFile: null
       }
       
       // 只有當樓層選項為空時才載入（避免重複調用）
@@ -515,7 +544,8 @@ export default {
     name: floorPlan.name,
     description: floorPlan.description || '',
     floor: floorValue || '', 
-    isActive: floorPlan.isActive
+    isActive: floorPlan.isActive,
+    backgroundImageFile: null  // 編輯時不需要重新上傳圖片
   };
   
   if (floorOptions.value.length === 0) {
@@ -532,7 +562,8 @@ export default {
         name: '',
         description: '',
         floor: '',
-        isActive: true
+        isActive: true,
+        backgroundImageFile: null
       }
     }
 
@@ -547,21 +578,60 @@ export default {
         alert('請選擇樓層')
         return
       }
-  
-      const isEditingMode = !!editingFloorPlan.value;
 
+      // 驗證背景圖片檔案（僅在新增時需要）
+      const isEditingMode = !!editingFloorPlan.value;
+      if (!isEditingMode && (!floorPlanForm.value.backgroundImageFile || floorPlanForm.value.backgroundImageFile.length === 0)) {
+        alert('請選擇平面圖底圖檔案')
+        return
+      }
+  
+ 
       submitting.value = true
       try {
         if (isEditingMode) { // ✓ 使用變數來判斷
-          // 更新現有平面圖
-          await updateFloorPlan({
+          let updateData = {
             floorPlanId: editingFloorPlan.value.id,
             projectId: selectedProjectId.value,
             name: floorPlanForm.value.name,
             description: floorPlanForm.value.description,
             floor: floorPlanForm.value.floor,
             isActive: floorPlanForm.value.isActive
-          })
+          }
+
+          // 如果用戶選擇了新的背景圖片，先上傳
+          if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
+            const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
+              ? floorPlanForm.value.backgroundImageFile[0] 
+              : floorPlanForm.value.backgroundImageFile
+            
+            try {
+              // 1. 將檔案轉換為 Base64
+              const base64 = await fileToBase64(file)
+              
+              // 2. 準備上傳參數
+              const fileName = `${Date.now()}_${file.name}`
+              const storagePath = `floorplan-backgrounds` // 修正：只傳遞資料夾路徑
+              
+              // 3. 透過代理 API 上傳
+              const { downloadURL } = await uploadSalesImage(
+                storagePath,        // storagePath
+                fileName,           // fileName
+                base64,            // fileBase64
+                selectedProjectId.value || 'default' // projectId
+              )
+              
+              updateData.backgroundImageUrl = downloadURL
+              console.log('背景圖片更新成功:', downloadURL)
+            } catch (error) {
+              console.error('圖片上傳失敗:', error)
+              alert('圖片上傳失敗，請重試')
+              return
+            }
+          }
+
+          // 更新現有平面圖
+          await updateFloorPlan(updateData)
           
           // 更新本地資料
           const index = floorPlans.value.findIndex(fp => fp.id === editingFloorPlan.value.id)
@@ -572,12 +642,46 @@ export default {
           await loadProjectFloors() // ✓ 更新後也重新載入樓層選項，以更新 (已建立) 狀態
         } else {
           // 創建新平面圖
+          let backgroundImageUrl = null
+          
+          // 上傳背景圖片
+          if (floorPlanForm.value.backgroundImageFile && floorPlanForm.value.backgroundImageFile.length > 0) {
+            const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
+              ? floorPlanForm.value.backgroundImageFile[0] 
+              : floorPlanForm.value.backgroundImageFile
+            
+            try {
+              // 1. 將檔案轉換為 Base64
+              const base64 = await fileToBase64(file)
+              
+              // 2. 準備上傳參數
+              const fileName = `${Date.now()}_${file.name}`
+              const storagePath = `floorplan-backgrounds` // 修正：只傳遞資料夾路徑
+              
+              // 3. 透過代理 API 上傳
+              const { downloadURL } = await uploadSalesImage(
+                storagePath,        // storagePath
+                fileName,           // fileName
+                base64,            // fileBase64
+                selectedProjectId.value || 'default' // projectId
+              )
+              
+              backgroundImageUrl = downloadURL
+              console.log('背景圖片上傳成功:', downloadURL)
+            } catch (error) {
+              console.error('圖片上傳失敗:', error)
+              alert('圖片上傳失敗，請重試')
+              return
+            }
+          }
+
           await createFloorPlan({
             projectId: selectedProjectId.value,
             name: floorPlanForm.value.name,
             description: floorPlanForm.value.description,
             floor: floorPlanForm.value.floor,
-            isActive: floorPlanForm.value.isActive // ✓ 新增時也傳遞 isActive 狀態
+            isActive: floorPlanForm.value.isActive,
+            backgroundImageUrl: backgroundImageUrl // 加入背景圖片 URL
           })
           
           // 重新載入列表和樓層選項
@@ -697,13 +801,6 @@ export default {
       }
     }
 
-    const handleBackgroundUpload = (event) => {
-      const file = event.target.files[0]
-      if (file && parkingCanvas.value) {
-        parkingCanvas.value.setBackgroundImage(file)
-      }
-    }
-
     const onSpotsChanged = () => {
       isEditorDirty.value = true
     }
@@ -711,6 +808,8 @@ export default {
     const onCanvasReady = () => {
       console.log('Canvas 準備就緒')
     }
+
+
 
     const toggleStyleEditor = () => {
       showStyleEditor.value = !showStyleEditor.value
@@ -755,6 +854,17 @@ export default {
       });
     };
 
+    // 檔案轉 Base64 工具函數
+    const fileToBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1] // 移除 data:image/...;base64, 前綴
+        resolve(base64)
+      }
+      reader.onerror = (error) => reject(error)
+    })
+
     // 監聽專案變化
     watch(() => projectStore.projectsList, () => {
       // 如果當前選擇的專案不在可用列表中，清空選擇
@@ -773,6 +883,11 @@ export default {
       }
     })
 
+    // 確保離開頁面時重置 UI 狀態
+    onUnmounted(() => {
+      uiStore.exitParkingEditMode()
+    })
+
     return {
       // Reactive data
       selectedProjectId,
@@ -788,6 +903,8 @@ export default {
       showFloorPlanDialog,
       editingFloorPlan,
       floorPlanForm,
+      backgroundImageRules,
+      backgroundImageRulesOptional,
       parkingCanvas,
       floorOptions,
 
@@ -815,7 +932,6 @@ export default {
       togglePreviewMode,
       toggleGrid,
       addSpot,
-      handleBackgroundUpload,
       onSpotsChanged,
       onCanvasReady,
       toggleStyleEditor,

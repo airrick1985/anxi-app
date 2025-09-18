@@ -112,6 +112,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getFirestore } from 'firebase/firestore' 
 import { db } from '@/firebase'
 
+import { serverTimestamp } from 'firebase/firestore'
+
 export default {
   name: 'ParkingCanvas',
   props: {
@@ -524,15 +526,9 @@ export default {
       })
     }
 
-    // 設置背景圖片
-    const setBackgroundImage = (file) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        loadBackgroundImage(e.target.result)
-        emit('spots-changed')
-      }
-      reader.readAsDataURL(file)
-    }
+
+    // 更新平面圖背景 URL 到 Firestore
+
 
     // 即時同步功能已移除
     // const setupRealtimeSync = () => { ... }
@@ -823,7 +819,6 @@ export default {
       selectedSpot,
       spotProperties,
       addSpot,
-      setBackgroundImage,
       getSpotLayouts,
       updateSpotProperty,
       closePropertiesPanel,

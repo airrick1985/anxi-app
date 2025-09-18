@@ -1,6 +1,7 @@
 <template>
   <v-app>
     <v-app-bar app dark class="custom-app-bar">
+      
 
       <v-btn icon @click="goHome" class="me-2" title="首頁">
         <v-icon>mdi-home</v-icon>
@@ -145,6 +146,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useFullscreen } from '../composables/useFullscreen';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from '../store/user';
+import { useUiStore } from '../store/uiStore';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
@@ -162,7 +164,9 @@ import AiAssistant from '../components/AiAssistant.vue';
 const display = useDisplay();
 
 const userStore = useUserStore();
-const { user, unreadCount } = storeToRefs(userStore); 
+const uiStore = useUiStore();
+const { user, unreadCount } = storeToRefs(userStore);
+const { showAppToolbar } = storeToRefs(uiStore); 
 
 const dialog = ref(false);
 const logoutDialog = ref(false);

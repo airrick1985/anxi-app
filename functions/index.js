@@ -3205,3 +3205,52 @@ exports.updateFloorPlanParameters = onCall(async (request) => {
     throw new HttpsError("internal", `更新平面圖參數失敗: ${error.message}`);
   }
 });
+
+/**
+ * 更新平面圖背景圖片 URL
+ */
+exports.updateFloorPlanBackground = onCall(async (request) => {
+  const { floorPlanId, backgroundImageUrl } = request.data;
+  const functionName = `updateFloorPlanBackground (FloorPlan: ${floorPlanId})`;
+
+  if (!floorPlanId || !backgroundImageUrl) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 或 backgroundImageUrl 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 更新平面圖背景圖片 URL...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    
+    // 檢查文件是否存在，如果不存在則創建
+    const docRef = db.collection("parkingFloorPlans").doc(floorPlanId);
+    const docSnap = await docRef.get();
+    
+    if (!docSnap.exists) {
+      // 如果文件不存在，創建新文件
+      await docRef.set({
+        id: floorPlanId,
+        backgroundImageUrl: backgroundImageUrl,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[${functionName}] 創建新的平面圖文件並設置背景圖片`);
+    } else {
+      // 如果文件存在，更新背景圖片 URL
+      await docRef.update({
+        backgroundImageUrl: backgroundImageUrl,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[${functionName}] 更新現有平面圖的背景圖片`);
+    }
+    
+    console.log(`[${functionName}] 背景圖片 URL 更新成功`);
+    return { 
+      status: "success", 
+      message: "平面圖背景圖片更新成功"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `更新平面圖背景圖片失敗: ${error.message}`);
+  }
+});
