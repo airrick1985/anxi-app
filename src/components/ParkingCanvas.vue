@@ -1,6 +1,74 @@
 <template>
   <div class="parking-canvas-container center-xy">
+    <!-- 工具欄 -->
+    <div class="toolbar">
+      <button @click="openImportModal" class="btn btn-primary">
+        <i class="fas fa-download"></i> 匯入車位資料
+      </button>
+      
+      <div class="status-toggle">
+        <button 
+          @click="switchDisplayMode('backend')"
+          :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'backend' }]"
+        >
+          後台狀態
+        </button>
+        <button 
+          @click="switchDisplayMode('sales')"
+          :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'sales' }]"
+        >
+          銷售狀態
+        </button>
+      </div>
+    </div>
+
     <canvas ref="fabricCanvas" :width="canvasWidth" :height="canvasHeight"></canvas>
+
+    <!-- 匯入車位資料確認 Modal -->
+    <div v-if="importDialog" class="modal-overlay" @click.self="closeImportModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>匯入車位資料</h3>
+          <button @click="closeImportModal" class="btn-close">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div class="modal-body">
+          <div v-if="loading" class="loading-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>正在載入車位資料...</p>
+          </div>
+          
+          <div v-else-if="previewParkings.length > 0" class="import-preview">
+            <p><strong>已取得車位編號如下</strong></p>
+            <div class="parking-numbers">
+              {{ previewParkings.map(p => p.number).join('、') }}
+              <span v-if="totalParkingCount > 10">...等共 {{ totalParkingCount }} 個車位</span>
+            </div>
+            <p class="confirm-text">您是否要匯入以上車位？</p>
+          </div>
+          
+          <div v-else class="no-data">
+            <p>未找到符合條件的車位資料</p>
+            <p>請檢查 projectId: <strong>{{ floorPlan.projectId }}</strong> 和 floor: <strong>{{ floorPlan.floor }}</strong></p>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button @click="closeImportModal" class="btn btn-secondary">取消</button>
+          <button 
+            v-if="previewParkings.length > 0" 
+            @click="confirmImport" 
+            class="btn btn-primary"
+            :disabled="importing"
+          >
+            <i v-if="importing" class="fas fa-spinner fa-spin"></i>
+            {{ importing ? '匯入中...' : '確認' }}
+          </button>
+        </div>
+      </div>
+    </div>
     
     <!-- 車位屬性編輯面板 -->
     <div v-if="selectedSpot" class="spot-properties-panel">
@@ -102,6 +170,101 @@
         </div>
       </div>
     </div>
+
+    <!-- 功能面板 -->
+    <div v-if="showStylePanel" class="style-control-panel">
+      <div class="panel-header">
+        <h4>文字樣式控制</h4>
+        <button @click="toggleStylePanel" class="btn-close">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      
+      <div class="panel-content">
+        <div class="style-group">
+          <h5>文字大小</h5>
+          <div class="form-group">
+            <label>基礎字體大小</label>
+            <input 
+              v-model="textStyles.fontSize" 
+              @input="updateTextStyles"
+              type="range" 
+              min="6" 
+              max="20" 
+              class="range-input"
+            />
+            <span>{{ textStyles.fontSize }}px</span>
+          </div>
+        </div>
+
+        <div class="style-group">
+          <h5>文字顏色</h5>
+          <div class="form-group">
+            <label>文字顏色</label>
+            <input 
+              v-model="textStyles.textColor" 
+              @input="updateTextStyles"
+              type="color" 
+              class="color-input"
+            />
+          </div>
+        </div>
+
+        <div class="style-group">
+          <h5>字體樣式</h5>
+          <div class="form-group">
+            <label>字體粗細</label>
+            <select 
+              v-model="textStyles.fontWeight" 
+              @change="updateTextStyles"
+              class="form-select"
+            >
+              <option value="normal">標準</option>
+              <option value="bold">粗體</option>
+              <option value="600">半粗體</option>
+              <option value="300">細體</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="style-group">
+          <h5>矩形樣式</h5>
+          <div class="form-group">
+            <label>邊框粗細</label>
+            <input 
+              v-model="textStyles.strokeWidth" 
+              @input="updateTextStyles"
+              type="range" 
+              min="1" 
+              max="5" 
+              class="range-input"
+            />
+            <span>{{ textStyles.strokeWidth }}px</span>
+          </div>
+          
+          <div class="form-group">
+            <label>邊框顏色</label>
+            <input 
+              v-model="textStyles.strokeColor" 
+              @input="updateTextStyles"
+              type="color" 
+              class="color-input"
+            />
+          </div>
+        </div>
+
+        <div class="panel-actions">
+          <button @click="resetTextStyles" class="btn btn-secondary btn-sm">
+            <i class="fas fa-undo"></i> 重設預設值
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 樣式控制按鈕 -->
+    <button v-if="!showStylePanel" @click="toggleStylePanel" class="style-toggle-btn">
+      <i class="fas fa-palette"></i>
+    </button>
   </div>
 </template>
 
@@ -109,7 +272,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { fabric } from 'fabric'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { getFirestore } from 'firebase/firestore' 
+import { getFirestore, onSnapshot, query, where, collection } from 'firebase/firestore' 
 import { db } from '@/firebase'
 
 import { serverTimestamp } from 'firebase/firestore'
@@ -119,6 +282,10 @@ export default {
   props: {
     floorPlan: {
       type: Object,
+      required: true
+    },
+    projectId: {
+      type: String,
       required: true
     },
     showGrid: {
@@ -141,7 +308,29 @@ export default {
     const spotProperties = ref({})
     const spotLayouts = ref([])
     const backgroundImage = ref(null)
-  const lastUpdateTime = ref(Date.now())
+    const lastUpdateTime = ref(Date.now())
+
+    // 匯入車位資料相關
+    const importDialog = ref(false)
+    const loading = ref(false)
+    const importing = ref(false)
+    const previewParkings = ref([])
+    const totalParkingCount = ref(0)
+    const displayMode = ref('backend') // 'backend' 或 'sales'
+    const allParkingData = ref([])
+
+    // 即時同步相關
+    const salesParkingsListener = ref(null)
+
+    // 樣式控制相關
+    const showStylePanel = ref(false)
+    const textStyles = ref({
+      fontSize: 8,
+      textColor: '#000000',
+      fontWeight: 'normal',
+      strokeWidth: 2,
+      strokeColor: '#000000'
+    })
 
   // Zoom / Pan 狀態與參數
   const zoomLevel = ref(1)
@@ -157,6 +346,7 @@ export default {
     const functions = getFunctions()
     const db = getFirestore()
     const getSpotLayoutsAPI = httpsCallable(functions, 'getSpotLayouts')
+    const getSalesParkingsByFloorAPI = httpsCallable(functions, 'getSalesParkingsByFloor')
 
     // 初始化 Canvas
     const initCanvas = async () => {
@@ -323,7 +513,7 @@ export default {
         
         // 渲染車位
         for (const layout of spotLayouts.value) {
-          createSpotFromLayout(layout)
+          await createSpotFromLayout(layout)
         }
         
         canvas.value.renderAll()
@@ -333,20 +523,48 @@ export default {
     }
 
     // 從佈局資料創建車位
-    const createSpotFromLayout = (layout) => {
-      const spot = createParkingSpot({
-        x: layout.x,
-        y: layout.y,
-        width: layout.width,
-        height: layout.height,
-        rotation: layout.rotation,
-        spotId: layout.spotId,
-        text: layout.text,
-        styles: layout.styles || {}
-      })
-      
-      spot.layoutId = layout.id
-      canvas.value.add(spot)
+    const createSpotFromLayout = async (layout) => {
+      if (layout.type === 'imported' && layout.salesParkingId) {
+        // 如果是匯入的車位，需要重新獲取 salesParkings 資料
+        try {
+          const result = await getSalesParkingsByFloorAPI({
+            projectId: props.projectId,
+            floor: props.floorPlan.floor
+          })
+          
+          if (result.data.success) {
+            const parkingData = result.data.allData.find(p => p.id === layout.salesParkingId)
+            if (parkingData) {
+              const spot = createParkingSpotFromData({
+                x: layout.x,
+                y: layout.y,
+                parkingData: parkingData,
+                displayMode: layout.displayMode || 'backend'
+              })
+              
+              spot.layoutId = layout.id
+              canvas.value.add(spot)
+            }
+          }
+        } catch (error) {
+          console.error('重新載入匯入車位資料失敗:', error)
+        }
+      } else {
+        // 原有的手動創建車位
+        const spot = createParkingSpot({
+          x: layout.x,
+          y: layout.y,
+          width: layout.width,
+          height: layout.height,
+          rotation: layout.rotation,
+          spotId: layout.spotId,
+          text: layout.text,
+          styles: layout.styles || {}
+        })
+        
+        spot.layoutId = layout.id
+        canvas.value.add(spot)
+      }
     }
 
  
@@ -604,18 +822,43 @@ export default {
     const getSpotLayouts = () => {
       if (!canvas.value) return []
 
-      const spots = canvas.value.getObjects().filter(obj => obj.type === 'parkingSpot')
-      return spots.map(spot => ({
-        id: spot.layoutId || null,
-        spotId: spot.spotId || '',
-        x: Math.round(spot.left || 0),
-        y: Math.round(spot.top || 0),
-        width: Math.round(spot.width || 60),
-        height: Math.round(spot.height || 40),
-        rotation: Math.round(spot.angle || 0),
-        text: spot.spotText || '',
-        styles: spot.spotStyles || {}
-      }))
+      const allSpots = canvas.value.getObjects().filter(obj => 
+        obj.type === 'parkingSpot' || obj.type === 'importedParkingSpot'
+      )
+      
+      return allSpots.map(spot => {
+        if (spot.type === 'parkingSpot') {
+          // 原有的手動創建車位
+          return {
+            id: spot.layoutId || null,
+            spotId: spot.spotId || '',
+            x: Math.round(spot.left || 0),
+            y: Math.round(spot.top || 0),
+            width: Math.round(spot.width || 60),
+            height: Math.round(spot.height || 40),
+            rotation: Math.round(spot.angle || 0),
+            text: spot.spotText || '',
+            styles: spot.spotStyles || {},
+            type: 'manual' // 標記為手動創建
+          }
+        } else {
+          // 匯入的車位
+          return {
+            id: spot.layoutId || null,
+            spotId: spot.parkingData?.number || '',
+            x: Math.round(spot.left || 0),
+            y: Math.round(spot.top || 0),
+            width: 48,
+            height: 105,
+            rotation: Math.round(spot.angle || 0),
+            text: '',
+            styles: {},
+            type: 'imported', // 標記為匯入
+            salesParkingId: spot.parkingData?.id, // 關聯到 salesParkings 的 ID
+            displayMode: spot.currentDisplayMode || 'backend'
+          }
+        }
+      })
     }
 
     // 調整 Canvas 尺寸
@@ -642,6 +885,8 @@ export default {
       if (newPlan && oldPlan && newPlan.id !== oldPlan.id) {
         console.log('Floor plan changed, re-initializing canvas...');
         initCanvas();
+        // 重新設置 salesParkings 監聽器
+        setupSalesParkingsListener();
       }
     }, { deep: true });
 
@@ -683,16 +928,22 @@ export default {
       await nextTick()
       await initCanvas()
       
+      // 設置 salesParkings 即時監聽
+      setupSalesParkingsListener()
+      
       // 監聽視窗大小變化
       window.addEventListener('resize', resizeCanvas)
-  window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('keyup', handleKeyUp)
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('keyup', handleKeyUp)
       
       // 初始化時調整一次尺寸
       setTimeout(resizeCanvas, 100)
     })
 
     onUnmounted(() => {
+      // 清理 salesParkings 監聽器
+      cleanupSalesParkingsListener()
+      
       if (canvas.value) {
         canvas.value.dispose()
       }
@@ -1022,6 +1273,380 @@ export default {
       }
     }
 
+    // 匯入車位資料相關方法
+    const openImportModal = async () => {
+      importDialog.value = true
+      loading.value = true
+      previewParkings.value = []
+      totalParkingCount.value = 0
+
+      // 調試：檢查參數值
+      console.log('🔍 openImportModal 調試信息:')
+      console.log('props.floorPlan:', props.floorPlan)
+      console.log('props.projectId:', props.projectId)
+      console.log('floor:', props.floorPlan.floor)
+      console.log('projectId type:', typeof props.projectId)
+      console.log('floor type:', typeof props.floorPlan.floor)
+
+      try {
+        const result = await getSalesParkingsByFloorAPI({
+          projectId: props.projectId,
+          floor: props.floorPlan.floor
+        })
+        
+        if (result.data.success) {
+          allParkingData.value = result.data.allData || []
+          previewParkings.value = result.data.preview || []
+          totalParkingCount.value = result.data.total || 0
+        }
+      } catch (error) {
+        console.error('載入車位資料失敗:', error)
+      }
+      
+      loading.value = false
+    }
+
+    const closeImportModal = () => {
+      importDialog.value = false
+      previewParkings.value = []
+      totalParkingCount.value = 0
+      allParkingData.value = []
+    }
+
+    const confirmImport = async () => {
+      importing.value = true
+      
+      try {
+        // 清除現有的匯入車位
+        clearImportedSpots()
+        
+        // 創建所有車位矩形
+        let xPos = 100
+        let yPos = 100
+        const spacing = 60
+        const cols = 10
+        
+        allParkingData.value.forEach((parkingData, index) => {
+          const col = index % cols
+          const row = Math.floor(index / cols)
+          
+          const spot = createParkingSpotFromData({
+            x: xPos + (col * spacing),
+            y: yPos + (row * spacing * 2), // 車位比較高，需要更多間距
+            parkingData: parkingData,
+            displayMode: displayMode.value
+          })
+          
+          canvas.value.add(spot)
+        })
+        
+        canvas.value.renderAll()
+        emit('spots-changed')
+        await saveSpotLayoutsToFirestore()
+        
+        // 匯入完成後，重新設置監聽器以確保即時同步
+        setupSalesParkingsListener()
+        
+      } catch (error) {
+        console.error('匯入車位失敗:', error)
+      }
+      
+      importing.value = false
+      closeImportModal()
+    }
+
+    const switchDisplayMode = (mode) => {
+      displayMode.value = mode
+      updateAllSpotsDisplay()
+    }
+
+    const clearImportedSpots = () => {
+      const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
+      importedSpots.forEach(spot => canvas.value.remove(spot))
+    }
+
+    const updateAllSpotsDisplay = () => {
+      const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
+      importedSpots.forEach(spot => {
+        updateSpotDisplay(spot, displayMode.value)
+      })
+      canvas.value.renderAll()
+    }
+
+    // 根據 salesParkings 資料創建車位物件
+    const createParkingSpotFromData = (options = {}) => {
+      const { x = 100, y = 100, parkingData, displayMode = 'backend' } = options
+      
+      // 取得狀態顏色
+      const getStatusColor = (mode, data) => {
+        if (mode === 'backend') {
+          switch (data.status_backend) {
+            case '簽約': return '#FFFF00' // 黃色
+            case '小訂': return '#00FF00' // 綠色  
+            case '補足': return '#FFC0CB' // 粉紅色
+            case '保留': return '#ADD8E6' // 淺藍色
+            default: return '#F5F5F5' // 灰白色
+          }
+        } else {
+          switch (data.status) {
+            case '已售': return '#FFFF00' // 黃色
+            default: return '#F5F5F5' // 灰白色
+          }
+        }
+      }
+
+      // 生成顯示文字
+      const getDisplayText = (mode, data) => {
+        if (mode === 'backend') {
+          return [
+            data.number || '',
+            data.price_transaction || data.price_list || '',
+            data.buyerUnitId || '',
+            data.buyerName || '',
+            data.salesperson || '',
+            data.size || '',
+            data.type || ''
+          ].filter(text => text !== '').join('\n')
+        } else {
+          if (data.status === '已售') {
+            return [data.number || '', data.status].join('\n')
+          } else {
+            return [
+              data.number || '',
+              data.price_list || '',
+              data.size || '',
+              data.type || ''
+            ].filter(text => text !== '').join('\n')
+          }
+        }
+      }
+
+      const fillColor = getStatusColor(displayMode, parkingData)
+      const displayText = getDisplayText(displayMode, parkingData)
+
+      // 創建車位矩形
+      const rect = new fabric.Rect({
+        left: 0,
+        top: 0,
+        width: 48,
+        height: 105,
+        fill: fillColor,
+        stroke: textStyles.value.strokeColor,
+        strokeWidth: textStyles.value.strokeWidth,
+        rx: 0,
+        ry: 0,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        hasControls: false,
+        hasBorders: false,
+        evented: false
+      })
+
+      // 創建文字
+      const textObj = new fabric.Text(displayText, {
+        left: 0,
+        top: 0,
+        fontSize: textStyles.value.fontSize,
+        fill: textStyles.value.textColor,
+        fontWeight: textStyles.value.fontWeight,
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false
+      })
+
+      // 創建群組
+      const group = new fabric.Group([rect, textObj], {
+        left: x,
+        top: y,
+        selectable: !props.previewMode,
+        hasControls: !props.previewMode,
+        hasBorders: !props.previewMode,
+        cornerSize: baseCornerSize / (zoomLevel.value || 1)
+      })
+
+      // 設置自定義屬性
+      group.type = 'importedParkingSpot'
+      group.parkingData = parkingData
+      group.currentDisplayMode = displayMode
+
+      return group
+    }
+
+    // 更新車位顯示
+    // 樣式控制相關方法
+    const toggleStylePanel = () => {
+      showStylePanel.value = !showStylePanel.value
+    }
+
+    const updateTextStyles = () => {
+      const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
+      importedSpots.forEach(spot => {
+        const rect = spot._objects[0]
+        const textObj = spot._objects[1]
+        
+        // 更新文字樣式
+        textObj.set({
+          fontSize: textStyles.value.fontSize,
+          fill: textStyles.value.textColor,
+          fontWeight: textStyles.value.fontWeight
+        })
+        
+        // 更新矩形邊框樣式
+        rect.set({
+          strokeWidth: textStyles.value.strokeWidth,
+          stroke: textStyles.value.strokeColor
+        })
+      })
+      
+      canvas.value.renderAll()
+    }
+
+    const resetTextStyles = () => {
+      textStyles.value = {
+        fontSize: 8,
+        textColor: '#000000',
+        fontWeight: 'normal',
+        strokeWidth: 2,
+        strokeColor: '#000000'
+      }
+      updateTextStyles()
+    }
+
+    // 即時同步相關方法
+    const setupSalesParkingsListener = () => {
+      if (!props.projectId || props.floorPlan.floor === undefined) {
+        console.warn('缺少 projectId 或 floor，無法設置即時監聽')
+        return
+      }
+
+      // 清除舊的監聽器
+      if (salesParkingsListener.value) {
+        salesParkingsListener.value()
+        salesParkingsListener.value = null
+      }
+
+      try {
+        const salesParkingsRef = collection(db, 'salesParkings')
+        const q = query(
+          salesParkingsRef,
+          where('projectId', '==', props.projectId),
+          where('floor', '==', props.floorPlan.floor)
+        )
+
+        salesParkingsListener.value = onSnapshot(q, (snapshot) => {
+          console.log('salesParkings 資料變更，更新車位顯示')
+          
+          // 更新快取的停車場資料
+          const updatedData = []
+          snapshot.forEach(doc => {
+            updatedData.push({
+              id: doc.id,
+              ...doc.data()
+            })
+          })
+          
+          // 更新所有匯入的車位顯示
+          updateImportedSpotsFromData(updatedData)
+        }, (error) => {
+          console.error('監聽 salesParkings 失敗:', error)
+        })
+
+        console.log('salesParkings 即時監聽已設置')
+      } catch (error) {
+        console.error('設置 salesParkings 監聽器失敗:', error)
+      }
+    }
+
+    const updateImportedSpotsFromData = (updatedData) => {
+      if (!canvas.value) return
+
+      const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
+      
+      importedSpots.forEach(spot => {
+        if (spot.parkingData && spot.parkingData.id) {
+          // 找到對應的更新資料
+          const updatedParkingData = updatedData.find(data => data.id === spot.parkingData.id)
+          
+          if (updatedParkingData) {
+            // 更新車位的資料
+            spot.parkingData = updatedParkingData
+            
+            // 更新顯示
+            updateSpotDisplay(spot, spot.currentDisplayMode || displayMode.value)
+          }
+        }
+      })
+      
+      canvas.value.renderAll()
+    }
+
+    const cleanupSalesParkingsListener = () => {
+      if (salesParkingsListener.value) {
+        salesParkingsListener.value()
+        salesParkingsListener.value = null
+        console.log('salesParkings 監聽器已清除')
+      }
+    }
+
+    const updateSpotDisplay = (spot, mode) => {
+      if (!spot.parkingData) return
+
+      const data = spot.parkingData
+      const rect = spot._objects[0]
+      const textObj = spot._objects[1]
+
+      // 更新顏色
+      const getStatusColor = (mode, data) => {
+        if (mode === 'backend') {
+          switch (data.status_backend) {
+            case '簽約': return '#FFFF00'
+            case '小訂': return '#00FF00'
+            case '補足': return '#FFC0CB'
+            case '保留': return '#ADD8E6'
+            default: return '#F5F5F5'
+          }
+        } else {
+          switch (data.status) {
+            case '已售': return '#FFFF00'
+            default: return '#F5F5F5'
+          }
+        }
+      }
+
+      // 更新文字
+      const getDisplayText = (mode, data) => {
+        if (mode === 'backend') {
+          return [
+            data.number || '',
+            data.price_transaction || data.price_list || '',
+            data.buyerUnitId || '',
+            data.buyerName || '',
+            data.salesperson || '',
+            data.size || '',
+            data.type || ''
+          ].filter(text => text !== '').join('\n')
+        } else {
+          if (data.status === '已售') {
+            return [data.number || '', data.status].join('\n')
+          } else {
+            return [
+              data.number || '',
+              data.price_list || '',
+              data.size || '',
+              data.type || ''
+            ].filter(text => text !== '').join('\n')
+          }
+        }
+      }
+
+      rect.set('fill', getStatusColor(mode, data))
+      textObj.set('text', getDisplayText(mode, data))
+      spot.currentDisplayMode = mode
+    }
+
     // 導出方法供父組件使用
     return {
       fabricCanvas,
@@ -1035,6 +1660,26 @@ export default {
       closePropertiesPanel,
       deleteSelectedSpot,
       updateStyles,
+      // 匯入車位資料相關
+      importDialog,
+      loading,
+      importing,
+      previewParkings,
+      totalParkingCount,
+      displayMode,
+      openImportModal,
+      closeImportModal,
+      confirmImport,
+      switchDisplayMode,
+      // 樣式控制相關
+      showStylePanel,
+      textStyles,
+      toggleStylePanel,
+      updateTextStyles,
+      resetTextStyles,
+      // 即時同步相關
+      setupSalesParkingsListener,
+      cleanupSalesParkingsListener,
       exportAsImage,
       downloadImage,
       printFloorplan,
@@ -1209,6 +1854,262 @@ export default {
   
   .spot-properties-panel.show {
     transform: translateX(0);
+  }
+}
+
+/* 工具欄樣式 */
+.toolbar {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.status-toggle {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.btn-active {
+  background: #007bff !important;
+  color: white !important;
+}
+
+/* Modal 樣式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.25rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-top: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.loading-state i {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: #007bff;
+}
+
+.import-preview p {
+  margin-bottom: 1rem;
+}
+
+.parking-numbers {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 4px solid #007bff;
+  margin: 1rem 0;
+  font-family: monospace;
+  color: #495057;
+}
+
+.confirm-text {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.no-data strong {
+  color: #2c3e50;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #545b62;
+}
+
+.btn-primary {
+  background: #007bff;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #0056b3;
+}
+
+.btn-primary:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+/* 樣式控制面板 */
+.style-control-panel {
+  position: absolute;
+  top: 20px;
+  left: 300px;
+  width: 280px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  z-index: 100;
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+}
+
+.style-toggle-btn {
+  position: absolute;
+  top: 20px;
+  left: 300px;
+  width: 50px;
+  height: 50px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  cursor: pointer;
+  font-size: 1.2rem;
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.style-toggle-btn:hover {
+  background: #0056b3;
+  transform: scale(1.1);
+}
+
+.style-group {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.style-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.style-group h5 {
+  margin: 0 0 1rem 0;
+  color: #495057;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.range-input {
+  width: 100%;
+  margin-right: 0.5rem;
+}
+
+.color-input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.form-select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: white;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .style-control-panel,
+  .style-toggle-btn {
+    left: 20px;
+    top: 80px;
+  }
+  
+  .toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .status-toggle {
+    width: 100%;
+  }
+  
+  .status-toggle .btn {
+    flex: 1;
+  }
+}
+
+@media (max-width: 1200px) {
+  .style-control-panel,
+  .style-toggle-btn {
+    left: 200px;
   }
 }
 </style>

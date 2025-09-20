@@ -197,6 +197,7 @@
           <ParkingCanvas
             ref="parkingCanvas"
             :floor-plan="selectedFloorPlan"
+            :project-id="selectedProjectId"
             :preview-mode="isPreviewMode"
             @spots-changed="onSpotsChanged"
             @canvas-ready="onCanvasReady"

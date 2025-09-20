@@ -3337,3 +3337,86 @@ exports.updateFloorPlanBackground = onCall(async (request) => {
     throw new HttpsError("internal", `更新平面圖背景圖片失敗: ${error.message}`);
   }
 });
+
+// ✅ 新增：根據 projectId 和 floor 查詢 salesParkings 車位資料
+exports.getSalesParkingsByFloor = onCall(async (request) => {
+  const functionName = "getSalesParkingsByFloor";
+
+
+  try {
+    const { projectId, floor } = request.data;
+    
+
+
+    if (!projectId || floor === undefined || floor === null) {
+
+      throw new HttpsError("invalid-argument", "projectId 和 floor 參數為必填");
+    }
+
+    // 連接到正確的 Firebase 專案和資料庫
+    const db = new Firestore({
+      databaseId: "anxi-app"
+    });
+
+    // ✅ 新增：先查詢該建案是否有任何車位資料
+    const allParkingsQuery = db.collection('salesParkings').where('projectId', '==', projectId);
+    const allParkingsSnapshot = await allParkingsQuery.get();
+
+    // ✅ 新增：列出該建案所有的樓層
+    const floors = new Set();
+    allParkingsSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.floor !== undefined && data.floor !== null) {
+        floors.add(data.floor);
+      }
+    });
+
+    // 查詢符合條件的車位資料
+    const salesParkingsRef = db.collection('salesParkings');
+    const query = salesParkingsRef
+      .where('projectId', '==', projectId)
+      .where('floor', '==', floor)
+      .orderBy('number', 'desc'); // 降冪排序
+
+    const snapshot = await query.get();
+    
+    if (snapshot.empty) {
+      console.log(`[${functionName}] 未找到符合條件的車位資料`);
+      return {
+        success: true,
+        total: 0,
+        preview: [],
+        allData: [],
+        debug: {
+          totalParkingsInProject: allParkingsSnapshot.size,
+          availableFloors: Array.from(floors).sort(),
+          searchedProjectId: projectId,
+          searchedFloor: floor,
+          floorType: typeof floor
+        }
+      };
+    }
+
+    const allData = [];
+    snapshot.forEach(doc => {
+      allData.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    // 取前 10 筆作為預覽
+    const preview = allData.slice(0, 10);
+
+    return {
+      success: true,
+      total: allData.length,
+      preview: preview,
+      allData: allData
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `查詢車位資料失敗: ${error.message}`);
+  }
+});
