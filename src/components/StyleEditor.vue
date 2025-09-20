@@ -149,61 +149,7 @@
         </div>
       </div>
 
-      <!-- 網格設定 -->
-      <div class="style-section">
-        <h5>
-          <i class="fas fa-th"></i>
-          網格設定
-        </h5>
-        
-        <div class="grid-controls">
-          <div class="grid-toggle">
-            <label class="toggle-label">
-              <input 
-                v-model="gridSettings.enabled"
-                @change="updateGridSetting('enabled', $event.target.checked)"
-                type="checkbox" 
-                class="toggle-input"
-              />
-              <span class="toggle-slider"></span>
-              顯示網格
-            </label>
-          </div>
-          
-          <div v-if="gridSettings.enabled" class="grid-options">
-            <div class="grid-group">
-              <label>網格大小 (px)</label>
-              <input 
-                v-model.number="gridSettings.size"
-                @input="updateGridSetting('size', $event.target.value)"
-                type="number" 
-                min="5" 
-                max="50"
-                class="grid-input"
-              />
-            </div>
-            
-            <div class="grid-group">
-              <label>網格顏色</label>
-              <div class="color-input-wrapper">
-                <input 
-                  v-model="gridSettings.color"
-                  @input="updateGridSetting('color', $event.target.value)"
-                  type="color" 
-                  class="color-input"
-                />
-                <input 
-                  v-model="gridSettings.color"
-                  @input="updateGridSetting('color', $event.target.value)"
-                  type="text" 
-                  class="color-text"
-                  placeholder="#cccccc"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      
 
       <!-- 文字樣式 -->
       <div class="style-section">
@@ -326,12 +272,7 @@ export default {
       height: 40
     })
 
-    // 網格設定
-    const gridSettings = ref({
-      enabled: true,
-      size: 20,
-      color: '#e0e0e0'
-    })
+    // 網格設定已移除
 
     // 文字樣式
     const textStyles = ref({
@@ -346,7 +287,6 @@ export default {
       emit('styles-updated', {
         statusStyles: statusStyles.value,
         defaultSpotSize: defaultSpotSize.value,
-        gridSettings: gridSettings.value,
         textStyles: textStyles.value
       })
     }
@@ -356,27 +296,10 @@ export default {
       emit('styles-updated', {
         statusStyles: statusStyles.value,
         defaultSpotSize: defaultSpotSize.value,
-        gridSettings: gridSettings.value,
         textStyles: textStyles.value
       })
     }
-
-    const updateGridSetting = (property, value) => {
-      if (property === 'enabled') {
-        gridSettings.value[property] = Boolean(value)
-      } else if (property === 'size') {
-        gridSettings.value[property] = Number(value) || 20
-      } else {
-        gridSettings.value[property] = value
-      }
-      
-      emit('styles-updated', {
-        statusStyles: statusStyles.value,
-        defaultSpotSize: defaultSpotSize.value,
-        gridSettings: gridSettings.value,
-        textStyles: textStyles.value
-      })
-    }
+    
 
     const updateTextStyle = (property, value) => {
       if (property === 'fontSize') {
@@ -388,7 +311,6 @@ export default {
       emit('styles-updated', {
         statusStyles: statusStyles.value,
         defaultSpotSize: defaultSpotSize.value,
-        gridSettings: gridSettings.value,
         textStyles: textStyles.value
       })
     }
@@ -424,13 +346,11 @@ export default {
       }
 
       defaultSpotSize.value = { width: 60, height: 40 }
-      gridSettings.value = { enabled: true, size: 20, color: '#e0e0e0' }
       textStyles.value = { fontSize: 12, fontWeight: 'normal', fontFamily: 'Arial, sans-serif' }
 
       emit('styles-updated', {
         statusStyles: statusStyles.value,
         defaultSpotSize: defaultSpotSize.value,
-        gridSettings: gridSettings.value,
         textStyles: textStyles.value
       })
     }
@@ -441,7 +361,6 @@ export default {
         const parameters = {
           spotStyles: statusStyles.value,
           defaultSpotSize: defaultSpotSize.value,
-          gridSettings: gridSettings.value,
           textStyles: textStyles.value
         }
 
@@ -480,9 +399,7 @@ export default {
           defaultSpotSize.value = { ...defaultSpotSize.value, ...params.defaultSpotSize }
         }
 
-        if (params.gridSettings) {
-          gridSettings.value = { ...gridSettings.value, ...params.gridSettings }
-        }
+        // gridSettings 已不再使用
 
         if (params.textStyles) {
           textStyles.value = { ...textStyles.value, ...params.textStyles }
@@ -501,11 +418,9 @@ export default {
       saving,
       statusStyles,
       defaultSpotSize,
-      gridSettings,
       textStyles,
       updateStatusStyle,
       updateDefaultSize,
-      updateGridSetting,
       updateTextStyle,
       resetToDefaults,
       saveStyles

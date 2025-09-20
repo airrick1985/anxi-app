@@ -178,18 +178,6 @@
             </v-btn>
           </div>
           
-          <div class="toolbar-section">
-            <v-btn 
-              @click="toggleGrid" 
-              :color="showGrid ? 'primary' : 'default'"
-              variant="outlined" 
-              size="small"
-              prepend-icon="mdi-grid"
-            >
-              {{ showGrid ? '隱藏網格' : '顯示網格' }}
-            </v-btn>
-          </div>
-          
 
 
           <div class="toolbar-section">
@@ -209,7 +197,6 @@
           <ParkingCanvas
             ref="parkingCanvas"
             :floor-plan="selectedFloorPlan"
-            :show-grid="showGrid"
             :preview-mode="isPreviewMode"
             @spots-changed="onSpotsChanged"
             @canvas-ready="onCanvasReady"
@@ -347,7 +334,6 @@ export default {
     const submitting = ref(false)
     const isEditorDirty = ref(false)
     const isPreviewMode = ref(false)
-    const showGrid = ref(true)
     const showStyleEditor = ref(false)
     
     // Dialog states
@@ -755,9 +741,7 @@ export default {
       isPreviewMode.value = !isPreviewMode.value
     }
 
-    const toggleGrid = () => {
-      showGrid.value = !showGrid.value
-    }
+    // 網格功能已移除
 
     const addSpot = () => {
       if (parkingCanvas.value) {
@@ -888,7 +872,6 @@ export default {
       submitting,
       isEditorDirty,
       isPreviewMode,
-      showGrid,
       showStyleEditor,
       showFloorPlanDialog,
       editingFloorPlan,
@@ -920,7 +903,6 @@ export default {
       deleteFloorPlan,
       saveFloorPlan,
       togglePreviewMode,
-      toggleGrid,
       addSpot,
       onSpotsChanged,
       onCanvasReady,
