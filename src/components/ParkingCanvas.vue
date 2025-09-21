@@ -379,12 +379,14 @@ export default {
           break;
         case 'h-center': {
           const minLeft = Math.min(...objects.map(obj => obj.left));
+          // ✓【修正】修正 map 函式的語法錯誤
           const maxRight = Math.max(...objects.map(obj => obj.left + obj.getScaledWidth()));
           target = minLeft + (maxRight - minLeft) / 2;
           break;
         }
         case 'v-center': {
           const minTop = Math.min(...objects.map(obj => obj.top));
+          // ✓【修正】修正 map 函式的語法錯誤
           const maxBottom = Math.max(...objects.map(obj => obj.top + obj.getScaledHeight()));
           target = minTop + (maxBottom - minTop) / 2;
           break;
@@ -610,18 +612,19 @@ export default {
 
     // 選擇車位
     const selectSpot = (spot) => {
-      selectedSpot.value = spot
-      spotProperties.value = {
-        spotId: spot.spotId || spot.parkingData?.number || '',
-        text: spot.spotText || '',
-        width: Math.round(spot.width || 60),
-        height: Math.round(spot.height || 40),
-        rotation: Math.round(spot.angle || 0),
-        backgroundColor: spot._objects[0].fill,
-        borderColor: spot._objects[0].stroke,
-        textColor: spot._objects[1].fill
-      }
-    }
+  selectedSpot.value = spot
+  spotProperties.value = {
+    spotId: spot.spotId || spot.parkingData?.number || '',
+    text: spot.spotText || '',
+    // ✓【修改】從讀取 spot.width/height 改為讀取縮放後的尺寸
+    width: Math.round(spot.getScaledWidth()),
+    height: Math.round(spot.getScaledHeight()),
+    rotation: Math.round(spot.angle || 0),
+    backgroundColor: spot._objects[0].fill,
+    borderColor: spot._objects[0].stroke,
+    textColor: spot._objects[1].fill
+  }
+}
 
     // 更新車位屬性
     const updateSpotProperty = (property, value) => {
@@ -734,32 +737,47 @@ export default {
     const closeImportModal = () => { importDialog.value = false }
 
     const confirmImport = async () => {
-      importing.value = true
-      try {
-        const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
-        importedSpots.forEach(spot => canvas.value.remove(spot))
-        
-        allParkingData.value.forEach((parkingData, index) => {
-          const spot = createParkingSpotFromData({
-            x: 100 + (index % 10) * 60,
-            y: 100 + Math.floor(index / 10) * 120,
-            parkingData: parkingData,
-            displayMode: displayMode.value
-          })
-          canvas.value.add(spot)
-        })
-        
-        canvas.value.renderAll()
-        emit('spots-changed')
-        
-        const layouts = getSpotLayouts()
-        await saveSpotLayouts({ floorPlanId: props.floorPlan.id, layouts })
+  importing.value = true
+  try {
+    const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
+    importedSpots.forEach(spot => canvas.value.remove(spot))
+    
+    const newSpots = []
 
-      } finally {
-        importing.value = false
-        closeImportModal()
-      }
-    }
+    allParkingData.value.forEach((parkingData, index) => {
+      const spot = createParkingSpotFromData({
+        x: 100 + (index % 10) * 60,
+        y: 100 + Math.floor(index / 10) * 120,
+        parkingData: parkingData,
+        displayMode: displayMode.value
+      })
+      canvas.value.add(spot)
+      newSpots.push(spot)
+    })
+    
+    // ✓【最終解決方案】強制將新物件標記為「髒」，以觸發深度狀態更新
+    newSpots.forEach(spot => {
+      // 1. 確保基礎座標已設定
+      spot.setCoords();
+      // 2. 將物件標記為 "dirty"。這會告訴 Fabric.js 在下一次渲染時，
+      //    需要對此物件進行一次完整的快取重建和狀態重新計算，
+      //    從而強制初始化其互動控制點。
+      spot.dirty = true;
+    });
+
+    // 3. 重新渲染畫布。Fabric.js 會處理所有被標記為 dirty 的物件。
+    canvas.value.renderAll();
+    
+    emit('spots-changed')
+    
+    const layouts = getSpotLayouts()
+    await saveSpotLayouts({ floorPlanId: props.floorPlan.id, layouts })
+
+  } finally {
+    importing.value = false
+    closeImportModal()
+  }
+}
 
     const switchDisplayMode = (mode) => {
       displayMode.value = mode
