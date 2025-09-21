@@ -2,25 +2,29 @@
   <div class="parking-canvas-container center-xy">
     <!-- 工具欄 -->
     <div class="toolbar">
-      <button @click="openImportModal" class="btn btn-primary">
-        <i class="fas fa-download"></i> 匯入車位資料
-      </button>
-      
-      <div class="status-toggle">
-        <button 
-          @click="switchDisplayMode('backend')"
-          :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'backend' }]"
-        >
-          後台狀態
-        </button>
-        <button 
-          @click="switchDisplayMode('sales')"
-          :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'sales' }]"
-        >
-          銷售狀態
-        </button>
-      </div>
-    </div>
+  <button @click="openImportModal" class="btn btn-primary">
+    <i class="fas fa-download"></i> 匯入車位資料
+  </button>
+  
+  <button @click="toggleStylePanel" class="btn btn-secondary">
+    <i class="fas fa-palette"></i> 文字樣式
+  </button>
+  
+  <div class="status-toggle">
+    <button 
+      @click="switchDisplayMode('backend')"
+      :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'backend' }]"
+    >
+      後台狀態
+    </button>
+    <button 
+      @click="switchDisplayMode('sales')"
+      :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'sales' }]"
+    >
+      銷售狀態
+    </button>
+  </div>
+</div>
 
     <canvas ref="fabricCanvas" :width="canvasWidth" :height="canvasHeight"></canvas>
 
@@ -2014,21 +2018,17 @@ export default {
   overflow-y: auto;
 }
 
-.style-toggle-btn {
+.style-control-panel {
   position: absolute;
-  top: 20px;
-  left: 300px;
-  width: 50px;
-  height: 50px;
-  background: #007bff;
-  color: white;
-  border: none;
-  border-radius: 50%;
+  top: 80px;  
+  left: 20px; 
+  width: 280px;
+  background: white;
+  border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  cursor: pointer;
-  font-size: 1.2rem;
   z-index: 100;
-  transition: all 0.3s ease;
+  max-height: calc(100% - 100px); /* 調整最大高度 */
+  overflow-y: auto;
 }
 
 .style-toggle-btn:hover {
@@ -2086,14 +2086,14 @@ export default {
 
 /* 響應式設計 */
 @media (max-width: 768px) {
-  .style-control-panel,
-  .style-toggle-btn {
+  .style-control-panel { 
     left: 20px;
-    top: 80px;
+    top: 150px; 
   }
   
   .toolbar {
     flex-direction: column;
+    align-items: flex-start; 
     gap: 0.5rem;
   }
   
@@ -2106,10 +2106,5 @@ export default {
   }
 }
 
-@media (max-width: 1200px) {
-  .style-control-panel,
-  .style-toggle-btn {
-    left: 200px;
-  }
-}
+
 </style>
