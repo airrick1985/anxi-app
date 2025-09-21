@@ -170,28 +170,7 @@
           </div>
         </div>
 
-        <!-- 編輯器工具列 -->
-        <div class="editor-toolbar" v-if="!isPreviewMode">
-          <div class="toolbar-section">
-            <v-btn @click="addSpot" color="primary" size="small" prepend-icon="mdi-plus">
-              新增車位
-            </v-btn>
-          </div>
-          
-
-
-          <div class="toolbar-section">
-            <v-btn 
-              @click="toggleStyleEditor" 
-              variant="outlined" 
-              size="small"
-              prepend-icon="mdi-palette"
-            >
-              樣式編輯器
-            </v-btn>
-          </div>
-        </div>
-
+     
         <!-- Canvas 容器 -->
         <div class="canvas-container">
           <ParkingCanvas
@@ -335,7 +314,6 @@ export default {
     const submitting = ref(false)
     const isEditorDirty = ref(false)
     const isPreviewMode = ref(false)
-    const showStyleEditor = ref(false)
     
     // Dialog states
     const showFloorPlanDialog = ref(false)
@@ -742,13 +720,6 @@ export default {
       isPreviewMode.value = !isPreviewMode.value
     }
 
-    // 網格功能已移除
-
-    const addSpot = () => {
-      if (parkingCanvas.value) {
-        parkingCanvas.value.addSpot()
-      }
-    }
 
     // 匯出圖片
     const exportImage = (format) => {
@@ -784,22 +755,6 @@ export default {
       console.log('Canvas 準備就緒')
     }
 
-
-
-    const toggleStyleEditor = () => {
-      showStyleEditor.value = !showStyleEditor.value
-    }
-
-    const closeStyleEditor = () => {
-      showStyleEditor.value = false
-    }
-
-    const onStylesUpdated = (styles) => {
-      // 通知 Canvas 更新樣式
-      if (parkingCanvas.value) {
-        parkingCanvas.value.updateStyles(styles)
-      }
-    }
 
    const formatDate = (timestamp) => {
       if (!timestamp) return '';
@@ -873,7 +828,7 @@ export default {
       submitting,
       isEditorDirty,
       isPreviewMode,
-      showStyleEditor,
+
       showFloorPlanDialog,
       editingFloorPlan,
       floorPlanForm,
@@ -904,12 +859,8 @@ export default {
       deleteFloorPlan,
       saveFloorPlan,
       togglePreviewMode,
-      addSpot,
       onSpotsChanged,
       onCanvasReady,
-      toggleStyleEditor,
-      closeStyleEditor,
-      onStylesUpdated,
       formatDate,
       exportImage,
       exportPDF,
