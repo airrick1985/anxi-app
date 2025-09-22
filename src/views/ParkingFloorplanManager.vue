@@ -163,26 +163,35 @@
               </v-list>
             </v-menu>
           </div>
+
+          <v-btn 
+              @click="toggleTextStyleEditor" 
+              :color="showTextStyleEditor ? 'primary' : ''"
+              variant="outlined"
+              prepend-icon="mdi-format-letter-case"
+            >
+              文字樣式
+            </v-btn>
         </div>
 
      
         <!-- Canvas 容器 -->
-        <div class="canvas-container">
+           <div class="canvas-container">
           <ParkingCanvas
             ref="parkingCanvas"
             :floor-plan="selectedFloorPlan"
             :project-id="selectedProjectId"
             :preview-mode="isPreviewMode"
+            :text-styles="textStyleStore.styles" 
             @spots-changed="onSpotsChanged"
             @canvas-ready="onCanvasReady"
           />
 
           <!-- 樣式編輯器 -->
-          <div v-if="showStyleEditor" class="style-editor-overlay">
-            <StyleEditor
-              :floor-plan-id="selectedFloorPlan.id"
-              @close="closeStyleEditor"
-              @styles-updated="onStylesUpdated"
+           <div v-if="showTextStyleEditor" class="style-editor-overlay">
+            <TextStyleEditor
+              v-model="textStyleStore.styles"
+              @close="showTextStyleEditor = false"
             />
           </div>
         </div>
@@ -286,13 +295,15 @@ import { useUiStore } from '@/store/uiStore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { uploadSalesImage } from '@/api'
 import ParkingCanvas from '@/components/ParkingCanvas.vue'
-import StyleEditor from '@/components/StyleEditor.vue'
+import { storeToRefs } from 'pinia'
+import { useTextStyleStore } from '@/store/textStyleStore'
+import TextStyleEditor from '@/components/TextStyleEditor.vue'
 
 export default {
   name: 'ParkingFloorplanManager',
   components: {
     ParkingCanvas,
-    StyleEditor
+    TextStyleEditor
   },
   props: {
     projectId: {
@@ -305,6 +316,7 @@ export default {
     const userStore = useUserStore()
     const projectStore = useProjectStore()
     const uiStore = useUiStore()
+    const textStyleStore = useTextStyleStore()
     const functions = getFunctions()
     const route = useRoute()
     const router = useRouter() // 實例化 useRouter
@@ -317,7 +329,13 @@ export default {
     const saving = ref(false)
     const submitting = ref(false)
     const isEditorDirty = ref(false)
+
     const isPreviewMode = ref(false)
+
+    const showTextStyleEditor = ref(false)
+    const toggleTextStyleEditor = () => {
+      showTextStyleEditor.value = !showTextStyleEditor.value
+    }
     
     // Dialog states
     const showFloorPlanDialog = ref(false)
@@ -425,7 +443,9 @@ export default {
       if (selectedProjectId.value) {
         await Promise.all([
           loadFloorPlans(),
-          loadProjectFloors()
+          loadProjectFloors(),
+          // ✓ 新增: 當專案變更時，獲取對應的文字樣式
+          textStyleStore.fetchStyles(selectedProjectId.value)
         ])
       } else {
         floorPlans.value = []
@@ -717,22 +737,47 @@ export default {
       }
     }
 
-    const saveFloorPlan = async () => {
+     const saveFloorPlan = async () => {
       if (!parkingCanvas.value) return
       
       saving.value = true
       try {
         const layouts = parkingCanvas.value.getSpotLayouts()
+        // ✓【修改】新增 projectId 參數
         await saveSpotLayouts({
           floorPlanId: selectedFloorPlan.value.id,
-          layouts
+          layouts,
+          projectId: selectedProjectId.value // 確保傳遞 projectId
         })
         
         isEditorDirty.value = false
         alert('平面圖儲存成功！')
       } catch (error) {
         console.error('儲存平面圖失敗:', error)
-        alert('儲存失敗，請稍後重試')
+        // ✓【優化】提供更詳細的錯誤訊息，類似 submitFloorPlan 的處理
+        let errorMessage = '儲存失敗，請稍後重試';
+        if (error.code) {
+          switch (error.code) {
+            case 'functions/invalid-argument':
+              errorMessage = error.message || '輸入參數無效，請檢查您的輸入。';
+              break;
+            case 'functions/internal':
+              errorMessage = error.message || '伺服器內部錯誤，請聯繫管理員。';
+              break;
+            case 'functions/unauthenticated':
+              errorMessage = error.message || '您尚未登入或會話已過期，請重新登入。';
+              break;
+            case 'functions/permission-denied':
+              errorMessage = error.message || '您沒有執行此操作的權限。';
+              break;
+            default:
+              errorMessage = error.message || '儲存失敗，請稍後重試。';
+              break;
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        alert(errorMessage);
       } finally {
         saving.value = false
       }
@@ -882,7 +927,12 @@ export default {
       exportImage,
       exportPDF,
       printFloorplan,
-      goBackToParkingControl // 導出新方法
+      goBackToParkingControl,
+
+      // 導出文字樣式相關的變數和方法
+      textStyleStore,
+      showTextStyleEditor,
+      toggleTextStyleEditor
     }
   }
 }
@@ -1284,8 +1334,8 @@ export default {
 
 .style-editor-overlay {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: 0px; /* 調整為從頂部開始 */
+  right: 0px; /* 調整為從右側開始 */
   z-index: 200;
 }
 </style>

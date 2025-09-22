@@ -129,7 +129,7 @@
       </div>
       
       <div class="panel-content">
-        <div class="form-group">
+                <div class="form-group">
           <label>車位編號</label>
           <input 
             v-model="spotProperties.spotId" 
@@ -139,21 +139,11 @@
           />
         </div>
         
-        <div class="form-group">
-          <label>顯示文字</label>
-          <input 
-            v-model="spotProperties.text" 
-            @input="updateSpotProperty('text', $event.target.value)"
-            type="text" 
-            class="form-input"
-          />
-        </div>
-        
         <div class="form-row">
           <div class="form-group">
             <label>寬度</label>
             <input 
-              v-model="spotProperties.width" 
+              v-model.number="spotProperties.width" 
               @input="updateSpotProperty('width', Number($event.target.value))"
               type="number" 
               class="form-input"
@@ -183,30 +173,10 @@
         </div>
         
         <div class="form-group">
-          <label>背景顏色</label>
+          <label>顏色</label>
           <input 
-            v-model="spotProperties.backgroundColor" 
-            @input="updateSpotProperty('backgroundColor', $event.target.value)"
-            type="color" 
-            class="form-input"
-          />
-        </div>
-        
-        <div class="form-group">
-          <label>邊框顏色</label>
-          <input 
-            v-model="spotProperties.borderColor" 
-            @input="updateSpotProperty('borderColor', $event.target.value)"
-            type="color" 
-            class="form-input"
-          />
-        </div>
-        
-        <div class="form-group">
-          <label>文字顏色</label>
-          <input 
-            v-model="spotProperties.textColor" 
-            @input="updateSpotProperty('textColor', $event.target.value)"
+            v-model="spotProperties.fill" 
+            @input="updateSpotProperty('fill', $event.target.value)"
             type="color" 
             class="form-input"
           />
@@ -267,9 +237,17 @@ export default {
     previewMode: {
       type: Boolean,
       default: false
+    },
+    displayMode: {
+      type: String,
+      default: 'backend'
+    },
+    textStyles: {
+      type: Object,
+      default: () => ({})
     }
   },
-  emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed'],
+  emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed', 'update:displayMode'], // ✓ 新增 emit
   setup(props, { emit }) {
     // Refs
     const fabricCanvas = ref(null)
@@ -287,7 +265,6 @@ export default {
     const importing = ref(false)
     const previewParkings = ref([])
     const totalParkingCount = ref(0)
-    const displayMode = ref('backend')
     const allParkingData = ref([])
 
     // 即時同步相關
@@ -563,10 +540,28 @@ export default {
       })
     }
     
-    // 創建從 salesParkings 資料來的車位物件
+     // 創建從 salesParkings 資料來的車位物件
     const createParkingSpotFromData = (options = {}) => {
-      const { x = 100, y = 100, parkingData, displayMode = 'backend' } = options
-      
+      const { x = 100, y = 100, parkingData, displayMode = props.displayMode, textStyles = props.textStyles } = options
+
+      // 定義預設樣式，以防萬一 textStyles 未傳入
+      const defaultStyles = {
+        number: { fontSize: 10, fontWeight: 'bold', fill: '#000000', fontFamily: 'Arial' },
+        price: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        buyerUnitId: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        buyerName: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        salesperson: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        size: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        type: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
+        status: { fontSize: 9, fontWeight: 'bold', fill: '#D32F2F', fontFamily: 'Arial' },
+      };
+
+      // 合併傳入的樣式與預設樣式
+      const finalStyles = Object.keys(defaultStyles).reduce((acc, key) => {
+        acc[key] = { ...defaultStyles[key], ...(textStyles[key] || {}) };
+        return acc;
+      }, {});
+
       const getStatusColor = (mode, data) => {
         if (mode === 'backend') {
           switch (data.status_backend) {
@@ -581,76 +576,110 @@ export default {
         }
       }
 
-      const getDisplayText = (mode, data) => {
+      // 此函式現在回傳一個包含 {key, value} 的物件陣列
+      const getDisplayFields = (mode, data) => {
         const fields = mode === 'backend' 
-          ? [data.number, data.price_transaction || data.price_list, data.buyerUnitId, data.buyerName, data.salesperson, data.size, data.type]
+          ? [
+              { key: 'number', value: data.number },
+              { key: 'price', value: data.price_transaction || data.price_list },
+              { key: 'buyerUnitId', value: data.buyerUnitId },
+              { key: 'buyerName', value: data.buyerName },
+              { key: 'salesperson', value: data.salesperson },
+              { key: 'size', value: data.size },
+              { key: 'type', value: data.type }
+            ]
           : data.status === '已售'
-            ? [data.number, data.status]
-            : [data.number, data.price_list, data.size, data.type]
-        return fields.filter(Boolean).join('\n')
+            ? [
+                { key: 'number', value: data.number },
+                { key: 'status', value: data.status }
+              ]
+            : [
+                { key: 'number', value: data.number },
+                { key: 'price', value: data.price_list },
+                { key: 'size', value: data.size },
+                { key: 'type', value: data.type }
+              ]
+        return fields.filter(f => f.value);
       }
 
-      const fillColor = getStatusColor(displayMode, parkingData)
-      const displayText = getDisplayText(displayMode, parkingData)
+      const fillColor = getStatusColor(displayMode, parkingData);
+      const displayFields = getDisplayFields(displayMode, parkingData);
 
-      const rect = new fabric.Rect({ width: 48, height: 105, fill: fillColor, stroke: '#000000', strokeWidth: 2, originX: 'center', originY: 'center', evented: false })
-      const textObj = new fabric.Text(displayText, { fontSize: 8, fill: '#000000', fontWeight: 'normal', textAlign: 'center', originX: 'center', originY: 'center', evented: false })
+      const rect = new fabric.Rect({ width: 48, height: 105, fill: fillColor, stroke: '#000000', strokeWidth: 2, originX: 'center', originY: 'center', evented: false });
+      
+      const groupItems = [rect];
+      let currentY = -rect.height / 2 + 5; // 起始 Y 座標
 
-      const group = new fabric.Group([rect, textObj], {
+      // 為每個欄位建立獨立的 Text 物件
+      displayFields.forEach(field => {
+        const style = finalStyles[field.key];
+        const textObj = new fabric.Text(String(field.value), {
+          fontSize: style.fontSize,
+          fill: style.fill,
+          fontWeight: style.fontWeight,
+          fontFamily: style.fontFamily,
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'top', // 從頂部對齊
+          top: currentY,
+          evented: false
+        });
+        groupItems.push(textObj);
+        currentY += textObj.height + 2; // 更新下一個文字的 Y 座標
+      });
+
+      const group = new fabric.Group(groupItems, {
         left: x, top: y,
         selectable: !props.previewMode, hasControls: !props.previewMode, hasBorders: !props.previewMode,
         cornerSize: baseCornerSize / zoomLevel.value
-      })
+      });
 
-      group.type = 'importedParkingSpot'
-      group.parkingData = parkingData
-      group.currentDisplayMode = displayMode
-      return group
+      group.type = 'importedParkingSpot';
+      group.parkingData = parkingData;
+      group.currentDisplayMode = displayMode;
+      return group;
     }
 
     // 選擇車位
     const selectSpot = (spot) => {
-  selectedSpot.value = spot
-  spotProperties.value = {
-    spotId: spot.spotId || spot.parkingData?.number || '',
-    text: spot.spotText || '',
-    // ✓【修改】從讀取 spot.width/height 改為讀取縮放後的尺寸
-    width: Math.round(spot.getScaledWidth()),
-    height: Math.round(spot.getScaledHeight()),
-    rotation: Math.round(spot.angle || 0),
-    backgroundColor: spot._objects[0].fill,
-    borderColor: spot._objects[0].stroke,
-    textColor: spot._objects[1].fill
-  }
-}
+      selectedSpot.value = spot
+      spotProperties.value = {
+        spotId: spot.parkingData?.number || '',
+        width: Math.round(spot.getScaledWidth()),
+        height: Math.round(spot.getScaledHeight()),
+        rotation: Math.round(spot.angle || 0),
+        fill: spot._objects[0].fill,
+      }
+    }
 
     // 更新車位屬性
     const updateSpotProperty = (property, value) => {
-  if (!selectedSpot.value) return
-  const spot = selectedSpot.value
-  const rect = spot._objects[0]
-  const textObj = spot._objects[1]
-  
-  switch (property) {
-    case 'spotId': spot.spotId = value; break
-    case 'text': spot.spotText = value; textObj.set('text', value); break
-    // ✓【修改】使用 scaleToWidth/Height 確保縮放行為一致
-    case 'width': 
-      spot.scaleToWidth(value); 
-      break
-    case 'height': 
-      spot.scaleToHeight(value); 
-      break
-    case 'rotation': spot.set('angle', value); break
-    case 'backgroundColor': rect.set('fill', value); break
-    case 'borderColor': rect.set('stroke', value); break
-    case 'textColor': textObj.set('fill', value); break
-  }
+      if (!selectedSpot.value) return
+      const spot = selectedSpot.value
+      
+      switch (property) {
+        case 'spotId': 
+          // 更新 parkingData 中的 number，讓文字可以同步更新
+          if (spot.parkingData) spot.parkingData.number = value
+          updateAllSpots(props.displayMode, props.textStyles) // 強制重繪以更新文字
+          break
+        case 'width': 
+          spot.scaleToWidth(value); 
+          break
+        case 'height': 
+          spot.scaleToHeight(value); 
+          break
+        case 'rotation': spot.set('angle', value); break
+        case 'fill': 
+          const rect = spot._objects.find(o => o.type === 'rect')
+          if (rect) rect.set('fill', value)
+          break
+      }
 
-  // 重新渲染並觸發變更事件
-  canvas.value.renderAll()
-  emit('spots-changed')
-}
+      // 重新渲染並觸發變更事件
+      canvas.value.renderAll()
+      emit('spots-changed')
+    }
 
     // 關閉屬性面板
     const closePropertiesPanel = () => {
@@ -748,22 +777,21 @@ export default {
         x: 100 + (index % 10) * 60,
         y: 100 + Math.floor(index / 10) * 120,
         parkingData: parkingData,
-        displayMode: displayMode.value
+        displayMode: props.displayMode 
       })
       canvas.value.add(spot)
-      // ✓【新增】將新物件加入到陣列中
       newSpots.push(spot)
     })
     
-    // ✓【新增】在全部加入畫布後，遍歷所有新物件並呼叫 setCoords()
+    // 在全部加入畫布後，遍歷所有新物件並呼叫 setCoords()
     // 這一步是解決問題的關鍵，它會強制更新每個物件的控制點使其可互動
     newSpots.forEach(spot => spot.setCoords())
 
     canvas.value.renderAll()
     emit('spots-changed')
     
-    const layouts = getSpotLayouts()
-    await saveSpotLayouts({ floorPlanId: props.floorPlan.id, layouts })
+    // const layouts = getSpotLayouts()
+    // await saveSpotLayouts({ floorPlanId: props.floorPlan.id, layouts })
 
   } finally {
     importing.value = false
@@ -771,28 +799,38 @@ export default {
   }
 }
 
-    const switchDisplayMode = (mode) => {
-      displayMode.value = mode
-      const importedSpots = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot')
-      importedSpots.forEach(spot => updateSpotDisplay(spot, mode))
-      canvas.value.renderAll()
+   const switchDisplayMode = (mode) => {
+      // ✓【修改】發出事件通知父元件更新狀態
+      emit('update:displayMode', mode)
     }
     
-    // 更新車位顯示
-    const updateSpotDisplay = (spot, mode) => {
-      if (!spot.parkingData) return
-      const data = spot.parkingData
-      const rect = spot._objects[0]
-      const textObj = spot._objects[1]
+  
+    const updateAllSpots = (mode, styles) => {
+      if (!canvas.value) return;
+      
+      const spotsToUpdate = canvas.value.getObjects().filter(obj => obj.type === 'importedParkingSpot');
 
-      const getStatusColor = (m, d) => m === 'backend' ? ({'簽約':'#FFFF00','小訂':'#00FF00','補足':'#FFC0CB','保留':'#ADD8E6'}[d.status_backend]||'#F5F5F5') : (d.status==='已售'?'#FFFF00':'#F5F5F5')
-      const getDisplayText = (m, d) => (m === 'backend' ? [d.number, d.price_transaction || d.price_list, d.buyerUnitId, d.buyerName, d.salesperson, d.size, d.type] : (d.status === '已售' ? [d.number, d.status] : [d.number, d.price_list, d.size, d.type])).filter(Boolean).join('\n')
+      spotsToUpdate.forEach(spot => {
+        if (spot.parkingData) {
+          const newSpot = createParkingSpotFromData({
+            x: spot.left,
+            y: spot.top,
+            parkingData: spot.parkingData,
+            displayMode: mode,
+            textStyles: styles
+          });
+          
+          newSpot.scaleX = spot.scaleX;
+          newSpot.scaleY = spot.scaleY;
+          newSpot.angle = spot.angle;
 
-      rect.set('fill', getStatusColor(mode, data))
-      textObj.set('text', getDisplayText(mode, data))
-      spot.currentDisplayMode = mode
-    }
-
+          canvas.value.remove(spot);
+          canvas.value.add(newSpot);
+        }
+      });
+      canvas.value.renderAll();
+    };
+  
     // 調整控制點大小
     const adjustControlCornerSize = () => {
       if (!canvas.value) return
@@ -864,17 +902,27 @@ export default {
       initCanvas()
     })
     
-    watch(() => props.previewMode, (is_preview) => {
+     watch(() => props.previewMode, (is_preview) => {
       if (!canvas.value) return
       canvas.value.selection = !is_preview
       canvas.value.getObjects().forEach(obj => obj.set({ selectable: !is_preview, hasControls: !is_preview, hasBorders: !is_preview }))
       canvas.value.renderAll()
     })
 
+    watch(() => props.displayMode, (newMode) => {
+      updateAllSpots(newMode, props.textStyles);
+    });
+
+     watch(() => props.textStyles, (newStyles) => {
+      updateAllSpots(props.displayMode, newStyles);
+    }, { deep: true });
+
     return {
       fabricCanvas, canvasWidth, canvasHeight,
       selectedSpot, spotProperties,
-      importDialog, loading, importing, previewParkings, totalParkingCount, displayMode, floorPlan: props.floorPlan,
+      importDialog, loading, importing, previewParkings, totalParkingCount, 
+      displayMode: computed(() => props.displayMode), 
+      floorPlan: props.floorPlan,
       
       getSpotLayouts,
       updateSpotProperty,

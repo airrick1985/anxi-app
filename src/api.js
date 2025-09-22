@@ -35,7 +35,7 @@ import {
 import { onDisconnect, set, ref as dbRef, remove } from "firebase/database"; 
 import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
 
-import { httpsCallable } from "firebase/functions"; 
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 
 
@@ -4085,4 +4085,33 @@ export const updatePaymentTermTemplate = (docId, dataToUpdate) => {
 export const deletePaymentTermTemplate = (docId) => {
   const docRef = doc(db, "paymentTermTemplates", docId);
   return deleteDoc(docRef);
+};
+
+/**
+ * 從後端獲取指定專案的文字樣式
+ * @param {string} projectId 專案 ID
+ * @returns {Promise<object>} 樣式物件
+ */
+export const getProjectTextStyle = async (projectId) => {
+  const getStyles = httpsCallable(functions, 'getProjectTextStyle');
+  const result = await getStyles({ projectId });
+  if (result.data.status === 'success') {
+    return result.data.styles;
+  }
+  throw new Error('Failed to get text styles from server.');
+};
+
+/**
+ * 更新後端的專案文字樣式
+ * @param {string} projectId 專案 ID
+ * @param {object} styles 完整的樣式物件
+ * @returns {Promise<object>} 伺服器回應
+ */
+export const updateProjectTextStyle = async (projectId, styles) => {
+  const updateStyles = httpsCallable(functions, 'updateProjectTextStyle');
+  const result = await updateStyles({ projectId, styles });
+  if (result.data.status === 'success') {
+    return result.data;
+  }
+  throw new Error('Failed to update text styles on server.');
 };

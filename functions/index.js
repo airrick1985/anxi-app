@@ -1422,7 +1422,7 @@ exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => {
     console.log("No due jobs found.");
     return;
   }
-  
+    
   console.log(`Found ${dueJobsSnapshot.size} due jobs to process.`);
 
   // --- 步驟 2: 遍歷並執行每一個到期的任務 ---
@@ -3114,11 +3114,11 @@ exports.getSpotLayouts = onCall(async (request) => {
  * 批量保存車位佈局（支援新增、更新、刪除）
  */
 exports.saveSpotLayouts = onCall(async (request) => {
-  const { floorPlanId, layouts } = request.data;
-  const functionName = `saveSpotLayouts (FloorPlan: ${floorPlanId})`;
+  const { floorPlanId, layouts, projectId } = request.data; // ✓【修改】直接接收 projectId
+  const functionName = `saveSpotLayouts (FloorPlan: ${floorPlanId}, Project: ${projectId})`; // ✓【修改】更新日誌名稱
 
-  if (!floorPlanId || !Array.isArray(layouts)) {
-    throw new HttpsError("invalid-argument", "缺少 floorPlanId 或 layouts 參數。");
+  if (!floorPlanId || !Array.isArray(layouts) || !projectId) { // ✓【修改】增加 projectId 驗證
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId, layouts 或 projectId 參數。");
   }
 
   try {
@@ -3131,6 +3131,7 @@ exports.saveSpotLayouts = onCall(async (request) => {
     for (const layout of layouts) {
       const layoutData = {
         floorPlanId: floorPlanId,
+        projectId: projectId, // ✓【新增】儲存 projectId
         spotId: layout.spotId,
         x: Number(layout.x) || 0,
         y: Number(layout.y) || 0,
@@ -3148,7 +3149,8 @@ exports.saveSpotLayouts = onCall(async (request) => {
       } else {
         // 創建新佈局
         layoutData.createdAt = now;
-        const docRef = db.collection("parkingSpotLayouts").doc();
+        // ✓【修改】文件名稱定義為 {projectid}_{spotId}
+        const docRef = db.collection("parkingSpotLayouts").doc(`${projectId}_${layout.spotId}`);
         batch.set(docRef, layoutData);
       }
     }
@@ -3286,6 +3288,67 @@ exports.updateFloorPlanParameters = onCall(async (request) => {
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
     throw new HttpsError("internal", `更新平面圖參數失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 獲取專案的車位文字樣式
+ * @param {string} projectId - 專案 ID
+ * @returns {object} 儲存的樣式物件，如果不存在則回傳空物件
+ */
+exports.getProjectTextStyle = onCall(async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getProjectTextStyle (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 正在獲取文字樣式...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("parkingTextStyles").doc(projectId);
+    const docSnap = await docRef.get();
+
+    // ✓【修正】docSnap.exists 是一個屬性，不是函式
+    if (docSnap.exists) {
+      console.log(`[${functionName}] 成功獲取樣式。`);
+      return { status: "success", styles: docSnap.data() };
+    } else {
+      console.log(`[${functionName}] 找不到樣式設定，回傳空物件。`);
+      return { status: "success", styles: {} };
+    }
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取文字樣式失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 更新專案的車位文字樣式
+ * @param {string} projectId - 專案 ID
+ * @param {object} styles - 完整的樣式物件
+ */
+exports.updateProjectTextStyle = onCall(async (request) => {
+  const { projectId, styles } = request.data;
+  const functionName = `updateProjectTextStyle (Project: ${projectId})`;
+
+  if (!projectId || !styles || typeof styles !== 'object') {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 styles 參數，或 styles 格式不正確。");
+  }
+
+  try {
+    console.log(`[${functionName}] 正在更新文字樣式...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("parkingTextStyles").doc(projectId);
+
+    await docRef.set(styles, { merge: true });
+
+    console.log(`[${functionName}] 更新成功。`);
+    return { status: "success", message: "文字樣式更新成功。" };
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `更新文字樣式失敗: ${error.message}`);
   }
 });
 

@@ -43,15 +43,7 @@
         ></v-btn>
       </v-badge>
       
-      <v-btn
-        color="info"
-        variant="tonal"
-        class="ml-4"
-        @click="navigateToParkingControl" 
-        :loading="false" title="車位銷控管理"
-      >
-        {{ currentViewMode === 'sales' ? '車位銷控管理' : '車位表' }}
-      </v-btn>
+     
 
             <v-btn
         color="info"
@@ -59,7 +51,9 @@
         class="ml-4"
         @click="handleOpenActivityMessage"
         title="最新活動訊息"
+        prepend-icon="mdi-bullhorn"
       >
+      
         活動訊息
       </v-btn>
       
@@ -71,9 +65,21 @@
         @click="handleRefreshData"
         :loading="isRefreshing"
         title="重新載入最新資料（忽略緩存）" 
+         prepend-icon="mdi-refresh"
       >
-        <v-icon>mdi-refresh</v-icon>
         重新載入
+      </v-btn>
+
+       <v-btn
+      v-if="currentViewMode === 'sales'"
+        color="info"
+        variant="tonal"
+        class="ml-4"
+        @click="navigateToParkingControl" 
+        :loading="false" title="車位銷控管理"
+        prepend-icon="mdi-car-brake-parking"
+      >
+      車位銷控管理
       </v-btn>
 
       <v-btn
