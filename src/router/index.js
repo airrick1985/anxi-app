@@ -307,16 +307,30 @@ const routes = [
   },
 
   {
-    path: '/parking-floorplan-manager',
+    path: '/parking-floorplan-manager/:projectId',
     name: 'ParkingFloorplanManager',
     component: () => import('@/views/ParkingFloorplanManager.vue'),
+    props: true,
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
       layout: DefaultLayout,
       title: '車位平面圖管理'
     }
-  },  { path: '/:pathMatch(.*)*', redirect: '/home' }
+  },
+  {
+    path: '/parking-control/:projectId',
+    name: 'ParkingControl',
+    component: () => import('@/views/ParkingControl.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout,
+      title: '車位銷控管理'
+    }
+  },
+  { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
 
 

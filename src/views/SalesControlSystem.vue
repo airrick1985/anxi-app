@@ -47,7 +47,7 @@
         color="info"
         variant="tonal"
         class="ml-4"
-        @click="handleOpenSlideViewer" 
+        @click="navigateToParkingControl" 
         :loading="false" title="車位銷控管理"
       >
         {{ currentViewMode === 'sales' ? '車位銷控管理' : '車位表' }}
@@ -174,7 +174,7 @@
       </v-btn>
 
       <v-btn 
-        @click="handleOpenSlideViewer" 
+        @click="navigateToParkingControl" 
         :loading="isLoadingSlide"> 
         <v-icon>mdi-parking</v-icon>
         <span>車位表</span>
@@ -287,7 +287,7 @@
           <v-btn 
             v-if="currentViewMode === 'sales'"
             prepend-icon="mdi-table-edit"
-            @click="isParkingControlDialogVisible = true"
+            @click="navigateToParkingControl"
             variant="tonal"
           >
             車位銷控管理
@@ -373,11 +373,12 @@
       </v-card>
     </v-dialog>
 
+    <!-- 移除 ParkingControl 的 v-dialog -->
+    <!-- 
     <v-dialog v-model="isParkingControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
         <ParkingControl @close="isParkingControlDialogVisible = false" />
     </v-dialog>
-
-
+    -->
 
     <v-dialog v-model="uploadDialog" max-width="600px" persistent>
       <v-card>
@@ -502,7 +503,7 @@ import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
-import ParkingControl from './ParkingControl.vue'; 
+// import ParkingControl from './ParkingControl.vue'; // 不再需要，因為改為路由導覽
 import UpdateControl from './UpdateControl.vue'; 
 
 //  新增：定義 EXCEL 匯出/上傳的欄位
@@ -586,7 +587,7 @@ const chineseHeaders = computed(() => exportableColumns.value.map(c => c.title))
 const exportOrder = computed(() => exportableColumns.value.map(c => c.key));
 
 
-const isParkingControlDialogVisible = ref(false);
+// const isParkingControlDialogVisible = ref(false); // 不再需要
 const { mobile: isMobile } = useDisplay();
 const router = useRouter();
 const quoteStore = useQuoteStore();
@@ -809,6 +810,16 @@ function navigateToSalesSettings() {
   if (projectId.value) {
     router.push({
       name: 'SalesSettings',
+      params: { projectId: projectId.value }
+    });
+  }
+}
+
+// 新增：導覽至車位銷控管理頁面
+function navigateToParkingControl() {
+  if (projectId.value) {
+    router.push({
+      name: 'ParkingControl',
       params: { projectId: projectId.value }
     });
   }

@@ -3,16 +3,11 @@
     <!-- 頭部操作區 - 在編輯模式時隱藏 -->
     <div class="manager-header" v-show="!selectedFloorPlan">
       <div class="header-left">
+        <v-btn @click="goBackToParkingControl" variant="outlined" prepend-icon="mdi-arrow-left" class="mr-4">
+          返回車位銷控
+        </v-btn>
         <h1 class="page-title">車位平面圖管理</h1>
-        <div class="project-selector">
-          <label>選擇建案：</label>
-          <select v-model="selectedProjectId" @change="onProjectChange" class="project-select">
-            <option value="">請選擇建案</option>
-            <option v-for="project in availableProjects" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-        </div>
+        <span v-if="projectName" class="text-h6 font-weight-bold text-primary ml-4">{{ projectName }}</span>
       </div>
       
       <div class="header-right" v-if="selectedProjectId">
@@ -284,6 +279,7 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router' // 引入 useRouter
 import { useUserStore } from '@/store/user'
 import { useProjectStore } from '@/store/projectStore'
 import { useUiStore } from '@/store/uiStore'
@@ -298,15 +294,23 @@ export default {
     ParkingCanvas,
     StyleEditor
   },
-  setup() {
+  props: {
+    projectId: {
+      type: String,
+      required: true
+    }
+  },
+  setup(props) {
     // Stores
     const userStore = useUserStore()
     const projectStore = useProjectStore()
     const uiStore = useUiStore()
     const functions = getFunctions()
+    const route = useRoute()
+    const router = useRouter() // 實例化 useRouter
 
     // Reactive data
-    const selectedProjectId = ref('')
+    const selectedProjectId = ref(props.projectId)
     const floorPlans = ref([])
     const selectedFloorPlan = ref(null)
     const loading = ref(false)
@@ -368,6 +372,10 @@ export default {
       })
     })
 
+    const projectName = computed(() => {
+      return projectStore.idToNameMap[props.projectId] || '未知建案'
+    })
+
     // 處理樓層選項，在前端控制禁用狀態
     const setItemProps = (item) => {
       const createdRegex = /\(已建立\)/;
@@ -399,6 +407,20 @@ export default {
     const saveSpotLayouts = httpsCallable(functions, 'saveSpotLayouts')
 
     // Methods
+
+    // 新增：返回車位銷控管理頁面的方法
+    const goBackToParkingControl = () => {
+      if (props.projectId) {
+        router.push({
+          name: 'ParkingControl',
+          params: { projectId: props.projectId }
+        });
+      } else {
+        // 如果沒有 projectId，可以導覽回上一頁或一個預設頁面
+        router.back();
+      }
+    };
+
     const onProjectChange = async () => {
       if (selectedProjectId.value) {
         await Promise.all([
@@ -795,21 +817,15 @@ export default {
       reader.onerror = (error) => reject(error)
     })
 
-    // 監聽專案變化
-    watch(() => projectStore.projectsList, () => {
-      // 如果當前選擇的專案不在可用列表中，清空選擇
-      if (selectedProjectId.value && !availableProjects.value.find(p => p.id === selectedProjectId.value)) {
-        selectedProjectId.value = ''
-        floorPlans.value = []
-        selectedFloorPlan.value = null
-      }
-    })
-
     // 生命週期
     onMounted(async () => {
       // 確保專案資料已載入
       if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
         await projectStore.fetchProjects()
+      }
+      // 直接觸發資料載入
+      if(selectedProjectId.value) {
+        onProjectChange()
       }
     })
 
@@ -843,6 +859,7 @@ export default {
 
       // Computed
       availableProjects,
+      projectName,
       setItemProps,
 
       // Methods
@@ -864,7 +881,8 @@ export default {
       formatDate,
       exportImage,
       exportPDF,
-      printFloorplan
+      printFloorplan,
+      goBackToParkingControl // 導出新方法
     }
   }
 }

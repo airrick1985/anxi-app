@@ -17,13 +17,40 @@
       </template>
       
        <template v-else>
+        <v-btn @click="goToSalesControlSystem" variant="outlined" prepend-icon="mdi-arrow-left" class="mr-4">
+            返回銷控系統
+          </v-btn>
+         
         <v-icon icon="mdi-car-brake-parking"></v-icon> &nbsp;
         <span class="font-weight-bold text-primary">{{ projectName }}</span>
         <span class="mx-2 d-none d-sm-inline">|</span>
         <span class="d-none d-sm-inline">車位銷控管理</span>
+
         <v-spacer></v-spacer>
 
         <template v-if="mdAndUp">
+           <v-text-field
+            v-model="search"
+            density="compact"
+            label="搜尋 (可搜號碼、戶別、買方...)"
+            prepend-inner-icon="mdi-magnify"
+            variant="solo-filled"
+            flat
+            hide-details
+            single-line
+            class="ms-4"
+            style="max-width: 350px;"
+          ></v-text-field>
+           <v-btn
+            color="blue-darken-2"
+            variant="outlined"
+            class="me-2"
+            @click="goToFloorplanManager"
+            prepend-icon="mdi-map-legend"
+          >
+            車位圖管理
+          </v-btn>
+         
           <v-btn
             color="teal"
             variant="outlined"
@@ -52,22 +79,11 @@
           >
             上傳車位資料
           </v-btn>
-          <v-text-field
-            v-model="search"
-            density="compact"
-            label="搜尋 (可搜號碼、戶別、買方...)"
-            prepend-inner-icon="mdi-magnify"
-            variant="solo-filled"
-            flat
-            hide-details
-            single-line
-            class="ms-4"
-            style="max-width: 350px;"
-          ></v-text-field>
+         
         </template>
 
         <template v-else>
-          <v-btn icon="mdi-magnify" variant="text" @click="isSearching = true"></v-btn>
+          <!-- <v-btn icon="mdi-magnify" variant="text" @click="isSearching = true"></v-btn> -->
           <v-menu location="bottom end">
             <template v-slot:activator="{ props }">
               <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
@@ -95,7 +111,7 @@
           </v-menu>
         </template>
         
-        <v-btn class="ml-2" icon="mdi-close" @click="$emit('close')"></v-btn>
+        
       </template>
     </v-card-title>
 
@@ -135,6 +151,38 @@
           <v-icon size="small" @click="editItem(item)">mdi-pencil</v-icon>
         </template>
       </v-data-table>
+    </div>
+
+    <!-- Mobile Floating Search Bar -->
+    <div v-if="!mdAndUp" class="floating-search-container">
+      <v-slide-y-reverse-transition>
+        <v-text-field
+          v-show="isSearching"
+          v-model="search"
+          placeholder="搜尋車位..."
+          variant="solo"
+          rounded="pill"
+          density="default"
+          hide-details
+          prepend-inner-icon="mdi-magnify"
+          clearable
+          class="floating-search-field"
+        >
+          <template v-slot:append-inner>
+            <v-btn icon="mdi-close" variant="text" size="small" @click="isSearching = false"></v-btn>
+          </template>
+        </v-text-field>
+      </v-slide-y-reverse-transition>
+
+      <v-fab
+        v-show="!isSearching"
+        icon="mdi-magnify"
+        location="bottom end"
+        size="large"
+        app
+        appear
+        @click="isSearching = true"
+      ></v-fab>
     </div>
 
      <v-dialog v-model="dialog" max-width="700px" persistent>
@@ -282,13 +330,23 @@
 <script setup>
 import { useDisplay } from 'vuetify';
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router'; // 引入 useRoute
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import { listenToParkingLots, updateParkingLot, uploadParkingLots } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 
-const emit = defineEmits(['close']);
+// 接收 projectId 作為 prop
+const props = defineProps({
+  projectId: {
+    type: String,
+    required: true
+  }
+});
+
+const router = useRouter();
+// const emit = defineEmits(['close']); // 不再需要 emit
 const { mdAndUp } = useDisplay();
 const isSearching = ref(false);
 const userStore = useUserStore();
@@ -342,12 +400,8 @@ const chineseHeaders = computed(() => exportableColumns.map(c => c.title));
 const exportOrder = computed(() => exportableColumns.map(c => c.key));
 
 
-// =================================================================
-// / Vue 相關 state
-// =================================================================
 const projectName = computed(() => {
-  const projectId = userStore.user?.projectName;
-  return projectStore.idToNameMap[projectId] || '';
+  return projectStore.idToNameMap[props.projectId] || '載入中...';
 });
 
 // 檢查是否為系統管理員或超級管理員
@@ -380,11 +434,10 @@ const backendStatusOptions = ['小訂', '補足', '簽約', '保留'];
 // =================================================================
 onMounted(() => {
   projectStore.fetchProjects();
-  const projectId = userStore.user?.projectName;
-  if (projectId) {
+  if (props.projectId) {
     loading.value = true;
     unsubscribe = listenToParkingLots(
-      projectId,
+      props.projectId,
       (data) => {
         allItems.value = data;
         if (loading.value) loading.value = false;
@@ -395,7 +448,7 @@ onMounted(() => {
       }
     );
   } else {
-    toast.error('無法獲取建案資訊，請重新登入。');
+    toast.error('無法獲取建案資訊，請返回上一頁。');
     loading.value = false;
   }
 });
@@ -409,6 +462,18 @@ onUnmounted(() => {
 // =================================================================
 // / 方法
 // =================================================================
+// 新增：返回銷控系統的方法
+const goToSalesControlSystem = () => {
+  if (props.projectId) {
+    router.push({
+      name: 'SalesControlSystem',
+      params: { projectName: props.projectId }
+    });
+  } else {
+    router.back(); // 作為備用方案
+  }
+};
+
 watch(() => editedItem.value.status_backend, (newValue) => {
   if (editedItem.value) {
     editedItem.value.status = newValue ? '已售' : '';
@@ -727,8 +792,7 @@ const uploadData = async () => {
     isUploading.value = true;
     uploadMessage.value = '';
     try {
-        const projectId = userStore.user?.projectName;
-        const result = await uploadParkingLots(projectId, parsedData.value);
+        const result = await uploadParkingLots(props.projectId, parsedData.value);
         
         if (result.status === 'success') {
           uploadMessageType.value = 'success';
@@ -746,6 +810,16 @@ const uploadData = async () => {
         isUploading.value = false;
     }
 };
+
+// 新增方法：前往車位圖管理頁面
+const goToFloorplanManager = () => {
+  if (props.projectId) {
+    router.push({ name: 'ParkingFloorplanManager', params: { projectId: props.projectId } });
+  } else {
+    toast.error('無法獲取建案ID，無法跳轉頁面');
+  }
+};
+
 </script>
 
 
@@ -776,5 +850,22 @@ const uploadData = async () => {
 
 .pre-wrap-alert {
    white-space: pre-wrap;
+}
+
+/* Floating Search for Mobile */
+.floating-search-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 500px;
+  z-index: 100;
+  pointer-events: none; /* Allow clicks to pass through container */
+}
+
+.floating-search-field {
+  pointer-events: auto; /* Enable clicks on the text field */
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
 }
 </style>
