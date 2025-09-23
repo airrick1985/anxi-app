@@ -11,7 +11,9 @@
     "dev": "vite",
     "generate:release-notes": "node scripts/generateReleaseNotes.js",
     "preview": "vite preview",
-    "update:manifest-version": "node scripts/updateManifestVersion.js"
+    "update:manifest-version": "node scripts/updateManifestVersion.js",
+    "存檔發布": "git status && git add . && git commit -m \"$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push"
+
   },
   "dependencies": {
     "@andy922200/vue-tw-zip-code-selector": "^1.0.1",
@@ -35,7 +37,7 @@
     "@tiptap/starter-kit": "^3.3.0",
     "@tiptap/vue-3": "^3.3.0",
     "@vuepic/vue-datepicker": "^11.0.2",
-    "@vueuse/core": "^13.6.0",
+    "@vueuse/core": "^13.9.0",
     "ag-grid-community": "^34.1.2",
     "ag-grid-enterprise": "^34.1.2",
     "ag-grid-vue3": "^34.1.2",

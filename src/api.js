@@ -4115,3 +4115,32 @@ export const updateProjectTextStyle = async (projectId, styles) => {
   }
   throw new Error('Failed to update text styles on server.');
 };
+
+/**
+ * 從後端獲取指定車位的狀態顏色設定
+ * @param {string} projectId 專案 ID
+ * @returns {Promise<object>} 顏色設定物件
+ */
+export const getProjectStatusColors = async (projectId) => {
+  const getColors = httpsCallable(functions, 'getProjectStatusColors');
+  const result = await getColors({ projectId });
+  if (result.data.status === 'success') {
+    return result.data.colors;
+  }
+  throw new Error('Failed to get status colors from server.');
+};
+
+/**
+ * 更新後端的車位狀態顏色設定
+ * @param {string} projectId 專案 ID
+ * @param {object} colors 完整的顏色設定物件
+ * @returns {Promise<object>} 伺服器回應
+ */
+export const updateProjectStatusColors = async (projectId, colors) => {
+  const updateColors = httpsCallable(functions, 'updateProjectStatusColors');
+  const result = await updateColors({ projectId, colors });
+  if (result.data.status === 'success') {
+    return result.data;
+  }
+  throw new Error('Failed to update status colors on server.');
+};

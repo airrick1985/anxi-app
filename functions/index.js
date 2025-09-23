@@ -3483,3 +3483,64 @@ exports.getSalesParkingsByFloor = onCall(async (request) => {
     throw new HttpsError("internal", `查詢車位資料失敗: ${error.message}`);
   }
 });
+
+
+/**
+ * 獲取車位的狀態顏色設定
+ * @param {string} projectId - 專案 ID
+ * @returns {object} 儲存的顏色設定物件，如果不存在則回傳空物件
+ */
+exports.getProjectStatusColors = onCall(async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getProjectStatusColors (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    console.log(`[${functionName}] 正在獲取狀態顏色...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("projectStatusColors").doc(projectId);
+    const docSnap = await docRef.get();
+
+    if (docSnap.exists) {
+      console.log(`[${functionName}] 成功獲取顏色設定。`);
+      return { status: "success", colors: docSnap.data() };
+    } else {
+      console.log(`[${functionName}] 找不到顏色設定，回傳空物件。`);
+      return { status: "success", colors: {} };
+    }
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取狀態顏色失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 更新車位的狀態顏色設定
+ * @param {string} projectId - 專案 ID
+ * @param {object} colors - 完整的顏色設定物件
+ */
+exports.updateProjectStatusColors = onCall(async (request) => {
+  const { projectId, colors } = request.data;
+  const functionName = `updateProjectStatusColors (Project: ${projectId})`;
+
+  if (!projectId || !colors || typeof colors !== 'object') {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 colors 參數，或 colors 格式不正確。");
+  }
+
+  try {
+    console.log(`[${functionName}] 正在更新狀態顏色...`);
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection("projectStatusColors").doc(projectId);
+
+    await docRef.set(colors); // 使用 set 直接覆蓋，確保刪除的狀態會被移除
+
+    console.log(`[${functionName}] 更新成功。`);
+    return { status: "success", message: "狀態顏色更新成功。" };
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `更新狀態顏色失敗: ${error.message}`);
+  }
+});

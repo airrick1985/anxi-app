@@ -1,6 +1,6 @@
 <template>
   <div class="parking-canvas-container center-xy">
-    <div class="toolbar">
+    <div v-if="showTools" class="toolbar">
       <button @click="openImportModal" class="btn btn-primary">
         <svg-icon type="mdi" :path="mdiDownload" class="icon"></svg-icon> 匯入車位資料
       </button>
@@ -245,6 +245,14 @@ export default {
     textStyles: {
       type: Object,
       default: () => ({})
+    },
+    statusColors: {
+      type: Object,
+      default: () => ({})
+    },
+    showTools: {
+      type: Boolean,
+      default: true
     }
   },
   emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed', 'update:displayMode'], // ✓ 新增 emit
@@ -545,7 +553,7 @@ export default {
       const { x = 100, y = 100, parkingData, displayMode = props.displayMode, textStyles = props.textStyles } = options
 
       // 定義預設樣式，以防萬一 textStyles 未傳入
-      const defaultStyles = {
+       const defaultStyles = {
         number: { fontSize: 10, fontWeight: 'bold', fill: '#000000', fontFamily: 'Arial' },
         price: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
         buyerUnitId: { fontSize: 8, fontWeight: 'normal', fill: '#000000', fontFamily: 'Arial' },
@@ -557,24 +565,27 @@ export default {
       };
 
       // 合併傳入的樣式與預設樣式
-      const finalStyles = Object.keys(defaultStyles).reduce((acc, key) => {
+       const finalStyles = Object.keys(defaultStyles).reduce((acc, key) => {
         acc[key] = { ...defaultStyles[key], ...(textStyles[key] || {}) };
         return acc;
       }, {});
 
+
+             // ✓【修改】使用動態顏色設定，而不是寫死的 switch
       const getStatusColor = (mode, data) => {
+        const statusColors = props.statusColors || {};
+        const modeColors = statusColors[mode] || {};
+        
+        let statusKey;
         if (mode === 'backend') {
-          switch (data.status_backend) {
-            case '簽約': return '#FFFF00'
-            case '小訂': return '#00FF00'  
-            case '補足': return '#FFC0CB'
-            case '保留': return '#ADD8E6'
-            default: return '#F5F5F5'
-          }
+          statusKey = data.status_backend;
         } else { // sales mode
-          return data.status === '已售' ? '#FFFF00' : '#F5F5F5'
+          statusKey = data.status === '已售' ? '已售' : null;
         }
-      }
+        
+        // 如果找到了對應的狀態顏色，就使用它；否則使用預設顏色
+        return modeColors[statusKey] || modeColors.default || '#F5F5F5';
+      };
 
       // 此函式現在回傳一個包含 {key, value} 的物件陣列
       const getDisplayFields = (mode, data) => {
@@ -721,22 +732,22 @@ export default {
     
     // 獲取車位佈局資料
     const getSpotLayouts = () => {
-      if (!canvas.value) return []
-      return canvas.value.getObjects()
-        .filter(obj => obj.type === 'importedParkingSpot' || obj.type === 'parkingSpot')
-        .map(spot => ({
-          id: spot.layoutId || null,
-          spotId: spot.parkingData?.number || spot.spotId || '',
-          x: Math.round(spot.left),
-          y: Math.round(spot.top),
-          width: Math.round(spot.width),
-          height: Math.round(spot.height),
-          rotation: Math.round(spot.angle),
-          type: spot.type === 'importedParkingSpot' ? 'imported' : 'manual',
-          salesParkingId: spot.parkingData?.id || null,
-          displayMode: spot.currentDisplayMode || 'backend'
-        }))
-    }
+  if (!canvas.value) return []
+  return canvas.value.getObjects()
+    .filter(obj => obj.type === 'importedParkingSpot' || obj.type === 'parkingSpot')
+    .map(spot => ({
+      id: spot.layoutId || null,
+      spotId: spot.parkingData?.number || spot.spotId || '',
+      x: Math.round(spot.left),
+      y: Math.round(spot.top),
+      width: Math.round(spot.width),
+      height: Math.round(spot.height),
+      rotation: Math.round(spot.angle),
+      type: spot.type === 'importedParkingSpot' ? 'imported' : 'manual',
+      salesParkingId: spot.parkingData?.id || null,
+      displayMode: spot.currentDisplayMode || 'backend'
+    }))
+}
 
     // 匯入車位資料相關方法
     const openImportModal = async () => {
@@ -915,6 +926,10 @@ export default {
 
      watch(() => props.textStyles, (newStyles) => {
       updateAllSpots(props.displayMode, newStyles);
+    }, { deep: true });
+
+    watch(() => props.statusColors, () => {
+      updateAllSpots(props.displayMode, props.textStyles);
     }, { deep: true });
 
     return {

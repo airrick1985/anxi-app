@@ -121,57 +121,81 @@
           </div>
           
           <div class="editor-actions">
-            <v-btn 
-              @click="saveFloorPlan" 
-              :disabled="!isEditorDirty" 
-              :loading="saving" 
-              color="success"
-              prepend-icon="mdi-content-save"
-            >
-              {{ saving ? '儲存中...' : '儲存' }}
-            </v-btn>
-            <v-btn 
-              @click="togglePreviewMode" 
-              variant="outlined"
-              prepend-icon="mdi-eye"
-            >
-              {{ isPreviewMode ? '編輯模式' : '預覽模式' }}
-            </v-btn>
-            
-            <!-- 匯出功能按鈕群組 -->
-            <v-menu>
-              <template v-slot:activator="{ props }">
-                <v-btn v-bind="props" color="info" prepend-icon="mdi-download">
-                  匯出
-                  <v-icon>mdi-chevron-down</v-icon>
-                </v-btn>
-              </template>
-              <v-list>
-                <v-list-item @click="exportImage('png')" prepend-icon="mdi-file-image">
-                  <v-list-item-title>PNG 圖片</v-list-item-title>
-                </v-list-item>
-                <v-list-item @click="exportImage('jpeg')" prepend-icon="mdi-file-image">
-                  <v-list-item-title>JPEG 圖片</v-list-item-title>
-                </v-list-item>
-                <v-list-item @click="exportPDF" prepend-icon="mdi-file-pdf-box">
-                  <v-list-item-title>PDF 文件</v-list-item-title>
-                </v-list-item>
-                <v-divider></v-divider>
-                <v-list-item @click="printFloorplan" prepend-icon="mdi-printer">
-                  <v-list-item-title>列印</v-list-item-title>
-                </v-list-item>
-              </v-list>
-            </v-menu>
-          </div>
+            <!-- 儲存與預覽組 -->
+            <div class="action-group">
+              <v-btn 
+                @click="saveFloorPlan" 
+                :disabled="!isEditorDirty" 
+                :loading="saving" 
+                color="success"
+                prepend-icon="mdi-content-save"
+              >
+                {{ saving ? '儲存中...' : '儲存' }}
+              </v-btn>
+              <v-btn 
+                @click="togglePreviewMode" 
+                variant="outlined"
+                prepend-icon="mdi-eye"
+              >
+                {{ isPreviewMode ? '編輯模式' : '預覽模式' }}
+              </v-btn>
+            </div>
 
-          <v-btn 
-              @click="toggleTextStyleEditor" 
-              :color="showTextStyleEditor ? 'primary' : ''"
-              variant="outlined"
-              prepend-icon="mdi-format-letter-case"
-            >
-              文字樣式
-            </v-btn>
+            <!-- 編輯工具組 -->
+            <div class="action-group">
+              <v-btn 
+                @click="toggleCanvasTools" 
+                :color="showCanvasTools ? 'primary' : ''"
+                variant="outlined"
+                prepend-icon="mdi-tools"
+              >
+                {{ showCanvasTools ? '隱藏工具' : '顯示工具' }}
+              </v-btn>
+              <v-btn 
+                @click="toggleStatusColorEditor" 
+                :color="showStatusColorEditor ? 'primary' : ''"
+                variant="outlined"
+                prepend-icon="mdi-palette"
+              >
+                狀態顏色
+              </v-btn>
+              <v-btn 
+                @click="toggleTextStyleEditor" 
+                :color="showTextStyleEditor ? 'primary' : ''"
+                variant="outlined"
+                prepend-icon="mdi-format-letter-case"
+              >
+                文字樣式
+              </v-btn>
+            </div>
+
+            <!-- 匯出組 -->
+            <div class="action-group">
+              <v-menu>
+                <template v-slot:activator="{ props }">
+                  <v-btn v-bind="props" color="info" prepend-icon="mdi-download">
+                    匯出
+                    <v-icon>mdi-chevron-down</v-icon>
+                  </v-btn>
+                </template>
+                <v-list>
+                  <v-list-item @click="exportImage('png')" prepend-icon="mdi-file-image">
+                    <v-list-item-title>PNG 圖片</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="exportImage('jpeg')" prepend-icon="mdi-file-image">
+                    <v-list-item-title>JPEG 圖片</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="exportPDF" prepend-icon="mdi-file-pdf-box">
+                    <v-list-item-title>PDF 文件</v-list-item-title>
+                  </v-list-item>
+                  <v-divider></v-divider>
+                  <v-list-item @click="printFloorplan" prepend-icon="mdi-printer">
+                    <v-list-item-title>列印</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
+          </div>
         </div>
 
      
@@ -182,10 +206,20 @@
             :floor-plan="selectedFloorPlan"
             :project-id="selectedProjectId"
             :preview-mode="isPreviewMode"
-            :text-styles="textStyleStore.styles" 
+            v-model:display-mode="displayMode"
+            :text-styles="textStyleStore.styles"
+            :status-colors="statusColorStore.colors" 
+            :show-tools="showCanvasTools"
             @spots-changed="onSpotsChanged"
             @canvas-ready="onCanvasReady"
           />
+
+           <div v-if="showStatusColorEditor" class="style-editor-overlay">
+            <StatusColorEditor
+              v-model="statusColorStore.colors"
+              @close="showStatusColorEditor = false"
+            />
+          </div>
 
           <!-- 樣式編輯器 -->
            <div v-if="showTextStyleEditor" class="style-editor-overlay">
@@ -298,12 +332,15 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue'
 import { storeToRefs } from 'pinia'
 import { useTextStyleStore } from '@/store/textStyleStore'
 import TextStyleEditor from '@/components/TextStyleEditor.vue'
+import { useStatusColorStore } from '@/store/statusColorStore'
+import StatusColorEditor from '@/components/StatusColorEditor.vue'
 
 export default {
   name: 'ParkingFloorplanManager',
   components: {
     ParkingCanvas,
-    TextStyleEditor
+    TextStyleEditor,
+    StatusColorEditor
   },
   props: {
     projectId: {
@@ -317,6 +354,7 @@ export default {
     const projectStore = useProjectStore()
     const uiStore = useUiStore()
     const textStyleStore = useTextStyleStore()
+    const statusColorStore = useStatusColorStore()
     const functions = getFunctions()
     const route = useRoute()
     const router = useRouter() // 實例化 useRouter
@@ -331,18 +369,28 @@ export default {
     const isEditorDirty = ref(false)
 
     const isPreviewMode = ref(false)
+    const displayMode = ref('backend') 
+
+
+//// 車位狀態顏色相關狀態
+    const showStatusColorEditor = ref(false)
+    const toggleStatusColorEditor = () => {
+      showStatusColorEditor.value = !showStatusColorEditor.value
+    }
 
     const showTextStyleEditor = ref(false)
     const toggleTextStyleEditor = () => {
       showTextStyleEditor.value = !showTextStyleEditor.value
     }
+
+    const showCanvasTools = ref(true)
+    const toggleCanvasTools = () => {
+      showCanvasTools.value = !showCanvasTools.value
+    }
     
     // Dialog states
     const showFloorPlanDialog = ref(false)
     const editingFloorPlan = ref(null)
-
-
-
 
     const deletingFloorPlanId = ref(null)
     const floorPlanForm = ref({
@@ -412,6 +460,7 @@ export default {
 
       // 直接回傳一個物件，告訴 v-select 這個 item 有哪些 props
       return {
+        displayMode,
         disabled: isDisabled && !isCurrentEditingOption,
       };
     };
@@ -444,8 +493,9 @@ export default {
         await Promise.all([
           loadFloorPlans(),
           loadProjectFloors(),
-          // ✓ 新增: 當專案變更時，獲取對應的文字樣式
-          textStyleStore.fetchStyles(selectedProjectId.value)
+          // 當專案變更時，獲取對應的文字樣式和車位狀態顏色
+          textStyleStore.fetchStyles(selectedProjectId.value),
+          statusColorStore.fetchColors(selectedProjectId.value)
         ])
       } else {
         floorPlans.value = []
@@ -889,6 +939,7 @@ export default {
       submitting,
       isEditorDirty,
       isPreviewMode,
+      displayMode,
 
       showFloorPlanDialog,
       editingFloorPlan,
@@ -932,7 +983,14 @@ export default {
       // 導出文字樣式相關的變數和方法
       textStyleStore,
       showTextStyleEditor,
-      toggleTextStyleEditor
+      toggleTextStyleEditor,
+      // 導出車位狀態顏色相關的變數和方法
+      statusColorStore,
+      showStatusColorEditor,
+      toggleStatusColorEditor,
+      // 導出畫布工具相關的變數和方法
+      showCanvasTools,
+      toggleCanvasTools
     }
   }
 }
@@ -1157,7 +1215,14 @@ export default {
 
 .editor-actions {
   display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.action-group {
+  display: flex;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .editor-toolbar {
