@@ -3069,25 +3069,27 @@ exports.deleteFloorPlan = onCall(async (request) => {
  * 獲取特定平面圖的所有車位佈局
  */
 exports.getSpotLayouts = onCall(async (request) => {
-  const { floorPlanId } = request.data;
+  const { floorPlanId, projectId } = request.data;
   const functionName = `getSpotLayouts (FloorPlan: ${floorPlanId})`;
 
-  if (!floorPlanId) {
-    throw new HttpsError("invalid-argument", "缺少 floorPlanId 參數。");
+  if (!floorPlanId || !projectId) {
+    throw new HttpsError("invalid-argument", "缺少 floorPlanId 或 projectId 參數。");
   }
 
   try {
-    console.log(`[${functionName}] 查詢車位佈局...`);
+    console.log(`[${functionName}] 查詢車位佈局和背景圖片數據...`);
     const db = new Firestore({ databaseId: "anxi-app" });
     
+    // 查詢車位佈局
     const spotLayoutsSnapshot = await db.collection("parkingSpotLayouts")
       .where("floorPlanId", "==", floorPlanId)
+      .where("projectId", "==", projectId)
       .get();
 
-    const spotLayouts = [];
+    const layouts = [];
     spotLayoutsSnapshot.forEach(doc => {
       const data = doc.data();
-      spotLayouts.push({
+      layouts.push({
         id: doc.id,
         spotId: data.spotId,
         x: data.x,
@@ -3095,14 +3097,31 @@ exports.getSpotLayouts = onCall(async (request) => {
         width: data.width,
         height: data.height,
         rotation: data.rotation || 0,
-        text: data.text || '',
-        styles: data.styles || {},
-        floorPlanId: data.floorPlanId
+        type: data.type || 'manual', // 區分手動和匯入的車位
+        salesParkingId: data.salesParkingId,
+        displayMode: data.displayMode || 'backend'
       });
     });
 
-    console.log(`[${functionName}] 找到 ${spotLayouts.length} 個車位佈局`);
-    return { status: "success", data: spotLayouts };
+    // 查詢背景圖片數據
+    const floorPlanDoc = await db.collection("parkingFloorPlans").doc(floorPlanId).get();
+    if (floorPlanDoc.exists) {
+      const floorPlanData = floorPlanDoc.data();
+      if (floorPlanData.backgroundImageX !== undefined && 
+          floorPlanData.backgroundImageY !== undefined) {
+        layouts.push({
+          type: 'backgroundImage',
+          x: floorPlanData.backgroundImageX,
+          y: floorPlanData.backgroundImageY,
+          scaleX: floorPlanData.backgroundImageScaleX || 1,
+          scaleY: floorPlanData.backgroundImageScaleY || 1,
+          rotation: floorPlanData.backgroundImageRotation || 0
+        });
+      }
+    }
+
+    console.log(`[${functionName}] 找到 ${layouts.filter(l => l.type !== 'backgroundImage').length} 個車位佈局和背景圖片數據`);
+    return { status: "success", layouts: layouts };
 
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
@@ -3122,13 +3141,18 @@ exports.saveSpotLayouts = onCall(async (request) => {
   }
 
   try {
-    console.log(`[${functionName}] 批量保存 ${layouts.length} 個車位佈局...`);
+    console.log(`[${functionName}] 批量保存 ${layouts.length} 個佈局項目...`);
     const db = new Firestore({ databaseId: "anxi-app" });
     
     const batch = db.batch();
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    for (const layout of layouts) {
+    // 分離車位和背景圖片數據
+    const spotLayouts = layouts.filter(item => item.type !== 'backgroundImage');
+    const backgroundImageData = layouts.find(item => item.type === 'backgroundImage');
+
+    // 保存車位佈局
+    for (const layout of spotLayouts) {
       const layoutData = {
         floorPlanId: floorPlanId,
         projectId: projectId, // ✓【新增】儲存 projectId
@@ -3138,8 +3162,9 @@ exports.saveSpotLayouts = onCall(async (request) => {
         width: Number(layout.width) || 50,
         height: Number(layout.height) || 30,
         rotation: Number(layout.rotation) || 0,
-        text: layout.text || '',
-        styles: layout.styles || {},
+        type: layout.type || 'manual',
+        salesParkingId: layout.salesParkingId,
+        displayMode: layout.displayMode || 'backend',
         updatedAt: now
       };
 
@@ -3155,17 +3180,32 @@ exports.saveSpotLayouts = onCall(async (request) => {
       }
     }
 
+    // 保存背景圖片數據
+    if (backgroundImageData) {
+      const backgroundData = {
+        backgroundImageX: Number(backgroundImageData.x) || 0,
+        backgroundImageY: Number(backgroundImageData.y) || 0,
+        backgroundImageScaleX: Number(backgroundImageData.scaleX) || 1,
+        backgroundImageScaleY: Number(backgroundImageData.scaleY) || 1,
+        backgroundImageRotation: Number(backgroundImageData.rotation) || 0,
+        updatedAt: now
+      };
+
+      const floorPlanRef = db.collection("parkingFloorPlans").doc(floorPlanId);
+      batch.set(floorPlanRef, backgroundData, { merge: true });
+    }
+
     await batch.commit();
     
     console.log(`[${functionName}] 批量保存完成`);
     return { 
       status: "success", 
-      message: `成功保存 ${layouts.length} 個車位佈局` 
+      message: `成功保存 ${layouts.length} 個佈局項目` 
     };
 
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
-    throw new HttpsError("internal", `保存車位佈局失敗: ${error.message}`);
+    throw new HttpsError("internal", `保存佈局失敗: ${error.message}`);
   }
 });
 

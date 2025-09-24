@@ -285,6 +285,8 @@ export default {
     const isPanning = ref(false)
     const spacePressed = ref(false)
     const lastPanPoint = ref({ x: 0, y: 0 })
+    const lastPosX = ref(0)
+    const lastPosY = ref(0)
     const baseCornerSize = 12
 
     // ✓ START: 新增狀態與計算屬性
@@ -440,115 +442,188 @@ export default {
 
     // 初始化 Canvas
     const initCanvas = async () => {
-      if (!fabricCanvas.value) return
-
+      if (canvas.value) {
+        canvas.value.dispose()
+      }
+      
+      const container = fabricCanvas.value.parentElement
+      canvasWidth.value = container.clientWidth
+      canvasHeight.value = container.clientHeight
+      
       canvas.value = new fabric.Canvas(fabricCanvas.value, {
         width: canvasWidth.value,
         height: canvasHeight.value,
         backgroundColor: '#ffffff',
-        selection: !props.previewMode,
-        // ✓ 新增此行設定
-        preserveObjectStacking: true 
+        preserveObjectStacking: true
       })
-
-      setupCanvasEvents()
       
-      if (props.floorPlan.backgroundImageUrl) {
-        await loadBackgroundImage(props.floorPlan.backgroundImageUrl)
+      canvas.value.on('mouse:wheel', handleMouseWheel)
+      canvas.value.on('mouse:down', handleMouseDown)
+      canvas.value.on('mouse:move', handleMouseMove)
+      canvas.value.on('mouse:up', handleMouseUp)
+      canvas.value.on('selection:created', handleSelection)
+      canvas.value.on('selection:updated', handleSelection)
+      canvas.value.on('selection:cleared', handleSelection)
+      canvas.value.on('object:modified', handleObjectModified)
+      
+      // [FIX] 修正背景圖載入邏輯，直接從 props.floorPlan 讀取
+      if (props.floorPlan && props.floorPlan.backgroundImageUrl) {
+        console.log('[Canvas] 在 initCanvas 中找到 backgroundImageUrl，準備載入...');
+        await loadBackgroundImage(props.floorPlan.backgroundImageUrl, {
+          left: props.floorPlan.backgroundImageX,
+          top: props.floorPlan.backgroundImageY,
+          scaleX: props.floorPlan.backgroundImageScaleX,
+          scaleY: props.floorPlan.backgroundImageScaleY,
+          angle: props.floorPlan.backgroundImageRotation
+        })
       }
       
-      centerContent()
+      if (props.floorPlan && props.floorPlan.id) {
+        await fetchSalesParkingsForFloor()
+      }
+      
+      console.log('[Canvas] initCanvas 完成，準備發出 "canvas-ready" 事件。')
       emit('canvas-ready')
     }
 
-    // 設置 Canvas 事件
-    const setupCanvasEvents = () => {
-      if (!canvas.value) return
+    // [FIX] 重新加入遺失的 handleMouseWheel 函式定義
+    const handleMouseWheel = (opt) => {
+      const delta = opt.e.deltaY
+      let zoom = canvas.value.getZoom()
+      zoom *= 0.999 ** delta
+      if (zoom > 20) zoom = 20
+      if (zoom < 0.01) zoom = 0.01
+      canvas.value.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom)
+      opt.e.preventDefault()
+      opt.e.stopPropagation()
+      adjustControlCornerSize()
+    }
 
-      // ✓ 修改 selection 事件以更新 activeSelection 狀態
-      const updateSelection = (e) => {
-        activeSelection.value = e.selected.length > 0 ? canvas.value.getActiveObject() : null
-        if (e.selected.length === 1 && (e.selected[0].type === 'parkingSpot' || e.selected[0].type === 'importedParkingSpot')) {
-          selectSpot(e.selected[0])
-        }
+    // [FIX] 移除重複的狀態宣告，只保留滑鼠事件處理函式
+    const handleMouseDown = (opt) => {
+      const e = opt.e
+      if (spacePressed.value && !opt.target) {
+        isPanning.value = true
+        canvas.value.selection = false
+        lastPosX.value = e.clientX
+        lastPosY.value = e.clientY
+        canvas.value.setCursor('grabbing')
       }
-      
-      canvas.value.on('selection:created', updateSelection)
-      canvas.value.on('selection:updated', updateSelection)
-      canvas.value.on('selection:cleared', () => {
-        activeSelection.value = null
-        selectedSpot.value = null
-      })
+    }
 
-      const handleObjectModified = (e) => {
-            const spot = e.target;
-            if (!spot || (spot.type !== 'parkingSpot' && spot.type !== 'importedParkingSpot')) return;
-
-            // 如果被修改的物件是當前選中的物件，則更新屬性面板的值
-            // 使用 getScaledWidth/Height() 來取得縮放後實際的寬高
-            if (selectedSpot.value === spot) {
-              spotProperties.value.width = Math.round(spot.getScaledWidth());
-              spotProperties.value.height = Math.round(spot.getScaledHeight());
-              spotProperties.value.rotation = Math.round(spot.angle);
-            }
-            emit('spots-changed');
-          }
-
-      canvas.value.on('object:modified', handleObjectModified)
-      canvas.value.on('object:moving', () => emit('spots-changed'))
-      canvas.value.on('object:scaling', () => emit('spots-changed'))
-      canvas.value.on('object:rotating', () => emit('spots-changed'))
-
-      canvas.value.on('mouse:wheel', (opt) => {
-        const e = opt.e
-        if (!e.ctrlKey && !e.metaKey) return
-        e.preventDefault()
-        e.stopPropagation()
-
-        const delta = e.deltaY
-        let zoom = canvas.value.getZoom()
-        const zoomFactor = 0.999 ** delta
-        zoom *= zoomFactor
-        zoom = Math.min(maxZoom, Math.max(minZoom, zoom))
-
-        const point = new fabric.Point(e.offsetX, e.offsetY)
-        canvas.value.zoomToPoint(point, zoom)
-        zoomLevel.value = zoom
-        adjustControlCornerSize()
-        emit('zoom-changed', { zoom })
-      })
-
-      canvas.value.on('mouse:down', (opt) => {
-        const e = opt.e
-        if ((spacePressed.value && e.button === 0) || e.button === 1) {
-          isPanning.value = true
-          canvas.value.setCursor('grabbing')
-          canvas.value.selection = false
-          lastPanPoint.value = { x: e.clientX, y: e.clientY }
-        }
-      })
-
-      canvas.value.on('mouse:move', (opt) => {
-        if (!isPanning.value) return
+    const handleMouseMove = (opt) => {
+      if (isPanning.value) {
         const e = opt.e
         const vpt = canvas.value.viewportTransform
-        vpt[4] += e.clientX - lastPanPoint.value.x
-        vpt[5] += e.clientY - lastPanPoint.value.y
-        lastPanPoint.value = { x: e.clientX, y: e.clientY }
-        emit('pan-changed', { x: vpt[4], y: vpt[5] })
+        vpt[4] += e.clientX - lastPosX.value
+        vpt[5] += e.clientY - lastPosY.value
         canvas.value.requestRenderAll()
-      })
-
-      canvas.value.on('mouse:up', () => {
-        if (isPanning.value) {
-          isPanning.value = false
-          canvas.value.setCursor('default')
-          canvas.value.selection = !props.previewMode
-        }
-      })
+        lastPosX.value = e.clientX
+        lastPosY.value = e.clientY
+      }
     }
-    
-     // 創建從 salesParkings 資料來的車位物件
+
+    const handleMouseUp = (opt) => {
+      if (isPanning.value) {
+        canvas.value.setViewportTransform(canvas.value.viewportTransform)
+        isPanning.value = false
+        canvas.value.selection = true
+        canvas.value.setCursor('default')
+      }
+    }
+
+    // [FIX] 重新加入選取和物件修改的事件處理函式
+    const handleSelection = (e) => {
+      const selection = canvas.value.getActiveObject()
+      activeSelection.value = selection
+      isMultiSelection.value = selection && selection.type === 'activeSelection'
+      if (selection) {
+        isSelectionLocked.value = isMultiSelection.value ? selection.getObjects().every(obj => obj.lockMovementX) : selection.lockMovementX
+      } else {
+        isSelectionLocked.value = false
+      }
+    }
+
+    const handleObjectModified = (e) => {
+      emit('spots-changed')
+    }
+
+    const fetchSalesParkingsForFloor = async () => {
+      if (!props.floorPlan || !props.floorPlan.id) return
+      
+      loading.value = true
+      try {
+        const result = await getSalesParkingsByFloorAPI({ 
+          projectId: props.projectId, 
+          floor: props.floorPlan.floor.id || props.floorPlan.floor 
+        })
+        
+        if (result.data.success) {
+          allParkingData.value = result.data.allData || []
+          previewParkings.value = result.data.preview || []
+          totalParkingCount.value = result.data.total || 0
+        }
+      } finally {
+        loading.value = false
+      }
+    }
+
+    const getStatusColor = (parkingData) => {
+      // [FIX] 增加 null 檢查，避免手動新增的車位在載入時出錯
+      if (!parkingData) {
+        const defaultStatus = '可售';
+        return props.statusColors[defaultStatus] || {
+          backgroundColor: '#e8f5e8',
+          borderColor: '#4caf50',
+          textColor: '#000000'
+        };
+      }
+      const status = parkingData.status_backend || '可售'; // Default to '可售' if status is missing
+      const colorSet = props.statusColors[status];
+      
+      if (colorSet) {
+        return {
+          backgroundColor: colorSet.backgroundColor || '#f5f5f5',
+          borderColor: colorSet.borderColor || '#000000',
+          textColor: colorSet.textColor || '#000000'
+        };
+      }
+      
+      // 如果找不到對應的顏色，回傳預設顏色
+      return {
+        backgroundColor: '#f5f5f5',
+        borderColor: '#000000',
+        textColor: '#000000'
+      };
+    };
+
+    // 此函式現在回傳一個包含 {key, value} 的物件陣列
+    const getDisplayFields = (mode, data) => {
+      const fields = mode === 'backend' 
+        ? [
+            { key: 'number', value: data.number },
+            { key: 'price', value: data.price_transaction || data.price_list },
+            { key: 'buyerUnitId', value: data.buyerUnitId },
+            { key: 'buyerName', value: data.buyerName },
+            { key: 'salesperson', value: data.salesperson },
+            { key: 'size', value: data.size },
+            { key: 'type', value: data.type }
+          ]
+        : data.status === '已售'
+          ? [
+              { key: 'number', value: data.number },
+              { key: 'status', value: data.status }
+            ]
+          : [
+              { key: 'number', value: data.number },
+              { key: 'price', value: data.price_list },
+              { key: 'size', value: data.size },
+              { key: 'type', value: data.type }
+            ]
+      return fields.filter(f => f.value);
+    }
+
+    // 創建從 salesParkings 資料來的車位物件
     const createParkingSpotFromData = (options = {}) => {
       const { x = 100, y = 100, parkingData, displayMode = props.displayMode, textStyles = props.textStyles } = options
 
@@ -641,6 +716,8 @@ export default {
 
       const group = new fabric.Group(groupItems, {
         left: x, top: y,
+        originX: 'center',
+        originY: 'center',
         selectable: !props.previewMode, hasControls: !props.previewMode, hasBorders: !props.previewMode,
         cornerSize: baseCornerSize / zoomLevel.value
       });
@@ -676,11 +753,16 @@ export default {
           break
         case 'width': 
           spot.scaleToWidth(value); 
+          spot.setCoords(); // 更新座標
           break
         case 'height': 
           spot.scaleToHeight(value); 
+          spot.setCoords(); // 更新座標
           break
-        case 'rotation': spot.set('angle', value); break
+        case 'rotation': 
+          spot.set('angle', value); 
+          spot.setCoords(); // 更新座標
+          break
         case 'fill': 
           const rect = spot._objects.find(o => o.type === 'rect')
           if (rect) rect.set('fill', value)
@@ -710,44 +792,171 @@ export default {
     }
     
     // 載入背景圖片
-    const loadBackgroundImage = (url) => {
-      return new Promise((resolve) => {
+    const loadBackgroundImage = (url, options = {}) => {
+      return new Promise((resolve, reject) => {
+        console.log('[Canvas] loadBackgroundImage 被呼叫。')
+        console.log(`[Canvas] URL: ${url}`)
+        console.log('[Canvas] 接收到的 Options:', JSON.parse(JSON.stringify(options)))
+
+        // 移除舊的背景圖
+        if (backgroundImage.value) {
+          canvas.value.remove(backgroundImage.value)
+          backgroundImage.value = null
+        }
+
         fabric.Image.fromURL(url, (img) => {
-          // ✓【修改】讓背景圖可以被拖曳
+          if (!img) {
+            console.error('[Canvas] Fabric 無法從 URL 載入圖片:', url)
+            return reject(new Error('Image load failed'))
+          }
+          
+          const canvasWidth = canvas.value.width
+          const canvasHeight = canvas.value.height
+          
+          // 如果沒有提供縮放選項，則計算預設縮放以適應畫布
+          if (!options.scaleX && !options.scaleY) {
+            const scale = Math.min(canvasWidth / img.width, canvasHeight / img.height)
+            img.scale(scale)
+            console.log(`[Canvas] 未提供縮放，計算預設縮放比例: ${scale}`)
+          }
+
           img.set({
+            left: options.left ?? (canvasWidth - img.getScaledWidth()) / 2,
+            top: options.top ?? (canvasHeight - img.getScaledHeight()) / 2,
+            scaleX: options.scaleX ?? img.scaleX,
+            scaleY: options.scaleY ?? img.scaleY,
+            angle: options.angle ?? 0,
+            originX: 'left',
+            originY: 'top',
             selectable: true,
-            evented: true,
-            hasControls: false,
-            hasBorders: false,
-            type: 'backgroundImage'
+            hasControls: true,
+            hasBorders: true,
+            lockScalingFlip: true,
+            name: 'backgroundImage',
+            // 確保背景圖在最底層
+            zIndex: -1
           })
-          if (backgroundImage.value) canvas.value.remove(backgroundImage.value)
-          backgroundImage.value = img
+          
+          console.log('[Canvas] 最終設定給背景圖的屬性:', {
+            left: img.left,
+            top: img.top,
+            scaleX: img.scaleX,
+            scaleY: img.scaleY,
+            angle: img.angle
+          })
+
           canvas.value.add(img)
           canvas.value.sendToBack(img)
-          resolve()
+          backgroundImage.value = img
+          canvas.value.renderAll()
+          console.log('[Canvas] 背景圖已加入並發送到最底層。')
+          resolve(img)
         }, { crossOrigin: 'anonymous' })
       })
     }
-    
-    // 獲取車位佈局資料
+
+    // 載入整個佈局，包括車位和背景圖
+    const loadSpotLayouts = (layouts) => {
+      console.log('[Canvas] loadSpotLayouts 被呼叫，接收到的 layouts:', JSON.parse(JSON.stringify(layouts)))
+      if (!canvas.value) {
+        console.error('[Canvas] Canvas尚未初始化，無法載入佈局。')
+        return
+      }
+
+      // 清除現有物件，除了背景圖
+      canvas.value.getObjects().forEach(obj => {
+        if (obj.type !== 'image') {
+          canvas.value.remove(obj)
+        }
+      })
+
+      // [REMOVED] 移除從 layouts 載入背景圖的邏輯
+      // const backgroundImageData = layouts.find(item => item.type === 'backgroundImage')
+      const spotLayouts = layouts.filter(item => item.type !== 'backgroundImage')
+      
+      console.log('[Canvas] 分離後的 spotLayouts:', JSON.parse(JSON.stringify(spotLayouts)))
+      // console.log('[Canvas] 分離後的 backgroundImageData:', JSON.parse(JSON.stringify(backgroundImageData)))
+
+
+      // [REMOVED] 移除從 layouts 載入背景圖的邏輯
+      // if (backgroundImageData && backgroundImageData.src) {
+      //   const { src, ...options } = backgroundImageData
+      //   console.log(`[Canvas] 準備使用 src: ${src} 和 options:`, JSON.parse(JSON.stringify(options)), '來載入背景圖')
+      //   loadBackgroundImage(src, options)
+      // }
+
+      // 載入車位
+      spotLayouts.forEach(layout => {
+        // [FIX] 從 allParkingData 中找到完整的 parkingData
+        const fullParkingData = allParkingData.value.find(p => p.id === layout.salesParkingId) || {
+          id: layout.salesParkingId,
+          number: layout.spotId,
+        };
+        
+        console.log(`[Canvas] 正在為 spotId: ${layout.spotId} 尋找資料... 找到的資料:`, JSON.parse(JSON.stringify(fullParkingData)));
+
+        const spot = createParkingSpotFromData({
+          x: layout.x,
+          y: layout.y,
+          parkingData: fullParkingData, // 使用完整的資料
+          displayMode: layout.displayMode || props.displayMode
+        })
+        
+        // 應用保存的屬性
+        if (spot) {
+          // [FIX] 這裡應該使用 layout 的 width/height，而不是 spot 的
+          spot.set({
+            angle: layout.rotation,
+            scaleX: layout.width / spot.width, // 計算 scaleX
+            scaleY: layout.height / spot.height, // 計算 scaleY
+          })
+          // [FIX] 呼叫 setCoords() 來更新控制點位置
+          spot.setCoords();
+          // 儲存原始的 layoutId 以便於後續儲存
+          spot.layoutId = layout.id; 
+          canvas.value.add(spot)
+        }
+      })
+      
+      canvas.value.renderAll()
+      console.log('[Canvas] loadSpotLayouts 完成，Canvas 已重新渲染。')
+    }
+
     const getSpotLayouts = () => {
-  if (!canvas.value) return []
-  return canvas.value.getObjects()
-    .filter(obj => obj.type === 'importedParkingSpot' || obj.type === 'parkingSpot')
-    .map(spot => ({
-      id: spot.layoutId || null,
-      spotId: spot.parkingData?.number || spot.spotId || '',
-      x: Math.round(spot.left),
-      y: Math.round(spot.top),
-      width: Math.round(spot.width),
-      height: Math.round(spot.height),
-      rotation: Math.round(spot.angle),
-      type: spot.type === 'importedParkingSpot' ? 'imported' : 'manual',
-      salesParkingId: spot.parkingData?.id || null,
-      displayMode: spot.currentDisplayMode || 'backend'
-    }))
-}
+      if (!canvas.value) return []
+      
+      const layouts = canvas.value.getObjects()
+        .filter(obj => obj.type === 'importedParkingSpot' || obj.type === 'parkingSpot')
+        .map(spot => ({
+          id: spot.layoutId || null,
+          spotId: spot.parkingData?.number || spot.spotId || '',
+          x: Math.round(spot.left),
+          y: Math.round(spot.top),
+          width: Math.round(spot.getScaledWidth()), // [FIX] 使用 getScaledWidth 獲取真實寬度
+          height: Math.round(spot.getScaledHeight()), // [FIX] 使用 getScaledHeight 獲取真實高度
+          rotation: Math.round(spot.angle),
+          type: spot.type === 'importedParkingSpot' ? 'imported' : 'manual',
+          salesParkingId: spot.parkingData?.id || null,
+          displayMode: spot.currentDisplayMode || 'backend'
+        }))
+
+      // [REMOVED] 移除將背景圖資訊加入 layouts 的邏輯
+      // if (backgroundImage.value) {
+      //   layouts.push({
+      //     type: 'backgroundImage',
+      //     src: backgroundImage.value.getSrc(),
+      //     x: Math.round(backgroundImage.value.left),
+      //     y: Math.round(backgroundImage.value.top),
+      //     scaleX: backgroundImage.value.scaleX,
+      //     scaleY: backgroundImage.value.scaleY,
+      //     rotation: Math.round(backgroundImage.value.angle || 0),
+      //     width: Math.round(backgroundImage.value.width * backgroundImage.value.scaleX),
+      //     height: Math.round(backgroundImage.value.height * backgroundImage.value.scaleY)
+      //   })
+      // }
+
+      return layouts
+    }
 
     // 匯入車位資料相關方法
     const openImportModal = async () => {
@@ -940,6 +1149,7 @@ export default {
       floorPlan: props.floorPlan,
       
       getSpotLayouts,
+      loadSpotLayouts,
       updateSpotProperty,
       closePropertiesPanel,
       deleteSelectedSpot,

@@ -472,6 +472,7 @@ export default {
     const updateFloorPlan = httpsCallable(functions, 'updateFloorPlan')
     const deleteFloorPlanFunc = httpsCallable(functions, 'deleteFloorPlan')
     const saveSpotLayouts = httpsCallable(functions, 'saveSpotLayouts')
+    const getSpotLayouts = httpsCallable(functions, 'getSpotLayouts')
 
     // Methods
 
@@ -868,8 +869,41 @@ export default {
       isEditorDirty.value = true
     }
 
-    const onCanvasReady = () => {
-      console.log('Canvas 準備就緒')
+    const onCanvasReady = async () => {
+      console.log('[Manager] Canvas 準備就緒 (onCanvasReady event received)')
+      
+      // 載入保存的車位佈局和背景圖片位置
+      if (selectedFloorPlan.value && selectedFloorPlan.value.id) {
+        try {
+          console.log(`[Manager] 正在為 floorPlanId: ${selectedFloorPlan.value.id} 獲取佈局...`)
+          const result = await getSpotLayouts({ 
+            floorPlanId: selectedFloorPlan.value.id,
+            projectId: selectedProjectId.value 
+          })
+          
+          console.log('[Manager] 從 getSpotLayouts 獲取到的原始 result:', result)
+
+          if (result.data && result.data.layouts) {
+            const layouts = result.data.layouts
+            console.log('[Manager] 解析後的 layouts 資料:', JSON.parse(JSON.stringify(layouts)))
+            
+            // 載入整個佈局（包含車位和背景圖片）
+            if (parkingCanvas.value) {
+              console.log('[Manager] 呼叫 parkingCanvas.loadSpotLayouts...')
+              parkingCanvas.value.loadSpotLayouts(layouts)
+            } else {
+              console.error('[Manager] parkingCanvas ref 為空，無法載入佈局！')
+            }
+          } else {
+            console.warn('[Manager] getSpotLayouts 回傳的資料中沒有 layouts 屬性。')
+          }
+        } catch (error) {
+          console.error('[Manager] 載入車位佈局失敗:', error)
+          // 不顯示錯誤訊息，因為可能是第一次編輯還沒有保存的佈局
+        }
+      } else {
+        console.warn('[Manager] 沒有 selectedFloorPlan 或其 id，不執行載入。')
+      }
     }
 
 
