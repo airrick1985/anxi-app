@@ -2,17 +2,24 @@
 <v-container fluid>
 <v-card class="pa-4">
 <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
+  <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline" class="mr-4">
+    返回時間表
+  </v-btn>
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
+      <v-btn 
+      color="blue" 
+      variant="flat" 
+      @click="openFieldDefinitionDialog"  prepend-icon="mdi-table-column-plus-after"
+    >
+      新增資料欄位
+    </v-btn>
     <v-btn color="green" variant="flat" @click="exportToExcel" prepend-icon="mdi-file-excel-outline">
       下載戶別資料
     </v-btn>
     <v-btn color="red" variant="flat" @click="uploadDialog = true" prepend-icon="mdi-upload">
        上傳戶別資料
      </v-btn>
-    <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline">
-      返回時間表
-    </v-btn>
   </div>
 </v-card-title>
 
@@ -28,7 +35,7 @@
     v-if="hasInitialDataLoaded"
     class="ag-theme-alpine"
     style="width: 100%; height: 100%;"
-    :columnDefs="colDefs"
+    :columnDefs="finalColDefs"
     :rowData="rowData"
     :defaultColDef="defaultColDef"
     :sideBar="true"
@@ -93,6 +100,85 @@
      </v-card-actions>
    </v-card>
  </v-dialog>
+
+ <v-dialog v-model="fieldDialog.show" max-width="500px" persistent>
+   <v-card>
+          <v-form ref="fieldForm" @submit.prevent="handleSaveFieldDefinition">
+       <v-card-title class="bg-blue-darken-2">
+         <span class="text-h5">新增自訂欄位</span>
+       </v-card-title>
+       <v-card-text class="pt-4">
+         <v-text-field
+           v-model="fieldDialog.data.fieldName"
+           label="欄位顯示名稱"
+           :rules="[v => !!v || '此為必填欄位']"
+           required
+           variant="outlined"
+           density="compact"
+         ></v-text-field>
+
+         <v-select
+           v-model="fieldDialog.data.fieldType"
+           :items="fieldDialogItems"
+           label="欄位格式"
+           item-title="title"
+           item-value="value"
+           :rules="[v => !!v || '請選擇一種格式']"
+           required
+           variant="outlined"
+           density="compact"
+         ></v-select>
+
+         <v-combobox
+           v-if="fieldDialog.data.fieldType === 'select'"
+           v-model="fieldDialog.data.options"
+           label="請輸入下拉選單的選項 (按 Enter 新增)"
+           multiple
+           chips
+           variant="outlined"
+           density="compact"
+                      :rules="[v => (v && v.length > 0) || '請至少輸入一個選項']"
+           required
+         ></v-combobox>
+
+         <v-alert v-if="fieldDialog.error" type="error" variant="tonal" density="compact" class="mt-2">
+           {{ fieldDialog.error }}
+         </v-alert>
+
+       </v-card-text>
+       <v-card-actions>
+         <v-spacer></v-spacer>
+         <v-btn color="grey" variant="text" @click="fieldDialog.show = false">取消</v-btn>
+         <v-btn
+           type="submit"
+           color="blue"
+           variant="flat"
+           :loading="fieldDialog.loading"
+         >
+           儲存
+         </v-btn>
+       </v-card-actions>
+     </v-form>
+   </v-card>
+ </v-dialog>
+
+  <v-dialog v-model="isConfirmingSave" width="auto" persistent>
+   <v-card>
+     <v-card-title class="text-h5">
+       ⚠️ 請注意
+     </v-card-title>
+     <v-card-text>
+       新增欄位後不可刪除或修改欄位名稱，確定要繼續嗎？
+     </v-card-text>
+     <v-card-actions>
+       <v-spacer></v-spacer>
+       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingSave = false">取消</v-btn>
+       <v-btn color="warning" variant="flat" @click="confirmAndSave">確認新增</v-btn>
+     </v-card-actions>
+   </v-card>
+ </v-dialog>
+
+
  <v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
   {{ snackbar.text }}
 </v-snackbar>
@@ -101,10 +187,10 @@
 
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "ag-grid-enterprise";
@@ -127,7 +213,8 @@ const hasInitialDataLoaded = ref(false); // ✓ 用此旗標控制 Grid 的渲�
 const isLoading = ref(true);
 const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
-let unsubscribe = null;
+let unsubscribeHouseholds = null;
+let unsubscribeFields = null;
 
 // 上傳功能狀態 ---
 const uploadDialog = ref(false);
@@ -137,6 +224,32 @@ const isParsing = ref(false);
 const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
+
+// 動態欄位相關狀態 ---
+const customFieldDefs = ref([]);
+const hasFieldsLoaded = ref(false);
+const fieldDialog = reactive({
+  show: false,
+  loading: false,
+  error: '',
+  data: {
+    fieldName: '',
+    fieldType: 'checkbox',
+    options: []
+  }
+});
+
+// 1. 新增一個靜態陣列來定義選項，取代 fieldTypeLabels
+const fieldDialogItems = [
+  { value: 'checkbox', title: '核取/開關' },
+  { value: 'text', title: '純文字' },
+  { value: 'select', title: '下拉選單' },
+];
+
+// 用於表單驗證與確認對話框
+const fieldForm = ref(null);
+const isConfirmingSave = ref(false);
+
 
 
 // --- 計算屬性 ---
@@ -274,7 +387,8 @@ const SwitchRenderer = {
   },
 };
 
-const colDefs = ref([
+// --- 動態欄位相關方法 ---
+const baseColDefs = ref([
    { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
    { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
@@ -300,16 +414,54 @@ const colDefs = ref([
    { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
 ]);
 
+// 2. 根據從 Firestore 獲取的自訂欄位定義，動態生成 AG-Grid 欄位
+const dynamicColDefs = computed(() => {
+  return customFieldDefs.value.map(def => {
+    const colDef = {
+      headerName: def.fieldName,
+      field: def.fieldName, // 直接使用中文欄位名作為 field key
+      editable: true,
+      valueGetter: params => { // 「延遲更新」策略核心
+        if (params.data && params.data.hasOwnProperty(def.fieldName)) {
+          return params.data[def.fieldName];
+        }
+        return def.fieldType === 'checkbox' ? false : ""; // 提供預設值
+      }
+    };
+
+    switch (def.fieldType) {
+      case 'checkbox':
+        colDef.cellRenderer = SwitchRenderer;
+        break;
+      case 'select':
+        colDef.cellEditor = 'agSelectCellEditor';
+        colDef.cellEditorParams = {
+          values: def.options || [],
+        };
+        break;
+      case 'text':
+      default:
+        // 使用預設的文字編輯器
+        break;
+    }
+    return colDef;
+  });
+});
+
+// 3. 組合基礎欄位和動態欄位，成為最終要在 Grid 中顯示的欄位
+const finalColDefs = computed(() => {
+  return [...baseColDefs.value, ...dynamicColDefs.value];
+});
+
 
 // --- 匯出 Excel 功能 ---
 const exportToExcel = () => {
- // 移除原有的 if (rowData.value.length === 0) 檢查區塊
-
   // 1. 從 colDefs 提取欄位和標頭，並在開頭加入 _docId
-  const exportFields = ['_docId', ...colDefs.value.map(def => def.field)];
-  const chineseHeaders = ['文件ID', ...colDefs.value.map(def => def.headerName)];
+   const exportFields = ['_docId', ...finalColDefs.value.map(def => def.field)];
+   const chineseHeaders = ['文件ID', ...finalColDefs.value.map(def => def.headerName)];
 
-  // 2. 排序資料 (如果 rowData 是空的，sortedItems 也會是空的，邏輯依然正確)
+
+  // 2. 排序資料
   const sortedItems = [...rowData.value].sort((a, b) => {
     const buildingCompare = String(a.building).localeCompare(String(b.building), 'zh-TW', { numeric: true });
     if (buildingCompare !== 0) return buildingCompare;
@@ -323,19 +475,19 @@ const exportToExcel = () => {
       if (value instanceof Date) {
         return format(value, 'yyyy/MM/dd');
       }
+      //  修正：確保 item[key] 存在才進行判斷
       if (typeof value === 'boolean') {
         return value ? 'TRUE' : 'FALSE';
       }
       if (value && typeof value.toDate === 'function') {
         return format(value.toDate(), 'yyyy/MM/dd');
       }
-      return value ?? '';
+      return value ?? ''; // 使用空值合併運算符處理 null 和 undefined
     });
   });
 
   // 4. 建立 Excel 工作表
   const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱 (特別是第一欄的 文件ID)。'];
-  //  即使 dataAsArray 是空的，這裡也能正確組合出只有標頭的資料
   const dataWithHeader = [warningRow, chineseHeaders, ...dataAsArray];
   const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
 
@@ -374,10 +526,11 @@ const closeUploadDialog = (isManualClose = true) => {
 
 
 // 處理檔案選擇與解析
+// 處理檔案選擇與解析
 const handleFileChange = () => {
-   console.log('handleFileChange triggered.'); // 1. 修正偵錯訊息，不再引用不存在的變數
+  console.log('handleFileChange triggered.');
   uploadMessage.value = '';
-   const file = uploadedFile.value; // 2. 確保從 ref 直接讀取檔案
+  const file = uploadedFile.value;
   if (!file) {
     parsedData.value = [];
     return;
@@ -399,9 +552,9 @@ const handleFileChange = () => {
 
       // 建立標頭對應表
       const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
-      const requiredHeaders = ['文件ID', ...colDefs.value.map(def => def.headerName)];
+       const requiredHeaders = ['文件ID', ...finalColDefs.value.map(def => def.headerName)];
       const headerMap = new Map();
-      colDefs.value.forEach(def => headerMap.set(def.headerName, def.field));
+       finalColDefs.value.forEach(def => headerMap.set(def.headerName, def.field));
       headerMap.set('文件ID', '_docId');
 
       // 驗證標頭
@@ -444,6 +597,7 @@ const handleFileChange = () => {
   };
   reader.readAsArrayBuffer(file);
 };
+
 // 執行上傳
 const uploadData = async () => {
   if (parsedData.value.length === 0) {
@@ -473,6 +627,56 @@ const uploadData = async () => {
   }
 };
 
+// 「動態欄位」相關方法 ---
+const openFieldDefinitionDialog = () => {
+  // 重置對話框狀態
+  fieldDialog.data.fieldName = '';
+  fieldDialog.data.fieldType = 'checkbox';
+  fieldDialog.data.options = [];
+  fieldDialog.error = '';
+  fieldDialog.loading = false;
+  fieldDialog.show = true;
+};
+
+const handleSaveFieldDefinition = async () => {
+  if (!fieldForm.value) return;
+
+  const { valid } = await fieldForm.value.validate();
+  if (valid) {
+    // 表單驗證通過後，開啟確認對話框
+    isConfirmingSave.value = true;
+  }
+};
+
+ // 3. 新增一個函式，用於處理使用者確認後真正的儲存邏輯
+const confirmAndSave = async () => {
+  isConfirmingSave.value = false; // 先關閉確認框
+  fieldDialog.loading = true;
+  fieldDialog.error = '';
+  
+  try {
+    const payload = {
+      ...fieldDialog.data,
+      projectId: projectId.value,
+      collectionName: 'households',
+      order: 100 + (customFieldDefs.value.length || 0),
+    };
+    const result = await saveFieldDefinition(payload);
+
+    if (result.status === 'success') {
+      snackbar.text = result.message;
+      snackbar.color = 'success';
+      snackbar.show = true;
+      fieldDialog.show = false; // 成功後關閉主對話框
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (err) {
+    fieldDialog.error = err.message || '儲存失敗，請重試。';
+  } finally {
+    fieldDialog.loading = false;
+  }
+};
 
 // --- 導航函式 ---
 function navigateBackToCalendar() {
@@ -518,25 +722,34 @@ async function onCellValueChanged(event) {
   }
 }
 
-// ✓ 【修改】生命週期鉤子，採用 v-if 模式
+// 修改生命週期鉤子以載入兩種資料 ---
 onMounted(async () => {
   if (projectId.value) {
     await projectStore.fetchProjects();
 
-    unsubscribe = listenToAllHouseholds(
+    // 1. 監聽戶別資料
+    unsubscribeHouseholds = listenToAllHouseholds(
       projectId.value,
       (households) => {
-        console.log('接收到 Firestore 資料更新...');
-        rowData.value = households; // ✓ 只需更新響應式資料
-
-        if (!hasInitialDataLoaded.value) {
-          hasInitialDataLoaded.value = true; // ✓ 設定旗標，觸發 Grid 渲染
-          isLoading.value = false; // ✓ 隱藏載入動畫
-        }
+        console.log('接收到 Firestore 戶別資料更新...');
+        rowData.value = households;
       },
       (err) => {
-        error.value = `資料監聽失敗: ${err.message}`;
-        isLoading.value = false;
+        error.value = `戶別資料監聽失敗: ${err.message}`;
+      }
+    );
+
+    // 2. 監聽自訂欄位定義
+    unsubscribeFields = listenToFieldDefinitions(
+      projectId.value,
+      'households',
+      (definitions) => {
+        console.log('接收到 Firestore 欄位定義更新...');
+        customFieldDefs.value = definitions;
+        if (!hasFieldsLoaded.value) hasFieldsLoaded.value = true;
+      },
+      (err) => {
+        error.value = `欄位定義監聽失敗: ${err.message}`;
       }
     );
   } else {
@@ -545,10 +758,27 @@ onMounted(async () => {
   }
 });
 
+// 監聽 isLoading 狀態，當所有資料都載入完畢時才停止
+watch([rowData, hasFieldsLoaded], ([newRowData, newFieldsLoaded]) => {
+  if (newRowData.length > 0 && newFieldsLoaded && !hasInitialDataLoaded.value) {
+    hasInitialDataLoaded.value = true;
+    isLoading.value = false;
+  } else if (newRowData.length === 0 && newFieldsLoaded && isLoading.value) {
+    // 處理沒有戶別資料但欄位定義已載入的情況
+    hasInitialDataLoaded.value = true;
+    isLoading.value = false;
+  }
+});
+
+
 onUnmounted(() => {
-  if (unsubscribe) {
+  if (unsubscribeHouseholds) {
     console.log('停止監聽戶別總表');
-    unsubscribe();
+    unsubscribeHouseholds();
+  }
+  if (unsubscribeFields) {
+    console.log('停止監聽欄位定義');
+    unsubscribeFields();
   }
 });
 

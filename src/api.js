@@ -40,6 +40,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 
 
+
+
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
 const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
 const INSPECTION_API = `${BASE_API_URL}/inspection`;
@@ -2114,7 +2116,7 @@ export async function getUnitsByBuilding(projectName, building) {
 
 
 /**
- *  [修改] 檢查是否已有有效預約
+ *  檢查是否已有有效預約
  * @param {string} projectName (舊參數，後端已不使用)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
@@ -2125,15 +2127,15 @@ export async function checkExistingBooking(projectName, unitId, bookingType, idN
   const doCheck = httpsCallable(functions, 'checkExistingBooking');
   try {
     const result = await doCheck({ projectId, unitId, bookingType, idNumber });
-    return result.data; // 直接回傳後端組合好的 { status, data: { status, booking? } }
+    return result.data;
   } catch (error) {
     console.error("API checkExistingBooking 錯誤:", error);
     return { status: 'error', message: error.message };
   }
-};
+}
 
 /**
- *  [修改] 獲取可預約的日期和時段
+ *   獲取可預約的日期和時段
  * @param {string} projectName (舊參數)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
@@ -2141,14 +2143,26 @@ export async function checkExistingBooking(projectName, unitId, bookingType, idN
  * @param {string} projectId 建案 ID
  */
 export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
-  const doGetAvailableSlots = httpsCallable(functions, 'getAvailableSlots');
+  const getSlots = httpsCallable(functions, 'getAvailableSlots');
   try {
-    const result = await doGetAvailableSlots({ projectId, unitId, bookingType, bookingMethod });
-    // 為了與舊版前端的格式相容，我們仍然回傳一個包含 status 和 data 的物件
-    return { status: 'success', data: result.data };
+    console.log('呼叫 getAvailableSlots，參數:', { projectId, unitId, bookingType, bookingMethod });
+    
+    const result = await getSlots({ projectId, unitId, bookingType, bookingMethod });
+    
+    console.log('getAvailableSlots 完整回傳:', result);
+    console.log('result.data:', result.data);
+    
+    // ✅ 根據 Cloud Functions 的回傳格式，包裝成前端期望的格式
+    return {
+      status: 'success',
+      data: result.data  // 這裡是 Cloud Functions 回傳的實際資料
+    };
   } catch (error) {
     console.error("API getBookingSlots 錯誤:", error);
-    return { status: 'error', message: error.message };
+    return {
+      status: 'error',
+      message: error.message || '獲取可預約時段時發生錯誤'
+    };
   }
 };
 
@@ -2831,6 +2845,45 @@ export async function deleteBookingBatch(batchId) {
 //  ===============================================
 // /   戶別資料管理 (AG Grid) API
 //  ===============================================
+
+/**
+ * [新] 即時監聽指定建案的自訂欄位定義
+ * @param {string} projectId - 專案 ID
+ * @param {string} collectionName - 目標集合名稱 (e.g., 'households')
+ * @param {function} onDataChange - 收到資料時的回呼函式
+ * @param {function} onError - 發生錯誤時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToFieldDefinitions = (projectId, collectionName, onDataChange, onError) => {
+  const q = query(
+    collection(db, "projectFieldDefinitions"),
+    where("projectId", "==", projectId),
+    where("collectionName", "==", collectionName),
+    orderBy("order", "asc") // 根據 order 欄位排序
+  );
+  // 返回 onSnapshot 的 unsubscribe 函式，以便在組件卸載時停止監聽
+  return onSnapshot(q, snapshot => {
+    const definitions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    onDataChange(definitions);
+  }, onError);
+};
+
+/**
+ * [新] 呼叫後端函式，儲存一個新的欄位定義
+ * @param {object} definitionData - 包含新欄位所有設定的物件
+ * @returns {Promise<object>}
+ */
+export async function saveFieldDefinition(definitionData) {
+  try {
+    const saveFunction = httpsCallable(functions, 'saveFieldDefinition');
+    const result = await saveFunction(definitionData);
+    return result.data; // 直接回傳 Cloud Function 的 { status, message }
+  } catch (error) {
+    console.error("儲存欄位定義時發生錯誤:", error);
+    // 將 HttpsError 轉換為前端習慣的格式
+    return { status: "error", message: error.message };
+  }
+}
 
 /**
  * [Firestore 版] 根據建案 ID 獲取所有戶別資料，用於 AG Grid

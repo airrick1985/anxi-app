@@ -976,6 +976,8 @@ const handleStep1Submit = async () => {
         projectId.value // 傳入 projectId
       );
 
+
+
     if (res.status === 'success' && res.data) {
      bookingSlots.value = res.data;
      step.value = 2;
