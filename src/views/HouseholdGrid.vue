@@ -4,6 +4,12 @@
 <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
+    <v-btn color="green" variant="flat" @click="exportToExcel" prepend-icon="mdi-file-excel-outline">
+      下載戶別資料
+    </v-btn>
+    <v-btn color="red" variant="flat" @click="uploadDialog = true" prepend-icon="mdi-upload">
+       上傳戶別資料
+     </v-btn>
     <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline">
       返回時間表
     </v-btn>
@@ -35,7 +41,59 @@
 </div>
 
 </v-card>
-<v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
+<v-dialog v-model="uploadDialog" max-width="600px" persistent>
+   <v-card>
+     <v-card-title class="bg-red-darken-2">
+       <span class="text-h5">上傳 Excel 更新戶別資料</span>
+     </v-card-title>
+     <v-card-text class="pt-4">
+       <v-alert
+         type="warning"
+         color="error"
+         variant="tonal"
+         class="mb-4"
+         title="重要提示"
+         text="此操作將根據「文件ID」覆蓋現有資料，或根據「戶別」建立新資料。為避免資料遺失，強烈建議您先下載目前的資料作為備份與範本。"
+       ></v-alert>
+
+       <v-file-input
+         v-model="uploadedFile"
+         label="選擇 Excel 檔案"
+         accept=".xlsx, .xls"
+         variant="outlined"
+         density="compact"
+         :loading="isParsing"
+          @change="handleFileChange"
+         @click:clear="closeUploadDialog(false)"
+       ></v-file-input>
+
+       <v-alert
+         v-if="uploadMessage"
+         :type="uploadMessageType"
+         variant="tonal"
+         class="mt-4"
+         style="white-space: pre-wrap;"
+         density="compact"
+       >
+         {{ uploadMessage }}
+       </v-alert>
+     </v-card-text>
+     <v-card-actions>
+       <v-spacer></v-spacer>
+       <v-btn color="grey" variant="text" @click="closeUploadDialog(true)">取消</v-btn>
+       <v-btn
+         color="red"
+         variant="flat"
+         @click="uploadData"
+         :loading="isUploading"
+         :disabled="parsedData.length === 0"
+       >
+         確認上傳
+       </v-btn>
+     </v-card-actions>
+   </v-card>
+ </v-dialog>
+ <v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
   {{ snackbar.text }}
 </v-snackbar>
 </v-container>
@@ -46,8 +104,8 @@
 import { ref, onMounted, onUnmounted, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds } from '@/api';
-
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds } from '@/api';
+import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
@@ -70,6 +128,16 @@ const isLoading = ref(true);
 const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 let unsubscribe = null;
+
+// 上傳功能狀態 ---
+const uploadDialog = ref(false);
+const uploadedFile = ref(null);// v-file-input v-model 建議使用陣列
+const parsedData = ref([]);
+const isParsing = ref(false);
+const isUploading = ref(false);
+const uploadMessage = ref('');
+const uploadMessageType = ref('success');
+
 
 // --- 計算屬性 ---
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
@@ -231,6 +299,179 @@ const colDefs = ref([
    { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: linkRenderer, flex: 1.5 },
    { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
 ]);
+
+
+// --- 匯出 Excel 功能 ---
+const exportToExcel = () => {
+ // 移除原有的 if (rowData.value.length === 0) 檢查區塊
+
+  // 1. 從 colDefs 提取欄位和標頭，並在開頭加入 _docId
+  const exportFields = ['_docId', ...colDefs.value.map(def => def.field)];
+  const chineseHeaders = ['文件ID', ...colDefs.value.map(def => def.headerName)];
+
+  // 2. 排序資料 (如果 rowData 是空的，sortedItems 也會是空的，邏輯依然正確)
+  const sortedItems = [...rowData.value].sort((a, b) => {
+    const buildingCompare = String(a.building).localeCompare(String(b.building), 'zh-TW', { numeric: true });
+    if (buildingCompare !== 0) return buildingCompare;
+    return String(a.unitId).localeCompare(String(b.unitId), 'zh-TW', { numeric: true });
+  });
+
+  // 3. 轉換資料格式
+  const dataAsArray = sortedItems.map(item => {
+    return exportFields.map(key => {
+      const value = item[key];
+      if (value instanceof Date) {
+        return format(value, 'yyyy/MM/dd');
+      }
+      if (typeof value === 'boolean') {
+        return value ? 'TRUE' : 'FALSE';
+      }
+      if (value && typeof value.toDate === 'function') {
+        return format(value.toDate(), 'yyyy/MM/dd');
+      }
+      return value ?? '';
+    });
+  });
+
+  // 4. 建立 Excel 工作表
+  const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱 (特別是第一欄的 文件ID)。'];
+  //  即使 dataAsArray 是空的，這裡也能正確組合出只有標頭的資料
+  const dataWithHeader = [warningRow, chineseHeaders, ...dataAsArray];
+  const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
+
+  // 5. 設定樣式與格式
+  const warningStyle = { font: { color: { rgb: "FFFF0000" }, bold: true }, fill: { fgColor: { rgb: "FFFFFF00" } } };
+  ws['A1'].s = warningStyle;
+  if (!ws['!merges']) ws['!merges'] = [];
+  ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: exportFields.length - 1 } });
+
+  const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FFD3D3D3" } } };
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    const address = XLSX.utils.encode_cell({ r: 1, c: C });
+    if(ws[address]) ws[address].s = headerStyle;
+  }
+  ws['!freeze'] = { ySplit: 2 };
+
+  // 6. 產生並下載檔案
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '戶別資料總表');
+  const exportFileName = `${projectName.value || '建案'}_戶別資料總表_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+  XLSX.writeFile(wb, exportFileName);
+};
+
+//  --- START: 上傳功能方法 ---
+
+// 關閉並重置上傳對話框
+const closeUploadDialog = (isManualClose = true) => {
+  uploadDialog.value = false;
+  if (isManualClose) {
+      uploadedFile.value = null; 
+      parsedData.value = [];
+      uploadMessage.value = '';
+  }
+};
+
+
+// 處理檔案選擇與解析
+const handleFileChange = () => {
+   console.log('handleFileChange triggered.'); // 1. 修正偵錯訊息，不再引用不存在的變數
+  uploadMessage.value = '';
+   const file = uploadedFile.value; // 2. 確保從 ref 直接讀取檔案
+  if (!file) {
+    parsedData.value = [];
+    return;
+  }
+  isParsing.value = true;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+
+      if (dataAsArrays.length < 1) {
+        throw new Error(`檔案缺少標頭列。`);
+      }
+
+      // 建立標頭對應表
+      const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
+      const requiredHeaders = ['文件ID', ...colDefs.value.map(def => def.headerName)];
+      const headerMap = new Map();
+      colDefs.value.forEach(def => headerMap.set(def.headerName, def.field));
+      headerMap.set('文件ID', '_docId');
+
+      // 驗證標頭
+      const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
+      if (missingHeaders.length > 0) {
+        throw new Error(`檔案標頭不符，缺少必要欄位: \n${missingHeaders.join('、')}`);
+      }
+
+      const dataRows = dataAsArrays.slice(1);
+      const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
+
+      const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+        const newRow = {};
+        uploadedHeaders.forEach((header, index) => {
+          const key = headerMap.get(header);
+          if (key) {
+            if (key === '_docId' && (rowArray[index] === null || rowArray[index] === undefined || rowArray[index] === '')) {
+                 newRow[key] = null;
+            } else {
+                 newRow[key] = rowArray[index] ?? null;
+            }
+          }
+        });
+        if (!newRow._docId && !newRow.unitId) {
+            throw new Error("資料驗證失敗：新增的資料行必須包含『戶號』。請檢查上傳的檔案。");
+        }
+        return newRow;
+      });
+
+      parsedData.value = jsonDataWithEnglishKeys;
+      uploadMessageType.value = 'success';
+      uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+    } catch (err) {
+      uploadMessageType.value = 'error';
+      uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
+      parsedData.value = [];
+    } finally {
+      isParsing.value = false;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+// 執行上傳
+const uploadData = async () => {
+  if (parsedData.value.length === 0) {
+    uploadMessageType.value = 'warning';
+    uploadMessage.value = '沒有可上傳的資料。';
+    return;
+  }
+  isUploading.value = true;
+  uploadMessage.value = '';
+  try {
+    const result = await uploadInspectionHouseholds(projectId.value, parsedData.value);
+    if (result.status === 'success') {
+      uploadMessageType.value = 'success';
+      uploadMessage.value = result.message || '戶別資料已成功上傳更新！';
+      setTimeout(() => closeUploadDialog(true), 2000);
+      snackbar.text = '資料上傳成功！畫面將自動更新。';
+      snackbar.color = 'success';
+      snackbar.show = true;
+    } else {
+      throw new Error(result.message || '發生未知錯誤');
+    }
+  } catch (err) {
+    uploadMessageType.value = 'error';
+    uploadMessage.value = `上傳失敗: ${err.message}`;
+  } finally {
+    isUploading.value = false;
+  }
+};
 
 
 // --- 導航函式 ---

@@ -10,7 +10,7 @@ const { FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
 const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料轉換流
-const { Readable } = require("stream"); // ✅ 新增此行，用於將 Buffer 轉為 Stream
+const { Readable } = require("stream"); //  新增此行，用於將 Buffer 轉為 Stream
 const readline = require("readline"); 
 
 
@@ -771,7 +771,7 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
         continue;
       }
 
-       // ✅ 【修正】只更新 Excel 中實際包含的欄位，保護管理員控制欄位
+       //  【修正】只更新 Excel 中實際包含的欄位，保護管理員控制欄位
       const dataToSave = {};
       
       // 🔒 管理員控制的欄位列表（只有在 Excel 中明確提供時才更新）
@@ -807,7 +807,7 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
         db.collection("salesParkings").doc(existingDocId) :
         db.collection("salesParkings").doc(`${projectId}_${spotId}`);
 
-      // ✅ 使用 merge: true 確保只更新提供的欄位
+      //  使用 merge: true 確保只更新提供的欄位
       batch.set(docRef, dataToSave, {merge: true});
       operationsCount++;
 
@@ -1198,7 +1198,7 @@ exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (re
   const jobDocRef = anxiDb.collection("backupJobs").doc(jobId);
 
   try {
-    // ✅ START: 修正點 1 - 根據 projectId 獲取建案名稱
+    //  START: 修正點 1 - 根據 projectId 獲取建案名稱
     let projectNameForFile = 'all-projects'; // 預設名稱
     if (filters && filters.projectId) {
       const projectDocRef = anxiDb.collection('projects').doc(filters.projectId);
@@ -1209,14 +1209,14 @@ exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (re
         projectNameForFile = filters.projectId; // 如果找不到對應名稱，就用 ID 代替
       }
     }
-    // ✅ END: 修正點 1
+    //  END: 修正點 1
 
     // --- 步驟 1: 產生備份檔案的路徑與名稱 ---
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
     
-    // ✅ 修正點 2: 使用新的命名規則組合檔案路徑與名稱
+    //  修正點 2: 使用新的命名規則組合檔案路徑與名稱
     const fileName = `${projectNameForFile}_${targetCollection}_${dateStr}_${timeStr}.jsonl`;
     const filePath = `backups/${targetCollection}/${dateStr}/${fileName}`;
     
@@ -1509,7 +1509,7 @@ exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => {
 });
 //  END: 新增 scheduledJobRunner 排程函式
 
-// ✅ START: 新增 listBackupFiles 雲端函式
+//  START: 新增 listBackupFiles 雲端函式
 /**
  * 列出 GCS 中指定路徑下的檔案與資料夾
  */
@@ -1521,7 +1521,7 @@ exports.listBackupFiles = onCall(async (request) => {
   try {
     const bucket = getStorage().bucket();
     
-    // ✅ 核心修正：直接獲取完整的 apiResponse，而不是只拿 files 陣列
+    //  核心修正：直接獲取完整的 apiResponse，而不是只拿 files 陣列
     const [files, , apiResponse] = await bucket.getFiles({ prefix: path, delimiter: '/' });
     
     const fileData = [];
@@ -1539,7 +1539,7 @@ exports.listBackupFiles = onCall(async (request) => {
       }
     });
 
-    // ✅ 核心修正：直接從 apiResponse 中讀取資料夾(prefixes)資訊，不再依賴 files.length
+    //  核心修正：直接從 apiResponse 中讀取資料夾(prefixes)資訊，不再依賴 files.length
     if (apiResponse.prefixes) {
         apiResponse.prefixes.forEach(prefix => directoryData.add(prefix));
     }
@@ -1558,9 +1558,9 @@ exports.listBackupFiles = onCall(async (request) => {
     throw new HttpsError("internal", `列出檔案失敗: ${error.message}`);
   }
 });
-// ✅ END: 新增 listBackupFiles 雲端函式
+//  END: 新增 listBackupFiles 雲端函式
 
-// ✅ START: 新增 getBackupFileContent 雲端函式
+//  START: 新增 getBackupFileContent 雲端函式
 /**
  * 讀取 GCS 檔案的部分內容作為預覽
  */
@@ -1617,9 +1617,9 @@ exports.getBackupFileContent = onCall(async (request) => {
     throw new HttpsError("internal", `讀取檔案預覽失敗: ${error.message}`);
   }
 });
-// ✅ END: 新增 getBackupFileContent 雲端函式
+//  END: 新增 getBackupFileContent 雲端函式
 
-// ✅ START: 新增 deleteBackupFile 雲端函式
+//  START: 新增 deleteBackupFile 雲端函式
 /**
  * 從 GCS 刪除指定的備份檔案
  */
@@ -1661,10 +1661,10 @@ exports.deleteBackupFile = onCall(async (request) => {
     throw new HttpsError("internal", `刪除檔案時發生錯誤: ${error.message}`);
   }
 });
-// ✅ END: 新增 deleteBackupFile 雲端函式
+//  END: 新增 deleteBackupFile 雲端函式
 
 
-// ✅ START: 新增 generateExcelTemplate 雲端函式
+//  START: 新增 generateExcelTemplate 雲端函式
 const xlsx = require("xlsx"); // 在檔案頂部加入 require
 
 exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
@@ -1704,7 +1704,7 @@ exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, 
       }
       const snapshot = await query.get();
 
-      // ✅ 核心修正點：確保內外層迴圈結構正確
+      //  核心修正點：確保內外層迴圈結構正確
       snapshot.docs.forEach(doc => { // 外層迴圈：處理每一份文件
         const docData = doc.data();
         const row = { _id: doc.id }; // 在這裡為每一份文件建立一個 `row`
@@ -1756,7 +1756,7 @@ exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, 
 
 // ✓ 【替換】updateFieldsFromExcel 整個函式 (優化版)
 exports.updateFieldsFromExcel = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
-  // ✅ 1. 修改：接收 fileContent (Base64字串)，而不是 filePath
+  //  1. 修改：接收 fileContent (Base64字串)，而不是 filePath
   const { fileContent, targetCollection, isDryRun } = request.data;
   const functionName = `updateFieldsFromExcel (DryRun: ${isDryRun})`;
 
@@ -1765,7 +1765,7 @@ exports.updateFieldsFromExcel = onCall({ timeoutSeconds: 540, memory: "1GiB" }, 
   }
 
   try {
-    // ✅ 2. 修改：直接將 Base64 字串轉換為 Buffer，不再需要從 GCS 下載
+    //  2. 修改：直接將 Base64 字串轉換為 Buffer，不再需要從 GCS 下載
     const buffer = Buffer.from(fileContent, 'base64');
     
     const workbook = xlsx.read(buffer);
@@ -1877,7 +1877,7 @@ exports.getCollectionFields = onCall(async (request) => {
     throw new HttpsError("internal", `讀取欄位列表失敗: ${e.message}`);
   }
 });
-// ✅ END: 新增 getCollectionFields 雲端函式
+//  END: 新增 getCollectionFields 雲端函式
 
 exports.handleSpecialReportUpload = onCall({
   timeoutSeconds: 540,
@@ -2086,7 +2086,7 @@ exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
   }
 });
 
-// ✅ START: 新增代理刪除圖片的 Cloud Function
+//  START: 新增代理刪除圖片的 Cloud Function
 exports.handleSalesImageDelete = onCall(async (request) => {
   const { docId, storagePath } = request.data;
   const functionName = `handleSalesImageDelete`;
@@ -2124,11 +2124,11 @@ exports.handleSalesImageDelete = onCall(async (request) => {
     throw new HttpsError("internal", `後端刪除圖片時發生錯誤: ${error.message}`);
   }
 });
-// ✅ END: 新增代理刪除圖片的 Cloud Function
+//  END: 新增代理刪除圖片的 Cloud Function
 
 
 // =================================================================
-// / ✅ 【新增】銷控 SVG 圖片管理代理 Cloud Functions
+// /  【新增】銷控 SVG 圖片管理代理 Cloud Functions
 // =================================================================
 
 /**
@@ -2152,7 +2152,7 @@ exports.handleSalesSvgUpload = onCall({ memory: "1GiB" }, async (request) => {
     await new Promise((resolve, reject) => {
         stream.pipe(file.createWriteStream({
             metadata: {
-                contentType: 'image/svg+xml', // ✅ 指定 SVG 的正確 ContentType
+                contentType: 'image/svg+xml', //  指定 SVG 的正確 ContentType
             },
             resumable: false
         }))
@@ -2193,7 +2193,7 @@ exports.handleSalesSvgDelete = onCall(async (request) => {
     await bucket.file(storagePath).delete();
     console.log(`[${functionName}] 成功從 Storage 刪除 SVG 檔案: ${storagePath}`);
 
-    // ✅ 使用 anxi-app 資料庫實例
+    //  使用 anxi-app 資料庫實例
     const anxiDb = new Firestore({ databaseId: "anxi-app" }); 
     await anxiDb.collection("salesSVGs").doc(docId).delete();
     console.log(`[${functionName}] 成功從 Firestore 刪除 SVG 文件: ${docId}`);
@@ -2292,7 +2292,7 @@ exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
     console.log(`[${functionName}] 接收到的參數:`, { projectName, projectId, unitId });
     console.log(`[${functionName}] 接收到的資料欄位:`, Object.keys(data));
 
-    // ✅ 重構：移除後端轉換邏輯，強制要求前端提供 projectId
+    //  重構：移除後端轉換邏輯，強制要求前端提供 projectId
     if (!projectId) {
       throw new HttpsError("invalid-argument", `請求缺少 projectId。請確保前端已傳遞此參數。`);
     }
@@ -2447,7 +2447,7 @@ exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
       
       for (const parking of parkingData) {
         try {
-          // ✅ 修復：車位文檔 ID 格式應該是 {projectId}_{spotId}
+          //  修復：車位文檔 ID 格式應該是 {projectId}_{spotId}
           const spotId = parking.spotId;
           if (!spotId) {
             console.warn(`[${functionName}] 車位資料缺少 spotId，跳過此筆資料:`, parking);
@@ -2462,7 +2462,7 @@ exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
             continue;
           }
           
-          // ✅ 修復：準備車位資料時，只更新可變的銷售相關欄位
+          //  修復：準備車位資料時，只更新可變的銷售相關欄位
           // 核心車位資料（floor, number, price_floor, price_list, projectId, 
           // spotId, type, size, slidePosition）保持不變
           const parkingDataToSave = {
@@ -2711,7 +2711,7 @@ exports.cancelPurchase = onCall({ secrets: gmailSecrets }, async (request) => {
 });
 
 // =================================================================
-// / ✅ 【新增】車位平面圖管理系統 Cloud Functions
+// /  【新增】車位平面圖管理系統 Cloud Functions
 // =================================================================
 
 /**
@@ -2838,26 +2838,26 @@ exports.getFloorPlans = onCall(async (request) => {
  * 創建新的平面圖
  */
 exports.createFloorPlan = onCall(async (request) => {
-  // ✅ 修改：將傳入的 floor 重新命名為 floorInput，以便處理
+  //  修改：將傳入的 floor 重新命名為 floorInput，以便處理
   const { projectId, name, description, floor: floorInput, backgroundImageUrl } = request.data;
   const functionName = `createFloorPlan (Project: ${projectId})`;
 
-  // ✅ 新增：從傳入的物件或字串中提取真實的樓層字串值
+  //  新增：從傳入的物件或字串中提取真實的樓層字串值
   const floor = (typeof floorInput === 'object' && floorInput !== null && floorInput.value) 
     ? floorInput.value 
     : floorInput;
 
-  // ✅ 修改：使用提取後的 floor 值進行驗證
+  //  修改：使用提取後的 floor 值進行驗證
   if (!projectId || !name || !floor) {
     throw new HttpsError("invalid-argument", "缺少 projectId、name 或 floor 參數。");
   }
 
   try {
-    // ✅ 修改：日誌記錄使用提取後的 floor 值
+    //  修改：日誌記錄使用提取後的 floor 值
     console.log(`[${functionName}] 創建新平面圖: ${name} (樓層: ${floor})`);
     const db = new Firestore({ databaseId: "anxi-app" });
     
-    // ✅ 修改：檢查重複時使用提取後的 floor 值
+    //  修改：檢查重複時使用提取後的 floor 值
     const existingFloorPlan = await db.collection("parkingFloorPlans")
       .where("projectId", "==", projectId)
       .where("floor", "==", floor)
@@ -2876,14 +2876,14 @@ exports.createFloorPlan = onCall(async (request) => {
     const seconds = String(now.getSeconds()).padStart(2, '0');
     const timestamp = `${year}${month}${day}${hours}${minutes}${seconds}`;
     
-    // ✅ 修改：文件名使用提取後的 floor 值
+    //  修改：文件名使用提取後的 floor 值
     const docId = `${projectId}_${floor}_${timestamp}`;
 
     const floorPlanData = {
       projectId: projectId,
       name: name,
       description: description || '',
-      floor: floor, // ✅ 修改：儲存時使用提取後的 floor 字串值
+      floor: floor, //  修改：儲存時使用提取後的 floor 字串值
       backgroundImageUrl: backgroundImageUrl || '',
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3441,7 +3441,7 @@ exports.updateFloorPlanBackground = onCall(async (request) => {
   }
 });
 
-// ✅ 新增：根據 projectId 和 floor 查詢 salesParkings 車位資料
+//  新增：根據 projectId 和 floor 查詢 salesParkings 車位資料
 exports.getSalesParkingsByFloor = onCall(async (request) => {
   const functionName = "getSalesParkingsByFloor";
 
@@ -3461,11 +3461,11 @@ exports.getSalesParkingsByFloor = onCall(async (request) => {
       databaseId: "anxi-app"
     });
 
-    // ✅ 新增：先查詢該建案是否有任何車位資料
+    //  新增：先查詢該建案是否有任何車位資料
     const allParkingsQuery = db.collection('salesParkings').where('projectId', '==', projectId);
     const allParkingsSnapshot = await allParkingsQuery.get();
 
-    // ✅ 新增：列出該建案所有的樓層
+    //  新增：列出該建案所有的樓層
     const floors = new Set();
     allParkingsSnapshot.forEach(doc => {
       const data = doc.data();
@@ -3582,5 +3582,100 @@ exports.updateProjectStatusColors = onCall(async (request) => {
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
     throw new HttpsError("internal", `更新狀態顏色失敗: ${error.message}`);
+  }
+});
+
+
+/**
+ *  【新增】 上傳驗屋系統戶別資料並更新 Firestore
+ * 從前端接收 Excel 解析後的 JSON 資料，批次更新 households 集合
+ */
+exports.uploadInspectionHouseholds = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  const { projectId, householdsData } = request.data;
+  const functionName = `uploadInspectionHouseholds (Project: ${projectId})`;
+
+  if (!projectId || !Array.isArray(householdsData) || householdsData.length === 0) {
+    throw new HttpsError("invalid-argument", "請求缺少 projectId 或有效的戶別資料。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始執行，準備更新 ${householdsData.length} 筆戶別資料...`);
+
+    let batch = db.batch();
+    let operationsCount = 0;
+    const MAX_OPERATIONS_PER_BATCH = 499;
+
+    for (const row of householdsData) {
+      let docId;
+      
+      if (row._docId) {
+          docId = row._docId;
+      } 
+      else if (row.unitId) {
+          docId = `${projectId}_${row.unitId}`;
+      } 
+      else {
+          console.warn(`[${functionName}] 警告：資料行缺少 '_docId' 或 'unitId'，已跳過。`, row);
+          continue;
+      }
+      
+       const dataToSave = { ...row, projectId };
+      delete dataToSave._docId;
+
+       // START: 新增資料格式轉換邏輯
+      // 處理布林值
+      ['showInMenu', 'initialReportUploadSwitch', 'reInspectionReportUploadSwitch'].forEach(field => {
+        if (dataToSave[field] !== undefined) {
+            const val = String(dataToSave[field]).toUpperCase();
+            dataToSave[field] = (val === 'TRUE' || val === 'Y' || val === 'ON');
+        }
+      });
+
+      // 處理日期 (Excel 可能傳來日期物件或 null)
+      ['appropriationDate', 'initialInspectionDate', 'reInspectionDate'].forEach(field => {
+        if (dataToSave[field]) {
+          const date = new Date(dataToSave[field]);
+          if (!isNaN(date.getTime())) {
+            dataToSave[field] = admin.firestore.Timestamp.fromDate(date);
+          } else {
+            dataToSave[field] = null; // 無效日期轉為 null
+          }
+        } else {
+          dataToSave[field] = null; // 空值保持 null
+        }
+      });
+      
+      // 處理可能為 null 的字串欄位，確保它們是空字串
+      ['address', 'bank', 'buyerEmail', 'remarks'].forEach(field => {
+        if (dataToSave[field] === null || dataToSave[field] === undefined) {
+            dataToSave[field] = "";
+        }
+      });
+       // END: 新增資料格式轉換邏輯
+
+      const docRef = db.collection("households").doc(docId);
+      
+      batch.set(docRef, dataToSave, { merge: true });
+      operationsCount++;
+
+      if (operationsCount >= MAX_OPERATIONS_PER_BATCH) {
+        await batch.commit();
+        batch = db.batch();
+        operationsCount = 0;
+      }
+    }
+
+    if (operationsCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`[${functionName}] 更新成功！`);
+    return { status: "success", message: `成功更新或新增了 ${householdsData.length} 筆戶別資料。` };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `更新戶別資料時發生錯誤: ${error.message}`);
   }
 });

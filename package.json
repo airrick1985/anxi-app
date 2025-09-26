@@ -66,6 +66,7 @@
     "vue-toastification": "^2.0.0-rc.5",
     "vuedraggable": "^4.1.0",
     "vuetify": "^3.9.5",
+    "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
