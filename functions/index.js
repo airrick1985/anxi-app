@@ -3900,7 +3900,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
         // --- 交易成功後，寄送 Email ---
         const { bookingCode, newAppointmentData } = result;
 
-                // ✅ 新增日誌 1: 檢查從交易中回傳的資料是否正確
+                //  新增日誌 1: 檢查從交易中回傳的資料是否正確
         console.log("[Email Debug] 1. 交易成功，準備寄送 Email。 newAppointmentData:", JSON.stringify(newAppointmentData));
         console.log("[Email Debug] 1. 交易成功，準備寄送 Email。 bookingData from client:", JSON.stringify(bookingData));
 
@@ -3912,7 +3912,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             closingText = projectDoc.data().emailConfig.closingText;
         }
 
-                // ✅ 新增日誌 2: 檢查 closingText 是否有成功抓取
+                //  新增日誌 2: 檢查 closingText 是否有成功抓取
         console.log("[Email Debug] 2. 最終的 closingText:", closingText);
 
         const mailTransport = nodemailer.createTransport({
@@ -3922,11 +3922,11 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
 
         const subject = `【${bookingData.projectName}】預約成功通知 (${newAppointmentData.unitId})`;
 
-                // ✅ 新增日誌 3: 檢查 email 主旨
+                //  新增日誌 3: 檢查 email 主旨
         console.log("[Email Debug] 3. Email 主旨:", subject);
 
 
-        const bookingUrl = `https://airrick1985.github.io/anxi-app/#/booking/${projectId}`;
+        const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
         const bookingLinkHtml = `
             <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 14px; color: #555;">
                 若您要查詢、修改或取消預約，請點擊以下按鈕返回預約頁面：<br>
@@ -3987,7 +3987,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
 </div>
         `;
 
-                // ✅ 新增日誌 4: 檢查最終要寄送的 HTML 內容 (只顯示前500個字元避免洗版)
+                //  新增日誌 4: 檢查最終要寄送的 HTML 內容 (只顯示前500個字元避免洗版)
         console.log("[Email Debug] 4. 最終 htmlBody (前500字元):", htmlBody.substring(0, 500));
 
 
@@ -3998,7 +3998,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             name: `${bookingData.projectName} 預約系統`
         });
 
-                // ✅ 新增日誌 5: 檢查 nodemailer 的回傳結果
+                //  新增日誌 5: 檢查 nodemailer 的回傳結果
         console.log("[Email Debug] 5. Nodemailer 回應:", mailInfo);
 
         
@@ -4011,4 +4011,178 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
         }
         throw new HttpsError("internal", `儲存預約時發生嚴重錯誤: ${error.message}`);
     }
+});
+
+/**
+ * 【新增】取消一筆預約紀錄
+ */
+exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
+    const { projectId, bookingCode } = request.data;
+    const functionName = `cancelBooking (Project: ${projectId}, Code: ${bookingCode})`;
+
+    if (!projectId || !bookingCode) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 bookingCode。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    try {
+        const appointmentsRef = db.collection("appointments");
+        
+        const query = appointmentsRef
+            .where("projectId", "==", projectId)
+            .where("bookingCode", "==", bookingCode)
+            .where("status", "==", "預約中")
+            .limit(1);
+
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            throw new HttpsError("not-found", `找不到可取消的預約紀錄 (代碼: ${bookingCode})。`);
+        }
+
+        const docToCancel = snapshot.docs[0];
+        const bookingData = docToCancel.data();
+
+        await docToCancel.ref.update({
+            status: "取消",
+            cancelledAt: Timestamp.now()
+        });
+
+        console.log(`[${functionName}] 已成功將預約 [${docToCancel.id}] 的狀態更新為「取消」。`);
+
+        if (bookingData.bookerEmail) {
+            const projectRef = db.collection('projects').doc(projectId);
+            const projectDoc = await projectRef.get();
+            const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+            const mailTransport = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+            });
+
+            const subject = `【${projectName}】預約取消成功通知 (${bookingData.unitId})`;
+            
+            //  新增：定義重新預約的 URL
+            const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
+
+            const htmlBody = `
+            <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f7; padding: 20px;">
+              <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+                <div style="background-color: #dc3545; color: #ffffff; padding: 20px; text-align: center;">
+                  <h2 style="margin: 0; font-size: 24px;">預約取消通知</h2>
+                </div>
+                <div style="padding: 24px; line-height: 1.6; color: #333333;">
+                  <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
+                  <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+                  <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
+                    <tbody>
+                      <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
+                      <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
+                      <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
+                      <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+                      <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
+                    </tbody>
+                  </table>
+                  <p>若您需要重新預約，歡迎隨時返回預約頁面。感謝您的使用。</p>
+                  
+                  <p style="margin-top: 20px; text-align: center;">
+                      <a href="${bookingUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                          點此重新預約
+                      </a>
+                  </p>
+
+                </div>
+                <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+                  <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+                </div>
+              </div>
+            </div>
+            `;
+
+            await mailTransport.sendMail({
+                to: bookingData.bookerEmail,
+                subject: subject,
+                html: htmlBody,
+                name: `${projectName} 預約系統`
+            });
+            console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
+        }
+
+        return { status: "success", message: "預約已成功取消" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 🔴 取消預約時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", `取消預約時發生錯誤: ${error.message}`);
+    }
+});
+
+/**
+ * 獲取所有系統權限功能的列表
+ */
+exports.getSystemFunctions = onCall({ cors: true }, async (request) => {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const snapshot = await db.collection('systemFunctions').orderBy('name', 'asc').get();
+    if (snapshot.empty) {
+        return [];
+    }
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+});
+
+/**
+ * 建立一個新的系統權限功能
+ */
+exports.createSystemFunction = onCall({ cors: true }, async (request) => {
+    // 可以在此加入超級管理員權限驗證
+    const { functionId, name, description, isCore } = request.data;
+    if (!functionId || !name) {
+        throw new HttpsError('invalid-argument', '缺少 functionId 或 name 參數。');
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection('systemFunctions').doc(functionId);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+        throw new HttpsError('already-exists', `ID 為 "${functionId}" 的權限功能已存在。`);
+    }
+
+    await docRef.set({
+        functionId,
+        name,
+        description: description || '',
+        isCore: isCore || false,
+        createdAt: Timestamp.now()
+    });
+
+    return { status: 'success', id: functionId };
+});
+
+/**
+ * 更新一個已存在的系統權限功能 (只能更新名稱和描述)
+ */
+exports.updateSystemFunction = onCall({ cors: true }, async (request) => {
+    // 可以在此加入超級管理員權限驗證
+    const { functionId, name, description } = request.data;
+    if (!functionId || !name) {
+        throw new HttpsError('invalid-argument', '缺少 functionId 或 name 參數。');
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const docRef = db.collection('systemFunctions').doc(functionId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+        throw new HttpsError('not-found', `找不到 ID 為 "${functionId}" 的權限功能。`);
+    }
+
+    await docRef.update({
+        name,
+        description: description || ''
+    });
+
+    return { status: 'success', id: functionId };
 });

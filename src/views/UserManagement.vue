@@ -11,6 +11,7 @@
       <v-tabs v-model="currentTab" bg-color="transparent" grow>
         <v-tab value="users">人員列表</v-tab>
         <v-tab v-if="isSuperAdmin" value="roles">角色設定</v-tab>
+        <v-tab v-if="isSuperAdmin" value="functions">權限功能管理</v-tab>
       </v-tabs>
       <v-divider></v-divider>
 
@@ -186,8 +187,79 @@
             </v-row>
           </v-card-text>
         </v-window-item>
+  <v-window-item v-if="isSuperAdmin" value="functions">
+          <v-card-text>
+            <div class="d-flex justify-end mb-4">
+              <v-btn color="primary" @click="openFunctionDialog()">
+                <v-icon left>mdi-plus</v-icon>
+                新增權限功能
+              </v-btn>
+            </div>
+            <v-data-table
+              :headers="functionTableHeaders"
+              :items="systemFunctions"
+              :loading="loading"
+              item-value="functionId"
+              class="elevation-1"
+              no-data-text="沒有權限功能資料"
+              loading-text="正在載入資料..."
+            >
+              <template v-slot:item.isCore="{ value }">
+                <v-chip :color="value ? 'red' : 'grey'" small label>{{ value ? '是' : '否' }}</v-chip>
+              </template>
+              <template v-slot:item.actions="{ item }">
+                <v-btn small color="primary" @click="openFunctionDialog(item)">編輯</v-btn>
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-window-item>
       </v-window>
     </v-card>
+
+<v-dialog v-model="isFunctionDialogVisible" persistent max-width="600px">
+      <v-card>
+        <v-card-title class="bg-indigo text-white">
+          <span class="text-h5">{{ isNewFunction ? '新增權限功能' : '編輯權限功能' }}</span>
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <v-form ref="functionForm">
+            <v-text-field
+              v-model="editedFunction.functionId"
+              label="功能 ID (內部代號，建立後不可修改)"
+              variant="outlined"
+              :readonly="!isNewFunction"
+              :rules="[v => !!v || '必填']"
+              hint="請使用英文駝峰式命名，例如: newPermission"
+            ></v-text-field>
+            <v-text-field
+              v-model="editedFunction.name"
+              label="顯示名稱"
+              variant="outlined"
+              :rules="[v => !!v || '必填']"
+              class="mt-4"
+            ></v-text-field>
+            <v-textarea
+              v-model="editedFunction.description"
+              label="功能描述 (可選)"
+              variant="outlined"
+              rows="3"
+              class="mt-4"
+            ></v-textarea>
+             <v-checkbox
+                v-model="editedFunction.isCore"
+                label="設為核心功能 (保護)"
+                :disabled="!isNewFunction"
+              ></v-checkbox>
+          </v-form>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn color="grey" text @click="isFunctionDialogVisible = false">取消</v-btn>
+          <v-btn color="primary" @click="saveSystemFunction" :loading="savingFunction">儲存</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 
     <v-dialog
       v-model="dialogVisible"
@@ -396,7 +468,10 @@ import {
   updateUserRoles,
   fetchAllRoles,
   updateRole,
-  deleteRole
+  deleteRole,
+  fetchAllSystemFunctions, 
+  createSystemFunction,   
+  updateSystemFunction
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
 
@@ -405,6 +480,27 @@ const userStore = useUserStore();
 const projectStore = useProjectStore();
 const toast = useToast();
 const adminKey = computed(() => userStore.user?.key);
+
+// 權限功能管理相關 State ---
+const systemFunctions = ref([]);
+const isFunctionDialogVisible = ref(false);
+const isNewFunction = ref(false);
+const savingFunction = ref(false);
+const functionForm = ref(null);
+const editedFunction = ref({
+  functionId: '',
+  name: '',
+  description: '',
+  isCore: false
+});
+const functionTableHeaders = [
+  { title: '顯示名稱', key: 'name' },
+  { title: '功能 ID (內部代號)', key: 'functionId' },
+  { title: '描述', key: 'description', sortable: false },
+  { title: '核心功能', key: 'isCore' },
+  { title: '操作', key: 'actions', sortable: false, align: 'center' },
+];
+
 
 // --- Component State ---
 const currentTab = ref('users');
@@ -570,11 +666,12 @@ const loadInitialData = async () => {
   errorMessage.value = '';
   showErrorAlert.value = false;
   try {
-    const [scope, users, rolesData] = await Promise.all([
+    const [scope, users, rolesData, projectsData, functionsData] = await Promise.all([
       fetchAdminScope(adminKey.value),
       fetchManageableUsersWithDetails(adminKey.value),
       fetchAllRoles(),
-      projectStore.fetchProjects()
+      projectStore.fetchProjects(),
+      fetchAllSystemFunctions()
     ]);
     
     adminScope.value = scope;
@@ -585,6 +682,8 @@ const loadInitialData = async () => {
     manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false }));
     roles.value = rolesData.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
+    systemFunctions.value = functionsData; // 現在 functionsData 會是正確的權限功能列表
+
   } catch (error) {
     errorMessage.value = `初始化失敗: ${error.message}`;
     showErrorAlert.value = true;
@@ -592,6 +691,8 @@ const loadInitialData = async () => {
     loading.value = false;
   }
 };
+
+
 onMounted(loadInitialData);
 
 // --- User Editing Dialog Logic ---
@@ -865,6 +966,48 @@ const executeDeleteRole = async () => {
         deletingRole.value = false;
     }
 };
+
+// 權限功能管理相關 Methods ---
+const openFunctionDialog = (func = null) => {
+  if (func) {
+    // 編輯模式
+    isNewFunction.value = false;
+    editedFunction.value = { ...func };
+  } else {
+    // 新增模式
+    isNewFunction.value = true;
+    editedFunction.value = { functionId: '', name: '', description: '', isCore: false };
+  }
+  isFunctionDialogVisible.value = true;
+};
+
+const saveSystemFunction = async () => {
+  const { valid } = await functionForm.value.validate();
+  if (!valid) return;
+
+  savingFunction.value = true;
+  try {
+    let result;
+    if (isNewFunction.value) {
+      result = await createSystemFunction(editedFunction.value);
+    } else {
+      result = await updateSystemFunction(editedFunction.value);
+    }
+
+    if (result.status === 'success') {
+      toast.success(`權限功能「${editedFunction.value.name}」已儲存。`);
+      isFunctionDialogVisible.value = false;
+      await loadInitialData(); // 重新載入所有資料
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    toast.error(`儲存失敗: ${error.message}`);
+  } finally {
+    savingFunction.value = false;
+  }
+};
+
 </script>
 
 <style scoped>

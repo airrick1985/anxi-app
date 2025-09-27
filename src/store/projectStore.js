@@ -14,8 +14,8 @@ export const useProjectStore = defineStore('projects', {
   actions: {
     async fetchProjects() {
       if (this.projectsList.length > 0) {
-        // 如果已經載入過，就不重複載入
-        return;
+        // ✅ 修正點一：如果資料已存在，直接回傳快取的列表，而不是 undefined
+        return this.projectsList;
       }
       
       this.isLoading = true;
@@ -23,19 +23,23 @@ export const useProjectStore = defineStore('projects', {
         const projects = await fetchAllProjects();
         this.projectsList = projects;
         
-        // 當專案列表載入後，自動產生兩種對照表
         this.idToNameMap = projects.reduce((acc, project) => {
-          acc[project.id] = project.name;
+          if(project.id && project.name) acc[project.id] = project.name;
           return acc;
         }, {});
         
         this.nameToIdMap = projects.reduce((acc, project) => {
-          acc[project.name] = project.id;
+          if(project.name && project.id) acc[project.name] = project.id;
           return acc;
         }, {});
 
+        // ✅ 修正點二：必須將 API 呼叫的結果回傳，Promise.all 才能接收到
+        return projects;
+
       } catch (error) {
         console.error('Failed to fetch projects:', error);
+        // ✅ 修正點三：發生錯誤時也回傳空陣列，避免 Promise.all 因錯誤而中斷
+        return [];
       } finally {
         this.isLoading = false;
       }

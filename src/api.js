@@ -2046,6 +2046,26 @@ export async function cancelAppointment(appointmentId) {
     return { status: 'success' };
 }
 
+
+/**
+ * [Firebase 版] 取消一筆預約
+ * @param {object} payload - 包含 projectId 和 bookingCode 的物件
+ * @returns {Promise<object>}
+ */
+export const cancelBooking = async (payload) => {
+  if (!payload.projectId || !payload.bookingCode) {
+    return { status: 'error', message: '前端錯誤：缺少 projectId 或 bookingCode。' };
+  }
+  try {
+    const doCancel = httpsCallable(functions, 'cancelBooking');
+    const result = await doCancel(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API cancelBooking 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+};
+
 // =============================================
 //  公開預約系統 API (Firebase 遷移版)
 // =============================================
@@ -4223,3 +4243,49 @@ export const updateProjectStatusColors = async (projectId, colors) => {
   }
   throw new Error('Failed to update status colors on server.');
 };
+
+
+/**
+ * 獲取所有系統權限功能的列表
+ * @returns {Promise<Array>}
+ */
+export async function fetchAllSystemFunctions() {
+  try {
+    const getFunctions = httpsCallable(functions, 'getSystemFunctions');
+    const result = await getFunctions();
+    return result.data;
+  } catch (error) {
+    console.error("獲取權限功能列表失敗:", error);
+    return [];
+  }
+}
+
+/**
+ * 建立一個新的系統權限功能
+ * @param {object} functionData - { functionId, name, description, isCore }
+ * @returns {Promise<object>}
+ */
+export async function createSystemFunction(functionData) {
+  try {
+    const createFunc = httpsCallable(functions, 'createSystemFunction');
+    const result = await createFunc(functionData);
+    return result.data;
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 更新一個系統權限功能
+ * @param {object} functionData - { functionId, name, description }
+ * @returns {Promise<object>}
+ */
+export async function updateSystemFunction(functionData) {
+  try {
+    const updateFunc = httpsCallable(functions, 'updateSystemFunction');
+    const result = await updateFunc(functionData);
+    return result.data;
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
+}
