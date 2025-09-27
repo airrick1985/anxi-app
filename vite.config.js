@@ -7,7 +7,7 @@ import manifest from './public/manifest.json';
 
 // 最終修正的設定
 export default defineConfig({
-  base: '/anxi-app/',
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
@@ -31,11 +31,11 @@ export default defineConfig({
         swDest: 'dist/sw.js',
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        // ✅ 根據文件，保留此處設定
+        //  根據文件，保留此處設定
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       workbox: {
-        // ✅ 【關鍵修改】根據錯誤訊息，也在此處加入設定
+        //  【關鍵修改】根據錯誤訊息，也在此處加入設定
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         skipWaiting: true,
         clientsClaim: true,
