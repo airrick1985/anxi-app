@@ -2,6 +2,21 @@
   <v-container>
     <v-row justify="center">
       <v-col cols="12" md="8" lg="6">
+
+ <v-card v-if="isLoading && !projectConfig" class="mx-auto">
+          <v-card-text class="text-center py-8">
+            <v-progress-circular
+              :size="64"
+              :width="4"
+              color="primary"
+              indeterminate
+              class="mb-4"
+            ></v-progress-circular>
+            <h3 class="text-h6 mb-2">載入中...</h3>
+            <p class="text-grey">正在載入建案資訊，請稍候</p>
+          </v-card-text>
+        </v-card>
+
         <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
           <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
         </div>
@@ -316,7 +331,13 @@
         </template>
     </v-list-item>
 
-    <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
+<v-list-item 
+  title="建案名稱" 
+  :subtitle="projectConfig?.projectName || '載入中...'" 
+  prepend-icon="mdi-domain"
+>
+</v-list-item>
+
     <v-list-item title="戶別" :subtitle="existingBookingInfo['戶別']" prepend-icon="mdi-home-variant-outline"></v-list-item>
     <v-list-item title="姓名" :subtitle="existingBookingInfo['姓名']" prepend-icon="mdi-account-outline"></v-list-item>
     <v-list-item title="電話" :subtitle="existingBookingInfo['電話']" prepend-icon="mdi-phone-outline"></v-list-item>
@@ -387,19 +408,21 @@
                     ></v-date-picker>
 
                     <v-select
-                        label="預約時段"
-                        v-model="formStep2.預約時段"
-                        :items="availableTimeSlots"
-                        :disabled="!formStep2.預約日期"
-                        :rules="[v => !!v || '必填']"
-                        variant="outlined"
-                        no-data-text="請先選擇日期"
-                        class="mt-4"
-                    >
-                        <template v-slot:item="{ props, item }">
-                            <v-list-item v-bind="props" :disabled="item.raw.includes('已額滿')"></v-list-item>
-                        </template>
-                    </v-select>
+                      label="預約時段"
+                      v-model="formStep2.預約時段"
+                      :items="availableTimeSlots"
+                      :disabled="!formStep2.預約日期"
+                      :rules="[v => !!v || '必填']"
+                      variant="outlined"
+                      no-data-text="請先選擇日期"
+                      class="mt-4"
+                      item-title="title"
+                      item-value="value"
+                  >
+                      <template v-slot:item="{ props, item }">
+                          <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
+                      </template>
+                  </v-select>
                 </v-form>
              </v-card-text>
              <v-card-actions class="pa-4">
@@ -624,7 +647,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'; 
+import { ref, onMounted, computed, nextTick, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { 
  fetchProjectConfig,
@@ -641,7 +664,7 @@ import { useDate } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
 
-// --- ✅ 新增: 上傳報告相關 state ---
+// ---  新增: 上傳報告相關 state ---
 const isUploadMode = ref(false);
 const isDragActive = ref(false);
 const uploadSuccess = ref(false);
@@ -666,10 +689,10 @@ const uploadForm = ref({ ...initialUploadFormState });
 // 儲存上傳後的 URL
 const finalAuthLetterUrl = ref('');
 
-// ✅ 新增一個 ref 來追蹤勾選狀態
+//  新增一個 ref 來追蹤勾選狀態
 const isInstructionsConfirmed = ref(false);
 
-// ✅ 在 isInstructionsConfirmed 下方新增一個 ref
+//  在 isInstructionsConfirmed 下方新增一個 ref
 const isInstructionsDialogVisible = ref(false);
 
 const route = useRoute();
@@ -732,7 +755,18 @@ const finalBookingData = computed(() => ({
 const availableTimeSlots = computed(() => {
   if (!formStep2.value.預約日期) return [];
   const dateKey = formatDateToYYYYMMDD(formStep2.value.預約日期);
-  return bookingSlots.value.timeSlotsByDate[dateKey] || [];
+  const slots = bookingSlots.value.timeSlotsByDate[dateKey] || [];
+  
+  return slots.map(slotString => {
+    // 使用正規表示式提取時間部分，例如 "09:00"
+    const timeMatch = slotString.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+    const timeValue = timeMatch ? timeMatch[0] : '';
+    
+    return {
+      title: slotString, // 完整的字串，用於下拉選單顯示，例如 "09:00 (尚餘4位)"
+      value: timeValue,    // 只有時間，作為選取後的值，例如 "09:00"
+    };
+  });
 });
 
 // --- Methods ---
@@ -864,41 +898,40 @@ const handleGenerateLetter = async () => {
   }
 };
 
+
+// 在 onMounted 函數中修正
 onMounted(async () => {
   projectId.value = route.params.projectId;
-  // ✅ 修改點: 此處不再從靜態物件讀取 config，而是等待 API 回應
-  // const config = projectConfigurations[projectId.value];
+  isLoading.value = true;
   
-  // ✅ 新增: 呼叫新的 fetchProjectConfig API
   const config = await fetchProjectConfig(projectId.value);
 
-  if (config) {
+ if (config) {
+    //  修正：確保 projectName 屬性存在
+    if (config.name && !config.projectName) {
+      config.projectName = config.name;
+    }
+    
     projectConfig.value = config;
+    
     if (config.isPublished) {
       try {
-          // ✅ 修改點: 在呼叫時傳入 projectId.value
-          const [initialRes, unitsRes] = await Promise.all([
-            getBookingInitialData(projectConfig.value.projectName, projectId.value),
-            fetchAllUnitsForBooking(projectConfig.value.projectName, projectId.value)
-          ]);
+        const [initialRes, unitsRes] = await Promise.all([
+          getBookingInitialData(projectConfig.value.projectName, projectId.value),
+          fetchAllUnitsForBooking(projectConfig.value.projectName, projectId.value)
+        ]);
 
-          if (initialRes && initialRes.status === 'success' && initialRes.data) {
-                      if (Array.isArray(initialRes.data.buildings)) {
-                        initialRes.data.buildings.sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
-                      }
-                      initialData.value = initialRes.data;
-          } else {
-            throw new Error(initialRes.message || '無法獲取建案資料');
-          }
+        if (initialRes && initialRes.status === 'success') {
+          initialData.value = initialRes.data;
+        } else {
+        }
 
-          if (unitsRes && unitsRes.status === 'success' && unitsRes.data) {
-            allUnitsData.value = unitsRes.data;
-          } else {
-            throw new Error(unitsRes.message || '無法獲取戶別資料');
-          }
-
+        if (unitsRes && unitsRes.status === 'success') {
+          allUnitsData.value = unitsRes.data;
+        } else {
+        }
+          
       } catch (error) {
-        console.error("讀取初始資料失敗:", error);
         alert("系統忙碌中，無法讀取預約資料，請稍後再試。");
       } finally {
         isLoading.value = false;
@@ -917,9 +950,15 @@ const onBuildingChange = (building) => {
   formStep1.value.bookingType = null;
   existingBookingInfo.value = null;
   step.value = 1;
-  if (!building) { unitList.value = []; return; }
+  
+  if (!building) { 
+    unitList.value = [];
+    return; 
+  }
+  
   unitList.value = allUnitsData.value[building] || [];
 };
+
 const onUnitChange = (unitValue) => {
   const selectedUnit = unitList.value.find(u => u.unit === unitValue);
   if (selectedUnit) formStep1.value.address = selectedUnit.address;
@@ -984,10 +1023,10 @@ const handleStep1Submit = async () => {
     } else {
      throw new Error(res.message || '無法獲取可預約時段');
     }
- } catch (error) { // ✅ 確保 catch 區塊存在
+ } catch (error) { //  確保 catch 區塊存在
   console.error("步驟一處理失敗:", error);
   alert(`操作失敗：${error.message}`);
- } finally { // ✅ 確保 finally 區塊存在
+ } finally { //  確保 finally 區塊存在
   isLoading.value = false;
  }
 };
@@ -1004,10 +1043,19 @@ const handleStep2Submit = async () => {
 
   step.value = 3; // 所有檢查都通過，才前往步驟三
 };
+
 const handleGoBackAndRefresh = async () => {
   isLoading.value = true;
   try {
-    const res = await getBookingSlots(projectConfig.value.projectName, formStep1.value.unit, formStep1.value.bookingType, formStep1.value.bookingMethod);
+    //  修正：加入 projectId 參數
+    const res = await getBookingSlots(
+      projectConfig.value.projectName, 
+      formStep1.value.unit, 
+      formStep1.value.bookingType, 
+      formStep1.value.bookingMethod,
+      projectId.value //  加入缺少的 projectId 參數
+    );
+    
     if (res.status === 'success' && res.data) {
       bookingSlots.value = res.data;
       step.value = 2;
@@ -1047,27 +1095,35 @@ const submitBooking = async () => {
       finalAuthLetterUrl.value = uploadRes.url; 
     }
 
-    const payload = {
-      action: 'save_booking',
-      projectName: projectConfig.value.projectName,
+      const payload = {
+      projectId: projectId.value,
       bookingData: {
-        戶別: finalBookingData.value.戶別,
-        門牌: finalBookingData.value.address,
-        姓名: finalBookingData.value.姓名,
-        電話: finalBookingData.value.電話,
-        EMAIL: finalBookingData.value.EMAIL,
-        身分證: finalBookingData.value.idNumber, 
-        預約項目: finalBookingData.value.bookingType,
-        預約日期: finalBookingData.value.預約日期,
-        預約時段: finalBookingData.value.預約時段,
-        驗屋方式: finalBookingData.value.bookingMethod,
-        受託人姓名: finalBookingData.value.受託人姓名,
-        受託人電話: finalBookingData.value.受託人電話,
-        授權書路徑: authLetterFinalUrl,
+        projectName: projectConfig.value.projectName,
+        unitId: finalBookingData.value.戶別,
+        address: finalBookingData.value.address,
+        name: finalBookingData.value.姓名,
+        phone: finalBookingData.value.電話,
+        email: finalBookingData.value.EMAIL,
+        idNumber: finalBookingData.value.idNumber,
+        bookingType: finalBookingData.value.bookingType, // '初驗' 或 '複驗'
+        bookingDate: finalBookingData.value.預約日期, // YYYY/MM/DD
+        bookingTimeSlot: finalBookingData.value.預約時段, // '09:00-10:00 (尚餘 X 位)'
+        bookingMethod: finalBookingData.value.bookingMethod,
+        // 授權書相關
+        principalName: authFormData.value.委託人姓名,
+        principalIdNumber: authFormData.value.委託人身分證,
+        principalAddress: authFormData.value.委託人戶籍地,
+        agentName: finalBookingData.value.受託人姓名,
+        agentPhone: finalBookingData.value.受託人電話,
+        agentIdNumber: authFormData.value.受託人身分證,
+        agentAddress: authFormData.value.受託人戶籍地,
+        authorizationLetterUrl: authLetterFinalUrl,
+        // 從 formStep2 直接獲取 companyName
+        companyName: formStep2.value.companyName 
       }
     };
     
-    const res = await saveBooking(projectConfig.value.projectName, payload.bookingData);
+    const res = await saveBooking(payload);
 
     if (res.status === 'success') {
       if (res.data && res.data.bookingCode) {
@@ -1130,7 +1186,12 @@ const captureAndSave = async () => {
 const addToCalendar = () => {
     const title = `${projectConfig.value.projectName}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
     const dateStr = finalBookingData.value.預約日期;
-    const rawTimeStr = finalBookingData.value.預約時段.split('-')[0].trim();
+    
+    //  修改開始：使用正規表示式提取時間，更加穩健
+    const timeMatch = finalBookingData.value.預約時段.match(/(\d{1,2}:\d{2})/);
+    const rawTimeStr = timeMatch ? timeMatch[0] : '';
+    //  修改結束
+
     const timeStr = rawTimeStr.replace(/：/g, ':'); 
 
     const startDate = new Date(`${dateStr.replace(/\//g, '-')}T${timeStr}`);
@@ -1149,8 +1210,7 @@ const addToCalendar = () => {
     window.open(googleCalendarUrl, '_blank');
 };
 
-
-// --- ✅ 新增: 上傳報告相關 methods ---
+// ---  新增: 上傳報告相關 methods ---
 const onUploadBuildingChange = (building) => {
   uploadForm.value.unit = null;
   if (!building) {
@@ -1235,12 +1295,12 @@ const handleUploadSubmit = async () => {
     if (res.status === 'success') {
       uploadSuccess.value = true;
     } else {
-      // ✅ 捕捉後端回傳的業務邏輯錯誤
+      //  捕捉後端回傳的業務邏輯錯誤
       uploadErrorDialogMessage.value = res.message.replace(/\n/g, '<br>'); // 將換行符轉為HTML換行
       isUploadErrorDialogVisible.value = true;
     }
   } catch (error) {
-    // ✅ 捕捉網路或程式執行錯誤
+    //  捕捉網路或程式執行錯誤
     console.error('上傳報告失敗:', error);
     uploadErrorDialogMessage.value = `上傳失敗：${error.message}`;
     isUploadErrorDialogVisible.value = true;
@@ -1254,6 +1314,7 @@ const resetUploadMode = () => {
   uploadForm.value = { ...initialUploadFormState };
   if(uploadFormRef.value) uploadFormRef.value.resetValidation();
 };
+
 
 </script>
 
@@ -1276,7 +1337,7 @@ const resetUploadMode = () => {
   text-decoration: none;
   color: inherit;
 }
-/* ✅ 新增: 上傳元件樣式 */
+/*  新增: 上傳元件樣式 */
 .file-drop-zone {
   border: 2px dashed #ccc;
   border-radius: 8px;

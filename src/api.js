@@ -686,7 +686,7 @@ export async function updateSalesData(payload) {
     const updateFunction = httpsCallable(functions, 'updateSalesData');
     const result = await updateFunction({
       projectName: payload.projectName,
-      projectId: payload.projectId, // ✅ 新增：傳遞 projectId 到 Cloud Function
+      projectId: payload.projectId, //  新增：傳遞 projectId 到 Cloud Function
       unitId: payload.unitId,
       data: payload.data
     });
@@ -1284,7 +1284,7 @@ export async function fetchUserDetailsForAdmin(targetUserKey) {
  * [新] 管理員更新用戶資料 (包含後端欄位權限驗證)
  */
 export async function updateUserDetailsForAdmin(payload) {
-    // ✅ 接收 isNewUser 參數
+    //  接收 isNewUser 參數
     const { targetUserKey, adminKey, adminName, basicInfo, permissions, isNewUser } = payload;
 
     try {
@@ -1306,7 +1306,7 @@ export async function updateUserDetailsForAdmin(payload) {
             for (const key in basicInfo) {
                 const perm = mergedFieldPerms[key];
                 
-                // ✅ 核心修改點：根據 isNewUser 執行不同的權限判斷
+                //  核心修改點：根據 isNewUser 執行不同的權限判斷
                 const canWrite = 
                     (isNewUser && (perm === 'RU' || perm === 'C')) || // 新建模式: RU 或 C 都可以寫
                     (!isNewUser && perm === 'RU');                     // 編輯模式: 只有 RU 可以寫
@@ -2152,7 +2152,7 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
     console.log('getAvailableSlots 完整回傳:', result);
     console.log('result.data:', result.data);
     
-    // ✅ 根據 Cloud Functions 的回傳格式，包裝成前端期望的格式
+    //  根據 Cloud Functions 的回傳格式，包裝成前端期望的格式
     return {
       status: 'success',
       data: result.data  // 這裡是 Cloud Functions 回傳的實際資料
@@ -2179,18 +2179,23 @@ export const getAllBookingRules = async (projectName) => {
 
 
 /**
- * 儲存預約資料
- * @param {string} projectName 建案名稱
- * @param {object} bookingData 表單資料
+ * 儲存預約資料 (Firebase 版)
+ *  修改此函式以呼叫 Cloud Function
+ * @param {object} payload - 包含 projectId 和 bookingData 的物件
  */
-export const saveBooking = async (projectName, bookingData) => {
-  return fetchPost({
-    action: 'save_booking',
-    projectName,
-    bookingData,
-  }, INSPECTION_API);
+export const saveBooking = async (payload) => {
+  const doSaveBooking = httpsCallable(functions, 'saveBooking');
+  try {
+    const result = await doSaveBooking(payload);
+    // Cloud Function 成功時，回傳的資料會在 result.data 中
+    // 我們將其包裝成與舊版類似的格式，確保前端相容性
+    return { status: 'success', ...result.data };
+  } catch (error) {
+    console.error("API saveBooking 錯誤:", error);
+    // 將 HttpsError 轉換為前端習慣的格式
+    return { status: 'error', message: error.message };
+  }
 };
-
 
 
 
@@ -2992,7 +2997,7 @@ export async function batchUpdateHouseholds(updates) {
 }
 
 /**
- * ✅ 【新增】呼叫 Firebase Function 來批次上傳驗屋系統的戶別資料
+ *  【新增】呼叫 Firebase Function 來批次上傳驗屋系統的戶別資料
  * @param {string} projectId - 專案 ID
  * @param {Array<object>} householdsData - 從 Excel 解析出的戶別資料陣列
  * @returns {Promise<object>}
@@ -3412,7 +3417,7 @@ export const listenToSalesImages = (projectId, onDataChange, onError) => {
 };
 
 
-// ✅ START: 修改圖片上傳邏輯
+//  START: 修改圖片上傳邏輯
 /**
  * [舊] 直接上傳檔案 (現在改為備用或移除)
  */
@@ -3451,7 +3456,7 @@ export const uploadSalesImage = async (storagePath, fileName, fileBase64, projec
     throw new Error(error.message || "代理上傳失敗");
   }
 };
-// ✅ END: 修改圖片上傳邏輯
+//  END: 修改圖片上傳邏輯
 
 /**
  * 在 Firestore 中建立或更新銷控圖片的中繼資料
@@ -3672,9 +3677,9 @@ export async function triggerBackupJob(jobId, jobConfig) {
         return { status: 'error', message: error.message };
     }
 }
-// ✅ END: 新增備份任務管理 API
+//  END: 新增備份任務管理 API
 
-// ✅ START: 新增獲取集合列表的 API
+//  START: 新增獲取集合列表的 API
 /**
  * [新] 呼叫後端，獲取 Firestore 中所有集合的名稱列表
  * @returns {Promise<Array>}
@@ -3692,9 +3697,9 @@ export async function fetchFirestoreCollections() {
     return []; // 發生錯誤時回傳空陣列
   }
 }
-// ✅ END: 新增獲取集合列表的 API
+//  END: 新增獲取集合列表的 API
 
-// ✅ 新增觸發刪除的 API
+//  新增觸發刪除的 API
 export async function triggerDeleteJob(jobId, jobConfig, isDryRun) {
     try {
         const runDeleteJob = httpsCallable(functions, 'runDeleteJob');
@@ -3705,7 +3710,7 @@ export async function triggerDeleteJob(jobId, jobConfig, isDryRun) {
     }
 }
 
-// ✅ START: 新增備份檔案瀏覽 API
+//  START: 新增備份檔案瀏覽 API
 /**
  * [新] 呼叫後端，獲取 GCS 中指定路徑的檔案與資料夾列表
  * @param {string} path - 要瀏覽的路徑，例如 "backups/"
@@ -3744,9 +3749,9 @@ export async function fetchBackupFileContent(filePath, previewLines = 100) {
     return [`讀取檔案時發生錯誤: ${error.message}`];
   }
 }
-// ✅ END: 新增備份檔案瀏覽 API
+//  END: 新增備份檔案瀏覽 API
 
-// ✅ START: 新增觸發刪除備份檔案的 API
+//  START: 新增觸發刪除備份檔案的 API
 /**
  * [新] 呼叫後端，刪除 GCS 中指定的備份檔案
  * @param {string} filePath - GCS 中的完整檔案路徑
@@ -3762,9 +3767,9 @@ export async function triggerDeleteBackupFile(filePath) {
     return { status: 'error', message: error.message };
   }
 }
-// ✅ END: 新增觸發刪除備份檔案的 API
+//  END: 新增觸發刪除備份檔案的 API
 
-// ✅ START: 新增欄位批次更新 API
+//  START: 新增欄位批次更新 API
 /**
  * [新] 呼叫後端，產生用於欄位更新的 Excel 範本
  * @param {object} config - 包含 targetCollection, projectId, fields
@@ -3791,7 +3796,7 @@ export async function triggerGenerateExcelTemplate(config) {
 export async function triggerUpdateFromExcel(fileContent, targetCollection, isDryRun) {
   try {
     const update = httpsCallable(functions, 'updateFieldsFromExcel');
-    // ✅ 修改：傳送 fileContent 而不是 filePath
+    //  修改：傳送 fileContent 而不是 filePath
     const result = await update({ fileContent, targetCollection, isDryRun });
     return result.data;
   } catch (error) {
@@ -3801,7 +3806,7 @@ export async function triggerUpdateFromExcel(fileContent, targetCollection, isDr
 
 
 
-// ✅ START: 新增獲取集合欄位的 API
+//  START: 新增獲取集合欄位的 API
 /**
  * [新] 呼叫後端，獲取指定集合的可用欄位列表
  * @param {string} targetCollection 
@@ -3821,9 +3826,9 @@ export async function fetchAvailableFields(targetCollection, projectId) {
     return [];
   }
 }
-// ✅ END: 新增獲取集合欄位的 API
+//  END: 新增獲取集合欄位的 API
 
-// ✅ START: 新增特殊報告上傳 API
+//  START: 新增特殊報告上傳 API
 /**
  * [新] 呼叫後端，執行特殊驗屋報告的上傳與郵件通知
  * @param {object} payload - 包含所有必要資訊的物件
@@ -3839,11 +3844,11 @@ export async function triggerSpecialReportUpload(payload) {
     return { status: 'error', message: error.message };
   }
 }
-// ✅ END: 新增特殊報告上傳 API
+//  END: 新增特殊報告上傳 API
 
 
 // =================================================================
-// / ✅ 【新增】銷控 SVG 圖片管理 API
+// /  【新增】銷控 SVG 圖片管理 API
 // =================================================================
 
 /**
@@ -4029,7 +4034,7 @@ export async function getSvgBySvgName(projectId, svgName) {
 
 
 // =================================================================
-// / ✅ 【新增】銷售人員管理 API
+// /  【新增】銷售人員管理 API
 // =================================================================
 
 /**
@@ -4056,7 +4061,7 @@ export const listenToSalesPersonnel = (projectId, onDataChange) => {
 };
 
 /**
- * ✅ 【修改】新增或更新一筆銷售人員資料 (使用自訂文件 ID)
+ *  【修改】新增或更新一筆銷售人員資料 (使用自訂文件 ID)
  * @param {string} docId - 自訂的文件 ID (例如：姓名_電話)
  * @param {object} personnelData - 要寫入的人員資料
  * @returns {Promise<void>}
@@ -4095,7 +4100,7 @@ export const deleteSalesPersonnel = (docId) => {
 };
 
 // =================================================================
-// / ✅ 【新增】期款方式範本 (Payment Terms Template) 管理 API
+// /  【新增】期款方式範本 (Payment Terms Template) 管理 API
 // =================================================================
 
 /**
@@ -4122,7 +4127,7 @@ export const listenToPaymentTermTemplates = (projectId, onDataChange) => {
 };
 
 /**
- * ✅ 【修改】將 addPaymentTermTemplate 替換為 setPaymentTermTemplate
+ *  【修改】將 addPaymentTermTemplate 替換為 setPaymentTermTemplate
  * [新] 新增或完整覆蓋一筆期款範本 (使用自訂文件 ID)
  * @param {string} docId - 自訂的文件 ID
  * @param {object} templateData - 要新增的範本資料物件
