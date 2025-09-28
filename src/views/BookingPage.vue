@@ -364,11 +364,29 @@
         </v-list-item>
     </v-list>
 </v-card-text>
-            <v-card-actions class="pa-4">
-              <v-btn v-if="projectConfig.showReportUploadButton" prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
-              <v-spacer></v-spacer>
-              <v-btn color="error" size="large" variant="elevated" @click="confirmCancelBooking" :loading="isCanceling" :disabled="!isBookingActive">取消預約</v-btn>
-            </v-card-actions>
+             <v-card-actions class="pa-4 d-flex justify-end">
+      <div v-if="projectConfig.showReportUploadButton" class="mr-auto">
+          <v-btn prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
+      </div>
+      <v-btn 
+        class="mr-2"
+        variant="text"
+        size="large"
+        @click="resetBookingFlow"
+      >
+        返回預約頁面
+      </v-btn>
+      <v-btn 
+        color="error" 
+        size="large" 
+        variant="elevated" 
+        @click="confirmCancelBooking" 
+        :loading="isCanceling" 
+        :disabled="!isBookingActive"
+      >
+        取消預約
+      </v-btn>
+    </v-card-actions>
           </div>
 
                     <div v-if="step === 2">
@@ -516,12 +534,44 @@
 
       </v-list>
       </v-card-text>
-    <v-card-actions class="pa-4 d-flex justify-space-around">
-              <v-btn prepend-icon="mdi-arrow-left" :color="projectConfig.themeColor" @click="resetBookingFlow" variant="elevated">返回預約頁面</v-btn>
-              <v-btn prepend-icon="mdi-camera" :color="projectConfig.themeColor" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
-              <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
-          </v-card-actions>
-      </div>
+    <v-card-actions class="pa-2">
+      <v-row dense>
+        <v-col cols="12" sm="auto" class="flex-grow-1">
+          <v-btn 
+            prepend-icon="mdi-arrow-left" 
+            :color="projectConfig.themeColor" 
+            @click="resetBookingFlow" 
+            variant="elevated"
+            block
+          >
+            返回預約頁面
+          </v-btn>
+        </v-col>
+        <v-col cols="6" sm="auto">
+          <v-btn 
+            prepend-icon="mdi-camera" 
+            :color="projectConfig.themeColor" 
+            @click="captureAndSave" 
+            variant="outlined"
+            block
+          >
+            截圖
+          </v-btn>
+        </v-col>
+        <v-col cols="6" sm="auto">
+          <v-btn 
+            prepend-icon="mdi-calendar-plus" 
+            :color="projectConfig.themeColor" 
+            @click="addToCalendar" 
+            variant="outlined"
+            block
+          >
+            加入行事曆
+          </v-btn>
+        </v-col>
+      </v-row>
+    </v-card-actions>
+    </div>
           </div>
           </template>
         </v-card>
@@ -736,6 +786,11 @@ const step1Form = ref(null);
 const step2Form = ref(null);
 const bookingResultCard = ref(null);
 
+// 代表「今天」的常數，並將時間設為午夜
+const today = new Date();
+today.setHours(0, 0, 0, 0); // 將時間部分歸零，以便進行日期比較
+
+
 // --- State ---
 const isLoading = ref(true);
 const isCanceling = ref(false);
@@ -804,10 +859,25 @@ const availableTimeSlots = computed(() => {
   });
 });
 
+
 // --- Methods ---
 const isDateAllowed = (date) => {
+  // 條件一：日期必須在今天之後
+  if (date <= today) {
+    return false;
+  }
+  
   const dateStr = formatDateToYYYYMMDD(date);
-  return !bookingSlots.value.unavailableDates.includes(dateStr);
+  
+  // 條件二：日期不能在後端提供的「不可預約日」清單中
+  const isGenerallyAvailable = !bookingSlots.value.unavailableDates.includes(dateStr);
+  
+  // 條件三 (新)：該日期必須存在至少一個可預約的時段 (無論是否額滿)
+  // 使用 ?. (Optional Chaining) 語法安全地檢查屬性是否存在且長度大於 0
+  const hasDefinedSlots = (bookingSlots.value.timeSlotsByDate[dateStr]?.length || 0) > 0;
+  
+  // 必須同時滿足條件二和條件三
+  return isGenerallyAvailable && hasDefinedSlots;
 };
 
  // 授權書對話框狀態
@@ -1048,13 +1118,12 @@ const handleStep1Submit = async () => {
     }
 
     // --- 步驟 2: 檢查現有預約 ---
-    if (initialData.value.checkDuplicate === 'ON') {
+   if (initialData.value.checkDuplicate === 'ON') {
+// ✓ START: 修正參數傳遞錯誤
       const res = await checkExistingBooking(
-          projectConfig.value.projectName, 
+          projectId.value, 
           formStep1.value.unit, 
-          formStep1.value.bookingType,
-          formStep1.value.idNumber,
-          projectId.value // 傳入 projectId
+          formStep1.value.bookingType
         );
         
       if (res.status === 'success' && res.data.status === 'found') {

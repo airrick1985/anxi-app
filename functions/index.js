@@ -292,36 +292,37 @@ exports.validateId = onCall(async (request) => {
 
 
 /**
- *  檢查指定戶別是否有有效預約
- */
-// 修改 checkExistingBooking 函式
+ * 檢查指定戶別是否有有效預約 (包含詳細日誌)
+ */
 exports.checkExistingBooking = onCall(async (request) => {
-  const { projectId, unitId, bookingType, idNumber } = request.data;
+  const { projectId, unitId, bookingType } = request.data;
+  
 
-  if (!projectId || !unitId || !bookingType || !idNumber) {
-    throw new HttpsError("invalid-argument", "缺少重複檢查所需的必要參數。");
+  if (!projectId || !unitId || !bookingType) {
+    console.error("[ERROR] checkExistingBooking: 缺少必要參數。");
+    throw new HttpsError("invalid-argument", "缺少重複檢查所需的必要參數 (projectId, unitId, bookingType)。");
   }
 
   try {
-    //  修正：使用正確的資料庫連接
     const db = new Firestore({ databaseId: 'anxi-app' });
     
-    const snapshot = await db.collection('appointments')
+
+    const query = db.collection('appointments')
       .where('projectId', '==', projectId)
       .where('unitId', '==', unitId)
       .where('bookingType', '==', bookingType)
-      .where('bookerIdNumber', '==', idNumber)
       .where('status', '==', '預約中')
       .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
+      .limit(1);
+
+    const snapshot = await query.get();
+
 
     if (snapshot.empty) {
       return { status: 'success', data: { status: 'not_found' } };
     } else {
       const bookingData = snapshot.docs[0].data();
 
-      // Firestore 的 Timestamp 需要轉換才能在前端使用
       if (bookingData.appointmentDate && bookingData.appointmentDate.toDate) {
         bookingData.appointmentDate = bookingData.appointmentDate.toDate().toISOString();
       }
@@ -332,12 +333,11 @@ exports.checkExistingBooking = onCall(async (request) => {
       return { status: 'success', data: { status: 'found', booking: bookingData } };
     }
   } catch (error) {
-    console.error("checkExistingBooking 錯誤:", error);
     throw new HttpsError("internal", "檢查現有預約時發生錯誤。");
   }
 });
 
-// 完全重寫 getAvailableSlots 函式
+// 獲取可預約時段
 exports.getAvailableSlots = onCall(async (request) => {
   const { projectId, unitId, bookingType, bookingMethod } = request.data;
 
@@ -350,7 +350,8 @@ exports.getAvailableSlots = onCall(async (request) => {
     
     // 步驟 1: 檢查戶別資料
     const householdDocId = `${projectId}_${unitId}`;
-    console.log(`[DEBUG] 查找戶別文檔: ${householdDocId}`);
+
+    
     
     const householdDoc = await db.collection('households').doc(householdDocId).get();
     if (!householdDoc.exists) {
@@ -362,14 +363,12 @@ exports.getAvailableSlots = onCall(async (request) => {
     const batchCodeField = bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
     const batchCode = householdData[batchCodeField];
     
-    console.log(`[DEBUG] 批次代號: ${batchCode}`);
     
     if (!batchCode) {
       throw new HttpsError("permission-denied", `此戶別的 "${bookingType}" 預約目前未開放。`);
     }
 
     // 步驟 2: 查找預約批次（修正查詢邏輯）
-    console.log(`[DEBUG] 查找預約批次...`);
     const batchQuery = await db.collection('bookingBatches')
       .where('projectId', '==', projectId)
       .where('batchCode', '==', batchCode)
@@ -384,8 +383,44 @@ exports.getAvailableSlots = onCall(async (request) => {
     const batchDoc = batchQuery.docs[0];
     const batchData = batchDoc.data();
     const batchId = batchDoc.id;
+
+     // ✓ START: 使用更穩健的時間驗證邏輯
+    let applicationStart, applicationEnd;
+
+    // 嘗試從 Timestamp 或類似物件中建立 Date 物件
+    if (batchData.applicationStart?.toDate) {
+      applicationStart = batchData.applicationStart.toDate();
+    } else if (batchData.applicationStart?.seconds) {
+      applicationStart = new Date(batchData.applicationStart.seconds * 1000);
+    } else {
+      applicationStart = new Date(batchData.applicationStart); // 兼容舊的字串格式
+    }
+
+    if (batchData.applicationEnd?.toDate) {
+      applicationEnd = batchData.applicationEnd.toDate();
+    } else if (batchData.applicationEnd?.seconds) {
+      applicationEnd = new Date(batchData.applicationEnd.seconds * 1000);
+    } else {
+      applicationEnd = new Date(batchData.applicationEnd); // 兼容舊的字串格式
+    }
+
+    // 最終驗證轉換結果是否為有效日期
+    if (isNaN(applicationStart.getTime()) || isNaN(applicationEnd.getTime())) {
+      throw new HttpsError("failed-precondition", `此預約批次 (${batchData.batchCode}) 的時間格式不正確，請聯繫管理員。`);
+    }
+    
+    const now = new Date();
+
+    // 進行精確的時間點比較 (此部分邏輯不變)
+    if (now < applicationStart) {
+        const startTimeString = applicationStart.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+        throw new HttpsError("failed-precondition", `此預約尚未開放，請於 ${startTimeString} 後再試。`);
+    }
+    if (now > applicationEnd) {
+        const endTimeString = applicationEnd.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+        throw new HttpsError("failed-precondition", `此預約已於 ${endTimeString} 截止。`);
+    }
     
-    console.log(`[DEBUG] 找到批次: ${batchId}, 時間範圍: ${batchData.bookingStart} ~ ${batchData.bookingEnd}`);
 
     // 步驟 3: 查找批次規則連結（修正查詢方式）
     const linksQuery = await db.collection('batchRuleLinks')
@@ -393,7 +428,6 @@ exports.getAvailableSlots = onCall(async (request) => {
       .where('batchId', '==', batchId)
       .get();
 
-    console.log(`[DEBUG] 找到規則連結: ${linksQuery.size} 筆`);
 
     if (linksQuery.empty) {
       return {
@@ -410,7 +444,6 @@ exports.getAvailableSlots = onCall(async (request) => {
     // 遍歷每個連結，獲取對應的日期規則
     for (const linkDoc of linksQuery.docs) {
       const linkData = linkDoc.data();
-      console.log(`[DEBUG] 處理規則連結:`, linkData);
       
       const ruleQuery = await db.collection('dateRules')
         .where('projectId', '==', projectId)
@@ -419,7 +452,6 @@ exports.getAvailableSlots = onCall(async (request) => {
       
       ruleQuery.forEach(ruleDoc => {
         const ruleData = ruleDoc.data();
-        console.log(`[DEBUG] 日期規則: ${ruleData.date}`, ruleData.slots);
         dateRulesMap.set(ruleData.date, ruleData);
       });
     }
@@ -451,13 +483,11 @@ exports.getAvailableSlots = onCall(async (request) => {
       bookingsCount[key] = (bookingsCount[key] || 0) + 1;
     });
 
-    console.log(`[DEBUG] 現有預約統計:`, bookingsCount);
 
     // 步驟 6: 組合可用時段
     const timeSlotsByDate = {};
     
     dateRulesMap.forEach((rule, dateStr) => {
-      console.log(`[DEBUG] 處理日期 ${dateStr} 的規則`);
       
       if (!rule.slots || typeof rule.slots !== 'object') {
         console.warn(`日期 ${dateStr} 缺少時段設定`);
@@ -477,7 +507,6 @@ exports.getAvailableSlots = onCall(async (request) => {
             const currentBookings = bookingsCount[bookingKey] || 0;
             const capacity = slotInfo.capacity || 0;
             
-            console.log(`[DEBUG] 時段 ${timeSlot}: 容量=${capacity}, 已預約=${currentBookings}`);
             
             if (currentBookings < capacity) {
               slotsForDay.push(`${timeSlot} (尚餘 ${capacity - currentBookings} 位)`);
@@ -493,7 +522,6 @@ exports.getAvailableSlots = onCall(async (request) => {
       }
     });
 
-    console.log(`[DEBUG] 最終可用時段:`, timeSlotsByDate);
 
     return {
       startDate: batchData.bookingStart,

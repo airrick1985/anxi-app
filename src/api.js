@@ -2137,21 +2137,19 @@ export async function getUnitsByBuilding(projectName, building) {
 
 /**
  *  檢查是否已有有效預約
- * @param {string} projectName (舊參數，後端已不使用)
  * @param {string} unitId 戶別
  * @param {string} bookingType 預約項目
- * @param {string} idNumber 身分證號碼
  * @param {string} projectId 建案 ID
  */
-export async function checkExistingBooking(projectName, unitId, bookingType, idNumber, projectId) {
-  const doCheck = httpsCallable(functions, 'checkExistingBooking');
-  try {
-    const result = await doCheck({ projectId, unitId, bookingType, idNumber });
-    return result.data;
-  } catch (error) {
-    console.error("API checkExistingBooking 錯誤:", error);
-    return { status: 'error', message: error.message };
-  }
+export async function checkExistingBooking(projectId, unitId, bookingType) {
+ const doCheck = httpsCallable(functions, 'checkExistingBooking');
+ try {
+  const result = await doCheck({ projectId, unitId, bookingType });
+  return result.data;
+ } catch (error) {
+  console.error("API checkExistingBooking 錯誤:", error);
+  return { status: 'error', message: error.message };
+ }
 }
 
 /**

@@ -891,7 +891,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
 
-// ✅ 將所有來自 '@/api' 的引入合併成這一個
+//  將所有來自 '@/api' 的引入合併成這一個
 import {
   updateProjectSettings,   
   fetchProjectConfig,      
@@ -923,7 +923,7 @@ const batchForm = ref(null);
 const bookingBatches = ref([]);
 const bookingTypeOptions = ref(['初驗', '複驗', '其他']);
 
-// ✅ 將 defaultSettings 從 const 常數改為 computed 屬性
+//  將 defaultSettings 從 const 常數改為 computed 屬性
 const defaultSettings = computed(() => ({
     pageTitle: `${projectName.value} 線上預約系統`, 
     titleColor: '#FFFFFF',
@@ -935,7 +935,7 @@ const defaultSettings = computed(() => ({
     showBookingMethod: false,
     showReportUploadButton: false, 
     bookingMethodOptions: [],
-    // ✅ intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
+    //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
       body: `<p>歡迎使用「${projectName.value}」線上驗屋預約系統，請依下方步驟完成您的預約。</p>`,
@@ -976,11 +976,11 @@ const defaultSettings = computed(() => ({
     }
 }));
 
-// ✅ 修改 projectSettings 的初始值，加上 .value
+//  修改 projectSettings 的初始值，加上 .value
 const projectSettings = ref(JSON.parse(JSON.stringify(defaultSettings.value))); 
 
 
-// ✅ --- 新增：預約設定抽屜相關的狀態與邏輯 ---
+//  --- 新增：預約設定抽屜相關的狀態與邏輯 ---
 const isSettingsDrawerOpen = ref(false);
 const isSettingsLoading = ref(false);
 const isSavingSettings = ref(false);
@@ -1021,7 +1021,7 @@ const activePickerTabEnd = ref(0);
 const tempDateEnd = ref(null);
 const tempTimeEnd = ref(null);
 
-// ✅ --- 新增：公開預約設定選項 ---
+//  --- 新增：公開預約設定選項 ---
 const defaultBookingTypes = ref(['初驗', '複驗']);
 const defaultBookingMethods = ref(['屋主自驗', '設計師陪驗', '授權驗屋', '代驗公司']);
 
@@ -1116,9 +1116,34 @@ function formatDateWithWeekday(dateInput) {
   return `${formatDate(date)} (${weekday})`;
 }
 
-function formatDisplayDateTime(dateTimeString) {
-  if (!dateTimeString) return '';
-  return dateTimeString.replace('T', ' ');
+// ✓ START: 修正 formatDisplayDateTime 函式，使其能處理 Timestamp 物件
+function formatDisplayDateTime(dateTime) {
+  if (!dateTime) return '';
+
+  let d;
+  // 檢查傳入的是否為 Firestore Timestamp 物件 (特徵是有 seconds 屬性)
+  if (typeof dateTime === 'object' && dateTime !== null && typeof dateTime.seconds === 'number') {
+    // 從秒數建立 Date 物件
+    d = new Date(dateTime.seconds * 1000);
+  } else {
+    // 如果不是，則照原樣處理 (可能是 Date 物件或字串)
+    d = new Date(dateTime);
+  }
+
+  // 驗證轉換後的日期是否有效
+  if (isNaN(d.getTime())) {
+    return ''; 
+  }
+
+  // 手動格式化為 'YYYY-MM-DD HH:mm'
+  const pad = (num) => num.toString().padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 function isWeekend(dateInput) {
@@ -1143,9 +1168,46 @@ async function loadDataForProject() {
   isLoading.value = true;
   await projectStore.fetchProjects();
   if (projectName.value) {
+// ✓ START: 將載入設定的邏輯提前
+    // 使用 Promise.all 同時執行兩項載入任務，效率更高
     isBatchLoading.value = true;
-    bookingBatches.value = await fetchBookingBatches(projectId.value);
-    isBatchLoading.value = false;
+    isSettingsLoading.value = true; // 也觸發設定的載入狀態
+    try {
+      const [batches, settings] = await Promise.all([
+        fetchBookingBatches(projectId.value),
+        fetchProjectConfig(projectId.value)
+      ]);
+      
+      bookingBatches.value = batches;
+
+      // 載入成功後，合併遠端設定與預設值
+      if (settings) {
+        projectSettings.value.logoUrl = settings.logoUrl || ''; 
+        projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle; 
+        projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
+        projectSettings.value.themeColor = settings.themeColor || defaultSettings.value.themeColor; 
+        projectSettings.value.isPublished = settings.isPublished || false;
+        projectSettings.value.checkDuplicate = settings.checkDuplicate || "OFF";
+        projectSettings.value.validateId = settings.validateId || "OFF";
+        projectSettings.value.bookingTypes = settings.bookingTypes || [];
+        projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
+        projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
+        projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
+        projectSettings.value.intro = {
+          ...defaultSettings.value.intro,
+          ...(settings.intro || {}),
+          alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
+          contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) }
+        };
+      }
+
+    } catch (error) {
+      showSnackbar(`載入頁面資料失敗: ${error.message}`, 'error');
+    } finally {
+      isBatchLoading.value = false;
+      isSettingsLoading.value = false; // 結束載入狀態
+    }
+// ✓ END: 載入邏輯修改完成
   } else {
     showSnackbar(`錯誤：找不到建案 ID ${projectId.value}`, 'error');
   }
@@ -1156,6 +1218,19 @@ async function loadDataForProject() {
 async function openBatchDialog(item = null) {
   customBookingType.value = '';
   if (item) {
+    // ✓ START: 處理從後端讀取的時間物件
+    // 1. 深度複製一份從 props 傳來的 item 物件，避免直接修改
+    const itemFromServer = JSON.parse(JSON.stringify(item));
+
+    // 2. Firebase SDK v9 會自動將 Timestamp 轉為 JS Date 物件，
+    //    但如果資料是舊的字串格式，我們手動將其轉換為 Date 物件以確保相容性
+    if (itemFromServer.applicationStart && typeof itemFromServer.applicationStart === 'string') {
+        itemFromServer.applicationStart = new Date(itemFromServer.applicationStart);
+    }
+    if (itemFromServer.applicationEnd && typeof itemFromServer.applicationEnd === 'string') {
+        itemFromServer.applicationEnd = new Date(itemFromServer.applicationEnd);
+    }
+
     const dailyRules = await fetchRulesForBatch(item.id);
 
     for (const date in dailyRules) {
@@ -1166,9 +1241,8 @@ async function openBatchDialog(item = null) {
         }
       }
     }
-    editedBatch.value = { ...JSON.parse(JSON.stringify(item)), dailyRules };
-    
-    // ❌ 已移除 originalDailyRules.value = JSON.parse(JSON.stringify(dailyRules));
+    // 3. 使用處理過後的 itemFromServer
+    editedBatch.value = { ...itemFromServer, dailyRules };
     
     if (!bookingTypeOptions.value.includes(item.bookingType)) {
       editedBatch.value.bookingType = '其他';
@@ -1176,7 +1250,6 @@ async function openBatchDialog(item = null) {
     }
   } else {
     editedBatch.value = { ...defaultBatch, dailyRules: {} };
-    // ❌ 已移除 originalDailyRules.value = {};
   }
   selectedDaysForEditing.value = []; 
   isBatchDialogVisible.value = true;
@@ -1189,7 +1262,7 @@ async function openDeleteDialog(item) {
   deleteBatchDates.value = [];
 
   try {
-    // ✅ [修改] 使用新的 API 函式
+    //  [修改] 使用新的 API 函式
     const dailyRules = await fetchRulesForBatch(item.id);
     deleteBatchDates.value = Object.keys(dailyRules).sort();
   } catch (error) {
@@ -1210,7 +1283,7 @@ async function openPreviewDialog(item) {
   isPreviewDialogVisible.value = true;
   isPreviewLoading.value = true;
   try {
-    // ✅ [修改] 使用新的 API 函式
+    //  [修改] 使用新的 API 函式
     const dailyRules = await fetchRulesForBatch(item.id);
     
     // Ensure data structure is consistent
@@ -1265,9 +1338,9 @@ async function initiateSaveProcess() {
   isSaving.value = false;
 }
 
-// ✅ 在 BookingRuleManager.vue 中，用這個新版本取代舊的函式
+//  在 BookingRuleManager.vue 中，用這個新版本取代舊的函式
 async function checkConflictsAndShowDialog() {
-  // ✅ [關鍵修改] 直接使用 datepicker 中選定的日期作為要處理的列表
+  //  [關鍵修改] 直接使用 datepicker 中選定的日期作為要處理的列表
   const datesToCheck = selectedDaysForEditing.value.map(d => formatDate(d));
 
   if (datesToCheck.length === 0) {
@@ -1279,7 +1352,7 @@ async function checkConflictsAndShowDialog() {
   const currentBatchId = editedBatch.value.id || null;
   const conflictResult = await checkDateConflicts(projectId.value, datesToCheck, currentBatchId);
 
-  // ✅ [修正] 將排序程式碼加回來
+  //  [修正] 將排序程式碼加回來
   conflictResult.conflictingDates.sort((a, b) => a.date.localeCompare(b.date));
 
 
@@ -1306,11 +1379,11 @@ async function checkConflictsAndShowDialog() {
   }
 }
 
-// ✅ 在 BookingRuleManager.vue 中，用這個新版本取代舊的函式
+//  在 BookingRuleManager.vue 中，用這個新版本取代舊的函式
 async function executeSave() {
   isSaving.value = true;
 
-  // ✅ [關鍵修改] 再次根據 selectedDaysForEditing 過濾，確保只提交勾選日期的資料
+  //  [關鍵修改] 再次根據 selectedDaysForEditing 過濾，確保只提交勾選日期的資料
   const selectedDateKeys = selectedDaysForEditing.value.map(d => formatDate(d));
 
   const filteredDailyRules = {};
@@ -1325,12 +1398,22 @@ async function executeSave() {
     }
   });
 
-  const finalPayload = {
+  const dataToSave = JSON.parse(JSON.stringify(editedBatch.value));
+
+  // 將 applicationStart/End 從字串 'YYYY-MM-DDTHH:mm' 轉換為 JS Date 物件
+  if (dataToSave.applicationStart && typeof dataToSave.applicationStart === 'string') {
+      dataToSave.applicationStart = new Date(dataToSave.applicationStart);
+  }
+  if (dataToSave.applicationEnd && typeof dataToSave.applicationEnd === 'string') {
+      dataToSave.applicationEnd = new Date(dataToSave.applicationEnd);
+  }
+
+ const finalPayload = {
     batchData: { 
-      ...editedBatch.value,
-      dailyRules: filteredDailyRules // 使用過濾後的規則
+      ...dataToSave, // 使用轉換過後的 dataToSave
+      dailyRules: filteredDailyRules
     },
-    resolutions: filteredResolutions // 使用過濾後的決策
+    resolutions: filteredResolutions
   };
 
   if (finalPayload.batchData.bookingType === '其他') {
@@ -1340,6 +1423,7 @@ async function executeSave() {
   finalPayload.batchData.projectName = projectName.value;
 
   try {
+    // Firebase SDK 會自動將 Date 物件轉換為 Timestamp 存入資料庫
     const res = await saveBatchWithRules(finalPayload); 
     if (res.status !== 'success') throw new Error(res.message);
 
@@ -1446,7 +1530,7 @@ const isDayConfigured = (day) => {
 function handleSelectAll(isChecked, slot) {
   selectedDaysForEditing.value.forEach(day => {
     const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
-    // ✅ 將 allMethodOptions 改為 projectSettings.bookingMethodOptions
+    //  將 allMethodOptions 改為 projectSettings.bookingMethodOptions
     if (daySlot) daySlot.methods = isChecked ? [...projectSettings.value.bookingMethodOptions] : [];
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
@@ -1459,7 +1543,7 @@ function getSelectAllState(slot) {
   if (!methodsArray) return { checked: false, indeterminate: false };
 
   const selectedCount = methodsArray.length;
-  // ✅ 將 allMethodOptions 改為從 projectSettings 中讀取，並加上 .value
+  //  將 allMethodOptions 改為從 projectSettings 中讀取，並加上 .value
   const totalCount = projectSettings.value.bookingMethodOptions.length;
 
   return {
@@ -1483,17 +1567,38 @@ function saveApplicationEnd() {
   menuAppEnd.value = false;
 }
 
+// ✓ START: 同步修正 getBatchStatus 函式，使其也能處理 Timestamp 物件
 function getBatchStatus(item) {
   if (!item.applicationStart || !item.applicationEnd) return { text: '時間未設定', color: 'grey-darken-2' };
-  const now = new Date(); 
-  const start = new Date(item.applicationStart);
-  const end = new Date(item.applicationEnd);
+  
+  const now = new Date();
+  let start, end;
+
+  // 穩健地處理起始時間
+  if (typeof item.applicationStart === 'object' && item.applicationStart !== null && typeof item.applicationStart.seconds === 'number') {
+    start = new Date(item.applicationStart.seconds * 1000);
+  } else {
+    start = new Date(item.applicationStart);
+  }
+
+  // 穩健地處理結束時間
+  if (typeof item.applicationEnd === 'object' && item.applicationEnd !== null && typeof item.applicationEnd.seconds === 'number') {
+    end = new Date(item.applicationEnd.seconds * 1000);
+  } else {
+    end = new Date(item.applicationEnd);
+  }
+  
+  // 驗證日期有效性
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return { text: '時間格式錯誤', color: 'orange' };
+  }
+
   if (now < start) return { text: '尚未開放', color: 'blue-grey' };
   if (now > end) return { text: '已截止', color: 'red-darken-1' };
   return { text: '開放中', color: 'green' };
 }
 
-// ✅ [新增] 從 sharedBy 陣列中提取預約項目的函式
+//  [新增] 從 sharedBy 陣列中提取預約項目的函式
 function extractBookingType(sharedByArray) {
   if (!sharedByArray || sharedByArray.length === 0) {
     return '';
@@ -1511,40 +1616,8 @@ function extractBookingType(sharedByArray) {
 
 async function openSettingsDrawer() {
     isSettingsDrawerOpen.value = true;
-    isSettingsLoading.value = true;
-    projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value)); 
-
-    if (projectId.value) {
-        try {
-            const settings = await fetchProjectConfig(projectId.value);
-            if (settings) {
-                // 使用 Object.assign 和深層合併來安全地填充資料
-                projectSettings.value.logoUrl = settings.logoUrl || ''; 
-                projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle; 
-                projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
-                projectSettings.value.themeColor = settings.themeColor || defaultSettings.value.themeColor; 
-                projectSettings.value.isPublished = settings.isPublished || false;
-                projectSettings.value.checkDuplicate = settings.checkDuplicate || "OFF";
-                projectSettings.value.validateId = settings.validateId || "OFF";
-                projectSettings.value.bookingTypes = settings.bookingTypes || [];
-                projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
-                projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
-                projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
-                
-                  // ✅ 修改：合併 intro 物件時，來源也要加上 .value
-                      projectSettings.value.intro = {
-                    ...defaultSettings.value.intro,
-                    ...(settings.intro || {}),
-                    alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
-                    contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) }
-                };
-            }
-        } catch (error) {
-            showSnackbar(`載入專案設定失敗: ${error.message}`, 'error');
-        } finally {
-            isSettingsLoading.value = false;
-        }
-    }
+    // 因為資料已在頁面載入時預先讀取，這裡不再需要執行載入邏輯。
+    // isSettingsLoading 的狀態也會由 loadDataForProject 控制。
 }
 
 function addFaqItem() {
@@ -1581,7 +1654,7 @@ async function saveSettings() {
 }
 
 
-// ✅ 新增：套用範本的通用函式
+//  新增：套用範本的通用函式
 function applyTemplate(fieldName, index = -1) {
   const sourceIntro = defaultSettings.value.intro;
   const targetIntro = projectSettings.value.intro;
@@ -1608,7 +1681,7 @@ function applyTemplate(fieldName, index = -1) {
 }
 
 
-// ✅ 新增處理圖片上傳的函式
+//  新增處理圖片上傳的函式
 function handleLogoUpload(event) {
   const file = event.target.files[0];
   if (!file) {
@@ -1653,11 +1726,18 @@ watch(customBookingType, () => {
 watch(menuAppStart, (isOpen) => {
   if (isOpen) {
     activePickerTabStart.value = 0;
-    if (editedBatch.value.applicationStart) {
-      const [datePart, timePart] = editedBatch.value.applicationStart.split('T');
-      tempDateStart.value = new Date(datePart);
-      tempTimeStart.value = timePart || '00:00';
+    const startValue = editedBatch.value.applicationStart;
+    if (startValue) {
+      // 無論 startValue 是 Date 物件還是字串，都建立一個新的 Date 物件
+      const startDate = new Date(startValue);
+      // 驗證日期是否有效
+      if (!isNaN(startDate.getTime())) {
+        tempDateStart.value = startDate;
+        // 從 Date 物件中提取 'HH:mm' 格式的時間
+        tempTimeStart.value = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+      }
     } else {
+      // 如果沒有值，設定為預設值
       tempDateStart.value = new Date();
       tempTimeStart.value = '00:00';
     }
@@ -1667,10 +1747,13 @@ watch(menuAppStart, (isOpen) => {
 watch(menuAppEnd, (isOpen) => {
   if (isOpen) {
     activePickerTabEnd.value = 0;
-    if (editedBatch.value.applicationEnd) {
-      const [datePart, timePart] = editedBatch.value.applicationEnd.split('T');
-      tempDateEnd.value = new Date(datePart);
-      tempTimeEnd.value = timePart || '00:00';
+    const endValue = editedBatch.value.applicationEnd;
+    if (endValue) {
+      const endDate = new Date(endValue);
+      if (!isNaN(endDate.getTime())) {
+        tempDateEnd.value = endDate;
+        tempTimeEnd.value = endDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+      }
     } else {
       tempDateEnd.value = new Date();
       tempTimeEnd.value = '00:00';
