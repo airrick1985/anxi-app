@@ -399,14 +399,24 @@
                         :key="system"
                         cols="12" sm="6" md="4"
                       >
-                        <v-checkbox
-                          v-model="permissionMatrix[system][project]"
-                          :label="system"
-                          hide-details
-                          density="compact"
-                          :disabled="getFieldPermission('permissions') === 'R'"
-                        ></v-checkbox>
-                      </v-col>
+
+                               <v-tooltip
+                        location="top"
+                        :text="functionDescriptionMap[system]"
+                        :disabled="!functionDescriptionMap[system]"
+                      >
+                        <template v-slot:activator="{ props }">
+                          <v-checkbox
+                            v-bind="props"
+                            v-model="permissionMatrix[system][project]"
+                            :label="system"
+                            hide-details
+                            density="compact"
+                            :disabled="getFieldPermission('permissions') === 'R'"
+                          ></v-checkbox>
+                        </template>
+                      </v-tooltip>
+                      </v-col>              
                     </v-row>
                   </v-expansion-panel-text>
                 </v-expansion-panel>
@@ -631,6 +641,15 @@ const getFieldPermission = (fieldName) => {
     return currentUserFieldPermissions.value[fieldName] || ''; // 預設隱藏
 };
 
+// ✓【新增】建立一個從權限名稱到描述的快速查找表
+const functionDescriptionMap = computed(() => {
+  return systemFunctions.value.reduce((map, func) => {
+    if (func.name && func.description) {
+      map[func.name] = func.description;
+    }
+    return map;
+  }, {});
+});
 
 // --- Watchers ---
 watch(selectedRoleIndex, (newIndex) => {

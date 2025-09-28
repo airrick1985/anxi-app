@@ -1,5 +1,5 @@
 <template>
-  <v-container>
+  <v-container fluid style="background-color: #F4F4F7; min-height: 100vh;">
     <v-row justify="center">
       <v-col cols="12" md="8" lg="6">
 
@@ -274,6 +274,14 @@
                   @update:model-value="onUnitChange"
                 ></v-select>
 
+                <v-text-field
+                  v-model="formStep1.address"
+                  label="門牌"
+                  variant="outlined"
+                  readonly
+                  disabled
+                ></v-text-field>
+
                 <v-select
                   v-model="formStep1.bookingType"
                  :items="projectConfig.bookingTypes" 
@@ -285,29 +293,30 @@
                 ></v-select>
                 
                 <v-select
-         v-if="projectConfig.showBookingMethod"
-         v-model="formStep1.bookingMethod"
-         :items="projectConfig.bookingMethodOptions"
-         label="驗屋方式"
-         variant="outlined"
-         :rules="[v => !!v || '驗屋方式為必填項']"
-         :disabled="isLoading || !formStep1.unit || !isBookingActive"
-        ></v-select>
+                    v-if="projectConfig.showBookingMethod"
+                    v-model="formStep1.bookingMethod"
+                    :items="projectConfig.bookingMethodOptions"
+                    label="驗屋方式"
+                    variant="outlined"
+                    :rules="[v => !!v || '驗屋方式為必填項']"
+                    :disabled="isLoading || !formStep1.unit || !isBookingActive"
+                  ></v-select>
 
-                <v-text-field
-                  v-model="formStep1.address"
-                  label="門牌"
-                  variant="outlined"
-                  readonly
-                  disabled
-                ></v-text-field>
-                    <v-text-field
-                      v-model="formStep1.idNumber"
-                      :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
-                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
-                      variant="outlined"
-                      :disabled="isLoading || !isBookingActive"
-                    ></v-text-field>
+                  <v-text-field
+                    v-if="formStep1.bookingMethod === '代驗公司'"
+                    v-model="formStep1.companyName"
+                    label="代驗公司名稱"
+                    variant="outlined"
+                    :rules="[v => !!v || '請輸入代驗公司名稱']"
+                    :disabled="isLoading || !isBookingActive"
+                  ></v-text-field>
+                  <v-text-field
+                    v-model="formStep1.idNumber"
+                    :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
+                    :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
+                    variant="outlined"
+                    :disabled="isLoading || !isBookingActive"
+                  ></v-text-field>
                   </v-form>
                 </v-card-text>
                 <v-card-actions class="pa-4">
@@ -323,7 +332,7 @@
         <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
     </v-alert>
 
-    <v-list lines="two" class="text-left" density="compact">
+    <v-list lines="two" class="text-left" density="compact" >
         
         <v-list-item title="預約代碼" :subtitle="existingBookingInfo.bookingCode" prepend-icon="mdi-pound-box-outline">
             <template v-slot:subtitle="{ subtitle }">
@@ -344,11 +353,13 @@
         <v-list-item title="EMAIL" :subtitle="existingBookingInfo.bookerEmail" prepend-icon="mdi-email-outline"></v-list-item>
         <v-divider class="my-2"></v-divider>
         <v-list-item title="預約項目" :subtitle="existingBookingInfo.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
+        <v-list-item title="驗屋方式" :subtitle="existingBookingInfo.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+        <v-list-item v-if="existingBookingInfo.inspectionCompanyName" title="代驗公司" :subtitle="existingBookingInfo.inspectionCompanyName" prepend-icon="mdi-office-building"></v-list-item>
         <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo.appointmentDate)" prepend-icon="mdi-calendar-check-outline"></v-list-item>
         <v-list-item title="預約時段" :subtitle="existingBookingInfo.appointmentTimeSlot" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
         <v-list-item title="預約狀態" :subtitle="existingBookingInfo.status" prepend-icon="mdi-list-status">
             <template v-slot:subtitle="{ subtitle }">
-                <v-chip color="info" size="small" label>{{ subtitle }}</v-chip>
+                <v-chip color="green" variant="flat" size="small" >{{ subtitle }}</v-chip>
             </template>
         </v-list-item>
     </v-list>
@@ -441,11 +452,11 @@
                 <v-list lines="two">
                 <v-list-item title="建案名稱" :subtitle="projectConfig.projectName"></v-list-item>
                 <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
+                <v-list-item title="門牌" :subtitle="finalBookingData.address"></v-list-item>
                 <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
                 <v-list-item title="電話" :subtitle="finalBookingData.電話"></v-list-item>
-                <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>
-                
-                <template v-if="finalBookingData.bookingMethod === '授權驗屋'">
+                <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>              
+                <template v-if="finalBookingData.bookingMethod === '授權驗屋'">                
                   <v-divider class="my-2"></v-divider>
                   <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"></v-list-item>
                   <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話"></v-list-item>
@@ -453,9 +464,13 @@
                 
                 <v-divider class="my-2"></v-divider>
                 <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
+
+                <v-list-item title="驗屋方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
+                <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName"></v-list-item>
                 <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
                 <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
               </v-list>
+
               </v-card-text>
               <v-card-actions class="pa-4">
                   <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
@@ -465,48 +480,48 @@
           </div>
 
            <div v-if="step === 4">
-            <v-card-text class="text-center py-8" ref="bookingResultCard">
-                <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
-                <h3 class="text-h5 mb-2">預約成功！</h3>
-                <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
-                
-                <v-list lines="two" class="text-left" density="compact">
-                    
-                    <v-list-item title="預約代碼" :subtitle="savedBookingCode" prepend-icon="mdi-pound-box-outline">
-                        <template v-slot:subtitle="{ subtitle }">
-                            <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
-                        </template>
-                    </v-list-item>
+  <v-card-text class="text-center py-8" ref="bookingResultCard">
+      <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
+      <h3 class="text-h5 mb-2">預約成功！</h3>
+      <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
+      
+      <v-list lines="two" class="text-left" density="compact">
 
-                    <v-list-item title="建案名稱" :subtitle="projectConfig.projectName" prepend-icon="mdi-domain"></v-list-item>
-                    <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
-                    <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
-                    <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
-                    <template v-if="finalBookingData.bookingMethod === '授權驗屋'">
-                    <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名" prepend-icon="mdi-account-tie"></v-list-item>
-                    <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話" prepend-icon="mdi-phone-forward"></v-list-item>
-                    </template>
-                    <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
-                    <v-divider class="my-2"></v-divider>
+          <v-list-item title="預約代碼" :subtitle="savedBookingCode" prepend-icon="mdi-pound-box-outline">
+              <template v-slot:subtitle="{ subtitle }">
+                  <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
+              </template>
+          </v-list-item>
 
-                   <v-list-item v-if="finalAuthLetterUrl">
-                      <v-btn :href="finalAuthLetterUrl" target="_blank" color="teal" variant="outlined" block>
-                        <v-icon left>mdi-file-check-outline</v-icon>
-                        查看已上傳的授權書
-                      </v-btn>
-                    </v-list-item>
+          <v-list-item 
+              title="建案名稱" 
+              :subtitle="projectConfig?.projectName || '載入中...'" 
+              prepend-icon="mdi-domain"
+          >
+          </v-list-item>
+          
+          <v-list-item title="戶別" :subtitle="finalBookingData.戶別" prepend-icon="mdi-home-variant-outline"></v-list-item>
+          <v-list-item title="門牌" :subtitle="finalBookingData.address" prepend-icon="mdi-map-marker-outline"></v-list-item>
+          <v-list-item title="姓名" :subtitle="finalBookingData.姓名" prepend-icon="mdi-account-outline"></v-list-item>
+          <v-list-item title="電話" :subtitle="finalBookingData.電話" prepend-icon="mdi-phone-outline"></v-list-item>
+          <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL" prepend-icon="mdi-email-outline"></v-list-item>
+          
+          <v-divider class="my-2"></v-divider>
+          
+          <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
+          <v-list-item title="驗屋方式" :subtitle="finalBookingData.bookingMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+          <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName" prepend-icon="mdi-office-building"></v-list-item>
+          <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+          <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
 
-
-                    <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
-                    <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
-                    <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
-                </v-list>
-            </v-card-text>
-              <v-card-actions class="pa-4 d-flex justify-space-around">
-                  <v-btn prepend-icon="mdi-camera" :color="projectConfig.themeColor" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
-                  <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
-              </v-card-actions>
-          </div>
+      </v-list>
+      </v-card-text>
+    <v-card-actions class="pa-4 d-flex justify-space-around">
+              <v-btn prepend-icon="mdi-arrow-left" :color="projectConfig.themeColor" @click="resetBookingFlow" variant="elevated">返回預約頁面</v-btn>
+              <v-btn prepend-icon="mdi-camera" :color="projectConfig.themeColor" @click="captureAndSave" variant="outlined">截圖預約紀錄</v-btn>
+              <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar" variant="outlined">加入行事曆</v-btn>
+          </v-card-actions>
+      </div>
           </div>
           </template>
         </v-card>
@@ -641,7 +656,26 @@
       </v-btn>
     </v-card-actions>
   </v-card>
+
+
 </v-dialog>
+<div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
+  <span>Powered by&nbsp;</span>
+  <v-chip
+    class="ml-1"
+    href="https://airrick1985.wixsite.com/anxi"
+    target="_blank"
+    rel="noopener noreferrer"
+    color="blue-grey"
+    variant="tonal"
+    size="small"
+    pill
+  >
+    <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+    anxismart安熙智慧建案管理系統
+  </v-chip>
+</div>
+
 
 </v-container>
 </template>
@@ -714,7 +748,7 @@ const initialData = ref({ buildings: [], checkDuplicate: 'OFF', bookingTypes: []
 const allUnitsData = ref({});
 const unitList = ref([]);
 const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [], timeSlotsByDate: {}, bookingOptions: {} });
-const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: '屋主自驗', address: '', idNumber: '' });
+const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' });
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
 
@@ -899,6 +933,29 @@ const handleGenerateLetter = async () => {
   }
 };
 
+// 重置預約流程的函式
+const resetBookingFlow = () => {
+  step.value = 1;
+  savedBookingCode.value = '';
+  existingBookingInfo.value = null;
+  
+  // 重置表單資料
+  formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' };
+  formStep2.value = { 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' };
+
+  // 重置授權書相關狀態
+  isAuthLetterGenerated.value = false;
+  generatedAuthLetterUrl.value = '';
+  finalAuthLetterUrl.value = '';
+
+  // 重置表單驗證狀態
+  if (step1Form.value) {
+    step1Form.value.resetValidation();
+  }
+  if (step2Form.value) {
+    step2Form.value.resetValidation();
+  }
+};
 
 // 在 onMounted 函數中修正
 onMounted(async () => {
@@ -1110,6 +1167,7 @@ const submitBooking = async () => {
         bookingDate: finalBookingData.value.預約日期, // YYYY/MM/DD
         bookingTimeSlot: finalBookingData.value.預約時段, // '09:00-10:00 (尚餘 X 位)'
         bookingMethod: finalBookingData.value.bookingMethod,
+        companyName: finalBookingData.value.companyName,
         // 授權書相關
         principalName: authFormData.value.委託人姓名,
         principalIdNumber: authFormData.value.委託人身分證,
@@ -1119,8 +1177,7 @@ const submitBooking = async () => {
         agentIdNumber: authFormData.value.受託人身分證,
         agentAddress: authFormData.value.受託人戶籍地,
         authorizationLetterUrl: authLetterFinalUrl,
-        // 從 formStep2 直接獲取 companyName
-        companyName: formStep2.value.companyName 
+
       }
     };
     
@@ -1160,7 +1217,7 @@ const handleCancelBooking = async () => {
       existingBookingInfo.value = null;
       // 可選：刷新頁面或回到第一步
       step.value = 1;
-      formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: '屋主自驗', address: '', idNumber: '' };
+      formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' };
 
     } else {
       throw new Error(res.message || '取消失敗');
@@ -1194,11 +1251,8 @@ const addToCalendar = () => {
     const title = `${projectConfig.value.projectName}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
     const dateStr = finalBookingData.value.預約日期;
     
-    //  修改開始：使用正規表示式提取時間，更加穩健
     const timeMatch = finalBookingData.value.預約時段.match(/(\d{1,2}:\d{2})/);
     const rawTimeStr = timeMatch ? timeMatch[0] : '';
-    //  修改結束
-
     const timeStr = rawTimeStr.replace(/：/g, ':'); 
 
     const startDate = new Date(`${dateStr.replace(/\//g, '-')}T${timeStr}`);
@@ -1212,7 +1266,27 @@ const addToCalendar = () => {
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); 
     const formatDate = (date) => date.toISOString().replace(/-|:|\.\d\d\d/g, "");
 
-    const googleCalendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatDate(startDate)}/${formatDate(endDate)}&details=${encodeURIComponent(`戶別：${finalBookingData.value.戶別}`)}&location=${encodeURIComponent(projectConfig.value.projectName)}`;
+    // ✓ START: 組合完整的預約資訊作為備註內容
+    let eventDetails = `預約資訊摘要：\n\n`;
+    eventDetails += `建案：${projectConfig.value.projectName}\n`;
+    eventDetails += `戶別：${finalBookingData.value.戶別}\n`;
+    eventDetails += `門牌：${finalBookingData.value.address}\n\n`;
+    eventDetails += `預約項目：${finalBookingData.value.bookingType}\n`;
+    eventDetails += `驗屋方式：${finalBookingData.value.bookingMethod}\n`;
+    if (finalBookingData.value.companyName) {
+        eventDetails += `代驗公司：${finalBookingData.value.companyName}\n`;
+    }
+    eventDetails += `\n預約人：${finalBookingData.value.姓名}\n`;
+    eventDetails += `電話：${finalBookingData.value.電話}\n`;
+    eventDetails += `Email：${finalBookingData.value.EMAIL}\n`;
+
+    if (finalBookingData.value.受託人姓名) {
+        eventDetails += `\n受託人：${finalBookingData.value.受託人姓名}\n`;
+        eventDetails += `受託人電話：${finalBookingData.value.受託人電話}\n`;
+    }
+    // ✓ END: 組合備註內容
+
+    const googleCalendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatDate(startDate)}/${formatDate(endDate)}&details=${encodeURIComponent(eventDetails)}&location=${encodeURIComponent(finalBookingData.value.address)}`;
     
     window.open(googleCalendarUrl, '_blank');
 };

@@ -96,10 +96,10 @@ html {
   width: 8px;
 }
 .v-main::-webkit-scrollbar-thumb {
-  background: #90A4AE;
+  background: #F4F4F7;
   border-radius: 4px;
 }
 .v-main::-webkit-scrollbar-track {
-  background: #CFD8DC;
+  background: #F4F4F7;
 }
 </style>

@@ -111,8 +111,6 @@ exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request)
 // / 自動為超級管理員授權 (新版 - 依角色動態查找)
 // =================================================================
 
-const ALL_SYSTEM_PERMISSIONS = [ '人員管理', '報價系統', '銷控系統', '報價系統銷售選單', '客戶管理', '客變系統', '寄信-銷控', '寄信-驗屋', '收信-銷控', '收信-驗屋', '訂閱查詢', '驗屋時間表-修改', '驗屋時間表-檢視', '驗屋系統' ];
-
 exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
     const anxiDb = new Firestore({ databaseId: 'anxi-app' });
     const snap = event.data;
@@ -130,6 +128,18 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
     }
 
     try {
+        // ✓ START: 動態獲取所有系統權限的中文名稱
+        const systemFunctionsRef = anxiDb.collection('systemFunctions');
+        const systemFunctionsSnapshot = await systemFunctionsRef.get();
+        
+        const allSystemPermissions = systemFunctionsSnapshot.docs.map(doc => doc.data().name);
+
+        if (allSystemPermissions.length === 0) {
+            console.log("systemFunctions 集合中沒有定義任何權限，中止操作。");
+            return;
+        }
+        // ✓ END: 動態獲取所有系統權限的中文名稱
+
         //  1. 查詢 users 集合，找出所有 roles 陣列中包含 "超級管理員" 的使用者
         const usersRef = anxiDb.collection('users');
         const superAdminQuery = usersRef.where('roles', 'array-contains', '超級管理員');
@@ -151,10 +161,10 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
                 currentPermissions = permissionDoc.data().permissions || {};
             }
 
-            // 更新權限物件：新增或覆蓋這個新專案的權限
+            // ✓ 更新權限物件：使用動態產生的權限列表
             currentPermissions[projectId] = {
                 projectName: projectName,
-                systems: ALL_SYSTEM_PERMISSIONS
+                systems: allSystemPermissions
             };
 
             // 將更新後的整個權限物件寫回 Firestore
@@ -239,8 +249,8 @@ exports.getAllUnitsForBooking = onCall(async (request) => {
 
 
 /**
- *  驗證戶別與身分證號碼是否相符
- */
+ * 驗證戶別與身分證號碼是否相符
+ */
 exports.validateId = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
     const { projectId, unitId, idNumber } = request.data;
@@ -250,7 +260,6 @@ exports.validateId = onCall(async (request) => {
     }
 
     try {
-        // 在 households 集合中，文件 ID 就是 projectId_unitId
         const householdDocId = `${projectId}_${unitId}`;
         const householdDoc = await db.collection('households').doc(householdDocId).get();
 
@@ -262,11 +271,15 @@ exports.validateId = onCall(async (request) => {
         const storedId = String(householdData.buyerIdNumber || '').trim();
         const inputId = String(idNumber).trim();
 
-        if (storedId === inputId) {
+        // ✓ START: 修改驗證邏輯
+        // 條件一：輸入的 ID 與資料庫中的 ID 相符
+        // 條件二：輸入的 ID 與當前建案的 Project ID 相符 (管理員快速通關)
+        if (storedId === inputId || inputId === projectId) {
             return { status: 'success', message: '身分驗證成功。' };
         } else {
             throw new HttpsError('permission-denied', '身分證號碼與此戶別的資料不符，請重新確認。');
         }
+        // ✓ END: 修改驗證邏輯
 
     } catch (error) {
         console.error("validateId 錯誤:", error);
@@ -3731,6 +3744,48 @@ exports.uploadInspectionHouseholds = onCall({ timeoutSeconds: 540, memory: "1GiB
   }
 });
 
+// ✓ START: 新增共用函式，用於根據權限查找副本收件人
+/**
+ * 根據專案 ID 和權限名稱，獲取應收到副本通知的使用者 Email 列表
+ * @param {string} projectId - 專案 ID
+ * @param {string} permissionName - 權限的中文名稱
+ * @returns {Promise<string[]>} - Email 字串陣列
+ */
+async function getCcRecipients(projectId, permissionName) {
+  const db = new Firestore({ databaseId: "anxi-app" });
+  try {
+    // 步驟 1: 查詢 userPermissions 集合，找出擁有指定權限的使用者手機
+    const permQuery = db.collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', permissionName);
+    
+    const permSnapshot = await permQuery.get();
+    if (permSnapshot.empty) {
+      console.log(`[getCcRecipients] 在專案 ${projectId} 中找不到擁有 '${permissionName}' 權限的使用者。`);
+      return [];
+    }
+
+    const userPhones = permSnapshot.docs.map(doc => doc.id);
+    if (userPhones.length === 0) return [];
+
+    // 步驟 2: 使用手機號碼去 users 集合查詢對應的 Email
+    const usersQuery = db.collection('users').where(FieldPath.documentId(), 'in', userPhones);
+    const usersSnapshot = await usersQuery.get();
+    if (usersSnapshot.empty) return [];
+
+    // 步驟 3: 提取並過濾有效的 Email
+    const emails = usersSnapshot.docs
+      .map(doc => doc.data().email)
+      .filter(email => email && typeof email === 'string'); // 過濾掉空值或無效的 email
+    
+    console.log(`[getCcRecipients] 為專案 ${projectId} 找到 ${emails.length} 位副本收件人。`);
+    return emails;
+
+  } catch (error) {
+    console.error(`[getCcRecipients] 查找副本收件人時發生錯誤:`, error);
+    return []; // 發生錯誤時回傳空陣列，確保主流程不受影響
+  }
+}
+
 /**
  *  【新增】儲存自訂欄位定義
  * 用於從前端接收新欄位的設定，並將其寫入 projectFieldDefinitions 集合
@@ -3871,6 +3926,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
                 projectId: projectId,
                 createdAt: Timestamp.now(),
                 unitId: bookingData.unitId,
+                address: bookingData.address || '',
                 bookerName: bookingData.name,
                 bookerPhone: bookingData.phone,
                 bookerEmail: bookingData.email,
@@ -3900,20 +3956,22 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
         // --- 交易成功後，寄送 Email ---
         const { bookingCode, newAppointmentData } = result;
 
-                //  新增日誌 1: 檢查從交易中回傳的資料是否正確
-        console.log("[Email Debug] 1. 交易成功，準備寄送 Email。 newAppointmentData:", JSON.stringify(newAppointmentData));
-        console.log("[Email Debug] 1. 交易成功，準備寄送 Email。 bookingData from client:", JSON.stringify(bookingData));
-
+               
 
         const projectRef = db.collection('projects').doc(projectId);
         const projectDoc = await projectRef.get();
         let closingText = '請於預約時段準時抵達，感謝您的配合。';
-        if (projectDoc.exists && projectDoc.data().emailConfig && projectDoc.data().emailConfig.closingText) {
-            closingText = projectDoc.data().emailConfig.closingText;
-        }
+         let inspectionNotesHtml = '';
+    if (projectDoc.exists) {
+      const projectData = projectDoc.data();
+      if (projectData.emailConfig && projectData.emailConfig.closingText) {
+        closingText = projectData.emailConfig.closingText;
+      }
+      if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
+        inspectionNotesHtml = projectData.intro.alert.text;
+      }
+    }
 
-                //  新增日誌 2: 檢查 closingText 是否有成功抓取
-        console.log("[Email Debug] 2. 最終的 closingText:", closingText);
 
         const mailTransport = nodemailer.createTransport({
             service: 'gmail',
@@ -3922,8 +3980,6 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
 
         const subject = `【${bookingData.projectName}】預約成功通知 (${newAppointmentData.unitId})`;
 
-                //  新增日誌 3: 檢查 email 主旨
-        console.log("[Email Debug] 3. Email 主旨:", subject);
 
 
         const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
@@ -3950,10 +4006,12 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0; font-weight: bold; font-size: 16px; color: #D32F2F;">${newAppointmentData.bookingCode}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${bookingData.projectName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${newAppointmentData.unitId}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">門牌</td><td style="padding: 12px 0;">${newAppointmentData.address}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約姓名</td><td style="padding: 12px 0;">${newAppointmentData.bookerName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約人電話</td><td style="padding: 12px 0;">${newAppointmentData.bookerPhone}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${newAppointmentData.bookerEmail}</td></tr>
           
+
           ${newAppointmentData.agentName ? `
            <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${newAppointmentData.agentName}</td></tr>
            <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${newAppointmentData.agentPhone}</td></tr>
@@ -3968,39 +4026,48 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             </tr>
           ` : ''}
 
-          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
+    <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
+          
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
+          ${newAppointmentData.inspectionCompanyName ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${newAppointmentData.inspectionCompanyName}</td></tr>
+          ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${newAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
-          <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${newAppointmentData.appointmentTimeSlot}</td></tr>
-        </tbody>
+        <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${newAppointmentData.appointmentTimeSlot}</td></tr>       
+           </tbody>
       </table>
       
+      ${inspectionNotesHtml ? `
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
+          <h3 style="margin-top: 0; color: #333;">驗屋說明</h3>
+          ${inspectionNotesHtml}
+        </div>
+      ` : ''}
       <p>${closingText}</p>
-      
       ${bookingLinkHtml}
-
     </div>
     <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${bookingData.projectName} 預約系統</p>
+      <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+      </p>
     </div>
   </div>
 </div>
         `;
 
-                //  新增日誌 4: 檢查最終要寄送的 HTML 內容 (只顯示前500個字元避免洗版)
-        console.log("[Email Debug] 4. 最終 htmlBody (前500字元):", htmlBody.substring(0, 500));
 
 
-        const mailInfo = await mailTransport.sendMail({
+        const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+
+        await mailTransport.sendMail({
             to: newAppointmentData.bookerEmail,
+            cc: ccRecipients,
             subject: subject,
             html: htmlBody, 
             name: `${bookingData.projectName} 預約系統`
         });
-
-                //  新增日誌 5: 檢查 nodemailer 的回傳結果
-        console.log("[Email Debug] 5. Nodemailer 回應:", mailInfo);
-
         
         return { status: 'success', data: { bookingCode } };
 
@@ -4079,10 +4146,16 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
                     <tbody>
                       <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
                       <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
+                     ${bookingData.address ? `<tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">門牌</td><td style="padding: 12px 0;">${bookingData.address}</td></tr>` : ''}
                       <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
-                      <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
-                      <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
-                    </tbody>
+           
+                        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod}</td></tr>
+                        ${bookingData.inspectionCompanyName ? `
+                        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${bookingData.inspectionCompanyName}</td></tr>
+                        ` : ''}
+                        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+                                   <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
+                                            </tbody>
                   </table>
                   <p>若您需要重新預約，歡迎隨時返回預約頁面。感謝您的使用。</p>
                   
@@ -4094,18 +4167,26 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
 
                 </div>
                 <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
-                  <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
-                </div>
-              </div>
+              <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+              
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+                本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+              </p>
             </div>
+          </div>
+        </div>
             `;
+
+            const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
 
             await mailTransport.sendMail({
                 to: bookingData.bookerEmail,
+                cc: ccRecipients, // ✓ 加入副本收件人
                 subject: subject,
                 html: htmlBody,
                 name: `${projectName} 預約系統`
             });
+
             console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
         }
 

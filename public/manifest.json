@@ -1,7 +1,7 @@
 {
   "name": "ANXI建案管理系統",
   "short_name": "ANXI",
-  "start_url": "/anxi-app/",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",
@@ -20,5 +20,5 @@
       "type": "image/png"
     }
   ],
-  "version": "0.0.225"
+  "version": "0.0.226"
 }

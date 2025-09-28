@@ -106,7 +106,7 @@ const isActive = (path) => route.path === path;
 }
 
 .active-btn {
-  color: #1976d2 !important;
+  color: #F4F4F7 !important;
 }
 
 @keyframes bounce {
