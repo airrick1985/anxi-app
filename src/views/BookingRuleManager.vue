@@ -14,14 +14,14 @@
           </template>
         </v-tooltip>
         <v-icon start>mdi-cogs</v-icon>
-        <span>預約批次管理：{{ projectName || '讀取中...' }}</span> 
+        <span>驗屋預約系統管理：{{ projectName || '讀取中...' }}</span> 
         <v-spacer></v-spacer>
       </v-card-title>
       <v-divider></v-divider>
       
       <v-tabs v-model="activeTab" bg-color="primary">
-        <v-tab value="batches">預約批次管理</v-tab>
-        <v-tab value="settings">預約設定</v-tab>
+        <v-tab value="batches">批次管理</v-tab>
+        <v-tab value="settings">驗屋預約系統設定</v-tab>
       </v-tabs>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -267,6 +267,21 @@
                     </v-chip>
                   </template>
                 </v-combobox>
+
+                   <v-combobox
+                  v-model="projectSettings.inspectionStaff"
+                  label="編輯驗屋人員"
+                  multiple
+                  chips
+                  closable-chips
+                  variant="outlined"
+                  density="compact"
+                  hint="在此新增修改驗屋人員"
+                  persistent-hint
+                  class="mt-6"
+                ></v-combobox>
+
+
                 <v-divider class="my-6"></v-divider>
                 <div class="d-flex align-center"> <label class="v-label text-caption">招呼語</label>
   <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')" class="ml-4">套用範本</v-btn> </div>
@@ -919,7 +934,14 @@ const isBatchLoading = ref(false);
 const isBatchDialogVisible = ref(false);
 const batchForm = ref(null);
 const bookingBatches = ref([]);
-const bookingTypeOptions = ref(['初驗', '複驗', '其他']);
+
+//  建立 computed 屬性，動態產生預約項目選項
+const bookingTypeOptions = computed(() => {
+  // 確保 projectSettings.bookingTypes 是陣列，避免出錯
+  const types = Array.isArray(projectSettings.value.bookingTypes) ? projectSettings.value.bookingTypes : [];
+  // 將設定中的項目與固定的「其他」選項合併
+  return [...types];
+});
 
 //  將 defaultSettings 從 const 常數改為 computed 屬性
 const defaultSettings = computed(() => ({
@@ -933,6 +955,7 @@ const defaultSettings = computed(() => ({
     showBookingMethod: false,
     showReportUploadButton: false, 
     bookingMethodOptions: [],
+    inspectionStaff: [], 
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
@@ -1210,6 +1233,7 @@ async function loadDataForProject() {
         projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
         projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
         projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
+        projectSettings.value.inspectionStaff = settings.inspectionStaff || []; 
         projectSettings.value.intro = {
           ...defaultSettings.value.intro,
           ...(settings.intro || {}),

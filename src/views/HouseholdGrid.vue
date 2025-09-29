@@ -273,7 +273,10 @@ const dateFormatter = (params) => {
 };
 const linkRenderer = (params) => {
   if (!params.value) return '<span>-</span>';
-  return `<a href="${params.value}" target="_blank" rel="noopener noreferrer">開啟連結</a>`;
+  // 將文字替換為 Material Design Icon 的 HTML 標籤
+  return `<a href="${params.value}" target="_blank" rel="noopener noreferrer" style="color: #1976D2; font-size: 1.2rem; text-decoration: none;">
+            <i class="mdi mdi-open-in-new"></i>
+          </a>`;
 };
 const SwitchHeaderRenderer = {
   template: `

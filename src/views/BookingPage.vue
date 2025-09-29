@@ -604,7 +604,7 @@
   <v-col cols="12" md="6">
     <v-card variant="outlined">
       <div class="d-flex justify-space-between align-center pa-4 pb-0">
-        <v-card-title class="text-subtitle-1 pa-0">委託人簽名</v-card-title>
+        <v-card-title class="text-subtitle-1 pa-0">委託人(屋主)簽名</v-card-title>
         <v-btn variant="tonal" size="small" @click="clearDelegatorSignature">
           <v-icon start>mdi-eraser</v-icon>
           清除
@@ -816,6 +816,8 @@ const formatDateToYYYYMMDD = (date) => {
   const day = date.getDate().toString().padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+// 用於顯示給使用者看的日期格式
 const formatDisplayDate = (dateString) => {
   if (!dateString) return '';
   return dateAdapter.format(new Date(dateString), 'keyboardDate');
@@ -836,12 +838,15 @@ const isIdValidationRequired = computed(() => {
   return initialData.value.validateId === 'ON';
 });
 
+// 將兩個表單資料合併，並進行必要的轉換
 const finalBookingData = computed(() => ({
   ...formStep1.value,
   ...formStep2.value,
   戶別: formStep1.value.unit,
   預約日期: formStep2.value.預約日期 ? dateAdapter.format(formStep2.value.預約日期, 'keyboardDate') : null,
 }));
+
+// 依據所選日期，動態產生可用的時間選項
 const availableTimeSlots = computed(() => {
   if (!formStep2.value.預約日期) return [];
   const dateKey = formatDateToYYYYMMDD(formStep2.value.預約日期);
@@ -1207,13 +1212,15 @@ const submitBooking = async () => {
       const yyyymmdd = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
       const fileName = `${formStep1.value.unit}驗屋授權書${yyyymmdd}.png`;
       
+      //* 上傳授權書
       const uploadRes = await uploadAuthLetter(
         generatedAuthLetterUrl.value,
         fileName,
-        projectConfig.value.projectName,
+        projectId.value, 
         formStep1.value.unit 
       );
       
+      // 檢查上傳結果
       if (uploadRes.status !== 'success') {
         throw new Error(uploadRes.message || '授權書上傳失敗');
       }
@@ -1222,6 +1229,7 @@ const submitBooking = async () => {
       finalAuthLetterUrl.value = uploadRes.url; 
     }
 
+    // 準備預約資料
       const payload = {
       projectId: projectId.value,
       bookingData: {
@@ -1250,6 +1258,7 @@ const submitBooking = async () => {
       }
     };
     
+    // ✅ 提交預約
     const res = await saveBooking(payload);
 
     if (res.status === 'success') {
@@ -1268,10 +1277,12 @@ const submitBooking = async () => {
   }
 };
 
+// 取消預約相關 methods
 const confirmCancelBooking = () => {
   if (confirm("您確定要取消這個預約嗎？此操作無法復原。")) handleCancelBooking();
 };
 
+// 取消預約的實際處理函式
 const handleCancelBooking = async () => {
   isCanceling.value = true;
   try {
@@ -1299,6 +1310,7 @@ const handleCancelBooking = async () => {
   }
 };
 
+// 下載預約結果截圖
 const captureAndSave = async () => {
   if (!bookingResultCard.value) return;
   try {
@@ -1316,6 +1328,7 @@ const captureAndSave = async () => {
   }
 };
 
+// 產生並打開 Google 行事曆連結
 const addToCalendar = () => {
     const title = `${projectConfig.value.projectName}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
     const dateStr = finalBookingData.value.預約日期;
@@ -1381,7 +1394,7 @@ const handleFileDrop = (event) => {
     processFile(files[0]);
   }
 };
-
+// 檔案拖放處理
 const handleFileSelect = (event) => {
   const files = event.target.files;
   if (files.length > 0) {
@@ -1389,6 +1402,7 @@ const handleFileSelect = (event) => {
   }
 };
 
+// 處理檔案的邏輯
 const processFile = (file) => {
   if (file.type !== 'application/pdf') {
     alert('檔案格式錯誤，僅限上傳 PDF 檔案。');
@@ -1411,6 +1425,7 @@ const processFile = (file) => {
   reader.readAsDataURL(file);
 };
 
+// 處理拖放區的拖曳狀態
 const handleUploadSubmit = async () => {
   const { valid } = await uploadFormRef.value.validate();
   if (!valid) {

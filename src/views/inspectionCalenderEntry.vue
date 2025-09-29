@@ -77,7 +77,7 @@ import { getProjectsForInspectionCalendar, checkInToSystem } from '@/api';
 const router = useRouter();
 const userStore = useUserStore();
 
-const pageTitle = ref('驗屋時間表');
+const pageTitle = ref('驗屋預約管理');
 const pageIcon = ref('mdi-calendar-check');
 
 const selectedProject = ref(null);
@@ -124,7 +124,7 @@ const enterProject = async () => {
 
   try {
     const projectId = selectedProject.value;
-    const system = pageTitle.value; // "驗屋時間表"
+    const system = pageTitle.value; // "驗屋預約管理"
     const userKey = userStore.user?.key;
     const userName = userStore.user?.name;
 

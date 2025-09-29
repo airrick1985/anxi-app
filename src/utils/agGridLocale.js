@@ -30,6 +30,8 @@ export const AG_GRID_LOCALE_TW = {
   // Number Filter & Text Filter
   equals: '等於',
   notEqual: '不等於',
+  before: '早於',
+  after: '晚於',
   blank: '空白',
   notBlank: '非空白', // ✅ 【修改】「非空白」比「不是空白」更為正式
   empty: '請選擇...', // ✅ 【修改】提示使用者進行選擇，比「選擇一個」更引導
@@ -58,11 +60,19 @@ export const AG_GRID_LOCALE_TW = {
   noMatches: '沒有相符項目', // ✅ 【新增】當 Set Filter 搜尋不到結果時的提示
 
   // Pinned columns
+  sortAscending: '遞增排序',
+  sortDescending: '遞減排序',
+  sortNone: '取消排序',
+  removeSort: '移除排序',
+  groupBy: '依此分組',
+  ungroupBy: '取消分組',
+  addToValues: '加入數值欄位',
+  removeFromValues: '從數值欄位移除',   
   pinColumn: '釘選欄位',
   pinLeft: '向左釘選', // ✅ 【修改】「向左/向右」更具方向感
   pinRight: '向右釘選', // ✅ 【修改】同上
   noPin: '取消釘選',   // ✅ 【修改】「取消釘選」語意更清晰
-
+ 
   // Enterprise specific
   valueColumns: '數值欄位',
   pivotMode: '樞紐模式', // ✅ 【修改】「樞紐模式」比「樞紐分析模式」簡潔
@@ -73,13 +83,15 @@ export const AG_GRID_LOCALE_TW = {
   pivotColumnsEmptyMessage: '拖曳至此以設定欄標籤', // ✅ 【修改】對應上面的修改
 
   // Header Context Menu
-  autosizeThiscolumn: '自動調整此欄寬度',
+  autosizeThisColumn: '自動調整此欄寬度',
   autosizeAllColumns: '自動調整所有欄寬度',
   groupBy: '依此分組', // ✅ 【修改】更簡潔的說法
   ungroupBy: '取消分組', // ✅ 【修改】同上
+  chooseColumns: '選擇欄位',
   resetColumns: '重設欄位',
   expandAll: '全部展開',
   collapseAll: '全部收合',
+ 
   
   // Grouping
   group: '群組',

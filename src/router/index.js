@@ -229,7 +229,7 @@ const routes = [
     component: InspectionCalendarEntry,
     meta: {
       requiresAuth: true,
-      requiredAnySystem: ['驗屋時間表-修改', '驗屋時間表-檢視'], layout: DefaultLayout
+      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], layout: DefaultLayout
     }
   },
   {
@@ -239,7 +239,7 @@ const routes = [
     props: true,
     meta: {
       requiresAuth: true,
-      requiredAnySystem: ['驗屋時間表-修改', '驗屋時間表-檢視'], layout: DefaultLayout
+      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], layout: DefaultLayout
     }
   },
   {
@@ -249,7 +249,7 @@ const routes = [
     props: true,
     meta: {
       requiresAuth: true,
-      requiredSystem: '驗屋時間表-修改',
+      requiredSystem: '驗屋預約管理-修改',
       layout: DefaultLayout
     }
   },
@@ -261,8 +261,8 @@ const routes = [
     props: true, // 讓 Vue Router 自動將 projectId 作為 prop 傳入元件
     meta: {
       requiresAuth: true,
-      // 假設查看戶別總表也需要 '驗屋時間表-檢視' 或更高權限
-      requiredAnySystem: ['驗屋時間表-修改'],
+      // 假設查看戶別總表也需要 '驗屋預約管理-檢視' 或更高權限
+      requiredAnySystem: ['驗屋預約管理-修改'],
       layout: DefaultLayout
     }
   },

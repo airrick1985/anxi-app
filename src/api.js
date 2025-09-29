@@ -1872,7 +1872,7 @@ export async function fetchActivityMessageSlideId(projectName) {
 // =============================================
 
 /**
- *  [已修正] 獲取使用者有權限查看驗屋時間表的建案列表
+ *  [已修正] 獲取使用者有權限查看驗屋預約管理的建案列表
  */
 export async function getProjectsForInspectionCalendar(userKey) {
     const permissionDocRef = doc(db, "userPermissions", userKey);
@@ -1884,7 +1884,7 @@ export async function getProjectsForInspectionCalendar(userKey) {
 
     for (const projectId in perms) {
         const project = perms[projectId];
-        if (project.systems.includes('驗屋時間表-修改') || project.systems.includes('驗屋時間表-檢視')) {
+        if (project.systems.includes('驗屋預約管理-修改') || project.systems.includes('驗屋預約管理-檢視')) {
             projectOptions.push({ text: project.projectName, value: projectId });
         }
     }
@@ -1934,26 +1934,41 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
  * @returns {Promise<object>}
  */
 export async function fetchBookingOptions(projectId) {
-    // 範例：這裡的資料未來可以改為從 `projects` 集合的某個欄位讀取
-    const inspectionMethods = ['自驗', '代驗公司'];
-    const inspectionStaff = ['林經理', '張主任', '陳先生']; // 範例人員
-    
-    // 獲取棟別與戶別資料
-    const householdsRef = collection(db, "households");
-    const q = query(householdsRef, where("projectId", "==", projectId));
-    const snapshot = await getDocs(q);
-    const buildingsAndUnits = {};
-    snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.building && data.unitId) {
-            if (!buildingsAndUnits[data.building]) {
-                buildingsAndUnits[data.building] = [];
-            }
-            buildingsAndUnits[data.building].push(data.unitId);
-        }
-    });
+    try {
+        // ✓ START: 修改此處，從資料庫讀取專案設定
+        const projectSettings = await getProjectSettings(projectId);
 
-    return { inspectionMethods, inspectionStaff, buildingsAndUnits };
+        // 從專案設定中獲取驗屋方式和人員，如果不存在則提供預設空陣列
+        const inspectionMethods = projectSettings?.bookingMethodOptions || ['自驗', '代驗公司'];
+        const inspectionStaff = projectSettings?.inspectionStaff || []; // ✓ 從這裡動態讀取驗屋人員
+        // ✓ END: 修改結束
+
+        // 獲取棟別與戶別資料 (此部分邏輯不變)
+        const householdsRef = collection(db, "households");
+        const q = query(householdsRef, where("projectId", "==", projectId));
+        const snapshot = await getDocs(q);
+        const buildingsAndUnits = {};
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.building && data.unitId) {
+                if (!buildingsAndUnits[data.building]) {
+                    buildingsAndUnits[data.building] = [];
+                }
+                buildingsAndUnits[data.building].push(data.unitId);
+            }
+        });
+
+        return { inspectionMethods, inspectionStaff, buildingsAndUnits };
+
+    } catch (error) {
+        console.error(`獲取預約選項時發生錯誤 (Project ID: ${projectId}):`, error);
+        // 發生錯誤時回傳預設值，避免頁面崩潰
+        return { 
+            inspectionMethods: ['自驗', '代驗公司'], 
+            inspectionStaff: [], 
+            buildingsAndUnits: {} 
+        };
+    }
 }
 
 /**
@@ -1961,36 +1976,25 @@ export async function fetchBookingOptions(projectId) {
  * @param {string} projectId 
  * @param {object} newBookingData - 包含所有欄位的預約資料
  * @param {string|null} cancelBookingCode - 可選，要同時取消的舊預約代碼
+ * @param {boolean} force - 可選，是否強制新增
  */
-export async function addAppointmentAdmin(projectId, newBookingData, cancelBookingCode = null) {
-    const batch = writeBatch(db);
-
-    // 1. 如果需要，先將舊的預約標記為取消
-    if (cancelBookingCode) {
-        const appointmentsRef = collection(db, "appointments");
-        const q = query(appointmentsRef, where("bookingCode", "==", cancelBookingCode), where("projectId", "==", projectId));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-            const oldDocRef = snapshot.docs[0].ref;
-            batch.update(oldDocRef, { status: "取消", cancelledAt: serverTimestamp() });
-        }
+export async function addAppointmentAdmin(projectId, newBookingData, cancelBookingCode = null, force = false) {
+    //  START: 修改此函式以呼叫 Cloud Function
+    try {
+        const addFunction = httpsCallable(functions, 'addAppointmentByAdmin');
+        const result = await addFunction({
+            projectId,
+            newBookingData,
+            cancelBookingCode,
+            force
+        });
+        return result.data; // 直接回傳後端的回應 { status: 'success', docId: '...' }
+    } catch (error) {
+        console.error("呼叫 addAppointmentByAdmin 雲端函式時發生錯誤:", error);
+        // 將 HttpsError 轉換為前端可處理的格式
+        throw new Error(error.message);
     }
-    
-    // 2. 準備要寫入的新資料
-    const dataToSave = { ...newBookingData, projectId }; // 確保 projectId 被寫入
-    // 將所有日期字串轉換為 Timestamp
-    ['appointmentDate', 'handoverTime', 'createdAt'].forEach(field => {
-        if (dataToSave[field]) {
-            dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
-        }
-    });
-    
-    // 3. 新增一筆預約紀錄
-    const newDocRef = doc(collection(db, "appointments"));
-    batch.set(newDocRef, dataToSave);
-
-    await batch.commit();
-    return { status: 'success' };
+    //  END: 修改結束
 }
 
 /**
@@ -2185,15 +2189,42 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
 };
 
 /**
- * ✨ [新增] 獲取所有預約規則，供前端計算
- * @param {string} projectName 建案名稱
+ * ✅ [Firebase 版] 獲取指定建案的所有預約批次規則
+ * @param {string} projectId - 建案的 ID
+ * @returns {Promise<object>} - 返回包含批次規則的物件
  */
-export const getAllBookingRules = async (projectName) => {
-    return fetchPost({
-        action: 'get_all_booking_rules',
-        projectName,
-    }, INSPECTION_API);
-};
+export async function getAllBookingRules(projectId) {
+    if (!projectId) {
+        console.error("[api.js] getAllBookingRules: 缺少 projectId。");
+        return { status: 'error', message: '缺少 projectId' };
+    }
+
+    try {
+        // 直接查詢 bookingBatches 集合，找出屬於該建案的所有批次
+        const batchesRef = collection(db, "bookingBatches");
+        const q = query(batchesRef, where("projectId", "==", projectId));
+        const querySnapshot = await getDocs(q);
+
+        const batchRules = {};
+        querySnapshot.forEach((doc) => {
+            // 將每筆批次資料以其文件 ID 為 key 存入物件
+            // 這正是前端 watch 函式所期望的資料結構
+            batchRules[doc.id] = { id: doc.id, ...doc.data() };
+        });
+
+        // 模仿舊版 API 的回傳格式，確保前端相容性
+        return { 
+            status: 'success', 
+            data: { 
+                batchRules: batchRules 
+            } 
+        };
+
+    } catch (e) {
+        console.error(`獲取建案 ${projectId} 的預約批次規則時發生錯誤:`, e);
+        return { status: 'error', message: e.message, data: { batchRules: {} } };
+    }
+}
 
 
 /**
@@ -2260,42 +2291,38 @@ export const validateId = async (projectName, unitId, idNumber, projectId) => {
 
 
 /**
- * 上傳驗屋授權書 (透過 Vercel Proxy)
+ * 上傳驗屋授權書 (Firebase Function 版)
  * @param {string} base64Data - 產生的圖檔的 Base64 Data URL
  * @param {string} fileName - 指定的檔案名稱
- * @param {string} projectName - 當前建案名稱
+ * @param {string} projectId - 當前建案 ID
  * @param {string} unitId - 當前選擇的戶別
  * @returns {Promise<object>} - 回傳包含 { status, message, url } 的物件
  */
-export const uploadAuthLetter = async (base64Data, fileName, projectName, unitId) => {
-  // 1. 去除 Base64 URL 的前綴
+export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) => {
+  // 1. 去除 Base64 URL 的前綴，與舊版邏輯相同
   const pureBase64 = base64Data.split(',')[1];
   
-  // 2. 準備要傳送給 Proxy 的 payload
-  const payload = {
-    action: 'upload_auth_letter', // 後端 GAS 會根據此 action 執行對應函式
-    filename: fileName,
-    base64: pureBase64,
-    projectName: projectName,
-    unitId: unitId
-    // 注意：這裡不需要 token，因為我們已在 Vercel Proxy 將此 action 設為公開
-  };
+  try {
+    // 2. 獲取對我們剛剛建立的 Cloud Function 的引用
+    const uploader = httpsCallable(functions, 'uploadAuthLetter');
+    
+    // 3. 呼叫 Cloud Function 並傳遞必要的參數
+    const result = await uploader({
+      projectId: projectId, //  新增 projectId
+      unitId: unitId,
+      fileName: fileName,
+      base64: pureBase64
+    });
+    
+    // 4. 直接回傳 Cloud Function 的執行結果
+    return result.data;
 
-  // 3. 使用您既有的 fetchPost 輔助函式，並指向 INSPECTION_API 端點
-  //    Proxy 會接收此請求，並轉發給後端的 Google Apps Script
-  return fetchPost(payload, INSPECTION_API);
+  } catch (error) {
+    console.error("呼叫 uploadAuthLetter 雲端函式時發生錯誤:", error);
+    // 將 Firebase Function 拋出的 HttpsError 轉換為前端習慣的格式
+    return { status: 'error', message: error.message };
+  }
 };
-
-/**
- * ===============================================
- * /   後台行事曆 - 新增預約功能 API
- * ===============================================
- */
-
-
-
-
-
 
 
 
@@ -3157,10 +3184,24 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
 
     // 為了簡化初版，我們先回傳完整資料列表
     snapshot.forEach((doc) => {
-      households.push({
-        _docId: doc.id, // ✓ 將文件 ID 命名為 _docId 以匹配您原有的程式碼
-        ...doc.data()
+      // 驗屋預約管理 START: 新增修改處
+      const data = doc.data();
+      const formattedData = { ...data };
+      
+      // 遍歷所有可能的日期欄位
+      ['initialInspectionDate', 'reInspectionDate', 'statusDate', 'appropriationDate'].forEach(key => {
+        // 如果欄位存在，且是 Firestore Timestamp 物件 (可以呼叫 toDate() 方法)
+        if (data[key] && typeof data[key].toDate === 'function') {
+          // 將其轉換為 JavaScript Date 物件
+          formattedData[key] = data[key].toDate();
+        }
       });
+      
+      households.push({
+        _docId: doc.id, 
+        ...formattedData // 使用處理過的資料
+      });
+      // 驗屋預約管理 END: 新增修改處
     });
 
     onDataChange(households);
@@ -4286,4 +4327,62 @@ export async function updateSystemFunction(functionData) {
   } catch (error) {
     return { status: 'error', message: error.message };
   }
+}
+
+/**
+ *  [新增] 僅更新單筆預約紀錄的驗屋人員欄位
+ * @param {string} appointmentId - appointments 集合中的文件 ID
+ * @param {Array<string>} inspectors - 新的驗屋人員陣列
+ * @returns {Promise<void>}
+ */
+export async function updateAppointmentInspectors(appointmentId, inspectors) {
+  if (!appointmentId) throw new Error("缺少預約 ID。");
+  
+  const appointmentRef = doc(db, "appointments", appointmentId);
+  
+  // 將前端傳來的陣列轉換為逗號分隔的字串，以便儲存
+  const inspectorsString = Array.isArray(inspectors) ? inspectors.join(',') : '';
+  
+  // 僅更新 inspectors 這一個欄位
+  await updateDoc(appointmentRef, {
+    inspectors: inspectorsString
+  });
+}
+
+/**
+ *  [新增] 獲取指定建案下的所有戶別資料
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<Array>} - 戶別資料陣列
+ */
+export async function fetchAllHouseholdsForProject(projectId) {
+  if (!projectId) return [];
+  
+  const householdsRef = collection(db, "households");
+  const q = query(householdsRef, where("projectId", "==", projectId));
+  const snapshot = await getDocs(q);
+  
+  const households = [];
+  snapshot.forEach(doc => {
+    households.push({ ...doc.data(), _docId: doc.id });
+  });
+  
+  return households;
+}
+
+/**
+ * ✅ [修改後版本] 供管理員獲取指定日期的所有時段選項
+ * @param {string} projectId 
+ * @param {string} dateStr - 'YYYY-MM-DD' 格式
+ * @returns {Promise<Array<string>>}
+ */
+export async function getSlotsForAdmin(projectId, dateStr) {
+    try {
+        const getSlotsFunction = httpsCallable(functions, 'getSlotsForAdmin');
+        // 移除了 unitId 和 bookingType
+        const result = await getSlotsFunction({ projectId, dateStr });
+        return result.data;
+    } catch (error) {
+        console.error("獲取管理員時段選項時發生錯誤:", error);
+        throw new Error(error.message);
+    }
 }
