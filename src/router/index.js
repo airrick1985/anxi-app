@@ -6,7 +6,6 @@ import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
 import InspectionSystem from '@/views/InspectionSystem.vue';
 import InspectionRecord from '@/views/InspectionRecord.vue';
-import InspectionOverview from '@/views/InspectionOverview.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
@@ -43,12 +42,6 @@ const routes = [
     path: '/inspection-record',
     name: 'InspectionRecord',
     component: InspectionRecord,
-    meta: { requiresAuth: true, layout: DefaultLayout }
-  },
-  {
-    path: '/inspection-overview',
-    name: 'InspectionOverview',
-    component: InspectionOverview,
     meta: { requiresAuth: true, layout: DefaultLayout }
   },
   {

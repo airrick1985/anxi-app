@@ -27,9 +27,16 @@
 
             </v-form>
 
-            <div class="text-center mt-4">
+           <div class="text-center mt-4 d-flex flex-column align-center">
               <v-btn variant="text" class="forgot-password-btn" @click="forgotDialog = true">
                 忘記密碼？
+              </v-btn>
+              <v-btn 
+                variant="outlined"
+                class="add-shortcut-btn mt-2" 
+                @click="shortcutDialog = true"
+              >
+                建立APP捷徑
               </v-btn>
             </div>
 
@@ -54,6 +61,7 @@
   class="mb-2"
 />
           </v-form>
+          
           <v-alert v-if="forgotError" type="error" dense class="mt-3">{{ forgotError }}</v-alert>
           <v-alert v-if="forgotSuccess" type="success" dense class="mt-3">{{ forgotSuccess }}</v-alert>
         </v-card-text>
@@ -64,6 +72,82 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+             <v-dialog v-model="shortcutDialog" max-width="500px">
+      <v-card class="pa-4 text-center">
+        <v-card-title class="justify-center text-h5 font-weight-bold">
+          安裝應用程式
+        </v-card-title>
+        <v-card-text>
+          <v-row justify="center">
+            <v-col cols="12" class="d-flex flex-column align-center">
+              <img src="/icons/icon-192x192.png" alt="ANXI App Icon" class="app-icon my-4">
+              <span class="app-name font-weight-bold">ANXI</span>
+            </v-col>
+
+            <v-col cols="12" class="mt-4">
+              <div v-if="deviceType === 'iOS'">
+                <p class="instruction-text">請點擊螢幕底部的 <v-icon size="small">mdi-export-variant</v-icon> 圖示</p>
+                <p class="instruction-text">然後選擇「加入主畫面」</p>
+                <p class="instruction-text">請設定Safari為預設瀏覽器才可設定功能捷徑</p>
+              </div>
+              <div v-else-if="deviceType === 'Android'">
+                <p class="instruction-text">請點擊瀏覽器右上角的 <v-icon size="small">mdi-dots-vertical</v-icon> 選單</p>
+                <p class="instruction-text">然後選擇「安裝應用程式」或「新增至主畫面」</p>
+              </div>
+              <div v-else>
+                <p class="instruction-text">請點擊網址列右側的 <v-icon size="small">mdi-monitor-arrow-down</v-icon> 圖示</p>
+                <p class="instruction-text">或透過瀏覽器選單找到並點擊「安裝 ANXI」</p>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" text @click="shortcutDialog = false">關閉</v-btn>
+          <v-spacer />
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+
+         <v-dialog v-model="shortcutDialog" max-width="500px">
+      <v-card class="pa-4 text-center">
+        <v-card-title class="justify-center text-h5 font-weight-bold">
+          安裝應用程式
+        </v-card-title>
+        <v-card-text>
+          <v-row justify="center">
+            <v-col cols="12" class="d-flex flex-column align-center">
+              <img src="/icons/icon-192x192.png" alt="ANXI App Icon" class="app-icon my-4">
+              <span class="app-name font-weight-bold">ANXI</span>
+            </v-col>
+
+            <v-col cols="12" class="mt-4">
+              <div v-if="deviceType === 'iOS'">
+                <p class="instruction-text">請點擊螢幕底部的 <v-icon size="small">mdi-export-variant</v-icon> 圖示</p>
+                <p class="instruction-text">然後選擇「加入主畫面」</p>
+                <p class="instruction-text">請設定Safari為預設瀏覽器才可設定功能捷徑</p>
+              </div>
+              <div v-else-if="deviceType === 'Android'">
+                <p class="instruction-text">請點擊瀏覽器右上角的 <v-icon size="small">mdi-dots-vertical</v-icon> 選單</p>
+                <p class="instruction-text">然後選擇「安裝應用程式」或「新增至主畫面」</p>
+              </div>
+              <div v-else>
+                <p class="instruction-text">請點擊網址列右側的 <v-icon size="small">mdi-monitor-arrow-down</v-icon> 圖示</p>
+                <p class="instruction-text">或透過瀏覽器選單找到並點擊「安裝 ANXI」</p>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" text @click="shortcutDialog = false">關閉</v-btn>
+          <v-spacer />
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -159,6 +243,29 @@ const submitForgotPassword = async () => {
     forgotLoading.value = false;
   }
 };
+
+// ---- 建立 APP 捷徑功能 ----
+const shortcutDialog = ref(false);
+
+const getDeviceType = () => {
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) {
+    return "Android";
+  }
+  // 偵測 iPhone, iPad, iPod，並且不是 Windows Phone
+  if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+    // 檢查是否已在 PWA 獨立模式下運行
+    if (('standalone' in window.navigator) && (window.navigator.standalone)) {
+      return "Desktop"; // 如果已是 PWA，則顯示桌面版提示
+    }
+    return "iOS";
+  }
+  return "Desktop"; // 其他皆歸類為桌面版
+};
+
+const deviceType = computed(getDeviceType);
+// ---- ---------------- ----
+
 </script>
 
 <style scoped>
@@ -209,7 +316,8 @@ const submitForgotPassword = async () => {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
-.forgot-password-btn {
+.forgot-password-btn,
+.add-shortcut-btn {
   color: #000000;
   font-weight: 500;
   text-transform: none;
@@ -254,4 +362,30 @@ const submitForgotPassword = async () => {
   color: #000000 !important;
   font-weight: 500;
 }
+
+/* 新增 APP 捷徑 Dialog 樣式 ---- */
+.app-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22.5%; /* iOS 風格的圓角 */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.app-name {
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.instruction-text {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.instruction-text .v-icon {
+  vertical-align: middle;
+  margin: 0 4px;
+}
+/* ---- -------------------- ---- */
 </style>
