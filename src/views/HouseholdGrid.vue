@@ -197,6 +197,8 @@ import "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
 import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
+import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
+
 
 // --- Store 和路由 ---
 const route = useRoute();
@@ -413,7 +415,8 @@ const baseColDefs = ref([
    { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
    { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
    { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, flex: 1.5 },
-   { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: linkRenderer, flex: 1.5 },
+   { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, flex: 1.5, editable: false },
+   
    { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
 ]);
 

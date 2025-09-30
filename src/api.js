@@ -2375,22 +2375,87 @@ export async function postToAiAssistant(payload) {
  * ===============================================
  */
 
-/**
- * 上傳驗屋報告 (PDF) 及相關資料
- * @param {object} payload - 包含所有表單資料和檔案 base64 內容的物件
- * @returns {Promise<object>} - API 響應
- */
-export async function uploadInspectionReport(payload) {
-  console.log('[api.js] uploadInspectionReport called with payload:', payload.unit);
-  if (!payload.projectName || !payload.file) {
-    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadInspectionReport 時缺少參數。' });
+
+
+//    現在它會接收完整的 formDATA payload，並將其傳給後端
+async function getSignedUrlForReportUpload(payload, fileInfo) {
+  try {
+    const functions = getFunctions();
+    // ✓ 將函式名稱改為新的、能處理 metadata 的函式
+    const getUrlFunction = httpsCallable(functions, 'generateSignedUrlWithMetadata');
+    const result = await getUrlFunction({
+      ...payload,     // 包含 projectId, unit, buyerName, email 等...
+      ...fileInfo,    // 包含 fileName, contentType
+    });
+    return result.data.signedUrl;
+  } catch (error) {
+    console.error("獲取上傳 URL 失敗:", error);
+    throw new Error(`無法取得上傳授權: ${error.message}`);
   }
-  // 這個 action 屬於公開預約系統的一部分，所以發到 INSPECTION_API
-  return fetchPost({
-    action: 'upload_inspection_report',
-    ...payload
-  }, INSPECTION_API);
 }
+
+/**
+ * 將 File 物件轉換為 Base64 字串
+ * @param {File} file - 原始 File 物件
+ * @returns {Promise<string>} - 只包含 Base64 內容的字串
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      // 結果格式為 "data:application/pdf;base64,JVBERi0xLjQKJ..."
+      // 我們只需要逗號後面的部分
+      const encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
+      if ((encoded.length % 4) > 0) {
+        encoded += '='.repeat(4 - (encoded.length % 4));
+      }
+      resolve(encoded);
+    };
+    reader.onerror = error => reject(error);
+  });
+}
+
+
+
+
+
+/**
+ * [代理模式] 將驗屋報告透過 Cloud Function 直接上傳到 Google Drive
+ * @param {object} payload - 表單資料
+ * @param {File} fileObject - 原始 File 物件
+ * @returns {Promise<object>}
+ */
+export async function uploadReportDirectlyToDrive(payload, fileObject) {
+  console.log('[api.js] Starting direct upload process via proxy function...');
+  try {
+    // 1. 將檔案轉為 Base64
+    const base64Content = await fileToBase64(fileObject);
+
+    // 2. 準備傳給 Cloud Function 的完整資料
+    const functionPayload = {
+      ...payload,
+      fileName: fileObject.name,
+      fileContent: base64Content, // 傳送 Base64 內容
+      contentType: fileObject.type,
+    };
+    
+    // 3. 呼叫新的 Cloud Function
+    const functions = getFunctions();
+    const uploader = httpsCallable(functions, 'handleDirectReportUpload');
+    const result = await uploader(functionPayload);
+
+    // 4. 直接回傳 Cloud Function 的執行結果
+    return result.data;
+
+  } catch (error) {
+    console.error("代理上傳報告失敗:", error);
+    return { status: "error", message: `代理上傳失敗: ${error.message}` };
+  }
+}
+
+
+
 
 
 // ===============================================
@@ -4385,4 +4450,37 @@ export async function getSlotsForAdmin(projectId, dateStr) {
         console.error("獲取管理員時段選項時發生錯誤:", error);
         throw new Error(error.message);
     }
+}
+
+
+/**
+ * [新] 獲取上傳報告頁面所需的棟別列表 (無篩選)
+ * @param {string} projectId 建案 ID
+ */
+export async function fetchBuildingListForUpload(projectId) {
+  try {
+    const functions = getFunctions();
+    const getBuildingsFunc = httpsCallable(functions, 'getBuildingsForUpload');
+    const result = await getBuildingsFunc({ projectId: projectId });
+    return result.data; // 直接回傳 { status, data }
+  } catch (error) {
+    console.error("API fetchBuildingListForUpload 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [新] 獲取上傳報告頁面所需的所有戶別資料 (無篩選)
+ * @param {string} projectId 建案 ID
+ */
+export async function fetchAllUnitsForUpload(projectId) {
+  try {
+    const functions = getFunctions();
+    const getUnitsFunc = httpsCallable(functions, 'getAllUnitsForUpload');
+    const result = await getUnitsFunc({ projectId: projectId });
+    return result.data; // 直接回傳 { status, data }
+  } catch (error) {
+    console.error("API fetchAllUnitsForUpload 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
 }

@@ -34,6 +34,10 @@
           </v-card-text>
         </v-card>
 
+        <v-btn color="purple" variant="flat" @click="runTestFunction">
+  手動觸發每日更新 (測試用)
+</v-btn>
+
         <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
           <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
         </div>
@@ -52,7 +56,7 @@
                 :disabled="isLoading"
                 class="mr-3"
               ></v-btn>
-              <span>{{ projectConfig.projectName }} 上傳驗屋報告</span>
+              <span>{{ projectConfig.name }} 上傳驗屋報告</span>
             </v-card-title>
             <v-divider></v-divider>
 
@@ -85,13 +89,13 @@
                   <v-text-field v-model="uploadForm.phone" label="聯絡電話" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
                   <v-text-field v-model="uploadForm.email" label="EMAIL (用於接收確認信)" variant="outlined" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"></v-text-field>
                   <v-select
-                    v-model="uploadForm.building"
-                    :items="initialData.buildings"
-                    label="棟別"
-                    variant="outlined"
-                    :rules="[v => !!v || '必填']"
-                    @update:model-value="onUploadBuildingChange"
-                  ></v-select>
+                      v-model="uploadForm.building"
+                      :items="uploadBuildingList"  
+                      label="棟別"
+                      variant="outlined"
+                      :rules="[v => !!v || '必填']"
+                      @update:model-value="onUploadBuildingChange"
+                    ></v-select>
                   <v-select
                     v-model="uploadForm.unit"
                     :items="uploadUnitList"
@@ -359,7 +363,7 @@
 
         <v-list-item 
             title="建案名稱" 
-            :subtitle="projectConfig?.projectName || '載入中...'" 
+            :subtitle="projectConfig?.name || '載入中...'" 
             prepend-icon="mdi-domain"
         >
         </v-list-item>
@@ -382,10 +386,7 @@
     </v-list>
 </v-card-text>
              <v-card-actions class="pa-4 d-flex justify-end">
-      <div v-if="projectConfig.showReportUploadButton" class="mr-auto">
-          <v-btn prepend-icon="mdi-file-upload-outline" variant="text" @click="isUploadMode = true">上傳驗屋報告</v-btn>
-      </div>
-      <v-btn 
+            <v-btn 
         class="mr-2"
         variant="text"
         size="large"
@@ -485,7 +486,7 @@
                       <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
                   </v-alert>
                 <v-list lines="two">
-                <v-list-item title="建案名稱" :subtitle="projectConfig.projectName"></v-list-item>
+                <v-list-item title="建案名稱" :subtitle="projectConfig.name"></v-list-item>
                 <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
                 <v-list-item title="門牌" :subtitle="finalBookingData.address"></v-list-item>
                 <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
@@ -530,7 +531,7 @@
 
           <v-list-item 
               title="建案名稱" 
-              :subtitle="projectConfig?.projectName || '載入中...'" 
+              :subtitle="projectConfig?.name || '載入中...'" 
               prepend-icon="mdi-domain"
           >
           </v-list-item>
@@ -754,13 +755,15 @@ import {
  fetchProjectConfig,
   getBookingInitialData,
   fetchAllUnitsForBooking,
+  fetchAllUnitsForUpload,
+  fetchBuildingListForUpload, 
   checkExistingBooking, 
   validateId, 
   getBookingSlots, 
   saveBooking, 
   uploadAuthLetter,
-  uploadInspectionReport,
-  cancelBooking
+  cancelBooking,
+  uploadReportDirectlyToDrive
 } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
@@ -820,7 +823,9 @@ const projectId = ref('');
 const projectConfig = ref(null);
 
 const initialData = ref({ buildings: [], checkDuplicate: 'OFF', bookingTypes: [], validateId: 'OFF' });
+const uploadBuildingList = ref([]); // ✓ 為上傳表單新增一個專用的棟別列表
 const allUnitsData = ref({});
+const allUnitsDataForUpload = ref({}); 
 const unitList = ref([]);
 const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [], timeSlotsByDate: {}, bookingOptions: {} });
 const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' });
@@ -995,7 +1000,7 @@ const handleGenerateLetter = async () => {
   const populatedHtml = template
     .replace(/{logoUrl}/g, projectConfig.value.logoUrl)
     .replace(/{委託人姓名}/g, authFormData.value.委託人姓名)
-    .replace(/{建案名稱}/g, projectConfig.value.projectName)
+    .replace(/{建案名稱}/g, projectConfig.value.name)
     .replace(/{戶別}/g, formStep1.value.unit)
     .replace(/{受託人姓名}/g, authFormData.value.受託人姓名)
     .replace(/{委託人簽名圖檔}/g, delegatorSignature.data)
@@ -1058,43 +1063,32 @@ onMounted(async () => {
   isLoading.value = true;
   loadingText.value = '正在載入建案資訊...';
 
-  
-  const config = await fetchProjectConfig(projectId.value);
-
- if (config) {
-    //  修正：確保 projectName 屬性存在
-    if (config.name && !config.projectName) {
-      config.projectName = config.name;
-    }
-    
+  try {
+    const config = await fetchProjectConfig(projectId.value);
     projectConfig.value = config;
-    
-    if (config.isPublished) {
-      try {
-        const [initialRes, unitsRes] = await Promise.all([
-          getBookingInitialData(projectConfig.value.projectName, projectId.value),
-          fetchAllUnitsForBooking(projectConfig.value.projectName, projectId.value)
-        ]);
 
-        if (initialRes && initialRes.status === 'success') {
-          initialData.value = initialRes.data;
-        } else {
-        }
+    // ✓ 將 Promise.all 擴展為包含所有需要的 API 呼叫
+    const [
+      initialRes,
+      uploadBuildingsRes,
+      unitsRes,
+      uploadUnitsRes // ✓ 新增
+    ] = await Promise.all([
+      getBookingInitialData(config.projectName, projectId.value),
+      fetchBuildingListForUpload(projectId.value),
+      fetchAllUnitsForBooking(config.projectName, projectId.value),
+      fetchAllUnitsForUpload(projectId.value) // ✓ 新增
+    ]);
 
-        if (unitsRes && unitsRes.status === 'success') {
-          allUnitsData.value = unitsRes.data;
-        } else {
-        }
-          
-      } catch (error) {
-        alert("系統忙碌中，無法讀取預約資料，請稍後再試。");
-      } finally {
-        isLoading.value = false;
-      }
-    } else {
-      isLoading.value = false;
-    }
-  } else {
+    if (initialRes?.status === 'success') initialData.value = initialRes.data;
+    if (uploadBuildingsRes?.status === 'success') uploadBuildingList.value = uploadBuildingsRes.data.buildings;
+    if (unitsRes?.status === 'success') allUnitsData.value = unitsRes.data;
+    if (uploadUnitsRes?.status === 'success') allUnitsDataForUpload.value = uploadUnitsRes.data; // ✓ 儲存資料
+
+  } catch (error) {
+    console.error("頁面初始化失敗:", error);
+    alert("系統忙碌中，無法讀取預約資料，請稍後再試。");
+  } finally {
     isLoading.value = false;
   }
 });
@@ -1163,7 +1157,7 @@ const handleStep1Submit = async () => {
 
     // --- 步驟 3: 獲取可預約時段 ---
     const res = await getBookingSlots(
-        projectConfig.value.projectName, 
+        projectConfig.value.name, 
         formStep1.value.unit, 
         formStep1.value.bookingType, 
         formStep1.value.bookingMethod,
@@ -1205,7 +1199,7 @@ const handleGoBackAndRefresh = async () => {
   try {
     //  修正：加入 projectId 參數
     const res = await getBookingSlots(
-      projectConfig.value.projectName, 
+      projectConfig.value.name, 
       formStep1.value.unit, 
       formStep1.value.bookingType, 
       formStep1.value.bookingMethod,
@@ -1258,7 +1252,7 @@ const submitBooking = async () => {
       const payload = {
       projectId: projectId.value,
       bookingData: {
-        projectName: projectConfig.value.projectName,
+        projectName: projectConfig.value.name,
         unitId: finalBookingData.value.戶別,
         address: finalBookingData.value.address,
         name: finalBookingData.value.姓名,
@@ -1343,7 +1337,7 @@ const captureAndSave = async () => {
     const imageURL = canvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.href = imageURL;
-    link.download = `${projectConfig.value.projectName}預約紀錄_${finalBookingData.value.戶別}.png`;
+    link.download = `${projectConfig.value.name}預約紀錄_${finalBookingData.value.戶別}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1355,7 +1349,7 @@ const captureAndSave = async () => {
 
 // 產生並打開 Google 行事曆連結
 const addToCalendar = () => {
-    const title = `${projectConfig.value.projectName}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
+    const title = `${projectConfig.value.name}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
     const dateStr = finalBookingData.value.預約日期;
     
     const timeMatch = finalBookingData.value.預約時段.match(/(\d{1,2}:\d{2})/);
@@ -1375,7 +1369,7 @@ const addToCalendar = () => {
 
     // ✓ START: 組合完整的預約資訊作為備註內容
     let eventDetails = `預約資訊摘要：\n\n`;
-    eventDetails += `建案：${projectConfig.value.projectName}\n`;
+    eventDetails += `建案：${projectConfig.value.name}\n`;
     eventDetails += `戶別：${finalBookingData.value.戶別}\n`;
     eventDetails += `門牌：${finalBookingData.value.address}\n\n`;
     eventDetails += `預約項目：${finalBookingData.value.bookingType}\n`;
@@ -1405,7 +1399,8 @@ const onUploadBuildingChange = (building) => {
     uploadUnitList.value = [];
     return;
   }
-  uploadUnitList.value = allUnitsData.value[building] || [];
+  // ✓ 從 allUnitsDataForUpload 讀取資料
+  uploadUnitList.value = allUnitsDataForUpload.value[building] || [];
 };
 
 const triggerFileInput = () => {
@@ -1437,17 +1432,9 @@ const processFile = (file) => {
     isSizeErrorDialogVisible.value = true; 
     return;
   }
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    uploadForm.value.file = {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      base64: e.target.result,
-    };
-  };
-  reader.readAsDataURL(file);
+  
+  // ✓ 直接儲存原始的 File 物件
+  uploadForm.value.file = file;
 };
 
 // 處理拖放區的拖曳狀態
@@ -1466,7 +1453,8 @@ const handleUploadSubmit = async () => {
   isLoading.value = true;
   try {
     const payload = {
-      projectName: projectConfig.value.projectName,
+      projectId: projectId.value,
+      projectName: projectConfig.value.name,
       reportType: uploadForm.value.reportType,
       buyerName: uploadForm.value.buyerName,
       phone: uploadForm.value.phone,
@@ -1474,24 +1462,18 @@ const handleUploadSubmit = async () => {
       building: uploadForm.value.building,
       unit: uploadForm.value.unit,
       companyName: uploadForm.value.companyName,
-      file: {
-        base64: uploadForm.value.file.base64,
-        name: uploadForm.value.file.name,
-        type: uploadForm.value.file.type,
-      },
     };
     
-    const res = await uploadInspectionReport(payload);
+    // ✅ 【修改】改為呼叫新的代理上傳函式
+    const res = await uploadReportDirectlyToDrive(payload, uploadForm.value.file);
 
     if (res.status === 'success') {
       uploadSuccess.value = true;
     } else {
-      //  捕捉後端回傳的業務邏輯錯誤
-      uploadErrorDialogMessage.value = res.message.replace(/\n/g, '<br>'); // 將換行符轉為HTML換行
+      uploadErrorDialogMessage.value = res.message.replace(/\n/g, '<br>');
       isUploadErrorDialogVisible.value = true;
     }
   } catch (error) {
-    //  捕捉網路或程式執行錯誤
     console.error('上傳報告失敗:', error);
     uploadErrorDialogMessage.value = `上傳失敗：${error.message}`;
     isUploadErrorDialogVisible.value = true;

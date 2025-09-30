@@ -87,11 +87,12 @@
             <v-text-field v-model="searchQuery" label="關鍵字搜尋..." prepend-inner-icon="mdi-magnify" density="compact" hide-details clearable variant="outlined" color="primary"></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="auto" class="pl-md-5">
-            <div class="d-flex align-center">
-              <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">狀態:</span>
-              <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
-              <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
-            </div>
+              <div class="d-flex align-center">
+                  <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">狀態:</span>
+                  <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
+                  <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
+                  <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="blue-grey"></v-checkbox>
+              </div>
           </v-col>
           <v-col cols="12" sm="6" md="auto" class="ml-md-6">
             <div class="d-flex align-center">
@@ -139,6 +140,7 @@
                           @click="handleCustomEventClick(event)"
                         >
                           <v-icon v-if="event.status === '取消'" color="red-darken-1" size="small" class="mr-1">mdi-close-circle-outline</v-icon>
+                          <v-icon v-if="event.status === '已完成'" color="blue-grey" size="small" class="mr-1">mdi-check-all</v-icon>
                           <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
                             <strong v-if="part.isHousehold" class="event-household">{{ part.text }}</strong>
                             <span v-else>{{ part.text }}</span>
@@ -213,10 +215,12 @@
                   </v-col>
 
                   <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
-                      <v-chip :style="getAppointmentItemStyle(selectedEvent.bookingType)" size="small" label>{{ selectedEvent.bookingType }}</v-chip>
-                      <v-chip v-if="selectedEvent.status === '預約中'" color="success" size="small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ selectedEvent.status }}</v-chip>
-                      <v-chip v-else-if="selectedEvent.status === '取消'" color="red-darken-1" size="small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ selectedEvent.status }}</v-chip>
-                  </v-col>
+                    <v-chip :style="getAppointmentItemStyle(selectedEvent.bookingType)" size="small" label>{{ selectedEvent.bookingType }}</v-chip>
+                    <v-chip v-if="selectedEvent.status === '預約中'" color="success" size="small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ selectedEvent.status }}</v-chip>
+                    <v-chip v-else-if="selectedEvent.status === '取消'" color="red-darken-1" size="small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ selectedEvent.status }}</v-chip>
+                    <v-chip v-else-if="selectedEvent.status === '已完成'" color="blue-grey" size="small" label variant="outlined"><v-icon start icon="mdi-check-all"></v-icon>{{ selectedEvent.status }}</v-chip>
+                </v-col>
+
               </v-row>
               
               <v-row dense class="mt-3">
@@ -259,8 +263,9 @@
                               </v-list-item-title>
                               <v-list-item-subtitle>{{ item.bookingType }}</v-list-item-subtitle>
                               <template v-slot:append>
-                                <v-chip v-if="item.status === '預約中'" color="success" size="x-small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ item.status }}</v-chip>
-                                <v-chip v-else-if="item.status === '取消'" color="red-darken-1" size="x-small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                              <v-chip v-if="item.status === '預約中'" color="success" size="x-small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                              <v-chip v-else-if="item.status === '取消'" color="red-darken-1" size="x-small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                              <v-chip v-else-if="item.status === '已完成'" color="blue-grey" size="x-small" label variant="outlined"><v-icon start icon="mdi-check-all"></v-icon>{{ item.status }}</v-chip>
                               </template>
                             </v-list-item>
                             <v-divider v-if="index < bookingHistory.length - 1"></v-divider>
@@ -407,8 +412,9 @@
                                               </v-list-item-title>
                                               <v-list-item-subtitle>{{ item.bookingType }}</v-list-item-subtitle>
                                               <template v-slot:append>
-                                                  <v-chip v-if="item.status === '預約中'" color="success" size="x-small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ item.status }}</v-chip>
-                                                  <v-chip v-else-if="item.status === '取消'" color="red-darken-1" size="x-small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                                              <v-chip v-if="item.status === '預約中'" color="success" size="x-small" label variant="flat"><v-icon start icon="mdi-check-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                                              <v-chip v-else-if="item.status === '取消'" color="red-darken-1" size="x-small" label variant="tonal"><v-icon start icon="mdi-close-circle-outline"></v-icon>{{ item.status }}</v-chip>
+                                              <v-chip v-else-if="item.status === '已完成'" color="blue-grey" size="x-small" label variant="outlined"><v-icon start icon="mdi-check-all"></v-icon>{{ item.status }}</v-chip>
                                               </template>
                                           </v-list-item>
                                           <v-divider v-if="index < bookingHistory.length - 1"></v-divider>
@@ -831,7 +837,7 @@ const currentTypeOptions = computed(() => {
   return []; // 當資料尚未載入或 bookingTypes 不存在時，回傳空陣列
 });
 const selectedTypes = ref([]);
-const selectedStatuses = ref(['預約中', '取消']);
+const selectedStatuses = ref(['預約中', '取消', '已完成']);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
@@ -1697,6 +1703,7 @@ function openUrl(url) { if (url) window.open(url, '_blank', 'noopener,noreferrer
 function getEventStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
   if (event.status === '取消') return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
+  if (event.status === '已完成') return { backgroundColor: '#ECEFF1', color: '#546E7A' };
   const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].join(' ');
   for (const config of CSS_KEYWORD_COLOR_MAP) {
     if (config.keyword && textToSearch.includes(config.keyword)) return { backgroundColor: config.backgroundColor, color: config.color };
