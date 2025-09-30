@@ -1,0 +1,1 @@
+import{ag as o,ac as t,c,f as a,j as s}from"./vendor-Bjze8qsH.js";import"./date-fns-B9IBCHjj.js";const r={name:"PublicLayout"},n={class:"public-layout"};function _(i,p,u,l,m,d){const e=t("router-view");return a(),c("div",n,[s(e)])}const $=o(r,[["render",_]]);export{$ as default};
