@@ -2,6 +2,8 @@
   <component :is="layoutComponent">
     <router-view />
   </component>
+  <!-- 將更新提示元件放在這裡，它會根據 store 的狀態自動顯示/隱藏 -->
+  <AppUpdatePrompt />
 </template>
 
 <script setup>
@@ -14,11 +16,18 @@ import { doc, onSnapshot } from 'firebase/firestore'; // ✅ 4. 引入 Firestore
 import { useToast } from 'vue-toastification'; // ✅ 5. 引入 toast 以便提示使用者
 import DefaultLayout from './layouts/DefaultLayout.vue'; 
 
+// --- 步驟 4.1: 引入 PWA 更新相關模組 ---
+import { useRegisterSW } from 'virtual:pwa-register/vue';
+import { useUpdateStore } from '@/store/updateStore';
+import AppUpdatePrompt from '@/components/AppUpdatePrompt.vue';
+// --- 結束引入 ---
 
 const route = useRoute();
 const projectStore = useProjectStore();
 const userStore = useUserStore(); // 建立 userStore 實例
 const toast = useToast(); // 建立 toast 實例
+const updateStore = useUpdateStore(); // 建立 updateStore 實例
+
 
 const layoutComponent = computed(() => {
   const layoutLoader = route.meta.layout;
@@ -27,6 +36,33 @@ const layoutComponent = computed(() => {
   }
   return DefaultLayout;
 });
+
+// --- 步驟 4.2: 設定 PWA 更新邏輯 ---
+const { needRefresh, updateServiceWorker } = useRegisterSW({
+  onRegistered(r) {
+    console.log(`Service Worker registered: ${r}`);
+    if (r) {
+      // 每小時檢查一次更新
+      setInterval(() => {
+        r.update();
+      }, 60 * 60 * 1000);
+    }
+  },
+  onRegisterError(error) {
+    console.error('Service Worker registration error:', error);
+  },
+});
+
+// 監聽 needRefresh 狀態的變化
+watch(needRefresh, (newValue) => {
+  if (newValue) {
+    console.log('New content available, show prompt.');
+    // 當 needRefresh 變為 true 時，呼叫 store action 來顯示提示
+    // 並將 updateServiceWorker 函式傳遞過去
+    updateStore.setUpdate(updateServiceWorker);
+  }
+});
+// --- 結束設定 ---
 
 onMounted(() => {
   projectStore.fetchProjects();

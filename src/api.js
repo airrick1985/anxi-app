@@ -2406,7 +2406,7 @@ function fileToBase64(file) {
     reader.onload = () => {
       // 結果格式為 "data:application/pdf;base64,JVBERi0xLjQKJ..."
       // 我們只需要逗號後面的部分
-      const encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
+        let encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
       if ((encoded.length % 4) > 0) {
         encoded += '='.repeat(4 - (encoded.length % 4));
       }

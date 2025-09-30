@@ -25,7 +25,7 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       injectManifest: {
         swSrc: 'src/sw.js',
         swDest: 'dist/sw.js',

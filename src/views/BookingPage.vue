@@ -34,9 +34,6 @@
           </v-card-text>
         </v-card>
 
-        <v-btn color="purple" variant="flat" @click="runTestFunction">
-  手動觸發每日更新 (測試用)
-</v-btn>
 
         <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
           <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
