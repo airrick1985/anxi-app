@@ -1,5 +1,22 @@
 <template>
   <v-container fluid style="background-color: #F4F4F7; min-height: 100vh;">
+    
+     <v-overlay
+  :model-value="isLoading"
+  class="align-center justify-center"
+  persistent
+>
+  <div class="d-flex align-center">
+    <v-progress-circular
+      color="white"
+      indeterminate
+      size="50" ></v-progress-circular>
+
+    <div class="text-white ml-4" >{{ loadingText }}</div>
+  </div>
+</v-overlay>
+    
+    
     <v-row justify="center">
       <v-col cols="12" md="8" lg="6">
 
@@ -749,6 +766,9 @@ import { useDate } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
 
+
+const loadingText = ref('處理中...');
+
 // ---  新增: 上傳報告相關 state ---
 const isUploadMode = ref(false);
 const isDragActive = ref(false);
@@ -1036,6 +1056,8 @@ const resetBookingFlow = () => {
 onMounted(async () => {
   projectId.value = route.params.projectId;
   isLoading.value = true;
+  loadingText.value = '正在載入建案資訊...';
+
   
   const config = await fetchProjectConfig(projectId.value);
 
@@ -1105,6 +1127,7 @@ const handleStep1Submit = async () => {
  const { valid } = await step1Form.value.validate();
  if (!valid) return;
 
+ loadingText.value = '正在驗證戶別資訊...';
  isLoading.value = true;
  existingBookingInfo.value = null;
 
@@ -1177,6 +1200,7 @@ const handleStep2Submit = async () => {
 };
 
 const handleGoBackAndRefresh = async () => {
+  loadingText.value = '正在重新整理時段...';
   isLoading.value = true;
   try {
     //  修正：加入 projectId 參數
@@ -1203,6 +1227,7 @@ const handleGoBackAndRefresh = async () => {
 };
 
 const submitBooking = async () => {
+  loadingText.value = '正在為您送出預約...';
   isLoading.value = true;
   let authLetterFinalUrl = ''; 
 
@@ -1436,7 +1461,8 @@ const handleUploadSubmit = async () => {
     alert('請選擇要上傳的 PDF 檔案。');
     return;
   }
-
+  
+  loadingText.value = '檔案上傳與處理中...';
   isLoading.value = true;
   try {
     const payload = {
