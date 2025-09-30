@@ -4502,16 +4502,45 @@ exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
 
     const now = new Date();
     const timezoneOffset = 8 * 60;
-    const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
+     const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
     const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
     const dateStr = localNow.toISOString().slice(5, 10);
     const docId = `${projectId}_${dateStr}-${timeStr}_${newBookingData.unitId}`;
     const newAppointmentRef = db.collection('appointments').doc(docId);
 
-    const dataToSave = { ...newBookingData, projectId, createdAt: Timestamp.now(), appointmentTimeSlot: timeSlotKey };
+    const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
+const dataToSave = {
+        // 從前端 newBookingData 物件中獲取資料，並提供預設值
+        address: newBookingData.address || "",
+        agentAddress: newBookingData.agentAddress || "",
+        agentIdNumber: newBookingData.agentIdNumber || "",
+        agentName: newBookingData.agentName || "",
+        agentPhone: newBookingData.agentPhone || "",
+        authorizationLetterUrl: newBookingData.authorizationLetterUrl || "",
+        bookerEmail: newBookingData.bookerEmail || "",
+        bookerIdNumber: newBookingData.bookerIdNumber || "",
+        bookerName: newBookingData.bookerName || "",
+        bookerPhone: newBookingData.bookerPhone || "",
+        bookingType: newBookingData.bookingType || "",
+        bookingRemarks: newBookingData.bookingRemarks || "", 
+        inspectionCompanyName: newBookingData.inspectionCompanyName || "",
+        inspectionMethod: newBookingData.inspectionMethod || "",
+        principalAddress: newBookingData.principalAddress || "",
+        principalIdNumber: newBookingData.principalIdNumber || "",
+        principalName: newBookingData.principalName || "",
+        status: newBookingData.status || "預約中",
+        unitId: newBookingData.unitId,
 
-    if (dataToSave.appointmentDate) {
-        dataToSave.appointmentDate = Timestamp.fromDate(new Date(dataToSave.appointmentDate.split('T')[0]));
+        // 由後端生成或處理的欄位
+        projectId: projectId,
+        createdAt: Timestamp.now(),
+        appointmentTimeSlot: timeSlotKey,
+        bookingCode: bookingCode,
+        appointmentDate: null // 預設為 null，下面會處理
+    };
+
+    if (newBookingData.appointmentDate) {
+        dataToSave.appointmentDate = Timestamp.fromDate(new Date(newBookingData.appointmentDate.split('T')[0]));
     }
     batch.set(newAppointmentRef, dataToSave);
 

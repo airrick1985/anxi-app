@@ -179,13 +179,14 @@
                   
                   <v-col cols="12" sm="5">
                       <div class="text-caption text-grey-darken-1">預約日期與時段</div>
-                      <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
+ <div v-if="!isEditMode" class="text-body-1 font-weight-medium">
                           {{ safeFormatDate(selectedEvent.appointmentDate, 'yyyy-MM-dd') }}
                           <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
                           {{ selectedEvent.appointmentTimeSlot }}
                       </div>
                       <div v-else>
-                          <div class="d-flex ga-2">
+                          <!-- [修改] 將原本的 v-text-field 替換為與新增模式相同的元件 -->
+                          <div class="d-flex flex-column flex-sm-row ga-2">
                              <v-text-field
                                 v-model="editableEvent.appointmentDate"
                                 label="預約日期"
@@ -194,13 +195,19 @@
                                 hide-details="auto"
                                 style="min-width: 155px;"
                               ></v-text-field>
-                            <v-text-field
+                            <v-combobox
                                 v-model="editableEvent.appointmentTimeSlot"
+                                :items="timeSlotOptions"
                                 label="預約時段"
+                                :placeholder="isDateInBatch ? '請選擇時段' : '格式 HH:mm'"
+                                :rules="timeSlotRules"
+                                :loading="isTimeSlotLoading"
+                                :disabled="!editableEvent.appointmentDate"
                                 density="compact"
                                 hide-details="auto"
+                                no-data-text="此日期無可用時段"
                                 style="min-width: 200px;"
-                              ></v-text-field>
+                              ></v-combobox>
                           </div>
                       </div>
                   </v-col>
@@ -268,34 +275,74 @@
     <template v-for="(field, index) in getVisibleFields(panel.fields, false)" :key="field.key">
       <v-list-item>
         <template v-slot:prepend><v-icon :icon="field.icon"></v-icon></template>
-        <v-list-item-subtitle v-if="!isEditMode">{{ field.label }}</v-list-item-subtitle>
-        <v-list-item-title v-if="!isEditMode || field.readOnly">
-          <template v-if="field.type === 'button'">
-            <v-btn v-if="selectedEvent[field.key]" :color="field.key === 'inspectionReportUrl' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
-              <v-icon start icon="mdi-launch"></v-icon>開啟{{ field.label }}
-            </v-btn>
-            <span v-else>未提供</span>
-          </template>
+        
+        <!-- [重構] 編輯模式的顯示邏輯 -->
+        <div v-if="isEditMode && EDITABLE_FIELDS.has(field.key)" class="mt-2">
+          <!-- 根據欄位類型顯示不同的輸入元件 -->
+          <v-select
+            v-if="field.key === 'bookingType'"
+            v-model="editableEvent.bookingType"
+            :items="currentTypeOptions"
+            :label="field.label"
+            density="compact"
+            hide-details="auto"
+            variant="outlined"
+          ></v-select>
+          <v-select
+            v-else-if="field.key === 'inspectionMethod'"
+            v-model="editableEvent.inspectionMethod"
+            :items="bookingOptions.inspectionMethods"
+            :label="field.label"
+            density="compact"
+            hide-details="auto"
+            variant="outlined"
+          ></v-select>
+          <v-text-field
+            v-else-if="field.type === 'date'"
+            v-model="editableEvent[field.key]"
+            :label="field.label"
+            type="date"
+            density="compact"
+            hide-details="auto"
+            variant="outlined"
+          ></v-text-field>
+          <v-text-field
+            v-else
+            v-model="editableEvent[field.key]"
+            :label="field.label"
+            density="compact"
+            hide-details="auto"
+            variant="outlined"
+          ></v-text-field>
+        </div>
 
-          <template v-else-if="field.type === 'booking-datetime-select'">
-            <span>
-              {{ safeFormatDate(selectedEvent.appointmentDate, 'yyyy-MM-dd') }}
-              <v-icon size="x-small" class="mx-1">mdi-clock-time-four-outline</v-icon>
-              {{ selectedEvent.appointmentTimeSlot }}
-            </span>
-          </template>
-          <template v-else-if="field.type === 'date'">
-            {{ safeFormatDate(selectedEvent[field.key]) }}
-          </template>
-
-          <template v-else>{{ selectedEvent[field.key] || '無' }}</template>
-
-        </v-list-item-title>
-
-        </v-list-item>
-                          <v-divider v-if="index < getVisibleFields(panel.fields, false).length -1"></v-divider>
-                        </template>
-                      </v-list>
+        <!-- 檢視模式的顯示邏輯 (保持不變或微調) -->
+        <div v-else>
+          <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
+          <v-list-item-title>
+            <template v-if="field.type === 'button'">
+              <v-btn v-if="selectedEvent[field.key]" :color="field.key === 'inspectionReportUrl' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
+                <v-icon start icon="mdi-launch"></v-icon>開啟{{ field.label }}
+              </v-btn>
+              <span v-else>未提供</span>
+            </template>
+            <template v-else-if="field.type === 'booking-datetime-select'">
+              <span>
+                {{ safeFormatDate(selectedEvent.appointmentDate, 'yyyy-MM-dd') }}
+                <v-icon size="x-small" class="mx-1">mdi-clock-time-four-outline</v-icon>
+                {{ selectedEvent.appointmentTimeSlot }}
+              </span>
+            </template>
+            <template v-else-if="field.type === 'date'">
+              {{ safeFormatDate(selectedEvent[field.key]) }}
+            </template>
+            <template v-else>{{ selectedEvent[field.key] || '無' }}</template>
+          </v-list-item-title>
+        </div>
+      </v-list-item>
+      <v-divider v-if="index < getVisibleFields(panel.fields, false).length -1"></v-divider>
+    </template>
+  </v-list>
                     </v-expansion-panel-text>
                   </template>
                 </v-expansion-panel>
@@ -401,11 +448,9 @@
                                                                   :rules="[v => !!v || '必須選擇日期']" 
                                                               ></v-text-field>
                                                               
-                                                              <v-combobox
+                                                                <v-combobox
                                                               v-model="newAppointmentData.appointmentTimeSlot"
                                                               :items="timeSlotOptions"
-                                                              item-title="title"
-                                                              item-value="value"
                                                               label="預約時段"
                                                               :placeholder="isDateInBatch ? '請選擇時段' : '格式 HH:mm'"
                                                               :rules="timeSlotRules"
@@ -414,7 +459,8 @@
                                                               density="compact"
                                                               hide-details="auto"
                                                               no-data-text="此日期無可用時段"
-                                                          ></v-combobox>
+                                                          >
+                                                          </v-combobox>
                                                           </div>
                                                       </div>
                                                 <v-text-field v-else-if="field.key === 'address' || field.key === 'parkingLots'" v-model="newAppointmentData[field.key]" :label="field.label" density="compact" hide-details readonly variant="filled"></v-text-field>
@@ -599,7 +645,7 @@ import { usePageContextStore } from '@/store/pageContextStore';
 import { useProjectStore } from '@/store/projectStore'; 
 import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
-import { ref, onMounted, computed, watch, reactive, onUnmounted } from 'vue';
+import { ref, onMounted, computed, watch, reactive, onUnmounted ,nextTick} from 'vue';
 import { useRoute, useRouter } from 'vue-router'; 
 import { useUserStore } from '@/store/user';
 import { 
@@ -613,6 +659,7 @@ import {
   updateAppointmentInspectors,
   fetchAllHouseholdsForProject,
   getSlotsForAdmin, 
+  fetchProjectConfig, 
 } from '@/api'; 
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -640,9 +687,32 @@ useSystemPresence(projectId.value, systemName);
 const APPOINTMENT_FIELDS = ['bookerName', 'bookerPhone', 'bookerIdNumber' ,'bookerEmail', 'appointmentDate', 'appointmentTimeSlot', 'inspectionMethod', 'inspectionCompanyName', 'inspectors', 'bookingRemarks', 'agentName', 'agentIdNumber', 'agentPhone', 'bookingType', 'status', 'checkInStatus', 'specialRemarks', 'specialRemarks2', 'handoverTime'];
 const HOUSEHOLD_FIELDS = ['address', 'parkingLots', 'buyerName', 'buyerPhone', 'buyerEmail', 'buyerIdNumber','appropriationDate', 'bank', 'bankContact', 'remarks', 'inspectionDocsUrl', 'inspectionReportUrl', 'initialInspectionBatch', 'reInspectionBatch'];
 
+// [新增] 建立一個 Set 來集中管理所有可編輯的欄位，方便維護
+const EDITABLE_FIELDS = new Set([
+  
+  'agentAddress',
+  'agentIdNumber',
+  'agentName',
+  'agentPhone',
+  'appointmentDate',
+  'appointmentTimeSlot',
+  'bookerEmail',
+  'bookerName',
+  'bookerPhone',
+  'bookingType',
+  'bookingRemarks',
+  'inspectionCompanyName',
+  'inspectionMethod',
+  'principalAddress',
+  'principalIdNumber',
+  'principalName'
+]);
+
 // --- 響應式狀態 ---
 const isLoading = ref(true);
 const error = ref(null);
+const projectSettings = ref(null); // [新增] 用於儲存專案的詳細設定
+
 
 // 驗屋預約管理 --- 分頁狀態管理 ---
 const allAppointments = ref([]);
@@ -718,16 +788,17 @@ const isDateInBatch = ref(false);
 
 
 const timeSlotRules = computed(() => {
-    // 只有在「批次外」日期 (自由輸入模式) 才啟用格式驗證
-    if (isDateInBatch.value) {
-        return [v => !!v || '必須選擇一個時段'];
-    } else {
-        return [
-            v => !!v || '必須輸入時段',
-            v => /^([01]\d|2[0-3]):([0-5]\d)$/.test(v) || '格式必須為 HH:mm (例如 09:30)',
-        ];
-    }
+    // 無論是否在批次內，都應檢查是否有輸入，並驗證格式
+    return [
+        v => !!v || '必須輸入時段', // 確保有值
+        // [修改] 驗證規則應只允許 HH:mm 格式，因為後綴會在選擇時被移除
+        v => /^([01]\d|2[0-3]):([0-5]\d)$/.test(v) || '格式必須為 HH:mm (例如 09:30)',
+    ];
 });
+
+
+
+
 
 
 
@@ -738,12 +809,7 @@ const PROJECT_TIME_SLOTS = {
   '富宇富御': ['09:30', '10:00', '11:00', '13:30', '14:00','14:30'],
   'default': ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 };
-const PROJECT_TYPE_OPTIONS = {
-  '富宇上城': ['初驗', '複驗', '後陽台門鎖更換'],
-  '富宇富御': ['初驗', '複驗', ],
-  '富宇首馥': ['初驗', '複驗'],
-  'default': ['初驗', '複驗']
-};
+
 const fieldConfig = {
   default: [
     { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', copyable: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', copyable: true }, { key: 'buyerIdNumber', label: '買方身分證', icon: 'mdi-card-account-details-outline' } ]},
@@ -752,15 +818,20 @@ const fieldConfig = {
     { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'bankContact', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true }, { key: 'remarks', label: '重要備註', icon: 'mdi-alert-circle-outline', type: 'remark' }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]}
   ]
 };
-const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bookerName', label: '預約人姓名' }, { key: 'bookingType', label: '預約項目' }, { key: 'inspectionMethod', label: '驗屋方式' }, { key: 'inspectionCompanyName', label: '代驗公司名稱' }, { key: 'specialRemarks', label: '特殊備註' }, { key: 'specialRemarks2', label: '特殊備註2' }, { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null }, ]);
+const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bookerName', label: '預約人姓名' }, { key: 'bookingType', label: '預約項目' }, { key: 'inspectionMethod', label: '驗屋方式' }, { key: 'inspectionCompanyName', label: '代驗公司名稱' }, { key: 'bookingRemarks', label: '預約備註' }, { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null }, ]);
 const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' }, { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' }, ];
 const EXCEL_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' }, { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' }, ];
-const selectedDisplayFields = ref(['unitId', 'bookingType', 'inspectors']);
+const selectedDisplayFields = ref(displayFieldOptions.value.map(field => field.key));
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
 const pageTitle = computed(() => `${projectName.value} - 驗屋預約時間表`);
-const currentTypeOptions = computed(() => PROJECT_TYPE_OPTIONS[projectName.value] || PROJECT_TYPE_OPTIONS.default);
-const selectedTypes = ref(currentTypeOptions.value);
-const selectedStatuses = ref(['預約中']);
+const currentTypeOptions = computed(() => {
+  if (projectSettings.value && Array.isArray(projectSettings.value.bookingTypes)) {
+    return projectSettings.value.bookingTypes;
+  }
+  return []; // 當資料尚未載入或 bookingTypes 不存在時，回傳空陣列
+});
+const selectedTypes = ref([]);
+const selectedStatuses = ref(['預約中', '取消']);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
@@ -1118,19 +1189,32 @@ function showSnackbar(text, color = 'success') {
 
 
 function enterEditMode() {
-  editableEvent.value = JSON.parse(JSON.stringify(selectedEvent.value));
-  if (editableEvent.value.inspectors && typeof editableEvent.value.inspectors === 'string') {
-    editableEvent.value.inspectors = editableEvent.value.inspectors.split(',').map(name => name.trim()).filter(Boolean);
-  } else if (!editableEvent.value.inspectors) {
-    editableEvent.value.inspectors = [];
-  }
-  ['appointmentDate', 'appropriationDate'].forEach(key => {
-    if (editableEvent.value[key] && editableEvent.value[key].seconds) {
-      editableEvent.value[key] = format(editableEvent.value[key].toDate(), 'yyyy-MM-dd');
-    } else {
-       editableEvent.value[key] = '';
+  // [重構] 使用更穩健的方式建立可編輯的事件複本
+  const cleanCopy = {};
+  for (const key in selectedEvent.value) {
+    const value = selectedEvent.value[key];
+    
+    // 針對日期欄位進行安全格式化
+    if (['appointmentDate', 'appropriationDate'].includes(key)) {
+      cleanCopy[key] = safeFormatDate(value, 'yyyy-MM-dd');
+    } 
+    // 針對驗屋人員欄位，確保是陣列格式
+    else if (key === 'inspectors') {
+      if (typeof value === 'string' && value) {
+        cleanCopy[key] = value.split(',').map(name => name.trim()).filter(Boolean);
+      } else if (Array.isArray(value)) {
+        cleanCopy[key] = value;
+      } else {
+        cleanCopy[key] = [];
+      }
+    } 
+    // 其他欄位，確保 null/undefined 變為空字串
+    else {
+      cleanCopy[key] = value ?? '';
     }
-  });
+  }
+  
+  editableEvent.value = cleanCopy;
   isEditMode.value = true;
 }
 
@@ -1314,6 +1398,73 @@ watch(() => newAppointmentData.unitId, (newUnit) => {
     }
 });
 
+// [新增] 監聽【編輯模式】下預約時段的變化，自動清除後綴
+watch(
+    () => editableEvent.value?.appointmentTimeSlot,
+    (newValue) => {
+        // 只有在編輯模式下才觸發
+        if (!isEditMode.value) return;
+
+        if (typeof newValue === 'string' && newValue.includes('(')) {
+            const match = newValue.match(/^(\d{1,2}:\d{2})/);
+            if (match) {
+                nextTick(() => {
+                    if (editableEvent.value) {
+                        editableEvent.value.appointmentTimeSlot = match[1];
+                    }
+                });
+            }
+        }
+    }
+);
+
+// [新增] 監聽【編輯模式】下預約日期的變化，自動載入該日的可用時段
+watch(
+    () => editableEvent.value?.appointmentDate,
+    async (date) => {
+        // 只有在編輯模式下且有日期值時才觸發
+        if (!isEditMode.value || !date) return;
+
+        // 與新增模式共用相同的狀態 ref
+        timeSlotOptions.value = [];
+        isDateInBatch.value = false;
+        isTimeSlotLoading.value = true;
+
+        try {
+            const dateStr = format(new Date(date), 'yyyy-MM-dd');
+            const options = await getSlotsForAdmin(projectId.value, dateStr);
+            
+            if (options.length > 0) {
+                isDateInBatch.value = true;
+                timeSlotOptions.value = options;
+            }
+        } catch (error) {
+            showSnackbar(`讀取時段失敗: ${error.message}`, 'error');
+        } finally {
+            isTimeSlotLoading.value = false;
+        }
+    }
+);
+
+// [新增] 監聽預約時段的變化，自動清除後綴
+watch(
+    () => newAppointmentData.appointmentTimeSlot,
+    (newValue) => {
+        // 只有當值是字串且包含後綴時才處理
+        if (typeof newValue === 'string' && newValue.includes('(')) {
+            const match = newValue.match(/^(\d{1,2}:\d{2})/);
+            // 如果成功匹配到時間格式，就更新 model
+            if (match) {
+                // 使用 nextTick 確保在 DOM 更新後再修改值，避免衝突
+                nextTick(() => {
+                    newAppointmentData.appointmentTimeSlot = match[1];
+                });
+            }
+        }
+    }
+);
+
+
 // 驗屋預約管理【新增】監聽預約日期的變化，自動載入該日的可用時段
 watch(
     () => newAppointmentData.appointmentDate,
@@ -1332,10 +1483,8 @@ watch(
             
             if (options.length > 0) {
                 isDateInBatch.value = true;
-                timeSlotOptions.value = options.map(opt => ({
-                    title: opt,
-                    value: opt.split(' ')[0]
-                }));
+                // [修改] 直接使用 API 回傳的字串陣列，不再轉換成物件
+                timeSlotOptions.value = options;
             }
         } catch (error) {
             showSnackbar(`讀取時段失敗: ${error.message}`, 'error');
@@ -1344,6 +1493,12 @@ watch(
         }
     }
 );
+
+// 監聽可用的預約項目，並在載入後預設全部選取
+watch(currentTypeOptions, (newOptions) => {
+  // 當選項從 API 載入完成後，將 selectedTypes 的值設定為所有可用的選項
+  selectedTypes.value = [...newOptions];
+});
 
 
 
@@ -1472,8 +1627,17 @@ async function handleConfirmCancelBooking() {
 
 // --- 生命週期與初始資料載入 ---
 onMounted(async () => {
+ pageContextStore.$patch({
+    title: '驗屋預約管理',
+    path: route.path,
+  });
   isLoading.value = true;
-  await projectStore.fetchProjects();
+  
+  try {
+    projectSettings.value = await fetchProjectConfig(projectId.value);
+
+    // 確保 projectStore 也已載入
+    await projectStore.fetchProjects();
 
   try {
     // 使用 Promise.all 並行處理所有初始資料載入，提升速度
@@ -1511,6 +1675,13 @@ onMounted(async () => {
   // 在所有基礎資料載入完成後，才載入預設可見範圍的預約事件
   await loadAppointmentsForDateRange(startDate.value, endDate.value);
   isLoading.value = false;
+
+  } catch (err) {
+    console.error('初始化頁面失敗:', err);
+    error.value = '無法載入預約資料，請稍後再試。';
+  } finally {
+    isLoading.value = false;
+  }
 });
 
 // 清理頁面上下文
@@ -1598,12 +1769,350 @@ const getVisibleFields = (fields, isAdding = false) => {
 
 async function handleDownloadPng() {
  isDownloadingPdf.value = true;
- // ... (rest of the download function)
+
+ const chunkArray = (array, size) => {
+  const chunkedArr = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunkedArr.push(array.slice(i, i + size));
+  }
+  return chunkedArr;
+ };
+
+ try {
+  const start = startDate.value;
+  const end = endDate.value;
+
+  if (!start || !end) {
+   throw new Error("請先選擇有效的開始與結束日期。");
+  }
+
+  const allDates = eachDayOfInterval({ start, end });
+  const dateChunks = chunkArray(allDates, 3);
+
+  const eventsInRange = filteredAppointments.value.filter(event => {
+    const eventDate = new Date(event.start); eventDate.setHours(0,0,0,0);
+    const startDateNormalized = new Date(start); startDateNormalized.setHours(0,0,0,0);
+    const endDateNormalized = new Date(end); endDateNormalized.setHours(0,0,0,0);
+    return eventDate >= startDateNormalized && eventDate <= endDateNormalized;
+  });
+  const groupedEventsInRange = {};
+  eventsInRange.forEach(event => {
+    const dateKey = format(event.start, 'yyyy-MM-dd');
+    const eventStartTime = format(event.start, 'HH:mm');
+    const timeKey = timeSlots.value.find((slot, index) => {
+        const nextSlot = timeSlots.value[index + 1] || '23:59';
+        return eventStartTime >= slot && eventStartTime < nextSlot;
+    }) || timeSlots.value[0];
+
+    if (!groupedEventsInRange[dateKey]) groupedEventsInRange[dateKey] = {};
+    if (!groupedEventsInRange[dateKey][timeKey]) groupedEventsInRange[dateKey][timeKey] = [];
+    groupedEventsInRange[dateKey][timeKey].push(event);
+  });
+
+  const tempContainer = document.createElement('div');
+  Object.assign(tempContainer.style, {
+    position: 'absolute', left: '-9999px', width: '1123px',
+    padding: '20px', backgroundColor: 'white'
+  });
+
+  const todayStr = format(new Date(), 'MM/dd');
+  const dateStampElement = document.createElement('div');
+  dateStampElement.textContent = `${todayStr} 更新`;
+  Object.assign(dateStampElement.style, {
+    fontSize: '3em', fontWeight: 'bold', color: 'red', marginBottom: '20px'
+  });
+  tempContainer.appendChild(dateStampElement);
+
+  dateChunks.forEach(chunk => {
+    const firstDate = chunk[0];
+    const lastDate = chunk[chunk.length - 1];
+    const titleElement = document.createElement('h3');
+    Object.assign(titleElement.style, {
+      fontSize: '1.25rem', marginBottom: '1rem', marginTop: '2rem'
+    });
+    titleElement.textContent = `${projectName.value} - 驗屋時間表: ${format(firstDate, 'yyyy/MM/dd')} - ${format(lastDate, 'yyyy/MM/dd')}`;
+    tempContainer.appendChild(titleElement);
+
+    const table = document.createElement('table');
+    Object.assign(table.style, {
+      borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', fontSize: '14px'
+    });
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+
+    chunk.forEach(date => {
+      const timeHeaderCell = document.createElement('th');
+      timeHeaderCell.textContent = '時間';
+      Object.assign(timeHeaderCell.style, {
+        width: '70px',
+        border: '1px solid #dee2e6', padding: '8px',
+        backgroundColor: '#f8f9fa', fontWeight: 'bold', textAlign: 'center'
+      });
+      headerRow.appendChild(timeHeaderCell);
+
+      const dayHeaderCell = document.createElement('th');
+      dayHeaderCell.innerHTML = `<div>${format(date, 'EEEE', { locale: zhTW })}</div><div>${format(date, 'M/d')}</div>`;
+      Object.assign(dayHeaderCell.style, {
+        width: 'auto',
+        border: '1px solid #dee2e6', padding: '8px',
+        backgroundColor: '#f8f9fa', fontWeight: 'bold', textAlign: 'center'
+      });
+      if (isToday(date)) dayHeaderCell.style.backgroundColor = '#e3f2fd';
+      if (isSaturday(date) || isSunday(date)) dayHeaderCell.style.backgroundColor = '#fce4e4';
+      headerRow.appendChild(dayHeaderCell);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    timeSlots.value.forEach(timeSlot => {
+      const bodyRow = document.createElement('tr');
+      chunk.forEach(date => {
+        const timeCell = document.createElement('td');
+        timeCell.textContent = timeSlot;
+        Object.assign(timeCell.style, {
+          border: '1px solid #dee2e6', padding: '8px', textAlign: 'center',
+          fontWeight: 'bold', backgroundColor: '#f8f9fa'
+        });
+        bodyRow.appendChild(timeCell);
+        const eventCell = document.createElement('td');
+        Object.assign(eventCell.style, {
+          border: '1px solid #dee2e6', padding: '4px', verticalAlign: 'top', minHeight: '10px',
+        });
+        const dateKey = format(date, 'yyyy-MM-dd');
+        const events = groupedEventsInRange[dateKey]?.[timeSlot] || [];
+        events.forEach(event => {
+          const eventItem = document.createElement('div');
+          const styles = getEventStyle(event);
+          Object.assign(eventItem.style, styles, {
+            whiteSpace: 'normal', wordWrap: 'break-word', padding: '4px 6px',
+            marginTop: '4px', borderRadius: '4px', fontSize: '0.9em',
+          });
+          if (event['預約狀態'] === '取消') {
+           eventItem.style.textDecoration = 'line-through';
+           eventItem.style.opacity = '0.7';
+          }
+          
+          // --- ✨ 修改後：使用 displayParts 產生 HTML 字串 ---
+          const titleHTML = event.displayParts.map(part => {
+            if (part.isHousehold) {
+              return `<strong style="font-size: 1.1em;">${part.text}</strong>`;
+            }
+            return part.text;
+          }).join(' - ');
+          eventItem.innerHTML = titleHTML;
+          // --- ✨ 修改結束 ---
+
+          eventCell.appendChild(eventItem);
+        });
+        bodyRow.appendChild(eventCell);
+      });
+      tbody.appendChild(bodyRow);
+    });
+    table.appendChild(tbody);
+    tempContainer.appendChild(table);
+  });
+
+  document.body.appendChild(tempContainer);
+
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
+
+  document.body.removeChild(tempContainer);
+
+  const imageURL = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.href = imageURL;
+
+  const fileName = `${projectName.value}_驗屋預約表_${format(start, 'yyyyMMdd')}-${format(end, 'yyyyMMdd')}.png`;
+  link.download = fileName;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+ } catch (err) {
+  console.error("圖片產生失敗:", err);
+  error.value = `產生圖片失敗: ${err.message}`;
+ } finally {
+  isDownloadingPdf.value = false;
+ }
 }
 async function handleDownloadExcel() {
   isDownloadingExcel.value = true;
-  // ... (rest of the download function)
+  try {
+    const start = startDate.value;
+    const end = endDate.value;
+    if (!start || !end) throw new Error("請先選擇有效的開始與結束日期。");
+
+    const allDates = eachDayOfInterval({ start, end });
+    if (allDates.length === 0) throw new Error("沒有有效的日期範圍可供匯出。");
+
+    // --- 1. 動態決定要匯出的欄位 ---
+    const selectedOptions = displayFieldOptions.value
+      .filter(option => selectedDisplayFields.value.includes(option.key));
+
+    const excelHeaders = [
+      { key: 'appointmentTimeSlot', label: '時間', wch: 12 }, // [修正] 將 key 從 '預約時段' 改為 'appointmentTimeSlot'
+      ...selectedOptions.map(option => ({
+        key: option.key,
+        label: option.label,
+        wch: 20
+      })),
+      { key: 'status', label: '狀態', wch: 12 }, // [修正] 將 key 從 '預約狀態' 改為 'status'
+    ];
+    const headerLabels = excelHeaders.map(h => h.label);
+    const numColumns = excelHeaders.length;
+
+    // --- 2. 準備 Workbook 和 Worksheet ---
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    const merges = [];
+
+    // --- 3. 樣式定義 ---
+    const mainTitleStyle = {
+      font: { name: '標楷體', bold: true, sz: 16, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: "005B9A" } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    };
+    const headerStyle = {
+      font: { name: '標楷體', bold: true, sz: 12 },
+      fill: { patternType: "solid", fgColor: { rgb: "E0E0E0" } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+    const defaultCellStyle = {
+      font: { name: '標楷體' },
+      alignment: { vertical: 'center', wrapText: true },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    // --- 4. 寫入總標題 (A1:E1 合併) ---
+    ws['A1'] = { v: `${projectName.value} - 驗屋時間表`, t: 's', s: mainTitleStyle };
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
+    
+    let currentRow = 1; // 內容從第 2 列開始
+    let maxCol = 0;
+
+    // --- 5. 遍歷資料並寫入儲存格 ---
+    const dateChunks = allDates.reduce((acc, _, i) => (i % 3 ? acc : [...acc, allDates.slice(i, i + 3)]), []);
+    
+    dateChunks.forEach((chunk) => {
+      let currentColumn = 0;
+      let maxAppointmentsInChunk = 0;
+      chunk.forEach(date => {
+        const appointmentsForDay = filteredAppointments.value.filter(a => format(a.start, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+        if (appointmentsForDay.length > maxAppointmentsInChunk) {
+          maxAppointmentsInChunk = appointmentsForDay.length;
+        }
+      });
+      const blockHeight = 1 + 1 + maxAppointmentsInChunk;
+
+      chunk.forEach(date => {
+        // 寫入每日標頭
+        ws[XLSX.utils.encode_cell({ r: currentRow, c: currentColumn })] = { v: format(date, 'yyyy/MM/dd (EEE)', { locale: zhTW }), t: 's', s: headerStyle };
+        merges.push({ s: { r: currentRow, c: currentColumn }, e: { r: currentRow, c: currentColumn + numColumns - 1 } });
+        
+        // 寫入資料欄位標頭
+        headerLabels.forEach((label, idx) => {
+          ws[XLSX.utils.encode_cell({ r: currentRow + 1, c: currentColumn + idx })] = { v: label, t: 's', s: headerStyle };
+        });
+
+        // 寫入每日的預約資料
+        const appointmentsForDay = filteredAppointments.value
+          .filter(a => format(a.start, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'))
+          .sort((a, b) => a.start - b.start);
+        
+        for (let i = 0; i < maxAppointmentsInChunk; i++) {
+          const event = appointmentsForDay[i];
+          excelHeaders.forEach((header, idx) => {
+            const cellRef = XLSX.utils.encode_cell({ r: currentRow + 2 + i, c: currentColumn + idx });
+            if (event) {
+              const rowStyle = getExcelRowStyle(event);
+              let finalCellStyle = JSON.parse(JSON.stringify(defaultCellStyle));
+              finalCellStyle.fill = { patternType: "solid", fgColor: { rgb: rowStyle.backgroundColor } };
+              finalCellStyle.font.color = { rgb: rowStyle.textColor };
+              ws[cellRef] = { v: event[header.key] || '', t: 's', s: finalCellStyle };
+            } else {
+              ws[cellRef] = { v: '', t: 's', s: defaultCellStyle };
+            }
+          });
+        }
+        currentColumn += numColumns;
+      });
+      
+      if (currentColumn > maxCol) maxCol = currentColumn;
+      currentRow += blockHeight;
+    });
+
+    // --- 6. 設定工作表範圍與欄寬 ---
+    ws['!ref'] = XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: maxCol - 1, r: currentRow -1 } });
+    ws['!merges'] = merges;
+      // =================> 最終版：自動計算欄寬的邏輯 <=================
+
+      // 1. 建立一個陣列，用來儲存工作表中「每一個」欄位的實際最大內容寬度
+      const colWidths = [];
+
+      // 2. 遍歷所有儲存格，找出每一欄的最大寬度
+      Object.keys(ws).forEach(cellRef => {
+        // 忽略所有非儲存格的特殊屬性 (例如 !ref, !merges)
+        if (cellRef.startsWith('!')) return;
+
+        const decodedCell = XLSX.utils.decode_cell(cellRef);
+        const colIndex = decodedCell.c;
+
+        // 判斷此儲存格是否為合併儲存格 (用來排除最上方的總標題和每日標題)
+        const isMerged = merges.some(m => 
+          colIndex >= m.s.c && colIndex <= m.e.c && 
+          decodedCell.r >= m.s.r && decodedCell.r <= m.e.r
+        );
+        // 如果是合併儲存格，就跳過，不參與寬度計算
+        if (isMerged) return;
+
+        const cellValue = ws[cellRef].v || '';
+        // 將中文字元算為2個字元寬度，計算更準確
+        const contentLength = cellValue.toString().replace(/[^\x00-\xff]/g, "xx").length;
+
+        // 如果目前儲存格的內容長度 > 該欄已記錄的最大長度，就更新它
+        if (!colWidths[colIndex] || contentLength > colWidths[colIndex]) {
+          colWidths[colIndex] = contentLength;
+        }
+      });
+
+      // 3. 將計算出的寬度陣列，轉換成 xlsx 需要的格式
+      const newCols = colWidths.map(width => {
+        // 在最大內容寬度的基礎上，再加 2 個字元的邊距，避免文字太貼邊
+        return { wch: width + 2 };
+      });
+
+      // 4. 將新的、動態計算出的欄寬設定賦予工作表
+      ws['!cols'] = newCols;
+
+      // =================>↑↑↑↑最終版：自動計算欄寬的邏輯↑↑↑ <=================
+
+    // --- 7. 產生並下載檔案 ---
+    XLSX.utils.book_append_sheet(wb, ws, "驗屋時間表");
+    const fileName = `${projectName.value}_驗屋預約表_${format(new Date(), 'yyyyMMdd')}.xlsx`;
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error("Excel 產生失敗:", err);
+    error.value = `產生 Excel 失敗: ${err.message}`;
+  } finally {
+    isDownloadingExcel.value = false;
+  }
 }
+
 async function handleRefresh() {
   await fetchData();
   snackbarText.value = '日曆資料已更新';
