@@ -1872,6 +1872,30 @@ export async function fetchActivityMessageSlideId(projectName) {
 // =============================================
 
 /**
+ * [新] 從後端獲取指定建案的預約紀錄有效日期範圍
+ * @param {string} projectId 
+ * @returns {Promise<{minDate: string, maxDate: string}>}
+ */
+export async function fetchAppointmentDateRange(projectId) {
+  try {
+    const getDateRange = httpsCallable(functions, 'getAppointmentDateRange');
+    const result = await getDateRange({ projectId });
+    if (result.data.status === 'success') {
+      return result.data.data;
+    }
+    throw new Error(result.data.message || '無法獲取日期範圍');
+  } catch (error) {
+    console.error("API fetchAppointmentDateRange 錯誤:", error);
+    // 發生錯誤時提供一個預設值，避免頁面崩潰
+    const currentYear = new Date().getFullYear();
+    return {
+      minDate: `${currentYear}-01-01`,
+      maxDate: `${currentYear}-12-31`,
+    };
+  }
+}
+
+/**
  *  [已修正] 獲取使用者有權限查看驗屋預約管理的建案列表
  */
 export async function getProjectsForInspectionCalendar(userKey) {
@@ -2217,7 +2241,7 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
 };
 
 /**
- * ✅ [Firebase 版] 獲取指定建案的所有預約批次規則
+ *  [Firebase 版] 獲取指定建案的所有預約批次規則
  * @param {string} projectId - 建案的 ID
  * @returns {Promise<object>} - 返回包含批次規則的物件
  */
@@ -3743,11 +3767,12 @@ export async function goOffline(userKey) {
 
 
 /**
- * [新] 呼叫後端函式，在指定建案中搜尋預約紀錄
+ * [新] 呼叫後端函式，在指定建案中搜尋預約紀錄 (全域搜尋)
  * @param {string} projectId 
  * @param {string} searchText 
  * @returns {Promise<object>}
  */
+ // 替換舊的 searchAppointments 函式
 export async function searchAppointments(projectId, searchText) {
   console.log(`[API] Calling Firebase Function 'handleAppointmentSearch' for project: ${projectId} with query: "${searchText}"`);
   try {
@@ -3759,6 +3784,7 @@ export async function searchAppointments(projectId, searchText) {
     return { status: 'error', message: error.message, data: [] };
   }
 }
+
 
 
 
@@ -4463,7 +4489,7 @@ export async function fetchAllHouseholdsForProject(projectId) {
 }
 
 /**
- * ✅ [修改後版本] 供管理員獲取指定日期的所有時段選項
+ *  [修改後版本] 供管理員獲取指定日期的所有時段選項
  * @param {string} projectId 
  * @param {string} dateStr - 'YYYY-MM-DD' 格式
  * @returns {Promise<Array<string>>}

@@ -1217,41 +1217,78 @@ exports.handleAppointmentSearch = onCall(async (request) => {
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
   const appointmentsRef = anxiDb.collection("appointments");
   const householdsRef = anxiDb.collection("households");
+  const endText = searchText + '\uf8ff';
 
- try {
-    const endText = searchText + '\uf8ff';
+  try {
+    // --- 階段 1: 建立所有欄位的查詢陣列 ---
+    const appointmentQueries = [
+      'unitId', 'bookerName', 'bookerPhone', 'bookerEmail', 'bookerIdNumber',
+      'bookingType', 'inspectionMethod', 'inspectionCompanyName', 'agentName',
+      'agentPhone', 'bookingRemarks', 'inspectors', 'status'
+    ].map(field => 
+      appointmentsRef.where("projectId", "==", projectId).where(field, ">=", searchText).where(field, "<", endText).get()
+    );
 
-     // 使用後端 Admin SDK 的鏈式語法重寫查詢
-     const queryByUnitId = appointmentsRef.where("projectId", "==", projectId).where("unitId", ">=", searchText).where("unitId", "<", endText);
-     const queryByBookerName = appointmentsRef.where("projectId", "==", projectId).where("bookerName", ">=", searchText).where("bookerName", "<", endText);
-     const queryByBookerPhone = appointmentsRef.where("projectId", "==", projectId).where("bookerPhone", ">=", searchText).where("bookerPhone", "<", endText);
+    const householdQueries = [
+      'address', 'parkingLots', 'buyerName', 'buyerPhone', 'buyerEmail',
+      'buyerIdNumber', 'bank', 'bankContact', 'remarks',
+      'initialInspectionBatch', 'reInspectionBatch'
+    ].map(field =>
+      householdsRef.where("projectId", "==", projectId).where(field, ">=", searchText).where(field, "<", endText).get()
+    );
+    
+    // --- 階段 2: 平行執行所有查詢 ---
+    const allQuerySnapshots = await Promise.all([...appointmentQueries, ...householdQueries]);
 
-    const [unitIdResults, bookerNameResults, bookerPhoneResults] = await Promise.all([
-      queryByUnitId.get(),
-      queryByBookerName.get(),
-      queryByBookerPhone.get()
-    ]);
+    // --- 階段 3: 處理查詢結果並收集 appointments ---
+    const appointmentsMap = new Map();
+    const householdMatchUnitIds = new Set();
 
-    // 使用 Map 來合併結果並去除重複項
-    const resultsMap = new Map();
-    const processSnapshot = (snapshot) => {
+    // 處理 appointments 查詢結果
+    allQuerySnapshots.slice(0, appointmentQueries.length).forEach(snapshot => {
       snapshot.forEach(doc => {
-        if (!resultsMap.has(doc.id)) {
-          resultsMap.set(doc.id, { id: doc.id, ...doc.data() });
+        if (!appointmentsMap.has(doc.id)) {
+          appointmentsMap.set(doc.id, { id: doc.id, ...doc.data() });
         }
       });
-    };
+    });
 
-    processSnapshot(unitIdResults);
-    processSnapshot(bookerNameResults);
-    processSnapshot(bookerPhoneResults);
+    // 處理 households 查詢結果，只收集 unitId
+    allQuerySnapshots.slice(appointmentQueries.length).forEach(snapshot => {
+        snapshot.forEach(doc => {
+            householdMatchUnitIds.add(doc.data().unitId);
+        });
+    });
 
-    const appointments = Array.from(resultsMap.values());
-    
-    // 如果找到了預約，我們還需要去補上戶別資料
-    if (appointments.length > 0) {
-        const householdIds = [...new Set(appointments.map(a => `${a.projectId}_${a.unitId}`))];
-        const householdsSnapshot = await anxiDb.collection("households").where(FieldPath.documentId(), 'in', householdIds).get();
+    // 如果從 households 找到了符合的 unitId，就去撈取對應的 appointments
+    if (householdMatchUnitIds.size > 0) {
+        const unitIdArray = Array.from(householdMatchUnitIds);
+        // Firestore 'in' 查詢每次最多 30 個
+        const chunks = [];
+        for (let i = 0; i < unitIdArray.length; i += 30) {
+            chunks.push(unitIdArray.slice(i, i + 30));
+        }
+
+        for (const chunk of chunks) {
+            const relatedAppointmentsQuery = appointmentsRef.where("projectId", "==", projectId).where("unitId", "in", chunk);
+            const relatedAppointmentsSnapshot = await relatedAppointmentsQuery.get();
+            relatedAppointmentsSnapshot.forEach(doc => {
+                if (!appointmentsMap.has(doc.id)) {
+                    appointmentsMap.set(doc.id, { id: doc.id, ...doc.data() });
+                }
+            });
+        }
+    }
+
+    const appointments = Array.from(appointmentsMap.values());
+    if (appointments.length === 0) {
+      return { status: "success", data: [] };
+    }
+
+    // --- 階段 4: 補上戶別資料 (與 fetchCalendarData 邏輯相同) ---
+    const householdIds = [...new Set(appointments.map(a => `${a.projectId}_${a.unitId}`))];
+    if (householdIds.length > 0) {
+        const householdsSnapshot = await householdsRef.where(FieldPath.documentId(), 'in', householdIds).get();
         const householdsMap = new Map();
         householdsSnapshot.forEach(doc => {
             householdsMap.set(doc.id, doc.data());
@@ -1261,12 +1298,12 @@ exports.handleAppointmentSearch = onCall(async (request) => {
             const householdKey = `${appt.projectId}_${appt.unitId}`;
             const householdData = householdsMap.get(householdKey) || {};
             return { ...householdData, ...appt };
-        });
+        }).sort((a,b) => b.appointmentDate.toMillis() - a.appointmentDate.toMillis()); // 按預約日期降序排序
 
         return { status: "success", data: combinedData };
     }
 
-    return { status: "success", data: [] }; // 如果都沒找到，回傳空陣列
+    return { status: "success", data: appointments };
 
   } catch (error) {
     console.error(`Appointment search failed for project [${projectId}]:`, error);
@@ -4956,4 +4993,68 @@ exports.dailyAppointmentStatusUpdate = onSchedule({
     } catch (error) {
         console.error(`[${functionName}] 執行時發生錯誤:`, error);
     }
+});
+
+
+/**
+ * 獲取指定建案中，預約紀錄的最早年份和最晚年份，並回傳完整的起訖日期
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 包含 { minDate, maxDate } 的物件
+ */
+exports.getAppointmentDateRange = onCall(async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getAppointmentDateRange (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const appointmentsRef = db.collection("appointments");
+
+    // 建立兩個查詢：一個找最早，一個找最晚
+    const firstAppointmentQuery = appointmentsRef
+      .where("projectId", "==", projectId)
+      .orderBy("appointmentDate", "asc")
+      .limit(1);
+
+    const lastAppointmentQuery = appointmentsRef
+      .where("projectId", "==", projectId)
+      .orderBy("appointmentDate", "desc")
+      .limit(1);
+
+    // 平行執行這兩個查詢
+    const [firstSnapshot, lastSnapshot] = await Promise.all([
+      firstAppointmentQuery.get(),
+      lastAppointmentQuery.get(),
+    ]);
+
+    let minDate, maxDate;
+
+    if (firstSnapshot.empty) {
+      // 如果沒有任何預約紀錄，預設為今年
+      const currentYear = new Date().getFullYear();
+      minDate = `${currentYear}-01-01`;
+      maxDate = `${currentYear}-12-31`;
+      console.log(`[${functionName}] 找不到預約，使用預設年份: ${currentYear}`);
+    } else {
+      const firstAppointment = firstSnapshot.docs[0].data();
+      const lastAppointment = lastSnapshot.docs[0].data();
+
+      // 從 Timestamp 中獲取年份
+      const earliestYear = firstAppointment.appointmentDate.toDate().getFullYear();
+      const latestYear = lastAppointment.appointmentDate.toDate().getFullYear();
+
+      minDate = `${earliestYear}-01-01`;
+      maxDate = `${latestYear}-12-31`;
+      console.log(`[${functionName}] 計算出的年份範圍: ${earliestYear} - ${latestYear}`);
+    }
+
+    return { status: "success", data: { minDate, maxDate } };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `獲取日期範圍失敗: ${error.message}`);
+  }
 });

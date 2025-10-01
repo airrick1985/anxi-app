@@ -77,37 +77,104 @@
 
       <div v-if="!isLoading && !error">
         <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
-          <v-col cols="12" sm="4" md="2">
-            <v-text-field v-model="startDateFormatted" label="開始日期" type="date" density="compact" hide-details></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="4" md="2">
-            <v-text-field v-model="endDateFormatted" label="結束日期" type="date" density="compact" hide-details></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="4" md="3">
-            <v-text-field v-model="searchQuery" label="關鍵字搜尋..." prepend-inner-icon="mdi-magnify" density="compact" hide-details clearable variant="outlined" color="primary"></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="auto" class="pl-md-5">
-              <div class="d-flex align-center">
-                  <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">狀態:</span>
-                  <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
-                  <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
-                  <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="blue-grey"></v-checkbox>
-              </div>
-          </v-col>
-          <v-col cols="12" sm="6" md="auto" class="ml-md-6">
-            <div class="d-flex align-center">
-              <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">項目:</span>
-              <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="teal-darken-1"></v-checkbox>
-            </div>
-          </v-col>
-           <v-col cols="12" class="mt-2 pt-0">
-             <v-divider></v-divider>
-            <div id="display-options-panel" class="d-flex align-center flex-wrap">
-            <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
-              <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="indigo" class="mt-2"></v-checkbox>
-            </div>
-          </v-col>
-        </v-row>
+  <v-col cols="12" sm="4" md="2">
+        <v-menu v-model="startMenu" :close-on-content-click="false" transition="scale-transition" offset-y>
+            <template v-slot:activator="{ props }">
+                <v-text-field
+                    :model-value="startDateFormatted"
+                    label="開始日期"
+                    prepend-inner-icon="mdi-calendar"
+                    readonly
+                    v-bind="props"
+                    density="compact"
+                    hide-details
+                ></v-text-field>
+            </template>
+            <v-date-picker
+                v-model="startDate"
+                :min="minSelectableDate"
+                :max="maxSelectableDate"
+                @update:model-value="startMenu = false"
+                show-adjacent-months
+                hide-header
+            ></v-date-picker>
+        </v-menu>
+    </v-col>
+
+  <v-col cols="12" sm="4" md="2">
+        <v-menu v-model="endMenu" :close-on-content-click="false" transition="scale-transition" offset-y>
+            <template v-slot:activator="{ props }">
+                <v-text-field
+                    :model-value="endDateFormatted"
+                    label="結束日期"
+                    prepend-inner-icon="mdi-calendar"
+                    readonly
+                    v-bind="props"
+                    density="compact"
+                    hide-details
+                ></v-text-field>
+            </template>
+            <v-date-picker
+                v-model="endDate"
+                :min="minSelectableDate"
+                :max="maxSelectableDate"
+                @update:model-value="endMenu = false"
+                show-adjacent-months
+                hide-header
+            ></v-date-picker>
+        </v-menu>
+    </v-col>
+
+  <v-col cols="12" sm="4" md="3">
+    <v-autocomplete
+      v-model="selectedSearchResult"
+      v-model:search="searchQuery"
+      :items="formattedBackendResults"
+      :loading="isSearchingBackend"
+      item-title="title"
+      item-value="value"
+      label="關鍵字搜尋..."
+      prepend-inner-icon="mdi-magnify"
+      density="compact"
+      hide-details
+      clearable
+      variant="outlined"
+      color="primary"
+      no-data-text="沒有符合的預約紀錄"
+      return-object
+      @update:model-value="handleSearchResultSelection"
+    >
+      <template v-slot:item="{ props, item }">
+        <v-list-item v-bind="props" :title="null">
+          <v-list-item-title>{{ item.raw.title }}</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">{{ item.raw.subtitle }}</v-list-item-subtitle>
+        </v-list-item>
+      </template>
+    </v-autocomplete>
+  </v-col>
+
+  <v-col cols="12" sm="6" md="auto" class="pl-md-5">
+      <div class="d-flex align-center">
+          <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">狀態:</span>
+          <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
+          <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
+          <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="blue-grey"></v-checkbox>
+      </div>
+  </v-col>
+  <v-col cols="12" sm="6" md="auto" class="ml-md-6">
+    <div class="d-flex align-center">
+      <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">項目:</span>
+      <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="teal-darken-1"></v-checkbox>
+    </div>
+  </v-col>
+   <v-col cols="12" class="mt-2 pt-0">
+     <v-divider></v-divider>
+    <div id="display-options-panel" class="d-flex align-center flex-wrap">
+    <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
+      <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="indigo" class="mt-2"></v-checkbox>
+    </div>
+  </v-col>
+</v-row>
         
         <div id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
@@ -593,11 +660,71 @@
         <v-divider></v-divider>
         <div class="pa-4" style="overflow-y: auto;">
           <v-label class="mb-2">日期範圍</v-label>
-          <v-text-field v-model="startDateFormatted" label="開始日期" type="date" density="compact" class="mb-3"></v-text-field>
-          <v-text-field v-model="endDateFormatted" label="結束日期" type="date" density="compact" class="mb-3"></v-text-field>
-          <v-divider class="my-3"></v-divider>
-          <v-text-field v-model="searchQuery" label="關鍵字搜尋..." prepend-inner-icon="mdi-magnify" density="compact" clearable variant="outlined" color="primary" class="mb-3"></v-text-field>
-          <v-divider class="my-3"></v-divider>
+<v-menu v-model="startMenu" :close-on-content-click="false" transition="scale-transition" offset-y>
+          <template v-slot:activator="{ props }">
+              <v-text-field
+                  :model-value="startDateFormatted"
+                  label="開始日期"
+                  prepend-inner-icon="mdi-calendar"
+                  readonly
+                  v-bind="props"
+                  density="compact"
+                  class="mb-3"
+              ></v-text-field>
+          </template>
+          <v-date-picker
+              v-model="startDate"
+              :min="minSelectableDate"
+              :max="maxSelectableDate"
+              @update:model-value="startMenu = false"
+          ></v-date-picker>
+      </v-menu>
+        <v-menu v-model="endMenu" :close-on-content-click="false" transition="scale-transition" offset-y>
+          <template v-slot:activator="{ props }">
+              <v-text-field
+                  :model-value="endDateFormatted"
+                  label="結束日期"
+                  prepend-inner-icon="mdi-calendar"
+                  readonly
+                  v-bind="props"
+                  density="compact"
+                  class="mb-3"
+              ></v-text-field>
+          </template>
+          <v-date-picker
+              v-model="endDate"
+              :min="minSelectableDate"
+              :max="maxSelectableDate"
+              @update:model-value="endMenu = false"
+          ></v-date-picker>
+      </v-menu>
+                <v-divider class="my-3"></v-divider>
+<v-autocomplete
+              v-model="selectedSearchResult"
+              v-model:search="searchQuery"
+              :items="autocompleteItems"
+              item-title="title"
+              item-value="value"
+              label="關鍵字搜尋..."
+              prepend-inner-icon="mdi-magnify"
+              density="compact"
+              hide-details
+              clearable
+              variant="outlined"
+              color="primary"
+              no-data-text="沒有符合的預約紀錄"
+              return-object
+              @update:model-value="handleSearchResultSelection"
+              class="mb-3"
+            >
+              <template v-slot:item="{ props, item }">
+                <v-list-item v-bind="props" :title="null">
+                  <v-list-item-title>{{ item.raw.title }}</v-list-item-title>
+                  <v-list-item-subtitle class="text-caption">{{ item.raw.subtitle }}</v-list-item-subtitle>
+                </v-list-item>
+              </template>
+            </v-autocomplete>
+             <v-divider class="my-3"></v-divider>
           <div>
             <v-label class="mb-2">狀態</v-label>
             <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
@@ -715,6 +842,7 @@ import {
   fetchAllHouseholdsForProject,
   getSlotsForAdmin, 
   fetchProjectConfig, 
+  fetchAppointmentDateRange, 
 } from '@/api'; 
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -783,25 +911,20 @@ const isDownloadingExcel = ref(false);
 
 // 驗屋預約管理 --- 搜尋狀態管理 ---
 const searchQuery = ref('');
-const isSearching = ref(false);
-const searchResults = ref(null); // null 代表不在搜尋模式，[] 代表搜尋但沒結果
+const selectedSearchResult = ref(null);
+const isSearchingBackend = ref(false); // 後端搜尋的讀取狀態
+const backendSearchResults = ref([]); // 存放後端回傳的結果
 
 
- // 新增 foundDates computed 屬性，用來從搜尋結果中提取日期
- const foundDates = computed(() => {
-  if (searchResults.value && searchResults.value.length > 0) {
-    const dates = new Set(
-      searchResults.value.map(event => safeFormatDate(event.appointmentDate, 'yyyy-MM-dd'))
-    );
-    return Array.from(dates);
-  }
-  return [];
- });
 
 
 
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
+const startMenu = ref(false);
+const endMenu = ref(false);
+const minSelectableDate = ref(null);
+const maxSelectableDate = ref(null);
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
 const isFilterDrawerVisible = ref(false);
@@ -908,12 +1031,7 @@ const timeSlots = computed(() => PROJECT_TIME_SLOTS[projectName.value] || PROJEC
 
 // 核心修改 filteredAppointments 現在會優先顯示搜尋結果
 const filteredAppointments = computed(() => {
-  // 如果處於搜尋模式 (searchResults 不是 null)
-  if (searchResults.value !== null) {
-    return processAppointments(searchResults.value);
-  }
-
-  // 否則，使用舊的篩選邏輯，但作用於已載入的 allAppointments
+  //  直接過濾 allAppointments，完全移除對 searchResults 的判斷
   return processAppointments(allAppointments.value).filter(appt => {
     const statusMatch = selectedStatuses.value.includes(appt.status);
     const typeMatch = selectedTypes.value.includes(appt.bookingType);
@@ -921,70 +1039,67 @@ const filteredAppointments = computed(() => {
   });
 });
 
-const dateChunks = computed(() => { 
-  const query = searchQuery.value ? searchQuery.value.trim() : '';
-  if (query && foundDates.value.length > 0) {
-    const startOfWeeks = [...new Set(foundDates.value.map(dateStr => format(startOfWeek(new Date(dateStr), { weekStartsOn: 1 }), 'yyyy-MM-dd')))].sort();
-    return startOfWeeks.map(weekStartStr => {
-      const chunk = [];
-      const current = new Date(weekStartStr);
-      for (let i = 0; i < 7; i++) {
-        const date = addDays(current, i);
-        chunk.push({
-          dateObj: date, dayName: format(date, 'EEEE', { locale: zhTW }),
-          date: format(date, 'M/d'), fullDate: format(date, 'yyyy-MM-dd'),
-          isInRange: true, isToday: isToday(date), isWeekend: isSaturday(date) || isSunday(date)
-        });
-      }
-      return chunk;
-    });
-  } else {
-    if (!startDate.value || !endDate.value) return [];
-    const chunks = [];
-    let current = startOfWeek(new Date(startDate.value), { weekStartsOn: 1 });
-    while (current <= endDate.value) {
-      const chunk = [];
-      for (let i = 0; i < 7; i++) {
-        const date = addDays(current, i);
-        const isInRange = date >= startDate.value && date <= endDate.value;
-        chunk.push({
-          dateObj: date, dayName: format(date, 'EEEE', { locale: zhTW }),
-          date: format(date, 'M/d'), fullDate: format(date, 'yyyy-MM-dd'),
-          isInRange: isInRange, isToday: isToday(date), isWeekend: isSaturday(date) || isSunday(date)
-        });
-      }
-      chunks.push(chunk);
-      current = addDays(current, 7);
+const dateChunks = computed(() => {
+  // 直接根據 startDate 和 endDate 產生日期區塊，移除所有與 query 和 foundDates 相關的邏輯
+  if (!startDate.value || !endDate.value) return [];
+  
+  const chunks = [];
+  let current = startOfWeek(new Date(startDate.value), { weekStartsOn: 1 });
+  
+  while (current <= endDate.value) {
+    const chunk = [];
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(current, i);
+      const isInRange = date >= startDate.value && date <= endDate.value;
+      chunk.push({
+        dateObj: date,
+        dayName: format(date, 'EEEE', { locale: zhTW }),
+        date: format(date, 'M/d'),
+        fullDate: format(date, 'yyyy-MM-dd'),
+        isInRange: isInRange,
+        isToday: isToday(date),
+        isWeekend: isSaturday(date) || isSunday(date)
+      });
     }
-    return chunks;
+    chunks.push(chunk);
+    current = addDays(current, 7);
   }
+  return chunks;
 });
+
 
 // 解析搜尋關鍵字中的日期，支援多個日期
 const startDateFormatted = computed({ 
   get: () => format(startDate.value, 'yyyy-MM-dd'), 
-  //  START: 修改此處
   set: (val) => { 
     if (!val) return;
-    // 將 'YYYY-MM-DD' 字串拆開，手動建立一個本地時區的 Date 物件
-    // 這樣可以避免瀏覽器將其錯誤地解析為 UTC 時間
     const [year, month, day] = val.split('-').map(Number);
-    startDate.value = new Date(year, month - 1, day); 
+    const newDate = new Date(year, month - 1, day);
+    // 確保新日期不會超出範圍
+    if (newDate < new Date(minSelectableDate.value)) {
+        startDate.value = new Date(minSelectableDate.value);
+    } else {
+        startDate.value = newDate;
+    }
   }
-  //  END: 修改結束
 });
+
 
 // 解析搜尋關鍵字中的日期，支援多個日期
 const endDateFormatted = computed({ 
   get: () => format(endDate.value, 'yyyy-MM-dd'), 
-  //  START: 修改此處
   set: (val) => { 
     if (!val) return;
     const [year, month, day] = val.split('-').map(Number);
-    endDate.value = new Date(year, month - 1, day); 
+    const newDate = new Date(year, month - 1, day);
+    // 確保新日期不會超出範圍
+    if (newDate > new Date(maxSelectableDate.value)) {
+        endDate.value = new Date(maxSelectableDate.value);
+    } else {
+        endDate.value = newDate;
+    }
   }
-  //  END: 修改結束
-});
+})
 
 const groupedEvents = computed(() => { 
   const grouped = {};
@@ -1410,30 +1525,77 @@ watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
   }
 });
 
-// 驗屋預約管理【新增】監聽搜尋框的變化，觸發後端搜尋
+// =================================================================
+// / 前端即時搜尋邏輯
+// =================================================================
+
+const formattedBackendResults = computed(() => {
+  return backendSearchResults.value.map(appt => ({
+    title: `${appt.unitId} - ${appt.bookingType} - ${safeFormatDate(appt.appointmentDate, 'yyyy-MM-dd')} - ${appt.status}`,
+    subtitle: `預約人: ${appt.bookerName} / 買方: ${appt.buyerName}`,
+    value: appt // 將整個預約物件作為 value
+  }));
+});
+
+
+
+// 當使用者從下拉選單中選擇一個項目時觸發此函式
+function handleSearchResultSelection(selectedAppointment) {
+  if (!selectedAppointment) return;
+
+  // 1. 從選擇的項目中獲取預約日期
+  const targetDate = selectedAppointment.appointmentDate.toDate();
+
+  // 2. 計算該日期所在週的開始與結束日
+  const newStartDate = startOfWeek(targetDate, { weekStartsOn: 1 });
+  const newEndDate = endOfWeek(targetDate, { weekStartsOn: 1 });
+
+  // 3. 更新行事曆的日期範圍，這將觸發 watch 重新載入資料
+  startDate.value = newStartDate;
+  endDate.value = newEndDate;
+
+  // 4. 使用 nextTick 確保行事曆DOM更新後，再開啟對話框
+  nextTick(() => {
+    // 檢查 allAppointments 中是否已包含該事件，因為 watch 會重新載入
+    const eventInCalendar = allAppointments.value.find(e => e.id === selectedAppointment.id);
+    if (eventInCalendar) {
+      handleCustomEventClick(eventInCalendar);
+    } else {
+       // 如果 watch 還沒跑完，直接使用搜尋結果開啟
+      handleCustomEventClick(selectedAppointment);
+    }
+  });
+
+  // 5. 清空搜尋狀態
+  nextTick(() => {
+    selectedSearchResult.value = null;
+    searchQuery.value = '';
+    backendSearchResults.value = [];
+  });
+}
+
+// 監聽搜尋框輸入，觸發後端搜尋
 let searchTimeout = null;
 watch(searchQuery, (newQuery) => {
   clearTimeout(searchTimeout);
   
-  if (!newQuery) {
-    // 如果搜尋框清空，退出搜尋模式
-    searchResults.value = null;
-    isSearching.value = false;
+  if (!newQuery || newQuery.length < 1) { // 至少輸入1個字才搜尋
+    backendSearchResults.value = [];
     return;
   }
 
-  // Debounce: 延遲 500ms 後執行搜尋，避免使用者每打一個字就發一次請求
+  isSearchingBackend.value = true;
+  // Debounce: 延遲 300ms 後執行搜尋
   searchTimeout = setTimeout(async () => {
-    isSearching.value = true;
     const result = await searchAppointments(projectId.value, newQuery);
     if (result.status === 'success') {
-      searchResults.value = result.data;
+      backendSearchResults.value = result.data;
     } else {
-      error.value = result.message;
-      searchResults.value = []; // 搜尋出錯時，顯示空結果
+      console.error("後端搜尋失敗:", result.message);
+      backendSearchResults.value = [];
     }
-    isSearching.value = false;
-  }, 500);
+    isSearchingBackend.value = false;
+  }, 300);
 });
 
 watch(() => newAppointmentData.building, () => {
@@ -1727,6 +1889,9 @@ onMounted(async () => {
   isLoading.value = true;
   
   try {
+    const dateRange = await fetchAppointmentDateRange(projectId.value);
+    minSelectableDate.value = dateRange.minDate;
+    maxSelectableDate.value = dateRange.maxDate;
     projectSettings.value = await fetchProjectConfig(projectId.value);
 
     // 確保 projectStore 也已載入
