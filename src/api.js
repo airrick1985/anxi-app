@@ -2037,16 +2037,44 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
 }
 
 /**
- * [Firestore 版] 取消一筆預約
- * @param {string} appointmentId 
+ * [Firestore 版] 取消一筆預約，並清除戶別的相關驗屋日期和方式
+ * @param {string} appointmentId - 預約紀錄的文件 ID
+ * @param {string} projectId - 預約所屬的建案 ID
+ * @param {string} unitId - 預約所屬的戶別 ID
+ * @param {string} bookingType - 預約類型 ('初驗' 或 '複驗')
  */
-export async function cancelAppointment(appointmentId) {
+export async function cancelAppointment(appointmentId, projectId, unitId, bookingType) {
     if (!appointmentId) throw new Error("缺少預約紀錄 ID。");
-    const docRef = doc(db, "appointments", appointmentId);
-    await updateDoc(docRef, {
+    if (!projectId || !unitId || !bookingType) throw new Error("缺少專案 ID、戶別 ID 或預約類型。");
+
+    const batch = writeBatch(db);
+
+    // 1. 更新 appointments 集合中的預約狀態
+    const appointmentRef = doc(db, "appointments", appointmentId);
+    batch.update(appointmentRef, {
         status: "取消",
         cancelledAt: serverTimestamp()
     });
+
+    // 2. 根據 bookingType 清除 households 集合中對應的欄位
+    const householdDocId = `${projectId}_${unitId}`;
+    const householdRef = doc(db, "households", householdDocId);
+    
+    const householdUpdatePayload = {};
+    if (bookingType === '初驗') {
+        householdUpdatePayload.initialInspectionDate = null;
+        householdUpdatePayload.initialInspectionMethod = "";
+    } else if (bookingType === '複驗') {
+        householdUpdatePayload.reInspectionDate = null;
+        householdUpdatePayload.reInspectionMethod = "";
+    }
+
+    if (Object.keys(householdUpdatePayload).length > 0) {
+        batch.update(householdRef, householdUpdatePayload);
+    }
+
+    // 3. 提交批次操作
+    await batch.commit();
     return { status: 'success' };
 }
 

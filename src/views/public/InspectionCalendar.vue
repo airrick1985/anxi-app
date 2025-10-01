@@ -322,10 +322,59 @@
         </div>
 
         <!-- 檢視模式的顯示邏輯 (保持不變或微調) -->
-        <div v-else>
+         <div v-else>
           <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
-          <v-list-item-title>
-            <template v-if="field.type === 'button'">
+        <v-list-item-title>
+            <!-- START: 修改驗屋報告顯示方式 -->
+            <template v-if="field.key === 'inspectionReportUrl'">
+              <span v-if="!inspectionReportFiles || inspectionReportFiles.length === 0">-</span>
+              <v-btn
+                v-else-if="inspectionReportFiles.length === 1"
+                variant="text"
+                size="small"
+                :href="inspectionReportFiles[0].url"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click.stop
+                class="text-none pa-1"
+                color="primary"
+              >
+                <template v-slot:prepend>
+                  <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                </template>
+                {{ inspectionReportFiles[0].name }}
+              </v-btn>
+              <v-menu v-else location="bottom">
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    variant="tonal"
+                    color="primary"
+                    size="small"
+                    append-icon="mdi-menu-down"
+                  >
+                    查看報告 ({{ inspectionReportFiles.length }})
+                  </v-btn>
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    v-for="(file, index) in inspectionReportFiles"
+                    :key="index"
+                    :href="file.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                  >
+                    <template v-slot:prepend>
+                      <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                    </template>
+                    <v-list-item-title>{{ file.name }}</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </template>
+            <!-- END: 修改驗屋報告顯示方式 -->
+            <template v-else-if="field.type === 'button'">
               <v-btn v-if="selectedEvent[field.key]" :color="field.key === 'inspectionReportUrl' ? 'red-darken-4' : 'primary'" size="small" variant="tonal" @click="openUrl(selectedEvent[field.key])">
                 <v-icon start icon="mdi-launch"></v-icon>開啟{{ field.label }}
               </v-btn>
@@ -738,6 +787,19 @@ const isSearching = ref(false);
 const searchResults = ref(null); // null 代表不在搜尋模式，[] 代表搜尋但沒結果
 
 
+ // 新增 foundDates computed 屬性，用來從搜尋結果中提取日期
+ const foundDates = computed(() => {
+  if (searchResults.value && searchResults.value.length > 0) {
+    const dates = new Set(
+      searchResults.value.map(event => safeFormatDate(event.appointmentDate, 'yyyy-MM-dd'))
+    );
+    return Array.from(dates);
+  }
+  return [];
+ });
+
+
+
 const startDate = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const endDate = ref(endOfWeek(new Date(), { weekStartsOn: 1 }));
 const isCancelConfirmDialogVisible = ref(false);
@@ -964,6 +1026,18 @@ const displayPanels = computed(() => {
   const panels = [...(fieldConfig[projectName.value] || fieldConfig.default)];
   if (bookingHistory.value.length > 0) panels.push({ title: '歷次預約紀錄', isHistoryPanel: true });
   return panels;
+});
+
+const inspectionReportFiles = computed(() => {
+  if (!selectedEvent.value || !selectedEvent.value.inspectionReportUrl) {
+    return [];
+  }
+  const value = selectedEvent.value.inspectionReportUrl;
+  if (Array.isArray(value)) {
+    // 確保陣列中的每個項目都符合 { name, url } 的格式
+    return value.filter(item => item && typeof item.name === 'string' && typeof item.url === 'string');
+  }
+  return [];
 });
 
 
@@ -1324,10 +1398,15 @@ async function loadDataForProject() {
 }
 
 // 驗屋預約管理【新增】監聽日期範圍的變化，自動載入新資料
-watch([startDate, endDate], ([newStart, newEnd]) => {
-  if (newStart && newEnd) {
-    // 當日期變化時，讀取新範圍的資料
-    loadAppointmentsForDateRange(newStart, newEnd);
+watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
+  // 只有當日期實際發生變化時才觸發
+  // 檢查日期物件的 getTime() 值，確保是實質性的日期變更
+  if (newStart && newEnd && (newStart.getTime() !== oldStart.getTime() || newEnd.getTime() !== oldEnd.getTime())) {
+    console.log('日期範圍變更，重新載入資料...');
+    // 清空已載入的週記錄，確保 fetchData 重新獲取所有資料
+    loadedWeeks.value.clear();
+    // 呼叫 fetchData 重新載入所有相關資料，包括日曆事件
+    await fetchData();
   }
 });
 
@@ -1619,7 +1698,15 @@ function promptCancelBooking(event) {
 async function handleConfirmCancelBooking() {
     isCancelling.value = true;
     try {
-        await cancelAppointment(eventToCancel.value.id);
+        // 從 eventToCancel.value 中獲取所需的參數
+        const appointmentId = eventToCancel.value.id;
+        const projectId = eventToCancel.value.projectId;
+        const unitId = eventToCancel.value.unitId;
+        const bookingType = eventToCancel.value.bookingType;
+
+        // 呼叫修改後的 cancelAppointment 函式，傳遞所有必要參數
+        await cancelAppointment(appointmentId, projectId, unitId, bookingType);
+        
         snackbarText.value = '預約已成功取消！';
         snackbar.value = true;
         isCancelConfirmDialogVisible.value = false;
@@ -1650,7 +1737,7 @@ onMounted(async () => {
     const [optionsData, allHouseholds, rulesData] = await Promise.all([
       fetchBookingOptions(projectId.value),
       fetchAllHouseholdsForProject(projectId.value),
-      getAllBookingRules(projectId.value) // ✅ 將規則獲取合併到此處
+      getAllBookingRules(projectId.value) //  將規則獲取合併到此處
     ]);
 
     // 處理選項資料
@@ -1665,7 +1752,7 @@ onMounted(async () => {
         return acc;
     }, {});
 
-    // ✅ 新增：處理 allBookingRules 的回傳資料
+    //  新增：處理 allBookingRules 的回傳資料
     if (rulesData.status === 'success') {
       allBookingRules.value = rulesData.data;
     } else {

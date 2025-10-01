@@ -1218,12 +1218,13 @@ exports.handleAppointmentSearch = onCall(async (request) => {
   const appointmentsRef = anxiDb.collection("appointments");
   const householdsRef = anxiDb.collection("households");
 
-  try {
-    // Firestore 不支援對多個欄位進行 OR 或模糊搜尋
-    // 因此我們對幾個最可能的欄位分別進行查詢
-    const queryByUnitId = query(appointmentsRef, where("projectId", "==", projectId), where("unitId", "==", searchText));
-    const queryByBookerName = query(appointmentsRef, where("projectId", "==", projectId), where("bookerName", "==", searchText));
-    const queryByBookerPhone = query(appointmentsRef, where("projectId", "==", projectId), where("bookerPhone", "==", searchText));
+ try {
+    const endText = searchText + '\uf8ff';
+
+     // 使用後端 Admin SDK 的鏈式語法重寫查詢
+     const queryByUnitId = appointmentsRef.where("projectId", "==", projectId).where("unitId", ">=", searchText).where("unitId", "<", endText);
+     const queryByBookerName = appointmentsRef.where("projectId", "==", projectId).where("bookerName", ">=", searchText).where("bookerName", "<", endText);
+     const queryByBookerPhone = appointmentsRef.where("projectId", "==", projectId).where("bookerPhone", ">=", searchText).where("bookerPhone", "<", endText);
 
     const [unitIdResults, bookerNameResults, bookerPhoneResults] = await Promise.all([
       queryByUnitId.get(),
@@ -3875,7 +3876,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
     const db = new Firestore({ databaseId: "anxi-app" });
 
     try {
-        // ✅ 【關鍵修改】在函式開始時，就根據 projectId 獲取建案文件
+        //  【關鍵修改】在函式開始時，就根據 projectId 獲取建案文件
         const projectRef = db.collection('projects').doc(projectId);
         const projectDoc = await projectRef.get();
         // 從查到的文件中獲取建案名稱，如果找不到，則使用 projectId 作為備用
@@ -4026,7 +4027,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
         });
 
-        // ✅ 【關鍵修改】使用從後端安全獲取的 projectName
+        //  【關鍵修改】使用從後端安全獲取的 projectName
         const subject = `【${projectName}】預約成功通知 (${newAppointmentData.unitId})`;
 
         const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
@@ -4194,7 +4195,7 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
             const subject = `【${projectName}】預約取消成功通知 (${bookingData.unitId})`;
             const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
 
-            // ✅ 【風格更新處】
+            //  【風格更新處】
             const htmlBody = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
@@ -4422,12 +4423,12 @@ exports.uploadAuthLetter = onCall({
     throw new HttpsError('internal', `上傳授權書時發生錯誤: ${error.message}`);
   }
 });
-// ✅ END: 新增 uploadAuthLetter 雲端函式
+//  END: 新增 uploadAuthLetter 雲端函式
 
 
 
 /**
- * ✅ [新增] 供管理員新增預約的雲端函式
+ *  [新增] 供管理員新增預約的雲端函式
  * 包含：時段與名額驗證、強制新增、自訂文件ID、同步更新戶別資料
  */
 exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
@@ -4442,7 +4443,7 @@ exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
     const householdDocId = `${projectId}_${newBookingData.unitId}`;
     const householdRef = db.collection('households').doc(householdDocId);
 
-    // ✅ START: 新增保護機制，安全地獲取 timeSlotKey
+    //  START: 新增保護機制，安全地獲取 timeSlotKey
     let rawTimeSlot = newBookingData.appointmentTimeSlot;
     let timeSlotKey = '';
 
@@ -4455,7 +4456,7 @@ exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
     
     // 清理字串，只取 HH:mm 部分
     timeSlotKey = timeSlotKey.split(' ')[0];
-    // ✅ END: 保護機制結束
+    //  END: 保護機制結束
     
     if (!force) {
         // ... (省略名額驗證邏輯，使用上面處理好的 timeSlotKey) ...
@@ -4544,7 +4545,7 @@ const dataToSave = {
 
 
 /**
- * ✅ [新增] 供管理員獲取指定日期的所有時段選項 (包含額滿狀態)
+ *  [新增] 供管理員獲取指定日期的所有時段選項 (包含額滿狀態)
  */
 exports.getSlotsForAdmin = onCall({ cors: true }, async (request) => {
     const { projectId, dateStr } = request.data;
@@ -4567,7 +4568,7 @@ exports.getSlotsForAdmin = onCall({ cors: true }, async (request) => {
         const ruleIds = linksQuery.docs.map(doc => doc.data().ruleId);
         if (ruleIds.length === 0) return [];
 
-        // 2. ✅ 使用我們重新命名的 GCloudFieldPath
+        // 2.  使用我們重新命名的 GCloudFieldPath
         const rulesQuery = await db.collection('dateRules')
             .where(GCloudFieldPath.documentId(), 'in', ruleIds)
             .get();
@@ -4705,7 +4706,7 @@ exports.getAllUnitsForUpload = onCall(async (request) => {
 
 
 /**
- * ✅ [最終修正版] 代理驗屋報告上傳
+ *  [最終修正版] 代理驗屋報告上傳
  * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
  */
 exports.handleDirectReportUpload = onCall({
