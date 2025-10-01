@@ -1356,6 +1356,22 @@ export async function updateUserDetailsForAdmin(payload) {
     }
 }
 
+/**
+ * [新] 呼叫後端，儲存使用者的個人化偏好設定
+ * @param {string} userKey - 使用者手機
+ * @param {object} preferences - 要儲存的偏好設定物件
+ * @returns {Promise<object>}
+ */
+export async function saveUserPreferencesToBackend(userKey, preferences) {
+  try {
+    const savePrefs = httpsCallable(functions, 'updateUserPreferences');
+    const result = await savePrefs({ userKey, preferences });
+    return result.data;
+  } catch (error) {
+    console.error("API saveUserPreferencesToBackend 錯誤:", error);
+    return { status: 'error', message: `儲存設定到後端時發生錯誤: ${error.message}` };
+  }
+}
 
 // ===============================================
 // /  訂閱管理系統 API
@@ -4538,3 +4554,5 @@ export async function fetchAllUnitsForUpload(projectId) {
     return { status: 'error', message: error.message };
   }
 }
+
+

@@ -1,7 +1,7 @@
 // src/store/user.js
 
 import { defineStore } from 'pinia';
-import { goOffline } from '@/api'; 
+import { goOffline, saveUserPreferencesToBackend } from '@/api'; 
 import router from '@/router'; 
 
 export const useUserStore = defineStore('user', {
@@ -19,15 +19,16 @@ export const useUserStore = defineStore('user', {
           key: userData.key,
           email: userData.email || null,
           name: userData.name || null,
-          roles: userData.roles || []
+          roles: userData.roles || [],
+          preferences: userData.preferences || {},
         };
-        this.sessionId = sessionId; // 儲存 sessionId
+        this.sessionId = sessionId;
         this.detailedPermissions = Array.isArray(userData.detailedPermissions)
           ? userData.detailedPermissions
           : [];
       } else {
         this.user = null;
-        this.sessionId = null; // 清除 sessionId
+        this.sessionId = null;
         this.detailedPermissions = [];
       }
     },
@@ -39,21 +40,23 @@ export const useUserStore = defineStore('user', {
     },
     
     async logoutUser() {
-  const userKey = this.user?.key;
+      const userKey = this.user?.key;
 
-  if (userKey) {
-    try {
-      await goOffline(userKey);
-    } catch (error) {
-      console.error('LOGOUT FAILED: Could not remove online status.', error);
-    }
-  } else {
-  }
+      if (userKey) {
+        try {
+          await goOffline(userKey);
+        } catch (error) {
+          console.error('LOGOUT FAILED: Could not remove online status.', error);
+        }
+      }
 
-  this.clearUser();
+      this.clearUser();
 
-  await router.replace('/login');
-},
+      // 將 sessionStorage 修改為 localStorage，與 persist 設定保持一致
+      localStorage.removeItem('anxi-user-session');
+
+      await router.replace('/login');
+    },
 
     setProjectName(projectName) {
       if (this.user) {
@@ -72,12 +75,33 @@ export const useUserStore = defineStore('user', {
     },
     incrementUnreadCount() {
       this.unreadCount++;
-    }
+    },
+
+    async updateUserPreferences(newPreferences) {
+      if (this.user) {
+        // 步驟 A: 立即更新前端 state，讓 UI 即時反應
+        this.user.preferences = {
+          ...this.user.preferences,
+          ...newPreferences,
+        };
+        console.log('[UserStore] 使用者偏好設定已在前端更新:', this.user.preferences);
+
+        // 步驟 B: 在背景呼叫 API，將設定寫入後端資料庫
+        try {
+          await saveUserPreferencesToBackend(this.user.key, newPreferences);
+          console.log('[UserStore] 使用者偏好設定已成功同步至後端。');
+        } catch (error) {
+          console.error('[UserStore] 同步偏好設定至後端失敗:', error);
+          // 在此處可以加入錯誤提示邏輯
+        }
+      }
+    },
   },
 
-   getters: {
+  getters: {
     isLoggedIn: (state) => !!state.user,
     currentUserRoles: (state) => state.user?.roles || [],
+    currentUserPreferences: (state) => state.user?.preferences || {},
     hasPermission: (state) => (systemName) => {
       if (!state.detailedPermissions) return false;
       return state.detailedPermissions.some(p => p.system === systemName);
@@ -98,7 +122,7 @@ export const useUserStore = defineStore('user', {
 
   persist: {
     key: 'anxi-user-session',
-    storage: sessionStorage,
+    storage: localStorage,
     paths: ['user', 'detailedPermissions', 'unreadCount', 'sessionId']
   }
 });

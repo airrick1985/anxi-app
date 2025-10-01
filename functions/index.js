@@ -5058,3 +5058,46 @@ exports.getAppointmentDateRange = onCall(async (request) => {
     throw new HttpsError("internal", `獲取日期範圍失敗: ${error.message}`);
   }
 });
+
+
+/**
+ * 更新指定使用者的偏好設定
+ * @param {string} userKey - 使用者的手機號碼 (文件 ID)
+ * @param {object} preferences - 要合併更新的偏好設定物件
+ */
+exports.updateUserPreferences = onCall(async (request) => {
+  const { userKey, preferences } = request.data;
+  const functionName = `updateUserPreferences (User: ${userKey})`;
+
+  if (!userKey || !preferences) {
+    throw new HttpsError("invalid-argument", "缺少 userKey 或 preferences 參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const userDocRef = db.collection("users").doc(userKey);
+    
+    const userDocSnap = await userDocRef.get();
+    
+    //  修正點：將 .exists() 改為 .exists
+    if (!userDocSnap.exists) {
+      throw new HttpsError('not-found', `找不到使用者 ${userKey}`);
+    }
+
+    const existingPrefs = userDocSnap.data().preferences || {};
+    
+    const mergedPrefs = { ...existingPrefs, ...preferences };
+
+    await userDocRef.update({
+      preferences: mergedPrefs
+    });
+
+    console.log(`[${functionName}] 已成功更新使用者偏好設定。`);
+    return { status: "success", message: "偏好設定已儲存。" };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `更新使用者偏好設定失敗: ${error.message}`);
+  }
+});
