@@ -2,6 +2,8 @@
 
 const functions = require("firebase-functions");
 const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
+const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
+
 
 
 const admin = require("firebase-admin");
@@ -1207,6 +1209,9 @@ exports.handleLogin = onCall(async (request) => {
   }
 });
 
+
+// 您可以考慮刪除或註解掉舊的 handleAppointmentSearch 函式
+/*
 exports.handleAppointmentSearch = onCall(async (request) => {
   const { projectId, searchText } = request.data;
 
@@ -1310,7 +1315,7 @@ exports.handleAppointmentSearch = onCall(async (request) => {
     throw new HttpsError("internal", `搜尋時發生錯誤: ${error.message}`);
   }
 });
-
+*/
 
 // ✓ 【替換】runBackupJob 整個函式
 exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
@@ -5099,5 +5104,109 @@ exports.updateUserPreferences = onCall(async (request) => {
     console.error(`[${functionName}] Error:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", `更新使用者偏好設定失敗: ${error.message}`);
+  }
+});
+
+
+
+/**
+ * 輔助函式：檢查文件中的任何字串欄位是否包含關鍵字（不分大小寫）
+ * @param {object} data - Firestore 文件的資料物件
+ * @param {string} lowerCaseKeyword - 已轉換為小寫的搜尋關鍵字
+ * @returns {boolean} - 如果找到匹配項則返回 true
+ */
+const documentMatchesKeyword = (data, lowerCaseKeyword) => {
+  // 遍歷文件的所有欄位值
+  for (const value of Object.values(data)) {
+    // 只檢查字串類型的欄位
+    if (typeof value === "string" && value.toLowerCase().includes(lowerCaseKeyword)) {
+      return true;
+    }
+    // 可選：如果需要搜尋陣列中的字串
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "string" && item.toLowerCase().includes(lowerCaseKeyword)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+
+/**
+ * [新增] 全域預約搜尋 Cloud Function (符合現有結構)
+ * - 根據 projectId 和 keyword 搜尋 appointments 和 households 集合
+ * - 回傳符合條件的 appointment 文件列表
+ */
+exports.globalAppointmentSearch = onCall(async (request) => {
+  const { projectId, keyword } = request.data;
+  const functionName = `globalAppointmentSearch (Project: ${projectId})`;
+
+ // 2. 輸入驗證 (這部分保留)
+  if (!projectId || !keyword || keyword.trim().length < 2) {
+    console.error(`[${functionName}] 無效的搜尋參數`, { projectId, keyword });
+    throw new HttpsError("invalid-argument", "必須提供有效的建案 ID 和至少 2 個字元的關鍵字。");
+  }
+
+  const lowerCaseKeyword = keyword.toLowerCase();
+  console.log(`[${functionName}] 開始搜尋，關鍵字: "${keyword}"`);
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // 3. 並行查詢 appointments 和 households 集合
+    const [appointmentsSnapshot, householdsSnapshot] = await Promise.all([
+      db.collection("appointments").where("projectId", "==", projectId).get(),
+      db.collection("households").where("projectId", "==", projectId).get(),
+    ]);
+
+    // 4. 在記憶體中篩選符合關鍵字的戶別 (households)
+    const matchedHouseholdUnitIds = new Set();
+    householdsSnapshot.forEach(doc => {
+      if (documentMatchesKeyword(doc.data(), lowerCaseKeyword)) {
+        // 確保戶別資料中有 unitId 欄位
+        if (doc.data().unitId) {
+            matchedHouseholdUnitIds.add(doc.data().unitId);
+        }
+      }
+    });
+    console.log(`[${functionName}] 關鍵字從 households 集合匹配到 ${matchedHouseholdUnitIds.size} 個戶別。`);
+
+    // 5. 篩選並組合最終結果
+    const results = [];
+    const addedAppointmentIds = new Set(); // 用於避免重複加入相同的預約
+
+    appointmentsSnapshot.forEach(doc => {
+      const appointment = { id: doc.id, ...doc.data() };
+
+      // 檢查條件：
+      // a) 預約本身的資料是否符合關鍵字
+      const appointmentMatches = documentMatchesKeyword(appointment, lowerCaseKeyword);
+      // b) 該預約的戶別是否在 "符合關鍵字的戶別列表" 中
+      const householdMatches = matchedHouseholdUnitIds.has(appointment.unitId);
+
+      if ((appointmentMatches || householdMatches) && !addedAppointmentIds.has(appointment.id)) {
+        // 將 Firestore Timestamp 轉換為前端易於處理的格式
+        if (appointment.appointmentDate && typeof appointment.appointmentDate.toDate === 'function') {
+            appointment.appointmentDate = appointment.appointmentDate.toDate().toISOString();
+        }
+        if (appointment.createdAt && typeof appointment.createdAt.toDate === 'function') {
+            appointment.createdAt = appointment.createdAt.toDate().toISOString();
+        }
+        results.push(appointment);
+        addedAppointmentIds.add(appointment.id);
+      }
+    });
+
+    console.log(`[${functionName}] 搜尋完成，共找到 ${results.length} 筆預約紀錄。`);
+
+    // 6. 回傳成功結果
+    return { status: "success", data: results };
+
+  } catch (error) {
+    console.error(`[${functionName}] 執行失敗:`, error);
+    throw new HttpsError("internal", `搜尋時發生未預期的錯誤，請稍後再試。`);
   }
 });

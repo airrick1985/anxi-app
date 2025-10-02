@@ -36,6 +36,8 @@ import { onDisconnect, set, ref as dbRef, remove } from "firebase/database";
 import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getAuth } from 'firebase/auth';
+import { useUserStore } from '@/store/user';
 
 
 
@@ -70,7 +72,6 @@ export async function fetchAllProjects() {
  * @returns {Promise<object>} API 響應
  */
 export async function fetchParkingList(projectName) {
-  console.log(`[api.js] fetchParkingList called with projectName: ${projectName}`);
   if (!projectName) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchParkingList 時缺少 projectName。' });
   }
@@ -88,7 +89,6 @@ export async function fetchParkingList(projectName) {
  * @returns {Promise<object>} API 響應
  */
 export async function fetchQuotePersonnelList(projectName, userKey) {
-  console.log(`[api.js] fetchQuotePersonnelList called for project: ${projectName}`);
   if (!projectName || !userKey) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchQuotePersonnelList 時缺少參數。' });
   }
@@ -106,7 +106,6 @@ export async function fetchQuotePersonnelList(projectName, userKey) {
  * @returns {Promise<object>} 包含人員清單的響應
  */
 export async function fetchSalesPersonnelList(projectId) {
-  console.log(`[api.js] fetchSalesPersonnelList called for project: ${projectId}`);
   if (!projectId) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesPersonnelList 時缺少 projectId。' });
   }
@@ -130,7 +129,6 @@ export async function fetchSalesPersonnelList(projectId) {
       });
     });
     
-    console.log(`[api.js] fetchSalesPersonnelList found ${personnelList.length} personnel`);
     return {
       status: 'success',
       data: { personnelList }
@@ -150,7 +148,6 @@ export async function fetchSalesPersonnelList(projectId) {
  * @returns {Promise<object>}
  */
 export async function fetchPaymentTermTemplates(projectId) {
-  console.log(`[api.js] fetchPaymentTermTemplates called for project: ${projectId}`);
   if (!projectId) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchPaymentTermTemplates 時缺少 projectId。' });
   }
@@ -170,7 +167,6 @@ export async function fetchPaymentTermTemplates(projectId) {
       });
     });
     
-    console.log(`[api.js] fetchPaymentTermTemplates found ${templates.length} templates for project ${projectId}`);
     return {
       status: 'success',
       data: templates
@@ -192,7 +188,6 @@ export async function fetchPaymentTermTemplates(projectId) {
  * @returns {Array} 符合條件的範本列表
  */
 export function selectApplicableTemplates(templates, totalPrice, buyerType) {
-  console.log(`[api.js] selectApplicableTemplates called with totalPrice: ${totalPrice}, buyerType: ${buyerType}`);
   
   const applicable = templates.filter(template => 
     template.minPrice <= totalPrice && 
@@ -200,12 +195,10 @@ export function selectApplicableTemplates(templates, totalPrice, buyerType) {
     template.buyerType === buyerType
   );
   
-  console.log(`[api.js] selectApplicableTemplates found ${applicable.length} applicable templates`);
   return applicable;
 }
 
 export async function getProjectList(userKey) { 
-  console.log('[api.js] getProjectList called with :', userKey); 
 
   if (!userKey) {
     console.error("[api.js] getProjectList: userKey is missing!");
@@ -228,7 +221,7 @@ export async function getProjectList(userKey) {
  * @returns {Promise<object>}
  */
 export async function loginUser(key, password, sessionId) {
-  console.log(`[api.js] New loginUser called with key: ${key} and sessionId: ${sessionId}`);
+  //console.log(`[api.js] New loginUser called with key: ${key} and sessionId: ${sessionId}`);
   try {
     const handleLogin = httpsCallable(functions, 'handleLogin');
     const result = await handleLogin({ key, password, sessionId });
@@ -247,7 +240,7 @@ export async function loginUser(key, password, sessionId) {
 // 🔧 [Firestore 版] - 修改使用者個人資料
 export async function updateUserProfile(payload) {
   const { key, oldPassword, name, email, newPassword } = payload;
-  console.log(`[api.js] Firestore updateUserProfile called for key: ${key}`);
+  //console.log(`[api.js] Firestore updateUserProfile called for key: ${key}`);
 
   try {
     // 步驟 1: 獲取使用者文件參考
@@ -279,7 +272,7 @@ export async function updateUserProfile(payload) {
     await updateDoc(userDocRef, dataToUpdate);
 
     // 步驟 5: 回傳成功訊息
-    console.log(`[api.js] User profile for ${key} updated successfully.`);
+    //console.log(`[api.js] User profile for ${key} updated successfully.`);
     return { status: 'success', message: '個人資料已更新' };
 
   } catch (e) {
@@ -291,7 +284,7 @@ export async function updateUserProfile(payload) {
 
 // 🔑 忘記密碼 (呼叫 Firebase Cloud Function)
 export async function forgotPasswordUser(key) {
-  console.log(`[api.js] forgotPasswordUser called with key: ${key}`);
+  //console.log(`[api.js] forgotPasswordUser called with key: ${key}`);
   try {
     // 獲取 Cloud Function 的引用
     const forgotPasswordSender = httpsCallable(functions, 'forgotPasswordSender');
@@ -311,7 +304,7 @@ export async function forgotPasswordUser(key) {
 
 // 📋 查詢所有戶別清單
 export async function fetchUnitList(projectName) {
-  console.log(`[api.js] fetchUnitList called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchUnitList called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchUnitList: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchUnitList 時缺少 projectName。' };
@@ -321,7 +314,7 @@ export async function fetchUnitList(projectName) {
 
 // 📋 查詢所有棟別
 export async function getBuildingList(projectName) {
-  console.log(`[api.js] getBuildingList called with projectName: ${projectName}`);
+  //console.log(`[api.js] getBuildingList called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] getBuildingList: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 getBuildingList 時缺少 projectName。' };
@@ -335,7 +328,7 @@ export async function getBuildingList(projectName) {
 
 // 📋 查詢單一戶別詳細資料
 export async function fetchHouseDetail(unitId, projectName, token = 'anxi111003') {
-  console.log(`[api.js] fetchHouseDetail called with unitId: ${unitId}, projectName: ${projectName}, token: ${token}`);
+  //console.log(`[api.js] fetchHouseDetail called with unitId: ${unitId}, projectName: ${projectName}, token: ${token}`);
   if (!projectName) {
     console.error("[api.js] fetchHouseDetail: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchHouseDetail 時缺少 projectName。' };
@@ -345,7 +338,7 @@ export async function fetchHouseDetail(unitId, projectName, token = 'anxi111003'
 
 // 📋 查詢所有戶別資料（初始載入）
 export async function fetchAllHouseDetails(projectName) {
-  console.log(`[api.js] fetchAllHouseDetails called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchAllHouseDetails called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchAllHouseDetails: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchAllHouseDetails 時缺少 projectName。' };
@@ -356,7 +349,7 @@ export async function fetchAllHouseDetails(projectName) {
 
 // 🧾 查詢驗屋紀錄
 export async function fetchInspectionRecords(unitId, projectName) {
-  console.log(`[api.js] fetchInspectionRecords called with unitId: ${unitId}, projectName: ${projectName}`);
+  //console.log(`[api.js] fetchInspectionRecords called with unitId: ${unitId}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchInspectionRecords: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchInspectionRecords 時缺少 projectName。' };
@@ -372,7 +365,7 @@ export async function fetchInspectionRecords(unitId, projectName) {
 
 // 🧾 新增驗屋紀錄
 export async function addInspectionRecord(payload, projectName) {
-  console.log(`[api.js] addInspectionRecord called with projectName: ${projectName}, payload:`, payload);
+  //console.log(`[api.js] addInspectionRecord called with projectName: ${projectName}, payload:`, payload);
   if (!projectName) {
     console.error("[api.js] addInspectionRecord: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 addInspectionRecord 時缺少 projectName。' };
@@ -387,7 +380,7 @@ export async function addInspectionRecord(payload, projectName) {
 
 // 🧾 更新檢修欄位
 export async function updateInspectionRecord({ key, repairDate, repairStatus, repairDescription }, projectName) {
-  console.log(`[api.js] updateInspectionRecord called with key: ${key}, projectName: ${projectName}`);
+  //console.log(`[api.js] updateInspectionRecord called with key: ${key}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] updateInspectionRecord: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 updateInspectionRecord 時缺少 projectName。' };
@@ -406,7 +399,7 @@ export async function updateInspectionRecord({ key, repairDate, repairStatus, re
 
 // 🧾 修改驗屋紀錄（舊版，可能未使用，新版是 fetchInspectionUpdateWithPhotos）
 export async function fetchInspectionUpdate(payload, projectName) {
-  console.log(`[api.js] fetchInspectionUpdate called with projectName: ${projectName}, payload:`, payload);
+  //console.log(`[api.js] fetchInspectionUpdate called with projectName: ${projectName}, payload:`, payload);
   if (!projectName) {
     console.error("[api.js] fetchInspectionUpdate: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchInspectionUpdate 時缺少 projectName。' };
@@ -422,7 +415,7 @@ export async function fetchInspectionUpdate(payload, projectName) {
 
 // 📦 選單參數（area/category/status/level）
 export async function fetchDropdownOptions(projectName) {
-  console.log(`[api.js] fetchDropdownOptions called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchDropdownOptions called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchDropdownOptions: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchDropdownOptions 時缺少 projectName。' };
@@ -433,7 +426,7 @@ export async function fetchDropdownOptions(projectName) {
 
 // 📦 所有分類對應細項一次載入
 export async function fetchAllSubcategories(projectName) {
-  console.log(`[api.js] fetchAllSubcategories called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchAllSubcategories called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchAllSubcategories: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchAllSubcategories 時缺少 projectName。' };
@@ -444,7 +437,7 @@ export async function fetchAllSubcategories(projectName) {
 
 // 📦 檢修狀態選項
 export async function getRepairStatusOptions(projectName) {
-  console.log(`[api.js] getRepairStatusOptions called with projectName: ${projectName}`);
+  //console.log(`[api.js] getRepairStatusOptions called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] getRepairStatusOptions: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 getRepairStatusOptions 時缺少 projectName。' };
@@ -455,13 +448,13 @@ export async function getRepairStatusOptions(projectName) {
 
 // 🖼️ 上傳圖片 (假設不需要 projectName，如果需要，請添加)
 export async function uploadPhotoToDrive(filename, base64) {
-  console.log(`[api.js] uploadPhotoToDrive called with filename: ${filename}`);
+  //console.log(`[api.js] uploadPhotoToDrive called with filename: ${filename}`);
   return fetchPost({ action: 'upload_photo', filename, base64, token: 'anxi111003' }, UPLOAD_API); // GAS doPost 的 upload_photo case 沒有接收 ssId
 }
 
 // 🌐 通用 POST 發送函數
 async function fetchPost(body, url) {
-  console.log(`[api.js] fetchPost to ${url} with body:`, JSON.stringify(body).substring(0, 500) + (JSON.stringify(body).length > 500 ? '...' : ''));
+  //console.log(`[api.js] fetchPost to ${url} with body:`, JSON.stringify(body).substring(0, 500) + (JSON.stringify(body).length > 500 ? '...' : ''));
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -488,7 +481,7 @@ async function fetchPost(body, url) {
 
 // 🚀 取得 GitHub 最新版本資訊（PWA 更新用）
 export async function getLatestRelease() {
-  console.log('[api.js] getLatestRelease called');
+  //console.log('[api.js] getLatestRelease called');
   try {
     const response = await fetch(
       'https://api.github.com/repos/airrick1985/anxi-app/releases/latest',
@@ -508,7 +501,7 @@ export async function getLatestRelease() {
 
 // 🗑️ 刪除驗屋紀錄（軟刪除）
 export async function deleteInspectionRecord(key, projectName) {
-  console.log(`[api.js] deleteInspectionRecord called with key: ${key}, projectName: ${projectName}`);
+  //console.log(`[api.js] deleteInspectionRecord called with key: ${key}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] deleteInspectionRecord: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 deleteInspectionRecord 時缺少 projectName。' };
@@ -523,7 +516,7 @@ export async function deleteInspectionRecord(key, projectName) {
 
 // 🗑️ 取得已刪除的驗屋紀錄
 export async function fetchDeletedInspectionRecords(projectName) {
-  console.log(`[api.js] fetchDeletedInspectionRecords called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchDeletedInspectionRecords called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchDeletedInspectionRecords: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchDeletedInspectionRecords 時缺少 projectName。' };
@@ -533,7 +526,7 @@ export async function fetchDeletedInspectionRecords(projectName) {
 
 // ♻️ 復原刪除的驗屋紀錄
 export async function restoreInspectionRecord(key, projectName) {
-  console.log(`[api.js] restoreInspectionRecord called with key: ${key}, projectName: ${projectName}`);
+  //console.log(`[api.js] restoreInspectionRecord called with key: ${key}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] restoreInspectionRecord: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 restoreInspectionRecord 時缺少 projectName。' };
@@ -543,7 +536,7 @@ export async function restoreInspectionRecord(key, projectName) {
 
 // 🖼️ 刪除單張照片 (包含 Drive 刪除)
 export async function deletePhotoFromRecord(key, photoField, projectName) {
-  console.log(`[api.js] deletePhotoFromRecord called with key: ${key}, photoField: ${photoField}, projectName: ${projectName}`);
+  //console.log(`[api.js] deletePhotoFromRecord called with key: ${key}, photoField: ${photoField}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] deletePhotoFromRecord: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 deletePhotoFromRecord 時缺少 projectName。' };
@@ -559,7 +552,7 @@ export async function deletePhotoFromRecord(key, photoField, projectName) {
 
 //  產出分享網址
 export async function generateShareUrl(unitId, projectName) {
-  console.log(`[api.js] generateShareUrl called with unitId: ${unitId}, projectName: ${projectName}`);
+  //console.log(`[api.js] generateShareUrl called with unitId: ${unitId}, projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] generateShareUrl: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 generateShareUrl 時缺少 projectName。' };
@@ -574,7 +567,7 @@ export async function generateShareUrl(unitId, projectName) {
 
 // 🧾 修改驗屋紀錄（包含照片處理邏輯）
 export async function fetchInspectionUpdateWithPhotos(payload, projectName) {
-  console.log(`[api.js] fetchInspectionUpdateWithPhotos called with projectName: ${projectName}, payload:`, payload);
+  //console.log(`[api.js] fetchInspectionUpdateWithPhotos called with projectName: ${projectName}, payload:`, payload);
   if (!projectName) {
     console.error("[api.js] fetchInspectionUpdateWithPhotos: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchInspectionUpdateWithPhotos 時缺少 projectName。' };
@@ -589,13 +582,13 @@ export async function fetchInspectionUpdateWithPhotos(payload, projectName) {
 
 //  上傳簽名圖 (假設不需要 projectName，如果需要，請添加)
 export async function uploadSignature(filename, base64) {
-    console.log(`[api.js] uploadSignature called with filename: ${filename}`);
+    //console.log(`[api.js] uploadSignature called with filename: ${filename}`);
     return fetchPost({ action: 'upload_signature', filename, base64, token: 'anxi111003' }, UPLOAD_API); // GAS doPost 的 upload_signature case 沒有接收 ssId
 }
 
 //  確認驗屋 (將簽名等資訊寫入)
 export async function confirmInspection(payload, projectName) {
-    console.log(`[api.js] confirmInspection called with projectName: ${projectName}, payload:`, payload);
+    //console.log(`[api.js] confirmInspection called with projectName: ${projectName}, payload:`, payload);
     if (!projectName) {
         console.error("[api.js] confirmInspection: projectName is missing!");
         return { status: 'error', message: '前端錯誤：呼叫 confirmInspection 時缺少 projectName。' };
@@ -610,7 +603,7 @@ export async function confirmInspection(payload, projectName) {
 
 //  產出驗屋 PDF
 export async function fetchGenerateInspectionPdf(unitId, projectName, overwrite = false) {
-  console.log(`[api.js] fetchGenerateInspectionPdf called with unitId: ${unitId}, projectName: ${projectName}, overwrite: ${overwrite}`);
+  //console.log(`[api.js] fetchGenerateInspectionPdf called with unitId: ${unitId}, projectName: ${projectName}, overwrite: ${overwrite}`);
   if (!projectName) {
     console.error("[api.js] fetchGenerateInspectionPdf: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchGenerateInspectionPdf 時缺少 projectName。' };
@@ -625,7 +618,7 @@ export async function fetchGenerateInspectionPdf(unitId, projectName, overwrite 
 }
 
 export async function fetchAllProjectInspectionRecords(projectName) {
-  console.log(`[api.js] fetchAllProjectInspectionRecords called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchAllProjectInspectionRecords called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchAllProjectInspectionRecords: projectName is missing!");
     return { status: 'error', message: '前端錯誤：呼叫 fetchAllProjectInspectionRecords 時缺少 projectName。' };
@@ -638,7 +631,7 @@ export async function fetchAllProjectInspectionRecords(projectName) {
 }
 
 export async function getProjectsBySystemPermission(userKey, systemName) {
-  console.log(`[api.js] getProjectsBySystemPermission called with userKey: ${userKey}, systemName: ${systemName}`);
+  //console.log(`[api.js] getProjectsBySystemPermission called with userKey: ${userKey}, systemName: ${systemName}`);
   if (!userKey || !systemName) {
     console.error("[api.js] getProjectsBySystemPermission: userKey or systemName is missing!");
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 getProjectsBySystemPermission 時缺少 userKey 或 systemName。' });
@@ -647,7 +640,7 @@ export async function getProjectsBySystemPermission(userKey, systemName) {
 }
 
 export async function fetchSalesControlData(projectName) {
-  console.log(`[api.js] fetchSalesControlData called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchSalesControlData called with projectName: ${projectName}`);
   if (!projectName) {
     console.error("[api.js] fetchSalesControlData: projectName is missing!");
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesControlData 時缺少 projectName。' });
@@ -660,7 +653,7 @@ export async function fetchSalesControlData(projectName) {
 }
 
 export async function generateQuotePdf(payload) {
-  console.log('[api.js] generateQuotePdf called with payload:', payload);
+  //console.log('[api.js] generateQuotePdf called with payload:', payload);
   // 這個功能的 action 通常與銷售相關，所以我們發到 sales 端點
   const body = {
     action: 'generate_quote_pdf',
@@ -676,7 +669,7 @@ export async function generateQuotePdf(payload) {
  * @returns {Promise<object>} API 響應
  */
 export async function updateSalesData(payload) {
-  console.log('[api.js] updateSalesData called with payload:', payload);
+  //console.log('[api.js] updateSalesData called with payload:', payload);
   
   if (!payload.projectName || !payload.unitId || !payload.data) {
     return { status: "error", message: "前端錯誤：缺少 projectName、unitId 或 data。" };
@@ -703,7 +696,7 @@ export async function updateSalesData(payload) {
  * @returns {Promise<object>} API 響應
  */
 export async function fetchSalesOptions(projectName) {
-  console.log(`[api.js] fetchSalesOptions called for project: ${projectName}`);
+  //console.log(`[api.js] fetchSalesOptions called for project: ${projectName}`);
   if (!projectName) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesOptions 時缺少 projectName。' });
   }
@@ -723,7 +716,7 @@ export async function fetchSalesOptions(projectName) {
  * @returns {Promise<object>} API 響應
  */
 export async function sendPaymentScheduleEmail(payload) {
-    console.log('[api.js] sendPaymentScheduleEmail called with payload:', payload);
+    //console.log('[api.js] sendPaymentScheduleEmail called with payload:', payload);
     
     // 我們可以將這個新功能歸類在銷售相關的 API 端點
     return fetchPost({
@@ -739,7 +732,7 @@ export async function sendPaymentScheduleEmail(payload) {
  * @returns {Promise<object>} API 響應
  */
 export async function generatePaymentSchedule(payload) {
-  console.log('[api.js] generatePaymentSchedule called with payload:', payload);
+  //console.log('[api.js] generatePaymentSchedule called with payload:', payload);
   const body = {
     action: 'generate_payment_schedule',
     token: 'anxi111003',
@@ -756,7 +749,7 @@ export async function generatePaymentSchedule(payload) {
  * @returns {Promise<object>} API 響應
  */
 export async function fetchSvgFromDrive(folderUrl, projectName) {
-  console.log(`[api.js] fetchSvgFromDrive called with folderUrl: ${folderUrl}, projectName: ${projectName}`);
+  //console.log(`[api.js] fetchSvgFromDrive called with folderUrl: ${folderUrl}, projectName: ${projectName}`);
   if (!folderUrl || !projectName) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSvgFromDrive 時缺少 folderUrl 或 projectName。' });
   }
@@ -777,7 +770,6 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
  * @returns {Promise<object>} API 響應，成功時 data 中應包含 slideId
  */
 export async function updateAndGetParkingSlide(projectId, slideType) {
-  console.log(`[API] Calling Firebase Function 'updateParkingSlide' for project: ${projectId}, type: ${slideType}`);
   
   if (!projectId || !slideType) {
     return { status: 'error', message: '前端錯誤：呼叫時缺少 projectId 或 slideType。' };
@@ -810,7 +802,7 @@ export async function updateAndGetParkingSlide(projectId, slideType) {
  * @returns {Promise<object>}
  */
 export async function cancelPurchase(projectName, projectId, unitId, operatorName) {
-  console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName });
+  //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName });
   
   if (!projectId || !unitId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少 projectId、unitId 或 operatorName。" };
@@ -824,7 +816,7 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
       operatorName: operatorName
     });
     
-    console.log('[api.js] cancelPurchase success:', result.data);
+    //console.log('[api.js] cancelPurchase success:', result.data);
     return result.data; // 直接回傳 Cloud Function 的回應
   } catch (error) {
     console.error("呼叫 cancelPurchase 雲端函式時發生錯誤:", error);
@@ -1763,7 +1755,7 @@ export const updateParkingLot = async (docId, dataToUpdate) => {
  * @returns {Promise<object>} API 響應
  */
 export async function fetchParkingLotDetails(projectName) {
-  console.log(`[api.js] fetchParkingLotDetails called with projectName: ${projectName}`);
+  //console.log(`[api.js] fetchParkingLotDetails called with projectName: ${projectName}`);
   if (!projectName) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchParkingLotDetails 時缺少 projectName。' });
   }
@@ -1780,7 +1772,7 @@ export async function fetchParkingLotDetails(projectName) {
  * @returns {Promise<object>} API 響應
  */
 export async function updateParkingLotDetails(payload) {
-  console.log('[api.js] updateParkingLotDetails called with payload:', payload);
+  //console.log('[api.js] updateParkingLotDetails called with payload:', payload);
   if (!payload.projectName || !payload.key || !payload.data) {
       return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 updateParkingLotDetails 時缺少參數。' });
   }
@@ -1804,7 +1796,7 @@ export async function updateParkingLotDetails(payload) {
  * @returns {Promise<object>} API 響應
  */
 export async function downloadSheetsAsExcel(projectName, sheetNames) {
-  console.log(`[api.js] downloadSheetsAsExcel called for project: ${projectName}, sheets: ${sheetNames}`);
+  //console.log(`[api.js] downloadSheetsAsExcel called for project: ${projectName}, sheets: ${sheetNames}`);
   if (!projectName || !sheetNames || sheetNames.length === 0) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 downloadSheetsAsExcel 時缺少參數。' });
   }
@@ -1822,7 +1814,7 @@ export async function downloadSheetsAsExcel(projectName, sheetNames) {
  * @returns {Promise<object>} API 響應
  */
 export async function uploadExcelToOverwrite(projectName, fileId) {
-    console.log(`[api.js] uploadExcelToOverwrite called for project: ${projectName}`);
+    //console.log(`[api.js] uploadExcelToOverwrite called for project: ${projectName}`);
     if (!projectName || !fileId) {
         return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadExcelToOverwrite 時缺少參數。' });
     }
@@ -1842,7 +1834,7 @@ export async function uploadExcelToOverwrite(projectName, fileId) {
  * @returns {Promise<object>} API 響應，包含 fileId
  */
 export async function uploadFile(filename, base64) {
-    console.log(`[api.js] uploadFile (for overwrite) called with filename: ${filename}`);
+    //console.log(`[api.js] uploadFile (for overwrite) called with filename: ${filename}`);
     // 這個 action 我們明確地讓它走銷售系統的 API 端點
     return fetchPost({ 
         action: 'upload_excel_for_overwrite', // <--- 使用新的 action
@@ -1858,7 +1850,7 @@ export async function uploadFile(filename, base64) {
  * @returns {Promise<object>} API 響應
  */
 export async function backupSpreadsheet(projectName) {
-    console.log(`[api.js] backupSpreadsheet called for project: ${projectName}`);
+    //console.log(`[api.js] backupSpreadsheet called for project: ${projectName}`);
     return fetchPost({
         action: 'backup_spreadsheet',
         projectName,
@@ -1940,6 +1932,25 @@ export async function getProjectsForInspectionCalendar(userKey) {
  * @returns {Promise<Array>}
  */
 export async function fetchCalendarData(projectId, startDate, endDate) {
+ // ✅ START: 新增偵錯日誌
+    //console.log(`[API] fetchCalendarData 執行中...`);
+    //console.log(`  > 接收到的 startDate:`, startDate);
+    //console.log(`  > startDate 的型別:`, Object.prototype.toString.call(startDate));
+    //console.log(`  > 接收到的 endDate:`, endDate);
+    //console.log(`  > endDate 的型別:`, Object.prototype.toString.call(endDate));
+
+    // 檢查日期是否有效
+    if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
+        console.error('🔴 [API] 偵測到無效的 startDate!', startDate);
+        throw new Error('API 接收到無效的開始日期');
+    }
+    if (!(endDate instanceof Date) || isNaN(endDate.getTime())) {
+        console.error('🔴 [API] 偵測到無效的 endDate!', endDate);
+        throw new Error('API 接收到無效的結束日期');
+    }
+    //console.log(`[API] 日期驗證通過，準備查詢 Firestore...`);
+    // ✅ END: 新增偵錯日誌
+
     // 1. 一次性獲取該建案所有的 households 資料 (維持不變)
     const householdsRef = collection(db, "households");
     const householdsQuery = query(householdsRef, where("projectId", "==", projectId));
@@ -2235,12 +2246,12 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
 export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
   const getSlots = httpsCallable(functions, 'getAvailableSlots');
   try {
-    console.log('呼叫 getAvailableSlots，參數:', { projectId, unitId, bookingType, bookingMethod });
+    //console.log('呼叫 getAvailableSlots，參數:', { projectId, unitId, bookingType, bookingMethod });
     
     const result = await getSlots({ projectId, unitId, bookingType, bookingMethod });
     
-    console.log('getAvailableSlots 完整回傳:', result);
-    console.log('result.data:', result.data);
+    //console.log('getAvailableSlots 完整回傳:', result);
+    //console.log('result.data:', result.data);
     
     //  根據 Cloud Functions 的回傳格式，包裝成前端期望的格式
     return {
@@ -2495,7 +2506,7 @@ function fileToBase64(file) {
  * @returns {Promise<object>}
  */
 export async function uploadReportDirectlyToDrive(payload, fileObject) {
-  console.log('[api.js] Starting direct upload process via proxy function...');
+  //console.log('[api.js] Starting direct upload process via proxy function...');
   try {
     // 1. 將檔案轉為 Base64
     const base64Content = await fileToBase64(fileObject);
@@ -3389,8 +3400,6 @@ export const updateProjectSalesSettings = async (projectId, dataToUpdate) => {
  * @returns {function} - 用於停止監聽的 unsubscribe 函式
  */
 export const listenToSalesParameters = (projectId, callback) => {
-  // ✓ 【偵錯日誌 1】確認函式是否被呼叫，以及 projectId 是否正確
-  console.log(`[API] 正在為專案 ID "${projectId}" 建立 salesParameters 監聽器...`);
 
   const q = query(
     collection(db, 'salesParameters'),
@@ -3400,9 +3409,7 @@ export const listenToSalesParameters = (projectId, callback) => {
 
   const unsubscribe = onSnapshot(q, 
     (querySnapshot) => {
-      // ✓ 【偵錯日誌 2】如果這行有印出，代表成功收到 Firestore 的資料回呼
-      console.log(`[API] 監聽器成功收到資料快照，包含 ${querySnapshot.size} 筆文件。`);
-      
+
       const parameters = [];
       querySnapshot.forEach((doc) => {
         parameters.push({ id: doc.id, ...doc.data() });
@@ -3410,8 +3417,7 @@ export const listenToSalesParameters = (projectId, callback) => {
       callback(parameters);
     },
     (error) => {
-      // ✓ 【偵錯日誌 3】如果 Firestore 發生權限或其它錯誤，這裡會印出
-      console.error("[API] 監聽 salesParameters 時發生錯誤:", error);
+
     }
   );
 
@@ -3697,7 +3703,6 @@ export const deleteSalesImage = async (docId, storagePath) => {
  * @returns {Promise<object>}
  */
 export async function checkInToSystem(projectId, system, userKey, userName) {
-  console.log(`[API] Calling Firebase Function 'checkInToSystem' for project: ${projectId}, system: ${system}`);
   if (!projectId || !system || !userKey || !userName) {
     return { status: 'error', message: '前端錯誤：呼叫 checkInToSystem 時缺少參數。' };
   }
@@ -3790,7 +3795,6 @@ export async function goOffline(userKey) {
  */
  // 替換舊的 searchAppointments 函式
 export async function searchAppointments(projectId, searchText) {
-  console.log(`[API] Calling Firebase Function 'handleAppointmentSearch' for project: ${projectId} with query: "${searchText}"`);
   try {
     const searchFunction = httpsCallable(functions, 'handleAppointmentSearch');
     const result = await searchFunction({ projectId, searchText });
@@ -4556,3 +4560,59 @@ export async function fetchAllUnitsForUpload(projectId) {
 }
 
 
+/**
+ * [新增] 跨集合全域搜尋預約紀錄
+ * 根據關鍵字搜尋與 projectId 相關的 appointments 和 households 集合
+ * @param {string} projectId - 建案 ID
+ * @param {string} keyword - 搜尋關鍵字
+ * @returns {Promise<{status: string, data: Array, message?: string}>}
+ */
+export async function searchAppointmentsAndHouseholds(projectId, keyword) {
+  if (!projectId || !keyword) {
+    return { status: 'error', message: '缺少 projectId 或 keyword' };
+  }
+  
+  try {
+
+
+    const searchFunction = httpsCallable(functions, 'globalAppointmentSearch');
+    const result = await searchFunction({ projectId, keyword });
+
+
+
+    if (result.data.status === 'success') {
+      const processedData = result.data.data.map(appt => ({
+        ...appt,
+        // ✅ 將後端回傳的 ISO 字串轉回 Date 物件
+        appointmentDate: appt.appointmentDate ? new Date(appt.appointmentDate) : null,
+      }));
+      return { status: 'success', data: processedData };
+    } else {
+      return { status: 'error', message: result.data.message || '搜尋時發生未知錯誤' };
+    }
+  } catch (error) {
+    console.error("❌ 全域搜尋 API 呼叫失敗:", error);
+    // 簡化錯誤回報
+    return { status: 'error', message: `搜尋失敗: ${error.message}` };
+  }
+}
+
+/**
+ * 從資料庫獲取使用者偏好設定
+ */
+export async function fetchUserPreferencesFromBackend(userKey) {
+  try {
+    // 修正：使用 Firestore v9 的語法
+    const userDocRef = doc(db, 'users', userKey);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      return userData.preferences || {};
+    }
+    return {};
+  } catch (error) {
+    console.error('[API] 獲取使用者偏好設定失敗:', error);
+    throw error;
+  }
+}

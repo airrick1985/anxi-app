@@ -74,20 +74,17 @@ let unsubscribe = null; // 用來存放取消監聽的函式
 watch(() => userStore.user, (newUser) => {
   // 先確保舊的監聽器被清除
   if (unsubscribe) {
-    console.log('[Session Check] User logged out or changed, stopping previous listener.');
     unsubscribe();
     unsubscribe = null;
   }
 
   // 如果有新使用者登入 (newUser 不是 null)
   if (newUser && newUser.key) {
-    console.log(`[Session Check] User ${newUser.key} logged in. Starting to watch session ID.`);
     const userDocRef = doc(db, 'users', newUser.key);
 
     // 啟動對使用者文件的即時監聽
     unsubscribe = onSnapshot(userDocRef, (docSnap) => {
       if (!userStore.user) {
-        console.log('[Session Check] Listener fired, but user is already logged out. Stopping.');
         if (unsubscribe) unsubscribe();
         return;
       }
@@ -96,8 +93,6 @@ watch(() => userStore.user, (newUser) => {
         const serverSessionId = docSnap.data().activeSessionId;
         const clientSessionId = userStore.sessionId;
 
-        console.log(`[Session Check] Server Session ID: ${serverSessionId}`);
-        console.log(`[Session Check] Client Session ID: ${clientSessionId}`);
 
         // 核心邏輯：如果 server 上的 ID 存在，且與 client 的 ID 不符
         if (serverSessionId && clientSessionId && serverSessionId !== clientSessionId) {

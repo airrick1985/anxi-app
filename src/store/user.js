@@ -1,7 +1,7 @@
 // src/store/user.js
 
 import { defineStore } from 'pinia';
-import { goOffline, saveUserPreferencesToBackend } from '@/api'; 
+import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend } from '@/api'; // 新增 fetchUserPreferencesFromBackend
 import router from '@/router'; 
 
 export const useUserStore = defineStore('user', {
@@ -10,6 +10,7 @@ export const useUserStore = defineStore('user', {
     sessionId: null, 
     detailedPermissions: [],
     unreadCount: 0,
+    isLoaded: false,
   }),
 
   actions: {
@@ -38,7 +39,21 @@ export const useUserStore = defineStore('user', {
       this.detailedPermissions = [];
       this.unreadCount = 0;
     },
+    // 新增：從資料庫載入使用者偏好設定
+  async loadUserPreferencesFromDatabase() {
+    if (!this.user?.key) return;
     
+    try {
+      const preferences = await fetchUserPreferencesFromBackend(this.user.key);
+      if (preferences) {
+        // 直接設定 preferences，不會被 persist 保存
+        this.user.preferences = preferences;
+      }
+    } catch (error) {
+      console.error('[UserStore] 從資料庫載入偏好設定失敗:', error);
+    }
+  },
+
     async logoutUser() {
       const userKey = this.user?.key;
 
@@ -76,6 +91,18 @@ export const useUserStore = defineStore('user', {
     incrementUnreadCount() {
       this.unreadCount++;
     },
+
+    // 新增：確保 store 完全載入的方法
+      async ensureLoaded() {
+    // 如果使用者資料已存在（透過 persist 載入），則標記為已載入
+    if (this.user) {
+      this.isLoaded = true;
+      return;
+    }
+    
+    // 如果沒有使用者資料，也標記為已載入（表示檢查完成）
+    this.isLoaded = true;
+  },
 
     async updateUserPreferences(newPreferences) {
       if (this.user) {
@@ -122,7 +149,7 @@ export const useUserStore = defineStore('user', {
 
   persist: {
     key: 'anxi-user-session',
-    storage: localStorage,
+    storage: sessionStorage, 
     paths: ['user', 'detailedPermissions', 'unreadCount', 'sessionId']
   }
 });

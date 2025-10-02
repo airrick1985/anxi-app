@@ -18,7 +18,6 @@ export function useSystemPresence(projectId, systemName) {
 
   // 重置閒置計時器的函式
   const resetIdleTimer = () => {
-    // console.log('[Presence] User activity detected. Resetting idle timer.');
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       console.warn(`[Presence] User has been idle for ${IDLE_TIMEOUT / 60000} minutes. Releasing system spot.`);
@@ -37,7 +36,6 @@ export function useSystemPresence(projectId, systemName) {
       return;
     }
 
-    console.log(`[Presence] User ${userName} entering system ${systemName} for project ${projectId}.`);
     
     // 1. 設定 Firebase Realtime Database 或 Firestore 的 onDisconnect 事件
     //    這是為了處理使用者直接關閉瀏覽器或斷線的情況
@@ -52,7 +50,6 @@ export function useSystemPresence(projectId, systemName) {
   onUnmounted(() => {
     if (!userKey) return;
 
-    console.log(`[Presence] User ${userName} leaving system.`);
 
     // 1. 主動、立即地從 onlineStatus 移除使用者紀錄
     goOffline(userKey);
