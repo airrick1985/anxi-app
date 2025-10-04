@@ -610,51 +610,37 @@
           <v-col cols="12" md="6">
             <p class="text-subtitle-1 font-weight-bold mb-2">受託人資訊</p>
             <v-text-field v-model="authFormData.受託人姓名" label="受託人姓名" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
+            <v-text-field v-model="authFormData.受託人Email" label="受託人 Email (用於接收簽署信)" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined" density="compact"></v-text-field>
             <v-text-field v-model="authFormData.受託人身分證" label="受託人身分證" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
             <v-text-field v-model="authFormData.受託人戶籍地" label="受託人戶籍地" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
             <v-text-field v-model="authFormData.受託人電話" label="受託人電話" :rules="[v => !!v || '必填']" variant="outlined" density="compact"></v-text-field>
           </v-col>
         </v-row>
        <v-row>
-  <v-col cols="12" md="6">
-    <v-card variant="outlined">
-      <div class="d-flex justify-space-between align-center pa-4 pb-0">
-        <v-card-title class="text-subtitle-1 pa-0">委託人(屋主)簽名</v-card-title>
-        <v-btn variant="tonal" size="small" @click="clearDelegatorSignature">
-          <v-icon start>mdi-eraser</v-icon>
-          清除
-        </v-btn>
-      </div>
-      <v-card-text>
-        <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
-      </v-card-text>
-    </v-card>
-  </v-col>
-  <v-col cols="12" md="6">
-    <v-card variant="outlined">
-      <div class="d-flex justify-space-between align-center pa-4 pb-0">
-        <v-card-title class="text-subtitle-1 pa-0">受託人簽名</v-card-title>
-        <v-btn variant="tonal" size="small" @click="clearDelegateeSignature">
-          <v-icon start>mdi-eraser</v-icon>
-          清除
-        </v-btn>
-      </div>
-      <v-card-text>
-        <VueSignaturePad ref="delegateeSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
-      </v-card-text>
-    </v-card>
-  </v-col>
-</v-row>
+ <v-col cols="12">
+          <v-card variant="outlined">
+            <div class="d-flex justify-space-between align-center pa-4 pb-0">
+              <v-card-title class="text-subtitle-1 pa-0">委託人(屋主)簽名</v-card-title>
+              <v-btn variant="tonal" size="small" @click="clearDelegatorSignature">
+                <v-icon start>mdi-eraser</v-icon>
+                清除
+              </v-btn>
+            </div>
+            <v-card-text>
+              <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
       </v-form>
     </v-card-text>
     <v-card-actions class="pa-4">
       <v-spacer></v-spacer>
       <v-btn color="grey" @click="closeAuthDialog">關閉</v-btn>
-      <v-btn color="success" @click="handleGenerateLetter" variant="elevated">確認已填妥並產生授權書</v-btn>
+      <v-btn color="success" @click="handleInitiateSigning" variant="elevated" :loading="isLoading">寄送簽署邀請給受託人</v-btn>
     </v-card-actions>
   </v-card>
 </v-dialog>
-
 
 <div 
   ref="authLetterRenderRef" 
@@ -760,7 +746,8 @@ import {
   saveBooking, 
   uploadAuthLetter,
   cancelBooking,
-  uploadReportDirectlyToDrive
+  uploadReportDirectlyToDrive,
+  initiateAuthSigningProcess
 } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
@@ -909,6 +896,8 @@ const isDateAllowed = (date) => {
 
  // 授權書對話框狀態
  const isAuthDialogVisible = ref(false);
+ const isSigningInitiated = ref(false); 
+
  const isAuthLetterGenerated = ref(false); // 用於追蹤授權書是否已產生
  const generatedAuthLetterUrl = ref(''); // 用於存放產生的授權書圖片 URL 以供預覽
  const authForm = ref(null); // 為 v-form 建立 ref
@@ -930,6 +919,7 @@ const getMinguoDate = () => {
    委託人身分證: '',
    委託人戶籍地: '',
    受託人姓名: '',
+   受託人Email: '',
    受託人身分證: '',
    受託人戶籍地: '',
    受託人電話: ''
@@ -937,7 +927,6 @@ const getMinguoDate = () => {
 
  // 簽名版元件的 ref
  const delegatorSignaturePad = ref(null);
- const delegateeSignaturePad = ref(null);
 
 
  // 打開授權書對話框
@@ -960,75 +949,52 @@ const getMinguoDate = () => {
   }
 };
 
-//清除受託人簽名
-const clearDelegateeSignature = () => {
-  if (delegateeSignaturePad.value) {
-    delegateeSignaturePad.value.clearSignature();
-  }
-};
-
-
- // 處理產生授權書的邏輯 (此為下一階段的預留函式)
-const handleGenerateLetter = async () => {
-  // 1. 表單驗證
+//  START: 新增 - 發起簽署流程的函式
+const handleInitiateSigning = async () => {
+  // 1. 表單與簽名驗證
   const { valid } = await authForm.value.validate();
   if (!valid) {
     alert('所有欄位皆為必填，請檢查後再試。');
     return;
   }
-
-  // 2. 簽名驗證
-  if (delegatorSignaturePad.value.isEmpty() || delegateeSignaturePad.value.isEmpty()) {
-    alert('委託人與受託人皆須簽名。');
+  if (delegatorSignaturePad.value.isEmpty()) {
+    alert('委託人(屋主)必須簽名。');
     return;
   }
 
-  // 3. 儲存簽名為 Base64
-  const delegatorSignature = delegatorSignaturePad.value.saveSignature('image/png');
-  const delegateeSignature = delegateeSignaturePad.value.saveSignature('image/png');
-
-  // 4. 準備填充範本
-  let template = projectConfig.value.authLetterTemplate;
-  if (!template) {
-    alert('此建案未設定授權書範本。');
-    return;
-  }
-  
-  const populatedHtml = template
-    .replace(/{logoUrl}/g, projectConfig.value.logoUrl)
-    .replace(/{委託人姓名}/g, authFormData.value.委託人姓名)
-    .replace(/{建案名稱}/g, projectConfig.value.name)
-    .replace(/{戶別}/g, formStep1.value.unit)
-    .replace(/{受託人姓名}/g, authFormData.value.受託人姓名)
-    .replace(/{委託人簽名圖檔}/g, delegatorSignature.data)
-    .replace(/{委託人身分證字號}/g, authFormData.value.委託人身分證)
-    .replace(/{委託人戶籍地址}/g, authFormData.value.委託人戶籍地)
-    .replace(/{受託人簽名圖檔}/g, delegateeSignature.data)
-    .replace(/{受託人身分證字號}/g, authFormData.value.受託人身分證)
-    .replace(/{受託人戶籍地址}/g, authFormData.value.受託人戶籍地)
-    .replace(/{TODAY}/g, getMinguoDate());
-
-  // 5. 將內容渲染至隱藏的 div，並使用 html2canvas 產生圖片
-  authLetterRenderRef.value.innerHTML = populatedHtml;
-  
-  await nextTick(); // 等待 DOM 更新
+  loadingText.value = '正在產生簽署邀請...';
+  isLoading.value = true;
 
   try {
-    const canvas = await html2canvas(authLetterRenderRef.value, { 
-      scale: 2, // 提高解析度
-      useCORS: true // 允許跨域圖片 (如果有的話)
-    });
-    generatedAuthLetterUrl.value = canvas.toDataURL('image/png');
-    isAuthLetterGenerated.value = true;
-    closeAuthDialog(); // 關閉填寫視窗
-    isPreviewDialogVisible.value = true; // 打開預覽視窗
+    // 2. 準備傳送給後端的資料
+    const payload = {
+      projectId: projectId.value,
+      unitId: formStep1.value.unit,
+      formData: authFormData.value,
+      // 只傳送委託人(第一位)的簽名
+      delegatorSignature: delegatorSignaturePad.value.saveSignature('image/png').data
+    };
+
+    // 3. 呼叫新的 API 函式 (下一步會建立)
+    const result = await initiateAuthSigningProcess(payload);
+
+    if (result.status === 'success') {
+      isSigningInitiated.value = true;
+      closeAuthDialog();
+      alert('簽署邀請已成功寄出！請通知受託人至 Email 收信並完成簽署。');
+    } else {
+      throw new Error(result.message);
+    }
   } catch (error) {
-    console.error('產生授權書失敗:', error);
-    alert('產生授權書圖片失敗，請稍後再試。');
+    console.error('發起簽署邀請失敗:', error);
+    alert(`發起邀請失敗：${error.message}`);
   } finally {
-    authLetterRenderRef.value.innerHTML = ''; // 清空隱藏的 div
+    isLoading.value = false;
   }
 };
+//  END: 新增函式
+
+
 
 // 重置預約流程的函式
 const resetBookingFlow = () => {
@@ -1177,17 +1143,18 @@ const handleStep1Submit = async () => {
  }
 };
 
+// 在 handleStep2Submit 中，修改檢查的旗標
 const handleStep2Submit = async () => {
   const { valid } = await step2Form.value.validate();
   if (!valid) return;
 
-  // 檢查：如果選擇了「授權驗屋」，則必須先完成授權書的產生
-  if (formStep1.value.bookingMethod === '授權驗屋' && !isAuthLetterGenerated.value) {
-    alert('您選擇了「授權驗屋」，請務必先完成「填寫驗屋授權書」。');
-    return; // 中斷執行，停留在步驟二
-  }
+ // 檢查：如果選擇了「授權驗屋」，則必須先完成「發起簽署」
+ if (formStep1.value.bookingMethod === '授權驗屋' && !isSigningInitiated.value) {
+   alert('您選擇了「授權驗屋」，請務必先完成「填寫驗屋授權書」並寄送邀請。');
+   return; // 中斷執行
+ }
 
-  step.value = 3; // 所有檢查都通過，才前往步驟三
+  step.value = 3;
 };
 
 const handleGoBackAndRefresh = async () => {
@@ -1289,7 +1256,6 @@ const submitBooking = async () => {
     console.error("儲存預約失敗:", error);
     // 檢查後端回傳的特定錯誤訊息
     if (error.message.includes("已有有效預約")) {
-    
       alert(`預約失敗：${error.message}`);
       // 引導使用者返回第一步重新選擇
       resetBookingFlow();

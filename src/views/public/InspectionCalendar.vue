@@ -7,23 +7,7 @@
         <div id="action-buttons">
           <div class="d-none d-md-flex ga-2 align-center">
       
-            <div class="d-md-none">
-      <v-menu location="bottom end">
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
-        </template>
-        
-        <v-list density="compact">
-          <v-list-item prepend-icon="mdi-refresh" title="重新整理" @click="handleRefresh" :disabled="isLoading">
-            <template v-slot:append>
-              <v-progress-circular v-if="isLoading" indeterminate color="grey" size="20" width="2"></v-progress-circular>
-            </template>
-          </v-list-item>
-          <v-list-item prepend-icon="mdi-filter-variant" title="篩選" @click="isFilterDrawerVisible = true"></v-list-item>
-        </v-list>
 
-      </v-menu>
-    </div>
 
             <v-tooltip text="重新整理資料" location="bottom">
               <template v-slot:activator="{ props }">
@@ -48,18 +32,7 @@
             </v-btn>
           </div>
 
-          <div class="d-md-none">
-  <v-tooltip text="篩選" location="bottom">
-    <template v-slot:activator="{ props }">
-      <v-btn
-        v-bind="props"
-        icon="mdi-filter-variant"
-        variant="text"
-        @click="isFilterDrawerVisible = true"
-      ></v-btn>
-    </template>
-  </v-tooltip>
-</div>
+
         </div>
       </v-card-title>
 
@@ -582,10 +555,10 @@
         <v-divider></v-divider>
         <v-card-actions class="pa-3">
           <div v-if="!isEditMode" class="d-flex w-100">
-            <v-btn v-if="canEdit" color="red" variant="tonal" @click="promptCancelBooking(selectedEvent)">取消此預約</v-btn>
+            <v-btn v-if="canEdit && selectedEvent.status !== '取消'" color="red" variant="tonal" @click="promptCancelBooking(selectedEvent)">取消此預約</v-btn>
             <v-spacer></v-spacer>
             <v-btn color="grey-darken-1" variant="text" @click="isDialogVisible = false">關閉</v-btn>
-            <v-btn v-if="canEdit" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
+            <v-btn v-if="canEdit && selectedEvent.status !== '取消'" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
           </div>
           <div v-else class="d-flex w-100">
             <v-spacer></v-spacer>
@@ -947,9 +920,7 @@
     </v-card-actions>
   </v-card>
 </v-dialog>
-
-  
-  
+    
   
   <v-dialog v-model="isBatchMismatchDialogVisible" max-width="500px" persistent>
   <v-card>
@@ -970,7 +941,63 @@
 </v-dialog>
 
 
+
   </v-container>
+
+<teleport to="body">
+  <v-bottom-navigation
+    class="d-md-none"
+    grow
+    style="position: fixed; z-index: 2400; bottom: 1rem; left: 1rem; right: 1rem; width: auto; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
+  >
+    <v-btn @click="handleRefresh" :loading="isLoading">
+      <v-icon>mdi-refresh</v-icon>
+      <span>重新整理</span>
+    </v-btn>
+
+    <v-btn @click="isFilterDrawerVisible = true">
+      <v-icon>mdi-filter-variant</v-icon>
+      <span>篩選</span>
+    </v-btn>
+
+    <v-btn v-if="canEdit" @click="handleOpenAddDialog">
+      <v-icon>mdi-calendar-plus</v-icon>
+      <span>新增預約</span>
+    </v-btn>
+
+    <v-menu location="top">
+      <template v-slot:activator="{ props }">
+        <v-btn v-bind="props" :loading="isDownloadingPdf || isDownloadingExcel">
+          <v-icon>mdi-download</v-icon>
+          <span>下載</span>
+        </v-btn>
+      </template>
+      <v-list density="compact">
+        <v-list-item
+          prepend-icon="mdi-image-area"
+          title="下載PNG"
+          @click="handleDownloadPng"
+          :disabled="isDownloadingPdf || isDownloadingExcel"
+        >
+          <template v-slot:append>
+            <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+          </template>
+        </v-list-item>
+        <v-list-item
+          prepend-icon="mdi-microsoft-excel"
+          title="下載Excel"
+          @click="handleDownloadExcel"
+          :disabled="isDownloadingPdf || isDownloadingExcel"
+        >
+          <template v-slot:append>
+            <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+          </template>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+  </v-bottom-navigation>
+</teleport>
+
 </template>
 
 <script setup>

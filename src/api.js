@@ -4616,3 +4616,52 @@ export async function fetchUserPreferencesFromBackend(userKey) {
     throw error;
   }
 }
+
+
+/**
+ * [新] 呼叫後端發起授權書簽署流程 (委託人發起)
+ * @param {object} payload - 包含 projectId, unitId, formData, delegatorSignature
+ * @returns {Promise<object>}
+ */
+export async function initiateAuthSigningProcess(payload) {
+  try {
+    const initiator = httpsCallable(functions, 'initiateAuthSigningProcess');
+    const result = await initiator(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API initiateAuthSigningProcess 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [新] 根據 Token 獲取授權書簽署階段的資料
+ * @param {object} payload - 包含 { token } 的物件
+ * @returns {Promise<object>}
+ */
+export async function getAuthSigningSession(payload) {
+  try {
+    const getSession = httpsCallable(functions, 'getAuthSigningSession');
+    const result = await getSession(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API getAuthSigningSession 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [新] 標記授權書簽署流程已完成，並更新最終文件連結
+ * @param {object} payload - 包含 { token, finalUrl } 的物件
+ * @returns {Promise<object>}
+ */
+export async function markAuthSessionComplete(payload) {
+  try {
+    const completeSession = httpsCallable(functions, 'completeAuthSigningProcess');
+    const result = await completeSession(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API markAuthSessionComplete 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}

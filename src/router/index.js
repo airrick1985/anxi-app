@@ -208,6 +208,18 @@ const routes = [
     layout: PublicLayout
     }
   },
+
+  //  START: 新增授權書簽署頁面路由
+  {
+    path: '/sign-auth/:token',
+    name: 'AuthSigningPage',
+    component: () => import('@/views/public/AuthSigningPage.vue'),
+    props: true,
+    meta: {
+      layout: PublicLayout 
+    }
+  },
+
 {
         path: '/inspection-calendar/:projectId',
         name: 'InspectionCalendar',
