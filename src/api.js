@@ -1143,61 +1143,27 @@ export async function deleteRole(roleId) {
  * [新] 獲取管理者可管理的人員列表
  */
 export async function fetchManageableUsersWithDetails(adminKey) {
-  const adminPermDoc = await getDoc(doc(db, "userPermissions", adminKey));
-  if (!adminPermDoc.exists()) return [];
-  const adminProjects = Object.keys(adminPermDoc.data().permissions || {});
-  if (adminProjects.length === 0) return [];
-
-  const queries = adminProjects.map(projectId =>
-    query(collection(db, "userPermissions"), where(`permissions.${projectId}`, '!=', null))
-  );
-
-  const queryResults = await Promise.all(queries.map(q => getDocs(q)));
-
-  const PROTECTED_USERS_BLACKLIST = ['60763998'];
-  const usersMap = new Map();
-
-  queryResults.forEach(snapshot => {
-    snapshot.forEach(docSnap => {
-      const userPhone = docSnap.id;
-      if (userPhone !== adminKey && !PROTECTED_USERS_BLACKLIST.includes(userPhone) && !usersMap.has(userPhone)) {
-        const userData = docSnap.data();
-         usersMap.set(userPhone, {
-            phone: userPhone,
-            name: userData.userName || 'N/A',
-            roles: []
-        });
-      }
-    });
-  });
-
-  const userPhones = Array.from(usersMap.keys());
-  if (userPhones.length > 0) {
-      const chunks = [];
-      for (let i = 0; i < userPhones.length; i += 30) {
-          chunks.push(userPhones.slice(i, i + 30));
-      }
-
-      const userDetailsPromises = chunks.map(chunk =>
-        getDocs(query(collection(db, "users"), where(documentId(), 'in', chunk)))
-      );
-
-      const userDetailsSnapshots = await Promise.all(userDetailsPromises);
-
-      userDetailsSnapshots.forEach(snapshot => {
-        snapshot.forEach(doc => {
-            const user = usersMap.get(doc.id);
-            if (user) {
-                user.roles = doc.data().roles || [];
-            }
-        });
-      });
+  if (!adminKey) {
+    console.error("fetchManageableUsersWithDetails: 缺少 adminKey。");
+    return []; // 如果沒有 adminKey，直接返回空陣列
   }
+  
+  try {
+    // 1. 獲取對後端 Cloud Function 的引用
+    const fetcher = httpsCallable(functions, 'fetchManageableUsersWithDetails');
+    
+    // 2. 呼叫後端函式，並將 adminKey 作為參數傳遞
+    const result = await fetcher({ adminKey });
+    
+    // 3. 直接回傳後端經過完整權限過濾後的結果
+    return result.data; // result.data 將會是您需要的人員陣列
 
-  const manageableUsers = Array.from(usersMap.values());
-  manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
-
-  return manageableUsers;
+  } catch (error) {
+    console.error("API fetchManageableUsersWithDetails 錯誤:", error);
+    // 在實際應用中，可以在此處觸發一個錯誤通知
+    // toast.error(`獲取人員列表失敗: ${error.message}`);
+    return []; // 發生錯誤時回傳空陣列，避免頁面崩潰
+  }
 }
 
 /**
@@ -1232,44 +1198,30 @@ export async function fetchAdminScope(adminKey) {
 }
 
 /**
- * [新] 管理員查詢特定用戶的詳細資料
+ * [新] 管理員查詢特定用戶的詳細資料 (透過 Cloud Function 進行權限驗證)
+ * @param {string} targetUserKey - 被查詢者的手機號碼
+ * @param {string} adminKey - 操作者的手機號碼
+ * @returns {Promise<object>}
  */
-export async function fetchUserDetailsForAdmin(targetUserKey) {
-    const userDocRef = doc(db, "users", targetUserKey);
-    const permissionDocRef = doc(db, "userPermissions", targetUserKey);
+export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
+  try {
+    // 1. 獲取對後端 Cloud Function 的引用
+    const fetcher = httpsCallable(functions, 'fetchUserDetailsForAdmin');
+    
+    // 2. 呼叫後端函式，並傳遞所有必要的參數
+    const result = await fetcher({
+      targetUserKey: targetUserKey,
+      adminKey: adminKey
+    });
 
-    try {
-        const [userDocSnap, permissionDocSnap] = await Promise.all([
-            getDoc(userDocRef),
-            getDoc(permissionDocRef)
-        ]);
+    // 3. 直接回傳後端的執行結果
+    return result.data; // e.g., { status: 'success', data: { ... } }
 
-        if (!userDocSnap.exists()) {
-            return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
-        }
-
-        const basicInfo = userDocSnap.data();
-        const permissions = permissionDocSnap.exists() ? permissionDocSnap.data().permissions : {};
-
-        return {
-            status: 'success',
-            data: {
-                basicInfo: {
-                    phone: targetUserKey,
-                    name: basicInfo.name,
-                    email: basicInfo.email,
-                    password: String(basicInfo.password || ''),
-                    companyName: basicInfo.companyName,
-                    companyTaxId: String(basicInfo.companyTaxId || ''),
-                    roles: basicInfo.roles || []
-                },
-                permissions: permissions
-            }
-        };
-    } catch (error) {
-         console.error(`查詢用戶 ${targetUserKey} 資料時出錯:`, error);
-         return { status: 'error', message: `查詢用戶資料時出錯: ${error.message}` };
-    }
+  } catch (error) {
+    // 4. 如果後端拋出錯誤 (例如 'permission-denied')，將其轉換為前端可用的格式
+    console.error(`查詢用戶 ${targetUserKey} 資料時出錯:`, error);
+    return { status: 'error', message: error.message };
+  }
 }
 
 /**
@@ -1932,7 +1884,7 @@ export async function getProjectsForInspectionCalendar(userKey) {
  * @returns {Promise<Array>}
  */
 export async function fetchCalendarData(projectId, startDate, endDate) {
- // ✅ START: 新增偵錯日誌
+ //  START: 新增偵錯日誌
     //console.log(`[API] fetchCalendarData 執行中...`);
     //console.log(`  > 接收到的 startDate:`, startDate);
     //console.log(`  > startDate 的型別:`, Object.prototype.toString.call(startDate));
@@ -1949,7 +1901,7 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
         throw new Error('API 接收到無效的結束日期');
     }
     //console.log(`[API] 日期驗證通過，準備查詢 Firestore...`);
-    // ✅ END: 新增偵錯日誌
+    //  END: 新增偵錯日誌
 
     // 1. 一次性獲取該建案所有的 households 資料 (維持不變)
     const householdsRef = collection(db, "households");
@@ -4583,7 +4535,7 @@ export async function searchAppointmentsAndHouseholds(projectId, keyword) {
     if (result.data.status === 'success') {
       const processedData = result.data.data.map(appt => ({
         ...appt,
-        // ✅ 將後端回傳的 ISO 字串轉回 Date 物件
+        //  將後端回傳的 ISO 字串轉回 Date 物件
         appointmentDate: appt.appointmentDate ? new Date(appt.appointmentDate) : null,
       }));
       return { status: 'success', data: processedData };

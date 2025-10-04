@@ -42,6 +42,15 @@ const routes = [
     }
   },
   {
+    path: '/profile',
+    name: 'UserProfile',
+    component: () => import('@/views/UserProfile.vue'),
+    meta: {
+      requiresAuth: true, // 確保只有登入的使用者才能進入
+      layout: DefaultLayout
+    }
+  },
+  {
     path: '/inspection-record',
     name: 'InspectionRecord',
     component: InspectionRecord,

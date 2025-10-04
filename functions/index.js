@@ -5471,3 +5471,169 @@ exports.completeAuthSigningProcess = onCall({
   }
 });
 //  END: 函式修改結束
+
+
+// START: 替換舊的 fetchUserDetailsForAdmin 函式
+exports.fetchUserDetailsForAdmin = onCall(async (request) => {
+  // 1. 同時獲取操作者(adminKey)與被查詢者(targetUserKey)的 key
+  const { targetUserKey, adminKey } = request.data;
+  const functionName = `fetchUserDetailsForAdmin`;
+
+  if (!targetUserKey || !adminKey) {
+    throw new HttpsError("invalid-argument", "缺少 targetUserKey 或 adminKey 參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const userRef = db.collection("users");
+
+  try {
+    // 2. 一次性讀取操作者與被查詢者的資料
+    const [targetUserDoc, adminUserDoc] = await Promise.all([
+      userRef.doc(targetUserKey).get(),
+      userRef.doc(adminKey).get()
+    ]);
+
+    // 檢查操作者是否存在
+    if (!adminUserDoc.exists) {
+      throw new HttpsError("unauthenticated", "無效的操作者身份。");
+    }
+    
+    // 如果被查詢者不存在，直接回傳找不到的訊息 (這是正常流程)
+    if (!targetUserDoc.exists) {
+      return { status: 'error', message: `找不到手機號碼為 ${targetUserKey} 的用戶。` };
+    }
+
+    const targetUserData = targetUserDoc.data();
+    const adminUserData = adminUserDoc.data();
+    
+    // 3. 提取雙方的角色陣列
+    const targetUserRoles = targetUserData.roles || [];
+    const adminUserRoles = adminUserData.roles || [];
+
+    // --- 4. 執行權限檢查規則 ---
+
+    // 規則一：如果要查詢的對象是「超級管理員」
+    if (targetUserRoles.includes("超級管理員")) {
+      // 則操作者本身也必須是「超級管理員」
+      if (!adminUserRoles.includes("超級管理員")) {
+        throw new HttpsError("permission-denied", "權限不足：您無法查詢超級管理員的資料。");
+      }
+    }
+    // 規則二：如果要查詢的對象是「系統管理員」
+    else if (targetUserRoles.includes("系統管理員")) {
+      // 則操作者必須是「超級管理員」或「系統管理員」
+      if (!adminUserRoles.includes("超級管理員") && !adminUserRoles.includes("系統管理員")) {
+        throw new HttpsError("permission-denied", "權限不足：您無法查詢系統管理員的資料。");
+      }
+    }
+
+    // --- 5. 如果所有檢查都通過，才繼續執行並回傳資料 ---
+    const permissionDocRef = db.collection("userPermissions").doc(targetUserKey);
+    const permissionDocSnap = await permissionDocRef.get();
+    
+    const permissions = permissionDocSnap.exists ? permissionDocSnap.data().permissions : {};
+
+    return {
+      status: 'success',
+      data: {
+        basicInfo: {
+          phone: targetUserKey,
+          name: targetUserData.name,
+          email: targetUserData.email,
+          password: String(targetUserData.password || ''),
+          companyName: targetUserData.companyName,
+          companyTaxId: String(targetUserData.companyTaxId || ''),
+          roles: targetUserData.roles || []
+        },
+        permissions: permissions
+      }
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 查詢用戶 ${targetUserKey} 資料時出錯:`, error);
+    // 如果是我們自訂的權限錯誤，直接拋出
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    // 其他內部錯誤
+    throw new HttpsError("internal", `查詢用戶資料時發生未預期的錯誤: ${error.message}`);
+  }
+});
+// END: 函式替換結束
+
+
+// START: 替換舊的 fetchManageableUsersWithDetails 函式
+exports.fetchManageableUsersWithDetails = onCall(async (request) => {
+  // 1. 獲取操作者(adminKey)
+  const { adminKey } = request.data;
+  if (!adminKey) {
+    throw new HttpsError('unauthenticated', '操作者 ID 未提供。');
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const usersRef = db.collection("users");
+  const functionName = `fetchManageableUsersWithDetails`;
+
+  try {
+    // 2. 獲取操作者的使用者資料及其角色
+    const adminUserDoc = await usersRef.doc(adminKey).get();
+    if (!adminUserDoc.exists) {
+      throw new HttpsError('unauthenticated', '無效的操作者身份。');
+    }
+    const adminUserRoles = adminUserDoc.data().roles || [];
+
+    // 3. 獲取所有使用者資料，準備在後端進行過濾
+    const allUsersSnapshot = await usersRef.get();
+    const allUsers = [];
+    allUsersSnapshot.forEach(doc => {
+      allUsers.push({ phone: doc.id, ...doc.data() });
+    });
+
+    // 4. 根據操作者的角色，過濾可見的人員列表
+    const filteredUsers = allUsers.filter(targetUser => {
+      // 管理者不應該在列表中看到自己
+      if (targetUser.phone === adminKey) {
+        return false;
+      }
+
+      const targetUserRoles = targetUser.roles || [];
+
+      // 規則 A：如果操作者是「超級管理員」，則可以看到所有人
+      if (adminUserRoles.includes('超級管理員')) {
+        return true;
+      }
+      
+      // 規則 B：如果被查詢者是「超級管理員」，非超級管理員的操作者看不到
+      if (targetUserRoles.includes('超級管理員')) {
+        return false;
+      }
+      
+      // 規則 C：如果被查詢者是「系統管理員」...
+      if (targetUserRoles.includes('系統管理員')) {
+        // ...則操作者必須也是「系統管理員」(因為規則A已排除了超級管理員的情況)
+        return adminUserRoles.includes('系統管理員');
+      }
+
+      // 如果以上規則都未觸發，代表被查詢者是一般使用者，所有人都可以看到
+      return true;
+    });
+
+    // 5. 將過濾後的結果整理成前端需要的格式
+    const result = filteredUsers.map(user => ({
+      phone: user.phone,
+      name: user.name || 'N/A',
+      roles: user.roles || []
+    }));
+
+    // 依姓名排序
+    result.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+
+    return result;
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', '獲取可管理人員列表時發生錯誤。');
+  }
+});
+// END: 函式替換結束

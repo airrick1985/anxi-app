@@ -44,12 +44,14 @@ import tableIcon from '@/assets/icons/table.png';
 import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
+import profileIcon from '@/assets/icons/profile.png'; 
+
 
 const router = useRouter();
 const userStore = useUserStore();
 const backgroundImageUrl = ref(myBackgroundImage);
 
-// ✅ 新增 footer 所需的響應式變數
+//  新增 footer 所需的響應式變數
 const appVersion = ref(manifest.version);
 const currentYear = ref(new Date().getFullYear());
 
@@ -58,6 +60,14 @@ const containerStyle = computed(() => ({
 }));
 
 const allButtons = ref([
+
+ { 
+    id: 'userProfile', 
+    text: '個人資料', 
+    icon: profileIcon, 
+    permissionType: 'loggedIn', // 權限類型：只要登入就可見
+    nav: { name: 'UserProfile' } // 導航目標：UserProfile 頁面
+  },
    { 
     id: 'backupManagement', 
     text: '資料庫管理', 
@@ -101,7 +111,7 @@ onMounted(() => {
   });
 
    visibleButtons.value = sortedButtons.filter(button => {
-    // ✅ 新增：直接從 userStore 讀取角色列表
+    //  新增：直接從 userStore 讀取角色列表
     const userRoles = userStore.currentUserRoles;
 
     switch(button.permissionType) {
@@ -110,7 +120,7 @@ onMounted(() => {
       case 'anySystem':
         return userStore.hasAnyPermission(button.permissionArgs);
       case 'system':
-        // ✅ 修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles
+        //  修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles
         // 如果 permissionArgs 的值是'超級管理員'或'系統管理員'等角色，就檢查 roles
         if (['超級管理員', '系統管理員'].includes(button.permissionArgs[0])) {
             return userRoles.includes(button.permissionArgs[0]);

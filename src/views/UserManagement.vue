@@ -22,15 +22,13 @@
               <v-col cols="12" md="6">
                 <v-text-field
                   v-model="searchPhone"
-                  label="輸入手機號碼查詢 / 新增"
+                  label="輸入姓名或手機號碼篩選"
                   variant="outlined"
-                  dense
+                  density="compact"
                   hide-details
-                  @keydown.enter="handleSearchUser"
+                  prepend-inner-icon="mdi-magnify"
+                  clearable
                 >
-                  <template v-slot:append-inner>
-                    <v-btn :loading="loadingDetails" icon="mdi-magnify" variant="text" @click="handleSearchUser"></v-btn>
-                  </template>
                 </v-text-field>
               </v-col>
               <v-col cols="12" md="6" class="d-flex justify-end">
@@ -45,44 +43,96 @@
               {{ errorMessage }}
             </v-alert>
 
-            <v-data-table
-              :headers="tableHeaders"
-              :items="manageableUsers"
-              :loading="loading"
-              item-value="phone"
-              class="elevation-1 mt-4"
-              no-data-text="沒有可管理的人員資料"
-              loading-text="正在載入資料..."
-              items-per-page-text="每頁筆數："
-              :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
-            >
-              <template v-if="canViewAndEditRoles" v-slot:item.roles="{ item }">
-                <v-combobox
-                  :model-value="item.roles"
-                  @update:model-value="newRoles => handleRolesChange(item, newRoles)"
-                  :items="availableRolesForAssignment"
-                  multiple
-                  chips
-                  closable-chips
+            <div class="d-none d-md-block mt-4">
+              <v-data-table
+                :headers="tableHeaders"
+                :items="filteredUsers"
+                :loading="loading"
+                item-value="phone"
+                class="elevation-1"
+                no-data-text="沒有可管理的人員資料"
+                loading-text="正在載入資料..."
+                items-per-page-text="每頁筆數："
+                :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
+              >
+                <template v-if="canViewAndEditRoles" v-slot:item.roles="{ item }">
+                  <v-combobox
+                    :model-value="item.roles"
+                    @update:model-value="newRoles => handleRolesChange(item, newRoles)"
+                    :items="availableRolesForAssignment"
+                    multiple
+                    chips
+                    closable-chips
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    placeholder="點此新增角色"
+                    :loading="item.rolesLoading"
+                    class="py-2"
+                  >
+                    <template v-slot:selection="{ item: chipItem, index }">
+                      <v-chip :key="index" closable @click:close="removeRole(item, chipItem.title)">
+                        {{ chipItem.title }}
+                      </v-chip>
+                    </template>
+                  </v-combobox>
+                </template>
+                <template v-slot:item.actions="{ item }">
+                  <v-btn small color="primary" @click="openEditDialog(item.phone)">編輯</v-btn>
+                </template>
+              </v-data-table>
+            </div>
+            <div class="d-md-none mt-4">
+              <div v-if="loading" class="text-center pa-10">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                <p class="mt-2 text-grey">正在載入資料...</p>
+              </div>
+              <div v-else>
+                <v-card
+                  v-for="item in filteredUsers"
+                  :key="item.phone"
+                  class="mb-3"
                   variant="outlined"
-                  density="compact"
-                  hide-details
-                  placeholder="點此新增角色"
-                  :loading="item.rolesLoading"
-                  class="py-2"
                 >
-                  <template v-slot:selection="{ item: chipItem, index }">
-                    <v-chip :key="index" closable @click:close="removeRole(item, chipItem.title)">
-                      {{ chipItem.title }}
-                    </v-chip>
-                  </template>
-                </v-combobox>
-              </template>
-              <template v-slot:item.actions="{ item }">
-                <v-btn small color="primary" @click="openEditDialog(item.phone)">編輯</v-btn>
-              </template>
-            </v-data-table>
-          </v-card-text>
+                  <v-card-title class="text-h6 pb-0">{{ item.name }}</v-card-title>
+                  <v-card-subtitle>{{ item.phone }}</v-card-subtitle>
+
+                  <v-card-text v-if="canViewAndEditRoles" class="pt-2">
+                    <v-combobox
+                      :model-value="item.roles"
+                      @update:model-value="newRoles => handleRolesChange(item, newRoles)"
+                      :items="availableRolesForAssignment"
+                      multiple
+                      chips
+                      closable-chips
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      placeholder="點此新增角色"
+                      :loading="item.rolesLoading"
+                    >
+                      <template v-slot:selection="{ item: chipItem, index }">
+                        <v-chip :key="index" closable @click:close="removeRole(item, chipItem.title)">
+                          {{ chipItem.title }}
+                        </v-chip>
+                      </template>
+                    </v-combobox>
+                  </v-card-text>
+
+                  <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="tonal" @click="openEditDialog(item.phone)">
+                      編輯權限
+                    </v-btn>
+                  </v-card-actions>
+                </v-card>
+
+                <div v-if="filteredUsers.length === 0" class="text-center text-grey py-10">
+                  <p>找不到符合條件的人員</p>
+                </div>
+              </div>
+            </div>
+            </v-card-text>
         </v-window-item>
 
         <v-window-item v-if="isSuperAdmin" value="roles">
@@ -187,7 +237,8 @@
             </v-row>
           </v-card-text>
         </v-window-item>
-  <v-window-item v-if="isSuperAdmin" value="functions">
+
+        <v-window-item v-if="isSuperAdmin" value="functions">
           <v-card-text>
             <div class="d-flex justify-end mb-4">
               <v-btn color="primary" @click="openFunctionDialog()">
@@ -549,6 +600,21 @@ const deleteRoleDialog = ref(false);
 const roleToDelete = ref(null);
 const deletingRole = ref(false);
 
+
+const filteredUsers = computed(() => {
+  if (!searchPhone.value) {
+    return manageableUsers.value;
+  }
+  const lowerQuery = searchPhone.value.toLowerCase().trim();
+  if (!lowerQuery) {
+    return manageableUsers.value;
+  }
+  return manageableUsers.value.filter(user =>
+    user.name.toLowerCase().includes(lowerQuery) ||
+    user.phone.includes(lowerQuery)
+  );
+});
+
 const userManagementFields = [
     { key: 'phone', label: '手機號碼' },
     { key: 'name', label: '姓名' },
@@ -560,7 +626,7 @@ const userManagementFields = [
     { key: 'permissions', label: '系統權限' }
 ];
 
-// ✅ 更新為新的四種權限選項
+//  更新為新的四種權限選項
 const fieldPermissionOptions = [
     { title: '可讀寫', value: 'RU', color: 'green' },
     { title: '唯讀', value: 'R', color: 'blue' },
@@ -615,7 +681,7 @@ const tableHeaders = computed(() => {
   return headers;
 });
 
-// ✅【新】計算當前管理員合併後的欄位權限
+// 【新】計算當前管理員合併後的欄位權限
 const currentUserFieldPermissions = computed(() => {
     if (isSuperAdmin.value) {
         // 超級管理員擁有所有欄位的讀寫權限
@@ -636,7 +702,7 @@ const currentUserFieldPermissions = computed(() => {
     return merged;
 });
 
-// ✅【新】提供給模板使用的權限檢查函式
+// 【新】提供給模板使用的權限檢查函式
 const getFieldPermission = (fieldName) => {
     return currentUserFieldPermissions.value[fieldName] || ''; // 預設隱藏
 };
@@ -823,6 +889,31 @@ const handleSave = async () => {
       return;
     }
   }
+
+  //  START: 新增權限驗證邏輯
+  if (isNewUser.value) {
+    let hasAtLeastOnePermission = false;
+    // 遍歷 permissionMatrix 檢查是否有任何一個權限被勾選
+    for (const system in permissionMatrix.value) {
+      for (const project in permissionMatrix.value[system]) {
+        if (permissionMatrix.value[system][project] === true) {
+          hasAtLeastOnePermission = true;
+          break; // 找到一個就足夠了，跳出內層迴圈
+        }
+      }
+      if (hasAtLeastOnePermission) {
+        break; // 跳出外層迴圈
+      }
+    }
+
+    // 如果沒有任何權限被勾選，則顯示錯誤並中斷儲存
+    if (!hasAtLeastOnePermission) {
+      toast.error('請至少為新人員指派一項系統權限。');
+      return; // 中斷函式執行
+    }
+  }
+  //  END: 權限驗證邏輯結束
+
   saving.value = true;
   try {
     const newPermissionsObject = {};
@@ -845,7 +936,7 @@ const handleSave = async () => {
       adminName: userStore.user?.name,
       basicInfo: targetUser.value.basicInfo,
       permissions: newPermissionsObject,
-      isNewUser: isNewUser.value // ✅ 核心修改點：將新建狀態傳遞給 API
+      isNewUser: isNewUser.value
     };
     const result = await updateUserDetailsForAdmin(payload);
     if (result.status === 'success') {

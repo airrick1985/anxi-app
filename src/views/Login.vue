@@ -152,11 +152,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'; // 移除了 onMounted
+import { ref, computed, onMounted } from 'vue'; 
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
-import { checkUpdate } from '@/utils/swHelper';
 
 import myBackgroundImage from '@/assets/login-bg.jpg';
 
@@ -196,7 +195,6 @@ const submit = async () => {
       // 步驟 C: 登入成功後，將使用者資料和 sessionId 一同存入 store
       userStore.setUser(result.user, sessionId);
       emit('notify', '登入成功');
-      await checkUpdate();
       router.push('/home');
     } else {
       error.value = (result && result.message) || '登入失敗，請稍後再試';

@@ -2,31 +2,44 @@
   <component :is="layoutComponent">
     <router-view />
   </component>
-  <!-- 將更新提示元件放在這裡，它會根據 store 的狀態自動顯示/隱藏 -->
-  <AppUpdatePrompt />
+
+  <!-- 新增：PWA 強制更新遮罩 -->
+  <v-overlay
+    :model-value="isUpdating"
+    class="align-center justify-center"
+    persistent
+  >
+    <v-progress-circular
+      color="white"
+      indeterminate
+      size="64"
+    ></v-progress-circular>
+    <div class="text-center mt-4" style="color: white;">應用程式更新中...</div>
+  </v-overlay>
+
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onMounted, watch } from 'vue'; // ✅ 1. 引入 watch
-import { useRoute } from 'vue-router';
+import { computed, defineAsyncComponent, onMounted, watch, ref } from 'vue'; 
+import { useRoute } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
-import { useUserStore } from '@/store/user'; // ✅ 2. 引入 userStore
-import { db } from '@/firebase'; // ✅ 3. 引入 db (Firestore 實例)
-import { doc, onSnapshot } from 'firebase/firestore'; // ✅ 4. 引入 Firestore 監聽器相關函式
-import { useToast } from 'vue-toastification'; // ✅ 5. 引入 toast 以便提示使用者
+import { useUserStore } from '@/store/user'; 
+import { db } from '@/firebase'; 
+import { doc, onSnapshot } from 'firebase/firestore'; 
+import { useToast } from 'vue-toastification'; 
 import DefaultLayout from './layouts/DefaultLayout.vue'; 
 
 // --- 步驟 4.1: 引入 PWA 更新相關模組 ---
 import { useRegisterSW } from 'virtual:pwa-register/vue';
-import { useUpdateStore } from '@/store/updateStore';
-import AppUpdatePrompt from '@/components/AppUpdatePrompt.vue';
-// --- 結束引入 ---
+
 
 const route = useRoute();
 const projectStore = useProjectStore();
-const userStore = useUserStore(); // 建立 userStore 實例
-const toast = useToast(); // 建立 toast 實例
-const updateStore = useUpdateStore(); // 建立 updateStore 實例
+const userStore = useUserStore(); 
+const toast = useToast(); 
+
+// ✅ 新增：用於控制更新遮罩的 ref
+const isUpdating = ref(false);
 
 
 const layoutComponent = computed(() => {
@@ -56,10 +69,10 @@ const { needRefresh, updateServiceWorker } = useRegisterSW({
 // 監聽 needRefresh 狀態的變化
 watch(needRefresh, (newValue) => {
   if (newValue) {
-    console.log('New content available, show prompt.');
-    // 當 needRefresh 變為 true 時，呼叫 store action 來顯示提示
-    // 並將 updateServiceWorker 函式傳遞過去
-    updateStore.setUpdate(updateServiceWorker);
+    console.log('New content available, forcing update.');
+    // 當 needRefresh 變為 true 時，直接顯示遮罩並觸發更新
+    isUpdating.value = true;
+    updateServiceWorker();
   }
 });
 // --- 結束設定 ---
@@ -68,7 +81,7 @@ onMounted(() => {
   projectStore.fetchProjects();
 });
 
-// ✅ START: 新增 activeSessionId 的即時監聽器
+//  START: 新增 activeSessionId 的即時監聽器
 let unsubscribe = null; // 用來存放取消監聽的函式
 
 watch(() => userStore.user, (newUser) => {
@@ -115,7 +128,6 @@ watch(() => userStore.user, (newUser) => {
     });
   }
 }, { immediate: true }); // immediate: true 確保頁面重整時也能立刻觸發一次
-// ✅ END: 新增 activeSessionId 的即時監聽器
 </script>
 
 <style>
