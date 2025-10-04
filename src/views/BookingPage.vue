@@ -249,7 +249,7 @@
                 
                 <div v-if="projectConfig.intro.faq && projectConfig.intro.faq.length > 0" class="mt-6">
                   <v-list-subheader>常見問答</v-list-subheader>
-                  <v-expansion-panels variant="inset">
+              <v-expansion-panels variant="inset">
                     <v-expansion-panel
                       v-for="(item, i) in projectConfig.intro.faq"
                       :key="i"
@@ -258,6 +258,21 @@
                     ></v-expansion-panel>
                   </v-expansion-panels>
                 </div>
+
+               <div v-if="projectConfig && projectConfig.intro && projectConfig.intro.footer" class="text-caption text-grey text-center mt-4 prose" v-html="projectConfig.intro.footer">
+                </div>
+                <div v-if="projectConfig.intro && projectConfig.intro.contact" class="contact-info mt-6">
+                  <v-list-subheader>聯絡資訊</v-list-subheader>
+                  <v-list density="compact">
+                    <v-list-item v-if="projectConfig.intro.contact.name" prepend-icon="mdi-office-building-outline">
+                      <v-list-item-title>{{ projectConfig.intro.contact.name }}</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item v-if="projectConfig.intro.contact.phone" prepend-icon="mdi-phone-outline" :href="`tel:${projectConfig.intro.contact.phone}`">
+                      <v-list-item-title>{{ projectConfig.intro.contact.phone }}</v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </div>
+
               </div>
             </v-card-text>
             <v-divider v-if="step < 3"></v-divider>
@@ -710,6 +725,7 @@
 
 
 </v-dialog>
+
 <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
   <span>Powered by&nbsp;</span>
   <v-chip
