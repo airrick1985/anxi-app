@@ -1274,8 +1274,8 @@ const submitBooking = async () => {
       }
     };
     
-    // ✅ 提交預約
-    const res = await saveBooking(payload);
+    //  提交預約
+     const res = await saveBooking(payload);
 
     if (res.status === 'success') {
       if (res.data && res.data.bookingCode) {
@@ -1285,10 +1285,23 @@ const submitBooking = async () => {
     } else {
       throw new Error(res.message || '預約失敗');
     }
-  } catch (error) {
+  } catch (error) { //  START: 修改 catch 區塊
     console.error("儲存預約失敗:", error);
-    alert(`預約失敗：${error.message}`);
-  } finally {
+    // 檢查後端回傳的特定錯誤訊息
+    if (error.message.includes("已有有效預約")) {
+    
+      alert(`預約失敗：${error.message}`);
+      // 引導使用者返回第一步重新選擇
+      resetBookingFlow();
+    } else if (error.message.includes("名額剛好額滿")) {
+      alert(`預約失敗：${error.message}`);
+      // 引導使用者返回第二步重新選擇時段
+      handleGoBackAndRefresh();
+    } else {
+      // 其他一般錯誤
+      alert(`預約失敗：${error.message}`);
+    }
+  } finally { //  END: 修改 catch 區塊
     isLoading.value = false;
   }
 };
@@ -1302,7 +1315,7 @@ const confirmCancelBooking = () => {
 const handleCancelBooking = async () => {
   isCanceling.value = true;
   try {
-    // ✅ 修改此處，將 '預約代碼' 改為 'bookingCode'
+    //  修改此處，將 '預約代碼' 改為 'bookingCode'
     const res = await cancelBooking({
       projectId: projectId.value,
       bookingCode: existingBookingInfo.value.bookingCode 
@@ -1461,7 +1474,7 @@ const handleUploadSubmit = async () => {
       companyName: uploadForm.value.companyName,
     };
     
-    // ✅ 【修改】改為呼叫新的代理上傳函式
+    //  【修改】改為呼叫新的代理上傳函式
     const res = await uploadReportDirectlyToDrive(payload, uploadForm.value.file);
 
     if (res.status === 'success') {

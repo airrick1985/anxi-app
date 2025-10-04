@@ -2,9 +2,7 @@
 <v-container fluid>
 <v-card class="pa-4">
 <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
-  <v-btn color="grey-darken-1" variant="outlined" @click="navigateBackToCalendar" prepend-icon="mdi-calendar-month-outline" class="mr-4">
-    返回時間表
-  </v-btn>
+ 
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
       <v-btn 
@@ -684,13 +682,6 @@ const confirmAndSave = async () => {
   }
 };
 
-// --- 導航函式 ---
-function navigateBackToCalendar() {
-  router.push({
-    name: 'InternalInspectionCalendar',
-    params: { projectId: projectId.value }
-  });
-}
 
 // ✓ 【修改】簡化 onGridReady，只用來獲取 gridApi
 const onGridReady = (params) => {

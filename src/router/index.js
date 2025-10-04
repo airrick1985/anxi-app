@@ -1,6 +1,9 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { useProjectStore } from '@/store/projectStore'; // ✅ 1. 引入 projectStore
+import { useProjectStore } from '@/store/projectStore'; //  1. 引入 projectStore
+const InspectionManagement = () => import('@/views/InspectionManagement.vue');
+
+
 
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
@@ -233,45 +236,51 @@ const routes = [
     }
   },
   {
-    path: '/internal/inspection-calendar/:projectId',
-    name: 'InternalInspectionCalendar',
-    component: InspectionCalendar,
-    props: true,
-    meta: {
-      requiresAuth: true,
-      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], layout: DefaultLayout
-    }
-  },
-  {
-    path: '/booking-rule-manager/:projectId',
-    name: 'BookingRuleManager',
-    component: BookingRuleManager,
-    props: true,
-    meta: {
-      requiresAuth: true,
-      requiredSystem: '驗屋預約管理-修改',
-      layout: DefaultLayout
-    }
-  },
-
-  {
-    path: '/project/:projectId/households',
-    name: 'HouseholdGrid',
-    component: HouseholdGrid,
-    props: true, // 讓 Vue Router 自動將 projectId 作為 prop 傳入元件
-    meta: {
-      requiresAuth: true,
-      // 假設查看戶別總表也需要 '驗屋預約管理-檢視' 或更高權限
-      requiredAnySystem: ['驗屋預約管理-修改'],
-      layout: DefaultLayout
-    }
+    path: '/inspection-management/:projectId',
+    component: InspectionManagement,
+    //  3. 將原本的頁面設定為子路由
+    children: [
+      {
+        path: 'calendar', //  <- 使用相對路徑
+        name: 'InternalInspectionCalendar',
+        component: InspectionCalendar,
+        props: true,
+        meta: {
+          requiresAuth: true,
+          requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
+          layout: DefaultLayout // 佈局設定可以保留或移除，取決於您的 DefaultLayout 設計
+        }
+      },
+      {
+        path: 'households', // <- 使用相對路徑
+        name: 'HouseholdGrid',
+        component: HouseholdGrid,
+        props: true,
+        meta: {
+          requiresAuth: true,
+          requiredAnySystem: ['驗屋預約管理-修改'],
+          layout: DefaultLayout
+        }
+      },
+      {
+        path: 'rules', // <- 使用相對路徑
+        name: 'BookingRuleManager',
+        component: BookingRuleManager,
+        props: true,
+        meta: {
+          requiresAuth: true,
+          requiredSystem: '驗屋預約管理-修改',
+          layout: DefaultLayout
+        }
+      }
+    ]
   },
 
 {
     path: '/backup-management',
     name: 'BackupManagement',
     component: () => import('@/views/BackupManagement.vue'),
-    // ✅ 1. 在 meta 中加入需要的角色
+    //  1. 在 meta 中加入需要的角色
     meta: { 
       requiresAuth: true,
       requiredRoles: ['超級管理員'] // 指定只有超級管理員可以進入
@@ -279,7 +288,7 @@ const routes = [
   },
 
   {
-  // ✅ 新增特殊上傳報告頁面的路由
+  //  新增特殊上傳報告頁面的路由
   path: '/special-report-upload/:projectId',
   name: 'SpecialReportUpload',
   component: () => import('@/views/SpecialReportUpload.vue'),
@@ -355,7 +364,7 @@ router.beforeEach(async (to, from, next) => {
     return next({ name: 'Home' });
   }
   
-  // ✅ START: 在這裡插入我們新的「角色權限」檢查邏輯
+  //  START: 在這裡插入我們新的「角色權限」檢查邏輯
   const requiredRoles = to.meta.requiredRoles;
   if (requiredRoles && Array.isArray(requiredRoles)) {
     const userRoles = userStore.currentUserRoles;
@@ -367,7 +376,7 @@ router.beforeEach(async (to, from, next) => {
       return next({ name: 'Home' }); // 沒有權限，導回首頁
     }
   }
-  // ✅ END: 插入結束
+  //  END: 插入結束
 
   // --- 以下是您所有既有的、強大的權限檢查邏輯，我們將它們保留下來 ---
 

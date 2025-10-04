@@ -3918,18 +3918,17 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
     const db = new Firestore({ databaseId: "anxi-app" });
 
     try {
-        //  【關鍵修改】在函式開始時，就根據 projectId 獲取建案文件
         const projectRef = db.collection('projects').doc(projectId);
         const projectDoc = await projectRef.get();
-        // 從查到的文件中獲取建案名稱，如果找不到，則使用 projectId 作為備用
         const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
-        // ✓ START: 使用 Firestore 事務 (Transaction) 來確保資料一致性
+        // 使用 Firestore 事務 (Transaction) 來確保資料一致性
         const result = await db.runTransaction(async (transaction) => {
             const householdDocId = `${projectId}_${bookingData.unitId}`;
             const householdRef = db.collection('households').doc(householdDocId);
+            
+            // 1. 在 Transaction 中重新檢查戶別、批次、規則等前置條件
             const householdDoc = await transaction.get(householdRef);
-
             if (!householdDoc.exists) {
                 throw new HttpsError("not-found", `找不到戶別 "${bookingData.unitId}" 的資料。`);
             }
@@ -3941,11 +3940,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
                 throw new HttpsError("permission-denied", `此戶別的 "${bookingData.bookingType}" 預約目前未指派批次。`);
             }
 
-            const batchQuery = db.collection('bookingBatches')
-                .where('projectId', '==', projectId)
-                .where('batchCode', '==', batchCode)
-                .where('bookingType', '==', bookingData.bookingType)
-                .limit(1);
+            const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingData.bookingType).limit(1);
             const batchSnapshot = await transaction.get(batchQuery);
             if (batchSnapshot.empty) {
                 throw new HttpsError("not-found", `找不到對應的預約批次。`);
@@ -3953,10 +3948,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             const batchId = batchSnapshot.docs[0].id;
 
             const appointmentDateStr = bookingData.bookingDate.split(' ')[0].replace(/\//g, '-');
-            const linksQuery = db.collection('batchRuleLinks')
-                .where('batchId', '==', batchId)
-                .where('date', '==', appointmentDateStr)
-                .limit(1);
+            const linksQuery = db.collection('batchRuleLinks').where('batchId', '==', batchId).where('date', '==', appointmentDateStr).limit(1);
             const linksSnapshot = await transaction.get(linksQuery);
             if (linksSnapshot.empty) {
                 throw new HttpsError("failed-precondition", `日期 ${appointmentDateStr} 不在可預約範圍內。`);
@@ -3977,31 +3969,34 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             }
             const capacity = slotInfo.capacity || 0;
 
+            // 2. ✅ 在 Transaction 中執行關鍵檢查：重複預約
+            const appointmentsQueryDuplicate = db.collection('appointments').where('projectId', '==', projectId).where('unitId', '==', bookingData.unitId).where('bookingType', '==', bookingData.bookingType).where('status', '==', '預約中');
+            const existingBookingSnapshot = await transaction.get(appointmentsQueryDuplicate);
+            if (!existingBookingSnapshot.empty) {
+                // 如果已有預約，中斷 Transaction 並拋出錯誤
+                throw new HttpsError("already-exists", `此戶別的「${bookingData.bookingType}」已有有效預約，請返回第一步重新操作。`);
+            }
+
+            // 3. ✅ 在 Transaction 中執行關鍵檢查：時段名額
             const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00');
-            const appointmentsQuery = db.collection('appointments')
-                .where('projectId', '==', projectId)
-                .where('appointmentDate', '==', appointmentDateObj)
-                .where('appointmentTimeSlot', '==', timeSlotKey)
-                .where('status', '==', '預約中');
-            
-            const appointmentsSnapshot = await transaction.get(appointmentsQuery);
+            const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
+            const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
             const currentBookings = appointmentsSnapshot.size;
 
             if (currentBookings >= capacity) {
-                throw new HttpsError("resource-exhausted", `時段 ${bookingData.bookingTimeSlot} 名額已滿，請重新選擇。`);
+                // 如果名額已滿，中斷 Transaction 並拋出錯誤
+                throw new HttpsError("resource-exhausted", `此時段名額剛好額滿，請返回上一步重新選擇時段。`);
             }
             
+            // 4. 所有檢查通過，準備寫入新資料
             const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
-            
             const now = new Date();
             const timezoneOffset = 8 * 60;
             const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
             const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
             const dateStr = localNow.toISOString().slice(5, 10);
             const docId = `${projectId}_${dateStr}-${timeStr}_${bookingData.unitId}`;
-
             const appointmentRef = db.collection('appointments').doc(docId);
-            
             const finalAppointmentDate = new Date(`${appointmentDateStr}T${timeSlotKey}:00`);
             
             const newAppointmentData = {
@@ -4049,10 +4044,10 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             return { bookingCode, newAppointmentData };
         });
 
+        // Transaction 成功後，繼續執行寄信等非關鍵操作
         const { bookingCode, newAppointmentData } = result;
         
-        // 我們可以重複使用上面已經獲取過的 projectDoc
-        let closingText = '請於預約時段準時抵達，感謝您的配合。';
+          let closingText = '請於預約時段準時抵達，感謝您的配合。';
         let inspectionNotesHtml = '';
         if (projectDoc.exists) {
             const projectData = projectDoc.data();
@@ -4150,7 +4145,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             html: htmlBody, 
             name: `${projectName} 預約系統`
         });
-        
+
         return { status: 'success', data: { bookingCode } };
 
     } catch (error) {
@@ -4551,6 +4546,8 @@ const dataToSave = {
         principalName: newBookingData.principalName || "",
         status: newBookingData.status || "預約中",
         unitId: newBookingData.unitId,
+         createdByName: newBookingData.createdByName || null,
+        lastModifiedByName: newBookingData.lastModifiedByName || null,
 
         // 由後端生成或處理的欄位
         projectId: projectId,

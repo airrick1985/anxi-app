@@ -33,13 +33,7 @@
 
             <v-divider vertical class="mx-2"></v-divider>
 
-             <v-btn color="blue-grey" @click="navigateToHouseholdGrid" prepend-icon="mdi-table-large">
-              戶別資料管理
-            </v-btn>
-
-           <v-btn v-if="canEdit" color="deep-purple-lighten-1" @click="navigateToRuleManager" prepend-icon="mdi-cogs">
-              預約批次及系統管理
-            </v-btn>
+         
             
 
             <v-btn v-if="canEdit" color="indigo" @click="handleOpenAddDialog" prepend-icon="mdi-calendar-plus">
@@ -69,74 +63,83 @@
         </div>
       </v-card-title>
 
+       <v-overlay
+        v-model="isLoading"
+        contained
+        class="align-center justify-center"
+        persistent
+      >
+        <v-progress-circular
+          indeterminate
+          color="primary"
+          size="64"
+        ></v-progress-circular>
+        <div class="mt-4 text-white font-weight-bold">資料載入中...</div>
+      </v-overlay>
       <v-row
-  class="mb-4 pa-3 rounded d-flex d-md-none"
-  dense
->
-  <v-col cols="12">
-    <VueDatePicker
-      v-model="dateRange"
-      range
-      :enable-time-picker="false"
-      format="yyyy/MM/dd"
-      :min-date="minSelectableDate"
-      :max-date="maxSelectableDate"
-      locale="zh-TW"
-      auto-apply
-      :close-on-auto-apply="true"
-      placeholder="請選擇日期區間"
-    ></VueDatePicker>
-  </v-col>
-  <v-col cols="12">
-    <v-autocomplete
-      v-model="selectedSearchResult"
-      v-model:search="searchQuery"
-      :items="autocompleteItems"
-      :loading="isSearchingBackend"
-      item-title="title"
-      item-value="value"
-      label="關鍵字搜尋..."
-      prepend-inner-icon="mdi-magnify"
-      density="compact"
-      hide-details
-      clearable
-      variant="outlined"
-      color="primary"
-      no-data-text="沒有符合的預約紀錄"
-      return-object
-      @update:model-value="handleSearchResultSelection"
-      no-filter
-    >
-      <template v-slot:item="{ props, item }">
-        <v-list-item v-bind="props" :title="null" lines="two" class="py-2">
-          <v-list-item-title class="d-flex align-center">
-            <v-chip :color="getStatusColor(item.raw.status)" size="x-small" class="mr-2" label variant="flat">
-              {{ item.raw.status }}
-            </v-chip>
-            <span class="font-weight-bold text-primary">{{ item.raw.unitId }}</span>
-            <span class="mx-2">-</span>
-            <span>{{ item.raw.bookerName }}</span>
-          </v-list-item-title>
-          <v-list-item-subtitle class="mt-1 text-medium-emphasis">
-            <span>{{ item.raw.bookingType }}</span>
-            <span class="mx-2">·</span>
-            <v-icon size="x-small" class="mr-1">mdi-calendar-blank</v-icon>
-            <span>{{ item.raw.date }}</span>
-            <v-icon size="x-small" class="ml-3 mr-1">mdi-clock-outline</v-icon>
-            <span>{{ item.raw.time }}</span>
-          </v-list-item-subtitle>
-        </v-list-item>
-      </template>
-    </v-autocomplete>
-  </v-col>
-</v-row>
+        class="mb-4 pa-3 rounded d-flex d-md-none"
+        dense
+      >
+        <v-col cols="12">
+          <VueDatePicker
+            v-model="dateRange"
+            range
+            :enable-time-picker="false"
+            format="yyyy/MM/dd"
+            :min-date="minSelectableDate"
+            :max-date="maxSelectableDate"
+            locale="zh-TW"
+            auto-apply
+            :close-on-auto-apply="true"
+            placeholder="請選擇日期區間"
+          ></VueDatePicker>
+        </v-col>
+        <v-col cols="12">
+          <v-autocomplete
+            v-model="selectedSearchResult"
+            v-model:search="searchQuery"
+            :items="autocompleteItems"
+            :loading="isSearchingBackend"
+            item-title="title"
+            item-value="value"
+            label="關鍵字搜尋..."
+            prepend-inner-icon="mdi-magnify"
+            density="compact"
+            hide-details
+            clearable
+            variant="outlined"
+            color="primary"
+            no-data-text="沒有符合的預約紀錄"
+            return-object
+            @update:model-value="handleSearchResultSelection"
+            no-filter
+          >
+            <template v-slot:item="{ props, item }">
+              <v-list-item v-bind="props" :title="null" lines="two" class="py-2">
+                <v-list-item-title class="d-flex align-center">
+                  <v-chip :color="getStatusColor(item.raw.status)" size="x-small" class="mr-2" label variant="flat">
+                    {{ item.raw.status }}
+                  </v-chip>
+                  <span class="font-weight-bold text-primary">{{ item.raw.unitId }}</span>
+                  <span class="mx-2">-</span>
+                  <span>{{ item.raw.bookerName }}</span>
+                </v-list-item-title>
+                <v-list-item-subtitle class="mt-1 text-medium-emphasis">
+                  <span>{{ item.raw.bookingType }}</span>
+                  <span class="mx-2">·</span>
+                  <v-icon size="x-small" class="mr-1">mdi-calendar-blank</v-icon>
+                  <span>{{ item.raw.date }}</span>
+                  <v-icon size="x-small" class="ml-3 mr-1">mdi-clock-outline</v-icon>
+                  <span>{{ item.raw.time }}</span>
+                </v-list-item-subtitle>
+              </v-list-item>
+            </template>
+          </v-autocomplete>
+        </v-col>
+      </v-row>
 
       <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
 
-      <div v-if="isLoading" class="text-center pa-10">
-        <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-        <div class="mt-4">資料載入中...</div>
-      </div>
 
       <div v-if="!isLoading && !error">
         <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
@@ -966,46 +969,6 @@
   </v-card>
 </v-dialog>
 
-  <v-card class="pa-4 main-content-mobile-padding"> </v-card>
-
-  <div class="mobile-footer d-md-none">
-  <v-bottom-navigation grow>
-    <v-btn @click="navigateToHouseholdGrid">
-      <v-icon>mdi-table-large</v-icon>
-      <span>戶別管理</span>
-    </v-btn>
-
-    <v-btn v-if="canEdit" @click="navigateToRuleManager">
-      <v-icon>mdi-cogs</v-icon>
-      <span>批次管理</span>
-    </v-btn>
-
-    <v-btn v-if="canEdit" @click="handleOpenAddDialog">
-      <v-icon>mdi-calendar-plus</v-icon>
-      <span>新增預約</span>
-    </v-btn>
-
-    <v-menu top>
-      <template v-slot:activator="{ props }">
-        <v-btn v-bind="props">
-          <v-icon>mdi-download</v-icon>
-          <span>下載時間表</span>
-        </v-btn>
-      </template>
-      <v-list>
-        <v-list-item @click="handleDownloadPng" :loading="isDownloadingPdf">
-          <template v-slot:prepend><v-icon>mdi-image-area</v-icon></template>
-          <v-list-item-title>下載 PNG</v-list-item-title>
-        </v-list-item>
-        <v-list-item @click="handleDownloadExcel" :loading="isDownloadingExcel">
-          <template v-slot:prepend><v-icon>mdi-microsoft-excel</v-icon></template>
-          <v-list-item-title>下載 Excel</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </v-menu>
-
-  </v-bottom-navigation>
-</div>
 
   </v-container>
 </template>
@@ -1064,7 +1027,7 @@ const systemName = '驗屋預約管理';
 useSystemPresence(projectId.value, systemName);
 
 // --- 定義欄位應更新到哪個集合 ---
-const APPOINTMENT_FIELDS = ['bookerName', 'bookerPhone', 'bookerIdNumber' ,'bookerEmail', 'appointmentDate', 'appointmentTimeSlot', 'inspectionMethod', 'inspectionCompanyName', 'inspectors', 'bookingRemarks', 'agentName', 'agentIdNumber', 'agentPhone', 'bookingType', 'status', 'checkInStatus', 'specialRemarks', 'specialRemarks2', 'handoverTime'];
+const APPOINTMENT_FIELDS = ['bookerName', 'bookerPhone', 'bookerIdNumber' ,'bookerEmail', 'appointmentDate', 'appointmentTimeSlot', 'inspectionMethod', 'inspectionCompanyName', 'inspectors', 'bookingRemarks', 'agentName', 'agentIdNumber', 'agentPhone', 'bookingType', 'status', 'checkInStatus', 'handoverTime', 'createdByName', 'lastModifiedByName'];
 const HOUSEHOLD_FIELDS = ['address', 'parkingLots', 'buyerName', 'buyerPhone', 'buyerEmail', 'buyerIdNumber','appropriationDate', 'bank', 'bankContact', 'remarks', 'inspectionDocsUrl', 'inspectionReportUrl', 'initialInspectionBatch', 'reInspectionBatch'];
 
 // [新增] 建立一個 Set 來集中管理所有可編輯的欄位，方便維護
@@ -1685,6 +1648,13 @@ async function saveChanges() {
             }
         });
 
+
+        // 如果有任何變更，就寫入最後修改者姓名
+     if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
+       bookingPayload.lastModifiedByName = userStore.user?.name || '未知使用者';
+     }
+
+
         const householdDocId = `${projectId.value}_${selectedEvent.value.unitId}`;
         const response = await updateAppointment(selectedEvent.value.id, bookingPayload, householdDocId, householdPayload);
 
@@ -1843,7 +1813,7 @@ function handleSearchResultSelection(selectedItem) { // 為了清晰，將參數
   // 如果沒有選擇任何東西，直接返回
   if (!selectedItem) return;
 
-  // ✅ 核心修改：從傳入的整個選項物件中，取出我們真正需要的 'value' 屬性
+  //  核心修改：從傳入的整個選項物件中，取出我們真正需要的 'value' 屬性
   const selectedAppointment = selectedItem.value;
 
   // 現在，後續的檢查和操作邏輯就可以完全保持不變，並且能正常運作了
@@ -2144,6 +2114,12 @@ async function executeAddAppointment(cancelBookingCode = null, force = false) {
     try {
         const payload = { ...newAppointmentData };
         if (Array.isArray(payload.inspectors)) payload.inspectors = payload.inspectors.join(',');
+
+      //  在 payload 中加入建立者與最後修改者姓名
+          const userName = userStore.user?.name || '未知使用者';
+          payload.createdByName = userName;
+            payload.lastModifiedByName = userName;
+
         
         // 呼叫我們修改過的 API 函式
         await addAppointmentAdmin(projectId.value, payload, cancelBookingCode, force);
@@ -2865,26 +2841,6 @@ function navigateToHouseholdGrid() {
   -webkit-user-select: none; /* 兼容 Safari */
   -moz-user-select: none;    /* 兼容 Firefox */
   -ms-user-select: none;     /* 兼容 IE */
-}
-
-
-.mobile-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 4; /* 確保它在最上層 */
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.1); /* 加上陰影增加立體感 */
-}
-
-/* 針對 md 以下的螢幕尺寸，增加主卡片的底部邊距，避免內容被遮擋 */
-@media (max-width: 959px) {
-  .main-content-mobile-padding {
-    /* 底部導覽列高度(約56px) + 搜尋框高度(約56px) + 一些緩衝 */
-    padding-bottom: 128px !important;
-  }
 }
 
 

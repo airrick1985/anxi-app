@@ -2,17 +2,7 @@
   <v-container fluid>
     <v-card>
       <v-card-title class="d-flex align-center text-h5 text-primary">
-        <v-tooltip text="返回預約總表" location="bottom">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              icon="mdi-arrow-left"
-              variant="text"
-              class="mr-2"
-              @click="goBack"
-            ></v-btn>
-          </template>
-        </v-tooltip>
+       
         <v-icon start>mdi-cogs</v-icon>
         <span>驗屋預約系統管理：{{ projectName || '讀取中...' }}</span> 
         <v-spacer></v-spacer>
@@ -1198,9 +1188,6 @@ function showSnackbar(text, color = 'success') {
   snackbar.show = true;
 }
 
-function goBack() {
-  router.back();
-}
 
 
 // --- Data Loading & Main Logic ---
