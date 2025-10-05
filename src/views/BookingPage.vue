@@ -562,6 +562,22 @@
           <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
           <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
 
+         <div v-if="projectConfig?.intro?.closingText" class="mt-4">
+            <v-alert
+              border="start"
+              variant="tonal"
+              color="info"
+              icon="mdi-information-outline"
+              class="pa-4"
+              prominent
+            >
+              <template v-slot:title>
+                <div class="font-weight-bold">重要提醒</div>
+              </template>
+              <div class="prose" v-html="projectConfig.intro.closingText"></div>
+            </v-alert>
+          </div>
+
       </v-list>
       </v-card-text>
     <v-card-actions class="pa-2">

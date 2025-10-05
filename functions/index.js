@@ -4049,15 +4049,38 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
         // Transaction 成功後，繼續執行寄信等非關鍵操作
         const { bookingCode, newAppointmentData } = result;
         
-          let closingText = '請於預約時段準時抵達，感謝您的配合。';
+        let closingText = '請於預約時段準時抵達，感謝您的配合。';
         let inspectionNotesHtml = '';
+        let contactInfoHtml = ''; //  新增：聯絡資訊 HTML
         if (projectDoc.exists) {
             const projectData = projectDoc.data();
-            if (projectData.emailConfig && projectData.emailConfig.closingText) {
+            // 優先從 intro.closingText 獲取，並保持對舊 emailConfig.closingText 的相容性
+            if (projectData.intro && projectData.intro.closingText) {
+                closingText = projectData.intro.closingText;
+            } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
                 closingText = projectData.emailConfig.closingText;
             }
+            
             if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
                 inspectionNotesHtml = projectData.intro.alert.text;
+            }
+
+            //  新增：組合聯絡資訊區塊
+            if (projectData.intro && projectData.intro.contact) {
+                const contact = projectData.intro.contact;
+                if (contact.name || contact.phone) {
+                    const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+                    const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+                    const separator = contact.name && contact.phone ? ' / ' : '';
+                    contactInfoHtml = `
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
+                            <p style="margin: 0; font-size: 14px; color: #555;">
+                                如有任何疑問，請洽詢：<br>
+                                ${namePart}${separator}${phonePart}
+                            </p>
+                        </div>
+                    `;
+                }
             }
         }
 
@@ -4114,22 +4137,23 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
           ${newAppointmentData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${newAppointmentData.inspectionCompanyName}</td></tr>
           ` : ''}
-          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${newAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+ <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${newAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${newAppointmentData.appointmentTimeSlot}</td></tr>
         </tbody>
       </table>
+      <div style="padding: 15px; margin-top: 15px; margin-bottom: 20px; background-color: #f8f9fa; border-left: 4px solid #17a2b8; color: #333;">${closingText}</div>
+      ${contactInfoHtml}
       ${inspectionNotesHtml ? `
         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
           <h3 style="margin-top: 0; color: #333;">驗屋說明</h3>
           ${inspectionNotesHtml}
         </div>
       ` : ''}
-      <p>${closingText}</p>
       ${bookingLinkHtml}
     </div>
     <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
-      <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
+     <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
         本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
@@ -4226,7 +4250,29 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
             const projectDoc = await projectRef.get();
             const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
+            let contactInfoHtml = '';
+            if (projectDoc.exists) {
+                const projectData = projectDoc.data();
+                if (projectData.intro && projectData.intro.contact) {
+                    const contact = projectData.intro.contact;
+                    if (contact.name || contact.phone) {
+                        const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+                        const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+                        const separator = contact.name && contact.phone ? ' / ' : '';
+                        contactInfoHtml = `
+                            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
+                                <p style="margin: 0; font-size: 14px; color: #555;">
+                                    如有任何疑問，請洽詢：<br>
+                                    ${namePart}${separator}${phonePart}
+                                </p>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
             const mailTransport = nodemailer.createTransport({
+
                 service: 'gmail',
                 auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
             });
@@ -4250,14 +4296,24 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
+          ${bookingData.inspectionCompanyName ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${bookingData.inspectionCompanyName}</td></tr>
+          ` : ''}
+          ${bookingData.agentName ? `
+           <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${bookingData.agentName}</td></tr>
+           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${bookingData.agentPhone}</td></tr>
+          ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
         </tbody>
       </table>
       <p>若您需要重新預約，歡迎隨時返回預約頁面。感謝您的使用。</p>
+      ${contactInfoHtml}
       <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;">
           <a href="${bookingUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">
               點此重新預約
+
           </a>
       </p>
     </div>

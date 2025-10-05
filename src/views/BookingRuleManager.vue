@@ -11,7 +11,8 @@
       
       <v-tabs v-model="activeTab" bg-color="primary">
         <v-tab value="batches">批次管理</v-tab>
-        <v-tab value="settings">驗屋預約系統設定</v-tab>
+        <v-tab value="settings">驗屋預約設定</v-tab>
+        <v-tab value="report-settings">驗屋報告設定</v-tab>
       </v-tabs>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -217,15 +218,7 @@
                   persistent-hint
                   class="mt-4"
                 ></v-switch>
-                <v-switch
-                  v-model="projectSettings.showReportUploadButton"
-                  label="啟用上傳驗屋報告功能"
-                  color="primary"
-                  inset
-                  hint="啟用後，客戶在預約頁面可以看到「上傳驗屋報告」的按鈕"
-                  persistent-hint
-                  class="mt-4"
-                ></v-switch>
+                
                 <v-switch
                   v-model="projectSettings.showBookingMethod"
                   label="顯示驗屋方式選項"
@@ -279,13 +272,15 @@
                 <div class="d-flex align-center"> <label class="v-label text-caption">內文說明</label>
   <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')" class="ml-4">套用範本</v-btn> </div>
                 <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
-                <div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
+<div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
   <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')" class="ml-4">套用範本</v-btn> </div>
                 <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
+                <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.intro.closingText" class="mb-4" />
                 <v-divider class="my-6"></v-divider>
                 <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
-                <v-text-field
-                  v-model="projectSettings.intro.contact.name"
+                <v-text-field                  v-model="projectSettings.intro.contact.name"
                   label="聯絡單位名稱"
                   variant="outlined"
                   density="compact"
@@ -360,6 +355,202 @@
               </v-form>
             </div>
 
+            <v-card-actions class="sticky-actions pa-4">
+              <v-spacer></v-spacer>
+              <v-btn 
+                color="primary" 
+                variant="elevated"
+                @click="saveSettings"
+                :loading="isSavingSettings"
+                size="large"
+              >
+                儲存設定
+              </v-btn>
+            </v-card-actions>
+          </v-window-item>
+
+<v-window-item value="report-settings" class="settings-tab-content">
+            <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
+              <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            </div>
+            <div v-else-if="projectSettings.reportSettings" class="settings-form-container pa-4">
+              <v-form>
+                <p class="text-h6 font-weight-bold mb-4">上傳頁面設定</p>
+
+                <v-switch
+                  v-model="projectSettings.showReportUploadButton"
+                  label="啟用上傳驗屋報告功能"
+                  color="primary"
+                  inset
+                  hint="啟用後，客戶在預約頁面可以看到「上傳驗屋報告」的按鈕"
+                  persistent-hint
+                  class="mt-4"
+                ></v-switch>
+
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告上傳網址</p>
+                <v-text-field
+                  v-model="projectSettings.reportSettings.uploadReminderEmail.uploadUrl"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-1"
+                   placeholder="輸入驗屋報告上傳網址"
+                ></v-text-field>
+
+                <p class="text-subtitle-1 font-weight-bold mb-2">上傳頁說明</p>
+                <RichTextEditor v-model="projectSettings.reportUploadIntro.body" class="mb-6" />
+
+                <v-divider class="my-6"></v-divider>
+
+                <div class="d-flex align-center mb-2">
+                  <p class="text-subtitle-1 font-weight-bold">上傳須知提示框</p>
+                  <v-btn size="small" variant="tonal" class="ml-4" @click="isAlertPreviewDialogVisible = true" prepend-icon="mdi-eye-outline">預覽</v-btn>
+                </div>
+                <v-switch
+                  v-model="projectSettings.reportUploadIntro.alert.show"
+                  label="顯示提示框"
+                  color="primary"
+                  inset
+                ></v-switch>
+                <v-text-field
+                  v-model="projectSettings.reportUploadIntro.alert.title"
+                  label="提示框標題"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-4"
+                  :disabled="!projectSettings.reportUploadIntro.alert.show"
+                ></v-text-field>
+                <v-row class="mt-2">
+                  <v-col cols="12" sm="6">
+                    <v-select
+                      v-model="projectSettings.reportUploadIntro.alert.type"
+                      :items="['info', 'success', 'warning', 'error']"
+                      label="提示框樣式 (Type)"
+                      variant="outlined"
+                      density="compact"
+                      :disabled="!projectSettings.reportUploadIntro.alert.show"
+                    ></v-select>
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                     <v-select
+                      v-model="projectSettings.reportUploadIntro.alert.color"
+                      :items="['primary', 'info', 'success', 'warning', 'error', 'red', 'blue']"
+                      label="提示框顏色 (Color)"
+                      variant="outlined"
+                      density="compact"
+                      :disabled="!projectSettings.reportUploadIntro.alert.show"
+                    ></v-select>
+                  </v-col>
+                </v-row>
+                <label class="v-label text-caption mt-2">提示框內容</label>
+                <RichTextEditor v-model="projectSettings.reportUploadIntro.alert.text" class="mt-2 mb-6" :disabled="!projectSettings.reportUploadIntro.alert.show" />
+
+                <v-divider class="my-8"></v-divider>
+
+                <p class="text-h6 font-weight-bold mb-4">自動化提醒設定</p>
+                
+                <p class="text-subtitle-1 font-weight-bold mb-2">提醒上傳驗屋報告</p>
+                <v-combobox
+                  v-model="projectSettings.reportSettings.uploadReminderDays"
+                  :items="[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"
+                  label="驗屋完成後，間隔幾天後發送通知"
+                  hint="可多選或手動輸入天數後按 Enter"
+                  persistent-hint
+                  multiple
+                  chips
+                  closable-chips
+                  variant="outlined"
+                  density="compact"
+                ></v-combobox>
+
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">通知方式</p>
+                <div>
+                  <v-checkbox
+                    v-model="projectSettings.reportSettings.uploadReminderMethods"
+                    label="Email"
+                    value="EMAIL"
+                    density="compact"
+                    hide-details
+                    class="d-inline-block mr-4"
+                  ></v-checkbox>
+                  <v-checkbox
+                    v-model="projectSettings.reportSettings.uploadReminderMethods"
+                    label="LINE"
+                    value="LINE"
+                    density="compact"
+                    hide-details
+                    class="d-inline-block"
+                  ></v-checkbox>
+                </div>
+
+                <v-divider class="my-6"></v-divider>
+
+                <p class="text-subtitle-1 font-weight-bold mb-2">未上傳驗屋報告 EMAIL 通知格式</p>
+                <div class="d-flex align-center">
+                  <label class="v-label text-caption">主旨</label>
+                  <v-btn size="x-small" variant="tonal" @click="applyTemplate('uploadReminderEmailSubject')" class="ml-4">套用範本</v-btn>
+                </div>
+                <v-text-field
+                  v-model="projectSettings.reportSettings.uploadReminderEmail.subject"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-1"
+                ></v-text-field>
+
+                <div class="d-flex align-center mt-4">
+                  <label class="v-label text-caption">內文</label>
+                  <v-btn size="x-small" variant="tonal" @click="applyTemplate('uploadReminderEmailBody')" class="ml-4">套用範本</v-btn>
+                </div>
+                <RichTextEditor 
+                  v-model="projectSettings.reportSettings.uploadReminderEmail.body" 
+                  class="mt-1"
+                  :placeholders="emailPlaceholders"
+                />
+
+                <div class="d-flex align-center mt-4">
+                  <label class="v-label text-caption">提醒</label>
+                  <v-btn size="x-small" variant="tonal" @click="applyTemplate('uploadReminderEmailReminder')" class="ml-4">套用範本</v-btn>
+                </div>
+                <RichTextEditor 
+                  v-model="projectSettings.reportSettings.uploadReminderEmail.reminder" 
+                  class="mt-1"
+                  :placeholders="emailPlaceholders"
+                /> 
+        
+                
+         
+           
+
+                <v-divider class="my-8"></v-divider>
+
+                <p class="text-h6 font-weight-bold mb-4">排程設定</p>
+                <p class="text-subtitle-1 font-weight-bold mb-2">驗屋報告未下載通知</p>
+                <p class="text-body-2 text-medium-emphasis mb-4">
+                  設定系統每週固定檢查的時間點。當系統發現有報告未下載時，將會觸發通知。
+                </p>
+                <v-sheet border rounded class="pa-4">
+                  <div v-for="day in weekDays" :key="day.key" class="d-flex align-center my-2">
+                    <v-checkbox
+                      v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                      :label="day.label"
+                      density="compact"
+                      hide-details
+                      class="flex-shrink-0"
+                      style="width: 120px;"
+                    ></v-checkbox>
+                    <v-text-field
+                      v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].time"
+                      type="time"
+                      density="compact"
+                      variant="outlined"
+                      hide-details
+                      :disabled="!projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                      style="max-width: 150px;"
+                    ></v-text-field>
+                  </div>
+                </v-sheet>
+
+              </v-form>
+            </div>
             <v-card-actions class="sticky-actions pa-4">
               <v-spacer></v-spacer>
               <v-btn 
@@ -551,7 +742,7 @@
                     <v-divider></v-divider>
                     <v-card-actions>
                       <v-spacer></v-spacer>
-                      <v-btn text @click="menuAppStart = false">取消</v-btn>
+                      <v-btn variant="text" @click="menuAppStart = false">取消</v-btn>
                       <v-btn color="primary" @click="saveApplicationStart">確定</v-btn>
                     </v-card-actions>
                   </v-card>
@@ -586,7 +777,7 @@
                     <v-divider></v-divider>
                     <v-card-actions>
                       <v-spacer></v-spacer>
-                      <v-btn text @click="menuAppEnd = false">取消</v-btn>
+                      <v-btn variant="text" @click="menuAppEnd = false">取消</v-btn>
                       <v-btn color="primary" @click="saveApplicationEnd">確定</v-btn>
                     </v-card-actions>
                   </v-card>
@@ -882,6 +1073,38 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="isAlertPreviewDialogVisible" max-width="800px">
+      <v-card>
+        <v-card-title class="d-flex align-center primary-bg">
+          <v-icon start>mdi-alert-box-outline</v-icon>
+          <span>上傳須知提示框預覽</span>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" icon="mdi-close" @click="isAlertPreviewDialogVisible = false"></v-btn>
+        </v-card-title>
+        <v-card-text class="pa-6">
+          <p class="text-caption mb-4">以下是根據您目前設定所呈現的預覽效果：</p>
+          <v-alert
+            :model-value="true"
+            :title="projectSettings.reportUploadIntro.alert.title"
+            :color="projectSettings.reportUploadIntro.alert.color"
+            :type="projectSettings.reportUploadIntro.alert.type"
+            variant="tonal"
+            border="start"
+            prominent
+          >
+            <div v-html="projectSettings.reportUploadIntro.alert.text"></div>
+          </v-alert>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3">
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="tonal" @click="isAlertPreviewDialogVisible = false">
+            關閉
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 
        
   </v-container>
@@ -978,12 +1201,42 @@ const defaultSettings = computed(() => ({
         `
       },
       footer: '<p>如有任何疑問，請洽您的專屬服務人員或撥打以下電話：</p>',
+      closingText: '<p>請於預約時段準時抵達，並至社區大廳櫃檯完成報到，感謝您的配合。</p>',
       contact: { name: "XX建設", phone: "" },
       attachments: [],
       faq: [
         { q: "整個驗屋流程大約需要多久？", a: "依據不同房型，完整的初驗流程預計需要 1.5 至 2.5 小時。" },
         { q: "驗屋時可以找親友或設計師陪同嗎？", a: "當然可以，歡迎您邀請親友或您的設計師一同前來，但請以兩人為限，以維持現場驗屋品質。" }
       ]
+    },
+    reportUploadIntro: {
+      body: '<p>請填寫以下資訊並上傳您的驗屋報告電子檔(PDF)。</p>',
+      alert: {
+        show: true,
+        title: '上傳須知',
+        text: '初驗報告及複驗報告每戶僅限上傳一份，若報告有修改需重新上傳，請洽服務電話：<a href="tel:03-6588882">03-658-8882</a>。如果您的檔案超過30MB，請先至 <a href="https://www.ilovepdf.com/zh-tw/compress_pdf" target="_blank">ilovepdf.com</a> 進行壓縮。',
+        color: 'error',
+        type: 'info',
+      }
+    },
+    reportSettings: {
+      uploadReminderDays: [7, 14],
+      uploadReminderMethods: ['EMAIL'],
+      uploadReminderEmail: {
+        subject: `{projectName} {unitId} 未收到驗屋報告提醒`,
+        body: `<p>親愛的 {bookerName} 貴賓您好，</p><p>您已於 {appointmentDate} 完成 {unitId} 驗屋，由於我們尚未收到您的驗屋報告，目前無法進行後續的修繕作業。</p><p>請您在收到本通知後的 7 日內，上傳您的驗屋報告。</p>`,
+        reminder: `<p>1.驗屋報告請以 PDF 檔方式製作，並且檔案大小限制為 30MB 以內。<br>2.初驗報告與複驗報告每戶僅限上傳一份，如需更換內容，請洽客服協助處理。</p>`,
+        uploadUrl: ''
+      },
+      notDownloadedReminderSchedule: {
+        monday: { enabled: false, time: '10:00' },
+        tuesday: { enabled: false, time: '10:00' },
+        wednesday: { enabled: false, time: '10:00' },
+        thursday: { enabled: false, time: '10:00' },
+        friday: { enabled: false, time: '10:00' },
+        saturday: { enabled: false, time: '10:00' },
+        sunday: { enabled: false, time: '10:00' },
+      }
     }
 }));
 
@@ -994,7 +1247,7 @@ const templatePreviewContent = ref('');
 const currentTargetField = ref(null);
 
 //  修改 projectSettings 的初始值，加上 .value
-const projectSettings = ref(JSON.parse(JSON.stringify(defaultSettings.value))); 
+const projectSettings = ref({}); 
 
 
 //  --- 新增：預約設定抽屜相關的狀態與邏輯 ---
@@ -1008,12 +1261,34 @@ const searchQuery = ref('');
 const isDeleteDialogVisible = ref(false);
 const isPreviewDialogVisible = ref(false);
 const isConflictDialogVisible = ref(false);
+const isAlertPreviewDialogVisible = ref(false); // 新增預覽 Dialog 狀態
+
 
 const batchToDelete = ref(null);
 const batchToPreview = ref(null);
 const previewData = ref({});
 const isPreviewLoading = ref(false);
 const isDeleting = ref(false);
+
+// 新增：定義 Email 範本可用的佔位符
+const emailPlaceholders = [
+  { value: '{projectName}', text: '建案名稱' },
+  { value: '{unitId}', text: '戶別' },
+  { value: '{bookerName}', text: '預約人姓名' },
+  { value: '{appointmentDate}', text: '驗屋日期' },
+];
+
+
+// 新增星期幾的設定
+const weekDays = [
+  { key: 'monday', label: '星期一' },
+  { key: 'tuesday', label: '星期二' },
+  { key: 'wednesday', label: '星期三' },
+  { key: 'thursday', label: '星期四' },
+  { key: 'friday', label: '星期五' },
+  { key: 'saturday', label: '星期六' },
+  { key: 'sunday', label: '星期日' },
+];
 
 
 // Conflict resolution state
@@ -1227,10 +1502,32 @@ async function loadDataForProject() {
           alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
           contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) }
         };
+        projectSettings.value.reportUploadIntro = {
+          ...defaultSettings.value.reportUploadIntro,
+          ...(settings.reportUploadIntro || {}),
+          alert: { ...defaultSettings.value.reportUploadIntro.alert, ...(settings.reportUploadIntro?.alert || {}) },
+        };
+        projectSettings.value.reportSettings = {
+          ...defaultSettings.value.reportSettings,
+          ...(settings.reportSettings || {}),
+          uploadReminderEmail: {
+            ...defaultSettings.value.reportSettings.uploadReminderEmail,
+            ...(settings.reportSettings?.uploadReminderEmail || {})
+          },
+          notDownloadedReminderSchedule: {
+            ...defaultSettings.value.reportSettings.notDownloadedReminderSchedule,
+            ...(settings.reportSettings?.notDownloadedReminderSchedule || {})
+          }
+        };
+      } else {
+        // 如果從後端沒有讀取到任何設定，則使用預設值
+        projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value));
       }
 
     } catch (error) {
       showSnackbar(`載入頁面資料失敗: ${error.message}`, 'error');
+      // 載入失敗時也使用預設值，確保頁面可以基本運作
+      projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value));
     } finally {
       isBatchLoading.value = false;
       isSettingsLoading.value = false; // 結束載入狀態
@@ -1680,6 +1977,7 @@ async function saveSettings() {
 // applyTemplate 函式，讓它打開預覽視窗
 function applyTemplate(fieldName) {
   const sourceIntro = defaultSettings.value.intro;
+  const sourceReportSettings = defaultSettings.value.reportSettings;
   currentTargetField.value = fieldName; // 記住要修改哪個欄位
 
   switch(fieldName) {
@@ -1695,9 +1993,25 @@ function applyTemplate(fieldName) {
       templatePreviewTitle.value = '頁尾文字';
       templatePreviewContent.value = sourceIntro.footer;
       break;
+    case 'closingText':
+      templatePreviewTitle.value = '結束語';
+      templatePreviewContent.value = sourceIntro.closingText;
+      break;
     case 'alertText':
       templatePreviewTitle.value = '提示框內容';
       templatePreviewContent.value = sourceIntro.alert.text;
+      break;
+    case 'uploadReminderEmailSubject':
+      templatePreviewTitle.value = '未上傳報告-主旨';
+      templatePreviewContent.value = sourceReportSettings.uploadReminderEmail.subject;
+      break;
+    case 'uploadReminderEmailBody':
+      templatePreviewTitle.value = '未上傳報告-內文';
+      templatePreviewContent.value = sourceReportSettings.uploadReminderEmail.body;
+      break;
+    case 'uploadReminderEmailReminder':
+      templatePreviewTitle.value = '未上傳報告-提醒';
+      templatePreviewContent.value = sourceReportSettings.uploadReminderEmail.reminder;
       break;
     default:
       return; // 如果找不到對應的欄位，則不執行
@@ -1708,6 +2022,7 @@ function applyTemplate(fieldName) {
 // 使用者在 Dialog 按下確認後，才真正執行的函式
 function handleConfirmApplyTemplate() {
   const targetIntro = projectSettings.value.intro;
+  const targetReportSettings = projectSettings.value.reportSettings;
 
   switch(currentTargetField.value) {
     case 'greeting':
@@ -1719,16 +2034,27 @@ function handleConfirmApplyTemplate() {
     case 'footer':
       targetIntro.footer = templatePreviewContent.value;
       break;
+    case 'closingText':
+      targetIntro.closingText = templatePreviewContent.value;
+      break;
     case 'alertText':
       targetIntro.alert.text = templatePreviewContent.value;
+      break;
+    case 'uploadReminderEmailSubject':
+      targetReportSettings.uploadReminderEmail.subject = templatePreviewContent.value;
+      break;
+    case 'uploadReminderEmailBody':
+      targetReportSettings.uploadReminderEmail.body = templatePreviewContent.value;
+      break;
+     case 'uploadReminderEmailReminder':
+      targetReportSettings.uploadReminderEmail.reminder = templatePreviewContent.value;
       break;
   }
   
   // 關閉 Dialog 並清除暫存資料
   isPreviewTemplateDialogVisible.value = false;
-  currentTargetField.value = null;
   templatePreviewContent.value = '';
-  templatePreviewTitle.value = '';
+  currentTargetField.value = null;
 }
 
 
