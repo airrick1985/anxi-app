@@ -11,6 +11,16 @@ export const useProjectStore = defineStore('projects', {
     isLoading: false,
   }),
 
+getters: {
+    // ✓【修正】根據建案名稱查找其關聯的系統
+    getSystemsForProject: (state) => {
+      return (projectName) => {
+        // 從 state.projectsList (而不是 state.projects) 中尋找
+        const project = state.projectsList.find(p => p.name === projectName);
+        return project ? project.systems : [];
+      };
+    },
+  }, 
   actions: {
     async fetchProjects() {
       if (this.projectsList.length > 0) {

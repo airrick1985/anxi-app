@@ -382,7 +382,7 @@
               v-if="selectedEvent && selectedEvent.remarks"
               v-model="selectedEvent.remarks"
               variant="tonal"
-              color="blue-grey"
+              color="error"
               icon="mdi-alert-circle-outline"
               border="start"
               class="my-4"
@@ -395,7 +395,8 @@
             </v-alert>
             <v-divider></v-divider>
             
-            <v-expansion-panels v-model="panels" multiple variant="accordion">                <v-expansion-panel v-for="panel in displayPanels" :key="panel.title">
+            <v-expansion-panels v-model="panels" multiple variant="accordion">                
+              <v-expansion-panel v-for="panel in displayPanels" :key="panel.title">
                   <template v-if="panel.isHistoryPanel">
                       <v-expansion-panel-title class="font-weight-bold">
                         <v-icon start color="grey-darken-1">mdi-history</v-icon>
@@ -489,7 +490,7 @@
                 color="primary"
               >
                 <template v-slot:prepend>
-                  <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                  <v-icon color="red" size="20">mdi-file-pdf-box</v-icon>
                 </template>
                 {{ inspectionReportFiles[0].name }}
               </v-btn>
@@ -515,7 +516,7 @@
                     @click.stop
                   >
                     <template v-slot:prepend>
-                      <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                      <v-icon color="red" size="20">mdi-file-pdf-box</v-icon>
                     </template>
                     <v-list-item-title>{{ file.name }}</v-list-item-title>
                   </v-list-item>
@@ -593,7 +594,7 @@
                             <v-col cols="12">
                               <v-alert
                                 variant="tonal"
-                                color="blue-grey"
+                                color="error"
                                 icon="mdi-alert-circle-outline"
                                 border="start"
                                 style="white-space: pre-wrap; word-wrap: break-word;"
@@ -707,7 +708,7 @@
                                                     color="primary"
                                                   >
                                                     <template v-slot:prepend>
-                                                      <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                                                      <v-icon color="red" size="20">mdi-file-pdf-box</v-icon>
                                                     </template>
                                                     {{ newAppointmentReportFiles[0].name }}
                                                   </v-btn>
@@ -727,7 +728,7 @@
                                                         @click.stop
                                                       >
                                                         <template v-slot:prepend>
-                                                          <v-icon color="red" size="30">mdi-file-pdf-box</v-icon>
+                                                          <v-icon color="red" size="20">mdi-file-pdf-box</v-icon>
                                                         </template>
                                                         <v-list-item-title>{{ file.name }}</v-list-item-title>
                                                       </v-list-item>
@@ -1349,18 +1350,28 @@ const displayPanels = computed(() => {
   return panels;
 });
 
+const inspectionDocsFiles = computed(() => {
+  if (!selectedEvent.value || !selectedEvent.value.inspectionDocsUrl) {
+    return [];
+  }
+  const value = selectedEvent.value.inspectionDocsUrl;
+  if (Array.isArray(value)) {
+    return value.filter(item => item && typeof item.name === 'string' && typeof item.url === 'string');
+  }
+  // 如果不是陣列，就當作沒有檔案處理
+  return [];
+});
+
 const inspectionReportFiles = computed(() => {
   if (!selectedEvent.value || !selectedEvent.value.inspectionReportUrl) {
     return [];
   }
   const value = selectedEvent.value.inspectionReportUrl;
   if (Array.isArray(value)) {
-    // 確保陣列中的每個項目都符合 { name, url } 的格式
     return value.filter(item => item && typeof item.name === 'string' && typeof item.url === 'string');
   }
   return [];
 });
-
 
 const newAppointmentReportFiles = computed(() => {
   const rawValue = newAppointmentData.inspectionReportUrl;
@@ -1865,10 +1876,16 @@ function handleSearchResultSelection(selectedItem) { // 為了清晰，將參數
   endDate.value = newEndDate;
 
   nextTick(() => {
+    // [關鍵修正] 使用搜尋結果的 id，從 allAppointments 主資料陣列中找到最完整的物件
     const eventInCalendar = allAppointments.value.find(e => e.id === selectedAppointment.id);
+    
     if (eventInCalendar) {
+      // 如果找到了，就使用這個完整的物件來開啟對話框
       handleCustomEventClick(eventInCalendar);
     } else {
+      // 如果因為某些原因（例如，該事件不在當前載入的日期範圍內）沒找到
+      // 則仍然使用搜尋結果的物件作為備用方案，但可能會缺少部分資料
+      console.warn('在目前的行事曆資料中未找到對應的預約，將使用搜尋結果的資料開啟。', selectedAppointment);
       handleCustomEventClick(selectedAppointment);
     }
   });
@@ -1945,7 +1962,7 @@ watch(() => newAppointmentData.unitId, (newUnit) => {
             newAppointmentData.bank = data.bank || '';
             newAppointmentData.remarks = data.remarks || '';
 
-            newAppointmentData.inspectionDocsUrl = data.inspectionDocsUrl || '';
+            newAppointmentData.inspectionDocsUrl = data.inspectionDocsUrl || [];
             
             // 日誌點一：觀察從戶別資料中讀取到的原始 inspectionReportUrl 值
             console.log('[日誌 1] 從 allHouseholdData 讀取到的 inspectionReportUrl:', data.inspectionReportUrl);

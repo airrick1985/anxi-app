@@ -4806,6 +4806,11 @@ exports.getAllUnitsForUpload = onCall(async (request) => {
  *  [最終修正版] 代理驗屋報告上傳
  * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
  */
+/**
+ * [最終修正版] 代理驗屋報告上傳
+ * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
+ * (已重構，解決 Read-after-Write 的事務問題)
+ */
 exports.handleDirectReportUpload = onCall({
   timeoutSeconds: 300,
   memory: "1GiB",
@@ -4822,83 +4827,87 @@ exports.handleDirectReportUpload = onCall({
   const {
     projectId,
     unit,
-    fileName,
     fileContent,
     reportType,
     buyerName,
     phone,
     email,
     companyName,
+    bookingCode,
   } = request.data;
   
-  if (!projectId || !unit || !fileName || !fileContent || !reportType) {
+  if (!projectId || !unit || !fileContent || !reportType) {
     throw new HttpsError('invalid-argument', '缺少必要參數。');
   }
 
-  console.log(`[${functionName}] 開始處理檔案: ${fileName} for ${unit}`);
+  console.log(`[${functionName}] 開始處理戶別 ${unit} 的檔案上傳`);
   const db = new Firestore({ databaseId: "anxi-app" });
   
   try {
     const projectDocRef = db.collection('projects').doc(projectId);
-    const projectDoc = await projectDocRef.get();
-    
-    const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
-
     const householdDocId = `${projectId}_${unit}`;
     const householdRef = db.collection('households').doc(householdDocId);
-    let uploadedFileLink;
 
+    // --- 階段一：前置檢查 (Transaction 外部) ---
+    // 先讀取一次資料，確認開關和資料夾路徑是存在的
+    const initialHouseholdDoc = await householdRef.get();
+    if (!initialHouseholdDoc.exists) {
+      throw new HttpsError('not-found', `找不到戶別資料: ${householdDocId}`);
+    }
+    const householdData = initialHouseholdDoc.data();
+    const switchField = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';
+    if (householdData[switchField] !== true) {
+      throw new HttpsError('permission-denied', `${unit} 的 ${reportType} 上傳權限已關閉。`);
+    }
+    const parentFolderUrl = householdData.inspectionReportFolderUrl;
+    if (!parentFolderUrl) {
+      throw new HttpsError('failed-precondition', `戶別資料中缺少 "inspectionReportFolderUrl" 設定。`);
+    }
+
+    // --- 階段二：執行外部操作 (上傳到 Google Drive) ---
+    console.log(`[${functionName}] 正在上傳檔案至 Google Drive...`);
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const timestamp = `${year}${month}${day}-${hours}${minutes}`;
-
+    const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     const nameParts = [reportType, unit, buyerName, companyName].filter(Boolean);
     const newFileName = `${nameParts.join('-')}-${timestamp}.pdf`;
 
+    const parentFolderIdMatch = parentFolderUrl.match(/[-\w]{25,}/);
+    if (!parentFolderIdMatch) throw new HttpsError('invalid-argument', '無效的 Drive 資料夾連結。');
+    const parentFolderId = parentFolderIdMatch[0];
+    
+    const oauth2Client = new google.auth.OAuth2(process.env.DRIVE_CLIENT_ID, process.env.DRIVE_CLIENT_SECRET, 'https://developers.google.com/oauthplayground');
+    oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    
+    const searchRes = await drive.files.list({ q: `name='${unit}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false` });
+    let subFolderId = searchRes.data.files.length > 0 ? searchRes.data.files[0].id : (await drive.files.create({ resource: { name: unit, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }, fields: 'id' })).data.id;
+    
+    const buffer = Buffer.from(fileContent, 'base64');
+    const stream = Readable.from(buffer);
+    
+    const uploadedFile = await drive.files.create({
+      requestBody: { name: newFileName, parents: [subFolderId] },
+      media: { mimeType: 'application/pdf', body: stream },
+      fields: 'id, name, webViewLink',
+    });
+    const uploadedFileLink = uploadedFile.data.webViewLink;
+    console.log(`[${functionName}] 檔案上傳成功，連結: ${uploadedFileLink}`);
 
+    // --- 階段三：執行資料庫事務 (所有讀寫在此完成) ---
+    console.log(`[${functionName}] 正在執行資料庫更新事務...`);
     await db.runTransaction(async (transaction) => {
-      const householdDoc = await transaction.get(householdRef);
-      if (!householdDoc.exists) {
-        throw new Error(`找不到戶別資料: ${householdDocId}`);
+      // **讀取階段**
+      let appointmentDocRef = null;
+      if (bookingCode) {
+        const appointmentQuery = db.collection('appointments').where('projectId', '==', projectId).where('bookingCode', '==', bookingCode).limit(1);
+        const appointmentSnapshot = await transaction.get(appointmentQuery);
+        if (!appointmentSnapshot.empty) {
+          appointmentDocRef = appointmentSnapshot.docs[0].ref;
+        }
       }
-      const householdData = householdDoc.data();
-      
-      const switchField = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';
-      if (householdData[switchField] !== true) {
-        throw new Error(`${unit} 的 ${reportType} 上傳權限已關閉。`);
-      }
-      
-      const parentFolderUrl = householdData.inspectionReportFolderUrl;
-      if (!parentFolderUrl) throw new Error(`戶別資料中缺少 "inspectionReportFolderUrl" 設定。`);
-      
-      const parentFolderIdMatch = parentFolderUrl.match(/[-\w]{25,}/);
-      if (!parentFolderIdMatch) throw new Error('無效的 Drive 資料夾連結。');
-      const parentFolderId = parentFolderIdMatch[0];
-      
-      const oauth2Client = new google.auth.OAuth2(
-        process.env.DRIVE_CLIENT_ID, process.env.DRIVE_CLIENT_SECRET, 'https://developers.google.com/oauthplayground'
-      );
-      oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
-      const drive = google.drive({ version: "v3", auth: oauth2Client });
-      
-      const searchRes = await drive.files.list({ q: `name='${unit}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false` });
-      let subFolderId = searchRes.data.files.length > 0 ? searchRes.data.files[0].id : (await drive.files.create({ resource: { name: unit, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }, fields: 'id' })).data.id;
-      
-      const buffer = Buffer.from(fileContent, 'base64');
-      const stream = Readable.from(buffer);
-      
-      const uploadedFile = await drive.files.create({
-        requestBody: { name: newFileName, parents: [subFolderId] },
-        media: { mimeType: 'application/pdf', body: stream },
-        fields: 'id, name, webViewLink',
-      });
-      
-      uploadedFileLink = uploadedFile.data.webViewLink;
 
+      // **寫入階段**
+      // 1. 寫入 Log
       const logTimestamp = new Date();
       const logIdSuffix = `${String(logTimestamp.getFullYear()).slice(2)}${String(logTimestamp.getMonth() + 1).padStart(2, '0')}${String(logTimestamp.getDate()).padStart(2, '0')}${String(logTimestamp.getHours()).padStart(2, '0')}${String(logTimestamp.getMinutes()).padStart(2, '0')}${String(logTimestamp.getSeconds()).padStart(2, '0')}`;
       const logDocId = `${projectId}_${unit}_${logIdSuffix}`;
@@ -4916,19 +4925,31 @@ exports.handleDirectReportUpload = onCall({
         companyName: companyName || '',
       });
 
+      // 2. 更新戶別資料
       transaction.update(householdRef, {
         [switchField]: false,
-        inspectionReportUrl: admin.firestore.FieldValue.arrayUnion({
-          name: newFileName,
-          url: uploadedFileLink,
-        })
+        inspectionReportUrl: admin.firestore.FieldValue.arrayUnion({ name: newFileName, url: uploadedFileLink })
       });
+      
+      // 3. 更新預約紀錄
+      if (appointmentDocRef) {
+        transaction.update(appointmentDocRef, {
+          uploadReportTime: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[${functionName}] 已在事務中排定更新預約文件 [${appointmentDocRef.id}]`);
+      } else if (bookingCode) {
+        console.warn(`[${functionName}] 在事務中找不到 bookingCode [${bookingCode}]，未更新上傳時間。`);
+      }
     });
+    console.log(`[${functionName}] 資料庫事務成功。`);
 
+    // --- 階段四：寄送 Email (Transaction 外部) ---
     if (email) {
+      const projectDoc = await projectDocRef.get();
+      const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
       const mailTransport = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD } });
         
-      const subject = `【${projectName}】驗屋報告上傳成功通知 (${unit})`;
+ const subject = `【${projectName}】驗屋報告上傳成功通知 (${unit})`;
       const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
       
       const returnButtonHtml = `
@@ -4978,21 +4999,18 @@ exports.handleDirectReportUpload = onCall({
 </div>
 </div>
       `;
-
       await mailTransport.sendMail({
           from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
-          to: email,
-          subject: subject,
-          html: htmlBody,
+          to: email, subject, html: htmlBody
       });
-      console.log(`[${functionName}] 已成功寄送風格化確認信至: ${email}`);
+      console.log(`[${functionName}] 已成功寄送確認信至: ${email}`);
     }
     
     console.log(`[${functionName}] 處理完成: ${newFileName}`);
     return { status: 'success', message: '檔案上傳成功，確認信已寄出。' };
 
   } catch (error) {
-    console.error(`[${functionName}] 🔴 處理檔案時發生嚴重錯誤: ${fileName}`, error);
+    console.error(`[${functionName}] 🔴 處理檔案時發生嚴重錯誤:`, error);
     if (error instanceof HttpsError) { throw error; }
     throw new HttpsError('internal', `處理上傳時發生錯誤: ${error.message}`);
   }
@@ -5693,3 +5711,99 @@ exports.fetchManageableUsersWithDetails = onCall(async (request) => {
   }
 });
 // END: 函式替換結束
+
+
+
+// ✓ START: 新增 - 驗屋報告上傳前置驗證函式
+/**
+ * [新增] 驗屋報告上傳前的第一步驗證
+ * 驗證身分證、上傳開關、預約紀錄是否存在且尚未被使用
+ */
+exports.verifyUploadPrerequisites = onCall(async (request) => {
+  const { projectId, unitId, reportType, idNumber } = request.data;
+  const functionName = `verifyUploadPrerequisites (Project: ${projectId}, Unit: ${unitId})`;
+
+  if (!projectId || !unitId || !reportType || !idNumber) {
+    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, unitId, reportType, idNumber)。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // --- 1. 驗證身分證 (邏輯同 validateId) ---
+    console.log(`[${functionName}] 步驟 1/3: 驗證身分證...`);
+    const householdDocId = `${projectId}_${unitId}`;
+    const householdDoc = await db.collection('households').doc(householdDocId).get();
+
+    if (!householdDoc.exists) {
+      throw new HttpsError('not-found', `找不到戶別 "${unitId}" 的資料。`);
+    }
+    const householdData = householdDoc.data();
+    const storedId = String(householdData.buyerIdNumber || '').trim();
+    const inputId = String(idNumber).trim();
+
+    if (storedId !== inputId && inputId !== projectId) {
+      throw new HttpsError('permission-denied', '身分證號碼驗證失敗，請重新確認。');
+    }
+    console.log(`[${functionName}] 身分證驗證成功。`);
+
+    // --- 2. 檢查上傳開關 ---
+    console.log(`[${functionName}] 步驟 2/3: 檢查上傳開關...`);
+    const bookingTypeForSwitch = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';
+    if (householdData[bookingTypeForSwitch] !== true) {
+      throw new HttpsError('permission-denied', `此戶別的「${reportType}」上傳功能目前未開放或已關閉。`);
+    }
+    console.log(`[${functionName}] 上傳開關已開啟。`);
+    
+    // --- 3. 檢查預約紀錄 ---
+    console.log(`[${functionName}] 步驟 3/3: 檢查相關預約紀錄...`);
+    const bookingTypeForQuery = reportType.replace('報告', ''); // "初驗報告" -> "初驗"
+    
+    const appointmentsQuery = db.collection('appointments')
+      .where('projectId', '==', projectId)
+      .where('unitId', '==', unitId)
+      .where('bookingType', '==', bookingTypeForQuery)
+      .where('status', 'in', ['預約中', '已完成'])
+      .where('inspectionMethod', '==', '代驗公司')
+      .orderBy('createdAt', 'desc');
+
+    const appointmentSnapshot = await appointmentsQuery.get();
+
+    if (appointmentSnapshot.empty) {
+      // 找不到符合的「代驗公司」預約紀錄
+      const projectDoc = await db.collection('projects').doc(projectId).get();
+      const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+      console.log(`[${functionName}] 找不到代驗公司預約紀錄，回傳需要確認。`);
+      return {
+        status: 'needs_confirmation',
+        message: `系統找不到 ${projectName} ${unitId} 的代驗公司「${bookingTypeForQuery}」紀錄，您確定要繼續上傳嗎？`
+      };
+    }
+
+    // 找到符合的預約紀錄，檢查是否已上傳過
+    const latestAppointment = appointmentSnapshot.docs[0].data();
+    
+    if (latestAppointment.uploadReportTime) {
+      const uploadTime = latestAppointment.uploadReportTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+      const projectDoc = await db.collection('projects').doc(projectId).get();
+      const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+      console.log(`[${functionName}] 發現已上傳紀錄，拒絕操作。`);
+      throw new HttpsError('already-exists', `${projectName} ${unitId} 已於 ${uploadTime} 上傳過 ${reportType}，如需重新上傳請洽客服人員。`);
+    }
+
+    // 所有驗證通過
+    console.log(`[${functionName}] 所有驗證通過。`);
+    return {
+      status: 'success',
+      bookingCode: latestAppointment.bookingCode,
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 驗證失敗:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError('internal', `驗證時發生未預期的錯誤: ${error.message}`);
+  }
+});
+// ✓ END: 新增 - 驗屋報告上傳前置驗證函式

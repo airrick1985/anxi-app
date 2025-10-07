@@ -1,7 +1,7 @@
 // src/store/user.js
 
 import { defineStore } from 'pinia';
-import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend } from '@/api'; // 新增 fetchUserPreferencesFromBackend
+import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence } from '@/api';
 import router from '@/router'; 
 
 export const useUserStore = defineStore('user', {
@@ -27,6 +27,9 @@ export const useUserStore = defineStore('user', {
         this.detailedPermissions = Array.isArray(userData.detailedPermissions)
           ? userData.detailedPermissions
           : [];
+
+        manageUserPresence(userData.key);
+
       } else {
         this.user = null;
         this.sessionId = null;
@@ -57,19 +60,23 @@ export const useUserStore = defineStore('user', {
     async logoutUser() {
       const userKey = this.user?.key;
 
-      if (userKey) {
+       if (userKey) {
         try {
+          // 等待資料庫操作完成
           await goOffline(userKey);
         } catch (error) {
-          console.error('LOGOUT FAILED: Could not remove online status.', error);
+          // 即使這裡失敗，我們仍然要繼續登出流程
+          console.error('LOGOUT FAILED: Could not set offline status.', error);
         }
       }
 
+      // 步驟二：清空本地 state
       this.clearUser();
 
-      // 將 sessionStorage 修改為 localStorage，與 persist 設定保持一致
-      localStorage.removeItem('anxi-user-session');
+      // 步驟三：移除持久化儲存
+      localStorage.removeItem('anxi-user-session'); // 確保與 persist 設定一致
 
+      // 步驟四：重定向到登入頁面
       await router.replace('/login');
     },
 

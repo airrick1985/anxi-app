@@ -2,7 +2,7 @@
 
 
 //  在檔案頂部，引入所有需要的函式
-import { db, storage, functions } from '@/firebase';
+import { db, storage, functions, rtdb } from '@/firebase';
 import {
   collection,
   query,
@@ -32,8 +32,7 @@ import {
   deleteObject 
 } from "firebase/storage";
 
-import { onDisconnect, set, ref as dbRef, remove } from "firebase/database"; 
-import { rtdb } from '@/firebase'; // ❗️注意：確保您的 firebase.js 已匯出 rtdb
+import { ref as dbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, remove } from 'firebase/database';
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
@@ -55,6 +54,10 @@ const SALES_API = `${BASE_API_URL}/sales`;
 const MESSAGE_API = `${BASE_API_URL}/message`; 
 const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
 const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`; 
+
+
+
+
 
 /**
  * 獲取所有建案的基礎列表
@@ -1176,26 +1179,27 @@ export async function updateUserRoles(userPhone, roles) {
     roles: roles
   });
 }
+
 /**
- * [新] 獲取管理員自身的權限範圍 (可管理的建案和可指派的權限)
+ * 根據使用者金鑰 (userKey) 取得其權限範圍。
+ * @param {string} userKey - 使用者的唯一金鑰。
+ * @returns {Promise<object|null>} - 回傳權限物件，或在找不到時回傳 null。
  */
-export async function fetchAdminScope(adminKey) {
-  const permissionDocRef = doc(db, "userPermissions", adminKey);
-  const docSnap = await getDoc(permissionDocRef);
-
-  if (!docSnap.exists()) return {};
-
-  const perms = docSnap.data().permissions || {};
-  const adminScope = {};
-
-  for (const projectId in perms) {
-    const project = perms[projectId];
-    if (project && project.projectName && Array.isArray(project.systems)) {
-       adminScope[project.projectName] = project.systems;
-    }
+export async function fetchAdminScope(userKey) {
+  if (!userKey) {
+    return null;
   }
-  return adminScope;
+  const userPermDocRef = doc(db, 'userPermissions', userKey);
+  const docSnap = await getDoc(userPermDocRef);
+
+  if (docSnap.exists()) {
+    const permissionsData = docSnap.data().permissions || {};
+    return permissionsData;
+  } else {
+    return null;
+  }
 }
+
 
 /**
  * [新] 管理員查詢特定用戶的詳細資料 (透過 Cloud Function 進行權限驗證)
@@ -3722,21 +3726,57 @@ export async function goOnline(userKey, userName, projectId, system) {
   await set(presenceRef, statusPayload);
 }
 
+
+
 /**
- * [新] 主動讓使用者離線 (用於正常登出或離開系統)
- * @param {string} userKey 
+ * 管理使用者在線狀態。
+ * 當使用者連線時，設定其狀態為在線，並註冊一個 onDisconnect 事件，
+ * 以便在連線意外中斷時自動將其狀態更新為離線。
+ * @param {string} userKey - 使用者的唯一識別碼。
  */
-export async function goOffline(userKey) {
+export const manageUserPresence = (userKey) => {
   if (!userKey) return;
-  const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
-  
-  // 步驟 1: 明確地取消 onDisconnect 事件，避免競爭條件
-  await onDisconnect(presenceRef).cancel();
-  
-  // 步驟 2: 手動從 RTDB 刪除在線狀態
-  await remove(presenceRef);
-}
-// ✓ END: 【替換】Online Status 管理 API
+
+  // 指向 Realtime Database 中該使用者的狀態路徑
+  const userStatusRef = dbRef(rtdb, `/status/${userKey}`);
+
+  // 定義離線時要寫入的資料
+  const offlineStatus = {
+    isOnline: false,
+    last_changed: rtdbServerTimestamp(), // ✓【修正】使用新的別名
+  };
+
+  // 定義在線時要寫入的資料
+  const onlineStatus = {
+    isOnline: true,
+    last_changed: rtdbServerTimestamp(), // ✓【修正】使用新的別名
+  };
+
+  // 註冊 onDisconnect 事件。當客戶端斷線時，Firebase 伺服器會自動執行此操作。
+  onDisconnect(userStatusRef).set(offlineStatus)
+    .then(() => {
+      // onDisconnect 設定成功後，才將當前狀態設為在線
+      set(userStatusRef, onlineStatus);
+    })
+    .catch((error) => {
+      console.error("無法設定 onDisconnect 事件:", error);
+    });
+};
+
+/**
+ * 將使用者狀態明確設為離線。
+ * 通常在使用者主動登出時呼叫。
+ * @param {string} userKey - 使用者的唯一識別碼。
+ */
+export const goOffline = (userKey) => {
+  if (!userKey) return Promise.resolve();
+  const userStatusRef = dbRef(rtdb, `/status/${userKey}`);
+  const offlineStatus = {
+    isOnline: false,
+    last_changed: rtdbServerTimestamp(), // ✓【修正】使用新的別名
+  };
+  return set(userStatusRef, offlineStatus);
+};
 
 
 /**
@@ -4617,3 +4657,22 @@ export async function markAuthSessionComplete(payload) {
     return { status: 'error', message: error.message };
   }
 }
+
+
+/**
+ * [API] 呼叫後端，執行上傳報告前的第一步驗證
+ * @param {object} payload - 包含 { projectId, unitId, reportType, idNumber }
+ * @returns {Promise<object>} - 後端回傳的驗證結果
+ */
+export const verifyUploadPrerequisites = async (payload) => {
+  try {
+    const verifyFunction = httpsCallable(functions, 'verifyUploadPrerequisites');
+    const result = await verifyFunction(payload);
+    // onCall 函式回傳的資料會包在一個 data 物件中
+    return result.data;
+  } catch (error) {
+    console.error("API Error in verifyUploadPrerequisites:", error);
+    // 將錯誤再次拋出，讓 Vue 元件的 catch 區塊可以接收到更清晰的錯誤訊息
+    throw new Error(error.message);
+  }
+};

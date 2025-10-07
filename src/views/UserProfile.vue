@@ -59,7 +59,7 @@
               </div>
 
               <div>
-                <div class="text-subtitle-1 font-weight-medium mb-2">我的系統權限</div>
+ <div class="text-subtitle-1 font-weight-medium mb-2">我的系統權限</div>
                 <v-expansion-panels v-if="Object.keys(permissionsByProject).length > 0" variant="accordion">
                   <v-expansion-panel
                     v-for="(systems, projectName) in permissionsByProject"
@@ -67,19 +67,21 @@
                   >
                     <v-expansion-panel-title class="font-weight-bold">
                       {{ projectName }}
-                      <v-chip size="small" class="ml-4">{{ systems.length }} 項權限</v-chip>
+                      <v-chip color="primary" size="small" class="ml-4">{{ systems.length }} / {{ allSystemFunctions.length }} 項權限</v-chip>
                     </v-expansion-panel-title>
                     <v-expansion-panel-text>
                       <div class="d-flex flex-wrap ga-2 py-2">
+                        <!-- ✓【修改】遍歷所有系統功能，並根據是否擁有來決定樣式 -->
                         <v-chip
-                          v-for="system in systems"
-                          :key="system"
-                          color="primary"
-                          variant="outlined"
+                          v-for="func in allSystemFunctions"
+                          :key="func.functionId"
+                          :color="systems.includes(func.name) ? 'primary' : 'grey'"
+                          :variant="systems.includes(func.name) ? 'flat' : 'outlined'"
                           label
                           size="small"
                         >
-                          {{ system }}
+                          <v-icon start :icon="systems.includes(func.name) ? 'mdi-check-circle-outline' : 'mdi-circle-outline'"></v-icon>
+                          {{ func.name }}
                         </v-chip>
                       </div>
                     </v-expansion-panel-text>
@@ -89,7 +91,8 @@
               </div>
               <v-divider class="my-6"></v-divider>
 
-              <p class="text-h6 mb-4">修改密碼</p>
+              <p class="text-h6 mb-4">修改密碼</p>              
+              
               <v-alert
                 type="info"
                 variant="tonal"
@@ -101,7 +104,7 @@
 
               <v-text-field
                 v-model="profileData.oldPassword"
-                label="原密碼"
+                label="儲存設定前請輸入原密碼"
                 :type="showPassword.old ? 'text' : 'password'"
                 variant="outlined"
                 density="compact"
@@ -161,7 +164,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useUserStore } from '@/store/user';
-import { updateUserProfile } from '@/api';
+import { updateUserProfile, fetchAllSystemFunctions } from '@/api';
 
 const userStore = useUserStore();
 const profileForm = ref(null);
@@ -169,12 +172,16 @@ const isLoading = ref(false);
 const snackbar = reactive({ show: false, color: 'success', text: '' });
 const showPassword = reactive({ old: false, new: false, confirm: false });
 
+const allSystemFunctions = ref([]);
+
+
 const profileData = reactive({
   name: '',
   email: '',
   oldPassword: '',
   newPassword: '',
   confirmPassword: '',
+
 });
 
 //  START: 新增計算屬性，將權限按建案分組
@@ -195,12 +202,24 @@ const permissionsByProject = computed(() => {
 });
 //  END: 新增計算屬性
 
-onMounted(() => {
+onMounted(async () => {
+  // ✓【修改】在元件掛載時，同時獲取使用者資料和所有系統功能列表
   if (userStore.user) {
     profileData.name = userStore.user.name;
     profileData.email = userStore.user.email;
   }
+  try {
+    const functions = await fetchAllSystemFunctions();
+    // 依名稱排序以確保顯示順序一致
+    allSystemFunctions.value = functions.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  } catch (error) {
+    console.error("無法獲取系統功能列表:", error);
+    snackbar.text = '無法載入完整的權限列表。';
+    snackbar.color = 'error';
+    snackbar.show = true;
+  }
 });
+
 
 // 表單驗證規則
 const rules = {

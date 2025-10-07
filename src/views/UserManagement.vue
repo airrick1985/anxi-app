@@ -327,13 +327,39 @@
     </v-card-title>
 
 
-        <v-card-text class="pa-4">
-          <v-form ref="basicInfoForm" v-model="isFormValid">
-            <v-row v-if="targetUser">
-              <v-col v-if="getFieldPermission('phone') !== 'H'" cols="12" sm="6">
-                <v-text-field
-                  v-model="targetUser.basicInfo.phone"
-                  label="手機號碼 (登入帳號)"
+      
+       <v-card-text class="pa-4">
+          <div v-if="loadingDetails">
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+               <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+               <v-col cols="12" sm="6">
+                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
+              </v-col>
+            </v-row>
+            <v-skeleton-loader type="heading, divider, actions, table-heading, list-item-three-line@3"></v-skeleton-loader>
+          </div>
+
+          <div v-if="!loadingDetails">
+            <v-form ref="basicInfoForm" v-model="isFormValid">
+              <v-row v-if="targetUser">
+                <v-col v-if="getFieldPermission('phone') !== 'H'" cols="12" sm="6">
+                  <v-text-field
+                    v-model="targetUser.basicInfo.phone"
+                    label="手機號碼 (登入帳號)"
                   :rules="rules.required"
                   :readonly="!isNewUser"
                   variant="outlined"
@@ -342,30 +368,30 @@
                   :loading="phoneValidationLoading"
                   :error-messages="phoneValidationError"
                   :success-messages="phoneValidationSuccess"
-                ></v-text-field>
-              </v-col>
-              <v-col v-if="getFieldPermission('name') !== 'H'" cols="12" sm="6">
-                <v-text-field
-                  v-model="targetUser.basicInfo.name"
-                  label="姓名"
+                  ></v-text-field>
+                </v-col>
+                <v-col v-if="getFieldPermission('name') !== 'H'" cols="12" sm="6">
+                  <v-text-field
+                    v-model="targetUser.basicInfo.name"
+                    label="姓名"
                   :rules="rules.required"
                   :readonly="getFieldPermission('name') === 'R'"
                   variant="outlined"
-                  density="compact"
-                ></v-text-field>
-              </v-col>
-              <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6">
-                <v-text-field
-                  v-model="targetUser.basicInfo.email"
-                  label="Email"
+                   density="compact"
+                  ></v-text-field>
+                </v-col>
+                <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6">
+                  <v-text-field
+                    v-model="targetUser.basicInfo.email"
+                    label="Email"
                   :readonly="getFieldPermission('email') === 'R'"
                   variant="outlined"
                   density="compact"
                 ></v-text-field>
               </v-col>
-              <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6">
-                 <v-text-field
-                    v-if="!isNewUser && getFieldPermission('password') === 'C'"
+               <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6">
+                   <v-text-field
+                      v-if="!isNewUser && getFieldPermission('password') === 'C'"
                     label="密碼"
                     variant="outlined"
                     density="compact"
@@ -382,20 +408,20 @@
                     density="compact"
                     :placeholder="isNewUser ? '' : '若不修改請留空'"
                   ></v-text-field>
-              </v-col>
-              <v-col v-if="getFieldPermission('companyName') !== 'H'" cols="12" sm="6">
-                <v-text-field
-                  v-model="targetUser.basicInfo.companyName"
+                </v-col>
+                <v-col v-if="getFieldPermission('companyName') !== 'H'" cols="12" sm="6">
+                  <v-text-field
+                    v-model="targetUser.basicInfo.companyName"
                   label="公司名稱"
                   :readonly="getFieldPermission('companyName') === 'R'"
                   variant="outlined"
                   density="compact"
-                ></v-text-field>
-              </v-col>
-              <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6">
-                <v-text-field
-                  v-model="targetUser.basicInfo.companyTaxId"
-                  label="統一編號"
+                  ></v-text-field>
+                </v-col>
+                <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6">
+                  <v-text-field
+                    v-model="targetUser.basicInfo.companyTaxId"
+                    label="統一編號"
                   :readonly="getFieldPermission('companyTaxId') === 'R'"
                   variant="outlined"
                   density="compact"
@@ -406,10 +432,10 @@
 
           <v-divider class="my-4"></v-divider>
           
-          <div v-if="getFieldPermission('permissions') !== 'H'">
-            <h3 class="mb-2">系統權限設定</h3>
-            <v-toolbar density="compact" class="mb-4" flat color="grey-lighten-4" rounded>
-              <v-text-field
+         <div v-if="getFieldPermission('permissions') !== 'H'">
+              <h3 class="mb-2">系統權限設定</h3>
+              <v-toolbar density="compact" class="mb-4" flat color="grey-lighten-4" rounded>
+                <v-text-field
                 v-model="projectSearchQuery"
                 label="搜尋建案"
                 variant="solo"
@@ -418,20 +444,21 @@
                 prepend-inner-icon="mdi-magnify"
                 class="mx-2"
                 clearable
-              ></v-text-field>
-              <v-btn @click="expandAll" class="ml-2" variant="tonal" size="small">全部展開</v-btn>
-              <v-btn @click="collapseAll" class="ml-2" variant="tonal" size="small">全部收合</v-btn>
-            </v-toolbar>
+             ></v-text-field>
+                <v-btn @click="expandAll" class="ml-2" variant="tonal" size="small">全部展開</v-btn>
+                <v-btn @click="collapseAll" class="ml-2" variant="tonal" size="small">全部收合</v-btn>
+              </v-toolbar>
+            
 
             <div v-if="targetUser && permissionMatrix" class="permission-panels-container">
-              <v-expansion-panels multiple v-model="panels">
-                <v-expansion-panel
-                  v-for="project in filteredManagedProjects"
+                <v-expansion-panels multiple v-model="panels">
+                  <v-expansion-panel
+                    v-for="project in filteredManagedProjects"
                   :key="project"
                   :value="project"
                   :readonly="getFieldPermission('permissions') === 'R'"
                 >
-                  <v-expansion-panel-title>
+                   <v-expansion-panel-title>
                     <v-checkbox
                       :model-value="isAllSelectedForProject(project)"
                       :indeterminate="isIndeterminateForProject(project)"
@@ -443,37 +470,37 @@
                     ></v-checkbox>
                     {{ project }}
                   </v-expansion-panel-title>
-                  <v-expansion-panel-text>
-                    <v-row dense>
+               <v-expansion-panel-text>
+                     <v-row dense>
                       <v-col
-                        v-for="system in adminScope[project]"
+                        v-for="system in allFunctionNames"
                         :key="system"
                         cols="12" sm="6" md="4"
                       >
-
-                               <v-tooltip
-                        location="top"
-                        :text="functionDescriptionMap[system]"
-                        :disabled="!functionDescriptionMap[system]"
-                      >
-                        <template v-slot:activator="{ props }">
-                          <v-checkbox
-                            v-bind="props"
-                            v-model="permissionMatrix[system][project]"
-                            :label="system"
-                            hide-details
-                            density="compact"
-                            :disabled="getFieldPermission('permissions') === 'R'"
-                          ></v-checkbox>
-                        </template>
-                      </v-tooltip>
-                      </v-col>              
+                        <v-tooltip
+                          location="top"
+                          :text="functionDescriptionMap[system]"
+                          :disabled="!functionDescriptionMap[system]"
+                        >
+                          <template v-slot:activator="{ props }">
+                            <v-checkbox
+                              v-bind="props"
+                              v-model="permissionMatrix[system][project]"
+                              :label="system"
+                              hide-details
+                              density="compact"
+                              :disabled="(isEditingSelf && !isGodModeAdmin) || (isGodModeAdmin ? (getFieldPermission('permissions') === 'R') : (!adminScope[project]?.includes(system) || getFieldPermission('permissions') === 'R'))"
+                            ></v-checkbox>
+                          </template>
+                        </v-tooltip>
+                      </v-col>                
                     </v-row>
                   </v-expansion-panel-text>
                 </v-expansion-panel>
-              </v-expansion-panels>
-               <div v-if="filteredManagedProjects.length === 0" class="text-center text-grey py-4">
-                  找不到符合條件的建案
+                </v-expansion-panels>
+                 <div v-if="filteredManagedProjects.length === 0" class="text-center text-grey py-4">
+                    找不到符合條件的建案
+                </div>
               </div>
             </div>
           </div>
@@ -532,7 +559,8 @@ import {
   deleteRole,
   fetchAllSystemFunctions, 
   createSystemFunction,   
-  updateSystemFunction
+  updateSystemFunction,
+
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
 
@@ -602,17 +630,39 @@ const deletingRole = ref(false);
 
 
 const filteredUsers = computed(() => {
-  if (!searchPhone.value) {
-    return manageableUsers.value;
-  }
-  const lowerQuery = searchPhone.value.toLowerCase().trim();
+  const lowerQuery = searchPhone.value?.toLowerCase().trim();
+
+  // 如果沒有搜尋關鍵字，返回原始的可管理用戶列表
   if (!lowerQuery) {
     return manageableUsers.value;
   }
-  return manageableUsers.value.filter(user =>
+
+  // 正常篩選可管理用戶列表
+  let filteredList = manageableUsers.value.filter(user =>
     user.name.toLowerCase().includes(lowerQuery) ||
     user.phone.includes(lowerQuery)
   );
+
+  // 檢查搜尋條件是否匹配當前登入的使用者
+  const currentUser = userStore.user;
+  const currentUserRoles = userStore.currentUserRoles;
+  if (currentUser && (currentUser.name.toLowerCase().includes(lowerQuery) || currentUser.key.includes(lowerQuery))) {
+    // 檢查當前使用者是否已存在於篩選列表中
+    const isCurrentUserInList = filteredList.some(user => user.phone === currentUser.key);
+
+    if (!isCurrentUserInList) {
+      // 如果不在列表中，將當前使用者資訊加入到列表頂端
+      const currentUserForList = {
+        name: currentUser.name,
+        phone: currentUser.key,
+        roles: currentUserRoles,
+        rolesLoading: false,
+      };
+      filteredList.unshift(currentUserForList);
+    }
+  }
+
+  return filteredList;
 });
 
 const userManagementFields = [
@@ -642,7 +692,22 @@ const rules = {
 
 // --- Computed Properties ---
 const isSuperAdmin = computed(() => userStore.currentUserRoles.includes('超級管理員'));
+
+// ✓【新增】判斷當前登入的管理員是否為「超級管理員」或「系統管理員」
+const isGodModeAdmin = computed(() => {
+  const roles = userStore.currentUserRoles;
+  return roles.includes('超級管理員') || roles.includes('系統管理員');
+});
+
+const isEditingSelf = computed(() => {
+  if (!targetUser.value || !userStore.user) return false;
+  return targetUser.value.basicInfo.phone === userStore.user.key;
+});
+
 const allRoleNames = computed(() => roles.value.map(r => r.name));
+
+// ✓【新增】從完整的 systemFunctions 列表中獲取所有功能名稱
+const allFunctionNames = computed(() => systemFunctions.value.map(f => f.name).sort());
 
 const filteredManagedProjects = computed(() => {
   if (!projectSearchQuery.value) {
@@ -717,6 +782,14 @@ const functionDescriptionMap = computed(() => {
   }, {});
 });
 
+const isTargetUserAdmin = computed(() => {
+  if (!targetUser.value || !targetUser.value.basicInfo.roles) return false;
+  const roles = targetUser.value.basicInfo.roles;
+  return roles.includes('超級管理員') || roles.includes('系統管理員');
+});
+
+
+
 // --- Watchers ---
 watch(selectedRoleIndex, (newIndex) => {
   if (newIndex != null && roles.value[newIndex]) {
@@ -751,7 +824,7 @@ const loadInitialData = async () => {
   errorMessage.value = '';
   showErrorAlert.value = false;
   try {
-    const [scope, users, rolesData, projectsData, functionsData] = await Promise.all([
+    const [scopeData, users, rolesData, projectsData, functionsData] = await Promise.all([
       fetchAdminScope(adminKey.value),
       fetchManageableUsersWithDetails(adminKey.value),
       fetchAllRoles(),
@@ -759,23 +832,44 @@ const loadInitialData = async () => {
       fetchAllSystemFunctions()
     ]);
     
-    adminScope.value = scope;
-    managedProjects.value = Object.keys(scope).sort((a,b) => a.localeCompare(b, 'zh-Hant'));
-    const systems = new Set(Object.values(scope).flat());
-    allSystemFunctions.value = Array.from(systems).sort();
-    
-    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false }));
-    roles.value = rolesData.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    // 處理管理員的權限範圍 (scope)
+    const scopeByProjectName = {};
+    const projectNames = [];
+    const allSystems = new Set();
 
-    systemFunctions.value = functionsData; // 現在 functionsData 會是正確的權限功能列表
+    if (scopeData) {
+      for (const projectId in scopeData) {
+        const projectInfo = scopeData[projectId];
+        if (projectInfo && projectInfo.projectName && projectInfo.systems) {
+          // 建立以「建案名稱」為 key 的 scope 物件
+          scopeByProjectName[projectInfo.projectName] = projectInfo.systems;
+          projectNames.push(projectInfo.projectName);
+          // 收集所有不重複的系統功能名稱
+          projectInfo.systems.forEach(system => allSystems.add(system));
+        } else {
+           console.warn(`[Debug] loadInitialData: scopeData 中的 projectId '${projectId}' 缺少 projectName 或 systems 欄位。`, projectInfo);
+        }
+      }
+    }
+
+    adminScope.value = scopeByProjectName;
+    managedProjects.value = projectNames.sort((a,b) => a.localeCompare(b, 'zh-Hant'));
+    allSystemFunctions.value = Array.from(allSystems).sort();
+    
+    // 處理其他資料
+    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false }));
+    roles.value = rolesData.sort((a, b) => a.name.localeCompare(b, 'zh-Hant'));
+    systemFunctions.value = functionsData;
 
   } catch (error) {
+    console.error('[Debug] loadInitialData: 發生嚴重錯誤', error);
     errorMessage.value = `初始化失敗: ${error.message}`;
     showErrorAlert.value = true;
   } finally {
     loading.value = false;
   }
 };
+
 
 
 onMounted(loadInitialData);
@@ -839,7 +933,7 @@ const handleSearchUser = async () => {
 
 const buildPermissionMatrix = (permissionsObject) => {
   const matrix = {};
-  allSystemFunctions.value.forEach(system => {
+ allFunctionNames.value.forEach(system => {
     matrix[system] = {};
     managedProjects.value.forEach(project => {
       matrix[system][project] = false;
@@ -862,19 +956,28 @@ const expandAll = () => { panels.value = filteredManagedProjects.value; };
 const collapseAll = () => { panels.value = []; };
 
 const isAllSelectedForProject = (project) => {
-  const systemsForProject = adminScope.value[project] || [];
-  return systemsForProject.every(system => permissionMatrix.value[system]?.[project]);
+  // ✓【修改】只檢查管理員有權限的系統是否都被選取
+  const systemsAdminCanManage = adminScope.value[project] || [];
+  if (systemsAdminCanManage.length === 0) return false;
+  
+  return systemsAdminCanManage.every(system => permissionMatrix.value[system]?.[project]);
 };
 
 const isIndeterminateForProject = (project) => {
-  const systemsForProject = adminScope.value[project] || [];
-  const selectedCount = systemsForProject.filter(system => permissionMatrix.value[system]?.[project]).length;
-  return selectedCount > 0 && selectedCount < systemsForProject.length;
+  // ✓【修改】根據管理員有權限的系統來判斷部分選取狀態
+  const systemsAdminCanManage = adminScope.value[project] || [];
+  if (systemsAdminCanManage.length === 0) return false;
+
+  const selectedCount = systemsAdminCanManage.filter(system => permissionMatrix.value[system]?.[project]).length;
+  
+  // 當有選取但未全選時，顯示 "indeterminate"
+  return selectedCount > 0 && selectedCount < systemsAdminCanManage.length;
 };
 
 const toggleAllForProject = (project, isSelected) => {
-  const systemsForProject = adminScope.value[project] || [];
-  systemsForProject.forEach(system => {
+  // ✓【修改】全選功能只會切換管理員有權限的系統
+  const systemsAdminCanManage = adminScope.value[project] || [];
+  systemsAdminCanManage.forEach(system => {
     if (permissionMatrix.value[system]) {
       permissionMatrix.value[system][project] = isSelected;
     }
@@ -917,7 +1020,7 @@ const handleSave = async () => {
   saving.value = true;
   try {
     const newPermissionsObject = {};
-    for (const system of allSystemFunctions.value) {
+    for (const system of allFunctionNames.value) {
       for (const projectName of managedProjects.value) {
         if (permissionMatrix.value[system]?.[projectName] === true) {
           const projectId = projectStore.nameToIdMap[projectName];

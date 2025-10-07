@@ -41,106 +41,120 @@
 
         <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
           <template v-if="isUploadMode">
-            <v-card-title 
-              class="text-h5 font-weight-bold py-2 d-flex align-center"
-              :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
-            >
-              <v-btn
-                v-if="!uploadSuccess"
-                icon="mdi-arrow-left"
-                variant="text"
-                @click="isUploadMode = false"
-                :disabled="isLoading"
-                class="mr-3"
-              ></v-btn>
-              <span>{{ projectConfig.name }} 上傳驗屋報告</span>
-            </v-card-title>
-            <v-divider></v-divider>
+  <v-card-title 
+    class="text-h5 font-weight-bold py-2 d-flex align-center"
+    :style="{ backgroundColor: projectConfig.themeColor, color: 'white' }"
+  >
+    <v-btn
+      v-if="!uploadSuccess"
+      :icon="uploadStep === 1 ? 'mdi-arrow-left' : undefined"
+      variant="text"
+      @click="isUploadMode = false"
+      :disabled="isLoading"
+      class="mr-3"
+    ></v-btn>
+    <span>{{ projectConfig.name }} 上傳驗屋報告</span>
+  </v-card-title>
+  <v-divider></v-divider>
 
-            <div v-if="!uploadSuccess">
-              <v-card-text>
-                <div class="prose mb-6" v-html="projectConfig.reportUploadIntro.body"></div>
-                <v-alert
-                    v-if="projectConfig.reportUploadIntro.alert.show"
-                    :color="projectConfig.reportUploadIntro.alert.color"
-                    :type="projectConfig.reportUploadIntro.alert.type"
-                    class="mb-4"
-                    border="start"
-                    density="compact"
-                >
-                    <template v-slot:title>
-                      <div v-if="projectConfig.reportUploadIntro.alert.title" class="font-weight-bold">{{ projectConfig.reportUploadIntro.alert.title }}</div>
-                    </template>
-                    <div v-html="projectConfig.reportUploadIntro.alert.text"></div>
-                </v-alert>
-                
-                <v-form ref="uploadFormRef" @submit.prevent="handleUploadSubmit">
-                  <v-select
-                    v-model="uploadForm.reportType"
-                    :items="['初驗報告', '複驗報告']"
-                    label="報告種類"
-                    variant="outlined"
-                    :rules="[v => !!v || '必填']"
-                  ></v-select>
-                  <v-text-field v-model="uploadForm.buyerName" label="買方姓名" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
-                  <v-text-field v-model="uploadForm.phone" label="聯絡電話" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
-                  <v-text-field v-model="uploadForm.email" label="EMAIL (用於接收確認信)" variant="outlined" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"></v-text-field>
-                  <v-select
-                      v-model="uploadForm.building"
-                      :items="uploadBuildingList"  
-                      label="棟別"
-                      variant="outlined"
-                      :rules="[v => !!v || '必填']"
-                      @update:model-value="onUploadBuildingChange"
-                    ></v-select>
-                  <v-select
-                    v-model="uploadForm.unit"
-                    :items="uploadUnitList"
-                    item-title="unit"
-                    item-value="unit"
-                    label="戶別"
-                    variant="outlined"
-                    :rules="[v => !!v || '必填']"
-                    :disabled="!uploadForm.building"
-                    no-data-text="請先選擇棟別"
-                  ></v-select>
-                  <v-text-field v-model="uploadForm.companyName" label="代驗公司名稱 (若無免填)" variant="outlined"></v-text-field>
-
-                  <div
-                    class="file-drop-zone"
-                    :class="{ 'is-active': isDragActive }"
-                    @dragover.prevent="isDragActive = true"
-                    @dragleave.prevent="isDragActive = false"
-                    @drop.prevent="handleFileDrop"
-                    @click="triggerFileInput"
-                  >
-                    <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cloud-upload-outline</v-icon>
-                    <p v-if="!uploadForm.file" class="text-grey">將 PDF 檔案拖曳至此，或點擊上傳</p>
-                    <div v-else class="file-info">
-                      <v-icon color="red">mdi-file-pdf-box</v-icon>
-                      <span class="ml-2 font-weight-bold">{{ uploadForm.file.name }}</span>
-                      <span class="text-grey ml-2">({{ (uploadForm.file.size / 1024 / 1024).toFixed(2) }} MB)</span>
-                    </div>
-                    <p class="text-caption text-grey mt-2">（檔案大小限制 30MB）</p>
-                  </div>
-                   <input
-                    ref="fileInputRef"
-                    type="file"
-                    accept=".pdf"
-                    hidden
-                    @change="handleFileSelect"
-                  >
-                  
-                </v-form>
-              </v-card-text>
-              <v-card-actions class="pa-4">
-                <v-spacer></v-spacer>
-                <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadSubmit" :loading="isLoading" variant="elevated">
-                  <v-icon left>mdi-upload</v-icon>
-                  確認上傳
-                </v-btn>
-              </v-card-actions>
+  <div v-if="!uploadSuccess">
+    <div v-if="uploadStep === 1">
+      <v-card-text>
+        <div class="prose mb-6" v-html="projectConfig.reportUploadIntro.body"></div>
+        <v-alert
+            v-if="projectConfig.reportUploadIntro.alert.show"
+            :color="projectConfig.reportUploadIntro.alert.color"
+            :type="projectConfig.reportUploadIntro.alert.type"
+            class="mb-4" border="start" density="compact"
+        >
+            <template v-slot:title>
+              <div v-if="projectConfig.reportUploadIntro.alert.title" class="font-weight-bold">{{ projectConfig.reportUploadIntro.alert.title }}</div>
+            </template>
+            <div v-html="projectConfig.reportUploadIntro.alert.text"></div>
+        </v-alert>
+        
+        <v-form ref="uploadStep1FormRef" @submit.prevent="handleUploadStep1Submit">
+          <v-select
+            v-model="uploadForm.reportType"
+            :items="['初驗報告', '複驗報告']"
+            label="報告種類" variant="outlined"
+            :rules="[v => !!v || '必填']"
+          ></v-select>
+          <v-select
+            v-model="uploadForm.building"
+            :items="uploadBuildingList"  
+            label="棟別" variant="outlined"
+            :rules="[v => !!v || '必填']"
+            @update:model-value="onUploadBuildingChange"
+          ></v-select>
+          <v-select
+            v-model="uploadForm.unit"
+            :items="uploadUnitList"
+            item-title="unit" item-value="unit"
+            label="戶別" variant="outlined"
+            :rules="[v => !!v || '必填']"
+            :disabled="!uploadForm.building"
+            no-data-text="請先選擇棟別"
+          ></v-select>
+          <v-text-field
+            v-model="uploadForm.idNumber"
+            label="身分證字號 (用於驗證)"
+            variant="outlined"
+            :rules="[v => !!v || '必填']"
+          ></v-text-field>
+        </v-form>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-spacer></v-spacer>
+        <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadStep1Submit" :loading="isLoading" variant="elevated">
+          確認資料，下一步
+        </v-btn>
+      </v-card-actions>
+    </div>
+    <div v-else-if="uploadStep === 2">
+      <v-card-text>
+        <v-alert type="info" variant="tonal" border="start" class="mb-4">
+          <p class="font-weight-bold">資格驗證成功！請填寫以下資訊並上傳檔案。</p>
+        </v-alert>
+        <v-form ref="uploadStep2FormRef" @submit.prevent="handleUploadSubmit">
+          <v-text-field v-model="uploadForm.buyerName" label="買方姓名" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
+          <v-text-field v-model="uploadForm.phone" label="聯絡電話" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
+          <v-text-field v-model="uploadForm.email" label="EMAIL (用於接收確認信)" variant="outlined" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"></v-text-field>
+          <v-text-field v-model="uploadForm.companyName" label="代驗公司名稱 (若無免填)" variant="outlined"></v-text-field>
+          <div
+            class="file-drop-zone"
+            :class="{ 'is-active': isDragActive }"
+            @dragover.prevent="isDragActive = true"
+            @dragleave.prevent="isDragActive = false"
+            @drop.prevent="handleFileDrop"
+            @click="triggerFileInput"
+          >
+            <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cloud-upload-outline</v-icon>
+            <p v-if="!uploadForm.file" class="text-grey">將 PDF 檔案拖曳至此，或點擊上傳</p>
+            <div v-else class="file-info">
+              <v-icon color="red">mdi-file-pdf-box</v-icon>
+              <span class="ml-2 font-weight-bold">{{ uploadForm.file.name }}</span>
+              <span class="text-grey ml-2">({{ (uploadForm.file.size / 1024 / 1024).toFixed(2) }} MB)</span>
             </div>
+            <p class="text-caption text-grey mt-2">（檔案大小限制 30MB）</p>
+          </div>
+           <input
+            ref="fileInputRef" type="file"
+            accept=".pdf" hidden
+            @change="handleFileSelect"
+          >
+        </v-form>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-btn size="large" @click="uploadStep = 1" :disabled="isLoading">返回上一步</v-btn>
+        <v-spacer></v-spacer>
+        <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadSubmit" :loading="isLoading" variant="elevated">
+          <v-icon left>mdi-upload</v-icon>
+          確認上傳
+        </v-btn>
+      </v-card-actions>
+    </div>
+    </div>
 
              <div v-if="uploadSuccess">
               <v-card-text class="text-center py-8">
@@ -760,6 +774,26 @@
 </div>
 
 
+<v-dialog v-model="isConfirmationDialogVisible" max-width="500px" persistent>
+  <v-card>
+    <v-card-title class="d-flex align-center bg-blue-grey-lighten-5">
+      <v-icon class="mr-3" color="info">mdi-help-circle-outline</v-icon>
+      <span class="text-h6">請確認</span>
+    </v-card-title>
+    <v-card-text class="pt-4 text-body-1" v-html="confirmationMessage">
+    </v-card-text>
+    <v-card-actions>
+      <v-spacer></v-spacer>
+      <v-btn color="grey-darken-1" variant="text" @click="isConfirmationDialogVisible = false">
+        取消
+      </v-btn>
+      <v-btn color="primary" variant="elevated" @click="proceedWithUpload">
+        是，繼續上傳
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
 </v-container>
 </template>
 
@@ -778,6 +812,7 @@ import {
   saveBooking, 
   uploadAuthLetter,
   cancelBooking,
+  verifyUploadPrerequisites,
   uploadReportDirectlyToDrive,
   initiateAuthSigningProcess
 } from '@/api';
@@ -792,7 +827,7 @@ const loadingText = ref('處理中...');
 const isUploadMode = ref(false);
 const isDragActive = ref(false);
 const uploadSuccess = ref(false);
-const uploadFormRef = ref(null);
+const uploadStep2FormRef = ref(null); // 原本是 uploadFormRef
 const fileInputRef = ref(null);
 const uploadUnitList = ref([]);
 const isSizeErrorDialogVisible = ref(false); 
@@ -806,9 +841,57 @@ const initialUploadFormState = {
   building: null,
   unit: null,
   companyName: '',
-  file: null, // { name, size, type, base64 }
+  file: null, 
+  idNumber: '', 
 };
 const uploadForm = ref({ ...initialUploadFormState });
+
+// ✓ START: 新增 - 報告上傳新流程所需的狀態變數
+const uploadStep = ref(1); // 控制目前在步驟一還是步驟二
+const verifiedBookingCode = ref(null); // 用於儲存從步驟一驗證成功後取得的 bookingCode
+const isConfirmationDialogVisible = ref(false); // 控制確認對話框的顯示
+const confirmationMessage = ref(''); // 確認對話框要顯示的訊息
+const uploadStep1FormRef = ref(null); // 給步驟一的 v-form 一個 ref
+// ✓ END: 新增
+
+// ✓ START: 新增 - 處理上傳流程步驟一的送出邏輯
+const handleUploadStep1Submit = async () => {
+  const { valid } = await uploadStep1FormRef.value.validate();
+  if (!valid) return;
+
+  loadingText.value = '正在驗證上傳資格...';
+  isLoading.value = true;
+  try {
+    const payload = {
+      projectId: projectId.value,
+      unitId: uploadForm.value.unit,
+      reportType: uploadForm.value.reportType,
+      idNumber: uploadForm.value.idNumber, // 假設身分證欄位 v-model="uploadForm.idNumber"
+    };
+    const result = await verifyUploadPrerequisites(payload);
+
+    if (result.status === 'success') {
+      verifiedBookingCode.value = result.bookingCode;
+      uploadStep.value = 2; // 驗證成功，前往步驟二
+    } else if (result.status === 'needs_confirmation') {
+      confirmationMessage.value = result.message;
+      isConfirmationDialogVisible.value = true; // 跳出確認對話框
+    }
+  } catch (error) {
+    alert(`驗證失敗：${error.message}`);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const proceedWithUpload = () => {
+  verifiedBookingCode.value = null; // 在沒有代驗紀錄的情況下繼續，bookingCode 設為 null
+  uploadStep.value = 2;
+  isConfirmationDialogVisible.value = false;
+};
+// ✓ END: 新增
+
+
 
 // 儲存上傳後的 URL
 const finalAuthLetterUrl = ref('');
@@ -1447,7 +1530,7 @@ const processFile = (file) => {
 
 // 處理拖放區的拖曳狀態
 const handleUploadSubmit = async () => {
-  const { valid } = await uploadFormRef.value.validate();
+  const { valid } = await uploadStep2FormRef.value.validate(); // 注意 ref 名稱已改
   if (!valid) {
     alert('請填寫所有必填欄位。');
     return;
@@ -1470,9 +1553,9 @@ const handleUploadSubmit = async () => {
       building: uploadForm.value.building,
       unit: uploadForm.value.unit,
       companyName: uploadForm.value.companyName,
+      bookingCode: verifiedBookingCode.value, // <-- 新增此行，傳入驗證過的 bookingCode
     };
     
-    //  【修改】改為呼叫新的代理上傳函式
     const res = await uploadReportDirectlyToDrive(payload, uploadForm.value.file);
 
     if (res.status === 'success') {
@@ -1493,7 +1576,14 @@ const handleUploadSubmit = async () => {
 const resetUploadMode = () => {
   uploadSuccess.value = false;
   uploadForm.value = { ...initialUploadFormState };
-  if(uploadFormRef.value) uploadFormRef.value.resetValidation();
+  
+  // 新增的重置項目
+  uploadStep.value = 1; 
+  verifiedBookingCode.value = null;
+
+  // 重置兩個表單的驗證狀態
+  if(uploadStep1FormRef.value) uploadStep1FormRef.value.resetValidation();
+  if(uploadStep2FormRef.value) uploadStep2FormRef.value.resetValidation(); // 注意 ref 名稱已改
 };
 
 
