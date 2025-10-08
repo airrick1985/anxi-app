@@ -466,6 +466,7 @@ exports.getAvailableSlots = onCall(async (request) => {
     const startDate = new Date(batchData.bookingStart + 'T00:00:00');
     const endDate = new Date(batchData.bookingEnd + 'T23:59:59');
     
+    
     const appointmentsQuery = await db.collection('appointments')
       .where('projectId', '==', projectId)
       .where('status', '==', '預約中')
@@ -4934,7 +4935,8 @@ exports.handleDirectReportUpload = onCall({
       // 3. 更新預約紀錄
       if (appointmentDocRef) {
         transaction.update(appointmentDocRef, {
-          uploadReportTime: admin.firestore.FieldValue.serverTimestamp()
+          uploadReportTime: admin.firestore.FieldValue.serverTimestamp(),
+          reportUploaded: true 
         });
         console.log(`[${functionName}] 已在事務中排定更新預約文件 [${appointmentDocRef.id}]`);
       } else if (bookingCode) {
@@ -5855,7 +5857,11 @@ async function executeUploadReminderLogic() {
         }
 
         const ccEmails = await getCcRecipients(projectId, "提醒上傳驗屋報告副本");
-        const appointmentsQuery = db.collection('appointments').where('projectId', '==', projectId).where('inspectionMethod', '==', '代驗公司').where('status', 'in', ['預約中', '已完成']).where('uploadReportTime', '==', null);
+        const appointmentsQuery = db.collection('appointments')
+            .where('projectId', '==', projectId)
+            .where('inspectionMethod', '==', '代驗公司')
+            .where('status', 'in', ['預約中', '已完成'])
+            .where('reportUploaded', '==', false); 
         const appointmentsSnapshot = await appointmentsQuery.get();
 
         if (appointmentsSnapshot.empty) {
@@ -5875,41 +5881,72 @@ async function executeUploadReminderLogic() {
             const timeDiff = today.getTime() - appointmentDate.getTime();
             const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
             
-      if (settings.uploadReminderDays.includes(dayDiff)) {
-                    console.log(`[${functionName}] 找到符合提醒條件的預約: ${appointment.unitId} (預約於 ${dayDiff} 天前)`);
-                    
-                    const emailTemplate = settings.uploadReminderEmail;
-                    const formattedApptDate = appointment.appointmentDate.toDate().toLocaleDateString('zh-TW');
+            const reminderDaysAsNumbers = settings.uploadReminderDays.map(day => Number(day));
+            if (reminderDaysAsNumbers.includes(dayDiff)) {
+                console.log(`[${functionName}] 找到符合提醒條件的預約: ${appointment.unitId} (預約於 ${dayDiff} 天前)，準備寄信...`);
+                
+                const emailTemplate = settings.uploadReminderEmail;
+                const formattedApptDate = appointment.appointmentDate.toDate().toLocaleDateString('zh-TW');
 
-                    let subject = emailTemplate.subject || "{projectName} {unitId} 未收到驗屋報告通知";
-                    subject = subject.replace(/{projectName}/g, projectName).replace(/{unitId}/g, appointment.unitId);
-                    
-                    let body = emailTemplate.body || "您已完成驗屋，但尚未收到您的驗屋報告。";
-                    body = body.replace(/{bookerName}/g, appointment.bookerName).replace(/{appointmentDate}/g, formattedApptDate).replace(/{unitId}/g, appointment.unitId);
+                let subject = emailTemplate.subject || "{projectName} {unitId} 未收到驗屋報告通知";
+                subject = subject.replace(/{projectName}/g, projectName).replace(/{unitId}/g, appointment.unitId);
+                
+                let body = emailTemplate.body || "您已完成驗屋，但尚未收到您的驗屋報告。";
+                body = body.replace(/{bookerName}/g, appointment.bookerName).replace(/{appointmentDate}/g, formattedApptDate).replace(/{unitId}/g, appointment.unitId);
 
-                    const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${emailTemplate.uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
-                    const htmlBody = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;"><div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;"><div style="background-color: #f0ad4e; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2></div><div style="padding: 24px; line-height: 1.6; color: #333333;">${body}<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">${emailTemplate.reminder || ''}</div>${uploadButtonHtml}</div><div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;"><p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p></div></div></div>`;
+                const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${emailTemplate.uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
+                const htmlBody = `
+                      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+                        <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+                          
+                          <div style="background-color: #ab0300; color: #ffffff; padding: 20px; text-align: center;">
+                            <h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2>
+                          </div>
 
-                    await mailTransport.sendMail({
-                        from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
-                        to: appointment.bookerEmail,
-                        cc: ccEmails,
-                        subject: subject,
-                        html: htmlBody,
-                    });
-                    
-                    // ✓ 更新文件，將通知時間加入陣列
-                    await apptDoc.ref.update({
-                        reminderSentAt: admin.firestore.FieldValue.arrayUnion(admin.firestore.FieldValue.serverTimestamp())
-                    });
-                    
-                    console.log(`[${functionName}] 已成功寄送提醒信並記錄時間戳記至 ${appointment.bookerEmail} (戶別: ${appointment.unitId})`);
-                }
+                          <div style="padding: 24px; line-height: 1.6; color: #333333;">
+                            
+                            ${body}
+
+                            <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">
+                              ${emailTemplate.reminder || ''}
+                            </div>
+
+                            ${uploadButtonHtml}
+
+                          </div>
+
+                          <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+                            <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+                            <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
+                            <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+                              本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+                            </p>
+                          </div>
+
+                        </div>
+                      </div>`;
+                
+
+                await mailTransport.sendMail({
+                    from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
+                    to: appointment.bookerEmail,
+                    cc: ccEmails,
+                    subject: subject,
+                    html: htmlBody,
+                });
+                
+                const newTimestamp = admin.firestore.Timestamp.now();
+                await apptDoc.ref.update({
+                    reminderSentAt: admin.firestore.FieldValue.arrayUnion(newTimestamp)
+                });
+                
+                console.log(`[${functionName}] 已成功寄送提醒信並記錄時間戳記至 ${appointment.bookerEmail} (戶別: ${appointment.unitId})`);
             }
         }
-        console.log(`[${functionName}] 所有啟用且符合時間的建案處理完成。`);
+    }
+    console.log(`[${functionName}] 所有啟用且符合時間的建案處理完成。`);
 }
-// ✓ END: 正確的核心邏輯函式
+
 
 /**
  * 提醒未上傳驗屋報告

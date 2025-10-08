@@ -482,6 +482,8 @@
                   ></v-checkbox>
                 </div>
 
+                
+
                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">未上傳報告 - 每日提醒排程</p>
                 <p class="text-body-2 text-medium-emphasis mb-4">
                   設定每日自動檢查並發送提醒的固定時間點。函式會每小時檢查一次，當下時間符合此處設定時，才會執行任務。
@@ -506,6 +508,17 @@
                     style="max-width: 150px;"
                   ></v-text-field>
                 </v-sheet>
+
+                <v-btn 
+                  @click="runManualTrigger" 
+                  :loading="isTesting"
+                  color="error"
+                  variant="elevated"
+                  class="ma-4"
+                >
+                  <v-icon start>mdi-send-clock-outline</v-icon>
+                  手動提醒
+                </v-btn>
                 
                 <v-divider class="my-6"></v-divider>
 
@@ -1151,7 +1164,26 @@ import {
   fetchRulesForBatch,
   fetchBookingBatches,
   deleteBookingBatch,
+  manualTriggerSendReminders,
 } from '@/api';
+
+
+const isTesting = ref(false);
+
+const runManualTrigger = async () => {
+  if (!confirm('您確定要手動觸發一次「未上傳報告提醒」任務嗎？')) {
+    return;
+  }
+  isTesting.value = true;
+  try {
+    const result = await manualTriggerSendReminders();
+    alert(`觸發成功：${result.message}`); // 顯示成功訊息
+  } catch (error) {
+    alert(`觸發失敗：${error.message}`);
+  } finally {
+    isTesting.value = false;
+  }
+};
 
 
 

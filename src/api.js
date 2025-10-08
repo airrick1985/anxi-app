@@ -4676,3 +4676,16 @@ export const verifyUploadPrerequisites = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+//手動啟用提醒上傳驗屋報告通知
+export const manualTriggerSendReminders = async () => {
+  try {
+    const triggerFunction = httpsCallable(functions, 'manualTriggerSendReminders');
+    const result = await triggerFunction();
+    return result.data;
+  } catch (error) {
+    console.error("API Error in manualTriggerSendReminders:", error);
+    throw new Error(error.message);
+  }
+};
