@@ -482,6 +482,31 @@
                   ></v-checkbox>
                 </div>
 
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">未上傳報告 - 每日提醒排程</p>
+                <p class="text-body-2 text-medium-emphasis mb-4">
+                  設定每日自動檢查並發送提醒的固定時間點。函式會每小時檢查一次，當下時間符合此處設定時，才會執行任務。
+                </p>
+                <v-sheet border rounded class="pa-4">
+                  <v-switch
+                    v-model="projectSettings.reportSettings.uploadReminderSchedule.enabled"
+                    label="啟用每日提醒排程"
+                    color="primary"
+                    inset
+                    hide-details
+                    class="mb-2"
+                  ></v-switch>
+                  <v-text-field
+                    v-model="projectSettings.reportSettings.uploadReminderSchedule.time"
+                    label="每日提醒時間"
+                    type="time"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    :disabled="!projectSettings.reportSettings.uploadReminderSchedule.enabled"
+                    style="max-width: 150px;"
+                  ></v-text-field>
+                </v-sheet>
+                
                 <v-divider class="my-6"></v-divider>
 
                 <p class="text-subtitle-1 font-weight-bold mb-2">未上傳驗屋報告 EMAIL 通知格式</p>
@@ -1222,6 +1247,12 @@ const defaultSettings = computed(() => ({
     reportSettings: {
       uploadReminderDays: [7, 14],
       uploadReminderMethods: ['EMAIL'],
+      uploadReminderSchedule: {
+        enabled: false,
+        time: '10:00'
+      },
+
+
       uploadReminderEmail: {
         subject: `{projectName} {unitId} 未收到驗屋報告提醒`,
         body: `<p>親愛的 {bookerName} 貴賓您好，</p><p>您已於 {appointmentDate} 完成 {unitId} 驗屋，由於我們尚未收到您的驗屋報告，目前無法進行後續的修繕作業。</p><p>請您在收到本通知後的 7 日內，上傳您的驗屋報告。</p>`,
@@ -1510,6 +1541,13 @@ async function loadDataForProject() {
         projectSettings.value.reportSettings = {
           ...defaultSettings.value.reportSettings,
           ...(settings.reportSettings || {}),
+        
+          uploadReminderSchedule: {
+            ...defaultSettings.value.reportSettings.uploadReminderSchedule,
+            ...(settings.reportSettings?.uploadReminderSchedule || {})
+          },
+
+
           uploadReminderEmail: {
             ...defaultSettings.value.reportSettings.uploadReminderEmail,
             ...(settings.reportSettings?.uploadReminderEmail || {})

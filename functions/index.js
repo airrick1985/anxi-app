@@ -5807,3 +5807,153 @@ exports.verifyUploadPrerequisites = onCall(async (request) => {
   }
 });
 // ✓ END: 新增 - 驗屋報告上傳前置驗證函式
+
+/**
+ * [核心邏輯] 檢查並寄送未上傳報告提醒
+ * 此函式包含所有商業邏輯，可被多個觸發器共用
+ */
+async function executeUploadReminderLogic() {
+    const functionName = "executeUploadReminderLogic";
+    console.log(`[${functionName}] 核心邏輯啟動...`);
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const mailTransport = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+    });
+    
+    const projectsQuery = db.collection('projects').where('reportSettings.uploadReminderSchedule.enabled', '==', true);
+    const projectsSnapshot = await projectsQuery.get();
+
+    if (projectsSnapshot.empty) {
+        console.log(`[${functionName}] 找不到任何啟用排程的建案，任務結束。`);
+        return;
+    }
+
+    const nowInTaipei = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+    const currentHour = String(nowInTaipei.getHours()).padStart(2, '0');
+
+    for (const projectDoc of projectsSnapshot.docs) {
+        const projectData = projectDoc.data();
+        const projectId = projectDoc.id;
+        const projectName = projectData.name || projectId;
+        const settings = projectData.reportSettings;
+
+        const scheduledTime = settings?.uploadReminderSchedule?.time;
+        const scheduledHour = scheduledTime ? scheduledTime.split(':')[0] : null;
+
+        if (currentHour !== scheduledHour) {
+            console.log(`[${functionName}] 建案 [${projectName}] 設定時間為 ${scheduledHour}:00，目前為 ${currentHour}:00，跳過。`);
+            continue;
+        }
+
+        console.log(`[${functionName}] --- 時間相符，開始處理建案: ${projectName} ---`);
+        
+        if (!settings.uploadReminderDays || settings.uploadReminderDays.length === 0 || !settings.uploadReminderEmail) {
+            console.warn(`[${functionName}] 建案 [${projectName}] 的提醒設定不完整，已跳過。`);
+            continue;
+        }
+
+        const ccEmails = await getCcRecipients(projectId, "提醒上傳驗屋報告副本");
+        const appointmentsQuery = db.collection('appointments').where('projectId', '==', projectId).where('inspectionMethod', '==', '代驗公司').where('status', 'in', ['預約中', '已完成']).where('uploadReportTime', '==', null);
+        const appointmentsSnapshot = await appointmentsQuery.get();
+
+        if (appointmentsSnapshot.empty) {
+            console.log(`[${functionName}] 建案 [${projectName}] 沒有需要提醒的預約。`);
+            continue;
+        }
+        
+        const today = new Date(nowInTaipei);
+        today.setHours(0, 0, 0, 0);
+
+        for (const apptDoc of appointmentsSnapshot.docs) {
+            const appointment = apptDoc.data();
+            if (!appointment.appointmentDate || !appointment.bookerEmail) continue;
+
+            const appointmentDate = appointment.appointmentDate.toDate();
+            appointmentDate.setHours(0, 0, 0, 0);
+            const timeDiff = today.getTime() - appointmentDate.getTime();
+            const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+            
+      if (settings.uploadReminderDays.includes(dayDiff)) {
+                    console.log(`[${functionName}] 找到符合提醒條件的預約: ${appointment.unitId} (預約於 ${dayDiff} 天前)`);
+                    
+                    const emailTemplate = settings.uploadReminderEmail;
+                    const formattedApptDate = appointment.appointmentDate.toDate().toLocaleDateString('zh-TW');
+
+                    let subject = emailTemplate.subject || "{projectName} {unitId} 未收到驗屋報告通知";
+                    subject = subject.replace(/{projectName}/g, projectName).replace(/{unitId}/g, appointment.unitId);
+                    
+                    let body = emailTemplate.body || "您已完成驗屋，但尚未收到您的驗屋報告。";
+                    body = body.replace(/{bookerName}/g, appointment.bookerName).replace(/{appointmentDate}/g, formattedApptDate).replace(/{unitId}/g, appointment.unitId);
+
+                    const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${emailTemplate.uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
+                    const htmlBody = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;"><div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;"><div style="background-color: #f0ad4e; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2></div><div style="padding: 24px; line-height: 1.6; color: #333333;">${body}<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">${emailTemplate.reminder || ''}</div>${uploadButtonHtml}</div><div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;"><p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p></div></div></div>`;
+
+                    await mailTransport.sendMail({
+                        from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
+                        to: appointment.bookerEmail,
+                        cc: ccEmails,
+                        subject: subject,
+                        html: htmlBody,
+                    });
+                    
+                    // ✓ 更新文件，將通知時間加入陣列
+                    await apptDoc.ref.update({
+                        reminderSentAt: admin.firestore.FieldValue.arrayUnion(admin.firestore.FieldValue.serverTimestamp())
+                    });
+                    
+                    console.log(`[${functionName}] 已成功寄送提醒信並記錄時間戳記至 ${appointment.bookerEmail} (戶別: ${appointment.unitId})`);
+                }
+            }
+        }
+        console.log(`[${functionName}] 所有啟用且符合時間的建案處理完成。`);
+}
+// ✓ END: 正確的核心邏輯函式
+
+/**
+ * 提醒未上傳驗屋報告
+ * [排程函式] 每小時觸發一次
+ * 檢查所有啟用此功能的建案，若目前時間符合使用者UI設定的時間，
+ * 則找出已過提醒天數但尚未上傳報告的預約，寄送 Email 提醒並記錄時間。
+ */
+// ✓ START: 修改 - 排程觸發器，簡化為呼叫核心邏輯
+exports.sendUploadReminders = onSchedule({
+    schedule: "every 1 hours",
+    timeZone: "Asia/Taipei",
+    secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (event) => {
+    const functionName = "sendUploadReminders_scheduled";
+    console.log(`[${functionName}] 排程觸發，準備執行核心邏輯...`);
+    try {
+        // 直接呼叫上面定義的核心邏輯函式
+        await executeUploadReminderLogic();
+        console.log(`[${functionName}] 核心邏輯執行完畢。`);
+    } catch (error) {
+        // 捕捉從核心邏輯中可能拋出的任何錯誤
+        console.error(`[${functionName}] 排程執行核心邏輯時發生嚴重錯誤:`, error);
+    }
+});
+// ✓ END: 修改後的排程觸發器
+
+exports.manualTriggerSendReminders = onCall({
+    // 核心邏輯會寄信，所以這裡也需要 secrets
+    secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (request) => {
+    const functionName = "manualTriggerSendReminders_callable";
+    
+    // 如果需要，可以在此處加入管理員權限驗證
+    // const uid = request.auth?.uid;
+    // if (!uid) { throw new HttpsError('unauthenticated', '需要管理員權限'); }
+
+    console.log(`[${functionName}] 手動觸發，準備執行核心邏輯...`);
+    try {
+        // 同樣呼叫核心邏輯函式
+        await executeUploadReminderLogic();
+        console.log(`[${functionName}] 核心邏輯執行完畢。`);
+        return { status: "success", message: "提醒任務已手動觸發並執行完成。" };
+    } catch (error) {
+        console.error(`[${functionName}] 手動觸發時發生錯誤:`, error);
+        throw new HttpsError('internal', `執行手動提醒任務失敗: ${error.message}`);
+    }
+});
