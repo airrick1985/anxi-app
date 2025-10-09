@@ -40,7 +40,7 @@
     "ag-grid-community": "^34.1.2",
     "ag-grid-enterprise": "^34.1.2",
     "ag-grid-vue3": "^34.1.2",
-    "axios": "^1.10.0",
+    "axios": "^1.12.2",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dompurify": "^3.2.6",
