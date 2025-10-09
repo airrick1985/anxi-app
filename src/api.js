@@ -4689,3 +4689,38 @@ export const manualTriggerSendReminders = async () => {
     throw new Error(error.message);
   }
 };
+
+
+// ✓ 在您的 src/api.js 檔案中加入這兩個新的函式
+
+/**
+ * [API] 根據手機號碼驗證使用者是否存在
+ * @param {object} payload - 包含 { phone }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const verifyUserByPhone = async (payload) => {
+  try {
+    const verifyFunction = httpsCallable(functions, 'verifyUserByPhone');
+    const result = await verifyFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in verifyUserByPhone:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 將 LINE User ID 綁定到指定使用者
+ * @param {object} payload - 包含 { phone, lineId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const bindLineIdToUser = async (payload) => {
+  try {
+    const bindFunction = httpsCallable(functions, 'bindLineIdToUser');
+    const result = await bindFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in bindLineIdToUser:", error);
+    throw new Error(error.message);
+  }
+};

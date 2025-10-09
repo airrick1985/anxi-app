@@ -24,6 +24,8 @@ const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 import HouseholdGrid from '@/views/HouseholdGrid.vue';
+const LineBinding = () => import('@/views/public/LineBinding.vue'); // ✓ 新增這一行 (假設您將檔案放在 views/public/ 中)
+
 
 
 
@@ -226,6 +228,15 @@ const routes = [
     props: true,
     meta: {
       layout: PublicLayout 
+    }
+  },
+
+    {
+    path: '/line-binding', // 您可以自訂網址路徑
+    name: 'LineBindingPage',
+    component: LineBinding, // 使用我們在第一步引入的元件
+    meta: {
+      layout: PublicLayout // ✓ 指定使用公開頁面佈局，不需要登入
     }
   },
 

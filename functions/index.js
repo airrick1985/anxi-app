@@ -4026,6 +4026,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
                 agentAddress: bookingData.agentAddress || '',
                 agentPhone: bookingData.agentPhone || '',
                 bookingCode: bookingCode,
+                reportUploaded: false,
             };
 
             transaction.set(appointmentRef, newAppointmentData);
@@ -4613,7 +4614,8 @@ const dataToSave = {
         createdAt: Timestamp.now(),
         appointmentTimeSlot: timeSlotKey,
         bookingCode: bookingCode,
-        appointmentDate: null // 預設為 null，下面會處理
+        reportUploaded: false, 
+        appointmentDate: null 
     };
 
     if (newBookingData.appointmentDate) {
@@ -5994,3 +5996,93 @@ exports.manualTriggerSendReminders = onCall({
         throw new HttpsError('internal', `執行手動提醒任務失敗: ${error.message}`);
     }
 });
+
+
+// ✓ START: 新增 - 驗證使用者手機
+/**
+ * [LIFF綁定用] 根據手機號碼查找使用者
+ * @param {string} phone - 使用者在 LIFF 頁面輸入的手機號碼
+ * @returns {Promise<object>} - 如果找到，回傳 { status: 'success', name: '使用者姓名' }
+ */
+exports.verifyUserByPhone = onCall(async (request) => {
+    const { phone } = request.data;
+    const functionName = "verifyUserByPhone";
+
+    if (!phone) {
+        throw new HttpsError("invalid-argument", "缺少手機號碼(phone)參數。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const userDocRef = db.collection("users").doc(phone);
+        const userDoc = await userDocRef.get();
+
+        if (!userDoc.exists) {
+            throw new HttpsError("not-found", "查無此手機號碼，請確認輸入是否正確，或洽詢管理員。");
+        }
+
+        const userData = userDoc.data();
+        const userName = userData.name;
+
+        if (!userName) {
+            throw new HttpsError("not-found", "此用戶資料不完整(缺少姓名)，請洽詢管理員。");
+        }
+
+        console.log(`[${functionName}] 成功找到用戶: ${userName} (Phone: ${phone})`);
+        return { status: "success", name: userName };
+
+    } catch (error) {
+        console.error(`[${functionName}] 驗證手機時發生錯誤 (Phone: ${phone}):`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "驗證時發生未預期的錯誤。");
+    }
+});
+// ✓ END
+
+
+// ✓ START: 新增 - 綁定 LINE ID 至使用者
+/**
+ * [LIFF綁定用] 將 LINE User ID 寫入指定的手機號碼對應的使用者文件
+ * @param {string} phone - 使用者的手機號碼
+ * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
+ * @returns {Promise<object>} - 回傳成功訊息
+ */
+exports.bindLineIdToUser = onCall(async (request) => {
+    const { phone, lineId } = request.data;
+    const functionName = "bindLineIdToUser";
+
+    if (!phone || !lineId) {
+        throw new HttpsError("invalid-argument", "缺少手機號碼(phone)或 LINE ID(lineId)參數。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const userDocRef = db.collection("users").doc(phone);
+        
+        // 再次驗證文件是否存在，確保安全
+        const userDoc = await userDocRef.get();
+        if (!userDoc.exists) {
+            throw new HttpsError("not-found", "在執行綁定時，找不到對應的手機號碼。");
+        }
+
+        // 執行更新
+        await userDocRef.update({
+            lineId: lineId
+        });
+
+        const userName = userDoc.data().name || phone;
+        console.log(`[${functionName}] 成功將 LINE ID [${lineId}] 綁定至用戶 [${userName}]`);
+        return { status: "success", message: "綁定成功！" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 綁定 LINE ID 時發生錯誤 (Phone: ${phone}):`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "綁定時發生未預期的錯誤。");
+    }
+});
+// ✓ END
+

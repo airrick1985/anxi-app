@@ -26,6 +26,7 @@
     "@fullcalendar/vue3": "^6.1.18",
     "@google-cloud/vertexai": "^1.10.0",
     "@jamescoyle/vue-icon": "^0.1.2",
+    "@line/liff": "^2.27.2",
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@panzoom/panzoom": "^4.6.0",
