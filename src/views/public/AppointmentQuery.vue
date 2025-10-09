@@ -205,7 +205,7 @@ const handleSearch = async () => {
   searchResults.value = []; // 先清空上次結果
 
   try {
-    const result = await searchAppointments({
+    const result = await liffSearchAppointments({
       projectId: selectedProject.value,
       searchText: searchText.value,
     });
