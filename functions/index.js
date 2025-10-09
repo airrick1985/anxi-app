@@ -6407,10 +6407,18 @@ exports.liffSearchAppointments = onCall(async (request) => {
         const projectDoc = await db.collection('projects').doc(projectId).get();
         const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
-        const results = matchedAppointments.map(appt => ({
-            ...appt,
-            projectName: projectName // 在每筆結果中加入建案名稱
-        }));
+        const results = matchedAppointments.map(appt => {
+            const processedAppt = { ...appt, projectName: projectName };
+            
+            // 處理所有可能的日期欄位
+            ['appointmentDate', 'createdAt', 'cancelledAt'].forEach(field => {
+                if (processedAppt[field] && typeof processedAppt[field].toDate === 'function') {
+                    processedAppt[field] = processedAppt[field].toDate().toISOString();
+                }
+            });
+            
+            return processedAppt;
+        });
 
         console.log(`[${functionName}] 在建案 [${projectName}] 中，根據關鍵字 [${searchText}] 找到了 ${results.length} 筆預約。`);
         return { status: "success", data: results };

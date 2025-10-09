@@ -20,34 +20,49 @@
       </div>
 
       <div v-else>
-        <v-card-text>
-          <p class="mb-4">歡迎，{{ userName }}！請選擇建案並輸入關鍵字進行查詢。</p>
-          <v-select
-            v-model="selectedProject"
-            :items="authorizedProjects"
-            item-title="projectName"
-            item-value="projectId"
-            label="選擇要查詢的建案"
-            variant="outlined"
-            density="compact"
-            :disabled="isSearching"
-          ></v-select>
-          <v-text-field
-            v-model="searchText"
-            label="輸入戶別、姓名、電話或預約代碼查詢"
-            prepend-inner-icon="mdi-magnify"
-            variant="outlined"
-            density="compact"
-            clearable
-            :disabled="!selectedProject || isSearching"
-            :loading="isSearching"
-            class="mt-4"
-          ></v-text-field>
-        </v-card-text>
+        <v-form @submit.prevent="handleSearch">
+          <v-card-text>
+            <p class="mb-4">歡迎，{{ userName }}！請選擇建案並輸入關鍵字進行查詢。</p>
+            <v-select
+              v-model="selectedProject"
+              :items="authorizedProjects"
+              item-title="projectName"
+              item-value="projectId"
+              label="選擇要查詢的建案"
+              variant="outlined"
+              density="compact"
+              :disabled="isSearching"
+            ></v-select>
+            <v-text-field
+              v-model="searchText"
+              label="輸入戶別、姓名、電話或預約代碼"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              clearable
+              :disabled="!selectedProject || isSearching"
+              class="mt-4"
+            ></v-text-field>
+          </v-card-text>
+          <v-card-actions class="px-4 pb-4">
+            <v-spacer></v-spacer>
+            <v-btn
+              type="submit"
+              color="primary"
+              variant="elevated"
+              :loading="isSearching"
+              :disabled="!selectedProject"
+              size="large"
+              prepend-icon="mdi-magnify"
+            >
+              查詢
+            </v-btn>
+          </v-card-actions>
+        </v-form>
         <v-divider></v-divider>
 
-        <div v-if="searchText && searchResults.length === 0 && !isSearching" class="text-center pa-8 text-grey">
-          <p>找不到符合「{{ searchText }}」的預約紀錄。</p>
+        <div v-if="hasSearched && searchResults.length === 0 && !isSearching" class="text-center pa-8 text-grey">
+          <p>找不到符合「{{ lastSearchText }}」的預約紀錄。</p>
         </div>
 
         <v-list lines="three">
@@ -68,8 +83,8 @@
         </v-list>
       </div>
     </v-card>
-    
-    <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
+
+     <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
       <span>本服務由</span>
       <v-chip class="ml-2" href="https://airrick1985.wixsite.com/anxi" target="_blank" rel="noopener noreferrer" color="blue-grey" variant="tonal" size="small" label>
         <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
@@ -112,11 +127,12 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+    
+    </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted } from 'vue'; // ✓ 移除 watch
 import liff from '@line/liff';
 import { getLiffUserData, liffSearchAppointments } from '@/api';
 import { useDate } from 'vuetify';
@@ -134,7 +150,11 @@ const isSearching = ref(false);
 const searchResults = ref([]);
 const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
-let searchTimeout = null;
+
+// ✓ START: 新增 - 用於顯示查無結果的狀態
+const hasSearched = ref(false);
+const lastSearchText = ref('');
+// ✓ END
 
 onMounted(async () => {
   try {
@@ -170,30 +190,35 @@ onMounted(async () => {
   }
 });
 
-watch([searchText, selectedProject], () => {
-  clearTimeout(searchTimeout);
+// ✓ START: 修改 - 移除 watch，改為 handleSearch 方法
+const handleSearch = async () => {
   if (!searchText.value || !selectedProject.value) {
     searchResults.value = [];
+    hasSearched.value = true;
+    lastSearchText.value = searchText.value;
     return;
   }
   
   isSearching.value = true;
-  searchTimeout = setTimeout(async () => {
-    try {
-    const result = await liffSearchAppointments({
-        projectId: selectedProject.value,
-        searchText: searchText.value,
-      });
-      if (result.status === 'success') {
-        searchResults.value = result.data;
-      }
-    } catch (error) {
-      console.error('搜尋失敗:', error);
-    } finally {
-      isSearching.value = false;
+  hasSearched.value = true;
+  lastSearchText.value = searchText.value;
+  searchResults.value = []; // 先清空上次結果
+
+  try {
+    const result = await searchAppointments({
+      projectId: selectedProject.value,
+      searchText: searchText.value,
+    });
+    if (result.status === 'success') {
+      searchResults.value = result.data;
     }
-  }, 500); // 延遲 500 毫秒執行，避免使用者每打一個字就搜尋一次
-});
+  } catch (error) {
+    console.error('搜尋失敗:', error);
+  } finally {
+    isSearching.value = false;
+  }
+};
+
 
 const openDetailsDialog = (item) => {
   selectedAppointment.value = item;
