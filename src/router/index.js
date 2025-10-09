@@ -383,108 +383,88 @@ router.beforeEach(async (to, from, next) => {
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn;
 
-  if (to.path === '/') {
-    if (isLoggedIn) {
-      return next({ name: 'Home' }); // 已登入，去首頁
-    } else {
-      return next({ name: 'Login' }); // 未登入，去登入頁
+  // 1. 公開頁面快速通道：如果目標頁面不需要登入，立即放行。
+  // 這是最重要的修改，它會讓 /line-binding 和 /booking 等頁面直接通過。
+  if (!to.meta.requiresAuth) {
+    // 額外處理：如果使用者已登入但試圖訪問登入頁，將他導回首頁。
+    if (isLoggedIn && to.name === 'Login') {
+      return next({ name: 'Home' });
     }
-  }
-  
-
-  // 確保專案資料已載入
-  if (isLoggedIn && projectStore.projectsList.length === 0 && !projectStore.isLoading) {
-    await projectStore.fetchProjects();
+    // 其他所有公開頁面，一律放行。
+    return next();
   }
 
-  // 1. 檢查是否需要登入
-  if (to.meta.requiresAuth && !isLoggedIn) {
+  // --- 從這裡開始，所有頁面都確定是需要登入的 ---
+
+  // 2. 檢查登入狀態：如果頁面需要登入但使用者未登入，導向登入頁。
+  if (!isLoggedIn) {
     return next({ name: 'Login', query: { redirect: to.fullPath } });
   }
 
-  // 2. 如果已登入，防止回到登入頁
-  if (isLoggedIn && to.name === 'Login') {
-    return next({ name: 'Home' });
-  }
+  // --- 從這裡開始，使用者確定已登入 ---
   
-  //  START: 在這裡插入我們新的「角色權限」檢查邏輯
+  // 3. 確保專案資料已載入 (維持不變)
+  if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
+    await projectStore.fetchProjects();
+  }
+
+  // 4. 執行所有後續的、更詳細的權限檢查 (角色、系統權限等)
+  // (您所有既有的 requiredRoles, requiredAnySystem, requiredSystem 等檢查邏輯都放在這裡，維持不變)
   const requiredRoles = to.meta.requiredRoles;
   if (requiredRoles && Array.isArray(requiredRoles)) {
     const userRoles = userStore.currentUserRoles;
     const hasRequiredRole = requiredRoles.some(role => userRoles.includes(role));
-    if (hasRequiredRole) {
-      return next(); // 有權限，放行
-    } else {
+    if (!hasRequiredRole) {
       alert(`權限不足：您需要具備 [${requiredRoles.join(', ')}] 角色才能訪問此頁面。`);
-      return next({ name: 'Home' }); // 沒有權限，導回首頁
+      return next({ name: 'Home' });
     }
   }
-  //  END: 插入結束
-
-  // --- 以下是您所有既有的、強大的權限檢查邏輯，我們將它們保留下來 ---
 
   const requiredAny = to.meta.requiredAnySystem;
-    if (requiredAny && Array.isArray(requiredAny)) {
-      const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
-      if (hasAccess) {
-        return next();
-      } else {
-        alert(`權限不足：您沒有進入此系統的權限。`);
-        return next({ name: 'Home' });
-      }
-    }
-
-  if (isLoggedIn) {
-    const requiredPermission = to.meta.requiresPermission;
-    const requiredSystem = to.meta.requiredSystem;
-    const requiredProject = to.meta.requiredProjectForSystem;
-
-    if (requiredPermission) {
-      if (userStore[requiredPermission]) {
-        return next();
-      } else {
-        alert(`權限不足：您沒有執行此操作的權限。`);
-        return next({ name: 'Home' });
-      }
-    }
-    
-    if (requiredSystem) {
-        if (requiredProject) {
-            if (userStore.hasProjectPermission(requiredSystem, requiredProject)) {
-                return next();
-            } else {
-                alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
-                return next({ name: 'Home' });
-            }
-        }
-      
-      const projectId = to.params.projectName || to.params.projectId;
-      if (projectId) {
-        const fullProjectName = projectStore.idToNameMap[projectId];
-
-        if (!fullProjectName) {
-            alert(`錯誤：找不到建案 ID "${projectId}" 的對應資料。`);
-            return next({ name: 'Home' });
-        }
-
-        if (userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
-          return next();
-        } else {
-          alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
-          return next({ name: 'Home' });
-        }
-      } else {
-        if (userStore.hasPermission(requiredSystem)) {
-          return next();
-        } else {
-          alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
-          return next({ name: 'Home' });
-        }
-      }
+  if (requiredAny && Array.isArray(requiredAny)) {
+    const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
+    if (!hasAccess) {
+      alert(`權限不足：您沒有進入此系統的權限。`);
+      return next({ name: 'Home' });
     }
   }
 
-  // 如果以上所有權限檢查都通過，或該頁面不需任何權限，則放行
+  const requiredPermission = to.meta.requiresPermission;
+  if (requiredPermission && !userStore[requiredPermission]) {
+      alert(`權限不足：您沒有執行此操作的權限。`);
+      return next({ name: 'Home' });
+  }
+    
+  const requiredSystem = to.meta.requiredSystem;
+  if (requiredSystem) {
+      const requiredProject = to.meta.requiredProjectForSystem;
+      if (requiredProject) {
+          if (!userStore.hasProjectPermission(requiredSystem, requiredProject)) {
+              alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+              return next({ name: 'Home' });
+          }
+      } else {
+        const projectId = to.params.projectName || to.params.projectId;
+        if (projectId) {
+          const fullProjectName = projectStore.idToNameMap[projectId];
+          if (!fullProjectName) {
+              alert(`錯誤：找不到建案 ID "${projectId}" 的對應資料。`);
+              return next({ name: 'Home' });
+          }
+          if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
+            alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
+            return next({ name: 'Home' });
+          }
+        } else {
+          if (!userStore.hasPermission(requiredSystem)) {
+            alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+            return next({ name: 'Home' });
+          }
+        }
+      }
+  }
+
+  // 5. 如果所有檢查都通過，最終放行
   return next();
 });
 
