@@ -110,7 +110,7 @@ const lineUserId = ref('');
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: 'YOUR_LIFF_ID' });
+    await liff.init({ liffId: '2008257338-vZNMxJr0' });
 
     if (!liff.isLoggedIn()) {
       liff.login();
