@@ -6132,3 +6132,152 @@ exports.checkLineBindingStatus = onCall(async (request) => {
 });
 // ✓ END
 
+
+// ✓ START: 新增 - 發起 LINE 綁定驗證程序
+/**
+ * [LIFF綁定用] 發起 Email 驗證程序
+ * 產生一個一次性的 Token，並寄送驗證信給使用者。
+ * @param {string} phone - 使用者的手機號碼
+ * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
+ * @returns {Promise<object>} - 回傳成功訊息
+ */
+exports.initiateLineBindingVerification = onCall({
+    secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (request) => {
+    const { phone, lineId } = request.data;
+    const functionName = "initiateLineBindingVerification";
+
+    if (!phone || !lineId) {
+        throw new HttpsError("invalid-argument", "缺少手機號碼(phone)或 LINE ID(lineId)參數。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    try {
+        // 步驟 1: 查找使用者以取得 Email
+        const userDocRef = db.collection("users").doc(phone);
+        const userDoc = await userDocRef.get();
+        if (!userDoc.exists || !userDoc.data().email) {
+            throw new HttpsError("not-found", "找不到此手機號碼對應的使用者，或該用戶未設定 Email。");
+        }
+        const userData = userDoc.data();
+        const userEmail = userData.email;
+        const userName = userData.name || phone;
+
+        // 步驟 2: 產生一個安全、唯一的 Token，並設定 15 分鐘後過期
+        const token = crypto.randomBytes(32).toString('hex');
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 分鐘
+
+        // 步驟 3: 將 Token 和待綁定資訊存入新的 'lineBindingTokens' 集合
+        const tokenRef = db.collection("lineBindingTokens").doc(token);
+        await tokenRef.set({
+            phone: phone,
+            lineId: lineId,
+            status: 'pending',
+            createdAt: Timestamp.fromDate(now),
+            expiresAt: Timestamp.fromDate(expiresAt),
+        });
+
+        // 步驟 4: 準備並寄送 Email
+        const verificationUrl = `https://anxismart.com/#/verify-line-binding?token=${token}`;
+        const mailTransport = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+        });
+
+        const emailBodyHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2 style="color: #333;">【安熙智慧】LINE 帳號綁定驗證</h2>
+            <p>親愛的 ${userName} 您好：</p>
+            <p>我們收到了將您的 LINE 帳號綁定至手機號碼 ${phone} 的請求。</p>
+            <p>請點擊下方的按鈕以完成驗證與綁定。為保障安全，此連結將於 15 分鐘後失效。</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}" target="_blank" style="background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                完成綁定
+              </a>
+            </div>
+            <p>如果您未提出此請求，請忽略此郵件。</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p>
+          </div>
+        `;
+
+        await mailTransport.sendMail({
+            from: `"安熙智慧系統" <${process.env.SENDER_EMAIL}>`,
+            to: userEmail,
+            subject: '【安熙智慧】請完成您的 LINE 帳號綁定驗證',
+            html: emailBodyHtml,
+        });
+
+        console.log(`[${functionName}] 已成功寄送驗證信至 ${userEmail} (Phone: ${phone})`);
+        return { status: "success", message: "驗證信已寄出" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 發起驗證時發生錯誤:`, error);
+        if (error instanceof HttpsError) throw error;
+        throw new HttpsError("internal", "發起驗證程序時發生錯誤。");
+    }
+});
+// ✓ END
+
+// ✓ START: 新增 - 完成 LINE 綁定驗證
+/**
+ * [LIFF綁定用] 驗證 Token 並完成最終綁定
+ * @param {string} token - 從 Email 驗證連結中取得的一次性 Token
+ * @returns {Promise<object>} - 回傳成功或失敗訊息
+ */
+exports.finalizeLineBinding = onCall(async (request) => {
+    const { token } = request.data;
+    const functionName = "finalizeLineBinding";
+
+    if (!token) {
+        throw new HttpsError("invalid-argument", "缺少 Token 參數。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const tokenRef = db.collection("lineBindingTokens").doc(token);
+
+    try {
+        const tokenDoc = await tokenRef.get();
+
+        // 驗證 Token 是否存在
+        if (!tokenDoc.exists) {
+            throw new HttpsError("not-found", "驗證連結無效或已失效。");
+        }
+
+        const tokenData = tokenDoc.data();
+
+        // 驗證 Token 是否已過期
+        if (new Date() > tokenData.expiresAt.toDate()) {
+            await tokenRef.delete(); // 刪除過期的 Token
+            throw new HttpsError("deadline-exceeded", "驗證連結已過期，請重新操作。");
+        }
+
+        // 取得待綁定的資料
+        const { phone, lineId } = tokenData;
+
+        // 執行最終綁定
+        const userDocRef = db.collection("users").doc(phone);
+        await userDocRef.update({
+            lineId: lineId
+        });
+
+        // 銷毀 Token，確保只能使用一次
+        await tokenRef.delete();
+
+        const userName = (await userDocRef.get()).data().name || phone;
+        console.log(`[${functionName}] 驗證成功！已將 LINE ID [${lineId}] 綁定至用戶 [${userName}]`);
+        return { status: "success", message: "您的 LINE 帳號已成功綁定！" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 完成綁定時發生錯誤 (Token: ${token}):`, error);
+        // 如果 Token 已被使用 (刪除)，也會回報 not-found
+        if (error.code === 'not-found') {
+             throw new HttpsError("not-found", "驗證連結無效或已失效。");
+        }
+        if (error instanceof HttpsError) throw error;
+        throw new HttpsError("internal", "完成綁定時發生未預期的錯誤。");
+    }
+});
+// ✓ END

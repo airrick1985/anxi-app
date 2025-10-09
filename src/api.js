@@ -4745,3 +4745,39 @@ export const checkLineBindingStatus = async (payload) => {
   }
 };
 // ✓ END
+
+// ✓ START: 替換舊的 bindLineIdToUser，改為新的兩段式驗證 API
+
+/**
+ * [API] 請求後端發送 LINE 綁定驗證信
+ * @param {object} payload - 包含 { phone, lineId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const initiateLineBindingVerification = async (payload) => {
+  try {
+    const initiateFunction = httpsCallable(functions, 'initiateLineBindingVerification');
+    const result = await initiateFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in initiateLineBindingVerification:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 傳送驗證 Token 至後端，完成最終綁定
+ * @param {object} payload - 包含 { token }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const finalizeLineBinding = async (payload) => {
+  try {
+    const finalizeFunction = httpsCallable(functions, 'finalizeLineBinding');
+    const result = await finalizeFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in finalizeLineBinding:", error);
+    throw new Error(error.message);
+  }
+};
+
+// ✓ END

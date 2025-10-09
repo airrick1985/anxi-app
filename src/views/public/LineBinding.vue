@@ -18,17 +18,11 @@
               <p class="text-h6 mb-2">綁定狀態確認</p>
               <p>您的 LINE 帳號目前已綁定至用戶：</p>
               <p class="text-h5 font-weight-bold text-primary my-4">{{ foundUserName }}</p>
-              <v-btn
-                @click="pageStep = 1"
-                color="primary"
-                block
-                size="large"
-                variant="outlined"
-                class="mt-6"
-              >
+              <v-btn @click="pageStep = 1" color="primary" block size="large" variant="outlined" class="mt-6">
                 綁定其他手機號碼
               </v-btn>
             </div>
+
             <div v-else-if="pageStep === 1">
               <p class="text-subtitle-1 mb-4">請輸入您在系統中登記的手機號碼，以進行身分驗證。</p>
               <v-form ref="phoneForm" @submit.prevent="verifyPhoneNumber">
@@ -40,15 +34,7 @@
                   :rules="[v => !!v || '手機號碼為必填']"
                   autofocus
                 ></v-text-field>
-                <v-btn
-                  :loading="isVerifying"
-                  :disabled="isVerifying"
-                  color="primary"
-                  block
-                  size="large"
-                  class="mt-4"
-                  type="submit"
-                >
+                <v-btn :loading="isVerifying" :disabled="isVerifying" color="primary" block size="large" class="mt-4" type="submit">
                   驗證手機號碼
                 </v-btn>
               </v-form>
@@ -60,25 +46,21 @@
               <p class="text-h5 font-weight-bold text-primary my-4">{{ foundUserName }}</p>
               <p>請問這是您本人嗎？</p>
               <v-row class="mt-4">
+                <v-col><v-btn @click="resetProcess" block size="large" variant="outlined">這不是我</v-btn></v-col>
                 <v-col>
-                  <v-btn @click="resetProcess" block size="large" variant="outlined">這不是我</v-btn>
-                </v-col>
-                <v-col>
-                  <v-btn
-                    @click="confirmAndBind"
-                    :loading="isBinding"
-                    :disabled="isBinding"
-                    color="success"
-                    block
-                    size="large"
-                    variant="elevated"
-                  >
-                    是的，確認綁定
+                  <v-btn @click="initiateBinding" :loading="isBinding" :disabled="isBinding" color="success" block size="large" variant="elevated">
+                    是的，發送驗證信
                   </v-btn>
                 </v-col>
               </v-row>
             </div>
-
+            
+            <div v-else-if="pageStep === 4" class="text-center">
+              <v-icon size="80" color="info" class="mb-4">mdi-email-fast-outline</v-icon>
+              <p class="text-h5 font-weight-bold">請至您的信箱收信</p>
+              <p class="mt-2">一封驗證信已寄出，請點擊信中的連結以完成綁定。</p>
+              <p class="text-caption text-grey mt-4">此驗證連結將於 15 分鐘後失效。</p>
+            </div>
             <div v-else-if="pageStep === 3" class="text-center">
               <v-icon size="80" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
               <p class="text-h5 font-weight-bold">綁定成功！</p>
@@ -95,22 +77,14 @@
 
         <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
           <span>本服務由</span>
-          <v-chip
-            class="ml-2"
-            href="https://airrick1985.wixsite.com/anxi"
-            target="_blank"
-            rel="noopener noreferrer"
-            color="blue-grey"
-            variant="tonal"
-            size="small"
-            label
-          >
+          <v-chip class="ml-2" href="https://airrick1985.wixsite.com/anxi" target="_blank" rel="noopener noreferrer" color="blue-grey" variant="tonal" size="small" label>
             <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
             anxismart安熙智慧建案管理系統
           </v-chip>
           <span>提供技術支援</span>
         </div>
-        </v-col>
+        
+      </v-col>
     </v-row>
   </v-container>
 </template>
@@ -118,15 +92,14 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import liff from '@line/liff';
-// ✓ 匯入新的檢查函式
-import { verifyUserByPhone, bindLineIdToUser, checkLineBindingStatus } from '@/api'; 
+// ✓ 匯入新的 API 函式
+import { verifyUserByPhone, initiateLineBindingVerification, checkLineBindingStatus } from '@/api'; 
 
-// --- Component State ---
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isVerifying = ref(false);
 const isBinding = ref(false);
-const pageStep = ref(1); // ✓ 預設值仍為 1
+const pageStep = ref(1);
 const errorMessage = ref('');
 
 const phoneForm = ref(null);
@@ -134,11 +107,10 @@ const phoneNumber = ref('');
 const foundUserName = ref('');
 const lineUserId = ref('');
 
-// --- LIFF Initialization ---
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-vZNMxJr0' });
+    await liff.init({ liffId: 'YOUR_LIFF_ID' });
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -148,19 +120,15 @@ onMounted(async () => {
     const profile = await liff.getProfile();
     lineUserId.value = profile.userId;
 
-    // ✓ START: 新增 - 檢查綁定狀態
     loadingText.value = '正在檢查綁定狀態...';
     const statusResult = await checkLineBindingStatus({ lineId: lineUserId.value });
 
     if (statusResult.status === 'found') {
-      // 如果已綁定，更新姓名並顯示狀態頁
       foundUserName.value = statusResult.name;
-      pageStep.value = 0; // 顯示已綁定頁面
+      pageStep.value = 0;
     } else {
-      // 如果未綁定，則維持在輸入手機頁面
       pageStep.value = 1;
     }
-    // ✓ END
 
     isLoading.value = false;
 
@@ -171,7 +139,6 @@ onMounted(async () => {
   }
 });
 
-// --- Methods (與之前版本相同) ---
 const verifyPhoneNumber = async () => {
   const { valid } = await phoneForm.value.validate();
   if (!valid) return;
@@ -193,19 +160,22 @@ const verifyPhoneNumber = async () => {
   }
 };
 
-const confirmAndBind = async () => {
+// ✓ START: 修改 - 將 confirmAndBind 改名為 initiateBinding 並更新邏輯
+const initiateBinding = async () => {
   isBinding.value = true;
   errorMessage.value = '';
   try {
-    const result = await bindLineIdToUser({
+    // 現在呼叫發起驗證的 API
+    const result = await initiateLineBindingVerification({
       phone: phoneNumber.value,
       lineId: lineUserId.value,
     });
 
     if (result.status === 'success') {
-      pageStep.value = 3;
+      // 不再直接跳到成功頁，而是跳到「請檢查信箱」的頁面
+      pageStep.value = 4; 
     } else {
-      throw new Error(result.message || '綁定時發生未知錯誤');
+      throw new Error(result.message || '發送驗證信時發生未知錯誤');
     }
   } catch (error) {
     errorMessage.value = error.message;
@@ -214,6 +184,7 @@ const confirmAndBind = async () => {
     isBinding.value = false;
   }
 };
+// ✓ END
 
 const resetProcess = () => {
   pageStep.value = 1;

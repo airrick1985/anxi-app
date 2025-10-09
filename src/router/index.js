@@ -240,6 +240,16 @@ const routes = [
     }
   },
 
+   {
+    path: '/verify-line-binding',
+    name: 'VerifyLineBindingPage',
+    component: () => import('@/views/public/VerifyLineBinding.vue'),
+    meta: {
+      layout: PublicLayout
+    }
+  },
+
+
 {
         path: '/inspection-calendar/:projectId',
         name: 'InspectionCalendar',
