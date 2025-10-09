@@ -6086,3 +6086,49 @@ exports.bindLineIdToUser = onCall(async (request) => {
 });
 // ✓ END
 
+// ✓ START: 新增 - 檢查 LINE 綁定狀態
+/**
+ * [LIFF綁定用] 檢查指定的 LINE User ID 是否已綁定至任何用戶
+ * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
+ * @returns {Promise<object>} - 如果找到，回傳 { status: 'found', name: '使用者姓名' }；否則回傳 { status: 'not_found' }
+ */
+exports.checkLineBindingStatus = onCall(async (request) => {
+    const { lineId } = request.data;
+    const functionName = "checkLineBindingStatus";
+
+    if (!lineId) {
+        throw new HttpsError("invalid-argument", "缺少 LINE ID(lineId)參數。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const usersRef = db.collection("users");
+        
+        // 查詢 lineId 欄位完全相符的文件
+        const query = usersRef.where("lineId", "==", lineId).limit(1);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            // 如果找不到任何文件，代表此 LINE 帳號尚未綁定
+            console.log(`[${functionName}] LINE ID [${lineId}] 尚未綁定。`);
+            return { status: "not_found" };
+        }
+
+        // 如果找到了，回傳該使用者的姓名
+        const userDoc = snapshot.docs[0];
+        const userData = userDoc.data();
+        const userName = userData.name || userDoc.id; // 如果沒有姓名，則使用手機號碼作為備用
+
+        console.log(`[${functionName}] LINE ID [${lineId}] 已綁定至用戶 [${userName}]`);
+        return { status: "found", name: userName };
+
+    } catch (error) {
+        console.error(`[${functionName}] 檢查綁定狀態時發生錯誤 (LINE ID: ${lineId}):`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "檢查綁定狀態時發生未預期的錯誤。");
+    }
+});
+// ✓ END
+

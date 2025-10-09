@@ -13,6 +13,22 @@
               <p class="mt-4">{{ loadingText }}</p>
             </div>
 
+            <div v-else-if="pageStep === 0" class="text-center">
+              <v-icon size="80" color="primary" class="mb-4">mdi-account-check-outline</v-icon>
+              <p class="text-h6 mb-2">綁定狀態確認</p>
+              <p>您的 LINE 帳號目前已綁定至用戶：</p>
+              <p class="text-h5 font-weight-bold text-primary my-4">{{ foundUserName }}</p>
+              <v-btn
+                @click="pageStep = 1"
+                color="primary"
+                block
+                size="large"
+                variant="outlined"
+                class="mt-6"
+              >
+                綁定其他手機號碼
+              </v-btn>
+            </div>
             <div v-else-if="pageStep === 1">
               <p class="text-subtitle-1 mb-4">請輸入您在系統中登記的手機號碼，以進行身分驗證。</p>
               <v-form ref="phoneForm" @submit.prevent="verifyPhoneNumber">
@@ -76,7 +92,25 @@
 
           </v-card-text>
         </v-card>
-      </v-col>
+
+        <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
+          <span>本服務由</span>
+          <v-chip
+            class="ml-2"
+            href="https://airrick1985.wixsite.com/anxi"
+            target="_blank"
+            rel="noopener noreferrer"
+            color="blue-grey"
+            variant="tonal"
+            size="small"
+            label
+          >
+            <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+            anxismart安熙智慧建案管理系統
+          </v-chip>
+          <span>提供技術支援</span>
+        </div>
+        </v-col>
     </v-row>
   </v-container>
 </template>
@@ -84,15 +118,15 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import liff from '@line/liff';
-// ✓ 假設您的 API 函式都放在 @/api 中
-import { verifyUserByPhone, bindLineIdToUser } from '@/api'; 
+// ✓ 匯入新的檢查函式
+import { verifyUserByPhone, bindLineIdToUser, checkLineBindingStatus } from '@/api'; 
 
 // --- Component State ---
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isVerifying = ref(false);
 const isBinding = ref(false);
-const pageStep = ref(1); // 1: 輸入手機, 2: 確認姓名, 3: 成功
+const pageStep = ref(1); // ✓ 預設值仍為 1
 const errorMessage = ref('');
 
 const phoneForm = ref(null);
@@ -104,30 +138,40 @@ const lineUserId = ref('');
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    // ✓ 請將 'YOUR_LIFF_ID' 替換為您在第一步取得的 LIFF ID
     await liff.init({ liffId: '2008257338-vZNMxJr0' });
 
     if (!liff.isLoggedIn()) {
-      loadingText.value = '需要您的授權，將您導向登入頁面...';
-      liff.login(); // 如果使用者沒登入，導向 LINE 的登入/授權頁面
+      liff.login();
       return;
     }
 
-    loadingText.value = '正在獲取您的 LINE 帳號資訊...';
     const profile = await liff.getProfile();
     lineUserId.value = profile.userId;
 
-    // 一切就緒
+    // ✓ START: 新增 - 檢查綁定狀態
+    loadingText.value = '正在檢查綁定狀態...';
+    const statusResult = await checkLineBindingStatus({ lineId: lineUserId.value });
+
+    if (statusResult.status === 'found') {
+      // 如果已綁定，更新姓名並顯示狀態頁
+      foundUserName.value = statusResult.name;
+      pageStep.value = 0; // 顯示已綁定頁面
+    } else {
+      // 如果未綁定，則維持在輸入手機頁面
+      pageStep.value = 1;
+    }
+    // ✓ END
+
     isLoading.value = false;
 
   } catch (error) {
-    console.error('LIFF 初始化失敗:', error);
-    errorMessage.value = `與 LINE 的連接初始化失敗：${error.message}`;
+    console.error('LIFF 初始化或狀態檢查失敗:', error);
+    errorMessage.value = `初始化失敗：${error.message}`;
     isLoading.value = false;
   }
 });
 
-// --- Methods ---
+// --- Methods (與之前版本相同) ---
 const verifyPhoneNumber = async () => {
   const { valid } = await phoneForm.value.validate();
   if (!valid) return;
@@ -138,7 +182,7 @@ const verifyPhoneNumber = async () => {
     const result = await verifyUserByPhone({ phone: phoneNumber.value });
     if (result.status === 'success') {
       foundUserName.value = result.name;
-      pageStep.value = 2; // 進入確認步驟
+      pageStep.value = 2;
     } else {
       throw new Error(result.message || '發生未知錯誤');
     }
@@ -159,13 +203,12 @@ const confirmAndBind = async () => {
     });
 
     if (result.status === 'success') {
-      pageStep.value = 3; // 顯示成功畫面
+      pageStep.value = 3;
     } else {
       throw new Error(result.message || '綁定時發生未知錯誤');
     }
   } catch (error) {
     errorMessage.value = error.message;
-    // 如果出錯，退回確認步驟，讓使用者可以重試
     pageStep.value = 2; 
   } finally {
     isBinding.value = false;

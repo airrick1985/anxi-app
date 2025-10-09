@@ -4724,3 +4724,24 @@ export const bindLineIdToUser = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+
+// ✓ START: 新增 - 呼叫後端檢查 LINE 綁定狀態
+/**
+ * [API] 呼叫後端檢查指定的 LINE ID 是否已綁定
+ * @param {object} payload - 包含 { lineId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const checkLineBindingStatus = async (payload) => {
+  try {
+    const checkFunction = httpsCallable(functions, 'checkLineBindingStatus');
+    const result = await checkFunction(payload);
+    return result.data;
+  } catch (error)
+ {
+    console.error("API Error in checkLineBindingStatus:", error);
+    throw new Error(error.message);
+  }
+};
+// ✓ END
