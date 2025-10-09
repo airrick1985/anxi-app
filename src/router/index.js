@@ -24,13 +24,13 @@ const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 import HouseholdGrid from '@/views/HouseholdGrid.vue';
-const LineBinding = () => import('@/views/public/LineBinding.vue'); // ✓ 新增這一行 (假設您將檔案放在 views/public/ 中)
+
 
 
 
 
 const routes = [
-  { path: '/', redirect: '/home' },
+ // { path: '/', redirect: '/home' },
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } },
   {
@@ -234,7 +234,7 @@ const routes = [
     {
     path: '/line-binding', // 您可以自訂網址路徑
     name: 'LineBindingPage',
-    component: LineBinding, // 使用我們在第一步引入的元件
+    component: () => import('@/views/public/LineBinding.vue'),
     meta: {
       layout: PublicLayout // ✓ 指定使用公開頁面佈局，不需要登入
     }
@@ -364,7 +364,9 @@ const routes = [
       title: '車位銷控管理'
     }
   },
-  { path: '/:pathMatch(.*)*', redirect: '/home' }
+ // { path: '/:pathMatch(.*)*', redirect: '/home' }
+   { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
+
 ];
 
 
@@ -380,6 +382,15 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn;
+
+  if (to.path === '/') {
+    if (isLoggedIn) {
+      return next({ name: 'Home' }); // 已登入，去首頁
+    } else {
+      return next({ name: 'Login' }); // 未登入，去登入頁
+    }
+  }
+  
 
   // 確保專案資料已載入
   if (isLoggedIn && projectStore.projectsList.length === 0 && !projectStore.isLoading) {
