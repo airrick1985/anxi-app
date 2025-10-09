@@ -14,7 +14,7 @@
         <v-icon size="60" color="warning" class="mb-4">mdi-account-alert-outline</v-icon>
         <p class="text-h6">無法使用此功能</p>
         <p class="mt-2 text-grey-darken-1">您的 LINE 帳號尚未綁定系統手機，請先完成綁定後再使用。</p>
-        <v-btn color="primary" class="mt-6" href="/#/line-binding" variant="elevated">
+        <v-btn color="primary" class="mt-6" href="/?liff_path=line-binding" variant="elevated">
           前往綁定頁面
         </v-btn>
       </div>
