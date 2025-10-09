@@ -6357,9 +6357,9 @@ exports.getLiffUserData = onCall(async (request) => {
  * @param {string} searchText - 搜尋的關鍵字
  * @returns {Promise<object>} - 包含搜尋結果的陣列
  */
-exports.searchAppointments = onCall(async (request) => {
+exports.liffSearchAppointments = onCall(async (request) => {
     const { projectId, searchText } = request.data;
-    const functionName = "searchAppointments";
+  const functionName = "liffSearchAppointments"; // ✓ 建議也修改日誌中的名稱
 
     if (!projectId) {
         throw new HttpsError("invalid-argument", "缺少建案 ID (projectId)。");

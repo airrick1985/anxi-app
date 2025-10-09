@@ -4800,20 +4800,21 @@ export const getLiffUserData = async (payload) => {
   }
 };
 
+// ✓ START: 修改為新的函式名稱 liffSearchAppointments
 /**
- * [API] 根據建案ID和關鍵字搜尋預約紀錄
+ * [API] 根據建案ID和關鍵字搜尋預約紀錄 (LIFF查詢用)
  * @param {object} payload - 包含 { projectId, searchText }
  * @returns {Promise<object>} - 後端回傳的結果
  */
-export const searchAppointments = async (payload) => {
+export const liffSearchAppointments = async (payload) => {
   try {
-    const searchFunction = httpsCallable(functions, 'searchAppointments');
+    // ✓ 呼叫的後端函式名稱也要同步修改
+    const searchFunction = httpsCallable(functions, 'liffSearchAppointments');
     const result = await searchFunction(payload);
     return result.data;
   } catch (error) {
-    console.error("API Error in searchAppointments:", error);
+    console.error("API Error in liffSearchAppointments:", error);
     throw new Error(error.message);
   }
 };
-
 // ✓ END

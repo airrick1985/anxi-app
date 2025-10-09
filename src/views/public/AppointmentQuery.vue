@@ -118,7 +118,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import liff from '@line/liff';
-import { getLiffUserData, searchAppointments } from '@/api';
+import { getLiffUserData, liffSearchAppointments } from '@/api';
 import { useDate } from 'vuetify';
 
 const dateAdapter = useDate();
@@ -180,7 +180,7 @@ watch([searchText, selectedProject], () => {
   isSearching.value = true;
   searchTimeout = setTimeout(async () => {
     try {
-      const result = await searchAppointments({
+    const result = await liffSearchAppointments({
         projectId: selectedProject.value,
         searchText: searchText.value,
       });
