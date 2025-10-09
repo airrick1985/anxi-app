@@ -41,10 +41,16 @@ const toast = useToast();
 const isUpdating = ref(false);
 
 const layoutComponent = computed(() => {
-  const layoutLoader = route.meta.layout;
-  if (layoutLoader) {
-    return defineAsyncComponent(layoutLoader);
+  const layout = route.meta.layout;
+  if (layout) {
+    // 如果 layout 是一個函式 (代表它是 () => import(...) 的動態引入)，就用 defineAsyncComponent
+    if (typeof layout === 'function') {
+      return defineAsyncComponent(layout);
+    }
+    // 如果 layout 不是函式 (代表它是一個 import ... from ... 的靜態引入元件)，就直接使用它
+    return layout;
   }
+  // 如果路由沒有指定 layout，使用預設的 DefaultLayout (靜態引入)
   return DefaultLayout;
 });
 

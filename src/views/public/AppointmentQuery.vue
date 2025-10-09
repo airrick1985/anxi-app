@@ -65,12 +65,10 @@
                   <span class="text-h6">{{ item.unitId ? item.unitId.charAt(0) : '?' }}</span>
                 </v-avatar>
               </template>
-
               <v-list-item-title class="font-weight-bold d-flex align-center">
                 <span>{{ item.unitId }} - {{ item.bookerName }}</span>
                 <v-chip :color="getStatusColor(item.status)" size="x-small" label class="ml-auto">{{ item.status }}</v-chip>
               </v-list-item-title>
-
               <v-list-item-subtitle class="mt-2 text-body-2">
                 <v-row dense>
                   <v-col cols="12" sm="6" class="d-flex align-center">
@@ -99,7 +97,7 @@
       <span>提供技術支援</span>
     </div>
 
-    <v-dialog v-model="isDialogVisible" max-width="700px">
+    <v-dialog v-model="isDialogVisible" max-width="700px" scrollable>
       <v-card v-if="selectedAppointment">
         <v-toolbar color="primary" density="compact">
           <v-toolbar-title class="font-weight-bold d-flex align-center">
@@ -146,6 +144,40 @@
                 <v-chip :color="getStatusColor(selectedAppointment.status)" size="small" label>{{ selectedAppointment.status }}</v-chip>
               </v-list-item-subtitle>
             </v-list-item>
+
+            <v-list-subheader class="mt-2">戶別相關資訊</v-list-subheader>
+            <v-list-item prepend-icon="mdi-car" title="持有車位" :subtitle="selectedAppointment.parkingLots || '無'"></v-list-item>
+            <v-list-item prepend-icon="mdi-file-document-outline" title="驗屋文件">
+              <v-list-item-subtitle>
+                <v-btn v-if="selectedAppointment.inspectionDocsUrl" :href="selectedAppointment.inspectionDocsUrl" target="_blank" rel="noopener noreferrer" size="small" variant="tonal" color="indigo">
+                  <v-icon start>mdi-folder-google-drive</v-icon>
+                  開啟雲端資料夾
+                </v-btn>
+                <span v-else>無</span>
+              </v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item prepend-icon="mdi-file-chart-outline" title="已上傳報告">
+                <template v-if="!selectedAppointment.inspectionReportUrl || selectedAppointment.inspectionReportUrl.length === 0">
+                    <v-list-item-subtitle>無</v-list-item-subtitle>
+                </template>
+            </v-list-item>
+            <v-list-item 
+              v-for="(report, index) in selectedAppointment.inspectionReportUrl" 
+              :key="index"
+              :href="report.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="pl-14"
+            >
+              <template v-slot:prepend>
+                <v-icon color="red-darken-2">mdi-file-pdf-box</v-icon>
+              </template>
+              <v-list-item-title class="text-primary font-weight-medium">{{ report.name }}</v-list-item-title>
+            </v-list-item>
+            <v-list-item prepend-icon="mdi-comment-text-outline" title="戶別備註" v-if="selectedAppointment.remarks">
+                <v-list-item-subtitle style="white-space: pre-wrap;">{{ selectedAppointment.remarks }}</v-list-item-subtitle>
+            </v-list-item>
+
           </v-list>
         </v-card-text>
         <v-divider></v-divider>
@@ -159,13 +191,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'; // ✓ 移除 watch
+import { ref, onMounted } from 'vue';
 import liff from '@line/liff';
+// ✓ 注意：這裡的函式名稱，請確保與您 api.js 和 functions/index.js 中的最終版本一致
 import { getLiffUserData, liffSearchAppointments } from '@/api';
 import { useDate } from 'vuetify';
 
 const dateAdapter = useDate();
-
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isBound = ref(false);
@@ -177,16 +209,13 @@ const isSearching = ref(false);
 const searchResults = ref([]);
 const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
-
-// ✓ START: 新增 - 用於顯示查無結果的狀態
 const hasSearched = ref(false);
 const lastSearchText = ref('');
-// ✓ END
 
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-6N3jwqxA' }); // ✓ 請記得替換您的 LIFF ID
+    await liff.init({ liffId: '2008257338-6N3jwqxA' });
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -202,7 +231,6 @@ onMounted(async () => {
       isBound.value = true;
       userName.value = result.userName;
       authorizedProjects.value = result.projects;
-      // 如果只有一個建案權限，就自動選取
       if (result.projects.length === 1) {
         selectedProject.value = result.projects[0].projectId;
       }
@@ -217,7 +245,6 @@ onMounted(async () => {
   }
 });
 
-// ✓ START: 修改 - 移除 watch，改為 handleSearch 方法
 const handleSearch = async () => {
   if (!searchText.value || !selectedProject.value) {
     searchResults.value = [];
@@ -229,7 +256,7 @@ const handleSearch = async () => {
   isSearching.value = true;
   hasSearched.value = true;
   lastSearchText.value = searchText.value;
-  searchResults.value = []; // 先清空上次結果
+  searchResults.value = [];
 
   try {
     const result = await liffSearchAppointments({
@@ -246,7 +273,6 @@ const handleSearch = async () => {
   }
 };
 
-
 const openDetailsDialog = (item) => {
   selectedAppointment.value = item;
   isDialogVisible.value = true;
@@ -255,7 +281,6 @@ const openDetailsDialog = (item) => {
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   try {
-    // 後端回傳的是 ISO 格式字串，vuetify 的 date adapter 可以處理
     return dateAdapter.format(new Date(dateString), 'keyboardDate');
   } catch {
     return dateString;

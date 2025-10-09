@@ -6350,16 +6350,16 @@ exports.getLiffUserData = onCall(async (request) => {
 });
 // ✓ END
 
-// ✓ START: 新增 - LIFF 預約查詢功能
+// ✓ START: 修改 liffSearchAppointments 函式 (整合 households 資料)
 /**
- * [LIFF查詢用] 根據建案ID和關鍵字搜尋預約紀錄
+ * [LIFF查詢用] 根據建案ID和關鍵字搜尋預約紀錄，並整合戶別資料
  * @param {string} projectId - 要查詢的建案 ID
  * @param {string} searchText - 搜尋的關鍵字
  * @returns {Promise<object>} - 包含搜尋結果的陣列
  */
 exports.liffSearchAppointments = onCall(async (request) => {
     const { projectId, searchText } = request.data;
-  const functionName = "liffSearchAppointments"; // ✓ 建議也修改日誌中的名稱
+    const functionName = "liffSearchAppointments";
 
     if (!projectId) {
         throw new HttpsError("invalid-argument", "缺少建案 ID (projectId)。");
@@ -6383,7 +6383,7 @@ exports.liffSearchAppointments = onCall(async (request) => {
             'bookerName', 'bookerPhone', 'bookingCode', 'inspectionMethod', 'unitId'
         ];
 
-        const matchedAppointments = [];
+        let matchedAppointments = [];
         if (!lowerCaseSearchText) {
             // 如果搜尋文字是空的，不回傳任何資料
         } else {
@@ -6394,7 +6394,7 @@ exports.liffSearchAppointments = onCall(async (request) => {
                     const value = data[field];
                     if (value && typeof value === 'string' && value.toLowerCase().includes(lowerCaseSearchText)) {
                         isMatch = true;
-                        break; // 找到一個符合就不用再比了
+                        break; 
                     }
                 }
                 if (isMatch) {
@@ -6403,21 +6403,37 @@ exports.liffSearchAppointments = onCall(async (request) => {
             });
         }
         
-        // 步驟 3: 補上建案名稱
+        if (matchedAppointments.length === 0) {
+            return { status: "success", data: [] };
+        }
+
+        // ✓ 步驟 3: 補上戶別(households)資料
+        const householdIds = [...new Set(matchedAppointments.map(a => `${a.projectId}_${a.unitId}`))];
+        const householdsSnapshot = await db.collection('households').where(FieldPath.documentId(), 'in', householdIds).get();
+        const householdsMap = new Map();
+        householdsSnapshot.forEach(doc => {
+            householdsMap.set(doc.id, doc.data());
+        });
+
+        // 步驟 4: 補上建案名稱並組合最終結果
         const projectDoc = await db.collection('projects').doc(projectId).get();
         const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
         const results = matchedAppointments.map(appt => {
-            const processedAppt = { ...appt, projectName: projectName };
+            const householdKey = `${appt.projectId}_${appt.unitId}`;
+            const householdData = householdsMap.get(householdKey) || {};
             
+            // 將兩份資料合併
+            const combinedData = { ...householdData, ...appt, projectName: projectName };
+
             // 處理所有可能的日期欄位
             ['appointmentDate', 'createdAt', 'cancelledAt'].forEach(field => {
-                if (processedAppt[field] && typeof processedAppt[field].toDate === 'function') {
-                    processedAppt[field] = processedAppt[field].toDate().toISOString();
+                if (combinedData[field] && typeof combinedData[field].toDate === 'function') {
+                    combinedData[field] = combinedData[field].toDate().toISOString();
                 }
             });
             
-            return processedAppt;
+            return combinedData;
         });
 
         console.log(`[${functionName}] 在建案 [${projectName}] 中，根據關鍵字 [${searchText}] 找到了 ${results.length} 筆預約。`);
