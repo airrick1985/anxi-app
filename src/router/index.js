@@ -19,7 +19,7 @@ const MessageDetail = () => import('@/views/MessageDetail.vue');
 const UserManagement = () => import('@/views/UserManagement.vue');
 const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue');
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
-const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
+import DefaultLayout from '@/layouts/DefaultLayout.vue'; // <-- ✓ 修改為靜態引入
 const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
