@@ -249,6 +249,15 @@ const routes = [
     }
   },
 
+   {
+    path: '/appointment-query',
+    name: 'AppointmentQueryPage',
+    component: () => import('@/views/public/AppointmentQuery.vue'),
+    meta: {
+      layout: PublicLayout
+    }
+  },
+
 
 {
         path: '/inspection-calendar/:projectId',

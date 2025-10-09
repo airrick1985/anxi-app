@@ -6281,3 +6281,143 @@ exports.finalizeLineBinding = onCall(async (request) => {
     }
 });
 // ✓ END
+
+
+// ✓ START: 新增 - 獲取 LIFF 使用者資料與權限
+/**
+ * [LIFF查詢用] 獲取使用者資料與其可查詢的建案列表
+ * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
+ * @returns {Promise<object>} - 包含綁定狀態、使用者名稱及建案列表
+ */
+exports.getLiffUserData = onCall(async (request) => {
+    const { lineId } = request.data;
+    const functionName = "getLiffUserData";
+
+    if (!lineId) {
+        throw new HttpsError("invalid-argument", "缺少 LINE ID(lineId)參數。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        // 步驟 1: 透過 lineId 查找使用者
+        const usersRef = db.collection("users");
+        const userQuery = usersRef.where("lineId", "==", lineId).limit(1);
+        const userSnapshot = await userQuery.get();
+
+        if (userSnapshot.empty) {
+            console.log(`[${functionName}] LINE ID [${lineId}] 尚未綁定。`);
+            return { status: "not_bound" };
+        }
+
+        const userDoc = userSnapshot.docs[0];
+        const userData = userDoc.data();
+        const userKey = userDoc.id; // 使用者文件 ID (手機號碼)
+
+        // 步驟 2: 透過使用者 ID (手機) 查找權限
+        const permDocRef = db.collection("userPermissions").doc(userKey);
+        const permDoc = await permDocRef.get();
+
+        if (!permDoc.exists) {
+            console.log(`[${functionName}] 用戶 [${userKey}] 找不到權限文件。`);
+            return { status: "bound", userName: userData.name, projects: [] }; // 已綁定但無任何權限
+        }
+
+        // 步驟 3: 解析權限，篩選出可用的建案
+        const permissions = permDoc.data().permissions || {};
+        const authorizedProjects = [];
+        for (const projectId in permissions) {
+            const projectPerms = permissions[projectId];
+            // 檢查是否包含 '驗屋預約管理-檢視' 或 '驗屋預約管理-修改' 權限
+            if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
+                authorizedProjects.push({
+                    projectId: projectId,
+                    projectName: projectPerms.projectName,
+                });
+            }
+        }
+        
+        console.log(`[${functionName}] 用戶 [${userKey}] 擁有 ${authorizedProjects.length} 個建案的查詢權限。`);
+        return {
+            status: "bound",
+            userName: userData.name,
+            projects: authorizedProjects,
+        };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取 LIFF 用戶資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "處理用戶資料時發生錯誤。");
+    }
+});
+// ✓ END
+
+// ✓ START: 新增 - LIFF 預約查詢功能
+/**
+ * [LIFF查詢用] 根據建案ID和關鍵字搜尋預約紀錄
+ * @param {string} projectId - 要查詢的建案 ID
+ * @param {string} searchText - 搜尋的關鍵字
+ * @returns {Promise<object>} - 包含搜尋結果的陣列
+ */
+exports.searchAppointments = onCall(async (request) => {
+    const { projectId, searchText } = request.data;
+    const functionName = "searchAppointments";
+
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        // 步驟 1: 撈出該建案所有的預約紀錄
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { status: "success", data: [] };
+        }
+
+        // 步驟 2: 在記憶體中進行模糊比對
+        const lowerCaseSearchText = (searchText || "").toLowerCase().trim();
+        const searchFields = [
+            'agentIdNumber', 'agentName', 'agentPhone', 'bookerIdNumber', 
+            'bookerName', 'bookerPhone', 'bookingCode', 'inspectionMethod', 'unitId'
+        ];
+
+        const matchedAppointments = [];
+        if (!lowerCaseSearchText) {
+            // 如果搜尋文字是空的，不回傳任何資料
+        } else {
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                let isMatch = false;
+                for (const field of searchFields) {
+                    const value = data[field];
+                    if (value && typeof value === 'string' && value.toLowerCase().includes(lowerCaseSearchText)) {
+                        isMatch = true;
+                        break; // 找到一個符合就不用再比了
+                    }
+                }
+                if (isMatch) {
+                    matchedAppointments.push({ id: doc.id, ...data });
+                }
+            });
+        }
+        
+        // 步驟 3: 補上建案名稱
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+        const results = matchedAppointments.map(appt => ({
+            ...appt,
+            projectName: projectName // 在每筆結果中加入建案名稱
+        }));
+
+        console.log(`[${functionName}] 在建案 [${projectName}] 中，根據關鍵字 [${searchText}] 找到了 ${results.length} 筆預約。`);
+        return { status: "success", data: results };
+
+    } catch (error) {
+        console.error(`[${functionName}] 搜尋預約時發生錯誤:`, error);
+        throw new HttpsError("internal", "搜尋時發生錯誤。");
+    }
+});
+// ✓ END

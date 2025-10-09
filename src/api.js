@@ -4781,3 +4781,39 @@ export const finalizeLineBinding = async (payload) => {
 };
 
 // ✓ END
+
+// ✓ START: 新增 - LIFF 查詢功能所需的 API 函式
+
+/**
+ * [API] 獲取 LIFF 使用者資料與其可查詢的建案列表
+ * @param {object} payload - 包含 { lineId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getLiffUserData = async (payload) => {
+  try {
+    const getDataFunction = httpsCallable(functions, 'getLiffUserData');
+    const result = await getDataFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getLiffUserData:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 根據建案ID和關鍵字搜尋預約紀錄
+ * @param {object} payload - 包含 { projectId, searchText }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const searchAppointments = async (payload) => {
+  try {
+    const searchFunction = httpsCallable(functions, 'searchAppointments');
+    const result = await searchFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in searchAppointments:", error);
+    throw new Error(error.message);
+  }
+};
+
+// ✓ END
