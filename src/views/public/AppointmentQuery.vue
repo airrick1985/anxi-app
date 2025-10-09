@@ -46,15 +46,7 @@
           </v-card-text>
           <v-card-actions class="px-4 pb-4">
             <v-spacer></v-spacer>
-            <v-btn
-              type="submit"
-              color="primary"
-              variant="elevated"
-              :loading="isSearching"
-              :disabled="!selectedProject"
-              size="large"
-              prepend-icon="mdi-magnify"
-            >
+            <v-btn type="submit" color="primary" variant="elevated" :loading="isSearching" :disabled="!selectedProject" size="large" prepend-icon="mdi-magnify">
               查詢
             </v-btn>
           </v-card-actions>
@@ -65,26 +57,40 @@
           <p>找不到符合「{{ lastSearchText }}」的預約紀錄。</p>
         </div>
 
-        <v-list lines="three">
-          <v-list-item v-for="item in searchResults" :key="item.id" @click="openDetailsDialog(item)">
-            <v-list-item-title class="font-weight-bold">
-              {{ item.unitId }} - {{ item.bookerName }}
-            </v-list-item-title>
-            <v-list-item-subtitle class="mt-1">
-              <div><strong>預約項目：</strong>{{ item.bookingType }}</div>
-              <div><strong>預約日期：</strong>{{ formatDate(item.appointmentDate) }} {{ item.appointmentTimeSlot }}</div>
-              <div><strong>驗屋方式：</strong>{{ item.inspectionMethod }}</div>
-              <div v-if="item.inspectionMethod === '代驗公司'"><strong>代驗公司：</strong>{{ item.inspectionCompanyName || '未填寫' }}</div>
-            </v-list-item-subtitle>
-            <template v-slot:append>
-              <v-chip :color="getStatusColor(item.status)" size="small" label>{{ item.status }}</v-chip>
-            </template>
-          </v-list-item>
-        </v-list>
+        <v-list lines="two" class="py-0">
+          <template v-for="(item, index) in searchResults" :key="item.id">
+            <v-list-item @click="openDetailsDialog(item)">
+              <template v-slot:prepend>
+                <v-avatar color="primary" class="mr-4">
+                  <span class="text-h6">{{ item.unitId ? item.unitId.charAt(0) : '?' }}</span>
+                </v-avatar>
+              </template>
+
+              <v-list-item-title class="font-weight-bold d-flex align-center">
+                <span>{{ item.unitId }} - {{ item.bookerName }}</span>
+                <v-chip :color="getStatusColor(item.status)" size="x-small" label class="ml-auto">{{ item.status }}</v-chip>
+              </v-list-item-title>
+
+              <v-list-item-subtitle class="mt-2 text-body-2">
+                <v-row dense>
+                  <v-col cols="12" sm="6" class="d-flex align-center">
+                    <v-icon size="small" class="mr-2" color="grey-darken-1">mdi-calendar-check</v-icon>
+                    <span class="text-grey-darken-3">{{ formatDate(item.appointmentDate) }} {{ item.appointmentTimeSlot }}</span>
+                  </v-col>
+                  <v-col cols="12" sm="6" class="d-flex align-center">
+                    <v-icon size="small" class="mr-2" color="grey-darken-1">mdi-format-list-checks</v-icon>
+                    <span class="text-grey-darken-3">{{ item.bookingType }} / {{ item.inspectionMethod }}</span>
+                  </v-col>
+                </v-row>
+              </v-list-item-subtitle>
+            </v-list-item>
+            <v-divider v-if="index < searchResults.length - 1"></v-divider>
+          </template>
+          </v-list>
       </div>
     </v-card>
 
-     <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
+    <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
       <span>本服務由</span>
       <v-chip class="ml-2" href="https://airrick1985.wixsite.com/anxi" target="_blank" rel="noopener noreferrer" color="blue-grey" variant="tonal" size="small" label>
         <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
@@ -93,41 +99,62 @@
       <span>提供技術支援</span>
     </div>
 
-    <v-dialog v-model="isDialogVisible" max-width="600px">
+    <v-dialog v-model="isDialogVisible" max-width="700px">
       <v-card v-if="selectedAppointment">
-        <v-card-title class="text-h5 primary-bg text-white">
-          預約詳細資料
-        </v-card-title>
-        <v-list density="compact" class="py-2">
-            <v-list-item title="建案" :subtitle="selectedAppointment.projectName"></v-list-item>
-            <v-list-item title="戶別" :subtitle="selectedAppointment.unitId"></v-list-item>
-            <v-list-item title="門牌" :subtitle="selectedAppointment.address"></v-list-item>
-            <v-divider class="my-2"></v-divider>
-            <v-list-item title="預約人" :subtitle="selectedAppointment.bookerName"></v-list-item>
-            <v-list-item title="電話" :subtitle="selectedAppointment.bookerPhone"></v-list-item>
-            <v-list-item title="Email" :subtitle="selectedAppointment.bookerEmail"></v-list-item>
-            <v-list-item title="身分證" :subtitle="selectedAppointment.bookerIdNumber"></v-list-item>
-            <v-divider class="my-2"></v-divider>
-            <v-list-item title="預約項目" :subtitle="selectedAppointment.bookingType"></v-list-item>
-            <v-list-item title="預約日期" :subtitle="formatDate(selectedAppointment.appointmentDate)"></v-list-item>
-            <v-list-item title="預約時段" :subtitle="selectedAppointment.appointmentTimeSlot"></v-list-item>
-            <v-list-item title="預約代碼" :subtitle="selectedAppointment.bookingCode"></v-list-item>
-            <v-divider class="my-2"></v-divider>
-            <v-list-item title="驗屋方式" :subtitle="selectedAppointment.inspectionMethod"></v-list-item>
-            <v-list-item v-if="selectedAppointment.inspectionMethod === '代驗公司'" title="代驗公司" :subtitle="selectedAppointment.inspectionCompanyName || '未填寫'"></v-list-item>
-            <v-list-item title="狀態" :subtitle="selectedAppointment.status">
-                <template v-slot:subtitle="{ subtitle }">
-                    <v-chip :color="getStatusColor(subtitle)" size="x-small" label>{{ subtitle }}</v-chip>
-                </template>
-            </v-list-item>
-        </v-list>
-        <v-card-actions>
+        <v-toolbar color="primary" density="compact">
+          <v-toolbar-title class="font-weight-bold d-flex align-center">
+            <v-icon start>mdi-text-box-search-outline</v-icon>
+            <span>預約詳細資料</span>
+          </v-toolbar-title>
           <v-spacer></v-spacer>
-          <v-btn color="primary" variant="text" @click="isDialogVisible = false">關閉</v-btn>
+          <v-btn icon="mdi-close" @click="isDialogVisible = false"></v-btn>
+        </v-toolbar>
+        
+        <v-card-text class="pt-4">
+          <v-list lines="two" density="compact">
+            <v-list-subheader>基本資料</v-list-subheader>
+            <v-list-item prepend-icon="mdi-domain" title="建案" :subtitle="selectedAppointment.projectName"></v-list-item>
+            <v-list-item prepend-icon="mdi-home-outline" title="戶別" :subtitle="selectedAppointment.unitId"></v-list-item>
+            <v-list-item prepend-icon="mdi-map-marker-outline" title="門牌" :subtitle="selectedAppointment.address"></v-list-item>
+            
+            <v-list-subheader class="mt-2">預約人資訊</v-list-subheader>
+            <v-list-item prepend-icon="mdi-account-outline" title="預約人" :subtitle="selectedAppointment.bookerName"></v-list-item>
+            <v-list-item prepend-icon="mdi-phone-outline" title="電話">
+              <v-list-item-subtitle>
+                <a :href="`tel:${selectedAppointment.bookerPhone}`" class="text-decoration-none text-primary">{{ selectedAppointment.bookerPhone }}</a>
+              </v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item prepend-icon="mdi-email-outline" title="Email">
+              <v-list-item-subtitle>
+                <a :href="`mailto:${selectedAppointment.bookerEmail}`" class="text-decoration-none text-primary">{{ selectedAppointment.bookerEmail }}</a>
+              </v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item prepend-icon="mdi-card-account-details-outline" title="身分證" :subtitle="selectedAppointment.bookerIdNumber"></v-list-item>
+
+            <v-list-subheader class="mt-2">預約項目詳情</v-list-subheader>
+            <v-list-item prepend-icon="mdi-pound" title="預約代碼">
+              <v-list-item-subtitle>
+                <v-chip color="red" size="small" label variant="tonal">{{ selectedAppointment.bookingCode }}</v-chip>
+              </v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item prepend-icon="mdi-format-list-checks" title="預約項目" :subtitle="selectedAppointment.bookingType"></v-list-item>
+            <v-list-item prepend-icon="mdi-calendar-clock" title="預約時程" :subtitle="formatDate(selectedAppointment.appointmentDate) + ' ' + selectedAppointment.appointmentTimeSlot"></v-list-item>
+            <v-list-item prepend-icon="mdi-account-search-outline" title="驗屋方式" :subtitle="selectedAppointment.inspectionMethod"></v-list-item>
+            <v-list-item v-if="selectedAppointment.inspectionMethod === '代驗公司'" prepend-icon="mdi-office-building-outline" title="代驗公司" :subtitle="selectedAppointment.inspectionCompanyName || '未填寫'"></v-list-item>
+            <v-list-item prepend-icon="mdi-list-status" title="狀態">
+              <v-list-item-subtitle>
+                <v-chip :color="getStatusColor(selectedAppointment.status)" size="small" label>{{ selectedAppointment.status }}</v-chip>
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="bg-grey-lighten-5 pa-3">
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="tonal" @click="isDialogVisible = false">關閉</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-    
     </v-container>
 </template>
 
