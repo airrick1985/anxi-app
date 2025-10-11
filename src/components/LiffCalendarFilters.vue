@@ -71,13 +71,16 @@
 </template>
 
 <script setup>
-import { defineModel, defineProps, ref, onMounted, defineEmits } from 'vue';
+import { defineModel, defineProps, ref } from 'vue';
+
+// ✓ 修改：移除 onMounted 和 defineEmits，因為不再需要 'options-initialized' 事件
 
 // 使用 defineModel 來建立與父元件的雙向綁定
 const selectedStatuses = defineModel('selectedStatuses', { default: [] });
 const selectedTypes = defineModel('selectedTypes', { default: [] });
 const selectedDisplayFields = defineModel('selectedDisplayFields', { default: [] });
 
+// props 和 typeOptions 保持不變
 const props = defineProps({
   displayFieldOptions: {
     type: Array,
@@ -85,18 +88,7 @@ const props = defineProps({
   }
 });
 
-const statusOptions = ref(['預約中', '已完成', '取消']);
 const typeOptions = ref(['初驗', '複驗', '交屋']);
-
-const emit = defineEmits(['update:selectedStatuses', 'update:selectedTypes', 'update:selectedDisplayFields', 'options-initialized']);
-
-onMounted(() => {
-  emit('options-initialized', {
-    statuses: statusOptions.value,
-    types: typeOptions.value,
-    displayFields: props.displayFieldOptions.map(opt => opt.key)
-  });
-});
 </script>
 
 <style scoped>
@@ -104,6 +96,6 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 0; /* 增加一點垂直間距，避免開關太擁擠 */
+  padding: 2px 0;
 }
 </style>

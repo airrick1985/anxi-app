@@ -5697,11 +5697,17 @@ exports.fetchManageableUsersWithDetails = onCall(async (request) => {
     });
 
     // 5. 將過濾後的結果整理成前端需要的格式
-    const result = filteredUsers.map(user => ({
-      phone: user.phone,
-      name: user.name || 'N/A',
-      roles: user.roles || []
-    }));
+   const result = filteredUsers.map(user => {
+      // ✓【修改】使用展開運算符回傳 user 物件中的所有欄位
+      // 這樣一來，未來在 Firestore 的 users 文件中新增任何欄位，
+      // 都會自動被包含在 API 的回傳結果中，無需再修改此處程式碼。
+      return {
+        ...user, // 將 user 物件所有屬性展開
+        phone: user.phone, // 確保 phone 欄位一定存在 (因為它是 ID)
+        name: user.name || 'N/A', // 保留預設值處理
+        roles: user.roles || []  // 保留預設值處理
+      };
+    });
 
     // 依姓名排序
     result.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));

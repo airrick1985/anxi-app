@@ -43,7 +43,7 @@
               {{ errorMessage }}
             </v-alert>
 
-            <div class="d-none d-md-block mt-4">
+ <div class="d-none d-md-block mt-4">
               <v-data-table
                 :headers="tableHeaders"
                 :items="filteredUsers"
@@ -55,6 +55,11 @@
                 items-per-page-text="每頁筆數："
                 :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
               >
+                <template v-slot:item.lineId="{ item }">
+                  <v-chip :color="item.lineId ? 'green' : 'grey'" small label>
+                    {{ item.lineId ? '已綁定' : '未綁定' }}
+                  </v-chip>
+                </template>
                 <template v-if="canViewAndEditRoles" v-slot:item.roles="{ item }">
                   <v-combobox
                     :model-value="item.roles"
@@ -89,50 +94,41 @@
               </div>
               <div v-else>
                 <v-card
-                  v-for="item in filteredUsers"
-                  :key="item.phone"
-                  class="mb-3"
-                  variant="outlined"
-                >
-                  <v-card-title class="text-h6 pb-0">{{ item.name }}</v-card-title>
-                  <v-card-subtitle>{{ item.phone }}</v-card-subtitle>
+                    v-for="item in filteredUsers"
+                    :key="item.phone"
+                    class="mb-3"
+                    variant="outlined"
+                  >
+                    <v-card-title class="text-h6 pb-0">{{ item.name }}</v-card-title>
+                    
+                    <v-card-text class="pt-2 pb-2">
+                      <div v-for="field in displayFields" :key="field.key" class="mb-1">
+                        <strong>{{ field.label }}: </strong>
 
-                  <v-card-text v-if="canViewAndEditRoles" class="pt-2">
-                    <v-combobox
-                      :model-value="item.roles"
-                      @update:model-value="newRoles => handleRolesChange(item, newRoles)"
-                      :items="availableRolesForAssignment"
-                      multiple
-                      chips
-                      closable-chips
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      placeholder="點此新增角色"
-                      :loading="item.rolesLoading"
-                    >
-                      <template v-slot:selection="{ item: chipItem, index }">
-                        <v-chip :key="index" closable @click:close="removeRole(item, chipItem.title)">
-                          {{ chipItem.title }}
-                        </v-chip>
-                      </template>
-                    </v-combobox>
-                  </v-card-text>
-
-                  <v-card-actions>
+                        <template v-if="field.type === 'chip'">
+                          <v-chip :color="item[field.key] ? field.options.trueColor : field.options.falseColor" small label class="ml-2">
+                            {{ item[field.key] ? field.options.trueText : field.options.falseText }}
+                          </v-chip>
+                        </template>
+                        <template v-else>
+                          <span class="ml-2">{{ item[field.key] || 'N/A' }}</span>
+                        </template>
+                      </div>
+                    </v-card-text>
+                    <v-card-actions>
                     <v-spacer></v-spacer>
                     <v-btn color="primary" variant="tonal" @click="openEditDialog(item.phone)">
-                      編輯權限
+                      編輯
                     </v-btn>
                   </v-card-actions>
-                </v-card>
+                    </v-card>
 
                 <div v-if="filteredUsers.length === 0" class="text-center text-grey py-10">
                   <p>找不到符合條件的人員</p>
                 </div>
               </div>
             </div>
-            </v-card-text>
+          </v-card-text>
         </v-window-item>
 
         <v-window-item v-if="isSuperAdmin" value="roles">
@@ -545,6 +541,8 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
+
+
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -734,18 +732,27 @@ const availableRolesForAssignment = computed(() => {
   return Array.from(grantableSet);
 });
 
+// ✓【新增】定義一個欄位顯示設定檔
+// 未來新增欄位，只需要修改這個陣列即可
+const displayFields = ref([
+  { key: 'phone', label: '手機號碼' },
+  { key: 'lineId', label: 'LINE綁定', type: 'chip', options: { trueColor: 'green', falseColor: 'grey', trueText: '已綁定', falseText: '未綁定' } },
+  // 未來若要新增「部門」欄位，只需在此處加上一行：
+  // { key: 'department', label: '部門' }
+]);
+
 const tableHeaders = computed(() => {
   const headers = [
     { title: '姓名', align: 'start', key: 'name', width: '20%' },
-    { title: '手機號碼', key: 'phone', width: '25%' },
+    { title: '手機號碼', key: 'phone', width: '20%' },
+    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '15%' },
   ];
   if (canViewAndEditRoles.value) {
-    headers.push({ title: '角色', key: 'roles', sortable: false, width: '40%' });
+    headers.push({ title: '角色', key: 'roles', sortable: false, width: '30%' });
   }
   headers.push({ title: '操作', key: 'actions', sortable: false, align: 'center', width: '15%' });
   return headers;
 });
-
 // 【新】計算當前管理員合併後的欄位權限
 const currentUserFieldPermissions = computed(() => {
     if (isSuperAdmin.value) {

@@ -97,23 +97,71 @@
       <span>提供技術支援</span>
     </div>
 
-    <AppointmentDetailsDialog
-      v-model="isDialogVisible"
-      :appointment="selectedAppointment"
-    />
+   <AppointmentDetailsDialog
+    v-model="isDialogVisible"
+    :appointment="selectedAppointment"
+    :can-edit="canEdit"
+    :booking-options="bookingOptions"
+    @save="handleSaveAppointment"
+    @cancel-appointment="promptCancelBooking"
+    @update-inspectors="handleUpdateInspectors"
+  />
+
+    <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
+      <v-card v-if="eventToCancel">
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          <span>確認取消預約</span>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="py-4">
+          <p class="mb-4">您確定要取消以下這筆預約紀錄嗎？</p>
+          <v-list density="compact" class="bg-red-lighten-5 rounded">
+            <v-list-item :title="`${eventToCancel.unitId} (${eventToCancel.bookerName})`" prepend-icon="mdi-home-account">
+              <template v-slot:subtitle>
+                <div class="font-weight-medium">{{ eventToCancel.bookingType }}</div>
+              </template>
+            </v-list-item>
+          </v-list>
+          <div class="text-red-darken-2 font-weight-bold mt-4">此操作無法復原！</div>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="isCancelConfirmDialogVisible = false">返回</v-btn>
+          <v-btn color="red-darken-1" variant="flat" :loading="isCancelling" @click="handleConfirmCancelBooking">確定取消</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="snackbar.visible" :timeout="3000" :color="snackbar.color" location="top">
+      {{ snackbar.text }}
+    </v-snackbar>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch, reactive } from 'vue';
 import liff from '@line/liff';
-import { getLiffUserData, liffSearchAppointments } from '@/api';
+// ✓ 新增：引入所有需要的 API
+import { 
+  getLiffUserData, 
+  liffSearchAppointments, 
+  fetchBookingOptions, 
+  updateAppointment, 
+  cancelAppointment,
+  updateAppointmentInspectors 
+} from '@/api';
 import { useDate } from 'vuetify';
-// ✓ 這裡的 import 保持不變，因為我們需要引入元件
+// ✓ 新增：引入 userStore
+import { useUserStore } from '@/store/user';
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 
-
 const dateAdapter = useDate();
+// ✓ 新增：建立 userStore 實例
+const userStore = useUserStore();
+
+// ... (大部分 ref 狀態保持不變) ...
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isBound = ref(false);
@@ -127,6 +175,28 @@ const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
 const hasSearched = ref(false);
 const lastSearchText = ref('');
+
+// ✓ 新增：編輯功能所需的狀態
+const bookingOptions = ref({
+  inspectionMethods: [],
+  inspectionStaff: [],
+  buildingsAndUnits: {}
+});
+const isCancelConfirmDialogVisible = ref(false);
+const eventToCancel = ref(null);
+const isCancelling = ref(false);
+const snackbar = reactive({
+  visible: false,
+  text: '',
+  color: 'success',
+});
+
+// ✓ 新增：權限判斷
+const canEdit = computed(() => {
+  const projectName = authorizedProjects.value.find(p => p.projectId === selectedProject.value)?.projectName;
+  if (!projectName) return false;
+  return userStore.hasProjectPermission('驗屋預約管理-修改', projectName);
+});
 
 onMounted(async () => {
   try {
@@ -146,6 +216,9 @@ onMounted(async () => {
     if (result.status === 'bound') {
       isBound.value = true;
       userName.value = result.userName;
+      // ✓ 新增：在取得使用者資料後，也從 userStore 讀取詳細權限
+      await userStore.fetchUserByLineId(profile.userId);
+
       authorizedProjects.value = result.projects;
       if (result.projects.length === 1) {
         selectedProject.value = result.projects[0].projectId;
@@ -160,6 +233,17 @@ onMounted(async () => {
     loadingText.value = `發生錯誤: ${error.message}`;
   }
 });
+
+// ✓ 新增：監聽 selectedProject，當建案改變時，重新獲取 bookingOptions
+watch(selectedProject, async (newProjectId) => {
+  if (newProjectId) {
+    try {
+      bookingOptions.value = await fetchBookingOptions(newProjectId);
+    } catch(err) {
+      showSnackbar(`讀取編輯選項失敗: ${err.message}`, 'error');
+    }
+  }
+}, { immediate: true });
 
 const handleSearch = async () => {
   if (!searchText.value || !selectedProject.value) {
@@ -193,6 +277,77 @@ const openDetailsDialog = (item) => {
   selectedAppointment.value = item;
   isDialogVisible.value = true;
 };
+
+// ✓ 新增：顯示提示訊息的輔助函式
+const showSnackbar = (text, color = 'success') => {
+  snackbar.text = text;
+  snackbar.color = color;
+  snackbar.visible = true;
+};
+
+async function handleUpdateInspectors(payload) {
+  const { appointmentId, inspectors } = payload;
+  try {
+    // 呼叫 API 更新後端 (不變)
+    await updateAppointmentInspectors(appointmentId, inspectors);
+
+    const index = searchResults.value.findIndex(appt => appt.id === appointmentId);
+    if (index !== -1) {
+      const updatedAppointment = {
+        ...searchResults.value[index],
+        inspectors: inspectors.join(',')
+      };
+
+      // ✅ 【核心修正】同樣使用 .splice() 來更新搜尋結果陣列
+      searchResults.value.splice(index, 1, updatedAppointment);
+    }
+    
+    // 更新彈出視窗內的資料 (不變)
+    if (selectedAppointment.value && selectedAppointment.value.id === appointmentId) {
+      selectedAppointment.value.inspectors = inspectors.join(',');
+    }
+    showSnackbar('驗屋人員已更新', 'success');
+  } catch (err) {
+    showSnackbar(`更新驗屋人員失敗: ${err.message}`, 'error');
+  }
+}
+
+// ✓ 新增：處理儲存的函式
+async function handleSaveAppointment(payload) {
+  try {
+    const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;
+    await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
+    showSnackbar('儲存成功！', 'success');
+    isDialogVisible.value = false;
+    // 重新執行一次搜尋以更新列表
+    await handleSearch(); 
+  } catch (err) {
+    showSnackbar(`儲存失敗: ${err.message}`, 'error');
+  }
+}
+
+// ✓ 新增：處理取消預約的函式
+function promptCancelBooking(event) {
+  eventToCancel.value = event;
+  isCancelConfirmDialogVisible.value = true;
+}
+
+async function handleConfirmCancelBooking() {
+  if (!eventToCancel.value) return;
+  isCancelling.value = true;
+  try {
+    const { id, projectId, unitId, bookingType } = eventToCancel.value;
+    await cancelAppointment(id, projectId, unitId, bookingType);
+    showSnackbar('預約已成功取消', 'success');
+    isCancelConfirmDialogVisible.value = false;
+    isDialogVisible.value = false;
+    await handleSearch();
+  } catch (err) {
+    showSnackbar(`取消失敗: ${err.message}`, 'error');
+  } finally {
+    isCancelling.value = false;
+  }
+}
 
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
