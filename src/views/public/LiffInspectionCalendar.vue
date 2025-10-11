@@ -125,7 +125,7 @@
                 <div
                   ref="calendarContentRef"
                   class="calendar-content"
-                  style="max-height: 150vh; overflow-y: auto; background-color: white;"
+                  style="background-color: white;"
                 >
                   <div v-if="isFetchingDayData" class="text-center pa-10">
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
