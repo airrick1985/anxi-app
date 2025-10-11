@@ -4818,3 +4818,22 @@ export const liffSearchAppointments = async (payload) => {
   }
 };
 // ✓ END
+
+
+// ✓ START: 新增 - LIFF 驗屋時間表專用函式
+/**
+ * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
+ * @param {object} payload - 包含 { projectId, date } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getLiffCalendarDataForDay = async (payload) => {
+  try {
+    const getDataFunction = httpsCallable(functions, 'getLiffCalendarDataForDay');
+    const result = await getDataFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getLiffCalendarDataForDay:", error);
+    throw new Error(error.message);
+  }
+};
+// ✓ END

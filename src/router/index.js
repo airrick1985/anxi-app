@@ -257,7 +257,15 @@ const routes = [
       layout: PublicLayout
     }
   },
-
+  
+{
+    path: '/liffinspection-calendar',
+    name: 'LiffInspectionCalendar',
+    component: () => import('@/views/public/LiffInspectionCalendar.vue'),
+    meta: {
+     layout: PublicLayout
+    }
+  },
 
 {
         path: '/inspection-calendar/:projectId',

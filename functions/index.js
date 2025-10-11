@@ -6445,3 +6445,81 @@ exports.liffSearchAppointments = onCall(async (request) => {
     }
 });
 // ✓ END
+
+// ✓ START: 新增 - LIFF 驗屋時間表專用函式
+/**
+ * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
+ * @param {string} projectId - 要查詢的建案 ID
+ * @param {string} date - 'YYYY-MM-DD' 格式的日期字串
+ * @returns {Promise<object>} - 包含該日所有預約的陣列
+ */
+exports.getLiffCalendarDataForDay = onCall(async (request) => {
+    const { projectId, date } = request.data;
+    const functionName = "getLiffCalendarDataForDay";
+
+    if (!projectId || !date) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId) 或日期 (date)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        // 步驟 1: 設定查詢的日期範圍 (當天的 00:00:00 到 23:59:59)
+        const startOfDay = new Date(`${date}T00:00:00+08:00`);
+        const endOfDay = new Date(`${date}T23:59:59+08:00`);
+
+        // 步驟 2: 撈出該日所有的預約紀錄
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef
+            .where("projectId", "==", projectId)
+            .where("appointmentDate", ">=", startOfDay)
+            .where("appointmentDate", "<=", endOfDay);
+            
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { status: "success", data: [] };
+        }
+
+        const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // 步驟 3: 補上戶別(households)資料
+        const householdIds = [...new Set(appointments.map(a => `${a.projectId}_${a.unitId}`))];
+        if (householdIds.length === 0) {
+             return { status: "success", data: [] }; // 如果沒有戶別ID，直接回傳空陣列
+        }
+
+        const householdsSnapshot = await db.collection('households').where(FieldPath.documentId(), 'in', householdIds).get();
+        const householdsMap = new Map();
+        householdsSnapshot.forEach(doc => {
+            householdsMap.set(doc.id, doc.data());
+        });
+
+        // 步驟 4: 補上建案名稱並組合最終結果
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+        const results = appointments.map(appt => {
+            const householdKey = `${appt.projectId}_${appt.unitId}`;
+            const householdData = householdsMap.get(householdKey) || {};
+            
+            const combinedData = { ...householdData, ...appt, projectName: projectName };
+
+            // 將所有日期欄位轉換為 ISO 字串
+            ['appointmentDate', 'createdAt', 'cancelledAt', 'appropriationDate'].forEach(field => {
+                if (combinedData[field] && typeof combinedData[field].toDate === 'function') {
+                    combinedData[field] = combinedData[field].toDate().toISOString();
+                }
+            });
+            
+            return combinedData;
+        });
+
+        console.log(`[${functionName}] 為建案 [${projectName}] 的日期 [${date}] 找到了 ${results.length} 筆預約。`);
+        return { status: "success", data: results };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取 LIFF 日曆資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取日曆資料時發生錯誤。");
+    }
+});
+// ✓ END
