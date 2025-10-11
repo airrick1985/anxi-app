@@ -97,105 +97,21 @@
       <span>提供技術支援</span>
     </div>
 
-    <v-dialog v-model="isDialogVisible" max-width="700px" scrollable>
-      <v-card v-if="selectedAppointment">
-        <v-toolbar color="primary" density="compact">
-          <v-toolbar-title class="font-weight-bold d-flex align-center">
-            <v-icon start>mdi-text-box-search-outline</v-icon>
-            <span>預約詳細資料</span>
-          </v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" @click="isDialogVisible = false"></v-btn>
-        </v-toolbar>
-        
-        <v-card-text class="pt-4">
-          <v-list lines="two" density="compact">
-            <v-list-subheader>基本資料</v-list-subheader>
-            <v-list-item prepend-icon="mdi-domain" title="建案" :subtitle="selectedAppointment.projectName"></v-list-item>
-            <v-list-item prepend-icon="mdi-home-outline" title="戶別" :subtitle="selectedAppointment.unitId"></v-list-item>
-            <v-list-item prepend-icon="mdi-map-marker-outline" title="門牌" :subtitle="selectedAppointment.address"></v-list-item>
-            
-            <v-list-subheader class="mt-2">預約人資訊</v-list-subheader>
-            <v-list-item prepend-icon="mdi-account-outline" title="預約人" :subtitle="selectedAppointment.bookerName"></v-list-item>
-            <v-list-item prepend-icon="mdi-phone-outline" title="電話">
-              <v-list-item-subtitle>
-                <a :href="`tel:${selectedAppointment.bookerPhone}`" class="text-decoration-none text-primary">{{ selectedAppointment.bookerPhone }}</a>
-              </v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-email-outline" title="Email">
-              <v-list-item-subtitle>
-                <a :href="`mailto:${selectedAppointment.bookerEmail}`" class="text-decoration-none text-primary">{{ selectedAppointment.bookerEmail }}</a>
-              </v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-card-account-details-outline" title="身分證" :subtitle="selectedAppointment.bookerIdNumber"></v-list-item>
-
-            <v-list-subheader class="mt-2">預約項目詳情</v-list-subheader>
-            <v-list-item prepend-icon="mdi-pound" title="預約代碼">
-              <v-list-item-subtitle>
-                <v-chip color="red" size="small" label variant="tonal">{{ selectedAppointment.bookingCode }}</v-chip>
-              </v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-format-list-checks" title="預約項目" :subtitle="selectedAppointment.bookingType"></v-list-item>
-            <v-list-item prepend-icon="mdi-calendar-clock" title="預約時程" :subtitle="formatDate(selectedAppointment.appointmentDate) + ' ' + selectedAppointment.appointmentTimeSlot"></v-list-item>
-            <v-list-item prepend-icon="mdi-account-search-outline" title="驗屋方式" :subtitle="selectedAppointment.inspectionMethod"></v-list-item>
-            <v-list-item v-if="selectedAppointment.inspectionMethod === '代驗公司'" prepend-icon="mdi-office-building-outline" title="代驗公司" :subtitle="selectedAppointment.inspectionCompanyName || '未填寫'"></v-list-item>
-            <v-list-item prepend-icon="mdi-list-status" title="狀態">
-              <v-list-item-subtitle>
-                <v-chip :color="getStatusColor(selectedAppointment.status)" size="small" label>{{ selectedAppointment.status }}</v-chip>
-              </v-list-item-subtitle>
-            </v-list-item>
-
-            <v-list-subheader class="mt-2">戶別相關資訊</v-list-subheader>
-            <v-list-item prepend-icon="mdi-car" title="持有車位" :subtitle="selectedAppointment.parkingLots || '無'"></v-list-item>
-            <v-list-item prepend-icon="mdi-file-document-outline" title="驗屋文件">
-              <v-list-item-subtitle>
-                <v-btn v-if="selectedAppointment.inspectionDocsUrl" :href="selectedAppointment.inspectionDocsUrl" target="_blank" rel="noopener noreferrer" size="small" variant="tonal" color="indigo">
-                  <v-icon start>mdi-folder-google-drive</v-icon>
-                  開啟雲端資料夾
-                </v-btn>
-                <span v-else>無</span>
-              </v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-file-chart-outline" title="已上傳報告">
-                <template v-if="!selectedAppointment.inspectionReportUrl || selectedAppointment.inspectionReportUrl.length === 0">
-                    <v-list-item-subtitle>無</v-list-item-subtitle>
-                </template>
-            </v-list-item>
-            <v-list-item 
-              v-for="(report, index) in selectedAppointment.inspectionReportUrl" 
-              :key="index"
-              :href="report.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pl-14"
-            >
-              <template v-slot:prepend>
-                <v-icon color="red-darken-2">mdi-file-pdf-box</v-icon>
-              </template>
-              <v-list-item-title class="text-primary font-weight-medium">{{ report.name }}</v-list-item-title>
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-comment-text-outline" title="戶別備註" v-if="selectedAppointment.remarks">
-                <v-list-item-subtitle style="white-space: pre-wrap;">{{ selectedAppointment.remarks }}</v-list-item-subtitle>
-            </v-list-item>
-
-          </v-list>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions class="bg-grey-lighten-5 pa-3">
-          <v-spacer></v-spacer>
-          <v-btn color="primary" variant="tonal" @click="isDialogVisible = false">關閉</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    </v-container>
+    <AppointmentDetailsDialog
+      v-model="isDialogVisible"
+      :appointment="selectedAppointment"
+    />
+  </v-container>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import liff from '@line/liff';
-// ✓ 注意：這裡的函式名稱，請確保與您 api.js 和 functions/index.js 中的最終版本一致
 import { getLiffUserData, liffSearchAppointments } from '@/api';
 import { useDate } from 'vuetify';
+// ✓ 這裡的 import 保持不變，因為我們需要引入元件
+import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
+
 
 const dateAdapter = useDate();
 const isLoading = ref(true);

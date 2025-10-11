@@ -4837,3 +4837,21 @@ export const getLiffCalendarDataForDay = async (payload) => {
   }
 };
 // ✓ END
+
+// ✓ START: 新增 - 獲取開發者資料的 API
+/**
+ * [API][開發者用] 根據 User Key 獲取使用者資料與權限
+ * @param {object} payload - 包含 { userKey }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getDeveloperData = async (payload) => {
+  try {
+    const getDataFunction = httpsCallable(functions, 'getDeveloperData');
+    const result = await getDataFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getDeveloperData:", error);
+    throw new Error(error.message);
+  }
+};
+// ✓ END

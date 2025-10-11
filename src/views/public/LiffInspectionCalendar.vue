@@ -2,7 +2,7 @@
   <v-container fluid class="pa-2 pa-sm-4" style="background-color: #F4F4F7; min-height: 100vh;">
     <v-card class="mx-auto" max-width="1000">
       <v-toolbar color="primary" dark flat>
-        <v-toolbar-title class="font-weight-bold">LIFF 驗屋時間表</v-toolbar-title>
+        <v-toolbar-title class="font-weight-bold">驗屋時間表</v-toolbar-title>
       </v-toolbar>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -78,33 +78,29 @@
         
         <v-row v-else class="ma-0">
           <v-col cols="12" md="4" class="pa-4">
-            <VueDatePicker
+            <v-date-picker
               v-model="selectedDate"
-              inline
-              auto-apply
-              :enable-time-picker="false"
-              locale="zh-TW"
+              show-adjacent-months
+              hide-header
+              color="primary"
+              width="100%"
               :disabled="!selectedProject || isFetchingDayData"
-            />
-            <v-divider class="my-4"></v-divider>
-            <div class="d-none d-md-block">
-              <h4 class="text-subtitle-1 mb-2">篩選與顯示</h4>
-              <FilterCheckboxes />
-            </div>
-          </v-col>
+            ></v-date-picker>
+            
+            </v-col>
           
           <v-divider vertical class="d-none d-md-block"></v-divider>
 
           <v-col cols="12" md="8" class="pa-0">
              <v-toolbar density="compact" flat class="border-b">
-                <v-toolbar-title class="text-h6">
-                  {{ formattedSelectedDate }} ({{ dayName }})
+                <v-toolbar-title class="text-subtitle-2">
+                 {{ responsiveToolbarTitle }}
                 </v-toolbar-title>
                 <v-spacer></v-spacer>
-                <v-btn class="d-md-none" icon="mdi-filter-variant" @click="isFilterDrawerVisible = true"></v-btn>
+                <v-btn icon="mdi-cog" @click="isFilterDialogVisible = true"></v-btn>
              </v-toolbar>
             
-            <div class="calendar-content" style="max-height: 70vh; overflow-y: auto;">
+            <div class="calendar-content" style="max-height: 150vh; overflow-y: auto;">
               <div v-if="isFetchingDayData" class="text-center pa-10">
                 <v-progress-circular indeterminate color="primary"></v-progress-circular>
                 <p class="mt-2 text-grey">正在載入 {{ formattedSelectedDate }} 的資料...</p>
@@ -117,20 +113,25 @@
                     </template>
                     <div class="events-container">
                        <p v-if="!groupedEvents[timeSlot]" class="text-grey-lighten-1 text-center text-caption ma-2">無預約</p>
-                       <v-chip
+                       
+                       <div
                           v-for="event in groupedEvents[timeSlot]"
                           :key="event.id"
-                          :color="getEventColor(event)"
-                          :variant="event.status === '取消' ? 'outlined' : 'flat'"
-                          class="event-chip"
+                          :class="['event-item', { 'cancelled-event': event.status === '取消' }]"
+                          :style="getEventStyle(event)"
                           @click="openDetailsDialog(event)"
                         >
-                          <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
-                            <strong v-if="part.isHousehold" class="mr-1">{{ part.text }}</strong>
-                            <span v-else>{{ part.text }}</span>
-                            <span v-if="partIndex < event.displayParts.length - 1" class="mx-1">-</span>
-                          </template>
-                       </v-chip>
+                          <v-icon v-if="event.status === '取消'" color="red-darken-1" size="small" class="mr-1">mdi-close-circle-outline</v-icon>
+                          <v-icon v-if="event.status === '已完成'" color="blue-grey" size="small" class="mr-1">mdi-check-all</v-icon>
+                          
+                          <span style="display: inline-block; text-align: left;">
+                            <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
+                              <strong v-if="part.isHousehold" class="event-household">{{ part.text }}</strong>
+                              <span v-else>{{ part.text }}</span>
+                              <span v-if="partIndex < event.displayParts.length - 1"> - </span>
+                            </template>
+                          </span>
+                       </div>
                     </div>
                   </v-list-item>
                   <v-divider></v-divider>
@@ -142,56 +143,38 @@
       </div>
     </v-card>
 
-    <v-dialog v-model="isDialogVisible" max-width="700px" scrollable>
-      <v-card v-if="selectedAppointment">
-        <v-toolbar color="primary" density="compact">
-          <v-toolbar-title class="font-weight-bold">預約詳細資料</v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" @click="isDialogVisible = false"></v-btn>
-        </v-toolbar>
-        <v-card-text class="pt-4">
-          <v-list lines="two" density="compact">
-            <v-list-subheader>基本資料</v-list-subheader>
-            <v-list-item prepend-icon="mdi-domain" title="建案" :subtitle="selectedAppointment.projectName"></v-list-item>
-            <v-list-item prepend-icon="mdi-home-outline" title="戶別" :subtitle="selectedAppointment.unitId"></v-list-item>
-            <v-list-item prepend-icon="mdi-map-marker-outline" title="門牌" :subtitle="selectedAppointment.address || '無'"></v-list-item>
-            
-            <v-list-subheader class="mt-2">預約人資訊</v-list-subheader>
-            <v-list-item prepend-icon="mdi-account-outline" title="預約人" :subtitle="selectedAppointment.bookerName"></v-list-item>
-            <v-list-item prepend-icon="mdi-phone-outline" title="電話" :subtitle="selectedAppointment.bookerPhone"></v-list-item>
+    <AppointmentDetailsDialog
+      v-model="isDialogVisible"
+      :appointment="selectedAppointment"
+    />
 
-            <v-list-subheader class="mt-2">預約項目詳情</v-list-subheader>
-            <v-list-item prepend-icon="mdi-pound" title="預約代碼" :subtitle="selectedAppointment.bookingCode"></v-list-item>
-            <v-list-item prepend-icon="mdi-format-list-checks" title="預約項目" :subtitle="selectedAppointment.bookingType"></v-list-item>
-            <v-list-item prepend-icon="mdi-calendar-clock" title="預約時程" :subtitle="formatDate(selectedAppointment.appointmentDate) + ' ' + selectedAppointment.appointmentTimeSlot"></v-list-item>
-            <v-list-item prepend-icon="mdi-account-search-outline" title="驗屋方式" :subtitle="selectedAppointment.inspectionMethod"></v-list-item>
-            <v-list-item v-if="selectedAppointment.inspectionMethod === '代驗公司'" prepend-icon="mdi-office-building-outline" title="代驗公司" :subtitle="selectedAppointment.inspectionCompanyName || '未填寫'"></v-list-item>
-            <v-list-item prepend-icon="mdi-list-status" title="狀態">
-              <v-list-item-subtitle>
-                <v-chip :color="getStatusColor(selectedAppointment.status)" size="small" label>{{ selectedAppointment.status }}</v-chip>
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
+    <v-dialog v-model="isFilterDialogVisible" max-width="500px" scrollable>
+      <v-card>
+        <v-card-title class="pa-4 bg-grey-lighten-3">
+          <span class="text-h6">篩選與顯示</span>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text>
+          <FilterCheckboxes
+            v-model:selectedStatuses="selectedStatuses"
+            v-model:selectedTypes="selectedTypes"
+            v-model:selectedDisplayFields="selectedDisplayFields"
+            :displayFieldOptions="displayFieldOptions"
+          />
         </v-card-text>
         <v-divider></v-divider>
-        <v-card-actions class="bg-grey-lighten-5 pa-3">
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
           <v-spacer></v-spacer>
-          <v-btn color="primary" variant="tonal" @click="isDialogVisible = false">關閉</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            @click="isFilterDialogVisible = false"
+          >
+            完成
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-
-    <v-navigation-drawer v-model="isFilterDrawerVisible" location="right" temporary width="300">
-        <v-list-item title="篩選與顯示" class="bg-grey-lighten-3">
-            <template v-slot:append>
-                <v-btn variant="text" icon="mdi-close" @click="isFilterDrawerVisible = false"></v-btn>
-            </template>
-        </v-list-item>
-        <v-divider></v-divider>
-        <div class="pa-4">
-            <FilterCheckboxes />
-        </div>
-    </v-navigation-drawer>
   </v-container>
 </template>
 
@@ -199,98 +182,59 @@
 import { ref, onMounted, computed, watch, defineAsyncComponent } from 'vue';
 import liff from '@line/liff';
 import { getLiffUserData, liffSearchAppointments, getLiffCalendarDataForDay } from '@/api';
-import { useDate } from 'vuetify';
+import { useDate, useDisplay } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
 import { format, startOfDay } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import { useRoute } from 'vue-router';
+import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 
-// Async component for filters to keep initial load small
+const { smAndDown } = useDisplay();
+
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
+const dateAdapter = useDate();
 
-// LIFF & Auth State
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isBound = ref(false);
 const userName = ref('');
 const lineId = ref('');
-
-// Project & Date State
 const authorizedProjects = ref([]);
 const selectedProject = ref(null);
 const selectedDate = ref(startOfDay(new Date()));
-
-// Data Fetching State
 const isFetchingDayData = ref(false);
 const dailyAppointments = ref([]);
-
-// Search State
 const searchQuery = ref('');
 const isSearching = ref(false);
 const isSearchActive = ref(false);
 const searchResults = ref([]);
 const lastSearchText = ref('');
-
-// UI State
 const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
-const isFilterDrawerVisible = ref(false);
-
-// Filter State
-const selectedStatuses = ref(['預約中', '已完成']);
-const selectedTypes = ref(['初驗', '複驗']);
+const isFilterDialogVisible = ref(false);
+const selectedStatuses = ref([]);
+const selectedTypes = ref([]);
+const selectedDisplayFields = ref([]);
 const displayFieldOptions = ref([
-    { key: 'unitId', label: '戶別' },
-    { key: 'bookerName', label: '預約人' },
-    { key: 'bookingType', label: '項目' },
-    { key: 'inspectionMethod', label: '方式' },
+  { key: 'unitId', label: '戶別' },
+  { key: 'bookingType', label: '預約項目' },
+  { key: 'bookerName', label: '預約人姓名' },
+  { key: 'inspectionMethod', label: '驗屋方式' },
+  { key: 'inspectionCompanyName', label: '代驗公司名稱' },
+  { key: 'bookingRemarks', label: '預約備註' },
+  { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
 ]);
-const selectedDisplayFields = ref(['unitId', 'bookerName']);
 
-// Adapters
-const dateAdapter = useDate();
+const initializeFilters = (options) => {
+  selectedStatuses.value = options.statuses;
+  selectedTypes.value = options.types;
+  selectedDisplayFields.value = options.displayFields;
+};
 
-// Computed Properties
-const formattedSelectedDate = computed(() => dateAdapter.format(selectedDate.value, 'keyboardDate'));
-const dayName = computed(() => format(selectedDate.value, 'EEEE', { locale: zhTW }));
-
-const timeSlots = computed(() => 
-  Array.from({ length: 21 }, (_, i) => {
-    const hour = 8 + Math.floor(i / 2);
-    const minute = (i % 2) * 30;
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-  })
-);
-
-const filteredAppointments = computed(() => {
-  return dailyAppointments.value.filter(appt => 
-    selectedStatuses.value.includes(appt.status) && 
-    selectedTypes.value.includes(appt.bookingType)
-  ).map(appt => ({
-    ...appt,
-    displayParts: selectedDisplayFields.value.map(key => ({
-      text: appt[key] || '',
-      isHousehold: key === 'unitId'
-    })).filter(part => part.text)
-  }));
-});
-
-const groupedEvents = computed(() => {
-  const grouped = {};
-  filteredAppointments.value.forEach(event => {
-    const timeKey = event.appointmentTimeSlot.substring(0, 5);
-    if (!grouped[timeKey]) {
-      grouped[timeKey] = [];
-    }
-    grouped[timeKey].push(event);
-  });
-  return grouped;
-});
-
-// Methods
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' }); //  <-- 請替換成您的 LIFF ID
+    await liff.init({ liffId: '2008257338-o8grV0ZD' });
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -317,6 +261,57 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
   }
+});
+
+const formattedSelectedDate = computed(() => dateAdapter.format(selectedDate.value, 'keyboardDate'));
+const dayName = computed(() => format(selectedDate.value, 'EEEE', { locale: zhTW }));
+
+const responsiveToolbarTitle = computed(() => {
+  const projectName = authorizedProjects.value.find(p => p.projectId === selectedProject.value)?.projectName || '';
+  if (smAndDown.value) {
+    const shortDate = format(selectedDate.value, 'M/d');
+    const shortDay = dayName.value.replace('星期', '');
+    return `${projectName} - ${shortDate} (${shortDay})`;
+  } else {
+    return `${projectName} - ${formattedSelectedDate.value} (${dayName.value})`;
+  }
+});
+
+const timeSlots = computed(() => 
+  Array.from({ length: 21 }, (_, i) => {
+    const hour = 8 + Math.floor(i / 2);
+    const minute = (i % 2) * 30;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  })
+);
+
+const filteredAppointments = computed(() => {
+  return dailyAppointments.value.filter(appt => 
+    selectedStatuses.value.includes(appt.status) && 
+    selectedTypes.value.includes(appt.bookingType)
+  ).map(appt => ({
+    ...appt,
+    displayParts: selectedDisplayFields.value.map(key => {
+      const value = appt[key];
+      const formattedValue = (displayFieldOptions.value.find(o => o.key === key)?.formatter || ((v) => v))(value);
+      return {
+        text: formattedValue || '',
+        isHousehold: key === 'unitId'
+      };
+    }).filter(part => part.text)
+  }));
+});
+
+const groupedEvents = computed(() => {
+  const grouped = {};
+  filteredAppointments.value.forEach(event => {
+    const timeKey = event.appointmentTimeSlot.substring(0, 5);
+    if (!grouped[timeKey]) {
+      grouped[timeKey] = [];
+    }
+    grouped[timeKey].push(event);
+  });
+  return grouped;
 });
 
 const fetchDayData = async (projectId, date) => {
@@ -377,13 +372,26 @@ const getStatusColor = (status) => {
   }
 };
 
-const getEventColor = (event) => {
-  if (event.status === '取消') return 'grey-lighten-2';
-  if (event.bookingType.includes('初驗')) return 'blue-lighten-5';
-  if (event.bookingType.includes('複驗')) return 'orange-lighten-5';
-  return 'grey-lighten-4';
-};
+const CSS_KEYWORD_COLOR_MAP = [
+  { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' },
+  { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' },
+  { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' },
+  { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' },
+];
 
+const getEventStyle = (event) => {
+  if (!event || Object.keys(event).length === 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
+  if (event.status === '取消') return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
+  if (event.status === '已完成') return { backgroundColor: '#ECEFF1', color: '#546E7A' };
+  
+  const textToSearch = [ event.bookingType, event.inspectionMethod ].join(' ');
+  for (const config of CSS_KEYWORD_COLOR_MAP) {
+    if (config.keyword && textToSearch.includes(config.keyword)) {
+      return { backgroundColor: config.backgroundColor, color: config.color };
+    }
+  }
+  return { backgroundColor: '#EEEEEE', color: '#212121' };
+};
 </script>
 
 <style scoped>
@@ -404,14 +412,27 @@ const getEventColor = (event) => {
   gap: 8px;
   width: 100%;
 }
-.event-chip {
-  cursor: pointer;
-  height: auto !important;
-  padding: 6px 10px !important;
+.event-item {
   white-space: normal;
-  text-align: left;
+  word-wrap: break-word;
+  padding: 4px 8px;
+  margin: 2px 0;
+  border-radius: 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  width: 100%;
+  display: flex;
+  align-items: center;
 }
-.event-chip strong {
-  font-size: 1.1em;
+.event-item:hover {
+  opacity: 0.8;
+}
+.cancelled-event {
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+.event-household {
+  font-size: 1.2em;
 }
 </style>
