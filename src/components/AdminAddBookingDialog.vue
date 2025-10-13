@@ -213,28 +213,53 @@
 
                     
 
-                     <v-date-picker
+                     <VueDatePicker
                         v-model="formStep2.appointmentDate"
-                        show-adjacent-months
-                        color="primary"
+                        inline
+                        auto-apply
+                        locale="zh-TW"
+                        :enable-time-picker="false"
                         width="100%"
-                        title="請選擇預約日期"
                         @update:model-value="onDateChange"
-                        :events="calendarEvents"
+                        class="mb-4"
+                        :min-date="tomorrow" 
                       >
-                      </v-date-picker>
-
+                        <template #day="{ date }">
+                          <div class="custom-day-cell">
+                            <div class="date-number">{{ date.getDate() }}</div>
+                            <div v-if="dateMarkers[format(date, 'yyyy-MM-dd')]" class="date-marker">
+                              <v-icon
+                                :icon="dateMarkers[format(date, 'yyyy-MM-dd')].icon"
+                                :color="dateMarkers[format(date, 'yyyy-MM-dd')].color"
+                                size="x-small"
+                              ></v-icon>
+                            </div>
+                          </div>
+                        </template>
+                      </VueDatePicker>
+                     <div class="d-flex align-center justify-start ga-4 mt-2 mb-4 text-caption text-medium-emphasis">
+                        <div class="d-flex align-center ga-1">
+                          <v-icon icon="mdi-circle-outline" color="green" size="small"></v-icon>
+                          <span>本戶批次</span>
+                        </div>
+                        <div class="d-flex align-center ga-1">
+                          <v-icon icon="mdi-triangle-outline" color="blue" size="small"></v-icon>
+                          <span>其他批次</span>
+                        </div>
+                      </div>
+                      
                       <v-alert v-if="dateSelectionAlert.show" :type="dateSelectionAlert.type" variant="tonal" border="start" class="mb-4" density="compact">
                       {{ dateSelectionAlert.text }}
-                    </v-alert>
+                      </v-alert>
 
-                      <v-combobox
+                       <v-combobox
                         v-model="formStep2.appointmentTimeSlot"
                         :items="availableTimeSlots"
                         label="預約時段 (可手動輸入，格式 HH:mm)"
                         variant="outlined"
                         class="mt-4"
                         :disabled="!formStep2.appointmentDate"
+                        :loading="isFetchingSlots"  
                         :rules="[
                           v => !!v || '必填',
                           v => (typeof v === 'object' && v !== null) || (typeof v === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(v)) || '格式不正確，請輸入 HH:mm'
@@ -432,6 +457,10 @@
 import { ref, computed, watch, reactive, onMounted, nextTick } from 'vue'; //  引入 nextTick
 import { useDate } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
+import VueDatePicker from '@vuepic/vue-datepicker'; // ✓ 新增
+import '@vuepic/vue-datepicker/dist/main.css';      // ✓ 新增
+import { format } from 'date-fns';                 // ✓ 新增
+
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import { useUserStore } from '@/store/user';
 import {
@@ -472,6 +501,10 @@ const step2FormRef = ref(null);
 
 const isDetailsDialogVisible = ref(false);
 const selectedHistoryAppointment = ref(null);
+
+const tomorrow = ref(new Date());
+tomorrow.value.setDate(tomorrow.value.getDate() + 1);
+
 
 // --- Step 1 States ---
 const searchKeyword = ref('');
@@ -588,6 +621,7 @@ const getDateType = (date) => {
 const calendarData = ref([]);
 const dateSelectionAlert = reactive({ show: false, type: 'info', text: '' });
 const availableTimeSlots = ref([]);
+const isFetchingSlots = ref(false); // ✓ 新增：用於控制時段載入狀態
 const isOverbooking = ref(false);
 const isOverbookingConfirmDialogVisible = ref(false);
 const overbookingDetails = reactive({ date: '', time: '' });
@@ -660,16 +694,19 @@ const finalBookingData = computed(() => {
     };
 });
 
-const calendarEvents = computed(() => {
-    return calendarData.value.map(d => {
-        //  修正：確保 d.date 是 Date 物件
-        const dateObj = d.date instanceof Date ? d.date : new Date(d.date);
-        const color = d.type === 'own_batch' ? 'green' : (d.type === 'other_batch' ? 'red' : 'grey');
-        // Vuetify 3 的 events prop 需要 Date 物件
-        return { date: dateObj, color };
-    });
-});
 
+// ✓ 新增 dateMarkers
+const dateMarkers = computed(() => {
+  const markers = {};
+  for (const event of calendarData.value) {
+    if (event.type === 'own_batch') {
+      markers[event.date] = { icon: 'mdi-circle-outline', color: 'green' };
+    } else if (event.type === 'other_batch') {
+      markers[event.date] = { icon: 'mdi-triangle-outline', color: 'blue' };
+    }
+  }
+  return markers;
+});
 
 // --- Methods ---
 const closeDialog = () => {
@@ -819,12 +856,13 @@ const onDateChange = async (date) => {
   formStep2.appointmentTimeSlot = null;
   isOverbooking.value = false;
   dateSelectionAlert.show = false;
+  isFetchingSlots.value = true; // ✓ 開始載入
+  availableTimeSlots.value = []; // ✓ 先清空舊時段
 
   const dateStr = date.toISOString().split('T')[0];
   const selectedDayData = calendarData.value.find(d => d.date === dateStr);
   const formattedDate = dateAdapter.format(date, 'keyboardDate');
 
-  // ✓ START: 修改 - 更新提示文字
   if (selectedDayData?.type === 'other_batch') {
     dateSelectionAlert.show = true;
     dateSelectionAlert.type = 'error';
@@ -834,7 +872,6 @@ const onDateChange = async (date) => {
     dateSelectionAlert.type = 'error';
     dateSelectionAlert.text = `${formattedDate} 尚未建立可驗屋日期批次，請您確認屋況是否可驗屋。`;
   }
-  // ✓ END: 修改
 
   try {
     const slots = await getSlotsForAdmin(props.projectId, dateStr);
@@ -842,9 +879,10 @@ const onDateChange = async (date) => {
   } catch(e) {
     console.error("獲取時段失敗:", e);
     availableTimeSlots.value = [];
+  } finally {
+    isFetchingSlots.value = false; // ✓ 載入結束 (無論成功或失敗)
   }
 };
-
 const onTimeSlotChange = (selectedSlot) => {
     isOverbooking.value = false;
 
@@ -969,3 +1007,26 @@ watch(() => props.modelValue, (newVal) => {
     }
 }, { immediate: true }); // ✓ 修改：在此處加上 { immediate: true }
 </script>
+
+
+<style scoped>
+.custom-day-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.date-number {
+  line-height: 1;
+}
+
+.date-marker {
+  position: absolute;
+  bottom: -12px;
+  line-height: 1;
+}
+</style>

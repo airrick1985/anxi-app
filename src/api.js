@@ -4784,6 +4784,8 @@ export const getLiffUserData = async (payload) => {
   }
 };
 
+
+
 // ✓ START: 修改為新的函式名稱 liffSearchAppointments
 /**
  * [API] 根據建案ID和關鍵字搜尋預約紀錄 (LIFF查詢用)
@@ -4806,6 +4808,24 @@ export const liffSearchAppointments = async (payload) => {
 
 // ✓ START: 新增 - LIFF 驗屋時間表專用函式
 /**
+ * [LIFF日曆用] 獲取指定建案的所有預約資料 (用於日曆計數渲染)
+ * @param {object} payload - 包含 { projectId } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getAllLiffAppointmentsForProject = async (payload) => {
+  try {
+    const getDataFunction = httpsCallable(functions, 'getAllLiffAppointmentsForProject');
+    const result = await getDataFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getAllLiffAppointmentsForProject:", error);
+    throw new Error(error.message);
+  }
+};
+
+
+// ✓ START: 新增 - LIFF 驗屋時間表專用函式
+/**
  * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
  * @param {object} payload - 包含 { projectId, date } 的物件
  * @returns {Promise<object>} - 後端回傳的結果
@@ -4821,6 +4841,9 @@ export const getLiffCalendarDataForDay = async (payload) => {
   }
 };
 // ✓ END
+
+
+
 
 // ✓ START: 新增 - 獲取開發者資料的 API
 /**

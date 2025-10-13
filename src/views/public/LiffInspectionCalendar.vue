@@ -90,18 +90,34 @@
           </template>
           </v-list>
             </div>
-            
-            <v-row v-else class="ma-0">
-              <v-col cols="12" md="4" class="pa-4">
-                <v-date-picker
+
+
+  <v-row v-else class="ma-0">
+               <v-col cols="12" md="4" class="pa-4">
+                <VueDatePicker
                   v-model="selectedDate"
-                  show-adjacent-months
-                  hide-header
-                  color="primary"
-                  width="100%"
+                  inline
+                  auto-apply
+                  locale="zh-TW"
+                  :enable-time-picker="false"
                   :disabled="!selectedProject || isFetchingDayData"
-                ></v-date-picker>
+                  > <template #day="{ date }">
+                    <div class="custom-day-cell">
+                      <div class="date-number">{{ date.getDate() }}</div>
+
+                      <div v-if="getEventCountsForDay(date)" class="event-counts">
+                        <span v-if="getEventCountsForDay(date).booked > 0" class="count-booked">
+                          {{ getEventCountsForDay(date).booked }}
+                        </span>
+                        <span v-if="getEventCountsForDay(date).completed > 0" class="count-completed">
+                          {{ getEventCountsForDay(date).completed }}
+                        </span>
+                      </div>
+                    </div>
+                  </template>
+                </VueDatePicker>          
               </v-col>
+
               
               <v-divider vertical class="d-none d-md-block"></v-divider>
 
@@ -278,7 +294,6 @@
     
   </v-container>
 </template>
-
 <script setup>
 import { ref, onMounted, computed, watch, defineAsyncComponent, reactive } from 'vue';
 import liff from '@line/liff';
@@ -287,6 +302,7 @@ import {
   getLiffUserData, 
   liffSearchAppointments, 
   getLiffCalendarDataForDay, 
+  getAllLiffAppointmentsForProject, // ✓ 引入新函式
   fetchBookingOptions, 
   updateAppointment, 
   cancelAppointment,
@@ -294,7 +310,9 @@ import {
 } from '@/api';
 import { useDate, useDisplay } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
-import { format, startOfDay } from 'date-fns';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
+import { format, startOfDay } from 'date-fns'; // ✓ 移除不再需要的 date-fns 函式
 import { zhTW } from 'date-fns/locale';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
@@ -308,7 +326,6 @@ const calendarContentRef = ref(null);
 const isSharing = ref(false);
 const isAdminAddDialogVisible = ref(false);
 
-
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
 const dateAdapter = useDate();
 
@@ -319,6 +336,7 @@ const selectedProject = ref(null);
 const selectedDate = ref(startOfDay(new Date()));
 const isFetchingDayData = ref(false);
 const dailyAppointments = ref([]);
+const allProjectAppointments = ref([]); // ✓ 用於存放所選建案的「所有」預約資料
 const searchQuery = ref('');
 const isSearching = ref(false);
 const isSearchActive = ref(false);
@@ -358,28 +376,78 @@ const snackbar = reactive({
 
 const userName = computed(() => userStore.user?.name || '');
 
+const getEventCountsForDay = (dateObj) => {
+  // ✓ START: 修改數據源
+  if (!dateObj || allProjectAppointments.value.length === 0) return null;
+  // ✓ END: 修改數據源
+
+  const dateString = format(dateObj, 'yyyy-MM-dd');
+  
+  let bookedCount = 0;
+  let completedCount = 0;
+
+  // ✓ START: 修改數據源
+  for (const appt of allProjectAppointments.value) {
+  // ✓ END: 修改數據源
+    if (format(new Date(appt.appointmentDate), 'yyyy-MM-dd') === dateString) {
+      if (appt.status === '預約中') {
+        bookedCount++;
+      } else if (appt.status === '已完成') {
+        completedCount++;
+      }
+    }
+  }
+
+  if (bookedCount === 0 && completedCount === 0) return null;
+  
+  return {
+    booked: bookedCount,
+    completed: completedCount,
+  };
+};
+
+// ✓ START: 新增一個函式來獲取所有專案資料
+const fetchAllProjectData = async (projectId) => {
+  if (!projectId) return;
+
+  isFetchingDayData.value = true; // 可以共用 loading 狀態
+  allProjectAppointments.value = [];
+  try {
+    const result = await getAllLiffAppointmentsForProject({ projectId });
+    if (result.status === 'success' && Array.isArray(result.data)) {
+      allProjectAppointments.value = result.data;
+    } else {
+       showSnackbar('載入所有預約資料失敗', 'error');
+    }
+  } catch (error) {
+    console.error(`獲取建案 ${projectId} 所有預約資料失敗:`, error);
+    showSnackbar(`載入所有預約資料失敗`, 'error');
+  } finally {
+    isFetchingDayData.value = false;
+  }
+};
+// ✓ END: 新增函式
+
 const handleBookingSuccess = () => {
   showSnackbar('預約已成功新增！', 'success');
   // 重新載入當日資料以顯示最新預約
   fetchDayData(selectedProject.value, selectedDate.value);
+  // ✓ 同時重新載入所有資料以更新日曆上的計數
+  fetchAllProjectData(selectedProject.value);
 };
 
 
-// ✓ 修改：這裡就是修正的核心！
 const authorizedProjects = computed(() => {
   const permissions = userStore.user?.permissions;
   if (!permissions) return [];
 
   const projects = [];
-  // ✓ 步驟一：遍歷所有建案權限
   for (const projectId in permissions) {
     const project = permissions[projectId];
 
-    // ✓ 步驟二：進行權限檢查
     if (project.systems && 
        (project.systems.includes('驗屋預約管理-檢視') || project.systems.includes('驗屋預約管理-修改'))) 
     {
-      // ✓ 步驟三：只有符合條件的建案，才被加入到列表中
       projects.push({
         projectId: projectId,
         projectName: project.projectName,
@@ -455,7 +523,7 @@ const processAppointments = (rawAppointments) => {
 
   return rawAppointments.map(appt => {
     try {
-      const date = new Date(appt.appointmentDate); // LIFF 頁面的日期是 ISO 字串
+      const date = new Date(appt.appointmentDate);
       if (isNaN(date.getTime())) return null;
 
       const dateStr = format(date, 'yyyy-MM-dd');
@@ -488,10 +556,7 @@ const processAppointments = (rawAppointments) => {
   }).filter(Boolean);
 };
 
-
-
 const filteredAppointments = computed(() => {
-  // ✅ 2. 修改：讓 filteredAppointments 直接使用新的 processAppointments 函式
   const appointmentsToProcess = dailyAppointments.value.filter(appt => 
     selectedStatuses.value.includes(appt.status) && 
     selectedTypes.value.includes(appt.bookingType)
@@ -530,7 +595,9 @@ const fetchDayData = async (projectId, date) => {
 
 watch(selectedProject, async (newProjectId) => {
   if (newProjectId) {
+    // ✓ 當專案改變時，同時觸發「日資料」和「所有資料」的載入
     fetchDayData(newProjectId, selectedDate.value);
+    fetchAllProjectData(newProjectId); // ✓ 改為呼叫新函式
     try {
       bookingOptions.value = await fetchBookingOptions(newProjectId);
     } catch(err) {
@@ -540,6 +607,7 @@ watch(selectedProject, async (newProjectId) => {
 }, { immediate: true });
 
 watch(selectedDate, (newDate) => {
+  // ✓ 當日期改變時，只須要獲取當日的詳細資料列表
   fetchDayData(selectedProject.value, newDate);
 });
 
@@ -575,39 +643,31 @@ const showSnackbar = (text, color = 'success') => {
 async function handleUpdateInspectors(payload) {
   const { appointmentId, inspectors } = payload;
   try {
-    // 步驟 1: 呼叫 API 更新後端 (這部分一直都是正確的)
     await updateAppointmentInspectors(appointmentId, inspectors);
 
-    // ✅ 【核心修正】判斷當前處於哪個模式，並更新對應的資料陣列
     if (isSearchActive.value) {
-      // 如果是「搜尋結果模式」，則更新 searchResults.value
       const index = searchResults.value.findIndex(appt => appt.id === appointmentId);
       if (index !== -1) {
         const updatedAppointment = {
           ...searchResults.value[index],
           inspectors: inspectors.join(',')
         };
-        // 使用 .splice() 強制更新搜尋結果列表的畫面
         searchResults.value.splice(index, 1, updatedAppointment);
       }
     } else {
-      // 如果是「日曆模式」，則更新 dailyAppointments.value
       const index = dailyAppointments.value.findIndex(appt => appt.id === appointmentId);
       if (index !== -1) {
-        // 這裡的邏輯與 InspectionCalendar.vue 相同，重新處理物件以更新 displayParts
         const tempUpdatedAppointment = {
           ...dailyAppointments.value[index],
           inspectors: inspectors.join(',')
         };
         const fullyProcessedAppointment = processAppointments([tempUpdatedAppointment])[0];
         if (fullyProcessedAppointment) {
-          // 使用 .splice() 強制更新日曆畫面的 UI
           dailyAppointments.value.splice(index, 1, fullyProcessedAppointment);
         }
       }
     }
     
-    // 步驟 3: 更新彈出視窗內的資料 (維持不變)
     if (selectedAppointment.value && selectedAppointment.value.id === appointmentId) {
       selectedAppointment.value.inspectors = inspectors.join(',');
     }
@@ -617,7 +677,6 @@ async function handleUpdateInspectors(payload) {
     showSnackbar(`更新驗屋人員失敗: ${err.message}`, 'error');
   }
 }
-
 
 async function handleSaveAppointment(payload) {
   try {
@@ -646,6 +705,7 @@ async function handleConfirmCancelBooking() {
     isCancelConfirmDialogVisible.value = false;
     isDialogVisible.value = false;
     await fetchDayData(selectedProject.value, selectedDate.value);
+    await fetchAllProjectData(selectedProject.value); // ✓ 取消後也更新計數
   } catch (err) {
     showSnackbar(`取消失敗: ${err.message}`, 'error');
   } finally {
@@ -688,7 +748,6 @@ const getEventStyle = (event) => {
   return { backgroundColor: '#EEEEEE', color: '#212121' };
 };
 
-
 async function handleShare() {
   const captureTarget = calendarContentRef.value;
   if (!captureTarget) {
@@ -703,11 +762,9 @@ async function handleShare() {
   const dateStr = format(selectedDate.value, 'yyyy-MM-dd');
   const nowStr = format(new Date(), 'yyyy/MM/dd HH:mm:ss');
   
-  // ✅ 使用 EEEE 和 zhTW locale 來獲取台灣格式的星期幾
   const dayOfWeek = format(selectedDate.value, 'EEEE', { locale: zhTW });
 
   const headerElement = document.createElement('div');
-  // ✅ 更新標題文字，加入 dayOfWeek
   headerElement.textContent = `${projectName}_${dateStr} (${dayOfWeek})`;
   Object.assign(headerElement.style, {
     fontSize: '24px',
@@ -742,7 +799,6 @@ async function handleShare() {
       scale: 2,
     });
 
-    // ... (後續的 canvas.toBlob, 分享, 下載等邏輯完全不變)
     canvas.toBlob(async (blob) => {
       if (!blob) throw new Error('無法產生圖片 Blob。');
       
@@ -757,9 +813,7 @@ async function handleShare() {
         URL.revokeObjectURL(link.href);
       };
 
-      // 【核心邏輯】根據設備類型決定行為
       if (mobile.value) {
-        // 如果是手機，嘗試使用 Web Share API
         const file = new File([blob], fileName, { type: 'image/jpeg' });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
@@ -770,21 +824,18 @@ async function handleShare() {
           } catch (err) {
             if (err.name !== 'AbortError') {
               console.warn("手機分享失敗，退回至下載:", err);
-              downloadFile(); // 如果分享失敗 (非使用者取消)，則下載
+              downloadFile();
             } else {
               console.log("使用者取消了分享操作。");
             }
           }
         } else {
-          // 如果手機不支援分享，也直接下載
           downloadFile();
         }
         } else {
-        // 如果是電腦，直接執行下載
         console.log("偵測到為桌面裝置，直接執行下載。");
         downloadFile();
       }
-        // ...
     }, 'image/jpeg', 0.9);
 
   } catch (err) {
@@ -800,7 +851,6 @@ async function handleShare() {
     isSharing.value = false;
   }
 }
-
 </script>
 
 <style scoped>
@@ -876,5 +926,52 @@ async function handleShare() {
 }
 .event-household {
   font-size: 1.2em;
+}
+
+
+
+/* 自訂日期單元格樣式 */
+.custom-day-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.date-number {
+  line-height: 1;
+}
+
+.event-counts {
+  position: absolute;
+  bottom: -12px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px; /* 在數字之間增加間距 */
+  line-height: 1;
+  pointer-events: none;
+}
+
+.event-counts span {
+  font-size: 0.8em;
+  font-weight: bold;
+  padding: 0 3px;
+  border-radius: 4px;
+}
+
+.count-booked {
+  color: #1B5E20; /* 深綠色 */
+  background-color: #E8F5E9; /* 淡綠色背景 */
+}
+
+.count-completed {
+  color: #37474F; /* 深灰色 */
+  background-color: #ECEFF1; /* 淡灰色背景 */
 }
 </style>

@@ -285,6 +285,17 @@ const routes = [
       layout: PublicLayout
     }
   },
+
+    {
+    path: '/test', 
+    name: 'Test',
+    component: () => import('@/views/TestDatePicker.vue'),
+    meta: {
+          title: 'TEST',
+          layout: PublicLayout
+        }
+  },
+  
   {
     path: '/inspection-calendar-entry',
     name: 'ProjectSelector',
@@ -391,6 +402,7 @@ const routes = [
       title: '車位銷控管理'
     }
   },
+
  // { path: '/:pathMatch(.*)*', redirect: '/home' }
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 

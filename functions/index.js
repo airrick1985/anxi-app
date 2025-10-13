@@ -6683,6 +6683,55 @@ exports.liffSearchAppointments = onCall(async (request) => {
 });
 // ✓ END
 
+
+// ✓ START: 新增 - LIFF 驗屋時間表專用函式 (獲取所有預約)
+/**
+ * [LIFF日曆用] 獲取指定建案的所有預約資料 (用於日曆計數渲染)
+ * @param {string} projectId - 要查詢的建案 ID
+ * @returns {Promise<object>} - 包含該建案所有預約的陣列
+ */
+exports.getAllLiffAppointmentsForProject = onCall(async (request) => {
+    const { projectId } = request.data;
+    const functionName = "getAllLiffAppointmentsForProject";
+
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { status: "success", data: [] };
+        }
+
+        const appointments = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // 為了讓前端能直接使用，將 Timestamp 轉換為 ISO 字串
+            if (data.appointmentDate && typeof data.appointmentDate.toDate === 'function') {
+                data.appointmentDate = data.appointmentDate.toDate().toISOString();
+            }
+            // 只回傳日曆計數需要的最小欄位，減輕傳輸負擔
+            return {
+              appointmentDate: data.appointmentDate,
+              status: data.status
+            };
+        });
+
+        console.log(`[${functionName}] 為建案 [${projectId}] 找到了 ${appointments.length} 筆預約資料。`);
+        return { status: "success", data: appointments };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取所有預約資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取所有預約資料時發生錯誤。");
+    }
+});
+// ✓ END
+
+
 // ✓ START: 新增 - LIFF 驗屋時間表專用函式
 /**
  * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
@@ -6849,6 +6898,7 @@ exports.getProjectBatchDetails = onCall(async (request) => {
         }
 
         const batchDetails = {};
+        // ✓ 1. 獲取當下的台灣時區時間，作為比較的基準
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
 
         snapshot.forEach(doc => {
@@ -6861,7 +6911,7 @@ exports.getProjectBatchDetails = onCall(async (request) => {
             let color = 'grey';
             let start, end;
 
-            // ✓【修改開始】: 修正日期時間處理邏輯
+            // ✓ 2. 將 Firestore 的 Timestamp 物件轉換為 JavaScript 的 Date 物件
             if (applicationStart && typeof applicationStart.toDate === 'function') {
                 start = applicationStart.toDate();
             }
@@ -6869,13 +6919,13 @@ exports.getProjectBatchDetails = onCall(async (request) => {
             if (applicationEnd && typeof applicationEnd.toDate === 'function') {
                 end = applicationEnd.toDate();
             }
-            // ✓【修改結束】
 
             if ((start && isNaN(start.getTime())) || (end && isNaN(end.getTime()))) {
                 console.warn(`[${functionName}] 警告：批次 ${batchCode} 的日期格式無效，已跳過。`, { applicationStart, applicationEnd });
                 return;
             }
 
+            // ✓ 3. 執行核心的動態比較邏輯
             if (start && end) {
                 if (now < start) {
                     statusText = '尚未開放';
@@ -6893,6 +6943,7 @@ exports.getProjectBatchDetails = onCall(async (request) => {
                 batchDetails[bookingType] = {};
             }
 
+            // ✓ 4. 將計算出的結果存入回傳物件
             batchDetails[bookingType][batchCode] = {
                 bookingStart: data.bookingStart,
                 bookingEnd: data.bookingEnd,
