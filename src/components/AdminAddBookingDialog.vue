@@ -205,7 +205,7 @@
                      <v-row dense>
                         <v-col cols="12" sm="6"><v-text-field label="預約人姓名" v-model="formStep2.bookerName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
                         <v-col cols="12" sm="6"><v-text-field label="預約人電話" v-model="formStep2.bookerPhone" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
-                        <v-col cols="12" sm="6"><v-text-field label="預約人EMAIL (接收通知)" v-model="formStep2.bookerEmail" variant="outlined" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"></v-text-field></v-col>
+                        <v-col cols="12" sm="6"><v-text-field label="預約人EMAIL (接收確認通知)" v-model="formStep2.bookerEmail" variant="outlined" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"></v-text-field></v-col>
                         <v-col cols="12" sm="6"><v-text-field label="預約人身分證" v-model="formStep2.bookerIdNumber" variant="outlined"></v-text-field></v-col>
                     </v-row>
 
@@ -253,12 +253,23 @@
             <v-container>
               <v-row justify="center">
                 <v-col cols="12" md="10" lg="8">
-                <v-card class="pa-4 pa-md-6">
-                  <h3 class="text-h6 mb-4">步驟三：確認預約資訊</h3>
-                   <v-alert v-if="isOverbooking" type="warning" variant="tonal" border="start" class="mb-4">
-                     注意：您選擇的時段 <strong>{{ formStep2.appointmentTimeSlot.value || formStep2.appointmentTimeSlot }}</strong> 已額滿，此為強制預約。
-                   </v-alert>
-                   <v-list lines="two">
+                  <v-card class="pa-4 pa-md-6">
+                    <h3 class="text-h6 mb-4">步驟三：確認預約資訊</h3>
+                    
+                    <v-alert
+                      v-if="dateSelectionAlert.show"
+                      :type="dateSelectionAlert.type"
+                      variant="tonal"
+                      border="start"
+                      class="mb-4"
+                      title="請注意日期"
+                    >
+                      {{ dateSelectionAlert.text }}
+                    </v-alert>
+                    <v-alert v-if="isOverbooking" type="warning" variant="tonal" border="start" class="mb-4">
+                      注意：您選擇的時段 <strong>{{ formStep2.appointmentTimeSlot.value || formStep2.appointmentTimeSlot }}</strong> 已額滿，此為強制預約。
+                    </v-alert>
+                    <v-list lines="two">
                       <v-list-item title="戶別" :subtitle="finalBookingData.unitId"></v-list-item>
                       <v-list-item title="門牌" :subtitle="finalBookingData.address"></v-list-item>
                       <v-divider class="my-2"></v-divider>
@@ -310,7 +321,7 @@
 
     <v-dialog v-model="isOverbookingConfirmDialogVisible" max-width="500px" persistent>
         <v-card>
-            <v-card-title class="text-h6 d-flex align-center bg-warning">
+            <v-card-title class="text-h6 d-flex align-center bg-error">
                 <v-icon start>mdi-alert-circle-outline</v-icon>
                 <span>確認超額預約</span>
             </v-card-title>
@@ -320,7 +331,7 @@
             <v-card-actions>
                 <v-spacer></v-spacer>
                 <v-btn variant="text" @click="cancelOverbooking">取消</v-btn>
-                <v-btn color="warning" variant="flat" @click="confirmOverbooking">是，繼續預約</v-btn>
+                <v-btn color="error" variant="flat" @click="confirmOverbooking">是，繼續預約</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -328,7 +339,7 @@
      <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
       <v-card v-if="eventToCancel">
         <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
-          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
+          <v-icon start color="error">mdi-alert-circle-outline</v-icon>
           <span>確認取消預約</span>
         </v-card-title>
         <v-card-text class="py-4">
@@ -344,13 +355,77 @@
         <v-card-actions class="pa-3">
           <v-spacer></v-spacer>
           <v-btn variant="text" @click="isCancelConfirmDialogVisible = false">返回</v-btn>
-          <v-btn color="red-darken-1" variant="flat" :loading="isCancelling" @click="handleConfirmCancelBooking">確定取消</v-btn>
+          <v-btn color="error" variant="flat" :loading="isCancelling" @click="handleConfirmCancelBooking">確定取消</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+<v-dialog v-model="isBlockingDialogVisible" max-width="500px" persistent>
+      <v-card v-if="blockingAppointmentDetails">
+        <v-card-title class="text-h6 d-flex align-center bg-red">
+          <v-icon start color="white">mdi-alert-octagon-outline</v-icon>
+          <span>無法新增預約</span>
+        </v-card-title>
+        <v-card-text class="pt-4 text-body-1">
+          <p>您選擇的「<strong>{{ blockingAppointmentDetails.bookingType }}</strong>」已有進行中的預約。</p>
+          <p class="mt-4">請先取消以下紀錄，才能新增此項目的預約：</p>
+          <v-list density="compact" class="bg-red-lighten-5 rounded mt-2">
+            <v-list-item 
+              :title="blockingAppointmentDetails.bookerName" 
+              :subtitle="blockingAppointmentDetails.unitId"
+              prepend-icon="mdi-account-alert-outline"
+            ></v-list-item>
+            <v-list-item 
+              :title="blockingAppointmentDetails.appointmentDate?.toLocaleDateString()" 
+              :subtitle="blockingAppointmentDetails.appointmentTimeSlot"
+              prepend-icon="mdi-calendar-alert-outline"
+            ></v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="red-darken-1" variant="text" @click="isBlockingDialogVisible = false">
+            關閉
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="isConfirmContinueDialogVisible" max-width="500px" persistent>
+      <v-card v-if="completedAppointmentDetails">
+        <v-card-title class="text-h6 d-flex align-center bg-error">
+          <v-icon start color="white">mdi-alert-circle-outline</v-icon>
+          <span>請確認操作</span>
+        </v-card-title>
+        <v-card-text class="pt-4 text-body-1">
+          <p>您選擇的「<strong>{{ completedAppointmentDetails.bookingType }}</strong>」已有一筆已完成的紀錄。</p>
+          <p class="mt-4">詳細資訊如下：</p>
+          <v-list density="compact" class="bg-red-lighten-5 rounded mt-2">
+             <v-list-item 
+              :title="completedAppointmentDetails.bookerName" 
+              :subtitle="completedAppointmentDetails.unitId"
+              prepend-icon="mdi-account-check-outline"
+            ></v-list-item>
+            <v-list-item 
+              :title="completedAppointmentDetails.appointmentDate?.toLocaleDateString()" 
+              :subtitle="completedAppointmentDetails.appointmentTimeSlot"
+              prepend-icon="mdi-calendar-check-outline"
+            ></v-list-item>
+          </v-list>
+          <p class="mt-4 font-weight-bold">您確定要為【{{ completedAppointmentDetails.unitId }}】再新增一筆預約嗎？</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="handleCancelContinue">取消</v-btn>
+          <v-btn color="error" variant="flat" @click="handleConfirmContinue">繼續新增</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
 
   </v-dialog>
+
+  
 </template>
 
 <script setup>
@@ -431,6 +506,12 @@ const bookingOptions = reactive({
     inspectionMethods: [],
 });
 
+const isBlockingDialogVisible = ref(false);
+const blockingAppointmentDetails = ref(null); // 用來儲存造成阻擋的預約物件
+const isConfirmContinueDialogVisible = ref(false);
+const completedAppointmentDetails = ref(null); // 用來儲存已完成的預約物件
+
+
 // ✓ START: 修改 - 新增處理儲存和取消的函式
 async function handleSaveChangesFromDialog(payload) {
     const { appointmentId, bookingPayload, householdPayload } = payload;
@@ -475,6 +556,17 @@ async function handleConfirmCancelBooking() {
     }
 }
 // ✓ END: 修改
+
+function handleConfirmContinue() {
+  isConfirmContinueDialogVisible.value = false;
+  // 使用者選擇繼續，不做任何事，保留選擇
+}
+
+function handleCancelContinue() {
+  isConfirmContinueDialogVisible.value = false;
+  formStep2.bookingType = null;
+  completedAppointmentDetails.value = null; // 清除已儲存的物件
+}
 
 const showHistoryDetails = (appointment) => {
   // ✓ 將當前已載入的「戶別資料」與被點擊的「預約紀錄」合併
@@ -606,6 +698,32 @@ const resetState = () => {
     isOverbooking.value = false;
 };
 
+watch(() => formStep2.bookingType, (newVal) => {
+  if (!newVal) return;
+
+  const blockingAppt = appointmentHistory.value.find(
+    appt => appt.bookingType === newVal && appt.status === '預約中'
+  );
+
+  if (blockingAppt) {
+    blockingAppointmentDetails.value = blockingAppt; // 儲存整個物件
+    isBlockingDialogVisible.value = true;
+    nextTick(() => {
+      formStep2.bookingType = null;
+    });
+    return;
+  }
+
+  const completedAppt = appointmentHistory.value.find(
+    appt => appt.bookingType === newVal && appt.status === '已完成'
+  );
+
+  if (completedAppt) {
+    completedAppointmentDetails.value = completedAppt; // 儲存整個物件
+    isConfirmContinueDialogVisible.value = true;
+  }
+});
+
 watchDebounced(searchKeyword, async (newVal) => {
   if (newVal && newVal.length > 1) {
     isSearching.value = true;
@@ -706,15 +824,17 @@ const onDateChange = async (date) => {
   const selectedDayData = calendarData.value.find(d => d.date === dateStr);
   const formattedDate = dateAdapter.format(date, 'keyboardDate');
 
+  // ✓ START: 修改 - 更新提示文字
   if (selectedDayData?.type === 'other_batch') {
     dateSelectionAlert.show = true;
     dateSelectionAlert.type = 'error';
-    dateSelectionAlert.text = `${formattedDate} 非本戶別批次，請確認是否預約。`;
+    dateSelectionAlert.text = `${formattedDate} 非本戶別驗屋日期批次，請您確認屋況是否可驗屋。`;
   } else if (!selectedDayData) {
     dateSelectionAlert.show = true;
     dateSelectionAlert.type = 'error';
-    dateSelectionAlert.text = `${formattedDate} 尚未確認批次，請確認是否預約。`;
+    dateSelectionAlert.text = `${formattedDate} 尚未建立可驗屋日期批次，請您確認屋況是否可驗屋。`;
   }
+  // ✓ END: 修改
 
   try {
     const slots = await getSlotsForAdmin(props.projectId, dateStr);
