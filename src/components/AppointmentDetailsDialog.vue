@@ -25,17 +25,24 @@
               </div>
               <div v-else>
                 <div class="d-flex flex-column flex-sm-row ga-2">
-                  <v-text-field
+                   <v-text-field
                     v-model="editableEvent.appointmentDate"
                     label="預約日期" type="date" hide-details="auto"
                     variant="outlined" density="compact" style="min-width: 155px;"
                   ></v-text-field>
                   <v-combobox
                     v-model="editableEvent.appointmentTimeSlot"
-                    :items="timeSlotOptions" label="預約時段" placeholder="格式 HH:mm"
-                    :loading="isTimeSlotLoading" :disabled="!editableEvent.appointmentDate"
-                    hide-details="auto" no-data-text="此日期無可用時段"
-                    variant="outlined" density="compact" style="min-width: 200px;"
+                    :items="timeSlotOptions"
+                    :rules="timeFormatRules"
+                    label="預約時段"
+                    placeholder="格式 HH:mm"
+                    :loading="isTimeSlotLoading"
+                    :disabled="!editableEvent.appointmentDate"
+                    hide-details="auto"
+                    no-data-text="此日期無可用時段"
+                    variant="outlined"
+                    density="compact"
+                    style="min-width: 200px;"
                   ></v-combobox>
                 </div>
               </div>
@@ -49,15 +56,15 @@
           
           <v-row dense class="mt-2" v-if="canEdit">
             <v-col cols="12">
-              <v-select
+              <v-combobox
                 v-model="editableInspectors"
                 :items="bookingOptions.inspectionStaff"
-                label="驗屋人員 (修改後即時儲存)"
+                label="驗屋人員 (可手動輸入，修改後即時儲存)"
                 multiple chips closable-chips clearable
                 variant="outlined" density="compact" hide-details
                 :loading="isSavingInspectors"
                 @update:model-value="handleInspectorsChange"
-              ></v-select>
+              ></v-combobox>
             </v-col>
           </v-row>
         </div>
@@ -102,49 +109,91 @@
             <template v-else>
               <v-expansion-panel-title class="font-weight-bold">{{ panel.title }}</v-expansion-panel-title>
               <v-expansion-panel-text class="pa-0">
-                <v-list lines="two" density="compact">
-                  <template v-for="(field, index) in panel.fields" :key="field.key">
-                    <v-list-item class="py-2">
-                      <template v-slot:prepend><v-icon :icon="field.icon" class="mt-n4"></v-icon></template>
-                      
-                      <div v-if="isEditMode && editableFields.has(field.key)">
-                        <v-text-field
-                          dense class="mt-2"
-                          v-model="editableEvent[field.key]"
-                          :label="field.label"
-                          density="compact" hide-details="auto" variant="outlined"
-                        ></v-text-field>
-                      </div>
-                      <div v-else>
-                        <v-list-item-subtitle>{{ field.label }}</v-list-item-subtitle>
-                        <v-list-item-title>
-                          <template v-if="field.key === 'inspectionReportUrl'">
-                            <span v-if="!inspectionReportFiles || inspectionReportFiles.length === 0">無</span>
-                            <v-btn
-                              v-else v-for="(file, i) in inspectionReportFiles" :key="i"
-                              variant="text" size="small" :href="file.url" target="_blank"
-                              class="text-none pa-1" color="primary"
-                            >
-                              <template v-slot:prepend><v-icon color="red" size="20">mdi-file-pdf-box</v-icon></template>
-                              {{ file.name }}
-                            </v-btn>
-                          </template>
-                          <template v-else-if="field.key === 'inspectionDocsUrl'">
-                            <v-btn v-if="appointment.inspectionDocsUrl" :href="appointment.inspectionDocsUrl" target="_blank" size="small" variant="tonal" color="indigo">
-                              <v-icon start>mdi-folder-google-drive</v-icon> 開啟雲端資料夾
-                            </v-btn>
-                            <span v-else>無</span>
-                          </template>
-                          <a v-else-if="field.isTel" :href="`tel:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
-                          <a v-else-if="field.isMail" :href="`mailto:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
-                          <span v-else>{{ appointment[field.key] || '無' }}</span>
-                        </v-list-item-title>
-                      </div>
-                    </v-list-item>
-                    <v-divider v-if="index < panel.fields.length - 1"></v-divider>
-                  </template>
-                </v-list>
-              </v-expansion-panel-text>
+  <div class="px-4">
+    <template v-for="(field, index) in panel.fields" :key="field.key">
+      <v-row dense align="center" class="py-3">
+        <v-col cols="12" sm="4" class="d-flex align-center text-grey-darken-2 text-subtitle-2">
+          <v-icon :icon="field.icon" start size="small"></v-icon>
+          <span>{{ field.label }}</span>
+        </v-col>
+        
+  <v-col cols="12" sm="8">
+          <div v-if="isEditMode && editableFields.has(field.key)">
+            <v-select
+              v-if="field.key === 'bookingType'"
+              v-model="editableEvent.bookingType"
+              
+              :items="bookingTypeOptions"
+              density="compact" hide-details="auto" variant="outlined"
+            ></v-select>
+            <v-select
+              v-else-if="field.key === 'inspectionMethod'"
+              v-model="editableEvent.inspectionMethod"
+              :items="bookingMethodOptions"
+              density="compact" hide-details="auto" variant="outlined"
+            ></v-select>
+            <v-switch
+              v-else-if="field.isSwitch"
+              v-model="editableEvent[field.key]"
+              color="green darken-2"
+              hide-details
+              density="compact"
+            ></v-switch>
+            <v-text-field
+              v-else-if="field.isDate"
+              v-model="editableEvent[field.key]"
+              type="date"
+              :placeholder="field.label" density="compact" hide-details="auto" variant="outlined"
+            ></v-text-field>
+             <v-text-field
+              v-else
+              dense
+              v-model="editableEvent[field.key]"
+              :placeholder="field.label" density="compact" hide-details="auto" variant="outlined"
+            ></v-text-field>
+          </div>
+          <div v-else class="text-body-1">
+            <template v-if="field.isSwitch">
+              <v-chip :color="appointment[field.key] ? 'success' : 'grey'" size="small" label>
+                {{ appointment[field.key] ? '開啟' : '關閉' }}
+              </v-chip>
+            </template>
+            <template v-else-if="field.key === 'inspectionDocsUrl'"> 
+            <v-btn v-if="appointment.inspectionDocsUrl" :href="appointment.inspectionDocsUrl" target="_blank" size="small" variant="tonal" color="blue-darken-2">
+                <v-icon start>mdi-folder-google-drive</v-icon> 開啟雲端資料夾
+              </v-btn>
+              <span v-else>無</span>
+            </template>
+            <template v-else-if="field.key === 'inspectionReportUrl'">
+              <div v-if="inspectionReportFiles.length > 0" class="d-flex flex-column align-start ga-1">
+                <v-btn
+                  v-for="file in inspectionReportFiles"
+                  :key="file.url"
+                  :href="file.url"
+                  target="_blank"
+                  variant="text"
+                  size="small"
+                  color="blue-darken-2"
+                  class="justify-start text-none pa-1"
+                  style="height: auto; min-height: 28px;"
+                >
+                  <span class="text-body-2" style="white-space: normal; text-align: left; line-height: 1.2;">
+                    {{ file.name }}
+                  </span>
+                </v-btn>
+              </div>
+              <span v-else>無</span>
+            </template>
+            <a v-else-if="field.isTel" :href="`tel:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
+            <a v-else-if="field.isMail" :href="`mailto:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
+        <span v-else style="word-break: break-all; white-space: normal;">{{ appointment[field.key] || '無' }}</span>
+          </div>
+        </v-col>
+      </v-row>
+      <v-divider v-if="index < panel.fields.length - 1"></v-divider>
+    </template>
+    </div>
+</v-expansion-panel-text>
             </template>
           </v-expansion-panel>
         </v-expansion-panels>
@@ -156,7 +205,7 @@
           <v-btn v-if="canEdit && appointment.status !== '取消'" color="red" variant="tonal" @click="emit('cancel-appointment', appointment)">取消此預約</v-btn>
           <v-spacer></v-spacer>
           <v-btn color="grey-darken-1" variant="text" @click="closeDialog">關閉</v-btn>
-          <v-btn v-if="canEdit && appointment.status !== '取消'" color="primary" variant="flat" @click="enterEditMode">編輯</v-btn>
+          <v-btn v-if="canEdit && appointment.status !== '取消'" color="primary" variant="flat" @click="enterEditMode" :loading="isEnteringEditMode">編輯</v-btn>
         </div>
         <div v-else class="d-flex w-100">
           <v-spacer></v-spacer>
@@ -169,10 +218,10 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'; // ✅ 引入 nextTick
+import { ref, watch, computed, nextTick } from 'vue'; 
 import { useDate } from 'vuetify';
 import { format } from 'date-fns';
-import { getSlotsForAdmin } from '@/api';
+import { getSlotsForAdmin, fetchProjectConfig } from '@/api';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
 
 const props = defineProps({
@@ -190,24 +239,34 @@ const isEditMode = ref(false);
 const editableEvent = ref(null);
 const editableInspectors = ref([]);
 const isSaving = ref(false);
+const isEnteringEditMode = ref(false);
 const isSavingInspectors = ref(false);
 const timeSlotOptions = ref([]);
 const isTimeSlotLoading = ref(false);
 const panels = ref([]);
+const projectConfig = ref(null);
 
-// ✓ 修改：使用完整的 fieldConfig
+const timeFormatRules = [
+  v => !!v || '時段為必填項',
+  v => /^([01]\d|2[0-3]):([0-5]\d)$/.test(v) || '格式必須為 HH:mm (例如 09:30)',
+];
+
+
 const fieldConfig = [
+  { title: '系統功能', fields: [ { key: 'showInMenu', label: '預約系統', icon: 'mdi-calendar-sync', isSwitch: true }, { key: 'initialReportUploadSwitch', label: '初驗報告上傳', icon: 'mdi-upload-network-outline', isSwitch: true }, { key: 'reInspectionReportUploadSwitch', label: '複驗報告上傳', icon: 'mdi-upload-network', isSwitch: true }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]},
   { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證', icon: 'mdi-card-account-details-outline' } ]},
   { title: '預約人資料', fields: [ { key: 'bookerName', label: '預約人姓名', icon: 'mdi-account-outline' }, { key: 'bookerPhone', label: '預約人電話', icon: 'mdi-cellphone', isTel: true }, { key: 'bookerEmail', label: '預約人EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'bookerIdNumber', label: '預約人身分證', icon: 'mdi-card-account-details-outline' } ]},
   { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '驗屋方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true }, { key: 'bookingRemarks', label: '預約備註', icon: 'mdi-note-text-outline' }, ]},
-  { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check' }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'bankContact', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]}
+  { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, ]}
 ];
 
-const editableFields = new Set([
-  'bookerName', 'bookerPhone', 'bookerEmail', 'bookerIdNumber', 
-  'bookingType', 'inspectionMethod', 'inspectionCompanyName', 
-  'agentName', 'agentPhone', 'bookingRemarks'
-]);
+const bookingTypeOptions = computed(() => projectConfig.value?.bookingTypes || []);
+const bookingMethodOptions = computed(() => projectConfig.value?.bookingMethodOptions || []);
+
+const editableFields = new Set(
+  fieldConfig.flatMap(panel => panel.fields.map(field => field.key))
+             .filter(key => key !== 'inspectionDocsUrl' && key !== 'inspectionReportUrl')
+);
 
 // ✓ 新增：動態面板
 const displayPanels = computed(() => {
@@ -226,7 +285,18 @@ const inspectionReportFiles = computed(() => {
   return [];
 });
 
-function enterEditMode() {
+async function enterEditMode() {
+  if (!props.appointment?.projectId) return;
+  isEnteringEditMode.value = true;
+  try {
+    const config = await fetchProjectConfig(props.appointment.projectId);
+    projectConfig.value = config;
+  } catch (error) {
+    console.error("獲取建案設定失敗:", error);
+    // 可以在此處加入錯誤提示
+    isEnteringEditMode.value = false;
+    return;
+  }
   const cleanCopy = {};
   const allKeys = new Set();
   fieldConfig.forEach(panel => panel.fields.forEach(field => allKeys.add(field.key)));
@@ -235,8 +305,12 @@ function enterEditMode() {
   
   allKeys.forEach(key => {
     const value = props.appointment[key];
-    if (key === 'appointmentDate') {
+    const fieldDef = fieldConfig.flatMap(p => p.fields).find(f => f.key === key);
+
+      if (key === 'appointmentDate' || fieldDef?.isDate) {
       cleanCopy[key] = formatDate(value, 'yyyy-MM-dd');
+    } else if (fieldDef?.isSwitch) {
+      cleanCopy[key] = value === true; // 確保是布林值
     } else {
       cleanCopy[key] = value ?? '';
     }
@@ -244,33 +318,54 @@ function enterEditMode() {
 
   editableEvent.value = cleanCopy;
   isEditMode.value = true;
-  panels.value = [0, 1, 2, 3];
+  panels.value = [0, 1, 2, 3, 4];
+  isEnteringEditMode.value = false;
 }
 
 function saveChanges() {
   isSaving.value = true;
   const bookingPayload = {};
+  const householdPayload = {};
+
+  const householdKeys = new Set([
+    'address', 'parkingLots', 'buyerName', 'buyerPhone', 'buyerEmail', 'buyerIdNumber',
+    'appropriationDate', 'bank', 'initialInspectionBatch', 'reInspectionBatch',
+    'showInMenu', 'initialReportUploadSwitch', 'reInspectionReportUploadSwitch'
+  ]);
+  const dateKeys = new Set(
+    fieldConfig.flatMap(p => p.fields).filter(f => f.isDate).map(f => f.key)
+      );
+
   const keysToCompare = [...editableFields, 'appointmentDate', 'appointmentTimeSlot'];
 
   keysToCompare.forEach(key => {
     let originalValue = props.appointment[key];
     let editedValue = editableEvent.value[key];
 
-    if (key === 'appointmentDate') {
+    if (key === 'appointmentDate' || dateKeys.has(key)) {
       originalValue = formatDate(originalValue, 'yyyy-MM-dd');
     }
 
     if (String(originalValue ?? '') !== String(editedValue ?? '')) {
-      bookingPayload[key] = editedValue;
+      let valueToSave = editedValue;
+      if ((dateKeys.has(key) || key === 'appointmentDate') && editedValue) {
+        valueToSave = new Date(editedValue);
+      }
+
+      if (householdKeys.has(key)) {
+        householdPayload[key] = valueToSave;
+      } else {
+        bookingPayload[key] = valueToSave;
+      }
     }
   });
   
-  if (Object.keys(bookingPayload).length > 0) {
+  if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
     emit('save', {
       appointmentId: props.appointment.id,
-      householdDocId: `${props.appointment.projectId}_${props.appointment.unitId}`,
+      householdDocId: props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`,
       bookingPayload,
-      householdPayload: {},
+      householdPayload,
     });
   } else {
     isEditMode.value = false;
@@ -309,7 +404,8 @@ watch(() => props.modelValue, (isOpen) => {
   if (isOpen && props.appointment) {
     isEditMode.value = false;
     panels.value = [];
-    const inspectors = props.appointment.inspectors;
+      projectConfig.value = null; // 關閉時重置設定
+     const inspectors = props.appointment.inspectors;
     if (typeof inspectors === 'string' && inspectors) {
       editableInspectors.value = inspectors.split(',').map(name => name.trim()).filter(Boolean);
     } else {

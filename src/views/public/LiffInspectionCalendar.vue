@@ -110,17 +110,34 @@
                     <v-toolbar-title class="text-subtitle-2">
                      {{ responsiveToolbarTitle }}
                     </v-toolbar-title>
-                    <v-spacer></v-spacer>
+
+                    <v-tooltip location="bottom" v-if="canEdit">
+                      <template v-slot:activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon="mdi-plus-circle-outline"
+                          @click="isAdminAddDialogVisible = true"
+                          :disabled="!selectedProject"
+                        ></v-btn>
+                      </template>
+                      <span>新增預約</span>
+                    </v-tooltip>
                     
-                    <v-btn
-                      icon="mdi-share-variant"
-                      @click="handleShare"
-                      :loading="isSharing"
-                      :disabled="isFetchingDayData"
-                    ></v-btn>
                     
-                    <v-btn icon="mdi-cog" @click="isFilterDialogVisible = true"></v-btn>
-                 </v-toolbar>
+                    <v-tooltip location="bottom">
+                      <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-share-variant" @click="handleShare" :loading="isSharing" :disabled="isFetchingDayData"></v-btn>
+                      </template>
+                      <span>分享時間表</span>
+                    </v-tooltip>
+                    
+                    <v-tooltip location="bottom">
+                      <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-cog" @click="isFilterDialogVisible = true"></v-btn>
+                      </template>
+                      <span>顯示設定</span>
+                    </v-tooltip>
+                 </v-toolbar>                 
                 
                 <div
                   ref="calendarContentRef"
@@ -212,6 +229,13 @@
     @update-inspectors="handleUpdateInspectors"
   />
 
+        <AdminAddBookingDialog
+          v-if="selectedProject"
+          v-model="isAdminAddDialogVisible"
+          :project-id="selectedProject"
+          @booking-success="handleBookingSuccess"
+        />
+
   <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
     <v-card v-if="eventToCancel">
       <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
@@ -275,12 +299,14 @@ import { zhTW } from 'date-fns/locale';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
+import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 
 const { smAndDown, mobile } = useDisplay(); 
 const userStore = useUserStore();
 
 const calendarContentRef = ref(null);
 const isSharing = ref(false);
+const isAdminAddDialogVisible = ref(false);
 
 
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
@@ -332,6 +358,13 @@ const snackbar = reactive({
 
 const userName = computed(() => userStore.user?.name || '');
 
+const handleBookingSuccess = () => {
+  showSnackbar('預約已成功新增！', 'success');
+  // 重新載入當日資料以顯示最新預約
+  fetchDayData(selectedProject.value, selectedDate.value);
+};
+
+
 // ✓ 修改：這裡就是修正的核心！
 const authorizedProjects = computed(() => {
   const permissions = userStore.user?.permissions;
@@ -367,7 +400,7 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' });
+    await liff.init({ liffId: '2008257338-6N3jwqxA' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -589,7 +622,7 @@ async function handleUpdateInspectors(payload) {
 async function handleSaveAppointment(payload) {
   try {
     const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;
-    await updateAppointment(appointmentId, bookingPayload, householdPayload, householdDocId);
+    await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
     showSnackbar('儲存成功！', 'success');
     isDialogVisible.value = false;
     await fetchDayData(selectedProject.value, selectedDate.value); 

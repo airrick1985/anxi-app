@@ -1985,16 +1985,13 @@ export async function fetchBookingOptions(projectId) {
  * @param {string|null} cancelBookingCode - 可選，要同時取消的舊預約代碼
  * @param {boolean} force - 可選，是否強制新增
  */
-export async function addAppointmentAdmin(projectId, newBookingData, cancelBookingCode = null, force = false) {
+// ✓ 修改函式簽名，直接接收一個 payload 物件
+export async function addAppointmentAdmin(payload) {
     //  START: 修改此函式以呼叫 Cloud Function
     try {
         const addFunction = httpsCallable(functions, 'addAppointmentByAdmin');
-        const result = await addFunction({
-            projectId,
-            newBookingData,
-            cancelBookingCode,
-            force
-        });
+        // ✓ 直接將收到的 payload 傳給後端
+        const result = await addFunction(payload);
         return result.data; // 直接回傳後端的回應 { status: 'success', docId: '...' }
     } catch (error) {
         console.error("呼叫 addAppointmentByAdmin 雲端函式時發生錯誤:", error);
@@ -2044,45 +2041,32 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
 }
 
 /**
- * [Firestore 版] 取消一筆預約，並清除戶別的相關驗屋日期和方式
+ * ✓ [Firebase 版] 取消一筆預約 (呼叫 Cloud Function)
  * @param {string} appointmentId - 預約紀錄的文件 ID
  * @param {string} projectId - 預約所屬的建案 ID
  * @param {string} unitId - 預約所屬的戶別 ID
  * @param {string} bookingType - 預約類型 ('初驗' 或 '複驗')
  */
 export async function cancelAppointment(appointmentId, projectId, unitId, bookingType) {
-    if (!appointmentId) throw new Error("缺少預約紀錄 ID。");
-    if (!projectId || !unitId || !bookingType) throw new Error("缺少專案 ID、戶別 ID 或預約類型。");
-
-    const batch = writeBatch(db);
-
-    // 1. 更新 appointments 集合中的預約狀態
-    const appointmentRef = doc(db, "appointments", appointmentId);
-    batch.update(appointmentRef, {
-        status: "取消",
-        cancelledAt: serverTimestamp()
+  if (!appointmentId || !projectId || !unitId || !bookingType) {
+    return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
+  }
+  
+  try {
+    // ✓ 呼叫我們剛剛建立的新 Cloud Function
+    const doCancel = httpsCallable(functions, 'cancelAppointmentByAdmin');
+    const result = await doCancel({
+      appointmentId,
+      projectId,
+      unitId,
+      bookingType
     });
-
-    // 2. 根據 bookingType 清除 households 集合中對應的欄位
-    const householdDocId = `${projectId}_${unitId}`;
-    const householdRef = doc(db, "households", householdDocId);
-    
-    const householdUpdatePayload = {};
-    if (bookingType === '初驗') {
-        householdUpdatePayload.initialInspectionDate = null;
-        householdUpdatePayload.initialInspectionMethod = "";
-    } else if (bookingType === '複驗') {
-        householdUpdatePayload.reInspectionDate = null;
-        householdUpdatePayload.reInspectionMethod = "";
-    }
-
-    if (Object.keys(householdUpdatePayload).length > 0) {
-        batch.update(householdRef, householdUpdatePayload);
-    }
-
-    // 3. 提交批次操作
-    await batch.commit();
-    return { status: 'success' };
+    // ✓ 直接回傳後端的執行結果
+    return result.data;
+  } catch (error) {
+    console.error("API cancelAppointment 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
 }
 
 
@@ -4855,3 +4839,71 @@ export const getDeveloperData = async (payload) => {
   }
 };
 // ✓ END
+
+// =================================================================
+// /  【新增】後台新增預約專用 API
+// =================================================================
+
+/**
+ * [後台用] 根據關鍵字模糊搜尋戶別資料
+ * @param {object} payload - 包含 { projectId, keyword }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const searchHouseholdsForAdmin = async (payload) => {
+  try {
+    const searchFunction = httpsCallable(functions, 'searchHouseholdsForAdmin');
+    const result = await searchFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in searchHouseholdsForAdmin:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [後台用] 獲取指定建案所有預約批次的詳細資訊
+ * @param {object} payload - 包含 { projectId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getProjectBatchDetails = async (payload) => {
+  try {
+    const getDetailsFunction = httpsCallable(functions, 'getProjectBatchDetails');
+    const result = await getDetailsFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getProjectBatchDetails:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [後台用] 獲取行事曆所需的所有日期及其分類
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getAdminBookingCalendarData = async (payload) => {
+  try {
+    const getDataFunction = httpsCallable(functions, 'getAdminBookingCalendarData');
+    const result = await getDataFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getAdminBookingCalendarData:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [後台用] 獲取指定單一戶別的所有預約歷史紀錄
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const getAppointmentsForHousehold = async (payload) => {
+  try {
+    const getHistoryFunction = httpsCallable(functions, 'getAppointmentsForHousehold');
+    const result = await getHistoryFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getAppointmentsForHousehold:", error);
+    throw new Error(error.message);
+  }
+};

@@ -34,7 +34,11 @@ const driveSecrets = [
     "GMAIL_APP_PASSWORD"
 ];
 
+
 admin.initializeApp();
+
+
+
 
 // 這個 db 實例會指向 (default) 資料庫，我們在函式內部會建立指向 anxi-app 的實例
 const defaultDb = admin.firestore();
@@ -4525,10 +4529,11 @@ exports.uploadAuthLetter = onCall({
 
 
 /**
- *  [新增] 供管理員新增預約的雲端函式
+ * [新增] 供管理員新增預約的雲端函式
  * 包含：時段與名額驗證、強制新增、自訂文件ID、同步更新戶別資料
  */
-exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
+// ✓ START: 修改 - 增加 secrets 和 email 寄送邏輯
+exports.addAppointmentByAdmin = onCall({ cors: true, secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"] }, async (request) => {
     const { projectId, newBookingData, cancelBookingCode, force = false } = request.data;
     const functionName = `addAppointmentByAdmin (Project: ${projectId})`;
 
@@ -4540,108 +4545,334 @@ exports.addAppointmentByAdmin = onCall({ cors: true }, async (request) => {
     const householdDocId = `${projectId}_${newBookingData.unitId}`;
     const householdRef = db.collection('households').doc(householdDocId);
 
-    //  START: 新增保護機制，安全地獲取 timeSlotKey
     let rawTimeSlot = newBookingData.appointmentTimeSlot;
     let timeSlotKey = '';
 
     if (typeof rawTimeSlot === 'string') {
         timeSlotKey = rawTimeSlot;
     } else if (typeof rawTimeSlot === 'object' && rawTimeSlot !== null && rawTimeSlot.value) {
-        // 如果是從 v-combobox 來的物件，提取其 value
         timeSlotKey = String(rawTimeSlot.value);
     }
     
-    // 清理字串，只取 HH:mm 部分
     timeSlotKey = timeSlotKey.split(' ')[0];
-    //  END: 保護機制結束
     
-    if (!force) {
-        // ... (省略名額驗證邏輯，使用上面處理好的 timeSlotKey) ...
-        const appointmentDateStr = newBookingData.appointmentDate.split('T')[0];
-        const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00');
-        const appointmentsQuery = await db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中').get();
-        const currentBookings = appointmentsQuery.size;
-        const capacity = 1; 
-        if (currentBookings >= capacity) {
-            throw new HttpsError('failed-precondition', `SLOT_FULL: 該時段名額已滿 (目前 ${currentBookings} 人)。`);
+    // 在 try 區塊外宣告變數，以便後續寄送 email 時使用
+    let finalAppointmentData;
+    let docId;
+    let projectName;
+
+    try {
+        if (!force) {
+            const appointmentDateStr = newBookingData.appointmentDate.split('T')[0];
+            const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00');
+            const appointmentsQuery = await db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中').get();
+            const currentBookings = appointmentsQuery.size;
+            const capacity = 1; 
+            if (currentBookings >= capacity) {
+                throw new HttpsError('failed-precondition', `SLOT_FULL: 該時段名額已滿 (目前 ${currentBookings} 人)。`);
+            }
         }
-    }
 
-    const batch = db.batch();
-    if (cancelBookingCode) {
-        const oldAppointmentsQuery = db.collection("appointments").where("bookingCode", "==", cancelBookingCode).where("projectId", "==", projectId);
-        const oldSnapshot = await oldAppointmentsQuery.get();
-        if (!oldSnapshot.empty) {
-            batch.update(oldSnapshot.docs[0].ref, { status: "取消", cancelledAt: Timestamp.now() });
+        const batch = db.batch();
+        if (cancelBookingCode) {
+            const oldAppointmentsQuery = db.collection("appointments").where("bookingCode", "==", cancelBookingCode).where("projectId", "==", projectId);
+            const oldSnapshot = await oldAppointmentsQuery.get();
+            if (!oldSnapshot.empty) {
+                batch.update(oldSnapshot.docs[0].ref, { status: "取消", cancelledAt: Timestamp.now() });
+            }
         }
-    }
 
-    const now = new Date();
-    const timezoneOffset = 8 * 60;
-     const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
-    const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
-    const dateStr = localNow.toISOString().slice(5, 10);
-    const docId = `${projectId}_${dateStr}-${timeStr}_${newBookingData.unitId}`;
-    const newAppointmentRef = db.collection('appointments').doc(docId);
+        const now = new Date();
+        const timezoneOffset = 8 * 60;
+        const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
+        const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
+        const dateStr = localNow.toISOString().slice(5, 10);
+        docId = `${projectId}_${dateStr}-${timeStr}_${newBookingData.unitId}`;
+        const newAppointmentRef = db.collection('appointments').doc(docId);
 
-    const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
-const dataToSave = {
-        // 從前端 newBookingData 物件中獲取資料，並提供預設值
-        address: newBookingData.address || "",
-        agentAddress: newBookingData.agentAddress || "",
-        agentIdNumber: newBookingData.agentIdNumber || "",
-        agentName: newBookingData.agentName || "",
-        agentPhone: newBookingData.agentPhone || "",
-        authorizationLetterUrl: newBookingData.authorizationLetterUrl || "",
-        bookerEmail: newBookingData.bookerEmail || "",
-        bookerIdNumber: newBookingData.bookerIdNumber || "",
-        bookerName: newBookingData.bookerName || "",
-        bookerPhone: newBookingData.bookerPhone || "",
-        bookingType: newBookingData.bookingType || "",
-        bookingRemarks: newBookingData.bookingRemarks || "", 
-        inspectionCompanyName: newBookingData.inspectionCompanyName || "",
-        inspectionMethod: newBookingData.inspectionMethod || "",
-        principalAddress: newBookingData.principalAddress || "",
-        principalIdNumber: newBookingData.principalIdNumber || "",
-        principalName: newBookingData.principalName || "",
-        status: newBookingData.status || "預約中",
-        unitId: newBookingData.unitId,
-         createdByName: newBookingData.createdByName || null,
-        lastModifiedByName: newBookingData.lastModifiedByName || null,
+        const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
+        
+        // 將要寫入的資料存到 finalAppointmentData
+        finalAppointmentData = {
+            address: newBookingData.address || "",
+            agentAddress: newBookingData.agentAddress || "",
+            agentIdNumber: newBookingData.agentIdNumber || "",
+            agentName: newBookingData.agentName || "",
+            agentPhone: newBookingData.agentPhone || "",
+            authorizationLetterUrl: newBookingData.authorizationLetterUrl || "",
+            bookerEmail: newBookingData.bookerEmail || "",
+            bookerIdNumber: newBookingData.bookerIdNumber || "",
+            bookerName: newBookingData.bookerName || "",
+            bookerPhone: newBookingData.bookerPhone || "",
+            bookingType: newBookingData.bookingType || "",
+            bookingRemarks: newBookingData.bookingRemarks || "", 
+            inspectionCompanyName: newBookingData.inspectionCompanyName || "",
+            inspectionMethod: newBookingData.inspectionMethod || "",
+            principalAddress: newBookingData.principalAddress || "",
+            principalIdNumber: newBookingData.principalIdNumber || "",
+            principalName: newBookingData.principalName || "",
+            status: newBookingData.status || "預約中",
+            unitId: newBookingData.unitId,
+            createdByName: newBookingData.createdByName || null,
+            lastModifiedByName: newBookingData.lastModifiedByName || null,
+            projectId: projectId,
+            createdAt: Timestamp.now(),
+            appointmentTimeSlot: timeSlotKey,
+            bookingCode: bookingCode,
+            reportUploaded: false, 
+            appointmentDate: newBookingData.appointmentDate ? Timestamp.fromDate(new Date(newBookingData.appointmentDate.split('T')[0])) : null
+        };
 
-        // 由後端生成或處理的欄位
-        projectId: projectId,
-        createdAt: Timestamp.now(),
-        appointmentTimeSlot: timeSlotKey,
-        bookingCode: bookingCode,
-        reportUploaded: false, 
-        appointmentDate: null 
-    };
+        batch.set(newAppointmentRef, finalAppointmentData);
 
-    if (newBookingData.appointmentDate) {
-        dataToSave.appointmentDate = Timestamp.fromDate(new Date(newBookingData.appointmentDate.split('T')[0]));
-    }
-    batch.set(newAppointmentRef, dataToSave);
-
-    const householdUpdatePayload = {};
-    const finalAppointmentDate = new Date(`${newBookingData.appointmentDate.split('T')[0]}T${timeSlotKey}:00`);
-    if (newBookingData.bookingType === '初驗') {
-        householdUpdatePayload.initialInspectionDate = Timestamp.fromDate(finalAppointmentDate);
-        householdUpdatePayload.initialInspectionMethod = newBookingData.inspectionMethod;
-    } else if (newBookingData.bookingType === '複驗') {
-        householdUpdatePayload.reInspectionDate = Timestamp.fromDate(finalAppointmentDate);
-        householdUpdatePayload.reInspectionMethod = newBookingData.inspectionMethod;
-    }
-    if (Object.keys(householdUpdatePayload).length > 0) {
-        const householdDoc = await householdRef.get();
-        if(householdDoc.exists) {
-            batch.update(householdRef, householdUpdatePayload);
+        const householdUpdatePayload = {};
+        const finalAppointmentDateObj = new Date(`${newBookingData.appointmentDate.split('T')[0]}T${timeSlotKey}:00`);
+        if (newBookingData.bookingType === '初驗') {
+            householdUpdatePayload.initialInspectionDate = Timestamp.fromDate(finalAppointmentDateObj);
+            householdUpdatePayload.initialInspectionMethod = newBookingData.inspectionMethod;
+        } else if (newBookingData.bookingType === '複驗') {
+            householdUpdatePayload.reInspectionDate = Timestamp.fromDate(finalAppointmentDateObj);
+            householdUpdatePayload.reInspectionMethod = newBookingData.inspectionMethod;
         }
+        if (Object.keys(householdUpdatePayload).length > 0) {
+            const householdDoc = await householdRef.get();
+            if(householdDoc.exists) {
+                batch.update(householdRef, householdUpdatePayload);
+            }
+        }
+        
+        await batch.commit();
+
+        // --- 資料寫入成功後，開始寄送 Email ---
+        if (finalAppointmentData.bookerEmail) {
+            const projectRef = db.collection('projects').doc(projectId);
+            const projectDoc = await projectRef.get();
+            projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+            let closingText = '請於預約時段準時抵達，感謝您的配合。';
+            let inspectionNotesHtml = '';
+            let contactInfoHtml = '';
+
+            if (projectDoc.exists) {
+                const projectData = projectDoc.data();
+                if (projectData.intro && projectData.intro.closingText) {
+                    closingText = projectData.intro.closingText;
+                } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
+                    closingText = projectData.emailConfig.closingText;
+                }
+                
+                if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
+                    inspectionNotesHtml = projectData.intro.alert.text;
+                }
+
+                if (projectData.intro && projectData.intro.contact) {
+                    const contact = projectData.intro.contact;
+                    if (contact.name || contact.phone) {
+                        const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+                        const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+                        const separator = contact.name && contact.phone ? ' / ' : '';
+                        contactInfoHtml = `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><p style="margin: 0; font-size: 14px; color: #555;">如有任何疑問，請洽詢：<br>${namePart}${separator}${phonePart}</p></div>`;
+                    }
+                }
+            }
+
+            const mailTransport = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+            });
+
+            const subject = `【${projectName}】預約成功通知 (${finalAppointmentData.unitId})`;
+            const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
+            const bookingLinkHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 14px; color: #555;">若您要查詢、修改或取消預約，請點擊以下按鈕返回預約頁面：<br><a href="${bookingUrl}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">前往預約頁面</a></p>`;
+            const htmlBody = `
+<div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+    <div style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">預約成功通知</h2></div>
+    <div style="padding: 24px; line-height: 1.6; color: #333333;">
+      <p>親愛的 <strong>${finalAppointmentData.bookerName}</strong> 您好：</p>
+      <p>您已成功完成預約，以下是您的預約詳細資訊，請再次確認。</p>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
+        <tbody>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0; font-weight: bold; font-size: 16px; color: #D32F2F;">${finalAppointmentData.bookingCode}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${finalAppointmentData.unitId}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">門牌</td><td style="padding: 12px 0;">${finalAppointmentData.address}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約姓名</td><td style="padding: 12px 0;">${finalAppointmentData.bookerName}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約人電話</td><td style="padding: 12px 0;">${finalAppointmentData.bookerPhone}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${finalAppointmentData.bookerEmail}</td></tr>
+          ${finalAppointmentData.agentName ? `<tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${finalAppointmentData.agentName}</td></tr><tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${finalAppointmentData.agentPhone}</td></tr>` : ''}
+          ${finalAppointmentData.authorizationLetterUrl ? `<tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋授權書</td><td style="padding: 12px 0;"><a href="${finalAppointmentData.authorizationLetterUrl}" target="_blank" style="color: #007BFF; text-decoration: none;">點此查看</a></td></tr>` : ''}
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${finalAppointmentData.bookingType}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionMethod}</td></tr>
+          ${finalAppointmentData.inspectionCompanyName ? `<tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionCompanyName}</td></tr>` : ''}
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${finalAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+          <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${finalAppointmentData.appointmentTimeSlot}</td></tr>
+        </tbody>
+      </table>
+      <div style="padding: 15px; margin-top: 15px; margin-bottom: 20px; background-color: #f8f9fa; border-left: 4px solid #17a2b8; color: #333;">${closingText}</div>
+      ${contactInfoHtml}
+      ${inspectionNotesHtml ? `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><h3 style="margin-top: 0; color: #333;">驗屋說明</h3>${inspectionNotesHtml}</div>` : ''}
+      ${bookingLinkHtml}
+    </div>
+    <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+      <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+      <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
+      <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援</p>
+    </div>
+  </div>
+</div>`;
+
+            const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+            await mailTransport.sendMail({
+                to: finalAppointmentData.bookerEmail,
+                cc: ccRecipients,
+                subject: subject,
+                html: htmlBody, 
+                name: `${projectName} 預約系統`
+            });
+            console.log(`[${functionName}] 已成功寄送預約成功通知信至 ${finalAppointmentData.bookerEmail}`);
+        }
+
+        return { status: 'success', docId: docId };
+
+    } catch (error) {
+        console.error(`[${functionName}] 新增預約時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", `新增預約時發生嚴重錯誤: ${error.message}`);
     }
-    
-    await batch.commit();
-    return { status: 'success', docId: docId };
 });
+
+// ✓ START: 新增 - 後台取消預約並寄送通知信的 Cloud Function
+/**
+ * [後台用] 取消一筆預約，並寄送通知信
+ * @param {string} appointmentId - 預約紀錄的文件 ID
+ * @param {string} projectId - 預約所屬的建案 ID
+ * @param {string} unitId - 預約所屬的戶別 ID
+ * @param {string} bookingType - 預約類型 ('初驗' 或 '複驗')
+ */
+exports.cancelAppointmentByAdmin = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
+    const { appointmentId, projectId, unitId, bookingType } = request.data;
+    const functionName = `cancelAppointmentByAdmin (ID: ${appointmentId})`;
+
+    if (!appointmentId || !projectId || !unitId || !bookingType) {
+        throw new HttpsError("invalid-argument", "缺少 appointmentId, projectId, unitId 或 bookingType。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    try {
+        const appointmentRef = db.collection("appointments").doc(appointmentId);
+        const householdRef = db.collection('households').doc(`${projectId}_${unitId}`);
+        
+        let bookingData; // 用來儲存預約資料以供後續寄信
+
+        // 步驟 1: 使用 Transaction 確保資料一致性
+        await db.runTransaction(async (transaction) => {
+            const appointmentDoc = await transaction.get(appointmentRef);
+            if (!appointmentDoc.exists) {
+                throw new HttpsError("not-found", "找不到指定的預約紀錄。");
+            }
+            bookingData = appointmentDoc.data(); // 在 transaction 內讀取資料
+
+            // 更新預約狀態
+            transaction.update(appointmentRef, {
+                status: "取消",
+                cancelledAt: Timestamp.now()
+            });
+
+            // 清除戶別資料
+            const householdUpdatePayload = {};
+            if (bookingType === '初驗') {
+                householdUpdatePayload.initialInspectionDate = null;
+                householdUpdatePayload.initialInspectionMethod = null;
+            } else if (bookingType === '複驗') {
+                householdUpdatePayload.reInspectionDate = null;
+                householdUpdatePayload.reInspectionMethod = null;
+            }
+            
+            if (Object.keys(householdUpdatePayload).length > 0) {
+                transaction.update(householdRef, householdUpdatePayload);
+            }
+        });
+        
+        console.log(`[${functionName}] 已成功將預約狀態更新為「取消」。`);
+
+        // 步驟 2: 寄送 Email (邏輯同 cancelBooking)
+        if (bookingData && bookingData.bookerEmail) {
+            const projectDoc = await db.collection('projects').doc(projectId).get();
+            const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+            let contactInfoHtml = '';
+            if (projectDoc.exists && projectDoc.data().intro?.contact) {
+                const { name, phone } = projectDoc.data().intro.contact;
+                if (name || phone) {
+                    const namePart = name ? `<strong>${name}</strong>` : '';
+                    const phonePart = phone ? `電話：${phone}` : '';
+                    const separator = name && phone ? ' / ' : '';
+                    contactInfoHtml = `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><p style="margin: 0; font-size: 14px; color: #555;">如有任何疑問，請洽詢：<br>${namePart}${separator}${phonePart}</p></div>`;
+                }
+            }
+
+            const mailTransport = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+            });
+
+            const subject = `【${projectName}】預約取消成功通知 (${bookingData.unitId})`;
+            const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
+
+            const htmlBody = `
+<div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+    <div style="background-color: #dc3545; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">預約取消通知</h2></div>
+    <div style="padding: 24px; line-height: 1.6; color: #333333;">
+      <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
+      <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
+        <tbody>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+          <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
+        </tbody>
+      </table>
+      <p>若您需要重新預約，歡迎隨時返回預約頁面。感謝您的使用。</p>
+      ${contactInfoHtml}
+      <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${bookingUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此重新預約</a></p>
+    </div>
+    <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+      <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+      <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
+    </div>
+  </div>
+</div>`;
+
+            const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+            await mailTransport.sendMail({
+                to: bookingData.bookerEmail,
+                cc: ccRecipients,
+                subject: subject,
+                html: htmlBody,
+                name: `${projectName} 預約系統`
+            });
+            console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
+        }
+
+        return { status: "success", message: "預約已成功取消" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 🔴 取消預約時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", `取消預約時發生錯誤: ${error.message}`);
+    }
+});
+// ✓ END: 新增函式
 
 
 /**
@@ -6529,3 +6760,296 @@ exports.getLiffCalendarDataForDay = onCall(async (request) => {
     }
 });
 // ✓ END
+
+// =================================================================
+// /  【新增】後台新增預約專用 Cloud Functions
+// =================================================================
+
+/**
+ * [後台用] 根據關鍵字模糊搜尋戶別資料
+ * @param {string} projectId - 建案 ID
+ * @param {string} keyword - 搜尋關鍵字
+ * @returns {Promise<object>} - 包含符合條件的戶別列表
+ */
+exports.searchHouseholdsForAdmin = onCall(async (request) => {
+  const { projectId, keyword } = request.data;
+  const functionName = "searchHouseholdsForAdmin";
+
+  if (!projectId || !keyword || keyword.trim().length < 2) {
+    throw new HttpsError("invalid-argument", "必須提供有效的建案 ID 和至少 2 個字元的關鍵字。");
+  }
+
+  const lowerCaseKeyword = keyword.toLowerCase().trim();
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    const householdsRef = db.collection("households");
+    const query = householdsRef.where("projectId", "==", projectId);
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return { status: "success", data: [] };
+    }
+
+    const searchFields = ['buyerEmail', 'buyerIdNumber', 'buyerName', 'buyerPhone', 'unitId'];
+    const results = [];
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      let isMatch = false;
+      for (const field of searchFields) {
+        const value = data[field];
+        if (value && typeof value === 'string' && value.toLowerCase().includes(lowerCaseKeyword)) {
+          isMatch = true;
+          break;
+        }
+      }
+      if (isMatch) {
+        // 回傳前端列表需要的最小資料集
+        results.push({
+          unitId: data.unitId,
+          buyerName: data.buyerName || 'N/A',
+        });
+      }
+    });
+
+    // 依戶別排序
+    results.sort((a, b) => a.unitId.localeCompare(b.unitId, 'zh-Hant-TW', { numeric: true }));
+
+    console.log(`[${functionName}] 在專案 [${projectId}] 中，根據關鍵字 [${keyword}] 找到了 ${results.length} 筆戶別。`);
+    return { status: "success", data: results };
+
+  } catch (error) {
+    console.error(`[${functionName}] 搜尋戶別時發生錯誤:`, error);
+    throw new HttpsError("internal", "搜尋戶別資料時發生錯誤。");
+  }
+});
+
+/**
+ * [後台用] 獲取指定建案所有預約批次的詳細資訊 (修正版)
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 以 bookingType 和 batchCode 分類的批次資訊物件
+ */
+exports.getProjectBatchDetails = onCall(async (request) => {
+    const { projectId } = request.data;
+    const functionName = "getProjectBatchDetails";
+
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const batchesRef = db.collection("bookingBatches");
+        const query = batchesRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { status: "success", data: {} };
+        }
+
+        const batchDetails = {};
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const { bookingType, batchCode, applicationStart, applicationEnd } = data;
+
+            if (!bookingType || !batchCode) return;
+
+            let statusText = '狀態不明';
+            let color = 'grey';
+            let start, end;
+
+            // ✓【修改開始】: 修正日期時間處理邏輯
+            if (applicationStart && typeof applicationStart.toDate === 'function') {
+                start = applicationStart.toDate();
+            }
+
+            if (applicationEnd && typeof applicationEnd.toDate === 'function') {
+                end = applicationEnd.toDate();
+            }
+            // ✓【修改結束】
+
+            if ((start && isNaN(start.getTime())) || (end && isNaN(end.getTime()))) {
+                console.warn(`[${functionName}] 警告：批次 ${batchCode} 的日期格式無效，已跳過。`, { applicationStart, applicationEnd });
+                return;
+            }
+
+            if (start && end) {
+                if (now < start) {
+                    statusText = '尚未開放';
+                    color = 'blue-grey';
+                } else if (now > end) {
+                    statusText = '已截止';
+                    color = 'red-darken-1';
+                } else {
+                    statusText = '開放中';
+                    color = 'green';
+                }
+            }
+
+            if (!batchDetails[bookingType]) {
+                batchDetails[bookingType] = {};
+            }
+
+            batchDetails[bookingType][batchCode] = {
+                bookingStart: data.bookingStart,
+                bookingEnd: data.bookingEnd,
+                statusText: statusText,
+                color: color
+            };
+        });
+
+        console.log(`[${functionName}] 已成功處理專案 [${projectId}] 的 ${snapshot.size} 個批次資訊。`);
+        return { status: "success", data: batchDetails };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取批次詳情時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取批次詳情時發生錯誤。");
+    }
+});
+
+/**
+ * [後台用] 獲取行事曆所需的所有日期及其分類 (本戶批次/其他批次)
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - 包含日期與其類型的陣列
+ */
+exports.getAdminBookingCalendarData = onCall(async (request) => {
+    const { projectId, unitId } = request.data;
+    const functionName = "getAdminBookingCalendarData";
+
+    if (!projectId || !unitId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId) 或戶別 ID (unitId)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        // 步驟 1: 獲取目標戶別的批次代碼
+        const householdDocRef = db.collection("households").doc(`${projectId}_${unitId}`);
+        const householdDoc = await householdDocRef.get();
+        if (!householdDoc.exists) {
+            throw new HttpsError("not-found", "找不到指定的戶別資料。");
+        }
+        const householdData = householdDoc.data();
+        const ownBatchCodes = new Set([householdData.initialInspectionBatch, householdData.reInspectionBatch].filter(Boolean));
+
+        // 步驟 2: 獲取專案所有批次的 ID 與代碼對照表
+        const batchesRef = db.collection("bookingBatches");
+        const batchesQuery = batchesRef.where("projectId", "==", projectId);
+        const batchesSnapshot = await batchesQuery.get();
+        const batchIdToCodeMap = new Map();
+        batchesSnapshot.forEach(doc => {
+            batchIdToCodeMap.set(doc.id, doc.data().batchCode);
+        });
+
+        // 步驟 3: 獲取所有日期的批次歸屬
+        const linksRef = db.collection("batchRuleLinks");
+        const linksQuery = linksRef.where("projectId", "==", projectId);
+        const linksSnapshot = await linksQuery.get();
+        const dateToBatchCodesMap = new Map();
+        linksSnapshot.forEach(doc => {
+            const { date, batchId } = doc.data();
+            const batchCode = batchIdToCodeMap.get(batchId);
+            if (date && batchCode) {
+                if (!dateToBatchCodesMap.has(date)) {
+                    dateToBatchCodesMap.set(date, new Set());
+                }
+                dateToBatchCodesMap.get(date).add(batchCode);
+            }
+        });
+
+        // 步驟 4: 分類日期
+        const calendarData = [];
+        dateToBatchCodesMap.forEach((batchCodesOnDate, date) => {
+            let isOwnBatch = false;
+            for (const code of batchCodesOnDate) {
+                if (ownBatchCodes.has(code)) {
+                    isOwnBatch = true;
+                    break;
+                }
+            }
+            calendarData.push({
+                date: date,
+                type: isOwnBatch ? 'own_batch' : 'other_batch'
+            });
+        });
+
+        console.log(`[${functionName}] 已成功處理專案 [${projectId}] 的 ${calendarData.length} 個可預約日期。`);
+        return { status: "success", data: calendarData };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取行事曆資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取行事曆資料時發生錯誤。");
+    }
+});
+
+
+/**
+ * [後台用] 獲取指定單一戶別的所有預約歷史紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - 包含該戶別所有預約紀錄的陣列
+ */
+exports.getAppointmentsForHousehold = onCall(async (request) => {
+    const { projectId, unitId } = request.data;
+    const functionName = "getAppointmentsForHousehold";
+
+    if (!projectId || !unitId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId) 或戶別 ID (unitId)。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef
+            .where("projectId", "==", projectId)
+            .where("unitId", "==", unitId)
+            .orderBy("createdAt", "desc"); // 依建立時間降序排列，最新的在最上面
+
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { status: "success", data: [] };
+        }
+
+        const history = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // 將 Firestore Timestamp 轉換為前端易於處理的 ISO 字串
+            if (data.appointmentDate && data.appointmentDate.toDate) {
+                data.appointmentDate = data.appointmentDate.toDate().toISOString();
+            }
+            if (data.createdAt && data.createdAt.toDate) {
+                data.createdAt = data.createdAt.toDate().toISOString();
+            }
+            return { id: doc.id, ...data };
+        });
+
+        console.log(`[${functionName}] 成功查詢到戶別 [${unitId}] 的 ${history.length} 筆預約紀錄。`);
+        return { status: "success", data: history };
+
+    } catch (error) {
+    console.error(`[${functionName}] 查詢預約歷史時發生錯誤:`, error);
+    // ✅ START: 新增更詳細的錯誤判斷
+    // 錯誤碼 9 (FAILED_PRECONDITION) 通常代表缺少索引
+    if (error.code === 9 && error.message.includes('https://console.firebase.google.com/')) {
+        // 從錯誤訊息中提取建立索引的 URL
+        const urlMatch = error.message.match(/(https:\/\/console\.firebase\.google\.com\/.*?)\?/);
+        if (urlMatch && urlMatch[1]) {
+            const indexCreationUrl = urlMatch[1];
+            // 回傳一個帶有 URL 的、更具體的錯誤訊息給前端
+            throw new HttpsError(
+                "failed-precondition",
+                `資料庫缺少必要的索引。請點擊以下連結建立索引，等待幾分鐘後再試： ${indexCreationUrl}`
+            );
+        }
+    }
+    // ✅ END: 新增更詳細的錯誤判斷
+    throw new HttpsError("internal", "查詢預約歷史時發生錯誤。");
+}
+});
+
+// =================================================================
+// /  【結束】後台新增預約專用 Cloud Functions
+// =================================================================
