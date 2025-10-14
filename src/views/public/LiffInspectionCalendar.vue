@@ -720,14 +720,16 @@ async function handleSaveAppointment(payload) {
     const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;
     await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
     showSnackbar('儲存成功！', 'success');
-    isDialogVisible.value = false;
     
-    // ✅ 同步更新當日列表與日曆計數
+    // 同步更新當日列表與日曆計數
     await fetchDayData(selectedProject.value, selectedDate.value); 
-    await fetchAllProjectData(selectedProject.value); // ✅ 新增此行
+    await fetchAllProjectData(selectedProject.value);
 
   } catch (err) {
     showSnackbar(`儲存失敗: ${err.message}`, 'error');
+  } finally {
+      // ✅ 新增：無論成功或失敗，都在這裡關閉對話框
+      isDialogVisible.value = false;
   }
 }
 

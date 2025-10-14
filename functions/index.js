@@ -7167,44 +7167,44 @@ exports.updateAppointmentByAdmin = onCall({ cors: true }, async (request) => {
     const { projectId, unitId } = appointmentDoc.data();
 
     const batch = db.batch();
-    
-    // ✅ 新增：用一個旗標來追蹤是否有操作加入批次
     let hasOperations = false;
 
-    // 處理日期轉換
-    ['appointmentDate'].forEach(field => {
-        if (bookingPayload[field] && bookingPayload[field] instanceof Date) {
-            bookingPayload[field] = Timestamp.fromDate(bookingPayload[field]);
+    // ✅ 【核心修正】增強日期處理邏輯
+    // ----------------------------------------------------
+    const processDate = (payload, fieldName) => {
+      if (payload && payload[fieldName]) {
+        // 無論傳進來的是 Date 物件還是 ISO 字串，都先嘗試建立一個新的 Date 物件
+        const dateObj = new Date(payload[fieldName]);
+        // 只要能成功轉換成有效日期，就將其格式化為 Firestore Timestamp
+        if (!isNaN(dateObj.getTime())) {
+          payload[fieldName] = Timestamp.fromDate(dateObj);
         }
-    });
-    ['appropriationDate'].forEach(field => {
-        if (householdPayload[field] && householdPayload[field] instanceof Date) {
-            householdPayload[field] = Timestamp.fromDate(householdPayload[field]);
-        }
-    });
+      }
+    };
+
+    processDate(bookingPayload, 'appointmentDate');
+    processDate(householdPayload, 'appropriationDate');
+    // ----------------------------------------------------
 
     if (bookingPayload && Object.keys(bookingPayload).length > 0) {
         batch.update(appointmentRef, bookingPayload);
-        hasOperations = true; // ✅ 更新旗標
+        hasOperations = true;
     }
     if (householdDocId && householdPayload && Object.keys(householdPayload).length > 0) {
         const householdRef = db.collection("households").doc(householdDocId);
         batch.update(householdRef, householdPayload);
-        hasOperations = true; // ✅ 更新旗標
+        hasOperations = true;
     }
     
-    // ✅ 修改：使用旗標來判斷，不再依賴不穩定的內部屬性
     if (hasOperations) {
         await batch.commit();
         console.log(`[${functionName}] 成功更新文件。`);
     } else {
         console.log(`[${functionName}] 沒有偵測到任何變更。`);
-        // 即使沒有變更，也執行一次摘要更新，以防萬一有邊際情況
         await updateHouseholdSummary(db, projectId, unitId);
         return { status: 'no_changes' };
     }
 
-    // 在更新成功後，呼叫摘要更新函式
     await updateHouseholdSummary(db, projectId, unitId);
 
     return { status: "success" };

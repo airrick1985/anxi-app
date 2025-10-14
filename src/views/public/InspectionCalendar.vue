@@ -996,25 +996,29 @@ function showSnackbar(text, color = 'success') {
 
 //  新增：處理子組件 'save' 事件的函式
 async function handleSaveChangesFromDialog(payload) {
+  try {
     const { appointmentId, bookingPayload, householdPayload } = payload;
-    try {
-        // 在 bookingPayload 中加入最後修改者姓名
-        if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
-            bookingPayload.lastModifiedByName = userStore.user?.name || '未知使用者';
-        }
-
-        const response = await updateAppointment(appointmentId, bookingPayload, payload.householdDocId, householdPayload);
-
-        if (response.status === 'no_changes') {
-            showSnackbar('沒有偵測到任何變更。', 'info');
-        } else {
-            showSnackbar('儲存成功！', 'success');
-            await fetchData(); // 重新整理資料
-        }
-        isDialogVisible.value = false; // 關閉對話框
-    } catch (err) {
-        showSnackbar(`儲存失敗: ${err.message}`, 'error');
+    
+    // 在 bookingPayload 中加入最後修改者姓名
+    if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
+        bookingPayload.lastModifiedByName = userStore.user?.name || '未知使用者';
     }
+
+    const response = await updateAppointment(appointmentId, bookingPayload, payload.householdDocId, householdPayload);
+
+    if (response.status === 'no_changes') {
+        showSnackbar('沒有偵測到任何變更。', 'info');
+    } else {
+        showSnackbar('儲存成功！', 'success');
+        await fetchData(); // 重新整理資料
+    }
+  } catch (err) {
+      showSnackbar(`儲存失敗: ${err.message}`, 'error');
+  } finally {
+      // ✅ 新增：無論成功或失敗，都在這裡關閉對話框
+      // 這會觸發子元件的 watch，進而重設 isSaving 狀態
+      isDialogVisible.value = false;
+  }
 }
 
 //  新增：處理子組件 'update-inspectors' 事件的函式

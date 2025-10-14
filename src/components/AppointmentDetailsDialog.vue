@@ -8,36 +8,34 @@
         <v-btn variant="text" icon="mdi-close" density="compact" @click="closeDialog"></v-btn>
       </v-card-title>
       
-      <v-card-text>
+      <v-card-text v-if="appointment">
         <div class="bg-grey-lighten-5 pa-4 rounded">
-          <!-- 顯示模式 -->
           <v-row v-if="!isEditMode" align="center" dense>
             <v-col cols="12" sm="2">
               <div class="text-caption text-grey-darken-1">戶別</div>
-              <div class="text-h5 font-weight-bold text-primary">{{ appointment.unitId }}</div>
+              <div class="text-h5 font-weight-bold text-primary">{{ appointment?.unitId }}</div>
             </v-col>
             
             <v-col cols="12" sm="6">
               <div class="text-caption text-grey-darken-1">預約日期與時段</div>
               <div class="text-body-1 font-weight-medium">
-                {{ formatDate(appointment.appointmentDate, 'yyyy-MM-dd') }}
+                {{ formatDate(appointment?.appointmentDate, 'yyyy-MM-dd') }}
                 <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
-                {{ appointment.appointmentTimeSlot }}
+                {{ appointment?.appointmentTimeSlot }}
               </div>
             </v-col>
 
             <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
-              <v-chip :color="getStatusColor(appointment.status)" size="small" label>{{ appointment.status }}</v-chip>
-              <v-chip v-if="appointment.bookingType" color="teal" variant="tonal" size="small" label>{{ appointment.bookingType }}</v-chip>
+              <v-chip :color="getStatusColor(appointment?.status)" size="small" label>{{ appointment?.status }}</v-chip>
+              <v-chip v-if="appointment?.bookingType" color="teal" variant="tonal" size="small" label>{{ appointment?.bookingType }}</v-chip>
             </v-col>
           </v-row>
 
-          <!-- 編輯模式 -->
-          <div v-else>
+          <div v-else-if="editableEvent">
             <v-row dense align="center">
               <v-col cols="12" sm="2">
                 <div class="text-caption text-grey-darken-1">戶別</div>
-                <div class="text-h5 font-weight-bold text-primary">{{ appointment.unitId }}</div>
+                <div class="text-h5 font-weight-bold text-primary">{{ editableEvent?.unitId }}</div>
               </v-col>
               <v-col cols="12" sm="10" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
                 <v-chip :color="getStatusColor(appointment.status)" size="small" label>{{ appointment.status }}</v-chip>
@@ -91,56 +89,55 @@
                   </div>
                 </div>
               </v-col>
-<v-col cols="12" md>
-  <div class="text-caption text-grey-darken-1 mb-1">預約時段</div>
-  <div v-if="isFetchingSlots" class="text-center pa-4 border rounded">
-    <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
-    <div class="text-caption text-grey">查詢可預約時段...</div>
-  </div>
-  <div v-else-if="!editableEvent.appointmentDate" class="text-caption text-grey pa-4 border rounded">
-    請先選擇預約日期
-  </div>
-  <div v-else-if="availableTimeSlots.length === 0" class="text-caption text-grey pa-4 border rounded">
-    此日期無可預約時段，請手動輸入
-  </div>
-  <v-chip-group
-    v-else
-    v-model="editableEvent.appointmentTimeSlot"
-    column
-    mandatory
-    filter
-  >
-    <v-chip
-      v-for="slot in availableTimeSlots"
-      :key="slot.value"
-      :value="slot.value"
-      variant="outlined"
-      color="blue"
-      label
-      size="large"
-      class="ma-1"
-    >
-      {{ slot.title }}
-    </v-chip>
-  </v-chip-group>
+              <v-col cols="12" md>
+                <div class="text-caption text-grey-darken-1 mb-1">預約時段</div>
+                <div v-if="isFetchingSlots" class="text-center pa-4 border rounded">
+                  <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
+                  <div class="text-caption text-grey">查詢可預約時段...</div>
+                </div>
+                <div v-else-if="!editableEvent.appointmentDate" class="text-caption text-grey pa-4 border rounded">
+                  請先選擇預約日期
+                </div>
+                <div v-else-if="availableTimeSlots.length === 0" class="text-caption text-grey pa-4 border rounded">
+                  此日期無可預約時段，請手動輸入
+                </div>
+                <v-chip-group
+                  v-else
+                  v-model="editableEvent.appointmentTimeSlot"
+                  column
+                  mandatory
+                  filter
+                >
+                  <v-chip
+                    v-for="slot in availableTimeSlots"
+                    :key="slot.value"
+                    :value="slot.value"
+                    variant="outlined"
+                    color="blue"
+                    label
+                    size="large"
+                    class="ma-1"
+                  >
+                    {{ slot.title }}
+                  </v-chip>
+                </v-chip-group>
 
-  <v-text-field
-    v-model="editableEvent.manualTimeSlot"
-    label="手動輸入時段"
-    placeholder="HH:MM"
-    variant="outlined"
-    density="compact"
-    class="mt-4"
-    :rules="[manualTimeRule]"
-    persistent-hint
-    hint="若無可用時段，請手動輸入 24 小時制時間"
-  ></v-text-field>
+                <v-text-field
+                  v-model="editableEvent.manualTimeSlot"
+                  label="手動輸入時段"
+                  placeholder="HH:MM"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-4"
+                  :rules="[manualTimeRule]"
+                  persistent-hint
+                  hint="若無可用時段，請手動輸入 24 小時制時間"
+                ></v-text-field>
 
-  <div v-if="timeSlotError" class="v-input__details text-error px-2 pt-1">
-    <div class="v-messages__message">{{ timeSlotError }}</div>
-  </div>
-
-</v-col>
+                <div v-if="timeSlotError" class="v-input__details text-error px-2 pt-1">
+                  <div class="v-messages__message">{{ timeSlotError }}</div>
+                </div>
+              </v-col>
             </v-row>
           </div>
           
@@ -208,7 +205,7 @@
                       </v-col>
                       
                       <v-col cols="12" sm="8">
-                        <div v-if="isEditMode && editableFields.has(field.key)">
+                        <div v-if="isEditMode && editableEvent && editableFields.has(field.key)">
                           <v-select
                             v-if="field.key === 'bookingType'"
                             v-model="editableEvent.bookingType"
@@ -274,13 +271,13 @@
                             </div>
                             <span v-else>無</span>
                           </template>
-                      <template v-else-if="field.isDate">
-                        {{ formatDate(appointment[field.key], 'yyyy-MM-dd') || '無' }}
-                      </template>
-                      
-                      <a v-else-if="field.isTel" :href="`tel:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
-                      <a v-else-if="field.isMail" :href="`mailto:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
-                      <span v-else style="word-break: break-all; white-space: normal;">{{ appointment[field.key] || '無' }}</span>
+                          <template v-else-if="field.isDate">
+                            {{ formatDate(appointment[field.key], 'yyyy-MM-dd') || '無' }}
+                          </template>
+                          
+                          <a v-else-if="field.isTel" :href="`tel:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
+                          <a v-else-if="field.isMail" :href="`mailto:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
+                          <span v-else style="word-break: break-all; white-space: normal;">{{ appointment[field.key] || '無' }}</span>
                         </div>
                       </v-col>
                     </v-row>
@@ -326,7 +323,6 @@
         </v-card-actions>
     </v-card>
 </v-dialog>
-
 </template>
 
 <script setup>
@@ -521,12 +517,14 @@ async function enterEditMode() {
 };
 
 
+
 function saveChanges() {
+  // 1. 開始 loading
   isSaving.value = true;
+
   const bookingPayload = {};
   const householdPayload = {};
-
-    const householdKeys = new Set([
+  const householdKeys = new Set([
     'address', 'parkingLots', 'buyerName', 'buyerPhone', 'buyerEmail', 'buyerIdNumber',
     'appropriationDate', 'bank', 'initialInspectionBatch', 'reInspectionBatch',
     'showInMenu', 'initialReportUploadSwitch', 'reInspectionReportUploadSwitch'
@@ -538,7 +536,6 @@ function saveChanges() {
   const keysToCompare = [...new Set([...allFieldKeys, 'appointmentDate', 'appointmentTimeSlot', 'manualTimeSlot'])];
 
   keysToCompare.forEach(key => {
-    // ... (這個 forEach 迴圈的內部邏輯完全不變)
     if (key === 'inspectionDocsUrl' || key === 'inspectionReportUrl') return;
     const originalValue = props.appointment[key];
     const editedValue = editableEvent.value[key];
@@ -577,11 +574,9 @@ function saveChanges() {
       bookingPayload.appointmentTimeSlot = finalTimeSlot;
   }
   
-
-  
-  // 步驟 4: 發出 save 事件或結束編輯
-  // 即使只有 householdPayload 因同步邏輯而產生變更，也應該觸發儲存
- if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
+  // 2. 判斷是否有變更
+  if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
+    // 3. 如果有變更，發出事件，但 **不再** 關閉 loading
     emit('save', {
       appointmentId: props.appointment.id,
       householdDocId: props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`,
@@ -589,10 +584,10 @@ function saveChanges() {
       householdPayload,
     });
   } else {
+    // 4. 如果沒有變更，直接結束編輯並關閉 loading
     isEditMode.value = false;
+    isSaving.value = false;
   }
-  
-  isSaving.value = false;
 }
 
 
@@ -681,16 +676,25 @@ const cancelOverbooking = () => {
 };
 
 watch(() => props.modelValue, (isOpen) => {
+  // 條件一：當對話框打開時，執行「初始化」
   if (isOpen && props.appointment) {
     isEditMode.value = false;
-    panels.value = [];
-      projectConfig.value = null; // 關閉時重置設定
-     const inspectors = props.appointment.inspectors;
+    panels.value = []; // 預設關閉所有摺疊面板
+
+    // 解析驗屋人員字串為陣列
+    const inspectors = props.appointment.inspectors;
     if (typeof inspectors === 'string' && inspectors) {
       editableInspectors.value = inspectors.split(',').map(name => name.trim()).filter(Boolean);
     } else {
       editableInspectors.value = [];
     }
+  } 
+  // 條件二：當對話框關閉時，執行「清理與重置」
+  else {
+    isSaving.value = false; // 關鍵：重置儲存狀態，確保下次 loading 效果正常
+    projectConfig.value = null;
+    editableEvent.value = null;
+    isOverbooking.value = false;
   }
 });
 
