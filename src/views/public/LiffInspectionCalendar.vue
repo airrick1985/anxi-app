@@ -47,6 +47,7 @@
                     clearable
                     hide-details
                     :loading="isSearching"
+                    
                     :disabled="!selectedProject"
                   ></v-text-field>
                 </v-col>
@@ -241,15 +242,18 @@
       </v-card>
     </v-dialog>
 
-       <AppointmentDetailsDialog
-    v-model="isDialogVisible"
-    :appointment="selectedAppointment"
-    :can-edit="canEdit"
-    :booking-options="bookingOptions"
-    @save="handleSaveAppointment"
-    @cancel-appointment="promptCancelBooking"
-    @update-inspectors="handleUpdateInspectors"
-  />
+      <AppointmentDetailsDialog
+      v-model="isDialogVisible"
+      :appointment="selectedAppointment"
+      :can-edit="canEdit"
+      :booking-options="bookingOptions"
+      :booking-history="appointmentHistory"
+      :calendar-data="calendarData" 
+      @save="handleSaveAppointment"
+      @cancel-appointment="promptCancelBooking"
+      @update-inspectors="handleUpdateInspectors"
+      @request-calendar-data="handleRequestCalendarData"
+    />
 
         <AdminAddBookingDialog
           v-if="selectedProject"
@@ -312,7 +316,8 @@ import {
   fetchBookingOptions, 
   updateAppointment, 
   cancelAppointment,
-  updateAppointmentInspectors 
+  updateAppointmentInspectors,
+getAdminBookingCalendarData
 } from '@/api';
 import { useDate, useDisplay } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
@@ -343,6 +348,7 @@ const selectedDate = ref(startOfDay(new Date()));
 const isFetchingDayData = ref(false);
 const dailyAppointments = ref([]);
 const allProjectAppointments = ref([]); // ✓ 用於存放所選建案的「所有」預約資料
+const calendarData = ref([]); // <--- ★ 2. 在這裡新增 ref
 const searchQuery = ref('');
 const isSearching = ref(false);
 const isSearchActive = ref(false);
@@ -474,7 +480,7 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
+    await liff.init({ liffId: '2008257338-6N3jwqxA' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -601,9 +607,8 @@ const fetchDayData = async (projectId, date) => {
 
 watch(selectedProject, async (newProjectId) => {
   if (newProjectId) {
-    // ✓ 當專案改變時，同時觸發「日資料」和「所有資料」的載入
     fetchDayData(newProjectId, selectedDate.value);
-    fetchAllProjectData(newProjectId); // ✓ 改為呼叫新函式
+    fetchAllProjectData(newProjectId);
     try {
       bookingOptions.value = await fetchBookingOptions(newProjectId);
     } catch(err) {
@@ -611,6 +616,8 @@ watch(selectedProject, async (newProjectId) => {
     }
   }
 }, { immediate: true });
+
+
 
 watch(selectedDate, (newDate) => {
   // ✓ 當日期改變時，只須要獲取當日的詳細資料列表
@@ -637,7 +644,31 @@ watchDebounced(searchQuery, (newQuery) => {
 
 const openDetailsDialog = (item) => {
   selectedAppointment.value = item;
+  // 重設 calendarData，確保每次打開編輯都是乾淨的狀態
+  calendarData.value = []; 
   isDialogVisible.value = true;
+};
+
+// ★ 2. 新增一個處理函式，用來接收子元件的請求並呼叫 API
+const handleRequestCalendarData = async (payload) => {
+  const { unitId } = payload;
+  if (!selectedProject.value || !unitId) {
+    showSnackbar('缺少專案或戶別資訊，無法載入行事曆標記', 'error');
+    return;
+  }
+
+  try {
+    const calendarResult = await getAdminBookingCalendarData({ 
+      projectId: selectedProject.value,
+      unitId: unitId 
+    });
+    if (calendarResult.status === 'success') {
+      calendarData.value = calendarResult.data;
+    }
+  } catch (err) {
+    console.error('獲取行事曆標記失敗:', err);
+    showSnackbar(`讀取行事曆標記失敗: ${err.message}`, 'error');
+  }
 };
 
 const showSnackbar = (text, color = 'success') => {
@@ -690,7 +721,11 @@ async function handleSaveAppointment(payload) {
     await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
     showSnackbar('儲存成功！', 'success');
     isDialogVisible.value = false;
+    
+    // ✅ 同步更新當日列表與日曆計數
     await fetchDayData(selectedProject.value, selectedDate.value); 
+    await fetchAllProjectData(selectedProject.value); // ✅ 新增此行
+
   } catch (err) {
     showSnackbar(`儲存失敗: ${err.message}`, 'error');
   }

@@ -376,7 +376,7 @@
             <v-card-text>
     <v-alert type="info" variant="tonal" border="start" class="mb-4">
         <h3 class="text-h6 mb-2">您已完成預約</h3>
-        <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下：</p>
+        <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下，若您要修改預約時間請先取消預約。</p>
     </v-alert>
 
     <v-list lines="two" class="text-left" density="compact" >

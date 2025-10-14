@@ -3,6 +3,7 @@
 const functions = require("firebase-functions");
 const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
 const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
+const { FieldValue } = require("firebase-admin/firestore");
 
 
 
@@ -1457,7 +1458,7 @@ exports.listFirestoreCollections = onCall(async (request) => {
 
 //  START: 新增 runDeleteJob 雲端函式
 
-const { FieldValue } = require("firebase-admin/firestore");
+
 
 
 exports.runDeleteJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
@@ -2112,7 +2113,7 @@ exports.handleSpecialReportUpload = onCall({
       }
     }
 
-    // functions/index.js
+
 
     // --- 寄送確認 Email (HTML 格式版) ---
     const mailTransport = nodemailer.createTransport({
@@ -3914,6 +3915,8 @@ exports.saveFieldDefinition = onCall(async (request) => {
 
 
 
+
+
 exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
     const { projectId, bookingData } = request.data;
     const functionName = `saveBooking (Project: ${projectId})`;
@@ -3976,22 +3979,20 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             }
             const capacity = slotInfo.capacity || 0;
 
-            // 2.  在 Transaction 中執行關鍵檢查：重複預約
+            // 2. 在 Transaction 中執行關鍵檢查：重複預約
             const appointmentsQueryDuplicate = db.collection('appointments').where('projectId', '==', projectId).where('unitId', '==', bookingData.unitId).where('bookingType', '==', bookingData.bookingType).where('status', '==', '預約中');
             const existingBookingSnapshot = await transaction.get(appointmentsQueryDuplicate);
             if (!existingBookingSnapshot.empty) {
-                // 如果已有預約，中斷 Transaction 並拋出錯誤
                 throw new HttpsError("already-exists", `此戶別的「${bookingData.bookingType}」已有有效預約，請返回第一步重新操作。`);
             }
 
-            // 3.  在 Transaction 中執行關鍵檢查：時段名額
+            // 3. 在 Transaction 中執行關鍵檢查：時段名額
             const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00');
             const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
             const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
             const currentBookings = appointmentsSnapshot.size;
 
             if (currentBookings >= capacity) {
-                // 如果名額已滿，中斷 Transaction 並拋出錯誤
                 throw new HttpsError("resource-exhausted", `此時段名額剛好額滿，請返回上一步重新選擇時段。`);
             }
             
@@ -4004,7 +4005,6 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             const dateStr = localNow.toISOString().slice(5, 10);
             const docId = `${projectId}_${dateStr}-${timeStr}_${bookingData.unitId}`;
             const appointmentRef = db.collection('appointments').doc(docId);
-            const finalAppointmentDate = new Date(`${appointmentDateStr}T${timeSlotKey}:00`);
             
             const newAppointmentData = {
                 projectId: projectId,
@@ -4035,32 +4035,22 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
 
             transaction.set(appointmentRef, newAppointmentData);
             
-            const householdUpdatePayload = {};
-            if (bookingData.bookingType === '初驗') {
-                householdUpdatePayload.initialInspectionDate = Timestamp.fromDate(finalAppointmentDate);
-                householdUpdatePayload.initialInspectionMethod = bookingData.bookingMethod;
-            } 
-            else if (bookingData.bookingType === '複驗') {
-                householdUpdatePayload.reInspectionDate = Timestamp.fromDate(finalAppointmentDate);
-                householdUpdatePayload.reInspectionMethod = bookingData.bookingMethod;
-            }
-            
-            if (Object.keys(householdUpdatePayload).length > 0) {
-                 transaction.update(householdRef, householdUpdatePayload);
-            }
-            
+            //  【已移除】此處不再需要手動更新 households 集合的程式碼
+
             return { bookingCode, newAppointmentData };
         });
 
-        // Transaction 成功後，繼續執行寄信等非關鍵操作
+        // Transaction 成功後
         const { bookingCode, newAppointmentData } = result;
+        
+        //  【已新增】在此處呼叫統一的摘要更新函式
+        await updateHouseholdSummary(db, projectId, newAppointmentData.unitId);
         
         let closingText = '請於預約時段準時抵達，感謝您的配合。';
         let inspectionNotesHtml = '';
-        let contactInfoHtml = ''; //  新增：聯絡資訊 HTML
+        let contactInfoHtml = ''; 
         if (projectDoc.exists) {
             const projectData = projectDoc.data();
-            // 優先從 intro.closingText 獲取，並保持對舊 emailConfig.closingText 的相容性
             if (projectData.intro && projectData.intro.closingText) {
                 closingText = projectData.intro.closingText;
             } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
@@ -4071,7 +4061,6 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
                 inspectionNotesHtml = projectData.intro.alert.text;
             }
 
-            //  新增：組合聯絡資訊區塊
             if (projectData.intro && projectData.intro.contact) {
                 const contact = projectData.intro.contact;
                 if (contact.name || contact.phone) {
@@ -4095,11 +4084,9 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
             auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
         });
 
-        //  【關鍵修改】使用從後端安全獲取的 projectName
         const subject = `【${projectName}】預約成功通知 (${newAppointmentData.unitId})`;
-
         const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
-        const bookingLinkHtml = `
+         const bookingLinkHtml = `
             <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 14px; color: #555;">
                 若您要查詢、修改或取消預約，請點擊以下按鈕返回預約頁面：<br>
                 <a href="${bookingUrl}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">
@@ -4219,43 +4206,30 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
 
         const docToCancel = snapshot.docs[0];
         const bookingData = docToCancel.data();
-        const householdDocId = `${projectId}_${bookingData.unitId}`;
-        const householdRef = db.collection('households').doc(householdDocId);
+
+        // 在 runTransaction 之外先取得 unitId，以供後續使用
+        const unitId = bookingData.unitId;
 
         await db.runTransaction(async (transaction) => {
-            const householdDoc = await transaction.get(householdRef);
-            if (!householdDoc.exists) {
-                console.warn(`[${functionName}] 警告：找不到對應的戶別資料文件 [${householdDocId}]，將僅取消預約。`);
-            }
-
+            // 在交易中只更新預約本身的狀態
             transaction.update(docToCancel.ref, {
                 status: "取消",
                 cancelledAt: Timestamp.now()
             });
 
-            if (householdDoc.exists) {
-                const householdUpdatePayload = {};
-                if (bookingData.bookingType === '初驗') {
-                    householdUpdatePayload.initialInspectionDate = null;
-                    householdUpdatePayload.initialInspectionMethod = null;
-                } else if (bookingData.bookingType === '複驗') {
-                    householdUpdatePayload.reInspectionDate = null;
-                    householdUpdatePayload.reInspectionMethod = null;
-                }
-                
-                if (Object.keys(householdUpdatePayload).length > 0) {
-                    transaction.update(householdRef, householdUpdatePayload);
-                }
-            }
+            // ✅ 【已移除】此處不再需要手動更新 households 集合的程式碼
         });
         
-        console.log(`[${functionName}] 已成功將預約 [${docToCancel.id}] 的狀態更新為「取消」，並同步清除戶別資料。`);
+        console.log(`[${functionName}] 已成功將預約 [${docToCancel.id}] 的狀態更新為「取消」。`);
+
+        // ✅ 【已新增】在交易成功後，呼叫統一的摘要更新函式
+        await updateHouseholdSummary(db, projectId, unitId);
 
         if (bookingData.bookerEmail) {
+            // ... (後續所有寄送 Email 的邏輯，完全保持不變) ...
             const projectRef = db.collection('projects').doc(projectId);
             const projectDoc = await projectRef.get();
             const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
-
             let contactInfoHtml = '';
             if (projectDoc.exists) {
                 const projectData = projectDoc.data();
@@ -4335,7 +4309,6 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
             `;
 
             const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-
             await mailTransport.sendMail({
                 to: bookingData.bookerEmail,
                 cc: ccRecipients,
@@ -4343,7 +4316,6 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
                 html: htmlBody,
                 name: `${projectName} 預約系統`
             });
-
             console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
         }
 
@@ -4642,6 +4614,8 @@ exports.addAppointmentByAdmin = onCall({ cors: true, secrets: ["SENDER_EMAIL", "
         }
         
         await batch.commit();
+        //新增：在所有資料庫操作成功後，呼叫摘要更新函式
+        await updateHouseholdSummary(db, projectId, newBookingData.unitId);
 
         // --- 資料寫入成功後，開始寄送 Email ---
         if (finalAppointmentData.bookerEmail) {
@@ -4798,6 +4772,8 @@ exports.cancelAppointmentByAdmin = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP
         });
         
         console.log(`[${functionName}] 已成功將預約狀態更新為「取消」。`);
+        //  新增：在交易成功後，呼叫摘要更新函式
+        await updateHouseholdSummary(db, projectId, unitId);
 
         // 步驟 2: 寄送 Email (邏輯同 cancelBooking)
         if (bookingData && bookingData.bookerEmail) {
@@ -4935,9 +4911,9 @@ exports.getSlotsForAdmin = onCall({ cors: true }, async (request) => {
             const remaining = capacity - currentBookings;
 
             if (remaining <= 0) {
-                return `${time} (已額滿)`;
+                return `${time} (已預約 ${currentBookings},已額滿 ${capacity})`;
             } else {
-                return `${time} (尚餘 ${remaining} 位)`;
+                return `${time} (已預約 ${currentBookings},尚餘 ${remaining})`;
             }
         });
         
@@ -6734,11 +6710,10 @@ exports.getAllLiffAppointmentsForProject = onCall(async (request) => {
 
 // ✓ START: 新增 - LIFF 驗屋時間表專用函式
 /**
- * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
- * @param {string} projectId - 要查詢的建案 ID
- * @param {string} date - 'YYYY-MM-DD' 格式的日期字串
- * @returns {Promise<object>} - 包含該日所有預約的陣列
- */
+ * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
+ * @param {object} payload - 包含 { projectId, date } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
 exports.getLiffCalendarDataForDay = onCall(async (request) => {
     const { projectId, date } = request.data;
     const functionName = "getLiffCalendarDataForDay";
@@ -6788,7 +6763,9 @@ exports.getLiffCalendarDataForDay = onCall(async (request) => {
             const householdKey = `${appt.projectId}_${appt.unitId}`;
             const householdData = householdsMap.get(householdKey) || {};
             
-            const combinedData = { ...householdData, ...appt, projectName: projectName };
+            //  【核心修正】調整物件展開順序，並確保預約ID (id) 不被覆蓋
+            // 讓 householdData 的欄位覆蓋 appt 中的同名欄位
+            const combinedData = { ...appt, ...householdData, projectName: projectName, id: appt.id };
 
             // 將所有日期欄位轉換為 ISO 字串
             ['appointmentDate', 'createdAt', 'cancelledAt', 'appropriationDate'].forEach(field => {
@@ -6808,6 +6785,7 @@ exports.getLiffCalendarDataForDay = onCall(async (request) => {
         throw new HttpsError("internal", "獲取日曆資料時發生錯誤。");
     }
 });
+
 // ✓ END
 
 // =================================================================
@@ -7082,7 +7060,7 @@ exports.getAppointmentsForHousehold = onCall(async (request) => {
 
     } catch (error) {
     console.error(`[${functionName}] 查詢預約歷史時發生錯誤:`, error);
-    // ✅ START: 新增更詳細的錯誤判斷
+    //  START: 新增更詳細的錯誤判斷
     // 錯誤碼 9 (FAILED_PRECONDITION) 通常代表缺少索引
     if (error.code === 9 && error.message.includes('https://console.firebase.google.com/')) {
         // 從錯誤訊息中提取建立索引的 URL
@@ -7096,7 +7074,7 @@ exports.getAppointmentsForHousehold = onCall(async (request) => {
             );
         }
     }
-    // ✅ END: 新增更詳細的錯誤判斷
+    //  END: 新增更詳細的錯誤判斷
     throw new HttpsError("internal", "查詢預約歷史時發生錯誤。");
 }
 });
@@ -7104,3 +7082,135 @@ exports.getAppointmentsForHousehold = onCall(async (request) => {
 // =================================================================
 // /  【結束】後台新增預約專用 Cloud Functions
 // =================================================================
+
+
+
+
+/**
+ * [內部函式] 根據預約紀錄，更新戶別的初驗/複驗摘要資訊
+ * @param {FirebaseFirestore.Firestore} db - Firestore 實例
+ * @param {string} projectId - 專案 ID
+ * @param {string} unitId - 戶別 ID
+ */
+async function updateHouseholdSummary(db, projectId, unitId) {
+  const functionName = `updateHouseholdSummary`;
+  console.log(`[${functionName}] 開始為戶別 ${projectId}_${unitId} 更新摘要...`);
+
+  try {
+    // 1. 查找此戶別所有「有效」的預約 (狀態不為 "取消")
+    const appointmentsRef = db.collection("appointments");
+    const query = appointmentsRef
+      .where("projectId", "==", projectId)
+      .where("unitId", "==", unitId)
+      .where("status", "!=", "取消");
+    
+    const snapshot = await query.get();
+
+    let latestInitial = null;
+    let latestReInspection = null;
+
+    // 2. 遍歷所有有效預約，找出最新的初驗和複驗
+    snapshot.forEach(doc => {
+      const appt = doc.data();
+      if (appt.bookingType === '初驗') {
+        if (!latestInitial || appt.appointmentDate.toDate() > latestInitial.appointmentDate.toDate()) {
+          latestInitial = appt;
+        }
+      } else if (appt.bookingType === '複驗') {
+        if (!latestReInspection || appt.appointmentDate.toDate() > latestReInspection.appointmentDate.toDate()) {
+          latestReInspection = appt;
+        }
+      }
+    });
+
+    // 3. 準備要寫入 households 集合的資料
+    const householdUpdatePayload = {
+      initialInspectionDate: latestInitial ? latestInitial.appointmentDate : null,
+      initialInspectionMethod: latestInitial ? latestInitial.inspectionMethod : null,
+      reInspectionDate: latestReInspection ? latestReInspection.appointmentDate : null,
+      reInspectionMethod: latestReInspection ? latestReInspection.inspectionMethod : "",
+    };
+
+    // 4. 執行更新
+    const householdDocRef = db.collection("households").doc(`${projectId}_${unitId}`);
+    await householdDocRef.update(householdUpdatePayload);
+    
+    console.log(`[${functionName}] 成功更新戶別 ${unitId} 的摘要資訊。`);
+
+  } catch (error) {
+    // 即使摘要更新失敗，也不應該中斷主流程，僅記錄錯誤
+    console.error(`[${functionName}] 更新戶別 ${unitId} 摘要時發生錯誤:`, error);
+  }
+}
+
+
+/**
+ * [後台用] 更新一筆預約紀錄，並同步更新戶別摘要
+ */
+exports.updateAppointmentByAdmin = onCall({ cors: true }, async (request) => {
+  const { appointmentId, bookingPayload, householdDocId, householdPayload } = request.data;
+  const functionName = `updateAppointmentByAdmin (ID: ${appointmentId})`;
+
+  if (!appointmentId) {
+    throw new HttpsError("invalid-argument", "缺少 appointmentId。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  
+  try {
+    const appointmentRef = db.collection("appointments").doc(appointmentId);
+    
+    const appointmentDoc = await appointmentRef.get();
+    if (!appointmentDoc.exists) {
+      throw new HttpsError("not-found", "找不到要更新的預約紀錄。");
+    }
+    const { projectId, unitId } = appointmentDoc.data();
+
+    const batch = db.batch();
+    
+    // ✅ 新增：用一個旗標來追蹤是否有操作加入批次
+    let hasOperations = false;
+
+    // 處理日期轉換
+    ['appointmentDate'].forEach(field => {
+        if (bookingPayload[field] && bookingPayload[field] instanceof Date) {
+            bookingPayload[field] = Timestamp.fromDate(bookingPayload[field]);
+        }
+    });
+    ['appropriationDate'].forEach(field => {
+        if (householdPayload[field] && householdPayload[field] instanceof Date) {
+            householdPayload[field] = Timestamp.fromDate(householdPayload[field]);
+        }
+    });
+
+    if (bookingPayload && Object.keys(bookingPayload).length > 0) {
+        batch.update(appointmentRef, bookingPayload);
+        hasOperations = true; // ✅ 更新旗標
+    }
+    if (householdDocId && householdPayload && Object.keys(householdPayload).length > 0) {
+        const householdRef = db.collection("households").doc(householdDocId);
+        batch.update(householdRef, householdPayload);
+        hasOperations = true; // ✅ 更新旗標
+    }
+    
+    // ✅ 修改：使用旗標來判斷，不再依賴不穩定的內部屬性
+    if (hasOperations) {
+        await batch.commit();
+        console.log(`[${functionName}] 成功更新文件。`);
+    } else {
+        console.log(`[${functionName}] 沒有偵測到任何變更。`);
+        // 即使沒有變更，也執行一次摘要更新，以防萬一有邊際情況
+        await updateHouseholdSummary(db, projectId, unitId);
+        return { status: 'no_changes' };
+    }
+
+    // 在更新成功後，呼叫摘要更新函式
+    await updateHouseholdSummary(db, projectId, unitId);
+
+    return { status: "success" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `更新預約時發生錯誤: ${error.message}`);
+  }
+});

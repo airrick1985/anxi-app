@@ -102,6 +102,7 @@
     :appointment="selectedAppointment"
     :can-edit="canEdit"
     :booking-options="bookingOptions"
+    :calendar-data="calendarData"
     @save="handleSaveAppointment"
     @cancel-appointment="promptCancelBooking"
     @update-inspectors="handleUpdateInspectors"

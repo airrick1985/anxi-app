@@ -12,7 +12,7 @@
       </v-toolbar>
 
       <v-card-text>
-        <v-window v-model="step">
+        <v-window v-model="step" :touch="false">
           <v-window-item :value="1">
             <v-container>
               <v-row justify="center">
@@ -226,7 +226,7 @@
                         :enable-time-picker="false"
                         :month-change-on-scroll="false"
                         @update:model-value="onDateChange"
-                        :min-date="tomorrow" 
+                        :min-date="new Date()" 
                       >
                         <template #day="{ date }">
                         <div class="custom-day-cell">
@@ -283,6 +283,7 @@
                           :value="slot.value"
                           
                           variant="outlined"
+                          color="blue"
                           label
                           size="large"
                           class="ma-1"
@@ -383,6 +384,7 @@
       :can-edit="canEdit"
       :booking-options="bookingOptions"
       :booking-history="appointmentHistory"
+      :calendar-data="calendarData"
       @save="handleSaveChangesFromDialog"
       @cancel-appointment="promptCancelBooking"
     />

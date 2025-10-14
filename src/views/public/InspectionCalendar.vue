@@ -302,15 +302,17 @@
       {{ snackbarText }}
     </v-snackbar>
 
-     <AppointmentDetailsDialog
+      <AppointmentDetailsDialog
       v-model="isDialogVisible"
       :appointment="selectedEvent"
       :can-edit="canEdit"
       :booking-options="bookingOptions"
       :booking-history="bookingHistory"
+      :calendar-data="calendarData"
       @save="handleSaveChangesFromDialog"
       @cancel-appointment="promptCancelBooking"
       @update-inspectors="handleUpdateInspectorsFromDialog"
+      @request-calendar-data="handleRequestCalendarData"
     />
     
        <AdminAddBookingDialog
@@ -565,6 +567,7 @@ import {
   getSlotsForAdmin, 
   fetchProjectConfig, 
   fetchAppointmentDateRange, 
+  getAdminBookingCalendarData,
 } from '@/api'; 
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -648,6 +651,8 @@ const allHouseholdData = ref({});
 const isDialogVisible = ref(false);
 const isAdminAddDialogVisible = ref(false); 
 const selectedEvent = ref(null);
+const calendarData = ref([]); // ★ 2. 新增 ref 來儲存日期標記
+const bookingHistory = ref([]); // ★ 3. 新增 ref 來儲存歷史紀錄
 const isDownloadingPdf = ref(false);
 const isDownloadingExcel = ref(false);
 
@@ -1053,10 +1058,38 @@ async function handleUpdateInspectorsFromDialog(payload) {
 
 function handleCustomEventClick(event) {
   selectedEvent.value = event;
+  calendarData.value = []; // ★ 4. 打開對話框時，先清空舊的標記資料
+  
+  // 篩選出該戶的所有預約紀錄作為歷史資料
+  bookingHistory.value = allAppointments.value
+    .filter(appt => appt.unitId === event.unitId)
+    .sort((a, b) => b.start - a.start);
+
   isDialogVisible.value = true;
 }
 
+async function handleRequestCalendarData(payload) {
+  const { unitId } = payload;
+  if (!projectId.value || !unitId) {
+    showSnackbar('缺少專案或戶別資訊，無法載入行事曆標記', 'error');
+    return;
+  }
 
+  try {
+    const result = await getAdminBookingCalendarData({ 
+      projectId: projectId.value,
+      unitId: unitId 
+    });
+    if (result.status === 'success') {
+      calendarData.value = result.data;
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (err) {
+    console.error('獲取行事曆標記失敗:', err);
+    showSnackbar(`讀取行事曆標記失敗: ${err.message}`, 'error');
+  }
+}
 
 
 function resetNewAppointmentForm() {

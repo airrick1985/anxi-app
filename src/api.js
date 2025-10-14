@@ -1910,31 +1910,33 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
     // 1. 一次性獲取該建案所有的 households 資料 (維持不變)
     const householdsRef = collection(db, "households");
     const householdsQuery = query(householdsRef, where("projectId", "==", projectId));
-    const householdsSnapshot = await getDocs(householdsQuery);
-    const householdsMap = new Map();
-    householdsSnapshot.forEach(doc => {
-        householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
-    });
+const householdsSnapshot = await getDocs(householdsQuery);
+  const householdsMap = new Map();
+  householdsSnapshot.forEach(doc => {
+      householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
+  });
 
-    const appointmentsRef = collection(db, "appointments");
-    const appointmentsQuery = query(
-        appointmentsRef, 
-        where("projectId", "==", projectId),
-        where("appointmentDate", ">=", startDate),
-        where("appointmentDate", "<=", endDate)
-    );
-    const appointmentsSnapshot = await getDocs(appointmentsQuery);
+  const appointmentsRef = collection(db, "appointments");
+  const appointmentsQuery = query(
+      appointmentsRef, 
+      where("projectId", "==", projectId),
+      where("appointmentDate", ">=", startDate),
+      where("appointmentDate", "<=", endDate)
+  );
+  const appointmentsSnapshot = await getDocs(appointmentsQuery);
 
-    const combinedData = appointmentsSnapshot.docs.map(doc => {
-        const appointment = { id: doc.id, ...doc.data() };
-        const householdKey = `${appointment.projectId}_${appointment.unitId}`;
-        const householdData = householdsMap.get(householdKey) || {};
-        return { ...householdData, ...appointment };
-    });
+  const combinedData = appointmentsSnapshot.docs.map(doc => {
+      const appointment = { id: doc.id, ...doc.data() };
+      const householdKey = `${appointment.projectId}_${appointment.unitId}`;
+      const householdData = householdsMap.get(householdKey) || {};
+      
+      // ✅ 修改此處的合併順序
+      // 確保 householdData (主要來源) 的欄位會覆蓋 appointment 中的舊資料
+      return { ...appointment, ...householdData, id: doc.id };
+  });
 
-    return combinedData;
+  return combinedData;
 }
-
 /**
  * [Firestore 版] 獲取新增/編輯預約時所需的下拉選單等選項
  * @param {string} projectId 
@@ -2002,42 +2004,27 @@ export async function addAppointmentAdmin(payload) {
 }
 
 /**
- * [Firestore 版] 更新預約紀錄 (可同時更新 appointments 和 households)
+ * [Firebase 版] 更新預約紀錄 (透過 Cloud Function 處理)
  * @param {string} appointmentId - 預約紀錄的文件 ID
  * @param {object} bookingUpdatePayload - 要更新到 appointments 集合的資料
- * @param {string} householdDocId - 戶別資料的文件 ID (projectId_unitId)
+ * @param {string} householdDocId - 戶別資料的文件 ID
  * @param {object} householdUpdatePayload - 要更新到 households 集合的資料
  */
 export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload) {
-    const batch = writeBatch(db);
-
-    // 處理日期轉換
-    ['appointmentDate'].forEach(field => {
-        if (bookingUpdatePayload[field]) {
-            bookingUpdatePayload[field] = Timestamp.fromDate(new Date(bookingUpdatePayload[field]));
-        }
+  try {
+    const doUpdate = httpsCallable(functions, 'updateAppointmentByAdmin');
+    const result = await doUpdate({
+      appointmentId,
+      bookingPayload: bookingUpdatePayload,
+      householdDocId,
+      householdPayload: householdUpdatePayload,
     });
-     ['appropriationDate'].forEach(field => {
-        if (householdUpdatePayload[field]) {
-            householdUpdatePayload[field] = Timestamp.fromDate(new Date(householdUpdatePayload[field]));
-        }
-    });
-
-    if (appointmentId && Object.keys(bookingUpdatePayload).length > 0) {
-        const appointmentRef = doc(db, "appointments", appointmentId);
-        batch.update(appointmentRef, bookingUpdatePayload);
-    }
-    if (householdDocId && Object.keys(householdUpdatePayload).length > 0) {
-        const householdRef = doc(db, "households", householdDocId);
-        batch.update(householdRef, householdUpdatePayload);
-    }
-
-    if (batch._mutations.length > 0) {
-        await batch.commit();
-        return { status: 'success' };
-    }
-    
-    return { status: 'no_changes' };
+    return result.data; // 直接回傳後端的 { status, message }
+  } catch (error) {
+    console.error("API updateAppointment 錯誤:", error);
+    // 將 HttpsError 轉換為前端可處理的格式
+    throw new Error(error.message);
+  }
 }
 
 /**
