@@ -95,13 +95,19 @@
   <v-row v-else class="ma-0">
                <v-col cols="12" md="4" class="pa-4">
                 <VueDatePicker
+                  auto-apply
                   v-model="selectedDate"
                   inline
-                  auto-apply
+                  no-swipe
+                  :action-row="{ showNow: true, showPreview: false }"
                   locale="zh-TW"
+                  select-text="選取"
+                  now-button-label="今天"
+                  :month-change-on-scroll="false"
                   :enable-time-picker="false"
                   :disabled="!selectedProject || isFetchingDayData"
-                  > <template #day="{ date }">
+       
+                   > <template #day="{ date }">
                     <div class="custom-day-cell">
                       <div class="date-number">{{ date.getDate() }}</div>
 
@@ -131,7 +137,7 @@
                       <template v-slot:activator="{ props }">
                         <v-btn
                           v-bind="props"
-                          icon="mdi-plus-circle-outline"
+                          icon="mdi-table-large-plus"
                           @click="isAdminAddDialogVisible = true"
                           :disabled="!selectedProject"
                         ></v-btn>
