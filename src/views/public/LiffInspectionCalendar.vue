@@ -155,11 +155,22 @@
                     </v-tooltip>
                     
                     <v-tooltip location="bottom">
-                      <template v-slot:activator="{ props }">
-                        <v-btn v-bind="props" icon="mdi-cog" @click="isFilterDialogVisible = true"></v-btn>
-                      </template>
-                      <span>顯示設定</span>
-                    </v-tooltip>
+                        <template v-slot:activator="{ props }">
+                          <v-btn
+                            v-bind="props"
+                            icon="mdi-folder-google-drive"
+                            @click="navigateToReportManager"
+                            :disabled="!selectedProject"
+                          ></v-btn>
+                        </template>
+                        <span>驗屋報告</span>
+                      </v-tooltip>
+                      <v-tooltip location="bottom">
+                        <template v-slot:activator="{ props }">
+                          <v-btn v-bind="props" icon="mdi-cog" @click="isFilterDialogVisible = true"></v-btn>
+                        </template>
+                        <span>顯示設定</span>
+                      </v-tooltip>
                  </v-toolbar>                 
                 
                 <div
@@ -305,6 +316,7 @@
   </v-container>
 </template>
 <script setup>
+import { useRouter } from 'vue-router'; 
 import { ref, onMounted, computed, watch, defineAsyncComponent, reactive } from 'vue';
 import liff from '@line/liff';
 import html2canvas from 'html2canvas';
@@ -330,6 +342,7 @@ import { useUserStore } from '@/store/user';
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 
+const router = useRouter(); 
 const { smAndDown, mobile } = useDisplay(); 
 const userStore = useUserStore();
 
@@ -387,6 +400,17 @@ const snackbar = reactive({
 });
 
 const userName = computed(() => userStore.user?.name || '');
+
+const navigateToReportManager = () => {
+  if (selectedProject.value) {
+    // 使用 router push 導向新頁面，並帶上目前的建案 ID
+    router.push({
+      name: 'ReportFolderManager',
+      params: { projectId: selectedProject.value }
+    });
+  }
+};
+
 
 const getEventCountsForDay = (dateObj) => {
   // ✓ START: 修改數據源

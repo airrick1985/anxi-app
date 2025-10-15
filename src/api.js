@@ -4917,3 +4917,42 @@ export const getAppointmentsForHousehold = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+// ✓ START: 新增 - Google Drive 檔案管理 API
+// =================================================================
+// /  【新增】Google Drive 檔案管理 API
+// =================================================================
+
+/**
+ * [新] 呼叫後端，獲取 Google Drive 資料夾內的檔案與資料夾列表
+ * @param {object} payload - 包含 { folderId, searchTerm } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, files }
+ */
+export const driveProxyList = async (payload) => {
+  try {
+    const listFunction = httpsCallable(functions, 'driveProxyList');
+    const result = await listFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in driveProxyList:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [新] 呼叫後端，啟動一個 Google Drive 背景任務 (下載或更名)
+ * @param {object} payload - 包含 { taskType, items, suffixOptions, projectId } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, taskId }
+ */
+export const driveProxyTask = async (payload) => {
+  try {
+    const taskFunction = httpsCallable(functions, 'driveProxyTask');
+    const result = await taskFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in driveProxyTask:", error);
+    throw new Error(error.message);
+  }
+};
+
+// ✓ END: 新增 - Google Drive 檔案管理 API

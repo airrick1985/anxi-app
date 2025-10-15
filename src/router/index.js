@@ -268,6 +268,18 @@ const routes = [
   },
 
 {
+    path: '/report-folder-manager/:projectId',
+    name: 'ReportFolderManager',
+    // ✓ 修改此處的路徑以符合新位置
+    component: () => import('@/views/public/ReportFolderManager.vue'), 
+    props: true,
+    meta: {
+      layout: PublicLayout,
+      title: '驗屋報告資料夾管理'
+    }
+  },
+
+{
         path: '/inspection-calendar/:projectId',
         name: 'InspectionCalendar',
         component: InspectionCalendar,

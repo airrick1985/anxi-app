@@ -22,7 +22,8 @@ const { Readable } = require("stream"); //  新增此行，用於將 Buffer 轉�
 const readline = require("readline"); 
 const { Timestamp } = require("firebase-admin/firestore"); //  引入 Timestamp
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
-
+const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案
+const Busboy = require("busboy"); // ✓ 用於處理檔案上傳 (未來可能用到)
 
 
 
@@ -7214,3 +7215,225 @@ exports.updateAppointmentByAdmin = onCall({ cors: true }, async (request) => {
     throw new HttpsError("internal", `更新預約時發生錯誤: ${error.message}`);
   }
 });
+// ✓ START: 新增 - Google Drive 檔案管理代理 Cloud Functions
+// =================================================================
+// /  【新增】Google Drive 檔案管理代理 Cloud Functions
+// =================================================================
+
+/**
+ * [新] 獲取 Google Drive 資料夾內的檔案與資料夾列表
+ * @param {string} folderId - 要查詢的 Google Drive 資料夾 ID
+ * @param {string} searchTerm - (可選) 搜尋關鍵字
+ * @returns {Promise<object>} - 包含檔案與資料夾列表的物件
+ */
+exports.driveProxyList = onCall({ secrets: driveSecrets }, async (request) => {
+  const { folderId, searchTerm } = request.data;
+  const functionName = `driveProxyList (Folder: ${folderId})`;
+
+  if (!folderId) {
+    throw new HttpsError("invalid-argument", "缺少 folderId 參數。");
+  }
+
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.DRIVE_CLIENT_ID,
+      process.env.DRIVE_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground'
+    );
+    oauth2Client.setCredentials({
+      refresh_token: process.env.DRIVE_REFRESH_TOKEN,
+    });
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+    // 建立查詢語句
+    let query = `'${folderId}' in parents and trashed=false`;
+    if (searchTerm) {
+      // 新增搜尋條件：名稱包含關鍵字
+      query += ` and name contains '${searchTerm}'`;
+    }
+    
+    const response = await drive.files.list({
+      q: query,
+      fields: 'files(id, name, mimeType, modifiedTime, size, iconLink, webViewLink, thumbnailLink)',
+      orderBy: 'folder, name', // 資料夾優先，然後按名稱排序
+      pageSize: 500 // 增加單次獲取數量
+    });
+
+    // 將 Google API 回傳的資料整理成前端易用的格式
+    const files = response.data.files.map(file => ({
+      id: file.id,
+      name: file.name,
+      isFolder: file.mimeType === 'application/vnd.google-apps.folder',
+      modifiedTime: file.modifiedTime,
+      size: file.size ? parseInt(file.size, 10) : 0,
+      icon: file.iconLink,
+      url: file.webViewLink,
+      thumbnail: file.thumbnailLink || null,
+    }));
+
+    return { status: 'success', files };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+     if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+        throw new HttpsError("unauthenticated", `Google Drive 認證失敗，Refresh Token 可能已過期。`);
+    }
+    throw new HttpsError("internal", `讀取 Drive 檔案列表時發生錯誤: ${error.message}`);
+  }
+});
+
+
+/**
+ * [新] 處理 Google Drive 的背景任務 (下載、更名)
+ * 这是一个非同步任务处理器，它会立即返回一个任务ID，并在后台完成工作。
+ * 前端可以通过监听 Firestore 中对应的任务文档来获取实时进度。
+ * @param {string} taskType - 'download' 或 'rename'
+ * @param {Array<object>} items - 要處理的檔案/資料夾列表 [{id, name}]
+ * @param {object} suffixOptions - (僅 rename 需要) { suffix, username }
+ * @returns {Promise<object>} - 包含 { status: 'pending', taskId } 的物件
+ */
+exports.driveProxyTask = onCall({ secrets: driveSecrets, timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+    const { taskType, items, suffixOptions, projectId } = request.data;
+    const functionName = `driveProxyTask (Type: ${taskType})`;
+
+    if (!taskType || !items || !Array.isArray(items) || items.length === 0) {
+        throw new HttpsError("invalid-argument", "缺少或無效的任務參數。");
+    }
+
+    // 1. 在 Firestore 中建立一個任務追蹤文檔
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+    const taskRef = anxiDb.collection('driveTasks').doc();
+    const taskId = taskRef.id;
+
+    await taskRef.set({
+        status: 'pending',
+        progress: `0/${items.length}`,
+        details: `任務已建立，等待執行...`,
+        createdAt: FieldValue.serverTimestamp(),
+        taskType: taskType,
+        projectId: projectId,
+    });
+    
+    // 2. 立即回傳任務 ID 給前端
+    // 注意：實際的耗時操作在背景執行，不會阻塞這個回傳
+    console.log(`[${functionName}] Task [${taskId}] created. Starting background process.`);
+    
+    // 3. 在背景執行實際任務 (不使用 await，讓函式先回傳)
+    executeTaskInBackground(taskId, taskType, items, suffixOptions, anxiDb);
+
+    return { status: 'pending', taskId: taskId };
+});
+
+
+/**
+ * [內部輔助函式] 在背景執行耗時的 Drive 操作
+ * @param {string} taskId 
+ * @param {string} taskType 
+ * @param {Array} items 
+ * @param {object} suffixOptions 
+ * @param {Firestore} db 
+ */
+async function executeTaskInBackground(taskId, taskType, items, suffixOptions, db) {
+    const taskRef = db.collection('driveTasks').doc(taskId);
+    const functionName = `executeTaskInBackground (TaskID: ${taskId})`;
+
+    try {
+        await taskRef.update({ status: 'processing', details: '正在初始化...' });
+        
+        // ✓ START: 修正 - 填入完整的 OAuth2Client 初始化參數
+        const oauth2Client = new google.auth.OAuth2(
+          process.env.DRIVE_CLIENT_ID,
+          process.env.DRIVE_CLIENT_SECRET,
+          'https://developers.google.com/oauthplayground'
+        );
+        // ✓ END: 修正
+        
+        oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
+        const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+        if (taskType === 'rename') {
+            // --- 執行批次更名 ---
+            let count = 0;
+            for (const item of items) {
+                count++;
+                await taskRef.update({
+                    progress: `${count}/${items.length}`,
+                    details: `正在更名: ${item.name}`
+                });
+                
+                const newName = `${item.name}${suffixOptions.username}-${suffixOptions.suffix}`;
+                await drive.files.update({
+                    fileId: item.id,
+                    requestBody: { name: newName },
+                });
+            }
+            await taskRef.update({ status: 'completed', details: '所有項目更名完成。', completedAt: FieldValue.serverTimestamp() });
+
+        } else if (taskType === 'download') {
+            // --- 執行批次下載與壓縮 ---
+            await taskRef.update({ details: `準備壓縮 ${items.length} 個項目...` });
+            
+            const bucket = getStorage().bucket();
+            const now = new Date();
+            const fileName = `download_${taskId}_${now.getTime()}.zip`;
+            const filePath = `temp-downloads/${fileName}`;
+            const file = bucket.file(filePath);
+            const gcsWriteStream = file.createWriteStream({ resumable: false });
+            
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            
+            archive.pipe(gcsWriteStream);
+            
+            let count = 0;
+            for (const item of items) {
+                count++;
+                await taskRef.update({
+                    progress: `${count}/${items.length}`,
+                    details: `正在處理: ${item.name}`
+                });
+                await addFolderToZip(drive, item.id, item.name, archive);
+            }
+            
+            await archive.finalize();
+            const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 }); // 15分鐘有效
+            
+            await taskRef.update({ 
+                status: 'completed', 
+                details: '壓縮完成，可供下載。', 
+                resultUrl: signedUrl, 
+                completedAt: FieldValue.serverTimestamp() 
+            });
+        }
+        
+        console.log(`[${functionName}] Task completed successfully.`);
+
+    } catch (error) {
+        console.error(`[${functionName}] Background task failed:`, error);
+        await taskRef.update({ status: 'error', details: `任務失敗: ${error.message}`, completedAt: FieldValue.serverTimestamp() });
+    }
+}
+
+
+/**
+ * [內部遞迴函式] 將整個資料夾及其內容加入到 Zip 壓縮檔中
+ */
+async function addFolderToZip(drive, folderId, currentPath, archive) {
+    const res = await drive.files.list({
+        q: `'${folderId}' in parents and trashed=false`,
+        fields: 'files(id, name, mimeType)',
+    });
+
+    for (const file of res.data.files) {
+        const newPath = `${currentPath}/${file.name}`;
+        if (file.mimeType === 'application/vnd.google-apps.folder') {
+            await addFolderToZip(drive, file.id, newPath, archive); // 遞迴子資料夾
+        } else {
+            // 下載檔案並以 Stream 形式加入壓縮檔
+            const fileRes = await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'stream' });
+            archive.append(fileRes.data, { name: newPath });
+        }
+    }
+}
+
+
+// ✓ END: 新增 - Google Drive 檔案管理代理 Cloud Functions

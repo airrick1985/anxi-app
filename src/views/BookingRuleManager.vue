@@ -396,6 +396,15 @@
                    placeholder="輸入驗屋報告上傳網址"
                 ></v-text-field>
 
+                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告資料夾</p>
+                <v-text-field
+                  v-model="projectSettings.reportSettings.reportDataFolderUrl"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-1"
+                  placeholder="輸入驗屋報告雲端資料夾位置"
+                ></v-text-field>
+
                 <p class="text-subtitle-1 font-weight-bold mb-2">上傳頁說明</p>
                 <RichTextEditor v-model="projectSettings.reportUploadIntro.body" class="mb-6" />
 
@@ -1291,6 +1300,7 @@ const defaultSettings = computed(() => ({
         reminder: `<p>1.驗屋報告請以 PDF 檔方式製作，並且檔案大小限制為 30MB 以內。<br>2.初驗報告與複驗報告每戶僅限上傳一份，如需更換內容，請洽客服協助處理。</p>`,
         uploadUrl: ''
       },
+      reportDataFolderUrl: '', 
       notDownloadedReminderSchedule: {
         monday: { enabled: false, time: '10:00' },
         tuesday: { enabled: false, time: '10:00' },
