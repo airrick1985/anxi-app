@@ -4956,3 +4956,39 @@ export const driveProxyTask = async (payload) => {
 };
 
 // ✓ END: 新增 - Google Drive 檔案管理 API
+
+// ✓ START: 新增 - 呼叫後端全域搜尋的 API
+/**
+ * [新] 呼叫後端，遞迴搜尋指定根目錄下的所有檔案
+ * @param {object} payload - 包含 { rootFolderId, searchTerm } 的物件
+ * @returns {Promise<object>}
+ */
+export const driveProxySearch = async (payload) => {
+  try {
+    const searchFunction = httpsCallable(functions, 'driveProxySearch');
+    const result = await searchFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in driveProxySearch:", error);
+    throw new Error(error.message);
+  }
+};
+
+
+
+// ✓ START: 新增 - 呼叫後端獲取扁平化結構的 API
+/**
+ * [新] 呼叫後端，獲取扁平化的報告資料夾結構
+ * @param {object} payload - 包含 { rootFolderId } 的物件
+ * @returns {Promise<object>}
+ */
+export const getReportFolderStructure = async (payload) => {
+  try {
+    const getStructureFunction = httpsCallable(functions, 'getReportFolderStructure');
+    const result = await getStructureFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getReportFolderStructure:", error);
+    throw new Error(error.message);
+  }
+};
