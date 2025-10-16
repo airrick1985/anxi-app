@@ -504,7 +504,7 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-6N3jwqxA' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
+    await liff.init({ liffId: '2008257338-o8grV0ZD' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();
