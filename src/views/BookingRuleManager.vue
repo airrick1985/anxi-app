@@ -570,31 +570,32 @@
                 <v-divider class="my-8"></v-divider>
 
                 <p class="text-h6 font-weight-bold mb-4">排程設定</p>
-                <p class="text-subtitle-1 font-weight-bold mb-2">驗屋報告未下載通知</p>
-                <p class="text-body-2 text-medium-emphasis mb-4">
-                  設定系統每週固定檢查的時間點。當系統發現有報告未下載時，將會觸發通知。
-                </p>
-                <v-sheet border rounded class="pa-4">
-                  <div v-for="day in weekDays" :key="day.key" class="d-flex align-center my-2">
-                    <v-checkbox
-                      v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
-                      :label="day.label"
-                      density="compact"
-                      hide-details
-                      class="flex-shrink-0"
-                      style="width: 120px;"
-                    ></v-checkbox>
-                    <v-text-field
-                      v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].time"
-                      type="time"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                      :disabled="!projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
-                      style="max-width: 150px;"
-                    ></v-text-field>
-                  </div>
-                </v-sheet>
+                  <p class="text-subtitle-1 font-weight-bold mb-2">驗屋報告未下載通知</p>
+                  <p class="text-body-2 text-medium-emphasis mb-4">
+                    設定系統每週固定檢查的時間點。當系統發現有報告未下載時，將會觸發通知。
+                  </p>
+                  <v-sheet border rounded class="pa-4">
+                    <div v-for="day in weekDays" :key="day.key" class="d-flex align-center my-2">
+                      <v-checkbox
+                        v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                        :label="day.label"
+                        density="compact"
+                        hide-details
+                        class="flex-shrink-0"
+                        style="width: 120px;"
+                      ></v-checkbox>
+                      
+                      <v-select
+                        v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].time"
+                        :items="scheduleTimeOptions"
+                        density="compact"
+                        variant="outlined"
+                        hide-details
+                        :disabled="!projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                        style="max-width: 150px;"
+                      ></v-select>
+                      </div>
+                  </v-sheet>
 
                 <v-btn
       @click="handleManualLineNotification"
@@ -1198,6 +1199,17 @@ import {
 
 const isTesting = ref(false);
 const isSendingLineNotification = ref(false);
+
+const scheduleTimeOptions = computed(() => {
+  const options = [];
+  for (let hour = 8; hour < 18; hour++) {
+    const hourStr = hour.toString().padStart(2, '0');
+    options.push(`${hourStr}:00`);
+    options.push(`${hourStr}:30`);
+  }
+  options.push('18:00');
+  return options;
+});
 
 const runManualTrigger = async () => {
   if (!confirm('您確定要手動觸發一次「未上傳報告提醒」任務嗎？')) {

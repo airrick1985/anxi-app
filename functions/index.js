@@ -1,19 +1,57 @@
+/*
+ * =================================================================
+ * ❗ AI 程式碼生成備註：Firestore Admin SDK 查詢語法 ❗
+ * =================================================================
+ *
+ * 背景：
+ * 此檔案 (index.js) 運行於 Firebase Cloud Functions 後端環境，
+ * 必須嚴格使用 Firebase Admin SDK 的語法來操作 Firestore。
+ *
+ * 常見錯誤：
+ * 誤用前端 Web/Client SDK 的 `query()` 和 `getDocs()` 函式，
+ * 會導致 "ReferenceError: query is not defined" 的執行階段錯誤。
+ *
+ * --- 語法對照 ---
+ *
+ * ❌ 錯誤 / 前端語法 (禁止在此檔案中使用):
+ *
+ * // const { query, where, getDocs } = require("firebase/firestore"); // <--- Admin SDK 中沒有這個
+ * // const q = query(projectsRef, where(`reportSettings...`, '==', true));
+ * // const snapshot = await getDocs(q);
+ *
+ *
+ * ✅ 正確 / 後端 (Admin SDK) 語法 (此檔案必須使用的格式):
+ *
+ * const projectsRef = db.collection('projects');
+ * const snapshot = await projectsRef
+ * .where(`reportSettings...`, '==', true)
+ * .get();
+ *
+ *
+ * 開發規則：
+ * 在此檔案中，所有 Firestore 查詢都必須使用在集合參考 (collection reference)
+ * 上直接進行鏈式呼叫 `.where().orderBy().limit().get()` 的方式。
+ *
+ * =================================================================
+ */
+
 // functions/index.js
 
 const functions = require("firebase-functions");
+const { google } = require("googleapis"); // ✓ START: 新增此行
 const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
 const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
 const { FieldValue } = require("firebase-admin/firestore");
 const line = require("@line/bot-sdk");
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { Firestore, FieldPath: GCloudFieldPath } = require("@google-cloud/firestore");
-const {google} = require("googleapis");
+const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firestore");
 const { FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
@@ -1576,7 +1614,6 @@ exports.runDeleteJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (re
 //  END: 新增 runDeleteJob 雲端函式
 
 //  START: 新增 scheduledJobRunner 排程函式
-const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 // 設定排程：每小時的第 0 分執行一次 (例如 01:00, 02:00, 03:00)
 exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => {
@@ -7544,134 +7581,7 @@ exports.getReportFolderStructure = onCall({ secrets: driveSecrets, timeoutSecond
 });
 
 
-/**停用
- * [新] 掃描指定建案的驗屋報告資料夾，並對符合權限的使用者發送 LINE 提醒
- * @param {string} projectId - 建案 ID
 
-exports.sendNotDownloadedReportReminder = onCall({
-  invoker: 'public', // <--- 將此行加入，允許公開呼叫
-  secrets: driveSecrets, // <--- ✓ 新增此行
-  timeoutSeconds: 300,
-  memory: "1GiB",
-}, async (request) => {
-  const { projectId } = request.data;
-  const functionName = `sendNotDownloadedReportReminder (Project: ${projectId})`;
-
-  if (!projectId) {
-    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
-  }
-
-  const db = new Firestore({ databaseId: "anxi-app" });
-
-  try {
-    console.log(`[${functionName}] 任務開始...`);
-
-    // --- 步驟 1: 獲取建案設定與 LINE Channel Token ---
-    const projectDoc = await db.collection('projects').doc(projectId).get();
-    if (!projectDoc.exists) {
-      throw new HttpsError("not-found", `找不到建案 ${projectId} 的設定。`);
-    }
-    const projectData = projectDoc.data();
-    const projectName = projectData.name || projectId;
-    const rootFolderUrl = projectData.reportSettings?.reportDataFolderUrl;
-    const secretName = projectData.lineChannelAccessTokenSecretName;
-
-    if (!rootFolderUrl || !secretName) {
-      throw new HttpsError("failed-precondition", "此建案未完整設定報告資料夾路徑或 LINE Token 密鑰名稱。");
-    }
-
-    // 動態從 Secret Manager 獲取 Token
-    const secretManagerClient = new SecretManagerServiceClient();
-    const [version] = await secretManagerClient.accessSecretVersion({
-      name: `projects/${process.env.GCLOUD_PROJECT}/secrets/${secretName}/versions/latest`,
-    });
-    const lineChannelAccessToken = version.payload.data.toString('utf8');
-
-    if (!lineChannelAccessToken) {
-        throw new HttpsError("internal", "無法從 Secret Manager 獲取 LINE Channel Token。");
-    }
-    console.log(`[${functionName}] 成功獲取建案 ${projectName} 的 LINE Token。`);
-
-    // --- 步驟 2: 尋找通知對象 ---
-    const permQuery = db.collection('userPermissions')
-      .where(`permissions.${projectId}.systems`, 'array-contains', "驗屋預約管理-檢視");
-    const permSnapshot = await permQuery.get();
-    
-    if (permSnapshot.empty) {
-      throw new HttpsError("not-found", "找不到擁有此建案檢視權限的使用者。");
-    }
-
-    const userPhones = permSnapshot.docs.map(doc => doc.id);
-    const usersQuery = db.collection('users').where(FieldPath.documentId(), 'in', userPhones);
-    const usersSnapshot = await usersQuery.get();
-
-    const lineIdsToSend = usersSnapshot.docs
-      .map(doc => doc.data().lineId)
-      .filter(lineId => lineId && typeof lineId === 'string');
-
-    if (lineIdsToSend.length === 0) {
-      throw new HttpsError("not-found", "有權限的使用者皆未綁定 LINE，無法發送通知。");
-    }
-    console.log(`[${functionName}] 找到 ${lineIdsToSend.length} 個 LINE 通知對象。`);
-
-    // --- 步驟 3: 掃描 Google Drive ---
-    const rootFolderId = rootFolderUrl.match(/[-\w]{25,}/)?.[0];
-    if (!rootFolderId) throw new HttpsError("invalid-argument", "無效的雲端資料夾連結。");
-
-    // 重用現有的 Drive 掃描邏輯
-    const drive = getAuthenticatedDriveClient(); // 確保您已將此輔助函式保留在 index.js 中
-    const flatList = [];
-    const level1Res = await drive.files.list({ q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-    
-    if (level1Res.data.files) {
-      await Promise.all(level1Res.data.files.map(async (l1Folder) => {
-        const level2Res = await drive.files.list({ q: `'${l1Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-        if (level2Res.data.files) {
-          await Promise.all(level2Res.data.files.map(async (l2Folder) => {
-            const level3Res = await drive.files.list({ q: `'${l2Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-            if (level3Res.data.files) {
-              level3Res.data.files.forEach(l3Folder => flatList.push(l3Folder));
-            }
-          }));
-        }
-      }));
-    }
-
-    const undownloadedFolders = flatList.filter(folder => 
-      !folder.name.includes("(已下載)") && !folder.name.includes("(作廢)")
-    );
-    console.log(`[${functionName}] 掃描完成，找到 ${undownloadedFolders.length} 個未下載的報告資料夾。`);
-
-    // --- 步驟 4: 組合訊息並發送 ---
-    if (undownloadedFolders.length === 0) {
-      return { status: "success", message: `${projectName} 你真棒😉！今天的驗屋報告都已下載完成。` };
-    }
-
-    const folderNames = undownloadedFolders.map(folder => folder.name).join("\n");
-    const liffUrl = `https://anxismart.com/?liff_path=report-folder-manager/${projectId}`;
-    const messageText = `${projectName} 驗屋報告未下載通知\n\n${folderNames}\n\n請至以下連結確認\n${liffUrl}`;
-    
-    const lineClient = new line.Client({ channelAccessToken: lineChannelAccessToken });
-
-    await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
-    
-    console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。`);
-    return { status: "success", message: "提醒訊息已成功發送。" };
-
-  } catch (error) {
-    console.error(`[${functionName}] 執行失敗:`, error);
-    if (error instanceof HttpsError) throw error;
-    if (error.response && error.response.data) {
-      console.error('LINE API Error:', error.response.data);
-      throw new HttpsError("internal", `發送 LINE 通知失敗: ${error.response.data.message || '未知錯誤'}`);
-    }
-    throw new HttpsError("internal", `執行任務時發生錯誤: ${error.message}`);
-  }
-}); */
-
-/**
- * [手動觸發] 掃描指定建案的驗屋報告資料夾，並發送 LINE 提醒
- */
 exports.sendNotDownloadedReportReminder = onCall({
   invoker: 'public',
   secrets: driveSecrets, // 確保 secrets 仍在，以便 getAuthenticatedDriveClient 運作
@@ -7696,12 +7606,13 @@ exports.sendNotDownloadedReportReminder = onCall({
 
 /**
  * [排程函式] 每小時檢查一次，觸發符合條件的建案進行未下載報告提醒
+ * 
  */
 exports.scheduledReportReminder = onSchedule({
-  schedule: "0 * * * *",      // 每小時的第 0 分執行
-  timeZone: "Asia/Taipei",    // 設定為台灣時區
-  secrets: driveSecrets,      // 函式需要存取 Drive API，必須載入 secrets
-  timeoutSeconds: 540,        // 給予較長的執行時間 (9分鐘)
+  schedule: "*/30 8-18 * * *",      // 每天 8-18 點，每 30 分鐘執行一次
+  timeZone: "Asia/Taipei",
+  secrets: driveSecrets,
+  timeoutSeconds: 540,
   memory: "1GiB",
 }, async (event) => {
   const functionName = "scheduledReportReminder";
@@ -7710,17 +7621,16 @@ exports.scheduledReportReminder = onSchedule({
   const db = new Firestore({ databaseId: "anxi-app" });
   
   try {
-    // 獲取當前台灣時區的星期與小時
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
     const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
-    const currentHour = now.getHours(); // 24小時制 (0-23)
-
-    console.log(`[${functionName}] 當前時間: ${dayOfWeek}, ${currentHour}:00`);
     
-    // 查詢所有在當前星期啟用排程的建案
+    // ✓【偵錯日誌】更詳細的日誌，包含分鐘
+    console.log(`[${functionName}] 當前時間: ${dayOfWeek}, ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
+    
     const projectsRef = db.collection('projects');
-    const q = query(projectsRef, where(`reportSettings.notDownloadedReminderSchedule.${dayOfWeek}.enabled`, '==', true));
-    const snapshot = await getDocs(q);
+    const snapshot = await projectsRef
+        .where(`reportSettings.notDownloadedReminderSchedule.${dayOfWeek}.enabled`, '==', true)
+        .get();
 
     if (snapshot.empty) {
       console.log(`[${functionName}] 在此時間點沒有任何建案需要執行提醒。`);
@@ -7729,22 +7639,34 @@ exports.scheduledReportReminder = onSchedule({
 
     console.log(`[${functionName}] 找到 ${snapshot.size} 個可能需要提醒的建案，開始逐一比對時間...`);
     const tasks = [];
+    const TRIGGER_INTERVAL_MINUTES = 30; // ✓ 定義觸發間隔為 30 分鐘
 
-    // 遍歷並檢查時間是否相符
     for (const doc of snapshot.docs) {
       const projectData = doc.data();
       const projectId = doc.id;
-      const scheduleTime = projectData.reportSettings.notDownloadedReminderSchedule[dayOfWeek].time; // e.g., "15:00"
+      const scheduleSetting = projectData.reportSettings?.notDownloadedReminderSchedule?.[dayOfWeek];
       
-      if (scheduleTime) {
-        const scheduleHour = parseInt(scheduleTime.split(':')[0], 10);
-        if (scheduleHour === currentHour) {
+      // ✓【修改處】將比對邏輯改為精確的時間窗檢查
+      if (scheduleSetting && scheduleSetting.time) {
+        const scheduleTime = scheduleSetting.time; // e.g., "17:35"
+        
+        // 1. 建立一個代表今天排定時間的 Date 物件
+        const [h, m] = scheduleTime.split(':');
+        const scheduleDate = new Date(now); // 複製今天的日期
+        scheduleDate.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0); // 設定為排定的時與分
+
+        // 2. 計算當前時間與排定時間的分鐘差
+        const diffMinutes = (now.getTime() - scheduleDate.getTime()) / 60000;
+
+        // ✓【偵錯日誌】顯示每個專案的時間差計算結果
+        console.log(`[${functionName}] 專案 [${projectId}]: 排定時間=${scheduleTime}, 分鐘差=${diffMinutes.toFixed(2)}`);
+
+        // 3. 檢查分鐘差是否落在 [0, 30) 的區間內
+        //    這表示「當前時間」是「排定時間」之後的第一個觸發點
+        if (diffMinutes >= 0 && diffMinutes < TRIGGER_INTERVAL_MINUTES) {
           console.log(`[${functionName}] ✅ 建案 [${projectId}] 符合條件，準備執行...`);
-          // 對於每個符合的建案，都呼叫核心邏輯函式
-          // 我們將所有任務收集起來，以便並行處理
           tasks.push(
             executeReminderForProject(projectId).catch(err => {
-              // 捕捉單一建案的錯誤，避免中斷整個排程
               console.error(`[${functionName}] ❌ 處理建案 [${projectId}] 時發生錯誤:`, err.message);
             })
           );
@@ -7752,7 +7674,6 @@ exports.scheduledReportReminder = onSchedule({
       }
     }
 
-    // 等待所有符合條件的任務完成
     if (tasks.length > 0) {
       await Promise.all(tasks);
     }
@@ -7765,7 +7686,6 @@ exports.scheduledReportReminder = onSchedule({
 });
 // ✓ END: 3. 排程函式建立完成
 
-// ✓ START: 1. (新增) 建立可複用的核心提醒函式
 /**
  * [內部核心邏輯] 執行單一建案的未下載報告提醒
  * @param {string} projectId - 要執行提醒的建案 ID
@@ -7778,7 +7698,7 @@ async function executeReminderForProject(projectId) {
   try {
     console.log(`[${functionName}] 核心任務開始...`);
 
-    // --- 步驟 1: 獲取建案設定與 LINE Channel Token ---
+    // --- 步驟 1: 獲取建案設定與 LINE Channel Token (此部分邏輯不變) ---
     const projectDoc = await db.collection('projects').doc(projectId).get();
     if (!projectDoc.exists) {
       throw new Error(`找不到建案 ${projectId} 的設定。`);
@@ -7801,7 +7721,7 @@ async function executeReminderForProject(projectId) {
         throw new Error("無法從 Secret Manager 獲取 LINE Channel Token。");
     }
     
-    // --- 步驟 2: 尋找通知對象 ---
+    // --- 步驟 2: 尋找通知對象 (此部分邏輯不變) ---
     const permQuery = db.collection('userPermissions').where(`permissions.${projectId}.systems`, 'array-contains', "驗屋預約管理-檢視");
     const permSnapshot = await permQuery.get();
     if (permSnapshot.empty) {
@@ -7809,56 +7729,76 @@ async function executeReminderForProject(projectId) {
     }
     const userPhones = permSnapshot.docs.map(doc => doc.id);
     const usersSnapshot = await db.collection('users').where(FieldPath.documentId(), 'in', userPhones).get();
-    const lineIdRegex = /^U[0-9a-f]{32}$/; // 用於驗證 LINE User ID 格式
+    
+    const lineIdRegex = /^U[0-9a-f]{32}$/;
     const lineIdsToSend = usersSnapshot.docs
       .map(doc => doc.data().lineId)
-      .filter(lineId => lineId && typeof lineId === 'string' && lineIdRegex.test(lineId)); // 過濾掉空值與格式錯誤的 ID
+      .filter(lineId => lineId && typeof lineId === 'string' && lineIdRegex.test(lineId));
     
-  if (lineIdsToSend.length === 0) {
-      // 現在這個錯誤可能代表「有權限的人都沒綁定」或「綁定的人ID格式都錯了」
+    if (lineIdsToSend.length === 0) {
       throw new Error("找不到任何有效的 LINE 通知對象。");
     }
-    // --- 步驟 3: 掃描 Google Drive ---
+
+    // --- 步驟 3: 掃描 Google Drive (✓ 核心修改處) ---
     const rootFolderId = rootFolderUrl.match(/[-\w]{25,}/)?.[0];
     if (!rootFolderId) throw new Error("無效的雲端資料夾連結。");
 
     const drive = getAuthenticatedDriveClient();
-    const flatList = [];
     const level1Res = await drive.files.list({ q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
     
-    if (level1Res.data.files) {
-      await Promise.all(level1Res.data.files.map(async l1 => {
-        const level2Res = await drive.files.list({ q: `'${l1.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-        if (level2Res.data.files) {
-          await Promise.all(level2Res.data.files.map(async l2 => {
-            const level3Res = await drive.files.list({ q: `'${l2.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-            if (level3Res.data.files) flatList.push(...level3Res.data.files);
-          }));
-        }
-      }));
-    }
+    // 使用可選鏈 (optional chaining) 和預設空陣列來確保安全
+    const level1Folders = level1Res.data?.files || [];
 
+    // 透過 Promise.all 並行處理第一層的每個資料夾
+    const nestedLevel3Folders = await Promise.all(level1Folders.map(async (l1) => {
+      const level2Res = await drive.files.list({ q: `'${l1.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
+      const level2Folders = level2Res.data?.files || [];
+      if (level2Folders.length === 0) {
+        return []; // 如果第二層是空的，明確回傳一個空陣列
+      }
+
+      // 並行處理第二層的每個資料夾
+      const level3FolderLists = await Promise.all(level2Folders.map(async (l2) => {
+        const level3Res = await drive.files.list({ q: `'${l2.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
+        return level3Res.data?.files || []; // 回傳第三層的檔案列表 (或空陣列)
+      }));
+
+      // 將第三層的結果展開 (從 [[a,b], [c,d]] 變成 [a,b,c,d])
+      return level3FolderLists.flat();
+    }));
+
+    // 最後，將所有結果完全展開成一個扁平的列表
+    const flatList = nestedLevel3Folders.flat();
+    
     const undownloadedFolders = flatList.filter(f => !f.name.includes("(已下載)") && !f.name.includes("(作廢)"));
 
     // --- 步驟 4: 組合訊息並發送 ---
-    if (undownloadedFolders.length === 0) {
-      return `${projectName} 你真棒😉！今天的驗屋報告都已下載完成。`;
-    }
+const lineClient = new line.Client({ channelAccessToken: lineChannelAccessToken });
+let messageText;
+let resultMessage;
 
-    const folderNames = undownloadedFolders.map(f => f.name).join("\n");
-    const liffUrl = `https://anxismart.com/?liff_path=report-folder-manager/${projectId}`;
-    const messageText = `${projectName} 驗屋報告未下載通知\n\n${folderNames}\n\n請至以下連結確認\n${liffUrl}`;
-    
-    const lineClient = new line.Client({ channelAccessToken: lineChannelAccessToken });
-    await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
-    
-    console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。`);
-    return "提醒訊息已成功發送。";
+if (undownloadedFolders.length === 0) {
+  // 情況一：沒有未下載的報告
+  console.log(`[${functionName}] 檢查完畢，沒有未下載的報告。`);
+  messageText = `你真棒😉！今天 ${projectName} 的驗屋報告都已下載完成，辛苦囉❤️。`;
+  resultMessage = "已發送完成通知。";
+  
+} else {
+  // 情況二：有未下載的報告
+  const folderNames = undownloadedFolders.map(f => f.name).join("\n");
+  const liffUrl = `https://anxismart.com/?liff_path=report-folder-manager/${projectId}`;
+  messageText = `${projectName} 驗屋報告未下載通知\n\n${folderNames}\n\n請至以下連結確認\n${liffUrl}`;
+  resultMessage = "提醒訊息已成功發送。";
+}
+
+// 無論是哪種情況，都發送 LINE 訊息
+await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
+
+console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。`);
+return resultMessage; // 回傳執行的結果訊息
 
   } catch (error) {
     console.error(`[${functionName}] 執行失敗:`, error);
-    // 向上拋出錯誤，讓呼叫者 (手動或排程) 可以捕捉並記錄
-    throw error;
+    throw error; // 將錯誤向上拋出，以便上層函式 (排程或手動觸發) 能捕捉到
   }
 }
-// ✓ END: 1. 核心函式建立完成

@@ -494,8 +494,7 @@
       <span>篩選</span>
     </v-btn>
 
-    <v-btn v-if="canEdit" @click="handleOpenAddDialog">
-      <v-icon>mdi-calendar-plus</v-icon>
+    <v-btn v-if="canEdit" @click="isAdminAddDialogVisible = true"> <v-icon>mdi-calendar-plus</v-icon>
       <span>新增預約</span>
     </v-btn>
 
@@ -531,7 +530,6 @@
     </v-menu>
   </v-bottom-navigation>
 </teleport>
-
 </template>
 
 <script setup>
