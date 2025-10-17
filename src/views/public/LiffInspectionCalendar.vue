@@ -402,13 +402,8 @@ const snackbar = reactive({
 const userName = computed(() => userStore.user?.name || '');
 
 const navigateToReportManager = () => {
-  if (selectedProject.value) {
-    // 使用 router push 導向新頁面，並帶上目前的建案 ID
-    router.push({
-      name: 'ReportFolderManager',
-      params: { projectId: selectedProject.value }
-    });
-  }
+  // 直接導向至驗屋報告管理的 LIFF 頁面
+  window.location.href = 'https://liff.line.me/2008257338-gYnbKlpR';
 };
 
 

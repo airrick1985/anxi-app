@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.262",
+  "version": "0.0.263",
   "private": true,
   "scripts": {
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
@@ -24,6 +24,7 @@
     "@fullcalendar/list": "^6.1.18",
     "@fullcalendar/timegrid": "^6.1.18",
     "@fullcalendar/vue3": "^6.1.18",
+    "@google-cloud/secret-manager": "^6.1.1",
     "@google-cloud/vertexai": "^1.10.0",
     "@jamescoyle/vue-icon": "^0.1.2",
     "@line/bot-sdk": "^10.3.0",

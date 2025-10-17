@@ -2192,10 +2192,8 @@ async function handleManualLineNotification() {
   }
   isSendingLineNotification.value = true;
   try {
-    // 呼叫新的 API 函式，並傳入建案 ID
     const result = await triggerNotDownloadedReportReminder({ projectId: projectId.value });
-    // 根據後端回傳的訊息顯示提示
-    showSnackbar(result.message, 'success');
+    showSnackbar(result.message, 'success'); // 假設您已有 showSnackbar 函式
   } catch (error) {
     showSnackbar(`發送失敗：${error.message}`, 'error');
   } finally {

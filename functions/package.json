@@ -14,6 +14,8 @@
   "main": "index.js",
   "dependencies": {
     "@google-cloud/firestore": "^7.11.3",
+    "@google-cloud/secret-manager": "^6.1.1",
+    "@line/bot-sdk": "^10.3.0",
     "archiver": "^7.0.1",
     "busboy": "^1.6.0",
     "firebase-admin": "^13.4.0",

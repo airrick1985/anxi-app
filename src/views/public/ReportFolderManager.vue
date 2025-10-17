@@ -291,7 +291,11 @@ async function startRenameTask(suffix) {
 const handleRename = (type) => { const itemsToProcess = selected.value.map(id => tableData.value.find(i => i.rowId === id)?.reportFolder).filter(Boolean); dialog.value = { visible: true, type: 'rename', title: `加註 (${type})`, items: itemsToProcess, icon: 'mdi-form-textbox', color: 'orange-darken-3', renameType: type }; };
 async function confirmDialogAction() { if (dialog.value.type === 'rename') { await startRenameTask(dialog.value.renameType); } }
 const formatDateTime = (isoString) => isoString ? new Date(isoString).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit' }).replace(' ', '\n') : '';
-const goBack = () => { if (liff.isInClient()) { liff.closeWindow(); } else { router.back(); } };
+
+//返回 LIFF時間表頁面
+const goBack = () => {
+  window.location.href = 'https://liff.line.me/2008257338-o8grV0ZD';
+};
 </script>
 
 <style>
