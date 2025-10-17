@@ -4992,3 +4992,21 @@ export const getReportFolderStructure = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+/**
+ * [新] 手動觸發後端，發送「驗屋報告未下載」的 LINE 提醒
+ * @param {object} payload - 包含 { projectId } 的物件
+ * @returns {Promise<object>} - 後端回傳的執行結果 { status, message }
+ */
+export const triggerNotDownloadedReportReminder = async (payload) => {
+  try {
+    const triggerFunction = httpsCallable(functions, 'sendNotDownloadedReportReminder');
+    const result = await triggerFunction(payload);
+    return result.data; // 直接回傳後端的回應
+  } catch (error) {
+    console.error("API Error in triggerNotDownloadedReportReminder:", error);
+    // 將後端的 HttpsError 轉換為前端可讀的錯誤訊息
+    throw new Error(error.message);
+  }
+};

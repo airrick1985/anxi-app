@@ -596,6 +596,20 @@
                   </div>
                 </v-sheet>
 
+                <v-btn
+      @click="handleManualLineNotification"
+      :loading="isSendingLineNotification"
+      color="green"
+      variant="elevated"
+      class="ma-4"
+    >
+      <v-icon start>mdi-chat</v-icon>
+      手動通知 (LINE)
+    </v-btn>
+
+
+
+
               </v-form>
             </div>
             <v-card-actions class="sticky-actions pa-4">
@@ -610,6 +624,10 @@
                 儲存設定
               </v-btn>
             </v-card-actions>
+         
+         
+         
+         
           </v-window-item>
         </v-window>
       </div>
@@ -1174,10 +1192,12 @@ import {
   fetchBookingBatches,
   deleteBookingBatch,
   manualTriggerSendReminders,
+  triggerNotDownloadedReportReminder,
 } from '@/api';
 
 
 const isTesting = ref(false);
+const isSendingLineNotification = ref(false);
 
 const runManualTrigger = async () => {
   if (!confirm('您確定要手動觸發一次「未上傳報告提醒」任務嗎？')) {
@@ -1475,6 +1495,7 @@ const batchUniquenessRule = (value) => {
 
   return !isDuplicate || `⚠️「${currentType}」批次代號重複。`;
 };
+
 
 
 // --- Helper Functions ---
@@ -2163,6 +2184,23 @@ function handleLogoUpload(event) {
     projectSettings.value.logoUrl = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+async function handleManualLineNotification() {
+  if (!confirm(`您確定要手動發送「${projectName.value}」的驗屋報告未下載 LINE 提醒嗎？`)) {
+    return;
+  }
+  isSendingLineNotification.value = true;
+  try {
+    // 呼叫新的 API 函式，並傳入建案 ID
+    const result = await triggerNotDownloadedReportReminder({ projectId: projectId.value });
+    // 根據後端回傳的訊息顯示提示
+    showSnackbar(result.message, 'success');
+  } catch (error) {
+    showSnackbar(`發送失敗：${error.message}`, 'error');
+  } finally {
+    isSendingLineNotification.value = false;
+  }
 }
 
 // --- Lifecycle & Watchers ---

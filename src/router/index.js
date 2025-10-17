@@ -268,17 +268,17 @@ const routes = [
   },
 
 {
-    path: '/report-folder-manager/:projectId',
+    // ✓ START: 修改 - 在 :projectId 後面加上 ?，使其變為可選參數
+    path: '/report-folder-manager/:projectId?',
+    // ✓ END: 修改
     name: 'ReportFolderManager',
-    // ✓ 修改此處的路徑以符合新位置
-    component: () => import('@/views/public/ReportFolderManager.vue'), 
+    component: () => import('@/views/public/ReportFolderManager.vue'),
     props: true,
     meta: {
       layout: PublicLayout,
       title: '驗屋報告資料夾管理'
     }
   },
-
 {
         path: '/inspection-calendar/:projectId',
         name: 'InspectionCalendar',

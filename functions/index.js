@@ -4,8 +4,8 @@ const functions = require("firebase-functions");
 const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
 const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
 const { FieldValue } = require("firebase-admin/firestore");
-
-
+const line = require("@line/bot-sdk");
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
@@ -7541,4 +7541,128 @@ exports.getReportFolderStructure = onCall({ secrets: driveSecrets, timeoutSecond
         console.error(`[${functionName}] 發生錯誤:`, error);
         throw new HttpsError("internal", `掃描 Drive 結構時發生錯誤: ${error.message}`);
     }
+});
+
+
+/**
+ * [新] 掃描指定建案的驗屋報告資料夾，並對符合權限的使用者發送 LINE 提醒
+ * @param {string} projectId - 建案 ID
+ */
+exports.sendNotDownloadedReportReminder = onCall({
+  secrets: [
+    "DRIVE_CLIENT_ID",
+    "DRIVE_CLIENT_SECRET",
+    "DRIVE_REFRESH_TOKEN",
+    "LINE_CHANNEL_ACCESS_TOKEN" // <-- 確保 Secret Manager 中有名為此的密鑰
+  ],
+  timeoutSeconds: 300,
+  memory: "1GiB",
+}, async (request) => {
+  const { projectId } = request.data;
+  const functionName = `sendNotDownloadedReportReminder (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 任務開始...`);
+
+    // --- 步驟 1: 尋找通知對象 ---
+    const permQuery = db.collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', "驗屋預約管理-檢視");
+    const permSnapshot = await permQuery.get();
+    
+    if (permSnapshot.empty) {
+      console.log(`[${functionName}] 找不到擁有此建案檢視權限的使用者。`);
+      throw new HttpsError("not-found", "找不到符合條件的通知對象。");
+    }
+
+    const userPhones = permSnapshot.docs.map(doc => doc.id);
+    const usersQuery = db.collection('users').where(FieldPath.documentId(), 'in', userPhones);
+    const usersSnapshot = await usersQuery.get();
+
+    const lineIdsToSend = usersSnapshot.docs
+      .map(doc => doc.data().lineId)
+      .filter(lineId => lineId && typeof lineId === 'string'); // 過濾掉空值
+
+    if (lineIdsToSend.length === 0) {
+      console.log(`[${functionName}] 找到 ${userPhones.length} 位有權限的使用者，但無人綁定 LINE。`);
+      throw new HttpsError("not-found", "有權限的使用者皆未綁定 LINE，無法發送通知。");
+    }
+    console.log(`[${functionName}] 找到 ${lineIdsToSend.length} 個 LINE 通知對象。`);
+
+    // --- 步驟 2: 掃描 Google Drive ---
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+      throw new HttpsError("not-found", `找不到建案 ${projectId} 的設定。`);
+    }
+    const projectName = projectDoc.data().name || projectId;
+    const rootFolderUrl = projectDoc.data().reportSettings?.reportDataFolderUrl;
+    if (!rootFolderUrl) {
+      throw new HttpsError("failed-precondition", "此建案未設定驗屋報告資料夾路徑。");
+    }
+    
+    const rootFolderId = rootFolderUrl.match(/[-\w]{25,}/)?.[0];
+    if (!rootFolderId) {
+      throw new HttpsError("invalid-argument", "無效的雲端資料夾連結。");
+    }
+    
+    // 重用現有的 Drive 掃描邏輯
+    const drive = getAuthenticatedDriveClient();
+    const flatList = [];
+    const level1Res = await drive.files.list({ q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
+    
+    if (level1Res.data.files) {
+      await Promise.all(level1Res.data.files.map(async (l1Folder) => {
+        const level2Res = await drive.files.list({ q: `'${l1Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
+        if (level2Res.data.files) {
+          await Promise.all(level2Res.data.files.map(async (l2Folder) => {
+            const level3Res = await drive.files.list({ q: `'${l2Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name, modifiedTime)' });
+            if (level3Res.data.files) {
+              level3Res.data.files.forEach(l3Folder => flatList.push(l3Folder));
+            }
+          }));
+        }
+      }));
+    }
+
+    const undownloadedFolders = flatList.filter(folder => 
+      !folder.name.includes("(已下載)") && !folder.name.includes("(作廢)")
+    );
+    console.log(`[${functionName}] 掃描完成，找到 ${undownloadedFolders.length} 個未下載的報告資料夾。`);
+
+    // --- 步驟 3: 組合訊息並發送 ---
+    if (undownloadedFolders.length === 0) {
+      return { status: "success", message: `${projectName} 驗屋報告都已下載完成。` };
+    }
+
+    const folderNames = undownloadedFolders.map(folder => folder.name).join("\n");
+    const liffUrl = `https://anxismart.com/?liff_path=report-folder-manager/${projectId}`;
+
+    const messageText = `${projectName} 驗屋報告未下載通知\n\n${folderNames}\n\n請至以下連結確認\n${liffUrl}`;
+    
+    const lineClient = new line.Client({
+      channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+    });
+
+    await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
+    
+    console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。`);
+    return { status: "success", message: "提醒訊息已成功發送。" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 執行失敗:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    if (error.response && error.response.data) {
+      // 處理 LINE API 的錯誤
+      console.error('LINE API Error:', error.response.data);
+      throw new HttpsError("internal", `發送 LINE 通知失敗: ${error.response.data.message || '未知錯誤'}`);
+    }
+    throw new HttpsError("internal", `執行任務時發生錯誤: ${error.message}`);
+  }
 });

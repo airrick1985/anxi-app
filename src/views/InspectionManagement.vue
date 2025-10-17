@@ -24,25 +24,66 @@
       <v-divider></v-divider>
 
       <v-list density="compact" nav>
-        <v-list-item
-          prepend-icon="mdi-calendar-month"
-          title="預約時間表"
-          :to="{ name: 'InternalInspectionCalendar', params: { projectId: projectId } }"
-          exact-path
-        ></v-list-item>
-        <v-list-item
-          prepend-icon="mdi-table-large"
-          title="戶別資料管理"
-          :to="{ name: 'HouseholdGrid', params: { projectId: projectId } }"
-          exact-path
-        ></v-list-item>
-        <v-list-item
-          v-if="canEdit"
-          prepend-icon="mdi-cogs"
-          title="批次及系統管理"
-          :to="{ name: 'BookingRuleManager', params: { projectId: projectId } }"
-          exact-path
-        ></v-list-item>
+       <v-tooltip
+  location="end"
+  text="預約時間表"
+>
+  <template v-slot:activator="{ props }">
+    <v-list-item
+      v-bind="props"
+      prepend-icon="mdi-calendar-month"
+      title="預約時間表"
+      :to="{ name: 'InternalInspectionCalendar', params: { projectId: projectId } }"
+      exact-path
+    ></v-list-item>
+  </template>
+</v-tooltip>
+
+<v-tooltip
+  location="end"
+  text="戶別資料管理"
+>
+  <template v-slot:activator="{ props }">
+    <v-list-item
+      v-bind="props"
+      prepend-icon="mdi-table-large"
+      title="戶別資料管理"
+      :to="{ name: 'HouseholdGrid', params: { projectId: projectId } }"
+      exact-path
+    ></v-list-item>
+  </template>
+</v-tooltip>
+
+<v-tooltip
+  location="end"
+  text="驗屋報告管理"
+>
+  <template v-slot:activator="{ props }">
+    <v-list-item
+      v-bind="props"
+      prepend-icon="mdi-folder-google-drive"
+      title="驗屋報告管理"
+      :to="{ name: 'ReportFolderManager', params: { projectId: projectId } }"
+      exact-path
+    ></v-list-item>
+  </template>
+</v-tooltip>
+
+<v-tooltip
+  location="end"
+  text="批次及系統管理"
+>
+  <template v-slot:activator="{ props }">
+    <v-list-item
+      v-bind="props"
+      v-if="canEdit"
+      prepend-icon="mdi-cogs"
+      title="批次及系統管理"
+      :to="{ name: 'BookingRuleManager', params: { projectId: projectId } }"
+      exact-path
+    ></v-list-item>
+  </template>
+</v-tooltip>
       </v-list>
     </v-navigation-drawer>
 
