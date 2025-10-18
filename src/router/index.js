@@ -7,8 +7,7 @@ const InspectionManagement = () => import('@/views/InspectionManagement.vue');
 
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
-import InspectionSystem from '@/views/InspectionSystem.vue';
-import InspectionRecord from '@/views/InspectionRecord.vue';
+import InspectionSystem from '@/views/InspectionSystem.vue' // ✅ 新增這行import InspectionRecord from '@/views/InspectionRecord.vue';
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
@@ -24,7 +23,7 @@ const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 import HouseholdGrid from '@/views/HouseholdGrid.vue';
-
+const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue')
 
 
 
@@ -34,7 +33,7 @@ const routes = [
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } },
   {
-    path: '/inspectionsystem',
+    path: '/inspection-system',
     name: 'InspectionSystem',
     component: InspectionSystem,
     meta: {
@@ -43,6 +42,19 @@ const routes = [
       layout: DefaultLayout
     }
   },
+
+  {
+  path: '/admin/inspection-admin', // 路由路徑
+  name: 'InspectionAdmin',       // 路由名稱
+  component: InspectionAdmin,      // 對應的組件
+  meta: {
+    requiredSystem: '驗屋系統',
+    requiredRoles: ['超級管理員','系統管理員','客服主管','工務主管'], // 只有具備這些角色的使用者可以訪問,
+    requiresAuth: true,
+    layout: DefaultLayout
+  }
+},
+
   {
     path: '/profile',
     name: 'UserProfile',
@@ -52,12 +64,13 @@ const routes = [
       layout: DefaultLayout
     }
   },
-  {
+ /*/ {
     path: '/inspection-record',
     name: 'InspectionRecord',
     component: InspectionRecord,
     meta: { requiresAuth: true, layout: DefaultLayout }
-  },
+  }
+  /**/
   {
     path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',

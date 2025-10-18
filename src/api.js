@@ -5010,3 +5010,257 @@ export const triggerNotDownloadedReportReminder = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+
+// --- 驗屋系統設定 API ---
+
+/**
+ * 讀取使用者有權限管理的驗屋系統建案列表
+ * @param {string} userKey - 使用者 ID/Key
+ * @returns {Promise<Array<{id: string, name: string}>>} - 建案列表
+ * @throws {Error} - 如果 userKey 無效或 Firestore 讀取失敗
+ */
+export async function fetchInspectionAdminProjects(userKey) {
+  if (!userKey) throw new Error("需要使用者 KEY");
+
+  console.log(`API: fetchInspectionAdminProjects using USERKEY ${userKey}`);
+  try {
+    const userPermissionsRef = doc(db, 'userPermissions', userKey);
+    const docSnap = await getDoc(userPermissionsRef);
+
+    if (docSnap.exists()) {
+      const permissionsData = docSnap.data()?.permissions;
+      if (permissionsData) {
+        const allowedProjects = [];
+        for (const [projectId, projectData] of Object.entries(permissionsData)) {
+          // ❗ 權限檢查: Admin 是否應看到所有建案，或只限有'驗屋系統'權限的?
+          // 這裡暫時假設 Admin 需要有 '驗屋系統' 權限才能管理
+          if (projectData?.systems && Array.isArray(projectData.systems) && projectData.systems.includes('驗屋系統')) {
+             allowedProjects.push({ id: projectId, name: projectData.projectName });
+           }
+        }
+        allowedProjects.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+        console.log('API: Fetched Accessible Projects (Inspection Admin):', allowedProjects);
+        return allowedProjects;
+      } else {
+        console.warn('API: 使用者權限文件中找不到 permissions 欄位。');
+        return []; // 回傳空陣列
+      }
+    } else {
+      console.warn(`API: 找不到使用者 ${userKey} 的權限文件。`);
+      return []; // 回傳空陣列
+    }
+  } catch (error) {
+    console.error("API Error in fetchInspectionAdminProjects: ", error);
+    throw new Error(`讀取使用者權限時發生錯誤: ${error.message}`); // 拋出錯誤
+  }
+}
+
+/**
+ * 讀取指定建案的棟別列表
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<Array<{id: string, name: string}>>} - 棟別列表
+ * @throws {Error} - 如果 projectId 無效或 Firestore 讀取失敗
+ */
+export async function fetchBuildingsForProject(projectId) {
+  if (!projectId) return []; // 如果 projectId 無效，直接回傳空陣列
+
+  console.log(`API: fetchBuildingsForProject for project ${projectId}`);
+  try {
+    // ❗ 請再次確認❗ Firestore 路徑是否為 'projects/[projectId]/buildings'
+    const buildingsColRef = collection(db, 'projects', projectId, 'buildings');
+
+    // ❗ 請再次確認❗ 排序欄位 'buildingName' 是否存在？
+    const q = query(buildingsColRef, orderBy('buildingName', 'asc'));
+
+    const querySnapshot = await getDocs(q);
+    console.log(`API: fetchBuildingsForProject - Firestore returned ${querySnapshot.docs.length} documents.`);
+
+    const buildings = querySnapshot.docs.map(doc => {
+      console.log(`API: fetchBuildingsForProject - Processing doc ${doc.id}, data:`, doc.data());
+       return {
+         id: doc.id,
+         // ❗ 請再次確認❗ 棟別名稱欄位是否【確實】是 'buildingName'？
+         name: doc.data().buildingName
+       }
+    }).filter(b => b.name); // 過濾掉 name 無效的
+
+    console.log(`API: Fetched Buildings for ${projectId} (processed):`, JSON.parse(JSON.stringify(buildings)))
+    return buildings;
+  } catch (error) {
+    console.error(`API Error in fetchBuildingsForProject for project ${projectId}: `, error);
+    throw new Error(`讀取建案棟別時發生錯誤: ${error.message}`); // 拋出錯誤
+  }
+}
+
+/**
+ * 新增棟別到指定建案 (修正版：使用棟別名稱作為文件 ID)
+ * @param {string} projectId - 建案 ID
+ * @param {object} buildingData - 包含 { buildingName: string } 的物件
+ * @returns {Promise<{id: string}>} - 新增文件的 ID (即棟別名稱)
+ * @throws {Error} - 如果缺少必要資訊或 Firestore 寫入失敗
+ */
+export async function addBuildingToProject(projectId, buildingData) {
+  if (!projectId || !buildingData?.buildingName) {
+    throw new Error("缺少建案 ID 或棟別名稱");
+  }
+
+  console.log(`API: addBuildingToProject - Adding "${buildingData.buildingName}" to project ${projectId} using name as ID`);
+  try {
+    // ✅ 使用 buildingData.buildingName 作為文件 ID
+    const buildingDocRef = doc(db, 'projects', projectId, 'buildings', buildingData.buildingName);
+
+    // ✅ 使用 setDoc 寫入，確保使用指定的 ID
+    await setDoc(buildingDocRef, {
+      buildingName: buildingData.buildingName,
+      createdAt: serverTimestamp() // 使用您 api.js 中已 import 的 serverTimestamp
+    });
+
+    console.log(`API: addBuildingToProject - Successfully added/updated building with ID: ${buildingDocRef.id}`);
+    return { id: buildingDocRef.id }; // 回傳文件 ID (即棟別名稱)
+
+  } catch (error) {
+    console.error("API Error in addBuildingToProject: ", error);
+    throw new Error(`新增棟別時發生錯誤: ${error.message}`); // 拋出錯誤
+  }
+}
+
+// --- 結束 驗屋系統設定 API ---
+
+/**
+ * ✅ [API] 讀取指定建案和棟別下的所有戶別 (修正版：回傳 id 和 unitId 欄位)
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別 ID (名稱)
+ * @returns {Promise<Array<{id: string, unitId: string}>>} - 包含文件ID和unitId欄位值的列表
+ */
+export async function fetchUnitsForBuilding(projectId, buildingId) {
+  if (!projectId || !buildingId) return [];
+  const unitsColRef = collection(db, 'projects', projectId, 'buildings', buildingId, 'unitId');
+  const snapshot = await getDocs(unitsColRef);
+  if (snapshot.empty) return [];
+  // ✅ 修改：同時回傳文件 ID (doc.id) 和文件內的 unitId 欄位值 (doc.data().unitId)
+  return snapshot.docs.map(doc => ({
+    id: doc.id, // 文件 ID (例如 'A1-02')
+    unitId: doc.data().unitId // 欄位值 (例如 'A1-0299')
+  }));
+}
+
+// --- ✅ 新增 addUnitToBuilding ---
+/**
+ * 在指定建案和棟別下新增一個戶別
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別 ID (名稱)
+ * @param {string} unitId - 要新增的戶別 ID (名稱/編號)
+ * @returns {Promise<{id: string}>} - 新增戶別的 ID
+ */
+export async function addUnitToBuilding(projectId, buildingId, unitId) {
+  if (!projectId || !buildingId || !unitId) {
+    throw new Error("缺少 projectId, buildingId 或 unitId");
+  }
+  // 子集合為 'unitId', 文件 ID 為 unitId
+  const unitDocRef = doc(db, 'projects', projectId, 'buildings', buildingId, 'unitId', unitId);
+  // 文件欄位也叫 'unitId'
+  await setDoc(unitDocRef, {
+    unitId: unitId
+    // 可以考慮加入 createdAt: serverTimestamp()
+  });
+  return { id: unitDocRef.id }; // 回傳 ID
+}
+
+
+/**
+ * ✅ [API] 更新棟別名稱
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別文件 ID (即原始棟別名稱)
+ * @param {string} newBuildingName - 新的棟別名稱
+ * @returns {Promise<void>}
+ * @throws {Error} - 如果 Firestore 更新失敗
+ */
+export async function updateBuildingInProject(projectId, buildingId, newBuildingName) {
+  if (!projectId || !buildingId || !newBuildingName) {
+    throw new Error("缺少 projectId, buildingId 或 newBuildingName");
+  }
+  // 文件 ID (buildingId) 保持不變，只更新 buildingName 欄位
+  const buildingDocRef = doc(db, 'projects', projectId, 'buildings', buildingId);
+  try {
+    await updateDoc(buildingDocRef, {
+      buildingName: newBuildingName // 更新 buildingName 欄位
+      // 可以考慮加入 updatedAt: serverTimestamp()
+    });
+    console.log(`API: Updated building ${buildingId} name to ${newBuildingName}`);
+  } catch (error) {
+    console.error(`API Error updating building ${buildingId}: `, error);
+    throw new Error(`更新棟別名稱時發生錯誤: ${error.message}`);
+  }
+}
+
+/**
+ * ✅ [API] 刪除棟別 (注意：目前不包含其下的戶別)
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別文件 ID (即棟別名稱)
+ * @returns {Promise<void>}
+ * @throws {Error} - 如果 Firestore 刪除失敗
+ */
+export async function deleteBuildingFromProject(projectId, buildingId) {
+  if (!projectId || !buildingId) {
+    throw new Error("缺少 projectId 或 buildingId");
+  }
+  const buildingDocRef = doc(db, 'projects', projectId, 'buildings', buildingId);
+  try {
+    await deleteDoc(buildingDocRef);
+    console.log(`API: Deleted building ${buildingId}`);
+  } catch (error) {
+    console.error(`API Error deleting building ${buildingId}: `, error);
+    throw new Error(`刪除棟別時發生錯誤: ${error.message}`);
+  }
+}
+
+/**
+ * ✅ [API] 更新戶別名稱/編號
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別 ID (名稱)
+ * @param {string} unitId - 戶別文件 ID (即原始戶別名稱/編號)
+ * @param {string} newUnitName - 新的戶別名稱/編號
+ * @returns {Promise<void>}
+ * @throws {Error} - 如果 Firestore 更新失敗
+ */
+export async function updateUnitInBuilding(projectId, buildingId, unitId, newUnitName) {
+  if (!projectId || !buildingId || !unitId || !newUnitName) {
+    throw new Error("缺少 projectId, buildingId, unitId 或 newUnitName");
+  }
+  // 文件 ID (unitId) 保持不變，只更新 unitId 欄位
+  const unitDocRef = doc(db, 'projects', projectId, 'buildings', buildingId, 'unitId', unitId);
+  try {
+    await updateDoc(unitDocRef, {
+      unitId: newUnitName // 更新 unitId 欄位
+      // 可以考慮加入 updatedAt: serverTimestamp()
+    });
+    console.log(`API: Updated unit ${unitId} in building ${buildingId} to ${newUnitName}`);
+  } catch (error) {
+    console.error(`API Error updating unit ${unitId}: `, error);
+    throw new Error(`更新戶別時發生錯誤: ${error.message}`);
+  }
+}
+
+/**
+ * ✅ [API] 刪除戶別
+ * @param {string} projectId - 建案 ID
+ * @param {string} buildingId - 棟別 ID (名稱)
+ * @param {string} unitId - 戶別文件 ID (即戶別名稱/編號)
+ * @returns {Promise<void>}
+ * @throws {Error} - 如果 Firestore 刪除失敗
+ */
+export async function deleteUnitFromBuilding(projectId, buildingId, unitId) {
+  if (!projectId || !buildingId || !unitId) {
+    throw new Error("缺少 projectId, buildingId 或 unitId");
+  }
+  const unitDocRef = doc(db, 'projects', projectId, 'buildings', buildingId, 'unitId', unitId);
+  try {
+    await deleteDoc(unitDocRef);
+    console.log(`API: Deleted unit ${unitId} from building ${buildingId}`);
+  } catch (error) {
+    console.error(`API Error deleting unit ${unitId}: `, error);
+    throw new Error(`刪除戶別時發生錯誤: ${error.message}`);
+  }
+}

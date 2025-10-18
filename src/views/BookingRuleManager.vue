@@ -13,6 +13,9 @@
         <v-tab value="batches">批次管理</v-tab>
         <v-tab value="settings">驗屋預約設定</v-tab>
         <v-tab value="report-settings">驗屋報告設定</v-tab>
+        <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
+        <v-tab value="inspGlobalTemplate">全域範本 (驗屋)</v-tab>
+        <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
       </v-tabs>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -630,7 +633,27 @@
          
          
           </v-window-item>
+
+          <v-window-item value="inspProjectSettings">
+            <InspProjectSettings :project-id="projectId" />
+          </v-window-item>
+
+          <v-window-item value="inspGlobalTemplate">
+             <v-container fluid class="pa-4">
+                <p>管理檢查區域、檢查狀態、缺失等級等通用選項。</p>
+                <p>[此功能稍後實作]</p>
+             </v-container>
+          </v-window-item>
+
+          <v-window-item value="inspCategoriesItems">
+             <v-container fluid class="pa-4">
+                <p>管理主要的檢查分類及其對應的細項。</p>
+                <p>[此功能稍後實作]</p>
+             </v-container>
+          </v-window-item>
+
         </v-window>
+
       </div>
     </v-card>
 
@@ -1173,6 +1196,12 @@
 
 
        
+<v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="top right">
+      {{ snackbar.text }}
+      <template v-slot:actions>
+        <v-btn icon="mdi-close" variant="text" @click="snackbar.show = false"></v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -1195,6 +1224,8 @@ import {
   manualTriggerSendReminders,
   triggerNotDownloadedReportReminder,
 } from '@/api';
+
+import InspProjectSettings from '@/views/admin/InspProjectSettings.vue'; // <--- ❗ 確認路徑
 
 
 const isTesting = ref(false);
@@ -2299,4 +2330,12 @@ watch(menuAppEnd, (isOpen) => {
   border-top: 1px solid #e0e0e0; /* 加上分隔線，視覺效果更好 */
   box-shadow: 0 -2px 5px rgba(0,0,0,0.05); /* 加上陰影 */
 }
+
+/* 可以為新的驗屋設定頁籤增加特定樣式 */
+.v-window-item[value="inspProjectSettings"] .v-container,
+.v-window-item[value="inspGlobalTemplate"] .v-container,
+.v-window-item[value="inspCategoriesItems"] .v-container {
+  padding-top: 16px;
+}
 </style>
+
