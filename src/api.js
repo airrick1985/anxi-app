@@ -5312,3 +5312,58 @@ export const deleteInspectionOption = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+/**
+ * [API] 呼叫後端，批次匯入驗屋選項 (Excel)
+ * @param {object} payload - 包含 { projectId, importData }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, importedCount, updatedCount, errors, message }
+ */
+export const batchImportInspectionOptions = async (payload) => {
+  try {
+    // ✓ 確認函數名稱與後端一致
+    const importerFunction = httpsCallable(functions, 'batchImportInspectionOptions');
+    const result = await importerFunction(payload);
+    return result.data; // 直接回傳後端的結果
+  } catch (error) {
+    console.error("API Error in batchImportInspectionOptions:", error);
+    // ✓ 將 HttpsError 的 message 提取出來拋出
+    throw new Error(error.message || '批次匯入 API 呼叫失敗');
+  }
+};
+
+
+/**
+ * [API] 呼叫後端，批次更新驗屋選項的排序
+ * @param {object} payload - 包含 { projectId, updates: Array<{id: string, order: number}> }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, message? }
+ */
+export const updateInspectionOptionOrders = async (payload) => {
+  try {
+    const updaterFunction = httpsCallable(functions, 'updateInspectionOptionOrders'); // ✓ Match backend function name
+    const result = await updaterFunction(payload);
+    return result.data; // Return { status: 'success', message: '...' }
+  } catch (error) {
+    console.error("API Error in updateInspectionOptionOrders:", error);
+    throw new Error(error.message); // Rethrow error for Vue component to handle
+  }
+};
+
+
+/**
+ * [API] 呼叫後端，匯出指定建案的驗屋選項為 Excel
+ * @param {object} payload - 包含 { projectId }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, downloadUrl }
+ */
+export const exportInspectionOptionsToExcel = async (payload) => {
+  try {
+    // ✓ 確認函數名稱與後端一致
+    const exporterFunction = httpsCallable(functions, 'exportInspectionOptionsToExcel');
+    const result = await exporterFunction(payload);
+    return result.data; // 直接回傳後端的結果 { status: 'success', downloadUrl: '...' }
+  } catch (error) {
+    console.error("API Error in exportInspectionOptionsToExcel:", error);
+    // ✓ 將 HttpsError 的 message 提取出來拋出
+    throw new Error(error.message || '匯出 Excel API 呼叫失敗');
+  }
+};

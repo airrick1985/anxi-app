@@ -63,7 +63,7 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案
 const Busboy = require("busboy"); // ✓ 用於處理檔案上傳 (未來可能用到)
 const { setGlobalOptions } = require("firebase-functions/v2"); // ✓ START: 新增此行
-
+const xlsx = require("xlsx"); 
 
 
 
@@ -1876,8 +1876,8 @@ exports.deleteBackupFile = onCall(async (request) => {
 //  END: 新增 deleteBackupFile 雲端函式
 
 
-//  START: 新增 generateExcelTemplate 雲端函式
-const xlsx = require("xlsx"); // 在檔案頂部加入 require
+
+
 
 exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
   const { targetCollection, projectId, fields } = request.data;
@@ -7989,61 +7989,424 @@ exports.saveInspectionOption = onCall(async (request) => {
 });
 
 /**
- * [新增] 刪除一個驗屋選項 (包含子項目)
+ * [新增] 刪除一個驗屋選項 (包含子項目) - 增加日誌和檢查
  * @param {string} optionId - 要刪除的文件 ID
  * @returns {Promise<object>} - { status }
  */
 exports.deleteInspectionOption = onCall(async (request) => {
   const { optionId } = request.data;
-  const functionName = `deleteInspectionOption (ID: ${optionId})`; // ✓ Log 名稱
+  const functionName = `deleteInspectionOption (ID: ${optionId})`;
+  // ✓ 記錄函數被呼叫的時間戳
+  console.log(`[${functionName}] Function called at ${new Date().toISOString()}`);
 
   if (!optionId) {
-    console.error(`[${functionName}] 錯誤：缺少 optionId。`); // ✓ Log 錯誤
+    console.error(`[${functionName}] ERROR: Missing optionId.`);
     throw new HttpsError("invalid-argument", "缺少 optionId 參數。");
   }
 
   try {
-    const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 使用 anxi-app 資料庫
+    const db = new Firestore({ databaseId: "anxi-app" });
     const optionsRef = db.collection("inspectionOptions");
-    const docRef = optionsRef.doc(optionId); // ✓ 文件參考
+    const docRef = optionsRef.doc(optionId);
 
+    // ✓ Log: 準備獲取文件快照
+    console.log(`[${functionName}] Attempting to get document snapshot for ${optionId}...`);
     const docSnap = await docRef.get();
-    if (!docSnap.exists()) {
-      // 如果文件已不存在，也視為成功 (避免重複刪除報錯)
-      console.warn(`[${functionName}] 文件 ${optionId} 已不存在，視為刪除成功。`); // ✓ Log 警告
+    // ✓ Log: 確認 get() 已成功執行
+    console.log(`[${functionName}] Successfully got document snapshot.`);
+
+    // **** ✓ Log: 在檢查 exists 屬性之前，確認它的類型 ****
+    console.log(`[${functionName}] Checking if document exists... (docSnap exists property type: ${typeof docSnap.exists})`);
+    // **** ✓ 這是 Admin SDK 的正確語法 ****
+    if (!docSnap.exists) {
+      console.warn(`[${functionName}] Document ${optionId} does not exist. Treating as success.`);
       return { status: "success" };
     }
+     // ✓ Log: 確認文件存在
+    console.log(`[${functionName}] Document ${optionId} exists.`);
 
     const dataToDelete = docSnap.data();
-    const batch = db.batch(); // ✓ 使用 Batch Write
+    // ✓ Log: 打印將要刪除的文件內容（小心敏感資訊）
+    console.log(`[${functionName}] Document data:`, JSON.stringify(dataToDelete));
 
-    // ✓ 刪除主文件
+    const batch = db.batch();
+    // ✓ Log: 準備刪除主文件
+    console.log(`[${functionName}] Adding main document ${optionId} to delete batch.`);
     batch.delete(docRef);
 
-    // ✓ 如果刪除的是工程主分類，則一併刪除其子項目
+    // ✓ 檢查是否需要刪除子項目
     if (dataToDelete.type === "category" && !dataToDelete.parentValue) {
-      console.log(`[${functionName}] 偵測到刪除主分類 "${dataToDelete.value}"，準備刪除子項目...`); // ✓ Log
-      const subItemsQuery = optionsRef
-        .where("projectId", "==", dataToDelete.projectId) // ✓ 加上 projectId 限制範圍
-        .where("type", "==", "category")
-        .where("parentValue", "==", dataToDelete.value); // ✓ 查詢 parentValue 符合的
-      const subItemsSnapshot = await subItemsQuery.get();
-      if (!subItemsSnapshot.empty) {
-        subItemsSnapshot.forEach((subDoc) => {
-          batch.delete(subDoc.ref); // ✓ 將刪除子項目操作加入 Batch
-        });
-        console.log(`[${functionName}] 已將 ${subItemsSnapshot.size} 個子項目加入刪除佇列。`); // ✓ Log
+      // ✓✓✓ 再次確認 dataToDelete.value 存在且為字串
+      if (dataToDelete.value && typeof dataToDelete.value === 'string') {
+        console.log(`[${functionName}] Main category "${dataToDelete.value}". Querying sub-items...`);
+        // ✓ 建立子項目查詢 (Admin SDK 語法)
+        const subItemsQuery = optionsRef
+          .where("projectId", "==", dataToDelete.projectId)
+          .where("type", "==", "category")
+          .where("parentValue", "==", dataToDelete.value);
+
+        // ✓ Log: 準備執行子項目查詢
+        console.log(`[${functionName}] Executing sub-item query...`);
+        const subItemsSnapshot = await subItemsQuery.get(); // ✓ 執行查詢 (Admin SDK 語法)
+        // ✓ Log: 子項目查詢結果
+        console.log(`[${functionName}] Sub-item query executed. Found ${subItemsSnapshot.size} results.`);
+
+        if (!subItemsSnapshot.empty) {
+          subItemsSnapshot.forEach((subDoc) => {
+            // ✓ Log: 將子項目加入刪除批次
+            console.log(`[${functionName}] Adding sub-item ${subDoc.id} to delete batch.`);
+            batch.delete(subDoc.ref);
+          });
+        }
+      } else {
+        // ✓ 警告: 主分類缺少 value，無法刪除子項目
+        console.warn(`[${functionName}] Main category doc ${optionId} missing 'value' or it's not a string. Skipping sub-item deletion.`);
       }
     }
 
-    // ✓ 提交所有刪除操作
-    await batch.commit();
+    // ✓ Log: 準備提交批次刪除
+    console.log(`[${functionName}] Committing batch delete...`);
+    await batch.commit(); // ✓ 提交批次
+    // ✓ Log: 批次刪除成功
+    console.log(`[${functionName}] Batch delete committed successfully.`);
 
-    console.log(`[${functionName}] 成功刪除選項 ${optionId} (及其子項目，如果有的話)。`); // ✓ Log 成功
     return { status: "success" };
 
   } catch (error) {
-    console.error(`[${functionName}] 刪除選項時發生錯誤:`, error); // ✓ Log 錯誤
-    throw new HttpsError("internal", `刪除驗屋選項時發生未預期的錯誤: ${error.message}`); // ✓ 拋出 HttpsError
+    // ✓✓✓ 記錄非常詳細的錯誤資訊
+    console.error(`[${functionName}] CRITICAL ERROR during deletion:`, error);
+    console.error(`[${functionName}] Error Code: ${error.code}`);
+    console.error(`[${functionName}] Error Message: ${error.message}`);
+    // ✓ 記錄堆疊追蹤，幫助定位錯誤源頭
+    if (error.stack) {
+        console.error(`[${functionName}] Error Stack: ${error.stack}`);
+    }
+    // ✓ 拋出 HttpsError
+    throw new HttpsError("internal", `刪除驗屋選項時發生未預期的錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [新增] 批次匯入驗屋選項 (新增或覆蓋)
+ * @param {string} projectId - 建案 ID
+ * @param {Array<object>} importData - 前端解析好的 Excel 資料 [{ type, value, parentValue, color, icon, order }]
+ * @returns {Promise<object>} - { status, importedCount, updatedCount, errors }
+ */
+exports.batchImportInspectionOptions = onCall({
+  timeoutSeconds: 540,
+  memory: "1GiB",
+}, async (request) => {
+  const { projectId, importData } = request.data;
+  const functionName = `batchImportInspectionOptions (Project: ${projectId})`;
+  console.log(`[${functionName}] Received request to import ${importData?.length || 0} items.`);
+
+  if (!projectId || !Array.isArray(importData) || importData.length === 0) {
+    console.error(`[${functionName}] ERROR: Missing projectId or invalid importData.`);
+    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的匯入資料陣列。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const optionsRef = db.collection("inspectionOptions");
+  const errors = [];
+  let importedCount = 0;
+  let updatedCount = 0;
+  const MAX_BATCH_OPERATIONS = 499;
+  let currentBatch = db.batch();
+  let operationCount = 0;
+
+  try {
+    // --- Pre-fetching existing options (分開查詢 - 保持不變) ---
+    const potentialValues = [...new Set(importData.map(item => item.value?.trim()).filter(Boolean))];
+    const potentialTypes = [...new Set(importData.map(item => item.type).filter(Boolean))];
+    const existingOptionsMap = new Map();
+    const MAX_IN_QUERY = 30;
+
+    console.log(`[${functionName}] Pre-fetching existing options for types: [${potentialTypes.join(', ')}] with ${potentialValues.length} unique values.`);
+
+    for (const type of potentialTypes) {
+      console.log(`[${functionName}] Querying existing options START for type: ${type}`);
+      if(potentialValues.length === 0) continue;
+
+      for (let i = 0; i < potentialValues.length; i += MAX_IN_QUERY) {
+          const valueChunk = potentialValues.slice(i, i + MAX_IN_QUERY);
+          const existingQuery = optionsRef
+              .where("projectId", "==", projectId)
+              .where("type", "==", type)
+              .where("value", "in", valueChunk);
+          const existingSnapshot = await existingQuery.get();
+          existingSnapshot.forEach(doc => {
+              const data = doc.data();
+              const key = `${data.type}_${data.parentValue || 'null'}_${data.value}`;
+              if (!existingOptionsMap.has(key)) {
+                 existingOptionsMap.set(key, doc.id);
+              }
+          });
+      }
+      console.log(`[${functionName}] Querying existing options DONE for type: ${type}`);
+    }
+    console.log(`[${functionName}] Finished pre-fetching. Total unique existing options found in map: ${existingOptionsMap.size}`);
+    // --- Pre-fetching end ---
+
+    // --- Processing import data ---
+    console.log(`[${functionName}] Starting processing ${importData.length} items...`);
+    for (let index = 0; index < importData.length; index++) {
+      const item = importData[index];
+
+      if (!item.type || !item.value) {
+        errors.push(` skipped row ${index + 1}: missing type or value.`);
+        console.warn(`[${functionName}] Skipping item ${index + 1} due to missing type or value.`);
+        continue;
+      }
+
+      const dataToSave = {
+        projectId: projectId,
+        type: item.type,
+        value: item.value.trim(),
+        parentValue: item.parentValue || null,
+        color: item.color || null,
+        icon: item.icon || null,
+        order: Number.isFinite(item.order) ? item.order : 100,
+        updatedAt: Timestamp.now(),
+      };
+
+      const existingKey = `${dataToSave.type}_${dataToSave.parentValue || 'null'}_${dataToSave.value}`;
+      const existingDocId = existingOptionsMap.get(existingKey);
+
+      let docRef;
+      if (existingDocId) {
+        // --- 覆蓋模式 (ID 不變) ---
+        console.log(`[${functionName}] Item ${index + 1} - Entering UPDATE mode for ID: ${existingDocId}`);
+        docRef = optionsRef.doc(existingDocId);
+        currentBatch.set(docRef, dataToSave, { merge: true });
+        updatedCount++;
+      } else {
+        // --- 新增模式 (使用自訂 ID) ---
+         // **** 👇👇👇 修改點：產生自訂文件 ID 👇👇👇 ****
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })); // 確保台灣時區
+        const year = String(now.getFullYear()).slice(-2); // 取年份後兩位 YY
+        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+        const day = String(now.getDate()).padStart(2, '0'); // DD
+        const hours = String(now.getHours()).padStart(2, '0'); // HH
+        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+        const timestampSuffix = `${year}${month}${day}${hours}${minutes}${seconds}`;
+        // 使用 item.type 而不是 dataToSave.type 以確保與原始 Excel 類型對應
+        const customDocId = `${projectId}-${item.type}-${timestampSuffix}-${index}`; // 加入索引避免同一秒內重複
+        // **** 👆👆👆 修改點結束 👆👆👆 ****
+
+        console.log(`[${functionName}] Item ${index + 1} - Entering ADD mode. Key: "${existingKey}". Custom ID: ${customDocId}`);
+        docRef = optionsRef.doc(customDocId); // ✓ 使用自訂 ID
+        dataToSave.createdAt = Timestamp.now();
+        currentBatch.set(docRef, dataToSave);
+        importedCount++;
+        // ✓✓✓ 將新加的 item 也加入 Map，避免 Excel 內部有重複資料導致重複新增
+        existingOptionsMap.set(existingKey, docRef.id);
+      }
+      operationCount++;
+
+      // --- Batch commit logic (不變) ---
+      if (operationCount >= MAX_BATCH_OPERATIONS) {
+        console.log(`[${functionName}] Committing batch with ${operationCount} operations...`);
+        await currentBatch.commit();
+        currentBatch = db.batch();
+        operationCount = 0;
+      }
+    }
+    // --- Processing end ---
+
+    // --- Final commit (不變) ---
+    if (operationCount > 0) {
+      console.log(`[${functionName}] Committing final batch with ${operationCount} operations...`);
+      await currentBatch.commit();
+    }
+
+    // --- Return result (不變) ---
+    console.log(`[${functionName}] Import finished. Imported: ${importedCount}, Updated: ${updatedCount}, Errors: ${errors.length}`);
+    return {
+      status: "success",
+      importedCount: importedCount,
+      updatedCount: updatedCount,
+      errors: errors,
+      message: `匯入完成！新增 ${importedCount} 筆，更新 ${updatedCount} 筆。${errors.length > 0 ? ` 失敗 ${errors.length} 筆。` : ''}`
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 批次匯入時發生嚴重錯誤:`, error);
+    throw new HttpsError("internal", `批次匯入時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [新增] 批次更新驗屋選項的排序 (order)
+ * @param {string} projectId - 建案 ID (用於驗證)
+ * @param {Array<{id: string, order: number}>} updates - 包含文件 ID 和新 order 值的陣列
+ * @returns {Promise<object>} - { status }
+ */
+exports.updateInspectionOptionOrders = onCall(async (request) => {
+  const { projectId, updates } = request.data;
+  const functionName = `updateInspectionOptionOrders (Project: ${projectId})`;
+  console.log(`[${functionName}] Received request to update order for ${updates?.length || 0} items.`); // ✓ Log
+
+  // ✓ 基本參數驗證
+  if (!projectId || !Array.isArray(updates) || updates.length === 0) {
+    console.error(`[${functionName}] ERROR: Missing projectId or invalid updates array.`); // ✓ Log 錯誤
+    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的更新資料陣列。");
+  }
+
+  // TODO: Add permission validation if needed (e.g., check if user can manage this projectId)
+
+  const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 使用 anxi-app 資料庫
+  const optionsRef = db.collection("inspectionOptions");
+  const batch = db.batch(); // ✓ Create a batch
+  const now = Timestamp.now(); // ✓ Get current timestamp once
+
+  try {
+    let operationCount = 0;
+    for (const update of updates) {
+      if (!update.id || typeof update.order !== 'number') {
+        console.warn(`[${functionName}] Skipping invalid update item:`, update); // ✓ Log invalid item
+        continue; // Skip items with missing id or invalid order
+      }
+      const docRef = optionsRef.doc(update.id);
+      // ✓ Add update operation to the batch
+      batch.update(docRef, {
+          order: update.order,
+          updatedAt: now // ✓ Update timestamp
+      });
+      operationCount++;
+    }
+
+    if (operationCount === 0) {
+        console.log(`[${functionName}] No valid operations to commit.`); // ✓ Log if nothing to update
+        return { status: "success", message: "沒有有效的排序更新。" };
+    }
+
+    console.log(`[${functionName}] Committing batch with ${operationCount} order updates...`); // ✓ Log
+    await batch.commit(); // ✓ Commit the batch
+
+    console.log(`[${functionName}] Successfully updated order for ${operationCount} items.`); // ✓ Log success
+    return { status: "success", message: `成功更新 ${operationCount} 個項目的排序。` };
+
+  } catch (error) {
+    console.error(`[${functionName}] CRITICAL ERROR during batch order update:`, error); // ✓ Log detailed error
+    if (error.code === 5) { // Firestore NOT_FOUND error code
+         throw new HttpsError("not-found", `更新排序失敗：一個或多個項目不存在，可能已被刪除。請重新整理頁面再試。 (${error.message})`);
+    }
+    throw new HttpsError("internal", `批次更新排序時發生錯誤: ${error.message}`); // ✓ Throw HttpsError
+  }
+});
+
+
+/**
+ * [新增] 匯出指定建案的驗屋選項為 Excel 檔案
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - { status, downloadUrl }
+ */
+exports.exportInspectionOptionsToExcel = onCall({
+  timeoutSeconds: 300, // 允許較長執行時間
+  memory: "1GiB",     // 分配較多記憶體
+}, async (request) => {
+  const { projectId } = request.data;
+  const functionName = `exportInspectionOptionsToExcel (Project: ${projectId})`;
+  console.log(`[${functionName}] Received request.`); // ✓ Log
+
+  if (!projectId) {
+    console.error(`[${functionName}] ERROR: Missing projectId.`); // ✓ Log 錯誤
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  // TODO: Add permission validation if needed
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 使用 anxi-app 資料庫
+    const optionsRef = db.collection("inspectionOptions");
+
+    // 1. 查詢該建案的所有選項
+    console.log(`[${functionName}] Querying options for project ${projectId}...`); // ✓ Log
+    const snapshot = await optionsRef.where("projectId", "==", projectId).get();
+
+    if (snapshot.empty) {
+      console.log(`[${functionName}] No options found for project ${projectId}.`); // ✓ Log
+      throw new HttpsError("not-found", "此建案尚無任何驗屋選項可匯出。");
+    }
+    console.log(`[${functionName}] Found ${snapshot.size} options.`); // ✓ Log
+
+    // 2. 格式化資料以符合匯入範本
+    const exportData = [];
+    const typeReverseMap = { // ✓ 用於將 type 轉回中文
+      'phase': '驗屋階段', 'area': '檢查區域', 'category': '工程種類',
+      'status': '檢查狀態', 'level': '缺失等級', 'progress': '修繕進度',
+      'quickReply': '檢查說明快選回覆'
+    };
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      exportData.push({
+        '分類類別': typeReverseMap[data.type] || data.type, // ✓ 轉換 type
+        '項目名稱': data.value || '',
+        '父分類名稱': data.parentValue || '', // ✓ 處理 parentValue
+        '顏色': data.color || '',
+        '圖示': data.icon || '',
+        '排序': data.order !== undefined && data.order !== null ? data.order : '', // ✓ 確保是數字或空字串
+      });
+    });
+
+    // ✓ 按分類類別排序 (主要)，再按父分類排序 (次要，確保子項目跟隨主分類)，最後按 order 排序
+    exportData.sort((a, b) => {
+        const typeCompare = (a['分類類別'] || '').localeCompare(b['分類類別'] || '', 'zh-Hant');
+        if (typeCompare !== 0) return typeCompare;
+        const parentCompare = (a['父分類名稱'] || '').localeCompare(b['父分類名稱'] || '', 'zh-Hant');
+        if (parentCompare !== 0) return parentCompare;
+        const orderA = Number.isFinite(a['排序']) ? a['排序'] : Infinity;
+        const orderB = Number.isFinite(b['排序']) ? b['排序'] : Infinity;
+        return orderA - orderB;
+    });
+
+    console.log(`[${functionName}] Data formatted for Excel export.`); // ✓ Log
+
+    // 3. 生成 Excel Buffer
+    const worksheet = xlsx.utils.json_to_sheet(exportData);
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, worksheet, "驗屋選項"); // Sheet 名稱
+    const buffer = xlsx.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+    // 4. 上傳到 Cloud Storage 臨時目錄
+    const bucket = getStorage().bucket(); // 使用默認 Bucket
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+    const fileName = `Export_InspectionOptions_${projectId}_${dateStr}_${timeStr}.xlsx`;
+    const filePath = `temp-exports/${fileName}`; // 存放在臨時目錄
+    const file = bucket.file(filePath);
+
+    console.log(`[${functionName}] Uploading Excel buffer to GCS: ${filePath}`); // ✓ Log
+    await file.save(buffer, {
+        metadata: {
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            // 可選：設置 Cache-Control，讓檔案在一段時間後自動失效
+            // cacheControl: 'private, max-age=900' // 15 分鐘
+        }
+    });
+    console.log(`[${functionName}] Upload complete.`); // ✓ Log
+
+    // 5. 生成帶簽名的下載 URL (有效期限 15 分鐘)
+    console.log(`[${functionName}] Generating signed URL with attachment disposition...`);
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      // ✓ 核心修改：告訴瀏覽器將此作為附件下載
+      responseDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`
+    });
+    console.log(`[${functionName}] Generated signed URL.`); // ✓ Log
+
+    // 6. 回傳 URL 給前端
+    return { status: "success", downloadUrl: signedUrl };
+
+  } catch (error) {
+    console.error(`[${functionName}] 匯出 Excel 時發生嚴重錯誤:`, error); // ✓ Log 錯誤
+    if (error instanceof HttpsError) { // ✓ 如果是 HttpsError 直接拋出
+      throw error;
+    }
+    throw new HttpsError("internal", `匯出 Excel 失敗: ${error.message}`); // ✓ 其他錯誤包裝後拋出
   }
 });

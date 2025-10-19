@@ -1,13 +1,16 @@
 <template>
-  <v-container fluid>
+  <v-container fluid style="background-color: #f5f5f7;">
     <v-card>
-      <v-card-title class="d-flex align-center text-h5 text-primary">
-       
-        <v-icon start>mdi-cogs</v-icon>
-        <span>驗屋預約系統管理：{{ projectName || '讀取中...' }}</span> 
-        <v-spacer></v-spacer>
-      </v-card-title>
-      <v-divider></v-divider>
+      <v-toolbar color="primary" density="compact">
+  
+    <v-card-title class="d-flex align-center text-h5">
+      
+      <v-icon start>mdi-cogs</v-icon>
+      <span>驗屋預約系統管理：{{ projectName || '讀取中...' }}</span>
+      <v-spacer></v-spacer>
+    
+    </v-card-title>
+  </v-toolbar>
       
       <v-tabs v-model="activeTab" bg-color="primary">
         <v-tab value="batches">批次管理</v-tab>
