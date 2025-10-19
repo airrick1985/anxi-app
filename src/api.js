@@ -4514,12 +4514,18 @@ export async function getSlotsForAdmin(projectId, dateStr) {
  */
 export async function fetchBuildingListForUpload(projectId) {
   try {
-    const functions = getFunctions();
+    // ✅ 直接使用匯入的 functions 實例
     const getBuildingsFunc = httpsCallable(functions, 'getBuildingsForUpload');
     const result = await getBuildingsFunc({ projectId: projectId });
-    return result.data; // 直接回傳 { status, data }
+
+    if (result.data.status === 'success') {
+      return result.data; // 直接回傳 { status, data }
+    } else {
+      console.error("API fetchBuildingListForUpload 後端錯誤:", result.data.message);
+      return { status: 'error', message: result.data.message };
+    }
   } catch (error) {
-    console.error("API fetchBuildingListForUpload 錯誤:", error);
+    console.error("API fetchBuildingListForUpload 呼叫錯誤:", error);
     return { status: 'error', message: error.message };
   }
 }
@@ -4530,12 +4536,22 @@ export async function fetchBuildingListForUpload(projectId) {
  */
 export async function fetchAllUnitsForUpload(projectId) {
   try {
-    const functions = getFunctions();
+    // ✅ 直接使用從 firebase.js 匯入的、已設定好區域的 functions 實例
     const getUnitsFunc = httpsCallable(functions, 'getAllUnitsForUpload');
     const result = await getUnitsFunc({ projectId: projectId });
-    return result.data; // 直接回傳 { status, data }
-  } catch (error) {
-    console.error("API fetchAllUnitsForUpload 錯誤:", error);
+
+    // 根據後端回傳格式調整 (你的後端是回傳 { status, data })
+    if (result.data.status === 'success') {
+       return result.data; // 直接回傳 { status, data } 給 BookingPage
+    } else {
+       // 如果後端回報 status: 'error'
+       console.error("API fetchAllUnitsForUpload 後端錯誤:", result.data.message);
+       return { status: 'error', message: result.data.message };
+    }
+
+  } catch (error) { // 捕獲 httpsCallable 本身的錯誤 (例如網路問題、FirebaseError: internal)
+    console.error("API fetchAllUnitsForUpload 呼叫錯誤:", error);
+    // 保持回傳格式一致
     return { status: 'error', message: error.message };
   }
 }
