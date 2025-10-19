@@ -24,6 +24,7 @@ const firebaseConfig = {
 // 初始化 Firebase
 const app = initializeApp(firebaseConfig);
 
+
 // 建立並匯出所有 Firebase 服務的實例
 // 根據 Firebase v9+ 的多資料庫設定方式
 export const db = getFirestore(app, 'anxi-app');
