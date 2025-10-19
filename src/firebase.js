@@ -4,8 +4,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getFunctions } from "firebase/functions"; 
-import { getDatabase } from "firebase/database"; 
+import { getFunctions, httpsCallable } from "firebase/functions"; // 確保導入
+// import { getDatabase } from "firebase/database"; 
 
 // 您的 Web App 的 Firebase 設定 (從 Firebase 控制台複製)
 // IMPORTANT: 這是一個範例設定，請務必替換成您自己的 Firebase 專案設定。
@@ -28,7 +28,7 @@ const app = initializeApp(firebaseConfig);
 // 根據 Firebase v9+ 的多資料庫設定方式
 export const db = getFirestore(app, 'anxi-app');
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, 'asia-east1');
 export const rtdb = getDatabase(app);
 
 // Firebase 服務已成功初始化 

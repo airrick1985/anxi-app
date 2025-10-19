@@ -5264,3 +5264,51 @@ export async function deleteUnitFromBuilding(projectId, buildingId, unitId) {
     throw new Error(`刪除戶別時發生錯誤: ${error.message}`);
   }
 }
+
+/**
+ * [API] 呼叫後端，獲取指定建案的所有驗屋選項設定
+ * @param {object} payload - 包含 { projectId }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data }
+ */
+export const getInspectionOptions = async (payload) => {
+  try {
+    const getterFunction = httpsCallable(functions, 'getInspectionOptions'); // ✓ 對應後端函數名稱
+    const result = await getterFunction(payload);
+    return result.data; // 回傳 { status: 'success', data: optionsByType }
+  } catch (error) {
+    console.error("API Error in getInspectionOptions:", error);
+    throw new Error(error.message); // 拋出錯誤讓 Vue 元件處理
+  }
+};
+
+/**
+ * [API] 呼叫後端，新增或更新一個驗屋選項
+ * @param {object} payload - 包含 { projectId, optionData, optionId? }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, id }
+ */
+export const saveInspectionOption = async (payload) => {
+  try {
+    const saverFunction = httpsCallable(functions, 'saveInspectionOption'); // ✓ 對應後端函數名稱
+    const result = await saverFunction(payload);
+    return result.data; // 回傳 { status: 'success', id: '...' }
+  } catch (error) {
+    console.error("API Error in saveInspectionOption:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 呼叫後端，刪除一個驗屋選項 (及其子項目)
+ * @param {object} payload - 包含 { optionId }
+ * @returns {Promise<object>} - 後端回傳的結果 { status }
+ */
+export const deleteInspectionOption = async (payload) => {
+  try {
+    const deleterFunction = httpsCallable(functions, 'deleteInspectionOption'); // ✓ 對應後端函數名稱
+    const result = await deleterFunction(payload);
+    return result.data; // 回傳 { status: 'success' }
+  } catch (error) {
+    console.error("API Error in deleteInspectionOption:", error);
+    throw new Error(error.message);
+  }
+};

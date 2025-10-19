@@ -62,6 +62,7 @@ const { Timestamp } = require("firebase-admin/firestore"); //  引入 Timestamp
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案
 const Busboy = require("busboy"); // ✓ 用於處理檔案上傳 (未來可能用到)
+const { setGlobalOptions } = require("firebase-functions/v2"); // ✓ START: 新增此行
 
 
 
@@ -77,7 +78,7 @@ const driveSecrets = [
 
 admin.initializeApp();
 
-
+setGlobalOptions({ region: 'asia-east1' });
 
 
 // 這個 db 實例會指向 (default) 資料庫，我們在函式內部會建立指向 anxi-app 的實例
@@ -7802,3 +7803,247 @@ return resultMessage; // 回傳執行的結果訊息
     throw error; // 將錯誤向上拋出，以便上層函式 (排程或手動觸發) 能捕捉到
   }
 }
+
+
+/**
+ * [新增] 獲取指定建案的所有驗屋選項設定
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 按 type 分組的選項物件
+ */
+exports.getInspectionOptions = onCall(async (request) => {
+  // ✓ 從 request.data 取得 projectId
+  const { projectId } = request.data;
+  const functionName = `getInspectionOptions (Project: ${projectId})`; // ✓ Log 名稱
+
+  // ✓ 驗證 projectId 是否存在
+  if (!projectId) {
+    console.error(`[${functionName}] 錯誤：請求中缺少 projectId。`); // ✓ Log 錯誤
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    // ✓ 建立指向 anxi-app 資料庫的 Firestore Admin SDK 實例
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const optionsRef = db.collection("inspectionOptions"); // ✓ 集合參考
+
+    // ✓ 使用 Admin SDK 的 .where().get() 語法進行查詢
+    const snapshot = await optionsRef.where("projectId", "==", projectId).get();
+
+    // ✓ 初始化用於分類的物件
+    const optionsByType = {
+      phase: [],
+      area: [],
+      category: [],
+      status: [],
+      level: [],
+      progress: [],
+      quickReply: [],
+    };
+
+    // ✓ 遍歷查詢結果
+    if (!snapshot.empty) {
+        snapshot.forEach((doc) => {
+          const data = { id: doc.id, ...doc.data() };
+          const type = data.type;
+          // ✓ 確保 type 是我們預期的類別之一
+          if (optionsByType.hasOwnProperty(type)) {
+            // 注意：後端 Admin SDK 的 Timestamp 會在回傳給前端時自動序列化，
+            // 前端 Client SDK 會自動反序列化。通常不需要在後端手動轉為 ISO String。
+            // 我們保留 Timestamp 物件。
+            optionsByType[type].push(data);
+          } else {
+             console.warn(`[${functionName}] 發現未知的選項類型: ${type} in doc ${doc.id}`); // ✓ 警告未知類型
+          }
+        });
+    }
+
+
+    // ✓ 可選：在後端對各個類別進行排序 (按 order 欄位，若無則按 value)
+    for (const type in optionsByType) {
+      optionsByType[type].sort((a, b) => {
+        const orderComparison = (a.order || Infinity) - (b.order || Infinity);
+        if (orderComparison !== 0) {
+          return orderComparison;
+        }
+        // 如果 order 相同或不存在，則按 value 排序 (使用中文排序)
+        return (a.value || '').localeCompare(b.value || '', 'zh-Hant');
+      });
+    }
+
+    console.log(`[${functionName}] 成功獲取建案 ${projectId} 的 ${snapshot.size} 筆選項資料。`); // ✓ Log 成功訊息
+    // ✓ 回傳給前端的標準格式
+    return { status: "success", data: optionsByType };
+
+  } catch (error) {
+    console.error(`[${functionName}] 獲取選項時發生嚴重錯誤:`, error); // ✓ Log 錯誤詳情
+    // ✓ 拋出 HttpsError 讓前端可以捕捉
+    throw new HttpsError("internal", `讀取驗屋選項時發生未預期的錯誤: ${error.message}`);
+  }
+});
+
+
+
+/**
+ * [新增/更新] 一個驗屋選項 (使用自訂文件 ID 格式)
+ * @param {string} projectId - 建案 ID
+ * @param {object} optionData - 包含 type, value, color, icon, order 等
+ * @param {string|null} optionId - 如果是更新，則傳入文件 ID
+ * @returns {Promise<object>} - { status, id }
+ */
+exports.saveInspectionOption = onCall(async (request) => {
+  const { projectId, optionData, optionId } = request.data;
+  const functionName = `saveInspectionOption (Project: ${projectId}, Type: ${optionData?.type})`;
+
+  if (!projectId || !optionData || !optionData.type || !optionData.value) {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少 projectId, type 或 value 參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const optionsRef = db.collection("inspectionOptions");
+
+    const dataToSave = {
+      projectId: projectId,
+      type: optionData.type,
+      value: optionData.value.trim(),
+      parentValue: optionData.parentValue || null,
+      color: optionData.color || null,
+      icon: optionData.icon || null,
+      order: Number.isFinite(optionData.order) ? optionData.order : 100,
+      updatedAt: Timestamp.now(), // 使用 Timestamp.now()
+    };
+
+    let targetDocRef;
+    let isNew = !optionId;
+    let finalDocId = optionId; // 如果是更新，ID 不變
+
+    if (isNew) {
+      // --- 新增模式 ---
+      let duplicateQuery = optionsRef
+          .where("projectId", "==", projectId)
+          .where("type", "==", dataToSave.type)
+          .where("value", "==", dataToSave.value);
+      if (dataToSave.parentValue) {
+          duplicateQuery = duplicateQuery.where("parentValue", "==", dataToSave.parentValue);
+      } else {
+          duplicateQuery = duplicateQuery.where("parentValue", "==", null);
+      }
+      const duplicateSnapshot = await duplicateQuery.get();
+      if (!duplicateSnapshot.empty) {
+        throw new HttpsError("already-exists", `項目 "${dataToSave.value}" 已存在於此分類中。`);
+      }
+
+      // **** 👇👇👇 修改點：產生自訂文件 ID 👇👇👇 ****
+      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })); // 確保台灣時區
+      const year = String(now.getFullYear()).slice(-2); // 取年份後兩位 YY
+      const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+      const day = String(now.getDate()).padStart(2, '0'); // DD
+      const hours = String(now.getHours()).padStart(2, '0'); // HH
+      const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+      const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+      const timestampSuffix = `${year}${month}${day}${hours}${minutes}${seconds}`;
+      finalDocId = `${projectId}-${dataToSave.type}-${timestampSuffix}`; // 組合 ID
+      // **** 👆👆👆 修改點結束 👆👆👆 ****
+
+      targetDocRef = optionsRef.doc(finalDocId); // ✓ 使用自訂 ID
+      dataToSave.createdAt = Timestamp.now();
+      await targetDocRef.set(dataToSave); // ✓ 使用 set 寫入新文件
+      console.log(`[${functionName}] 成功新增選項，自訂 ID: ${targetDocRef.id}`);
+    } else {
+      // --- 更新模式 (ID 不變) ---
+      targetDocRef = optionsRef.doc(optionId);
+      const docSnap = await targetDocRef.get();
+      if (!docSnap.exists) {
+          throw new HttpsError("not-found", "找不到要更新的選項。");
+      }
+      let duplicateQuery = optionsRef
+          .where("projectId", "==", projectId)
+          .where("type", "==", dataToSave.type)
+          .where("value", "==", dataToSave.value)
+          .where(FieldPath.documentId(), "!=", optionId); // 使用 FieldPath 排除自己
+      if (dataToSave.parentValue) {
+          duplicateQuery = duplicateQuery.where("parentValue", "==", dataToSave.parentValue);
+      } else {
+          duplicateQuery = duplicateQuery.where("parentValue", "==", null);
+      }
+      const duplicateSnapshot = await duplicateQuery.get();
+      if (!duplicateSnapshot.empty) {
+        throw new HttpsError("already-exists", `更新後的項目名稱 "${dataToSave.value}" 與其他項目重複。`);
+      }
+
+      await targetDocRef.update(dataToSave);
+      console.log(`[${functionName}] 成功更新選項，ID: ${targetDocRef.id}`);
+    }
+
+    // ✓ 回傳成功狀態和最終使用的文件 ID
+    return { status: "success", id: finalDocId };
+
+  } catch (error) {
+    console.error(`[${functionName}] 儲存選項時發生錯誤:`, error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `儲存驗屋選項時發生未預期的錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [新增] 刪除一個驗屋選項 (包含子項目)
+ * @param {string} optionId - 要刪除的文件 ID
+ * @returns {Promise<object>} - { status }
+ */
+exports.deleteInspectionOption = onCall(async (request) => {
+  const { optionId } = request.data;
+  const functionName = `deleteInspectionOption (ID: ${optionId})`; // ✓ Log 名稱
+
+  if (!optionId) {
+    console.error(`[${functionName}] 錯誤：缺少 optionId。`); // ✓ Log 錯誤
+    throw new HttpsError("invalid-argument", "缺少 optionId 參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 使用 anxi-app 資料庫
+    const optionsRef = db.collection("inspectionOptions");
+    const docRef = optionsRef.doc(optionId); // ✓ 文件參考
+
+    const docSnap = await docRef.get();
+    if (!docSnap.exists()) {
+      // 如果文件已不存在，也視為成功 (避免重複刪除報錯)
+      console.warn(`[${functionName}] 文件 ${optionId} 已不存在，視為刪除成功。`); // ✓ Log 警告
+      return { status: "success" };
+    }
+
+    const dataToDelete = docSnap.data();
+    const batch = db.batch(); // ✓ 使用 Batch Write
+
+    // ✓ 刪除主文件
+    batch.delete(docRef);
+
+    // ✓ 如果刪除的是工程主分類，則一併刪除其子項目
+    if (dataToDelete.type === "category" && !dataToDelete.parentValue) {
+      console.log(`[${functionName}] 偵測到刪除主分類 "${dataToDelete.value}"，準備刪除子項目...`); // ✓ Log
+      const subItemsQuery = optionsRef
+        .where("projectId", "==", dataToDelete.projectId) // ✓ 加上 projectId 限制範圍
+        .where("type", "==", "category")
+        .where("parentValue", "==", dataToDelete.value); // ✓ 查詢 parentValue 符合的
+      const subItemsSnapshot = await subItemsQuery.get();
+      if (!subItemsSnapshot.empty) {
+        subItemsSnapshot.forEach((subDoc) => {
+          batch.delete(subDoc.ref); // ✓ 將刪除子項目操作加入 Batch
+        });
+        console.log(`[${functionName}] 已將 ${subItemsSnapshot.size} 個子項目加入刪除佇列。`); // ✓ Log
+      }
+    }
+
+    // ✓ 提交所有刪除操作
+    await batch.commit();
+
+    console.log(`[${functionName}] 成功刪除選項 ${optionId} (及其子項目，如果有的話)。`); // ✓ Log 成功
+    return { status: "success" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 刪除選項時發生錯誤:`, error); // ✓ Log 錯誤
+    throw new HttpsError("internal", `刪除驗屋選項時發生未預期的錯誤: ${error.message}`); // ✓ 拋出 HttpsError
+  }
+});

@@ -1,84 +1,88 @@
 <template>
-  <v-container fluid>
-    <v-row>
-      <v-col cols="12">
-        <v-card>
-          <v-card-title>
-            開始驗屋
-            <v-spacer></v-spacer>
-            <v-btn
-              v-if="canAccessAdmin"
-              icon="mdi-cog-outline"
-              variant="text"
-              color="grey-darken-1"
-              @click="goToAdminPage"
-              title="驗屋系統設定"
-            ></v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-row>
-              <v-col cols="12" md="4">
-                <v-autocomplete
-                  v-model="selectedProjectId"
-                  :items="projects"
-                  item-title="name"
-                  item-value="id"
-                  label="選擇建案"
-                  :loading="isLoadingProjects"
-                  variant="outlined"
-                  clearable
-                  dense
-                  no-data-text="找不到建案"
-                  :disabled="isLoadingProjects"
-                ></v-autocomplete>
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-autocomplete
-                  v-model="selectedBuildingId"
-                  :items="buildings"
-                  item-title="name"
-                  item-value="id"
-                  label="選擇棟別"
-                  :loading="isLoadingBuildings"
-                  variant="outlined"
-                  clearable
-                  dense
-                  no-data-text="請先選擇建案或此建案無棟別資料"
-                  :disabled="!selectedProjectId || isLoadingBuildings || isLoadingProjects"
-                ></v-autocomplete>
-              </v-col>
-              <v-col cols="12" md="4">
-                <p>[戶別選擇]</p>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-      </v-col>
+  <v-container fluid class="fill-height primary lighten-4">
+    <v-row align="center" justify="center">
+      <v-col cols="12" sm="10" md="8" lg="5" xl="4">
+        <v-card class="elevation-12 rounded-lg">
+          <v-toolbar color="primary" dark flat>
+            <v-toolbar-title class="font-weight-medium">
+              <v-icon left large>mdi-home-search</v-icon>
+              驗屋系統
+            </v-toolbar-title>
+          </v-toolbar>
 
-      <v-col cols="12" v-if="selectedUnitId">
-        <v-card>
-          <v-card-title>
-            戶別資訊: [顯示選定戶別]
-          </v-card-title>
-          <v-card-text>
-            <v-row>
-              <v-col cols="12" md="6">
-                <p><strong>基本資料</strong></p>
-                <p>門牌: ...</p>
-                <p>車位: ...</p>
-                <p>買方: ...</p>
-                <p>電話: ...</p>
-              </v-col>
-              <v-col cols="12" md="6">
-                <p><strong>預約紀錄</strong></p>
-                <p>[預約列表]</p>
-              </v-col>
-            </v-row>
+          <v-card-text class="pa-5">
+            <div v-if="!userStore.user" class="text-center my-5">
+              <p class="text-subtitle-1">請先登入以使用驗屋系統。</p>
+              <v-btn color="primary" @click="goToLogin">
+                前往登入
+              </v-btn>
+            </div>
+
+            <div v-else>
+              <p class="text-subtitle-1 mb-4">
+                歡迎，{{ userStore.user.name || userStore.user.key }}！請選擇您要進入的建案：
+              </p>
+               <v-select
+                  v-model="selectedProject"
+                  :items="projectOptions"
+                  label="選擇建案"
+                  outlined
+                  dense
+                  :loading="loadingProjects"
+                  :disabled="loadingProjects || projectOptions.length === 0"
+                  no-data-text="您在此系統無可用建案或載入失敗"
+                  class="mb-4"
+                  hide-details="auto"
+                  item-title="text"  
+                  item-value="value" 
+                >
+                <template v-slot:prepend-item v-if="loadingProjects">
+                  <v-list-item>
+                    <v-list-item-title class="text-center">
+                      <v-progress-circular indeterminate color="primary" size="24"></v-progress-circular>
+                      <span class="ml-2">載入建案中...</span>
+                    </v-list-item-title>
+                  </v-list-item>
+                </template>
+              </v-select>
+
+     <v-btn
+  color="primary"
+  block
+  x-large
+  @click="enterProject"
+  :disabled="!selectedProject || loadingProjects"
+  :loading="isValidating"
+  class="font-weight-bold"
+>
+  <template v-if="!isValidating">
+    <v-icon left>mdi-arrow-right-bold-circle-outline</v-icon>
+    進入 {{ selectedProjectDisplayName }}
+  </template>
+
+  <template v-slot:loader>
+    <v-progress-circular
+      indeterminate
+      size="24"
+      width="2"
+      class="me-2"
+    ></v-progress-circular>
+    <span>驗證中...</span>
+  </template>
+</v-btn>
+
+              <v-alert v-if="error" type="error" dense class="mt-4" prominent border="left">
+                {{ error }}
+              </v-alert>
+            </div>
           </v-card-text>
-          <v-card-actions>
+
+          <v-divider v-if="userStore.user"></v-divider>
+          <v-card-actions v-if="userStore.user" class="pa-3 grey lighten-4">
             <v-spacer></v-spacer>
-            <v-btn color="primary">
-              開始/繼續驗屋
+            <v-btn text color="secondary" @click="goHome">
+              <v-icon left>mdi-home</v-icon>
+              返回主選單
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -87,152 +91,166 @@
   </v-container>
 </template>
 
-<style scoped>
-/* 可選：加入此頁面專屬的 CSS */
-</style>
-
-
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { db } from '@/firebase'
-import { collection, query, getDocs, orderBy, doc, getDoc } from 'firebase/firestore'
-import { useUserStore } from '@/store/user' // 確保已引入
+import { ref, onMounted, watch, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useUserStore } from '@/store/user';
+import { getProjectsBySystemPermission, fetchAllHouseDetails } from '@/api';
 
-// --- 響應式變數 ---
-const router = useRouter()
-const userStore = useUserStore()
 
-const selectedProjectId = ref(null)
-const selectedBuildingId = ref(null)
-const selectedUnitId = ref(null)
+const router = useRouter();
+const userStore = useUserStore();
 
-const projects = ref([])
-const isLoadingProjects = ref(false)
+const selectedProject = ref(null); // 存儲選中的建案 value
+const projectOptions = ref([]); // 存儲 v-select 的 items [{ text: '建案A', value: '建案A' }, ...]
+const loadingProjects = ref(false);
+const error = ref('');
+const isValidating = ref(false); // ✅ 新增：用於進入按鈕的 loading 狀態
 
-const buildings = ref([])
-const isLoadingBuildings = ref(false)
 
-const currentUserKey = computed(() => userStore.user?.key || null)
+const SYSTEM_NAME = '驗屋系統'; // 定義當前系統的名稱
 
-// ✅ 新增：檢查是否有權限訪問 Admin 頁面
-const requiredAdminRoles = ['超級管理員', '系統管理員', '客服主管', '工務主管'];
-const canAccessAdmin = computed(() => {
-  const userRoles = userStore.user?.roles || [];
-  return userRoles.some(role => requiredAdminRoles.includes(role));
+// 計算屬性，用於按鈕上顯示的建案名稱 (如果 selectedProject 存的是 ID，而顯示需要名稱)
+// 在這個例子中，text 和 value 相同，所以可以直接用 selectedProject
+const selectedProjectDisplayName = computed(() => {
+  const project = projectOptions.value.find(p => p.value === selectedProject.value);
+  return project ? project.text : '建案';
 });
 
-
-// ... 戶別變數稍後加入 ...
-
-// --- 函數 ---
-
-async function fetchProjects() {
-  // ... (fetchProjects 函數保持不變) ...
-  if (!currentUserKey.value) {
-    console.error("fetchProjects: currentUserKey 無效，無法讀取權限。")
-    isLoadingProjects.value = false
-    projects.value = []
-    return
+async function loadProjectsForSystem() {
+  if (!userStore.user || !userStore.user.key) {
+    error.value = '無法獲取用戶資訊，請重新登入。';
+    projectOptions.value = [];
+    selectedProject.value = null;
+    return;
   }
-  isLoadingProjects.value = true
-  projects.value = []
-  console.log(`fetchProjects: 使用 USERKEY ${currentUserKey.value} 讀取權限...`);
+
+  loadingProjects.value = true;
+  error.value = '';
+  projectOptions.value = []; // 清空舊選項
+  selectedProject.value = null; // 清空已選項目
+
   try {
-    const userPermissionsRef = doc(db, 'userPermissions', currentUserKey.value)
-    const docSnap = await getDoc(userPermissionsRef)
-    if (docSnap.exists()) {
-      const permissionsData = docSnap.data()?.permissions
-      if (permissionsData) {
-        const allowedProjects = []
-        for (const [projectId, projectData] of Object.entries(permissionsData)) {
-          if (projectData?.systems && Array.isArray(projectData.systems) && projectData.systems.includes('驗屋系統')) {
-            allowedProjects.push({
-              id: projectId,
-              name: projectData.projectName
-            })
-          }
+    console.log(`[InspectionSystem] Loading projects for user: ${userStore.user.key}, system: ${SYSTEM_NAME}`);
+    const response = await getProjectsBySystemPermission(userStore.user.key, SYSTEM_NAME);
+    console.log('[InspectionSystem] API response for projects:', response);
+
+    if (response.status === 'success' && Array.isArray(response.projects)) {
+      projectOptions.value = response.projects.map(p => ({
+        text: p.text || p.value, // 確保有 text 和 value
+        value: p.value
+      }));
+
+      if (projectOptions.value.length > 0) {
+        // 嘗試恢復上次選擇的建案，或選擇第一個
+        const lastSelectedProjectName = userStore.user.projectName; // 從 store 讀取上次選擇的建案
+        if (lastSelectedProjectName && projectOptions.value.some(p => p.value === lastSelectedProjectName)) {
+          selectedProject.value = lastSelectedProjectName;
+          console.log(`[InspectionSystem] Restored last selected project: ${lastSelectedProjectName}`);
+        } else {
+          selectedProject.value = projectOptions.value[0].value;
+          console.log(`[InspectionSystem] Selected first available project: ${selectedProject.value}`);
         }
-        allowedProjects.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
-        projects.value = allowedProjects
-        console.log('Fetched Accessible Projects:', projects.value)
       } else {
-        console.warn('使用者權限文件中找不到 permissions 欄位。')
+        error.value = `您在 "${SYSTEM_NAME}" 中沒有可操作的建案。`;
+        console.log(`[InspectionSystem] No projects available for user ${userStore.user.key} in ${SYSTEM_NAME}.`);
       }
     } else {
-      console.warn(`找不到使用者 ${currentUserKey.value} 的權限文件。`)
+      error.value = response.message || `載入建案列表失敗 (${SYSTEM_NAME})。`;
+      console.error('[InspectionSystem] Failed to load projects:', response.message);
     }
-  } catch (error) {
-    console.error("讀取使用者權限時發生錯誤: ", error);
+  } catch (err) {
+    error.value = `載入建案列表時發生網路或系統錯誤 (${SYSTEM_NAME})。`;
+    console.error('[InspectionSystem] Error loading projects:', err);
   } finally {
-    isLoadingProjects.value = false
+    loadingProjects.value = false;
   }
 }
 
-async function fetchBuildings(projectId) {
-  // ... (fetchBuildings 函數保持不變) ...
-   if (!projectId) {
-    buildings.value = []
-    return
+// ✅ 核心修改：更新 enterProject 函式
+async function enterProject() {
+  if (!selectedProject.value) {
+    error.value = '請先選擇一個建案。';
+    return;
   }
-  isLoadingBuildings.value = true
-  buildings.value = []
-  console.log(`fetchBuildings: 讀取建案 ${projectId} 的棟別...`);
+  
+  isValidating.value = true;
+  error.value = ''; // 清除舊的錯誤訊息
+
   try {
-    const buildingsColRef = collection(db, 'projects', projectId, 'buildings')
-    const q = query(buildingsColRef, orderBy('buildingName', 'asc')) // ❗ 確認欄位名
-    const querySnapshot = await getDocs(q)
-    console.log(`fetchBuildings: Firestore returned ${querySnapshot.docs.length} documents.`);
-    buildings.value = querySnapshot.docs.map(doc => {
-      console.log(`fetchBuildings: Processing doc ${doc.id}, data:`, doc.data());
-      return {
-        id: doc.id,
-        name: doc.data().buildingName // ❗ 確認欄位名
-      }
-    })
-    buildings.value = buildings.value.filter(b => b.name);
-    console.log(`Fetched Buildings for ${projectId} (processed):`, JSON.parse(JSON.stringify(buildings.value)))
+    // 試探性地呼叫一個需要該建案 SheetID 的 API
+    // fetchAllHouseDetails 是一個很好的選擇
+    const response = await fetchAllHouseDetails(selectedProject.value);
 
-  } catch (error) {
-    console.error(`讀取建案 ${projectId} 的棟別時發生錯誤: `, error);
+    // 檢查 API 回傳的結果，如果 status 不是 success，代表有問題
+    // (api.js 的 fetchPost 已經處理了網路錯誤，這裡處理的是 GAS 回傳的業務邏輯錯誤)
+    if (response.status !== 'success') {
+      // 將後端回傳的錯誤訊息顯示出來
+      throw new Error(response.message);
+    }
+    
+    // 驗證成功，執行跳轉
+    userStore.setProjectName(selectedProject.value);
+    router.push({ name: 'InspectionRecord' });
+
+  } catch (err) {
+    // 捕捉所有錯誤，包括服務到期的特定錯誤
+    error.value = err.message || '無法進入建案，請稍後再試。';
+    console.error(`[InspectionSystem] Error entering project:`, err);
   } finally {
-    isLoadingBuildings.value = false
+    isValidating.value = false;
   }
 }
 
-// ✅ 新增：導航到 Admin 頁面的函數
-function goToAdminPage() {
-  router.push('/admin/inspection-admin');
+function goToLogin() {
+  router.push({ name: 'Login' });
 }
 
+function goHome() {
+  router.push({ name: 'Home' });
+}
 
-watch(() => userStore.user, (newUser) => {
-  // ... (watch user 保持不變) ...
-  console.log('watch userStore.user triggered:', newUser);
-  if (newUser && newUser.key) {
-    fetchProjects();
+onMounted(() => {
+  console.log('[InspectionSystem] Component mounted.');
+  if (userStore.user && userStore.user.key) {
+    loadProjectsForSystem();
   } else {
-    projects.value = [];
-    selectedProjectId.value = null;
-    console.log('User logged out or not yet loaded, clearing projects list.');
+    console.log('[InspectionSystem] User not logged in on mount, redirecting to Login may be needed or handled by router guard.');
+    // 可以選擇在這裡強制跳轉，或者依賴路由守衛
+    // goToLogin();
   }
-}, { immediate: true });
+});
 
-watch(selectedProjectId, (newProjectId, oldProjectId) => {
-  // ... (watch selectedProjectId 保持不變) ...
-  console.log(`watch selectedProjectId: changed from ${oldProjectId} to ${newProjectId}`);
-  selectedBuildingId.value = null
-  selectedUnitId.value = null
-  buildings.value = []
-  // units.value = [] // 稍後加入
-
-  if (newProjectId) {
-    fetchBuildings(newProjectId)
+// 監聽 userStore.user 的變化 (例如，用戶登入/登出後)
+watch(() => userStore.user, (newUser, oldUser) => {
+  console.log('[InspectionSystem] User store changed:', newUser);
+  if (newUser && newUser.key) {
+    // 如果是新用戶登入，或者用戶信息發生了有意義的變化
+    if (!oldUser || newUser.key !== oldUser.key) {
+      loadProjectsForSystem();
+    }
+  } else {
+    // 用戶已登出
+    projectOptions.value = [];
+    selectedProject.value = null;
+    error.value = ''; // 清除可能存在的錯誤信息
+    console.log('[InspectionSystem] User logged out, cleared project options.');
   }
-})
+}, { deep: true }); // deep watch 可能不是必須的，如果只關心 user 對象本身是否改變
 
 </script>
 
 <style scoped>
-/* 可選：如果需要，在這裡加入此頁面專屬的 CSS */
+.fill-height {
+  min-height: 100%;
+}
+.v-card {
+  transition: box-shadow .3s ease-in-out;
+}
+.v-card:hover {
+  box-shadow: 0px 10px 20px -5px rgba(0,0,0,0.2) !important;
+}
+.v-toolbar-title {
+  font-size: 1.3rem;
+}
 </style>
