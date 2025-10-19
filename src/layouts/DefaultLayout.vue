@@ -219,19 +219,24 @@ const doUpdate = async () => {
   setTimeout(() => window.location.reload(), 1000);
 };
 
-const confirmLogout = async () => {
+async function confirmLogout() {
   logoutDialog.value = false;
-  isLoggingOut.value = true; // ✅ 在開始時設為 true
+  isLoggingOut.value = true;
+  console.log('嘗試登出...');
   try {
     await userStore.logoutUser();
+    console.log('登出成功 (UI)'); // 可選 Log
     showSnackbar('已成功登出');
   } catch (error) {
-    console.error("登出時發生錯誤:", error);
+    console.error("登出時發生錯誤 (UI):", error);
     showSnackbar('登出失敗，請稍後再試');
   } finally {
-    isLoggingOut.value = false; // ✅ 無論成功或失敗，最後都設為 false
+    // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+    console.log('>>> confirmLogout: Entering finally block <<<');
+    // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+    isLoggingOut.value = false;
   }
-};
+}
 
 const goHome = () => {
   if (route.path !== '/home') {

@@ -13,7 +13,7 @@ import { getDatabase } from "firebase/database";
 const firebaseConfig = {
   apiKey: "AIzaSyBdE26vC0UAprsdTgBcmYrVuO67ZbccMTA",
   authDomain: "apps-script-api-443402.firebaseapp.com",
-  databaseURL: "https://apps-script-api-443402-default-rtdb.asia-east1.firebasedatabase.app",
+  databaseURL: "https://apps-script-api-443402-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "apps-script-api-443402",
   storageBucket: "apps-script-api-443402.appspot.com", 
   messagingSenderId: "46453918785",

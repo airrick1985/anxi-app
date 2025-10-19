@@ -1485,26 +1485,31 @@ export async function fetchAllSubscriptions(adminKey) {
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function fetchMasterDataForSubscriptionForm(adminKey) {
-    if (!await isSuperAdmin(adminKey)) {
-        throw new Error("權限不足。");
-    }
-    //  從 projects 集合中動態獲取所有建案的完整資料 (ID + name)
-    const projectsRef = collection(db, "projects");
-    const snapshot = await getDocs(projectsRef);
-    const projects = [];
-    snapshot.forEach(doc => {
-        projects.push({ id: doc.id, ...doc.data() });
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+  // 從 projects 集合中動態獲取所有建案的完整資料 (ID + name + iconUrl)
+  const projectsRef = collection(db, "projects");
+  const snapshot = await getDocs(projectsRef);
+
+  const projects = [];
+  snapshot.forEach(doc => {
+    const data = doc.data(); // ✅ 先取得資料
+    projects.push({ 
+      id: doc.id, 
+      ...data, // ✅ 展開所有既有資料
+      iconUrl: data.iconUrl || '' // ✅ 確保 iconUrl 欄位存在，若無則給予空字串
     });
-    
-    const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理'];
+  });
+  
+  const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理']; // (此處可保持不變)
 
-    //  回傳完整的 projects 陣列，而非只有名稱
-    return { 
-        projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')), 
-        systemFunctions: systemFunctions 
-    };
+  // 回傳完整的 projects 陣列
+  return { 
+    projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')), 
+    systemFunctions: systemFunctions 
+  };
 }
-
 /**
  * [Firestore 版] 新增一筆訂閱紀錄
  * @param {string} subscriptionId - 新紀錄的 ID
@@ -3744,9 +3749,22 @@ export const goOffline = (userKey) => {
   const userStatusRef = dbRef(rtdb, `/status/${userKey}`);
   const offlineStatus = {
     isOnline: false,
-    last_changed: rtdbServerTimestamp(), // ✓【修正】使用新的別名
+    last_changed: rtdbServerTimestamp(),
   };
-  return set(userStatusRef, offlineStatus);
+  // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+  console.log(`>>> API goOffline: Attempting RTDB set for ${userKey}... <<<`);
+  // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+  return set(userStatusRef, offlineStatus).then(() => {
+      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+      console.log(`>>> API goOffline: RTDB set SUCCESS for ${userKey}. <<<`);
+      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+  }).catch(error => {
+      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+      console.error(`>>> API goOffline: RTDB set FAILED for ${userKey}:`, error);
+      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+      // 選擇是否重新拋出錯誤，目前 userStore 會捕獲
+      // throw error;
+  });
 };
 
 
@@ -5365,5 +5383,32 @@ export const exportInspectionOptionsToExcel = async (payload) => {
     console.error("API Error in exportInspectionOptionsToExcel:", error);
     // ✓ 將 HttpsError 的 message 提取出來拋出
     throw new Error(error.message || '匯出 Excel API 呼叫失敗');
+  }
+};
+
+
+
+/**
+ * 更新指定建案的圖示 URL
+ * @param {string} projectId - 建案 ID
+ * @param {string} iconUrl - 新的圖檔 URL
+ * @param {string} adminKey - 執行此操作的管理員 Key
+ * @returns {Promise<void>}
+ */
+export const updateProjectIcon = async (projectId, iconUrl, adminKey) => {
+  if (!projectId) throw new Error('缺少建案 ID');
+  if (!iconUrl) throw new Error('缺少圖示 URL');
+  if (!adminKey) throw new Error('缺少管理者金鑰');
+
+  const projectDocRef = doc(db, 'projects', projectId);
+  
+  try {
+    await updateDoc(projectDocRef, {
+      iconUrl: iconUrl
+    });
+    console.log(`[api.js] Project ${projectId} iconUrl updated.`);
+  } catch (error) {
+    console.error(`[api.js] Failed to update project icon for ${projectId}:`, error);
+    throw new Error('更新建案圖示時發生錯誤。');
   }
 };

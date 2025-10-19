@@ -1,32 +1,33 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
-import { useProjectStore } from '@/store/projectStore'; //  1. 引入 projectStore
+import { useProjectStore } from '@/store/projectStore';
 const InspectionManagement = () => import('@/views/InspectionManagement.vue');
-
-
 
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
-import InspectionSystem from '@/views/InspectionSystem.vue' // ✅ 新增這行import InspectionRecord from '@/views/InspectionRecord.vue';
+import InspectionSystem from '@/views/InspectionSystem.vue'
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
-import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
-const InspectionCalendarEntry = () => import('@/views/inspectionCalenderEntry.vue');
+
+// ✅ 1. 移除舊的 Entry 元件
+// import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
+// const InspectionCalendarEntry = () => import('@/views/inspectionCalenderEntry.vue');
+
+// ✅ 2. 引入新的 ProjectSelector 元件
+const ProjectSelector = () => import('@/views/ProjectSelector.vue');
+
 const MessageCenter = () => import('@/views/MessageCenter.vue');
 const SendMessage = () => import('@/views/SendMessage.vue');
 const MessageDetail = () => import('@/views/MessageDetail.vue');
 const UserManagement = () => import('@/views/UserManagement.vue');
 const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue');
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
-import DefaultLayout from '@/layouts/DefaultLayout.vue'; // <-- ✓ 修改為靜態引入
+import DefaultLayout from '@/layouts/DefaultLayout.vue';
 const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 import HouseholdGrid from '@/views/HouseholdGrid.vue';
 const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue')
-
-
-
 
 const routes = [
  // { path: '/', redirect: '/home' },
@@ -44,12 +45,12 @@ const routes = [
   },
 
   {
-  path: '/admin/inspection-admin', // 路由路徑
-  name: 'InspectionAdmin',       // 路由名稱
-  component: InspectionAdmin,      // 對應的組件
+  path: '/admin/inspection-admin',
+  name: 'InspectionAdmin',
+  component: InspectionAdmin,
   meta: {
     requiredSystem: '驗屋系統',
-    requiredRoles: ['超級管理員','系統管理員','客服主管','工務主管'], // 只有具備這些角色的使用者可以訪問,
+    requiredRoles: ['超級管理員','系統管理員','客服主管','工務主管'],
     requiresAuth: true,
     layout: DefaultLayout
   }
@@ -60,17 +61,10 @@ const routes = [
     name: 'UserProfile',
     component: () => import('@/views/UserProfile.vue'),
     meta: {
-      requiresAuth: true, // 確保只有登入的使用者才能進入
+      requiresAuth: true,
       layout: DefaultLayout
     }
   },
- /*/ {
-    path: '/inspection-record',
-    name: 'InspectionRecord',
-    component: InspectionRecord,
-    meta: { requiresAuth: true, layout: DefaultLayout }
-  }
-  /**/
   {
     path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',
@@ -86,23 +80,29 @@ const routes = [
     meta: { requiresAuth: true, layout: DefaultLayout }
   },
  {
+    // ✅ 3. 修改「銷控系統」入口
     path: '/sales-control-entry',
     name: 'SalesControlSystemEntry',
-    component: SalesControlSystemEntry,
+    component: ProjectSelector, // ✅ 改為 ProjectSelector
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
-      layout: DefaultLayout
+      layout: DefaultLayout,
+      targetRouteName: 'SalesControlSystem', // ✅ 新增 meta: 目標路由
+      paramKey: 'projectName'              // ✅ 新增 meta: 路由參數 key
     }
   },
   {
+    // ✅ 4. 修改「報價系統」入口
     path: '/quote-system-entry',
     name: 'QuoteSystemEntry',
-    component: SalesControlSystemEntry,
+    component: ProjectSelector, // ✅ 改為 ProjectSelector
     meta: {
       requiresAuth: true,
-      requiredSystem: '報價系統',
-      layout: DefaultLayout
+      requiredSystem: '報價系統', // 權限檢查依賴此
+      layout: DefaultLayout,
+      targetRouteName: 'QuoteSystem', // ✅ 新增 meta: 目標路由
+      paramKey: 'projectName'           // ✅ 新增 meta: 路由參數 key
     }
   },
   {
@@ -155,7 +155,7 @@ const routes = [
   name: 'SalesSettings',
   component: () => import('@/views/SalesSettings.vue'),
   meta: {
-    requiresAuth: true, // 假設此頁面需要登入
+    requiresAuth: true,
     requiredSystem: '銷控系統',
     title: '銷控設定'
   }
@@ -233,7 +233,6 @@ const routes = [
     }
   },
 
-  //  START: 新增授權書簽署頁面路由
   {
     path: '/sign-auth/:token',
     name: 'AuthSigningPage',
@@ -245,11 +244,11 @@ const routes = [
   },
 
     {
-    path: '/line-binding', // 您可以自訂網址路徑
+    path: '/line-binding',
     name: 'LineBindingPage',
     component: () => import('@/views/public/LineBinding.vue'),
     meta: {
-      layout: PublicLayout // ✓ 指定使用公開頁面佈局，不需要登入
+      layout: PublicLayout
     }
   },
 
@@ -281,9 +280,7 @@ const routes = [
   },
 
 {
-    // ✓ START: 修改 - 在 :projectId 後面加上 ?，使其變為可選參數
     path: '/report-folder-manager/:projectId?',
-    // ✓ END: 修改
     name: 'ReportFolderManager',
     component: () => import('@/views/public/ReportFolderManager.vue'),
     props: true,
@@ -322,32 +319,35 @@ const routes = [
   },
   
   {
+    // ✅ 5. 修改「驗屋預約」入口
     path: '/inspection-calendar-entry',
     name: 'ProjectSelector',
-    component: InspectionCalendarEntry,
+    component: ProjectSelector, // ✅ 改為 ProjectSelector
     meta: {
       requiresAuth: true,
-      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], layout: DefaultLayout
+      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], // 權限檢查依賴此
+      layout: DefaultLayout,
+      targetRouteName: 'InternalInspectionCalendar', // ✅ 新增 meta: 目標路由
+      paramKey: 'projectId'                        // ✅ 新增 meta: 路由參數 key
     }
   },
   {
     path: '/inspection-management/:projectId',
     component: InspectionManagement,
-    //  3. 將原本的頁面設定為子路由
     children: [
       {
-        path: 'calendar', //  <- 使用相對路徑
+        path: 'calendar',
         name: 'InternalInspectionCalendar',
         component: InspectionCalendar,
         props: true,
         meta: {
           requiresAuth: true,
           requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
-          layout: DefaultLayout // 佈局設定可以保留或移除，取決於您的 DefaultLayout 設計
+          layout: DefaultLayout
         }
       },
       {
-        path: 'households', // <- 使用相對路徑
+        path: 'households',
         name: 'HouseholdGrid',
         component: HouseholdGrid,
         props: true,
@@ -358,7 +358,7 @@ const routes = [
         }
       },
       {
-        path: 'rules', // <- 使用相對路徑
+        path: 'rules',
         name: 'BookingRuleManager',
         component: BookingRuleManager,
         props: true,
@@ -375,15 +375,13 @@ const routes = [
     path: '/backup-management',
     name: 'BackupManagement',
     component: () => import('@/views/BackupManagement.vue'),
-    //  1. 在 meta 中加入需要的角色
     meta: { 
       requiresAuth: true,
-      requiredRoles: ['超級管理員'] // 指定只有超級管理員可以進入
+      requiredRoles: ['超級管理員']
     } 
   },
 
   {
-  //  新增特殊上傳報告頁面的路由
   path: '/special-report-upload/:projectId',
   name: 'SpecialReportUpload',
   component: () => import('@/views/SpecialReportUpload.vue'),
@@ -398,7 +396,6 @@ const routes = [
     component: () => import('@/views/FloorplanSizingTool.vue'),
     meta: { 
       requiresAuth: true,
-      // 您可以在此加入其他 meta 資訊，例如頁面標題
       title: '平面圖測量工具' 
     }
   },
@@ -428,7 +425,6 @@ const routes = [
     }
   },
 
- // { path: '/:pathMatch(.*)*', redirect: '/home' }
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 
 ];
@@ -447,33 +443,21 @@ router.beforeEach(async (to, from, next) => {
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn;
 
-  // 1. 公開頁面快速通道：如果目標頁面不需要登入，立即放行。
-  // 這是最重要的修改，它會讓 /line-binding 和 /booking 等頁面直接通過。
   if (!to.meta.requiresAuth) {
-    // 額外處理：如果使用者已登入但試圖訪問登入頁，將他導回首頁。
     if (isLoggedIn && to.name === 'Login') {
       return next({ name: 'Home' });
     }
-    // 其他所有公開頁面，一律放行。
     return next();
   }
 
-  // --- 從這裡開始，所有頁面都確定是需要登入的 ---
-
-  // 2. 檢查登入狀態：如果頁面需要登入但使用者未登入，導向登入頁。
   if (!isLoggedIn) {
     return next({ name: 'Login', query: { redirect: to.fullPath } });
   }
-
-  // --- 從這裡開始，使用者確定已登入 ---
   
-  // 3. 確保專案資料已載入 (維持不變)
   if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
     await projectStore.fetchProjects();
   }
 
-  // 4. 執行所有後續的、更詳細的權限檢查 (角色、系統權限等)
-  // (您所有既有的 requiredRoles, requiredAnySystem, requiredSystem 等檢查邏輯都放在這裡，維持不變)
   const requiredRoles = to.meta.requiredRoles;
   if (requiredRoles && Array.isArray(requiredRoles)) {
     const userRoles = userStore.currentUserRoles;
@@ -520,7 +504,21 @@ router.beforeEach(async (to, from, next) => {
             return next({ name: 'Home' });
           }
         } else {
-          if (!userStore.hasPermission(requiredSystem)) {
+          // ✅ 6. 修正：當路由沒有 projectId 時 (例如在 ProjectSelector 頁面)
+          // 權限檢查應改為檢查 "是否至少有 *任一* 建案的此系統權限"
+          // 而不是檢查 `hasPermission` (它會檢查所有建案)
+          // 我們在 `router.beforeEach` 中 *放寬* 檢查，讓使用者先進到 ProjectSelector
+          // ProjectSelector 內部的 `onMounted` 會做 *精確* 檢查，只顯示他有權限的建案
+          
+          // 原本的邏輯:
+          // if (!userStore.hasPermission(requiredSystem)) {
+          
+          // ✅ 修改後的邏輯:
+          // 我們信任 ProjectSelector 會處理好篩選，
+          // 但我們仍需檢查使用者是否 *至少有一個* 該系統的權限
+          const hasAnyAccess = userStore.hasPermission(requiredSystem);
+          
+          if (!hasAnyAccess) {
             alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
             return next({ name: 'Home' });
           }
@@ -528,9 +526,7 @@ router.beforeEach(async (to, from, next) => {
       }
   }
 
-  // 5. 如果所有檢查都通過，最終放行
   return next();
 });
 
 export default router;
-

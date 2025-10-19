@@ -11,10 +11,12 @@
       @end="saveButtonOrder"
     >
       <template #item="{ element: button }">
-        <button class="icon-button" @click="handleNavigation(button)">
-          <img :src="button.icon" :alt="`${button.text}圖標`" class="icon" />
-          <span class="text">{{ button.text }}</span>
-        </button>
+        <IconButton 
+          :icon="button.icon"
+          :text="button.text"
+          :scale="iconScale" 
+          @click="handleNavigation(button)"
+        />
       </template>
     </draggable>
   </div>
@@ -28,7 +30,8 @@ import { useUserStore } from '../store/user';
 import draggable from 'vuedraggable';
 import manifest from '../../public/manifest.json';
 
-
+// ✓ 導入新元件
+import IconButton from '@/components/IconButton.vue'; 
 
 // 引入所有需要的圖片
 import databaseIcon from '@/assets/icons/database.png';
@@ -54,6 +57,10 @@ const backgroundImageUrl = ref(myBackgroundImage);
 //  新增 footer 所需的響應式變數
 const appVersion = ref(manifest.version);
 const currentYear = ref(new Date().getFullYear());
+
+// ✓ 新增控制縮放比例的 ref
+// 預設為 1 (100%)。您可以從 localStorage 讀取或允許使用者修改此值
+const iconScale = ref(0.7); 
 
 const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
@@ -172,45 +179,7 @@ const handleNavigation = (button) => {
   transition: background-image 1s ease-in-out;
 }
 
-.icon-button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 120px;
-  height: 120px;
-  padding: 10px;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(4px);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.icon-button:hover {
-  transform: translateY(-8px) scale(1.05);
-  box-shadow: 0 16px 40px 0 rgba(31, 38, 135, 0.2), 
-              0 0 20px rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.496);
-}
-
-.icon {
-  width: 60px;
-  height: 60px;
-  margin-bottom: 12px;
-  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.2));
-  opacity: 0.8;
-  transition: all 0.3s ease;
-}
-
-.text {
-  font-size: 1rem;
-  font-weight: 500;
-  color: #000000;
-}
+/* ✓ .icon-button 相關的所有樣式都已被移除 (遷移到 IconButton.vue) */
 
 /* 為 draggable 元件提供一個 flex 容器 */
 .draggable-container {

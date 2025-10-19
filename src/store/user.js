@@ -144,21 +144,42 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async logoutUser() {
-      const userKey = this.user?.key;
+async logoutUser() {
+  // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+  console.log('>>> userStore.logoutUser: Action START <<<');
+  // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+  const userKey = this.user?.key;
 
-       if (userKey) {
-        try {
-          await goOffline(userKey);
-        } catch (error) {
-          console.error('LOGOUT FAILED: Could not set offline status.', error);
-        }
-      }
+  if (userKey) {
+    try {
+      // 在 goOffline 內部已有 Log，此處不再添加
+      await goOffline(userKey);
+    } catch (error) {
+      // goOffline 內部會打印錯誤，此處可選擇是否重複打印
+      console.error('[UserStore] Error calling goOffline, but proceeding with logout:', error);
+    }
+  } else {
+     console.warn('[UserStore logoutUser] userKey not found when logging out.'); // Log
+  }
 
-      this.clearUser();
-      localStorage.removeItem('anxi-user-session');
-      await router.replace('/login');
-    },
+  console.log('[UserStore logoutUser] Clearing user state...'); // Log
+  this.clearUser();
+  console.log('[UserStore logoutUser] Removing session storage...'); // Log
+  sessionStorage.removeItem('anxi-user-session'); // 確認是 sessionStorage
+
+  try {
+    console.log('[UserStore logoutUser] Attempting to navigate to /login...'); // Log
+    await router.replace('/login');
+    console.log('[UserStore logoutUser] Navigation to /login successful.'); // Log
+  } catch (navigationError) {
+    console.error('[UserStore logoutUser] Navigation to /login failed:', navigationError); // Log error
+    // 即使導航失敗，登出流程也應繼續
+  }
+
+  // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+  console.log('>>> userStore.logoutUser: Action END <<<');
+  // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+},
 
     setProjectName(projectName) {
       if (this.user) {

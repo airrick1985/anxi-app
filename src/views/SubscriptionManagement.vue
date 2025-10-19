@@ -96,6 +96,31 @@
                 ></v-text-field>
               </v-col>
 
+              <v-col cols="12">
+                <v-file-input
+                  v-model="fileToUpload"
+                  label="建案圖示 (上傳新圖檔將覆蓋舊檔)"
+                  accept="image/png, image/jpeg, image/gif"
+                  prepend-icon="mdi-image-area"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                ></v-file-input>
+                <v-img
+                  v-if="iconPreviewUrl"
+                  :src="iconPreviewUrl"
+                  height="100"
+                  contain
+                  class="mt-2"
+                  style="border: 1px solid #e0e0e0; border-radius: 4px;"
+                ></v-img>
+                <div v-else class="text-center text-grey-darken-1 pa-4" style="border: 2px dashed #ccc; border-radius: 8px;">
+                  尚無建案圖示
+                </div>
+              </v-col>
+              <v-col cols="12">
+                <v-divider class="my-3"></v-divider>
+              </v-col>
 
               <v-col cols="12" sm="6">
                 <v-select
@@ -261,15 +286,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue'; //  引入 watch
+import { ref, onMounted, computed, nextTick, watch } from 'vue';
 import { useUserStore } from '@/store/user';
 import { 
     fetchAllSubscriptions,
     fetchMasterDataForSubscriptionForm,
     addSubscription,
     updateSubscription,
-    deleteSubscription
-} from '@/api.js';
+    deleteSubscription,
+    //  1. 從 @/api.js 引入 SalesSettings 在用的函式
+    uploadSalesImage, 
+    updateProjectSalesSettings, 
+} from '@/api.js'; 
+//  2. 移除 firebase/storage 的 import，我們不再需要它
+// import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const userStore = useUserStore();
 const adminKey = computed(() => userStore.user?.key);
@@ -299,11 +329,11 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const isEditing = ref(false);
 
-//  修改點: defaultItem 的 systemFunction 初始化為空陣列
 const defaultItem = {
     id: null,
     projectName: '', 
     projectId: '', 
+    iconUrl: '', 
     systemFunction: [], 
     userLimitTiers: [],
     contactName: '', 
@@ -319,6 +349,23 @@ const defaultItem = {
 const editedItem = ref({ ...defaultItem });
 const itemToDelete = ref({});
 
+const fileToUpload = ref(null);
+const newIconPreview = ref(null);
+
+const iconPreviewUrl = computed(() => {
+  return newIconPreview.value || editedItem.value.iconUrl;
+});
+
+watch(fileToUpload, (newFile) => {
+  if (newIconPreview.value) {
+    URL.revokeObjectURL(newIconPreview.value);
+    newIconPreview.value = null;
+  }
+  if (newFile) {
+    newIconPreview.value = URL.createObjectURL(newFile);
+  }
+});
+
 const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
 const subscriptionTypeSelection = ref('');
 const otherSubscriptionType = ref('');
@@ -328,38 +375,31 @@ const rules = {
     required: [ value => !!value || '此欄位為必填項。' ],
     requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
     email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ],
-    //  新增 projectId 的驗證規則，用於手動輸入新ID時
     projectId: [
       v => !!v || '建案 ID 為必填項。',
       v => !projects.value.some(p => p.id === v) || '此建案 ID 已存在，請使用別的 ID。'
     ],
 };
 
-//  [新增] computed 屬性，用來判斷當前輸入的建案名稱是否已存在
 const isProjectNameExisting = computed(() => {
   return !!editedItem.value.projectName && projects.value.some(p => p.name === editedItem.value.projectName);
 });
 
-//  [新增] computed 屬性，用來決定建案 ID 欄位是否應該禁用
 const isProjectIdDisabled = computed(() => {
-  // 編輯模式，或者選擇了現有的建案時，都禁用
   return isEditing.value || isProjectNameExisting.value;
 });
 
-//  [新增] 這是實現連動的核心邏輯
 watch(() => editedItem.value.projectName, (newName) => {
-  // 在編輯模式下，不自動變更 ID
   if (isEditing.value) return;
 
-  // 從完整的 projects 列表中尋找匹配的建案
   const existingProject = projects.value.find(p => p.name === newName);
   
   if (existingProject) {
-    // 如果找到了，自動填入對應的 projectId
     editedItem.value.projectId = existingProject.id;
+    editedItem.value.iconUrl = existingProject.iconUrl || '';
   } else {
-    // 如果沒找到 (代表是手動輸入的新建案)，則清空 projectId 讓使用者自行填寫
     editedItem.value.projectId = '';
+    editedItem.value.iconUrl = '';
   }
 });
 
@@ -375,57 +415,53 @@ async function loadData() {
             fetchMasterDataForSubscriptionForm(adminKey.value)
         ]);
         
-        //  計算每筆訂閱的天數並附加到物件中
         subscriptions.value = subs.map(sub => {
-  const newSub = { ...sub };
+          const newSub = { ...sub };
 
-  // --- 計算 durationDays (邏輯不變) ---
-  if (sub.startDate && sub.endDate) {
-    const startDate = new Date(sub.startDate);
-    const endDate = new Date(sub.endDate);
-    if (!isNaN(startDate) && !isNaN(endDate)) {
-      const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      newSub.durationDays = diffDays;
-    } else {
-      newSub.durationDays = 'N/A';
-    }
-  } else {
-    newSub.durationDays = 'N/A';
-  }
+          // --- 計算 durationDays ---
+          if (sub.startDate && sub.endDate) {
+            const startDate = new Date(sub.startDate);
+            const endDate = new Date(sub.endDate);
+            if (!isNaN(startDate) && !isNaN(endDate)) {
+              const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+              newSub.durationDays = diffDays;
+            } else {
+              newSub.durationDays = 'N/A';
+            }
+          } else {
+            newSub.durationDays = 'N/A';
+          }
 
-  // ---  START: 新增計算 currentUserLimit 的邏輯 ---
-  const tiers = sub.userLimitTiers || [];
-  if (tiers.length > 0) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // 標準化為當天零點
+          // --- 計算 currentUserLimit ---
+          const tiers = sub.userLimitTiers || [];
+          if (tiers.length > 0) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); 
 
-    let effectiveLimit = 0;
-    tiers.forEach(tier => {
-      if (tier.startDate && tier.endDate) {
-        const tierStartDate = new Date(tier.startDate);
-        const tierEndDate = new Date(tier.endDate);
-        tierStartDate.setHours(0, 0, 0, 0);
-        tierEndDate.setHours(0, 0, 0, 0);
+            let effectiveLimit = 0;
+            tiers.forEach(tier => {
+              if (tier.startDate && tier.endDate) {
+                const tierStartDate = new Date(tier.startDate);
+                const tierEndDate = new Date(tier.endDate);
+                tierStartDate.setHours(0, 0, 0, 0);
+                tierEndDate.setHours(0, 0, 0, 0);
 
-        if (today >= tierStartDate && today <= tierEndDate) {
-          effectiveLimit += Number(tier.count) || 0;
-        }
-      }
-    });
-    newSub.currentUserLimit = effectiveLimit;
-  } else {
-    newSub.currentUserLimit = 0; // 如果沒有設定任何方案，則上限為 0
-  }
-  // ---  END: 新增計算 currentUserLimit 的邏輯 ---
+                if (today >= tierStartDate && today <= tierEndDate) {
+                  effectiveLimit += Number(tier.count) || 0;
+                }
+              }
+            });
+            newSub.currentUserLimit = effectiveLimit;
+          } else {
+            newSub.currentUserLimit = 0;
+          }
+          return newSub;
+        });
 
-  return newSub;
-});
-
-//  [修正] 正確處理 API 回傳的資料
-        projects.value = mData.projects; // 儲存完整的專案列表 {id, name}
+        projects.value = mData.projects; 
         masterData.value = {
-            projectNames: mData.projects.map(p => p.name), // 只取出 name 陣列給下拉選單用
+            projectNames: mData.projects.map(p => p.name), 
             systemFunctions: mData.systemFunctions
         };
 
@@ -439,22 +475,26 @@ async function loadData() {
 
 onMounted(loadData);
 
-//  修改點: openEditDialog 需處理 systemFunction 的資料格式
 function openEditDialog(item) {
     isEditing.value = !!item;
     
+    fileToUpload.value = null;
+    if (newIconPreview.value) {
+      URL.revokeObjectURL(newIconPreview.value);
+      newIconPreview.value = null;
+    }
+
     if (item) {
-        // 編輯模式：複製資料，並確保 systemFunction 和 userLimitTiers 是陣列
-        editedItem.value = { ...item, userLimitTiers: item.userLimitTiers || [] }; //  修改此行
+        editedItem.value = { ...item, userLimitTiers: item.userLimitTiers || [] };
         if (typeof editedItem.value.systemFunction === 'string') {
             editedItem.value.systemFunction = [editedItem.value.systemFunction];
         }
+        const project = projects.value.find(p => p.name === item.projectName);
+        editedItem.value.iconUrl = project ? project.iconUrl : '';
     } else {
-        // 新增模式：使用預設值
         editedItem.value = { ...defaultItem };
     }
     
-    // 處理訂閱類型顯示的邏輯不變
     const currentType = item ? item.subscriptionType : '';
     if (currentType && subscriptionTypeOptions.includes(currentType)) {
         subscriptionTypeSelection.value = currentType;
@@ -486,7 +526,6 @@ function closeDeleteDialog() {
     });
 }
 
-// 新增 Tier 管理函式
 function addUserTier() {
   if (!editedItem.value.userLimitTiers) {
     editedItem.value.userLimitTiers = [];
@@ -504,74 +543,113 @@ function addUserTier() {
 function removeUserTier(index) {
   editedItem.value.userLimitTiers.splice(index, 1);
 }
-// 新增 Tier 管理函式
 
-//  修改點: save 函式需處理多筆建立的邏輯
+//  3. 新增 fileToBase64 輔助函式 (同 SalesSettings.vue)
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => {
+    const base64String = reader.result.split(',')[1];
+    resolve(base64String);
+  };
+  reader.onerror = error => reject(error);
+});
+
+//  4. 修改 save 函式以使用 Base64 代理上傳
 async function save() {
     saving.value = true;
-    
-    const basePayload = { ...editedItem.value };
-
-    // 確保 userLimitTiers 中的日期是標準的 YYYY-MM-DD 格式
-    if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {
-      basePayload.userLimitTiers = basePayload.userLimitTiers.map(tier => ({
-        ...tier,
-        count: Number(tier.count) || 0, // 確保是數字
-        paymentAmount: Number(tier.paymentAmount) || 0,
-        startDate: tier.startDate ? new Date(tier.startDate).toISOString().split('T')[0] : '',
-        endDate: tier.endDate ? new Date(tier.endDate).toISOString().split('T')[0] : '',
-      })).filter(tier => tier.startDate && tier.endDate); // 過濾掉不完整的項目
-    }
-
-    if (subscriptionTypeSelection.value === '其他') {
-        basePayload.subscriptionType = otherSubscriptionType.value;
-    } else {
-        basePayload.subscriptionType = subscriptionTypeSelection.value;
-    }
+    let uploadedIconUrl = null; 
 
     try {
+        // --- 步驟 1: 處理圖檔上傳 (使用 Base64 代理) ---
+        if (fileToUpload.value) {
+            const projectId = editedItem.value.projectId;
+            if (!projectId) {
+                throw new Error('必須先指定建案 ID 才能上傳圖檔。');
+            }
+            
+            const fileExtension = fileToUpload.value.name.split('.').pop();
+            const storagePath = `projects/${projectId}/icon.${fileExtension}`;
+            
+            console.log(`正在轉換 Base64 並上傳至: ${storagePath}`);
+
+            const base64 = await fileToBase64(fileToUpload.value);
+
+            // 呼叫 SalesSettings 使用的 API 函式
+            const { downloadURL } = await uploadSalesImage(
+                storagePath,
+                fileToUpload.value.name,
+                base64,
+                projectId
+            );
+            
+            uploadedIconUrl = downloadURL; 
+            console.log('圖檔上傳成功, URL:', uploadedIconUrl);
+        }
+
+        // --- 步驟 2: 處理訂閱資料儲存 (既有邏輯) ---
+        const basePayload = { ...editedItem.value };
+
+        if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {
+          basePayload.userLimitTiers = basePayload.userLimitTiers.map(tier => ({
+            ...tier,
+            count: Number(tier.count) || 0,
+            paymentAmount: Number(tier.paymentAmount) || 0,
+            startDate: tier.startDate ? new Date(tier.startDate).toISOString().split('T')[0] : '',
+            endDate: tier.endDate ? new Date(tier.endDate).toISOString().split('T')[0] : '',
+          })).filter(tier => tier.startDate && tier.endDate);
+        }
+
+        if (subscriptionTypeSelection.value === '其他') {
+            basePayload.subscriptionType = otherSubscriptionType.value;
+        } else {
+            basePayload.subscriptionType = subscriptionTypeSelection.value;
+        }
+
         if (isEditing.value) {
-            // 編輯模式：僅更新單筆資料
             const payloadData = { ...basePayload };
-            // 從陣列取回單一值進行儲存
             payloadData.systemFunction = basePayload.systemFunction[0] || ''; 
             await updateSubscription(payloadData.id, payloadData, adminKey.value);
-            alert('儲存成功！');
+            alert('訂閱資料儲存成功！');
         } else {
-            // 新增模式：為每個選擇的系統建立一筆訂閱
             const selectedSystems = basePayload.systemFunction;
-
             if (!selectedSystems || selectedSystems.length === 0) {
-                alert('請至少選擇一個系統功能。');
-                saving.value = false;
-                return;
+                throw new Error('請至少選擇一個系統功能。');
             }
 
             const creationPromises = selectedSystems.map((system, index) => {
                 const payloadData = { ...basePayload, systemFunction: system };
-
                 const isDuplicate = subscriptions.value.some(sub => 
                     sub.projectName === payloadData.projectName &&
                     sub.systemFunction === payloadData.systemFunction &&
                     (sub.status === '啟用中' || sub.status.startsWith('即將到期'))
                 );
-
                 if (isDuplicate) {
                     throw new Error(`錯誤：建案「${payloadData.projectName}」的「${payloadData.systemFunction}」已有一個有效的訂閱。`);
                 }
-                
                 const newId = `SUB-${Date.now()}-${index}`;
-                // payloadData.id = newId; //  註解此行，ID 由後端API參數傳入
-                
                 return addSubscription(newId, payloadData, adminKey.value);
             });
-
             await Promise.all(creationPromises);
             alert(`成功新增 ${creationPromises.length} 筆訂閱！`);
         }
         
+        // --- 步驟 3: 處理建案圖示 URL 更新 (使用 SalesSettings 的 API) ---
+        if (uploadedIconUrl) {
+            const projectId = editedItem.value.projectId;
+            console.log(`正在更新 projects/${projectId} 的 iconUrl...`);
+            
+            // 呼叫 SalesSettings 用來更新專案的 API 函式
+            await updateProjectSalesSettings(projectId, { 
+                iconUrl: uploadedIconUrl 
+            });
+            
+            alert('建案圖示已同步更新！');
+        }
+
         closeDialog();
-        await loadData();
+        await loadData(); // 重新載入所有資料
+
     } catch (error) {
         console.error("儲存失敗:", error);
         alert('儲存失敗: ' + error.message);
