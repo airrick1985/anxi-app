@@ -480,6 +480,7 @@
 
 <teleport to="body">
   <v-bottom-navigation
+    v-if="!isAnyOverlayActive"
     class="d-md-none"
     grow
     style="position: fixed; z-index: 2400; bottom: 1rem; left: 1rem; right: 1rem; width: auto; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
@@ -709,6 +710,12 @@ const snackbarText = ref('');
 const panels = ref([]);
 const addDateMenu = ref(false); 
 
+// 修正：補上缺少的對話框狀態 ref
+const isDuplicateDialogVisible = ref(false);
+const isForceSaveDialogVisible = ref(false);
+const isBatchMismatchDialogVisible = ref(false);
+
+
 
 
 const isSavingInspectors = ref(false); // 專門給驗屋人員選擇框用的讀取狀態
@@ -779,6 +786,17 @@ const currentTypeOptions = computed(() => {
 const selectedTypes = ref([]);
 const selectedStatuses = ref(['預約中', '取消', '已完成']);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
+
+// 新增計算屬性，判斷是否有任何對話框或抽屜是開啟的
+const isAnyOverlayActive = computed(() => {
+  return isDialogVisible.value || 
+         isAdminAddDialogVisible.value || 
+         isCancelConfirmDialogVisible.value || 
+         isDuplicateDialogVisible.value || 
+         isForceSaveDialogVisible.value || 
+         isBatchMismatchDialogVisible.value ||
+         isFilterDrawerVisible.value;
+});
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
 const unitOptions = computed(() => newAppointmentData.building ? (bookingOptions.value.buildingsAndUnits[newAppointmentData.building] || []) : []);
