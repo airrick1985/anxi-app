@@ -275,7 +275,10 @@
         </div>
       </div>
 
-      <div v-else-if="isBound && !projectId" class="pa-6"> <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br>請選擇您要進入的驗屋系統建案： </p> <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4"> <IconButton v-for="project in authorizedProjects" :key="project.id" :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8" @click="enterProject(project)" /> </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert> </div>
+      <div v-else-if="isBound && !projectId" class="pa-6"> 
+        <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br>
+          請選擇您要進入的驗屋系統建案： </p> <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4">
+             <IconButton v-for="project in authorizedProjects" :key="project.id" :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8" @click="enterProject(project)" /> </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert> </div>
 
     </v-card>
 
@@ -477,6 +480,7 @@ onMounted(async () => {
 
     if (success) {
       isBound.value = true;
+       username.value = userStore.user?.name || 'User';
 
       loadingText.value = '正在載入建案權限...';
       await projectStore.fetchProjects();
