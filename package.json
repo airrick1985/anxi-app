@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.272",
+  "version": "0.0.273",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -50,7 +50,7 @@
     "fabric": "^5.5.2",
     "file-saver": "^2.0.5",
     "firebase": "^12.2.1",
-    "firebase-functions": "^6.5.0",
+    "firebase-functions": "^6.6.0",
     "google-auth-library": "^10.3.1",
     "googleapis": "^160.0.0",
     "html2canvas": "^1.4.1",

@@ -144,7 +144,7 @@ function getAuthenticatedDriveClient() {
 // ✓ END: 新增輔助函式
 
 // (您原有的 forgotPasswordSender 函式，保持不變)
-exports.forgotPasswordSender = onCall({ secrets: gmailSecrets }, async (request) => {
+exports.forgotPasswordSender = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
     const userPhone = request.data.key;
     if (!userPhone) {
@@ -680,7 +680,7 @@ exports.getBookingInitialData = onCall(async (request) => {
  * 2. 從 Firestore 'salesParkings' 集合讀取所有車位資料。
  * 3. 使用 Google Slides API 將最新的車位狀態渲染到簡報的圖形上。
  */
-exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => {
+exports.updateParkingSlide = onCall({ region: "asia-east1",secrets: gmailSecrets}, async (request) => {
   const {projectId, slideType} = request.data;
 
   if (!projectId || !slideType) {
@@ -907,7 +907,7 @@ exports.updateParkingSlide = onCall({secrets: gmailSecrets}, async (request) => 
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesParkings 集合
  * (V2 - 支援中文表頭)
  */
-exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
+exports.uploadParkingLots = onCall({ region: "asia-east1",secrets: gmailSecrets}, async (request) => {
   const {projectId, parkingData} = request.data;
   const functionName = `uploadParkingLots (Project: ${projectId})`;
 
@@ -1010,7 +1010,7 @@ exports.uploadParkingLots = onCall({secrets: gmailSecrets}, async (request) => {
  *  【新增】 上傳戶別資料並更新 Firestore
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesHouseholds 集合
  */
-exports.uploadHouseholds = onCall({ secrets: gmailSecrets }, async (request) => {
+exports.uploadHouseholds = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
   const { projectId, householdsData } = request.data;
   const functionName = `uploadHouseholds (Project: ${projectId})`;
 
@@ -1395,7 +1395,7 @@ exports.handleAppointmentSearch = onCall(async (request) => {
 */
 
 // ✓ 【替換】runBackupJob 整個函式
-exports.runBackupJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+exports.runBackupJob = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   const { jobId, jobConfig } = request.data;
 
   if (!jobId || !jobConfig) {
@@ -1530,7 +1530,7 @@ exports.listFirestoreCollections = onCall(async (request) => {
 
 
 
-exports.runDeleteJob = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+exports.runDeleteJob = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   const { jobId, jobConfig, isDryRun } = request.data;
 
   if (!jobId || !jobConfig) {
@@ -1879,7 +1879,7 @@ exports.deleteBackupFile = onCall(async (request) => {
 
 
 
-exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
+exports.generateExcelTemplate = onCall({ region: "asia-east1", timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
   const { targetCollection, projectId, fields } = request.data;
   const functionName = `generateExcelTemplate (Project: ${projectId})`;
 
@@ -1967,7 +1967,7 @@ exports.generateExcelTemplate = onCall({ timeoutSeconds: 300, memory: "1GiB" }, 
 });
 
 // ✓ 【替換】updateFieldsFromExcel 整個函式 (優化版)
-exports.updateFieldsFromExcel = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+exports.updateFieldsFromExcel = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   //  1. 修改：接收 fileContent (Base64字串)，而不是 filePath
   const { fileContent, targetCollection, isDryRun } = request.data;
   const functionName = `updateFieldsFromExcel (DryRun: ${isDryRun})`;
@@ -2091,7 +2091,7 @@ exports.getCollectionFields = onCall(async (request) => {
 });
 //  END: 新增 getCollectionFields 雲端函式
 
-exports.handleSpecialReportUpload = onCall({
+exports.handleSpecialReportUpload = onCall({ region: "asia-east1",
   timeoutSeconds: 540,
   memory: "1GiB",
   // ✓ 引用新的 secrets
@@ -2247,7 +2247,7 @@ exports.handleSpecialReportUpload = onCall({
 });
 
 
-exports.handleSalesImageUpload = onCall({ memory: "1GiB" }, async (request) => {
+exports.handleSalesImageUpload = onCall({ region: "asia-east1", memory: "1GiB" }, async (request) => {
   const { projectId, fileName, fileBase64, storagePath } = request.data;
   const functionName = `handleSalesImageUpload (Project: ${projectId})`;
 
@@ -2346,7 +2346,7 @@ exports.handleSalesImageDelete = onCall(async (request) => {
 /**
  * [新] 代理上傳 SVG 檔案到 Firebase Storage
  */
-exports.handleSalesSvgUpload = onCall({ memory: "1GiB" }, async (request) => {
+exports.handleSalesSvgUpload = onCall({ region: "asia-east1", memory: "1GiB" }, async (request) => {
   const { projectId, fileName, fileBase64, storagePath } = request.data;
   const functionName = `handleSalesSvgUpload (Project: ${projectId})`;
 
@@ -2489,7 +2489,7 @@ exports.handleSalesSvgBatchDelete = onCall(async (request) => {
  * 【新增】更新銷控資料
  * 處理單一戶別的銷控資料更新，包含所有欄位的資料驗證和型別轉換
  */
-exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
+exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
   const { projectName, projectId, unitId, data } = request.data;
   const functionName = `updateSalesData (Project: ${projectName}, Unit: ${unitId})`;
 
@@ -2748,7 +2748,7 @@ exports.updateSalesData = onCall({ secrets: gmailSecrets }, async (request) => {
  * 【新增】退戶功能
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
  */
-exports.cancelPurchase = onCall({ secrets: gmailSecrets }, async (request) => {
+exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
   const { projectId, unitId, operatorName } = request.data;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -3800,7 +3800,7 @@ exports.updateProjectStatusColors = onCall(async (request) => {
  *  【新增】 上傳驗屋系統戶別資料並更新 Firestore
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 households 集合
  */
-exports.uploadInspectionHouseholds = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+exports.uploadInspectionHouseholds = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
   const { projectId, householdsData } = request.data;
   const functionName = `uploadInspectionHouseholds (Project: ${projectId})`;
 
@@ -3985,7 +3985,7 @@ exports.saveFieldDefinition = onCall(async (request) => {
 
 
 
-exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
+exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
     const { projectId, bookingData } = request.data;
     const functionName = `saveBooking (Project: ${projectId})`;
 
@@ -4247,7 +4247,7 @@ exports.saveBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], 
 /**
  * 【新增】取消一筆預約紀錄
  */
-exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
+exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
     const { projectId, bookingCode } = request.data;
     const functionName = `cancelBooking (Project: ${projectId}, Code: ${bookingCode})`;
 
@@ -4403,7 +4403,7 @@ exports.cancelBooking = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"]
 /**
  * 獲取所有系統權限功能的列表
  */
-exports.getSystemFunctions = onCall({ cors: true }, async (request) => {
+exports.getSystemFunctions = onCall({ region: "asia-east1", cors: true }, async (request) => {
     const db = new Firestore({ databaseId: "anxi-app" });
     const snapshot = await db.collection('systemFunctions').orderBy('name', 'asc').get();
     if (snapshot.empty) {
@@ -4415,7 +4415,7 @@ exports.getSystemFunctions = onCall({ cors: true }, async (request) => {
 /**
  * 建立一個新的系統權限功能
  */
-exports.createSystemFunction = onCall({ cors: true }, async (request) => {
+exports.createSystemFunction = onCall({ region: "asia-east1", cors: true }, async (request) => {
     // 可以在此加入超級管理員權限驗證
     const { functionId, name, description, isCore } = request.data;
     if (!functionId || !name) {
@@ -4444,7 +4444,7 @@ exports.createSystemFunction = onCall({ cors: true }, async (request) => {
 /**
  * 更新一個已存在的系統權限功能 (只能更新名稱和描述)
  */
-exports.updateSystemFunction = onCall({ cors: true }, async (request) => {
+exports.updateSystemFunction = onCall({ region: "asia-east1", cors: true }, async (request) => {
     // 可以在此加入超級管理員權限驗證
     const { functionId, name, description } = request.data;
     if (!functionId || !name) {
@@ -4475,7 +4475,7 @@ exports.updateSystemFunction = onCall({ cors: true }, async (request) => {
  * @param {object} request.data - 包含 { projectId, unitId, fileName, base64 }
  * @returns {Promise<object>} - JSON 格式的回應 { status, url, name, id }
  */
-exports.uploadAuthLetter = onCall({
+exports.uploadAuthLetter = onCall({ region: "asia-east1",
   // ✓ 引用與特殊報告上傳相同的 Google Drive API 密鑰
   secrets: driveSecrets 
 }, async (request) => {
@@ -4573,7 +4573,7 @@ exports.uploadAuthLetter = onCall({
  * 包含：時段與名額驗證、強制新增、自訂文件ID、同步更新戶別資料
  */
 // ✓ START: 修改 - 增加 secrets 和 email 寄送邏輯
-exports.addAppointmentByAdmin = onCall({ cors: true, secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"] }, async (request) => {
+exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"] }, async (request) => {
     const { projectId, newBookingData, cancelBookingCode, force = false } = request.data;
     const functionName = `addAppointmentByAdmin (Project: ${projectId})`;
 
@@ -4794,7 +4794,7 @@ exports.addAppointmentByAdmin = onCall({ cors: true, secrets: ["SENDER_EMAIL", "
  * @param {string} unitId - 預約所屬的戶別 ID
  * @param {string} bookingType - 預約類型 ('初驗' 或 '複驗')
  */
-exports.cancelAppointmentByAdmin = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
+exports.cancelAppointmentByAdmin = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], cors: true }, async (request) => {
     const { appointmentId, projectId, unitId, bookingType } = request.data;
     const functionName = `cancelAppointmentByAdmin (ID: ${appointmentId})`;
 
@@ -4922,7 +4922,7 @@ exports.cancelAppointmentByAdmin = onCall({ secrets: ["SENDER_EMAIL", "GMAIL_APP
 /**
  *  [新增] 供管理員獲取指定日期的所有時段選項 (包含額滿狀態)
  */
-exports.getSlotsForAdmin = onCall({ cors: true }, async (request) => {
+exports.getSlotsForAdmin = onCall({ region: "asia-east1", cors: true }, async (request) => {
     const { projectId, dateStr } = request.data;
     const functionName = `getSlotsForAdmin`;
 
@@ -5089,7 +5089,7 @@ exports.getAllUnitsForUpload = onCall(async (request) => {
  * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
  * (已重構，解決 Read-after-Write 的事務問題)
  */
-exports.handleDirectReportUpload = onCall({
+exports.handleDirectReportUpload = onCall({ region: "asia-east1",
   timeoutSeconds: 300,
   memory: "1GiB",
   secrets: [
@@ -5301,7 +5301,7 @@ exports.handleDirectReportUpload = onCall({
  * 每日排程：自動更新當日已結束的預約狀態設定為:已完成
  * 此函式會於每日台灣時間 17:00 執行
  */
-exports.dailyAppointmentStatusUpdate = onSchedule({
+exports.dailyAppointmentStatusUpdate = onSchedule({ region: "asia-east1",
     schedule: "every day 17:00",
     timeZone: "Asia/Taipei", // 指定時區為台灣
     memory: "256MiB" // 此任務所需記憶體不多，256MB 足夠
@@ -5566,7 +5566,7 @@ exports.globalAppointmentSearch = onCall(async (request) => {
 
 
 //  START: 新增 - 發起授權書簽署流程 (委託人發起)
-exports.initiateAuthSigningProcess = onCall({
+exports.initiateAuthSigningProcess = onCall({ region: "asia-east1",
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (request) => {
   const { projectId, unitId, formData, delegatorSignature } = request.data;
@@ -5699,7 +5699,7 @@ exports.getAuthSigningSession = onCall(async (request) => {
 
 
 //  START: 修改 - 完成簽署流程並寄送通知信
-exports.completeAuthSigningProcess = onCall({
+exports.completeAuthSigningProcess = onCall({ region: "asia-east1",
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], //  加入 secrets
 }, async (request) => {
   const { token, finalUrl } = request.data;
@@ -6238,7 +6238,7 @@ async function executeUploadReminderLogic() {
  * 則找出已過提醒天數但尚未上傳報告的預約，寄送 Email 提醒並記錄時間。
  */
 // ✓ START: 修改 - 排程觸發器，簡化為呼叫核心邏輯
-exports.sendUploadReminders = onSchedule({
+exports.sendUploadReminders = onSchedule({ region: "asia-east1",
     schedule: "every 1 hours",
     timeZone: "Asia/Taipei",
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
@@ -6256,7 +6256,7 @@ exports.sendUploadReminders = onSchedule({
 });
 // ✓ END: 修改後的排程觸發器
 
-exports.manualTriggerSendReminders = onCall({
+exports.manualTriggerSendReminders = onCall({ region: "asia-east1",
     // 核心邏輯會寄信，所以這裡也需要 secrets
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (request) => {
@@ -6422,7 +6422,7 @@ exports.checkLineBindingStatus = onCall(async (request) => {
  * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
  * @returns {Promise<object>} - 回傳成功訊息
  */
-exports.initiateLineBindingVerification = onCall({
+exports.initiateLineBindingVerification = onCall({ region: "asia-east1",
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (request) => {
     const { phone, lineId } = request.data;
@@ -7215,7 +7215,7 @@ async function updateHouseholdSummary(db, projectId, unitId) {
 /**
  * [後台用] 更新一筆預約紀錄，並同步更新戶別摘要
  */
-exports.updateAppointmentByAdmin = onCall({ cors: true }, async (request) => {
+exports.updateAppointmentByAdmin = onCall({ region: "asia-east1", cors: true }, async (request) => {
   const { appointmentId, bookingPayload, householdDocId, householdPayload } = request.data;
   const functionName = `updateAppointmentByAdmin (ID: ${appointmentId})`;
 
@@ -7289,7 +7289,7 @@ exports.updateAppointmentByAdmin = onCall({ cors: true }, async (request) => {
 /**
  * [優化版] 獲取 Google Drive 資料夾內的檔案與資料夾列表
  */
-exports.driveProxyList = onCall({ secrets: driveSecrets }, async (request) => {
+exports.driveProxyList = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
   const { folderId, searchTerm } = request.data;
   const functionName = `driveProxyList (Folder: ${folderId})`;
 
@@ -7342,7 +7342,7 @@ exports.driveProxyList = onCall({ secrets: driveSecrets }, async (request) => {
  * [優化版] 處理 Google Drive 的背景任務 (下載、更名)
  */
 
-exports.driveProxyTask = onCall({ 
+exports.driveProxyTask = onCall({ region: "asia-east1", 
     secrets: driveSecrets, 
     timeoutSeconds: 540, 
     memory: "1GiB",
@@ -7437,7 +7437,7 @@ async function executeTaskInBackground(taskId, taskType, items, suffixOptions, d
  * @param {string} searchTerm - 搜尋關鍵字
  * @returns {Promise<object>} - 包含搜尋結果的物件
  */
-exports.driveProxySearch = onCall({ secrets: driveSecrets }, async (request) => {
+exports.driveProxySearch = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
   const { rootFolderId, searchTerm } = request.data;
   const functionName = `driveProxySearch (Root: ${rootFolderId})`;
 
@@ -7515,7 +7515,7 @@ exports.driveProxySearch = onCall({ secrets: driveSecrets }, async (request) => 
  * @param {string} rootFolderId - 掃描的根目錄 Google Drive ID
  * @returns {Promise<object>} - 包含扁平化檔案列表的物件
  */
-exports.getReportFolderStructure = onCall({ secrets: driveSecrets, timeoutSeconds: 300 }, async (request) => {
+exports.getReportFolderStructure = onCall({ region: "asia-east1", secrets: driveSecrets, timeoutSeconds: 300 }, async (request) => {
     const { rootFolderId } = request.data;
     const functionName = `getReportFolderStructure (Root: ${rootFolderId})`;
 
@@ -7583,7 +7583,7 @@ exports.getReportFolderStructure = onCall({ secrets: driveSecrets, timeoutSecond
 
 
 
-exports.sendNotDownloadedReportReminder = onCall({
+exports.sendNotDownloadedReportReminder = onCall({ region: "asia-east1",
   invoker: 'public',
   secrets: driveSecrets, // 確保 secrets 仍在，以便 getAuthenticatedDriveClient 運作
   timeoutSeconds: 300,
@@ -7609,7 +7609,7 @@ exports.sendNotDownloadedReportReminder = onCall({
  * [排程函式] 每小時檢查一次，觸發符合條件的建案進行未下載報告提醒
  * 
  */
-exports.scheduledReportReminder = onSchedule({
+exports.scheduledReportReminder = onSchedule({ region: "asia-east1",
   schedule: "*/30 8-18 * * *",      // 每天 8-18 點，每 30 分鐘執行一次
   timeZone: "Asia/Taipei",
   secrets: driveSecrets,
@@ -8092,7 +8092,7 @@ exports.deleteInspectionOption = onCall(async (request) => {
  * @param {Array<object>} importData - 前端解析好的 Excel 資料 [{ type, value, parentValue, color, icon, order }]
  * @returns {Promise<object>} - { status, importedCount, updatedCount, errors }
  */
-exports.batchImportInspectionOptions = onCall({
+exports.batchImportInspectionOptions = onCall({ region: "asia-east1",
   timeoutSeconds: 540,
   memory: "1GiB",
 }, async (request) => {
@@ -8302,7 +8302,7 @@ exports.updateInspectionOptionOrders = onCall(async (request) => {
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - { status, downloadUrl }
  */
-exports.exportInspectionOptionsToExcel = onCall({
+exports.exportInspectionOptionsToExcel = onCall({ region: "asia-east1",
   timeoutSeconds: 300, // 允許較長執行時間
   memory: "1GiB",     // 分配較多記憶體
 }, async (request) => {

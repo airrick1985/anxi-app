@@ -2452,7 +2452,7 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
     };
     
     // 3. 呼叫新的 Cloud Function
-    const functions = getFunctions();
+
     const uploader = httpsCallable(functions, 'handleDirectReportUpload');
     const result = await uploader(functionPayload);
 
