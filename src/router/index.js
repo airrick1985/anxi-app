@@ -8,7 +8,7 @@ import Home from '@/views/Home.vue';
 
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
-const InspectionConsole = () => import('@/views/InspectionConsole.vue');
+const InspectionConsole = () => import('@/views/public/InspectionConsole.vue');
 
 
 // ✅ 2. 引入新的 ProjectSelector 元件
