@@ -8479,6 +8479,69 @@ exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) =
 });
 
 /**
+ * 獲取單一建案 (projectId) 底下所有戶別 (unitId) 的驗屋紀錄
+ *
+ * @param {object} data - { projectId: string }
+ * @param {object} context - 包含驗證資訊
+ * @returns {Promise<{status: string, data: Array<object>}>}
+ */
+exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
+   
+
+    // 1. 驗證輸入參數
+    const { projectId } = request.data;
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少 'projectId' 參數。");
+    }
+
+    // ✓ 【修正】在函式內部初始化指向 'anxi-app' 資料庫的 Firestore 實例
+    const db = new Firestore({ databaseId: 'anxi-app' });
+    const functionName = `getInspectionRecordsForProjectFB (Project: ${projectId})`; // 用於 Log
+
+  
+
+    try {
+        // 2. 執行 Collection Group 查詢 (現在使用正確的 db 實例)
+        console.log(`[${functionName}] Executing collectionGroup query...`); // ✓ Log
+        const recordsRef = db.collectionGroup("inspectionRecords")
+                             .where("projectId", "==", projectId)
+                             .orderBy("inspectionDate", "desc");
+
+        const snapshot = await recordsRef.get();
+        console.log(`[${functionName}] Query completed. Found ${snapshot.size} documents.`); // ✓ Log
+
+        if (snapshot.empty) {
+            return { status: "success", data: [] };
+        }
+
+        // 3. 格式化回傳資料 (保持不變)
+        const records = snapshot.docs.map(doc => {
+            const data = doc.data();
+            const inspectionDate = data.inspectionDate?.toDate ? data.inspectionDate.toDate().toISOString() : data.inspectionDate;
+            const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt;
+            return {
+                id: doc.id,
+                ...data,
+                inspectionDate,
+                createdAt,
+            };
+        });
+
+        console.log(`[${functionName}] Successfully processed ${records.length} records.`); // ✓ Log
+        return { status: "success", data: records };
+
+    } catch (error) {
+        console.error(`[${functionName}] Error fetching project records (collectionGroup):`, error); // ✓ Log 錯誤
+        // Firestore 索引錯誤通常 code 為 9 (FAILED_PRECONDITION)
+        if (error.code === 9 && error.message.includes('index')) {
+             throw new HttpsError("failed-precondition", `查詢全建案紀錄失敗：資料庫缺少必要的複合索引。請檢查 Cloud Functions 日誌中的連結以建立索引。`);
+        }
+        throw new HttpsError("internal", `查詢全建案紀錄失敗: ${error.message}`);
+    }
+});
+
+
+/**
  * ✅ 獲取指定戶別的所有驗屋紀錄
  * @param {string} projectId - 建案 ID
  * @param {string} unitId - 戶別 ID
@@ -8533,6 +8596,8 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
         throw new HttpsError("internal", `查詢驗屋紀錄時發生錯誤: ${error.message}`);
     }
 });
+
+
 
 /**
  * ✅ 獲取指定建案的棟別與戶別結構

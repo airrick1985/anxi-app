@@ -5469,6 +5469,34 @@ export async function getInspectionRecordsFB(projectId, unitId) { // 命名為 g
   }
 }
 
+// ✓ START: 請將以下函式新增到您的 api.js 中
+/**
+ * ✅ 獲取指定建案 (projectId) 底下所有戶別的驗屋紀錄
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ */
+export async function getInspectionRecordsForProjectFB(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId' };
+  }
+
+  try {
+    // 依照您的風格，在函式內部建立 httpsCallable 引用
+    const getFunction = httpsCallable(functions, 'getInspectionRecordsForProjectFB');
+    
+    // 呼叫後端函式
+    const result = await getFunction({ projectId });
+    
+    // 直接回傳後端的 { status, data }
+    return result.data; 
+
+  } catch (error) {
+    console.error("API getInspectionRecordsForProjectFB 錯誤:", error);
+    // 參照 getInspectionRecordsFB 的錯誤處理
+    return { status: "error", message: error.message, data: [] }; 
+  }
+}
+
 /**
  * ✅ 獲取指定建案的棟別與戶別結構
  * @param {string} projectId - 建案 ID
