@@ -460,16 +460,18 @@ router.beforeEach(async (to, from, next) => {
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn;
 
-  // ✅ --- 新增：LIFF 路徑判斷 ---
-  // 檢查是否是從 LIFF 帶 liff_path 參數進入
-  const isLiffEntry = to.query.liff_path && from.name === undefined; // from.name === undefined 判斷是否為首次進入
+  // ✅ --- START: 修改 LIFF 路徑判斷 ---
+  const liffPath = to.query.liff_path; // ✓ 1. 取得 liff_path
+  const isLiffEntry = liffPath && from.name === undefined; 
 
   if (isLiffEntry) {
-    // 如果是 LIFF 首次進入，直接放行，讓目標元件處理 LIFF 初始化和登入
-    console.log('[Router Guard] LIFF entry detected, bypassing initial auth check.');
-    return next();
+    // ✓ 2. 如果是 LIFF 首次進入，*重新導向* 到 liff_path 指定的路徑
+    console.log(`[Router Guard] LIFF entry detected, redirecting to: ${liffPath}`);
+    // ✓ 確保 liffPath 包含開頭的 '/'
+    const targetPath = liffPath.startsWith('/') ? liffPath : `/${liffPath}`;
+    return next(targetPath); 
   }
-  // ✅ --- LIFF 路徑判斷結束 ---
+  // ✅ --- END: LIFF 路徑判斷結束 ---
 
   if (!to.meta.requiresAuth) {
     if (isLoggedIn && to.name === 'Login') {
