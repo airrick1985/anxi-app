@@ -5485,6 +5485,117 @@ export async function getProjectStructureFB(projectId) { // 命名為 getProject
   }
 }
 
+/**
+ * [修正] 更新單筆驗屋紀錄的特定欄位 (透過 Cloud Function)
+ * @param {string} projectId 建案 ID
+ * @param {string} unitId 戶別 ID
+ * @param {string} recordId 紀錄文件 ID (自訂格式，例如 fuyu141_A1-02_...)
+ * @param {object} payload 要更新的欄位 (例如 { status: '已完成', inspectorName: '...' })
+ * @returns {Promise<{status: string, message?: string}>}
+ */
+export const updateInspectionRecordFieldFB = async (projectId, unitId, recordId, payload) => {
+  // 基本參數驗證 (保留)
+  if (!projectId || !unitId || !recordId || !payload) {
+    console.error("[API Error] updateInspectionRecordFieldFB: Missing required parameters.", { projectId, unitId, recordId, payload });
+    return { status: 'error', message: '前端錯誤：缺少必要的更新參數' };
+  }
+
+  try {
+    // 1. 獲取對 Cloud Function 的引用 (函數名稱需與 function index.js 中定義的完全一致)
+    const updateFunction = httpsCallable(functions, 'updateInspectionRecordField');
+
+    // 2. 呼叫 Cloud Function，將所有參數包裝在一個物件中傳遞
+    console.log("[API Call] Calling 'updateInspectionRecordField' Cloud Function with:", { projectId, unitId, recordId, payload });
+    const result = await updateFunction({
+      projectId: projectId,
+      unitId: unitId,
+      recordId: recordId,
+      payload: payload // 將 payload 物件直接傳遞
+    });
+    console.log("[API Response] 'updateInspectionRecordField' Cloud Function returned:", result.data);
+
+    // 3. 直接回傳 Cloud Function 的執行結果 (Cloud Function 成功時應回傳 { status: 'success' })
+    return result.data;
+
+  } catch (error) {
+    // 4. 捕捉呼叫 Cloud Function 時發生的錯誤 (包括 HttpsError)
+    console.error("[API Error] Error calling 'updateInspectionRecordField' Cloud Function:", error);
+    // 將錯誤訊息傳回給前端元件
+    const message = error instanceof HttpsError ? error.message : `呼叫後端更新時發生錯誤: ${error.message}`;
+    return { status: 'error', message: message };
+  }
+};
+
+/**
+ * [新增] 更新一筆完整的驗屋紀錄 (透過 Cloud Function)
+ * @param {string} recordId - 要更新的紀錄文件 ID (自訂格式)
+ * @param {object} payload - 包含所有更新欄位的物件 (來自 InspectionRecordEditor)
+ * @returns {Promise<{status: string, message?: string}>}
+ */
+export const updateInspectionRecordFB = async (recordId, payload) => {
+  // 基本參數驗證
+  if (!recordId || !payload) {
+    console.error("[API Error] updateInspectionRecordFB: Missing required parameters.", { recordId, payload });
+    return { status: 'error', message: '前端錯誤：缺少紀錄 ID 或更新資料。' };
+  }
+
+  try {
+    // 1. 獲取對 Cloud Function 的引用y
+    const updateFunction = httpsCallable(functions, 'updateInspectionRecord'); // ✓ 呼叫新的 CF
+
+    // 2. 呼叫 Cloud Function
+    console.log("[API Call] Calling 'updateInspectionRecord' Cloud Function with:", { recordId, payload });
+    const result = await updateFunction({
+      recordId: recordId,
+      payload: payload // 將整個 payload 物件傳遞
+    });
+    console.log("[API Response] 'updateInspectionRecord' Cloud Function returned:", result.data);
+
+    // 3. 直接回傳 Cloud Function 的執行結果
+    return result.data;
+
+  } catch (error) {
+    // 4. 捕捉錯誤
+    console.error("[API Error] Error calling 'updateInspectionRecord' Cloud Function:", error);
+    const message = error instanceof HttpsError ? error.message : `呼叫後端更新時發生錯誤: ${error.message}`;
+    return { status: 'error', message: message };
+  }
+};
+
+/**
+ * [新增] 刪除一筆驗屋紀錄 (透過 Cloud Function)
+ * @param {string} recordId - 要刪除的紀錄文件 ID (自訂格式)
+ * @returns {Promise<{status: string, message?: string}>}
+ */
+export const deleteInspectionRecordFB = async (recordId) => {
+  // 基本參數驗證
+  if (!recordId) {
+    console.error("[API Error] deleteInspectionRecordFB: Missing required parameter 'recordId'.");
+    return { status: 'error', message: '前端錯誤：缺少紀錄 ID。' };
+  }
+
+  try {
+    // 1. 獲取對 Cloud Function 的引用
+    const deleteFunction = httpsCallable(functions, 'deleteInspectionRecord'); // ✓ 呼叫新的 CF
+
+    // 2. 呼叫 Cloud Function
+    console.log("[API Call] Calling 'deleteInspectionRecord' Cloud Function with:", { recordId });
+    const result = await deleteFunction({
+      recordId: recordId
+    });
+    console.log("[API Response] 'deleteInspectionRecord' Cloud Function returned:", result.data);
+
+    // 3. 直接回傳 Cloud Function 的執行結果
+    return result.data; // 成功時應回傳 { status: 'success' }
+
+  } catch (error) {
+    // 4. 捕捉錯誤
+    console.error("[API Error] Error calling 'deleteInspectionRecord' Cloud Function:", error);
+    const message = error instanceof HttpsError ? error.message : `呼叫後端刪除時發生錯誤: ${error.message}`;
+    return { status: 'error', message: message };
+  }
+};
+
 // =================================================================
 // / ✅ 結束：驗屋紀錄 API
 // =================================================================
@@ -5545,3 +5656,4 @@ export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
 // =================================================================
 // / ✅ 結束：驗屋選項與照片上傳 API
 // =================================================================
+

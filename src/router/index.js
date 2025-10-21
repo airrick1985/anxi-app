@@ -107,19 +107,20 @@ const routes = [
       paramKey: 'projectId' // 目標路由參數的 key
     }
   },
-  // ✅ 4. 新增驗屋主控台路由
+  // ✓ START: 修改 - 仿照 ReportFolderManager，改用 PublicLayout 並移除 requiresAuth
   {
-    path: '/inspection-console/:projectId',
+    path: '/inspection-console/:projectId?', // ✓ 保持 '?'
     name: 'InspectionConsole',
     component: InspectionConsole,
-    props: true, // 允許 projectId 作為 prop 傳入元件
+    props: true, 
     meta: {
-      requiresAuth: true,
-      requiredSystem: '驗屋系統', // 指定需要的系統權限
-      layout: DefaultLayout,
-      title: '驗屋紀錄' // 可選：頁面標題
+      // requiresAuth: true, // ✓ 移除
+      // requiredSystem: '驗屋系統', // ✓ 移除 (由元件內部 liff 驗證)
+      layout: PublicLayout, // ✓ 修改
+      title: '驗屋紀錄' 
     }
   },
+  // ✓ END: 修改
 
   {
     path: '/sales-control/:projectName',
@@ -529,6 +530,12 @@ router.beforeEach(async (to, from, next) => {
 
           if (projectId) {
               // 情況 B.1: 路由包含 projectId (例如 /inspection-console/:projectId)
+              // ✓ START: 修改 - 路由守衛現在會檢查 projectStore
+              // 我們需要確保 projectStore 已經載入
+              if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
+                 await projectStore.fetchProjects(); // 確保 idToNameMap 是最新的
+              }
+              // ✓ END: 修改
               const fullProjectName = projectStore.idToNameMap[projectId];
               if (!fullProjectName) {
                   // 如果 projectStore 還沒載入完畢，可能需要等待或顯示錯誤

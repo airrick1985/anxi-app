@@ -180,7 +180,7 @@ import { ref, watch, computed, reactive, nextTick } from 'vue';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import PhotoEditor from '@/components/PhotoEditor.vue';
-import { getInspectionOptionsForProjectFB, uploadInspectionPhotoFB, addInspectionRecordFB } from '@/api';
+import { getInspectionOptionsForProjectFB, uploadInspectionPhotoFB, addInspectionRecordFB, updateInspectionRecordFB } from '@/api';
 import { useUserStore } from '@/store/user';
 
 const props = defineProps({
@@ -388,53 +388,40 @@ function appendToDescription(text) {
 }
 
 async function saveRecord() {
-    // 觸發 Vuetify 表單驗證
     const validationResult = await form.value?.validate();
     if (!validationResult?.valid) {
         alert('請檢查表單必填欄位。');
         return;
     }
-     // ✅ 再次檢查手動驗證的欄位
-     if (!formData.inspectionDate || !formData.phase || !formData.status || !formData.level || !formData.progress) {
-         alert('請檢查日期與所有 Chip Group 必選項。');
-         return;
-     }
+    if (!formData.inspectionDate || !formData.phase || !formData.status || !formData.level || !formData.progress) {
+        alert('請檢查日期與所有 Chip Group 必選項。');
+        return;
+    }
 
     isSaving.value = true;
 
     try {
-        // 上傳照片
+        // --- 照片上傳邏輯 (不變) ---
         const uploadedPhotosInfo = [];
         for (const photo of formData.photos) {
-            // 如果 photo 有 file 屬性且沒有 url，表示是新上傳或編輯過的，需要上傳
             if (photo.file && !photo.url) {
                 const uploadResult = await uploadInspectionPhotoFB(props.projectId, props.unitId, photo.file);
                 if (uploadResult.status === 'success') {
-                    uploadedPhotosInfo.push({
-                        name: uploadResult.name,
-                        url: uploadResult.url,
-                        path: uploadResult.path
-                    });
+                    uploadedPhotosInfo.push({ name: uploadResult.name, url: uploadResult.url, path: uploadResult.path });
                 } else {
                     throw new Error(`照片 ${photo.name} 上傳失敗: ${uploadResult.message}`);
                 }
             } else if (photo.url) {
-                // 如果已有 url，表示是編輯模式下載入的舊照片，直接保留
-                uploadedPhotosInfo.push({
-                    name: photo.name,
-                    url: photo.url,
-                    path: photo.path
-                });
+                uploadedPhotosInfo.push({ name: photo.name, url: photo.url, path: photo.path });
             }
         }
 
-        // 準備儲存到 Firestore 的資料
+        // --- 準備 Payload (通用) ---
         const recordPayload = {
-            projectId: props.projectId,
-            unitId: props.unitId,
-            inspectionDate: formData.inspectionDate.toISOString(), // 轉為 ISO String
+            // projectId 和 unitId 由後端 Cloud Function 從參數獲取，這裡不需要重複加入 payload
+            inspectionDate: formData.inspectionDate.toISOString(),
             phase: formData.phase,
-            photos: uploadedPhotosInfo, // 使用上傳成功後的資訊
+            photos: uploadedPhotosInfo,
             area: formData.area,
             category: formData.category,
             subCategory: formData.subCategory,
@@ -444,17 +431,36 @@ async function saveRecord() {
             description: formData.description,
             inspectorName: userStore.user?.name || '未知',
             inspectorPhone: userStore.user?.key || '未知',
+            // 注意：updatedAt 由後端 Cloud Function 自動處理
         };
 
-        // 呼叫後端儲存
-        const saveResult = await addInspectionRecordFB(recordPayload);
+        // ✓ START: 修改 - 根據模式呼叫不同 API
+        let saveResult;
+        if (isEditMode.value) {
+            // --- 編輯模式 ---
+            if (!props.recordToEdit?.id) { // ✓ 增加檢查，確保有 record ID
+                 throw new Error("編輯模式下找不到紀錄 ID。");
+            }
+            console.log(`編輯模式：準備更新紀錄 ID ${props.recordToEdit.id}`);
+            // ✓ 呼叫新的 update API
+            saveResult = await updateInspectionRecordFB(props.recordToEdit.id, recordPayload);
+        } else {
+            // --- 新增模式 ---
+            console.log("新增模式：準備新增紀錄");
+             // ✓ 將 projectId 和 unitId 加入 payload (addInspectionRecordFB 可能需要)
+             recordPayload.projectId = props.projectId;
+             recordPayload.unitId = props.unitId;
+            // ✓ 呼叫舊的 add API (保持不變)
+            saveResult = await addInspectionRecordFB(recordPayload);
+        }
+        // ✓ END: 修改
 
         if (saveResult.status === 'success') {
             alert('儲存成功！');
-            emit('saved'); // 通知父層刷新
+            emit('saved');
             closeDialog();
         } else {
-            throw new Error(saveResult.message || '儲存失敗');
+            throw new Error(saveResult.message || (isEditMode.value ? '更新失敗' : '新增失敗'));
         }
 
     } catch (error) {
@@ -464,7 +470,6 @@ async function saveRecord() {
         isSaving.value = false;
     }
 }
-
 </script>
 
 <style>

@@ -8589,6 +8589,169 @@ exports.getProjectStructure = onCall({ region: "asia-east1" }, async (request) =
     }
 });
 
+// ✓ 再次確認 onCall 包裝和 HttpsError 使用
+exports.updateInspectionRecordField = onCall(async (request) => {
+    // 將所有邏輯包在 try...catch 中，確保拋出 HttpsError
+    try {
+        const { projectId, unitId, recordId, payload } = request.data;
+        const functionName = `updateInspectionRecordField (Record: ${recordId})`;
+
+        if (!recordId || !payload || typeof payload !== 'object') {
+            console.error(`[${functionName}] 錯誤：缺少必要參數。`, request.data);
+            // ✓ 必須拋出 HttpsError 給前端
+            throw new HttpsError("invalid-argument", "缺少 recordId 或有效的 payload。");
+        }
+        // ... (projectId, unitId 檢查) ...
+
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const recordRef = db.collection('inspectionRecords').doc(recordId);
+
+        const dataToUpdate = { /* ... 更新內容 ... */ };
+         dataToUpdate.updatedAt = FieldValue.serverTimestamp(); // ✓ 自動時間戳
+
+        console.log(`[${functionName}] 準備更新文件: ${recordRef.path}`);
+        // ✓ 使用 update，如果文件不存在它會自動拋錯
+        await recordRef.update(dataToUpdate);
+        console.log(`[${functionName}] 文件更新成功。`);
+
+        return { status: "success" };
+
+    } catch (error) {
+        // 在後端記錄原始錯誤細節
+        console.error(`[${functionName}] 更新 Firestore 文件時發生錯誤:`, error);
+
+        // 將特定錯誤轉為 HttpsError 回傳給前端
+        // Firestore 文件不存在的錯誤碼通常是 5
+        if (error.code === 5 || error.message.includes('NOT_FOUND') || error.message.includes('No document to update')) {
+             console.error(`[${functionName}] 找不到指定的文件: ${recordId}`);
+             // ✓ 必須拋出 HttpsError 給前端
+             throw new HttpsError("not-found", `找不到要更新的紀錄 (ID: ${recordId})。`);
+        }
+        // 如果錯誤已經是 HttpsError (例如來自參數驗證)，直接再次拋出
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        // 對於其他未預期的錯誤，拋出通用的內部錯誤
+        // ✓ 必須拋出 HttpsError 給前端
+        throw new HttpsError("internal", `更新驗屋紀錄時發生未預期的錯誤: ${error.message}`);
+    }
+}); // ✓ 確保 onCall 包裹了 async 函數
+
+/**
+ * [新增] 更新一筆完整的驗屋紀錄 (供 InspectionRecordEditor 編輯模式使用)
+ * @param {string} recordId - 驗屋紀錄文件 ID (自訂格式，例如 fuyu141_A1-02_...)
+ * @param {object} payload - 包含要更新的所有欄位的物件
+ * @returns {Promise<object>} - { status: 'success' } 或 { status: 'error', message: '...' }
+ */
+exports.updateInspectionRecord = onCall(async (request) => {
+    // 從 request.data 中解構出前端傳來的參數
+    const { recordId, payload } = request.data;
+    const functionName = `updateInspectionRecord (Record: ${recordId})`; // 用於 Log
+
+    // 1. 驗證必要參數是否存在
+    if (!recordId || !payload || typeof payload !== 'object') {
+        console.error(`[${functionName}] 錯誤：缺少必要的更新參數。`, request.data);
+        throw new HttpsError("invalid-argument", "缺少 recordId 或有效的 payload。");
+    }
+
+    // 2. 建立指向 anxi-app 資料庫的 Firestore Admin SDK 實例
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 3. 構造指向目標文件的 DocumentReference (指向頂層集合 inspectionRecords)
+    const recordRef = db.collection('inspectionRecords').doc(recordId);
+
+    try {
+        // 4. 準備要更新的資料
+        const dataToUpdate = {
+            ...payload, // 展開前端傳來的欄位
+            updatedAt: FieldValue.serverTimestamp(), // 自動加入更新時間戳
+        };
+
+        // ❗ 清理不需要更新或應由後端控制的欄位
+        delete dataToUpdate.id; // payload 中可能包含 id，不需要儲存
+        delete dataToUpdate.createdAt; // 不應更新建立時間
+        // ❗ 如果 inspectionDate 前端傳的是 Date 物件，需轉為 Timestamp
+        if (dataToUpdate.inspectionDate && dataToUpdate.inspectionDate instanceof Date) {
+            dataToUpdate.inspectionDate = Timestamp.fromDate(dataToUpdate.inspectionDate);
+        } else if (dataToUpdate.inspectionDate && typeof dataToUpdate.inspectionDate === 'string') {
+            // 如果前端傳的是 ISO 字串，也轉為 Timestamp
+            const dateObj = new Date(dataToUpdate.inspectionDate);
+            if (!isNaN(dateObj.getTime())) {
+                 dataToUpdate.inspectionDate = Timestamp.fromDate(dateObj);
+            } else {
+                 console.warn(`[${functionName}] 無效的 inspectionDate 字串格式: ${dataToUpdate.inspectionDate}`);
+                 // 根據您的業務邏輯決定如何處理無效日期，例如設為 null 或保持不變
+                 // delete dataToUpdate.inspectionDate; // 或移除此欄位
+                 dataToUpdate.inspectionDate = null; // 或設為 null
+            }
+        }
+
+
+        // 5. 執行更新操作 (使用 set + merge: true 更安全，不存在會報錯，存在則合併更新)
+        console.log(`[${functionName}] 準備更新文件: ${recordRef.path}`); // Log 路徑
+        // console.log(`[${functionName}] 更新內容:`, dataToUpdate); // 可選：Log 更新內容
+        // await recordRef.update(dataToUpdate); // update 在文件不存在時會報錯
+        await recordRef.set(dataToUpdate, { merge: true }); // set + merge 更安全
+        console.log(`[${functionName}] 文件更新成功。`);
+
+        // 6. 回傳成功訊息
+        return { status: "success" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 更新 Firestore 文件時發生錯誤:`, error);
+        // 錯誤處理 (與 updateInspectionRecordField 相同)
+        if (error.code === 5) {
+             console.error(`[${functionName}] 找不到指定的文件: ${recordRef.path}`);
+             throw new HttpsError("not-found", `找不到要更新的紀錄 (ID: ${recordId})。`);
+        }
+        throw new HttpsError("internal", `更新驗屋紀錄時發生錯誤: ${error.message}`);
+    }
+});
+
+/**
+ * [新增] 刪除一筆驗屋紀錄 (永久刪除)
+ * @param {string} recordId - 要刪除的驗屋紀錄文件 ID (自訂格式)
+ * @returns {Promise<object>} - { status: 'success' } 或 { status: 'error', message: '...' }
+ */
+exports.deleteInspectionRecord = onCall(async (request) => {
+    // 從 request.data 中解構出前端傳來的 recordId
+    const { recordId } = request.data;
+    const functionName = `deleteInspectionRecord (Record: ${recordId})`; // 用於 Log
+
+    // 1. 驗證必要參數是否存在
+    if (!recordId) {
+        console.error(`[${functionName}] 錯誤：缺少必要的 recordId。`, request.data);
+        throw new HttpsError("invalid-argument", "缺少 recordId。");
+    }
+
+    // 2. 建立指向 anxi-app 資料庫的 Firestore Admin SDK 實例
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 3. 構造指向目標文件的 DocumentReference (指向頂層集合 inspectionRecords)
+    const recordRef = db.collection('inspectionRecords').doc(recordId);
+
+    try {
+        // 4. 執行刪除操作
+        console.log(`[${functionName}] 準備刪除文件: ${recordRef.path}`);
+        await recordRef.delete();
+        console.log(`[${functionName}] 文件刪除成功。`);
+
+        // 5. 回傳成功訊息
+        return { status: "success" };
+
+    } catch (error) {
+        console.error(`[${functionName}] 刪除 Firestore 文件時發生錯誤:`, error);
+        // 檢查是否是 "文件不存在" 的錯誤 (Code 5)
+        if (error.code === 5) {
+             console.warn(`[${functionName}] 找不到要刪除的文件: ${recordRef.path}，可能已被刪除。`);
+             // 即使找不到也回傳成功，避免前端重複操作
+             return { status: "success" };
+        }
+        // 其他類型的錯誤
+        throw new HttpsError("internal", `刪除驗屋紀錄時發生錯誤: ${error.message}`);
+    }
+});
+
 // =================================================================
 // / ✅ 結束：驗屋紀錄相關 Cloud Functions
 // =================================================================
