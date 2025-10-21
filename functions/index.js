@@ -8410,3 +8410,328 @@ exports.exportInspectionOptionsToExcel = onCall({ region: "asia-east1",
     throw new HttpsError("internal", `匯出 Excel 失敗: ${error.message}`); // ✓ 其他錯誤包裝後拋出
   }
 });
+
+
+// =================================================================
+// / ✅ 新增：驗屋紀錄相關 Cloud Functions
+// =================================================================
+
+/**
+ * ✅ 新增一筆驗屋紀錄
+ * @param {object} data - 包含 projectId, unitId, inspectionDate, phase, photos (array of objects {name, url, path}), area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone
+ * @returns {Promise<object>} - { status, id }
+ */
+exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
+    const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone } = request.data;
+    const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
+
+    // 基本參數驗證
+    if (!projectId || !unitId || !inspectionDate || !phase || !area || !category || !subCategory || !status || !level || !progress || !inspectorName || !inspectorPhone) {
+        console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+        throw new HttpsError("invalid-argument", "缺少必要的驗屋紀錄參數。");
+    }
+
+    // ✅ 驗證照片數量上限
+    if (photos && Array.isArray(photos) && photos.length > 4) {
+        console.error(`[${functionName}] 錯誤：照片數量 (${photos.length}) 超過上限 4 張。`);
+        throw new HttpsError("invalid-argument", "照片數量最多只能 4 張。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const recordsRef = db.collection("inspectionRecords");
+
+        // 產生文件 ID
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+        const timestampSuffix = now.toISOString().replace(/[-:.]/g, "").replace("T", "_").replace("Z", ""); // YYYYMMDD_HHMMSSmmm
+        const docId = `${projectId}_${unitId}_${timestampSuffix}`;
+
+        const dataToSave = {
+            projectId,
+            unitId,
+            inspectionDate: Timestamp.fromDate(new Date(inspectionDate)), // 確保儲存為 Timestamp
+            phase,
+            // ✅ 儲存照片資訊陣列
+            photos: photos || [], // 如果沒傳 photos 就存空陣列
+            area,
+            category,
+            subCategory,
+            status,
+            level,
+            progress,
+            description: description || "", // 確保 description 有值
+            inspectorName,
+            inspectorPhone,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            // 可以考慮加入 isDeleted: false 欄位，方便未來做軟刪除
+        };
+
+        await recordsRef.doc(docId).set(dataToSave);
+        console.log(`[${functionName}] 成功新增驗屋紀錄，ID: ${docId}`);
+
+        return { status: "success", id: docId };
+
+    } catch (error) {
+        console.error(`[${functionName}] 新增紀錄時發生錯誤:`, error);
+        throw new HttpsError("internal", `新增驗屋紀錄時發生錯誤: ${error.message}`);
+    }
+});
+
+/**
+ * ✅ 獲取指定戶別的所有驗屋紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - { status, data: Array<object> }
+ */
+exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) => {
+    const { projectId, unitId } = request.data;
+    const functionName = `getInspectionRecords (Project: ${projectId}, Unit: ${unitId})`;
+
+    if (!projectId || !unitId) {
+        console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 unitId。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const recordsRef = db.collection("inspectionRecords");
+
+        const query = recordsRef
+            .where("projectId", "==", projectId)
+            .where("unitId", "==", unitId)
+            // .where("isDeleted", "==", false) // 如果有軟刪除欄位
+            .orderBy("createdAt", "desc"); // 依照建立時間遞減排序
+
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            console.log(`[${functionName}] 找不到戶別 ${unitId} 的驗屋紀錄。`);
+            return { status: "success", data: [] };
+        }
+
+        const records = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // 將 Timestamp 轉為 ISO String 方便前端處理
+            if (data.inspectionDate && data.inspectionDate.toDate) {
+                data.inspectionDate = data.inspectionDate.toDate().toISOString();
+            }
+            if (data.createdAt && data.createdAt.toDate) {
+                data.createdAt = data.createdAt.toDate().toISOString();
+            }
+            if (data.updatedAt && data.updatedAt.toDate) {
+                data.updatedAt = data.updatedAt.toDate().toISOString();
+            }
+            return { id: doc.id, ...data };
+        });
+
+        console.log(`[${functionName}] 成功獲取 ${records.length} 筆紀錄。`);
+        return { status: "success", data: records };
+
+    } catch (error) {
+        console.error(`[${functionName}] 查詢紀錄時發生錯誤:`, error);
+        throw new HttpsError("internal", `查詢驗屋紀錄時發生錯誤: ${error.message}`);
+    }
+});
+
+/**
+ * ✅ 獲取指定建案的棟別與戶別結構
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - { status, data: object } e.g., { "A棟": ["A1-01", "A1-02"], ... }
+ */
+exports.getProjectStructure = onCall({ region: "asia-east1" }, async (request) => {
+    const { projectId } = request.data;
+    const functionName = `getProjectStructure (Project: ${projectId})`;
+
+    if (!projectId) {
+        console.error(`[${functionName}] 錯誤：缺少 projectId。`);
+        throw new HttpsError("invalid-argument", "缺少 projectId。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const buildingsRef = db.collection('projects').doc(projectId).collection('buildings');
+        const buildingsSnapshot = await buildingsRef.orderBy('buildingName').get(); // 按名稱排序棟別
+
+        if (buildingsSnapshot.empty) {
+            console.log(`[${functionName}] 建案 ${projectId} 找不到任何棟別資料。`);
+            return { status: "success", data: {} };
+        }
+
+        const structure = {};
+        const buildingPromises = buildingsSnapshot.docs.map(async (buildingDoc) => {
+            const buildingName = buildingDoc.data().buildingName;
+            if (!buildingName) return; // 跳過沒有名稱的棟別文件
+
+            const unitsRef = buildingDoc.ref.collection('unitId');
+            const unitsSnapshot = await unitsRef.get(); // 讀取該棟別下的所有戶別文件
+
+            const unitIds = unitsSnapshot.docs
+                .map(unitDoc => unitDoc.data().unitId) // 取出每個戶別文件中的 unitId 欄位值
+                .filter(Boolean); // 過濾掉空值
+
+            // ✅ 自然排序戶別 (例如 A1-1, A1-2, A1-10 而不是 A1-1, A1-10, A1-2)
+            unitIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+            if (unitIds.length > 0) {
+                structure[buildingName] = unitIds;
+            }
+        });
+
+        await Promise.all(buildingPromises); // 等待所有棟別的戶別都讀取完畢
+
+        console.log(`[${functionName}] 成功獲取 ${Object.keys(structure).length} 個棟別的結構。`);
+        return { status: "success", data: structure };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取結構時發生錯誤:`, error);
+        throw new HttpsError("internal", `獲取建案結構時發生錯誤: ${error.message}`);
+    }
+});
+
+// =================================================================
+// / ✅ 結束：驗屋紀錄相關 Cloud Functions
+// =================================================================
+
+// =================================================================
+// / ✅ 新增：驗屋選項與照片上傳 Cloud Functions
+// =================================================================
+
+/**
+ * ✅ 獲取指定建案的所有驗屋選項 (供新增/編輯畫面使用)
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - { status, data: object } 按 type 分類的選項
+ */
+exports.getInspectionOptionsForProject = onCall({ region: "asia-east1" }, async (request) => {
+    // 這個函式與之前為 InspectionAdmin 建立的 getInspectionOptions 幾乎一樣
+    // 但為了區分用途或未來可能的差異，可以保留獨立的函式
+    const { projectId } = request.data;
+    const functionName = `getInspectionOptionsForProject (Project: ${projectId})`;
+
+    if (!projectId) {
+        console.error(`[${functionName}] 錯誤：缺少 projectId。`);
+        throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const optionsRef = db.collection("inspectionOptions");
+        const snapshot = await optionsRef.where("projectId", "==", projectId).get();
+
+        const optionsByType = {
+            phase: [], area: [], category: [], status: [], level: [], progress: [], quickReply: [],
+        };
+        const subCategoriesMap = new Map(); // 用來暫存子分類
+
+        if (!snapshot.empty) {
+            snapshot.forEach((doc) => {
+                const data = { id: doc.id, ...doc.data() };
+                const type = data.type;
+                if (optionsByType.hasOwnProperty(type)) {
+                    // 如果是子分類 (有 parentValue)，先暫存
+                    if (type === 'category' && data.parentValue) {
+                        if (!subCategoriesMap.has(data.parentValue)) {
+                            subCategoriesMap.set(data.parentValue, []);
+                        }
+                        subCategoriesMap.get(data.parentValue).push(data);
+                    } else {
+                        optionsByType[type].push(data);
+                    }
+                }
+            });
+        }
+
+        // 將子分類附加到對應的主分類下
+        optionsByType.category.forEach(mainCategory => {
+            mainCategory.subItems = subCategoriesMap.get(mainCategory.value) || [];
+            // 子分類也排序
+            mainCategory.subItems.sort((a, b) => (a.order || Infinity) - (b.order || Infinity) || (a.value || '').localeCompare(b.value || '', 'zh-Hant'));
+        });
+
+
+        // 對每個類別排序
+        for (const type in optionsByType) {
+            optionsByType[type].sort((a, b) => (a.order || Infinity) - (b.order || Infinity) || (a.value || '').localeCompare(b.value || '', 'zh-Hant'));
+        }
+
+        console.log(`[${functionName}] 成功獲取建案 ${projectId} 的選項資料。`);
+        return { status: "success", data: optionsByType };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取選項時發生錯誤:`, error);
+        throw new HttpsError("internal", `讀取驗屋選項時發生錯誤: ${error.message}`);
+    }
+});
+
+
+/**
+ * ✅ 上傳單張驗屋照片至 Firebase Storage
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @param {string} fileName - 原始檔名
+ * @param {string} fileBase64 - Base64 編碼的檔案內容 (不含 data:image/... 前綴)
+ * @returns {Promise<object>} - { status, name, url, path }
+ */
+exports.uploadInspectionPhoto = onCall({ region: "asia-east1", memory: "1GiB" }, async (request) => {
+    const { projectId, unitId, fileName, fileBase64 } = request.data;
+    const functionName = `uploadInspectionPhoto (Project: ${projectId}, Unit: ${unitId})`;
+
+    if (!projectId || !unitId || !fileName || !fileBase64) {
+        console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+        throw new HttpsError("invalid-argument", "缺少上傳照片所需的參數。");
+    }
+
+    try {
+        const bucket = getStorage().bucket(); // 使用 default bucket
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[-:.]/g, "").replace("T", "_").replace("Z", "");
+        // 建議的儲存路徑結構： inspections/{projectId}/{unitId}/{timestamp}_{originalName}
+        const storagePath = `inspections/${projectId}/${unitId}/${timestamp}_${fileName}`;
+        const file = bucket.file(storagePath);
+
+        const buffer = Buffer.from(fileBase64, 'base64');
+        const stream = Readable.from(buffer);
+
+        // 使用 stream 上傳
+        await new Promise((resolve, reject) => {
+            stream.pipe(file.createWriteStream({
+                metadata: {
+                    // 自動偵測 contentType 可能不準確，如果都是照片可以寫死 image/jpeg 或 image/png
+                    // contentType: 'image/jpeg', // 假設都是 jpg
+                    // 可以加入自訂 metadata
+                    metadata: {
+                        projectId: projectId,
+                        unitId: unitId
+                    }
+                },
+                resumable: false // 小檔案不需要 resumable
+            }))
+            .on('error', (err) => reject(err))
+            .on('finish', () => resolve());
+        });
+
+        // 設定檔案為公開可讀 (如果需要公開連結)
+        await file.makePublic();
+
+        // 獲取公開 URL
+        const publicUrl = file.publicUrl();
+
+        console.log(`[${functionName}] 照片成功上傳至: ${publicUrl}`);
+
+        return {
+            status: "success",
+            name: fileName, // 回傳原始檔名
+            url: publicUrl, // 回傳公開 URL
+            path: storagePath // 回傳 GCS 路徑，可能用於後續管理
+        };
+
+    } catch (error) {
+        console.error(`[${functionName}] 照片上傳失敗:`, error);
+        throw new HttpsError("internal", `後端上傳照片時發生錯誤: ${error.message}`);
+    }
+});
+
+
+// =================================================================
+// / ✅ 結束：驗屋選項與照片上傳 Cloud Functions
+// =================================================================

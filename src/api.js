@@ -5428,3 +5428,120 @@ export const updateProjectIcon = async (projectId, iconUrl, adminKey) => {
     throw new Error('更新建案圖示時發生錯誤。');
   }
 };
+
+
+// =================================================================
+// / ✅ 新增：驗屋紀錄 API
+// =================================================================
+
+/**
+ * ✅ 新增一筆驗屋紀錄
+ * @param {object} payload - 包含驗屋紀錄所有欄位的物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, id }
+ */
+export async function addInspectionRecordFB(payload) { // 命名為 addInspectionRecordFB 以區分舊版 GAS API
+  try {
+    const addFunction = httpsCallable(functions, 'addInspectionRecord');
+    const result = await addFunction(payload);
+    return result.data; // 直接回傳 Cloud Function 的 { status, id }
+  } catch (error) {
+    console.error("API addInspectionRecordFB 錯誤:", error);
+    // 將 HttpsError 轉換為前端習慣的格式
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * ✅ 獲取指定戶別的所有驗屋紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ */
+export async function getInspectionRecordsFB(projectId, unitId) { // 命名為 getInspectionRecordsFB
+  try {
+    const getFunction = httpsCallable(functions, 'getInspectionRecords');
+    const result = await getFunction({ projectId, unitId });
+    // 後端已將 Timestamp 轉為 ISO String，前端可直接使用
+    return result.data; // 直接回傳 Cloud Function 的 { status, data }
+  } catch (error) {
+    console.error("API getInspectionRecordsFB 錯誤:", error);
+    return { status: "error", message: error.message, data: [] }; // 發生錯誤時回傳空陣列
+  }
+}
+
+/**
+ * ✅ 獲取指定建案的棟別與戶別結構
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: object }
+ */
+export async function getProjectStructureFB(projectId) { // 命名為 getProjectStructureFB
+  try {
+    const getFunction = httpsCallable(functions, 'getProjectStructure');
+    const result = await getFunction({ projectId });
+    return result.data; // 直接回傳 Cloud Function 的 { status, data }
+  } catch (error) {
+    console.error("API getProjectStructureFB 錯誤:", error);
+    return { status: "error", message: error.message, data: {} }; // 發生錯誤時回傳空物件
+  }
+}
+
+// =================================================================
+// / ✅ 結束：驗屋紀錄 API
+// =================================================================
+
+// =================================================================
+// / ✅ 新增：驗屋選項與照片上傳 API
+// =================================================================
+
+/**
+ * ✅ 獲取指定建案的所有驗屋選項 (供新增/編輯畫面使用)
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: object }
+ */
+export async function getInspectionOptionsForProjectFB(projectId) {
+  try {
+    const getFunction = httpsCallable(functions, 'getInspectionOptionsForProject');
+    const result = await getFunction({ projectId });
+    return result.data; // 直接回傳 Cloud Function 的 { status, data }
+  } catch (error) {
+    console.error("API getInspectionOptionsForProjectFB 錯誤:", error);
+    return { status: "error", message: error.message, data: {} }; // 發生錯誤時回傳空物件
+  }
+}
+
+/**
+ * ✅ 上傳單張驗屋照片
+ * @param {string} projectId
+ * @param {string} unitId
+ * @param {File} fileObject - 經過 PhotoEditor 處理後的 File 物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, name, url, path } 或 { status: 'error', message }
+ */
+export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
+  try {
+    // 1. 將 File 物件轉為 Base64 (移除 dataURL 前綴)
+    const base64Content = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(fileObject);
+        reader.onload = () => resolve(reader.result.toString().split(',')[1]);
+        reader.onerror = error => reject(error);
+    });
+
+    // 2. 呼叫 Cloud Function
+    const uploadFunction = httpsCallable(functions, 'uploadInspectionPhoto');
+    const result = await uploadFunction({
+      projectId,
+      unitId,
+      fileName: fileObject.name,
+      fileBase64: base64Content
+    });
+    return result.data; // 直接回傳 Cloud Function 的 { status, name, url, path }
+
+  } catch (error) {
+    console.error("API uploadInspectionPhotoFB 錯誤:", error);
+    return { status: "error", message: error.message || "上傳照片失敗" };
+  }
+}
+
+// =================================================================
+// / ✅ 結束：驗屋選項與照片上傳 API
+// =================================================================

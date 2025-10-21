@@ -5,13 +5,11 @@ const InspectionManagement = () => import('@/views/InspectionManagement.vue');
 
 import Login from '@/views/Login.vue';
 import Home from '@/views/Home.vue';
-import InspectionSystem from '@/views/InspectionSystem.vue'
+
 import InspectionDetail from '@/views/InspectionDetail.vue';
 import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
+const InspectionConsole = () => import('@/views/InspectionConsole.vue');
 
-// ✅ 1. 移除舊的 Entry 元件
-// import SalesControlSystemEntry from '@/views/SalesControlSystemEntry.vue';
-// const InspectionCalendarEntry = () => import('@/views/inspectionCalenderEntry.vue');
 
 // ✅ 2. 引入新的 ProjectSelector 元件
 const ProjectSelector = () => import('@/views/ProjectSelector.vue');
@@ -33,16 +31,7 @@ const routes = [
  // { path: '/', redirect: '/home' },
   { path: '/login', name: 'Login', component: Login },
   { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } },
-  {
-    path: '/inspection-system',
-    name: 'InspectionSystem',
-    component: InspectionSystem,
-    meta: {
-      requiresAuth: true,
-      requiredSystem: '驗屋系統',
-      layout: DefaultLayout
-    }
-  },
+ 
 
   {
   path: '/admin/inspection-admin',
@@ -105,6 +94,33 @@ const routes = [
       paramKey: 'projectName'           // ✅ 新增 meta: 路由參數 key
     }
   },
+// ✅ 3. 新增驗屋系統入口路由
+  {
+    path: '/inspection-console-entry',
+    name: 'InspectionConsoleEntry', // 給入口路由一個獨立的名字
+    component: ProjectSelector,
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '驗屋系統', // 指定需要的系統權限
+      layout: DefaultLayout,
+      targetRouteName: 'InspectionConsole', // 目標路由名稱
+      paramKey: 'projectId' // 目標路由參數的 key
+    }
+  },
+  // ✅ 4. 新增驗屋主控台路由
+  {
+    path: '/inspection-console/:projectId',
+    name: 'InspectionConsole',
+    component: InspectionConsole,
+    props: true, // 允許 projectId 作為 prop 傳入元件
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '驗屋系統', // 指定需要的系統權限
+      layout: DefaultLayout,
+      title: '驗屋紀錄' // 可選：頁面標題
+    }
+  },
+
   {
     path: '/sales-control/:projectName',
     name: 'SalesControlSystem',
@@ -443,6 +459,17 @@ router.beforeEach(async (to, from, next) => {
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn;
 
+  // ✅ --- 新增：LIFF 路徑判斷 ---
+  // 檢查是否是從 LIFF 帶 liff_path 參數進入
+  const isLiffEntry = to.query.liff_path && from.name === undefined; // from.name === undefined 判斷是否為首次進入
+
+  if (isLiffEntry) {
+    // 如果是 LIFF 首次進入，直接放行，讓目標元件處理 LIFF 初始化和登入
+    console.log('[Router Guard] LIFF entry detected, bypassing initial auth check.');
+    return next();
+  }
+  // ✅ --- LIFF 路徑判斷結束 ---
+
   if (!to.meta.requiresAuth) {
     if (isLoggedIn && to.name === 'Login') {
       return next({ name: 'Home' });
@@ -451,6 +478,8 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (!isLoggedIn) {
+     // 如果不是 LIFF 首次進入，且未登入，才導向 Login
+    console.log('[Router Guard] Not logged in, redirecting to Login.');
     return next({ name: 'Login', query: { redirect: to.fullPath } });
   }
   
@@ -485,44 +514,54 @@ router.beforeEach(async (to, from, next) => {
     
   const requiredSystem = to.meta.requiredSystem;
   if (requiredSystem) {
-      const requiredProject = to.meta.requiredProjectForSystem;
-      if (requiredProject) {
-          if (!userStore.hasProjectPermission(requiredSystem, requiredProject)) {
+      const requiredProjectForSystem = to.meta.requiredProjectForSystem; // 特定建案的特定系統 (如訂閱管理)
+
+      if (requiredProjectForSystem) {
+          // 情況 A: 檢查特定建案的特定系統權限 (邏輯不變)
+          if (!userStore.hasProjectPermission(requiredSystem, requiredProjectForSystem)) {
               alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
               return next({ name: 'Home' });
           }
       } else {
-        const projectId = to.params.projectName || to.params.projectId;
-        if (projectId) {
-          const fullProjectName = projectStore.idToNameMap[projectId];
-          if (!fullProjectName) {
-              alert(`錯誤：找不到建案 ID "${projectId}" 的對應資料。`);
-              return next({ name: 'Home' });
+          // 情況 B: 檢查路由參數中的建案權限 或 檢查是否有任一建案權限
+          const projectId = to.params.projectId; // 獲取 projectId
+          const projectNameParam = to.params.projectName; // 獲取 projectName
+
+          if (projectId) {
+              // 情況 B.1: 路由包含 projectId (例如 /inspection-console/:projectId)
+              const fullProjectName = projectStore.idToNameMap[projectId];
+              if (!fullProjectName) {
+                  // 如果 projectStore 還沒載入完畢，可能需要等待或顯示錯誤
+                  console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
+                  alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
+                  // 可以在這裡加載 projectStore 或直接跳轉
+                  // await projectStore.fetchProjects(); // 嘗試重新加載
+                  // const retryName = projectStore.idToNameMap[projectId];
+                  // if(!retryName) ...
+                  return next({ name: 'Home' });
+              }
+              if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
+                alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
+                return next({ name: 'Home' });
+              }
+          } else if (projectNameParam) {
+              // 情況 B.2: 路由包含 projectName (例如 /sales-control/:projectName)
+              // 假設 projectNameParam 就是完整的建案名稱
+              if (!userStore.hasProjectPermission(requiredSystem, projectNameParam)) {
+                alert(`權限不足：您沒有進入建案「${projectNameParam}」的「${requiredSystem}」權限。`);
+                return next({ name: 'Home' });
+              }
           }
-          if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
-            alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
-            return next({ name: 'Home' });
+          else {
+              // 情況 B.3: 路由不包含建案參數 (例如入口路由 /inspection-console-entry)
+              // 檢查使用者是否 *至少有一個* 該系統的權限
+              const hasAnyAccess = userStore.hasPermission(requiredSystem);
+              if (!hasAnyAccess) {
+                alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+                return next({ name: 'Home' });
+              }
+              // 如果有任一權限，則放行，讓 ProjectSelector 元件去處理顯示哪些建案
           }
-        } else {
-          // ✅ 6. 修正：當路由沒有 projectId 時 (例如在 ProjectSelector 頁面)
-          // 權限檢查應改為檢查 "是否至少有 *任一* 建案的此系統權限"
-          // 而不是檢查 `hasPermission` (它會檢查所有建案)
-          // 我們在 `router.beforeEach` 中 *放寬* 檢查，讓使用者先進到 ProjectSelector
-          // ProjectSelector 內部的 `onMounted` 會做 *精確* 檢查，只顯示他有權限的建案
-          
-          // 原本的邏輯:
-          // if (!userStore.hasPermission(requiredSystem)) {
-          
-          // ✅ 修改後的邏輯:
-          // 我們信任 ProjectSelector 會處理好篩選，
-          // 但我們仍需檢查使用者是否 *至少有一個* 該系統的權限
-          const hasAnyAccess = userStore.hasPermission(requiredSystem);
-          
-          if (!hasAnyAccess) {
-            alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
-            return next({ name: 'Home' });
-          }
-        }
       }
   }
 
