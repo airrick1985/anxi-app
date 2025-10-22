@@ -278,35 +278,55 @@ async function loadProjectStructure() { if (!props.projectId) return; isLoadingS
 
 // ✓ 修改 loadData
 async function loadData() {
+  // **** 👇👇👇 修改點 1：在函數開頭檢查 projectId 👇👇👇 ****
+  if (!props.projectId) {
+      console.warn('[loadData] projectId is not yet available. Aborting load.'); // Log 警告
+      // alert('無法載入紀錄：建案 ID 尚未就緒。'); // 可以選擇性保留一個不同的提示，或完全移除
+      allRecords.value = []; // 清空舊資料
+      isLoadingRecords.value = false; // 確保載入狀態解除
+      return; // ✓✓✓ 如果沒有 projectId，直接返回，不執行後續 API 呼叫 ✓✓✓
+  }
+  // **** 👆👆👆 修改點 1 結束 👆👆👆 ****
+
   isLoadingRecords.value = true;
   allRecords.value = [];
   let result;
   try {
-    if (showDeleted.value) { // 已刪除模式永遠載入全專案
+    // API 呼叫邏輯 (保持不變)
+    if (showDeleted.value) {
       console.log(`Loading DELETED records for Project: ${props.projectId}`);
       result = await getDeletedInspectionRecordsForProjectFB(props.projectId);
-    } else { // 有效模式
-      if (selectedUnit.value) { // 有選戶別，載入單一戶別
+    } else {
+      if (selectedUnit.value) {
         console.log(`Loading ACTIVE records for Unit: ${props.projectId}/${selectedUnit.value}`);
         result = await getInspectionRecordsFB(props.projectId, selectedUnit.value);
-      } else { // 未選戶別，載入全專案
+      } else {
         console.log(`Loading ACTIVE records for Project: ${props.projectId}`);
-        result = await getInspectionRecordsForProjectFB(props.projectId); // ✓ 呼叫全專案有效紀錄 API
+        result = await getInspectionRecordsForProjectFB(props.projectId);
       }
     }
 
+    // 處理 API 結果 (保持不變)
     if (result.status === 'success') {
       allRecords.value = result.data;
       console.log(`Loaded ${allRecords.value.length} records.`);
     } else {
       console.error("載入驗屋紀錄失敗:", result.message);
       allRecords.value = [];
-      alert(`載入紀錄失敗: ${result.message}`);
+      // **** 👇👇👇 修改點 2：移除 API 失敗時的 Alert 👇👇👇 ****
+      // alert(`載入紀錄失敗: ${result.message}`); // <- 移除或註解掉此行
+      console.warn(`載入紀錄失敗 (API Status Error): ${result.message}`); // 改用 console 提示
+      // toast.error(`載入紀錄失敗: ${result.message}`); // 或者使用 Toast
+      // **** 👆👆👆 修改點 2 結束 👆👆👆 ****
     }
-  } catch (error) {
+  } catch (error) { // 捕捉 API 呼叫過程中的前端錯誤
      console.error("呼叫 API 載入紀錄時發生錯誤:", error);
      allRecords.value = [];
-     alert(`載入紀錄時發生錯誤: ${error.message}`);
+     // **** 👇👇👇 修改點 3：移除 API 呼叫失敗時的 Alert 👇👇👇 ****
+     // alert(`載入紀錄時發生錯誤: ${error.message}`); // <- 移除或註解掉此行
+     console.error(`載入紀錄時發生前端錯誤: ${error.message}`); // 改用 console 提示
+     // toast.error(`載入紀錄時發生錯誤: ${error.message}`); // 或者使用 Toast
+     // **** 👆👆👆 修改點 3 結束 👆👆👆 ****
   } finally {
     isLoadingRecords.value = false;
   }
