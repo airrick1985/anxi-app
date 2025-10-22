@@ -2103,7 +2103,7 @@ async function saveSettings() {
         const result = await updateProjectSettings(projectId.value, projectSettings.value);
         if (result.status === 'success') {
             showSnackbar("設定儲存成功！", 'success');
-            isSettingsDrawerOpen.value = false; // 成功後關閉抽屜
+          
         } else {
             throw new Error(result.message);
         }

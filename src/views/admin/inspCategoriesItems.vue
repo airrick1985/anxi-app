@@ -353,7 +353,7 @@
 
               <template v-if="['status', 'level', 'progress'].includes(editDialog.item.type)">
                 <v-col cols="12" class="pa-0 mb-4">
-                  <v-label class="mb-1">Chip 顏色</v-label>
+                  <v-label class="mb-1">標籤顏色</v-label>
                   <v-menu
                     v-model="colorMenuVisible"
                     :close-on-content-click="false"
