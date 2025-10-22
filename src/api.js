@@ -2014,15 +2014,18 @@ export async function addAppointmentAdmin(payload) {
  * @param {object} bookingUpdatePayload - 要更新到 appointments 集合的資料
  * @param {string} householdDocId - 戶別資料的文件 ID
  * @param {object} householdUpdatePayload - 要更新到 households 集合的資料
+ * @param {boolean} [force=false] - 是否強制更新 (繞過規則/名額檢查) // ✅ 新增 force 參數說明
  */
-export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload) {
+export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) { // ✅ 新增 force 參數，並設定預設值為 false
   try {
     const doUpdate = httpsCallable(functions, 'updateAppointmentByAdmin');
+    // ✓【修改】將接收到的 force 參數加入傳遞給後端的物件中
     const result = await doUpdate({
       appointmentId,
       bookingPayload: bookingUpdatePayload,
       householdDocId,
       householdPayload: householdUpdatePayload,
+      force: force // ✅ 將 force 參數傳遞給後端
     });
     return result.data; // 直接回傳後端的 { status, message }
   } catch (error) {
@@ -2482,126 +2485,180 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
  */
 
 /**
- * [新] 檢查日期是否存在「基礎共享規則」 (V2 - 修正版，會回傳詳細批次名稱)
- * @param {string} projectId 
+ * ✅ [V3 - 冷刪除版] 檢查日期是否存在 *有效* 的「基礎共享規則」
+ * @param {string} projectId
  * @param {Array<string>} dates - 要檢查的日期陣列 ['2025-08-25', ...]
  * @param {string|null} currentBatchId - 編輯模式下傳入，以排除自身
  * @returns {Promise<object>}
  */
 export async function checkDateConflicts(projectId, dates, currentBatchId = null) {
-    if (!dates || dates.length === 0) {
-        return { conflictingDates: [], nonConflictingDates: [] };
+  // ✓【修改】函數內部邏輯增加 isDeleted 過濾
+  if (!dates || dates.length === 0) {
+    return { conflictingDates: [], nonConflictingDates: [] };
+  }
+  try {
+    // 步驟 1: 查找在指定日期中已存在的 *有效*「共享規則」
+    const rulesRef = collection(db, "dateRules");
+    // ✓【修改】增加 isDeleted 條件
+    const rulesQuery = query(rulesRef,
+      where("projectId", "==", projectId),
+      where("isShared", "==", true),
+      where("date", "in", dates),
+      where("isDeleted", "==", false) // ✓ 只查找有效的共享規則
+    );
+    const rulesSnapshot = await getDocs(rulesQuery);
+    // 如果找不到有效的共享規則，直接返回無衝突
+    if (rulesSnapshot.empty) {
+      console.log(`[api.js] checkDateConflicts: No active shared rules found for dates.`); // ✓ Log
+      return { conflictingDates: [], nonConflictingDates: dates };
     }
-    try {
-        // 步驟 1: 查找在指定日期中已存在的「共享規則」
-        const rulesRef = collection(db, "dateRules");
-        const rulesQuery = query(rulesRef,
-            where("projectId", "==", projectId),
-            where("isShared", "==", true),
-            where("date", "in", dates)
-        );
-        const rulesSnapshot = await getDocs(rulesQuery);
-        if (rulesSnapshot.empty) {
-            return { conflictingDates: [], nonConflictingDates: dates };
-        }
 
-        const conflictingRulesMap = new Map();
-        rulesSnapshot.forEach(doc => {
-            conflictingRulesMap.set(doc.id, { ruleId: doc.id, ...doc.data(), sharedBy: [] });
-        });
-        const ruleIds = Array.from(conflictingRulesMap.keys());
+    const conflictingRulesMap = new Map();
+    rulesSnapshot.forEach(doc => {
+      conflictingRulesMap.set(doc.id, { ruleId: doc.id, ...doc.data(), sharedBy: [] });
+    });
+    const ruleIds = Array.from(conflictingRulesMap.keys());
 
-        // 步驟 2: 根據找到的規則 ID，查找所有關聯的批次 ID
-        const linksRef = collection(db, "batchRuleLinks");
-        const linksQuery = query(linksRef, where("ruleId", "in", ruleIds));
-        const linksSnapshot = await getDocs(linksQuery);
-        if (linksSnapshot.empty) {
-            return { conflictingDates: [], nonConflictingDates: dates };
-        }
+    // 步驟 2: 根據找到的規則 ID，查找所有 *有效* 的關聯批次 ID
+    const linksRef = collection(db, "batchRuleLinks");
+    // ✓【修改】增加 isDeleted 條件
+    const linksQuery = query(
+      linksRef,
+      where("ruleId", "in", ruleIds),
+      where("isDeleted", "==", false) // ✓ 只查找有效的連結
+    );
+    const linksSnapshot = await getDocs(linksQuery);
+    // 如果找不到有效的連結，理論上不該發生 (因為規則存在)，但仍做防禦性處理
+    if (linksSnapshot.empty) {
+      console.warn(`[api.js] checkDateConflicts: Found shared rules but no active links? Rule IDs:`, ruleIds); // ✓ Log 警告
+      return { conflictingDates: [], nonConflictingDates: dates };
+    }
 
-        const batchIds = new Set();
-        const ruleToBatchIdsMap = new Map();
-        linksSnapshot.forEach(doc => {
-            const { ruleId, batchId } = doc.data();
-            batchIds.add(batchId);
-            if (!ruleToBatchIdsMap.has(ruleId)) {
-                ruleToBatchIdsMap.set(ruleId, []);
-            }
-            ruleToBatchIdsMap.get(ruleId).push(batchId);
-        });
+    const batchIds = new Set();
+    const ruleToBatchIdsMap = new Map();
+    linksSnapshot.forEach(doc => {
+      const { ruleId, batchId } = doc.data();
+      // ✓【修改】排除當前正在編輯的批次 ID (如果提供了 currentBatchId)
+      if (currentBatchId && batchId === currentBatchId) {
+          return; // 跳過自己批次的連結
+      }
+      batchIds.add(batchId);
+      if (!ruleToBatchIdsMap.has(ruleId)) {
+        ruleToBatchIdsMap.set(ruleId, []);
+      }
+      ruleToBatchIdsMap.get(ruleId).push(batchId);
+    });
 
-        // 步驟 3: 根據批次 ID，一次性獲取所有批次的詳細資料
-        const batchesRef = collection(db, "bookingBatches");
-        const batchesQuery = query(batchesRef, where(documentId(), 'in', Array.from(batchIds)));
-        const batchesSnapshot = await getDocs(batchesQuery);
-        const batchDetailsMap = new Map();
-        batchesSnapshot.forEach(doc => {
-            batchDetailsMap.set(doc.id, doc.data());
-        });
-
-        // 步驟 4: 組合出前端需要的 "預約項目(批次代號)" 格式
-        conflictingRulesMap.forEach((rule, ruleId) => {
-            const linkedBatchIds = ruleToBatchIdsMap.get(ruleId) || [];
-            rule.sharedBy = linkedBatchIds.map(batchId => {
-                const details = batchDetailsMap.get(batchId);
-                return details ? `${details.bookingType}(${details.batchCode})` : '未知批次';
-            }).filter(name => name !== '未知批次');
-        });
-
-        // 步驟 5: 格式化最終回傳給前端的資料
-        const conflictingDates = [];
-        const foundDates = new Set();
-        conflictingRulesMap.forEach(rule => {
-            conflictingDates.push({
-                date: rule.date,
-                existingRule: {
-                    ruleId: rule.ruleId,
-                    rule: rule.slots,
-                    sharedBy: rule.sharedBy
-                }
-            });
-            foundDates.add(rule.date);
-        });
-
-        const nonConflictingDates = dates.filter(d => !foundDates.has(d));
-        
-        return { conflictingDates, nonConflictingDates };
-
-    } catch (e) {
-        console.error("檢查日期衝突時發生錯誤:", e);
+    // 如果過濾掉自己後，沒有其他批次連結到這些規則，則無衝突
+    if (batchIds.size === 0) {
+        console.log(`[api.js] checkDateConflicts: Conflicts only involved the current batch (${currentBatchId}). No external conflicts.`); // ✓ Log
         return { conflictingDates: [], nonConflictingDates: dates };
     }
+
+    // 步驟 3: 根據批次 ID，一次性獲取所有 *有效* 批次的詳細資料
+    const batchesRef = collection(db, "bookingBatches");
+    // ✓【修改】增加 isDeleted 條件
+    const batchesQuery = query(
+      batchesRef,
+      where(documentId(), 'in', Array.from(batchIds)),
+      where("isDeleted", "==", false) // ✓ 只獲取有效的批次資訊
+    );
+    const batchesSnapshot = await getDocs(batchesQuery);
+    const batchDetailsMap = new Map();
+    batchesSnapshot.forEach(doc => {
+      batchDetailsMap.set(doc.id, doc.data());
+    });
+
+    // 步驟 4: 組合出前端需要的 "預約項目(批次代號)" 格式
+    conflictingRulesMap.forEach((rule, ruleId) => {
+      const linkedBatchIds = ruleToBatchIdsMap.get(ruleId) || [];
+      rule.sharedBy = linkedBatchIds
+        .map(batchId => {
+          const details = batchDetailsMap.get(batchId);
+          // ✓ 確保批次詳細資料存在 (因為批次可能已被冷刪除但連結還在 - 理論上不該發生，但做防禦)
+          return details ? `${details.bookingType}(${details.batchCode})` : null;
+        })
+        .filter(name => name !== null); // ✓ 過濾掉找不到詳情的批次
+    });
+
+    // 步驟 5: 格式化最終回傳給前端的資料
+    const conflictingDates = [];
+    const foundDates = new Set();
+    conflictingRulesMap.forEach(rule => {
+      // ✓【修改】只有當 rule.sharedBy 陣列不為空時，才算真正的衝突
+      if (rule.sharedBy.length > 0) {
+          conflictingDates.push({
+            date: rule.date,
+            existingRule: {
+              ruleId: rule.ruleId,
+              rule: rule.slots, // 規則內容
+              sharedBy: rule.sharedBy // 使用此規則的其他有效批次
+            }
+          });
+          foundDates.add(rule.date);
+      }
+    });
+
+    const nonConflictingDates = dates.filter(d => !foundDates.has(d));
+
+    console.log(`[api.js] checkDateConflicts: Found ${conflictingDates.length} conflicting dates.`); // ✓ Log
+    return { conflictingDates, nonConflictingDates };
+
+  } catch (e) {
+    console.error("[api.js] checkDateConflicts: Error checking date conflicts:", e); // ✓ Log 錯誤
+    // 發生錯誤時，保守起見回傳所有日期皆無衝突
+    return { conflictingDates: [], nonConflictingDates: dates };
+  }
 }
 
 /**
- * [新] 儲存批次與其關聯的每日規則 (混合模式)
+ * ✅ [V2 - 冷刪除版] 儲存批次與其關聯的每日規則 (混合模式)
  * @param {object} payload - 包含 { batchData, resolutions } 的物件
  * @returns {Promise<object>}
  */
 export async function saveBatchWithRules(payload) {
     const { batchData, resolutions } = payload;
-    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id;
+    const isNewBatch = !batchData.id; // ✓ 判斷是新增還是更新批次
+    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id; // ✓ 如果是新增，產生新 ID
+    const now = serverTimestamp(); // ✓ 獲取伺服器時間戳
 
     try {
         const batch = writeBatch(db);
         const batchDocRef = doc(db, "bookingBatches", batchId);
 
         // 步驟 1: 新增/更新 bookingBatches 主文件
-        const dataToSave = { ...batchData, id: batchId };
-        dataToSave.lastModified = serverTimestamp();
-        if (!batchData.id) dataToSave.createdAt = serverTimestamp();
-        delete dataToSave.dailyRules;
+        const dataToSave = { ...batchData, id: batchId }; // ✓ 確保 ID 存在
+        dataToSave.lastModified = now;
+        if (isNewBatch) {
+            dataToSave.createdAt = now;
+            dataToSave.isDeleted = false; // ✓ 新增時預設為未刪除
+        }
+        delete dataToSave.dailyRules; // ✓ 移除規則資料，不存主文件
+        // ✓【修改】確保 isDeleted 狀態不會意外被覆蓋成 true (只在新增時設 false)
+        if (!isNewBatch) {
+            delete dataToSave.isDeleted; // 更新時不修改 isDeleted
+            delete dataToSave.deletedAt; // 更新時不修改 deletedAt
+        }
         batch.set(batchDocRef, dataToSave, { merge: true });
 
-        // 步驟 2: 處理規則，先刪除此批次在此次異動日期中的所有舊關聯
+        // 步驟 2: 處理規則，先 *冷刪除* 此批次在 *此次異動日期中* 的所有 *未被刪除的* 舊關聯
         const datesToUpdate = Object.keys(resolutions);
         if (datesToUpdate.length > 0) {
+            // ✓【修改】查詢條件增加 isDeleted == false
             const oldLinksQuery = query(collection(db, "batchRuleLinks"),
                 where("batchId", "==", batchId),
-                where("date", "in", datesToUpdate)
+                where("date", "in", datesToUpdate),
+                where("isDeleted", "==", false) // ✓ 只找未刪除的舊連結
             );
             const oldLinksSnapshot = await getDocs(oldLinksQuery);
-            oldLinksSnapshot.forEach(doc => batch.delete(doc.ref));
+            // ✓【修改】從 delete 改為 update，標記為已刪除
+            oldLinksSnapshot.forEach(doc => {
+                batch.update(doc.ref, {
+                  isDeleted: true,
+                  deletedAt: now
+                });
+            });
+            console.log(`[api.js] saveBatchWithRules: Marked ${oldLinksSnapshot.size} old links for soft deletion.`); // ✓ Log
         }
 
         // 步驟 3: 根據 resolutions 建立新規則或新關聯
@@ -2609,10 +2666,13 @@ export async function saveBatchWithRules(payload) {
             const resolution = resolutions[date];
             const ruleContent = batchData.dailyRules[date];
 
+            // 如果該日期沒有設定規則內容，則跳過 (避免產生空的連結或規則)
             if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) {
+                console.log(`[api.js] saveBatchWithRules: Skipping date ${date} due to empty rule content.`); // ✓ Log
                 continue;
             }
 
+            // --- 建立新連結或新規則的邏輯 (基本不變，但新增 isDeleted: false) ---
             if (resolution.mode === 'link' && resolution.targetRuleId) {
                 // 模式 A: 連結至現有規則
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
@@ -2621,14 +2681,19 @@ export async function saveBatchWithRules(payload) {
                     ruleId: resolution.targetRuleId,
                     date: date,
                     projectId: batchData.projectId,
+                    isDeleted: false, // ✓ 新連結預設未刪除
+                    createdAt: now,   // ✓ 增加建立時間
                 });
 
             } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
-                //  [新增] 模式 C: 更新現有共享規則，然後連結
+                // 模式 C: 更新現有共享規則，然後連結
                 const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
+                // ✓【修改】更新時也加入 isDeleted: false，確保規則是有效的
                 batch.update(ruleToUpdateRef, {
                     slots: ruleContent.slots,
-                    lastModified: serverTimestamp()
+                    lastModified: now,
+                    isDeleted: false, // ✓ 確保更新後的規則是未刪除狀態
+                    deletedAt: null   // ✓ 清除可能的舊刪除時間
                 });
 
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
@@ -2637,6 +2702,8 @@ export async function saveBatchWithRules(payload) {
                     ruleId: resolution.targetRuleId,
                     date: date,
                     projectId: batchData.projectId,
+                    isDeleted: false, // ✓ 新連結預設未刪除
+                    createdAt: now,   // ✓ 增加建立時間
                 });
 
             } else if (resolution.mode === 'create_independent' || resolution.mode === 'create_shared') {
@@ -2647,7 +2714,8 @@ export async function saveBatchWithRules(payload) {
                     date: date,
                     projectId: batchData.projectId,
                     isShared: resolution.mode === 'create_shared',
-                    createdAt: serverTimestamp(),
+                    createdAt: now,
+                    isDeleted: false, // ✓ 新規則預設未刪除
                 });
 
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
@@ -2656,53 +2724,74 @@ export async function saveBatchWithRules(payload) {
                     ruleId: newRuleDocRef.id,
                     date: date,
                     projectId: batchData.projectId,
+                    isDeleted: false, // ✓ 新連結預設未刪除
+                    createdAt: now,   // ✓ 增加建立時間
                 });
             }
         }
 
         await batch.commit();
+        console.log(`[api.js] saveBatchWithRules: Successfully saved batch ${batchId} and rules.`); // ✓ Log
         return { status: 'success', id: batchId };
 
     } catch (e) {
-        console.error(`儲存批次 ${batchId} 與規則時發生錯誤:`, e);
-        return { status: 'error', message: e.message };
+        console.error(`[api.js] saveBatchWithRules: Error saving batch ${batchId}:`, e); // ✓ Log 錯誤
+        return { status: 'error', message: `儲存批次與規則時發生錯誤: ${e.message}` };
     }
 }
 
 /**
- * [新] 獲取指定批次的所有每日規則 (給編輯畫面使用)
+ * ✅ [V2 - 冷刪除版] 獲取指定批次的所有 *有效* 每日規則 (給編輯畫面使用)
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>} - 返回以日期為 key 的規則物件
  */
 export async function fetchRulesForBatch(batchId) {
-    try {
-        // 1. 透過 batchId 查找所有關聯的 ruleId
-        const linksRef = collection(db, "batchRuleLinks");
-        const linksQuery = query(linksRef, where("batchId", "==", batchId));
-        const linksSnapshot = await getDocs(linksQuery);
+  // ✓【修改】函數內部邏輯增加 isDeleted 過濾
+  try {
+    // 步驟 1: 透過 batchId 查找所有 *未被刪除* 的關聯 ruleId
+    const linksRef = collection(db, "batchRuleLinks");
+    // ✓【修改】增加 isDeleted 條件
+    const linksQuery = query(
+      linksRef,
+      where("batchId", "==", batchId),
+      where("isDeleted", "==", false) // ✓ 只查找有效的連結
+    );
+    const linksSnapshot = await getDocs(linksQuery);
 
-        if (linksSnapshot.empty) return {};
-
-        const ruleIds = linksSnapshot.docs.map(doc => doc.data().ruleId);
-
-        // 2. 透過 ruleIds 一次性獲取所有規則的內容
-        const rulesRef = collection(db, "dateRules");
-        const rulesQuery = query(rulesRef, where(documentId(), 'in', ruleIds));
-        const rulesSnapshot = await getDocs(rulesQuery);
-
-        const rules = {};
-        rulesSnapshot.forEach(doc => {
-            const data = doc.data();
-            rules[data.date] = { slots: data.slots }; // 回傳前端習慣的格式
-        });
-        
-        return rules;
-    } catch (e) {
-        console.error(`獲取批次 ${batchId} 的每日規則時發生錯誤:`, e);
-        return {};
+    // 如果找不到任何有效連結，直接回傳空物件
+    if (linksSnapshot.empty) {
+      console.log(`[api.js] fetchRulesForBatch: No active links found for batch ${batchId}.`); // ✓ Log
+      return {};
     }
-}
 
+    // 提取所有有效的 ruleId
+    const ruleIds = linksSnapshot.docs.map(doc => doc.data().ruleId);
+    if (ruleIds.length === 0) return {}; // 再次檢查，雖然理論上不會發生
+
+    // 步驟 2: 透過有效的 ruleIds 一次性獲取所有 *未被刪除* 的規則內容
+    const rulesRef = collection(db, "dateRules");
+    // ✓【修改】增加 isDeleted 條件
+    const rulesQuery = query(
+      rulesRef,
+      where(documentId(), 'in', ruleIds),
+      where("isDeleted", "==", false) // ✓ 只獲取有效的規則
+    );
+    const rulesSnapshot = await getDocs(rulesQuery);
+
+    const rules = {};
+    rulesSnapshot.forEach(doc => {
+      const data = doc.data();
+      // ✓ 回傳前端習慣的格式 { 'YYYY-MM-DD': { slots: {...} } }
+      rules[data.date] = { slots: data.slots };
+    });
+
+    console.log(`[api.js] fetchRulesForBatch: Fetched ${Object.keys(rules).length} active rules for batch ${batchId}.`); // ✓ Log
+    return rules;
+  } catch (e) {
+    console.error(`[api.js] fetchRulesForBatch: Error fetching rules for batch ${batchId}:`, e); // ✓ Log 錯誤
+    return {}; // 發生錯誤時回傳空物件
+  }
+}
 /**
  * [舊版][Firestore] 儲存或更新一筆預約批次規則 [舊版]
  * 這個函式現在只負責儲存批次本身的基本資訊。
@@ -2781,29 +2870,35 @@ export async function fetchDailyRules(batchId) {
 }
 
 /**
- * [Firestore] 獲取指定建案的所有預約批次 (此函式維持不變，因為它只讀取主資料)
+ * ✅ [V2 - 冷刪除版] 獲取指定建案的所有 *有效* 預約批次
  * @param {string} projectId - 建案的 ID
- * @returns {Promise<Array>} - 返回批次資料陣列
+ * @returns {Promise<Array>} - 返回有效的批次資料陣列
  */
 export async function fetchBookingBatches(projectId) {
-    try {
-        const batchesRef = collection(db, "bookingBatches");
-        const q = query(
-            batchesRef,
-            where("projectId", "==", projectId),
-            orderBy("bookingStart", "desc")
-        );
+  // ✓【修改】函數內部邏輯增加 isDeleted 過濾
+  try {
+    const batchesRef = collection(db, "bookingBatches");
+    // ✓【修改】查詢條件增加 isDeleted == false
+    const q = query(
+      batchesRef,
+      where("projectId", "==", projectId),
+      where("isDeleted", "==", false), // ✓ 只查詢未被刪除的批次
+      orderBy("bookingStart", "desc") // ✓ 保持原有的排序
+    );
 
-        const querySnapshot = await getDocs(q);
-        const batches = [];
-        querySnapshot.forEach((doc) => {
-            batches.push({ id: doc.id, ...doc.data() });
-        });
-        return batches;
-    } catch (e) {
-        console.error(`獲取建案 ${projectId} 的預約批次時發生錯誤:`, e);
-        return [];
-    }
+    const querySnapshot = await getDocs(q);
+    const batches = [];
+    querySnapshot.forEach((doc) => {
+      // ✓ 回傳的資料結構不變
+      batches.push({ id: doc.id, ...doc.data() });
+    });
+
+    console.log(`[api.js] fetchBookingBatches: Fetched ${batches.length} active batches for project ${projectId}.`); // ✓ Log
+    return batches;
+  } catch (e) {
+    console.error(`[api.js] fetchBookingBatches: Error fetching batches for project ${projectId}:`, e); // ✓ Log 錯誤
+    return []; // 發生錯誤時回傳空陣列
+  }
 }
 
 
@@ -2912,59 +3007,82 @@ export async function saveDateCapacities(projectId, date, capacities) {
 }
 
 /**
- * [Firestore] 刪除一筆預約批次及其所有關聯 (V2 - 包含孤兒規則清理)
+ * ✅ [V3 - 冷刪除版] 標記一個預約批次及其所有關聯為已刪除
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>}
  */
 export async function deleteBookingBatch(batchId) {
-    try {
-        const batch = writeBatch(db);
-        const linksRef = collection(db, "batchRuleLinks");
+  // ✓【修改】函數內部邏輯改為冷刪除
+  try {
+    const batch = writeBatch(db); // ✓ 使用 writeBatch 確保原子性
+    const linksRef = collection(db, "batchRuleLinks");
+    const now = serverTimestamp(); // ✓ 獲取伺服器時間戳
 
-        // 步驟 1: 找到此批次關聯的所有規則 ID
-        const linksQuery = query(linksRef, where("batchId", "==", batchId));
-        const linksSnapshot = await getDocs(linksQuery);
-        
-        const ruleIdsToCheck = [];
-        linksSnapshot.forEach(doc => {
-            ruleIdsToCheck.push(doc.data().ruleId);
-            // 準備刪除這些關聯
-            batch.delete(doc.ref);
-        });
+    // 步驟 1: 找到此批次所有 *未被刪除* 的關聯 (batchRuleLinks)
+    // ✓【修改】增加 isDeleted 條件
+    const linksQuery = query(
+      linksRef,
+      where("batchId", "==", batchId),
+      where("isDeleted", "==", false) // ✓ 只找未刪除的連結
+    );
+    const linksSnapshot = await getDocs(linksQuery);
 
-        // 步驟 2: 檢查這些規則是否還有被其他批次使用
-        if (ruleIdsToCheck.length > 0) {
-            for (const ruleId of ruleIdsToCheck) {
-                // 查詢是否還存在其他連結指向這個 ruleId
-                const otherLinksQuery = query(linksRef, 
-                    where("ruleId", "==", ruleId),
-                    where("batchId", "!=", batchId) // 關鍵：排除當前要被刪除的批次
-                );
-                
-                // 使用 getCountFromServer 進行高效能計數
-                const countSnapshot = await getCountFromServer(otherLinksQuery);
-                
-                // 如果計數為 0，代表這個規則已成為孤兒，可以刪除
-                if (countSnapshot.data().count === 0) {
-                    const orphanRuleRef = doc(db, "dateRules", ruleId);
-                    batch.delete(orphanRuleRef);
-                }
-            }
+    const ruleIdsToCheck = new Set(); // ✓ 使用 Set 避免重複檢查 ruleId
+    linksSnapshot.forEach(doc => {
+      ruleIdsToCheck.add(doc.data().ruleId);
+      // 步驟 2: 準備 *更新* (而非刪除) 這些關聯，標記為已刪除
+      // ✓【修改】從 delete 改為 update
+      batch.update(doc.ref, {
+        isDeleted: true,
+        deletedAt: now
+      });
+    });
+
+    // 步驟 3: 檢查這些規則 (dateRules) 是否因為此批次的連結被冷刪除而變成孤兒
+    if (ruleIdsToCheck.size > 0) {
+      for (const ruleId of ruleIdsToCheck) {
+        // 查詢是否還存在 *其他未被刪除* 的連結指向這個 ruleId
+        // ✓【修改】增加 isDeleted 條件
+        const otherLinksQuery = query(
+          linksRef,
+          where("ruleId", "==", ruleId),
+          where("batchId", "!=", batchId), // ✓ 排除當前批次
+          where("isDeleted", "==", false) // ✓ 只計算其他未刪除的連結
+        );
+
+        // 使用 getCountFromServer 進行高效能計數
+        const countSnapshot = await getCountFromServer(otherLinksQuery);
+
+        // 如果計數為 0，代表這個規則已成為孤兒，標記為已刪除
+        if (countSnapshot.data().count === 0) {
+          const orphanRuleRef = doc(db, "dateRules", ruleId);
+          // 步驟 4: 準備 *更新* (而非刪除) 孤兒規則
+          // ✓【修改】從 delete 改為 update
+          batch.update(orphanRuleRef, {
+            isDeleted: true,
+            deletedAt: now
+          });
         }
-        
-        // 步驟 3: 準備刪除批次主文件
-        const batchDocRef = doc(db, "bookingBatches", batchId);
-        batch.delete(batchDocRef);
-
-        // 步驟 4: 一次性提交所有刪除操作
-        await batch.commit();
-        return { status: 'success' };
-    } catch (e) {
-        console.error(`刪除批次 ${batchId} 時發生錯誤:`, e);
-        return { status: 'error', message: e.message };
+      }
     }
-}
 
+    // 步驟 5: 準備 *更新* (而非刪除) 批次主文件 (bookingBatches)
+    const batchDocRef = doc(db, "bookingBatches", batchId);
+    // ✓【修改】從 delete 改為 update
+    batch.update(batchDocRef, {
+      isDeleted: true,
+      deletedAt: now
+    });
+
+    // 步驟 6: 一次性提交所有更新操作
+    await batch.commit();
+    console.log(`[api.js] deleteBookingBatch: Soft deleted batch ${batchId} and related links/rules.`); // ✓ Log
+    return { status: 'success', message: '批次已標記為刪除' }; // ✓ 更新回傳訊息
+  } catch (e) {
+    console.error(`[api.js] deleteBookingBatch: Error soft deleting batch ${batchId}:`, e); // ✓ Log 錯誤
+    return { status: 'error', message: `標記刪除批次時發生錯誤: ${e.message}` };
+  }
+}
 
 
 
@@ -5619,10 +5737,84 @@ export const deleteInspectionRecordFB = async (recordId) => {
   } catch (error) {
     // 4. 捕捉錯誤
     console.error("[API Error] Error calling 'deleteInspectionRecord' Cloud Function:", error);
-    const message = error instanceof HttpsError ? error.message : `呼叫後端刪除時發生錯誤: ${error.message}`;
+    // ✓ 修改 catch 區塊，檢查 error.code
+    const message = (error.code) // Firebase Functions 拋出的錯誤會有 code 屬性
+      ? error.message // 如果有 code，直接取 message
+      : `呼叫後端刪除時發生錯誤: ${error.message || error}`; // 否則取通用 message 或錯誤本身
     return { status: 'error', message: message };
   }
 };
+
+
+/**
+ * ✅ 獲取指定戶別的所有 *已刪除* 驗屋紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ */
+export async function getDeletedInspectionRecordsFB(projectId, unitId) {
+  const functionName = 'getDeletedInspectionRecordsFB'; // For logging/error context
+  try {
+    const getFunction = httpsCallable(functions, functionName); // Use the correct function name
+    const result = await getFunction({ projectId, unitId });
+    return result.data; // Directly return { status, data }
+  } catch (error) {
+    console.error(`[API ${functionName}] 錯誤:`, error);
+    const message = (error.code)
+      ? error.message
+      : `查詢已刪除紀錄時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message, data: [] }; // Return empty array on error
+  }
+}
+
+/**
+ * ✅ 還原一筆已刪除的驗屋紀錄
+ * @param {string} recordId - 要還原的紀錄文件 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status }
+ */
+export async function restoreInspectionRecordFB(recordId) {
+  const functionName = 'restoreInspectionRecordFB'; // For logging/error context
+  if (!recordId) {
+    console.error(`[API Error] ${functionName}: Missing required parameter 'recordId'.`);
+    return { status: 'error', message: '前端錯誤：缺少紀錄 ID。' };
+  }
+  try {
+    const restoreFunction = httpsCallable(functions, functionName); // Use the correct function name
+    const result = await restoreFunction({ recordId });
+    return result.data; // Directly return { status }
+  } catch (error) {
+    console.error(`[API ${functionName}] 錯誤:`, error);
+    const message = (error.code)
+      ? error.message
+      : `還原紀錄時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message };
+  }
+}
+
+/**
+ * ✅ [新增] 獲取指定建案 (projectId) 底下所有 *已刪除* 的驗屋紀錄
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ */
+export async function getDeletedInspectionRecordsForProjectFB(projectId) {
+  const functionName = 'getDeletedInspectionRecordsForProjectFB'; // For logging/error context
+  if (!projectId) {
+    console.error(`[API Error] ${functionName}: Missing required parameter 'projectId'.`);
+    return { status: 'error', message: '前端錯誤：缺少建案 ID。', data: [] };
+  }
+  try {
+    const getFunction = httpsCallable(functions, functionName); // Use the correct function name
+    const result = await getFunction({ projectId });
+    return result.data; // Directly return { status, data }
+  } catch (error) {
+    console.error(`[API ${functionName}] 錯誤:`, error);
+    const message = (error.code)
+      ? error.message
+      : `查詢建案已刪除紀錄時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message, data: [] }; // Return empty array on error
+  }
+}
+
 
 // =================================================================
 // / ✅ 結束：驗屋紀錄 API

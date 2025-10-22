@@ -4,24 +4,11 @@
       <v-toolbar color="primary" dark flat>
         <v-toolbar-title class="font-weight-bold">
           {{ projectId ? `${projectName} 驗屋紀錄` : '驗屋系統 (選擇建案)' }}
+          <span v-if="projectId && showDeleted" class="text-caption font-weight-light ml-2">(垃圾桶)</span>
+           <span v-if="projectId && !showDeleted && !selectedUnit" class="text-caption font-weight-light ml-2">(全案紀錄)</span>
         </v-toolbar-title>
         <v-spacer></v-spacer>
-        <template v-if="projectId && otherProjects.length > 0">
-          <v-menu offset-y>
-            <template v-slot:activator="{ props: menuProps }">
-              <v-btn v-bind="menuProps" variant="text" class="pa-1" style="text-transform: none; letter-spacing: normal;" aria-label="切換建案">
-                <v-avatar size="32" class="mr-2"><v-img :src="currentProject?.iconUrl || defaultProjectIcon" :alt="currentProject?.name"></v-img></v-avatar>
-                <v-icon size="small">mdi-chevron-down</v-icon>
-              </v-btn>
-            </template>
-            <v-list density="compact" class="pa-0">
-              <v-list-item v-for="project in otherProjects" :key="project.id" @click="enterProject(project)" link>
-                <template v-slot:prepend><v-avatar size="32" class="mr-3"><v-img :src="project.iconUrl || defaultProjectIcon" :alt="project.name"></v-img></v-avatar></template>
-                <v-list-item-title>{{ project.name }}</v-list-item-title>
-              </v-list-item>
-            </v-list>
-          </v-menu>
-        </template>
+        <template v-if="projectId && otherProjects.length > 0"> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <v-btn v-bind="menuProps" variant="text" class="pa-1" style="text-transform: none; letter-spacing: normal;" aria-label="切換建案"> <v-avatar size="32" class="mr-2"><v-img :src="currentProject?.iconUrl || defaultProjectIcon" :alt="currentProject?.name"></v-img></v-avatar> <v-icon size="small">mdi-chevron-down</v-icon> </v-btn> </template> <v-list density="compact" class="pa-0"> <v-list-item v-for="project in otherProjects" :key="project.id" @click="enterProject(project)" link> <template v-slot:prepend><v-avatar size="32" class="mr-3"><v-img :src="project.iconUrl || defaultProjectIcon" :alt="project.name"></v-img></v-avatar></template> <v-list-item-title>{{ project.name }}</v-list-item-title> </v-list-item> </v-list> </v-menu> </template>
       </v-toolbar>
 
       <div v-if="isLoading" class="text-center pa-10"> <v-progress-circular indeterminate color="primary" size="50"></v-progress-circular> <p class="mt-4 text-grey">{{ loadingText }}</p> </div>
@@ -30,11 +17,7 @@
       <div v-else-if="isBound && projectId">
         <v-sheet class="pa-3 border-b">
           <v-row dense align="center">
-            <v-col
-              cols="12"
-              sm="6"
-              md="3"
-            >
+            <v-col cols="12" sm="6" md="3">
               <v-select
                 v-model="selectedBuilding"
                 :items="buildingItems"
@@ -43,16 +26,12 @@
                 density="compact"
                 hide-details
                 clearable
-                @update:model-value="selectedUnit = null; loadRecords()"
+                @update:model-value="selectedUnit = null; loadData()"
                 :loading="isLoadingStructure"
+                :disabled="showDeleted"
               ></v-select>
             </v-col>
-
-            <v-col
-              cols="12"
-              sm="6"
-              md="3"
-            >
+            <v-col cols="12" sm="6" md="3">
               <v-select
                 v-model="selectedUnit"
                 :items="unitItems"
@@ -61,15 +40,11 @@
                 density="compact"
                 hide-details
                 clearable
-                :disabled="!selectedBuilding"
-                @update:model-value="loadRecords()"
+                 :disabled="showDeleted || !selectedBuilding"
+                @update:model-value="loadData()"
               ></v-select>
             </v-col>
-
-            <v-col
-              cols="12"
-              md="3"
-            >
+            <v-col cols="12" md="3">
               <v-text-field
                 v-model="searchFilter"
                 label="搜尋所有欄位"
@@ -80,47 +55,46 @@
                 clearable
               ></v-text-field>
             </v-col>
-
-            <v-col
-              cols="12"
-              md="3"
-              class="d-flex justify-end align-center ga-2 mt-2 mt-md-0"
-            >
+            <v-col cols="12" md="3" class="d-flex justify-end align-center ga-2 mt-2 mt-md-0">
               <v-btn
                 color="primary"
                 @click="openAddDialog"
                 prepend-icon="mdi-plus"
-                :disabled="!selectedUnit || !selectedBuilding"
+                :disabled="showDeleted || !(selectedUnit && selectedBuilding)"
                 size="small"
               >
                 新增
               </v-btn>
-              <v-btn
-                color="secondary"
-                variant="outlined"
-                @click="loadAllProjectRecords"
-                prepend-icon="mdi-clipboard-text-search-outline"
-                size="small"
-              >
-                全案紀錄
-              </v-btn>
               <v-btn-toggle
-                v-model="viewMode"
+                v-model="showDeleted"
+                :true-value="true"
+                :false-value="false"
                 mandatory
                 density="compact"
                 variant="outlined"
                 divided
+                color="primary"
+                @update:model-value="handleModeChange"
               >
-                <v-btn value="table" icon="mdi-table" aria-label="表格視圖"></v-btn>
-                <v-btn value="card" icon="mdi-view-dashboard" aria-label="卡片視圖"></v-btn>
+                <v-tooltip location="top" text="全案紀錄">
+                  <template v-slot:activator="{ props }">
+                    <v-btn v-bind="props" :value="false" icon="mdi-file-document-outline" aria-label="全案紀錄"></v-btn>
+                  </template>
+                </v-tooltip>
+                <v-tooltip location="top" text="垃圾桶">
+                  <template v-slot:activator="{ props }">
+                    <v-btn v-bind="props" :value="true" icon="mdi-delete-outline" aria-label="已刪除紀錄"></v-btn>
+                  </template>
+                </v-tooltip>
+              </v-btn-toggle>
+              <v-btn-toggle v-model="viewMode" mandatory density="compact" variant="outlined" divided>
+                <v-tooltip location="top" text="表格模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="table" icon="mdi-table" aria-label="表格視圖"></v-btn> </template> </v-tooltip>
+                <v-tooltip location="top" text="卡片模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="card" icon="mdi-view-dashboard" aria-label="卡片視圖"></v-btn> </template> </v-tooltip>
               </v-btn-toggle>
             </v-col>
           </v-row>
         </v-sheet>
-        <div v-if="isLoadingRecords" class="text-center pa-10">
-          <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular>
-          <p class="mt-4 text-grey">正在載入紀錄...</p>
-        </div>
+        <div v-if="isLoadingRecords" class="text-center pa-10"> <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular> <p class="mt-4 text-grey">正在載入紀錄...</p> </div>
         <div v-else-if="filteredRecords.length > 0">
           <div v-if="viewMode === 'table'">
             <v-data-table
@@ -133,204 +107,52 @@
               :items-per-page="10"
               :items-per-page-options="[{ value: 10, title: '10' },{ value: 25, title: '25' },{ value: 50, title: '50' },{ value: 100, title: '100' },{ value: -1, title: '全部顯示' }]"
             >
-              <template v-slot:item.photos="{ item }">
-                <div class="d-flex ga-1 pa-1">
-                  <v-img
-                    v-for="(photo, index) in item.photos.slice(0, 4)"
-                    :key="index"
-                    :src="photo.url"
-                    aspect-ratio="1"
-                    cover
-                    width="40"
-                    class="rounded border cursor-pointer"
-                    @click="showImagePreview(photo.url)"
-                  >
-                    <template v-slot:placeholder>
-                      <div class="d-flex align-center justify-center fill-height">
-                        <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular>
-                      </div>
-                    </template>
-                  </v-img>
-                </div>
-              </template>
-              <template v-slot:item.status="{ item }">
-                <div class="position-relative">
-                  <v-fade-transition>
-                    <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent class="align-center justify-center">
-                      <v-progress-circular indeterminate size="20"></v-progress-circular>
-                    </v-overlay>
-                  </v-fade-transition>
-                  <v-menu offset-y>
-                    <template v-slot:activator="{ props: menuProps }">
-                      <ChipRenderer v-bind="menuProps" :value="item.status" type="status" :options="optionsForChips.status" style="cursor: pointer;"/>
-                    </template>
-                    <v-sheet class="pa-2">
-                      <v-chip-group column :model-value="item.status" @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }">
-                        <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">
-                          <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }}
-                        </v-chip>
-                      </v-chip-group>
-                    </v-sheet>
-                  </v-menu>
-                </div>
-              </template>
-              <template v-slot:item.level="{ item }">
-                <div class="position-relative">
-                  <v-fade-transition>
-                    <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent class="align-center justify-center">
-                      <v-progress-circular indeterminate size="20"></v-progress-circular>
-                    </v-overlay>
-                  </v-fade-transition>
-                  <v-menu offset-y>
-                    <template v-slot:activator="{ props: menuProps }">
-                      <ChipRenderer v-bind="menuProps" :value="item.level" type="level" :options="optionsForChips.level" style="cursor: pointer;"/>
-                    </template>
-                    <v-sheet class="pa-2">
-                      <v-chip-group column :model-value="item.level" @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }">
-                        <v-chip v-for="option in optionsForChips.level" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value }}</v-chip>
-                      </v-chip-group>
-                    </v-sheet>
-                  </v-menu>
-                </div>
-              </template>
-              <template v-slot:item.progress="{ item }">
-                <div class="position-relative">
-                  <v-fade-transition>
-                    <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained persistent class="align-center justify-center">
-                      <v-progress-circular indeterminate size="20"></v-progress-circular>
-                    </v-overlay>
-                  </v-fade-transition>
-                  <v-menu offset-y>
-                    <template v-slot:activator="{ props: menuProps }">
-                      <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress" :options="optionsForChips.progress" style="cursor: pointer;"/>
-                    </template>
-                    <v-sheet class="pa-2">
-                      <v-chip-group column :model-value="item.progress" @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }">
-                        <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">
-                          <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }}
-                        </v-chip>
-                      </v-chip-group>
-                    </v-sheet>
-                  </v-menu>
-                </div>
-              </template>
+               <template v-slot:item.photos="{ item }"> <div class="d-flex ga-1 pa-1"> <v-img v-for="(photo, index) in item.photos.slice(0, 4)" :key="index" :src="photo.url" aspect-ratio="1" cover width="40" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)"> <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular> </div> </template> </v-img> </div> </template>
+              <template v-slot:item.status="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.status" type="status" :options="optionsForChips.status" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.status" type="status" :options="optionsForChips.status" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.status" @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }"> <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
+              <template v-slot:item.level="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.level" type="level" :options="optionsForChips.level" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.level" type="level" :options="optionsForChips.level" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.level" @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }"> <v-chip v-for="option in optionsForChips.level" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value }}</v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
+              <template v-slot:item.progress="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.progress" type="progress" :options="optionsForChips.progress" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress" :options="optionsForChips.progress" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.progress" @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }"> <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
               <template v-slot:item.inspectionDate="{ item }"> {{ formatDate(item.inspectionDate) }} </template>
               <template v-slot:item.createdAt="{ item }"> {{ formatDateTime(item.createdAt) }} </template>
-
-              <template v-slot:item.actions="{ item }">
-                <v-icon small class="mr-2" @click="openEditDialog(item)" color="primary">mdi-pencil</v-icon>
-                <v-icon small @click="openDeleteDialog(item)" color="error">mdi-delete</v-icon>
-              </template>
-              <template v-slot:no-data>
-                <div class="pa-4 text-center text-grey">
-                  {{ noDataText }}
-                </div>
-              </template>
+              <template v-slot:item.deletedAt="{ item }"> {{ formatDateTime(item.deletedAt) }} </template>
+              <template v-slot:item.unitId="{ item }"> {{ item.unitId }} </template>
+              <template v-slot:item.actions="{ item }"> <template v-if="!showDeleted"> <v-icon small class="mr-2" @click="openEditDialog(item)" color="primary">mdi-pencil</v-icon> <v-icon small @click="openDeleteDialog(item)" color="error">mdi-delete</v-icon> </template> <template v-else> <v-icon small @click="openRestoreDialog(item)" color="success">mdi-restore</v-icon> </template> </template>
+              <template v-slot:no-data> <div class="pa-4 text-center text-grey"> {{ noDataText }} </div> </template>
             </v-data-table>
           </div>
           <div v-if="viewMode === 'card'" class="pa-2 pa-sm-4">
             <v-row dense>
               <v-col v-for="item in filteredRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
-                <v-card class="mb-3 record-card" variant="outlined">
-                  <div v-if="isProjectView" class="pa-2 border-b bg-blue-grey-lighten-5">
-                    <strong class="text-blue-grey-darken-3">戶別: {{ item.unitId }}</strong>
+                <v-card class="mb-3 record-card" variant="outlined" :class="{ 'deleted-card-look': showDeleted }">
+                   <div v-if="!selectedUnit" class="pa-2 border-b" :class="showDeleted ? 'bg-grey-lighten-4' : 'bg-blue-grey-lighten-5'">
+                    <strong :class="showDeleted ? 'text-grey-darken-2' : 'text-blue-grey-darken-3'">戶別: {{ item.unitId }}</strong>
                   </div>
-                  <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip">
-                    <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url" aspect-ratio="1" cover height="50" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)">
-                      <template v-slot:placeholder>
-                        <div class="d-flex align-center justify-center fill-height">
-                          <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular>
-                        </div>
-                      </template>
-                      <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center"> +{{ item.photos.length - 5 }} </div>
-                    </v-img>
-                  </div>
-                  <v-card-item class="pb-1 pt-2">
-                    <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span> </div> <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p>
-                  </v-card-item>
-                  <v-card-text class="py-2">
-                    <div class="d-flex ga-2 flex-wrap mb-1">
-                      <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" />
-                      <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" />
-                      <ChipRenderer size="small" :value="item.progress" type="progress" :options="optionsForChips.progress" />
-                    </div>
-                    <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate"> {{ item.description }} </p>
-                  </v-card-text>
+                  <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip"> <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url" aspect-ratio="1" cover height="50" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)"> <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular> </div> </template> <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center"> +{{ item.photos.length - 5 }} </div> </v-img> </div>
+                  <v-card-item class="pb-1 pt-2"> <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span> </div> <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p> </v-card-item>
+                  <v-card-text class="py-2"> <div class="d-flex ga-2 flex-wrap mb-1"> <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" /> <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" /> <ChipRenderer size="small" :value="item.progress" type="progress" :options="optionsForChips.progress" /> </div> <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate"> {{ item.description }} </p> <p v-if="showDeleted && item.deletedAt" class="text-caption text-error mt-1"> 刪除時間: {{ formatDateTime(item.deletedAt) }} </p> </v-card-text>
                   <v-divider></v-divider>
-                  <v-card-actions class="px-3 py-1">
-                    <span class="text-caption text-grey">
-                      {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }}
-                    </span>
-                    <v-spacer></v-spacer>
-                    <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn>
-                    <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn>
-                  </v-card-actions>
+                  <v-card-actions class="px-3 py-1"> <span class="text-caption text-grey"> {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span> <v-spacer></v-spacer> <template v-if="!showDeleted"> <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn> <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn> </template> <template v-else> <v-btn icon="mdi-restore" variant="text" size="small" @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn> </template> </v-card-actions>
                 </v-card>
               </v-col>
             </v-row>
           </div>
         </div>
-        <div v-else class="pa-10 text-center text-grey">
-          {{ noDataText }}
-        </div>
+        <div v-else class="pa-10 text-center text-grey"> {{ noDataText }} </div>
       </div>
 
-      <div v-else-if="isBound && !projectId" class="pa-6"> 
-        <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br>
-          請選擇您要進入的驗屋系統建案： </p> <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4">
-             <IconButton v-for="project in authorizedProjects" :key="project.id" :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8" @click="enterProject(project)" /> </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert> </div>
+      <div v-else-if="isBound && !projectId" class="pa-6"> <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br> 請選擇您要進入的驗屋系統建案： </p> <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4"> <IconButton v-for="project in authorizedProjects" :key="project.id" :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8" @click="enterProject(project)" /> </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert> </div>
 
     </v-card>
 
-    <InspectionRecordEditor
-      v-model="showEditorDialog"
-      :project-id="projectId"
-      :project-name="projectName"
-      :unit-id="recordBeingEdited ? recordBeingEdited.unitId : selectedUnit"
-      :record-to-edit="recordBeingEdited"
-      @saved="handleRecordSaved"
-    />
+    <InspectionRecordEditor v-model="showEditorDialog" :project-id="projectId" :project-name="projectName" :unit-id="recordBeingEdited ? recordBeingEdited.unitId : selectedUnit" :record-to-edit="recordBeingEdited" @saved="handleRecordSaved" />
+    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh"> <v-card> <v-toolbar dense flat class="border-b"> <v-spacer></v-spacer> <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn> </v-toolbar> <v-card-text class="pa-0"> <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img> </v-card-text> </v-card> </v-dialog>
+    <v-dialog v-model="showDeleteDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-error"> <v-icon start>mdi-alert-circle-outline</v-icon> 確認刪除紀錄 </v-card-title> <v-card-text> 您確定要將這筆驗屋紀錄移至資源回收桶嗎？ <div v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToDelete.inspectionDate) }} <br> 區域: {{ recordToDelete.area }} <br> 種類: {{ recordToDelete.category }} / {{ recordToDelete.subCategory }} </div> <br> <strong class="text-error">您之後可以在資源回收桶中還原。</strong> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn> <v-btn color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn> </v-card-actions> </v-card> </v-dialog>
+    <v-dialog v-model="showRestoreDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-success"> <v-icon start>mdi-restore</v-icon> 確認還原紀錄 </v-card-title> <v-card-text> 您確定要還原這筆驗屋紀錄嗎？ <div v-if="recordToRestore" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToRestore.inspectionDate) }} <br> 區域: {{ recordToRestore.area }} <br> 種類: {{ recordToRestore.category }} / {{ recordToRestore.subCategory }} </div> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showRestoreDialog = false" :disabled="isRestoring">取消</v-btn> <v-btn color="success" variant="flat" @click="confirmRestoreRecord" :loading="isRestoring">確認還原</v-btn> </v-card-actions> </v-card> </v-dialog>
 
-    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh">
-      <v-card>
-        <v-toolbar dense flat class="border-b">
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn>
-        </v-toolbar>
-        <v-card-text class="pa-0">
-          <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="showDeleteDialog" persistent max-width="400px">
-      <v-card>
-        <v-card-title class="text-h6 text-error">
-          <v-icon start>mdi-alert-circle-outline</v-icon>
-          確認刪除紀錄
-        </v-card-title>
-        <v-card-text>
-          您確定要永久刪除這筆驗屋紀錄嗎？
-          <div v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis">
-            日期: {{ formatDate(recordToDelete.inspectionDate) }} <br>
-            區域: {{ recordToDelete.area }} <br>
-            種類: {{ recordToDelete.category }} / {{ recordToDelete.subCategory }}
-          </div>
-          <br>
-          <strong class="text-error">此操作無法復原。</strong>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn>
-          <v-btn color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue'; // ✓ 移除 watch
+import { ref, onMounted, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import liff from '@line/liff';
 import { useUserStore } from '@/store/user';
@@ -341,10 +163,13 @@ import {
   getInspectionOptionsForProjectFB,
   updateInspectionRecordFieldFB,
   deleteInspectionRecordFB,
-  getInspectionRecordsForProjectFB // ✓ 1. 引入您新建立的 "全建案" API
+  getDeletedInspectionRecordsFB,
+  restoreInspectionRecordFB,
+  getDeletedInspectionRecordsForProjectFB,
+  getInspectionRecordsForProjectFB, // ✓ 引入全專案 *有效* 紀錄 API
 } from '@/api';
-import { VDataTable } from 'vuetify/components/VDataTable'; // ✓ 恢復 VDataTable import
-import { useDisplay } from 'vuetify'; // ✓ 新增 useDisplay import
+import { VDataTable } from 'vuetify/components/VDataTable';
+import { useDisplay } from 'vuetify';
 import InspectionRecordEditor from '@/components/InspectionRecordEditor.vue';
 import ChipRenderer from '@/components/ChipRenderer.vue';
 import { format, parseISO } from 'date-fns';
@@ -356,67 +181,56 @@ const route = useRoute();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const router = useRouter();
-const { mobile } = useDisplay(); // ✓ 使用 useDisplay 獲取 mobile 狀態
+const { mobile } = useDisplay();
 
-const props = defineProps({
-  projectId: {
-    type: String,
-    default: null
-  }
-});
+const props = defineProps({ projectId: { type: String, default: null } });
 
-const noDataText = computed(() => {
-  if (isLoadingRecords.value) return '正在載入紀錄...';
-  if (isProjectView.value) return '全建案尚無驗屋紀錄';
-  if (selectedUnit.value) return '此戶別尚無驗屋紀錄';
-  return '請先選擇棟別與戶別';
-});
-
-// ✓ 新增：viewMode 狀態，預設為 'table'
 const viewMode = ref('table');
-
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || '建案');
-
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isBound = ref(false);
 const isLoadingStructure = ref(false);
 const isLoadingRecords = ref(false);
-
 const projectStructure = ref({});
 const selectedBuilding = ref(null);
 const selectedUnit = ref(null);
 const allRecords = ref([]);
 const searchFilter = ref('');
-
-const isProjectView = ref(false);
-
 const showEditorDialog = ref(false);
 const recordBeingEdited = ref(null);
-
 const showPreviewDialog = ref(false);
 const previewImageUrl = ref('');
-
 const optionsForChips = reactive({ status: [], level: [], progress: [] });
 const authorizedProjects = ref([]);
-const updatingRecord = reactive({ id: null, field: null }); // ✓ 恢復 updatingRecord
-
-// ✓ START: 新增 - 刪除 Dialog 相關狀態
+const updatingRecord = reactive({ id: null, field: null });
 const showDeleteDialog = ref(false);
 const recordToDelete = ref(null);
 const isDeleting = ref(false);
-// ✓ END: 新增
+const showDeleted = ref(false);
+const showRestoreDialog = ref(false);
+const recordToRestore = ref(null);
+const isRestoring = ref(false);
 
-// --- Computed ---
+const noDataText = computed(() => {
+  if (isLoadingRecords.value) return '正在載入紀錄...';
+  if (showDeleted.value) {
+    // 已刪除模式下，不論是否選戶別，都顯示全專案提示
+    return '此建案沒有已刪除的紀錄';
+  } else {
+    // 有效模式下，區分是否選戶別
+    return selectedUnit.value ? '此戶別尚無驗屋紀錄' : '此建案尚無驗屋紀錄或請選取戶別';
+  }
+});
+
+
 const buildingItems = computed(() => {
-  // 1. 取得所有棟別名稱 (keys)
   const keys = Object.keys(projectStructure.value);
-  // 2. 使用 localeCompare 進行排序 (支援中文、數字、英文)
   keys.sort((a, b) => a.localeCompare(b, 'zh-Hant-TW', { numeric: true }));
-  // 3. 回傳排序後的陣列
   return keys;
 });
 const unitItems = computed(() => projectStructure.value[selectedBuilding.value] || []);
+
 const filteredRecords = computed(() => {
     if (!searchFilter.value) return allRecords.value;
     const lowerSearch = searchFilter.value.toLowerCase();
@@ -424,344 +238,111 @@ const filteredRecords = computed(() => {
       const searchableValues = [
         record.inspectionDate, record.phase, record.area, record.category,
         record.subCategory, record.status, record.level, record.progress,
-        record.description, record.inspectorName, record.createdAt
+        record.description, record.inspectorName, record.createdAt, record.deletedAt,
+        record.unitId
       ];
       return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
     });
 });
 
-const currentProject = computed(() => {
-  return authorizedProjects.value.find(p => p.id === props.projectId);
-});
+const currentProject = computed(() => authorizedProjects.value.find(p => p.id === props.projectId));
+const otherProjects = computed(() => authorizedProjects.value.filter(p => p.id !== props.projectId));
 
-const otherProjects = computed(() => {
-  return authorizedProjects.value.filter(p => p.id !== props.projectId);
-});
-
-// ✓ 恢復 headers ref
 const headers = computed(() => {
   const baseHeaders = [
-    { title: '日期', key: 'inspectionDate', sortable: true },
-    { title: '階段', key: 'phase', sortable: true },
-    { title: '照片', key: 'photos', sortable: false },
-    { title: '區域', key: 'area', sortable: true },
-    { title: '種類', key: 'category', sortable: true },
-    { title: '細項', key: 'subCategory', sortable: true },
-    { title: '狀態', key: 'status', sortable: true },
-    { title: '等級', key: 'level', sortable: true },
-    { title: '進度', key: 'progress', sortable: true },
-    { title: '說明', key: 'description', sortable: false },
-    { title: '人員', key: 'inspectorName', sortable: true },
-    { title: '時間', key: 'createdAt', sortable: true },
-    { title: '操作', key: 'actions', sortable: false },
+   { title: '日期', key: 'inspectionDate', sortable: true }, { title: '階段', key: 'phase', sortable: true }, { title: '照片', key: 'photos', sortable: false }, { title: '區域', key: 'area', sortable: true }, { title: '種類', key: 'category', sortable: true }, { title: '細項', key: 'subCategory', sortable: true }, { title: '狀態', key: 'status', sortable: true }, { title: '等級', key: 'level', sortable: true }, { title: '進度', key: 'progress', sortable: true }, { title: '說明', key: 'description', sortable: false }, { title: '人員', key: 'inspectorName', sortable: true }, { title: '時間', key: 'createdAt', sortable: true }, { title: '操作', key: 'actions', sortable: false },
   ];
+  let finalHeaders = [...baseHeaders];
 
-  // 如果是全建案模式，在 "日期" 後面插入 "戶別"
-  if (isProjectView.value) {
-    baseHeaders.splice(1, 0, { title: '戶別', key: 'unitId', sortable: true, width: '100px' });
+  // ✓ 修改：只要未選戶別 (無論有效或已刪除)，就顯示戶別欄位
+  if (!selectedUnit.value) {
+    finalHeaders.splice(1, 0, { title: '戶別', key: 'unitId', sortable: true, width: '100px' });
   }
 
-  return baseHeaders;
+  // ✓ 如果是已刪除模式，插入「刪除時間」欄位
+  if (showDeleted.value) {
+    finalHeaders.splice(finalHeaders.length - 1, 0, { title: '刪除時間', key: 'deletedAt', sortable: true });
+  }
+  return finalHeaders;
 });
 
 // --- Methods ---
 onMounted(async () => {
-  try {
-     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-QV34v0pb' });
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-
-    loadingText.value = '正在驗證使用者權限...';
-    const profile = await liff.getProfile();
-    const success = await userStore.fetchUserByLineId(profile.userId);
-
-    if (success) {
-      isBound.value = true;
-       username.value = userStore.user?.name || 'User';
-
-      loadingText.value = '正在載入建案權限...';
-      await projectStore.fetchProjects();
-      const allProjects = projectStore.projectsList;
-      authorizedProjects.value = allProjects.filter(project =>
-        userStore.hasProjectPermission('驗屋系統', project.name)
-      );
-
-      if (props.projectId) {
-        loadingText.value = '正在載入建案資料...';
-
-        if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) {
-            loadingText.value = '權限不足，無法訪問此建案的驗屋系統。';
-            isBound.value = true;
-            isLoading.value = false;
-            alert('權限不足');
-            return;
-        }
-
-        await loadProjectStructure();
-        await loadOptionsForChips();
-        if (selectedUnit.value) await loadRecords();
-
-      } else {
-        loadingText.value = '請選擇建案';
-      }
-
-    } else {
-      isBound.value = false;
-    }
-  } catch (error) {
-    console.error('頁面初始化失敗:', error);
-    loadingText.value = `初始化失敗: ${error.message}`;
-  } finally {
-    isLoading.value = false;
-    // ✓ 設定預設視圖模式
-    viewMode.value = mobile.value ? 'card' : 'table';
-  }
+ try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-QV34v0pb' }); if (!liff.isLoggedIn()) { liff.login(); return; } loadingText.value = '正在驗證使用者權限...'; const profile = await liff.getProfile(); const success = await userStore.fetchUserByLineId(profile.userId); if (success) { isBound.value = true; loadingText.value = '正在載入建案權限...'; await projectStore.fetchProjects(); const allProjects = projectStore.projectsList; authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name)); if (props.projectId) { loadingText.value = '正在載入建案資料...'; if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) { loadingText.value = '權限不足...'; isBound.value = true; isLoading.value = false; alert('權限不足'); return; } await loadProjectStructure(); await loadOptionsForChips();
+ // ✓ 修改 onMounted 的初始載入邏輯
+ await loadData(); // 直接呼叫 loadData，它會根據初始狀態 (showDeleted=false, selectedUnit=null) 載入全專案有效紀錄
+ } else { loadingText.value = '請選擇建案'; } } else { isBound.value = false; } } catch (error) { console.error('頁面初始化失敗:', error); loadingText.value = `初始化失敗: ${error.message}`; } finally { isLoading.value = false; viewMode.value = mobile.value ? 'card' : 'table'; }
 });
 
+async function loadProjectStructure() { if (!props.projectId) return; isLoadingStructure.value = true; const result = await getProjectStructureFB(props.projectId); if (result.status === 'success') projectStructure.value = result.data; else console.error("載入建案結構失敗:", result.message); isLoadingStructure.value = false; }
 
-async function loadProjectStructure() {
-   if (!props.projectId) return;
-  isLoadingStructure.value = true;
-  const result = await getProjectStructureFB(props.projectId);
-  if (result.status === 'success') {
-    projectStructure.value = result.data;
-  } else {
-    console.error("載入建案結構失敗:", result.message);
-  }
-  isLoadingStructure.value = false;
-}
-
-async function loadRecords() {
-   isProjectView.value = false; // ✓ 標記為 "單一戶別" 模式
-
-   if (!selectedUnit.value || !props.projectId) {
-    allRecords.value = [];
-    return;
-  }
+// ✓ 修改 loadData
+async function loadData() {
   isLoadingRecords.value = true;
-  const result = await getInspectionRecordsFB(props.projectId, selectedUnit.value); // ✓ (呼叫不變)
-  if (result.status === 'success') {
-    allRecords.value = result.data;
-  } else {
-    console.error("載入驗屋紀錄失敗:", result.message);
-    allRecords.value = [];
-  }
-  isLoadingRecords.value = false;
-}
-
-async function loadAllProjectRecords() {
-  isProjectView.value = true; // ✓ 標記為 "全建案" 模式
-  
-  // ✓ 取消下拉選單的選中狀態，這樣 "新增" 按鈕才會 disabled
-  selectedBuilding.value = null;
-  selectedUnit.value = null;
-
-  if (!props.projectId) return;
-
-  isLoadingRecords.value = true;
-  allRecords.value = []; // 先清空
-
+  allRecords.value = [];
+  let result;
   try {
-    // ✓ 呼叫您在後端建立的新 API
-    const result = await getInspectionRecordsForProjectFB(props.projectId);
-    
+    if (showDeleted.value) { // 已刪除模式永遠載入全專案
+      console.log(`Loading DELETED records for Project: ${props.projectId}`);
+      result = await getDeletedInspectionRecordsForProjectFB(props.projectId);
+    } else { // 有效模式
+      if (selectedUnit.value) { // 有選戶別，載入單一戶別
+        console.log(`Loading ACTIVE records for Unit: ${props.projectId}/${selectedUnit.value}`);
+        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value);
+      } else { // 未選戶別，載入全專案
+        console.log(`Loading ACTIVE records for Project: ${props.projectId}`);
+        result = await getInspectionRecordsForProjectFB(props.projectId); // ✓ 呼叫全專案有效紀錄 API
+      }
+    }
+
     if (result.status === 'success') {
-      // ✓ 假設 result.data 是包含 'unitId' 的紀錄陣列
-      allRecords.value = result.data; 
+      allRecords.value = result.data;
+      console.log(`Loaded ${allRecords.value.length} records.`);
     } else {
-      console.error("載入全建案紀錄失敗:", result.message);
+      console.error("載入驗屋紀錄失敗:", result.message);
       allRecords.value = [];
+      alert(`載入紀錄失敗: ${result.message}`);
     }
   } catch (error) {
-     console.error("載入全建案紀錄時發生錯誤:", error);
+     console.error("呼叫 API 載入紀錄時發生錯誤:", error);
      allRecords.value = [];
+     alert(`載入紀錄時發生錯誤: ${error.message}`);
   } finally {
     isLoadingRecords.value = false;
   }
 }
 
-async function loadOptionsForChips() {
-     if (!props.projectId) return;
-    const result = await getInspectionOptionsForProjectFB(props.projectId);
-    if (result.status === 'success') {
-        optionsForChips.status = result.data.status || [];
-        optionsForChips.level = result.data.level || [];
-        optionsForChips.progress = result.data.progress || [];
-    } else {
-        console.error("載入 Chip 選項失敗:", result.message);
-    }
-}
+async function loadOptionsForChips() { if (!props.projectId) return; const result = await getInspectionOptionsForProjectFB(props.projectId); if (result.status === 'success') { optionsForChips.status = result.data.status || []; optionsForChips.level = result.data.level || []; optionsForChips.progress = result.data.progress || []; } else console.error("載入 Chip 選項失敗:", result.message); }
+function enterProject(project) { if (project && project.id && project.id !== props.projectId) { router.push({ name: 'InspectionConsole', params: { projectId: project.id } }); selectedBuilding.value = null; selectedUnit.value = null; showDeleted.value = false; allRecords.value = []; loadData(); /*✓ 切換建案後立即載入全專案有效紀錄*/ } }
 
-function enterProject(project) {
-   if (project && project.id && project.id !== props.projectId) {
-    router.push({
-      name: 'InspectionConsole',
-      params: { projectId: project.id }
-    });
-  }
-}
-
-// ✓ 恢復 handleFieldUpdate 函數
 async function handleFieldUpdate(item, field, newValue) {
-  if (item[field] === newValue || (updatingRecord.id === item.id && updatingRecord.field === field)) {
-    return;
-  }
-
-  updatingRecord.id = item.id;
-  updatingRecord.field = field;
-
-  const payload = {
-    [field]: newValue,
-    inspectorName: userStore.user?.name || '未知',
-    inspectorPhone: userStore.user?.key || '未知',
-  };
-
-  // ✓ 關鍵修改：動態決定 unitId
-  // ✓ 您的 API 回傳的 item 必須包含 unitId
-  const unitForUpdate = isProjectView.value ? item.unitId : selectedUnit.value;
-  
-  if (!unitForUpdate) {
-    alert('錯誤：找不到戶別 ID，無法更新。');
-    updatingRecord.id = null;
-    updatingRecord.field = null;
-    return;
-  }
-
-  // ✓ 傳入動態獲取的 unitForUpdate
-  const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload);
-
-  if (result.status === 'success') {
-    // ... (更新本地資料) ...
-  } else {
-    alert(`更新失敗: ${result.message}`);
-  }
-
-  updatingRecord.id = null;
-  updatingRecord.field = null;
+ if (showDeleted.value) return; if (item[field] === newValue || (updatingRecord.id === item.id && updatingRecord.field === field)) return; updatingRecord.id = item.id; updatingRecord.field = field; const payload = { [field]: newValue, inspectorName: userStore.user?.name || '未知', inspectorPhone: userStore.user?.key || '未知' };
+ const unitForUpdate = item.unitId;
+ if (!unitForUpdate) { alert('錯誤：找不到戶別 ID，無法更新。'); updatingRecord.id = null; updatingRecord.field = null; return; }
+ const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload); if (result.status === 'success') { const recordIndex = allRecords.value.findIndex(r => r.id === item.id); if (recordIndex !== -1) { allRecords.value[recordIndex] = { ...allRecords.value[recordIndex], ...payload }; } } else { alert(`更新失敗: ${result.message}`); } updatingRecord.id = null; updatingRecord.field = null;
 }
 
-function openAddDialog() {
-  recordBeingEdited.value = null;
-  showEditorDialog.value = true;
+function openAddDialog() { recordBeingEdited.value = null; showEditorDialog.value = true; }
+function openEditDialog(record) { recordBeingEdited.value = record; showEditorDialog.value = true; }
+function handleRecordSaved() { showEditorDialog.value = false; loadData(); }
+function showImagePreview(url) { previewImageUrl.value = url; showPreviewDialog.value = true; }
+function formatDate(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd', { locale: zhTW }); } catch (e) { return dateString; } }
+function formatDateTime(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd HH:mm', { locale: zhTW }); } catch (e) { return dateString; } }
+function openDeleteDialog(item) { recordToDelete.value = item; showDeleteDialog.value = true; }
+async function confirmDeleteRecord() { if (!recordToDelete.value?.id) return; isDeleting.value = true; try { const result = await deleteInspectionRecordFB(recordToDelete.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id); showDeleteDialog.value = false; alert('紀錄已移至資源回收桶。'); } else throw new Error(result.message || '刪除失敗'); } catch (error) { console.error("刪除紀錄時發生錯誤:", error); alert(`刪除失敗: ${error.message}`); } finally { isDeleting.value = false; recordToDelete.value = null; } }
+function openRestoreDialog(item) { recordToRestore.value = item; showRestoreDialog.value = true; }
+async function confirmRestoreRecord() { if (!recordToRestore.value?.id) return; isRestoring.value = true; try { const result = await restoreInspectionRecordFB(recordToRestore.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToRestore.value.id); showRestoreDialog.value = false; alert('紀錄已成功還原。'); } else throw new Error(result.message || '還原失敗'); } catch (error) { console.error("還原紀錄時發生錯誤:", error); alert(`還原失敗: ${error.message}`); } finally { isRestoring.value = false; recordToRestore.value = null; } }
+
+// ✓ 修改 handleModeChange
+function handleModeChange(newModeValue) {
+  // 無論切換到哪個模式，都清除戶別和棟別選擇，觸發全專案載入
+  selectedBuilding.value = null;
+  selectedUnit.value = null;
+  loadData();
 }
-
-function openEditDialog(record) {
-    recordBeingEdited.value = record;
-    showEditorDialog.value = true;
-}
-
-function handleRecordSaved() {
-  showEditorDialog.value = false;
-  loadRecords();
-}
-
-function showImagePreview(url) {
-    previewImageUrl.value = url;
-    showPreviewDialog.value = true;
-}
-
-function formatDate(dateString) {
-     if (!dateString) return '';
-    try {
-        return format(parseISO(dateString), 'yyyy/MM/dd', { locale: zhTW });
-    } catch (e) {
-        return dateString;
-    }
-}
-
-function formatDateTime(dateString) {
-       if (!dateString) return '';
-     try {
-         return format(parseISO(dateString), 'yyyy/MM/dd HH:mm', { locale: zhTW });
-     } catch (e) {
-         return dateString;
-     }
-}
-
-// ✓ START: 新增 - 刪除相關函數
-function openDeleteDialog(item) {
-  recordToDelete.value = item;
-  showDeleteDialog.value = true;
-}
-
-async function confirmDeleteRecord() {
-  if (!recordToDelete.value || !recordToDelete.value.id) return;
-
-  isDeleting.value = true;
-  try {
-    // 呼叫後端 API 執行刪除
-    const result = await deleteInspectionRecordFB(recordToDelete.value.id);
-
-    if (result.status === 'success') {
-      // 從前端列表中移除該筆紀錄
-      allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id);
-      showDeleteDialog.value = false; // 關閉對話框
-      alert('紀錄已成功刪除。');
-    } else {
-      throw new Error(result.message || '刪除失敗');
-    }
-  } catch (error) {
-    console.error("刪除紀錄時發生錯誤:", error);
-    alert(`刪除失敗: ${error.message}`);
-  } finally {
-    isDeleting.value = false;
-    recordToDelete.value = null; // 清除待刪除紀錄
-  }
-}
-
 
 </script>
 
 <style scoped>
-.cursor-pointer {
-    cursor: pointer;
-}
-
-/* ✓ START: 卡片樣式 (來自 CARDS版) */
-.record-card {
-  transition: box-shadow 0.2s ease-in-out;
-}
-.record-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.photo-strip .v-img {
-  max-width: calc(20% - 4px); /* 最多顯示 5 張照片，留點間隙 */
-  flex-basis: calc(20% - 4px);
-}
-
-.description-truncate {
-  display: -webkit-box;
-  -webkit-line-clamp: 2; /* 最多顯示 2 行 */
-  line-clamp: 2; /* ✓ 標準語法 */
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-height: 1.5em; /* 至少保留一行的高度 */
-}
-
-.border-b {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-.photo-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: white;
-  font-size: 0.9rem;
-  font-weight: bold;
-}
-/* ✓ END: 卡片樣式 */
-
-/* ✓ 表格 Chip 編輯需要的樣式 (來自 DATA-TABLE版) */
-.position-relative {
-  position: relative;
-}
+.cursor-pointer { cursor: pointer; } .record-card { transition: box-shadow 0.2s ease-in-out; } .record-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); } .photo-strip .v-img { max-width: calc(20% - 4px); flex-basis: calc(20% - 4px); } .description-truncate { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; min-height: 1.5em; } .border-b { border-bottom: 1px solid rgba(0, 0, 0, 0.12); } .photo-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); color: white; font-size: 0.9rem; font-weight: bold; } .position-relative { position: relative; } .deleted-card-look { opacity: 0.65; } .deleted-card-look .v-card-actions button { opacity: 1; pointer-events: auto; } .deleted-card-look .photo-strip .v-img { pointer-events: none; }
 </style>

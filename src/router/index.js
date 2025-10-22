@@ -564,12 +564,25 @@ router.beforeEach(async (to, from, next) => {
                 return next({ name: 'Home' });
               }
           } else if (projectNameParam) {
-              // 情況 B.2: 路由包含 projectName (例如 /sales-control/:projectName)
-              // 假設 projectNameParam 就是完整的建案名稱
-              if (!userStore.hasProjectPermission(requiredSystem, projectNameParam)) {
-                alert(`權限不足：您沒有進入建案「${projectNameParam}」的「${requiredSystem}」權限。`);
-                return next({ name: 'Home' });
+            // 情況 B.2: 路由包含 projectName (需要修改)
+              // **** 👇👇👇 修改點開始 👇👇👇 ****
+              // 1. 從 projectStore 透過 ID ('fuyu141') 查找完整的建案名稱
+              const fullProjectName = projectStore.idToNameMap[projectNameParam];
+              console.log(`${logPrefix} ProjectNameParam ('${projectNameParam}') resolved to FullProjectName: '${fullProjectName}'`);
+
+              // 2. 檢查是否成功找到建案名稱
+              if (!fullProjectName) {
+                  console.error(`${logPrefix} 找不到建案 ID "${projectNameParam}" 對應的建案名稱。Project Store Data:`, projectStore.idToNameMap);
+                  alert(`錯誤：無法驗證建案權限 (ID: ${projectNameParam})。請確認建案資料已載入。`);
+                  return next({ name: 'Home' }); // 中斷並導向 Home
               }
+
+              // 3. 使用找到的完整建案名稱進行權限驗證
+              if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
+                alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
+                return next({ name: 'Home' }); // 權限不足，導向 Home
+              }
+              // **** 👆👆👆 修改點結束 👆👆👆 ****
           }
           else {
               // 情況 B.3: 路由不包含建案參數 (例如入口路由 /inspection-console-entry)
