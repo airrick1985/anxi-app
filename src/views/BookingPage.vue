@@ -644,6 +644,20 @@
   <v-card>
     <v-card-title class="text-h5">驗屋授權書內容填寫</v-card-title>
     <v-card-text>
+      <v-alert
+            type="info"
+            variant="tonal"
+            border="start"
+            density="compact"
+            class="mb-4"
+          >
+            <template v-slot:title>
+              <div class="font-weight-bold">授權範圍</div>
+            </template>
+            <div>
+              受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。
+            </div>
+          </v-alert>
       <v-form ref="authForm">
         <v-row>
           <v-col cols="12" md="6">
@@ -672,9 +686,12 @@
               </v-btn>
             </div>
             <v-card-text>
-              <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
-            </v-card-text>
+              <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }"></VueSignaturePad>
+              
+       </v-card-text>
+      
           </v-card>
+        <p class="text-caption text-grey text-center mt-1">完成簽名表示同意授權內容</p>
         </v-col>
       </v-row>
       </v-form>
