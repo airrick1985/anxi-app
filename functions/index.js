@@ -8936,8 +8936,7 @@ exports.exportInspectionOptionsToExcel = onCall({ region: "asia-east1",
  * @returns {Promise<object>} - { status, id }
  */
 exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
-    const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone } = request.data;
-    const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
+const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone, customerView } = request.data; // ✓ 新增 customerView    const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
 
     // 基本參數驗證
     if (!projectId || !unitId || !inspectionDate || !phase || !area || !category || !subCategory || !status || !level || !progress || !inspectorName || !inspectorPhone) {
@@ -8976,6 +8975,7 @@ exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) =
             description: description || "", // 確保 description 有值
             inspectorName,
             inspectorPhone,
+            customerView: customerView === false ? false : true, // ✓ 新增此行，處理預設值
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
             isDeleted: false 
@@ -9182,11 +9182,19 @@ exports.updateInspectionRecordField = onCall(async (request) => {
         const db = new Firestore({ databaseId: "anxi-app" });
         const recordRef = db.collection('inspectionRecords').doc(recordId);
 
-        const dataToUpdate = { /* ... 更新內容 ... */ };
-         dataToUpdate.updatedAt = FieldValue.serverTimestamp(); // ✓ 自動時間戳
+// ✓✓✓ 正確修改點：使用 payload 建立 dataToUpdate ✓✓✓
+        const dataToUpdate = {
+          ...payload, // ✓ 展開前端傳來的 payload (包含 customerView, inspectorName, inspectorPhone)
+          updatedAt: FieldValue.serverTimestamp() // ✓ 自動加入更新時間戳
+        };
 
-        console.log(`[${functionName}] 準備更新文件: ${recordRef.path}`);
-        // ✓ 使用 update，如果文件不存在它會自動拋錯
+        // ✓ 可選但建議：移除不應在此處更新的欄位，防止意外修改
+        delete dataToUpdate.projectId;
+        delete dataToUpdate.unitId;
+        delete dataToUpdate.createdAt;
+        delete dataToUpdate.id; // 如果 payload 可能包含 id
+
+        console.log(`[${functionName}] Preparing to update Firestore doc: ${recordRef.path} with data:`, JSON.stringify(dataToUpdate)); // ✓ Log        // ✓ 使用 update，如果文件不存在它會自動拋錯
         await recordRef.update(dataToUpdate);
         console.log(`[${functionName}] 文件更新成功。`);
 

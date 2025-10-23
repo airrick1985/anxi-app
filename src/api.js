@@ -5641,6 +5641,7 @@ export async function getProjectStructureFB(projectId) { // 命名為 getProject
  */
 export const updateInspectionRecordFieldFB = async (projectId, unitId, recordId, payload) => {
   // 基本參數驗證 (保留)
+  console.log("[API updateInspectionRecordFieldFB] Function called with:", { projectId, unitId, recordId, payload });
   if (!projectId || !unitId || !recordId || !payload) {
     console.error("[API Error] updateInspectionRecordFieldFB: Missing required parameters.", { projectId, unitId, recordId, payload });
     return { status: 'error', message: '前端錯誤：缺少必要的更新參數' };
@@ -5664,6 +5665,7 @@ export const updateInspectionRecordFieldFB = async (projectId, unitId, recordId,
     return result.data;
 
   } catch (error) {
+    console.error("[API updateInspectionRecordFieldFB] Error calling Cloud Function:", error);
     // 4. 捕捉呼叫 Cloud Function 時發生的錯誤 (包括 HttpsError)
     console.error("[API Error] Error calling 'updateInspectionRecordField' Cloud Function:", error);
     // 將錯誤訊息傳回給前端元件

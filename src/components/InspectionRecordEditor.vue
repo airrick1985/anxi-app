@@ -23,7 +23,7 @@
         </v-btn>
       </v-toolbar>
 
-      <v-card-text style="max-height: 75vh;">
+      <v-card-text style="max-height: 85vh;">
         <v-form
           ref="form"
           v-model="valid"
@@ -322,10 +322,31 @@
               </v-col>
 
              
-            </v-row>
-          </v-container>
-        </v-form>
-      </v-card-text>
+            <v-col cols="12">
+            <v-label class="mb-1">客戶檢視</v-label>
+            <div class="d-flex align-center ga-2">
+              <v-tooltip location="top" :text="formData.customerView ? '驗屋報告將顯示此紀錄' : '驗屋報告不顯示此紀錄'">
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    :icon="formData.customerView ? 'mdi-eye-outline' : 'mdi-eye-off-outline'"
+                    :color="formData.customerView ? 'primary' : 'grey'"
+                    variant="outlined"
+                    density="compact"
+                    @click="formData.customerView = !formData.customerView"
+                    aria-label="切換客戶檢視狀態"
+                  ></v-btn>
+                </template>
+              </v-tooltip>
+              <span class="text-caption text-medium-emphasis">
+                {{ formData.customerView ? '顯示於驗屋報告' : '不顯示於驗屋報告' }}
+              </span>
+            </div>
+          </v-col>
+          </v-row>
+      </v-container>
+    </v-form>
+  </v-card-text>
 
       <v-divider></v-divider>
       <v-card-actions class="pa-3">
@@ -403,7 +424,8 @@ const createDefaultFormData = () => ({
   status: null,
   level: null,
   progress: null,
-  description: ''
+  description: '',
+  customerView: true // ✓ 新增此行，預設為 true
 });
 const formData = reactive(createDefaultFormData());
 
@@ -448,6 +470,7 @@ async function initializeComponent() {
       ...props.recordToEdit,
       inspectionDate: props.recordToEdit.inspectionDate ? new Date(props.recordToEdit.inspectionDate) : new Date(),
       photos: props.recordToEdit.photos || [],
+      customerView: props.recordToEdit.customerView === false ? false : true,
     });
   } else {
     // 新增模式：設定預設值
@@ -687,9 +710,13 @@ function buildPayload(uploadedPhotosInfo) {
     description: formData.description,
     inspectorName: userStore.user?.name || '未知',
     inspectorPhone: userStore.user?.key || '未知',
+    customerView: formData.customerView, // ✓ 新增此行
     // createdAt / updatedAt 由後端 Cloud Function 自動處理
   };
 }
+
+
+
 </script>
 
 <style>
