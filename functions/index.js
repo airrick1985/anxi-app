@@ -4630,6 +4630,211 @@ exports.uploadAuthLetter = onCall({ region: "asia-east1",
 //  END: 新增 uploadAuthLetter 雲端函式
 
 
+// ✓ START: 新增 - 獲取客戶最新預約資料 (供客戶端驗屋報告頁面預填)
+/**
+ * [API] 根據 projectId 和 unitId，查找最新的有效預約紀錄，
+ * 並回傳預約人姓名、電話、Email。
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - 包含 { bookerName, bookerEmail, bookerPhone } 的物件或錯誤訊息
+ */
+exports.getCustomerAppointmentDetails = onCall({ region: "asia-east1" }, async (request) => {
+    // 從請求中獲取 projectId 和 unitId
+    const { projectId, unitId } = request.data;
+    const functionName = `getCustomerAppointmentDetails (Project: ${projectId}, Unit: ${unitId})`; // 用於 Log
+
+    // 1. 驗證輸入參數
+    if (!projectId || !unitId) {
+        console.error(`[${functionName}] 錯誤：缺少 projectId 或 unitId。`);
+        // 拋出 HttpsError，前端 api.js 可以捕捉到 message
+        throw new HttpsError("invalid-argument", "缺少建案 ID (projectId) 或戶別 ID (unitId)。");
+    }
+
+    try {
+        // 2. 建立 Firestore 實例 (指向 anxi-app 資料庫)
+        const db = new Firestore({ databaseId: "anxi-app" });
+        const appointmentsRef = db.collection("appointments"); // 取得 appointments 集合的參考
+
+        // 3. 建立查詢條件
+        const q = appointmentsRef
+            .where("projectId", "==", projectId) // 篩選建案 ID
+            .where("unitId", "==", unitId)       // 篩選戶別 ID
+            .where("status", "!=", "取消")       // 排除已取消的預約
+            .orderBy("appointmentDate", "desc") // 按預約日期降序排序 (最新的在前面)
+            .limit(1);                           // 只取回最新的一筆
+
+        // 4. 執行查詢
+        console.log(`[${functionName}] 正在查詢最新的有效預約...`);
+        const snapshot = await q.get();
+
+        // 5. 處理查詢結果
+        if (snapshot.empty) {
+            // 如果找不到符合條件的預約紀錄
+            console.log(`[${functionName}] 找不到戶別 ${unitId} 的有效預約紀錄。`);
+            // 回傳一個特定的錯誤訊息或空的資料結構，讓前端知道沒有找到資料
+            // 這裡我們選擇拋出 not-found 錯誤
+            throw new HttpsError("not-found", "找不到此戶別的有效預約紀錄。");
+        } else {
+            // 成功找到最新預約紀錄
+            const latestAppointment = snapshot.docs[0].data();
+            console.log(`[${functionName}] 成功找到最新預約紀錄 (BookingCode: ${latestAppointment.bookingCode})。`);
+
+            // 6. 回傳需要的欄位
+            return {
+                status: "success", // 加入 status 方便前端判斷
+                data: {
+                    bookerName: latestAppointment.bookerName || "", // 提供預設空字串
+                    bookerEmail: latestAppointment.bookerEmail || "",
+                    bookerPhone: latestAppointment.bookerPhone || ""
+                }
+            };
+        }
+    } catch (error) {
+        // 7. 處理錯誤
+        console.error(`[${functionName}] 查詢預約資料時發生錯誤:`, error);
+        // 如果錯誤是我們自己拋出的 HttpsError，直接再次拋出
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        // 對於其他未預期的錯誤，拋出通用的內部錯誤
+        throw new HttpsError("internal", `查詢預約詳細資料時發生未預期的錯誤: ${error.message}`);
+    }
+});
+// ✓ END: 新增函式
+
+// ✓ START: 新增 - 儲存客戶驗屋確認簽名
+/**
+ * [API] 處理客戶端驗屋報告的簽名確認
+ * 1. 上傳簽名圖檔至 Storage
+ * 2. 更新 inspectionRecords 中符合條件的紀錄，標記確認時間與批次 ID
+ * 3. 在 inspectionConfirmations 集合中新增一筆確認紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @param {string} confirmationBatchId - 前端產生的本次確認批次 ID (建議格式 YYYYMMDDHHMMSS)
+ * @param {object} buyerInfo - 包含 { name, phone, email }
+ * @param {string} signatureImageBase64 - 簽名圖檔的 Base64 字串 (不含 data:image/... 前綴)
+ * @returns {Promise<object>} - { status: 'success', confirmationId: '...' }
+ */
+exports.saveCustomerConfirmation = onCall({ region: "asia-east1",
+    memory: "1GiB", // 上傳圖片可能需要較多記憶體
+    timeoutSeconds: 120 // 允許較長執行時間
+}, async (request) => {
+    const { projectId, unitId, confirmationBatchId, buyerInfo, signatureImageBase64 } = request.data;
+    const functionName = `saveCustomerConfirmation (Project: ${projectId}, Unit: ${unitId})`;
+
+    // 1. 驗證輸入參數
+    if (!projectId || !unitId || !confirmationBatchId || !buyerInfo || !signatureImageBase64) {
+        console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+        throw new HttpsError("invalid-argument", "缺少必要的確認參數。");
+    }
+    if (!buyerInfo.name || !buyerInfo.phone || !buyerInfo.email) {
+        console.error(`[${functionName}] 錯誤：buyerInfo 不完整。`);
+        throw new HttpsError("invalid-argument", "缺少買方姓名、電話或 Email。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const bucket = getStorage().bucket(); // 獲取默認的 Storage Bucket
+
+    try {
+        // --- 步驟 2: 上傳簽名圖檔至 Firebase Storage ---
+        console.log(`[${functionName}] 正在上傳簽名圖檔...`);
+        // 檔案路徑： signatures/{projectId}/{unitId}/{confirmationBatchId}.png
+        const signaturePath = `signatures/${projectId}/${unitId}/${confirmationBatchId}.png`;
+        const file = bucket.file(signaturePath);
+        const buffer = Buffer.from(signatureImageBase64, 'base64');
+        const stream = Readable.from(buffer); // 需要 const { Readable } = require("stream");
+
+        // 使用 stream 上傳
+        await new Promise((resolve, reject) => {
+            stream.pipe(file.createWriteStream({
+                metadata: { contentType: 'image/png' }, // 指定 MIME 類型
+                resumable: false
+            }))
+            .on('error', (err) => reject(err))
+            .on('finish', () => resolve());
+        });
+
+        // 設定檔案為公開可讀 (如果需要的話)
+        await file.makePublic();
+        const signatureImageUrl = file.publicUrl(); // 獲取公開 URL
+        console.log(`[${functionName}] 簽名圖檔上傳成功: ${signatureImageUrl}`);
+
+        // --- 步驟 3: 使用 Transaction 更新 Firestore ---
+        console.log(`[${functionName}] 開始 Firestore Transaction...`);
+        const confirmationRef = db.collection('inspectionConfirmations').doc(); // 自動產生 ID
+        const confirmedAt = Timestamp.now(); // 獲取當前伺服器時間戳
+
+        await db.runTransaction(async (transaction) => {
+            // 3.1 查詢需要更新的 inspectionRecords
+            const recordsRef = db.collection("inspectionRecords");
+            const query = recordsRef
+                .where("projectId", "==", projectId)
+                .where("unitId", "==", unitId)
+                .where("isDeleted", "==", false)     // 未被刪除
+                .where("customerView", "==", true)   // 客戶可見
+                .where("customerConfirmedAt", "==", null); // 尚未被確認的
+
+            console.log(`[${functionName}] (TX) 正在查詢待更新的 inspectionRecords...`);
+            const snapshot = await transaction.get(query); // 在 Transaction 中執行查詢
+
+            if (snapshot.empty) {
+                // 如果找不到任何需要更新的紀錄 (可能重複觸發或紀錄已被刪除/隱藏)
+                console.warn(`[${functionName}] (TX) 找不到需要標記確認的驗屋紀錄 (可能已確認過或無符合條件紀錄)。`);
+                // 雖然沒有紀錄被更新，但我們仍然需要記錄這次簽名動作
+                // 所以繼續執行 3.2，但不拋出錯誤
+            } else {
+                 console.log(`[${functionName}] (TX) 找到 ${snapshot.size} 筆紀錄待更新確認狀態。`);
+            }
+
+
+            // 3.2 批次更新 inspectionRecords
+            snapshot.docs.forEach(doc => {
+                transaction.update(doc.ref, {
+                    customerConfirmedAt: confirmedAt,
+                    confirmationBatchId: confirmationBatchId
+                });
+            });
+
+            // 3.3 新增 inspectionConfirmations 紀錄
+            transaction.set(confirmationRef, {
+                projectId: projectId,
+                unitId: unitId,
+                confirmationBatchId: confirmationBatchId,
+                confirmedAt: confirmedAt,
+                buyerInfo: buyerInfo, // 儲存當時確認的買方資訊
+                signatureImageUrl: signatureImageUrl, // 儲存簽名圖檔 URL
+                recordCount: snapshot.size // 記錄本次確認影響的紀錄筆數
+            });
+             console.log(`[${functionName}] (TX) 已排定新增確認紀錄 ${confirmationRef.id} 並更新 ${snapshot.size} 筆紀錄。`);
+        }); // Transaction 結束
+
+        console.log(`[${functionName}] Firestore Transaction 成功提交。`);
+
+        // --- 步驟 4: 回傳成功訊息 ---
+        return {
+            status: "success",
+            confirmationId: confirmationRef.id // 回傳新建立的確認紀錄 ID
+        };
+
+    } catch (error) {
+        // --- 錯誤處理 ---
+        console.error(`[${functionName}] 儲存確認時發生錯誤:`, error);
+        // 清理可能已上傳的簽名圖檔 (如果需要)
+        // (注意：如果在 Transaction 中失敗，Firestore 的更改會自動回滾)
+         try {
+             await bucket.file(signaturePath).delete();
+             console.log(`[${functionName}] 已清理上傳失敗的簽名圖檔。`);
+         } catch (deleteError) {
+             console.error(`[${functionName}] 清理簽名圖檔失敗:`, deleteError);
+         }
+
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", `儲存確認簽名時發生錯誤: ${error.message}`);
+    }
+});
+// ✓ END: 新增函式
 
 // --- 主要的 Cloud Function ---
 /**

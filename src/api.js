@@ -5879,3 +5879,56 @@ export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
 // / ✅ 結束：驗屋選項與照片上傳 API
 // =================================================================
 
+
+
+
+
+//客戶驗屋報告相關 API
+
+/**
+ * ✅ [API] 呼叫後端，獲取指定戶別最新的有效預約資料中的買方資訊
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, data: { bookerName, bookerEmail, bookerPhone } } 或 { status: 'error', message }
+ */
+export const getCustomerAppointmentDetails = async (payload) => {
+  // 函數名稱，用於日誌
+  const functionName = 'getCustomerAppointmentDetails';
+  try {
+    // 獲取 Cloud Function 的引用
+    const getterFunction = httpsCallable(functions, functionName); // ✓ 使用後端函式名稱
+    // 呼叫 Cloud Function 並傳遞 payload
+    const result = await getterFunction(payload);
+    // 直接回傳 Cloud Function 的執行結果 (包含 status 和 data)
+    return result.data;
+  } catch (error) {
+    // 捕捉呼叫 Cloud Function 時的錯誤 (包括 HttpsError)
+    console.error(`API Error in ${functionName}:`, error);
+    // 將錯誤訊息回傳給前端元件
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message }; // 維持一致的回傳格式
+  }
+};
+
+/**
+ * ✅ [API] 呼叫後端，儲存客戶的驗屋報告確認簽名
+ * @param {object} payload - 包含 { projectId, unitId, confirmationBatchId, buyerInfo, signatureImageBase64 }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, confirmationId } 或 { status: 'error', message }
+ */
+export const saveCustomerConfirmation = async (payload) => {
+  // 函數名稱，用於日誌
+  const functionName = 'saveCustomerConfirmation';
+  try {
+    // 獲取 Cloud Function 的引用
+    const saveFunction = httpsCallable(functions, functionName); // ✓ 使用後端函式名稱
+    // 呼叫 Cloud Function 並傳遞 payload
+    const result = await saveFunction(payload);
+    // 直接回傳 Cloud Function 的執行結果
+    return result.data;
+  } catch (error) {
+    // 捕捉呼叫 Cloud Function 時的錯誤
+    console.error(`API Error in ${functionName}:`, error);
+    // 將錯誤訊息回傳給前端元件
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message };
+  }
+};
