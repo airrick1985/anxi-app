@@ -5932,3 +5932,89 @@ export const saveCustomerConfirmation = async (payload) => {
     return { status: "error", message: message };
   }
 };
+
+
+// ✓ START: 新增 - 呼叫後端產生分享連結的 API
+/**
+ * ✅ [API] 呼叫後端，產生一個有時效性的客戶驗屋報告分享連結
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - { status, shareUrl } 或 { status: 'error', message }
+ */
+export const generateShareableUrl = async (payload) => {
+  const functionName = 'generateShareableUrl';
+  try {
+    const generateFunction = httpsCallable(functions, functionName);
+    const result = await generateFunction(payload);
+    return result.data; // 直接回傳後端的 { status, shareUrl }
+  } catch (error) {
+    console.error(`API Error in ${functionName}:`, error);
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message };
+  }
+};
+// ✓ END: 新增函式
+
+
+// ✓ START: 新增 - 呼叫後端驗證分享連結 Token 的 API
+/**
+ * ✅ [API] 呼叫後端，驗證客戶驗屋報告的分享 Token
+ * @param {object} payload - 包含 { token }
+ * @returns {Promise<object>} - { status, data: { projectId, unitId } } 或 { status: 'error', message }
+ */
+export const validateReportTokenAPI = async (payload) => {
+  const functionName = 'validateReportToken';
+  try {
+    const validateFunction = httpsCallable(functions, functionName);
+    const result = await validateFunction(payload);
+    return result.data; // 直接回傳後端的 { status, data }
+  } catch (error) {
+    console.error(`API Error in ${functionName}:`, error);
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message };
+  }
+};
+// ✓ END: 新增函式
+
+
+/**
+ * ✅ [API] 呼叫後端，獲取指定戶別已確認簽名的驗屋批次列表
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - { status, data: Array } 或 { status: 'error', message }
+ */
+export const getConfirmedInspectionBatches = async (payload) => {
+  const functionName = 'getConfirmedInspectionBatches';
+  try {
+    const getterFunction = httpsCallable(functions, functionName);
+    const result = await getterFunction(payload);
+    return result.data; // 直接回傳後端的 { status, data }
+  } catch (error) {
+    console.error(`API Error in ${functionName}:`, error);
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    // 回傳包含 data: [] 以避免前端在解構時出錯
+    return { status: "error", message: message, data: [] };
+  }
+};
+
+
+/**
+ * ✅ [API] 呼叫後端，觸發產製驗屋報告 PDF 的背景任務
+ * @param {object} payload - 包含 { projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail }
+ * @returns {Promise<object>} - { status: 'processing', message: '...' } 或 { status: 'error', message }
+ */
+export const generateInspectionPdf = async (payload) => {
+  const functionName = 'generateInspectionPdf';
+  try {
+    // 獲取 Cloud Function 的引用
+    const generatorFunction = httpsCallable(functions, functionName);
+    // 呼叫 Cloud Function 並傳遞 payload
+    const result = await generatorFunction(payload);
+    // 直接回傳後端的執行結果 (預期是 { status: 'processing', message: '...' })
+    return result.data;
+  } catch (error) {
+    // 捕捉呼叫 Cloud Function 時的錯誤
+    console.error(`API Error in ${functionName}:`, error);
+    // 將錯誤訊息回傳給前端元件
+    const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message };
+  }
+};

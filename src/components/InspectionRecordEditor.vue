@@ -321,32 +321,66 @@
                 >請選擇進度</div>
               </v-col>
 
-             
-            <v-col cols="12">
-            <v-label class="mb-1">客戶檢視</v-label>
-            <div class="d-flex align-center ga-2">
-              <v-tooltip location="top" :text="formData.customerView ? '驗屋報告將顯示此紀錄' : '驗屋報告不顯示此紀錄'">
-                <template v-slot:activator="{ props }">
-                  <v-btn
-                    v-bind="props"
-                    :icon="formData.customerView ? 'mdi-eye-outline' : 'mdi-eye-off-outline'"
-                    :color="formData.customerView ? 'primary' : 'grey'"
-                    variant="outlined"
-                    density="compact"
-                    @click="formData.customerView = !formData.customerView"
-                    aria-label="切換客戶檢視狀態"
-                  ></v-btn>
-                </template>
-              </v-tooltip>
-              <span class="text-caption text-medium-emphasis">
-                {{ formData.customerView ? '顯示於驗屋報告' : '不顯示於驗屋報告' }}
-              </span>
-            </div>
-          </v-col>
-          </v-row>
-      </v-container>
-    </v-form>
-  </v-card-text>
+             <v-col cols="12">
+                <v-label class="mb-1">客戶檢視</v-label>
+                <div class="d-flex align-center ga-2">
+                  <v-tooltip location="top" :text="formData.customerView ? '驗屋報告將顯示此紀錄' : '驗屋報告不顯示此紀錄'">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        :icon="formData.customerView ? 'mdi-eye-outline' : 'mdi-eye-off-outline'"
+                        :color="formData.customerView ? 'primary' : 'grey'"
+                        variant="outlined"
+                        density="compact"
+                        @click="formData.customerView = !formData.customerView"
+                        aria-label="切換客戶檢視狀態"
+                      ></v-btn>
+                    </template>
+                  </v-tooltip>
+                  <span class="text-caption text-medium-emphasis">
+                    {{ formData.customerView ? '顯示於驗屋報告' : '不顯示於驗屋報告' }}
+                  </span>
+                </div>
+              </v-col>
+
+              <v-col cols="12" v-if="isEditMode"> <div class="mt-4">
+                     <v-label class="mb-1">買方確認狀態</v-label>
+                     <div class="mb-2"> <v-chip
+                           v-if="!formData.customerConfirmedAt"
+                           color="red"
+                           text-color="white"
+                           size="small"
+                           label
+                         >
+                           買方未確認
+                         </v-chip>
+                         <span v-else class="text-body-2 text-success-darken-1">
+                             {{ formatDate(formData.customerConfirmedAt) }}
+                             <span v-if="formData.confirmationBatchId" class="text-caption text-grey-darken-1 ml-1">
+                                 (批次: {{ formData.confirmationBatchId }})
+                             </span>
+                         </span>
+                     </div>
+                     <div>
+                         <v-btn
+                           v-if="formData.customerConfirmedAt"
+                           color="error"
+                           variant="outlined"
+                           size="small"
+                           @click="clearBuyerConfirmation"
+                           :disabled="isSaving || isClearingConfirmation"
+                           :loading="isClearingConfirmation"
+                           prepend-icon="mdi-eraser"
+                         >
+                           清除買方確認
+                         </v-btn>
+                     </div>
+                 </div>
+              </v-col>
+              </v-row>
+          </v-container>
+        </v-form>
+      </v-card-text>
 
       <v-divider></v-divider>
       <v-card-actions class="pa-3">
@@ -355,12 +389,13 @@
           color="grey"
           variant="text"
           @click="closeDialog"
+          :disabled="isSaving || isClearingConfirmation"
         >取消</v-btn>
         <v-btn
           color="primary"
           variant="flat"
           :loading="isSaving"
-          :disabled="!valid"
+          :disabled="!valid || isClearingConfirmation"
           @click="saveRecord"
         >儲存紀錄</v-btn>
       </v-card-actions>
@@ -369,7 +404,6 @@
 </template>
 
 <script setup>
-// ✓ 1. Imports (依賴引入)
 import { ref, watch, computed, reactive, nextTick } from 'vue';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -378,26 +412,27 @@ import {
   getInspectionOptionsForProjectFB,
   uploadInspectionPhotoFB,
   addInspectionRecordFB,
-  updateInspectionRecordFB
+  updateInspectionRecordFB,
+  updateInspectionRecordFieldFB // ✅ 引入 API
 } from '@/api';
 import { useUserStore } from '@/store/user';
+// ✅ 引入 date-fns
+import { format, parseISO } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
 
-// ✓ 2. Props / Emits (組件接口)
 const props = defineProps({
-  modelValue: Boolean, // 控制 dialog 開關
+  modelValue: Boolean,
   projectId: String,
   projectName: String,
   unitId: String,
-  recordToEdit: Object // 編輯模式下傳入的紀錄物件
+  recordToEdit: Object
 });
 
 const emit = defineEmits(['update:modelValue', 'saved']);
 
-// ✓ 3. Instances (實例化)
 const userStore = useUserStore();
 const form = ref(null);
 
-// ✓ 4. Reactive State (響應式狀態 - 核心)
 const dialog = ref(props.modelValue);
 const valid = ref(false);
 const isSaving = ref(false);
@@ -413,11 +448,10 @@ const options = reactive({
   quickReply: []
 });
 
-// ✓ 5. Reactive State (表單資料)
 const createDefaultFormData = () => ({
   inspectionDate: new Date(),
   phase: null,
-  photos: [], // 儲存 { name, url, path, previewUrl?, file? }
+  photos: [],
   area: null,
   category: null,
   subCategory: null,
@@ -425,17 +459,22 @@ const createDefaultFormData = () => ({
   level: null,
   progress: null,
   description: '',
-  customerView: true // ✓ 新增此行，預設為 true
+  customerView: true,
+  // ✅ 新增買方確認相關欄位，預設 null
+  customerConfirmedAt: null,
+  confirmationBatchId: null
 });
 const formData = reactive(createDefaultFormData());
 
-// ✓ 6. Reactive State (照片編輯器)
 const photoInput = ref(null);
 const showPhotoEditor = ref(false);
 const photoToEdit = ref(null);
-const currentPhotoIndex = ref(-1); // 記錄正在編輯哪張照片
+const currentPhotoIndex = ref(-1);
 
-// ✓ 7. Computed (計算屬性)
+// ✅ START: 新增清除確認狀態的 ref
+const isClearingConfirmation = ref(false);
+// ✅ END: 新增 ref
+
 const isEditMode = computed(() => !!props.recordToEdit);
 
 const filteredSubCategories = computed(() => {
@@ -444,11 +483,9 @@ const filteredSubCategories = computed(() => {
   return mainCategory?.subItems || [];
 });
 
-// ✓ 8. Watchers (監聽器)
 watch(() => props.modelValue, (newVal) => {
   dialog.value = newVal;
   if (newVal) {
-    // ✓ 提取邏輯到 initializeComponent
     initializeComponent();
   }
 });
@@ -457,25 +494,22 @@ watch(dialog, (newVal) => {
   emit('update:modelValue', newVal);
 });
 
-// ✓ 9. Lifecycle Hooks (生命週期 - 此處無)
-
-// ✓ 10. Methods (組件 & 表單邏輯)
 async function initializeComponent() {
   await loadOptions();
   resetForm();
 
   if (props.recordToEdit) {
-    // 編輯模式：載入資料
     Object.assign(formData, {
       ...props.recordToEdit,
       inspectionDate: props.recordToEdit.inspectionDate ? new Date(props.recordToEdit.inspectionDate) : new Date(),
       photos: props.recordToEdit.photos || [],
       customerView: props.recordToEdit.customerView === false ? false : true,
+      // ✅ 載入買方確認欄位
+      customerConfirmedAt: props.recordToEdit.customerConfirmedAt || null,
+      confirmationBatchId: props.recordToEdit.confirmationBatchId || null
     });
   } else {
-    // 新增模式：設定預設值
     formData.inspectionDate = new Date();
-    // ✓ 確保預設值在 options 載入後設定
     formData.phase = options.phase.length > 0 ? options.phase[0].value : null;
     formData.status = options.status.length > 0 ? options.status[0].value : null;
     formData.level = options.level.length > 0 ? options.level[0].value : null;
@@ -490,7 +524,6 @@ async function loadOptions() {
     const result = await getInspectionOptionsForProjectFB(props.projectId);
     if (result.status === 'success') {
       Object.assign(options, result.data);
-      // 確保 category 有 subItems 陣列
       options.category.forEach(cat => {
         cat.subItems = cat.subItems || [];
       });
@@ -506,15 +539,15 @@ async function loadOptions() {
 
 function resetForm() {
   Object.assign(formData, createDefaultFormData());
-  
-  // ✓ 設定預設值 (如果 options 已載入)
+
   if (options.phase.length > 0) formData.phase = options.phase[0].value;
   if (options.status.length > 0) formData.status = options.status[0].value;
   if (options.level.length > 0) formData.level = options.level[0].value;
   if (options.progress.length > 0) formData.progress = options.progress[0].value;
-  
+
   photoToEdit.value = null;
   currentPhotoIndex.value = -1;
+  isClearingConfirmation.value = false; // ✅ 重置清除狀態
   nextTick(() => {
     form.value?.resetValidation();
   });
@@ -532,7 +565,6 @@ function appendToDescription(text) {
   }
 }
 
-// ✓ 11. Methods (照片處理邏輯)
 function triggerPhotoInput() {
   photoInput.value?.click();
 }
@@ -549,60 +581,49 @@ function handlePhotoSelected(event) {
       formData.photos.push({
         name: file.name,
         previewUrl: e.target.result,
-        file: file, // 暫存 File 物件
+        file: file,
         url: null,
         path: null
       });
 
-      // ✓ 僅在第一張照片加入後，且編輯器未開啟時，觸發編輯
       if (!showPhotoEditor.value) {
         const firstIndex = formData.photos.length - filesToProcess.length;
-        editNextPendingPhoto(firstIndex - 1); // 傳入 -1，使其自動找到第一個
+        editNextPendingPhoto(firstIndex - 1);
       }
     };
     reader.readAsDataURL(file);
   });
 
-  event.target.value = null; // 清空 input
+  event.target.value = null;
 }
 
 function handlePhotoEdited(editedFile) {
   if (currentPhotoIndex.value !== -1 && formData.photos[currentPhotoIndex.value]) {
     const photo = formData.photos[currentPhotoIndex.value];
     photo.file = editedFile;
-    // 更新預覽
     const reader = new FileReader();
     reader.onload = (e) => {
       photo.previewUrl = e.target.result;
     };
     reader.readAsDataURL(editedFile);
   }
-  // ✓ 提取自動接續編輯的邏輯
   editNextPendingPhoto(currentPhotoIndex.value);
 }
 
 function cancelPhotoEdit() {
-  // ✓ 提取自動接續編輯的邏輯
   editNextPendingPhoto(currentPhotoIndex.value);
 }
 
-/**
- * ✓ 新增: 提取 "編輯下一張照片" 的邏輯，避免重複
- * @param {number} lastIndex - 上一張編輯完成的索引
- */
 function editNextPendingPhoto(lastIndex) {
   showPhotoEditor.value = false;
   photoToEdit.value = null;
-
-  // 尋找下一張待處理的照片 (有 file 物件但沒有 url)
   const nextIndex = formData.photos.findIndex((p, idx) => idx > lastIndex && p.file && !p.url);
-
   if (nextIndex !== -1) {
     photoToEdit.value = formData.photos[nextIndex].file;
     currentPhotoIndex.value = nextIndex;
     showPhotoEditor.value = true;
   } else {
-    currentPhotoIndex.value = -1; // 全部處理完畢
+    currentPhotoIndex.value = -1;
   }
 }
 
@@ -610,37 +631,28 @@ function removePhoto(index) {
   formData.photos.splice(index, 1);
 }
 
-// ✓ 12. Methods (儲存邏輯)
-/**
- * ✓ 重構: 儲存主函式，簡化流程
- */
 async function saveRecord() {
   const isValid = await validateForm();
   if (!isValid) return;
 
   isSaving.value = true;
   try {
-    // 1. 上傳照片
     const uploadedPhotosInfo = await uploadPendingPhotos();
-
-    // 2. 準備 Payload
     const recordPayload = buildPayload(uploadedPhotosInfo);
 
-    // 3. 執行儲存 (新增或更新)
     let saveResult;
     if (isEditMode.value) {
       if (!props.recordToEdit?.id) throw new Error("編輯模式下找不到紀錄 ID。");
       saveResult = await updateInspectionRecordFB(props.recordToEdit.id, recordPayload);
     } else {
-      recordPayload.projectId = props.projectId; // 新增時才需要
-      recordPayload.unitId = props.unitId;       // 新增時才需要
+      recordPayload.projectId = props.projectId;
+      recordPayload.unitId = props.unitId;
       saveResult = await addInspectionRecordFB(recordPayload);
     }
 
-    // 4. 處理結果
     if (saveResult.status === 'success') {
       alert('儲存成功！');
-      emit('saved');
+      emit('saved'); // ✅ 通知父組件刷新
       closeDialog();
     } else {
       throw new Error(saveResult.message || (isEditMode.value ? '更新失敗' : '新增失敗'));
@@ -654,16 +666,12 @@ async function saveRecord() {
   }
 }
 
-/**
- * ✓ 新增: 提取表單驗證邏輯
- */
 async function validateForm() {
   const validationResult = await form.value?.validate();
   if (!validationResult?.valid) {
     alert('請檢查表單必填欄位。');
     return false;
   }
-  // 檢查自訂的必填項 (Chip groups 和 DatePicker)
   if (!formData.inspectionDate || !formData.phase || !formData.status || !formData.level || !formData.progress) {
     alert('請檢查日期與所有 Chip Group 必選項。');
     return false;
@@ -671,14 +679,10 @@ async function validateForm() {
   return true;
 }
 
-/**
- * ✓ 新增: 提取照片上傳邏輯
- */
 async function uploadPendingPhotos() {
   const uploadedPhotosInfo = [];
   for (const photo of formData.photos) {
     if (photo.file && !photo.url) {
-      // 這是一張新照片，需要上傳
       const uploadResult = await uploadInspectionPhotoFB(props.projectId, props.unitId, photo.file);
       if (uploadResult.status === 'success') {
         uploadedPhotosInfo.push({ name: uploadResult.name, url: uploadResult.url, path: uploadResult.path });
@@ -686,18 +690,15 @@ async function uploadPendingPhotos() {
         throw new Error(`照片 ${photo.name} 上傳失敗: ${uploadResult.message}`);
       }
     } else if (photo.url) {
-      // 這是已存在的照片，直接保留
       uploadedPhotosInfo.push({ name: photo.name, url: photo.url, path: photo.path });
     }
   }
   return uploadedPhotosInfo;
 }
 
-/**
- * ✓ 新增: 提取 Payload 建構邏輯
- */
 function buildPayload(uploadedPhotosInfo) {
-  return {
+  // ✅ 在 buildPayload 中排除買方確認欄位，避免覆蓋
+  const payload = {
     inspectionDate: formData.inspectionDate.toISOString(),
     phase: formData.phase,
     photos: uploadedPhotosInfo,
@@ -710,17 +711,87 @@ function buildPayload(uploadedPhotosInfo) {
     description: formData.description,
     inspectorName: userStore.user?.name || '未知',
     inspectorPhone: userStore.user?.key || '未知',
-    customerView: formData.customerView, // ✓ 新增此行
-    // createdAt / updatedAt 由後端 Cloud Function 自動處理
+    customerView: formData.customerView,
   };
+   // 如果是編輯模式，則保留原有的 customerConfirmedAt 和 confirmationBatchId
+  if (isEditMode.value) {
+      payload.customerConfirmedAt = formData.customerConfirmedAt;
+      payload.confirmationBatchId = formData.confirmationBatchId;
+  }
+  return payload;
 }
 
+// ✅ START: 新增清除買方確認的方法
+async function clearBuyerConfirmation() {
+  if (!isEditMode.value || !props.recordToEdit?.id) {
+    alert('錯誤：無法清除確認，找不到紀錄 ID。');
+    return;
+  }
+  if (!confirm('您確定要清除此紀錄的買方確認狀態嗎？此操作無法復原。')) {
+      return;
+  }
 
+  isClearingConfirmation.value = true;
+  try {
+    const payload = {
+      customerConfirmedAt: null,
+      confirmationBatchId: null,
+      // 記錄清除操作的人員信息
+      inspectorName: userStore.user?.name || '系統清除',
+      inspectorPhone: userStore.user?.key || '系統清除'
+    };
+    const recordUnitId = props.recordToEdit.unitId || props.unitId; // 確保有 unitId
+
+    // 使用 updateInspectionRecordFieldFB API
+    const result = await updateInspectionRecordFieldFB(
+      props.projectId,
+      recordUnitId, // 確保傳遞了 unitId
+      props.recordToEdit.id,
+      payload
+    );
+
+    if (result.status === 'success') {
+      // 本地同步更新 formData
+      formData.customerConfirmedAt = null;
+      formData.confirmationBatchId = null;
+      alert('買方確認狀態已清除。');
+      // 可以考慮 emit 事件通知父組件刷新列表的顯示狀態
+      emit('saved');
+    } else {
+      throw new Error(result.message || '清除失敗');
+    }
+  } catch (error) {
+    console.error("清除買方確認時發生錯誤:", error);
+    alert(`清除失敗: ${error.message}`);
+  } finally {
+    isClearingConfirmation.value = false;
+  }
+}
+// ✅ END: 新增清除買方確認的方法
+
+// ✅ START: 新增 formatDate 函數 (如果父組件沒傳遞)
+function formatDate(dateInput) {
+  if (!dateInput) return '';
+  try {
+    let dateToFormat;
+    if (typeof dateInput === 'string' && dateInput.includes('T') && dateInput.includes('Z')) {
+       dateToFormat = parseISO(dateInput);
+    } else {
+       dateToFormat = new Date(dateInput);
+    }
+    if (isNaN(dateToFormat.getTime())) throw new Error("Invalid date value");
+    return format(dateToFormat, 'yyyy/MM/dd HH:mm', { locale: zhTW }); // 包含時間
+  } catch (e) {
+    console.error("無法格式化日期:", dateInput, e);
+    return String(dateInput);
+  }
+}
+// ✅ END: 新增 formatDate 函數
 
 </script>
 
 <style>
-/* 讓 DatePicker 輸入框看起來像 Vuetify 的 outlined (樣式不變) */
+/* ... (樣式保持不變) ... */
 .dp-custom-input {
   border: 1px solid rgba(0, 0, 0, 0.38) !important;
   border-radius: 4px !important;
@@ -750,7 +821,6 @@ function buildPayload(uploadedPhotosInfo) {
   padding: 0 !important;
 }
 
-/* 照片預覽 (樣式不變) */
 .photo-preview-container {
   position: relative;
 }

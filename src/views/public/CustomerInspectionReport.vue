@@ -39,99 +39,129 @@
               :items-per-page-options="[{ value: 10, title: '10' },{ value: 25, title: '25' },{ value: 50, title: '50' },{ value: -1, title: '全部顯示' }]"
               density="compact"
             >
-              <template v-slot:item.photos="{ item }">
-                 <div class="d-flex ga-1 pa-1">
-                   <v-img
-                     v-for="(photo, index) in item.photos.slice(0, 4)"
-                     :key="index"
-                     :src="photo.url"
-                     aspect-ratio="1"
-                     cover
-                     width="40"
-                     class="rounded border cursor-pointer"
-                     @click="showImagePreview(photo.url)"
-                   >
-                     <template v-slot:placeholder>
-                       <div class="d-flex align-center justify-center fill-height">
-                         <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular>
-                       </div>
-                     </template>
-                   </v-img>
-                   <div v-if="item.photos.length > 4" class="d-flex align-center justify-center text-caption text-grey" style="width: 40px;">
-                     +{{ item.photos.length - 4 }}
-                   </div>
-                 </div>
+              <template v-slot:item="{ item }">
+                <tr :class="{ 'confirmed-record-bg': !!item.customerConfirmedAt }">
+                  <td>{{ formatDate(item.inspectionDate) }}</td>
+                  <td>{{ item.phase }}</td>
+                  <td>
+                    <div class="d-flex ga-1 pa-1">
+                      <v-img
+                        v-for="(photo, index) in item.photos.slice(0, 4)"
+                        :key="index"
+                        :src="photo.url"
+                        aspect-ratio="1"
+                        cover
+                        width="40"
+                        class="rounded border cursor-pointer"
+                        @click="showImagePreview(photo.url)"
+                      >
+                         </v-img>
+                      <div v-if="item.photos.length > 4" class="d-flex align-center justify-center text-caption text-grey" style="width: 40px;">
+                        +{{ item.photos.length - 4 }}
+                      </div>
+                    </div>
+                  </td>
+                  <td>{{ item.area }}</td>
+                  <td>{{ item.category }}</td>
+                  <td>{{ item.subCategory }}</td>
+                  <td>
+                    <ChipRenderer :value="item.status" type="status" :options="optionsForChips.status" size="small" />
+                  </td>
+                  <td>
+                     <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1">
+                        {{ formatDate(item.customerConfirmedAt) }}
+                    </span>
+                    <v-chip
+                      v-else
+                      color="red"
+                      text-color="white"
+                      size="small"
+                      label
+                    >
+                      買方未確認
+                    </v-chip>
+                    </td>
+                  <td>{{ item.description }}</td>
+                  <td>{{ item.inspectorName }}</td>
+                  <td>{{ formatDateTime(item.createdAt) }}</td>
+                </tr>
               </template>
-
-              <template v-slot:item.inspectionDate="{ item }">
-                {{ formatDate(item.inspectionDate) }}
-              </template>
-              <template v-slot:item.createdAt="{ item }">
-                {{ formatDateTime(item.createdAt) }}
-              </template>
-              <template v-slot:item.status="{ item }">
-                <ChipRenderer :value="item.status" type="status" :options="optionsForChips.status" size="small" />
-              </template>
-
-              <template v-slot:no-data>
-                <div class="pa-4 text-center text-grey">找不到符合條件的紀錄</div>
-              </template>
-            </v-data-table>
+              </v-data-table>
           </div>
 
           <div v-if="viewMode === 'card'" class="pa-2 pa-sm-4">
             <v-row dense>
               <v-col v-for="item in filteredRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
-                <v-card class="mb-3 record-card" variant="outlined">
-                  <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip">
-                    <v-img
-                      v-for="(photo, index) in item.photos.slice(0, 5)" :key="index"
-                      :src="photo.url"
-                      aspect-ratio="1"
-                      cover
-                      height="50" class="rounded border cursor-pointer"
-                      @click="showImagePreview(photo.url)"
-                    >
-                      <template v-slot:placeholder>
-                        <div class="d-flex align-center justify-center fill-height">
-                          <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular>
-                        </div>
-                      </template>
-                      <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center">
-                        +{{ item.photos.length - 5 }}
-                      </div>
-                    </v-img>
-                  </div>
-                  <v-card-item class="pb-1 pt-2">
-                    <div>
-                      <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span>
-                      <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span>
-                    </div>
-                    <p class="text-body-2 text-medium-emphasis mt-1">
-                      {{ item.category }} / {{ item.subCategory }}
-                    </p>
-                  </v-card-item>
-                  <v-card-text class="py-2">
-                    <div class="d-flex ga-1 flex-wrap mb-1">
-                      <ChipRenderer size="x-small" :value="item.status" type="status" :options="optionsForChips.status" />
-                      </div>
-                    <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1">
-                      {{ item.description }}
-                    </p>
-                  </v-card-text>
-                  <v-divider></v-divider>
-                  <v-card-actions class="px-3 py-1">
-                    <span class="text-caption text-grey">
-                      {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }}
-                    </span>
-                    <v-spacer></v-spacer>
-                    </v-card-actions>
+                <v-card
+                  class="mb-3 record-card"
+                  variant="outlined"
+                  :class="{ 'confirmed-record-bg': !!item.customerConfirmedAt }"
+                >
+                <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip">
+                     <v-img
+                       v-for="(photo, index) in item.photos.slice(0, 5)" :key="index"
+                       :src="photo.url"
+                       aspect-ratio="1"
+                       cover
+                       height="50" class="rounded border cursor-pointer"
+                       @click="showImagePreview(photo.url)"
+                     >
+                       <template v-slot:placeholder>
+                         <div class="d-flex align-center justify-center fill-height">
+                           <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular>
+                         </div>
+                       </template>
+                       <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center">
+                         +{{ item.photos.length - 5 }}
+                       </div>
+                     </v-img>
+                   </div>
+                   <v-card-item class="pb-1 pt-2">
+                     <div>
+                       <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span>
+                       <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span>
+                     </div>
+                     <p class="text-body-2 text-medium-emphasis mt-1">
+                       {{ item.category }} / {{ item.subCategory }}
+                     </p>
+                   </v-card-item>
+                   <v-card-text class="py-2">
+                     <div class="d-flex ga-1 flex-wrap mb-1">
+                       <ChipRenderer size="x-small" :value="item.status" type="status" :options="optionsForChips.status" />
+                       </div>
+                     <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1">
+                       {{ item.description }}
+                     </p>
+                   </v-card-text>
+                   <v-divider></v-divider>
+                   <v-card-actions class="px-3 py-1">
+                       <div class="d-flex flex-column" style="width: 100%;">
+                           <span class="text-caption text-grey">
+                             {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }}
+                           </span>
+                           <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
+                               買方確認：{{ formatDate(item.customerConfirmedAt) }}
+                           </span>
+                           <v-chip
+                             v-else
+                             color="red"
+                             text-color="white"
+                             size="x-small"
+                             label
+                             class="mt-1"
+                           >
+                             買方未確認
+                           </v-chip>
+                       </div>
+                     <v-spacer></v-spacer>
+                     </v-card-actions>
                 </v-card>
               </v-col>
             </v-row>
           </div>
         </div>
-      </div> </v-card>
+      </div>
+    </v-card>
 
     <v-dialog v-model="showConfirmDialog" persistent fullscreen transition="dialog-bottom-transition">
       <v-card>
@@ -272,32 +302,30 @@
 import { ref, onMounted, computed, reactive, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  getInspectionRecordsFB,
+  validateReportTokenAPI,
+  getInspectionRecordsFB, // ✅ 注意: 這裡的 API 名稱是 getInspectionRecordsFB
   getCustomerAppointmentDetails,
   saveCustomerConfirmation,
-  getInspectionOptionsForProjectFB
+  getInspectionOptionsForProjectFB // ✅ 注意: 這裡的 API 名稱是 getInspectionOptionsForProjectFB
 } from '@/api';
 import { VDataTable } from 'vuetify/components/VDataTable';
 import { useDisplay } from 'vuetify';
-// ✅ 1. 引入 project store
 import { useProjectStore } from '@/store/projectStore';
 import ChipRenderer from '@/components/ChipRenderer.vue';
-import { VueSignaturePad } from 'vue-signature-pad'; // 確保已全域註冊或本地引入
+import { VueSignaturePad } from 'vue-signature-pad';
 import { format, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 
 const route = useRoute();
 const { mobile } = useDisplay();
-// ✅ 2. 實例化 project store
 const projectStore = useProjectStore();
 
 // --- State ---
 const isLoading = ref(true);
 const errorLoading = ref(null);
-const projectId = ref(route.params.projectId);
-const unitId = ref(route.params.unitId);
-// const token = ref(route.query.token);
-const pageTitle = ref('');
+const projectId = ref(null);
+const unitId = ref(null);
+const pageTitle = ref('驗屋報告');
 const viewMode = ref('card');
 const allRecords = ref([]);
 const optionsForChips = reactive({ status: [] });
@@ -316,13 +344,16 @@ const saveError = ref(null);
 const shakeSignaturePad = ref(false);
 
 // --- Computed ---
-// ✅ 3. 將 projectName 設為 computed 屬性以確保響應性
-const projectName = computed(() => projectStore.idToNameMap[projectId.value] || projectId.value);
+const projectName = computed(() => {
+    return projectId.value ? (projectStore.idToNameMap[projectId.value] || projectId.value) : '';
+});
 
 const filteredRecords = computed(() => {
+  if (!projectId.value || !unitId.value) return [];
   return allRecords.value.filter(record => record.customerView !== false);
 });
 
+// ✅ 修改 headers 計算屬性
 const headers = computed(() => [
   { title: '日期', key: 'inspectionDate', sortable: true },
   { title: '階段', key: 'phase', sortable: true },
@@ -331,13 +362,14 @@ const headers = computed(() => [
   { title: '種類', key: 'category', sortable: true },
   { title: '細項', key: 'subCategory', sortable: true },
   { title: '狀態', key: 'status', sortable: true },
+  { title: '買方確認', key: 'customerConfirmedAt', sortable: true }, // ✅ 新增欄位
   { title: '說明', key: 'description', sortable: false },
   { title: '人員', key: 'inspectorName', sortable: true },
   { title: '時間', key: 'createdAt', sortable: true },
 ]);
 
 const isConfirmReady = computed(() => {
-  return buyerInfo.name && buyerInfo.phone && buyerInfo.email && isSigned.value && isValidEmail(buyerInfo.email);
+  return !!projectId.value && !!unitId.value && buyerInfo.name && buyerInfo.phone && buyerInfo.email && isSigned.value && isValidEmail(buyerInfo.email);
 });
 
 const rules = {
@@ -351,30 +383,68 @@ watch(bottomNavValue, (newValue) => {
   else if (newValue === 'card') viewMode.value = 'card';
 });
 
-// ✅ 5. 新增 Watcher 監聽 projectName 的變化
-watch(projectName, (newName) => {
-    pageTitle.value = `${newName} ${unitId.value || ''} 驗屋報告`;
-});
+watch([projectName, unitId], ([newName, newUnitId]) => {
+    if (newName && newUnitId) {
+        pageTitle.value = `${newName} ${newUnitId} 驗屋報告`;
+    } else {
+        pageTitle.value = '驗屋報告';
+    }
+}, { immediate: true });
 
 // --- Methods ---
 onMounted(async () => {
-  // TODO: Token 驗證邏輯
+  isLoading.value = true;
+  errorLoading.value = null;
+  const token = route.query.token;
 
-  // ✅ 4. 修改 pageTitle 的設定方式
-  pageTitle.value = `${projectName.value} ${unitId.value || ''} 驗屋報告`;
+  if (!token) {
+    errorLoading.value = '無效的連結或缺少驗證資訊。';
+    isLoading.value = false;
+    return;
+  }
 
-  await loadInspectionRecords();
-  await loadOptions();
-  isLoading.value = false;
+  try {
+    console.log("正在驗證 Token...");
+    const validationResult = await validateReportTokenAPI({ token: token });
+
+    if (validationResult.status === 'success' && validationResult.data) {
+      projectId.value = validationResult.data.projectId;
+      unitId.value = validationResult.data.unitId;
+      console.log(`Token 驗證成功: projectId=${projectId.value}, unitId=${unitId.value}`);
+
+      if (projectStore.projectsList.length === 0) {
+        await projectStore.fetchProjects();
+      }
+
+      await loadInspectionRecords();
+      await loadOptions();
+
+    } else {
+      throw new Error(validationResult.message || '連結驗證失敗');
+    }
+  } catch (error) {
+    console.error("Token 驗證或資料載入失敗:", error);
+    errorLoading.value = `無法載入報告: ${error.message}`;
+    projectId.value = null;
+    unitId.value = null;
+  } finally {
+    isLoading.value = false;
+  }
 });
 
 async function loadInspectionRecords() {
-  isLoading.value = true;
   errorLoading.value = null;
+  if (!projectId.value || !unitId.value) {
+      console.warn('loadInspectionRecords: projectId 或 unitId 尚未從 Token 載入，跳過執行。');
+      allRecords.value = [];
+      return;
+  }
   try {
+    // ✅ 注意: 使用 getInspectionRecordsFB API
     const result = await getInspectionRecordsFB(projectId.value, unitId.value);
     if (result.status === 'success') {
       allRecords.value = result.data;
+      console.log("載入的 Records 範例:", allRecords.value.slice(0, 2)); // 增加 Log 檢查資料
     } else {
       throw new Error(result.message || '無法載入驗屋紀錄');
     }
@@ -386,7 +456,12 @@ async function loadInspectionRecords() {
 }
 
 async function loadOptions() {
+  if (!projectId.value) {
+      console.warn('loadOptions: projectId 尚未從 Token 載入，跳過執行。');
+      return;
+  }
   try {
+    // ✅ 注意: 使用 getInspectionOptionsForProjectFB API
     const result = await getInspectionOptionsForProjectFB(projectId.value);
     if (result.status === 'success' && result.data?.status) {
       optionsForChips.status = result.data.status;
@@ -404,6 +479,13 @@ async function loadBuyerInfo() {
   buyerInfo.name = '';
   buyerInfo.phone = '';
   buyerInfo.email = '';
+
+  if (!projectId.value || !unitId.value) {
+      console.warn('loadBuyerInfo: projectId 或 unitId 尚未從 Token 載入，跳過執行。');
+      isLoadingBuyerInfo.value = false;
+      return;
+  }
+
   try {
     const result = await getCustomerAppointmentDetails({ projectId: projectId.value, unitId: unitId.value });
     if (result.status === 'success' && result.data) {
@@ -426,31 +508,78 @@ function showImagePreview(url) {
   showPreviewDialog.value = true;
 }
 
-function formatDate(dateString) {
-  if (!dateString) return '';
+// ✅ 修改 formatDate，增加對 Firestore Timestamp 的處理
+function formatDate(dateInput) {
+  if (!dateInput) return '';
   try {
-    return format(parseISO(dateString), 'yyyy/MM/dd', { locale: zhTW });
+    let dateToFormat;
+    // 檢查是否是 Firestore Timestamp 物件 (可能有 toDate 方法)
+    if (typeof dateInput === 'object' && dateInput !== null && typeof dateInput.toDate === 'function') {
+      dateToFormat = dateInput.toDate();
+    }
+    // 檢查是否是 ISO 8601 字串
+    else if (typeof dateInput === 'string' && dateInput.includes('T') && dateInput.includes('Z')) {
+       dateToFormat = parseISO(dateInput);
+    }
+    // 假設是 'YYYY-MM-DD' 格式 (來自 inspectionDate)
+    else if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+        dateToFormat = parseISO(dateInput + 'T00:00:00Z'); // 假設為 UTC 日期
+    }
+    else {
+        // 嘗試直接轉換
+        dateToFormat = new Date(dateInput);
+    }
+
+    if (isNaN(dateToFormat.getTime())) {
+        throw new Error("Invalid date value");
+    }
+
+    return format(dateToFormat, 'yyyy/MM/dd', { locale: zhTW });
   } catch (e) {
-    console.warn("無法格式化日期:", dateString, e);
-    return dateString;
+    console.warn("無法格式化日期:", dateInput, e);
+    return String(dateInput); // 返回原始值或某個錯誤標記
   }
 }
 
-function formatDateTime(dateString) {
-  if (!dateString) return '';
-  try {
-    return format(parseISO(dateString), 'yyyy/MM/dd HH:mm', { locale: zhTW });
-  } catch (e) {
-    console.warn("無法格式化日期時間:", dateString, e);
-    return dateString;
-  }
+// ✅ 修改 formatDateTime，增加對 Firestore Timestamp 的處理
+function formatDateTime(dateTimeInput) {
+    if (!dateTimeInput) return '';
+    try {
+        let dateToFormat;
+        // 檢查是否是 Firestore Timestamp 物件
+        if (typeof dateTimeInput === 'object' && dateTimeInput !== null && typeof dateTimeInput.toDate === 'function') {
+            dateToFormat = dateTimeInput.toDate();
+        }
+        // 檢查是否是 ISO 8601 字串
+        else if (typeof dateTimeInput === 'string' && dateTimeInput.includes('T') && dateTimeInput.includes('Z')) {
+            dateToFormat = parseISO(dateTimeInput);
+        }
+        else {
+            // 嘗試直接轉換
+            dateToFormat = new Date(dateTimeInput);
+        }
+
+        if (isNaN(dateToFormat.getTime())) {
+            throw new Error("Invalid date time value");
+        }
+
+        return format(dateToFormat, 'yyyy/MM/dd HH:mm', { locale: zhTW });
+    } catch (e) {
+        console.warn("無法格式化日期時間:", dateTimeInput, e);
+        return String(dateTimeInput); // 返回原始值
+    }
 }
+
 
 async function openConfirmDialog() {
+  if (!projectId.value || !unitId.value) {
+      alert('頁面尚未完全載入或連結無效，無法開啟簽名。');
+      return;
+  }
   showConfirmDialog.value = true;
   isSigned.value = false;
   saveError.value = null;
-  clearSignature(); // 清除舊簽名
+  clearSignature();
   try {
     await loadBuyerInfo();
     console.log("買方資訊載入完成 (或無預設資料)。");
@@ -475,6 +604,10 @@ function handleSignatureBegin() {
 }
 
 async function saveConfirmation() {
+  if (!projectId.value || !unitId.value) {
+      saveError.value = '頁面資料不完整，無法儲存。';
+      return;
+  }
   if (!isConfirmReady.value || isSaving.value) {
     if (!isSigned.value) {
         shakeSignaturePad.value = true;
@@ -488,10 +621,11 @@ async function saveConfirmation() {
   const { isEmpty, data } = signaturePad.value.saveSignature();
 
   if (isEmpty) {
-    alert('請先簽名！');
-    isSaving.value = false;
-    isSigned.value = false;
-    return;
+      saveError.value = '簽名不可為空';
+      isSaving.value = false;
+      shakeSignaturePad.value = true;
+      setTimeout(() => shakeSignaturePad.value = false, 500);
+      return;
   }
 
   const signatureImageBase64 = data.split(',')[1];
@@ -502,26 +636,23 @@ async function saveConfirmation() {
       projectId: projectId.value,
       unitId: unitId.value,
       confirmationBatchId: confirmationBatchId,
-      buyerInfo: {
-        name: buyerInfo.name,
-        phone: buyerInfo.phone,
-        email: buyerInfo.email,
-      },
+      buyerInfo: { name: buyerInfo.name, phone: buyerInfo.phone, email: buyerInfo.email },
       signatureImageBase64: signatureImageBase64,
     };
-
     const result = await saveCustomerConfirmation(payload);
 
     if (result.status === 'success') {
-      alert('驗屋報告已確認！');
+      console.log('確認儲存成功:', result.confirmationId);
       closeConfirmDialog();
-      // await loadInspectionRecords(); // 可選：重新載入
+      // 重新載入紀錄以更新顯示狀態
+      await loadInspectionRecords();
+      alert('驗屋報告確認完成！');
     } else {
-      throw new Error(result.message || '儲存確認失敗');
+      throw new Error(result.message || '儲存時發生未知的後端錯誤');
     }
   } catch (error) {
     console.error("儲存確認失敗:", error);
-    saveError.value = `儲存失敗: ${error.message}`;
+    saveError.value = error.message;
   } finally {
     isSaving.value = false;
   }
@@ -581,4 +712,10 @@ function isValidEmail(email) {
   30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
   40%, 60% { transform: translate3d(4px, 0, 0); }
 }
+
+/* ✅ START: 新增背景色 Class */
+.confirmed-record-bg {
+  background-color: #f5f5f5 !important; /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
+}
+/* ✅ END: 新增背景色 Class */
 </style>

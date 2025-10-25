@@ -38,10 +38,19 @@
 // functions/index.js
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const puppeteer = require("puppeteer");
+const handlebars = require("handlebars");
+const fs = require("fs").promises; // 使用 promise 版本的 fs
+const path = require("path");
+// ✅ 1. 在頂部也引入 @puppeteer/browsers 的元件，方便下方使用
+const { getInstalledBrowsers, Browser } = require('@puppeteer/browsers');
+
 
 admin.initializeApp();
 
 
+
+const ADMIN_ERROR_RECIPIENT = "anxismart@gmail.com"; // <--- ‼️ sendErrorNotification 函式。這個函式將用於在 // 發生錯誤時，寄送 Email 通知給指定的管理員。
 
 const { google } = require("googleapis"); // ✓ START: 新增此行
 const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
@@ -80,6 +89,10 @@ const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案
 const Busboy = require("busboy"); // ✓ 用於處理檔案上傳 (未來可能用到)
 const { setGlobalOptions } = require("firebase-functions/v2"); // ✓ START: 新增此行
 const xlsx = require("xlsx"); 
+const jwt = require('jsonwebtoken'); 
+const { PDFDocument, rgb, StandardFonts, PageSizes } = require('pdf-lib'); // PDF 處理
+const fetch = require('node-fetch'); // Node.js 環境需要引入 fetch
+const { formatInTimeZone } = require('date-fns-tz'); // 時區日期格式化
 
 
 const driveSecrets = [
@@ -4803,7 +4816,8 @@ exports.saveCustomerConfirmation = onCall({ region: "asia-east1",
                 confirmedAt: confirmedAt,
                 buyerInfo: buyerInfo, // 儲存當時確認的買方資訊
                 signatureImageUrl: signatureImageUrl, // 儲存簽名圖檔 URL
-                recordCount: snapshot.size // 記錄本次確認影響的紀錄筆數
+                recordCount: snapshot.size, // 記錄本次確認影響的紀錄筆數
+                status: 'completed' // <--- 標記狀態為已完成
             });
              console.log(`[${functionName}] (TX) 已排定新增確認紀錄 ${confirmationRef.id} 並更新 ${snapshot.size} 筆紀錄。`);
         }); // Transaction 結束
@@ -9140,16 +9154,18 @@ exports.exportInspectionOptionsToExcel = onCall({ region: "asia-east1",
  * @param {object} data - 包含 projectId, unitId, inspectionDate, phase, photos (array of objects {name, url, path}), area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone
  * @returns {Promise<object>} - { status, id }
  */
+// ✅ 1. 修改函式名稱，移除 "FB"
 exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
-const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone, customerView } = request.data; // ✓ 新增 customerView    const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
+    const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone, customerView } = request.data;
+    const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
 
-    // 基本參數驗證
+    // 基本參數驗證 (此部分正確)
     if (!projectId || !unitId || !inspectionDate || !phase || !area || !category || !subCategory || !status || !level || !progress || !inspectorName || !inspectorPhone) {
         console.error(`[${functionName}] 錯誤：缺少必要參數。`);
         throw new HttpsError("invalid-argument", "缺少必要的驗屋紀錄參數。");
     }
 
-    // ✅ 驗證照片數量上限
+    // 照片數量驗證 (此部分正確)
     if (photos && Array.isArray(photos) && photos.length > 4) {
         console.error(`[${functionName}] 錯誤：照片數量 (${photos.length}) 超過上限 4 張。`);
         throw new HttpsError("invalid-argument", "照片數量最多只能 4 張。");
@@ -9159,31 +9175,33 @@ const { projectId, unitId, inspectionDate, phase, photos, area, category, subCat
         const db = new Firestore({ databaseId: "anxi-app" });
         const recordsRef = db.collection("inspectionRecords");
 
-        // 產生文件 ID
+        // 產生文件 ID (此部分正確)
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
-        const timestampSuffix = now.toISOString().replace(/[-:.]/g, "").replace("T", "_").replace("Z", ""); // YYYYMMDD_HHMMSSmmm
+        const timestampSuffix = now.toISOString().replace(/[-:.]/g, "").replace("T", "_").replace("Z", "");
         const docId = `${projectId}_${unitId}_${timestampSuffix}`;
 
         const dataToSave = {
             projectId,
             unitId,
-            inspectionDate: Timestamp.fromDate(new Date(inspectionDate)), // 確保儲存為 Timestamp
+            inspectionDate: Timestamp.fromDate(new Date(inspectionDate)),
             phase,
-            // ✅ 儲存照片資訊陣列
-            photos: photos || [], // 如果沒傳 photos 就存空陣列
+            photos: photos || [],
             area,
             category,
             subCategory,
             status,
             level,
             progress,
-            description: description || "", // 確保 description 有值
+            description: description || "",
             inspectorName,
             inspectorPhone,
-            customerView: customerView === false ? false : true, // ✓ 新增此行，處理預設值
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-            isDeleted: false 
+            customerView: customerView === false ? false : true,
+            // ✅ 2. 修改 serverTimestamp 的用法
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            isDeleted: false,
+            customerConfirmedAt: null,
+            confirmationBatchId: null
         };
 
         await recordsRef.doc(docId).set(dataToSave);
@@ -9232,18 +9250,23 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
             console.log(`[${functionName}] 找不到戶別 ${unitId} 的有效驗屋紀錄。`);
             return { status: "success", data: [] };
         }
-        const records = snapshot.docs.map(doc => {
+       const records = snapshot.docs.map(doc => {
             const data = doc.data();
-            // 日期轉換邏輯保持不變
-            if (data.inspectionDate && typeof data.inspectionDate.toDate === 'function') { // ✓ 檢查 toDate 是否存在
+            // 日期轉換邏輯
+            if (data.inspectionDate && typeof data.inspectionDate.toDate === 'function') {
                 data.inspectionDate = data.inspectionDate.toDate().toISOString();
             }
-            if (data.createdAt && typeof data.createdAt.toDate === 'function') { // ✓ 檢查 toDate 是否存在
+            if (data.createdAt && typeof data.createdAt.toDate === 'function') {
                 data.createdAt = data.createdAt.toDate().toISOString();
             }
-            if (data.updatedAt && typeof data.updatedAt.toDate === 'function') { // ✓ 檢查 toDate 是否存在
+            if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
                 data.updatedAt = data.updatedAt.toDate().toISOString();
             }
+            // ✅ START: 新增 customerConfirmedAt 的轉換
+            if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
+                data.customerConfirmedAt = data.customerConfirmedAt.toDate().toISOString();
+            }
+            // ✅ END: 新增轉換
             return { id: doc.id, ...data };
         });
 
@@ -9299,7 +9322,11 @@ exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
              // ... (日期轉換邏輯保持不變) ...
             const inspectionDate = data.inspectionDate?.toDate ? data.inspectionDate.toDate().toISOString() : data.inspectionDate;
             const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt;
-             return { id: doc.id, ...data, inspectionDate, createdAt };
+        if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
+    data.customerConfirmedAt = data.customerConfirmedAt.toDate().toISOString();
+}     
+            
+            return { id: doc.id, ...data, inspectionDate, createdAt };
         });
 
         console.log(`[${functionName}] Successfully processed ${records.length} non-deleted records.`); // ✓ 更新 Log
@@ -9597,6 +9624,9 @@ exports.getDeletedInspectionRecordsFB = onCall({ region: "asia-east1" }, async (
             if (data.createdAt?.toDate) data.createdAt = data.createdAt.toDate().toISOString();
             if (data.updatedAt?.toDate) data.updatedAt = data.updatedAt.toDate().toISOString();
             if (data.deletedAt?.toDate) data.deletedAt = data.deletedAt.toDate().toISOString(); // ✓ 轉換刪除時間
+            if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
+    data.customerConfirmedAt = data.customerConfirmedAt.toDate().toISOString();
+}
             return { id: doc.id, ...data };
         });
 
@@ -9656,6 +9686,10 @@ exports.getDeletedInspectionRecordsForProjectFB = onCall({ region: "asia-east1" 
             if (data.createdAt?.toDate) data.createdAt = data.createdAt.toDate().toISOString();
             if (data.updatedAt?.toDate) data.updatedAt = data.updatedAt.toDate().toISOString();
             if (data.deletedAt?.toDate) data.deletedAt = data.deletedAt.toDate().toISOString(); // ✓ 轉換刪除時間
+            if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
+    data.customerConfirmedAt = data.customerConfirmedAt.toDate().toISOString();
+}
+            
             // ✓✓✓ 確保回傳 unitId ✓✓✓
             return { id: doc.id, unitId: data.unitId, ...data };
         });
@@ -9718,6 +9752,688 @@ exports.restoreInspectionRecordFB = onCall({ region: "asia-east1" }, async (requ
         throw new HttpsError("internal", `還原驗屋紀錄時發生錯誤: ${error.message}`);
     }
 });
+
+
+
+
+/**
+ * [API] 產生一個有時效性且安全的客戶驗屋報告分享連結
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - { status, shareUrl }
+ */
+exports.generateShareableUrl = onCall({
+    region: "asia-east1",
+    secrets: ["JWT_SECRET_KEY"], // ✓ 引用您在 Secret Manager 中設定的密鑰
+}, async (request) => {
+    const { projectId, unitId } = request.data;
+    const functionName = `generateShareableUrl`;
+
+    if (!projectId || !unitId) {
+        console.error(`[${functionName}] 錯誤：缺少 projectId 或 unitId。`);
+        throw new HttpsError("invalid-argument", "缺少必要的建案或戶別 ID。");
+    }
+
+    try {
+        // 從環境變數獲取密鑰 (由 secrets 設定)
+        const secretKey = process.env.JWT_SECRET_KEY;
+        if (!secretKey) {
+            console.error(`[${functionName}] 嚴重錯誤：找不到 JWT_SECRET_KEY 環境變數。`);
+            throw new HttpsError("internal", "伺服器設定錯誤，無法產生 Token。");
+        }
+
+        // 建立 JWT Payload
+        const payload = {
+            projectId: projectId,
+            unitId: unitId,
+            purpose: 'customer_report_view' // 標記 Token 用途
+        };
+
+        // 簽署 Token，設定 90 天有效期
+        const token = jwt.sign(payload, secretKey, { expiresIn: '90d' });
+
+        // 組合最終的分享 URL
+        // 注意：路徑已改為 /customer-report，並使用 token 作為查詢參數
+        const shareUrl = `https://anxismart.com/#/customer-report?token=${token}`;
+
+        console.log(`[${functionName}] 已成功為 ${projectId}/${unitId} 產生分享連結。`);
+        return { status: "success", shareUrl: shareUrl };
+
+    } catch (error) {
+        console.error(`[${functionName}] 產生分享連結時發生錯誤:`, error);
+        throw new HttpsError("internal", `產生分享連結失敗: ${error.message}`);
+    }
+});
+// ✓ END: 新增函式
+
+
+/**
+ * [API] 驗證客戶端驗屋報告的分享 Token
+ * @param {string} token - 前端傳來的 JWT Token 字串
+ * @returns {Promise<object>} - 驗證成功則回傳 { status: 'success', data: { projectId, unitId } }
+ */
+exports.validateReportToken = onCall({
+    region: "asia-east1",
+    secrets: ["JWT_SECRET_KEY"], // ✓ 引用與簽發時相同的密鑰
+}, async (request) => {
+    const { token } = request.data;
+    const functionName = `validateReportToken`;
+
+    // 1. 驗證參數
+    if (!token) {
+        console.error(`[${functionName}] 錯誤：請求中缺少 Token。`);
+        throw new HttpsError("invalid-argument", "缺少驗證資訊。");
+    }
+
+    // 2. 獲取密鑰
+    const secretKey = process.env.JWT_SECRET_KEY;
+    if (!secretKey) {
+        console.error(`[${functionName}] 嚴重錯誤：找不到 JWT_SECRET_KEY 環境變數。`);
+        throw new HttpsError("internal", "伺服器設定錯誤，無法驗證 Token。");
+    }
+
+    try {
+        // 3. 驗證 Token
+        // jwt.verify 會自動檢查簽名和過期時間
+        const decoded = jwt.verify(token, secretKey);
+
+        // 4. (可選) 檢查 Token 用途是否正確
+        if (decoded.purpose !== 'customer_report_view') {
+            throw new HttpsError("permission-denied", "此 Token 用途不符。");
+        }
+
+        console.log(`[${functionName}] Token 驗證成功，Payload:`, decoded);
+
+        // 5. 回傳解碼後的資料
+        return {
+            status: "success",
+            data: {
+                projectId: decoded.projectId,
+                unitId: decoded.unitId
+            }
+        };
+
+    } catch (error) {
+        // 6. 處理驗證失敗的各種情況
+        console.error(`[${functionName}] Token 驗證失敗:`, error.name, error.message);
+        if (error.name === 'TokenExpiredError') {
+            throw new HttpsError("unauthenticated", "此分享連結已過期，請聯繫服務人員重新索取。");
+        }
+        if (error.name === 'JsonWebTokenError') {
+            throw new HttpsError("unauthenticated", "此分享連結無效或損毀。");
+        }
+        // 其他未知錯誤
+        throw new HttpsError("internal", `驗證分享連結時發生未預期的錯誤: ${error.message}`);
+    }
+});
+
+
+// ✓ START: 新增 - 獲取指定戶別已確認的驗屋批次列表
+/**
+ * [API] 查詢指定戶別已完成簽名確認的驗屋批次列表
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @returns {Promise<object>} - { status: 'success', data: Array<{ batchId: string, dateString: string, recordCount: number, buyerInfo: object }> }
+ */
+exports.getConfirmedInspectionBatches = onCall({ region: "asia-east1" }, async (request) => {
+    const { projectId, unitId } = request.data;
+    const functionName = `getConfirmedInspectionBatches (Project: ${projectId}, Unit: ${unitId})`;
+
+    // 1. 驗證參數
+    if (!projectId || !unitId) {
+        console.error(`[${functionName}] 錯誤：缺少 projectId 或 unitId。`);
+        throw new HttpsError("invalid-argument", "缺少建案或戶別 ID。");
+    }
+
+    try {
+        // 2. 建立 Firestore 實例
+        const db = new Firestore({ databaseId: "anxi-app" });
+        // ✓ 集合名稱確認為 inspectionConfirmations
+        const confirmationsRef = db.collection("inspectionConfirmations");
+
+        // 3. 建立查詢
+        const q = confirmationsRef
+            .where("projectId", "==", projectId)
+            .where("unitId", "==", unitId)
+            // ✓ 確保只撈取已完成的批次 (雖然理論上都應該是 completed)
+            .where("status", "==", "completed")
+            .orderBy("confirmedAt", "desc"); // 按確認時間降序排序，最新的在前
+
+        // 4. 執行查詢
+        console.log(`[${functionName}] 正在查詢戶別 ${unitId} 的已確認批次...`);
+        const snapshot = await q.get();
+
+        // 5. 處理結果
+        if (snapshot.empty) {
+            console.log(`[${functionName}] 找不到戶別 ${unitId} 的任何已確認批次。`);
+            return { status: "success", data: [] }; // 回傳空陣列
+        }
+
+        // 6. 格式化回傳資料
+        const batches = snapshot.docs.map(doc => {
+            const data = doc.data();
+            let dateString = "日期未知";
+            // 嘗試將 Timestamp 格式化為 YYYY/MM/DD
+            if (data.confirmedAt && typeof data.confirmedAt.toDate === 'function') {
+                try {
+                    // 使用台灣時區格式化日期
+                    dateString = data.confirmedAt.toDate().toLocaleDateString('zh-TW', {
+                        timeZone: 'Asia/Taipei',
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                    });
+                } catch (e) {
+                    console.warn(`[${functionName}] 格式化日期時發生錯誤:`, e);
+                }
+            }
+
+            return {
+                batchId: data.confirmationBatchId, // 確認批次的 ID (例如 YYYYMMDDHHMMSS)
+                dateString: dateString,           // 格式化後的確認日期字串
+                recordCount: data.recordCount || 0, // 該批次包含的紀錄數量
+                buyerInfo: data.buyerInfo || {},   // 當時確認的買方資訊
+                confirmationDocId: doc.id          // inspectionConfirmations 文件本身的 ID (可能有用)
+            };
+        });
+
+        console.log(`[${functionName}] 成功查詢到 ${batches.length} 個已確認批次。`);
+        return { status: "success", data: batches };
+
+    } catch (error) {
+        console.error(`[${functionName}] 查詢已確認批次時發生錯誤:`, error);
+        // 檢查是否為索引錯誤
+        if (error.code === 9 && error.message.includes('index')) {
+             throw new HttpsError("failed-precondition", `查詢失敗：資料庫缺少必要的複合索引 (需包含 projectId, unitId, status, confirmedAt)。請檢查 Cloud Functions 日誌中的連結以建立索引。`);
+        }
+        throw new HttpsError("internal", `查詢已確認批次列表時發生錯誤: ${error.message}`);
+    }
+});
+// ✓ END: 新增函式
+
+
+
+/**
+ * [API - 背景觸發] 根據確認批次產生驗屋報告 PDF，存檔至 Drive 並寄送通知
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @param {string} confirmationBatchId - inspectionConfirmations 中的確認批次 ID
+ * @param {string} inspectorName - 報告上的產製人員名稱
+ * @param {string|null} triggeringUserEmail - 觸發此函式的使用者 Email (用於 CC)
+ * @returns {Promise<object>} - 立即回傳 { status: 'processing', message: '報告產製中...' }
+ */
+exports.generateInspectionPdf = onCall({
+    region: "asia-east1",
+    // ✓ 確保引用了所有 generatePdfInBackground 需要的 secrets
+    secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD", "DRIVE_CLIENT_ID", "DRIVE_CLIENT_SECRET", "DRIVE_REFRESH_TOKEN"],
+    memory: "2GiB", // ✓ PDF 處理(Slides API)可能需要較多記憶體
+    timeoutSeconds: 540 // ✓ 允許更長的執行時間
+}, async (request) => {
+    const { projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail } = request.data;
+    const functionName = `generateInspectionPdf (Batch: ${confirmationBatchId})`;
+
+    // 1. 基本參數驗證 (保持不變)
+    if (!projectId || !unitId || !confirmationBatchId || !inspectorName) {
+        console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+        throw new HttpsError("invalid-argument", "缺少必要的報告產製參數。");
+    }
+
+    // 2. 立即回傳處理中訊息給前端 (保持不變)
+    //    實際工作將在背景異步完成
+    console.log(`[${functionName}] 收到請求，開始背景處理...`);
+    // ✓ 確保呼叫的是更新後的 generatePdfInBackground (它現在使用 Slides API)
+    generatePdfInBackground(projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail); // 觸發背景函式，不 await
+    return { status: 'processing', message: '報告產製中，完成後將寄送 Email 通知。' };
+});
+
+
+
+// ✓ START: 新增 - 寄送 PDF 產製錯誤通知函式
+/**
+ * [內部輔助函式] 當 generatePdfInBackground 發生錯誤時，寄送 Email 通知給管理員
+ * @param {string} projectId - 發生錯誤的建案 ID
+ * @param {string} unitId - 發生錯誤的戶別 ID
+ * @param {string} confirmationBatchId - 發生錯誤的確認批次 ID
+ * @param {Error} error - 捕捉到的錯誤物件
+ */
+async function sendErrorNotification(projectId, unitId, confirmationBatchId, error) {
+    const functionName = `sendErrorNotification`;
+    console.log(`[${functionName}] Preparing error notification for ${projectId}/${unitId} (Batch: ${confirmationBatchId})`);
+
+    if (!ADMIN_ERROR_RECIPIENT) {
+        console.error(`[${functionName}] 未設定 ADMIN_ERROR_RECIPIENT，無法寄送錯誤通知。`);
+        return;
+    }
+
+    try {
+        const mailTransport = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.SENDER_EMAIL,
+                pass: process.env.GMAIL_APP_PASSWORD
+            },
+        });
+
+        const subject = `【緊急】驗屋報告 PDF 產製失敗通知 (${projectId} / ${unitId})`;
+        const errorTime = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+        const errorDetails = `錯誤訊息: ${error.message}\n\n堆疊追蹤:\n${error.stack || 'N/A'}`;
+        const logLink = `https://console.cloud.google.com/functions/details/asia-east1/generateInspectionPdf/logs?project=${process.env.GCLOUD_PROJECT || 'YOUR_GCP_PROJECT_ID'}`;
+
+        const htmlBody = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2 style="color: #D32F2F;">驗屋報告 PDF 產製失敗</h2>
+            <p>系統在嘗試為以下項目產製驗屋報告 PDF 時發生錯誤：</p>
+            <ul>
+              <li><strong>建案 ID:</strong> ${projectId}</li>
+              <li><strong>戶別 ID:</strong> ${unitId}</li>
+              <li><strong>確認批次 ID:</strong> ${confirmationBatchId}</li>
+              <li><strong>錯誤發生時間:</strong> ${errorTime} (台灣時間)</li>
+            </ul>
+            <hr>
+            <h3>錯誤詳情:</h3>
+            <pre style="background-color: #f5f5f5; padding: 10px; border: 1px solid #eee; white-space: pre-wrap; word-wrap: break-word;">${errorDetails}</pre>
+            <hr>
+            <p>請檢查 Cloud Function 日誌以獲取更詳細的資訊：</p>
+            <p><a href="${logLink}" target="_blank">前往 Cloud Function Logs</a></p>
+            <p style="font-size: 12px; color: #888;">此為系統自動發送的錯誤通知郵件。</p>
+          </div>
+        `;
+
+        const mailOptions = {
+            from: `"驗屋系統錯誤通知" <${process.env.SENDER_EMAIL}>`,
+            to: ADMIN_ERROR_RECIPIENT,
+            subject: subject,
+            html: htmlBody,
+        };
+
+        await mailTransport.sendMail(mailOptions);
+        console.log(`[${functionName}] 已成功寄送錯誤通知至 ${ADMIN_ERROR_RECIPIENT}`);
+
+    } catch (emailError) {
+        console.error(`[${functionName}] 🔴 寄送錯誤通知 Email 時也發生錯誤:`, emailError);
+    }
+}
+// ✓ END: 寄送錯誤通知函式
+
+/**
+ * [內部輔助函式] 在簡報中根據替代文字描述查找投影片 ID
+ * @param {google.slides_v1.Slides} slides - 已認證的 Google Slides API 客戶端
+ * @param {string} presentationId - 簡報的 ID
+ * @param {string} altText - 要查找的替代文字描述
+ * @returns {Promise<string|null>} - 找到的投影片 ID 或 null
+ */
+async function findSlideIdByAltText(slides, presentationId, altText) {
+    const functionName = `findSlideIdByAltText`;
+    console.log(`[${functionName}] 正在簡報 [${presentationId}] 中查找替代文字 "${altText}"...`); // 新增日誌
+    try {
+        const res = await slides.presentations.get({
+            presentationId: presentationId,
+            fields: 'slides(objectId,pageElements)',
+        });
+
+        if (!res.data.slides) {
+            console.warn(`[${functionName}] 簡報 [${presentationId}] 中找不到任何投影片。`);
+            return null;
+        }
+
+        for (const slide of res.data.slides) {
+            if (slide.pageElements) {
+                for (const element of slide.pageElements) {
+                    const description = element.description || element.shape?.shapeProperties?.contentDescription || element.shape?.placeholder?.altText;
+
+                    if (description === altText) {
+                        console.log(`[${functionName}] 在簡報 [${presentationId}] 的投影片 ${slide.objectId} 上找到替代文字為 "${altText}" 的形狀。`); // 更新日誌
+                        return slide.objectId;
+                    }
+                }
+            }
+        }
+
+        console.warn(`[${functionName}] 在簡報 [${presentationId}] 中找不到替代文字為 "${altText}" 的形狀。`); // 更新日誌
+        return null;
+
+    } catch (error) {
+        console.error(`[${functionName}] 查找替代文字 "${altText}" 時發生錯誤:`, error);
+        throw new Error(`查找替代文字 "${altText}" 失敗: ${error.message}`);
+    }
+}
+
+/**
+ * [內部輔助函式 V2] 在指定投影片中根據替代文字描述查找形狀 ID、位置和大小
+ * @param {google.slides_v1.Slides} slides - 已認證的 Google Slides API 客戶端
+ * @param {string} presentationId - 簡報的 ID
+ * @param {string} slideId - 要搜尋的投影片 ID
+ * @param {string} altText - 要查找的替代文字描述
+ * @returns {Promise<object|null>} - 找到則返回 { id, size, transform } 或 null
+ */
+async function findShapeIdByAltText(slides, presentationId, slideId, altText) {
+    // ✓ 返回 id, size, transform
+    const functionName = `findShapeIdByAltText_V2`; // ✓ 版本 V2
+    console.log(`[${functionName}] 正在簡報 [${presentationId}] 的投影片 [${slideId}] 中查找替代文字 "${altText}"...`);
+    try {
+        // ✓✓✓ 請求更多欄位：size, transform ✓✓✓
+        const res = await slides.presentations.pages.get({
+            presentationId: presentationId,
+            pageObjectId: slideId,
+            // ✓ 增加請求 size 和 transform 欄位
+            fields: 'pageElements(objectId,description,size,transform,shape)',
+        });
+
+        const pageElements = res.data.pageElements;
+        if (!pageElements) {
+            console.warn(`[${functionName}] 投影片 ${slideId} 中找不到任何頁面元素。`);
+            return null;
+        }
+
+        for (const element of pageElements) {
+            // ✓ description 的獲取邏輯保持不變
+            const description = element.description
+                             || element.shape?.shapeProperties?.contentDescription
+                             || element.shape?.placeholder?.altText; // 嘗試兼容不同情況
+
+            if (description === altText) {
+                // ✓✓✓ 返回包含 id, size, transform 的物件 ✓✓✓
+                const result = {
+                  id: element.objectId,
+                  size: element.size,
+                  transform: element.transform
+                };
+                console.log(`[${functionName}] 找到替代文字 "${altText}" 的形狀，資訊:`, JSON.stringify(result));
+                return result;
+            }
+        }
+
+        console.warn(`[${functionName}] 在投影片 ${slideId} 中找不到替代文字為 "${altText}" 的形狀。`);
+        return null;
+
+    } catch (error) {
+        console.error(`[${functionName}] 在投影片 ${slideId} 上查找替代文字 "${altText}" 時發生錯誤:`, error);
+        // ✓ 保持拋出錯誤
+        throw new Error(`在投影片 ${slideId} 上查找替代文字 "${altText}" 失敗: ${error.message}`);
+    }
+}
+
+/**
+ * ✓【修正 V4.3 - 移除 Logo 插入邏輯】[內部異步函式] 使用 Google Slides API 執行 PDF 產生
+ */
+async function generatePdfInBackground(projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail) {
+    // ✓ 移除 Logo 插入邏輯
+    const functionName = `generatePdfInBackground_CopyPresentation_V4.3 (Batch: ${confirmationBatchId})`; // ✓ 版本 V4.3
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const drive = getAuthenticatedDriveClient();
+    const slides = google.slides({ version: "v1", auth: oauth2Client });
+    let copiedPresentationId = null;
+
+    try {
+        console.log(`[${functionName}] 背景任務開始，查詢資料...`);
+
+        // --- 1. 查詢所需資料 (保持不變) ---
+        // (省略查詢 confirmation, project, records 的程式碼...)
+        const confirmationQuery = db.collection("inspectionConfirmations").where("confirmationBatchId", "==", confirmationBatchId).limit(1);
+        const confirmationSnapshot = await confirmationQuery.get();
+        if (confirmationSnapshot.empty) throw new Error(`找不到確認紀錄 (Batch ID: ${confirmationBatchId})`);
+        const confirmationData = confirmationSnapshot.docs[0].data();
+        const buyerNameForRecordPage = confirmationData.buyerInfo?.name || '';
+
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        if (!projectDoc.exists) throw new Error(`找不到建案資料 (Project ID: ${projectId})`);
+        const projectData = projectDoc.data();
+        const templateId = projectData.inspectionReportTemplateUrl;
+        if (!templateId) throw new Error(`建案 ${projectId} 未設定驗屋報告模板 ID (inspectionReportTemplateUrl)。`);
+        // ❗ 注意：不再讀取 projectData.logoUrl
+
+        const recordsQuery = db.collection("inspectionRecords")
+            .where("confirmationBatchId", "==", confirmationBatchId)
+            .where("isDeleted", "==", false)
+            .where("customerView", "==", true)
+            .orderBy("inspectionDate", "asc").orderBy("category", "asc").orderBy("area", "asc");
+        const recordsSnapshot = await recordsQuery.get();
+        const records = recordsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (records.length === 0) throw new Error("找不到符合此批次的驗屋紀錄。");
+        console.log(`[${functionName}] 資料查詢完成，共 ${records.length} 筆紀錄。`);
+
+
+        // --- 2. 複製來源樣板簡報 (保持不變) ---
+        // (省略複製簡報程式碼...)
+        const newPresentationTitle = `驗屋報告_${unitId}_${confirmationBatchId}_${Date.now()}`;
+        console.log(`[${functionName}] 準備複製樣板簡報 ${templateId} 為 ${newPresentationTitle}...`);
+        const copyResponse = await drive.files.copy({
+            fileId: templateId,
+            requestBody: { name: newPresentationTitle },
+            fields: 'id'
+        });
+        copiedPresentationId = copyResponse.data.id;
+        if (!copiedPresentationId) throw new Error(`複製樣板簡報 ${templateId} 失敗。`);
+        console.log(`[${functionName}] 樣板簡報複製成功，新簡報 ID: ${copiedPresentationId}`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+
+        // --- 3. 在新複製的簡報 (copiedPresentationId) 上查找模板投影片 ID (保持不變) ---
+        // (省略查找模板頁 ID 程式碼...)
+         console.log(`[${functionName}] 在新複製的簡報 ${copiedPresentationId} 上查找模板投影片 ID...`);
+        const coverSlideId = await findSlideIdByAltText(slides, copiedPresentationId, '驗屋報告封面');
+        const recordSlideTemplateId = await findSlideIdByAltText(slides, copiedPresentationId, '驗屋報告內頁');
+        if (!coverSlideId) throw new Error(`在新複製的簡報 ${copiedPresentationId} 中找不到替代文字為 "驗屋報告封面" 的形狀。`);
+        if (!recordSlideTemplateId) throw new Error(`在新複製的簡報 ${copiedPresentationId} 中找不到替代文字為 "驗屋報告內頁" 的形狀。`);
+        console.log(`[${functionName}] 模板投影片 ID 查找成功 (在新簡報中): Cover=${coverSlideId}, RecordTemplate=${recordSlideTemplateId}`);
+
+
+        // --- 4. 準備批量更新請求 (所有操作都在 copiedPresentationId 上) ---
+        const requests = [];
+
+        // --- 4.1 處理封面頁替換 ---
+        console.log(`[${functionName}] 準備封面頁 (${coverSlideId}) 的替換請求...`);
+        // 文字替換 (保持不變)
+        requests.push( /* ... 省略封面文字替換請求 ... */
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{projectName}}', matchCase: false }, replaceText: projectData.name || projectId } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{unitId}}', matchCase: false }, replaceText: unitId } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerName}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.name || '' } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerPhone}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.phone || '' } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerEmail}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.email || '' } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{inspectionDateStr}}', matchCase: false }, replaceText: records[0].inspectionDate?.toDate ? formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : 'N/A' } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{inspectorName}}', matchCase: false }, replaceText: inspectorName } },
+            { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{generatedDateStr}}', matchCase: false }, replaceText: formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd') } },
+        );
+
+        // ✓✓✓ 移除 Logo 圖片替換邏輯 ✓✓✓
+        // const logoPlaceholderInfo = await findShapeIdByAltText(slides, copiedPresentationId, coverSlideId, 'logoImage');
+        // if (logoPlaceholderInfo && projectData.logoUrl) { ... }
+        console.log(`[${functionName}] 跳過 Logo 圖片處理。`);
+
+        // 簽名圖片替換 (保持不變)
+        const signaturePlaceholderInfo = await findShapeIdByAltText(slides, copiedPresentationId, coverSlideId, 'signatureImage');
+        if (signaturePlaceholderInfo && confirmationData.signatureImageUrl) {
+            console.log(`[${functionName}] 找到簽名佔位符 ID: ${signaturePlaceholderInfo.id}，準備替換...`);
+            requests.push({ deleteObject: { objectId: signaturePlaceholderInfo.id } }); // 刪除佔位符
+            requests.push({ // 創建新圖片
+                createImage: {
+                    url: confirmationData.signatureImageUrl,
+                    elementProperties: {
+                        pageObjectId: coverSlideId,
+                        size: signaturePlaceholderInfo.size,
+                        transform: signaturePlaceholderInfo.transform
+                    }
+                }
+            });
+        } else { console.warn(`[${functionName}] 封面頁 ${coverSlideId} 找不到 signatureImage 形狀或無簽名 URL。`); }
+
+        // --- 4.2 處理紀錄頁複製與替換 (保持不變) ---
+        // (省略紀錄頁處理的程式碼，與 V4.2 版本相同...)
+        console.log(`[${functionName}] 準備循環處理 ${records.length} 筆驗屋紀錄的複製與替換...`);
+        const slideIdsToDelete = new Set();
+        const finalRecordSlideIds = [];
+
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
+            let currentRecordSlideId;
+
+            if (i === 0) {
+                currentRecordSlideId = recordSlideTemplateId;
+                console.log(`[${functionName}]   處理紀錄 ${record.id} (使用原始模板頁 ${currentRecordSlideId})...`);
+            } else {
+                const previousSlideId = finalRecordSlideIds[i - 1];
+                console.log(`[${functionName}]   處理紀錄 ${record.id} (複製上一頁 ${previousSlideId})...`);
+                const duplicateRecordRequest = [{ duplicateObject: { objectId: previousSlideId } }];
+                const duplicateRecordResponse = await slides.presentations.batchUpdate({
+                    presentationId: copiedPresentationId,
+                    requestBody: { requests: duplicateRecordRequest }
+                });
+                currentRecordSlideId = duplicateRecordResponse.data.replies?.[0]?.duplicateObject?.objectId;
+                if (!currentRecordSlideId) throw new Error(`複製紀錄頁失敗 (來源: ${previousSlideId})`);
+                console.log(`[${functionName}]   紀錄頁複製成功，新 Slide ID: ${currentRecordSlideId}`);
+            }
+            finalRecordSlideIds.push(currentRecordSlideId);
+
+            // 文字替換
+            requests.push(
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{unitId}}', matchCase: false }, replaceText: unitId } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{buyerName}}', matchCase: false }, replaceText: buyerNameForRecordPage } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.area}}', matchCase: false }, replaceText: record.area || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.category}}', matchCase: false }, replaceText: record.category || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.subCategory}}', matchCase: false }, replaceText: record.subCategory || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.description}}', matchCase: false }, replaceText: record.description || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.status}}', matchCase: false }, replaceText: record.status || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.inspectorName}}', matchCase: false }, replaceText: record.inspectorName || '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.createdAt}}', matchCase: false }, replaceText: record.createdAt?.toDate ? formatInTimeZone(record.createdAt.toDate(), 'Asia/Taipei', 'yyyy/MM/dd HH:mm') : '' } },
+                 { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.phase}}', matchCase: false }, replaceText: record.phase || '' } },
+            );
+
+            // 圖片替換
+            const photoPlaceholderInfos = await Promise.all(
+                [1, 2, 3, 4].map(p =>
+                    findShapeIdByAltText(slides, copiedPresentationId, currentRecordSlideId, `photo_placeholder_${p}`)
+                )
+            );
+            for (let p = 0; p < 4; p++) {
+                const placeholderInfo = photoPlaceholderInfos[p];
+                const photoData = record.photos?.[p];
+                if (placeholderInfo && photoData?.url) {
+                    requests.push({ deleteObject: { objectId: placeholderInfo.id } });
+                    requests.push({ createImage: { url: photoData.url, elementProperties: { pageObjectId: currentRecordSlideId, size: placeholderInfo.size, transform: placeholderInfo.transform } } });
+                } else if (placeholderInfo) {
+                    requests.push({ deleteObject: { objectId: placeholderInfo.id } });
+                }
+            }
+        }
+        console.log(`[${functionName}] 所有紀錄頁的替換請求準備完成。`);
+
+
+        // --- 4.3 準備刪除多餘的模板頁 (保持不變) ---
+        // (省略刪除多餘頁程式碼...)
+        console.log(`[${functionName}] 準備刪除多餘的模板頁...`);
+        const presentationData = await slides.presentations.get({
+            presentationId: copiedPresentationId,
+            fields: 'slides(objectId)'
+        });
+        const allSlideIds = presentationData.data.slides?.map(s => s.objectId) || [];
+        const slidesToKeep = new Set([coverSlideId, ...finalRecordSlideIds]);
+        allSlideIds.forEach(id => { if (!slidesToKeep.has(id)) { slideIdsToDelete.add(id); } });
+        slideIdsToDelete.forEach(id => { requests.push({ deleteObject: { objectId: id } }); });
+        console.log(`[${functionName}] 共找到 ${slideIdsToDelete.size} 個多餘頁面待刪除。`);
+
+
+        // --- 5. 執行所有更新請求 (保持不變) ---
+        // (省略執行 batchUpdate 程式碼，包含重試...)
+        if (requests.length > 0) {
+            console.log(`[${functionName}] 準備在新簡報 ${copiedPresentationId} 上執行 ${requests.length} 個更新請求...`);
+            let retries = 3;
+            let success = false;
+            while (retries > 0 && !success) {
+                try {
+                    await slides.presentations.batchUpdate({
+                        presentationId: copiedPresentationId,
+                        requestBody: { requests: requests }
+                    });
+                    success = true;
+                    console.log(`[${functionName}] 所有更新請求執行完成。`);
+                } catch (batchError) {
+                    retries--;
+                    console.error(`[${functionName}] batchUpdate 失敗 (剩餘 ${retries} 次重試):`, batchError.message);
+                    if (retries === 0) throw batchError;
+                    await new Promise(resolve => setTimeout(resolve, 2000 * (3 - retries)));
+                }
+            }
+        } else { console.log(`[${functionName}] 沒有需要執行的更新請求。`); }
+
+
+        // --- 6. 匯出最終簡報為 PDF (保持不變) ---
+        // (省略匯出 PDF 程式碼...)
+        console.log(`[${functionName}] 準備匯出最終 PDF (Presentation ID: ${copiedPresentationId})...`);
+        const exportResponse = await drive.files.export({
+            fileId: copiedPresentationId,
+            mimeType: 'application/pdf'
+        }, { responseType: 'stream' });
+        console.log(`[${functionName}] PDF 匯出完成。`);
+
+        // --- 7. 上傳 PDF 至 Drive (保持不變) ---
+        // (省略上傳 Drive 程式碼...)
+        const householdDoc = await db.collection('households').doc(`${projectId}_${unitId}`).get();
+        if (!householdDoc.exists) throw new Error(`找不到戶別資料 (${projectId}_${unitId})`);
+        const reportFolderUrl = householdDoc.data().inspectionReportFolderUrl;
+        if (!reportFolderUrl) throw new Error("戶別資料缺少 inspectionReportFolderUrl");
+        const parentFolderId = reportFolderUrl.match(/[-\w]{25,}/)?.[0];
+        if (!parentFolderId) throw new Error("無效的 Drive 資料夾 URL");
+        const subFolderName = confirmationData.buyerInfo?.name ? `${unitId}(${confirmationData.buyerInfo.name}自驗)` : `${unitId}`;
+        const searchFolderRes = await drive.files.list({ q: `name='${subFolderName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`, fields: 'files(id)' });
+        let subFolderId;
+        if (searchFolderRes.data.files.length > 0) { subFolderId = searchFolderRes.data.files[0].id; } else { const folderMetadata = { name: subFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }; const createdFolder = await drive.files.create({ resource: folderMetadata, fields: 'id' }); subFolderId = createdFolder.data.id; }
+        const timestamp = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH-mm');
+        const pdfFilename = `${projectData.name || projectId}-${unitId}-驗屋報告-${confirmationData.buyerInfo.name}-${timestamp}.pdf`;
+        const fileMetadata = { name: pdfFilename, parents: [subFolderId] };
+        const uploadedFile = await drive.files.create({
+            resource: fileMetadata,
+            media: { mimeType: 'application/pdf', body: exportResponse.data },
+            fields: 'id, name, webViewLink'
+        });
+        const driveFileUrl = uploadedFile.data.webViewLink;
+        if (!driveFileUrl) throw new Error("上傳 PDF 至 Drive 後未獲取到有效連結。");
+        console.log(`[${functionName}] PDF 已成功上傳至 Drive: ${driveFileUrl}`);
+
+
+        // --- 8. 更新 Firestore (保持不變) ---
+        // (省略更新 Firestore 程式碼...)
+         await db.collection("households").doc(`${projectId}_${unitId}`).update({
+            inspectionReportUrl: FieldValue.arrayUnion({ name: pdfFilename, url: driveFileUrl })
+        });
+        console.log(`[${functionName}] 已更新戶別資料庫中的報告連結。`);
+
+        // --- 9. 寄送 Email 通知 (保持不變) ---
+        // (省略寄送 Email 程式碼...)
+        const mailTransport = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD } });
+        const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+        const allCc = [...new Set([...ccRecipients, triggeringUserEmail].filter(Boolean))];
+        const subject = `【${projectData.name || projectId}】您的驗屋報告已產製完成 (${unitId})`;
+        const confirmedAtDate = confirmationData.confirmedAt.toDate();
+        const htmlBody = `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2 style="color: #333;">驗屋報告已完成</h2>
+            <p>親愛的 ${confirmationData.buyerInfo.name || '住戶'} 您好：</p>
+            <p>關於「${projectData.name || projectId}」建案 ${unitId} 戶別，您於 ${formatInTimeZone(confirmedAtDate, 'Asia/Taipei', 'yyyy/MM/dd HH:mm')} 確認的驗屋報告 (${records.length}筆紀錄) 已產製完成。</p>
+            <p>您可以點擊下方按鈕查看或下載報告檔案：</p>
+            <div style="text-align: center; margin: 30px 0;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">查看驗屋報告</a></div>
+            <p>報告產製人員：${inspectorName}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"><p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p></div>
+        `;
+        await mailTransport.sendMail({ from: `"${projectData.name || projectId} 驗屋系統" <${process.env.SENDER_EMAIL}>`, to: confirmationData.buyerInfo.email, cc: allCc.join(', '), subject: subject, html: htmlBody });
+        console.log(`[${functionName}] 已成功寄送報告完成通知 Email。`);
+
+
+    } catch (error) {
+        console.error(`[${functionName}] 🔴 背景任務執行失敗:`, error);
+        await sendErrorNotification(projectId, unitId, confirmationBatchId, error);
+    } finally {
+        // --- 10. 清理 (保持不變) ---
+        if (copiedPresentationId) {
+            try {
+                console.log(`[${functionName}] 準備刪除臨時簡報 ${copiedPresentationId}...`);
+                await drive.files.delete({ fileId: copiedPresentationId });
+                console.log(`[${functionName}] 臨時簡報刪除成功。`);
+            } catch (deleteError) {
+                console.error(`[${functionName}] 刪除臨時簡報 ${copiedPresentationId} 失敗:`, deleteError.message);
+            }
+        }
+    }
+}
+
 
 // =================================================================
 // / ✅ 結束：驗屋紀錄相關 Cloud Functions

@@ -293,16 +293,15 @@ const routes = [
     }
   },
   // ✓ START: 新增客戶端驗屋報告路由
-  {
-    path: '/customer-report/:projectId/:unitId', // 包含 projectId 和 unitId 參數
+ {
+    path: '/customer-report', // Path matches the URL
     name: 'CustomerInspectionReport',
-    component: () => import('@/views/public/CustomerInspectionReport.vue'), // 動態載入元件
-    props: true, // 將路由參數 projectId 和 unitId 作為 props 傳遞給元件
+    component: () => import('@/views/public/CustomerInspectionReport.vue'),
+    // props: true, // 這行其實可以移除，因為 projectId/unitId 來自 token
     meta: {
-      layout: PublicLayout, // 使用公開頁面佈局
-      title: '客戶端驗屋報告' // 可選：設定頁面標題
-      // 注意：這裡不需要 requiresAuth，因為是公開給客戶看的頁面
-      // Token 驗證邏輯會在 CustomerInspectionReport.vue 元件內部處理
+      layout: PublicLayout,
+      title: '驗屋報告'
+      // <<-- 這裡正確地沒有 requiresAuth: true -->>
     }
   },
   // ✓ END: 新增客戶端驗屋報告路由

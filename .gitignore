@@ -37,3 +37,5 @@ google-cloud-sdk/
 
 # 忽略大型壓縮檔
 *.tar.gz
+
+functions/.cache/

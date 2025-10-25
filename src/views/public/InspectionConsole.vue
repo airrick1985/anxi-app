@@ -6,7 +6,7 @@
     :style="mobile && projectId ? 'padding-bottom: 72px;' : ''"
   >
     <v-card class="mx-auto" max-width="1600">
-      
+
       <v-toolbar
         color="primary"
         dark
@@ -107,7 +107,29 @@
                   <v-tooltip location="top" text="表格模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="table" icon="mdi-table" aria-label="表格視圖"></v-btn> </template> </v-tooltip>
                   <v-tooltip location="top" text="卡片模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="card" icon="mdi-view-dashboard" aria-label="卡片視圖"></v-btn> </template> </v-tooltip>
                 </v-btn-toggle>
-              </div>
+
+                <v-menu offset-y>
+                  <template v-slot:activator="{ props }">
+                    <v-btn
+                      color="secondary"
+                      v-bind="props"
+                      size="small"
+                      prepend-icon="mdi-export-variant"
+                      :disabled="!selectedUnit || showDeleted"
+                    >
+                      匯出報告
+                    </v-btn>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
+                      <v-list-item-title>分享連結</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
+                      <v-list-item-title>產製報告</v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </v-menu>
+                </div>
             </v-col>
           </v-row>
         </v-sheet>
@@ -123,113 +145,129 @@
               class="elevation-0"
               :items-per-page="10"
               :items-per-page-options="[{ value: 10, title: '10' },{ value: 25, title: '25' },{ value: 50, title: '50' },{ value: 100, title: '100' },{ value: -1, title: '全部顯示' }]"
+              density="compact"
             >
-               <template v-slot:item.photos="{ item }"> <div class="d-flex ga-1 pa-1"> <v-img v-for="(photo, index) in item.photos.slice(0, 4)" :key="index" :src="photo.url" aspect-ratio="1" cover width="40" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)"> <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular> </div> </template> </v-img> </div> </template>
-              <template v-slot:item.status="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.status" type="status" :options="optionsForChips.status" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.status" type="status" :options="optionsForChips.status" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.status" @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }"> <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
-              <template v-slot:item.level="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.level" type="level" :options="optionsForChips.level" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.level" type="level" :options="optionsForChips.level" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.level" @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }"> <v-chip v-for="option in optionsForChips.level" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value }}</v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
-              <template v-slot:item.progress="{ item }"> <ChipRenderer v-if="showDeleted" :value="item.progress" type="progress" :options="optionsForChips.progress" /> <div v-else class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress" :options="optionsForChips.progress" style="cursor: pointer;"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.progress" @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }"> <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu> </div> </template>
-              
-              <template v-slot:item.inspectionDate="{ item }"> {{ formatDate(item.inspectionDate) }} </template>
-              <template v-slot:item.createdAt="{ item }"> {{ formatDateTime(item.createdAt) }} </template>
-              <template v-slot:item.deletedAt="{ item }"> {{ formatDateTime(item.deletedAt) }} </template>
-              <template v-slot:item.unitId="{ item }"> {{ item.unitId }} </template>
-              
-              <template v-slot:item.actions="{ item }">
-                <div class="d-flex align-center justify-start ga-0"> <template v-if="!showDeleted">
-                    <div class="position-relative">
-                      <v-fade-transition>
-                        <v-overlay
-                          v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'"
-                          contained persistent class="align-center justify-center"
-                          scrim="rgba(255, 255, 255, 0.7)"
-                        >
-                          <v-progress-circular indeterminate size="20"></v-progress-circular>
-                        </v-overlay>
-                      </v-fade-transition>
-                      <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'">
-                        <template v-slot:activator="{ props }">
-                          <v-btn
-                            v-bind="props"
-                            :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                            :color="item.customerView === false ? 'grey' : 'primary'"
-                            variant="text"
-                            size="small"
-                            density="compact"
-                            @click="() => { console.log('Eye Btn Clicked:', { id: item.id, current: item.customerView, next: !(item.customerView ?? true) }); handleFieldUpdate(item, 'customerView', !(item.customerView ?? true)); }"
-                            :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'"
-                            aria-label="切換客戶檢視狀態"
-                          ></v-btn>
-                        </template>
-                      </v-tooltip>
+              <template v-slot:item="{ item }">
+                <tr :class="{ 'confirmed-record-bg': !!item.customerConfirmedAt }">
+                  <td v-if="!selectedUnit">{{ item.unitId }}</td>
+                  <td>{{ formatDate(item.inspectionDate) }}</td>
+                  <td>{{ item.phase }}</td>
+                  <td>
+                    <div class="d-flex ga-1 pa-1">
+                      <v-img v-for="(photo, index) in item.photos.slice(0, 4)" :key="index" :src="photo.url" aspect-ratio="1" cover width="40" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)">
+                        <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular> </div> </template>
+                      </v-img>
                     </div>
-                    <v-tooltip location="top" text="編輯">
-                       <template v-slot:activator="{ props }">
-                         <v-btn v-bind="props" icon="mdi-pencil" variant="text" size="small" density="compact" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn>
-                       </template>
-                    </v-tooltip>
-                     <v-tooltip location="top" text="刪除">
-                       <template v-slot:activator="{ props }">
-                         <v-btn v-bind="props" icon="mdi-delete" variant="text" size="small" density="compact" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn>
-                       </template>
-                    </v-tooltip>
-                  </template>
-                  <template v-else>
-                     <v-tooltip location="top" text="還原">
-                       <template v-slot:activator="{ props }">
-                          <v-btn v-bind="props" icon="mdi-restore" variant="text" size="small" density="compact" @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn>
-                       </template>
-                    </v-tooltip>
-                  </template>
-                </div>
+                  </td>
+                  <td>{{ item.area }}</td>
+                  <td>{{ item.category }}</td>
+                  <td>{{ item.subCategory }}</td>
+                  <td>
+                    <ChipRenderer v-if="showDeleted" :value="item.status" type="status" :options="optionsForChips.status" size="small"/>
+                    <div v-else class="position-relative">
+                      <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                      <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.status" type="status" :options="optionsForChips.status" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.status" @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }"> <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu>
+                    </div>
+                  </td>
+                  <td>
+                     <ChipRenderer v-if="showDeleted" :value="item.level" type="level" :options="optionsForChips.level" size="small"/>
+                     <div v-else class="position-relative">
+                         <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                         <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.level" type="level" :options="optionsForChips.level" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.level" @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }"> <v-chip v-for="option in optionsForChips.level" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value }}</v-chip> </v-chip-group> </v-sheet> </v-menu>
+                     </div>
+                  </td>
+                  <td>
+                     <ChipRenderer v-if="showDeleted" :value="item.progress" type="progress" :options="optionsForChips.progress" size="small"/>
+                     <div v-else class="position-relative">
+                         <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                         <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress" :options="optionsForChips.progress" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.progress" @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }"> <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu>
+                     </div>
+                  </td>
+                  <td>
+                    <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1">
+                        {{ formatDate(item.customerConfirmedAt) }}
+                    </span>
+                    <v-chip
+                      v-else
+                      color="red"
+                      text-color="white"
+                      size="small"
+                      label
+                    >
+                      買方未確認
+                    </v-chip>
+                  </td>
+                  <td>{{ item.description }}</td>
+                  <td>{{ item.inspectorName }}</td>
+                  <td>{{ formatDateTime(item.createdAt) }}</td>
+                  <td v-if="showDeleted">{{ formatDateTime(item.deletedAt) }}</td>
+                  <td>
+                    <div class="d-flex align-center justify-start ga-0">
+                      <template v-if="!showDeleted">
+                        <div class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained persistent class="align-center justify-center" scrim="rgba(255, 255, 255, 0.7)"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small" density="compact" @click="() => { console.log('Eye Btn Clicked:', { id: item.id, current: item.customerView, next: !(item.customerView ?? true) }); handleFieldUpdate(item, 'customerView', !(item.customerView ?? true)); }" :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" aria-label="切換客戶檢視狀態"></v-btn> </template> </v-tooltip> </div>
+                        <v-tooltip location="top" text="編輯"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-pencil" variant="text" size="small" density="compact" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn> </template> </v-tooltip>
+                        <v-tooltip location="top" text="刪除"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-delete" variant="text" size="small" density="compact" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn> </template> </v-tooltip>
+                      </template>
+                      <template v-else>
+                        <v-tooltip location="top" text="還原"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-restore" variant="text" size="small" density="compact" @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn> </template> </v-tooltip>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
               </template>
-
               <template v-slot:no-data> <div class="pa-4 text-center text-grey"> {{ noDataText }} </div> </template>
             </v-data-table>
           </div>
           <div v-if="viewMode === 'card'" class="pa-2 pa-sm-4">
             <v-row dense>
               <v-col v-for="item in filteredRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
-                <v-card class="mb-3 record-card" variant="outlined" :class="{ 'deleted-card-look': showDeleted }">
-                   <div v-if="!selectedUnit" class="pa-2 border-b" :class="showDeleted ? 'bg-grey-lighten-4' : 'bg-blue-grey-lighten-5'">
+                <v-card
+                  class="mb-3 record-card"
+                  variant="outlined"
+                  :class="{ 'deleted-card-look': showDeleted, 'confirmed-record-bg': !!item.customerConfirmedAt }"
+                >
+                  <div v-if="!selectedUnit" class="pa-2 border-b" :class="showDeleted ? 'bg-grey-lighten-4' : 'bg-blue-grey-lighten-5'">
                     <strong :class="showDeleted ? 'text-grey-darken-2' : 'text-blue-grey-darken-3'">戶別: {{ item.unitId }}</strong>
                   </div>
-                  <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip"> <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url" aspect-ratio="1" cover height="50" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)"> <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular> </div> </template> <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center"> +{{ item.photos.length - 5 }} </div> </v-img> </div>
-                  <v-card-item class="pb-1 pt-2"> <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span> </div> <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p> </v-card-item>
+                  <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip">
+                     <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url" aspect-ratio="1" cover height="50" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)">
+                       <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular> </div> </template>
+                       <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center"> +{{ item.photos.length - 5 }} </div>
+                     </v-img>
+                  </div>
+                  <v-card-item class="pb-1 pt-2">
+                     <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span> </div>
+                     <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p>
+                  </v-card-item>
                   <v-card-text class="py-2">
-                    <div class="d-flex ga-2 flex-wrap mb-1">
-                      <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" />
-                      <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" />
-                      <ChipRenderer size="small" :value="item.progress" type="progress" :options="optionsForChips.progress" />
-                    </div>
-                    <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1"> {{ item.description }} </p>
-                    <p v-if="showDeleted && item.deletedAt" class="text-caption text-error mt-1"> 刪除時間: {{ formatDateTime(item.deletedAt) }} </p>
+                     <div class="d-flex ga-2 flex-wrap mb-1">
+                       <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" />
+                       <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" />
+                       <ChipRenderer size="small" :value="item.progress" type="progress" :options="optionsForChips.progress" />
+                     </div>
+                     <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1"> {{ item.description }} </p>
+                     <p v-if="showDeleted && item.deletedAt" class="text-caption text-error mt-1"> 刪除時間: {{ formatDateTime(item.deletedAt) }} </p>
                   </v-card-text>
                   <v-divider></v-divider>
                   <v-card-actions class="px-3 py-1">
-                    <span class="text-caption text-grey"> {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span>
-                    <v-spacer></v-spacer>
+                    <div class="d-flex flex-column flex-grow-1 mr-2">
+                         <span class="text-caption text-grey"> {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span>
+                         <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
+                             買方確認：{{ formatDate(item.customerConfirmedAt) }}
+                         </span>
+                         <v-chip
+                           v-else
+                           color="red"
+                           text-color="white"
+                           size="x-small"
+                           label
+                           class="mt-1"
+                         >
+                           買方未確認
+                         </v-chip>
+                    </div>
                     <template v-if="!showDeleted">
-                      <div class="position-relative">
-                        <v-fade-transition>
-                          <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained scrim="rgba(255, 255, 255, 0.7)" persistent class="align-center justify-center">
-                            <v-progress-circular indeterminate size="16" width="2"></v-progress-circular>
-                          </v-overlay>
-                        </v-fade-transition>
-                        <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'">
-                          <template v-slot:activator="{ props }">
-                            <v-btn
-                              v-bind="props"
-                              :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                              :color="item.customerView === false ? 'grey' : 'primary'"
-                              variant="text"
-                              size="small"
-                              @click="handleFieldUpdate(item, 'customerView', !(item.customerView ?? true))"
-                              :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'"
-                              aria-label="切換客戶檢視狀態"
-                            ></v-btn>
-                          </template>
-                        </v-tooltip>
-                      </div>
+                      <div class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained scrim="rgba(255, 255, 255, 0.7)" persistent class="align-center justify-center"> <v-progress-circular indeterminate size="16" width="2"></v-progress-circular> </v-overlay> </v-fade-transition> <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small" @click="handleFieldUpdate(item, 'customerView', !(item.customerView ?? true))" :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" aria-label="切換客戶檢視狀態"></v-btn> </template> </v-tooltip> </div>
                       <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn>
                       <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn>
                     </template>
@@ -241,7 +279,7 @@
               </v-col>
             </v-row>
           </div>
-        </div>
+          </div>
         <div v-else class="pa-10 text-center text-grey"> {{ noDataText }} </div>
       </div>
 
@@ -258,6 +296,208 @@
       @saved="handleRecordSaved"
       fullscreen
     />
+
+    <v-dialog v-model="showShareDialog" persistent max-width="500px">
+      <v-card :loading="isGeneratingUrl">
+        <v-card-title class="text-h6 d-flex align-center">
+          <v-icon start color="primary">mdi-share-variant</v-icon>
+          分享驗屋報告連結
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="closeShareDialog"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+
+        <v-card-text class="text-center">
+          <div v-if="isGeneratingUrl" class="py-8">
+            <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular>
+            <p class="mt-3 text-grey">正在產生安全連結...</p>
+          </div>
+          <div v-else-if="shareError" class="py-8">
+            <v-icon color="error" size="40">mdi-alert-circle-outline</v-icon>
+            <p class="mt-3 text-error">產生連結失敗:</p>
+            <p class="text-caption">{{ shareError }}</p>
+            <v-btn color="primary" @click="handleShareReport" class="mt-4">重試</v-btn>
+          </div>
+          <div v-else class="py-4">
+            <p class="mb-4">請將下方連結或 QR Code 提供給客戶：</p>
+            <qrcode-vue
+              :value="shareUrl"
+              :size="200"
+              level="H"
+              class="mb-4 d-inline-block border pa-1"
+            ></qrcode-vue>
+
+            <v-text-field
+              :model-value="shareUrl"
+              label="分享連結 (有效期限 90 天)"
+              readonly
+              variant="outlined"
+              density="compact"
+              append-inner-icon="mdi-content-copy"
+              @click:append-inner="copyShareUrl"
+              hide-details
+            ></v-text-field>
+            <v-scroll-y-transition>
+              <div v-if="copySuccess" class="text-success text-caption mt-1">已複製！</div>
+            </v-scroll-y-transition>
+          </div>
+        </v-card-text>
+
+        <v-card-actions v-if="!isGeneratingUrl && !shareError">
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="closeShareDialog">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showGeneratePdfDialog" persistent fullscreen transition="dialog-bottom-transition">
+      <v-card>
+       <v-toolbar dark color="secondary">
+          <v-btn icon dark @click="showGeneratePdfDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>產製驗屋報告 PDF</v-toolbar-title>
+          <v-spacer></v-spacer>
+          </v-toolbar>
+
+        <v-card-text class="pa-4">
+          <div v-if="isLoadingBatches" class="text-center py-10">
+            <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular>
+            <p class="mt-3 text-grey">正在查詢已確認的驗屋紀錄...</p>
+          </div>
+          <div v-else-if="batchError" class="text-center py-10">
+            <v-icon color="error" size="40">mdi-alert-circle-outline</v-icon>
+            <p class="mt-3 text-error">查詢失敗:</p>
+            <p class="text-caption">{{ batchError }}</p>
+            <v-btn color="primary" @click="loadConfirmedBatches" class="mt-4">重試</v-btn>
+          </div>
+          <div v-else-if="confirmedBatches.length === 0" class="text-center py-10 text-grey">
+            <v-icon size="40">mdi-file-question-outline</v-icon>
+            <p class="mt-3">找不到此戶別已確認簽署的驗屋紀錄批次。</p>
+            <p class="text-caption">客戶需要先在分享的報告頁面完成簽名確認。</p>
+          </div>
+          <div v-else>
+            <v-row dense class="mb-4">
+              <v-col cols="12" sm="4">
+                <v-text-field
+                  label="建案名稱"
+                  :model-value="projectName"
+                  readonly
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                ></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field
+                  label="戶別"
+                  :model-value="selectedUnit"
+                  readonly
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                ></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field
+                  v-model="inspectorNameForPdf"
+                  label="報告產製人員 (可修改)"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  clearable
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <p class="text-subtitle-1 mb-2">請選擇要產製報告的驗屋紀錄批次：</p>
+            <v-item-group v-model="selectedBatchId" mandatory>
+              <v-row dense>
+                <v-col
+                  v-for="batch in confirmedBatches"
+                  :key="batch.batchId"
+                  cols="12" md="6" lg="4"
+                >
+                  <v-item v-slot="{ isSelected, toggle }" :value="batch.batchId">
+                    <v-card
+                      :color="isSelected ? 'primary' : ''"
+                      :variant="isSelected ? 'elevated' : 'outlined'"
+                      class="fill-height d-flex flex-column"
+                      @click="toggle"
+                      style="cursor: pointer;"
+                    >
+                      <v-card-item>
+                        <div>
+                          <div class="text-overline mb-1">
+                            確認日期: {{ batch.dateString }}
+                          </div>
+                          <div class="text-h6 mb-1">
+                            共 {{ batch.recordCount }} 筆紀錄
+                          </div>
+                          <v-divider class="my-1"></v-divider>
+                          <div class="text-caption">買方姓名: {{ batch.buyerInfo?.name || '無' }}</div>
+                          <div class="text-caption">電話: {{ batch.buyerInfo?.phone || '無' }}</div>
+                          <div class="text-caption">Email: {{ batch.buyerInfo?.email || '無' }}</div>
+                        </div>
+                      </v-card-item>
+                      <v-spacer></v-spacer>
+                      <v-fade-transition>
+                         <v-overlay
+                            v-if="isSelected"
+                            contained
+                            scrim="primary"
+                            class="align-center justify-center"
+                          >
+                           <v-icon size="x-large">mdi-check-circle-outline</v-icon>
+                          </v-overlay>
+                       </v-fade-transition>
+                    </v-card>
+                  </v-item>
+                </v-col>
+              </v-row>
+            </v-item-group>
+          </div>
+        </v-card-text>
+
+   <v-divider></v-divider> <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn
+            color="grey-darken-1"
+            variant="text"
+            @click="showGeneratePdfDialog = false"
+          >
+            取消
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            @click="startPdfGeneration"
+            :disabled="!selectedBatchId || isLoadingBatches"
+            size="large"
+            prepend-icon="mdi-file-pdf-box"
+          >
+            開始產製報告
+          </v-btn>
+        </v-card-actions>
+        </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showProcessingDialog" persistent max-width="400px">
+      <v-card color="primary">
+        <v-card-text class="d-flex align-center pa-4">
+          <v-progress-circular indeterminate color="white" class="mr-4"></v-progress-circular>
+          <div>
+            <div class="text-h6">報告產製中...</div>
+            <div class="text-caption">完成後將會寄送 Email 通知買方及產製人員。此視窗可關閉。</div>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="closeProcessingDialog">關閉視窗</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh"> <v-card> <v-toolbar dense flat class="border-b"> <v-spacer></v-spacer> <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn> </v-toolbar> <v-card-text class="pa-0"> <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img> </v-card-text> </v-card> </v-dialog>
     <v-dialog v-model="showDeleteDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-error"> <v-icon start>mdi-alert-circle-outline</v-icon> 確認刪除紀錄 </v-card-title> <v-card-text> 您確定要將這筆驗屋紀錄移至資源回收桶嗎？ <div v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToDelete.inspectionDate) }} <br> 區域: {{ recordToDelete.area }} <br> 種類: {{ recordToDelete.category }} / {{ recordToDelete.subCategory }} </div> <br> <strong class="text-error">您之後可以在資源回收桶中還原。</strong> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn> <v-btn color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn> </v-card-actions> </v-card> </v-dialog>
     <v-dialog v-model="showRestoreDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-success"> <v-icon start>mdi-restore</v-icon> 確認還原紀錄 </v-card-title> <v-card-text> 您確定要還原這筆驗屋紀錄嗎？ <div v-if="recordToRestore" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToRestore.inspectionDate) }} <br> 區域: {{ recordToRestore.area }} <br> 種類: {{ recordToRestore.category }} / {{ recordToRestore.subCategory }} </div> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showRestoreDialog = false" :disabled="isRestoring">取消</v-btn> <v-btn color="success" variant="flat" @click="confirmRestoreRecord" :loading="isRestoring">確認還原</v-btn> </v-card-actions> </v-card> </v-dialog>
@@ -267,7 +507,7 @@
       color="primary"
       elevation="8"
       class="mobile-bottom-nav"
-    >
+      grow >
       <v-btn
         @click="showDeleted = false; handleModeChange(false)"
         :active="!showDeleted"
@@ -288,28 +528,35 @@
         <span class="mobile-btn-text">刪除紀錄</span>
       </v-btn>
 
-      <v-btn disabled class="fab-placeholder"></v-btn>
-
       <v-btn
-        @click="viewMode = 'table'"
-        :active="viewMode === 'table'"
-        value="table"
+        @click="viewMode = (viewMode === 'table' ? 'card' : 'table')"
+        value="switchMode"
         class="pa-0"
       >
-        <v-icon size="small">mdi-table</v-icon>
-        <span class="mobile-btn-text">列表模式</span>
+        <v-icon size="small">{{ viewMode === 'table' ? 'mdi-view-dashboard-outline' : 'mdi-table' }}</v-icon>
+        <span class="mobile-btn-text">切換顯示</span>
       </v-btn>
-
-      <v-btn
-        @click="viewMode = 'card'"
-        :active="viewMode === 'card'"
-        value="card"
-        class="pa-0"
-      >
-        <v-icon size="small">mdi-view-dashboard</v-icon>
-        <span class="mobile-btn-text">卡片模式</span>
-      </v-btn>
-    </v-bottom-navigation>
+      <v-menu location="top" offset-y>
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            value="export"
+            class="pa-0"
+            :disabled="!selectedUnit || showDeleted"
+          >
+            <v-icon size="small">mdi-export-variant</v-icon>
+            <span class="mobile-btn-text">匯出報告</span>
+          </v-btn>
+        </template>
+        <v-list density="compact" class="mb-2"> <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
+            <v-list-item-title>分享連結</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
+            <v-list-item-title>產製報告</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+      </v-bottom-navigation>
 
     <v-btn
       v-if="mobile && projectId"
@@ -344,6 +591,9 @@ import {
   restoreInspectionRecordFB,
   getDeletedInspectionRecordsForProjectFB,
   getInspectionRecordsForProjectFB,
+  generateShareableUrl,
+  getConfirmedInspectionBatches,
+  generateInspectionPdf 
 } from '@/api';
 import { VDataTable } from 'vuetify/components/VDataTable';
 import { useDisplay } from 'vuetify';
@@ -353,6 +603,7 @@ import { format, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import IconButton from '@/components/IconButton.vue';
 import defaultProjectIcon from '@/assets/icons/property.png';
+import QrcodeVue from 'qrcode.vue';
 
 const route = useRoute();
 const userStore = useUserStore();
@@ -388,6 +639,20 @@ const showDeleted = ref(false);
 const showRestoreDialog = ref(false);
 const recordToRestore = ref(null);
 const isRestoring = ref(false);
+const showShareDialog = ref(false);
+const isGeneratingUrl = ref(false);
+const shareUrl = ref('');
+const shareError = ref('');
+const copySuccess = ref(false);
+const showGeneratePdfDialog = ref(false);
+const isLoadingBatches = ref(false);
+const batchError = ref('');
+const confirmedBatches = ref([]); // 儲存從後端獲取的批次列表
+const selectedBatchId = ref(null); // 儲存用戶選擇的批次 ID
+const inspectorNameForPdf = ref(''); // 儲存報告上的產製人員名稱
+const showProcessingDialog = ref(false); // 控制處理中提示 Dialog
+
+
 
 const noDataText = computed(() => {
   if (isLoadingRecords.value) return '正在載入紀錄...';
@@ -434,6 +699,7 @@ const headers = computed(() => {
    { title: '狀態', key: 'status', sortable: true }, 
    { title: '等級', key: 'level', sortable: true }, 
    { title: '進度', key: 'progress', sortable: true }, 
+   { title: '買方確認', key: 'customerConfirmedAt', sortable: true },
    { title: '說明', key: 'description', sortable: false }, 
    { title: '人員', key: 'inspectorName', sortable: true }, 
    { title: '時間', key: 'createdAt', sortable: true }, 
@@ -453,7 +719,9 @@ const headers = computed(() => {
 
 // --- Methods ---
 onMounted(async () => {
- try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-QV34v0pb' }); if (!liff.isLoggedIn()) { liff.login(); return; } loadingText.value = '正在驗證使用者權限...'; const profile = await liff.getProfile(); const success = await userStore.fetchUserByLineId(profile.userId); if (success) { isBound.value = true; loadingText.value = '正在載入建案權限...'; await projectStore.fetchProjects(); const allProjects = projectStore.projectsList; authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name)); if (props.projectId) { loadingText.value = '正在載入建案資料...'; if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) { loadingText.value = '權限不足...'; isBound.value = true; isLoading.value = false; alert('權限不足'); return; } await loadProjectStructure(); await loadOptionsForChips();
+ try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
+ 
+ if (!liff.isLoggedIn()) { liff.login(); return; } loadingText.value = '正在驗證使用者權限...'; const profile = await liff.getProfile(); const success = await userStore.fetchUserByLineId(profile.userId); if (success) { isBound.value = true; loadingText.value = '正在載入建案權限...'; await projectStore.fetchProjects(); const allProjects = projectStore.projectsList; authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name)); if (props.projectId) { loadingText.value = '正在載入建案資料...'; if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) { loadingText.value = '權限不足...'; isBound.value = true; isLoading.value = false; alert('權限不足'); return; } await loadProjectStructure(); await loadOptionsForChips();
  await loadData(); 
  } else { loadingText.value = '請選擇建案'; } } else { isBound.value = false; } } catch (error) { console.error('頁面初始化失敗:', error); loadingText.value = `初始化失敗: ${error.message}`; } finally { isLoading.value = false; viewMode.value = mobile.value ? 'card' : 'table'; }
 });
@@ -514,6 +782,159 @@ async function handleFieldUpdate(item, field, newValue) {
  const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload); if (result.status === 'success') { const recordIndex = allRecords.value.findIndex(r => r.id === item.id); if (recordIndex !== -1) { allRecords.value[recordIndex] = { ...allRecords.value[recordIndex], ...payload }; } } else { alert(`更新失敗: ${result.message}`); } updatingRecord.id = null; updatingRecord.field = null;
 }
 
+async function handleShareReport() {
+  if (!selectedUnit.value) {
+    alert('請先選擇一個戶別。');
+    return;
+  }
+
+  showShareDialog.value = true; // 先打開 Dialog 顯示載入中
+  isGeneratingUrl.value = true;
+  shareError.value = ''; // 清除舊錯誤
+  shareUrl.value = ''; // 清除舊連結
+  copySuccess.value = false; // 重置複製狀態
+
+  try {
+    const payload = {
+      projectId: props.projectId,
+      unitId: selectedUnit.value,
+    };
+    const result = await generateShareableUrl(payload);
+
+    if (result.status === 'success' && result.shareUrl) {
+      shareUrl.value = result.shareUrl;
+    } else {
+      throw new Error(result.message || '無法產生分享連結');
+    }
+  } catch (error) {
+    console.error('產生分享連結失敗:', error);
+    shareError.value = error.message;
+  } finally {
+    isGeneratingUrl.value = false;
+  }
+}
+
+function closeShareDialog() {
+  showShareDialog.value = false;
+  // 延遲一點重置狀態，避免 Dialog 關閉動畫時內容閃爍
+  setTimeout(() => {
+    isGeneratingUrl.value = false;
+    shareError.value = '';
+    shareUrl.value = '';
+    copySuccess.value = false;
+  }, 300);
+}
+
+async function copyShareUrl() {
+  if (!shareUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(shareUrl.value);
+    copySuccess.value = true;
+    setTimeout(() => { copySuccess.value = false; }, 2000); // 2秒後自動消失提示
+  } catch (err) {
+    console.error('複製失敗:', err);
+    alert('複製連結失敗，請手動複製。');
+  }
+}
+
+async function handleGeneratePdf() {
+  console.log('Generate PDF Clicked');
+  // 重置狀態
+  isLoadingBatches.value = true;
+  batchError.value = '';
+  confirmedBatches.value = [];
+  selectedBatchId.value = null;
+  // 預設填入當前登入者名稱
+  inspectorNameForPdf.value = userStore.user?.name || '';
+  // 開啟 Dialog
+  showGeneratePdfDialog.value = true;
+  // 載入已確認的批次
+  await loadConfirmedBatches();
+}
+// ✅ END: 修改 handleGeneratePdf 函式
+
+// ✅ START: 新增載入已確認批次的函式
+async function loadConfirmedBatches() {
+  isLoadingBatches.value = true;
+  batchError.value = '';
+  try {
+    const payload = {
+      projectId: props.projectId,
+      unitId: selectedUnit.value,
+    };
+    const result = await getConfirmedInspectionBatches(payload);
+    if (result.status === 'success') {
+      confirmedBatches.value = result.data;
+    } else {
+      throw new Error(result.message || '查詢已確認批次失敗');
+    }
+  } catch (error) {
+    console.error('查詢已確認批次失敗:', error);
+    batchError.value = error.message;
+  } finally {
+    isLoadingBatches.value = false;
+  }
+}
+// ✅ END: 新增載入已確認批次的函式
+
+// ✅ START: 新增開始產製 PDF 的函式 (最終版)
+async function startPdfGeneration() {
+  if (!selectedBatchId.value || !inspectorNameForPdf.value) {
+    alert('請選擇一個批次並確認產製人員名稱。');
+    return;
+  }
+
+  showProcessingDialog.value = true;
+  showGeneratePdfDialog.value = false;
+
+  console.log('--- Trigger PDF Generation ---');
+  console.log('Project ID:', props.projectId);
+  console.log('Unit ID:', selectedUnit.value);
+  console.log('Selected Batch ID:', selectedBatchId.value);
+  console.log('Inspector Name:', inspectorNameForPdf.value);
+  console.log('Triggering User Email:', userStore.user?.email || '未知');
+
+  try {
+    const payload = {
+       projectId: props.projectId,
+       unitId: selectedUnit.value,
+       confirmationBatchId: selectedBatchId.value,
+       inspectorName: inspectorNameForPdf.value,
+       triggeringUserEmail: userStore.user?.email || null,
+    };
+    console.log('Calling generateInspectionPdf API with payload:', payload);
+
+    // ✅ ***修改點: 實際呼叫 API***
+    const result = await generateInspectionPdf(payload); // <--- 呼叫 API
+
+    // 檢查後端是否按預期回傳 processing 狀態
+    if (result.status !== 'processing') {
+      throw new Error(result.message || '啟動 PDF 產製失敗，後端未回傳處理中狀態');
+    }
+    // ✅ ***修改點結束***
+
+    console.log('後端 PDF 產製已觸發');
+
+    // 提示用戶可以關閉視窗，後續會收到 Email
+    // showProcessingDialog 會保持開啟，直到用戶手動關閉
+
+  } catch (error) {
+     console.error('觸發 PDF 產製失敗:', error);
+     alert(`啟動報告產製失敗: ${error.message}`);
+     // 出錯時關閉處理中提示
+     closeProcessingDialog();
+  }
+  // 注意：這裡不再需要 finally isSaving=false，因為是背景處理
+}
+// ✅ END: 新增開始產製 PDF 的函式
+
+// ✅ START: 新增關閉處理中提示的函式
+function closeProcessingDialog() {
+  showProcessingDialog.value = false;
+}
+
+
+
 function openAddDialog() { recordBeingEdited.value = null; showEditorDialog.value = true; }
 function openEditDialog(record) { recordBeingEdited.value = record; showEditorDialog.value = true; }
 function handleRecordSaved() { showEditorDialog.value = false; loadData(); }
@@ -530,6 +951,7 @@ function handleModeChange(newModeValue) {
   selectedUnit.value = null;
   loadData();
 }
+
 
 </script>
 
@@ -581,19 +1003,7 @@ function handleModeChange(newModeValue) {
   z-index: 10 !important; /* 確保在 v-bottom-navigation 之上 (nav 預設 z-index 8) */
 }
 
-/* ✓ 新增：FAB 的佔位符 */
-.fab-placeholder {
-  flex-grow: 0.8 !important; /* 讓它佔據中間空間 */
-  min-width: 50px !important; /* 給定最小寬度 */
-}
 
-/* ✓ 新增：調整小按鈕的最小寬度，避免文字被裁切 */
-.v-bottom-navigation .v-btn:not(.fab-placeholder) {
-  flex-grow: 1;
-  min-width: 60px !important;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
-}
 
 /* ✓ 新增：強制 v-bottom-navigation 固定在底部 */
 .mobile-bottom-nav {
@@ -602,6 +1012,22 @@ function handleModeChange(newModeValue) {
   left: 0;
   right: 0;
   z-index: 8 !important; /* 確保 z-index 低於 FAB */
+}
+
+/* ✅ 可選：如果希望底部按鈕文字更小 */
+.mobile-bottom-nav .v-btn .mobile-btn-text {
+  font-size: 0.65rem; /* 再稍微縮小一點 */
+}
+
+/* ✅ 可選：為 QR Code 加上邊框和內距 */
+.border.pa-1 {
+  border: 1px solid #e0e0e0;
+  padding: 4px;
+  background-color: white; /* 確保背景是白色 */
+}
+
+.confirmed-record-bg {
+  background-color: #f5f5f5 !important; /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
 }
 
 </style>

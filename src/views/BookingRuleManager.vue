@@ -410,6 +410,19 @@
                   placeholder="輸入驗屋報告雲端資料夾位置"
                 ></v-text-field>
 
+                 <!-- ✓✓✓ START: 新增驗屋報告模板欄位 ✓✓✓ -->
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告模板</p>
+                <v-text-field
+                  v-model="projectSettings.inspectionReportTemplateUrl"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-1"
+                  placeholder="輸入驗屋報告 Google Slides 模板的 URL"
+                  hint="用於自動產製 PDF 報告的樣板 (需包含佔位符)"
+                  persistent-hint
+                ></v-text-field>
+                <!-- ✓✓✓ END: 新增驗屋報告模板欄位 ✓✓✓ -->
+
                 <p class="text-subtitle-1 font-weight-bold mb-2">上傳頁說明</p>
                 <RichTextEditor v-model="projectSettings.reportUploadIntro.body" class="mb-6" />
 
@@ -1295,6 +1308,7 @@ const defaultSettings = computed(() => ({
     showReportUploadButton: false, 
     bookingMethodOptions: [],
     inspectionStaff: [], 
+    inspectionReportTemplateUrl: '',
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
@@ -1659,7 +1673,11 @@ async function loadDataForProject() {
             ...defaultSettings.value.reportSettings.notDownloadedReminderSchedule,
             ...(settings.reportSettings?.notDownloadedReminderSchedule || {})
           }
-        };
+       };
+        // ✓ 新增：讀取驗屋報告模板 URL
+        projectSettings.value.inspectionReportTemplateUrl = settings.inspectionReportTemplateUrl || '';
+        // ... existing settings loading ...
+
       } else {
         // 如果從後端沒有讀取到任何設定，則使用預設值
         projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value));
