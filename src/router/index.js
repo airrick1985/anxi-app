@@ -440,6 +440,19 @@ const routes = [
       title: '車位銷控管理'
     }
   },
+  // --- ✅ START: 新增 Standby 路由 ---
+  {
+    path: '/standby/:projectId', // ✓ 路由路徑，包含 projectId 參數
+    name: 'Standby', // ✓ 路由名稱
+    component: () => import('@/views/Standby.vue'), // ✓ 指向新的 Standby.vue 組件
+    props: true, // ✓ 允許將路由參數 projectId 作為 props 傳遞給組件
+    meta: {
+      layout: PublicLayout, // ✓ 使用公開頁面佈局 (不需要登入)
+      title: '接待狀態看板' // ✓ 頁面標題
+     
+    }
+  },
+  // --- ✅ END: 新增 Standby 路由 ---
 
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 

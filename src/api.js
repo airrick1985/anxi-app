@@ -6018,3 +6018,232 @@ export const generateInspectionPdf = async (payload) => {
     return { status: "error", message: message };
   }
 };
+
+/**
+ * [API] 呼叫後端記錄 Standby 人員狀態變更歷史
+ * @param {object} logData - 包含 { projectId, personnelId, personnelName, previousStatus, newStatus, startTime, endTime, operator }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, logId } 或錯誤
+ */
+export const logStandbyStatusChangeAPI = async (logData) => {
+  try {
+    // ✓ 確認 functions 實例已正確初始化 (可能在 firebase.js 或 api.js 頂部)
+    const logFunction = httpsCallable(functions, 'logStandbyStatusChange');
+    const result = await logFunction(logData);
+    return result.data; // 直接回傳 Cloud Function 的結果
+  } catch (error) {
+    console.error("API Error in logStandbyStatusChangeAPI:", error);
+    // ✓ 將 HttpsError 的 message 提取出來拋出，方便前端處理
+    throw new Error(error.message || '記錄狀態變更時發生錯誤');
+  }
+};
+
+
+/**
+ * [API][修正版] 獲取指定建案下，具有報價或銷控系統權限的人員列表
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<Array<{id: string, name: string}>>} - 人員列表
+ */
+export const fetchPotentialPersonnelAPI = async (projectId) => {
+  if (!projectId) return [];
+  try {
+    const permissionsRef = collection(db, "userPermissions");
+    // 暫時先撈取所有權限文件 (保持不變)
+    const q = query(permissionsRef);
+    const snapshot = await getDocs(q);
+    console.log(`[API fetchPotentialPersonnelAPI] Firestore snapshot size for ${projectId}: ${snapshot.size}`);
+
+    const personnel = [];
+    snapshot.forEach(doc => {
+      // ✅ 直接從文件頂層讀取 userName
+      const docData = doc.data();
+      const userName = docData.userName; // <--- ✅ 修改點：從頂層讀取
+      const perms = docData.permissions || {};
+      const projectPerm = perms[projectId]; // ✓ 檢查 projectId 是否存在於 permissions Map 中
+
+      console.log(`[API fetchPotentialPersonnelAPI] Processing doc ${doc.id}, userName: ${userName}`);
+      console.log(`[API fetchPotentialPersonnelAPI] ProjectPerm for ${projectId}:`, projectPerm);
+
+      // ✅ 條件修改：檢查 projectPerm 是否存在，userName 是否存在，
+      //   以及 projectPerm.systems 是否包含所需權限
+      if (projectPerm && userName && Array.isArray(projectPerm.systems)) {
+         console.log(`[API fetchPotentialPersonnelAPI] Checking systems for ${userName}:`, projectPerm.systems);
+        if (projectPerm.systems.includes('銷售StandBy') ) {
+           personnel.push({ id: doc.id, name: userName }); // ✓ 使用從頂層讀取的 userName
+           console.log(`[API fetchPotentialPersonnelAPI] Added: ${userName}`);
+        }
+      }
+    });
+
+    personnel.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    console.log('[API fetchPotentialPersonnelAPI] Final personnel list:', personnel);
+    return personnel;
+
+  } catch (error) {
+    console.error(`API Error fetching potential personnel for ${projectId}:`, error);
+    throw new Error(`獲取人員列表時發生錯誤: ${error.message}`);
+  }
+};
+
+/**
+ * [API] 獲取 Standby 看板的設定 (可見人員、顏色)
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<object>} - 返回設定物件 { visiblePersonnelIds: [], colors: {} } 或預設值
+ */
+export const fetchStandbyConfigAPI = async (projectId) => {
+  if (!projectId) return { visiblePersonnelIds: [], colors: {} }; // ✓ 提供預設值
+  try {
+    const configDocRef = doc(db, "standbyConfig", projectId); // ✓ 集合 standbyConfig, 文件 ID 為 projectId
+    const docSnap = await getDoc(configDocRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      // ✓ 回傳資料庫中的設定，若欄位不存在則給予預設空值
+      return {
+        visiblePersonnelIds: data.visiblePersonnelIds || [],
+        colors: data.colors || {},
+      };
+    } else {
+      // ✓ 如果文件不存在，回傳預設空值
+      return { visiblePersonnelIds: [], colors: {} };
+    }
+  } catch (error) {
+    console.error(`API Error fetching standby config for ${projectId}:`, error);
+    throw new Error(`讀取看板設定時發生錯誤: ${error.message}`);
+  }
+};
+
+/**
+ * [API] 儲存 Standby 看板的設定
+ * @param {string} projectId - 建案 ID
+ * @param {Array<string>} visiblePersonnelIds - 可見人員的 ID (phone) 列表
+ * @param {object} colors - 狀態顏色設定物件
+ * @returns {Promise<{status: string}>}
+ */
+export const saveStandbyConfigAPI = async (projectId, visiblePersonnelIds, colors) => {
+  if (!projectId) {
+     return { status: 'error', message: '缺少 projectId' };
+  }
+  try {
+    const configDocRef = doc(db, "standbyConfig", projectId);
+    // ✓ 使用 setDoc + merge: true，不論文件是否存在都能正確寫入/更新
+    await setDoc(configDocRef, {
+      visiblePersonnelIds: visiblePersonnelIds || [], // ✓ 確保是陣列
+      colors: colors || {},                      // ✓ 確保是物件
+      updatedAt: serverTimestamp() // ✓ 記錄更新時間 (需 import serverTimestamp from "firebase/firestore")
+    }, { merge: true });
+    return { status: 'success' };
+  } catch (error) {
+    console.error(`API Error saving standby config for ${projectId}:`, error);
+     return { status: 'error', message: `儲存看板設定時發生錯誤: ${error.message}` };
+  }
+};
+
+
+/**
+ * [API] 呼叫後端更新 Standby 人員狀態
+ * @param {string} projectId
+ * @param {string} personnelId
+ * @param {object} updates - 要更新的欄位物件 (e.g., { status: 'away', currentStatusStartTime: 'serverTimestamp' })
+ * @returns {Promise<object>} - 後端回傳的結果 { status } 或錯誤
+ */
+export const updateStandbyStatusAPI = async (projectId, personnelId, updates) => {
+  try {
+    const updateFunction = httpsCallable(functions, 'updateStandbyStatus');
+    // ✅ 將 rtdbServerTimestamp() 轉換為字串 'serverTimestamp' 傳給後端
+    const finalUpdates = { ...updates };
+    if (finalUpdates.currentStatusStartTime === rtdbServerTimestamp()) {
+        finalUpdates.currentStatusStartTime = 'serverTimestamp';
+    }
+    const result = await updateFunction({ projectId, personnelId, updates: finalUpdates });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in updateStandbyStatusAPI:", error);
+    throw new Error(error.message || '更新人員狀態時發生錯誤');
+  }
+};
+
+/**
+ * [API] 呼叫後端同步 Firestore 設定中的人員到 RTDB (僅新增)
+ * @param {string} projectId
+ * @param {object} personnelToAdd - 要新增的人員物件 (格式: { personnelId: { name, status, zone, order, currentStatusStartTime: 'serverTimestamp' } })
+ * @returns {Promise<object>} - 後端回傳的結果 { status, addedCount } 或錯誤
+ */
+export const syncStandbyPersonnelAPI = async (projectId, personnelToAdd) => {
+  try {
+    const syncFunction = httpsCallable(functions, 'syncStandbyPersonnel');
+    const result = await syncFunction({ projectId, personnelToAdd });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncStandbyPersonnelAPI:", error);
+    throw new Error(error.message || '同步人員狀態時發生錯誤');
+  }
+};
+
+/**
+ * [API] 呼叫後端批次更新 Standby 人員狀態 (用於拖曳操作)
+ * @param {string} projectId
+ * @param {object} updates - 要更新的多個路徑及其值的物件 (路徑相對於 personnel 節點)
+ * e.g., { "personnelId1/order": 1, "personnelId2/zone": "serving", "personnelId2/status": "serving" }
+ * @returns {Promise<object>} - 後端回傳的結果 { status } 或錯誤
+ */
+export const updateStandbyBatchAPI = async (projectId, updates) => {
+  try {
+    const updateFunction = httpsCallable(functions, 'updateStandbyBatch');
+    // 檢查 updates 物件中是否有 rtdbServerTimestamp()，並替換為 'serverTimestamp'
+    const processedUpdates = {};
+    for (const path in updates) {
+        const value = updates[path];
+        if (value === rtdbServerTimestamp()) {
+            processedUpdates[path] = 'serverTimestamp';
+        } else {
+            processedUpdates[path] = value;
+        }
+    }
+    const result = await updateFunction({ projectId, updates: processedUpdates });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in updateStandbyBatchAPI:", error);
+    throw new Error(error.message || '批次更新看板狀態時發生錯誤');
+  }
+};
+
+
+/**
+ * [API] 呼叫後端截圖並儲存 Standby 看板畫面
+ * @param {object} payload - 包含 { projectId, timestampStr, operatorName, imageData }
+ * @returns {Promise<object>} - 後端回傳的結果 { status, message?, imageUrl? } 或錯誤
+ */
+export const saveStandbyScreenshotAPI = async (payload) => { // ✅ 新增函數
+  try {
+    const saveFunction = httpsCallable(functions, 'saveStandbyScreenshot');
+    const result = await saveFunction(payload);
+    return result.data; // 直接回傳 Cloud Function 的結果
+  } catch (error) {
+    console.error("API Error in saveStandbyScreenshotAPI:", error);
+    // 將 HttpsError 的 message 提取出來拋出
+    throw new Error(error.message || '呼叫儲存截圖 API 時發生錯誤');
+  }
+};
+
+
+/**
+ * [API] 獲取指定專案的截圖歷史紀錄
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<Array<object>>} - 截圖物件陣列
+ */
+export const fetchStandbyScreenshotsAPI = async (projectId) => { // ✅ 新增函數
+  try {
+    const fetchFunction = httpsCallable(functions, 'fetchStandbyScreenshots');
+    const result = await fetchFunction({ projectId });
+    
+    // Cloud Function 回傳 { status: "success", screenshots: [...] }
+    if (result.data.status === 'success') {
+      return result.data.screenshots; // 直接回傳陣列
+    } else {
+      throw new Error(result.data.message || '獲取截圖列表時後端回報錯誤');
+    }
+  } catch (error) {
+    console.error("API Error in fetchStandbyScreenshotsAPI:", error);
+    throw new Error(error.message || '呼叫獲取截圖 API 時發生錯誤');
+  }
+};

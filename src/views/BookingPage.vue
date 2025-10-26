@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid style="background-color: #F4F4F7; min-height: 100vh;">
+  <v-container fluid style="background-color: #F5F5F7; min-height: 100vh;">
     
      <v-overlay
   :model-value="isLoading"
@@ -1607,6 +1607,7 @@ const resetUploadMode = () => {
 </script>
 
 <style scoped>
+
 .prose {
   line-height: 1.8;
   font-size: 1rem;

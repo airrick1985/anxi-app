@@ -92,8 +92,8 @@ const xlsx = require("xlsx");
 const jwt = require('jsonwebtoken'); 
 const { PDFDocument, rgb, StandardFonts, PageSizes } = require('pdf-lib'); // PDF 處理
 const fetch = require('node-fetch'); // Node.js 環境需要引入 fetch
-const { formatInTimeZone } = require('date-fns-tz'); // 時區日期格式化
-
+const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz'); // ✅ 引入 date-fns-tz
+const { parse } = require('date-fns'); // ✅ 引入 date-fns parse
 
 const driveSecrets = [
     "DRIVE_CLIENT_ID",
@@ -10581,3 +10581,401 @@ exports.uploadInspectionPhoto = onCall({ region: "asia-east1", memory: "1GiB" },
 // =================================================================
 // / ✅ 結束：驗屋選項與照片上傳 Cloud Functions
 // =================================================================
+
+
+
+/**
+ * 記錄 Standby 人員狀態變更歷史
+ * @param {object} data - 包含 { projectId, personnelId, personnelName, previousStatus, newStatus, startTime, endTime, operator }
+ * @returns {Promise<object>} - { status, logId }
+ */
+exports.logStandbyStatusChange = onCall({ region: "asia-east1" }, async (request) => {
+  const {
+    projectId,
+    personnelId, // ✓ RTDB 中的 key (或唯一識別符)
+    personnelName,
+    previousStatus,
+    newStatus,
+    startTime, // ✓ 新狀態的開始時間 (ISO String)
+    endTime,   // ✓ 舊狀態的結束時間 (ISO String)
+    operator   // ✓ 操作者資訊 (可選，例如 userStore.user.name)
+  } = request.data;
+  const functionName = `logStandbyStatusChange`;
+
+  // 基本驗證
+  if (!projectId || !personnelId || !personnelName || !previousStatus || !newStatus || !startTime || !endTime) {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少記錄狀態變更所需的參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const logsRef = db.collection("standbyLogs"); // ✓ 指向 standbyLogs 集合
+
+    // 將 ISO String 時間轉換為 Firestore Timestamp
+    const startTimeStamp = Timestamp.fromDate(new Date(startTime));
+    const endTimeStamp = Timestamp.fromDate(new Date(endTime));
+
+    // 計算持續時間 (秒)
+    const durationSeconds = Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000);
+
+    // 產生 Log 文件 ID (可選，或讓 Firestore 自動產生)
+    // const logId = `${projectId}_${personnelId}_${new Date(startTime).toISOString().replace(/[-:.]/g, "")}`;
+
+    const logData = {
+      projectId,
+      personnelId,
+      personnelName,
+      previousStatus,
+      newStatus,
+      startTime: startTimeStamp, // ✓ 儲存 Timestamp
+      endTime: endTimeStamp,     // ✓ 儲存 Timestamp
+      durationSeconds: durationSeconds > 0 ? durationSeconds : 0, // ✓ 確保非負
+      timestamp: FieldValue.serverTimestamp(), // ✓ 記錄寫入時間
+      operator: operator || null, // ✓ 記錄操作者
+    };
+
+    // 寫入 Firestore
+    const docRef = await logsRef.add(logData); // ✓ 使用 add 自動產生 ID
+
+    console.log(`[${functionName}] 成功記錄狀態變更 Log ID: ${docRef.id}`);
+    return { status: "success", logId: docRef.id };
+
+  } catch (error) {
+    console.error(`[${functionName}] 記錄 Log 時發生錯誤:`, error);
+    throw new HttpsError("internal", `記錄狀態變更時發生錯誤: ${error.message}`);
+  }
+});/**
+ * [Cloud Function] 更新 Standby 人員的狀態、區域和排序
+ * @param {object} data - 包含 { projectId, personnelId, updates }
+ * @param {object} context - 包含驗證信息 (如果需要驗證調用者)
+ * @returns {Promise<object>} - { status: 'success' }
+ */
+exports.updateStandbyStatus = onCall({ region: "asia-east1" }, async (request, context) => {
+  // TODO: 未來可在此加入權限驗證，例如檢查 context.auth 是否存在或具有特定角色
+  // if (!context.auth) {
+  //   throw new HttpsError('unauthenticated', '需要登入才能修改狀態。');
+  // }
+
+  const { projectId, personnelId, updates } = request.data;
+  const functionName = `updateStandbyStatus`;
+
+  // 基本驗證
+  if (!projectId || !personnelId || !updates || typeof updates !== 'object') {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少 projectId, personnelId 或有效的 updates 物件。");
+  }
+
+  try {
+    // 構造 RTDB 路徑引用
+    const itemRef = rtdbAdmin.ref(`/standby/${projectId}/personnel/${personnelId}`);
+
+    // 準備要更新的資料 (可以包含 status, zone, order, currentStatusStartTime)
+    const dataToUpdate = { ...updates };
+
+    // 如果 updates 中包含 currentStatusStartTime 且值為 'serverTimestamp'，則替換
+    if (dataToUpdate.currentStatusStartTime === 'serverTimestamp') {
+      dataToUpdate.currentStatusStartTime = admin.database.ServerValue.TIMESTAMP; // ✅ 使用 RTDB Admin SDK 的 Server Timestamp
+      // 同時轉換為 ISO String 存儲，方便前端讀取 (可選)
+      // dataToUpdate.currentStatusStartTimeISO = new Date().toISOString(); // 注意：這不是伺服器精確時間
+    }
+    // 轉換為 ISO String 儲存，方便前端讀取
+    // （注意：實際儲存的是數字時間戳，ISO 只是輔助）
+     if (dataToUpdate.currentStatusStartTime === admin.database.ServerValue.TIMESTAMP) {
+        // 使用一個近似值，前端讀取時應優先使用數字時間戳
+        dataToUpdate.currentStatusStartTimeISO = new Date().toISOString();
+     }
+
+
+    console.log(`[${functionName}] Updating RTDB path: ${itemRef.toString()}`);
+    console.log(`[${functionName}] Data to update:`, dataToUpdate);
+
+    // 執行更新
+    await itemRef.update(dataToUpdate);
+
+    console.log(`[${functionName}] RTDB update successful for ${personnelId}.`);
+    return { status: "success" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 更新 RTDB 時發生錯誤:`, error);
+    // 拋出內部錯誤
+    throw new HttpsError("internal", `更新人員狀態時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [Cloud Function] 同步 Firestore 設定中的人員到 RTDB (僅新增)
+ * @param {object} data - 包含 { projectId, personnelToAdd }
+ * @param {object} context - 包含驗證信息 (如果需要)
+ * @returns {Promise<object>} - { status: 'success', addedCount }
+ */
+exports.syncStandbyPersonnel = onCall({ region: "asia-east1" }, async (request, context) => {
+  // TODO: 可加入權限驗證 (例如檢查 context.auth)
+
+  const { projectId, personnelToAdd } = request.data;
+  const functionName = `syncStandbyPersonnel`;
+
+  // 基本驗證
+  if (!projectId || !personnelToAdd || typeof personnelToAdd !== 'object' || Object.keys(personnelToAdd).length === 0) {
+    console.warn(`[${functionName}] 警告：缺少 projectId 或 personnelToAdd 為空。`);
+    return { status: "warning", message: "沒有需要新增的人員資料。", addedCount: 0 };
+  }
+
+  try {
+    const personnelRef = rtdbAdmin.ref(`/standby/${projectId}/personnel`);
+    const updates = {};
+    let addedCount = 0;
+
+    // 準備 updates 物件，確保 currentStatusStartTime 使用 Admin SDK 的 Timestamp
+    for (const personnelId in personnelToAdd) {
+      const personData = personnelToAdd[personnelId];
+      // 驗證基本欄位是否存在
+      if (personData && personData.name && personData.status && personData.zone && personData.order) {
+          updates[personnelId] = {
+            ...personData,
+            // 將前端傳來的 'serverTimestamp' 標記轉換為 Admin SDK 的 ServerValue
+            currentStatusStartTime: admin.database.ServerValue.TIMESTAMP,
+            // 可以選擇性地添加 ISO 時間戳字串
+            currentStatusStartTimeISO: new Date().toISOString()
+          };
+          addedCount++;
+      } else {
+         console.warn(`[${functionName}] personnelId ${personnelId} 的資料不完整，已跳過。`, personData);
+      }
+    }
+
+     if (addedCount === 0) {
+        console.log(`[${functionName}] 沒有有效的人員資料需要新增到 RTDB。`);
+        return { status: "success", message: "沒有新的人員需要新增。", addedCount: 0 };
+     }
+
+
+    console.log(`[${functionName}] Preparing to add ${addedCount} personnel to RTDB for project ${projectId}. Updates:`, updates);
+
+    // 使用 update 一次性寫入所有新人員
+    await personnelRef.update(updates);
+
+    console.log(`[${functionName}] Successfully added ${addedCount} personnel to RTDB.`);
+    return { status: "success", addedCount: addedCount };
+
+  } catch (error) {
+    console.error(`[${functionName}] 新增人員到 RTDB 時發生錯誤:`, error);
+    throw new HttpsError("internal", `同步人員狀態時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [Cloud Function] 批次更新 Standby 人員的狀態 (處理拖曳操作)
+ * 接收一個包含多個路徑及其更新值的物件
+ * @param {object} data - 包含 { projectId, updates }
+ * @param {object} context - (可選) 包含驗證信息
+ * @returns {Promise<object>} - { status: 'success' }
+ */
+exports.updateStandbyBatch = onCall({ region: "asia-east1" }, async (request, context) => {
+  // TODO: 可在此加入權限驗證
+  const { projectId, updates } = request.data;
+  const functionName = `updateStandbyBatch`;
+
+  // 基本驗證
+  if (!projectId || !updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+    console.error(`[${functionName}] 錯誤：缺少 projectId 或有效的 updates 物件。`);
+    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的 updates 物件。");
+  }
+
+  try {
+    // 構造 RTDB 根引用下的 project 路徑
+    const projectPersonnelRef = rtdbAdmin.ref(`/standby/${projectId}/personnel`);
+
+    // 處理 updates 物件中的 serverTimestamp 標記
+    const processedUpdates = {};
+    for (const path in updates) {
+        // updates 的 key 應該是相對於 personnel 的路徑，例如 "personnelId/status"
+        const value = updates[path];
+        if (value === 'serverTimestamp') {
+            processedUpdates[path] = admin.database.ServerValue.TIMESTAMP;
+            // 可以選擇性地為 ISO 時間戳添加輔助欄位，如果前端需要
+            // processedUpdates[path + 'ISO'] = new Date().toISOString();
+        } else {
+            processedUpdates[path] = value;
+        }
+    }
+
+
+    console.log(`[${functionName}] Updating RTDB path: ${projectPersonnelRef.toString()}`);
+    console.log(`[${functionName}] Data to update:`, processedUpdates);
+
+    // 使用 update 一次性應用所有變更
+    await projectPersonnelRef.update(processedUpdates);
+
+    console.log(`[${functionName}] RTDB batch update successful for project ${projectId}.`);
+    return { status: "success" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 批次更新 RTDB 時發生錯誤:`, error);
+    throw new HttpsError("internal", `更新看板狀態時發生錯誤: ${error.message}`);
+  }
+});
+
+
+/**
+ * [Cloud Function] 接收 Base64 截圖，上傳至 Storage 並記錄至 Firestore
+ * @param {object} data - { projectId, timestampStr, operatorName, imageData }
+ * @returns {Promise<object>} - { status, message?, imageUrl? }
+ */
+exports.saveStandbyScreenshot = onCall({
+  region: "asia-east1",
+  memory: "1GiB", // 截圖處理可能需要較多記憶體
+  timeoutSeconds: 120 // 允許較長上傳時間
+}, async (request) => { // ✅ 新增 Cloud Function
+  const { projectId, timestampStr, operatorName, imageData } = request.data;
+  const functionName = `saveStandbyScreenshot (Project: ${projectId})`;
+
+  // 1. 驗證輸入
+  if (!projectId || !timestampStr || !operatorName || !imageData) {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少必要的截圖儲存參數。");
+  }
+  // 驗證 timestampStr 格式 (YYYYMMDDHHMMSS)
+  if (!/^\d{14}$/.test(timestampStr)) {
+    console.error(`[${functionName}] 錯誤：無效的時間戳格式 ${timestampStr}`);
+    throw new HttpsError("invalid-argument", "無效的時間戳格式，應為 YYYYMMDDHHMMSS。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const bucket = getStorage().bucket(); // 獲取默認 Bucket
+
+  try {
+    // 2. 產生儲存路徑和檔名
+    const fileName = `${projectId}_${timestampStr}.png`;
+    const storagePath = `standby_screenshots/${projectId}/${fileName}`;
+    const file = bucket.file(storagePath);
+    console.log(`[${functionName}] Preparing to upload to: gs://${bucket.name}/${storagePath}`);
+
+    // 3. 上傳至 Storage
+    const buffer = Buffer.from(imageData, 'base64');
+    const stream = Readable.from(buffer);
+
+    await new Promise((resolve, reject) => {
+        stream.pipe(file.createWriteStream({
+            metadata: {
+                contentType: 'image/png',
+                // 可選：加入自訂 metadata
+                metadata: {
+                    projectId: projectId,
+                    operator: operatorName,
+                    captureTime: timestampStr // 儲存原始字串
+                }
+            },
+            resumable: false
+        }))
+        .on('error', (err) => reject(err))
+        .on('finish', () => resolve());
+    });
+
+    // 4. (可選) 設為公開並取得 URL
+    await file.makePublic();
+    const imageUrl = file.publicUrl();
+    console.log(`[${functionName}] File uploaded successfully: ${imageUrl}`);
+
+    // 5. 儲存元資料至 Firestore
+    const screenshotRef = db.collection("standbyScreenshots").doc(); // 自動產生 ID
+
+    // 解析 timestampStr 為 Date 物件 (假設為台灣時間)
+    let captureTimestamp;
+    try {
+        const parsedDate = parse(timestampStr, 'yyyyMMddHHmmss', new Date());
+        // 將解析出的本地時間視為台灣時間，並轉為 UTC Timestamp
+        captureTimestamp = Timestamp.fromDate(zonedTimeToUtc(parsedDate, 'Asia/Taipei'));
+    } catch (parseError) {
+        console.warn(`[${functionName}] 無法解析 timestampStr "${timestampStr}" 為 Firestore Timestamp，將使用伺服器當前時間。`, parseError);
+        captureTimestamp = FieldValue.serverTimestamp(); // 解析失敗時的備用方案
+    }
+
+
+    await screenshotRef.set({
+      projectId: projectId,
+      timestamp: captureTimestamp, // 儲存 Firestore Timestamp
+      operatorName: operatorName,
+      storagePath: storagePath,
+      imageUrl: imageUrl,
+      createdAt: FieldValue.serverTimestamp(), // 記錄文件創建時間
+    });
+    console.log(`[${functionName}] Metadata saved to Firestore: ${screenshotRef.path}`);
+
+    // 6. 返回成功結果
+    return {
+      status: "success",
+      message: "截圖已成功儲存",
+      imageUrl: imageUrl,
+      firestoreId: screenshotRef.id
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 儲存截圖時發生錯誤:`, error);
+    // 考慮是否需要清理已上傳的 Storage 檔案
+    throw new HttpsError("internal", `儲存截圖時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * [Cloud Function] 獲取指定專案的截圖歷史紀錄
+ * @param {object} data - { projectId }
+ * @returns {Promise<object>} - { status, screenshots: [...] }
+ */
+exports.fetchStandbyScreenshots = onCall({
+  region: "asia-east1",
+}, async (request) => {
+  const { projectId } = request.data;
+  const functionName = `fetchStandbyScreenshots (Project: ${projectId})`;
+
+  // 1. 驗證輸入
+  if (!projectId) {
+    console.error(`[${functionName}] 錯誤：缺少 projectId。`);
+    throw new HttpsError("invalid-argument", "缺少 projectId。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" }); //
+
+  try {
+    const screenshotsRef = db.collection("standbyScreenshots"); //
+    
+    // 2. 建立查詢
+    const query = screenshotsRef
+      .where("projectId", "==", projectId) //
+      .orderBy("timestamp", "desc") //
+      .limit(50); // 限制最多 50 筆
+
+    // 3. 執行查詢
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      console.log(`[${functionName}] 找不到專案 ${projectId} 的截圖。`);
+      return { status: "success", screenshots: [] };
+    }
+
+    // 4. 格式化回傳資料
+    const screenshots = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      screenshots.push({
+        id: doc.id,
+        imageUrl: data.imageUrl,
+        operatorName: data.operatorName,
+        storagePath: data.storagePath,
+        // 將 Firestore Timestamp 轉換為 ISO 字串，方便前端處理
+        timestamp: data.timestamp?.toDate ? data.timestamp.toDate().toISOString() : null,
+      });
+    });
+
+    console.log(`[${functionName}] 成功獲取 ${screenshots.length} 筆截圖紀錄。`);
+
+    return {
+      status: "success",
+      screenshots: screenshots
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 查詢截圖時發生錯誤:`, error);
+    throw new HttpsError("internal", `查詢截圖時發生錯誤: ${error.message}`);
+  }
+});
