@@ -39,3 +39,9 @@ google-cloud-sdk/
 *.tar.gz
 
 functions/.cache/
+
+# Node
+node_modules/
+/dist
+/build
+.env
