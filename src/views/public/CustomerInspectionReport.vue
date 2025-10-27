@@ -318,6 +318,23 @@
       </v-card>
     </v-dialog>
 
+        <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
+  <span>Powered by&nbsp;</span>
+  <v-chip
+    class="ml-1"
+    href="https://airrick1985.wixsite.com/anxi"
+    target="_blank"
+    rel="noopener noreferrer"
+    color="blue-grey"
+    variant="tonal"
+    size="small"
+    pill
+  >
+    <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+    anxismart安熙智慧建案管理系統
+  </v-chip>
+</div>
+
     
 
    

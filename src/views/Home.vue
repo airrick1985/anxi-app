@@ -88,7 +88,7 @@ const allButtons = ref([
   { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
   { id: 'messageCenter', text: '訊息中心', icon: emailIcon, permissionType: 'loggedIn', nav: { name: 'MessageCenter' } },
   { id: 'sendMessage', text: '發送訊息', icon: sendEmailIcon, permissionType: 'getter', permissionArgs: ['canSendMessage'], nav: { name: 'SendMessage' } },
-  { id: 'inspectionSystem', text: '驗屋系統', icon: propertyIcon, permissionType: 'system', permissionArgs: ['驗屋系統'], nav: { name: 'InspectionSystem' } },
+  { id: 'inspectionSystem', text: '驗屋系統', icon: propertyIcon, permissionType: 'system', permissionArgs: ['驗屋系統'],  nav: 'https://liff.line.me/2008257338-QV34v0pb'  },
   { id: 'quoteSystem', text: '報價系統', icon: priceIcon, permissionType: 'system', permissionArgs: ['報價系統'], nav: { name: 'QuoteSystemEntry', query: { viewMode: 'quote' } } },
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
   { id: 'customerManagement', text: '客戶管理', icon: customerIcon, permissionType: 'system', permissionArgs: ['客戶管理'], nav: null },
@@ -151,7 +151,12 @@ const saveButtonOrder = () => {
 
 const handleNavigation = (button) => {
   if (button.nav) {
-    router.push(button.nav);
+    // ✅ 修改：判斷 nav 是字串 (外部連結) 還是物件 (內部路由)
+    if (typeof button.nav === 'string') {
+      window.location.href = button.nav; // 導向外部連結
+    } else {
+      router.push(button.nav); // 導向內部路由
+    }
   } else {
     alert('此功能尚未開放');
   }

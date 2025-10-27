@@ -14,10 +14,12 @@
         :class="{ 'mobile-toolbar-wrap': mobile, 'py-2': mobile }"
         height="auto"
       >
+       <v-btn icon="mdi-home" variant="text" to="/home" aria-label="回系統選單"></v-btn>
         <v-toolbar-title
           class="font-weight-bold"
           :class="{ 'mobile-title-scaling': mobile }"
         >
+        
           {{ projectId ? `${projectName} 驗屋紀錄` : '驗屋系統 (選擇建案)' }}
           <span v-if="projectId && showDeleted" class="text-caption font-weight-light ml-2">(垃圾桶)</span>
            <span v-if="projectId && !showDeleted && !selectedUnit" class="text-caption font-weight-light ml-2">(全案紀錄)</span>
@@ -572,6 +574,23 @@
       <v-icon size="large">mdi-plus</v-icon>
     </v-btn>
 
+    <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
+  <span>Powered by&nbsp;</span>
+  <v-chip
+    class="ml-1"
+    href="https://airrick1985.wixsite.com/anxi"
+    target="_blank"
+    rel="noopener noreferrer"
+    color="blue-grey"
+    variant="tonal"
+    size="small"
+    pill
+  >
+    <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+    anxismart安熙智慧建案管理系統
+  </v-chip>
+</div>
+
   </v-container>
 </template>
 
@@ -719,7 +738,7 @@ const headers = computed(() => {
 
 // --- Methods ---
 onMounted(async () => {
- try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
+ try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-6N3jwqxA' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
  
  if (!liff.isLoggedIn()) { liff.login(); return; } loadingText.value = '正在驗證使用者權限...'; const profile = await liff.getProfile(); const success = await userStore.fetchUserByLineId(profile.userId); if (success) { isBound.value = true; loadingText.value = '正在載入建案權限...'; await projectStore.fetchProjects(); const allProjects = projectStore.projectsList; authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name)); if (props.projectId) { loadingText.value = '正在載入建案資料...'; if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) { loadingText.value = '權限不足...'; isBound.value = true; isLoading.value = false; alert('權限不足'); return; } await loadProjectStructure(); await loadOptionsForChips();
  await loadData(); 
