@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import manifest from './public/manifest.json';
 
-// 最終修正的設定
+// 修正 injectManifest 策略的設定
 export default defineConfig({
   base: '/',
   resolve: {
@@ -25,42 +25,23 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'prompt',
+      manifest,
+
+      // --- 【關鍵修改】 ---
+      // 根據錯誤訊息，將大小限制設定放在 injectManifest 物件中
       injectManifest: {
-        swSrc: 'src/sw.js',
-        swDest: 'dist/sw.js',
-        globDirectory: 'dist',
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        //  根據文件，保留此處設定
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 設定為 5 MB
       },
-      workbox: {
-        //  【關鍵修改】根據錯誤訊息，也在此處加入設定
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        skipWaiting: true,
-        clientsClaim: true,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'cdnjs-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ]
-      },
+      // --- 【修改結束】 ---
+
       devOptions: {
         enabled: false,
         type: 'module',
       },
-      manifest
     })
   ],
 

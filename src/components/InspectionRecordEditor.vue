@@ -39,7 +39,7 @@
                   :model-value="projectName"
                   readonly
                   variant="outlined"
-                  density="compact"
+               
                 ></v-text-field>
               </v-col>
               <v-col
@@ -51,7 +51,7 @@
                   :model-value="unitId"
                   readonly
                   variant="outlined"
-                  density="compact"
+               
                 ></v-text-field>
               </v-col>
 
@@ -77,7 +77,7 @@
               </v-col>
 
               <v-col cols="12">
-                <v-label class="mb-1">驗屋階段 *</v-label>
+                <v-label class="mb-1">驗屋階段</v-label>
                 <v-chip-group
                   v-model="formData.phase"
                   mandatory
@@ -90,7 +90,7 @@
                     :value="option.value"
                     filter
                     variant="outlined"
-                    size="small"
+                 
                   >
                     {{ option.value }}
                   </v-chip>
@@ -163,9 +163,9 @@
                   :items="options.area"
                   item-title="value"
                   item-value="value"
-                  label="檢查區域 *"
+                  label="檢查區域"
                   variant="outlined"
-                  density="compact"
+                
                   required
                   :rules="[v => !!v || '必填']"
                 ></v-select>
@@ -180,9 +180,9 @@
                   :items="options.category"
                   item-title="value"
                   item-value="value"
-                  label="工程種類 *"
+                  label="工程種類"
                   variant="outlined"
-                  density="compact"
+             
                   required
                   :rules="[v => !!v || '必填']"
                   @update:model-value="formData.subCategory = null"
@@ -197,9 +197,9 @@
                   :items="filteredSubCategories"
                   item-title="value"
                   item-value="value"
-                  label="工程細項 *"
+                  label="工程細項"
                   variant="outlined"
-                  density="compact"
+             
                   required
                   :rules="[v => !!v || '必填']"
                   :disabled="!formData.category"
@@ -208,13 +208,13 @@
               </v-col>
 
                <v-col cols="12">
-                <v-label class="mb-1">快選回覆 (點擊加入說明)</v-label>
+                <v-label class="mb-1">快選說明 (點擊加入)</v-label>
                 <div class="d-flex flex-wrap ga-1">
                   <v-chip
                     v-for="option in options.quickReply"
                     :key="option.id"
                     @click="appendToDescription(option.value)"
-                    size="small"
+               
                     variant="outlined"
                     color="info"
                   >
@@ -226,15 +226,15 @@
               <v-col cols="12">
                 <v-textarea
                   v-model="formData.description"
-                  label="說明"
+                  label="說明狀況"
                   rows="3"
                   variant="outlined"
-                  density="compact"
+            
                 ></v-textarea>
               </v-col>
 
               <v-col cols="12">
-                <v-label class="mb-1">檢查狀態 *</v-label>
+                <v-label class="mb-1">檢查狀態</v-label>
                 <v-chip-group
                   v-model="formData.status"
                   mandatory
@@ -248,7 +248,7 @@
                     :color="option.color || 'grey'"
                     filter
                     variant="outlined"
-                    size="small"
+                   
                   >
                     <v-icon
                       v-if="option.icon"
@@ -265,7 +265,7 @@
               </v-col>
 
               <v-col cols="12">
-                <v-label class="mb-1">缺失等級 *</v-label>
+                <v-label class="mb-1">缺失等級(客戶無法查看)</v-label>
                 <v-chip-group
                   v-model="formData.level"
                   mandatory
@@ -279,7 +279,7 @@
                     :color="option.color || 'grey'"
                     filter
                     variant="outlined"
-                    size="small"
+               
                   >
                     {{ option.value }}
                   </v-chip>
@@ -291,7 +291,7 @@
               </v-col>
 
               <v-col cols="12">
-                <v-label class="mb-1">修繕進度 *</v-label>
+                <v-label class="mb-1">修繕進度(客戶無法查看)</v-label>
                 <v-chip-group
                   v-model="formData.progress"
                   mandatory
@@ -305,7 +305,7 @@
                     :color="option.color || 'grey'"
                     filter
                     variant="outlined"
-                    size="small"
+               
                   >
                     <v-icon
                       v-if="option.icon"
@@ -322,7 +322,7 @@
               </v-col>
 
              <v-col cols="12">
-                <v-label class="mb-1">客戶檢視</v-label>
+                <v-label class="mb-1">客戶檢視此筆紀錄？</v-label>
                 <div class="d-flex align-center ga-2">
                   <v-tooltip location="top" :text="formData.customerView ? '驗屋報告將顯示此紀錄' : '驗屋報告不顯示此紀錄'">
                     <template v-slot:activator="{ props }">
@@ -331,7 +331,7 @@
                         :icon="formData.customerView ? 'mdi-eye-outline' : 'mdi-eye-off-outline'"
                         :color="formData.customerView ? 'primary' : 'grey'"
                         variant="outlined"
-                        density="compact"
+                     
                         @click="formData.customerView = !formData.customerView"
                         aria-label="切換客戶檢視狀態"
                       ></v-btn>

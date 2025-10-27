@@ -33,7 +33,7 @@
                     item-value="projectId"
                     label="選擇建案"
                     variant="outlined"
-                    density="compact"
+                    
                     hide-details
                   ></v-select>
                 </v-col>
@@ -43,7 +43,7 @@
                     label="輸入戶別、姓名、電話或預約代碼"
                     prepend-inner-icon="mdi-magnify"
                     variant="outlined"
-                    density="compact"
+                   
                     clearable
                     hide-details
                     :loading="isSearching"
@@ -499,7 +499,7 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
+    await liff.init({ liffId: '2008257338-6N3jwqxA' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();

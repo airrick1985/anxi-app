@@ -50,28 +50,30 @@ const app = createApp(App) // 先創建 app 實例
 registerSW({
   onNeedRefresh() {
     // 這裡可以彈出一個 Toast 通知用戶有新版本
-    const toast = app.config.globalProperties.$toast; // 假設 Toast 被正確註冊到全局
-    if (toast && typeof toast.info === 'function') {
-      toast.info('New content available. Please reload.', {
-        timeout: 0, // 永不自動關閉
-        closeButton: 'button',
-        icon: true,
-        actions: [
-          {
-            text: 'Reload',
-            onClick: (e, toastObject) => {
-              toastObject.goAway(0); // 立即關閉 toast
-              window.location.reload();
-            }
-          }
-        ]
-      });
-    } else {
-      // 降級處理，如果 Toast 無法使用
-      if (confirm('New content available. Reload?')) {
-        window.location.reload();
-      }
-    }
+    // const toast = app.config.globalProperties.$toast; // 假設 Toast 被正確註冊到全局
+    // if (toast && typeof toast.info === 'function') {
+    //   toast.info('New content available. Please reload.', {
+    //     timeout: 0, // 永不自動關閉
+    //     closeButton: 'button',
+    //     icon: true,
+    //     actions: [
+    //       {
+    //         text: 'Reload',
+    //         onClick: (e, toastObject) => {
+    //           toastObject.goAway(0); // 立即關閉 toast
+    //           window.location.reload();
+    //         }
+    //       }
+    //     ]
+    //   });
+    // } else {
+    //   // 降級處理，如果 Toast 無法使用
+    //   if (confirm('新版本已推出，請更新')) {
+    //     window.location.reload();
+    //   }
+    // }
+    // ✅ 移除或註解掉上述所有 Toast 和 confirm 的邏輯
+    // 讓 UpdateDialog.vue 負責顯示更新提示
     console.log('New content available, please refresh.');
   },
   onOfflineReady() {
@@ -85,6 +87,7 @@ registerSW({
     console.log('App is ready to work offline.');
   }
 })
+
 
 // --- 使用插件和掛載 Vue 應用 ---
 app

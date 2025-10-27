@@ -163,124 +163,14 @@
       </div>
     </v-card>
 
-    <v-dialog v-model="showConfirmDialog" persistent fullscreen transition="dialog-bottom-transition">
-      <v-card>
-        <v-toolbar dark color="primary">
-          <v-btn icon dark @click="closeConfirmDialog">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <v-toolbar-title>確認驗屋報告</v-toolbar-title>
-          <v-spacer></v-spacer>
-          </v-toolbar>
-
-        <v-card-text class="pa-4">
-          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-            請確認以下資訊無誤，並於下方簽署確認本次驗屋紀錄。
-          </v-alert>
-
-          <v-row dense>
-            <v-col cols="12" md="4">
-              <v-text-field
-                v-model="buyerInfo.name"
-                label="買方姓名 *"
-                variant="outlined"
-                density="compact"
-                :rules="[rules.required]"
-                :loading="isLoadingBuyerInfo"
-                :readonly="isSaving"
-              ></v-text-field>
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                v-model="buyerInfo.phone"
-                label="連絡電話 *"
-                variant="outlined"
-                density="compact"
-                :rules="[rules.required]"
-                :loading="isLoadingBuyerInfo"
-                :readonly="isSaving"
-              ></v-text-field>
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                v-model="buyerInfo.email"
-                label="Email *"
-                variant="outlined"
-                density="compact"
-                type="email"
-                :rules="[rules.required, rules.email]"
-                :loading="isLoadingBuyerInfo"
-                :readonly="isSaving"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-
-          <v-divider class="my-4"></v-divider>
-
-          <p class="text-subtitle-1 mb-2">請在此處簽名：</p>
-          <div class="signature-pad-container border rounded" :class="{ 'shake-animation': shakeSignaturePad }">
-            <VueSignaturePad
-              ref="signaturePad"
-              width="100%"
-              height="250px"
-              :options="{ penColor: '#000', onBegin: handleSignatureBegin }"
-            />
-          </div>
-          <div class="d-flex justify-end mt-2">
-            <v-btn @click="clearSignature" :disabled="isSaving" variant="text" size="small">
-              清除簽名
-            </v-btn>
-          </div>
-
-          <p class="text-caption text-grey mt-4">
-            <v-icon start size="small">mdi-information-outline</v-icon>
-            簽名完成表示同意本次驗屋紀錄做為下次檢驗之依據。
-          </p>
-
-        </v-card-text>
-
-        <v-card-actions class="pa-4">
-          <v-spacer></v-spacer>
-          <v-btn
-            color="grey-darken-1"
-            variant="text"
-            @click="closeConfirmDialog"
-            :disabled="isSaving"
-          >
-            關閉
-          </v-btn>
-          <v-btn
-            color="primary"
-            variant="elevated"
-            @click="saveConfirmation"
-            :disabled="!isConfirmReady || isSaving"
-            :loading="isSaving"
-            size="large"
-          >
-            確認完成
-          </v-btn>
-        </v-card-actions>
-        <v-slide-y-transition>
-           <v-alert v-if="saveError" type="error" density="compact" class="mx-4 mb-4">
-              儲存失敗：{{ saveError }}
-           </v-alert>
-        </v-slide-y-transition>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh">
-      <v-card>
-        <v-toolbar dense flat class="border-b">
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn>
-        </v-toolbar>
-        <v-card-text class="pa-0 d-flex justify-center align-center" style="max-height: calc(90vh - 48px);">
-          <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
-
-    <v-bottom-navigation color="primary" elevation="8" grow mandatory v-model="bottomNavValue">
+  <v-bottom-navigation 
+  fixed 
+  color="primary" 
+  elevation="8" 
+  grow 
+  mandatory 
+  v-model="bottomNavValue" 
+  >
       <v-btn value="list" @click="viewMode = 'table'">
         <v-icon>mdi-format-list-bulleted</v-icon>
         <span>列表模式</span>
@@ -295,6 +185,142 @@
       </v-btn>
     </v-bottom-navigation>
 
+    <v-dialog v-model="showConfirmDialog" persistent fullscreen transition="dialog-bottom-transition">
+      <v-card>
+        <v-toolbar dark color="primary">
+          <v-btn icon dark @click="closeConfirmDialog">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>確認驗屋報告</v-toolbar-title>
+          <v-spacer></v-spacer>
+          </v-toolbar>
+
+        <v-card-text class="pa-4 confirm-scrollable-content">      
+        <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+      請確認以下資訊無誤，並於下方簽署確認本次驗屋紀錄。
+     </v-alert>
+
+          
+
+          <v-row dense>
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="buyerInfo.name"
+                label="買方姓名 *"
+                variant="outlined"
+            
+                :rules="[rules.required]"
+                :loading="isLoadingBuyerInfo"
+                :readonly="isSaving"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="buyerInfo.phone"
+                label="連絡電話 *"
+                variant="outlined"
+           
+                :rules="[rules.required]"
+                :loading="isLoadingBuyerInfo"
+                :readonly="isSaving"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="buyerInfo.email"
+                label="Email *"
+                variant="outlined"
+                hint="請確認 Email 是否正確，以免收不到驗屋報告"
+                persistent-hint
+                type="email"
+                :rules="[rules.required, rules.email]"
+                :loading="isLoadingBuyerInfo"
+                :readonly="isSaving"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+
+          <v-divider class="my-4"></v-divider>
+
+          <p class="text-subtitle-1 mb-2">請在此處簽名：</p>
+           <p class="text-caption text-grey mt-4">
+          <v-icon start size="small">mdi-information-outline</v-icon> 
+          簽名完成表示同意本次驗屋紀錄做為下次檢驗之依據。
+           </p>
+          <div class="signature-pad-container border rounded" 
+          :class="{ 'shake-animation': shakeSignaturePad }"
+          @touchstart.stop.prevent  
+          @touchmove.stop.prevent  
+          >
+         
+            <VueSignaturePad
+              ref="signaturePad"
+              width="100%"
+              height="220px"
+              :options="{ penColor: '#000', onBegin: handleSignatureBegin }"
+              
+            />
+            
+          </div>
+             <div class="d-flex justify-end mt-2">
+            <v-btn @click="clearSignature" :disabled="isSaving" variant="text" color="grey" size="small">
+              清除
+            </v-btn>
+          </div>
+        
+
+         
+                
+        </v-card-text>
+
+        
+        <v-slide-y-transition>
+           <v-alert v-if="saveError" type="error" density="compact" class="mx-4 mb-4">
+              儲存失敗：{{ saveError }}
+           </v-alert>
+        </v-slide-y-transition>
+<v-divider></v-divider>
+      <v-card-actions class="pa-4 confirm-dialog-footer"> <v-spacer></v-spacer>
+        <v-btn
+          color="grey-darken-1"
+          variant="text"
+          @click="closeConfirmDialog"
+          :disabled="isSaving"
+        >
+          關閉
+        </v-btn>
+        <v-btn
+          @click="saveConfirmation"
+          :disabled="!isConfirmReady || isSaving"
+          :loading="isSaving"
+          color="primary"
+          variant="elevated"
+          size="large"
+        >
+          確認完成
+        </v-btn>
+      </v-card-actions>
+      </v-card>
+
+    </v-dialog>
+
+  
+
+    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh">
+      <v-card>
+        <v-toolbar dense flat class="border-b">
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-0 d-flex justify-center align-center" style="max-height: calc(90vh - 48px);">
+          <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    
+
+   
   </v-container>
 </template>
 
@@ -700,6 +726,7 @@ function isValidEmail(email) {
   margin: 0 auto;
   touch-action: none; /* 防止在簽名時滾動頁面 */
   background-color: #fff;
+  user-select: none; /* 阻止內容選擇 */
 }
 /* 簽名版抖動動畫 */
 .shake-animation {
@@ -718,4 +745,45 @@ function isValidEmail(email) {
   background-color: #f5f5f5 !important; /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
 }
 /* ✅ END: 新增背景色 Class */
+
+.confirm-fab {
+  position: fixed;
+  bottom: 28px; /* 位於底部導航列 (約 56px) 之上，與 InspectionConsole.vue 中的 FAB 相似 */
+  right: 16px; /* 靠右對齊 */
+  z-index: 100 !important; /* 確保在 v-bottom-navigation (z-index 8) 之上 */
+}
+
+.v-bottom-navigation {
+  bottom: env(safe-area-inset-bottom) !important;
+  margin-bottom: env(safe-area-inset-bottom) !important;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+  position: fixed !important; bottom: 0; left: 0; right: 0; width: 100%; z-index: 1000;
+}
+
+.confirm-scrollable-content {
+  /* Footer 預估高度約 56px (v-card-actions) + pa-4 (16px) = 72px */
+  /* 我們用 80px 作為安全基數，加上手機安全區 */
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important; 
+}
+
+.confirm-dialog-footer {
+  position: fixed; /* 固定在視窗底部 */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background-color: white; /* 確保背景為白色 */
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1); /* 添加陰影分隔 */
+  z-index: 2001; /* 確保它在 v-dialog (z-index 約 2000) 之上 */
+  
+  /* 處理底部安全區域 (特別是 iPhone) */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important; 
+}
+
+/* 確保主要內容區域不會被固定的 footer 遮蓋 */
+.confirm-dialog-content {
+  /* 預設 pa-4 (16px) + footer 高度 (約 56px) + 安全區域 */
+  /* 確保底部有足夠的內距，讓內容在 footer 上方結束 */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+}
 </style>
