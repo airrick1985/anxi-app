@@ -31,13 +31,13 @@
         <v-sheet class="pa-3 border-b">
           <v-row dense align="center">
             <v-col cols="12" md="3">
-              <v-select v-model="selectedProject" :items="authorizedProjects" item-title="title" item-value="value" label="切換建案" variant="outlined" density="compact" hide-details></v-select>
+              <v-select v-model="selectedProject" :items="authorizedProjects" item-title="title" item-value="value" label="切換建案" variant="outlined" hide-details></v-select>
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="searchFilter" label="搜尋所有欄位" prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable></v-text-field>
+              <v-text-field v-model="searchFilter" label="搜尋所有欄位" prepend-inner-icon="mdi-magnify" variant="outlined"  hide-details clearable></v-text-field>
             </v-col>
             <v-col cols="12" md="3">
-              <v-select v-model="statusFilter" :items="['未下載', '已下載', '作廢']" label="篩選狀態" variant="outlined" density="compact" hide-details clearable multiple chips></v-select>
+              <v-select v-model="statusFilter" :items="['未下載', '已下載', '作廢']" label="篩選狀態" variant="outlined"  hide-details clearable multiple chips></v-select>
             </v-col>
             <v-col cols="12" md="3" class="d-flex align-center ga-2 justify-end">
               <v-btn @click="loadProjectData(selectedProject, true)" :loading="isRefreshing" icon="mdi-refresh" variant="tonal" :disabled="!selectedProject"></v-btn>
