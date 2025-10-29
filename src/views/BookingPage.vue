@@ -207,12 +207,12 @@
                     @click="isInstructionsDialogVisible = true"
                   >
                     <v-icon start>mdi-file-document-outline</v-icon>
-                    點此閱讀驗屋說明
+                    點此閱讀預約說明
                   </v-btn>
 
                   <v-checkbox
                     v-model="isInstructionsConfirmed"
-                    label="我已詳細閱讀並了解以上驗屋說明"
+                    label="我已詳細閱讀並了解以上預約說明"
                     :color="projectConfig.themeColor"
                     class="mb-4"
                     hide-details
@@ -507,17 +507,7 @@
 
                     <div v-if="step === 3">
               <v-card-text>
-              <v-alert
-                v-if="isTimeoutActive"
-                type="warning"
-                variant="tonal"
-                border="start"
-                density="compact"
-                class="mb-4"
-                icon="mdi-timer-sand"
-              >
-                請於 <span class="font-weight-bold">{{ Math.floor(remainingSeconds / 60) }}:{{ String(remainingSeconds % 60).padStart(2, '0') }}</span> 分鐘內確認送出，逾時將需要重新操作。
-              </v-alert>
+              
               <v-alert type="info" variant="tonal" border="start" class="mb-4">
                 <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
                 <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
@@ -542,12 +532,25 @@
                 <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName"></v-list-item>
                 <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
                 <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
+                 <v-alert
+                v-if="isTimeoutActive"
+                type="info"
+                variant="tonal"
+                border="start"
+                
+                class="mb-4"
+                icon="mdi-timer-sand"
+              >
+                請於 <span class="font-weight-bold">{{ Math.floor(remainingSeconds / 60) }}:{{ String(remainingSeconds % 60).padStart(2, '0') }}</span> 分鐘內確認送出，逾時將需要重新操作。
+              </v-alert>
               </v-list>
 
               </v-card-text>
+             
               <v-card-actions class="pa-4">
                   <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
                   <v-spacer></v-spacer>
+
                   <v-btn color="success" size="large" @click="submitBooking" :loading="isLoading" variant="elevated">送出預約</v-btn>
               </v-card-actions>
           </div>
@@ -843,7 +846,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue';
+import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'; // <--- 在這裡加入 onUnmounted
 import { useRoute } from 'vue-router';
 import { 
  fetchProjectConfig,
@@ -859,7 +862,8 @@ import {
   cancelBooking,
   verifyUploadPrerequisites,
   uploadReportDirectlyToDrive,
-  initiateAuthSigningProcess
+  initiateAuthSigningProcess,
+  initiateBookingConfirmation
 } from '@/api';
 import { useDate } from 'vuetify'; 
 import html2canvas from 'html2canvas';
@@ -1452,9 +1456,6 @@ const submitBooking = async () => {
     // resetBookingFlow();
     return;
   }
-  // 清除計時器，表示用戶已採取行動
-  clearTimeoutTimer();
-  // --- END: 修改點 1 ---
 
   loadingText.value = '正在為您送出預約...';
   isLoading.value = true;
@@ -1523,15 +1524,16 @@ const submitBooking = async () => {
       }
       step.value = 4;
     } else {
-       // --- START: 修改點 3 (錯誤處理) ---
-       // 根據後端可能回傳的逾時/憑證錯誤，給予更明確提示
-       if (error.message.includes('deadline-exceeded') || error.message.includes('unauthenticated') || error.message.includes('invalid-argument')) {
-         alert(`操作逾時或憑證無效，請返回第一步重新預約。`);
-         resetBookingFlow(); // 引導回第一步
-       } else {
-         // 其他錯誤照舊處理
-         throw new Error(res.message || '預約失敗');
-       }
+   // --- START: 修正點 ---
+   // 檢查後端回傳的 res.message
+   if (res.message && (res.message.includes('deadline-exceeded') || res.message.includes('unauthenticated') || res.message.includes('invalid-argument'))) { // ✓ 改用 res.message
+    alert(`操作逾時或憑證無效，請返回第一步重新預約。`);
+    resetBookingFlow();
+   } else {
+    // 如果不是特定錯誤，則拋出通用錯誤，讓外層 catch 處理
+    // (或者您可以直接在此處 alert(res.message))
+    throw new Error(res.message || '預約失敗，未提供原因');
+   }
        // --- END: 修改點 3 ---
     }
   } catch (error) { // catch 區塊維持，但上面 if/else 處理了部分錯誤
@@ -1551,6 +1553,7 @@ const submitBooking = async () => {
     }
   } finally { //  END: 修改 catch 區塊
     isLoading.value = false;
+    clearTimeoutTimer(); // <--- 將清除計時器移到 finally 區塊
   }
 };
 

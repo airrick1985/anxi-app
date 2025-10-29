@@ -4364,7 +4364,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
       ${contactInfoHtml}
       ${inspectionNotesHtml ? `
         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
-          <h3 style="margin-top: 0; color: #333;">驗屋說明</h3>
+          <h3 style="margin-top: 0; color: #333;">預約說明</h3>
           ${inspectionNotesHtml}
         </div>
       ` : ''}

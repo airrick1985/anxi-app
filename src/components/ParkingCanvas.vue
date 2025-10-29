@@ -37,8 +37,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useElementBounding } from '@vueuse/core';
 // ✅ 1. 引入 subjx
-import subjx from 'subjx';
-import 'subjx/dist/style/subjx.css';
+
 
 // --- 響應式縮放邏輯 (不變) ---
 const MAP_WIDTH = 1920;

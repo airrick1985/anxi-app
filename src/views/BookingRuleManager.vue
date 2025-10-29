@@ -298,10 +298,10 @@
                   class="mt-2"
                 ></v-text-field>
                 <v-divider class="my-6"></v-divider>
-                <p class="text-subtitle-1 font-weight-bold mb-2">驗屋說明設定</p>
+                <p class="text-subtitle-1 font-weight-bold mb-2">預約說明設定</p>
                 <v-switch
                   v-model="projectSettings.intro.alert.show"
-                  label="顯示驗屋說明"
+                  label="顯示預約說明"
                   color="primary"
                   inset
                 ></v-switch>
@@ -315,7 +315,7 @@
                 ></v-switch>
                 <v-text-field
                   v-model="projectSettings.intro.alert.title"
-                  label="驗屋說明標題"
+                  label="預約說明標題"
                   variant="outlined"
                   density="compact"
                   class="mt-2"
@@ -1318,7 +1318,7 @@ const defaultSettings = computed(() => ({
         showConfirmation: false,
         color: 'error',
         type: 'info',
-        title: '驗屋說明',
+        title: '預約說明',
         text: `
           <p>親愛的客戶，感謝您承購「${projectName.value}」，本案已於2025/XX/XX取得使用執照，並於室內屋況完成後進行驗收。</p>
           <p>因驗屋時段分別，請盡早填妥以下資訊預約，以便為您事先安排服務人員，謝謝您的配合。</p>
