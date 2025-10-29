@@ -339,15 +339,33 @@
                   no-data-text="請先選擇戶別"
                 ></v-select>
                 
-                <v-select
-                    v-if="projectConfig.showBookingMethod"
-                    v-model="formStep1.bookingMethod"
-                    :items="projectConfig.bookingMethodOptions"
-                    label="選擇方式"
-                    variant="outlined"
-                    :rules="[v => !!v || '選擇方式為必填項']"
-                    :disabled="isLoading || !formStep1.unit || !isBookingActive"
-                  ></v-select>
+               <v-select
+                  v-if="projectConfig.showBookingMethod"
+                  v-model="formStep1.bookingMethod"
+                  :items="projectConfig.bookingMethodOptions"
+                  label="選擇方式"
+                  variant="outlined"
+                  :rules="[v => !!v || '選擇方式為必填項']"
+                  :disabled="isLoading || !formStep1.unit || !isBookingActive"
+                  @update:model-value="() => { isSigningInitiated = false; }" >
+                  </v-select>
+
+                    <div v-if="formStep1.bookingMethod && formStep1.bookingMethod !== '屋主自驗' && formStep1.bookingMethod !== '授權驗屋'" class="mb-4">
+                      <p class="text-subtitle-1 mb-2">屋主本人是否到場？</p>
+                        <v-chip-group
+                          v-model="formStep1.isOwnerPresent"
+                          mandatory
+                          :color="projectConfig.themeColor || 'primary'"
+                          variant="outlined"
+                          @update:model-value="() => { isSigningInitiated = false; }"
+                        >
+                          <v-chip :value="true" filter>是，本人到場</v-chip>
+                          <v-chip :value="false" filter>否，委託他人</v-chip>
+                        </v-chip-group>
+                        <div v-if="formStep1.isOwnerPresent === false" class="text-caption text-orange-darken-2 mt-1">
+                          提醒：選擇「否」將需要在下一步進行「驗屋授權書」網路流程。
+                        </div>
+                      </div>
 
                   <v-text-field
                     v-if="formStep1.bookingMethod === '代驗公司'"
@@ -440,33 +458,35 @@
                     <v-text-field label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="電話" v-model="formStep2.電話" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="EMAIL" v-model="formStep2.EMAIL" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined"></v-text-field>
-                    <template v-if="formStep1.bookingMethod === '授權驗屋'">
+                    <template v-if="formStep1.bookingMethod !== '屋主自驗' && formStep1.isOwnerPresent === false">
                     <v-divider class="my-4"></v-divider>
-                      <p class="mb-2 text-subtitle-1 font-weight-medium">授權驗屋資訊</p>
-                      <v-text-field 
-                        label="受託人姓名" 
-                        v-model="formStep2.受託人姓名" 
-                        :rules="[v => !!v || '必填']" 
+                      <p class="mb-2 text-subtitle-1 font-weight-medium">
+                        委託驗屋資訊 (請填寫受託人資料)
+                      </p>
+                      <v-text-field
+                        label="受託人姓名"
+                        v-model="formStep2.受託人姓名"
+                        :rules="[v => !!v || '必填']"
                         variant="outlined"
                       ></v-text-field>
-                      <v-text-field 
-                        label="受託人電話" 
-                        v-model="formStep2.受託人電話" 
-                        :rules="[v => !!v || '必填']" 
+                      <v-text-field
+                        label="受託人電話"
+                        v-model="formStep2.受託人電話"
+                        :rules="[v => !!v || '必填']"
                         variant="outlined"
                       ></v-text-field>
-                      <v-btn 
-                        :color="isAuthLetterGenerated ? 'success' : projectConfig.themeColor" 
-                        @click="openAuthDialog" 
-                        block 
+                      <v-btn
+                        :color="isSigningInitiated ? 'success' : projectConfig.themeColor"
+                        @click="openAuthDialog"
+                        block
                         class="mb-4"
                         variant="tonal"
                         size="large"
+                        :disabled="isLoading"  
                       >
-                        <v-icon left>{{ isAuthLetterGenerated ? 'mdi-check-circle' : 'mdi-draw' }}</v-icon>
-                        {{ isAuthLetterGenerated ? '已填妥授權書 (可重新產生)' : '填寫驗屋授權書' }}
+                        <v-icon left>{{ isSigningInitiated ? 'mdi-email-check-outline' : 'mdi-draw' }}</v-icon>
+                        {{ isSigningInitiated ? '已寄送簽署邀請' : '驗屋授權書(網路版)' }}
                       </v-btn>
-
                       <v-divider class="my-4"></v-divider>
                     </template>
                     <v-date-picker
@@ -501,7 +521,16 @@
              <v-card-actions class="pa-4">
                 <v-btn size="large" @click="step = 1" :disabled="isLoading">返回上一步</v-btn>
                 <v-spacer></v-spacer>
-                <v-btn :color="projectConfig.themeColor" size="large" @click="handleStep2Submit" :loading="isLoading" variant="elevated">確認預約資訊</v-btn>
+                  <v-btn
+                    :color="projectConfig.themeColor"
+                    size="large"
+                    @click="handleStep2Submit"
+                    :loading="isLoading"
+                    variant="elevated"
+                    :disabled="isLoading || (formStep1.bookingMethod !== '屋主自驗' && formStep1.isOwnerPresent === false && !isSigningInitiated)"
+                  >
+                    確認預約資訊
+                  </v-btn>
             </v-card-actions>
           </div>
 
@@ -976,7 +1005,17 @@ const allUnitsData = ref({});
 const allUnitsDataForUpload = ref({}); 
 const unitList = ref([]);
 const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [], timeSlotsByDate: {}, bookingOptions: {} });
-const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' });
+const formStep1 = ref({
+  building: null,
+  unit: null,
+  bookingType: null,
+  bookingMethod: null,
+  companyName: '',
+  address: '',
+  idNumber: '',
+  isOwnerPresent: true // 新增此行，預設為 true (屋主本人到場)
+});
+
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
 
@@ -1234,7 +1273,7 @@ const resetBookingFlow = () => {
   existingBookingInfo.value = null;
   
   // 重置表單資料
-  formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' };
+  formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '',isOwnerPresent: true };
   formStep2.value = { 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' };
 
   // 重置授權書相關狀態
@@ -1250,6 +1289,21 @@ const resetBookingFlow = () => {
     step2Form.value.resetValidation();
   }
 };
+
+
+// --- START: ✓ 新增 watch 監聽 bookingMethod ---
+// 監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態
+watch(() => formStep1.value.bookingMethod, (newMethod) => {
+  if (newMethod === '授權驗屋') {
+    formStep1.value.isOwnerPresent = false; // 選擇授權驗屋，強制設為 false
+  } else if (newMethod === '屋主自驗') {
+    formStep1.value.isOwnerPresent = true; // 選擇屋主自驗，強制設為 true
+  }
+  // 如果是其他選項 (例如 代驗公司)，則 isOwnerPresent 的值由 chip group 控制，此處不變
+  // 並且在切換 bookingMethod 時，重設授權書寄送狀態
+  isSigningInitiated.value = false;
+});
+// --- END: ✓ 新增 watch 監聽 bookingMethod ---
 
 
 // 在 onMounted 函數中修正
@@ -1292,6 +1346,7 @@ const onBuildingChange = (building) => {
   formStep1.value.unit = null;
   formStep1.value.address = '';
   formStep1.value.bookingType = null;
+  formStep1.value.isOwnerPresent = true; // ✓ 新增重置
   existingBookingInfo.value = null;
   step.value = 1;
   
@@ -1307,6 +1362,7 @@ const onUnitChange = (unitValue) => {
   const selectedUnit = unitList.value.find(u => u.unit === unitValue);
   if (selectedUnit) formStep1.value.address = selectedUnit.address;
   formStep1.value.bookingType = null;
+  formStep1.value.isOwnerPresent = true; // ✓ 新增重置
   existingBookingInfo.value = null;
   step.value = 1;
 };
@@ -1334,6 +1390,8 @@ const handleStep1Submit = async () => {
         throw new Error(validationRes.message || '身分驗證失敗');
       }
     }
+
+
 
     // --- 步驟 2: 檢查現有預約 ---
    if (initialData.value.checkDuplicate === 'ON') {
@@ -1378,6 +1436,18 @@ const handleStep1Submit = async () => {
 
 // 在 handleStep2Submit 中，修改檢查的旗標
 const handleStep2Submit = async () => {
+
+// --- START: ✓ 新增授權書完成檢查 (放在最前面) ---
+  // 檢查是否需要授權流程，且尚未完成寄送邀請
+  if (formStep1.value.bookingMethod !== '屋主自驗' &&
+      formStep1.value.isOwnerPresent === false &&
+      !isSigningInitiated.value)
+  {
+      alert('您選擇了「屋主本人不到場」，請務必完成「填寫驗屋授權書」流程。');
+      return; // 阻止繼續執行
+  }
+  // --- END: ✓ 新增授權書完成檢查 ---
+
   const { valid } = await step2Form.value.validate();
   if (!valid) return;
 
