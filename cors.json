@@ -1,14 +1,15 @@
 [
   {
     "origin": [
-      "https://*.github.dev",
+      "https://glorious-barnacle-7rpgq4xjx4jfx79p-5173.app.github.dev", 
+      "https://*.github.dev", 
       "http://localhost:5173",
       "http://localhost:8080",
-      "https://airrick1985.github.io/anxi-app/",
+      "https://airrick1985.github.io", 
       "https://anxismart.com"
     ],
-    "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
-    "responseHeader": ["Content-Type", "Authorization"],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"], 
+    "responseHeader": ["Content-Type", "Authorization", "Access-Control-Allow-Origin"], 
     "maxAgeSeconds": 3600
   }
 ]

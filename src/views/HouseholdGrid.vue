@@ -393,6 +393,7 @@ const SwitchRenderer = {
 // --- 動態欄位相關方法 ---
 const baseColDefs = ref([
    { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+    { headerName: '交屋', field: '交屋', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
    { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
    { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },

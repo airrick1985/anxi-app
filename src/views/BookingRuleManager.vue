@@ -357,6 +357,76 @@
                         ></v-textarea>
                     </v-sheet>
                 </div>
+
+                <p class="text-h6 font-weight-bold mb-4">附件管理 (公開預約頁)</p>
+
+                <v-switch
+                  v-model="projectSettings.intro.showAttachments"
+                  label="在公開預約頁面顯示附件區塊"
+                  color="primary"
+                  inset
+                  hint="啟用後，下方上傳的附件將顯示在預約頁面供客戶下載"
+                  persistent-hint
+                  class="mb-4"
+                ></v-switch>
+
+                <v-file-input
+                  v-model="filesToUpload"
+                  label="選擇要上傳的附件圖檔"
+                  multiple
+                  accept="image/*"
+                  variant="outlined"
+                  density="compact"
+                  prepend-icon="mdi-paperclip"
+                  chips
+                  show-size
+                  counter
+                  class="mb-2"
+                  hint="可一次選擇多個圖檔"
+                  persistent-hint
+                ></v-file-input>
+
+                <v-btn
+                  color="indigo"
+                  variant="flat"
+                  @click="uploadAttachments"
+                  :loading="isUploadingAttachments"
+                  :disabled="!filesToUpload || filesToUpload.length === 0"
+                  prepend-icon="mdi-upload"
+                  class="mb-4"
+                >
+                  上傳選取的附件
+                </v-btn>
+
+                <p class="text-subtitle-1 font-weight-medium mb-2">已上傳的附件：</p>
+                <div v-if="!projectSettings.intro.attachments || projectSettings.intro.attachments.length === 0" class="text-center text-grey pa-4 border rounded">
+                  尚未上傳任何附件
+                </div>
+                <v-list v-else density="compact" class="border rounded pa-0">
+                  <template v-for="(item, index) in projectSettings.intro.attachments" :key="item.url || index">
+                    <v-list-item>
+                      <template v-slot:prepend>
+                        <v-icon color="grey-darken-1">mdi-image-outline</v-icon>
+                      </template>
+                      <v-list-item-title>
+                        <a :href="item.url" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-primary">{{ item.name }}</a>
+                      </v-list-item-title>
+                      <template v-slot:append>
+                        <v-btn
+                          icon="mdi-delete-outline"
+                          variant="text"
+                          color="error"
+                          size="small"
+                          @click="deleteAttachment(index)"
+                          :loading="isDeletingAttachment === index"
+                        ></v-btn>
+                      </template>
+                    </v-list-item>
+                    <v-divider v-if="index < projectSettings.intro.attachments.length - 1"></v-divider>
+                  </template>
+                </v-list>
+                
+
               </v-form>
             </div>
 
@@ -1232,7 +1302,101 @@ import {
   deleteBookingBatch,
   manualTriggerSendReminders,
   triggerNotDownloadedReportReminder,
+  uploadAttachmentImage, // ✓ 新增
+  deleteAttachmentImage,
+ 
+ 
 } from '@/api';
+
+
+// --- START: ✓ 新增附件上傳邏輯 ---
+const uploadAttachments = async () => {
+  if (!filesToUpload.value || filesToUpload.value.length === 0) return;
+
+  isUploadingAttachments.value = true;
+  let uploadSuccessCount = 0;
+  const errors = [];
+
+  // 使用 Promise.all 並行上傳
+  const uploadPromises = filesToUpload.value.map(async (file) => {
+    try {
+      const result = await uploadAttachmentImage(projectId.value, file); // ✓ 呼叫 API 上傳
+      return result; // API 應返回 { name, url, path }
+    } catch (error) {
+      console.error(`檔案 ${file.name} 上傳失敗:`, error);
+      errors.push(`${file.name}: ${error.message}`);
+      return null; // 標記失敗
+    }
+  });
+
+  const results = await Promise.all(uploadPromises);
+
+  // 將成功上傳的結果加入 projectSettings
+  results.forEach(result => {
+    if (result) {
+      if (!projectSettings.value.intro.attachments) {
+        projectSettings.value.intro.attachments = []; // 確保陣列存在
+      }
+      projectSettings.value.intro.attachments.push(result);
+      uploadSuccessCount++;
+    }
+  });
+
+  // 清空已選擇的檔案
+  filesToUpload.value = [];
+  isUploadingAttachments.value = false;
+
+  if (uploadSuccessCount > 0) {
+    // 如果有成功上傳的檔案，觸發一次儲存設定
+    showSnackbar(`成功上傳 ${uploadSuccessCount} 個附件，正在儲存...`, 'info');
+    await saveSettings(); // ✓ 儲存更新後的 attachments 陣列
+  }
+
+  if (errors.length > 0) {
+    showSnackbar(`有 ${errors.length} 個檔案上傳失敗:\n${errors.join('\n')}`, 'error');
+  } else if (uploadSuccessCount > 0) {
+    showSnackbar(`所有 ${uploadSuccessCount} 個附件已上傳並儲存！`, 'success');
+  }
+};
+// --- END: ✓ 新增附件上傳邏輯 ---
+
+// --- START: ✓ 新增附件刪除邏輯 ---
+const deleteAttachment = async (index) => {
+  const attachmentToDelete = projectSettings.value.intro.attachments?.[index];
+  if (!attachmentToDelete || !confirm(`您確定要刪除附件 "${attachmentToDelete.name}" 嗎？`)) {
+    return;
+  }
+
+  isDeletingAttachment.value = index; // 設置 loading 狀態
+
+  try {
+    // 1. 從 URL 解析 Storage 路徑 (需要輔助函數)
+    const storagePath = getStoragePathFromUrl(attachmentToDelete.url);
+    if (!storagePath) {
+      throw new Error('無法從 URL 解析儲存路徑');
+    }
+
+    // 2. 呼叫 API 刪除 Storage 檔案
+    await deleteAttachmentImage(storagePath); // ✓ 呼叫 API 刪除 Storage
+
+    // 3. 從 projectSettings 陣列中移除
+    projectSettings.value.intro.attachments.splice(index, 1);
+
+    // 4. 儲存變更回 Firestore
+    showSnackbar(`附件 "${attachmentToDelete.name}" 已刪除，正在儲存...`, 'info');
+    await saveSettings(); // ✓ 儲存更新後的 attachments 陣列
+
+    showSnackbar(`附件 "${attachmentToDelete.name}" 已成功刪除並儲存！`, 'success');
+
+  } catch (error) {
+    console.error(`刪除附件 ${attachmentToDelete.name} 失敗:`, error);
+    showSnackbar(`刪除附件失敗: ${error.message}`, 'error');
+  } finally {
+    isDeletingAttachment.value = -1; // 清除 loading 狀態
+  }
+};
+// --- END: ✓ 新增附件刪除邏輯 ---
+
 
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue'; // <--- ❗ 確認路徑
 import inspCategoriesItems from '@/views/admin/inspCategoriesItems.vue'; // <--- ❗ 確認路徑
@@ -1240,6 +1404,9 @@ import inspCategoriesItems from '@/views/admin/inspCategoriesItems.vue'; // <---
 
 const isTesting = ref(false);
 const isSendingLineNotification = ref(false);
+const filesToUpload = ref([]); // ✓ 新增：綁定 v-file-input
+const isUploadingAttachments = ref(false); // ✓ 新增：控制上傳按鈕 loading
+const isDeletingAttachment = ref(-1); // ✓ 新增：控制刪除按鈕 loading (用索引區分)
 
 const scheduleTimeOptions = computed(() => {
   const options = [];
@@ -1347,7 +1514,9 @@ const defaultSettings = computed(() => ({
       faq: [
         { q: "整個驗屋流程大約需要多久？", a: "依據不同房型，完整的初驗流程預計需要 1.5 至 2.5 小時。" },
         { q: "驗屋時可以找親友或設計師陪同嗎？", a: "當然可以，歡迎您邀請親友或您的設計師一同前來，但請以兩人為限，以維持現場驗屋品質。" }
-      ]
+      ],
+    attachments: [], 
+    showAttachments: false, 
     },
     reportUploadIntro: {
       body: '<p>請填寫以下資訊並上傳您的驗屋報告電子檔(PDF)。</p>',

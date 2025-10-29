@@ -417,11 +417,13 @@ exports.getAllUnitsForBooking = onCall(async (request) => {
 
 
 /**
-* 驗證戶別與身分證號碼是否相符
+* [修改後版本] 驗證戶別與身分證號碼是否相符
+* - 支援 buyerIdNumber 欄位包含多個 ID (以 / 或空白分隔)
 */
 exports.validateId = onCall(async (request) => {
     const db = new Firestore({ databaseId: 'anxi-app' });
     const { projectId, unitId, idNumber } = request.data;
+    const functionName = 'validateId'; // 用於 Log
 
     if (!projectId || !unitId || !idNumber) {
         throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId, or idNumber)。');
@@ -436,21 +438,29 @@ exports.validateId = onCall(async (request) => {
         }
 
         const householdData = householdDoc.data();
-        const storedId = String(householdData.buyerIdNumber || '').trim();
+        // ✓ 獲取儲存的身分證字號字串，若無則為空字串
+        const storedIdString = String(householdData.buyerIdNumber || '').trim();
         const inputId = String(idNumber).trim();
 
-        // ✓ START: 修改驗證邏輯
-        // 條件一：輸入的 ID 與資料庫中的 ID 相符
-        // 條件二：輸入的 ID 與當前建案的 Project ID 相符 (管理員快速通關)
-        if (storedId === inputId || inputId === projectId) {
+        // ✓ 分割儲存的字串，支援 / 或空白，並清理
+        const storedIdsArray = storedIdString
+            .split(/[/\s]+/) // 使用正則表達式分割
+            .map(id => id.trim()) // 去除每個 ID 的前後空白
+            .filter(id => id !== ''); // 過濾掉空字串
+
+        console.log(`[${functionName}] Input ID: "${inputId}", Stored IDs Array:`, storedIdsArray); // Log for debugging
+
+        // ✓ 檢查輸入 ID 是否在陣列中，或是否為管理員通關碼
+        if (storedIdsArray.includes(inputId) || inputId === projectId) {
+            console.log(`[${functionName}] Validation successful for unit ${unitId}.`); // Log success
             return { status: 'success', message: '身分驗證成功。' };
         } else {
+            console.warn(`[${functionName}] Validation failed for unit ${unitId}. Input "${inputId}" not found in stored IDs or project ID.`); // Log failure
             throw new HttpsError('permission-denied', '身分證號碼與此戶別的資料不符，請重新確認。');
         }
-        // ✓ END: 修改驗證邏輯
 
     } catch (error) {
-        console.error("validateId 錯誤:", error);
+        console.error(`[${functionName}] 發生錯誤 (Unit: ${unitId}):`, error);
         if (error instanceof HttpsError) {
             throw error;
         }
@@ -4244,7 +4254,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
                 agentAddress: bookingData.agentAddress || '',
                 agentPhone: bookingData.agentPhone || '',
                 bookingCode: bookingCode,
-                reportUploaded: false,
+                reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
             };
 
             transaction.set(appointmentRef, newAppointmentData);
@@ -6720,14 +6730,45 @@ async function executeUploadReminderLogic() {
 
         for (const apptDoc of appointmentsSnapshot.docs) {
             const appointment = apptDoc.data();
-            if (!appointment.appointmentDate || !appointment.bookerEmail) continue;
+            const unitId = appointment.unitId; // 獲取戶別 ID
+            
+           if (!appointment.appointmentDate || !appointment.bookerEmail || !unitId) {
+                console.warn(`[${functionName}] 預約 ${apptDoc.id} 缺少必要欄位 (appointmentDate, bookerEmail, unitId)，已跳過。`);
+                continue; // 跳過缺少必要資料的預約
+            }
 
+            // 1. 讀取對應的戶別資料
+            const householdDocId = `${projectId}_${unitId}`;
+            const householdRef = db.collection('households').doc(householdDocId);
+            let householdData = null;
+            try {
+                const householdDoc = await householdRef.get();
+                if (householdDoc.exists) {
+                    householdData = householdDoc.data();
+                } else {
+                    console.warn(`[${functionName}] 找不到預約 ${apptDoc.id} 對應的戶別文件 ${householdDocId}，將繼續提醒。`);
+                    // 找不到戶別資料，預設需要提醒 (或者您可以選擇跳過)
+                }
+            } catch (readError) {
+                console.error(`[${functionName}] 讀取戶別 ${householdDocId} 時發生錯誤:`, readError, `將繼續提醒預約 ${apptDoc.id}`);
+                // 讀取戶別資料出錯，預設需要提醒 (或者您可以選擇跳過)
+            }
+
+            // 2. 檢查 "交屋" 欄位
+            // 正體中文註解：如果戶別資料存在，且 "交屋" 欄位值為 true，則跳過此預約
+            if (householdData && householdData['交屋'] === true) {
+                console.log(`[${functionName}] 戶別 ${unitId} (預約 ${apptDoc.id}) 已標記為交屋，跳過提醒。`);
+                continue; // 跳至下一個預約
+            }
+
+            // 3. 如果未交屋或無法確認，才繼續檢查日期差異
             const appointmentDate = appointment.appointmentDate.toDate();
             appointmentDate.setHours(0, 0, 0, 0);
             const timeDiff = today.getTime() - appointmentDate.getTime();
             const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
             
             const reminderDaysAsNumbers = settings.uploadReminderDays.map(day => Number(day));
+            
             if (reminderDaysAsNumbers.includes(dayDiff)) {
                 console.log(`[${functionName}] 找到符合提醒條件的預約: ${appointment.unitId} (預約於 ${dayDiff} 天前)，準備寄信...`);
                 
@@ -11111,3 +11152,132 @@ exports.initiateBookingConfirmation = onCall({ region: "asia-east1" }, async (re
   }
 });
 // --- END: 新增 - 產生預約確認 Token ---
+
+
+
+/**
+ * [Cloud Function] 接收 Base64 附件圖檔，上傳至 Storage
+ * @param {object} data - { projectId, fileName, fileBase64 }
+ * @returns {Promise<object>} - { status, name, url, path }
+ */
+exports.handleAttachmentUpload = onCall({
+  region: "asia-east1",
+  memory: "1GiB", // 上傳圖片可能需要較多記憶體
+  timeoutSeconds: 120 // 允許較長上傳時間
+}, async (request) => {
+  // 正體中文註解：從請求中獲取 projectId, 原始檔名, Base64 內容
+  const { projectId, fileName, fileBase64 } = request.data;
+  const functionName = `handleAttachmentUpload (Project: ${projectId})`;
+
+  // 1. 驗證輸入
+  if (!projectId || !fileName || !fileBase64) {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少上傳附件所需的參數。");
+  }
+
+  try {
+    const bucket = getStorage().bucket(); // 獲取默認 Bucket
+    const now = new Date();
+    // 正體中文註解：產生包含時間戳的唯一檔案路徑
+    const timestamp = now.toISOString().replace(/[-:.]/g, "").replace("T", "_").replace("Z", "");
+    const storagePath = `attachments/${projectId}/${timestamp}_${fileName}`;
+    const file = bucket.file(storagePath);
+
+    console.log(`[${functionName}] Preparing to upload ${fileName} to: ${storagePath}`);
+
+    // 2. 將 Base64 轉為 Buffer
+    const buffer = Buffer.from(fileBase64, 'base64');
+    // 3. 將 Buffer 轉為可讀流
+    const stream = Readable.from(buffer);
+
+    // 4. 使用 stream 上傳至 Firebase Storage
+    await new Promise((resolve, reject) => {
+        stream.pipe(file.createWriteStream({
+            // 正體中文註解：自動根據副檔名推斷 ContentType 可能不準確，
+            // 由於前端已限制 image/*，這裡可以設定為通用圖片類型或保持預設
+            // metadata: { contentType: 'image/png' },
+            resumable: false // 小檔案不需要 resumable
+        }))
+        .on('error', (err) => {
+            console.error(`[${functionName}] GCS Write Stream Error:`, err);
+            reject(new HttpsError("internal", `上傳檔案流時發生錯誤: ${err.message}`));
+        })
+        .on('finish', () => {
+            console.log(`[${functionName}] GCS Write Stream Finished for ${fileName}.`);
+            resolve();
+        });
+    });
+
+    // 5. 設定檔案為公開可讀
+    console.log(`[${functionName}] Making file public: ${storagePath}`);
+    await file.makePublic();
+
+    // 6. 獲取公開 URL
+    const publicUrl = file.publicUrl();
+    console.log(`[${functionName}] File uploaded successfully: ${publicUrl}`);
+
+    // 7. 返回成功結果給前端
+    return {
+        status: "success",
+        name: fileName,   // 原始檔名
+        url: publicUrl,   // 公開 URL
+        path: storagePath // GCS 儲存路徑 (供刪除使用)
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 附件上傳失敗:`, error);
+    // 確保即使 GCS API 拋出非 HttpsError，也將其包裝回傳
+    if (error instanceof HttpsError) {
+        throw error;
+    }
+    throw new HttpsError("internal", `後端處理附件上傳時發生錯誤: ${error.message}`);
+  }
+});
+// --- END: ✓ 新增 Cloud Function ---
+
+// --- START: ✓ 新增 Cloud Function - 處理附件刪除 ---
+/**
+ * [Cloud Function] 根據提供的路徑刪除 Firebase Storage 中的附件檔案
+ * @param {object} data - { storagePath: string }
+ * @returns {Promise<object>} - { status: 'success' }
+ */
+exports.handleAttachmentDelete = onCall({ region: "asia-east1" }, async (request) => {
+  const { storagePath } = request.data;
+  const functionName = `handleAttachmentDelete`;
+
+  // 1. 驗證輸入
+  if (!storagePath) {
+    console.error(`[${functionName}] 錯誤：缺少 storagePath 參數。`);
+    throw new HttpsError("invalid-argument", "缺少檔案儲存路徑。");
+  }
+
+  // 2. 安全性檢查：確保只刪除 attachments/ 目錄下的檔案
+  if (!storagePath.startsWith('attachments/')) {
+      console.error(`[${functionName}] 權限錯誤：嘗試刪除非附件目錄下的檔案: ${storagePath}`);
+      throw new HttpsError("permission-denied", "只能刪除附件目錄下的檔案。");
+  }
+
+  try {
+    const bucket = getStorage().bucket();
+    const file = bucket.file(storagePath);
+
+    console.log(`[${functionName}] Attempting to delete file: ${storagePath}`);
+
+    // 3. 執行刪除
+    await file.delete();
+
+    console.log(`[${functionName}] File ${storagePath} deleted successfully from GCS.`);
+    return { status: "success" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 刪除檔案 ${storagePath} 時發生錯誤:`, error);
+    // 4. 處理檔案不存在的錯誤 (視為成功)
+    if (error.code === 404) {
+        console.warn(`[${functionName}] File ${storagePath} not found in GCS, possibly already deleted.`);
+        return { status: "success", message: "檔案不存在，可能已被刪除。" }; // 仍然回傳成功
+    }
+    // 5. 其他錯誤
+    throw new HttpsError("internal", `刪除附件時發生錯誤: ${error.message}`);
+  }
+});
+// --- END: ✓ 新增 Cloud Function ---

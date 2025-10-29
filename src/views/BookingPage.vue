@@ -244,22 +244,7 @@
                   </v-card>
                 </v-dialog>
 
-                <div v-if="projectConfig.intro.attachments && projectConfig.intro.attachments.length > 0" class="mt-6">
-                    <v-list-subheader>相關附件</v-list-subheader>
-                    <v-list density="compact">
-                      <v-list-item
-                          v-for="(file, i) in projectConfig.intro.attachments"
-                          :key="i"
-                          :href="file.url"
-                          target="_blank"
-                          prepend-icon="mdi-file-pdf-box"
-                          rounded="lg"
-                          class="mb-2 border"
-                      >
-                          <v-list-item-title>{{ file.title }}</v-list-item-title>
-                      </v-list-item>
-                    </v-list>
-                </div>
+                
                 
                 <div v-if="projectConfig.intro.faq && projectConfig.intro.faq.length > 0" class="mt-6">
                   <v-list-subheader>常見問答</v-list-subheader>
@@ -272,6 +257,28 @@
                     ></v-expansion-panel>
                   </v-expansion-panels>
                 </div>
+                <div v-if="projectConfig.intro.showAttachments && projectConfig.intro.attachments?.length > 0" class="mt-6">
+                  <v-list-subheader>附件下載</v-list-subheader>
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="(item, i) in projectConfig.intro.attachments"
+                      :key="item.url || i"
+                      :href="item.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      prepend-icon="mdi-paperclip"
+                      rounded="lg"
+                      class="mb-2 border"
+                    >
+                      <v-list-item-title class="text-primary">{{ item.name }}</v-list-item-title>
+                      <template v-slot:append>
+                        <v-icon color="grey">mdi-download-outline</v-icon>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </div>
+
+
 
                <div v-if="projectConfig && projectConfig.intro && projectConfig.intro.footer" class="text-caption text-grey text-center mt-4 prose" v-html="projectConfig.intro.footer">
                 </div>
@@ -347,10 +354,9 @@
                   variant="outlined"
                   :rules="[v => !!v || '選擇方式為必填項']"
                   :disabled="isLoading || !formStep1.unit || !isBookingActive"
-                  @update:model-value="() => { isSigningInitiated = false; }" >
-                  </v-select>
+                  ></v-select>
 
-                    <div v-if="formStep1.bookingMethod && formStep1.bookingMethod !== '屋主自驗' && formStep1.bookingMethod !== '授權驗屋'" class="mb-4">
+                      <div v-if="formStep1.bookingMethod && formStep1.bookingMethod !== '屋主自驗' && formStep1.bookingMethod !== '授權驗屋' && formStep1.bookingType !== '對保'" class="mb-4">                      
                       <p class="text-subtitle-1 mb-2">屋主本人是否到場？</p>
                         <v-chip-group
                           v-model="formStep1.isOwnerPresent"
@@ -1290,20 +1296,52 @@ const resetBookingFlow = () => {
   }
 };
 
+// --- START: ✓ 新增 watch 監聽 bookingType ---
+// 正體中文註解：監聽預約項目的變化，特別處理「對保」情況
+watch(() => formStep1.value.bookingType, (newType) => {
+  if (newType === '對保') {
+    // 正體中文註解：選擇「對保」，強制設定為本人到場
+    formStep1.value.isOwnerPresent = true;
+  } else {
+    // 正體中文註解：從「對保」切換為其他項目時，根據當前的 bookingMethod 重新判斷
+    const currentMethod = formStep1.value.bookingMethod;
+    if (currentMethod === '授權驗屋') {
+      formStep1.value.isOwnerPresent = false;
+    } else { // 包括 '屋主自驗' 或 其他方法 (如 '代驗公司')
+      formStep1.value.isOwnerPresent = true; // 預設或強制為 true
+    }
+  }
+  // 正體中文註解：無論如何，切換預約項目時都重設授權書寄送狀態
+  isSigningInitiated.value = false;
+});
+// --- END: ✓ 新增 watch 監聽 bookingType ---
 
-// --- START: ✓ 新增 watch 監聽 bookingMethod ---
-// 監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態
-watch(() => formStep1.value.bookingMethod, (newMethod) => {
+// --- START: ✓ 修改 watch 監聽 bookingMethod ---
+// 正體中文註解：監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態 (排除對保)
+watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
+  // 正體中文註解：如果預約項目是「對保」，則 isOwnerPresent 始終為 true，不受 bookingMethod 影響
+  if (formStep1.value.bookingType === '對保') {
+    formStep1.value.isOwnerPresent = true; // 再次確保是 true
+    isSigningInitiated.value = false; // 但仍然重設授權狀態
+    return; // 不執行後續判斷
+  }
+
+  // 正體中文註解：處理非「對保」時的情況
   if (newMethod === '授權驗屋') {
     formStep1.value.isOwnerPresent = false; // 選擇授權驗屋，強制設為 false
   } else if (newMethod === '屋主自驗') {
     formStep1.value.isOwnerPresent = true; // 選擇屋主自驗，強制設為 true
+  } else if (oldMethod === '授權驗屋' || oldMethod === '屋主自驗') {
+      // 從“授權”或“自驗”切換到其他方式（例如代驗），預設回 true，讓 chip group 顯示“是”
+      formStep1.value.isOwnerPresent = true;
   }
-  // 如果是其他選項 (例如 代驗公司)，則 isOwnerPresent 的值由 chip group 控制，此處不變
-  // 並且在切換 bookingMethod 時，重設授權書寄送狀態
+  // 如果 newMethod 是 '代驗公司' 且 oldMethod 也是 '代驗公司' 或 null/undefined，
+  // isOwnerPresent 的值由 chip group 控制，此處不變
+
+  // 正體中文註解：切換驗屋方式時，重設授權書寄送狀態
   isSigningInitiated.value = false;
 });
-// --- END: ✓ 新增 watch 監聽 bookingMethod ---
+// --- END: ✓ 修改 watch 監聽 bookingMethod ---
 
 
 // 在 onMounted 函數中修正

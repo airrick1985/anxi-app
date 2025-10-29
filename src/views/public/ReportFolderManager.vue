@@ -81,6 +81,8 @@
            { value: -1, title: '全部顯示' }
          ]"
         >
+
+        
           <template v-slot:item.reportFolder.name="{ item, internalItem, toggleExpand, isExpanded }">
             <div @click.stop="toggleExpand(internalItem)" style="cursor: pointer; user-select: none;" class="d-flex align-center">
               <v-icon :icon="isExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" class="mr-1"></v-icon>
@@ -109,8 +111,19 @@
             </tr>
           </template>
         </v-data-table>
+
+        
         </div>
     </v-card>
+
+     <div class="text-caption text-grey text-center mt-6 d-flex align-center justify-center">
+      <span>本服務由</span>
+      <v-chip class="ml-2" href="https://airrick1985.wixsite.com/anxi" target="_blank" rel="noopener noreferrer" color="blue-grey" variant="tonal" size="small" label>
+        <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+        anxismart安熙智慧建案管理系統
+      </v-chip>
+      <span>提供技術支援</span>
+    </div>
     
     <v-dialog v-model="dialog.visible" max-width="600px" persistent>
        <v-card>
