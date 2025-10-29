@@ -375,7 +375,7 @@ const displayFieldOptions = ref([
   { key: 'unitId', label: '戶別' },
   { key: 'bookingType', label: '預約項目' },
   { key: 'bookerName', label: '預約人姓名' },
-  { key: 'inspectionMethod', label: '驗屋方式' },
+  { key: 'inspectionMethod', label: '選擇方式' },
   { key: 'inspectionCompanyName', label: '代驗公司名稱' },
   { key: 'bookingRemarks', label: '預約備註' },
   { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },

@@ -162,6 +162,35 @@
     </div>
      </div>
 
+     <div class="toolbar d-none d-md-flex">
+       <v-btn
+        color="orange"
+        variant="tonal"
+        class="ml-4"
+        @click="isParkingViewerDialogVisible = true"
+        title="開啟車位平面圖檢視"
+        prepend-icon="mdi-view-dashboard-variant-outline"
+      >
+        車位銷控
+      </v-btn>
+
+      <v-btn
+        v-if="currentViewMode === 'sales'"
+        color="info"
+        variant="tonal"
+        class="ml-4"
+        @click="navigateToParkingControl"
+        :loading="false" title="車位銷控管理"
+        prepend-icon="mdi-car-brake-parking"
+      >
+        車位銷控管理
+      </v-btn>
+
+       </div>
+
+   <div class="grid-wrapper">
+     </div>
+
    <v-bottom-navigation
       v-if="isMobile"
       :active="true"
@@ -267,6 +296,9 @@
           </v-list-item>
         </v-list>
       </v-menu>
+
+      <v-btn @click="isParkingViewerDialogVisible = true">
+      <v-icon>mdi-view-dashboard-variant-outline</v-icon> <span>車位銷控</span> </v-btn>
 
     </v-bottom-navigation>
 
@@ -447,6 +479,42 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="isParkingViewerDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="orange-darken-2" density="compact">
+          <v-btn icon dark @click="isParkingViewerDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>車位平面圖 - {{ projectName }}</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn
+            v-if="currentViewMode === 'sales'"
+            prepend-icon="mdi-pencil"
+            @click="navigateToParkingControl(); isParkingViewerDialogVisible = false;"
+            variant="tonal"
+            class="mr-2"
+            size="small"
+          >
+            管理平面圖
+          </v-btn>
+        </v-toolbar>
+        <div class="flex-grow-1 viewer-content-area">
+          <ParkingCanvasViewer
+            v-if="isParkingViewerDialogVisible"
+            :project-id="projectId"
+            :initial-display-mode="parkingViewerDisplayMode"
+            :allow-mode-switching="true"
+            :text-styles="textStyleStore.styles"
+            :status-colors="statusColorStore.colors"
+            @request-mode-change="handleParkingViewerModeChange"
+            @canvas-ready="onParkingViewerReady"
+            style="height: 100%; width: 100%;"
+          />
+        </div>
+      </v-card>
+    </v-dialog>
+
+
     <!-- 🔄 載入狀態顯示 -->
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
@@ -474,7 +542,7 @@
                 <span>🔄 活躍監聽器：{{ salesDataStore.getCacheStats.activeListeners }}</span>
               </div>
               <div class="stats-row">
-                <span>✅ 健康監聽器：{{ salesDataStore.getCacheStats.healthyListeners }}</span>
+                <span> 健康監聽器：{{ salesDataStore.getCacheStats.healthyListeners }}</span>
                 <span>❌ 錯誤監聽器：{{ salesDataStore.getCacheStats.errorListeners }}</span>
               </div>
               <div class="stats-row">
@@ -491,9 +559,9 @@
 
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'; //  nextTick 可能需要
 import { useRouter, useRoute } from 'vue-router';
-import { useSystemPresence } from '@/composables/useSystemPresence'; // ✅ 1. 匯入 Composable
+import { useSystemPresence } from '@/composables/useSystemPresence'; //  1. 匯入 Composable
 
 //  新增：引入上傳 API 和 toast
 import { uploadHouseholds } from '@/api';
@@ -511,6 +579,11 @@ import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
 // import ParkingControl from './ParkingControl.vue'; // 不再需要，因為改為路由導覽
 import UpdateControl from './UpdateControl.vue'; 
+import ParkingCanvasViewer from '@/components/ParkingCanvasViewer.vue'; // 導入 Viewer
+import { useTextStyleStore } from '@/store/textStyleStore'; // 導入樣式 Store
+import { useStatusColorStore } from '@/store/statusColorStore'; // 導入顏色 Store
+import { mdiViewDashboardVariantOutline } from '@mdi/js'; // 導入新圖標
+
 
 //  新增：定義 EXCEL 匯出/上傳的欄位
 const COLUMN_DEFINITIONS = [
@@ -605,7 +678,7 @@ const toast = useToast();
 // ===============================================
 const salesDataStore = useSalesDataStore(); 
 
-// ✅ 2. 呼叫 Composable，傳入必要的參數
+//  2. 呼叫 Composable，傳入必要的參數
 const projectIdForPresence = computed(() => route.params.projectName);
 const systemNameForPresence = computed(() => route.meta.viewMode === 'quote' ? '報價系統' : '銷控系統');
 useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
@@ -618,6 +691,9 @@ const {
   openSlideViewer, 
   refreshSlide
 } = useSlideViewer();
+
+const textStyleStore = useTextStyleStore(); // 實例化
+const statusColorStore = useStatusColorStore(); // 實例化
 
 // ===============================================
 // 📊 State Management (Updated to use Store)
@@ -650,9 +726,11 @@ const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const displayType = ref('住家');
 const priceDisplayMode = ref('list');
+const parkingViewerDisplayMode = ref('backend'); // Viewer 內部顯示模式狀態
 
 const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
+const isParkingViewerDialogVisible = ref(false); // Viewer Dialog 狀態
 
 //  新增：上傳相關 state
 const uploadDialog = ref(false);
@@ -848,8 +926,8 @@ const handleRefreshData = async () => {
     // 強制刷新：忽略緩存，直接從 Firestore 載入最新數據
     await salesDataStore.loadProjectData(projectId.value, true);
     
-    toast.success('✅ 資料已更新到最新版本');
-    console.log(`✅ [Manual Refresh] 刷新完成，戶別數量: ${salesHouseholds.value.length}`);
+    toast.success(' 資料已更新到最新版本');
+    console.log(` [Manual Refresh] 刷新完成，戶別數量: ${salesHouseholds.value.length}`);
     
   } catch (err) {
     toast.error('❌ 資料更新失敗: ' + err.message);
@@ -874,8 +952,10 @@ onMounted(async () => {
     // ⚡ 使用智能緩存載入數據（30分鐘緩存 + 即時監聽）
     // 如果5分鐘內重新進入此頁面，將使用緩存數據，載入速度提升90%+
     await salesDataStore.loadProjectData(projectId.value);
+    await textStyleStore.fetchStyles(projectId.value);
+    await statusColorStore.fetchColors(projectId.value);
     
-    console.log(`✅ [SalesControlSystem] 數據載入完成，戶別數量: ${salesHouseholds.value.length}`);
+    console.log(` [SalesControlSystem] 數據載入完成，戶別數量: ${salesHouseholds.value.length}`);
     
     // 開發模式下顯示緩存統計
     if (import.meta.env.DEV) {
@@ -910,6 +990,20 @@ onUnmounted(() => {
   // 如果需要立即清理特定項目的緩存，取消註釋下面這行：
   // salesDataStore.clearProjectData(projectId.value);
 });
+
+// --- 新增：處理 ParkingCanvasViewer 事件 ---
+const handleParkingViewerModeChange = (newMode) => {
+  if (['backend', 'sales'].includes(newMode)) {
+    parkingViewerDisplayMode.value = newMode;
+    console.log(`[SalesControl] Parking Viewer mode changed to: ${newMode}`);
+    // 如果需要，可以在這裡保存使用者的偏好設定
+  }
+};
+
+const onParkingViewerReady = () => {
+    console.log('[SalesControl] Parking Viewer canvas is ready.');
+    // 可以在這裡執行 Viewer 載入後的操作
+};
 
 
 // 新增：匯出與上傳相關的所有方法
@@ -1392,5 +1486,20 @@ const uploadData = async () => {
   .dev-cache-stats {
     display: none;
   }
+}
+
+
+/* 新增：Viewer Dialog 內容區域樣式 */
+.viewer-content-area {
+  flex-grow: 1; /* 確保填滿剩餘空間 */
+  overflow: hidden; /* 防止內部滾動 */
+  position: relative; /* 為了可能的內部絕對定位 */
+  background-color: #f0f2f5; /* 可以設置背景色 */
+}
+
+/* 確保 Viewer 填滿容器 */
+.viewer-content-area > :deep(div) { /* 可能需要 :deep() 穿透 */
+    height: 100% !important;
+    width: 100% !important;
 }
 </style>

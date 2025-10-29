@@ -448,7 +448,7 @@ const fieldConfig = [
   { title: '系統功能', fields: [ { key: 'showInMenu', label: '預約系統', icon: 'mdi-calendar-sync', isSwitch: true }, { key: 'initialReportUploadSwitch', label: '初驗報告上傳', icon: 'mdi-upload-network-outline', isSwitch: true }, { key: 'reInspectionReportUploadSwitch', label: '複驗報告上傳', icon: 'mdi-upload-network', isSwitch: true }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]},
   { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證', icon: 'mdi-card-account-details-outline' },{ key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' } ]},
   { title: '預約人資料', fields: [ { key: 'bookerName', label: '預約人姓名', icon: 'mdi-account-outline' }, { key: 'bookerPhone', label: '預約人電話', icon: 'mdi-cellphone', isTel: true }, { key: 'bookerEmail', label: '預約人EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'bookerIdNumber', label: '預約人身分證', icon: 'mdi-card-account-details-outline' } ]},
-  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '驗屋方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true }, { key: 'bookingRemarks', label: '預約備註', icon: 'mdi-note-text-outline' }, ]},
+  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true }, { key: 'bookingRemarks', label: '預約備註', icon: 'mdi-note-text-outline' }, ]},
   { title: '驗屋文件及報告', fields: [  { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, ]}
 ];
 
@@ -497,7 +497,7 @@ async function enterEditMode() {
   emit('request-calendar-data', { unitId: props.appointment.unitId });
 
   try {
-    // 3. 獲取建案設定 (例如：預約類型、驗屋方式等下拉選單)
+    // 3. 獲取建案設定 (例如：預約類型、選擇方式等下拉選單)
     const config = await fetchProjectConfig(props.appointment.projectId);
     projectConfig.value = config;
 
@@ -642,7 +642,7 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
 
   const isRuleError = errorMessage.includes('不在可預約範圍內') || errorMessage.includes('規則已被刪除');
   const isSlotFullError = errorMessage.startsWith('SLOT_FULL:');
-  const isMethodError = errorMessage.includes('不適用於驗屋方式');
+  const isMethodError = errorMessage.includes('不適用於選擇方式');
 
   // ✅【修改】放寬判斷條件，只要包含 "時段" 和 "不存在" 即可
   const isSlotNotFoundError = errorMessage.includes('時段') && errorMessage.includes('不存在'); // <-- ✅ 修改這行

@@ -6,7 +6,8 @@ import router from './router'
 import axios from 'axios'
 import VueAxios from 'vue-axios'
 import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導入
-
+import VueDraggableResizable from 'vue-draggable-resizable'
+import 'vue-draggable-resizable/style.css'
 
 // ✅【新增】AG Grid 模組註冊
 import { ModuleRegistry } from 'ag-grid-community';
@@ -45,6 +46,8 @@ const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate) // <--- 2. 使用插件
 
 const app = createApp(App) // 先創建 app 實例
+
+
 
 // 3. 註冊 Service Worker (通常在創建 app 之後，掛載之前)
 registerSW({
@@ -92,6 +95,7 @@ registerSW({
 // --- 使用插件和掛載 Vue 應用 ---
 app
   .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
+  .component('vue-draggable-resizable', VueDraggableResizable)
   .use(router)
   .use(vuetify)
   .use(VueAxios, axios)

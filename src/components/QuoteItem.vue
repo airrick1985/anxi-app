@@ -115,8 +115,8 @@
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    <div class="item-cell flex-1">
     <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
-     <v-radio label="是" value="是"></v-radio>
-     <v-radio label="否" value="否"></v-radio>
+     <v-radio label="首購" value="是"></v-radio>
+     <v-radio label="非首購" value="否"></v-radio>
     </v-radio-group>
    </div>
    <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>

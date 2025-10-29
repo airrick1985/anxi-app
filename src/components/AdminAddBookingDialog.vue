@@ -188,7 +188,7 @@
                         <v-select label="預約項目" :items="bookingOptions.bookingTypes" v-model="formStep2.bookingType" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
                       </v-col>
                        <v-col cols="12" sm="6">
-                        <v-select label="驗屋方式" :items="bookingOptions.inspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
+                        <v-select label="選擇方式" :items="bookingOptions.inspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
                       </v-col>
                       <v-col v-if="formStep2.inspectionMethod === '代驗公司'" cols="12">
                         <v-text-field label="代驗公司名稱" v-model="formStep2.inspectionCompanyName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
@@ -383,7 +383,7 @@
                       <v-list-item title="門牌" :subtitle="finalBookingData.address"></v-list-item>
                       <v-divider class="my-2"></v-divider>
                       <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
-                      <v-list-item title="驗屋方式" :subtitle="finalBookingData.inspectionMethod"></v-list-item>
+                      <v-list-item title="選擇方式" :subtitle="finalBookingData.inspectionMethod"></v-list-item>
                       <v-list-item v-if="finalBookingData.inspectionCompanyName" title="代驗公司" :subtitle="finalBookingData.inspectionCompanyName"></v-list-item>
                       <template v-if="finalBookingData.inspectionMethod === '授權驗屋'">
                         <v-list-item title="受託人姓名" :subtitle="finalBookingData.agentName"></v-list-item>
@@ -1093,7 +1093,7 @@ const submitAdminBooking = async () => {
         // ✅ START: 新增錯誤判斷邏輯
         const isRuleError = errorMessage.includes('不在可預約範圍內') || errorMessage.includes('規則已被刪除');
         const isSlotFullError = errorMessage.startsWith('SLOT_FULL:');
-        const isMethodError = errorMessage.includes('不適用於驗屋方式');
+        const isMethodError = errorMessage.includes('不適用於選擇方式');
         const isSlotNotFoundError = errorMessage.includes('在規則中不存在'); // 保持包含句號的判斷
 
         // ✓ 檢查是否是需要強制執行的錯誤類型，並且【尚未】勾選強制

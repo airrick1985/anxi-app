@@ -343,9 +343,9 @@
                     v-if="projectConfig.showBookingMethod"
                     v-model="formStep1.bookingMethod"
                     :items="projectConfig.bookingMethodOptions"
-                    label="驗屋方式"
+                    label="選擇方式"
                     variant="outlined"
-                    :rules="[v => !!v || '驗屋方式為必填項']"
+                    :rules="[v => !!v || '選擇方式為必填項']"
                     :disabled="isLoading || !formStep1.unit || !isBookingActive"
                   ></v-select>
 
@@ -400,7 +400,7 @@
         <v-list-item title="EMAIL" :subtitle="existingBookingInfo.bookerEmail" prepend-icon="mdi-email-outline"></v-list-item>
         <v-divider class="my-2"></v-divider>
         <v-list-item title="預約項目" :subtitle="existingBookingInfo.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
-        <v-list-item title="驗屋方式" :subtitle="existingBookingInfo.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+        <v-list-item title="選擇方式" :subtitle="existingBookingInfo.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
         <v-list-item v-if="existingBookingInfo.inspectionCompanyName" title="代驗公司" :subtitle="existingBookingInfo.inspectionCompanyName" prepend-icon="mdi-office-building"></v-list-item>
         <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo.appointmentDate)" prepend-icon="mdi-calendar-check-outline"></v-list-item>
         <v-list-item title="預約時段" :subtitle="existingBookingInfo.appointmentTimeSlot" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
@@ -507,10 +507,21 @@
 
                     <div v-if="step === 3">
               <v-card-text>
-                  <v-alert type="info" variant="tonal" border="start" class="mb-4">
-                      <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
-                      <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
-                  </v-alert>
+              <v-alert
+                v-if="isTimeoutActive"
+                type="warning"
+                variant="tonal"
+                border="start"
+                density="compact"
+                class="mb-4"
+                icon="mdi-timer-sand"
+              >
+                請於 <span class="font-weight-bold">{{ Math.floor(remainingSeconds / 60) }}:{{ String(remainingSeconds % 60).padStart(2, '0') }}</span> 分鐘內確認送出，逾時將需要重新操作。
+              </v-alert>
+              <v-alert type="info" variant="tonal" border="start" class="mb-4">
+                <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
+                <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
+              </v-alert>
                 <v-list lines="two">
                 <v-list-item title="建案名稱" :subtitle="projectConfig.name"></v-list-item>
                 <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
@@ -527,7 +538,7 @@
                 <v-divider class="my-2"></v-divider>
                 <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
 
-                <v-list-item title="驗屋方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
+                <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
                 <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName"></v-list-item>
                 <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
                 <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
@@ -571,7 +582,7 @@
           <v-divider class="my-2"></v-divider>
           
           <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
-          <v-list-item title="驗屋方式" :subtitle="finalBookingData.bookingMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+          <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
           <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName" prepend-icon="mdi-office-building"></v-list-item>
           <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
           <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
@@ -811,6 +822,23 @@
   </v-card>
 </v-dialog>
 
+<v-dialog v-model="isTimeoutDialogVisible" max-width="400px" persistent>
+      <v-card>
+        <v-card-title class="text-h5 text-center bg-warning">
+          <v-icon start>mdi-alert-circle-outline</v-icon>
+          操作逾時
+        </v-card-title>
+        <v-card-text class="pt-4 text-center">
+          您停留在確認頁面已超過 5 分鐘，為確保預約資料的有效性，請重新操作。
+        </v-card-text>
+        <v-card-actions class="justify-center pa-4">
+          <v-btn color="primary" variant="elevated" @click="handleTimeoutDialogClose">
+            重新預約
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 </v-container>
 </template>
 
@@ -947,6 +975,22 @@ const bookingSlots = ref({ startDate: null, endDate: null, unavailableDates: [],
 const formStep1 = ref({ building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' });
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
+
+
+// --- START: 預約逾時機制所需狀態 ---
+// 用於儲存 setTimeout 的 ID，以便清除計時器
+const timeoutTimerId = ref(null);
+// 用於儲存顯示倒數計時的 setInterval 的 ID
+const countdownTimerId = ref(null);
+// 標記計時器是否正在運行
+const isTimeoutActive = ref(false);
+// 顯示剩餘的秒數 (初始 5 分鐘 = 300 秒)
+const remainingSeconds = ref(300);
+// 儲存從後端獲取的確認階段 Token
+const confirmationToken = ref(null);
+// 控制逾時提示 Dialog 的顯示
+const isTimeoutDialogVisible = ref(false);
+// --- END: 預約逾時機制所需狀態 ---
 
 // ... (所有既有的 Helper Functions, Computed Properties, Methods 省略以保持簡潔) ...
 // --- Helper Functions  ---
@@ -1127,9 +1171,60 @@ const handleInitiateSigning = async () => {
 //  END: 新增函式
 
 
+// --- START: 預約逾時機制所需函數 ---
+
+// 清除所有計時器並重設狀態
+const clearTimeoutTimer = () => {
+  if (timeoutTimerId.value) {
+    clearTimeout(timeoutTimerId.value);
+    timeoutTimerId.value = null;
+  }
+  if (countdownTimerId.value) {
+    clearInterval(countdownTimerId.value);
+    countdownTimerId.value = null;
+  }
+  isTimeoutActive.value = false;
+  confirmationToken.value = null; // 清除 Token
+  remainingSeconds.value = 300; // 重置秒數顯示 (可選)
+};
+
+// 啟動 5 分鐘倒數計時器
+const startTimeoutTimer = (token) => {
+  clearTimeoutTimer(); // 先清除舊的計時器
+  confirmationToken.value = token; // 保存從後端拿到的 Token
+  isTimeoutActive.value = true;
+  remainingSeconds.value = 300; // 重設為 300 秒
+
+  // 設定 5 分鐘後執行的主要逾時邏輯
+  timeoutTimerId.value = setTimeout(() => {
+    if (isTimeoutActive.value) { // 再次檢查計時器是否仍然有效
+      isTimeoutActive.value = false; // 標記為非活動
+      isTimeoutDialogVisible.value = true; // 顯示逾時提示框
+      // Dialog 關閉後會自動調用 resetBookingFlow
+    }
+  }, 300 * 1000); // 300 秒 * 1000 毫秒
+
+  // 設定每秒更新剩餘秒數顯示 (可選)
+  countdownTimerId.value = setInterval(() => {
+    if (remainingSeconds.value > 0) {
+      remainingSeconds.value--;
+    } else {
+      clearInterval(countdownTimerId.value); // 時間到，停止更新秒數
+    }
+  }, 1000);
+};
+
+// 處理逾時提示框關閉事件
+const handleTimeoutDialogClose = () => {
+  isTimeoutDialogVisible.value = false;
+  resetBookingFlow(); // 關閉提示框後重置流程
+};
+
+// --- END: 預約逾時機制所需函數 ---
 
 // 重置預約流程的函式
 const resetBookingFlow = () => {
+  clearTimeoutTimer();
   step.value = 1;
   savedBookingCode.value = '';
   existingBookingInfo.value = null;
@@ -1151,6 +1246,7 @@ const resetBookingFlow = () => {
     step2Form.value.resetValidation();
   }
 };
+
 
 // 在 onMounted 函數中修正
 onMounted(async () => {
@@ -1220,6 +1316,7 @@ const handleStep1Submit = async () => {
  isLoading.value = true;
  existingBookingInfo.value = null;
 
+
  try {
     // --- 步驟 1: 身分驗證 (如果需要) ---
     if (isIdValidationRequired.value) {
@@ -1280,16 +1377,46 @@ const handleStep2Submit = async () => {
   const { valid } = await step2Form.value.validate();
   if (!valid) return;
 
- // 檢查：如果選擇了「授權驗屋」，則必須先完成「發起簽署」
- if (formStep1.value.bookingMethod === '授權驗屋' && !isSigningInitiated.value) {
-   alert('您選擇了「授權驗屋」，請務必先完成「填寫驗屋授權書」並寄送邀請。');
-   return; // 中斷執行
- }
+  // 檢查：如果選擇了「授權驗屋」，則必須先完成「發起簽署」(維持不變)
+  if (formStep1.value.bookingMethod === '授權驗屋' && !isSigningInitiated.value) {
+    alert('您選擇了「授權驗屋」，請務必先完成「填寫驗屋授權書」並寄送邀請。');
+    return;
+  }
 
-  step.value = 3;
+  // --- START: 修改點 ---
+  loadingText.value = '準備確認頁面...';
+  isLoading.value = true;
+  try {
+    // 1. 呼叫新的後端函數以獲取有時效性的 Token
+    const tokenPayload = {
+      projectId: projectId.value,
+      unitId: formStep1.value.unit,
+      // 可以考慮加入其他需要驗證的資料, 例如 bookingType
+      bookingType: formStep1.value.bookingType,
+    };
+    // 假設 api.js 中有 initiateBookingConfirmation 函數 (下一步會建立)
+    const tokenRes = await initiateBookingConfirmation(tokenPayload);
+
+    if (tokenRes.status === 'success' && tokenRes.token) {
+      // 2. 獲取 Token 成功，啟動前端計時器
+      startTimeoutTimer(tokenRes.token);
+      // 3. 才跳轉到步驟三
+      step.value = 3;
+    } else {
+      // 獲取 Token 失敗，顯示錯誤
+      throw new Error(tokenRes.message || '無法初始化確認步驟，請稍後再試。');
+    }
+  } catch (error) {
+    console.error("初始化確認步驟失敗:", error);
+    alert(`操作失敗：${error.message}`);
+  } finally {
+    isLoading.value = false;
+  }
+  // --- END: 修改點 ---
 };
 
 const handleGoBackAndRefresh = async () => {
+  clearTimeoutTimer();
   loadingText.value = '正在重新整理時段...';
   isLoading.value = true;
   try {
@@ -1317,6 +1444,18 @@ const handleGoBackAndRefresh = async () => {
 };
 
 const submitBooking = async () => {
+  // --- START: 修改點 1 ---
+  // 檢查計時器是否仍在活動，如果已逾時則阻止提交
+  if (!isTimeoutActive.value) {
+    alert('操作已逾時或憑證已失效，請返回上一步重新操作。');
+    // 可以選擇直接重置流程
+    // resetBookingFlow();
+    return;
+  }
+  // 清除計時器，表示用戶已採取行動
+  clearTimeoutTimer();
+  // --- END: 修改點 1 ---
+
   loadingText.value = '正在為您送出預約...';
   isLoading.value = true;
   let authLetterFinalUrl = ''; 
@@ -1369,6 +1508,8 @@ const submitBooking = async () => {
         agentIdNumber: authFormData.value.受託人身分證,
         agentAddress: authFormData.value.受託人戶籍地,
         authorizationLetterUrl: authLetterFinalUrl,
+        // 加入從後端獲取的確認 Token
+        confirmationToken: confirmationToken.value,
 
       }
     };
@@ -1382,9 +1523,18 @@ const submitBooking = async () => {
       }
       step.value = 4;
     } else {
-      throw new Error(res.message || '預約失敗');
+       // --- START: 修改點 3 (錯誤處理) ---
+       // 根據後端可能回傳的逾時/憑證錯誤，給予更明確提示
+       if (error.message.includes('deadline-exceeded') || error.message.includes('unauthenticated') || error.message.includes('invalid-argument')) {
+         alert(`操作逾時或憑證無效，請返回第一步重新預約。`);
+         resetBookingFlow(); // 引導回第一步
+       } else {
+         // 其他錯誤照舊處理
+         throw new Error(res.message || '預約失敗');
+       }
+       // --- END: 修改點 3 ---
     }
-  } catch (error) { //  START: 修改 catch 區塊
+  } catch (error) { // catch 區塊維持，但上面 if/else 處理了部分錯誤
     console.error("儲存預約失敗:", error);
     // 檢查後端回傳的特定錯誤訊息
     if (error.message.includes("已有有效預約")) {
@@ -1481,7 +1631,7 @@ const addToCalendar = () => {
     eventDetails += `戶別：${finalBookingData.value.戶別}\n`;
     eventDetails += `門牌：${finalBookingData.value.address}\n\n`;
     eventDetails += `預約項目：${finalBookingData.value.bookingType}\n`;
-    eventDetails += `驗屋方式：${finalBookingData.value.bookingMethod}\n`;
+    eventDetails += `選擇方式：${finalBookingData.value.bookingMethod}\n`;
     if (finalBookingData.value.companyName) {
         eventDetails += `代驗公司：${finalBookingData.value.companyName}\n`;
     }
@@ -1602,6 +1752,11 @@ const resetUploadMode = () => {
   if(uploadStep1FormRef.value) uploadStep1FormRef.value.resetValidation();
   if(uploadStep2FormRef.value) uploadStep2FormRef.value.resetValidation(); // 注意 ref 名稱已改
 };
+
+// 組件卸載時清除計時器，防止內存洩漏
+onUnmounted(() => {
+  clearTimeoutTimer();
+});
 
 
 </script>

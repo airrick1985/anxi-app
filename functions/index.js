@@ -106,7 +106,7 @@ const driveSecrets = [
 // ✓ 新增：欄位 key 到中文名稱的映射，方便 Email 顯示
 const fieldDisplayNames = {
     bookingType: '預約項目',
-    inspectionMethod: '驗屋方式',
+    inspectionMethod: '選擇方式',
     inspectionCompanyName: '代驗公司',
     agentName: '受託人姓名',
     agentPhone: '受託人電話',
@@ -4069,7 +4069,65 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
         throw new HttpsError("invalid-argument", "缺少 projectId 或 bookingData。");
     }
 
-    const db = new Firestore({ databaseId: "anxi-app" });
+   // --- START: Token 驗證 ---
+    const confirmationToken = bookingData.confirmationToken;
+    if (!confirmationToken) {
+      console.error(`[${functionName}] 錯誤：請求中缺少 confirmationToken。`);
+      throw new HttpsError("unauthenticated", "缺少預約確認憑證，請重新操作。");
+    }
+
+    const db = new Firestore({ databaseId: "anxi-app" }); // 維持不變
+    const tokenRef = db.collection("bookingConfirmTokens").doc(confirmationToken);
+
+    try {
+      console.log(`[${functionName}] 正在驗證 Token: ${confirmationToken}`);
+      const tokenDoc = await tokenRef.get();
+
+      if (!tokenDoc.exists) {
+        console.warn(`[${functionName}] Token ${confirmationToken} 不存在。`);
+        throw new HttpsError("unauthenticated", "預約確認憑證無效(不存在)，請重新操作。");
+      }
+
+      const tokenData = tokenDoc.data();
+      const now = new Date();
+
+      // 檢查狀態 (可選，但建議)
+      if (tokenData.status !== 'pending') {
+         console.warn(`[${functionName}] Token ${confirmationToken} 狀態為 ${tokenData.status}。`);
+         throw new HttpsError("unauthenticated", "預約確認憑證已失效(狀態錯誤)，請重新操作。");
+      }
+
+      // 檢查過期時間
+      if (now > tokenData.expiresAt.toDate()) {
+        console.warn(`[${functionName}] Token ${confirmationToken} 已過期。`);
+        // 過期也直接刪除
+        await tokenRef.delete();
+        throw new HttpsError("deadline-exceeded", "操作已逾時(Token過期)，請重新操作。");
+      }
+
+      // 檢查 projectId, unitId, bookingType 是否匹配
+      if (tokenData.projectId !== projectId || tokenData.unitId !== bookingData.unitId || tokenData.bookingType !== bookingData.bookingType) {
+        console.error(`[${functionName}] Token ${confirmationToken} 資料不匹配! Token:`, tokenData, " Request:", { projectId, unitId: bookingData.unitId, bookingType: bookingData.bookingType });
+        // 資料不符，刪除無效 Token
+        await tokenRef.delete();
+        throw new HttpsError("invalid-argument", "預約確認憑證資料不符，請重新操作。");
+      }
+
+      // 驗證通過，立即刪除 Token 防止重用
+      console.log(`[${functionName}] Token ${confirmationToken} 驗證成功，正在刪除...`);
+      await tokenRef.delete();
+      console.log(`[${functionName}] Token ${confirmationToken} 已成功刪除。`);
+
+    } catch (error) {
+      console.error(`[${functionName}] Token 驗證或刪除過程中發生錯誤:`, error);
+      // 如果是我們自己拋出的 HttpsError，直接再次拋出
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      // 其他 Firestore 讀取/刪除錯誤
+      throw new HttpsError("internal", `驗證預約憑證時發生錯誤: ${error.message}`);
+    }
+    // --- END: Token 驗證 ---
 
     try {
         const projectRef = db.collection('projects').doc(projectId);
@@ -4087,22 +4145,26 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
                 throw new HttpsError("not-found", `找不到戶別 "${bookingData.unitId}" 的資料。`);
             }
             const householdData = householdDoc.data();
-            
+
             const batchCodeField = bookingData.bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
             const batchCode = householdData[batchCodeField];
             if (!batchCode) {
                 throw new HttpsError("permission-denied", `此戶別的 "${bookingData.bookingType}" 預約目前未指派批次。`);
             }
 
-            const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingData.bookingType).limit(1);
+            const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingData.bookingType).where('isDeleted','==',false).limit(1);
             const batchSnapshot = await transaction.get(batchQuery);
             if (batchSnapshot.empty) {
                 throw new HttpsError("not-found", `找不到對應的預約批次。`);
             }
             const batchId = batchSnapshot.docs[0].id;
 
-            const appointmentDateStr = bookingData.bookingDate.split(' ')[0].replace(/\//g, '-');
-            const linksQuery = db.collection('batchRuleLinks').where('batchId', '==', batchId).where('date', '==', appointmentDateStr).limit(1);
+             // 使用 toLocaleDateString 確保日期格式正確，並指定台灣時區
+             const appointmentDateForCompare = new Date(bookingData.bookingDate);
+             const appointmentDateStr = appointmentDateForCompare.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }); // 'YYYY-MM-DD'
+
+            // const appointmentDateStr = bookingData.bookingDate.split(' ')[0].replace(/\//g, '-');
+            const linksQuery = db.collection('batchRuleLinks').where('batchId', '==', batchId).where('date', '==', appointmentDateStr).where('isDeleted','==',false).limit(1);
             const linksSnapshot = await transaction.get(linksQuery);
             if (linksSnapshot.empty) {
                 throw new HttpsError("failed-precondition", `日期 ${appointmentDateStr} 不在可預約範圍內。`);
@@ -4113,10 +4175,11 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             if (!ruleDoc.exists) {
                 throw new HttpsError("internal", "找不到對應的每日規則設定。");
             }
-            
+
             const ruleData = ruleDoc.data();
-            const timeSlotKey = bookingData.bookingTimeSlot.split(' ')[0];
+            const timeSlotKey = bookingData.bookingTimeSlot; // bookingData.bookingTimeSlot 應該已是 'HH:MM'
             const slotInfo = ruleData.slots[timeSlotKey];
+
 
             if (!slotInfo || !slotInfo.methods.includes(bookingData.bookingMethod)) {
                  throw new HttpsError("failed-precondition", `時段 ${timeSlotKey} 不適用於「${bookingData.bookingMethod}」。`);
@@ -4131,25 +4194,32 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             }
 
             // 3. 在 Transaction 中執行關鍵檢查：時段名額
-            const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00');
+            const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00'); // 指定時區
             const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
             const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
             const currentBookings = appointmentsSnapshot.size;
 
             if (currentBookings >= capacity) {
-                throw new HttpsError("resource-exhausted", `此時段名額剛好額滿，請返回上一步重新選擇時段。`);
+                 // 使用特定的錯誤代碼或訊息前綴
+                 throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段名額剛好額滿，請返回上一步重新選擇時段。`);
             }
-            
-            // 4. 所有檢查通過，準備寫入新資料
+
+            // 4. 所有檢查通過，準備寫入新資料 (維持不變)
             const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
             const now = new Date();
-            const timezoneOffset = 8 * 60;
-            const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
-            const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
-            const dateStr = localNow.toISOString().slice(5, 10);
+             // 使用 toLocaleTimeString 和 toLocaleDateString 確保格式和時區
+             const timeStr = now.toLocaleTimeString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(/:/g, '-');
+             const dateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(/-/g, '').slice(2); // YYMMDD
+            // const timezoneOffset = 8 * 60;
+            // const localNow = new Date(now.getTime() + (now.getTimezoneOffset() + timezoneOffset) * 60000);
+            // const timeStr = localNow.toISOString().slice(11, 19).replace(/:/g, '-');
+            // const dateStr = localNow.toISOString().slice(5, 10);
             const docId = `${projectId}_${dateStr}-${timeStr}_${bookingData.unitId}`;
             const appointmentRef = db.collection('appointments').doc(docId);
-            
+
+             const appointmentDateTimestamp = Timestamp.fromDate(new Date(appointmentDateStr + 'T00:00:00+08:00')); // 轉換日期字串
+
+
             const newAppointmentData = {
                 projectId: projectId,
                 createdAt: Timestamp.now(),
@@ -4160,7 +4230,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
                 bookerEmail: bookingData.email,
                 bookerIdNumber: bookingData.idNumber,
                 bookingType: bookingData.bookingType,
-                appointmentDate: Timestamp.fromDate(new Date(appointmentDateStr)),
+                appointmentDate: appointmentDateTimestamp, // 使用 Timestamp
                 appointmentTimeSlot: timeSlotKey,
                 status: '預約中',
                 inspectionMethod: bookingData.bookingMethod,
@@ -4178,29 +4248,31 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             };
 
             transaction.set(appointmentRef, newAppointmentData);
-            
-            //  【已移除】此處不再需要手動更新 households 集合的程式碼
 
-            return { bookingCode, newAppointmentData };
+            return { bookingCode, newAppointmentData }; // 維持不變
         });
 
-        // Transaction 成功後
+        // ... (後續的更新戶別摘要、寄送 Email 等邏輯完全不變) ...
+         // Transaction 成功後
         const { bookingCode, newAppointmentData } = result;
-        
-        //  【已新增】在此處呼叫統一的摘要更新函式
+
+        // 【已新增】在此處呼叫統一的摘要更新函式
         await updateHouseholdSummary(db, projectId, newAppointmentData.unitId);
-        
+
+        // --- 準備 Email ---
         let closingText = '請於預約時段準時抵達，感謝您的配合。';
         let inspectionNotesHtml = '';
-        let contactInfoHtml = ''; 
+        let contactInfoHtml = '';
+       
         if (projectDoc.exists) {
             const projectData = projectDoc.data();
-            if (projectData.intro && projectData.intro.closingText) {
+            // ... (獲取 closingText, inspectionNotesHtml, contactInfoHtml 的邏輯不變) ...
+             if (projectData.intro && projectData.intro.closingText) {
                 closingText = projectData.intro.closingText;
             } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
                 closingText = projectData.emailConfig.closingText;
             }
-            
+
             if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
                 inspectionNotesHtml = projectData.intro.alert.text;
             }
@@ -4223,14 +4295,16 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             }
         }
 
+        // --- 寄送 Email (邏輯不變) ---
         const mailTransport = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
         });
 
+      
         const subject = `【${projectName}】預約成功通知 (${newAppointmentData.unitId})`;
         const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
-         const bookingLinkHtml = `
+        const bookingLinkHtml = `
             <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 14px; color: #555;">
                 若您要查詢、修改或取消預約，請點擊以下按鈕返回預約頁面：<br>
                 <a href="${bookingUrl}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">
@@ -4239,7 +4313,15 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             </p>
         `;
 
-        const htmlBody = `
+        // 格式化日期為 YYYY/MM/DD
+        const formattedAppointmentDate = newAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', {
+              timeZone: 'Asia/Taipei', // 確保使用台灣時區
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+          });
+
+         const htmlBody = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
     <div style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;">
@@ -4270,11 +4352,11 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
             </tr>
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
-          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
           ${newAppointmentData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${newAppointmentData.inspectionCompanyName}</td></tr>
           ` : ''}
- <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${newAppointmentData.appointmentDate.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${formattedAppointmentDate}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${newAppointmentData.appointmentTimeSlot}</td></tr>
         </tbody>
       </table>
@@ -4290,7 +4372,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
     </div>
     <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
-     <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
+      <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
         本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
@@ -4299,26 +4381,27 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
 </div>
         `;
 
-        const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
 
+        const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
         await mailTransport.sendMail({
             to: newAppointmentData.bookerEmail,
             cc: ccRecipients,
             subject: subject,
-            html: htmlBody, 
+            html: htmlBody,
             name: `${projectName} 預約系統`
         });
 
+        // --- 返回成功結果 (維持不變) ---
         return { status: 'success', data: { bookingCode } };
 
-    } catch (error) {
+    } catch (error) { // 外層 catch 區塊維持
         console.error(`[${functionName}] 🔴 預約時發生錯誤:`, error);
         if (error instanceof HttpsError) {
             throw error;
         }
         throw new HttpsError("internal", `儲存預約時發生嚴重錯誤: ${error.message}`);
     }
-});
+}); // 確保函數定義結束
 
 /**
  * 【新增】取消一筆預約紀錄
@@ -4420,7 +4503,7 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
-          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">驗屋方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
           ${bookingData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${bookingData.inspectionCompanyName}</td></tr>
           ` : ''}
@@ -7741,7 +7824,7 @@ const notificationTriggerFields = new Set([
     'bookerPhone',           // 預約人電話
     'bookerIdNumber',        // 預約人身分證
     'inspectionCompanyName', // 代驗公司名稱
-    'inspectionMethod',      // 驗屋方式
+    'inspectionMethod',      // 選擇方式
     'agentName',             // 受託人姓名
     'agentPhone',            // 受託人電話
 ]);
@@ -7814,7 +7897,7 @@ const notificationTriggerFields = new Set([
                         if (!ruleDoc.exists || ruleDoc.data().isDeleted === true) { if (!force) throw new HttpsError("internal", `找不到新日期 ${newDateStr} 對應的規則 ${ruleId} 或已被刪除。`); else { console.warn(`WARN TX (Force Mode): Date rule ${ruleId} not found/deleted.`); isRuleCheckSkipped = true; } }
                         else { const ruleData = ruleDoc.data(); const slotInfo = ruleData.slots[newTimeSlotKey]; const methodToCheck = bookingPayload?.inspectionMethod || originalAppointmentData.inspectionMethod;
                            if (!slotInfo) { if (!force) throw new HttpsError("failed-precondition", `新時段 ${newTimeSlotKey} 在規則 ${ruleId} 中不存在。`); else { console.warn(`WARN TX (Force Mode): New slot ${newTimeSlotKey} not found.`); capacity = 0; } }
-                           else { if (!slotInfo.methods.includes(methodToCheck)) { if (!force) throw new HttpsError("failed-precondition", `新時段 ${newTimeSlotKey} 不適用於驗屋方式「${methodToCheck}」。`); else console.warn(`WARN TX (Force Mode): Method ${methodToCheck} not allowed.`); } capacity = slotInfo.capacity || 0; console.log(`TX: New slot capacity: ${capacity}`); }
+                           else { if (!slotInfo.methods.includes(methodToCheck)) { if (!force) throw new HttpsError("failed-precondition", `新時段 ${newTimeSlotKey} 不適用於選擇方式「${methodToCheck}」。`); else console.warn(`WARN TX (Force Mode): Method ${methodToCheck} not allowed.`); } capacity = slotInfo.capacity || 0; console.log(`TX: New slot capacity: ${capacity}`); }
                         }
                     }
                  }
@@ -10979,3 +11062,52 @@ exports.fetchStandbyScreenshots = onCall({
     throw new HttpsError("internal", `查詢截圖時發生錯誤: ${error.message}`);
   }
 });
+
+
+
+// --- START: 新增 - 產生預約確認 Token ---
+/**
+ * [Cloud Function] 為預約確認步驟產生一個有時效性的 Token
+ * @param {object} data - 包含 { projectId, unitId, bookingType }
+ * @returns {Promise<object>} - { status: 'success', token: '...' }
+ */
+exports.initiateBookingConfirmation = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, unitId, bookingType } = request.data; // 從 request.data 獲取
+  const functionName = 'initiateBookingConfirmation';
+
+  // 1. 驗證輸入
+  if (!projectId || !unitId || !bookingType) {
+    console.error(`[${functionName}] 錯誤：缺少必要參數。`);
+    throw new HttpsError("invalid-argument", "缺少 projectId, unitId 或 bookingType。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // 2. 產生 Token 和過期時間 (5 分鐘)
+    const token = crypto.randomBytes(32).toString('hex'); // 需要 require('crypto')
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 分鐘後過期
+
+    // 3. 儲存 Token 到 Firestore
+    const tokenRef = db.collection("bookingConfirmTokens").doc(token); // 使用 Token 作為 ID
+    await tokenRef.set({
+      projectId: projectId,
+      unitId: unitId,
+      bookingType: bookingType, // 也儲存 bookingType 以便驗證
+      status: 'pending', // 初始狀態
+      createdAt: Timestamp.fromDate(now), // 需要 require('@google-cloud/firestore').Timestamp
+      expiresAt: Timestamp.fromDate(expiresAt), // TTL 依據此欄位
+    });
+
+    console.log(`[${functionName}] 已為 ${projectId}/${unitId} 產生確認 Token: ${token}`);
+
+    // 4. 回傳 Token 給前端
+    return { status: 'success', token: token };
+
+  } catch (error) {
+    console.error(`[${functionName}] 產生 Token 時發生錯誤:`, error);
+    throw new HttpsError("internal", `初始化確認步驟時發生錯誤: ${error.message}`);
+  }
+});
+// --- END: 新增 - 產生預約確認 Token ---

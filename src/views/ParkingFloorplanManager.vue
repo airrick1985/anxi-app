@@ -327,13 +327,24 @@ import { useUserStore } from '@/store/user'
 import { useProjectStore } from '@/store/projectStore'
 import { useUiStore } from '@/store/uiStore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { uploadSalesImage } from '@/api'
+
 import ParkingCanvas from '@/components/ParkingCanvas.vue'
 import { storeToRefs } from 'pinia'
 import { useTextStyleStore } from '@/store/textStyleStore'
 import TextStyleEditor from '@/components/TextStyleEditor.vue'
 import { useStatusColorStore } from '@/store/statusColorStore'
 import StatusColorEditor from '@/components/StatusColorEditor.vue'
+import {
+  uploadSalesImage, // 假設這個已在 api.js 中且正確
+  getFloorPlansAPI,
+  getProjectFloorsForManager,
+  createFloorPlanAPI,
+  updateFloorPlanAPI,
+  deleteFloorPlanAPI,
+  saveSpotLayoutsAPI,
+  getSpotLayoutsAPI
+} from '@/api'
+import { useToast } from 'vue-toastification';
 
 export default {
   name: 'ParkingFloorplanManager',
@@ -358,6 +369,7 @@ export default {
     const functions = getFunctions()
     const route = useRoute()
     const router = useRouter() // 實例化 useRouter
+    const toast = useToast();
 
     // Reactive data
     const selectedProjectId = ref(props.projectId)
@@ -465,14 +477,6 @@ export default {
       };
     };
 
-    // Cloud Functions
-    const getFloorPlans = httpsCallable(functions, 'getFloorPlans')
-    const getProjectFloors = httpsCallable(functions, 'getProjectFloors')
-    const createFloorPlan = httpsCallable(functions, 'createFloorPlan')
-    const updateFloorPlan = httpsCallable(functions, 'updateFloorPlan')
-    const deleteFloorPlanFunc = httpsCallable(functions, 'deleteFloorPlan')
-    const saveSpotLayouts = httpsCallable(functions, 'saveSpotLayouts')
-    const getSpotLayouts = httpsCallable(functions, 'getSpotLayouts')
 
     // Methods
 
@@ -489,12 +493,11 @@ export default {
       }
     };
 
-    const onProjectChange = async () => {
+   const onProjectChange = async () => {
       if (selectedProjectId.value) {
         await Promise.all([
           loadFloorPlans(),
           loadProjectFloors(),
-          // 當專案變更時，獲取對應的文字樣式和車位狀態顏色
           textStyleStore.fetchStyles(selectedProjectId.value),
           statusColorStore.fetchColors(selectedProjectId.value)
         ])
@@ -507,36 +510,42 @@ export default {
 
     const loadFloorPlans = async () => {
       if (!selectedProjectId.value) return
-      
       loading.value = true
       try {
-        const result = await getFloorPlans({ projectId: selectedProjectId.value })
-        floorPlans.value = result.data.data || []
+        // ✓ 修改：呼叫 api.js 函式
+        const resultData = await getFloorPlansAPI(selectedProjectId.value)
+        if (resultData.status === 'success') {
+          floorPlans.value = resultData.data || []
+        } else {
+          throw new Error(resultData.message || '後端回報錯誤');
+        }
       } catch (error) {
         console.error('載入平面圖失敗:', error)
-        alert('載入平面圖失敗，請稍後重試')
+        // ✓ 使用 toast 提示錯誤
+        toast.error(`載入平面圖失敗: ${error.message}`);
       } finally {
         loading.value = false
       }
     }
 
-    const loadProjectFloors = async () => {
+   const loadProjectFloors = async () => {
       if (!selectedProjectId.value) return
-      
       loadingFloors.value = true
       try {
-        const result = await getProjectFloors({ projectId: selectedProjectId.value })
-        if (result.data.status === 'error') {
-          alert(result.data.message)
+        // ✓ 修改：呼叫 api.js 函式
+        const resultData = await getProjectFloorsForManager(selectedProjectId.value)
+        if (resultData.status === 'error') {
+          // ✓ 使用 toast 提示錯誤
+          toast.error(resultData.message);
           floorOptions.value = []
         } else {
-          const floors = result.data.data || []
-          console.log('樓層資料:', floors) // 偵錯用
+          const floors = resultData.data || []
           floorOptions.value = floors
         }
       } catch (error) {
         console.error('載入樓層清單失敗:', error)
-        alert('載入樓層清單失敗，請稍後重試')
+        // ✓ 使用 toast 提示錯誤
+        toast.error(`載入樓層清單失敗: ${error.message}`);
         floorOptions.value = []
       } finally {
         loadingFloors.value = false
@@ -644,191 +653,121 @@ export default {
     return;
   }
 
-  submitting.value = true;
-  try {
-    if (isEditingMode) { // 編輯模式
-      let updateData = {
-        floorPlanId: editingFloorPlan.value.id,
-        projectId: selectedProjectId.value,
-        name: floorPlanForm.value.name,
-        description: floorPlanForm.value.description,
-        floor: floorPlanForm.value.floor,
-        isActive: floorPlanForm.value.isActive
-      };
-
-      // ✓ 核心修改：修正條件判斷式，直接檢查是否有 File 物件即可
-      if (floorPlanForm.value.backgroundImageFile) {
-        const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
-          ? floorPlanForm.value.backgroundImageFile[0] 
-          : floorPlanForm.value.backgroundImageFile;
-        
-        try {
-          const base64 = await fileToBase64(file);
-          const fileName = `${Date.now()}_${file.name}`;
-          
-          // 這部分的路徑組合邏輯已經是正確的
-          const storagePath = `floorplan-backgrounds/${fileName}`;
-          
-          const { downloadURL } = await uploadSalesImage(
-            storagePath,
-            fileName,
-            base64,
-            selectedProjectId.value || 'default'
-          );
-          
-          updateData.backgroundImageUrl = downloadURL;
-          console.log('背景圖片更新成功:', downloadURL);
-
-        } catch (error) {
-          console.error('圖片上傳失敗:', error);
-          alert('圖片上傳失敗，請重試');
-          submitting.value = false;
-          return;
-        }
-      }
-
-      // 更新現有平面圖
-      await updateFloorPlan(updateData);
-      
-      // 重新載入列表以確保資料同步
-      await loadFloorPlans();
-      await loadProjectFloors();
-
-    } else { // 新增模式 (此區塊邏輯已正確，無需修改)
-      let backgroundImageUrl = null;
-      
-      const file = Array.isArray(floorPlanForm.value.backgroundImageFile) 
-        ? floorPlanForm.value.backgroundImageFile[0] 
-        : floorPlanForm.value.backgroundImageFile;
-      
+  submitting.value = true
       try {
-        const base64 = await fileToBase64(file);
-        const fileName = `${Date.now()}_${file.name}`;
-        
-        const storagePath = `floorplan-backgrounds/${fileName}`;
-        
-        const { downloadURL } = await uploadSalesImage(
-          storagePath,
-          fileName,
-          base64,
-          selectedProjectId.value || 'default'
-        );
-        
-        backgroundImageUrl = downloadURL;
-        console.log('背景圖片上傳成功:', downloadURL);
+        let backgroundImageUrl = editingFloorPlan.value ? editingFloorPlan.value.backgroundImageUrl : null; // 保留現有圖片URL
+
+        // 處理圖片上傳 (邏輯基本不變，確保 uploadSalesImage 在 api.js 中)
+        if (floorPlanForm.value.backgroundImageFile) {
+          const file = Array.isArray(floorPlanForm.value.backgroundImageFile)
+            ? floorPlanForm.value.backgroundImageFile[0]
+            : floorPlanForm.value.backgroundImageFile;
+          try {
+            const base64 = await fileToBase64(file);
+            const fileName = `${Date.now()}_${file.name}`;
+            const storagePath = `floorplan-backgrounds/${fileName}`;
+            // ✓ 確保 uploadSalesImage 是從 api.js 導入的
+            const { downloadURL } = await uploadSalesImage(
+              storagePath, fileName, base64, selectedProjectId.value || 'default'
+            );
+            backgroundImageUrl = downloadURL; // 更新圖片URL
+            console.log('背景圖片處理成功:', backgroundImageUrl);
+          } catch (uploadError) {
+            console.error('圖片上傳或處理失敗:', uploadError);
+            // ✓ 使用 toast 提示錯誤
+            toast.error(`圖片上傳失敗: ${uploadError.message}`);
+            submitting.value = false;
+            return;
+          }
+        } else if (!editingFloorPlan.value) {
+            // 新增模式下，如果沒有選擇圖片且之前也沒有URL，則報錯
+            if (!backgroundImageUrl) {
+                toast.error('新增平面圖時必須選擇底圖檔案');
+                submitting.value = false;
+                return;
+            }
+        }
+
+
+        const payload = {
+          projectId: selectedProjectId.value,
+          name: floorPlanForm.value.name,
+          description: floorPlanForm.value.description,
+          floor: floorPlanForm.value.floor, // 後端會處理字串或物件
+          isActive: floorPlanForm.value.isActive,
+          backgroundImageUrl: backgroundImageUrl // 傳遞最終的圖片URL
+        };
+
+        if (editingFloorPlan.value) {
+          // ✓ 修改：呼叫 api.js 的更新函式
+          payload.floorPlanId = editingFloorPlan.value.id;
+          await updateFloorPlanAPI(payload);
+        } else {
+          // ✓ 修改：呼叫 api.js 的建立函式
+          await createFloorPlanAPI(payload);
+        }
+
+        await Promise.all([loadFloorPlans(), loadProjectFloors()]); // 重新載入
+        closeFloorPlanDialog();
+        // ✓ 使用 toast 提示成功
+        toast.success(editingFloorPlan.value ? '平面圖更新成功！' : '平面圖建立成功！');
 
       } catch (error) {
-        console.error('圖片上傳失敗:', error);
-        alert('圖片上傳失敗，請重試');
-        submitting.value = false;
-        return;
+        console.error('儲存平面圖失敗:', error);
+        // ✓ 使用 toast 提示錯誤
+        toast.error(`儲存失敗: ${error.message}`);
+      } finally {
+        submitting.value = false
       }
-      
-      await createFloorPlan({
-        projectId: selectedProjectId.value,
-        name: floorPlanForm.value.name,
-        description: floorPlanForm.value.description,
-        floor: floorPlanForm.value.floor,
-        isActive: floorPlanForm.value.isActive,
-        backgroundImageUrl: backgroundImageUrl
-      });
-      
-      await Promise.all([
-        loadFloorPlans(),
-        loadProjectFloors()
-      ]);
-    }
-    
-    closeFloorPlanDialog();
-    
-    const successMessage = isEditingMode ? '平面圖更新成功！' : '平面圖建立成功！';
-    alert(successMessage);
-
-  } catch (error) {
-    console.error('儲存平面圖失敗:', error);
-    if (error.code === 'functions/already-exists') {
-      alert(error.message);
-    } else {
-      alert('儲存失敗，請稍後重試');
-    }
-  } finally {
-    submitting.value = false;
-  }
-};
+    };
 
      const deleteFloorPlan = async (floorPlan) => {
       if (!confirm(`確定要刪除平面圖「${floorPlan.name}」嗎？此操作無法復原。`)) {
         return
       }
-      
-      // ✓ 開始刪除，設定載入狀態
       deletingFloorPlanId.value = floorPlan.id
       try {
-        await deleteFloorPlanFunc({ floorPlanId: floorPlan.id })
-        
-        // 從本地列表移除
+        // ✓ 修改：呼叫 api.js 的刪除函式
+        await deleteFloorPlanAPI(floorPlan.id)
+
+        // 從本地列表移除 (保持不變)
         const index = floorPlans.value.findIndex(fp => fp.id === floorPlan.id)
         if (index !== -1) {
           floorPlans.value.splice(index, 1)
         }
-        
         if (selectedFloorPlan.value && selectedFloorPlan.value.id === floorPlan.id) {
           selectedFloorPlan.value = null
         }
-        
-        await loadProjectFloors()
-        
-        alert('平面圖刪除成功！')
+        await loadProjectFloors() // 重新載入樓層選項
+        // ✓ 使用 toast 提示成功
+        toast.success('平面圖刪除成功！');
       } catch (error) {
         console.error('刪除平面圖失敗:', error)
-        alert('刪除失敗，請稍後重試')
+        // ✓ 使用 toast 提示錯誤
+        toast.error(`刪除失敗: ${error.message}`);
       } finally {
-        // ✓ 無論成功或失敗，最後都清除載入狀態
         deletingFloorPlanId.value = null
       }
     }
 
      const saveFloorPlan = async () => {
       if (!parkingCanvas.value) return
-      
       saving.value = true
       try {
         const layouts = parkingCanvas.value.getSpotLayouts()
-        // ✓【修改】新增 projectId 參數
-        await saveSpotLayouts({
-          floorPlanId: selectedFloorPlan.value.id,
+        // ✓ 修改：呼叫 api.js 的儲存佈局函式
+        await saveSpotLayoutsAPI(
+          selectedFloorPlan.value.id,
           layouts,
-          projectId: selectedProjectId.value // 確保傳遞 projectId
-        })
-        
+          selectedProjectId.value // ✓ 傳遞 projectId
+        )
         isEditorDirty.value = false
-        alert('平面圖儲存成功！')
+        // ✓ 使用 toast 提示成功
+        toast.success('平面圖儲存成功！');
       } catch (error) {
         console.error('儲存平面圖失敗:', error)
-        // ✓【優化】提供更詳細的錯誤訊息，類似 submitFloorPlan 的處理
-        let errorMessage = '儲存失敗，請稍後重試';
-        if (error.code) {
-          switch (error.code) {
-            case 'functions/invalid-argument':
-              errorMessage = error.message || '輸入參數無效，請檢查您的輸入。';
-              break;
-            case 'functions/internal':
-              errorMessage = error.message || '伺服器內部錯誤，請聯繫管理員。';
-              break;
-            case 'functions/unauthenticated':
-              errorMessage = error.message || '您尚未登入或會話已過期，請重新登入。';
-              break;
-            case 'functions/permission-denied':
-              errorMessage = error.message || '您沒有執行此操作的權限。';
-              break;
-            default:
-              errorMessage = error.message || '儲存失敗，請稍後重試。';
-              break;
-          }
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        alert(errorMessage);
+        // ✓ 使用 toast 提示錯誤
+        toast.error(`儲存失敗: ${error.message}`);
       } finally {
         saving.value = false
       }
@@ -871,38 +810,43 @@ export default {
 
     const onCanvasReady = async () => {
       console.log('[Manager] Canvas 準備就緒 (onCanvasReady event received)')
-      
-      // 載入保存的車位佈局和背景圖片位置
       if (selectedFloorPlan.value && selectedFloorPlan.value.id) {
         try {
           console.log(`[Manager] 正在為 floorPlanId: ${selectedFloorPlan.value.id} 獲取佈局...`)
-          const result = await getSpotLayouts({ 
-            floorPlanId: selectedFloorPlan.value.id,
-            projectId: selectedProjectId.value 
-          })
-          
-          console.log('[Manager] 從 getSpotLayouts 獲取到的原始 result:', result)
+          // ✓ 修改：呼叫 api.js 的獲取佈局函式
+          const resultData = await getSpotLayoutsAPI(
+            selectedFloorPlan.value.id,
+            selectedProjectId.value // ✓ 傳遞 projectId
+          )
+          console.log('[Manager] 從 getSpotLayoutsAPI 獲取到的原始 resultData:', resultData)
 
-          if (result.data && result.data.layouts) {
-            const layouts = result.data.layouts
+          if (resultData.status === 'success' && resultData.layouts) {
+            const layouts = resultData.layouts
             console.log('[Manager] 解析後的 layouts 資料:', JSON.parse(JSON.stringify(layouts)))
-            
-            // 載入整個佈局（包含車位和背景圖片）
             if (parkingCanvas.value) {
               console.log('[Manager] 呼叫 parkingCanvas.loadSpotLayouts...')
               parkingCanvas.value.loadSpotLayouts(layouts)
+              // ✓ 載入成功後，標記為未修改
+              isEditorDirty.value = false;
             } else {
               console.error('[Manager] parkingCanvas ref 為空，無法載入佈局！')
             }
+          } else if (resultData.status === 'success' && !resultData.layouts) {
+            console.warn('[Manager] getSpotLayoutsAPI 成功但未回傳 layouts 陣列。')
+            if (parkingCanvas.value) parkingCanvas.value.loadSpotLayouts([]); // 載入空佈局
           } else {
-            console.warn('[Manager] getSpotLayouts 回傳的資料中沒有 layouts 屬性。')
+            // 如果後端回報 status: 'error'
+            throw new Error(resultData.message || '獲取佈局時後端回報錯誤');
           }
         } catch (error) {
           console.error('[Manager] 載入車位佈局失敗:', error)
-          // 不顯示錯誤訊息，因為可能是第一次編輯還沒有保存的佈局
+          // ✓ 使用 toast 提示錯誤
+          toast.error(`載入佈局失敗: ${error.message}`);
+          if (parkingCanvas.value) parkingCanvas.value.loadSpotLayouts([]); // 載入空佈局以防萬一
         }
       } else {
         console.warn('[Manager] 沒有 selectedFloorPlan 或其 id，不執行載入。')
+        if (parkingCanvas.value) parkingCanvas.value.loadSpotLayouts([]); // 確保載入空佈局
       }
     }
 

@@ -226,7 +226,7 @@
                 
                 <v-switch
                   v-model="projectSettings.showBookingMethod"
-                  label="顯示驗屋方式選項"
+                  label="顯示選擇方式選項"
                   color="primary"
                   inset
                   class="mt-4"
@@ -234,7 +234,7 @@
                 <v-combobox
                   v-model="projectSettings.bookingMethodOptions"
                   :items="defaultBookingMethods"
-                  label="編輯驗屋方式選項"
+                  label="編輯選擇方式選項"
                   multiple
                   chips
                   closable-chips
@@ -1312,7 +1312,7 @@ const defaultSettings = computed(() => ({
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
-      body: `<p>歡迎使用「${projectName.value}」線上驗屋預約系統，請依下方步驟完成您的預約。</p>`,
+      body: `<p>歡迎使用「${projectName.value}」線上預約系統，請依下方步驟完成您的預約。</p>`,
       alert: {
         show: true,
         showConfirmation: false,
