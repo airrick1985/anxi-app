@@ -305,15 +305,16 @@
                   <h3 class="text-h6 mb-2">步驟一：請選擇您的預約項目與戶別</h3>
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
               
-                <v-select
-                  v-model="formStep1.building"
-                  :items="initialData.buildings"
-                  label="棟別"
-                  variant="outlined"
-                  :rules="[v => !!v || '棟別為必填項']"
-                  :disabled="isLoading || !isBookingActive"
-                  @update:model-value="onBuildingChange"
-                ></v-select>
+                <v-autocomplete
+                      v-model="formStep1.building"
+                      :items="initialData.buildings"
+                      label="棟別(選擇或輸入)" 
+                      variant="outlined"
+                      :rules="[v => !!v || '棟別為必填項']"
+                      :disabled="isLoading || !isBookingActive"
+                      @update:model-value="onBuildingChange"
+                      clearable 
+                    ></v-autocomplete>
 
                 <v-select
                   v-model="formStep1.unit"
@@ -1297,13 +1298,13 @@ const resetBookingFlow = () => {
 };
 
 // --- START: ✓ 新增 watch 監聽 bookingType ---
-// 正體中文註解：監聽預約項目的變化，特別處理「對保」情況
+// 監聽預約項目的變化，特別處理「對保」情況
 watch(() => formStep1.value.bookingType, (newType) => {
   if (newType === '對保') {
-    // 正體中文註解：選擇「對保」，強制設定為本人到場
+    // 選擇「對保」，強制設定為本人到場
     formStep1.value.isOwnerPresent = true;
   } else {
-    // 正體中文註解：從「對保」切換為其他項目時，根據當前的 bookingMethod 重新判斷
+    // 從「對保」切換為其他項目時，根據當前的 bookingMethod 重新判斷
     const currentMethod = formStep1.value.bookingMethod;
     if (currentMethod === '授權驗屋') {
       formStep1.value.isOwnerPresent = false;
@@ -1311,22 +1312,22 @@ watch(() => formStep1.value.bookingType, (newType) => {
       formStep1.value.isOwnerPresent = true; // 預設或強制為 true
     }
   }
-  // 正體中文註解：無論如何，切換預約項目時都重設授權書寄送狀態
+  // 無論如何，切換預約項目時都重設授權書寄送狀態
   isSigningInitiated.value = false;
 });
 // --- END: ✓ 新增 watch 監聽 bookingType ---
 
 // --- START: ✓ 修改 watch 監聽 bookingMethod ---
-// 正體中文註解：監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態 (排除對保)
+// 監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態 (排除對保)
 watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
-  // 正體中文註解：如果預約項目是「對保」，則 isOwnerPresent 始終為 true，不受 bookingMethod 影響
+  // 如果預約項目是「對保」，則 isOwnerPresent 始終為 true，不受 bookingMethod 影響
   if (formStep1.value.bookingType === '對保') {
     formStep1.value.isOwnerPresent = true; // 再次確保是 true
     isSigningInitiated.value = false; // 但仍然重設授權狀態
     return; // 不執行後續判斷
   }
 
-  // 正體中文註解：處理非「對保」時的情況
+  // 處理非「對保」時的情況
   if (newMethod === '授權驗屋') {
     formStep1.value.isOwnerPresent = false; // 選擇授權驗屋，強制設為 false
   } else if (newMethod === '屋主自驗') {
@@ -1338,7 +1339,7 @@ watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
   // 如果 newMethod 是 '代驗公司' 且 oldMethod 也是 '代驗公司' 或 null/undefined，
   // isOwnerPresent 的值由 chip group 控制，此處不變
 
-  // 正體中文註解：切換驗屋方式時，重設授權書寄送狀態
+  // 切換驗屋方式時，重設授權書寄送狀態
   isSigningInitiated.value = false;
 });
 // --- END: ✓ 修改 watch 監聽 bookingMethod ---
@@ -1367,8 +1368,29 @@ onMounted(async () => {
       fetchAllUnitsForUpload(projectId.value) // ✓ 新增
     ]);
 
-    if (initialRes?.status === 'success') initialData.value = initialRes.data;
-    if (uploadBuildingsRes?.status === 'success') uploadBuildingList.value = uploadBuildingsRes.data.buildings;
+    if (initialRes?.status === 'success') {
+      // --- START: ✓ 新增排序邏輯 ---
+      // 檢查 buildings 陣列是否存在
+      if (Array.isArray(initialRes.data.buildings)) {
+        // 使用 localeCompare 搭配 numeric: true 進行自然排序 (A1, A2, A10)
+        initialRes.data.buildings.sort((a, b) => 
+          String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
+        );
+      }
+      // --- END: ✓ 新增排序邏輯 ---
+      
+      initialData.value = initialRes.data; // ✓ 賦值已排序的資料
+    }
+
+    if (uploadBuildingsRes?.status === 'success') {
+       // (可選) 同樣對上傳列表進行排序，保持一致性
+       if (Array.isArray(uploadBuildingsRes.data.buildings)) {
+         uploadBuildingsRes.data.buildings.sort((a, b) => 
+           String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
+         );
+       }
+       uploadBuildingList.value = uploadBuildingsRes.data.buildings;
+    }
     if (unitsRes?.status === 'success') allUnitsData.value = unitsRes.data;
     if (uploadUnitsRes?.status === 'success') allUnitsDataForUpload.value = uploadUnitsRes.data; // ✓ 儲存資料
 

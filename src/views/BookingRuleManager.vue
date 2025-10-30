@@ -1360,29 +1360,33 @@ const uploadAttachments = async () => {
 };
 // --- END: ✓ 新增附件上傳邏輯 ---
 
-// --- START: ✓ 新增附件刪除邏輯 ---
+// --- START: ✓ 修改附件刪除邏輯 ---
+// 正體中文註解：刪除附件。現在改為從附件物件中直接讀取 'path' 屬性。
 const deleteAttachment = async (index) => {
   const attachmentToDelete = projectSettings.value.intro.attachments?.[index];
   if (!attachmentToDelete || !confirm(`您確定要刪除附件 "${attachmentToDelete.name}" 嗎？`)) {
     return;
   }
 
+  // 正體中文註解：檢查附件物件中是否有 'path' 屬性。
+  // 'path' 應該在 uploadAttachments 時由 api.js 的 uploadAttachmentImage 返回並儲存。
+  if (!attachmentToDelete.path) {
+      showSnackbar(`刪除失敗：附件資料缺少 'path' 屬性，無法定位檔案。`, 'error');
+      console.error("刪除附件失敗：物件缺少 path 屬性", attachmentToDelete);
+      return;
+  }
+
   isDeletingAttachment.value = index; // 設置 loading 狀態
 
   try {
-    // 1. 從 URL 解析 Storage 路徑 (需要輔助函數)
-    const storagePath = getStoragePathFromUrl(attachmentToDelete.url);
-    if (!storagePath) {
-      throw new Error('無法從 URL 解析儲存路徑');
-    }
+    // 1. 正體中文註解：直接使用儲存的 path 屬性呼叫刪除 API
+    //    (api.js 中的 deleteAttachmentImage 已被修改為呼叫後端 Cloud Function)
+    await deleteAttachmentImage(attachmentToDelete.path);
 
-    // 2. 呼叫 API 刪除 Storage 檔案
-    await deleteAttachmentImage(storagePath); // ✓ 呼叫 API 刪除 Storage
-
-    // 3. 從 projectSettings 陣列中移除
+    // 2. 正體中文註解：從 projectSettings 陣列中移除
     projectSettings.value.intro.attachments.splice(index, 1);
 
-    // 4. 儲存變更回 Firestore
+    // 3. 正體中文註解：儲存變更回 Firestore
     showSnackbar(`附件 "${attachmentToDelete.name}" 已刪除，正在儲存...`, 'info');
     await saveSettings(); // ✓ 儲存更新後的 attachments 陣列
 
@@ -1395,7 +1399,6 @@ const deleteAttachment = async (index) => {
     isDeletingAttachment.value = -1; // 清除 loading 狀態
   }
 };
-// --- END: ✓ 新增附件刪除邏輯 ---
 
 
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue'; // <--- ❗ 確認路徑
