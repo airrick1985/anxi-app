@@ -17,7 +17,7 @@ getters: {
       return (projectName) => {
         // 從 state.projectsList (而不是 state.projects) 中尋找
         const project = state.projectsList.find(p => p.name === projectName);
-        return project ? project.systems : [];
+        return project?.systems || [];
       };
     },
   }, 
@@ -32,27 +32,35 @@ getters: {
       try {
         const projects = await fetchAllProjects();
         this.projectsList = projects;
-        
+
+        // 在 fetch 成功後直接更新 map
         this.idToNameMap = projects.reduce((acc, project) => {
           if(project.id && project.name) acc[project.id] = project.name;
           return acc;
         }, {});
-        
         this.nameToIdMap = projects.reduce((acc, project) => {
           if(project.name && project.id) acc[project.name] = project.id;
           return acc;
         }, {});
 
-        // ✅ 修正點二：必須將 API 呼叫的結果回傳，Promise.all 才能接收到
-        return projects;
+        return projects; // 返回獲取的數據
 
       } catch (error) {
         console.error('Failed to fetch projects:', error);
-        // ✅ 修正點三：發生錯誤時也回傳空陣列，避免 Promise.all 因錯誤而中斷
-        return [];
+        return []; // 返回空陣列
       } finally {
         this.isLoading = false;
       }
     },
+
+    // --- START: ✓ 新增 setProjectMaps action ---
+    // 設置建案 ID 與名稱的雙向映射 (供外部調用，例如 UserManagement)
+    setProjectMaps(idMap, nameMap) {
+      this.idToNameMap = idMap;
+      this.nameToIdMap = nameMap;
+      console.log('[ProjectStore] setProjectMaps called:', this.idToNameMap, this.nameToIdMap); // 加入 Log 確認
+    }
+    // --- END: ✓ 新增 setProjectMaps action ---
+
   },
 });

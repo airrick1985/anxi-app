@@ -6502,3 +6502,33 @@ export const deleteAttachmentImage = async (storagePath) => {
   }
 };
 // --- END: ✓ 修改附件圖片刪除 API ---
+
+
+// --- START: ✓ 新增 - 獲取人員管理頁面初始資料 API ---
+/**
+ * [API] 呼叫後端，獲取人員管理頁面所需的所有初始資料
+ * @param {string} adminKey - 當前管理員的手機號碼
+ * @returns {Promise<object>} - 後端回傳的包含所有初始資料的物件
+ */
+export const fetchUserManagementInitialData = async (adminKey) => {
+  const functionName = 'fetchUserManagementInitialData'; // 用於 Log
+  if (!adminKey) {
+      // 可以選擇拋出錯誤或返回錯誤狀態
+      console.error(`[${functionName}] 錯誤：缺少 adminKey。`);
+      return { status: "error", message: "缺少管理者金鑰" };
+      // throw new Error("缺少管理者金鑰");
+  }
+  try {
+    const getterFunction = httpsCallable(functions, 'getUserManagementInitialData'); // ✓ 對應後端函數名稱
+    const result = await getterFunction({ adminKey: adminKey }); // ✓ 將 adminKey 作為參數傳遞
+    // 後端成功時會回傳 { status: 'success', data: { ... } }
+    // 後端失敗時會拋出 HttpsError，會被下面的 catch 捕捉
+    return result.data; // ✓ 直接回傳後端的 data 物件 (包含 status 和 data)
+  } catch (error) {
+    console.error(`API Error in ${functionName}:`, error);
+    // 將 HttpsError 的 message 或其他錯誤訊息包裝回傳
+    const message = (error instanceof HttpsError || error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    return { status: "error", message: message }; // ✓ 回傳錯誤狀態
+  }
+};
+// --- END: ✓ 新增 - 獲取人員管理頁面初始資料 API ---

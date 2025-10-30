@@ -11281,3 +11281,127 @@ exports.handleAttachmentDelete = onCall({ region: "asia-east1" }, async (request
   }
 });
 // --- END: ✓ 新增 Cloud Function ---
+
+// --- START: ✓ 新增 - 獲取人員管理頁面初始資料 ---
+/**
+ * [Cloud Function] 獲取人員管理頁面所需的所有初始資料
+ * @param {object} data - { adminKey: string }
+ * @returns {Promise<object>} - 包含 adminScope, manageableUsers, roles, projects, systemFunctions, allUserPermissions 的物件
+ */
+exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (request) => {
+  const { adminKey } = request.data;
+  const functionName = 'getUserManagementInitialData';
+
+  if (!adminKey) {
+    console.error(`[${functionName}] 錯誤：缺少 adminKey。`);
+    throw new HttpsError('unauthenticated', '操作者 ID 未提供。');
+  }
+
+  // ✓ 正體中文註解：建立 Firestore Admin SDK 實例
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const usersRef = db.collection("users");
+  const permissionsRef = db.collection("userPermissions");
+  const rolesRef = db.collection("roles");
+  const projectsRef = db.collection("projects");
+  const functionsRef = db.collection("systemFunctions");
+
+  try {
+    console.log(`[${functionName}] 開始為管理者 ${adminKey} 獲取初始資料...`);
+
+    // --- 併行獲取所有需要的資料 ---
+    const [
+      adminPermDoc,         // 1. 管理員權限
+      adminUserDoc,         // 2. 管理員角色 (用於過濾 manageableUsers)
+      allUsersSnapshot,     // 3. 所有用戶基本資料 (用於過濾 manageableUsers)
+      rolesSnapshot,        // 4. 所有角色定義
+      projectsSnapshot,     // 5. 所有建案列表
+      functionsSnapshot,    // 6. 所有系統功能定義
+      allPermissionsSnapshot // 7. 所有用戶權限
+    ] = await Promise.all([
+      permissionsRef.doc(adminKey).get(),
+      usersRef.doc(adminKey).get(),
+      usersRef.get(),
+      rolesRef.orderBy('name', 'asc').get(),
+      projectsRef.orderBy('name', 'asc').get(),
+      functionsRef.orderBy('name', 'asc').get(),
+      permissionsRef.get()
+    ]);
+
+    // --- 1. 處理管理員權限範圍 (Admin Scope) ---
+    const adminScopeData = adminPermDoc.exists ? adminPermDoc.data().permissions || {} : {};
+    console.log(`[${functionName}] 管理員權限範圍獲取完成。`);
+
+    // --- 2 & 3. 處理可管理用戶列表 (Manageable Users) ---
+    let manageableUsers = [];
+    if (!adminUserDoc.exists) {
+        console.warn(`[${functionName}] 警告：找不到管理者 ${adminKey} 的用戶資料。`);
+        // 根據您的業務邏輯，這裡可以拋出錯誤或繼續 (返回空列表)
+        // throw new HttpsError('unauthenticated', '無效的操作者身份。');
+    } else {
+        const adminUserRoles = adminUserDoc.data().roles || [];
+        const allUsers = [];
+        allUsersSnapshot.forEach(doc => allUsers.push({ phone: doc.id, ...doc.data() }));
+
+        manageableUsers = allUsers.filter(targetUser => {
+            if (targetUser.phone === adminKey) return false; // 排除自己
+            const targetUserRoles = targetUser.roles || [];
+            if (adminUserRoles.includes('超級管理員')) return true;
+            if (targetUserRoles.includes('超級管理員')) return false;
+            if (targetUserRoles.includes('系統管理員')) return adminUserRoles.includes('系統管理員');
+            return true;
+        }).map(u => ({ // 只回傳前端需要的欄位
+            phone: u.phone,
+            name: u.name || 'N/A',
+            roles: u.roles || [],
+            lineId: u.lineId || null // ✓ 加入 lineId
+            // 可以加入其他列表需要的欄位，例如 department
+        }));
+        // 依姓名排序
+        manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+        console.log(`[${functionName}] 可管理用戶列表處理完成，共 ${manageableUsers.length} 位。`);
+    }
+
+
+    // --- 4. 處理角色定義 (Roles) ---
+    const rolesData = rolesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log(`[${functionName}] 角色定義獲取完成，共 ${rolesData.length} 個。`);
+
+    // --- 5. 處理建案列表 (Projects) ---
+    const projectsData = projectsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name,
+        iconUrl: doc.data().iconUrl || null // 包含 iconUrl
+    }));
+    console.log(`[${functionName}] 建案列表獲取完成，共 ${projectsData.length} 個。`);
+
+    // --- 6. 處理系統功能定義 (System Functions) ---
+    const systemFunctionsData = functionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log(`[${functionName}] 系統功能定義獲取完成，共 ${systemFunctionsData.length} 個。`);
+
+    // --- 7. 處理所有用戶權限 (All User Permissions Map) ---
+    const allUserPermissionsMap = {};
+    allPermissionsSnapshot.forEach(doc => {
+      allUserPermissionsMap[doc.id] = doc.data().permissions || {}; // 以 phone 為 key
+    });
+    console.log(`[${functionName}] 所有用戶權限映射處理完成。`);
+
+    // --- 組合最終回傳物件 ---
+    const responseData = {
+      adminScope: adminScopeData,
+      manageableUsers: manageableUsers,
+      roles: rolesData,
+      projects: projectsData,
+      systemFunctions: systemFunctionsData,
+      allUserPermissionsMap: allUserPermissionsMap
+    };
+
+    console.log(`[${functionName}] 初始資料準備完成，準備回傳。`);
+    return { status: "success", data: responseData };
+
+  } catch (error) {
+    console.error(`[${functionName}] 獲取初始資料時發生嚴重錯誤:`, error);
+    // 拋出 HttpsError
+    throw new HttpsError("internal", `獲取人員管理初始資料失敗: ${error.message}`);
+  }
+});
+// --- END: ✓ 新增 - 獲取人員管理頁面初始資料 ---

@@ -455,43 +455,53 @@
                   :readonly="getFieldPermission('permissions') === 'R'"
                 >
                    <v-expansion-panel-title>
-                    <v-checkbox
-                      :model-value="isAllSelectedForProject(project)"
-                      :indeterminate="isIndeterminateForProject(project)"
-                      @update:model-value="toggleAllForProject(project, $event)"
-                      @click.stop
-                      hide-details
-                      class="mr-4"
-                      :disabled="getFieldPermission('permissions') === 'R'"
-                    ></v-checkbox>
-                    {{ project }}
-                  </v-expansion-panel-title>
+                 <v-checkbox
+                   :model-value="isAllSelectedForProject(project)"
+                   :indeterminate="isIndeterminateForProject(project)"
+                   @update:model-value="toggleAllForProject(project, $event)"
+                   @click.stop
+                   hide-details
+                   class="mr-4"
+                   :disabled="getFieldPermission('permissions') === 'R' || /* 正體中文註解：通用欄位唯讀 */
+                              (!isGodModeAdmin && !adminScope[project]?.includes('人員管理')) /* ✓ 新增：非超管/系管 且 在此建案無 '人員管理' 權限 */
+                             "
+                 ></v-checkbox>
+                 {{ project }}
+               </v-expansion-panel-title>
                <v-expansion-panel-text>
-                     <v-row dense>
-                      <v-col
-                        v-for="system in allFunctionNames"
-                        :key="system"
-                        cols="12" sm="6" md="4"
-                      >
-                        <v-tooltip
-                          location="top"
-                          :text="functionDescriptionMap[system]"
-                          :disabled="!functionDescriptionMap[system]"
-                        >
-                          <template v-slot:activator="{ props }">
-                            <v-checkbox
-                              v-bind="props"
-                              v-model="permissionMatrix[system][project]"
-                              :label="system"
-                              hide-details
-                              density="compact"
-                              :disabled="(isEditingSelf && !isGodModeAdmin) || (isGodModeAdmin ? (getFieldPermission('permissions') === 'R') : (!adminScope[project]?.includes(system) || getFieldPermission('permissions') === 'R'))"
-                            ></v-checkbox>
-                          </template>
-                        </v-tooltip>
-                      </v-col>                
-                    </v-row>
-                  </v-expansion-panel-text>
+               <v-row dense>
+                 <v-col
+                   v-for="system in allFunctionNames"
+                   :key="system"
+                   cols="12" sm="6" md="4"
+                 >
+                   <v-tooltip
+                      location="top"
+                      :text="functionDescriptionMap[system]"
+                      :disabled="!functionDescriptionMap[system]"
+                    >
+                     <template v-slot:activator="{ props }">
+                       <v-checkbox
+                         v-bind="props"
+                         v-model="permissionMatrix[system][project]"
+                         :label="system"
+                         hide-details
+                         density="compact"
+                         :disabled="(isEditingSelf && !isGodModeAdmin) || /* 正體中文註解：不能編輯自己 (除非是超管/系管) */
+                                    (isGodModeAdmin
+                                      ? (getFieldPermission('permissions') === 'R') /* 正體中文註解：超管/系管 只看通用欄位權限 */
+                                      : ( /* 正體中文註解：非超管/系管 的禁用條件 */
+                                          getFieldPermission('permissions') === 'R' || /* 1. 通用欄位唯讀 */
+                                          !adminScope[project]?.includes('人員管理') || /* 2. ✓ 新增：管理員在此建案沒有 '人員管理' 權限 */
+                                          !adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
+                                        )
+                                    )"
+                       ></v-checkbox>
+                     </template>
+                   </v-tooltip>
+                 </v-col>
+               </v-row>
+             </v-expansion-panel-text>
                 </v-expansion-panel>
                 </v-expansion-panels>
                  <div v-if="filteredManagedProjects.length === 0" class="text-center text-grey py-4">
@@ -541,26 +551,21 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
-
-
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import {
-  fetchAdminScope,
   fetchUserDetailsForAdmin,
   updateUserDetailsForAdmin,
-  fetchManageableUsersWithDetails,
   updateUserRoles,
-  fetchAllRoles,
   updateRole,
   deleteRole,
-  fetchAllSystemFunctions, 
   createSystemFunction,   
   updateSystemFunction,
-
+  fetchUserManagementInitialData,
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
+
 
 const { mobile: isMobile } = useDisplay();
 const userStore = useUserStore();
@@ -603,6 +608,7 @@ const adminScope = ref({});
 const manageableUsers = ref([]);
 const managedProjects = ref([]);
 const allSystemFunctions = ref([]);
+const allUserPermissionsMap = ref(new Map());
 
 // --- Dialog State (For User Editing) ---
 const dialogVisible = ref(false);
@@ -630,37 +636,55 @@ const deletingRole = ref(false);
 const filteredUsers = computed(() => {
   const lowerQuery = searchPhone.value?.toLowerCase().trim();
 
-  // 如果沒有搜尋關鍵字，返回原始的可管理用戶列表
+  // --- START: ✓ 修改點 ---
+  // 正體中文註解：根據是否有搜尋條件決定基礎列表
+  const baseList = lowerQuery ? manageableUsers.value : initiallyVisibleUsers.value;
+  // --- END: ✓ 修改點 ---
+
+  // 如果沒有搜尋關鍵字，直接返回基礎列表 (初始可見或全部)
   if (!lowerQuery) {
-    return manageableUsers.value;
+    // 正體中文註解：檢查當前用戶是否應加入初始列表 (如果他不在 initiallyVisibleUsers 中)
+    const currentUser = userStore.user;
+    const currentUserKey = currentUser?.key;
+    if (currentUserKey && !baseList.some(user => user.phone === currentUserKey)) {
+        // 如果當前用戶不在初始列表，且管理員不是超級管理員（超管本就能看到所有），
+        // 則檢查當前用戶是否有任何建案與管理員有交集 (理論上應該有，否則 adminScope 會是空的)
+        // 為了簡化，如果不在初始列表就直接加入 (假設管理員總能看到自己)
+         const currentUserForList = {
+            name: currentUser.name,
+            phone: currentUser.key,
+            roles: userStore.currentUserRoles, // 使用 store 中的角色
+            rolesLoading: false,
+         };
+         // 返回包含當前用戶的新列表
+         return [currentUserForList, ...baseList].sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+    }
+    return baseList; // 返回初始可見列表
   }
 
-  // 正常篩選可管理用戶列表
+  // 正體中文註解：有搜尋條件，則在完整的 manageableUsers 列表上進行篩選
   let filteredList = manageableUsers.value.filter(user =>
     user.name.toLowerCase().includes(lowerQuery) ||
     user.phone.includes(lowerQuery)
   );
 
-  // 檢查搜尋條件是否匹配當前登入的使用者
+  // 正體中文註解：檢查搜尋條件是否匹配當前登入的使用者 (維持不變)
   const currentUser = userStore.user;
-  const currentUserRoles = userStore.currentUserRoles;
-  if (currentUser && (currentUser.name.toLowerCase().includes(lowerQuery) || currentUser.key.includes(lowerQuery))) {
-    // 檢查當前使用者是否已存在於篩選列表中
-    const isCurrentUserInList = filteredList.some(user => user.phone === currentUser.key);
-
+  const currentUserKey = currentUser?.key;
+  if (currentUserKey && (currentUser.name.toLowerCase().includes(lowerQuery) || currentUserKey.includes(lowerQuery))) {
+    const isCurrentUserInList = filteredList.some(user => user.phone === currentUserKey);
     if (!isCurrentUserInList) {
-      // 如果不在列表中，將當前使用者資訊加入到列表頂端
       const currentUserForList = {
         name: currentUser.name,
-        phone: currentUser.key,
-        roles: currentUserRoles,
+        phone: currentUserKey,
+        roles: userStore.currentUserRoles,
         rolesLoading: false,
       };
-      filteredList.unshift(currentUserForList);
+      filteredList.unshift(currentUserForList); // 維持加到最前面
     }
   }
 
-  return filteredList;
+  return filteredList; // 返回搜尋結果
 });
 
 const userManagementFields = [
@@ -831,51 +855,117 @@ const loadInitialData = async () => {
   errorMessage.value = '';
   showErrorAlert.value = false;
   try {
-    const [scopeData, users, rolesData, projectsData, functionsData] = await Promise.all([
-      fetchAdminScope(adminKey.value),
-      fetchManageableUsersWithDetails(adminKey.value),
-      fetchAllRoles(),
-      projectStore.fetchProjects(),
-      fetchAllSystemFunctions()
-    ]);
-    
-    // 處理管理員的權限範圍 (scope)
+    // 單次呼叫後端 API 獲取所有初始資料
+    const result = await fetchUserManagementInitialData(adminKey.value);
+
+    if (result.status !== 'success') {
+      // 如果後端 API 回報錯誤
+      throw new Error(result.message || '獲取初始資料失敗');
+    }
+
+    // 從 API 回應中解構資料
+    const {
+      adminScope: scopeData, // 直接使用 API 回傳的 adminScope (是以 projectId 為 key)
+      manageableUsers: users,
+      roles: rolesData,
+      projects: projectsData, // API 回傳的是 { id, name, iconUrl } 陣列
+      systemFunctions: functionsData,
+      allUserPermissionsMap: permissionsMapObject // API 回傳的是物件 { phone: perms }
+    } = result.data;
+
+    // 處理管理員權限範圍 (轉換成以 projectName 為 key)
     const scopeByProjectName = {};
+    const adminProjectIds = new Set();
     const projectNames = [];
     const allSystems = new Set();
+
+    // 建立 name <-> id 的映射，供後續使用
+    const nameToIdMap = {};
+    const idToNameMap = {};
+    projectsData.forEach(p => {
+        nameToIdMap[p.name] = p.id;
+        idToNameMap[p.id] = p.name;
+    });
+    // 將映射存到 projectStore (如果 projectStore 提供此功能)
+    projectStore.setProjectMaps(idToNameMap, nameToIdMap); // 假設 projectStore 有此 action
 
     if (scopeData) {
       for (const projectId in scopeData) {
         const projectInfo = scopeData[projectId];
-        if (projectInfo && projectInfo.projectName && projectInfo.systems) {
-          // 建立以「建案名稱」為 key 的 scope 物件
-          scopeByProjectName[projectInfo.projectName] = projectInfo.systems;
-          projectNames.push(projectInfo.projectName);
-          // 收集所有不重複的系統功能名稱
+        // 使用 idToNameMap 查找 projectName
+        const projectName = idToNameMap[projectId];
+        if (projectName && projectInfo.systems) {
+          scopeByProjectName[projectName] = projectInfo.systems;
+          projectNames.push(projectName);
+          adminProjectIds.add(projectId);
           projectInfo.systems.forEach(system => allSystems.add(system));
-        } else {
-           console.warn(`[Debug] loadInitialData: scopeData 中的 projectId '${projectId}' 缺少 projectName 或 systems 欄位。`, projectInfo);
+        } else if (projectInfo.projectName && projectInfo.systems) {
+            // 備用邏輯：如果 scopeData 仍包含 projectName
+            scopeByProjectName[projectInfo.projectName] = projectInfo.systems;
+            projectNames.push(projectInfo.projectName);
+             if (nameToIdMap[projectInfo.projectName]) {
+                adminProjectIds.add(nameToIdMap[projectInfo.projectName]);
+             }
+            projectInfo.systems.forEach(system => allSystems.add(system));
         }
       }
     }
 
     adminScope.value = scopeByProjectName;
     managedProjects.value = projectNames.sort((a,b) => a.localeCompare(b, 'zh-Hant'));
-    allSystemFunctions.value = Array.from(allSystems).sort();
-    
-    // 處理其他資料
-    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false }));
-    roles.value = rolesData.sort((a, b) => a.name.localeCompare(b, 'zh-Hant'));
-    systemFunctions.value = functionsData;
+    // allSystemFunctions.value = Array.from(allSystems).sort(); // <--- 不再需要，直接用 functionsData
+
+    // 處理後端回傳的其他資料
+    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false })); // users 已排序且包含所需欄位
+    roles.value = rolesData; // rolesData 已排序
+    systemFunctions.value = functionsData; // functionsData 已排序
+
+    // 將後端傳回的物件轉換為 Map
+    allUserPermissionsMap.value = new Map(Object.entries(permissionsMapObject));
 
   } catch (error) {
-    console.error('[Debug] loadInitialData: 發生嚴重錯誤', error);
+    console.error('[Debug] loadInitialData (API Call): 發生嚴重錯誤', error);
     errorMessage.value = `初始化失敗: ${error.message}`;
     showErrorAlert.value = true;
   } finally {
     loading.value = false;
   }
 };
+// --- START: ✓ 新增 initiallyVisibleUsers 計算屬性 ---
+// 計算初始可見的用戶列表（與管理員有共同建案）
+const initiallyVisibleUsers = computed(() => {
+  if (loading.value || !adminScope.value || manageableUsers.value.length === 0) {
+    return []; // 如果還在載入或沒有資料，返回空陣列
+  }
+
+  // 獲取管理員擁有的所有 projectId
+  const adminProjectIds = new Set(Object.keys(adminScope.value).map(projectName => projectStore.nameToIdMap[projectName]).filter(Boolean));
+  if (adminProjectIds.size === 0 && !isSuperAdmin.value) {
+      console.warn("[Debug] initiallyVisibleUsers: Admin scope is empty or project mapping failed.");
+      return []; // 如果管理員沒有任何建案權限 (且非超管)，列表為空
+  }
+
+
+  return manageableUsers.value.filter(user => {
+    // 超級管理員可以看到所有相關人員
+    if (isSuperAdmin.value) return true;
+
+    // 查找該用戶的權限
+    const userPermissions = allUserPermissionsMap.value.get(user.phone);
+    if (!userPermissions) {
+      return false; // 如果找不到該用戶的權限資料，則不顯示
+    }
+
+    // 檢查該用戶是否有任何一個 projectId 存在於管理員的 projectId 集合中
+    for (const userProjectId in userPermissions) {
+      if (adminProjectIds.has(userProjectId)) {
+        return true; // 找到共同建案，包含此用戶
+      }
+    }
+    return false; // 沒有共同建案，排除此用戶
+  });
+});
+// --- END: ✓ 新增 initiallyVisibleUsers 計算屬性 ---
 
 
 
