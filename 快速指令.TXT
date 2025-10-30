@@ -28,3 +28,12 @@ gcloud functions deploy aiProxy \
 firebase deploy --only functions
 
 蘋果官網灰 #f5f5f7
+
+
+
+//大型套件
+const puppeteer = require("puppeteer");
+const { getInstalledBrowsers, Browser } = require('@puppeteer/browsers');
+const xlsx = require("xlsx");
+const { PDFDocument, rgb, StandardFonts, PageSizes } = require('pdf-lib');
+const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案

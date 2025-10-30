@@ -1406,9 +1406,15 @@ const onBuildingChange = (building) => {
   formStep1.value.unit = null;
   formStep1.value.address = '';
   formStep1.value.bookingType = null;
-  formStep1.value.isOwnerPresent = true; // ✓ 新增重置
   existingBookingInfo.value = null;
   step.value = 1;
+
+  // --- START: ✓ 新增清空步驟二 ---
+  // 正體中文註解：切換棟別時，清空步驟二的自動帶入資料
+  formStep2.value.姓名 = '';
+  formStep2.value.電話 = '';
+  formStep2.value.EMAIL = '';
+  // --- END: ✓ 新增清空步驟二 ---
   
   if (!building) { 
     unitList.value = [];
@@ -1420,9 +1426,23 @@ const onBuildingChange = (building) => {
 
 const onUnitChange = (unitValue) => {
   const selectedUnit = unitList.value.find(u => u.unit === unitValue);
-  if (selectedUnit) formStep1.value.address = selectedUnit.address;
+  if (selectedUnit) {
+    formStep1.value.address = selectedUnit.address;
+    
+    // --- START: ✓ 新增自動帶入 ---
+    // 正體中文註解：自動帶入 `households` 集合中的買方資料到步驟二的表單
+    formStep2.value.姓名 = selectedUnit.buyerName || '';
+    formStep2.value.電話 = selectedUnit.buyerPhone || '';
+    formStep2.value.EMAIL = selectedUnit.buyerEmail || '';
+    // --- END: ✓ 新增自動帶入 ---
+
+  } else {
+    // 正體中文註解：如果清空選項，也清空步驟二的表單
+    formStep2.value.姓名 = '';
+    formStep2.value.電話 = '';
+    formStep2.value.EMAIL = '';
+  }
   formStep1.value.bookingType = null;
-  formStep1.value.isOwnerPresent = true; // ✓ 新增重置
   existingBookingInfo.value = null;
   step.value = 1;
 };

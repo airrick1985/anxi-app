@@ -35,15 +35,29 @@
  * =================================================================
  */
 
-// functions/index.js
+
+
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const puppeteer = require("puppeteer");
+
+
+// --- 這些是輕量級或共用的，保留在頂部 ---
+const { google } = require("googleapis"); // (uploadAuthLetter 會用到)
+const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
+const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
+const jwt = require('jsonwebtoken'); 
+const fetch = require('node-fetch'); // Node.js 環境需要引入 fetch
+const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz'); // ✅ 引入 date-fns-tz
+
+
+
 const handlebars = require("handlebars");
 const fs = require("fs").promises; // 使用 promise 版本的 fs
 const path = require("path");
 // ✅ 1. 在頂部也引入 @puppeteer/browsers 的元件，方便下方使用
-const { getInstalledBrowsers, Browser } = require('@puppeteer/browsers');
+
 
 
 admin.initializeApp();
@@ -52,9 +66,7 @@ admin.initializeApp();
 
 const ADMIN_ERROR_RECIPIENT = "anxismart@gmail.com"; // <--- ‼️ sendErrorNotification 函式。這個函式將用於在 // 發生錯誤時，寄送 Email 通知給指定的管理員。
 
-const { google } = require("googleapis"); // ✓ START: 新增此行
-const cors = require("cors")({ origin: true }); // 啟用 CORS，並允許所有來源
-const { logger } = require("firebase-functions"); // 確保頂部有引入 logger
+
 const { 
   FieldValue,
   FieldPath,
@@ -74,8 +86,6 @@ const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 
-const nodemailer = require("nodemailer");
-const crypto = require("crypto");
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firestore");
@@ -85,14 +95,10 @@ const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料
 const { Readable } = require("stream"); //  新增此行，用於將 Buffer 轉為 Stream
 const readline = require("readline"); 
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
-const archiver = require("archiver"); // ✓ 引入 archiver 用於壓縮檔案
 const Busboy = require("busboy"); // ✓ 用於處理檔案上傳 (未來可能用到)
 const { setGlobalOptions } = require("firebase-functions/v2"); // ✓ START: 新增此行
-const xlsx = require("xlsx"); 
-const jwt = require('jsonwebtoken'); 
-const { PDFDocument, rgb, StandardFonts, PageSizes } = require('pdf-lib'); // PDF 處理
-const fetch = require('node-fetch'); // Node.js 環境需要引入 fetch
-const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz'); // ✅ 引入 date-fns-tz
+ 
+ // PDF 處理
 const { parse } = require('date-fns'); // ✅ 引入 date-fns parse
 
 const driveSecrets = [
@@ -404,7 +410,10 @@ exports.getAllUnitsForBooking = onCall(async (request) => {
                 }
                 allUnitsByBuilding[building].push({
                     unit: unitData.unitId,
-                    address: unitData.address || ''
+                    address: unitData.address || '',
+                    buyerName: unitData.buyerName || '', // ✓ 新增
+                    buyerPhone: unitData.buyerPhone || '', // ✓ 新增
+                    buyerEmail: unitData.buyerEmail || null // ✓ 新增 (保持 null 或空值)
                 });
             }
         });
@@ -994,6 +1003,7 @@ exports.updateParkingSlide = onCall({ region: "asia-east1",secrets: gmailSecrets
  * (V2 - 支援中文表頭)
  */
 exports.uploadParkingLots = onCall({ region: "asia-east1",secrets: gmailSecrets}, async (request) => {
+  const xlsx = require("xlsx");
   const {projectId, parkingData} = request.data;
   const functionName = `uploadParkingLots (Project: ${projectId})`;
 
@@ -1097,6 +1107,7 @@ exports.uploadParkingLots = onCall({ region: "asia-east1",secrets: gmailSecrets}
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesHouseholds 集合
  */
 exports.uploadHouseholds = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+  const xlsx = require("xlsx");
   const { projectId, householdsData } = request.data;
   const functionName = `uploadHouseholds (Project: ${projectId})`;
 
@@ -1966,6 +1977,7 @@ exports.deleteBackupFile = onCall(async (request) => {
 
 
 exports.generateExcelTemplate = onCall({ region: "asia-east1", timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
+ const xlsx = require("xlsx");
   const { targetCollection, projectId, fields } = request.data;
   const functionName = `generateExcelTemplate (Project: ${projectId})`;
 
@@ -2054,6 +2066,8 @@ exports.generateExcelTemplate = onCall({ region: "asia-east1", timeoutSeconds: 3
 
 // ✓ 【替換】updateFieldsFromExcel 整個函式 (優化版)
 exports.updateFieldsFromExcel = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  const xlsx = require("xlsx");
+  
   //  1. 修改：接收 fileContent (Base64字串)，而不是 filePath
   const { fileContent, targetCollection, isDryRun } = request.data;
   const functionName = `updateFieldsFromExcel (DryRun: ${isDryRun})`;
@@ -3887,6 +3901,7 @@ exports.updateProjectStatusColors = onCall(async (request) => {
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 households 集合
  */
 exports.uploadInspectionHouseholds = onCall({ region: "asia-east1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  const xlsx = require("xlsx");
   const { projectId, householdsData } = request.data;
   const functionName = `uploadInspectionHouseholds (Project: ${projectId})`;
 
@@ -10281,7 +10296,9 @@ async function findShapeIdByAltText(slides, presentationId, slideId, altText) {
  * ✓【修正 V4.3 - 移除 Logo 插入邏輯】[內部異步函式] 使用 Google Slides API 執行 PDF 產生
  */
 async function generatePdfInBackground(projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail) {
-    // ✓ 移除 Logo 插入邏輯
+    
+
+  // ✓ 移除 Logo 插入邏輯
     const functionName = `generatePdfInBackground_CopyPresentation_V4.3 (Batch: ${confirmationBatchId})`; // ✓ 版本 V4.3
     const db = new Firestore({ databaseId: "anxi-app" });
     const drive = getAuthenticatedDriveClient();
