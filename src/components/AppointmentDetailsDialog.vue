@@ -35,7 +35,7 @@
             <v-row dense align="center">
               <v-col cols="12" sm="2">
                 <div class="text-caption text-grey-darken-1">戶別</div>
-                <div class="text-h5 font-weight-bold text-primary">{{ editableEvent?.unitId }}</div>
+                <div class="text-h5 font-weight-bold text-primary">{{ appointment?.unitId }}</div>
               </v-col>
               <v-col cols="12" sm="10" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
                 <v-chip :color="getStatusColor(appointment.status)" size="small" label>{{ appointment.status }}</v-chip>

@@ -38,36 +38,37 @@
       </div>
     </div>
     <v-divider class="my-4"></v-divider>
-    <div>
-      <h4 class="text-subtitle-1 mb-2">預約項目</h4>
-      <div v-for="(itemType, index) in typeOptions" :key="itemType" class="switch-row">
-        <label class="v-label text-body-1" :for="`type-switch-${index}`">{{ itemType }}</label>
-        <v-switch
-          :id="`type-switch-${index}`"
-          v-model="selectedTypes"
-          :value="itemType"
-          color="teal-darken-1"
-          hide-details
-          inset
-        ></v-switch>
-      </div>
-    </div>
-    <v-divider class="my-4"></v-divider>
-    <div>
-      <h4 class="text-subtitle-1 mb-2">事件顯示內容</h4>
-      <div v-for="(field, index) in displayFieldOptions" :key="field.key" class="switch-row">
-        <label class="v-label text-body-1" :for="`field-switch-${index}`">{{ field.label }}</label>
-        <v-switch
-          :id="`field-switch-${index}`"
-          v-model="selectedDisplayFields"
-          :value="field.key"
-          color="indigo"
-          hide-details
-          inset
-        ></v-switch>
-      </div>
-    </div>
-  </div>
+
+   <div>
+              <h4 class="text-subtitle-1 mb-2">預約項目</h4>
+              <div v-for="(itemType, index) in availableTypes" :key="itemType" class="switch-row">
+              <label class="v-label text-body-1" :for="`type-switch-${index}`">{{ itemType }}</label>
+              <v-switch
+              :id="`type-switch-${index}`"
+              v-model="selectedTypes"
+              :value="itemType"
+              color="teal-darken-1"
+              hide-details
+              inset
+              ></v-switch>
+              </div>
+              </div> <v-divider class="my-4"></v-divider>
+
+                <div>
+              <h4 class="text-subtitle-1 mb-2">事件顯示內容</h4>
+              <div v-for="(field, index) in displayFieldOptions" :key="field.key" class="switch-row">
+              <label class="v-label text-body-1" :for="`field-switch-${index}`">{{ field.label }}</label>
+              <v-switch
+              :id="`field-switch-${index}`"
+              v-model="selectedDisplayFields"
+              :value="field.key"
+              color="indigo"
+              hide-details
+              inset
+              ></v-switch>
+              </div>
+              </div>
+              </div>
 </template>
 
 <script setup>
@@ -85,10 +86,16 @@ const props = defineProps({
   displayFieldOptions: {
     type: Array,
     default: () => []
+  },
+  // --- START: ✓ 新增 availableTypes Prop ---
+  availableTypes: {
+    type: Array,
+    default: () => ['初驗', '複驗'] // 提供一個預設值
   }
+  // --- END: ✓ 新增 availableTypes Prop ---
 });
 
-const typeOptions = ref(['初驗', '複驗', '交屋']);
+
 </script>
 
 <style scoped>

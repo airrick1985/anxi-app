@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { db } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence } from '@/api';
+import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence,getLiffUserData } from '@/api';
 import router from '@/router'; 
 
 export const useUserStore = defineStore('user', {
@@ -70,6 +70,64 @@ export const useUserStore = defineStore('user', {
       }
       
       try {
+        // --- START: ✓ 關鍵修改 (呼叫 GCF) ---
+        // 正體中文註解：呼叫後端 getLiffUserData 函數
+        // 確保 getLiffUserData 已經在 api.js 中 import
+        // (您可能需要先在 api.js 中加入 getLiffUserData 的 onCall 函數)
+        
+        // 假設 getLiffUserData 已在 api.js 中定義：
+        // export const getLiffUserData = async (payload) => {
+        //   const func = httpsCallable(functions, 'getLiffUserData');
+        //   const result = await func(payload);
+        //   return result.data;
+        // };
+        // (如果 LiffInspectionCalendar.vue 已經在呼叫它，那 api.js 應該已經有了)
+        const liffData = await getLiffUserData({ lineId: lineId });
+        
+        if (liffData.status === 'not_bound') {
+            console.warn(`[UserStore] LIFF ID [${lineId}] 尚未綁定。`);
+            this.clearUser();
+            return false;
+        }
+
+        if (liffData.status !== 'bound') {
+            throw new Error(liffData.message || '獲取 LIFF 用戶資料失敗');
+        }
+        // --- END: ✓ 關鍵修改 ---
+
+        // 正體中文註解：從 liffData 中獲取資料
+        const { userName, projects } = liffData;
+
+        // 正體中文註解：將後端回傳的 projects 陣列轉換為 Store 儲存的 permissions 物件
+        const permissions = {};
+        const permsArray = []; // 同時建立 detailedPermissions
+        
+        if (Array.isArray(projects)) {
+            projects.forEach(project => {
+                if (project.projectId) {
+                    // ✓ 將 bookingTypes 存入 permissions 物件
+                    permissions[project.projectId] = {
+                        projectName: project.projectName,
+                        bookingTypes: project.bookingTypes || [], // ✓ 儲存 bookingTypes
+                        systems: ["驗屋預約管理-檢視", "驗屋預約管理-修改"] // 假設有權限
+                    };
+                    
+                    // (這部分是您原有的邏輯，保持不變)
+                    permsArray.push({
+                        projectId: project.projectId,
+                        projectName: project.projectName,
+                        system: "驗屋預約管理-檢視", // 假設
+                    });
+                }
+            });
+        }
+        
+        // 正體中文註解：(假設) 需要 userKey (手機號碼)，但 getLiffUserData 沒回傳
+        // 這表示 LIFF 登入可能不需要完整的 user 物件，
+        // 我們需要從 users 集合再次查詢 userKey
+        // (您的舊 `fetchUserByLineId` 邏輯比較好)
+        
+        // --- 採用您舊的 `fetchUserByLineId` 邏輯，但整合新的 `projects` 資料 ---
         const usersRef = collection(db, "users");
         const q = query(usersRef, where("lineId", "==", lineId));
         const userSnapshot = await getDocs(q);
@@ -83,25 +141,21 @@ export const useUserStore = defineStore('user', {
         const userDoc = userSnapshot.docs[0];
         const userData = userDoc.data();
         const userKey = userDoc.id;
-
-        // ✓ 修改：修正程式碼順序
-        const permDocRef = doc(db, "userPermissions", userKey);
-        const permDoc = await getDoc(permDocRef); // ✓ 1. 先從資料庫取得權限文件
-        const permissions = permDoc.exists() ? permDoc.data().permissions : {}; // ✓ 2. 再使用它
         
         const preferences = await fetchUserPreferencesFromBackend(userKey);
 
+        // ✓ 組合 user 物件，使用上面剛轉換好的 permissions 物件
         this.user = {
           key: userKey,
           lineId: lineId,
           name: userData.name,
           email: userData.email,
           roles: userData.roles || [],
-          permissions: permissions,
+          permissions: permissions, // ✓ 使用包含 bookingTypes 的 permissions 物件
           preferences: preferences || {},
         };
         
-        this.detailedPermissions = this.getDetailedPermissions(permissions);
+        this.detailedPermissions = permsArray; // ✓ 使用上面轉換好的 permsArray
         
         manageUserPresence(userKey);
         return true;

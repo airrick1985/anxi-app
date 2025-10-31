@@ -233,11 +233,12 @@
         <v-divider></v-divider>
         <v-card-text>
           <FilterCheckboxes
-            v-model:selectedStatuses="selectedStatuses"
-            v-model:selectedTypes="selectedTypes"
-            v-model:selectedDisplayFields="selectedDisplayFields"
-            :displayFieldOptions="displayFieldOptions"
-          />
+          v-model:selectedStatuses="selectedStatuses"
+          v-model:selectedTypes="selectedTypes"
+          v-model:selectedDisplayFields="selectedDisplayFields"
+          :displayFieldOptions="displayFieldOptions"
+          :availableTypes="allBookingTypesForProject" 
+        />
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="pa-3 bg-grey-lighten-4">
@@ -329,7 +330,8 @@ import {
   updateAppointment, 
   cancelAppointment,
   updateAppointmentInspectors,
-getAdminBookingCalendarData
+getAdminBookingCalendarData,
+
 } from '@/api';
 import { useDate, useDisplay } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
@@ -346,30 +348,9 @@ const router = useRouter();
 const { smAndDown, mobile } = useDisplay(); 
 const userStore = useUserStore();
 
-const calendarContentRef = ref(null);
-const isSharing = ref(false);
-const isAdminAddDialogVisible = ref(false);
+const selectedProject = ref(null);
 
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
-const dateAdapter = useDate();
-
-const isLoading = ref(true);
-const loadingText = ref('正在初始化...');
-const isBound = ref(false);
-const selectedProject = ref(null);
-const selectedDate = ref(startOfDay(new Date()));
-const isFetchingDayData = ref(false);
-const dailyAppointments = ref([]);
-const allProjectAppointments = ref([]); // ✓ 用於存放所選建案的「所有」預約資料
-const calendarData = ref([]); // <--- ★ 2. 在這裡新增 ref
-const searchQuery = ref('');
-const isSearching = ref(false);
-const isSearchActive = ref(false);
-const searchResults = ref([]);
-const lastSearchText = ref('');
-const isDialogVisible = ref(false);
-const selectedAppointment = ref(null);
-const isFilterDialogVisible = ref(false);
 
 const displayFieldOptions = ref([
   { key: 'unitId', label: '戶別' },
@@ -384,6 +365,65 @@ const displayFieldOptions = ref([
 const selectedStatuses = ref(['預約中', '已完成', '取消']);
 const selectedTypes = ref(['初驗', '複驗', '交屋']);
 const selectedDisplayFields = ref(displayFieldOptions.value.map(opt => opt.key));
+
+
+
+// --- START: ✓ 新增計算屬性 ---
+// 從 store 中動態獲取當前所選建案的 bookingTypes
+const allBookingTypesForProject = computed(() => {
+  if (!selectedProject.value || !userStore.user?.permissions) { // <-- 現在 selectedProject 已被初始化
+    return ['初驗', '複驗']; 
+  }
+  // 從 store 中讀取 projectId 對應的權限物件
+  const permissions = userStore.user.permissions[selectedProject.value];
+
+  // 返回該物件中的 bookingTypes 陣列，如果不存在則使用預設值
+  return permissions?.bookingTypes?.length > 0 
+    ? permissions.bookingTypes 
+    : ['初驗', '複驗'];
+});
+
+
+
+// --- START: ✓ 新增 watch ---
+// 當可用類型列表變化時(例如切換建案)，自動全選
+watch(allBookingTypesForProject, (newTypes) => {
+  if (newTypes && newTypes.length > 0) {
+    selectedTypes.value = [...newTypes]; // 複製陣列以觸發更新
+  } else {
+    selectedTypes.value = [];
+  }
+}, { immediate: true }); // immediate: true 確保頁面載入時立即執行一次
+// --- END: ✓ 新增 watch ---
+
+const calendarContentRef = ref(null);
+const isSharing = ref(false);
+const isAdminAddDialogVisible = ref(false);
+
+
+
+
+
+
+
+const dateAdapter = useDate();
+
+const isLoading = ref(true);
+const loadingText = ref('正在初始化...');
+const isBound = ref(false);
+const selectedDate = ref(startOfDay(new Date()));
+const isFetchingDayData = ref(false);
+const dailyAppointments = ref([]);
+const allProjectAppointments = ref([]); // ✓ 用於存放所選建案的「所有」預約資料
+const calendarData = ref([]); // <--- ★ 2. 在這裡新增 ref
+const searchQuery = ref('');
+const isSearching = ref(false);
+const isSearchActive = ref(false);
+const searchResults = ref([]);
+const lastSearchText = ref('');
+const isDialogVisible = ref(false);
+const selectedAppointment = ref(null);
+const isFilterDialogVisible = ref(false);
 
 const bookingOptions = ref({
   inspectionMethods: [],

@@ -7161,11 +7161,10 @@ exports.finalizeLineBinding = onCall(async (request) => {
 // ✓ END
 
 
-// ✓ START: 新增 - 獲取 LIFF 使用者資料與權限
 /**
- * [LIFF查詢用] 獲取使用者資料與其可查詢的建案列表
+ * [LIFF查詢用] 獲取使用者資料與其可查詢的建案列表 (V2 - 包含 bookingTypes)
  * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
- * @returns {Promise<object>} - 包含綁定狀態、使用者名稱及建案列表
+ * @returns {Promise<object>} - 包含綁定狀態、使用者名稱及包含 bookingTypes 的建案列表
  */
 exports.getLiffUserData = onCall(async (request) => {
     const { lineId } = request.data;
@@ -7177,7 +7176,7 @@ exports.getLiffUserData = onCall(async (request) => {
 
     const db = new Firestore({ databaseId: "anxi-app" });
     try {
-        // 步驟 1: 透過 lineId 查找使用者
+        // 步驟 1: 透過 lineId 查找使用者 (邏輯不變)
         const usersRef = db.collection("users");
         const userQuery = usersRef.where("lineId", "==", lineId).limit(1);
         const userSnapshot = await userQuery.get();
@@ -7191,7 +7190,7 @@ exports.getLiffUserData = onCall(async (request) => {
         const userData = userDoc.data();
         const userKey = userDoc.id; // 使用者文件 ID (手機號碼)
 
-        // 步驟 2: 透過使用者 ID (手機) 查找權限
+        // 步驟 2: 透過使用者 ID (手機) 查找權限 (邏輯不變)
         const permDocRef = db.collection("userPermissions").doc(userKey);
         const permDoc = await permDocRef.get();
 
@@ -7200,25 +7199,42 @@ exports.getLiffUserData = onCall(async (request) => {
             return { status: "bound", userName: userData.name, projects: [] }; // 已綁定但無任何權限
         }
 
-        // 步驟 3: 解析權限，篩選出可用的建案
+        // 步驟 3: 解析權限，並【一併查詢】建案的 bookingTypes
         const permissions = permDoc.data().permissions || {};
-        const authorizedProjects = [];
+        const authorizedProjectsPromises = []; // 儲存非同步查詢
+
         for (const projectId in permissions) {
             const projectPerms = permissions[projectId];
             // 檢查是否包含 '驗屋預約管理-檢視' 或 '驗屋預約管理-修改' 權限
             if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
-                authorizedProjects.push({
-                    projectId: projectId,
-                    projectName: projectPerms.projectName,
+                
+                // --- START: ✓ 關鍵修改 ---
+                // 正體中文註解：非同步獲取該建案的 projects 文件
+                const projectDocPromise = db.collection('projects').doc(projectId).get().then(doc => {
+                    if (!doc.exists) return null; // 如果建案文件被刪除，則返回 null
+                    const projectData = doc.data();
+                    return {
+                        projectId: projectId,
+                        projectName: projectPerms.projectName, // 保持 userPermissions 上的名稱
+                        bookingTypes: projectData.bookingTypes || [] // ✓ 讀取 bookingTypes
+                    };
+                }).catch(err => {
+                    console.error(`[${functionName}] 讀取 projects/${projectId} 文件失敗:`, err);
+                    return null; // 發生錯誤時返回 null
                 });
+                authorizedProjectsPromises.push(projectDocPromise);
+                // --- END: ✓ 關鍵修改 ---
             }
         }
         
-        console.log(`[${functionName}] 用戶 [${userKey}] 擁有 ${authorizedProjects.length} 個建案的查詢權限。`);
+        // 等待所有建案資料查詢完成
+        const authorizedProjects = (await Promise.all(authorizedProjectsPromises)).filter(Boolean); // filter(Boolean) 移除 null
+
+        console.log(`[${functionName}] 用戶 [${userKey}] 擁有 ${authorizedProjects.length} 個建案的查詢權限 (含 bookingTypes)。`);
         return {
             status: "bound",
             userName: userData.name,
-            projects: authorizedProjects,
+            projects: authorizedProjects, // ✓ 回傳包含 bookingTypes 的陣列
         };
 
     } catch (error) {
@@ -7226,7 +7242,6 @@ exports.getLiffUserData = onCall(async (request) => {
         throw new HttpsError("internal", "處理用戶資料時發生錯誤。");
     }
 });
-// ✓ END
 
 // ✓ START: 修改 liffSearchAppointments 函式 (整合 households 資料)
 /**
@@ -11487,7 +11502,7 @@ exports.exportAppointmentsByProject = onRequest(
         // 3.1. 加入標頭 (Header Row)
         // ❗ 順序必須與 3.2 中 push 的欄位順序完全一致
         outputData.push([
-            "預約ID", "建立時間", "戶別", "預約項目", "預約日期", "預約時段", "預約人", "電話", "Email", "狀態", "驗屋方式", "代驗公司", "受託人"
+            "預約ID", "建立時間", "戶別", "預約項目", "預約日期", "預約時段", "預約人", "電話", "Email", "狀態", "預約方式", "代驗公司", "受託人"
         ]);
 
         // 3.2. 處理資料 (Data Rows)
