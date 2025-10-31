@@ -46,17 +46,19 @@
                     <v-progress-circular indeterminate color="primary"></v-progress-circular>
                     <p class="mt-2 text-grey">正在載入棟別戶別資料...</p>
                   </div>
-                  <template v-else>
+                 <template v-else>
                     <v-row dense>
                       <v-col cols="12" sm="6">
-                        <v-select
+                        <v-autocomplete
                           v-model="formStep1.building"
                           :items="projectBuildings"
-                          label="棟別"
+                          label="棟別 (可輸入文字過濾)"
                           variant="outlined"
                           @update:model-value="onBuildingChange"
-                        ></v-select>
-                      </v-col>
+                          clearable
+                         
+                        ></v-autocomplete>
+                        </v-col>
                       <v-col cols="12" sm="6">
                         <v-select
                           v-model="formStep1.unitId"
@@ -297,7 +299,7 @@
                           label="手動輸入時段"
                           placeholder="HH:MM"
                           variant="outlined"
-                          density="compact"
+                          
                           class="mt-4"
                           :rules="[manualTimeRule]"
                           persistent-hint
@@ -1135,8 +1137,13 @@ const loadInitialData = async () => {
         }
 
         allProjectHouseholds.value = householdsRes;
-        const buildings = [...new Set(householdsRes.map(h => h.building))];
-        projectBuildings.value = buildings.sort((a,b) => a.localeCompare(b, 'zh-Hant-TW'));
+const buildings = [...new Set(householdsRes.map(h => h.building))];
+        
+        // --- START: ✓ 修改點 (使用自然排序) ---
+        // 使用 localeCompare 搭配 numeric: true 進行自然排序 (A1, A2, A10)
+        projectBuildings.value = buildings.sort((a, b) => 
+          String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
+        );
 
         if (batchesRes.status === 'success') {
             allBatchDetails.value = batchesRes.data;
