@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <v-card class="mx-auto" max-width="1200">
+    <v-card class="mx-auto">
       <v-toolbar color="indigo" dark>
         <v-toolbar-title>
           <v-icon left>mdi-account-cog</v-icon>
@@ -22,9 +22,9 @@
               <v-col cols="12" md="6">
                 <v-text-field
                   v-model="searchPhone"
-                  label="輸入姓名或手機號碼篩選"
+                  label="輸入姓名、手機或建案名稱篩選"
                   variant="outlined"
-                  density="compact"
+                  
                   hide-details
                   prepend-inner-icon="mdi-magnify"
                   clearable
@@ -43,11 +43,11 @@
               {{ errorMessage }}
             </v-alert>
 
- <div class="d-none d-md-block mt-4">
+            <div class="d-none d-md-block mt-4">
               <v-data-table
                 :headers="tableHeaders"
                 :items="filteredUsers"
-                :loading="loading"
+                :loading="adminStore.isLoading"
                 item-value="phone"
                 class="elevation-1"
                 no-data-text="沒有可管理的人員資料"
@@ -60,6 +60,22 @@
                     {{ item.lineId ? '已綁定' : '未綁定' }}
                   </v-chip>
                 </template>
+                <template v-slot:item.projects="{ item }">
+                  <div style="max-width: 300px; display: flex; flex-wrap: wrap; gap: 4px;" class="py-2">
+                    <v-chip
+                      v-for="project in item.projects"
+                      :key="project"
+                      color="blue-grey"
+                      size="x-small"
+                      label
+                    >
+                      {{ project }}
+                    </v-chip>
+                    <span v-if="!item.projects || item.projects.length === 0" class="text-grey-lighten-1">
+                      -
+                    </span>
+                  </div>
+                </template>
                 <template v-if="canViewAndEditRoles" v-slot:item.roles="{ item }">
                   <v-combobox
                     :model-value="item.roles"
@@ -69,7 +85,7 @@
                     chips
                     closable-chips
                     variant="outlined"
-                    density="compact"
+                    
                     hide-details
                     placeholder="點此新增角色"
                     :loading="item.rolesLoading"
@@ -88,7 +104,7 @@
               </v-data-table>
             </div>
             <div class="d-md-none mt-4">
-              <div v-if="loading" class="text-center pa-10">
+              <div v-if="adminStore.isLoading" class="text-center pa-10">
                 <v-progress-circular indeterminate color="primary"></v-progress-circular>
                 <p class="mt-2 text-grey">正在載入資料...</p>
               </div>
@@ -109,6 +125,22 @@
                           <v-chip :color="item[field.key] ? field.options.trueColor : field.options.falseColor" small label class="ml-2">
                             {{ item[field.key] ? field.options.trueText : field.options.falseText }}
                           </v-chip>
+                        </template>
+                        <template v-else-if="field.type === 'projects'">
+                          <div style="display: flex; flex-wrap: wrap; gap: 4px;" class="mt-1">
+                            <v-chip
+                              v-for="project in item.projects"
+                              :key="project"
+                              color="blue-grey"
+                              size="x-small"
+                              label
+                            >
+                              {{ project }}
+                            </v-chip>
+                            <span v-if="!item.projects || item.projects.length === 0" class="text-grey-lighten-1">
+                              -
+                            </span>
+                          </div>
                         </template>
                         <template v-else>
                           <span class="ml-2">{{ item[field.key] || 'N/A' }}</span>
@@ -139,7 +171,7 @@
                   <v-list dense>
                     <v-list-subheader>所有角色</v-list-subheader>
                     <v-list-item
-                      v-for="(role, index) in roles"
+                      v-for="(role, index) in adminStore.roles"
                       :key="role.id"
                       @click="selectedRoleIndex = index"
                       :active="selectedRoleIndex === index"
@@ -165,7 +197,7 @@
                       v-model="selectedRole.name"
                       label="角色名稱"
                       variant="outlined"
-                      density="compact"
+                      
                       class="mb-4"
                       :rules="[v => !!v || '角色名稱為必填']"
                       :readonly="['超級管理員', '系統管理員'].includes(selectedRole.id)"
@@ -179,7 +211,7 @@
                       chips
                       closable-chips
                       variant="outlined"
-                      density="compact"
+                      
                       class="mb-4"
                     ></v-select>
 
@@ -244,8 +276,8 @@
             </div>
             <v-data-table
               :headers="functionTableHeaders"
-              :items="systemFunctions"
-              :loading="loading"
+              :items="adminStore.systemFunctions"
+              :loading="adminStore.isLoading"
               item-value="functionId"
               class="elevation-1"
               no-data-text="沒有權限功能資料"
@@ -356,10 +388,11 @@
                   <v-text-field
                     v-model="targetUser.basicInfo.phone"
                     label="手機號碼 (登入帳號)"
+                    hint="手機號碼為帳號，建立後不可修改"
                   :rules="rules.required"
                   :readonly="!isNewUser"
                   variant="outlined"
-                  density="compact"
+                  
                   @blur="validatePhoneNumber"
                   :loading="phoneValidationLoading"
                   :error-messages="phoneValidationError"
@@ -373,7 +406,7 @@
                   :rules="rules.required"
                   :readonly="getFieldPermission('name') === 'R'"
                   variant="outlined"
-                   density="compact"
+                   
                   ></v-text-field>
                 </v-col>
                 <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6">
@@ -382,7 +415,7 @@
                     label="Email"
                   :readonly="getFieldPermission('email') === 'R'"
                   variant="outlined"
-                  density="compact"
+                  
                 ></v-text-field>
               </v-col>
                <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6">
@@ -390,7 +423,7 @@
                       v-if="!isNewUser && getFieldPermission('password') === 'C'"
                     label="密碼"
                     variant="outlined"
-                    density="compact"
+                    
                     readonly
                     value="******** (僅供建立)"
                   ></v-text-field>
@@ -401,7 +434,7 @@
                     :rules="isNewUser ? rules.required : []"
                     :readonly="getFieldPermission('password') === 'R'"
                     variant="outlined"
-                    density="compact"
+                    
                     :placeholder="isNewUser ? '' : '若不修改請留空'"
                   ></v-text-field>
                 </v-col>
@@ -411,7 +444,7 @@
                   label="公司名稱"
                   :readonly="getFieldPermission('companyName') === 'R'"
                   variant="outlined"
-                  density="compact"
+                  
                   ></v-text-field>
                 </v-col>
                 <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6">
@@ -420,7 +453,7 @@
                     label="統一編號"
                   :readonly="getFieldPermission('companyTaxId') === 'R'"
                   variant="outlined"
-                  density="compact"
+                  
                 ></v-text-field>
               </v-col>
             </v-row>
@@ -430,12 +463,12 @@
           
          <div v-if="getFieldPermission('permissions') !== 'H'">
               <h3 class="mb-2">系統權限設定</h3>
-              <v-toolbar density="compact" class="mb-4" flat color="grey-lighten-4" rounded>
+              <v-toolbar  class="mb-4" flat color="grey-lighten-4" rounded>
                 <v-text-field
                 v-model="projectSearchQuery"
                 label="搜尋建案"
                 variant="solo"
-                density="compact"
+                
                 hide-details
                 prepend-inner-icon="mdi-magnify"
                 class="mx-2"
@@ -462,8 +495,8 @@
                    @click.stop
                    hide-details
                    class="mr-4"
-                   :disabled="getFieldPermission('permissions') === 'R' || /* 正體中文註解：通用欄位唯讀 */
-                              (!isGodModeAdmin && !adminScope[project]?.includes('人員管理')) /* ✓ 新增：非超管/系管 且 在此建案無 '人員管理' 權限 */
+                   :disabled="getFieldPermission('permissions') === 'R' || /* 通用欄位唯讀 */
+                              (!isGodModeAdmin && !adminStore.adminScope[project]?.includes('人員管理')) /* 非超管/系管 且 在此建案無 '人員管理' 權限 */
                              "
                  ></v-checkbox>
                  {{ project }}
@@ -486,14 +519,14 @@
                          v-model="permissionMatrix[system][project]"
                          :label="system"
                          hide-details
-                         density="compact"
-                         :disabled="(isEditingSelf && !isGodModeAdmin) || /* 正體中文註解：不能編輯自己 (除非是超管/系管) */
+                         
+                         :disabled="(isEditingSelf && !isGodModeAdmin) || /* 不能編輯自己 (除非是超管/系管) */
                                     (isGodModeAdmin
-                                      ? (getFieldPermission('permissions') === 'R') /* 正體中文註解：超管/系管 只看通用欄位權限 */
-                                      : ( /* 正體中文註解：非超管/系管 的禁用條件 */
+                                      ? (getFieldPermission('permissions') === 'R') /* 超管/系管 只看通用欄位權限 */
+                                      : ( /* 非超管/系管 的禁用條件 */
                                           getFieldPermission('permissions') === 'R' || /* 1. 通用欄位唯讀 */
-                                          !adminScope[project]?.includes('人員管理') || /* 2. ✓ 新增：管理員在此建案沒有 '人員管理' 權限 */
-                                          !adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
+                                          !adminStore.adminScope[project]?.includes('人員管理') || /* 2. 管理員在此建案沒有 '人員管理' 權限 */
+                                          !adminStore.adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
                                         )
                                     )"
                        ></v-checkbox>
@@ -554,6 +587,8 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+// 引入新的 adminStore
+import { useAdminStore } from '@/store/adminStore'; 
 import {
   fetchUserDetailsForAdmin,
   updateUserDetailsForAdmin,
@@ -562,7 +597,7 @@ import {
   deleteRole,
   createSystemFunction,   
   updateSystemFunction,
-  fetchUserManagementInitialData,
+  // fetchUserManagementInitialData, // 由 adminStore 處理
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
 
@@ -571,10 +606,12 @@ const { mobile: isMobile } = useDisplay();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const toast = useToast();
+// 建立 adminStore 實例
+const adminStore = useAdminStore();
+
 const adminKey = computed(() => userStore.user?.key);
 
 // 權限功能管理相關 State ---
-const systemFunctions = ref([]);
 const isFunctionDialogVisible = ref(false);
 const isNewFunction = ref(false);
 const savingFunction = ref(false);
@@ -596,19 +633,19 @@ const functionTableHeaders = [
 
 // --- Component State ---
 const currentTab = ref('users');
-const loading = ref(true);
+const loading = ref(true); // 這個 ref 仍然用來控制本地的 "載入中" 狀態
 const loadingDetails = ref(false);
 const saving = ref(false);
 const errorMessage = ref('');
 const showErrorAlert = ref(false);
 const searchPhone = ref('');
 
-// --- Data ---
-const adminScope = ref({});
-const manageableUsers = ref([]);
-const managedProjects = ref([]);
-const allSystemFunctions = ref([]);
-const allUserPermissionsMap = ref(new Map());
+// --- Data (本地 state 已被 store 取代) ---
+// const adminScope = ref({}); // 由 store 取代
+// const manageableUsers = ref([]); // 由 store 取代
+// const managedProjects = ref([]); // 由 store 取代
+// const allSystemFunctions = ref([]); // 由 store 取代
+// const allUserPermissionsMap = ref(new Map()); // 由 store 取代
 
 // --- Dialog State (For User Editing) ---
 const dialogVisible = ref(false);
@@ -624,7 +661,7 @@ const panels = ref([]);
 const projectSearchQuery = ref('');
 
 // --- Role Management State ---
-const roles = ref([]);
+// const roles = ref([]); // 由 store 取代
 const selectedRoleIndex = ref(null);
 const selectedRole = ref(null);
 const savingRole = ref(false);
@@ -633,59 +670,116 @@ const roleToDelete = ref(null);
 const deletingRole = ref(false);
 
 
+const usersWithProjectData = computed(() => {
+  const currentUser = userStore.user;
+  const currentUserKey = currentUser?.key;
+
+  // 1. 處理 store 中的可管理用戶
+  // 由於 index.js 現在會回傳包含您在內的*所有人*，
+  // adminStore.manageableUsers 已經是完整的列表。
+  const allUsers = adminStore.manageableUsers.map(user => {
+    const userPermissions = adminStore.allUserPermissionsMap.get(user.phone) || {};
+    const projects = Object.values(userPermissions).map(p => p.projectName).filter(Boolean).sort();
+    
+    // 檢查這是否是當前登入的使用者
+    if (user.phone === currentUserKey) {
+      // 如果是，確保角色資料與 userStore 同步 (因為 userStore 的角色可能是最即時的)
+      return {
+        ...user,
+        roles: userStore.currentUserRoles, // 使用 userStore 的角色
+        projects: projects,
+        projectsText: projects.join(','),
+      };
+    }
+    
+    return {
+      ...user,
+      projects: projects,
+      projectsText: projects.join(','),
+    };
+  });
+
+  // 2. 移除 "if (currentUserKey && !allUsers.some(...))" 的區塊
+  // 因為 allUsers 現在保證包含 currentUser
+
+  return allUsers;
+});
+
+
+// --- START: 修改 initiallyVisibleUsers (步驟 2) ---
+// 計算初始可見的用戶列表（與管理員有共同建案）
+const initiallyVisibleUsers = computed(() => {
+  if (adminStore.isLoading) {
+    return []; // 如果還在載入，返回空陣列
+  }
+  
+  // 超級管理員可見所有人
+  if (isSuperAdmin.value) {
+    return usersWithProjectData.value.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+  }
+
+  // 獲取管理員擁有的所有 projectId
+  const adminProjectIds = new Set(Object.keys(adminStore.adminScope).map(projectName => projectStore.nameToIdMap[projectName]).filter(Boolean));
+  
+  if (adminProjectIds.size === 0) {
+      console.warn("[Debug] initiallyVisibleUsers: Admin scope is empty or project mapping failed.");
+      // 如果管理員沒有任何建案權限 (且非超管)，只顯示他自己
+      const currentUserKey = userStore.user?.key;
+      const currentUserData = usersWithProjectData.value.find(u => u.phone === currentUserKey);
+      return currentUserData ? [currentUserData] : [];
+  }
+
+  // 過濾出有共同建案的人員
+  const filteredList = usersWithProjectData.value.filter(user => {
+    // 檢查該用戶是否有任何一個 projectId 存在於管理員的 projectId 集合中
+    const userPermissions = adminStore.allUserPermissionsMap.get(user.phone) || {};
+    for (const userProjectId in userPermissions) {
+      if (adminProjectIds.has(userProjectId)) {
+        return true; // 找到共同建案，包含此用戶
+      }
+    }
+    return false; // 沒有共同建案，排除此用戶
+  });
+
+  // 確保當前使用者一定在列表中
+  const currentUserKey = userStore.user?.key;
+  if (currentUserKey && !filteredList.some(u => u.phone === currentUserKey)) {
+      const currentUserData = usersWithProjectData.value.find(u => u.phone === currentUserKey);
+      if (currentUserData) {
+          filteredList.push(currentUserData);
+      }
+  }
+  
+  return filteredList.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
+});
+// --- END: 修改 initiallyVisibleUsers ---
+
+
 const filteredUsers = computed(() => {
   const lowerQuery = searchPhone.value?.toLowerCase().trim();
 
-  // --- START: ✓ 修改點 ---
-  // 正體中文註解：根據是否有搜尋條件決定基礎列表
-  const baseList = lowerQuery ? manageableUsers.value : initiallyVisibleUsers.value;
-  // --- END: ✓ 修改點 ---
+  // 1. 決定基礎列表
+  // 如果有搜尋詞，就搜尋「所有人」，否則使用「初始可見列表」
+  const baseList = lowerQuery 
+    ? usersWithProjectData.value // 搜尋時使用完整列表
+    : initiallyVisibleUsers.value; // 預設使用過濾後列表
 
-  // 如果沒有搜尋關鍵字，直接返回基礎列表 (初始可見或全部)
+  // 2. 如果沒有搜尋詞，直接回傳基礎列表
   if (!lowerQuery) {
-    // 正體中文註解：檢查當前用戶是否應加入初始列表 (如果他不在 initiallyVisibleUsers 中)
-    const currentUser = userStore.user;
-    const currentUserKey = currentUser?.key;
-    if (currentUserKey && !baseList.some(user => user.phone === currentUserKey)) {
-        // 如果當前用戶不在初始列表，且管理員不是超級管理員（超管本就能看到所有），
-        // 則檢查當前用戶是否有任何建案與管理員有交集 (理論上應該有，否則 adminScope 會是空的)
-        // 為了簡化，如果不在初始列表就直接加入 (假設管理員總能看到自己)
-         const currentUserForList = {
-            name: currentUser.name,
-            phone: currentUser.key,
-            roles: userStore.currentUserRoles, // 使用 store 中的角色
-            rolesLoading: false,
-         };
-         // 返回包含當前用戶的新列表
-         return [currentUserForList, ...baseList].sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
-    }
-    return baseList; // 返回初始可見列表
+    return baseList;
   }
 
-  // 正體中文註解：有搜尋條件，則在完整的 manageableUsers 列表上進行篩選
-  let filteredList = manageableUsers.value.filter(user =>
+  // 3. 如果有搜尋詞，在 baseList 上執行過濾
+  // (注意：我們現在在 baseList 上過濾，而不是在 usersWithProjectData 上，
+  // 這樣就尊重了「搜尋時搜尋所有人」的邏輯)
+  return baseList.filter(user =>
     user.name.toLowerCase().includes(lowerQuery) ||
-    user.phone.includes(lowerQuery)
+    user.phone.includes(lowerQuery) ||
+    (user.email && user.email.toLowerCase().includes(lowerQuery)) || // 確保 email 存在
+    user.projectsText.toLowerCase().includes(lowerQuery)
   );
-
-  // 正體中文註解：檢查搜尋條件是否匹配當前登入的使用者 (維持不變)
-  const currentUser = userStore.user;
-  const currentUserKey = currentUser?.key;
-  if (currentUserKey && (currentUser.name.toLowerCase().includes(lowerQuery) || currentUserKey.includes(lowerQuery))) {
-    const isCurrentUserInList = filteredList.some(user => user.phone === currentUserKey);
-    if (!isCurrentUserInList) {
-      const currentUserForList = {
-        name: currentUser.name,
-        phone: currentUserKey,
-        roles: userStore.currentUserRoles,
-        rolesLoading: false,
-      };
-      filteredList.unshift(currentUserForList); // 維持加到最前面
-    }
-  }
-
-  return filteredList; // 返回搜尋結果
 });
+
 
 const userManagementFields = [
     { key: 'phone', label: '手機號碼' },
@@ -698,7 +792,6 @@ const userManagementFields = [
     { key: 'permissions', label: '系統權限' }
 ];
 
-//  更新為新的四種權限選項
 const fieldPermissionOptions = [
     { title: '可讀寫', value: 'RU', color: 'green' },
     { title: '唯讀', value: 'R', color: 'blue' },
@@ -715,7 +808,6 @@ const rules = {
 // --- Computed Properties ---
 const isSuperAdmin = computed(() => userStore.currentUserRoles.includes('超級管理員'));
 
-// ✓【新增】判斷當前登入的管理員是否為「超級管理員」或「系統管理員」
 const isGodModeAdmin = computed(() => {
   const roles = userStore.currentUserRoles;
   return roles.includes('超級管理員') || roles.includes('系統管理員');
@@ -726,10 +818,11 @@ const isEditingSelf = computed(() => {
   return targetUser.value.basicInfo.phone === userStore.user.key;
 });
 
-const allRoleNames = computed(() => roles.value.map(r => r.name));
+const allRoleNames = computed(() => adminStore.allRoleNames);
 
-// ✓【新增】從完整的 systemFunctions 列表中獲取所有功能名稱
-const allFunctionNames = computed(() => systemFunctions.value.map(f => f.name).sort());
+const allFunctionNames = computed(() => adminStore.allFunctionNames);
+
+const managedProjects = computed(() => Object.keys(adminStore.adminScope).sort((a,b) => a.localeCompare(b, 'zh-Hant')));
 
 const filteredManagedProjects = computed(() => {
   if (!projectSearchQuery.value) {
@@ -748,7 +841,7 @@ const availableRolesForAssignment = computed(() => {
   const grantableSet = new Set();
   const adminRoles = userStore.currentUserRoles;
   
-  roles.value.forEach(roleDef => {
+  adminStore.roles.forEach(roleDef => {
     if (adminRoles.includes(roleDef.name)) {
       (roleDef.grantableRoles || []).forEach(gRole => grantableSet.add(gRole));
     }
@@ -756,31 +849,34 @@ const availableRolesForAssignment = computed(() => {
   return Array.from(grantableSet);
 });
 
-// ✓【新增】定義一個欄位顯示設定檔
-// 未來新增欄位，只需要修改這個陣列即可
+// --- START: 修改 displayFields (步驟 5) ---
 const displayFields = ref([
   { key: 'phone', label: '手機號碼' },
+  { key: 'email', label: 'Email' },
   { key: 'lineId', label: 'LINE綁定', type: 'chip', options: { trueColor: 'green', falseColor: 'grey', trueText: '已綁定', falseText: '未綁定' } },
-  // 未來若要新增「部門」欄位，只需在此處加上一行：
-  // { key: 'department', label: '部門' }
+  { key: 'projects', label: '所屬建案', type: 'projects' },
 ]);
+// --- END: 修改 displayFields ---
 
+// --- START: 修改 tableHeaders (步驟 4) ---
 const tableHeaders = computed(() => {
   const headers = [
-    { title: '姓名', align: 'start', key: 'name', width: '20%' },
-    { title: '手機號碼', key: 'phone', width: '20%' },
-    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '15%' },
+    { title: '姓名', align: 'start', key: 'name', width: '15%' },
+    { title: '手機號碼', key: 'phone', width: '15%' },
+    { title: 'Email', key: 'email', width: '20%' },
+    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '10%' },
+    { title: '所屬建案', key: 'projects', sortable: false, width: '20%' },
   ];
   if (canViewAndEditRoles.value) {
-    headers.push({ title: '角色', key: 'roles', sortable: false, width: '30%' });
+    headers.push({ title: '角色', key: 'roles', sortable: false, width: '10%' });
   }
-  headers.push({ title: '操作', key: 'actions', sortable: false, align: 'center', width: '15%' });
+  headers.push({ title: '操作', key: 'actions', sortable: false, align: 'center', width: '10%' });
   return headers;
 });
-// 【新】計算當前管理員合併後的欄位權限
+// --- END: 修改 tableHeaders ---
+
 const currentUserFieldPermissions = computed(() => {
     if (isSuperAdmin.value) {
-        // 超級管理員擁有所有欄位的讀寫權限
         const allPermissions = {};
         userManagementFields.forEach(field => {
             allPermissions[field.key] = 'RU';
@@ -789,7 +885,7 @@ const currentUserFieldPermissions = computed(() => {
     }
     const merged = {};
     const adminRoles = userStore.currentUserRoles;
-    roles.value.forEach(roleDef => {
+    adminStore.roles.forEach(roleDef => {
         if (adminRoles.includes(roleDef.name)) {
             const perms = roleDef.fieldPermissions?.UserManagement || {};
             Object.assign(merged, perms);
@@ -798,20 +894,11 @@ const currentUserFieldPermissions = computed(() => {
     return merged;
 });
 
-// 【新】提供給模板使用的權限檢查函式
 const getFieldPermission = (fieldName) => {
-    return currentUserFieldPermissions.value[fieldName] || ''; // 預設隱藏
+    return currentUserFieldPermissions.value[fieldName] || '';
 };
 
-// ✓【新增】建立一個從權限名稱到描述的快速查找表
-const functionDescriptionMap = computed(() => {
-  return systemFunctions.value.reduce((map, func) => {
-    if (func.name && func.description) {
-      map[func.name] = func.description;
-    }
-    return map;
-  }, {});
-});
+const functionDescriptionMap = computed(() => adminStore.functionDescriptionMap);
 
 const isTargetUserAdmin = computed(() => {
   if (!targetUser.value || !targetUser.value.basicInfo.roles) return false;
@@ -823,8 +910,8 @@ const isTargetUserAdmin = computed(() => {
 
 // --- Watchers ---
 watch(selectedRoleIndex, (newIndex) => {
-  if (newIndex != null && roles.value[newIndex]) {
-    selectedRole.value = JSON.parse(JSON.stringify(roles.value[newIndex]));
+  if (newIndex != null && adminStore.roles[newIndex]) {
+    selectedRole.value = JSON.parse(JSON.stringify(adminStore.roles[newIndex]));
     
     if (!selectedRole.value.fieldPermissions) {
         selectedRole.value.fieldPermissions = {};
@@ -855,119 +942,20 @@ const loadInitialData = async () => {
   errorMessage.value = '';
   showErrorAlert.value = false;
   try {
-    // 單次呼叫後端 API 獲取所有初始資料
-    const result = await fetchUserManagementInitialData(adminKey.value);
-
-    if (result.status !== 'success') {
-      // 如果後端 API 回報錯誤
-      throw new Error(result.message || '獲取初始資料失敗');
-    }
-
-    // 從 API 回應中解構資料
-    const {
-      adminScope: scopeData, // 直接使用 API 回傳的 adminScope (是以 projectId 為 key)
-      manageableUsers: users,
-      roles: rolesData,
-      projects: projectsData, // API 回傳的是 { id, name, iconUrl } 陣列
-      systemFunctions: functionsData,
-      allUserPermissionsMap: permissionsMapObject // API 回傳的是物件 { phone: perms }
-    } = result.data;
-
-    // 處理管理員權限範圍 (轉換成以 projectName 為 key)
-    const scopeByProjectName = {};
-    const adminProjectIds = new Set();
-    const projectNames = [];
-    const allSystems = new Set();
-
-    // 建立 name <-> id 的映射，供後續使用
-    const nameToIdMap = {};
-    const idToNameMap = {};
-    projectsData.forEach(p => {
-        nameToIdMap[p.name] = p.id;
-        idToNameMap[p.id] = p.name;
-    });
-    // 將映射存到 projectStore (如果 projectStore 提供此功能)
-    projectStore.setProjectMaps(idToNameMap, nameToIdMap); // 假設 projectStore 有此 action
-
-    if (scopeData) {
-      for (const projectId in scopeData) {
-        const projectInfo = scopeData[projectId];
-        // 使用 idToNameMap 查找 projectName
-        const projectName = idToNameMap[projectId];
-        if (projectName && projectInfo.systems) {
-          scopeByProjectName[projectName] = projectInfo.systems;
-          projectNames.push(projectName);
-          adminProjectIds.add(projectId);
-          projectInfo.systems.forEach(system => allSystems.add(system));
-        } else if (projectInfo.projectName && projectInfo.systems) {
-            // 備用邏輯：如果 scopeData 仍包含 projectName
-            scopeByProjectName[projectInfo.projectName] = projectInfo.systems;
-            projectNames.push(projectInfo.projectName);
-             if (nameToIdMap[projectInfo.projectName]) {
-                adminProjectIds.add(nameToIdMap[projectInfo.projectName]);
-             }
-            projectInfo.systems.forEach(system => allSystems.add(system));
-        }
-      }
-    }
-
-    adminScope.value = scopeByProjectName;
-    managedProjects.value = projectNames.sort((a,b) => a.localeCompare(b, 'zh-Hant'));
-    // allSystemFunctions.value = Array.from(allSystems).sort(); // <--- 不再需要，直接用 functionsData
-
-    // 處理後端回傳的其他資料
-    manageableUsers.value = users.map(u => ({ ...u, rolesLoading: false })); // users 已排序且包含所需欄位
-    roles.value = rolesData; // rolesData 已排序
-    systemFunctions.value = functionsData; // functionsData 已排序
-
-    // 將後端傳回的物件轉換為 Map
-    allUserPermissionsMap.value = new Map(Object.entries(permissionsMapObject));
+    // 確保 projectStore 已載入 (它有自己的快取)
+    await projectStore.fetchProjects();
+    
+    // 呼叫 adminStore (它也有自己的快取)
+    await adminStore.loadAdminData(adminKey.value);
 
   } catch (error) {
-    console.error('[Debug] loadInitialData (API Call): 發生嚴重錯誤', error);
+    console.error('[UserManagement.vue] loadInitialData 失敗:', error);
     errorMessage.value = `初始化失敗: ${error.message}`;
     showErrorAlert.value = true;
   } finally {
     loading.value = false;
   }
 };
-// --- START: ✓ 新增 initiallyVisibleUsers 計算屬性 ---
-// 計算初始可見的用戶列表（與管理員有共同建案）
-const initiallyVisibleUsers = computed(() => {
-  if (loading.value || !adminScope.value || manageableUsers.value.length === 0) {
-    return []; // 如果還在載入或沒有資料，返回空陣列
-  }
-
-  // 獲取管理員擁有的所有 projectId
-  const adminProjectIds = new Set(Object.keys(adminScope.value).map(projectName => projectStore.nameToIdMap[projectName]).filter(Boolean));
-  if (adminProjectIds.size === 0 && !isSuperAdmin.value) {
-      console.warn("[Debug] initiallyVisibleUsers: Admin scope is empty or project mapping failed.");
-      return []; // 如果管理員沒有任何建案權限 (且非超管)，列表為空
-  }
-
-
-  return manageableUsers.value.filter(user => {
-    // 超級管理員可以看到所有相關人員
-    if (isSuperAdmin.value) return true;
-
-    // 查找該用戶的權限
-    const userPermissions = allUserPermissionsMap.value.get(user.phone);
-    if (!userPermissions) {
-      return false; // 如果找不到該用戶的權限資料，則不顯示
-    }
-
-    // 檢查該用戶是否有任何一個 projectId 存在於管理員的 projectId 集合中
-    for (const userProjectId in userPermissions) {
-      if (adminProjectIds.has(userProjectId)) {
-        return true; // 找到共同建案，包含此用戶
-      }
-    }
-    return false; // 沒有共同建案，排除此用戶
-  });
-});
-// --- END: ✓ 新增 initiallyVisibleUsers 計算屬性 ---
-
-
 
 onMounted(loadInitialData);
 
@@ -1053,27 +1041,23 @@ const expandAll = () => { panels.value = filteredManagedProjects.value; };
 const collapseAll = () => { panels.value = []; };
 
 const isAllSelectedForProject = (project) => {
-  // ✓【修改】只檢查管理員有權限的系統是否都被選取
-  const systemsAdminCanManage = adminScope.value[project] || [];
+  const systemsAdminCanManage = adminStore.adminScope[project] || [];
   if (systemsAdminCanManage.length === 0) return false;
   
   return systemsAdminCanManage.every(system => permissionMatrix.value[system]?.[project]);
 };
 
 const isIndeterminateForProject = (project) => {
-  // ✓【修改】根據管理員有權限的系統來判斷部分選取狀態
-  const systemsAdminCanManage = adminScope.value[project] || [];
+  const systemsAdminCanManage = adminStore.adminScope[project] || [];
   if (systemsAdminCanManage.length === 0) return false;
 
   const selectedCount = systemsAdminCanManage.filter(system => permissionMatrix.value[system]?.[project]).length;
   
-  // 當有選取但未全選時，顯示 "indeterminate"
   return selectedCount > 0 && selectedCount < systemsAdminCanManage.length;
 };
 
 const toggleAllForProject = (project, isSelected) => {
-  // ✓【修改】全選功能只會切換管理員有權限的系統
-  const systemsAdminCanManage = adminScope.value[project] || [];
+  const systemsAdminCanManage = adminStore.adminScope[project] || [];
   systemsAdminCanManage.forEach(system => {
     if (permissionMatrix.value[system]) {
       permissionMatrix.value[system][project] = isSelected;
@@ -1090,29 +1074,25 @@ const handleSave = async () => {
     }
   }
 
-  //  START: 新增權限驗證邏輯
   if (isNewUser.value) {
     let hasAtLeastOnePermission = false;
-    // 遍歷 permissionMatrix 檢查是否有任何一個權限被勾選
     for (const system in permissionMatrix.value) {
       for (const project in permissionMatrix.value[system]) {
         if (permissionMatrix.value[system][project] === true) {
           hasAtLeastOnePermission = true;
-          break; // 找到一個就足夠了，跳出內層迴圈
+          break;
         }
       }
       if (hasAtLeastOnePermission) {
-        break; // 跳出外層迴圈
+        break;
       }
     }
 
-    // 如果沒有任何權限被勾選，則顯示錯誤並中斷儲存
     if (!hasAtLeastOnePermission) {
       toast.error('請至少為新人員指派一項系統權限。');
-      return; // 中斷函式執行
+      return;
     }
   }
-  //  END: 權限驗證邏輯結束
 
   saving.value = true;
   try {
@@ -1142,6 +1122,8 @@ const handleSave = async () => {
     if (result.status === 'success') {
       toast.success(isNewUser.value ? '新人員建立成功！' : '人員資料更新成功！');
       closeDialog();
+      // 儲存成功後，清除快取並重新載入
+      adminStore.invalidateCache();
       await loadInitialData();
     } else {
       throw new Error(result.message || '發生未知的錯誤');
@@ -1180,13 +1162,16 @@ const validatePhoneNumber = async () => {
 // --- Role Assignment & Management Logic ---
 const handleRolesChange = async (user, newRoles) => {
   if (JSON.stringify(user.roles) === JSON.stringify(newRoles)) return;
-  const userInTable = manageableUsers.value.find(u => u.phone === user.phone);
+  const userInTable = adminStore.manageableUsers.find(u => u.phone === user.phone);
   if (!userInTable) return;
   userInTable.rolesLoading = true;
   try {
     await updateUserRoles(user.phone, newRoles);
     userInTable.roles = newRoles;
     toast.success(`已更新 ${user.name} 的角色`);
+    // 更改角色後，清除快取 (因為權限可能已改變)
+    adminStore.invalidateCache();
+    // (下次載入 loadInitialData 會自動重抓)
   } catch (error) {
     toast.error(`更新角色失敗: ${error.message}`);
     const originalUser = await fetchUserDetailsForAdmin(user.phone, adminKey.value);
@@ -1205,7 +1190,7 @@ const removeRole = (user, roleToRemove) => {
 
 const createNewRole = () => {
     const newRoleName = prompt("請輸入新角色的名稱：");
-    if (newRoleName && !roles.value.some(r => r.name === newRoleName)) {
+    if (newRoleName && !adminStore.roles.some(r => r.name === newRoleName)) {
         const newRole = {
             id: newRoleName,
             name: newRoleName,
@@ -1222,8 +1207,8 @@ const createNewRole = () => {
                 newRole.fieldPermissions.UserManagement[field.key] = 'RU';
             }
         });
-        roles.value.push(newRole);
-        selectedRoleIndex.value = roles.value.length - 1;
+        adminStore.roles.push(newRole);
+        selectedRoleIndex.value = adminStore.roles.length - 1;
     } else if (newRoleName) {
         toast.error("角色名稱已存在！");
     }
@@ -1248,6 +1233,8 @@ const saveRole = async () => {
         
         await updateRole(selectedRole.value.name, roleDataToSave);
         toast.success(`角色「${selectedRole.value.name}」已成功儲存！`);
+        // 儲存角色後，清除快取並重載
+        adminStore.invalidateCache();
         await loadInitialData();
     } catch (error) {
         toast.error(`儲存角色失敗：${error.message}`);
@@ -1269,6 +1256,8 @@ const executeDeleteRole = async () => {
         deleteRoleDialog.value = false;
         selectedRole.value = null;
         selectedRoleIndex.value = null;
+        // 刪除角色後，清除快取並重載
+        adminStore.invalidateCache();
         await loadInitialData();
     } catch (error) {
         toast.error(`刪除角色失敗：${error.message}`);
@@ -1307,7 +1296,9 @@ const saveSystemFunction = async () => {
     if (result.status === 'success') {
       toast.success(`權限功能「${editedFunction.value.name}」已儲存。`);
       isFunctionDialogVisible.value = false;
-      await loadInitialData(); // 重新載入所有資料
+      // 儲存功能後，清除快取並重載
+      adminStore.invalidateCache();
+      await loadInitialData();
     } else {
       throw new Error(result.message);
     }

@@ -884,12 +884,13 @@
 <script setup>
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'; // <--- 在這裡加入 onUnmounted
 import { useRoute } from 'vue-router';
+import { useProjectStore } from '@/store/projectStore';
 import { 
- fetchProjectConfig,
-  getBookingInitialData,
-  fetchAllUnitsForBooking,
-  fetchAllUnitsForUpload,
-  fetchBuildingListForUpload, 
+ // fetchProjectConfig, // <--- 不再需要
+  // getBookingInitialData, // <--- 不再需要
+  // fetchAllUnitsForBooking, // <--- 不再需要
+  // fetchAllUnitsForUpload, // <--- 不再需要
+  // fetchBuildingListForUpload, // <--- 不再需要
   checkExistingBooking, 
   validateId, 
   getBookingSlots, 
@@ -989,6 +990,7 @@ const isInstructionsDialogVisible = ref(false);
 
 const route = useRoute();
 const dateAdapter = useDate();
+const projectStore = useProjectStore();
 const step1Form = ref(null);
 const step2Form = ref(null);
 const bookingResultCard = ref(null);
@@ -1345,54 +1347,37 @@ watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
 // --- END: ✓ 修改 watch 監聽 bookingMethod ---
 
 
-// 在 onMounted 函數中修正
+// ✅ 3. 大幅簡化 onMounted 邏輯
 onMounted(async () => {
   projectId.value = route.params.projectId;
   isLoading.value = true;
   loadingText.value = '正在載入建案資訊...';
 
   try {
-    const config = await fetchProjectConfig(projectId.value);
-    projectConfig.value = config;
+    // 呼叫 Pinia action 來獲取資料 (它會自動處理快取)
+    const data = await projectStore.fetchProjectStaticData(projectId.value);
 
-    // ✓ 將 Promise.all 擴展為包含所有需要的 API 呼叫
-    const [
-      initialRes,
-      uploadBuildingsRes,
-      unitsRes,
-      uploadUnitsRes // ✓ 新增
-    ] = await Promise.all([
-      getBookingInitialData(config.projectName, projectId.value),
-      fetchBuildingListForUpload(projectId.value),
-      fetchAllUnitsForBooking(config.projectName, projectId.value),
-      fetchAllUnitsForUpload(projectId.value) // ✓ 新增
-    ]);
+    // 將 Pinia store 回傳的資料指派給 local refs
+    projectConfig.value = data.projectConfig;
 
-    if (initialRes?.status === 'success') {
-      // --- START: ✓ 新增排序邏輯 ---
-      // 檢查 buildings 陣列是否存在
-      if (Array.isArray(initialRes.data.buildings)) {
-        // 使用 localeCompare 搭配 numeric: true 進行自然排序 (A1, A2, A10)
-        initialRes.data.buildings.sort((a, b) => 
-          String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
-        );
-      }
-      // --- END: ✓ 新增排序邏輯 ---
-      
-      initialData.value = initialRes.data; // ✓ 賦值已排序的資料
+    // --- START: ✓ 排序邏輯 (保持不變) ---
+    if (Array.isArray(data.initialData.buildings)) {
+      data.initialData.buildings.sort((a, b) => 
+        String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
+      );
     }
+    initialData.value = data.initialData;
+    // --- END: ✓ 排序邏輯 ---
 
-    if (uploadBuildingsRes?.status === 'success') {
-       // (可選) 同樣對上傳列表進行排序，保持一致性
-       if (Array.isArray(uploadBuildingsRes.data.buildings)) {
-         uploadBuildingsRes.data.buildings.sort((a, b) => 
-           String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
-         );
-       }
-       uploadBuildingList.value = uploadBuildingsRes.data.buildings;
+    if (Array.isArray(data.uploadBuildingList)) {
+       data.uploadBuildingList.sort((a, b) => 
+         String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
+       );
     }
-    if (unitsRes?.status === 'success') allUnitsData.value = unitsRes.data;
-    if (uploadUnitsRes?.status === 'success') allUnitsDataForUpload.value = uploadUnitsRes.data; // ✓ 儲存資料
+    uploadBuildingList.value = data.uploadBuildingList;
+    
+    allUnitsData.value = data.allUnitsData;
+    allUnitsDataForUpload.value = data.allUnitsDataForUpload;
 
   } catch (error) {
     console.error("頁面初始化失敗:", error);

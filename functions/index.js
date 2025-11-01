@@ -8573,6 +8573,7 @@ async function executeReminderForProject(projectId) {
     const projectName = projectData.name || projectId;
     const rootFolderUrl = projectData.reportSettings?.reportDataFolderUrl;
     const secretName = projectData.lineChannelAccessTokenSecretName;
+    //LINE Messaging API  Channel access token 富宇天玥=FUYU141_LINE_TOKEN
 
     if (!rootFolderUrl || !secretName) {
       throw new Error("此建案未完整設定報告資料夾路徑或 LINE Token 密鑰名稱。");
@@ -11353,7 +11354,7 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (r
         allUsersSnapshot.forEach(doc => allUsers.push({ phone: doc.id, ...doc.data() }));
 
         manageableUsers = allUsers.filter(targetUser => {
-            if (targetUser.phone === adminKey) return false; // 排除自己
+            
             const targetUserRoles = targetUser.roles || [];
             if (adminUserRoles.includes('超級管理員')) return true;
             if (targetUserRoles.includes('超級管理員')) return false;
@@ -11362,6 +11363,7 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (r
         }).map(u => ({ // 只回傳前端需要的欄位
             phone: u.phone,
             name: u.name || 'N/A',
+            email: u.email || '', // <-- 新增此行
             roles: u.roles || [],
             lineId: u.lineId || null // ✓ 加入 lineId
             // 可以加入其他列表需要的欄位，例如 department

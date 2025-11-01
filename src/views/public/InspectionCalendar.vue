@@ -49,6 +49,14 @@
         ></v-progress-circular>
         <div class="mt-4 text-white font-weight-bold">資料載入中...</div>
       </v-overlay>
+
+      <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
+
+      <div v-if="!projectStore.isLoading && !error">
+        <div id="custom-calendar-container">
+          </div>
+      </div>
+
       <v-row
         class="mb-4 pa-3 rounded d-flex d-md-none"
         dense
@@ -555,19 +563,19 @@ import { getAuth } from 'firebase/auth';
 
 import { 
   fetchCalendarData,
-  fetchBookingOptions,
+  // fetchBookingOptions, // <--- 由 Store 處理
   updateAppointment,
   cancelAppointment,
   addAppointmentAdmin,
-  getAllBookingRules,
+  // getAllBookingRules, // <--- 由 Store 處理
   searchAppointmentsAndHouseholds,
   updateAppointmentInspectors,
-  fetchAllHouseholdsForProject,
+  // fetchAllHouseholdsForProject, // <--- 由 Store 處理
   getSlotsForAdmin, 
-  fetchProjectConfig, 
-  fetchAppointmentDateRange, 
+  // fetchProjectConfig, // <--- 由 Store 處理
+  // fetchAppointmentDateRange, // <--- 由 Store 處理
   getAdminBookingCalendarData,
-} from '@/api'; 
+} from '@/api';
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -616,7 +624,8 @@ const EDITABLE_FIELDS = new Set([
 ]);
 
 // --- 響應式狀態 ---
-const isLoading = ref(true);
+// ✅ 3. 移除 isLoading，因為我們將直接使用 projectStore.isLoading
+// const isLoading = ref(true);
 const error = ref(null);
 const projectSettings = ref(null); // [新增] 用於儲存專案的詳細設定
 
@@ -907,56 +916,48 @@ function navigateToRuleManager() {
     params: { projectId: projectId.value } 
   });
 }
-// 驗屋預約管理 --- 主要資料獲取函式 ---
+
+// ✅ 4. 修改 fetchData，不再呼叫 API，而是從 projectStore 獲取快取
 async function fetchData() {
-  isLoading.value = true;
+  // isLoading 由 projectStore 控制，這裡不再手動設置
   error.value = null;
   try {
+    // 1. 從 Store 獲取所有靜態資料
+    // (onMounted 中已經呼叫過 fetchCalendarStaticData, 這裡理論上是讀取快取)
+    const staticData = await projectStore.fetchCalendarStaticData(projectId.value);
 
-
-    const [rawCalendarData, optionsData, rulesData, allHouseholds] = await Promise.all([
-      fetchCalendarData(projectId.value, startDate.value, endDate.value),
-      fetchBookingOptions(projectId.value),
-      getAllBookingRules(projectId.value),
-      fetchAllHouseholdsForProject(projectId.value)
-    ]);
+    // 2. 將 Store 的資料指派給本地 ref
+    projectSettings.value = staticData.projectConfig;
+    bookingOptions.value = staticData.optionsData;
+    allBookingRules.value = staticData.rulesData.status === 'success' ? staticData.rulesData.data : null;
     
-    //  新增：資料驗證與過濾層
-    // 在將資料存入 state 前，先檢查 appointmentDate 的格式
-    const calendarData = rawCalendarData.filter(appt => {
-        // 確保 appointmentDate 存在，並且是一個擁有 toDate 方法的物件 (Firestore Timestamp 的特徵)
-        if (appt.appointmentDate && typeof appt.appointmentDate.toDate === 'function') {
-            return true; // 格式正確，保留這筆資料
-        }
-        // 如果格式不正確，在 console 中印出警告，並過濾掉這筆資料
-        console.warn('發現無效或缺失的 appointmentDate 格式，已過濾此筆預約:', appt);
-        return false;
-    });
-
-    allAppointments.value = calendarData;
-    
-    bookingOptions.value = optionsData;
-
-    if (rulesData.status === 'success') {
-      allBookingRules.value = rulesData.data;
-    } else {
-      console.warn('無法獲取預約規則資料:', rulesData.message);
-      allBookingRules.value = null; 
-    }
-
+    const allHouseholds = staticData.allHouseholds;
     allHouseholdData.value = allHouseholds.reduce((acc, curr) => {
         const householdId = `${curr.projectId}_${curr.unitId}`;
         acc[householdId] = { id: householdId, ...curr };
         return acc;
     }, {});
 
+    // 3. 唯一需要動態獲取的：日曆上的預約資料
+    const rawCalendarData = await fetchCalendarData(projectId.value, startDate.value, endDate.value);
+    
+    // ... (calendarData 的過濾邏輯保持不變) ...
+    const calendarDataFiltered = rawCalendarData.filter(appt => {
+        if (appt.appointmentDate && typeof appt.appointmentDate.toDate === 'function') {
+            return true;
+        }
+        console.warn('發現無效或缺失的 appointmentDate 格式，已過濾此筆預約:', appt);
+        return false;
+    });
+
+    allAppointments.value = calendarDataFiltered;
+    
   } catch (err) {
     console.error('獲取資料失敗:', err);
     error.value = err.message;
     showSnackbar(`獲取資料失敗: ${err.message}`, 'error');
-  } finally {
-    isLoading.value = false;
-  }
+  } 
+  // 'finally' 區塊被移除，因為 isLoading 由 store 控制
 }
 
 // 驗屋預約管理 --- 獲取所有戶別資料 ---
@@ -1479,50 +1480,58 @@ async function handleConfirmCancelBooking() {
     }
 }
 
-// --- 生命週期與初始資料載入 ---
+// ✅ 5. 修改 onMounted，簡化 API 呼叫
 onMounted(async () => {
   pageContextStore.$patch({
     title: '驗屋預約管理',
     path: route.path,
   });
   
-  isLoading.value = true;
-  
+  // isLoading.value = true; // 由 projectStore 控制
+
   try {
-    // 步驟 1: 直接檢查您自己的登入系統狀態
     if (!userStore.isLoggedIn) {
       console.warn('使用者未登入 (根據 userStore)，將重導向至登入頁面。');
       router.push({ name: 'Login' });
-      // 拋出錯誤以中斷後續的所有資料載入
       throw new Error('使用者未登入');
     }
-
     
+    // 1. 平行獲取 Projects (用於名稱) 和 User 偏好設定
     await Promise.all([
       projectStore.fetchProjects(),
       userStore.loadUserPreferencesFromDatabase()
     ]);
 
-    const dateRangeData = await fetchAppointmentDateRange(projectId.value);
-    minSelectableDate.value = dateRangeData.minDate;
-    maxSelectableDate.value = dateRangeData.maxDate;
-    
-    dateRange.value = [startDate.value, endDate.value];
+    // 2. 呼叫 Store Action 獲取所有靜態資料 (Config, DateRange, Options, Rules, Households)
+    // (這個 action 內部會自動處理快取)
+    const staticData = await projectStore.fetchCalendarStaticData(projectId.value);
 
-    projectSettings.value = await fetchProjectConfig(projectId.value);
+    // 3. 將 Store 的資料指派給本地 ref
+    minSelectableDate.value = staticData.dateRangeData.minDate;
+    maxSelectableDate.value = staticData.dateRangeData.maxDate;
+    dateRange.value = [startDate.value, endDate.value]; 
     
-    // 初始載入行事曆資料
+    projectSettings.value = staticData.projectConfig;
+    bookingOptions.value = staticData.optionsData;
+    allBookingRules.value = staticData.rulesData.status === 'success' ? staticData.rulesData.data : null;
+    const allHouseholds = staticData.allHouseholds;
+    allHouseholdData.value = allHouseholds.reduce((acc, curr) => {
+        const householdId = `${curr.projectId}_${curr.unitId}`;
+        acc[householdId] = { id: householdId, ...curr };
+        return acc;
+    }, {});
+
+   // 4. (修正) 直接呼叫 fetchData() 進行初始載入
+    // (watch([startDate, endDate]) 中的 hasChanged 檢查會阻止它在 mount 時觸發)
     await fetchData();
 
   } catch (err) {
-    // 只有在不是「使用者未登入」這個我們自己拋出的錯誤時，才顯示錯誤訊息
     if (err.message !== '使用者未登入') {
         console.error('初始化頁面失敗:', err);
         error.value = `無法載入預約資料：${err.message}`;
     }
-  } finally {
-    isLoading.value = false;
-  }
+  } 
+  // 'finally' 區塊被移除
 });
 
 

@@ -553,18 +553,19 @@ import { format } from 'date-fns';                 // ✓ 新增
 
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore';
 import {
-  fetchProjectConfig,
+  // fetchProjectConfig, // <--- 由 Store 處理
   searchHouseholdsForAdmin,
-  getProjectBatchDetails,
+  // getProjectBatchDetails, // <--- 由 Store 處理
   getAdminBookingCalendarData,
   getSlotsForAdmin,
   addAppointmentAdmin,
-  fetchAllHouseholds,
+  // fetchAllHouseholds, // <--- 由 Store 處理
   getAppointmentsForHousehold,
   updateAppointment, 
   cancelAppointment,
-} from '@/api';
+} from '@/api'; // ✅ 簡化 api 引入
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
@@ -574,6 +575,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'booking-success']);
 
 const userStore = useUserStore();
+const projectStore = useProjectStore();
 
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
@@ -1122,40 +1124,52 @@ const submitAdminBooking = async () => {
 //  建立一個獨立的函式來載入初始資料
 const loadInitialData = async () => {
     if (!props.projectId) return;
-    isLoading.value = true;
+    
+    // isLoading 會自動由 projectStore.isLoading 控制
+    // isLoading.value = true; // <--- 這行可以移除，或保留
+    
     try {
-        const [projectConfig, householdsRes, batchesRes] = await Promise.all([
-            fetchProjectConfig(props.projectId),
-            fetchAllHouseholds(props.projectId),
-            getProjectBatchDetails({ projectId: props.projectId }),
-        ]);
+        // 呼叫 Pinia action 來獲取資料 (它會自動處理快取)
+        const {
+          projectConfig,
+          householdsRes,
+          batchesRes
+        } = await projectStore.fetchAdminBookingData(props.projectId);
         
         if (projectConfig) {
-            projectName.value = projectConfig.name; // ✓ 儲存建案名稱
+            projectName.value = projectConfig.name;
             bookingOptions.bookingTypes = projectConfig.bookingTypes || [];
             bookingOptions.inspectionMethods = projectConfig.bookingMethodOptions || [];
         }
 
         allProjectHouseholds.value = householdsRes;
-const buildings = [...new Set(householdsRes.map(h => h.building))];
+        const buildings = [...new Set(householdsRes.map(h => h.building))];
         
-        // --- START: ✓ 修改點 (使用自然排序) ---
-        // 使用 localeCompare 搭配 numeric: true 進行自然排序 (A1, A2, A10)
         projectBuildings.value = buildings.sort((a, b) => 
           String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
         );
 
-        if (batchesRes.status === 'success') {
-            allBatchDetails.value = batchesRes.data;
-        }
+        allBatchDetails.value = batchesRes; // batchesRes 已經是 data
+
     } catch (error) {
         console.error("初始化對話框資料失敗:", error);
+        // 可以在這裡顯示一個錯誤提示
+        errorAlert.text = `載入建案資料失敗: ${error.message}`;
+        errorAlert.type = 'error';
+        errorAlert.show = true;
     } finally {
-        isLoading.value = false;
+        // isLoading.value = false; // <--- 這行可以移除
     }
 };
 
-//  修改 watch 監聽器
+// ✅ 4. 修改 isLoading 的綁定
+// 我們讓本地的 isLoading 反映 store 的 isLoading 狀態
+// 這樣當 store 在載入時，v-progress-circular 會自動顯示
+watch(() => projectStore.isLoading, (newVal) => {
+  isLoading.value = newVal;
+});
+
+// ✅ 5. 修改 watch (modelValue)
 watch(() => props.modelValue, (newVal) => {
     if (newVal) {
         // 當對話框打開時，載入初始資料
@@ -1164,7 +1178,8 @@ watch(() => props.modelValue, (newVal) => {
         // 當對話框關閉時，重置所有狀態
         resetState();
     }
-}, { immediate: true }); // ✓ 修改：在此處加上 { immediate: true }
+}, { immediate: true });
+
 </script>
 
 
