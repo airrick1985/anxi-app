@@ -327,6 +327,7 @@ import { useUserStore } from '@/store/user'
 import { useProjectStore } from '@/store/projectStore'
 import { useUiStore } from '@/store/uiStore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
+import { db } from '@/firebase'; // 引入 db
 
 import ParkingCanvas from '@/components/ParkingCanvas.vue'
 import { storeToRefs } from 'pinia'
@@ -671,7 +672,7 @@ export default {
               storagePath, fileName, base64, selectedProjectId.value || 'default'
             );
             backgroundImageUrl = downloadURL; // 更新圖片URL
-            console.log('背景圖片處理成功:', backgroundImageUrl);
+            //console.log('背景圖片處理成功:', backgroundImageUrl);
           } catch (uploadError) {
             console.error('圖片上傳或處理失敗:', uploadError);
             // ✓ 使用 toast 提示錯誤
@@ -750,26 +751,30 @@ export default {
       }
     }
 
-     const saveFloorPlan = async () => {
-      if (!parkingCanvas.value) return
-      saving.value = true
+    const saveFloorPlan = async () => {
+      if (!parkingCanvas.value) return;
+      saving.value = true;
+      
       try {
-        const layouts = parkingCanvas.value.getSpotLayouts()
-        // ✓ 修改：呼叫 api.js 的儲存佈局函式
-        await saveSpotLayoutsAPI(
-          selectedFloorPlan.value.id,
-          layouts,
-          selectedProjectId.value // ✓ 傳遞 projectId
-        )
-        isEditorDirty.value = false
-        // ✓ 使用 toast 提示成功
+        const layouts = parkingCanvas.value.getSpotLayouts();
+        const floorPlanId = selectedFloorPlan.value.id;
+        const projId = selectedProjectId.value;
+
+//console.log('[Manager] 呼叫 saveSpotLayoutsAPI 之前，從 Canvas 獲取的資料：', JSON.stringify(layouts, null, 2));
+        // ✓ 1. 呼叫 api.js 中的函式
+        await saveSpotLayoutsAPI(floorPlanId, layouts, projId);
+
+        isEditorDirty.value = false;
         toast.success('平面圖儲存成功！');
+        
+        // ✓ 2. 儲存成功後，重新載入畫布
+        await onCanvasReady();
+
       } catch (error) {
-        console.error('儲存平面圖失敗:', error)
-        // ✓ 使用 toast 提示錯誤
+        console.error('儲存平面圖失敗:', error);
         toast.error(`儲存失敗: ${error.message}`);
       } finally {
-        saving.value = false
+        saving.value = false;
       }
     }
 
@@ -809,22 +814,22 @@ export default {
     }
 
     const onCanvasReady = async () => {
-      console.log('[Manager] Canvas 準備就緒 (onCanvasReady event received)')
+      //console.log('[Manager] Canvas 準備就緒 (onCanvasReady event received)')
       if (selectedFloorPlan.value && selectedFloorPlan.value.id) {
         try {
-          console.log(`[Manager] 正在為 floorPlanId: ${selectedFloorPlan.value.id} 獲取佈局...`)
+          //console.log(`[Manager] 正在為 floorPlanId: ${selectedFloorPlan.value.id} 獲取佈局...`)
           // ✓ 修改：呼叫 api.js 的獲取佈局函式
           const resultData = await getSpotLayoutsAPI(
             selectedFloorPlan.value.id,
             selectedProjectId.value // ✓ 傳遞 projectId
           )
-          console.log('[Manager] 從 getSpotLayoutsAPI 獲取到的原始 resultData:', resultData)
+          //console.log('[Manager] 從 getSpotLayoutsAPI 獲取到的原始 resultData:', resultData)
 
           if (resultData.status === 'success' && resultData.layouts) {
             const layouts = resultData.layouts
-            console.log('[Manager] 解析後的 layouts 資料:', JSON.parse(JSON.stringify(layouts)))
+            //console.log('[Manager] 解析後的 layouts 資料:', JSON.parse(JSON.stringify(layouts)))
             if (parkingCanvas.value) {
-              console.log('[Manager] 呼叫 parkingCanvas.loadSpotLayouts...')
+              //console.log('[Manager] 呼叫 parkingCanvas.loadSpotLayouts...')
               parkingCanvas.value.loadSpotLayouts(layouts)
               // ✓ 載入成功後，標記為未修改
               isEditorDirty.value = false;

@@ -38,6 +38,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
 import { useUserStore } from '@/store/user';
 
+const bookingApiRouter = httpsCallable(functions, 'bookingApi');//預約系統API
+
 
 
 
@@ -2066,7 +2068,7 @@ export async function cancelAppointment(appointmentId, projectId, unitId, bookin
 
 
 /**
- * [Firebase 版] 取消一筆預約
+ * [Firebase 版] 取消一筆預約 (✅ V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 projectId 和 bookingCode 的物件
  * @returns {Promise<object>}
  */
@@ -2075,9 +2077,13 @@ export const cancelBooking = async (payload) => {
     return { status: 'error', message: '前端錯誤：缺少 projectId 或 bookingCode。' };
   }
   try {
-    const doCancel = httpsCallable(functions, 'cancelBooking');
-    const result = await doCancel(payload);
-    return result.data;
+    // ✅ 修改：呼叫 bookingApiRouter，傳入 action 和 data
+    const result = await bookingApiRouter({
+        action: 'cancelBooking',
+        data: payload
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, message }，因此 result.data 就是該物件
+    return result.data; 
   } catch (error) {
     console.error("API cancelBooking 錯誤:", error);
     return { status: 'error', message: error.message };
@@ -2088,12 +2094,15 @@ export const cancelBooking = async (payload) => {
 //  公開預約系統 API (Firebase 遷移版)
 // =============================================
 
-//  [新增] 獲取預約頁面初始化所需的資料
+//  [新增] 獲取預約頁面初始化所需的資料 (✅ V2: 呼叫 bookingApi 路由)
 export async function getBookingInitialData(projectName, projectId) {
-  const doGetInitialData = httpsCallable(functions, 'getBookingInitialData');
   try {
-    const result = await doGetInitialData({ projectId });
-    // 為了與舊版前端的格式相容，回傳包含 status 和 data 的物件
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getBookingInitialData',
+        data: { projectId, projectName } // 保持傳遞，即使後端可能不用 projectName
+    });
+    // ✅ 修改：後端路由會回傳 { buildings, ... }，我們保持原有的包裝
     return { status: 'success', data: result.data };
   } catch (error) {
     console.error("API getBookingInitialData 錯誤:", error);
@@ -2122,21 +2131,23 @@ export async function updateProjectSettings(projectId, settingsData) {
 }
 
 /**
- *  [新增] 從 Firestore 獲取建案的公開設定
+ * [新增] 從 Firestore 獲取建案的公開設定 (✅ V2: 呼叫 bookingApi 路由)
  * @param {string} projectId 建案 ID
  */
 export async function fetchProjectConfig(projectId) {
-  const getProjectConfig = httpsCallable(functions, 'getProjectConfig');
   try {
-    const result = await getProjectConfig({ projectId });
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getProjectConfig',
+        data: { projectId }
+    });
+    // ✅ 修改：後端路由會直接回傳 config 物件，這符合原函式 return result.data 的預期
     return result.data;
   } catch (error) {
     console.error("API fetchProjectConfig 錯誤:", error);
-    // 回傳 null 或拋出錯誤，讓前端頁面可以處理加載失敗的情況
     return null; 
   }
 }
-
 
 
 /**
@@ -2154,15 +2165,16 @@ export async function getUnitsByBuilding(projectName, building) {
 
 
 /**
- *  檢查是否已有有效預約
- * @param {string} unitId 戶別
- * @param {string} bookingType 預約項目
- * @param {string} projectId 建案 ID
+ * 檢查是否已有有效預約 (✅ V2: 呼叫 bookingApi 路由)
  */
 export async function checkExistingBooking(projectId, unitId, bookingType) {
- const doCheck = httpsCallable(functions, 'checkExistingBooking');
  try {
-  const result = await doCheck({ projectId, unitId, bookingType });
+  // ✅ 修改：呼叫 bookingApiRouter
+  const result = await bookingApiRouter({
+      action: 'checkExistingBooking',
+      data: { projectId, unitId, bookingType }
+  });
+  // ✅ 修改：後端路由會直接回傳 { status, data: { status } }，這符合原函式 return result.data 的預期
   return result.data;
  } catch (error) {
   console.error("API checkExistingBooking 錯誤:", error);
@@ -2171,27 +2183,19 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
 }
 
 /**
- *   獲取可預約的日期和時段
- * @param {string} projectName (舊參數)
- * @param {string} unitId 戶別
- * @param {string} bookingType 預約項目
- * @param {string} bookingMethod 選擇方式
- * @param {string} projectId 建案 ID
+ * 獲取可預約的日期和時段 (✅ V2: 呼叫 bookingApi 路由)
  */
 export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
-  const getSlots = httpsCallable(functions, 'getAvailableSlots');
   try {
-    //console.log('呼叫 getAvailableSlots，參數:', { projectId, unitId, bookingType, bookingMethod });
-    
-    const result = await getSlots({ projectId, unitId, bookingType, bookingMethod });
-    
-    //console.log('getAvailableSlots 完整回傳:', result);
-    //console.log('result.data:', result.data);
-    
-    //  根據 Cloud Functions 的回傳格式，包裝成前端期望的格式
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getAvailableSlots',
+        data: { projectId, unitId, bookingType, bookingMethod, projectName }
+    });
+    // ✅ 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
     return {
       status: 'success',
-      data: result.data  // 這裡是 Cloud Functions 回傳的實際資料
+      data: result.data
     };
   } catch (error) {
     console.error("API getBookingSlots 錯誤:", error);
@@ -2242,35 +2246,39 @@ export async function getAllBookingRules(projectId) {
 
 
 /**
- * 儲存預約資料 (Firebase 版)
- *  修改此函式以呼叫 Cloud Function
+ * 儲存預約資料 (Firebase 版) (✅ V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 projectId 和 bookingData 的物件
  */
 export const saveBooking = async (payload) => {
-  const doSaveBooking = httpsCallable(functions, 'saveBooking');
   try {
-    const result = await doSaveBooking(payload);
-    // Cloud Function 成功時，回傳的資料會在 result.data 中
-    // 我們將其包裝成與舊版類似的格式，確保前端相容性
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'saveBooking',
+        data: payload // 整個 payload { projectId, bookingData } 作為 data 傳遞
+    });
+    // ✅ 修改：後端路由會回傳 { status, data: { bookingCode } }
+    // 我們將其包裝成前端期望的 { status, ...result.data }
     return { status: 'success', ...result.data };
   } catch (error) {
     console.error("API saveBooking 錯誤:", error);
-    // 將 HttpsError 轉換為前端習慣的格式
     return { status: 'error', message: error.message };
   }
 };
 
 /**
- * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token
+ * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (✅ V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId, bookingType }
- * @returns {Promise<object>} - 後端回傳的結果 { status, token } 或 { status: 'error', message }
  */
 export const initiateBookingConfirmation = async (payload) => {
-  const functionName = 'initiateBookingConfirmation'; // 用於 Log
+  const functionName = 'initiateBookingConfirmation';
   try {
-    const initiatorFunction = httpsCallable(functions, functionName); // 對應後端函數名稱
-    const result = await initiatorFunction(payload);
-    return result.data; // 直接回傳後端的 { status, token }
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: functionName, // 使用函式名稱作為 action
+        data: payload
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, token }
+    return result.data;
   } catch (error) {
     console.error(`API Error in ${functionName}:`, error);
     const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
@@ -2281,16 +2289,16 @@ export const initiateBookingConfirmation = async (payload) => {
 
 
 /**
- *  [修改] 一次性獲取所有可預約的戶別資料
- * @param {string} projectName (雖然函式仍接收 projectName，但後端已改用 projectId)
- * @param {string} projectId 建案 ID
+ * [修改] 一次性獲取所有可預約的戶別資料 (✅ V2: 呼叫 bookingApi 路由)
  */
 export const fetchAllUnitsForBooking = async (projectName, projectId) => {
-  // 注意：我們現在需要傳遞 projectId
-  const getAllUnitsForBooking = httpsCallable(functions, 'getAllUnitsForBooking');
   try {
-    const result = await getAllUnitsForBooking({ projectId: projectId });
-    // 為了與舊版前端的格式相容，我們仍然回傳一個包含 status 和 data 的物件
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getAllUnitsForBooking',
+        data: { projectId: projectId, projectName: projectName }
+    });
+    // ✅ 修改：後端路由會直接回傳 allUnitsByBuilding 物件，我們保持原有的包裝
     return { status: 'success', data: result.data };
   } catch (error) {
     console.error("API fetchAllUnitsForBooking 錯誤:", error);
@@ -2300,58 +2308,45 @@ export const fetchAllUnitsForBooking = async (projectName, projectId) => {
 
 
 /**
- *  [修改] 驗證身分證與戶別是否相符
- * @param {string} projectName (舊參數，後端已不使用但保留以相容舊呼叫)
- * @param {string} unitId 戶別
- * @param {string} idNumber 身分證號碼
- * @param {string} projectId 建案 ID
+ * [修改] 驗證身分證與戶別是否相符 (✅ V2: 呼叫 bookingApi 路由)
  */
 export const validateId = async (projectName, unitId, idNumber, projectId) => {
-  const doValidateId = httpsCallable(functions, 'validateId');
   try {
-    await doValidateId({ projectId, unitId, idNumber });
-    // 成功時，Cloud Function 不會回傳 data，直接 resolve
+    // ✅ 修改：呼叫 bookingApiRouter
+    await bookingApiRouter({
+        action: 'validateId',
+        data: { projectId, unitId, idNumber, projectName }
+    });
+    // ✅ 修改：保持原有的成功回傳 (因為後端成功時不回傳 data)
     return { status: 'success' };
   } catch (error) {
     console.error("API validateId 錯誤:", error);
-    // HttpsError 的 message 會直接是後端拋出的錯誤訊息
     return { status: 'error', message: error.message };
   }
 };
 
 
 
-
 /**
- * 上傳驗屋授權書 (Firebase Function 版)
- * @param {string} base64Data - 產生的圖檔的 Base64 Data URL
- * @param {string} fileName - 指定的檔案名稱
- * @param {string} projectId - 當前建案 ID
- * @param {string} unitId - 當前選擇的戶別
- * @returns {Promise<object>} - 回傳包含 { status, message, url } 的物件
+ * 上傳驗屋授權書 (Firebase Function 版) (✅ V2: 呼叫 bookingApi 路由)
  */
 export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) => {
-  // 1. 去除 Base64 URL 的前綴，與舊版邏輯相同
   const pureBase64 = base64Data.split(',')[1];
-  
   try {
-    // 2. 獲取對我們剛剛建立的 Cloud Function 的引用
-    const uploader = httpsCallable(functions, 'uploadAuthLetter');
-    
-    // 3. 呼叫 Cloud Function 並傳遞必要的參數
-    const result = await uploader({
-      projectId: projectId, //  新增 projectId
-      unitId: unitId,
-      fileName: fileName,
-      base64: pureBase64
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+      action: 'uploadAuthLetter',
+      data: {
+        projectId: projectId, 
+        unitId: unitId,
+        fileName: fileName,
+        base64: pureBase64
+      }
     });
-    
-    // 4. 直接回傳 Cloud Function 的執行結果
+    // ✅ 修改：後端路由會直接回傳 { status, url, ... }
     return result.data;
-
   } catch (error) {
     console.error("呼叫 uploadAuthLetter 雲端函式時發生錯誤:", error);
-    // 將 Firebase Function 拋出的 HttpsError 轉換為前端習慣的格式
     return { status: 'error', message: error.message };
   }
 };
@@ -2453,31 +2448,25 @@ function fileToBase64(file) {
 
 
 /**
- * [代理模式] 將驗屋報告透過 Cloud Function 直接上傳到 Google Drive
- * @param {object} payload - 表單資料
- * @param {File} fileObject - 原始 File 物件
- * @returns {Promise<object>}
+ * [代理模式] 將驗屋報告透過 Cloud Function 直接上傳到 Google Drive (✅ V2: 呼叫 bookingApi 路由)
  */
 export async function uploadReportDirectlyToDrive(payload, fileObject) {
-  //console.log('[api.js] Starting direct upload process via proxy function...');
   try {
-    // 1. 將檔案轉為 Base64
     const base64Content = await fileToBase64(fileObject);
-
-    // 2. 準備傳給 Cloud Function 的完整資料
     const functionPayload = {
       ...payload,
       fileName: fileObject.name,
-      fileContent: base64Content, // 傳送 Base64 內容
+      fileContent: base64Content, 
       contentType: fileObject.type,
     };
     
-    // 3. 呼叫新的 Cloud Function
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'handleDirectReportUpload',
+        data: functionPayload
+    });
 
-    const uploader = httpsCallable(functions, 'handleDirectReportUpload');
-    const result = await uploader(functionPayload);
-
-    // 4. 直接回傳 Cloud Function 的執行結果
+    // ✅ 修改：後端路由會直接回傳 { status, message }
     return result.data;
 
   } catch (error) {
@@ -4645,21 +4634,17 @@ export async function getSlotsForAdmin(projectId, dateStr) {
 
 
 /**
- * [新] 獲取上傳報告頁面所需的棟別列表 (無篩選)
- * @param {string} projectId 建案 ID
+ * [新] 獲取上傳報告頁面所需的棟別列表 (無篩選) (✅ V2: 呼叫 bookingApi 路由)
  */
 export async function fetchBuildingListForUpload(projectId) {
   try {
-    // ✅ 直接使用匯入的 functions 實例
-    const getBuildingsFunc = httpsCallable(functions, 'getBuildingsForUpload');
-    const result = await getBuildingsFunc({ projectId: projectId });
-
-    if (result.data.status === 'success') {
-      return result.data; // 直接回傳 { status, data }
-    } else {
-      console.error("API fetchBuildingListForUpload 後端錯誤:", result.data.message);
-      return { status: 'error', message: result.data.message };
-    }
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getBuildingsForUpload',
+        data: { projectId: projectId }
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, data }
+    return result.data;
   } catch (error) {
     console.error("API fetchBuildingListForUpload 呼叫錯誤:", error);
     return { status: 'error', message: error.message };
@@ -4667,27 +4652,19 @@ export async function fetchBuildingListForUpload(projectId) {
 }
 
 /**
- * [新] 獲取上傳報告頁面所需的所有戶別資料 (無篩選)
- * @param {string} projectId 建案 ID
+ * [新] 獲取上傳報告頁面所需的所有戶別資料 (無篩選) (✅ V2: 呼叫 bookingApi 路由)
  */
 export async function fetchAllUnitsForUpload(projectId) {
   try {
-    // ✅ 直接使用從 firebase.js 匯入的、已設定好區域的 functions 實例
-    const getUnitsFunc = httpsCallable(functions, 'getAllUnitsForUpload');
-    const result = await getUnitsFunc({ projectId: projectId });
-
-    // 根據後端回傳格式調整 (你的後端是回傳 { status, data })
-    if (result.data.status === 'success') {
-       return result.data; // 直接回傳 { status, data } 給 BookingPage
-    } else {
-       // 如果後端回報 status: 'error'
-       console.error("API fetchAllUnitsForUpload 後端錯誤:", result.data.message);
-       return { status: 'error', message: result.data.message };
-    }
-
-  } catch (error) { // 捕獲 httpsCallable 本身的錯誤 (例如網路問題、FirebaseError: internal)
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'getAllUnitsForUpload',
+        data: { projectId: projectId }
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, data }
+    return result.data;
+  } catch (error) { 
     console.error("API fetchAllUnitsForUpload 呼叫錯誤:", error);
-    // 保持回傳格式一致
     return { status: 'error', message: error.message };
   }
 }
@@ -4752,14 +4729,16 @@ export async function fetchUserPreferencesFromBackend(userKey) {
 
 
 /**
- * [新] 呼叫後端發起授權書簽署流程 (委託人發起)
- * @param {object} payload - 包含 projectId, unitId, formData, delegatorSignature
- * @returns {Promise<object>}
+ * [新] 呼叫後端發起授權書簽署流程 (委託人發起) (✅ V2: 呼叫 bookingApi 路由)
  */
 export async function initiateAuthSigningProcess(payload) {
   try {
-    const initiator = httpsCallable(functions, 'initiateAuthSigningProcess');
-    const result = await initiator(payload);
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'initiateAuthSigningProcess',
+        data: payload
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, message }
     return result.data;
   } catch (error) {
     console.error("API initiateAuthSigningProcess 錯誤:", error);
@@ -4801,23 +4780,22 @@ export async function markAuthSessionComplete(payload) {
 
 
 /**
- * [API] 呼叫後端，執行上傳報告前的第一步驗證
- * @param {object} payload - 包含 { projectId, unitId, reportType, idNumber }
- * @returns {Promise<object>} - 後端回傳的驗證結果
+ * [API] 呼叫後端，執行上傳報告前的第一步驗證 (✅ V2: 呼叫 bookingApi 路由)
  */
 export const verifyUploadPrerequisites = async (payload) => {
   try {
-    const verifyFunction = httpsCallable(functions, 'verifyUploadPrerequisites');
-    const result = await verifyFunction(payload);
-    // onCall 函式回傳的資料會包在一個 data 物件中
+    // ✅ 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
+        action: 'verifyUploadPrerequisites',
+        data: payload
+    });
+    // ✅ 修改：後端路由會直接回傳 { status, ... }
     return result.data;
   } catch (error) {
     console.error("API Error in verifyUploadPrerequisites:", error);
-    // 將錯誤再次拋出，讓 Vue 元件的 catch 區塊可以接收到更清晰的錯誤訊息
     throw new Error(error.message);
   }
 };
-
 
 //手動啟用提醒上傳驗屋報告通知
 export const manualTriggerSendReminders = async () => {
@@ -6357,23 +6335,32 @@ export async function deleteFloorPlanAPI(floorPlanId) { // 稍微改名避免衝
 }
 
 /**
- * [API] 批量保存車位佈局（支援新增、更新、刪除背景圖）
+ * [API] 批量保存車位佈局（呼叫 Cloud Function）
  * @param {string} floorPlanId - 平面圖 ID
  * @param {Array<object>} layouts - 佈局項目陣列
  * @param {string} projectId - 專案 ID
- * @returns {Promise<object>} - 後端回傳的原始 result.data
+ * @returns {Promise<object>} - { status, message }
  */
-export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) { // 稍微改名避免衝突
+export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) { 
+  const functionName = `saveSpotLayoutsAPI (via CF)`;
+  
+  // ✅ START: 請加入這個 console.log
+  console.log(`[API] 準備呼叫 Cloud Function 'saveSpotLayouts'，Payload 內容：`, JSON.stringify({ floorPlanId, layouts, projectId }, null, 2));
+  // ✅ END: 加入 console.log
+
   try {
-    const saverFunction = httpsCallable(functions, 'saveSpotLayouts');
-    const result = await saverFunction({ floorPlanId, layouts, projectId });
-    // 後端回傳 { status, message }
-    return result.data;
+    const saveFunction = httpsCallable(functions, 'saveSpotLayouts'); // ✓ 呼叫後端函式
+    const result = await saveFunction({ floorPlanId, layouts, projectId });
+    
+    console.log(`[${functionName}] Cloud Function 回應:`, result.data);
+    return result.data; // 直接回傳後端的 { status, message }
+
   } catch (error) {
-    console.error(`API Error in saveSpotLayoutsAPI (FloorPlan: ${floorPlanId}):`, error);
-    throw new Error(error.message || '儲存佈局失敗');
+    console.error(`[${functionName}] 呼叫 'saveSpotLayouts' 失敗:`, error);
+    throw new Error(`儲存佈局失敗: ${error.message}`);
   }
 }
+
 
 /**
  * [API] 獲取特定平面圖的所有車位佈局 (包含背景圖位置)
@@ -6532,3 +6519,5 @@ export const fetchUserManagementInitialData = async (adminKey) => {
   }
 };
 // --- END: ✓ 新增 - 獲取人員管理頁面初始資料 API ---
+
+

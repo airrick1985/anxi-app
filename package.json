@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "0.0.303",
+  "version": "0.0.304",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -24,6 +24,7 @@
     "@fullcalendar/list": "^6.1.18",
     "@fullcalendar/timegrid": "^6.1.18",
     "@fullcalendar/vue3": "^6.1.18",
+    "@gausszhou/vue3-drag-resize-rotate": "^3.0.2",
     "@google-cloud/secret-manager": "^6.1.1",
     "@google-cloud/vertexai": "^1.10.0",
     "@jamescoyle/vue-icon": "^0.1.2",
