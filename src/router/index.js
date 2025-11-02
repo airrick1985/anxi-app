@@ -45,6 +45,16 @@ const routes = [
   }
 },
 
+{
+  path: '/test', 
+  name: 'Test',
+  component: () => import('@/views/TEST.vue'),
+  meta: {
+     title: 'TEST',
+     layout: PublicLayout
+    }
+ },
+
   {
     path: '/profile',
     name: 'UserProfile',
@@ -324,15 +334,7 @@ const routes = [
     }
   },
 
-    {
-    path: '/test', 
-    name: 'Test',
-    component: () => import('@/views/TestDatePicker.vue'),
-    meta: {
-          title: 'TEST',
-          layout: PublicLayout
-        }
-  },
+
   
   {
     // ✅ 5. 修改「驗屋預約」入口

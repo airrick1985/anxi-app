@@ -10,10 +10,18 @@
         <span v-if="projectName" class="text-h6 font-weight-bold text-primary ml-4">{{ projectName }}</span>
       </div>
       
-      <div class="header-right" v-if="selectedProjectId">
-        <v-btn @click="createNewFloorPlan" color="primary" prepend-icon="mdi-plus">
-          新增平面圖
-        </v-btn>
+  <div class="header-right" v-if="selectedProjectId">
+    <v-btn @click="goToTestPage" color="warning" prepend-icon="mdi-test-tube" class="mr-2">
+      開啟測試頁 (TEST.vue)
+    </v-btn>
+    <v-btn @click="createNewFloorPlan" color="primary" prepend-icon="mdi-plus">
+      新增平面圖
+    </v-btn>
+
+
+        
+
+
       </div>
     </div>
 
@@ -211,7 +219,7 @@
             :status-colors="statusColorStore.colors" 
             :show-tools="showCanvasTools"
             @spots-changed="onSpotsChanged"
-            @canvas-ready="onCanvasReady"
+          
           />
 
            <div v-if="showStatusColorEditor" class="style-editor-overlay">
@@ -400,6 +408,12 @@ export default {
     const toggleCanvasTools = () => {
       showCanvasTools.value = !showCanvasTools.value
     }
+
+     // ✓ 新增：導航到 TEST.vue 的函式
+    const goToTestPage = () => {
+      // 假設 'TestPage' 是您在 vue-router 中為 TEST.vue 設定的路由名稱
+      router.push({ name: 'Test' });
+    };
     
     // Dialog states
     const showFloorPlanDialog = ref(false)
@@ -768,7 +782,7 @@ export default {
         toast.success('平面圖儲存成功！');
         
         // ✓ 2. 儲存成功後，重新載入畫布
-        await onCanvasReady();
+
 
       } catch (error) {
         console.error('儲存平面圖失敗:', error);
@@ -823,6 +837,9 @@ export default {
             selectedFloorPlan.value.id,
             selectedProjectId.value // ✓ 傳遞 projectId
           )
+
+          console.log(`[MANAGER LOG] onCanvasReady: getSpotLayoutsAPI 回傳的 resultData:`, JSON.stringify(resultData));
+
           //console.log('[Manager] 從 getSpotLayoutsAPI 獲取到的原始 resultData:', resultData)
 
           if (resultData.status === 'success' && resultData.layouts) {
@@ -853,7 +870,7 @@ export default {
         console.warn('[Manager] 沒有 selectedFloorPlan 或其 id，不執行載入。')
         if (parkingCanvas.value) parkingCanvas.value.loadSpotLayouts([]); // 確保載入空佈局
       }
-    }
+    }//
 
 
    const formatDate = (timestamp) => {

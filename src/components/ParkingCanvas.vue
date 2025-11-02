@@ -26,8 +26,11 @@
         :draggable="!previewMode && !spot.locked"
         :resizable="!previewMode && !spot.locked"
         :rotatable="!previewMode && !spot.locked"
+        :is-conflict-check="false" class-name="parking-spot-item"
+
         @activated="handleSpotActivated(spot)"
         @deactivated="handleSpotDeactivated"
+
         
         @dragging="(x, y) => handleTransform(spot.id, { x, y }, 'dragging')"
         @resizing="(x, y, w, h) => handleTransform(spot.id, { x, y, w, h }, 'resizing')"
@@ -36,9 +39,9 @@
         @dragstop="(x, y) => handleTransformStop(spot.id, { x, y }, 'dragstop')"
         @resizestop="(x, y, w, h) => handleTransformStop(spot.id, { x, y, w, h }, 'resizestop')"
         @rotatestop="(r) => handleTransformStop(spot.id, { r }, 'rotatestop')"
-        class-name="vdr-spot"
+   
         :parent="true"
-        :scale="canvasScale" >
+        >
         <div 
           class="spot-content" 
           :style="getSpotStyle(spot)"
@@ -57,6 +60,14 @@
       <button @click="openImportModal" class="btn btn-primary">
         <svg-icon type="mdi" :path="mdiDownload" class="icon"></svg-icon> 匯入車位資料
       </button>
+
+      <div class="test-tool">
+        <span>X:</span>
+        <input v-model.number="testX" type="number" class="form-input" style="width: 70px;">
+        <span>Y:</span>
+        <input v-model.number="testY" type="number" class="form-input" style="width: 70px;">
+        <button @click="addTestSpot" class="btn btn-secondary btn-sm">加入測試方塊</button>
+      </div>
   
       <div class="status-toggle">
         <button 
@@ -305,6 +316,12 @@ export default {
     const totalParkingCount = ref(0)
     const allParkingData = ref([])
 
+
+// ✓ START: 請加入以下測試用的 ref
+    const testX = ref(100);
+    const testY = ref(100);
+    // ✓ END: 測試用的 ref
+
     // 【新增】計算並套用最適縮放
     const fitToScreen = () => {
       if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) {
@@ -327,6 +344,43 @@ export default {
       canvasScale.value = scale > 1 ? 1 : scale;
       console.log(`[Canvas] fitToScreen: scale set to ${canvasScale.value}`);
     };
+
+    // ✓ START: 請加入以下測試用的函式
+   const addTestSpot = () => {
+      // 1. 產生唯一的 ID
+      const newId = `test-spot-${Date.now()}`;
+      
+      // 2. 建立新物件
+      const newSpot = {
+        id: newId,
+        isNew: true,
+        spotId: `TEST_${testX.value}_${testY.value}`,
+        x: testX.value,
+        y: testY.value,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        locked: false,
+        parkingData: { number: 'TEST' },
+        type: 'manual',
+        displayMode: props.displayMode
+      };
+      
+      // 3. ✓ 修改：直接修改 .value 陣列，繞過 .push() 可能的副作用
+      spotLayouts.value = [
+        ...spotLayouts.value,
+        newSpot
+      ];
+
+      // 4. ✓ 修改：使用 nextTick 確保 DOM 更新後再選中
+      nextTick(() => {
+        selectedSpotId.value = newId;
+        selectSpot(newSpot);
+      });
+    };
+    // ✓ END: 測試用的函式
+
+
 
     // 【修改】DOM 底圖載入完成時
     const onBgImageLoad = (e) => {
@@ -677,6 +731,7 @@ export default {
 
     // 載入車位佈局 (不變)
     const loadSpotLayouts = (layouts) => {
+      console.log(`[CANVAS LOG] loadSpotLayouts: 準備載入 ${layouts.length} 筆資料。 座標範例 (前3筆):`, JSON.stringify(layouts.slice(0, 3).map(s => ({ id: s.spotId, x: s.x, y: s.y }))));
       const loadedSpots = layouts
         .filter(item => item.type !== 'backgroundImage')
         .map(layout => {
@@ -723,30 +778,59 @@ export default {
       await fetchSalesParkingsForFloor(); 
     }
     const closeImportModal = () => { importDialog.value = false }
-    const confirmImport = async () => {
+
+   const confirmImport = async () => {
       importing.value = true;
       try {
-        spotLayouts.value = spotLayouts.value.filter(s => s.type === 'manual'); 
-        const newSpots = allParkingData.value.map((parkingData, index) => {
+        // 1. 清除所有 "imported" 類型的舊車位
+        spotLayouts.value = spotLayouts.value.filter(s => s.type !== 'imported'); 
+        
+        // 2. 準備好所有車位的 *資料* (但不立即渲染)
+        //    (此資料已由後端 'orderBy('number', 'asc')' 排序)
+        const spotsData = allParkingData.value.map((parkingData, index) => {
+          
+          // 3. 根據您的需求定義 X 座標
+          //    (index 0 -> 100, index 1 -> 160, ... index 10 -> 100)
           const x = 100 + (index % 10) * 60; 
-          const y = 100 + Math.floor(index / 10) * 120; 
+          
+          // 4. 根據您的需求定義 Y 座標
+          //    (index 0-9  -> 100 + (0 * 200) = 100) (第一列)
+          //    (index 10-19 -> 100 + (1 * 200) = 300) (第二列)
+          const y = 100 + (Math.floor(index / 10) * 200); 
+          
           return {
             id: `imported-${parkingData.id}-${Math.random()}`,
-            isNew: true, // 【請在此處插入此行】
+            isNew: true,
             spotId: parkingData.number,
-            x: x,
-            y: y,
+            x: x, // ✓ 套用 X
+            y: y, // ✓ 套用 Y
             width: 48, 
-            height: 105, 
+            height: 105,
             rotation: 0,
             locked: false,
-            parkingData: parkingData,
+            parkingData: parkingData, // (編號、價格、買方姓名...)
             type: 'imported',
             displayMode: props.displayMode
           };
         });
-        spotLayouts.value = [...spotLayouts.value, ...newSpots];
+
+        // ✓ 5. 【核心修改】循序加入車位，強制 DOM 渲染
+        //    使用 for...of 迴圈搭配 await
+        for (const spot of spotsData) {
+          
+          // 5.1. 將 *單個* 車位加入陣列，觸發 Vue 渲染
+          spotLayouts.value.push(spot);
+          
+          // 5.2. 等待 Vue 完成 DOM 更新
+          //      這會強制 <vue-drag-resize-rotate> 
+          //      在下一個車位被加入前，
+          //      先將目前這個車位渲染到它*正確*的 (x, y) 位置
+          await new Promise(resolve => nextTick(resolve));
+        }
+        // 迴圈結束時，所有車位都已在正確位置，不會觸發碰撞
+
         emit('spots-changed');
+        
       } catch(error) { 
           toast.error(`匯入車位時發生錯誤: ${error.message}`);
       } finally {
@@ -837,6 +921,12 @@ export default {
       // 【新增】
       handleTransform,
 
+      // ✓ START: 請加入以下匯出
+      testX,
+      testY,
+      addTestSpot,
+      // ✓ END: 匯出
+
       // Icons
       mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline,
     }
@@ -854,6 +944,11 @@ export default {
   justify-content: flex-start; /* 保持 flex-start 以便 transform-origin: top left 生效 */
   align-items: flex-start; /* 保持 flex-start */
   background-color: #f0f2f5;
+}
+
+/* ✓ 請加入這段 CSS，強制車位使用絕對定位 */
+:deep(.parking-spot-item) {
+  position: absolute !important;
 }
 
 .parking-canvas-area {
