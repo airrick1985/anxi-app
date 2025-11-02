@@ -1,36 +1,33 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+
+// ✅ 移除所有靜態匯入的 View 元件 (Login, Home, InspectionDetail, HouseholdGrid 等)
+// ✅ 移除所有靜態匯入的 Layout 元件 (DefaultLayout)
+
+// ✅ 將 Layouts 改為延遲載入常數，方便重用
+const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
+const PublicLayout = () => import('@/layouts/PublicLayout.vue');
+
+// --- 保持您原有的延遲載入 View 元件 ---
 const InspectionManagement = () => import('@/views/InspectionManagement.vue');
-
-import Login from '@/views/Login.vue';
-import Home from '@/views/Home.vue';
-
-import InspectionDetail from '@/views/InspectionDetail.vue';
-import InspectionRecordTable from '@/components/InspectionRecordTable.vue';
 const InspectionConsole = () => import('@/views/public/InspectionConsole.vue');
-
-
-// ✅ 2. 引入新的 ProjectSelector 元件
 const ProjectSelector = () => import('@/views/ProjectSelector.vue');
-
 const MessageCenter = () => import('@/views/MessageCenter.vue');
 const SendMessage = () => import('@/views/SendMessage.vue');
 const MessageDetail = () => import('@/views/MessageDetail.vue');
 const UserManagement = () => import('@/views/UserManagement.vue');
 const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue');
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
-import DefaultLayout from '@/layouts/DefaultLayout.vue';
-const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
-import HouseholdGrid from '@/views/HouseholdGrid.vue';
-const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue')
+const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue');
+
 
 const routes = [
  // { path: '/', redirect: '/home' },
-  { path: '/login', name: 'Login', component: Login },
-  { path: '/home', name: 'Home', component: Home, meta: { requiresAuth: true } },
+  { path: '/login', name: 'Login', component: () => import('@/views/Login.vue') }, // ✅
+  { path: '/home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { requiresAuth: true } }, // ✅
  
 
   {
@@ -41,7 +38,7 @@ const routes = [
     requiredSystem: '驗屋系統',
     requiredRoles: ['超級管理員','系統管理員','客服主管','工務主管'],
     requiresAuth: true,
-    layout: DefaultLayout
+    layout: DefaultLayout // ✅
   }
 },
 
@@ -51,7 +48,7 @@ const routes = [
   component: () => import('@/views/TEST.vue'),
   meta: {
      title: 'TEST',
-     layout: PublicLayout
+     layout: PublicLayout // ✅
     }
  },
 
@@ -61,47 +58,47 @@ const routes = [
     component: () => import('@/views/UserProfile.vue'),
     meta: {
       requiresAuth: true,
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
     path: '/inspection-detail/:unitId',
     name: 'InspectionDetail',
-    component: InspectionDetail,
+    component: () => import('@/views/InspectionDetail.vue'), // ✅
     props: true,
-    meta: { requiresAuth: true, layout: DefaultLayout }
+    meta: { requiresAuth: true, layout: DefaultLayout } // ✅
   },
   {
     path: '/inspection-record-table/:unitId',
     name: 'InspectionRecordTable',
-    component: InspectionRecordTable,
+    component: () => import('@/components/InspectionRecordTable.vue'), // ✅
     props: true,
-    meta: { requiresAuth: true, layout: DefaultLayout }
+    meta: { requiresAuth: true, layout: DefaultLayout } // ✅
   },
  {
     // ✅ 3. 修改「銷控系統」入口
     path: '/sales-control-entry',
     name: 'SalesControlSystemEntry',
-    component: ProjectSelector, // ✅ 改為 ProjectSelector
+    component: ProjectSelector, // (保持延遲載入)
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
-      layout: DefaultLayout,
-      targetRouteName: 'SalesControlSystem', // ✅ 新增 meta: 目標路由
-      paramKey: 'projectName'              // ✅ 新增 meta: 路由參數 key
+      layout: DefaultLayout, // ✅
+      targetRouteName: 'SalesControlSystem', 
+      paramKey: 'projectName'              
     }
   },
   {
     // ✅ 4. 修改「報價系統」入口
     path: '/quote-system-entry',
     name: 'QuoteSystemEntry',
-    component: ProjectSelector, // ✅ 改為 ProjectSelector
+    component: ProjectSelector, // (保持延遲載入)
     meta: {
       requiresAuth: true,
-      requiredSystem: '報價系統', // 權限檢查依賴此
-      layout: DefaultLayout,
-      targetRouteName: 'QuoteSystem', // ✅ 新增 meta: 目標路由
-      paramKey: 'projectName'           // ✅ 新增 meta: 路由參數 key
+      requiredSystem: '報價系統', 
+      layout: DefaultLayout, // ✅
+      targetRouteName: 'QuoteSystem', 
+      paramKey: 'projectName'           
     }
   },
 
@@ -109,10 +106,10 @@ const routes = [
   {
     path: '/inspection-console/:projectId?', // ✓ 保持 '?'
     name: 'InspectionConsole',
-    component: InspectionConsole,
+    component: InspectionConsole, // (保持延遲載入)
     props: true, 
     meta: {
-      layout: PublicLayout, // ✓ 修改
+      layout: PublicLayout, // ✅
       title: '驗屋紀錄' 
     }
   },
@@ -127,7 +124,7 @@ const routes = [
       requiresAuth: true,
       viewMode: 'sales',
       requiredSystem: '銷控系統',
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
@@ -139,7 +136,7 @@ const routes = [
       requiresAuth: true,
       viewMode: 'quote',
       requiredSystem: '報價系統',
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
@@ -160,7 +157,7 @@ const routes = [
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
@@ -179,61 +176,61 @@ const routes = [
     component: () => import('@/views/QuoteSummary.vue'),
     meta: {
       requiresAuth: true,
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
     path: '/messages',
     name: 'MessageCenter',
-    component: MessageCenter,
-    meta: { requiresAuth: true, layout: DefaultLayout }
+    component: MessageCenter, // (保持延遲載入)
+    meta: { requiresAuth: true, layout: DefaultLayout } // ✅
   },
   {
     path: '/message/:statusId',
     name: 'MessageDetail',
-    component: MessageDetail,
+    component: MessageDetail, // (保持延遲載入)
     props: true,
-    meta: { requiresAuth: true, layout: DefaultLayout }
+    meta: { requiresAuth: true, layout: DefaultLayout } // ✅
   },
   {
     path: '/send-message',
     name: 'SendMessage',
-    component: SendMessage,
+    component: SendMessage, // (保持延遲載入)
     meta: {
       requiresAuth: true,
       requiresPermission: 'canSendMessage',
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
         path: '/user-management',
         name: 'UserManagement',
-        component: UserManagement,
+        component: UserManagement, // (保持延遲載入)
         meta: {
             requiresAuth: true,
             requiredSystem: '人員管理',
-            layout: DefaultLayout
+            layout: DefaultLayout // ✅
         }
     },
     {
         path: '/subscription-management',
         name: 'SubscriptionManagement',
-        component: SubscriptionManagement,
+        component: SubscriptionManagement, // (保持延遲載入)
         meta: {
             requiresAuth: true,
             requiredSystem: '訂閱管理',
             requiredProjectForSystem: '安熙智慧',
-            layout: DefaultLayout
+            layout: DefaultLayout // ✅
         }
     },
  {
     path: '/subscription-status',
     name: 'SubscriptionStatus',
-    component: SubscriptionStatus,
+    component: SubscriptionStatus, // (保持延遲載入)
     meta: {
       requiresAuth: true,
       requiredSystem: '訂閱查詢',
-      layout: DefaultLayout
+      layout: DefaultLayout // ✅
     }
   },
   {
@@ -242,7 +239,7 @@ const routes = [
     component: () => import('@/views/BookingPage.vue'),
     props: true,
     meta: {
-    layout: PublicLayout
+    layout: PublicLayout // ✅
     }
   },
 
@@ -252,7 +249,7 @@ const routes = [
     component: () => import('@/views/public/AuthSigningPage.vue'),
     props: true,
     meta: {
-      layout: PublicLayout 
+      layout: PublicLayout // ✅
     }
   },
 
@@ -261,7 +258,7 @@ const routes = [
     name: 'LineBindingPage',
     component: () => import('@/views/public/LineBinding.vue'),
     meta: {
-      layout: PublicLayout
+      layout: PublicLayout // ✅
     }
   },
 
@@ -270,7 +267,7 @@ const routes = [
     name: 'VerifyLineBindingPage',
     component: () => import('@/views/public/VerifyLineBinding.vue'),
     meta: {
-      layout: PublicLayout
+      layout: PublicLayout // ✅
     }
   },
 
@@ -279,7 +276,7 @@ const routes = [
     name: 'AppointmentQueryPage',
     component: () => import('@/views/public/AppointmentQuery.vue'),
     meta: {
-      layout: PublicLayout
+      layout: PublicLayout // ✅
     }
   },
   
@@ -288,7 +285,7 @@ const routes = [
     name: 'LiffInspectionCalendar',
     component: () => import('@/views/public/LiffInspectionCalendar.vue'),
     meta: {
-     layout: PublicLayout
+     layout: PublicLayout // ✅
     }
   },
 
@@ -298,7 +295,7 @@ const routes = [
     component: () => import('@/views/public/ReportFolderManager.vue'),
     props: true,
     meta: {
-      layout: PublicLayout,
+      layout: PublicLayout, // ✅
       title: '驗屋報告資料夾管理'
     }
   },
@@ -309,7 +306,7 @@ const routes = [
     component: () => import('@/views/public/CustomerInspectionReport.vue'),
     // props: true, // 這行其實可以移除，因為 projectId/unitId 來自 token
     meta: {
-      layout: PublicLayout,
+      layout: PublicLayout, // ✅
       title: '驗屋報告'
       // <<-- 這裡正確地沒有 requiresAuth: true -->>
     }
@@ -318,10 +315,10 @@ const routes = [
 {
         path: '/inspection-calendar/:projectId',
         name: 'InspectionCalendar',
-        component: InspectionCalendar,
+        component: InspectionCalendar, // (保持延遲載入)
         meta: {
           title: '驗屋預約表',
-          layout: PublicLayout
+          layout: PublicLayout // ✅
         }
       },
        {
@@ -330,7 +327,7 @@ const routes = [
     component: () => import('@/views/public/PrivacyPolicy.vue'),
     meta: {
       title: '隱私權政策',
-      layout: PublicLayout
+      layout: PublicLayout // ✅
     }
   },
 
@@ -340,50 +337,50 @@ const routes = [
     // ✅ 5. 修改「驗屋預約」入口
     path: '/inspection-calendar-entry',
     name: 'ProjectSelector',
-    component: ProjectSelector, // ✅ 改為 ProjectSelector
+    component: ProjectSelector, // (保持延遲載入)
     meta: {
       requiresAuth: true,
-      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], // 權限檢查依賴此
-      layout: DefaultLayout,
-      targetRouteName: 'InternalInspectionCalendar', // ✅ 新增 meta: 目標路由
-      paramKey: 'projectId'                        // ✅ 新增 meta: 路由參數 key
+      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], 
+      layout: DefaultLayout, // ✅
+      targetRouteName: 'InternalInspectionCalendar', 
+      paramKey: 'projectId'                        
     }
   },
   {
     path: '/inspection-management/:projectId',
-    component: InspectionManagement,
+    component: InspectionManagement, // (保持延遲載入)
     children: [
       {
         path: 'calendar',
         name: 'InternalInspectionCalendar',
-        component: InspectionCalendar,
+        component: InspectionCalendar, // (保持延遲載入)
         props: true,
         meta: {
           requiresAuth: true,
           requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
-          layout: DefaultLayout
+          layout: DefaultLayout // ✅
         }
       },
       {
         path: 'households',
         name: 'HouseholdGrid',
-        component: HouseholdGrid,
+        component: () => import('@/views/HouseholdGrid.vue'), // ✅
         props: true,
         meta: {
           requiresAuth: true,
           requiredAnySystem: ['驗屋預約管理-修改'],
-          layout: DefaultLayout
+          layout: DefaultLayout // ✅
         }
       },
       {
         path: 'rules',
         name: 'BookingRuleManager',
-        component: BookingRuleManager,
+        component: BookingRuleManager, // (保持延遲載入)
         props: true,
         meta: {
           requiresAuth: true,
           requiredSystem: '驗屋預約管理-修改',
-          layout: DefaultLayout
+          layout: DefaultLayout // ✅
         }
       }
     ]
@@ -404,7 +401,7 @@ const routes = [
   name: 'SpecialReportUpload',
   component: () => import('@/views/SpecialReportUpload.vue'),
    meta: {
-    layout: PublicLayout
+    layout: PublicLayout // ✅
     }
 },
 
@@ -426,7 +423,7 @@ const routes = [
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
-      layout: DefaultLayout,
+      layout: DefaultLayout, // ✅
       title: '車位平面圖管理'
     }
   },
@@ -438,7 +435,7 @@ const routes = [
     meta: {
       requiresAuth: true,
       requiredSystem: '銷控系統',
-      layout: DefaultLayout,
+      layout: DefaultLayout, // ✅
       title: '車位銷控管理'
     }
   },
@@ -449,7 +446,7 @@ const routes = [
     component: () => import('@/views/Standby.vue'), // ✓ 指向新的 Standby.vue 組件
     props: true, // ✓ 允許將路由參數 projectId 作為 props 傳遞給組件
     meta: {
-      layout: PublicLayout, // ✓ 使用公開頁面佈局 (不需要登入)
+      layout: PublicLayout, // ✅
       title: '接待狀態看板' // ✓ 頁面標題
      
     }
@@ -468,7 +465,9 @@ const router = createRouter({
 });
 
 
-
+// -----------------------------------------------------------------
+// ✅ 以下 router.beforeEach 路由守衛部分保持不變，未做修改
+// -----------------------------------------------------------------
 router.beforeEach(async (to, from, next) => {
   // --- 1. 初始進入 Log ---
   const isMobile = /Mobi|Android/i.test(navigator.userAgent); // 簡單判斷是否為手機
