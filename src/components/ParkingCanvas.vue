@@ -532,8 +532,7 @@ export default {
             selectSpot(spot); // selectSpot 會讀取 spot.width (已四捨五入)
         }
         
-        // 3. 更新屬性面板 (spotProperties)
-        // 直接使用四捨五入後的
+       // 3. 更新屬性面板 (spotProperties)
         if (eventType === 'dragging') {
           if (x !== undefined) spotProperties.value.x = spot.x;
           if (y !== undefined) spotProperties.value.y = spot.y;
@@ -541,6 +540,9 @@ export default {
         if (eventType === 'resizing') {
           if (w !== undefined) spotProperties.value.width = spot.width;
           if (h !== undefined) spotProperties.value.height = spot.height;
+          // ✓ 新增：在 resizing 時也必須更新 X 和 Y 座標
+          if (x !== undefined) spotProperties.value.x = spot.x;
+          if (y !== undefined) spotProperties.value.y = spot.y;
         }
         if (eventType === 'rotating') {
           if (r !== undefined) spotProperties.value.rotation = spot.rotation;
