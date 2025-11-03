@@ -39,7 +39,7 @@
             <v-window v-model="tab">
                 <v-window-item value="info">
                  <template v-if="isEditing">
-                <SalesInfoForm 
+               <SalesInfoForm 
                     v-if="editingData"
                     v-model="editingData"
                     :statusOptions="statusOptions"
@@ -47,9 +47,11 @@
                     :allSalesImages="allProjectImages"
                     :allParkingData="allData['車位'] || []"
                     :projectName="projectName"
-                    @request-open-slide="$emit('request-open-slide')"
+                    :project-id="projectId" 
+                    :view-mode="props.viewMode"
+                     @request-open-slide="$emit('request-open-slide')"
                     @parking-updated="handleParkingUpdate"
-                    :contractTypeOptions="contractTypesFromDB"
+                    :contractTypeOptions="contractTypeOptionsFromDB"
                     :firstPurchaseOptions="firstPurchaseOptions"
                 />
             </template>
@@ -346,6 +348,7 @@
     @update:show="paymentSettingsDialog = $event"
     :unit-data="enrichedUnitData"
     :project-name="projectName"
+    :project-id="projectId" 
     :all-data="allData"
     @request-open-slide="$emit('request-open-slide')"
   />

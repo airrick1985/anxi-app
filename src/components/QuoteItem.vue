@@ -346,7 +346,7 @@
       @confirm="handleParkingUpdate"
       mode="quote"
       :unitId="item.internalId"
-      @request-open-slide="emit('request-open-slide')"
+      :project-id="props.projectId" @request-open-slide="emit('request-open-slide')"
     />
     </div>
 </template>
@@ -365,7 +365,8 @@ const props = defineProps({
   paymentTemplates: { type: Array, default: () => [] }, // 新增：Firestore 期款範本
   showPackageDeal: { type: Boolean, default: true },
   isLoading: { type: Boolean, default: false },
-  allParkingData: { type: Array, default: () => [] }
+  allParkingData: { type: Array, default: () => [] },
+  projectId: { type: String, required: true } // ✓ 新增：接收 projectId
 });
 
 const emit = defineEmits(['remove', 'request-open-slide']);

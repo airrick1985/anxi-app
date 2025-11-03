@@ -7,7 +7,7 @@
           prepend-icon="mdi-presentation" 
           variant="tonal" 
           color="info"
-          @click="handleOpenSlide"
+          @click="openParkingEditor"
         >
           車位總表
         </v-btn>
@@ -73,11 +73,66 @@
         <v-btn color="success" @click="confirm">確定</v-btn>
       </v-card-actions>
     </v-card>
+
+    <v-dialog v-model="isParkingEditorDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
+      <v-card class="d-flex flex-column">
+        <v-toolbar dark color="primary" density="compact">
+          <v-btn icon dark @click="isParkingEditorDialogVisible = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>車位銷控管理</v-toolbar-title>
+          <v-spacer></v-spacer>
+      
+        </v-toolbar>
+        
+        <div class="flex-grow-1" style="position: relative; overflow: hidden; background-color: #f0f2f5;">
+          <v-overlay
+            :model-value="isEditorLoading"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(255, 255, 255, 0.7)"
+          >
+            <div class="text-center">
+              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
+              <p class="mt-4 text-body-1 text-black">正在載入樓層資料...</p>
+            </div>
+          </v-overlay>
+          
+         <ParkingCanvas
+            v-if="!isEditorLoading && activeEditorFloorPlan"
+            :project-id="props.projectId"
+            :floor-plan="activeEditorFloorPlan"
+            
+            :preview-mode="true" :show-tools="true"
+            v-model:display-mode="parkingCanvasDisplayMode" 
+            
+            :allow-import="false" :allow-adjust-all="false" :show-status-toggle="props.mode === 'sales'" 
+
+            :text-styles="textStyleStore.styles" 
+            :status-colors="statusColorStore.colors" 
+            @floor-switched="handleEditorFloorSwitch"
+            @spots-changed="console.log('ParkingEditModal 偵測到畫布變更')"
+            style="height: 100%; width: 100%;"
+          />
+        </div>
+      </v-card>
+    </v-dialog>
+
   </v-dialog>
 </template>
 
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
+
+// ✓ START: 匯入 ParkingCanvas 相關
+import ParkingCanvas from '@/components/ParkingCanvas.vue'; 
+import { getFloorPlansAPI } from '@/api'; 
+import { useToast } from 'vue-toastification';
+
+// ✓ START: 匯入樣式 Store
+import { useTextStyleStore } from '@/store/textStyleStore';
+import { useStatusColorStore } from '@/store/statusColorStore';
+// ✓ END: 匯入
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -92,13 +147,40 @@ const props = defineProps({
   unitId: {
     type: String,
     default: ''
+  },
+  
+  // ✓ START: 新增 projectId (必須由父組件傳入)
+  projectId: {
+    type: String,
+    required: true
+  },
+  // ✓ START: 接收來自 SalesInfoForm 的 viewMode
+  salesControlViewMode: {
+    type: String,
+    default: 'sales' // 預設為 'sales'
   }
+  // ✓ END: 新增
 });
 
-const emit = defineEmits(['update:show', 'confirm', 'request-open-slide']);
+const emit = defineEmits(['update:show', 'confirm']);
 
 const localParking = ref([]);
 const newParkingSelection = ref(null);
+
+const toast = useToast(); // ✓ 實例化 toast
+
+// ✓ START: 實例化樣式 Store
+const textStyleStore = useTextStyleStore();
+const statusColorStore = useStatusColorStore();
+// ✓ END: 實例化
+
+// ✓ START: 車位編輯器 (ParkingCanvas) 彈窗狀態
+const isParkingEditorDialogVisible = ref(false); 
+const editorFloorPlans = ref([]); 
+const activeEditorFloorPlan = ref(null); 
+const isEditorLoading = ref(false);
+const parkingCanvasDisplayMode = ref('backend'); // ✓ 新增：Canvas 顯示模式狀態
+// ✓ END: 編輯器狀態
 
 watch(() => props.show, (newVal) => {
   if (newVal) {
@@ -181,8 +263,51 @@ function confirm() {
   close();
 }
 
-// 新增：處理開啟車位表的事件處理函式
-function handleOpenSlide() {
-  emit('request-open-slide');
+// ✓ START: 替換 handleOpenSlide 為開啟 ParkingCanvas 的邏輯
+const openParkingEditor = async () => {
+  // ✓ 我們使用從 prop 傳入的 projectId
+  if (!props.projectId) {
+    toast.error('未提供 projectId，無法開啟編輯器。');
+    return;
+  }
+  isEditorLoading.value = true;
+  isParkingEditorDialogVisible.value = true;
+
+  // ✓ START: 根據 ParkingEditModal 自身的 mode 設置預設顯示模式
+if (props.mode === 'quote') {
+  parkingCanvasDisplayMode.value = 'sales'; // 報價單 (QuoteItem) -> 預設銷售狀態
+} else { // props.mode === 'sales'
+  parkingCanvasDisplayMode.value = 'backend'; // 銷控表單 (SalesInfoForm) -> 預設後台狀態
 }
+
+
+  activeEditorFloorPlan.value = null;
+  editorFloorPlans.value = [];
+  
+  try {
+    const result = await getFloorPlansAPI(props.projectId);
+    if (result.status === 'success' && result.data && result.data.length > 0) {
+      result.data.sort((a, b) => 
+        (a.floor || '').localeCompare(b.floor || '', 'zh-Hant', { numeric: true })
+      );
+      editorFloorPlans.value = result.data;
+      activeEditorFloorPlan.value = editorFloorPlans.value[0];
+    } else {
+      toast.error('此專案沒有可編輯的樓層平面圖。');
+      isParkingEditorDialogVisible.value = false;
+    }
+  } catch (error) {
+    toast.error(`載入樓層資料失敗: ${error.message}`);
+    isParkingEditorDialogVisible.value = false;
+  } finally {
+    isEditorLoading.value = false;
+  }
+};
+
+// ✓ NEW: 處理編輯器內部的樓層切換
+const handleEditorFloorSwitch = (plan) => {
+  activeEditorFloorPlan.value = plan;
+};
+
+
 </script>

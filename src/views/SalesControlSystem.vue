@@ -45,77 +45,110 @@
       
      
 
-            <v-btn
-        color="info"
-        variant="tonal"
-        class="ml-4"
-        @click="handleOpenActivityMessage"
-        title="最新活動訊息"
-        prepend-icon="mdi-bullhorn"
-      >
-      
-        活動訊息
-      </v-btn>
-      
-      <!-- 🔄 NEW: 手動刷新按鈕 -->
-      <v-btn
-        color="blue-grey"
-        variant="tonal"
-        class="ml-4"
-        @click="handleRefreshData"
-        :loading="isRefreshing"
-        title="重新載入最新資料（忽略緩存）" 
-         prepend-icon="mdi-refresh"
-      >
-        重新載入
-      </v-btn>
+   
 
-       <v-btn
-      v-if="currentViewMode === 'sales'"
-        color="info"
-        variant="tonal"
-        class="ml-4"
-        @click="navigateToParkingControl" 
-        :loading="false" title="車位銷控管理"
-        prepend-icon="mdi-car-brake-parking"
-      >
-      車位銷控管理
-      </v-btn>
+      <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="openParkingCanvasEditor"
+            icon="mdi-car-side"
+          ></v-btn>
+        </template>
+        <span>車位銷控</span>
+      </v-tooltip>
 
-      <v-btn
-        v-if="currentViewMode === 'sales'"
-        color="deep-purple"
-        variant="tonal"
-        class="ml-4"
-        @click="navigateToSalesSettings"
-        title="銷控設定"
-        prepend-icon="mdi-cog"
-      >
-        銷控設定
-      </v-btn>
-  
+      <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="handleOpenActivityMessage"
+            icon="mdi-bullhorn"
+          ></v-btn>
+        </template>
+        <span>最新活動訊息</span>
+      </v-tooltip>
       
-      <v-btn
-        v-if="currentViewMode === 'sales'"
-        color="green"
-        variant="tonal"
-        class="ml-4"
-        @click="exportToExcel"
-        prepend-icon="mdi-file-excel"
-      >
-        匯出 EXCEL
-      </v-btn>
 
-      <v-btn
-        v-if="currentViewMode === 'sales'"
-        color="error"
-        variant="tonal"
-        class="ml-4"
-        @click="uploadDialog = true"
-        prepend-icon="mdi-upload"
-      >
-        上傳戶別資料
-      </v-btn>
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="navigateToParkingControl" 
+            :loading="false"
+            icon="mdi-car-cog"
+          ></v-btn>
+        </template>
+        <span>車位銷控管理</span>
+      </v-tooltip>
+
+    
+      
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="exportToExcel"
+            icon="mdi-tray-arrow-down"
+          ></v-btn>
+        </template>
+        <span>下載戶別資料EXCEL</span>
+      </v-tooltip>
+
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="uploadDialog = true"
+            icon="mdi-tray-arrow-up"
+          ></v-btn>
+        </template>
+        <span>上傳戶別資料EXCEL</span>
+      </v-tooltip>
+
+      <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="handleRefreshData"
+            :loading="isRefreshing"
+            icon="mdi-refresh"
+          ></v-btn>
+        </template>
+        <span>重新載入最新資料（忽略緩存）</span>
+      </v-tooltip>
+
+         <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            @click="navigateToSalesSettings"
+            icon="mdi-cog"
+          ></v-btn>
+        </template>
+        <span>更多設定</span>
+      </v-tooltip>
       
     </div>
 
@@ -162,31 +195,7 @@
     </div>
      </div>
 
-     <div class="toolbar d-none d-md-flex">
-       <v-btn
-        color="orange"
-        variant="tonal"
-        class="ml-4"
-        @click="isParkingViewerDialogVisible = true"
-        title="開啟車位平面圖檢視"
-        prepend-icon="mdi-view-dashboard-variant-outline"
-      >
-        車位銷控
-      </v-btn>
-
-      <v-btn
-        v-if="currentViewMode === 'sales'"
-        color="info"
-        variant="tonal"
-        class="ml-4"
-        @click="navigateToParkingControl"
-        :loading="false" title="車位銷控管理"
-        prepend-icon="mdi-car-brake-parking"
-      >
-        車位銷控管理
-      </v-btn>
-
-       </div>
+ 
 
    <div class="grid-wrapper">
      </div>
@@ -207,13 +216,8 @@
         </v-badge>
         <span>報價單</span>
       </v-btn>
+      
 
-      <v-btn 
-        @click="navigateToParkingControl" 
-        :loading="isLoadingSlide"> 
-        <v-icon>mdi-parking</v-icon>
-        <span>車位表</span>
-      </v-btn>
 
       <v-menu top>
         <template v-slot:activator="{ props }">
@@ -231,6 +235,11 @@
           </v-list-item>
         </v-list>
       </v-menu>
+      
+      <v-btn @click="openParkingCanvasEditor">
+        <v-icon>mdi-car-side</v-icon>
+        <span>車位</span>
+      </v-btn>
       
       <v-menu top v-if="currentViewMode === 'sales'">
         <template v-slot:activator="{ props }">
@@ -260,10 +269,9 @@
           </v-btn>
         </template>
         <v-list>
-          <!-- 🔄 NEW: 手機版刷新按鈕 -->
           <v-list-item @click="handleRefreshData" :loading="isRefreshing">
             <template v-slot:prepend>
-              <v-icon color="blue-grey">mdi-refresh</v-icon>
+              <v-icon color="black">mdi-refresh</v-icon>
             </template>
             <v-list-item-title>重新載入資料</v-list-item-title>
           </v-list-item>
@@ -271,35 +279,41 @@
           
           <v-list-item @click="exportToExcel">
             <template v-slot:prepend>
-              <v-icon color="green">mdi-file-excel</v-icon>
+              <v-icon color="black">mdi-tray-arrow-down</v-icon>
             </template>
-            <v-list-item-title>匯出 EXCEL</v-list-item-title>
+            <v-list-item-title>下載戶別資料EXCEL</v-list-item-title>
           </v-list-item>
            <v-list-item @click="uploadDialog = true">
             <template v-slot:prepend>
-              <v-icon color="error">mdi-upload</v-icon>
+              <v-icon color="black">mdi-tray-arrow-up</v-icon>
             </template>
-            <v-list-item-title>上傳戶別資料</v-list-item-title>
+            <v-list-item-title>上傳戶別資料EZXCEL</v-list-item-title>
           </v-list-item>
           <v-divider></v-divider>
           <v-list-item @click="handleOpenActivityMessage">
             <template v-slot:prepend>
-              <v-icon>mdi-bullhorn-outline</v-icon>
+              <v-icon color="black">mdi-bullhorn-outline</v-icon>
             </template>
             <v-list-item-title>活動訊息</v-list-item-title>
           </v-list-item>
+          
+          <v-list-item @click="navigateToParkingControl">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-car-cog</v-icon>
+            </template>
+            <v-list-item-title>車位銷控管理</v-list-item-title>
+          </v-list-item>
+          
           <v-list-item @click="navigateToSalesSettings">
             <template v-slot:prepend>
               <v-icon>mdi-cog-outline</v-icon>
             </template>
-            <v-list-item-title>銷控設定</v-list-item-title>
+            <v-list-item-title>更多設定</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
 
-      <v-btn @click="isParkingViewerDialogVisible = true">
-      <v-icon>mdi-view-dashboard-variant-outline</v-icon> <span>車位銷控</span> </v-btn>
-
+ 
     </v-bottom-navigation>
 
     <UnitDetailModal 
@@ -373,7 +387,7 @@
     
     <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
-        <v-toolbar dark color="teal" density="compact">
+        <v-toolbar dark color="#f5f5f7" density="compact">
           <v-btn icon dark @click="isActivityDialogVisible = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
@@ -411,12 +425,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- 移除 ParkingControl 的 v-dialog -->
-    <!-- 
-    <v-dialog v-model="isParkingControlDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-        <ParkingControl @close="isParkingControlDialogVisible = false" />
-    </v-dialog>
-    -->
+
 
     <v-dialog v-model="uploadDialog" max-width="600px" persistent>
       <v-card>
@@ -479,35 +488,44 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="isParkingViewerDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
+    <v-dialog v-model="isParkingCanvasDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
-        <v-toolbar dark color="orange-darken-2" density="compact">
-          <v-btn icon dark @click="isParkingViewerDialogVisible = false">
+        <v-toolbar dark color="#f5f5f7" density="compact">
+          <v-btn icon dark @click="isParkingCanvasDialogVisible = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
-          <v-toolbar-title>車位平面圖 - {{ projectName }}</v-toolbar-title>
+          <v-toolbar-title> {{ projectName }} 車位銷控</v-toolbar-title>
           <v-spacer></v-spacer>
-          <v-btn
-            v-if="currentViewMode === 'sales'"
-            prepend-icon="mdi-pencil"
-            @click="navigateToParkingControl(); isParkingViewerDialogVisible = false;"
-            variant="tonal"
-            class="mr-2"
-            size="small"
-          >
-            管理平面圖
-          </v-btn>
+          
         </v-toolbar>
-        <div class="flex-grow-1 viewer-content-area">
-          <ParkingCanvasViewer
-            v-if="isParkingViewerDialogVisible"
+        
+        <div class="flex-grow-1" style="position: relative; overflow: hidden; background-color: #f0f2f5;">
+          <v-overlay
+            :model-value="isParkingCanvasLoading"
+            class="align-center justify-center"
+            persistent
+            scrim="rgba(255, 255, 255, 0.7)"
+          >
+            <div class="text-center">
+              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
+              <p class="mt-4 text-body-1 text-black">正在載入樓層資料...</p>
+            </div>
+          </v-overlay>
+          
+         <ParkingCanvas
+            v-if="!isParkingCanvasLoading && activeParkingCanvasFloorPlan"
             :project-id="projectId"
-            :initial-display-mode="parkingViewerDisplayMode"
-            :allow-mode-switching="true"
-            :text-styles="textStyleStore.styles"
-            :status-colors="statusColorStore.colors"
-            @request-mode-change="handleParkingViewerModeChange"
-            @canvas-ready="onParkingViewerReady"
+            :floor-plan="activeParkingCanvasFloorPlan"
+            :preview-mode="true" 
+            :show-tools="true"
+            v-model:display-mode="parkingCanvasDisplayMode" 
+            :allow-import="false" 
+            :allow-adjust-all="false" 
+            :show-status-toggle="currentViewMode === 'sales'" 
+            :text-styles="textStyleStore.styles" 
+            :status-colors="statusColorStore.colors" 
+            @floor-switched="handleParkingCanvasFloorSwitch"
+            @spots-changed="handleParkingCanvasSpotsChanged"
             style="height: 100%; width: 100%;"
           />
         </div>
@@ -515,7 +533,6 @@
     </v-dialog>
 
 
-    <!-- 🔄 載入狀態顯示 -->
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -527,7 +544,6 @@
       <p v-if="error" class="error-text">錯誤: {{ error }}</p>
     </div>
 
-    <!-- 🛠️ 開發模式：緩存統計顯示 -->
     <div v-if="isDevelopment && !loading" class="dev-cache-stats">
       <v-expansion-panels variant="accordion" density="compact">
         <v-expansion-panel>
@@ -554,6 +570,10 @@
         </v-expansion-panel>
       </v-expansion-panels>
     </div>
+
+
+   
+
   </div>
 </template>
 
@@ -564,7 +584,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; //  1. 匯入 Composable
 
 //  新增：引入上傳 API 和 toast
-import { uploadHouseholds } from '@/api';
+import { uploadHouseholds, getFloorPlansAPI } from '@/api'; // ✅ NEW: 匯入 getFloorPlansAPI
 import { useToast } from 'vue-toastification';
 
 // ===============================================
@@ -579,7 +599,8 @@ import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
 // import ParkingControl from './ParkingControl.vue'; // 不再需要，因為改為路由導覽
 import UpdateControl from './UpdateControl.vue'; 
-import ParkingCanvasViewer from '@/components/ParkingCanvasViewer.vue'; // 導入 Viewer
+import ParkingCanvas from '@/components/ParkingCanvas.vue'; // ✅ NEW: 匯入 ParkingCanvas
+
 import { useTextStyleStore } from '@/store/textStyleStore'; // 導入樣式 Store
 import { useStatusColorStore } from '@/store/statusColorStore'; // 導入顏色 Store
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; // 導入新圖標
@@ -728,9 +749,18 @@ const displayType = ref('住家');
 const priceDisplayMode = ref('list');
 const parkingViewerDisplayMode = ref('backend'); // Viewer 內部顯示模式狀態
 
+
 const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
-const isParkingViewerDialogVisible = ref(false); // Viewer Dialog 狀態
+// const isParkingCanvasDialogVisible = ref(false); // ✅ 改用下面的新 state
+
+// ✅ NEW: ParkingCanvas 編輯器相關 state
+const isParkingCanvasDialogVisible = ref(false);
+const parkingCanvasFloorPlans = ref([]);
+const activeParkingCanvasFloorPlan = ref(null);
+const isParkingCanvasLoading = ref(false);
+const parkingCanvasDisplayMode = ref('backend'); // 預設 'backend', 會在 open 時動態設置
+
 
 //  新增：上傳相關 state
 const uploadDialog = ref(false);
@@ -835,6 +865,11 @@ const priceDisplayLabel = computed(() => {
   return '價格';
 });
 
+// ✅ NEW: 用於 ParkingCanvas 的 displayMode (這個可能不再需要，因為我們在 open 時動態設置了)
+// const parkingCanvasDisplayMode = computed(() => {
+//   return currentViewMode.value === 'quote' ? 'sales' : 'backend';
+// });
+
 // --- Methods ---
 const getDisplayTotalPrice = (itemData) => {
   const formatPrice = (price) => Math.round(price || 0);
@@ -908,6 +943,71 @@ function navigateToParkingControl() {
     });
   }
 }
+
+// ===============================================
+// ✅ NEW: ParkingCanvas 編輯器相關方法
+// ===============================================
+
+/**
+ * 開啟車位銷控畫布編輯器
+ */
+const openParkingCanvasEditor = async () => {
+  if (!projectId.value) {
+    toast.error('未提供專案 ID，無法開啟編輯器。');
+    return;
+  }
+
+  isParkingCanvasLoading.value = true;
+  isParkingCanvasDialogVisible.value = true;
+
+  // 根據當前模式 (sales/quote) 設置 Canvas 的預設顯示模式
+  if (currentViewMode.value === 'quote') {
+    parkingCanvasDisplayMode.value = 'sales'; // 報價系統 -> 預設顯示銷售狀態
+  } else { // 'sales'
+    parkingCanvasDisplayMode.value = 'backend'; // 銷控系統 -> 預設顯示後台狀態
+  }
+
+  activeParkingCanvasFloorPlan.value = null;
+  parkingCanvasFloorPlans.value = [];
+
+  try {
+    const result = await getFloorPlansAPI(projectId.value);
+    if (result.status === 'success' && result.data && result.data.length > 0) {
+      // 確保樓層排序正確
+      result.data.sort((a, b) => 
+        (a.floor || '').localeCompare(b.floor || '', 'zh-Hant', { numeric: true })
+      );
+      parkingCanvasFloorPlans.value = result.data;
+      activeParkingCanvasFloorPlan.value = parkingCanvasFloorPlans.value[0]; // 預設選取第一個
+    } else {
+      toast.error('此專案沒有可編輯的車位樓層平面圖。');
+      isParkingCanvasDialogVisible.value = false;
+    }
+  } catch (error) {
+    toast.error(`載入樓層資料失敗: ${error.message}`);
+    isParkingCanvasDialogVisible.value = false;
+  } finally {
+    isParkingCanvasLoading.value = false;
+  }
+};
+
+/**
+ * 處理 ParkingCanvas 內部的樓層切換
+ */
+const handleParkingCanvasFloorSwitch = (plan) => {
+  activeParkingCanvasFloorPlan.value = plan;
+};
+
+
+
+/**
+ * (可選) 處理畫布變更事件，例如自動保存或標記
+ */
+const handleParkingCanvasSpotsChanged = () => {
+  console.log('ParkingCanvas 偵測到畫布變更，需處理 [自動保存] 或 [標記為未保存]');
+  toast.info('偵測到畫布變更 (尚未自動保存)', { timeout: 2000 });
+};
+
 
 // ===============================================
 // 🔄 NEW: 手動刷新功能
@@ -990,20 +1090,6 @@ onUnmounted(() => {
   // 如果需要立即清理特定項目的緩存，取消註釋下面這行：
   // salesDataStore.clearProjectData(projectId.value);
 });
-
-// --- 新增：處理 ParkingCanvasViewer 事件 ---
-const handleParkingViewerModeChange = (newMode) => {
-  if (['backend', 'sales'].includes(newMode)) {
-    parkingViewerDisplayMode.value = newMode;
-    console.log(`[SalesControl] Parking Viewer mode changed to: ${newMode}`);
-    // 如果需要，可以在這裡保存使用者的偏好設定
-  }
-};
-
-const onParkingViewerReady = () => {
-    console.log('[SalesControl] Parking Viewer canvas is ready.');
-    // 可以在這裡執行 Viewer 載入後的操作
-};
 
 
 // 新增：匯出與上傳相關的所有方法
@@ -1413,7 +1499,7 @@ const uploadData = async () => {
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
 }
-/*  新增：上傳提示框的樣式 */
+/* 新增：上傳提示框的樣式 */
 .pre-wrap-alert {
    white-space: pre-wrap;
 }

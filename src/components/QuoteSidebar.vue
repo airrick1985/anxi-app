@@ -19,7 +19,7 @@
 
       <!-- 當報價單為空時的提示 -->
       <div v-if="quoteStore.items && quoteStore.items.length === 0" class="empty-cart-card text-center pa-10">
-        <v-icon size="80" color="grey-lighten-1">mdi-cart-off</v-icon>
+        <v-icon size="80" color="grey-lighten-1">mdi-home-off</v-icon>
         <p class="text-h6 text-grey-darken-1 mt-4">您的報價單是空的</p>
         <p class="text-body-1 text-grey">請從銷控表加入戶別。</p>
       </div>

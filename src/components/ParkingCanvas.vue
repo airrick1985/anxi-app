@@ -16,6 +16,7 @@
       
      <vue-drag-resize-rotate
         v-for="spot in spotLayouts"
+        class-name="parking-spot-item"
         :key="spot.id"
         :x="spot.x"
         :y="spot.y"
@@ -26,21 +27,17 @@
         :draggable="!previewMode && !spot.locked"
         :resizable="!previewMode && !spot.locked"
         :rotatable="!previewMode && !spot.locked"
-        :is-conflict-check="false" class-name="parking-spot-item"
-
+        :is-conflict-check="false" 
         @activated="handleSpotActivated(spot)"
-        @deactivated="handleSpotDeactivated"
-
-        
+        @deactivated="handleSpotDeactivated"    
         @dragging="(x, y) => handleTransform(spot.id, { x, y }, 'dragging')"
         @resizing="(x, y, w, h) => handleTransform(spot.id, { x, y, w, h }, 'resizing')"
-        @rotating="(r) => handleTransform(spot.id, { r }, 'rotating')"
-        
+        @rotating="(r) => handleTransform(spot.id, { r }, 'rotating')"       
         @dragstop="(x, y) => handleTransformStop(spot.id, { x, y }, 'dragstop')"
         @resizestop="(x, y, w, h) => handleTransformStop(spot.id, { x, y, w, h }, 'resizestop')"
         @rotatestop="(r) => handleTransformStop(spot.id, { r }, 'rotatestop')"
-   
-        :parent="true"
+        :snap="true"
+        :snapTolerance="5"
         >
         <div 
           class="spot-content" 
@@ -56,20 +53,22 @@
         </div>
       </vue-drag-resize-rotate>
     </div>
-    <div v-if="showTools" class="toolbar">
-      <button @click="openImportModal" class="btn btn-primary">
+    
+   <div 
+      v-if="showTools" 
+      class="toolbar" 
+      :style="toolbarStyle" 
+      @mousedown="onToolbarDragStart"
+    >
+      <button v-if="allowImport" @click="openImportModal" class="btn btn-primary">
         <svg-icon type="mdi" :path="mdiDownload" class="icon"></svg-icon> 匯入車位資料
       </button>
 
-      <div class="test-tool">
-        <span>X:</span>
-        <input v-model.number="testX" type="number" class="form-input" style="width: 70px;">
-        <span>Y:</span>
-        <input v-model.number="testY" type="number" class="form-input" style="width: 70px;">
-        <button @click="addTestSpot" class="btn btn-secondary btn-sm">加入測試方塊</button>
-      </div>
-  
-      <div class="status-toggle">
+      <button v-if="allowAdjustAll" @click="openAdjustAllPanel" class="btn btn-secondary">
+        <svg-icon type="mdi" :path="mdiArrowExpandAll" class="icon"></svg-icon> 調整所有車位
+      </button>
+       
+      <div v-if="showStatusToggle" class="status-toggle">
         <button 
           @click="switchDisplayMode('backend')"
           :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'backend' }]"
@@ -85,6 +84,7 @@
       </div>
     </div>
     
+    <!-- 匯入車位 Modal -->
     <div v-if="importDialog" class="modal-overlay" @click.self="closeImportModal">
       <div class="modal-content">
         <div class="modal-header">
@@ -93,12 +93,10 @@
             <svg-icon type="mdi" :path="mdiClose"></svg-icon>
           </button>
         </div>
-        
         <div class="modal-body">
-         <div v-if="loading" class="loading-state">
+          <div v-if="loading" class="loading-state">
             <p class="mt-4">正在載入車位資料...</p>
           </div>
-          
           <div v-else-if="previewParkings.length > 0" class="import-preview">
             <p><strong>已取得車位編號如下</strong></p>
             <div class="parking-numbers">
@@ -107,13 +105,11 @@
             </div>
             <p class="confirm-text">您是否要匯入以上車位？</p>
           </div>
-          
           <div v-else class="no-data">
             <p>未找到符合條件的車位資料</p>
             <p>請檢查 projectId: <strong>{{ floorPlan.projectId }}</strong> 和 floor: <strong>{{ floorPlan.floor }}</strong></p>
           </div>
         </div>
-        
         <div class="modal-footer">
           <button 
             v-if="previewParkings.length > 0" 
@@ -127,6 +123,44 @@
       </div>
     </div>
     
+    <!-- 調整所有車位 Modal -->
+    <div v-if="showAdjustAllPanel" class="modal-overlay" @click.self="closeAdjustAllPanel">
+      <div class="modal-content" style="max-width: 350px;">
+        <div class="modal-header">
+          <h3>調整所有車位尺寸</h3>
+          <button @click="closeAdjustAllPanel" class="btn-close">
+            <svg-icon type="mdi" :path="mdiClose"></svg-icon>
+          </button>
+        </div>
+        
+        <div class="modal-body adjust-all-form">
+          <div class="form-group">
+            <label>寬度 (width)</label>
+            <input 
+              v-model.number="adjustAllWidth"
+              type="number" 
+              class="form-input"
+            />
+          </div>
+          <div class="form-group">
+            <label>高度 (height)</label>
+            <input 
+              v-model.number="adjustAllHeight"
+              type="number" 
+              class="form-input"
+            />
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button @click="applyAdjustAll" class="btn btn-primary">
+            套用
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屬性面板 -->
     <div v-if="selectedSpot" class="spot-properties-panel">
       <div class="panel-header">
         <h4>車位屬性</h4>
@@ -134,9 +168,8 @@
           <svg-icon type="mdi" :path="mdiClose"></svg-icon>
         </button>
       </div>
-      
       <div class="panel-content">
-                <div class="form-group">
+        <div class="form-group">
           <label>車位編號</label>
           <input 
              :value="spotProperties.spotId" 
@@ -145,7 +178,6 @@
             class="form-input"
           />
         </div>
-
         <div class="form-row">
           <div class="form-group">
             <label>X 座標</label>
@@ -156,7 +188,6 @@
               class="form-input"
             />
           </div>
-          
           <div class="form-group">
             <label>Y 座標</label>
             <input 
@@ -167,7 +198,6 @@
             />
           </div>
         </div>
-        
         <div class="form-row">
           <div class="form-group">
             <label>寬度</label>
@@ -178,7 +208,6 @@
               class="form-input"
             />
           </div>
-          
           <div class="form-group">
             <label>高度</label>
             <input 
@@ -189,7 +218,6 @@
             />
           </div>
         </div>
-        
         <div class="form-group">
           <label>旋轉角度</label>
           <input 
@@ -200,7 +228,6 @@
             class="form-input"
           />
         </div>
-        
         <div class="panel-actions">
           <button @click="deleteSelectedSpot" class="btn btn-danger btn-sm">
             <svg-icon type="mdi" :path="mdiTrashCanOutline" class="icon"></svg-icon> 刪除車位
@@ -209,17 +236,38 @@
       </div>
     </div>
 
-    <div class="zoom-controls">
-      <input 
-        type="range" 
-        min="0.2" 
-        max="2" 
-        step="0.05" 
-        v-model.number="canvasScale"
-      />
+    <!-- 縮放工具 -->
+    <div 
+      class="zoom-controls"
+      :style="zoomControlsStyle"
+      @mousedown="onZoomControlsDragStart"
+    >
+      <button @click="zoomOut" class="btn btn-sm btn-secondary btn-icon" :disabled="canvasScale <= 0.2">
+        <svg-icon type="mdi" :path="mdiMinus"></svg-icon>
+      </button>
       <span>{{ Math.round(canvasScale * 100) }}%</span>
+      <button @click="zoomIn" class="btn btn-sm btn-secondary btn-icon" :disabled="canvasScale >= 2">
+        <svg-icon type="mdi" :path="mdiPlus"></svg-icon>
+      </button>
       <button @click="fitToScreen" class="btn btn-sm btn-secondary">
         最適
+      </button>
+    </div>
+
+    <!-- ✓ START: 修改樓層 Chip Group (加入 style 和 mousedown) -->
+    <div 
+      class="floor-chip-group" 
+      :style="floorChipGroupStyle" 
+      @mousedown="onFloorChipGroupDragStart"
+    >
+    <!-- ✓ END: 修改 -->
+      <button
+        v-for="plan in availableFloorPlans"
+        :key="plan.id"
+        @click="switchFloor(plan)"
+        :class="['btn', 'btn-sm', { 'btn-active': plan.id === floorPlan.id }]"
+      >
+        {{ plan.floor }}
       </button>
     </div>
 
@@ -233,12 +281,17 @@ import { db } from '@/firebase'
 import SvgIcon from '@jamescoyle/vue-icon';
 import {
    getSalesParkingsByFloorForManager, 
+   getSpotLayoutsAPI,
+   getFloorPlansAPI,
 } from '@/api'; 
 import { 
   mdiDownload, 
   mdiLoading, 
   mdiClose, 
   mdiTrashCanOutline,
+  mdiArrowExpandAll,
+  mdiMinus, // ✓ 新增
+  mdiPlus,  // ✓ 新增
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 
@@ -277,38 +330,88 @@ export default {
     showTools: {
       type: Boolean,
       default: true
+    },
+    // ✅ START: 新增 props 以實現精細控制
+    allowImport: {
+      type: Boolean,
+      default: true // 預設顯示「匯入」
+    },
+    allowAdjustAll: {
+      type: Boolean,
+      default: true // 預設顯示「調整所有」
+    },
+    showStatusToggle: {
+      type: Boolean,
+      default: true // 預設顯示「狀態切換」
     }
   },
-  emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed', 'update:displayMode'],
+  emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed', 'update:displayMode', 'floor-switched'],
   setup(props, { emit }) {
     const toast = useToast(); 
 
-    // 畫布 DOM
+    // ... (工具列/縮放 拖曳狀態 ref 保持不變) ...
+    const toolbarStyle = ref({
+      position: 'absolute',
+      top: '20px',
+      left: '20px',
+      zIndex: 10,
+      cursor: 'move',
+    });
+    const isDraggingToolbar = ref(false);
+    const dragStartX = ref(0);
+    const dragStartY = ref(0);
+    const toolbarInitialX = ref(0);
+    const toolbarInitialY = ref(0);
+    const zoomControlsStyle = ref({
+      position: 'absolute',
+      top: '20px',
+      right: '20px',
+      zIndex: 10,
+      cursor: 'move',
+    });
+    const isDraggingZoomControls = ref(false);
+    const zoomDragStartX = ref(0);
+    const zoomDragStartY = ref(0);
+    const zoomInitialX = ref(0);
+    const zoomInitialY = ref(0);
+
+    // ✓ START: Floor-chip-group 拖曳狀態
+    const floorChipGroupStyle = ref({
+      position: 'absolute',
+      top: '80px', // 預設位置
+      right: '20px', // 預設位置
+      zIndex: 10,
+      cursor: 'move',
+    });
+    const isDraggingFloorChipGroup = ref(false);
+    const floorChipDragStartX = ref(0);
+    const floorChipDragStartY = ref(0);
+    const floorChipInitialX = ref(0); // 將儲存 'right'
+    const floorChipInitialY = ref(0); // 將儲存 'top'
+    // ✓ END: Floor-chip-group 拖曳狀態
+
+    // ... (畫布 DOM ref 保持不變) ...
     const canvasWidth = ref(1700) 
     const canvasHeight = ref(850) 
     const canvasAreaRef = ref(null)
-    const containerRef = ref(null) // 【新增】對 .parking-canvas-container 的 ref
-    const canvasScale = ref(1) // 【新增】畫布縮放比例
-
-    // 【修改】canvasAreaStyle 現在包含 transform
+    const containerRef = ref(null) 
+    const canvasScale = ref(1) 
     const canvasAreaStyle = computed(() => ({ 
       width: `${canvasWidth.value}px`,
       height: `${canvasHeight.value}px`,
       transform: `scale(${canvasScale.value})`,
-      transformOrigin: 'top left', //  關鍵：確保縮放基準點在左上角
+      transformOrigin: 'top left', 
     }));
 
-    // 車位狀態 (不變)
+    // ... (車位狀態 ref 保持不變) ...
     const spotLayouts = ref([]) 
     const selectedSpotId = ref(null) 
     const selectedSpot = ref(null) 
     const spotProperties = ref({}) 
 
-    // 背景圖狀態 (不變)
+    // ... (背景圖/匯入 ref 保持不變) ...
     const bgImageUrl = ref(null) 
     const bgImageStyles = ref({}) 
-    
-    // 匯入車位資料 (不變)
     const importDialog = ref(false)
     const loading = ref(false)
     const importing = ref(false)
@@ -316,95 +419,229 @@ export default {
     const totalParkingCount = ref(0)
     const allParkingData = ref([])
 
-
-// ✓ START: 請加入以下測試用的 ref
+    // ... (測試用 ref 保持不變) ...
     const testX = ref(100);
     const testY = ref(100);
-    // ✓ END: 測試用的 ref
 
-    // 【新增】計算並套用最適縮放
+    // ... (調整所有車位 ref 保持不變) ...
+    const showAdjustAllPanel = ref(false);
+    const adjustAllWidth = ref(100);
+    const adjustAllHeight = ref(100);
+
+    // ... (樓層列表 ref 保持不變) ...
+    const availableFloorPlans = ref([]);
+
+    // ... (fitToScreen, 拖曳函式, addTestSpot 保持不變) ...
     const fitToScreen = () => {
-      if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) {
-        console.warn('fitToScreen: 缺少容器或畫布尺寸');
-        return;
-      }
-      
-      // 容器可視寬高 (減去一些邊距)
+      if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) return;
       const containerW = containerRef.value.clientWidth - 40; 
       const containerH = containerRef.value.clientHeight - 40;
-      
-      // 畫布原始寬高
       const naturalW = canvasWidth.value;
       const naturalH = canvasHeight.value;
-
-      // 計算 X 和 Y 的縮放比例
       const scale = Math.min(containerW / naturalW, containerH / naturalH);
-      
-      // 僅縮小，不放大 (如果原始尺寸就比容器小，保持 1)
       canvasScale.value = scale > 1 ? 1 : scale;
-      console.log(`[Canvas] fitToScreen: scale set to ${canvasScale.value}`);
     };
-
-    // ✓ START: 請加入以下測試用的函式
-   const addTestSpot = () => {
-      // 1. 產生唯一的 ID
+    const onToolbarDragStart = (e) => {
+      if (e.target.closest('button') || e.target.closest('input')) return; 
+      isDraggingToolbar.value = true;
+      const currentTop = parseInt(toolbarStyle.value.top, 10) || 20;
+      const currentLeft = parseInt(toolbarStyle.value.left, 10) || 20;
+      toolbarInitialX.value = currentLeft;
+      toolbarInitialY.value = currentTop;
+      dragStartX.value = e.clientX;
+      dragStartY.value = e.clientY;
+      document.addEventListener('mousemove', onToolbarDragMove);
+      document.addEventListener('mouseup', onToolbarDragEnd);
+    };
+    const onToolbarDragMove = (e) => {
+      if (!isDraggingToolbar.value) return;
+      const dx = e.clientX - dragStartX.value;
+      const dy = e.clientY - dragStartY.value;
+      toolbarStyle.value.left = `${toolbarInitialX.value + dx}px`;
+      toolbarStyle.value.top = `${toolbarInitialY.value + dy}px`;
+    };
+    const onToolbarDragEnd = () => {
+      isDraggingToolbar.value = false;
+      document.removeEventListener('mousemove', onToolbarDragMove);
+      document.removeEventListener('mouseup', onToolbarDragEnd);
+    };
+    const onZoomControlsDragStart = (e) => {
+      if (e.target.closest('button') || e.target.closest('input')) return; 
+      isDraggingZoomControls.value = true;
+      const currentTop = parseInt(zoomControlsStyle.value.top, 10) || 20;
+      const currentRight = parseInt(zoomControlsStyle.value.right, 10) || 20;
+      zoomInitialY.value = currentTop;
+      zoomInitialX.value = currentRight;
+      zoomDragStartX.value = e.clientX;
+      zoomDragStartY.value = e.clientY;
+      document.addEventListener('mousemove', onZoomControlsDragMove);
+      document.addEventListener('mouseup', onZoomControlsDragEnd);
+    };
+    const onZoomControlsDragMove = (e) => {
+      if (!isDraggingZoomControls.value) return;
+      const dx = e.clientX - zoomDragStartX.value;
+      const dy = e.clientY - zoomDragStartY.value;
+      zoomControlsStyle.value.top = `${zoomInitialY.value + dy}px`;
+      zoomControlsStyle.value.right = `${zoomInitialX.value - dx}px`; 
+    };
+    const onZoomControlsDragEnd = () => {
+      isDraggingZoomControls.value = false;
+      document.removeEventListener('mousemove', onZoomControlsDragMove);
+      document.removeEventListener('mouseup', onZoomControlsDragEnd);
+    };
+    const addTestSpot = () => {
       const newId = `test-spot-${Date.now()}`;
-      
-      // 2. 建立新物件
       const newSpot = {
-        id: newId,
-        isNew: true,
-        spotId: `TEST_${testX.value}_${testY.value}`,
-        x: testX.value,
-        y: testY.value,
-        width: 100,
-        height: 100,
-        rotation: 0,
-        locked: false,
-        parkingData: { number: 'TEST' },
-        type: 'manual',
+        id: newId, isNew: true, spotId: `TEST_${testX.value}_${testY.value}`,
+        x: testX.value, y: testY.value, width: 100, height: 100, rotation: 0,
+        locked: false, parkingData: { number: 'TEST' }, type: 'manual',
         displayMode: props.displayMode
       };
-      
-      // 3. ✓ 修改：直接修改 .value 陣列，繞過 .push() 可能的副作用
-      spotLayouts.value = [
-        ...spotLayouts.value,
-        newSpot
-      ];
-
-      // 4. ✓ 修改：使用 nextTick 確保 DOM 更新後再選中
+      spotLayouts.value = [ ...spotLayouts.value, newSpot ];
       nextTick(() => {
         selectedSpotId.value = newId;
         selectSpot(newSpot);
       });
     };
-    // ✓ END: 測試用的函式
-
-
-
-    // 【修改】DOM 底圖載入完成時
     const onBgImageLoad = (e) => {
       const img = e.target;
-      
-      // 【修改】如果畫布尺寸尚未由 loadBackgroundImage 設定，則使用圖片原始尺寸
-      if (canvasWidth.value === 1700 && canvasHeight.value === 850) { // 檢查是否為預設值
+      if (canvasWidth.value === 1700 && canvasHeight.value === 850) { 
          if (!bgImageStyles.value.width && !bgImageStyles.value.height) {
-            console.log(`[Canvas] 底圖載入，使用圖片原始尺寸: ${img.naturalWidth} x ${img.naturalHeight}`);
             canvasWidth.value = img.naturalWidth;
             canvasHeight.value = img.naturalHeight;
          }
       }
-      
       console.log('底圖載入完成。');
-      
-      // 【新增】底圖載入後，計算一次最適尺寸
       nextTick(fitToScreen);
     };
-    
-    // 初始化資料載入 (不變)
+
+    // ... (鍵盤微調函式 保持不變) ...
+    const handleKeyDown = (event) => {
+      if (!selectedSpotId.value) return;
+      const spot = spotLayouts.value.find(s => s.id === selectedSpotId.value);
+      if (!spot) return;
+      const nudgeAmount = event.shiftKey ? 10 : 1;
+      let dx = 0;
+      let dy = 0;
+      switch (event.key) {
+        case 'ArrowUp': dy = -nudgeAmount; break;
+        case 'ArrowDown': dy = nudgeAmount; break;
+        case 'ArrowLeft': dx = -nudgeAmount; break;
+        case 'ArrowRight': dx = nudgeAmount; break;
+        default: return; 
+      }
+      event.preventDefault();
+      spot.x = Math.round(spot.x + dx);
+      spot.y = Math.round(spot.y + dy);
+      if (spotProperties.value) {
+        spotProperties.value.x = spot.x;
+        spotProperties.value.y = spot.y;
+      }
+      emit('spots-changed');
+    };
+
+    // ✓ START: 新增縮放函式
+    const zoomStep = 0.1;
+    const maxZoom = 2.0;
+    const minZoom = 0.2;
+
+    const zoomIn = () => {
+      // 使用 toFixed 避免浮點數精度問題
+      canvasScale.value = parseFloat(Math.min(maxZoom, canvasScale.value + zoomStep).toFixed(2));
+    };
+
+    const zoomOut = () => {
+      canvasScale.value = parseFloat(Math.max(minZoom, canvasScale.value - zoomStep).toFixed(2));
+    };
+    // ✓ END: 新增縮放函式
+
+    // ✓ START: 新增 Floor-chip-group 拖曳函式
+    const onFloorChipGroupDragStart = (e) => {
+      // 檢查是否點擊在可互動元素 (按鈕) 上
+      if (e.target.closest('button')) {
+        return; 
+      }
+      isDraggingFloorChipGroup.value = true;
+      const currentTop = parseInt(floorChipGroupStyle.value.top, 10) || 80;
+      const currentRight = parseInt(floorChipGroupStyle.value.right, 10) || 20;
+      floorChipInitialY.value = currentTop;
+      floorChipInitialX.value = currentRight; // 儲存 'right'
+      floorChipDragStartX.value = e.clientX;
+      floorChipDragStartY.value = e.clientY;
+      document.addEventListener('mousemove', onFloorChipGroupDragMove);
+      document.addEventListener('mouseup', onFloorChipGroupDragEnd);
+    };
+
+    const onFloorChipGroupDragMove = (e) => {
+      if (!isDraggingFloorChipGroup.value) return;
+      const dx = e.clientX - floorChipDragStartX.value;
+      const dy = e.clientY - floorChipDragStartY.value;
+      floorChipGroupStyle.value.top = `${floorChipInitialY.value + dy}px`;
+      floorChipGroupStyle.value.right = `${floorChipInitialX.value - dx}px`; 
+    };
+
+    const onFloorChipGroupDragEnd = () => {
+      isDraggingFloorChipGroup.value = false;
+      document.removeEventListener('mousemove', onFloorChipGroupDragMove);
+      document.removeEventListener('mouseup', onFloorChipGroupDragEnd);
+    };
+    // ✓ END: 新增函式
+
+    // ... (fetchAvailableFloors, switchFloor 保持不變) ...
+    const fetchAvailableFloors = async () => {
+      if (!props.projectId) return;
+      try {
+        const result = await getFloorPlansAPI(props.projectId);
+        if (result.status === 'success' && result.data) {
+          result.data.sort((a, b) => 
+            (a.floor || '').localeCompare(b.floor || '', 'zh-Hant', { numeric: true })
+          );
+          availableFloorPlans.value = result.data;
+          console.log('[Canvas] 成功載入樓層列表:', availableFloorPlans.value.map(p => p.floor));
+        } else {
+          toast.error(result.message || '無法載入樓層列表');
+          availableFloorPlans.value = [];
+        }
+      } catch (error) {
+        toast.error(`載入樓層列表失敗: ${error.message}`);
+        availableFloorPlans.value = [];
+      }
+    };
+    const switchFloor = (plan) => {
+      if (plan.id === props.floorPlan.id) return; 
+      emit('floor-switched', plan);
+    };
+
+    // ... (loadBackgroundImage, loadFloorData, fetchSalesParkingsForFloor 保持不變) ...
+    const loadBackgroundImage = (url, options = {}) => {
+      return new Promise((resolve) => {
+        bgImageUrl.value = url;
+        const left = options.left ?? 0;
+        const top = options.top ?? 0;
+        const width = options.width;
+        const height = options.height;
+        const angle = options.angle ?? 0;
+        bgImageStyles.value = {
+          left: `${left}px`,
+          top: `${top}px`,
+          width: width ? `${width}px` : 'auto', 
+          height: height ? `${height}px` : 'auto', 
+          transform: `rotate(${angle}deg)`,
+          transformOrigin: 'top left',
+        };
+        if (width) { canvasWidth.value = width; }
+        if (height) { canvasHeight.value = height; }
+        console.log(`[Canvas] 背景圖樣式已設定。畫布原始尺寸: ${canvasWidth.value} x ${canvasHeight.value}`);
+        resolve();
+      });
+    }
     const loadFloorData = async () => {
       console.log('--- loadFloorData ---');
-      if (props.floorPlan && props.floorPlan.backgroundImageUrl) {
+      if (!props.floorPlan || !props.floorPlan.id) {
+         console.log('loadFloorData 中止：缺少 floorPlan 或 floorPlan.id。');
+         return;
+      }
+      if (props.floorPlan.backgroundImageUrl) {
         console.log('載入背景圖...');
         await loadBackgroundImage(props.floorPlan.backgroundImageUrl, {
           left: props.floorPlan.backgroundImageX,
@@ -416,20 +653,25 @@ export default {
           height: props.floorPlan.backgroundImageHeight,
         });
       }
-      
-      if (props.floorPlan && props.floorPlan.id) {
-        console.log('抓取銷售車位資料...');
-        await fetchSalesParkingsForFloor();
+      console.log('抓取銷售車位資料 (for data)...');
+      await fetchSalesParkingsForFloor();
+      console.log('抓取車位佈局 (for positions)...');
+      try {
+        const layoutResult = await getSpotLayoutsAPI(props.floorPlan.id, props.projectId);
+        if (layoutResult.status === 'success') {
+          console.log(`[Canvas] 成功獲取 ${layoutResult.layouts.length} 筆佈局資料。`);
+          loadSpotLayouts(layoutResult.layouts || []);
+        } else {
+          throw new Error(layoutResult.message || '獲取佈局失敗');
+        }
+      } catch (error) {
+         console.error('抓取車位佈局時發生錯誤:', error);
+         toast.error(`抓取車位佈局失敗: ${error.message}`);
+         loadSpotLayouts([]); 
       }
-
-      console.log('載入車位佈局...');
-      loadSpotLayouts(props.floorPlan.layouts || []);
-
       console.log('[Canvas] loadFloorData 完成，準備發出 "canvas-ready" 事件。');
       emit('canvas-ready');
     };
-
-    // 抓取車位資料 (不變)
     const fetchSalesParkingsForFloor = async () => {
       if (!props.floorPlan || !props.floorPlan.id) return
       loading.value = true
@@ -437,12 +679,10 @@ export default {
         const floorValue = (typeof props.floorPlan.floor === 'object' && props.floorPlan.floor !== null)
           ? props.floorPlan.floor.value
           : props.floorPlan.floor;
-          
         const resultData = await getSalesParkingsByFloorForManager(
           props.projectId,
           floorValue
         );
-
         if (resultData.success) {
           allParkingData.value = resultData.allData || []
           previewParkings.value = resultData.preview || []
@@ -461,7 +701,7 @@ export default {
       }
     }
 
-    // --- 樣式/顯示 輔助函式 (不變) ---
+    // ... (樣式/顯示 輔助函式 保持不變) ...
     const getStatusColor = (mode, data) => {
       const statusColors = props.statusColors || {};
       const modeColors = statusColors[mode] || {};
@@ -480,27 +720,15 @@ export default {
       };
       return modeColors[statusKey] || modeColors.default || defaultColorSet;
     };
-
-    // 【修改】getSpotStyle 函式
     const getSpotStyle = (spot) => {
-      // 1. 取得 colorSet。
-      //    它可能是字串 (來自 StatusColorEditor, e.g., '#FF0000')
-      //    或一個完整的物件 (來自 getStatusColor 裡的 defaultColorSet)
       const colorSet = getStatusColor(props.displayMode, spot.parkingData);
-
-      // 2. 檢查 colorSet 的類型
       if (typeof colorSet === 'string') {
-        //  如果是字串 (來自 StatusColorEditor 的設定)
-        // 我們用這個字串同時當作背景和邊框
-        // 假設文字顏色永遠是黑色 (未來可再優化)
         return {
           backgroundColor: colorSet,
-          borderColor: '#000000', //  使用黑色邊框
-          color: '#000000',      //  使用黑色文字
+          borderColor: '#000000', 
+          color: '#000000',      
         };
       } else {
-        //  如果是物件 (來自 getStatusColor 裡的 defaultColorSet)
-        // 照常使用
         return {
           backgroundColor: colorSet.backgroundColor,
           borderColor: colorSet.borderColor,
@@ -508,7 +736,6 @@ export default {
         };
       }
     };
-
     const getSpotTextStyle = (fieldKey) => {
       const defaultStyles = { fontSize: '10px', fill: '#000' };
       const style = props.textStyles[fieldKey] || {};
@@ -547,46 +774,26 @@ export default {
       return fields.filter(f => f.value);
     }
     
-    // --- VDR 事件處理 (不變) ---
+    // ... (VDR 事件處理, 屬性面板函式 保持不變) ...
     const handleSpotActivated = (spot) => {
       if (props.previewMode) return;
-      
-      console.log(`[ParkingCanvas LOG] handleSpotActivated: Fired for spot.id = ${spot.id}`);
-      
       selectedSpotId.value = spot.id; 
-      
       selectSpot(spot);
     };
-
-    const handleSpotDeactivated = () => {
-      // 目前不需要執行任何動作，但函式必須存在
-    };
-
-// START: VDR 即時事件處理 (拖曳中/縮放中/旋轉中)
-   const handleTransform = (spotId, payload, eventType) => { 
-      
-      console.log(`[ParkingCanvas LOG] handleTransform: Event=${eventType}, SpotID=${spotId}, Payload=${JSON.stringify(payload)}`);
-      
+    const handleSpotDeactivated = () => { };
+    const handleTransform = (spotId, payload, eventType) => { 
       const { x, y, w, h, r } = payload;
-      
       const spot = spotLayouts.value.find(s => s.id === spotId);
       if (spot) {
-        // 1. 即時更新 spotLayouts (canvas)
-        // 立即四捨五入，確保 spot.width 永遠是整數
         if (x !== undefined) spot.x = Math.round(x);
         if (y !== undefined) spot.y = Math.round(y);
         if (w !== undefined) spot.width = Math.round(w);
         if (h !== undefined) spot.height = Math.round(h);
         if (r !== undefined) spot.rotation = Math.round(r);
-
-        // 2. 檢查並強制選中
         if (selectedSpotId.value !== spotId) {
-            console.log(`[ParkingCanvas LOG]   -> Force activating spot ${spotId} during transform.`);
             selectedSpotId.value = spot.id; 
-            selectSpot(spot); // selectSpot 會讀取 spot.width (已四捨五入)
+            selectSpot(spot); 
         }
-        
-       // 3. 更新屬性面板 (spotProperties)
         if (eventType === 'dragging') {
           if (x !== undefined) spotProperties.value.x = spot.x;
           if (y !== undefined) spotProperties.value.y = spot.y;
@@ -594,7 +801,6 @@ export default {
         if (eventType === 'resizing') {
           if (w !== undefined) spotProperties.value.width = spot.width;
           if (h !== undefined) spotProperties.value.height = spot.height;
-          // ✓ 新增：在 resizing 時也必須更新 X 和 Y 座標
           if (x !== undefined) spotProperties.value.x = spot.x;
           if (y !== undefined) spotProperties.value.y = spot.y;
         }
@@ -603,23 +809,15 @@ export default {
         }
       }
     };
-// END
-
     const handleTransformStop = (spotId, payload, eventType) => {
-      console.log(`[ParkingCanvas LOG] handleTransformStop: Event=${eventType}, SpotID=${spotId}, Payload=${JSON.stringify(payload)}`);
-      
-      const { x, y, w, h, r } = payload; // 現在 payload 是物件了
-      
+      const { x, y, w, h, r } = payload; 
       const spot = spotLayouts.value.find(s => s.id === spotId);
       if (spot) {
-        // 【修改】確保最終值也被四捨五入
         if (x !== undefined) spot.x = Math.round(x);
         if (y !== undefined) spot.y = Math.round(y);
         if (w !== undefined) spot.width = Math.round(w);
         if (h !== undefined) spot.height = Math.round(h);
         if (r !== undefined) spot.rotation = Math.round(r);
-
-        // 如果正在編輯的車位被移動，同步更新屬性面板
        if (selectedSpotId.value === spotId) {
           if (x !== undefined) spotProperties.value.x = spot.x;
           if (y !== undefined) spotProperties.value.y = spot.y;
@@ -627,12 +825,9 @@ export default {
           if (h !== undefined) spotProperties.value.height = spot.height;
           if (r !== undefined) spotProperties.value.rotation = spot.rotation;
         }
-        
         emit('spots-changed');
       }
     };
-
-    // --- 屬性面板 (不變) ---
     const selectSpot = (spot) => {
       selectedSpot.value = spot;
       const newProps = {
@@ -643,9 +838,6 @@ export default {
         height: Math.round(spot.height),
         rotation: Math.round(spot.rotation),
       };
-      
-      console.log(`[ParkingCanvas LOG] selectSpot: Setting spotProperties for ${spot.id}`, newProps);
-      
       spotProperties.value = newProps;
     }
     const updateSpotProperty = (property, value) => {
@@ -655,25 +847,13 @@ export default {
       switch (property) {
         case 'spotId':
           spot.spotId = value;
-          if (spot.parkingData) {
-            spot.parkingData.number = value;
-          }
+          if (spot.parkingData) spot.parkingData.number = value;
           break;
-        case 'x':
-          spot.x = Number(value);
-          break;
-        case 'y':
-          spot.y = Number(value);
-          break;
-        case 'width':
-          spot.width = Number(value);
-          break;
-        case 'height':
-          spot.height = Number(value);
-          break;
-        case 'rotation':
-          spot.rotation = Number(value);
-          break;
+        case 'x': spot.x = Number(value); break;
+        case 'y': spot.y = Number(value); break;
+        case 'width': spot.width = Number(value); break;
+        case 'height': spot.height = Number(value); break;
+        case 'rotation': spot.rotation = Number(value); break;
       }
       if (spotProperties.value[property] !== value) {
         spotProperties.value[property] = value;
@@ -696,51 +876,18 @@ export default {
       }
     }
     
-    // 【修改】載入背景圖片
-    const loadBackgroundImage = (url, options = {}) => {
-      return new Promise((resolve) => {
-        bgImageUrl.value = url;
-        
-        const left = options.left ?? 0;
-        const top = options.top ?? 0;
-        const width = options.width;
-        const height = options.height;
-        const angle = options.angle ?? 0;
-
-        bgImageStyles.value = {
-          left: `${left}px`,
-          top: `${top}px`,
-          width: width ? `${width}px` : 'auto', 
-          height: height ? `${height}px` : 'auto', 
-          transform: `rotate(${angle}deg)`,
-          transformOrigin: 'top left',
-        };
-        
-        // 【修改】設定畫布的 "原始" 寬高
-        if (width) {
-           canvasWidth.value = width;
-        }
-        if (height) {
-           canvasHeight.value = height;
-        }
-        
-        console.log(`[Canvas] 背景圖樣式已設定。畫布原始尺寸: ${canvasWidth.value} x ${canvasHeight.value}`);
-        resolve();
-      });
-    }
-
-    // 載入車位佈局 (不變)
+    // ... (loadSpotLayouts, getSpotLayouts 保持不變) ...
     const loadSpotLayouts = (layouts) => {
-      console.log(`[CANVAS LOG] loadSpotLayouts: 準備載入 ${layouts.length} 筆資料。 座標範例 (前3筆):`, JSON.stringify(layouts.slice(0, 3).map(s => ({ id: s.spotId, x: s.x, y: s.y }))));
+      console.log(`[CANVAS LOG] loadSpotLayouts: 準備載入 ${layouts.length} 筆資料。`);
       const loadedSpots = layouts
-        .filter(item => item.type !== 'backgroundImage')
+        .filter(item => item.type !== 'backgroundImage') 
         .map(layout => {
           const fullParkingData = allParkingData.value.find(p => p.id === layout.salesParkingId) || {
               id: layout.salesParkingId, number: layout.spotId, status_backend: '可售', price_list: null, status: null
           };
           return {
             id: layout.id || `layout-${layout.salesParkingId || layout.spotId}-${Math.random()}`,
-            isNew: !layout.id, // 【請在此處插入此行】
+            isNew: !layout.id, 
             spotId: layout.spotId,
             x: layout.x || 0,
             y: layout.y || 0,
@@ -755,11 +902,9 @@ export default {
       spotLayouts.value = loadedSpots;
       console.log(`[Canvas] 已載入 ${loadedSpots.length} 個車位佈局到 DOM。`);
     };
-
-    // 取得車位佈局 (不變)
     const getSpotLayouts = () => {
       return spotLayouts.value.map(spot => ({
-        id: spot.isNew ? null : spot.id, // 【請修改此行】
+        id: spot.isNew ? null : spot.id, 
         spotId: spot.spotId,
         x: Math.round(spot.x),
         y: Math.round(spot.y),
@@ -772,65 +917,33 @@ export default {
       }));
     }
 
-    // --- 匯入車位 (不變) ---
+    // ... (匯入車位 Modal 函式 保持不變) ...
     const openImportModal = async () => {
       importDialog.value = true
       await fetchSalesParkingsForFloor(); 
     }
     const closeImportModal = () => { importDialog.value = false }
-
-   const confirmImport = async () => {
+    const confirmImport = async () => {
       importing.value = true;
       try {
-        // 1. 清除所有 "imported" 類型的舊車位
         spotLayouts.value = spotLayouts.value.filter(s => s.type !== 'imported'); 
-        
-        // 2. 準備好所有車位的 *資料* (但不立即渲染)
-        //    (此資料已由後端 'orderBy('number', 'asc')' 排序)
         const spotsData = allParkingData.value.map((parkingData, index) => {
-          
-          // 3. 根據您的需求定義 X 座標
-          //    (index 0 -> 100, index 1 -> 160, ... index 10 -> 100)
           const x = 100 + (index % 10) * 60; 
-          
-          // 4. 根據您的需求定義 Y 座標
-          //    (index 0-9  -> 100 + (0 * 200) = 100) (第一列)
-          //    (index 10-19 -> 100 + (1 * 200) = 300) (第二列)
           const y = 100 + (Math.floor(index / 10) * 200); 
-          
           return {
             id: `imported-${parkingData.id}-${Math.random()}`,
             isNew: true,
             spotId: parkingData.number,
-            x: x, // ✓ 套用 X
-            y: y, // ✓ 套用 Y
-            width: 48, 
-            height: 105,
-            rotation: 0,
-            locked: false,
-            parkingData: parkingData, // (編號、價格、買方姓名...)
-            type: 'imported',
-            displayMode: props.displayMode
+            x: x, y: y, width: 48, height: 105, rotation: 0,
+            locked: false, parkingData: parkingData, 
+            type: 'imported', displayMode: props.displayMode
           };
         });
-
-        // ✓ 5. 【核心修改】循序加入車位，強制 DOM 渲染
-        //    使用 for...of 迴圈搭配 await
         for (const spot of spotsData) {
-          
-          // 5.1. 將 *單個* 車位加入陣列，觸發 Vue 渲染
           spotLayouts.value.push(spot);
-          
-          // 5.2. 等待 Vue 完成 DOM 更新
-          //      這會強制 <vue-drag-resize-rotate> 
-          //      在下一個車位被加入前，
-          //      先將目前這個車位渲染到它*正確*的 (x, y) 位置
           await new Promise(resolve => nextTick(resolve));
         }
-        // 迴圈結束時，所有車位都已在正確位置，不會觸發碰撞
-
         emit('spots-changed');
-        
       } catch(error) { 
           toast.error(`匯入車位時發生錯誤: ${error.message}`);
       } finally {
@@ -839,7 +952,42 @@ export default {
       }
     };
 
-    // 模式切換 (不變)
+    // ... (調整所有車位函式 保持不變) ...
+    const openAdjustAllPanel = () => {
+      if (selectedSpot.value) {
+        adjustAllWidth.value = Math.round(selectedSpot.value.width);
+        adjustAllHeight.value = Math.round(selectedSpot.value.height);
+      } else if (spotLayouts.value.length > 0) {
+        adjustAllWidth.value = Math.round(spotLayouts.value[0].width);
+        adjustAllHeight.value = Math.round(spotLayouts.value[0].height);
+      } else {
+        adjustAllWidth.value = adjustAllWidth.value || 100;
+        adjustAllHeight.value = adjustAllHeight.value || 100;
+      }
+      showAdjustAllPanel.value = true;
+    };
+    const closeAdjustAllPanel = () => {
+      showAdjustAllPanel.value = false;
+    };
+    const applyAdjustAll = () => {
+      const newWidth = Number(adjustAllWidth.value);
+      const newHeight = Number(adjustAllHeight.value);
+      if (newWidth <= 0 || newHeight <= 0) {
+        toast.error('寬度與高度必須大於 0');
+        return;
+      }
+      spotLayouts.value = spotLayouts.value.map(spot => {
+        return { ...spot, width: newWidth, height: newHeight };
+      });
+      if (selectedSpot.value) {
+        spotProperties.value.width = newWidth;
+        spotProperties.value.height = newHeight;
+      }
+      emit('spots-changed');
+      closeAdjustAllPanel();
+    };
+
+    // ... (模式切換 保持不變) ...
     const switchDisplayMode = (mode) => {
       emit('update:displayMode', mode)
       spotLayouts.value.forEach(spot => {
@@ -851,36 +999,48 @@ export default {
     let resizeObserver = null;
     onMounted(async () => {
       await nextTick();
+      await fetchAvailableFloors(); 
       await loadFloorData(); 
-      
-      // 【新增】監聽容器尺寸變化，自動重算 'fitToScreen'
       if (containerRef.value) {
         resizeObserver = new ResizeObserver(fitToScreen);
         resizeObserver.observe(containerRef.value);
       }
-      
-      // 【新增】手動觸發一次 fitToScreen
       fitToScreen();
+      window.addEventListener('keydown', handleKeyDown);
     });
 
     onUnmounted(() => {
-      // 【新增】移除監聽
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+      document.removeEventListener('mousemove', onToolbarDragMove);
+      document.removeEventListener('mouseup', onToolbarDragEnd);
+      document.removeEventListener('mousemove', onZoomControlsDragMove);
+      document.removeEventListener('mouseup', onZoomControlsDragEnd);
+      window.removeEventListener('keydown', handleKeyDown);
+      // ✓ START: 移除 floor-chip-group 拖曳監聽
+      document.removeEventListener('mousemove', onFloorChipGroupDragMove);
+      document.removeEventListener('mouseup', onFloorChipGroupDragEnd);
+      // ✓ END: 移除監聽
     });
     
     // --- 監聽 props 變化 ---
     watch(() => props.floorPlan.id, () => {
       spotLayouts.value = []; 
       bgImageUrl.value = null; 
-      canvasScale.value = 1; // 【新增】重置縮放
+      canvasScale.value = 1; 
       loadFloorData(); 
+    })
+    
+    watch(() => props.projectId, (newVal, oldVal) => {
+      if (newVal !== oldVal) {
+        fetchAvailableFloors();
+      }
     })
 
     return {
-      // Refs
-      containerRef, // 【新增】
+      // ... (原有 return 內容) ...
+      containerRef, 
       canvasAreaRef,
       canvasAreaStyle,
       bgImageUrl,
@@ -890,13 +1050,9 @@ export default {
       selectedSpotId,
       spotProperties,
       importDialog, loading, importing, previewParkings, totalParkingCount,
-      
-      // Props
       displayMode: computed(() => props.displayMode),
-      floorPlan: props.floorPlan,
+      floorPlan: computed(() => props.floorPlan), // ✓ 已修改
       previewMode: computed(() => props.previewMode),
-
-      // Functions
       getSpotLayouts,
       loadSpotLayouts, 
       updateSpotProperty,
@@ -913,40 +1069,56 @@ export default {
       getSpotStyle,
       getDisplayFields,
       getSpotTextStyle,
-      
-      // 【新增】縮放相關
       canvasScale,
       fitToScreen,
-      
-      // 【新增】
       handleTransform,
-
-      // ✓ START: 請加入以下匯出
       testX,
       testY,
       addTestSpot,
-      // ✓ END: 匯出
+      toolbarStyle,
+      onToolbarDragStart,
+      zoomControlsStyle,
+      onZoomControlsDragStart,
+      showAdjustAllPanel,
+      adjustAllWidth,
+      adjustAllHeight,
+      openAdjustAllPanel,
+      closeAdjustAllPanel,
+      applyAdjustAll,
+      availableFloorPlans,
+      switchFloor,
+      
+      // ✓ START: 匯出 floor-chip-group 拖曳功能
+      floorChipGroupStyle,
+      onFloorChipGroupDragStart,
+
+// ✓ START: 匯出縮放函式
+      zoomIn,
+      zoomOut,
+
+
 
       // Icons
       mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline,
+      mdiArrowExpandAll,mdiMinus,mdiPlus
     }
   }
 }
 </script>
 
 <style scoped>
+/* ... (原有 .parking-canvas-container, :deep(.parking-spot-item), .parking-canvas-area, .background-image, .spot-content, canvas, .toolbar, .status-toggle, .spot-properties-panel, .panel-header, .btn-close, .panel-content, .form-group, .form-row, .form-input, .panel-actions, .modal-overlay, .modal-content, .modal-header, .modal-footer, .modal-body, .loading-state, .no-data, .parking-numbers, .adjust-all-form, .btn, .zoom-controls 樣式保持不變) ... */
 .parking-canvas-container {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: auto; /* 保持 auto 以便縮放後仍可滾動 */
+  overflow: auto; 
   display: flex;
-  justify-content: flex-start; /* 保持 flex-start 以便 transform-origin: top left 生效 */
-  align-items: flex-start; /* 保持 flex-start */
+  justify-content: flex-start; 
+  align-items: flex-start; 
   background-color: #f0f2f5;
 }
 
-/* ✓ 請加入這段 CSS，強制車位使用絕對定位 */
 :deep(.parking-spot-item) {
   position: absolute !important;
 }
@@ -957,8 +1129,7 @@ export default {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   border: 1px solid #d9d9d9;
   flex-shrink: 0; 
-  margin: 20px; /* 保留 margin，作為滾動的緩衝區 */
-  /* 【修改】寬高和 transform 由 canvasAreaStyle 動態綁定 */
+  margin: 20px; 
 }
 
 .background-image {
@@ -986,24 +1157,19 @@ export default {
   user-select: none; 
 }
 
-/* (以下為保留的樣式) */
-
 canvas {
   border: 1px solid #d9d9d9;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .toolbar {
-  position: absolute;
-  top: 20px;
-  left: 20px;
   display: flex;
   gap: 1rem;
-  z-index: 10;
   background: white;
   padding: 8px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  user-select: none; 
 }
 
 .status-toggle {
@@ -1096,6 +1262,21 @@ canvas {
 .loading-state, .no-data { text-align: center; padding: 2rem; }
 .parking-numbers { background: #f8f9fa; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
 
+.adjust-all-form .form-group {
+  margin-bottom: 1rem;
+}
+.adjust-all-form .form-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+.adjust-all-form .form-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
 .btn {
   padding: 0.5rem 1rem;
   border: none;
@@ -1112,7 +1293,7 @@ canvas {
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-primary { background: #007bff; color: white; }
 .btn-primary:hover:not(:disabled) { background: #0056b3; }
-.btn-secondary { background: #6c757d; color: white; }
+.btn-secondary { background: #000000; color: white; }
 .btn-secondary:hover:not(:disabled) { background: #5a6268; }
 .btn-danger { background: #dc3545; color: white; }
 .btn-danger:hover:not(:disabled) { background: #c82333; }
@@ -1121,27 +1302,66 @@ canvas {
   font-size: 0.8rem;
 }
 
-/* 【新增】縮放工具列樣式 */
 .zoom-controls {
-  position: absolute;
-  top: 20px;
-  right: 20px;
   background: white;
   padding: 8px 12px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
+  user-select: none; 
 }
-.zoom-controls input[type="range"] {
-  width: 120px;
-}
+
+
 .zoom-controls span {
   font-size: 0.9rem;
   width: 40px;
   text-align: right;
   color: #333;
 }
+
+/* ✓ START: 新增 icon button 樣式 */
+.btn.btn-icon {
+  padding: 0.25rem; /* 移除左右 padding */
+  width: 30px; /* 固定寬度 */
+  height: 30px; /* 固定高度 */
+  justify-content: center; /* 圖示居中 */
+  border-radius: 50%; /* 圓形按鈕 */
+  gap: 0; /* 移除 gap */
+}
+
+/* ✓ START: 修改 chip group 樣式 (移除定位，加入 user-select) */
+.floor-chip-group {
+  /* position: absolute; (由 style 動態綁定) */
+  /* top: 80px; (由 style 動態綁定) */
+  /* right: 20px; (由 style 動態綁定) */
+  display: flex;
+  flex-direction: column; 
+  gap: 10px; 
+  background: white;
+  padding: 10px; 
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 10;
+  user-select: none; /* ✓ 新增：防止拖曳時選取文字 */
+}
+
+.floor-chip-group .btn {
+  background-color: #f8f9fa;
+  color: #333;
+  border: 1px solid #dee2e6;
+  font-weight: 600;
+  justify-content: center; 
+  font-size: 1rem; 
+  padding: 0.6rem 1.1rem; 
+}
+
+.floor-chip-group .btn.btn-active {
+  background-color: #000000; 
+  color: white;
+  border-color: #f5f5f7;
+}
+/* ✓ END: 修改樣式 */
 </style>
+

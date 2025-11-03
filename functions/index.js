@@ -5671,10 +5671,6 @@ exports.getAllUnitsForUpload = onCall(async (request) => {
 
 
 /**
- *  [最終修正版] 代理驗屋報告上傳
- * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
- */
-/**
  * [最終修正版] 代理驗屋報告上傳
  * 接收前端傳來的 Base64 檔案，直接存到 Google Drive、更新資料庫、寄送 Email。
  * (已重構，解決 Read-after-Write 的事務問題)
@@ -11584,7 +11580,11 @@ exports.bookingApi = onCall({
     region: "asia-east1", 
     // ✅ 組合所有子函數需要的 secrets
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD", "DRIVE_CLIENT_ID", "DRIVE_CLIENT_SECRET", "DRIVE_REFRESH_TOKEN"],
-    cors: true // 確保 CORS 已啟用
+    cors: true, // 確保 CORS 已啟用
+    // ✅ START: 新增記憶體與超時設定
+    memory: "1GiB",      // <--- 將記憶體從預設 256MB 提高至 1GB
+    timeoutSeconds: 540  // <--- 增加超時時間以應對大檔案上傳
+    // ✅ END: 新增設定
 }, async (request) => {
     
     // 1. 從 request.data 中解構出 action 和 data
@@ -12682,9 +12682,14 @@ async function _handleHandleDirectReportUpload(data) {
 </div>
 </div>
       `;
+
+
+      const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");      
       await mailTransport.sendMail({
           from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
-          to: email, subject, html: htmlBody
+          to: email, subject, 
+          cc: ccRecipients,
+          html: htmlBody
       });
       console.log(`[${functionName}] 已成功寄送確認信至: ${email}`);
     }

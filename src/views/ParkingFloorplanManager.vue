@@ -11,9 +11,7 @@
       </div>
       
   <div class="header-right" v-if="selectedProjectId">
-    <v-btn @click="goToTestPage" color="warning" prepend-icon="mdi-test-tube" class="mr-2">
-      開啟測試頁 (TEST.vue)
-    </v-btn>
+    
     <v-btn @click="createNewFloorPlan" color="primary" prepend-icon="mdi-plus">
       新增平面圖
     </v-btn>
@@ -219,7 +217,7 @@
             :status-colors="statusColorStore.colors" 
             :show-tools="showCanvasTools"
             @spots-changed="onSpotsChanged"
-          
+            @floor-switched="handleFloorSwitch" 
           />
 
            <div v-if="showStatusColorEditor" class="style-editor-overlay">
@@ -293,7 +291,7 @@
             
             <v-file-input
               v-model="floorPlanForm.backgroundImageFile"
-              :label="editingFloorPlan ? '更換平面圖底圖（可選）' : '平面圖底圖 *'"
+              :label="editingFloorPlan ? '更換平面圖底圖' : '平面圖底圖 *'"
               placeholder="請選擇圖片檔案"
               accept="image/*"
               :required="!editingFloorPlan"
@@ -581,6 +579,22 @@ export default {
       // 進入編輯模式，隱藏 App 工具列
       uiStore.enterParkingEditMode()
     }
+
+    // ✓ 2. 新增 handleFloorSwitch 函式
+    const handleFloorSwitch = (newPlan) => {
+      // 檢查是否有未儲存的變更
+      if (isEditorDirty.value) {
+        if (!confirm('您有未儲存的變更，確定要切換樓層嗎？（目前變更將會遺失）')) {
+          return; // 使用者取消，中斷切換
+        }
+      }
+      
+      console.log(`[Manager] 接收到 floor-switched 事件, 切換至: ${newPlan.floor}`);
+      // 更新父元件的 selectedFloorPlan
+      selectedFloorPlan.value = newPlan;
+      // 重設 "未儲存" 狀態，因為我們剛載入新樓層
+      isEditorDirty.value = false; 
+    };
 
     const backToList = () => {
       if (isEditorDirty.value) {
@@ -990,7 +1004,10 @@ export default {
       toggleStatusColorEditor,
       // 導出畫布工具相關的變數和方法
       showCanvasTools,
-      toggleCanvasTools
+      toggleCanvasTools,
+
+      // ✓ 3. 匯出 handleFloorSwitch
+      handleFloorSwitch,
     }
   }
 }
@@ -1248,6 +1265,7 @@ export default {
   flex: 1;
   overflow: hidden;
   background: white;
+  position: relative; 
 }
 
 /* Dialog styles */
@@ -1399,8 +1417,11 @@ export default {
 
 .style-editor-overlay {
   position: absolute;
-  top: 0px; /* 調整為從頂部開始 */
-  right: 0px; /* 調整為從右側開始 */
+  top: 0px; 
+  right: 0px; 
   z-index: 200;
 }
+
+/* ✓ 4. 刪除這裡的 .floor-chip-group 樣式 */
+
 </style>

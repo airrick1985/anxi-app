@@ -4,7 +4,7 @@
        <v-row>
         <v-col cols="12" md="4">
           <div class="info-section">
-            <div class="section-title"><v-icon>mdi-information-outline</v-icon> 銷售資訊</div>
+            <div class="section-title"><v-icon>mdi-information-outline</v-icon>銷售資訊</div>
             <v-select label="後台狀態" :items="statusOptions" v-model="editableData.salesStatus_backend" class="mb-4"></v-select>
             <v-select label="銷售人員" :items="personnelOptions" v-model="editableData.salesperson" class="mb-4"></v-select>
             
@@ -34,7 +34,7 @@
 
         <v-col cols="12" md="4">
           <div class="info-section">
-            <div class="section-title"><v-icon>mdi-currency-usd</v-icon> 成交資訊</div>
+            <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
             <v-select label="合約方式" :items="contractTypeOptions" v-model="editableData.contractType" class="mb-4"></v-select>
             <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
               <v-radio label="是" :value="true"></v-radio>
@@ -49,7 +49,7 @@
 
         <v-col cols="12" md="4">
           <div class="info-section">
-            <div class="section-title"><v-icon>mdi-account-details</v-icon> 買方資訊</div>
+            <div class="section-title"><v-icon>mdi-account-details</v-icon>買方資訊</div>
             <v-text-field label="買方姓名" v-model="editableData.buyerName" class="mb-2"></v-text-field>
             <v-text-field label="聯絡電話" v-model="editableData.buyerPhone" type="tel" class="mb-2"></v-text-field>
             <v-text-field label="身分證字號" v-model="editableData.buyerIdNumber" class="mb-2"></v-text-field>
@@ -128,7 +128,8 @@
       @confirm="handleParkingUpdate"
       @request-open-slide="$emit('request-open-slide')"
       mode="sales"
-    />
+      :project-id="props.projectId"
+      :sales-control-view-mode="props.viewMode" />
   </div>
 </template>
 
@@ -149,6 +150,10 @@ const props = defineProps({
   personnelOptions: { type: Array, default: () => [] },
   allParkingData: { type: Array, default: () => [] },
   projectName: { type: String, required: true },
+
+  projectId: { type: String, required: true },
+  viewMode: { type: String, default: 'sales' },
+
   contractTypeOptions: { type: Array, default: () => [] },
   firstPurchaseOptions: { type: Array, default: () => [] },
   // ✅ 1. 新增 Prop
