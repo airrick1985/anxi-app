@@ -1925,7 +1925,7 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
             }
         });
         
-        // 3. ✅【關鍵修正 V2】
+        // 3. 【關鍵修正 V2】
         // Cloud Function 回傳的是序列化的普通物件 (e.g., {_seconds: ..., _nanoseconds: ...})
         // Vue 元件期望的是 Client SDK 的 Timestamp 物件 (有 .toDate() 方法)。
         
@@ -1937,11 +1937,11 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
             // 1. 檢查是否為 null 或 undefined
             if (!serverTimestamp) return null;
             
-            // 2. ✅【關鍵修正】檢查帶有底線的 _seconds 和 _nanoseconds
+            // 2. 【關鍵修正】檢查帶有底線的 _seconds 和 _nanoseconds
             if (typeof serverTimestamp === 'object' && serverTimestamp !== null && 
                 typeof serverTimestamp._seconds === 'number' && typeof serverTimestamp._nanoseconds === 'number') {
                 
-                // 3. ✅【關鍵修正】使用帶底線的屬性來建立新的 Timestamp
+                // 3. 【關鍵修正】使用帶底線的屬性來建立新的 Timestamp
                 return new Timestamp(serverTimestamp._seconds, serverTimestamp._nanoseconds);
             }
             
@@ -4949,14 +4949,18 @@ export const finalizeLineBinding = async (payload) => {
 // ✓ START: 新增 - LIFF 查詢功能所需的 API 函式
 
 /**
- * [API] 獲取 LIFF 使用者資料與其可查詢的建案列表
+ * 【修改】[API] 獲取 LIFF 使用者資料與其可查詢的建案列表
+ * (改用 liffCalendarApiRouter)
  * @param {object} payload - 包含 { lineId }
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getLiffUserData = async (payload) => {
   try {
-    const getDataFunction = httpsCallable(functions, 'getLiffUserData');
-    const result = await getDataFunction(payload);
+    //  修改：呼叫 liffCalendarApiRouter
+    const result = await liffCalendarApiRouter({
+        action: 'getLiffUserData', //  對應後端的 action
+        data: payload
+    });
     return result.data;
   } catch (error) {
     console.error("API Error in getLiffUserData:", error);
@@ -4966,17 +4970,20 @@ export const getLiffUserData = async (payload) => {
 
 
 
-// ✓ START: 修改為新的函式名稱 liffSearchAppointments
+
 /**
- * [API] 根據建案ID和關鍵字搜尋預約紀錄 (LIFF查詢用)
+ * 【修改】[API] 根據建案ID和關鍵字搜尋預約紀錄 (LIFF查詢用)
+ * (改用 liffCalendarApiRouter，並呼叫優化版的 action)
  * @param {object} payload - 包含 { projectId, searchText }
- * @returns {Promise<object>} - 後端回傳的結果
+ * @returns {Promise<object>} - 後端回傳的結果 (僅含 appointments)
  */
 export const liffSearchAppointments = async (payload) => {
   try {
-    // ✓ 呼叫的後端函式名稱也要同步修改
-    const searchFunction = httpsCallable(functions, 'liffSearchAppointments');
-    const result = await searchFunction(payload);
+    //  修改：呼叫 liffCalendarApiRouter
+    const result = await liffCalendarApiRouter({
+        action: 'liffSearchAppointments', //  呼叫優化版的 action
+        data: payload
+    });
     return result.data;
   } catch (error) {
     console.error("API Error in liffSearchAppointments:", error);
@@ -4987,15 +4994,20 @@ export const liffSearchAppointments = async (payload) => {
 
 
 // ✓ START: 新增 - LIFF 驗屋時間表專用函式
+
 /**
- * [LIFF日曆用] 獲取指定建案的所有預約資料 (用於日曆計數渲染)
+ * 【修改】[LIFF日曆用] 獲取指定建案的所有預約資料 (用於日曆計數渲染)
+ * (改用 liffCalendarApiRouter)
  * @param {object} payload - 包含 { projectId } 的物件
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getAllLiffAppointmentsForProject = async (payload) => {
   try {
-    const getDataFunction = httpsCallable(functions, 'getAllLiffAppointmentsForProject');
-    const result = await getDataFunction(payload);
+    //  修改：呼叫 liffCalendarApiRouter
+    const result = await liffCalendarApiRouter({
+        action: 'getAllLiffAppointmentsForProject', //  對應後端的 action
+        data: payload
+    });
     return result.data;
   } catch (error) {
     console.error("API Error in getAllLiffAppointmentsForProject:", error);
@@ -5004,16 +5016,19 @@ export const getAllLiffAppointmentsForProject = async (payload) => {
 };
 
 
-// ✓ START: 新增 - LIFF 驗屋時間表專用函式
 /**
- * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
+ * 【修改】[LIFF日曆用] 獲取指定單一日期的預約 (只回傳 appointments)
+ * (改用 liffCalendarApiRouter，並呼叫優化版的 action)
  * @param {object} payload - 包含 { projectId, date } 的物件
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getLiffCalendarDataForDay = async (payload) => {
   try {
-    const getDataFunction = httpsCallable(functions, 'getLiffCalendarDataForDay');
-    const result = await getDataFunction(payload);
+    //  修改：呼叫 liffCalendarApiRouter
+    const result = await liffCalendarApiRouter({
+        action: 'getLiffCalendarDataForDay', //  呼叫優化版的 action
+        data: payload
+    });
     return result.data;
   } catch (error) {
     console.error("API Error in getLiffCalendarDataForDay:", error);
@@ -5022,7 +5037,26 @@ export const getLiffCalendarDataForDay = async (payload) => {
 };
 // ✓ END
 
-
+// 【新增】一個 API 函數，用於讓 LIFF 獲取戶別快取
+/**
+ * [API] 獲取指定建案下的所有戶別資料 (供 LIFF 快取使用)
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<Array>} - 戶別資料陣列
+ */
+export async function fetchAllHouseholdsForLiff(projectId) {
+  if (!projectId) return [];
+  
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'fetchAllHouseholds', //  對應後端的 action
+        data: { projectId }
+    });
+    return result.data; // 後端直接回傳陣列
+  } catch (e) {
+    console.error(`獲取建案 ${projectId} 的戶別資料時發生錯誤:`, e);
+    throw new Error(e.message || '獲取戶別資料失敗');
+  }
+}
 
 
 // ✓ START: 新增 - 獲取開發者資料的 API
@@ -5854,6 +5888,8 @@ export async function restoreInspectionRecordFB(recordId) {
   }
 }
 
+
+
 /**
  * [新增] 獲取指定建案 (projectId) 底下所有 *已刪除* 的驗屋紀錄
  * @param {string} projectId - 建案 ID
@@ -6146,26 +6182,42 @@ export const fetchPotentialPersonnelAPI = async (projectId) => {
 };
 
 /**
- * [API] 獲取 Standby 看板的設定 (可見人員、顏色)
+ * [API] 獲取 Standby 看板的設定 (包含所有欄位)
  * @param {string} projectId - 建案 ID
- * @returns {Promise<object>} - 返回設定物件 { visiblePersonnelIds: [], colors: {} } 或預設值
+ * @returns {Promise<object>} - 返回完整的設定物件
  */
 export const fetchStandbyConfigAPI = async (projectId) => {
-  if (!projectId) return { visiblePersonnelIds: [], colors: {} }; // ✓ 提供預設值
+  // ✅ [修改] 定義一個包含 *所有* 欄位預設值的物件
+  const defaultConfig = {
+    visiblePersonnelIds: [],
+    colors: {},
+    alertThresholdMinutes: 120 // 預設 120 分鐘
+  };
+
+  if (!projectId) {
+    console.warn("fetchStandbyConfigAPI called without projectId");
+    return defaultConfig; // ✅ 回傳完整的預設物件
+  }
+
   try {
-    const configDocRef = doc(db, "standbyConfig", projectId); // ✓ 集合 standbyConfig, 文件 ID 為 projectId
+    const configDocRef = doc(db, "standbyConfig", projectId);
     const docSnap = await getDoc(configDocRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      // ✓ 回傳資料庫中的設定，若欄位不存在則給予預設空值
+      
+      // ✅ [核心修正]
+      // 使用預設值打底，並用 Firestore 的資料覆蓋
+      // 這樣能確保 'alertThresholdMinutes' 總是存在
       return {
-        visiblePersonnelIds: data.visiblePersonnelIds || [],
-        colors: data.colors || {},
+        ...defaultConfig, // 先載入預設值
+        ...data           // 再用 Firestore 的資料覆蓋
       };
+
     } else {
-      // ✓ 如果文件不存在，回傳預設空值
-      return { visiblePersonnelIds: [], colors: {} };
+      // ✅ [修改] 如果文件不存在，也回傳完整的預設物件
+      console.log(`No standby config found for ${projectId}, returning defaults.`);
+      return defaultConfig;
     }
   } catch (error) {
     console.error(`API Error fetching standby config for ${projectId}:`, error);
@@ -6174,31 +6226,38 @@ export const fetchStandbyConfigAPI = async (projectId) => {
 };
 
 /**
- * [API] 儲存 Standby 看板的設定
+ * ✅ [修改後的正確版本] 儲存看板設定 (接受一個 configObject)
  * @param {string} projectId - 建案 ID
- * @param {Array<string>} visiblePersonnelIds - 可見人員的 ID (phone) 列表
- * @param {object} colors - 狀態顏色設定物件
- * @returns {Promise<{status: string}>}
+ * @param {object} configObject - 包含所有設定的物件 
+ * (例如: { visiblePersonnelIds: [], colors: {}, alertThresholdMinutes: 120 })
  */
-export const saveStandbyConfigAPI = async (projectId, visiblePersonnelIds, colors) => {
+export const saveStandbyConfigAPI = async (projectId, configObject) => {
   if (!projectId) {
-     return { status: 'error', message: '缺少 projectId' };
+    return { status: 'error', message: '缺少 projectId' };
   }
+  
+  // 驗證 configObject
+  if (!configObject || typeof configObject !== 'object' || Array.isArray(configObject)) {
+     return { status: 'error', message: '無效的設定資料 (configObject)' };
+  }
+
   try {
     const configDocRef = doc(db, "standbyConfig", projectId);
-    // ✓ 使用 setDoc + merge: true，不論文件是否存在都能正確寫入/更新
+    
+    // ✅ [核心修改] 
+    // 將傳入的 configObject 完整儲存
+    // 並總是覆蓋/新增 updatedAt 時間戳
     await setDoc(configDocRef, {
-      visiblePersonnelIds: visiblePersonnelIds || [], // ✓ 確保是陣列
-      colors: colors || {},                      // ✓ 確保是物件
-      updatedAt: serverTimestamp() // ✓ 記錄更新時間 (需 import serverTimestamp from "firebase/firestore")
-    }, { merge: true });
+      ...configObject, // 展開 configObject (包含 visiblePersonnelIds, colors, alertThresholdMinutes)
+      updatedAt: serverTimestamp() 
+    }, { merge: true }); // merge: true 確保安全更新
+
     return { status: 'success' };
   } catch (error) {
     console.error(`API Error saving standby config for ${projectId}:`, error);
-     return { status: 'error', message: `儲存看板設定時發生錯誤: ${error.message}` };
+    return { status: 'error', message: `儲存看板設定時發生錯誤: ${error.message}` };
   }
 };
-
 
 /**
  * [API] 呼叫後端更新 Standby 人員狀態
@@ -6586,3 +6645,112 @@ export const fetchUserManagementInitialData = async (adminKey) => {
 // --- END: ✓ 新增 - 獲取人員管理頁面初始資料 API ---
 
 
+/**
+ * [LIFF用] 獲取新增/編輯預約時所需的下拉選單等選項
+ * (V2: 呼叫 liffCalendarApi 路由)
+ * @param {string} projectId 
+ * @returns {Promise<object>}
+ */
+export async function liffFetchBookingOptions(projectId) {
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'fetchBookingOptions',
+        data: { projectId }
+    });
+    // 後端 _handleFetchBookingOptions 會直接回傳 { inspectionMethods, ... }
+    return result.data; 
+  } catch (error) {
+    console.error(`LIFF 獲取預約選項時發生錯誤 (Project ID: ${projectId}):`, error);
+    throw new Error(error.message || '獲取預約選項失敗');
+  }
+}
+
+/**
+ * [LIFF用] 更新預約紀錄
+ * (V2: 呼叫 liffCalendarApi 路由)
+ */
+export async function liffUpdateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) { 
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'updateAppointment',
+        data: {
+          appointmentId,
+          bookingPayload: bookingUpdatePayload,
+          householdDocId,
+          householdPayload: householdUpdatePayload,
+          force: force 
+        }
+    });
+    return result.data; 
+  } catch (error) {
+    console.error("API liffUpdateAppointment 錯誤:", error);
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * [LIFF用] 取消一筆預約
+ * (V2: 呼叫 liffCalendarApi 路由)
+ */
+export async function liffCancelAppointment(appointmentId, projectId, unitId, bookingType) {
+  if (!appointmentId || !projectId || !unitId || !bookingType) {
+    return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
+  }
+  
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'cancelAppointment',
+        data: {
+          appointmentId,
+          projectId,
+          unitId,
+          bookingType
+        }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API liffCancelAppointment 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [LIFF用] 僅更新單筆預約紀錄的驗屋人員欄位
+ * (V2: 呼叫 liffCalendarApi 路由)
+ */
+export async function liffUpdateAppointmentInspectors(appointmentId, inspectors) {
+  if (!appointmentId) throw new Error("缺少預約 ID。");
+  
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'updateAppointmentInspectors',
+        data: {
+            appointmentId,
+            inspectors
+        }
+    });
+    return result.data;
+  } catch (e) {
+      console.error("API liffUpdateAppointmentInspectors 錯誤:", e);
+      throw new Error(e.message || '更新驗屋人員失敗');
+  }
+}
+
+/**
+ * [LIFF用] 獲取行事曆所需的所有日期及其分類
+ * (V2: 呼叫 liffCalendarApi 路由)
+ * @param {object} payload - 包含 { projectId, unitId }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const liffGetAdminBookingCalendarData = async (payload) => {
+  try {
+    const result = await liffCalendarApiRouter({
+        action: 'getAdminBookingCalendarData',
+        data: payload
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in liffGetAdminBookingCalendarData:", error);
+    throw new Error(error.message);
+  }
+};

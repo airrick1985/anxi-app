@@ -14537,3 +14537,301 @@ async function _handleUpdateAppointmentInspectors(data) {
         throw new HttpsError("internal", `更新驗屋人員時發生錯誤: ${error.message}`);
     }
 }
+
+
+// =================================================================
+// /  ✅ 【新增】LIFF 驗屋行事曆 (LiffInspectionCalendar) 路由函數
+// =================================================================
+
+/**
+ * ✅ [V1 - 路由函數] LiffInspectionCalendar.vue 的單一 API 入口
+ */
+exports.liffCalendarApi = onCall({ 
+    region: "asia-east1", 
+    // ✅ 組合所有 LIFF 會用到的 secrets
+    secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+    memory: "1GiB",
+    timeoutSeconds: 300, 
+    cors: true 
+}, async (request) => {
+    
+    const { action, data } = request.data;
+    const functionName = `liffCalendarApi (Action: ${action})`;
+    
+    try {
+        console.log(`[${functionName}] 路由函數啟動...`);
+        
+        switch (action) {
+            
+            // --- 頁面初始化 (onMounted) ---
+            case 'getLiffUserData':
+                return await _handleGetLiffUserData(data);
+
+            // --- 獲取快取資料 (watch project) ---
+            case 'getAllLiffAppointmentsForProject':
+                return await _handleGetAllLiffAppointmentsForProject(data);
+            case 'fetchAllHouseholds':
+                // ✅ 共用 Admin 的內部函數
+                return await _handleFetchAllHouseholdsForProject(data); 
+            case 'fetchBookingOptions':
+                // ✅ 共用 Admin 的內部函數 (雖然 LIFF 沒用到，但 api.js 有呼叫)
+                return await _handleFetchBookingOptions(data);
+
+            // --- 獲取動態資料 ---
+            case 'getLiffCalendarDataForDay':
+                // ✅【優化】使用只回傳 appointments 的版本
+                return await _handleGetLiffCalendarDataForDay_Optimized(data); 
+            case 'liffSearchAppointments':
+                // ✅【優化】使用只回傳 appointments 的版本
+                return await _handleLiffSearchAppointments_Optimized(data); 
+            
+            // --- 彈窗操作 (共用 Admin 的內部函數) ---
+            case 'getAdminBookingCalendarData':
+                return await _handleGetAdminBookingCalendarData(data);
+            case 'updateAppointment':
+                return await _handleUpdateAppointmentByAdmin(data);
+            case 'cancelAppointment':
+                return await _handleCancelAppointmentByAdmin(data);
+            case 'updateAppointmentInspectors':
+                return await _handleUpdateAppointmentInspectors(data);
+            
+            default:
+                console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
+                throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
+        }
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
+    }
+});
+
+/**
+ * [內部函式] 獲取 LIFF 使用者資料 (V2 - 包含 bookingTypes)
+ */
+async function _handleGetLiffUserData(data) {
+    const { lineId } = data;
+    const functionName = "_handleGetLiffUserData";
+    if (!lineId) throw new HttpsError("invalid-argument", "缺少 lineId");
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const usersRef = db.collection("users");
+        const userQuery = usersRef.where("lineId", "==", lineId).limit(1);
+        const userSnapshot = await userQuery.get();
+        if (userSnapshot.empty) return { status: "not_bound" };
+
+        const userDoc = userSnapshot.docs[0];
+        const userData = userDoc.data();
+        const userKey = userDoc.id; 
+
+        const permDocRef = db.collection("userPermissions").doc(userKey);
+        const permDoc = await permDocRef.get();
+        if (!permDoc.exists) return { status: "bound", userName: userData.name, projects: [] };
+
+        const permissions = permDoc.data().permissions || {};
+        const authorizedProjectsPromises = []; 
+
+        for (const projectId in permissions) {
+            const projectPerms = permissions[projectId];
+            if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
+                const projectDocPromise = db.collection('projects').doc(projectId).get().then(doc => {
+                    if (!doc.exists) return null; 
+                    const projectData = doc.data();
+                    return {
+                        projectId: projectId,
+                        projectName: projectPerms.projectName,
+                        bookingTypes: projectData.bookingTypes || [] // 讀取 bookingTypes
+                    };
+                }).catch(err => {
+                    console.error(`[${functionName}] 讀取 projects/${projectId} 文件失敗:`, err);
+                    return null; 
+                });
+                authorizedProjectsPromises.push(projectDocPromise);
+            }
+        }
+        
+        const authorizedProjects = (await Promise.all(authorizedProjectsPromises)).filter(Boolean);
+
+        return {
+            status: "bound",
+            userName: userData.name,
+            projects: authorizedProjects, 
+        };
+    } catch (error) {
+        console.error(`[${functionName}] 獲取 LIFF 用戶資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "處理用戶資料時發生錯誤。");
+    }
+}
+
+/**
+ * [內部函式] 獲取 LIFF 日曆計數用的所有預約
+ */
+async function _handleGetAllLiffAppointmentsForProject(data) {
+    const { projectId } = data;
+    const functionName = "_handleGetAllLiffAppointmentsForProject";
+    if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId");
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+        if (snapshot.empty) return { status: "success", data: [] };
+
+        const appointments = snapshot.docs.map(doc => {
+            const data = doc.data();
+            if (data.appointmentDate && typeof data.appointmentDate.toDate === 'function') {
+                data.appointmentDate = data.appointmentDate.toDate().toISOString();
+            }
+            return {
+              appointmentDate: data.appointmentDate,
+              status: data.status
+            };
+        });
+        return { status: "success", data: appointments };
+    } catch (error) {
+        console.error(`[${functionName}] 獲取所有預約資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取所有預約資料時發生錯誤。");
+    }
+}
+
+/**
+ * ✅【優化版】[內部函式] 獲取 LIFF 指定單日的預約 (只回傳 appointments)
+ */
+async function _handleGetLiffCalendarDataForDay_Optimized(data) {
+    const { projectId, date } = data;
+    const functionName = "_handleGetLiffCalendarDataForDay_Optimized";
+    if (!projectId || !date) throw new HttpsError("invalid-argument", "缺少 projectId 或 date");
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        const startOfDay = new Date(`${date}T00:00:00+08:00`);
+        const endOfDay = new Date(`${date}T23:59:59+08:00`);
+
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef
+            .where("projectId", "==", projectId)
+            .where("appointmentDate", ">=", startOfDay)
+            .where("appointmentDate", "<=", endOfDay);
+            
+        const snapshot = await query.get();
+        if (snapshot.empty) return { status: "success", data: [] };
+
+        const appointments = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // ✅ 轉換所有日期為 ISO String
+            ['appointmentDate', 'createdAt', 'cancelledAt'].forEach(field => {
+                if (data[field] && typeof data[field].toDate === 'function') {
+                    data[field] = data[field].toDate().toISOString();
+                }
+            });
+            return { id: doc.id, ...data };
+        });
+
+        return { status: "success", data: appointments };
+    } catch (error) {
+        console.error(`[${functionName}] 獲取 LIFF 日曆資料時發生錯誤:`, error);
+        throw new HttpsError("internal", "獲取日曆資料時發生錯誤。");
+    }
+}
+
+/**
+ * ✅【優化版】[內部函式] LIFF 搜尋預約 (只回傳 appointments)
+ */
+async function _handleLiffSearchAppointments_Optimized(data) {
+    const { projectId, searchText } = data;
+    const functionName = "_handleLiffSearchAppointments_Optimized";
+    if (!projectId || !searchText) throw new HttpsError("invalid-argument", "缺少 projectId 或 searchText");
+
+    const lowerCaseSearchText = searchText.toLowerCase();
+    const db = new Firestore({ databaseId: "anxi-app" });
+    try {
+        // ✅ 1. 只查詢 appointments 集合
+        const appointmentsRef = db.collection("appointments");
+        const query = appointmentsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+        if (snapshot.empty) return { status: "success", data: [] };
+
+        // ✅ 2. 在記憶體中進行模糊比對
+        const searchFields = [
+            'agentIdNumber', 'agentName', 'agentPhone', 'bookerIdNumber', 
+            'bookerName', 'bookerPhone', 'bookingCode', 'inspectionMethod', 'unitId'
+        ];
+        
+        const matchedAppointments = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            let isMatch = false;
+            for (const field of searchFields) {
+                const value = data[field];
+                if (value && typeof value === 'string' && value.toLowerCase().includes(lowerCaseSearchText)) {
+                    isMatch = true;
+                    break; 
+                }
+            }
+            if (isMatch) {
+                // ✅ 轉換日期為 ISO String
+                ['appointmentDate', 'createdAt', 'cancelledAt'].forEach(field => {
+                    if (data[field] && typeof data[field].toDate === 'function') {
+                        data[field] = data[field].toDate().toISOString();
+                    }
+                });
+                matchedAppointments.push({ id: doc.id, ...data });
+            }
+        });
+
+        return { status: "success", data: matchedAppointments };
+    } catch (error) {
+        console.error(`[${functionName}] 搜尋預約時發生錯誤:`, error);
+        throw new HttpsError("internal", "搜尋時發生錯誤。");
+    }
+}
+
+/**
+ * [內部函式] 獲取新增/編輯預約時所需的下拉選單等選項
+ * (✅ V2: 修正為從 projects 讀取)
+ * @param {object} data - 包含 { projectId }
+ * @returns {Promise<object>}
+ */
+async function _handleFetchBookingOptions(data) {
+    const { projectId } = data;
+    const functionName = `_handleFetchBookingOptions`;
+
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+    }
+
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+        
+        // 1. 獲取專案設定
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        if (!projectDoc.exists) {
+            throw new HttpsError("not-found", `找不到建案 ${projectId} 的設定。`);
+        }
+        const projectSettings = projectDoc.data();
+
+        // 2. 從專案設定中獲取
+        const inspectionMethods = projectSettings?.bookingMethodOptions || ['自驗', '代驗公司'];
+        const inspectionStaff = projectSettings?.inspectionStaff || [];
+
+        // 3. 獲取棟別與戶別資料 (從快取讀取)
+        // ✅ 我們不再需要查詢 households，直接讀取 projects 上的快取
+        const householdsMap = projectDoc.data().bookingMenuCache || {}; // 使用為 BookingPage 建立的快取
+
+        const buildingsAndUnits = {};
+        for(const buildingName in householdsMap) {
+            buildingsAndUnits[buildingName] = householdsMap[buildingName].map(unit => unit.unit);
+        }
+
+        return { inspectionMethods, inspectionStaff, buildingsAndUnits };
+
+    } catch (error) {
+        console.error(`[${functionName}] 獲取預約選項時發生錯誤:`, error);
+        throw new HttpsError("internal", `獲取預約選項時發生錯誤: ${error.message}`);
+    }
+}

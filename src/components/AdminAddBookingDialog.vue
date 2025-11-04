@@ -1,7 +1,7 @@
 <template>
   <v-dialog :model-value="modelValue" @update:model-value="closeDialog" fullscreen scrollable transition="dialog-bottom-transition">
-    <v-card style="background: #F4F4F7;">
-      <v-toolbar color="primary" dark>
+    <v-card style="background: #F5F5F7;">
+      <v-toolbar color="#f5f5f7" dark>
         <v-btn icon dark @click="closeDialog">
           <v-icon>mdi-close</v-icon>
         </v-btn>
@@ -52,7 +52,7 @@
                         <v-autocomplete
                           v-model="formStep1.building"
                           :items="projectBuildings"
-                          label="棟別 (可輸入文字過濾)"
+                          label="棟別 (選擇或輸入)"
                           variant="outlined"
                           @update:model-value="onBuildingChange"
                           clearable

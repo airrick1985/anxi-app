@@ -20,16 +20,57 @@
          
             
 
-          <v-btn v-if="canEdit" color="indigo" @click="isAdminAddDialogVisible = true" prepend-icon="mdi-calendar-plus">
-              新增預約
-            </v-btn>
+         <v-tooltip text="新增預約" location="bottom">
+              <template v-slot:activator="{ props }">
+                <v-btn 
+                  v-if="canEdit" 
+                  v-bind="props" 
+                  icon="mdi-calendar-plus" 
+                  variant="text" 
+                  color="indigo" 
+                  @click="isAdminAddDialogVisible = true"
+                ></v-btn>
+              </template>
+            </v-tooltip>
 
-            <v-btn color="primary" @click="handleDownloadPng" :loading="isDownloadingPdf" prepend-icon="mdi-image-area">
-              下載時間表 (PNG)
-            </v-btn>
-            <v-btn color="teal-darken-1" @click="handleDownloadExcel" :loading="isDownloadingExcel" prepend-icon="mdi-microsoft-excel">
-              下載時間表 (Excel)
-            </v-btn>
+            <v-tooltip text="下載時間表" location="bottom">
+              <template v-slot:activator="{ props: tooltipProps }">
+                <v-menu location="bottom end">
+                  <template v-slot:activator="{ props: menuProps }">
+                    <v-btn 
+                      v-bind="{ ...tooltipProps, ...menuProps }" 
+                      icon="mdi-download" 
+                      variant="text" 
+                      color="primary"
+                      :loading="isDownloadingPdf || isDownloadingExcel"
+                    ></v-btn>
+                  </template>
+                  
+                  <v-list density="compact">
+                    <v-list-item
+                      prepend-icon="mdi-image-area"
+                      title="下載 (PNG)"
+                      @click="handleDownloadPng"
+                      :disabled="isDownloadingPdf || isDownloadingExcel"
+                    >
+                      <template v-slot:append>
+                        <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+                      </template>
+                    </v-list-item>
+                    <v-list-item
+                      prepend-icon="mdi-microsoft-excel"
+                      title="下載 (Excel)"
+                      @click="handleDownloadExcel"
+                      :disabled="isDownloadingPdf || isDownloadingExcel"
+                    >
+                      <template v-slot:append>
+                        <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-menu>
+              </template>
+            </v-tooltip>
           </div>
 
 
@@ -915,6 +956,8 @@ function processAppointments(rawAppointments) {
     }).filter(Boolean);
 }
 
+
+
 // ✅ 6. 修改 filteredAppointments Computed 屬性
 const filteredAppointments = computed(() => {
   // 1. 先過濾 appointments
@@ -1220,38 +1263,54 @@ watch([
   }
 }, { immediate: true, deep: true });
 
-// ✅ 12. 修改 watchDebounced(searchQuery)
+// 監聽搜尋框輸入，觸發後端搜尋
 watchDebounced(searchQuery, async (newQuery) => {
+  // 1. 清除舊的搜尋結果
   backendSearchResults.value = [];
+
+  // 2. 檢查輸入長度
   if (!newQuery || newQuery.length < 2) {
     isSearchingBackend.value = false;
-    return;
+    return; // 如果查詢太短或被清空，停止
   }
+  
+  // 3. 設定讀取狀態
   isSearchingBackend.value = true;
 
   try {
-    // 1. 呼叫 API (使用 inspectionApi 路由)
-    const result = await inspectionApi('searchAppointmentsAndHouseholds', { 
-        projectId: projectId.value, 
-        keyword: newQuery 
-    });
+      // 4. 呼叫 API (使用 inspectionApi 路由)
+      const result = await inspectionApi('searchAppointmentsAndHouseholds', { 
+          projectId: projectId.value, 
+          keyword: newQuery 
+      });
 
-    if (result.data.status === 'success') {
-        // 2. ✅【修改】在前端執行合併 (日期已由後端轉為 ISO String)
-        backendSearchResults.value = combineAppointmentsWithHouseholds(
-            result.data.data.map(appt => convertFirestoreTimestampsToDates(appt)) // ✅ 確保日期被轉換
-        );
-    } else {
-        console.error("後端搜尋失敗:", result.data.message);
-        showSnackbar(`搜尋失敗: ${result.data.message}`, 'error');
-    }
+      // 5. 處理成功回傳
+      if (result.data.status === 'success') {
+          // 6. 將後端回傳的 ISO 日期字串轉回 Date 物件
+          backendSearchResults.value = result.data.data.map(appt => ({
+              ...appt,
+              // 主要轉換 appointmentDate 供顯示使用
+              appointmentDate: appt.appointmentDate ? new Date(appt.appointmentDate) : null,
+              // 也轉換其他日期欄位以保持資料一致性
+              createdAt: appt.createdAt ? new Date(appt.createdAt) : null,
+              cancelledAt: appt.cancelledAt ? new Date(appt.cancelledAt) : null
+          }));
+      } else {
+          // 7. 處理後端回報的錯誤
+          console.error("後端搜尋失敗:", result.data.message);
+          backendSearchResults.value = [];
+          showSnackbar(`搜尋失敗: ${result.data.message}`, 'error');
+      }
   } catch (err) {
-    console.error("執行搜尋時發生例外:", err);
-    showSnackbar(`搜尋時發生錯誤: ${err.message}`, 'error');
+      // 8. 處理 API 呼叫的例外錯誤
+      console.error("執行搜尋時發生例外:", err);
+      backendSearchResults.value = [];
+      showSnackbar(`搜尋時發生錯誤: ${err.message}`, 'error');
   } finally {
-    isSearchingBackend.value = false;
+      // 9. 結束讀取狀態
+      isSearchingBackend.value = false;
   }
-}, { debounce: 500 }
+}, { debounce: 500 } // 延遲 500ms 觸發
 );
 
 
@@ -1272,20 +1331,20 @@ watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
   }
 });
 
-// ✅ 13. 修改 handleSearchResultSelection
 function handleSearchResultSelection(selectedItem) { 
   if (!selectedItem) return;
-  const selectedAppointment = selectedItem.value; // ✅ autocompleteItems 已存入完整物件
+  // ✅ [修改] 變數改名，更清晰
+  const selectedAppointmentFromSearch = selectedItem.value; 
 
-  if (!selectedAppointment || !selectedAppointment.appointmentDate) {
+  if (!selectedAppointmentFromSearch || !selectedAppointmentFromSearch.appointmentDate) {
     showSnackbar('此筆搜尋結果無有效日期，無法跳轉。', 'warning');
     return;
   }
   
-  // ✅ 確保日期是 Date 物件
-  const targetDate = (selectedAppointment.appointmentDate instanceof Date)
-    ? selectedAppointment.appointmentDate
-    : new Date(selectedAppointment.appointmentDate);
+  // ✅ [修改] 確保日期是 Date 物件
+  const targetDate = (selectedAppointmentFromSearch.appointmentDate instanceof Date)
+    ? selectedAppointmentFromSearch.appointmentDate
+    : new Date(selectedAppointmentFromSearch.appointmentDate);
 
   if (isNaN(targetDate.getTime())) {
     showSnackbar('此筆搜尋結果的日期格式錯誤，無法跳轉。', 'error');
@@ -1299,8 +1358,21 @@ function handleSearchResultSelection(selectedItem) {
   endDate.value = newEndDate;
 
   nextTick(() => {
-    // ✅ 搜尋結果 (selectedAppointment) 已經是 combine 過的完整物件
-    handleCustomEventClick(selectedAppointment);
+    // ✅✅✅ 【BUG 修正點】 ✅✅✅
+    // 1. 從前端的戶別快取中，撈出完整的 household 資料
+    const householdKey = `${selectedAppointmentFromSearch.projectId}_${selectedAppointmentFromSearch.unitId}`;
+    const householdData = allHouseholdData.value.get(householdKey) || {};
+
+    // 2. 手動將 "戶別資料" 和 "搜尋到的預約資料" 合併
+    //    (householdData 在前, selectedAppointmentFromSearch 在後, 確保預約資料(如id)優先)
+    const fullyCombinedAppointment = { 
+      ...householdData, 
+      ...selectedAppointmentFromSearch 
+    };
+    
+    // 3. 傳入 "完整合併" 後的物件
+    handleCustomEventClick(fullyCombinedAppointment);
+    // ✅✅✅ 【修正結束】 ✅✅✅
 
     // 清空搜尋框
     selectedSearchResult.value = null;

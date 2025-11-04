@@ -5,19 +5,41 @@
  
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
-      <v-btn 
-      color="blue" 
-      variant="flat" 
-      @click="openFieldDefinitionDialog"  prepend-icon="mdi-table-column-plus-after"
-    >
-      新增資料欄位
-    </v-btn>
-    <v-btn color="green" variant="flat" @click="exportToExcel" prepend-icon="mdi-file-excel-outline">
-      下載戶別資料
-    </v-btn>
-    <v-btn color="red" variant="flat" @click="uploadDialog = true" prepend-icon="mdi-upload">
-       上傳戶別資料
-     </v-btn>
+     <v-tooltip text="新增資料欄位" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn 
+      v-bind="props"
+      color="black" 
+      variant="text" 
+      icon="mdi-table-column-plus-after"
+      @click="openFieldDefinitionDialog"
+    ></v-btn>
+  </template>
+</v-tooltip>
+
+<v-tooltip text="下載戶別資料" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn 
+      v-bind="props"
+      color="black" 
+      variant="text" 
+      icon="mdi-download"
+      @click="exportToExcel"
+    ></v-btn>
+  </template>
+</v-tooltip>
+
+<v-tooltip text="上傳戶別資料" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn 
+      v-bind="props"
+      color="black" 
+      variant="text" 
+      icon="mdi-upload"
+      @click="uploadDialog = true"
+    ></v-btn>
+  </template>
+</v-tooltip>
   </div>
 </v-card-title>
 

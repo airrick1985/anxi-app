@@ -326,11 +326,12 @@ import {
   liffSearchAppointments, 
   getLiffCalendarDataForDay, 
   getAllLiffAppointmentsForProject, // ✓ 引入新函式
-  fetchBookingOptions, 
-  updateAppointment, 
-  cancelAppointment,
-  updateAppointmentInspectors,
-getAdminBookingCalendarData,
+  liffFetchBookingOptions, 
+  liffUpdateAppointment, 
+  liffCancelAppointment,
+  liffUpdateAppointmentInspectors,
+  liffGetAdminBookingCalendarData,
+  fetchAllHouseholdsForLiff, // ✓ 加上這個 import
 
 } from '@/api';
 import { useDate, useDisplay } from 'vuetify';
@@ -439,6 +440,8 @@ const snackbar = reactive({
   color: 'success',
 });
 
+const projectHouseholds = ref(new Map()); // ✓ 新增此行，用 Map 來快速查找
+
 const userName = computed(() => userStore.user?.name || '');
 
 const navigateToReportManager = () => {
@@ -508,6 +511,31 @@ const handleBookingSuccess = () => {
 };
 
 
+/**
+ * ✓ 新增：獲取建案的所有戶別資料並存入 Map
+ */
+const fetchProjectHouseholds = async (projectId) => {
+  if (!projectId) {
+    projectHouseholds.value = new Map();
+    return;
+  }
+  try {
+    // 呼叫我們在 api.js 中為 LIFF 建立的專用函數
+    const householdsArray = await fetchAllHouseholdsForLiff(projectId);
+    
+    const householdMap = new Map();
+    householdsArray.forEach(hh => {
+      // 使用 unitId 作為 key
+      householdMap.set(hh.unitId, hh);
+    });
+    projectHouseholds.value = householdMap;
+    
+  } catch (error) {
+    console.error('獲取戶別資料失敗:', error);
+    projectHouseholds.value = new Map(); // 發生錯誤時清空
+  }
+};
+
 const authorizedProjects = computed(() => {
   const permissions = userStore.user?.permissions;
   if (!permissions) return [];
@@ -539,7 +567,7 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
+    await liff.init({ liffId: '2008257338-6N3jwqxA' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -668,8 +696,9 @@ watch(selectedProject, async (newProjectId) => {
   if (newProjectId) {
     fetchDayData(newProjectId, selectedDate.value);
     fetchAllProjectData(newProjectId);
+    fetchProjectHouseholds(newProjectId); // ✓ 新增此行
     try {
-      bookingOptions.value = await fetchBookingOptions(newProjectId);
+      bookingOptions.value = await liffFetchBookingOptions(newProjectId);
     } catch(err) {
       showSnackbar(`讀取編輯選項失敗: ${err.message}`, 'error');
     }
@@ -702,7 +731,21 @@ watchDebounced(searchQuery, (newQuery) => {
 }, { debounce: 500 });
 
 const openDetailsDialog = (item) => {
-  selectedAppointment.value = item;
+  // ✓ 1. (item) 是點擊的預約(appointment)資料
+  // ✓ 2. 從我們緩存的 Map 中，根據 unitId 找出對應的戶別(household)資料
+  const householdData = projectHouseholds.value.get(item.unitId) || {};
+
+  // ✓ 3. 合併兩個物件
+  //    將 householdData 放前面, item 放後面
+  //    這樣 item 的欄位 (如 id, status) 會覆蓋 householdData 的同名欄位
+  const mergedAppointment = {
+    ...householdData, // 包含: address, buyerName, inspectionDocsUrl...
+    ...item           // 包含: id, status, appointmentDate, bookerName...
+  };
+
+  // ✓ 4. 將「合併後」的物件傳遞給 Dialog
+  selectedAppointment.value = mergedAppointment;
+  
   // 重設 calendarData，確保每次打開編輯都是乾淨的狀態
   calendarData.value = []; 
   isDialogVisible.value = true;
@@ -717,7 +760,7 @@ const handleRequestCalendarData = async (payload) => {
   }
 
   try {
-    const calendarResult = await getAdminBookingCalendarData({ 
+    const calendarResult = await liffGetAdminBookingCalendarData({  
       projectId: selectedProject.value,
       unitId: unitId 
     });
@@ -739,7 +782,7 @@ const showSnackbar = (text, color = 'success') => {
 async function handleUpdateInspectors(payload) {
   const { appointmentId, inspectors } = payload;
   try {
-    await updateAppointmentInspectors(appointmentId, inspectors);
+    await liffUpdateAppointmentInspectors(appointmentId, inspectors);
 
     if (isSearchActive.value) {
       const index = searchResults.value.findIndex(appt => appt.id === appointmentId);
@@ -777,7 +820,7 @@ async function handleUpdateInspectors(payload) {
 async function handleSaveAppointment(payload) {
   try {
     const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;
-    await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
+    await liffUpdateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
     showSnackbar('儲存成功！', 'success');
     
     // 同步更新當日列表與日曆計數
@@ -802,7 +845,7 @@ async function handleConfirmCancelBooking() {
   isCancelling.value = true;
   try {
     const { id, projectId, unitId, bookingType } = eventToCancel.value;
-    await cancelAppointment(id, projectId, unitId, bookingType);
+   await liffCancelAppointment(id, projectId, unitId, bookingType);
     showSnackbar('預約已成功取消', 'success');
     isCancelConfirmDialogVisible.value = false;
     isDialogVisible.value = false;

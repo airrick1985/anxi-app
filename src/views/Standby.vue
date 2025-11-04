@@ -64,7 +64,7 @@
           </v-card-title>
           <v-divider></v-divider>
           <v-card-text class="pa-4">
-            <draggable
+          <draggable
               v-model="standbyPersonnel"
               item-key="id"
               group="personnel"
@@ -74,6 +74,9 @@
               animation="200"
               @end="handleDragEnd"
               :disabled="isLoading"
+              delay="50"
+              :touch-start-threshold="5"
+              chosen-class="item-chosen"
             >
               <template #item="{ element: person, index }">
               <NameTag
@@ -100,7 +103,7 @@
           </div>
           <v-divider class="mx-4"></v-divider>
           <div class="pa-4">
-            <draggable
+          <draggable
               v-model="servingPersonnel"
               item-key="id"
               group="personnel"
@@ -110,6 +113,9 @@
               animation="200"
               @end="handleDragEnd"
               :disabled="isLoading"
+              delay="50"
+              :touch-start-threshold="5"
+              chosen-class="item-chosen"
             >
               <template #item="{ element: person }">
             <NameTag
@@ -118,7 +124,10 @@
                   :order="null"
                   :color="getColorForStatus(person.status)"
                   @click="openPersonnelDialog(person)"
-                  :alert="shouldShowAlert(person)"  
+                  :alert="shouldShowAlert(person)"
+                  :class="{ 'vibrating-alert': shouldShowAlert(person) }"
+                  
+                  :data-duration-text="getDurationText(person)"
                 />
               </template>
             </draggable>
@@ -244,6 +253,26 @@
                 </v-col>
             </v-row>
           </fieldset>
+
+          <fieldset class="settings-section alert-section mt-4">
+    <legend class="text-subtitle-1 mb-3">警示設定</legend>
+    <v-row dense>
+      <v-col cols="12" sm="6">
+        <v-text-field
+          v-model.number="tempAlertThresholdMinutes"
+          label="接待逾時 (分鐘)"
+          type="number"
+          variant="outlined"
+          density="compact"
+          suffix="分鐘"
+          hide-details
+          placeholder="預設 120"
+        ></v-text-field>
+      </v-col>
+    </v-row>
+  </fieldset>
+
+
         </v-card-text>
 
         <v-divider></v-divider>
@@ -386,7 +415,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'; // ✅ 加入 watch
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'; // 加入 watch
 import { getDoc, doc } from "firebase/firestore";
 import { db } from '@/firebase'; // 確保 db 已從 firebase.js 匯出
 import { useRoute } from 'vue-router';
@@ -410,7 +439,7 @@ import {
   fetchStandbyScreenshotsAPI 
 
 
-} from '@/api'; // ✅ 保持 API import
+} from '@/api'; // 保持 API import
 import { useUserStore } from '@/store/user';
 
 // --- Props ---
@@ -420,13 +449,13 @@ const props = defineProps({
 const userStore = useUserStore();
 
 // --- Refs ---
-const standbyPageRef = ref(null); // ✅ 新增：用於綁定截圖根元素
-const isCapturing = ref(false); // ✅ 新增：用於截圖按鈕 loading 狀態
+const standbyPageRef = ref(null); // 新增：用於綁定截圖根元素
+const isCapturing = ref(false); // 新增：用於截圖按鈕 loading 狀態
 const showScreenshotBrowserDialog = ref(false);
 const isLoadingScreenshots = ref(false);
 const screenshotHistory = ref([]); // 存放從 API 獲取的截圖列表
 const selectedImageUrl = ref(null); // (保持不變) 用於 Lightbox 顯示的圖片 URL
-const showLightbox = ref(false); // ✅ 新增：控制 Lightbox Dialog 的開關
+const showLightbox = ref(false); // 新增：控制 Lightbox Dialog 的開關
 const projectName = ref(props.projectId);
 const formattedTime = ref('');
 const currentTime = ref(new Date());
@@ -436,23 +465,24 @@ const isLoading = ref(true);
 const showPersonnelDialog = ref(false);
 const selectedPersonnel = ref(null);
 const showSettingsDialog = ref(false);
-const isAway = ref(false); // ✅ 用於 v-switch 的 v-model
-const isRevisit = ref(false); // ✅ 新增 isRevisit ref
-const isSavingStatus = ref(false); // ✅ 新增：用於控制按鈕 loading 狀態
-const lastTriggerMinute = ref(-1); // ✅ 新增：記錄上次觸發截圖的分鐘數，初始值設為 -1
-const showSnackbar = ref(false); // ✅ 新增：控制 Snackbar 顯示
-const snackbarMessage = ref(''); // ✅ 新增：Snackbar 訊息內容
-const snackbarColor = ref('success'); // ✅ 新增：Snackbar 顏色 (預設成功)
+const isAway = ref(false); // 用於 v-switch 的 v-model
+const isRevisit = ref(false); // 新增 isRevisit ref
+const isSavingStatus = ref(false); // 新增：用於控制按鈕 loading 狀態
+const lastTriggerMinute = ref(-1); // 新增：記錄上次觸發截圖的分鐘數，初始值設為 -1
+const showSnackbar = ref(false); // 新增：控制 Snackbar 顯示
+const snackbarMessage = ref(''); // 新增：Snackbar 訊息內容
+const snackbarColor = ref('success'); // 新增：Snackbar 顏色 (預設成功)
 
 
 // --- 設定 Dialog Refs ---
 const allAvailablePersonnel = ref([]);
 const visiblePersonnelIds = ref([]);
-const selectedPersonnelInDialog = ref([]); // ✅ 用於人員 v-checkbox 的 v-model
+const selectedPersonnelInDialog = ref([]); // 用於人員 v-checkbox 的 v-model
 const statusColorsConfig = ref({
   standby: '#4CAF50', serving: '#03A9F4', revisit: '#F44336', away: '#9E9E9E',
 });
 const tempStatusColors = ref({});
+
 const isLoadingSettings = ref(false);
 
 const statusMap = {
@@ -475,7 +505,7 @@ const updateClock = () => {
     formattedTime.value = '時間載入錯誤';
   }
 
-  // ✅ --- 新增定時截圖觸發邏輯 ---
+  // --- 新增定時截圖觸發邏輯 ---
   try {
     // 獲取台灣時間的小時和分鐘
     const currentHour = currentTime.value.getHours(); // 0-23
@@ -522,15 +552,33 @@ const updateClock = () => {
   } catch(e) {
       console.error("[定時截圖] 檢查時間或觸發截圖時發生錯誤:", e);
   }
-  // ✅ --- 定時截圖邏輯結束 ---
+  // --- 定時截圖邏輯結束 ---
 };
 
-// ✅ 定義警告時間閾值 (120 分鐘 * 60 秒/分鐘 * 1000 毫秒/秒)
-const ALERT_THRESHOLD_MS = 120 * 60 * 1000;
+// [新增] 用 ref 來儲存分鐘數，並設定預設值 120
+const alertThresholdMinutes = ref(120);
 
-// ✅ 計算是否顯示警告的函數
+// [新增] 用 computed 來自動計算毫秒，供 shouldShowAlert 使用
+const alertThresholdMs = computed(() => {
+  const minutes = Number(alertThresholdMinutes.value) || 120; // 確保是數字
+  return minutes * 60 * 1000;
+});
+
+// [新增] 獲取持續時間文字的輔助函數
+const getDurationText = (person) => {
+  if (!person || !person.currentStatusStartTime) return ''; // 返回空字串
+  try {
+    const startTime = new Date(person.currentStatusStartTime);
+    // 專門計算並返回 "x 分鐘" 或 "x 小時" 這樣的字串
+    return formatDistanceToNowStrict(startTime, { addSuffix: false, locale: zhTW });
+  } catch (e) {
+    console.error("計算持續時間錯誤:", e);
+    return '計算錯誤'; // 出錯時返回
+  }
+};
+
+// [修改] shouldShowAlert 函數，使用新的 computed 屬性
 const shouldShowAlert = (person) => {
-
   if (person.status !== 'serving' || !person.currentStatusStartTime) {
     return false;
   }
@@ -538,13 +586,18 @@ const shouldShowAlert = (person) => {
     const startTime = new Date(person.currentStatusStartTime).getTime();
     const now = currentTime.value.getTime();
     const timeDiff = now - startTime;
-    const result = timeDiff > ALERT_THRESHOLD_MS;
+    
+    // [修改] 
+    const result = timeDiff > alertThresholdMs.value; 
 
     return result;
   } catch (e) {
     return false;
   }
 };
+
+// [新增] 在 "設定 Dialog Refs" 區塊，加入一個 temp ref
+const tempAlertThresholdMinutes = ref(120); // 新增
 
 // --- 人員 Dialog 相關 ---
 const selectedPersonnelOriginalStatus = ref(null);
@@ -553,19 +606,19 @@ const openPersonnelDialog = (person) => {
   selectedPersonnel.value = { ...person };
   selectedPersonnelOriginalStatus.value = person.status;
   isAway.value = person.status === 'away';
-  isRevisit.value = person.status === 'revisit'; // ✅ 初始化 isRevisit
+  isRevisit.value = person.status === 'revisit'; // 初始化 isRevisit
   showPersonnelDialog.value = true;
 };
-// ✅ 修改：關閉按鈕觸發儲存
+// 修改：關閉按鈕觸發儲存
 const closePersonnelDialog = () => {
   savePersonnelStatusChange(); // 在關閉時觸發儲存邏輯
 };
 
-// ✅ 修改：Switch 改變時更新 selectedPersonnel.status
+// 修改：Switch 改變時更新 selectedPersonnel.status
 const handleAwaySwitchChange = () => {
   if (!selectedPersonnel.value) return;
   if (isAway.value) { // 如果要開啟休假
-    isRevisit.value = false; // ✅ 關閉回訪
+    isRevisit.value = false; // 關閉回訪
     selectedPersonnel.value.status = 'away';
   } else { // 如果要關閉休假
     selectedPersonnel.value.status = 'standby'; // 預設回到 standby
@@ -573,12 +626,12 @@ const handleAwaySwitchChange = () => {
 };
 
 /**
- * ✅ [新增] 處理回訪開關變更
+ * [新增] 處理回訪開關變更
  */
 const handleRevisitSwitchChange = () => {
   if (!selectedPersonnel.value) return;
   if (isRevisit.value) { // 如果要開啟回訪
-    isAway.value = false; // ✅ 關閉休假
+    isAway.value = false; // 關閉休假
     selectedPersonnel.value.status = 'revisit';
   } else { // 如果要關閉回訪
     selectedPersonnel.value.status = 'standby'; // 預設回到 standby
@@ -596,7 +649,7 @@ const currentStatusDuration = computed(() => { /* ... (保持不變) ... */
 });
 
 /**
- * ✅ [完整版] 儲存人員狀態變更 (休假/回訪切換) - 改為呼叫 API，包含除錯 Log 和 alert
+ * [完整版] 儲存人員狀態變更 (休假/回訪切換) - 改為呼叫 API，包含除錯 Log 和 alert
  */
 const savePersonnelStatusChange = () => {
   // 1. 狀態檢查 (如果狀態沒變，或沒有選中人員，則不執行任何操作並關閉 Dialog)
@@ -631,7 +684,7 @@ const savePersonnelStatusChange = () => {
     // updatesForAPI.order = currentStandbyCount + 1; // 移除
     console.log(`[DEBUG savePersonnelStatusChange] Returning from 'away'. Setting zone to 'standby', keeping existing order.`);
   }
-  // ✅ --- 修改點 END ---
+  // --- 修改點 END ---
   // 注意：如果切換到 'away'，zone 和 order 也不需要在這裡修改
 
   console.log('[DEBUG savePersonnelStatusChange] Calling updateStandbyStatusAPI with:', props.projectId, personToUpdate.id, updatesForAPI);
@@ -704,60 +757,71 @@ const openSettingsDialog = async () => {
   isLoadingSettings.value = true;
   showSettingsDialog.value = true;
   try {
-    // 1. 同時獲取所有可顯示的人員 和 上次儲存的 ID 列表 (保持不變)
+    // 1. (保持不變)
     const [personnelList, currentConfig] = await Promise.all([
       fetchPotentialPersonnelAPI(props.projectId),
       fetchStandbyConfigAPI(props.projectId)
     ]);
 
     allAvailablePersonnel.value = personnelList;
-    const loadedVisibleIds = currentConfig.visiblePersonnelIds || []; // 上次儲存的 ID
+    const loadedVisibleIds = currentConfig.visiblePersonnelIds || []; 
 
-    // --- ✅ 核心修改點：過濾初始勾選狀態 ---
-    // 取得所有當前可用人員的 ID 集合，方便快速查找
+    // ... (過濾 initialSelectedIds 的邏輯保持不變) ...
     const availableIdsSet = new Set(allAvailablePersonnel.value.map(p => p.id));
-
-    // 過濾上次儲存的 ID 列表，只保留那些仍然存在於可用列表中的 ID
     const initialSelectedIds = loadedVisibleIds.filter(id => availableIdsSet.has(id));
-
-    // 將過濾後的結果賦值給 v-model 綁定的 ref
     selectedPersonnelInDialog.value = initialSelectedIds;
-    // --- ✅ 修改結束 ---
 
     // 載入顏色設定 (保持不變)
     if (currentConfig.colors && Object.keys(currentConfig.colors).length > 0) {
       statusColorsConfig.value = { ...statusColorsConfig.value, ...currentConfig.colors };
     }
-    tempStatusColors.value = JSON.parse(JSON.stringify(statusColorsConfig.value)); // 初始化臨時顏色狀態
+    tempStatusColors.value = JSON.parse(JSON.stringify(statusColorsConfig.value)); 
 
-    // (移除舊的初始化 selectedPersonnelInDialog.value = [...visiblePersonnelIds.value];)
-    // visiblePersonnelIds.value = loadedVisibleIds; // 這行可以保留，用於原始資料參考
+    // [新增] 載入警示時間設定
+    const loadedMinutes = currentConfig.alertThresholdMinutes;
+    // 設置主 ref
+    alertThresholdMinutes.value = (loadedMinutes && Number(loadedMinutes) > 0) ? Number(loadedMinutes) : 120;
+    // 設置 dialog 內的 temp ref (這會更新 v-text-field)
+    tempAlertThresholdMinutes.value = alertThresholdMinutes.value;
 
   } catch (error) {
     console.error("載入設定失敗:", error);
     alert(`載入設定失敗: ${error.message}`);
-    closeSettingsDialog(); // 出錯時關閉 Dialog
+    closeSettingsDialog();
   }
   finally {
     isLoadingSettings.value = false;
   }
 };
 
+// [修改] saveSettings
 const saveSettings = async () => {
   isLoadingSettings.value = true;
   try {
-    const idsToSave = selectedPersonnelInDialog.value;
-    const colorsToSave = tempStatusColors.value;
-    console.log('[DEBUG saveSettings] 人員勾選狀態 (準備儲存):', JSON.stringify(idsToSave));
-    const result = await saveStandbyConfigAPI(props.projectId, idsToSave, colorsToSave);
+    // [修改] 組合一個完整的 config 物件來儲存
+    const configToSave = {
+      visiblePersonnelIds: selectedPersonnelInDialog.value,
+      colors: tempStatusColors.value,
+      // 確保值大於 0，否則使用預設 120
+      alertThresholdMinutes: Number(tempAlertThresholdMinutes.value) > 0 ? Number(tempAlertThresholdMinutes.value) : 120
+    };
+    
+    console.log('[DEBUG saveSettings] 準備儲存的完整設定:', JSON.stringify(configToSave));
+
+    // [修改] 呼叫 API，傳入 projectId 和完整的 config 物件
+    // (這需要您使用我前一則訊息中修改過的 saveStandbyConfigAPI)
+    const result = await saveStandbyConfigAPI(props.projectId, configToSave);
 
     if (result.status === 'success') {
-      visiblePersonnelIds.value = idsToSave;
-      statusColorsConfig.value = JSON.parse(JSON.stringify(colorsToSave));
+      // [修改] 從儲存的物件更新本地狀態
+      visiblePersonnelIds.value = configToSave.visiblePersonnelIds;
+      statusColorsConfig.value = JSON.parse(JSON.stringify(configToSave.colors));
+      alertThresholdMinutes.value = configToSave.alertThresholdMinutes; // 更新主 ref
+      
       closeSettingsDialog();
 
-      // ✅ 在儲存成功後，調用同步函數
-      await syncPersonnelToRTDB(idsToSave); // <--- 新增調用
+      // (保持不變) 調用同步函數
+      await syncPersonnelToRTDB(configToSave.visiblePersonnelIds);
 
     } else {
       throw new Error(result.message || '儲存設定失敗');
@@ -769,6 +833,7 @@ const saveSettings = async () => {
     isLoadingSettings.value = false;
   }
 };
+
 const closeSettingsDialog = () => { showSettingsDialog.value = false; };
 
 // --- RTDB 監聽與資料處理 ---
@@ -782,19 +847,19 @@ const setupRealtimeListener = () => {
 
   personnelListener = onValue(personnelRef, (snapshot) => {
     const data = snapshot.val();
-    // ✅ Log 1: 打印從 RTDB 收到的原始資料
+    // Log 1: 打印從 RTDB 收到的原始資料
     console.log('[DEBUG] RTDB raw data received:', JSON.stringify(data));
 
     let allPersonnel = [];
     if (data) {
       allPersonnel = Object.entries(data).map(([id, person]) => ({ id, ...person }));
-       // ✅ Log 2: 打印轉換後的完整人員陣列
+       // Log 2: 打印轉換後的完整人員陣列
        console.log('[DEBUG] Processed allPersonnel from RTDB:', JSON.stringify(allPersonnel));
     } else {
        console.log('[DEBUG] No data found in RTDB for this path.');
     }
 
-    // ✅ Log 3: 打印用於過濾的可見人員 ID
+    // Log 3: 打印用於過濾的可見人員 ID
     console.log('[DEBUG] Filtering using visiblePersonnelIds:', JSON.stringify(visiblePersonnelIds.value));
 
     // 過濾：只顯示在 visiblePersonnelIds 中的人員
@@ -802,11 +867,11 @@ const setupRealtimeListener = () => {
         const isVisible = visiblePersonnelIds.value.includes(p.id);
         return isVisible;
     });
-    // ✅ Log 4: 打印根據 visiblePersonnelIds 過濾後的結果
+    // Log 4: 打印根據 visiblePersonnelIds 過濾後的結果
     console.log('[DEBUG] Filtered personnel (by visibility):', JSON.stringify(filteredPersonnel));
 
     // 過濾與排序 (使用 filteredPersonnel)
-    // ✅ 在賦值前先清空，以防萬一 (雖然理論上 v-model 應該會處理好)
+    // 在賦值前先清空，以防萬一 (雖然理論上 v-model 應該會處理好)
     // standbyPersonnel.value = [];
     // servingPersonnel.value = [];
 
@@ -818,9 +883,9 @@ const setupRealtimeListener = () => {
       .filter(p => p.zone === 'serving')
       .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    // ✅ Log 5: 打印最終要賦值給 Stand By 區的陣列
+    // Log 5: 打印最終要賦值給 Stand By 區的陣列
     console.log('[DEBUG] Final standbyPersonnel to assign:', JSON.stringify(finalStandby));
-    // ✅ Log 6: 打印最終要賦值給 接待區 的陣列
+    // Log 6: 打印最終要賦值給 接待區 的陣列
     console.log('[DEBUG] Final servingPersonnel to assign:', JSON.stringify(finalServing));
 
     standbyPersonnel.value = finalStandby;
@@ -837,7 +902,7 @@ const stopRealtimeListener = () => { /* ... (保持不變) ... */
   if (personnelRef && personnelListener) { off(personnelRef, 'value', personnelListener); console.log('RTDB listener stopped.'); }
 };
 
-// ✅ [再次修改] 拖曳結束處理 (修正 movedItem 獲取方式)
+// [再次修改] 拖曳結束處理 (修正 movedItem 獲取方式)
 const handleDragEnd = (event) => {
     // 從事件物件中解構所需屬性
     const { oldIndex, newIndex, from, to } = event;
@@ -854,11 +919,11 @@ const handleDragEnd = (event) => {
         return; // ✓ 修改：使用 from === to 判斷更準確
     }
 
-    // ✅ 修改 movedItem 的獲取方式：
+    // 修改 movedItem 的獲取方式：
     // 假設 v-model 已經更新了目標列表 (standbyPersonnel 或 servingPersonnel)
     // 我們從 *目標* 列表的 *新索引* (newIndex) 去取得被移動的項目
     const targetList = (targetZone === 'standby') ? standbyPersonnel.value : servingPersonnel.value;
-    const movedItem = targetList[newIndex]; // <--- ✅ 主要修改處
+    const movedItem = targetList[newIndex]; // <--- 主要修改處
 
     // 增強檢查：確認 movedItem 是否成功獲取，並且看起來是正確的物件
     if (!movedItem || typeof movedItem !== 'object' || !movedItem.id || !movedItem.name) {
@@ -954,7 +1019,7 @@ const getColorForStatus = (status) => {
 };
 
 /**
- * ✅ [最終完整版 + 移除偵錯 Log] 同步 Firestore 設定中的可見人員到 RTDB (新增不存在的，移除多餘的)
+ * [最終完整版 + 移除偵錯 Log] 同步 Firestore 設定中的可見人員到 RTDB (新增不存在的，移除多餘的)
  * @param {Array<string>} savedVisibleIds - 剛剛儲存到 Firestore 的、應該顯示的人員 ID 列表
  */
 const syncPersonnelToRTDB = async (savedVisibleIds) => {
@@ -963,7 +1028,7 @@ const syncPersonnelToRTDB = async (savedVisibleIds) => {
     console.log(`${functionName} No visible personnel IDs provided. Skipping sync.`);
     return; // savedVisibleIds 可能是 null 或 undefined
   }
-  // ✅ 確保 savedVisibleIds 是純陣列 (以防 Proxy 問題)，再建立 Set
+  // 確保 savedVisibleIds 是純陣列 (以防 Proxy 問題)，再建立 Set
   const savedVisibleIdsArray = Array.from(savedVisibleIds);
   const savedVisibleIdsSet = new Set(savedVisibleIdsArray);
   console.log(`${functionName} Starting sync. Target visible IDs (Array):`, savedVisibleIdsArray); // Log 純陣列
@@ -980,7 +1045,7 @@ const syncPersonnelToRTDB = async (savedVisibleIds) => {
     const batchUpdates = {};
     let addedCount = 0;
     let removedCount = 0;
-    // ✅ 修正 order 計算：基於 RTDB 現有數量 + 本次淨增加數量
+    // 修正 order 計算：基於 RTDB 現有數量 + 本次淨增加數量
     //    先計算移除數量，以便後續計算 order
     existingIds.forEach(id => {
         if (!savedVisibleIdsSet.has(String(id))) {
@@ -996,14 +1061,14 @@ const syncPersonnelToRTDB = async (savedVisibleIds) => {
       if (!existingIdsSet.has(idToAddString)) {
         console.log(`${functionName} Personnel ID ${idToAddString} needs to be added.`);
         // 從 allAvailablePersonnel 查找姓名 (假設 Dialog 開啟時已載入)
-        const personInfo = allAvailablePersonnel.value.find(p => String(p.id) === idToAddString); // ✅ 確保比較的是字串
+        const personInfo = allAvailablePersonnel.value.find(p => String(p.id) === idToAddString); // 確保比較的是字串
         if (personInfo && personInfo.name) {
           console.log(`${functionName} Found name "${personInfo.name}". Preparing default data.`);
           const defaultData = {
             name: personInfo.name,
             status: 'standby', // 預設狀態
             zone: 'standby',   // 預設區域
-            // ✅ 修正 order 計算：基於 RTDB 現有數量 - 已移除數量 + 已新增數量 + 1
+            // 修正 order 計算：基於 RTDB 現有數量 - 已移除數量 + 已新增數量 + 1
             order: existingIds.length - removedCount + addedCount + 1,
             currentStatusStartTime: rtdbServerTimestamp() // 使用標記
           };
@@ -1052,14 +1117,14 @@ const syncPersonnelToRTDB = async (savedVisibleIds) => {
 };
 
 /**
- * ✅ [新增] 截圖並儲存
+ * [新增] 截圖並儲存
  */
 const captureAndSaveScreenshot = async () => {
   if (isCapturing.value) return; // 防止重複點擊
   isCapturing.value = true;
   console.log('[Capture] 開始截圖...');
 
- // ✅ --- 修改點 START ---
+ // --- 修改點 START ---
   // 由於 standbyPageRef 綁定在 Vuetify 組件上，我們需要 .value.$el 來獲取真實的 DOM 元素
   const elementToCapture = standbyPageRef.value?.$el; 
   
@@ -1069,7 +1134,7 @@ const captureAndSaveScreenshot = async () => {
     isCapturing.value = false;
     return;
   }
-  // ✅ 增加檢查，確認元素是否真的在 Document 中 (對應錯誤訊息)
+  // 增加檢查，確認元素是否真的在 Document 中 (對應錯誤訊息)
   if (!document.body.contains(elementToCapture)) {
      console.error('[Capture] 截圖目標 DOM 元素已不在文件中。');
      alert('截圖失敗：Element is not attached to a Document');
@@ -1114,7 +1179,7 @@ const captureAndSaveScreenshot = async () => {
 if (result.status === 'success') {
       console.log('[Capture] API 儲存成功:', result.message);
       // alert('截圖已成功儲存。'); // 移除 alert
-      // ✅ 使用 Snackbar 顯示成功訊息
+      // 使用 Snackbar 顯示成功訊息
       snackbarMessage.value = '截圖已成功儲存。';
       snackbarColor.value = 'success';
       showSnackbar.value = true;
@@ -1125,7 +1190,7 @@ if (result.status === 'success') {
   } catch (error) {
     console.error('[Capture] 截圖或上傳時發生錯誤:', error);
     // alert(`截圖失敗：${error.message}`); // 移除 alert
-    // ✅ 使用 Snackbar 顯示錯誤訊息
+    // 使用 Snackbar 顯示錯誤訊息
     snackbarMessage.value = `截圖失敗：${error.message}`;
     snackbarColor.value = 'error';
     showSnackbar.value = true;
@@ -1134,7 +1199,7 @@ if (result.status === 'success') {
   }
 };
 /**
- * ✅ [新增] 格式化截圖時間戳 (ISO -> 台灣本地時間)
+ * [新增] 格式化截圖時間戳 (ISO -> 台灣本地時間)
  */
 const formatScreenshotTimestamp = (isoString) => {
   if (!isoString) return '時間未知';
@@ -1149,7 +1214,7 @@ const formatScreenshotTimestamp = (isoString) => {
 };
 
 /**
- * ✅ [新增] 打開截圖瀏覽 Dialog
+ * [新增] 打開截圖瀏覽 Dialog
  */
 const openScreenshotBrowser = async () => {
   showScreenshotBrowserDialog.value = true;
@@ -1171,26 +1236,26 @@ const openScreenshotBrowser = async () => {
 };
 
 /**
- * ✅ [修改] 關閉截圖瀏覽 Dialog
+ * [修改] 關閉截圖瀏覽 Dialog
  */
 const closeScreenshotBrowser = () => {
   showScreenshotBrowserDialog.value = false;
   screenshotHistory.value = []; 
-  closeLightbox(); // ✅ 確保關閉主 Dialog 時，Lightbox 也會關閉
+  closeLightbox(); // 確保關閉主 Dialog 時，Lightbox 也會關閉
 };
 
 /**
- * ✅ [新增] 打開 Lightbox 顯示大圖
+ * [新增] 打開 Lightbox 顯示大圖
  */
 const openLightbox = (url) => {
   selectedImageUrl.value = url; // 設置圖片 URL
-  showLightbox.value = true;    // ✅ 打開 Dialog
+  showLightbox.value = true;    // 打開 Dialog
 };
 /**
- * ✅ [新增] 關閉 Lightbox
+ * [新增] 關閉 Lightbox
  */
 const closeLightbox = () => {
-  showLightbox.value = false;   // ✅ 關閉 Dialog
+  showLightbox.value = false;   // 關閉 Dialog
   // 可以在 Dialog 關閉動畫後再清除 URL，避免圖片閃爍
   setTimeout(() => {
     selectedImageUrl.value = null; 
@@ -1209,34 +1274,38 @@ onMounted(async () => {
     // 平行獲取看板設定和專案名稱
     const [currentConfig, projectDocSnap] = await Promise.all([
       fetchStandbyConfigAPI(props.projectId), // 獲取看板設定
-      getDoc(doc(db, 'projects', props.projectId)) // ✅ 獲取專案文件
+      getDoc(doc(db, 'projects', props.projectId)) // 獲取專案文件
     ]);
 
-    // 處理看板設定 (保持不變)
+    // ✅ [修改] 處理看板設定
     visiblePersonnelIds.value = currentConfig.visiblePersonnelIds || [];
     if (currentConfig.colors && Object.keys(currentConfig.colors).length > 0) {
       statusColorsConfig.value = { ...statusColorsConfig.value, ...currentConfig.colors };
     }
+    
+    // ✅ [新增] 在 onMounted 時就載入正確的分鐘數
+    const loadedMinutes = currentConfig.alertThresholdMinutes;
+    alertThresholdMinutes.value = (loadedMinutes && Number(loadedMinutes) > 0) ? Number(loadedMinutes) : 120;
+    
     console.log('Loaded visiblePersonnelIds from Firestore:', visiblePersonnelIds.value);
+    console.log(`[onMounted] Alert threshold set to: ${alertThresholdMinutes.value} minutes`); // ✅ 新增 Log
 
-    // ✅ 處理專案名稱
+
+    // ✅ 處理專案名稱 (保持不變)
     if (projectDocSnap.exists()) {
       const projectData = projectDocSnap.data();
       if (projectData.name) {
-        projectName.value = projectData.name; // ✅ 更新 projectName ref
+        projectName.value = projectData.name; 
         console.log(`Project name set to: ${projectName.value}`);
       } else {
         console.warn(`Project document for ${props.projectId} exists but has no 'name' field.`);
-        // projectName 維持預設的 projectId
       }
     } else {
       console.warn(`Project document with ID ${props.projectId} not found.`);
-      // projectName 維持預設的 projectId
     }
 
   } catch (error) {
     console.error("載入初始設定或專案名稱失敗:", error);
-    // 即使出錯，也要確保 projectName 有值 (預設為 projectId)
     projectName.value = props.projectId;
   } finally {
     // 在所有初始資料載入完成後 (或失敗後)，啟動 RTDB 監聽
@@ -1252,14 +1321,14 @@ onUnmounted(() => { /* ... (保持不變) ... */
 
 <style scoped>
 /* 整體頁面 */
-.standby-page { /* ✅ 在這裡加入或修改 */
-  background-color: #f5f5f7; /* ✅ 設定背景顏色 */
+.standby-page { /* 在這裡加入或修改 */
+  background-color: #f5f5f7; /* 設定背景顏色 */
   /* 其他可能已存在的樣式 */
 }
 
 
 
-/* ✅ 新增：Toolbar 樣式 */
+/* 新增：Toolbar 樣式 */
 .page-toolbar {
   border-bottom: 1px solid #dee2e6;
 }
@@ -1311,19 +1380,44 @@ onUnmounted(() => { /* ... (保持不變) ... */
   border-radius: 8px; /* 配合 NameTag 圓角 */
 }
 
-/* ✅ 核心優化：加強 .dragging 樣式，並嘗試覆蓋觸控相關屬性 */
-.dragging {
-  /* 視覺效果 */
-  transform: scale(1.05);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5); /* 加強陰影，讓它更突出 */
-  z-index: 1000; /* ✅ 確保層級夠高 */
+/* 新增：禁止 name-tag-container 中的所有子元件 (NameTag) 選取文字 */
+.name-tag-container > * {
+  user-select: none;
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* IE */
+}
 
-  /* 游標/觸控樣式 - 儘管觸控無效，仍是好的做法 */
+/* 新增： "按下" (chosen) 時的樣式，在 delay 期間顯示 */
+:deep(.item-chosen) { /* 改用 :deep() 確保穿透子元件 */
+  transform: scale(1.08) !important; 
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important; 
+  cursor: grabbing !important; 
+  /* 保持 transition，並也加上 !important 確保覆蓋子元件 */
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out !important; 
+  z-index: 999; 
+}
+
+/* 核心優化：加強 .dragging 樣式... */
+:deep(.dragging) { /* 改用 :deep() 確保穿透子元件 */
+  transform: scale(1.08) !important; /* 您的 1.08 
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important; 
+  z-index: 1000; 
+
+  /* 關鍵修復：
+     在拖曳過程中，強制禁用所有 transition 動畫。
+     這會防止子元件試圖 "動畫" 回 scale(1.0) 的狀態。
+  */
+  transition: none !important; 
+
+  /* 游標/觸控樣式 */
   cursor: grabbing !important;
   
-  /* ✅ 嘗試禁用瀏覽器預設的觸控/選擇高亮 */
+  /* 禁用瀏覽器預設的觸控/選擇高亮 */
+  -webkit-user-select: none;
+  -moz-user-select: none;   
+  -ms-user-select: none;    
   user-select: none; 
-  -webkit-user-select: none; 
   -webkit-touch-callout: none;
 }
 /* 人員 Dialog Switch */
@@ -1358,11 +1452,83 @@ onUnmounted(() => { /* ... (保持不變) ... */
 
 
 .outer-content-row {
-   padding-top: 20px; 
-  max-width: 1000px; /* 將 1000px 調整為更大的數值，例如 1400px */
-  width: 100%; /* 保持 100% 確保響應式 */
+  padding-top: 20px; 
+  /* max-width: 1000px; */ /* 您舊的註解 */
+  max-width: 1400px; /* 將 1000px 調整為更大的數值，例如 1400px (您已修改) */
+  width: 100%; 
 
+  /* --- 以下為新增的凍結/滾動核心樣式 --- */
+  overflow-y: auto; /* 內容過多時，啟用垂直滾動條 */
+  min-height: 0;    /* flexbox 佈局中防止內容撐開容器的關鍵 */
+  flex-shrink: 1;   /* 確保此元素可以被壓縮 (配合 min-height: 0) */
+  /* flex-grow: 1; (您已在 <template> 中加入，所以 CSS 不需重複) */
 }
 
+/* [新增] 閃爍動畫 Keyframes */
+@keyframes flash {
+  0%, 100% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1); /* 原始狀態 */
+  }
+  50% {
+    opacity: 0.2; /* 閃爍效果 */
+    transform: translateX(-50%) scale(1); /* 輕微縮小 */
+  }
+}
+
+/* 震動動畫 Keyframes (來自上一回合) */
+@keyframes vibrate {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-2px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(2px);
+  }
+}
+
+/* [修改] 應用震動與閃爍文字的 Class */
+.vibrating-alert {
+  /* 1. 震動 (來自上一回合) */
+  animation: vibrate 1s linear infinite;
+  
+  /* 2. 視覺提示 (來自上一回合) */
+  border: 2px solid #D32F2F; 
+  box-shadow: 0 0 30px rgba(211, 47, 47, 0.7); 
+
+  /* 3. [新增] 設定相對定位，讓 ::after 可以定位 */
+  position: relative; 
+  /* 確保偽元素不會被遮擋 */
+  overflow: visible; 
+}
+
+/* [修改] 偽元素使用 attr() 讀取動態內容 */
+.vibrating-alert::after {
+  /* 使用 'attr(data-duration-text)' 來讀取我們綁定的屬性值。
+    我們將 "已逾時: " 作為靜態前綴。
+  */
+  content: '已接待: ' attr(data-duration-text); 
+  
+  /* --- (以下樣式保持不變) --- */
+  position: absolute;
+  bottom: -20px; 
+  left: 50%;
+  transform: translateX(-50%);
+  
+  background-color: #D32F2F; 
+  color: white; 
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75em; 
+  font-weight: bold;
+  white-space: nowrap; 
+  
+  animation: flash 1s linear infinite; 
+  
+  z-index: 10; 
+  pointer-events: none; 
+}
 
 </style>

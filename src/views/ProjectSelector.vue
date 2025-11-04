@@ -115,7 +115,7 @@ const pageTitle = computed(() => {
   if (currentViewMode.value === 'quote') return '報價系統';
   if (requiredSystem.value === '銷控系統') return '銷控系統';
   if (requiredAnySystem.value?.includes('驗屋預約管理-修改')) return '驗屋預約管理';
-  return '選擇建案';
+  return '選擇建案';d
 });
 
 const pageIcon = computed(() => {
@@ -126,9 +126,9 @@ const pageIcon = computed(() => {
 });
 
 const pageColor = computed(() => {
-  if (currentViewMode.value === 'quote' || requiredSystem.value === '銷控系統') return 'deep-purple';
-  if (requiredAnySystem.value?.includes('驗屋預約管理-修改')) return 'primary';
-  return 'grey-darken-1';
+  if (currentViewMode.value === 'quote' || requiredSystem.value === '銷控系統') return '#f5f5f7';
+  if (requiredAnySystem.value?.includes('驗屋預約管理-修改')) return '#f5f5f7';
+  return '#f5f5f7';
 });
 
 // --- 核心邏輯 ---

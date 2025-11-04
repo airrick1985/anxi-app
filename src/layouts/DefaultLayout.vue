@@ -16,8 +16,19 @@
       <v-spacer />
 
       
+      <v-menu offset-y>
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props" icon title="系統設定" class="me-2">
+            <v-icon>mdi-cog</v-icon>
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <v-list-item @click="openStandbyDialog" prepend-icon="mdi-account-group">
+            <v-list-item-title>BY序</v-list-item-title>
+          </v-list-item>
+          </v-list>
+      </v-menu>
 
-      <v-spacer />
 
       <template v-if="user">
         <div v-if="display.mdAndUp.value" class="d-flex align-center">
@@ -137,6 +148,28 @@
    
    <AiAssistant v-if="showAiAssistant" />
 
+    <v-dialog v-model="standbyDialogVisible" max-width="400px" persistent>
+      <v-card>
+        <v-card-title>輸入建案ID (BY序)</v-card-title>
+        <v-card-text class="pt-4">
+          <v-text-field
+            v-model="standbyProjectId"
+            label="建案ID"
+            placeholder="請輸入建案ID"
+            autofocus
+            variant="outlined"
+            density="compact"
+            @keyup.enter="navigateToStandby"
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="standbyDialogVisible = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" @click="navigateToStandby" :disabled="!standbyProjectId">確認</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 
   </v-app>
 </template>
@@ -180,6 +213,10 @@ const contactDialog = ref(false);
 const mortgageDialog = ref(false);
 const showAiAssistant = ref(false); // AI助理false=隱藏
 const isLoggingOut = ref(false); // ✅ 新增此行
+
+// ✅ [新增] BY序 Dialog 相關狀態
+const standbyDialogVisible = ref(false);
+const standbyProjectId = ref('');
 
 
 const showSnackbar = (message) => {
@@ -247,6 +284,24 @@ const goToMessageCenter = () => {
   router.push('/messages');
 };
 
+// ✅ [新增] 開啟 BY序 Dialog
+function openStandbyDialog() {
+  standbyProjectId.value = '';
+  standbyDialogVisible.value = true;
+}
+
+// ✅ [新增] 導航至 BY序 頁面
+function navigateToStandby() {
+  if (standbyProjectId.value.trim()) {
+    // 根據 router index.js，使用 'Standby' 路由名稱和 'projectId' 參數
+    router.push({ 
+      name: 'Standby', 
+      params: { projectId: standbyProjectId.value.trim() } 
+    });
+    standbyDialogVisible.value = false;
+  }
+}
+
 const initializeUnreadCount = async () => {
   if (user.value && user.value.key) {
     try {
@@ -279,7 +334,7 @@ watch(user, (newUser, oldUser) => {
 /* 樣式部分保持不變 */
 .custom-app-bar {
   background-color: transparent !important;
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(195, 195, 195, 0.7) 100%) !important;
+  background-image: linear-gradient(135deg, rgba(255, 255, 2CHINESE-TRADITIONAL, 0.7) 0%, rgba(195, 195, 195, 0.7) 100%) !important;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }

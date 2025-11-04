@@ -9,6 +9,8 @@
       class="draggable-container"
       animation="300"
       @end="saveButtonOrder"
+      delay="150"
+      :touch-start-threshold="5"
     >
       <template #item="{ element: button }">
         <IconButton 
