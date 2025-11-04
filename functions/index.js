@@ -89,7 +89,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
@@ -359,6 +359,154 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated( { docum
         console.error('為超級管理員授權時發生錯誤:', error);
     }
 });
+
+
+// =================================================================
+// / ✅ 【修改】背景觸發函數 - 用於更新 Project 的戶別快取 (V2 - 智慧型)
+// =================================================================
+
+/**
+ * [背景觸發] 當 households 集合有任何寫入時，自動更新對應 project 的快取欄位
+ * (V2 - 智慧型：僅在快取相關欄位變動時才重建)
+ */
+exports.updateProjectCacheOnHouseholdChange = onDocumentWritten({
+    document: "households/{householdId}",
+    database: 'anxi-app',
+    region: 'asia-east1',
+    memory: "1GiB", 
+    timeoutSeconds: 300 
+}, async (event) => {
+    const functionName = 'updateProjectCacheOnHouseholdChange_V2';
+
+    // 1. 獲取變動前後的資料
+    const dataBefore = event.data.before?.data();
+    const dataAfter = event.data.after?.data();
+
+    // 如果文件被刪除 (dataAfter 不存在)，或文件被建立 (dataBefore 不存在)
+    // 則必須重建快取。
+    let needsRebuild = false;
+    if (!dataBefore || !dataAfter) {
+        needsRebuild = true;
+    } else {
+        // ✅ 核心檢查：僅在文件更新時，比較關鍵欄位
+        // 這些是 bookingMenuCache 和 uploadUnitsCache 關心的欄位
+        const fieldsToWatch = [
+            'showInMenu', 'building', 'unitId', 'address', 
+            'buyerName', 'buyerPhone', 'buyerEmail'
+        ];
+        
+        // 檢查是否有任何一個關鍵欄位發生了變化
+        for (const field of fieldsToWatch) {
+            if (dataBefore[field] !== dataAfter[field]) {
+                needsRebuild = true;
+                console.log(`[${functionName}] 偵測到關鍵欄位 [${field}] 變動，將重建快取。`);
+                break; // 找到一個變動就足夠了，跳出迴圈
+            }
+        }
+    }
+
+    // 2. 獲取 projectId
+    const data = dataAfter || dataBefore; // 至少有一個存在
+    if (!data || !data.projectId) {
+        console.log(`[${functionName}] household 文件缺少 projectId，無法更新快取。`);
+        return;
+    }
+    const projectId = data.projectId;
+
+    // ✅ 3. 檢查是否需要重建
+    if (!needsRebuild) {
+        console.log(`[${functionName}] 戶別 [${event.params.householdId}] 變動，但未影響快取欄位，跳過重建。`);
+        return; // 提前結束，0 讀取
+    }
+
+    // --- 只有在需要重建時，才執行以下高成本操作 ---
+    console.log(`[${functionName}] 偵測到 projectId [${projectId}] 的戶別資料變動，開始重建快取...`);
+
+    const db = new Firestore({ databaseId: 'anxi-app' });
+
+    try {
+        // 4. 重新查詢該 projectId 底下所有的 households 文件
+        const householdsSnapshot = await db.collection('households')
+            .where('projectId', '==', projectId)
+            .get();
+
+        // 5. 初始化快取物件
+        const buildingListCache = new Set();
+        const uploadBuildingListCache = new Set();
+        const bookingMenuCache = {};
+        const uploadUnitsCache = {};
+
+        // 6. 遍歷所有戶別，產生快取資料
+        householdsSnapshot.forEach(doc => {
+            const unitData = doc.data();
+            const building = unitData.building;
+            const unitId = unitData.unitId;
+
+            if (!building || !unitId) return;
+
+            // 處理上傳頁面的快取 (全部戶別)
+            uploadBuildingListCache.add(building);
+            if (!uploadUnitsCache[building]) {
+                uploadUnitsCache[building] = [];
+            }
+            uploadUnitsCache[building].push({
+                unit: unitId,
+                address: unitData.address || ''
+            });
+
+            // 處理預約頁面的快取 (showInMenu: true)
+            if (unitData.showInMenu === true) {
+                buildingListCache.add(building);
+                if (!bookingMenuCache[building]) {
+                    bookingMenuCache[building] = [];
+                }
+                bookingMenuCache[building].push({
+                    unit: unitId,
+                    address: unitData.address || '',
+                    buyerName: unitData.buyerName || '',
+                    buyerPhone: unitData.buyerPhone || '',
+                    buyerEmail: unitData.buyerEmail || null
+                });
+            }
+        });
+        
+        // 7. 排序
+        const sortedBuildingList = Array.from(buildingListCache).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW', { numeric: true, sensitivity: 'base' }));
+        const sortedUploadBuildingList = Array.from(uploadBuildingListCache).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW', { numeric: true, sensitivity: 'base' }));
+        
+        for (const building in bookingMenuCache) {
+             bookingMenuCache[building].sort((a, b) => a.unit.localeCompare(b.unit, 'zh-Hant-TW', { numeric: true, sensitivity: 'base' }));
+        }
+        for (const building in uploadUnitsCache) {
+             uploadUnitsCache[building].sort((a, b) => a.unit.localeCompare(b.unit, 'zh-Hant-TW', { numeric: true, sensitivity: 'base' }));
+        }
+
+        // 8. 準備 Payload
+        const cachePayload = {
+            buildingListCache: sortedBuildingList,
+            uploadBuildingListCache: sortedUploadBuildingList,
+            bookingMenuCache: bookingMenuCache,
+            uploadUnitsCache: uploadUnitsCache,
+            cacheUpdatedAt: FieldValue.serverTimestamp()
+        };
+
+        // 9. 寫回 projects 文件
+        const projectRef = db.collection('projects').doc(projectId);
+        await projectRef.set(cachePayload, { merge: true });
+
+        console.log(`[${functionName}] 成功重建 projectId [${projectId}] 的 ${householdsSnapshot.size} 筆戶別快取資料。`);
+
+    } catch (error) {
+        console.error(`[${functionName}] 重建 projectId [${projectId}] 的快取時發生錯誤:`, error);
+        try {
+            const projectRef = db.collection('projects').doc(projectId);
+            await projectRef.set({ cacheError: error.message }, { merge: true });
+        } catch (e) {
+            console.error(`[${functionName}] 寫入快取錯誤標記失敗:`, e);
+        }
+    }
+});
+
 
 //  =================================================================
 // /   BookingPage.vue 公開預約系統 API
@@ -11568,7 +11716,7 @@ exports.exportAppointmentsByProject = onRequest(
 
 
 //  =================================================================
-// /   ✅ 【新增】BookingPage 路由函數
+// /   ✅ 【修改】BookingPage 路由函數 (V2 - 讀取快取優化版)
 //  =================================================================
 
 /**
@@ -11603,12 +11751,16 @@ exports.bookingApi = onCall({
             case 'getProjectConfig':
                 return await _handleGetProjectConfig(data);
             case 'getBookingInitialData':
+                // ✅ 【已修改】此函數現在會讀取快取
                 return await _handleGetBookingInitialData(data);
             case 'getAllUnitsForBooking':
+                // ✅ 【已修改】此函數現在會讀取快取
                 return await _handleGetAllUnitsForBooking(data);
             case 'getAllUnitsForUpload':
+                // ✅ 【已修改】此函數現在會讀取快取
                 return await _handleGetAllUnitsForUpload(data);
             case 'getBuildingsForUpload':
+                // ✅ 【已修改】此函數現在會讀取快取
                 return await _handleGetBuildingsForUpload(data);
             
             // --- 預約流程 (Step 1-4) ---
@@ -11687,7 +11839,7 @@ async function _handleGetProjectConfig(data) {
 }
 
 /**
- * [內部函式] 獲取所有可預約的戶別資料，並按棟別分組
+ * ✅【修改】[內部函式] 獲取所有可預約的戶別資料 (讀取快取)
  */
 async function _handleGetAllUnitsForBooking(data) {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -11696,33 +11848,24 @@ async function _handleGetAllUnitsForBooking(data) {
         throw new HttpsError('invalid-argument', '缺少 projectId 參數。');
     }
     try {
-        const snapshot = await db.collection('households')
-            .where('projectId', '==', projectId)
-            .where('showInMenu', '==', true)
-            .get();
-        if (snapshot.empty) {
-            return {};
+        // ✅ 1. 查詢 projects 集合，而非 households
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        
+        if (!projectDoc.exists) {
+            // ✅ 2. 如果建案不存在，拋出錯誤
+            throw new HttpsError('not-found', `找不到 ID 為 ${projectId} 的建案設定。`);
         }
-        const allUnitsByBuilding = {};
-        snapshot.forEach(doc => {
-            const unitData = doc.data();
-            const building = unitData.building;
-            if (building && unitData.unitId) {
-                if (!allUnitsByBuilding[building]) {
-                    allUnitsByBuilding[building] = [];
-                }
-                allUnitsByBuilding[building].push({
-                    unit: unitData.unitId,
-                    address: unitData.address || '',
-                    buyerName: unitData.buyerName || '', 
-                    buyerPhone: unitData.buyerPhone || '', 
-                    buyerEmail: unitData.buyerEmail || null 
-                });
-            }
-        });
+        
+        // ✅ 3. 從建案文件中讀取快取 (bookingMenuCache)
+        const projectData = projectDoc.data();
+        const allUnitsByBuilding = projectData.bookingMenuCache || {}; // <--- 讀取快取欄位
+
+        // ✅ 4. 直接回傳快取資料
         return allUnitsByBuilding;
+
     } catch (error) {
-        console.error("_handleGetAllUnitsForBooking 錯誤:", error);
+        console.error("_handleGetAllUnitsForBooking (優化版) 錯誤:", error);
+        if (error instanceof HttpsError) throw error;
         throw new HttpsError('internal', '讀取戶別資料時發生錯誤。');
     }
 }
@@ -11961,7 +12104,7 @@ async function _handleGetAvailableSlots(data) {
 }
 
 /**
- * [內部函式] 獲取預約頁面初始化所需的資料 (棟別列表、預約設定)
+ * ✅【修改】[內部函式] 獲取預約頁面初始化所需的資料 (讀取快取)
  */
 async function _handleGetBookingInitialData(data) {
     const db = new Firestore({ databaseId: 'anxi-app' });
@@ -11970,35 +12113,29 @@ async function _handleGetBookingInitialData(data) {
         throw new HttpsError('invalid-argument', '缺少 projectId 參數。');
     }
     try {
+        // 任務 1: 從 projects 集合獲取建案設定 (這 1 次讀取是必要的)
         const projectDoc = await db.collection('projects').doc(projectId).get();
         if (!projectDoc.exists) {
             throw new HttpsError('not-found', `找不到 ID 為 ${projectId} 的建案設定。`);
         }
         const projectData = projectDoc.data();
-        const householdSnapshot = await db.collection('households')
-            .where('projectId', '==', projectId)
-            .where('showInMenu', '==', true)
-            .get();
-        
-        const buildingsSet = new Set();
-        householdSnapshot.forEach(doc => {
-            const building = doc.data().building;
-            if (building) {
-                buildingsSet.add(building);
-            }
-        });
-        const buildings = Array.from(buildingsSet).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
 
+        // ✅ 任務 2: 不再查詢 households，直接讀取快取
+        //    (快取欄位 buildingListCache 是由我們新增的背景函數產生的)
+        const buildings = projectData.buildingListCache || []; 
+
+        // 組合回傳資料
         return {
-            buildings: buildings,
+            buildings: buildings, // ✅ 回傳快取
             checkDuplicate: projectData.checkDuplicate || 'OFF',
             bookingTypes: projectData.bookingTypes || [],
             validateId: projectData.validateId || 'OFF',
             inspectionMethods: [], 
             inspectionStaff: []
         };
+
     } catch (error) {
-        console.error("_handleGetBookingInitialData 錯誤:", error);
+        console.error("_handleGetBookingInitialData (優化版) 錯誤:", error);
         if (error instanceof HttpsError) throw error;
         throw new HttpsError('internal', '讀取初始資料時發生錯誤。');
     }
@@ -12489,7 +12626,7 @@ async function _handleUploadAuthLetter(data) {
 
 
 /**
- * [內部函式] 獲取棟別列表 (供上傳報告頁面使用)
+ * ✅【修改】[內部函式] 獲取棟別列表 (供上傳報告頁面使用，讀取快取)
  */
 async function _handleGetBuildingsForUpload(data) {
   const { projectId } = data;
@@ -12498,25 +12635,28 @@ async function _handleGetBuildingsForUpload(data) {
   }
   try {
     const db = new Firestore({ databaseId: "anxi-app" });
-    const householdSnapshot = await db.collection('households')
-      .where('projectId', '==', projectId)
-      .get();
-    const buildingsSet = new Set();
-    householdSnapshot.forEach(doc => {
-      const building = doc.data().building;
-      if (building) buildingsSet.add(building);
-    });
-    const buildings = Array.from(buildingsSet).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
+    // ✅ 1. 查詢 projects 集合
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+        throw new HttpsError('not-found', `找不到 ID 為 ${projectId} 的建案設定。`);
+    }
+    
+    // ✅ 2. 讀取快取欄位
+    const projectData = projectDoc.data();
+    const buildings = projectData.uploadBuildingListCache || []; // <--- 讀取快取
+
+    // ✅ 3. 回傳快取
     return { status: 'success', data: { buildings: buildings } };
   } catch (error) {
-    console.error(`[_handleGetBuildingsForUpload] 獲取棟別時發生錯誤:`, error);
+    console.error(`[_handleGetBuildingsForUpload (優化版)] 獲取棟別時發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', '讀取棟別資料時發生錯誤。');
   }
 }
 
 
 /**
- * [內部函式] 獲取所有戶別資料 (供上傳報告頁面使用)
+ * ✅【修改】[內部函式] 獲取所有戶別資料 (供上傳報告頁面使用，讀取快取)
  */
 async function _handleGetAllUnitsForUpload(data) {
   const { projectId } = data;
@@ -12525,25 +12665,21 @@ async function _handleGetAllUnitsForUpload(data) {
   }
   try {
     const db = new Firestore({ databaseId: "anxi-app" });
-    const snapshot = await db.collection('households')
-      .where('projectId', '==', projectId)
-      .get();
-    if (snapshot.empty) return { status: 'success', data: {} };
-    const allUnitsByBuilding = {};
-    snapshot.forEach(doc => {
-      const unitData = doc.data();
-      const building = unitData.building;
-      if (building && unitData.unitId) {
-        if (!allUnitsByBuilding[building]) allUnitsByBuilding[building] = [];
-        allUnitsByBuilding[building].push({
-          unit: unitData.unitId,
-          address: unitData.address || ''
-        });
-      }
-    });
+    // ✅ 1. 查詢 projects 集合
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+        throw new HttpsError('not-found', `找不到 ID 為 ${projectId} 的建案設定。`);
+    }
+    
+    // ✅ 2. 讀取快取欄位
+    const projectData = projectDoc.data();
+    const allUnitsByBuilding = projectData.uploadUnitsCache || {}; // <--- 讀取快取
+    
+    // ✅ 3. 回傳快取
     return { status: 'success', data: allUnitsByBuilding };
   } catch (error) {
-    console.error(`[_handleGetAllUnitsForUpload] 獲取戶別時發生錯誤:`, error);
+    console.error(`[_handleGetAllUnitsForUpload (優化版)] 獲取戶別時發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', '讀取戶別資料時發生錯誤。');
   }
 }
@@ -14059,76 +14195,67 @@ async function _handleCancelAppointmentByAdmin(data) {
 }
 
 // =================================================================
-// /  ✅ 【新增】驗屋預約行事曆 (InspectionCalendar) 路由函數
+// /  ✅ 【修改】驗屋預約行事曆 (InspectionCalendar) 路由函數 (V3 - 前端快取優化版)
 // =================================================================
 
 /**
- * ✅ [V2 - 路由函數] InspectionCalendar.vue 的單一 API 入口
- * 接收一個 action，並將請求路由到對應的內部處理函式。
- * 這能確保所有行事曆頁面的操作都命中同一個已預熱的 Cloud Function 实例。
+ * ✅ [V3 - 路由函數] InspectionCalendar.vue 的單一 API 入口
  */
 exports.inspectionCalendarApi = onCall({ 
     region: "asia-east1", 
-    // ✅ 組合所有子函數需要的 secrets
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
-    // ✅ 確保記憶體和超時足夠
     memory: "1GiB",
     timeoutSeconds: 300, 
     cors: true 
 }, async (request) => {
     
-    // 1. 從 request.data 中解構出 action 和 data
     const { action, data } = request.data;
-
-    // 2. 建立一個日誌名稱，方便追蹤
     const functionName = `inspectionCalendarApi (Action: ${action})`;
     
     try {
         console.log(`[${functionName}] 路由函數啟動...`);
         
-        // 3. 根據 action 執行對應的內部函式
         switch (action) {
             
             // --- 頁面初始化 (Store) ---
             case 'getProjectConfig':
-                return await _handleGetProjectConfig(data); // ✅ 共用
+                return await _handleGetProjectConfig(data);
             case 'getProjectBatchDetails':
-                return await _handleGetProjectBatchDetails(data); // ✅ 共用
+                return await _handleGetProjectBatchDetails(data);
             case 'getAppointmentDateRange':
                 return await _handleGetAppointmentDateRange(data);
-            case 'fetchAllHouseholds': // (fetchAllHouseholdsForProject)
+            case 'fetchAllHouseholds': 
+                // ✅【修改】此函數現在只會被呼叫一次，用於建立前端快取
                 return await _handleFetchAllHouseholdsForProject(data);
             
             // --- 頁面主要資料 ---
             case 'fetchCalendarData':
+                // ✅【修改】此函數現在只回傳 appointments 資料
                 return await _handleFetchCalendarData(data);
             case 'searchAppointmentsAndHouseholds':
-                return await _handleSearchAppointmentsAndHouseholds(data);
+                // ✅【修改】此函數現在合併 household 快取資料後回傳
+                return await _handleSearchAppointmentsAndHouseholds_Optimized(data); // ✅ 呼叫優化後的版本
 
-            // --- 彈窗操作：編輯/取消 ---
+            // --- 彈窗操作 (保持不變) ---
             case 'getAdminBookingCalendarData':
-                return await _handleGetAdminBookingCalendarData(data); // ✅ 共用
+                return await _handleGetAdminBookingCalendarData(data);
             case 'updateAppointment':
-                return await _handleUpdateAppointmentByAdmin(data); // ✅ 共用
+                return await _handleUpdateAppointmentByAdmin(data);
             case 'cancelAppointment':
-                return await _handleCancelAppointmentByAdmin(data); // ✅ 共用
+                return await _handleCancelAppointmentByAdmin(data);
             case 'updateAppointmentInspectors':
                 return await _handleUpdateAppointmentInspectors(data);
             
-            // --- 預設情況 ---
             default:
                 console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
                 throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
         }
 
     } catch (error) {
-        // 4. 統一捕捉所有內部函式拋出的 HttpsError 或其他錯誤
         console.error(`[${functionName}] 執行時發生錯誤:`, error);
-        
         if (error instanceof HttpsError) {
             throw error;
         }
-        
         throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
     }
 });
@@ -14194,63 +14321,49 @@ async function _handleGetAppointmentDateRange(data) {
 }
 
 /**
- * [內部函式] 獲取指定建案下的所有戶別資料
- * (供 fetchAllHouseholdsForProject API 使用)
- * (✅ V3: 修正為使用 Admin SDK 查詢語法)
+ * ✅【修改】[內部函式] 獲取指定建案下的所有戶別資料 (供前端快取使用)
+ * (此函數取代舊的 _handleFetchAllHouseholdsForProject)
  * @param {object} data - 包含 { projectId }
  * @returns {Promise<Array>} - 戶別資料陣列
  */
 async function _handleFetchAllHouseholdsForProject(data) {
-    // 1. 取得 projectId 並設定日誌名稱
     const { projectId } = data;
     const functionName = `_handleFetchAllHouseholdsForProject`;
 
-    // 2. 驗證參數
     if (!projectId) {
         throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
     }
 
     try {
-        // 3. 建立 Admin SDK 的資料庫實例
         const db = new Firestore({ databaseId: "anxi-app" });
-        
-        // 4. ✅【修正】使用 Admin SDK 語法建立查詢
-        // 正確的 Admin SDK 語法：直接在 collection 參考上鏈式呼叫 .where()
         const householdsRef = db.collection("households");
         const query = householdsRef.where("projectId", "==", projectId);
-
-        // 5. ✅【修正】使用 .get() 執行查詢
-        // 正確的 Admin SDK 語法：
         const snapshot = await query.get();
 
-        // 6. 處理查詢結果 (Admin SDK 的 snapshot 結構)
         const households = [];
-        // Admin SDK 的 snapshot.forEach 用法
         snapshot.forEach(doc => { 
-            households.push({ ...doc.data(), _docId: doc.id });
+            // 為 AG Grid 和合併邏輯，將 doc.id 也加入
+            households.push({ _docId: doc.id, ...doc.data() });
         });
         
-        console.log(`[${functionName}] 成功獲取 ${households.length} 筆戶別資料 (Project: ${projectId})`);
+        console.log(`[${functionName}] 成功獲取 ${households.length} 筆戶別資料用於前端快取 (Project: ${projectId})`);
         
-        // 7. 回傳結果 (路由函數會自動處理)
         return households;
         
     } catch (e) {
-        // 8. 錯誤處理
         console.error(`[${functionName}] 獲取戶別資料時發生錯誤 (Project: ${projectId}):`, e);
         throw new HttpsError("internal", `獲取戶別資料時發生錯誤: ${e.message}`);
     }
 }
 
 /**
- * [內部函式] 根據日期範圍獲取指定建案的預約紀錄與戶別資料
- * (✅ V3: 修正 Admin SDK 查詢語法 與 物件合併順序)
+ * ✅【修改】[內部函式] 根據日期範圍獲取預約紀錄 (不再合併戶別資料)
  * @param {object} data - 包含 { projectId, startDate, endDate }
- * @returns {Promise<Array>}
+ * @returns {Promise<Array>} - 只有 appointments 的資料陣列
  */
 async function _handleFetchCalendarData(data) {
     const { projectId, startDate, endDate } = data;
-    const functionName = `_handleFetchCalendarData`;
+    const functionName = `_handleFetchCalendarData_Optimized`;
     
     let startDateObj, endDateObj;
     try {
@@ -14265,103 +14378,125 @@ async function _handleFetchCalendarData(data) {
 
     try {
         const db = new Firestore({ databaseId: "anxi-app" });
-        const householdsRef = db.collection("households");
-        const householdsQuery = householdsRef.where("projectId", "==", projectId);
-        const householdsSnapshot = await householdsQuery.get(); 
-
-        const householdsMap = new Map();
-        householdsSnapshot.forEach(doc => {
-            householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
-        });
-
-        const appointmentsRef = db.collection("appointments");
         
+        // ✅ 1. 不再查詢 households 集合
+
+        // ✅ 2. 只查詢 appointments 集合
+        const appointmentsRef = db.collection("appointments");
         const appointmentsSnapshot = await appointmentsRef 
             .where("projectId", "==", projectId)
             .where("appointmentDate", ">=", startDateObj) 
             .where("appointmentDate", "<=", endDateObj)  
             .get(); 
 
-        const combinedData = appointmentsSnapshot.docs.map(doc => {
-            const appointment = { id: doc.id, ...doc.data() };
-            const householdKey = `${appointment.projectId}_${appointment.unitId}`;
-            const householdData = householdsMap.get(householdKey) || {};
-            
-            // ✅【關鍵修正】
-            // 確保 ...appointment 在最後，
-            // 這樣 appointment.appointmentDate (有效的 Timestamp)
-            // 會覆蓋 householdData.appointmentDate (可能是 null)
-            return { ...householdData, ...appointment, id: doc.id };
-        });
+        const appointments = appointmentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        console.log(`[${functionName}] 成功獲取 ${combinedData.length} 筆行事曆資料 (Project: ${projectId})`);
+        console.log(`[${functionName}] 成功獲取 ${appointments.length} 筆預約資料 (Project: ${projectId})`);
         
-        return combinedData;
+        // ✅ 3. 直接回傳預約資料陣列
+        return appointments;
         
     } catch (error) {
-         console.error(`[${functionName}] 查詢行事曆資料時發生錯誤:`, error);
+         console.error(`[${functionName}] 查詢預約資料時發生錯誤:`, error);
         throw new HttpsError("internal", `查詢行事曆資料時發生錯誤: ${error.message}`);
     }
 }
 
 /**
- * [內部函式] 全域預約搜尋
- * @param {object} data - 包含 { projectId, keyword }
- * @returns {Promise<object>} - { status: "success", data: results }
+ * ✅【優化版】[內部函式] 全域預約搜尋 (現在也讀取戶別快取)
  */
-async function _handleSearchAppointmentsAndHouseholds(data) {
+async function _handleSearchAppointmentsAndHouseholds_Optimized(data) {
   const { projectId, keyword } = data;
-  const functionName = `_handleSearchAppointmentsAndHouseholds (Project: ${projectId})`;
+  const functionName = `_handleSearchAppointmentsAndHouseholds_Optimized`;
 
   if (!projectId || !keyword || keyword.trim().length < 2) {
-    console.error(`[${functionName}] 無效的搜尋參數`, { projectId, keyword });
     throw new HttpsError("invalid-argument", "必須提供有效的建案 ID 和至少 2 個字元的關鍵字。");
   }
 
   const lowerCaseKeyword = keyword.toLowerCase();
-  console.log(`[${functionName}] 開始搜尋，關鍵字: "${keyword}"`);
-
   const db = new Firestore({ databaseId: "anxi-app" });
 
   try {
-    const [appointmentsSnapshot, householdsSnapshot] = await Promise.all([
-      db.collection("appointments").where("projectId", "==", projectId).get(),
-      db.collection("households").where("projectId", "==", projectId).get(),
-    ]);
+    // ✅ 1. 從快取（projects 文件）讀取戶別資料
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    const householdsMap = new Map();
+
+    // ✅✅✅ 【修改點】✅✅✅
+    // 將 .exists() 修改為 .exists (Admin SDK 屬性)
+    if (projectDoc.exists) { 
+    // ✅✅✅ 【修改點結束】✅✅✅
+    
+        // ❗ 注意：您必須確保 `updateProjectCacheOnHouseholdChange` 函數
+        // 產生的快取欄位叫做 `householdDataCache`。
+        // （在我們上一步中，為 BookingPage 建立的快取是 `bookingMenuCache` 和 `uploadUnitsCache`）
+        // 
+        // 為了安全起見，我將同時檢查這兩個快取欄位
+        const bookingCache = projectDoc.data().bookingMenuCache || {};
+        const uploadCache = projectDoc.data().uploadUnitsCache || {};
+        
+        // 將 bookingMenuCache 壓平存入 Map
+        for (const building in bookingCache) {
+            bookingCache[building].forEach(unitData => {
+                 householdsMap.set(`${projectId}_${unitData.unit}`, unitData);
+            });
+        }
+        // 將 uploadUnitsCache 壓平存入 Map (會覆蓋 bookingCache，但資料更全)
+         for (const building in uploadCache) {
+            uploadCache[building].forEach(unitData => {
+                 householdsMap.set(`${projectId}_${unitData.unit}`, unitData);
+            });
+        }
+        
+    } else {
+        // 備用方案：如果快取不存在，則查詢 households 集合 (這不應該發生，但作為防呆)
+        console.warn(`[${functionName}] 警告：找不到 Project 快取，將執行 Households 集合查詢 (高成本)`);
+        const householdsSnapshot = await db.collection("households").where("projectId", "==", projectId).get();
+        householdsSnapshot.forEach(doc => {
+            householdsMap.set(`${doc.data().projectId}_${doc.data().unitId}`, doc.data());
+        });
+    }
 
     const matchedHouseholdUnitIds = new Set();
-    householdsSnapshot.forEach(doc => {
-      if (documentMatchesKeyword(doc.data(), lowerCaseKeyword)) {
-        if (doc.data().unitId) {
-            matchedHouseholdUnitIds.add(doc.data().unitId);
+    householdsMap.forEach((householdData) => {
+        if (documentMatchesKeyword(householdData, lowerCaseKeyword)) {
+            if (householdData.unitId) {
+                matchedHouseholdUnitIds.add(householdData.unitId);
+            }
         }
-      }
     });
-    console.log(`[${functionName}] 關鍵字從 households 集合匹配到 ${matchedHouseholdUnitIds.size} 個戶別。`);
+    
+    // ✅ 2. 只查詢 appointments 集合
+    const appointmentsSnapshot = await db.collection("appointments").where("projectId", "==", projectId).get();
 
+    // ✅ 3. 在記憶體中篩選和合併
     const results = [];
     const addedAppointmentIds = new Set(); 
-
     appointmentsSnapshot.forEach(doc => {
       const appointment = { id: doc.id, ...doc.data() };
       const appointmentMatches = documentMatchesKeyword(appointment, lowerCaseKeyword);
       const householdMatches = matchedHouseholdUnitIds.has(appointment.unitId);
 
       if ((appointmentMatches || householdMatches) && !addedAppointmentIds.has(appointment.id)) {
-        if (appointment.appointmentDate && typeof appointment.appointmentDate.toDate === 'function') {
-            appointment.appointmentDate = appointment.appointmentDate.toDate().toISOString();
+        
+        // 從 Map 中取出對應的戶別資料並合併
+        const householdKey = `${appointment.projectId}_${appointment.unitId}`;
+        const householdData = householdsMap.get(householdKey) || {};
+        const combinedData = { ...householdData, ...appointment, id: doc.id };
+
+        // 轉換日期
+        if (combinedData.appointmentDate && typeof combinedData.appointmentDate.toDate === 'function') {
+            combinedData.appointmentDate = combinedData.appointmentDate.toDate().toISOString();
         }
-        if (appointment.createdAt && typeof appointment.createdAt.toDate === 'function') {
-            appointment.createdAt = appointment.createdAt.toDate().toISOString();
+        if (combinedData.createdAt && typeof combinedData.createdAt.toDate === 'function') {
+            combinedData.createdAt = combinedData.createdAt.toDate().toISOString();
         }
-        results.push(appointment);
+
+        results.push(combinedData);
         addedAppointmentIds.add(appointment.id);
       }
     });
 
     console.log(`[${functionName}] 搜尋完成，共找到 ${results.length} 筆預約紀錄。`);
-    
-    // ✅ 回傳：路由函數會自動包裝
     return { status: "success", data: results };
 
   } catch (error) {

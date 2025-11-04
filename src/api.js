@@ -38,13 +38,14 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
 import { useUserStore } from '@/store/user';
 
-// ✅ 1. 在頂部定義新的路由函數
-const bookingApiRouter = httpsCallable(functions, 'bookingApi');
-// ✅ 2. 定義後台預約的路由函數
-const adminBookingApiRouter = httpsCallable(functions, 'adminBookingApi');
-// ✅ 定義行事曆頁面的路由函數
-const inspectionCalendarApiRouter = httpsCallable(functions, 'inspectionCalendarApi');
-
+// 1. 在頂部定義【並匯出】新的路由函數
+export const bookingApiRouter = httpsCallable(functions, 'bookingApi');
+// 2. 定義【並匯出】後台預約的路由函數
+export const adminBookingApiRouter = httpsCallable(functions, 'adminBookingApi');
+// 3. 定義【並匯出】行事曆頁面的路由函數_handleSearchAppointmentsAndHouseholds_Optimized
+export const inspectionCalendarApiRouter = httpsCallable(functions, 'inspectionCalendarApi');
+// 4. 【新增】定義 LIFF 行事曆頁面的路由函數 (您在上一步優化 LiffInspectionCalendar.vue 時會需要)
+export const liffCalendarApiRouter = httpsCallable(functions, 'liffCalendarApi');
 
 
 
@@ -1499,11 +1500,11 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
 
   const projects = [];
   snapshot.forEach(doc => {
-    const data = doc.data(); // ✅ 先取得資料
+    const data = doc.data(); // 先取得資料
     projects.push({ 
       id: doc.id, 
-      ...data, // ✅ 展開所有既有資料
-      iconUrl: data.iconUrl || '' // ✅ 確保 iconUrl 欄位存在，若無則給予空字串
+      ...data, // 展開所有既有資料
+      iconUrl: data.iconUrl || '' // 確保 iconUrl 欄位存在，若無則給予空字串
     });
   });
   
@@ -1847,13 +1848,13 @@ export async function fetchActivityMessageSlideId(projectName) {
 
 /**
  * [新] 從後端獲取指定建案的預約紀錄有效日期範圍
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  * @param {string} projectId 
  * @returns {Promise<{minDate: string, maxDate: string}>}
  */
 export async function fetchAppointmentDateRange(projectId) {
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'getAppointmentDateRange',
         data: { projectId }
@@ -1896,7 +1897,7 @@ export async function getProjectsForInspectionCalendar(userKey) {
 
 /**
  * [Firestore 版] 根據日期範圍獲取指定建案的預約紀錄與戶別資料
- * (✅ V6: 修正 toClientTimestamp 以正確處理 _seconds)
+ * (V6: 修正 toClientTimestamp 以正確處理 _seconds)
  * @param {string} projectId 
  * @param {Date} startDate - JS Date 物件
  * @param {Date} endDate - JS Date 物件
@@ -2031,32 +2032,32 @@ export async function fetchBookingOptions(projectId) {
 
 /**
  * [Firestore 版] 新增一筆預約紀錄
- * (✅ V2: 呼叫 adminBookingApi 路由)
+ * (V2: 呼叫 adminBookingApi 路由)
  * @param {object} payload - 包含 { projectId, newBookingData, ... }
  */
 export async function addAppointmentAdmin(payload) {
     try {
-        // ✅ 修改：呼叫 adminBookingApiRouter
+        // 修改：呼叫 adminBookingApiRouter
         const result = await adminBookingApiRouter({
             action: 'addAppointmentAdmin',
             data: payload
         });
-        // ✅ 修改：後端路由會直接回傳 { status, data: { bookingCode } }
+        // 修改：後端路由會直接回傳 { status, data: { bookingCode } }
         return result.data; 
     } catch (error) {
         console.error("呼叫 addAppointmentByAdmin 雲端函式時發生錯誤:", error);
-        // ✅ 修改：保持拋出錯誤，讓前端 UI 可以捕捉
+        // 修改：保持拋出錯誤，讓前端 UI 可以捕捉
         throw new Error(error.message);
     }
 }
 
 /**
  * [Firebase 版] 更新預約紀錄 (透過 Cloud Function 處理)
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  */
 export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) { 
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'updateAppointment',
         data: {
@@ -2077,7 +2078,7 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
 
 /**
  * ✓ [Firebase 版] 取消一筆預約 (呼叫 Cloud Function)
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  */
 export async function cancelAppointment(appointmentId, projectId, unitId, bookingType) {
   if (!appointmentId || !projectId || !unitId || !bookingType) {
@@ -2085,7 +2086,7 @@ export async function cancelAppointment(appointmentId, projectId, unitId, bookin
   }
   
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'cancelAppointment',
         data: {
@@ -2103,7 +2104,7 @@ export async function cancelAppointment(appointmentId, projectId, unitId, bookin
 }
 
 /**
- * [Firebase 版] 取消一筆預約 (✅ V2: 呼叫 bookingApi 路由)
+ * [Firebase 版] 取消一筆預約 (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 projectId 和 bookingCode 的物件
  * @returns {Promise<object>}
  */
@@ -2112,12 +2113,12 @@ export const cancelBooking = async (payload) => {
     return { status: 'error', message: '前端錯誤：缺少 projectId 或 bookingCode。' };
   }
   try {
-    // ✅ 修改：呼叫 bookingApiRouter，傳入 action 和 data
+    // 修改：呼叫 bookingApiRouter，傳入 action 和 data
     const result = await bookingApiRouter({
         action: 'cancelBooking',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, message }，因此 result.data 就是該物件
+    // 修改：後端路由會直接回傳 { status, message }，因此 result.data 就是該物件
     return result.data; 
   } catch (error) {
     console.error("API cancelBooking 錯誤:", error);
@@ -2129,15 +2130,15 @@ export const cancelBooking = async (payload) => {
 //  公開預約系統 API (Firebase 遷移版)
 // =============================================
 
-//  [新增] 獲取預約頁面初始化所需的資料 (✅ V2: 呼叫 bookingApi 路由)
+//  [新增] 獲取預約頁面初始化所需的資料 (V2: 呼叫 bookingApi 路由)
 export async function getBookingInitialData(projectName, projectId) {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getBookingInitialData',
         data: { projectId, projectName } // 保持傳遞，即使後端可能不用 projectName
     });
-    // ✅ 修改：後端路由會回傳 { buildings, ... }，我們保持原有的包裝
+    // 修改：後端路由會回傳 { buildings, ... }，我們保持原有的包裝
     return { status: 'success', data: result.data };
   } catch (error) {
     console.error("API getBookingInitialData 錯誤:", error);
@@ -2166,12 +2167,12 @@ export async function updateProjectSettings(projectId, settingsData) {
 }
 
 /**
- * [新增] 從 Firestore 獲取建案的公開設定 (✅ V2: 呼叫 bookingApi 路由)
+ * [新增] 從 Firestore 獲取建案的公開設定 (V2: 呼叫 bookingApi 路由)
  * @param {string} projectId 建案 ID
  */
 export async function fetchProjectConfig(projectId) {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getProjectConfig',
         data: { projectId }
@@ -2199,16 +2200,16 @@ export async function getUnitsByBuilding(projectName, building) {
 
 
 /**
- * 檢查是否已有有效預約 (✅ V2: 呼叫 bookingApi 路由)
+ * 檢查是否已有有效預約 (V2: 呼叫 bookingApi 路由)
  */
 export async function checkExistingBooking(projectId, unitId, bookingType) {
  try {
-  // ✅ 修改：呼叫 bookingApiRouter
+  // 修改：呼叫 bookingApiRouter
   const result = await bookingApiRouter({
       action: 'checkExistingBooking',
       data: { projectId, unitId, bookingType }
   });
-  // ✅ 修改：後端路由會直接回傳 { status, data: { status } }，這符合原函式 return result.data 的預期
+  // 修改：後端路由會直接回傳 { status, data: { status } }，這符合原函式 return result.data 的預期
   return result.data;
  } catch (error) {
   console.error("API checkExistingBooking 錯誤:", error);
@@ -2217,16 +2218,16 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
 }
 
 /**
- * 獲取可預約的日期和時段 (✅ V2: 呼叫 bookingApi 路由)
+ * 獲取可預約的日期和時段 (V2: 呼叫 bookingApi 路由)
  */
 export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getAvailableSlots',
         data: { projectId, unitId, bookingType, bookingMethod, projectName }
     });
-    // ✅ 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
+    // 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
     return {
       status: 'success',
       data: result.data
@@ -2280,17 +2281,17 @@ export async function getAllBookingRules(projectId) {
 
 
 /**
- * 儲存預約資料 (Firebase 版) (✅ V2: 呼叫 bookingApi 路由)
+ * 儲存預約資料 (Firebase 版) (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 projectId 和 bookingData 的物件
  */
 export const saveBooking = async (payload) => {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'saveBooking',
         data: payload // 整個 payload { projectId, bookingData } 作為 data 傳遞
     });
-    // ✅ 修改：後端路由會回傳 { status, data: { bookingCode } }
+    // 修改：後端路由會回傳 { status, data: { bookingCode } }
     // 我們將其包裝成前端期望的 { status, ...result.data }
     return { status: 'success', ...result.data };
   } catch (error) {
@@ -2300,18 +2301,18 @@ export const saveBooking = async (payload) => {
 };
 
 /**
- * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (✅ V2: 呼叫 bookingApi 路由)
+ * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId, bookingType }
  */
 export const initiateBookingConfirmation = async (payload) => {
   const functionName = 'initiateBookingConfirmation';
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: functionName, // 使用函式名稱作為 action
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, token }
+    // 修改：後端路由會直接回傳 { status, token }
     return result.data;
   } catch (error) {
     console.error(`API Error in ${functionName}:`, error);
@@ -2323,16 +2324,16 @@ export const initiateBookingConfirmation = async (payload) => {
 
 
 /**
- * [修改] 一次性獲取所有可預約的戶別資料 (✅ V2: 呼叫 bookingApi 路由)
+ * [修改] 一次性獲取所有可預約的戶別資料 (V2: 呼叫 bookingApi 路由)
  */
 export const fetchAllUnitsForBooking = async (projectName, projectId) => {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getAllUnitsForBooking',
         data: { projectId: projectId, projectName: projectName }
     });
-    // ✅ 修改：後端路由會直接回傳 allUnitsByBuilding 物件，我們保持原有的包裝
+    // 修改：後端路由會直接回傳 allUnitsByBuilding 物件，我們保持原有的包裝
     return { status: 'success', data: result.data };
   } catch (error) {
     console.error("API fetchAllUnitsForBooking 錯誤:", error);
@@ -2342,16 +2343,16 @@ export const fetchAllUnitsForBooking = async (projectName, projectId) => {
 
 
 /**
- * [修改] 驗證身分證與戶別是否相符 (✅ V2: 呼叫 bookingApi 路由)
+ * [修改] 驗證身分證與戶別是否相符 (V2: 呼叫 bookingApi 路由)
  */
 export const validateId = async (projectName, unitId, idNumber, projectId) => {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     await bookingApiRouter({
         action: 'validateId',
         data: { projectId, unitId, idNumber, projectName }
     });
-    // ✅ 修改：保持原有的成功回傳 (因為後端成功時不回傳 data)
+    // 修改：保持原有的成功回傳 (因為後端成功時不回傳 data)
     return { status: 'success' };
   } catch (error) {
     console.error("API validateId 錯誤:", error);
@@ -2362,12 +2363,12 @@ export const validateId = async (projectName, unitId, idNumber, projectId) => {
 
 
 /**
- * 上傳驗屋授權書 (Firebase Function 版) (✅ V2: 呼叫 bookingApi 路由)
+ * 上傳驗屋授權書 (Firebase Function 版) (V2: 呼叫 bookingApi 路由)
  */
 export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) => {
   const pureBase64 = base64Data.split(',')[1];
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
       action: 'uploadAuthLetter',
       data: {
@@ -2377,7 +2378,7 @@ export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) 
         base64: pureBase64
       }
     });
-    // ✅ 修改：後端路由會直接回傳 { status, url, ... }
+    // 修改：後端路由會直接回傳 { status, url, ... }
     return result.data;
   } catch (error) {
     console.error("呼叫 uploadAuthLetter 雲端函式時發生錯誤:", error);
@@ -2482,7 +2483,7 @@ function fileToBase64(file) {
 
 
 /**
- * [代理模式] 將驗屋報告透過 Cloud Function 直接上傳到 Google Drive (✅ V2: 呼叫 bookingApi 路由)
+ * [代理模式] 將驗屋報告透過 Cloud Function 直接上傳到 Google Drive (V2: 呼叫 bookingApi 路由)
  */
 export async function uploadReportDirectlyToDrive(payload, fileObject) {
   try {
@@ -2494,13 +2495,13 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
       contentType: fileObject.type,
     };
     
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'handleDirectReportUpload',
         data: functionPayload
     });
 
-    // ✅ 修改：後端路由會直接回傳 { status, message }
+    // 修改：後端路由會直接回傳 { status, message }
     return result.data;
 
   } catch (error) {
@@ -2526,7 +2527,7 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
  */
 
 /**
- * ✅ [V3 - 冷刪除版] 檢查日期是否存在 *有效* 的「基礎共享規則」
+ * [V3 - 冷刪除版] 檢查日期是否存在 *有效* 的「基礎共享規則」
  * @param {string} projectId
  * @param {Array<string>} dates - 要檢查的日期陣列 ['2025-08-25', ...]
  * @param {string|null} currentBatchId - 編輯模式下傳入，以排除自身
@@ -2653,7 +2654,7 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
 }
 
 /**
- * ✅ [V2 - 冷刪除版] 儲存批次與其關聯的每日規則 (混合模式)
+ * [V2 - 冷刪除版] 儲存批次與其關聯的每日規則 (混合模式)
  * @param {object} payload - 包含 { batchData, resolutions } 的物件
  * @returns {Promise<object>}
  */
@@ -2782,7 +2783,7 @@ export async function saveBatchWithRules(payload) {
 }
 
 /**
- * ✅ [V2 - 冷刪除版] 獲取指定批次的所有 *有效* 每日規則 (給編輯畫面使用)
+ * [V2 - 冷刪除版] 獲取指定批次的所有 *有效* 每日規則 (給編輯畫面使用)
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>} - 返回以日期為 key 的規則物件
  */
@@ -2911,7 +2912,7 @@ export async function fetchDailyRules(batchId) {
 }
 
 /**
- * ✅ [V2 - 冷刪除版] 獲取指定建案的所有 *有效* 預約批次
+ * [V2 - 冷刪除版] 獲取指定建案的所有 *有效* 預約批次
  * @param {string} projectId - 建案的 ID
  * @returns {Promise<Array>} - 返回有效的批次資料陣列
  */
@@ -3048,7 +3049,7 @@ export async function saveDateCapacities(projectId, date, capacities) {
 }
 
 /**
- * ✅ [V3 - 冷刪除版] 標記一個預約批次及其所有關聯為已刪除
+ * [V3 - 冷刪除版] 標記一個預約批次及其所有關聯為已刪除
  * @param {string} batchId - 批次的文件 ID
  * @returns {Promise<object>}
  */
@@ -4610,13 +4611,13 @@ export async function updateSystemFunction(functionData) {
 
 /**
  * [新增] 僅更新單筆預約紀錄的驗屋人員欄位
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  */
 export async function updateAppointmentInspectors(appointmentId, inspectors) {
   if (!appointmentId) throw new Error("缺少預約 ID。");
   
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'updateAppointmentInspectors',
         data: {
@@ -4624,7 +4625,7 @@ export async function updateAppointmentInspectors(appointmentId, inspectors) {
             inspectors
         }
     });
-    // ✅ 修改：後端路由會直接回傳 { status }
+    // 修改：後端路由會直接回傳 { status }
     return result.data;
   } catch (e) {
       console.error("API updateAppointmentInspectors 錯誤:", e);
@@ -4634,7 +4635,7 @@ export async function updateAppointmentInspectors(appointmentId, inspectors) {
 
 /**
  * [新] 獲取指定建案下的所有戶別資料
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  * @param {string} projectId - 專案 ID
  * @returns {Promise<Array>} - 戶別資料陣列
  */
@@ -4642,35 +4643,35 @@ export async function fetchAllHouseholdsForProject(projectId) {
   if (!projectId) return [];
   
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'fetchAllHouseholds',
         data: { projectId }
     });
-    // ✅ 修改：後端路由會直接回傳陣列
+    // 修改：後端路由會直接回傳陣列
     return result.data;
   } catch (e) {
     console.error(`獲取建案 ${projectId} 的戶別資料時發生錯誤:`, e);
-    // ✅ 保持拋出錯誤，讓 Store 可以捕捉
+    // 保持拋出錯誤，讓 Store 可以捕捉
     throw new Error(e.message || '獲取戶別資料失敗');
   }
 }
 
 /**
  * [修改後版本] 供管理員獲取指定日期的所有時段選項
- * (✅ V2: 呼叫 adminBookingApi 路由)
+ * (V2: 呼叫 adminBookingApi 路由)
  * @param {string} projectId 
  * @param {string} dateStr - 'YYYY-MM-DD' 格式
  * @returns {Promise<Array<string>>}
  */
 export async function getSlotsForAdmin(projectId, dateStr) {
     try {
-        // ✅ 修改：呼叫 adminBookingApiRouter
+        // 修改：呼叫 adminBookingApiRouter
         const result = await adminBookingApiRouter({
             action: 'getSlotsForAdmin',
             data: { projectId, dateStr }
         });
-        // ✅ 修改：後端路由會直接回傳 slots 陣列
+        // 修改：後端路由會直接回傳 slots 陣列
         return result.data;
     } catch (error) {
         console.error("獲取管理員時段選項時發生錯誤:", error);
@@ -4680,16 +4681,16 @@ export async function getSlotsForAdmin(projectId, dateStr) {
 
 
 /**
- * [新] 獲取上傳報告頁面所需的棟別列表 (無篩選) (✅ V2: 呼叫 bookingApi 路由)
+ * [新] 獲取上傳報告頁面所需的棟別列表 (無篩選) (V2: 呼叫 bookingApi 路由)
  */
 export async function fetchBuildingListForUpload(projectId) {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getBuildingsForUpload',
         data: { projectId: projectId }
     });
-    // ✅ 修改：後端路由會直接回傳 { status, data }
+    // 修改：後端路由會直接回傳 { status, data }
     return result.data;
   } catch (error) {
     console.error("API fetchBuildingListForUpload 呼叫錯誤:", error);
@@ -4698,16 +4699,16 @@ export async function fetchBuildingListForUpload(projectId) {
 }
 
 /**
- * [新] 獲取上傳報告頁面所需的所有戶別資料 (無篩選) (✅ V2: 呼叫 bookingApi 路由)
+ * [新] 獲取上傳報告頁面所需的所有戶別資料 (無篩選) (V2: 呼叫 bookingApi 路由)
  */
 export async function fetchAllUnitsForUpload(projectId) {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'getAllUnitsForUpload',
         data: { projectId: projectId }
     });
-    // ✅ 修改：後端路由會直接回傳 { status, data }
+    // 修改：後端路由會直接回傳 { status, data }
     return result.data;
   } catch (error) { 
     console.error("API fetchAllUnitsForUpload 呼叫錯誤:", error);
@@ -4718,7 +4719,7 @@ export async function fetchAllUnitsForUpload(projectId) {
 
 /**
  * [新增] 跨集合全域搜尋預約紀錄
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  * @param {string} projectId - 建案 ID
  * @param {string} keyword - 搜尋關鍵字
  * @returns {Promise<{status: string, data: Array, message?: string}>}
@@ -4729,7 +4730,7 @@ export async function searchAppointmentsAndHouseholds(projectId, keyword) {
   }
   
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'searchAppointmentsAndHouseholds',
         data: { projectId, keyword }
@@ -4773,16 +4774,16 @@ export async function fetchUserPreferencesFromBackend(userKey) {
 
 
 /**
- * [新] 呼叫後端發起授權書簽署流程 (委託人發起) (✅ V2: 呼叫 bookingApi 路由)
+ * [新] 呼叫後端發起授權書簽署流程 (委託人發起) (V2: 呼叫 bookingApi 路由)
  */
 export async function initiateAuthSigningProcess(payload) {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'initiateAuthSigningProcess',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, message }
+    // 修改：後端路由會直接回傳 { status, message }
     return result.data;
   } catch (error) {
     console.error("API initiateAuthSigningProcess 錯誤:", error);
@@ -4824,16 +4825,16 @@ export async function markAuthSessionComplete(payload) {
 
 
 /**
- * [API] 呼叫後端，執行上傳報告前的第一步驗證 (✅ V2: 呼叫 bookingApi 路由)
+ * [API] 呼叫後端，執行上傳報告前的第一步驗證 (V2: 呼叫 bookingApi 路由)
  */
 export const verifyUploadPrerequisites = async (payload) => {
   try {
-    // ✅ 修改：呼叫 bookingApiRouter
+    // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
         action: 'verifyUploadPrerequisites',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, ... }
+    // 修改：後端路由會直接回傳 { status, ... }
     return result.data;
   } catch (error) {
     console.error("API Error in verifyUploadPrerequisites:", error);
@@ -5048,18 +5049,18 @@ export const getDeveloperData = async (payload) => {
 
 /**
  * [後台用] 根據關鍵字模糊搜尋戶別資料
- * (✅ V2: 呼叫 adminBookingApi 路由)
+ * (V2: 呼叫 adminBookingApi 路由)
  * @param {object} payload - 包含 { projectId, keyword }
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const searchHouseholdsForAdmin = async (payload) => {
   try {
-    // ✅ 修改：呼叫 adminBookingApiRouter
+    // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
         action: 'searchHouseholdsForAdmin',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, data }
+    // 修改：後端路由會直接回傳 { status, data }
     return result.data;
   } catch (error) {
     console.error("API Error in searchHouseholdsForAdmin:", error);
@@ -5069,18 +5070,18 @@ export const searchHouseholdsForAdmin = async (payload) => {
 
 /**
  * [後台用] 獲取指定建案所有預約批次的詳細資訊
- * (✅ V2: 呼叫 adminBookingApi 路由)
+ * (V2: 呼叫 adminBookingApi 路由)
  * @param {object} payload - 包含 { projectId }
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getProjectBatchDetails = async (payload) => {
   try {
-    // ✅ 修改：呼叫 adminBookingApiRouter
+    // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
         action: 'getProjectBatchDetails',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 data 物件 (或拋錯)
+    // 修改：後端路由會直接回傳 data 物件 (或拋錯)
     return result.data;
   } catch (error) {
     console.error("API Error in getProjectBatchDetails:", error);
@@ -5090,18 +5091,18 @@ export const getProjectBatchDetails = async (payload) => {
 
 /**
  * [後台用] 獲取行事曆所需的所有日期及其分類
- * (✅ V2: 呼叫 inspectionCalendarApi 路由)
+ * (V2: 呼叫 inspectionCalendarApi 路由)
  * @param {object} payload - 包含 { projectId, unitId }
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getAdminBookingCalendarData = async (payload) => {
   try {
-    // ✅ 修改：呼叫 inspectionCalendarApiRouter
+    // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
         action: 'getAdminBookingCalendarData',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, data }
+    // 修改：後端路由會直接回傳 { status, data }
     return result.data;
   } catch (error) {
     console.error("API Error in getAdminBookingCalendarData:", error);
@@ -5111,18 +5112,18 @@ export const getAdminBookingCalendarData = async (payload) => {
 
 /**
  * [後台用] 獲取指定單一戶別的所有預約歷史紀錄
- * (✅ V2: 呼叫 adminBookingApi 路由)
+ * (V2: 呼叫 adminBookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId }
  * @returns {Promise<object>} - 後端回傳的結果
  */
 export const getAppointmentsForHousehold = async (payload) => {
   try {
-    // ✅ 修改：呼叫 adminBookingApiRouter
+    // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
         action: 'getAppointmentsForHousehold',
         data: payload
     });
-    // ✅ 修改：後端路由會直接回傳 { status, data }
+    // 修改：後端路由會直接回傳 { status, data }
     return result.data;
   } catch (error) {
     console.error("API Error in getAppointmentsForHousehold:", error);
@@ -5320,10 +5321,10 @@ export async function addBuildingToProject(projectId, buildingData) {
 
   console.log(`API: addBuildingToProject - Adding "${buildingData.buildingName}" to project ${projectId} using name as ID`);
   try {
-    // ✅ 使用 buildingData.buildingName 作為文件 ID
+    // 使用 buildingData.buildingName 作為文件 ID
     const buildingDocRef = doc(db, 'projects', projectId, 'buildings', buildingData.buildingName);
 
-    // ✅ 使用 setDoc 寫入，確保使用指定的 ID
+    // 使用 setDoc 寫入，確保使用指定的 ID
     await setDoc(buildingDocRef, {
       buildingName: buildingData.buildingName,
       createdAt: serverTimestamp() // 使用您 api.js 中已 import 的 serverTimestamp
@@ -5341,7 +5342,7 @@ export async function addBuildingToProject(projectId, buildingData) {
 // --- 結束 驗屋系統設定 API ---
 
 /**
- * ✅ [API] 讀取指定建案和棟別下的所有戶別 (修正版：回傳 id 和 unitId 欄位)
+ * [API] 讀取指定建案和棟別下的所有戶別 (修正版：回傳 id 和 unitId 欄位)
  * @param {string} projectId - 建案 ID
  * @param {string} buildingId - 棟別 ID (名稱)
  * @returns {Promise<Array<{id: string, unitId: string}>>} - 包含文件ID和unitId欄位值的列表
@@ -5351,14 +5352,14 @@ export async function fetchUnitsForBuilding(projectId, buildingId) {
   const unitsColRef = collection(db, 'projects', projectId, 'buildings', buildingId, 'unitId');
   const snapshot = await getDocs(unitsColRef);
   if (snapshot.empty) return [];
-  // ✅ 修改：同時回傳文件 ID (doc.id) 和文件內的 unitId 欄位值 (doc.data().unitId)
+  // 修改：同時回傳文件 ID (doc.id) 和文件內的 unitId 欄位值 (doc.data().unitId)
   return snapshot.docs.map(doc => ({
     id: doc.id, // 文件 ID (例如 'A1-02')
     unitId: doc.data().unitId // 欄位值 (例如 'A1-0299')
   }));
 }
 
-// --- ✅ 新增 addUnitToBuilding ---
+// --- 新增 addUnitToBuilding ---
 /**
  * 在指定建案和棟別下新增一個戶別
  * @param {string} projectId - 建案 ID
@@ -5382,7 +5383,7 @@ export async function addUnitToBuilding(projectId, buildingId, unitId) {
 
 
 /**
- * ✅ [API] 更新棟別名稱
+ * [API] 更新棟別名稱
  * @param {string} projectId - 建案 ID
  * @param {string} buildingId - 棟別文件 ID (即原始棟別名稱)
  * @param {string} newBuildingName - 新的棟別名稱
@@ -5408,7 +5409,7 @@ export async function updateBuildingInProject(projectId, buildingId, newBuilding
 }
 
 /**
- * ✅ [API] 刪除棟別 (注意：目前不包含其下的戶別)
+ * [API] 刪除棟別 (注意：目前不包含其下的戶別)
  * @param {string} projectId - 建案 ID
  * @param {string} buildingId - 棟別文件 ID (即棟別名稱)
  * @returns {Promise<void>}
@@ -5429,7 +5430,7 @@ export async function deleteBuildingFromProject(projectId, buildingId) {
 }
 
 /**
- * ✅ [API] 更新戶別名稱/編號
+ * [API] 更新戶別名稱/編號
  * @param {string} projectId - 建案 ID
  * @param {string} buildingId - 棟別 ID (名稱)
  * @param {string} unitId - 戶別文件 ID (即原始戶別名稱/編號)
@@ -5456,7 +5457,7 @@ export async function updateUnitInBuilding(projectId, buildingId, unitId, newUni
 }
 
 /**
- * ✅ [API] 刪除戶別
+ * [API] 刪除戶別
  * @param {string} projectId - 建案 ID
  * @param {string} buildingId - 棟別 ID (名稱)
  * @param {string} unitId - 戶別文件 ID (即戶別名稱/編號)
@@ -5609,11 +5610,11 @@ export const updateProjectIcon = async (projectId, iconUrl, adminKey) => {
 
 
 // =================================================================
-// / ✅ 新增：驗屋紀錄 API
+// / 新增：驗屋紀錄 API
 // =================================================================
 
 /**
- * ✅ 新增一筆驗屋紀錄
+ * 新增一筆驗屋紀錄
  * @param {object} payload - 包含驗屋紀錄所有欄位的物件
  * @returns {Promise<object>} - 後端回傳的結果 { status, id }
  */
@@ -5630,7 +5631,7 @@ export async function addInspectionRecordFB(payload) { // 命名為 addInspectio
 }
 
 /**
- * ✅ 獲取指定戶別的所有驗屋紀錄
+ * 獲取指定戶別的所有驗屋紀錄
  * @param {string} projectId - 建案 ID
  * @param {string} unitId - 戶別 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
@@ -5649,7 +5650,7 @@ export async function getInspectionRecordsFB(projectId, unitId) { // 命名為 g
 
 // ✓ START: 請將以下函式新增到您的 api.js 中
 /**
- * ✅ 獲取指定建案 (projectId) 底下所有戶別的驗屋紀錄
+ * 獲取指定建案 (projectId) 底下所有戶別的驗屋紀錄
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
  */
@@ -5676,7 +5677,7 @@ export async function getInspectionRecordsForProjectFB(projectId) {
 }
 
 /**
- * ✅ 獲取指定建案的棟別與戶別結構
+ * 獲取指定建案的棟別與戶別結構
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: object }
  */
@@ -5809,7 +5810,7 @@ export const deleteInspectionRecordFB = async (recordId) => {
 
 
 /**
- * ✅ 獲取指定戶別的所有 *已刪除* 驗屋紀錄
+ * 獲取指定戶別的所有 *已刪除* 驗屋紀錄
  * @param {string} projectId - 建案 ID
  * @param {string} unitId - 戶別 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
@@ -5830,7 +5831,7 @@ export async function getDeletedInspectionRecordsFB(projectId, unitId) {
 }
 
 /**
- * ✅ 還原一筆已刪除的驗屋紀錄
+ * 還原一筆已刪除的驗屋紀錄
  * @param {string} recordId - 要還原的紀錄文件 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status }
  */
@@ -5854,7 +5855,7 @@ export async function restoreInspectionRecordFB(recordId) {
 }
 
 /**
- * ✅ [新增] 獲取指定建案 (projectId) 底下所有 *已刪除* 的驗屋紀錄
+ * [新增] 獲取指定建案 (projectId) 底下所有 *已刪除* 的驗屋紀錄
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
  */
@@ -5879,15 +5880,15 @@ export async function getDeletedInspectionRecordsForProjectFB(projectId) {
 
 
 // =================================================================
-// / ✅ 結束：驗屋紀錄 API
+// / 結束：驗屋紀錄 API
 // =================================================================
 
 // =================================================================
-// / ✅ 新增：驗屋選項與照片上傳 API
+// / 新增：驗屋選項與照片上傳 API
 // =================================================================
 
 /**
- * ✅ 獲取指定建案的所有驗屋選項 (供新增/編輯畫面使用)
+ * 獲取指定建案的所有驗屋選項 (供新增/編輯畫面使用)
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: object }
  */
@@ -5903,7 +5904,7 @@ export async function getInspectionOptionsForProjectFB(projectId) {
 }
 
 /**
- * ✅ 上傳單張驗屋照片
+ * 上傳單張驗屋照片
  * @param {string} projectId
  * @param {string} unitId
  * @param {File} fileObject - 經過 PhotoEditor 處理後的 File 物件
@@ -5936,7 +5937,7 @@ export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
 }
 
 // =================================================================
-// / ✅ 結束：驗屋選項與照片上傳 API
+// / 結束：驗屋選項與照片上傳 API
 // =================================================================
 
 
@@ -5946,7 +5947,7 @@ export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
 //客戶驗屋報告相關 API
 
 /**
- * ✅ [API] 呼叫後端，獲取指定戶別最新的有效預約資料中的買方資訊
+ * [API] 呼叫後端，獲取指定戶別最新的有效預約資料中的買方資訊
  * @param {object} payload - 包含 { projectId, unitId }
  * @returns {Promise<object>} - 後端回傳的結果 { status, data: { bookerName, bookerEmail, bookerPhone } } 或 { status: 'error', message }
  */
@@ -5970,7 +5971,7 @@ export const getCustomerAppointmentDetails = async (payload) => {
 };
 
 /**
- * ✅ [API] 呼叫後端，儲存客戶的驗屋報告確認簽名
+ * [API] 呼叫後端，儲存客戶的驗屋報告確認簽名
  * @param {object} payload - 包含 { projectId, unitId, confirmationBatchId, buyerInfo, signatureImageBase64 }
  * @returns {Promise<object>} - 後端回傳的結果 { status, confirmationId } 或 { status: 'error', message }
  */
@@ -5996,7 +5997,7 @@ export const saveCustomerConfirmation = async (payload) => {
 
 // ✓ START: 新增 - 呼叫後端產生分享連結的 API
 /**
- * ✅ [API] 呼叫後端，產生一個有時效性的客戶驗屋報告分享連結
+ * [API] 呼叫後端，產生一個有時效性的客戶驗屋報告分享連結
  * @param {object} payload - 包含 { projectId, unitId }
  * @returns {Promise<object>} - { status, shareUrl } 或 { status: 'error', message }
  */
@@ -6017,7 +6018,7 @@ export const generateShareableUrl = async (payload) => {
 
 // ✓ START: 新增 - 呼叫後端驗證分享連結 Token 的 API
 /**
- * ✅ [API] 呼叫後端，驗證客戶驗屋報告的分享 Token
+ * [API] 呼叫後端，驗證客戶驗屋報告的分享 Token
  * @param {object} payload - 包含 { token }
  * @returns {Promise<object>} - { status, data: { projectId, unitId } } 或 { status: 'error', message }
  */
@@ -6037,7 +6038,7 @@ export const validateReportTokenAPI = async (payload) => {
 
 
 /**
- * ✅ [API] 呼叫後端，獲取指定戶別已確認簽名的驗屋批次列表
+ * [API] 呼叫後端，獲取指定戶別已確認簽名的驗屋批次列表
  * @param {object} payload - 包含 { projectId, unitId }
  * @returns {Promise<object>} - { status, data: Array } 或 { status: 'error', message }
  */
@@ -6057,7 +6058,7 @@ export const getConfirmedInspectionBatches = async (payload) => {
 
 
 /**
- * ✅ [API] 呼叫後端，觸發產製驗屋報告 PDF 的背景任務
+ * [API] 呼叫後端，觸發產製驗屋報告 PDF 的背景任務
  * @param {object} payload - 包含 { projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail }
  * @returns {Promise<object>} - { status: 'processing', message: '...' } 或 { status: 'error', message }
  */
@@ -6114,16 +6115,16 @@ export const fetchPotentialPersonnelAPI = async (projectId) => {
 
     const personnel = [];
     snapshot.forEach(doc => {
-      // ✅ 直接從文件頂層讀取 userName
+      // 直接從文件頂層讀取 userName
       const docData = doc.data();
-      const userName = docData.userName; // <--- ✅ 修改點：從頂層讀取
+      const userName = docData.userName; // <--- 修改點：從頂層讀取
       const perms = docData.permissions || {};
       const projectPerm = perms[projectId]; // ✓ 檢查 projectId 是否存在於 permissions Map 中
 
       console.log(`[API fetchPotentialPersonnelAPI] Processing doc ${doc.id}, userName: ${userName}`);
       console.log(`[API fetchPotentialPersonnelAPI] ProjectPerm for ${projectId}:`, projectPerm);
 
-      // ✅ 條件修改：檢查 projectPerm 是否存在，userName 是否存在，
+      // 條件修改：檢查 projectPerm 是否存在，userName 是否存在，
       //   以及 projectPerm.systems 是否包含所需權限
       if (projectPerm && userName && Array.isArray(projectPerm.systems)) {
          console.log(`[API fetchPotentialPersonnelAPI] Checking systems for ${userName}:`, projectPerm.systems);
@@ -6209,7 +6210,7 @@ export const saveStandbyConfigAPI = async (projectId, visiblePersonnelIds, color
 export const updateStandbyStatusAPI = async (projectId, personnelId, updates) => {
   try {
     const updateFunction = httpsCallable(functions, 'updateStandbyStatus');
-    // ✅ 將 rtdbServerTimestamp() 轉換為字串 'serverTimestamp' 傳給後端
+    // 將 rtdbServerTimestamp() 轉換為字串 'serverTimestamp' 傳給後端
     const finalUpdates = { ...updates };
     if (finalUpdates.currentStatusStartTime === rtdbServerTimestamp()) {
         finalUpdates.currentStatusStartTime = 'serverTimestamp';
@@ -6273,7 +6274,7 @@ export const updateStandbyBatchAPI = async (projectId, updates) => {
  * @param {object} payload - 包含 { projectId, timestampStr, operatorName, imageData }
  * @returns {Promise<object>} - 後端回傳的結果 { status, message?, imageUrl? } 或錯誤
  */
-export const saveStandbyScreenshotAPI = async (payload) => { // ✅ 新增函數
+export const saveStandbyScreenshotAPI = async (payload) => { // 新增函數
   try {
     const saveFunction = httpsCallable(functions, 'saveStandbyScreenshot');
     const result = await saveFunction(payload);
@@ -6291,7 +6292,7 @@ export const saveStandbyScreenshotAPI = async (payload) => { // ✅ 新增函數
  * @param {string} projectId - 專案 ID
  * @returns {Promise<Array<object>>} - 截圖物件陣列
  */
-export const fetchStandbyScreenshotsAPI = async (projectId) => { // ✅ 新增函數
+export const fetchStandbyScreenshotsAPI = async (projectId) => { // 新增函數
   try {
     const fetchFunction = httpsCallable(functions, 'fetchStandbyScreenshots');
     const result = await fetchFunction({ projectId });
@@ -6408,9 +6409,9 @@ export async function deleteFloorPlanAPI(floorPlanId) { // 稍微改名避免衝
 export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) { 
   const functionName = `saveSpotLayoutsAPI (via CF)`;
   
-  // ✅ START: 請加入這個 console.log
+  // START: 請加入這個 console.log
   console.log(`[API] 準備呼叫 Cloud Function 'saveSpotLayouts'，Payload 內容：`, JSON.stringify({ floorPlanId, layouts, projectId }, null, 2));
-  // ✅ END: 加入 console.log
+  // END: 加入 console.log
 
   try {
     const saveFunction = httpsCallable(functions, 'saveSpotLayouts'); // ✓ 呼叫後端函式
