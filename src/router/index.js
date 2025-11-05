@@ -472,7 +472,7 @@ router.beforeEach(async (to, from, next) => {
   // --- 1. 初始進入 Log ---
   const isMobile = /Mobi|Android/i.test(navigator.userAgent); // 簡單判斷是否為手機
   const logPrefix = `[Router Guard Debug - ${isMobile ? 'Mobile' : 'Desktop'}]`;
-  console.log(`${logPrefix} Entry Point. To: ${to.fullPath}, From: ${from.name}, Query: ${JSON.stringify(to.query)}`);
+  //console.log(`${logPrefix} Entry Point. To: ${to.fullPath}, From: ${from.name}, Query: ${JSON.stringify(to.query)}`);
 
   const userStore = useUserStore();
   const projectStore = useProjectStore();
@@ -480,50 +480,50 @@ router.beforeEach(async (to, from, next) => {
 
   // --- 2. LIFF 路徑判斷 Log ---
   const liffPath = to.query.liff_path;
-  console.log(`${logPrefix} Checking LIFF Entry. liffPath: ${liffPath}, from.name: ${from.name}`);
+  //console.log(`${logPrefix} Checking LIFF Entry. liffPath: ${liffPath}, from.name: ${from.name}`);
   const isLiffEntry = liffPath && from.name === undefined; // <-- 檢查 from.name 是否為 undefined
-  console.log(`${logPrefix} isLiffEntry evaluated to: ${isLiffEntry}`);
+  //console.log(`${logPrefix} isLiffEntry evaluated to: ${isLiffEntry}`);
 
   if (isLiffEntry) {
-    console.log(`${logPrefix} LIFF Entry Detected.`);
+    //console.log(`${logPrefix} LIFF Entry Detected.`);
     const targetPath = liffPath.startsWith('/') ? liffPath : `/${liffPath}`;
-    console.log(`${logPrefix} --> Redirecting via next('${targetPath}')`); // <-- Log LIFF 重導向目標
+    //console.log(`${logPrefix} --> Redirecting via next('${targetPath}')`); // <-- Log LIFF 重導向目標
     return next(targetPath); // 執行重導向
   }
 
   // --- 3. 檢查 requiresAuth Log ---
   const requiresAuth = to.meta.requiresAuth; // <-- 取得目標路由的 requiresAuth 值
-  console.log(`${logPrefix} Auth Check. Path: ${to.fullPath}, requiresAuth: ${requiresAuth}`); // <-- Log requiresAuth 的值
+  //console.log(`${logPrefix} Auth Check. Path: ${to.fullPath}, requiresAuth: ${requiresAuth}`); // <-- Log requiresAuth 的值
 
   // --- 不需要驗證的公開路由 ---
   if (!requiresAuth) {
-    console.log(`${logPrefix} Public route detected.`);
+    //console.log(`${logPrefix} Public route detected.`);
     // 如果是公開路由，但使用者已登入且目標是 Login 頁，導向 Home
     if (isLoggedIn && to.name === 'Login') {
-      console.log(`${logPrefix} Already logged in, redirecting from Login to Home. Calling next({ name: 'Home' })`);
+      //console.log(`${logPrefix} Already logged in, redirecting from Login to Home. Calling next({ name: 'Home' })`);
       return next({ name: 'Home' });
     }
     // 允許訪問公開路由
-    console.log(`${logPrefix} --> Allowing public route via next(). Target: ${to.fullPath}`); // <-- Log 允許公開路由
+    //console.log(`${logPrefix} --> Allowing public route via next(). Target: ${to.fullPath}`); // <-- Log 允許公開路由
     return next();
   }
 
   // --- 需要驗證的路由 ---
-  console.log(`${logPrefix} Protected route detected.`);
+  //console.log(`${logPrefix} Protected route detected.`);
   // 如果需要驗證但使用者未登入 (主系統)
   if (!isLoggedIn) {
      const redirectTarget = { name: 'Login', query: { redirect: to.fullPath } };
-     console.log(`${logPrefix} Auth Required but NOT Logged In (userStore.isLoggedIn is false).`);
-     console.log(`${logPrefix} --> Redirecting to Login via next(${JSON.stringify(redirectTarget)})`); // <-- Log 重導向目標 (Login)
+     //console.log(`${logPrefix} Auth Required but NOT Logged In (userStore.isLoggedIn is false).`);
+     //console.log(`${logPrefix} --> Redirecting to Login via next(${JSON.stringify(redirectTarget)})`); // <-- Log 重導向目標 (Login)
      return next(redirectTarget);
   }
 
   // --- 使用者已登入 (主系統)，執行後續權限檢查 ---
-  console.log(`${logPrefix} User Logged In (userStore.isLoggedIn is true). Proceeding with permission checks.`);
+  //console.log(`${logPrefix} User Logged In (userStore.isLoggedIn is true). Proceeding with permission checks.`);
 
   // --- 載入建案資料 (如果需要) ---
   if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
-    console.log(`${logPrefix} Fetching projects...`);
+    //console.log(`${logPrefix} Fetching projects...`);
     await projectStore.fetchProjects();
   }
 
@@ -595,7 +595,7 @@ router.beforeEach(async (to, from, next) => {
               // **** 👇👇👇 修改點開始 👇👇👇 ****
               // 1. 從 projectStore 透過 ID ('fuyu141') 查找完整的建案名稱
               const fullProjectName = projectStore.idToNameMap[projectNameParam];
-              console.log(`${logPrefix} ProjectNameParam ('${projectNameParam}') resolved to FullProjectName: '${fullProjectName}'`);
+              //console.log(`${logPrefix} ProjectNameParam ('${projectNameParam}') resolved to FullProjectName: '${fullProjectName}'`);
 
               // 2. 檢查是否成功找到建案名稱
               if (!fullProjectName) {
@@ -624,8 +624,8 @@ router.beforeEach(async (to, from, next) => {
       }
   }
 
-console.log(`${logPrefix} All permission checks passed.`);
-  console.log(`${logPrefix} --> Allowing protected route via next(). Target: ${to.fullPath}`); // <-- Log 允許受保護路由
+//console.log(`${logPrefix} All permission checks passed.`);
+  //console.log(`${logPrefix} --> Allowing protected route via next(). Target: ${to.fullPath}`); // <-- Log 允許受保護路由
   return next();
 });
 

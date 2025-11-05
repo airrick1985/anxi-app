@@ -1,8 +1,7 @@
 <template>
 <v-container fluid>
 <v-card class="pa-4">
-<v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
- 
+<v-card-title class="d-flex align-center justify-space-between text-h6 text-primary" >
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
      <v-tooltip text="新增資料欄位" location="bottom">

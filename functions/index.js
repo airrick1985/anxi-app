@@ -14525,7 +14525,7 @@ async function _handleUpdateAppointmentInspectors(data) {
         // 將前端傳來的陣列轉換為逗號分隔的字串，以便儲存
         const inspectorsString = Array.isArray(inspectors) ? inspectors.join(',') : '';
         
-        await updateDoc(appointmentRef, {
+        await appointmentRef.update({
             inspectors: inspectorsString
         });
         

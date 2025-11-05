@@ -1,81 +1,7 @@
 <template>
   <v-container fluid>
     <v-card class="pa-4">
-      <v-card-title class="d-flex align-center justify-space-between text-h5 text-primary mb-4">
-        <span>{{ pageTitle }}</span>
 
-        <div id="action-buttons">
-          <div class="d-none d-md-flex ga-2 align-center">
-      
-
-
-            <v-tooltip text="重新整理資料" location="bottom">
-              <template v-slot:activator="{ props }">
-                <v-btn v-bind="props" icon="mdi-refresh" variant="text" @click="handleRefresh" :loading="isLoading"></v-btn>
-              </template>
-            </v-tooltip>
-
-            <v-divider vertical class="mx-2"></v-divider>
-
-         
-            
-
-         <v-tooltip text="新增預約" location="bottom">
-              <template v-slot:activator="{ props }">
-                <v-btn 
-                  v-if="canEdit" 
-                  v-bind="props" 
-                  icon="mdi-calendar-plus" 
-                  variant="text" 
-                  color="indigo" 
-                  @click="isAdminAddDialogVisible = true"
-                ></v-btn>
-              </template>
-            </v-tooltip>
-
-            <v-tooltip text="下載時間表" location="bottom">
-              <template v-slot:activator="{ props: tooltipProps }">
-                <v-menu location="bottom end">
-                  <template v-slot:activator="{ props: menuProps }">
-                    <v-btn 
-                      v-bind="{ ...tooltipProps, ...menuProps }" 
-                      icon="mdi-download" 
-                      variant="text" 
-                      color="primary"
-                      :loading="isDownloadingPdf || isDownloadingExcel"
-                    ></v-btn>
-                  </template>
-                  
-                  <v-list density="compact">
-                    <v-list-item
-                      prepend-icon="mdi-image-area"
-                      title="下載 (PNG)"
-                      @click="handleDownloadPng"
-                      :disabled="isDownloadingPdf || isDownloadingExcel"
-                    >
-                      <template v-slot:append>
-                        <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
-                      </template>
-                    </v-list-item>
-                    <v-list-item
-                      prepend-icon="mdi-microsoft-excel"
-                      title="下載 (Excel)"
-                      @click="handleDownloadExcel"
-                      :disabled="isDownloadingPdf || isDownloadingExcel"
-                    >
-                      <template v-slot:append>
-                        <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </v-menu>
-              </template>
-            </v-tooltip>
-          </div>
-
-
-        </div>
-      </v-card-title>
 
        <v-overlay
         v-model="isLoading"
@@ -164,8 +90,9 @@
 
 
       <div v-if="!isLoading && !error">
-        <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
-   <v-col cols="12" sm="8" md="4">
+       <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
+  
+  <v-col cols="12" sm="8" md="4">
     <VueDatePicker
       v-model="dateRange"
       range
@@ -179,6 +106,7 @@
       placeholder="請選擇日期區間"
     ></VueDatePicker>
   </v-col>
+  
   <v-col cols="12" sm="4" md="3">
     <v-autocomplete
       v-model="selectedSearchResult"
@@ -197,65 +125,136 @@
       no-data-text="沒有符合的預約紀錄"
       return-object
       @update:model-value="handleSearchResultSelection"
-        no-filter 
+      no-filter 
     >
       <template v-slot:item="{ props, item }">
-    <v-list-item v-bind="props" :title="null" lines="two" class="py-2">
-      <v-list-item-title class="d-flex align-center">
-        <v-chip
-          :color="getStatusColor(item.raw.status)"
-          size="x-small"
-          class="mr-2"
-          label
-          variant="flat"
-        >
-          {{ item.raw.status }}
-        </v-chip>
-        <span class="font-weight-bold text-primary">{{ item.raw.unitId }}</span>
-        <span class="mx-2">-</span>
-        <span>{{ item.raw.bookerName }}</span>
-      </v-list-item-title>
-
-      <v-list-item-subtitle class="mt-1 text-medium-emphasis">
-        <span>{{ item.raw.bookingType }}</span>
-        <span class="mx-2">·</span>
-        <v-icon size="x-small" class="mr-1">mdi-calendar-blank</v-icon>
-        <span>{{ item.raw.date }}</span>
-        <v-icon size="x-small" class="ml-3 mr-1">mdi-clock-outline</v-icon>
-        <span>{{ item.raw.time }}</span>
-      </v-list-item-subtitle>
-    </v-list-item>
+        <v-list-item v-bind="props" :title="null" lines="two" class="py-2">
+          <v-list-item-title class="d-flex align-center">
+            <v-chip
+              :color="getStatusColor(item.raw.status)"
+              size="x-small"
+              class="mr-2"
+              label
+              variant="flat"
+            >
+              {{ item.raw.status }}
+            </v-chip>
+            <span class="font-weight-bold text-primary">{{ item.raw.unitId }}</span>
+            <span class="mx-2">-</span>
+            <span>{{ item.raw.bookerName }}</span>
+          </v-list-item-title>
+          <v-list-item-subtitle class="mt-1 text-medium-emphasis">
+            <span>{{ item.raw.bookingType }}</span>
+            <span class="mx-2">·</span>
+            <v-icon size="x-small" class="mr-1">mdi-calendar-blank</v-icon>
+            <span>{{ item.raw.date }}</span>
+            <v-icon size="x-small" class="ml-3 mr-1">mdi-clock-outline</v-icon>
+            <span>{{ item.raw.time }}</span>
+          </v-list-item-subtitle>
+        </v-list-item>
       </template>
     </v-autocomplete>
   </v-col>
 
-  <v-col cols="12" sm="6" md="auto" class="pl-md-5">
-      <div class="d-flex align-center">
-          <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">狀態:</span>
-          <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
-          <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
-          <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="blue-grey"></v-checkbox>
-      </div>
-  </v-col>
-  <v-col cols="12" sm="6" md="auto" class="ml-md-6">
-    <div class="d-flex align-center">
-      <span class="text-subtitle-2 font-weight-bold mr-2 d-none d-md-inline">項目:</span>
-      <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="teal-darken-1"></v-checkbox>
-    </div>
-  </v-col>
-   <v-col cols="12" class="mt-2 pt-0">
-     <v-divider></v-divider>
-    <div id="display-options-panel" class="d-flex align-center flex-wrap">
-    <span class="text-subtitle-2 font-weight-bold mr-2 mt-2 d-none d-md-inline">標題顯示:</span>
-      <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="indigo" class="mt-2"></v-checkbox>
-    </div>
+  <v-col cols="auto" class="flex-grow-1"></v-col> 
+
+  <v-col cols="12" md="auto">
+    
+    <v-tooltip text="重新整理資料" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn v-bind="props" icon="mdi-refresh" variant="text" @click="handleRefresh" :loading="isLoading" color="black"></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip text="新增預約" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn 
+          v-if="canEdit" 
+          v-bind="props" 
+          icon="mdi-calendar-plus" 
+          variant="text" 
+          color="black" 
+          @click="isAdminAddDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip text="下載時間表" location="bottom">
+      <template v-slot:activator="{ props: tooltipProps }">
+        <v-menu location="bottom end">
+          <template v-slot:activator="{ props: menuProps }">
+            <v-btn 
+              v-bind="{ ...tooltipProps, ...menuProps }" 
+              icon="mdi-download" 
+              variant="text" 
+              color="black"
+              :loading="isDownloadingPdf || isDownloadingExcel"
+            ></v-btn>
+          </template>
+          
+          <v-list density="compact">
+            <v-list-item
+              prepend-icon="mdi-image-area"
+              title="下載 (PNG)"
+              @click="handleDownloadPng"
+              :disabled="isDownloadingPdf || isDownloadingExcel"
+            >
+              <template v-slot:append>
+                <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+              </template>
+            </v-list-item>
+            <v-list-item
+              prepend-icon="mdi-microsoft-excel"
+              title="下載 (Excel)"
+              @click="handleDownloadExcel"
+              :disabled="isDownloadingPdf || isDownloadingExcel"
+            >
+              <template v-slot:append>
+                <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </template>
+    </v-tooltip>
+
+    
+
+    <v-tooltip text="統計摘要" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-chart-bar"
+          variant="text"
+          color="black"
+          @click="isStatisticsDialogVisible = true"
+          :disabled="statisticsMatrix.rows.length === 0"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip text="篩選設定" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-cog"
+          variant="text"
+          color="black"
+          @click="isFilterDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+
   </v-col>
 </v-row>
+
+
         
         <div id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
             <h3 class="text-h6 mb-2">
-              　 {{ projectName }} - 驗屋預約管理: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
+              　 {{ projectName }} - 時間表: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
             </h3>
             <v-table class="custom-calendar-table">
               <thead>
@@ -371,6 +370,153 @@
       @booking-success="handleBookingSuccess"
     />
 
+    <v-dialog v-model="isFilterDialogVisible" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-grey-lighten-3">
+          <v-icon start>mdi-cog</v-icon>
+          篩選設定
+        </v-card-title>
+        <v-divider></v-divider>
+        
+        <v-card-text class="pa-4">
+          <div class="mb-3">
+            <v-label class="text-subtitle-1 font-weight-bold mb-2">狀態</v-label>
+            <div class="d-flex align-center flex-wrap ga-2">
+              <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="black"></v-checkbox>
+              <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="black"></v-checkbox>
+              <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="black"></v-checkbox>
+            </div>
+          </div>
+          <v-divider class="my-3"></v-divider>
+          
+          <div class="mb-3">
+            <v-label class="text-subtitle-1 font-weight-bold mb-2">項目</v-label>
+            <div class="d-flex align-center flex-wrap ga-2">
+              <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
+            </div>
+          </div>
+          <v-divider class="my-3"></v-divider>
+
+          <div>
+            <v-label class="text-subtitle-1 font-weight-bold mb-2">標題顯示</v-label>
+            <div class="d-flex align-center flex-wrap ga-2">
+              <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="black"></v-checkbox>
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" @click="isFilterDialogVisible = false">
+            完成
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="isStatisticsDialogVisible" max-width="700px">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
+          <v-icon start>mdi-chart-bar</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">
+            {{ projectName }} {{ formattedDateRangeTitle }} 預約統計
+          </span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="isStatisticsDialogVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+
+        <v-card-text class="pa-4">
+          <v-alert
+            v-if="statisticsMatrix.rows.length === 0"
+            type="info"
+            variant="tonal"
+            text="目前篩選條件下無任何預約資料可供統計。"
+          ></v-alert>
+
+          <v-table v-else density="compact" class="border rounded-lg">
+            <thead>
+              <tr class="bg-grey-lighten-4">
+                <th class="text-left font-weight-bold" style="width: 150px;">
+                  <v-checkbox
+                    v-model="selectAllStatisticsTypes"
+                    label="項目"
+                    density="compact"
+                    hide-details
+                    class="font-weight-bold"
+                  ></v-checkbox>
+                </th>
+                
+                <th v-for="header in statisticsMatrix.headers" :key="header" class="text-center font-weight-bold">
+                  
+                  <v-checkbox
+                    v-if="header !== '總計'"
+                    v-model="selectedStatisticsStatuses"
+                    :value="header"
+                    :label="header"
+                    density="compact"
+                    hide-details
+                    class="font-weight-bold justify-center"
+                  ></v-checkbox>
+                  
+                  <span v-else>{{ header }}</span>
+                </th>
+              </tr>
+            </thead>
+            
+            <tbody>
+              <tr v-for="row in statisticsMatrix.rows" :key="row.type">
+                <td class="font-weight-medium">
+                  <v-checkbox
+                    v-model="selectedStatisticsTypes"
+                    :label="row.type"
+                    :value="row.type"
+                    density="compact"
+                    hide-details
+                    class="d-inline-flex"
+                  ></v-checkbox>
+                </td>
+                <td v-for="header in statisticsMatrix.headers" :key="header" class="text-center">
+                  <span 
+                    v-if="header === '總計'" 
+                    :class="selectedStatisticsTypes.includes(row.type) ? 'font-weight-bold text-blue-grey-darken-2' : 'text-grey'"
+                  >
+                    {{ row.counts.rowTotal }}
+                  </span>
+                  <span 
+                    v-else 
+                    :class="!selectedStatisticsTypes.includes(row.type) || !selectedStatisticsStatuses.includes(header) ? 'text-grey' : ''"
+                  >
+                    {{ row.counts[header] || 0 }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot class="bg-grey-lighten-3">
+              <tr class="font-weight-bold">
+                <td class="text-left">總計</td>
+                <td v-for="header in statisticsMatrix.headers" :key="header" class="text-center">
+                  <strong v-if="header === '總計'" class="text-deep-orange-darken-3">
+                    {{ statisticsMatrix.totals.grandTotal }}
+                  </strong>
+                  <span 
+                    v-else 
+                    :class="!selectedStatisticsStatuses.includes(header) ? 'text-grey' : ''"
+                  >
+                    {{ statisticsMatrix.totals[header] || 0 }}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          </v-table>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+    
+
+
+
      <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
       <v-card v-if="eventToCancel">
         <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4" v-draggable-dialog>
@@ -429,19 +575,19 @@
     <div class="pa-4" style="overflow-y: auto">
       <div>
         <v-label class="mb-2">預約狀態</v-label>
-        <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="primary"></v-checkbox>
-        <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="error"></v-checkbox>
-        <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="blue-grey"></v-checkbox>
+        <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="black"></v-checkbox>
+        <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="black"></v-checkbox>
+        <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="black"></v-checkbox>
       </div>
       <v-divider class="my-3"></v-divider>
       <div>
         <v-label class="mb-2">預約項目</v-label>
-        <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="teal-darken-1"></v-checkbox>
+        <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
       </div>
       <v-divider class="my-3"></v-divider>
       <div>
         <v-label class="mb-2">預約記錄標籤</v-label>
-        <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="indigo"></v-checkbox>
+        <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="black"></v-checkbox>
       </div>
     </div>
     <v-spacer></v-spacer>
@@ -536,7 +682,7 @@
   >
     <v-btn @click="handleRefresh" :loading="isLoading">
       <v-icon>mdi-refresh</v-icon>
-      <span>重新整理</span>
+      <span>重整</span>
     </v-btn>
 
     <v-btn @click="isFilterDrawerVisible = true">
@@ -545,8 +691,17 @@
     </v-btn>
 
     <v-btn v-if="canEdit" @click="isAdminAddDialogVisible = true"> <v-icon>mdi-calendar-plus</v-icon>
-      <span>新增預約</span>
+      <span>新增</span>
     </v-btn>
+
+    <v-btn
+      @click="isStatisticsDialogVisible = true"
+      :disabled="statisticsMatrix.rows.length === 0"
+    >
+      <v-icon>mdi-chart-bar</v-icon>
+      <span>統計</span>
+    </v-btn>
+
 
     <v-menu location="top">
       <template v-slot:activator="{ props }">
@@ -609,24 +764,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/firebase';
 
-// ✅ 3. 移除舊的 API 引用
-/*
-import { 
-  fetchCalendarData,
-  // fetchBookingOptions, // <--- 由 Store 處理
-  updateAppointment,
-  cancelAppointment,
-  addAppointmentAdmin,
-  // getAllBookingRules, // <--- 由 Store 處理
-  searchAppointmentsAndHouseholds,
-  updateAppointmentInspectors,
-  // fetchAllHouseholdsForProject, // <--- 由 Store 處理
-  getSlotsForAdmin, 
-  // fetchProjectConfig, // <--- 由 Store 處理
-  // fetchAppointmentDateRange, // <--- 由 Store 處理
-  getAdminBookingCalendarData,
-} from '@/api';
-*/
+
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -715,6 +853,10 @@ const calendarData = ref([]); // ★ 2. 新增 ref 來儲存日期標記
 const bookingHistory = ref([]); // ★ 3. 新增 ref 來儲存歷史紀錄
 const isDownloadingPdf = ref(false);
 const isDownloadingExcel = ref(false);
+const isFilterDialogVisible = ref(false);
+const isStatisticsDialogVisible = ref(false); // ✅ 新增這一行
+const selectedStatisticsTypes = ref([]); // 儲存 Dialog 中被勾選的項目 (e.g., ['初驗', '複驗'])
+const selectedStatisticsStatuses = ref([]); // 儲存 Dialog 中被勾選的狀態 (e.g., ['預約中', '已完成'])
 
 // 驗屋預約管理 --- 搜尋狀態管理 ---
 const searchQuery = ref('');
@@ -896,6 +1038,23 @@ const convertFirestoreTimestampsToDates = (obj) => {
   return newObj;
 };
 
+// ✅ 新增：用於 Dialog 標題的日期區間格式化
+const formattedDateRangeTitle = computed(() => {
+  // 優先使用 dateRange (篩選器) 的值
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const start = format(dateRange.value[0], 'MM/dd');
+    const end = format(dateRange.value[1], 'MM/dd');
+    return `${start} - ${end}`;
+  }
+  // 如果篩選器為空，則使用總表的起訖日期作為備案
+  if (minSelectableDate.value && maxSelectableDate.value) {
+    const start = format(new Date(minSelectableDate.value), 'MM/dd');
+    const end = format(new Date(maxSelectableDate.value), 'MM/dd');
+    return `${start} - ${end}`;
+  }
+  return '日期區間'; // 最終備案
+});
+
 // ✅ 5. 修改 processAppointments，現在它負責合併資料
 function processAppointments(rawAppointments) {
   if (!Array.isArray(rawAppointments)) return [];
@@ -1027,6 +1186,86 @@ const inspectionApi = (action, data) => {
   const callable = httpsCallable(functions, 'inspectionCalendarApi');
   return callable({ action, data });
 };
+
+// ✅ START: 替換 statisticsMatrix computed 屬性
+const statisticsMatrix = computed(() => {
+  // 1. 取得已經被日期、狀態、項目過濾後的預約資料
+  const appointments = filteredAppointments.value;
+
+  // 2. 取得使用者當前勾選的欄(狀態)和列(項目)
+  const colHeaders = [...selectedStatuses.value].sort();
+  const rowHeaders = [...selectedTypes.value].sort();
+
+  // 3. 初始化資料結構 (儲存所有儲存格的數字)
+  const matrix = {};
+  rowHeaders.forEach(type => {
+    matrix[type] = { rowTotal: 0 }; // ✅ 每個項目(列)的總計
+    colHeaders.forEach(status => {
+      matrix[type][status] = 0;
+    });
+  });
+
+  // 4. 初始化底部總計 (將被選擇性計算)
+  const colTotals = {};
+  colHeaders.forEach(status => {
+    colTotals[status] = 0; // ✅ 每個狀態(欄)的總計
+  });
+  let grandTotal = 0; // ✅ 總計
+
+  // 5. 遍歷已過濾的預約並計數
+  for (const appt of appointments) {
+    const type = appt.bookingType;
+    const status = appt.status;
+
+    // 5a. 【儲存格計數】：無論是否勾選，都要計算儲存格內的數字
+    if (matrix[type] && matrix[type].hasOwnProperty(status)) {
+      matrix[type][status]++;
+    }
+
+    // 5b. 【"總計" (欄) 計數】：只計算 Dialog 中被勾選的「狀態」
+    if (selectedStatisticsStatuses.value.includes(status) && 
+        matrix[type] && matrix[type].hasOwnProperty(status))
+    {
+      matrix[type].rowTotal++;
+    }
+    
+    // 5c. 【"總計" (列) 計數】：只計算 Dialog 中被勾選的「項目」
+    if (selectedStatisticsTypes.value.includes(type) &&
+        matrix[type] && matrix[type].hasOwnProperty(status)) 
+    {
+      colTotals[status]++;
+    }
+    
+    // 5d. 【右下角總計 計數】：只計算「項目」和「狀態」都被勾選的
+    if (selectedStatisticsTypes.value.includes(type) &&
+        selectedStatisticsStatuses.value.includes(status) &&
+        matrix[type] && matrix[type].hasOwnProperty(status))
+    {
+      grandTotal++;
+    }
+  }
+
+  // 6. 格式化為 v-table 需要的陣列
+  const finalRows = rowHeaders.map(type => ({
+    type: type,
+    counts: matrix[type], // e.g., { '預約中': 10, '已完成': 5, 'rowTotal': 15 }
+  }));
+
+  const finalTotals = {
+    ...colTotals,
+    grandTotal: grandTotal,
+  };
+
+  // 7. 組合最終表頭 (加上"總計"欄)
+  const finalColHeaders = colHeaders.length > 0 ? [...colHeaders, '總計'] : [];
+
+  return {
+    headers: finalColHeaders, // e.g., ['預約中', '已完成', '總計']
+    rows: finalRows,          // e.g., [{ type: '初驗', counts: {...} }, ...]
+    totals: finalTotals,      // e.g., { '預約中': 15, 'grandTotal': 30 }
+  };
+});
+// ✅ END: 替換 statisticsMatrix
 
 // ✅ 8. 修改 fetchData 函數
 async function fetchData() {
@@ -1263,6 +1502,60 @@ watch([
   }
 }, { immediate: true, deep: true });
 
+// 監聽 Dialog 開啟，開啟時預設勾選所有當前篩選的項目
+watch(isStatisticsDialogVisible, (newValue) => {
+  if (newValue) {
+    // 項目 (Types) 邏輯保持不變：預設勾選所有當前篩選的項目
+    selectedStatisticsTypes.value = [...selectedTypes.value];
+    
+    // ✅ 修正點：預設勾選的「狀態」，應排除 "取消"
+    // 1. 取得主篩選器的所有狀態 (e.g., ['預約中', '已完成', '取消'])
+    const allFilteredStatuses = [...selectedStatuses.value];
+    
+    // 2. 篩選掉 "取消"
+    selectedStatisticsStatuses.value = allFilteredStatuses.filter(status => status !== '取消');
+  }
+});
+
+// "全選" 勾選框的計算屬性 (項目)
+const selectAllStatisticsTypes = computed({
+  // ... (此段代碼 保持不變)
+  get() {
+    const allAvailableTypes = statisticsMatrix.value.rows.map(r => r.type);
+    if (allAvailableTypes.length === 0) return false;
+    return allAvailableTypes.every(type => selectedStatisticsTypes.value.includes(type));
+  },
+  set(value) {
+    const allAvailableTypes = statisticsMatrix.value.rows.map(r => r.type);
+    if (value) {
+      selectedStatisticsTypes.value = [...allAvailableTypes];
+    } else {
+      selectedStatisticsTypes.value = [];
+    }
+  }
+});
+
+// ✅ START: 新增「狀態」的 "全選" 勾選框計算屬性
+const selectAllStatisticsStatuses = computed({
+  get() {
+    // 取得所有可見的狀態 (不包含 '總計')
+    const allAvailableStatuses = statisticsMatrix.value.headers.filter(h => h !== '總計');
+    if (allAvailableStatuses.length === 0) return false;
+    // 檢查是否所有可見狀態都已被勾選
+    return allAvailableStatuses.every(status => selectedStatisticsStatuses.value.includes(status));
+  },
+  set(value) {
+    const allAvailableStatuses = statisticsMatrix.value.headers.filter(h => h !== '總計');
+    if (value) {
+      // 勾選所有
+      selectedStatisticsStatuses.value = [...allAvailableStatuses];
+    } else {
+      // 全部取消
+      selectedStatisticsStatuses.value = [];
+    }
+  }
+});
+
 // 監聽搜尋框輸入，觸發後端搜尋
 watchDebounced(searchQuery, async (newQuery) => {
   // 1. 清除舊的搜尋結果
@@ -1311,6 +1604,34 @@ watchDebounced(searchQuery, async (newQuery) => {
       isSearchingBackend.value = false;
   }
 }, { debounce: 500 } // 延遲 500ms 觸發
+);
+
+// ✅ 新增：監聽 selectedTimeSlots 的變化，並將其儲存回使用者偏好設定
+watchDebounced(
+  selectedTimeSlots,
+  (newTimeSlots) => {
+    // 檢查 isInitializing 旗標，
+    // 避免在組件剛載入並「套用」偏好設定時，又立刻觸發「儲存」
+    if (isInitializing.value) {
+      return;
+    }
+
+    if (userStore.user) {
+      console.log('[InspectionCalendar] 偵測到時間篩選變更，正在儲存使用者偏好設定...');
+      // 呼叫 userStore 中的 action，
+      // 它會觸發 api.js 中的 saveUserPreferencesToBackend
+      userStore.updateUserPreferences({
+        calendarTimeSlots: newTimeSlots
+      });
+      
+      // (可選) 顯示一個短暫的提示
+      // showSnackbar('已儲存您的時間篩選偏好', 'info');
+    }
+  },
+  { 
+    debounce: 2000, // 延遲 2 秒儲存
+    deep: true 
+  }
 );
 
 

@@ -864,6 +864,8 @@
                   v-model="editedBatch.bookingType" 
                   :items="bookingTypeOptions" 
                   label="預約項目" 
+                  hint="請至「驗屋預約設定」新增選項"
+                  persistent-hint
                   :rules="[v => !!v || '必填', batchUniquenessRule]"
                   :readonly="!!editedBatch.id"
                   :variant="editedBatch.id ? 'filled' : 'outlined'"
@@ -901,7 +903,12 @@
                     </v-tabs>
                     <v-window v-model="activePickerTabStart">
                       <v-window-item :value="0">
-                        <v-date-picker v-model="tempDateStart" @update:model-value="activePickerTabStart = 1" hide-header></v-date-picker>
+                        <v-date-picker 
+                          v-model="tempDateStart" 
+                          @update:model-value="activePickerTabStart = 1" 
+                          hide-header
+                          :max="editedBatch.applicationEnd"
+                        ></v-date-picker>
                       </v-window-item>
                       <v-window-item :value="1">
                         <v-time-picker v-model="tempTimeStart" format="24hr"></v-time-picker>
@@ -936,7 +943,12 @@
                     </v-tabs>
                     <v-window v-model="activePickerTabEnd">
                       <v-window-item :value="0">
-                        <v-date-picker v-model="tempDateEnd" @update:model-value="activePickerTabEnd = 1" hide-header></v-date-picker>
+                        <v-date-picker 
+                          v-model="tempDateEnd" 
+                          @update:model-value="activePickerTabEnd = 1" 
+                          hide-header
+                          :min="editedBatch.applicationStart"
+                        ></v-date-picker>
                       </v-window-item>
                       <v-window-item :value="1">
                         <v-time-picker v-model="tempTimeEnd" format="24hr"></v-time-picker>
@@ -964,7 +976,13 @@
                        variant="outlined"
                     ></v-text-field>
                   </template>
-                  <v-date-picker v-model="tempBookingStartDate" @update:model-value="menuBookingStart = false" title="選擇起始日" hide-header></v-date-picker>
+                <v-date-picker 
+                    v-model="tempBookingStartDate" 
+                    @update:model-value="menuBookingStart = false" 
+                    title="選擇起始日" 
+                    hide-header
+                    :max="editedBatch.bookingEnd"
+                  ></v-date-picker>
                 </v-menu>
               </v-col>
               <v-col cols="12" sm="6" md="3">
@@ -980,7 +998,13 @@
                       variant="outlined"
                     ></v-text-field>
                   </template>
-                  <v-date-picker v-model="tempBookingEndDate" @update:model-value="menuBookingEnd = false" title="選擇結束日" hide-header></v-date-picker>
+                  <v-date-picker 
+                    v-model="tempBookingEndDate" 
+                    @update:model-value="menuBookingEnd = false" 
+                    title="選擇結束日" 
+                    hide-header
+                    :min="editedBatch.bookingStart"
+                  ></v-date-picker>
                 </v-menu>
               </v-col>
             </v-row>
