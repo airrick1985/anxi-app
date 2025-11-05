@@ -6,8 +6,14 @@
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-information-outline</v-icon>銷售資訊</div>
             <v-select label="後台狀態" :items="statusOptions" v-model="editableData.salesStatus_backend" class="mb-4"></v-select>
-            <v-select label="銷售人員" :items="personnelOptions" v-model="editableData.salesperson" class="mb-4"></v-select>
-            
+            <v-select 
+              label="銷售人員" 
+              :items="personnelOptions" 
+              v-model="editableData.salesperson" 
+              class="mb-4"
+              item-title="name"
+              item-value="name"
+            ></v-select>            
             <v-combobox
               label="戶別圖片"
               v-model="editableData.salesImages"
@@ -35,7 +41,7 @@
         <v-col cols="12" md="4">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
-            <v-select label="合約方式" :items="contractTypeOptions" v-model="editableData.contractType" class="mb-4"></v-select>
+            <v-select label="合約方式" :items="localContractOptions" v-model="editableData.contractType" class="mb-4"></v-select>
             <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
               <v-radio label="是" :value="true"></v-radio>
               <v-radio label="否" :value="false"></v-radio>
@@ -167,6 +173,13 @@ const isMobile = computed(() => mobile.value);
 
 const isParkingModalOpen = ref(false);
 const isPermanentSameAsMailing = ref(false);
+
+// ✅ 
+const localContractOptions = computed(() => {
+  // 
+  console.log('SalesInfoForm: 接收到的 contractTypeOptions prop 更新:', props.contractTypeOptions);
+  return props.contractTypeOptions;
+});
 
 const editableData = computed({
   get: () => props.modelValue,

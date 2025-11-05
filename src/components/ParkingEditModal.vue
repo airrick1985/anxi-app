@@ -94,7 +94,7 @@
           >
             <div class="text-center">
               <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
-              <p class="mt-4 text-body-1 text-black">正在載入樓層資料...</p>
+              <p class="mt-4 text-body-1 text-black">正在載入車位資料...</p>
             </div>
           </v-overlay>
           

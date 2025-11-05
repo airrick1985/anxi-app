@@ -123,7 +123,8 @@ export const useSalesDataStore = defineStore('salesData', () => {
       parameters: [],
       households: [],
       parkings: [],
-      images: []
+      images: [],
+      personnel: [] // ✓ 新增
     }
   }
 
@@ -180,11 +181,12 @@ export const useSalesDataStore = defineStore('salesData', () => {
           const existingData = cachedData.value.get(projectId) || {}
           
           // 更新緩存數據（保留現有的圖片數據）
-          cachedData.value.set(projectId, {
+         cachedData.value.set(projectId, {
             project: data.project || { name: '專案資料載入失敗' },
             parameters: data.parameters || [],
             households: data.households || [],
             parkings: data.parkings || [],
+            personnel: data.personnel || [], // ✓ 新增
             images: existingData.images || [] // 🔧 保留現有圖片數據，避免被覆蓋
           })
           

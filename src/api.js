@@ -3570,22 +3570,25 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   const householdsQuery = query(collection(db, 'salesHouseholds'), where('projectId', '==', projectId));
   //  取得同專案的所有車位資料
   const parkingsQuery = query(collection(db, 'salesParkings'), where('projectId', '==', projectId)); 
+  const personnelQuery = query(collection(db, 'salesPersonnel'), where('projectId', '==', projectId));
 
-  let combinedData = {
+ let combinedData = {
     project: null,
     parameters: [],
     households: [],
-    parkings: [] //  新增 parkings 屬性
+    parkings: [],
+    personnel: [] // ✓ 新增 personnel 屬性
   };
   
   let projectLoaded = false;
   let paramsLoaded = false;
   let householdsLoaded = false;
-  let parkingsLoaded = false; //  新增 parkings 載入旗標
+  let parkingsLoaded = false; 
+  let personnelLoaded = false; // ✓ 新增 personnel 載入旗標
 
-  const checkAndEmitData = () => {
-    //  確保所有監聽器都至少回傳過一次資料後才呼叫回呼函式
-    if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded) {
+const checkAndEmitData = () => {
+    // ✓ 修改：確保 personnelLoaded 也為 true
+    if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded && personnelLoaded) {
       onDataChange(combinedData);
     }
   };
@@ -3620,15 +3623,23 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
     checkAndEmitData();
   }, onError);
 
-  //  回傳一個函式，用於一次性地停止所有監聽器
+
+
+  // ✓ 新增：對 salesPersonnel 的監聽
+  const unsubPersonnel = onSnapshot(personnelQuery, (snapshot) => {
+    combinedData.personnel = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    personnelLoaded = true;
+    checkAndEmitData();
+  }, onError);
+
   return () => {
     unsubProject();
     unsubParams();
     unsubHouseholds();
-    unsubParkings(); //  確保停止車位監聽
+    unsubParkings(); 
+    unsubPersonnel(); // ✓ 確保停止 personnel 監聽
   };
 };
-
 
 
 /**

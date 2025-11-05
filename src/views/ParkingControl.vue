@@ -41,45 +41,64 @@
             class="ms-4"
             style="max-width: 350px;"
           ></v-text-field>
-           <v-btn
-            color="blue-darken-2"
-            variant="outlined"
+        <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="text"
+            icon="mdi-map-legend"
             class="me-2"
             @click="goToFloorplanManager"
-            prepend-icon="mdi-map-legend"
-          >
-            車位圖管理
-          </v-btn>
-         
+          ></v-btn>
+        </template>
+        <span>車位圖管理</span>
+      </v-tooltip>
+      
+      <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
           <v-btn
-            color="teal"
-            variant="outlined"
+            v-bind="props"
+            color="black"
+            variant="text"
+            icon="mdi-tray-arrow-down"
             class="me-2"
             @click="exportToExcel"
-            prepend-icon="mdi-file-excel"
-          >
-            匯出 EXCEL
-          </v-btn>
+          ></v-btn>
+        </template>
+        <span>下載車位EXCEL資料</span>
+      </v-tooltip>
+
+     
+      <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
           <v-btn
+            v-bind="props"
+            color="black"
+            variant="text"
+            icon="mdi-tray-arrow-up"
+            @click="uploadDialog = true"
+          ></v-btn>
+        </template>
+        <span>上傳車位EXCEL資料</span>
+      </v-tooltip>
+
+       <v-tooltip location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
             v-if="isSystemAdmin"
-            color="orange"
-            variant="outlined"
+            color="black"
+            variant="text"
+            icon="mdi-file-excel-outline"
             class="me-2"
             @click="exportAdminExcel"
-            prepend-icon="mdi-file-excel-outline"
-            title="匯出所有原始欄位數據（僅限系統管理員）"
-          >
-            匯出EXCEL(管理員)
-          </v-btn>
-          <v-btn
-            color="red-darken-2"
-            variant="outlined"
-            @click="uploadDialog = true"
-            prepend-icon="mdi-upload"
-          >
-            上傳車位資料
-          </v-btn>
-         
+           
+          ></v-btn>
+        </template>
+        <span>匯出EXCEL(限系管)</span>
+      </v-tooltip>
+   
         </template>
 
         <template v-else>

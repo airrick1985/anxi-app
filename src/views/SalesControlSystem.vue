@@ -324,7 +324,7 @@
       :project-name="project.name"
       :project-id="projectId"
       :all-data="allDataForModal"
-      @request-open-slide="handleOpenSlideViewer" />
+      :contract-types="project.contractTypes || []" @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
@@ -508,7 +508,7 @@
           >
             <div class="text-center">
               <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
-              <p class="mt-4 text-body-1 text-black">正在載入樓層資料...</p>
+              <p class="mt-4 text-body-1 text-black">正在載入車位資料...</p>
             </div>
           </v-overlay>
           
@@ -537,9 +537,7 @@
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
         <p class="loading-text">正在載入銷控資料...</p>
-        <p v-if="salesDataStore.isCacheValid(projectId)" class="cache-hint">
-          📦 使用緩存數據快速載入中...
-        </p>
+       
       </div>
       <p v-if="error" class="error-text">錯誤: {{ error }}</p>
     </div>
@@ -730,6 +728,7 @@ const salesParameters = computed(() => projectData.value.parameters);
 const salesHouseholds = computed(() => projectData.value.households);
 const salesParkings = computed(() => projectData.value.parkings);
 const salesImages = computed(() => projectData.value.images);
+const salesPersonnel = computed(() => projectData.value.personnel); // ✓ 新增
 
 // 🎯 Performance: 手動刷新功能
 const isRefreshing = ref(false);
@@ -779,6 +778,8 @@ const allDataForModal = computed(() => {
       參數數量: salesParameters.value.length,
       車位數量: salesParkings.value.length,
       銷控圖片數量: salesImages.value.length,
+      // ✓ 新增
+      銷售人員數量: salesPersonnel.value.length, 
       銷控圖片樣本: salesImages.value.slice(0, 3).map(img => ({
         imageName: img.imageName,
         hasDownloadURL: !!img.downloadURL
@@ -790,10 +791,9 @@ const allDataForModal = computed(() => {
     '參數': salesParameters.value,
     '車位': salesParkings.value,
     '銷控圖片': salesImages.value,
-    // 未來如果 modal 需要其他資料，也可以從這裡加入
+    '銷售人員': salesPersonnel.value, // ✓ 新增
   };
 });
-
 const activitySlideEmbedUrl = computed(() => {
   const slideId = project.value.activityMessageSlideId;
   if (!slideId) return '';

@@ -32,16 +32,7 @@
       >
         活動訊息
       </v-btn>
-      <v-btn
-        color="info"
-        variant="tonal"
-        @click="handleOpenSlideViewer"
-        :disabled="!quoteParkingSlideId"
-        :loading="false" 
-        title="車位表"
-      >
-        車位表
-      </v-btn>
+
     </div>
 
     <v-card class="mt-4">
@@ -77,7 +68,7 @@
               :is-loading="loading"
               :all-parking-data="parkingStore.parkingData || []"
               :project-id="projectId" @remove="quoteStore.removeItem(item.internalId)"
-              @request-open-slide="handleOpenSlideViewer"
+              
             />
           </v-card>
         </div>
@@ -669,9 +660,6 @@ async function generateQuoteWithTemplates() {
 
 // --- 其他所有函式 ---
 
-function handleOpenSlideViewer() {
-  openSlideViewer(quoteParkingSlideId.value);
-}
 
 function handleRefreshSlide() {
   refreshSlide('quote');

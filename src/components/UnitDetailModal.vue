@@ -38,7 +38,7 @@
         <v-card-text class="main-content">
             <v-window v-model="tab">
                 <v-window-item value="info">
-                 <template v-if="isEditing">
+               <template v-if="isEditing">
                <SalesInfoForm 
                     v-if="editingData"
                     v-model="editingData"
@@ -51,8 +51,7 @@
                     :view-mode="props.viewMode"
                      @request-open-slide="$emit('request-open-slide')"
                     @parking-updated="handleParkingUpdate"
-                    :contractTypeOptions="contractTypeOptionsFromDB"
-                    :firstPurchaseOptions="firstPurchaseOptions"
+                    :contractTypeOptions="props.contractTypes" :firstPurchaseOptions="firstPurchaseOptions"
                 />
             </template>
             <template v-else>
@@ -417,16 +416,14 @@
 
 <script setup>
 import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue'; 
-import { useProjectStore } from '@/store/projectStore';
-import { ref, watch, computed, defineProps, defineEmits } from 'vue';
+import { ref, watch, computed, defineProps, defineEmits, onUnmounted } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, getProjectSettings, updateParkingLot } from '@/api'; 
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
-
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
@@ -491,28 +488,15 @@ const props = defineProps({
   viewMode: { type: String, default: 'sales' },
   allData: { type: Object, default: () => ({}) },
   projectName: { type: String, required: true }, 
+  contractTypes: { type: Array, default: () => [] }, // ✓ 新增此 prop
 });
+
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
 
 const sizingToolDialog = ref(false);
-const projectStore = useProjectStore();
-const projectId = computed(() => projectStore.nameToIdMap[props.projectName]);
-const contractTypesFromDB = ref([]); 
 
-// watch 監聽器，當 projectId 變化時，獲取專案設定
-watch(projectId, async (newId) => {
-  if (newId) {
-    const settings = await getProjectSettings(newId);
-    // 確保 settings 存在且 contractTypes 是一個陣列
-    if (settings && Array.isArray(settings.contractTypes)) {
-      contractTypesFromDB.value = settings.contractTypes;
-    } else {
-      contractTypesFromDB.value = []; // 如果沒有資料則清空
-    }
-  } else {
-    contractTypesFromDB.value = []; // projectId 為空也清空
-  }
-}, { immediate: true });
+
+
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
@@ -565,10 +549,6 @@ const currentImage = computed(() => {
 });
 
 
-const firstPurchaseOptions = computed(() => {
-    const salesOptionsData = props.allData['合約方式及是否首購'] || [];
-    return [...new Set(salesOptionsData.map(item => item['是否首購']).filter(Boolean))]
-});
 
 const tab = ref('info');
 const isEditing = ref(false);
@@ -635,6 +615,7 @@ const parkingTotalTransactionPrice = computed(() => {
   return assignedParkingLots.value.reduce((total, parking) => total + (Number(parking['車位成交價']) || 0), 0);
 });
 const grandTotalTransactionPrice = computed(() => houseTransactionPrice.value + parkingTotalTransactionPrice.value);
+
 const houseFloorPrice = computed(() => Number(props.unitData?.price_floor_house_total) || 0);
 const parkingTotalFloorPrice = computed(() => {
   if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) return 0;
@@ -649,7 +630,17 @@ const pricePremium = computed(() => {
 });
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
-const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p['銷售人員']));
+
+const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p.name));
+
+
+const contractTypeOptionsFromDB = computed(() => {
+  if (props.projectSettings && Array.isArray(props.projectSettings.contractTypes)) {
+    return props.projectSettings.contractTypes; 
+  }
+  return [];
+});
+
 const buyerInfoOptions = computed(() => {
     const options = {};
     const buyerInfoSheet = props.allData['買方其他資訊'] || [];
@@ -661,7 +652,6 @@ const buyerInfoOptions = computed(() => {
     }
     return options;
 });
-
 
 
 function openPaymentSettings() {
