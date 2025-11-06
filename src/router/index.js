@@ -2,8 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 
-// ✅ 移除所有靜態匯入的 View 元件 (Login, Home, InspectionDetail, HouseholdGrid 等)
-// ✅ 移除所有靜態匯入的 Layout 元件 (DefaultLayout)
+
 
 // ✅ 將 Layouts 改為延遲載入常數，方便重用
 const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');

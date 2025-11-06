@@ -1,189 +1,865 @@
 <template>
-  <div class="test-page-container">
-    <!-- 1. 控制項 -->
-    <div class="controls">
-      <span>(點擊方塊可啟用拖曳/縮放)</span>
-    </div>
+  <v-app>
+    <v-layout class="h-100">
 
-    <!-- 2. 父容器 (背景圖) -->
-    <div class="parent-container" ref="parentContainer" :style="parentStyle">
-      
-      <!-- 
-        3. 渲染方塊 (v-for 會渲染 spots 陣列中的兩個方塊)
-      -->
-      <VueDragResizeRotate
-        v-for="spot in spots"
-        :key="spot.id"
-        :x="spot.x"
-        :y="spot.y"
-        :w="spot.w"
-        :h="spot.h"
-        :r="spot.r || 0"
-        :parent="true"
-        :active="spot.id === activeSpotId"
-        @activated="() => onActivate(spot.id)"
-        @dragging="(x, y) => onDrag(spot.id, x, y)"
-        @resizing="(x, y, w, h) => onResize(spot.id, x, y, w, h)"
-        @rotating="(r) => onRotate(spot.id, r)"
-        class-name="test-spot"
-        class-name-active="active-spot"
-      >
-        <div class="spot-content">
-          {{ spot.text }}<br>
-          (x: {{ Math.round(spot.x) }}, y: {{ Math.round(spot.y) }})
+      <v-app-bar density="compact" flat border>
+        <v-app-bar-title class="text-caption">Fabric.js 編輯器</v-app-bar-title>
+        <v-spacer></v-spacer>
+
+        <v-btn
+          variant="tonal"
+          :color="isEditMode ? 'default' : 'primary'"
+          @click="toggleEditMode"
+          size="small"
+          class="mr-2"
+          :prepend-icon="isEditMode ? 'mdi-eye' : 'mdi-pencil'"
+        >
+          {{ isEditMode ? '切換檢視' : '切換編輯' }}
+        </v-btn>
+
+        <v-btn 
+          variant="tonal" 
+          @click="downloadPDF" 
+          size="small"
+          class="mr-2"
+          prepend-icon="mdi-file-download"
+        >
+          下載報價單 (PDF)
+        </v-btn>
+
+
+        <v-btn 
+          variant="tonal" 
+          @click="printCanvas" 
+          size="small"
+          class="mr-2"
+          prepend-icon="mdi-printer"
+        >
+          列印
+        </v-btn>
+
+        <v-btn 
+          variant="tonal" 
+          color="primary" 
+          @click="isCanvasSettingsDialog = true" 
+          size="small"
+          class="mr-2"
+          prepend-icon="mdi-ruler-square"
+        >
+          畫布設定 ({{ canvasSettings.width }} x {{ canvasSettings.height }} px)
+        </v-btn>
+      </v-app-bar>
+
+      <v-navigation-drawer v-model="isEditMode" width="240">
+        <v-list density="compact" nav>
+          <v-list-subheader>新增元件</v-list-subheader>
+          <v-list-item>
+            <v-btn @click="addText" block variant="tonal" prepend-icon="mdi-format-text">
+              文字
+            </v-btn>
+          </v-list-item>
+          <v-list-item>
+            <v-btn @click="triggerImageUpload" block variant="tonal" prepend-icon="mdi-image-plus">
+              圖片
+            </v-btn>
+            <input 
+              type="file" 
+              ref="imageInputRef" 
+              @change="onImageUpload" 
+              accept="image/*" 
+              style="display: none;" 
+            />
+          </v-list-item>
+          <v-list-item>
+            <v-btn @click="addShape" block variant="tonal" prepend-icon="mdi-rectangle-outline">
+              矩形
+            </v-btn>
+          </v-list-item>
+
+          <v-divider class="my-4"></v-divider>
+          <v-list-subheader>資料</v-list-subheader>
+          <v-list-item>
+            <v-btn @click="addQuoteTable" block variant="tonal" color="success" prepend-icon="mdi-table">
+              插入報價單表格
+            </v-btn>
+          </v-list-item>
+        </v-list>
+      </v-navigation-drawer>
+
+      <v-main class="editor-main-canvas-area">
+        <div 
+          class="page-preview-container" 
+        >
+          <canvas 
+            ref="canvasEl" 
+            id="fabric-canvas"
+            :width="canvasSettings.width"
+            :height="canvasSettings.height"
+          ></canvas>
         </div>
-      </VueDragResizeRotate>
+      </v-main>
 
-    </div>
-  </div>
+      <v-navigation-drawer
+      v-model="isEditMode"
+        location="right"
+        permanent
+        width="280"
+      >
+        <v-list density="compact">
+          <v-list-subheader>{{ inspectorTitle }}</v-list-subheader>
+
+          <template v-if="!activeObject">
+            <v-list-item>
+              <v-btn 
+                block 
+                variant="tonal" 
+                @click="isCanvasSettingsDialog = true"
+                prepend-icon="mdi-ruler-square"
+              >
+                修改畫布設定
+              </v-btn>
+            </v-list-item>
+          </template>
+
+          <template v-if="activeObject">
+            <v-list-subheader>通用屬性</v-list-subheader>
+            
+            <v-list-item 
+              v-if="activeObject.type.includes('text') || activeObject.type.includes('rect') || activeObject.type.includes('group') || activeObject.type.includes('Selection')"
+              class="d-flex justify-space-between align-center"
+            >
+              <span class="text-caption mr-2">填充/文字顏色</span>
+              <v-menu :close-on-content-click="false" location="bottom end">
+                <template v-slot:activator="{ props }">
+                  <v-btn v-bind="props" :style="{ backgroundColor: panelState.fill }" size="small" class="color-preview-btn"></v-btn>
+                </template>
+                <v-color-picker v-model="panelState.fill" hide-inputs show-swatches></v-color-picker>
+              </v-menu>
+            </v-list-item>
+
+            <v-list-item>
+              <v-slider
+                v-model.number="panelState.opacity"
+                label="透明度"
+                min="0"
+                max="1"
+                step="0.1"
+                thumb-label
+                density="compact"
+                hide-details
+              ></v-slider>
+            </v-list-item>
+
+            <template v-if="activeObject.type === 'textbox' || activeObject.type === 'activeSelection'">
+              <v-divider class="my-2"></v-divider>
+              <v-list-subheader>文字樣式</v-list-subheader>
+              <v-list-item>
+                <v-text-field
+                  v-model.number="panelState.fontSize"
+                  label="字體大小 (px)"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  min="1"
+                ></v-text-field>
+              </v-list-item>
+              <v-list-item>
+                <v-btn-toggle multiple variant="outlined" divided block>
+                  <v-btn @click="toggleBold" :active="panelState.fontWeight === 'bold'" class="flex-grow-1" :style="{fontWeight: 'bold'}">B</v-btn>
+                  <v-btn @click="toggleItalic" :active="panelState.fontStyle === 'italic'" class="flex-grow-1" :style="{fontStyle: 'italic'}">I</v-btn>
+                </v-btn-toggle>
+              </v-list-item>
+            </template>
+
+            <v-divider class="my-2"></v-divider>
+            <v-list-subheader>圖層順序</v-list-subheader>
+            <v-list-item>
+              <v-row dense>
+                <v-col><v-btn @click="bringToFront" block variant="tonal" size="small" prepend-icon="mdi-arrange-bring-to-front">移至頂層</v-btn></v-col>
+                <v-col><v-btn @click="sendToBack" block variant="tonal" size="small" prepend-icon="mdi-arrange-send-to-back">移至底層</v-btn></v-col>
+              </v-row>
+            </v-list-item>
+
+            <v-divider class="my-2"></v-divider>
+            <v-list-item>
+              <v-btn @click="deleteSelected" block color="error" variant="flat" prepend-icon="mdi-delete">
+                刪除
+              </v-btn>
+            </v-list-item>
+
+          </template>
+        </v-list>
+      </v-navigation-drawer>
+    </v-layout>
+
+    <v-dialog v-model="isCanvasSettingsDialog" max-width="500">
+      <v-card>
+        <v-card-title>畫布設定</v-card-title>
+        <v-card-text>
+          <v-select
+            v-model="canvasSettings.preset"
+            :items="canvasPresetOptions"
+            label="預設尺寸"
+            variant="outlined"
+            density="compact"
+            class="mb-4"
+            @update:model-value="onPresetChange"
+          ></v-select>
+          <v-row dense>
+            <v-col>
+              <v-text-field
+                v-model.number="canvasSettings.width"
+                label="寬度 (px)"
+                type="number"
+                variant="outlined"
+                density="compact"
+                :disabled="canvasSettings.preset !== 'custom'"
+              ></v-text-field>
+            </v-col>
+            <v-col>
+              <v-text-field
+                v-model.number="canvasSettings.height"
+                label="高度 (px)"
+                type="number"
+                variant="outlined"
+                density="compact"
+                :disabled="canvasSettings.preset !== 'custom'"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn @click="applyCanvasSettings">套用</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </v-app>
 </template>
 
-<script>
-import { ref, computed } from 'vue';
-// 假設您已安裝並能正確引入
-import VueDragResizeRotate from '@gausszhou/vue3-drag-resize-rotate';
-import '@gausszhou/vue3-drag-resize-rotate/lib/bundle.esm.css';
+<script setup>
+import { jsPDF } from "jspdf";
+import { ref, computed, watch, shallowRef, onMounted, onUnmounted, nextTick } from 'vue';
+import { fabric } from 'fabric';
 
-export default {
-  name: 'TestPage',
-  components: {
-    VueDragResizeRotate,
-  },
-  setup() {
-    const parentContainer = ref(null);
-    
-    // 直接初始化 spots 陣列，包含兩個在相同 (10, 10) 位置的方塊
-    const spots = ref([
-      {
-        id: 'test-1',
-        x: 10, // 方塊 1 的 X 座標
-        y: 10, // 方塊 1 的 Y 座標
-        w: 100,
-        h: 100,
-        r: 0,
-        text: '方塊 1',
-      },
-      {
-        id: 'test-2',
-        x: 10, // 方塊 2 的 X 座標 (與方塊 1 相同)
-        y: 10, // 方塊 2 的 Y 座標 (與方塊 1 相同)
-        w: 100,
-        h: 100,
-        r: 0,
-        text: '方塊 2',
-      }
-    ]);
-    const activeSpotId = ref(null);
+// --- 畫布實例 ---
+const canvasEl = ref(null);
+const fabricCanvas = shallowRef(null);
 
-    // 背景圖 URL
-    const imageUrl = 'https://storage.googleapis.com/apps-script-api-443402.firebasestorage.app/floorplan-backgrounds%2Ffuyu1750_B6_20250918160914%2F1758185108037_B6.png';
+// ✅ 修正：新增一個旗標，防止 watch 循環
+const isUpdatingFromSelection = ref(false);
 
-    // 父容器樣式
-    const parentStyle = computed(() => ({
-      backgroundImage: `url(${imageUrl})`,
-    }));
-    
-    const onActivate = (id) => {
-      activeSpotId.value = id;
-    };
+// ✅ [新功能] 新增編輯模式狀態
+const isEditMode = ref(true); // 預設為編輯模式
 
-    // 拖曳/縮放/旋轉的事件處理函式
-    const onDrag = (id, x, y) => {
-      const spot = spots.value.find(s => s.id === id);
-      if (spot) {
-        spot.x = Math.round(x);
-        spot.y = Math.round(y);
-      }
-    };
 
-    const onResize = (id, x, y, w, h) => {
-      const spot = spots.value.find(s => s.id === id);
-      if (spot) {
-        spot.x = Math.round(x);
-        spot.y = Math.round(y);
-        spot.w = Math.round(w);
-        spot.h = Math.round(h);
-      }
-    };
-
-    const onRotate = (id, r) => {
-      const spot = spots.value.find(s => s.id === id);
-      if (spot) {
-        spot.r = Math.round(r);
-      }
-    };
-
-    return {
-      parentContainer,
-      spots,
-      activeSpotId,
-      parentStyle,
-      onActivate,
-      onDrag,
-      onResize,
-      onRotate,
-    };
-  },
+// --- 畫布設定 ---
+const isCanvasSettingsDialog = ref(false);
+const canvasPresetOptions = ref([
+  { title: 'A4 直式 (794x1123 px)', value: 'A4p' },
+  { title: 'A4 橫式 (1123x794 px)', value: 'A4l' },
+  { title: '簡報 16:9 (1280x720 px)', value: '16:9' },
+  { title: '簡報 4:3 (1024x768 px)', value: '4:3' },
+  { title: '自訂', value: 'custom' },
+]);
+const CANVAS_PRESETS = {
+  'A4p': { w: 794, h: 1123 },
+  'A4l': { w: 1123, h: 794 },
+  '16:9': { w: 1280, h: 720 },
+  '4:3': { w: 1024, h: 768 },
 };
+const canvasSettings = ref({
+  preset: 'A4p',
+  width: 794,
+  height: 1123,
+});
+
+function onPresetChange(preset) {
+  if (preset !== 'custom') {
+    const dims = CANVAS_PRESETS[preset];
+    canvasSettings.value.width = dims.w;
+    canvasSettings.value.height = dims.h;
+  }
+}
+
+function applyCanvasSettings() {
+  const { width, height } = canvasSettings.value;
+  if (fabricCanvas.value) {
+    fabricCanvas.value.setWidth(width);
+    fabricCanvas.value.setHeight(height);
+    fabricCanvas.value.renderAll();
+  }
+  isCanvasSettingsDialog.value = false;
+}
+
+// --- 屬性面板 ---
+const activeObject = shallowRef(null);
+const panelState = ref({}); // v-model 綁定
+
+const inspectorTitle = computed(() => {
+  if (!activeObject.value) return '畫布屬性';
+  
+  if (activeObject.value.type === 'activeSelection') {
+    return `已選取 ${activeObject.value.size()} 個元件`;
+  }
+  if (activeObject.value.type === 'textbox') return '文字屬性';
+  if (activeObject.value.type === 'image') return '圖片屬性';
+  if (activeObject.value.type === 'rect') return '矩形屬性';
+  if (activeObject.value.type === 'group') return '表格屬性';
+  return '元件屬性';
+});
+
+// --- Fabric.js 初始化 ---
+onMounted(() => {
+  fabricCanvas.value = new fabric.Canvas(canvasEl.value, {
+    backgroundColor: '#ffffff',
+    fireRightClick: true,
+    stopContextMenu: true,
+  });
+
+  // --- 事件監聽 ---
+  fabricCanvas.value.on('selection:created', handleSelection);
+  fabricCanvas.value.on('selection:updated', handleSelection);
+  fabricCanvas.value.on('selection:cleared', handleSelectionCleared);
+  
+  // ✅ [新功能] 新增鍵盤事件監聽
+  window.addEventListener('keydown', handleKeyDown);
+  
+  // 監聽面板狀態 -> 更新 Fabric 物件
+watch(panelState, (newState) => {
+    // ✅ 修正：如果正在從選取事件更新，則跳過
+    if (isUpdatingFromSelection.value) return;
+    
+    if (!activeObject.value) return;
+
+    // ✅ 修正： 定義一個安全的 set function
+    const applyTo = (obj) => {
+      // 檢查是否為 'fill'（文字/矩形）
+      if (newState.fill && (obj.type === 'textbox' || obj.type === 'rect')) {
+        obj.set('fill', newState.fill);
+      }
+      
+      // 檢查是否為 'opacity' (所有物件)
+      if (newState.opacity !== undefined) {
+         obj.set('opacity', newState.opacity);
+      }
+
+      // 檢查是否為文字屬性 (僅限 textbox)
+      if (obj.type === 'textbox') {
+        if (newState.fontSize) obj.set('fontSize', newState.fontSize);
+        if (newState.fontWeight) obj.set('fontWeight', newState.fontWeight);
+        if (newState.fontStyle) obj.set('fontStyle', newState.fontStyle);
+      }
+    };
+
+    // ✅ 修正： 區分單選、多選、群組
+    if (activeObject.value.type === 'activeSelection') {
+      // 多選：套用到所有子物件
+      activeObject.value.forEachObject(applyTo);
+    } else if (activeObject.value.type === 'group') {
+      // 表格群組：套用到所有子物件
+      activeObject.value.forEachObject(obj => {
+         // 只更新文字
+        if (obj.type === 'textbox') {
+          if (newState.fill) obj.set('fill', newState.fill);
+          if (newState.fontSize) obj.set('fontSize', newState.fontSize);
+          if (newState.fontWeight) obj.set('fontWeight', newState.fontWeight);
+          if (newState.fontStyle) obj.set('fontStyle', newState.fontStyle);
+        }
+        // (我們暫時不允許從面板修改表格背景)
+      });
+    } else {
+      // 單選：直接套用
+      applyTo(activeObject.value);
+    }
+    
+    fabricCanvas.value.renderAll();
+  }, { deep: true });
+});
+
+onUnmounted(() => {
+  // ✅ [新功能] 移除鍵盤事件監聽
+  window.removeEventListener('keydown', handleKeyDown);
+  
+  if (fabricCanvas.value) {
+    fabricCanvas.value.dispose();
+  }
+});
+// --- Fabric 事件處理 ---
+
+function handleSelection(e) {
+  console.log('➡️ handleSelection: Started.', { e: e });
+
+  // (1) 找出真正的目標物件
+  let targetObject = null;
+  if (e.target) {
+   
+    targetObject = e.target;
+    console.log('➡️ handleSelection: Found object in e.target');
+  } else if (e.selected && e.selected.length > 0) {
+    // 情況 B: 是一個 'selection:created' 事件，物件在 e.selected 陣列中
+    // (如果是多選，我們也只取第一個來顯示屬性)
+    targetObject = e.selected[0];
+    console.log('➡️ handleSelection: Found object in e.selected[0]');
+  }
+  
+  // (2) 安全檢查
+  if (!targetObject) {
+    console.warn('➡️ handleSelection: NO TARGET found in e.target or e.selected! Clearing.');
+    handleSelectionCleared();
+    return;
+  }
+  
+  console.log('➡️ handleSelection: Setting flag to true.');
+  isUpdatingFromSelection.value = true;
+
+  // ✅✅✅ 唯一的修正 ✅✅✅
+  const obj = targetObject; // 錯誤：const obj = e.target;
+  activeObject.value = obj;
+  
+  // 建立一個乾淨的預設狀態
+  let newPanelState = {
+    opacity: obj.get('opacity') || 1, // 現在 'obj' 是 'targetObject'，不再是 undefined
+    fill: '#000000', // 預設 (用於文字)
+    fontSize: 16,
+    fontWeight: 'normal',
+    fontStyle: 'normal',
+  };
+
+  if (obj.type === 'textbox') {
+    // 單一文字
+    newPanelState.fill = obj.get('fill') || '#000000';
+    newPanelState.fontSize = obj.get('fontSize') || 16;
+    newPanelState.fontWeight = obj.get('fontWeight') || 'normal';
+    newPanelState.fontStyle = obj.get('fontStyle') || 'normal';
+  } 
+  else if (obj.type === 'rect' || obj.type === 'image') {
+    // 單一矩形或圖片 (矩形有 fill, 圖片沒有)
+    newPanelState.fill = obj.get('fill') || '#BDBDBD'; 
+  }
+  else if (obj.type === 'group') {
+    // 表格群組 - 嘗試從第一個文字物件讀取
+    const firstText = obj.getObjects().find(o => o.type === 'textbox');
+    if (firstText) {
+        newPanelState.fill = firstText.get('fill') || '#000000';
+        newPanelState.fontSize = firstText.get('fontSize') || 16;
+    }
+  }
+  else if (obj.type === 'activeSelection') {
+    // 多選 - 嘗試從第一個物件讀取
+    const firstObj = obj.getObjects()[0];
+    if (firstObj) {
+       newPanelState.fill = firstObj.get('fill') || '#000000';
+       newPanelState.opacity = firstObj.get('opacity') || 1;
+       if (firstObj.type === 'textbox') {
+         newPanelState.fontSize = firstObj.get('fontSize') || 16;
+         newPanelState.fontWeight = firstObj.get('fontWeight') || 'normal';
+         newPanelState.fontStyle = firstObj.get('fontStyle') || 'normal';
+       }
+    }
+  }
+  
+  console.log('➡️ handleSelection: Updating panelState.', newPanelState);
+  panelState.value = newPanelState;
+  
+  // (4) 使用 nextTick 重設旗標 (保持不變)
+  nextTick(() => {
+    // console.log('⏰ nextTick: Resetting flag to false.');
+    isUpdatingFromSelection.value = false;
+  });
+}
+
+function handleSelectionCleared() {
+  console.log('➡️ handleSelectionCleared: Clearing activeObject and panelState.');
+  activeObject.value = null;
+  panelState.value = {};
+}
+
+// ✅ [新功能] 新增鍵盤處理函數
+function handleKeyDown(e) {
+  // 檢查是否正在輸入框中 (例如右側面板的 "字體大小")
+  const activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+    return; // 如果是，則不觸發快捷鍵
+  }
+
+  const activeObj = fabricCanvas.value?.getActiveObject();
+  
+  // 如果沒有選取物件，則不執行
+  if (!activeObj) return;
+
+  // 檢查是否正在畫布上編輯文字 (雙擊文字時)
+  if (activeObj.isEditing) {
+    // 如果正在編輯文字，則不觸發 "移動" 或 "刪除物件"
+    // 讓按鍵 (上下左右/Delete) 保持原生行為 (移動游標/刪除文字)
+    return;
+  }
+
+  let needsRender = false;
+
+  switch (e.key) {
+    case 'ArrowUp':
+      e.preventDefault(); // 防止頁面滾動
+      activeObj.set('top', activeObj.top - 1);
+      needsRender = true;
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      activeObj.set('top', activeObj.top + 1);
+      needsRender = true;
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      activeObj.set('left', activeObj.left - 1);
+      needsRender = true;
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      activeObj.set('left', activeObj.left + 1);
+      needsRender = true;
+      break;
+    
+    case 'Delete':
+    case 'Backspace':
+      e.preventDefault(); // 防止 Backspace 觸發瀏覽器 "上一頁"
+      deleteSelected(); // 呼叫您現有的刪除函數
+      break;
+  }
+
+  if (needsRender) {
+    activeObj.setCoords(); // 更新物件的控制項位置
+    fabricCanvas.value.renderAll();
+  }
+}
+
+// --- 左側工具列功能 ---
+// (addText, onImageUpload, addShape, addQuoteTable 保持不變)
+
+function addText() {
+  const text = new fabric.Textbox('點此編輯', {
+    left: 50,
+    top: 50,
+    width: 150,
+    fontSize: 20,
+    fill: '#000000',
+    textAlign: 'left',
+  });
+  fabricCanvas.value.add(text);
+  
+  // ✅ 附註：
+  // setCountFrequency(0) 是一個小技巧，
+  // 它可以"可能"阻止 setActiveObject 觸發那個 "壞" 的 'selection:created' 事件
+  // 但我們的主要修復是在 handleSelection 中，所以這行不是必須的
+  // fabricCanvas.value.setCountFrequency(0); 
+  
+  fabricCanvas.value.setActiveObject(text);
+  console.log('--- addText: Manually calling handleSelection ---');
+  handleSelection({ target: text });
+  
+  // fabricCanvas.value.setCountFrequency(1); // 恢復
+}
+const imageInputRef = ref(null);
+const triggerImageUpload = () => imageInputRef.value.click();
+function onImageUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (f) => {
+    fabric.Image.fromURL(f.target.result, (img) => {
+      img.set({ left: 50, top: 50, scaleX: 0.5, scaleY: 0.5 });
+      fabricCanvas.value.add(img);
+      fabricCanvas.value.setActiveObject(img);
+   // ✅ 修正：手動觸發選取狀態更新
+      handleSelection({ target: img });
+    });
+  };
+  reader.readAsDataURL(file);
+  event.target.value = null;
+}
+
+
+function addShape() {
+  const rect = new fabric.Rect({
+    left: 50,
+    top: 50,
+    width: 100,
+    height: 100,
+    fill: '#BDBDBD',
+  });
+  fabricCanvas.value.add(rect);
+  fabricCanvas.value.setActiveObject(rect);
+// ✅ 修正：手動觸發選取狀態更新
+  handleSelection({ target: rect });
+}
+
+function addQuoteTable() {
+  const quoteData = [
+    { 戶別: 'A1-10F', 訂金: '10', 簽約金: '50', 總價車位: '1588' },
+    { 戶別: 'B2-12F', 訂金: '12', 簽約金: '60', 總價車位: '1720' },
+  ];
+  const headers = ['戶別', '訂金', '簽約金', '總價(含車位)'];
+  const colKeys = ['戶別', '訂金', '簽約金', '總價車位'];
+
+  const colWidths = [100, 80, 80, 120];
+  const rowHeight = 40;
+  const padding = 10;
+  const headerFill = '#f0f0f0';
+  const rowFill = '#ffffff';
+  const stroke = '#cccccc';
+  const textFontSize = 14;
+
+  const tableObjects = [];
+  let currentY = 0;
+
+  let currentX = 0;
+  headers.forEach((header, colIndex) => {
+    tableObjects.push(new fabric.Rect({
+      left: currentX, top: currentY,
+      width: colWidths[colIndex], height: rowHeight,
+      fill: headerFill, stroke: stroke,
+    }));
+    tableObjects.push(new fabric.Textbox(header, {
+      left: currentX + padding, top: currentY + (rowHeight - textFontSize) / 2,
+      width: colWidths[colIndex] - (padding * 2),
+      fontSize: textFontSize, fontWeight: 'bold', fill: '#000',
+    }));
+    currentX += colWidths[colIndex];
+  });
+  currentY += rowHeight;
+
+  quoteData.forEach((row) => {
+    currentX = 0;
+    colKeys.forEach((key, colIndex) => {
+      tableObjects.push(new fabric.Rect({
+        left: currentX, top: currentY,
+        width: colWidths[colIndex], height: rowHeight,
+        fill: rowFill, stroke: stroke,
+      }));
+      tableObjects.push(new fabric.Textbox(String(row[key]), {
+        left: currentX + padding, top: currentY + (rowHeight - textFontSize) / 2,
+        width: colWidths[colIndex] - (padding * 2),
+        fontSize: textFontSize, fill: '#333',
+      }));
+      currentX += colWidths[colIndex];
+    });
+    currentY += rowHeight;
+  });
+
+  const tableGroup = new fabric.Group(tableObjects, {
+    left: 50,
+    top: 100,
+    subTargetCheck: false,
+  });
+
+  fabricCanvas.value.add(tableGroup);
+  fabricCanvas.value.setActiveObject(tableGroup);
+// ✅ 修正：手動觸發選取狀態更新
+  handleSelection({ target: tableGroup });
+}
+
+// --- 右側面板功能 ---
+
+function deleteSelected() {
+  const activeObj = fabricCanvas.value.getActiveObject();
+  if (!activeObj) return;
+
+  if (activeObj.type === 'activeSelection') {
+    activeObj.forEachObject(obj => fabricCanvas.value.remove(obj));
+  } else {
+    fabricCanvas.value.remove(activeObj);
+  }
+  fabricCanvas.value.discardActiveObject();
+  fabricCanvas.value.renderAll();
+}
+
+function bringToFront() {
+  if (activeObject.value) {
+    fabricCanvas.value.bringToFront(activeObject.value);
+  }
+}
+
+function sendToBack() {
+  if (activeObject.value) {
+    fabricCanvas.value.sendToBack(activeObject.value);
+  }
+}
+
+function toggleBold() {
+  panelState.value.fontWeight = panelState.value.fontWeight === 'bold' ? 'normal' : 'bold';
+}
+
+function toggleItalic() {
+  panelState.value.fontStyle = panelState.value.fontStyle === 'italic' ? 'normal' : 'italic';
+}
+
+// ✅ [新功能] 列印畫布
+function printCanvas() {
+  if (!fabricCanvas.value) return;
+
+  // 1. 取得畫布的 Data URL (PNG 格式)
+  const dataUrl = fabricCanvas.value.toDataURL({
+    format: 'png',
+    quality: 1.0, // 使用最高品質
+  });
+
+  // 2. 開啟一個新的空白視窗
+  const printWindow = window.open('', '_blank');
+  
+  if (!printWindow) {
+    // 如果瀏覽器阻擋了彈出視窗
+    alert('請允許彈出式視窗來進行列印。');
+    return;
+  }
+
+  // 3. 準備要列印的 HTML 內容
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>列印畫布</title>
+        <style>
+          /* 移除瀏覽器預設的頁首、頁尾和邊距 */
+          @page {
+            size: auto; /* 自動調整紙張大小 */
+            margin: 0;  /* 移除邊距 */
+          }
+          body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center; /* 水平置中 (可選) */
+            align-items: center;   /* 垂直置中 (可選) */
+          }
+          img {
+            /* 確保圖片不會超出頁面 */
+            max-width: 100%;
+            max-height: 100vh;
+            display: block;
+          }
+        </style>
+      </head>
+      <body>
+        <img id="printImage" src="${dataUrl}">
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
+  // 4. 等待圖片完全載入後，再觸發列印
+  const img = printWindow.document.getElementById('printImage');
+  
+  img.onload = () => {
+    printWindow.focus(); // 確保視窗在最上層
+    printWindow.print(); // 觸發列印對話框
+  };
+  
+  // 5. (可選) 監聽 'afterprint' 事件，在列印後自動關閉視窗
+  printWindow.onafterprint = () => {
+    printWindow.close();
+  };
+}
+
+
+// ✅ [新功能] 新增切換模式的函數
+/**
+ * 更新 Fabric 畫布的可編輯狀態
+ */
+function updateCanvasMode(isEdit) {
+  if (!fabricCanvas.value) return;
+
+  if (isEdit) {
+    // --- 切換到 編輯模式 ---
+    // 1. 啟用畫布選取 (框選)
+    fabricCanvas.value.selection = true;
+    // 2. 讓所有物件可選
+    fabricCanvas.value.getObjects().forEach(obj => {
+      obj.set('selectable', true);
+    });
+  } else {
+    // --- 切換到 檢視模式 ---
+    // 1. 取消目前選取的物件
+    fabricCanvas.value.discardActiveObject();
+    // 2. 停用畫布選取 (框選)
+    fabricCanvas.value.selection = false;
+    // 3. 讓所有物件不可選
+    fabricCanvas.value.getObjects().forEach(obj => {
+      obj.set('selectable', false);
+    });
+    // 4. (重要) 觸發一次 renderAll 來隱藏選取框
+    fabricCanvas.value.renderAll();
+  }
+}
+
+/**
+ * 按鈕點擊時的觸發函數
+ */
+function toggleEditMode() {
+  isEditMode.value = !isEditMode.value;
+  updateCanvasMode(isEditMode.value);
+}
+
+// ✅ [新功能] 新增下載 PDF 函數
+function downloadPDF() {
+  if (!fabricCanvas.value) return;
+
+  // 1. 取得畫布的 Data URL (圖片)
+  const dataUrl = fabricCanvas.value.toDataURL({
+    format: 'png',
+    quality: 1.0,
+  });
+
+  // 2. 取得畫布的尺寸
+  const width = fabricCanvas.value.width;
+  const height = fabricCanvas.value.height;
+  
+  // 3. 判斷 PDF 應為 'p' (直式) 還是 'l' (橫式)
+  const orientation = width > height ? 'l' : 'p';
+
+  // 4. 建立 jsPDF 實例
+  // 我們使用 'px' (像素) 作為單位，並將格式設定為畫布的實際尺寸
+  const pdf = new jsPDF({
+    orientation: orientation,
+    unit: 'px',
+    format: [width, height],
+    // hotfixes: ['px_scaling'], // (可選) 處理高DPI的縮放
+  });
+
+  // 5. 將圖片加入 PDF
+  // (x:0, y:0, 寬:width, 高:height)
+  pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
+
+  // 6. 觸發下載
+  pdf.save('報價單.pdf');
+}
+
 </script>
 
 <style scoped>
-.test-page-container {
-  display: flex;
-  flex-direction: column;
+.editor-main-canvas-area {
+  background-color: #f0f2f5;
   width: 100%;
-  height: 90vh;
+  height: calc(100vh - 48px);
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px;
+}
+
+.page-preview-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100%;
+}
+
+#fabric-canvas {
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.color-preview-btn {
+  min-width: 40px !important;
   border: 1px solid #ccc;
 }
-
-.controls {
-  padding: 10px;
-  background-color: #f4f4f4;
-  border-bottom: 1px solid #ddd;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.parent-container {
-  flex-grow: 1;
-  position: relative; /* 關鍵：設定為 positioned ancestor */
-  background-color: #e0e0e0;
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  overflow: hidden; 
-}
-
-/* 拖曳方塊的樣式 */
-.test-spot {
-  /* ✓ 解決方案：強制指定 position: absolute */
-  position: absolute;
-  border: 1px dashed #333;
-}
-
-.spot-content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: bold;
-  background-color: rgba(255, 255, 0, 0.5); /* 測試黃色 */
-  color: #000;
-  box-sizing: border-box;
-  text-align: center;
-  word-break: break-all;
-}
-
-/* 選中時的樣式 */
-.active-spot {
-  border: 2px solid #007bff !important;
-  z-index: 999 !important;
-}
-.active-spot .spot-content {
-  background-color: rgba(255, 255, 0, 0.8);
-}
 </style>
-

@@ -488,7 +488,8 @@ const props = defineProps({
   viewMode: { type: String, default: 'sales' },
   allData: { type: Object, default: () => ({}) },
   projectName: { type: String, required: true }, 
-  contractTypes: { type: Array, default: () => [] }, // ✓ 新增此 prop
+  contractTypes: { type: Array, default: () => [] },
+  projectId: { type: String, required: true }, // ✅ 修正：新增這一行
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
@@ -690,11 +691,10 @@ async function saveChanges() {
       const data = editingData.value;
       const payload = {
           projectName: props.projectName,
-          projectId: projectId.value, // ✅ 新增：傳遞正確的 projectId
+          projectId: props.projectId, // ✅ 修正：改成讀取 props.projectId
           unitId: props.unitData.unitId, 
-          data: data // ✅ 修改：將編輯後的資料物件作為 'data' 屬性傳遞
+          data: data 
       };
-      
       console.log('🔍 [UnitDetailModal] 準備儲存的資料:', {
           projectName: payload.projectName,
           projectId: payload.projectId,

@@ -5,16 +5,21 @@
         <v-col cols="12" md="4">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-information-outline</v-icon>銷售資訊</div>
-            <v-select label="後台狀態" :items="statusOptions" v-model="editableData.salesStatus_backend" class="mb-4"></v-select>
             <v-select 
+              label="後台狀態" 
+              :items="statusOptions" 
+              v-model="editableData.salesStatus_backend" 
+              class="mb-4" 
+              clearable 
+            ></v-select> <v-select 
               label="銷售人員" 
               :items="personnelOptions" 
               v-model="editableData.salesperson" 
               class="mb-4"
               item-title="name"
               item-value="name"
-            ></v-select>            
-            <v-combobox
+              clearable
+            ></v-select> <v-combobox
               label="戶別圖片"
               v-model="editableData.salesImages"
               :items="salesImageOptions"
@@ -41,8 +46,13 @@
         <v-col cols="12" md="4">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
-            <v-select label="合約方式" :items="localContractOptions" v-model="editableData.contractType" class="mb-4"></v-select>
-            <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
+            <v-select 
+              label="合約方式" 
+              :items="localContractOptions" 
+              v-model="editableData.contractType" 
+              class="mb-4" 
+              clearable
+            ></v-select> <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
               <v-radio label="是" :value="true"></v-radio>
               <v-radio label="否" :value="false"></v-radio>
             </v-radio-group>
@@ -71,23 +81,21 @@
                     v-model="mailingCounty"
                     :items="counties"
                     label="縣市"
-                    :loading="loadingCounties"
                     density="compact"
                     variant="outlined"
-                  ></v-select>
-                </v-col>
+                    clearable
+                  ></v-select> </v-col>
                 <v-col cols="6">
                   <v-select
                     :key="`mailing-towns-${mailingCounty}`"
                     v-model="mailingTown"
                     :items="mailingTowns"
                     label="鄉鎮市區"
-                    :loading="loadingMailingTowns"
                     :disabled="!mailingCounty"
                     density="compact"
                     variant="outlined"
-                  ></v-select>
-                </v-col>
+                    clearable
+                  ></v-select> </v-col>
               </v-row>
               <v-text-field label="詳細地址" v-model="editableData.buyerMailingAddressDetail" density="compact" variant="outlined"></v-text-field>
             </div>
@@ -102,23 +110,21 @@
                     v-model="permanentCounty"
                     :items="counties"
                     label="縣市"
-                    :loading="loadingCounties"
                     density="compact"
                     variant="outlined"
-                  ></v-select>
-                </v-col>
+                    clearable
+                  ></v-select> </v-col>
                 <v-col cols="6">
                   <v-select
                     :key="`permanent-towns-${permanentCounty}`"
                     v-model="permanentTown"
                     :items="permanentTowns"
                     label="鄉鎮市區"
-                    :loading="loadingPermanentTowns"
                     :disabled="!permanentCounty"
                     density="compact"
                     variant="outlined"
-                  ></v-select>
-                </v-col>
+                    clearable
+                  ></v-select> </v-col>
               </v-row>
               <v-text-field label="詳細地址" v-model="editableData.buyerPermanentAddressDetail" density="compact" variant="outlined"></v-text-field>
             </div>
@@ -145,9 +151,7 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 import { useDisplay } from 'vuetify';
-
-const NLSC_API_BASE_URL = '/api-nlsc'; 
-
+import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
 const props = defineProps({
@@ -200,60 +204,20 @@ watch(() => editableData.value, (newData) => {
   }
 }, { immediate: true, deep: true });
 
-const counties = ref([]);
+const allCitiesData = ref(TwCitiesData);
+
+const counties = computed(() => allCitiesData.value.map(city => city.name));
 const mailingTowns = ref([]);
 const permanentTowns = ref([]);
 const mailingCounty = ref(null);
 const mailingTown = ref(null);
 const permanentCounty = ref(null);
 const permanentTown = ref(null);
-const loadingCounties = ref(false);
-const loadingMailingTowns = ref(false);
-const loadingPermanentTowns = ref(false);
 
 onMounted(async () => {
-  await fetchCounties();
   initializeAddress();
 });
 
-const fetchCounties = async () => {
-    loadingCounties.value = true;
-    try {
-        const response = await axios.get(`${NLSC_API_BASE_URL}/other/ListCounty`);
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(response.data, "application/xml");
-        const countyNodes = xmlDoc.querySelectorAll('countyItem');
-        counties.value = Array.from(countyNodes).map(node => ({
-            title: node.querySelector('countyname').textContent,
-            value: node.querySelector('countycode').textContent
-        }));
-    } catch (error) {
-        console.error("無法獲取縣市列表:", error);
-    } finally {
-        loadingCounties.value = false;
-    }
-};
-
-const fetchTowns = async (countyCode, targetTownsRef, loadingRef) => {
-    if (!countyCode) {
-        targetTownsRef.value = [];
-        return;
-    };
-    loadingRef.value = true;
-    targetTownsRef.value = [];
-    try {
-        const url = `${NLSC_API_BASE_URL}/other/ListTown1/${countyCode}`;
-        const response = await axios.get(url);
-        targetTownsRef.value = response.data.map(item => ({
-            title: item.townname,
-            value: item.townname,
-        }));
-    } catch (error) {
-        console.error(`無法獲取鄉鎮市區列表 (代碼: ${countyCode}):`, error);
-    } finally {
-        loadingRef.value = false;
-    }
-};
 
 const initializeAddress = () => {
     const data = editableData.value;
@@ -261,62 +225,75 @@ const initializeAddress = () => {
 
     const mailingCountyName = data.buyerMailingAddressCity;
     if (mailingCountyName) {
-        const county = counties.value.find(c => c.title === mailingCountyName);
+        const county = allCitiesData.value.find(c => c.name === mailingCountyName);
         if (county) {
-            mailingCounty.value = county.value;
-            const unwatch = watch(loadingMailingTowns, (isLoading) => {
-                if (!isLoading) {
-                    nextTick(() => { mailingTown.value = data.buyerMailingAddressDistrict; });
-                    unwatch();
-                }
+            mailingCounty.value = county.name;
+            mailingTowns.value = county.districts.map(d => d.name);
+            
+            // ✅ 使用 nextTick 確保 v-select (下拉選單) 已經更新了選項
+            nextTick(() => { 
+                mailingTown.value = data.buyerMailingAddressDistrict; 
             });
         }
     }
 
     const permanentCountyName = data.buyerPermanentAddressCity;
     if (permanentCountyName) {
-      const county = counties.value.find(c => c.title === permanentCountyName);
+      const county = allCitiesData.value.find(c => c.name === permanentCountyName);
       if (county) {
-        permanentCounty.value = county.value;
-        const unwatch = watch(loadingPermanentTowns, (isLoading) => {
-            if (!isLoading) {
-                nextTick(() => { permanentTown.value = data.buyerPermanentAddressDistrict; });
-                unwatch();
-            }
+        permanentCounty.value = county.name;
+        permanentTowns.value = county.districts.map(d => d.name);
+        
+        // ✅ 使用 nextTick
+        nextTick(() => { 
+            permanentTown.value = data.buyerPermanentAddressDistrict; 
         });
       }
     }
 };
 
-watch(mailingCounty, (newCountyCode) => {
-    const selectedCounty = counties.value.find(c => c.value === newCountyCode);
-    editableData.value.buyerMailingAddressCity = selectedCounty ? selectedCounty.title : '';
-    mailingTown.value = null;
-    fetchTowns(newCountyCode, mailingTowns, loadingMailingTowns);
+watch(mailingCounty, (newCountyName) => {
+    const selectedCounty = counties.value.find(c => c === newCountyName);
+    editableData.value.buyerMailingAddressCity = selectedCounty || '';
+    mailingTown.value = null; // 重設鄉鎮市區
+    
+    if (selectedCounty) {
+        const countyData = allCitiesData.value.find(c => c.name === selectedCounty);
+        mailingTowns.value = countyData ? countyData.districts.map(d => d.name) : [];
+    } else {
+        mailingTowns.value = [];
+    }
 });
 watch(mailingTown, (newTownName) => {
     editableData.value.buyerMailingAddressDistrict = newTownName || '';
 });
 
-watch(permanentCounty, (newCountyCode) => {
-    const selectedCounty = counties.value.find(c => c.value === newCountyCode);
-    editableData.value.buyerPermanentAddressCity = selectedCounty ? selectedCounty.title : '';
-    permanentTown.value = null;
-    fetchTowns(newCountyCode, permanentTowns, loadingPermanentTowns);
+// ✅ MOD: 修改 watch，從本地資料獲取鄉鎮市區
+watch(permanentCounty, (newCountyName) => {
+    const selectedCounty = counties.value.find(c => c === newCountyName);
+    editableData.value.buyerPermanentAddressCity = selectedCounty || '';
+    permanentTown.value = null; // 重設鄉鎮市區
+    
+    if (selectedCounty) {
+        const countyData = allCitiesData.value.find(c => c.name === selectedCounty);
+        permanentTowns.value = countyData ? countyData.districts.map(d => d.name) : [];
+    } else {
+        permanentTowns.value = [];
+    }
 });
 watch(permanentTown, (newTownName) => {
     editableData.value.buyerPermanentAddressDistrict = newTownName || '';
 });
 
+// ✅ MOD: 修改 "地址相同" 的 watch 邏輯
 watch(isPermanentSameAsMailing, (isSame) => {
   if (isSame) {
     permanentCounty.value = mailingCounty.value;
     editableData.value.buyerPermanentAddressDetail = editableData.value.buyerMailingAddressDetail;
-    const unwatch = watch(loadingPermanentTowns, (isLoading) => {
-        if (!isLoading) {
-            nextTick(() => { permanentTown.value = mailingTown.value; });
-            unwatch();
-        }
+    
+    // ✅ 由於 permanentCounty 的 watch 會自動更新 permanentTowns，我們用 nextTick 來等待更新
+    nextTick(() => { 
+        permanentTown.value = mailingTown.value; 
     });
   }
 });

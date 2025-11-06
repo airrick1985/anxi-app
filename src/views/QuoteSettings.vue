@@ -21,6 +21,16 @@
       <div>
         <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
         <p class="text-grey-darken-1">建案: {{ projectName }}</p>
+
+        <v-btn 
+          color="secondary" 
+          variant="tonal" 
+          @click="navigateToTest"
+          prepend-icon="mdi-pencil-ruler"
+        >
+          TEST 編輯器
+        </v-btn>
+
       </div>
       <v-spacer></v-spacer>
       <v-btn
@@ -873,6 +883,12 @@ function goBack() {
     const sourceMode = route.query.viewMode;
     const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
     router.push({ name: backRouteName, params: { projectName: projectId.value } });
+}
+
+
+// ✅ NEW: 新增導覽方法
+function navigateToTest() {
+  router.push({ name: 'Test' });
 }
 </script>
 
