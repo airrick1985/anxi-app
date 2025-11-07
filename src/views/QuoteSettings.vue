@@ -16,34 +16,48 @@
       </div>
     </v-overlay>
 
-    <div class="page-header d-flex align-center">
-      <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
-      <div>
-        <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
-        <p class="text-grey-darken-1">建案: {{ projectName }}</p>
+   <div class="page-header d-flex align-center">
+  <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
+  
+  <div>
+    <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
+    <p class="text-grey-darken-1">建案: {{ projectName }}</p>
+  </div>
 
-        <v-btn 
-          color="secondary" 
-          variant="tonal" 
-          @click="navigateToTest"
-          prepend-icon="mdi-pencil-ruler"
-        >
-          TEST 編輯器
-        </v-btn>
+  <v-spacer></v-spacer>
 
-      </div>
+<v-tooltip text="活動訊息" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn
+      v-bind="props"
+      icon="mdi-bullhorn-outline"
+      color="red"
+      variant="tonal"
+      class="mr-4"
+      @click="handleOpenActivityMessage"
+    >
+    </v-btn>
+  </template>
+</v-tooltip>
+</div>
+
+      <v-dialog
+      v-model="isQuoteEditorDialogVisible"
+      fullscreen
+      persistent
+      transition="dialog-bottom-transition"
+    >
+     <PrintQuotation
+        v-if="isQuoteEditorDialogVisible" 
+        @close="isQuoteEditorDialogVisible = false"
+        :project-name="projectName" :project-id="projectId" :personnel="selectedPersonnel"
+      />
+    </v-dialog>
+
       <v-spacer></v-spacer>
-      <v-btn
-        color="teal"
-        variant="tonal"
-        class="mr-4"
-        @click="handleOpenActivityMessage"
-        title="活動訊息"
-      >
-        活動訊息
-      </v-btn>
+     
 
-    </div>
+
 
     <v-card class="mt-4">
       <v-card-text>
@@ -95,13 +109,13 @@
             <v-text-field label="聯絡電話" :model-value="personnelPhone" readonly></v-text-field>
           </v-col>
           <v-col cols="12" md="8" class="text-right">
-            <v-btn 
-              color="success" size="large"
-              @click="handleGenerateQuote"
-              :loading="isGeneratingPdf"
-              :disabled="!selectedPersonnel">
-              產生報價單
-            </v-btn>
+          <v-btn 
+          color="secondary" 
+          variant="tonal" 
+          @click="openQuoteEditor" prepend-icon="mdi-printer"
+        >
+          列印報價單 </v-btn>
+          
           </v-col>
         </v-row>
       </v-card-text>
@@ -318,6 +332,7 @@ import {
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
+import PrintQuotation from '@/views/PrintQuotation.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -357,6 +372,7 @@ const packageTermsData = ref([]);
 const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
+const isQuoteEditorDialogVisible = ref(false);
 
 // --- 新增：期款範本選擇相關狀態 ---
 const paymentTemplates = ref([]); // 存放所有期款範本
@@ -568,105 +584,9 @@ function applyNewRounding(value, method, roundingValue = 1) {
     }
 }
 
-// --- 產生報價單 ---
-// 修改後的報價單生成函數
-async function handleGenerateQuote() {
-    if (!selectedPersonnel.value) {
-        alert('請先選擇報價人員');
-        return;
-    }
-    
-    // 驗證期款範本資料
-    if (!paymentTemplates.value || paymentTemplates.value.length === 0) {
-        alert('缺少期款範本資料，請聯繫系統管理員。');
-        return;
-    }
-    
-    isGeneratingPdf.value = true;
-    
-    try {
-        // 為每個報價項目檢查並選擇期款範本
-        for (const item of quoteStore.items) {
-            const template = checkAndSelectPaymentTemplate(item);
-            
-            if (!template) {
-                // 需要等待使用者選擇範本
-                isGeneratingPdf.value = false;
-                return;
-            }
-            
-            // 儲存選中的範本到項目中
-            item.selectedPaymentTemplate = template;
-        }
-        
-        // 繼續生成報價單
-        await generateQuoteWithTemplates();
-        
-    } catch (error) {
-        alert(error.message);
-        isGeneratingPdf.value = false;
-    }
-}
 
-// 使用範本生成報價單的函數
-async function generateQuoteWithTemplates() {
-    const quoteData = {
-        projectName: projectName.value,
-        personnelName: selectedPersonnel.value.name,
-        personnelPhone: selectedPersonnel.value.phone,
-        items: []
-    };
-    
-    for (const item of quoteStore.items) {
-        const template = item.selectedPaymentTemplate;
-        const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
-        
-        // 使用新格式計算期款
-        const calculatedAmounts = runNewCalculationEngine(
-            template.items,
-            finalTotal
-        );
-        
-        // 轉換為舊格式以保持相容性
-        const dynamicPayments = {};
-        Object.values(calculatedAmounts).forEach(calc => {
-            dynamicPayments[`${calc.name}金額`] = calc.value.toLocaleString();
-            // 如果需要百分比顯示，可以在這裡計算
-        });
-        
-        const packagePriceTotal = quoteStore.getPackagePrice(item.internalId);
-        const totalArea = item.unitDetails?.area_house_ping ? 
-            formatNumber(item.unitDetails.area_house_ping) : 'N/A';
 
-        quoteData.items.push({
-            '戶別': item.unitId,
-            '是否首購': item.isFirstTimeBuyer, 
-            '房屋總面積': totalArea,
-            '房屋總價': formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)),
-            '單價': formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2),
-            '車位編號': item.selectedParking.map(p => p.spotId).join(', '),
-            '車位價格': quoteStore.getParkingTotalPrice(item.internalId).toLocaleString(),
-            '配套價': packagePriceTotal.toLocaleString(),
-            '總價': finalTotal.toLocaleString(),
-            '期款範本': template.templateName,
-            ...dynamicPayments
-        });
-    }
-    
-    try {
-        const result = await generateQuotePdf(quoteData);
-        if (result.status === 'success' && result.url) {
-            generatedPdfUrl.value = result.url;
-            pdfResultDialog.value = true;
-        } else {
-            throw new Error(result.message || '後端未返回有效的URL');
-        }
-    } catch (error) {
-        alert(`生成報價單失敗: ${error.message}`);
-    } finally {
-        isGeneratingPdf.value = false;
-    }
-}
+
 
 // --- 其他所有函式 ---
 
@@ -886,14 +806,15 @@ function goBack() {
 }
 
 
-// ✅ NEW: 新增導覽方法
-function navigateToTest() {
-  router.push({ name: 'Test' });
+function openQuoteEditor() {
+  isQuoteEditorDialogVisible.value = true;
 }
+
+
 </script>
 
 <style scoped>
-/* 您的 style 內容維持原樣即可 */
+
 .page-header { padding-bottom: 16px; border-bottom: 2px solid #e0e0e0; }
 .quote-item-header { font-weight: bold; padding: 8px 16px; background-color: #f5f5f5; border-radius: 4px; margin-bottom: 8px; }
 .quote-item-header .item-cell { display: flex; justify-content: center; align-items: center; text-align: center; }

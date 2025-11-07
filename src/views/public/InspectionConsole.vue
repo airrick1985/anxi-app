@@ -253,7 +253,7 @@
                   <v-divider></v-divider>
                   <v-card-actions class="px-3 py-1">
                     <div class="d-flex flex-column flex-grow-1 mr-2">
-                         <span class="text-caption text-grey"> {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span>
+                         <span class="text-caption text-grey"> 驗屋人員: {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span>
                          <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
                              買方確認：{{ formatDate(item.customerConfirmedAt) }}
                          </span>

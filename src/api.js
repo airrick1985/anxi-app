@@ -46,8 +46,7 @@ export const adminBookingApiRouter = httpsCallable(functions, 'adminBookingApi')
 export const inspectionCalendarApiRouter = httpsCallable(functions, 'inspectionCalendarApi');
 // 4. 【新增】定義 LIFF 行事曆頁面的路由函數 (您在上一步優化 LiffInspectionCalendar.vue 時會需要)
 export const liffCalendarApiRouter = httpsCallable(functions, 'liffCalendarApi');
-
-
+export const salesApiRouter = httpsCallable(functions, 'salesApi');
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
 const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
@@ -6765,3 +6764,54 @@ export const liffGetAdminBookingCalendarData = async (payload) => {
     throw new Error(error.message);
   }
 };
+
+
+/**
+ * 儲存報價單版型
+ * @param {string} projectId 
+ * @param {object} templateData 
+ * @returns {Promise<object>} 
+ */
+export async function saveQuotationTemplate(projectId, templateData) {
+  if (!projectId || !templateData) {
+    return { status: 'error', message: '前端錯誤：缺少 projectId 或 templateData' };
+  }
+  
+  try {
+    // ✅ [打勾] 修正：移除 'data:' 包裝，直接擴展
+    const result = await salesApiRouter({
+        action: 'saveQuotationTemplate',
+        projectId, 
+        templateData 
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API saveQuotationTemplate 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+
+// ✅ [打勾] 新增：讀取版型的函數
+/**
+ * 讀取報價單版型
+ * @param {string} projectId 
+ * @returns {Promise<object>} 
+ */
+export async function loadQuotationTemplate(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '前端錯誤：缺少 projectId' };
+  }
+  
+  try {
+    // ✅ [打勾] 修正：移除 'data:' 包裝
+    const result = await salesApiRouter({
+        action: 'loadQuotationTemplate',
+        projectId // 直接傳遞
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API loadQuotationTemplate 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}

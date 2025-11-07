@@ -345,7 +345,7 @@
       :initialSelectedParking="item.selectedParking || []"
       @confirm="handleParkingUpdate"
       mode="quote"
-      :unitId="item.internalId"
+      :unitId="item.unitId"
       :project-id="props.projectId" @request-open-slide="emit('request-open-slide')"
     />
     </div>
@@ -935,6 +935,30 @@ const packagePaymentCalculation = computed(() => {
         console.error('配套期款計算錯誤:', error);
         return { hasData: false, items: [], templateName: '', error: error.message };
     }
+});
+
+// ✅ [打勾] 新增：監聽 generalPaymentCalculation 的變化
+watch(generalPaymentCalculation, (newCalculation) => {
+  // 確保計算成功且有 results 物件
+  if (newCalculation && newCalculation.hasData && newCalculation.results) {
+    
+    // 依據您的需求：只儲存 Parent 項目
+   const parentPayments = newCalculation.items
+      .filter(item => !item.parentId) // 篩選出 parentId 為空 (或 falsy) 的項目
+      .map(item => ({
+        name: item.name,
+        value: item.calculatedValue, // ✅ [打勾] 修正：使用 calculatedValue (來自 itemsArray)
+        percentage: item.conditionalValue
+      }));
+    
+    if (parentPayments.length > 0) {
+      // 自動將計算結果儲存回 Pinia Store (現在會保持正確順序)
+      quoteStore.updateItemCalculatedPayments(props.item.internalId, parentPayments);
+    }
+  }
+}, {
+  immediate: true, // 立即執行一次，確保組件加載時就嘗試計算並儲存
+  deep: true       // 深度監聽
 });
 
 // ★★★ 新增：檢查是否有任何期款資料 ★★★

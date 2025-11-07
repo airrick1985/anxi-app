@@ -1,54 +1,80 @@
 <template>
-  <v-app>
-    <v-layout class="h-100">
+  <v-card height="100vh" class="d-flex">
 
-      <v-app-bar density="compact" flat border>
-        <v-app-bar-title class="text-caption">Fabric.js 編輯器</v-app-bar-title>
+    <v-layout>
+
+      <v-app-bar density="compact" flat border location="top">
+        <v-btn icon="mdi-close" @click="$emit('close')"></v-btn>
+        
+<v-app-bar-title class="text-caption">{{ props.projectName }} 列印報價單</v-app-bar-title>
         <v-spacer></v-spacer>
 
-        <v-btn
-          variant="tonal"
-          :color="isEditMode ? 'default' : 'primary'"
-          @click="toggleEditMode"
-          size="small"
-          class="mr-2"
-          :prepend-icon="isEditMode ? 'mdi-eye' : 'mdi-pencil'"
-        >
-          {{ isEditMode ? '切換檢視' : '切換編輯' }}
-        </v-btn>
+      <v-tooltip :text="isEditMode ? '切換檢視' : '切換編輯'" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn
+      v-bind="props"
+      variant="tonal"
+      color="black"
+      @click="toggleEditMode"
+      size="small"
+      class="mr-2"
+      :icon="isEditMode ? 'mdi-eye' : 'mdi-pencil'"
+    >
+    </v-btn>
+  </template>
+</v-tooltip>
 
-        <v-btn 
-          variant="tonal" 
-          @click="downloadPDF" 
-          size="small"
-          class="mr-2"
-          prepend-icon="mdi-file-download"
-        >
-          下載報價單 (PDF)
-        </v-btn>
+<v-tooltip text="下載報價單 (PDF)" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn
+      v-bind="props"
+      variant="tonal"
+      color="black"
+      @click="downloadPDF"
+      size="small"
+      class="mr-2"
+      icon="mdi-file-download"
+    >
+    </v-btn>
+  </template>
+</v-tooltip>
 
+<v-tooltip text="列印" location="bottom">
+  <template v-slot:activator="{ props }">
+    <v-btn
+      v-bind="props"
+      variant="tonal"
+      color="black"
+      @click="printCanvas"
+      size="small"
+      class="mr-2"
+      icon="mdi-printer"
+    >
+    </v-btn>
+  </template>
+</v-tooltip>
 
-        <v-btn 
-          variant="tonal" 
-          @click="printCanvas" 
-          size="small"
-          class="mr-2"
-          prepend-icon="mdi-printer"
-        >
-          列印
-        </v-btn>
+<v-tooltip 
+  text="儲存版型" 
+  location="bottom" 
+  v-if="isEditMode && userStore.hasProjectPermission('儲存報價單版型', props.projectName)"
+>
+  <template v-slot:activator="{ props }">
+    <v-btn
+      v-bind="props"
+      variant="tonal"
+      color="black"
+      @click="handleSaveTemplate"
+      :loading="isSaving"
+      size="small"
+      class="mr-2"
+      icon="mdi-content-save"
+    >
+    </v-btn>
+  </template>
+</v-tooltip>
 
-        <v-btn 
-          variant="tonal" 
-          color="primary" 
-          @click="isCanvasSettingsDialog = true" 
-          size="small"
-          class="mr-2"
-          prepend-icon="mdi-ruler-square"
-        >
-          畫布設定 ({{ canvasSettings.width }} x {{ canvasSettings.height }} px)
-        </v-btn>
-      </v-app-bar>
+        </v-app-bar>
 
       <v-navigation-drawer v-model="isEditMode" width="240">
         <v-list density="compact" nav>
@@ -78,29 +104,12 @@
 
           <v-divider class="my-4"></v-divider>
           <v-list-subheader>資料</v-list-subheader>
-          <v-list-item>
-            <v-btn @click="addQuoteTable" block variant="tonal" color="success" prepend-icon="mdi-table">
-              插入報價單表格
-            </v-btn>
-          </v-list-item>
+        
         </v-list>
       </v-navigation-drawer>
 
-      <v-main class="editor-main-canvas-area">
-        <div 
-          class="page-preview-container" 
-        >
-          <canvas 
-            ref="canvasEl" 
-            id="fabric-canvas"
-            :width="canvasSettings.width"
-            :height="canvasSettings.height"
-          ></canvas>
-        </div>
-      </v-main>
-
       <v-navigation-drawer
-      v-model="isEditMode"
+        v-model="isEditMode"
         location="right"
         permanent
         width="280"
@@ -191,67 +200,126 @@
           </template>
         </v-list>
       </v-navigation-drawer>
-    </v-layout>
 
+      <v-main class="editor-main-canvas-area" ref="mainAreaRef"> <div 
+          class="page-preview-container" 
+          :style="pageContainerStyle" >
+          <canvas 
+            ref="canvasEl" 
+            id="fabric-canvas"
+            :width="canvasSettings.width"
+            :height="canvasSettings.height"
+          ></canvas>
+        </div>
+      </v-main>
+
+    </v-layout> 
     <v-dialog v-model="isCanvasSettingsDialog" max-width="500">
-      <v-card>
-        <v-card-title>畫布設定</v-card-title>
-        <v-card-text>
-          <v-select
-            v-model="canvasSettings.preset"
-            :items="canvasPresetOptions"
-            label="預設尺寸"
+  <v-card>
+    <v-card-title>畫布設定</v-card-title>
+    <v-card-text>
+      <v-select
+        v-model="canvasSettings.preset"
+        :items="canvasPresetOptions"
+        label="預設尺寸"
+        variant="outlined"
+        density="compact"
+        class="mb-4"
+        @update:model-value="onPresetChange"
+      ></v-select>
+      <v-row dense>
+        <v-col>
+          <v-text-field
+            v-model.number="canvasSettings.width"
+            label="寬度 (px)"
+            type="number"
             variant="outlined"
             density="compact"
-            class="mb-4"
-            @update:model-value="onPresetChange"
-          ></v-select>
-          <v-row dense>
-            <v-col>
-              <v-text-field
-                v-model.number="canvasSettings.width"
-                label="寬度 (px)"
-                type="number"
-                variant="outlined"
-                density="compact"
-                :disabled="canvasSettings.preset !== 'custom'"
-              ></v-text-field>
-            </v-col>
-            <v-col>
-              <v-text-field
-                v-model.number="canvasSettings.height"
-                label="高度 (px)"
-                type="number"
-                variant="outlined"
-                density="compact"
-                :disabled="canvasSettings.preset !== 'custom'"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn @click="applyCanvasSettings">套用</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </v-app>
-</template>
+            :disabled="canvasSettings.preset !== 'custom'"
+          ></v-text-field>
+        </v-col>
+        <v-col>
+          <v-text-field
+            v-model.number="canvasSettings.height"
+            label="高度 (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            :disabled="canvasSettings.preset !== 'custom'"
+          ></v-text-field>
+        </v-col>
+      </v-row>
+    </v-card-text>
+    <v-card-actions>
+      <v-spacer></v-spacer>
+      
+      <v-btn 
+        variant="text" 
+        @click="isCanvasSettingsDialog = false"
+      >
+        取消
+      </v-btn>
+
+      <v-btn @click="applyCanvasSettings">套用</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+    
+  </v-card> </template>
 
 <script setup>
 import { jsPDF } from "jspdf";
-import { ref, computed, watch, shallowRef, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, shallowRef, onMounted, onUnmounted, nextTick, watchEffect } from 'vue';
 import { fabric } from 'fabric';
+import { saveQuotationTemplate, loadQuotationTemplate } from '@/api';
+import { useQuoteStore } from '@/store/quoteStore';
+import { useUserStore } from '@/store/user'; //  [打勾] 1. 引入 userStore
+import { useToast } from 'vue-toastification';
+
+const toast = useToast();
+
+const emit = defineEmits(['close']);
+
+const props = defineProps({
+  projectName: { // (用於標題)
+    type: String,
+    required: true,
+  },
+  projectId: { // (用於 API)
+    type: String,
+    required: true,
+  },
+  personnel: {
+    type: Object,
+    default: null
+  }
+});
+
+function formatNumber(val, frac = 0) {
+    if (val === null || val === undefined || val === '') return 'N/A';
+    const num = parseFloat(val);
+    if (isNaN(num)) return 'N/A';
+    // 插入表格的數字使用千分位
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
+}
+
+const quoteStore = useQuoteStore();
+const userStore = useUserStore(); //  [打勾] 2. 實例化 userStore
 
 // --- 畫布實例 ---
 const canvasEl = ref(null);
 const fabricCanvas = shallowRef(null);
 
-// ✅ 修正：新增一個旗標，防止 watch 循環
+//  [打勾] 4. 新增用於 ResizeObserver 的 refs
+const mainAreaRef = ref(null); // v-main 的 DOM ref
+const mainAreaWidth = ref(0); // v-main 的內容寬度
+
+
+//  修正：新增一個旗標，防止 watch 循環
 const isUpdatingFromSelection = ref(false);
 
-// ✅ [新功能] 新增編輯模式狀態
-const isEditMode = ref(true); // 預設為編輯模式
+//  [新功能] 新增編輯模式狀態
+const isEditMode = ref(false); // 預設為檢視模式
 
 
 // --- 畫布設定 ---
@@ -297,6 +365,35 @@ function applyCanvasSettings() {
 const activeObject = shallowRef(null);
 const panelState = ref({}); // v-model 綁定
 
+const isSaving = ref(false);
+const isLoadingTemplate = ref(true);
+
+const textFontSize = 28;
+
+const pageContainerStyle = computed(() => {
+  const canvasWidth = canvasSettings.value.width;
+  const containerWidth = mainAreaWidth.value;
+
+  // 留出 10px 的緩衝區，避免貼邊
+  const availableWidth = containerWidth - 10;
+  
+  if (containerWidth === 0 || availableWidth >= canvasWidth) {
+    // 尚未渲染完成，或容器寬度足夠，不需要縮放
+    return { 
+      transform: 'scale(1)',
+      transformOrigin: 'top center'
+    };
+  }
+
+  // 容器寬度 < 畫布寬度，計算縮放比例
+  const scale = availableWidth / canvasWidth;
+  
+  return {
+    transform: `scale(${scale})`,
+    transformOrigin: 'top center', // 從頂部中心開始縮放
+  };
+});
+
 const inspectorTitle = computed(() => {
   if (!activeObject.value) return '畫布屬性';
   
@@ -310,30 +407,71 @@ const inspectorTitle = computed(() => {
   return '元件屬性';
 });
 
+// ✅ [打勾] 3. 新增 watchEffect (這會取代舊的 onMounted/onUnmounted 中的邏輯)
+watchEffect((onCleanup) => {
+  
+  // ✅ [打勾] 1. 取得 v-main 的 "組件" 實例
+  const vMainComponent = mainAreaRef.value;
+  
+  // ✅ [打勾] 2. 檢查組件實例及其 $el (DOM 元素) 是否都存在
+  if (vMainComponent && vMainComponent.$el) {
+    
+    // ✅ [打勾] 3. 這才是真正的 DOM 元素
+    const el = vMainComponent.$el; 
+
+    // 立即獲取初始寬度
+    mainAreaWidth.value = el.clientWidth;
+    
+    const resizeObserver = new ResizeObserver(entries => {
+      if (entries[0]) {
+        mainAreaWidth.value = entries[0].contentRect.width;
+      }
+    });
+    
+    // ✅ [打勾] 4. 監聽 DOM 元素
+    resizeObserver.observe(el); 
+
+    // onCleanup 會在 watchEffect 重新執行或元件 unmount 時觸發
+    onCleanup(() => {
+      resizeObserver.unobserve(el);
+      resizeObserver.disconnect();
+    });
+  }
+});
+
+
 // --- Fabric.js 初始化 ---
-onMounted(() => {
+onMounted(async () => {
   fabricCanvas.value = new fabric.Canvas(canvasEl.value, {
     backgroundColor: '#ffffff',
     fireRightClick: true,
     stopContextMenu: true,
   });
 
+  //  [打勾] 1. 修正 NUM_FRACTION_DIGITS 問題
+  // 根據官方文件，提高 Fabric.js 讀取/寫入 JSON 時的小數點精度
+  // 你的資料庫儲存了高精度，讀取時也必須用高精度
+  fabric.Object.NUM_FRACTION_DIGITS = 8; // 設定為 8 位精度
+
+  fabricCanvas.value.imageSmoothingEnabled = false;
+
+
   // --- 事件監聽 ---
   fabricCanvas.value.on('selection:created', handleSelection);
   fabricCanvas.value.on('selection:updated', handleSelection);
   fabricCanvas.value.on('selection:cleared', handleSelectionCleared);
   
-  // ✅ [新功能] 新增鍵盤事件監聽
+  //  [新功能] 新增鍵盤事件監聽
   window.addEventListener('keydown', handleKeyDown);
   
   // 監聽面板狀態 -> 更新 Fabric 物件
 watch(panelState, (newState) => {
-    // ✅ 修正：如果正在從選取事件更新，則跳過
+    //  修正：如果正在從選取事件更新，則跳過
     if (isUpdatingFromSelection.value) return;
     
     if (!activeObject.value) return;
 
-    // ✅ 修正： 定義一個安全的 set function
+    //  修正： 定義一個安全的 set function
     const applyTo = (obj) => {
       // 檢查是否為 'fill'（文字/矩形）
       if (newState.fill && (obj.type === 'textbox' || obj.type === 'rect')) {
@@ -353,7 +491,7 @@ watch(panelState, (newState) => {
       }
     };
 
-    // ✅ 修正： 區分單選、多選、群組
+    //  修正： 區分單選、多選、群組
     if (activeObject.value.type === 'activeSelection') {
       // 多選：套用到所有子物件
       activeObject.value.forEachObject(applyTo);
@@ -376,16 +514,20 @@ watch(panelState, (newState) => {
     
     fabricCanvas.value.renderAll();
   }, { deep: true });
+
+  await loadAndRenderTemplate();
 });
 
 onUnmounted(() => {
-  // ✅ [新功能] 移除鍵盤事件監聽
+  //  [新功能] 移除鍵盤事件監聽
   window.removeEventListener('keydown', handleKeyDown);
+  
   
   if (fabricCanvas.value) {
     fabricCanvas.value.dispose();
   }
 });
+
 // --- Fabric 事件處理 ---
 
 function handleSelection(e) {
@@ -414,7 +556,7 @@ function handleSelection(e) {
   console.log('➡️ handleSelection: Setting flag to true.');
   isUpdatingFromSelection.value = true;
 
-  // ✅✅✅ 唯一的修正 ✅✅✅
+  //  唯一的修正 
   const obj = targetObject; // 錯誤：const obj = e.target;
   activeObject.value = obj;
   
@@ -476,7 +618,7 @@ function handleSelectionCleared() {
   panelState.value = {};
 }
 
-// ✅ [新功能] 新增鍵盤處理函數
+//  [新功能] 新增鍵盤處理函數
 function handleKeyDown(e) {
   // 檢查是否正在輸入框中 (例如右側面板的 "字體大小")
   const activeEl = document.activeElement;
@@ -547,7 +689,7 @@ function addText() {
   });
   fabricCanvas.value.add(text);
   
-  // ✅ 附註：
+  //  附註：
   // setCountFrequency(0) 是一個小技巧，
   // 它可以"可能"阻止 setActiveObject 觸發那個 "壞" 的 'selection:created' 事件
   // 但我們的主要修復是在 handleSelection 中，所以這行不是必須的
@@ -559,8 +701,10 @@ function addText() {
   
   // fabricCanvas.value.setCountFrequency(1); // 恢復
 }
+
 const imageInputRef = ref(null);
 const triggerImageUpload = () => imageInputRef.value.click();
+
 function onImageUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -570,7 +714,7 @@ function onImageUpload(event) {
       img.set({ left: 50, top: 50, scaleX: 0.5, scaleY: 0.5 });
       fabricCanvas.value.add(img);
       fabricCanvas.value.setActiveObject(img);
-   // ✅ 修正：手動觸發選取狀態更新
+   //  修正：手動觸發選取狀態更新
       handleSelection({ target: img });
     });
   };
@@ -589,75 +733,201 @@ function addShape() {
   });
   fabricCanvas.value.add(rect);
   fabricCanvas.value.setActiveObject(rect);
-// ✅ 修正：手動觸發選取狀態更新
+//  修正：手動觸發選取狀態更新
   handleSelection({ target: rect });
 }
 
 function addQuoteTable() {
-  const quoteData = [
-    { 戶別: 'A1-10F', 訂金: '10', 簽約金: '50', 總價車位: '1588' },
-    { 戶別: 'B2-12F', 訂金: '12', 簽約金: '60', 總價車位: '1720' },
-  ];
-  const headers = ['戶別', '訂金', '簽約金', '總價(含車位)'];
-  const colKeys = ['戶別', '訂金', '簽約金', '總價車位'];
+  
+  // (1) 檢查資料
+ if (quoteStore.items.length === 0) {
+    //  [打勾] 修改此行
+    toast.error('報價單中沒有項目，無法插入表格。', { timeout: false });
+    return null; 
+  }
+  if (!quoteStore.items[0].calculatedPayments || quoteStore.items[0].calculatedPayments.length === 0) {
+    //  [打勾] 修改此行
+    toast.error('資料還沒準備好，請關閉重試。', { timeout: false });
+    return null; 
+  }
 
-  const colWidths = [100, 80, 80, 120];
-  const rowHeight = 40;
-  const padding = 10;
-  const headerFill = '#f0f0f0';
+  // (2) 動態建立欄位標頭 (Headers)
+  const headers = [];
+  headers.push('戶別');
+  headers.push('面積');
+  headers.push('房屋總價');
+  headers.push('房屋單價');
+  headers.push('車位');
+  headers.push('車位價格');
+  const dynamicPaymentHeaders = quoteStore.items[0].calculatedPayments.map(p => p.name);
+  headers.push(...dynamicPaymentHeaders);
+  const showPackage = quoteStore.items.some(item => 
+    quoteStore.getPackagePrice(item.internalId) > 0
+  );
+  if (showPackage) {
+    headers.push('配套價');
+  }
+  headers.push('總價');
+
+  // (3) 準備每一列 (Rows) 的資料
+  const rows = quoteStore.items.map(item => {
+    const row = {};
+    
+    const paymentMap = new Map((item.calculatedPayments || []).map(p => 
+      [p.name, { value: p.value, percentage: p.percentage }]
+    ));
+
+    row['戶別'] = item.unitId;
+    row['面積'] = formatNumber(item.unitDetails?.area_house_ping, 2)+ ' 坪';
+    row['房屋總價'] = formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId))+ ' 萬';
+    row['房屋單價'] = formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2)+ ' 萬/坪';
+    row['車位'] = (item.selectedParking || []).map(p => p['車位編號']).join(', ') || '-';
+    row['車位價格'] = formatNumber(quoteStore.getParkingTotalPrice(item.internalId))+ ' 萬';
+    
+    dynamicPaymentHeaders.forEach(header => {
+      const payment = paymentMap.get(header) || { value: 0 };
+      const amountStr = formatNumber(payment.value || 0) + ' 萬';
+      let percentStr = '';
+      if (payment.percentage) {
+         percentStr = `\n(${payment.percentage}%)`;
+      }
+      row[header] = amountStr + percentStr;
+    });
+
+    if (showPackage) {
+      row['配套價'] = formatNumber(quoteStore.getPackagePrice(item.internalId)) + ' 萬';
+    }
+
+    row['總價'] = formatNumber(quoteStore.getFinalTotalPrice(item.internalId)) + ' 萬';
+    
+    return row;
+  });
+
+  // (4) 渲染 Fabric.js 物件
+  
+  // (4a) 欄寬
+  const colWidths = headers.map(header => {
+    if (header === '戶別') return 150;
+    if (header === '車位') return 150;
+    if (header.includes('價') || header.includes('款') || header.includes('訂金')) return 150;
+    if (header === '面積(坪)') return 150;
+    return 150;
+  });
+  
+  // (4b) 基礎樣式
+  const padding = 15; 
+  const verticalPadding = 25; 
+  const headerFill = '#f5f5f7';
   const rowFill = '#ffffff';
   const stroke = '#cccccc';
-  const textFontSize = 14;
+  // textFontSize 是在 <script setup> 頂層定義的 (textFontSize = 26)
 
   const tableObjects = [];
   let currentY = 0;
 
+  // (4c) 渲染標頭列
   let currentX = 0;
+  let headerTextBoxes = [];
+  let maxHeaderHeight = 0;
+
   headers.forEach((header, colIndex) => {
-    tableObjects.push(new fabric.Rect({
-      left: currentX, top: currentY,
-      width: colWidths[colIndex], height: rowHeight,
-      fill: headerFill, stroke: stroke,
-    }));
-    tableObjects.push(new fabric.Textbox(header, {
-      left: currentX + padding, top: currentY + (rowHeight - textFontSize) / 2,
+    const tb = new fabric.Textbox(header, {
+      left: currentX + padding, 
+      top: currentY + verticalPadding, 
       width: colWidths[colIndex] - (padding * 2),
-      fontSize: textFontSize, fontWeight: 'bold', fill: '#000',
-    }));
+      fontSize: textFontSize, 
+      fontWeight: 'bold', 
+      fill: '#000',
+      textAlign: 'center'
+    });
+    headerTextBoxes.push(tb);
+    maxHeaderHeight = Math.max(maxHeaderHeight, tb.height);
     currentX += colWidths[colIndex];
   });
-  currentY += rowHeight;
 
-  quoteData.forEach((row) => {
+  const headerRowHeight = maxHeaderHeight + (verticalPadding * 2); 
+  currentX = 0;
+
+  headerTextBoxes.forEach((tb, colIndex) => {
+    tableObjects.push(new fabric.Rect({
+      left: currentX, 
+      top: currentY,
+      width: colWidths[colIndex], 
+      height: headerRowHeight,
+      fill: headerFill, 
+      stroke: stroke,
+    }));
+    tb.set('top', currentY + (headerRowHeight - tb.height) / 2);
+    tableObjects.push(tb);
+    currentX += colWidths[colIndex];
+  });
+  currentY += headerRowHeight;
+
+  // (4d) 渲染資料列
+  rows.forEach((row) => {
     currentX = 0;
-    colKeys.forEach((key, colIndex) => {
-      tableObjects.push(new fabric.Rect({
-        left: currentX, top: currentY,
-        width: colWidths[colIndex], height: rowHeight,
-        fill: rowFill, stroke: stroke,
-      }));
-      tableObjects.push(new fabric.Textbox(String(row[key]), {
-        left: currentX + padding, top: currentY + (rowHeight - textFontSize) / 2,
+    let rowTextBoxes = [];
+    let maxRowHeight = 0;
+
+    headers.forEach((key, colIndex) => {
+      
+      let currentFontSize = textFontSize;
+      let currentFill = '#333';
+      let currentFontWeight = 'normal';
+
+      if (key === '總價') {
+        currentFontSize = textFontSize * 1.2; 
+        currentFill = '#C62828'; 
+        currentFontWeight = 'bold'; 
+      }
+      
+      const tb = new fabric.Textbox(String(row[key]), {
+        left: currentX + padding,
+        top: currentY + verticalPadding,
         width: colWidths[colIndex] - (padding * 2),
-        fontSize: textFontSize, fill: '#333',
-      }));
+        fontSize: currentFontSize, 
+        fill: currentFill,
+        fontWeight: currentFontWeight,
+        textAlign: 'center'
+      });
+      rowTextBoxes.push(tb);
+      maxRowHeight = Math.max(maxRowHeight, tb.height);
       currentX += colWidths[colIndex];
     });
-    currentY += rowHeight;
+
+    const dataRowHeight = maxRowHeight + (verticalPadding * 2);
+    currentX = 0;
+
+    rowTextBoxes.forEach((tb, colIndex) => {
+      tableObjects.push(new fabric.Rect({
+        left: currentX, 
+        top: currentY,
+        width: colWidths[colIndex], 
+        height: dataRowHeight,
+        fill: rowFill, 
+        stroke: stroke,
+      }));
+      tb.set('top', currentY + (dataRowHeight - tb.height) / 2);
+      tableObjects.push(tb);
+      currentX += colWidths[colIndex];
+    });
+    
+    currentY += dataRowHeight;
   });
 
+
+  // (4e) 建立群組並插入
   const tableGroup = new fabric.Group(tableObjects, {
-    left: 50,
-    top: 100,
-    subTargetCheck: false,
+    left: 0,
+    top: 0,
+    lockUniScaling: true,
+    objectCaching: false // (保持這個設定，解決模糊問題)
   });
+  tableGroup.set('isQuoteTable', true); // 標記 (不變)
 
-  fabricCanvas.value.add(tableGroup);
-  fabricCanvas.value.setActiveObject(tableGroup);
-// ✅ 修正：手動觸發選取狀態更新
-  handleSelection({ target: tableGroup });
+
+  return tableGroup; //  [打勾] 只返回在 (0,0) 建立的原始 tableGroup
 }
-
 // --- 右側面板功能 ---
 
 function deleteSelected() {
@@ -693,7 +963,7 @@ function toggleItalic() {
   panelState.value.fontStyle = panelState.value.fontStyle === 'italic' ? 'normal' : 'italic';
 }
 
-// ✅ [新功能] 列印畫布
+//  [新功能] 列印畫布
 function printCanvas() {
   if (!fabricCanvas.value) return;
 
@@ -701,6 +971,8 @@ function printCanvas() {
   const dataUrl = fabricCanvas.value.toDataURL({
     format: 'png',
     quality: 1.0, // 使用最高品質
+    multiplier: 2
+    
   });
 
   // 2. 開啟一個新的空白視窗
@@ -760,7 +1032,7 @@ function printCanvas() {
 }
 
 
-// ✅ [新功能] 新增切換模式的函數
+//  [新功能] 新增切換模式的函數
 /**
  * 更新 Fabric 畫布的可編輯狀態
  */
@@ -798,7 +1070,7 @@ function toggleEditMode() {
   updateCanvasMode(isEditMode.value);
 }
 
-// ✅ [新功能] 新增下載 PDF 函數
+//  [新功能] 新增下載 PDF 函數
 function downloadPDF() {
   if (!fabricCanvas.value) return;
 
@@ -806,6 +1078,7 @@ function downloadPDF() {
   const dataUrl = fabricCanvas.value.toDataURL({
     format: 'png',
     quality: 1.0,
+    multiplier: 2
   });
 
   // 2. 取得畫布的尺寸
@@ -821,7 +1094,7 @@ function downloadPDF() {
     orientation: orientation,
     unit: 'px',
     format: [width, height],
-    // hotfixes: ['px_scaling'], // (可選) 處理高DPI的縮放
+   hotfixes: ['px_scaling'], // (可選) 處理高DPI的縮放
   });
 
   // 5. 將圖片加入 PDF
@@ -829,13 +1102,357 @@ function downloadPDF() {
   pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
 
   // 6. 觸發下載
-  pdf.save('報價單.pdf');
+  pdf.save(`${props.projectName} 報價單.pdf`);
+}
+
+//  [打勾] 新增：插入銷售人員資訊的函數
+/**
+ * @param {number} startY 插入的起始 Y 座標
+ */
+function addPersonnelInfo(options = null, defaultStartY = 100) {
+  if (!props.personnel || !props.personnel.name) {
+    console.warn("缺少銷售人員資訊，不插入。");
+    return [];
+  }
+
+  const personnelFontSize = textFontSize * 0.8;
+  const personnelWidth = 400;
+
+  // 預設值 (使用傳入的 defaultStartY)
+  const defaultOptions = {
+    name: {
+      left: 50,
+      top: defaultStartY, //  [打勾] 修正：現在 defaultStartY 已定義
+      width: personnelWidth,
+      fontSize: personnelFontSize,
+      fill: '#000',
+      fontWeight: 'bold',
+      textAlign: 'left',
+    },
+    phone: {
+      left: 50,
+      top: defaultStartY + (personnelFontSize * 1.5), //  [打勾] 修正：現在 defaultStartY 已定義
+      width: personnelWidth,
+      fontSize: personnelFontSize,
+      fill: '#000',
+      textAlign: 'left',
+    }
+  };
+  
+  const nameOptions = options?.name ? options.name : defaultOptions.name;
+  const phoneOptions = options?.phone ? options.phone : defaultOptions.phone;
+
+  // (移除錯誤的 'if (!options)' 區塊)
+
+  const nameText = new fabric.Textbox(
+    `銷售人員：${props.personnel.name}`, 
+    nameOptions
+  );
+
+  const phoneText = new fabric.Textbox(
+    `聯絡電話：${props.personnel.phone}`, 
+    phoneOptions
+  );
+
+  nameText.set('isPersonnelInfo', 'name');
+  phoneText.set('isPersonnelInfo', 'phone');
+
+  return [nameText, phoneText];
+}
+
+//   -----------------------------------------------
+//  儲存版型相關函數 (共 3 個)
+//  -----------------------------------------------
+
+/**
+ * (輔助函數 1) 將 Fabric 物件序列化為乾淨的 JSON
+ */
+function serializeFabricObject(obj) {
+  // 1. 通用屬性
+  const commonProps = {
+    type: obj.type,
+    left: obj.left,
+    top: obj.top,
+    scaleX: obj.scaleX,
+    scaleY: obj.scaleY,
+    angle: obj.angle, // 即 rotation
+    originX: obj.originX,
+    originY: obj.originY,
+    opacity: obj.opacity,
+  };
+
+  // 2. 根據類型添加特定屬性
+  if (obj.type === 'textbox') {
+    return {
+      ...commonProps,
+      text: obj.text,
+      fontSize: obj.fontSize,
+      fill: obj.fill,
+      fontWeight: obj.fontWeight,
+      fontStyle: obj.fontStyle,
+      textAlign: obj.textAlign,
+      width: obj.width, // Textbox 需要寬度
+    };
+  } else if (obj.type === 'image') {
+    return {
+      ...commonProps,
+      src: obj.getSrc(), // 儲存圖片來源 (可能是 data:url)
+    };
+  } else if (obj.type === 'rect') {
+    return {
+      ...commonProps,
+      width: obj.width,
+      height: obj.height,
+      fill: obj.fill,
+      stroke: obj.stroke,
+      strokeWidth: obj.strokeWidth,
+    };
+  }
+  
+  // (未來可以擴展支援 'line', 'circle' 等)
+  return null; // 忽略不支援的物件類型
+}
+
+/**
+ * (輔助函數 2) 序列化整個畫布
+ */
+function serializeCanvas() {
+  const templateData = {
+    canvas: {
+      width: canvasSettings.value.width,
+      height: canvasSettings.value.height,
+    },
+    tablePlaceholder: null,
+    //  [打勾] 修改：從陣列改為物件，方便讀取
+    personnelPlaceholders: {
+      name: null,
+      phone: null
+    }, 
+    objects: []
+  };
+
+  const objects = fabricCanvas.value.getObjects();
+
+  for (const obj of objects) {
+    if (obj.isQuoteTable) { // 儲存表格
+      templateData.tablePlaceholder = {
+        left: obj.left,
+        top: obj.top,
+        scaleX: obj.scaleX,
+        scaleY: obj.scaleY,
+        width: obj.width,
+        height: obj.height,
+        scaledWidth: obj.getScaledWidth(),
+        scaledHeight: obj.getScaledHeight(),
+      };
+      continue;
+    }
+
+    //  [打勾] 修改：儲存銷售人員資訊
+    if (obj.isPersonnelInfo === 'name') {
+      // 我們不儲存 text 內容 (因為是動態的)，只儲存樣式
+      const nameData = serializeFabricObject(obj);
+      delete nameData.text; // 移除動態文字
+      templateData.personnelPlaceholders.name = nameData;
+      continue;
+    }
+    if (obj.isPersonnelInfo === 'phone') {
+      const phoneData = serializeFabricObject(obj);
+      delete phoneData.text; // 移除動態文字
+      templateData.personnelPlaceholders.phone = phoneData;
+      continue;
+    }
+
+    // 儲存靜態物件
+    const serializedObj = serializeFabricObject(obj);
+    if (serializedObj) {
+      templateData.objects.push(serializedObj);
+    }
+  }
+  
+  return templateData;
+}
+
+/**
+ * (主函數) 按鈕點擊事件：儲存版型
+ */
+async function handleSaveTemplate() {
+  //  [打勾] 修正：使用 props.projectId
+  if (!props.projectId) { 
+    toast.error('缺少建案 ID，無法儲存');
+    return;
+  }
+  
+  isSaving.value = true;
+  try {
+    const templateData = serializeCanvas();
+    //  [打勾] 修正：使用 props.projectId
+    const result = await saveQuotationTemplate(props.projectId, templateData); 
+    
+    if (result.status === 'success') {
+      toast.success('版型已成功儲存！');
+    } else {
+      throw new Error(result.message || '儲存失敗');
+    }
+  } catch (error) {
+    console.error("儲存版型失敗:", error);
+    toast.error(`儲存失敗: ${error.message}`);
+  } finally {
+    isSaving.value = false;
+  }
+}
+
+//  [打勾] 新增：載入並渲染版型 (或預設)
+async function loadAndRenderTemplate() {
+  isLoadingTemplate.value = true;
+  
+  try {
+    const result = await loadQuotationTemplate(props.projectId);
+    
+    let templateCanvasSettings = null; // 暫存畫布設定
+
+    // 情況 A：成功載入版型
+    if (result.status === 'success' && result.data) {
+      const template = result.data;
+      
+      // A.1: 載入畫布尺寸
+      if (template.canvas) {
+        // [修改] 只更新 ref，"不要" 在這裡呼叫 applyCanvasSettings()
+        canvasSettings.value.width = template.canvas.width;
+        canvasSettings.value.height = template.canvas.height;
+      }
+      
+      // A.2: 載入靜態物件
+      if (template.objects && template.objects.length > 0) {
+        await new Promise((resolve) => {
+          fabric.util.enlivenObjects(template.objects, (enlivenedObjects) => {
+            
+            enlivenedObjects.forEach(obj => {
+              fabricCanvas.value.add(obj);
+              obj.setCoords(); // (保留 setCoords)
+            });
+            
+            resolve();
+          }, '');
+        });
+      }
+
+      // A.3: 載入動態表格 (保持不變)
+      const tableGroup = addQuoteTable();
+      if (tableGroup) {
+        if (template.tablePlaceholder) {
+          tableGroup.set({
+            left: template.tablePlaceholder.left,
+            top: template.tablePlaceholder.top,
+            scaleX: template.tablePlaceholder.scaleX,
+            scaleY: template.tablePlaceholder.scaleY,
+          });
+          tableGroup.setCoords(); 
+        } else {
+          applyDefaultTableLayout(tableGroup); 
+        }
+        fabricCanvas.value.add(tableGroup);
+        // (移除 setActiveObject 和 handleSelection，載入時不需要預選)
+      }
+      
+      // A.4: 載入銷售人員 (保持不變)
+      const [nameText, phoneText] = addPersonnelInfo(
+        template.personnelPlaceholders,
+        tableGroup ? tableGroup.top + tableGroup.getScaledHeight() + 40 : 100
+      );
+      if (nameText) {
+        fabricCanvas.value.add(nameText);
+        nameText.setCoords();
+      }
+      if (phoneText) {
+        fabricCanvas.value.add(phoneText);
+        phoneText.setCoords();
+      }
+
+    } else {
+      // 情況 B：找不到版型 (保持不變)
+      await renderDefaultItems();
+    }
+
+  } catch (error) {
+    console.error("載入版型失敗:", error);
+    toast.error(`載入版型失敗: ${error.message}`);
+    await renderDefaultItems(); // 載入失敗時也使用預設值
+  } finally {
+    isLoadingTemplate.value = false;
+    
+    //  [打勾] 2. 關鍵修正：
+    // 使用 nextTick 等待 Vue 完成 DOM 更新 (更新 <canvas> 標籤的 width/height 屬性)
+    await nextTick(); 
+    
+    if (fabricCanvas.value) {
+      const { width, height } = canvasSettings.value;
+      
+      //  [打勾] 3. 執行你手動修復時的關鍵動作：
+      // 在所有物件都 add() 之後，再次設定 Fabric.js 的內部寬高
+      fabricCanvas.value.setWidth(width);
+      fabricCanvas.value.setHeight(height);
+      
+      //  [打勾] 4. (保險) 再次為所有物件更新座標
+      // 雖然理論上 setCoords 已經在 add 時做過，
+      // 但在 setWidth/Height 之後再做一次，確保它們的邊界是最終正確的
+      fabricCanvas.value.getObjects().forEach(obj => {
+        obj.setCoords();
+      });
+      
+      //  [打勾] 5. 執行 "立即" 渲染 (renderAll)，而不是 "請求" 渲染 (requestRenderAll)
+      fabricCanvas.value.renderAll();
+    }
+  }
+}
+
+
+//  [打勾] 新增：渲染預設項目 (Fallback)
+async function renderDefaultItems() {
+  // B.1: 插入表格 (使用預設位置)
+  const tableGroup = addQuoteTable(); //  [打勾] 拿到乾淨的表格
+  if (tableGroup) {
+    applyDefaultTableLayout(tableGroup); //  [打勾] 套用預設排版 (此函數已包含 setCoords)
+    fabricCanvas.value.add(tableGroup);
+    fabricCanvas.value.setActiveObject(tableGroup);
+    handleSelection({ target: tableGroup });
+  }
+  
+  // B.2: 插入銷售人員 (使用預設位置)
+  const startY = tableGroup ? (tableGroup.top + tableGroup.getScaledHeight() + 40) : 100;
+  const [nameText, phoneText] = addPersonnelInfo(null, startY);
+  if (nameText) fabricCanvas.value.add(nameText);
+  if (phoneText) fabricCanvas.value.add(phoneText);
+}
+
+//  [打勾] 新增：套用預設表格佈局 (抽出共用)
+function applyDefaultTableLayout(tableGroup) {
+  const margin = 25;
+  const canvasWidth = fabricCanvas.value.width;
+  const targetWidth = canvasWidth - (margin * 2);
+  const originalWidth = tableGroup.width;
+
+  //  [打勾] 執行縮放邏輯
+  if (originalWidth > targetWidth) {
+    const scale = targetWidth / originalWidth;
+    tableGroup.scale(scale);
+  }
+
+  //  [打勾] 執行定位邏輯
+  tableGroup.set({
+    left: margin,
+    top: 100 
+  });
+
+  //  [打勾] 關鍵：在所有轉換完成後，呼叫 setCoords()
+  tableGroup.setCoords();
 }
 
 </script>
 
 <style scoped>
 .editor-main-canvas-area {
+  margin-top: 48px;
   background-color: #f0f2f5;
   width: 100%;
   height: calc(100vh - 48px);
@@ -844,6 +1461,7 @@ function downloadPDF() {
   justify-content: center;
   align-items: flex-start;
   padding: 24px;
+  box-sizing: border-box;
 }
 
 .page-preview-container {
@@ -851,6 +1469,7 @@ function downloadPDF() {
   justify-content: center;
   align-items: flex-start;
   min-height: 100%;
+  transition: transform 0.2s ease-out;
 }
 
 #fabric-canvas {

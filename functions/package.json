@@ -7,7 +7,6 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
-    
   },
   "engines": {
     "node": "20"
@@ -28,7 +27,6 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.5",
     "pdf-lib": "^1.17.1",
-    "puppeteer": "^24.26.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

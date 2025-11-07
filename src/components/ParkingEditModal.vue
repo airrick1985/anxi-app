@@ -193,8 +193,8 @@ watch(() => props.show, (newVal) => {
 // 3. 動態標題
 const title = computed(() => {
   if (props.mode === 'quote') {
-    const lastHyphenIndex = props.unitId.lastIndexOf('-');
-    const displayId = lastHyphenIndex > 0 ? props.unitId.substring(0, lastHyphenIndex) : props.unitId;
+   
+    const displayId = props.unitId;
     return `為 ${displayId} 選擇車位`;
   }
   return '編輯持有車位';

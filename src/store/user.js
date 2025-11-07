@@ -109,15 +109,22 @@ export const useUserStore = defineStore('user', {
                     permissions[project.projectId] = {
                         projectName: project.projectName,
                         bookingTypes: project.bookingTypes || [], // ✓ 儲存 bookingTypes
-                        systems: ["驗屋預約管理-檢視", "驗屋預約管理-修改"] // 假設有權限
+                       systems: project.systems || []
                     };
                     
-                    // (這部分是您原有的邏輯，保持不變)
-                    permsArray.push({
-                        projectId: project.projectId,
-                        projectName: project.projectName,
-                        system: "驗屋預約管理-檢視", // 假設
-                    });
+                   // (這部分是您原有的邏輯，保持不變)
+                    // ✅ [打勾] 修正：
+                    // 為了讓 detailedPermissions (permsArray) 也正確，
+                    // 我們應該遍歷剛拿到的 project.systems
+                    if (project.systems && Array.isArray(project.systems)) {
+                        project.systems.forEach(systemName => {
+                            permsArray.push({
+                                projectId: project.projectId,
+                                projectName: project.projectName,
+                                system: systemName, // 使用真實的 system 名稱
+                            });
+                        });
+                    }
                 }
             });
         }

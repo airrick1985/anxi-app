@@ -81,14 +81,15 @@ export const useQuoteStore = defineStore('quote', () => {
   });
 
   // --- Actions ---
-  function addItem(unitData) {
-    if (items.value.length >= 5) {
-      toast.warning(`報價單已滿，最多只能加入 5 戶！`);
+ function addItem(unitData) {
+    const existingItem = items.value.find(item => item.unitId === unitData['戶別']);
+    if (existingItem) {
+      toast.warning(`戶別 ${unitData['戶別']} 已在報價單中`);
       return;
     }
     
-    // 使用時間戳來確保每次添加都是唯一的
-    const uniqueId = `${unitData['戶別']}-${Date.now()}`;
+    const uniqueId = Date.now().toString();
+    
     items.value.push({
       internalId: uniqueId,
       unitId: unitData['戶別'],
@@ -97,7 +98,9 @@ export const useQuoteStore = defineStore('quote', () => {
       usePackageDeal: false,
       selectedParking: [],
       // ★★★ 1. 新增：初始化 packageItems 屬性 ★★★
-      packageItems: {}
+      packageItems: {},
+      // ✅ [打勾] 新增：初始化期款計算結果
+      calculatedPayments: []
     });
      }
 
@@ -130,6 +133,23 @@ export const useQuoteStore = defineStore('quote', () => {
     }
   }
 
+  // ✅ [打勾] 新增：儲存期款計算結果的 Action
+  /**
+   * @param {string} internalId 
+   * @param {Array<{name: string, value: number}>} paymentsArray 
+   */
+  function updateItemCalculatedPayments(internalId, paymentsArray) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      // 我們儲存簡化後的陣列，只包含名稱和值
+      item.calculatedPayments = paymentsArray.map(p => ({
+        name: p.name,
+        value: p.value,
+        percentage: p.percentage // 新增
+      }));
+    }
+  }
+
   function clearQuote() {
     items.value = [];
   }
@@ -149,9 +169,9 @@ export const useQuoteStore = defineStore('quote', () => {
     removeItem,
     updateUnitField,
     updateParking,
-    clearQuote,
-    // ★★★ 3. 新增：將新的 action 回傳出去 ★★★
     updateItemPackageItems,
+    updateItemCalculatedPayments,
+    clearQuote
   };
 }, {
   persist: true

@@ -137,7 +137,7 @@
                    <v-card-actions class="px-3 py-1">
                        <div class="d-flex flex-column" style="width: 100%;">
                            <span class="text-caption text-grey">
-                             {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }}
+                             驗屋人員: {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }}
                            </span>
                            <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
                                買方確認：{{ formatDate(item.customerConfirmedAt) }}
