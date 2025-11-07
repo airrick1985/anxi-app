@@ -44,7 +44,7 @@ const routes = [
 {
   path: '/test', 
   name: 'Test',
-  component: () => import('@/views/TEST.vue'),
+  component: () => import('@/views/PrintQuotation.vue'),
   meta: {
      title: 'TEST',
      layout: PublicLayout // ✅
