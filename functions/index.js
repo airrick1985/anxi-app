@@ -1330,6 +1330,52 @@ exports.uploadHouseholds = onCall({ region: "asia-east1", secrets: gmailSecrets 
       }
       //  --- 處理結束 ---
 
+      // ✓ START: 新增 - 處理銀行帳號和特定文字欄位
+      // 正體中文註解：定義哪些欄位應被強制視為文字，以保留前導 0 或特殊格式。
+      // (請確保您在 SalesControlSystem.vue 的 COLUMN_DEFINITIONS 中使用相同的英文 key)
+  const stringFieldsToProcess = [
+        'landBankName',           // 土地款匯款銀行
+        'landBankAccount',        // 土地款匯款帳號
+        'landBankAccountName',    // ✓ 土地款戶名
+        'houseBankName',          // 房屋款匯款銀行
+        'houseBankAccount',       // 房屋款匯款帳號
+        'houseBankAccountName',   // ✓ 房屋款戶名
+        'packageBankName',        // 配套款匯款銀行
+        'packageBankAccount',     // 配套款匯款帳號
+        'packageBankAccountName', // ✓ 配套款戶名
+        'constructionMethod'      // 興建方式
+      ];
+      
+      // 正體中文註解：定義「興建方式」的有效選項
+      const validConstructionMethods = new Set([
+        "自地自建", "合建分售", "合建分屋", "合建分成", null, undefined, ""
+      ]);
+
+      for (const field of stringFieldsToProcess) {
+        // 檢查前端上傳的 row 物件中是否存在此欄位
+        if (dataToSave.hasOwnProperty(field)) {
+          const originalValue = dataToSave[field];
+
+          // 統一轉換為字串並去除前後空白
+          const stringValue = String(originalValue || '').trim();
+          
+          if (field === 'constructionMethod') {
+            // 驗證「興建方式」
+            if (!validConstructionMethods.has(stringValue)) {
+              // 如果值無效 (例如 "其他")，將其設為 null 存入資料庫
+              dataToSave[field] = null; 
+              console.warn(`[${functionName}] 警告：戶別 ${unitId} 的 'constructionMethod' 值 "${stringValue}" 無效，已設為 null。`);
+            } else {
+              // 如果是有效選項或空字串，則儲存
+              dataToSave[field] = stringValue === "" ? null : stringValue;
+            }
+          } else {
+            // 對於所有其他欄位（主要是銀行帳號），儲存為處理過的字串
+            dataToSave[field] = stringValue;
+          }
+        }
+      }
+
       const docId = `${projectId}_${unitId}`;
       const docRef = db.collection("salesHouseholds").doc(docId);
       
@@ -7559,10 +7605,10 @@ exports.getAllLiffAppointmentsForProject = onCall(async (request) => {
 
 // ✓ START: 新增 - LIFF 驗屋時間表專用函式
 /**
- * [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
- * @param {object} payload - 包含 { projectId, date } 的物件
- * @returns {Promise<object>} - 後端回傳的結果
- */
+* [LIFF日曆用] 獲取指定單一日期的預約與戶別資料
+* @param {object} payload - 包含 { projectId, date } 的物件
+* @returns {Promise<object>} - 後端回傳的結果
+*/
 exports.getLiffCalendarDataForDay = onCall(async (request) => {
     const { projectId, date } = request.data;
     const functionName = "getLiffCalendarDataForDay";
@@ -14920,3 +14966,279 @@ exports.salesApi = onCall({
         );
     }
 });
+
+
+// ✓ START: 新增 - 產製付款表 (Google Sheet 版本)
+/**
+* [Cloud Function] 複製 Google Sheet 付款表模板，並回填資料
+*/
+exports.generatePaymentSheet = onCall({ 
+ region: "asia-east1", 
+ secrets: driveSecrets, // ✓ 重用 driveSecrets
+ timeoutSeconds: 300,
+ memory: "1GiB"
+}, async (request) => {
+  
+ const functionName = 'generatePaymentSheet';
+ const { 
+  projectId, 
+  unitId, 
+  projectName, 
+  salespersonName, 
+  data 
+ } = request.data;
+
+ if (!projectId || !unitId || !data) {
+  throw new HttpsError("invalid-argument", "缺少 projectId, unitId 或 data 參數。");
+ }
+
+ const db = new Firestore({ databaseId: "anxi-app" });
+ let oauth2Client; // ✓ 取得認證
+ let drive;
+ let sheets;
+
+ try {
+  // --- 1. 認證並獲取 API 客戶端 ---
+  // ✓ 重用 getAuthenticatedDriveClient (需確保它在 index.js 中可見)
+  // 我們需要 drive (複製) 和 sheets (寫入)
+  oauth2Client = new google.auth.OAuth2(
+    process.env.DRIVE_CLIENT_ID,
+    process.env.DRIVE_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground'
+  );
+  oauth2Client.setCredentials({
+    refresh_token: process.env.DRIVE_REFRESH_TOKEN,
+  });
+  drive = google.drive({ version: "v3", auth: oauth2Client });
+  sheets = google.sheets({ version: "v4", auth: oauth2Client });
+
+  // --- 2. 從 Firestore 獲取模板 ID 和儲存資料夾 URL ---
+  console.log(`[${functionName}] 正在讀取專案 ${projectId} 的設定...`);
+  const projectDoc = await db.collection('projects').doc(projectId).get();
+  if (!projectDoc.exists) {
+   throw new HttpsError("not-found", "找不到專案設定。");
+  }
+  const projectSettings = projectDoc.data();
+  
+  // ✓ 使用您在 SalesSettings.vue 中新增的欄位
+  const templateId = projectSettings.paymentScheduleTemplateId;
+  const folderUrl = projectSettings.paymentScheduleFolderUrl;
+
+  if (!templateId) {
+   throw new HttpsError("failed-precondition", "專案未設定「付款表模板SHEET ID」。");
+  }
+  if (!folderUrl) {
+   throw new HttpsError("failed-precondition", "專案未設定「付款表儲存位置」。");
+  }
+  
+  // 從 URL 解析 Folder ID
+  const folderIdMatch = folderUrl.match(/[-\w]{25,}/);
+  if (!folderIdMatch) {
+   throw new HttpsError("invalid-argument", "「付款表儲存位置」的 URL 格式無效。");
+  }
+  const targetFolderId = folderIdMatch[0];
+
+  // --- 3. 複製模板檔案 ---
+  const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
+  const newFileName = `${today}-${projectName}-付款表-${unitId}-${salespersonName || 'N/A'}`;
+  
+  console.log(`[${functionName}] 正在複製模板 ${templateId} 到資料夾 ${targetFolderId}...`);
+  
+  const copyResponse = await drive.files.copy({
+   fileId: templateId,
+   requestBody: {
+    name: newFileName,
+    parents: [targetFolderId]
+   },
+   fields: 'id, webViewLink' // 獲取新檔案的 ID 和 URL
+  });
+
+  const newSheetId = copyResponse.data.id;
+  const newSheetUrl = copyResponse.data.webViewLink;
+
+  // --- 4. 準備要寫入的資料 ---
+  console.log(`[${functionName}] 檔案複製成功 (ID: ${newSheetId})，準備寫入資料...`);
+  
+  // 獲取 "載入資料" 工作表的標頭
+  const sheetName = '載入資料';
+  const headerResponse = await sheets.spreadsheets.values.get({
+   spreadsheetId: newSheetId,
+   range: `${sheetName}!1:1`,
+  });
+
+  const headers = headerResponse.data.values ? headerResponse.data.values[0] : [];
+  // 建立中文標頭到索引的映射
+  const headerMap = {};
+  headers.forEach((header, index) => {
+   if (header) headerMap[header.trim()] = index;
+  });
+
+  // 建立一個空的資料列 (與標頭等寬)
+  const dataRow = Array(headers.length).fill("");
+
+  // 根據標頭映射表，填入單一欄位資料
+  const setData = (headerName, value) => {
+   const index = headerMap[headerName];
+   if (index !== undefined) {
+    // ✓ 處理布林值
+    if (typeof value === 'boolean') {
+     dataRow[index] = value ? '是' : '否';
+    } else {
+     dataRow[index] = value || "";
+    }
+   }
+  };
+
+  // ✓ START: 新增 - 計算成交總價
+  // 正體中文註解：從前端傳來的 data 物件中獲取房屋成交價
+  const housePrice = data.housePrice || 0;
+  // 正體中文註解：遍歷車位列表，加總所有車位成交價
+  const parkingPrice = (data.parkingSpots || []).reduce((sum, p) => {
+    return sum + (Number(p.price_transaction) || 0);
+  }, 0);
+  // 正體中文註解：計算最終的成交總價
+  const grandTotalSalePrice = housePrice + parkingPrice;
+  // ✓ END: 新增 - 計算成交總價
+  
+  setData('戶別', unitId);
+  setData('合約方式', data.contractType);
+  setData('是否首購', data.isFirstTimeBuyer); // (setData 函數會處理 boolean)
+  setData('銷售人員', salespersonName);
+  setData('聯絡電話', data.salespersonPhone);
+  setData('房屋成交', data.housePrice);
+  setData('配套總價', data.packageDealPrice);
+  setData('配套價', data.packagePrice);
+  setData('成交總價', grandTotalSalePrice);
+
+  // ✓ START: 新增的欄位
+  // (注意：key (e.g., houseBankName) 必須
+  // 與 PaymentSettings.vue 中 payload.data 的 key 一致)
+  
+  // 銀行帳號
+  setData('房屋款繳款銀行名稱', data.houseBankName);
+  setData('房屋款戶名', data.houseBankAccountName);
+  setData('房屋款帳號', data.houseBankAccount);
+  setData('土地款繳款銀行名稱', data.landBankName);
+  setData('土地款戶名', data.landBankAccountName);
+  setData('土地款帳號', data.landBankAccount);
+  setData('配套款繳款銀行名稱', data.packageBankName);
+  setData('配套款戶名', data.packageBankAccountName);
+  setData('配套款帳號', data.packageBankAccount);
+
+  // 面積資訊
+  setData('房屋面積(坪)', data.area_house_ping);
+  setData('房屋面積(平方公尺)', data.area_house_sqm);
+  setData('公設比', data.common_area_ratio);
+  setData('主建物面積(坪)', data.area_main_ping);
+  setData('主建物面積(平方公尺)', data.area_main_sqm);
+  setData('附屬建物面積(坪)', data.area_ancillary_ping);
+  setData('附屬建物面積(平方公尺)', data.area_ancillary_sqm);
+  setData('共用部分面積(坪)', data.area_common_ping);
+  setData('共用部分面積(平方公尺)', data.area_common_sqm);
+  setData('露臺(坪)', data.area_terrace_ping);
+  setData('土地持分面積(坪)', data.land_share_ping);
+  setData('土地持分面積(平方公尺)', data.land_share_sqm);
+  setData('土地持分', data.land_share_ratio);
+  // ✓ END: 新增的欄位
+  
+  const allRowsToWrite = [dataRow]; // 這是第一行要寫入的資料
+
+  // 處理車位 (多行資料)
+  if (data.parkingSpots && data.parkingSpots.length > 0) {
+   const parkSpotIndex = headerMap['車位編號'];
+   const parkPriceIndex = headerMap['車位成交'];
+
+   if (parkSpotIndex !== undefined && parkPriceIndex !== undefined) {
+    // 第一台車的資料填在第一行
+    dataRow[parkSpotIndex] = data.parkingSpots[0].spotId;
+    dataRow[parkPriceIndex] = data.parkingSpots[0].price_transaction;
+    
+    // 如果有更多車位，建立新的一列
+    for (let i = 1; i < data.parkingSpots.length; i++) {
+     const parkingRow = Array(headers.length).fill("");
+     parkingRow[parkSpotIndex] = data.parkingSpots[i].spotId;
+     parkingRow[parkPriceIndex] = data.parkingSpots[i].price_transaction;
+     allRowsToWrite.push(parkingRow);
+    }
+   }
+  }
+
+  // --- 5. 執行批次寫入 ---
+  console.log(`[${functionName}] 準備寫入 ${allRowsToWrite.length} 行資料到 "${sheetName}"...`);
+  
+  await sheets.spreadsheets.values.append({
+   spreadsheetId: newSheetId,
+   range: `${sheetName}!A2`, // 從 A2 開始附加
+   valueInputOption: 'USER_ENTERED',
+   resource: {
+    values: allRowsToWrite
+   }
+  });
+
+  console.log(`[${functionName}] 資料寫入成功。`);
+
+  // ✓ START: 新增 - 根據合約方式隱藏工作表
+  if (data.contractType === '一般合約') {
+   console.log(`[${functionName}] 合約方式為 "一般合約"，嘗試隱藏 "配套期款" 工作表...`);
+   
+   try {
+    // 1. 獲取新試算表的所有工作表資訊
+    const spreadsheetInfo = await sheets.spreadsheets.get({
+     spreadsheetId: newSheetId, // ✓ 修正：spreadsheetsId -> spreadsheetId
+     fields: 'sheets(properties(sheetId,title))'
+    });
+
+    const sheetsProperties = spreadsheetInfo.data.sheets;
+    if (sheetsProperties) {
+     // 2. 尋找 "配套期款" 工作表的 sheetId
+     const targetSheet = sheetsProperties.find(
+      sheet => sheet.properties.title === '配套期款'
+     );
+
+     if (targetSheet) {
+      const targetSheetId = targetSheet.properties.sheetId;
+      console.log(`[${functionName}] 找到 "配套期款" (sheetId: ${targetSheetId})，執行隱藏...`);
+
+      // 3. 執行 batchUpdate 以隱藏工作表
+      await sheets.spreadsheets.batchUpdate({
+       spreadsheetId: newSheetId,
+       requestBody: {
+        requests: [
+         {
+          updateSheetProperties: {
+           properties: {
+            sheetId: targetSheetId,
+            hidden: true
+           },
+           fields: 'hidden'
+          }
+         }
+        ]
+       }
+      });
+      console.log(`[${functionName}] "配套期款" 工作表已隱藏。`);
+     } else {
+      // 如果找不到，僅記錄日誌，不中斷流程
+      console.warn(`[${functionName}] 在試算表 ${newSheetId} 中找不到名為 "配套期款" 的工作表，略過隱藏。`);
+     }
+    }
+   } catch (hideError) {
+    // 隱藏失敗不應中斷整個函數，僅記錄錯誤
+    console.error(`[${functionName}] 隱藏 "配套期款" 工作表時發生錯誤:`, hideError.message);
+   }
+  }
+  // ✓ END: 新增 - 根據合約方式隱藏工作表
+  
+  return { status: 'success', url: newSheetUrl };
+
+ } catch (error) {
+  console.error(`[${functionName}] 執行時發生嚴重錯誤:`, error);
+  if (error instanceof HttpsError) throw error;
+  // 檢查是否為 Google API 錯誤
+  if (error.code && error.errors) {
+   throw new HttpsError("internal", `Google API 錯誤: ${error.message}`);
+  }
+  throw new HttpsError("internal", `產製付款表時發生錯誤: ${error.message}`);
+ }
+});
+// ✓ END: 新增 Cloud Function

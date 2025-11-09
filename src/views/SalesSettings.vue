@@ -68,7 +68,7 @@
 
           <v-skeleton-loader v-if="projectLoading" type="article"></v-skeleton-loader>
 
-          <v-form v-if="!projectLoading && project" ref="projectForm">
+         <v-form v-if="!projectLoading && project" ref="projectForm">
             <v-text-field
               v-model="project.name"
               label="建案名稱"
@@ -77,22 +77,11 @@
               readonly
               class="mb-4"
             ></v-text-field>
-            <v-text-field
-              v-model="project.parkingSlideId_sales"
-              label="銷控模式車位簡報 ID"
-              variant="outlined"
-              density="compact"
-              class="mb-4"
-              persistent-hint
-            ></v-text-field>
-            <v-text-field
-              v-model="project.parkingSlideId_quote"
-              label="報價模式車位簡報 ID"
-              variant="outlined"
-              density="compact"
-              class="mb-4"
-              persistent-hint
-            ></v-text-field>
+            
+            <!-- ✓ 移除：parkingSlideId_sales 欄位 -->
+            
+            <!-- ✓ 移除：parkingSlideId_quote 欄位 -->
+
             <v-text-field
               v-model="project.activityMessageSlideId"
               label="活動訊息簡報 ID"
@@ -100,6 +89,27 @@
               density="compact"
               class="mb-4"
               persistent-hint
+            ></v-text-field>
+
+            <!-- ✓ 新增：付款表模板 ID 欄位 -->
+            <v-text-field
+              v-model="project.paymentScheduleTemplateId"
+              label="付款表模板SHEET ID"
+              variant="outlined"
+              density="compact"
+              class="mb-4"
+              persistent-hint
+              hint="用於「付款表設定」功能產製 Google Sheet 付款表時的模板。"
+            ></v-text-field>
+
+            <v-text-field
+              v-model="project.paymentScheduleFolderUrl"
+              label="付款表儲存位置"
+              variant="outlined"
+              density="compact"
+              class="mb-4"
+              persistent-hint
+              hint="戶別付款表產出後儲存的 Google Drive 資料夾 URL。"
             ></v-text-field>
 
             <v-divider class="my-4"></v-divider>

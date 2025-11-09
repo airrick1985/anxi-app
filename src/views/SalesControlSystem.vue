@@ -665,6 +665,16 @@ const COLUMN_DEFINITIONS = [
     { key: 'price_transaction_house', title: '房屋成交價' }, 
     { key: 'price_package_deal', title: '配套房屋總價' },
     { key: 'price_package', title: '配套價格' },
+   { key: 'landBankName', title: '土地款匯款銀行' },
+    { key: 'landBankAccount', title: '土地款匯款帳號' },
+    { key: 'landBankAccountName', title: '土地款戶名' },
+    { key: 'houseBankName', title: '房屋款匯款銀行' },
+    { key: 'houseBankAccount', title: '房屋款匯款帳號' },
+    { key: 'houseBankAccountName', title: '房屋款戶名' },
+    { key: 'packageBankName', title: '配套款匯款銀行' },
+    { key: 'packageBankAccount', title: '配套款匯款帳號' },
+    { key: 'packageBankAccountName', title: '配套款戶名' },
+    { key: 'constructionMethod', title: '興建方式' },
     // --- 其他欄位 ---
     { key: 'payment_deposit_date', title: '小訂日期' },
     { key: 'payment_supplement_date', title: '補足日期' },
@@ -672,6 +682,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_deposit_amount', title: '小訂金額' },
     { key: 'payment_supplement_amount', title: '補足金額' },
     { key: 'payment_contract_amount', title: '簽約金額' },
+
     { key: 'remarks', title: '備註' },
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
@@ -1163,49 +1174,79 @@ const handleFileChange = () => {
     }
     isParsing.value = true;
     const reader = new FileReader();
+    
     reader.onload = (e) => {
         try {
+            // --- 步驟 1: 建立「中文標題」到「英文 Key」的映射表 ---
+            // 這是我們用來查找的依據，例如： {'戶別': 'unitId', '棟別': 'building', ...}
+            // ✓ 修正：COLUMN_DEFINITIONS 不是 ref 或 computed，直接使用
+            const headerToKeyMap = new Map(
+                COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key])
+            );
+            const requiredHeaders = new Set(headerToKeyMap.keys());
+
+            // --- 步驟 2: 讀取 Excel 資料 ---
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             
+            // 讀取資料 (從第 2 行開始，因為第 1 行是警告)
             const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
 
             if (dataAsArrays.length < 1) {
-                 throw new Error(`檔案缺少所有必要標頭: ${chineseHeaders.value.join('、')}`);
+                 throw new Error(`檔案缺少標頭列 (應在第 2 行)。`);
             }
             
+            // --- 步驟 3: 驗證標頭 (新邏輯：只檢查是否包含，不檢查順序) ---
             const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
-            const requiredHeaders = chineseHeaders.value;
-            const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
-            const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
+            const uploadedHeadersSet = new Set(uploadedHeaders);
 
-            if (missingHeaders.length > 0 || extraHeaders.length > 0) {
-                let errorMessage = '檔案標頭不符。';
-                if (missingHeaders.length > 0) errorMessage += `\n缺少必要標頭: ${missingHeaders.join('、')}`;
-                if (extraHeaders.length > 0) errorMessage += `\n發現非預期標頭: ${extraHeaders.join('、')}`;
-                throw new Error(errorMessage);
+            const missingHeaders = [];
+            for (const requiredHeader of requiredHeaders) {
+                if (!uploadedHeadersSet.has(requiredHeader)) {
+                    missingHeaders.push(requiredHeader);
+                }
             }
 
+            if (missingHeaders.length > 0) {
+                throw new Error(`檔案缺少必要的欄位標頭: ${missingHeaders.join('、')}`);
+            }
+
+            // --- 步驟 4: 建立「Excel 欄位索引」到「英文 Key」的映射表 (核心) ---
+            // 這會告訴我們 Excel 的第 N 欄，對應的是哪個英文 Key
+            // 例如： { 0: 'building', 1: 'floor', 2: 'unitId', ... }
+            const indexToKeyMap = new Map();
+            uploadedHeaders.forEach((headerTitle, index) => {
+                const englishKey = headerToKeyMap.get(headerTitle);
+                if (englishKey) {
+                    indexToKeyMap.set(index, englishKey);
+                }
+            });
+
+            // --- 步驟 5: 根據新的映射表解析資料 ---
             const dataRows = dataAsArrays.slice(1);
             const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
             
             const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                 const newRow = {};
-                exportOrder.value.forEach((key, index) => {
-                    newRow[key] = rowArray[index] ?? null;
-                });
+                // 遍歷我們建立的索引映射表
+                for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
+                    // 根據 Excel 的欄位索引 (colIndex) 抓取資料，
+                    // 並將其賦值給正確的英文 Key (englishKey)
+                    newRow[englishKey] = rowArray[colIndex] ?? null;
+                }
                 return newRow;
             });
             
+            // --- 步驟 6: 驗證並設定狀態 (與舊版相同) ---
             if (jsonDataWithEnglishKeys.some(row => !row.unitId)) {
                 throw new Error("資料驗證失敗：每一列都必須包含『戶別』。請檢查上傳的檔案。");
             }
 
             parsedData.value = jsonDataWithEnglishKeys;
             uploadMessageType.value = 'success';
-            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (欄位順序已自動匹配)，可以開始上傳。`;
             
         } catch (err) {
             uploadMessageType.value = 'error';

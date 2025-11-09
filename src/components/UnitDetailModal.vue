@@ -176,15 +176,15 @@
                                 <div class="info-section">
                                     <div class="section-title"> {{ unitData.unitId }} 成交總覽</div>
                                     <v-list dense>
-                                        <v-list-item title="房屋成交價" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
-                                        <v-list-item title="車位總價(成交)" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
-                                        <v-list-item class="font-weight-bold total-price-item"><v-list-item-title>最終成交總價</v-list-item-title><template v-slot:append><span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span></template></v-list-item>
+                                        <v-list-item title="房屋成交" :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item title="車位成交" :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
+                                        <v-list-item class="font-weight-bold total-price-item"><v-list-item-title>成交總價</v-list-item-title><template v-slot:append><span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span></template></v-list-item>
                                         <v-list-item class="font-weight-bold total-price-item"><v-list-item-title>合計底價</v-list-item-title><template v-slot:append><span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span></template></v-list-item>
                                         <v-list-item title="溢差價" class="premium-price-item"><template v-slot:append><span :class="pricePremium >= 0 ? 'text-success' : 'text-error'" style="font-size: 1.1rem; font-weight: 600;">{{ formatNumber(pricePremium, 0) }} 萬</span></template></v-list-item>
                                     </v-list>
-                                    <div class="section-subtitle mt-4">持有車位詳情</div>
+                                    <div class="section-subtitle mt-4">持有車位</div>
                                     <v-alert v-if="assignedParkingLots.length === 0" type="info" variant="tonal" dense class="mt-2">此戶別未購買車位</v-alert>
-                                    <div v-else class="parking-list"><div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item"><p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})</p><p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p><p>成交價: {{ formatNumber(parking['車位成交價']) }} 萬</p></div></div>
+                                    <div v-else class="parking-list"><div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item"><p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})</p><p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p><p>成交: {{ formatNumber(parking['車位成交價']) }} 萬</p></div></div>
                                 </div>
                             </v-col>
                             <v-col cols="12" md="4">
@@ -341,7 +341,7 @@
     @cancel="showCancelDialog = false"
   />
 
-  <PaymentSettings
+<PaymentSettings
     v-if="paymentSettingsDialog"
     :show="paymentSettingsDialog"
     @update:show="paymentSettingsDialog = $event"
@@ -349,7 +349,9 @@
     :project-name="projectName"
     :project-id="projectId" 
     :all-data="allData"
+    :contract-types="props.contractTypes"
     @request-open-slide="$emit('request-open-slide')"
+    @parking-updated="handleParkingUpdate"
   />
 
   <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
@@ -490,6 +492,7 @@ const props = defineProps({
   projectName: { type: String, required: true }, 
   contractTypes: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✅ 修正：新增這一行
+  contractTypes: { type: Array, default: () => [] }
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
@@ -930,6 +933,9 @@ async function handleParkingUpdate(parkingUpdateData) {
         alert(`車位更新失敗: ${error.message}`);
     }
 }
+
+
+
 </script>
 
 <style scoped>

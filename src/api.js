@@ -718,37 +718,24 @@ export async function fetchSalesOptions(projectName) {
 }
 
 
+// ✓ 新增：呼叫新的 Cloud Function
 /**
- * 傳送付款表（包含檔案連結）給指定的收件人
- * @param {object} payload - 包含 projectName, recipients, files, unitId 等資訊
- * @returns {Promise<object>} API 響應
+ * [API] 呼叫後端，複製 Google Sheet 付款表模板並回填資料
+ * @param {object} payload - 包含 projectId, unitId, data 等...
+ * @returns {Promise<object>} - { status, url }
  */
-export async function sendPaymentScheduleEmail(payload) {
-    //console.log('[api.js] sendPaymentScheduleEmail called with payload:', payload);
-    
-    // 我們可以將這個新功能歸類在銷售相關的 API 端點
-    return fetchPost({
-        action: 'send_payment_schedule_email',
-        token: 'anxi111003', // 遵循您專案的慣例
-        ...payload
-    }, SALES_API);
-}
+export const generatePaymentSheet = async (payload) => {
+  try {
+    const generateFunc = httpsCallable(functions, 'generatePaymentSheet');
+    const result = await generateFunc(payload);
+    return result.data; // 直接回傳後端 { status, url }
+  } catch (error) {
+    console.error("API Error in generatePaymentSheet:", error);
+    // 將 HttpsError 的 message 提取出來拋出
+    throw new Error(error.message || '產製付款表失敗');
+  }
+};
 
-/**
- * 製作付款表 (Word & PDF)
- * @param {object} payload - 包含 projectName, contractType, data 的物件
- * @returns {Promise<object>} API 響應
- */
-export async function generatePaymentSchedule(payload) {
-  //console.log('[api.js] generatePaymentSchedule called with payload:', payload);
-  const body = {
-    action: 'generate_payment_schedule',
-    token: 'anxi111003',
-    ...payload
-  };
-  // 這個功能的 action 通常與銷售相關，所以我們發到 SALES_API 端點
-  return fetchPost(body, SALES_API);
-}
 
 /**
  * 從指定的 Google Drive 資料夾 URL 中獲取唯一的 SVG 檔案內容
@@ -6815,3 +6802,22 @@ export async function loadQuotationTemplate(projectId) {
     return { status: 'error', message: error.message };
   }
 }
+
+
+// ✓ START: 新增 - 匯出 PDF 的 API
+/**
+ * [API] 呼叫後端，將已確認的 Sheet 副本匯出為 PDF
+ * @param {object} payload - 包含 sheetIdToExport, projectId, unitId 等...
+ * @returns {Promise<object>} - { status, url }
+ */
+export const exportSheetToPdf = async (payload) => {
+  try {
+    const exportFunc = httpsCallable(functions, 'exportSheetToPdf');
+    const result = await exportFunc(payload);
+    return result.data; // 直接回傳後端 { status, url }
+  } catch (error) {
+    console.error("API Error in exportSheetToPdf:", error);
+    throw new Error(error.message || '匯出 PDF 失敗');
+  }
+};
+// ✓ END: 新增 API
