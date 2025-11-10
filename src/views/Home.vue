@@ -93,7 +93,18 @@ const allButtons = ref([
   { id: 'inspectionSystem', text: '驗屋系統', icon: propertyIcon, permissionType: 'system', permissionArgs: ['驗屋系統'],  nav: 'https://liff.line.me/2008257338-QV34v0pb'  },
   { id: 'quoteSystem', text: '報價系統', icon: priceIcon, permissionType: 'system', permissionArgs: ['報價系統'], nav: { name: 'QuoteSystemEntry', query: { viewMode: 'quote' } } },
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
-  { id: 'customerManagement', text: '客戶管理', icon: customerIcon, permissionType: 'system', permissionArgs: ['客戶管理'], nav: null },
+  
+  // ✓ START: 新增「客資系統」按鈕
+  { 
+    id: 'customerSystem', 
+    text: '客資系統', 
+    icon: customerIcon, 
+    permissionType: 'anySystem', // 使用 'anySystem'
+    permissionArgs: ['客資系統-櫃台', '客資系統-銷售'], // 檢查這兩個權限
+    nav: { name: 'CustomerSystemEntry' } // 導向新的路由入口
+  },
+  // ✓ END: 新增按鈕
+
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
   { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' } 
   },
@@ -127,6 +138,7 @@ onMounted(() => {
       case 'project':
         return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
       case 'anySystem':
+        // ✓ 您的 'anySystem' 邏輯已存在，完全符合需求
         return userStore.hasAnyPermission(button.permissionArgs);
       case 'system':
         //  修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles

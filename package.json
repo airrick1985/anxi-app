@@ -59,6 +59,7 @@
     "googleapis": "^160.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1",
+    "lodash-es": "^4.17.21",
     "marked": "^15.0.12",
     "pinia": "^3.0.2",
     "pinia-plugin-persistedstate": "^4.3.0",

@@ -242,6 +242,16 @@ const routes = [
     layout: PublicLayout // ✅
     }
   },
+  {
+    path: '/vip-form/:projectId',
+    name: 'VipForm',
+    component: () => import('@/views/VipForm.vue'), // ✓ 指向新檔案
+    props: true,
+    meta: {
+      layout: PublicLayout, // ✓ 使用 PublicLayout
+      title: '貴賓資料表'
+    }
+  },
 
   {
     path: '/sign-auth/:token',
@@ -439,6 +449,40 @@ const routes = [
       title: '車位銷控管理'
     }
   },
+
+ {
+    path: '/customer-system-entry',
+    name: 'CustomerSystemEntry',
+    component: ProjectSelector, // 重用 ProjectSelector
+    meta: {
+      requiresAuth: true,
+      // 權限檢查：使用者必須至少有這兩個權限之一
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'], 
+      layout: DefaultLayout,
+      // 點選建案後要導向的目標路由
+      targetRouteName: 'CustomerManagementSystem', 
+      // 傳遞的參數名稱
+      paramKey: 'projectId'                        
+    }
+  },
+  // ✓ END: 新增「客資系統」入口
+
+  // ✓ START: 新增「客資系統」最終頁面 (待開發)
+  {
+    path: '/customer-management/:projectId',
+    name: 'CustomerManagementSystem',
+    // 指向我們即將建立的 CustomerManagement.vue 檔案
+    component: () => import('@/views/CustomerManagement.vue'), 
+    props: true,
+    meta: {
+      requiresAuth: true,
+      // 進入此頁面也需要權限
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'],
+      layout: DefaultLayout,
+      title: '客資系統'
+    }
+  },
+
   // --- ✅ START: 新增 Standby 路由 ---
   {
     path: '/standby/:projectId', // ✓ 路由路徑，包含 projectId 參數
@@ -630,3 +674,5 @@ router.beforeEach(async (to, from, next) => {
 });
 
 export default router;
+
+

@@ -47,6 +47,11 @@ export const inspectionCalendarApiRouter = httpsCallable(functions, 'inspectionC
 // 4. 【新增】定義 LIFF 行事曆頁面的路由函數 (您在上一步優化 LiffInspectionCalendar.vue 時會需要)
 export const liffCalendarApiRouter = httpsCallable(functions, 'liffCalendarApi');
 export const salesApiRouter = httpsCallable(functions, 'salesApi');
+export const customerApiRouter = httpsCallable(functions, 'customerApi');
+export const vipFormApiRouter = httpsCallable(functions, 'vipFormApi');
+
+
+
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
 const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
@@ -6821,3 +6826,116 @@ export const exportSheetToPdf = async (payload) => {
   }
 };
 // ✓ END: 新增 API
+
+
+// =================================================================
+// /  【修改】客資系統設定 API (V2 - MUX)
+// =================================================================
+
+/**
+ * [API] 獲取指定建案的客資系統欄位設定 (V2: MUX)
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<object|null>} - 返回設定物件，若不存在則返回 null
+ */
+export const fetchCustomerSettings = async (projectId) => {
+  if (!projectId) return null;
+  
+  try {
+    // ✓ MUX: 呼叫 customerApiRouter
+    const result = await customerApiRouter({
+        action: 'fetchCustomerSettings',
+        data: { projectId } // ✓ 將 projectId 包在 data 內
+    });
+    
+    // ✓ MUX: onCall 的回傳資料在 result.data
+    return result.data; 
+    
+  } catch (error) {
+    console.error(`[api.js] 獲取客資系統設定時發生錯誤 (Project: ${projectId}):`, error);
+    throw error; // 拋出錯誤讓 .vue 檔案捕捉
+  }
+};
+
+/**
+ * [API] 儲存指定建案的客資系統欄位設定 (V2: MUX)
+ * @param {string} projectId - 專案 ID
+ * @param {object} settingsData - 要儲存的完整設定物件
+ * @returns {Promise<object>} - MUX: 返回 { status, message }
+ */
+export const saveCustomerSettings = async (projectId, settingsData) => {
+  if (!projectId || !settingsData) {
+    throw new Error("缺少 projectId 或 settingsData");
+  }
+  
+  try {
+    // ✓ MUX: 呼叫 customerApiRouter
+    const result = await customerApiRouter({
+        action: 'saveCustomerSettings',
+        data: { 
+            projectId, 
+            settingsData // ✓ 將 projectId 和 settingsData 都包在 data 內
+        }
+    });
+    
+    // ✓ MUX: onCall 的回傳資料在 result.data
+    return result.data; 
+    
+  } catch (error) {
+    console.error(`[api.js] 儲存客資系統設定時發生錯誤 (Project: ${projectId}):`, error);
+    throw error; // 拋出錯誤讓 .vue 檔案捕捉
+  }
+};
+
+
+
+// =================================================================
+// /  【修改】客資系統設定 API (V2 - MUX)
+// =================================================================
+
+
+
+// ✓ START: 修改貴賓表單 API 函式
+/**
+ * [API] 獲取貴賓表單所需的設定 (名稱、封面圖、欄位)
+ * (由 VipForm.vue 使用)
+ */
+export const fetchVipFormSettings = async (projectId) => {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId' };
+  }
+  
+  try {
+    // ✓ 修改：呼叫 vipFormApiRouter
+    const result = await vipFormApiRouter({
+        action: 'fetchVipFormSettings',
+        data: { projectId }
+    });
+    return result.data; // 直接回傳後端的 { status, ... }
+  } catch (error) {
+    console.error(`[api.js] 獲取貴賓表單設定時發生錯誤:`, error);
+    return { status: "error", message: error.message };
+  }
+};
+
+/**
+ * [API] 提交貴賓填寫的表單資料
+ * (由 VipForm.vue 使用)
+ */
+export const submitVipForm = async (projectId, formData) => {
+  if (!projectId || !formData) {
+    return { status: 'error', message: '缺少 projectId 或 formData' };
+  }
+  
+  try {
+    // ✓ 修改：呼叫 vipFormApiRouter
+    const result = await vipFormApiRouter({
+        action: 'submitVipForm',
+        data: { projectId, formData }
+    });
+    return result.data; // 直接回傳後端的 { status, docId }
+  } catch (error) {
+    console.error(`[api.js] 提交貴賓表單時發生錯誤:`, error);
+    return { status: "error", message: error.message };
+  }
+};
+// ✓ END: 修改

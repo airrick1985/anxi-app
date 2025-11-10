@@ -15242,3 +15242,272 @@ exports.generatePaymentSheet = onCall({
  }
 });
 // ✓ END: 新增 Cloud Function
+
+// =================================================================
+// /  【新增】客資系統 API 路由 (customerApi)
+// =================================================================
+
+
+
+
+
+/**
+ * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
+ */
+/**
+ * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
+ */
+exports.customerApi = onCall({ 
+    region: "asia-east1", 
+    cors: true, 
+    memory: "1GiB", 
+    timeoutSeconds: 300 
+}, async (request) => {
+    
+    const { action, data } = request.data;
+    const functionName = `customerApi (Action: ${action})`;
+    
+    try {
+        console.log(`[${functionName}] 路由函數啟動...`);
+        
+        // ✓ 檢查登入狀態 (未來應在此加入內部 API 的權限驗證)
+        // if (!request.auth) {
+        //   throw new HttpsError('unauthenticated', '您必須登入才能執行此操作。');
+        // }
+        
+        const db = new Firestore({ databaseId: "anxi-app" });
+
+        switch (action) {
+            
+            // --- 系統設定 (Settings) ---
+            case 'fetchCustomerSettings':
+                return await _handleFetchCustomerSettings(data, db);
+            case 'saveCustomerSettings':
+                return await _handleSaveCustomerSettings(data, db);
+            
+            // ✓ START: 移除貴賓表單功能
+            // case 'fetchVipFormSettings': // <--- 移除
+            //     return await _handleFetchVipFormSettings(data, db);
+            // case 'submitVipForm': // <--- 移除
+            //     return await _handleSubmitVipForm(data, db);
+            // ✓ END: 移除
+
+            // ... (其他 customer case) ...
+
+            default:
+                console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
+                throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
+        }
+    } catch (error) {
+        // 3. 統一捕捉所有內部函式拋出的 HttpsError 或其他錯誤
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        
+        throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
+    }
+});
+
+
+/**
+ * [內部函式] 獲取貴賓表單所需的設定 (供公開頁面使用)
+ * @param {object} data - 包含 { projectId }
+ * @param {Firestore} db - Firestore 實例
+ */
+async function _handleFetchVipFormSettings(data, db) {
+    const { projectId } = data;
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+    }
+    
+    try {
+        // 任務 1: 獲取建案名稱
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+        // 任務 2: 獲取客資系統設定
+        const settingsDoc = await db.collection("customerFieldSettings").doc(projectId).get();
+        
+        let vipFormConfig = {};
+        let vipFormFields = {};
+
+        if (settingsDoc.exists) {
+            const settingsData = settingsDoc.data();
+            vipFormConfig = settingsData.vipFormConfig || {};
+            vipFormFields = settingsData.vipFormFields || {};
+        }
+
+        return { 
+            status: "success",
+            projectName: projectName,
+            vipFormConfig: vipFormConfig,
+            vipFormFields: vipFormFields
+        };
+
+    } catch (error) {
+        console.error(`[_handleFetchVipFormSettings] 獲取貴賓表單設定時發生錯誤:`, error);
+        throw new HttpsError("internal", `獲取設定時發生錯誤: ${error.message}`);
+    }
+}
+
+/**
+ * [內部函式] 儲存貴賓填寫的表單資料
+ * (✓ 修改 Doc ID 格式)
+ * @param {object} data - 包含 { projectId, formData }
+ * @param {Firestore} db - Firestore 實例
+ */
+async function _handleSubmitVipForm(data, db) {
+    const { projectId, formData } = data;
+    if (!projectId || !formData) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 formData 參數。");
+    }
+
+    try {
+        // ✓ 1. 從 formData 獲取姓名和電話
+        // (根據 VipForm.vue 的 v-model，key 是 '姓名' 和 '電話')
+        const name = formData['姓名'] || '未知';
+        const phone = formData['電話'] || '未知';
+
+        // ✓ 2. 產生 YYMMDDHHMM 格式的時間戳 (使用台灣時區)
+        //    (需確認 date-fns-tz 已在 function index.js 頂部引入)
+        const now = new Date();
+        const timestamp = formatInTimeZone(now, 'Asia/Taipei', 'yyMMddHHmm'); 
+
+        // ✓ 3. 組合新的文件 ID
+        //    (移除 Firestore 不允許的 ID 字元，例如 '/')
+        const safeName = name.replace(/[.#$[\]/]/g, '_');
+        const safePhone = phone.replace(/[.#$[\]/]/g, '_');
+        const newDocId = `${projectId}-${timestamp}-${safeName}-${safePhone}`;
+
+        // ✓ 4. 使用自訂 ID 建立文件引用
+        const guestRef = db.collection("vipGuests").doc(newDocId); 
+        
+        const dataToSave = {
+            ...formData,
+            projectId: projectId,
+            createdAt: FieldValue.serverTimestamp() // 保持 serverTimestamp
+        };
+
+        // ✓ 5. 寫入資料
+        await guestRef.set(dataToSave);
+
+        return { status: "success", docId: newDocId };
+
+    } catch (error) {
+        console.error(`[_handleSubmitVipForm] 儲存貴賓資料時發生錯誤:`, error);
+        throw new HttpsError("internal", `提交資料時發生錯誤: ${error.message}`);
+    }
+}
+
+
+// ✓ 請務必確認 _handleFetchCustomerSettings 和 _handleSaveCustomerSettings 已修改
+/**
+ * [內部函式] 獲取指定建案的客資系統欄位設定
+ * @param {object} data - 包含 { projectId }
+ * @param {Firestore} db - Firestore 實例 (✓ 新增)
+ */
+async function _handleFetchCustomerSettings(data, db) { // ✓ 接收 db
+    const { projectId } = data;
+    const functionName = `_handleFetchCustomerSettings`;
+
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+    }
+    
+    try {
+        // const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 移除
+        const docRef = db.collection("customerFieldSettings").doc(projectId);
+        const docSnap = await docRef.get();
+        
+        if (docSnap.exists) {
+            return docSnap.data(); 
+        } else {
+            console.log(`[${functionName}] customerFieldSettings/${projectId} 尚未建立。`);
+            return null;
+        }
+    } catch (error) {
+        console.error(`[${functionName}] 獲取設定時發生錯誤:`, error);
+        throw new HttpsError("internal", `獲取客資系統設定時發生錯誤: ${error.message}`);
+    }
+}
+
+/**
+ * [內部函式] 儲存指定建案的客資系統欄位設定
+ * @param {object} data - 包含 { projectId, settingsData }
+ * @param {Firestore} db - Firestore 實例 (✓ 新增)
+ */
+async function _handleSaveCustomerSettings(data, db) { // ✓ 接收 db
+    const { projectId, settingsData } = data;
+    const functionName = `_handleSaveCustomerSettings`;
+
+    if (!projectId || !settingsData) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 settingsData 參數。");
+    }
+    
+    try {
+        // const db = new Firestore({ databaseId: "anxi-app" }); // ✓ 移除
+        const docRef = db.collection("customerFieldSettings").doc(projectId);
+        
+        const dataToSave = {
+            ...settingsData,
+            updatedAt: FieldValue.serverTimestamp() 
+        };
+        
+        await docRef.set(dataToSave, { merge: true });
+        
+        return { status: "success", message: "設定儲存成功" };
+    } catch (error) {
+        console.error(`[${functionName}] 儲存設定時發生錯誤:`, error);
+        throw new HttpsError("internal", `儲存客資系統設定時發生錯誤: ${error.message}`);
+    }
+}
+
+// ✓ START: 新增「貴賓表單」專用 API 路由
+// =================================================================
+// /  【新增】貴賓表單 API 路由 (vipFormApi) - 供公開使用
+// =================================================================
+
+/**
+ * [V1 - 路由函數] VipForm.vue (貴賓資料表) 的單一 API 入口
+ * !! 此 API 不需登入即可存取 !!
+ */
+exports.vipFormApi = onCall({ 
+    region: "asia-east1", 
+    cors: true, 
+    memory: "1GiB", 
+    timeoutSeconds: 300 
+}, async (request) => {
+    
+    const { action, data } = request.data;
+    const functionName = `vipFormApi (Action: ${action})`;
+    
+    try {
+        console.log(`[${functionName}] (公開) 路由函數啟動...`);
+        
+        const db = new Firestore({ databaseId: "anxi-app" });
+
+        switch (action) {
+            
+            // --- 貴賓表單 (VIP Form) ---
+            case 'fetchVipFormSettings':
+                return await _handleFetchVipFormSettings(data, db);
+            
+            case 'submitVipForm':
+                return await _handleSubmitVipForm(data, db);
+
+            default:
+                console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
+                throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
+        }
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
+    }
+});
+// ✓ END: 新增 API 路由
