@@ -13696,7 +13696,7 @@ async function _handleAddAppointmentAdmin(data) {
                 bookerEmail: newBookingData.bookerEmail || "",
                 bookerIdNumber: newBookingData.bookerIdNumber || "",
                 bookingType: newBookingData.bookingType,
-                appointmentDate: newBookingData.appointmentDate ? Timestamp.fromDate(new Date(appointmentDateStr)) : null,
+                appointmentDate: newBookingData.appointmentDate ? Timestamp.fromDate(new Date(appointmentDateStr + 'T00:00:00+08:00')) : null,
                 appointmentTimeSlot: timeSlotKey,
                 status: newBookingData.status || "預約中",
                 inspectionMethod: newBookingData.inspectionMethod || "",

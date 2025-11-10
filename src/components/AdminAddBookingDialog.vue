@@ -1069,12 +1069,16 @@ const submitAdminBooking = async () => {
     isSubmitting.value = true;
     errorAlert.show = false; // ✓ 清除之前的錯誤提示
     try {
-        const payload = {
+       const payload = {
             projectId: props.projectId,
             newBookingData: {
                 ...finalBookingData.value,
-                // ✓ 確保日期格式是 YYYY-MM-DD
-                appointmentDate: finalBookingData.value.appointmentDate ? new Date(finalBookingData.value.appointmentDate).toISOString().split('T')[0] : null,
+                // ✓ START: 修改
+                // [原始碼]
+                // appointmentDate: finalBookingData.value.appointmentDate ? new Date(finalBookingData.value.appointmentDate).toISOString().split('T')[0] : null,
+                // [修正] 直接使用 date-fns format 轉換本地 Date 物件為 'yyyy-MM-dd' 字串
+                appointmentDate: formStep2.appointmentDate ? format(formStep2.appointmentDate, 'yyyy-MM-dd') : null,
+                // ✓ END: 修改
             },
            force: isAdminForcing.value, // ✓ 使用 isAdminForcing 的值
         };
