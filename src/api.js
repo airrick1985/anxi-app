@@ -49,6 +49,7 @@ export const liffCalendarApiRouter = httpsCallable(functions, 'liffCalendarApi')
 export const salesApiRouter = httpsCallable(functions, 'salesApi');
 export const customerApiRouter = httpsCallable(functions, 'customerApi');
 export const vipFormApiRouter = httpsCallable(functions, 'vipFormApi');
+export const customerSheetApiRouter = httpsCallable(functions, 'customerSheetApi');
 
 
 
@@ -6939,3 +6940,112 @@ export const submitVipForm = async (projectId, formData) => {
   }
 };
 // ✓ END: 修改
+
+
+// =================================================================
+// /  【新增】客戶資料表 API
+// =================================================================
+
+/**
+ * [API] 驗證銷售人員電話並返回其可用的客資系統建案
+ * (✓ 修改：增加 password 參數)
+ */
+export const verifySalesPerson = async (phone, password) => { // ✓ 1. 增加 password 參數
+  try {
+    const result = await customerSheetApiRouter({
+      action: 'verifySalesPerson',
+      data: { phone, password } // ✓ 2. 將 password 傳入 data
+    });
+    return result.data; // { name, roles, projects, isCounter }
+  } catch (error) {
+    console.error(`[api.js] 驗證銷售人員失敗:`, error);
+    throw error;
+  }
+};
+
+/**
+ * [API] 獲取指定建案的所有貴賓列表
+ * (✓ 修改：轉換 createdAt Timestamp)
+ */
+export const fetchVipGuests = async (projectId) => {
+  try {
+    const result = await customerSheetApiRouter({
+      action: 'fetchVipGuests',
+      data: { projectId }
+    });
+
+    // ✓ START: 轉換 Timestamp
+    // result.data 是一個陣列 [ { id, name, phone, createdAt: {_seconds: ...} } ]
+    const guests = result.data.map(guest => {
+      let convertedDate = null;
+      
+      // 檢查是否為 CF 回傳的序列化 Timestamp
+      if (guest.createdAt && typeof guest.createdAt === 'object' && guest.createdAt._seconds !== undefined) {
+        // 轉換序列化的 Timestamp (from Cloud Function) 為 Client-side Date 物件
+        convertedDate = new Date(guest.createdAt._seconds * 1000);
+      } else if (guest.createdAt) {
+        // 備用方案 (如果它意外地是其他格式，例如 ISO 字串)
+        convertedDate = new Date(guest.createdAt);
+      }
+      
+      return {
+        ...guest,
+        createdAt: convertedDate // ✓ 覆蓋為 Date 物件
+      };
+    });
+    
+    return guests; // ✓ 回傳轉換後的陣列
+    // ✓ END: 轉換
+
+  } catch (error) {
+    console.error(`[api.js] 獲取貴賓列表失敗:`, error);
+    throw error;
+  }
+};
+/**
+ * [API] 獲取客戶資料表所需的設定 (共用貴賓表單的設定)
+ */
+export const fetchCustomerSheetSettings = async (projectId) => {
+  try {
+    const result = await customerSheetApiRouter({
+      action: 'fetchCustomerSheetData',
+      data: { projectId }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 獲取客戶資料表設定失敗:`, error);
+    return { status: "error", message: error.message };
+  }
+};
+
+/**
+ * [API] 提交客戶資料表 (建立或更新)
+ */
+export const submitCustomerSheet = async (projectId, formData, docId = null) => {
+  try {
+    const result = await customerSheetApiRouter({
+      action: 'submitCustomerSheet',
+      data: { projectId, formData, docId }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 提交客戶資料表失敗:`, error);
+    throw error;
+  }
+};
+
+/**
+ * [API] 獲取單筆貴賓的完整資料 (用於編輯)
+ */
+export const fetchSingleVipGuest = async (docId) => {
+  try {
+    const result = await customerSheetApiRouter({
+      action: 'fetchSingleVipGuest',
+      data: { docId }
+    });
+    return result.data; // { status, data }
+  } catch (error) {
+    console.error(`[api.js] 獲取單筆貴賓資料失敗:`, error);
+    throw error;
+  }
+};

@@ -15247,13 +15247,6 @@ exports.generatePaymentSheet = onCall({
 // /  【新增】客資系統 API 路由 (customerApi)
 // =================================================================
 
-
-
-
-
-/**
- * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
- */
 /**
  * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
  */
@@ -15311,8 +15304,12 @@ exports.customerApi = onCall({
 });
 
 
+
+
+
 /**
  * [內部函式] 獲取貴賓表單所需的設定 (供公開頁面使用)
+ * (✓ 修改：同時回傳 customerFieldSettings)
  * @param {object} data - 包含 { projectId }
  * @param {Firestore} db - Firestore 實例
  */
@@ -15332,18 +15329,21 @@ async function _handleFetchVipFormSettings(data, db) {
         
         let vipFormConfig = {};
         let vipFormFields = {};
+        let customerFieldSettings = {}; // ✓ (新增)
 
         if (settingsDoc.exists) {
             const settingsData = settingsDoc.data();
             vipFormConfig = settingsData.vipFormConfig || {};
             vipFormFields = settingsData.vipFormFields || {};
+            customerFieldSettings = settingsData.fields || {}; // ✓ (新增) 讀取內部欄位
         }
 
         return { 
             status: "success",
             projectName: projectName,
             vipFormConfig: vipFormConfig,
-            vipFormFields: vipFormFields
+            vipFormFields: vipFormFields,
+            customerFieldSettings: customerFieldSettings // ✓ (新增) 回傳內部欄位
         };
 
     } catch (error) {
@@ -15354,9 +15354,7 @@ async function _handleFetchVipFormSettings(data, db) {
 
 /**
  * [內部函式] 儲存貴賓填寫的表單資料
- * (✓ 修改 Doc ID 格式)
- * @param {object} data - 包含 { projectId, formData }
- * @param {Firestore} db - Firestore 實例
+ * (✓ V4: 修正 Timestamp in array 錯誤)
  */
 async function _handleSubmitVipForm(data, db) {
     const { projectId, formData } = data;
@@ -15364,43 +15362,88 @@ async function _handleSubmitVipForm(data, db) {
         throw new HttpsError("invalid-argument", "缺少 projectId 或 formData 參數。");
     }
 
+    const phone = formData['電話'];
+    const name = formData['姓名'];
+
+    if (!phone) {
+         throw new HttpsError("invalid-argument", "formData 中缺少「電話」欄位。");
+    }
+
+    const docId = `${projectId}_${phone.replace(/[.#$[\]/]/g, '_')}`;
+    const docRef = db.collection("vipGuests").doc(docId);
+    
+    // ✓ START: 修正
+    const rootTimestamp = FieldValue.serverTimestamp(); // 用於根欄位 (createdAt, updatedAt)
+    const submissionTimestamp = Timestamp.now(); // ✓ 用於陣列內部
+    // ✓ END: 修正
+    
+    const submissionLog = {
+        ...formData,
+        submittedAt: submissionTimestamp // ✓ 使用具體的時間戳
+    };
+
     try {
-        // ✓ 1. 從 formData 獲取姓名和電話
-        // (根據 VipForm.vue 的 v-model，key 是 '姓名' 和 '電話')
-        const name = formData['姓名'] || '未知';
-        const phone = formData['電話'] || '未知';
+        await db.runTransaction(async (transaction) => {
+            const docSnap = await transaction.get(docRef);
 
-        // ✓ 2. 產生 YYMMDDHHMM 格式的時間戳 (使用台灣時區)
-        //    (需確認 date-fns-tz 已在 function index.js 頂部引入)
-        const now = new Date();
-        const timestamp = formatInTimeZone(now, 'Asia/Taipei', 'yyMMddHHmm'); 
+            if (!docSnap.exists) {
+                // --- 3A. 新客戶 ---
+                console.log(`[_handleSubmitVipForm] 新客戶: ${docId}`);
+                transaction.set(docRef, {
+                    projectId: projectId,
+                    phone: phone,
+                    latestName: name || '未知',
+                    latestSalesName: formData['銷售人員'] || null,
+                    createdAt: rootTimestamp, // ✓ 根欄位
+                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    profile: formData, 
+                    submissions: [submissionLog] // ✓ 陣列內含具體時間戳
+                });
+            } else {
+                // --- 3B. 電話重複 (舊客戶) ---
+                console.log(`[_handleSubmitVipForm] 舊客戶: ${docId}，合併資料...`);
+                const oldData = docSnap.data();
+                
+                const updatedSubmissions = FieldValue.arrayUnion(submissionLog); // ✓ 陣列內含具體時間戳
+                const newProfile = _smartMergeProfile(oldData.profile, formData);
 
-        // ✓ 3. 組合新的文件 ID
-        //    (移除 Firestore 不允許的 ID 字元，例如 '/')
-        const safeName = name.replace(/[.#$[\]/]/g, '_');
-        const safePhone = phone.replace(/[.#$[\]/]/g, '_');
-        const newDocId = `${projectId}-${timestamp}-${safeName}-${safePhone}`;
+                transaction.update(docRef, {
+                    latestName: name || oldData.latestName,
+                    latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
+                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    profile: newProfile,
+                    submissions: updatedSubmissions 
+                });
+            }
+        });
 
-        // ✓ 4. 使用自訂 ID 建立文件引用
-        const guestRef = db.collection("vipGuests").doc(newDocId); 
-        
-        const dataToSave = {
-            ...formData,
-            projectId: projectId,
-            createdAt: FieldValue.serverTimestamp() // 保持 serverTimestamp
-        };
-
-        // ✓ 5. 寫入資料
-        await guestRef.set(dataToSave);
-
-        return { status: "success", docId: newDocId };
+        return { status: "success", docId: docId };
 
     } catch (error) {
-        console.error(`[_handleSubmitVipForm] 儲存貴賓資料時發生錯誤:`, error);
-        throw new HttpsError("internal", `提交資料時發生錯誤: ${error.message}`);
+        console.error(`[_handleSubmitVipForm] Transaction 失敗 (docId: ${docId}):`, error);
+        throw new HttpsError("internal", `提交資料時發生 Transaction 錯誤: ${error.message}`);
     }
 }
 
+/**
+ * [內部函式] 獲取單一貴賓的完整資料
+ * (✓ V2: 修改為回傳 profile 物件)
+ */
+async function _handleFetchSingleVipGuest(data, db) {
+    const { docId } = data;
+    if (!docId) {
+        throw new HttpsError("invalid-argument", "缺少文件 ID。");
+    }
+    const docRef = db.collection("vipGuests").doc(docId);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+        throw new HttpsError("not-found", "找不到指定的貴賓資料。");
+    }
+    
+    // ✓ 回傳合併後的 profile 物件，而不是整個文件
+    return { status: "success", data: docSnap.data().profile }; 
+}
 
 // ✓ 請務必確認 _handleFetchCustomerSettings 和 _handleSaveCustomerSettings 已修改
 /**
@@ -15464,6 +15507,34 @@ async function _handleSaveCustomerSettings(data, db) { // ✓ 接收 db
     }
 }
 
+
+
+/**
+ * [輔助函式] 智慧合併 Profile
+ * @param {object} oldProfile - 資料庫中已合併的舊資料
+ * @param {object} newSubmission - 剛剛提交的新表單資料
+ */
+function _smartMergeProfile(oldProfile, newSubmission) {
+  const newProfile = { ...oldProfile }; // 複製一份舊資料
+
+  for (const key in newSubmission) {
+    const newValue = newSubmission[key];
+    
+    if (Array.isArray(newValue)) {
+      // 如果新值是陣列 (例如 "購屋動機")
+      const oldArray = Array.isArray(oldProfile[key]) ? oldProfile[key] : [];
+      // 使用 Set 合併新舊陣列並移除重複項
+      newProfile[key] = [...new Set([...oldArray, ...newValue])];
+    } else if (newValue !== null && newValue !== undefined && newValue !== '') {
+      // 如果新值是有效的單一值 (字串、數字)，則直接覆蓋
+      newProfile[key] = newValue;
+    }
+    // (如果 newSubmission 的值是 null 或空字串，我們選擇不覆蓋舊的有效資料)
+  }
+  return newProfile;
+}
+
+
 // ✓ START: 新增「貴賓表單」專用 API 路由
 // =================================================================
 // /  【新增】貴賓表單 API 路由 (vipFormApi) - 供公開使用
@@ -15511,3 +15582,220 @@ exports.vipFormApi = onCall({
     }
 });
 // ✓ END: 新增 API 路由
+
+
+
+
+
+
+// =================================================================
+// /  【新增】客戶資料表 API 路由 (customerSheetApi) - 供銷售人員使用
+// =================================================================
+
+/**
+ * [內部函式] 驗證銷售人員電話並返回其可用的客資系統建案
+ * (✓ 修改：增加密碼驗證)
+ */
+async function _handleVerifySalesPerson(data, db) {
+    // ✓ 1. 同時獲取 phone 和 password
+    const { phone, password } = data;
+    if (!phone || !password) {
+        throw new HttpsError("invalid-argument", "缺少電話號碼或密碼。");
+    }
+
+    // 2. 驗證使用者是否存在
+    const userDoc = await db.collection("users").doc(phone).get();
+    if (!userDoc.exists) {
+        throw new HttpsError("not-found", "找不到此銷售人員，請確認電話號碼是否正確。");
+    }
+    const userData = userDoc.data();
+
+    // ✓ 3. 新增：驗證密碼
+    if (userData.password !== String(password)) {
+        throw new HttpsError("unauthenticated", "密碼錯誤，請重新輸入。");
+    }
+
+    // ✓ 4. 密碼正確，繼續處理權限
+    const permDoc = await db.collection("userPermissions").doc(phone).get();
+    if (!permDoc.exists) {
+        return { name: userData.name, roles: userData.roles || [], projects: [], isCounter: false }; // 有用戶但無權限
+    }
+
+    const permissions = permDoc.data().permissions || {};
+    const authorizedProjects = [];
+    let hasCounterRoleAnywhere = false;
+
+    for (const projectId in permissions) {
+        const projectPerms = permissions[projectId];
+        let hasAccess = false;
+        
+        if (projectPerms.systems) {
+            if (projectPerms.systems.includes("客資系統-櫃台")) {
+                hasAccess = true;
+                hasCounterRoleAnywhere = true; 
+            }
+            if (projectPerms.systems.includes("客資系統-銷售")) {
+                hasAccess = true;
+            }
+        }
+        
+        if (hasAccess) {
+            authorizedProjects.push({
+                id: projectId,
+                name: projectPerms.projectName
+            });
+        }
+    }
+
+    return { 
+        name: userData.name, 
+        roles: userData.roles || [], 
+        isCounter: hasCounterRoleAnywhere, 
+        projects: authorizedProjects 
+    };
+}
+
+
+
+/**
+ * [內部函式] 獲取指定建案的所有貴賓列表
+ * (✓ V2: 修改為讀取 latestName/phone, 並用 updatedAt 排序)
+ */
+async function _handleFetchVipGuests(data, db) { // <--- ✓ 修正點：確保 'async' 關鍵字存在
+    const { projectId } = data;
+    if (!projectId) {
+        throw new HttpsError("invalid-argument", "缺少建案 ID。");
+    }
+    
+    // ✓ 'await' 必須在 'async' 函式內部使用
+    const snapshot = await db.collection("vipGuests") 
+        .where("projectId", "==", projectId)
+        .orderBy("updatedAt", "desc") 
+        .get();
+
+    if (snapshot.empty) {
+        return [];
+    }
+
+    return snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().latestName || '未知', 
+        phone: doc.data().phone || '未知',     
+        createdAt: doc.data().createdAt 
+    }));
+}
+
+/**
+ * [內部函式] 提交客戶資料表 (建立或更新)
+ * (✓ V4: 修正 Timestamp in array 錯誤)
+ */
+async function _handleSubmitCustomerSheet(data, db) {
+    const { projectId, formData, docId } = data; 
+    if (!projectId || !formData) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 formData 參數。");
+    }
+
+    const phone = formData['電話'];
+    const name = formData['姓名'];
+    if (!phone) {
+         throw new HttpsError("invalid-argument", "formData 中缺少「電話」欄位。");
+    }
+
+    let finalDocId = docId;
+
+    if (finalDocId) {
+        // 編輯模式 (ID 已知)
+    } else {
+        // 新增模式
+        finalDocId = `${projectId}_${phone.replace(/[.#$[\]/]/g, '_')}`;
+    }
+
+    const docRef = db.collection("vipGuests").doc(finalDocId);
+    
+    // ✓ START: 修正
+    const rootTimestamp = FieldValue.serverTimestamp(); // 用於根欄位 (createdAt, updatedAt)
+    const submissionTimestamp = Timestamp.now(); // ✓ 用於陣列內部 (使用 Admin SDK 的 Timestamp.now())
+    // ✓ END: 修正
+    
+    const submissionLog = {
+        ...formData,
+        submittedAt: submissionTimestamp // ✓ 使用具體的時間戳
+    };
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const docSnap = await transaction.get(docRef);
+
+            if (!docSnap.exists) {
+                // --- 3A. 新客戶 ---
+                transaction.set(docRef, {
+                    projectId: projectId,
+                    phone: phone,
+                    latestName: name || '未知',
+                    latestSalesName: formData['銷售人員'] || null,
+                    createdAt: rootTimestamp, // ✓ 根欄位
+                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    profile: formData, 
+                    submissions: [submissionLog] // ✓ 陣列內含具體時間戳
+                });
+            } else {
+                // --- 3B. 舊客戶 (更新 CustomerDataSheet) ---
+                const oldData = docSnap.data(); 
+                transaction.update(docRef, {
+                    latestName: name || oldData.latestName,
+                    latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
+                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    profile: formData, 
+                    submissions: FieldValue.arrayUnion(submissionLog) // ✓ 陣列內含具體時間戳
+                });
+            }
+        });
+
+        return { status: "success", docId: finalDocId };
+
+    } catch (error) {
+        console.error(`[_handleSubmitCustomerSheet] Transaction 失敗 (docId: ${finalDocId}):`, error);
+        throw new HttpsError("internal", `提交資料時發生 Transaction 錯誤: ${error.message}`);
+    }
+}
+
+/**
+ * [V1 - 路由函數] CustomerDataSheet.vue (客戶資料表) 的單一 API 入口
+ */
+exports.customerSheetApi = onCall({ 
+    region: "asia-east1", 
+    cors: true, 
+    memory: "1GiB",
+    timeoutSeconds: 300 
+}, async (request) => {
+    
+    const { action, data } = request.data;
+    const functionName = `customerSheetApi (Action: ${action})`;
+    
+    try {
+        const db = new Firestore({ databaseId: "anxi-app" });
+
+        switch (action) {
+            case 'verifySalesPerson':
+                return await _handleVerifySalesPerson(data, db);
+            case 'fetchVipGuests':
+                return await _handleFetchVipGuests(data, db);
+            case 'fetchCustomerSheetData': // 共用 fetchVipFormSettings
+                return await _handleFetchVipFormSettings(data, db);
+            case 'submitCustomerSheet':
+                return await _handleSubmitCustomerSheet(data, db);
+
+                case 'fetchSingleVipGuest':
+                return await _handleFetchSingleVipGuest(data, db);
+
+            default:
+                throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
+        }
+    } catch (error) {
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError('internal', `處理 ${action} 時發生錯誤: ${error.message}`);
+    }
+});

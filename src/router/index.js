@@ -253,6 +253,29 @@ const routes = [
     }
   },
 
+{
+    // ✓ 1. 新增「銷售人員登入」專用路徑 (沒有 props)
+    path: '/customer-data-sheet',
+    name: 'CustomerDataSheetLogin', // 登入頁
+    component: () => import('@/views/CustomerDataSheet.vue'), 
+    props: false, // ✓ 確保 props 為 false
+    meta: {
+      layout: PublicLayout,
+      title: '客戶資料表登入'
+    }
+  },
+  {
+    // ✓ 2. 修改「客戶 QR Code」專用路徑 (有 props)
+    path: '/customer-data-sheet/:projectId/:docId?', 
+    name: 'CustomerDataSheetForm', // 表單頁
+    component: () => import('@/views/CustomerDataSheet.vue'), 
+    props: true,
+    meta: {
+      layout: PublicLayout,
+      title: '客戶資料表'
+    }
+  },
+
   {
     path: '/sign-auth/:token',
     name: 'AuthSigningPage',

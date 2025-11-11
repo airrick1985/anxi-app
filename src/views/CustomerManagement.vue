@@ -4,7 +4,9 @@
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="settings" v-if="canManageSettings">客資系統設定</v-tab>
       <v-tab value="vipSettings" v-if="canManageSettings">貴賓資料設定</v-tab>
-    </v-tabs>
+      <v-tab value="otherSettings" v-if="canManageSettings">其他設定</v-tab>
+      <v-tab value="anxiSettings" v-if="isSuperAdmin">ANXI系統設定</v-tab>
+      </v-tabs>
 
     <v-window v-model="tab">
       <v-window-item value="management">
@@ -264,7 +266,119 @@
         </v-card>
       </v-window-item>
 
-    </v-window>
+      <v-window-item value="otherSettings" v-if="canManageSettings">
+        <v-card>
+          <v-toolbar color="brown-lighten-5" density="compact">
+            <v-toolbar-title class="text-subtitle-1">
+              其他設定 (建案: {{ projectName }})
+            </v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="primary"
+              variant="flat"
+              @click="saveSettings"
+              :loading="isSaving || isUploadingCover"
+            >
+              儲存設定
+            </v-btn>
+          </v-toolbar>
+
+          <v-card-text v-if="isLoading" class="text-center pa-10">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            <p class="mt-3 text-grey">正在載入設定...</p>
+          </v-card-text>
+
+          <v-card-text v-else class="pa-5">
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-sheet border rounded class="pa-4">
+                  <p class="text-subtitle-1 font-weight-bold">客資重複提醒-櫃台</p>
+                  <v-switch
+                    v-model="settings.reminderSettings.counterDuplicate.lineNotify"
+                    label="LINE 提醒"
+                    color="primary"
+                    density="compact"
+                    inset
+                  ></v-switch>
+                  <v-switch
+                    v-model="settings.reminderSettings.counterDuplicate.emailNotify"
+                    label="EMAIL 提醒"
+                    color="primary"
+                    density="compact"
+                    inset
+                  ></v-switch>
+                </v-sheet>
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-sheet border rounded class="pa-4">
+                  <p class="text-subtitle-1 font-weight-bold">客資重複提醒-銷售</p>
+                  <v-switch
+                    v-model="settings.reminderSettings.salesDuplicate.lineNotify"
+                    label="LINE 提醒"
+                    color="primary"
+                    density="compact"
+                    inset
+                  ></v-switch>
+                  <v-switch
+                    v-model="settings.reminderSettings.salesDuplicate.emailNotify"
+                    label="EMAIL 提醒"
+                    color="primary"
+                    density="compact"
+                    inset
+                  ></v-switch>
+                </v-sheet>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      <v-window-item value="anxiSettings" v-if="isSuperAdmin">
+        <v-card>
+          <v-toolbar color="red-lighten-5" density="compact">
+            <v-toolbar-title class="text-subtitle-1 text-red-darken-2">
+              <v-icon start>mdi-cog-sync</v-icon>
+              ANXI 系統設定 (限超管、系管使用)
+            </v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="primary"
+              variant="flat"
+              @click="saveSettings"
+              :loading="isSaving || isUploadingCover"
+            >
+              儲存設定
+            </v-btn>
+          </v-toolbar>
+
+          <v-card-text v-if="isLoading" class="text-center pa-10">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            <p class="mt-3 text-grey">正在載入設定...</p>
+          </v-card-text>
+
+          <v-card-text v-else class="pa-5">
+            <v-alert
+              type="warning"
+              variant="tonal"
+              border="start"
+              density="compact"
+              class="mb-6"
+            >
+              警告：此處為高階系統設定，錯誤的修改可能導致客資系統功能（如LINE通知）失效。
+            </v-alert>
+
+            <v-text-field
+              v-model="settings.anxiSystemConfig.lineCrmChannelAccessTokenSecretName"
+              label="客資系統 LINE Channel Access Token 密鑰名稱"
+              hint="請輸入在 Google Secret Manager 中的完整密鑰名稱 (例如：CUSTOMER_CRM_LINE_TOKEN)"
+              persistent-hint
+              variant="outlined"
+            ></v-text-field>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
+      </v-window>
   </v-container>
 </template>
 
@@ -298,6 +412,14 @@ const canManageSettings = computed(() =>
   userStore.hasProjectPermission('客資系統-櫃台', projectName.value)
 );
 
+// ✓ START: 新增超級管理員權限檢查
+const isSuperAdmin = computed(() => 
+  userStore.currentUserRoles.includes('系統管理員') ||
+  userStore.currentUserRoles.includes('超級管理員')
+);
+// ✓ END: 新增
+
+
 // --- 設定 Tab 邏輯 ---
 const isLoading = ref(false);
 const isSaving = ref(false);
@@ -305,23 +427,35 @@ const panel = ref([]);
 const vipPanel = ref([]); 
 const isUploadingCover = ref(false);
 const coverImageFile = ref(null); 
-const settings = ref({ fields: {}, vipFormFields: {}, vipFormConfig: {} }); 
 
-// ✓ START: 修正本地預覽的 watch 函式
+const settings = ref({ 
+  fields: {}, 
+  vipFormFields: {}, 
+  vipFormConfig: {},
+  reminderSettings: {
+    counterDuplicate: { lineNotify: false, emailNotify: false },
+    salesDuplicate: { lineNotify: false, emailNotify: false }
+  },
+  anxiSystemConfig: {
+    lineCrmChannelAccessTokenSecretName: ''
+  }
+});
+
+
+
+
 const tempCoverImageUrl = ref(null);
-watch(coverImageFile, (newFile) => { // ✓ 參數從 newFileArray 改為 newFile
+watch(coverImageFile, (newFile) => { 
   if (tempCoverImageUrl.value) {
     URL.revokeObjectURL(tempCoverImageUrl.value);
     tempCoverImageUrl.value = null;
   }
   
-  if (newFile) { // ✓ 直接檢查 newFile (它現在是 File 物件)
+  if (newFile) { 
     tempCoverImageUrl.value = URL.createObjectURL(newFile);
   }
 });
-// ✓ END: 修正
 
-// 預設欄位結構 (保持不變)
 const DEFAULT_SETTINGS = {
   fields: {
     gender: {
@@ -349,19 +483,15 @@ const DEFAULT_SETTINGS = {
       options: ["新竹市", "竹北", "竹東", "湖口", "新豐", "二重埔", "寶山", "芎林", "竹縣以北", "竹縣以南"]
     },
     occupation: {
-      label: "來客職業", order: 7, isRequired: false, allowCustom: true, selectionMode: 'single',
+      label: "職業", order: 7, isRequired: false, allowCustom: true, selectionMode: 'single',
       options: ["公務人員", "台元科技", "竹科園區", "園區外圍", "自營商", "工業區", "醫院相關", "上班族", "投資客", "家管"]
     },
-    motivation: {
-      label: "購屋動機", order: 8, isRequired: false, allowCustom: false, selectionMode: 'multiple', // ✓
-      options: ["自住", "投資", "贈與置產"]
-    },
     noPurchaseReason: {
-      label: "未買原因", order: 9, isRequired: false, allowCustom: true, selectionMode: 'multiple', // ✓
+      label: "未買原因", order: 9, isRequired: false, allowCustom: true, selectionMode: 'multiple', 
       options: ["已下訂", "還要討論比較", "預算不符", "格局不符", "座向不符", "單價不認同", "坪數太大", "坪數太小", "喜歡的戶型樓層沒了", "需要雙車位", "沒有高樓層可選", "沒有低樓層可選", "生活機能不理想", "要問神明或老師", "家人反對", "環境不喜歡"]
     },
     keyTags: {
-      label: "重點標籤", order: 10, isRequired: false, allowCustom: true, selectionMode: 'multiple', // ✓
+      label: "重點標籤", order: 10, isRequired: false, allowCustom: true, selectionMode: 'multiple', 
       options: ["在意學區", "關心貸款成數", "首購", "換屋", "需雙車位", "需B1車位", "高樓層偏好", "低樓層偏好", "邊間", "衛浴開窗", "前後陽台", "採光通風", "需家人同意", "需風水老師", "急需入住", "長期置產"]
     },
     rating: {
@@ -405,6 +535,19 @@ const DEFAULT_SETTINGS = {
       url: null,
       storagePath: null
     }
+  },
+  reminderSettings: { 
+    counterDuplicate: {
+      lineNotify: false,
+      emailNotify: false
+    },
+    salesDuplicate: {
+      lineNotify: false,
+      emailNotify: false
+    }
+  },
+  anxiSystemConfig: { // ✓ 新增
+    lineCrmChannelAccessTokenSecretName: ''
   }
 };
 
