@@ -27,7 +27,7 @@
                   :rules="[rules.phone]"
                   @keydown.enter="focusPassword"
                   autofocus
-                ></v-text-field>
+                   ></v-text-field>
                 
                 <v-text-field
                   ref="passwordField"
@@ -38,7 +38,7 @@
                   :rules="[rules.required]"
                   @keydown.enter="handleVerifySales"
                   class="mt-2"
-                ></v-text-field>
+                  autocomplete="new-password" ></v-text-field>
 
                 <v-alert v-if="step1Error" type="error" variant="tonal" border="start" density="compact">{{ step1Error }}</v-alert>
               </v-card-text>
@@ -87,7 +87,7 @@
                   clearable
                   hide-details
                   class="mb-4"
-                 ></v-text-field>
+                  autocomplete="off" ></v-text-field>
 
                  <v-list lines="one" border rounded style="max-height: 400px; overflow-y: auto;">
                   <v-list-item
@@ -102,8 +102,38 @@
                     </template>
 
                     <template v-slot:append>
-                      <div class="text-caption text-grey">
-                        {{ formatGuestDate(guest.createdAt) }}
+                      <div class="d-flex align-center">
+                        
+                        <v-tooltip v-if="guest.submissionsCount > 1" location="top">
+                          
+                          <template v-slot:activator="{ props }">
+                            <div v-bind="props" class="d-flex align-center text-warning">
+                              <v-icon 
+                                color="warning" 
+                                size="small" 
+                                class="mr-1"
+                              >
+                                mdi-alert-circle-outline
+                              </v-icon>
+                              <span class="text-caption">
+                                ({{ guest.latestSalesName || '未知' }})
+                              </span>
+                            </div>
+                          </template>
+                          
+                          <span>
+                            此客戶電話重複。
+                            <br>
+                            最後銷售：{{ guest.latestSalesName || '未知' }}
+                          </span>
+                        </v-tooltip>
+                        
+                        <div 
+                          class="text-caption text-grey" 
+                          :class="{ 'ml-2': guest.submissionsCount > 1 }"
+                        >
+                          {{ formatGuestDate(guest.createdAt) }}
+                        </div>
                       </div>
                     </template>
                     </v-list-item>
@@ -113,17 +143,15 @@
                  </v-list>
 
                   <v-card-text>
-                 <p class="mb-4">若無貴賓資料，請選擇「建立新客戶資料」</p>
-                 <v-btn
+                 <p class="mb-4">若無貴賓資料，請選擇「無貴賓資料」</p> <v-btn
                     color="#005AB6"
                     class="mb-6"
                     block
                     size="large"
-                    @click="handleNewCustomer"
-                    prepend-icon="mdi-account-plus-outline"
+                    
+                    @click="confirmNewCustomerDialog = true" prepend-icon="mdi-account-plus-outline"
                  >
-                    新建立客戶資料
-                 </v-btn>
+                    無貴賓資料 </v-btn>
 
                  
               </v-card-text>
@@ -133,6 +161,25 @@
             </v-card>
           </v-window-item>
         </v-window>
+
+<v-dialog v-model="confirmNewCustomerDialog" max-width="400" persistent>
+          <v-card>
+            <v-card-title>確認</v-card-title>
+            <v-card-text>
+              是否重新建立客戶資料？
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn color="grey-darken-1" variant="text" @click="confirmNewCustomerDialog = false">
+                取消
+              </v-btn>
+              <v-btn color="primary" variant="text" @click="executeNewCustomer">
+                確認
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
 
         <div v-if="step === 4">
           <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4">
@@ -196,7 +243,7 @@
                   variant="outlined"
                   :rules="[rules.required]"
                   class="mb-2"
-                ></v-text-field>
+                autocomplete="off" ></v-text-field>
 
                 <v-text-field
                   v-model="formData['電話']"
@@ -204,18 +251,32 @@
                   variant="outlined"
                   :rules="[rules.required, rules.phone]"
                   class="mb-2"
-                ></v-text-field>
+                autocomplete="off" ></v-text-field>
+
+                <v-text-field
+                  v-if="!isCustomerMode"
+                  v-model="formData['拜訪日期']"
+                  label="拜訪日期"
+                  type="date"
+                  variant="outlined"
+                  :max="todayInTaiwan"
+                  :rules="[rules.required, rules.maxDate]"
+                  class="mb-2"
+                autocomplete="off" ></v-text-field>
                 
                 <dynamic-form-field
                   v-if="systemSettings.fields.age" 
                   :field-config="systemSettings.fields.age"
                   v-model="formData[systemSettings.fields.age.label]"
-                ></dynamic-form-field>
+               
+                </dynamic-form-field>
      
                 <v-row dense>
-                  <v-col cols="6">
+                <v-col cols="6">
                     <v-select
-                      v-model="selectedCity"
+                      
+                      v-model="formData['居住城市']" 
+                      
                       :items="cityOptions"
                       label="現居地址"
                       variant="outlined"
@@ -227,22 +288,25 @@
                       :items="districtOptions"
                       label="鄉鎮市區"
                       variant="outlined"
-                      :disabled="!selectedCity"
+                      
+                      :disabled="!formData['居住城市']"
+                      
                     ></v-select>
                   </v-col>
                 </v-row>
                 <v-text-field
                   v-model="formData['居住詳細地址']"
-                  label="詳細地址"
+                  label="地址或街道"
                   variant="outlined"
                   class="mb-2"
-                ></v-text-field>
+                autocomplete="off" ></v-text-field>
 
                 <dynamic-form-field
                   v-if="systemSettings.fields.occupation"
                   :field-config="systemSettings.fields.occupation"
                   v-model="formData[systemSettings.fields.occupation.label]"
-                ></dynamic-form-field>
+                  
+                  hint="選擇或直接輸入您的職業" ></dynamic-form-field>
 
                 <v-divider class="my-6"></v-divider>
                 <p class="text-h6 mb-4">需求資訊</p>
@@ -272,9 +336,9 @@
         
         <v-dialog v-model="qrDialog" max-width="400">
           <v-card>
-            <v-card-title>請客戶掃描 QR Code</v-card-title>
+            <v-card-title>客戶資料表 QR Code</v-card-title>
             <v-card-text class="text-center">
-              <p>客戶掃描後即可在自己的手機上繼續填寫此份資料。</p>
+              <p>請填寫客戶資料表。</p>
               <QrCode v-if="currentUrl" :value="currentUrl" :size="300" class="my-4"></QrCode>
               <p class="text-caption">{{ currentUrl }}</p>
             </v-card-text>
@@ -350,7 +414,7 @@ const DynamicFormField = {
       ? (props.fieldConfig.selectionMode === 'multiple' ? [rules.requiredArray] : [rules.required]) 
       : [];
 
-    return () => {
+return () => {
       const commonProps = {
         modelValue: value.value, 
         'onUpdate:modelValue': (val) => value.value = val, 
@@ -358,14 +422,16 @@ const DynamicFormField = {
         items: props.fieldConfig.options,
         variant: 'outlined',
         rules: fieldRules,
-        class: 'mb-2'
+        class: 'mb-2',
+        autocomplete: 'off' 
       };
 
       if (props.fieldConfig.selectionMode === 'single') {
         if (props.fieldConfig.allowCustom) {
           const comboboxProps = {
             ...commonProps,
-            hint: '選擇或輸入',
+            // ✓ 檢查：優先使用 props.hint，若無則使用預設值
+            hint: props.hint || '選擇或輸入', 
             persistentHint: true
           };
           return h(VCombobox, comboboxProps);
@@ -385,7 +451,8 @@ const DynamicFormField = {
         if (props.fieldConfig.allowCustom) {
           const comboboxMultiProps = {
             ...multiProps,
-            hint: '選擇或輸入 (可多選)',
+            // ✓ 檢查：這裡也同步修改
+            hint: props.hint || '選擇或輸入 (可多選)',
             persistentHint: true
           };
           return h(VCombobox, comboboxMultiProps);
@@ -429,6 +496,8 @@ const qrDialog = ref(false);
 
 const copySuccess = ref(false);
 
+const confirmNewCustomerDialog = ref(false); 
+
 async function copyUrlToClipboard() {
   if (!currentUrl.value) return;
   try {
@@ -450,7 +519,7 @@ watch(qrDialog, (newVal) => {
 });
 
 const cityOptions = ref(twCitiesData.map(c => c.name));
-const selectedCity = ref(null);
+
 const districtOptions = ref([]);
 const allManageableUsers = ref([]);
 const allUserPermissionsMap = ref({});
@@ -458,9 +527,27 @@ const allUserPermissionsMap = ref({});
 // --- Computed ---
 const pageTitle = computed(() => `${projectName.value} 客戶資料表`);
 
+// ✓ 檢查：新增 computed 屬性 (用於 :max)
+const getTodayInTaiwan = () => {
+  // 'sv-SE' 語系格式為 YYYY-MM-DD
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+};
+const todayInTaiwan = computed(() => getTodayInTaiwan());
+// ✓ 檢查：新增結束
+
 // ✓ START: 修正 currentUrl
 const currentUrl = computed(() => {
   if (!selectedProjectId.value) return ''; 
+
+  // 1. 從 formData 獲取當前在下拉選單中選定的「銷售人員名稱」
+  const selectedSalesName = formData.value['銷售人員'];
+  
+  // 2. 使用此名稱去 salespersonOptions 陣列中反查完整的銷售人員物件
+  //    (salespersonOptions 是您用於 v-select 的 computed 屬性)
+  const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
+
+  // 3. 從該物件中獲取電話號碼
+  const selectedSalesPhone = selectedSalesPersonObject ? selectedSalesPersonObject.phone : undefined;
 
   const path = router.resolve({
     name: 'CustomerDataSheetForm', 
@@ -469,10 +556,9 @@ const currentUrl = computed(() => {
       docId: currentDocId.value || undefined 
     },
     query: {
-      // ✓ 1. 將登入的銷售人員電話(salesPhone) 作為 'sp' 參數加入
-      sp: salesPhone.value || undefined, 
-      // ✓ 2. 將登入的銷售人員姓名(salesPerson.name) 作為 'sn' 參數加入
-      sn: salesPerson.value.name || undefined
+      // 4. 將 sp 和 sn 參數改用上面找到的變數
+      sp: selectedSalesPhone, 
+      sn: selectedSalesName || undefined
     }
   }).href;
   
@@ -481,14 +567,32 @@ const currentUrl = computed(() => {
 // ✓ END: 修正
 
 const filteredVipGuests = computed(() => {
-  if (!guestSearch.value) {
-    return vipGuests.value;
+  const lowerSearch = guestSearch.value ? guestSearch.value.trim().toLowerCase() : null;
+
+  // 1. 如果使用者正在搜尋 (有輸入關鍵字)
+  if (lowerSearch) {
+    return vipGuests.value.filter(guest => 
+      guest.name.toLowerCase().includes(lowerSearch) ||
+      guest.phone.includes(lowerSearch)
+    );
   }
-  const lowerSearch = guestSearch.value.toLowerCase();
-  return vipGuests.value.filter(guest => 
-    guest.name.toLowerCase().includes(lowerSearch) ||
-    guest.phone.includes(lowerSearch)
-  );
+
+  // 2. 如果使用者沒有搜尋 (預設情況)
+  // 則只顯示 createdAt 是今天的客戶
+  const todayStr = getTodayInTaiwan();
+  
+  return vipGuests.value.filter(guest => {
+    // 確保 guest.createdAt 是一個有效的 Date 物件
+    if (!guest.createdAt || typeof guest.createdAt.toLocaleDateString !== 'function') {
+      return false;
+    }
+    
+    // 將客戶的建立日期 (Date 物件) 轉換為台灣時區的 YYYY-MM-DD 字串
+    const guestDateStr = guest.createdAt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    
+    // 比較日期字串是否相符
+    return guestDateStr === todayStr;
+  });
 });
 
 const salespersonOptions = computed(() => {
@@ -512,28 +616,51 @@ const rules = {
   required: (v) => !!v || '此欄位為必填',
   requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
   phone: (v) => (v && v.length === 10 && v.startsWith('09')) || '請輸入有效的 10 碼手機號碼',
+  
+  // ✓ 檢查：新增 maxDate 規則
+  maxDate: (v) => {
+    if (!v) return true; // 'required' 規則會處理空值
+    const today = getTodayInTaiwan();
+    // 比較 YYYY-MM-DD 字串
+    return v <= today || `日期不可大於今天 (${today})`;
+  }
+  // ✓ 檢查：新增結束
 };
 
 // --- Watchers (保持不變) ---
-watch(selectedCity, (newCity) => {
-  formData.value['居住鄉鎮市區'] = null;
+watch(() => formData.value['居住城市'], (newCity) => {
+  // 先取得當前選中的鄉鎮市區
+  const currentDistrict = formData.value['居住鄉鎮市區'];
+  let newOptions = [];
+
+  // 根據新城市產生新的鄉鎮市區選項
   if (newCity) {
     const cityData = twCitiesData.find(c => c.name === newCity);
-    districtOptions.value = cityData ? cityData.districts.map(d => d.name) : [];
+    newOptions = cityData ? cityData.districts.map(d => d.name) : [];
+  }
+  
+  // 1. 先更新選項列表
+  districtOptions.value = newOptions;
+
+  // 2. 檢查當前的值是否還存在於新選項中
+  if (currentDistrict && newOptions.includes(currentDistrict)) {
+    // 如果值依然有效 (例如：載入時 "臺北市" -> "信義區")，則不變
   } else {
-    districtOptions.value = [];
+    // 如果值無效 (例如：從 "臺北市" 改為 "新北市"，"信義區" 不在新選項中)
+    // 或者新城市為空，則重設為 null
+    formData.value['居住鄉鎮市區'] = null;
   }
 });
 
 // --- Methods ---
 
-// (focusPassword 保持不變)
+
 async function focusPassword() {
   await nextTick();
   passwordField.value?.focus();
 }
 
-// (handleVerifySales 保持不變)
+
 async function handleVerifySales() {
   step1Error.value = null;
   if (rules.phone(salesPhone.value) !== true) {
@@ -548,6 +675,11 @@ async function handleVerifySales() {
   isLoading.value = true;
   try {
     const result = await verifySalesPerson(salesPhone.value, salesPassword.value);
+    
+    // ✓ 檢查：在這裡注入登入者的電話號碼
+    // 這樣 salesPerson.value 物件就會包含 phone
+    result.phone = salesPhone.value; 
+    
     salesPerson.value = result; 
     
     if (result.projects.length === 0) {
@@ -564,7 +696,6 @@ async function handleVerifySales() {
   }
 }
 
-// (handleProjectSelected 保持不變)
 async function handleProjectSelected(isUrlEntry = false) {
   isLoading.value = true;
   try {
@@ -596,7 +727,7 @@ async function handleProjectSelected(isUrlEntry = false) {
   }
 }
 
-// (processFormFields 保持不變)
+
 function processFormFields(dynamicFields = {}) {
   const processedFields = [];
   const sortedKeys = Object.keys(dynamicFields).sort((a, b) => {
@@ -612,7 +743,7 @@ function processFormFields(dynamicFields = {}) {
   return processedFields;
 }
 
-// (handleGuestSelected 保持不變)
+
 function handleGuestSelected(guestId) {
   selectedGuestId.value = guestId;
   currentDocId.value = guestId; 
@@ -620,7 +751,7 @@ function handleGuestSelected(guestId) {
   step.value = 4;
 }
 
-// (handleNewCustomer 保持不變)
+
 function handleNewCustomer() {
   selectedGuestId.value = null;
   currentDocId.value = null; 
@@ -628,7 +759,12 @@ function handleNewCustomer() {
   step.value = 4;
 }
 
-// ✓ START: 修正 loadForm
+function executeNewCustomer() {
+  handleNewCustomer(); // 呼叫原本的函式
+  confirmNewCustomerDialog.value = false; // 關閉對話框
+}
+
+
 async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameFromUrl = null) {
   isLoading.value = true;
   errorMessage.value = null;
@@ -638,16 +774,22 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
   allUserPermissionsMap.value = {};
 
   try {
-    // ✓ 3. 直接使用 URL 傳入的參數
     let initialFormData = {
       '姓名': '',
       '電話': '',
+      
+      // ✓ 檢查：銷售人員名稱不變
       '銷售人員': isUrlEntry ? salesNameFromUrl : salesPerson.value.name, 
-      '銷售人員電話': isUrlEntry ? salesPhoneFromUrl : salesPerson.value.phone,
+      
+      // ✓ 檢查：銷售人員電話改用 salesPhone.value (登入時的 v-model)
+      '銷售人員電話': isUrlEntry ? salesPhoneFromUrl : salesPhone.value, 
+
+      '拜訪日期': getTodayInTaiwan(), // ✓ 檢查：新增欄位並設定預設值
+      
+      '居住城市': null, 
       '居住鄉鎮市區': null,
       '居住詳細地址': '',
-    };
-    
+    };    
     // (初始化 systemSettings 欄位 - 保持不變)
     if (systemSettings.value.fields.age) {
       const field = systemSettings.value.fields.age;
@@ -664,13 +806,14 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     });
 
     // (載入既有資料 - 保持不變)
-    if (currentDocId.value) {
+if (currentDocId.value) {
       const result = await fetchSingleVipGuest(currentDocId.value);
       if (result.status === 'success') {
         const existingData = result.data;
         initialFormData = { 
           ...initialFormData, 
           ...existingData,
+          '拜訪日期': existingData['拜訪日期'] || getTodayInTaiwan(),
           '銷售人員': initialFormData['銷售人員'], 
           '銷售人員電話': initialFormData['銷售人員電話'] 
         };
@@ -680,7 +823,9 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
             c.districts.some(d => d.name === existingData['居住鄉鎮市區'])
           );
           if (city) {
-            selectedCity.value = city.name;
+            
+            // initialFormData['居住城市'] = city.name; 
+            
             const cityData = twCitiesData.find(c => c.name === city.name);
             districtOptions.value = cityData ? cityData.districts.map(d => d.name) : [];
           }
@@ -711,9 +856,9 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     isLoading.value = false;
   }
 }
-// ✓ END: 修正
 
-// ✓ START: 修正 handleSubmit
+
+
 async function handleSubmit() {
   errorMessage.value = null;
   const { valid } = await formRef.value.validate();
@@ -725,15 +870,26 @@ async function handleSubmit() {
   isSubmitting.value = true;
   
   try {
-    // ✓ 修正：確保銷售人員電話在提交時被正確設定
-    if (isCounter.value && !isCustomerMode.value) {
-      // (櫃台操作) 根據選中的姓名反查電話
-      const selectedSalesName = formData.value['銷售人員'];
-      const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
-      formData.value['銷售人員電話'] = selectedSalesPersonObject ? selectedSalesPersonObject.phone : null;
+    // ✓ 檢查：確保銷售人員電話在提交時被正確設定
+    
+    // ✓ 檢查：將 (isCounter.value && !isCustomerMode.value) 的判斷
+    // ✓      擴大為 (!isCustomerMode.value)
+    if (!isCustomerMode.value) { 
+      // 只要不是客戶模式 (即為櫃台或一般銷售)
+      
+      if (isCounter.value) {
+        // (櫃台操作) 根據選中的姓名反查電話
+        const selectedSalesName = formData.value['銷售人員'];
+        const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
+        formData.value['銷售人員電話'] = selectedSalesPersonObject ? selectedSalesPersonObject.phone : null;
+      } else {
+        // ✓ 檢查：新增 else 區塊
+        // (一般銷售操作) 強制將電話設為當前登入者
+        formData.value['銷售人員電話'] = salesPerson.value.phone;
+      }
     }
-    // (如果是客戶模式，loadForm 時已從 URL 帶入電話)
-    // (如果是一般銷售，loadForm 時已帶入自己的電話)
+    // (如果是客戶模式，loadForm 時已從 URL 帶入電話，此處不需動作)
+    
 
     const result = await submitCustomerSheet(
       selectedProjectId.value, 
@@ -770,9 +926,8 @@ async function handleSubmit() {
     isSubmitting.value = false;
   }
 }
-// ✓ END: 修正
 
-// (handleSubmitSuccessAction 保持不變)
+
 function handleSubmitSuccessAction() {
   if (isCustomerMode.value) {
     window.close(); 
@@ -782,7 +937,7 @@ function handleSubmitSuccessAction() {
   }
 }
 
-// (formatGuestDate 保持不變)
+
 function formatGuestDate(dateObj) { 
   if (!dateObj || typeof dateObj.toLocaleDateString !== 'function') {
     return '未知日期';
@@ -800,7 +955,7 @@ function formatGuestDate(dateObj) {
   }
 }
 
-// ✓ START: 修正 onMounted
+
 onMounted(() => {
   if (props.projectId) {
     // 這是客戶/QR Code 流程
@@ -821,6 +976,5 @@ onMounted(() => {
     step.value = 1;
   }
 });
-// ✓ END: 修正
 
 </script>

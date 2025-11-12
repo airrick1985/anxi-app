@@ -15372,14 +15372,12 @@ async function _handleSubmitVipForm(data, db) {
     const docId = `${projectId}_${phone.replace(/[.#$[\]/]/g, '_')}`;
     const docRef = db.collection("vipGuests").doc(docId);
     
-    // ✓ START: 修正
-    const rootTimestamp = FieldValue.serverTimestamp(); // 用於根欄位 (createdAt, updatedAt)
-    const submissionTimestamp = Timestamp.now(); // ✓ 用於陣列內部
-    // ✓ END: 修正
+    const rootTimestamp = FieldValue.serverTimestamp(); 
+    const submissionTimestamp = Timestamp.now(); 
     
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp // ✓ 使用具體的時間戳
+        submittedAt: submissionTimestamp 
     };
 
     try {
@@ -15394,23 +15392,31 @@ async function _handleSubmitVipForm(data, db) {
                     phone: phone,
                     latestName: name || '未知',
                     latestSalesName: formData['銷售人員'] || null,
-                    createdAt: rootTimestamp, // ✓ 根欄位
-                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    
+                    // ✓ 檢查：新增此行
+                    latestSalesPhone: formData['銷售人員電話'] || null, 
+
+                    createdAt: rootTimestamp, 
+                    updatedAt: rootTimestamp, 
                     profile: formData, 
-                    submissions: [submissionLog] // ✓ 陣列內含具體時間戳
+                    submissions: [submissionLog] 
                 });
             } else {
                 // --- 3B. 電話重複 (舊客戶) ---
                 console.log(`[_handleSubmitVipForm] 舊客戶: ${docId}，合併資料...`);
                 const oldData = docSnap.data();
                 
-                const updatedSubmissions = FieldValue.arrayUnion(submissionLog); // ✓ 陣列內含具體時間戳
+                const updatedSubmissions = FieldValue.arrayUnion(submissionLog); 
                 const newProfile = _smartMergeProfile(oldData.profile, formData);
 
                 transaction.update(docRef, {
                     latestName: name || oldData.latestName,
                     latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
-                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    
+                    // ✓ 檢查：新增此行 (使用 oldData 作為備援)
+                    latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null,
+
+                    updatedAt: rootTimestamp, 
                     profile: newProfile,
                     submissions: updatedSubmissions 
                 });
@@ -15511,6 +15517,7 @@ async function _handleSaveCustomerSettings(data, db) { // ✓ 接收 db
 
 /**
  * [輔助函式] 智慧合併 Profile
+ * (此函式應已存在於您的 index.js 中，請確保它存在)
  * @param {object} oldProfile - 資料庫中已合併的舊資料
  * @param {object} newSubmission - 剛剛提交的新表單資料
  */
@@ -15585,9 +15592,6 @@ exports.vipFormApi = onCall({
 
 
 
-
-
-
 // =================================================================
 // /  【新增】客戶資料表 API 路由 (customerSheetApi) - 供銷售人員使用
 // =================================================================
@@ -15656,18 +15660,16 @@ async function _handleVerifySalesPerson(data, db) {
 }
 
 
-
 /**
  * [內部函式] 獲取指定建案的所有貴賓列表
  * (✓ V2: 修改為讀取 latestName/phone, 並用 updatedAt 排序)
  */
-async function _handleFetchVipGuests(data, db) { // <--- ✓ 修正點：確保 'async' 關鍵字存在
+async function _handleFetchVipGuests(data, db) { 
     const { projectId } = data;
     if (!projectId) {
         throw new HttpsError("invalid-argument", "缺少建案 ID。");
     }
     
-    // ✓ 'await' 必須在 'async' 函式內部使用
     const snapshot = await db.collection("vipGuests") 
         .where("projectId", "==", projectId)
         .orderBy("updatedAt", "desc") 
@@ -15677,12 +15679,21 @@ async function _handleFetchVipGuests(data, db) { // <--- ✓ 修正點：確保 
         return [];
     }
 
-    return snapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().latestName || '未知', 
-        phone: doc.data().phone || '未知',     
-        createdAt: doc.data().createdAt 
-    }));
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        const submissions = data.submissions || []; 
+        
+        return {
+            id: doc.id,
+            name: data.latestName || '未知', 
+            phone: data.phone || '未知',     
+            createdAt: data.createdAt,
+            submissionsCount: submissions.length,
+            
+            // ✓ 檢查：新增此行
+            latestSalesName: data.latestSalesName || null 
+        };
+    });
 }
 
 /**
@@ -15712,14 +15723,12 @@ async function _handleSubmitCustomerSheet(data, db) {
 
     const docRef = db.collection("vipGuests").doc(finalDocId);
     
-    // ✓ START: 修正
-    const rootTimestamp = FieldValue.serverTimestamp(); // 用於根欄位 (createdAt, updatedAt)
-    const submissionTimestamp = Timestamp.now(); // ✓ 用於陣列內部 (使用 Admin SDK 的 Timestamp.now())
-    // ✓ END: 修正
+    const rootTimestamp = FieldValue.serverTimestamp(); 
+    const submissionTimestamp = Timestamp.now(); 
     
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp // ✓ 使用具體的時間戳
+        submittedAt: submissionTimestamp 
     };
 
     try {
@@ -15733,20 +15742,30 @@ async function _handleSubmitCustomerSheet(data, db) {
                     phone: phone,
                     latestName: name || '未知',
                     latestSalesName: formData['銷售人員'] || null,
-                    createdAt: rootTimestamp, // ✓ 根欄位
-                    updatedAt: rootTimestamp, // ✓ 根欄位
+                    
+                    // ✓ 檢查：新增此行
+                    latestSalesPhone: formData['銷售人員電話'] || null, 
+                    
+                    createdAt: rootTimestamp, 
+                    updatedAt: rootTimestamp, 
                     profile: formData, 
-                    submissions: [submissionLog] // ✓ 陣列內含具體時間戳
+                    submissions: [submissionLog] 
                 });
             } else {
                 // --- 3B. 舊客戶 (更新 CustomerDataSheet) ---
                 const oldData = docSnap.data(); 
+                const newProfile = _smartMergeProfile(oldData.profile, formData);
+                
                 transaction.update(docRef, {
                     latestName: name || oldData.latestName,
                     latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
-                    updatedAt: rootTimestamp, // ✓ 根欄位
-                    profile: formData, 
-                    submissions: FieldValue.arrayUnion(submissionLog) // ✓ 陣列內含具體時間戳
+
+                    // ✓ 檢查：新增此行 (使用 oldData.latestSalesPhone 作為備援)
+                    latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null,
+
+                    updatedAt: rootTimestamp, 
+                    profile: newProfile, 
+                    submissions: FieldValue.arrayUnion(submissionLog) 
                 });
             }
         });
@@ -15799,3 +15818,177 @@ exports.customerSheetApi = onCall({
         throw new HttpsError('internal', `處理 ${action} 時發生錯誤: ${error.message}`);
     }
 });
+
+
+// ✓ START: 修改 - 貴賓資料重複提醒 (V4 - 僅列出銷售人員)
+/**
+ * [Cloud Function] 
+ * 當 vipGuests 文件被寫入時觸發。
+ * 如果 submissions 陣列長度 > 1 (代表重複提交)，則發送 LINE 提醒。
+ */
+exports.onVipGuestDuplicate = onDocumentWritten({
+    document: "vipGuests/{docId}",
+    database: 'anxi-app',
+    region: 'asia-east1', 
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"], 
+    timeoutSeconds: 60,
+    memory: "256MiB"
+}, async (event) => {
+    const functionName = "onVipGuestDuplicate";
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+
+    // 1. 獲取寫入前後的資料 (保持不變)
+    const beforeData = event.data.before?.data();
+    const afterData = event.data.after?.data();
+
+    // 2. 條件檢查 (保持不變)
+    if (!afterData) {
+        console.log(`[${functionName}] 文件 ${event.params.docId} 被刪除，跳過。`);
+        return;
+    }
+    const beforeSubmissions = beforeData?.submissions || [];
+    const afterSubmissions = afterData.submissions || [];
+    if (afterSubmissions.length <= 1 || afterSubmissions.length <= beforeSubmissions.length) {
+        console.log(`[${functionName}] 偵測到寫入，但非新重複提交 (Submissions: ${beforeSubmissions.length} -> ${afterSubmissions.length})。跳過。`);
+        return;
+    }
+
+    console.log(`[${functionName}] 偵測到新重複提交 (第 ${afterSubmissions.length} 筆)，開始處理通知...`);
+
+    try {
+        // 3. 準備資料 (保持不變)
+        const projectId = afterData.projectId;
+        const phone = afterData.phone;
+        
+        if (!projectId || !phone) {
+            console.error(`[${functionName}] 文件 ${event.params.docId} 缺少 projectId 或 phone 欄位。跳過。`);
+            return;
+        }
+
+        // 4. ✓ 檢查：(修改) 格式化訊息 - 遍歷所有 submissions
+        console.log(`[${functionName}] 正在格式化 ${afterSubmissions.length} 筆總提交紀錄...`);
+        
+        let messageBody = `${phone} 重複 (共 ${afterSubmissions.length} 筆)`;
+        let listedCount = 0; // ✓ 檢查：(新增) 追蹤實際列出的筆數
+
+        // 4.1 ✓ 檢查：(修改) 遍歷所有 submissions
+        afterSubmissions.forEach((submission) => {
+            
+            const salesName = submission['銷售人員'];
+
+            // 4.2 ✓ 檢查：(新增) 如果「銷售人員」為空 (null, undefined, '')，則跳過此筆紀錄
+            if (!salesName) { 
+                return; // 跳過 (不列出)
+            }
+
+            // 4.3 ✓ 檢查：(新增) 只有在 (4.2) 沒跳過時，才增加計數
+            listedCount++;
+            const i = listedCount;
+            
+            const guestName = submission['姓名'] || '未知';
+            const visitDate = submission['拜訪日期'] || '未知';
+            // (salesName 必定有值)
+
+            // 組合該筆紀錄的文字
+            messageBody += `\n\n--- 第 ${i} 筆 (銷售) ---`;
+            messageBody += `\n姓名: ${guestName}`;
+            messageBody += `\n拜訪日期: ${visitDate}`;
+            messageBody += `\n銷售人員: ${salesName}`;
+        });
+        
+        // 4.4 ✓ 檢查：(新增) 如果過濾後一筆都沒列出 (例如 VipForm x 2)，則不發送
+        if (listedCount === 0) {
+            console.log(`[${functionName}] 找到 ${afterSubmissions.length} 筆重複紀錄，但均無銷售人員資訊，跳過 LINE 提醒。`);
+            return;
+        }
+
+        const messageText = messageBody;
+        // ✓ 檢查：(修改) 格式化結束
+
+        // 5. 讀取建案設定 (保持不變)
+        const settingsDocRef = anxiDb.collection("customerFieldSettings").doc(projectId);
+        const settingsDoc = await settingsDocRef.get();
+        if (!settingsDoc.exists) {
+            console.warn(`[${functionName}] 找不到專案 ${projectId} 的客資設定 (customerFieldSettings)。跳過。`);
+            return;
+        }
+        const settings = settingsDoc.data();
+
+        // 6. 檢查 LINE 通知開關 (保持不變)
+        const notifyCounter = settings.reminderSettings?.counterDuplicate?.lineNotify === true;
+        const notifySales = settings.reminderSettings?.salesDuplicate?.lineNotify === true;
+        if (!notifyCounter && !notifySales) {
+            console.log(`[${functionName}] 專案 ${projectId} 已關閉櫃台和銷售的重複提醒。跳過。`);
+            return;
+        }
+
+        // 7. 獲取 Token Secret 名稱 (保持不變)
+        const tokenSecretName = settings.anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
+        if (!tokenSecretName) {
+            console.error(`[${functionName}] 專案 ${projectId} 未設定 lineCrmChannelAccessTokenSecretName。跳過。`);
+            return;
+        }
+
+        // 8. 尋找通知對象 (手機號碼) (保持不變)
+        const permissionsRef = anxiDb.collection("userPermissions");
+        const phonesToNotify = new Set();
+        const queries = [];
+        if (notifyCounter) {
+            queries.push(
+                permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台').get()
+            );
+        }
+        if (notifySales) {
+            queries.push(
+                permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售').get()
+            );
+        }
+        const permissionSnapshots = await Promise.all(queries);
+        permissionSnapshots.forEach(snapshot => {
+            snapshot.forEach(doc => {
+                phonesToNotify.add(doc.id);
+            });
+        });
+        if (phonesToNotify.size === 0) {
+            console.log(`[${functionName}] 找不到任何需要被通知的人員。跳過。`);
+            return;
+        }
+
+        // 9. 獲取 LINE ID (保持不變)
+        const usersRef = anxiDb.collection("users");
+        const phoneArray = Array.from(phonesToNotify);
+        const lineIds = [];
+        const MAX_IN_QUERY_USERS = 30; 
+        for (let i = 0; i < phoneArray.length; i += MAX_IN_QUERY_USERS) {
+            const phoneChunk = phoneArray.slice(i, i + MAX_IN_QUERY_USERS);
+            const usersSnapshot = await usersRef.where(GCloudFieldPath.documentId(), 'in', phoneChunk).get(); 
+            usersSnapshot.forEach(doc => {
+                const lineId = doc.data().lineId;
+                if (lineId && typeof lineId === 'string' && lineId.startsWith('U') && lineId.length === 33) { 
+                    lineIds.push(lineId);
+                }
+            });
+        }
+        if (lineIds.length === 0) {
+            console.log(`[${functionName}] 找到 ${phoneArray.length} 位有權限的人員，但無人綁定 LINE ID。跳過。`);
+            return;
+        }
+
+        // 10. 發送 (保持不變)
+        const lineToken = process.env[tokenSecretName]; 
+        if (!lineToken) {
+            console.error(`[${functionName}] 嚴重錯誤：環境變數中找不到 ${tokenSecretName}。`);
+            return;
+        }
+        const lineClient = new line.Client({ channelAccessToken: lineToken });
+        
+        console.log(`[${functionName}] 準備發送訊息至 ${lineIds.length} 位用戶: ${lineIds.join(', ')}`);
+        await lineClient.multicast(lineIds, [{ type: 'text', text: messageText }]);
+
+        console.log(`[${functionName}] 成功發送重複提交通知。`);
+
+    } catch (error) {
+        console.error(`[${functionName}] 處理重複提醒時發生嚴重錯誤:`, error);
+    }
+});
+// ✓ END: 修改
