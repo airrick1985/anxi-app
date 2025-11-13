@@ -1416,7 +1416,7 @@ exports.checkInToSystem = onCall(async (request) => {
   
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
   
-  //  修正點 1: 在函式一開始，就先獲取所有管理員的 User ID 列表
+  // 修正點 1: 在函式一開始，就先獲取所有管理員的 User ID 列表
   const adminUserKeys = new Set();
   try {
     const superAdminQuery = anxiDb.collection("users").where("roles", "array-contains", "超級管理員");
@@ -1440,16 +1440,32 @@ exports.checkInToSystem = onCall(async (request) => {
   }
   
   // --- 如果不是管理員，則繼續執行完整的名額檢查流程 ---
-  const targetSystem = system === '報價系統' ? '銷控系統'
-                     : system === '驗屋預約管理' ? '預約驗屋系統'
-                     : system;
-
+  
+  // ✓ START: 修正 targetSystem 映射
+  let targetSystem = system;
+  if (system === '報價系統') {
+      targetSystem = '銷控系統';
+  } else if (system === '驗屋預約管理' || system === '驗屋預約管理-修改' || system === '驗屋預約管理-檢視') {
+      targetSystem = '預約驗屋系統';
+  } else if (system === '客資系統-櫃台' || system === '客資系統-銷售') {
+      // ✓ ✓ ✓ 確保此規則存在 ✓ ✓ ✓
+      targetSystem = '客資系統'; 
+  }
+  // ✓ END: 修正
+  
   console.log(`[${functionName}] User is not an admin. Checking limits for target system: [${targetSystem}]`);
 
   try {
-    // ... (步驟 3: 查詢訂閱計算名額上限的邏輯，完全不變)
-    const subsQuery = await anxiDb.collection("subscriptions").where("projectId", "==", projectId).where("systemFunction", "==", targetSystem).get();
-    if (subsQuery.empty) throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
+    // 步驟 3: 查詢訂閱計算名額上限的邏輯
+    const subsQuery = await anxiDb.collection("subscriptions")
+        .where("projectId", "==", projectId)
+        .where("systemFunction", "==", targetSystem) // ✓ 現在這裡會正確查詢 "客資系統"
+        .get();
+        
+    if (subsQuery.empty) {
+        // ✓ 這將拋出 "找不到 ... 客資系統 訂閱紀錄"
+        throw new HttpsError("not-found", `找不到 ${projectId} 的 ${targetSystem} 訂閱紀錄。`);
+    }
     const subscriptionData = subsQuery.docs[0].data();
     const tiers = subscriptionData.userLimitTiers || [];
     const today = new Date();
@@ -1474,19 +1490,24 @@ exports.checkInToSystem = onCall(async (request) => {
       onlineSnapshot.forEach(childSnapshot => {
         const data = childSnapshot.val();
         
-        //  修正點 2: 在計數前，先判斷該在線使用者是否為管理員
+        // 修正點 2: 在計數前，先判斷該在線使用者是否為管理員
         if (adminUserKeys.has(data.userId)) {
           return; // 如果是管理員，直接跳過，不計入
         }
 
         let shouldCount = false;
+        // ✓ START: 修正：讓 "客資系統-..." 也被計入 "客資系統" 的總數
         if (targetSystem === '銷控系統') {
             if (data.system === '銷控系統' || data.system === '報價系統') shouldCount = true;
         } else if (targetSystem === '預約驗屋系統') {
-            if (data.system === '預約驗屋系統' || data.system === '驗屋預約管理') shouldCount = true;
+            if (data.system === '驗屋預約管理' || data.system === '驗屋預約管理-修改' || data.system === '驗屋預約管理-檢視') shouldCount = true;
+        } else if (targetSystem === '客資系統') { 
+             if (data.system === '客資系統-櫃台' || data.system === '客資系統-銷售') shouldCount = true;
         } else {
             if (data.system === targetSystem) shouldCount = true;
         }
+        // ✓ END: 修正
+        
         if (data.projectId === projectId && shouldCount) currentUserCount++;
       });
     }
@@ -15248,6 +15269,87 @@ exports.generatePaymentSheet = onCall({
 // =================================================================
 
 /**
+ * [內部函式] 獲取客戶資料列表 (供 CustomerManagement.vue 的 Table 使用)
+ * (✓ V2: 修正資料格式不一致問題)
+ * @param {object} data - 包含 { projectId, userPhone, userProjectSystems }
+ * @param {Firestore} db - Firestore 實例
+ */
+async function _handleFetchCustomerList(data, db) {
+    const { projectId, userPhone, userProjectSystems } = data;
+    const functionName = `_handleFetchCustomerList`;
+
+    if (!projectId || !userPhone || !userProjectSystems) {
+        throw new HttpsError("invalid-argument", "缺少 projectId, userPhone 或 userProjectSystems 參數。");
+    }
+
+    try {
+        const isCounter = userProjectSystems.includes('客資系統-櫃台');
+        const guestsRef = db.collection("vipGuests");
+        const query = guestsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return []; 
+        }
+
+        const flatSubmissions = [];
+
+        // ✓ START: 新增一個輔助函式，強制將資料轉為陣列
+        const ensureArray = (value) => {
+            if (Array.isArray(value)) {
+                return value; // 已經是陣列，直接回傳
+            }
+            if (typeof value === 'string' && value) {
+                return [value]; // 是非空字串，打包成陣列
+            }
+            return []; // 是 null, undefined 或空字串，回傳空陣列
+        };
+        // ✓ END: 新增輔助函式
+
+        snapshot.forEach(doc => {
+            const submissions = doc.data().submissions || [];
+            
+            for (const sub of submissions) {
+                if (!sub['銷售人員']) {
+                    continue; 
+                }
+                if (!isCounter) {
+                    if (sub['銷售人員電話'] !== userPhone) {
+                        continue; 
+                    }
+                }
+                
+                flatSubmissions.push({
+                    '拜訪日期': sub['拜訪日期'] || null,
+                    '姓名': sub['姓名'] || '',
+                    '電話': sub['電話'] || '',
+                    
+                    // ✓ START: 修改
+                    '購屋動機': ensureArray(sub['購屋動機']),
+                    '房型需求': ensureArray(sub['房型需求']),
+                    // ✓ END: 修改
+
+                    '購屋預算': sub['購屋預算'] || '',
+                    '銷售人員': sub['銷售人員'],
+                    'docId': doc.id, 
+                    'submittedAt': sub.submittedAt ? sub.submittedAt.toDate().toISOString() : null
+                });
+            }
+        });
+
+        flatSubmissions.sort((a, b) => {
+            return (b['拜訪日期'] || '').localeCompare(a['拜訪日期'] || '');
+        });
+
+        return flatSubmissions; 
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        throw new HttpsError("internal", `獲取客戶列表時發生錯誤: ${error.message}`);
+    }
+}
+
+/**
  * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
  */
 exports.customerApi = onCall({ 
@@ -15278,14 +15380,10 @@ exports.customerApi = onCall({
             case 'saveCustomerSettings':
                 return await _handleSaveCustomerSettings(data, db);
             
-            // ✓ START: 移除貴賓表單功能
-            // case 'fetchVipFormSettings': // <--- 移除
-            //     return await _handleFetchVipFormSettings(data, db);
-            // case 'submitVipForm': // <--- 移除
-            //     return await _handleSubmitVipForm(data, db);
-            // ✓ END: 移除
+            case 'fetchCustomerList':
+                return await _handleFetchCustomerList(data, db);
 
-            // ... (其他 customer case) ...
+          
 
             default:
                 console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
@@ -15302,6 +15400,7 @@ exports.customerApi = onCall({
         throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
     }
 });
+
 
 
 
@@ -15423,6 +15522,15 @@ async function _handleSubmitVipForm(data, db) {
             }
         });
 
+      console.log(`[_handleSubmitVipForm] 客戶 ${docId} 資料儲存成功，觸發 LINE 通知...`);
+        
+        try {
+            await sendNewVipNotification(db, projectId, formData);
+        } catch (notifyError) {
+            console.error(`[_handleSubmitVipForm] LINE 通知發送失敗 (但資料已儲存):`, notifyError.message);
+        }
+        
+        // 主流程成功
         return { status: "success", docId: docId };
 
     } catch (error) {
@@ -15555,7 +15663,8 @@ exports.vipFormApi = onCall({
     region: "asia-east1", 
     cors: true, 
     memory: "1GiB", 
-    timeoutSeconds: 300 
+    timeoutSeconds: 300, 
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"]
 }, async (request) => {
     
     const { action, data } = request.data;
@@ -15820,12 +15929,6 @@ exports.customerSheetApi = onCall({
 });
 
 
-// ✓ START: 修改 - 貴賓資料重複提醒 (V4 - 僅列出銷售人員)
-/**
- * [Cloud Function] 
- * 當 vipGuests 文件被寫入時觸發。
- * 如果 submissions 陣列長度 > 1 (代表重複提交)，則發送 LINE 提醒。
- */
 exports.onVipGuestDuplicate = onDocumentWritten({
     document: "vipGuests/{docId}",
     database: 'anxi-app',
@@ -15848,12 +15951,14 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     }
     const beforeSubmissions = beforeData?.submissions || [];
     const afterSubmissions = afterData.submissions || [];
-    if (afterSubmissions.length <= 1 || afterSubmissions.length <= beforeSubmissions.length) {
-        console.log(`[${functionName}] 偵測到寫入，但非新重複提交 (Submissions: ${beforeSubmissions.length} -> ${afterSubmissions.length})。跳過。`);
+
+    // ✓ 檢查：(修改) 觸發條件改為 > 2 (即第 3 筆提交才觸發)
+    if (afterSubmissions.length <= 2 || afterSubmissions.length <= beforeSubmissions.length) {
+        console.log(`[${functionName}] 偵測到寫入，但非新重複提交 (Submissions: ${beforeSubmissions.length} -> ${afterSubmissions.length})。不觸發 (須 > 2)。`);
         return;
     }
 
-    console.log(`[${functionName}] 偵測到新重複提交 (第 ${afterSubmissions.length} 筆)，開始處理通知...`);
+    console.log(`[${functionName}] 偵測到新重複提交 (第 ${afterSubmissions.length} 筆)，符合 > 2 條件，開始處理通知...`);
 
     try {
         // 3. 準備資料 (保持不變)
@@ -15868,20 +15973,25 @@ exports.onVipGuestDuplicate = onDocumentWritten({
         // 4. ✓ 檢查：(修改) 格式化訊息 - 遍歷所有 submissions
         console.log(`[${functionName}] 正在格式化 ${afterSubmissions.length} 筆總提交紀錄...`);
         
-        let messageBody = `${phone} 重複 (共 ${afterSubmissions.length} 筆)`;
-        let listedCount = 0; // ✓ 檢查：(新增) 追蹤實際列出的筆數
+        let messageBody = ""; // ✓ 檢查：(修改) 先清空
+        let listedCount = 0; // 追蹤實際列出的筆數
 
-        // 4.1 ✓ 檢查：(修改) 遍歷所有 submissions
-        afterSubmissions.forEach((submission) => {
+        // 4.1 遍歷所有 submissions
+        afterSubmissions.forEach((submission, index) => {
+            
+            // 4.2 ✓ 檢查：(修改) 跳過索引 [0] (第一筆)
+            if (index === 0) {
+                return; // 跳過客戶建立的第一筆
+            }
             
             const salesName = submission['銷售人員'];
 
-            // 4.2 ✓ 檢查：(新增) 如果「銷售人員」為空 (null, undefined, '')，則跳過此筆紀錄
+            // 4.3 ✓ 檢查：(修改) 如果「銷售人員」為空，則跳過
             if (!salesName) { 
                 return; // 跳過 (不列出)
             }
 
-            // 4.3 ✓ 檢查：(新增) 只有在 (4.2) 沒跳過時，才增加計數
+            // 4.4 只有在 (4.2) 和 (4.3) 沒跳過時，才增加計數
             listedCount++;
             const i = listedCount;
             
@@ -15890,20 +16000,20 @@ exports.onVipGuestDuplicate = onDocumentWritten({
             // (salesName 必定有值)
 
             // 組合該筆紀錄的文字
-            messageBody += `\n\n--- 第 ${i} 筆 (銷售) ---`;
+            messageBody += `\n\n--- 第 ${i} 筆 ---`;
             messageBody += `\n姓名: ${guestName}`;
             messageBody += `\n拜訪日期: ${visitDate}`;
             messageBody += `\n銷售人員: ${salesName}`;
         });
         
-        // 4.4 ✓ 檢查：(新增) 如果過濾後一筆都沒列出 (例如 VipForm x 2)，則不發送
+        // 4.5 ✓ 檢查：(修改) 如果過濾後一筆都沒列出，則不發送
         if (listedCount === 0) {
-            console.log(`[${functionName}] 找到 ${afterSubmissions.length} 筆重複紀錄，但均無銷售人員資訊，跳過 LINE 提醒。`);
+            console.log(`[${functionName}] 找到 ${afterSubmissions.length} 筆重複紀錄，但均無銷售人員資訊 (或只有 [0] 筆)，跳過 LINE 提醒。`);
             return;
         }
 
-        const messageText = messageBody;
-        // ✓ 檢查：(修改) 格式化結束
+        // 4.6 ✓ 檢查：(修改) 建立最終訊息
+const messageText = `客資電話重複 (共 ${listedCount} 筆)\n${phone}` + messageBody;
 
         // 5. 讀取建案設定 (保持不變)
         const settingsDocRef = anxiDb.collection("customerFieldSettings").doc(projectId);
@@ -15992,3 +16102,130 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     }
 });
 // ✓ END: 修改
+
+/**
+ * [輔助函式 - 新增] 
+ * 用於發送「新貴賓建立」的 LINE 通知
+ * (✓ V2: 新增讀取 projectName)
+ */
+async function sendNewVipNotification(db, projectId, formData) {
+    const functionName = "sendNewVipNotification";
+
+    // ✓ 檢查：(新增) 在函式開頭，先獲取建案名稱
+    let projectName = projectId; // 預設使用 ID
+    try {
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        if (projectDoc.exists) {
+            projectName = projectDoc.data().name || projectId; // 獲取名稱，若無則用 ID
+        }
+    } catch (e) {
+        console.error(`[${functionName}] 獲取建案名稱時發生錯誤:`, e.message);
+        // 發生錯誤時，將使用 projectId 繼續執行
+    }
+    // ✓ 檢查：(新增) 獲取建案名稱結束
+
+    // 1. 格式化訊息 (易讀性)
+    // ✓ 檢查：(修改) 將 projectName 加入訊息開頭
+    let messageText = `✨${projectName} 新貴賓資料`;
+    
+    // 優先顯示核心欄位
+    const coreFields = ['電話', '姓名', '拜訪日期', '銷售人員'];
+    for (const fieldName of coreFields) {
+        if (formData[fieldName]) {
+            messageText += `\n${fieldName}: ${formData[fieldName]}`;
+        }
+    }
+
+    // 附加其他欄位
+    messageText += `\n\n--- 其他資訊 ---`;
+    for (const key in formData) {
+        // 跳過已顯示的核心欄位
+        if (coreFields.includes(key)) continue;
+
+        const value = formData[key];
+        // 確保有值
+        if (value && (!Array.isArray(value) || value.length > 0)) {
+            if (Array.isArray(value)) {
+                messageText += `\n${key}: ${value.join(', ')}`;
+            } else {
+                messageText += `\n${key}: ${value}`;
+            }
+        }
+    }
+    
+    // 2. 讀取設定 (重用 onVipGuestDuplicate 的邏輯)
+    const settingsDocRef = db.collection("customerFieldSettings").doc(projectId);
+    const settingsDoc = await settingsDocRef.get();
+    if (!settingsDoc.exists) {
+        console.warn(`[${functionName}] 找不到專案 ${projectId} 的客資設定，無法發送通知。`);
+        return; // 中止
+    }
+    const settings = settingsDoc.data();
+    
+    // 3. 檢查通知開關 (重用 onVipGuestDuplicate 的邏輯)
+    // (假設新貴賓通知也使用與 "重複" 相同的設定)
+    const notifyCounter = settings.reminderSettings?.counterDuplicate?.lineNotify === true;
+    const notifySales = settings.reminderSettings?.salesDuplicate?.lineNotify === true;
+
+    if (!notifyCounter && !notifySales) {
+        console.log(`[${functionName}] 專案 ${projectId} 已關閉新貴賓通知。`);
+        return; // 中止
+    }
+
+    // 4. 獲取 Token (重用 onVipGuestDuplicate 的邏輯)
+    const tokenSecretName = settings.anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
+    if (!tokenSecretName) {
+        console.error(`[${functionName}] 專案 ${projectId} 未設定 lineCrmChannelAccessTokenSecretName。`);
+        return; // 中止
+    }
+    const lineToken = process.env[tokenSecretName];
+    if (!lineToken) {
+        console.error(`[${functionName}] 嚴重錯誤：環境變數中找不到 ${tokenSecretName}。`);
+        return; // 中止
+    }
+
+    // 5. 尋找通知對象 (重用 onVipGuestDuplicate 的邏輯)
+    const permissionsRef = db.collection("userPermissions");
+    const phonesToNotify = new Set();
+    const queries = [];
+    if (notifyCounter) {
+        queries.push(permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台').get());
+    }
+    if (notifySales) {
+        queries.push(permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售').get());
+    }
+    const permissionSnapshots = await Promise.all(queries);
+    permissionSnapshots.forEach(snapshot => {
+        snapshot.forEach(doc => phonesToNotify.add(doc.id));
+    });
+    if (phonesToNotify.size === 0) {
+        console.log(`[${functionName}] 找不到任何需要被通知的人員。`);
+        return; // 中止
+    }
+
+    // 6. 獲取 LINE ID (重用 onVipGuestDuplicate 的邏輯)
+    const usersRef = db.collection("users");
+    const phoneArray = Array.from(phonesToNotify);
+    const lineIds = [];
+    const MAX_IN_QUERY_USERS = 30;
+    for (let i = 0; i < phoneArray.length; i += MAX_IN_QUERY_USERS) {
+        const phoneChunk = phoneArray.slice(i, i + MAX_IN_QUERY_USERS);
+        const usersSnapshot = await usersRef.where(GCloudFieldPath.documentId(), 'in', phoneChunk).get(); 
+        usersSnapshot.forEach(doc => {
+            const lineId = doc.data().lineId;
+            if (lineId && typeof lineId === 'string' && lineId.startsWith('U') && lineId.length === 33) { 
+                lineIds.push(lineId);
+            }
+        });
+    }
+    if (lineIds.length === 0) {
+        console.log(`[${functionName}] ${phoneArray.length} 位有權限人員無人綁定 LINE ID。`);
+        return; // 中止
+    }
+
+    // 7. 發送
+    const lineClient = new line.Client({ channelAccessToken: lineToken });
+    console.log(`[${functionName}] 準備發送新貴賓通知至 ${lineIds.length} 位用戶...`);
+    await lineClient.multicast(lineIds, [{ type: 'text', text: messageText }]);
+    console.log(`[${functionName}] 新貴賓通知發送成功。`);
+}

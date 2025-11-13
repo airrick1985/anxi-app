@@ -16,7 +16,7 @@
       <v-spacer />
 
       
-      <v-menu offset-y>
+     <v-menu offset-y>
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props" icon title="系統設定" class="me-2">
             <v-icon>mdi-cog</v-icon>
@@ -26,6 +26,15 @@
           <v-list-item @click="openStandbyDialog" prepend-icon="mdi-account-group">
             <v-list-item-title>BY序</v-list-item-title>
           </v-list-item>
+
+          <v-list-item @click="router.push('/vip-login')" prepend-icon="mdi-clipboard-text-outline">
+            <v-list-item-title>貴賓資料表</v-list-item-title>
+          </v-list-item>
+
+          <v-list-item @click="router.push('/customer-data-sheet')" prepend-icon="mdi-account-details-outline">
+            <v-list-item-title>客戶資料表</v-list-item-title>
+          </v-list-item>
+
           </v-list>
       </v-menu>
 

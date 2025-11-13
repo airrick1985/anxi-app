@@ -115,7 +115,7 @@ const pageTitle = computed(() => {
   if (currentViewMode.value === 'quote') return '報價系統';
   if (requiredSystem.value === '銷控系統') return '銷控系統';
   if (requiredAnySystem.value?.includes('驗屋預約管理-修改')) return '驗屋預約管理';
-  return '選擇建案';d
+  return '選擇建案';
 });
 
 const pageIcon = computed(() => {
@@ -185,7 +185,19 @@ const enterProject = async (project) => {
   error.value = null;
 
   try {
-    const systemName = pageTitle.value;
+    // ✓ START: 修正點
+    // 不再使用 pageTitle.value
+    // 而是從 meta 獲取正確的系統名稱
+    let systemName = requiredSystem.value; 
+    if (!systemName && requiredAnySystem.value && requiredAnySystem.value.length > 0) {
+      // (例如 "客資系統-櫃台" 或 "驗屋預約管理-修改")
+      systemName = requiredAnySystem.value[0]; 
+    }
+    if (!systemName) {
+        throw new Error('路由 meta 未設定 requiredSystem 或 requiredAnySystem');
+    }
+    // ✓ END: 修正點
+
     const userKey = userStore.user?.key;
     const userName = userStore.user?.name;
 
@@ -193,7 +205,7 @@ const enterProject = async (project) => {
       throw new Error('無法獲取使用者資訊，請重新登入。');
     }
 
-    // 3. 執行後端驗證 (邏輯同舊版)
+    // 3. 執行後端驗證 (現在 systemName 會是 "客資系統-櫃台" 或 "驗屋預約管理-修改" 等)
     const result = await checkInToSystem(project.id, systemName, userKey, userName);
 
     if (result.status === 'success') {

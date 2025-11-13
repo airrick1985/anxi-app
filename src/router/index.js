@@ -253,6 +253,17 @@ const routes = [
     }
   },
 
+  {
+    path: '/vip-login', // 這是銷售人員的登入入口
+    name: 'VipFormLogin',
+    component: () => import('@/views/VipFormLogin.vue'),
+    props: true,
+    meta: {
+      layout: PublicLayout, // ✓ 使用 PublicLayout
+      title: '貴賓資料表選擇入口'
+    }
+  },
+
 {
     // ✓ 1. 新增「銷售人員登入」專用路徑 (沒有 props)
     path: '/customer-data-sheet',

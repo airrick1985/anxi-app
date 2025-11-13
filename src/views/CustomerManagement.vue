@@ -11,25 +11,66 @@
     <v-window v-model="tab">
       <v-window-item value="management">
         <v-card>
-          <v-card-text class="pa-5">
-            <v-alert
-              type="info"
-              variant="tonal"
-              border="start"
+          <v-toolbar color="grey-lighten-5" >
+            <v-toolbar-title class="text-subtitle-1">
+              {{ projectName }} 客戶資料列表
+            </v-toolbar-title>
+          </v-toolbar>
+
+          <v-card-text>
+            <v-text-field
+              v-model="customerListSearch"
+              label="搜尋 (姓名、電話、銷售人員...)"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              
+              clearable
+              hide-details
               class="mb-4"
+            ></v-text-field>
+
+            <v-data-table
+              :headers="customerTableHeaders"
+              :items="customerList"
+              :loading="isLoadingCustomerList"
+              :search="customerListSearch"
+              item-value="submittedAt"
+              class="elevation-1"
+              
             >
-              客戶資料管理功能待開發。
-            </v-alert>
-            <p>此頁面將用於管理建案 <strong>{{ projectId }}</strong> 的客戶資料。</p>
+              <template v-slot:item.購屋動機="{ item }">
+                <v-chip
+                  v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length"
+                  :color="getChipColor(item['購屋動機'][0])"
+                  size="small"
+                  label
+                >
+                  {{ item['購屋動機'][0] }}
+                </v-chip>
+                <span v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length > 1" class="text-grey-darken-1 ml-1">
+                  (+{{ item['購屋動機'].length - 1 }})
+                </span>
+              </template>
+
+              <template v-slot:item.房型需求="{ item }">
+                <div v-if="Array.isArray(item['房型需求'])">
+                  {{ item['房型需求'].join(', ') }}
+                </div>
+              </template>
+              
+              <template v-slot:item.拜訪日期="{ item }">
+                {{ formatDisplayDate(item['拜訪日期']) }}
+              </template>
+
+            </v-data-table>
           </v-card-text>
         </v-card>
       </v-window-item>
-
       <v-window-item value="settings" v-if="canManageSettings">
         <v-card>
-          <v-toolbar color="blue-grey-lighten-5" density="compact">
+          <v-toolbar color="blue-grey-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
-              客資系統欄位設定 (建案: {{ projectName }})
+              {{ projectName }} 客資系統欄位設定
             </v-toolbar-title>
             <v-spacer></v-spacer>
             <v-btn
@@ -61,7 +102,7 @@
                         v-model="field.isRequired"
                         color="primary"
                         label="是否為必填"
-                        density="compact"
+                        
                         inset
                       ></v-switch>
                     </v-col>
@@ -71,7 +112,7 @@
                         v-model="field.allowCustom"
                         color="primary"
                         label="允許自訂輸入"
-                        density="compact"
+                        
                         inset
                       ></v-switch>
                     </v-col>
@@ -79,7 +120,7 @@
                       <v-radio-group 
                         v-model="field.selectionMode" 
                         inline 
-                        density="compact" 
+                         
                         label="選取模式"
                         class="mt-n2"
                       >
@@ -98,7 +139,7 @@
                     deletable-chips
                     clearable
                     variant="outlined"
-                    density="compact"
+                    
                   >
                   </v-combobox>
                 </v-expansion-panel-text>
@@ -110,9 +151,9 @@
 
       <v-window-item value="vipSettings" v-if="canManageSettings">
         <v-card>
-          <v-toolbar color="teal-lighten-5" density="compact">
+          <v-toolbar color="teal-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
-              貴賓資料設定 (建案: {{ projectName }})
+              {{ projectName }} 貴賓資料設定
             </v-toolbar-title>
             <v-spacer></v-spacer>
             <v-btn
@@ -131,7 +172,7 @@
           </v-card-text>
 
           <v-card-text v-else class="pa-5">
-            <v-alert type="info" variant="tonal" border="start" density="compact" class="mb-4">
+            <v-alert type="info" variant="tonal" border="start"  class="mb-4">
               此頁面設定的選項，將用於客戶來訪時，在貴賓接待平板上自行填寫的欄位。
             </v-alert>
 
@@ -146,7 +187,7 @@
                       v-model="settings.vipFormConfig.coverImage.show"
                       color="primary"
                       label="在貴賓表單顯示封面圖片"
-                      density="compact"
+                      
                       inset
                     ></v-switch>
                     
@@ -155,7 +196,7 @@
                       label="上傳新圖片 (1920x1080)"
                       accept="image/png, image/jpeg"
                       variant="outlined"
-                      density="compact"
+                      
                       prepend-icon="mdi-image"
                       :loading="isUploadingCover"
                       @click:clear="coverImageFile = null"
@@ -206,6 +247,23 @@
                 </v-row>
               </v-card-text>
             </v-card>
+
+            <v-card variant="outlined" class="mb-6">
+              <v-card-title class="text-subtitle-1 bg-grey-lighten-5">
+                連結設定
+              </v-card-title>
+              <v-card-text class="pt-4">
+                <v-text-field
+                  v-model="settings.vipFormConfig.projectWebsiteUrl"
+                  label="建案網站"
+                  hint="請輸入完整的網址 (例如 https://www.example.com)"
+                  persistent-hint
+                  variant="outlined"
+                  
+                  clearable
+                ></v-text-field>
+              </v-card-text>
+            </v-card>
             
             <v-expansion-panels v-model="vipPanel" multiple>
               <v-expansion-panel
@@ -220,7 +278,7 @@
                         v-model="field.isRequired"
                         color="primary"
                         label="是否為必填"
-                        density="compact"
+                        
                         inset
                       ></v-switch>
                     </v-col>
@@ -230,7 +288,7 @@
                         v-model="field.allowCustom"
                         color="primary"
                         label="允許自訂輸入"
-                        density="compact"
+                        
                         inset
                       ></v-switch>
                     </v-col>
@@ -238,7 +296,7 @@
                       <v-radio-group 
                         v-model="field.selectionMode" 
                         inline 
-                        density="compact" 
+                         
                         label="選取模式"
                         class="mt-n2"
                       >
@@ -256,7 +314,7 @@
                     deletable-chips
                     clearable
                     variant="outlined"
-                    density="compact"
+                    
                   >
                   </v-combobox>
                 </v-expansion-panel-text>
@@ -268,9 +326,9 @@
 
       <v-window-item value="otherSettings" v-if="canManageSettings">
         <v-card>
-          <v-toolbar color="brown-lighten-5" density="compact">
+          <v-toolbar color="brown-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
-              其他設定 (建案: {{ projectName }})
+              {{ projectName }} 其他設定
             </v-toolbar-title>
             <v-spacer></v-spacer>
             <v-btn
@@ -297,14 +355,14 @@
                     v-model="settings.reminderSettings.counterDuplicate.lineNotify"
                     label="LINE 提醒"
                     color="primary"
-                    density="compact"
+                    
                     inset
                   ></v-switch>
                   <v-switch
                     v-model="settings.reminderSettings.counterDuplicate.emailNotify"
                     label="EMAIL 提醒"
                     color="primary"
-                    density="compact"
+                    
                     inset
                   ></v-switch>
                 </v-sheet>
@@ -316,14 +374,14 @@
                     v-model="settings.reminderSettings.salesDuplicate.lineNotify"
                     label="LINE 提醒"
                     color="primary"
-                    density="compact"
+                    
                     inset
                   ></v-switch>
                   <v-switch
                     v-model="settings.reminderSettings.salesDuplicate.emailNotify"
                     label="EMAIL 提醒"
                     color="primary"
-                    density="compact"
+                    
                     inset
                   ></v-switch>
                 </v-sheet>
@@ -335,7 +393,7 @@
 
       <v-window-item value="anxiSettings" v-if="isSuperAdmin">
         <v-card>
-          <v-toolbar color="red-lighten-5" density="compact">
+          <v-toolbar color="red-lighten-5" >
             <v-toolbar-title class="text-subtitle-1 text-red-darken-2">
               <v-icon start>mdi-cog-sync</v-icon>
               ANXI 系統設定 (限超管、系管使用)
@@ -361,7 +419,7 @@
               type="warning"
               variant="tonal"
               border="start"
-              density="compact"
+              
               class="mb-6"
             >
               警告：此處為高階系統設定，錯誤的修改可能導致客資系統功能（如LINE通知）失效。
@@ -390,7 +448,8 @@ import {
   fetchCustomerSettings, 
   saveCustomerSettings,
   uploadAttachmentImage,
-  deleteAttachmentImage
+  deleteAttachmentImage,
+  fetchCustomerList // ✓ 引入新的 API
 } from '@/api'; 
 import { merge } from 'lodash-es'; 
 
@@ -412,22 +471,24 @@ const canManageSettings = computed(() =>
   userStore.hasProjectPermission('客資系統-櫃台', projectName.value)
 );
 
-// ✓ START: 新增超級管理員權限檢查
 const isSuperAdmin = computed(() => 
   userStore.currentUserRoles.includes('系統管理員') ||
   userStore.currentUserRoles.includes('超級管理員')
 );
-// ✓ END: 新增
+
+// ✓ 獲取當前用戶的資料 (用於 API 呼叫)
+const currentUserPhone = computed(() => userStore.user?.key);
+const currentUserProjectSystems = computed(() => userStore.user?.permissions?.[props.projectId]?.systems || []);
 
 
-// --- 設定 Tab 邏輯 ---
-const isLoading = ref(false);
+// --- 設定 Tab 邏輯 (保持不變) ---
+const isLoading = ref(false); // 這是「設定頁」的 Loading
 const isSaving = ref(false);
 const panel = ref([]); 
 const vipPanel = ref([]); 
 const isUploadingCover = ref(false);
 const coverImageFile = ref(null); 
-
+const tempCoverImageUrl = ref(null);
 const settings = ref({ 
   fields: {}, 
   vipFormFields: {}, 
@@ -439,23 +500,85 @@ const settings = ref({
   anxiSystemConfig: {
     lineCrmChannelAccessTokenSecretName: ''
   }
-});
+}); 
 
+// ✓ START: 新增「客戶資料管理」Tab 的狀態
+const isLoadingCustomerList = ref(false); // 這是「列表頁」的 Loading
+const customerListSearch = ref('');
+const customerList = ref([]); // 儲存後端回傳的扁平化列表
+const customerTableHeaders = ref([
+  // 欄位：拜訪日期, 姓名, 電話, 購屋動機, 房型需求, 購屋預算, 銷售人員
+  { title: '拜訪日期', key: '拜訪日期', width: '120px' },
+  { title: '姓名', key: '姓名', width: '120px' },
+  { title: '電話', key: '電話', width: '120px' },
+  { title: '銷售', key: '銷售人員', width: '120px' },
+  { title: '購屋動機', key: '購屋動機', width: '120px' },
+  { title: '房型需求', key: '房型需求', width: '120px' },
+  { title: '購屋預算', key: '購屋預算', width: '120px' },
+]);
+// ✓ END: 新增
 
-
-
-const tempCoverImageUrl = ref(null);
-watch(coverImageFile, (newFile) => { 
-  if (tempCoverImageUrl.value) {
-    URL.revokeObjectURL(tempCoverImageUrl.value);
-    tempCoverImageUrl.value = null;
+// ✓ START: 新增：載入客戶列表的函式
+async function loadCustomerList() {
+  if (!props.projectId || !currentUserPhone.value) {
+    console.warn("無法載入客戶列表：缺少 projectId 或 userPhone");
+    return;
   }
   
-  if (newFile) { 
-    tempCoverImageUrl.value = URL.createObjectURL(newFile);
+  isLoadingCustomerList.value = true;
+  try {
+    const list = await fetchCustomerList(
+      props.projectId, 
+      currentUserPhone.value, 
+      currentUserProjectSystems.value
+    );
+    customerList.value = list;
+  } catch (error) {
+    console.error("載入客戶列表失敗:", error);
+    alert(`載入客戶列表失敗: ${error.message}`);
+  } finally {
+    isLoadingCustomerList.value = false;
   }
-});
+}
+// ✓ END: 新增
 
+// ✓ START: 新增：監聽 Tab 變化
+watch(tab, (newTab) => {
+  if (newTab === 'management' && customerList.value.length === 0) {
+    // 第一次點擊「客戶資料管理」時載入
+    loadCustomerList();
+  } else if (newTab === 'settings' && Object.keys(settings.value.fields).length === 0) {
+    // 第一次點擊「設定」時載入 (保持原有邏輯)
+    loadSettings();
+  }
+}, { immediate: true }); // immediate: true 確保一開始就觸發
+// ✓ END: 新增
+
+// ✓ START: 新增：日期格式化輔助函式
+function formatDisplayDate(dateString) {
+  if (!dateString) return 'N/A';
+  try {
+    // 假設日期字串格式為 "YYYY-MM-DD"
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // 如果格式錯誤，返回原字串
+    // 轉為 YYYY/MM/DD
+    return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (e) {
+    return dateString; // 出錯時返回原字串
+  }
+}
+// ✓ END: 新增
+
+// ✓ START: 新增：Chip 顏色輔助函式 (範例)
+function getChipColor(motive) {
+  if (motive && motive.includes('自住')) return 'blue';
+  if (motive && motive.includes('投資')) return 'green';
+  if (motive && motive.includes('置產')) return 'orange';
+  return 'grey';
+}
+// ✓ END: 新增
+
+// --- 預設欄位結構 (保持不變) ---
 const DEFAULT_SETTINGS = {
   fields: {
     gender: {
@@ -486,6 +609,7 @@ const DEFAULT_SETTINGS = {
       label: "職業", order: 7, isRequired: false, allowCustom: true, selectionMode: 'single',
       options: ["公務人員", "台元科技", "竹科園區", "園區外圍", "自營商", "工業區", "醫院相關", "上班族", "投資客", "家管"]
     },
+  
     noPurchaseReason: {
       label: "未買原因", order: 9, isRequired: false, allowCustom: true, selectionMode: 'multiple', 
       options: ["已下訂", "還要討論比較", "預算不符", "格局不符", "座向不符", "單價不認同", "坪數太大", "坪數太小", "喜歡的戶型樓層沒了", "需要雙車位", "沒有高樓層可選", "沒有低樓層可選", "生活機能不理想", "要問神明或老師", "家人反對", "環境不喜歡"]
@@ -534,7 +658,8 @@ const DEFAULT_SETTINGS = {
       show: true,
       url: null,
       storagePath: null
-    }
+    },
+    projectWebsiteUrl: null
   },
   reminderSettings: { 
     counterDuplicate: {
@@ -546,12 +671,24 @@ const DEFAULT_SETTINGS = {
       emailNotify: false
     }
   },
-  anxiSystemConfig: { // ✓ 新增
+  anxiSystemConfig: { 
     lineCrmChannelAccessTokenSecretName: ''
   }
 };
+// --- END: 預設欄位結構 ---
 
-// 載入設定 (保持不變)
+// --- 載入/儲存/圖片處理 函式 (保持不變) ---
+
+watch(coverImageFile, (newFile) => { 
+  if (tempCoverImageUrl.value) {
+    URL.revokeObjectURL(tempCoverImageUrl.value);
+    tempCoverImageUrl.value = null;
+  }
+  if (newFile) { 
+    tempCoverImageUrl.value = URL.createObjectURL(newFile);
+  }
+});
+
 async function loadSettings() {
   if (!props.projectId) return;
   isLoading.value = true;
@@ -572,19 +709,12 @@ async function loadSettings() {
   }
 }
 
-// ✓ START: 修正 saveSettings 函式
 async function saveSettings(performUpload = true) {
   isSaving.value = true;
-  
   try {
-    // 步驟 1: 檢查是否有新檔案需要上傳
-    // ✓ 修正：直接讀取 coverImageFile.value
     const file = coverImageFile.value; 
-    
     if (file && performUpload) {
       isUploadingCover.value = true;
-      
-      // 1a. (安全起見) 刪除舊圖片
       const oldPath = settings.value.vipFormConfig?.coverImage?.storagePath;
       if (oldPath) {
         try {
@@ -593,31 +723,20 @@ async function saveSettings(performUpload = true) {
           console.warn("刪除舊封面圖片失敗 (可能不存在):", deleteError.message);
         }
       }
-      
-      // 1b. 上傳新圖片
       try {
         const { url, path } = await uploadAttachmentImage(props.projectId, file);
-        // ✓ 將上傳結果更新到 settings.value
         settings.value.vipFormConfig.coverImage.url = url;
         settings.value.vipFormConfig.coverImage.storagePath = path;
       } catch (uploadError) {
-        // 如果上傳失敗，應中斷儲存
         throw new Error(`圖片上傳失敗: ${uploadError.message}`);
       } finally {
         isUploadingCover.value = false;
-        coverImageFile.value = null; // ✓ 清空 file input
+        coverImageFile.value = null; 
       }
     }
-
-    // 步驟 2: 儲存 settings 物件 (現在包含最新的圖片 URL 或其他變更)
-    const dataToSave = {
-      ...settings.value, 
-      projectId: props.projectId
-    };
-    
+    const dataToSave = { ...settings.value, projectId: props.projectId };
     await saveCustomerSettings(props.projectId, dataToSave);
     alert('設定儲存成功！');
-    
   } catch (error) {
     console.error("儲存客資系統設定失敗:", error);
     alert(`儲存設定失敗: ${error.message}`);
@@ -626,17 +745,12 @@ async function saveSettings(performUpload = true) {
     isUploadingCover.value = false; 
   }
 }
-// ✓ END: 修正 saveSettings
 
-// removeCoverImage 函式 (保持不變)
 async function removeCoverImage() {
   const oldPath = settings.value.vipFormConfig?.coverImage?.storagePath;
-  
   coverImageFile.value = null;
-
   settings.value.vipFormConfig.coverImage.url = null;
   settings.value.vipFormConfig.coverImage.storagePath = null;
-  
   if (oldPath) {
     isUploadingCover.value = true; 
     try {
@@ -657,8 +771,14 @@ async function removeCoverImage() {
 // 監聽 projectId 變化 (保持不變)
 watch(() => props.projectId, (newId) => {
   if (newId) {
-    loadSettings();
+    // 當建案 ID 變化時，清空列表並重新載入
+    customerList.value = [];
+    if (tab.value === 'management') {
+      loadCustomerList();
+    }
+    // (設定頁的載入會由 tab watch 處理)
+    loadSettings(); // ✓ 確保建案切換時，設定頁也會更新
   }
-}, { immediate: true });
+}, { immediate: true }); // immediate: true 確保一開始就觸發
 
 </script>

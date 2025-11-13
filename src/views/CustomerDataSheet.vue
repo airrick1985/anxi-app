@@ -1,5 +1,5 @@
 <template>
-  <v-container>
+  <v-container style="background-color: #F5F5F7">
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
 
@@ -122,7 +122,7 @@
                           </template>
                           
                           <span>
-                            此客戶電話重複。
+                            此客戶電話重複
                             <br>
                             最後銷售：{{ guest.latestSalesName || '未知' }}
                           </span>
@@ -307,6 +307,14 @@
                   v-model="formData[systemSettings.fields.occupation.label]"
                   
                   hint="選擇或直接輸入您的職業" ></dynamic-form-field>
+
+                  <v-text-field
+                  v-model="formData['任職公司']"
+                  label="任職公司"
+                  variant="outlined"
+                  class="mb-2"
+                  autocomplete="off"
+                ></v-text-field>
 
                 <v-divider class="my-6"></v-divider>
                 <p class="text-h6 mb-4">需求資訊</p>
@@ -789,6 +797,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
       '居住城市': null, 
       '居住鄉鎮市區': null,
       '居住詳細地址': '',
+      '任職公司': '',
     };    
     // (初始化 systemSettings 欄位 - 保持不變)
     if (systemSettings.value.fields.age) {

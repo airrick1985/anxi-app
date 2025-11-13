@@ -1,5 +1,5 @@
 <template>
-  <v-container>
+  <v-container style="background-color: #F5F5F7">
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
         
@@ -11,10 +11,24 @@
           ></v-img>
         </v-card>
 
+       
         <v-card>
           <v-toolbar  color="white" density="compact">
-            <v-toolbar-title>{{ pageTitle }}</v-toolbar-title>
+            <v-toolbar-title> {{ pageTitle }}</v-toolbar-title>
+  
+          
           </v-toolbar>
+
+            <v-row v-if="!isLoading" class="mb-2" >
+           <v-spacer></v-spacer>
+           <v-btn 
+             variant="text" 
+             color="black" 
+             prepend-icon="mdi-qrcode-scan"
+             @click="qrDialog = true"
+           >
+                     </v-btn>
+        </v-row>
 
           <v-card-text v-if="isLoading" class="text-center pa-10">
             <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
@@ -22,9 +36,21 @@
           </v-card-text>
 
           <v-card-text v-else-if="isSubmitted" class="text-center pa-10">
-            <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
+           <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
             <h2 class="text-h5 mt-4">感謝您</h2>
             <p class="text-body-1 mt-2">資料已成功送出，請洽現場服務人員。</p>
+            
+            <v-btn
+              v-if="projectWebsiteUrl"
+              color="primary"
+              variant="flat"
+              class="mt-6"
+              :href="projectWebsiteUrl"
+              target="_blank"
+              prepend-icon="mdi-web"
+            >
+              {{ projectName }} 建案介紹
+            </v-btn>
           </v-card-text>
 
           <v-card-text v-else class="pa-6">
@@ -127,14 +153,39 @@
             </v-form>
           </v-card-text>
         </v-card>
+
+        <v-dialog v-model="qrDialog" max-width="400" >
+          <v-card >
+            <v-card-title>貴賓資料表</v-card-title>
+            <v-card-text class="text-center">
+              <p>請掃描填寫，感謝您。</p>
+              <QrCode v-if="currentUrl" :value="currentUrl" :size="300" class="my-4"></QrCode>
+              <p class="text-caption">{{ currentUrl }}</p>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn
+                :color="copySuccess ? 'success' : 'primary'"
+                variant="text"
+                @click="copyUrlToClipboard"
+                :prepend-icon="copySuccess ? 'mdi-check' : 'mdi-content-copy'"
+              >
+                {{ copySuccess ? '已複製' : '複製網址' }}
+              </v-btn>
+              <v-btn color="grey-darken-1" variant="text" @click="qrDialog = false">關閉</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { fetchVipFormSettings, submitVipForm } from '@/api';
+import QrCode from 'qrcode.vue';
 
 const props = defineProps({
   projectId: {
@@ -153,12 +204,17 @@ const formRef = ref(null);
 const projectName = ref('');
 const coverImageUrl = ref(null);
 const showCoverImage = ref(false);
+const projectWebsiteUrl = ref(null);
 
 const formFields = ref([]); // 動態欄位
 const formData = ref({});   // 表單資料
+const qrDialog = ref(false);
+const copySuccess = ref(false);
+
 
 // --- Computed ---
 const pageTitle = computed(() => `${projectName.value} 貴賓資料表`);
+const currentUrl = computed(() => window.location.href);
 
 // --- Validation Rules ---
 const rules = {
@@ -166,6 +222,12 @@ const rules = {
   requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
   phone: (v) => /^09\d{8}$/.test(v) || '請輸入有效的 10 碼手機號碼',
 };
+
+watch(qrDialog, (newVal) => {
+  if (!newVal) {
+    copySuccess.value = false;
+  }
+});
 
 // --- Methods ---
 onMounted(async () => {
@@ -188,6 +250,11 @@ onMounted(async () => {
     if (result.vipFormConfig?.coverImage) {
       showCoverImage.value = result.vipFormConfig.coverImage.show || false;
       coverImageUrl.value = result.vipFormConfig.coverImage.url || null;
+    }
+
+    // ✓ 檢查：(新增) 儲存網站 URL
+    if (result.vipFormConfig?.projectWebsiteUrl) {
+      projectWebsiteUrl.value = result.vipFormConfig.projectWebsiteUrl;
     }
 
     // 處理動態欄位
@@ -257,6 +324,20 @@ const handleSubmit = async () => {
     isSubmitting.value = false;
   }
 };
+
+async function copyUrlToClipboard() {
+  if (!currentUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(currentUrl.value);
+    copySuccess.value = true;
+    setTimeout(() => {
+      copySuccess.value = false;
+    }, 2000); // 2秒後恢復
+  } catch (err) {
+    console.error('複製網址失敗:', err);
+    alert('複製失敗，請手動複製。');
+  }
+}
 
 </script>
 

@@ -1500,7 +1500,7 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
     });
   });
   
-  const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客戶管理']; // (此處可保持不變)
+  const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客資系統']; // (此處可保持不變)
 
   // 回傳完整的 projects 陣列
   return { 
@@ -7047,5 +7047,40 @@ export const fetchSingleVipGuest = async (docId) => {
   } catch (error) {
     console.error(`[api.js] 獲取單筆貴賓資料失敗:`, error);
     throw error;
+  }
+};
+
+/**
+ * [API] 獲取客戶資料管理列表 (已由後端過濾和攤平)
+ * @param {string} projectId 
+ * @param {string} userPhone 
+ * @param {Array<string>} userProjectSystems 
+ * @returns {Promise<Array<object>>}
+ */
+export const fetchCustomerList = async (projectId, userPhone, userProjectSystems) => {
+  if (!projectId || !userPhone || !userProjectSystems) {
+    return []; // 參數不全，回傳空陣列
+  }
+  
+  try {
+    const result = await customerApiRouter({
+        action: 'fetchCustomerList',
+        data: { 
+            projectId, 
+            userPhone, 
+            userProjectSystems 
+        }
+    });
+    
+    // 後端回傳的是已處理好的陣列
+    // 我們只需將 submittedAt (ISO string) 轉回 Date 物件 (供 v-data-table 的 :item-value 使用)
+    return result.data.map(item => ({
+      ...item,
+      submittedAt: item.submittedAt ? new Date(item.submittedAt) : null
+    }));
+    
+  } catch (error) {
+    console.error(`[api.js] 獲取客戶列表時發生錯誤:`, error);
+    throw error; // 拋出錯誤讓 .vue 檔案捕捉
   }
 };
