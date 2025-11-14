@@ -121,6 +121,22 @@
         <span>上傳戶別資料EXCEL</span>
       </v-tooltip>
 
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && project.paymentScheduleFolderUrl">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
+            :href="project.paymentScheduleFolderUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            icon="mdi-folder-google-drive"
+          ></v-btn>
+        </template>
+        <span>付款表資料夾</span>
+      </v-tooltip>
+
       <v-tooltip location="bottom">
         <template v-slot:activator="{ props }">
           <v-btn
@@ -304,6 +320,17 @@
             <v-list-item-title>車位銷控管理</v-list-item-title>
           </v-list-item>
           
+         <v-list-item
+            v-if="project.paymentScheduleFolderUrl"
+            :href="project.paymentScheduleFolderUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-folder-google-drive</v-icon>
+            </template>
+            <v-list-item-title>付款表資料夾</v-list-item-title>
+          </v-list-item>
           <v-list-item @click="navigateToSalesSettings">
             <template v-slot:prepend>
               <v-icon>mdi-cog-outline</v-icon>

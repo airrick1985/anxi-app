@@ -186,25 +186,26 @@
         <v-card-title class="text-h5">看板設定</v-card-title>
         <v-divider></v-divider>
 
-        <v-card-text style="max-height: 60vh;">
+<v-card-text style="max-height: 60vh;">
       <fieldset class="settings-section personnel-section">            
 <legend class="text-subtitle-1 mb-2">顯示人員</legend>
-             <v-row dense>
+           <v-row dense>
                <v-col
                  v-for="person in allAvailablePersonnel"
                  :key="person.id"
                  cols="12" sm="6" md="4" lg="3"
                >
                  <v-checkbox
-  v-model="selectedPersonnelInDialog"
-  :label="person.name"
-  :value="person.id"
-  density="compact"
-  hide-details
-  color="primary"
-  @update:modelValue="logCheckboxChange"
-></v-checkbox>
-               </v-col>
+                   v-if="person && person.roles && !person.roles.includes('超級管理員')"
+                   v-model="selectedPersonnelInDialog"
+                   :label="person.name"
+                   :value="person.id"
+                   density="compact"
+                   hide-details
+                   color="primary"
+                   @update:modelValue="logCheckboxChange"
+                 ></v-checkbox>
+                 </v-col>
              </v-row>
             <p v-if="allAvailablePersonnel.length === 0" class="no-personnel text-disabled mt-2">找不到可設定的人員。</p>
           </fieldset>
@@ -416,7 +417,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'; // 加入 watch
-import { getDoc, doc } from "firebase/firestore";
+import { getDoc, doc, collection, getDocs } from "firebase/firestore"; // ✅ 修改此行
 import { db } from '@/firebase'; // 確保 db 已從 firebase.js 匯出
 import { useRoute } from 'vue-router';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -757,31 +758,45 @@ const openSettingsDialog = async () => {
   isLoadingSettings.value = true;
   showSettingsDialog.value = true;
   try {
-    // 1. (保持不變)
-    const [personnelList, currentConfig] = await Promise.all([
+    // 1. (保持不變) 獲取人員、設定、角色
+    const [personnelList, currentConfig, allUsersSnapshot] = await Promise.all([
       fetchPotentialPersonnelAPI(props.projectId),
-      fetchStandbyConfigAPI(props.projectId)
+      fetchStandbyConfigAPI(props.projectId),
+      getDocs(collection(db, 'users'))
     ]);
 
-    allAvailablePersonnel.value = personnelList;
-    const loadedVisibleIds = currentConfig.visiblePersonnelIds || []; 
+    // 2. (保持不變) 建立角色映射表
+    const userRolesMap = new Map();
+    allUsersSnapshot.forEach(doc => {
+      userRolesMap.set(doc.id, doc.data().roles || []);
+    });
 
-    // ... (過濾 initialSelectedIds 的邏輯保持不變) ...
+    // 3. (保持不變) 合併角色資訊
+    const personnelWithRoles = personnelList.map(person => ({
+      ...person,
+      roles: userRolesMap.get(person.id) || []
+    }));
+
+    // ✅ 4. 【關鍵修改】
+    // 在賦值給 allAvailablePersonnel 之前，先過濾掉超級管理員
+    allAvailablePersonnel.value = personnelWithRoles.filter(
+      person => person && person.roles && !person.roles.includes('超級管理員')
+    );
+    // ✅ 【修改結束】
+
+    // 5. (保持不變) 後續邏輯使用已經過濾的 allAvailablePersonnel
+    const loadedVisibleIds = currentConfig.visiblePersonnelIds || [];
     const availableIdsSet = new Set(allAvailablePersonnel.value.map(p => p.id));
     const initialSelectedIds = loadedVisibleIds.filter(id => availableIdsSet.has(id));
     selectedPersonnelInDialog.value = initialSelectedIds;
 
-    // 載入顏色設定 (保持不變)
+    // ... (後續的顏色和警示設定保持不變) ...
     if (currentConfig.colors && Object.keys(currentConfig.colors).length > 0) {
       statusColorsConfig.value = { ...statusColorsConfig.value, ...currentConfig.colors };
     }
-    tempStatusColors.value = JSON.parse(JSON.stringify(statusColorsConfig.value)); 
-
-    // [新增] 載入警示時間設定
+    tempStatusColors.value = JSON.parse(JSON.stringify(statusColorsConfig.value));
     const loadedMinutes = currentConfig.alertThresholdMinutes;
-    // 設置主 ref
     alertThresholdMinutes.value = (loadedMinutes && Number(loadedMinutes) > 0) ? Number(loadedMinutes) : 120;
-    // 設置 dialog 內的 temp ref (這會更新 v-text-field)
     tempAlertThresholdMinutes.value = alertThresholdMinutes.value;
 
   } catch (error) {

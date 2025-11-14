@@ -398,84 +398,37 @@
         />
     </v-dialog>
 
-    <v-card>
-        <v-card-title class="d-flex align-center">
-            <v-icon start color="primary">mdi-email-send-outline</v-icon>
-            <span class="text-h6">傳送付款表</span>
-            <v-spacer></v-spacer>
-            <v-btn icon="mdi-close" variant="text" @click="showEmailModal = false"></v-btn>
-        </v-card-title>
-
-        <v-divider></v-divider>
-
-        <v-card-text>
-            <div class="mb-4">
-                <p class="font-weight-bold mb-2">已產生下列檔案：</p>
-                <div>
-             <v-chip
-    v-for="file in generatedFiles"
-    :key="file.name"
-    class="mr-2 mb-2"
-    :color="getChipStyle(file.type).color"
-    label
-    link
-    :href="file.url"
-    target="_blank"
->
-    <v-icon start>
-        {{ getChipStyle(file.type).icon }}
-    </v-icon>
-    {{ file.name }}
-</v-chip>
-                </div>
-            </div>
-
-            <v-divider class="my-4"></v-divider>
-
-            <div>
-                <p class="font-weight-bold mb-1">請勾選要傳送通知的對象：</p>
-                <p class="text-caption text-grey-darken-1 mb-3">系統已根據預設規則自動勾選。</p>
-
-                <div class="email-list-container">
-                    <v-list-item 
-                        v-for="recipient in emailRecipients" 
-                        :key="recipient.email"
-                        density="compact"
+    <v-dialog v-model="showGeneratedLinkDialog" max-width="500px" persistent>
+            <v-card>
+                <v-card-title class="text-h5">
+                    <v-icon start color="success">mdi-check-circle</v-icon>
+                    產製成功
+                </v-card-title>
+                <v-card-text>
+                    付款表已成功產製。
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn
+                        color="grey-darken-1"
+                        variant="text"
+                        @click="showGeneratedLinkDialog = false"
                     >
-                        <template v-slot:prepend>
-                            <v-checkbox-btn v-model="recipient.selected"></v-checkbox-btn>
-                        </template>
-                        <v-list-item-title>{{ recipient.name }}</v-list-item-title>
-                        <v-list-item-subtitle>{{ recipient.email }}</v-list-item-subtitle>
-                    </v-list-item>
-                </div>
-            </div>
-        </v-card-text>
+                        關閉
+                    </v-btn>
+                    <v-btn
+                        color="primary"
+                        variant="flat"
+                        @click="openGeneratedSheet"
+                    >
+                        <v-icon start>mdi-open-in-new</v-icon>
+                        開啟付款表
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
-        <v-divider></v-divider>
 
-        <v-card-actions class="pa-4">
-            <v-spacer></v-spacer>
-            <v-btn 
-                color="grey-darken-1" 
-                variant="text" 
-                @click="showEmailModal = false"
-                :disabled="isSendingEmail"
-            >
-                稍後再傳
-            </v-btn>
-            <v-btn
-                color="primary"
-                variant="flat"
-                @click="sendEmails"
-                :loading="isSendingEmail"
-                :disabled="isSendingEmail"
-            >
-                <v-icon start>mdi-send</v-icon>
-                傳送
-            </v-btn>
-        </v-card-actions>
-    </v-card>
 
 
 </template>
@@ -484,6 +437,7 @@
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
+import { formatInTimeZone } from 'date-fns-tz';
 import { generatePaymentSheet, exportSheetToPdf } from '@/api.js';
 
 
@@ -715,8 +669,16 @@ function updateSelectedParking(newParkingList) {
 }
 // --- [新增] 文件產出相關狀態 ---
 const isGenerating = ref(false); // 控制按鈕的 loading 狀態
+const showGeneratedLinkDialog = ref(false); // 控制產製成功對話框
+const generatedSheetUrl = ref(''); // 儲存產製的 URL
 
-
+function openGeneratedSheet() {
+    if (generatedSheetUrl.value) {
+        window.open(generatedSheetUrl.value, '_blank');
+    }
+    // ✅ 移除: showGeneratedLinkDialog.value = false;
+    // (現在點擊開啟付款表後，對話框將保持開啟)
+}
 /**
  * [主函式] 當點擊「製作付款表」按鈕時觸發
  */
@@ -781,9 +743,13 @@ async function handleGenerateDocument() {
         const result = await generatePaymentSheet(payload);
         
         if (result.status === 'success' && result.url) { 
-            // 3. 成功後，顯示訊息並在新分頁開啟 Sheet
-            alert('付款表已成功產製！');
-            window.open(result.url, '_blank'); 
+            // ✅ START: 修改成功後的行為
+            // 3. 成功後，儲存 URL 並顯示對話框
+            generatedSheetUrl.value = result.url; // 儲存 URL
+            showGeneratedLinkDialog.value = true; // 開啟對話框
+            // alert('付款表已成功產製！'); // (移除 alert)
+            // window.open(result.url, '_blank'); // (移除 window.open)
+            // ✅ END: 修改成功後的行為
         } else {
             throw new Error(result.message || '後端發生未知錯誤');
         }

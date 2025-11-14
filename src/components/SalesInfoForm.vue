@@ -11,7 +11,20 @@
               v-model="editableData.salesStatus_backend" 
               class="mb-4" 
               clearable 
-            ></v-select> <v-select 
+            ></v-select>
+
+            <v-text-field
+              label="銷售狀態"
+              v-model="editableData.salesStatus_quote"
+              class="mb-4"
+              readonly
+              
+             
+              hint="如要取消「已售」，請取消後台狀態"
+              persistent-hint
+            ></v-text-field>
+            
+            <v-select 
               label="銷售人員" 
               :items="personnelOptions" 
               v-model="editableData.salesperson" 
@@ -197,11 +210,34 @@ const salesImageOptions = computed(() => {
 
 // ✅ 3. 新增 Watcher，確保 salesImages 永遠是陣列
 watch(() => editableData.value, (newData) => {
-  if (newData && !Array.isArray(newData.salesImages)) {
+  if (!newData) return; // 如果 newData 是 null/undefined，則跳過
+
+  let needsUpdate = false;
+  const updatedData = { ...newData }; // 建立一個可變更的副本
+
+  // 檢查 salesImages
+  if (!Array.isArray(newData.salesImages)) {
     // 如果 salesImages 不存在或不是陣列，初始化為一個空陣列
-    // ✅ 修改：透過 emit 更新一個新的物件，而不是直接修改舊物件的屬性
-    emit('update:modelValue', { ...newData, salesImages: [] });
+    updatedData.salesImages = [];
+    needsUpdate = true;
   }
+
+  // ✅ START: 新增 - 衍伸銷售狀態
+  // 根據 "後台狀態" (salesStatus_backend) 決定 "銷售狀態" (salesStatus_quote)
+  const newQuoteStatus = newData.salesStatus_backend ? "已售" : "";
+  
+  // 只有在衍伸值與當前值不同時，才標記為需要更新
+  if (newData.salesStatus_quote !== newQuoteStatus) {
+    updatedData.salesStatus_quote = newQuoteStatus;
+    needsUpdate = true;
+  }
+  // ✅ END: 新增
+
+  // 如果需要更新 (任一邏輯觸發)，則發出一次 'update:modelValue' 事件
+  if (needsUpdate) {
+    emit('update:modelValue', updatedData);
+  }
+
 }, { immediate: true, deep: true });
 
 const allCitiesData = ref(TwCitiesData);
