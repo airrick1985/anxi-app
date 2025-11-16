@@ -45,8 +45,8 @@
               persistent-hint
             ></v-combobox>
             <div class="d-flex align-center mb-4">
-              <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined" density="compact" hide-details></v-text-field>
-              <v-btn class="ml-2" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
+              <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined"  hide-details></v-text-field>
+              <v-btn class="ml-2" variant="outlined" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
             </div>
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
@@ -70,7 +70,7 @@
               <v-radio label="否" :value="false"></v-radio>
             </v-radio-group>
             <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="mb-2"></v-text-field>
-            <v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="由編輯車位彈窗自動計算" persistent-hint class="mb-2"></v-text-field>
+            <v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
             <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
             <v-text-field label="溢差價(萬)" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field>
           </div>
@@ -94,7 +94,7 @@
                     v-model="mailingCounty"
                     :items="counties"
                     label="縣市"
-                    density="compact"
+                    
                     variant="outlined"
                     clearable
                   ></v-select> </v-col>
@@ -105,15 +105,15 @@
                     :items="mailingTowns"
                     label="鄉鎮市區"
                     :disabled="!mailingCounty"
-                    density="compact"
+                    
                     variant="outlined"
                     clearable
                   ></v-select> </v-col>
               </v-row>
-              <v-text-field label="詳細地址" v-model="editableData.buyerMailingAddressDetail" density="compact" variant="outlined"></v-text-field>
+              <v-text-field label="詳細地址" v-model="editableData.buyerMailingAddressDetail"  variant="outlined"></v-text-field>
             </div>
 
-            <v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" density="compact"></v-checkbox>
+            <v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" ></v-checkbox>
             
             <div v-if="!isPermanentSameAsMailing">
               <label class="form-label">戶籍地址</label>
@@ -123,7 +123,7 @@
                     v-model="permanentCounty"
                     :items="counties"
                     label="縣市"
-                    density="compact"
+                    
                     variant="outlined"
                     clearable
                   ></v-select> </v-col>
@@ -134,12 +134,12 @@
                     :items="permanentTowns"
                     label="鄉鎮市區"
                     :disabled="!permanentCounty"
-                    density="compact"
+                    
                     variant="outlined"
                     clearable
                   ></v-select> </v-col>
               </v-row>
-              <v-text-field label="詳細地址" v-model="editableData.buyerPermanentAddressDetail" density="compact" variant="outlined"></v-text-field>
+              <v-text-field label="詳細地址" v-model="editableData.buyerPermanentAddressDetail"  variant="outlined"></v-text-field>
             </div>
             </div>
         </v-col>

@@ -92,11 +92,11 @@
 
     <v-dialog v-model="isParkingEditorDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
-        <v-toolbar dark color="primary" density="compact">
+        <v-toolbar dark color="f5f5f7" density="compact">
           <v-btn icon dark @click="isParkingEditorDialogVisible = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
-          <v-toolbar-title>車位銷控管理</v-toolbar-title>
+          <v-toolbar-title>車位銷控</v-toolbar-title>
           <v-spacer></v-spacer>
       
         </v-toolbar>

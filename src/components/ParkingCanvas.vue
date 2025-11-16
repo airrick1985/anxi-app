@@ -1,5 +1,16 @@
 <template>
   <div class="parking-canvas-container center-xy" ref="containerRef">
+
+    <div v-if="isCanvasLoading" class="modal-overlay" style="z-index: 100; position: absolute;">
+      <div class="modal-content" style="max-width: 300px;">
+        <div class="modal-body loading-state">
+           <svg-icon type="mdi" :path="mdiLoading" class="icon spin-icon" style="width: 48px; height: 48px; color: #007bff;"></svg-icon>
+           <p class="mt-4" style="margin-top: 1rem; font-size: 1.1rem; color: #333; font-weight: 500;">
+             正在載入車位資料...
+           </p>
+        </div>
+      </div>
+    </div>
     
     <div 
       class="parking-canvas-area" 
@@ -431,6 +442,8 @@ export default {
     // ... (樓層列表 ref 保持不變) ...
     const availableFloorPlans = ref([]);
 
+    const isCanvasLoading = ref(true);
+
     // ... (fitToScreen, 拖曳函式, addTestSpot 保持不變) ...
     const fitToScreen = () => {
       if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) return;
@@ -635,43 +648,62 @@ export default {
         resolve();
       });
     }
-    const loadFloorData = async () => {
+  const loadFloorData = async () => {
       console.log('--- loadFloorData ---');
+      
+      // ✅ 4.1. 在函式開頭設定為 true
+      isCanvasLoading.value = true; 
+      
       if (!props.floorPlan || !props.floorPlan.id) {
          console.log('loadFloorData 中止：缺少 floorPlan 或 floorPlan.id。');
+         isCanvasLoading.value = false; // ✅ 4.2. 提早結束時設為 false
          return;
       }
-      if (props.floorPlan.backgroundImageUrl) {
-        console.log('載入背景圖...');
-        await loadBackgroundImage(props.floorPlan.backgroundImageUrl, {
-          left: props.floorPlan.backgroundImageX,
-          top: props.floorPlan.backgroundImageY,
-          scaleX: props.floorPlan.backgroundImageScaleX,
-          scaleY: props.floorPlan.backgroundImageScaleY,
-          angle: props.floorPlan.backgroundImageRotation,
-          width: props.floorPlan.backgroundImageWidth, 
-          height: props.floorPlan.backgroundImageHeight,
-        });
-      }
-      console.log('抓取銷售車位資料 (for data)...');
-      await fetchSalesParkingsForFloor();
-      console.log('抓取車位佈局 (for positions)...');
-      try {
-        const layoutResult = await getSpotLayoutsAPI(props.floorPlan.id, props.projectId);
-        if (layoutResult.status === 'success') {
-          console.log(`[Canvas] 成功獲取 ${layoutResult.layouts.length} 筆佈局資料。`);
-          loadSpotLayouts(layoutResult.layouts || []);
-        } else {
-          throw new Error(layoutResult.message || '獲取佈局失敗');
+      
+      try { // ✅ 4.3. 加入 try...finally
+        if (props.floorPlan.backgroundImageUrl) {
+          console.log('載入背景圖...');
+          await loadBackgroundImage(props.floorPlan.backgroundImageUrl, {
+            left: props.floorPlan.backgroundImageX,
+            top: props.floorPlan.backgroundImageY,
+            scaleX: props.floorPlan.backgroundImageScaleX,
+            scaleY: props.floorPlan.backgroundImageScaleY,
+            angle: props.floorPlan.backgroundImageRotation,
+            width: props.floorPlan.backgroundImageWidth, 
+            height: props.floorPlan.backgroundImageHeight,
+          });
         }
-      } catch (error) {
-         console.error('抓取車位佈局時發生錯誤:', error);
-         toast.error(`抓取車位佈局失敗: ${error.message}`);
-         loadSpotLayouts([]); 
+        
+        console.log('抓取銷售車位資料 (for data)...');
+        await fetchSalesParkingsForFloor();
+        console.log('抓取車位佈局 (for positions)...');
+        
+        try {
+          const layoutResult = await getSpotLayoutsAPI(props.floorPlan.id, props.projectId);
+          if (layoutResult.status === 'success') {
+            console.log(`[Canvas] 成功獲取 ${layoutResult.layouts.length} 筆佈局資料。`);
+            loadSpotLayouts(layoutResult.layouts || []);
+          } else {
+            throw new Error(layoutResult.message || '獲取佈局失敗');
+          }
+        } catch (error) {
+           console.error('抓取車位佈局時發生錯誤:', error);
+           toast.error(`抓取車位佈局失敗: ${error.message}`);
+           loadSpotLayouts([]); 
+        }
+        
+        console.log('[Canvas] loadFloorData 完成，準備發出 "canvas-ready" 事件。');
+        emit('canvas-ready');
+        
+      } catch (err) { // ✅ 4.4. 捕捉 loadFloorData 內部的錯誤
+          console.error("loadFloorData 執行時發生錯誤:", err);
+          toast.error(`載入畫布資料時發生錯誤: ${err.message}`);
+      } finally {
+          // ✅ 4.5. 無論成功或失敗，最後都隱藏 loading
+          isCanvasLoading.value = false;
       }
-      console.log('[Canvas] loadFloorData 完成，準備發出 "canvas-ready" 事件。');
-      emit('canvas-ready');
     };
+
     const fetchSalesParkingsForFloor = async () => {
       if (!props.floorPlan || !props.floorPlan.id) return
       loading.value = true
@@ -1025,10 +1057,13 @@ export default {
     });
     
     // --- 監聽 props 變化 ---
-    watch(() => props.floorPlan.id, () => {
+ watch(() => props.floorPlan.id, () => {
       spotLayouts.value = []; 
       bgImageUrl.value = null; 
       canvasScale.value = 1; 
+      
+      // ✅ 5.1. 在呼叫 loadFloorData 之前，手動設定 loading
+      isCanvasLoading.value = true;
       loadFloorData(); 
     })
     
@@ -1095,6 +1130,8 @@ export default {
 // ✓ START: 匯出縮放函式
       zoomIn,
       zoomOut,
+
+      isCanvasLoading,
 
 
 
@@ -1362,6 +1399,14 @@ canvas {
   color: white;
   border-color: #f5f5f7;
 }
-/* ✓ END: 修改樣式 */
+
+.spin-icon {
+  animation: spin 1.5s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 </style>
 

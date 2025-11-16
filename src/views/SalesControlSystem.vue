@@ -149,7 +149,7 @@
             icon="mdi-refresh"
           ></v-btn>
         </template>
-        <span>重新載入最新資料（忽略緩存）</span>
+        <span>重新載入最新資料</span>
       </v-tooltip>
 
          <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">

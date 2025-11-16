@@ -518,7 +518,7 @@ const updateClock = () => {
       { hour: 12, minute: 0 },
       { hour: 15, minute: 0 },
       { hour: 18, minute: 0 },
-       { hour: 20, minute: 29 },
+       { hour: 20, minute: 0 },
     
     ];
 

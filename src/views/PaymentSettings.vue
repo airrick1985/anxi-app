@@ -373,7 +373,7 @@
     </v-btn>
 
     <v-btn
-        color="black"
+       color="secondary"
         variant="flat"
         @click="handleGenerateDocument"
         :loading="isGenerating"

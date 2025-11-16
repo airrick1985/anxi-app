@@ -233,7 +233,7 @@
           </v-btn>
           <v-btn
             v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
-            color="teal"
+            color="primary"
             variant="flat"
             :href="unitData.driveFolderUrl"
             target="_blank"

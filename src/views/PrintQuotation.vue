@@ -201,7 +201,30 @@
         </v-list>
       </v-navigation-drawer>
 
-      <v-main class="editor-main-canvas-area" ref="mainAreaRef"> <div 
+      <v-main class="editor-main-canvas-area" ref="mainAreaRef"> 
+
+
+        <v-overlay
+          :model-value="isLoadingTemplate"
+          class="align-center justify-center"
+          contained
+          persistent
+          scrim="#FFFFFF"
+        >
+          <div class="d-flex flex-column align-center text-center">
+            <v-progress-circular
+              indeterminate
+              size="48"
+              color="#008CFF"
+              class="mb-4"
+            ></v-progress-circular>
+            <p class="text-h6" style="color: #008CFF;">正在載入報價單版型...</p>
+            <p class="text-caption text-grey-darken-1">正在讀取資料並產製報價單，請稍候</p>
+          </div>
+        </v-overlay>
+        
+        
+        <div 
           class="page-preview-container" 
           :style="pageContainerStyle" >
           <canvas 

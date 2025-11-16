@@ -167,7 +167,7 @@
             placeholder="請輸入建案ID"
             autofocus
             variant="outlined"
-            density="compact"
+            
             @keyup.enter="navigateToStandby"
           ></v-text-field>
         </v-card-text>
