@@ -123,7 +123,7 @@
                   class="mb-2"
                 ></v-select>
 
-                <v-combobox
+                <v-select
                   v-if="field.selectionMode === 'multiple' && field.allowCustom"
                   v-model="formData[field.label]"
                   :label="field.label"
@@ -134,7 +134,17 @@
                   closable-chips
                   :rules="field.isRequired ? [rules.requiredArray] : []"
                   class="mb-2"
-                ></v-combobox>
+                ></v-select>
+
+                <v-text-field
+                  v-if="field.selectionMode === 'multiple' && field.allowCustom && formData[field.label] && formData[field.label].includes('其他')"
+                  v-model="formData[field.label + '_其他']"
+                  label="請輸入其他項目"
+                  variant="outlined"
+                  :rules="[rules.required]"
+                  class="mb-4 ml-4"
+                ></v-text-field>
+
 
               </template>
               
@@ -278,13 +288,28 @@ onMounted(async () => {
         continue; 
       }
 
+      const fieldOptions = [...field.options];
+      // 如果此欄位原先允許自訂輸入
+      if (field.allowCustom) {
+          // 則在選項最後加入「其他」
+          fieldOptions.push('其他');
+      }
+
       processedFields.push({
         key: key,
-        ...field
+
+        ...field,
+        options: fieldOptions 
+
       });
 
       // 初始化 formData
       initialFormData[field.label] = (field.selectionMode === 'multiple') ? [] : null;
+    if (field.allowCustom) {
+       
+        initialFormData[field.label + '_其他'] = '';
+      }
+    
     }
     
     formFields.value = processedFields;
@@ -308,8 +333,45 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   
+// ✓ START: 新增 - 建立處理過的 payload
+  // 1. 複製一份原始表單資料
+  const processedFormData = { ...formData.value };
+
+  // 2. 遍歷所有欄位定義 (formFields 是 onMounted 建立的)
+  for (const field of formFields.value) {
+    // 3. 找出那些是 "多選 + 允許自訂" (即有 "其他" 選項) 的欄位
+    if (field.selectionMode === 'multiple' && field.allowCustom) {
+      
+      const fieldLabel = field.label; // e.g., '購屋動機'
+      const otherKey = `${fieldLabel}_其他`; // e.g., '購屋動機_其他'
+      
+      const mainValue = processedFormData[fieldLabel]; // e.g., ['自住', '其他']
+      const otherValue = processedFormData[otherKey]; // e.g., '想買給小孩'
+
+      if (Array.isArray(mainValue) && mainValue.includes('其他') && otherValue) {
+        // 4. 如果使用者選了 "其他" 並且填寫了內容
+        
+        // 5. 更新主欄位的值：
+        processedFormData[fieldLabel] = mainValue
+          .filter(item => item !== '其他') // a. 移除 "其他"
+          .concat(otherValue); // b. 加上自訂的內容
+          
+      } else if (Array.isArray(mainValue)) {
+         // 6. 如果使用者沒填寫 "其他" 內容，或取消勾選 "其他"
+         //    確保只保留非 "其他" 的選項
+         processedFormData[fieldLabel] = mainValue
+          .filter(item => item !== '其他');
+      }
+      
+      // 7. 從最終送出的資料中刪除輔助用的 '_其他' 欄位
+      delete processedFormData[otherKey];
+    }
+  }
+// ✓ END: 新增
+
   try {
-    const result = await submitVipForm(props.projectId, formData.value);
+    // 8. 改為傳送處理過的 processedFormData
+    const result = await submitVipForm(props.projectId, processedFormData);
     
     if (result.status !== 'success') {
       throw new Error(result.message);

@@ -15456,11 +15456,16 @@ async function _handleFetchVipFormSettings(data, db) {
  * (✓ V4: 修正 Timestamp in array 錯誤)
  */
 async function _handleSubmitVipForm(data, db) {
-    const { projectId, formData } = data;
+// ✓ START: 修改 - 還原回直接使用 formData
+    const { projectId, formData } = data; // 1. 直接使用 formData (不再叫 rawFormData)
     if (!projectId || !formData) {
         throw new HttpsError("invalid-argument", "缺少 projectId 或 formData 參數。");
     }
 
+    // 2. 移除所有在這裡的 processedFormData 預處理邏輯
+// ✓ END: 修改
+
+// ✓ START: 修改 - 後續邏輯全部使用 formData
     const phone = formData['電話'];
     const name = formData['姓名'];
 
@@ -15475,7 +15480,7 @@ async function _handleSubmitVipForm(data, db) {
     const submissionTimestamp = Timestamp.now(); 
     
     const submissionLog = {
-        ...formData,
+        ...formData, // 4. 直接使用 formData
         submittedAt: submissionTimestamp 
     };
 
@@ -15490,14 +15495,13 @@ async function _handleSubmitVipForm(data, db) {
                     projectId: projectId,
                     phone: phone,
                     latestName: name || '未知',
-                    latestSalesName: formData['銷售人員'] || null,
+                    latestSalesName: formData['銷售人員'] || null, // 5. 直接使用 formData
                     
-                    // ✓ 檢查：新增此行
-                    latestSalesPhone: formData['銷售人員電話'] || null, 
+                    latestSalesPhone: formData['銷售人員電話'] || null, // 5. 直接使用 formData
 
                     createdAt: rootTimestamp, 
                     updatedAt: rootTimestamp, 
-                    profile: formData, 
+                    profile: formData, // 5. 直接使用 formData
                     submissions: [submissionLog] 
                 });
             } else {
@@ -15505,16 +15509,15 @@ async function _handleSubmitVipForm(data, db) {
                 console.log(`[_handleSubmitVipForm] 舊客戶: ${docId}，合併資料...`);
                 const oldData = docSnap.data();
                 
-                const updatedSubmissions = FieldValue.arrayUnion(submissionLog); 
-                const newProfile = _smartMergeProfile(oldData.profile, formData);
+                // _smartMergeProfile 函式本來就能正確合併陣列
+                const newProfile = _smartMergeProfile(oldData.profile, formData); // 6. 直接使用 formData
+
+                const updatedSubmissions = FieldValue.arrayUnion(submissionLog);
 
                 transaction.update(docRef, {
                     latestName: name || oldData.latestName,
-                    latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
-                    
-                    // ✓ 檢查：新增此行 (使用 oldData 作為備援)
-                    latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null,
-
+                    latestSalesName: formData['銷售人員'] || oldData.latestSalesName, // 6. 直接使用 formData
+                    latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null, // 6. 直接使用 formData
                     updatedAt: rootTimestamp, 
                     profile: newProfile,
                     submissions: updatedSubmissions 
@@ -15525,14 +15528,13 @@ async function _handleSubmitVipForm(data, db) {
       console.log(`[_handleSubmitVipForm] 客戶 ${docId} 資料儲存成功，觸發 LINE 通知...`);
         
         try {
-            await sendNewVipNotification(db, projectId, formData);
+            await sendNewVipNotification(db, projectId, formData); // 7. 直接使用 formData
         } catch (notifyError) {
             console.error(`[_handleSubmitVipForm] LINE 通知發送失敗 (但資料已儲存):`, notifyError.message);
         }
         
-        // 主流程成功
         return { status: "success", docId: docId };
-
+// ✓ END: 修改
     } catch (error) {
         console.error(`[_handleSubmitVipForm] Transaction 失敗 (docId: ${docId}):`, error);
         throw new HttpsError("internal", `提交資料時發生 Transaction 錯誤: ${error.message}`);

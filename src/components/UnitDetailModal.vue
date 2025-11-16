@@ -426,10 +426,12 @@ import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
+import { useToast } from 'vue-toastification'; // ✅ [打勾] 1. 導入 useToast
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const savingText = ref('儲存中，請稍候...');
+const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
 
 const isSold = computed(() => {
   return props.unitData && props.unitData.salesStatus_backend;
@@ -786,7 +788,13 @@ function handleAddToQuote() {
     area_common_sqm: props.unitData.area_common_sqm,  // 共用部分平方公尺
   };
 
-  quoteStore.addItem(unitData);
+  // ✅ [打勾] 3. 捕捉 addItem 的回傳值
+  const success = quoteStore.addItem(unitData);
+
+  // ✅ [打勾] 4. 根據回傳值顯示 toast
+  if (success) {
+    toast.success(`戶別 ${unitData.戶別} 成功加入報價`);
+  }
 }
 
 const firstPlan = computed(() => hasFloorplans.value ? props.unitData.floorplans[0] : null);

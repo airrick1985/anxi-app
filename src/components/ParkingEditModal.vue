@@ -50,7 +50,19 @@
         <p v-else class="text-center text-grey my-4">尚未選擇任何車位</p>
         <v-divider class="my-4"></v-divider>
         <v-row align="center" dense>
-          <v-col cols="8">
+          <v-col cols="12" sm="4">
+            <v-select
+              label="選擇樓層"
+              :items="floorOptions"
+              v-model="selectedFloor"
+              hide-details
+              no-data-text="無樓層可選"
+              density="compact"
+              variant="outlined"
+            ></v-select>
+          </v-col>
+          
+          <v-col cols="12" sm="5">
             <v-select
               label="選擇可新增的車位"
               :items="availableParkingOptions"
@@ -59,11 +71,15 @@
               :item-props="itemProps"
               return-object
               hide-details
-              no-data-text="沒有可選擇的車位"
+              no-data-text="請先選擇樓層"
+              :disabled="!selectedFloor"
+              density="compact"
+              variant="outlined"
             ></v-select>
           </v-col>
-          <v-col cols="4">
-            <v-btn color="primary" @click="addParking" :disabled="!newParkingSelection">新增此車位</v-btn>
+          
+          <v-col cols="12" sm="3">
+            <v-btn color="primary" @click="addParking" :disabled="!newParkingSelection" block>新增此車位</v-btn>
           </v-col>
         </v-row>
       </v-card-text>
@@ -167,6 +183,8 @@ const emit = defineEmits(['update:show', 'confirm']);
 const localParking = ref([]);
 const newParkingSelection = ref(null);
 
+const selectedFloor = ref(null);
+
 const toast = useToast(); // ✓ 實例化 toast
 
 // ✓ START: 實例化樣式 Store
@@ -182,12 +200,29 @@ const isEditorLoading = ref(false);
 const parkingCanvasDisplayMode = ref('backend'); // ✓ 新增：Canvas 顯示模式狀態
 // ✓ END: 編輯器狀態
 
+const floorOptions = computed(() => {
+  if (!props.allParkingData) return [];
+  // 提取所有唯一的 floor 值，過濾掉 null 或 undefined
+  const floors = new Set(props.allParkingData.map(p => p.floor).filter(Boolean));
+  // 排序 (使用 localeCompare 搭配 numeric: true 以正確處理 B1, B2, 1F, 2F 等)
+  return Array.from(floors).sort((a, b) => 
+    String(a).localeCompare(String(b), 'zh-Hant', { numeric: true })
+  );
+});
+
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
     // ✅ 深拷貝傳入的車位資料，確保是獨立副本
     localParking.value = JSON.parse(JSON.stringify(props.initialSelectedParking));
     newParkingSelection.value = null;
+    selectedFloor.value = null; // ✅ [打勾] 3. 新增：重置樓層選擇
   }
+});
+
+// ✅ [打勾] 4. 新增：監聽樓層變化，清空車位選擇
+watch(selectedFloor, () => {
+  newParkingSelection.value = null;
 });
 
 // 3. 動態標題
@@ -202,14 +237,25 @@ const title = computed(() => {
 
 // ✅ 更新 computed 屬性，使其讀取 Firestore 欄位
 const availableParkingOptions = computed(() => {
-  
+  // 如果沒有選擇樓層，則不顯示任何車位
+  if (!selectedFloor.value) {
+    return [];
+  }
+
   const selectedIds = new Set(localParking.value.map(p => p.spotId || p['車位編號']));
+  
   return props.allParkingData
     .filter(p => {
+      // ✅ [打勾] 關鍵過濾：只顯示符合所選樓層的車位
+      return p.floor === selectedFloor.value;
+    })
+    .filter(p => {
+      // (保持原有邏輯) 過濾掉已在 localParking 列表中的車位
       const id = p.spotId || p['車位編號'];
       return !selectedIds.has(id);
     })
     .map(p => {
+      // (保持原有邏輯) 組合顯示文字
       const spotId = p.spotId || p['車位編號'] || 'undefined';
       const priceList = p.price_list || p['表價'] || p['車位表價'] || 'undefined';
       const isSold = p.status === '已售' || p['狀態'] === '已售' || p['銷控狀態'] === '已售';

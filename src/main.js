@@ -101,7 +101,7 @@ app
   .use(VueAxios, axios)
   .use(pinia)
   .use(Toast, { // Toast 插件的註冊可以放在這裡
-    timeout: 1500, // Toast 預設超時時間
+    timeout: 5000, // Toast 預設超時時間
     position: 'top-right',
     closeOnClick: true,
     pauseOnHover: true

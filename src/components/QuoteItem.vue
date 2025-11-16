@@ -12,7 +12,7 @@
      刪除
     </v-btn>
       </div>
-   <v-list lines="one" density="compact" class="bg-transparent">
+   <v-list lines="one" class="bg-transparent">
     <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
@@ -58,9 +58,18 @@
     
     <v-list-item class="pl-0">
      <template v-if="showPackageDeal" v-slot:prepend>
-      <v-switch class="mr-4" v-model="usePackageDealModel" :disabled="!item.unitDetails.price_package_deal" label="配套" color="primary" density="compact" hide-details inset></v-switch>
-     </template>
-     <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
+    <v-switch 
+        class="mr-4" 
+        v-model="usePackageDealModel" 
+                label="配套" 
+        color="primary" 
+        
+        hide-details 
+        inset
+      ></v-switch>
+    
+    </template>
+     <v-radio-group v-model="isFirstTimeBuyerModel" inline hide-details>
       <template v-slot:label><span class="text-body-2">首購:</span></template>
       <v-radio label="是" value="是" density="compact"></v-radio>
       <v-radio label="否" value="否" density="compact"></v-radio>
@@ -111,10 +120,10 @@
 
    <div class="item-cell flex-1 highlight-dark">{{ displayHousePrice }} 萬</div>
    <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
-   <div class="item-cell flex-2"><v-btn density="compact" variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
+   <div class="item-cell flex-2"><v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    <div class="item-cell flex-1">
-    <v-radio-group v-model="isFirstTimeBuyerModel" inline density="compact" hide-details>
+    <v-radio-group v-model="isFirstTimeBuyerModel" inline hide-details>
      <v-radio label="首購" value="是"></v-radio>
      <v-radio label="非首購" value="否"></v-radio>
     </v-radio-group>
@@ -122,7 +131,15 @@
    <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
    
    <template v-if="showPackageDeal">
-    <div class="item-cell flex-1"><v-checkbox v-model="usePackageDealModel" :disabled="!item.unitDetails.price_package_deal" density="compact" hide-details></v-checkbox></div>
+    
+    <div class="item-cell flex-1">
+      <v-checkbox 
+        v-model="usePackageDealModel" 
+      
+        hide-details
+      ></v-checkbox>
+    </div>
+    
     <div class="item-cell flex-1 final-price">{{ packagePrice.toLocaleString() }} 萬</div>
    </template>
 
@@ -206,7 +223,7 @@
                       v-if="formatConditionalValue(item)" 
                       size="x-small" 
                       variant="outlined" 
-                      color="orange" 
+                      color="primary" 
                       class="ml-2 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
@@ -285,7 +302,7 @@
                       v-if="formatConditionalValue(item)" 
                       size="x-small" 
                       variant="outlined" 
-                      color="orange" 
+                      color="primary" 
                       class="ml-1 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
@@ -839,7 +856,16 @@ const formatNumber = (val, frac = 2) => {
 
 const isFirstTimeBuyerModel = computed({
   get: () => props.item.isFirstTimeBuyer,
-  set: (value) => quoteStore.updateUnitField(props.item.internalId, 'isFirstTimeBuyer', value)
+  set: (value) => {
+    // 1. 更新 "首購" 狀態 (保持不變)
+    quoteStore.updateUnitField(props.item.internalId, 'isFirstTimeBuyer', value);
+    
+ // ✅ [打勾] 移除 "非首購" 時自動取消配套的邏輯
+    /* if (value === '否') {
+      quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', false);
+    }
+    */
+  }
 });
 
 const isFirstTimeBuyerBoolean = computed(() => isFirstTimeBuyerModel.value === '是');
@@ -848,6 +874,8 @@ const usePackageDealModel = computed({
   get: () => props.item.usePackageDeal,
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
 });
+
+
 
 // ★★★ 新增：期款範本選擇邏輯 ★★★
 
@@ -1072,7 +1100,7 @@ function openParkingModal() {
 }
 
 .payment-item:hover {
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgb(240, 240, 0);
 }
 
 .payment-item:last-child {

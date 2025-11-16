@@ -138,12 +138,12 @@
                     </template>
                     </v-list-item>
                   <v-list-item v-if="filteredVipGuests.length === 0">
-                    <v-list-item-title class="text-center text-grey">找不到客戶</v-list-item-title>
+                    <v-list-item-title class="text-center text-grey">今日無新增貴賓資料，請使用搜尋過往資料</v-list-item-title>
                   </v-list-item>
                  </v-list>
 
                   <v-card-text>
-                 <p class="mb-4">若無貴賓資料，請選擇「無貴賓資料」</p> <v-btn
+                 <p class="mb-4">若查無貴賓資料，請使用「新增客戶資料」</p> <v-btn
                     color="#005AB6"
                     class="mb-6"
                     block
@@ -151,7 +151,7 @@
                     
                     @click="confirmNewCustomerDialog = true" prepend-icon="mdi-account-plus-outline"
                  >
-                    無貴賓資料 </v-btn>
+                    新增客戶資料 </v-btn>
 
                  
               </v-card-text>
@@ -166,7 +166,7 @@
           <v-card>
             <v-card-title>確認</v-card-title>
             <v-card-text>
-              是否重新建立客戶資料？
+              是否新增客戶資料？
             </v-card-text>
             <v-card-actions>
               <v-spacer></v-spacer>
@@ -306,7 +306,7 @@
                   :field-config="systemSettings.fields.occupation"
                   v-model="formData[systemSettings.fields.occupation.label]"
                   
-                  hint="選擇或直接輸入您的職業" ></dynamic-form-field>
+                  hint="可選擇其他輸入您的職業" ></dynamic-form-field>
 
                   <v-text-field
                   v-model="formData['任職公司']"
@@ -372,7 +372,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, h, nextTick } from 'vue'; 
+import { ref, computed, onMounted, watch, h, nextTick, Fragment } from 'vue'; 
 import { useRoute, useRouter } from 'vue-router'; 
 import {
   verifySalesPerson,
@@ -384,7 +384,7 @@ import {
 } from '@/api';
 import QrCode from 'qrcode.vue';
 import twCitiesData from '@/assets/TwCities.json'; 
-import { VCombobox, VSelect } from 'vuetify/components'; 
+import { VCombobox, VSelect, VTextField } from 'vuetify/components'; 
 
 const props = defineProps({
   projectId: {
@@ -400,17 +400,148 @@ const props = defineProps({
 const router = useRouter();
 const route = useRoute();
 
-// --- 動態表單元件 (保持不變) ---
+// --- ✓ START: 動態表單元件 (已修正 BUG 1 & 2) ---
 const DynamicFormField = {
-  props: ['fieldConfig', 'modelValue'],
+  props: ['fieldConfig', 'modelValue', 'hint'],
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    const value = computed({
-      get: () => props.modelValue,
-      set: (val) => emit('update:modelValue', val)
+    
+    // 內部狀態
+    const internalSelectValue = ref(props.fieldConfig.selectionMode === 'multiple' ? [] : null);
+    const customValue = ref('');
+    // ✓ 檢查：使用 .value 確保響應性
+    const options = computed(() => props.fieldConfig.options || []);
+
+    // VSelect 的選項
+    const computedOptions = computed(() => {
+      // ✓ 檢查：使用 .value
+      const optionsList = options.value || []; 
+      if (props.fieldConfig.allowCustom) {
+        return [...optionsList, '其他'];
+      }
+      return optionsList;
     });
 
-    if (!props.fieldConfig || !props.fieldConfig.options || props.fieldConfig.options.length === 0) {
+    // 是否顯示 "其他" 輸入框
+    const showCustomField = computed(() => {
+      if (!props.fieldConfig.allowCustom) return false;
+      if (props.fieldConfig.selectionMode === 'multiple') {
+        return Array.isArray(internalSelectValue.value) && internalSelectValue.value.includes('其他');
+      } else {
+        return internalSelectValue.value === '其他';
+      }
+    });
+
+    // 監聽來自父層的 v-model 變更 (例如載入資料)
+    // ✓ 檢查：此 watch 僅更新內部 state，不 emit，避免循環
+    watch(() => props.modelValue, (newModelValue) => {
+      // ✓ 檢查：使用 .value
+      const currentOptions = options.value || []; 
+      
+      if (!props.fieldConfig.allowCustom) {
+        internalSelectValue.value = newModelValue;
+        return;
+      }
+
+      if (props.fieldConfig.selectionMode === 'multiple') {
+        const modelArray = Array.isArray(newModelValue) ? newModelValue : [];
+        const predefined = modelArray.filter(v => currentOptions.includes(v));
+        // ✓ 檢查：修復 BUG 2 - 允許空字串作為自訂值
+        const custom = modelArray.filter(v => v !== null && v !== undefined && !currentOptions.includes(v));
+        
+        const newSelectValue = [...predefined];
+        let newCustomValue = '';
+        if (custom.length > 0) {
+          newSelectValue.push('其他');
+          // ✓ 檢查：修復 BUG 2 - 即使 custom[0] 是 '' (空字串)，也應被設定
+          newCustomValue = custom[0];
+        }
+        
+        // 只有在內部狀態與計算結果不同時才更新，避免循環
+        if (JSON.stringify(internalSelectValue.value) !== JSON.stringify(newSelectValue)) {
+            internalSelectValue.value = newSelectValue;
+        }
+        if (customValue.value !== newCustomValue) {
+            customValue.value = newCustomValue;
+        }
+        
+      } else { // Single selection
+        if (newModelValue && !currentOptions.includes(newModelValue)) {
+          internalSelectValue.value = '其他';
+          customValue.value = newModelValue;
+        } else {
+          // ✓ 檢查：修復 BUG 1 
+          // 當 newModelValue 為 null (清空輸入框觸發) 且 VSelect 仍在 "其他" 時
+          if (newModelValue === null && internalSelectValue.value === '其他') {
+            // 保持 VSelect 在 "其他" 狀態，只清空 customValue
+            customValue.value = '';
+          } else {
+            // 否則，正常同步
+            internalSelectValue.value = newModelValue;
+            customValue.value = '';
+          }
+        }
+      }
+    }, { immediate: true });
+
+    // 組合最終值並 emit 給父層
+    const emitUpdate = () => {
+      if (!props.fieldConfig.allowCustom) {
+         emit('update:modelValue', internalSelectValue.value);
+         return;
+      }
+      
+      if (props.fieldConfig.selectionMode === 'multiple') {
+        const selectArray = Array.isArray(internalSelectValue.value) ? internalSelectValue.value : [];
+        const baseValues = selectArray.filter(v => v !== '其他');
+        const custom = customValue.value || '';
+        
+        // ✓ 檢查：修復 BUG 2
+        if (showCustomField.value) {
+            // 如果 "其他" 被選中，則發送 [選項..., 自訂值]
+            // 即使自訂值是 '' (空字串)，也要發送 [''] 或 ['選項A', '']
+            emit('update:modelValue', [...baseValues, custom]);
+        } else {
+            // "其他" 未被選中，只發送 baseValues
+            emit('update:modelValue', baseValues);
+        }
+
+      } else { // Single selection
+        if (internalSelectValue.value === '其他') {
+          emit('update:modelValue', customValue.value || null);
+        } else {
+          emit('update:modelValue', internalSelectValue.value);
+        }
+      }
+    };
+    
+    // ✓ 檢查：新增兩個 watch 來監聽內部狀態變化並觸發 emit
+    // 監聽 VSelect 的變化
+    watch(internalSelectValue, (newSelectVal, oldSelectVal) => {
+        // 如果 "其他" 被取消選取，則清空自訂值
+        if (props.fieldConfig.selectionMode === 'multiple') {
+            if (Array.isArray(oldSelectVal) && oldSelectVal.includes('其他') && (!Array.isArray(newSelectVal) || !newSelectVal.includes('其他'))) {
+                customValue.value = '';
+            }
+        } else { // Single
+            if (oldSelectVal === '其他' && newSelectVal !== '其他') {
+                customValue.value = '';
+            }
+        }
+        emitUpdate(); // VSelect 變更時，觸發 emit
+    });
+    
+    // 監聽 VTextField (customValue) 的變化
+    watch(customValue, () => {
+        // 只有在 "其他" 模式啟用時，VTextField 的變更才需要觸發 emit
+        if (showCustomField.value) {
+            emitUpdate();
+        }
+    });
+    
+    // --- Render Function (使用事件處理器) ---
+    // ✓ 檢查：允許 options 為空陣列
+    if (!props.fieldConfig || !props.fieldConfig.options) { 
       return () => null; 
     }
 
@@ -418,52 +549,94 @@ const DynamicFormField = {
       required: (v) => !!v || '此欄位為必填',
       requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
     };
-    const fieldRules = props.fieldConfig.isRequired 
-      ? (props.fieldConfig.selectionMode === 'multiple' ? [rules.requiredArray] : [rules.required]) 
-      : [];
+    
+    const isRequired = props.fieldConfig.isRequired;
+    const isMultiple = props.fieldConfig.selectionMode === 'multiple';
+    
+    // 驗證規則
+    const fieldRules = computed(() => {
+        if (!isRequired) return [];
+        
+        if (isMultiple) {
+            const selectedCount = Array.isArray(internalSelectValue.value) ? internalSelectValue.value.filter(v => v !== '其他').length : 0;
+            if (showCustomField.value) {
+                return (selectedCount > 0 || !!customValue.value) ? true : '此欄位為必填';
+            }
+            return (selectedCount > 0) ? true : '此欄位為必填';
+        } else {
+            if (showCustomField.value) {
+                return !!customValue.value ? true : '此欄位為必填';
+            }
+            return !!internalSelectValue.value ? true : '此欄位為必填';
+        }
+    });
 
-return () => {
+    return () => {
       const commonProps = {
-        modelValue: value.value, 
-        'onUpdate:modelValue': (val) => value.value = val, 
         label: props.fieldConfig.label,
-        items: props.fieldConfig.options,
+        items: computedOptions.value, 
         variant: 'outlined',
-        rules: fieldRules,
+        rules: isRequired ? [fieldRules.value] : [],
         class: 'mb-2',
-        autocomplete: 'off' 
+        autocomplete: 'off',
+        hint: props.hint || '',
+        persistentHint: !!props.hint
       };
 
+      // "其他" 輸入框
+      const vTextField = h(VTextField, { 
+        modelValue: customValue.value,
+        // ✓ 檢查：onUpdate:modelValue 只更新內部 state，不 emit
+        'onUpdate:modelValue': (val) => {
+          customValue.value = val;
+        },
+        label: '請輸入其他項目',
+        variant: 'outlined',
+        class: 'mb-2 mt-n1',
+        autocomplete: 'off',
+        rules: (isRequired && showCustomField.value) ? [rules.required] : [], 
+      });
+
+      // 單選模式
       if (props.fieldConfig.selectionMode === 'single') {
+        const vSelectProps = {
+          ...commonProps,
+          modelValue: internalSelectValue.value,
+          // ✓ 檢查：onUpdate:modelValue 只更新內部 state，不 emit
+          'onUpdate:modelValue': (val) => {
+            internalSelectValue.value = val;
+          },
+        };
+        
         if (props.fieldConfig.allowCustom) {
-          const comboboxProps = {
-            ...commonProps,
-            // ✓ 檢查：優先使用 props.hint，若無則使用預設值
-            hint: props.hint || '選擇或輸入', 
-            persistentHint: true
-          };
-          return h(VCombobox, comboboxProps);
+          return h(Fragment, [
+            h(VSelect, vSelectProps),
+            showCustomField.value ? vTextField : null,
+          ]);
         } else {
-          return h(VSelect, commonProps);
+          return h(VSelect, vSelectProps);
         }
       }
       
+      // 多選模式
       if (props.fieldConfig.selectionMode === 'multiple') {
         const multiProps = {
           ...commonProps,
+          modelValue: internalSelectValue.value,
+          // ✓ 檢查：onUpdate:modelValue 只更新內部 state，不 emit
+          'onUpdate:modelValue': (val) => {
+            internalSelectValue.value = val;
+          },
           multiple: true,
           chips: true,
           closableChips: true
         };
         
         if (props.fieldConfig.allowCustom) {
-          const comboboxMultiProps = {
-            ...multiProps,
-            // ✓ 檢查：這裡也同步修改
-            hint: props.hint || '選擇或輸入 (可多選)',
-            persistentHint: true
-          };
-          return h(VCombobox, comboboxMultiProps);
+           return h(Fragment, [
+             h(VSelect, multiProps),
+             showCustomField.value ? vTextField : null,
+           ]);
         } else {
           return h(VSelect, multiProps);
         }
@@ -472,7 +645,7 @@ return () => {
     }
   }
 };
-// --- END 動態表單元件 ---
+// --- ✓ END: 動態表單元件 (已修正) ---
 
 
 // --- State (保持不變) ---

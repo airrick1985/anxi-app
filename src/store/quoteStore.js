@@ -81,14 +81,18 @@ export const useQuoteStore = defineStore('quote', () => {
   });
 
   // --- Actions ---
- function addItem(unitData) {
+function addItem(unitData) {
+    // ✅ [打勾] 移除(註解)重複檢查邏輯
+    /*
     const existingItem = items.value.find(item => item.unitId === unitData['戶別']);
     if (existingItem) {
       toast.warning(`戶別 ${unitData['戶別']} 已在報價單中`);
-      return;
+      return false; 
     }
+    */
     
-    const uniqueId = Date.now().toString();
+    // 確保 internalId 絕對唯一 (因為現在允許多個相同 unitId)
+    const uniqueId = Date.now().toString() + Math.random().toString(36).substring(2, 5);
     
     items.value.push({
       internalId: uniqueId,
@@ -102,6 +106,8 @@ export const useQuoteStore = defineStore('quote', () => {
       // ✅ [打勾] 新增：初始化期款計算結果
       calculatedPayments: []
     });
+
+    return true; // 保持回傳 true，以便 UnitDetailModal 顯示 toast
      }
 
   function removeItem(internalId) {
