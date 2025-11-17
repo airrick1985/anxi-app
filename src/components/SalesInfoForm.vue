@@ -46,7 +46,7 @@
             ></v-combobox>
             <div class="d-flex align-center mb-4">
               <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined"  hide-details></v-text-field>
-              <v-btn class="ml-2" variant="outlined" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
+              <v-btn class="ml-2" variant="plain" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
             </div>
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>

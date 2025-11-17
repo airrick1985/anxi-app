@@ -4389,7 +4389,9 @@ export const listenToSalesPersonnel = (projectId, onDataChange) => {
   const q = query(
     collection(db, "salesPersonnel"),
     where("projectId", "==", projectId),
-    orderBy("name", "asc") // 依姓名筆劃排序
+    // ✅ [修改] 改為先依 order 排序，再依 name 排序
+    orderBy("order", "asc"), 
+    orderBy("name", "asc")
   );
 
   const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -4400,6 +4402,24 @@ export const listenToSalesPersonnel = (projectId, onDataChange) => {
   });
 
   return unsubscribe;
+};
+
+// ✅ [新增] 在文件末尾或其他 API 附近加入
+/**
+ * [API] 呼叫後端，批次更新銷售人員的排序
+ * @param {string} projectId 
+ * @param {Array<{id: string, order: number}>} updates 
+ * @returns {Promise<object>}
+ */
+export const updateSalesPersonnelOrders = async (projectId, updates) => {
+  try {
+    const updaterFunction = httpsCallable(functions, 'updateSalesPersonnelOrders');
+    const result = await updaterFunction({ projectId, updates });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in updateSalesPersonnelOrders:", error);
+    throw new Error(error.message);
+  }
 };
 
 /**

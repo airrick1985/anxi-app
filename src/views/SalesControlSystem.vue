@@ -2,7 +2,7 @@
   <div class="sales-control-page">
     
     <div class="toolbar d-none d-md-flex">
-      <span class="toolbar-title d-none d-sm-inline">{{ pageTitle }} - {{ projectName }}</span>
+      <span class="toolbar-title d-none d-sm-inline">{{ projectName }}-{{ pageTitle }}</span>
        <v-btn-toggle
         v-model="displayType"
         color="primary"
@@ -841,7 +841,7 @@ const activitySlideEmbedUrl = computed(() => {
 // --- Computed Properties ---
 const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
-const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統') + ` (${displayType.value})`);
+const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => project.value.name);
 

@@ -206,7 +206,7 @@
         <div v-if="packagePaymentCalculation.hasData" class="flex-1">
           <v-card flat border>
             <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
-              <v-icon start>mdi-package-variant</v-icon>
+              <v-icon start>mdi-tools</v-icon>
               配套期款 ({{ packagePaymentCalculation.templateName }})
             </v-card-title>
             <v-card-text class="pa-2">
@@ -1100,7 +1100,7 @@ function openParkingModal() {
 }
 
 .payment-item:hover {
-  background-color: rgb(240, 240, 0);
+  background-color: yellow;
 }
 
 .payment-item:last-child {

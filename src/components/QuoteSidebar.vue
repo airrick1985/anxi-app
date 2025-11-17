@@ -12,7 +12,7 @@
     <template v-if="quoteStore">
       <!-- 抽屜的標題 -->
       <v-toolbar color="primary" density="compact">
-        <v-toolbar-title class="text-h6">報價單</v-toolbar-title>
+        <v-toolbar-title class="text-h6">報價列表</v-toolbar-title>
         <v-spacer></v-spacer>
         <v-btn icon="mdi-close" @click="$emit('update:isOpen', false)"></v-btn>
       </v-toolbar>
@@ -20,7 +20,7 @@
       <!-- 當報價單為空時的提示 -->
       <div v-if="quoteStore.items && quoteStore.items.length === 0" class="empty-cart-card text-center pa-10">
         <v-icon size="80" color="grey-lighten-1">mdi-home-off</v-icon>
-        <p class="text-h6 text-grey-darken-1 mt-4">您的報價單是空的</p>
+        <p class="text-h6 text-grey-darken-1 mt-4">您的報價列表是空的</p>
         <p class="text-body-1 text-grey">請從銷控表加入戶別。</p>
       </div>
 
@@ -38,10 +38,10 @@
           </v-list-item-subtitle>
           <template v-slot:append>
             <v-btn 
-              icon="mdi-delete-outline" 
+              icon="mdi-delete-forever" 
               variant="text" 
-              color="grey" 
-              size="small"
+              color="red" 
+              size="large"
               @click="handleRemoveItem(item.unitId)"
             ></v-btn>
           </template>
@@ -51,7 +51,7 @@
       <!-- 固定的底部操作欄 -->
       <div class="summary-footer" v-if="quoteStore.items && quoteStore.items.length > 0">
          <div class="summary-text d-flex justify-space-between align-center">
-          <span>已選擇 <strong class="highlight-text">{{ quoteStore.itemCount }}</strong> / {{ quoteStore.maxItems }} 戶</span>
+          <span>已選擇 <strong class="highlight-text">{{ quoteStore.itemCount }}</strong> 戶</span>
           <v-btn color="error" variant="text" size="small" @click="handleClearQuote">清空全部</v-btn>
         </div>
         <v-btn block color="success" size="large" class="mt-4" @click="goToQuoteSettings" :disabled="quoteStore.itemCount === 0">

@@ -21,7 +21,7 @@
             返回銷控系統
           </v-btn>
          
-        <v-icon icon="mdi-car-brake-parking"></v-icon> &nbsp;
+        <v-icon icon="mdi-car-cog"></v-icon> &nbsp;
         <span class="font-weight-bold text-primary">{{ projectName }}</span>
         <span class="mx-2 d-none d-sm-inline">|</span>
         <span class="d-none d-sm-inline">車位銷控管理</span>

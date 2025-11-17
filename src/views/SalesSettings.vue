@@ -53,7 +53,7 @@
       </v-tab>
       <v-tab value="svgs">
         <v-icon start>mdi-vector-square</v-icon>
-        SVG 圖片管理
+        測量圖片管理
       </v-tab>
     </v-tabs>
 
@@ -211,43 +211,56 @@
           <v-card-title class="text-h5 text-blue-darken-2">
             銷售人員管理
           </v-card-title>
-          <v-card-subtitle>管理此建案的銷售人員資料</v-card-subtitle>
+          <v-card-subtitle>管理此建案的銷售人員資料 (可拖曳排序)</v-card-subtitle>
           <v-divider class="my-4"></v-divider>
           
           <v-skeleton-loader v-if="personnelLoading" type="list-item-two-line@5"></v-skeleton-loader>
 
           <div v-if="!personnelLoading">
+            
             <v-list lines="two">
-              <v-list-item
-                v-for="person in personnelList"
-                :key="person.id"
-                class="mb-2"
-                elevation="1"
-                border
+              <draggable 
+                v-model="personnelList" 
+                item-key="id" 
+                handle=".drag-handle"
+                @end="onPersonnelDragEnd"
               >
-                <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
-                <v-list-item-subtitle>
-                  {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
-                </v-list-item-subtitle>
-
-                <div class="py-1">
-                  <v-chip
-                    v-for="pos in person.positions"
-                    :key="pos"
-                    size="small"
-                    class="mr-2"
-                    label
+                <template #item="{ element: person }">
+                  <v-list-item
+                    class="mb-2"
+                    elevation="1"
+                    border
                   >
-                    {{ pos }}
-                  </v-chip>
-                </div>
-                
-                <template v-slot:append>
-                  <v-btn icon="mdi-pencil" variant="text" size="small" @click="openPersonnelDialog(person)"></v-btn>
-                  <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click="confirmPersonnelDelete(person)"></v-btn>
+                    <template v-slot:prepend>
+                      <v-icon class="drag-handle cursor-move mr-4 text-grey">mdi-drag</v-icon>
+                      </template>
+
+                    <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
+                    </v-list-item-subtitle>
+
+                    <div class="py-1">
+                      <v-chip
+                        v-for="pos in person.positions"
+                        :key="pos"
+                        size="small"
+                        class="mr-2"
+                        label
+                      >
+                        {{ pos }}
+                      </v-chip>
+                    </div>
+                    
+                    <template v-slot:append>
+                      <v-btn icon="mdi-pencil" variant="text" size="small" @click="openPersonnelDialog(person)"></v-btn>
+                      <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click="confirmPersonnelDelete(person)"></v-btn>
+                    </template>
+                  </v-list-item>
                 </template>
-              </v-list-item>
+              </draggable>
             </v-list>
+
              <v-alert
               v-if="personnelList.length === 0"
               type="info"
@@ -464,9 +477,9 @@
         <v-card class="pa-4" elevation="2">
           <v-card-title class="text-h5 text-deep-purple">
             <v-icon start>mdi-vector-square</v-icon>
-            SVG 圖片管理 (戶別平面圖)
+            測量圖片管理 (戶別平面圖)
           </v-card-title>
-          <v-card-subtitle>上傳並管理用於銷控系統的 SVG 向量圖檔</v-card-subtitle>
+          <v-card-subtitle>上傳並管理用於銷控系統的 SVG 向量圖檔，至少需要有一處標記500公分以上</v-card-subtitle>
    
           <v-divider class="my-4"></v-divider>
           
@@ -887,6 +900,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, reactive, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import draggable from 'vuedraggable';
 import { useToast } from 'vue-toastification';
 import {
   getProjectSettings, 
@@ -909,6 +923,7 @@ import {
   setSalesPersonnel,
   updateSalesPersonnel,
   deleteSalesPersonnel,
+  updateSalesPersonnelOrders,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 import PaymentTermsSettings from './PaymentTermsSettings.vue'; 
@@ -1374,7 +1389,6 @@ const closePersonnelDialog = () => {
 const savePersonnel = async (data) => {
   isSavingPersonnel.value = true;
   try {
-    // 從表單資料中移除 id，因為我們不再使用自動產生的 ID
     const { id, ...payload } = data; 
     payload.projectId = projectId.value;
 
@@ -1384,19 +1398,20 @@ const savePersonnel = async (data) => {
       return;
     }
     
-    // ✅ 核心修改：使用「姓名_電話」作為文件 ID
     const docId = `${payload.name}_${payload.phone}`;
 
     if (id) { // 編輯模式
-      // 如果是編輯，且文件ID的組合方式改變了 (例如改了姓名或電話)，
-      // 我們需要刪除舊文件並建立新文件。
-      // 但為了簡化，我們先假設編輯時不允許修改姓名和電話，或接受文件 ID 改變。
-      // 最安全的作法是統一使用 setSalesPersonnel。
-      await setSalesPersonnel(id, payload); // 這裡的 id 是舊的 docId
+      await setSalesPersonnel(id, payload);
       toast.success(`「${payload.name}」的資料已更新`);
     } else { // 新增模式
-      // 確保 createdAt 只在新增時寫入
+      // ✅ [修改] 計算預設 order (放在最後)
+      const maxOrder = personnelList.value.length > 0 
+        ? Math.max(...personnelList.value.map(p => p.order || 0)) 
+        : 0;
+      
+      payload.order = maxOrder + 10; // 間隔 10，預留空間
       payload.createdAt = serverTimestamp();
+      
       await setSalesPersonnel(docId, payload);
       toast.success(`已新增人員：「${payload.name}」`);
     }
@@ -1406,6 +1421,27 @@ const savePersonnel = async (data) => {
     toast.error(`儲存失敗: ${error.message}`);
   } finally {
     isSavingPersonnel.value = false;
+  }
+};
+
+
+// --- ✅ [新增] 處理拖曳結束的函式 ---
+const onPersonnelDragEnd = async () => {
+  // 1. 計算新的排序值 (使用 index * 10 重新編號)
+  const updates = personnelList.value.map((person, index) => ({
+    id: person.id,
+    order: (index + 1) * 10
+  }));
+
+  // 2. 呼叫 API 進行批次更新
+  try {
+    await updateSalesPersonnelOrders(projectId.value, updates);
+    // 可以選擇顯示成功提示，或是保持靜默以提供流暢體驗
+    // toast.success('排序已更新');
+  } catch (error) {
+    toast.error(`排序更新失敗: ${error.message}`);
+    // 失敗時建議重新載入列表以恢復正確順序
+    setupPersonnelListener();
   }
 };
 
@@ -1707,3 +1743,15 @@ onUnmounted(() => {
 });
 
 </script>
+
+<style scoped>
+/* ... (其他樣式) */
+
+.cursor-move {
+  cursor: move;
+  cursor: grab;
+}
+.cursor-move:active {
+  cursor: grabbing;
+}
+</style>

@@ -4,12 +4,12 @@
       <v-card-title class="d-flex justify-space-between align-center">
         <span>{{ title }}</span>
         <v-btn 
-          prepend-icon="mdi-presentation" 
+          prepend-icon="mdi-car-side" 
           variant="tonal" 
           color="info"
           @click="openParkingEditor"
         >
-          車位總表
+          車位銷控
         </v-btn>
       </v-card-title>
       <v-card-text>
@@ -78,8 +78,8 @@
             ></v-select>
           </v-col>
           
-          <v-col cols="12" sm="3">
-            <v-btn color="primary" @click="addParking" :disabled="!newParkingSelection" block>新增此車位</v-btn>
+          <v-col cols="12" sm="1">
+            <v-btn variant="text" color="primary" @click="addParking" :disabled="!newParkingSelection" block><v-icon>mdi-plus-circle-outline</v-icon></v-btn>
           </v-col>
         </v-row>
       </v-card-text>

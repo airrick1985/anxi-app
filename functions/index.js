@@ -16231,3 +16231,52 @@ async function sendNewVipNotification(db, projectId, formData) {
     await lineClient.multicast(lineIds, [{ type: 'text', text: messageText }]);
     console.log(`[${functionName}] 新貴賓通知發送成功。`);
 }
+
+
+/**
+ * [新增] 批次更新銷售人員的排序 (order)
+ * @param {string} projectId - 建案 ID (用於驗證)
+ * @param {Array<{id: string, order: number}>} updates - 包含文件 ID 和新 order 值的陣列
+ * @returns {Promise<object>} - { status }
+ */
+exports.updateSalesPersonnelOrders = onCall(async (request) => {
+  const { projectId, updates } = request.data;
+  const functionName = `updateSalesPersonnelOrders (Project: ${projectId})`;
+  console.log(`[${functionName}] Received request to update order for ${updates?.length || 0} personnel.`);
+
+  // 驗證
+  if (!projectId || !Array.isArray(updates) || updates.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的更新資料陣列。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const personnelRef = db.collection("salesPersonnel");
+  const batch = db.batch();
+  const now = FieldValue.serverTimestamp();
+
+  try {
+    let operationCount = 0;
+    for (const update of updates) {
+      if (!update.id || typeof update.order !== 'number') continue;
+      
+      const docRef = personnelRef.doc(update.id);
+      batch.update(docRef, {
+          order: update.order,
+          updatedAt: now
+      });
+      operationCount++;
+    }
+
+    if (operationCount === 0) {
+        return { status: "success", message: "沒有有效的排序更新。" };
+    }
+
+    await batch.commit();
+    console.log(`[${functionName}] Successfully updated order for ${operationCount} personnel.`);
+    return { status: "success", message: `成功更新 ${operationCount} 位人員的排序。` };
+
+  } catch (error) {
+    console.error(`[${functionName}] CRITICAL ERROR:`, error);
+    throw new HttpsError("internal", `批次更新排序時發生錯誤: ${error.message}`);
+  }
+});

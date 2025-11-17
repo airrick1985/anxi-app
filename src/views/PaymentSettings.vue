@@ -77,8 +77,8 @@
 
                     <div class="d-flex justify-space-between align-center mb-2">
                         <span class="text-subtitle-1">持有車位</span>
-                        <v-btn size="small" color="primary" @click="openParkingEditModal">
-                            <v-icon left>mdi-plus</v-icon>
+                        <v-btn variant="plain" size="small" color="primary" @click="openParkingEditModal">
+                            <v-icon left>mdi-lead-pencil</v-icon>
                         </v-btn>
                     </div>
 <v-list lines="two" dense v-if="ownedParkingSpots && ownedParkingSpots.length > 0" class="pa-0">
@@ -388,15 +388,16 @@
 </v-card-actions>
         </v-card>
 
-        <ParkingEditModal
+            <ParkingEditModal
             :show="parkingEditDialog"
             @update:show="parkingEditDialog = $event"
             :all-parking-data="allData['車位'] || []"
             :initial-selected-parking="ownedParkingSpots"
             @confirm="updateSelectedParking"
             @request-open-slide="$emit('request-open-slide')"
-        />
-    </v-dialog>
+            
+            :project-id="props.projectId" />
+            </v-dialog>
 
     <v-dialog v-model="showGeneratedLinkDialog" max-width="500px" persistent>
             <v-card>
@@ -445,11 +446,13 @@ import { generatePaymentSheet, exportSheetToPdf } from '@/api.js';
 const { mobile: isMobile } = useDisplay();
 const props = defineProps({
     show: Boolean,
-    unitData: { type: Object, default: () => null }, //
+    unitData: { type: Object, default: () => null },
     projectName: { type: String, required: true },
-    allData: { type: Object, required: true }, //
-    // ✓ 新增：接收 SalesControlSystem 傳來的 contractTypes 陣列
-    contractTypes: { type: Array, default: () => [] }
+    allData: { type: Object, required: true },
+    contractTypes: { type: Array, default: () => [] },
+    
+    // ✅ [打勾] 新增此行
+    projectId: { type: String, required: true } 
 });
 const emit = defineEmits(['update:show', 'request-open-slide', 'parking-updated']);
 // --- 主要表單狀態 ---

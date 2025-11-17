@@ -242,7 +242,7 @@
               {{ unitData.unitId }} 資料夾
             </v-btn>
             <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
-                <v-icon left>mdi-plus-box-outline</v-icon>
+                <v-icon left>mdi-home-plus-outline</v-icon>
                 {{ addToQuoteButtonText }}
             </v-btn>
             <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
@@ -457,14 +457,26 @@ async function handleConfirmCancelPurchase() {
   try {
     console.log('🔍 [UnitDetailModal] 準備執行退戶:', {
       projectName: props.projectName,
-      projectId: projectId.value,
+      
+      // 🔴 錯誤 (原本的寫法)：projectId 變數未定義
+      // projectId: projectId.value, 
+      
+      // ✅ 正確修正：從 props 讀取
+      projectId: props.projectId, 
+      
       unitId: props.unitData.unitId,
       operatorName: userStore.user.name
     });
     
     const result = await cancelPurchase(
       props.projectName,
-      projectId.value, // ✅ 新增：傳遞正確的 projectId
+      
+      // 🔴 錯誤 (原本的寫法)
+      // projectId.value, 
+      
+      // ✅ 正確修正：
+      props.projectId, 
+      
       props.unitData.unitId,
       userStore.user.name
     );
