@@ -79,7 +79,7 @@
           </v-col>
           
           <v-col cols="12" sm="1">
-            <v-btn variant="text" color="primary" @click="addParking" :disabled="!newParkingSelection" block><v-icon>mdi-plus-circle-outline</v-icon></v-btn>
+            <v-btn variant="text" size="big" color="primary" @click="addParking" :disabled="!newParkingSelection" block><v-icon>mdi-plus-circle-outline</v-icon>加入</v-btn>
           </v-col>
         </v-row>
       </v-card-text>

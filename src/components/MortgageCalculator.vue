@@ -2,7 +2,7 @@
   <v-card>
     <v-card-title class="d-flex align-center">
       <v-icon left class="mr-2">mdi-calculator-variant-outline</v-icon>
-      <span class="headline">房貸試算機</span>
+      <span class="headline">房貸試算</span>
       <v-spacer></v-spacer>
       <v-btn icon @click="$emit('close')" variant="text">
         <v-icon>mdi-close</v-icon>
@@ -66,7 +66,7 @@
     <v-card-actions class="px-4 pb-4">
       <v-btn @click="clearForm" color="grey">清除</v-btn>
       <v-spacer></v-spacer>
-      <v-btn @click="calculate" color="primary" large>開始計算</v-btn>
+      <v-btn variant="tonal" @click="calculate" color="primary" large>開始計算</v-btn>
     </v-card-actions>
 
     <div v-if="result.totalPayment > 0">
@@ -74,7 +74,7 @@
       <v-card-text>
         <h3 class="text-h6 mb-4 text-center">試算結果</h3>
         <v-row>
-          <v-col cols="12" sm="4" class="text-center">
+          <v-col cols="12" sm="12" class="text-center">
             <div class="text-grey">
               {{ result.firstPhaseLabel }}
             </div>
@@ -88,6 +88,7 @@
               {{ formatCurrency(result.secondPhasePayment) }} 元
             </div>
           </v-col>
+          <!-- 取消顯示 
            <v-col cols="12" sm="4" class="text-center">
             <div class="text-grey">總利息支出</div>
             <div class="text-h5 font-weight-bold">
@@ -100,7 +101,8 @@
               {{ formatCurrency(result.totalPayment) }} 元
             </div>
           </v-col>
-        </v-row>
+          -->
+        </v-row> 
         <div class="text-center mt-4">
             <v-btn color="secondary" @click="showSchedule = !showSchedule">
                 {{ showSchedule ? '隱藏' : '查看' }}詳細還款計畫

@@ -121,6 +121,8 @@
         <span>上傳戶別資料EXCEL</span>
       </v-tooltip>
 
+
+
       <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && project.paymentScheduleFolderUrl">
         <template v-slot:activator="{ props }">
           <v-btn
@@ -137,6 +139,7 @@
         <span>付款表資料夾</span>
       </v-tooltip>
 
+     
       <v-tooltip location="bottom">
         <template v-slot:activator="{ props }">
           <v-btn
@@ -169,6 +172,21 @@
     </div>
 
    <div class="grid-wrapper">
+
+    <SalesListView
+        v-if="isListView"
+        :items="filteredHouseholds" 
+        :columns="exportableColumns"
+        :loading="loading"
+        :status-parameters="salesParameters"
+        :personnel-list="salesPersonnel"
+        :contract-types="project.contractTypes || []"
+        @update-unit="handleUnitListUpdate"
+        class="w-100 h-100"
+      />
+
+
+
     <div class="layout-grid">
       <div class="header-top-left"></div>
       <div ref="headerTopRef" class="header-top-container">
@@ -604,12 +622,12 @@
 
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'; //  nextTick 可能需要
+import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; //  1. 匯入 Composable
 
 //  新增：引入上傳 API 和 toast
-import { uploadHouseholds, getFloorPlansAPI } from '@/api'; // ✅ NEW: 匯入 getFloorPlansAPI
+import { uploadHouseholds, getFloorPlansAPI,updateSalesData } from '@/api'; // ✅ NEW: 匯入 getFloorPlansAPI
 import { useToast } from 'vue-toastification';
 
 // ===============================================
@@ -630,6 +648,9 @@ import { useTextStyleStore } from '@/store/textStyleStore'; // 導入樣式 Stor
 import { useStatusColorStore } from '@/store/statusColorStore'; // 導入顏色 Store
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; // 導入新圖標
 
+const SalesListView = defineAsyncComponent(() => import('@/components/SalesListView.vue'));
+
+const isListView = ref(false);
 
 //  新增：定義 EXCEL 匯出/上傳的欄位
 const COLUMN_DEFINITIONS = [
@@ -1046,6 +1067,35 @@ const handleParkingCanvasSpotsChanged = () => {
   toast.info('偵測到畫布變更 (尚未自動保存)', { timeout: 2000 });
 };
 
+
+const handleUnitListUpdate = async (payload, onSuccess, onError) => {
+  const { unitId, data } = payload;
+  
+  console.log(`[ListUpdate] 更新 ${unitId}:`, data);
+  
+  try {
+    const apiPayload = {
+        projectName: projectName.value,
+        projectId: projectId.value,
+        unitId: unitId,
+        data: data
+    };
+    
+    const result = await updateSalesData(apiPayload);
+    
+    if (result.status === 'success') {
+      // 成功：觸發 toast 提示 (可選，若覺得太頻繁可拿掉)
+      toast.success(`${unitId} 資料已更新`, { timeout: 1500 });
+      if (onSuccess) onSuccess();
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    console.error("更新失敗:", error);
+    toast.error(`更新失敗: ${error.message}`);
+    if (onError) onError(error);
+  }
+};
 
 // ===============================================
 // 🔄 NEW: 手動刷新功能
@@ -1656,4 +1706,8 @@ const uploadData = async () => {
     height: 100% !important;
     width: 100% !important;
 }
+
+/* ✅ [新增] 確保列表模式下容器高度正確 */
+.w-100 { width: 100%; }
+.h-100 { height: 100%; }
 </style>
