@@ -462,9 +462,24 @@ const paymentError = ref(null);
 const areaPanel = ref(null);
 
 // --- Options (下拉選單選項) ---
-const personnelOptions = computed(() => 
-    props.allData['銷售人員'] || [] 
-);
+const personnelOptions = computed(() => {
+    const list = props.allData['銷售人員'] || [];
+    
+    // 複製並排序，避免直接修改 props
+    return [...list].sort((a, b) => {
+        // 確保 order 為數字，若無 order 則給予極大值排在最後
+        const orderA = (a.order !== undefined && a.order !== null) ? Number(a.order) : 999999;
+        const orderB = (b.order !== undefined && b.order !== null) ? Number(b.order) : 999999;
+        
+        // 升序排列
+        if (orderA !== orderB) {
+            return orderA - orderB;
+        }
+        // 若 order 相同，則依姓名排序
+        return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+    });
+});
+
 const salesOptionsData = computed(() => props.allData['合約方式及是否首購'] || []); //
 
 

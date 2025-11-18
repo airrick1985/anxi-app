@@ -684,12 +684,26 @@ onMounted(async () => {
         console.warn('背景更新報價模式車位表失敗:', err.message);
     });
 
-    try {
+   try {
         // 使用新的 Firestore API 獲取報價人員
         const personnelRes = await fetchSalesPersonnelList(projectId.value);
         
         if (personnelRes.status === 'success') {
             const allPersonnelList = personnelRes.data.personnelList;
+
+            // ✅ [新增] 依照 order 欄位進行排序
+            allPersonnelList.sort((a, b) => {
+                // 確保 order 為數字，若無 order 則給予極大值排在最後
+                const orderA = (a.order !== undefined && a.order !== null) ? Number(a.order) : 999999;
+                const orderB = (b.order !== undefined && b.order !== null) ? Number(b.order) : 999999;
+                
+                // 升序排列
+                if (orderA !== orderB) {
+                    return orderA - orderB;
+                }
+                // 若 order 相同，則依姓名排序
+                return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+            });
             
             // 檢查當前用戶是否為銷售主管、系統管理員或超級管理員
             const isSalesManager = userStore.user.roles?.includes('銷售主管') || 

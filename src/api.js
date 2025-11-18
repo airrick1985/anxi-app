@@ -139,7 +139,8 @@ export async function fetchSalesPersonnelList(projectId) {
         name: data.name,
         phone: data.phone,
         email: data.email,
-        positions: data.positions
+        positions: data.positions,
+        order: data.order
       });
     });
     

@@ -649,8 +649,23 @@ const pricePremium = computed(() => {
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
 
-const personnelOptions = computed(() => (props.allData['銷售人員'] || []).map(p => p.name));
-
+const personnelOptions = computed(() => {
+    const list = props.allData['銷售人員'] || [];
+    
+    // 複製並排序
+    return [...list].sort((a, b) => {
+        // 確保 order 為數字，若無 order 則給予極大值排在最後
+        const orderA = (a.order !== undefined && a.order !== null) ? Number(a.order) : 999999;
+        const orderB = (b.order !== undefined && b.order !== null) ? Number(b.order) : 999999;
+        
+        // 升序排列
+        if (orderA !== orderB) {
+            return orderA - orderB;
+        }
+        // 若 order 相同，則依姓名排序
+        return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+    });
+});
 
 const contractTypeOptionsFromDB = computed(() => {
   if (props.projectSettings && Array.isArray(props.projectSettings.contractTypes)) {
