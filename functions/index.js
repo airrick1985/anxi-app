@@ -6869,13 +6869,15 @@ exports.verifyUploadPrerequisites = onCall(async (request) => {
     // 找到符合的預約紀錄，檢查是否已上傳過
     const latestAppointment = appointmentSnapshot.docs[0].data();
     
-    if (latestAppointment.uploadReportTime) {
+    // ✅ [修改] 取消驗證 uploadReportTime，允許重複上傳
+    /* if (latestAppointment.uploadReportTime) {
       const uploadTime = latestAppointment.uploadReportTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       const projectDoc = await db.collection('projects').doc(projectId).get();
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
       console.log(`[${functionName}] 發現已上傳紀錄，拒絕操作。`);
       throw new HttpsError('already-exists', `${projectName} ${unitId} 已於 ${uploadTime} 上傳過 ${reportType}，如需重新上傳請洽客服人員。`);
     }
+    */
 
     // 所有驗證通過
     console.log(`[${functionName}] 所有驗證通過。`);
@@ -11798,8 +11800,8 @@ exports.bookingApi = onCall({
     secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD", "DRIVE_CLIENT_ID", "DRIVE_CLIENT_SECRET", "DRIVE_REFRESH_TOKEN"],
     cors: true, // 確保 CORS 已啟用
     //  START: 新增記憶體與超時設定
-    memory: "1GiB",      // <--- 將記憶體從預設 256MB 提高至 1GB
-    timeoutSeconds: 540  // <--- 增加超時時間以應對大檔案上傳
+    memory: "2GiB",      
+    timeoutSeconds: 540  
     //  END: 新增設定
 }, async (request) => {
     
@@ -12759,51 +12761,105 @@ async function _handleGetAllUnitsForUpload(data) {
 async function _handleHandleDirectReportUpload(data) {
   const functionName = '_handleHandleDirectReportUpload';
   const {
-    projectId, unit, fileContent, reportType, buyerName,
+    projectId, unit, reportType, buyerName,
     phone, email, companyName, bookingCode,
+    fileUrl // ✅ [修改] 接收 fileUrl (檔案網址)，而不是 fileContent
   } = data;
   
-  if (!projectId || !unit || !fileContent || !reportType) {
-    throw new HttpsError('invalid-argument', '缺少必要參數。');
+  // 驗證邏輯 (移除 fileContent 檢查，改檢查 fileUrl)
+  if (!projectId || !unit || !fileUrl || !reportType) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unit, fileUrl, reportType)。');
   }
 
   console.log(`[${functionName}] 開始處理戶別 ${unit} 的檔案上傳`);
   const db = new Firestore({ databaseId: "anxi-app" });
   
   try {
-    // ... (此函數的完整內部邏輯保持不變，直接複製過來) ...
     const projectDocRef = db.collection('projects').doc(projectId);
     const householdDocId = `${projectId}_${unit}`;
     const householdRef = db.collection('households').doc(householdDocId);
+    
+    // 1. 讀取戶別資料與檢查權限
     const initialHouseholdDoc = await householdRef.get();
     if (!initialHouseholdDoc.exists) throw new HttpsError('not-found', `找不到戶別資料: ${householdDocId}`);
+    
     const householdData = initialHouseholdDoc.data();
     const switchField = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';
-    if (householdData[switchField] !== true) throw new HttpsError('permission-denied', `${unit} 的 ${reportType} 上傳權限已關閉。`);
+    
+    if (householdData[switchField] !== true) {
+        throw new HttpsError('permission-denied', `${unit} 的 ${reportType} 上傳權限已關閉。`);
+    }
+    
     const parentFolderUrl = householdData.inspectionReportFolderUrl;
-    if (!parentFolderUrl) throw new HttpsError('failed-precondition', `戶別資料中缺少 "inspectionReportFolderUrl" 設定。`);
-    console.log(`[${functionName}] 正在上傳檔案至 Google Drive...`);
+    if (!parentFolderUrl) {
+        throw new HttpsError('failed-precondition', `戶別資料中缺少 "inspectionReportFolderUrl" 設定。`);
+    }
+
+    // 2. 解析 Google Drive 資料夾 ID
+    const parentFolderIdMatch = parentFolderUrl.match(/[-\w]{25,}/);
+    if (!parentFolderIdMatch) throw new HttpsError('invalid-argument', '無效的 Drive 資料夾連結。');
+    const parentFolderId = parentFolderIdMatch[0];
+
+    // 3. Google Drive 認證
+    const oauth2Client = new google.auth.OAuth2(
+        process.env.DRIVE_CLIENT_ID, 
+        process.env.DRIVE_CLIENT_SECRET, 
+        'https://developers.google.com/oauthplayground'
+    );
+    oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+    // 4. 搜尋或建立子資料夾
+    const searchRes = await drive.files.list({ 
+        q: `name='${unit}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false` 
+    });
+    let subFolderId = searchRes.data.files.length > 0 
+        ? searchRes.data.files[0].id 
+        : (await drive.files.create({ 
+            resource: { name: unit, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }, 
+            fields: 'id' 
+          })).data.id;
+
+    // 5. 產生檔名
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
     const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     const nameParts = [reportType, unit, buyerName, companyName].filter(Boolean);
     const newFileName = `${nameParts.join('-')}-${timestamp}.pdf`;
-    const parentFolderIdMatch = parentFolderUrl.match(/[-\w]{25,}/);
-    if (!parentFolderIdMatch) throw new HttpsError('invalid-argument', '無效的 Drive 資料夾連結。');
-    const parentFolderId = parentFolderIdMatch[0];
-    const oauth2Client = new google.auth.OAuth2(process.env.DRIVE_CLIENT_ID, process.env.DRIVE_CLIENT_SECRET, 'https://developers.google.com/oauthplayground');
-    oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
-    const searchRes = await drive.files.list({ q: `name='${unit}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false` });
-    let subFolderId = searchRes.data.files.length > 0 ? searchRes.data.files[0].id : (await drive.files.create({ resource: { name: unit, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }, fields: 'id' })).data.id;
-    const buffer = Buffer.from(fileContent, 'base64');
-    const stream = Readable.from(buffer);
+
+    // =====================================================
+    // ✅ 【核心修改開始】使用 Fetch 取得串流，取代原本的 Base64 Buffer
+    // =====================================================
+    console.log(`[${functionName}] 正在從 Storage URL 取得檔案串流...`);
+    
+    // 使用 fetch 讀取檔案 (不下載到記憶體，建立網路串流)
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+        throw new HttpsError('internal', `無法讀取來源檔案: ${response.statusText}`);
+    }
+    
+    // 直接取得串流 (ReadableStream)
+    const fileStream = response.body;
+
+    console.log(`[${functionName}] 正在將串流上傳至 Google Drive...`);
+
+    // 上傳到 Google Drive (body 直接接受 stream)
     const uploadedFile = await drive.files.create({
       requestBody: { name: newFileName, parents: [subFolderId] },
-      media: { mimeType: 'application/pdf', body: stream },
+      media: { 
+          mimeType: 'application/pdf', 
+          body: fileStream // ✅ 這裡是真正的 Stream，記憶體消耗極低
+      },
       fields: 'id, name, webViewLink',
     });
+    
     const uploadedFileLink = uploadedFile.data.webViewLink;
     console.log(`[${functionName}] 檔案上傳成功，連結: ${uploadedFileLink}`);
+    // =====================================================
+    // ✅ 【核心修改結束】
+    // =====================================================
+
+
+    // 6. 執行資料庫更新事務
     console.log(`[${functionName}] 正在執行資料庫更新事務...`);
     await db.runTransaction(async (transaction) => {
       let appointmentDocRef = null;
@@ -12812,31 +12868,36 @@ async function _handleHandleDirectReportUpload(data) {
         const appointmentSnapshot = await transaction.get(appointmentQuery);
         if (!appointmentSnapshot.empty) appointmentDocRef = appointmentSnapshot.docs[0].ref;
       }
+      
       const logTimestamp = new Date();
       const logIdSuffix = `${String(logTimestamp.getFullYear()).slice(2)}${String(logTimestamp.getMonth() + 1).padStart(2, '0')}${String(logTimestamp.getDate()).padStart(2, '0')}${String(logTimestamp.getHours()).padStart(2, '0')}${String(logTimestamp.getMinutes()).padStart(2, '0')}${String(logTimestamp.getSeconds()).padStart(2, '0')}`;
       const logDocId = `${projectId}_${unit}_${logIdSuffix}`;
       const logRef = db.collection('inspectionReportLogs').doc(logDocId);
+      
       transaction.set(logRef, {
         timestamp: admin.firestore.FieldValue.serverTimestamp(), projectID: projectId,
         buyerName: buyerName || 'N/A', phone: phone || 'N/A', email: email || 'N/A',
         unit: unit, fileUrl: uploadedFileLink, reportType: reportType, companyName: companyName || '',
       });
+      
       transaction.update(householdRef, {
         [switchField]: false,
         inspectionReportUrl: admin.firestore.FieldValue.arrayUnion({ name: newFileName, url: uploadedFileLink })
       });
+      
       if (appointmentDocRef) {
         transaction.update(appointmentDocRef, { uploadReportTime: admin.firestore.FieldValue.serverTimestamp(), reportUploaded: true });
       }
     });
     console.log(`[${functionName}] 資料庫事務成功。`);
-   // --- 階段四：寄送 Email (Transaction 外部) ---
+
+    // 7. 寄送 Email
     if (email) {
       const projectDoc = await projectDocRef.get();
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
       const mailTransport = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD } });
         
- const subject = `【${projectName}】驗屋報告上傳成功通知 (${unit})`;
+      const subject = `【${projectName}】驗屋報告上傳成功通知 (${unit})`;
       const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
       
       const returnButtonHtml = `
@@ -12849,44 +12910,43 @@ async function _handleHandleDirectReportUpload(data) {
       `;
 
       const htmlBody = `
-<div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
-<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
-  <div style="background-color: #28a745; color: #ffffff; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; font-size: 24px;">報告上傳成功通知</h2>
-  </div>
-  <div style="padding: 24px; line-height: 1.6; color: #333333;">
-    <p>親愛的 <strong>${buyerName || '住戶'}</strong> 您好：</p>
-    <p>您的驗屋報告已成功上傳，以下是本次的上傳紀錄。</p>
-    <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
-      <tbody>
-        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
-        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${unit}</td></tr>
-        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">上傳姓名</td><td style="padding: 12px 0;">${buyerName}</td></tr>
-        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">連絡電話</td><td style="padding: 12px 0;">${phone || '未提供'}</td></tr>
-        <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">報告類型</td><td style="padding: 12px 0;">${reportType}</td></tr>
-        ${companyName ? `<tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${companyName}</td></tr>` : ''}
-        <tr>
-          <td style="padding: 12px 0; font-weight: bold; color: #555555;">報告連結</td>
-          <td style="padding: 12px 0;">
-            <a href="${uploadedFileLink}" target="_blank" style="color: #007BFF; text-decoration: none; font-weight: bold;">點此查看報告</a>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p>感謝您的使用，如有任何問題，請與現場服務人員聯繫。</p>
-    ${returnButtonHtml}
-  </div>
-  <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
-    <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
-    <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
-    <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-      本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
-    </p>
-  </div>
-</div>
-</div>
+        <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+        <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+          <div style="background-color: #28a745; color: #ffffff; padding: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 24px;">報告上傳成功通知</h2>
+          </div>
+          <div style="padding: 24px; line-height: 1.6; color: #333333;">
+            <p>親愛的 <strong>${buyerName || '住戶'}</strong> 您好：</p>
+            <p>您的驗屋報告已成功上傳，以下是本次的上傳紀錄。</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
+              <tbody>
+                <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
+                <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${unit}</td></tr>
+                <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">上傳姓名</td><td style="padding: 12px 0;">${buyerName}</td></tr>
+                <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">連絡電話</td><td style="padding: 12px 0;">${phone || '未提供'}</td></tr>
+                <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">報告類型</td><td style="padding: 12px 0;">${reportType}</td></tr>
+                ${companyName ? `<tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${companyName}</td></tr>` : ''}
+                <tr>
+                  <td style="padding: 12px 0; font-weight: bold; color: #555555;">報告連結</td>
+                  <td style="padding: 12px 0;">
+                    <a href="${uploadedFileLink}" target="_blank" style="color: #007BFF; text-decoration: none; font-weight: bold;">點此查看報告</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p>感謝您的使用，如有任何問題，請與現場服務人員聯繫。</p>
+            ${returnButtonHtml}
+          </div>
+          <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+            <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+            <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
+            <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+              本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+            </p>
+          </div>
+        </div>
+        </div>
       `;
-
 
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");      
       await mailTransport.sendMail({
@@ -13015,13 +13075,15 @@ async function _handleVerifyUploadPrerequisites(data) {
       return { status: 'needs_confirmation', message: `系統找不到 ${projectName} ${unitId} 的代驗公司「${bookingTypeForQuery}」紀錄，您確定要繼續上傳嗎？` };
     }
     const latestAppointment = appointmentSnapshot.docs[0].data();
-    if (latestAppointment.uploadReportTime) {
+    // ✅ [修改] 取消驗證 uploadReportTime，允許重複上傳
+    /* if (latestAppointment.uploadReportTime) {
       const uploadTime = latestAppointment.uploadReportTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       const projectDoc = await db.collection('projects').doc(projectId).get();
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
       console.log(`[${functionName}] 發現已上傳紀錄，拒絕操作。`);
       throw new HttpsError('already-exists', `${projectName} ${unitId} 已於 ${uploadTime} 上傳過 ${reportType}，如需重新上傳請洽客服人員。`);
     }
+    */
     console.log(`[${functionName}] 所有驗證通過。`);
     return { status: 'success', bookingCode: latestAppointment.bookingCode };
 
@@ -14482,7 +14544,7 @@ async function _handleSearchAppointmentsAndHouseholds_Optimized(data) {
   }
 
   const lowerCaseKeyword = keyword.toLowerCase();
-  const db = new Fifrestore({ databaseId: "anxi-app" });
+  const db = new Firestore({ databaseId: "anxi-app" });
 
   try {
     //  1. 從快取（projects 文件）讀取戶別資料

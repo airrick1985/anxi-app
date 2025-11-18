@@ -2479,15 +2479,30 @@ function fileToBase64(file) {
  */
 export async function uploadReportDirectlyToDrive(payload, fileObject) {
   try {
-    const base64Content = await fileToBase64(fileObject);
+    // 1. 【新增】前端直接上傳到 Firebase Storage (暫存區)
+    // 這樣就不會經過 Cloud Function 的 Payload 限制，速度快且穩定
+    const timestamp = Date.now();
+    // 設定暫存路徑，建議包含專案ID以方便管理
+    const storagePath = `temp_reports/${payload.projectId}/${timestamp}_${fileObject.name}`;
+    const storageRef = ref(storage, storagePath);
+    
+    // 執行上傳 (Firebase SDK 會自動處理大檔案分片上傳)
+    const snapshot = await uploadBytes(storageRef, fileObject);
+    
+    // 2. 取得檔案的公開下載連結
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    // 3. 準備 Payload 傳給後端
+    // 注意：我們改傳 fileUrl，移除會導致崩潰的 fileContent (Base64)
     const functionPayload = {
       ...payload,
       fileName: fileObject.name,
-      fileContent: base64Content, 
+      fileUrl: downloadURL,     // ✅ 關鍵修改：傳送網址，而非檔案內容
       contentType: fileObject.type,
+      // fileContent: base64Content, // ❌ 已移除
     };
     
-    // 修改：呼叫 bookingApiRouter
+    // 4. 呼叫後端處理 (後端會用 fetch(fileUrl) 讀取並轉存 Drive)
     const result = await bookingApiRouter({
         action: 'handleDirectReportUpload',
         data: functionPayload
@@ -2498,11 +2513,9 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
 
   } catch (error) {
     console.error("代理上傳報告失敗:", error);
-    return { status: "error", message: `代理上傳失敗: ${error.message}` };
+    return { status: "error", message: `上傳失敗: ${error.message}` };
   }
 }
-
-
 
 
 
@@ -3746,7 +3759,7 @@ export const uploadSalesImage = async (storagePath, fileName, fileBase64, projec
   } catch (error) {
     console.error("呼叫 handleSalesImageUpload 雲端函式時發生錯誤:", error);
     // 將錯誤包裝成與前端期望的格式一致
-    throw new Error(error.message || "代理上傳失敗");
+    throw new Error(error.message || "上傳失敗");
   }
 };
 //  END: 修改圖片上傳邏輯

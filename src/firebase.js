@@ -15,7 +15,7 @@ const firebaseConfig = {
   authDomain: "apps-script-api-443402.firebaseapp.com",
   databaseURL: "https://apps-script-api-443402-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "apps-script-api-443402",
-  storageBucket: "apps-script-api-443402.appspot.com", 
+  storageBucket: "apps-script-api-443402.firebasestorage.app", 
   messagingSenderId: "46453918785",
   appId: "1:46453918785:web:a3c386def8dfe69f768ac0",
   measurementId: "G-TCZ9TL8FLW"
