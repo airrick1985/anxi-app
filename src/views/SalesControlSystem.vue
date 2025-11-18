@@ -173,18 +173,7 @@
 
    <div class="grid-wrapper">
 
-    <SalesListView
-        v-if="isListView"
-        :items="filteredHouseholds" 
-        :columns="exportableColumns"
-        :loading="loading"
-        :status-parameters="salesParameters"
-        :personnel-list="salesPersonnel"
-        :contract-types="project.contractTypes || []"
-        @update-unit="handleUnitListUpdate"
-        class="w-100 h-100"
-      />
-
+   
 
 
     <div class="layout-grid">
@@ -648,7 +637,7 @@ import { useTextStyleStore } from '@/store/textStyleStore'; // 導入樣式 Stor
 import { useStatusColorStore } from '@/store/statusColorStore'; // 導入顏色 Store
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; // 導入新圖標
 
-const SalesListView = defineAsyncComponent(() => import('@/components/SalesListView.vue'));
+
 
 const isListView = ref(false);
 
