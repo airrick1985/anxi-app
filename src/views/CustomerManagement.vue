@@ -10,9 +10,9 @@
 
     <v-window v-model="tab">
       <v-window-item value="management">
-        <v-card>
-          <v-toolbar color="grey-lighten-5" >
-            <v-toolbar-title class="text-subtitle-1">
+        <v-card class="bg-grey-lighten-5 h-100">
+          <v-toolbar color="white" elevation="1" density="compact">
+            <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3">
               {{ projectName }} 客戶資料列表
             </v-toolbar-title>
           </v-toolbar>
@@ -23,49 +23,142 @@
               label="搜尋 (姓名、電話、銷售人員...)"
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
-              
+              density="compact"
               clearable
               hide-details
-              class="mb-4"
+              class="mb-4 bg-white"
             ></v-text-field>
 
+            <v-data-iterator
+              v-if="isMobile"
+              :items="customerList"
+              :search="customerListSearch"
+              :loading="isLoadingCustomerList"
+              item-value="submittedAt"
+            >
+              <template v-slot:default="{ items }">
+                <div v-if="isLoadingCustomerList" class="text-center pa-4">
+                   <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                </div>
+                <template v-else>
+                  <v-row dense>
+                    <v-col v-for="item in items" :key="item.raw.submittedAt" cols="12">
+                      <v-card 
+                        @click="openInteractionLog($event, { item: item.raw })" 
+                        class="mb-2" 
+                        elevation="1"
+                        border
+                      >
+                        <v-card-title class="d-flex justify-space-between align-center text-body-1 font-weight-bold pb-1">
+                          <div class="d-flex align-center">
+                             {{ item.raw['姓名'] }}
+                             <v-chip v-if="item.raw['等級研判']" :color="getRatingColor(item.raw['等級研判'])" size="x-small" class="ml-2" label variant="flat">
+                               {{ item.raw['等級研判'] }}
+                             </v-chip>
+                          </div>
+                          <span class="text-caption text-grey">{{ formatDisplayDate(item.raw['拜訪日期']) }}</span>
+                        </v-card-title>
+                        
+                        <v-card-subtitle class="text-caption mb-2">
+                          <v-icon size="small" start>mdi-phone</v-icon>{{ item.raw['電話'] }}
+                          <span class="mx-1">|</span>
+                          <v-icon size="small" start>mdi-account-tie</v-icon>{{ item.raw['銷售人員'] }}
+                        </v-card-subtitle>
+                        
+                        <v-divider></v-divider>
+                        
+                        <v-card-text class="py-2 px-3">
+                          <div class="d-flex flex-wrap gap-1 mb-1" v-if="item.raw['未買原因'] && item.raw['未買原因'].length">
+                              <span class="text-caption text-grey-darken-1 mr-1">未買:</span>
+                              <v-chip v-for="reason in item.raw['未買原因']" :key="reason" size="x-small" color="grey-lighten-2" variant="flat" density="comfortable">
+                                {{ reason }}
+                              </v-chip>
+                          </div>
+                          <div class="d-flex flex-wrap gap-1" v-if="item.raw['購屋動機'] && item.raw['購屋動機'].length">
+                              <span class="text-caption text-grey-darken-1 mr-1">動機:</span>
+                              <v-chip v-for="motive in item.raw['購屋動機']" :key="motive" :color="getChipColor(motive)" size="x-small" variant="tonal" density="comfortable">
+                                {{ motive }}
+                              </v-chip>
+                          </div>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                  </v-row>
+                  <div v-if="items.length === 0" class="text-center text-grey pa-4">
+                    找不到符合的資料
+                  </div>
+                </template>
+              </template>
+            </v-data-iterator>
+
             <v-data-table
+              v-else
               :headers="customerTableHeaders"
               :items="customerList"
               :loading="isLoadingCustomerList"
               :search="customerListSearch"
               item-value="submittedAt"
-              class="elevation-1"
-              
+              class="elevation-1 cursor-pointer-row"
+              @click:row="openInteractionLog"
+              hover
             >
+              <template v-slot:item.拜訪日期="{ item }">
+                {{ formatDisplayDate(item['拜訪日期']) }}
+              </template>
+
+              <template v-slot:item.等級研判="{ item }">
+                <v-chip
+                  v-if="item['等級研判']"
+                  :color="getRatingColor(item['等級研判'])"
+                  size="small"
+                  label
+                  variant="flat"
+                  class="font-weight-bold"
+                >
+                  {{ item['等級研判'] }}
+                </v-chip>
+              </template>
+
+              <template v-slot:item.未買原因="{ item }">
+                <div v-if="Array.isArray(item['未買原因']) && item['未買原因'].length > 0" class="text-caption text-grey-darken-2 text-truncate" style="max-width: 150px;">
+                  {{ item['未買原因'].join(', ') }}
+                </div>
+              </template>
+
               <template v-slot:item.購屋動機="{ item }">
                 <v-chip
                   v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length"
                   :color="getChipColor(item['購屋動機'][0])"
                   size="small"
                   label
+                  variant="tonal"
                 >
                   {{ item['購屋動機'][0] }}
                 </v-chip>
-                <span v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length > 1" class="text-grey-darken-1 ml-1">
+                <span v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length > 1" class="text-caption text-grey ml-1">
                   (+{{ item['購屋動機'].length - 1 }})
                 </span>
               </template>
 
               <template v-slot:item.房型需求="{ item }">
-                <div v-if="Array.isArray(item['房型需求'])">
+                <div v-if="Array.isArray(item['房型需求'])" class="text-caption">
                   {{ item['房型需求'].join(', ') }}
                 </div>
               </template>
               
-              <template v-slot:item.拜訪日期="{ item }">
-                {{ formatDisplayDate(item['拜訪日期']) }}
-              </template>
-
             </v-data-table>
+              <CustomerInteractionLog
+    v-if="isInteractionDialogVisible"
+    v-model:show="isInteractionDialogVisible"
+    :project-id="projectId"
+    :doc-id="selectedCustomerDocId"
+    :settings="settings"
+    @data-updated="loadCustomerList"
+/>
           </v-card-text>
         </v-card>
       </v-window-item>
+
       <v-window-item value="settings" v-if="canManageSettings">
         <v-card>
           <v-toolbar color="blue-grey-lighten-5" >
@@ -444,6 +537,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+import { useDisplay } from 'vuetify';
+
 import { 
   fetchCustomerSettings, 
   saveCustomerSettings,
@@ -452,6 +547,7 @@ import {
   fetchCustomerList // ✓ 引入新的 API
 } from '@/api'; 
 import { merge } from 'lodash-es'; 
+import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
 
 const props = defineProps({
   projectId: {
@@ -463,6 +559,9 @@ const props = defineProps({
 const tab = ref('management');
 const userStore = useUserStore();
 const projectStore = useProjectStore();
+
+// ✅ [新增] 取得手機模式狀態
+const { mobile: isMobile } = useDisplay();
 
 // --- 權限 ---
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
@@ -507,16 +606,20 @@ const isLoadingCustomerList = ref(false); // 這是「列表頁」的 Loading
 const customerListSearch = ref('');
 const customerList = ref([]); // 儲存後端回傳的扁平化列表
 const customerTableHeaders = ref([
-  // 欄位：拜訪日期, 姓名, 電話, 購屋動機, 房型需求, 購屋預算, 銷售人員
-  { title: '拜訪日期', key: '拜訪日期', width: '120px' },
-  { title: '姓名', key: '姓名', width: '120px' },
+  { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
+  { title: '等級', key: '等級研判', width: '90px', sortable: true }, // 新增
+  { title: '未購原因', key: '未買原因', width: '160px', sortable: false }, // 新增
+  { title: '姓名', key: '姓名', width: '100px' },
   { title: '電話', key: '電話', width: '120px' },
-  { title: '銷售', key: '銷售人員', width: '120px' },
-  { title: '購屋動機', key: '購屋動機', width: '120px' },
+  { title: '銷售', key: '銷售人員', width: '100px' },
+  { title: '購屋動機', key: '購屋動機', width: '110px' },
   { title: '房型需求', key: '房型需求', width: '120px' },
-  { title: '購屋預算', key: '購屋預算', width: '120px' },
+ { title: '購屋預算', key: '購屋預算', width: '120px' }, // 空間不足可隱藏
 ]);
 // ✓ END: 新增
+
+const isInteractionDialogVisible = ref(false);
+const selectedCustomerDocId = ref(null);
 
 // ✓ START: 新增：載入客戶列表的函式
 async function loadCustomerList() {
@@ -541,6 +644,16 @@ async function loadCustomerList() {
   }
 }
 // ✓ END: 新增
+
+// ✅ [新增] 等級顏色輔助函式
+function getRatingColor(rating) {
+    if (!rating) return 'grey-lighten-2';
+    if (rating.includes('A')) return 'red-lighten-4 text-red-darken-4'; // A級 紅色
+    if (rating.includes('B')) return 'orange-lighten-4 text-orange-darken-4'; // B級 橘色
+    if (rating.includes('C')) return 'green-lighten-4 text-green-darken-4'; // C級 綠色
+    if (rating.includes('D')) return 'grey-lighten-3 text-grey-darken-2'; // D級 灰色
+    return 'blue-grey-lighten-4';
+}
 
 // ✓ START: 新增：監聽 Tab 變化
 watch(tab, (newTab) => {
@@ -781,4 +894,33 @@ watch(() => props.projectId, (newId) => {
   }
 }, { immediate: true }); // immediate: true 確保一開始就觸發
 
+// ... methods
+const openInteractionLog = (event, { item }) => {
+    // 🔍 Debug: 先印出來看看 item 的結構
+    console.log("Clicked Item:", item);
+
+    // ✅ [修正] 嘗試從 item 或 item.raw 獲取 docId
+    // Vuetify 3 的 item 有時是 Proxy 物件，資料可能在 item.columns 或 item.raw 裡
+    const docId = item.docId || (item.raw && item.raw.docId);
+
+    if (!docId) {
+        console.error("錯誤：無法從列表項目中獲取 docId");
+        alert("系統錯誤：找不到該客戶的文件 ID");
+        return;
+    }
+
+    selectedCustomerDocId.value = docId; 
+    isInteractionDialogVisible.value = true;
+};
+
 </script>
+
+<style scoped>
+/* 加入滑鼠手勢樣式 */
+:deep(.cursor-pointer-row tbody tr) {
+    cursor: pointer !important;
+}
+:deep(.cursor-pointer-row tbody tr:hover) {
+    background-color: #f5f5f5 !important;
+}
+</style>

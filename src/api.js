@@ -7118,3 +7118,57 @@ export const fetchCustomerList = async (projectId, userPhone, userProjectSystems
     throw error; // 拋出錯誤讓 .vue 檔案捕捉
   }
 };
+
+
+/**
+ * [API] 獲取客戶洽談詳細資料 (整合版)
+ */
+export const fetchCustomerInteractionDetails = async (projectId, docId, userKey) => {
+  try {
+    const fetchFunc = httpsCallable(functions, 'getCustomerInteractionDetails');
+    const result = await fetchFunc({ projectId, docId, userKey });
+    return result.data; // { status, data: { guestData, canEdit } }
+  } catch (error) {
+    console.error("API Error:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 新增洽談紀錄
+ */
+export const addInteractionLog = async (projectId, docId, logData, operatorName) => {
+  try {
+    const addFunc = httpsCallable(functions, 'addInteractionLog');
+    const result = await addFunc({ projectId, docId, logData, operatorName });
+    return result.data;
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 更新客戶基本資料
+ */
+export const updateCustomerProfile = async (projectId, docId, profileData, userKey) => {
+  try {
+    const updateFunc = httpsCallable(functions, 'updateCustomerProfile');
+    const result = await updateFunc({ projectId, docId, profileData, userKey });
+    return result.data;
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 更新洽談紀錄
+ */
+export const updateInteractionLog = async (projectId, docId, logId, logData, operatorName) => {
+  try {
+    const updateFunc = httpsCallable(functions, 'updateInteractionLog');
+    const result = await updateFunc({ projectId, docId, logId, logData, operatorName });
+    return result.data;
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};

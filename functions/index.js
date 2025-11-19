@@ -15332,9 +15332,7 @@ exports.generatePaymentSheet = onCall({
 
 /**
  * [內部函式] 獲取客戶資料列表 (供 CustomerManagement.vue 的 Table 使用)
- * (✓ V2: 修正資料格式不一致問題)
- * @param {object} data - 包含 { projectId, userPhone, userProjectSystems }
- * @param {Firestore} db - Firestore 實例
+ * (✓ V6: 修正邏輯 - 同一客戶若有不同銷售人員，皆需顯示；同一銷售人員只取最新)
  */
 async function _handleFetchCustomerList(data, db) {
     const { projectId, userPhone, userProjectSystems } = data;
@@ -15356,49 +15354,90 @@ async function _handleFetchCustomerList(data, db) {
 
         const flatSubmissions = [];
 
-        // ✓ START: 新增一個輔助函式，強制將資料轉為陣列
         const ensureArray = (value) => {
-            if (Array.isArray(value)) {
-                return value; // 已經是陣列，直接回傳
-            }
-            if (typeof value === 'string' && value) {
-                return [value]; // 是非空字串，打包成陣列
-            }
-            return []; // 是 null, undefined 或空字串，回傳空陣列
+            if (Array.isArray(value)) return value; 
+            if (typeof value === 'string' && value) return [value]; 
+            return []; 
         };
-        // ✓ END: 新增輔助函式
 
         snapshot.forEach(doc => {
-            const submissions = doc.data().submissions || [];
+            const docData = doc.data(); 
+            const submissions = docData.submissions || [];
             
-            for (const sub of submissions) {
-                if (!sub['銷售人員']) {
-                    continue; 
-                }
-                if (!isCounter) {
-                    if (sub['銷售人員電話'] !== userPhone) {
-                        continue; 
-                    }
-                }
-                
-                flatSubmissions.push({
-                    '拜訪日期': sub['拜訪日期'] || null,
-                    '姓名': sub['姓名'] || '',
-                    '電話': sub['電話'] || '',
-                    
-                    // ✓ START: 修改
-                    '購屋動機': ensureArray(sub['購屋動機']),
-                    '房型需求': ensureArray(sub['房型需求']),
-                    // ✓ END: 修改
+            // 1. 提取最新 Profile 資訊 (等級、未買原因)
+            // (這些資訊是跟著"客戶"走的，所以共用)
+            const interactionLogs = docData.interactionLogs || [];
+            let latestRating = '';
+            let latestNoBuyReasons = [];
 
-                    '購屋預算': sub['購屋預算'] || '',
-                    '銷售人員': sub['銷售人員'],
-                    'docId': doc.id, 
-                    'submittedAt': sub.submittedAt ? sub.submittedAt.toDate().toISOString() : null
+            if (interactionLogs.length > 0) {
+                const sortedLogs = [...interactionLogs].sort((a, b) => {
+                    const dateA = new Date(a.date || 0);
+                    const dateB = new Date(b.date || 0);
+                    return dateB - dateA; // 降序
                 });
+                const latestLog = sortedLogs[0];
+                if (latestLog && latestLog.tags) {
+                    latestRating = latestLog.tags.rating || '';
+                    latestNoBuyReasons = ensureArray(latestLog.tags.noPurchaseReason);
+                }
             }
+
+            // 2. 過濾出「對當前用戶可見」的所有提交紀錄
+            const validSubmissions = submissions.filter(sub => {
+                // 條件 1: 必須有銷售人員
+                if (!sub['銷售人員']) return false;
+                
+                // 條件 2: 如果不是櫃台，必須是該銷售人員的客戶
+                if (!isCounter && sub['銷售人員電話'] !== userPhone) return false;
+                
+                return true;
+            });
+
+            if (validSubmissions.length === 0) return;
+
+            // ✅ [修改重點]：依照「銷售人員」分組
+            const submissionsBySales = {};
+            
+            validSubmissions.forEach(sub => {
+                const salesName = sub['銷售人員'];
+                if (!submissionsBySales[salesName]) {
+                    submissionsBySales[salesName] = [];
+                }
+                submissionsBySales[salesName].push(sub);
+            });
+
+            // ✅ [修改重點]：針對每一位銷售人員，只取最新的一筆
+            Object.values(submissionsBySales).forEach(group => {
+                // 該組內依照時間降序排序
+                group.sort((a, b) => {
+                    const timeA = a.submittedAt ? a.submittedAt.toMillis() : 0;
+                    const timeB = b.submittedAt ? b.submittedAt.toMillis() : 0;
+                    return timeB - timeA; // 最新在最前
+                });
+
+                const latestSub = group[0]; // 取最新的一筆
+
+                // 加入列表
+                flatSubmissions.push({
+                    '拜訪日期': latestSub['拜訪日期'] || null,
+                    '姓名': latestSub['姓名'] || '',
+                    '電話': latestSub['電話'] || '',
+                    '購屋動機': ensureArray(latestSub['購屋動機']),
+                    '房型需求': ensureArray(latestSub['房型需求']),
+                    '購屋預算': latestSub['購屋預算'] || '',
+                    '銷售人員': latestSub['銷售人員'],
+                    'docId': doc.id, 
+                    'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
+
+                    // 來自 interactionLogs 的最新資訊 (共用)
+                    '等級研判': latestRating,
+                    '未買原因': latestNoBuyReasons
+                });
+            });
         });
 
+        // 最後對整個列表依照拜訪日期排序
         flatSubmissions.sort((a, b) => {
             return (b['拜訪日期'] || '').localeCompare(a['拜訪日期'] || '');
         });
@@ -16340,5 +16379,191 @@ exports.updateSalesPersonnelOrders = onCall(async (request) => {
   } catch (error) {
     console.error(`[${functionName}] CRITICAL ERROR:`, error);
     throw new HttpsError("internal", `批次更新排序時發生錯誤: ${error.message}`);
+  }
+});
+
+
+
+/**
+ * [新增] 獲取單一客戶的詳細洽談資料 (包含權限檢查)
+ * 整合：客戶資料 + 洽談紀錄 + 其他電話 + 編輯權限檢查
+ */
+exports.getCustomerInteractionDetails = onCall(async (request) => {
+  const { projectId, docId, userKey } = request.data;
+  const functionName = `getCustomerInteractionDetails (Project: ${projectId}, Doc: ${docId})`;
+
+  if (!projectId || !docId || !userKey) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // 1. 平行執行：讀取客戶資料 & 讀取用戶權限
+    const guestRef = db.collection("vipGuests").doc(docId);
+    const userPermRef = db.collection("userPermissions").doc(userKey);
+
+    const [guestSnap, userPermSnap] = await Promise.all([
+      guestRef.get(),
+      userPermRef.get()
+    ]);
+
+    if (!guestSnap.exists) {
+      throw new HttpsError("not-found", "找不到該客戶資料。");
+    }
+
+    const guestData = guestSnap.data();
+    
+    // 2. 處理日期格式 (轉換 Timestamp 為 ISO String)
+    if (guestData.createdAt?.toDate) guestData.createdAt = guestData.createdAt.toDate().toISOString();
+    if (guestData.updatedAt?.toDate) guestData.updatedAt = guestData.updatedAt.toDate().toISOString();
+    
+    // 處理 interactionLogs 內的日期
+    if (guestData.interactionLogs && Array.isArray(guestData.interactionLogs)) {
+        guestData.interactionLogs = guestData.interactionLogs.map(log => {
+            const newLog = { ...log };
+            if (newLog.createdAt?.toDate) newLog.createdAt = newLog.createdAt.toDate().toISOString();
+            // date 欄位通常存字串 (YYYY-MM-DD)，如果是 Timestamp 也轉一下
+            if (newLog.date?.toDate) newLog.date = newLog.date.toDate().toISOString().split('T')[0];
+            return newLog;
+        });
+        // 確保紀錄按日期倒序排列 (最新的在上面)
+        guestData.interactionLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+
+    // 3. 判斷編輯權限
+    // 規則：擁有該建案的「客資系統-櫃台」權限者可編輯
+    let canEdit = false;
+    if (userPermSnap.exists) {
+      const perms = userPermSnap.data().permissions || {};
+      const projectPerms = perms[projectId];
+      if (projectPerms && Array.isArray(projectPerms.systems)) {
+        if (projectPerms.systems.includes('客資系統-櫃台') || projectPerms.systems.includes('超級管理員')) {
+          canEdit = true;
+        }
+      }
+    }
+
+    // 4. 回傳整合資料
+    return {
+      status: "success",
+      data: {
+        guestData: { id: guestSnap.id, ...guestData },
+        canEdit: canEdit
+      }
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    throw new HttpsError("internal", `讀取洽談資料失敗: ${error.message}`);
+  }
+});
+
+/**
+ * [新增] 新增一筆洽談紀錄
+ */
+exports.addInteractionLog = onCall(async (request) => {
+  const { projectId, docId, logData, operatorName } = request.data;
+  // logData 應包含: date, content, tags(obj)
+  
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const guestRef = db.collection("vipGuests").doc(docId);
+  
+  const newLog = {
+      logId: crypto.randomUUID(), // 需引入 crypto
+      ...logData,
+      recorderName: operatorName,
+      createdAt: Timestamp.now()
+  };
+
+  try {
+      await guestRef.update({
+          interactionLogs: FieldValue.arrayUnion(newLog),
+          updatedAt: FieldValue.serverTimestamp() // 更新客戶最後活動時間
+      });
+      return { status: "success", message: "紀錄已新增" };
+  } catch(e) {
+      throw new HttpsError("internal", e.message);
+  }
+});
+
+/**
+ * [新增] 更新客戶基本資料 (含其他電話)
+ */
+exports.updateCustomerProfile = onCall(async (request) => {
+  const { projectId, docId, profileData, userKey } = request.data;
+  // profileData 包含 latestName, otherPhones 等
+  
+  // ... (此處建議加入與 getCustomerInteractionDetails 相同的權限檢查邏輯，略) ...
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const guestRef = db.collection("vipGuests").doc(docId);
+
+  try {
+      await guestRef.update({
+          ...profileData,
+          updatedAt: FieldValue.serverTimestamp()
+      });
+      return { status: "success", message: "資料已更新" };
+  } catch(e) {
+       throw new HttpsError("internal", e.message);
+  }
+});
+
+
+/**
+ * [新增] 更新單筆洽談紀錄 (修改陣列中的特定項目)
+ */
+exports.updateInteractionLog = onCall(async (request) => {
+  const { projectId, docId, logId, logData, operatorName } = request.data;
+  const functionName = `updateInteractionLog (Doc: ${docId}, Log: ${logId})`;
+
+  if (!projectId || !docId || !logId || !logData) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const guestRef = db.collection("vipGuests").doc(docId);
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(guestRef);
+      if (!doc.exists) {
+        throw new HttpsError("not-found", "找不到客戶資料。");
+      }
+
+      const data = doc.data();
+      // 複製現有的 logs 陣列
+      const logs = data.interactionLogs || [];
+      
+      // 找到要修改的那一筆
+      const index = logs.findIndex(l => l.logId === logId);
+
+      if (index === -1) {
+        throw new HttpsError("not-found", "找不到指定的洽談紀錄 ID。");
+      }
+
+      // 更新該筆資料 (保留原始 ID 與創建時間，更新內容與修改資訊)
+      logs[index] = {
+        ...logs[index],
+        ...logData, // 覆蓋 date, content, tags
+        updatedAt: Timestamp.now(),
+        lastModifiedBy: operatorName
+      };
+
+      // 寫回整份陣列
+      transaction.update(guestRef, {
+        interactionLogs: logs,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    });
+
+    console.log(`[${functionName}] 更新成功。`);
+    return { status: "success", message: "紀錄已更新" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `更新紀錄失敗: ${error.message}`);
   }
 });
