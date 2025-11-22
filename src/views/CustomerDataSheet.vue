@@ -223,6 +223,7 @@
                 <p v-if="!isCustomerMode" class="text-h6 mb-4">銷售資訊</p>
                 
                 <v-select
+                clearable
                   v-if="!isCustomerMode"
                   v-model="formData['銷售人員']"
                   :items="salespersonOptions"
@@ -238,6 +239,7 @@
                 <p class="text-h6 mt-6 mb-4">基本資料</p>
                 
                 <v-text-field
+                clearable
                   v-model="formData['姓名']"
                   label="姓名"
                   variant="outlined"
@@ -246,6 +248,7 @@
                 autocomplete="off" ></v-text-field>
 
                 <v-text-field
+                clearable
                   v-model="formData['電話']"
                   label="電話"
                   variant="outlined"
@@ -265,16 +268,16 @@
                 autocomplete="off" ></v-text-field>
                 
                 <dynamic-form-field
+                  clearable
                   v-if="systemSettings.fields.age" 
                   :field-config="systemSettings.fields.age"
                   v-model="formData[systemSettings.fields.age.label]"
-               
                 </dynamic-form-field>
      
                 <v-row dense>
                 <v-col cols="6">
                     <v-select
-                      
+                      clearable
                       v-model="formData['居住城市']" 
                       
                       :items="cityOptions"
@@ -284,6 +287,7 @@
                   </v-col>
                   <v-col cols="6">
                     <v-select
+                    clearable
                       v-model="formData['居住鄉鎮市區']"
                       :items="districtOptions"
                       label="鄉鎮市區"
@@ -295,6 +299,7 @@
                   </v-col>
                 </v-row>
                 <v-text-field
+                clearable
                   v-model="formData['居住詳細地址']"
                   label="地址或街道"
                   variant="outlined"
@@ -302,13 +307,15 @@
                 autocomplete="off" ></v-text-field>
 
                 <dynamic-form-field
+                   clearable
                   v-if="systemSettings.fields.occupation"
                   :field-config="systemSettings.fields.occupation"
-                  v-model="formData[systemSettings.fields.occupation.label]"
-                  
-                  hint="可選擇其他輸入您的職業" ></dynamic-form-field>
+                  v-model="formData[systemSettings.fields.occupation.label]"               
+                  hint="可選擇其他輸入您的職業"   
+                  ></dynamic-form-field>
 
                   <v-text-field
+                  clearable
                   v-model="formData['任職公司']"
                   label="任職公司"
                   variant="outlined"
@@ -321,6 +328,7 @@
 
                 <template v-for="field in formFields" :key="field.key">
                   <dynamic-form-field
+                    clearable
                     :field-config="field"
                     v-model="formData[field.label]"
                   ></dynamic-form-field>
