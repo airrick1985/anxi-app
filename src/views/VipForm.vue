@@ -1,5 +1,5 @@
 <template>
-  <v-container style="background-color: #F5F5F7">
+ <v-container style="background-color: #F5F5F7" class="font-serif">
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
         
@@ -15,32 +15,34 @@
         <v-card>
           <v-toolbar  color="white" density="compact">
             <v-toolbar-title> {{ pageTitle }}</v-toolbar-title>
-  
-          
-          </v-toolbar>
 
-            <v-row v-if="!isLoading" class="mb-2" >
-           <v-spacer></v-spacer>
-           <v-btn 
+            <v-btn 
+              variant="text" 
+              color="grey-darken-2"
+              class="mr-2"
+              @click="toggleLanguage"
+            >
+              {{ currentLang === 'zh-TW' ? 'English' : '中文' }}
+            </v-btn>
+
+            <v-btn 
              variant="text" 
              color="black" 
              prepend-icon="mdi-qrcode-scan"
              @click="qrDialog = true"
            >
                      </v-btn>
-        </v-row>
+  
+          
+          </v-toolbar>
 
           <v-card-text v-if="isLoading" class="text-center pa-10">
             <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-            <p class="mt-4 text-grey">正在載入資料...</p>
-          </v-card-text>
+            <p class="mt-4 text-grey">{{ t.loading }}</p> </v-card-text>
 
           <v-card-text v-else-if="isSubmitted" class="text-center pa-10">
-           <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
-            <h2 class="text-h5 mt-4">感謝您</h2>
-            <p class="text-body-1 mt-2">資料已成功送出，請洽現場服務人員。</p>
-            
-            <v-btn
+            <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
+            <h2 class="text-h5 mt-4">{{ t.successTitle }}</h2> <p class="text-body-1 mt-2">{{ t.successMsg }}</p> <v-btn
               v-if="projectWebsiteUrl"
               color="primary"
               variant="flat"
@@ -49,12 +51,12 @@
               target="_blank"
               prepend-icon="mdi-web"
             >
-              {{ projectName }} 建案介紹
-            </v-btn>
+              {{ projectName }} {{ t.intro }} </v-btn>
           </v-card-text>
 
           <v-card-text v-else class="pa-6">
-            <v-alert
+
+             <v-alert
               v-if="errorMessage"
               type="error"
               variant="tonal"
@@ -64,31 +66,22 @@
             >
               {{ errorMessage }}
             </v-alert>
-
-            <v-form ref="formRef" @submit.prevent="handleSubmit">
-              <p class="text-h6 mb-4">基本資料</p>
-              
-              <v-text-field
+             <v-form ref="formRef" @submit.prevent="handleSubmit">
+              <p class="text-h6 mb-4">{{ t.basicInfo }}</p> <v-text-field
                 v-model="formData['姓名']"
-                label="姓名"
+                :label="t.name" 
                 variant="outlined"
-                :rules="[rules.required]"
+                :rules="[rules.required]" 
                 class="mb-2"
-              ></v-text-field>
-
-              <v-text-field
+              ></v-text-field> <v-text-field
                 v-model="formData['電話']"
-                label="電話"
+                :label="t.phone"
                 variant="outlined"
                 :rules="[rules.required, rules.phone]"
                 class="mb-2"
-              ></v-text-field>
+              ></v-text-field> <v-divider class="my-6"></v-divider>
 
-              <v-divider class="my-6"></v-divider>
-
-              <p class="text-h6 mb-4">需求資訊</p>
-
-              <template v-for="field in formFields" :key="field.key">
+              <p class="text-h6 mb-4">{{ t.requirements }}</p> <template v-for="field in formFields" :key="field.key">
                 
                 <v-select
                   v-if="field.selectionMode === 'single' && !field.allowCustom"
@@ -96,11 +89,11 @@
                   :label="field.label"
                   :items="field.options"
                   variant="outlined"
-                  :rules="field.isRequired ? [rules.required] : []"
+                  :rules="field.isRequired ? [rules.required] : []" 
                   class="mb-2"
                 ></v-select>
 
-                <v-combobox
+                  <v-combobox
                   v-if="field.selectionMode === 'single' && field.allowCustom"
                   v-model="formData[field.label]"
                   :label="field.label"
@@ -139,26 +132,23 @@
                 <v-text-field
                   v-if="field.selectionMode === 'multiple' && field.allowCustom && formData[field.label] && formData[field.label].includes('其他')"
                   v-model="formData[field.label + '_其他']"
-                  label="請輸入其他項目"
+                  :label="t.enterOther" 
                   variant="outlined"
                   :rules="[rules.required]"
                   class="mb-4 ml-4"
-                ></v-text-field>
-
-
-              </template>
+                ></v-text-field> </template>
               
-              <v-btn
-                type="submit"
-                color="#005AB6"
-                
-                block
-                size="large"
-                class="mt-6"
-                :loading="isSubmitting"
-              >
-                送出資料
-              </v-btn>
+              <div class="text-center mt-6">
+                <v-btn
+                  type="submit"
+                  class="btn-gold"
+                  size="large"
+                  rounded="pill"
+                  width="240"
+                  :loading="isSubmitting"
+                >
+                  {{ t.submit }} </v-btn>
+              </div>
 
             </v-form>
           </v-card-text>
@@ -166,10 +156,9 @@
 
         <v-dialog v-model="qrDialog" max-width="400" >
           <v-card >
-            <v-card-title>貴賓資料表</v-card-title>
+            <v-card-title>{{ pageTitle }}</v-card-title>
             <v-card-text class="text-center">
-              <p>請掃描填寫，感謝您。</p>
-              <QrCode v-if="currentUrl" :value="currentUrl" :size="300" class="my-4"></QrCode>
+              <p>{{ t.scan }}</p> <QrCode v-if="currentUrl" :value="currentUrl" :size="300" class="my-4"></QrCode>
               <p class="text-caption">{{ currentUrl }}</p>
             </v-card-text>
             <v-card-actions>
@@ -180,10 +169,8 @@
                 @click="copyUrlToClipboard"
                 :prepend-icon="copySuccess ? 'mdi-check' : 'mdi-content-copy'"
               >
-                {{ copySuccess ? '已複製' : '複製網址' }}
-              </v-btn>
-              <v-btn color="grey-darken-1" variant="text" @click="qrDialog = false">關閉</v-btn>
-            </v-card-actions>
+                {{ copySuccess ? t.copied : t.copy }} </v-btn>
+              <v-btn color="grey-darken-1" variant="text" @click="qrDialog = false">{{ t.close }}</v-btn> </v-card-actions>
           </v-card>
         </v-dialog>
 
@@ -205,6 +192,56 @@ const props = defineProps({
 });
 
 // --- State ---
+const currentLang = ref('zh-TW'); // 預設中文
+
+const toggleLanguage = () => {
+  currentLang.value = currentLang.value === 'zh-TW' ? 'en' : 'zh-TW';
+};
+
+// ✓ 新增：簡單的 UI 翻譯字典
+const i18n = {
+  'zh-TW': {
+    basicInfo: '基本資料',
+    name: '姓名',
+    phone: '電話',
+    requirements: '需求資訊',
+    otherItem: '其他',
+    enterOther: '請輸入其他項目',
+    submit: '送出資料',
+    loading: '正在載入資料...',
+    successTitle: '感謝您',
+    successMsg: '資料已成功送出，請洽現場服務人員。',
+    intro: '建案介紹',
+    scan: '請掃描填寫，感謝您。',
+    copy: '複製網址',
+    copied: '已複製',
+    close: '關閉',
+    formTitleSuffix: '貴賓資料表'
+  },
+  'en': {
+    basicInfo: 'Basic Info',
+    name: 'Name',
+    phone: 'Phone',
+    requirements: 'Preferences',
+    otherItem: 'Other',
+    enterOther: 'Please specify',
+    submit: 'Submit',
+    loading: 'Loading...',
+    successTitle: 'Thank You',
+    successMsg: 'Submission successful. Please contact our staff.',
+    intro: 'Project Intro',
+    scan: 'Please scan to fill out.',
+    copy: 'Copy Link',
+    copied: 'Copied',
+    close: 'Close',
+    formTitleSuffix: 'VIP Form'
+  }
+};
+
+// ✓ 新增：取得當前語言文字的 helper
+const t = computed(() => i18n[currentLang.value]);
+
+
 const isLoading = ref(true);
 const isSubmitting = ref(false);
 const isSubmitted = ref(false);
@@ -223,15 +260,15 @@ const copySuccess = ref(false);
 
 
 // --- Computed ---
-const pageTitle = computed(() => `${projectName.value} 貴賓資料表`);
+const pageTitle = computed(() => `${projectName.value} ${t.value.formTitleSuffix}`);
 const currentUrl = computed(() => window.location.href);
 
 // --- Validation Rules ---
-const rules = {
-  required: (v) => !!v || '此欄位為必填',
-  requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
-  phone: (v) => /^09\d{8}$/.test(v) || '請輸入有效的 10 碼手機號碼',
-};
+const rules = computed(() => ({
+  required: (v) => !!v || (currentLang.value === 'zh-TW' ? '此欄位為必填' : 'Required field'),
+  requiredArray: (v) => (Array.isArray(v) && v.length > 0) || (currentLang.value === 'zh-TW' ? '此欄位為必填' : 'Required field'),
+  phone: (v) => /^09\d{8}$/.test(v) || (currentLang.value === 'zh-TW' ? '請輸入有效的 10 碼手機號碼' : 'Invalid phone number (10 digits)'),
+}));
 
 watch(qrDialog, (newVal) => {
   if (!newVal) {
@@ -404,5 +441,37 @@ async function copyUrlToClipboard() {
 </script>
 
 <style scoped>
-/* (您可以添加自訂樣式) */
+/* ✓ 新增：引入 Google Fonts 思源宋體 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600;700&display=swap');
+
+/* ✓ 新增：設定字體樣式 */
+.font-serif {
+  /* 設定優先順序：思源宋體 -> 系統宋體 -> 通用襯線體 */
+  font-family: 'Noto Serif TC', 'Songti TC', 'PMingLiU', serif !important;
+}
+
+/* ✓ 新增：使用 :deep() 強制覆蓋 Vuetify 內部元件 (如輸入框、按鈕) 的預設 Roboto 字體 */
+.font-serif :deep(*) {
+  font-family: 'Noto Serif TC', 'Songti TC', 'PMingLiU', serif !important;
+}
+
+/* ✓ 新增：金色漸層按鈕樣式 */
+.btn-gold {
+  /* 金色漸層背景 */
+  background: linear-gradient(90deg, #AF832D 0%, #F2D06B 50%, #AF832D 100%) !important;
+  background-size: 200% auto;
+  /* 深褐色文字，對比度較高更有質感 */
+  color: #3E2723 !important; 
+  font-weight: 700;
+  border: none;
+  box-shadow: 0 4px 15px rgba(175, 131, 45, 0.3);
+  transition: all 0.3s ease;
+}
+
+.btn-gold:hover {
+  background-position: right center; /* 滑鼠移過去會有流光效果 */
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(175, 131, 45, 0.4);
+}
+
 </style>

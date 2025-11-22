@@ -15926,7 +15926,7 @@ async function _handleFetchVipGuests(data, db) {
 
 /**
  * [內部函式] 提交客戶資料表 (建立或更新)
- * (✓ V2: 針對銷售首次接手客戶資料，執行覆蓋而非累加)
+ * (✓ V3: 升級邏輯 - 針對銷售補全客戶最新填寫的資料，執行替換而非累加)
  */
 async function _handleSubmitCustomerSheet(data, db) {
     const { projectId, formData, docId } = data; 
@@ -16007,23 +16007,34 @@ async function _handleSubmitCustomerSheet(data, db) {
                     });
                 }
 
-                // 2. 判斷是否為「銷售首次接手補全資料」
-                // 條件: 舊紀錄只有1筆 AND 舊紀錄無銷售人員 AND 新紀錄有銷售人員
+                // 2. 處理 Submissions 陣列邏輯 (V3 核心修改)
                 const oldSubmissions = oldData.submissions || [];
-                const isFirstSalesHandover = (
-                    oldSubmissions.length === 1 && 
-                    !oldData.latestSalesName && 
+                
+                // 取得陣列中最後一筆資料 (如果是空陣列則為 null)
+                const lastSubmission = oldSubmissions.length > 0 ? oldSubmissions[oldSubmissions.length - 1] : null;
+
+                // 判斷是否為「銷售補全」動作
+                // 條件: 
+                // 1. 目前資料庫中有最後一筆紀錄
+                // 2. 該最後一筆紀錄「沒有」銷售人員 (代表是客戶剛填的)
+                // 3. 這次提交的資料「有」銷售人員 (代表銷售正在處理)
+                const isCompletingDraft = (
+                    lastSubmission && 
+                    !lastSubmission['銷售人員'] && 
                     formData['銷售人員']
                 );
 
-                let updatedSubmissions;
-                if (isFirstSalesHandover) {
-                    // ✅ 覆蓋模式：清除第一筆，只留最新的
-                    console.log(`[_handleSubmitCustomerSheet] 偵測到首次銷售接手，執行資料覆蓋。`);
-                    updatedSubmissions = [submissionLog];
+                // 使用展開運算符複製舊陣列，以便修改
+                let updatedSubmissions = [...oldSubmissions];
+
+                if (isCompletingDraft) {
+                    // ✅ 替換模式：移除最後一筆 (客戶草稿)，加入新的一筆 (銷售完成版)
+                    console.log(`[_handleSubmitCustomerSheet] 偵測到銷售補全客戶最新資料，執行替換。`);
+                    updatedSubmissions.pop(); // 移除最後一個
+                    updatedSubmissions.push(submissionLog); // 加入新的
                 } else {
-                    // 🔁 累加模式：保留歷史紀錄，新增一筆
-                    updatedSubmissions = FieldValue.arrayUnion(submissionLog);
+                    // 🔁 累加模式：直接新增
+                    updatedSubmissions.push(submissionLog);
                 }
 
                 transaction.update(docRef, {
@@ -16033,7 +16044,7 @@ async function _handleSubmitCustomerSheet(data, db) {
 
                     updatedAt: rootTimestamp, 
                     profile: newProfile, 
-                    submissions: updatedSubmissions, // 使用判斷後的 submissions
+                    submissions: updatedSubmissions, // 寫入處理過的陣列
                     
                     searchablePhones: Array.from(allPhones)
                 });
@@ -16093,9 +16104,9 @@ exports.customerSheetApi = onCall({
 
 
 /**
- * [優化版 V6] 監測 vipGuests 寫入
- * 功能 1: 檢查電話重複 (跨文件檢查 - 增強訊息顯示，標示重複來源)
- * 功能 2: 檢查提交次數 (同文件檢查 - 銷售先建檔情境)
+ * [優化版 V7] 監測 vipGuests 寫入
+ * 功能 1: 檢查電話重複 (跨文件檢查)
+ * 功能 2: 檢查提交次數 (同文件檢查 - 邏輯優化：顯示所有歷史銷售紀錄)
  */
 exports.onVipGuestDuplicate = onDocumentWritten({
     document: "vipGuests/{docId}",
@@ -16122,7 +16133,7 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     if (!projectId || !currentPhone) return;
 
     // ============================================================
-    // 任務 A: 檢查電話重複 (跨文件檢查)
+    // 任務 A: 檢查電話重複 (跨文件檢查) - 邏輯保持不變
     // ============================================================
     console.log(`[${functionName}] 開始檢查電話重複 (Doc: ${docId})...`);
 
@@ -16137,11 +16148,9 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     }
 
     const numbersToCheck = [];
-    // 檢查主電話 (若為新文件或主電話變更)
     if (!existingNumbers.has(currentPhone)) {
         numbersToCheck.push({ number: currentPhone, type: 'main', name: currentName, relation: '本人' });
     }
-    // 檢查其他電話
     if (afterData.otherPhones && Array.isArray(afterData.otherPhones)) {
         afterData.otherPhones.forEach(p => {
             if (p.phone && !existingNumbers.has(p.phone)) {
@@ -16151,68 +16160,35 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     }
 
     if (numbersToCheck.length > 0) {
-        console.log(`[${functionName}] 有 ${numbersToCheck.length} 筆新號碼需檢查跨文件重複。`);
-
         const conflicts = [];
         const queryPromises = numbersToCheck.map(async (checkItem) => {
             const targetNumber = checkItem.number;
-            
-            // 搜尋條件：只要 searchablePhones (包含主+其他) 有這個號碼就抓出來
-            const conflictQuery = anxiDb.collection('vipGuests')
-                .where('projectId', '==', projectId)
-                .where('searchablePhones', 'array-contains', targetNumber)
-                .get();
-
-            const snapshot = await conflictQuery;
-            snapshot.forEach(doc => {
-                // 排除自己
-                if (doc.id !== docId) {
-                    conflicts.push({ 
-                        sourceItem: checkItem, // 當前文件觸發重複的號碼
-                        targetData: doc.data() // 資料庫中已存在的重複文件
-                    });
-                }
-            });
+            const mainPhoneQuery = anxiDb.collection('vipGuests').where('projectId', '==', projectId).where('phone', '==', targetNumber).get();
+            const otherPhoneQuery = anxiDb.collection('vipGuests').where('projectId', '==', projectId).where('searchablePhones', 'array-contains', targetNumber).get();
+            const [mainSnap, otherSnap] = await Promise.all([mainPhoneQuery, otherPhoneQuery]);
+            const foundDocs = new Map();
+            mainSnap.forEach(doc => { if (doc.id !== docId) foundDocs.set(doc.id, doc.data()); });
+            otherSnap.forEach(doc => { if (doc.id !== docId) foundDocs.set(doc.id, doc.data()); });
+            if (foundDocs.size > 0) {
+                foundDocs.forEach((targetData) => { conflicts.push({ sourceItem: checkItem, targetData: targetData }); });
+            }
         });
-
         await Promise.all(queryPromises);
 
-        // A-3. 如果發現衝突，發送通知
         if (conflicts.length > 0) {
-            console.log(`[${functionName}] 發現 ${conflicts.length} 筆電話衝突，準備發送通知...`);
-            
             const currentSales = afterData.latestSalesName || '未知';
-            
-            let finalMessage = `⚠️客資重複提醒\n----------------------`;
-            finalMessage += `\n主電話:${currentPhone}`;
-            finalMessage += `\n姓名:${currentName}`;
-            finalMessage += `\n銷售:${currentSales}`;
-            finalMessage += `\n----------------------`;
-
-            // 遍歷衝突資料
+            let finalMessage = `⚠️客資重複提醒\n----------------------\n主電話:${currentPhone}\n姓名:${currentName}\n銷售:${currentSales}\n----------------------`;
             conflicts.forEach((conflict) => {
-                const src = conflict.sourceItem; // 我們這次填寫的
-                const tgt = conflict.targetData; // 資料庫裡舊的
+                const src = conflict.sourceItem;
+                const tgt = conflict.targetData;
                 const targetSales = tgt.latestSalesName || '未知';
-                
-                // 1. 顯示「衝突來源」 (我們填了什麼)
                 if (src.type === 'other') {
-                    finalMessage += `\n新增的其他電話`;
-                    finalMessage += `\n   - 姓名: ${src.name}`;
-                    finalMessage += `\n   - 電話: ${src.number}`;
-                    finalMessage += `\n   - 關係: ${src.relation}`;
+                    finalMessage += `\n新增的其他電話\n   - 姓名: ${src.name}\n   - 電話: ${src.number}\n   - 關係: ${src.relation}`;
                 } else {
                     finalMessage += `\n(新增的主電話 ${src.number} 重複)`;
                 }
-
-                // 2. 顯示「與誰重複」 (資料庫裡有什麼)
-                finalMessage += `\n\n與以下資料重複：`;
-                finalMessage += `\n主電話:${tgt.phone}`;
-                finalMessage += `\n姓名:${tgt.latestName}`;
-                finalMessage += `\n銷售:${targetSales}`;
-
-                // ✅ [核心優化]：檢查目標文件中，具體是「哪個部分」跟我們重複
-                // 如果重複的不是目標的主電話，而是目標的「其他電話」，把它列出來
+                finalMessage += `\n\n與以下資料重複：\n主電話:${tgt.phone}\n姓名:${tgt.latestName}\n銷售:${targetSales}`;
+                
                 if (tgt.phone !== src.number) {
                     if (tgt.otherPhones && Array.isArray(tgt.otherPhones)) {
                         const matchedOther = tgt.otherPhones.find(p => p.phone === src.number);
@@ -16221,21 +16197,20 @@ exports.onVipGuestDuplicate = onDocumentWritten({
                         }
                     }
                 }
-
                 if (conflicts.length > 1) finalMessage += `\n----------------------`;
             });
-
             await sendLineNotification(anxiDb, projectId, finalMessage);
         }
     }
 
     // ============================================================
-    // 任務 B: 檢查提交次數 (邏輯保持不變 - V5)
+    // 任務 B: 檢查提交次數 (同文件內部重複檢查) - 修正處
     // ============================================================
     const beforeSubmissions = beforeData?.submissions || [];
     const afterSubmissions = afterData.submissions || [];
     
     let shouldTriggerTaskB = false;
+    // 標記是否為「銷售先建檔」的情境 (這決定了我們要顯示哪一筆資料)
     let isSalesFirstScenario = false;
 
     if (afterSubmissions.length > beforeSubmissions.length) {
@@ -16249,9 +16224,11 @@ exports.onVipGuestDuplicate = onDocumentWritten({
             const secondHasSales = !!secondSub['銷售人員'];
 
             if (firstHasSales) {
+                // 情況 A: 銷售先建檔，客戶後續填寫 -> 視為重複
                 shouldTriggerTaskB = true;
                 isSalesFirstScenario = true; 
             } else if (!secondHasSales) {
+                // 情況 B: 客戶重複填寫 (兩筆都無銷售) -> 視為重複
                 shouldTriggerTaskB = true;
             }
         }
@@ -16259,20 +16236,29 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
     if (shouldTriggerTaskB) {
         console.log(`[${functionName}] 偵測到內部重複提交，準備發送通知...`);
+        
         let countMsgBody = "";
         let listedCount = 0;
 
         afterSubmissions.forEach((submission, index) => {
+            const salesName = submission['銷售人員'];
+
+            // 1. 如果是「銷售先建檔」情境 (總數=2 且 第1筆有銷售)，只顯示第1筆
             if (isSalesFirstScenario) {
                 if (index !== 0) return; 
-            } else {
-                if (index === 0) return;
+            } 
+            // 2. 如果是其他情境 (總數>2 或 客戶重複填寫)
+            else {
+                // ✅ [核心修正]：只顯示「有填寫銷售人員」的歷史紀錄
+                // 這樣可以過濾掉客戶剛填寫的那筆新資料 (因為它還沒有銷售人員)，
+                // 同時保留所有舊的銷售紀錄 (Index 0, Index 1...)
+                if (!salesName) return;
             }
 
             listedCount++;
             const guestName = submission['姓名'] || '未知';
             const visitDate = submission['拜訪日期'] || '未知';
-            const salesName = submission['銷售人員'] || '(未填寫)';
+            // salesName 在上面已取
 
             countMsgBody += `\n\n--- 第 ${listedCount} 筆 ---`;
             countMsgBody += `\n姓名: ${guestName}`;
@@ -16352,6 +16338,7 @@ async function sendLineNotification(db, projectId, messageText) {
         console.error("發送 LINE 通知失敗:", error);
     }
 }
+
 
 
 
