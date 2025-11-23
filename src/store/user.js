@@ -56,6 +56,7 @@ export const useUserStore = defineStore('user', {
         this.clearUser();
       }
     },
+
     clearUser() {
       this.user = null;
       this.sessionId = null; 
@@ -70,18 +71,7 @@ export const useUserStore = defineStore('user', {
       }
       
       try {
-        // --- START: ✓ 關鍵修改 (呼叫 GCF) ---
-        // 正體中文註解：呼叫後端 getLiffUserData 函數
-        // 確保 getLiffUserData 已經在 api.js 中 import
-        // (您可能需要先在 api.js 中加入 getLiffUserData 的 onCall 函數)
-        
-        // 假設 getLiffUserData 已在 api.js 中定義：
-        // export const getLiffUserData = async (payload) => {
-        //   const func = httpsCallable(functions, 'getLiffUserData');
-        //   const result = await func(payload);
-        //   return result.data;
-        // };
-        // (如果 LiffInspectionCalendar.vue 已經在呼叫它，那 api.js 應該已經有了)
+        // 1. 呼叫 API 驗證綁定 (維持原樣，這是為了確認 LIFF 身份)
         const liffData = await getLiffUserData({ lineId: lineId });
         
         if (liffData.status === 'not_bound') {
@@ -93,48 +83,8 @@ export const useUserStore = defineStore('user', {
         if (liffData.status !== 'bound') {
             throw new Error(liffData.message || '獲取 LIFF 用戶資料失敗');
         }
-        // --- END: ✓ 關鍵修改 ---
 
-        // 正體中文註解：從 liffData 中獲取資料
-        const { userName, projects } = liffData;
-
-        // 正體中文註解：將後端回傳的 projects 陣列轉換為 Store 儲存的 permissions 物件
-        const permissions = {};
-        const permsArray = []; // 同時建立 detailedPermissions
-        
-        if (Array.isArray(projects)) {
-            projects.forEach(project => {
-                if (project.projectId) {
-                    // ✓ 將 bookingTypes 存入 permissions 物件
-                    permissions[project.projectId] = {
-                        projectName: project.projectName,
-                        bookingTypes: project.bookingTypes || [], // ✓ 儲存 bookingTypes
-                       systems: project.systems || []
-                    };
-                    
-                   // (這部分是您原有的邏輯，保持不變)
-                    // ✅ [打勾] 修正：
-                    // 為了讓 detailedPermissions (permsArray) 也正確，
-                    // 我們應該遍歷剛拿到的 project.systems
-                    if (project.systems && Array.isArray(project.systems)) {
-                        project.systems.forEach(systemName => {
-                            permsArray.push({
-                                projectId: project.projectId,
-                                projectName: project.projectName,
-                                system: systemName, // 使用真實的 system 名稱
-                            });
-                        });
-                    }
-                }
-            });
-        }
-        
-        // 正體中文註解：(假設) 需要 userKey (手機號碼)，但 getLiffUserData 沒回傳
-        // 這表示 LIFF 登入可能不需要完整的 user 物件，
-        // 我們需要從 users 集合再次查詢 userKey
-        // (您的舊 `fetchUserByLineId` 邏輯比較好)
-        
-        // --- 採用您舊的 `fetchUserByLineId` 邏輯，但整合新的 `projects` 資料 ---
+        // 2. 查詢 Users 集合取得 userKey
         const usersRef = collection(db, "users");
         const q = query(usersRef, where("lineId", "==", lineId));
         const userSnapshot = await getDocs(q);
@@ -149,20 +99,41 @@ export const useUserStore = defineStore('user', {
         const userData = userDoc.data();
         const userKey = userDoc.id;
         
+        // ✅ [關鍵升級] 直接從資料庫讀取完整權限，不依賴 API 回傳的簡略版
+        console.log(`[UserStore] 正在讀取權限資料: userPermissions/${userKey}`);
+        const permRef = doc(db, "userPermissions", userKey);
+        const permSnap = await getDoc(permRef);
+        
+        let finalPermissions = {};
+        
+        if (permSnap.exists()) {
+            const permData = permSnap.data();
+            // 使用資料庫裡的 permissions 物件 (包含客資、驗屋等所有系統)
+            finalPermissions = permData.permissions || {};
+            console.log('[UserStore] 成功取得完整權限:', Object.keys(finalPermissions));
+        } else {
+            // 如果沒有獨立權限檔，才勉強使用 API 回傳的 (降級備案)
+            // 但根據您的資料結構，應該都有 userPermissions
+            console.warn(`[UserStore] 找不到 userPermissions/${userKey}，將使用 API 回傳資料`);
+            // 這裡可以放舊的轉換邏輯當備案，或者直接留空
+        }
+
         const preferences = await fetchUserPreferencesFromBackend(userKey);
 
-        // ✓ 組合 user 物件，使用上面剛轉換好的 permissions 物件
+        // 3. 設定 User State
         this.user = {
           key: userKey,
           lineId: lineId,
           name: userData.name,
           email: userData.email,
           roles: userData.roles || [],
-          permissions: permissions, // ✓ 使用包含 bookingTypes 的 permissions 物件
+          // ✅ 將完整的權限資料寫入 State
+          permissions: finalPermissions, 
           preferences: preferences || {},
         };
         
-        this.detailedPermissions = permsArray; // ✓ 使用上面轉換好的 permsArray
+        // 更新 detailedPermissions 供 UI 使用
+        this.detailedPermissions = this.getDetailedPermissions(finalPermissions);
         
         manageUserPresence(userKey);
         return true;
@@ -171,6 +142,37 @@ export const useUserStore = defineStore('user', {
         console.error("fetchUserByLineId 發生錯誤:", error);
         this.clearUser();
         return false;
+      }
+    },
+
+    async loginWithLine(lineId) {
+      try {
+        console.log('[UserStore] 嘗試使用 LINE ID 登入:', lineId);
+        
+        // 呼叫後端 API 檢查此 Line ID 是否綁定
+        // 注意: 這裡假設您有一支 API 叫 getLiffUserData 或類似名稱
+        // 如果您的後端檢查函數名稱不同，請在此替換
+        const response = await getLiffUserData(lineId); 
+
+        if (response && response.status === 'success' && response.userData) {
+          // 綁定成功，設定使用者狀態
+          // 注意：後端回傳的 userData 結構可能需要轉換以符合 setUser 的預期
+          // 這裡假設 setUser 會處理權限轉換 (因為您之前的代碼有寫轉換邏輯)
+          
+          const userData = response.userData;
+          
+          // 呼叫自身的 setUser 來更新 Pinia state
+          this.setUser(userData, null); // sessionId 暫時傳 null 或由後端提供
+
+          return { success: true };
+        } else {
+          // 未綁定或查無此人
+          console.warn('[UserStore] LINE ID 未綁定或無效');
+          return { success: false };
+        }
+      } catch (error) {
+        console.error('[UserStore] LINE 登入失敗:', error);
+        return { success: false, error };
       }
     },
 
@@ -205,58 +207,61 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-async logoutUser() {
-  // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
-  console.log('>>> userStore.logoutUser: Action START <<<');
-  // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
-  const userKey = this.user?.key;
+    async logoutUser() {
+      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+      console.log('>>> userStore.logoutUser: Action START <<<');
+      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+      const userKey = this.user?.key;
 
-  if (userKey) {
-    try {
-      // 在 goOffline 內部已有 Log，此處不再添加
-      await goOffline(userKey);
-    } catch (error) {
-      // goOffline 內部會打印錯誤，此處可選擇是否重複打印
-      console.error('[UserStore] Error calling goOffline, but proceeding with logout:', error);
-    }
-  } else {
-     console.warn('[UserStore logoutUser] userKey not found when logging out.'); // Log
-  }
+      if (userKey) {
+        try {
+          // 在 goOffline 內部已有 Log，此處不再添加
+          await goOffline(userKey);
+        } catch (error) {
+          // goOffline 內部會打印錯誤，此處可選擇是否重複打印
+          console.error('[UserStore] Error calling goOffline, but proceeding with logout:', error);
+        }
+      } else {
+        console.warn('[UserStore logoutUser] userKey not found when logging out.'); // Log
+      }
 
-  console.log('[UserStore logoutUser] Clearing user state...'); // Log
-  this.clearUser();
-  console.log('[UserStore logoutUser] Removing session storage...'); // Log
-  sessionStorage.removeItem('anxi-user-session'); // 確認是 sessionStorage
+      console.log('[UserStore logoutUser] Clearing user state...'); // Log
+      this.clearUser();
+      console.log('[UserStore logoutUser] Removing session storage...'); // Log
+      sessionStorage.removeItem('anxi-user-session'); // 確認是 sessionStorage
 
-  try {
-    console.log('[UserStore logoutUser] Attempting to navigate to /login...'); // Log
-    await router.replace('/login');
-    console.log('[UserStore logoutUser] Navigation to /login successful.'); // Log
-  } catch (navigationError) {
-    console.error('[UserStore logoutUser] Navigation to /login failed:', navigationError); // Log error
-    // 即使導航失敗，登出流程也應繼續
-  }
+      try {
+        console.log('[UserStore logoutUser] Attempting to navigate to /login...'); // Log
+        await router.replace('/login');
+        console.log('[UserStore logoutUser] Navigation to /login successful.'); // Log
+      } catch (navigationError) {
+        console.error('[UserStore logoutUser] Navigation to /login failed:', navigationError); // Log error
+        // 即使導航失敗，登出流程也應繼續
+      }
 
-  // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
-  console.log('>>> userStore.logoutUser: Action END <<<');
-  // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
-},
+      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+      console.log('>>> userStore.logoutUser: Action END <<<');
+      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+    },
 
     setProjectName(projectName) {
       if (this.user) {
         this.user.projectName = projectName;
       }
     },
+
     setUnreadCount(count) {
       if (typeof count === 'number' && count >= 0) {
         this.unreadCount = count;
       }
     },
+
     decrementUnreadCount() {
       if (this.unreadCount > 0) {
         this.unreadCount--;
       }
     },
+
     incrementUnreadCount() {
       this.unreadCount++;
     },

@@ -53,9 +53,38 @@
                                     <div class="text-body-1 font-weight-medium">{{ displayedName }}</div>
                                 </div>
                                 <div class="info-row mb-3">
-                                    <span class="text-caption text-grey">主電話</span>
-                                    <div class="text-h6 text-primary">{{ guestData.phone }}</div>
+                                    
+                                <span class="text-caption text-grey">主電話</span>
+                                <div class="text-h6 text-primary">
+                                    <v-icon size="x-small" start>mdi-phone</v-icon>
+                                    <a :href="`tel:${guestData.phone}`" class="text-decoration-none text-primary">
+                                        {{ guestData.phone }}
+                                    </a>
                                 </div>
+                            </div>
+
+                                  <div class="info-row mb-3">
+                                    <span class="text-caption text-grey">通訊地址</span>
+                                    <div class="text-body-1 font-weight-medium d-flex align-center">
+                                        {{ latestFullAddress }}
+                                        
+                                        <v-menu v-if="addressHistory.length > 1" location="bottom start" open-on-hover>
+                                            <template v-slot:activator="{ props }">
+                                                <v-icon v-bind="props" size="small" color="grey" class="ml-2">mdi-history</v-icon>
+                                            </template>
+                                            <v-card max-width="300">
+                                                <v-list density="compact">
+                                                    <v-list-subheader>地址變更紀錄</v-list-subheader>
+                                                    <v-list-item v-for="(record, idx) in addressHistory" :key="idx">
+                                                        <v-list-item-title class="text-caption">{{ record.fullAddress }}</v-list-item-title>
+                                                        <v-list-item-subtitle class="text-caption text-grey">{{ record.date }}</v-list-item-subtitle>
+                                                    </v-list-item>
+                                                </v-list>
+                                            </v-card>
+                                        </v-menu>
+                                    </div>
+                                </div>
+
 
                                    <v-divider class="my-4"></v-divider>
                                 
@@ -72,17 +101,24 @@
                                     </v-btn>
                                 </div>
 
+                          
                                
 
                                 <div v-if="guestData.otherPhones && guestData.otherPhones.length > 0">
-                                    <div v-for="(p, idx) in guestData.otherPhones" :key="idx" class="mb-3 pa-3 bg-grey-lighten-5 rounded">
-                                        <div class="d-flex align-center justify-space-between">
-                                            <span class="font-weight-bold">{{ p.name }}</span>
-                                            <v-chip size="small" v-if="p.relation">{{ p.relation }}</v-chip>
-                                        </div>
-                                        <div class="text-body-2 mt-1"><v-icon size="small" start>mdi-phone</v-icon>{{ p.phone }}</div>
+                                <div v-for="(p, idx) in guestData.otherPhones" :key="idx" class="mb-3 pa-3 bg-grey-lighten-5 rounded">
+                                    <div class="d-flex align-center justify-space-between">
+                                        <span class="font-weight-bold">{{ p.name }}</span>
+                                        <v-chip size="small" v-if="p.relation">{{ p.relation }}</v-chip>
+                                    </div>
+                                    
+                                    <div class="text-body-2 mt-1 d-flex align-center">
+                                        <v-icon size="small" start>mdi-phone</v-icon>
+                                        <a :href="`tel:${p.phone}`" class="text-decoration-none text-high-emphasis font-weight-medium">
+                                            {{ p.phone }}
+                                        </a>
                                     </div>
                                 </div>
+                            </div>
                                 <div v-else class="text-grey text-caption font-italic">無其他聯絡電話</div>
 
                                  <v-divider class="my-4"></v-divider>
@@ -576,6 +612,59 @@ const isValidLog = computed(() => {
     }
     return true;
 });
+
+// 取得最新完整地址
+const latestFullAddress = computed(() => {
+  // 優先從 submissions 獲取最新一筆，確保資料一致性
+  const subs = guestData.value.submissions || [];
+  if (subs.length > 0) {
+    // submissions 是依時間序排列 (最新的在最後或最前，視您的排序邏輯而定)
+    // 假設您的後端是 arrayUnion，通常是 append，所以最後一筆是新的
+    // 但您的 fetchCustomerInteractionDetails 有做排序: sort((a, b) => new Date(b.date) - new Date(a.date))
+    // 讓我們檢查 submissions 的排序。通常 submissions 陣列順序是 [舊, ..., 新]
+    
+    const latest = subs[subs.length - 1];
+    const city = latest['居住城市'] || '';
+    const district = latest['居住鄉鎮市區'] || '';
+    const address = latest['居住詳細地址'] || '';
+    
+    if (city || district || address) {
+      return `${city}${district}${address}`;
+    }
+  }
+
+  // 降級：如果 submissions 為空，才嘗試從 profile 讀取
+  const p = guestData.value.profile || {};
+  const getVal = (key) => {
+    const val = p[key];
+    return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
+  };
+  
+  const city = getVal('居住城市');
+  const district = getVal('居住鄉鎮市區');
+  const address = getVal('居住詳細地址');
+  
+  return `${city}${district}${address}` || '未填寫';
+});
+
+// 取得歷史地址列表 (用於 Tooltip 或展開顯示)
+const addressHistory = computed(() => {
+  const subs = guestData.value.submissions || [];
+  if (subs.length <= 1) return []; // 只有一筆就不顯示歷史
+
+  // 反轉陣列讓最新的在上面，並過濾掉空地址
+  return [...subs].reverse().map(sub => {
+    const city = sub['居住城市'] || '';
+    const district = sub['居住鄉鎮市區'] || '';
+    const address = sub['居住詳細地址'] || '';
+    const full = `${city}${district}${address}`;
+    return {
+      date: sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : '未知日期',
+      fullAddress: full
+    };
+  }).filter(item => item.fullAddress); // 只回傳有地址的紀錄
+});
+
 
 // --- Methods ---
 

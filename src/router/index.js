@@ -286,6 +286,31 @@ const routes = [
       title: '客戶資料表'
     }
   },
+// ✅ [新增] 客資查詢 - 入口 (負責 LIFF 驗證與分流)
+  {
+    path: '/customer-query-entry',
+    name: 'CustomerQueryEntry',
+    component: () => import('@/views/CustomerQueryEntry.vue'),
+    meta: { 
+       layout: PublicLayout,
+        title: '客資查詢系統入口',
+      requiresAuth: false
+     } // 頁面內部處理 LIFF 登入
+  },
+
+  // ✅ [新增] 客資查詢 - 主頁面 (需權限)
+  {
+    path: '/customer-query/:projectId',
+    name: 'CustomerQuery',
+    component: () => import('@/views/CustomerQuery.vue'),
+    meta: { 
+      layout: PublicLayout,
+      title: '客資查詢系統',
+      requiresAuth: true,
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'] // 路由守衛會檢查
+    }
+  },
+
 
   {
     path: '/sign-auth/:token',

@@ -7172,3 +7172,9 @@ export const updateInteractionLog = async (projectId, docId, logId, logData, ope
     throw new Error(error.message);
   }
 };
+
+export async function queryCustomerDataApi(projectId, queryText) {
+  const queryFunc = httpsCallable(functions, 'queryCustomerData');
+  const result = await queryFunc({ projectId, queryText });
+  return result.data;
+}

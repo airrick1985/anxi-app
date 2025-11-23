@@ -279,7 +279,7 @@
                     <v-select
                       clearable
                       v-model="formData['居住城市']" 
-                      
+                      :rules="[rules.required]"
                       :items="cityOptions"
                       label="現居地址"
                       variant="outlined"
@@ -289,6 +289,7 @@
                     <v-select
                     clearable
                       v-model="formData['居住鄉鎮市區']"
+                       :rules="[rules.required]"
                       :items="districtOptions"
                       label="鄉鎮市區"
                       variant="outlined"
@@ -966,21 +967,16 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     let initialFormData = {
       '姓名': '',
       '電話': '',
-      
-      // ✓ 檢查：銷售人員名稱不變
       '銷售人員': isUrlEntry ? salesNameFromUrl : salesPerson.value.name, 
-      
-      // ✓ 檢查：銷售人員電話改用 salesPhone.value (登入時的 v-model)
       '銷售人員電話': isUrlEntry ? salesPhoneFromUrl : salesPhone.value, 
-
-      '拜訪日期': getTodayInTaiwan(), // ✓ 檢查：新增欄位並設定預設值
-      
+      '拜訪日期': getTodayInTaiwan(),
       '居住城市': null, 
       '居住鄉鎮市區': null,
       '居住詳細地址': '',
       '任職公司': '',
     };    
-    // (初始化 systemSettings 欄位 - 保持不變)
+    
+    // (初始化欄位 - 保持不變)
     if (systemSettings.value.fields.age) {
       const field = systemSettings.value.fields.age;
       initialFormData[field.label] = field.selectionMode === 'multiple' ? [] : null;
@@ -989,33 +985,52 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
       const field = systemSettings.value.fields.occupation;
       initialFormData[field.label] = field.selectionMode === 'multiple' ? [] : null;
     }
-
-    // (初始化 vipFormFields 欄位 - 保持不變)
     formFields.value.forEach(field => {
       initialFormData[field.label] = field.selectionMode === 'multiple' ? [] : null;
     });
 
-    // (載入既有資料 - 保持不變)
-if (currentDocId.value) {
+    // ---------------------------------------------------------
+    // ✅ [核心修改]：載入既有資料邏輯
+    // ---------------------------------------------------------
+    if (currentDocId.value) {
       const result = await fetchSingleVipGuest(currentDocId.value);
       if (result.status === 'success') {
-        const existingData = result.data;
+        const data = result.data;
+        let sourceData = {};
+
+        // 1. 優先嘗試從 submissions 陣列取得最新一筆 (Snapshot)
+        if (data.submissions && Array.isArray(data.submissions) && data.submissions.length > 0) {
+            // 取陣列最後一個元素 (最新提交)
+            sourceData = data.submissions[data.submissions.length - 1];
+            console.log("已載入最新 submission 資料:", sourceData);
+        } 
+        // 2. 若無 submissions (或後端尚未更新)，嘗試讀取 profile
+        else if (data.profile) {
+            sourceData = data.profile;
+        } 
+        // 3. 相容舊版後端 (result.data 本身就是 profile)
+        else {
+            sourceData = data;
+        }
+
+        // 4. 將資料填入 initialFormData
         initialFormData = { 
           ...initialFormData, 
-          ...existingData,
-          '拜訪日期': existingData['拜訪日期'] || getTodayInTaiwan(),
+          ...sourceData,
+          // 特殊處理：拜訪日期若無則用今天，銷售人員資訊維持當前登入者狀態(不覆蓋)
+          '拜訪日期': sourceData['拜訪日期'] || getTodayInTaiwan(),
           '銷售人員': initialFormData['銷售人員'], 
           '銷售人員電話': initialFormData['銷售人員電話'] 
         };
         
-        if (existingData['居住鄉鎮市區']) {
+        // 5. 處理地址連動 (根據載入的鄉鎮市區反推選項)
+        if (sourceData['居住鄉鎮市區']) {
           const city = twCitiesData.find(c => 
-            c.districts.some(d => d.name === existingData['居住鄉鎮市區'])
+            c.districts.some(d => d.name === sourceData['居住鄉鎮市區'])
           );
           if (city) {
-            
-            // initialFormData['居住城市'] = city.name; 
-            
+            // 注意：如果 sourceData 中沒有城市，這裡可能需要手動補上，
+            // 但通常 sourceData 會包含 '居住城市'
             const cityData = twCitiesData.find(c => c.name === city.name);
             districtOptions.value = cityData ? cityData.districts.map(d => d.name) : [];
           }
@@ -1024,6 +1039,9 @@ if (currentDocId.value) {
         throw new Error(result.message);
       }
     }
+    // ---------------------------------------------------------
+    // ✅ [修改結束]
+    // ---------------------------------------------------------
     
     formData.value = initialFormData;
     
@@ -1031,7 +1049,6 @@ if (currentDocId.value) {
     if (!isUrlEntry) {
       if (isCounter.value) {
         const result = await fetchUserManagementInitialData(salesPhone.value);
-        
         if (result.status === 'success' && result.data) {
           allManageableUsers.value = result.data.manageableUsers || [];
           allUserPermissionsMap.value = result.data.allUserPermissionsMap || {};
