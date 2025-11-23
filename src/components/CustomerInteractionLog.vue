@@ -63,30 +63,53 @@
                                 </div>
                             </div>
 
-                                  <div class="info-row mb-3">
-                                    <span class="text-caption text-grey">通訊地址</span>
-                                    <div class="text-body-1 font-weight-medium d-flex align-center">
-                                        {{ latestFullAddress }}
-                                        
-                                        <v-menu v-if="addressHistory.length > 1" location="bottom start" open-on-hover>
-                                            <template v-slot:activator="{ props }">
-                                                <v-icon v-bind="props" size="small" color="grey" class="ml-2">mdi-history</v-icon>
-                                            </template>
-                                            <v-card max-width="300">
-                                                <v-list density="compact">
-                                                    <v-list-subheader>地址變更紀錄</v-list-subheader>
-                                                    <v-list-item v-for="(record, idx) in addressHistory" :key="idx">
-                                                        <v-list-item-title class="text-caption">{{ record.fullAddress }}</v-list-item-title>
-                                                        <v-list-item-subtitle class="text-caption text-grey">{{ record.date }}</v-list-item-subtitle>
-                                                    </v-list-item>
-                                                </v-list>
-                                            </v-card>
-                                        </v-menu>
-                                    </div>
-                                </div>
+                                 <div class="info-row mb-3">
+    <span class="text-caption text-grey">目前居住</span>
+    
+    <div class="d-flex flex-column">
+        <template v-if="addressList.length > 0">
+            <div v-for="(addr, idx) in addressList" :key="idx" class="mb-1">
+                <div v-if="idx === 0" class="text-body-1 font-weight-bold text-high-emphasis">
+                    {{ addr.fullAddress }}
+                </div>
+                <div v-else class="text-caption text-grey d-flex align-center mt-1">
+                    <v-icon size="x-small" class="mr-1">mdi-history</v-icon>
+                    <span class="mr-2">{{ addr.date }}</span>
+                    <span>{{ addr.fullAddress }}</span>
+                </div>
+            </div>
+        </template>
+        
+        <div v-else class="text-body-2 text-grey-lighten-1 font-italic">
+            未填寫
+        </div>
+    </div>
+</div>
 
+<div class="info-row mb-3">
+    <span class="text-caption text-grey">職業 / 任職公司</span>
+    
+    <div class="d-flex flex-column">
+        <template v-if="careerList.length > 0">
+            <div v-for="(item, idx) in careerList" :key="idx" class="mb-1">
+                <div v-if="idx === 0" class="text-body-1 font-weight-bold text-high-emphasis">
+                    {{ item.full }}
+                </div>
+                <div v-else class="text-caption text-grey d-flex align-center mt-1">
+                    <v-icon size="x-small" class="mr-1">mdi-history</v-icon>
+                    <span class="mr-2">{{ item.date }}</span>
+                    <span>{{ item.full }}</span>
+                </div>
+            </div>
+        </template>
+        
+        <div v-else class="text-body-2 text-grey-lighten-1 font-italic">
+            未填寫
+        </div>
+    </div>
+</div>
 
-                                   <v-divider class="my-4"></v-divider>
+<v-divider class="my-4"></v-divider>
                                 
                                 <div class="d-flex align-center justify-space-between mb-2">
                                     <span class="text-caption text-grey">其他聯絡電話</span>
@@ -663,6 +686,141 @@ const addressHistory = computed(() => {
       fullAddress: full
     };
   }).filter(item => item.fullAddress); // 只回傳有地址的紀錄
+});
+
+
+// 1. 萬用時間解析函式 (提取出來供大家共用)
+const parseTimestamp = (t) => {
+    if (!t) return null;
+    if (typeof t.toDate === 'function') return t.toDate();
+    if (t._seconds !== undefined) return new Date(t._seconds * 1000);
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+// 2. 排序 Submissions 的輔助函式
+const getSortedSubmissions = () => {
+    const subs = guestData.value.submissions || [];
+    if (subs.length === 0) return [];
+    return [...subs].sort((a, b) => {
+         const timeA = parseTimestamp(a.submittedAt)?.getTime() || 0;
+         const timeB = parseTimestamp(b.submittedAt)?.getTime() || 0;
+         return timeA - timeB; // 由舊到新
+    });
+};
+
+// 3. 計算地址變更歷史 (複合欄位)
+const addressList = computed(() => {
+    const sortedSubs = getSortedSubmissions();
+    
+    // 如果沒有提交紀錄，降級讀取 profile
+    if (sortedSubs.length === 0) {
+        const p = guestData.value.profile || {};
+        const getVal = (k) => Array.isArray(p[k]) ? (p[k].length > 0 ? p[k][p[k].length - 1] : '') : (p[k] || '');
+        const full = `${getVal('居住城市')}${getVal('居住鄉鎮市區')}${getVal('居住詳細地址')}`;
+        // ✅ [修正] 將 value 改為 fullAddress
+        return full ? [{ fullAddress: full, date: '目前' }] : [];
+    }
+
+    const history = [];
+    let lastVal = '';
+
+    sortedSubs.forEach(sub => {
+        const c = sub['居住城市'] || '';
+        const d = sub['居住鄉鎮市區'] || '';
+        const a = sub['居住詳細地址'] || '';
+        const full = `${c}${d}${a}`;
+
+        if (full && full !== lastVal) {
+            let dateStr = '未知日期';
+            const dateObj = parseTimestamp(sub.submittedAt);
+            if (dateObj) dateStr = dateObj.toLocaleDateString('zh-TW');
+
+            // ✅ [修正] 將 value 改為 fullAddress
+            history.push({ date: dateStr, fullAddress: full });
+            lastVal = full;
+        }
+    });
+    return history.reverse(); // 最新在最前
+});
+
+// 4. [新增] 通用單一欄位歷史產生器 (用於職業、任職公司)
+const getSimpleFieldHistory = (fieldName) => {
+    const sortedSubs = getSortedSubmissions();
+
+    // 如果沒有提交紀錄，降級讀取 profile
+    if (sortedSubs.length === 0) {
+        const p = guestData.value.profile || {};
+        // 處理可能的陣列結構
+        const valArr = p[fieldName];
+        const val = Array.isArray(valArr) ? (valArr.length > 0 ? valArr[valArr.length - 1] : '') : (valArr || '');
+        return val ? [{ value: val, date: '目前' }] : [];
+    }
+
+    const history = [];
+    let lastVal = '';
+
+    sortedSubs.forEach(sub => {
+        const val = sub[fieldName] || '';
+        // 只有當值存在且與上一次不同時才加入
+        if (val && val !== lastVal) {
+            let dateStr = '未知日期';
+            const dateObj = parseTimestamp(sub.submittedAt);
+            if (dateObj) dateStr = dateObj.toLocaleDateString('zh-TW');
+
+            history.push({ date: dateStr, value: val });
+            lastVal = val;
+        }
+    });
+    return history.reverse();
+};
+
+// ✅ [新增/修改] 合併「職業/任職公司」的歷史紀錄
+const careerList = computed(() => {
+    const sortedSubs = getSortedSubmissions();
+
+    // 如果沒有提交紀錄，降級讀取 profile
+    if (sortedSubs.length === 0) {
+        const p = guestData.value.profile || {};
+        const getVal = (k) => {
+            const valArr = p[k];
+            return Array.isArray(valArr) ? (valArr.length > 0 ? valArr[valArr.length - 1] : '') : (valArr || '');
+        };
+        
+        const prof = getVal('職業');
+        const comp = getVal('任職公司');
+        
+        // 兩者皆空則回傳空陣列
+        if (!prof && !comp) return [];
+        
+        return [{ 
+            full: `${prof || '-'} / ${comp || '-'}`,
+            date: '目前' 
+        }];
+    }
+
+    const history = [];
+    let lastFull = '';
+
+    sortedSubs.forEach(sub => {
+        const prof = sub['職業'] || '-';
+        const comp = sub['任職公司'] || '-';
+        const full = `${prof} / ${comp}`; // 組合字串
+
+        // 只有當 內容不是雙空值 且 與上一次不同時 才加入
+        if ((prof !== '-' || comp !== '-') && full !== lastFull) {
+            let dateStr = '未知日期';
+            const dateObj = parseTimestamp(sub.submittedAt);
+            if (dateObj) dateStr = dateObj.toLocaleDateString('zh-TW');
+
+            history.push({ 
+                date: dateStr, 
+                full: full 
+            });
+            lastFull = full;
+        }
+    });
+    return history.reverse(); // 最新在最前
 });
 
 
