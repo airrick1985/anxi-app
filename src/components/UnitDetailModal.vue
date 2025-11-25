@@ -57,7 +57,7 @@
             <template v-else>
                 <div v-if="unitData" class="pa-2">
                     <v-row>
-                        <v-col cols="12" md="6">
+                        <v-col cols="12" md="4">
                             <div v-if="householdImages.length > 0" class="carousel-viewer-container">
                                 <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
                                     <v-carousel-item v-for="image in householdImages" :key="image.id">
@@ -75,7 +75,7 @@
                             </div>
                         </v-col>
 
-                        <v-col cols="12" md="3">
+                        <v-col cols="12" md="4">
                             <div class="info-section">
                                 <div class="section-title"> {{ unitData.unitId }} 面積資訊</div>
                                 <div class="total-area-card">
@@ -125,7 +125,7 @@
         </div>
 </v-col>
                   
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="4">
                 <div class="info-section">
                     <div class="section-title"> {{ unitData.unitId }} 價格資訊</div>
                     <v-row dense>
@@ -696,6 +696,23 @@ function startEditing() {
   if (!editingData.value) {
       editingData.value = {};
   }
+
+  // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
+  if (props.unitData) {
+      // 輔助函式：將 Timestamp 物件轉換為 Date 物件
+      const timestampToDate = (ts) => {
+          if (ts && typeof ts.toDate === 'function') {
+              return ts.toDate();
+          }
+          // 如果它已經是 Date 物件或可識別的字串/數字，則保持原樣（雖然 JSON.stringify 已處理大部分）
+          return ts; 
+      };
+
+      editingData.value.payment_deposit_date = timestampToDate(props.unitData.payment_deposit_date);
+      editingData.value.payment_contract_date = timestampToDate(props.unitData.payment_contract_date);
+  }
+  // ✅ END: 新增
+  
   const currentUnitId = props.unitData ? props.unitData.unitId : null;
   const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
   

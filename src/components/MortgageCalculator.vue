@@ -150,9 +150,9 @@ import { ref } from 'vue';
 const emit = defineEmits(['close']);
 
 const form = ref(null);
-const loanAmount = ref(1000);
-const interestRate = ref(2.1);
-const loanTerm = ref(30);
+const loanAmount = ref("");
+const interestRate = ref("");
+const loanTerm = ref("");
 const gracePeriod = ref(0);
 const repaymentMethod = ref('equalInstallment');
 
