@@ -562,7 +562,7 @@ onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
     // 請確認此處的 liffId 是否正確 (測試用或正式用)
-    await liff.init({ liffId: '2008257338-6N3jwqxA' }); 
+    await liff.init({ liffId: '2008257338-o8grV0ZD' }); //2008257338-o8grV0ZD (驗屋預約)、2008257338-6N3jwqxA(測試用)
 
     if (!liff.isLoggedIn()) {
       liff.login();
