@@ -1999,7 +1999,7 @@ async function handleDownloadPng() {
     Object.assign(titleElement.style, {
       fontSize: '1.25rem', marginBottom: '1rem', marginTop: '2rem'
     });
-    titleElement.textContent = `${projectName.value} - 驗屋時間表: ${format(firstDate, 'yyyy/MM/dd')} - ${format(lastDate, 'yyyy/MM/dd')}`;
+    titleElement.textContent = `${projectName.value} - 預約時間表: ${format(firstDate, 'yyyy/MM/dd')} - ${format(lastDate, 'yyyy/MM/dd')}`;
     tempContainer.appendChild(titleElement);
 
     const table = document.createElement('table');
@@ -2158,7 +2158,7 @@ async function handleDownloadExcel() {
     };
 
     // --- 4. 寫入總標題 (A1:E1 合併) ---
-    ws['A1'] = { v: `${projectName.value} - 驗屋時間表`, t: 's', s: mainTitleStyle };
+    ws['A1'] = { v: `${projectName.value} - 預約時間表`, t: 's', s: mainTitleStyle };
     merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
     
     let currentRow = 1; // 內容從第 2 列開始
@@ -2261,8 +2261,8 @@ async function handleDownloadExcel() {
       // =================>↑↑↑↑最終版：自動計算欄寬的邏輯↑↑↑ <=================
 
     // --- 7. 產生並下載檔案 ---
-    XLSX.utils.book_append_sheet(wb, ws, "驗屋時間表");
-    const fileName = `${projectName.value}_驗屋預約表_${format(new Date(), 'yyyyMMdd')}.xlsx`;
+    XLSX.utils.book_append_sheet(wb, ws, "預約時間表");
+    const fileName = `${projectName.value}_預約時間表_${format(new Date(), 'yyyyMMdd')}.xlsx`;
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
     const link = document.createElement('a');

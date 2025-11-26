@@ -2,7 +2,7 @@
   <v-container fluid class="pa-2 pa-sm-4" style="background-color: #F4F4F7; min-height: 100vh;">
     <v-card class="mx-auto" max-width="1000">
       <v-toolbar color="primary" dark flat>
-        <v-toolbar-title class="font-weight-bold">驗屋時間表</v-toolbar-title>
+        <v-toolbar-title class="font-weight-bold">預約時間表</v-toolbar-title>
       </v-toolbar>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -237,7 +237,7 @@
           v-model:selectedTypes="selectedTypes"
           v-model:selectedDisplayFields="selectedDisplayFields"
           :displayFieldOptions="displayFieldOptions"
-          :availableTypes="allBookingTypesForProject" 
+          :availableTypes="currentTypeOptions" 
         />
         </v-card-text>
         <v-divider></v-divider>
@@ -369,33 +369,9 @@ const selectedDisplayFields = ref(displayFieldOptions.value.map(opt => opt.key))
 
 
 
-// --- START: ✓ 新增計算屬性 ---
-// 從 store 中動態獲取當前所選建案的 bookingTypes
-const allBookingTypesForProject = computed(() => {
-  if (!selectedProject.value || !userStore.user?.permissions) { // <-- 現在 selectedProject 已被初始化
-    return ['初驗', '複驗']; 
-  }
-  // 從 store 中讀取 projectId 對應的權限物件
-  const permissions = userStore.user.permissions[selectedProject.value];
-
-  // 返回該物件中的 bookingTypes 陣列，如果不存在則使用預設值
-  return permissions?.bookingTypes?.length > 0 
-    ? permissions.bookingTypes 
-    : ['初驗', '複驗'];
-});
 
 
 
-// --- START: ✓ 新增 watch ---
-// 當可用類型列表變化時(例如切換建案)，自動全選
-watch(allBookingTypesForProject, (newTypes) => {
-  if (newTypes && newTypes.length > 0) {
-    selectedTypes.value = [...newTypes]; // 複製陣列以觸發更新
-  } else {
-    selectedTypes.value = [];
-  }
-}, { immediate: true }); // immediate: true 確保頁面載入時立即執行一次
-// --- END: ✓ 新增 watch ---
 
 const calendarContentRef = ref(null);
 const isSharing = ref(false);
@@ -425,6 +401,8 @@ const lastSearchText = ref('');
 const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
 const isFilterDialogVisible = ref(false);
+// [新增] 用來儲存從後端獲取的詳細專案資訊 (包含 bookingTypes)
+const liffProjects = ref([]);
 
 const bookingOptions = ref({
   inspectionMethods: [],
@@ -536,26 +514,41 @@ const fetchProjectHouseholds = async (projectId) => {
   }
 };
 
+// [修改] authorizedProjects 改為從 liffProjects 產生
+// 這樣可以確保下拉選單的資料源與我們儲存詳細設定的地方一致
 const authorizedProjects = computed(() => {
-  const permissions = userStore.user?.permissions;
-  if (!permissions) return [];
-
-  const projects = [];
-  for (const projectId in permissions) {
-    const project = permissions[projectId];
-
-    if (project.systems && 
-       (project.systems.includes('驗屋預約管理-檢視') || project.systems.includes('驗屋預約管理-修改'))) 
-    {
-      projects.push({
-        projectId: projectId,
-        projectName: project.projectName,
-      });
-    }
-  }
-
-  return projects.sort((a, b) => a.projectName.localeCompare(b.projectName, 'zh-Hant'));
+  return liffProjects.value.map(p => ({
+    projectId: p.projectId,
+    projectName: p.projectName,
+  })).sort((a, b) => a.projectName.localeCompare(b.projectName, 'zh-Hant'));
 });
+
+// [修改] currentTypeOptions 改為從 liffProjects 查找
+// 邏輯：當選擇建案變更時，從 liffProjects 找出該建案的 bookingTypes 設定
+const currentTypeOptions = computed(() => {
+  if (!selectedProject.value) return [];
+  
+  const projectData = liffProjects.value.find(p => p.projectId === selectedProject.value);
+  
+  // 如果有設定 bookingTypes 且為陣列，則回傳
+  if (projectData && Array.isArray(projectData.bookingTypes) && projectData.bookingTypes.length > 0) {
+    return projectData.bookingTypes;
+  }
+  
+  // 若無設定，回傳預設值 (與後端 InspectionCalendar 邏輯保持一致的備案)
+  return ['初驗', '複驗'];
+});
+
+// [修改] 監聽 currentTypeOptions 的變化 (與 InspectionCalendar 邏輯一致)
+watch(currentTypeOptions, (newOptions) => {
+  // 當選項變更時，將篩選器的「已選項目」更新為全選
+  if (newOptions && newOptions.length > 0) {
+    selectedTypes.value = [...newOptions];
+  } else {
+    // 若無選項，給予一組預設值避免空白 (可選)
+    selectedTypes.value = ['初驗', '複驗'];
+  }
+}, { immediate: true });
 
 const canEdit = computed(() => {
   const projectName = authorizedProjects.value.find(p => p.projectId === selectedProject.value)?.projectName;
@@ -564,10 +557,12 @@ const canEdit = computed(() => {
 });
 
 
+// [修改] onMounted 邏輯
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-o8grV0ZD' });//2008257338-o8grV0ZD(正式發布id)     2008257338-6N3jwqxA(測試用)
+    // 請確認此處的 liffId 是否正確 (測試用或正式用)
+    await liff.init({ liffId: '2008257338-6N3jwqxA' }); 
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -577,12 +572,23 @@ onMounted(async () => {
     const profile = await liff.getProfile();
     
     loadingText.value = '正在驗證權限...';
-    const success = await userStore.fetchUserByLineId(profile.userId);
+    
+    // 1. 直接呼叫 API 獲取包含 bookingTypes 的詳細資料
+    const userData = await getLiffUserData({ lineId: profile.userId });
 
-    if (success) {
+    if (userData.status === 'bound') {
       isBound.value = true;
-      if (authorizedProjects.value.length > 0) {
-        selectedProject.value = authorizedProjects.value[0].projectId;
+      
+      // 2. 將 API 回傳的 projects (包含 bookingTypes) 存入本地變數
+      liffProjects.value = userData.projects || [];
+
+      // 3. 同步呼叫 userStore 以確保全域權限狀態 (如 canEdit) 正確更新
+      // (雖然 getLiffUserData 已經拿了資料，但為了讓 userStore 狀態同步，我們仍執行此動作)
+      await userStore.fetchUserByLineId(profile.userId);
+
+      // 4. 預設選取第一個建案
+      if (liffProjects.value.length > 0) {
+        selectedProject.value = liffProjects.value[0].projectId;
       }
     } else {
       isBound.value = false;

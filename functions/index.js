@@ -5494,7 +5494,7 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
               });
 
             // (省略完整的 Email HTML 模板)
-            const htmlBody = `
+          const htmlBody = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
     <div style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;">
@@ -5502,12 +5502,17 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
     </div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${finalAppointmentData.bookerName}</strong> 您好：</p>
-      <p>您已成功完成預約（由管理員 ${newBookingData.createdByName || '後台'} 為您建立），以下是您的預約詳細資訊：</p>
+      <p>您已成功完成預約，以下是您的預約詳細資訊，請再次確認。</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0; font-weight: bold; font-size: 16px; color: #D32F2F;">${finalAppointmentData.bookingCode}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${finalAppointmentData.unitId}</td></tr>
+          
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">門牌</td><td style="padding: 12px 0;">${finalAppointmentData.address}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約姓名</td><td style="padding: 12px 0;">${finalAppointmentData.bookerName}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約人電話</td><td style="padding: 12px 0;">${finalAppointmentData.bookerPhone}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${finalAppointmentData.bookerEmail}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${finalAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionMethod}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${formattedAppointmentDate}</td></tr>
@@ -11900,10 +11905,38 @@ async function _handleGetProjectConfig(data) {
         if (!projectDoc.exists) {
             throw new HttpsError('not-found', `找不到 ID 為 ${projectId} 的建案設定。`);
         }
-        return projectDoc.data();
+        
+        const projectData = projectDoc.data();
+
+        // ✓ START: [修正] 後端排程時間檢查邏輯 (使用 Timestamp 比對)
+        if (projectData.isPublished && projectData.enableScheduledPublish) {
+            // 取得現在時間的 Date 物件 (絕對時間)
+            const now = new Date(); 
+            
+            // 輔助函式：統一轉為 Date 物件
+            const parseDate = (val) => {
+                if (!val) return null;
+                if (val.toDate) return val.toDate(); // Firestore Timestamp
+                if (val.seconds) return new Date(val.seconds * 1000); // Seconds object
+                if (val._seconds) return new Date(val._seconds * 1000); // Serialized
+                return new Date(val); // ISO String
+            };
+
+            const start = parseDate(projectData.publishStartTime);
+            const end = parseDate(projectData.publishEndTime);
+
+            // 使用 .getTime() 進行毫秒級比對，這是不受時區影響的絕對值
+            if ((start && now.getTime() < start.getTime()) || (end && now.getTime() > end.getTime())) {
+                projectData.isPublished = false; // 覆寫為關閉
+                console.log(`[GetConfig] Project ${projectId} closed by schedule. Now: ${now.toISOString()}`);
+            }
+        }
+        // ✓ END: [修正]
+
+        return projectData;
     } catch (error) {
         console.error("_handleGetProjectConfig 錯誤:", error);
-        if (error instanceof HttpsError) throw error; //  拋出 HttpsError
+        if (error instanceof HttpsError) throw error; 
         throw new HttpsError('internal', '讀取建案設定時發生錯誤。');
     }
 }
@@ -12279,6 +12312,40 @@ async function _handleSaveBooking(data) {
         const projectRef = db.collection('projects').doc(projectId);
         const projectDoc = await projectRef.get();
         const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+        
+        // ✓ START: [新增] 提交時的雙重時間驗證
+        if (projectDoc.exists) {
+            const projectData = projectDoc.data();
+            
+            // 1. 檢查總開關
+            if (projectData.isPublished === false) {
+                 throw new HttpsError("failed-precondition", "此建案預約系統目前已關閉。");
+            }
+
+            // 2. 檢查排程時間
+            if (projectData.enableScheduledPublish) {
+                const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+                
+                const parseDate = (val) => {
+                    if (!val) return null;
+                    if (val.toDate) return val.toDate();
+                    if (val.seconds) return new Date(val.seconds * 1000);
+                    return new Date(val);
+                };
+
+                const start = parseDate(projectData.publishStartTime);
+                const end = parseDate(projectData.publishEndTime);
+
+                if (start && now < start) {
+                     throw new HttpsError("failed-precondition", "預約系統尚未開放。");
+                }
+                if (end && now > end) {
+                     throw new HttpsError("failed-precondition", "預約系統已截止。");
+                }
+            }
+        }
+        // ✓ END: [新增] 提交時的雙重時間驗證
+        
         const result = await db.runTransaction(async (transaction) => {
             const householdDocId = `${projectId}_${bookingData.unitId}`;
             const householdRef = db.collection('households').doc(householdDocId);
@@ -13859,7 +13926,7 @@ async function _handleAddAppointmentAdmin(data) {
                   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
               });
 
-            const htmlBody = `
+           const htmlBody = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
     <div style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;">
@@ -13873,6 +13940,11 @@ async function _handleAddAppointmentAdmin(data) {
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0; font-weight: bold; font-size: 16px; color: #D32F2F;">${finalAppointmentData.bookingCode}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">建案名稱</td><td style="padding: 12px 0;">${projectName}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${finalAppointmentData.unitId}</td></tr>
+          
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">門牌</td><td style="padding: 12px 0;">${finalAppointmentData.address}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約姓名</td><td style="padding: 12px 0;">${finalAppointmentData.bookerName}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約人電話</td><td style="padding: 12px 0;">${finalAppointmentData.bookerPhone}</td></tr>
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${finalAppointmentData.bookerEmail}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${finalAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionMethod}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${formattedAppointmentDate}</td></tr>

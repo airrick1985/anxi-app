@@ -986,11 +986,11 @@ const onDateChange = async (date) => {
   if (selectedDayData?.type === 'other_batch') {
     dateSelectionAlert.show = true;
     dateSelectionAlert.type = 'error';
-    dateSelectionAlert.text = `${formattedDate} 非本戶別驗屋日期批次，請您確認屋況是否可驗屋。`;
+    dateSelectionAlert.text = `${formattedDate} 非本戶別可預約日期批次，請確保選擇日期正確。`;
   } else if (!selectedDayData) {
     dateSelectionAlert.show = true;
     dateSelectionAlert.type = 'error';
-    dateSelectionAlert.text = `${formattedDate} 尚未建立可驗屋日期批次，請您確認屋況是否可驗屋。`;
+    dateSelectionAlert.text = `${formattedDate} 尚未建立可預約日期批次，請確保選擇日期正確。`;
   }
 
   try {

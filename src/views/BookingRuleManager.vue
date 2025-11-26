@@ -152,14 +152,123 @@
             
             <div v-else class="settings-form-container pa-4">
               <v-form>
-                <v-switch
-                  v-model="projectSettings.isPublished"
-                  :label="`開放 ${projectName} 預約系統`"
-                  color="success"
-                  inset
-                  hint="開啟後，客戶即可透過預約系統進行預約"
-                  persistent-hint
-                ></v-switch>
+                <v-card variant="outlined" class="mb-6">
+  <v-card-text>
+    <div class="d-flex align-center justify-space-between">
+      <div>
+        <div class="text-h6 font-weight-bold">系統開放狀態</div>
+        <div class="text-caption text-grey-darken-1">總開關必須開啟，排程設定才會生效</div>
+      </div>
+      <v-switch
+        v-model="projectSettings.isPublished"
+        :label="projectSettings.isPublished ? '系統已啟用' : '系統已關閉'"
+        color="success"
+        hide-details
+        inset
+      ></v-switch>
+    </div>
+
+    <v-divider class="my-4"></v-divider>
+
+    <v-checkbox
+      v-model="projectSettings.enableScheduledPublish"
+      label="啟用自動開啟/關閉排程"
+      color="primary"
+      hide-details
+      class="mb-2"
+      :disabled="!projectSettings.isPublished"
+    ></v-checkbox>
+
+    <v-expand-transition>
+      <div v-if="projectSettings.enableScheduledPublish">
+        <v-row class="mt-2">
+          <v-col cols="12" sm="6">
+            <v-menu v-model="menuPublishStart" :close-on-content-click="false" location="bottom">
+              <template v-slot:activator="{ props }">
+                <v-text-field
+                  :model-value="formatDisplayDateTime(projectSettings.publishStartTime)"
+                  label="自動開啟時間"
+                  prepend-inner-icon="mdi-calendar-clock"
+                  readonly
+                  v-bind="props"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  @click:clear="projectSettings.publishStartTime = null"
+                ></v-text-field>
+              </template>
+              <v-card min-width="300">
+                <v-tabs v-model="activePickerTabPubStart" grow density="compact">
+                  <v-tab :value="0">日期</v-tab>
+                  <v-tab :value="1">時間</v-tab>
+                </v-tabs>
+                <v-window v-model="activePickerTabPubStart">
+                  <v-window-item :value="0">
+                    <v-date-picker v-model="tempPubStartDate" hide-header @update:model-value="activePickerTabPubStart = 1"></v-date-picker>
+                  </v-window-item>
+                  <v-window-item :value="1">
+                    <v-time-picker v-model="tempPubStartTime" format="24hr"></v-time-picker>
+                  </v-window-item>
+                </v-window>
+                <v-card-actions>
+                  <v-spacer></v-spacer>
+                  <v-btn variant="text" @click="menuPublishStart = false">取消</v-btn>
+                  <v-btn color="primary" @click="savePublishStartTime">確定</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-menu>
+          </v-col>
+
+          <v-col cols="12" sm="6">
+            <v-menu v-model="menuPublishEnd" :close-on-content-click="false" location="bottom">
+              <template v-slot:activator="{ props }">
+                <v-text-field
+                  :model-value="formatDisplayDateTime(projectSettings.publishEndTime)"
+                  label="自動關閉時間"
+                  prepend-inner-icon="mdi-calendar-clock"
+                  readonly
+                  v-bind="props"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  @click:clear="projectSettings.publishEndTime = null"
+                ></v-text-field>
+              </template>
+              <v-card min-width="300">
+                <v-tabs v-model="activePickerTabPubEnd" grow density="compact">
+                  <v-tab :value="0">日期</v-tab>
+                  <v-tab :value="1">時間</v-tab>
+                </v-tabs>
+                <v-window v-model="activePickerTabPubEnd">
+                  <v-window-item :value="0">
+                    <v-date-picker 
+                    v-model="tempPubEndDate" 
+                    hide-header 
+                    @update:model-value="activePickerTabPubEnd = 1"
+                    :min="projectSettings.publishStartTime"
+                    ></v-date-picker>
+                  </v-window-item>
+                  <v-window-item :value="1">
+                    <v-time-picker v-model="tempPubEndTime" format="24hr"></v-time-picker>
+                  </v-window-item>
+                </v-window>
+                <v-card-actions>
+                  <v-spacer></v-spacer>
+                  <v-btn variant="text" @click="menuPublishEnd = false">取消</v-btn>
+                  <v-btn color="primary" @click="savePublishEndTime">確定</v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-menu>
+          </v-col>
+        </v-row>
+        <div class="text-caption text-info mt-1">
+          <v-icon icon="mdi-information-outline" size="x-small"></v-icon>
+          若未設定時間，則以手動開關為主。
+        </div>
+      </div>
+    </v-expand-transition>
+  </v-card-text>
+</v-card>
                 <v-divider class="my-6"></v-divider>
                 <p class="text-subtitle-1 font-weight-bold mb-2">Logo 上傳</p>
                 <v-sheet border rounded class="pa-4 text-center">
@@ -1489,6 +1598,17 @@ const bookingTypeOptions = computed(() => {
   return [...types];
 });
 
+// [新增] 排程時間選擇器的狀態
+const menuPublishStart = ref(false);
+const menuPublishEnd = ref(false);
+const activePickerTabPubStart = ref(0);
+const activePickerTabPubEnd = ref(0);
+const tempPubStartDate = ref(new Date());
+const tempPubStartTime = ref("00:00");
+const tempPubEndDate = ref(new Date());
+const tempPubEndTime = ref("23:59");
+
+
 //  將 defaultSettings 從 const 常數改為 computed 屬性
 const defaultSettings = computed(() => ({
     pageTitle: `${projectName.value} 線上預約系統`, 
@@ -1503,6 +1623,10 @@ const defaultSettings = computed(() => ({
     bookingMethodOptions: [],
     inspectionStaff: [], 
     inspectionReportTemplateUrl: '',
+    isPublished: false,
+    enableScheduledPublish: false, // [新增]
+    publishStartTime: null,        // [新增]
+    publishEndTime: null,          // [新增]
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
@@ -1765,17 +1889,31 @@ function formatDateWithWeekday(dateInput) {
   return `${formatDate(date)} (${weekday})`;
 }
 
-// ✓ START: 修正 formatDisplayDateTime 函式，使其能處理 Timestamp 物件
+// 在 script setup 區塊中找到這個函式並替換
 function formatDisplayDateTime(dateTime) {
   if (!dateTime) return '';
 
   let d;
-  // 檢查傳入的是否為 Firestore Timestamp 物件 (特徵是有 seconds 屬性)
-  if (typeof dateTime === 'object' && dateTime !== null && typeof dateTime.seconds === 'number') {
-    // 從秒數建立 Date 物件
-    d = new Date(dateTime.seconds * 1000);
+  // 檢查是否為物件且非 null
+  if (typeof dateTime === 'object' && dateTime !== null) {
+      // 優先檢查 _seconds (Cloud Function 格式)
+      if (typeof dateTime._seconds === 'number') {
+          d = new Date(dateTime._seconds * 1000);
+      }
+      // 檢查 seconds (標準格式)
+      else if (typeof dateTime.seconds === 'number') {
+          d = new Date(dateTime.seconds * 1000);
+      }
+      // 檢查是否為原生 Date 物件
+      else if (dateTime instanceof Date) {
+          d = dateTime;
+      }
+      // 其他物件嘗試直接轉
+      else {
+          d = new Date(dateTime);
+      }
   } else {
-    // 如果不是，則照原樣處理 (可能是 Date 物件或字串)
+    // 字串或其他
     d = new Date(dateTime);
   }
 
@@ -1828,6 +1966,9 @@ async function loadDataForProject() {
 
       // 載入成功後，合併遠端設定與預設值
       if (settings) {
+        projectSettings.value.enableScheduledPublish = settings.enableScheduledPublish || false;
+        projectSettings.value.publishStartTime = settings.publishStartTime ? new Date(settings.publishStartTime) : null;
+        projectSettings.value.publishEndTime = settings.publishEndTime ? new Date(settings.publishEndTime) : null;
         projectSettings.value.logoUrl = settings.logoUrl || ''; 
         projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle; 
         projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
@@ -1840,6 +1981,42 @@ async function loadDataForProject() {
         projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
         projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
         projectSettings.value.inspectionStaff = settings.inspectionStaff || []; 
+        // 👇👇👇 [新增：讀取排程設定] 👇👇👇
+        
+        // 1. 讀取啟用開關
+        projectSettings.value.enableScheduledPublish = settings.enableScheduledPublish || false;
+
+        // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
+        const toDate = (val) => {
+            if (!val) return null;
+            
+            // 情況 A: Firestore Timestamp 物件 (Client SDK)
+            if (typeof val === 'object' && typeof val.toDate === 'function') {
+                return val.toDate();
+            }
+            
+            // 情況 B: 序列化後的物件 (標準 seconds)
+            if (typeof val === 'object' && typeof val.seconds === 'number') {
+                return new Date(val.seconds * 1000);
+            }
+
+            // 情況 C: Cloud Function 序列化物件 (_seconds) <--- 這是關鍵缺失
+            if (typeof val === 'object' && typeof val._seconds === 'number') {
+                return new Date(val._seconds * 1000);
+            }
+
+            // 情況 D: ISO 字串或 Date 物件
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        // 3. 轉換並賦值
+        projectSettings.value.publishStartTime = toDate(settings.publishStartTime);
+        projectSettings.value.publishEndTime = toDate(settings.publishEndTime);
+
+        // 👆👆👆 [新增結束] 👆👆👆
+        
+        
         projectSettings.value.intro = {
           ...defaultSettings.value.intro,
           ...(settings.intro || {}),
@@ -2247,29 +2424,27 @@ function saveApplicationEnd() {
   menuAppEnd.value = false;
 }
 
-// ✓ START: 同步修正 getBatchStatus 函式，使其也能處理 Timestamp 物件
 function getBatchStatus(item) {
   if (!item.applicationStart || !item.applicationEnd) return { text: '時間未設定', color: 'grey-darken-2' };
   
   const now = new Date();
-  let start, end;
+  
+  // 使用與上面相同的轉換邏輯提取日期
+  const parseBatchDate = (val) => {
+      if (!val) return null;
+      if (typeof val === 'object') {
+          if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+          if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+      }
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d;
+  };
 
-  // 穩健地處理起始時間
-  if (typeof item.applicationStart === 'object' && item.applicationStart !== null && typeof item.applicationStart.seconds === 'number') {
-    start = new Date(item.applicationStart.seconds * 1000);
-  } else {
-    start = new Date(item.applicationStart);
-  }
-
-  // 穩健地處理結束時間
-  if (typeof item.applicationEnd === 'object' && item.applicationEnd !== null && typeof item.applicationEnd.seconds === 'number') {
-    end = new Date(item.applicationEnd.seconds * 1000);
-  } else {
-    end = new Date(item.applicationEnd);
-  }
+  const start = parseBatchDate(item.applicationStart);
+  const end = parseBatchDate(item.applicationEnd);
   
   // 驗證日期有效性
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+  if (!start || !end) {
       return { text: '時間格式錯誤', color: 'orange' };
   }
 
@@ -2454,6 +2629,55 @@ async function handleManualLineNotification() {
     isSendingLineNotification.value = false;
   }
 }
+
+// [新增] 儲存時間的輔助函數 (與 Batch 的邏輯類似)
+function savePublishStartTime() {
+  if (tempPubStartDate.value && tempPubStartTime.value) {
+    // 組合日期與時間
+    const d = new Date(tempPubStartDate.value);
+    const [hours, minutes] = tempPubStartTime.value.split(':');
+    d.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    projectSettings.value.publishStartTime = d;
+  }
+  menuPublishStart.value = false;
+}
+
+function savePublishEndTime() {
+  if (tempPubEndDate.value && tempPubEndTime.value) {
+    const d = new Date(tempPubEndDate.value);
+    const [hours, minutes] = tempPubEndTime.value.split(':');
+    d.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    projectSettings.value.publishEndTime = d;
+  }
+  menuPublishEnd.value = false;
+}
+
+
+// [新增] Watcher: 當打開選單時，初始化暫存變數
+watch(menuPublishStart, (val) => {
+    if (val) {
+        activePickerTabPubStart.value = 0;
+        if (projectSettings.value.publishStartTime) {
+            const d = new Date(projectSettings.value.publishStartTime);
+            if (!isNaN(d.getTime())) {
+                tempPubStartDate.value = d;
+                tempPubStartTime.value = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+            }
+        }
+    }
+});
+watch(menuPublishEnd, (val) => {
+    if (val) {
+        activePickerTabPubEnd.value = 0;
+        if (projectSettings.value.publishEndTime) {
+            const d = new Date(projectSettings.value.publishEndTime);
+            if (!isNaN(d.getTime())) {
+                tempPubEndDate.value = d;
+                tempPubEndTime.value = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+            }
+        }
+    }
+});
 
 // --- Lifecycle & Watchers ---
 onMounted(loadDataForProject);

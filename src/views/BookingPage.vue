@@ -189,9 +189,22 @@
             <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
               找不到對應的建案設定，請確認網址是否正確。
             </v-alert>
-            <v-alert v-if="projectConfig && !projectConfig.isPublished && !isLoading" type="error" border="start" prominent title="預約未開放">
-              此建案的預約尚未開始，請等候通知。
-            </v-alert>
+            <v-alert 
+  v-if="projectConfig && systemStatus.code !== 'OPEN' && !isLoading" 
+  :type="systemStatus.code === 'NOT_STARTED' ? 'info' : (systemStatus.code === 'ENDED' ? 'error' : 'error')"
+  :icon="systemStatus.icon"
+  border="start" 
+  prominent
+  variant="tonal"
+  class="mb-4"
+>
+  <template v-slot:title>
+    <span class="font-weight-bold">
+      {{ systemStatus.code === 'NOT_STARTED' ? '預約尚未開始' : (systemStatus.code === 'ENDED' ? '預約已截止' : '預約未開放') }}
+    </span>
+  </template>
+  {{ systemStatus.message }}
+</v-alert>
 
             <v-card-text v-if="step < 3">
               <div class="prose">
@@ -909,6 +922,82 @@ import { VueSignaturePad } from 'vue-signature-pad';
 
 const loadingText = ref('處理中...');
 
+// [新增] 用於即時比對時間的變數
+const currentTime = ref(new Date());
+let timerInterval = null;
+
+// [修改] 輔助函式：強力解析各種格式的日期
+const parseDateValue = (val) => {
+  if (!val) return null;
+
+  // 情況 A: Cloud Function 序列化物件 (帶底線 _seconds) <--- 這是您目前缺少的關鍵
+  if (typeof val === 'object' && typeof val._seconds === 'number') {
+    return new Date(val._seconds * 1000);
+  }
+  
+  // 情況 B: 標準 Firestore Timestamp (帶 seconds)
+  if (typeof val === 'object' && typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
+
+  // 情況 C: Firestore Client SDK 物件 (有 toDate 方法)
+  if (val.toDate && typeof val.toDate === 'function') {
+    return val.toDate();
+  }
+
+  // 情況 D: 字串或 Date 物件
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// [修改] 計算目前的系統預約狀態
+const systemStatus = computed(() => {
+  // 載入中
+  if (!projectConfig.value) return { code: 'LOADING', message: '載入中...' };
+
+  // 1. 檢查手動總開關
+  if (projectConfig.value.isPublished === false) {
+     // 注意：如果是被後端排程關閉的，後端可能已經把 isPublished 改為 false 了
+     // 這裡我們直接顯示關閉即可
+     return { code: 'CLOSED_MANUALLY', message: '此建案的預約功能目前已關閉。', color: 'error', icon: 'mdi-close-circle' };
+  }
+
+  // 2. 前端再次檢查排程 (為了即時倒數顯示)
+  if (projectConfig.value.enableScheduledPublish) {
+    const start = parseDateValue(projectConfig.value.publishStartTime);
+    const end = parseDateValue(projectConfig.value.publishEndTime);
+    const nowTime = currentTime.value.getTime(); // 取得當前毫秒數
+
+    // 除錯用：您可以在 Console 看到實際比對的時間
+    // console.log('Now:', new Date(nowTime), 'Start:', start, 'End:', end);
+
+    // 檢查是否尚未開始
+    if (start && nowTime < start.getTime()) {
+      const startStr = start.toLocaleString('zh-TW', { hour12: false });
+      return { 
+        code: 'NOT_STARTED', 
+        message: `預約尚未開放，系統將於 ${startStr} 開啟。`, 
+        color: 'info', 
+        icon: 'mdi-clock-start' 
+      };
+    }
+
+    // 檢查是否已截止
+    if (end && nowTime > end.getTime()) {
+      const endStr = end.toLocaleString('zh-TW', { hour12: false });
+      return { 
+        code: 'ENDED', 
+        message: `預約已於 ${endStr} 截止。`, 
+        color: 'warning', 
+        icon: 'mdi-clock-end' 
+      };
+    }
+  }
+
+  // 3. 通過所有檢查 -> 開放中
+  return { code: 'OPEN', message: '', color: 'success' };
+});
+
 // ---  新增: 上傳報告相關 state ---
 const isUploadMode = ref(false);
 const isDragActive = ref(false);
@@ -1060,14 +1149,10 @@ const formatDisplayDate = (dateString) => {
   return dateAdapter.format(new Date(dateString), 'keyboardDate');
 };
 
-// --- Computed Properties ---
+// [修改] 更新原本的 isBookingActive computed
 const isBookingActive = computed(() => {
-  if (!projectConfig.value) return false;
-  if (!projectConfig.value.isPublished) return false;
-  if (projectConfig.value.bookingDeadline) {
-    return new Date() < new Date(projectConfig.value.bookingDeadline);
-  }
-  return true;
+  // 只有當狀態碼為 OPEN 時，才允許預約
+  return systemStatus.value.code === 'OPEN';
 });
 
 // computed 方便判斷是否需要驗證
@@ -1385,6 +1470,12 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
   }
+
+
+// [新增] 啟動每秒更新時間的計時器
+  timerInterval = setInterval(() => {
+    currentTime.value = new Date();
+  }, 1000);
 });
 
 const onBuildingChange = (building) => {
@@ -1894,6 +1985,8 @@ const resetUploadMode = () => {
 // 組件卸載時清除計時器，防止內存洩漏
 onUnmounted(() => {
   clearTimeoutTimer();
+// [新增] 清除計時器
+  if (timerInterval) clearInterval(timerInterval);
 });
 
 
