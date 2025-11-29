@@ -64,7 +64,7 @@
           
           <v-col cols="12" sm="5">
             <v-select
-              label="選擇可新增的車位"
+              label="選擇車位"
               :items="availableParkingOptions"
               v-model="newParkingSelection"
               item-title="displayText"
@@ -246,22 +246,42 @@ const availableParkingOptions = computed(() => {
   
   return props.allParkingData
     .filter(p => {
-      // ✅ [打勾] 關鍵過濾：只顯示符合所選樓層的車位
       return p.floor === selectedFloor.value;
     })
     .filter(p => {
-      // (保持原有邏輯) 過濾掉已在 localParking 列表中的車位
       const id = p.spotId || p['車位編號'];
       return !selectedIds.has(id);
     })
+    // (保留您上一部要求的排序邏輯)
+    .sort((a, b) => {
+      const idA = String(a.spotId || a['車位編號'] || '');
+      const idB = String(b.spotId || b['車位編號'] || '');
+      return idA.localeCompare(idB, 'zh-Hant', { numeric: true });
+    })
     .map(p => {
-      // (保持原有邏輯) 組合顯示文字
       const spotId = p.spotId || p['車位編號'] || 'undefined';
       const priceList = p.price_list || p['表價'] || p['車位表價'] || 'undefined';
       const isSold = p.status === '已售' || p['狀態'] === '已售' || p['銷控狀態'] === '已售';
       const backendStatusText = p.status_backend || p['後台狀態'] ? ` - ${p.status_backend || p['後台狀態']}` : '';
+      
+      // ✅ [修改] 根據是否已售，決定顯示格式
+      let displayText = '';
+      
+      if (isSold) {
+        // 如果已售：顯示 "B2-120 (已售)"
+        displayText = `${spotId} (已售)`;
+      } else {
+        // 如果未售：顯示 "B2-120 (300萬)"
+        displayText = `${spotId} (${priceList}萬)`;
+      }
+
+      // 如果是 sales 模式且有後台狀態，補在後面 (保持原有功能)
+      if (props.mode === 'sales') {
+        displayText += backendStatusText;
+      }
+
       return {
-        displayText: `${spotId} (表價: ${priceList}萬)${isSold ? ' - 已售' : ''}${props.mode === 'sales' ? backendStatusText : ''}`,
+        displayText: displayText,
         originalData: p,
         disabled: isSold
       };
