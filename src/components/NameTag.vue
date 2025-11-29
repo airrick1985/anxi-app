@@ -77,6 +77,21 @@ const emit = defineEmits(['click']);
   writing-mode: horizontal-tb; 
 }
 
+/* ✅ [新增] 針對拖曳手柄禁用所有原生觸控行為 */
+.drag-handle {
+  /* 禁用長按時出現的上下文選單 (Android/Windows) */
+  -webkit-touch-callout: none;
+  /* 禁用長按時的文字選取和高亮 (Safari/iOS, Firefox, IE/Edge) */
+  -webkit-user-select: none; /* Safari/Chrome */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* IE/Edge */
+  user-select: none;
+  /* 禁用圖片拖曳 (如果您的手柄是圖片或 SVG) */
+  -webkit-user-drag: none;
+  /* 確保元素不會被長按當作超連結處理 */
+  touch-action: none; 
+}
+
 /* ✅ [新增] 按下拖曳時的游標 */
 .drag-handle:active {
   cursor: grabbing;
@@ -124,4 +139,7 @@ const emit = defineEmits(['click']);
   0%, 100% { border-color: #dc3545; }
   50% { border-color: rgba(255, 255, 255, 0.5); }
 }
+
+
+
 </style>

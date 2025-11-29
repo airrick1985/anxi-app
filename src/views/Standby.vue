@@ -74,8 +74,9 @@
             animation="200"
             @end="handleDragEnd"
             :disabled="isLoading"
-            delay="0" 
-            :touch-start-threshold="0"
+            :delay="0" 
+            :touch-start-threshold="5"
+            :delay-on-touch-only="true"
             chosen-class="item-chosen"
             handle=".drag-handle"
             >
@@ -114,8 +115,9 @@
             animation="200"
             @end="handleDragEnd"
             :disabled="isLoading"
-            delay="0"
-            :touch-start-threshold="0"
+            :delay="0"
+            :touch-start-threshold="5"
+            :delay-on-touch-only="true"
             chosen-class="item-chosen"
             handle=".drag-handle"
             >
