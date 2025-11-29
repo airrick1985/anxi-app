@@ -3,7 +3,7 @@
   "short_name": "ANXI",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#000000",
   "scope": "./",
@@ -20,5 +20,5 @@
       "type": "image/png"
     }
   ],
-  "version": "1.0.329"
+  "version": "1.0.330"
 }

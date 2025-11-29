@@ -65,18 +65,19 @@
           <v-divider></v-divider>
           <v-card-text class="pa-4">
           <draggable
-              v-model="standbyPersonnel"
-              item-key="id"
-              group="personnel"
-              class="name-tag-container d-flex flex-wrap ga-4"
-              ghost-class="ghost"
-              drag-class="dragging"
-              animation="200"
-              @end="handleDragEnd"
-              :disabled="isLoading"
-              delay="50"
-              :touch-start-threshold="5"
-              chosen-class="item-chosen"
+            v-model="standbyPersonnel"
+            item-key="id"
+            group="personnel"
+            class="name-tag-container d-flex flex-wrap ga-4"
+            ghost-class="ghost"
+            drag-class="dragging"
+            animation="200"
+            @end="handleDragEnd"
+            :disabled="isLoading"
+            delay="0" 
+            :touch-start-threshold="0"
+            chosen-class="item-chosen"
+            handle=".drag-handle"
             >
               <template #item="{ element: person, index }">
               <NameTag
@@ -104,18 +105,19 @@
           <v-divider class="mx-4"></v-divider>
           <div class="pa-4">
           <draggable
-              v-model="servingPersonnel"
-              item-key="id"
-              group="personnel"
-              class="name-tag-container d-flex flex-wrap ga-4"
-              ghost-class="ghost"
-              drag-class="dragging"
-              animation="200"
-              @end="handleDragEnd"
-              :disabled="isLoading"
-              delay="50"
-              :touch-start-threshold="5"
-              chosen-class="item-chosen"
+            v-model="servingPersonnel"
+            item-key="id"
+            group="personnel"
+            class="name-tag-container d-flex flex-wrap ga-4"
+            ghost-class="ghost"
+            drag-class="dragging"
+            animation="200"
+            @end="handleDragEnd"
+            :disabled="isLoading"
+            delay="0"
+            :touch-start-threshold="0"
+            chosen-class="item-chosen"
+            handle=".drag-handle"
             >
               <template #item="{ element: person }">
             <NameTag
