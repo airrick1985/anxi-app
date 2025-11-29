@@ -447,6 +447,11 @@ import {
 } from '@/api'; // 保持 API import
 import { useUserStore } from '@/store/user';
 
+
+
+
+
+
 // --- Props ---
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -1281,10 +1286,23 @@ const closeLightbox = () => {
   }, 300); // 延遲 300ms
 };
 
+// ✅ [新增] 定義禁用右鍵/長按選單的函式
+const preventContextMenu = (event) => {
+  // 這裡可以加判斷，例如只針對 .drag-handle 禁用，
+  // 但為了操作順暢，建議在這個頁面全面禁用。
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+};
+
 
 // --- Lifecycle Hooks ---
 onMounted(async () => {
   console.log(`Standby page mounted for projectId: ${props.projectId}`);
+  
+  // ✅ [新增] 在整個文件上禁用右鍵/長按選單
+  document.addEventListener('contextmenu', preventContextMenu, { passive: false });
+  
   updateClock(); // 更新時鐘
   clockInterval = setInterval(updateClock, 1000); // 設定時鐘定時器
 
@@ -1333,8 +1351,12 @@ onMounted(async () => {
   }
 });
 
-onUnmounted(() => { /* ... (保持不變) ... */
-  if (clockInterval) clearInterval(clockInterval); stopRealtimeListener();
+onUnmounted(() => {
+  if (clockInterval) clearInterval(clockInterval); 
+  stopRealtimeListener();
+
+  // ✅ [新增] 移除監聽器，恢復瀏覽器預設行為 (避免影響其他頁面)
+  document.removeEventListener('contextmenu', preventContextMenu);
 });
 </script>
 
