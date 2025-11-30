@@ -48,10 +48,26 @@
 
                         <v-card-text class="pt-4" style="overflow-y: auto; max-height: calc(100vh - 150px);">
                             <div v-if="!isEditingProfile">
-                                <div class="info-row mb-3">
-                                    <span class="text-caption text-grey">姓名</span>
-                                    <div class="text-body-1 font-weight-medium">{{ displayedName }}</div>
-                                </div>
+                               <div class="info-row mb-3">
+    <span class="text-caption text-grey">姓名</span>
+    <div class="d-flex align-center">
+        <div class="text-body-1 font-weight-medium mr-2">{{ displayedName }}</div>
+        
+        <v-chip
+            v-if="getProfileDisplayValue('性別')"
+            size="x-small"
+            variant="flat"
+            class="font-weight-bold px-2"
+            :color="getProfileDisplayValue('性別') === '男' ? 'blue-lighten-5' : (getProfileDisplayValue('性別') === '女' ? 'pink-lighten-5' : 'grey-lighten-4')"
+            :class="getProfileDisplayValue('性別') === '男' ? 'text-blue-darken-3' : (getProfileDisplayValue('性別') === '女' ? 'text-pink-darken-3' : 'text-grey-darken-3')"
+        >
+            <v-icon start size="small" class="mr-1">
+                {{ getProfileDisplayValue('性別') === '男' ? 'mdi-gender-male' : (getProfileDisplayValue('性別') === '女' ? 'mdi-gender-female' : 'mdi-help') }}
+            </v-icon>
+            {{ getProfileDisplayValue('性別') }}
+        </v-chip>
+    </div>
+</div>
                                 <div class="info-row mb-3">
                                     
                                 <span class="text-caption text-grey">主電話</span>
@@ -198,38 +214,126 @@
                             </div>
 
                             <v-form v-else ref="profileForm">
-                                <v-text-field 
-                                    label="姓名" 
-                                    v-model="editingData.latestName" 
-                                    variant="outlined" 
-                                    density="compact"
-                                    :rules="[v => !!v || '必填']"
-                                ></v-text-field>
-                                
-                                <v-divider class="my-4"></v-divider>
-                                <div class="d-flex justify-space-between align-center mb-2">
-                                    <span class="text-subtitle-2">其他聯絡電話</span>
-                                    <v-btn size="small" color="primary" variant="text" prepend-icon="mdi-plus" @click="addPhoneField">新增</v-btn>
-                                </div>
+    <v-text-field 
+        label="姓名" 
+        v-model="editingData.latestName" 
+        variant="outlined" 
+        density="compact"
+        :rules="[v => !!v || '必填']"
+        class="mb-3"
+    ></v-text-field>
 
-                                <div v-for="(p, idx) in editingData.otherPhones" :key="idx" class="mb-4 pa-3 border rounded">
-                                    <div class="d-flex justify-space-between mb-2">
-                                        <span class="text-caption">聯絡人 {{ idx + 1 }}</span>
-                                        <v-btn icon="mdi-delete" size="small" color="grey" variant="text" @click="removePhoneField(idx)"></v-btn>
-                                    </div>
-                                    <v-row dense>
-                                        <v-col cols="6">
-                                            <v-text-field label="姓名" v-model="p.name" density="compact" variant="outlined" hide-details class="mb-2"></v-text-field>
-                                        </v-col>
-                                        <v-col cols="6">
-                                            <v-text-field label="關係" v-model="p.relation" density="compact" variant="outlined" hide-details class="mb-2"></v-text-field>
-                                        </v-col>
-                                        <v-col cols="12">
-                                            <v-text-field label="電話" v-model="p.phone" density="compact" variant="outlined" hide-details></v-text-field>
-                                        </v-col>
-                                    </v-row>
-                                </div>
-                            </v-form>
+    <div class="mb-4">
+        <div class="text-caption text-grey mb-1">性別</div>
+        <v-btn-toggle
+            v-model="editingData.profile['性別']"
+            color="primary"
+            variant="outlined"
+            density="compact"
+            divided
+            mandatory
+        >
+            <v-btn value="男" size="small" prepend-icon="mdi-gender-male">男</v-btn>
+            <v-btn value="女" size="small" prepend-icon="mdi-gender-female">女</v-btn>
+        </v-btn-toggle>
+    </div>
+
+    <v-divider class="mb-4 border-dashed"></v-divider>
+
+    <div class="text-caption text-primary font-weight-bold mb-2">
+        <v-icon size="small" start>mdi-home-map-marker</v-icon>居住地址
+    </div>
+    <v-row dense>
+        <v-col cols="6">
+            <v-autocomplete 
+                label="城市" 
+                v-model="editingData.profile['居住城市']" 
+                :items="cityOptions"
+                density="compact" 
+                variant="outlined" 
+                hide-details="auto"
+                class="mb-2"
+                placeholder="請選擇"
+            ></v-autocomplete>
+        </v-col>
+        <v-col cols="6">
+            <v-autocomplete 
+                label="鄉鎮市區" 
+                v-model="editingData.profile['居住鄉鎮市區']" 
+                :items="districtOptions"
+                :disabled="!editingData.profile['居住城市']"
+                density="compact" 
+                variant="outlined" 
+                hide-details="auto"
+                class="mb-2"
+                placeholder="請選擇"
+                no-data-text="請先選擇城市"
+            ></v-autocomplete>
+        </v-col>
+        <v-col cols="12">
+            <v-text-field 
+                label="詳細地址" 
+                v-model="editingData.profile['居住詳細地址']" 
+                density="compact" 
+                variant="outlined" 
+                hide-details="auto"
+                class="mb-3"
+                placeholder="街道巷弄號樓"
+            ></v-text-field>
+        </v-col>
+    </v-row>
+
+    <div class="text-caption text-primary font-weight-bold mb-2 mt-2">
+        <v-icon size="small" start>mdi-briefcase</v-icon>職業資訊
+    </div>
+    <v-row dense>
+        <v-col cols="6">
+            <v-text-field 
+                label="職業" 
+                v-model="editingData.profile['職業']" 
+                density="compact" 
+                variant="outlined" 
+                hide-details="auto"
+                class="mb-2"
+            ></v-text-field>
+        </v-col>
+        <v-col cols="6">
+            <v-text-field 
+                label="任職公司" 
+                v-model="editingData.profile['任職公司']" 
+                density="compact" 
+                variant="outlined" 
+                hide-details="auto"
+                class="mb-2"
+            ></v-text-field>
+        </v-col>
+    </v-row>
+    
+    <v-divider class="my-4 border-dashed"></v-divider>
+
+    <div class="d-flex justify-space-between align-center mb-2">
+        <span class="text-subtitle-2">其他聯絡電話</span>
+        <v-btn size="small" color="primary" variant="text" prepend-icon="mdi-plus" @click="addPhoneField">新增</v-btn>
+    </div>
+
+    <div v-for="(p, idx) in editingData.otherPhones" :key="idx" class="mb-4 pa-3 border rounded bg-grey-lighten-5">
+        <div class="d-flex justify-space-between mb-2">
+            <span class="text-caption">聯絡人 {{ idx + 1 }}</span>
+            <v-btn icon="mdi-delete" size="small" color="grey" variant="text" @click="removePhoneField(idx)"></v-btn>
+        </div>
+        <v-row dense>
+            <v-col cols="6">
+                <v-text-field label="姓名" v-model="p.name" density="compact" variant="outlined" hide-details class="mb-2"></v-text-field>
+            </v-col>
+            <v-col cols="6">
+                <v-text-field label="關係" v-model="p.relation" density="compact" variant="outlined" hide-details class="mb-2"></v-text-field>
+            </v-col>
+            <v-col cols="12">
+                <v-text-field label="電話" v-model="p.phone" density="compact" variant="outlined" hide-details></v-text-field>
+            </v-col>
+        </v-row>
+    </div>
+</v-form>
                         </v-card-text>
                     </v-card>
                 </v-col>
@@ -283,9 +387,29 @@
                                                 </span>
                                             </div>
 
+                                            <div v-if="log.startTime && log.endTime" class="mr-2">
+                                                <span class="text-caption text-grey-darken-1 font-weight-bold" style="font-family: monospace;">
+                                                    {{ log.startTime }}~{{ log.endTime }}
+                                                </span>
+                                            </div>
+
+                                            <div v-if="calculateDuration(log.startTime, log.endTime)" class="d-flex align-center mr-3">
+                                                <v-chip
+                                                    size="small"
+                                                    color="teal-lighten-5"
+                                                    class="text-teal-darken-3 font-weight-bold px-2"
+                                                    variant="flat"
+                                                    label
+                                                >
+                                                    <v-icon start size="small" class="mr-1">mdi-timer-outline</v-icon>
+                                                    {{ calculateDuration(log.startTime, log.endTime) }} min
+                                                </v-chip>
+                                            </div>
+                                           
+
                                            <v-chip 
                                                 v-if="log.tags && log.tags['rating'] && log.tags['rating'].length" 
-                                                size="x-small" 
+                                                size="small" 
                                                 variant="flat"
                                                 label
                                                 class="font-weight-bold"
@@ -354,7 +478,7 @@
         </v-card-title>
 
         <v-card-text class="pt-4">
-          <v-row>
+<v-row>
               <v-col cols="12" sm="6">
                    <VueDatePicker 
                       v-model="newLog.date" 
@@ -369,6 +493,30 @@
               </v-col>
           </v-row>
           
+          <v-row dense class="mt-2">
+            <v-col cols="6">
+              <v-text-field
+                v-model="newLog.startTime"
+                label="開始時間"
+                type="time"
+                variant="outlined"
+                density="compact"
+               
+                hide-details="auto"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="newLog.endTime"
+                label="結束時間"
+                type="time"
+                variant="outlined"
+                density="compact"
+                
+                hide-details="auto"
+              ></v-text-field>
+            </v-col>
+          </v-row>
           <div class="mt-4">
               <v-row dense>
                 <template v-for="(fieldKey, idx) in logFields" :key="idx">
@@ -567,6 +715,7 @@ import { fetchCustomerInteractionDetails, addInteractionLog, updateCustomerProfi
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { useToast } from 'vue-toastification';
+import TwCities from '@/assets/TwCities.json'; // 請確保檔案路徑正確，或直接在此定義變數
 
 const props = defineProps({
   show: Boolean,
@@ -591,6 +740,26 @@ const isAddLogDialogVisible = ref(false);
 const isTagDialogVisible = ref(false);
 const isAddPhoneDialogVisible = ref(false);
 const isSavingPhone = ref(false);
+
+// [新增] 計算持續時間 (分鐘)
+const calculateDuration = (start, end) => {
+    if (!start || !end) return null;
+    
+    try {
+        const [startH, startM] = start.split(':').map(Number);
+        const [endH, endM] = end.split(':').map(Number);
+        
+        const startTotal = startH * 60 + startM;
+        const endTotal = endH * 60 + endM;
+        
+        const diff = endTotal - startTotal;
+        
+        // 只回傳大於 0 的合理數值
+        return diff > 0 ? diff : null;
+    } catch (e) {
+        return null;
+    }
+};
 
 // ✅ [新增] 編輯 ID 狀態
 const editingLogId = ref(null);
@@ -634,6 +803,50 @@ const isValidLog = computed(() => {
         }
     }
     return true;
+});
+
+
+// [新增] 通用輔助函式：從 Profile 欄位取得單一顯示值
+// 如果是陣列，取最後一個(最新)；如果是字串，直接回傳
+const getProfileDisplayValue = (key) => {
+    const val = guestData.value.profile?.[key];
+    if (Array.isArray(val)) {
+        return val.length > 0 ? val[val.length - 1] : '';
+    }
+    return val || '';
+};
+
+// ==========================================
+// ✅ [新增] 地址連動邏輯
+// ==========================================
+
+// 1. 取得所有縣市名稱
+const cityOptions = computed(() => {
+    return TwCities.map(c => c.name);
+});
+
+// 2. 根據目前選擇的城市，取得對應的鄉鎮市區
+const districtOptions = computed(() => {
+    // 取得目前編輯中的城市
+    const currentCity = editingData.value.profile?.['居住城市'];
+    if (!currentCity) return [];
+
+    // 在 JSON 中尋找對應的城市物件
+    const cityData = TwCities.find(c => c.name === currentCity);
+    
+    // 回傳該城市的 districts 名稱陣列
+    return cityData ? cityData.districts.map(d => d.name) : [];
+});
+
+// 3. 監聽城市改變，自動清空鄉鎮市區 (避免選了台北市卻留著竹北市的區)
+// 注意：我們只在「編輯模式」且「值真的改變」時才清空
+watch(() => editingData.value.profile?.['居住城市'], (newVal, oldVal) => {
+    if (isEditingProfile.value && newVal !== oldVal && oldVal !== undefined) {
+        // 如果 profile 物件存在，則清空鄉鎮市區
+        if (editingData.value.profile) {
+            editingData.value.profile['居住鄉鎮市區'] = null;
+        }
+    }
 });
 
 // 取得最新完整地址
@@ -709,39 +922,56 @@ const getSortedSubmissions = () => {
     });
 };
 
-// 3. 計算地址變更歷史 (複合欄位)
+// [修改] 計算地址變更歷史 (優先讀取 Profile 作為最新資料)
 const addressList = computed(() => {
-    const sortedSubs = getSortedSubmissions();
-    
-    // 如果沒有提交紀錄，降級讀取 profile
-    if (sortedSubs.length === 0) {
-        const p = guestData.value.profile || {};
-        const getVal = (k) => Array.isArray(p[k]) ? (p[k].length > 0 ? p[k][p[k].length - 1] : '') : (p[k] || '');
-        const full = `${getVal('居住城市')}${getVal('居住鄉鎮市區')}${getVal('居住詳細地址')}`;
-        // ✅ [修正] 將 value 改為 fullAddress
-        return full ? [{ fullAddress: full, date: '目前' }] : [];
+    const history = [];
+    const p = guestData.value.profile || {};
+
+    // 1. 【關鍵修正】直接從 Profile 獲取「目前」的最新狀態
+    // 輔助函式：如果是陣列取最後一個，如果是字串直接用
+    const getProfileVal = (k) => {
+        const val = p[k];
+        return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
+    };
+
+    const currentCity = getProfileVal('居住城市');
+    const currentDist = getProfileVal('居住鄉鎮市區');
+    const currentAddr = getProfileVal('居住詳細地址');
+    const currentFull = `${currentCity}${currentDist}${currentAddr}`;
+
+    // 加入第一筆：目前的最新資料 (來自 Profile/編輯後的結果)
+    if (currentFull) {
+        history.push({ 
+            date: '目前', 
+            fullAddress: currentFull 
+        });
     }
 
-    const history = [];
-    let lastVal = '';
+    // 2. 處理歷史 Submissions
+    const sortedSubs = getSortedSubmissions(); // 由舊到新排序
+    // 反轉為由新到舊，方便比對
+    const reverseSubs = [...sortedSubs].reverse();
 
-    sortedSubs.forEach(sub => {
+    reverseSubs.forEach(sub => {
         const c = sub['居住城市'] || '';
         const d = sub['居住鄉鎮市區'] || '';
         const a = sub['居住詳細地址'] || '';
-        const full = `${c}${d}${a}`;
+        const subFull = `${c}${d}${a}`;
 
-        if (full && full !== lastVal) {
+        // 只有當歷史紀錄有值，且與「目前最新」不同，才列入歷史
+        // 或者您希望列出所有變更軌跡，可以只比對上一個加入 history 的值
+        const lastHistoryVal = history.length > 0 ? history[history.length - 1].fullAddress : '';
+
+        if (subFull && subFull !== lastHistoryVal) {
             let dateStr = '未知日期';
             const dateObj = parseTimestamp(sub.submittedAt);
             if (dateObj) dateStr = dateObj.toLocaleDateString('zh-TW');
 
-            // ✅ [修正] 將 value 改為 fullAddress
-            history.push({ date: dateStr, fullAddress: full });
-            lastVal = full;
+            history.push({ date: dateStr, fullAddress: subFull });
         }
     });
-    return history.reverse(); // 最新在最前
+
+    return history;
 });
 
 // 4. [新增] 通用單一欄位歷史產生器 (用於職業、任職公司)
@@ -775,52 +1005,55 @@ const getSimpleFieldHistory = (fieldName) => {
     return history.reverse();
 };
 
-// ✅ [新增/修改] 合併「職業/任職公司」的歷史紀錄
+// [修改] 合併「職業/任職公司」的歷史紀錄 (優先讀取 Profile)
 const careerList = computed(() => {
-    const sortedSubs = getSortedSubmissions();
+    const history = [];
+    const p = guestData.value.profile || {};
 
-    // 如果沒有提交紀錄，降級讀取 profile
-    if (sortedSubs.length === 0) {
-        const p = guestData.value.profile || {};
-        const getVal = (k) => {
-            const valArr = p[k];
-            return Array.isArray(valArr) ? (valArr.length > 0 ? valArr[valArr.length - 1] : '') : (valArr || '');
-        };
-        
-        const prof = getVal('職業');
-        const comp = getVal('任職公司');
-        
-        // 兩者皆空則回傳空陣列
-        if (!prof && !comp) return [];
-        
-        return [{ 
-            full: `${prof || '-'} / ${comp || '-'}`,
-            date: '目前' 
-        }];
+    // 1. 【關鍵修正】直接從 Profile 獲取「目前」的最新狀態
+    const getProfileVal = (k) => {
+        const val = p[k];
+        return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
+    };
+
+    const currentProf = getProfileVal('職業') || '-';
+    const currentComp = getProfileVal('任職公司') || '-';
+    const currentFull = `${currentProf} / ${currentComp}`;
+
+    // 加入第一筆：目前的最新資料
+    if (currentProf !== '-' || currentComp !== '-') {
+        history.push({
+            date: '目前',
+            full: currentFull
+        });
     }
 
-    const history = [];
-    let lastFull = '';
+    // 2. 處理歷史 Submissions
+    const sortedSubs = getSortedSubmissions();
+    const reverseSubs = [...sortedSubs].reverse(); // 由新到舊
 
-    sortedSubs.forEach(sub => {
+    reverseSubs.forEach(sub => {
         const prof = sub['職業'] || '-';
         const comp = sub['任職公司'] || '-';
-        const full = `${prof} / ${comp}`; // 組合字串
+        const subFull = `${prof} / ${comp}`;
 
-        // 只有當 內容不是雙空值 且 與上一次不同時 才加入
-        if ((prof !== '-' || comp !== '-') && full !== lastFull) {
+        // 比對上一筆加入的歷史資料 (或是目前的最新資料)
+        const lastHistoryVal = history.length > 0 ? history[history.length - 1].full : '';
+
+        // 只有當內容不同時才加入歷史
+        if ((prof !== '-' || comp !== '-') && subFull !== lastHistoryVal) {
             let dateStr = '未知日期';
             const dateObj = parseTimestamp(sub.submittedAt);
             if (dateObj) dateStr = dateObj.toLocaleDateString('zh-TW');
 
             history.push({ 
                 date: dateStr, 
-                full: full 
+                full: subFull 
             });
-            lastFull = full;
         }
     });
-    return history.reverse(); // 最新在最前
+
+    return history;
 });
 
 
@@ -872,10 +1105,30 @@ const getFieldLabel = (key) => {
     return fieldSettings.value[key]?.label || key;
 };
 
-// --- Profile 編輯 ---
 const startEditProfile = () => {
-    editingData.value = JSON.parse(JSON.stringify(guestData.value));
-    if (!editingData.value.otherPhones) editingData.value.otherPhones = [];
+    // 深拷貝原始資料
+    const rawData = JSON.parse(JSON.stringify(guestData.value));
+    
+    // 初始化編輯物件
+    editingData.value = {
+        latestName: rawData.latestName,
+        otherPhones: rawData.otherPhones || [],
+        profile: rawData.profile || {}
+    };
+
+    // 內部輔助：轉陣列為字串
+    const getSingleValue = (key) => {
+        const val = editingData.value.profile[key];
+        return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
+    };
+
+    // ✅ [關鍵] 強制將 '性別' 轉為字串，這樣 v-btn-toggle 才能正確顯示選取狀態
+    const fieldsToFlatten = ['職業', '任職公司', '居住城市', '居住鄉鎮市區', '居住詳細地址', '性別'];
+    
+    fieldsToFlatten.forEach(key => {
+        editingData.value.profile[key] = getSingleValue(key);
+    });
+    
     isEditingProfile.value = true;
 };
 
@@ -890,26 +1143,52 @@ const saveProfile = async () => {
         return;
     }
     isSavingProfile.value = true;
+    
     try {
-        const profilePayload = {
+        // [新增] 準備要更新的 Profile 欄位
+        // 這些欄位將直接寫入 profile map 中
+        const targetProfileFields = [
+            '性別', 
+            '職業', '任職公司', 
+            '居住城市', '居住鄉鎮市區', '居住詳細地址'
+        ];
+
+        const profileUpdates = {};
+        targetProfileFields.forEach(key => {
+            // 使用 'profile.欄位名' 格式，讓 Firestore 進行部分更新
+            profileUpdates[`profile.${key}`] = editingData.value.profile[key] || '';
+        });
+
+        // 組合 API Payload
+        const apiPayload = {
             latestName: editingData.value.latestName,
-            otherPhones: editingData.value.otherPhones
+            otherPhones: editingData.value.otherPhones,
+            ...profileUpdates // 展開 profile 更新欄位
         };
         
         await updateCustomerProfile(
             props.projectId,
             props.docId,
-            profilePayload,
+            apiPayload,
             userStore.user.key
         );
         
+        // --- 更新本地視圖資料 ---
         guestData.value.latestName = editingData.value.latestName;
         guestData.value.otherPhones = editingData.value.otherPhones;
+        
+        if (!guestData.value.profile) guestData.value.profile = {};
+        
+        // [新增] 將編輯後的值寫回本地 profile (注意：這裡直接存字串，顯示端會自動處理)
+        targetProfileFields.forEach(key => {
+            guestData.value.profile[key] = editingData.value.profile[key];
+        });
         
         toast.success('基本資料已更新');
         isEditingProfile.value = false;
         emit('data-updated');
     } catch (error) {
+        console.error(error);
         toast.error(`更新失敗: ${error.message}`);
     } finally {
         isSavingProfile.value = false;
@@ -966,36 +1245,46 @@ const handleAddNewPhone = async () => {
 
 // --- 洽談紀錄管理 (新增與編輯) ---
 
-// ✅ [新增] 開啟新增 Dialog
 const openAddLogDialog = () => {
     editingLogId.value = null;
+    
+    // 設定預設時間：開始時間為現在，結束時間空白
+    const now = new Date();
+    const currentHour = String(now.getHours()).padStart(2, '0');
+    const currentMinute = String(now.getMinutes()).padStart(2, '0');
+    
     newLog.value = {
         date: new Date(),
+        startTime: ``,
+        endTime: '',
         content: '',
         tags: {}
     };
     isAddLogDialogVisible.value = true;
 };
 
-// ✅ [新增] 開啟編輯 Dialog
+// ✅ [修改] 編輯時讀取既有的時間資料
 const openEditLog = (log) => {
     editingLogId.value = log.logId;
     newLog.value = {
         date: new Date(log.date),
+        startTime: log.startTime || '', // 讀取開始時間
+        endTime: log.endTime || '',     // 讀取結束時間
         content: log.content,
         tags: JSON.parse(JSON.stringify(log.tags || {}))
     };
     isAddLogDialogVisible.value = true;
 };
 
-// ✅ [新增] 關閉 Dialog 並重置
+// ✅ [修改] 關閉時重置
 const closeLogDialog = () => {
     isAddLogDialogVisible.value = false;
     editingLogId.value = null;
-    newLog.value = { date: new Date(), content: '', tags: {} };
+    // 重置包含時間欄位
+    newLog.value = { date: new Date(), startTime: '', endTime: '', content: '', tags: {} };
 };
 
-// ✅ [修改] 整合儲存邏輯
+// ✅ [修改] 儲存時將時間欄位寫入 Payload
 const handleSaveLog = async () => {
     if (!newLog.value.content) return;
     
@@ -1003,6 +1292,8 @@ const handleSaveLog = async () => {
     try {
         const logPayload = {
             date: newLog.value.date ? new Date(newLog.value.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            startTime: newLog.value.startTime || '', // 寫入開始時間
+            endTime: newLog.value.endTime || '',     // 寫入結束時間
             content: newLog.value.content,
             tags: { ...newLog.value.tags }
         };

@@ -5,6 +5,7 @@
       <v-tab value="settings" v-if="canManageSettings">客資系統設定</v-tab>
       <v-tab value="vipSettings" v-if="canManageSettings">貴賓資料設定</v-tab>
       <v-tab value="otherSettings" v-if="canManageSettings">其他設定</v-tab>
+      <v-tab value="batchUpdate" v-if="canManageSettings">客資批次更新</v-tab>
       <v-tab value="anxiSettings" v-if="isSuperAdmin">ANXI系統設定</v-tab>
       </v-tabs>
 
@@ -529,7 +530,148 @@
         </v-card>
       </v-window-item>
 
+      <v-window-item value="batchUpdate" v-if="canManageSettings">
+        <v-card class="h-100">
+          <v-toolbar color="amber-lighten-5">
+            <v-toolbar-title class="text-subtitle-1 font-weight-bold text-amber-darken-4">
+              <v-icon start>mdi-database-sync</v-icon>
+              客資批次匯入/匯出
+            </v-toolbar-title>
+          </v-toolbar>
+
+          <v-card-text class="pa-6">
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-card variant="outlined" class="h-100 d-flex flex-column">
+                  <v-card-title class="bg-grey-lighten-4 text-subtitle-1">
+                    <v-icon start color="green">mdi-microsoft-excel</v-icon>
+                    步驟一：下載現有資料
+                  </v-card-title>
+                  <v-card-text class="flex-grow-1 pt-4">
+                    <p class="mb-4">
+                      下載目前的客戶資料 Excel 檔。此檔案格式已包含正確的標頭，可用於修改後重新上傳。
+                    </p>
+                    <v-alert
+                      type="info"
+                      variant="tonal"
+                      density="compact"
+                      border="start"
+                      class="mb-4 text-caption"
+                    >
+                      系統會自動將多選欄位（如：購屋動機）轉換為逗號分隔的字串。
+                    </v-alert>
+                  </v-card-text>
+                  <v-card-actions class="pa-4 bg-grey-lighten-5">
+                    <v-spacer></v-spacer>
+                    <v-btn 
+                      color="success" 
+                      variant="flat" 
+                      prepend-icon="mdi-download"
+                      @click="downloadCustomerExcel"
+                      :loading="isExporting"
+                    >
+                      下載 Excel 檔案
+                    </v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-col>
+
+              <v-col cols="12" md="6">
+                <v-card variant="outlined" class="h-100 d-flex flex-column">
+                  <v-card-title class="bg-grey-lighten-4 text-subtitle-1">
+                    <v-icon start color="blue">mdi-upload</v-icon>
+                    步驟二：上傳 Excel 更新
+                  </v-card-title>
+                  <v-card-text class="flex-grow-1 pt-4">
+                    <p class="mb-4">
+                      上傳修改後的 Excel 檔案以批次更新客戶資料。
+                    </p>
+                    <ul class="pl-4 text-body-2 text-grey-darken-3 mb-4">
+                      <li><strong>電話</strong> 為唯一識別碼，請勿修改。</li>
+                      <li>若電話已存在，將更新該客戶資料（保留原有提交紀錄）。</li>
+                      <li>若電話不存在，將建立新客戶資料。</li>
+                      <li>多選欄位請用<strong>半形逗號 (,)</strong> 分隔。</li>
+                    </ul>
+                  </v-card-text>
+                  <v-card-actions class="pa-4 bg-grey-lighten-5">
+                    <v-spacer></v-spacer>
+                    <v-btn 
+                      color="primary" 
+                      variant="flat" 
+                      prepend-icon="mdi-upload"
+                      @click="openBatchUploadDialog"
+                    >
+                      上傳 Excel 更新
+                    </v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
       </v-window>
+
+    <v-dialog v-model="batchUploadDialog" max-width="600px" persistent>
+      <v-card>
+        <v-card-title class="bg-primary text-white">
+          <v-icon start>mdi-cloud-upload</v-icon>
+          客資批次更新
+        </v-card-title>
+        <v-card-text class="pt-6">
+          <v-alert
+            type="warning"
+            variant="tonal"
+            class="mb-4"
+            icon="mdi-alert"
+            border="start"
+          >
+            <strong>注意：</strong> 上傳後將直接寫入資料庫。請確保 Excel 中的「電話」欄位正確無誤。
+          </v-alert>
+
+          <v-file-input
+            v-model="batchUploadFile"
+            label="選擇 Excel 檔案 (.xlsx)"
+            accept=".xlsx, .xls"
+            variant="outlined"
+            density="compact"
+            prepend-icon="mdi-file-excel"
+            :loading="isParsingExcel"
+            @update:model-value="handleBatchUploadFile"
+            show-size
+          ></v-file-input>
+
+          <v-expand-transition>
+            <div v-if="uploadStatusMessage">
+              <v-alert
+                :type="uploadStatusType"
+                variant="tonal"
+                class="mt-2 text-pre-wrap"
+                density="compact"
+              >
+                {{ uploadStatusMessage }}
+              </v-alert>
+            </div>
+          </v-expand-transition>
+
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="closeBatchUploadDialog">取消</v-btn>
+          <v-btn 
+            color="primary" 
+            variant="flat" 
+            @click="submitBatchUpdate"
+            :loading="isBatchUpdating"
+            :disabled="!parsedBatchData.length"
+          >
+            確認執行更新
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -538,14 +680,18 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
+import * as XLSX from 'xlsx-js-style';
+
 
 import { 
   fetchCustomerSettings, 
   saveCustomerSettings,
   uploadAttachmentImage,
   deleteAttachmentImage,
-  fetchCustomerList // ✓ 引入新的 API
-} from '@/api'; 
+  fetchCustomerList,
+  batchUpdateCustomers,
+  fetchCustomersForExport
+} from '@/api';
 import { merge } from 'lodash-es'; 
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
 
@@ -565,6 +711,311 @@ const { mobile: isMobile } = useDisplay();
 
 // --- 權限 ---
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
+
+// ===============================================
+// ✅ [新增] 客資批次更新相關邏輯
+// ===============================================
+
+// ✅ [修正] 欄位對照表 (確保 Key 與後端邏輯一致)
+const EXCEL_COLUMN_MAP = [
+  // --- 1. 系統根目錄欄位 (後端會寫入 latestName 等) ---
+  { header: '電話', key: 'phone', type: 'string', required: true },
+  { header: '姓名', key: 'name', type: 'string' },
+  { header: '銷售人員', key: 'salesName', type: 'string' },
+  { header: '銷售人員電話', key: 'salesPhone', type: 'string' },
+
+  // --- 2. Profile 欄位 (後端會寫入 profile Map) ---
+  // 注意：這裡加上 'profile.' 前綴，解析時會自動處理
+ { header: '互動方式', key: 'profile.互動方式', type: 'string' },
+  { header: '來人數', key: 'profile.來人數', type: 'string' },
+  { header: '等級研判', key: 'profile.rating', type: 'string' },
+  { header: '重點標籤', key: 'profile.keyTags', type: 'array' },
+  { header: '未買原因', key: 'profile.noPurchaseReason', type: 'array' },
+
+  { header: '性別', key: 'profile.性別', type: 'string' }, // 保持中文Key以配合資料庫現狀
+  { header: '年齡', key: 'profile.年齡', type: 'string' },
+  { header: '職業', key: 'profile.職業', type: 'array' },
+  { header: '任職公司', key: 'profile.任職公司', type: 'string' },
+  
+  { header: '居住城市', key: 'profile.居住城市', type: 'string' },
+  { header: '居住鄉鎮市區', key: 'profile.居住鄉鎮市區', type: 'string' },
+  { header: '居住詳細地址', key: 'profile.居住詳細地址', type: 'string' },
+  
+  { header: '購屋動機', key: 'profile.購屋動機', type: 'array' },
+  { header: '房型需求', key: 'profile.房型需求', type: 'array' },
+  { header: '坪數需求', key: 'profile.坪數需求', type: 'array' },
+  { header: '購屋預算', key: 'profile.購屋預算', type: 'string' },
+  { header: '從何得知本建案', key: 'profile.從何得知本建案', type: 'array' },
+  
+  { header: '備註', key: 'profile.備註', type: 'string' },
+
+  // --- 3. 唯讀/不匯入欄位 (避免上傳時覆蓋錯誤) ---
+  // 雖然 Excel 有這些欄位方便查看，但上傳時通常不寫入，或視為 profile 的一部分
+  // 若您希望透過 Excel 更新最後洽談摘要，可保留以下設定：
+  { header: '最新洽談-日期', key: 'profile.lastInteractionDate', type: 'string' }, 
+  { header: '最新洽談-內容', key: 'profile.lastInteractionContent', type: 'string' },
+];
+
+// 狀態變數
+const isExporting = ref(false);
+const batchUploadDialog = ref(false);
+const batchUploadFile = ref(null);
+const isParsingExcel = ref(false);
+const parsedBatchData = ref([]); // 儲存解析後的資料
+const uploadStatusMessage = ref('');
+const uploadStatusType = ref('info');
+const isBatchUpdating = ref(false);
+
+// 下載 Excel
+// 下載 Excel
+async function downloadCustomerExcel() {
+  if (!props.projectId) return;
+  isExporting.value = true;
+
+  try {
+    // ✅ [修改] 強制呼叫專用的匯出 API，獲取完整資料
+    // 不再使用 customerList.value (那個只包含 Table 顯示用的欄位)
+    let dataToExport = [];
+    
+    if (currentUserPhone.value) {
+      dataToExport = await fetchCustomersForExport(
+        props.projectId, 
+        currentUserPhone.value, 
+        currentUserProjectSystems.value
+      );
+    }
+
+    if (dataToExport.length === 0) {
+      alert("沒有可匯出的資料");
+      return;
+    }
+
+    // 2. 準備 Excel 資料
+    // 標頭列 (第二列)
+   const headers = EXCEL_COLUMN_MAP.map(col => col.header);
+    
+    const rows = dataToExport.map(customer => {
+      return EXCEL_COLUMN_MAP.map(col => {
+        // ... (取值邏輯保持不變，因為後端回傳的結構已經包含了所有欄位) ...
+        // 這裡的 customer 物件現在包含了資料庫所有的 profile 欄位
+        
+        let value = null;
+        // 如果 EXCEL_COLUMN_MAP 的 key 是 'profile.xxx'，
+        // 因為後端已經做了扁平化處理 (...docData.profile)，
+        // 所以直接用 xxx 去取值即可，或者用 header 中文取值。
+        
+        // 優先嘗試用 Excel 標頭 (中文) 取值
+        if (customer[col.header] !== undefined) {
+            value = customer[col.header];
+        } 
+        // 其次嘗試用 key 取值 (去除 profile. 前綴)
+        else if (col.key.includes('.')) {
+            const keyWithoutPrefix = col.key.split('.')[1];
+            value = customer[keyWithoutPrefix];
+        } 
+        else {
+            value = customer[col.key];
+        }
+
+        if (Array.isArray(value)) {
+          return value.filter(v => v).join(',');
+        }
+        return value || '';
+      });
+    });
+
+    // 3. 建立 Worksheet
+    // 第一列：警語
+const warningText = "注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。";
+    const sheetData = [[warningText], headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    
+    // ... (樣式設定保持不變) ...
+    if (!ws['A1'].s) ws['A1'].s = {};
+    ws['A1'].s = { fill: { fgColor: { rgb: "FFFF00" } }, font: { color: { rgb: "FF0000" }, bold: true, sz: 12 }, alignment: { horizontal: "center" } };
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } });
+    
+    const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "E0E0E0" } }, alignment: { horizontal: "center" } };
+    for (let c = 0; c < headers.length; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 1, c: c });
+      if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' };
+      ws[cellRef].s = headerStyle;
+    }
+    ws['!cols'] = headers.map(() => ({ wch: 20 }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "客資資料");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${projectName.value}_客資資料_${dateStr}.xlsx`);
+
+  } catch (error) {
+    console.error("匯出 Excel 失敗:", error);
+    alert(`匯出失敗: ${error.message}`);
+  } finally {
+    isExporting.value = false;
+  }
+}
+function openBatchUploadDialog() {
+  batchUploadDialog.value = true;
+  batchUploadFile.value = null;
+  parsedBatchData.value = [];
+  uploadStatusMessage.value = '';
+}
+
+function closeBatchUploadDialog() {
+  batchUploadDialog.value = false;
+}
+
+// 處理檔案選擇與解析
+async function handleBatchUploadFile(files) {
+  uploadStatusMessage.value = '';
+  parsedBatchData.value = [];
+  
+  if (!files || (Array.isArray(files) && files.length === 0)) return;
+  const file = Array.isArray(files) ? files[0] : files;
+
+  isParsingExcel.value = true;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            // 讀取資料 (跳過第 1 列警語)
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+
+            if (jsonData.length < 1) throw new Error("檔案內容為空或格式錯誤。");
+
+            // 取得標頭 (Excel 的第二列)
+            const headers = jsonData[0].map(h => String(h || '').trim());
+            const rows = jsonData.slice(1);
+
+            if (!headers.includes('電話')) throw new Error("找不到「電話」欄位，請確保使用正確的範本。");
+
+            const processedRows = [];
+            let validCount = 0;
+
+            rows.forEach((row) => {
+                if (row.length === 0) return; // 跳過空行
+
+                const rowData = {
+                    profile: {} // 預先建立 profile 物件
+                };
+                let hasPhone = false;
+
+                headers.forEach((header, colIndex) => {
+                    // 找到該標頭對應的設定
+                    const mapConfig = EXCEL_COLUMN_MAP.find(m => m.header === header);
+                    
+                    // 取得 Excel 儲存格的值
+                    let cellValue = row[colIndex];
+
+                    // 只有當設定存在且值有效時才處理
+                    if (mapConfig && cellValue !== undefined && cellValue !== null && String(cellValue).trim() !== '') {
+                        let strValue = String(cellValue).trim();
+
+                        // [建議新增] 簡單處理 Excel 日期序列 (針對拜訪日期等欄位)
+                      // 如果 key 是日期相關，且值是純數字 (例如 45xxx)，嘗試轉換
+                      if ((mapConfig.key.includes('Date') || mapConfig.header.includes('日期')) && /^\d{5}$/.test(strValue)) {
+                          // Excel 日期轉 JS Date 的簡易算法
+                          const excelDate = parseInt(strValue);
+                          const jsDate = new Date((excelDate - (25567 + 1)) * 86400 * 1000);
+                          // 轉回 YYYY-MM-DD
+                          strValue = jsDate.toISOString().split('T')[0];
+                      }
+
+
+                        const configKey = mapConfig.key; // 例如 'name' 或 'profile.rating'
+
+                        // --- 邏輯 A: 處理電話 (主 Key) ---
+                        if (configKey === 'phone') {
+                            rowData.phone = strValue;
+                            hasPhone = true;
+                        }
+                        
+                        // --- 邏輯 B: 處理根目錄欄位 (name, salesName, salesPhone) ---
+                        else if (!configKey.includes('.')) {
+                            rowData[configKey] = strValue;
+                        }
+                        
+                        // --- 邏輯 C: 處理 Profile 欄位 (profile.xxx) ---
+                        else if (configKey.startsWith('profile.')) {
+                            // 去除前綴，取得實際 Key (例如 'rating' 或 '購屋動機')
+                            const cleanKey = configKey.split('.')[1];
+
+                            if (mapConfig.type === 'array') {
+                                // 陣列處理：逗號分隔轉陣列
+                                const arrayVal = strValue.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+                                rowData.profile[cleanKey] = arrayVal;
+                            } else {
+                                // 字串處理
+                                rowData.profile[cleanKey] = strValue;
+                            }
+                        }
+                    }
+                });
+
+                if (hasPhone) {
+                    // 如果 profile 是空的，後端 merge 時不會有副作用，但也沒必要傳
+                    if (Object.keys(rowData.profile).length === 0) {
+                        delete rowData.profile;
+                    }
+                    processedRows.push(rowData);
+                    validCount++;
+                }
+            });
+
+            parsedBatchData.value = processedRows;
+            uploadStatusType.value = 'success';
+            uploadStatusMessage.value = `解析成功！共找到 ${validCount} 筆有效資料，準備上傳。`;
+
+        } catch (error) {
+            console.error("解析 Excel 失敗:", error);
+            uploadStatusType.value = 'error';
+            uploadStatusMessage.value = `解析失敗: ${error.message}`;
+            parsedBatchData.value = [];
+        } finally {
+            isParsingExcel.value = false;
+        }
+    };
+  reader.readAsArrayBuffer(file);
+}
+
+// 送出更新
+async function submitBatchUpdate() {
+  if (parsedBatchData.value.length === 0) return;
+
+  isBatchUpdating.value = true;
+  uploadStatusMessage.value = '正在上傳並更新資料庫，請稍候... (資料量大時可能需要一點時間)';
+  uploadStatusType.value = 'info';
+
+  try {
+    const result = await batchUpdateCustomers(props.projectId, parsedBatchData.value);
+
+    if (result.status === 'success') {
+      uploadStatusType.value = 'success';
+      uploadStatusMessage.value = result.message || `更新成功！共處理 ${result.processedCount} 筆資料。`;
+      
+      // 更新成功後，重新載入列表
+      setTimeout(() => {
+        closeBatchUploadDialog();
+        loadCustomerList(); // 重新整理列表
+      }, 1500);
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    console.error("批次更新失敗:", error);
+    uploadStatusType.value = 'error';
+    uploadStatusMessage.value = `更新失敗: ${error.message}`;
+  } finally {
+    isBatchUpdating.value = false;
+  }
+}
 
 const canManageSettings = computed(() => 
   userStore.hasProjectPermission('客資系統-櫃台', projectName.value)
@@ -923,4 +1374,9 @@ const openInteractionLog = (event, { item }) => {
 :deep(.cursor-pointer-row tbody tr:hover) {
     background-color: #f5f5f5 !important;
 }
+
+.text-pre-wrap {
+  white-space: pre-wrap;
+}
+
 </style>

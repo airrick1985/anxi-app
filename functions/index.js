@@ -15523,6 +15523,109 @@ async function _handleFetchCustomerList(data, db) {
 }
 
 /**
+ * [內部函式] 獲取完整客戶資料 (供 Excel 匯出使用)
+ * 特點：回傳完整 profile 結構，不進行過度篩減
+ */
+async function _handleFetchCustomersForExport(data, db) {
+    const { projectId, userPhone, userProjectSystems } = data;
+    const functionName = `_handleFetchCustomersForExport`;
+
+    if (!projectId || !userPhone || !userProjectSystems) {
+        throw new HttpsError("invalid-argument", "缺少必要參數。");
+    }
+
+    try {
+        const isCounter = userProjectSystems.includes('客資系統-櫃台');
+        const guestsRef = db.collection("vipGuests");
+        const query = guestsRef.where("projectId", "==", projectId);
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return [];
+        }
+
+        const exportList = [];
+
+        snapshot.forEach(doc => {
+            const docData = doc.data();
+            
+            // --- 權限過濾邏輯 ---
+            // 如果不是櫃台/管理員，且該客戶的最新銷售人員不是自己，則跳過
+            // 注意：這裡使用 latestSalesPhone (根目錄欄位) 判斷歸屬
+            if (!isCounter) {
+                if (docData.latestSalesPhone !== userPhone) {
+                    return; // 跳過此客戶
+                }
+            }
+
+            // --- 1. 處理洽談紀錄 (取出最新一筆) ---
+            const logs = docData.interactionLogs || [];
+            let latestLogData = {};
+
+            if (logs.length > 0) {
+                // 依日期降序排序 (最新的在前面)
+                const sortedLogs = logs.sort((a, b) => {
+                    const dateA = new Date(a.date || 0);
+                    const dateB = new Date(b.date || 0);
+                    return dateB - dateA;
+                });
+                
+                const latest = sortedLogs[0];
+                const tags = latest.tags || {};
+
+                // 準備扁平化資料
+                latestLogData = {
+                    '最新洽談-日期': latest.date,
+                    '最新洽談-內容': latest.content,
+                    // 標籤類資料 (直接對應 Excel 標頭)
+                    '互動方式': tags.interactionType,
+                    '來人數': tags.visitors,
+                    '等級研判': tags.rating,
+                    '重點標籤': tags.keyTags, // 陣列
+                    '未買原因': tags.noPurchaseReason // 陣列
+                };
+            }
+
+            // --- 2. 資料組裝 ---
+            // 我們需要的格式是「扁平化」的物件，以便前端 Excel 對照
+            // 優先級：profile 內的資料 > 根目錄資料
+            
+            // --- 2. 資料組裝 ---
+            const flatData = {
+                // 系統欄位
+                phone: docData.phone,
+                docId: doc.id,
+                
+                // 展開 profile
+                ...(docData.profile || {}),
+
+                // 展開最新洽談紀錄 (這會覆蓋 profile 中可能存在的舊資料，確保匯出的是最新的)
+                ...latestLogData,
+
+                // 根目錄覆蓋
+                '姓名': docData.latestName,
+                '銷售人員': docData.latestSalesName,
+                '銷售人員電話': docData.latestSalesPhone,
+            };
+
+            exportList.push(flatData);
+        });
+
+        // 依照電話排序
+        exportList.sort((a, b) => (a.phone || '').localeCompare(b.phone || ''));
+
+        console.log(`[${functionName}] 成功匯出 ${exportList.length} 筆完整資料。`);
+        return exportList;
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行時發生錯誤:`, error);
+        throw new HttpsError("internal", `匯出資料時發生錯誤: ${error.message}`);
+    }
+}
+
+
+
+/**
  * [V1 - 路由函數] CustomerManagement.vue (客資系統) 的單一 API 入口
  */
 exports.customerApi = onCall({ 
@@ -15556,6 +15659,13 @@ exports.customerApi = onCall({
             case 'fetchCustomerList':
                 return await _handleFetchCustomerList(data, db);
 
+                // ✅ [新增] 專用於 Excel 匯出的完整資料 API
+            case 'fetchCustomersForExport':
+                return await _handleFetchCustomersForExport(data, db);
+
+            // ✅ [新增] 批次更新客戶資料
+            case 'batchUpdateCustomers':
+                return await _handleBatchUpdateCustomers(data, db);
           
 
             default:
@@ -15573,6 +15683,7 @@ exports.customerApi = onCall({
         throw new HttpsError('internal', `處理 ${action} 時發生未預期的錯誤: ${error.message}`);
     }
 });
+
 
 
 
@@ -17018,3 +17129,161 @@ exports.queryCustomerData = onCall(async (request) => {
         throw new HttpsError('internal', '查詢過程發生錯誤: ' + error.message);
     }
 });
+
+
+/**
+ * [內部函式] 批次更新客戶資料 (Excel 匯入) - 結構修復版 V4
+ * 修正：
+ * 1. 同步建立 interactionLogs (解決詳細頁歷史紀錄空白)
+ * 2. 同步 拜訪日期 (解決列表 N/A)
+ */
+async function _handleBatchUpdateCustomers(data, db) {
+    const { projectId, customerData } = data;
+    const functionName = `_handleBatchUpdateCustomers (Project: ${projectId})`;
+
+    if (!projectId || !Array.isArray(customerData)) {
+        throw new HttpsError("invalid-argument", "缺少 projectId 或 customerData。");
+    }
+
+    console.log(`[${functionName}] 開始處理 ${customerData.length} 筆資料...`);
+
+    const MAX_BATCH_SIZE = 499;
+    let batch = db.batch();
+    let count = 0;
+    let totalProcessed = 0;
+
+    // 1. 準備時間戳記
+    const submissionTime = Timestamp.now(); 
+    const updateTime = FieldValue.serverTimestamp();
+
+    try {
+        for (const customer of customerData) {
+            const phone = customer.phone;
+            
+            if (!phone) {
+                console.warn(`[${functionName}] 跳過無電話號碼的資料`, customer);
+                continue;
+            }
+
+            const safePhone = String(phone).replace(/[.#$[\]/]/g, '_');
+            const docId = `${projectId}_${safePhone}`;
+            const docRef = db.collection("vipGuests").doc(docId);
+
+            // --- 資料前處理 ---
+            const profile = customer.profile || {};
+
+            // A. 處理日期同步：如果「拜訪日期」為空，但有「最新洽談-日期」，則同步過去
+            let visitDate = profile['拜訪日期'];
+            const interactionDate = profile['最新洽談-日期'] || profile['lastInteractionDate']; // 兼容 Excel 舊 Key
+            
+            if (!visitDate && interactionDate) {
+                visitDate = interactionDate;
+                profile['拜訪日期'] = visitDate; // 更新回 profile 以便寫入 submission
+            }
+            // 如果都沒填，預設為今天 (避免 N/A)
+            if (!visitDate) {
+                visitDate = new Date().toISOString().split('T')[0];
+                profile['拜訪日期'] = visitDate;
+            }
+
+            // --- 2. 建構 Submission Log (歷史快照) ---
+            const submissionLog = {
+                submittedAt: submissionTime, 
+                importSource: 'Excel Batch Upload',
+                '姓名': customer.name || '',
+                '電話': String(phone),
+                '銷售人員': customer.salesName || '',
+                '銷售人員電話': customer.salesPhone || '',
+                '拜訪日期': visitDate, 
+                ...profile
+            };
+
+            // --- 3. 建構 Interaction Log (洽談紀錄 - 解決歷史紀錄空白問題) ---
+            // 只有當 Excel 中包含洽談相關欄位時才建立
+            let newInteractionLog = null;
+            
+            // 檢查是否有洽談內容或等級標籤
+            const hasInteractionContent = profile['最新洽談-內容'] || profile['lastInteractionContent'];
+            const hasRating = profile['等級研判'] || profile['rating'];
+            
+            if (hasInteractionContent || hasRating || interactionDate) {
+                // 產生一個隨機 ID (模擬 UUID)
+                const logId = `excel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
+                newInteractionLog = {
+                    logId: logId,
+                    date: interactionDate || visitDate, // 優先使用洽談日期
+                    createdAt: submissionTime,
+                    recorderName: '系統匯入', // 標示為系統匯入
+                    content: profile['最新洽談-內容'] || profile['lastInteractionContent'] || '(Excel 匯入資料更新)',
+                    
+                    // 標籤結構
+                    tags: {
+                        interactionType: profile['互動方式'] || '來電',
+                        visitors: profile['來人數'] || '1',
+                        rating: profile['等級研判'] || profile['rating'] || '',
+                        keyTags: profile['重點標籤'] || profile['keyTags'] || [],
+                        noPurchaseReason: profile['未買原因'] || profile['noPurchaseReason'] || []
+                    }
+                };
+            }
+
+            // --- 4. 準備更新 Payload ---
+            const updatePayload = {
+                projectId: projectId,
+                phone: String(phone),
+                updatedAt: updateTime,
+                searchablePhones: FieldValue.arrayUnion(String(phone)),
+                
+                // 加入歷史快照
+                submissions: FieldValue.arrayUnion(submissionLog)
+            };
+
+            // ✅ 關鍵：如果有建立洽談紀錄，加入 interactionLogs 陣列
+            if (newInteractionLog) {
+                updatePayload.interactionLogs = FieldValue.arrayUnion(newInteractionLog);
+            }
+
+            // 更新根目錄 (最新狀態)
+            if (customer.name) {
+                updatePayload.latestName = customer.name;
+                updatePayload.searchableNames = FieldValue.arrayUnion(customer.name);
+            }
+            if (customer.salesName) updatePayload.latestSalesName = customer.salesName;
+            if (customer.salesPhone) updatePayload.latestSalesPhone = customer.salesPhone;
+
+            // 更新 profile (最新狀態)
+            if (Object.keys(profile).length > 0) {
+                updatePayload.profile = profile;
+            }
+
+            // --- 5. 加入 Batch ---
+            batch.set(docRef, updatePayload, { merge: true });
+            
+            count++;
+            totalProcessed++;
+
+            if (count >= MAX_BATCH_SIZE) {
+                await batch.commit();
+                console.log(`[${functionName}] 已提交一批 (${count} 筆)...`);
+                batch = db.batch();
+                count = 0;
+            }
+        }
+
+        if (count > 0) {
+            await batch.commit();
+            console.log(`[${functionName}] 已提交最後一批 (${count} 筆)。`);
+        }
+
+        return { 
+            status: "success", 
+            message: `成功更新 ${totalProcessed} 筆客戶資料。`,
+            processedCount: totalProcessed 
+        };
+
+    } catch (error) {
+        console.error(`[${functionName}] 批次更新失敗:`, error);
+        throw new HttpsError("internal", `批次更新時發生錯誤: ${error.message}`);
+    }
+}

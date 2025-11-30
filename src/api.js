@@ -7178,3 +7178,57 @@ export async function queryCustomerDataApi(projectId, queryText) {
   const result = await queryFunc({ projectId, queryText });
   return result.data;
 }
+
+
+/**
+ * [API] 批次更新客戶資料 (Excel 匯入用)
+ * @param {string} projectId - 建案 ID
+ * @param {Array<object>} customerData - 包含 phone, name, salesInfo, profile 等資料的陣列
+ * @returns {Promise<object>} - { status, message, processedCount }
+ */
+export const batchUpdateCustomers = async (projectId, customerData) => {
+  if (!projectId || !Array.isArray(customerData) || customerData.length === 0) {
+    return { status: 'error', message: '前端錯誤：缺少 projectId 或有效的客戶資料。' };
+  }
+
+  try {
+    // 呼叫 customerApiRouter
+    const result = await customerApiRouter({
+      action: 'batchUpdateCustomers',
+      data: {
+        projectId,
+        customerData
+      }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API batchUpdateCustomers 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+};
+
+/**
+ * [API] 獲取完整客戶資料供匯出 (包含所有資料庫欄位)
+ */
+export const fetchCustomersForExport = async (projectId, userPhone, userProjectSystems) => {
+  if (!projectId || !userPhone || !userProjectSystems) {
+    return [];
+  }
+  
+  try {
+    const result = await customerApiRouter({
+        action: 'fetchCustomersForExport', // 對應後端新路由
+        data: { 
+            projectId, 
+            userPhone, 
+            userProjectSystems 
+        }
+    });
+    
+    return result.data;
+    
+  } catch (error) {
+    console.error(`[api.js] 匯出客戶列表失敗:`, error);
+    throw error;
+  }
+};

@@ -79,7 +79,21 @@
                 variant="outlined"
                 :rules="[rules.required, rules.phone]"
                 class="mb-2"
-              ></v-text-field> <v-divider class="my-6"></v-divider>
+              ></v-text-field>
+
+              <v-label class="text-caption text-grey-darken-1 ml-1">{{ t.gender }}</v-label>
+              <v-radio-group
+                v-model="formData['性別']"
+                inline
+                :rules="[rules.required]"
+                color="primary"
+                class="mb-2 ml-1"
+                hide-details="auto"
+              >
+                <v-radio :label="t.male" value="男"></v-radio>
+                <v-radio :label="t.female" value="女"></v-radio>
+              </v-radio-group>
+              <v-divider class="my-6"></v-divider>
 
               <p class="text-h6 mb-4">{{ t.requirements }}</p> <template v-for="field in formFields" :key="field.key">
                 
@@ -204,6 +218,9 @@ const i18n = {
     basicInfo: '基本資料',
     name: '姓名',
     phone: '電話',
+    gender: '性別', // ✅ 新增
+    male: '男',     // ✅ 新增
+    female: '女',   // ✅ 新增
     requirements: '需求資訊',
     otherItem: '其他',
     enterOther: '請輸入其他項目',
@@ -222,6 +239,9 @@ const i18n = {
     basicInfo: 'Basic Info',
     name: 'Name',
     phone: 'Phone',
+    gender: 'Gender', // ✅ 新增
+    male: 'Male',     // ✅ 新增
+    female: 'Female', // ✅ 新增
     requirements: 'Preferences',
     otherItem: 'Other',
     enterOther: 'Please specify',
@@ -310,6 +330,7 @@ onMounted(async () => {
     const initialFormData = {
       '姓名': '',
       '電話': '',
+      '性別': '',
     };
 
     // 依照 order 排序欄位
