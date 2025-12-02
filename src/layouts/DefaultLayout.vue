@@ -179,6 +179,39 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="showIdleWarning" persistent max-width="400">
+      <v-card class="text-center pa-4">
+        <v-icon size="64" color="warning" class="mb-4">mdi-clock-alert-outline</v-icon>
+        <v-card-title class="text-h5 font-weight-bold">
+          您已經閒置一段時間
+        </v-card-title>
+        <v-card-text class="text-body-1 my-2">
+          為了您的帳戶安全，系統將在 
+          <span class="text-red font-weight-bold text-h5 mx-1">{{ remainingSeconds }}</span> 
+          秒後自動登出。
+        </v-card-text>
+        <v-card-actions class="justify-center mt-2">
+          <v-btn 
+            color="grey-darken-1" 
+            variant="text" 
+            @click="performLogout"
+          >
+            直接登出
+          </v-btn>
+          <v-btn 
+            color="primary" 
+            variant="elevated" 
+            size="large"
+            @click="keepAlive"
+            prepend-icon="mdi-account-check"
+          >
+            保持登入
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+
 
   </v-app>
 </template>
@@ -197,6 +230,7 @@ import UpdateDialog from '../components/UpdateDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
 import manifest from '../../public/manifest.json';
 import { useDisplay } from 'vuetify';
+import { useAutoLogout } from '../composables/useAutoLogout';
 
 // 【已修正】從新的 src/assets 位置 import 圖片
 import logoUrl from '@/assets/images/anxi-logo.png';
@@ -204,6 +238,9 @@ import logoUrl from '@/assets/images/anxi-logo.png';
 import AiAssistant from '../components/AiAssistant.vue';
 
 const display = useDisplay();
+
+// 只要這行程式碼執行，就會開始監聽並計時
+const { showIdleWarning, remainingSeconds, keepAlive, performLogout } = useAutoLogout();
 
 const userStore = useUserStore();
 const uiStore = useUiStore();

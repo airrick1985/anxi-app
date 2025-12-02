@@ -3,7 +3,6 @@
     <router-view />
   </component>
 
-  <!-- 新增：PWA 強制更新遮罩 -->
   <v-overlay
     :model-value="isUpdating"
     class="align-center justify-center"
@@ -17,7 +16,40 @@
     <div class="text-center mt-4" style="color: white;">應用程式更新中...</div>
   </v-overlay>
 
-</template>
+  <v-dialog
+    v-model="sessionErrorDialog"
+    max-width="400"
+    persistent
+    class="align-center justify-center"
+  >
+    <v-card class="text-center pa-4">
+      <v-icon size="64" color="error" class="mb-4">mdi-alert-circle-outline</v-icon>
+      
+      <v-card-title class="text-h5 font-weight-bold mb-2">
+        帳號已登出
+      </v-card-title>
+      
+      <v-card-text class="text-body-1">
+        您的帳號已在另一處登入，為了安全起見，本裝置已登出。
+        <br><br>
+        請點擊下方按鈕重新整理頁面後再次登入。
+      </v-card-text>
+
+      <v-card-actions class="justify-center mt-4">
+        <v-btn
+          color="primary"
+          variant="elevated"
+          size="large"
+          block
+          prepend-icon="mdi-refresh"
+          @click="reloadPage"
+        >
+          重新整理頁面
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+  </template>
 
 <script setup>
 // ✓ 步驟一：在 import 區域加入 useRouter
@@ -39,6 +71,13 @@ const userStore = useUserStore();
 const toast = useToast(); 
 
 const isUpdating = ref(false);
+// ✅ [新增] 控制錯誤 Dialog 的變數
+const sessionErrorDialog = ref(false);
+
+// ✅ [新增] 重新整理頁面的函式
+const reloadPage = () => {
+  window.location.reload();
+};
 
 const layoutComponent = computed(() => {
   const layout = route.meta.layout;
@@ -107,20 +146,26 @@ watch(() => userStore.user, (newUser) => {
         if (unsubscribe) unsubscribe();
         return;
       }
+      
+      // ✅ [修改] 邏輯處理區塊
       if (docSnap.exists()) {
         const serverSessionId = docSnap.data().activeSessionId;
         const clientSessionId = userStore.sessionId;
+        
         if (serverSessionId && clientSessionId && serverSessionId !== clientSessionId) {
           console.warn('[Session Check] Session ID mismatch! Forcing logout.');
-          toast.error("您的帳號已在另一處登入，此處連線已中斷。", {
-            timeout: 5000,
-          });
+          
+          // 1. 先執行登出清除狀態
           userStore.logoutUser();
+          
+          // 2. 顯示 Dialog 取代原本的 Toast
+          sessionErrorDialog.value = true;
         }
       } else {
         console.warn('[Session Check] User document no longer exists. Forcing logout.');
-        toast.error("使用者資料異常，請重新登入。", { timeout: 5000 });
+        // 針對使用者被刪除的情況，也建議一併使用 Dialog
         userStore.logoutUser();
+        sessionErrorDialog.value = true;
       }
     });
   }

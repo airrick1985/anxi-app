@@ -15760,7 +15760,9 @@ async function _handleSubmitVipForm(data, db) {
     
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp 
+        submittedAt: submissionTimestamp,
+        // ✅ [新增] 標記來源：公開表單 (客戶初次填寫)
+        submissionSource: 'public_form' 
     };
 
     try {
@@ -16198,7 +16200,9 @@ async function _handleSubmitCustomerSheet(data, db) {
     
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp 
+        submittedAt: submissionTimestamp,
+        // ✅ [新增] 標記來源：內部資料表 (銷售人員補全)
+        submissionSource: 'internal_sheet' 
     };
 
     try {
@@ -16645,11 +16649,12 @@ async function sendLineNotification(db, projectId, messageText) {
 
 
 /**
+ * (停用)已整合至 exports.onVipGuestSubmission
  * [輔助函式 - 新增] 
  * 用於發送「新貴賓建立」的 LINE 通知
  * (✓ V2: 新增讀取 projectName)
  */
-async function sendNewVipNotification(db, projectId, formData) {
+/**async function sendNewVipNotification(db, projectId, formData) {
     const functionName = "sendNewVipNotification";
 
     // ✓ 檢查：(新增) 在函式開頭，先獲取建案名稱
@@ -16770,7 +16775,7 @@ async function sendNewVipNotification(db, projectId, formData) {
     await lineClient.multicast(lineIds, [{ type: 'text', text: messageText }]);
     console.log(`[${functionName}] 新貴賓通知發送成功。`);
 }
-
+*/
 
 /**
  * [新增] 批次更新銷售人員的排序 (order)
@@ -17287,3 +17292,213 @@ async function _handleBatchUpdateCustomers(data, db) {
         throw new HttpsError("internal", `批次更新時發生錯誤: ${error.message}`);
     }
 }
+
+/**
+ * [觸發函式] 客戶資料通知分流 (修正版 V2 - 支援資料補全通知)
+ * 修正點：當銷售人員「補全」第一筆資料(長度未變)時，也要觸發通知。
+ */
+exports.onVipGuestSubmission = onDocumentWritten({
+    document: "vipGuests/{docId}",
+    database: 'anxi-app',
+    region: 'asia-east1',
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"], 
+    timeoutSeconds: 60,
+    memory: "256MiB"
+}, async (event) => {
+    const functionName = "onVipGuestSubmission";
+    const anxiDb = new Firestore({ databaseId: "anxi-app" });
+
+    const afterData = event.data.after?.data();
+    const beforeData = event.data.before?.data();
+    
+    // 若資料被刪除，不處理
+    if (!afterData) return;
+
+    const afterSubmissions = afterData.submissions || [];
+    const beforeSubmissions = beforeData?.submissions || [];
+    
+    // 若完全沒有提交紀錄，不處理
+    if (afterSubmissions.length === 0) return;
+
+    // 取得最新一筆 submission (變更後)
+    const newSubmission = afterSubmissions[afterSubmissions.length - 1];
+    
+    // 取得對應的舊 submission (變更前)
+    // 注意：如果是新增，oldSubmission 可能為 undefined
+    const oldSubmission = beforeSubmissions[beforeSubmissions.length - 1];
+
+    // ============================================================
+    // ✅ [關鍵邏輯修正] 判斷是否需要發送通知
+    // ============================================================
+    let shouldNotify = false;
+
+    // 情況 1: 陣列長度增加 (新增了一筆資料) -> 發送
+    if (afterSubmissions.length > beforeSubmissions.length) {
+        console.log(`[${functionName}] 偵測到新增提交紀錄 (Count: ${beforeSubmissions.length} -> ${afterSubmissions.length})`);
+        shouldNotify = true;
+    } 
+    // 情況 2: 陣列長度不變，但「補全」了資料 (Public -> Internal)
+    else if (afterSubmissions.length === beforeSubmissions.length) {
+        const oldSource = oldSubmission?.submissionSource || 'public_form'; // 舊資料預設為 public
+        const newSource = newSubmission.submissionSource || 'public_form';
+        
+        // 只有當來源從 "public_form" 變為 "internal_sheet" 時才通知
+        // 這代表銷售人員剛剛完成了資料補全
+        if (oldSource === 'public_form' && newSource === 'internal_sheet') {
+            console.log(`[${functionName}] 偵測到資料補全 (Public -> Internal)，觸發通知。`);
+            shouldNotify = true;
+        }
+    }
+
+    // 如果不符合上述任一條件，則中止
+    if (!shouldNotify) {
+        return;
+    }
+
+    // 1. 攔截 Excel 匯入 (雙重確認，雖然 Excel 通常是新增，但也可能覆蓋)
+    if (newSubmission.importSource === 'Excel Batch Upload') {
+        console.log(`[${functionName}] 偵測到 Excel 匯入，略過通知。`);
+        return;
+    }
+
+    const source = newSubmission.submissionSource || 'public_form';
+    const projectId = afterData.projectId;
+    const salesPhone = newSubmission['銷售人員電話'];
+
+    console.log(`[${functionName}] 準備執行通知流程 (Source: ${source}, Project: ${projectId})`);
+
+    try {
+        // 2. 獲取設定與 Token
+        const settingsDoc = await anxiDb.collection("customerFieldSettings").doc(projectId).get();
+        if (!settingsDoc.exists) return;
+        const tokenSecretName = settingsDoc.data().anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
+        if (!tokenSecretName || !process.env[tokenSecretName]) return;
+        const lineToken = process.env[tokenSecretName];
+
+        // 獲取建案名稱
+        const projectDoc = await anxiDb.collection('projects').doc(projectId).get();
+        const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+        // 3. 準備發送名單與訊息內容
+        const lineIdsToSend = new Set();
+        const permissionsRef = anxiDb.collection('userPermissions');
+        let messageText = '';
+
+        // 輔助函式：格式化欄位
+        const formatVal = (key) => {
+            const val = newSubmission[key];
+            if (Array.isArray(val)) return val.join(', ');
+            return val || '';
+        };
+
+        // ============================================================
+        // 情境 A: 客戶掃描 QR Code (VipForm)
+        // ============================================================
+        if (source === 'public_form') {
+            // 對象：櫃台 + 所有銷售
+            const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
+            const counterSnap = await counterQuery.get();
+            counterSnap.forEach(doc => lineIdsToSend.add(doc.id)); 
+
+            const salesQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售');
+            const salesSnap = await salesQuery.get();
+            salesSnap.forEach(doc => lineIdsToSend.add(doc.id)); 
+
+            // {第一則} 格式
+            messageText = `✨${projectName} 新貴賓資料
+電話: ${formatVal('電話')}
+姓名: ${formatVal('姓名')}
+
+--- 其他資訊 ---
+性別: ${formatVal('性別')}
+購屋動機: ${formatVal('購屋動機')}
+房型需求: ${formatVal('房型需求')}
+坪數需求: ${formatVal('坪數需求')}
+購屋預算: ${formatVal('購屋預算')}
+從何得知本建案: ${formatVal('從何得知本建案')}`;
+        }
+
+        // ============================================================
+        // 情境 B: 銷售人員補全資料 (CustomerDataSheet)
+        // ============================================================
+        else if (source === 'internal_sheet') {
+            // 對象：櫃台 + 指定銷售
+            const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
+            const counterSnap = await counterQuery.get();
+            counterSnap.forEach(doc => lineIdsToSend.add(doc.id)); 
+
+            if (salesPhone) {
+                lineIdsToSend.add(salesPhone);
+            }
+
+            // 準備完整資料欄位
+            const city = formatVal('居住城市');
+            const dist = formatVal('居住鄉鎮市區');
+            const addrDetail = formatVal('居住詳細地址');
+            const fullAddress = (city || dist || addrDetail) ? `${city}${dist}${addrDetail}` : '';
+
+            const job = formatVal('職業');
+            const company = formatVal('任職公司');
+            const fullJob = (job || company) ? `${job}/${company}` : '';
+
+            let visitDate = formatVal('拜訪日期');
+            if (!visitDate && newSubmission.submittedAt) {
+                 const ts = newSubmission.submittedAt;
+                 // 檢查是否為 Timestamp 物件 (Firestore) 或 序列化物件
+                 const dateObj = (ts.toDate) ? ts.toDate() : new Date(ts._seconds * 1000);
+                 visitDate = dateObj.toLocaleDateString('zh-TW');
+            }
+
+            // {第二則} 格式 (修正版)
+            messageText = `✅${projectName} 客戶資料完成
+銷售: ${formatVal('銷售人員')}
+電話: ${formatVal('電話')}
+姓名: ${formatVal('姓名')}
+日期: ${visitDate}
+年齡: ${formatVal('年齡')}
+地址: ${fullAddress}
+職業: ${fullJob}
+
+--- 需求資訊 ---
+購屋動機: ${formatVal('購屋動機')}
+房型需求: ${formatVal('房型需求')}
+坪數需求: ${formatVal('坪數需求')}
+購屋預算: ${formatVal('購屋預算')}
+從何得知本建案: ${formatVal('從何得知本建案')}`;
+                    }
+
+        // 4. 轉換手機號為 LINE ID 並發送
+        const phoneArray = Array.from(lineIdsToSend);
+        if (phoneArray.length === 0) return;
+
+        const finalLineIds = new Set();
+        const userChunks = [];
+        for (let i = 0; i < phoneArray.length; i += 30) {
+            userChunks.push(phoneArray.slice(i, i + 30));
+        }
+
+        for (const chunk of userChunks) {
+            const usersSnap = await anxiDb.collection('users')
+                .where(GCloudFieldPath.documentId(), 'in', chunk)
+                .get();
+            usersSnap.forEach(doc => {
+                const lid = doc.data().lineId;
+                if (lid && lid.startsWith('U')) finalLineIds.add(lid);
+            });
+        }
+
+        if (finalLineIds.size === 0) {
+            console.log(`[${functionName}] 無有效的 LINE ID 可發送。`);
+            return;
+        }
+
+        // 5. 發送
+        const lineClient = new line.Client({ channelAccessToken: lineToken });
+        await lineClient.multicast(Array.from(finalLineIds), [{ type: 'text', text: messageText }]);
+        
+        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source})。`);
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行失敗:`, error);
+    }
+});

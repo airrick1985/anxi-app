@@ -8,9 +8,20 @@
         </v-toolbar-title>
         <v-spacer></v-spacer>
 
+        <v-btn
+          v-if="canSendMessage"
+          prepend-icon="mdi-pencil"
+          color="white"
+          variant="outlined"
+          class="mr-2"
+          @click="showComposeDialog = true"
+        >
+          撰寫新訊息
+        </v-btn>
+
       </v-toolbar>
 
-<v-card-title>
+      <v-card-title>
         <v-row dense class="align-center">
           <v-col cols="12" md="5">
             <v-text-field
@@ -37,7 +48,7 @@
         </v-row>
       </v-card-title>
 
- <v-data-table
+      <v-data-table
         :headers="headers"
         :items="filteredMessages"
         :loading="loading"
@@ -45,18 +56,17 @@
         item-value="statusId"
         @click:row="handleRowClick"
         hover
-          items-per-page-text="每頁顯示："
-  :page-text="`第 {0} - {1} 則，共 {2} 則`"
+        items-per-page-text="每頁顯示："
+        :page-text="`第 {0} - {1} 則，共 {2} 則`"
       >
-   <template v-slot:item.isImportant="{ item }">
+        <template v-slot:item.isImportant="{ item }">
           <v-btn
             icon
             variant="text"
             size="small"
             @click.stop="toggleImportant(item)"
           >
-          
-  <v-icon :color="item.isImportant ? 'orange' : 'grey'">
+            <v-icon :color="item.isImportant ? 'orange' : 'grey'">
               {{ item.isImportant ? 'mdi-star' : 'mdi-star-outline' }}
             </v-icon>
           </v-btn>
@@ -74,13 +84,13 @@
           </span>
         </template>
 
-            <template v-slot:item.projectName="{ item }">
+        <template v-slot:item.projectName="{ item }">
           <span :class="{ 'font-weight-bold': !item.isRead }">
              {{ item.projectName }}
           </span>
         </template>
 
-              <template v-slot:item.systemFunction="{ item }">
+        <template v-slot:item.systemFunction="{ item }">
           <span :class="{ 'font-weight-bold': !item.isRead }">
              {{ item.systemFunction }}
           </span>
@@ -104,18 +114,37 @@
 
       </v-data-table>
     </v-card>
+
+    <v-dialog
+      v-model="showComposeDialog"
+      fullscreen
+      hide-overlay
+      transition="dialog-bottom-transition"
+    >
+      <SendMessage
+        is-dialog
+        @close="showComposeDialog = false"
+        @sent="handleMessageSent"
+      />
+    </v-dialog>
+
   </v-container>
 </template>
 
 <script>
 import { useUserStore } from '@/store/user';
 import { fetchMyMessages, setMessageStatus } from '@/api.js';
+import SendMessage from '@/views/SendMessage.vue'; // ✅ 引入 SendMessage
 
 export default {
   name: 'MessageCenter',
+  components: {
+    SendMessage // ✅ 註冊子元件
+  },
   data() {
     return {
       loading: true,
+      showComposeDialog: false, // ✅ 控制 Dialog 顯示的變數
       messages: [], // 從 API 獲取的原始訊息列表
       searchQuery: '', // 綁定搜尋框
       filterStatus: 'all', // 綁定篩選器: 'all', 'unread', 'important'
@@ -153,8 +182,8 @@ export default {
         tempMessages = tempMessages.filter(m => m.isImportant);
       }
 
-      // 2. 根據關鍵字搜尋 (v-data-table v7+ 會自動處理，但為了相容性可以手動寫)
-if (this.searchQuery && this.searchQuery.trim() !== '') {
+      // 2. 根據關鍵字搜尋
+      if (this.searchQuery && this.searchQuery.trim() !== '') {
           const lowerQuery = this.searchQuery.toLowerCase();
           tempMessages = tempMessages.filter(m =>
               (m.senderName && m.senderName.toLowerCase().includes(lowerQuery)) ||
@@ -217,14 +246,11 @@ if (this.searchQuery && this.searchQuery.trim() !== '') {
         const isToday = date.toDateString() === today.toDateString();
 
         if (isToday) {
-            
             return date.toLocaleTimeString('zh-TW', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
         } else {
-            
             return date.toLocaleDateString('zh-TW', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
         }
      },
-    // ✅ 新增：根據功能名稱給予不同的顏色標籤，增加辨識度
     getSystemChipColor(system) {
         switch(system) {
             case '銷控': return 'cyan';
@@ -232,6 +258,12 @@ if (this.searchQuery && this.searchQuery.trim() !== '') {
             case '報價': return 'indigo';
             default: return 'grey';
         }
+    },
+    // ✅ 新增：處理訊息發送完成後的動作
+    handleMessageSent() {
+      this.showComposeDialog = false; // 關閉 Dialog
+      this.loadMessages(); // 重新載入列表 (如果是寄給自己，或者單純刷新狀態)
+      // 您也可以在這裡加入一個 Snackbar 提示
     }
   }
 };
