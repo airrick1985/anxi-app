@@ -56,13 +56,26 @@
         
         <div v-if="isCalibrating || isMeasuringDistance || isMeasuringArea || tool === 'pan'" class="action-prompt">
             <v-icon color="white" class="mr-2">mdi-gesture-tap</v-icon>
-            <span v-if="tool === 'pan'">(按住 Alt 鍵可拖曳平移，滾輪可縮放)</span>
+             <span v-if="tool === 'pan'">(按住 Alt 鍵可拖曳平移，滾輪可縮放)</span>
             <span v-if="isCalibrating">請點擊圖面上有標記距離線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
             <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
-            <span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】，點擊起點或雙擊可封閉圖形</span>
+<span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】<span v-if="!mobile">，雙擊左鍵可封閉圖形</span></span>
+
             <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="small" variant="text" @click="resetCalibration" class="ml-4">重設</v-btn>
             <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="small" variant="text" @click="resetCurrentDistance" class="ml-4">取消本次</v-btn>
-            <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="small" variant="text" @click="resetCurrentArea" class="ml-4">取消本次</v-btn>
+            
+            <v-btn 
+              v-if="mobile && isMeasuringArea && currentAreaPoints.length > 2" 
+              size="small" 
+              color="success" 
+              variant="flat" 
+              @click="completeAreaMeasurement" 
+              class="ml-4"
+            >
+              <v-icon start>mdi-check</v-icon>範圍確認
+            </v-btn>
+            
+            <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="small" variant="text" @click="resetCurrentArea" class="ml-2 text-red-lighten-2">清除重測</v-btn>
         </div>
 
         <div class="canvas-container" ref="canvasContainer">
@@ -75,10 +88,13 @@
 <script setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { fabric } from 'fabric';
+import { useDisplay } from 'vuetify';
 // ✅ START: 移除路由功能，引入 API
 // import { useRoute, useRouter } from 'vue-router'; // 移除
 import { getHouseholdByUnitId, getSvgBySvgName } from '@/api';
 // ✅ END: 移除
+
+const { mobile } = useDisplay();
 
 // --- State and Refs ---
 // ✅ START: 移除 route 相關變數，改用 defineProps 和 defineEmits
@@ -203,7 +219,13 @@ function recenterBackgroundImage() {
     fabricCanvas.renderAll();
 }
 
+// 用來記錄雙指操作的狀態
+let lastTouchDistance = 0;
+let isGesture = false; // 是否正在進行雙指手勢
+let lastTouchCenter = { x: 0, y: 0 };
+
 function setupFabricEvents() {
+    // 1. 滑鼠滾輪縮放 (電腦版維持不變)
     fabricCanvas.on('mouse:wheel', function(opt) {
       const delta = opt.e.deltaY;
       let zoom = fabricCanvas.getZoom();
@@ -215,71 +237,150 @@ function setupFabricEvents() {
       opt.e.stopPropagation();
     });
 
+    // 2. 按下 (支援滑鼠與觸控)
     fabricCanvas.on('mouse:down', function(opt) {
       const evt = opt.e;
+      
+      // ✅ [優化] 觸控裝置邏輯判斷
+      if (evt.type === 'touchstart') {
+          const touches = evt.touches;
+          // 如果是雙指，進入手勢模式 (平移/縮放)
+          if (touches && touches.length === 2) {
+              isGesture = true;
+              this.selection = false; // 暫停選取
+              
+              // 計算初始距離與中心點
+              const p1 = { x: touches[0].clientX, y: touches[0].clientY };
+              const p2 = { x: touches[1].clientX, y: touches[1].clientY };
+              lastTouchDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+              lastTouchCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+              return; // 雙指時不觸發點擊
+          }
+      }
+
+      // 電腦版 Alt 鍵或 Pan 模式 -> 啟用拖曳
+      // 手機版如果是單指且在 Pan 模式 -> 啟用拖曳
       if (evt.altKey === true || tool.value === 'pan') {
         this.isDragging = true;
         this.selection = false;
-        this.lastPosX = evt.clientX;
-        this.lastPosY = evt.clientY;
+        // 相容 touch 與 mouse 的座標獲取
+        this.lastPosX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
+        this.lastPosY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
       } else {
-        const pos = this.getPointer(evt);
-        if (isCalibrating.value) handleCalibrationClick(pos);
-        else if (isMeasuringDistance.value) handleDistanceClick(pos);
-        else if (isMeasuringArea.value) handleAreaClick(pos);
+        // 測量模式下的點擊
+        // 注意：在 touchstart 時不立即觸發測量點，避免是想拖曳
+        // 但 fabric 的 mouse:down 對 click 處理較好，這裡維持原樣
+        // 關鍵是上面已經攔截了雙指操作
+        if (!isGesture) {
+            const pos = this.getPointer(evt);
+            if (isCalibrating.value) handleCalibrationClick(pos);
+            else if (isMeasuringDistance.value) handleDistanceClick(pos);
+            else if (isMeasuringArea.value) handleAreaClick(pos);
+        }
       }
     });
 
+    // 3. 移動 (處理拖曳、雙指縮放)
     fabricCanvas.on('mouse:move', function(opt) {
-        if (this.isDragging) {
-            const e = opt.e;
+        const evt = opt.e;
+
+        // ✅ [優化] 雙指縮放與平移邏輯
+        if (evt.type === 'touchmove' && evt.touches && evt.touches.length === 2) {
+            isGesture = true; // 確保標記為手勢中
+
+            const p1 = { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+            const p2 = { x: evt.touches[1].clientX, y: evt.touches[1].clientY };
+            
+            // A. 計算新距離 -> 縮放
+            const newDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            const zoomStep = newDist / lastTouchDistance;
+            let newZoom = fabricCanvas.getZoom() * zoomStep;
+            // 限制縮放範圍
+            if (newZoom > 20) newZoom = 20;
+            if (newZoom < 0.1) newZoom = 0.1;
+
+            // B. 計算新中心 -> 平移
+            const newCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+            const deltaX = newCenter.x - lastTouchCenter.x;
+            const deltaY = newCenter.y - lastTouchCenter.y;
+
+            // 應用縮放 (以雙指中心為基準)
+            fabricCanvas.zoomToPoint({ x: newCenter.x, y: newCenter.y }, newZoom);
+            
+            // 應用平移
             const vpt = this.viewportTransform;
-            vpt[4] += e.clientX - this.lastPosX;
-            vpt[5] += e.clientY - this.lastPosY;
+            vpt[4] += deltaX;
+            vpt[5] += deltaY;
+
+            // 更新狀態
+            lastTouchDistance = newDist;
+            lastTouchCenter = newCenter;
+            
             this.requestRenderAll();
-            this.lastPosX = e.clientX;
-            this.lastPosY = e.clientY;
+            // 阻止瀏覽器預設行為 (縮放網頁)
+            if (evt.preventDefault) evt.preventDefault();
             return;
         }
-        const pos = this.getPointer(opt.e);
-        if (isCalibrating.value && calibrationLine) {
-            calibrationLine.set({ x2: pos.x, y2: pos.y });
+
+        // 單指拖曳模式 (Pan)
+        if (this.isDragging) {
+            const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
+            const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
+            
+            const vpt = this.viewportTransform;
+            vpt[4] += clientX - this.lastPosX;
+            vpt[5] += clientY - this.lastPosY;
+            this.requestRenderAll();
+            this.lastPosX = clientX;
+            this.lastPosY = clientY;
+            return;
         }
-        if (isMeasuringDistance.value && currentDrawingLine) {
-            currentDrawingLine.set({ x2: pos.x, y2: pos.y });
+
+        // 測量時的輔助線移動 (僅在非手勢操作時)
+        if (!isGesture) {
+            const pos = this.getPointer(evt);
+            if (isCalibrating.value && calibrationLine) {
+                calibrationLine.set({ x2: pos.x, y2: pos.y });
+            }
+            if (isMeasuringDistance.value && currentDrawingLine) {
+                currentDrawingLine.set({ x2: pos.x, y2: pos.y });
+            }
+            // Area 預覽多邊形
+            if (isMeasuringArea.value && currentAreaPoints.value.length > 0) {
+                if (previewPolygon) {
+                    this.remove(previewPolygon);
+                }
+                const previewPoints = [...currentAreaPoints.value, pos];
+                previewPolygon = new fabric.Polygon(previewPoints, {
+                    fill: 'rgba(0,170,255,0.2)',
+                    stroke: '#00aaff',
+                    strokeWidth: 2,
+                    selectable: false,
+                    evented: false,
+                    excludeFromExport: true,
+                });
+                this.add(previewPolygon);
+            }
+            this.requestRenderAll();
         }
-        if (previewPolygon) {
-            this.remove(previewPolygon);
-            previewPolygon = null;
-        }
-        if (isMeasuringArea.value && currentAreaPoints.value.length > 0) {
-            const previewPoints = [...currentAreaPoints.value, pos];
-            previewPolygon = new fabric.Polygon(previewPoints, {
-                fill: 'rgba(0,170,255,0.2)',
-                stroke: '#00aaff',
-                strokeWidth: 2,
-                selectable: false,
-                evented: false,
-                excludeFromExport: true,
-            });
-            this.add(previewPolygon);
-        }
-        this.requestRenderAll();
     });
 
+// 4. 放開 (mouse:up) - 保持不變
     fabricCanvas.on('mouse:up', function() {
       this.setViewportTransform(this.viewportTransform);
       this.isDragging = false;
+      setTimeout(() => { isGesture = false; }, 100); 
       this.selection = tool.value === 'pan';
     });
 
+    // ✅ [新增/恢復] 雙擊結束測量 (電腦版專用)
+    // 這段代碼讓電腦使用者可以直接雙擊結束，不用去按按鈕
     fabricCanvas.on('mouse:dblclick', () => {
         if (isMeasuringArea.value && currentAreaPoints.value.length > 2) {
             completeAreaMeasurement();
         }
     });
 }
-
 function destroyFabric() {
     if (fabricCanvas) {
         fabricCanvas.dispose();
@@ -515,6 +616,13 @@ onBeforeUnmount(() => {
   flex-grow: 1; 
   width: 100%; 
   height: 100%; 
-  overflow: hidden; 
+  overflow: hidden;
+  touch-action: none; 
+  
+  /* 🔴原本的設定 (導致深色覆蓋感) */
+  /* background-color: #333; */
+
+  /* ✅ 修改為：白色背景 */
+  background-color: #ffffff; 
 }
 </style>
