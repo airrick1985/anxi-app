@@ -148,28 +148,47 @@ getters: {
 
         // 任務 2: 獲取 Households
         let householdsPromise;
-        if (this.projectHouseholdsCache[projectId]) {
+        const cachedHouseholds = this.projectHouseholdsCache[projectId];
+        // ✅ [修正] 檢查快取是否有內容
+        const hasValidHouseholdCache = cachedHouseholds && cachedHouseholds.length > 0;
+
+        if (hasValidHouseholdCache) {
           console.log(`[ProjectStore] (Admin) 從快取獲取 Households...`);
-          householdsPromise = Promise.resolve(this.projectHouseholdsCache[projectId]);
+          householdsPromise = Promise.resolve(cachedHouseholds);
         } else {
-          console.log(`[ProjectStore] (Admin) 首次獲取 Households...`);
+          console.log(`[ProjectStore] (Admin) 首次(或重新)獲取 Households...`);
           householdsPromise = fetchAllHouseholds(projectId).then(data => {
-            this.projectHouseholdsCache[projectId] = data; // 存入快取
+            // 只有當有資料時才快取 (或視需求決定是否快取空陣列)
+            if (data && data.length > 0) {
+                this.projectHouseholdsCache[projectId] = data; 
+            }
             return data;
           });
         }
         promisesToRun.push(householdsPromise);
 
         // 任務 3: 獲取 Batch Details
+
         let batchesPromise;
-        if (this.projectBatchDetailsCache[projectId]) {
+        
+        // ✅ [修正] 增加檢查：快取必須存在且有內容 (keys length > 0)
+        const cachedBatches = this.projectBatchDetailsCache[projectId];
+        const hasValidCache = cachedBatches && Object.keys(cachedBatches).length > 0;
+
+        if (hasValidCache) {
           console.log(`[ProjectStore] (Admin) 從快取獲取 Batches...`);
-          batchesPromise = Promise.resolve(this.projectBatchDetailsCache[projectId]);
+          batchesPromise = Promise.resolve(cachedBatches);
         } else {
-          console.log(`[ProjectStore] (Admin) 首次獲取 Batches...`);
+          console.log(`[ProjectStore] (Admin) 首次(或重新)獲取 Batches...`);
           batchesPromise = getProjectBatchDetails({ projectId }).then(res => {
             const data = (res.status === 'success') ? res.data : {};
-            this.projectBatchDetailsCache[projectId] = data; // 存入快取
+            
+            // ✅ [修正] 只有當撈到的資料不為空時，才存入快取
+            // 這樣可以避免「暫時性失敗」或「尚未建立資料」導致永久卡在空快取
+            if (data && Object.keys(data).length > 0) {
+                this.projectBatchDetailsCache[projectId] = data;
+            }
+            
             return data;
           });
         }

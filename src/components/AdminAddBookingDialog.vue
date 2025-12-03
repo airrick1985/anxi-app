@@ -122,23 +122,28 @@
                           <v-card-title class="text-subtitle-1">{{ selectedHouseholdDetails.unitId }}批次與文件</v-card-title>
                            <v-list density="compact">
                             <v-list-item>
-                              <v-list-item-title>初驗批次</v-list-item-title>
-                              <v-list-item-subtitle v-if="initialBatchInfo.statusText">
-                                {{ selectedHouseholdDetails.initialInspectionBatch }} /
-                                <v-chip :color="initialBatchInfo.color" size="x-small" label>{{ initialBatchInfo.statusText }}</v-chip>
-                                <div class="text-caption">{{ initialBatchInfo.range }}</div>
-                              </v-list-item-subtitle>
-                              <v-list-item-subtitle v-else class="text-error">無指定批次，請確認是否已可初驗</v-list-item-subtitle>
-                            </v-list-item>
-                             <v-list-item>
-                              <v-list-item-title>複驗批次</v-list-item-title>
-                               <v-list-item-subtitle v-if="reInspectionBatchInfo.statusText">
-                                {{ selectedHouseholdDetails.reInspectionBatch }} /
-                                <v-chip :color="reInspectionBatchInfo.color" size="x-small" label>{{ reInspectionBatchInfo.statusText }}</v-chip>
-                                <div class="text-caption">{{ reInspectionBatchInfo.range }}</div>
-                              </v-list-item-subtitle>
-                              <v-list-item-subtitle v-else class="text-error">無指定批次，請確認是否已可複驗</v-list-item-subtitle>
-                            </v-list-item>
+  <v-list-item-title>初驗批次</v-list-item-title>
+  
+  <div v-if="initialBatchInfo.statusText" class="text-body-2 text-medium-emphasis">
+    {{ selectedHouseholdDetails.initialInspectionBatch }} /
+    <v-chip :color="initialBatchInfo.color" size="x-small" label class="ml-1">{{ initialBatchInfo.statusText }}</v-chip>
+    <div class="text-caption mt-1">{{ initialBatchInfo.range }}</div>
+  </div>
+  
+  <div v-else class="text-caption text-error">無指定批次，請確認是否已可初驗</div>
+                          </v-list-item>
+
+                          <v-list-item>
+                            <v-list-item-title>複驗批次</v-list-item-title>
+                            
+                            <div v-if="reInspectionBatchInfo.statusText" class="text-body-2 text-medium-emphasis">
+                              {{ selectedHouseholdDetails.reInspectionBatch }} /
+                              <v-chip :color="reInspectionBatchInfo.color" size="x-small" label class="ml-1">{{ reInspectionBatchInfo.statusText }}</v-chip>
+                              <div class="text-caption mt-1">{{ reInspectionBatchInfo.range }}</div>
+                            </div>
+                            
+                            <div v-else class="text-caption text-error">無指定批次，請確認是否已可複驗</div>
+                          </v-list-item>
                             <v-list-item title="戶別文件">
                                <v-btn v-if="selectedHouseholdDetails.inspectionDocsUrl" size="small" variant="tonal" color="blue" :href="selectedHouseholdDetails.inspectionDocsUrl" target="_blank">開啟 {{ formStep1.unitId }} 文件夾</v-btn>
                                <span v-else>無</span>
@@ -557,7 +562,7 @@ import { useProjectStore } from '@/store/projectStore';
 import {
   // fetchProjectConfig, // <--- 由 Store 處理
   searchHouseholdsForAdmin,
-  // getProjectBatchDetails, // <--- 由 Store 處理
+  getProjectBatchDetails, // <--- 由 Store 處理
   getAdminBookingCalendarData,
   getSlotsForAdmin,
   addAppointmentAdmin,
@@ -737,45 +742,85 @@ const dialogModel = computed({
 });
 
 const initialBatchInfo = computed(() => {
-  // ✓ LOG 1: 檢查 allBatchDetails 的整體結構與內容
-  ////console.log('🔍 所有批次資料 (allBatchDetails):', JSON.parse(JSON.stringify(allBatchDetails.value)));
+  const code = selectedHouseholdDetails.value?.initialInspectionBatch; // 預期是 "8"
+  
+  // 1. 強制解開 Proxy，查看最真實的資料結構
+  const rawBatchDetails = JSON.parse(JSON.stringify(allBatchDetails.value));
+  
+  console.group('🔍 [Debug] 初驗批次查找診斷');
+  console.log('目標代碼 (code):', code);
+  console.log('所有批次資料 (rawBatchDetails):', rawBatchDetails);
+  console.log('第一層 Keys (預約類型):', Object.keys(rawBatchDetails));
 
-  const code = selectedHouseholdDetails.value?.initialInspectionBatch;
-  // ✓ LOG 2: 檢查從當前戶別取出的「初驗批次代碼」
-  ////console.log('🏷️ 戶別的初驗批次代碼 (code):', code);
+  // 2. 檢查第一層 Key
+  // 注意：這裡檢查是否真的有 "初驗" 這個 key (有些系統可能是 "Initial" 或 "驗屋")
+  const targetTypeKey = '初驗'; 
+  const batchGroup = rawBatchDetails[targetTypeKey];
 
-  if (!code) {
-    ////console.log('   ➡️ 初驗批次代碼不存在，無法進行查找。');
+  if (!batchGroup) {
+    console.warn(`❌ 找不到類型 [${targetTypeKey}]。現有的類型是:`, Object.keys(rawBatchDetails));
+    console.groupEnd();
     return {};
   }
 
-  const info = allBatchDetails.value['初驗']?.[code];
-  // ✓ LOG 3: 檢查使用代碼查找批次詳細資料的結果
-  ////console.log('ℹ️ 查找到的初驗批次資訊 (info):', info);
+  console.log(`✅ 找到類型 [${targetTypeKey}]，內含批次代碼 Keys:`, Object.keys(batchGroup));
+
+  // 3. 檢查第二層 Key (批次代碼)
+  // 嘗試直接用 key 查找
+  let info = batchGroup[code];
   
   if (!info) {
-    ////console.log('   ➡️ 查找失敗，因此 v-if 判斷為 false。');
+      console.warn(`❌ 在 [${targetTypeKey}] 中找不到 Key 為 [${code}] 的資料。`);
+      
+      // 嘗試模糊查找 (例如數字 8 vs 字串 "8")
+      console.log('🔄 嘗試寬鬆查找...');
+      const foundKey = Object.keys(batchGroup).find(k => String(k) === String(code));
+      
+      if (foundKey) {
+          console.log(`✅ 找到寬鬆匹配的 Key: [${foundKey}]`);
+          info = batchGroup[foundKey];
+      } else {
+          // 4. 如果 Key 找不到，檢查是否使用了 Document ID 當作 Key，而 batchCode 存在於內容中？
+          console.log('🔄 嘗試遍歷內容查找 batchCode...');
+          const foundEntry = Object.values(batchGroup).find(item => String(item.batchCode) === String(code));
+          if (foundEntry) {
+               console.log('✅ 透過內容比對找到了對應資料:', foundEntry);
+               info = foundEntry;
+          } else {
+               console.error('❌ 徹底找不到對應的批次資料。');
+          }
+      }
+  } else {
+      console.log('✅ 直接查找成功。');
+  }
+
+  console.groupEnd();
+
+  if (!info) {
     return {};
   }
+  
   return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
 });
 
 const reInspectionBatchInfo = computed(() => {
     const code = selectedHouseholdDetails.value?.reInspectionBatch;
-    // ✓ LOG 4: 檢查從當前戶別取出的「複驗批次代碼」
-    ////console.log('🏷️ 戶別的複驗批次代碼 (code):', code);
+    
+    console.log('🔍 [Debug] Target Code (Re-inspection):', code);
 
     if (!code) {
-      ////console.log('   ➡️ 複驗批次代碼不存在，無法進行查找。');
       return {};
     }
 
-    const info = allBatchDetails.value['複驗']?.[code];
-    // ✓ LOG 5: 檢查使用代碼查找批次詳細資料的結果
-    ////console.log('ℹ️ 查找到的複驗批次資訊 (info):', info);
+    let info = allBatchDetails.value['複驗']?.[code];
+    
+    if (!info && allBatchDetails.value['複驗']) {
+        info = allBatchDetails.value['複驗'][String(code)];
+    }
+
+     console.log('🔍 [Debug] Found Info (Re-inspection):', info);
 
     if (!info) {
-      ////console.log('   ➡️ 查找失敗，因此 v-if 判斷為 false。');
       return {};
     }
     return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
@@ -1129,17 +1174,37 @@ const submitAdminBooking = async () => {
 const loadInitialData = async () => {
     if (!props.projectId) return;
     
-    // isLoading 會自動由 projectStore.isLoading 控制
-    // isLoading.value = true; // <--- 這行可以移除，或保留
-    
+    console.log('🚀 [Debug] loadInitialData started for project:', props.projectId);
+
     try {
-        // 呼叫 Pinia action 來獲取資料 (它會自動處理快取)
-        const {
+        // 1. 先嘗試從 Store 獲取 (快取)
+        let {
           projectConfig,
           householdsRes,
           batchesRes
         } = await projectStore.fetchAdminBookingData(props.projectId);
         
+        console.log('📦 [Debug] Store returned batchesRes:', batchesRes);
+
+        // ✅ [新增修正邏輯] 檢查批次資料是否為空
+        // 如果 batchesRes 是空物件，且我們知道應該要有資料 (或是為了保險起見)
+        // 強制直接呼叫 API 獲取最新資料
+        if (!batchesRes || Object.keys(batchesRes).length === 0) {
+            console.warn('⚠️ [Debug] Store 批次資料為空，嘗試直接呼叫 API...');
+            try {
+                const apiBatches = await getProjectBatchDetails({ projectId: props.projectId });
+                if (apiBatches && Object.keys(apiBatches).length > 0) {
+                    console.log('✅ [Debug] API 直接獲取成功:', apiBatches);
+                    batchesRes = apiBatches; // 覆蓋原本的空資料
+                } else {
+                     console.error('❌ [Debug] API 也回傳空資料，請檢查資料庫 "bookingBatches" 集合。');
+                }
+            } catch (apiErr) {
+                console.error('❌ [Debug] API 直接呼叫失敗:', apiErr);
+            }
+        }
+
+        // 2. 賦值給本地變數
         if (projectConfig) {
             projectName.value = projectConfig.name;
             bookingOptions.bookingTypes = projectConfig.bookingTypes || [];
@@ -1153,16 +1218,15 @@ const loadInitialData = async () => {
           String(a).localeCompare(String(b), 'zh-Hant-TW', { numeric: true, sensitivity: 'base' })
         );
 
-        allBatchDetails.value = batchesRes; // batchesRes 已經是 data
+        // 3. 設定批次資料
+        allBatchDetails.value = batchesRes; 
+        console.log('✅ [Debug] allBatchDetails assigned (Keys):', Object.keys(allBatchDetails.value));
 
     } catch (error) {
         console.error("初始化對話框資料失敗:", error);
-        // 可以在這裡顯示一個錯誤提示
         errorAlert.text = `載入建案資料失敗: ${error.message}`;
         errorAlert.type = 'error';
         errorAlert.show = true;
-    } finally {
-        // isLoading.value = false; // <--- 這行可以移除
     }
 };
 

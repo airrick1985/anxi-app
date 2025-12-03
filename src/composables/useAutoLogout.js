@@ -8,11 +8,13 @@ export function useAutoLogout() {
   const userStore = useUserStore();
 
   // --- 設定參數 (單位: 毫秒) ---
-  // 正式環境：總共 10 分鐘 (9分鐘閒置 + 1分鐘倒數)
-  const IDLE_TIME = 14 * 60 * 1000;      // 閒置多久後跳出提醒
-  const COUNTDOWN_TIME = 60 * 1000;     // 提醒對話框倒數多久
+  // 正式環境：總共 ** 分鐘 (*分鐘閒置 + *分鐘倒數)
+  const IDLE_TIME = 30 * 60 * 1000;      // 閒置多久後跳出提醒
+  const COUNTDOWN_TIME = 10 * 1000;     // 提醒對話框倒數多久
 
-
+  // 測試用 (如需測試請取消註解並註解上方)：5秒閒置 + 10秒倒數
+   //const IDLE_TIME = 5 * 1000;
+   //const COUNTDOWN_TIME = 10 * 1000;
 
   // --- 狀態 ---
   const showIdleWarning = ref(false); // 控制對話框顯示
