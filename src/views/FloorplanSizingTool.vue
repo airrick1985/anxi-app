@@ -55,27 +55,32 @@
         </div>
         
         <div v-if="isCalibrating || isMeasuringDistance || isMeasuringArea || tool === 'pan'" class="action-prompt">
-            <v-icon color="white" class="mr-2">mdi-gesture-tap</v-icon>
-             <span v-if="tool === 'pan'">(按住 Alt 鍵可拖曳平移，滾輪可縮放)</span>
-            <span v-if="isCalibrating">請點擊圖面上有標記距離線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
-            <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
-<span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】<span v-if="!mobile">，雙擊左鍵可封閉圖形</span></span>
+            <v-icon color="white" class="mr-2" size="small">mdi-information-outline</v-icon>
+            
+            <div class="d-flex align-center flex-wrap justify-center" style="gap: 8px;">
+                <span v-if="tool === 'pan'">(按住 Alt 鍵可拖曳平移，滾輪可縮放)</span>
+                <span v-if="isCalibrating">請點擊圖面上有標記距離線段的【起點】{{ calibrationPoints.length > 0 ? '和【終點】' : '' }} ({{ calibrationPoints.length }}/2)</span>
+                <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
+                <span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】<span v-if="!mobile">，雙擊左鍵可封閉圖形</span></span>
 
-            <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="small" variant="text" @click="resetCalibration" class="ml-4">重設</v-btn>
-            <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="small" variant="text" @click="resetCurrentDistance" class="ml-4">取消本次</v-btn>
-            
-            <v-btn 
-              v-if="mobile && isMeasuringArea && currentAreaPoints.length > 2" 
-              size="small" 
-              color="success" 
-              variant="flat" 
-              @click="completeAreaMeasurement" 
-              class="ml-4"
-            >
-              <v-icon start>mdi-check</v-icon>範圍確認
-            </v-btn>
-            
-            <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="small" variant="text" @click="resetCurrentArea" class="ml-2 text-red-lighten-2">清除重測</v-btn>
+                <div class="d-flex align-center">
+                    <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="x-small" variant="tonal" color="white" @click="resetCalibration" class="ml-2">重設</v-btn>
+                    <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="x-small" variant="tonal" color="white" @click="resetCurrentDistance" class="ml-2">取消本次</v-btn>
+                    
+                    <v-btn 
+                      v-if="mobile && isMeasuringArea && currentAreaPoints.length > 2" 
+                      size="small" 
+                      color="success" 
+                      variant="flat" 
+                      @click="completeAreaMeasurement" 
+                      class="ml-2"
+                    >
+                      <v-icon start>mdi-check</v-icon>範圍確認
+                    </v-btn>
+                    
+                    <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="x-small" variant="text" color="red-lighten-3" @click="resetCurrentArea" class="ml-2">清除重測</v-btn>
+                </div>
+            </div>
         </div>
 
         <div class="canvas-container" ref="canvasContainer">
@@ -596,20 +601,23 @@ onBeforeUnmount(() => {
   white-space: nowrap; 
 }
 .action-prompt { 
-  background-color: rgba(0, 0, 0, 0.7); 
+  background-color: #424242; /* 深灰色背景，類似 Snackbar 風格 */
   color: white; 
-  padding: 8px 12px; 
+  padding: 8px 16px; 
   text-align: center; 
   font-size: 14px; 
-  position: absolute; 
-  /* ✅ top: 50px; 調整為 toolbar 的高度 */
-  top: 48px;
-  left: 50%; 
-  transform: translateX(-50%); 
-  border-radius: 4px; 
-  z-index: 10; 
+  /* 移除絕對定位，讓它自然流動 */
+  /* position: absolute; */
+  /* top: 48px; */
+  /* left: 50%; */
+  /* transform: translateX(-50%); */
+  width: 100%; /* 佔滿寬度 */
+  z-index: 5; 
   display: flex; 
   align-items: center; 
+  justify-content: center; /* 內容置中 */
+  flex-shrink: 0; /* 防止被壓縮 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* 加入一點陰影增加層次感 */
 }
 .canvas-container { 
   position: relative; 
