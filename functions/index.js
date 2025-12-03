@@ -15827,13 +15827,7 @@ async function _handleSubmitVipForm(data, db) {
             }
         });
 
-      console.log(`[_handleSubmitVipForm] 客戶 ${docId} 資料儲存成功，觸發 LINE 通知...`);
-        
-        try {
-            await sendNewVipNotification(db, projectId, formData); 
-        } catch (notifyError) {
-            console.error(`[_handleSubmitVipForm] LINE 通知發送失敗 (但資料已儲存):`, notifyError.message);
-        }
+     console.log(`[_handleSubmitVipForm] 客戶 ${docId} 資料儲存成功 (通知將由 Trigger 自動處理)`);
         
         return { status: "success", docId: docId };
 
@@ -16137,23 +16131,42 @@ async function _handleFetchVipGuests(data, db) {
         return [];
     }
 
-    return snapshot.docs.map(doc => {
+return snapshot.docs.map(doc => {
         const data = doc.data();
         const submissions = data.submissions || []; 
         
+        // 原有的性別邏輯
+        const rawGender = data.profile?.['性別'];
+        const gender = Array.isArray(rawGender) 
+            ? (rawGender.length > 0 ? rawGender[rawGender.length - 1] : '') 
+            : (rawGender || '');
+
+        // ✅ [新增] 提取最後一次提交時間 (lastSubmittedAt)
+        // 邏輯：如果有 submissions，取最後一筆的 submittedAt；否則使用 createdAt
+        let lastSubmittedAt = data.createdAt; // 預設值
+        
+        if (submissions.length > 0) {
+            const lastSub = submissions[submissions.length - 1];
+            if (lastSub.submittedAt) {
+                lastSubmittedAt = lastSub.submittedAt;
+            }
+        }
+
         return {
             id: doc.id,
             name: data.latestName || '未知', 
             phone: data.phone || '未知',     
             createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
             submissionsCount: submissions.length,
+            latestSalesName: data.latestSalesName || null,
+            gender: gender,
             
-            // ✓ 檢查：新增此行
-            latestSalesName: data.latestSalesName || null 
+            // ✅ [新增] 回傳計算好的最後提交時間
+            lastSubmittedAt: lastSubmittedAt
         };
     });
 }
-
 /**
  * [內部函式] 提交客戶資料表 (建立或更新)
  * (✓ V6: 修正 Nested Arrays 錯誤 - 強制將關鍵欄位轉為字串)

@@ -3,8 +3,14 @@
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
 
-        <v-stepper v-if="!isCustomerMode" :model-value="step" class="mb-5">
-        <v-stepper-header>
+        <v-stepper 
+          v-if="!isCustomerMode" 
+          :model-value="step" 
+          class="mb-5"
+          :alt-labels="isMobile"
+          :class="{ 'mobile-stepper': isMobile }"
+        >
+          <v-stepper-header>
             <v-stepper-item :value="1" title="銷售人員驗證" :complete="step > 1"></v-stepper-item>
             <v-divider></v-divider>
             <v-stepper-item :value="2" title="選擇建案" :complete="step > 2"></v-stepper-item>
@@ -76,7 +82,21 @@
 
           <v-window-item :value="3">
             <v-card flat>
-              <v-card-title>選擇客戶</v-card-title>
+              <v-card-title class="d-flex justify-space-between align-center">
+                <span>選擇客戶</span>
+                
+                <v-btn-toggle
+                  v-model="filterRange"
+                  mandatory
+                  density="compact"
+                  color="primary"
+                  variant="outlined"
+                  class="ml-4"
+                >
+                  <v-btn value="today" size="small">今天</v-btn>
+                  <v-btn value="week" size="small">7天內</v-btn>
+                </v-btn-toggle>
+              </v-card-title>
                              
                  <v-text-field
                   v-model="guestSearch"
@@ -86,7 +106,7 @@
                   prepend-inner-icon="mdi-magnify"
                   clearable
                   hide-details
-                  class="mb-4"
+                  class="mb-4 mt-2" 
                   autocomplete="off" ></v-text-field>
 
                  <v-list lines="one" border rounded style="max-height: 400px; overflow-y: auto;">
@@ -94,67 +114,107 @@
                     v-for="guest in filteredVipGuests"
                     :key="guest.id"
                     @click="handleGuestSelected(guest.id)"
-                    :title="guest.name"
                     :subtitle="guest.phone"
+                    :disabled="!!guest.latestSalesName && guest.submissionsCount <= 1"
+                    :class="{ 'opacity-60 bg-grey-lighten-5': !!guest.latestSalesName && guest.submissionsCount <= 1 }"
                   >
                     <template v-slot:prepend>
-                      <v-icon color="indigo">mdi-account-circle-outline</v-icon>
+                      <v-icon 
+                        :color="guest.gender === '男' ? 'blue' : (guest.gender === '女' ? 'pink' : 'indigo')"
+                        class="mr-3"
+                      >
+                        {{ guest.gender === '女' ? 'mdi-face-woman' : (guest.gender === '男' ? 'mdi-face-man' : 'mdi-account-circle-outline') }}
+                      </v-icon>
+                    </template>
+
+                    <template v-slot:title>
+                      <div class="d-flex align-center mb-1">
+                        <span class="text-subtitle-1 font-weight-bold">{{ guest.name }}</span>
+                        
+                        <v-chip
+                          v-if="guest.gender"
+                          size="x-small"
+                          variant="flat"
+                          class="ml-2 font-weight-bold"
+                          :color="guest.gender === '男' ? 'blue-lighten-5' : (guest.gender === '女' ? 'pink-lighten-5' : 'grey-lighten-4')"
+                          :class="guest.gender === '男' ? 'text-blue-darken-2' : (guest.gender === '女' ? 'text-pink-darken-2' : 'text-grey-darken-2')"
+                          label
+                        >
+                          {{ guest.gender === '男' ? '先生' : (guest.gender === '女' ? '女士' : guest.gender) }}
+                        </v-chip>
+                      </div>
                     </template>
 
                     <template v-slot:append>
-                      <div class="d-flex align-center">
+                      <div class="d-flex flex-column align-end justify-center">
                         
-                        <v-tooltip v-if="guest.submissionsCount > 1" location="top">
-                          
-                          <template v-slot:activator="{ props }">
-                            <div v-bind="props" class="d-flex align-center text-warning">
+                        <div class="mb-1 d-flex align-center">
+                          <v-icon 
+                            v-if="!!guest.latestSalesName && guest.submissionsCount <= 1"
+                            size="small" 
+                            color="grey" 
+                            class="mr-1"
+                          >
+                            mdi-lock
+                          </v-icon>
+
+                          <v-chip
+                            size="x-small"
+                            variant="tonal"
+                            :color="guest.latestSalesName ? 'primary' : 'grey'"
+                            label
+                          >
+                            <v-icon start size="small">mdi-account-tie</v-icon>
+                            {{ guest.latestSalesName || '無銷售人員' }}
+                          </v-chip>
+                        </div>
+
+                        <div class="d-flex align-center">
+                          <v-tooltip v-if="guest.submissionsCount > 1" location="top">
+                            <template v-slot:activator="{ props }">
                               <v-icon 
+                                v-bind="props" 
                                 color="warning" 
                                 size="small" 
                                 class="mr-1"
                               >
                                 mdi-alert-circle-outline
                               </v-icon>
-                              <span class="text-caption">
-                                ({{ guest.latestSalesName || '未知' }})
-                              </span>
-                            </div>
-                          </template>
+                            </template>
+                            <span>
+                              此客戶電話重複 (共 {{ guest.submissionsCount }} 筆)<br>
+                              最後銷售：{{ guest.latestSalesName || '未知' }}
+                            </span>
+                          </v-tooltip>
                           
-                          <span>
-                            此客戶電話重複
-                            <br>
-                            最後銷售：{{ guest.latestSalesName || '未知' }}
+                          <span class="text-caption text-grey">
+                            {{ formatGuestDate(guest.lastSubmittedAt) }}
                           </span>
-                        </v-tooltip>
-                        
-                        <div 
-                          class="text-caption text-grey" 
-                          :class="{ 'ml-2': guest.submissionsCount > 1 }"
-                        >
-                          {{ formatGuestDate(guest.createdAt) }}
                         </div>
+
                       </div>
                     </template>
-                    </v-list-item>
+                  </v-list-item>
                   <v-list-item v-if="filteredVipGuests.length === 0">
                     <v-list-item-title class="text-center text-grey">今日無新增貴賓資料，請使用搜尋過往資料</v-list-item-title>
                   </v-list-item>
                  </v-list>
 
-                  <v-card-text>
-                 <p class="mb-4">若查無貴賓資料，請使用「新增客戶資料」</p> <v-btn
-                    color="#005AB6"
-                    class="mb-6"
-                    block
-                    size="large"
-                    
-                    @click="confirmNewCustomerDialog = true" prepend-icon="mdi-account-plus-outline"
-                 >
-                    新增客戶資料 </v-btn>
-
-                 
-              </v-card-text>
+                  <v-card-text class="text-center pt-2 pb-6">
+                     <div class="text-caption text-grey mb-2">
+                       找不到客戶資料嗎？
+                     </div>
+                     <v-btn
+                        variant="text"
+                        color="grey-darken-1"
+                        size="small"
+                        class="text-decoration-underline"
+                        @click="confirmNewCustomerDialog = true" 
+                        prepend-icon="mdi-account-plus-outline"
+                     >
+                        新增客戶資料
+                     </v-btn>
+                  </v-card-text>
                <v-card-actions>
                 <v-btn @click="step = 2">上一步</v-btn>
               </v-card-actions>
@@ -381,6 +441,7 @@
 </template>
 
 <script setup>
+import { useDisplay } from 'vuetify'; // 1. 引入 useDisplay
 import { ref, computed, onMounted, watch, h, nextTick, Fragment } from 'vue'; 
 import { useRoute, useRouter } from 'vue-router'; 
 import {
@@ -394,6 +455,8 @@ import {
 import QrCode from 'qrcode.vue';
 import twCitiesData from '@/assets/TwCities.json'; 
 import { VCombobox, VSelect, VTextField } from 'vuetify/components'; 
+
+const { mobile: isMobile } = useDisplay();
 
 const props = defineProps({
   projectId: {
@@ -756,34 +819,61 @@ const currentUrl = computed(() => {
 });
 // ✓ END: 修正
 
-const filteredVipGuests = computed(() => {
-  const lowerSearch = guestSearch.value ? guestSearch.value.trim().toLowerCase() : null;
+// [新增] 日期篩選狀態
+const filterRange = ref('week'); // 預設 '7天內'
 
-  // 1. 如果使用者正在搜尋 (有輸入關鍵字)
+// [修改] 列表篩選邏輯
+const filteredVipGuests = computed(() => {
+  let list = [...vipGuests.value];
+
+  // 1. 搜尋過濾 (保持不變)
+  const lowerSearch = guestSearch.value ? guestSearch.value.trim().toLowerCase() : null;
   if (lowerSearch) {
-    return vipGuests.value.filter(guest => 
+    list = list.filter(guest => 
       guest.name.toLowerCase().includes(lowerSearch) ||
       guest.phone.includes(lowerSearch)
     );
+  } else {
+    // 2. 日期範圍過濾
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 6);
+
+    list = list.filter(guest => {
+      // ✅ [修改] 改用 lastSubmittedAt 進行日期比對
+      const dateToCompare = parseTimestamp(guest.lastSubmittedAt);
+      
+      if (!dateToCompare) return false;
+
+      if (filterRange.value === 'today') {
+        return dateToCompare >= todayStart;
+      } else { // 'week'
+        return dateToCompare >= weekStart;
+      }
+    });
   }
 
-  // 2. 如果使用者沒有搜尋 (預設情況)
-  // 則只顯示 createdAt 是今天的客戶
-  const todayStr = getTodayInTaiwan();
-  
-  return vipGuests.value.filter(guest => {
-    // 確保 guest.createdAt 是一個有效的 Date 物件
-    if (!guest.createdAt || typeof guest.createdAt.toLocaleDateString !== 'function') {
-      return false;
-    }
-    
-    // 將客戶的建立日期 (Date 物件) 轉換為台灣時區的 YYYY-MM-DD 字串
-    const guestDateStr = guest.createdAt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-    
-    // 比較日期字串是否相符
-    return guestDateStr === todayStr;
+  // 3. 排序 (依 lastSubmittedAt 降序)
+  list.sort((a, b) => {
+    // ✅ [修改] 改用 lastSubmittedAt 進行排序
+    const timeA = parseTimestamp(a.lastSubmittedAt)?.getTime() || 0;
+    const timeB = parseTimestamp(b.lastSubmittedAt)?.getTime() || 0;
+    return timeB - timeA;
   });
+
+  return list;
 });
+
+// [新增] 輔助：解析時間戳記 (共用)
+const parseTimestamp = (t) => {
+    if (!t) return null;
+    if (typeof t.toDate === 'function') return t.toDate(); // Firestore Timestamp
+    if (t._seconds !== undefined) return new Date(t._seconds * 1000); // Serialized
+    const d = new Date(t); // ISO String or Date
+    return isNaN(d.getTime()) ? null : d;
+};
 
 const salespersonOptions = computed(() => {
   if (!isCounter.value) {
@@ -1145,12 +1235,30 @@ function handleSubmitSuccessAction() {
 }
 
 
-function formatGuestDate(dateObj) { 
-  if (!dateObj || typeof dateObj.toLocaleDateString !== 'function') {
-    return '未知日期';
+function formatGuestDate(val) {
+  if (!val) return '未知日期';
+
+  let dateObj;
+
+  // 1. 處理 Firestore Timestamp (Client SDK)
+  if (typeof val.toDate === 'function') {
+    dateObj = val.toDate();
   }
+  // 2. 處理 序列化後的 Timestamp (來自 Cloud Function, { _seconds, ... })
+  else if (val._seconds !== undefined) {
+    dateObj = new Date(val._seconds * 1000);
+  }
+  // 3. 處理 ISO 字串或一般 Date 物件
+  else {
+    dateObj = new Date(val);
+  }
+
+  // 驗證日期是否有效
+  if (isNaN(dateObj.getTime())) {
+    return '無效日期';
+  }
+
   try {
-    if (isNaN(dateObj.getTime())) return '無效日期'; 
     return dateObj.toLocaleDateString('zh-TW', {
       year: 'numeric',
       month: '2-digit',
@@ -1185,3 +1293,23 @@ onMounted(() => {
 });
 
 </script>
+
+<style scoped>
+
+/* ✅ [新增] 針對手機版 Stepper 的字體優化 */
+.mobile-stepper :deep(.v-stepper-item__title) {
+  font-size: 12px !important; /* 將字體縮小至 12px (預設約 14px) */
+  line-height: 1.2;           /* 調整行高，讓兩行文字時不要太開 */
+  white-space: nowrap;        /* (選用) 強制不換行，或是拿掉這行允許換行 */
+}
+
+/* 微調圓圈大小 (選用，若覺得圓圈太大也可縮小) */
+.mobile-stepper :deep(.v-stepper-item__avatar) {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+
+</style>

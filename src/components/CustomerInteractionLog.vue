@@ -26,7 +26,7 @@
                                 基本資料
                             </div>
                             
-                            <div v-if="canEdit">
+                            <div>
                                 <v-tooltip text="編輯" location="top" v-if="!isEditingProfile">
                                   <template v-slot:activator="{ props }">
                                     <v-btn 
@@ -342,7 +342,7 @@
                     
                     <v-card class="flex-grow-1 d-flex flex-column" elevation="1" style="min-height: 0;">
                          <v-card-title class="text-subtitle-1 font-weight-bold border-b d-flex align-center justify-space-between bg-grey-lighten-4">
-                            <span>歷史紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
+                            <span>洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
                             
                             <v-btn 
                               color="teal" 
@@ -402,7 +402,7 @@
                                                     label
                                                 >
                                                     <v-icon start size="small" class="mr-1">mdi-timer-outline</v-icon>
-                                                    {{ calculateDuration(log.startTime, log.endTime) }} min
+                                                    {{ calculateDuration(log.startTime, log.endTime) }} 分鐘
                                                 </v-chip>
                                             </div>
                                            
@@ -529,10 +529,10 @@
                                 variant="text" 
                                 color="primary" 
                                 class="ml-2"
-                                prepend-icon="mdi-pencil"
+                                prepend-icon="mdi-tag-plus-outline"
                                 @click="openTagDialog"
                             >
-                                編輯標籤
+                                加入標籤
                             </v-btn>
                         </div>
                       <div class="d-flex flex-wrap gap-2 py-2 px-3 bg-grey-lighten-5 rounded border" style="min-height: 48px; align-items: center;">
