@@ -67,16 +67,16 @@
                     <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="x-small" variant="tonal" color="white" @click="resetCalibration" class="ml-2">重設</v-btn>
                     <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="x-small" variant="tonal" color="white" @click="resetCurrentDistance" class="ml-2">取消本次</v-btn>
                     
-                    <v-btn 
-                      v-if="mobile && isMeasuringArea && currentAreaPoints.length > 2" 
-                      size="small" 
-                      color="success" 
-                      variant="flat" 
-                      @click="completeAreaMeasurement" 
-                      class="ml-2"
-                    >
-                      <v-icon start>mdi-check</v-icon>範圍確認
-                    </v-btn>
+                   <v-btn 
+              v-if="isTouchDevice && isMeasuringArea && currentAreaPoints.length > 2" 
+              size="small" 
+              color="success" 
+              variant="flat" 
+              @click="completeAreaMeasurement" 
+              class="ml-2"
+            >
+              <v-icon start>mdi-check</v-icon>範圍確認
+            </v-btn>
                     
                     <v-btn v-if="isMeasuringArea && currentAreaPoints.length > 0" size="x-small" variant="text" color="red-lighten-3" @click="resetCurrentArea" class="ml-2">清除重測</v-btn>
                 </div>
@@ -99,6 +99,7 @@ import { useDisplay } from 'vuetify';
 import { getHouseholdByUnitId, getSvgBySvgName } from '@/api';
 // ✅ END: 移除
 
+const isTouchDevice = ref(false);
 const { mobile } = useDisplay();
 
 // --- State and Refs ---
@@ -550,6 +551,12 @@ const goBack = () => {
 
 // --- Lifecycle Hooks ---
 onMounted(() => {
+
+    // 判斷邏輯：
+    // (A) 瀏覽器支援觸控點 (大部分手機/平板)
+    // (B) 或者 Vuetify 認為是手機 (保險起見)
+    isTouchDevice.value = (navigator.maxTouchPoints > 0) || mobile.value;
+
     fetchSvgContent();
 
     if (canvasContainer.value) {
