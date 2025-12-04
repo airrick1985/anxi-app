@@ -6108,11 +6108,12 @@ exports.handleDirectReportUpload = onCall({ region: "asia-east1",
 /**
  * 每日排程：自動更新當日已結束的預約狀態設定為:已完成
  * 此函式會於每日台灣時間 17:00 執行
+ * (修正版 V2: 移除 date-fns-tz 依賴，使用原生 Date 修復時區問題)
  */
 exports.dailyAppointmentStatusUpdate = onSchedule({ region: "asia-east1",
-    schedule: "every day 17:00",
-    timeZone: "Asia/Taipei", // 指定時區為台灣
-    memory: "256MiB" // 此任務所需記憶體不多，256MB 足夠
+    schedule: "every day 20:10",
+    timeZone: "Asia/Taipei", 
+    memory: "256MiB"
 }, async (event) => {
     
     console.log("排程啟動：開始檢查並更新當日預約狀態...");
@@ -6120,15 +6121,24 @@ exports.dailyAppointmentStatusUpdate = onSchedule({ region: "asia-east1",
     const db = new Firestore({ databaseId: "anxi-app" });
 
     try {
-        // 1. 獲取台灣時區的「今天」日期範圍
-        // 由於函式可能在 UTC 時區的伺服器上運行，我們需要明確指定時區
-        const nowInTaipei = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
-        
-        // 設定查詢範圍為今天的 00:00:00 到 23:59:59
-        const startOfDay = new Date(nowInTaipei.getFullYear(), nowInTaipei.getMonth(), nowInTaipei.getDate(), 0, 0, 0);
-        const endOfDay = new Date(nowInTaipei.getFullYear(), nowInTaipei.getMonth(), nowInTaipei.getDate(), 23, 59, 59);
+        const timeZone = "Asia/Taipei";
+        const now = new Date(); // 當下 UTC 時間
 
-        // 2. 建立查詢
+        // 1. 取得「今天」在台灣時區的日期字串 (格式: YYYY-MM-DD)
+        // 使用 "en-CA" locale 會穩定輸出 YYYY-MM-DD 格式
+        const todayDateString = now.toLocaleDateString("en-CA", { timeZone });
+        
+        console.log(`[${functionName}] 執行日期基準 (台灣): ${todayDateString}`);
+
+        // 2. 建立台灣時區的「當日開始」與「當日結束」時間點
+        // 直接組裝 ISO 8601 字串，並強制指定 +08:00 時區
+        // 原理：new Date("2025-12-05T00:00:00+08:00") 會自動被轉換為正確的 UTC Timestamp 存入 Firestore
+        const startOfDay = new Date(`${todayDateString}T00:00:00+08:00`);
+        const endOfDay = new Date(`${todayDateString}T23:59:59.999+08:00`);
+
+        console.log(`[${functionName}] 查詢區間 (轉換為 ISO UTC): ${startOfDay.toISOString()} ~ ${endOfDay.toISOString()}`);
+
+        // 3. 建立查詢
         const appointmentsRef = db.collection("appointments");
         const queryToUpdate = appointmentsRef
             .where("status", "==", "預約中")
@@ -6144,13 +6154,13 @@ exports.dailyAppointmentStatusUpdate = onSchedule({ region: "asia-east1",
 
         console.log(`找到 ${snapshot.size} 筆今日的預約，準備更新狀態...`);
 
-        // 3. 使用批次寫入 (Write Batch) 來一次性更新所有文件，效能較好
+        // 4. 使用批次寫入 (Write Batch)
         const batch = db.batch();
         snapshot.docs.forEach(doc => {
             batch.update(doc.ref, { status: "已完成" });
         });
 
-        // 4. 提交批次更新
+        // 5. 提交批次更新
         await batch.commit();
 
         console.log(`成功將 ${snapshot.size} 筆預約狀態更新為「已完成」。`);
@@ -6159,7 +6169,6 @@ exports.dailyAppointmentStatusUpdate = onSchedule({ region: "asia-east1",
         console.error(`[${functionName}] 執行時發生錯誤:`, error);
     }
 });
-
 
 /**
  * 獲取指定建案中，預約紀錄的最早年份和最晚年份，並回傳完整的起訖日期
@@ -17519,259 +17528,433 @@ exports.onVipGuestSubmission = onDocumentWritten({
 });
 
 
-/**
- * [API] 將預約資料同步到 Google Sheet (含備註保留功能)
- */
+
 exports.syncBookingToSheet = onCall({
     region: "asia-east1",
     memory: "1GiB",
     timeoutSeconds: 540,
-    secrets: ["GOOGLE_SHEETS_CLIENT_EMAIL", "GOOGLE_SHEETS_PRIVATE_KEY"] // 需設定 Service Account
+    secrets: ["GOOGLE_SHEETS_CLIENT_EMAIL", "GOOGLE_SHEETS_PRIVATE_KEY"]
 }, async (request) => {
     const { projectId, startDate, endDate } = request.data;
-    const functionName = "syncBookingToSheet";
 
     if (!projectId || !startDate || !endDate) {
         throw new HttpsError("invalid-argument", "缺少必要參數。");
     }
 
-    const db = new Firestore({ databaseId: "anxi-app" });
-    
     try {
-        // 1. 獲取專案設定 (Sheet ID)
-        const projectDoc = await db.collection("projects").doc(projectId).get();
-        if (!projectDoc.exists) throw new HttpsError("not-found", "找不到建案資料");
+        // ✅ [修改] 傳入陣列格式
+        const result = await _coreSyncLogic(projectId, [{ start: startDate, end: endDate }]);
+        return result;
+    } catch (error) {
+        console.error("[syncBookingToSheet] Manual sync failed:", error);
+        throw new HttpsError("internal", `同步失敗: ${error.message}`);
+    }
+});
+
+/**
+ * [內部核心函式] 執行指定日期範圍的 Google Sheet 同步
+ * 優化 V6: 支援多組日期範圍 (Array of {start, end})，確保跨週移動時資料保留
+ * 加入詳細 Log 以追蹤備註流向
+ */
+async function _coreSyncLogic(projectId, dateRanges) {
+    const functionName = "_coreSyncLogic";
+    // 兼容舊版單一範圍呼叫 (轉換為陣列)
+    if (!Array.isArray(dateRanges) && arguments.length === 3) {
+        dateRanges = [{ start: arguments[1], end: arguments[2] }];
+    }
+    
+    console.log(`[${functionName}] 開始同步 Project: ${projectId}, Ranges: ${JSON.stringify(dateRanges)}`);
+
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 1. 獲取專案設定
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    if (!projectDoc.exists) throw new Error("找不到建案資料");
+    const projectData = projectDoc.data();
+    const spreadsheetId = projectData.googleSheetId;
+    const sheetName = projectData.googleSheetTabName;
+    const systemBookingTypes = projectData.bookingTypes || []; 
+
+    if (!spreadsheetId || !sheetName) {
+        console.warn(`[${functionName}] Google Sheet 未設定，跳過同步。`);
+        return { status: "skipped", message: "Google Sheet 未設定" };
+    }
+
+    // 2. 初始化 Google Sheets API
+    const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
+    const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY;
+    if (!clientEmail || !privateKey) throw new Error("系統未設定 Google Sheet 憑證");
+
+    const auth = new google.auth.JWT({
+        email: clientEmail,
+        key: privateKey.replace(/\\n/g, '\n'),
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // 2.5 動態獲取 sheetId
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const targetSheetObj = spreadsheetInfo.data.sheets.find(s => s.properties.title === sheetName);
+    if (!targetSheetObj) throw new Error(`找不到工作表 "${sheetName}"`);
+    const targetSheetId = targetSheetObj.properties.sheetId;
+
+    // --- 準備：整理所有涉及的週次 (Deduplication & Chunking) ---
+    const uniqueWeeksMap = new Map(); // Key: "YYYY/MM/DD" (Monday)
+    
+    const formatDateStr = (date) => {
+        return date.toLocaleDateString('zh-TW', {
+            timeZone: 'Asia/Taipei',
+            year: 'numeric', month: 'numeric', day: 'numeric'
+        });
+    };
+
+    dateRanges.forEach(range => {
+        const start = new Date(range.start);
+        const end = new Date(range.end);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
         
-        const projectData = projectDoc.data();
-        const spreadsheetId = projectData.googleSheetId;
-        const sheetName = projectData.googleSheetTabName;
+        let current = new Date(start);
+        // 找到該日期的週一
+        const day = current.getDay();
+        const diff = day === 0 ? -6 : 1 - day; 
+        current.setDate(current.getDate() + diff);
 
-        if (!spreadsheetId || !sheetName) {
-            return { status: "error", message: "google sheet未設定，請洽系統維護人員" };
+        // 遍歷直到 end
+        while (current <= end || (current.getTime() <= end.getTime() + 7 * 86400000 && current.getDay() === 1)) {
+            // 檢查這週是否與 range 重疊
+            const weekEnd = new Date(current);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            
+            if (current <= end && weekEnd >= start) {
+                const weekKey = formatDateStr(current);
+                if (!uniqueWeeksMap.has(weekKey)) {
+                    // 產生該週 7 天
+                    const chunk = [];
+                    for (let i = 0; i < 7; i++) {
+                        const d = new Date(current);
+                        d.setDate(d.getDate() + i);
+                        chunk.push(d);
+                    }
+                    uniqueWeeksMap.set(weekKey, chunk);
+                }
+            }
+            // 下一週
+            current.setDate(current.getDate() + 7);
         }
+    });
+    
+    const weeklyChunks = Array.from(uniqueWeeksMap.values());
+    console.log(`[${functionName}] 共整理出 ${weeklyChunks.length} 個不重複週次進行同步。`);
 
-        // 2. 初始化 Google Sheets API
-        // 注意：這裡需要您設定 Service Account 的權限，建議將私鑰存入 Secret Manager
-        // 簡化範例：假設您已設定好 auth
-        const auth = new google.auth.GoogleAuth({
-            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-        });
-        const authClient = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: authClient });
+    // 3. 撈取 Firestore 資料 (撈取所有相關週次的資料)
+    // 為了簡化查詢，我們找出這些週次的最小 Start 與最大 End
+    if (weeklyChunks.length === 0) return { status: "success", message: "無範圍" };
 
-        // 3. 撈取 Firestore 資料
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        // 設定時間範圍為當天 00:00 到 23:59
-        start.setHours(0,0,0,0);
-        end.setHours(23,59,59,999);
+    let minDate = weeklyChunks[0][0];
+    let maxDate = weeklyChunks[0][6];
+    weeklyChunks.forEach(chunk => {
+        if (chunk[0] < minDate) minDate = chunk[0];
+        if (chunk[6] > maxDate) maxDate = chunk[6];
+    });
+    
+    // 設定時間邊界 (UTC轉換在 Query 時自動處理)
+    // 這裡 minDate/maxDate 已經是 Date 物件
+    // 重新設定精確邊界
+    const queryStart = new Date(minDate); queryStart.setHours(0,0,0,0);
+    const queryEnd = new Date(maxDate); queryEnd.setHours(23,59,59,999);
 
-        const appointmentsRef = db.collection("appointments");
-        const snapshot = await appointmentsRef
-            .where("projectId", "==", projectId)
-            .where("status", "!=", "取消")
-            .where("appointmentDate", ">=", start)
-            .where("appointmentDate", "<=", end)
-            .get();
+    console.log(`[${functionName}] Querying Firestore from ${formatDateStr(queryStart)} to ${formatDateStr(queryEnd)}`);
 
-        const appointments = snapshot.docs.map(doc => {
-            const d = doc.data();
-            return {
-                ...d,
-                // 將 Timestamp 轉為 Date 物件方便後續處理
-                dateObj: d.appointmentDate.toDate()
-            };
-        });
+    const appointmentsRef = db.collection("appointments");
+    const snapshot = await appointmentsRef
+        .where("projectId", "==", projectId)
+        .where("status", "!=", "取消")
+        .where("appointmentDate", ">=", queryStart)
+        .where("appointmentDate", "<=", queryEnd)
+        .get();
 
-        // 4. 準備資料結構 (7天, 每天一組陣列)
-        // 產生這週的日期字串陣列 ['2025/12/1', ..., '2025/12/7']
-        const weekDates = [];
-        const current = new Date(start);
-        while (current <= end) {
-            weekDates.push(new Date(current));
-            current.setDate(current.getDate() + 1);
-        }
+    const allAppointments = snapshot.docs.map(doc => ({ ...doc.data(), dateObj: doc.data().appointmentDate.toDate() }));
+    console.log(`[${functionName}] Fetched ${allAppointments.length} appointments.`);
 
-        // 5. 掃描 Sheet 現況，尋找是否已存在該週 (以及提取備註)
-        const sheetDataRes = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: `${sheetName}!A:AZ`, // 讀取足夠寬的範圍
-        });
+    // ============================================================
+    // 🚀 變數準備：全域資料暫存區
+    // ============================================================
+    const globalPreservedData = {}; 
+    const globalManualEntries = [];
+    const parseSheetDate = (val) => {
+        if (!val) return null;
+        if (typeof val === 'number') return new Date(Math.round((val - 25569) * 86400 * 1000));
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
+    // ============================================================
+    // 🚀 階段一：搜集 (Harvest) - 一次掃描所有相關週次
+    // ============================================================
+    console.log(`[${functionName}] Phase 1: Harvesting existing data...`);
+
+    for (const weekDates of weeklyChunks) {
+        const targetDateStr = formatDateStr(weekDates[0]);
         
+        // 讀取 Sheet
+        const sheetDataRes = await sheets.spreadsheets.values.get({ 
+            spreadsheetId, 
+            range: `${sheetName}!A:AZ`,
+            valueRenderOption: 'UNFORMATTED_VALUE'
+        });
         const rows = sheetDataRes.data.values || [];
-        let targetRowIndex = -1; // 該週標題所在的列索引 (0-based)
-        let existingBlockHeight = 0;
-        const preservedRemarks = {}; // { "2025/12/1_A1-02": "手動備註" }
-
-        // 尋找日期列 (假設在第 2 列，即 row index 1)
-        // 我們找該週的第一天 '2025/12/1' 是否存在於 Sheet 中
-        const targetDateStr = weekDates[0].toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' });
         
-        // 遍歷所有列，尋找包含 targetDateStr 的列
         for (let i = 0; i < rows.length; i++) {
-            // 檢查該列是否包含我們的目標日期 (通常在第 2 列，但我們掃描整列以防萬一)
-            if (rows[i].includes(targetDateStr)) {
-                targetRowIndex = i - 1; // 標題列通常在日期列的上一列 (星期列)
-                
-                // 計算該區塊高度：從星期列開始，直到下一週的星期列或結束
-                // 簡單判斷：往下找直到遇到下一個 "星期一" 或空行
+            const rowStr = JSON.stringify(rows[i]);
+            if (rowStr.includes(targetDateStr) || rows[i].some(cell => {
+                const d = parseSheetDate(cell);
+                return d && formatDateStr(d) === targetDateStr;
+            })) {
+                const targetRowIndex = i - 1;
                 let j = i + 1;
                 while (j < rows.length) {
-                    if (rows[j][0] && rows[j][0].includes('星期')) break;
+                    if (rows[j][0] && String(rows[j][0]).includes('星期')) break;
                     j++;
                 }
-                existingBlockHeight = j - targetRowIndex;
+                const existingBlockHeight = j - targetRowIndex;
                 
-                // --- 提取舊備註邏輯 ---
-                // 資料列從 targetRowIndex + 2 開始 (星期列+日期列之後)
-                for (let r = targetRowIndex + 2; r < targetRowIndex + existingBlockHeight; r++) {
-                    const row = rows[r];
-                    if (!row) continue;
+                const headerRow = rows[targetRowIndex + 2];
+                if (headerRow) {
+                    let blockWidth = 7;
+                    const unitIdxRel = headerRow.indexOf('戶別');
+                    const typeIdxRel = headerRow.indexOf('預約項目');
+                    const remarkIdxRel = headerRow.indexOf('備註');
+                    const inspectorIdxRel = headerRow.indexOf('驗屋人員');
                     
-                    // 每天佔 8 欄，共 7 天
-                    for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
-                        const colOffset = dayIdx * 8;
-                        const unitId = row[colOffset + 1]; // 戶別在第 2 欄
-                        const remark = row[colOffset + 6]; // 備註在第 7 欄 (index 6)
-                        
-                        if (unitId && remark) {
-                            const dateKey = weekDates[dayIdx].toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                            preservedRemarks[`${dateKey}_${unitId}`] = remark;
+                    const timeIdxRel = headerRow.indexOf('時間');
+                    const nameIdxRel = headerRow.indexOf('預約人姓名');
+                    const methodIdxRel = headerRow.indexOf('方式') !== -1 ? headerRow.indexOf('方式') : (headerRow.indexOf('選擇方式') !== -1 ? headerRow.indexOf('選擇方式') : -1);
+
+                    if (unitIdxRel !== -1 && remarkIdxRel !== -1 && inspectorIdxRel !== -1 && typeIdxRel !== -1) {
+                        for (let r = targetRowIndex + 3; r < targetRowIndex + existingBlockHeight; r++) {
+                            const row = rows[r];
+                            if (!row) continue;
+                            for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+                                const colOffset = dayIdx * blockWidth;
+                                const unitId = row[colOffset + unitIdxRel];
+                                const bookingType = row[colOffset + typeIdxRel];
+                                const remark = row[colOffset + remarkIdxRel]; 
+                                const inspector = row[colOffset + inspectorIdxRel];
+                                
+                                if (unitId && bookingType) {
+                                    const isSystemType = systemBookingTypes.includes(bookingType);
+                                    if (isSystemType) {
+                                        const key = `${unitId}_${bookingType}`;
+                                        globalPreservedData[key] = {
+                                            remark: remark || "",
+                                            inspector: inspector || ""
+                                        };
+                                        // Log 觀察點 1: 確保舊備註有被抓到
+                                        if (remark || inspector) {
+                                            console.log(`[Harvest] Saved for ${key}: Remark="${remark}", Inspector="${inspector}"`);
+                                        }
+                                    } else {
+                                        const currentDateStr = formatDateStr(weekDates[dayIdx]);
+                                        const time = timeIdxRel !== -1 ? row[colOffset + timeIdxRel] : "";
+                                        const name = nameIdxRel !== -1 ? row[colOffset + nameIdxRel] : "";
+                                        const method = methodIdxRel !== -1 ? row[colOffset + methodIdxRel] : "";
+                                        globalManualEntries.push({
+                                            dateStr: currentDateStr,
+                                            data: {
+                                                appointmentTimeSlot: time, unitId, bookerName: name,
+                                                bookingType, methodStr: method, remark, inspector, isManual: true
+                                            }
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 break;
             }
         }
+    }
 
-        // 6. 建構新資料 Rows
-        // 先找出這週每天最多的預約數，決定列高
+    // ============================================================
+    // 🚀 階段二：寫入 (Plant) - 寫入所有週次
+    // ============================================================
+    console.log(`[${functionName}] Phase 2: Writing data...`);
+    const NEW_BLOCK_WIDTH = 7;
+    const TOTAL_COLUMNS = 7 * NEW_BLOCK_WIDTH;
+
+    // 依序處理每一週
+    // 注意：因為寫入會改變行數，每週處理前都必須重新讀取 Sheet
+    for (const weekDates of weeklyChunks) {
+        const targetDateStr = formatDateStr(weekDates[0]);
+        
+        const sheetDataRes = await sheets.spreadsheets.values.get({ 
+            spreadsheetId, 
+            range: `${sheetName}!A:AZ`,
+            valueRenderOption: 'UNFORMATTED_VALUE'
+        });
+        const rows = sheetDataRes.data.values || [];
+        
+        let targetRowIndex = -1;
+        let existingBlockHeight = 0;
+        
+        for (let i = 0; i < rows.length; i++) {
+            const rowStr = JSON.stringify(rows[i]);
+            if (rowStr.includes(targetDateStr) || rows[i].some(cell => {
+                const d = parseSheetDate(cell);
+                return d && formatDateStr(d) === targetDateStr;
+            })) {
+                targetRowIndex = i - 1;
+                let j = i + 1;
+                while (j < rows.length) {
+                    if (rows[j][0] && String(rows[j][0]).includes('星期')) break;
+                    j++;
+                }
+                existingBlockHeight = j - targetRowIndex;
+                break;
+            }
+        }
+
         const dailyAppointments = weekDates.map(date => {
-            const dayStr = date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' });
-            // 篩選當天的預約並排序
-            const daysApps = appointments
-                .filter(a => a.dateObj.toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' }) === dayStr)
-                .sort((a, b) => (a.appointmentTimeSlot || '').localeCompare(b.appointmentTimeSlot || ''));
-            return daysApps;
+            const dayStr = formatDateStr(date);
+            
+            const dbApps = allAppointments
+                .filter(a => formatDateStr(a.dateObj) === dayStr)
+                .map(appt => {
+                    let rawMethod = appt.inspectionMethod || "";
+                    let methodLabel = rawMethod;
+                    if (rawMethod === "屋主自驗") methodLabel = "自驗";
+                    else if (rawMethod === "代驗公司") methodLabel = "代驗";
+
+                    let finalMethodStr = methodLabel;
+                    if (rawMethod === "代驗公司" && appt.inspectionCompanyName) {
+                        const companyShort = String(appt.inspectionCompanyName).substring(0, 4);
+                        finalMethodStr = `${methodLabel}-${companyShort}`;
+                    }
+
+                    const key = `${appt.unitId}_${appt.bookingType}`;
+                    const savedInfo = globalPreservedData[key] || {};
+                    
+                    // Log 觀察點 2: 確保寫入時有填回備註
+                    if (savedInfo.remark || savedInfo.inspector) {
+                        console.log(`[Plant] Restoring for ${key} on ${dayStr}: Remark="${savedInfo.remark}"`);
+                    }
+
+                    return {
+                        appointmentTimeSlot: appt.appointmentTimeSlot,
+                        unitId: appt.unitId,
+                        bookerName: appt.bookerName,
+                        bookingType: appt.bookingType,
+                        methodStr: finalMethodStr,
+                        remark: savedInfo.remark || "",
+                        inspector: savedInfo.inspector || "",
+                        isManual: false
+                    };
+                });
+
+            const manualApps = globalManualEntries
+                .filter(m => m.dateStr === dayStr)
+                .map(m => m.data);
+
+            const combinedApps = [...dbApps, ...manualApps];
+            combinedApps.sort((a, b) => {
+                const timeA = String(a.appointmentTimeSlot || "").replace(/'/g, "");
+                const timeB = String(b.appointmentTimeSlot || "").replace(/'/g, "");
+                return timeA.localeCompare(timeB);
+            });
+
+            return combinedApps;
         });
 
-        const maxApps = Math.max(...dailyAppointments.map(d => d.length), 1); // 至少 1 列資料
-        const totalRows = 2 + maxApps; // 星期列 + 日期列 + 資料列
-
+        const maxApps = Math.max(...dailyAppointments.map(d => d.length), 1);
         const newRows = [];
-        
-        // Row 1: 星期列
+
+        // Row 1
         const weekRow = [];
         const weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
-        weekDays.forEach(day => {
-            weekRow.push(day);
-            for(let k=0; k<7; k++) weekRow.push(""); // 填補空白儲存格
-        });
+        weekDays.forEach(day => { weekRow.push(day); for(let k=0; k<NEW_BLOCK_WIDTH-1; k++) weekRow.push(""); });
         newRows.push(weekRow);
 
-        // Row 2: 日期列
+        // Row 2
         const dateRow = [];
         weekDates.forEach(d => {
-            dateRow.push(d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' }));
-            for(let k=0; k<7; k++) dateRow.push("");
+            dateRow.push("'" + formatDateStr(d)); 
+            for(let k=0; k<NEW_BLOCK_WIDTH-1; k++) dateRow.push("");
         });
         newRows.push(dateRow);
 
-        // Row 3~N: 資料列
+        // Row 3
+        const headerRow = [];
+        const dailyHeaders = ["時間", "戶別", "預約人姓名", "預約項目", "方式", "備註", "驗屋人員"];
+        for(let i=0; i<7; i++) headerRow.push(...dailyHeaders);
+        newRows.push(headerRow);
+
+        // Row 4+
         for (let i = 0; i < maxApps; i++) {
             const row = [];
             for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
                 const appt = dailyAppointments[dayIdx][i];
                 if (appt) {
-                    const dateKey = weekDates[dayIdx].toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                    // 嘗試找回舊備註
-                    const savedRemark = preservedRemarks[`${dateKey}_${appt.unitId}`] || "";
-
-                    row.push(appt.appointmentTimeSlot || "");
+                    const timeStr = appt.appointmentTimeSlot ? (String(appt.appointmentTimeSlot).startsWith("'") ? appt.appointmentTimeSlot : "'" + appt.appointmentTimeSlot) : "";
+                    row.push(timeStr);
                     row.push(appt.unitId || "");
                     row.push(appt.bookerName || "");
                     row.push(appt.bookingType || "");
-                    row.push(appt.inspectionMethod || "");
-                    row.push(appt.inspectionCompanyName || "");
-                    row.push(savedRemark); // ✅ 填入保留的備註
-                    row.push(appt.inspectors || "");
+                    row.push(appt.methodStr || "");
+                    row.push(appt.remark || "");
+                    row.push(appt.inspector || "");
                 } else {
-                    // 空儲存格
-                    for(let k=0; k<8; k++) row.push("");
+                    for(let k=0; k<NEW_BLOCK_WIDTH; k++) row.push("");
                 }
             }
             newRows.push(row);
         }
 
-        // 7. 寫入操作
+        // 寫入 (Delete Old -> Insert New -> Update Data -> Format)
         const requests = [];
 
         if (targetRowIndex !== -1) {
-            // A. 舊資料存在 -> 刪除舊區塊，插入新區塊 (或覆蓋)
-            // 簡單做法：先刪除舊列，再在同位置插入新列
             requests.push({
                 deleteDimension: {
-                    range: {
-                        sheetId: 0, // ⚠️ 需動態獲取 sheetId，這裡假設第一個 sheet
-                        dimension: "ROWS",
-                        startIndex: targetRowIndex,
-                        endIndex: targetRowIndex + existingBlockHeight
-                    }
+                    range: { sheetId: targetSheetId, dimension: "ROWS", startIndex: targetRowIndex, endIndex: targetRowIndex + existingBlockHeight }
                 }
             });
-            // 插入位置不變
         } else {
-            // B. 舊資料不存在 -> 尋找插入點 (依日期排序)
-            // 需掃描所有日期列，找到比 targetDateStr 大的第一個日期，插在它前面
-            // 若都比它小，插在最後
-            // (此處簡化：若無複雜排序需求，直接 append；若需排序，需讀取所有標題列判斷)
-            // 為了實作排序插入，我們假設已讀取的 rows 包含所有資料
-            targetRowIndex = rows.length; // 預設最後
-            
+            // 插入點判斷
+            targetRowIndex = rows.length; 
+            const targetDateObj = weekDates[0];
             for (let i = 0; i < rows.length; i++) {
-                if (rows[i][0] && rows[i][0].includes('星期')) {
-                    // 這是某週的開始，檢查它的日期列 (i+1)
-                    const checkDateStr = rows[i+1]?.[0]; // 取得該週第一天
-                    if (checkDateStr) {
-                         const checkDate = new Date(checkDateStr);
-                         if (weekDates[0] < checkDate) {
-                             targetRowIndex = i;
-                             break;
-                         }
+                if (rows[i][0] && String(rows[i][0]).includes('星期')) {
+                    const checkDateVal = rows[i+1]?.[0];
+                    const checkDate = parseSheetDate(checkDateVal);
+                    if (checkDate && targetDateObj < checkDate) {
+                        targetRowIndex = i;
+                        break;
                     }
                 }
             }
         }
 
-        // 執行 BatchUpdate (刪除舊的)
+        // 1. 刪除
         if (requests.length > 0) {
-             // 注意：若刪除了列，targetRowIndex 依然指向該位置，適合插入
-             await sheets.spreadsheets.batchUpdate({
-                spreadsheetId,
-                requestBody: { requests }
-             });
+            await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
         }
 
-        // 執行 Insert & Update (插入新列並填值)
-        // 先插入空列
+        // 2. 插入
         await sheets.spreadsheets.batchUpdate({
             spreadsheetId,
             requestBody: {
                 requests: [{
                     insertDimension: {
-                        range: {
-                            sheetId: 0, // ⚠️
-                            dimension: "ROWS",
-                            startIndex: targetRowIndex,
-                            endIndex: targetRowIndex + newRows.length
-                        },
+                        range: { sheetId: targetSheetId, dimension: "ROWS", startIndex: targetRowIndex, endIndex: targetRowIndex + newRows.length },
                         inheritFromBefore: false
                     }
                 }]
             }
         });
 
-        // 填入資料
+        // 3. 填值
         await sheets.spreadsheets.values.update({
             spreadsheetId,
             range: `${sheetName}!A${targetRowIndex + 1}`,
@@ -17779,50 +17962,90 @@ exports.syncBookingToSheet = onCall({
             requestBody: { values: newRows }
         });
 
-        // 8. 樣式設定 (上色)
-        const formatRequests = [
-            {
-                // 星期列 (橙色)
-                repeatCell: {
-                    range: { sheetId: 0, startRowIndex: targetRowIndex, endRowIndex: targetRowIndex + 1 },
-                    cell: { userEnteredFormat: { backgroundColor: { red: 0.98, green: 0.75, blue: 0.56 } } }, // #fabf8f
-                    fields: "userEnteredFormat.backgroundColor"
-                }
-            },
-            {
-                // 日期列 (黃色)
-                repeatCell: {
-                    range: { sheetId: 0, startRowIndex: targetRowIndex + 1, endRowIndex: targetRowIndex + 2 },
-                    cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 0 } } }, // #ffff00
-                    fields: "userEnteredFormat.backgroundColor"
-                }
-            },
-            // 標頭 (時間, 戶別...) - 這裡需要精確指定範圍，或是簡單地將第3列之後設為藍色標頭?
-            // 您的需求是每一筆資料都有標頭? 還是週曆只有最上面有標頭? 
-            // 根據截圖，似乎沒有每列標頭，而是資料直接列出。
-            // 如果需要每週一次的標頭欄位 (時間|戶別...)，需在 newRows 裡加入。
-            // 若您希望加上藍色標頭列，請在 newRows 建構時加入該列，並在此處上色。
-        ];
+        // 4. 格式化
+        const formatRequests = [];
+        const styleWeek = { backgroundColor: { red: 0.98, green: 0.75, blue: 0.56 }, horizontalAlignment: "CENTER", textFormat: { bold: true } };
+        const styleDate = { backgroundColor: { red: 1, green: 1, blue: 0 }, horizontalAlignment: "CENTER", textFormat: { bold: true } };
+        const styleHead = { backgroundColor: { red: 0.57, green: 0.8, blue: 0.86 }, horizontalAlignment: "CENTER", textFormat: { bold: true } };
+        const styleData = { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: false, foregroundColor: { red: 0, green: 0, blue: 0 } }, horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE" };
+
+        for (let i = 0; i < 7; i++) {
+            const startCol = i * NEW_BLOCK_WIDTH;
+            const endCol = startCol + NEW_BLOCK_WIDTH;
+            formatRequests.push({ mergeCells: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex, endRowIndex: targetRowIndex + 1, startColumnIndex: startCol, endColumnIndex: endCol }, mergeType: "MERGE_ALL" } });
+            formatRequests.push({ mergeCells: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex + 1, endRowIndex: targetRowIndex + 2, startColumnIndex: startCol, endColumnIndex: endCol }, mergeType: "MERGE_ALL" } });
+        }
+
+        formatRequests.push({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex, endRowIndex: targetRowIndex + 1 }, cell: { userEnteredFormat: styleWeek }, fields: "userEnteredFormat" } });
+        formatRequests.push({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex + 1, endRowIndex: targetRowIndex + 2 }, cell: { userEnteredFormat: styleDate }, fields: "userEnteredFormat" } });
+        formatRequests.push({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex + 2, endRowIndex: targetRowIndex + 3 }, cell: { userEnteredFormat: styleHead }, fields: "userEnteredFormat" } });
         
-        // 補上邊框
-        formatRequests.push({
-             updateBorders: {
-                range: { sheetId: 0, startRowIndex: targetRowIndex, endRowIndex: targetRowIndex + newRows.length },
-                top: { style: "SOLID" }, bottom: { style: "SOLID" },
-                left: { style: "SOLID" }, right: { style: "SOLID" },
-                innerHorizontal: { style: "SOLID" }, innerVertical: { style: "SOLID" }
-             }
-        });
+        if (newRows.length > 3) {
+            formatRequests.push({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex + 3, endRowIndex: targetRowIndex + newRows.length, startColumnIndex: 0, endColumnIndex: TOTAL_COLUMNS }, cell: { userEnteredFormat: styleData }, fields: "userEnteredFormat" } });
+        }
+
+        formatRequests.push({ updateBorders: { range: { sheetId: targetSheetId, startRowIndex: targetRowIndex, endRowIndex: targetRowIndex + newRows.length, startColumnIndex: 0, endColumnIndex: TOTAL_COLUMNS }, top: { style: "SOLID" }, bottom: { style: "SOLID" }, left: { style: "SOLID" }, right: { style: "SOLID" }, innerHorizontal: { style: "SOLID" }, innerVertical: { style: "SOLID" } } });
 
         await sheets.spreadsheets.batchUpdate({
             spreadsheetId,
             requestBody: { requests: formatRequests }
         });
 
-        return { status: "success", message: "同步完成" };
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
+    return { status: "success", message: `同步完成，共處理 ${weeklyChunks.length} 週資料。` };
+}
+
+
+/**
+ * [Trigger] 監聽預約變動，自動同步 Google Sheet
+ */
+exports.onAppointmentChange = onDocumentWritten({
+    document: "appointments/{docId}",
+    database: "anxi-app",
+    region: "asia-east1",
+    memory: "1GiB",
+    timeoutSeconds: 540,
+    secrets: ["GOOGLE_SHEETS_CLIENT_EMAIL", "GOOGLE_SHEETS_PRIVATE_KEY"]
+}, async (event) => {
+    const functionName = "onAppointmentChange";
+    const beforeData = event.data.before?.data();
+    const afterData = event.data.after?.data();
+
+    const projectId = afterData?.projectId || beforeData?.projectId;
+    if (!projectId) return;
+
+    const rangesToSync = []; // 存 {start, end} 物件
+
+    // Helper
+    const getDateStr = (ts) => {
+        if (!ts || !ts.toDate) return null;
+        // 使用 en-CA 取得 YYYY-MM-DD 格式 (台灣時區)
+        return ts.toDate().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    };
+
+    // 1. 變動前的日期 -> 加入同步範圍
+    if (beforeData && beforeData.appointmentDate) {
+        const d = getDateStr(beforeData.appointmentDate);
+        if (d) rangesToSync.push({ start: d, end: d });
+    }
+
+    // 2. 變動後的日期 -> 加入同步範圍
+    if (afterData && afterData.appointmentDate) {
+        const d = getDateStr(afterData.appointmentDate);
+        if (d) rangesToSync.push({ start: d, end: d });
+    }
+
+    if (rangesToSync.length === 0) return;
+
+    console.log(`[${functionName}] Trigger sync for ranges:`, JSON.stringify(rangesToSync));
+
+    try {
+        // ✅ [修改] 一次性呼叫核心邏輯，傳入所有受影響的日期
+        await _coreSyncLogic(projectId, rangesToSync);
+        console.log(`[${functionName}] 自動同步完成。`);
     } catch (error) {
-        console.error(`[${functionName}] 錯誤:`, error);
-        throw new HttpsError("internal", `同步失敗: ${error.message}`);
+        console.error(`[${functionName}] 自動同步失敗:`, error);
     }
 });
