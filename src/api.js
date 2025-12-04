@@ -7232,3 +7232,36 @@ export const fetchCustomersForExport = async (projectId, userPhone, userProjectS
     throw error;
   }
 };
+
+
+/**
+ * [API] 更新專案的 Google Sheet 設定
+ */
+export const updateProjectSheetSettings = async (projectId, sheetId, tabName) => {
+  if (!projectId) return { status: 'error', message: '缺少 projectId' };
+  
+  try {
+    // 直接更新 projects 集合
+    const docRef = doc(db, 'projects', projectId);
+    await updateDoc(docRef, {
+        googleSheetId: sheetId,
+        googleSheetTabName: tabName
+    });
+    return { status: 'success' };
+  } catch (e) {
+    return { status: 'error', message: e.message };
+  }
+};
+
+/**
+ * [API] 呼叫後端執行 Sheet 同步
+ */
+export const syncToGoogleSheet = async (projectId, startDate, endDate) => {
+    const syncFunc = httpsCallable(functions, 'syncBookingToSheet');
+    try {
+        const result = await syncFunc({ projectId, startDate, endDate });
+        return result.data;
+    } catch (e) {
+        throw new Error(e.message);
+    }
+};

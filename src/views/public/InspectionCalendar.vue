@@ -1474,8 +1474,11 @@ watch([
 ], ([newName, preferences]) => {
   // 確保 projectName 有效
   if (newName && newName !== '讀取中...') {
-    const savedTimeSlots = preferences?.calendarTimeSlots;
     
+    // ✅ [新增建議] 如果 preferences 是空的物件，且使用者剛登入，可能會有短暫的時間差
+    // 但因為我們在 setUser 就寫入了，理論上是同步的。
+    
+    const savedTimeSlots = preferences?.calendarTimeSlots;
 
     // 檢查是否真的需要更新（避免不必要的觸發）
     const currentSelectionStr = JSON.stringify([...selectedTimeSlots.value].sort());
@@ -1486,6 +1489,10 @@ watch([
       if (currentSelectionStr !== savedSlotsStr) {
         isInitializing.value = true;
         selectedTimeSlots.value = [...savedTimeSlots];
+        
+        // Debug Log: 確認有讀取到
+        console.log('已載入使用者自訂時段:', savedTimeSlots);
+
         nextTick(() => {
           isInitializing.value = false;
         });
@@ -1495,6 +1502,10 @@ watch([
       const defaultSlots = PROJECT_TIME_SLOTS[newName] || PROJECT_TIME_SLOTS.default;
       isInitializing.value = true;
       selectedTimeSlots.value = [...defaultSlots];
+      
+      // Debug Log
+      console.log('無自訂時段，載入專案預設值');
+
       nextTick(() => {
         isInitializing.value = false;
       });
@@ -1807,6 +1818,12 @@ onMounted(async () => {
     path: route.path,
   });
   
+  // ✅ [新增] 強制從後端讀取最新的使用者偏好設定 (確保重整頁面也能拿到最新時段)
+  if (userStore.isLoggedIn) {
+    console.log('正在重新同步使用者偏好設定...');
+    await userStore.loadUserPreferencesFromDatabase();
+  }
+
   isLoading.value = true;
   error.value = null;
 

@@ -526,6 +526,8 @@ const routes = [
   },
   // ✓ END: 新增「客資系統」入口
 
+  
+
   // ✓ START: 新增「客資系統」最終頁面 (待開發)
   {
     path: '/customer-management/:projectId',
@@ -539,6 +541,17 @@ const routes = [
       requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'],
       layout: DefaultLayout,
       title: '客資系統'
+    }
+  },
+
+  {
+    path: '/booking-sync/:projectId',
+    name: 'BookingSync',
+    component: () => import('@/views/public/BookingSync.vue'),
+    props: true,
+    meta: {
+      layout: PublicLayout,
+      title: '預約同步'
     }
   },
 
