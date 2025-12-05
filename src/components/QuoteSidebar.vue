@@ -56,7 +56,7 @@
         </div>
         <v-btn block color="success" size="large" class="mt-4" @click="goToQuoteSettings" :disabled="quoteStore.itemCount === 0">
           <v-icon left>mdi-file-document-edit-outline</v-icon>
-          進入報價設定
+          報價單設定
         </v-btn>
       </div>
     </template>

@@ -3,10 +3,10 @@
 
     <v-layout>
 
-      <v-app-bar density="compact" flat border location="top">
+      <v-app-bar  flat border location="top">
         <v-btn icon="mdi-close" @click="$emit('close')"></v-btn>
         
-<v-app-bar-title class="text-caption">{{ props.projectName }} 列印報價單</v-app-bar-title>
+<v-app-bar-title class="text-subtitle-1">{{ props.projectName }} 列印報價單</v-app-bar-title>
         <v-spacer></v-spacer>
 
       <v-tooltip :text="isEditMode ? '切換檢視' : '切換編輯'" location="bottom">
@@ -16,7 +16,7 @@
       variant="tonal"
       color="black"
       @click="toggleEditMode"
-      size="small"
+      size="large"
       class="mr-2"
       :icon="isEditMode ? 'mdi-eye' : 'mdi-pencil'"
     >
@@ -31,7 +31,7 @@
       variant="tonal"
       color="black"
       @click="downloadPDF"
-      size="small"
+      size="large"
       class="mr-2"
       icon="mdi-file-download"
     >
@@ -46,7 +46,7 @@
       variant="tonal"
       color="black"
       @click="printCanvas"
-      size="small"
+      size="large"
       class="mr-2"
       icon="mdi-printer"
     >
@@ -66,7 +66,7 @@
       color="black"
       @click="handleSaveTemplate"
       :loading="isSaving"
-      size="small"
+      size="large"
       class="mr-2"
       icon="mdi-content-save"
     >

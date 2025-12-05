@@ -30,7 +30,7 @@
       </v-col>
     </v-row>
     
-        <v-tabs v-model="tab" align-tabs="start" class="mb-4">
+        <v-tabs density="compact"  v-model="tab" align-tabs="start" class="mb-4" bg-color="primary" grow >
       <v-tab value="settings">
         <v-icon start>mdi-cog</v-icon>
         建案設定
@@ -314,7 +314,7 @@
                 @click="uploadAllStagedFiles"
                 :loading="isUploading"
                 :disabled="stagedFiles.length === 0"
-                color="indigo"
+                color="green"
                 block
                 size="large"
                 prepend-icon="mdi-upload"
@@ -500,7 +500,7 @@
                 @click="uploadAllStagedSvgFiles"
                 :loading="isUploadingSvg"
                 :disabled="stagedSvgFiles.length === 0"
-                color="deep-purple"
+                color="green"
                 block
                 size="large"
                 prepend-icon="mdi-upload"

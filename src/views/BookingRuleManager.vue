@@ -16,6 +16,7 @@
         <v-tab value="batches">批次管理</v-tab>
         <v-tab value="settings">驗屋預約設定</v-tab>
         <v-tab value="report-settings">驗屋報告設定</v-tab>
+        <v-tab value="sheet-sync" v-if="isAdmin">Sheet 同步管理</v-tab>
         <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
         <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
       </v-tabs>
@@ -24,7 +25,8 @@
         <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
       </div>
       <div v-else>
-        <v-window v-model="activeTab">
+
+         <v-window v-model="activeTab">
           <v-window-item value="batches" class="pa-4">
   <v-toolbar flat color="transparent">
     <v-text-field
@@ -840,6 +842,126 @@
              </v-container>
           </v-window-item>
 
+          <v-window-item value="sheet-sync" class="settings-tab-content" v-if="isAdmin">
+            <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
+              <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            </div>
+            
+            <div v-else class="settings-form-container pa-4">
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-card variant="outlined" class="h-100">
+                    <v-card-title class="d-flex align-center bg-grey-lighten-4">
+                      <v-icon start color="primary">mdi-cog</v-icon>
+                      連線設定
+                    </v-card-title>
+                    <v-card-text class="pt-4">
+                      <p class="text-body-2 text-grey-darken-1 mb-4">
+                        設定同步目標。請確保 Sheet 已分享給 Service Account。
+                      </p>
+                      
+                      <v-text-field
+                        v-model="projectSettings.googleSheetId"
+                        label="Sheet ID (試算表 ID)"
+                        variant="outlined"
+                        density="compact"
+                        class="mb-4"
+                        prepend-inner-icon="mdi-identifier"
+                        hint="網址列中 /d/ 後面的字串"
+                        persistent-hint
+                      ></v-text-field>
+
+                      <v-text-field
+                        v-model="projectSettings.googleSheetTabName"
+                        label="工作表名稱 (Tab Name)"
+                        variant="outlined"
+                        density="compact"
+                        prepend-inner-icon="mdi-table"
+                        hint="下方頁籤名稱，例如 '工作表1'"
+                        persistent-hint
+                      ></v-text-field>
+
+                      <v-alert type="info" variant="tonal" class="mt-6" density="compact" border="start">
+                        <div class="text-caption">
+                          <strong>權限提示:</strong><br>
+                          請將試算表分享給：<br>
+                          <code>firebase-adminsdk-xxxx@....com</code>
+                        </div>
+                      </v-alert>
+                    </v-card-text>
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-4">
+                      <v-spacer></v-spacer>
+                      <v-btn 
+                        color="primary" 
+                        variant="flat"
+                        @click="saveSheetSettings"
+                        :loading="isSavingSheetSettings"
+                      >
+                        儲存設定
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-col>
+
+                <v-col cols="12" md="6">
+                  <v-card variant="outlined" class="h-100">
+                    <v-card-title class="d-flex align-center bg-grey-lighten-4">
+                      <v-icon start color="success">mdi-sync</v-icon>
+                      手動同步
+                    </v-card-title>
+                    <v-card-text class="pt-4">
+                      <p class="text-body-2 text-grey-darken-1 mb-4">
+                        選擇週次區間，將預約資料寫入 Google Sheet。
+                      </p>
+
+                      <div class="mb-2 font-weight-bold text-grey-darken-2">選擇日期範圍 (週一 ~ 週日)</div>
+                      <VueDatePicker
+                          v-model="syncDateRange"
+                          range
+                          :enable-time-picker="false"
+                          format="yyyy/MM/dd"
+                          auto-apply
+                          locale="zh-TW"
+                          :min-date="new Date('2023-01-01')"
+                          placeholder="點擊選擇日期"
+                          :teleport="true"
+                          class="mb-2"
+                      ></VueDatePicker>
+                      
+                      <div v-if="syncDateError" class="text-caption text-error mt-1">
+                        <v-icon start size="x-small">mdi-alert-circle</v-icon>
+                        {{ syncDateError }}
+                      </div>
+
+                      <v-alert v-if="isSyncRangeValid" type="warning" variant="tonal" class="mt-4" density="compact" border="start">
+                        <div class="text-caption font-weight-bold">注意：</div>
+                        <div class="text-caption">
+                          同步操作將會<strong>覆蓋</strong> Google Sheet 上該日期區間的舊資料 (備註欄位除外)。
+                        </div>
+                      </v-alert>
+                    </v-card-text>
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-4">
+                      <v-spacer></v-spacer>
+                      <v-btn 
+                        color="success" 
+                        variant="flat"
+                        size="large"
+                        prepend-icon="mdi-cloud-upload"
+                        @click="handleExecuteSync"
+                        :loading="isSyncing"
+                        :disabled="!isSyncRangeValid || !projectSettings.googleSheetId"
+                      >
+                        開始同步
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-col>
+              </v-row>
+            </div>
+          </v-window-item>
+
         </v-window>
 
       </div>
@@ -1423,11 +1545,14 @@ import RichTextEditor from '@/components/RichTextEditor.vue';
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
+import { useUserStore } from '@/store/user';
 
 //  將所有來自 '@/api' 的引入合併成這一個
 import {
-  updateProjectSettings,   
-  fetchProjectConfig,      
+  updateProjectSettings,
+  fetchProjectConfig,
   checkDateConflicts,
   saveBatchWithRules,
   fetchRulesForBatch,
@@ -1435,10 +1560,10 @@ import {
   deleteBookingBatch,
   manualTriggerSendReminders,
   triggerNotDownloadedReportReminder,
-  uploadAttachmentImage, // ✓ 新增
+  uploadAttachmentImage,
   deleteAttachmentImage,
- 
- 
+  updateProjectSheetSettings, // 設定用
+  syncToGoogleSheet           // 同步用 (新增)
 } from '@/api';
 
 
@@ -1580,6 +1705,37 @@ const projectName = computed(() => projectStore.idToNameMap[projectId.value] || 
 const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
+
+// 2. 新增權限判斷 Computed
+const isAdmin = computed(() => {
+  const roles = userStore.currentUserRoles || [];
+  return roles.includes('超級管理員') || roles.includes('系統管理員');
+});
+
+// --- Google Sheet 同步相關狀態 ---
+const syncDateRange = ref(null);
+const isSyncing = ref(false);
+const isSavingSheetSettings = ref(false);
+
+// 日期範圍驗證 Computed
+const isSyncRangeValid = computed(() => {
+  if (!syncDateRange.value || syncDateRange.value.length !== 2) return false;
+  const start = new Date(syncDateRange.value[0]);
+  const end = new Date(syncDateRange.value[1]);
+  // 檢查是否為週一到週日 (根據您的需求，也可放寬限制)
+  return start.getDay() === 1 && end.getDay() === 0;
+});
+
+const syncDateError = computed(() => {
+    if (!syncDateRange.value) return '';
+    if (!isSyncRangeValid.value && syncDateRange.value.length === 2) {
+        return '請選擇完整的週次 (週一 ~ 週日)';
+    }
+    return '';
+});
+
+
+const userStore = useUserStore(); // <--- 1. 初始化 UserStore
 const projectId = ref(route.params.projectId);
 const isLoading = ref(true);
 const isSaving = ref(false);
@@ -1985,6 +2141,11 @@ async function loadDataForProject() {
         
         // 1. 讀取啟用開關
         projectSettings.value.enableScheduledPublish = settings.enableScheduledPublish || false;
+
+        // 👇👇👇 [新增：讀取 Google Sheet 設定] 👇👇👇
+        projectSettings.value.googleSheetId = settings.googleSheetId || '';
+        projectSettings.value.googleSheetTabName = settings.googleSheetTabName || '';
+        // 👆👆👆 [新增結束] 👆👆👆
 
         // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
         const toDate = (val) => {
@@ -2502,6 +2663,50 @@ async function saveSettings() {
         isSavingSettings.value = false;
     }
 }
+
+
+async function saveSheetSettings() {
+  if (!projectId.value) return;
+  
+  isSavingSheetSettings.value = true;
+  try {
+    await updateProjectSheetSettings(
+      projectId.value, 
+      projectSettings.value.googleSheetId, 
+      projectSettings.value.googleSheetTabName
+    );
+    showSnackbar("Google Sheet 設定已儲存", 'success');
+  } catch (error) {
+    showSnackbar(`儲存失敗: ${error.message}`, 'error');
+  } finally {
+    isSavingSheetSettings.value = false;
+  }
+}
+// 👆👆👆 [新增結束] 👆👆👆
+
+// 執行同步函式
+async function handleExecuteSync() {
+  if (!projectSettings.value.googleSheetId || !projectSettings.value.googleSheetTabName) {
+    showSnackbar("請先完成上方設定並儲存", 'error');
+    return;
+  }
+  if (!isSyncRangeValid.value) return;
+
+  isSyncing.value = true;
+  try {
+    await syncToGoogleSheet(
+      projectId.value, 
+      syncDateRange.value[0], 
+      syncDateRange.value[1]
+    );
+    showSnackbar("同步成功！", 'success');
+  } catch (e) {
+    showSnackbar(`同步失敗: ${e.message}`, 'error');
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
 
 
 // applyTemplate 函式，讓它打開預覽視窗

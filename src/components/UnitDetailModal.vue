@@ -426,7 +426,7 @@ import SalesInfoForm from './SalesInfoForm.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
-import { useToast } from 'vue-toastification'; // ✅ [打勾] 1. 導入 useToast
+import { useToast, POSITION } from 'vue-toastification';
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
@@ -802,15 +802,21 @@ const addToQuoteButtonText = computed(() => {
 // 處理加入報價
 function handleAddToQuote() {
   if (!props.unitData) {
-    toast.error('無法加入報價：缺少單位資料');
+    toast.error('無法加入報價：缺少單位資料', {
+  position: POSITION.BOTTOM_CENTER
+});
     return;
   }
   
   if (!canAddToQuote.value) {
     if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售') {
-      toast.error('報價模式下無法加入已售出的單位');
+      toast.error('報價模式下無法加入已售出的單位', {
+  position: POSITION.BOTTOM_CENTER
+});
     } else {
-      toast.error('此單位目前無法加入報價');
+      toast.error('此單位目前無法加入報價', {
+  position: POSITION.BOTTOM_CENTER
+});
     }
     return;
   }
@@ -837,7 +843,9 @@ function handleAddToQuote() {
 
   // ✅ [打勾] 4. 根據回傳值顯示 toast
   if (success) {
-    toast.success(`戶別 ${unitData.戶別} 成功加入報價`);
+    toast.success(`戶別 ${unitData.戶別} 成功加入報價`, {
+  position: POSITION.BOTTOM_CENTER
+});
   }
 }
 

@@ -17723,12 +17723,12 @@ async function _coreSyncLogic(projectId, dateRanges) {
                 if (headerRow) {
                     let blockWidth = 7;
                     const unitIdxRel = headerRow.indexOf('戶別');
-                    const typeIdxRel = headerRow.indexOf('預約項目');
+                    const typeIdxRel = headerRow.indexOf('項目');
                     const remarkIdxRel = headerRow.indexOf('備註');
-                    const inspectorIdxRel = headerRow.indexOf('驗屋人員');
+                    const inspectorIdxRel = headerRow.indexOf('人員');
                     
                     const timeIdxRel = headerRow.indexOf('時間');
-                    const nameIdxRel = headerRow.indexOf('預約人姓名');
+                    const nameIdxRel = headerRow.indexOf('姓名');
                     const methodIdxRel = headerRow.indexOf('方式') !== -1 ? headerRow.indexOf('方式') : (headerRow.indexOf('選擇方式') !== -1 ? headerRow.indexOf('選擇方式') : -1);
 
                     if (unitIdxRel !== -1 && remarkIdxRel !== -1 && inspectorIdxRel !== -1 && typeIdxRel !== -1) {
@@ -17886,7 +17886,7 @@ async function _coreSyncLogic(projectId, dateRanges) {
 
         // Row 3
         const headerRow = [];
-        const dailyHeaders = ["時間", "戶別", "預約人姓名", "預約項目", "方式", "備註", "驗屋人員"];
+        const dailyHeaders = ["時間", "戶別", "姓名", "項目", "方式", "備註", "人員"];
         for(let i=0; i<7; i++) headerRow.push(...dailyHeaders);
         newRows.push(headerRow);
 

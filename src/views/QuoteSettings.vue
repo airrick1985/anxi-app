@@ -103,15 +103,16 @@
       <v-card-text>
         <v-row align="center">
           <v-col cols="12" md="2">
-            <v-select label="報價人員" :items="personnelOptions" v-model="selectedPersonnel" :readonly="!canEditPersonnel" item-title="name" return-object></v-select>
+            <v-select variant="outlined" label="報價人員" :items="personnelOptions" v-model="selectedPersonnel" :readonly="!canEditPersonnel" item-title="name" return-object></v-select>
           </v-col>
           <v-col cols="12" md="2">
-            <v-text-field label="聯絡電話" :model-value="personnelPhone" readonly></v-text-field>
+            <v-text-field variant="outlined" label="聯絡電話" :model-value="personnelPhone" readonly></v-text-field>
           </v-col>
           <v-col cols="12" md="8" class="text-right">
           <v-btn 
-          color="secondary" 
-          variant="tonal" 
+          color="green" 
+          size="x-large"
+          
           @click="openQuoteEditor" prepend-icon="mdi-printer"
         >
           列印報價單 </v-btn>
@@ -816,9 +817,15 @@ async function continueGenerateQuote(item, selectedTemplate) {
 function goBack() {
     const sourceMode = route.query.viewMode;
     const backRouteName = sourceMode === 'quote' ? 'QuoteSystem' : 'SalesControlSystem';
-    router.push({ name: backRouteName, params: { projectName: projectId.value } });
+    
+    // 修改：保留 query 參數，確保返回上一頁時狀態 (viewMode) 能被正確識別，
+    // 避免上一頁誤判為新進入而清空 store 中的資料。
+    router.push({ 
+        name: backRouteName, 
+        params: { projectName: projectId.value },
+        query: { ...route.query } 
+    });
 }
-
 
 function openQuoteEditor() {
   isQuoteEditorDialogVisible.value = true;
