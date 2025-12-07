@@ -68,6 +68,7 @@
         <div v-else class="quote-list">
           <div class="quote-item-header d-none d-md-flex">
             <div class="item-cell flex-1">戶別</div>
+            <div class="item-cell flex-1">物件類型</div>
             <div class="item-cell flex-1">面積(坪)</div>
             <div class="item-cell flex-1">房屋總價</div>
             <div class="item-cell flex-1">房屋單價</div>
@@ -754,19 +755,22 @@ function checkAndSelectPaymentTemplate(item) {
     const finalTotal = quoteStore.getFinalTotalPrice(item.internalId);
     const buyerType = item.isFirstTimeBuyer === '是' ? '首購' : '非首購';
     
+    // ✅ [新增] 取得物件類型 (優先讀取 propertyType，若無則讀取 layout 或預設 '住家')
+    // 注意：這裡必須從 item.unitDetails 讀取，因為 item 本身可能沒有這個欄位
+    const propertyType = item.unitDetails?.propertyType || item.unitDetails?.layout || '住家';
+    
     // 找出符合條件的範本
     const applicableTemplates = selectApplicableTemplates(
         paymentTemplates.value, 
         finalTotal, 
-        buyerType
+        buyerType,
+        propertyType // ✅ [修改] 將物件類型傳入 API
     );
     
     if (applicableTemplates.length === 0) {
-        // 沒有符合條件的範本
         throw new Error(
             `找不到適用於「${item.unitId}」的期款範本。\n` +
-            `條件：總價 ${finalTotal.toLocaleString()}萬、${buyerType}\n` +
-            `請至期款範本設定頁面新增對應範本。`
+            `條件：${propertyType}、總價 ${finalTotal.toLocaleString()}萬、${buyerType}`
         );
     } else if (applicableTemplates.length === 1) {
         // 只有一個符合的範本，直接使用

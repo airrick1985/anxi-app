@@ -85,8 +85,16 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn variant="text" @click="close">取消</v-btn>
-        <v-btn color="success" @click="confirm">確定</v-btn>
+        <v-btn variant="text" @click="close">關閉</v-btn>
+        
+        <v-btn 
+          color="success" 
+          @click="confirm" 
+          :disabled="localParking.length === 0"
+        >
+          確定
+        </v-btn>
+
       </v-card-actions>
     </v-card>
 
@@ -232,7 +240,7 @@ const title = computed(() => {
     const displayId = props.unitId;
     return `為 ${displayId} 選擇車位`;
   }
-  return '編輯持有車位';
+  return '選擇車位';
 });
 
 // ✅ 更新 computed 屬性，使其讀取 Firestore 欄位

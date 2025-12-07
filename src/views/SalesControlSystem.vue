@@ -224,7 +224,7 @@
           :items="tableItems"
           :loading="loading"
           fixed-header
-          height="calc(100vh - 140px)"
+          :height="tableHeight" 
           hover
           density="compact"
           class="elevation-1 row-pointer compact-table"
@@ -233,7 +233,13 @@
           @click:row="handleRowClick"
         >
           <template v-slot:item.status="{ item }">
-            <v-chip size="x-small" label :color="statusColorMap.get(item.status) || 'grey'" class="font-weight-bold">
+            <v-chip 
+              size="small" 
+              label 
+              :color="statusColorMap.get(item.status) || 'grey'"
+              :class="['font-weight-bold', `text-${getContrastTextColor(statusColorMap.get(item.status))}`]"
+              variant="flat"
+            >
               {{ item.status }}
             </v-chip>
           </template>
@@ -253,12 +259,33 @@
             </span>
           </template>
 
-          <template v-slot:header.quote_mode_total_price="{ column, sort }">
+          <template v-slot:header.quote_mode_total_price="{ column, sort, sortBy }">
             <div class="d-flex align-center ga-2"> 
               
-              <span class="cursor-pointer" @click="sort(column)">
-                {{ column.title }}
-              </span>
+              <div 
+                class="d-flex align-center cursor-pointer user-select-none" 
+                @click="sort(column)"
+              >
+                <span>{{ column.title }}</span>
+                
+                <template v-if="sortBy.some(s => s.key === column.key)">
+                   <v-icon 
+                     :icon="sortBy.find(s => s.key === column.key).order === 'desc' ? 'mdi-arrow-down' : 'mdi-arrow-up'"
+                     size="small"
+                     class="ml-1"
+                     color="black"
+                   ></v-icon>
+                </template>
+                
+                <template v-else>
+                   <v-icon 
+                     icon="mdi-arrow-up"
+                     size="small"
+                     class="ml-1 text-disabled"
+                     style="opacity: 0.3;"
+                   ></v-icon>
+                </template>
+              </div>
               
               <div @click.stop style="transform: scale(0.8); transform-origin: left center;">
                 <v-switch
@@ -267,10 +294,11 @@
                   color="error"
                   density="compact"
                   hide-details
-                 
+                
                   class="ma-0 pa-0"
                 ></v-switch>
               </div>
+
             </div>
           </template>
 
@@ -284,18 +312,77 @@
 
 
           <template v-slot:item.price_list_house_total="{ item }">
-            <span>
-              {{ formatNumber(item.price_list_house_total, 0) }}
-              <span class="text-caption text-grey">({{ calculateUnitPrice(item) }} 萬/坪)</span>
+            <template v-if="currentViewMode === 'quote'">
+              <span v-if="item.status === '已售'" class="text-red font-weight-bold">已售</span>
+              <span v-else class="text-indigo font-weight-medium">
+                {{ formatNumber(item.price_list_house_total, 0) }} 萬 
+              </span>
+            </template>
+            
+            <template v-else>
+              <span class="text-grey font-weight-bold"">
+                {{ formatNumber(item.price_list_house_total, 0) }}
+              </span>
+            </template>
+          </template>
+
+          <template v-slot:item.unit_price_list="{ item }">
+            <span v-if="item.unit_price_list" class="text-grey">
+              {{ formatNumber(item.unit_price_list, 2) }}
+            </span>
+            <span v-else class="text-grey">-</span>
+          </template>
+
+          <template v-slot:item.unit_price_floor="{ item }">
+            <span v-if="item.unit_price_floor" class="text-red">
+              {{ formatNumber(item.unit_price_floor, 2) }}
+            </span>
+            <span v-else class="text-grey">-</span>
+          </template>
+
+          <template v-slot:item.unit_price_transaction="{ item }">
+            <span v-if="item.unit_price_transaction" class="text-success font-weight-bold">
+              {{ formatNumber(item.unit_price_transaction, 2) }}
+            </span>
+            <span v-else class="text-grey">-</span>
+          </template>
+
+
+          <template v-slot:item.price_floor_house_total="{ item }">
+            <span class="text-red font-weight-bold">
+              {{ formatNumber(item.price_floor_house_total, 0) }}
             </span>
           </template>
 
-          <template v-slot:item.price_floor_house_total="{ item }">{{ formatNumber(item.price_floor_house_total, 0) }}</template>
-          <template v-slot:item.price_transaction_house="{ item }">{{ formatNumber(item.price_transaction_house, 0) }}</template>
-          <template v-slot:item.total_transaction="{ item }">
-            <span class="font-weight-bold text-indigo">{{ formatNumber(item.total_transaction, 0) }}</span>
+          <template v-slot:item.parking_floor_total="{ item }">
+            <span class="text-red font-weight-bold">
+              {{ formatNumber(item.parking_floor_total, 0) }}
+            </span>
           </template>
-          <template v-slot:item.total_floor="{ item }">{{ formatNumber(item.total_floor, 0) }}</template>
+
+          <template v-slot:item.parking_trans_total="{ item }">
+           <span class="font-weight-bold text-success">
+              {{ formatNumber(item.parking_trans_total, 0) }}
+            </span>
+          </template>
+
+          <template v-slot:item.price_transaction_house="{ item }">
+          <span class="font-weight-bold text-success">
+         {{ formatNumber(item.price_transaction_house, 0) }}
+           </span>
+          </template>
+
+          <template v-slot:item.total_transaction="{ item }">
+            <span class="font-weight-bold text-success">
+            {{ formatNumber(item.total_transaction, 0) }}
+            </span>
+          </template>
+         
+          <template v-slot:item.total_floor="{ item }">
+          <span class="font-weight-bold text-red">
+          {{ formatNumber(item.total_floor, 0) }}
+          </span>
+          </template>
           
           <template v-slot:item.price_diff="{ item }">
             <span :class="item.price_diff >= 0 ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
@@ -308,12 +395,20 @@
         </v-data-table>
       </div>
 
-    </div> <v-bottom-navigation
+    </div> 
+    
+    <v-bottom-navigation
       v-if="isMobile"
       :active="true"
       color="primary"
       app
+      grow  
     >
+    <v-btn @click="viewFormat = viewFormat === 'grid' ? 'list' : 'grid'">
+        <v-icon>{{ viewFormat === 'grid' ? 'mdi-view-list' : 'mdi-view-grid' }}</v-icon>
+        <span>{{ viewFormat === 'grid' ? '列表' : '網格' }}</span>
+      </v-btn>
+
       <v-btn @click="isQuoteSidebarOpen = true">
         <v-badge
           :content="itemCount"
@@ -324,6 +419,7 @@
         </v-badge>
         <span>報價單</span>
       </v-btn>
+
       
       <v-menu top>
         <template v-slot:activator="{ props }">
@@ -346,8 +442,8 @@
         <v-icon>mdi-car-side</v-icon>
         <span>車位</span>
       </v-btn>
-      
-      <v-menu top v-if="currentViewMode === 'sales'">
+
+     <v-menu top v-if="currentViewMode === 'sales'">
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props">
             <v-icon>mdi-currency-usd</v-icon>
@@ -393,7 +489,7 @@
             <template v-slot:prepend>
               <v-icon color="black">mdi-tray-arrow-up</v-icon>
             </template>
-            <v-list-item-title>上傳戶別資料EZXCEL</v-list-item-title>
+            <v-list-item-title>上傳戶別資料EXCEL</v-list-item-title>
           </v-list-item>
           <v-divider></v-divider>
           <v-list-item @click="handleOpenActivityMessage">
@@ -429,7 +525,8 @@
           </v-list-item>
         </v-list>
       </v-menu>
-    </v-bottom-navigation>
+       
+       </v-bottom-navigation>
 
    <UnitDetailModal 
       v-if="isModalVisible"
@@ -682,6 +779,26 @@ import { mdiViewDashboardVariantOutline } from '@mdi/js';
 // [新增] 視圖格式：'grid' | 'list'
 const viewFormat = ref('grid'); 
 
+// [新增] 自動判斷背景色亮度，回傳 'black' 或 'white'
+const getContrastTextColor = (hexColor) => {
+  if (!hexColor || typeof hexColor !== 'string') return 'white';
+  
+  // 移除 # 號
+  const hex = hexColor.replace('#', '');
+  
+  // 解析 RGB
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  
+  // 計算亮度 (YIQ 公式)
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  
+  // 亮度大於 128 (亮色系) 回傳黑色，否則回傳白色
+  return yiq >= 128 ? 'black' : 'white';
+};
+
+
 // ✅ [修改] 控制是否顯示「已售」的資料列 (預設 true: 顯示全部)
 const showSoldItems = ref(true);
 
@@ -693,7 +810,9 @@ const COLUMN_DEFINITIONS = [
     { key: 'building', title: '棟別' },
     { key: 'floor', title: '樓層' },
     { key: 'unitId', title: '戶別' },
+    { key: 'propertyType', title: '物件類型' },
     { key: 'layout', title: '格局' },
+    
     { key: 'salesStatus_backend', title: '銷控後台狀態' },
     { key: 'salesStatus_quote', title: '報價系統狀態' },
     { key: 'buyerName', title: '買方姓名' },
@@ -756,6 +875,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'packageBankAccount', title: '配套款匯款帳號' },
     { key: 'packageBankAccountName', title: '配套款戶名' },
     { key: 'constructionMethod', title: '興建方式' },
+    
     { key: 'payment_deposit_date', title: '小訂日期' },
     { key: 'payment_supplement_date', title: '補足日期' },
     { key: 'payment_contract_date', title: '簽約日期' },
@@ -782,6 +902,19 @@ const salesDataStore = useSalesDataStore();
 const projectIdForPresence = computed(() => route.params.projectName);
 const systemNameForPresence = computed(() => route.meta.viewMode === 'quote' ? '報價系統' : '銷控系統');
 useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
+
+// ✅ [新增] 動態計算表格高度
+const tableHeight = computed(() => {
+  if (isMobile.value) {
+    // 手機版：扣除 Header + Padding + Bottom Navigation (約 56px + padding)
+    // 建議扣除 230px 左右 (視實際標頭高度而定，寧可多扣一點也不要被切到)
+    return 'calc(100vh - 230px)';
+  } else {
+    // 電腦版：扣除 Toolbar + Padding
+    // 原本是 140px，稍微增加一點緩衝到 150px
+    return 'calc(100vh - 150px)';
+  }
+});
 
 const { 
   isSlideDialogVisible, 
@@ -935,39 +1068,39 @@ const formatDate = (val) => {
   return val;
 };
 
-// 3. 定義列表欄位
 // 修改 tableHeaders computed
 const tableHeaders = computed(() => {
-  // [報價模式/銷售權限]
-if (currentViewMode.value === 'quote') {
+  // [報價模式] (保持不變)
+  if (currentViewMode.value === 'quote') {
     return [
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
-      { title: '房屋總面積', key: 'area_house_ping', align: 'start' },
-      
-      // ✅ [修改] Key 指向 quote_mode_total_price，並套用排序
-      { 
-        title: '房屋總價', 
-        key: 'quote_mode_total_price', 
-        align: 'start',
-        sort: customPriceSort // 引用之前定義的排序函式
-      },
-      
-      { 
-        title: '房屋單價', 
-        key: 'unit_price_value', 
-        align: 'start',
-        sort: customPriceSort 
-      },
+      { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
+      { title: '房屋總價', key: 'quote_mode_total_price', align: 'start', sort: customPriceSort },
+      { title: '房屋單價', key: 'unit_price_value', align: 'start', sort: customPriceSort },
     ];
-  }  // [銷控模式/櫃台權限] (保持不變)
+  } 
+  // ✅ [修改] 銷控模式 (櫃台)
   else {
     return [
       { title: '銷控狀態', key: 'status', align: 'center' },
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
-      { title: '房屋總面積', key: 'area_house_ping', align: 'start' },
+      { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
+      
+      // 表價組
       { title: '房價(表價)', key: 'price_list_house_total', align: 'start' },
+      { title: '表價單價', key: 'unit_price_list', align: 'start', sort: customPriceSort }, // 新增
+      
+      // 底價組
       { title: '底價', key: 'price_floor_house_total', align: 'start' },
+      { title: '底價單價', key: 'unit_price_floor', align: 'start', sort: customPriceSort }, // 新增
+      
+      // 成交價組
       { title: '成交價', key: 'price_transaction_house', align: 'start' },
+      { title: '成交單價', key: 'unit_price_transaction', align: 'start', sort: customPriceSort }, // 新增
+      
+      { title: '車位底價', key: 'parking_floor_total', align: 'start' },
+      { title: '車位成交', key: 'parking_trans_total', align: 'start' },
+      
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
       { title: '溢差價', key: 'price_diff', align: 'start' },
@@ -992,16 +1125,11 @@ const customPriceSort = (a, b) => {
   return a - b;
 };
 
+
 // 修改 tableItems computed
 const tableItems = computed(() => {
-  // 1. 取得基礎資料
-  let units = filteredHouseholds.value;
+  const units = filteredHouseholds.value;
   const parkings = salesParkings.value || [];
-
-  // ✅ [新增] 過濾邏輯：如果處於報價模式 且 開關關閉，則過濾掉已售戶別
-  if (currentViewMode.value === 'quote' && !showSoldItems.value) {
-    units = units.filter(u => u.salesStatus_quote !== '已售');
-  }
 
   // (車位對照表邏輯保持不變)
   const parkingMap = {};
@@ -1016,32 +1144,57 @@ const tableItems = computed(() => {
     const item = { ...unit };
     item.status = currentViewMode.value === 'quote' ? unit.salesStatus_quote : unit.salesStatus_backend;
 
-    // ... (中間的成交總價、溢差價計算保持不變) ...
     const mySpots = parkingMap[unit.unitId] || [];
     const parkingTransTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
     const parkingFloorTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
+
+    // ✅ [新增] 將車位計算結果存入 item，供表格欄位使用
+    item.parking_trans_total = parkingTransTotal;
+    item.parking_floor_total = parkingFloorTotal;
+    
+    // 房屋成交價
     const houseTrans = Number(unit.price_transaction_house) || 0;
+    
+    // 成交總價 = 房屋成交 + 車位成交
     item.total_transaction = houseTrans + parkingTransTotal;
+
+    // 合計底價 = 房屋底價 + 車位底價
     const houseFloor = Number(unit.price_floor_house_total) || 0;
     item.total_floor = houseFloor + parkingFloorTotal;
-    item.price_diff = item.total_transaction - item.total_floor;
 
-    // 單價數值計算 (保持之前的排序優化邏輯)
-    const priceVal = Number(item.price_list_house_total) || 0;
-    const areaVal = Number(item.area_house_ping) || 0;
-
-    // 設定數值 (已售設為 null 以利排序)
-    if (item.status === '已售' || areaVal === 0) {
-        item.unit_price_value = null;
+    // ✅ [修改] 溢差價計算邏輯
+    // 判斷：只有當「房屋成交價」有值且大於 0 時，才計算溢差價
+    // 否則設為 null (這樣前端 formatNumber 會顯示 '-')
+    if (houseTrans > 0) {
+        item.price_diff = item.total_transaction - item.total_floor;
     } else {
-        item.unit_price_value = priceVal / areaVal;
+        item.price_diff = null;
     }
 
-    // 報價模式總價排序欄位
-    if (currentViewMode.value === 'quote' && item.status === '已售') {
-        item.quote_mode_total_price = null;
+    // ✅ [修改] 統一計算單價邏輯
+    const areaVal = Number(item.area_house_ping) || 0;
+    
+    // 輔助函式：計算單價 (若總價或坪數無效則回傳 null)
+    const calcUnit = (totalPrice) => {
+        const price = Number(totalPrice) || 0;
+        if (price <= 0 || areaVal === 0) return null;
+        return price / areaVal;
+    };
+
+    // 1. 表價單價
+    item.unit_price_list = calcUnit(item.price_list_house_total);
+    // 2. 底價單價
+    item.unit_price_floor = calcUnit(item.price_floor_house_total);
+    // 3. 成交單價
+    item.unit_price_transaction = calcUnit(item.price_transaction_house);
+
+    // 4. 報價模式專用 (保持原有邏輯)
+    if (item.status === '已售') {
+        item.unit_price_value = null;     // 報價模式單價
+        item.quote_mode_total_price = null; // 報價模式總價
     } else {
-        item.quote_mode_total_price = priceVal;
+        item.unit_price_value = item.unit_price_list;
+        item.quote_mode_total_price = Number(item.price_list_house_total) || 0;
     }
 
     return item;
@@ -1450,7 +1603,27 @@ const uploadData = async () => {
   grid-template-columns: 0px 40px 1fr;
   grid-template-rows: 50px 1fr;
   overflow: hidden;
-  max-width: 95vw;
+  
+  /* ✅ [修改] 寬度設定 */
+  /* width: 100%;  <-- 移除或註解掉原本的 100% */
+  width: fit-content;  /* 讓寬度根據內容自動縮放 */
+  max-width: 100%;     /* 限制最大寬度不超過螢幕 (原本有設 95vw 也可維持) */
+  
+  /* ✅ [新增] 水平置中 */
+  margin: 0 auto;      
+  
+  /* 高度維持填滿，確保背景色與捲動功能正常 */
+  height: 100%; 
+}
+.content-wrapper {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 防止內容溢出導致外層滾動 */
+  
+  /* ✅ [建議新增] 確保 wrapper 也是填滿的狀態 */
+  height: 100%; 
+  position: relative; 
 }
 .header-top-left {
   grid-column: 2;
@@ -1701,9 +1874,14 @@ const uploadData = async () => {
   height: 100%;
   background-color: white;
   border-radius: 8px;
-  /* 移除 overflow-x: auto，交給 v-data-table 內部處理 */
+  
+  /* ✅ [新增] 底部增加內距，防止最後一列貼底或被切到 */
+  padding-bottom: 10px; 
+  
+  /* 確保內容溢出時的處理方式 */
+  display: flex;
+  flex-direction: column;
 }
-
 
 
 /* 強制單元格內容不換行 (這會自然撐開欄位寬度) */
@@ -1752,5 +1930,10 @@ const uploadData = async () => {
 /* 確保表頭游標正確 */
 .cursor-pointer {
   cursor: pointer;
+}
+
+/* ✅ [新增] 防止文字被選取 */
+.user-select-none {
+  user-select: none;
 }
 </style>

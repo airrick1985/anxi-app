@@ -37,23 +37,67 @@
 
         <v-card-text class="main-content">
             <v-window v-model="tab">
-                <v-window-item value="info">
-               <template v-if="isEditing">
-               <SalesInfoForm 
-                    v-if="editingData"
-                    v-model="editingData"
-                    :statusOptions="statusOptions"
-                    :personnelOptions="personnelOptions"
-                    :allSalesImages="allProjectImages"
-                    :allParkingData="allData['車位'] || []"
-                    :projectName="projectName"
-                    :project-id="projectId" 
-                    :view-mode="props.viewMode"
-                     @request-open-slide="$emit('request-open-slide')"
-                    @parking-updated="handleParkingUpdate"
-                    :contractTypeOptions="props.contractTypes" :firstPurchaseOptions="firstPurchaseOptions"
-                />
-            </template>
+               <v-window-item value="info">
+    <template v-if="isEditing">
+        
+        <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+            <div class="d-flex align-center mb-2">
+                <v-icon color="primary" class="mr-2">mdi-cash-multiple</v-icon>
+                <span class="text-subtitle-1 font-weight-bold text-primary">價格設定</span>
+            </div>
+            <v-row>
+                <v-col cols="12" md="3">
+                    <v-text-field
+                        v-model="editingData.price_list_house_total"
+                        label="房價 (表價)"
+                        suffix="萬"
+                        type="number"
+                        variant="outlined"
+                        
+                        bg-color="white"
+                       class="input-price-list"
+                        :rules="[val => val >= 0 || '金額不可小於 0']"
+                        
+                        :hint="`單價: ${editingListUnitPrice} 萬/坪`"
+                        persistent-hint
+                    ></v-text-field>
+                </v-col>
+
+                <v-col cols="12" md="3" v-if="viewMode === 'sales'">
+                    <v-text-field
+                        v-model="editingData.price_floor_house_total"
+                        label="房屋底價"
+                        suffix="萬"
+                        type="number"
+                        variant="outlined"
+                       
+                        bg-color="white"
+                        class="input-price-floor"
+                        
+                        :hint="`單價: ${editingFloorUnitPrice} 萬/坪`"
+                        persistent-hint
+                    ></v-text-field>
+                </v-col>
+            </v-row>
+        </v-card>
+
+        <SalesInfoForm 
+            v-if="editingData"
+            v-model="editingData"
+            :statusOptions="statusOptions"
+            :personnelOptions="personnelOptions"
+            :allSalesImages="allProjectImages"
+            :allParkingData="allData['車位'] || []"
+            :projectName="projectName"
+            :project-id="projectId" 
+            :view-mode="props.viewMode"
+            @request-open-slide="$emit('request-open-slide')"
+            @parking-updated="handleParkingUpdate"
+            :contractTypeOptions="props.contractTypes" 
+            :firstPurchaseOptions="firstPurchaseOptions"
+        />
+    </template>
+
             <template v-else>
                 <div v-if="unitData" class="pa-2">
                     <v-row>
@@ -190,7 +234,18 @@
                             <v-col cols="12" md="4">
                                 <div class="info-section">
                                     <div class="section-title">{{ unitData.unitId }} 銷售資訊</div>
-                                    <v-list dense><v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item><v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item><v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item><v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item><v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item><v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item><v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle></v-list-item></v-list>
+                                    <v-list dense>
+                                        <v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item>
+                                        
+                                        <v-list-item title="物件類型" :subtitle="unitData.propertyType || '-'"></v-list-item>
+                                        
+                                        <v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item>
+                                        <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
+                                        <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
+                                        <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
+                                        <v-list-item title="簽約日期" :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
+                                        <v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{ unitData.remarks || '-' }}</v-list-item-subtitle></v-list-item>
+                                    </v-list>
                                 </div>
                             </v-col>
                             <v-col cols="12" md="4">
@@ -432,6 +487,23 @@ const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const savingText = ref('儲存中，請稍候...');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
+
+// ✅ [新增] 編輯模式即時計算 - 表價單價
+const editingListUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_list_house_total) || 0;
+  const area = Number(editingData.value.area_house_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
+// ✅ [新增] 編輯模式即時計算 - 底價單價
+const editingFloorUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_floor_house_total) || 0;
+  const area = Number(editingData.value.area_house_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
 
 const isSold = computed(() => {
   return props.unitData && props.unitData.salesStatus_backend;
@@ -1268,6 +1340,17 @@ async function handleParkingUpdate(parkingUpdateData) {
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+/* [新增] 編輯模式價格輸入框顏色微調 */
+.input-price-floor :deep(input) {
+    color:grey !important; /* 灰色 (底價) */
+    font-weight: bold;
+}
+
+.input-price-list :deep(input) {
+    color: red !important; /* 紅色 (表價) */
+    font-weight: bold;
 }
 
 </style>

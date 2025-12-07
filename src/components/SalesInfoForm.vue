@@ -69,10 +69,10 @@
               <v-radio label="是" :value="true"></v-radio>
               <v-radio label="否" :value="false"></v-radio>
             </v-radio-group>
-            <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="mb-2"></v-text-field>
-            <v-text-field label="車位成交價(萬)" :model-value="parkingSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
-            <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" readonly hint="自動計算" persistent-hint class="mb-2"></v-text-field>
-            <v-text-field label="溢差價(萬)" :model-value="priceDifference" readonly hint="自動計算" persistent-hint></v-text-field>
+            <v-text-field label="房屋成交價(萬)"  v-model.number="editableData.price_transaction_house" type="number" :min="0" class="mb-2"></v-text-field>
+            <v-text-field label="車位成交價(萬)"  :model-value="parkingSalePrice" variant="solo" readonly   class="mb-2"></v-text-field>
+            <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" variant="solo" readonly  class="mb-2"></v-text-field>
+            <v-text-field label="溢差價(萬)" :model-value="priceDifference"variant="solo" readonly  ></v-text-field>
           </div>
         </v-col>
 
@@ -113,9 +113,9 @@
               <v-text-field label="詳細地址" v-model="editableData.buyerMailingAddressDetail"  variant="outlined"></v-text-field>
             </div>
 
-            <v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" ></v-checkbox>
+<v-checkbox v-model="isPermanentSameAsMailing" label="戶籍地址與通訊地址相同" ></v-checkbox>
             
-            <div v-if="!isPermanentSameAsMailing">
+            <div>
               <label class="form-label">戶籍地址</label>
               <v-row dense>
                 <v-col cols="6">
@@ -123,9 +123,10 @@
                     v-model="permanentCounty"
                     :items="counties"
                     label="縣市"
-                    
                     variant="outlined"
                     clearable
+                    :disabled="isPermanentSameAsMailing"
+                    :bg-color="isPermanentSameAsMailing ? 'grey-lighten-4' : undefined"
                   ></v-select> </v-col>
                 <v-col cols="6">
                   <v-select
@@ -133,13 +134,19 @@
                     v-model="permanentTown"
                     :items="permanentTowns"
                     label="鄉鎮市區"
-                    :disabled="!permanentCounty"
-                    
+                    :disabled="!permanentCounty || isPermanentSameAsMailing"
                     variant="outlined"
                     clearable
+                    :bg-color="isPermanentSameAsMailing ? 'grey-lighten-4' : undefined"
                   ></v-select> </v-col>
               </v-row>
-              <v-text-field label="詳細地址" v-model="editableData.buyerPermanentAddressDetail"  variant="outlined"></v-text-field>
+              <v-text-field 
+                label="詳細地址" 
+                v-model="editableData.buyerPermanentAddressDetail"  
+                variant="outlined"
+                :readonly="isPermanentSameAsMailing"
+                :bg-color="isPermanentSameAsMailing ? 'grey-lighten-4' : undefined"
+              ></v-text-field>
             </div>
             </div>
         </v-col>
@@ -331,6 +338,30 @@ watch(isPermanentSameAsMailing, (isSame) => {
     nextTick(() => { 
         permanentTown.value = mailingTown.value; 
     });
+  }
+});
+
+// ✅ [新增] 監聽通訊縣市變化，若同步開啟則更新戶籍縣市
+watch(mailingCounty, (val) => {
+  if (isPermanentSameAsMailing.value) {
+    permanentCounty.value = val;
+  }
+});
+
+// ✅ [新增] 監聽通訊鄉鎮變化，若同步開啟則更新戶籍鄉鎮
+watch(mailingTown, (val) => {
+  if (isPermanentSameAsMailing.value) {
+     // 使用 nextTick 確保 permanentCounty 變更觸發的列表更新已完成
+     nextTick(() => {
+        permanentTown.value = val;
+     });
+  }
+});
+
+// ✅ [新增] 監聽通訊詳細地址變化，若同步開啟則更新戶籍詳細地址
+watch(() => editableData.value.buyerMailingAddressDetail, (val) => {
+  if (isPermanentSameAsMailing.value) {
+    editableData.value.buyerPermanentAddressDetail = val;
   }
 });
 

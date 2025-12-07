@@ -12,6 +12,11 @@
      刪除
     </v-btn>
       </div>
+
+      <div class="text-caption text-grey-darken-1 mb-2">
+        類型: {{ item.unitDetails.propertyType || item.unitDetails.layout || '-' }}
+      </div>
+
    <v-list lines="one" class="bg-transparent">
     <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
@@ -87,6 +92,11 @@
 
     <div v-else class="quote-item-row">
       <div class="item-cell flex-1 text-h6 font-weight-bold text-primary">{{ item.unitId }}</div>
+   
+   <div class="item-cell flex-1 text-body-2 text-grey-darken-2">
+        {{ item.unitDetails.propertyType || item.unitDetails.layout || '-' }}
+      </div>
+   
    
    <div class="item-cell flex-1">
     <v-menu open-on-click location="top">
@@ -892,20 +902,31 @@ function selectPaymentTemplate(paymentCategory) {
     const totalPrice = finalTotalPrice.value;
     const buyerType = isFirstTimeBuyerModel.value === '是' ? '首購' : '非首購';
     
+    // 取得當前戶別的物件類型
+    const currentPropertyType = props.item.unitDetails?.propertyType || props.item.unitDetails?.layout || '住家';
+    
     // 找出符合條件的範本
-    const applicableTemplates = props.paymentTemplates.filter(template => 
-        template.paymentCategory === paymentCategory &&
-        template.minPrice <= totalPrice && 
-        totalPrice <= template.maxPrice && 
-        template.buyerType === buyerType
-    );
+    const applicableTemplates = props.paymentTemplates.filter(template => {
+        // 取得範本的物件類型
+        const templatePropType = template.propertyType || '住家';
+        
+        // ✅ [修改] 加入嚴格比對邏輯
+        // 1. 物件類型必須完全一致
+        if (templatePropType !== currentPropertyType) return false;
+
+        // 2. 其他條件 (類別、價格、首購)
+        return (
+            template.paymentCategory === paymentCategory &&
+            template.minPrice <= totalPrice && 
+            totalPrice <= template.maxPrice && 
+            template.buyerType === buyerType
+        );
+    });
     
     if (applicableTemplates.length === 0) {
-        console.warn(`找不到適用的${paymentCategory}範本，條件：總價${totalPrice}萬、${buyerType}`);
         return null;
     }
     
-    // 如果有多個符合的範本，選擇第一個（在實際應用中可能需要更複雜的選擇邏輯）
     return applicableTemplates[0];
 }
 

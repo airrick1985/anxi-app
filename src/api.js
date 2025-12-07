@@ -200,15 +200,35 @@ export async function fetchPaymentTermTemplates(projectId) {
  * @param {Array} templates - 所有範本列表
  * @param {number} totalPrice - 總價（萬元）
  * @param {string} buyerType - 購買身份："首購" 或 "非首購"
+ * @param {string} propertyType - 物件類型："住家"、"店面" 或其他
  * @returns {Array} 符合條件的範本列表
  */
-export function selectApplicableTemplates(templates, totalPrice, buyerType) {
+export function selectApplicableTemplates(templates, totalPrice, buyerType, propertyType) {
   
-  const applicable = templates.filter(template => 
-    template.minPrice <= totalPrice && 
-    totalPrice <= template.maxPrice && 
-    template.buyerType === buyerType
-  );
+  // 1. 鎖定目標物件類型 (若戶別資料沒有該欄位，預設為 '住家')
+  const targetPropertyType = propertyType || '住家';
+
+  const applicable = templates.filter(template => {
+    
+    // ✅ [優先判斷] 範本物件類型 (若舊範本沒欄位，預設為 '住家')
+    const templatePropType = template.propertyType || '住家';
+
+    // 🔴 嚴格比對：類型不符，直接排除 (無論價格是否符合)
+    if (templatePropType !== targetPropertyType) {
+        return false;
+    }
+
+    // 2. 價格區間判斷
+    const min = Number(template.minPrice) || 0;
+    const max = Number(template.maxPrice) || Infinity; // 0 或 null 視為無上限
+
+    // 3. 買家身分判斷
+    return (
+      totalPrice >= min && 
+      totalPrice <= max && 
+      template.buyerType === buyerType
+    );
+  });
   
   return applicable;
 }

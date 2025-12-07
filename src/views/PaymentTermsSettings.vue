@@ -34,6 +34,11 @@
                 <v-chip size="x-small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
                   {{ template.paymentCategory || '一般期款' }}
                 </v-chip>
+
+              <v-chip size="x-small" color="purple-lighten-2" variant="flat">
+                  {{ template.propertyType || '住家' }}
+                </v-chip>
+
                 <template v-if="template.minPrice || template.maxPrice">
                   <v-chip size="x-small" color="primary" variant="flat">
                     {{ template.minPrice ? `${template.minPrice}萬` : '0' }} ~ 
@@ -239,6 +244,8 @@
             @keydown.enter="handleTemplateSave"
             :rules="[v => !!v || '必填']"
           ></v-text-field>
+
+          
           
           <v-row>
             <v-col cols="12" sm="6">
@@ -270,11 +277,36 @@
           </v-row>
 
           <v-select
+            v-model="templateDialog.propertyType"
+            label="物件類型"
+            :items="['住家', '店面', '其他']"
+            variant="outlined"
+            class="mt-4"
+            hide-details="auto"
+          ></v-select>
+
+          <v-expand-transition>
+            <div v-if="templateDialog.propertyType === '其他'">
+              <v-text-field
+                v-model="templateDialog.customPropertyType"
+                label="請輸入物件類型"
+                placeholder="例如：事務所、透天..."
+                variant="outlined"
+                class="mt-4"
+               
+                :rules="[v => !!v || '請輸入類型名稱']"
+              ></v-text-field>
+            </div>
+          </v-expand-transition>
+
+          <v-select
             v-model="templateDialog.buyerType"
             label="買家類型"
             :items="['首購', '非首購']"
             variant="outlined"
-            class="mt-2"
+            class="mt-4"
+            
+            hide-details="auto" 
           ></v-select>
 
           <v-combobox
@@ -282,7 +314,9 @@
             label="期款類別"
             :items="['一般期款', '配套期款']"
             variant="outlined"
-            class="mt-2"
+            
+            class="mt-4" 
+            
             clearable
             hint="可選擇預設選項或輸入自訂類別"
             persistent-hint
@@ -445,11 +479,14 @@ const templateDialog = ref({
   show: false, 
   name: '', 
   isEditing: false,
-  editingTemplateId: null, // 正在編輯的範本 ID
-  minPrice: '', // 最低價格
-  maxPrice: '', // 最高價格
-  buyerType: '非首購', // 預設為非首購
-  paymentCategory: '一般期款', // 期款類別
+  editingTemplateId: null, 
+  minPrice: '', 
+  maxPrice: '', 
+  buyerType: '非首購', 
+  paymentCategory: '一般期款', 
+  // ✅ [新增] 物件類型相關欄位
+  propertyType: '住家', 
+  customPropertyType: '' 
 });
 
 // --- 複製範本 Dialog State ---
@@ -536,17 +573,34 @@ const setupTemplatesListener = () => {
 
 const openTemplateDialog = (template = null) => {
   if (template) {
+    // 編輯模式：判斷是否為自訂類型
+    const standardTypes = ['住家', '店面'];
+    const currentType = template.propertyType || '住家';
+    
+    // 如果是標準選項，直接選中；否則選「其他」並填入自訂值
+    let dialogType = currentType;
+    let customType = '';
+    
+    if (!standardTypes.includes(currentType)) {
+        dialogType = '其他';
+        customType = currentType;
+    }
+
     templateDialog.value = { 
       show: true, 
       name: template.templateName, 
       isEditing: true,
-      editingTemplateId: template.id, // 記錄正在編輯的範本 ID
+      editingTemplateId: template.id, 
       minPrice: template.minPrice || '',
       maxPrice: template.maxPrice || '',
       buyerType: template.buyerType || '非首購',
       paymentCategory: template.paymentCategory || '一般期款',
+      // ✅ [新增] 載入物件類型
+      propertyType: dialogType,
+      customPropertyType: customType
     };
   } else {
+    // 新增模式
     templateDialog.value = { 
       show: true, 
       name: '', 
@@ -556,6 +610,9 @@ const openTemplateDialog = (template = null) => {
       maxPrice: '',
       buyerType: '非首購',
       paymentCategory: '一般期款',
+      // ✅ [新增] 初始化物件類型
+      propertyType: '住家',
+      customPropertyType: ''
     };
   }
 };
@@ -590,8 +647,9 @@ const handleCopyConfirm = async () => {
       maxPrice: copyDialog.value.sourceTemplate.maxPrice,
       buyerType: copyDialog.value.sourceTemplate.buyerType || '非首購',
       paymentCategory: copyDialog.value.sourceTemplate.paymentCategory || '一般期款',
+      // ✅ [新增] 複製物件類型
+      propertyType: copyDialog.value.sourceTemplate.propertyType || '住家',
     };
-
     // 儲存新範本
     await setPaymentTermTemplate(docId, newTemplate);
     toast.success("範本複製成功");
@@ -617,12 +675,26 @@ const handleTemplateSave = async () => {
     return;
   }
   
+ // ✅ [新增] 處理物件類型邏輯
+  let finalPropertyType = templateDialog.value.propertyType;
+  
+  if (finalPropertyType === '其他') {
+      const customVal = templateDialog.value.customPropertyType.trim();
+      if (!customVal) {
+          toast.error("請輸入自訂物件類型");
+          return;
+      }
+      finalPropertyType = customVal;
+  }
+  
   const templateData = {
     templateName: name,
     minPrice: minPrice,
     maxPrice: maxPrice,
     buyerType: templateDialog.value.buyerType,
     paymentCategory: templateDialog.value.paymentCategory,
+    // ✅ [新增] 寫入物件類型
+    propertyType: finalPropertyType,
   };
   
   if (templateDialog.value.isEditing) {

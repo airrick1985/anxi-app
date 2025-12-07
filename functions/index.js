@@ -1336,14 +1336,15 @@ exports.uploadHouseholds = onCall({ region: "asia-east1", secrets: gmailSecrets 
   const stringFieldsToProcess = [
         'landBankName',           // 土地款匯款銀行
         'landBankAccount',        // 土地款匯款帳號
-        'landBankAccountName',    // ✓ 土地款戶名
+        'landBankAccountName',    // 土地款戶名
         'houseBankName',          // 房屋款匯款銀行
         'houseBankAccount',       // 房屋款匯款帳號
-        'houseBankAccountName',   // ✓ 房屋款戶名
+        'houseBankAccountName',   // 房屋款戶名
         'packageBankName',        // 配套款匯款銀行
         'packageBankAccount',     // 配套款匯款帳號
-        'packageBankAccountName', // ✓ 配套款戶名
-        'constructionMethod'      // 興建方式
+        'packageBankAccountName', // 配套款戶名
+        'constructionMethod',     // 興建方式
+        'propertyType'            // ✅ [新增] 物件類型 (住家/店面/其他)
       ];
       
       // 正體中文註解：定義「興建方式」的有效選項
@@ -2927,11 +2928,14 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     }
 
     // 字串欄位去除前後空白
-    const stringFields = [
+ const stringFields = [
       'salesStatus_backend', 'salesStatus_quote', 'salesperson', 'contractType',
       'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'remarks',
       'buyerMailingAddressCity', 'buyerMailingAddressDistrict', 'buyerMailingAddressDetail',
-      'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail'
+      'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail',
+      
+      // ✅ [新增] 加入 propertyType 以確保單筆更新時能正確處理字串格式
+      'propertyType' 
     ];
 
     for (const field of stringFields) {

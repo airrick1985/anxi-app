@@ -318,6 +318,41 @@ const props = defineProps({
   }
 });
 
+// ✅ [新增] 取得當前日期格式字串 (YYYY年MM月DD日)
+function getCurrentDateFormatted() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `報價日期：${year}年${month}月${day}日`;
+}
+
+// ✅ [新增] 插入日期資訊的函數
+function addDateInfo(savedOptions = null) {
+  const dateString = getCurrentDateFormatted();
+  
+  // 預設樣式 (放在右上角)
+  const defaultOptions = {
+    left: canvasSettings.value.width - 250, // 預設靠右
+    top: 50,
+    width: 200,
+    fontSize: textFontSize * 0.8,
+    fill: '#000',
+    textAlign: 'right',
+    fontWeight: 'normal'
+  };
+
+  // 如果有儲存的樣式就用儲存的，否則用預設
+  const options = savedOptions ? { ...savedOptions, text: dateString } : defaultOptions;
+
+  const dateText = new fabric.Textbox(dateString, options);
+  
+  // 標記此物件，以便儲存時辨識
+  dateText.set('isDateInfo', true);
+
+  return dateText;
+}
+
 function formatNumber(val, frac = 0) {
     if (val === null || val === undefined || val === '') return 'N/A';
     const num = parseFloat(val);
@@ -1168,7 +1203,7 @@ function addPersonnelInfo(options = null, defaultStartY = 100) {
   // (移除錯誤的 'if (!options)' 區塊)
 
   const nameText = new fabric.Textbox(
-    `銷售人員：${props.personnel.name}`, 
+    `銷售顧問：${props.personnel.name}`, 
     nameOptions
   );
 
@@ -1250,7 +1285,8 @@ function serializeCanvas() {
     personnelPlaceholders: {
       name: null,
       phone: null
-    }, 
+   },
+    datePlaceholder: null, // ✅ [新增] 初始化日期欄位
     objects: []
   };
 
@@ -1285,6 +1321,15 @@ function serializeCanvas() {
       templateData.personnelPlaceholders.phone = phoneData;
       continue;
     }
+
+// ✅ [新增] 儲存日期物件
+    if (obj.isDateInfo) {
+      const dateData = serializeFabricObject(obj);
+      delete dateData.text; // 移除文字內容 (因為日期是動態的)
+      templateData.datePlaceholder = dateData;
+      continue;
+    }
+
 
     // 儲存靜態物件
     const serializedObj = serializeFabricObject(obj);
@@ -1392,6 +1437,13 @@ async function loadAndRenderTemplate() {
         phoneText.setCoords();
       }
 
+      // ✅ [新增] A.5: 載入日期
+      const dateText = addDateInfo(template.datePlaceholder); // 傳入儲存的設定(若有)
+      if (dateText) {
+        fabricCanvas.value.add(dateText);
+        dateText.setCoords();
+      }
+
     } else {
       // 情況 B：找不到版型 (保持不變)
       await renderDefaultItems();
@@ -1446,6 +1498,11 @@ async function renderDefaultItems() {
   const [nameText, phoneText] = addPersonnelInfo(null, startY);
   if (nameText) fabricCanvas.value.add(nameText);
   if (phoneText) fabricCanvas.value.add(phoneText);
+// ✅ [新增] B.3: 插入預設日期
+  const dateText = addDateInfo(null); // 傳入 null 使用預設位置
+  if (dateText) {
+    fabricCanvas.value.add(dateText);
+  }
 }
 
 //  [打勾] 新增：套用預設表格佈局 (抽出共用)
