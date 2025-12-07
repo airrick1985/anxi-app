@@ -1128,10 +1128,17 @@ const customPriceSort = (a, b) => {
 
 // 修改 tableItems computed
 const tableItems = computed(() => {
-  const units = filteredHouseholds.value;
+  // 🔴 [修正重點] 這裡必須用 'let'，因為下面會重新賦值
+  let units = filteredHouseholds.value;
+  
+  // ✅ [新增] 過濾邏輯
+  if (currentViewMode.value === 'quote' && !showSoldItems.value) {
+    // 這裡會對 units 重新賦值，所以上面必須是 let
+    units = units.filter(u => u.salesStatus_quote !== '已售');
+  }
+
   const parkings = salesParkings.value || [];
 
-  // (車位對照表邏輯保持不變)
   const parkingMap = {};
   parkings.forEach(p => {
     if (p.buyerUnitId) {
@@ -1141,6 +1148,7 @@ const tableItems = computed(() => {
   });
 
   return units.map(unit => {
+    // ... (原本的 map 內部邏輯保持不變) ...
     const item = { ...unit };
     item.status = currentViewMode.value === 'quote' ? unit.salesStatus_quote : unit.salesStatus_backend;
 
@@ -1148,50 +1156,43 @@ const tableItems = computed(() => {
     const parkingTransTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
     const parkingFloorTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
 
-    // ✅ [新增] 將車位計算結果存入 item，供表格欄位使用
+    // 新增：將車位計算結果存入 item
     item.parking_trans_total = parkingTransTotal;
     item.parking_floor_total = parkingFloorTotal;
     
     // 房屋成交價
     const houseTrans = Number(unit.price_transaction_house) || 0;
     
-    // 成交總價 = 房屋成交 + 車位成交
+    // 成交總價
     item.total_transaction = houseTrans + parkingTransTotal;
 
-    // 合計底價 = 房屋底價 + 車位底價
+    // 合計底價
     const houseFloor = Number(unit.price_floor_house_total) || 0;
     item.total_floor = houseFloor + parkingFloorTotal;
 
-    // ✅ [修改] 溢差價計算邏輯
-    // 判斷：只有當「房屋成交價」有值且大於 0 時，才計算溢差價
-    // 否則設為 null (這樣前端 formatNumber 會顯示 '-')
+    // 溢差價計算
     if (houseTrans > 0) {
         item.price_diff = item.total_transaction - item.total_floor;
     } else {
         item.price_diff = null;
     }
 
-    // ✅ [修改] 統一計算單價邏輯
+    // 單價計算
     const areaVal = Number(item.area_house_ping) || 0;
-    
-    // 輔助函式：計算單價 (若總價或坪數無效則回傳 null)
     const calcUnit = (totalPrice) => {
         const price = Number(totalPrice) || 0;
         if (price <= 0 || areaVal === 0) return null;
         return price / areaVal;
     };
 
-    // 1. 表價單價
     item.unit_price_list = calcUnit(item.price_list_house_total);
-    // 2. 底價單價
     item.unit_price_floor = calcUnit(item.price_floor_house_total);
-    // 3. 成交單價
     item.unit_price_transaction = calcUnit(item.price_transaction_house);
 
-    // 4. 報價模式專用 (保持原有邏輯)
+    // 報價模式專用
     if (item.status === '已售') {
-        item.unit_price_value = null;     // 報價模式單價
-        item.quote_mode_total_price = null; // 報價模式總價
+        item.unit_price_value = null;
+        item.quote_mode_total_price = null;
     } else {
         item.unit_price_value = item.unit_price_list;
         item.quote_mode_total_price = Number(item.price_list_house_total) || 0;
