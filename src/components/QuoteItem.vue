@@ -1105,7 +1105,12 @@ function openParkingModal() {
 .item-cell > .v-input { flex: none; }
 .quote-item-mobile { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; background-color: #fafafa; }
 .quote-item-mobile .v-list-item { padding-left: 0; padding-right: 0; min-height: 40px; }
-.highlight-dark { font-weight: 600; color: #c62828; }
+.highlight-dark { 
+  font-weight: 600; 
+  color: #c62828; 
+  font-size: 1.2rem; /* ✅ 新增此行 (可依需求改為 16px, 1.5em 等) */
+}
+
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
 
 /* 新增：期款顯示樣式 */

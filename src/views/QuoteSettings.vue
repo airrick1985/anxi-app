@@ -315,8 +315,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'; // ✅ [修改] 加入 onBeforeRouteLeave
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -343,8 +343,21 @@ const userStore = useUserStore();
 const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
 
+
 onUnmounted(() => {
     parkingStore.cleanup();
+});
+
+onBeforeRouteLeave((to, from, next) => {
+  // 定義允許返回的頁面 (銷控系統 或 報價系統)
+  const allowedBackRoutes = ['SalesControlSystem', 'QuoteSystem'];
+
+  if (!allowedBackRoutes.includes(to.name)) {
+    // 如果使用者從設定頁直接跳去首頁或其他地方，也順手清空
+    console.log('[QuoteSettings] 跳離流程，清空報價單');
+    quoteStore.clearQuote();
+  }
+  next();
 });
 
 const { 

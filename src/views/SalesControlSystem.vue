@@ -320,7 +320,7 @@
             </template>
             
             <template v-else>
-              <span class="text-grey font-weight-bold"">
+              <span class="text-grey font-weight-bold">
                 {{ formatNumber(item.price_list_house_total, 0) }}
               </span>
             </template>
@@ -760,6 +760,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { onBeforeRouteLeave } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; 
 import { uploadHouseholds, getFloorPlansAPI, updateSalesData } from '@/api';
 import { useToast, POSITION } from 'vue-toastification';
@@ -775,6 +776,29 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import { useTextStyleStore } from '@/store/textStyleStore'; 
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
+
+// ==========================================
+// 🚀 [新增] 離開頁面時的資料清理邏輯
+// ==========================================
+onBeforeRouteLeave((to, from, next) => {
+  // 定義「允許保留資料」的路由名稱白名單
+  // 也就是當使用者前往這些頁面時，我們不清除 store
+  const keepDataRoutes = ['QuoteSettings'];
+
+  // 檢查目標路由 (to.name) 是否在白名單內
+  if (keepDataRoutes.includes(to.name)) {
+    console.log('[SalesControl] 前往報價設定，保留報價單資料');
+  } else {
+    // 如果是去其他地方 (例如: 回首頁、切換專案、登出)，則清空
+    console.log('[SalesControl] 離開銷控系統，清空報價單資料');
+    
+    // ✅ 這裡執行清空動作
+    quoteStore.clearQuote();
+  }
+
+  // 繼續執行導航
+  next();
+});
 
 // [新增] 視圖格式：'grid' | 'list'
 const viewFormat = ref('grid'); 
@@ -906,12 +930,12 @@ useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
 // ✅ [新增] 動態計算表格高度
 const tableHeight = computed(() => {
   if (isMobile.value) {
-    // 手機版：扣除 Header + Padding + Bottom Navigation (約 56px + padding)
-    // 建議扣除 230px 左右 (視實際標頭高度而定，寧可多扣一點也不要被切到)
-    return 'calc(100vh - 230px)';
+    // 手機版：
+    // 使用 dvh (Dynamic Viewport Height) 避免被手機瀏覽器網址列遮擋
+    // 扣除 Padding + Bottom Navigation (約 230px)
+    return 'calc(100dvh - 230px)';
   } else {
-    // 電腦版：扣除 Toolbar + Padding
-    // 原本是 140px，稍微增加一點緩衝到 150px
+    // 電腦版：維持原樣
     return 'calc(100vh - 150px)';
   }
 });
@@ -1070,7 +1094,7 @@ const formatDate = (val) => {
 
 // 修改 tableHeaders computed
 const tableHeaders = computed(() => {
-  // [報價模式] (保持不變)
+  // 情境 A: [報價模式] (保持不變 - 只有 4 欄，手機顯示沒問題)
   if (currentViewMode.value === 'quote') {
     return [
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
@@ -1079,28 +1103,37 @@ const tableHeaders = computed(() => {
       { title: '房屋單價', key: 'unit_price_value', align: 'start', sort: customPriceSort },
     ];
   } 
-  // ✅ [修改] 銷控模式 (櫃台)
+  // 情境 B: [銷控模式]
   else {
+    // ✅ [新增] 手機版銷控模式：只顯示「精簡欄位」，避免渲染崩潰
+    if (isMobile.value) {
+      return [
+        { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
+        { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
+        
+        { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
+        { title: '房屋總價', key: 'price_list_house_total', align: 'end', width: '90px' },
+        { title: '房屋底價', key: 'price_floor_house_total', align: 'end', width: '90px' },
+        
+        { title: '成交總價', key: 'total_transaction', align: 'end', width: '100px' },
+      ];
+    }
+
+    // 電腦版銷控模式：顯示完整 20+ 欄位 (保持原本的代碼)
     return [
       { title: '銷控狀態', key: 'status', align: 'center' },
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
       
-      // 表價組
+      // ... (原本所有的欄位：表價、底價、成交價、車位、日期、備註等) ...
       { title: '房價(表價)', key: 'price_list_house_total', align: 'start' },
-      { title: '表價單價', key: 'unit_price_list', align: 'start', sort: customPriceSort }, // 新增
-      
-      // 底價組
+      { title: '表價單價', key: 'unit_price_list', align: 'start', sort: customPriceSort },
       { title: '底價', key: 'price_floor_house_total', align: 'start' },
-      { title: '底價單價', key: 'unit_price_floor', align: 'start', sort: customPriceSort }, // 新增
-      
-      // 成交價組
+      { title: '底價單價', key: 'unit_price_floor', align: 'start', sort: customPriceSort },
       { title: '成交價', key: 'price_transaction_house', align: 'start' },
-      { title: '成交單價', key: 'unit_price_transaction', align: 'start', sort: customPriceSort }, // 新增
-      
+      { title: '成交單價', key: 'unit_price_transaction', align: 'start', sort: customPriceSort },
       { title: '車位底價', key: 'parking_floor_total', align: 'start' },
       { title: '車位成交', key: 'parking_trans_total', align: 'start' },
-      
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
       { title: '溢差價', key: 'price_diff', align: 'start' },
@@ -1383,6 +1416,9 @@ const handleRefreshData = async () => {
 };
 
 onMounted(async () => {
+  
+
+  
   console.log('🏗️ [SalesControlSystem] 開始載入銷控資料...');
   loading.value = true;
   try {
@@ -1573,6 +1609,7 @@ const uploadData = async () => {
 <style scoped>
 /* (原本的 CSS 樣式全部保留) */
 .sales-control-page {
+  /* 電腦版維持原樣：扣除 Toolbar */
   height: calc(100vh - 56px);
   background-color: #f0f2f5;
   padding: 16px;
@@ -1581,6 +1618,21 @@ const uploadData = async () => {
   flex-direction: column;
   gap: 10px;
   padding-bottom: 20px; 
+}
+
+/* ✅ [新增] 手機版專用修正 */
+@media (max-width: 960px) {
+  .sales-control-page {
+    /* 手機版 Toolbar 隱藏，所以高度應為全螢幕 */
+    /* 使用 dvh (Dynamic Viewport Height) 解決手機網址列伸縮問題 */
+    height: 100dvh; 
+    
+    /* 確保高度不會被計算錯誤 */
+    min-height: 100dvh; 
+    
+    /* 手機版通常 padding 可以小一點，爭取空間 */
+    padding: 10px; 
+  }
 }
 .grid-wrapper {
   flex-grow: 1;
@@ -1872,16 +1924,16 @@ const uploadData = async () => {
 
 .list-view-container {
   width: 100%;
-  height: 100%;
+  flex: 1; 
+  min-height: 0; 
   background-color: white;
   border-radius: 8px;
-  
-  /* ✅ [新增] 底部增加內距，防止最後一列貼底或被切到 */
   padding-bottom: 10px; 
-  
-  /* 確保內容溢出時的處理方式 */
   display: flex;
   flex-direction: column;
+  
+  /* ✅ [新增] 確保如果欄位還是太寬，可以左右滑動而不是崩潰 */
+  overflow-x: auto; 
 }
 
 
