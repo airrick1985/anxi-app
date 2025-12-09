@@ -1,76 +1,82 @@
 <template>
-  <v-container>
-    <v-row justify="center">
-      <v-col cols="12" md="10" lg="8">
-
-        <v-card>
-          <v-toolbar color="white">
-            <v-toolbar-title>登入選擇貴賓表單</v-toolbar-title>
-          </v-toolbar>
+  <v-container class="fill-height bg-grey-lighten-5">
+    <v-row justify="center" align="center">
+      <v-col cols="12" sm="8" md="6" lg="4">
         
+        <v-card v-if="isLoading" class="text-center pa-10" elevation="2">
+          <v-progress-circular indeterminate color="primary" size="64" class="mb-4"></v-progress-circular>
+          <div class="text-h6 text-grey-darken-1">正在驗證身份...</div>
+          <div class="text-caption text-grey mt-2">請稍候，正在連接 LINE 帳號</div>
+        </v-card>
 
-          <v-window v-model="step">
-            <v-window-item :value="1">
-              <v-card flat>
-                <v-card-text class="pa-6">
-                  <v-text-field
-                    v-model="salesPhone"
-                    label="請輸入您的手機號碼"
-                    variant="outlined"
-                    :rules="[rules.phone]"
-                    @keydown.enter="focusPassword"
-                    autofocus
-                    autocomplete="off"
-                  ></v-text-field>
-                  
-                  <v-text-field
-                    ref="passwordField"
-                    v-model="salesPassword"
-                    label="請輸入密碼"
-                    variant="outlined"
-                    type="password"
-                    :rules="[rules.required]"
-                    @keydown.enter="handleVerifySales"
-                    class="mt-2"
-                    autocomplete="new-password"
-                  ></v-text-field>
+        <v-card v-else-if="errorState" class="pa-6 text-center" elevation="2">
+          <v-icon :icon="errorIcon" size="64" color="error" class="mb-4"></v-icon>
+          <h3 class="text-h5 font-weight-bold mb-2">{{ errorTitle }}</h3>
+          <p class="text-body-1 text-grey-darken-1 mb-6">{{ errorMessage }}</p>
+          
+          <v-btn 
+            v-if="showBindButton"
+            color="success" 
+            block 
+            size="large" 
+            @click="goToBinding"
+            prepend-icon="mdi-link-variant"
+          >
+            前往帳號綁定
+          </v-btn>
+          <v-btn 
+            v-else
+            color="primary" 
+            block 
+            variant="outlined"
+            @click="initializeLiff"
+          >
+            重試
+          </v-btn>
+        </v-card>
 
-                  <v-alert v-if="step1Error" type="error" variant="tonal" border="start" density="compact">{{ step1Error }}</v-alert>
-                </v-card-text>
-                <v-card-actions class="px-6 pb-4">
-                  <v-spacer></v-spacer>
-                  <v-btn color="primary" @click="handleVerifySales" :loading="isLoading">下一步</v-btn>
-                </v-card-actions>
-              </v-card>
-            </v-window-item>
+        <v-card v-else class="pa-0" elevation="2">
+          <v-toolbar color="primary" density="comfortable">
+            <v-toolbar-title class="text-white font-weight-bold">
+              選擇建案
+            </v-toolbar-title>
+            <template v-slot:append>
+               <span class="text-white text-caption mr-4">Hi, {{ userName }}</span>
+            </template>
+          </v-toolbar>
 
-            <v-window-item :value="2">
-              <v-card flat>
-                <v-card-text class="pa-6">
-                  <p class="mb-4">您好，{{ salesPerson.name }}！請選擇建案：</p>
-                  <v-chip-group v-model="selectedProjectId" column mandatory>
-                    <v-chip
-                      v-for="proj in salesPerson.projects"
-                      :key="proj.id"
-                      :value="proj.id"
-                      filter
-                      variant="outlined"
-                      color="primary"
-                      size="large"
-                    >{{ proj.name }}</v-chip>
-                  </v-chip-group>
-                </v-card-text>
-                <v-card-actions class="px-6 pb-4">
-                  <v-btn @click="step = 1">上一步</v-btn>
-                  <v-spacer></v-spacer>
-                  <v-btn color="primary" @click="redirectToVipForm" :disabled="!selectedProjectId">
-                    前往表單
-                  </v-btn>
-                </v-card-actions>
-              </v-card>
-            </v-window-item>
-
-          </v-window>
+          <v-list lines="two" class="pa-2">
+            <template v-if="availableProjects.length > 0">
+              <v-list-item
+                v-for="project in availableProjects"
+                :key="project.id"
+                @click="selectProject(project.id)"
+                rounded="lg"
+                class="mb-2 border"
+                hover
+              >
+                <template v-slot:prepend>
+                  <v-avatar color="primary" variant="tonal">
+                    <v-icon>mdi-domain</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="font-weight-bold text-h6">
+                  {{ project.name }}
+                </v-list-item-title>
+                <v-list-item-subtitle>
+                  點擊進入填寫表單
+                </v-list-item-subtitle>
+                <template v-slot:append>
+                  <v-icon color="grey">mdi-chevron-right</v-icon>
+                </template>
+              </v-list-item>
+            </template>
+            
+            <div v-else class="text-center pa-8 text-grey">
+              <v-icon size="48" class="mb-2">mdi-folder-remove-outline</v-icon>
+              <div>您目前沒有任何可填寫表單的建案權限</div>
+            </div>
+          </v-list>
         </v-card>
 
       </v-col>
@@ -79,83 +85,110 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { verifySalesPerson } from '@/api'; // ✓ 重用 CustomerDataSheet 的 API
+import liff from '@line/liff';
+import { getLiffUserData } from '@/api';
+
+// ✅ [打勾] 請在此填入第一步取得的 LIFF ID
+const LIFF_ID = '2008257338-REkEX9xD'; 
 
 const router = useRouter();
 
-// --- State ---
-const step = ref(1);
-const isLoading = ref(false);
-const step1Error = ref(null);
+// State
+const isLoading = ref(true);
+const userName = ref('');
+const availableProjects = ref([]);
 
-const salesPhone = ref('');
-const salesPassword = ref('');
-const passwordField = ref(null);
-const salesPerson = ref({ name: '', phone: null, projects: [] });
-const selectedProjectId = ref(null);
+// Error State
+const errorState = ref(false);
+const errorTitle = ref('');
+const errorMessage = ref('');
+const errorIcon = ref('mdi-alert-circle');
+const showBindButton = ref(false);
 
-// --- Validation Rules ---
-const rules = {
-  required: (v) => !!v || '此欄位為必填',
-  phone: (v) => (v && v.length === 10 && v.startsWith('09')) || '請輸入有效的 10 碼手機號碼',
+// Methods
+const initializeLiff = async () => {
+  isLoading.value = true;
+  errorState.value = false;
+
+  try {
+    await liff.init({ liffId: LIFF_ID });
+
+    // 1. 檢查是否在 LINE 環境或已登入
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return; // login 會重導向，這裡中止執行
+    }
+
+    // 2. 獲取 LINE 使用者資訊
+    const profile = await liff.getProfile();
+    const lineId = profile.userId;
+
+    // 3. 呼叫後端 API 驗證綁定與權限
+    const response = await getLiffUserData({ lineId });
+
+    if (response.status === 'not_bound') {
+      setError('帳號未綁定', '您的 LINE 帳號尚未綁定系統，請先進行綁定。', 'mdi-account-off', true);
+    } else if (response.status === 'bound') {
+      userName.value = response.userName;
+      
+      // 4. 篩選有「客資系統」相關權限的建案
+      // (雖然 API 已經改過會回傳，但前端再濾一次更保險)
+      const validProjects = (response.projects || []).filter(p => {
+        const systems = p.systems || [];
+        return systems.includes('客資系統-銷售') || systems.includes('客資系統-櫃台') || systems.includes('超級管理員');
+      });
+
+      availableProjects.value = validProjects.map(p => ({
+        id: p.projectId,
+        name: p.projectName
+      }));
+
+      // 如果只有一個專案，直接跳轉 (優化體驗)
+      if (availableProjects.value.length === 1) {
+        selectProject(availableProjects.value[0].id);
+        return;
+      }
+      
+      isLoading.value = false;
+    } else {
+      throw new Error('未知的回應狀態');
+    }
+
+  } catch (error) {
+    console.error('LIFF Init Error:', error);
+    setError('登入失敗', error.message || '初始化過程發生錯誤，請稍後再試。');
+  } finally {
+    if (!availableProjects.value.length === 1) { 
+        // 只有在不是自動跳轉的情況下才關閉 Loading，避免畫面閃爍
+        isLoading.value = false;
+    }
+  }
 };
 
-// --- Methods ---
+const setError = (title, msg, icon = 'mdi-alert-circle', allowBind = false) => {
+  errorState.value = true;
+  errorTitle.value = title;
+  errorMessage.value = msg;
+  errorIcon.value = icon;
+  showBindButton.value = allowBind;
+  isLoading.value = false;
+};
 
-// (與 CustomerDataSheet 相同)
-async function focusPassword() {
-  await nextTick();
-  passwordField.value?.focus();
-}
+const goToBinding = () => {
+  // 導向綁定頁面 (假設您的綁定頁面路由是 /line-binding)
+  window.location.href = 'https://anxismart.com/#/line-binding';
+};
 
-// (與 CustomerDataSheet 相同，包含 phone 注入的修正)
-async function handleVerifySales() {
-  step1Error.value = null;
-  if (rules.phone(salesPhone.value) !== true) {
-    step1Error.value = "請輸入有效的 10 碼手機號碼";
-    return;
-  }
-  if (rules.required(salesPassword.value) !== true) {
-    step1Error.value = "請輸入密碼";
-    return;
-  }
-
-  isLoading.value = true;
-  try {
-    // 呼叫與 CustomerDataSheet 完全相同的 API
-    const result = await verifySalesPerson(salesPhone.value, salesPassword.value);
-    
-    // 注入登入者的電話號碼 (確保 phone 屬性存在)
-    result.phone = salesPhone.value; 
-    
-    salesPerson.value = result; 
-    
-    if (result.projects.length === 0) {
-      step1Error.value = "您沒有操作任何建案的客資系統權限。";
-    } else {
-      // 成功，進入步驟 2
-      step.value = 2;
-    }
-  } catch (error) {
-    console.error("驗證銷售人員失敗:", error);
-    step1Error.value = error.message; 
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-// ✓ 檢查：(新函式) 點擊「前往表單」時觸發
-function redirectToVipForm() {
-  if (!selectedProjectId.value) return;
-
-  // 使用 Vue Router 進行頁面跳轉
+const selectProject = (projectId) => {
   router.push({
-    name: 'VipForm', // ✓ 注意：請確保您路由檔中 `vip-form/:projectId` 的路由名稱 (name) 是 'VipForm'
-    params: {
-      projectId: selectedProjectId.value
-    }
+    name: 'VipForm',
+    params: { projectId: projectId }
   });
-}
+};
+
+onMounted(() => {
+  initializeLiff();
+});
 </script>

@@ -14854,7 +14854,15 @@ async function _handleGetLiffUserData(data) {
 
         for (const projectId in permissions) {
             const projectPerms = permissions[projectId];
-            if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
+            // ✅ [打勾] 修改：擴充權限檢查，加入客資系統權限
+            // 原本: if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
+            
+            // 修改後:
+            const systems = projectPerms.systems || [];
+            const hasInspectionAccess = systems.includes("驗屋預約管理-檢視") || systems.includes("驗屋預約管理-修改");
+            const hasCustomerAccess = systems.includes("客資系統-櫃台") || systems.includes("客資系統-銷售"); // 加入這行
+
+            if (hasInspectionAccess || hasCustomerAccess) { // 只要符合任一條件即可
                 const projectDocPromise = db.collection('projects').doc(projectId).get().then(doc => {
                     if (!doc.exists) return null; 
                     const projectData = doc.data();
@@ -14862,11 +14870,10 @@ async function _handleGetLiffUserData(data) {
                         projectId: projectId,
                         projectName: projectPerms.projectName,
                         bookingTypes: projectData.bookingTypes || [],
-                        // ✅ [打勾] 關鍵修正：將 systems 權限陣列一起回傳
-                        systems: projectPerms.systems 
+                        systems: systems 
                     };
                 }).catch(err => {
-                    console.error(`[${functionName}] 讀取 projects/${projectId} 文件失敗:`, err);
+                    console.error(`_handleGetLiffUserData 讀取失敗:`, err);
                     return null; 
                 });
                 authorizedProjectsPromises.push(projectDocPromise);
