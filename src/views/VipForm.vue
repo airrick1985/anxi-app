@@ -281,7 +281,15 @@ const copySuccess = ref(false);
 
 // --- Computed ---
 const pageTitle = computed(() => `${projectName.value} ${t.value.formTitleSuffix}`);
-const currentUrl = computed(() => window.location.href);
+// ✅ [修改] 強制產生乾淨的公開連結，不使用當前帶有參數的網址
+const currentUrl = computed(() => {
+  // 1. 取得網站根目錄 (例如 https://anxismart.com)
+  const origin = window.location.origin;
+  
+  // 2. 手動組合成標準的 Hash 模式 URL
+  // 結果會是: https://anxismart.com/#/vip-form/{projectId}
+  return `${origin}/#/vip-form/${props.projectId}`;
+});
 
 // --- Validation Rules ---
 const rules = computed(() => ({
