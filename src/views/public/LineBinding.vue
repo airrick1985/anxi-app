@@ -110,7 +110,20 @@ const lineUserId = ref('');
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-vZNMxJr0' });
+    
+    // ✓ START: 修改 LIFF 初始化邏輯，攔截 token revoked 錯誤
+    await liff.init({ liffId: '2008257338-vZNMxJr0' }).catch((err) => {
+      // 如果錯誤是因為 token 失效，強制重新登入
+      if (err.message && err.message.includes('access token revoked')) {
+        console.warn('Token 失效，嘗試重新登入...');
+        liff.login();
+        // 回傳一個未完成的 Promise 以中止後續代碼執行 (等待頁面跳轉)
+        return new Promise(() => {}); 
+      }
+      // 其他錯誤則繼續拋出
+      throw err;
+    });
+    // ✓ END
 
     if (!liff.isLoggedIn()) {
       liff.login();
