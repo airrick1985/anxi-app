@@ -19,11 +19,12 @@
             color="success" 
             block 
             size="large" 
-            @click="goToBinding"
+            href="/#/line-binding"
             prepend-icon="mdi-link-variant"
           >
             前往帳號綁定
           </v-btn>
+
           <v-btn 
             v-else
             color="primary" 
@@ -50,7 +51,7 @@
               <v-list-item
                 v-for="project in availableProjects"
                 :key="project.id"
-                @click="selectProject(project.id)"
+                :href="`/#/customer-query/${project.id}`"
                 rounded="lg"
                 class="mb-2 border"
                 hover
@@ -87,14 +88,14 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user'; // ✅ 引入 userStore
-import { useProjectStore } from '@/store/projectStore'; // ✅ 引入 projectStore 用於顯示建案名稱
+import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore'; 
 import liff from '@line/liff';
 
 // LIFF ID
 const LIFF_ID = '2008257338-G2EJPAda'; 
 
-const router = useRouter();
+const router = useRouter(); // 雖然不使用 router.push，但可能在其他地方被依賴，暫時保留
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 
@@ -130,23 +131,18 @@ const initializeLiff = async () => {
 
     statusMessage.value = '驗證使用者權限...';
 
-    // ✅ 關鍵修正：使用 store 的 fetchUserByLineId
-    // 這會呼叫後端 API，並且將使用者資料寫入 Pinia Store (isLoggedIn 變為 true)
     const isBound = await userStore.fetchUserByLineId(lineId);
 
     if (!isBound) {
       setError('帳號未綁定', '您的 LINE 帳號尚未綁定系統，請先進行綁定。', 'mdi-account-off', true);
     } else {
-      // 驗證成功 (Store 已更新)
       userName.value = userStore.user?.name || '使用者';
       
-      // 確保建案名稱列表已載入
       if (projectStore.projectsList.length === 0) {
           statusMessage.value = '讀取建案資料...';
           await projectStore.fetchProjects();
       }
 
-      // 從 Store 的權限中篩選
       const perms = userStore.user?.permissions || {};
       const validProjects = [];
 
@@ -156,7 +152,6 @@ const initializeLiff = async () => {
             pData.systems.includes('客資系統-銷售') ||
             pData.systems.includes('超級管理員')
         )) {
-          // 嘗試從 projectStore 獲取正確名稱 (如果權限裡的名稱是舊的)
           const storeProjectName = projectStore.idToNameMap[projectId];
           
           validProjects.push({
@@ -168,7 +163,7 @@ const initializeLiff = async () => {
 
       availableProjects.value = validProjects;
 
-      // 自動跳轉邏輯
+        // 自動跳轉邏輯
       if (availableProjects.value.length === 1) {
         selectProject(availableProjects.value[0].id);
         return;
@@ -196,10 +191,6 @@ const setError = (title, msg, icon = 'mdi-alert-circle', allowBind = false) => {
   isLoading.value = false;
 };
 
-const goToBinding = () => {
-  router.push({ name: 'LineBindingPage' }); 
-};
-
 const selectProject = (projectId) => {
   // ✅ 此時 userStore.isLoggedIn 為 true，路由守衛會放行
   router.push({
@@ -207,6 +198,7 @@ const selectProject = (projectId) => {
     params: { projectId: projectId }
   });
 };
+
 
 onMounted(() => {
   initializeLiff();
