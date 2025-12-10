@@ -177,7 +177,8 @@ const setError = (title, msg, icon = 'mdi-alert-circle', allowBind = false) => {
 };
 
 const goToBinding = () => {
-  router.push({ name: 'LineBindingPage' }); 
+  // 導向綁定頁面 (假設您的綁定頁面路由是 /line-binding)
+  window.location.href = 'https://anxismart.com/?liff_path=line-binding';
 };
 
 const selectProject = (projectId) => {

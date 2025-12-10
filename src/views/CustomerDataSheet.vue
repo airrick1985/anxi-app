@@ -915,7 +915,7 @@ async function initializeLiff() {
 }
 
 const goToBinding = () => {
-  router.push({ name: 'LineBindingPage' }); 
+  window.location.href = 'https://anxismart.com/?liff_path=line-binding';
 };
 
 async function handleProjectSelected(isUrlEntry = false) {
