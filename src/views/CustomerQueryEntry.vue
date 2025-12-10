@@ -197,7 +197,7 @@ const setError = (title, msg, icon = 'mdi-alert-circle', allowBind = false) => {
 };
 
 const goToBinding = () => {
-  window.location.href = 'https://anxismart.com/#/line-binding';
+  router.push({ name: 'LineBindingPage' }); 
 };
 
 const selectProject = (projectId) => {
