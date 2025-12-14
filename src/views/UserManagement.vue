@@ -10,40 +10,41 @@
 
       <v-tabs v-model="currentTab" bg-color="transparent" grow>
         <v-tab value="users">人員列表</v-tab>
+        <v-tab value="projects">建案列表</v-tab>
         <v-tab v-if="isSuperAdmin" value="roles">角色設定</v-tab>
         <v-tab v-if="isSuperAdmin" value="functions">權限功能管理</v-tab>
       </v-tabs>
       <v-divider></v-divider>
 
+      <v-card-text class="pb-0" v-if="['users', 'projects'].includes(currentTab)">
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="searchPhone"
+              label="輸入姓名、手機或建案名稱篩選"
+              variant="outlined"
+              hide-details
+              prepend-inner-icon="mdi-magnify"
+              clearable
+            >
+            </v-text-field>
+          </v-col>
+          <v-col cols="12" md="6" class="d-flex justify-end align-center">
+            <v-btn color="primary" @click="openCreateDialog()">
+              <v-icon left>mdi-plus</v-icon>
+              新增人員
+            </v-btn>
+          </v-col>
+        </v-row>
+        <v-alert v-if="errorMessage" type="error" class="mt-4" dense closable v-model="showErrorAlert">
+          {{ errorMessage }}
+        </v-alert>
+      </v-card-text>
+
       <v-window v-model="currentTab">
         <v-window-item value="users">
           <v-card-text>
-            <v-row>
-              <v-col cols="12" md="6">
-                <v-text-field
-                  v-model="searchPhone"
-                  label="輸入姓名、手機或建案名稱篩選"
-                  variant="outlined"
-                  
-                  hide-details
-                  prepend-inner-icon="mdi-magnify"
-                  clearable
-                >
-                </v-text-field>
-              </v-col>
-              <v-col cols="12" md="6" class="d-flex justify-end">
-                <v-btn color="primary" @click="openCreateDialog()">
-                  <v-icon left>mdi-plus</v-icon>
-                  新增人員
-                </v-btn>
-              </v-col>
-            </v-row>
-
-            <v-alert v-if="errorMessage" type="error" class="mt-4" dense closable v-model="showErrorAlert">
-              {{ errorMessage }}
-            </v-alert>
-
-            <div class="d-none d-md-block mt-4">
+            <div class="d-none d-md-block mt-2">
               <v-data-table
                 :headers="tableHeaders"
                 :items="filteredUsers"
@@ -103,7 +104,7 @@
                 </template>
               </v-data-table>
             </div>
-            <div class="d-md-none mt-4">
+            <div class="d-md-none mt-2">
               <div v-if="adminStore.isLoading" class="text-center pa-10">
                 <v-progress-circular indeterminate color="primary"></v-progress-circular>
                 <p class="mt-2 text-grey">正在載入資料...</p>
@@ -160,6 +161,102 @@
                 </div>
               </div>
             </div>
+          </v-card-text>
+        </v-window-item>
+
+        <v-window-item value="projects">
+          <v-card-text>
+            <div v-if="adminStore.isLoading" class="text-center pa-10">
+              <v-progress-circular indeterminate color="primary"></v-progress-circular>
+              <p class="mt-2 text-grey">正在載入資料...</p>
+            </div>
+            
+            <div v-else-if="groupedProjects.length === 0" class="text-center pa-10 text-grey">
+              <v-icon size="48" color="grey-lighten-2">mdi-office-building-off</v-icon>
+              <p class="mt-4">找不到符合條件的建案或人員</p>
+            </div>
+
+            <v-expansion-panels v-else variant="accordion" multiple>
+              <v-expansion-panel
+                v-for="group in groupedProjects"
+                :key="group.id"
+              >
+                <v-expansion-panel-title>
+                  <div class="d-flex align-center w-100">
+                    <span class="text-h6 font-weight-bold mr-3">{{ group.name }}</span>
+                    <v-chip size="small" color="blue-grey-lighten-4" variant="flat">
+                      {{ group.users.length }} 人
+                    </v-chip>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text class="bg-grey-lighten-5 pa-2">
+                  <v-row dense>
+                    <v-col
+                      v-for="user in group.users"
+                      :key="user.phone"
+                      cols="12" sm="6" md="4" lg="3"
+                    >
+                      <v-card variant="outlined" class="fill-height bg-white hover-card">
+                        <v-card-item>
+                          <template v-slot:title>
+                            <div class="d-flex align-center justify-space-between">
+                              <span class="text-subtitle-1 font-weight-medium text-truncate">{{ user.name }}</span>
+                              <v-btn
+                                icon="mdi-pencil"
+                                size="x-small"
+                                variant="text"
+                                color="primary"
+                                @click="openEditDialog(user.phone)"
+                              ></v-btn>
+                            </div>
+                          </template>
+                          <template v-slot:subtitle>
+                            <div class="d-flex align-center mt-1">
+                              <v-icon size="small" class="mr-1">mdi-phone</v-icon>
+                              <span class="text-body-2">{{ user.phone }}</span>
+                            </div>
+                          </template>
+                        </v-card-item>
+                        
+                        <v-divider></v-divider>
+                        
+                        <v-card-text class="pt-2">
+                          <div v-if="user.projectSystems.length > 0">
+                            <div 
+                              v-for="category in getGroupedUserPermissions(user.projectSystems)" 
+                              :key="category.id" 
+                              class="mb-3"
+                            >
+                              <div class="d-flex align-center mb-1">
+                                <v-icon size="14" class="mr-1" :color="category.color">{{ category.icon }}</v-icon>
+                                <span class="text-caption font-weight-bold" :class="`text-${category.color}`">
+                                  {{ category.label }}
+                                </span>
+                              </div>
+                              
+                              <div class="d-flex flex-wrap gap-1" style="gap: 4px;">
+                                <v-chip
+                                  v-for="sys in category.permissions"
+                                  :key="sys"
+                                  size="x-small"
+                                  :color="category.color"
+                                  variant="tonal"
+                                  label
+                                  class="ma-0"
+                                >
+                                  {{ sys }}
+                                </v-chip>
+                              </div>
+                            </div>
+                          </div>
+                          <div v-else class="text-caption text-grey-lighten-1 py-2">無權限</div>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
           </v-card-text>
         </v-window-item>
 
@@ -502,39 +599,51 @@
                  {{ project }}
                </v-expansion-panel-title>
                <v-expansion-panel-text>
-               <v-row dense>
-                 <v-col
-                   v-for="system in allFunctionNames"
-                   :key="system"
-                   cols="12" sm="6" md="4"
-                 >
-                   <v-tooltip
-                      location="top"
-                      :text="functionDescriptionMap[system]"
-                      :disabled="!functionDescriptionMap[system]"
-                    >
-                     <template v-slot:activator="{ props }">
-                       <v-checkbox
-                         v-bind="props"
-                         v-model="permissionMatrix[system][project]"
-                         :label="system"
-                         hide-details
-                         
-                         :disabled="(isEditingSelf && !isGodModeAdmin) || /* 不能編輯自己 (除非是超管/系管) */
-                                    (isGodModeAdmin
-                                      ? (getFieldPermission('permissions') === 'R') /* 超管/系管 只看通用欄位權限 */
-                                      : ( /* 非超管/系管 的禁用條件 */
-                                          getFieldPermission('permissions') === 'R' || /* 1. 通用欄位唯讀 */
-                                          !adminStore.adminScope[project]?.includes('人員管理') || /* 2. 管理員在此建案沒有 '人員管理' 權限 */
-                                          !adminStore.adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
-                                        )
-                                    )"
-                       ></v-checkbox>
-                     </template>
-                   </v-tooltip>
-                 </v-col>
-               </v-row>
-             </v-expansion-panel-text>
+                  <div v-for="group in groupedPermissions" :key="group.id" class="mb-4">
+                    <div class="d-flex align-center mb-2 mt-2">
+                    <v-icon :color="group.color" class="mr-2">{{ group.icon }}</v-icon>
+                    
+                    <span class="text-subtitle-2 font-weight-bold text-no-wrap" :style="{ color: group.color }">
+                      {{ group.label }}
+                    </span>
+                    
+                    <v-divider class="ml-3 flex-grow-1"></v-divider>
+                    </div>
+
+                    <v-row dense>
+                      <v-col
+                        v-for="system in group.items"
+                        :key="system"
+                        cols="12" sm="6" md="4"
+                      >
+                        <v-tooltip
+                            location="top"
+                            :text="functionDescriptionMap[system]"
+                            :disabled="!functionDescriptionMap[system]"
+                          >
+                          <template v-slot:activator="{ props }">
+                            <v-checkbox
+                              v-bind="props"
+                              v-model="permissionMatrix[system][project]"
+                              :label="system"
+                              hide-details
+                              density="compact"
+                              :disabled="(isEditingSelf && !isGodModeAdmin) || /* 不能編輯自己 (除非是超管/系管) */
+                                          (isGodModeAdmin
+                                            ? (getFieldPermission('permissions') === 'R') /* 超管/系管 只看通用欄位權限 */
+                                            : ( /* 非超管/系管 的禁用條件 */
+                                                getFieldPermission('permissions') === 'R' || /* 1. 通用欄位唯讀 */
+                                                !adminStore.adminScope[project]?.includes('人員管理') || /* 2. 管理員在此建案沒有 '人員管理' 權限 */
+                                                !adminStore.adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
+                                              )
+                                          )"
+                            ></v-checkbox>
+                          </template>
+                        </v-tooltip>
+                      </v-col>
+                    </v-row>
+                  </div>
+                </v-expansion-panel-text>
                 </v-expansion-panel>
                 </v-expansion-panels>
                  <div v-if="filteredManagedProjects.length === 0" class="text-center text-grey py-4">
@@ -780,6 +889,64 @@ const filteredUsers = computed(() => {
   );
 });
 
+// ✓ 新增：建案分組計算屬性
+const groupedProjects = computed(() => {
+  if (adminStore.isLoading) return [];
+  
+  const query = searchPhone.value?.trim().toLowerCase() || '';
+  const groups = [];
+  
+  // 1. 取得管理員有權管理的建案列表 (adminScope 的 key 為建案名稱)
+  const adminProjectNames = Object.keys(adminStore.adminScope);
+
+  adminProjectNames.forEach(projectName => {
+    const projectId = projectStore.nameToIdMap[projectName];
+    if (!projectId) return;
+
+    // 2. 篩選出擁有該建案權限的使用者
+    const usersInProject = adminStore.manageableUsers.filter(user => {
+      const perms = adminStore.allUserPermissionsMap.get(user.phone);
+      // 檢查使用者是否擁有此建案 ID 的權限
+      return perms && perms[projectId];
+    }).map(user => {
+      // 3. 擴充使用者物件，加入該建案下的特定權限
+      const perms = adminStore.allUserPermissionsMap.get(user.phone);
+      return {
+        ...user,
+        projectSystems: perms[projectId].systems || [] // 該建案下的具體系統權限
+      };
+    });
+
+    // 4. 執行搜尋過濾
+    let filteredUsers = [];
+    if (query) {
+        if (projectName.toLowerCase().includes(query)) {
+            // 如果搜尋詞匹配「建案名稱」，則顯示該建案下的所有人員
+            filteredUsers = usersInProject;
+        } else {
+            // 否則，僅顯示匹配「人員姓名」或「電話」的人員
+            filteredUsers = usersInProject.filter(u => 
+                u.name.toLowerCase().includes(query) || 
+                u.phone.includes(query)
+            );
+        }
+    } else {
+        filteredUsers = usersInProject;
+    }
+
+    if (filteredUsers.length > 0) {
+      groups.push({
+        id: projectId,
+        name: projectName,
+        users: filteredUsers
+      });
+    }
+  });
+
+  // 依照建案名稱排序
+  return groups.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+});
+
 
 const userManagementFields = [
     { key: 'phone', label: '手機號碼' },
@@ -798,6 +965,127 @@ const fieldPermissionOptions = [
     { title: '僅供建立', value: 'C', color: 'orange' },
     { title: '隱藏', value: 'H', color: 'grey' }
 ];
+
+// ✓ [修改]：更新權限分類定義
+const permissionCategories = [
+  {
+    id: 'sales',
+    label: '銷售系統',
+    icon: 'mdi-home-city',
+    color: 'blue-darken-2',
+    keywords: ['銷控', '報價', '銷售StandBy']
+  },
+  {
+    id: 'inspection',
+    label: '驗屋系統',
+    icon: 'mdi-clipboard-check',
+    color: 'teal-darken-2',
+    keywords: ['驗屋', '客變']
+  },
+  {
+    id: 'customer',
+    label: '客資管理',
+    icon: 'mdi-account-group',
+    color: 'purple-darken-2',
+    keywords: ['客資系統', '貴賓', '客戶管理']
+  },
+  {
+    id: 'admin',
+    label: '後台管理',
+    icon: 'mdi-cog',
+    color: 'blue-grey',
+    keywords: ['人員', '訂閱', '資料庫']
+  },
+  {
+    id: 'message',
+    label: '訊息通知',
+    icon: 'mdi-email',
+    color: 'amber-darken-4',
+    keywords: ['訊息', '寄信', '收信']
+  }
+];
+
+// ✓ [新增]：將使用者的權限陣列依照分類分組的 Helper 函式
+const getGroupedUserPermissions = (userSystems) => {
+  if (!userSystems || userSystems.length === 0) return [];
+
+  // 建立分類容器
+  const groups = permissionCategories.map(cat => ({
+    ...cat,
+    permissions: []
+  }));
+
+  const otherGroup = {
+    id: 'other',
+    label: '其他功能',
+    icon: 'mdi-dots-horizontal',
+    color: 'grey-darken-1',
+    permissions: []
+  };
+
+  // 分配權限到對應群組
+  userSystems.forEach(sys => {
+    let matched = false;
+    for (const group of groups) {
+      // 只要包含任一關鍵字就算匹配
+      if (group.keywords.some(k => sys.includes(k))) {
+        group.permissions.push(sys);
+        matched = true;
+        break; // 找到第一個匹配的分類就停止
+      }
+    }
+    if (!matched) {
+      otherGroup.permissions.push(sys);
+    }
+  });
+
+  // 過濾掉空的群組，並加入「其他」群組 (如果有內容)
+  const result = groups.filter(g => g.permissions.length > 0);
+  if (otherGroup.permissions.length > 0) {
+    result.push(otherGroup);
+  }
+
+  return result;
+};
+
+// ✓ 新增：將權限自動分類的計算屬性
+const groupedPermissions = computed(() => {
+  const groups = permissionCategories.map(cat => ({
+    ...cat,
+    items: []
+  }));
+  
+  const otherGroup = {
+    id: 'other',
+    label: '其他功能',
+    icon: 'mdi-dots-horizontal',
+    color: 'grey-darken-1',
+    items: []
+  };
+
+  // 遍歷所有功能名稱，依關鍵字歸類
+  allFunctionNames.value.forEach(funcName => {
+    let matched = false;
+    for (const group of groups) {
+      if (group.keywords.some(k => funcName.includes(k))) {
+        group.items.push(funcName);
+        matched = true;
+        break; // 找到分類即停止，避免重複
+      }
+    }
+    if (!matched) {
+      otherGroup.items.push(funcName);
+    }
+  });
+
+  // 過濾掉沒有項目的群組，並加入「其他」群組(如果有項目)
+  const result = groups.filter(g => g.items.length > 0);
+  if (otherGroup.items.length > 0) {
+    result.push(otherGroup);
+  }
+  
+  return result;
+});
 
 
 // --- Validation Rules ---
@@ -1325,5 +1613,13 @@ const saveSystemFunction = async () => {
 }
 .field-permission-row:last-child {
   border-bottom: none;
+}
+.hover-card:hover {
+  border-color: #3f51b5; /* primary color */
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+  transition: all 0.2s ease-in-out;
+}
+.gap-1 {
+  gap: 4px;
 }
 </style>

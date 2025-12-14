@@ -377,6 +377,8 @@ const rules = {
     email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ],
     projectId: [
       v => !!v || '建案 ID 為必填項。',
+      // ✓ [新增] 即時驗證規則：僅允許半形英文及數字
+      v => /^[a-zA-Z0-9]+$/.test(v) || '僅能輸入半形英文及數字。',
       v => !projects.value.some(p => p.id === v) || '此建案 ID 已存在，請使用別的 ID。'
     ],
 };
@@ -561,6 +563,16 @@ async function save() {
     let uploadedIconUrl = null; 
 
     try {
+        // ✓ [新增] 儲存前強制驗證建案 ID 格式 (防止用戶忽略錯誤提示硬送出)
+        if (!isProjectIdDisabled.value) {
+             if (!editedItem.value.projectId) {
+                 throw new Error('建案 ID 為必填項。');
+             }
+             if (!/^[a-zA-Z0-9]+$/.test(editedItem.value.projectId)) {
+                 throw new Error('建案 ID 僅能輸入半形英文及數字。');
+             }
+        }
+
         // --- 步驟 1: 處理圖檔上傳 (使用 Base64 代理) ---
         if (fileToUpload.value) {
             const projectId = editedItem.value.projectId;
@@ -588,6 +600,7 @@ async function save() {
         }
 
         // --- 步驟 2: 處理訂閱資料儲存 (既有邏輯) ---
+        // ... (以下邏輯保持不變)
         const basePayload = { ...editedItem.value };
 
         if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {

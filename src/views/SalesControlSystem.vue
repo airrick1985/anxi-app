@@ -252,6 +252,11 @@
             </div>
           </template>
 
+          <template v-slot:item.area_house_ping="{ item }">
+            {{ formatNumber(item.area_house_ping, 2) }}
+          </template>
+
+
           <template v-slot:item.quote_mode_total_price="{ item }">
             <span v-if="item.status === '已售'" class="text-red font-weight-bold">已售</span>
             <span v-else class="text-indigo font-weight-medium">
@@ -1094,15 +1099,22 @@ const formatDate = (val) => {
 
 // 修改 tableHeaders computed
 const tableHeaders = computed(() => {
-  // 情境 A: [報價模式] (保持不變 - 只有 4 欄，手機顯示沒問題)
+  // 情境 A: [報價模式]
   if (currentViewMode.value === 'quote') {
     return [
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
-      { title: '房屋總價', key: 'quote_mode_total_price', align: 'start', sort: customPriceSort },
+      // ✅ [修改] 加入 minWidth: '160px' 避免手機版 Switch 被切到
+      { 
+        title: '房屋總價', 
+        key: 'quote_mode_total_price', 
+        align: 'start', 
+        sort: customPriceSort,
+        minWidth: '160px' 
+      },
       { title: '房屋單價', key: 'unit_price_value', align: 'start', sort: customPriceSort },
     ];
-  } 
+  }
   // 情境 B: [銷控模式]
   else {
     // ✅ [新增] 手機版銷控模式：只顯示「精簡欄位」，避免渲染崩潰

@@ -1256,7 +1256,12 @@ exports.uploadParkingLots = onCall({ region: "asia-east1",secrets: gmailSecrets}
  *  【新增】 上傳戶別資料並更新 Firestore
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesHouseholds 集合
  */
-exports.uploadHouseholds = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+exports.uploadHouseholds = onCall({ 
+    region: "asia-east1", 
+    secrets: gmailSecrets,
+    memory: "1GiB",      // 增加記憶體至 1GB (解決 256MB 不足的問題)
+    timeoutSeconds: 540  // 延長超時時間至 9 分鐘 (避免資料量大時超時)
+}, async (request) => {
   const xlsx = require("xlsx");
   const { projectId, householdsData } = request.data;
   const functionName = `uploadHouseholds (Project: ${projectId})`;
