@@ -440,7 +440,7 @@
                 :color="item.isPreferredPayment ? 'success' : 'grey'"
                 density="compact"
                 hide-details
-                inset
+                
                 class="ma-0 pa-0"
                 @update:model-value="(val) => handleSwitchChange(item, val)"
               ></v-switch>
