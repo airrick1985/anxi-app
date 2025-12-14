@@ -7285,3 +7285,20 @@ export const syncToGoogleSheet = async (projectId, startDate, endDate) => {
         throw new Error(e.message);
     }
 };
+
+// ✅ 新增：呼叫後端單一欄位更新
+export async function updateSingleField(projectId, unitId, field, value) {
+  try {
+    const updateFunction = httpsCallable(functions, 'updateSalesField');
+    const result = await updateFunction({
+      projectId,
+      unitId,
+      field,
+      value
+    });
+    return result.data;
+  } catch (error) {
+    console.error("單一欄位更新失敗:", error);
+    return { status: "error", message: error.message };
+  }
+}

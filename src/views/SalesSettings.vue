@@ -112,6 +112,17 @@
               hint="戶別付款表產出後儲存的 Google Drive 資料夾 URL。"
             ></v-text-field>
 
+            <v-switch
+              v-model="project.showPreferredPaymentInQuote"
+              label="報價系統顯示「優付」欄位"
+              color="primary"
+              hide-details
+              class="mb-4"
+              inset
+              hint="開啟後，報價系統將會顯示優付價格與相關標籤；關閉則完全隱藏。"
+              persistent-hint
+            ></v-switch>
+
             <v-divider class="my-4"></v-divider>
             <div class="mb-4">
               <p class="text-subtitle-1 mb-2">合約方式設定</p>
@@ -1014,12 +1025,20 @@ const loadProjectSettings = async () => {
   projectLoading.value = true;
   try {
     project.value = await getProjectSettings(projectId.value);
+    
+    // 處理合約方式預設值
     if (project.value && (!project.value.contractTypes || !Array.isArray(project.value.contractTypes))) {
       project.value.contractTypes = ['一般合約'];
     } else if (project.value) {
       const uniqueTypes = new Set(['一般合約', ...project.value.contractTypes]);
       project.value.contractTypes = Array.from(uniqueTypes);
     }
+
+    // ✅ [新增] 初始化「報價系統顯示優付」欄位，預設為 false
+    if (project.value && project.value.showPreferredPaymentInQuote === undefined) {
+        project.value.showPreferredPaymentInQuote = false;
+    }
+
   } catch (error) {
     toast.error(`載入專案設定失敗: ${error.message}`);
   } finally {

@@ -3072,6 +3072,38 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
   }
 });
 
+// ✅ 新增：輕量級單一欄位更新函式 (專門給 Switch 開關使用)
+exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, unitId, field, value } = request.data;
+
+  // 基本驗證
+  if (!projectId || !unitId || !field) {
+    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, unitId, field)");
+  }
+
+  // 限制只能更新特定欄位 (安全性白名單)
+  const allowedFields = ['isPreferredPayment', 'isFirstTimeBuyer', 'showInMenu'];
+  if (!allowedFields.includes(field)) {
+    throw new HttpsError("permission-denied", `不允許直接更新欄位: ${field}`);
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const docRef = db.collection("salesHouseholds").doc(`${projectId}_${unitId}`);
+
+  try {
+    // 使用 update 指令，絕對不會影響其他欄位
+    await docRef.update({ 
+      [field]: value,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { status: "success", message: `${field} 更新成功` };
+  } catch (error) {
+    console.error(`[updateSalesField] 更新失敗:`, error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
 /**
  * 【新增】退戶功能
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄

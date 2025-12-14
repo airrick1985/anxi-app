@@ -16,8 +16,6 @@
         <v-btn value="list" prepend-icon="mdi-view-list">列表</v-btn>
       </v-btn-toggle>
 
-      
-
       <v-btn-toggle
         v-model="displayType"
         color="primary"
@@ -29,6 +27,23 @@
         <v-btn value="住家">住家</v-btn>
         <v-btn value="店面">店面</v-btn>
       </v-btn-toggle>
+      
+      <v-btn
+        v-if="viewFormat === 'list'"
+        class="ml-4"
+        :color="showFilterPanel ? 'primary' : 'black'"
+        :variant="showFilterPanel ? 'flat' : 'tonal'"
+        prepend-icon="mdi-filter-variant"
+        @click="showFilterPanel = !showFilterPanel"
+      >
+        篩選
+        <v-badge
+          v-if="activeFilterCount > 0"
+          color="error"
+          :content="activeFilterCount"
+          inline
+        ></v-badge>
+      </v-btn>
       
       <v-spacer></v-spacer>
 
@@ -177,6 +192,150 @@
 
     <div class="content-wrapper">
       
+      <v-expand-transition>
+  <div v-if="viewFormat === 'list' && showFilterPanel" class="filter-panel-container mb-2">
+    <v-card variant="outlined" class="bg-white pa-3">
+      <v-row dense>
+        <v-col cols="12" sm="6" md="3">
+          <v-text-field v-model="filters.unitId" label="搜尋戶別" prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable></v-text-field>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+           <div class="d-flex align-center gap-2">
+              <v-text-field v-model.number="filters.areaMin" label="面積 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              <span class="text-grey">~</span>
+              <v-text-field v-model.number="filters.areaMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+           </div>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+           <div class="d-flex align-center gap-2">
+              <v-text-field v-model.number="filters.totalPriceMin" label="房屋總價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              <span class="text-grey">~</span>
+              <v-text-field v-model.number="filters.totalPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+           </div>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+           <div class="d-flex align-center gap-2">
+              <v-text-field v-model.number="filters.unitPriceMin" label="房屋單價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              <span class="text-grey">~</span>
+              <v-text-field v-model.number="filters.unitPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+           </div>
+        </v-col>
+      </v-row>
+
+      <v-divider v-if="currentViewMode !== 'quote'" class="my-3 border-dashed"></v-divider>
+      
+      <v-row dense v-if="currentViewMode !== 'quote'">
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="filters.statuses"
+            :items="statusOptions"
+            label="銷控狀態 (多選)"
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+          ></v-select>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3"> <v-autocomplete
+            v-model="filters.salesperson"
+            :items="personnelOptions"
+            label="銷售人員 (多選)" 
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+          ></v-autocomplete>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="2">
+          <v-text-field
+            v-model="filters.buyerName"
+            label="買方姓名"
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+          ></v-text-field>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="2.5">
+          <div class="d-flex flex-column">
+            <span class="text-caption text-grey ml-1">小訂日期</span>
+            <div class="d-flex align-center gap-1">
+              <input type="date" v-model="filters.depositDateStart" class="date-input-compact">
+              <span class="text-grey">~</span>
+              <input type="date" v-model="filters.depositDateEnd" class="date-input-compact">
+            </div>
+          </div>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="2.5">
+          <div class="d-flex flex-column">
+            <span class="text-caption text-grey ml-1">簽約日期</span>
+            <div class="d-flex align-center gap-1">
+              <input type="date" v-model="filters.contractDateStart" class="date-input-compact">
+              <span class="text-grey">~</span>
+              <input type="date" v-model="filters.contractDateEnd" class="date-input-compact">
+            </div>
+          </div>
+        </v-col>
+      </v-row>
+
+
+      
+      <template v-if="currentViewMode !== 'quote'">
+        <v-divider class="my-3 border-dashed"></v-divider>
+        <div class="text-caption text-grey mb-1 ml-1 font-weight-bold">進階價格篩選</div>
+        <v-row dense>
+          <v-col cols="12" sm="6" md="4">
+             <div class="d-flex align-center gap-2">
+                <v-text-field v-model.number="filters.floorPriceMin" label="底價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+                <span class="text-grey">~</span>
+                <v-text-field v-model.number="filters.floorPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+             </div>
+          </v-col>
+
+          <v-col cols="12" sm="6" md="4">
+             <div class="d-flex align-center gap-2">
+                <v-text-field v-model.number="filters.floorUnitPriceMin" label="底價單價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+                <span class="text-grey">~</span>
+                <v-text-field v-model.number="filters.floorUnitPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+             </div>
+          </v-col>
+
+          <v-col cols="12" sm="6" md="4">
+             <div class="d-flex align-center gap-2">
+                <v-text-field v-model.number="filters.transPriceMin" label="成交總價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+                <span class="text-grey">~</span>
+                <v-text-field v-model.number="filters.transPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+             </div>
+          </v-col>
+        </v-row>
+      </template>
+      
+      <div class="d-flex justify-end mt-2">
+        <v-btn 
+          color="grey-darken-1" 
+          variant="text" 
+          size="small" 
+          prepend-icon="mdi-broom"
+          @click="clearFilters"
+          v-if="activeFilterCount > 0"
+        >
+          清除所有條件
+        </v-btn>
+      </div>
+    </v-card>
+  </div>
+</v-expand-transition>
+
       <div v-if="viewFormat === 'grid'" class="layout-grid">
         <div class="header-top-left"></div>
         <div ref="headerTopRef" class="header-top-container">
@@ -221,7 +380,7 @@
       <div v-else class="list-view-container">
         <v-data-table
           :headers="tableHeaders"
-          :items="tableItems"
+          :items="filteredTableItems"
           :loading="loading"
           fixed-header
           :height="tableHeight" 
@@ -245,7 +404,7 @@
           </template>
 
           <template v-slot:item.unitId="{ item }">
-            <div class="d-flex align-center">
+            <div class="d-flex align-center justify-center">
               <div class="status-indicator mr-2" :style="{ backgroundColor: statusColorMap.get(item.status) || '#ddd' }"></div>
               <span class="font-weight-bold text-primary">{{ item.unitId }}</span>
               <v-icon v-if="quoteStore.isItemInQuote(item.unitId)" color="warning" size="small" class="ml-2">mdi-check-circle</v-icon>
@@ -256,6 +415,37 @@
             {{ formatNumber(item.area_house_ping, 2) }}
           </template>
 
+          <template v-slot:header.isPreferredPayment="{ column }">
+            <div class="d-flex flex-column justify-center align-center" style="height: 100%;">
+              <span class="text-caption font-weight-bold mb-1">{{ column.title }}</span>
+              <div v-if="currentViewMode !== 'quote'" @click.stop>
+                <v-checkbox-btn
+                  :model-value="isAllPreferredPayment"
+                  :indeterminate="isIndeterminatePreferredPayment"
+                  @click="openBatchUpdateDialog"
+                  color="success"
+                  density="compact"
+                  hide-details
+                  class="ma-0 pa-0"
+                ></v-checkbox-btn>
+              </div>
+            </div>
+          </template>
+
+          <template v-slot:item.isPreferredPayment="{ item }">
+            <div class="d-flex justify-center" @click.stop>
+              <v-switch
+                :model-value="item.isPreferredPayment"
+                :readonly="currentViewMode === 'quote'"
+                :color="item.isPreferredPayment ? 'success' : 'grey'"
+                density="compact"
+                hide-details
+                inset
+                class="ma-0 pa-0"
+                @update:model-value="(val) => handleSwitchChange(item, val)"
+              ></v-switch>
+            </div>
+          </template>
 
           <template v-slot:item.quote_mode_total_price="{ item }">
             <span v-if="item.status === '已售'" class="text-red font-weight-bold">已售</span>
@@ -265,7 +455,7 @@
           </template>
 
           <template v-slot:header.quote_mode_total_price="{ column, sort, sortBy }">
-            <div class="d-flex align-center ga-2"> 
+            <div class="d-flex align-center justify-center ga-2"> 
               
               <div 
                 class="d-flex align-center cursor-pointer user-select-none" 
@@ -299,7 +489,6 @@
                   color="error"
                   density="compact"
                   hide-details
-                
                   class="ma-0 pa-0"
                 ></v-switch>
               </div>
@@ -397,23 +586,6 @@
 
           <template v-slot:item.payment_deposit_date="{ item }">{{ formatDate(item.payment_deposit_date) }}</template>
           <template v-slot:item.payment_contract_date="{ item }">{{ formatDate(item.payment_contract_date) }}</template>
-        
-          <template v-slot:item.isPreferredPayment="{ item }">
-            <div class="d-flex justify-center" @click.stop>
-              <v-switch
-                :model-value="item.isPreferredPayment"
-                :readonly="currentViewMode === 'quote'"
-                :color="item.isPreferredPayment ? 'success' : 'grey'"
-                density="compact"
-                hide-details
-                inset
-                class="ma-0 pa-0"
-                @update:model-value="(val) => handleSwitchChange(item, val)"
-              ></v-switch>
-            </div>
-          </template>
-        
-        
         </v-data-table>
       </div>
 
@@ -426,6 +598,17 @@
       app
       grow  
     >
+    <v-btn @click="showFilterPanel = !showFilterPanel" v-if="viewFormat === 'list'">
+        <v-badge
+          :content="activeFilterCount"
+          :model-value="activeFilterCount > 0"
+          color="error"
+        >
+          <v-icon>mdi-filter-variant</v-icon>
+        </v-badge>
+        <span>篩選</span>
+    </v-btn>
+
     <v-btn @click="viewFormat = viewFormat === 'grid' ? 'list' : 'grid'">
         <v-icon>{{ viewFormat === 'grid' ? 'mdi-view-list' : 'mdi-view-grid' }}</v-icon>
         <span>{{ viewFormat === 'grid' ? '列表' : '網格' }}</span>
@@ -765,6 +948,44 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="batchDialog.show" max-width="400" persistent>
+      <v-card>
+        <v-card-title class="bg-primary text-white">
+          確認批次修改
+        </v-card-title>
+        
+        <v-card-text class="pt-4">
+          <div v-if="!batchDialog.loading">
+            您即將把目前的 <b>{{ batchDialog.count }}</b> 筆戶別<br>
+            的「優付」狀態全部修改為 
+            <b :class="batchDialog.targetValue ? 'text-success' : 'text-grey'">
+              {{ batchDialog.targetValue ? '開啟 (ON)' : '關閉 (OFF)' }}
+            </b>。
+            <br><br>
+            <span class="text-caption text-grey">注意：此操作將影響當前列表中的所有篩選結果。</span>
+          </div>
+
+          <div v-else class="text-center py-4">
+            <v-progress-circular
+              indeterminate
+              color="primary"
+              size="48"
+              class="mb-4"
+            ></v-progress-circular>
+            <div class="text-body-1 font-weight-bold">
+              正在更新中... ({{ batchDialog.progress }} / {{ batchDialog.count }})
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-card-actions v-if="!batchDialog.loading">
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="batchDialog.show = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" @click="executeBatchUpdate">確認執行</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -780,11 +1001,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent, reactive } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; 
-import { uploadHouseholds, getFloorPlansAPI, updateSalesData } from '@/api';
+
+import { 
+  uploadHouseholds, 
+  getFloorPlansAPI, 
+  updateSalesData,
+  updateSingleField
+ } from '@/api';
+
 import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import * as XLSX from 'xlsx-js-style';
@@ -798,6 +1026,186 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import { useTextStyleStore } from '@/store/textStyleStore'; 
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
+
+// 2. 變數與狀態定義 (由上而下)
+const showFilterPanel = ref(false);
+
+// 1. 修改 filters 定義 (加入銷控專用欄位)
+const filters = reactive({
+  // --- 共用欄位 ---
+  unitId: '',
+  areaMin: null,
+  areaMax: null,
+  totalPriceMin: null,
+  totalPriceMax: null,
+  unitPriceMin: null,
+  unitPriceMax: null,
+  
+  // --- ✅ [新增] 銷控模式專用欄位 ---
+  statuses: [],        // 銷控狀態 (多選)
+  salesperson: [],   // 銷售人員
+  buyerName: '',       // 買方姓名
+  depositDateStart: null, // 小訂日期 起
+  depositDateEnd: null,   // 小訂日期 迄
+  contractDateStart: null, // 簽約日期 起
+  contractDateEnd: null,    // 簽約日期 迄
+
+
+// --- ✅ [新增] 銷控模式專用 - 進階價格 ---
+  floorPriceMin: null,      // 底價 Min
+  floorPriceMax: null,      // 底價 Max
+  floorUnitPriceMin: null,  // 底價單價 Min
+  floorUnitPriceMax: null,  // 底價單價 Max
+  transPriceMin: null,      // 成交總價 Min
+  transPriceMax: null       // 成交總價 Max
+});
+
+// 2. ✅ [新增] 下拉選單選項 (依賴 salesParameters 和 salesPersonnel)
+const statusOptions = computed(() => {
+  return salesParameters.value.map(p => p.statusName);
+});
+
+const personnelOptions = computed(() => {
+  return salesPersonnel.value.map(p => p.name);
+});
+
+// 3. 修改 activeFilterCount (加入新欄位計數)
+const activeFilterCount = computed(() => {
+  let count = 0;
+  if (filters.unitId) count++;
+  if (filters.areaMin || filters.areaMax) count++;
+  if (filters.totalPriceMin || filters.totalPriceMax) count++;
+  if (filters.unitPriceMin || filters.unitPriceMax) count++;
+  
+  if (filters.statuses && filters.statuses.length > 0) count++;
+  if (filters.salesperson && filters.salesperson.length > 0) count++;
+  if (filters.buyerName) count++;
+  if (filters.depositDateStart || filters.depositDateEnd) count++;
+  if (filters.contractDateStart || filters.contractDateEnd) count++;
+
+  // ✅ [新增]
+  if (filters.floorPriceMin || filters.floorPriceMax) count++;
+  if (filters.floorUnitPriceMin || filters.floorUnitPriceMax) count++;
+  if (filters.transPriceMin || filters.transPriceMax) count++;
+  
+  return count;
+});
+
+// 4. 修改 clearFilters (重置新欄位)
+const clearFilters = () => {
+ filters.unitId = '';
+  filters.areaMin = null; filters.areaMax = null;
+  filters.totalPriceMin = null; filters.totalPriceMax = null;
+  filters.unitPriceMin = null; filters.unitPriceMax = null;
+  
+  filters.statuses = [];
+  filters.salesperson = [];
+  filters.buyerName = '';
+  filters.depositDateStart = null; filters.depositDateEnd = null;
+  filters.contractDateStart = null; filters.contractDateEnd = null;
+
+  // ✅ [新增]
+  filters.floorPriceMin = null; filters.floorPriceMax = null;
+  filters.floorUnitPriceMin = null; filters.floorUnitPriceMax = null;
+  filters.transPriceMin = null; filters.transPriceMax = null;
+};
+
+// 5. 修改 filteredTableItems (加入篩選邏輯)
+const filteredTableItems = computed(() => {
+  return tableItems.value.filter(item => {
+    // --- 基礎篩選 (共用) ---
+    // 1. 戶別搜尋
+    if (filters.unitId && !item.unitId.toLowerCase().includes(filters.unitId.toLowerCase())) return false;
+
+    // 2. 面積範圍
+    const area = Number(item.area_house_ping) || 0;
+    if (filters.areaMin !== null && filters.areaMin !== '' && area < Number(filters.areaMin)) return false;
+    if (filters.areaMax !== null && filters.areaMax !== '' && area > Number(filters.areaMax)) return false;
+
+    // 價格判斷 (略...保持原樣)
+    let targetTotalPrice = 0;
+    let targetUnitPrice = 0;
+    if (currentViewMode.value === 'quote') {
+       targetTotalPrice = Number(item.price_list_house_total) || 0;
+       targetUnitPrice = Number(item.unit_price_list) || 0;
+    } else {
+       if (priceDisplayMode.value === 'list') {
+          targetTotalPrice = Number(item.price_list_house_total) || 0;
+          targetUnitPrice = Number(item.unit_price_list) || 0;
+       } else if (priceDisplayMode.value === 'floor') {
+          targetTotalPrice = Number(item.price_floor_house_total) || 0;
+          targetUnitPrice = Number(item.unit_price_floor) || 0;
+       } else { 
+          targetTotalPrice = Number(item.price_transaction_house) || 0;
+          targetUnitPrice = Number(item.unit_price_transaction) || 0;
+       }
+    }
+
+    // 3. 總價範圍
+    if (filters.totalPriceMin !== null && filters.totalPriceMin !== '' && targetTotalPrice < Number(filters.totalPriceMin)) return false;
+    if (filters.totalPriceMax !== null && filters.totalPriceMax !== '' && targetTotalPrice > Number(filters.totalPriceMax)) return false;
+
+    // 4. 單價範圍
+    if (filters.unitPriceMin !== null && filters.unitPriceMin !== '' && targetUnitPrice < Number(filters.unitPriceMin)) return false;
+    if (filters.unitPriceMax !== null && filters.unitPriceMax !== '' && targetUnitPrice > Number(filters.unitPriceMax)) return false;
+
+    // --- ✅ [新增] 銷控模式專用篩選 ---
+    if (currentViewMode.value !== 'quote') {
+        
+        // 5. 銷控狀態 (多選)
+        if (filters.statuses && filters.statuses.length > 0) {
+            if (!filters.statuses.includes(item.status)) return false;
+        }
+
+        // 6. 銷售人員 (多選)
+        if (filters.salesperson && filters.salesperson.length > 0) {
+            
+            if (!item.salesperson || !filters.salesperson.includes(item.salesperson)) return false;
+        }
+
+        // 7. 買方姓名 (模糊搜尋)
+        if (filters.buyerName) {
+            if (!item.buyerName || !item.buyerName.includes(filters.buyerName)) return false;
+        }
+
+        // 輔助函式：轉換 Timestamp 為 YYYY-MM-DD 字串
+        const getDateStr = (ts) => {
+            if (!ts) return null;
+            if (ts instanceof Date) return ts.toISOString().split('T')[0];
+            if (typeof ts.toDate === 'function') return ts.toDate().toISOString().split('T')[0];
+            return null;
+        };
+
+        const depositDate = getDateStr(item.payment_deposit_date);
+        const contractDate = getDateStr(item.payment_contract_date);
+
+        // 8. 小訂日期範圍
+        if (filters.depositDateStart && (!depositDate || depositDate < filters.depositDateStart)) return false;
+        if (filters.depositDateEnd && (!depositDate || depositDate > filters.depositDateEnd)) return false;
+
+        // 9. 簽約日期範圍
+        if (filters.contractDateStart && (!contractDate || contractDate < filters.contractDateStart)) return false;
+        if (filters.contractDateEnd && (!contractDate || contractDate > filters.contractDateEnd)) return false;
+   // ✅ [新增] 10. 房屋底價範圍 (price_floor_house_total)
+        const floorPrice = Number(item.price_floor_house_total) || 0;
+        if (filters.floorPriceMin !== null && filters.floorPriceMin !== '' && floorPrice < Number(filters.floorPriceMin)) return false;
+        if (filters.floorPriceMax !== null && filters.floorPriceMax !== '' && floorPrice > Number(filters.floorPriceMax)) return false;
+
+        // ✅ [新增] 11. 底價單價範圍 (unit_price_floor)
+        const floorUnitPrice = Number(item.unit_price_floor) || 0;
+        if (filters.floorUnitPriceMin !== null && filters.floorUnitPriceMin !== '' && floorUnitPrice < Number(filters.floorUnitPriceMin)) return false;
+        if (filters.floorUnitPriceMax !== null && filters.floorUnitPriceMax !== '' && floorUnitPrice > Number(filters.floorUnitPriceMax)) return false;
+
+        // ✅ [新增] 12. 成交總價範圍 (total_transaction)
+        const transPrice = Number(item.total_transaction) || 0;
+        if (filters.transPriceMin !== null && filters.transPriceMin !== '' && transPrice < Number(filters.transPriceMin)) return false;
+        if (filters.transPriceMax !== null && filters.transPriceMax !== '' && transPrice > Number(filters.transPriceMax)) return false;
+    }
+
+    return true;
+  });
+});
+
 
 // ==========================================
 // 🚀 [新增] 離開頁面時的資料清理邏輯
@@ -849,22 +1257,137 @@ const getContrastTextColor = (hexColor) => {
 // ✅ [修改] 控制是否顯示「已售」的資料列 (預設 true: 顯示全部)
 const showSoldItems = ref(true);
 
-// ✅ [新增] 處理 Switch 切換 (僅銷控模式會觸發寫入)
-const handleSwitchChange = async (item, newValue) => {
-  // 雙重防護：如果是報價模式，不執行更新
+// ==========================================
+// 🚀 [新增] 批次更新相關邏輯
+// ==========================================
+
+const batchDialog = reactive({
+  show: false,
+  loading: false,
+  targetValue: false, // 目標狀態 (全部變 true 或 false)
+  count: 0,           // 影響筆數
+  progress: 0         // 當前處理進度
+});
+
+// 計算屬性：是否全選
+const isAllPreferredPayment = computed(() => {
+  if (tableItems.value.length === 0) return false;
+  return tableItems.value.every(item => item.isPreferredPayment === true);
+});
+
+// 計算屬性：是否部分選取 (Indeterminate)
+const isIndeterminatePreferredPayment = computed(() => {
+  if (tableItems.value.length === 0) return false;
+  const hasTrue = tableItems.value.some(item => item.isPreferredPayment === true);
+  const hasFalse = tableItems.value.some(item => !item.isPreferredPayment); // 注意 null/undefined 視為 false
+  return hasTrue && hasFalse;
+});
+
+// 開啟批次確認框
+function openBatchUpdateDialog() {
   if (currentViewMode.value === 'quote') return;
 
-  const payload = {
-    unitId: item.unitId,
-    data: { isPreferredPayment: newValue }
-  };
+  const items = tableItems.value;
+  if (items.length === 0) {
+    toast.info('目前列表無資料可操作', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+
+  // 邏輯：
+  // 1. 如果是「部分選取」或「全選」 -> 目標：全部關閉 (False)
+  // 2. 如果是「全不選」         -> 目標：全部開啟 (True)
+  const currentIsSomeOrAllChecked = items.some(item => item.isPreferredPayment === true);
+  const targetValue = !currentIsSomeOrAllChecked;
+
+  batchDialog.targetValue = targetValue;
+  batchDialog.count = items.length;
+  batchDialog.loading = false;
+  batchDialog.progress = 0;
+  batchDialog.show = true;
+}
+
+// 執行批次更新
+async function executeBatchUpdate() {
+  batchDialog.loading = true;
+  batchDialog.progress = 0;
   
-  // 使用現有的 handleUnitListUpdate 函式進行更新
-  await handleUnitListUpdate(payload);
+  const targetValue = batchDialog.targetValue;
+  const itemsToUpdate = [...tableItems.value]; // 複製當前列表
+  const total = itemsToUpdate.length;
+  const projectIdStr = projectId.value;
+
+  try {
+    // 分批處理 (Chunking)：每次併發 5 筆請求，避免塞爆後端或被 Rate Limit
+    const chunkSize = 5;
+    for (let i = 0; i < total; i += chunkSize) {
+      const chunk = itemsToUpdate.slice(i, i + chunkSize);
+      
+      const promises = chunk.map(item => {
+        // 只有當狀態不同時才需要發送 API (節省流量)
+        if (item.isPreferredPayment !== targetValue) {
+          // 樂觀更新 UI (讓使用者覺得很快)
+          item.isPreferredPayment = targetValue;
+          
+          return updateSingleField(projectIdStr, item.unitId, 'isPreferredPayment', targetValue)
+            .catch(err => {
+              console.error(`Update failed for ${item.unitId}:`, err);
+              // 失敗時復原 UI
+              item.isPreferredPayment = !targetValue; 
+              return null; // 忽略錯誤，繼續執行
+            });
+        } else {
+          return Promise.resolve(); // 狀態已一致，跳過
+        }
+      });
+
+      await Promise.all(promises);
+      
+      // 更新進度條
+      batchDialog.progress = Math.min(i + chunkSize, total);
+    }
+
+    toast.success(`批次更新完成！已將 ${total} 筆資料設為 ${targetValue ? '開啟' : '關閉'}`, { 
+      position: POSITION.BOTTOM_CENTER 
+    });
+
+  } catch (error) {
+    console.error('Batch update error:', error);
+    toast.error('批次更新過程中發生錯誤，請重新整理頁面檢查資料。', { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    batchDialog.show = false;
+    batchDialog.loading = false;
+  }
+}
+
+
+// ==========================================
+// [修改] 單筆切換 (改用 updateSingleField)
+// ==========================================
+const handleSwitchChange = async (item, newValue) => {
+  if (currentViewMode.value === 'quote') return;
+
+  // 樂觀更新
+  const originalVal = item.isPreferredPayment;
+  item.isPreferredPayment = newValue;
+
+  try {
+    // 呼叫上一輪建議的新 API，確保只更新單一欄位
+    const result = await updateSingleField(projectId.value, item.unitId, 'isPreferredPayment', newValue);
+    
+    if (result.status !== 'success') {
+      throw new Error(result.message);
+    }
+    // 成功不需額外動作，因為已樂觀更新
+  } catch (error) {
+    console.error('Switch update error:', error);
+    // 失敗復原
+    item.isPreferredPayment = originalVal;
+    toast.error(`更新失敗: ${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  }
 };
 
 
-// (原有變數定義保持不變)
+
 const isListView = ref(false); // 這好像是沒用的舊變數，可忽略或移除
 // ... (COLUMN_DEFINITIONS, exportableColumns 等... 保持不變) ...
 const COLUMN_DEFINITIONS = [
@@ -1133,29 +1656,61 @@ const formatDate = (val) => {
 const tableHeaders = computed(() => {
   // 情境 A: [報價模式]
   if (currentViewMode.value === 'quote') {
-    return [
-      { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
-      // [新增] 優付 (Readonly)
-      { title: '優付', key: 'isPreferredPayment', align: 'center', sortable: true, width: '80px' },
-      { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
+    // 1. 定義基礎欄位 (戶別)
+    const headers = [
+      { 
+        title: '戶別', 
+        key: 'unitId', 
+        align: 'center', 
+        fixed: true, 
+        sortable: true 
+      }
+    ];
+
+    // 2. ✅ [修改] 根據專案設定決定是否顯示「優付」欄位
+    // 只有當設定為 true 時才顯示 (預設或 undefined 都不顯示)
+    if (project.value && project.value.showPreferredPaymentInQuote === true) {
+      headers.push({ 
+        title: '優付', 
+        key: 'isPreferredPayment', 
+        align: 'center', 
+        sortable: true, 
+        width: '80px' 
+      });
+    }
+
+    // 3. 加入其餘固定欄位
+    headers.push(
+      { 
+        title: '房屋總面積(坪)', 
+        key: 'area_house_ping', 
+        align: 'center' 
+      },
       { 
         title: '房屋總價', 
         key: 'quote_mode_total_price', 
-        align: 'start', 
+        align: 'center', 
         sort: customPriceSort,
         minWidth: '160px' 
       },
-      { title: '房屋單價', key: 'unit_price_value', align: 'start', sort: customPriceSort },
-    ];
+      { 
+        title: '房屋單價', 
+        key: 'unit_price_value', 
+        align: 'center', 
+        sort: customPriceSort 
+      }
+    );
+
+    return headers;
   }
-  // 情境 B: [銷控模式]
+  // 情境 B: [銷控模式] (保持原樣，始終顯示優付供管理員操作)
   else {
     // 手機版銷控模式
     if (isMobile.value) {
       return [
         { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
         { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
-        // [新增] 優付 (Editable)
+        // 銷控模式始終顯示優付
         { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
         { title: '房屋總價', key: 'price_list_house_total', align: 'end', width: '90px' },
@@ -1168,7 +1723,7 @@ const tableHeaders = computed(() => {
     return [
       { title: '銷控狀態', key: 'status', align: 'center' },
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
-      // [新增] 優付 (Editable)
+      // 銷控模式始終顯示優付
       { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
       
@@ -1281,6 +1836,8 @@ const tableItems = computed(() => {
     return item;
   }).sort((a, b) => naturalSort(a.unitId, b.unitId));
 });
+
+
 
 // 5. 處理列表行點擊
 const handleRowClick = (event, { item }) => {
@@ -2047,4 +2604,37 @@ const uploadData = async () => {
 .user-select-none {
   user-select: none;
 }
+
+
+
+
+/* 確保進度條文字清晰 */
+.text-body-1 {
+  font-size: 1rem !important;
+}
+
+/* ✅ [新增] 篩選面板間距微調 */
+.gap-2 {
+  gap: 8px;
+}
+
+.date-input-compact {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  width: 100%;
+  color: #333;
+}
+.date-input-compact:focus {
+  outline: 2px solid #1976D2; /* Primary color */
+  border-color: transparent;
+}
+.border-dashed {
+  border-style: dashed !important;
+}
+.gap-1 {
+  gap: 4px;
+}
+
 </style>
