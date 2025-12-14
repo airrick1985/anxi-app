@@ -397,6 +397,23 @@
 
           <template v-slot:item.payment_deposit_date="{ item }">{{ formatDate(item.payment_deposit_date) }}</template>
           <template v-slot:item.payment_contract_date="{ item }">{{ formatDate(item.payment_contract_date) }}</template>
+        
+          <template v-slot:item.isPreferredPayment="{ item }">
+            <div class="d-flex justify-center" @click.stop>
+              <v-switch
+                :model-value="item.isPreferredPayment"
+                :readonly="currentViewMode === 'quote'"
+                :color="item.isPreferredPayment ? 'success' : 'grey'"
+                density="compact"
+                hide-details
+                inset
+                class="ma-0 pa-0"
+                @update:model-value="(val) => handleSwitchChange(item, val)"
+              ></v-switch>
+            </div>
+          </template>
+        
+        
         </v-data-table>
       </div>
 
@@ -805,6 +822,7 @@ onBeforeRouteLeave((to, from, next) => {
   next();
 });
 
+
 // [新增] 視圖格式：'grid' | 'list'
 const viewFormat = ref('grid'); 
 
@@ -831,6 +849,20 @@ const getContrastTextColor = (hexColor) => {
 // ✅ [修改] 控制是否顯示「已售」的資料列 (預設 true: 顯示全部)
 const showSoldItems = ref(true);
 
+// ✅ [新增] 處理 Switch 切換 (僅銷控模式會觸發寫入)
+const handleSwitchChange = async (item, newValue) => {
+  // 雙重防護：如果是報價模式，不執行更新
+  if (currentViewMode.value === 'quote') return;
+
+  const payload = {
+    unitId: item.unitId,
+    data: { isPreferredPayment: newValue }
+  };
+  
+  // 使用現有的 handleUnitListUpdate 函式進行更新
+  await handleUnitListUpdate(payload);
+};
+
 
 // (原有變數定義保持不變)
 const isListView = ref(false); // 這好像是沒用的舊變數，可忽略或移除
@@ -841,7 +873,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'unitId', title: '戶別' },
     { key: 'propertyType', title: '物件類型' },
     { key: 'layout', title: '格局' },
-    
+    { key: 'isPreferredPayment', title: '優付' },
     { key: 'salesStatus_backend', title: '銷控後台狀態' },
     { key: 'salesStatus_quote', title: '報價系統狀態' },
     { key: 'buyerName', title: '買方姓名' },
@@ -1103,8 +1135,9 @@ const tableHeaders = computed(() => {
   if (currentViewMode.value === 'quote') {
     return [
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
+      // [新增] 優付 (Readonly)
+      { title: '優付', key: 'isPreferredPayment', align: 'center', sortable: true, width: '80px' },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
-      // ✅ [修改] 加入 minWidth: '160px' 避免手機版 Switch 被切到
       { 
         title: '房屋總價', 
         key: 'quote_mode_total_price', 
@@ -1117,27 +1150,29 @@ const tableHeaders = computed(() => {
   }
   // 情境 B: [銷控模式]
   else {
-    // ✅ [新增] 手機版銷控模式：只顯示「精簡欄位」，避免渲染崩潰
+    // 手機版銷控模式
     if (isMobile.value) {
       return [
         { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
         { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
-        
+        // [新增] 優付 (Editable)
+        { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
         { title: '房屋總價', key: 'price_list_house_total', align: 'end', width: '90px' },
         { title: '房屋底價', key: 'price_floor_house_total', align: 'end', width: '90px' },
-        
         { title: '成交總價', key: 'total_transaction', align: 'end', width: '100px' },
       ];
     }
 
-    // 電腦版銷控模式：顯示完整 20+ 欄位 (保持原本的代碼)
+    // 電腦版銷控模式
     return [
       { title: '銷控狀態', key: 'status', align: 'center' },
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
+      // [新增] 優付 (Editable)
+      { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
       
-      // ... (原本所有的欄位：表價、底價、成交價、車位、日期、備註等) ...
+      // ... (原本的欄位) ...
       { title: '房價(表價)', key: 'price_list_house_total', align: 'start' },
       { title: '表價單價', key: 'unit_price_list', align: 'start', sort: customPriceSort },
       { title: '底價', key: 'price_floor_house_total', align: 'start' },
@@ -1565,10 +1600,21 @@ const handleFileChange = () => {
             });
             const dataRows = dataAsArrays.slice(1);
             const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
-            const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+          const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                 const newRow = {};
                 for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
-                    newRow[englishKey] = rowArray[colIndex] ?? null;
+                    let value = rowArray[colIndex] ?? null;
+
+                    // ✅ [新增] 針對布林值欄位進行轉換 (將 Excel 的 "TRUE"/"FALSE" 字串轉回 Boolean)
+                    if (['isPreferredPayment', 'isFirstTimeBuyer'].includes(englishKey)) {
+                        if (typeof value === 'string') {
+                            const upperVal = value.toUpperCase().trim();
+                            if (upperVal === 'TRUE') value = true;
+                            else if (upperVal === 'FALSE') value = false;
+                        }
+                    }
+
+                    newRow[englishKey] = value;
                 }
                 return newRow;
             });
@@ -1577,7 +1623,7 @@ const handleFileChange = () => {
             }
             parsedData.value = jsonDataWithEnglishKeys;
             uploadMessageType.value = 'success';
-            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (欄位順序已自動匹配)，可以開始上傳。`;
+            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (含優付欄位)，可以開始上傳。`;
         } catch (err) {
             uploadMessageType.value = 'error';
             uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';

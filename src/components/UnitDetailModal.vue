@@ -78,6 +78,18 @@
                         persistent-hint
                     ></v-text-field>
                 </v-col>
+
+                <v-col cols="12" md="3" v-if="viewMode === 'sales'" class="d-flex align-center">
+                    <v-switch
+                        v-model="editingData.isPreferredPayment"
+                        label="優付"
+                        color="primary"
+                        hide-details
+                        density="compact"
+                        class="ml-2"
+                        inset
+                    ></v-switch>
+                </v-col>
             </v-row>
         </v-card>
 
@@ -170,11 +182,24 @@
 </v-col>
                   
           <v-col cols="12" md="4">
-                <div class="info-section">
-                    <div class="section-title"> {{ unitData.unitId }} 價格資訊</div>
-                    <v-row dense>
-                        <v-col cols="12"> 
-                            <div class="price-block mb-2"> 
+            <div class="info-section">
+                <div class="section-title d-flex justify-space-between align-center">
+                    <span>{{ unitData.unitId }} 價格資訊</span>
+                    <v-chip
+                        v-if="unitData.isPreferredPayment"
+                        color="primary"
+                        size="small"
+                        label
+                        class="font-weight-bold"
+                    >
+                        <v-icon start icon="mdi-check-circle" size="small"></v-icon>
+                        優付
+                    </v-chip>
+                </div>
+                
+                <v-row dense>
+                    <v-col cols="12"> 
+                        <div class="price-block mb-2">
                                 <div class="price-block-title">房價</div>
                                 <template v-if="props.viewMode === 'quote' && unitData.salesStatus_quote === '已售'">
                                     <div class="price-block-value text-grey">
@@ -782,6 +807,9 @@ function startEditing() {
 
       editingData.value.payment_deposit_date = timestampToDate(props.unitData.payment_deposit_date);
       editingData.value.payment_contract_date = timestampToDate(props.unitData.payment_contract_date);
+      
+      // ✅ [新增] 初始化優付欄位，若原資料無此欄位預設為 false
+      editingData.value.isPreferredPayment = props.unitData.isPreferredPayment || false;
   }
   // ✅ END: 新增
   
