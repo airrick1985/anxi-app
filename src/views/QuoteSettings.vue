@@ -75,6 +75,9 @@
             <div class="item-cell flex-2">車位</div>
             <div class="item-cell flex-1">車位價格</div>
             <div class="item-cell flex-1">首購</div>
+            
+            <div class="item-cell flex-1" v-if="showPreferredPaymentOption">優付</div>
+
             <div class="item-cell flex-1">總價</div>
             <template v-if="showPackageDealColumns">
               <div class="item-cell flex-1">配套</div>
@@ -92,7 +95,8 @@
               :show-package-deal="showPackageDealColumns"
               :is-loading="loading"
               :all-parking-data="parkingStore.parkingData || []"
-              :project-id="projectId" @remove="quoteStore.removeItem(item.internalId)"
+              :project-id="projectId" 
+              @remove="quoteStore.removeItem(item.internalId)"
               
             />
           </v-card>
@@ -378,6 +382,7 @@ const projectName = computed(() => {
   }
   return projectStore.idToNameMap[projectId.value] || '載入中...';
 });
+
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
@@ -404,6 +409,11 @@ const isActivityLoading = ref(false);
 const activitySlideEmbedUrl = computed(() => {
   if (!activitySlideId.value) return '';
   return `https://docs.google.com/presentation/d/${activitySlideId.value}/embed?start=true&loop=true&delayms=3000`;
+});
+
+// ✅ [新增] 判斷是否顯示優付欄位 (與 PaymentSettings.vue 邏輯一致)
+const showPreferredPaymentOption = computed(() => {
+    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
 });
 
 // --- 計算引擎 (維持不變) ---

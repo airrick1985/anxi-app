@@ -470,6 +470,8 @@ const props = defineProps({
 const emit = defineEmits(['update:show', 'request-open-slide', 'parking-updated']);
 // ✅ [新增] 初始化 ProjectStore
 const projectStore = useProjectStore();
+
+
 // --- 主要表單狀態 ---
 const formData = ref(null);
 const parkingEditDialog = ref(false);
