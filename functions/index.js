@@ -18104,3 +18104,311 @@ exports.onAppointmentChange = onDocumentWritten({
         console.error(`[${functionName}] 自動同步失敗:`, error);
     }
 });
+
+// =================================================================
+// /  【新增】賞屋預約系統 (Viewing Reservation) Cloud Functions
+// =================================================================
+
+/**
+ * [Trigger] 監聽賞屋預約的寫入 (新增/修改/刪除)
+ * 負責：
+ * 1. 自動輪播指派銷售 (若未指定)
+ * 2. 發送 LINE 廣播通知 (新增/取消/指派)
+ */
+exports.onViewingReservationChange = onDocumentWritten({
+    document: "viewing_reservations/{docId}",
+    database: "anxi-app",
+    region: "asia-east1",
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"] 
+}, async (event) => {
+    const functionName = "onViewingReservationChange";
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    const afterData = event.data.after?.data();
+    const beforeData = event.data.before?.data();
+
+    // 1. 若資料被物理刪除，不處理
+    if (!afterData) return;
+
+    const projectId = afterData.projectId;
+    const docId = event.params.docId;
+    
+    // 識別狀態變化
+    const isNew = !beforeData; // 新增
+    const isCancelled = beforeData?.status === 'active' && afterData.status === 'deleted'; // 取消
+    // const isAssigned = ... (不再需要偵測指派)
+
+    console.log(`[${functionName}] Doc: ${docId}, Project: ${projectId}, IsNew: ${isNew}, IsCancelled: ${isCancelled}`);
+
+    try {
+        // ==================================================
+        // 任務 A: 自動輪播指派 (已移除)
+        // ==================================================
+        // 原本的輪播邏輯已刪除，保持 salesId 為 null 或 "不指定"
+        
+        // ==================================================
+        // 任務 B: LINE 廣播通知
+        // ==================================================
+        if (isNew || isCancelled) {
+            
+            // 1. 準備訊息內容
+            let title = "";
+            let color = "";
+            // ✅ [修改] 顯示文字調整
+            let salesDisplay = afterData.salesName || "不指定";
+
+            if (isCancelled) {
+                title = "❌ 賞屋預約 - 已取消";
+                color = "#FF3333"; // 紅色
+            } else {
+                title = "🏠 賞屋預約 - 新增";
+                color = "#1DB446"; // LINE 綠
+            }
+
+            // 轉換時間格式
+let timeStr = "";
+            if (afterData.reservationTime && afterData.reservationTime.toDate) {
+                timeStr = afterData.reservationTime.toDate().toLocaleString('zh-TW', { 
+                    timeZone: 'Asia/Taipei',
+                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false 
+                });
+            }
+
+            const flexMessage = {
+                type: "bubble",
+                size: "mega",
+                body: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
+                        { type: "text", text: title, weight: "bold", size: "xl", color: color },
+                        { type: "separator", margin: "md" },
+                        {
+                            type: "box",
+                            layout: "vertical",
+                            margin: "md",
+                            spacing: "sm",
+                            contents: [
+                                {
+                                    type: "box",
+                                    layout: "baseline",
+                                    contents: [
+                                        { type: "text", text: "建案", color: "#aaaaaa", size: "sm", flex: 2 },
+                                        { type: "text", text: projectId, wrap: true, color: "#666666", size: "sm", flex: 5 }
+                                    ]
+                                },
+                                {
+                                    type: "box",
+                                    layout: "baseline",
+                                    contents: [
+                                        { type: "text", text: "時間", color: "#aaaaaa", size: "sm", flex: 2 },
+                                        { type: "text", text: timeStr, wrap: true, color: "#666666", size: "sm", flex: 5 }
+                                    ]
+                                },
+                                {
+                                    type: "box",
+                                    layout: "baseline",
+                                    contents: [
+                                        { type: "text", text: "客戶", color: "#aaaaaa", size: "sm", flex: 2 },
+                                        { type: "text", text: `${afterData.customerName} (${afterData.type})`, wrap: true, color: "#666666", size: "sm", flex: 5 }
+                                    ]
+                                },
+                                {
+                                    type: "box",
+                                    layout: "baseline",
+                                    contents: [
+                                        { type: "text", text: "電話", color: "#aaaaaa", size: "sm", flex: 2 },
+                                        { type: "text", text: afterData.customerPhone, color: "#007bff", size: "sm", flex: 5, action: { type: "uri", label: "撥打", uri: `tel:${afterData.customerPhone}` } }
+                                    ]
+                                },
+                                {
+                                    type: "box",
+                                    layout: "baseline",
+                                    contents: [
+                                        { type: "text", text: "銷售", color: "#aaaaaa", size: "sm", flex: 2 },
+                                        // ✅ [修改] 顯示 salesDisplay
+                                        { type: "text", text: salesDisplay, wrap: true, color: "#666666", size: "sm", flex: 5, weight: "bold" }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            };
+
+            // 加上備註 (如果有)
+            if (afterData.note) {
+                flexMessage.body.contents[2].contents.push({
+                    type: "box",
+                    layout: "baseline",
+                    contents: [
+                        { type: "text", text: "備註", color: "#aaaaaa", size: "sm", flex: 2 },
+                        { type: "text", text: afterData.note, wrap: true, color: "#D32F2F", size: "sm", flex: 5 }
+                    ]
+                });
+            }
+            
+            // 2. 獲取發送對象 (全體廣播)
+            const lineIds = await _getProjectSalesLineIds(db, projectId);
+            
+            if (lineIds.length > 0) {
+                // 3. 發送
+                // 嘗試獲取 Token，優先使用客資系統設定，否則使用預設
+                let channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+                
+                // 嘗試從客資設定讀取專案特定的 Token (如果有的話)
+                const settingsDoc = await db.collection("customerFieldSettings").doc(projectId).get();
+                if (settingsDoc.exists) {
+                    const secretName = settingsDoc.data().anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
+                    if (secretName && process.env[secretName]) {
+                        channelToken = process.env[secretName];
+                    }
+                }
+
+                if (channelToken) {
+                    const lineClient = new line.Client({ channelAccessToken: channelToken });
+                    await lineClient.multicast(lineIds, [{ type: "flex", altText: title, contents: flexMessage }]);
+                    console.log(`[${functionName}] 廣播通知已發送給 ${lineIds.length} 人。`);
+                } else {
+                    console.warn(`[${functionName}] 找不到可用的 LINE Channel Token，無法發送通知。`);
+                }
+            } else {
+                console.log(`[${functionName}] 該建案 (${projectId}) 沒有綁定 LINE 的銷售人員，跳過通知。`);
+            }
+        }
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行失敗:`, error);
+    }
+});
+
+/**
+ * [內部函式] 執行輪播邏輯
+ * 1. 撈取該建案所有符合資格的銷售
+ * 2. 讀取上次指派索引 (儲存在 projects/{projectId} 的 viewingSettings 欄位)
+ * 3. 決定下一位並更新索引
+ */
+async function _assignRoundRobinSales(db, projectId) {
+    try {
+        // 1. 找出候選人
+        // 查詢 userPermissions 中，該專案擁有「報價」或「銷控」權限的人
+        // 由於 Firestore 無法直接 query map keys 的值，我們這裡採用「先列出所有 users，再過濾」的方式
+        // (若 User 量大，建議改為維護一份 project_users 集合)
+        
+        // 這裡使用優化策略：查詢 users 集合 (假設 users 不會太多，或是已有 project_users 結構)
+        // 暫時使用讀取 userPermissions 的方式 (與前端相同逻辑)
+        const permSnapshot = await db.collection("userPermissions").get();
+        const candidates = [];
+
+        permSnapshot.forEach(doc => {
+            const perms = doc.data().permissions || {};
+            const projectPerms = perms[projectId];
+            if (projectPerms && projectPerms.systems) {
+                const hasAuth = projectPerms.systems.includes('報價系統') || projectPerms.systems.includes('銷控系統');
+                if (hasAuth) {
+                    candidates.push({ 
+                        id: doc.id, // phone
+                        name: doc.data().userName || doc.id // 假設 userPermissions 有存 name，或需再查 users
+                    });
+                }
+            }
+        });
+
+        if (candidates.length === 0) return null;
+
+        // 排序 (確保順序一致)
+        candidates.sort((a, b) => a.id.localeCompare(b.id));
+
+        // 2. 讀取並更新索引
+        const projectRef = db.collection("projects").doc(projectId);
+        
+        const assignedSales = await db.runTransaction(async (t) => {
+            const doc = await t.get(projectRef);
+            if (!doc.exists) return null; // 異常
+
+            const settings = doc.data().viewingSettings || {};
+            let lastIndex = settings.lastRoundRobinIndex;
+            
+            if (typeof lastIndex !== 'number') lastIndex = -1;
+
+            let nextIndex = lastIndex + 1;
+            if (nextIndex >= candidates.length) {
+                nextIndex = 0;
+            }
+
+            const winner = candidates[nextIndex];
+
+            // 更新索引
+            t.set(projectRef, {
+                viewingSettings: {
+                    lastRoundRobinIndex: nextIndex
+                }
+            }, { merge: true });
+
+            return winner;
+        });
+        
+        // 補查 users 集合獲取電話 (如果需要)
+        if (assignedSales) {
+             const userDoc = await db.collection("users").doc(assignedSales.id).get();
+             if (userDoc.exists) {
+                 assignedSales.name = userDoc.data().name || assignedSales.name;
+                 // phone 其實就是 ID
+                 assignedSales.phone = assignedSales.id;
+             }
+        }
+
+        return assignedSales;
+
+    } catch (error) {
+        console.error("[_assignRoundRobinSales] Error:", error);
+        return null;
+    }
+}
+
+/**
+ * [內部函式] 獲取該建案所有需接收通知的銷售人員 LINE ID
+ */
+async function _getProjectSalesLineIds(db, projectId) {
+    const lineIds = new Set();
+    
+    // 找出有權限的人 (邏輯同輪播，但這次是找所有人)
+    // 為了效能，這裡可以優化。目前採用遍歷 userPermissions
+    const permSnapshot = await db.collection("userPermissions").get();
+    const userIds = [];
+
+    permSnapshot.forEach(doc => {
+        const perms = doc.data().permissions || {};
+        const projectPerms = perms[projectId];
+        if (projectPerms && projectPerms.systems) {
+            const hasAuth = projectPerms.systems.includes('報價系統') || projectPerms.systems.includes('銷控系統');
+            if (hasAuth) {
+                userIds.push(doc.id);
+            }
+        }
+    });
+
+    if (userIds.length === 0) return [];
+
+    // 批量查詢 users 集合獲取 LINE ID
+    // Firestore 'in' query limit is 30
+    const chunks = [];
+    for (let i = 0; i < userIds.length; i += 30) {
+        chunks.push(userIds.slice(i, i + 30));
+    }
+
+    for (const chunk of chunks) {
+        const usersSnap = await db.collection("users")
+            .where(FieldPath.documentId(), 'in', chunk)
+            .get();
+        
+        usersSnap.forEach(doc => {
+            const lid = doc.data().lineId;
+            if (lid && lid.startsWith('U')) { // 簡單驗證格式
+                lineIds.add(lid);
+            }
+        });
+    }
+
+    return Array.from(lineIds);
+}

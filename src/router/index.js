@@ -569,6 +569,32 @@ const routes = [
   },
   // --- ✅ END: 新增 Standby 路由 ---
 
+  // ✅ [修改] 賞屋預約系統 - 入口 (負責 LIFF 驗證與分流)
+  // URL: /?liff_path=/viewing-reservation-entry
+  {
+    path: '/viewing-reservation-entry',
+    name: 'ViewingReservationEntry',
+    component: () => import('@/views/ViewingReservationEntry.vue'), // 指向新建立的 Entry 組件
+    meta: {
+      requiresAuth: false, // ⚠️ 關鍵：設為 false 以避開全域登入跳轉
+      layout: PublicLayout,
+      title: '賞屋預約 - 建案選擇'
+    }
+  },
+
+  // ✅ [修改] 賞屋預約系統 - 行事曆主頁
+  {
+    path: '/viewing-reservation/:projectId',
+    name: 'ViewingReservationCalendar',
+    component: () => import('@/views/ViewingReservationCalendar.vue'),
+    props: true,
+    meta: {
+      requiresAuth: false, // ⚠️ 關鍵：設為 false，由組件內部檢查狀態
+      layout: PublicLayout,
+      title: '賞屋預約行事曆'
+    }
+  },
+
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 
 ];
@@ -655,10 +681,33 @@ router.beforeEach(async (to, from, next) => {
 
   const requiredAny = to.meta.requiredAnySystem;
   if (requiredAny && Array.isArray(requiredAny)) {
-    const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
-    if (!hasAccess) {
-      alert(`權限不足：您沒有進入此系統的權限。`);
-      return next({ name: 'Home' });
+    const projectId = to.params.projectId;
+    
+    // 情境 A: 路由包含 projectId，需檢查「該建案」是否擁有任一權限
+    if (projectId) {
+        const fullProjectName = projectStore.idToNameMap[projectId];
+        
+        if (!fullProjectName) {
+            console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
+            alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
+            return next({ name: 'Home' });
+        }
+
+        // 檢查使用者在該建案下，是否擁有 requiredAny 中的任一個系統權限
+        const hasProjectAccess = requiredAny.some(sys => userStore.hasProjectPermission(sys, fullProjectName));
+
+        if (!hasProjectAccess) {
+            alert(`權限不足：您沒有進入建案「${fullProjectName}」的權限 (需具備 ${requiredAny.join(' 或 ')} )。`);
+            return next({ name: 'Home' });
+        }
+    } 
+    // 情境 B: 一般全域權限檢查 (如入口頁)
+    else {
+        const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
+        if (!hasAccess) {
+          alert(`權限不足：您沒有進入此系統的權限。`);
+          return next({ name: 'Home' });
+        }
     }
   }
 
