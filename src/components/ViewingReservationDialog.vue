@@ -13,16 +13,28 @@
             <v-row>
               <v-col cols="12" sm="6">
                 <label class="text-caption text-grey-darken-1">預約時間 (台灣時間)</label>
-                <VueDatePicker 
+              <VueDatePicker 
                     v-model="formData.reservationTime" 
                     :enable-time-picker="true"
                     :is-24="false"
-                    format="yyyy/MM/dd HH:mm"
+                    format="yyyy/MM/dd aa hh:mm" 
                     locale="zh-TW"
-                    auto-apply
                     :min-date="new Date()"
+                    :teleport="true"
+                    select-text="確認選擇" 
+                    cancel-text="取消"
                     class="mt-1"
-                ></VueDatePicker>
+                >
+                    <template #am-pm-button="{ toggle, value }">
+                        <button 
+                            @click="toggle" 
+                            class="dp__pm_am_button" 
+                            type="button"
+                        >
+                            {{ value === 'AM' ? '上午' : '下午' }}
+                        </button>
+                    </template>
+                </VueDatePicker>
               </v-col>
               
               <v-col cols="12" sm="6">
@@ -30,8 +42,8 @@
                   v-model="formData.type"
                   label="預約類型"
                   :items="['新客', '回訪']"
-                  variant="outlined"
-                  density="compact"
+                  variant="underlined"
+                  
                   :rules="[v => !!v || '請選擇類型']"
                   prepend-inner-icon="mdi-account-tag"
                 ></v-select>
@@ -41,8 +53,8 @@
                 <v-text-field
                   v-model="formData.customerName"
                   label="客戶姓名"
-                  variant="outlined"
-                  density="compact"
+                  variant="underlined"
+                  
                   :rules="[v => !!v || '請輸入姓名']"
                   prepend-inner-icon="mdi-account"
                 ></v-text-field>
@@ -52,14 +64,14 @@
                 <v-text-field
                   v-model="formData.customerPhone"
                   label="客戶電話"
-                  variant="outlined"
-                  density="compact"
+                  variant="underlined"
+                  
                   placeholder="09xxxxxxxx"
                   :rules="phoneRules"
                   prepend-inner-icon="mdi-phone"
                   @blur="handlePhoneBlur" 
                 ></v-text-field>
-                <v-alert v-if="conflictInfo" type="warning" variant="tonal" density="compact" class="mt-2 text-caption">
+                <v-alert v-if="conflictInfo" type="warning" variant="tonal"  class="mt-2 text-caption">
                   注意：該號碼已有預約！<br>時間：{{ formatDate(conflictInfo.reservationTime) }}<br>銷售：{{ conflictInfo.salesName || '未指定' }}
                 </v-alert>
               </v-col>
@@ -72,8 +84,8 @@
                       :items="visibleSalesOptions" 
                       item-title="name"
                       item-value="id"
-                      variant="outlined"
-                      density="compact"
+                      variant="underlined"
+                      
                       prepend-inner-icon="mdi-badge-account"
                       clearable
                       class="flex-grow-1"
@@ -100,7 +112,7 @@
                 <v-textarea
                   v-model="formData.note"
                   label="備註事項"
-                  variant="outlined"
+                  variant="underlined"
                   rows="2"
                   auto-grow
                   prepend-inner-icon="mdi-note-text"
@@ -116,7 +128,7 @@
       <v-card-actions class="pa-4">
         <v-btn v-if="isEdit" color="error" variant="text" prepend-icon="mdi-delete" @click="confirmDelete">取消預約</v-btn>
         <v-spacer></v-spacer>
-        <v-btn variant="outlined" @click="closeDialog">關閉</v-btn>
+        <v-btn variant="underlined" @click="closeDialog">關閉</v-btn>
         <v-btn color="primary" variant="flat" @click="save" :loading="saving" :disabled="!valid">{{ isEdit ? '更新' : '新增' }}</v-btn>
       </v-card-actions>
     </v-card>
@@ -124,7 +136,7 @@
     <v-dialog v-model="conflictDialog" max-width="400">
         <v-card>
             <v-card-title class="text-warning">重複預約確認</v-card-title>
-            <v-card-text>此電話號碼在 <strong>{{ formatDate(conflictInfo?.reservationTime) }}</strong> 已有有效預約。<br>請問您要如何處理？</v-card-text>
+            <v-card-text>此電話號碼在 <strong>{{ formatDate(conflictInfo?.reservationTime) }}</strong> 已預約。<br>請問您要如何處理？</v-card-text>
             <v-card-actions class="flex-column align-stretch pa-4">
                 <v-btn color="error" variant="tonal" class="mb-2" @click="resolveConflict('replace')">刪除舊預約，建立新預約</v-btn>
                 <v-btn color="primary" variant="tonal" class="mb-2" @click="resolveConflict('keep')">保留舊預約，繼續建立 (重複)</v-btn>
@@ -181,7 +193,8 @@ import { format } from 'date-fns';
 const props = defineProps({
   modelValue: Boolean,
   projectId: String,
-  initialData: Object 
+  initialData: Object,
+  initialDate: Date // ✅ [新增] 接收外部傳入的預設時間
 });
 
 const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
@@ -245,23 +258,26 @@ const phoneRules = [
 
 // ... (watch, handlePhoneBlur, resolveConflict, confirmDelete, closeDialog, formatDate 保持不變) ...
 
+// ✅ [修改] 初始化邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
     // 開啟時載入銷售名單
     await reservationStore.fetchProjectSales(props.projectId);
     
-    // ... (原本的初始化邏輯) ...
     if (props.initialData) {
+      // 編輯模式：複製資料
       const d = props.initialData;
       formData.value = {
         ...d,
         reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
       };
     } else {
+      // 新增模式：初始化
       formData.value = {
         customerName: '',
         customerPhone: '',
-        reservationTime: new Date(),
+        // ✅ [關鍵修改] 使用傳入的 initialDate，若無則使用現在時間
+        reservationTime: props.initialDate || new Date(),
         type: '新客',
         salesId: null,
         note: ''

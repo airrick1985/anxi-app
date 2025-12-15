@@ -78,42 +78,38 @@ const initializeAuth = async () => {
   errorMessage.value = '';
 
   try {
-    // 1. 檢查是否已經在 Store 中登入
-    if (userStore.isLoggedIn) {
-      statusMessage.value = '已登入，正在載入建案...';
-      await processPermissions();
-      return;
-    }
-
-    // 2. 初始化 LIFF
+    // 1. 初始化 LIFF (先做這步，確保能拿到 lineId)
     statusMessage.value = '連接 LINE 服務中...';
-    
-    // ✅ [修改] 填入您剛取得的 LIFF ID (2008257338-FCbKJ8bB)
-    await liff.init({ liffId: '2008257338-FCbKJ8bB' }); //賞屋預約系統 LIFF ID=2008257338-FCbKJ8bB
+    await liff.init({ liffId: '2008257338-FCbKJ8bB' });
 
-    // 檢查是否已登入 LINE
     if (!liff.isLoggedIn()) {
+      console.log('[Entry] LIFF not logged in, redirecting...');
       statusMessage.value = '正在導向 LINE 登入...';
-      // ✅ [說明] redirectUri 設為當前頁面，這樣登入後會帶回原本的 liff_path 參數
       liff.login({ redirectUri: window.location.href });
-      return; // 中斷執行，等待重導向
+      return; 
     }
 
-    // 3. 取得 LINE Profile 並進行後端登入
-    statusMessage.value = '驗證使用者身分...';
+    // 2. 取得 LINE ID
     const profile = await liff.getProfile();
     const lineId = profile.userId;
+    console.log('[Entry] LIFF Profile fetched. User ID:', lineId);
 
     if (!lineId) throw new Error('無法取得 LINE User ID');
 
-    // 使用 userStore 的 action 進行登入 (此函數需存在於 userStore)
-    const loginSuccess = await userStore.fetchUserByLineId(lineId);
+    // ✅ [修改] 強制重新登入/同步資料
+    // 即使 userStore.isLoggedIn 為 true，我們也要強制從後端更新權限
+    // 因為使用者可能剛被加權限，但前端 Session 還存著舊資料
+    
+    statusMessage.value = '同步使用者權限...';
+    // fetchUserByLineId 會去 Firestore 讀取最新的 userPermissions
+    const loginSuccess = await userStore.fetchUserByLineId(lineId); 
+    console.log('[Entry] Force sync user data result:', loginSuccess);
 
     if (!loginSuccess) {
       throw new Error('您的 LINE 帳號尚未綁定或無權限存取此系統。');
     }
 
-    // 4. 登入成功，處理權限
+    // 3. 處理權限 (現在 userStore 裡的資料一定是最新的)
     await processPermissions();
 
   } catch (err) {
@@ -124,32 +120,52 @@ const initializeAuth = async () => {
 };
 
 const processPermissions = async () => {
+  console.log('>>> [Entry] processPermissions START <<<'); // Log Start
   statusMessage.value = '檢查系統權限...';
   
-  // 確保建案列表已載入
+  // 1. 確保 ProjectStore 已載入
   if (projectStore.projectsList.length === 0) {
+    console.log('[Entry] Project list empty, fetching from backend...');
     await projectStore.fetchProjects();
   }
+  console.log('[Entry] Project list loaded. Count:', projectStore.projectsList.length);
 
   const allowedProjects = [];
-  const targetSystems = ['報價系統', '銷控系統']; // 允許的權限系統
+  const targetSystems = ['報價系統', '銷控系統']; 
+  const userPermissions = userStore.user?.permissions || {}; // 取得使用者權限物件
 
-  // 遍歷所有建案，檢查是否有任一目標權限
-  projectStore.projectsList.forEach(project => {
-    // 檢查使用者在該建案是否擁有 targetSystems 中的任一權限
-    const hasAccess = targetSystems.some(sys => 
-      userStore.hasProjectPermission(sys, project.name)
-    );
+  console.log('[Entry] Target Systems:', targetSystems);
+  console.log('[Entry] User Permissions Object:', userPermissions); 
 
-    if (hasAccess) {
-      allowedProjects.push({
-        id: project.id,
-        name: project.name
-      });
-    }
+  // 2. 直接遍歷使用者的權限表
+  Object.keys(userPermissions).forEach(projectId => {
+      const projectPerm = userPermissions[projectId];
+      const systems = projectPerm.systems || [];
+      
+      console.log(`--- Checking Project: ${projectId} ---`);
+      console.log(`    Systems:`, systems);
+
+      // 檢查此建案下是否有目標權限
+      const hasAccess = targetSystems.some(sys => systems.includes(sys));
+      console.log(`    Has Access?`, hasAccess);
+
+      if (hasAccess) {
+          // 嘗試從 projectStore 取得最新名稱，若無則使用權限檔中的備份名稱
+          const fullProjectData = projectStore.projectsList.find(p => p.id === projectId);
+          const name = fullProjectData ? fullProjectData.name : (projectPerm.projectName || projectId);
+
+          allowedProjects.push({
+              id: projectId,
+              name: name
+          });
+      }
   });
 
+  console.log('[Entry] Final Allowed Projects:', allowedProjects);
+
+  // 3. 判斷結果
   if (allowedProjects.length === 0) {
+    console.warn('[Entry] No allowed projects found. Showing error.');
     errorMessage.value = '您目前沒有任何建案的「報價系統」或「銷控系統」權限。';
     isLoading.value = false;
     return;
@@ -157,16 +173,21 @@ const processPermissions = async () => {
 
   // 分流邏輯
   if (allowedProjects.length === 1) {
+    console.log('[Entry] Only 1 project found. Auto-redirecting to:', allowedProjects[0].name);
+    // 只有一個建案 -> 自動跳轉
     statusMessage.value = `正在進入 ${allowedProjects[0].name}...`;
     selectProject(allowedProjects[0].id);
   } else {
-    // 多個建案，顯示選單
+    console.log('[Entry] Multiple projects found. Showing selection menu.');
+    // 多個建案 -> 顯示選單
     availableProjects.value = allowedProjects;
-    isLoading.value = false;
+    isLoading.value = false; // 停止 Loading，顯示選單 UI
   }
+  console.log('>>> [Entry] processPermissions END <<<');
 };
 
 const selectProject = (projectId) => {
+  console.log('[Entry] Selecting project:', projectId);
   router.replace({
     name: 'ViewingReservationCalendar',
     params: { projectId }

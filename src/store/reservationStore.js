@@ -18,8 +18,10 @@ import {
 export const useReservationStore = defineStore('reservation', {
   state: () => ({
     reservations: [], 
-    salesList: [], // 存放所有符合資格的銷售人員 (包含被設定隱藏的)
-    hiddenSalesIds: [], // ✅ 新增：被設定為隱藏的銷售 ID 列表
+    salesList: [], 
+    hiddenSalesIds: [],
+    // ✅ [新增] 用來記錄目前 salesList 是屬於哪個建案的
+    currentSalesListProjectId: null, 
     loading: false,
     error: null,
   }),
@@ -87,29 +89,38 @@ export const useReservationStore = defineStore('reservation', {
       }
     },
 
-    /**
-     * ✅ 取得該建案符合權限的銷售人員
-     * 修改包含：
-     * 1. 同步讀取顯示/隱藏設定
-     * 2. 排除「系統管理員」角色 (黑名單)
+/**
+     * ✅ [修改] 取得該建案符合權限的銷售人員
+     * 加入 currentSalesListProjectId 檢查，避免跨建案資料殘留
      */
     async fetchProjectSales(projectId) {
         if (!projectId) return;
         
         try {
-            // 1. 同步讀取專案設定 (取得隱藏名單)
+            // 1. 讀取隱藏設定 (這部分每次都讀取，確保設定最新)
             const projectRef = doc(db, "projects", projectId);
             const projectSnap = await getDoc(projectRef);
             if (projectSnap.exists()) {
                 const data = projectSnap.data();
-                // 讀取 viewingSettings.hiddenSalesIds
                 this.hiddenSalesIds = data.viewingSettings?.hiddenSalesIds || [];
+            } else {
+                this.hiddenSalesIds = [];
             }
 
-            // 如果名單已存在，就不重複撈取 Users (節省流量)
-            if (this.salesList.length > 0) return;
+            // ✅ [關鍵修改] 檢查快取：
+            // 只有當「列表有資料」且「目前快取的建案 ID == 請求的建案 ID」時，才直接返回
+            if (this.salesList.length > 0 && this.currentSalesListProjectId === projectId) {
+                // console.log('使用快取銷售名單');
+                return;
+            }
 
-            // 2. 撈取所有使用者
+            // console.log('重新撈取銷售名單...');
+            
+            // 2. 清空舊資料並更新 ID 標記
+            this.salesList = [];
+            this.currentSalesListProjectId = projectId;
+
+            // 3. 撈取所有使用者
             const usersRef = collection(db, "users");
             const snapshot = await getDocs(usersRef);
             
@@ -121,7 +132,7 @@ export const useReservationStore = defineStore('reservation', {
 
                 if (!userData.name) continue;
 
-                // ✅ 檢查黑名單：若包含「系統管理員」，直接跳過
+                // 檢查黑名單
                 const roles = userData.roles || [];
                 if (roles.includes('超級管理員')) {
                     continue; 
@@ -157,7 +168,6 @@ export const useReservationStore = defineStore('reservation', {
             console.error("fetchProjectSales Error:", err);
         }
     },
-
     /**
      * ✅ 新增：更新銷售人員顯示/隱藏設定
      * 將設定儲存至 projects/{projectId} 文件中
@@ -290,25 +300,28 @@ export const useReservationStore = defineStore('reservation', {
       }
     },
 
-    /**
+ /**
      * 檢查電話衝突
+     * ✅ [修改] 移除時間檢查，只要是 status === 'active' 都視為衝突
+     * 這樣可以捕捉到「剛過時間但尚未結案」或「所有有效」的預約
      */
     async checkPhoneConflict(projectId, phone) {
       if (!phone || !projectId) return null;
       
       try {
-        const now = Timestamp.now();
+        // const now = Timestamp.now(); // ❌ 移除這行
         const q = query(
             collection(db, "viewing_reservations"),
             where("projectId", "==", projectId),
             where("customerPhone", "==", phone),
-            where("status", "==", "active"),
-            where("reservationTime", ">", now)
+            where("status", "==", "active") // ✅ 只檢查狀態是否為 active
+            // where("reservationTime", ">", now) // ❌ 移除此行
         );
 
         const snapshot = await getDocs(q);
         
         if (!snapshot.empty) {
+            // 回傳第一筆衝突的資料
             const doc = snapshot.docs[0];
             return { id: doc.id, ...doc.data() };
         }
@@ -319,5 +332,7 @@ export const useReservationStore = defineStore('reservation', {
         return null; 
       }
     }
+
+
   }
 });

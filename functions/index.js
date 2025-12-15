@@ -18136,25 +18136,26 @@ exports.onViewingReservationChange = onDocumentWritten({
     // 識別狀態變化
     const isNew = !beforeData; // 新增
     const isCancelled = beforeData?.status === 'active' && afterData.status === 'deleted'; // 取消
-    // const isAssigned = ... (不再需要偵測指派)
 
     console.log(`[${functionName}] Doc: ${docId}, Project: ${projectId}, IsNew: ${isNew}, IsCancelled: ${isCancelled}`);
 
     try {
-        // ==================================================
-        // 任務 A: 自動輪播指派 (已移除)
-        // ==================================================
-        // 原本的輪播邏輯已刪除，保持 salesId 為 null 或 "不指定"
-        
-        // ==================================================
-        // 任務 B: LINE 廣播通知
-        // ==================================================
         if (isNew || isCancelled) {
             
+            // ✅ [新增] 查詢建案名稱
+            let projectName = projectId; // 預設使用 ID
+            try {
+                const projectDoc = await db.collection("projects").doc(projectId).get();
+                if (projectDoc.exists) {
+                    projectName = projectDoc.data().name || projectId;
+                }
+            } catch (err) {
+                console.warn(`[${functionName}] 無法讀取建案名稱，將顯示 ID:`, err);
+            }
+
             // 1. 準備訊息內容
             let title = "";
             let color = "";
-            // ✅ [修改] 顯示文字調整
             let salesDisplay = afterData.salesName || "不指定";
 
             if (isCancelled) {
@@ -18166,7 +18167,7 @@ exports.onViewingReservationChange = onDocumentWritten({
             }
 
             // 轉換時間格式
-let timeStr = "";
+            let timeStr = "";
             if (afterData.reservationTime && afterData.reservationTime.toDate) {
                 timeStr = afterData.reservationTime.toDate().toLocaleString('zh-TW', { 
                     timeZone: 'Asia/Taipei',
@@ -18194,7 +18195,8 @@ let timeStr = "";
                                     layout: "baseline",
                                     contents: [
                                         { type: "text", text: "建案", color: "#aaaaaa", size: "sm", flex: 2 },
-                                        { type: "text", text: projectId, wrap: true, color: "#666666", size: "sm", flex: 5 }
+                                        // ✅ [修改] 這裡改用 projectName
+                                        { type: "text", text: projectName, wrap: true, color: "#666666", size: "sm", flex: 5 }
                                     ]
                                 },
                                 {
@@ -18226,7 +18228,6 @@ let timeStr = "";
                                     layout: "baseline",
                                     contents: [
                                         { type: "text", text: "銷售", color: "#aaaaaa", size: "sm", flex: 2 },
-                                        // ✅ [修改] 顯示 salesDisplay
                                         { type: "text", text: salesDisplay, wrap: true, color: "#666666", size: "sm", flex: 5, weight: "bold" }
                                     ]
                                 }
@@ -18253,7 +18254,6 @@ let timeStr = "";
             
             if (lineIds.length > 0) {
                 // 3. 發送
-                // 嘗試獲取 Token，優先使用客資系統設定，否則使用預設
                 let channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
                 
                 // 嘗試從客資設定讀取專案特定的 Token (如果有的話)
