@@ -31,21 +31,21 @@
               </div>
               <div class="text-h6 mb-1">{{ template.templateName }}</div>
               <div class="d-flex flex-wrap gap-2 mb-1">
-                <v-chip size="x-small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
+                <v-chip size="small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
                   {{ template.paymentCategory || '一般期款' }}
                 </v-chip>
 
-              <v-chip size="x-small" color="purple-lighten-2" variant="flat">
+              <v-chip size="small" color="purple-lighten-2" variant="flat">
                   {{ template.propertyType || '住家' }}
                 </v-chip>
 
                 <template v-if="template.minPrice || template.maxPrice">
-                  <v-chip size="x-small" color="primary" variant="flat">
+                  <v-chip size="small" color="primary" variant="flat">
                     {{ template.minPrice ? `${template.minPrice}萬` : '0' }} ~ 
                     {{ template.maxPrice ? `${template.maxPrice}萬` : '無上限' }}
                   </v-chip>
                 </template>
-                <v-chip size="x-small" :color="template.buyerType === '首購' ? 'success' : 'info'" variant="flat">
+                <v-chip size="small" :color="template.buyerType === '首購' ? 'success' : 'info'" variant="flat">
                   {{ template.buyerType || '非首購' }}
                 </v-chip>
               </div>
@@ -312,7 +312,7 @@
           <v-combobox
             v-model="templateDialog.paymentCategory"
             label="期款類別"
-            :items="['一般期款', '配套期款']"
+            :items="['一般期款', '優付期款', '配套期款']"
             variant="outlined"
             
             class="mt-4" 
@@ -449,6 +449,84 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="duplicateDialog.show" max-width="500px" persistent>
+      <v-card class="rounded-lg">
+        <v-card-title class="d-flex align-center bg-amber-lighten-5 text-amber-darken-4 py-3">
+          <v-icon icon="mdi-alert" class="mr-2"></v-icon>
+          重複範本提醒
+        </v-card-title>
+        
+        <v-card-text class="pt-4">
+          <p class="text-body-1 mb-4">
+            系統檢測到已存在屬性完全相同的範本。
+          </p>
+
+          <v-sheet border rounded class="bg-grey-lighten-5 pa-3 mb-4">
+            <div class="text-caption text-grey-darken-1 mb-2">已存在的範本資訊：</div>
+            <div class="d-flex flex-column gap-2">
+               <div class="d-flex align-center">
+                <v-icon size="small" color="grey" class="mr-2">mdi-file-document-outline</v-icon>
+                <span class="font-weight-bold mr-2">範本名稱：</span>
+                <span>{{ duplicateDialog.existingTemplate?.templateName }}</span>
+              </div>
+              <div class="d-flex align-center">
+                <v-icon size="small" color="grey" class="mr-2">mdi-home-city-outline</v-icon>
+                <span class="font-weight-bold mr-2">物件類型：</span>
+                <v-chip size="small" density="comfortable" class="mr-1">{{ duplicateDialog.existingTemplate?.propertyType }}</v-chip>
+              </div>
+              
+              <div class="d-flex align-center">
+                <v-icon size="small" color="grey" class="mr-2">mdi-currency-usd</v-icon>
+                <span class="font-weight-bold mr-2">總價區間：</span>
+                <span>
+                  {{ duplicateDialog.existingTemplate?.minPrice ? `${duplicateDialog.existingTemplate?.minPrice}萬` : '0' }} ~ 
+                  {{ duplicateDialog.existingTemplate?.maxPrice ? `${duplicateDialog.existingTemplate?.maxPrice}萬` : '無上限' }}
+                </span>
+              </div>
+
+              <div class="d-flex align-center">
+                <v-icon size="small" color="grey" class="mr-2">mdi-account-outline</v-icon>
+                <span class="font-weight-bold mr-2">買家類型：</span>
+                <v-chip size="small" density="comfortable" :color="duplicateDialog.existingTemplate?.buyerType === '首購' ? 'success' : 'info'" variant="flat" class="mr-1">
+                  {{ duplicateDialog.existingTemplate?.buyerType }}
+                </v-chip>
+              </div>
+              <div class="d-flex align-center">
+                <v-icon size="small" color="grey" class="mr-2">mdi-tag-outline</v-icon>
+                <span class="font-weight-bold mr-2">期款類別：</span>
+                <v-chip size="small" density="comfortable" :color="getPaymentCategoryColor(duplicateDialog.existingTemplate?.paymentCategory)" variant="flat">
+                  {{ duplicateDialog.existingTemplate?.paymentCategory }}
+                </v-chip>
+              </div>
+            </div>
+          </v-sheet>
+
+          <p class="text-body-2 text-grey-darken-2">
+            建議您確認是否需要建立重複設定？若您是為了區分不同總價區間，請點擊「確認建立」。
+          </p>
+        </v-card-text>
+
+        <v-card-actions class="pb-4 px-4">
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="outlined"
+            color="grey-darken-1"
+            @click="duplicateDialog.show = false"
+          >
+            取消
+          </v-btn>
+          <v-btn
+            color="amber-darken-4"
+            variant="flat"
+            class="px-4"
+            @click="handleDuplicateConfirm"
+          >
+            確認建立
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-card>
 </template>
 
@@ -487,6 +565,13 @@ const templateDialog = ref({
   // ✅ [新增] 物件類型相關欄位
   propertyType: '住家', 
   customPropertyType: '' 
+});
+
+// ✅ [新增] 重複檢查 Dialog State
+const duplicateDialog = ref({
+  show: false,
+  existingTemplate: null, // 查到的重複範本
+  pendingData: null       // 準備要儲存的資料
 });
 
 // --- 複製範本 Dialog State ---
@@ -554,6 +639,9 @@ const getPaymentCategoryColor = (category) => {
       return 'blue-grey';
     case '配套期款':
       return 'deep-purple';
+   
+    case '優付期款':
+      return 'cyan-darken-1'; 
     default:
       return 'orange'; // 自訂類別使用橙色
   }
@@ -675,9 +763,8 @@ const handleTemplateSave = async () => {
     return;
   }
   
- // ✅ [新增] 處理物件類型邏輯
+  // 處理物件類型邏輯
   let finalPropertyType = templateDialog.value.propertyType;
-  
   if (finalPropertyType === '其他') {
       const customVal = templateDialog.value.customPropertyType.trim();
       if (!customVal) {
@@ -687,35 +774,82 @@ const handleTemplateSave = async () => {
       finalPropertyType = customVal;
   }
   
+  // 準備要儲存的資料物件
   const templateData = {
     templateName: name,
     minPrice: minPrice,
     maxPrice: maxPrice,
     buyerType: templateDialog.value.buyerType,
     paymentCategory: templateDialog.value.paymentCategory,
-    // ✅ [新增] 寫入物件類型
     propertyType: finalPropertyType,
   };
-  
-  if (templateDialog.value.isEditing) {
-    // 編輯模式 - 使用正在編輯的範本 ID
-    await updatePaymentTermTemplate(templateDialog.value.editingTemplateId, templateData);
-    toast.success("範本已更新");
-  } else {
-    // 新增模式
-    const timestamp = getTimestampString();
-    const docId = `${projectId.value}_${name}_${timestamp}`;
 
-    const newTemplate = {
-      projectId: projectId.value,
-      ...templateData,
-      items: [],
+  // ✅ [新增] 重複檢查邏輯
+  const checkPropertyType = finalPropertyType;
+  const checkBuyerType = templateDialog.value.buyerType;
+  const checkPaymentCategory = templateDialog.value.paymentCategory;
+
+  const duplicateTemplate = templates.value.find(t => {
+    // 編輯模式排除自己
+    if (templateDialog.value.isEditing && t.id === templateDialog.value.editingTemplateId) {
+      return false;
+    }
+    // 比對三個關鍵欄位
+    return t.propertyType === checkPropertyType &&
+           t.buyerType === checkBuyerType &&
+           t.paymentCategory === checkPaymentCategory;
+  });
+
+  if (duplicateTemplate) {
+    // 發現重複，開啟 Dialog
+    duplicateDialog.value = {
+      show: true,
+      existingTemplate: duplicateTemplate,
+      pendingData: templateData
     };
-    
-    await setPaymentTermTemplate(docId, newTemplate);
-    toast.success("已新增範本");
+  } else {
+    // 無重複，直接儲存
+    await executeTemplateSave(templateData);
   }
-  templateDialog.value.show = false;
+};
+
+// ✅ [新增] 執行實際儲存的函式 (從 handleTemplateSave 拆分出來)
+const executeTemplateSave = async (templateData) => {
+  try {
+    if (templateDialog.value.isEditing) {
+      // 編輯模式
+      await updatePaymentTermTemplate(templateDialog.value.editingTemplateId, templateData);
+      toast.success("範本已更新");
+    } else {
+      // 新增模式
+      const timestamp = getTimestampString();
+      const docId = `${projectId.value}_${templateData.templateName}_${timestamp}`;
+
+      const newTemplate = {
+        projectId: projectId.value,
+        ...templateData,
+        items: [],
+      };
+      
+      await setPaymentTermTemplate(docId, newTemplate);
+      toast.success("已新增範本");
+    }
+    
+    // 關閉所有相關視窗
+    templateDialog.value.show = false;
+    duplicateDialog.value.show = false;
+    
+  } catch (error) {
+    console.error(error);
+    toast.error("儲存失敗");
+  }
+};
+
+// ✅ [新增] Dialog 確認按鈕的處理函式
+const handleDuplicateConfirm = async () => {
+  if (duplicateDialog.value.pendingData) {
+    await executeTemplateSave(duplicateDialog.value.pendingData);
+  }
 };
 
 const confirmDeleteTemplate = async (template) => {

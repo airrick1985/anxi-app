@@ -33,7 +33,7 @@
                 </v-card-item>
                 <v-divider></v-divider>
                 <v-card-text>
-                    <v-row>
+                   <v-row>
                         <v-col cols="12" sm="6">
                            <v-select
                                 v-model="formData.合約方式"
@@ -44,6 +44,18 @@
                                 @update:model-value="handleContractTypeChange"
                             ></v-select>
                         </v-col>
+                        
+                        <v-col cols="12" sm="6" v-if="showPreferredPaymentOption">
+                            <v-checkbox
+                                v-model="formData.usePreferredPayment"
+                                label="優付"
+                                density="compact"
+                                color="primary"
+                                hide-details
+                                class="mt-2"
+                            ></v-checkbox>
+                        </v-col>
+
                         <v-col cols="12" sm="6">
                             <v-radio-group v-model="formData.isFirstTimeBuyer" inline label="是否首購" density="compact">
                               <v-radio label="是" :value="true"></v-radio>
@@ -441,6 +453,7 @@ import ParkingEditModal from '@/components/ParkingEditModal.vue';
 import { formatInTimeZone } from 'date-fns-tz';
 import { generatePaymentSheet, exportSheetToPdf } from '@/api.js';
 
+import { useProjectStore } from '@/store/projectStore';
 
 // --- Display & Props & Emits ---
 const { mobile: isMobile } = useDisplay();
@@ -455,11 +468,15 @@ const props = defineProps({
     projectId: { type: String, required: true } 
 });
 const emit = defineEmits(['update:show', 'request-open-slide', 'parking-updated']);
+// ✅ [新增] 初始化 ProjectStore
+const projectStore = useProjectStore();
 // --- 主要表單狀態 ---
 const formData = ref(null);
 const parkingEditDialog = ref(false);
 const paymentError = ref(null);
 const areaPanel = ref(null);
+
+
 
 // --- Options (下拉選單選項) ---
 const personnelOptions = computed(() => {
@@ -571,6 +588,11 @@ const totalParkingBasePrice = (ownedParkingSpots.value || []).reduce((sum, p) =>
     };
 });
 
+// ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
+const showPreferredPaymentOption = computed(() => {
+    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
+});
+
 // --- 監聽器 (Watchers) ---
 watch(() => props.show, (newVal) => {
     if (newVal) {
@@ -579,6 +601,7 @@ watch(() => props.show, (newVal) => {
             '合約方式': props.contractTypes.length > 0 ? props.contractTypes[0] : '',
             // ✓ 修改：'是否首購' 的 key 改為 'isFirstTimeBuyer' 並預設為 false
             'isFirstTimeBuyer': false, 
+            'usePreferredPayment': false,
             '銷售': (props.allData['銷售人員'] && props.allData['銷售人員'].length > 0) ? props.allData['銷售人員'][0].name : '',            
             '房屋總底價': 0, '房屋總表價': 0, '房屋面積(坪)': 0,
             '房屋面積(平方公尺)': 0, '公設比': 0, '主建物面積(坪)': 0, '主建物面積(平方公尺)': 0,
@@ -592,6 +615,11 @@ watch(() => props.show, (newVal) => {
         // ✓ START: 新增 - 欄位鍵名映射 (Key Mapping)
         // 正體中文註解：從 props.unitData (使用英文 key) 映射到 formData (使用中文 key)
         if (props.unitData) {
+
+            // ✅ [新增] 映射優付欄位 (假設 unitData 中有此欄位)
+            if (props.unitData.usePreferredPayment === true) {
+                initialData.usePreferredPayment = true;
+            }
             
             // ✓ 修正「房屋底價」
             if (props.unitData.price_floor_house_total !== undefined) {
@@ -713,6 +741,7 @@ async function handleGenerateDocument() {
             // --- 現有欄位 ---
             contractType: formData.value.合約方式,
             isFirstTimeBuyer: formData.value.isFirstTimeBuyer,
+            usePreferredPayment: formData.value.usePreferredPayment,
             salespersonPhone: salesPhone.value, 
             housePrice: formData.value.房屋成交價,
             packageDealPrice: formData.value.price_package_deal,

@@ -64,16 +64,27 @@
     <v-list-item class="pl-0">
      <template v-if="showPackageDeal" v-slot:prepend>
     <v-switch 
-        class="mr-4" 
-        v-model="usePackageDealModel" 
-                label="配套" 
-        color="primary" 
-        
-        hide-details 
-        inset
-      ></v-switch>
-    
-    </template>
+            class="mr-4" 
+            v-model="usePackageDealModel" 
+            label="配套" 
+            color="primary" 
+            hide-details 
+            inset
+        ></v-switch>
+     </template>
+
+     <v-checkbox
+        v-if="showPreferredPaymentOption"
+        v-model="usePreferredPaymentModel"
+        label="優付"
+        density="compact"
+        color="secondary"
+        hide-details
+        class="mr-4"
+        :disabled="!isPreferredPaymentEligible"
+     ></v-checkbox>
+
+
      <v-radio-group v-model="isFirstTimeBuyerModel" inline hide-details>
       <template v-slot:label><span class="text-body-2">首購:</span></template>
       <v-radio label="是" value="是" density="compact"></v-radio>
@@ -132,11 +143,23 @@
    <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
    <div class="item-cell flex-2"><v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
+   
    <div class="item-cell flex-1">
     <v-radio-group v-model="isFirstTimeBuyerModel" hide-details>
-<v-radio label="首購" value="是"></v-radio>
-  <v-radio label="非首購" value="否"></v-radio>
-</v-radio-group>
+        <v-radio label="首購" value="是"></v-radio>
+        <v-radio label="非首購" value="否"></v-radio>
+    </v-radio-group>
+   </div>
+
+   <div class="item-cell flex-1" v-if="showPreferredPaymentOption">
+      <v-checkbox 
+        v-model="usePreferredPaymentModel" 
+        label="優付"
+        color="secondary"
+        density="compact"
+        hide-details
+        :disabled="!isPreferredPaymentEligible"
+      ></v-checkbox>
    </div>
    <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
    
@@ -384,6 +407,7 @@ import { useQuoteStore } from '@/store/quoteStore';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
 import ParkingEditModal from './ParkingEditModal.vue';
+import { useProjectStore } from '@/store/projectStore';
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -398,6 +422,7 @@ const props = defineProps({
 
 const emit = defineEmits(['remove', 'request-open-slide']);
 const quoteStore = useQuoteStore();
+const projectStore = useProjectStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
@@ -885,6 +910,32 @@ const usePackageDealModel = computed({
   set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
 });
 
+// ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
+const showPreferredPaymentOption = computed(() => {
+    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
+});
+
+// ✅ [新增] Computed: 判斷戶別是否具備優付資格
+const isPreferredPaymentEligible = computed(() => {
+    // 判斷 item 資料中是否包含 isPreferredPayment 且為 true
+    return props.item.isPreferredPayment === true;
+});
+
+// ✅ [新增] Computed: 優付 Model (處理禁用邏輯)
+const usePreferredPaymentModel = computed({
+  get: () => {
+      // 如果不具資格，強制返回 false
+      if (!isPreferredPaymentEligible.value) return false;
+      return props.item.usePreferredPayment || false;
+  },
+  set: (value) => {
+    // 如果不具資格，禁止修改為 true
+    if (!isPreferredPaymentEligible.value && value === true) return;
+    
+    quoteStore.updateUnitField(props.item.internalId, 'usePreferredPayment', value);
+  }
+});
+
 
 
 // ★★★ 新增：期款範本選擇邏輯 ★★★
@@ -901,29 +952,39 @@ function selectPaymentTemplate(paymentCategory) {
     
     const totalPrice = finalTotalPrice.value;
     const buyerType = isFirstTimeBuyerModel.value === '是' ? '首購' : '非首購';
-    
-    // 取得當前戶別的物件類型
     const currentPropertyType = props.item.unitDetails?.propertyType || props.item.unitDetails?.layout || '住家';
     
+    // ✅ [新增] 取得優付類別名稱 (假設後台設定為 '優付期款')
+    // 如果使用者勾選了「優付」，且正在尋找「一般期款」的替代品
+    // (注意：這裡的邏輯取決於您的業務需求。通常「優付」是一種特殊的「一般期款」或「配套期款」)
+    // 假設：若勾選優付，優先尋找類別為「優付期款」的範本
+    
+    let targetCategory = paymentCategory;
+    if (usePreferredPaymentModel.value && paymentCategory === '一般期款') {
+        // 如果勾選優付，嘗試覆蓋一般期款為優付期款
+        // 您需要在 PaymentTermsSettings.vue 確保有 '優付期款' 這個類別
+        targetCategory = '優付期款';
+    }
+
     // 找出符合條件的範本
     const applicableTemplates = props.paymentTemplates.filter(template => {
-        // 取得範本的物件類型
         const templatePropType = template.propertyType || '住家';
-        
-        // ✅ [修改] 加入嚴格比對邏輯
-        // 1. 物件類型必須完全一致
         if (templatePropType !== currentPropertyType) return false;
 
-        // 2. 其他條件 (類別、價格、首購)
         return (
-            template.paymentCategory === paymentCategory &&
+            template.paymentCategory === targetCategory && // 使用目標類別
             template.minPrice <= totalPrice && 
             totalPrice <= template.maxPrice && 
             template.buyerType === buyerType
         );
     });
     
+    // 如果是優付模式但找不到優付範本，是否要降級回一般範本？
+    // 這裡採用的策略是：若找不到，則回傳空 (提示無範本)，因為優付條件通常比較特殊
+    
     if (applicableTemplates.length === 0) {
+        // Fallback: 如果是優付模式找不到，嘗試找回原本的一般期款？
+        // 依需求決定。目前先不 fallback，讓用戶知道缺範本。
         return null;
     }
     
