@@ -23,6 +23,7 @@ export const useProjectStore = defineStore('projects', {
     idToNameMap: {},  // ID -> 名稱 的對照表 { fuyu61: '富宇富御' }
     nameToIdMap: {},  // 名稱 -> ID 的對照表 { '富宇富御': 'fuyu61' }
     isLoading: false,
+    currentProjectId: null,
     projectDetailsCache: {}, // 格式: { 'projectId': { ...data } }
     projectHouseholdsCache: {}, // 格式: { 'projectId': [...] }
     projectBatchDetailsCache: {}, // 格式: { 'projectId': { ... } }
@@ -41,7 +42,13 @@ getters: {
         return project?.systems || [];
       };
     },
+    currentProject: (state) => {
+      if (!state.currentProjectId || state.projectsList.length === 0) return null;
+      return state.projectsList.find(p => p.id === state.currentProjectId);
+    },
   }, 
+
+  
   actions: {
     async fetchProjects() {
       if (this.projectsList.length > 0) {
@@ -310,8 +317,12 @@ getters: {
       this.idToNameMap = idMap;
       this.nameToIdMap = nameMap;
       console.log('[ProjectStore] setProjectMaps called:', this.idToNameMap, this.nameToIdMap); // 加入 Log 確認
-    }
+    },
     // --- END: ✓ 新增 setProjectMaps action ---
+
+    setCurrentProject(id) {
+      this.currentProjectId = id;
+    },
 
   },
 });

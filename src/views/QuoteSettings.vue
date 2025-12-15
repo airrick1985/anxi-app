@@ -648,6 +648,8 @@ const formatNumber = (val, frac = 2) => {
 };
 onMounted(async () => {
     loading.value = true;
+
+    projectStore.setCurrentProject(projectId.value);
     
     // 確保 projectStore 已初始化
     if (!projectStore.idToNameMap || Object.keys(projectStore.idToNameMap).length === 0) {

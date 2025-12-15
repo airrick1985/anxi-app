@@ -77,8 +77,8 @@
         v-if="showPreferredPaymentOption"
         v-model="usePreferredPaymentModel"
         label="優付"
-        density="compact"
-        color="secondary"
+        
+        color="black"
         hide-details
         class="mr-4"
         :disabled="!isPreferredPaymentEligible"
@@ -155,8 +155,8 @@
       <v-checkbox 
         v-model="usePreferredPaymentModel" 
         label="優付"
-        color="secondary"
-        density="compact"
+        color="black"
+        
         hide-details
         :disabled="!isPreferredPaymentEligible"
       ></v-checkbox>
@@ -915,10 +915,11 @@ const showPreferredPaymentOption = computed(() => {
     return projectStore.currentProject?.showPreferredPaymentInQuote === true;
 });
 
-// ✅ [新增] Computed: 判斷戶別是否具備優付資格
+/// ✅ [修改] Computed: 判斷戶別是否具備優付資格
+// 修正說明: 資料庫欄位 isPreferredPayment 位於 unitDetails 物件中，而非 item 根目錄
 const isPreferredPaymentEligible = computed(() => {
-    // 判斷 item 資料中是否包含 isPreferredPayment 且為 true
-    return props.item.isPreferredPayment === true;
+    // 使用 Optional Chaining (?.) 避免 unitDetails 為空時報錯
+    return props.item.unitDetails?.isPreferredPayment === true;
 });
 
 // ✅ [新增] Computed: 優付 Model (處理禁用邏輯)

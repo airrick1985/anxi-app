@@ -1209,10 +1209,17 @@ exports.uploadParkingLots = onCall({ region: "asia-east1",secrets: gmailSecrets}
           console.log(`[${functionName}] Excel 更新管理員欄位 ${key} = ${value} for spotId ${spotId}`);
         }
         
-        // 處理數字格式的欄位
-        if (['price_list', 'price_floor', 'price_transaction', 'number', 'floor'].includes(key)) {
+       // ✅ [修改處]：將 number 和 floor 從數字轉換清單中移除，並獨立處理為字串
+        if (['price_list', 'price_floor', 'price_transaction'].includes(key)) {
+          // 這些確實是金額，保持數字轉換
           dataToSave[key] = Number(value) || 0;
-        } else {
+        } 
+        else if (['number', 'floor'].includes(key)) {
+          // ✅ [新增] 強制轉為字串，保留 "B1", "001", "003A" 等格式
+          dataToSave[key] = String(value).trim();
+        }
+        else {
+          // 其他欄位保持原樣
           dataToSave[key] = value;
         }
       }
