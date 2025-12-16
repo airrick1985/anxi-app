@@ -661,6 +661,15 @@ router.beforeEach(async (to, from, next) => {
     return next({ name: 'Home' });
   }
 
+  // 🔥 [NEW] 新增：PWA 模式偵測 (解決舊用戶免重裝問題) 🔥
+  // 偵測是否為 Standalone (App) 模式
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  // 如果是用 App 開啟，且剛好在首頁 (Landing Page)，且尚未登入 -> 強制去登入頁
+  if (to.path === '/' && isPWA) {
+    return next({ name: 'Login' });
+  }
+
   // --- 3. 檢查 requiresAuth Log ---
   const requiresAuth = to.meta.requiresAuth; // <-- 取得目標路由的 requiresAuth 值
   //console.log(`${logPrefix} Auth Check. Path: ${to.fullPath}, requiresAuth: ${requiresAuth}`); // <-- Log requiresAuth 的值
