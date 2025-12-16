@@ -1,7 +1,7 @@
 {
   "name": "ANXI建案管理系統",
   "short_name": "ANXI",
-  "start_url": "/",
+  "start_url": "./index.html#/login",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#000000",
@@ -20,5 +20,5 @@
       "type": "image/png"
     }
   ],
-  "version": "1.0.359"
+  "version": "1.0.360"
 }
