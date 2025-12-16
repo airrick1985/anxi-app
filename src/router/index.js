@@ -24,7 +24,17 @@ const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue');
 
 
 const routes = [
- // { path: '/', redirect: '/home' },
+  {
+    path: '/',
+    name: 'LandingPage',
+    component: () => import('@/views/LandingPage.vue'),
+    meta: {
+      requiresAuth: false, // 公開頁面
+      layout: PublicLayout, // 使用公開 Layout
+      title: 'ANXI 安熙智慧 - 首頁'
+    }
+  },
+
   { path: '/login', name: 'Login', component: () => import('@/views/Login.vue') }, // ✅
   { path: '/home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { requiresAuth: true } }, // ✅
  
@@ -390,16 +400,28 @@ const routes = [
           layout: PublicLayout // ✅
         }
       },
-       {
+  
+      {
+
     path: '/privacy',
     name: 'PrivacyPolicy',
     component: () => import('@/views/public/PrivacyPolicy.vue'),
     meta: {
       title: '隱私權政策',
-      layout: PublicLayout // ✅
+      layout: PublicLayout 
     }
   },
-
+  
+  // ✅ [新增] 服務條款路由
+  {
+    path: '/terms',
+    name: 'TermsOfService',
+    component: () => import('@/views/public/TermsOfService.vue'),
+    meta: {
+      title: '服務條款',
+      layout: PublicLayout
+    }
+  },
 
   
   {
@@ -633,6 +655,12 @@ router.beforeEach(async (to, from, next) => {
     return next(targetPath); // 執行重導向
   }
 
+  // --- ✅ 2. [新增] 針對「首頁」的已登入自動跳轉 ---
+  // 如果使用者要去首頁 (/)，且已經登入，直接送去 Home
+  if (to.path === '/' && isLoggedIn) {
+    return next({ name: 'Home' });
+  }
+
   // --- 3. 檢查 requiresAuth Log ---
   const requiresAuth = to.meta.requiresAuth; // <-- 取得目標路由的 requiresAuth 值
   //console.log(`${logPrefix} Auth Check. Path: ${to.fullPath}, requiresAuth: ${requiresAuth}`); // <-- Log requiresAuth 的值
@@ -650,13 +678,9 @@ router.beforeEach(async (to, from, next) => {
     return next();
   }
 
-  // --- 需要驗證的路由 ---
-  //console.log(`${logPrefix} Protected route detected.`);
-  // 如果需要驗證但使用者未登入 (主系統)
+// --- 需要驗證的路由 ---
   if (!isLoggedIn) {
      const redirectTarget = { name: 'Login', query: { redirect: to.fullPath } };
-     //console.log(`${logPrefix} Auth Required but NOT Logged In (userStore.isLoggedIn is false).`);
-     //console.log(`${logPrefix} --> Redirecting to Login via next(${JSON.stringify(redirectTarget)})`); // <-- Log 重導向目標 (Login)
      return next(redirectTarget);
   }
 
