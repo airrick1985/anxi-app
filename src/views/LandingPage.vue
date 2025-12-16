@@ -39,39 +39,71 @@
 
     <v-container class="mt-n10 position-relative" style="z-index: 5;">
       <v-card elevation="8" rounded="xl" class="overflow-hidden">
-       <v-tabs
-  v-model="activeTab"
-  bg-color="white"
-  color="primary"
-  align-tabs="center"
-  grow
-  show-arrows
-  class="product-tabs"
->
-  <v-tab value="sales" class="text-subtitle-1 text-md-h6 font-weight-bold px-2 px-md-4">
-    <v-icon start size="small" class="mr-1 d-md-none" icon="mdi-home-analytics"></v-icon>
-    <v-icon start size="large" class="mr-2 d-none d-md-inline-flex" icon="mdi-home-analytics"></v-icon>
-    雲端銷控/報價系統
-  </v-tab>
-  
-  <v-tab value="customer" class="text-subtitle-1 text-md-h6 font-weight-bold px-2 px-md-4">
-    <v-icon start size="small" class="mr-1 d-md-none" icon="mdi-account-group"></v-icon>
-    <v-icon start size="large" class="mr-2 d-none d-md-inline-flex" icon="mdi-account-group"></v-icon>
-    客戶管理系統
-  </v-tab>
+        
+        <div class="d-md-none pa-2 bg-white">
+          <v-select
+            v-model="activeTab"
+            :items="mobileTabOptions"
+            item-title="label"
+            item-value="value"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            prepend-inner-icon="mdi-menu"
+            class="font-weight-bold"
+            bg-color="white"
+          >
+            <template v-slot:selection="{ item }">
+              <div class="d-flex align-center text-primary font-weight-bold">
+                <v-icon :icon="item.raw.icon" start size="small"></v-icon>
+                {{ item.title }}
+              </div>
+            </template>
+            
+            <template v-slot:item="{ props, item }">
+              <v-list-item v-bind="props" :prepend-icon="item.raw.icon"></v-list-item>
+            </template>
+          </v-select>
+        </div>
 
-  <v-tab value="booking" class="text-subtitle-1 text-md-h6 font-weight-bold px-2 px-md-4">
-    <v-icon start size="small" class="mr-1 d-md-none" icon="mdi-calendar-check"></v-icon>
-    <v-icon start size="large" class="mr-2 d-none d-md-inline-flex" icon="mdi-calendar-check"></v-icon>
-    線上預約系統
-  </v-tab>
-</v-tabs>
+        <v-tabs
+          v-model="activeTab"
+          bg-color="white"
+          color="primary"
+          align-tabs="center"
+          grow
+          show-arrows
+          class="product-tabs d-none d-md-block"
+        >
+          <v-tab value="sales" class="text-h6 font-weight-bold px-4">
+            <v-icon start size="large" class="mr-2" icon="mdi-home-analytics"></v-icon>
+            雲端銷控/報價系統
+          </v-tab>
+          
+          <v-tab value="customer" class="text-h6 font-weight-bold px-4">
+            <v-icon start size="large" class="mr-2" icon="mdi-account-group"></v-icon>
+            客戶管理系統
+          </v-tab>
+
+          <v-tab value="booking" class="text-h6 font-weight-bold px-4">
+            <v-icon start size="large" class="mr-2" icon="mdi-calendar-check"></v-icon>
+            線上預約系統
+          </v-tab>
+
+          <v-tab value="inspection" class="text-h6 font-weight-bold px-4">
+            <v-icon start size="large" class="mr-2" icon="mdi-clipboard-check"></v-icon>
+            雲端驗屋系統
+          </v-tab>
+        </v-tabs>
+
       </v-card>
     </v-container>
 
     <div class="content-wrapper bg-grey-lighten-5 pb-16">
       
-      <v-window v-model="activeTab">
+      <v-window 
+  v-model="activeTab" 
+>
         <v-window-item v-for="product in products" :key="product.id" :value="product.id">
           
           <v-container class="pt-12 text-center">
@@ -286,10 +318,24 @@ import notesIcon from '@/assets/icons/notes.png';       // 洽談紀錄追蹤
 import argumentIcon from '@/assets/icons/argument.png'; // 客戶重疊通知
 import monitorIcon from '@/assets/icons/monitor.png';   // 數據匯出分析
 
+import checkListIcon from '@/assets/icons/check-list.png';        // 缺失改善追蹤
+import fileIcon from '@/assets/icons/file.png';                  // 自動化報告生成
+import phoneCheckIcon from '@/assets/icons/phonecheck.png';      // 住戶線上專區
+import digitalSignatureIcon from '@/assets/icons/digital-signature.png'; // 電子簽名點交
+
 const activeTab = ref('sales');
+
+// ✅ [NEW] 手機版下拉選單的選項資料
+const mobileTabOptions = [
+  { label: '雲端銷控/報價系統', value: 'sales', icon: 'mdi-home-analytics' },
+  { label: '客戶管理系統', value: 'customer', icon: 'mdi-account-group' },
+  { label: '線上預約系統', value: 'booking', icon: 'mdi-calendar-check' },
+  { label: '雲端驗屋系統', value: 'inspection', icon: 'mdi-clipboard-check' }
+];
 
 // 產品資料結構
 const products = ref([
+  // 1. [Sales] 雲端銷控/報價系統
   {
     id: 'sales',
     name: '雲端銷控/報價系統',
@@ -299,15 +345,10 @@ const products = ref([
       { title: '人員權限管理', desc: '控管櫃台、銷售可用功能', icon: userManagementIcon },
       { title: '戶別銷控設定', desc: '已售、未售、保留戶管理', icon: statusIcon },
       { title: '底價表價調整', desc: '隨時隨地調整價格', icon: priceIcon },
-      
-      // ✅ [修改] 替換為 parkingControlIcon
       { title: '車位銷控設定', desc: '車位報價圖面化管理', icon: parkingControlIcon },
-      
       { title: '平面圖測量', desc: '可測量任意距離、空間面積', icon: blueprintIcon },
       { title: '期款自訂義', desc: '適應各種不同價位、產品適合的比例', icon: subscriptionIcon },
       { title: '雲端資料夾', desc: '成交相關文件訂單可上傳雲端共同協作', icon: databaseIcon },
-      
-      // ✅ [修改] 替換為 printerIcon
       { title: '匯出報價單', desc: '報價單可以建案調性調整', icon: printerIcon },
     ],
     pricing: [
@@ -337,29 +378,18 @@ const products = ref([
     ]
   },
 
-// ✅ [NEW] 2. 客戶管理系統 (新增區塊)
+  // 2. [Customer] 客戶管理系統
   {
-id: 'customer',
+    id: 'customer',
     name: '客戶管理系統',
     slogan: '全方位客資整合，精準掌握每一位潛在客戶',
     description: '串聯雲端表單與後台管理，從客戶建檔、洽談紀錄追蹤到賞屋預約，提供一站式的客資解決方案。結合 LINE 自動化通知，確保團隊資訊同步，杜絕撞客爭議。',
     features: [
-      // 對應 VipForm.vue / CustomerDataSheet.vue
-      { title: '雲端客資建立', desc: '透過手機或平板快速建檔，支援QR CODE客戶自主填表', icon: smartphoneIcon },
-      
-      // 對應 CustomerManagement.vue
+      { title: '雲端客資建立', desc: '透過手機或平板快速建檔，支援掃描QR Code客戶自主填表', icon: smartphoneIcon },
       { title: '客戶資料管理', desc: '完整記錄客戶輪廓、需求與來源，集中化管理', icon: userManagementIcon },
-      
-      // ✅ [Modified] Icon: notes.png
-      { title: '洽談紀錄追蹤', desc: '詳細記錄每次互動細節與狀態，掌握銷售歷程', icon: notesIcon }, 
-      
-      // ✅ [Modified] Title: 客戶重疊通知, Icon: argument.png
+      { title: '洽談紀錄追蹤', desc: '詳細記錄每次互動細節與狀態，掌握銷售歷程', icon: notesIcon },
       { title: '客戶重疊通知', desc: '系統自動比對重複客源並透過 LINE 即時通知', icon: argumentIcon },
-      
-      // 對應 ViewingReservationCalendar.vue
       { title: '客戶賞屋預約', desc: '整合行事曆與線上預約，輕鬆安排賞屋時段', icon: scheduleIcon },
-      
-      // ✅ [Modified] Icon: monitor.png
       { title: '數據匯出分析', desc: '支援客資資料匯出，利於後續行銷分析使用', icon: monitorIcon },
     ],
     pricing: [
@@ -389,6 +419,7 @@ id: 'customer',
     ]
   },
 
+  // 3. [Booking] 線上預約系統
   {
     id: 'booking',
     name: '線上預約系統',
@@ -397,17 +428,9 @@ id: 'customer',
     features: [
       { title: '多場景適用', desc: '彈性支援客變、對保、驗交屋等場景', icon: inspectionCalenderIcon },
       { title: '自動化通知機制', desc: '即時 Email 通知客戶及後台人員', icon: emailIcon },
-      
-      // ✅ [修改] 替換為 smartphoneIcon
       { title: '自助式管理', desc: '客戶可線上修改取消，減少溝通成本', icon: smartphoneIcon },
-      
-      // ✅ [修改] 替換為 scheduleIcon
       { title: '精準時段控管', desc: '自訂開放批次、時段與名額限制', icon: scheduleIcon },
-      
-      // ✅ [修改] 替換為 bookingIcon
       { title: '客製化預約項目', desc: '支援初驗、複驗、代驗等多種類型', icon: bookingIcon },
-      
-      // ✅ [修改] 替換為 realTimeMonitoringIcon
       { title: '後台即時監控', desc: '隨時掌握預約狀況與手動排程權限', icon: realTimeMonitoringIcon },
     ],
     pricing: [
@@ -441,6 +464,47 @@ id: 'customer',
       '計費說明：以上費用以建案「總戶數」為計算基準。',
       '大量戶別訂閱另有優惠，請聯繫我們。',
       '款項付清後，系統將於 1-3 個工作日內完成建置並開通。',
+      '以上金額未含稅。'
+    ]
+  },
+
+ // 4. [Inspection] 雲端驗屋系統
+  {
+    id: 'inspection',
+    name: '雲端驗屋系統',
+    slogan: '數位化驗屋流程，讓交屋最後一哩路更完美',
+    description: '告別繁雜的紙本作業！從缺失紀錄、廠商修繕通知到住戶點交，提供全流程數位化解決方案。自動產出專業報告，即時追蹤修繕進度，大幅提升交屋效率與客戶滿意度。',
+    features: [
+      { title: '數位化驗屋紀錄', desc: '手機平板即時拍照標記，自動生成電子缺失單', icon: smartphoneIcon },
+      
+      // ✅ [Modified] Icon: check-list.png
+      { title: '缺失改善追蹤', desc: '燈號管理修繕進度，廠商派工與回報一目瞭然', icon: checkListIcon },
+      
+      // ✅ [Modified] Icon: file.png
+      { title: '自動化報告生成', desc: '一鍵匯出專業 PDF 驗屋報告，節省大量文書時間', icon: fileIcon },
+      
+      // ✅ [Modified] Icon: phonecheck.png
+      { title: '住戶線上專區', desc: '住戶可掃碼登入查詢進度，即時查看修繕照片', icon: phoneCheckIcon },
+      
+      { title: '驗屋預約管理', desc: '智慧行事曆排程，自動防呆避免時段衝突', icon: inspectionCalenderIcon },
+      
+      // ✅ [Modified] Icon: digital-signature.png
+      { title: '電子簽名點交', desc: '支援現場數位簽名確認，無紙化完成交屋手續', icon: digitalSignatureIcon },
+    ],
+    pricing: [
+      {
+        name: '標準計價方案',
+        subName: '按戶計費 (Per Unit)',
+        price: 'NT$ 500',
+        unit: '戶',
+        desc: '透明靈活的計價方式，依實際建案總戶數計算，用多少算多少。',
+        badge: '超值首選',
+        isRecommended: true
+      }
+    ],
+    notes: [
+      '費用包含完整的驗屋系統功能與無限組數管理帳號。',
+      '住戶端查詢介面不另收費。',
       '以上金額未含稅。'
     ]
   }
@@ -609,4 +673,6 @@ id: 'customer',
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+
 </style>
