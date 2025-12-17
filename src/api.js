@@ -7302,3 +7302,41 @@ export async function updateSingleField(projectId, unitId, field, value) {
     return { status: "error", message: error.message };
   }
 }
+
+/**
+ * [API] 獲取完整客戶資料 (含歷史紀錄，供 Excel 雙 Sheet 匯出用)
+ */
+export const fetchFullCustomersForExport = async (projectId, userPhone, userProjectSystems) => {
+  if (!projectId) return [];
+  try {
+    // 呼叫剛剛在後端新增的 action
+    const result = await customerApiRouter({
+      action: 'fetchFullCustomersForExport',
+      data: { projectId, userPhone, userProjectSystems }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 匯出完整客戶資料失敗:`, error);
+    throw error;
+  }
+};
+
+
+/**
+ * [API] 批次匯入客戶資料 (呼叫後端執行)
+ * @param {string} projectId
+ * @param {Array} customers - 已整理好的客戶資料物件陣列
+ * @param {string} operator - 操作者名稱
+ */
+export const batchImportCustomers = async (projectId, customers, operator) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'batchImportCustomers',
+      data: { projectId, customers, operator }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 批次匯入失敗:`, error);
+    throw error;
+  }
+};

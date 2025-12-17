@@ -15732,6 +15732,12 @@ exports.customerApi = onCall({
             // ✅ [新增] 批次更新客戶資料
             case 'batchUpdateCustomers':
                 return await _handleBatchUpdateCustomers(data, db);
+
+            case 'fetchFullCustomersForExport': // ✅ 新增這個 Case
+                return await _handleFetchFullCustomersForExport(data, db);
+
+            case 'batchImportCustomers': // ✅ 新增這個 Case
+                return await _handleBatchImportCustomers(data, db);
           
 
             default:
@@ -15750,6 +15756,141 @@ exports.customerApi = onCall({
     }
 });
 
+
+/**
+ * [內部函式] 批次匯入/更新客戶資料 (Admin 權限)
+ * 支援: 覆蓋 Profile, 覆蓋 InteractionLogs
+ */
+async function _handleBatchImportCustomers(data, db) {
+  const { projectId, customers, operator } = data;
+  const functionName = `_handleBatchImportCustomers`;
+
+  if (!projectId || !Array.isArray(customers) || customers.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的客戶資料陣列。");
+  }
+
+  console.log(`[${functionName}] 開始處理 ${customers.length} 筆客戶匯入...`);
+
+  try {
+    // Firestore 批次寫入限制為 500 筆，我們保守設定為 400
+    const MAX_BATCH_SIZE = 400;
+    const batches = [];
+    let currentBatch = db.batch();
+    let operationCount = 0;
+
+    customers.forEach((customer, index) => {
+      const { phone, ...otherData } = customer;
+      
+      // 確保有電話作為 ID
+      if (!phone) return;
+
+      // 建立文件參考
+      // 注意：根據您的 ID 規則，若是新客戶需確認 ID 格式。
+      // 這裡假設 ID = phone (或 projectId_phone，請依您現有邏輯調整)
+      // 若您的文件 ID 是 "projectId_phone"：
+      // const docRef = db.collection("vipGuests").doc(`${projectId}_${phone}`);
+      
+      // 若您的文件 ID 僅是 "phone" (如您之前的代碼所示)：
+      const docRef = db.collection("vipGuests").doc(phone);
+
+      // 準備寫入資料
+      // 使用 merge: true，這代表：
+      // 1. profile 內的欄位會被更新/新增。
+      // 2. interactionLogs 會被「整個陣列替換」(因為它是一個欄位)，這符合您「覆蓋」的需求。
+      const payload = {
+        ...otherData,
+        projectId: projectId,
+        phone: phone,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        // 如果是新資料，補上 createdAt (merge 時若已有則不會被覆蓋，除非我們強制寫入)
+        // 但 set({merge:true}) 無法判斷是否存在，所以通常不寫 createdAt 或由前端傳入
+      };
+
+      currentBatch.set(docRef, payload, { merge: true });
+      operationCount++;
+
+      // 若達到批次上限，推入陣列並重置
+      if (operationCount >= MAX_BATCH_SIZE) {
+        batches.push(currentBatch.commit());
+        currentBatch = db.batch();
+        operationCount = 0;
+      }
+    });
+
+    // 提交剩餘的批次
+    if (operationCount > 0) {
+      batches.push(currentBatch.commit());
+    }
+
+    // 等待所有批次完成
+    await Promise.all(batches);
+
+    console.log(`[${functionName}] 成功匯入/更新 ${customers.length} 筆資料。`);
+    return { success: true, count: customers.length };
+
+  } catch (error) {
+    console.error(`[${functionName}] 匯入失敗:`, error);
+    throw new HttpsError("internal", `批次匯入失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 獲取完整客戶資料 (包含完整互動歷史，供前端 Excel 雙 Sheet 使用)
+ */
+async function _handleFetchFullCustomersForExport(data, db) {
+  const { projectId, userPhone, userProjectSystems } = data;
+  const functionName = `_handleFetchFullCustomersForExport`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    // 權限檢查邏輯 (沿用既有邏輯)
+    // 預設只有「客資系統-櫃台」權限或該客戶的銷售人員才能匯出
+    // 如果您希望只要有權限就能匯出全部，可以註解掉這段檢查
+    const isCounter = userProjectSystems && userProjectSystems.includes('客資系統-櫃台');
+    
+    const guestsRef = db.collection("vipGuests");
+    const query = guestsRef.where("projectId", "==", projectId);
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return [];
+    }
+
+    const exportList = [];
+
+    snapshot.forEach(doc => {
+      const docData = doc.data();
+
+      // --- 權限過濾 (可選) ---
+      // 如果不是櫃台/管理員，且該客戶的銷售人員不是自己，則跳過
+      if (!isCounter && userPhone && docData.latestSalesPhone !== userPhone) {
+         // return; // 若希望銷售只能匯出自己的，請取消註解此行
+      }
+
+      // 回傳原始結構，讓前端去處理 Excel 格式
+      exportList.push({
+        id: doc.id,
+        phone: docData.phone,
+        latestName: docData.latestName,
+        latestSalesName: docData.latestSalesName,
+        profile: docData.profile || {},
+        interactionLogs: docData.interactionLogs || [], // 關鍵：回傳完整陣列
+        createdAt: docData.createdAt ? docData.createdAt.toDate().toISOString() : null,
+        updatedAt: docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null
+      });
+    });
+
+    console.log(`[${functionName}] 成功提取 ${exportList.length} 筆完整資料 (含歷史紀錄)。`);
+    return exportList;
+
+  } catch (error) {
+    console.error(`[${functionName}] 執行時發生錯誤:`, error);
+    throw new HttpsError("internal", `匯出資料時發生錯誤: ${error.message}`);
+  }
+}
 
 
 
