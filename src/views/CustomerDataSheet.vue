@@ -1073,14 +1073,23 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     // 櫃台模式下載入其他人員清單
     if (!isUrlEntry) {
       if (isCounter.value) {
-        const result = await fetchUserManagementInitialData(salesPhone.value);
-        if (result.status === 'success' && result.data) {
-          allManageableUsers.value = result.data.manageableUsers || [];
-          allUserPermissionsMap.value = result.data.allUserPermissionsMap || {};
+        // [修正]: 嘗試從 salesPhone 或 salesPerson 物件中取得電話
+        const adminPhone = salesPhone.value || salesPerson.value?.phone;
+
+        if (adminPhone) {
+            console.log(`[loadForm] 準備讀取管理員 [${adminPhone}] 的可管理清單...`);
+            const result = await fetchUserManagementInitialData(adminPhone);
+            
+            if (result.status === 'success' && result.data) {
+              allManageableUsers.value = result.data.manageableUsers || [];
+              allUserPermissionsMap.value = result.data.allUserPermissionsMap || {};
+            }
+        } else {
+            // [防呆]: 如果真的抓不到電話，只印警告，不要讓程式崩潰
+            console.warn('[loadForm] 警告：偵測到櫃台權限，但無法取得 adminKey (電話)，跳過使用者清單讀取。');
         }
       }
     }
-
   } catch (error) {
     console.error("載入表單失敗:", error);
     errorMessage.value = `載入表單資料失敗: ${error.message}`;
