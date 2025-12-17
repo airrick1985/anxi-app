@@ -457,7 +457,7 @@ import twCitiesData from '@/assets/TwCities.json';
 import { VCombobox, VSelect, VTextField } from 'vuetify/components'; 
 
 // ✅ [打勾] 請在此填入您的 LIFF ID
-const LIFF_ID = '2008257338-8AWzYeNQ'; 
+const LIFF_ID = '2008257338-8AWzYeNQ'; //2008257338-6N3jwqxA 測試用    2008257338-8AWzYeNQ 正式
 
 const { mobile: isMobile } = useDisplay();
 
@@ -992,11 +992,22 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
   allUserPermissionsMap.value = {};
 
   try {
+    // 1. 決定初始的銷售人員電話
+    // 如果是 QR Code (UrlEntry)，優先使用網址參數
+    // 如果是 業務模式，優先使用登入者資料 (salesPhone.value)
+    let initialSalesPhone = '';
+    if (isUrlEntry) {
+        initialSalesPhone = salesPhoneFromUrl || '';
+    } else {
+        initialSalesPhone = salesPerson.value.phone || salesPhone.value || '';
+    }
+
     let initialFormData = {
       '姓名': '',
       '電話': '',
       '銷售人員': isUrlEntry ? salesNameFromUrl : salesPerson.value.name, 
-      '銷售人員電話': isUrlEntry ? salesPhoneFromUrl : salesPhone.value, 
+      // [修正]: 初始化時就明確寫入銷售人員電話
+      '銷售人員電話': initialSalesPhone,
       '拜訪日期': getTodayInTaiwan(),
       '居住城市': null, 
       '居住鄉鎮市區': null,
@@ -1004,6 +1015,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
       '任職公司': '',
     };    
     
+    // 動態欄位初始化
     if (systemSettings.value.fields.age) {
       const field = systemSettings.value.fields.age;
       initialFormData[field.label] = field.selectionMode === 'multiple' ? [] : null;
@@ -1016,6 +1028,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
       initialFormData[field.label] = field.selectionMode === 'multiple' ? [] : null;
     });
 
+    // 載入既有客戶資料 (編輯模式)
     if (currentDocId.value) {
       const result = await fetchSingleVipGuest(currentDocId.value);
       if (result.status === 'success') {
@@ -1036,8 +1049,9 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
           ...initialFormData, 
           ...sourceData,
           '拜訪日期': sourceData['拜訪日期'] || getTodayInTaiwan(),
-          '銷售人員': initialFormData['銷售人員'], 
-          '銷售人員電話': initialFormData['銷售人員電話'] 
+          // 確保即便讀取舊資料，若當下有明確的銷售人員身份，仍以當下身份為主 (或保持原狀，視業務邏輯)
+          '銷售人員': initialFormData['銷售人員'] || sourceData['銷售人員'], 
+          '銷售人員電話': initialFormData['銷售人員電話'] || sourceData['銷售人員電話']
         };
         
         if (sourceData['居住鄉鎮市區']) {
@@ -1056,6 +1070,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     
     formData.value = initialFormData;
     
+    // 櫃台模式下載入其他人員清單
     if (!isUrlEntry) {
       if (isCounter.value) {
         const result = await fetchUserManagementInitialData(salesPhone.value);
@@ -1076,6 +1091,50 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
 
 async function handleSubmit() {
   errorMessage.value = null;
+
+  // -----------------------------------------------------------
+  // [關鍵修正]: 在驗證前，強制注入/更新「銷售人員電話」
+  // -----------------------------------------------------------
+  if (isCustomerMode.value) {
+      // 情境 C: 客戶 QR Code 填寫
+      // 嘗試從 route.query 再次抓取，確保資料正確 (防止 loadForm 後被意外清空)
+      const spFromUrl = route.query.sp;
+      if (spFromUrl) {
+          formData.value['銷售人員電話'] = spFromUrl;
+      }
+      // 如果原本就有值，保持原本的值
+  } else {
+      // 內部人員操作
+      if (isCounter.value) {
+        // 情境 B: 櫃台模式 (根據下拉選單 formData['銷售人員'] 反查電話)
+        const selectedSalesName = formData.value['銷售人員'];
+        const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
+        
+        if (selectedSalesPersonObject && selectedSalesPersonObject.phone) {
+             formData.value['銷售人員電話'] = selectedSalesPersonObject.phone;
+        }
+      } else {
+        // 情境 A: 業務本人操作 (直接使用登入者電話)
+        if (salesPerson.value.phone) {
+            formData.value['銷售人員電話'] = salesPerson.value.phone;
+        }
+      }
+  }
+
+  // -----------------------------------------------------------
+  // [防呆檢查]: 若此時仍無銷售電話，禁止送出 (僅針對內部人員嚴格檢查)
+  // -----------------------------------------------------------
+  if (!isCustomerMode.value && !formData.value['銷售人員電話']) {
+      alert('系統錯誤：無法取得銷售人員電話，請嘗試重新整理或重新登入。');
+      return; 
+  }
+  
+  // Debug Log (確認用，確認沒問題後可移除)
+  console.log('準備送出的銷售電話:', formData.value['銷售人員電話']);
+
+  // -----------------------------------------------------------
+  // 開始表單驗證與提交
+  // -----------------------------------------------------------
   const { valid } = await formRef.value.validate();
 
   if (!valid) {
@@ -1085,16 +1144,6 @@ async function handleSubmit() {
   isSubmitting.value = true;
   
   try {
-    if (!isCustomerMode.value) { 
-      if (isCounter.value) {
-        const selectedSalesName = formData.value['銷售人員'];
-        const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
-        formData.value['銷售人員電話'] = selectedSalesPersonObject ? selectedSalesPersonObject.phone : null;
-      } else {
-        formData.value['銷售人員電話'] = salesPerson.value.phone;
-      }
-    }
-
     const result = await submitCustomerSheet(
       selectedProjectId.value, 
       formData.value, 

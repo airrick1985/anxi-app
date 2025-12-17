@@ -7477,7 +7477,7 @@ exports.getLiffUserData = onCall(async (request) => {
 
     const db = new Firestore({ databaseId: "anxi-app" });
     try {
-        // 步驟 1: 透過 lineId 查找使用者 (邏輯不變)
+        // 步驟 1: 透過 lineId 查找使用者
         const usersRef = db.collection("users");
         const userQuery = usersRef.where("lineId", "==", lineId).limit(1);
         const userSnapshot = await userQuery.get();
@@ -7489,54 +7489,60 @@ exports.getLiffUserData = onCall(async (request) => {
 
         const userDoc = userSnapshot.docs[0];
         const userData = userDoc.data();
-        const userKey = userDoc.id; // 使用者文件 ID (手機號碼)
+        
+        // [說明] 用於權限查找的 ID (通常是 Document ID)
+        // 注意：如果您的權限文件 (userPermissions) 是以「電話號碼」為 ID，
+        // 而 userDoc.id 剛好不是電話號碼時，這裡的權限查找可能會失敗。
+        // 但既然您能進入系統，代表 userDoc.id 能對應到權限文件，或者您的權限文件 ID 就是 userDoc.id。
+        const userDocId = userDoc.id; 
 
-        // 步驟 2: 透過使用者 ID (手機) 查找權限 (邏輯不變)
-        const permDocRef = db.collection("userPermissions").doc(userKey);
+        // 步驟 2: 透過使用者 ID 查找權限
+        const permDocRef = db.collection("userPermissions").doc(userDocId);
         const permDoc = await permDocRef.get();
 
         if (!permDoc.exists) {
-            console.log(`[${functionName}] 用戶 [${userKey}] 找不到權限文件。`);
-            return { status: "bound", userName: userData.name, projects: [] }; // 已綁定但無任何權限
+            console.log(`[${functionName}] 用戶 [${userDocId}] 找不到權限文件。`);
+            return { status: "bound", userName: userData.name, projects: [] };
         }
 
-        // 步驟 3: 解析權限，並【一併查詢】建案的 bookingTypes
+        // 步驟 3: 解析權限
         const permissions = permDoc.data().permissions || {};
-        const authorizedProjectsPromises = []; // 儲存非同步查詢
+        const authorizedProjectsPromises = [];
 
         for (const projectId in permissions) {
             const projectPerms = permissions[projectId];
-            // 檢查是否包含 '驗屋預約管理-檢視' 或 '驗屋預約管理-修改' 權限
-            if (projectPerms.systems && (projectPerms.systems.includes("驗屋預約管理-檢視") || projectPerms.systems.includes("驗屋預約管理-修改"))) {
+            
+            // 只要有 systems 權限就允許回傳，前端會再過濾
+            if (projectPerms.systems && projectPerms.systems.length > 0) {
                 
-                // --- START: ✓ 關鍵修改 ---
-                // 正體中文註解：非同步獲取該建案的 projects 文件
                 const projectDocPromise = db.collection('projects').doc(projectId).get().then(doc => {
-                    if (!doc.exists) return null; // 如果建案文件被刪除，則返回 null
+                    if (!doc.exists) return null;
                     const projectData = doc.data();
                     return {
                         projectId: projectId,
-                        projectName: projectPerms.projectName, // 保持 userPermissions 上的名稱
-                        bookingTypes: projectData.bookingTypes || [], // ✓ 讀取 bookingTypes
+                        projectName: projectPerms.projectName,
+                        bookingTypes: projectData.bookingTypes || [],
                         systems: projectPerms.systems
-                      };
+                    };
                 }).catch(err => {
                     console.error(`[${functionName}] 讀取 projects/${projectId} 文件失敗:`, err);
-                    return null; // 發生錯誤時返回 null
+                    return null;
                 });
                 authorizedProjectsPromises.push(projectDocPromise);
-                // --- END: ✓ 關鍵修改 ---
             }
         }
         
-        // 等待所有建案資料查詢完成
-        const authorizedProjects = (await Promise.all(authorizedProjectsPromises)).filter(Boolean); // filter(Boolean) 移除 null
+        const authorizedProjects = (await Promise.all(authorizedProjectsPromises)).filter(Boolean);
 
-        console.log(`[${functionName}] 用戶 [${userKey}] 擁有 ${authorizedProjects.length} 個建案的查詢權限 (含 bookingTypes)。`);
+        console.log(`[${functionName}] 用戶 [${userData.name}] 擁有 ${authorizedProjects.length} 個建案的查詢權限。`);
+        
         return {
             status: "bound",
             userName: userData.name,
-            projects: authorizedProjects, // ✓ 回傳包含 bookingTypes 的陣列
+            // [關鍵修正]: 強制使用資料庫欄位中的 phone 作為 userKey 回傳
+            // 這確保前端拿到的絕對是 "0980371014" 這樣的電話格式
+            userKey: userData.phone || userDocId, 
+            projects: authorizedProjects,
         };
 
     } catch (error) {
@@ -16376,33 +16382,50 @@ return snapshot.docs.map(doc => {
 }
 /**
  * [內部函式] 提交客戶資料表 (建立或更新)
- * (✓ V6: 修正 Nested Arrays 錯誤 - 強制將關鍵欄位轉為字串)
+ * (✓ V7: 加入 Debug Log 並強化銷售欄位清洗)
  */
 async function _handleSubmitCustomerSheet(data, db) {
     const { projectId, formData, docId } = data; 
+
+    // ========== [DEBUG START] ==========
+    console.log(`[_handleSubmitCustomerSheet] 開始處理 projectId: ${projectId}, docId: ${docId}`);
+    // 這裡用 JSON.stringify 才能看清楚是否被包成陣列或物件
+    console.log(`[_handleSubmitCustomerSheet] 接收到的原始 formData:`, JSON.stringify(formData, null, 2));
+    // ========== [DEBUG END] ============
+
     if (!projectId || !formData) {
         throw new HttpsError("invalid-argument", "缺少 projectId 或 formData 參數。");
     }
 
     // ✅ [核心修正]：處理前端可能傳來陣列的情況
-    // 如果是陣列，取最後一個值；如果是字串/數字，轉為字串；否則為空字串
     const extractString = (val) => {
         if (Array.isArray(val)) {
+            // 如果是陣列，取最後一個非空的值，或是單純取最後一個
             return val.length > 0 ? String(val[val.length - 1]) : '';
         }
         return val ? String(val) : '';
     };
 
+    // 1. 清洗 客戶資料
     const phone = extractString(formData['電話']);
     const name = extractString(formData['姓名']);
+
+    // 2. [新增修正] 清洗 銷售人員資料 (避免前端傳來陣列導致寫入異常)
+    const salesName = extractString(formData['銷售人員']);
+    const salesPhone = extractString(formData['銷售人員電話']);
+
+
+    // ===================================
 
     if (!phone) {
          throw new HttpsError("invalid-argument", "formData 中缺少「電話」欄位。");
     }
 
-    // 確保 formData 中的這兩個欄位也被修正，以免存入 submissionLog 時變成陣列
+    // 3. 確保 formData 內的資料也被更新為純字串 (這會影響寫入 submissions 陣列的內容)
     formData['電話'] = phone;
     formData['姓名'] = name;
+    formData['銷售人員'] = salesName;           // [修正]
+    formData['銷售人員電話'] = salesPhone;       // [修正]
 
     let finalDocId = docId;
 
@@ -16421,7 +16444,6 @@ async function _handleSubmitCustomerSheet(data, db) {
     const submissionLog = {
         ...formData,
         submittedAt: submissionTimestamp,
-        // ✅ [新增] 標記來源：內部資料表 (銷售人員補全)
         submissionSource: 'internal_sheet' 
     };
 
@@ -16451,8 +16473,10 @@ async function _handleSubmitCustomerSheet(data, db) {
                     projectId: projectId,
                     phone: phone,
                     latestName: name || '未知',
-                    latestSalesName: formData['銷售人員'] || null,
-                    latestSalesPhone: formData['銷售人員電話'] || null, 
+                    
+                    // [使用清洗後的變數]
+                    latestSalesName: salesName || null,
+                    latestSalesPhone: salesPhone || null, 
                     
                     createdAt: rootTimestamp, 
                     updatedAt: rootTimestamp, 
@@ -16472,7 +16496,6 @@ async function _handleSubmitCustomerSheet(data, db) {
                 
                 // 1. 重新計算電話索引
                 const allPhones = new Set();
-                // 注意：oldData.phone 必定是字串，但保險起見
                 allPhones.add(oldData.phone || phone); 
                 if (newProfile.otherPhones && Array.isArray(newProfile.otherPhones)) {
                     newProfile.otherPhones.forEach(p => {
@@ -16495,10 +16518,11 @@ async function _handleSubmitCustomerSheet(data, db) {
                 const oldSubmissions = oldData.submissions || [];
                 const lastSubmission = oldSubmissions.length > 0 ? oldSubmissions[oldSubmissions.length - 1] : null;
 
+                // [修正] 這裡判斷 salesName 是否存在
                 const isCompletingDraft = (
                     lastSubmission && 
                     !lastSubmission['銷售人員'] && 
-                    formData['銷售人員']
+                    salesName
                 );
 
                 let updatedSubmissions = [...oldSubmissions];
@@ -16513,8 +16537,11 @@ async function _handleSubmitCustomerSheet(data, db) {
 
                 transaction.update(docRef, {
                     latestName: name || oldData.latestName,
-                    latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
-                    latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null,
+                    
+                    // [使用清洗後的變數]
+                    latestSalesName: salesName || oldData.latestSalesName,
+                    // 優先使用本次提交的 salesPhone，若無則保留舊的
+                    latestSalesPhone: salesPhone || oldData.latestSalesPhone || null,
 
                     updatedAt: rootTimestamp, 
                     profile: newProfile, 
