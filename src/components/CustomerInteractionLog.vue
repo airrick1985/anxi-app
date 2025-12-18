@@ -1292,38 +1292,39 @@ const handleSaveLog = async () => {
     try {
         const logPayload = {
             date: newLog.value.date ? new Date(newLog.value.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            startTime: newLog.value.startTime || '', // 寫入開始時間
-            endTime: newLog.value.endTime || '',     // 寫入結束時間
+            startTime: newLog.value.startTime || '',
+            endTime: newLog.value.endTime || '',
             content: newLog.value.content,
             tags: { ...newLog.value.tags }
         };
 
+        // ✅ [修正] 傳入 userStore.user.key 作為 operatorPhone
+        const currentUserName = userStore.user?.name;
+        const currentUserPhone = userStore.user?.key; // key 存的是電話
+
         if (editingLogId.value) {
-            // 更新紀錄
             await updateInteractionLog(
                 props.projectId,
                 props.docId,
                 editingLogId.value,
                 logPayload,
-                userStore.user.name,
-                userStore.user.phone // ✅ 新增：傳入更新者的電話
+                currentUserName,
+                currentUserPhone // ✅ 傳入電話
             );
             toast.success('紀錄已更新');
         } else {
-            // 新增紀錄
             await addInteractionLog(
                 props.projectId,
                 props.docId,
                 logPayload,
-                userStore.user.name,
-                userStore.user.phone // ✅ 新增：傳入目前記錄人員的電話
+                currentUserName,
+                currentUserPhone // ✅ 傳入電話
             );
             toast.success('紀錄已新增');
         }
 
         await loadData();
         closeLogDialog();
-
     } catch (error) {
         toast.error(`儲存失敗: ${error.message}`);
     } finally {

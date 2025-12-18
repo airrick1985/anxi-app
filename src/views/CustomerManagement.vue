@@ -847,6 +847,7 @@ async function downloadCustomerExcel() {
             '互動類型': log.interactionType || '',
             '內容': log.content || '',
             '記錄人員': log.recorderName || '',
+            '記錄人員電話': log.recorderPhone || data.latestSalesPhone || '',
             '當下等級': log.rating || '',
             '訪客數': log.visitors || '',
             '未購原因': Array.isArray(log.tags?.noPurchaseReason) ? log.tags.noPurchaseReason.join(',') : '',
@@ -874,14 +875,12 @@ async function downloadCustomerExcel() {
 
     // Sheet 2: InteractionLogs
     if (logRows.length > 0) {
-      const wsLogs = XLSX.utils.json_to_sheet(logRows);
-      // 設定 Sheet 2 欄寬
-      wsLogs['!cols'] = [
-        { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, // 電話~類型
-        { wch: 50 }, // 內容 (寬一點)
-        { wch: 12 }, { wch: 10 }, { wch: 8 }, // 人員~訪客數
-        { wch: 20 }, { wch: 20 }, { wch: 30 } // 原因, 標籤, ID
-      ];
+     const wsLogs = XLSX.utils.json_to_sheet(logRows);
+        wsLogs['!cols'] = [
+          { wch: 15 }, { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, // 電話 ~ 結束時間
+          { wch: 12 }, { wch: 40 }, { wch: 10 }, { wch: 15 }, { wch: 10 }, // 互動類型 ~ 記錄人員電話 (新增寬度)
+          { wch: 10 }, { wch: 20 }, { wch: 20 } // 等級 ~ 未購原因
+        ];
       XLSX.utils.book_append_sheet(wb, wsLogs, "InteractionLogs");
     } else {
       // 就算沒有紀錄，也要建立一個空的 Sheet 包含標頭，避免匯入時報錯
