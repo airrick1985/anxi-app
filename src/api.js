@@ -7156,13 +7156,22 @@ export const fetchCustomerInteractionDetails = async (projectId, docId, userKey)
 
 /**
  * [API] 新增洽談紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} docId - 客戶文件 ID
+ * @param {object} logData - 紀錄內容 (date, content, tags...)
+ * @param {string} operatorName - 記錄人姓名
+ * @param {string} operatorPhone - 記錄人電話 (新增參數)
  */
-export const addInteractionLog = async (projectId, docId, logData, operatorName) => {
+export const addInteractionLog = async (projectId, docId, logData, operatorName, operatorPhone) => {
   try {
-    const addFunc = httpsCallable(functions, 'addInteractionLog');
-    const result = await addFunc({ projectId, docId, logData, operatorName });
+    // ✅ 改用統一的路由函式呼叫
+    const result = await customerApiRouter({
+      action: 'addInteractionLog',
+      data: { projectId, docId, logData, operatorName, operatorPhone }
+    });
     return result.data;
   } catch (error) {
+    console.error("[api.js] addInteractionLog 失敗:", error);
     throw new Error(error.message);
   }
 };
@@ -7181,14 +7190,31 @@ export const updateCustomerProfile = async (projectId, docId, profileData, userK
 };
 
 /**
- * [API] 更新洽談紀錄
+ * [API] 更新洽談紀錄 (整合 V2)
+ * @param {string} projectId - 建案 ID
+ * @param {string} docId - 客戶文件 ID
+ * @param {string} logId - 紀錄唯一的 ID
+ * @param {object} logPayload - 紀錄內容
+ * @param {string} operatorName - 更新人姓名
+ * @param {string} operatorPhone - 更新人電話
  */
-export const updateInteractionLog = async (projectId, docId, logId, logData, operatorName) => {
+export const updateInteractionLog = async (projectId, docId, logId, logPayload, operatorName, operatorPhone) => {
   try {
-    const updateFunc = httpsCallable(functions, 'updateInteractionLog');
-    const result = await updateFunc({ projectId, docId, logId, logData, operatorName });
+    // ✅ 改用統一的路由函式呼叫，避免 NOT_FOUND 錯誤
+    const result = await customerApiRouter({
+      action: 'updateInteractionLog',
+      data: { 
+        projectId, 
+        docId, 
+        logId, 
+        logPayload, 
+        operatorName, 
+        operatorPhone 
+      }
+    });
     return result.data;
   } catch (error) {
+    console.error("[api.js] updateInteractionLog 失敗:", error);
     throw new Error(error.message);
   }
 };
@@ -7323,20 +7349,25 @@ export const fetchFullCustomersForExport = async (projectId, userPhone, userProj
 
 
 /**
- * [API] 批次匯入客戶資料 (呼叫後端執行)
- * @param {string} projectId
- * @param {Array} customers - 已整理好的客戶資料物件陣列
- * @param {string} operator - 操作者名稱
+ * [API] 批次匯入客戶資料
+ * 確保帶入 projectId 以正確寫入文件
  */
 export const batchImportCustomers = async (projectId, customers, operator) => {
+  if (!projectId || !customers.length) return;
+  
   try {
     const result = await customerApiRouter({
       action: 'batchImportCustomers',
-      data: { projectId, customers, operator }
+      data: { 
+        projectId, 
+        // 確保每筆資料都包含建案 ID
+        customers: customers.map(c => ({ ...c, projectId })), 
+        operator 
+      }
     });
     return result.data;
   } catch (error) {
-    console.error(`[api.js] 批次匯入失敗:`, error);
+    console.error("批次匯入 API 異常:", error);
     throw error;
   }
 };

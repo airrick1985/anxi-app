@@ -1299,22 +1299,24 @@ const handleSaveLog = async () => {
         };
 
         if (editingLogId.value) {
-            // 更新
+            // 更新紀錄
             await updateInteractionLog(
                 props.projectId,
                 props.docId,
                 editingLogId.value,
                 logPayload,
-                userStore.user.name
+                userStore.user.name,
+                userStore.user.phone // ✅ 新增：傳入更新者的電話
             );
             toast.success('紀錄已更新');
         } else {
-            // 新增
+            // 新增紀錄
             await addInteractionLog(
                 props.projectId,
                 props.docId,
                 logPayload,
-                userStore.user.name
+                userStore.user.name,
+                userStore.user.phone // ✅ 新增：傳入目前記錄人員的電話
             );
             toast.success('紀錄已新增');
         }

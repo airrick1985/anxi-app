@@ -14932,10 +14932,16 @@ async function _handleGetLiffUserData(data) {
         
         const authorizedProjects = (await Promise.all(authorizedProjectsPromises)).filter(Boolean);
 
+        console.log(`[${functionName}] 用戶 [${userData.name}] 擁有 ${authorizedProjects.length} 個建案的查詢權限。`);
+        
+        // [修正點]: 統一回傳格式，確保包含 phone 與 name 以匹配前端與資料庫
         return {
             status: "bound",
             userName: userData.name,
-            projects: authorizedProjects, 
+            name: userData.name,          // 確保前端直接讀取 name 時有值
+            userKey: userData.phone || userKey, // 修正變數名稱：從 userDocId 改為 userKey
+            phone: userData.phone || userKey,   // 修正變數名稱：從 userDocId 改為 userKey
+            projects: authorizedProjects,
         };
     } catch (error) {
         console.error(`[${functionName}] 獲取 LIFF 用戶資料時發生錯誤:`, error);
@@ -15744,6 +15750,12 @@ exports.customerApi = onCall({
 
             case 'batchImportCustomers': // ✅ 新增這個 Case
                 return await _handleBatchImportCustomers(data, db);
+
+                case 'addInteractionLog': // ✅ 新增這行
+        return await _handleAddInteractionLog(data, db);
+
+    case 'updateInteractionLog': // ✅ 新增這行
+        return await _handleUpdateInteractionLog(data, db);
           
 
             default:
@@ -15841,61 +15853,54 @@ async function _handleBatchImportCustomers(data, db) {
 }
 
 /**
- * [內部函式] 獲取完整客戶資料 (包含完整互動歷史，供前端 Excel 雙 Sheet 使用)
+ * [內部函式] 處理完整客戶資料匯出 (含所有 Sheet 資料)
+ * 解決：Invalid Date 與 欄位缺失問題
  */
 async function _handleFetchFullCustomersForExport(data, db) {
-  const { projectId, userPhone, userProjectSystems } = data;
-  const functionName = `_handleFetchFullCustomersForExport`;
+    const { projectId, userPhone, userProjectSystems } = data;
+    const functionName = `_handleFetchFullCustomersForExport`;
 
-  if (!projectId) {
-    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
-  }
-
-  try {
-    // 權限檢查邏輯 (沿用既有邏輯)
-    // 預設只有「客資系統-櫃台」權限或該客戶的銷售人員才能匯出
-    // 如果您希望只要有權限就能匯出全部，可以註解掉這段檢查
-    const isCounter = userProjectSystems && userProjectSystems.includes('客資系統-櫃台');
-    
-    const guestsRef = db.collection("vipGuests");
-    const query = guestsRef.where("projectId", "==", projectId);
-    const snapshot = await query.get();
-
-    if (snapshot.empty) {
-      return [];
+    if (!projectId) {
+        throw new Error("缺少 projectId 參數。");
     }
 
-    const exportList = [];
+    try {
+        const snapshot = await db.collection("vipGuests")
+            .where("projectId", "==", projectId)
+            .get();
 
-    snapshot.forEach(doc => {
-      const docData = doc.data();
+        if (snapshot.empty) return [];
 
-      // --- 權限過濾 (可選) ---
-      // 如果不是櫃台/管理員，且該客戶的銷售人員不是自己，則跳過
-      if (!isCounter && userPhone && docData.latestSalesPhone !== userPhone) {
-         // return; // 若希望銷售只能匯出自己的，請取消註解此行
-      }
+        const exportList = [];
 
-      // 回傳原始結構，讓前端去處理 Excel 格式
-      exportList.push({
-        id: doc.id,
-        phone: docData.phone,
-        latestName: docData.latestName,
-        latestSalesName: docData.latestSalesName,
-        profile: docData.profile || {},
-        interactionLogs: docData.interactionLogs || [], // 關鍵：回傳完整陣列
-        createdAt: docData.createdAt ? docData.createdAt.toDate().toISOString() : null,
-        updatedAt: docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null
-      });
-    });
+        snapshot.forEach(doc => {
+            const docData = doc.data();
 
-    console.log(`[${functionName}] 成功提取 ${exportList.length} 筆完整資料 (含歷史紀錄)。`);
-    return exportList;
+            // 格式化時間輔助工具
+            const toIso = (ts) => (ts && ts.toDate) ? ts.toDate().toISOString() : ts;
 
-  } catch (error) {
-    console.error(`[${functionName}] 執行時發生錯誤:`, error);
-    throw new HttpsError("internal", `匯出資料時發生錯誤: ${error.message}`);
-  }
+            exportList.push({
+                id: doc.id,
+                projectId: docData.projectId || projectId, // ✅ 新增建案 ID
+                phone: docData.phone || "",
+                latestName: docData.latestName || "",
+                latestSalesName: docData.latestSalesName || "",
+                latestSalesPhone: docData.latestSalesPhone || "", // ✅ 確保根目錄電話
+                profile: docData.profile || {},
+                interactionLogs: docData.interactionLogs || [], 
+                submissions: docData.submissions || [], // ✅ 用於關聯「記錄人員電話」
+                createdAt: toIso(docData.createdAt),
+                updatedAt: toIso(docData.updatedAt)
+            });
+        });
+
+        console.log(`[${functionName}] 成功提取 ${exportList.length} 筆資料。`);
+        return exportList;
+
+    } catch (error) {
+        console.error(`[${functionName}] 錯誤:`, error);
+        throw new Error(`匯出失敗: ${error.message}`);
+    }
 }
 
 
@@ -15970,11 +15975,13 @@ async function _handleSubmitVipForm(data, db) {
     
     const rootTimestamp = FieldValue.serverTimestamp(); 
     const submissionTimestamp = Timestamp.now(); 
+
+    const now = admin.firestore.Timestamp.now();
     
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp,
-        // ✅ [新增] 標記來源：公開表單 (客戶初次填寫)
+       submittedAt: now, // 儲存為原生 Timestamp
+      
         submissionSource: 'public_form' 
     };
 
@@ -16017,6 +16024,10 @@ async function _handleSubmitVipForm(data, db) {
                 const newProfile = _smartMergeProfile(oldData.profile, formData); 
 
                 const updatedSubmissions = FieldValue.arrayUnion(submissionLog);
+                    transaction.update(docRef, {
+                        updatedAt: rootTimestamp,
+                        submissions: updatedSubmissions,
+                    });
 
                 // ✅ [新增] 重新計算 searchablePhones (基於合併後的 profile)
                 const allPhones = new Set();
@@ -16142,9 +16153,8 @@ async function _handleSaveCustomerSettings(data, db) { // ✓ 接收 db
 
 
 /**
- * [輔助函式] 智慧合併 Profile (優化版 V3: 全欄位陣列化 accumulation)
- * 目的: 將 profile 內的所有欄位視為陣列處理，保留歷史數據而不覆蓋。
- * 邏輯: 舊值(String/Array) + 新值(String/Array) -> 合併後的陣列(Array)
+ * [內部函式] 智慧合併 Profile
+ * 目的：將新提交的資料合併至舊的 profile，並進行去重與陣列化處理
  */
 function _smartMergeProfile(oldProfile, newSubmission) {
   const newProfile = { ...oldProfile }; // 複製一份舊資料
@@ -16155,6 +16165,19 @@ function _smartMergeProfile(oldProfile, newSubmission) {
 
     // 1. 跳過無效的新值
     if (newValue === null || newValue === undefined || newValue === '') continue;
+
+    // ✅ [修正] 排除後設資料與系統欄位
+    // 這些欄位不應存在於 profile 內，應存在於文件根目錄或頂層 submissions 陣列中
+    const excludedKeys = [
+      'submissions', 
+      'interactionLogs', 
+      'updatedAt', 
+      'createdAt', 
+      'submittedAt', 
+      'submissionSource'
+    ];
+    
+    if (excludedKeys.includes(key)) continue;
 
     // 2. 特殊欄位處理：'otherPhones' (物件陣列，需根據 phone 屬性去重)
     if (key === 'otherPhones' && Array.isArray(newValue)) {
@@ -16441,9 +16464,11 @@ async function _handleSubmitCustomerSheet(data, db) {
     const rootTimestamp = FieldValue.serverTimestamp(); 
     const submissionTimestamp = Timestamp.now(); 
     
+    const now = admin.firestore.Timestamp.now();
+    
     const submissionLog = {
         ...formData,
-        submittedAt: submissionTimestamp,
+        submittedAt: now,
         submissionSource: 'internal_sheet' 
     };
 
@@ -17152,30 +17177,22 @@ exports.getCustomerInteractionDetails = onCall(async (request) => {
 /**
  * [新增] 新增一筆洽談紀錄
  */
-exports.addInteractionLog = onCall(async (request) => {
-  const { projectId, docId, logData, operatorName } = request.data;
-  // logData 應包含: date, content, tags(obj)
-  
-  const db = new Firestore({ databaseId: "anxi-app" });
-  const guestRef = db.collection("vipGuests").doc(docId);
-  
-  const newLog = {
-      logId: crypto.randomUUID(), // 需引入 crypto
-      ...logData,
-      recorderName: operatorName,
-      createdAt: Timestamp.now()
-  };
-
-  try {
-      await guestRef.update({
-          interactionLogs: FieldValue.arrayUnion(newLog),
-          updatedAt: FieldValue.serverTimestamp() // 更新客戶最後活動時間
-      });
-      return { status: "success", message: "紀錄已新增" };
-  } catch(e) {
-      throw new HttpsError("internal", e.message);
-  }
-});
+async function _handleAddInteractionLog(data, db) {
+    const { projectId, docId, logData, operatorName, operatorPhone } = data;
+    const guestRef = db.collection("vipGuests").doc(docId);
+    const newLog = {
+        logId: admin.firestore.Timestamp.now().toMillis().toString(),
+        ...logData,
+        recorderName: operatorName,
+        recorderPhone: operatorPhone || "", 
+        createdAt: admin.firestore.Timestamp.now()
+    };
+    await guestRef.update({
+        interactionLogs: admin.firestore.FieldValue.arrayUnion(newLog),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { status: "success", message: "紀錄已新增" };
+}
 
 /**
  * [修正版 V2] 更新客戶基本資料 (含其他電話)
@@ -17236,59 +17253,44 @@ exports.updateCustomerProfile = onCall(async (request) => {
 /**
  * [新增] 更新單筆洽談紀錄 (修改陣列中的特定項目)
  */
-exports.updateInteractionLog = onCall(async (request) => {
-  const { projectId, docId, logId, logData, operatorName } = request.data;
-  const functionName = `updateInteractionLog (Doc: ${docId}, Log: ${logId})`;
+async function _handleUpdateInteractionLog(data, db) {
+    const { docId, logId, logPayload, operatorName, operatorPhone } = data;
+    const guestRef = db.collection("vipGuests").doc(docId);
 
-  if (!projectId || !docId || !logId || !logData) {
-    throw new HttpsError("invalid-argument", "缺少必要參數。");
-  }
+    try {
+        // Firestore 更新陣列內部物件，需先取出完整陣列進行處理
+        const docSnap = await guestRef.get();
+        if (!docSnap.exists) throw new Error("找不到該客戶文件");
 
-  const db = new Firestore({ databaseId: "anxi-app" });
-  const guestRef = db.collection("vipGuests").doc(docId);
+        const guestData = docSnap.data();
+        let logs = guestData.interactionLogs || [];
 
-  try {
-    await db.runTransaction(async (transaction) => {
-      const doc = await transaction.get(guestRef);
-      if (!doc.exists) {
-        throw new HttpsError("not-found", "找不到客戶資料。");
-      }
+        // 尋找目標紀錄
+        const logIndex = logs.findIndex(l => l.logId === logId);
+        if (logIndex === -1) throw new Error("找不到該筆洽談紀錄 ID");
 
-      const data = doc.data();
-      // 複製現有的 logs 陣列
-      const logs = data.interactionLogs || [];
-      
-      // 找到要修改的那一筆
-      const index = logs.findIndex(l => l.logId === logId);
+        // ✅ 更新紀錄內容
+        logs[logIndex] = {
+            ...logs[logIndex], // 保留原本的 createdAt 等不變資訊
+            ...logPayload,     // 蓋上新的內容 (date, content, tags...)
+            recorderName: operatorName,
+            recorderPhone: operatorPhone || "", // ✅ 確保電話一併更新
+            updatedAt: admin.firestore.Timestamp.now() // 紀錄修改時間
+        };
 
-      if (index === -1) {
-        throw new HttpsError("not-found", "找不到指定的洽談紀錄 ID。");
-      }
+        // 寫回資料庫
+        await guestRef.update({
+            interactionLogs: logs,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
 
-      // 更新該筆資料 (保留原始 ID 與創建時間，更新內容與修改資訊)
-      logs[index] = {
-        ...logs[index],
-        ...logData, // 覆蓋 date, content, tags
-        updatedAt: Timestamp.now(),
-        lastModifiedBy: operatorName
-      };
+        return { status: "success", message: "紀錄已更新" };
 
-      // 寫回整份陣列
-      transaction.update(guestRef, {
-        interactionLogs: logs,
-        updatedAt: FieldValue.serverTimestamp()
-      });
-    });
-
-    console.log(`[${functionName}] 更新成功。`);
-    return { status: "success", message: "紀錄已更新" };
-
-  } catch (error) {
-    console.error(`[${functionName}] 失敗:`, error);
-    if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", `更新紀錄失敗: ${error.message}`);
-  }
-});
+    } catch (e) {
+        console.error("更新洽談紀錄錯誤:", e);
+        throw new functions.https.HttpsError("internal", e.message);
+    }
+}
 
 
 /**
@@ -17407,6 +17409,8 @@ async function _handleBatchUpdateCustomers(data, db) {
     // 1. 準備時間戳記
     const submissionTime = Timestamp.now(); 
     const updateTime = FieldValue.serverTimestamp();
+    const batchTimestamp = admin.firestore.Timestamp.now();
+
 
     try {
         for (const customer of customerData) {
@@ -17440,7 +17444,7 @@ async function _handleBatchUpdateCustomers(data, db) {
 
             // --- 2. 建構 Submission Log (歷史快照) ---
             const submissionLog = {
-                submittedAt: submissionTime, 
+                submittedAt: batchTimestamp, 
                 importSource: 'Excel Batch Upload',
                 '姓名': customer.name || '',
                 '電話': String(phone),
