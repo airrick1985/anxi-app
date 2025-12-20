@@ -1,36 +1,144 @@
 <template>
-  <v-container fluid class="fill-height bg-white pa-0 d-flex flex-column">
-    <v-toolbar density="compact" color="white" elevation="1">
-      <v-btn icon="mdi-arrow-left" variant="text" @click="goBack"></v-btn>
-      <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-        {{ projectName }} - 賞屋預約
-      </v-toolbar-title>
-      <v-spacer></v-spacer>
-      <v-btn icon="mdi-refresh" @click="fetchData"></v-btn>
-    </v-toolbar>
+  <v-layout class="fill-height bg-white">
+    <v-navigation-drawer
+      v-if="!$vuetify.display.xs"
+      v-model="drawer"
+      permanent
+      width="320"
+      border="right"
+      class="pa-3"
+    >
+      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">快速跳轉</div>
+      <v-date-picker
+        v-model="miniCalendarDate"
+        hide-header
+        flat
+        density="compact"
+        color="primary"
+        class="border rounded-lg mb-6 calendar-mini"
+        @update:model-value="syncCalendarDate"
+      ></v-date-picker>
 
-    <div class="flex-grow-1 w-100 position-relative">
-      <FullCalendar 
-        ref="calendarRef"
-        :options="calendarOptions" 
-        class="fill-height"
-      />
-      
-      <v-overlay :model-value="reservationStore.loading" contained class="align-center justify-center">
-        <v-progress-circular indeterminate color="primary"></v-progress-circular>
-      </v-overlay>
-    </div>
+      <v-divider class="mb-4"></v-divider>
+
+      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">預約類型</div>
+      <v-checkbox
+        v-model="filters.type"
+        label="新客預約"
+        value="新客"
+        color="light-blue-darken-1"
+        density="compact"
+        hide-details
+      ></v-checkbox>
+      <v-checkbox
+        v-model="filters.type"
+        label="回訪/其他"
+        value="回訪"
+        color="red-darken-1"
+        density="compact"
+        hide-details
+      ></v-checkbox>
+
+      <v-divider class="my-4"></v-divider>
+
+      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2 d-flex align-center">
+        銷售人員 
+        <v-chip size="x-small" class="ml-2" variant="tonal" @click="filters.salesNames = []">清除</v-chip>
+      </div>
+      <div style="max-height: 200px; overflow-y: auto;">
+        <v-checkbox
+          v-for="name in allSalesPeople"
+          :key="name"
+          v-model="filters.salesNames"
+          :label="name || '未指派'"
+          :value="name"
+          color="primary"
+          density="compact"
+          hide-details
+        ></v-checkbox>
+      </div>
+    </v-navigation-drawer>
+
+    <v-main class="d-flex flex-column fill-height">
+      <v-toolbar v-if="$vuetify.display.xs" color="white" border="bottom" density="comfortable">
+        <v-btn 
+          variant="text" 
+          @click="showMobileMiniCalendar = !showMobileMiniCalendar"
+          class="text-h6 font-weight-bold px-2"
+          color="primary"
+        >
+          {{ currentTitle }}
+          <v-icon right>{{ showMobileMiniCalendar ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+        </v-btn>
+        <v-spacer></v-spacer>
+        <v-btn icon="mdi-refresh" @click="fetchData"></v-btn>
+      </v-toolbar>
+
+      <v-toolbar v-else color="white" border="bottom" density="comfortable">
+        <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
+        <v-toolbar-title class="text-h6 font-weight-bold">{{ projectName }}</v-toolbar-title>
+        <v-btn variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
+        <div class="d-flex align-center ml-2">
+          <v-btn icon="mdi-chevron-left" variant="text" @click="goPrev"></v-btn>
+          <v-btn icon="mdi-chevron-right" variant="text" @click="goNext"></v-btn>
+        </div>
+        <span class="text-h6 ml-2 font-weight-regular">{{ currentTitle }}</span>
+        <v-spacer></v-spacer>
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn variant="outlined" v-bind="props" append-icon="mdi-chevron-down" class="mr-2">
+              {{ viewLabelMap[currentView] }}
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item @click="changeView('dayGridMonth')">月</v-list-item>
+            <v-list-item @click="changeView('timeGridWeek')">週</v-list-item>
+            <v-list-item @click="changeView('timeGridDay')">日</v-list-item>
+            <v-list-item @click="changeView('listWeek')">列表</v-list-item>
+          </v-list>
+        </v-menu>
+      </v-toolbar>
+
+      <v-expand-transition v-if="$vuetify.display.xs">
+        <div v-show="showMobileMiniCalendar" class="bg-grey-lighten-5 border-b">
+          <v-date-picker
+            v-model="miniCalendarDate"
+            hide-header
+            flat
+            density="compact"
+            color="primary"
+            class="w-100 calendar-mini"
+            @update:model-value="onMobileDateSelect"
+          ></v-date-picker>
+        </div>
+      </v-expand-transition>
+
+      <div class="flex-grow-1 w-100 position-relative">
+        <FullCalendar 
+          ref="calendarRef"
+          :options="calendarOptions" 
+          class="calendar-container"
+        />
+        <v-overlay :model-value="reservationStore.loading" contained class="align-center justify-center">
+          <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        </v-overlay>
+      </div>
+    </v-main>
 
     <v-btn
         position="fixed"
         location="bottom right"
         icon="mdi-plus"
-        color="secondary"
-        size="large"
-        class="ma-4 mb-6 elevation-4"
-        style="z-index: 100;"
+        color="primary"
+        size="x-large"
+        class="ma-6 elevation-8 fab-btn"
         @click="openAddDialog"
     ></v-btn>
+
+    <v-snackbar v-model="conflictWarning.show" color="warning" location="top" timeout="4000">
+      <v-icon start>mdi-alert</v-icon>
+      注意：{{ conflictWarning.time }} 該時段已有 {{ conflictWarning.count }} 筆預約，建議錯開時段。
+    </v-snackbar>
 
     <ViewingReservationDialog
         v-model="showDialog"
@@ -40,18 +148,17 @@
         @saved="fetchData"
         @deleted="fetchData"
     />
-
-  </v-container>
+  </v-layout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useReservationStore } from '@/store/reservationStore';
+import { useDisplay } from 'vuetify';
 
-// FullCalendar Imports
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -69,114 +176,194 @@ const router = useRouter();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const reservationStore = useReservationStore();
+const { xs, mdAndUp } = useDisplay();
 
+// 狀態控管
 const calendarRef = ref(null);
+const drawer = ref(mdAndUp.value);
 const showDialog = ref(false);
+const showMobileMiniCalendar = ref(false);
 const selectedReservation = ref(null);
-const selectedDate = ref(new Date()); // ✅ [新增] 暫存選取的日期
+const selectedDate = ref(new Date());
+const miniCalendarDate = ref(new Date());
+const currentTitle = ref('');
+const currentView = ref('dayGridMonth');
 
-// 取得建案名稱
-const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
+// ✅ [打勾] 衝突警示設定
+const MAX_CONCURRENT_RESERVATIONS = 3;
+const conflictWarning = ref({ show: false, count: 0, time: '' });
 
-// 轉換 Firestore 資料為 Calendar Events
-const calendarEvents = computed(() => {
-    return reservationStore.activeReservations.map(res => {
-        // 計算結束時間 (預設賞屋 1.5 小時，僅供顯示用)
-        const start = res.reservationTime.toDate();
-        const end = new Date(start.getTime() + 90 * 60000); 
-
-        return {
-            id: res.id,
-            title: `[${res.type}] ${res.customerName} (${res.salesName || '未定'})`,
-            start: start,
-            end: end,
-            // 根據類型給不同顏色
-            backgroundColor: res.type === '新客' ? 'light-blue' : 'red',
-            borderColor: res.type === '新客' ? 'light-blue' : 'red',
-            extendedProps: { ...res }
-        };
-    });
+// ✅ [打勾] 篩選器設定
+const filters = ref({
+    type: ['新客', '回訪'],
+    salesNames: []
 });
 
-// Calendar 設定
+const viewLabelMap = {
+    dayGridMonth: '月',
+    timeGridWeek: '週',
+    timeGridDay: '日',
+    listWeek: '列表'
+};
+
+const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
+
+// ✅ [打勾] 動態提取銷售人員名單
+const allSalesPeople = computed(() => {
+    const names = reservationStore.activeReservations.map(res => res.salesName);
+    return Array.from(new Set(names)).sort();
+});
+
+// ✅ [打勾] 事件過濾與樣式
+const calendarEvents = computed(() => {
+    return reservationStore.activeReservations
+        .filter(res => {
+            const typeMatch = filters.value.type.includes(res.type);
+            const salesMatch = filters.value.salesNames.length === 0 || filters.value.salesNames.includes(res.salesName);
+            return typeMatch && salesMatch;
+        })
+        .map(res => {
+            const start = res.reservationTime.toDate();
+            return {
+                id: res.id,
+                title: `${res.customerName} (${res.salesName || '未定'})`,
+                start: start,
+                end: new Date(start.getTime() + 90 * 60000),
+                backgroundColor: res.type === '新客' ? '#e1f5fe' : '#ffebee',
+                borderColor: res.type === '新客' ? '#039be5' : '#e53935',
+                textColor: res.type === '新客' ? '#01579b' : '#b71c1c',
+                extendedProps: { ...res }
+            };
+        });
+});
+
+// ✅ [打勾] 檢查預約衝突
+function getConflictCount(dateTime) {
+    if (!dateTime) return 0;
+    const checkTime = dateTime.getTime();
+    return reservationStore.activeReservations.filter(res => {
+        const resTime = res.reservationTime.toDate().getTime();
+        return Math.abs(resTime - checkTime) / 60000 < 60;
+    }).length;
+}
+
 const calendarOptions = ref({
     plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin],
-    initialView: 'dayGridMonth', // 手機上可能需要改為 listWeek 或 timeGridDay
+    initialView: xs.value ? 'timeGridDay' : 'dayGridMonth',
     locale: zhTwLocale,
-   headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        // ✅ [修改] 在 right 加入 'timeGridDay'
-        right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' 
-    },
-    
-    buttonText: {
-        today: '今天',
-        month: '月',
-        week: '週',
-        day: '日',     // ✅ [新增] 日視圖按鈕文字
-        list: '列表'
-    },
+    headerToolbar: false,
     height: '100%',
-    events: calendarEvents, // 綁定 computed
+    events: calendarEvents,
     eventClick: handleEventClick,
     dateClick: handleDateClick,
     nowIndicator: true,
     slotMinTime: '08:00:00',
-    slotMaxTime: '23:00:00',
+    slotMaxTime: '22:00:00',
     allDaySlot: false,
-    slotDuration: '00:30:00',
+    dayMaxEvents: true,
+    stickyHeaderDates: true,
+    eventClassNames: 'google-style-event',
+    datesSet: (info) => {
+        currentTitle.value = info.view.title;
+        currentView.value = info.view.type;
+    }
 });
 
+// ✅ [打勾] 同步日期並切換至「日視圖」
+const syncCalendarDate = (date) => {
+    const api = calendarRef.value.getApi();
+    api.gotoDate(date);
+    api.changeView('timeGridDay');
+    currentView.value = 'timeGridDay';
+};
+
+// ✅ [打勾] 手機版選擇日期後的動作：同步並收折
+const onMobileDateSelect = (date) => {
+    syncCalendarDate(date);
+    showMobileMiniCalendar.value = false;
+};
+
+const goToday = () => calendarRef.value.getApi().today();
+const goPrev = () => calendarRef.value.getApi().prev();
+const goNext = () => calendarRef.value.getApi().next();
+const changeView = (view) => calendarRef.value.getApi().changeView(view);
+const fetchData = () => reservationStore.fetchReservations(props.projectId);
+
 onMounted(async () => {
-    // 安全檢查 (Phase 1 已做，這裡再次確保)
     if (!userStore.isLoggedIn) {
         router.replace({ name: 'ViewingReservationEntry' });
         return;
     }
-    // 載入資料
     await fetchData();
 });
 
-async function fetchData() {
-    await reservationStore.fetchReservations(props.projectId);
-}
-
 function handleEventClick(info) {
-    // 點擊事件 -> 編輯
+    const resDate = info.event.start;
+    const count = getConflictCount(resDate);
+    if (count > MAX_CONCURRENT_RESERVATIONS) {
+        conflictWarning.value = {
+            show: true,
+            count: count,
+            time: resDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+        };
+    }
     selectedReservation.value = info.event.extendedProps;
     showDialog.value = true;
 }
 
+// ✅ [打勾] 修改：在月檢視點擊日期改為跳轉到日檢視，不再開啟彈窗
 function handleDateClick(info) {
-    selectedReservation.value = null; // 設定為新增模式
-    selectedDate.value = info.date;   // 捕捉點擊的日期/時間
-    showDialog.value = true;          // 開啟視窗
-}
+    if (currentView.value === 'dayGridMonth') {
+        syncCalendarDate(info.date);
+        return;
+    }
 
-// ✅ [修改] FAB 按鈕點擊 (右下角懸浮按鈕)
-function openAddDialog() {
+    // 非月檢視（日、週）則維持開啟新增彈窗邏輯
+    const count = getConflictCount(info.date);
+    if (count >= MAX_CONCURRENT_RESERVATIONS) {
+        conflictWarning.value = {
+            show: true,
+            count: count,
+            time: info.date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+        };
+    }
     selectedReservation.value = null;
-    selectedDate.value = new Date();  // 若按鈕新增，預設為「現在」
+    selectedDate.value = info.date;
     showDialog.value = true;
 }
 
-const goBack = () => {
-    router.push({ name: 'ViewingReservationEntry' });
-};
+function openAddDialog() {
+    selectedReservation.value = null;
+    selectedDate.value = new Date();
+    showDialog.value = true;
+}
 </script>
 
-<style>
-/* FullCalendar 自訂樣式微調 */
-.fc .fc-toolbar-title {
-    font-size: 1.1rem !important;
+<style lang="scss">
+.calendar-container {
+  font-family: 'Roboto', sans-serif;
+  .fc-view-harness { background-color: #ffffff; }
+  .fc-timegrid-slot, .fc-daygrid-day { border-color: #f1f3f4 !important; }
+  .fc-timegrid-now-indicator-line { border-color: #ea4335; border-width: 2px; }
+  
+  .google-style-event {
+    border-left-width: 4px !important;
+    border-radius: 4px !important;
+    padding: 1px 4px !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.1s;
+    &:hover { filter: brightness(0.95); transform: scale(1.02); }
+  }
 }
-.fc .fc-button {
-    font-size: 0.8rem !important;
+
+.calendar-mini {
+  width: 100% !important;
+  .v-date-picker-month__days { padding: 0 !important; }
+  .v-btn--icon.v-btn--density-default { width: 32px !important; height: 32px !important; }
 }
-/* 讓行事曆填滿容器 */
-.fc {
-    height: 100%;
-    background-color: white;
-}
+
+.fab-btn { z-index: 1000; transition: transform 0.2s; &:hover { transform: rotate(90deg); } }
 </style>

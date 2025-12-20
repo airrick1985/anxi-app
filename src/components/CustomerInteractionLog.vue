@@ -495,26 +495,48 @@
           
           <v-row dense class="mt-2">
             <v-col cols="6">
-              <v-text-field
-                v-model="newLog.startTime"
-                label="開始時間"
-                type="time"
-                variant="outlined"
-                density="compact"
-               
-                hide-details="auto"
-              ></v-text-field>
+              <v-menu v-model="menuStart" :close-on-content-click="false">
+                <template v-slot:activator="{ props }">
+                  <v-text-field
+                    v-model="newLog.startTime"
+                    label="開始時間"
+                    readonly
+                    v-bind="props"
+                    variant="outlined"
+                    density="compact"
+                    prepend-inner-icon="mdi-clock-outline"
+                    hide-details="auto"
+                  ></v-text-field>
+                </template>
+                <v-time-picker
+                  v-if="menuStart"
+                  v-model="newLog.startTime"
+                  format="24hr"
+                  @update:model-value="menuStart = false"
+                ></v-time-picker>
+              </v-menu>
             </v-col>
             <v-col cols="6">
-              <v-text-field
-                v-model="newLog.endTime"
-                label="結束時間"
-                type="time"
-                variant="outlined"
-                density="compact"
-                
-                hide-details="auto"
-              ></v-text-field>
+              <v-menu v-model="menuEnd" :close-on-content-click="false">
+                <template v-slot:activator="{ props }">
+                  <v-text-field
+                    v-model="newLog.endTime"
+                    label="結束時間"
+                    readonly
+                    v-bind="props"
+                    variant="outlined"
+                    density="compact"
+                    prepend-inner-icon="mdi-clock-outline"
+                    hide-details="auto"
+                  ></v-text-field>
+                </template>
+                <v-time-picker
+                  v-if="menuEnd"
+                  v-model="newLog.endTime"
+                  format="24hr"
+                  @update:model-value="menuEnd = false"
+                ></v-time-picker>
+              </v-menu>
             </v-col>
           </v-row>
           <div class="mt-4">
@@ -710,12 +732,11 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { useUserStore } from '@/store/user';
-// ✅ [新增] 引入 updateInteractionLog
 import { fetchCustomerInteractionDetails, addInteractionLog, updateCustomerProfile, updateInteractionLog } from '@/api';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { useToast } from 'vue-toastification';
-import TwCities from '@/assets/TwCities.json'; // 請確保檔案路徑正確，或直接在此定義變數
+import TwCities from '@/assets/TwCities.json'; 
 
 const props = defineProps({
   show: Boolean,
@@ -741,7 +762,11 @@ const isTagDialogVisible = ref(false);
 const isAddPhoneDialogVisible = ref(false);
 const isSavingPhone = ref(false);
 
-// [新增] 計算持續時間 (分鐘)
+// ✅ [打勾] 新增控制 TimePicker 選單的狀態
+const menuStart = ref(false);
+const menuEnd = ref(false);
+
+// 計算持續時間 (分鐘)
 const calculateDuration = (start, end) => {
     if (!start || !end) return null;
     
@@ -754,14 +779,12 @@ const calculateDuration = (start, end) => {
         
         const diff = endTotal - startTotal;
         
-        // 只回傳大於 0 的合理數值
         return diff > 0 ? diff : null;
     } catch (e) {
         return null;
     }
 };
 
-// ✅ [新增] 編輯 ID 狀態
 const editingLogId = ref(null);
 
 const guestData = ref({
@@ -770,7 +793,7 @@ const guestData = ref({
     otherPhones: [],
     interactionLogs: [],
     profile: {},
-    submissions: [] // ✅ 確保初始化包含 submissions
+    submissions: [] 
 });
 
 const editingData = ref({});
@@ -806,8 +829,7 @@ const isValidLog = computed(() => {
 });
 
 
-// [新增] 通用輔助函式：從 Profile 欄位取得單一顯示值
-// 如果是陣列，取最後一個(最新)；如果是字串，直接回傳
+// 通用輔助函式：從 Profile 欄位取得單一顯示值
 const getProfileDisplayValue = (key) => {
     const val = guestData.value.profile?.[key];
     if (Array.isArray(val)) {
@@ -816,10 +838,6 @@ const getProfileDisplayValue = (key) => {
     return val || '';
 };
 
-// ==========================================
-// ✅ [新增] 地址連動邏輯
-// ==========================================
-
 // 1. 取得所有縣市名稱
 const cityOptions = computed(() => {
     return TwCities.map(c => c.name);
@@ -827,22 +845,17 @@ const cityOptions = computed(() => {
 
 // 2. 根據目前選擇的城市，取得對應的鄉鎮市區
 const districtOptions = computed(() => {
-    // 取得目前編輯中的城市
     const currentCity = editingData.value.profile?.['居住城市'];
     if (!currentCity) return [];
 
-    // 在 JSON 中尋找對應的城市物件
     const cityData = TwCities.find(c => c.name === currentCity);
     
-    // 回傳該城市的 districts 名稱陣列
     return cityData ? cityData.districts.map(d => d.name) : [];
 });
 
-// 3. 監聽城市改變，自動清空鄉鎮市區 (避免選了台北市卻留著竹北市的區)
-// 注意：我們只在「編輯模式」且「值真的改變」時才清空
+// 3. 監聽城市改變，自動清空鄉鎮市區 
 watch(() => editingData.value.profile?.['居住城市'], (newVal, oldVal) => {
     if (isEditingProfile.value && newVal !== oldVal && oldVal !== undefined) {
-        // 如果 profile 物件存在，則清空鄉鎮市區
         if (editingData.value.profile) {
             editingData.value.profile['居住鄉鎮市區'] = null;
         }
@@ -851,14 +864,8 @@ watch(() => editingData.value.profile?.['居住城市'], (newVal, oldVal) => {
 
 // 取得最新完整地址
 const latestFullAddress = computed(() => {
-  // 優先從 submissions 獲取最新一筆，確保資料一致性
   const subs = guestData.value.submissions || [];
   if (subs.length > 0) {
-    // submissions 是依時間序排列 (最新的在最後或最前，視您的排序邏輯而定)
-    // 假設您的後端是 arrayUnion，通常是 append，所以最後一筆是新的
-    // 但您的 fetchCustomerInteractionDetails 有做排序: sort((a, b) => new Date(b.date) - new Date(a.date))
-    // 讓我們檢查 submissions 的排序。通常 submissions 陣列順序是 [舊, ..., 新]
-    
     const latest = subs[subs.length - 1];
     const city = latest['居住城市'] || '';
     const district = latest['居住鄉鎮市區'] || '';
@@ -869,7 +876,6 @@ const latestFullAddress = computed(() => {
     }
   }
 
-  // 降級：如果 submissions 為空，才嘗試從 profile 讀取
   const p = guestData.value.profile || {};
   const getVal = (key) => {
     const val = p[key];
@@ -883,12 +889,11 @@ const latestFullAddress = computed(() => {
   return `${city}${district}${address}` || '未填寫';
 });
 
-// 取得歷史地址列表 (用於 Tooltip 或展開顯示)
+// 取得歷史地址列表 
 const addressHistory = computed(() => {
   const subs = guestData.value.submissions || [];
-  if (subs.length <= 1) return []; // 只有一筆就不顯示歷史
+  if (subs.length <= 1) return []; 
 
-  // 反轉陣列讓最新的在上面，並過濾掉空地址
   return [...subs].reverse().map(sub => {
     const city = sub['居住城市'] || '';
     const district = sub['居住鄉鎮市區'] || '';
@@ -898,11 +903,11 @@ const addressHistory = computed(() => {
       date: sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : '未知日期',
       fullAddress: full
     };
-  }).filter(item => item.fullAddress); // 只回傳有地址的紀錄
+  }).filter(item => item.fullAddress); 
 });
 
 
-// 1. 萬用時間解析函式 (提取出來供大家共用)
+// 1. 萬用時間解析函式 
 const parseTimestamp = (t) => {
     if (!t) return null;
     if (typeof t.toDate === 'function') return t.toDate();
@@ -918,17 +923,15 @@ const getSortedSubmissions = () => {
     return [...subs].sort((a, b) => {
          const timeA = parseTimestamp(a.submittedAt)?.getTime() || 0;
          const timeB = parseTimestamp(b.submittedAt)?.getTime() || 0;
-         return timeA - timeB; // 由舊到新
+         return timeA - timeB; 
     });
 };
 
-// [修改] 計算地址變更歷史 (優先讀取 Profile 作為最新資料)
+// 計算地址變更歷史 
 const addressList = computed(() => {
     const history = [];
     const p = guestData.value.profile || {};
 
-    // 1. 【關鍵修正】直接從 Profile 獲取「目前」的最新狀態
-    // 輔助函式：如果是陣列取最後一個，如果是字串直接用
     const getProfileVal = (k) => {
         const val = p[k];
         return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
@@ -939,7 +942,6 @@ const addressList = computed(() => {
     const currentAddr = getProfileVal('居住詳細地址');
     const currentFull = `${currentCity}${currentDist}${currentAddr}`;
 
-    // 加入第一筆：目前的最新資料 (來自 Profile/編輯後的結果)
     if (currentFull) {
         history.push({ 
             date: '目前', 
@@ -947,9 +949,7 @@ const addressList = computed(() => {
         });
     }
 
-    // 2. 處理歷史 Submissions
-    const sortedSubs = getSortedSubmissions(); // 由舊到新排序
-    // 反轉為由新到舊，方便比對
+    const sortedSubs = getSortedSubmissions(); 
     const reverseSubs = [...sortedSubs].reverse();
 
     reverseSubs.forEach(sub => {
@@ -958,8 +958,6 @@ const addressList = computed(() => {
         const a = sub['居住詳細地址'] || '';
         const subFull = `${c}${d}${a}`;
 
-        // 只有當歷史紀錄有值，且與「目前最新」不同，才列入歷史
-        // 或者您希望列出所有變更軌跡，可以只比對上一個加入 history 的值
         const lastHistoryVal = history.length > 0 ? history[history.length - 1].fullAddress : '';
 
         if (subFull && subFull !== lastHistoryVal) {
@@ -974,14 +972,12 @@ const addressList = computed(() => {
     return history;
 });
 
-// 4. [新增] 通用單一欄位歷史產生器 (用於職業、任職公司)
+// 通用單一欄位歷史產生器 
 const getSimpleFieldHistory = (fieldName) => {
     const sortedSubs = getSortedSubmissions();
 
-    // 如果沒有提交紀錄，降級讀取 profile
     if (sortedSubs.length === 0) {
         const p = guestData.value.profile || {};
-        // 處理可能的陣列結構
         const valArr = p[fieldName];
         const val = Array.isArray(valArr) ? (valArr.length > 0 ? valArr[valArr.length - 1] : '') : (valArr || '');
         return val ? [{ value: val, date: '目前' }] : [];
@@ -992,7 +988,6 @@ const getSimpleFieldHistory = (fieldName) => {
 
     sortedSubs.forEach(sub => {
         const val = sub[fieldName] || '';
-        // 只有當值存在且與上一次不同時才加入
         if (val && val !== lastVal) {
             let dateStr = '未知日期';
             const dateObj = parseTimestamp(sub.submittedAt);
@@ -1005,12 +1000,11 @@ const getSimpleFieldHistory = (fieldName) => {
     return history.reverse();
 };
 
-// [修改] 合併「職業/任職公司」的歷史紀錄 (優先讀取 Profile)
+// 合併「職業/任職公司」的歷史紀錄 
 const careerList = computed(() => {
     const history = [];
     const p = guestData.value.profile || {};
 
-    // 1. 【關鍵修正】直接從 Profile 獲取「目前」的最新狀態
     const getProfileVal = (k) => {
         const val = p[k];
         return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
@@ -1020,7 +1014,6 @@ const careerList = computed(() => {
     const currentComp = getProfileVal('任職公司') || '-';
     const currentFull = `${currentProf} / ${currentComp}`;
 
-    // 加入第一筆：目前的最新資料
     if (currentProf !== '-' || currentComp !== '-') {
         history.push({
             date: '目前',
@@ -1028,19 +1021,16 @@ const careerList = computed(() => {
         });
     }
 
-    // 2. 處理歷史 Submissions
     const sortedSubs = getSortedSubmissions();
-    const reverseSubs = [...sortedSubs].reverse(); // 由新到舊
+    const reverseSubs = [...sortedSubs].reverse(); 
 
     reverseSubs.forEach(sub => {
         const prof = sub['職業'] || '-';
         const comp = sub['任職公司'] || '-';
         const subFull = `${prof} / ${comp}`;
 
-        // 比對上一筆加入的歷史資料 (或是目前的最新資料)
         const lastHistoryVal = history.length > 0 ? history[history.length - 1].full : '';
 
-        // 只有當內容不同時才加入歷史
         if ((prof !== '-' || comp !== '-') && subFull !== lastHistoryVal) {
             let dateStr = '未知日期';
             const dateObj = parseTimestamp(sub.submittedAt);
@@ -1060,10 +1050,7 @@ const careerList = computed(() => {
 // --- Methods ---
 
 const loadData = async () => {
-    console.log("CustomerInteractionLog: 準備載入資料, docId:", props.docId);
-
     if (!props.docId) {
-        console.warn("CustomerInteractionLog: 缺少 docId，跳過載入。");
         return;
     }
     
@@ -1077,7 +1064,6 @@ const loadData = async () => {
         );
         
         if (result.status === 'success') {
-            console.log("CustomerInteractionLog: 資料載入成功", result.data);
             guestData.value = result.data.guestData;
             canEdit.value = result.data.canEdit;
             
@@ -1106,23 +1092,19 @@ const getFieldLabel = (key) => {
 };
 
 const startEditProfile = () => {
-    // 深拷貝原始資料
     const rawData = JSON.parse(JSON.stringify(guestData.value));
     
-    // 初始化編輯物件
     editingData.value = {
         latestName: rawData.latestName,
         otherPhones: rawData.otherPhones || [],
         profile: rawData.profile || {}
     };
 
-    // 內部輔助：轉陣列為字串
     const getSingleValue = (key) => {
         const val = editingData.value.profile[key];
         return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
     };
 
-    // ✅ [關鍵] 強制將 '性別' 轉為字串，這樣 v-btn-toggle 才能正確顯示選取狀態
     const fieldsToFlatten = ['職業', '任職公司', '居住城市', '居住鄉鎮市區', '居住詳細地址', '性別'];
     
     fieldsToFlatten.forEach(key => {
@@ -1145,8 +1127,6 @@ const saveProfile = async () => {
     isSavingProfile.value = true;
     
     try {
-        // [新增] 準備要更新的 Profile 欄位
-        // 這些欄位將直接寫入 profile map 中
         const targetProfileFields = [
             '性別', 
             '職業', '任職公司', 
@@ -1155,15 +1135,13 @@ const saveProfile = async () => {
 
         const profileUpdates = {};
         targetProfileFields.forEach(key => {
-            // 使用 'profile.欄位名' 格式，讓 Firestore 進行部分更新
             profileUpdates[`profile.${key}`] = editingData.value.profile[key] || '';
         });
 
-        // 組合 API Payload
         const apiPayload = {
             latestName: editingData.value.latestName,
             otherPhones: editingData.value.otherPhones,
-            ...profileUpdates // 展開 profile 更新欄位
+            ...profileUpdates 
         };
         
         await updateCustomerProfile(
@@ -1173,13 +1151,11 @@ const saveProfile = async () => {
             userStore.user.key
         );
         
-        // --- 更新本地視圖資料 ---
         guestData.value.latestName = editingData.value.latestName;
         guestData.value.otherPhones = editingData.value.otherPhones;
         
         if (!guestData.value.profile) guestData.value.profile = {};
         
-        // [新增] 將編輯後的值寫回本地 profile (注意：這裡直接存字串，顯示端會自動處理)
         targetProfileFields.forEach(key => {
             guestData.value.profile[key] = editingData.value.profile[key];
         });
@@ -1248,11 +1224,6 @@ const handleAddNewPhone = async () => {
 const openAddLogDialog = () => {
     editingLogId.value = null;
     
-    // 設定預設時間：開始時間為現在，結束時間空白
-    const now = new Date();
-    const currentHour = String(now.getHours()).padStart(2, '0');
-    const currentMinute = String(now.getMinutes()).padStart(2, '0');
-    
     newLog.value = {
         date: new Date(),
         startTime: ``,
@@ -1263,28 +1234,27 @@ const openAddLogDialog = () => {
     isAddLogDialogVisible.value = true;
 };
 
-// ✅ [修改] 編輯時讀取既有的時間資料
+// 編輯時讀取既有的時間資料
 const openEditLog = (log) => {
     editingLogId.value = log.logId;
     newLog.value = {
         date: new Date(log.date),
-        startTime: log.startTime || '', // 讀取開始時間
-        endTime: log.endTime || '',     // 讀取結束時間
+        startTime: log.startTime || '', 
+        endTime: log.endTime || '',     
         content: log.content,
         tags: JSON.parse(JSON.stringify(log.tags || {}))
     };
     isAddLogDialogVisible.value = true;
 };
 
-// ✅ [修改] 關閉時重置
+// 關閉時重置
 const closeLogDialog = () => {
     isAddLogDialogVisible.value = false;
     editingLogId.value = null;
-    // 重置包含時間欄位
     newLog.value = { date: new Date(), startTime: '', endTime: '', content: '', tags: {} };
 };
 
-// ✅ [修改] 儲存時將時間欄位寫入 Payload
+// 儲存時將時間欄位寫入 Payload
 const handleSaveLog = async () => {
     if (!newLog.value.content) return;
     
@@ -1298,9 +1268,8 @@ const handleSaveLog = async () => {
             tags: { ...newLog.value.tags }
         };
 
-        // ✅ [修正] 傳入 userStore.user.key 作為 operatorPhone
         const currentUserName = userStore.user?.name;
-        const currentUserPhone = userStore.user?.key; // key 存的是電話
+        const currentUserPhone = userStore.user?.key; 
 
         if (editingLogId.value) {
             await updateInteractionLog(
@@ -1309,7 +1278,7 @@ const handleSaveLog = async () => {
                 editingLogId.value,
                 logPayload,
                 currentUserName,
-                currentUserPhone // ✅ 傳入電話
+                currentUserPhone 
             );
             toast.success('紀錄已更新');
         } else {
@@ -1318,7 +1287,7 @@ const handleSaveLog = async () => {
                 props.docId,
                 logPayload,
                 currentUserName,
-                currentUserPhone // ✅ 傳入電話
+                currentUserPhone 
             );
             toast.success('紀錄已新增');
         }
@@ -1349,16 +1318,12 @@ const displayedName = computed(() => {
     
     if (subs.length === 0) return current;
 
-    // 1. 取出所有提交紀錄中的姓名
-    // 2. 過濾掉空值以及與目前 latestName 相同的名字
     const pastNames = subs
         .map(s => s['姓名'])
         .filter(n => n && n !== current);
     
-    // 3. 去除重複的曾用名
     const uniquePastNames = [...new Set(pastNames)];
 
-    // 4. 格式化輸出
     if (uniquePastNames.length > 0) {
         return `${current}(${uniquePastNames.join('、')})`;
     }
@@ -1408,10 +1373,10 @@ function getRatingStyle(rating) {
     
     if (!val) return { color: 'grey-lighten-2', textClass: 'text-grey-darken-2' };
     
-    if (val.includes('A')) return { color: 'red-lighten-4', textClass: 'text-red-darken-4' }; // A級
-    if (val.includes('B')) return { color: 'orange-lighten-4', textClass: 'text-orange-darken-4' }; // B級
-    if (val.includes('C')) return { color: 'green-lighten-4', textClass: 'text-green-darken-4' }; // C級
-    if (val.includes('D')) return { color: 'grey-lighten-3', textClass: 'text-grey-darken-2' }; // D級
+    if (val.includes('A')) return { color: 'red-lighten-4', textClass: 'text-red-darken-4' }; 
+    if (val.includes('B')) return { color: 'orange-lighten-4', textClass: 'text-orange-darken-4' }; 
+    if (val.includes('C')) return { color: 'green-lighten-4', textClass: 'text-green-darken-4' }; 
+    if (val.includes('D')) return { color: 'grey-lighten-3', textClass: 'text-grey-darken-2' }; 
     
     return { color: 'blue-grey-lighten-4', textClass: 'text-blue-grey-darken-3' };
 }

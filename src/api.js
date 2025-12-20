@@ -7111,31 +7111,45 @@ export const fetchSingleVipGuest = async (docId) => {
  * @param {Array<string>} userProjectSystems 
  * @returns {Promise<Array<object>>}
  */
+// ✅ [修正版] 獲取客戶資料管理列表 - 增加時間格式化容錯
 export const fetchCustomerList = async (projectId, userPhone, userProjectSystems) => {
   if (!projectId || !userPhone || !userProjectSystems) {
-    return []; // 參數不全，回傳空陣列
+    return [];
   }
   
   try {
     const result = await customerApiRouter({
         action: 'fetchCustomerList',
-        data: { 
-            projectId, 
-            userPhone, 
-            userProjectSystems 
-        }
+        data: { projectId, userPhone, userProjectSystems }
     });
     
-    // 後端回傳的是已處理好的陣列
-    // 我們只需將 submittedAt (ISO string) 轉回 Date 物件 (供 v-data-table 的 :item-value 使用)
-    return result.data.map(item => ({
-      ...item,
-      submittedAt: item.submittedAt ? new Date(item.submittedAt) : null
-    }));
+    // 如果後端拋出錯誤，這裡會直接進入 catch
+    if (!result.data || !Array.isArray(result.data)) return [];
+
+    return result.data.map(item => {
+      let subDate = null;
+      // 容錯處理：處理 ISO 字串、Timestamp 物件 或 序列化後的 {_seconds}
+      if (item.submittedAt) {
+        if (typeof item.submittedAt.toDate === 'function') {
+          subDate = item.submittedAt.toDate();
+        } else if (item.submittedAt._seconds) {
+          subDate = new Date(item.submittedAt._seconds * 1000);
+        } else {
+          subDate = new Date(item.submittedAt);
+        }
+      }
+
+      return {
+        ...item,
+        submittedAt: subDate
+      };
+    });
     
   } catch (error) {
     console.error(`[api.js] 獲取客戶列表時發生錯誤:`, error);
-    throw error; // 拋出錯誤讓 .vue 檔案捕捉
+    // 💡 ANXI 提醒：若錯誤訊息包含 "toDate is not a function"，
+    // 說明後端 Cloud Function 也需要同步修正解析邏輯
+    throw error;
   }
 };
 
@@ -7347,10 +7361,8 @@ export const fetchFullCustomersForExport = async (projectId, userPhone, userProj
   }
 };
 
-
 /**
  * [API] 批次匯入客戶資料
- * 確保帶入 projectId 以正確寫入文件
  */
 export const batchImportCustomers = async (projectId, customers, operator) => {
   if (!projectId || !customers.length) return;
@@ -7360,8 +7372,7 @@ export const batchImportCustomers = async (projectId, customers, operator) => {
       action: 'batchImportCustomers',
       data: { 
         projectId, 
-        // 確保每筆資料都包含建案 ID
-        customers: customers.map(c => ({ ...c, projectId })), 
+        customers: customers, 
         operator 
       }
     });

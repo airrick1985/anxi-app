@@ -80,7 +80,7 @@ const initializeAuth = async () => {
   try {
     // 1. 初始化 LIFF (先做這步，確保能拿到 lineId)
     statusMessage.value = '連接 LINE 服務中...';
-    await liff.init({ liffId: '2008257338-FCbKJ8bB' });
+    await liff.init({ liffId: '2008257338-6N3jwqxA' }); //2008257338-6N3jwqxA 測試 2008257338-FCbKJ8bB 正式
 
     if (!liff.isLoggedIn()) {
       console.log('[Entry] LIFF not logged in, redirecting...');
@@ -197,4 +197,7 @@ const selectProject = (projectId) => {
 const retryLogin = () => {
   window.location.reload();
 };
+
+
+
 </script>

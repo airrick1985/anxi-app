@@ -15775,81 +15775,76 @@ exports.customerApi = onCall({
 });
 
 
-/**
- * [內部函式] 批次匯入/更新客戶資料 (Admin 權限)
- * 支援: 覆蓋 Profile, 覆蓋 InteractionLogs
- */
+// ✅ [打勾] 後端批次匯入核心邏輯 (functions/index.js)
 async function _handleBatchImportCustomers(data, db) {
   const { projectId, customers, operator } = data;
-  const functionName = `_handleBatchImportCustomers`;
+  const { Timestamp } = require("firebase-admin/firestore");
 
-  if (!projectId || !Array.isArray(customers) || customers.length === 0) {
-    throw new HttpsError("invalid-argument", "缺少 projectId 或有效的客戶資料陣列。");
+  if (!projectId || !Array.isArray(customers)) {
+    throw new Error("缺少必要參數 projectId 或 customers");
   }
 
-  console.log(`[${functionName}] 開始處理 ${customers.length} 筆客戶匯入...`);
+  // 輔助函式：確保時間格式轉為 Timestamp
+  const ensureTimestamp = (val) => {
+    if (!val) return Timestamp.now();
+    // ✅ 處理 ISO 字串
+    if (typeof val === 'string') return Timestamp.fromDate(new Date(val));
+    // ✅ 處理序列化後的物件
+    if (val._seconds !== undefined) return new Timestamp(val._seconds, val._nanoseconds || 0);
+    // ✅ 處理 Date 物件
+    if (val instanceof Date) return Timestamp.fromDate(val);
+    return val;
+  };
 
-  try {
-    // Firestore 批次寫入限制為 500 筆，我們保守設定為 400
-    const MAX_BATCH_SIZE = 400;
-    const batches = [];
-    let currentBatch = db.batch();
-    let operationCount = 0;
+  const MAX_BATCH_SIZE = 400;
+  const batches = [];
+  let currentBatch = db.batch();
+  let count = 0;
 
-    customers.forEach((customer, index) => {
-      const { phone, ...otherData } = customer;
-      
-      // 確保有電話作為 ID
-      if (!phone) return;
+  for (const customer of customers) {
+    const phone = customer.phone;
+    if (!phone) continue;
 
-      // 建立文件參考
-      // 注意：根據您的 ID 規則，若是新客戶需確認 ID 格式。
-      // 這裡假設 ID = phone (或 projectId_phone，請依您現有邏輯調整)
-      // 若您的文件 ID 是 "projectId_phone"：
-      // const docRef = db.collection("vipGuests").doc(`${projectId}_${phone}`);
-      
-      // 若您的文件 ID 僅是 "phone" (如您之前的代碼所示)：
-      const docRef = db.collection("vipGuests").doc(phone);
+    const finalDocId = customer.docId || `${projectId}_${phone}`;
+    const docRef = db.collection("vipGuests").doc(finalDocId);
 
-      // 準備寫入資料
-      // 使用 merge: true，這代表：
-      // 1. profile 內的欄位會被更新/新增。
-      // 2. interactionLogs 會被「整個陣列替換」(因為它是一個欄位)，這符合您「覆蓋」的需求。
-      const payload = {
-        ...otherData,
-        projectId: projectId,
-        phone: phone,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        // 如果是新資料，補上 createdAt (merge 時若已有則不會被覆蓋，除非我們強制寫入)
-        // 但 set({merge:true}) 無法判斷是否存在，所以通常不寫 createdAt 或由前端傳入
-      };
+    const dataToSave = { ...customer };
+    delete dataToSave.docId; // ✅ 不重複儲存 ID 欄位
 
-      currentBatch.set(docRef, payload, { merge: true });
-      operationCount++;
+    // ✅ [打勾] 處理根目錄關鍵時間
+    dataToSave.createdAt = ensureTimestamp(dataToSave.createdAt);
+    dataToSave.updatedAt = Timestamp.now(); 
+    dataToSave.lastModifiedBy = operator || "system_import";
 
-      // 若達到批次上限，推入陣列並重置
-      if (operationCount >= MAX_BATCH_SIZE) {
-        batches.push(currentBatch.commit());
-        currentBatch = db.batch();
-        operationCount = 0;
-      }
-    });
-
-    // 提交剩餘的批次
-    if (operationCount > 0) {
-      batches.push(currentBatch.commit());
+    // ✅ [打勾] 修正：遍歷並處理 submissions 陣列 (解決 .toDate() BUG)
+    if (Array.isArray(dataToSave.submissions)) {
+      dataToSave.submissions = dataToSave.submissions.map(sub => ({
+        ...sub,
+        submittedAt: ensureTimestamp(sub.submittedAt) 
+      }));
     }
 
-    // 等待所有批次完成
-    await Promise.all(batches);
+    // ✅ [打勾] 修正：處理 profile 內的 submittedAt 陣列
+    if (dataToSave.profile && Array.isArray(dataToSave.profile.submittedAt)) {
+      dataToSave.profile.submittedAt = dataToSave.profile.submittedAt.map(s => ensureTimestamp(s));
+    }
 
-    console.log(`[${functionName}] 成功匯入/更新 ${customers.length} 筆資料。`);
-    return { success: true, count: customers.length };
+    // ✅ 使用 merge: true 進行增量更新
+    currentBatch.set(docRef, dataToSave, { merge: true });
+    count++;
 
-  } catch (error) {
-    console.error(`[${functionName}] 匯入失敗:`, error);
-    throw new HttpsError("internal", `批次匯入失敗: ${error.message}`);
+    if (count % MAX_BATCH_SIZE === 0) {
+      batches.push(currentBatch.commit());
+      currentBatch = db.batch();
+    }
   }
+
+  if (count % MAX_BATCH_SIZE !== 0) {
+    batches.push(currentBatch.commit());
+  }
+
+  await Promise.all(batches);
+  return { success: true, count };
 }
 
 /**

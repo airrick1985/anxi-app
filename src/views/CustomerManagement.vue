@@ -30,67 +30,67 @@
               class="mb-4 bg-white"
             ></v-text-field>
 
-            <v-data-iterator
-              v-if="isMobile"
-              :items="customerList"
-              :search="customerListSearch"
-              :loading="isLoadingCustomerList"
-              item-value="submittedAt"
-            >
-              <template v-slot:default="{ items }">
-                <div v-if="isLoadingCustomerList" class="text-center pa-4">
-                   <v-progress-circular indeterminate color="primary"></v-progress-circular>
-                </div>
-                <template v-else>
-                  <v-row dense>
-                    <v-col v-for="item in items" :key="item.raw.submittedAt" cols="12">
-                      <v-card 
-                        @click="openInteractionLog($event, { item: item.raw })" 
-                        class="mb-2" 
-                        elevation="1"
-                        border
-                      >
-                        <v-card-title class="d-flex justify-space-between align-center text-body-1 font-weight-bold pb-1">
-                          <div class="d-flex align-center">
-                             {{ item.raw['姓名'] }}
-                             <v-chip v-if="item.raw['等級研判']" :color="getRatingColor(item.raw['等級研判'])" size="x-small" class="ml-2" label variant="flat">
-                               {{ item.raw['等級研判'] }}
-                             </v-chip>
-                          </div>
-                          <span class="text-caption text-grey">{{ formatDisplayDate(item.raw['拜訪日期']) }}</span>
-                        </v-card-title>
-                        
-                        <v-card-subtitle class="text-caption mb-2">
-                          <v-icon size="small" start>mdi-phone</v-icon>{{ item.raw['電話'] }}
-                          <span class="mx-1">|</span>
-                          <v-icon size="small" start>mdi-account-tie</v-icon>{{ item.raw['銷售人員'] }}
-                        </v-card-subtitle>
-                        
-                        <v-divider></v-divider>
-                        
-                        <v-card-text class="py-2 px-3">
-                          <div class="d-flex flex-wrap gap-1 mb-1" v-if="item.raw['未買原因'] && item.raw['未買原因'].length">
-                              <span class="text-caption text-grey-darken-1 mr-1">未買:</span>
-                              <v-chip v-for="reason in item.raw['未買原因']" :key="reason" size="x-small" color="grey-lighten-2" variant="flat" density="comfortable">
-                                {{ reason }}
-                              </v-chip>
-                          </div>
-                          <div class="d-flex flex-wrap gap-1" v-if="item.raw['購屋動機'] && item.raw['購屋動機'].length">
-                              <span class="text-caption text-grey-darken-1 mr-1">動機:</span>
-                              <v-chip v-for="motive in item.raw['購屋動機']" :key="motive" :color="getChipColor(motive)" size="x-small" variant="tonal" density="comfortable">
-                                {{ motive }}
-                              </v-chip>
-                          </div>
-                        </v-card-text>
-                      </v-card>
-                    </v-col>
-                  </v-row>
-                  <div v-if="items.length === 0" class="text-center text-grey pa-4">
-                    找不到符合的資料
-                  </div>
-                </template>
-              </template>
-            </v-data-iterator>
+<v-data-iterator
+  v-if="isMobile"
+  :items="customerList"
+  :search="customerListSearch"
+  :loading="isLoadingCustomerList"
+  item-value="docId"
+  v-model:page="mobilePage"
+  :items-per-page="10"
+>
+  <template v-slot:default="{ items }">
+    <v-row dense>
+      <v-col v-for="item in items" :key="item.raw.docId || item.raw.phone" cols="12">
+        <v-card 
+          variant="flat" 
+          class="mb-2 border-s-lg" 
+          :style="{ borderLeftColor: getRatingColorHex(item.raw['等級研判']) + ' !important' }"
+          @click="openInteractionLog(null, { item: item.raw })"
+        >
+          <v-card-text class="pa-3">
+            <div class="d-flex justify-space-between align-center mb-1">
+              <span class="text-subtitle-1 font-weight-bold">{{ item.raw['姓名'] || '未知姓名' }}</span>
+              <v-chip :color="getRatingColor(item.raw['等級研判'])" size="x-small" label variant="flat">
+                {{ item.raw['等級研判'] || '未定級' }}
+              </v-chip>
+            </div>
+            
+            <div class="d-flex align-center text-caption text-grey-darken-1 mb-1">
+              <v-icon size="14" start>mdi-phone</v-icon>
+              {{ item.raw['電話'] }}
+              <v-spacer></v-spacer>
+              <v-icon size="14" start>mdi-account-tie</v-icon>
+              {{ item.raw['銷售人員'] || '未指派' }}
+            </div>
+
+            <div class="d-flex align-center text-caption text-grey">
+              <v-icon size="14" start>mdi-calendar-clock</v-icon>
+              {{ formatDisplayDate(item.raw['拜訪日期']) }}
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <div v-if="items.length > 0" class="d-flex align-center justify-center pa-4">
+      <v-pagination
+        v-model="mobilePage"
+        :length="Math.ceil(customerList.length / 10)"
+        density="compact"
+        total-visible="5"
+        color="primary"
+      ></v-pagination>
+    </div>
+  </template>
+
+  <template v-slot:no-data>
+    <div class="text-center text-grey pa-10">
+      <v-icon size="64" color="grey-lighten-2">mdi-account-search-outline</v-icon>
+      <p class="mt-2">找不到符合的客資資料</p>
+    </div>
+  </template>
+</v-data-iterator>
 
             <v-data-table
               v-else
@@ -543,11 +543,7 @@
                 </v-card-item>
                 
                 <v-card-text>
-                  <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-                    系統將產生 Excel 檔案，包含兩個工作表：<br>
-                    1. <b>CustomerProfiles</b>: 客戶基本資料<br>
-                    2. <b>InteractionLogs</b>: 互動歷史紀錄
-                  </v-alert>
+                  
                   <v-btn 
                     block 
                     color="primary" 
@@ -578,26 +574,32 @@
                   </v-alert>
 
                   <v-file-input
-                    v-model="batchState.uploadFile"
-                    label="選擇 Excel 檔案 (.xlsx)"
-                    accept=".xlsx, .xls"
-                    variant="outlined"
-                    prepend-icon=""
-                    prepend-inner-icon="mdi-file-excel"
-                    show-size
-                    dense
-                  ></v-file-input>
+                      v-model="batchState.uploadFile"
+                      label="選擇 Excel 檔案 (.xlsx)"
+                      accept=".xlsx, .xls"
+                      variant="outlined"
+                      prepend-icon=""
+                      prepend-inner-icon="mdi-file-excel"
+                      show-size
+                      dense
+                      :loading="isParsingExcel"
+                      @update:model-value="handleBatchUploadFile" 
+                    ></v-file-input>
 
-                  <v-btn 
-                    block 
-                    color="red-darken-1" 
-                    size="large"
-                    :disabled="!batchState.uploadFile"
-                    :loading="batchState.isImporting"
-                    @click="executeBatchImport"
-                  >
-                    開始匯入更新
-                  </v-btn>
+                  <div v-if="uploadStatusMessage" :class="uploadStatusType === 'success' ? 'text-success' : 'text-error'" class="text-caption mb-2">
+                          {{ uploadStatusMessage }}
+                        </div>
+
+                        <v-btn 
+                          block 
+                          color="red-darken-1" 
+                          size="large"
+                          :disabled="!batchState.profilesRaw.length" 
+                          :loading="batchState.isImporting"
+                          @click="executeBatchImport"
+                        >
+                          開始匯入更新
+                        </v-btn>
 
                   <div v-if="batchState.logs.length > 0" class="mt-4 pa-2 bg-grey-lighten-4 rounded border" style="max-height: 200px; overflow-y: auto; font-size: 12px;">
                     <div v-for="(log, idx) in batchState.logs" :key="idx" :class="log.type === 'error' ? 'text-red' : 'text-success'">
@@ -681,6 +683,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
 import * as XLSX from 'xlsx-js-style';
+import { format } from 'date-fns';
 
 import { 
   collection, 
@@ -717,12 +720,19 @@ const props = defineProps({
   },
 });
 
+
+
 const tab = ref('management');
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 
 // ✅ [新增] 取得手機模式狀態
 const { mobile: isMobile } = useDisplay();
+const mobilePage = ref(1); // ✅ [新增] 用於控制手機版的當前頁碼
+const itemsPerPage = ref(5);
+const loadMore = () => {
+  itemsPerPage.value += 5; // 每次點擊多顯示 5 筆
+};
 
 // --- 權限 ---
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
@@ -731,45 +741,49 @@ const projectName = computed(() => projectStore.idToNameMap[props.projectId] || 
 // ✅ [新增] 客資批次更新相關邏輯
 // ===============================================
 
-// ✅ [修正] 欄位對照表 (確保 Key 與後端邏輯一致)
+
+// ✅ [打勾] 欄位與匯出報表完全一致
 const EXCEL_COLUMN_MAP = [
-  // --- 1. 系統根目錄欄位 (後端會寫入 latestName 等) ---
-  { header: '電話', key: 'phone', type: 'string', required: true },
-  { header: '姓名', key: 'name', type: 'string' },
-  { header: '銷售人員', key: 'salesName', type: 'string' },
-  { header: '銷售人員電話', key: 'salesPhone', type: 'string' },
+  { header: '電話(主鍵)', key: 'phone', target: 'root' },
+  { header: '姓名', key: 'latestName', target: 'root' },
+  { header: '其他聯絡人', key: 'otherPhones', target: 'root', type: 'otherPhones' },
+  { header: '銷售人員', key: 'latestSalesName', target: 'root' },
+  { header: '銷售人員PHONE', key: 'latestSalesPhone', target: 'root' },
+  { header: '建立時間', key: 'createdAt', target: 'root', type: 'timestamp' },
+  { header: '等級', key: 'rating', target: 'profile' },
+  { header: '居住城市', key: '居住城市', target: 'profile', type: 'array' },
+  { header: '居住區域', key: '居住鄉鎮市區', target: 'profile', type: 'array' },
+  { header: '居住詳細地址', key: '居住詳細地址', target: 'profile', type: 'array' },
+  { header: '購屋預算', key: '購屋預算', target: 'profile', type: 'array' },
+  { header: '購屋動機', key: '購屋動機', target: 'profile', type: 'array' },
+  { header: '房型需求', key: '房型需求', target: 'profile', type: 'array' },
+  { header: '坪數需求', key: '坪數需求', target: 'profile', type: 'array' },
+  { header: '從何得知本建案', key: '從何得知本建案', target: 'profile', type: 'array' },
+  { header: '職業', key: '職業', target: 'profile', type: 'array' },
+  { header: '任職公司', key: '任職公司', target: 'profile', type: 'array' },
 
-  // --- 2. Profile 欄位 (後端會寫入 profile Map) ---
-  // 注意：這裡加上 'profile.' 前綴，解析時會自動處理
- { header: '互動方式', key: 'profile.互動方式', type: 'string' },
-  { header: '來人數', key: 'profile.來人數', type: 'string' },
-  { header: '等級研判', key: 'profile.rating', type: 'string' },
-  { header: '重點標籤', key: 'profile.keyTags', type: 'array' },
-  { header: '未買原因', key: 'profile.noPurchaseReason', type: 'array' },
-
-  { header: '性別', key: 'profile.性別', type: 'string' }, // 保持中文Key以配合資料庫現狀
-  { header: '年齡', key: 'profile.年齡', type: 'string' },
-  { header: '職業', key: 'profile.職業', type: 'array' },
-  { header: '任職公司', key: 'profile.任職公司', type: 'string' },
   
-  { header: '居住城市', key: 'profile.居住城市', type: 'string' },
-  { header: '居住鄉鎮市區', key: 'profile.居住鄉鎮市區', type: 'string' },
-  { header: '居住詳細地址', key: 'profile.居住詳細地址', type: 'string' },
-  
-  { header: '購屋動機', key: 'profile.購屋動機', type: 'array' },
-  { header: '房型需求', key: 'profile.房型需求', type: 'array' },
-  { header: '坪數需求', key: 'profile.坪數需求', type: 'array' },
-  { header: '購屋預算', key: 'profile.購屋預算', type: 'string' },
-  { header: '從何得知本建案', key: 'profile.從何得知本建案', type: 'array' },
-  
-  { header: '備註', key: 'profile.備註', type: 'string' },
-
-  // --- 3. 唯讀/不匯入欄位 (避免上傳時覆蓋錯誤) ---
-  // 雖然 Excel 有這些欄位方便查看，但上傳時通常不寫入，或視為 profile 的一部分
-  // 若您希望透過 Excel 更新最後洽談摘要，可保留以下設定：
-  { header: '最新洽談-日期', key: 'profile.lastInteractionDate', type: 'string' }, 
-  { header: '最新洽談-內容', key: 'profile.lastInteractionContent', type: 'string' },
 ];
+
+// 🔧 [新增] 輔助函式：將單一值轉換為資料庫要求的陣列格式
+const toArr = (val) => (val && String(val).trim()) ? [String(val).trim()] : [];
+
+// 🔧 [新增] 解析 "姓名(關係):電話; ..." 字串為陣列物件
+const parseOtherPhonesStr = (str) => {
+  if (!str) return [];
+  return String(str).split(/[;；]/).map(item => {
+    // 匹配格式：姓名(關係):電話
+    const match = item.trim().match(/^(.*?)\((.*?)\)[:：](.*)$/);
+    if (match) {
+      return { 
+        name: match[1].trim(), 
+        relation: match[2].trim(), 
+        phone: match[3].trim() 
+      };
+    }
+    return null;
+  }).filter(Boolean);
+};
 
 // 狀態變數
 const isExporting = ref(false);
@@ -781,130 +795,7 @@ const uploadStatusMessage = ref('');
 const uploadStatusType = ref('info');
 const isBatchUpdating = ref(false);
 
-// 下載 Excel (修正版：針對 vipGuests 集合 + 雙 Sheet)
-async function downloadCustomerExcel() {
-  if (!props.projectId) return;
-  isExporting.value = true;
 
-  try {
-    // 1. 直接查詢 vipGuests 集合
-    // 注意：這裡假設你的集合名稱確實是 'vipGuests'
-    const q = query(collection(db, 'vipGuests'), where('projectId', '==', props.projectId));
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      alert("此建案目前沒有任何客資資料 (vipGuests)");
-      isExporting.value = false;
-      return;
-    }
-
-    const profileRows = [];
-    const logRows = [];
-
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      // ID 格式為 projectId_phone，我們拆解或直接取用 data.phone
-      const phone = data.phone || doc.id.split('_')[1] || doc.id; 
-      const p = data.profile || {};
-
-      // --- Sheet 1: 客戶資料 (Profiles) ---
-      // 將 profile 內的陣列轉為字串
-      const formatVal = (val) => Array.isArray(val) ? val.join(',') : (val || '');
-
-      profileRows.push({
-        '電話': phone,
-        '姓名': data.latestName || formatVal(p['姓名']),
-        '銷售人員': data.latestSalesName || '',
-        '等級研判': formatVal(p['rating']),
-        '互動方式': formatVal(p['互動方式']),
-        '來人數': formatVal(p['來人數']),
-        '性別': formatVal(p['性別']),
-        '年齡': formatVal(p['年齡']),
-        '職業': formatVal(p['職業']),
-        '任職公司': formatVal(p['任職公司']),
-        '居住城市': formatVal(p['居住城市']),
-        '居住鄉鎮市區': formatVal(p['居住鄉鎮市區']),
-        '居住詳細地址': formatVal(p['居住詳細地址']),
-        '購屋動機': formatVal(p['購屋動機']),
-        '房型需求': formatVal(p['房型需求']),
-        '坪數需求': formatVal(p['坪數需求']),
-        '購屋預算': formatVal(p['購屋預算']),
-        '從何得知本建案': formatVal(p['從何得知本建案']),
-        '備註': formatVal(p['備註']),
-        '未買原因': formatVal(p['noPurchaseReason']),
-        '重點標籤': formatVal(p['keyTags']),
-        '建案ID': props.projectId // 系統識別用
-      });
-
-      // --- Sheet 2: 互動紀錄 (Interaction Logs) ---
-      if (data.interactionLogs && Array.isArray(data.interactionLogs)) {
-        data.interactionLogs.forEach(log => {
-          logRows.push({
-            '客戶電話(關聯)': phone, // 這是與 Sheet 1 關聯的 Key
-            '日期': log.date || '',
-            '開始時間': log.startTime || '',
-            '結束時間': log.endTime || '',
-            '互動類型': log.interactionType || '',
-            '內容': log.content || '',
-            '記錄人員': log.recorderName || '',
-            '記錄人員電話': log.recorderPhone || data.latestSalesPhone || '',
-            '當下等級': log.rating || '',
-            '訪客數': log.visitors || '',
-            '未購原因': Array.isArray(log.tags?.noPurchaseReason) ? log.tags.noPurchaseReason.join(',') : '',
-            '重點標籤': Array.isArray(log.tags?.keyTags) ? log.tags.keyTags.join(',') : '',
-            '紀錄ID': log.logId || '' // 系統識別用
-          });
-        });
-      }
-    });
-
-    // 2. 建立 Workbook 與 Sheets
-    const wb = XLSX.utils.book_new();
-
-    // Sheet 1: CustomerProfiles
-    const wsProfile = XLSX.utils.json_to_sheet(profileRows);
-    // 設定 Sheet 1 欄寬
-    wsProfile['!cols'] = [
-      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, // 電話~互動方式
-      { wch: 8 }, { wch: 6 }, { wch: 10 }, { wch: 15 }, { wch: 20 },   // 來人~任職公司
-      { wch: 10 }, { wch: 10 }, { wch: 25 }, // 居住地
-      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, // 需求~預算
-      { wch: 20 }, { wch: 30 } // 來源, 備註
-    ];
-    XLSX.utils.book_append_sheet(wb, wsProfile, "CustomerProfiles");
-
-    // Sheet 2: InteractionLogs
-    if (logRows.length > 0) {
-     const wsLogs = XLSX.utils.json_to_sheet(logRows);
-        wsLogs['!cols'] = [
-          { wch: 15 }, { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, // 電話 ~ 結束時間
-          { wch: 12 }, { wch: 40 }, { wch: 10 }, { wch: 15 }, { wch: 10 }, // 互動類型 ~ 記錄人員電話 (新增寬度)
-          { wch: 10 }, { wch: 20 }, { wch: 20 } // 等級 ~ 未購原因
-        ];
-      XLSX.utils.book_append_sheet(wb, wsLogs, "InteractionLogs");
-    } else {
-      // 就算沒有紀錄，也要建立一個空的 Sheet 包含標頭，避免匯入時報錯
-      const emptyLogHeader = [['客戶電話(關聯)', '日期', '內容', '互動類型', '記錄人員']];
-      const wsLogs = XLSX.utils.aoa_to_sheet(emptyLogHeader);
-      XLSX.utils.book_append_sheet(wb, wsLogs, "InteractionLogs");
-    }
-
-    // 3. 處理檔名 (確保顯示專案名稱)
-    // 嘗試從 projectStore 獲取名稱，若失敗則用 projectId
-    const safeProjectName = projectStore.idToNameMap?.[props.projectId] || props.projectId;
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `${safeProjectName}_客資匯出_${dateStr}.xlsx`;
-
-    // 4. 下載
-    XLSX.writeFile(wb, fileName);
-
-  } catch (error) {
-    console.error("匯出 Excel 失敗:", error);
-    alert(`匯出失敗: ${error.message}`);
-  } finally {
-    isExporting.value = false;
-  }
-}
 
 function openBatchUploadDialog() {
   batchUploadDialog.value = true;
@@ -913,125 +804,67 @@ function openBatchUploadDialog() {
   uploadStatusMessage.value = '';
 }
 
+
+// ✅ [打勾] 新增色碼轉換輔助函式
+function getRatingColorHex(rating) {
+  if (!rating) return '#E0E0E0';
+  if (rating.includes('A')) return '#D32F2F'; // 紅色
+  if (rating.includes('B')) return '#F57C00'; // 橘色
+  if (rating.includes('C')) return '#388E3C'; // 綠色
+  if (rating.includes('D')) return '#616161'; // 灰色
+  return '#90A4AE';
+}
+
 function closeBatchUploadDialog() {
   batchUploadDialog.value = false;
 }
 
-// 處理檔案選擇與解析
+// ✅ [打勾] 修改：簡化解析邏輯，直接存入 batchState.profilesRaw
 async function handleBatchUploadFile(files) {
   uploadStatusMessage.value = '';
-  parsedBatchData.value = [];
-  
   if (!files || (Array.isArray(files) && files.length === 0)) return;
   const file = Array.isArray(files) ? files[0] : files;
 
   isParsingExcel.value = true;
-
   const reader = new FileReader();
+
   reader.onload = (e) => {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
 
-            // 讀取資料 (跳過第 1 列警語)
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
+      // ✅ [打勾] 讀取第一個分頁：客戶資料
+      const wsProfile = workbook.Sheets[workbook.SheetNames[0]];
+      const profileData = XLSX.utils.sheet_to_json(wsProfile, { header: 1, range: 0 });
 
-            if (jsonData.length < 1) throw new Error("檔案內容為空或格式錯誤。");
+      // ✅ [打勾] 讀取第二個分頁：洽談紀錄
+      const wsLogs = workbook.Sheets[workbook.SheetNames[1]];
+      const logsData = wsLogs ? XLSX.utils.sheet_to_json(wsLogs, { header: 1, range: 0 }) : [];
 
-            // 取得標頭 (Excel 的第二列)
-            const headers = jsonData[0].map(h => String(h || '').trim());
-            const rows = jsonData.slice(1);
+      // 處理客戶資料標頭
+      const pHeaders = profileData[0].map(h => String(h || '').trim());
+      batchState.value.profilesRaw = profileData.slice(1).map(row => {
+        const obj = {};
+        pHeaders.forEach((h, i) => { obj[h] = row[i]; });
+        return obj;
+      }).filter(obj => obj['電話(主鍵)']);
 
-            if (!headers.includes('電話')) throw new Error("找不到「電話」欄位，請確保使用正確的範本。");
+      // ✅ [打勾] 處理洽談紀錄標頭並存入 batchState
+      const lHeaders = logsData.length ? logsData[0].map(h => String(h || '').trim()) : [];
+      batchState.value.logsRaw = logsData.slice(1).map(row => {
+        const obj = {};
+        lHeaders.forEach((h, i) => { obj[h] = row[i]; });
+        return obj;
+      });
 
-            const processedRows = [];
-            let validCount = 0;
-
-            rows.forEach((row) => {
-                if (row.length === 0) return; // 跳過空行
-
-                const rowData = {
-                    profile: {} // 預先建立 profile 物件
-                };
-                let hasPhone = false;
-
-                headers.forEach((header, colIndex) => {
-                    // 找到該標頭對應的設定
-                    const mapConfig = EXCEL_COLUMN_MAP.find(m => m.header === header);
-                    
-                    // 取得 Excel 儲存格的值
-                    let cellValue = row[colIndex];
-
-                    // 只有當設定存在且值有效時才處理
-                    if (mapConfig && cellValue !== undefined && cellValue !== null && String(cellValue).trim() !== '') {
-                        let strValue = String(cellValue).trim();
-
-                        // [建議新增] 簡單處理 Excel 日期序列 (針對拜訪日期等欄位)
-                      // 如果 key 是日期相關，且值是純數字 (例如 45xxx)，嘗試轉換
-                      if ((mapConfig.key.includes('Date') || mapConfig.header.includes('日期')) && /^\d{5}$/.test(strValue)) {
-                          // Excel 日期轉 JS Date 的簡易算法
-                          const excelDate = parseInt(strValue);
-                          const jsDate = new Date((excelDate - (25567 + 1)) * 86400 * 1000);
-                          // 轉回 YYYY-MM-DD
-                          strValue = jsDate.toISOString().split('T')[0];
-                      }
-
-
-                        const configKey = mapConfig.key; // 例如 'name' 或 'profile.rating'
-
-                        // --- 邏輯 A: 處理電話 (主 Key) ---
-                        if (configKey === 'phone') {
-                            rowData.phone = strValue;
-                            hasPhone = true;
-                        }
-                        
-                        // --- 邏輯 B: 處理根目錄欄位 (name, salesName, salesPhone) ---
-                        else if (!configKey.includes('.')) {
-                            rowData[configKey] = strValue;
-                        }
-                        
-                        // --- 邏輯 C: 處理 Profile 欄位 (profile.xxx) ---
-                        else if (configKey.startsWith('profile.')) {
-                            // 去除前綴，取得實際 Key (例如 'rating' 或 '購屋動機')
-                            const cleanKey = configKey.split('.')[1];
-
-                            if (mapConfig.type === 'array') {
-                                // 陣列處理：逗號分隔轉陣列
-                                const arrayVal = strValue.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
-                                rowData.profile[cleanKey] = arrayVal;
-                            } else {
-                                // 字串處理
-                                rowData.profile[cleanKey] = strValue;
-                            }
-                        }
-                    }
-                });
-
-                if (hasPhone) {
-                    // 如果 profile 是空的，後端 merge 時不會有副作用，但也沒必要傳
-                    if (Object.keys(rowData.profile).length === 0) {
-                        delete rowData.profile;
-                    }
-                    processedRows.push(rowData);
-                    validCount++;
-                }
-            });
-
-            parsedBatchData.value = processedRows;
-            uploadStatusType.value = 'success';
-            uploadStatusMessage.value = `解析成功！共找到 ${validCount} 筆有效資料，準備上傳。`;
-
-        } catch (error) {
-            console.error("解析 Excel 失敗:", error);
-            uploadStatusType.value = 'error';
-            uploadStatusMessage.value = `解析失敗: ${error.message}`;
-            parsedBatchData.value = [];
-        } finally {
-            isParsingExcel.value = false;
-        }
-    };
+      batchState.value.isUploadSuccess = true;
+      uploadStatusMessage.value = `解析成功：客戶 ${batchState.value.profilesRaw.length} 筆，紀錄 ${batchState.value.logsRaw.length} 筆`;
+    } catch (error) {
+      uploadStatusMessage.value = `解析失敗: ${error.message}`;
+    } finally {
+      isParsingExcel.value = false;
+    }
+  };
   reader.readAsArrayBuffer(file);
 }
 
@@ -1150,8 +983,10 @@ async function loadCustomerList() {
 const batchState = ref({
   isExporting: false,
   isImporting: false,
+  isUploadSuccess: false, // 新增
   uploadFile: null,
-  logs: [] // 紀錄匯入結果
+  profilesRaw: [],        // ✅ 新增：用來存放解析後的原始資料
+  logs: []
 });
 
 // --- 輔助函式：處理 Excel 日期 ---
@@ -1185,69 +1020,83 @@ const formatDateStr = (val) => {
   return `${YYYY}/${MM}/${DD} ${HH}:${mm}:${ss}`;
 };
 
-// [主函式] 執行匯出
+
+// ✅ [打勾] 整合後的最終匯出函式 (建議刪除 downloadCustomerExcel)
 const executeBatchExport = async () => {
   if (!props.projectId) return alert("無專案 ID");
   batchState.value.isExporting = true;
   
   try {
-    const customers = await fetchFullCustomersForExport(props.projectId, currentUserPhone.value, currentUserProjectSystems.value);
+    const customers = await fetchFullCustomersForExport(
+      props.projectId, 
+      currentUserPhone.value, 
+      currentUserProjectSystems.value
+    );
 
-    const profileRows = []; // 客戶資料
-    const logRows = [];     // 洽談紀錄
-    const subRows = [];     // 系統提交紀錄 (所有欄位)
+    const profileRows = []; 
+    const logRows = [];     
+    const subRows = [];     
 
-    // 解決 Invalid Date 的格式化工具
-   const safeFormatDate = (dateVal) => {
-  if (!dateVal) return '';
-  // ✅ 修正：支援 _seconds 格式的顯示，避免 Invalid Date
-  if (typeof dateVal === 'object' && dateVal._seconds !== undefined) {
-    return new Date(dateVal._seconds * 1000).toLocaleString('zh-TW', { hour12: false });
-  }
-  const d = new Date(dateVal);
-  return isNaN(d.getTime()) ? dateVal : d.toLocaleString('zh-TW', { hour12: false });
-};
+    const safeFormatDate = (dateVal) => {
+      if (!dateVal) return '';
+      if (typeof dateVal === 'object' && dateVal._seconds !== undefined) {
+        return new Date(dateVal._seconds * 1000).toLocaleString('zh-TW', { hour12: false });
+      }
+      const d = new Date(dateVal);
+      return isNaN(d.getTime()) ? dateVal : d.toLocaleString('zh-TW', { hour12: false });
+    };
 
-    // 取得時間秒數的工具 (用於精準匹配)
-const getSeconds = (val) => {
-  if (!val) return 0;
-  // ✅ 修正：優先處理包含底線的 _seconds (資料庫原始格式)
-  if (typeof val === 'object' && val._seconds !== undefined) return val._seconds;
-  // 處理標準 Firebase Timestamp 物件
-  if (val.seconds !== undefined) return val.seconds;
-  // 處理 ISO 字串
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? 0 : d.getTime() / 1000;
-};
+    const getSeconds = (val) => {
+      if (!val) return 0;
+      if (typeof val === 'object' && val._seconds !== undefined) return val._seconds;
+      if (val.seconds !== undefined) return val.seconds;
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? 0 : d.getTime() / 1000;
+    };
 
     customers.forEach((data) => {
       const phone = data.phone;
       const p = data.profile || {};
       const formatArr = (val) => Array.isArray(val) ? val.join(',') : (val || '');
 
-      // --- Sheet 1: 客戶資料 ---
       const logs = data.interactionLogs || [];
       const latestLog = logs.length > 0 ? logs[logs.length - 1] : {};
-      
+
+      const rawOtherPhones = p.otherPhones || (p.profile && p.profile.otherPhones) || [];
+      const otherPhonesStr = Array.isArray(rawOtherPhones)
+        ? rawOtherPhones
+            .map(op => `${op.name || ''}(${op.relation || ''}):${op.phone || ''}`)
+            .filter(str => str !== '():')
+            .join('; ')
+        : '';
+
+      // --- Sheet 1: 客戶資料 (已新增欄位) ---
       profileRows.push({
         '建案ID': data.projectId,
+        '建立時間': safeFormatDate(data.createdAt),
         '電話(主鍵)': phone,
         '姓名': data.latestName,
+        '其他聯絡人': otherPhonesStr,
         '銷售人員': data.latestSalesName,
         '銷售人員PHONE': data.latestSalesPhone,
         '等級': latestLog.tags?.rating || '',
+        '最新互動內容': latestLog.content || '',
+        '最新互動類型': latestLog.tags?.interactionType || '',
         '居住城市': formatArr(p['居住城市']),
         '居住區域': formatArr(p['居住鄉鎮市區']),
-        '居住地址': formatArr(p['居住詳細地址']),
-        '購屋預算': formatArr(p['購屋預算']),
+        '居住詳細地址': formatArr(p['居住詳細地址']),
+        '購屋動機': formatArr(p['購屋動機']),           // ✅ [新增]
         '房型需求': formatArr(p['房型需求']),
+        '坪數需求': formatArr(p['坪數需求']),           // ✅ [新增]
+        '購屋預算': formatArr(p['購屋預算']),
+        '從何得知本建案': formatArr(p['從何得知本建案']), // ✅ [新增]
         '職業': formatArr(p['職業']),
+        '任職公司': formatArr(p['任職公司']),
         '最後更新': safeFormatDate(data.updatedAt)
       });
 
       // --- Sheet 2: 洽談紀錄 ---
-      logs.forEach((log, idx) => {
-        // ✅ 解決記錄人員電話：比對秒數匹配 submissions
+      logs.forEach((log) => {
         const logTime = getSeconds(log.createdAt);
         const matchedSub = (data.submissions || []).find(s => Math.abs(logTime - getSeconds(s.submittedAt)) < 2) || {};
 
@@ -1257,34 +1106,20 @@ const getSeconds = (val) => {
           '互動類型': log.tags?.interactionType || '',
           '詳細內容': log.content || '',
           '記錄人員': log.recorderName || '',
-          '記錄人員電話': formatArr(matchedSub['銷售人員電話']) || '', // ✅ 從 submissions 抓取
+          '記錄人員電話': formatArr(matchedSub['銷售人員電話']) || '',
           '當下等級': log.tags?.rating || '',
           '訪客數': log.tags?.visitors || '',
           '未買原因': formatArr(log.tags?.noPurchaseReason),
-          '提交時間': safeFormatDate(log.createdAt) // ✅ 修正 Invalid Date
+          '提交時間': safeFormatDate(log.createdAt)
         });
       });
 
-      // --- Sheet 3: 系統提交紀錄 (所有欄位) ---
-      (data.submissions || []).forEach(sub => {
-        subRows.push({
-          '客戶電話(關聯)': phone,
-          '提交時間': safeFormatDate(sub.submittedAt),
-          '來源': sub.submissionSource || '',
-          '當時姓名': sub.姓名 || '',
-          '當時銷售': sub.銷售人員 || '',
-          '預算需求': formatArr(sub.購屋預算),
-          '房型需求': formatArr(sub.房型需求),
-          '任職公司': sub.任職公司 || ''
-        });
-      });
+   
     });
 
-    // 產生 Excel 分頁
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(profileRows), "客戶資料");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logRows), "洽談紀錄");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(subRows), "系統提交紀錄");
     
     const fileName = `${projectName.value || props.projectId}_全欄位客資匯出_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
@@ -1297,40 +1132,136 @@ const getSeconds = (val) => {
   }
 };
 
-// --- 功能 B: 執行匯入 ---
+// ✅ [打勾] 完整修正版：處理雙分頁關聯與資料結構對齊
 const executeBatchImport = async () => {
-  const file = batchState.value.uploadFile;
-  const actualFile = Array.isArray(file) ? file[0] : file;
-  if (!actualFile) return alert("請選擇檔案");
+  if (!batchState.value.profilesRaw || !batchState.value.profilesRaw.length) {
+    return alert("請先選擇並解析檔案");
+  }
   
   batchState.value.isImporting = true;
-  try {
-    const data = await actualFile.arrayBuffer();
-    const workbook = XLSX.read(data);
-    
-    // 支援中文分頁名稱
-    const profileSheet = workbook.Sheets["客戶資料"] || workbook.Sheets["CustomerProfiles"];
-    if (!profileSheet) throw new Error("找不到『客戶資料』工作表");
+  const jsNow = new Date(); // 台灣時間格式將由後端轉為 Timestamp
 
-    const profilesRaw = XLSX.utils.sheet_to_json(profileSheet);
-    const payloadCustomers = profilesRaw.map(row => ({
-      phone: String(row['電話(主鍵)']).trim(),
-      latestName: row['姓名'] || '',
+  // ✅ [打勾] 輔助函式：確保字串轉為陣列 (避免型別錯誤)
+  const toArr = (val) => {
+    if (val === undefined || val === null || val === '') return [];
+    return String(val).split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
+  };
+
+  // ✅ [打勾] 1. 處理「洽談紀錄」分組邏輯 (從 batchState.logsRaw 取得)
+  const logsGroupByPhone = {};
+  if (batchState.value.logsRaw && batchState.value.logsRaw.length > 0) {
+    batchState.value.logsRaw.forEach(log => {
+      const logPhone = String(log['客戶電話(關聯)'] || '').trim();
+      if (!logPhone) return;
+      if (!logsGroupByPhone[logPhone]) logsGroupByPhone[logPhone] = [];
+      
+      logsGroupByPhone[logPhone].push({
+        logId: String(Date.now() + Math.floor(Math.random() * 1000)), 
+        date: log['洽談日期'] || '',
+        content: log['詳細內容'] || '',
+        recorderName: log['記錄人員'] || '',
+        recorderPhone: log['記錄人員電話'] || '',
+        createdAt: jsNow,
+        tags: {
+          interactionType: log['互動類型'] || '',
+          rating: log['當下等級'] || '',
+          visitors: String(log['訪客數'] || '1'),
+          noPurchaseReason: toArr(log['未買原因']),
+          keyTags: toArr(log['重點標籤'])
+        }
+      });
+    });
+  }
+
+  // 2. 開始建立客戶資料 Payload
+  const customerPayloads = batchState.value.profilesRaw.map(row => {
+    const phone = String(row['電話(主鍵)'] || '').trim();
+    if (!phone) return null;
+
+    const name = String(row['姓名'] || '').trim();
+    const otherPhonesStr = String(row['其他聯絡人'] || '');
+    const otherPhones = parseOtherPhonesStr(otherPhonesStr);
+
+    // 取得該客戶對應的洽談紀錄
+    const myLogs = logsGroupByPhone[phone] || [];
+
+    // ✅ [打勾] 建立提交紀錄 Snapshot (與前端建立結構一致)
+    const submissionEntry = {
+      submissionSource: 'excel_import',
+      submittedAt: jsNow, 
+      姓名: name,
+      電話: phone,
+      銷售人員: row['銷售人員'] || '',
+      銷售人員電話: row['銷售人員PHONE'] || '',
+      居住城市: row['居住城市'] || '',
+      居住鄉鎮市區: row['居住區域'] || '',
+      購屋預算: row['購屋預算'] || '',
+      房型需求: toArr(row['房型需求']),
+      購屋動機: toArr(row['購屋動機']),
+      坪數需求: toArr(row['坪數需求']),
+      從何得知本建案: toArr(row['從何得知本建案']),
+      職業: row['職業'] || '',
+      任職公司: row['任職公司'] || '',
+      // ✅ [打勾] 使用原生 JS 取代 format 函式避免 ReferenceError
+      拜訪日期: jsNow.toISOString().split('T')[0] 
+    };
+
+    const data = {
+      projectId: props.projectId,
+      phone: phone,
+      latestName: name,
       latestSalesName: row['銷售人員'] || '',
-      latestSalesPhone: String(row['銷售人員PHONE'] || ''), // 對應寫回根目錄
+      latestSalesPhone: row['銷售人員PHONE'] || '',
+      otherPhones: otherPhones,
+      // ✅ [打勾] 建立搜尋索引陣列
+      searchableNames: Array.from(new Set([name, ...otherPhones.map(p => p.name)])).filter(Boolean),
+      searchablePhones: Array.from(new Set([phone, ...otherPhones.map(p => p.phone)])).filter(Boolean),
+      submissions: [submissionEntry],
+      interactionLogs: myLogs, // ✅ 寫入洽談紀錄
+      updatedAt: jsNow,
+      createdAt: jsNow,
       profile: {
-        '姓名': [row['姓名']],
-        '居住城市': [row['居住城市']],
-        '居住鄉鎮市區': [row['居住區域']],
-        '購屋預算': [row['購屋預算']]
+        姓名: [name],
+        電話: [phone],
+        otherPhones: otherPhones,
+        submissionSource: ['excel_import'],
+        submittedAt: [jsNow] // ✅ 傳送 Date 物件，交由後端 ensureTimestamp 轉為 Timestamp
       }
-    }));
+    };
 
-    await batchImportCustomers(props.projectId, payloadCustomers, 'ExcelAdminUpdate');
-    alert(`成功更新 ${payloadCustomers.length} 筆客戶資料`);
-    loadCustomerList();
+    // 3. 根據 EXCEL_COLUMN_MAP 分配剩餘欄位到 Profile
+    EXCEL_COLUMN_MAP.forEach(cfg => {
+      let rawVal = row[cfg.header];
+      if (rawVal === undefined || rawVal === null || rawVal === '') return;
+      
+      let finalVal = (cfg.type === 'array') ? toArr(rawVal) : rawVal;
+      
+      if (cfg.target === 'profile') {
+        data.profile[cfg.key] = finalVal;
+      }
+    });
+
+    return { 
+      docId: `${props.projectId}_${phone}`, 
+      ...data 
+    };
+  }).filter(Boolean);
+
+  try {
+    // 呼叫 API 執行批次寫入
+    const res = await batchImportCustomers(props.projectId, customerPayloads, currentUserPhone.value);
+    alert(`匯入完成！成功處理 ${res.count || 0} 筆資料`);
+    
+    // ✅ [打勾] 重設上傳狀態
+    batchState.value.profilesRaw = [];
+    batchState.value.logsRaw = []; // 需確保 handleBatchUploadFile 有填入此值
+    batchState.value.uploadFile = null;
+    batchState.value.isUploadSuccess = false;
+    
+    loadCustomerList(); // 重新載入列表同步資料
   } catch (err) {
-    alert('匯入失敗: ' + err.message);
+    console.error("匯入失敗:", err);
+    alert("匯入失敗: " + err.message);
   } finally {
     batchState.value.isImporting = false;
   }
