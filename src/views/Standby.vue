@@ -24,6 +24,15 @@
       ></v-btn>
 
       <v-btn icon="mdi-cog" variant="text" color="grey-darken-1" @click="openSettingsDialog"></v-btn>
+    
+    <v-btn 
+    icon="mdi-office-building-marker" 
+    variant="text" 
+    color="grey-darken-1" 
+    @click="showProjectDialog = true"
+    title="切換建案"
+  ></v-btn>
+
     </v-toolbar>
 
 
@@ -398,6 +407,48 @@
         ></v-btn>
       </div> </v-dialog>
 
+      <v-dialog v-model="showProjectDialog" max-width="400px" persistent>
+  <v-card class="pa-4">
+    <v-card-title class="text-h5 font-weight-bold text-center">
+      進入建案BY序
+    </v-card-title>
+    
+    <v-card-text>
+      <div class="text-center mb-4 d-flex flex-column align-center">
+        
+      </div>
+
+      <v-form @submit.prevent="navigateToProject">
+        <v-text-field
+          v-model="inputProjectId"
+          label="建案 ID"
+          
+          required
+          variant="outlined"
+          
+          hide-details="auto"
+          class="mb-4"
+          autofocus
+        />
+        <v-btn 
+          type="submit" 
+          block 
+          color="primary" 
+          class="mt-2"
+          :disabled="!inputProjectId"
+        >
+          前往
+        </v-btn>
+      </v-form>
+    </v-card-text>
+    
+    <v-card-actions>
+      <v-spacer />
+      <v-btn variant="text" @click="showProjectDialog = false">取消</v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
+
       <v-snackbar
     v-model="showSnackbar"
     :timeout="3000"
@@ -423,7 +474,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'; // 加入 watch
 import { getDoc, doc, collection, getDocs } from "firebase/firestore"; // ✅ 修改此行
 import { db } from '@/firebase'; // 確保 db 已從 firebase.js 匯出
-import { useRoute } from 'vue-router';
+import { useRoute,useRouter } from 'vue-router';
 import { formatInTimeZone } from 'date-fns-tz';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -450,8 +501,28 @@ import { useUserStore } from '@/store/user';
 
 
 
+const router = useRouter(); // 初始化 router
 
+// [新增] 建案跳轉相關狀態
+const showProjectDialog = ref(false);
+const inputProjectId = ref('');
 
+/**
+ * [新增] 跳轉至指定建案的看板
+ */
+const navigateToProject = () => {
+  if (!inputProjectId.value) return;
+  
+  const targetId = inputProjectId.value.trim();
+  showProjectDialog.value = false;
+  
+  // 執行導航，前往該建案的 standby 頁面
+  // 假設路由格式為 /standby/:projectId
+  router.push(`/standby/${targetId}`);
+  
+  // 重置輸入值
+  inputProjectId.value = '';
+};
 // --- Props ---
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -1570,6 +1641,19 @@ onUnmounted(() => {
   
   z-index: 10; 
   pointer-events: none; 
+}
+
+/* 確保對話框內的 App Icon 樣式正確 */
+.app-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20%; 
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* 如果要套用 Login.vue 的玻璃質感卡片樣式 */
+:deep(.v-dialog .v-card) {
+  border-radius: 20px !important;
 }
 
 </style>

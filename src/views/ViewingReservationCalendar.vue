@@ -143,7 +143,6 @@ const miniCalendarDate = ref(new Date());
 const currentTitle = ref('');
 const currentView = ref('dayGridMonth');
 
-// ✅ [打勾] 動畫與觸控變數
 const transitionClass = ref('');
 let touchstartX = 0;
 let touchstartY = 0;
@@ -175,7 +174,8 @@ const calendarEvents = computed(() => {
             const start = res.reservationTime.toDate();
             return {
                 id: res.id,
-                title: `${res.customerName} (${res.salesName || '未定'})`,
+                // ✅ 標題內容優化：不含時間，交給引擎渲染
+                title: `${res.customerName}(${res.salesName || '未指派'})-${res.type}`,
                 start: start,
                 end: new Date(start.getTime() + 90 * 60000),
                 backgroundColor: res.type === '新客' ? '#e1f5fe' : '#ffebee',
@@ -211,13 +211,19 @@ const calendarOptions = ref({
     dayMaxEvents: true,
     stickyHeaderDates: true,
     eventClassNames: 'google-style-event',
+    // ✅ 開啟原生時間標籤，方便 CSS 精確控制顯示/隱藏
+    displayEventTime: true,
+    eventTimeFormat: {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    },
     datesSet: (info) => {
         currentTitle.value = info.view.title;
         currentView.value = info.view.type;
     }
 });
 
-// ✅ [打勾] 手勢處理與動畫邏輯
 const handleTouchStart = (e) => {
     touchstartX = e.changedTouches[0].screenX;
     touchstartY = e.changedTouches[0].screenY;
@@ -230,11 +236,8 @@ const handleTouchEnd = (e) => {
     const dy = touchendY - touchstartY;
 
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 70) {
-        if (dx > 0) {
-            triggerTransition('prev');
-        } else {
-            triggerTransition('next');
-        }
+        if (dx > 0) triggerTransition('prev');
+        else triggerTransition('next');
     }
 };
 
@@ -306,57 +309,70 @@ function openAddDialog() {
 </script>
 
 <style lang="scss" scoped>
-/* ✅ [打勾] 封裝於 :deep(.fc) 確保手機版樣式生效 */
+/* ✅ 使用 :deep(.fc) 確保能滲透到 FullCalendar 內部節點 */
 :deep(.fc.calendar-container) {
   font-family: 'Roboto', sans-serif;
-  
+  border: none;
+
   .fc-view-harness { background-color: #ffffff; }
   .fc-timegrid-slot, .fc-daygrid-day { border-color: #f1f3f4 !important; }
+  .fc-timegrid-now-indicator-line { border-color: #ea4335; border-width: 2px; }
 
+  /* 通用事件樣式 */
   .google-style-event {
     border-left-width: 4px !important;
     border-radius: 4px !important;
+    padding: 1px 4px !important;
     font-size: 0.85rem !important;
     font-weight: 500 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     cursor: pointer;
+    transition: transform 0.1s;
+    &:hover { filter: brightness(0.95); transform: scale(1.02); }
   }
 
+  /* ✅ 強制修正手機版月視圖樣式 */
   @media (max-width: 600px) {
-    /* 週/日視圖頂部日期縮小 */
-    .fc-col-header-cell .fc-col-header-cell-cushion {
-      font-size: 0.7rem !important;
-      padding: 2px 0 !important;
-    }
-
-    /* 左側時間軸縮小 */
-    .fc-timegrid-slot-label-cushion {
-      font-size: 0.65rem !important;
-    }
-
-    /* 月視圖優化 */
-    .fc-view-dayGridMonth {
-      .fc-event-time { display: none !important; }
-      .fc-event-title {
-        font-size: 10px !important;
-        line-height: 1.1 !important;
+    .fc-daygrid-body, .fc-view-dayGridMonth {
+      
+      /* 1. 強制隱藏月視圖的時間標籤 */
+      .fc-event-time {
+        display: none !important;
       }
+
+      /* 2. 縮小標題字體並強制重置樣式 */
+      .fc-event-title {
+        display: inline-block !important; /* 改為 inline-block 以利 transform */
+        font-size: 10px !important;
+        /* ✅ 關鍵：使用縮放突破手機瀏覽器 12px 最小字體限制，達成視覺上的 8.5px */
+        transform: scale(0.85);
+        transform-origin: left center;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+        width: 118%; /* 補償縮放後的寬度 */
+        padding: 0 !important;
+      }
+
+      /* 3. 調整事件區塊的高度與間距 */
       .fc-daygrid-event {
         margin: 1px 0 !important;
         min-height: 14px !important;
+        padding: 0 2px !important;
+      }
+
+      /* 4. 修正內距讓文字更緊湊 */
+      .fc-event-main {
+        padding: 0 !important;
       }
     }
   }
 }
 
-/* ✅ [打勾] 滑動動畫效果 */
+/* 滑動動畫效果 */
 .calendar-wrapper {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
-  &.slide-next {
-    animation: slideNext 0.3s ease-out;
-  }
-  &.slide-prev {
-    animation: slidePrev 0.3s ease-out;
-  }
+  &.slide-next { animation: slideNext 0.3s ease-out; }
+  &.slide-prev { animation: slidePrev 0.3s ease-out; }
 }
 
 @keyframes slideNext {
@@ -373,8 +389,13 @@ function openAddDialog() {
 
 .calendar-mini {
   width: 100% !important;
+  :deep(.v-date-picker-month__days) { padding: 0 !important; }
   :deep(.v-btn--icon) { width: 32px !important; height: 32px !important; }
 }
 
-.fab-btn { z-index: 1000; transition: transform 0.2s; &:hover { transform: rotate(90deg); } }
+.fab-btn { 
+  z-index: 1000; 
+  transition: transform 0.2s; 
+  &:hover { transform: rotate(90deg); } 
+}
 </style>

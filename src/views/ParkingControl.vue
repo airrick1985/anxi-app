@@ -216,13 +216,13 @@
               <v-col cols="12" sm="6">
                 <div class="form-section-title">基本資料</div>
                 <v-text-field v-model="editedItem.spotId" label="車位編號" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-                <v-text-field v-model="editedItem.type" label="類型" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-                <v-text-field v-model="editedItem.size" label="車位尺寸" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model="editedItem.type" label="類型"  variant="outlined" density="compact" ></v-text-field>
+                <v-text-field v-model="editedItem.size" label="車位尺寸"  variant="outlined" density="compact" ></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
                 <div class="form-section-title">價格資訊</div>
-                <v-text-field v-model.number="editedItem.price_list" label="車位表價" type="number" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-                <v-text-field v-model.number="editedItem.price_floor" label="車位底價" type="number" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
+                <v-text-field v-model.number="editedItem.price_list" label="車位表價" type="number"  variant="outlined" density="compact" ></v-text-field>
+                <v-text-field v-model.number="editedItem.price_floor" label="車位底價" type="number"  variant="outlined" density="compact" ></v-text-field>
                 <v-text-field v-model.number="editedItem.price_transaction" label="車位成交價" type="number" variant="outlined" density="compact"></v-text-field>
               </v-col>
               <v-col cols="12">
