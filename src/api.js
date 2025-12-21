@@ -3762,24 +3762,21 @@ export const uploadSalesImage_direct = async (storagePath, file) => {
  * @param {string} projectId - 當前專案 ID
  * @returns {Promise<object>} - 返回包含 downloadURL 和 storagePath 的物件
  */
-export const uploadSalesImage = async (storagePath, fileName, fileBase64, projectId) => {
+export const uploadSalesImage = async (storagePath, fileName, fileBase64, projectId, contentType = null) => {
   try {
     const uploader = httpsCallable(functions, 'handleSalesImageUpload');
-    const result = await uploader({
-      projectId,
-      fileName,
-      fileBase64,
-      storagePath,
-    });
-    
+    // 將 contentType 加入 payload，以便後端 Storage 正確設定標頭
+    const payload = { projectId, fileName, fileBase64, storagePath };
+    if (contentType) payload.contentType = contentType;
+
+    const result = await uploader(payload);
     if (result.data.status === 'success') {
-      return result.data; // 回傳 { downloadURL, storagePath }
+      return result.data; 
     } else {
       throw new Error(result.data.message || 'Cloud Function 回報錯誤');
     }
   } catch (error) {
     console.error("呼叫 handleSalesImageUpload 雲端函式時發生錯誤:", error);
-    // 將錯誤包裝成與前端期望的格式一致
     throw new Error(error.message || "上傳失敗");
   }
 };

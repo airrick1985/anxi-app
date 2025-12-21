@@ -292,9 +292,8 @@
             <v-file-input
               v-model="floorPlanForm.backgroundImageFile"
               :label="editingFloorPlan ? '更換平面圖底圖' : '平面圖底圖 *'"
-              placeholder="請選擇圖片檔案"
-              accept="image/*"
-              :required="!editingFloorPlan"
+              placeholder="請選擇圖片或 SVG 檔案"
+              accept="image/png, image/jpeg, image/svg+xml"  :required="!editingFloorPlan"
               variant="outlined"
               prepend-icon="mdi-image"
               class="mb-4"
@@ -343,6 +342,7 @@ import { useStatusColorStore } from '@/store/statusColorStore'
 import StatusColorEditor from '@/components/StatusColorEditor.vue'
 import {
   uploadSalesImage, // 假設這個已在 api.js 中且正確
+  uploadSalesSvgViaFunction, // ✓ 新增匯入 SVG 專用函式
   getFloorPlansAPI,
   getProjectFloorsForManager,
   createFloorPlanAPI,
@@ -663,7 +663,7 @@ export default {
       }
     }
 
-    const submitFloorPlan = async () => {
+   const submitFloorPlan = async () => {
   // 驗證必填欄位
   if (!floorPlanForm.value.name.trim()) {
     alert('請輸入平面圖名稱');
@@ -675,7 +675,6 @@ export default {
     return;
   }
 
-  // 驗證背景圖片檔案（僅在新增時為必填）
   const isEditingMode = !!editingFloorPlan.value;
   if (!isEditingMode && (!floorPlanForm.value.backgroundImageFile || floorPlanForm.value.backgroundImageFile.length === 0)) {
     alert('請選擇平面圖底圖檔案');
@@ -683,72 +682,81 @@ export default {
   }
 
   submitting.value = true
+  try {
+    let backgroundImageUrl = editingFloorPlan.value ? editingFloorPlan.value.backgroundImageUrl : null;
+
+    if (floorPlanForm.value.backgroundImageFile) {
+      const file = Array.isArray(floorPlanForm.value.backgroundImageFile)
+        ? floorPlanForm.value.backgroundImageFile[0]
+        : floorPlanForm.value.backgroundImageFile;
+        
       try {
-        let backgroundImageUrl = editingFloorPlan.value ? editingFloorPlan.value.backgroundImageUrl : null; // 保留現有圖片URL
+        const base64 = await fileToBase64(file);
+        const fileName = `${Date.now()}_${file.name}`;
+        const storagePath = `floorplan-backgrounds/${fileName}`;
 
-        // 處理圖片上傳 (邏輯基本不變，確保 uploadSalesImage 在 api.js 中)
-        if (floorPlanForm.value.backgroundImageFile) {
-          const file = Array.isArray(floorPlanForm.value.backgroundImageFile)
-            ? floorPlanForm.value.backgroundImageFile[0]
-            : floorPlanForm.value.backgroundImageFile;
-          try {
-            const base64 = await fileToBase64(file);
-            const fileName = `${Date.now()}_${file.name}`;
-            const storagePath = `floorplan-backgrounds/${fileName}`;
-            // ✓ 確保 uploadSalesImage 是從 api.js 導入的
-            const { downloadURL } = await uploadSalesImage(
-              storagePath, fileName, base64, selectedProjectId.value || 'default'
-            );
-            backgroundImageUrl = downloadURL; // 更新圖片URL
-            //console.log('背景圖片處理成功:', backgroundImageUrl);
-          } catch (uploadError) {
-            console.error('圖片上傳或處理失敗:', uploadError);
-            // ✓ 使用 toast 提示錯誤
-            toast.error(`圖片上傳失敗: ${uploadError.message}`);
-            submitting.value = false;
-            return;
-          }
-        } else if (!editingFloorPlan.value) {
-            // 新增模式下，如果沒有選擇圖片且之前也沒有URL，則報錯
-            if (!backgroundImageUrl) {
-                toast.error('新增平面圖時必須選擇底圖檔案');
-                submitting.value = false;
-                return;
-            }
-        }
-
-
-        const payload = {
-          projectId: selectedProjectId.value,
-          name: floorPlanForm.value.name,
-          description: floorPlanForm.value.description,
-          floor: floorPlanForm.value.floor, // 後端會處理字串或物件
-          isActive: floorPlanForm.value.isActive,
-          backgroundImageUrl: backgroundImageUrl // 傳遞最終的圖片URL
-        };
-
-        if (editingFloorPlan.value) {
-          // ✓ 修改：呼叫 api.js 的更新函式
-          payload.floorPlanId = editingFloorPlan.value.id;
-          await updateFloorPlanAPI(payload);
+        // --- 修正後的上傳邏輯 (只保留這一組) ---
+        let uploadResult;
+        const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+        
+        if (isSvg) {
+          // 使用 SVG 專用上傳函式
+          uploadResult = await uploadSalesSvgViaFunction(
+            storagePath, fileName, base64, selectedProjectId.value
+          );
         } else {
-          // ✓ 修改：呼叫 api.js 的建立函式
-          await createFloorPlanAPI(payload);
+          // 使用一般圖片上傳函式，傳入真實的 file.type
+          uploadResult = await uploadSalesImage(
+            storagePath, fileName, base64, selectedProjectId.value, file.type
+          );
         }
+        
+        backgroundImageUrl = uploadResult.downloadURL;
+        console.log('[Manager] 檔案上傳成功:', backgroundImageUrl);
+        // --- 結束上傳邏輯 ---
 
-        await Promise.all([loadFloorPlans(), loadProjectFloors()]); // 重新載入
-        closeFloorPlanDialog();
-        // ✓ 使用 toast 提示成功
-        toast.success(editingFloorPlan.value ? '平面圖更新成功！' : '平面圖建立成功！');
-
-      } catch (error) {
-        console.error('儲存平面圖失敗:', error);
-        // ✓ 使用 toast 提示錯誤
-        toast.error(`儲存失敗: ${error.message}`);
-      } finally {
-        submitting.value = false
+      } catch (uploadError) {
+        console.error('圖片上傳或處理失敗:', uploadError);
+        toast.error(`圖片上傳失敗: ${uploadError.message}`);
+        submitting.value = false;
+        return;
       }
+    } else if (!editingFloorPlan.value) {
+      if (!backgroundImageUrl) {
+        toast.error('新增平面圖時必須選擇底圖檔案');
+        submitting.value = false;
+        return;
+      }
+    }
+
+    // 準備儲存至 Firestore 的 Payload
+    const payload = {
+      projectId: selectedProjectId.value,
+      name: floorPlanForm.value.name,
+      description: floorPlanForm.value.description,
+      floor: floorPlanForm.value.floor,
+      isActive: floorPlanForm.value.isActive,
+      backgroundImageUrl: backgroundImageUrl
     };
+
+    if (editingFloorPlan.value) {
+      payload.floorPlanId = editingFloorPlan.value.id;
+      await updateFloorPlanAPI(payload);
+    } else {
+      await createFloorPlanAPI(payload);
+    }
+
+    await Promise.all([loadFloorPlans(), loadProjectFloors()]);
+    closeFloorPlanDialog();
+    toast.success(editingFloorPlan.value ? '平面圖更新成功！' : '平面圖建立成功！');
+
+  } catch (error) {
+    console.error('儲存平面圖失敗:', error);
+    toast.error(`儲存失敗: ${error.message}`);
+  } finally {
+    submitting.value = false
+  }
+};
 
      const deleteFloorPlan = async (floorPlan) => {
       if (!confirm(`確定要刪除平面圖「${floorPlan.name}」嗎？此操作無法復原。`)) {
