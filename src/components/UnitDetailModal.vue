@@ -49,7 +49,7 @@
                 <v-col cols="12" md="3">
                     <v-text-field
                         v-model="editingData.price_list_house_total"
-                        label="房價 (表價)"
+                        label="房價"
                         suffix="萬"
                         type="number"
                         variant="outlined"
@@ -435,50 +435,104 @@
   />
 
   <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
-    <v-card color="black" class="fullscreen-viewer">
-      <v-img
-        v-if="currentImage"
-        :src="currentImage.downloadURL"
-        contain
-        class="fullscreen-image"
-        aspect-ratio="16/9"
-      ></v-img>
-      <template v-if="householdImages.length > 1">
-        <v-btn
-          class="image-nav-btn prev"
-          icon="mdi-chevron-left"
-          variant="flat"
-          size="large"
-          @click.stop="prevImage"
-        ></v-btn>
-        <v-btn
-          class="image-nav-btn next"
-          icon="mdi-chevron-right"
-          variant="flat"
-          size="large"
-          @click.stop="nextImage"
-        ></v-btn>
-      </template>
+  <v-card color="black" class="fullscreen-viewer">
+    <v-img
+      v-if="currentImage"
+      :src="currentImage.downloadURL"
+      contain
+      class="fullscreen-image"
+      aspect-ratio="16/9"
+    ></v-img>
+
+    <template v-if="householdImages.length > 1">
+      <v-btn class="image-nav-btn prev" icon="mdi-chevron-left" variant="flat" size="large" @click.stop="prevImage"></v-btn>
+      <v-btn class="image-nav-btn next" icon="mdi-chevron-right" variant="flat" size="large" @click.stop="nextImage"></v-btn>
+    </template>
+
+    <v-btn class="close-btn" icon="mdi-close" variant="flat" @click="fullscreenViewerDialog = false"></v-btn>
+
+    <v-expand-x-transition>
+      <div v-if="showInfoOverlay" class="fullscreen-info-sidebar pa-4">
+        <v-card variant="flat" color="rgba(255, 255, 255, 1)" class="pa-4 overlay-scroll-container" rounded="lg">
+          <div class="d-flex justify-space-between align-center mb-4">
+            <div class="text-h6 font-weight-bold text-primary">{{ unitData.unitId }} 完整資訊</div>
+            <v-btn icon="mdi-chevron-left" variant="text" size="small" @click="showInfoOverlay = false"></v-btn>
+          </div>
+
+          <div class="total-area-card mb-4" style="background-color: #f5f5f5;">
+            <div class="area-summary-item">
+              <div>
+                <div class="total-area-title">房屋總面積</div>
+                <div class="total-area-value-sm">{{ formatNumber(unitData.area_house_ping, 2) }} 坪</div>
+                <div class="total-area-subtitle">{{ formatNumber(unitData.area_house_sqm, 2) }} m²</div>
+              </div>
+            </div>
+            <v-divider vertical class="mx-3"></v-divider>
+            <div class="area-summary-item">
+              <div>
+                <div class="total-area-title">公設比</div>
+                <div class="total-area-value-sm">{{ formatPercentage(unitData.common_area_ratio) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="area-details mb-4">
+            <div class="area-group">
+              <div class="area-group-title text-primary"><v-icon size="small" class="mr-1">mdi-home</v-icon>建物面積明細</div>
+              <div class="area-item-header"><span>項目</span><span>坪數</span><span>m²</span></div>
+              <div class="area-item"><span>主建物</span><span class="area-ping-value-sm">{{ formatNumber(unitData.area_main_ping, 2) }}</span><span>{{ formatNumber(unitData.area_main_sqm, 2) }}</span></div>
+              <div class="area-item"><span>附屬建物</span><span class="area-ping-value-sm">{{ formatNumber(unitData.area_ancillary_ping, 2) }}</span><span>{{ formatNumber(unitData.area_ancillary_sqm, 2) }}</span></div>
+              <div class="area-item"><span>共用部分</span><span class="area-ping-value-sm">{{ formatNumber(unitData.area_common_ping, 2) }}</span><span>{{ formatNumber(unitData.area_common_sqm, 2) }}</span></div>
+              <div v-if="unitData.area_terrace_ping > 0" class="area-item"><span>露臺</span><span class="area-ping-value-sm">{{ formatNumber(unitData.area_terrace_ping, 2) }}</span><span>-</span></div>
+            </div>
+          </div>
+
+          <div class="area-details mb-4">
+            <div class="area-group">
+              <div class="area-group-title text-primary"><v-icon size="small" class="mr-1">mdi-earth</v-icon>土地持分</div>
+              <div class="area-item-header"><span>項目</span><span>坪數</span><span>m²</span></div>
+              <div class="area-item"><span>持分面積</span><span class="area-ping-value-sm">{{ formatNumber(unitData.land_share_ping, 2) }}</span><span>{{ formatNumber(unitData.land_share_sqm, 2) }}</span></div>
+            </div>
+          </div>
+
+          <v-divider class="my-4"></v-divider>
+
+          <div class="price-block-overlay pa-3 rounded-lg text-center" style="border: 1px solid #ddd; background-color: #fff;">
+            <div class="text-subtitle-2 text-grey-darken-1">房價</div>
+            <div class="text-h5 font-weight-bold text-red-darken-2">
+              {{ formatNumber(unitData.price_list_house_total) }} 萬
+            </div>
+            <div class="text-caption text-grey-darken-1">({{ calculatedUnitPrice }} 萬/坪)</div>
+          </div>
+        </v-card>
+      </div>
+    </v-expand-x-transition>
+
+    <div class="fullscreen-actions">
       <v-btn
-        class="close-btn"
-        icon="mdi-close"
+        class="mr-2"
+        :color="showInfoOverlay ? 'primary' : 'grey-darken-3'"
         variant="flat"
-        @click="fullscreenViewerDialog = false"
-      ></v-btn>
+        elevation="4"
+        @click="showInfoOverlay = !showInfoOverlay"
+      >
+        <v-icon left>{{ showInfoOverlay ? 'mdi-information' : 'mdi-information-outline' }}</v-icon>
+        面積資訊
+      </v-btn>
 
       <v-btn
         v-if="unitData && unitData.svgName"
-        class="sizing-tool-btn"
         color="blue-darken-2"
         variant="flat"
         elevation="4"
         @click="openSizingTool"
       >
         <v-icon left>mdi-ruler-square-compass</v-icon>
-        開啟測量工具
+        測量工具
       </v-btn>
-      </v-card>
-  </v-dialog>
+    </div>
+  </v-card>
+</v-dialog>
   
   <v-dialog
     v-model="sizingToolDialog"
@@ -512,6 +566,7 @@ const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const savingText = ref('儲存中，請稍候...');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
+const showInfoOverlay = ref(false); // 控制全螢幕下的資訊面板顯示
 
 // ✅ [新增] 編輯模式即時計算 - 表價單價
 const editingListUnitPrice = computed(() => {
@@ -988,6 +1043,7 @@ watch(() => props.show, (newVal) => {
   if (newVal) {
       tab.value = 'info';
       currentImageIndex.value = 0; 
+      showInfoOverlay.value = false; // 每次開啟 Modal 時預設關閉資訊層
       if (isEditing.value) cancelEditing();
   } else {
       sizingToolDialog.value = false;
@@ -1381,4 +1437,74 @@ async function handleParkingUpdate(parkingUpdateData) {
     font-weight: bold;
 }
 
+.fullscreen-actions {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+}
+
+.fullscreen-info-sidebar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 320px;
+  max-width: 85vw;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+}
+
+.overlay-scroll-container {
+  overflow-y: auto;
+  height: 100%;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.5) !important;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+
+/* 數據字體優化 */
+.total-area-value-sm {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1A237E;
+  line-height: 1.2;
+}
+
+.area-ping-value-sm {
+  font-weight: 600;
+  color: #1A237E;
+}
+
+/* 確保與主介面明細樣式一致 */
+.fullscreen-info-sidebar :deep(.area-item-header) {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  font-size: 0.75rem;
+  color: #78909C;
+  border-bottom: 1px solid #CFD8DC;
+  padding: 2px 4px;
+}
+
+.fullscreen-info-sidebar :deep(.area-item) {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  padding: 6px 4px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 0.85rem;
+}
+
+.fullscreen-info-sidebar :deep(.area-item span:not(:first-child)) {
+  text-align: right;
+}
+
+/* 右下角按鈕容器 */
+.fullscreen-actions {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+}
 </style>
