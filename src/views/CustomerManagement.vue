@@ -152,6 +152,7 @@
     v-if="isInteractionDialogVisible"
     v-model:show="isInteractionDialogVisible"
     :project-id="projectId"
+    :project-name="projectName"
     :doc-id="selectedCustomerDocId"
     :settings="settings"
     @data-updated="loadCustomerList"

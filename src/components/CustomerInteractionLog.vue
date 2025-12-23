@@ -8,18 +8,17 @@
     <v-card class="d-flex flex-column bg-grey-lighten-5">
       <v-toolbar color="white" density="compact" elevation="1">
         <v-btn icon="mdi-close" @click="$emit('update:show', false)"></v-btn>
-        <v-toolbar-title class="text-h6 font-weight-bold text-primary">
-          客戶洽談紀錄 - {{ guestData.latestName }}
-        </v-toolbar-title>
+       <v-toolbar-title class="text-h6 font-weight-bold text-primary">
+            {{ projectName || '建案' }}-客戶資料 - {{ guestData.latestName }}
+            </v-toolbar-title>
  
       </v-toolbar>
 
       <v-card-text class="pa-0 flex-grow-1" style="overflow-y: auto;">
         <v-container fluid class="fill-height align-start pa-4">
-            <v-row class="fill-height">
-                
-                <v-col cols="12" md="4" class="fill-height">
-                    <v-card class="mb-4 fill-height" elevation="1">
+<v-row :class="{ 'fill-height': $vuetify.display.mdAndUp }">
+    <v-col cols="12" md="4" :class="{ 'fill-height': $vuetify.display.mdAndUp }">
+                    <v-card class="mb-4" :class="{ 'fill-height': $vuetify.display.mdAndUp }" elevation="1">
                         <v-card-title class="bg-blue-grey-lighten-5 text-subtitle-1 font-weight-bold d-flex align-center justify-space-between">
                             <div>
                                 <v-icon start color="blue-grey">mdi-account-details</v-icon>
@@ -46,7 +45,7 @@
                             </div>
                         </v-card-title>
 
-                        <v-card-text class="pt-4" style="overflow-y: auto; max-height: calc(100vh - 150px);">
+<v-card-text class="pt-4" :style="$vuetify.display.mdAndUp ? 'overflow-y: auto; max-height: calc(100vh - 150px);' : ''">
                             <div v-if="!isEditingProfile">
                                <div class="info-row mb-3">
     <span class="text-caption text-grey">姓名</span>
@@ -162,49 +161,66 @@
 
                                  <v-divider class="my-4"></v-divider>
 
-                                <div v-if="guestData.profile" class="mt-4">
-                                    <div class="d-flex align-center mb-2">
-                                        <v-icon size="small" color="grey-darken-1" class="mr-1">mdi-text-box-search-outline</v-icon>
-                                        <span class="text-caption text-grey-darken-2 font-weight-bold">詳細需求</span>
-                                    </div>
-                                    
-                                    <div class="bg-grey-lighten-4 rounded pa-2 border border-dashed">
-                                        <v-row dense>
-                                            <v-col 
-                                                v-for="field in sortedProfileFields" 
-                                                :key="field.key" 
-                                                cols="12" 
-                                                lg="6" 
-                                                class="py-1"
+<div v-if="guestData.profile" class="mt-4">
+    <v-expansion-panels v-model="detailsPanel" variant="accordion" class="details-accordion">
+        <v-expansion-panel elevation="0" class="bg-transparent">
+            <v-expansion-panel-title class="pa-0 min-height-0 bg-transparent">
+                <template v-slot:default="{ expanded }">
+                    <div class="d-flex align-center">
+                        <v-icon size="small" :color="expanded ? 'primary' : 'grey-darken-1'" class="mr-1">
+                            mdi-text-box-search-outline
+                        </v-icon>
+                        <span class="text-caption font-weight-bold" :class="expanded ? 'text-primary' : 'text-grey-darken-2'">
+                            詳細需求
+                        </span>
+                        <v-chip size="x-small" variant="tonal" class="ml-2" color="grey" v-if="!expanded">
+                            點擊展開
+                        </v-chip>
+                    </div>
+                </template>
+            </v-expansion-panel-title>
+
+            <v-expansion-panel-text class="pa-0 mt-2">
+                <div class="bg-grey-lighten-4 rounded pa-2 border border-dashed">
+                    <v-row dense>
+                        <v-col 
+                            v-for="field in sortedProfileFields" 
+                            :key="field.key" 
+                            cols="12" 
+                            lg="6" 
+                            class="py-1"
+                        >
+                            <div class="d-flex flex-column">
+                                <span class="text-caption text-grey" style="font-size: 0.7rem;">{{ field.label }}</span>
+                                <div class="text-body-2 font-weight-medium text-grey-darken-3" style="min-height: 24px; line-height: 1.4;">
+                                    <template v-if="Array.isArray(guestData.profile[field.label])">
+                                        <div v-if="guestData.profile[field.label].length > 0" class="d-flex flex-wrap gap-1">
+                                            <v-chip 
+                                                v-for="item in guestData.profile[field.label]" 
+                                                :key="item"
+                                                size="small" 
+                                                variant="tonal" 
+                                                color="blue-grey-darken-1"
+                                                class="px-1"
+                                                style="height: 20px;"
                                             >
-                                                <div class="d-flex flex-column">
-                                                    <span class="text-caption text-grey" style="font-size: 0.7rem;">{{ field.label }}</span>
-                                                    <div class="text-body-2 font-weight-medium text-grey-darken-3" style="min-height: 24px; line-height: 1.4;">
-                                                        <template v-if="Array.isArray(guestData.profile[field.label])">
-                                                            <div v-if="guestData.profile[field.label].length > 0" class="d-flex flex-wrap gap-1">
-                                                                <v-chip 
-                                                                    v-for="item in guestData.profile[field.label]" 
-                                                                    :key="item"
-                                                                    size="small" 
-                                                                    variant="tonal" 
-                                                                    color="blue-grey-darken-1"
-                                                                    class="px-1"
-                                                                    style="height: 20px;"
-                                                                >
-                                                                    {{ item }}
-                                                                </v-chip>
-                                                            </div>
-                                                            <span v-else class="text-grey-lighten-1">-</span>
-                                                        </template>
-                                                        <template v-else>
-                                                            {{ guestData.profile[field.label] || '-' }}
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                            </v-col>
-                                        </v-row>
-                                    </div>
+                                                {{ item }}
+                                            </v-chip>
+                                        </div>
+                                        <span v-else class="text-grey-lighten-1">-</span>
+                                    </template>
+                                    <template v-else>
+                                        {{ guestData.profile[field.label] || '-' }}
+                                    </template>
                                 </div>
+                            </div>
+                        </v-col>
+                    </v-row>
+                </div>
+            </v-expansion-panel-text>
+        </v-expansion-panel>
+    </v-expansion-panels>
+</div>
                            
                                 
                                 <div class="mt-6 pt-4 border-t text-caption text-grey-lighten-1">
@@ -338,9 +354,8 @@
                     </v-card>
                 </v-col>
 
-                <v-col cols="12" md="8" class="fill-height d-flex flex-column">
-                    
-                    <v-card class="flex-grow-1 d-flex flex-column" elevation="1" style="min-height: 0;">
+<v-col cols="12" md="8" :class="{ 'fill-height d-flex flex-column': $vuetify.display.mdAndUp }">
+    <v-card :class="{ 'flex-grow-1 d-flex flex-column': $vuetify.display.mdAndUp }" elevation="1" style="min-height: 0;">
                          <v-card-title class="text-subtitle-1 font-weight-bold border-b d-flex align-center justify-space-between bg-grey-lighten-4">
                             <span>洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
                             
@@ -511,33 +526,34 @@
                 <v-time-picker
                   v-if="menuStart"
                   v-model="newLog.startTime"
-                  format="24hr"
+                  
                   @update:model-value="menuStart = false"
                 ></v-time-picker>
               </v-menu>
             </v-col>
             <v-col cols="6">
-              <v-menu v-model="menuEnd" :close-on-content-click="false">
-                <template v-slot:activator="{ props }">
-                  <v-text-field
-                    v-model="newLog.endTime"
-                    label="結束時間"
-                    readonly
-                    v-bind="props"
-                    variant="outlined"
-                    density="compact"
-                    prepend-inner-icon="mdi-clock-outline"
-                    hide-details="auto"
-                  ></v-text-field>
-                </template>
-                <v-time-picker
-                  v-if="menuEnd"
-                  v-model="newLog.endTime"
-                  format="24hr"
-                  @update:model-value="menuEnd = false"
-                ></v-time-picker>
-              </v-menu>
-            </v-col>
+  <v-menu v-model="menuEnd" :close-on-content-click="false">
+    <template v-slot:activator="{ props }">
+      <v-text-field
+        v-model="newLog.endTime"
+        label="結束時間"
+        readonly
+        v-bind="props"
+        variant="outlined"
+        density="compact"
+        prepend-inner-icon="mdi-clock-outline"
+        hide-details="auto"
+        :rules="[v => isEndTimeValid(newLog.startTime, v) || '結束時間不可早於開始時間']"
+      ></v-text-field>
+    </template>
+    <v-time-picker
+      v-if="menuEnd"
+      v-model="newLog.endTime"
+      
+      @update:model-value="menuEnd = false"
+    ></v-time-picker>
+  </v-menu>
+</v-col>
           </v-row>
           <div class="mt-4">
               <v-row dense>
@@ -606,16 +622,29 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="pa-4">
-          <v-spacer></v-spacer>
-          <v-btn 
-            color="grey-darken-1" 
-            variant="text" 
-            @click="closeLogDialog"
-            :disabled="isAddingLog"
-          >
-            取消
-          </v-btn>
-          <v-btn 
+  <v-btn 
+    v-if="editingLogId"
+    color="error" 
+    variant="text" 
+    prepend-icon="mdi-delete"
+    @click="handleDeleteLog"
+    :loading="isDeletingLog" 
+  >
+    刪除紀錄
+  </v-btn>
+  
+  <v-spacer></v-spacer>
+  
+  <v-btn 
+    color="grey-darken-1" 
+    variant="text" 
+    @click="closeLogDialog"
+    :disabled="isAddingLog || isDeletingLog"
+  >
+    取消
+  </v-btn>
+
+   <v-btn 
             color="teal" 
             variant="elevated" 
             @click="handleSaveLog"
@@ -624,7 +653,7 @@
           >
             {{ editingLogId ? '更新紀錄' : '確認新增' }}
           </v-btn>
-        </v-card-actions>
+  </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -732,7 +761,14 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { useUserStore } from '@/store/user';
-import { fetchCustomerInteractionDetails, addInteractionLog, updateCustomerProfile, updateInteractionLog } from '@/api';
+import { useProjectStore } from '@/store/projectStore'; // 新增這一行
+import { 
+    fetchCustomerInteractionDetails, 
+    addInteractionLog, 
+    updateCustomerProfile, 
+    updateInteractionLog,
+    deleteInteractionLog // ✅ 加入這行
+} from '@/api';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { useToast } from 'vue-toastification';
@@ -741,12 +777,14 @@ import TwCities from '@/assets/TwCities.json';
 const props = defineProps({
   show: Boolean,
   projectId: String,
+  projectName: String, // 新增這這一行，接收父層傳來的名稱
   docId: String,
   settings: { type: Object, default: () => ({}) } 
 });
 
 const emit = defineEmits(['update:show', 'data-updated']);
 const userStore = useUserStore();
+const projectStore = useProjectStore(); // 新增這一行
 const toast = useToast();
 
 // State
@@ -761,6 +799,11 @@ const isAddLogDialogVisible = ref(false);
 const isTagDialogVisible = ref(false);
 const isAddPhoneDialogVisible = ref(false);
 const isSavingPhone = ref(false);
+
+// 控制詳細需求面板的開合 (null 代表預設閉合)
+const detailsPanel = ref(null);
+
+const isDeletingLog = ref(false); // 控制刪除按鈕的 Loading 狀態
 
 // ✅ [打勾] 新增控制 TimePicker 選單的狀態
 const menuStart = ref(false);
@@ -814,8 +857,15 @@ const newPhoneData = ref({ name: '', relation: '', phone: '' });
 const logFields = ['visitors', 'interactionType', 'noPurchaseReason', 'keyTags', 'rating'];
 const fieldSettings = computed(() => props.settings.fields || {});
 
+// 修改 isValidLog 計算屬性，加入時間驗證
 const isValidLog = computed(() => {
     if (!newLog.value.content) return false;
+    
+    // ✅ 新增：檢查結束時間是否合法
+    if (!isEndTimeValid(newLog.value.startTime, newLog.value.endTime)) {
+        return false;
+    }
+
     const requiredFields = logFields.filter(k => k !== 'keyTags');
     for (const key of requiredFields) {
         if (fieldSettings.value[key]) {
@@ -852,6 +902,7 @@ const districtOptions = computed(() => {
     
     return cityData ? cityData.districts.map(d => d.name) : [];
 });
+
 
 // 3. 監聽城市改變，自動清空鄉鎮市區 
 watch(() => editingData.value.profile?.['居住城市'], (newVal, oldVal) => {
@@ -1221,13 +1272,15 @@ const handleAddNewPhone = async () => {
 
 // --- 洽談紀錄管理 (新增與編輯) ---
 
+// 修改新增視窗開啟邏輯
 const openAddLogDialog = () => {
     editingLogId.value = null;
     
+    const nowTime = getNowTimeStr();
     newLog.value = {
         date: new Date(),
-        startTime: ``,
-        endTime: '',
+        startTime: nowTime,              // ✅ 預設現在時間
+        endTime: addMinutesToTimeStr(nowTime, 120), // ✅ 預設 120 分鐘後
         content: '',
         tags: {}
     };
@@ -1301,7 +1354,32 @@ const handleSaveLog = async () => {
     }
 };
 
-// --- 標籤 Dialog ---
+// 3. 新增刪除處理函式 (放在 handleSaveLog 附近)
+const handleDeleteLog = async () => {
+    if (!editingLogId.value) return;
+
+    // 二次確認預防誤刪
+    if (!confirm('確定要刪除這筆洽談紀錄嗎？此動作無法復原。')) return;
+
+    isDeletingLog.value = true;
+    try {
+        await deleteInteractionLog(
+            props.projectId,
+            props.docId,
+            editingLogId.value,
+            userStore.user.key // 記錄執行人 ID
+        );
+        
+        toast.success('紀錄已成功刪除');
+        await loadData(); // 重新整理列表
+        closeLogDialog(); // 關閉對話框
+    } catch (error) {
+        console.error('刪除失敗:', error);
+        toast.error(`刪除失敗: ${error.message}`);
+    } finally {
+        isDeletingLog.value = false;
+    }
+};
 
 const keyTagsOptions = computed(() => {
     return getOptions('keyTags');
@@ -1368,6 +1446,35 @@ const sortedProfileFields = computed(() => {
     .sort((a, b) => a.order - b.order);
 });
 
+// --- 時間處理輔助函式 ---
+
+/** 獲取現在時間 (HH:mm) */
+const getNowTimeStr = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
+/** 增加分鐘數並回傳 HH:mm 格式 */
+const addMinutesToTimeStr = (timeStr, mins) => {
+    if (!timeStr) return '';
+    try {
+        const [h, m] = timeStr.split(':').map(Number);
+        const date = new Date();
+        date.setHours(h, m + mins);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    } catch (e) {
+        return '';
+    }
+};
+
+/** 檢查時間先後 (endTime >= startTime) */
+const isEndTimeValid = (start, end) => {
+    if (!start || !end) return true;
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    return (eh * 60 + em) >= (sh * 60 + sm);
+};
+
 function getRatingStyle(rating) {
     const val = Array.isArray(rating) ? rating[0] : rating;
     
@@ -1405,5 +1512,16 @@ watch(() => props.show, (newVal) => {
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+
+/* 移除展開面板的預設最小高度與內邊距，使其更融入基本資料卡片 */
+:deep(.details-accordion .v-expansion-panel-title) {
+    min-height: 32px !important;
+}
+:deep(.details-accordion .v-expansion-panel-text__wrapper) {
+    padding: 0 !important;
+}
+:deep(.details-accordion .v-expansion-panel--active > .v-expansion-panel-title) {
+    min-height: 32px !important;
 }
 </style>

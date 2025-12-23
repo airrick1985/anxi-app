@@ -7379,3 +7379,23 @@ export const batchImportCustomers = async (projectId, customers, operator) => {
     throw error;
   }
 };
+
+/**
+ * [API] 刪除洽談紀錄
+ * @param {string} projectId - 建案 ID
+ * @param {string} docId - 客戶文件 ID
+ * @param {string} logId - 紀錄 ID
+ * @param {string} operatorPhone - 執行人手機(ID)
+ */
+export const deleteInteractionLog = async (projectId, docId, logId, operatorPhone) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'deleteInteractionLog', // ✅ 對應後端新 Action
+      data: { projectId, docId, logId, operatorPhone }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] deleteInteractionLog 失敗:", error);
+    throw new Error(error.message);
+  }
+};

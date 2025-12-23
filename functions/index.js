@@ -15756,6 +15756,10 @@ exports.customerApi = onCall({
 
     case 'updateInteractionLog': // ✅ 新增這行
         return await _handleUpdateInteractionLog(data, db);
+
+        // ✅ [新增] 刪除洽談紀錄
+case 'deleteInteractionLog':
+    return await _handleDeleteInteractionLog(data, db);
           
 
             default:
@@ -17284,6 +17288,49 @@ async function _handleUpdateInteractionLog(data, db) {
     } catch (e) {
         console.error("更新洽談紀錄錯誤:", e);
         throw new functions.https.HttpsError("internal", e.message);
+    }
+}
+
+/**
+ * [新增] 刪除一筆洽談紀錄
+ */
+async function _handleDeleteInteractionLog(data, db) {
+    const { projectId, docId, logId, operatorPhone } = data;
+
+    if (!docId || !logId) {
+        throw new HttpsError('invalid-argument', '缺少必要參數 docId 或 logId');
+    }
+
+    const guestRef = db.collection("vipGuests").doc(docId);
+    
+    try {
+        const docSnap = await guestRef.get();
+        if (!docSnap.exists) {
+            throw new HttpsError('not-found', '找不到該貴賓資料');
+        }
+
+        const guestData = docSnap.data();
+        const logs = guestData.interactionLogs || [];
+
+        // 過濾掉要刪除的紀錄 (冷刪除)
+        const updatedLogs = logs.filter(log => log.logId !== logId);
+
+        if (logs.length === updatedLogs.length) {
+            throw new HttpsError('not-found', '找不到指定的洽談紀錄，可能已被刪除');
+        }
+
+        // 更新回 Firestore
+        await guestRef.update({
+            interactionLogs: updatedLogs,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastModifiedBy: operatorPhone || "" // 記錄最後異動者
+        });
+
+        return { status: "success", message: "紀錄已成功刪除" };
+
+    } catch (error) {
+        console.error(`[_handleDeleteInteractionLog] 錯誤:`, error);
+        throw error;
     }
 }
 
