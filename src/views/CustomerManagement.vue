@@ -107,10 +107,10 @@
                     hover
                   >
                   <template v-slot:item.updatedAt="{ item }">
-                <div class="text-caption text-grey-darken-1">
-                  {{ formatFullDateTime(item.updatedAt || item.createdAt) }}
-                </div>
-              </template>
+                  <div class="text-caption text-grey-darken-1">
+                    {{ formatFullDateTime(item.updatedAt) }}
+                  </div>
+                </template>
 
               <template v-slot:item.拜訪日期="{ item }">
                 {{ formatDisplayDate(item['拜訪日期']) }}
@@ -1007,11 +1007,11 @@ async function loadCustomerList() {
       currentUserProjectSystems.value
     );
 
-    // ✅ 排序優化：根據最後更新時間從晚到早排序
+    // ✅ 統一根據 updatedAt 進行排序 (由新到舊)
     customerList.value = list.sort((a, b) => {
-      const timeA = getSeconds(a.updatedAt || a.createdAt);
-      const timeB = getSeconds(b.updatedAt || b.createdAt);
-      return timeB - timeA; // 由大到小 (最新在上面)
+      const timeA = getSeconds(a.updatedAt);
+      const timeB = getSeconds(b.updatedAt);
+      return timeB - timeA; 
     });
 
   } catch (error) {

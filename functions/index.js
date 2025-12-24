@@ -15485,64 +15485,29 @@ exports.generatePaymentSheet = onCall({
  * (✓ V6: 修正邏輯 - 同一客戶若有不同銷售人員，皆需顯示；同一銷售人員只取最新)
  */
 async function _handleFetchCustomerList(data, db) {
-
     const { projectId, userPhone, userProjectSystems } = data;
-
     const functionName = `_handleFetchCustomerList`;
-
-
-
     if (!projectId || !userPhone || !userProjectSystems) {
-
         throw new HttpsError("invalid-argument", "缺少 projectId, userPhone 或 userProjectSystems 參數。");
-
     }
-
-
-
     try {
-
         const isCounter = userProjectSystems.includes('客資系統-櫃台');
-
         const guestsRef = db.collection("vipGuests");
-
         const query = guestsRef.where("projectId", "==", projectId);
-
         const snapshot = await query.get();
-
-
-
         if (snapshot.empty) {
-
             return [];
-
         }
-
-
-
         const flatSubmissions = [];
-
-
-
         const ensureArray = (value) => {
-
             if (Array.isArray(value)) return value;
-
             if (typeof value === 'string' && value) return [value];
-
             return [];
-
         };
-
-
-
         snapshot.forEach(doc => {
-
             const docData = doc.data();
-
-            const submissions = docData.submissions || [];
-
-           
+           const submissions = docData.submissions || [];
+         
 
             // 1. 提取最新 Profile 資訊 (等級、未買原因)
 
@@ -15598,7 +15563,7 @@ async function _handleFetchCustomerList(data, db) {
 
                
 
-                return true;
+           return true;
 
             });
 
@@ -15608,7 +15573,7 @@ async function _handleFetchCustomerList(data, db) {
 
 
 
-            // ✅ [修改重點]：依照「銷售人員」分組
+
 
             const submissionsBySales = {};
 
