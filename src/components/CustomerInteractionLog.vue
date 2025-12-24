@@ -357,18 +357,26 @@
 <v-col cols="12" md="8" :class="{ 'fill-height d-flex flex-column': $vuetify.display.mdAndUp }">
     <v-card :class="{ 'flex-grow-1 d-flex flex-column': $vuetify.display.mdAndUp }" elevation="1" style="min-height: 0;">
                          <v-card-title class="text-subtitle-1 font-weight-bold border-b d-flex align-center justify-space-between bg-grey-lighten-4">
-                            <span>洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
+                            <div class="d-flex align-center">
+                                <span>洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
+                                
+                                <v-divider vertical class="mx-3" v-if="guestData.updatedAt"></v-divider>
+                                <span v-if="guestData.updatedAt" class="text-caption text-grey-darken-1 font-weight-regular">
+                                    <v-icon size="x-small" start color="grey">mdi-clock-edit-outline</v-icon>
+                                    最後更新：{{ formatFullDateTime(guestData.updatedAt) }}
+                                </span>
+                            </div>
                             
                             <v-btn 
-                              color="teal" 
-                              variant="flat" 
-                              size="small"
-                              prepend-icon="mdi-pen-plus"
-                              @click="openAddLogDialog"
+                                color="teal" 
+                                variant="flat" 
+                                size="small"
+                                prepend-icon="mdi-pen-plus"
+                                @click="openAddLogDialog"
                             >
-                              新增紀錄
+                                新增紀錄
                             </v-btn>
-                         </v-card-title>
+                        </v-card-title>
 
                          <v-card-text class="pa-0" style="overflow-y: auto;">
                             <div class="pa-4 d-flex flex-column gap-3">
@@ -439,9 +447,12 @@
 
                                             <v-spacer></v-spacer>
                                             
-                                            <span class="text-caption text-grey mr-2">
-                                                記錄人: {{ log.recorderName }}
-                                            </span>
+                                            <div class="d-flex flex-column align-end mr-2">
+                                                <span class="text-caption text-grey-darken-1">
+                                                    記錄人: {{ log.recorderName }}
+                                                </span>
+                                               
+                                            </div>
 
                                            <v-btn
                                                 v-if="canEdit || log.recorderName === userStore.user?.name"
@@ -773,6 +784,25 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { useToast } from 'vue-toastification';
 import TwCities from '@/assets/TwCities.json'; 
+
+/**
+ * 格式化完整的日期時間 (用於洽談紀錄更新時間)
+ * 格式：2025-12-24 下午 06:13:59
+ */
+const formatFullDateTime = (t) => {
+    const date = parseTimestamp(t);
+    if (!date) return '-';
+    
+    return date.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    }).replace(/\//g, '-'); // 將斜線改為橫線更符合系統一致性
+};
 
 const props = defineProps({
   show: Boolean,

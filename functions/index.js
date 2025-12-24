@@ -15485,120 +15485,238 @@ exports.generatePaymentSheet = onCall({
  * (✓ V6: 修正邏輯 - 同一客戶若有不同銷售人員，皆需顯示；同一銷售人員只取最新)
  */
 async function _handleFetchCustomerList(data, db) {
+
     const { projectId, userPhone, userProjectSystems } = data;
+
     const functionName = `_handleFetchCustomerList`;
 
+
+
     if (!projectId || !userPhone || !userProjectSystems) {
+
         throw new HttpsError("invalid-argument", "缺少 projectId, userPhone 或 userProjectSystems 參數。");
+
     }
 
+
+
     try {
+
         const isCounter = userProjectSystems.includes('客資系統-櫃台');
+
         const guestsRef = db.collection("vipGuests");
+
         const query = guestsRef.where("projectId", "==", projectId);
+
         const snapshot = await query.get();
 
+
+
         if (snapshot.empty) {
-            return []; 
+
+            return [];
+
         }
+
+
 
         const flatSubmissions = [];
 
+
+
         const ensureArray = (value) => {
-            if (Array.isArray(value)) return value; 
-            if (typeof value === 'string' && value) return [value]; 
-            return []; 
+
+            if (Array.isArray(value)) return value;
+
+            if (typeof value === 'string' && value) return [value];
+
+            return [];
+
         };
 
+
+
         snapshot.forEach(doc => {
-            const docData = doc.data(); 
+
+            const docData = doc.data();
+
             const submissions = docData.submissions || [];
-            
+
+           
+
             // 1. 提取最新 Profile 資訊 (等級、未買原因)
+
             // (這些資訊是跟著"客戶"走的，所以共用)
+
             const interactionLogs = docData.interactionLogs || [];
+
             let latestRating = '';
+
             let latestNoBuyReasons = [];
 
+
+
             if (interactionLogs.length > 0) {
+
                 const sortedLogs = [...interactionLogs].sort((a, b) => {
+
                     const dateA = new Date(a.date || 0);
+
                     const dateB = new Date(b.date || 0);
+
                     return dateB - dateA; // 降序
+
                 });
+
                 const latestLog = sortedLogs[0];
+
                 if (latestLog && latestLog.tags) {
+
                     latestRating = latestLog.tags.rating || '';
+
                     latestNoBuyReasons = ensureArray(latestLog.tags.noPurchaseReason);
+
                 }
+
             }
 
+
+
             // 2. 過濾出「對當前用戶可見」的所有提交紀錄
+
             const validSubmissions = submissions.filter(sub => {
+
                 // 條件 1: 必須有銷售人員
+
                 if (!sub['銷售人員']) return false;
-                
+
+               
+
                 // 條件 2: 如果不是櫃台，必須是該銷售人員的客戶
+
                 if (!isCounter && sub['銷售人員電話'] !== userPhone) return false;
-                
+
+               
+
                 return true;
+
             });
+
+
 
             if (validSubmissions.length === 0) return;
 
+
+
             // ✅ [修改重點]：依照「銷售人員」分組
+
             const submissionsBySales = {};
-            
+
+           
+
             validSubmissions.forEach(sub => {
+
                 const salesName = sub['銷售人員'];
+
                 if (!submissionsBySales[salesName]) {
+
                     submissionsBySales[salesName] = [];
+
                 }
+
                 submissionsBySales[salesName].push(sub);
+
             });
 
+
+
             // ✅ [修改重點]：針對每一位銷售人員，只取最新的一筆
+
             Object.values(submissionsBySales).forEach(group => {
+
                 // 該組內依照時間降序排序
+
                 group.sort((a, b) => {
+
                     const timeA = a.submittedAt ? a.submittedAt.toMillis() : 0;
+
                     const timeB = b.submittedAt ? b.submittedAt.toMillis() : 0;
+
                     return timeB - timeA; // 最新在最前
+
                 });
+
+
 
                 const latestSub = group[0]; // 取最新的一筆
 
+
+
                 // 加入列表
+
                 flatSubmissions.push({
+
                     '拜訪日期': latestSub['拜訪日期'] || null,
+
                     '姓名': latestSub['姓名'] || '',
+
                     '電話': latestSub['電話'] || '',
+
                     '購屋動機': ensureArray(latestSub['購屋動機']),
+
                     '房型需求': ensureArray(latestSub['房型需求']),
+
                     '購屋預算': latestSub['購屋預算'] || '',
+
                     '銷售人員': latestSub['銷售人員'],
-                    'docId': doc.id, 
+
+                    'docId': doc.id,
+
                     'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
 
+                    'updatedAt': docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null,
+                   'createdAt': docData.createdAt ? docData.createdAt.toDate().toISOString() : null,
+
+
                     // 來自 interactionLogs 的最新資訊 (共用)
+
                     '等級研判': latestRating,
+
                     '未買原因': latestNoBuyReasons
+
                 });
+
             });
+
         });
+
+
 
         // 最後對整個列表依照拜訪日期排序
+
         flatSubmissions.sort((a, b) => {
+
             return (b['拜訪日期'] || '').localeCompare(a['拜訪日期'] || '');
+
         });
 
-        return flatSubmissions; 
+
+
+        return flatSubmissions;
+
+
 
     } catch (error) {
+
         console.error(`[${functionName}] 執行時發生錯誤:`, error);
+
         throw new HttpsError("internal", `獲取客戶列表時發生錯誤: ${error.message}`);
+
     }
+
 }
+
+
 
 /**
  * [內部函式] 獲取完整客戶資料 (供 Excel 匯出使用)

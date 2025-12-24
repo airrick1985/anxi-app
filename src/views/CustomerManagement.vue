@@ -65,9 +65,13 @@
             </div>
 
             <div class="d-flex align-center text-caption text-grey">
-              <v-icon size="14" start>mdi-calendar-clock</v-icon>
-              {{ formatDisplayDate(item.raw['拜訪日期']) }}
-            </div>
+            <v-icon size="14" start>mdi-calendar-clock</v-icon>
+            拜訪：{{ formatDisplayDate(item.raw['拜訪日期']) }}
+            <v-spacer></v-spacer>
+            <span v-if="item.raw.updatedAt" class="text-blue-grey-lighten-2">
+              更新：{{ formatFullDateTime(item.raw.updatedAt) }}
+            </span>
+          </div>
           </v-card-text>
         </v-card>
       </v-col>
@@ -91,22 +95,28 @@
     </div>
   </template>
 </v-data-iterator>
+                  <v-data-table
+                    v-else
+                    :headers="customerTableHeaders"
+                    :items="customerList"
+                    :loading="isLoadingCustomerList"
+                    :search="customerListSearch"
+                    :sort-by="[{ key: 'updatedAt', order: 'desc' }]"  item-value="docId"
+                    class="elevation-1 cursor-pointer-row"
+                    @click:row="openInteractionLog"
+                    hover
+                  >
+                  <template v-slot:item.updatedAt="{ item }">
+                <div class="text-caption text-grey-darken-1">
+                  {{ formatFullDateTime(item.updatedAt || item.createdAt) }}
+                </div>
+              </template>
 
-            <v-data-table
-              v-else
-              :headers="customerTableHeaders"
-              :items="customerList"
-              :loading="isLoadingCustomerList"
-              :search="customerListSearch"
-              item-value="submittedAt"
-              class="elevation-1 cursor-pointer-row"
-              @click:row="openInteractionLog"
-              hover
-            >
               <template v-slot:item.拜訪日期="{ item }">
                 {{ formatDisplayDate(item['拜訪日期']) }}
               </template>
 
+    
               <template v-slot:item.等級研判="{ item }">
                 <v-chip
                   v-if="item['等級研判']"
@@ -941,6 +951,7 @@ const isLoadingCustomerList = ref(false); // 這是「列表頁」的 Loading
 const customerListSearch = ref('');
 const customerList = ref([]); // 儲存後端回傳的扁平化列表
 const customerTableHeaders = ref([
+  { title: '最後更新', key: 'updatedAt', width: '160px', sortable: true }, // 新增這行
   { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
   { title: '等級', key: '等級研判', width: '90px', sortable: true }, // 新增
   { title: '未購原因', key: '未買原因', width: '160px', sortable: false }, // 新增
@@ -956,13 +967,38 @@ const customerTableHeaders = ref([
 const isInteractionDialogVisible = ref(false);
 const selectedCustomerDocId = ref(null);
 
+const getSeconds = (val) => {
+  if (!val) return 0;
+  if (typeof val === 'object') {
+    if (val._seconds !== undefined) return val._seconds;
+    if (val.seconds !== undefined) return val.seconds;
+    if (typeof val.toDate === 'function') return val.toDate().getTime() / 1000;
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? 0 : d.getTime() / 1000;
+};
+
+/**
+ * 格式化完整時間 (包含小時分鐘)
+ */
+const formatFullDateTime = (t) => {
+  if (!t) return '-';
+  const date = (t && t.toDate) ? t.toDate() : new Date(t);
+  if (isNaN(date.getTime())) return '-';
+  
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(/\//g, '-');
+};
+
 // ✓ START: 新增：載入客戶列表的函式
 async function loadCustomerList() {
-  if (!props.projectId || !currentUserPhone.value) {
-    console.warn("無法載入客戶列表：缺少 projectId 或 userPhone");
-    return;
-  }
-  
+  if (!props.projectId || !currentUserPhone.value) return;
   isLoadingCustomerList.value = true;
   try {
     const list = await fetchCustomerList(
@@ -970,10 +1006,16 @@ async function loadCustomerList() {
       currentUserPhone.value, 
       currentUserProjectSystems.value
     );
-    customerList.value = list;
+
+    // ✅ 排序優化：根據最後更新時間從晚到早排序
+    customerList.value = list.sort((a, b) => {
+      const timeA = getSeconds(a.updatedAt || a.createdAt);
+      const timeB = getSeconds(b.updatedAt || b.createdAt);
+      return timeB - timeA; // 由大到小 (最新在上面)
+    });
+
   } catch (error) {
     console.error("載入客戶列表失敗:", error);
-    alert(`載入客戶列表失敗: ${error.message}`);
   } finally {
     isLoadingCustomerList.value = false;
   }
@@ -1047,13 +1089,7 @@ const executeBatchExport = async () => {
       return isNaN(d.getTime()) ? dateVal : d.toLocaleString('zh-TW', { hour12: false });
     };
 
-    const getSeconds = (val) => {
-      if (!val) return 0;
-      if (typeof val === 'object' && val._seconds !== undefined) return val._seconds;
-      if (val.seconds !== undefined) return val.seconds;
-      const d = new Date(val);
-      return isNaN(d.getTime()) ? 0 : d.getTime() / 1000;
-    };
+ 
 
     customers.forEach((data) => {
       const phone = data.phone;
@@ -1304,6 +1340,8 @@ function formatDisplayDate(dateString) {
     return dateString; // 出錯時返回原字串
   }
 }
+
+
 // ✓ END: 新增
 
 // ✓ START: 新增：Chip 顏色輔助函式 (範例)
