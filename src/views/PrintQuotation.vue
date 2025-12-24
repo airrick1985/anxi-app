@@ -796,15 +796,12 @@ function addShape() {
 }
 
 function addQuoteTable() {
-  
-  // (1) 檢查資料
- if (quoteStore.items.length === 0) {
-    //  [打勾] 修改此行
+  // (1) 檢查資料 (保持不變)
+  if (quoteStore.items.length === 0) {
     toast.error('報價單中沒有項目，無法插入表格。', { timeout: false });
     return null; 
   }
   if (!quoteStore.items[0].calculatedPayments || quoteStore.items[0].calculatedPayments.length === 0) {
-    //  [打勾] 修改此行
     toast.error('資料還沒準備好，請關閉重試。', { timeout: false });
     return null; 
   }
@@ -817,8 +814,10 @@ function addQuoteTable() {
   headers.push('房屋單價');
   headers.push('車位');
   headers.push('車位價格');
+  
   const dynamicPaymentHeaders = quoteStore.items[0].calculatedPayments.map(p => p.name);
   headers.push(...dynamicPaymentHeaders);
+  
   const showPackage = quoteStore.items.some(item => 
     quoteStore.getPackagePrice(item.internalId) > 0
   );
@@ -826,21 +825,31 @@ function addQuoteTable() {
     headers.push('配套價');
   }
   headers.push('總價');
+  
+  // ✅ 新增需求 1：最後一欄固定為 "備註"
+  headers.push('備註');
 
   // (3) 準備每一列 (Rows) 的資料
   const rows = quoteStore.items.map(item => {
     const row = {};
-    
     const paymentMap = new Map((item.calculatedPayments || []).map(p => 
       [p.name, { value: p.value, percentage: p.percentage }]
     ));
 
     row['戶別'] = item.unitId;
-    row['面積'] = formatNumber(item.unitDetails?.area_house_ping, 2)+ ' 坪';
-    row['房屋總價'] = formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId))+ ' 萬';
-    row['房屋單價'] = formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2)+ ' 萬/坪';
+    
+    // ✅ 新增需求 2：露臺資訊顯示在面積下方
+    let areaVal = formatNumber(item.unitDetails?.area_house_ping, 2) + ' 坪';
+    const terracePing = Number(item.unitDetails?.area_terrace_ping) || 0;
+    if (terracePing > 0) {
+      areaVal += `\n(露臺:${formatNumber(terracePing, 2)}坪)`;
+    }
+    row['面積'] = areaVal;
+
+    row['房屋總價'] = formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)) + ' 萬';
+    row['房屋單價'] = formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2) + ' 萬/坪';
     row['車位'] = (item.selectedParking || []).map(p => p['車位編號']).join(', ') || '-';
-    row['車位價格'] = formatNumber(quoteStore.getParkingTotalPrice(item.internalId))+ ' 萬';
+    row['車位價格'] = formatNumber(quoteStore.getParkingTotalPrice(item.internalId)) + ' 萬';
     
     dynamicPaymentHeaders.forEach(header => {
       const payment = paymentMap.get(header) || { value: 0 };
@@ -858,36 +867,38 @@ function addQuoteTable() {
 
     row['總價'] = formatNumber(quoteStore.getFinalTotalPrice(item.internalId)) + ' 萬';
     
+    // ✅ 新增需求 1 資料：首購/非首購判斷
+    row['備註'] = item.isFirstTimeBuyer ? '首購' : '非首購';
+    
     return row;
   });
 
   // (4) 渲染 Fabric.js 物件
   
-  // (4a) 欄寬
+  // (4a) 欄寬定義
   const colWidths = headers.map(header => {
     if (header === '戶別') return 150;
     if (header === '車位') return 150;
+    if (header === '備註') return 120; // ✅ 為備註設定適當欄寬
     if (header.includes('價') || header.includes('款') || header.includes('訂金')) return 150;
-    if (header === '面積(坪)') return 150;
+    if (header === '面積') return 180; // 面積因為有露臺資訊，建議稍微加寬
     return 150;
   });
   
-  // (4b) 基礎樣式
+  // (4b) 基礎樣式 (保持不變)
   const padding = 15; 
   const verticalPadding = 25; 
   const headerFill = '#f5f5f7';
   const rowFill = '#ffffff';
   const stroke = '#cccccc';
-  // textFontSize 是在 <script setup> 頂層定義的 (textFontSize = 26)
 
   const tableObjects = [];
   let currentY = 0;
 
-  // (4c) 渲染標頭列
+  // (4c) 渲染標頭列 (邏輯保持不變)
   let currentX = 0;
   let headerTextBoxes = [];
   let maxHeaderHeight = 0;
-
   headers.forEach((header, colIndex) => {
     const tb = new fabric.Textbox(header, {
       left: currentX + padding, 
@@ -905,15 +916,11 @@ function addQuoteTable() {
 
   const headerRowHeight = maxHeaderHeight + (verticalPadding * 2); 
   currentX = 0;
-
   headerTextBoxes.forEach((tb, colIndex) => {
     tableObjects.push(new fabric.Rect({
-      left: currentX, 
-      top: currentY,
-      width: colWidths[colIndex], 
-      height: headerRowHeight,
-      fill: headerFill, 
-      stroke: stroke,
+      left: currentX, top: currentY,
+      width: colWidths[colIndex], height: headerRowHeight,
+      fill: headerFill, stroke: stroke,
     }));
     tb.set('top', currentY + (headerRowHeight - tb.height) / 2);
     tableObjects.push(tb);
@@ -928,26 +935,45 @@ function addQuoteTable() {
     let maxRowHeight = 0;
 
     headers.forEach((key, colIndex) => {
-      
       let currentFontSize = textFontSize;
       let currentFill = '#333';
       let currentFontWeight = 'normal';
+      let cellStyles = {}; // 用於存放單一 Cell 內部的多重樣式
 
+      // 總價樣式
       if (key === '總價') {
         currentFontSize = textFontSize * 1.2; 
         currentFill = '#C62828'; 
         currentFontWeight = 'bold'; 
       }
+
+      // ✅ 新增需求 2 樣式：處理面積欄位的露臺紅字
+      const cellText = String(row[key]);
+      if (key === '面積' && cellText.includes('\n')) {
+        const lines = cellText.split('\n');
+        // lines[0] 為坪數，lines[1] 為 (露臺:XX.00坪)
+        // Fabric styles 格式為 { 行索引: { 字元索引: { 屬性 } } }
+        cellStyles[1] = {}; 
+        for (let i = 0; i < lines[1].length; i++) {
+          cellStyles[1][i] = {
+            fontSize: textFontSize * 0.8, // 縮小字體
+            fill: '#C62828',             // 紅字
+            fontWeight: 'bold'            // 粗體
+          };
+        }
+      }
       
-      const tb = new fabric.Textbox(String(row[key]), {
+      const tb = new fabric.Textbox(cellText, {
         left: currentX + padding,
         top: currentY + verticalPadding,
         width: colWidths[colIndex] - (padding * 2),
         fontSize: currentFontSize, 
         fill: currentFill,
         fontWeight: currentFontWeight,
-        textAlign: 'center'
+        textAlign: 'center',
+        styles: cellStyles // ✅ 套用進階樣式
       });
+      
       rowTextBoxes.push(tb);
       maxRowHeight = Math.max(maxRowHeight, tb.height);
       currentX += colWidths[colIndex];
@@ -955,37 +981,30 @@ function addQuoteTable() {
 
     const dataRowHeight = maxRowHeight + (verticalPadding * 2);
     currentX = 0;
-
     rowTextBoxes.forEach((tb, colIndex) => {
       tableObjects.push(new fabric.Rect({
-        left: currentX, 
-        top: currentY,
-        width: colWidths[colIndex], 
-        height: dataRowHeight,
-        fill: rowFill, 
-        stroke: stroke,
+        left: currentX, top: currentY,
+        width: colWidths[colIndex], height: dataRowHeight,
+        fill: rowFill, stroke: stroke,
       }));
       tb.set('top', currentY + (dataRowHeight - tb.height) / 2);
       tableObjects.push(tb);
       currentX += colWidths[colIndex];
     });
-    
     currentY += dataRowHeight;
   });
 
-
-  // (4e) 建立群組並插入
+  // (4e) 建立群組 (保持不變)
   const tableGroup = new fabric.Group(tableObjects, {
-    left: 0,
-    top: 0,
+    left: 0, top: 0,
     lockUniScaling: true,
-    objectCaching: false // (保持這個設定，解決模糊問題)
+    objectCaching: false 
   });
-  tableGroup.set('isQuoteTable', true); // 標記 (不變)
+  tableGroup.set('isQuoteTable', true);
 
-
-  return tableGroup; //  [打勾] 只返回在 (0,0) 建立的原始 tableGroup
+  return tableGroup;
 }
+
 // --- 右側面板功能 ---
 
 function deleteSelected() {

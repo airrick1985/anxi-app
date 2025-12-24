@@ -353,13 +353,33 @@
         <div ref="mainGridRef" @scroll="handleScroll" class="main-grid-container">
           <div class="grid-table">
             <div v-for="item in flatGridData" :key="item.key" class="data-cell">
-              <div v-if="item.data"
-                class="unit-card"
-                :class="{ 'in-quote': quoteStore.isItemInQuote(item.data.unitId) }"
-                :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
-                @click="openUnitDetail(item.data)"
-              >
-                <span class="unit-name">{{ item.data.unitId }}</span>
+             <div v-if="item.data"
+  class="unit-card"
+  :class="{ 
+    'in-quote': quoteStore.isItemInQuote(item.data.unitId),
+    'has-terrace': item.data.area_terrace_ping > 0  
+  }"
+  :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
+  @click="openUnitDetail(item.data)"
+>
+            <span class="unit-name">
+              {{ item.data.unitId }}
+              
+              <v-tooltip location="top" v-if="item.data.area_terrace_ping && Number(item.data.area_terrace_ping) > 0">
+                <template v-slot:activator="{ props }">
+                  <v-icon 
+                    v-bind="props"
+                    size="x-small" 
+                    color="success" 
+                    class="ml-1"
+                    style="vertical-align: middle;"
+                  >
+                    mdi-balcony
+                  </v-icon>
+                </template>
+                <span>含有露臺：{{ item.data.area_terrace_ping }} 坪</span>
+              </v-tooltip>
+            </span>
                 <template v-if="statusField === 'salesStatus_quote' && item.data.salesStatus_quote === '已售'">
                   <span class="unit-total-price sold-text">已售</span>
                   <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
@@ -381,6 +401,7 @@
         <v-data-table
           :headers="tableHeaders"
           :items="filteredTableItems"
+          :row-props="({ item }) => ({ class: (Number(item.area_terrace_ping) > 0) ? 'row-has-terrace' : '' })"
           :loading="loading"
           fixed-header
           :height="tableHeight" 
@@ -414,6 +435,12 @@
           <template v-slot:item.area_house_ping="{ item }">
             {{ formatNumber(item.area_house_ping, 2) }}
           </template>
+
+        <template v-slot:item.area_terrace_ping="{ item }">
+          <span :class="{ 'font-weight-bold text-success': Number(item.area_terrace_ping) > 0 }">
+            {{ item.area_terrace_ping > 0 ? formatNumber(item.area_terrace_ping, 2) : '-' }}
+          </span>
+        </template>
 
           <template v-slot:header.isPreferredPayment="{ column }">
             <div class="d-flex flex-column justify-center align-center" style="height: 100%;">
@@ -1040,6 +1067,8 @@ const filters = reactive({
   totalPriceMax: null,
   unitPriceMin: null,
   unitPriceMax: null,
+  terraceMin: null, // ✅ 新增：露臺坪數 最小
+  terraceMax: null,  // ✅ 新增：露臺坪數 最大
   
   // --- ✅ [新增] 銷控模式專用欄位 ---
   statuses: [],        // 銷控狀態 (多選)
@@ -1057,7 +1086,8 @@ const filters = reactive({
   floorUnitPriceMin: null,  // 底價單價 Min
   floorUnitPriceMax: null,  // 底價單價 Max
   transPriceMin: null,      // 成交總價 Min
-  transPriceMax: null       // 成交總價 Max
+  transPriceMax: null      // 成交總價 Max
+  
 });
 
 // 2. ✅ [新增] 下拉選單選項 (依賴 salesParameters 和 salesPersonnel)
@@ -1087,6 +1117,8 @@ const activeFilterCount = computed(() => {
   if (filters.floorPriceMin || filters.floorPriceMax) count++;
   if (filters.floorUnitPriceMin || filters.floorUnitPriceMax) count++;
   if (filters.transPriceMin || filters.transPriceMax) count++;
+
+  if (filters.terraceMin || filters.terraceMax) count++;
   
   return count;
 });
@@ -1108,6 +1140,8 @@ const clearFilters = () => {
   filters.floorPriceMin = null; filters.floorPriceMax = null;
   filters.floorUnitPriceMin = null; filters.floorUnitPriceMax = null;
   filters.transPriceMin = null; filters.transPriceMax = null;
+  filters.terraceMin = null; filters.terraceMax = null;
+
 };
 
 // 5. 修改 filteredTableItems (加入篩選邏輯)
@@ -1200,6 +1234,11 @@ const filteredTableItems = computed(() => {
         const transPrice = Number(item.total_transaction) || 0;
         if (filters.transPriceMin !== null && filters.transPriceMin !== '' && transPrice < Number(filters.transPriceMin)) return false;
         if (filters.transPriceMax !== null && filters.transPriceMax !== '' && transPrice > Number(filters.transPriceMax)) return false;
+    
+    const terrace = Number(item.area_terrace_ping) || 0;
+    if (filters.terraceMin !== null && filters.terraceMin !== '' && terrace < Number(filters.terraceMin)) return false;
+    if (filters.terraceMax !== null && filters.terraceMax !== '' && terrace > Number(filters.terraceMax)) return false;
+    
     }
 
     return true;
@@ -1681,38 +1720,23 @@ const tableHeaders = computed(() => {
 
     // 3. 加入其餘固定欄位
     headers.push(
-      { 
-        title: '房屋總面積(坪)', 
-        key: 'area_house_ping', 
-        align: 'center' 
-      },
-      { 
-        title: '房屋總價', 
-        key: 'quote_mode_total_price', 
-        align: 'center', 
-        sort: customPriceSort,
-        minWidth: '160px' 
-      },
-      { 
-        title: '房屋單價', 
-        key: 'unit_price_value', 
-        align: 'center', 
-        sort: customPriceSort 
-      }
+      { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'center' },
+      { title: '露臺(坪)', key: 'area_terrace_ping', align: 'center' }, // ✅ [新增] 報價模式露臺
+      { title: '房屋總價', key: 'quote_mode_total_price', align: 'center', sort: customPriceSort, minWidth: '160px' },
+      { title: '房屋單價', key: 'unit_price_value', align: 'center', sort: customPriceSort }
     );
 
     return headers;
   }
-  // 情境 B: [銷控模式] (保持原樣，始終顯示優付供管理員操作)
+ // 情境 B: [銷控模式]
   else {
-    // 手機版銷控模式
     if (isMobile.value) {
       return [
         { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
         { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
-        // 銷控模式始終顯示優付
         { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
+        { title: '露臺(坪)', key: 'area_terrace_ping', align: 'end', width: '80px' }, // ✅ [新增] 手機版露臺
         { title: '房屋總價', key: 'price_list_house_total', align: 'end', width: '90px' },
         { title: '房屋底價', key: 'price_floor_house_total', align: 'end', width: '90px' },
         { title: '成交總價', key: 'total_transaction', align: 'end', width: '100px' },
@@ -1726,6 +1750,7 @@ const tableHeaders = computed(() => {
       // 銷控模式始終顯示優付
       { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
+      { title: '露臺(坪)', key: 'area_terrace_ping', align: 'start' }, // ✅ [新增] 電腦版露臺
       
       // ... (原本的欄位) ...
       { title: '房價(表價)', key: 'price_list_house_total', align: 'start' },
@@ -2373,6 +2398,19 @@ const uploadData = async () => {
   transition: all 0.2s ease-in-out;
   text-align: center;
 }
+
+/* ✅ 新增：有露臺戶別的特殊邊框或角標感 */
+.unit-card.has-terrace {
+  /* 增加一個內陰影或左側邊條，讓它在網格中一眼就能被辨識 */
+  box-shadow: inset 5px 0 0 0 #4CAF50 !important; 
+  background-image: linear-gradient(to right, rgba(76, 175, 80, 0.1), transparent) !important;
+}
+
+/* ✅ 新增：讓圖示更有質感 */
+.unit-card .v-icon.text-success {
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.2));
+}
+
 .unit-card.in-quote {
   border-color: #ff9800;
   box-shadow: 0 0 10px rgba(255, 152, 0, 0.5);
@@ -2635,6 +2673,20 @@ const uploadData = async () => {
 }
 .gap-1 {
   gap: 4px;
+}
+
+/* ✅ 列表模式：露臺戶別整列背景加強 */
+:deep(.row-has-terrace) {
+  background-color: rgba(76, 175, 80, 0.08) !important; /* 淡淡的綠色 */
+}
+
+:deep(.row-has-terrace:hover) {
+  background-color: rgba(76, 175, 80, 0.15) !important; /* 懸停時加深 */
+}
+
+/* 讓優付或狀態 Chip 在綠色背景下依然清晰 */
+:deep(.row-has-terrace .v-chip) {
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 </style>
