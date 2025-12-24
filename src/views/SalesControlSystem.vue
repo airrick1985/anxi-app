@@ -1528,15 +1528,18 @@ useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
 
 // ✅ [新增] 動態計算表格高度
 const tableHeight = computed(() => {
-  if (isMobile.value) {
-    // 手機版：
-    // 使用 dvh (Dynamic Viewport Height) 避免被手機瀏覽器網址列遮擋
-    // 扣除 Padding + Bottom Navigation (約 230px)
-    return 'calc(100dvh - 230px)';
-  } else {
-    // 電腦版：維持原樣
-    return 'calc(100vh - 150px)';
+  // 基礎扣除高度 (Toolbar + Padding)
+  let baseReduction = isMobile.value ? 230 : 160;
+
+  // ✅ 如果篩選面板開啟，需要扣除更多空間
+  if (showFilterPanel.value) {
+    // 根據你篩選面板的內容多寡調整數值 (電腦版約增加 130px, 手機版視內容而定)
+    baseReduction += isMobile.value ? 280 : 130; 
   }
+
+  return isMobile.value 
+    ? `calc(100dvh - ${baseReduction}px)` 
+    : `calc(100vh - ${baseReduction}px)`;
 });
 
 const { 
@@ -2258,6 +2261,7 @@ const uploadData = async () => {
   flex-direction: column;
   gap: 10px;
   padding-bottom: 20px; 
+overflow: hidden; 
 }
 
 /* ✅ [新增] 手機版專用修正 */
@@ -2586,7 +2590,7 @@ const uploadData = async () => {
   flex-direction: column;
   
   /* ✅ [新增] 確保如果欄位還是太寬，可以左右滑動而不是崩潰 */
-  overflow-x: auto; 
+overflow: hidden; 
 }
 
 

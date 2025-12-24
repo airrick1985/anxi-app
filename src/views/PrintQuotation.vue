@@ -842,7 +842,7 @@ function addQuoteTable() {
     let areaVal = formatNumber(item.unitDetails?.area_house_ping, 2) + ' 坪';
     const terracePing = Number(item.unitDetails?.area_terrace_ping) || 0;
     if (terracePing > 0) {
-      areaVal += `\n(露臺:${formatNumber(terracePing, 2)}坪)`;
+      areaVal += `\n(露臺${formatNumber(terracePing, 2)}坪)`;
     }
     row['面積'] = areaVal;
 
@@ -868,10 +868,10 @@ function addQuoteTable() {
     row['總價'] = formatNumber(quoteStore.getFinalTotalPrice(item.internalId)) + ' 萬';
     
     // ✅ 新增需求 1 資料：首購/非首購判斷
-    row['備註'] = item.isFirstTimeBuyer ? '首購' : '非首購';
-    
-    return row;
-  });
+  row['備註'] = (item.isFirstTimeBuyer === '是') ? '首購' : '非首購'; //
+  
+  return row;
+});
 
   // (4) 渲染 Fabric.js 物件
   
