@@ -70,7 +70,7 @@
 
       <v-toolbar v-else color="white" border="bottom" density="comfortable">
         <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
-        <v-toolbar-title class="text-h6 font-weight-bold">{{ projectName }}</v-toolbar-title>
+        <v-toolbar-title class="text-h6 font-weight-bold">{{ projectName }} 賞屋預約</v-toolbar-title>
         <v-btn variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
         <div class="d-flex align-center ml-2">
           <v-btn icon="mdi-chevron-left" variant="text" @click="goPrev"></v-btn>

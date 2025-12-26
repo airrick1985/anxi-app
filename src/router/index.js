@@ -548,7 +548,17 @@ const routes = [
   },
   // ✓ END: 新增「客資系統」入口
 
-  
+  // 1. 新增入口路由 (負責驗證與建案選擇)
+{
+  path: '/customer-management-entry',
+  name: 'CustomerManagementEntry',
+  component: () => import('@/views/CustomerManagementEntry.vue'),
+  meta: {
+    requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
+    layout: PublicLayout,
+    title: '客資系統 - 建案選擇'
+  }
+},
 
   // ✓ START: 新增「客資系統」最終頁面 (待開發)
   {

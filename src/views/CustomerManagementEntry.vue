@@ -28,7 +28,7 @@
         <v-card v-else class="elevation-2 rounded-lg">
           <v-toolbar color="primary" density="compact">
             <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-              請選擇建案
+              請選擇進入的建案 (客資管理)
             </v-toolbar-title>
           </v-toolbar>
           
@@ -37,9 +37,9 @@
               v-for="project in availableProjects"
               :key="project.id"
               @click="selectProject(project.id)"
-              prepend-icon="mdi-calendar-check"
+              prepend-icon="mdi-account-multiple-check"
               :title="project.name"
-              subtitle="點擊進入預約系統"
+              subtitle="點擊進入客資管理系統"
               append-icon="mdi-chevron-right"
               class="py-3"
             ></v-list-item>
@@ -62,95 +62,83 @@ const router = useRouter();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 
-// UI 狀態
+// UI 狀態監控
 const isLoading = ref(true);
 const statusMessage = ref('系統啟動中...');
 const errorMessage = ref('');
 const availableProjects = ref([]);
 
-// 核心邏輯
 onMounted(async () => {
   await initializeAuth();
 });
 
+/**
+ * 核心邏輯 1：LIFF 初始化與身分同步
+ */
 const initializeAuth = async () => {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    // 1. 初始化 LIFF (先做這步，確保能拿到 lineId)
     statusMessage.value = '連接 LINE 服務中...';
-    await liff.init({ liffId: '2008257338-6N3jwqxA' }); //2008257338-6N3jwqxA 測試 2008257338-FCbKJ8bB 正式
+    // 注意：請確保此 LIFF ID 已在 LINE Developers 後台正確設定 Endpoint URL
+    await liff.init({ liffId: '2008257338-n5Gp6pT3' }); //2008257338-n5Gp6pT3 正式 2008257338-6N3jwqxA 
 
     if (!liff.isLoggedIn()) {
-      console.log('[Entry] LIFF not logged in, redirecting...');
       statusMessage.value = '正在導向 LINE 登入...';
       liff.login({ redirectUri: window.location.href });
       return; 
     }
 
-    // 2. 取得 LINE ID
     const profile = await liff.getProfile();
     const lineId = profile.userId;
-    console.log('[Entry] LIFF Profile fetched. User ID:', lineId);
 
     if (!lineId) throw new Error('無法取得 LINE User ID');
 
-    // ✅ [修改] 強制重新登入/同步資料
-    // 即使 userStore.isLoggedIn 為 true，我們也要強制從後端更新權限
-    // 因為使用者可能剛被加權限，但前端 Session 還存著舊資料
-    
     statusMessage.value = '同步使用者權限...';
-    // fetchUserByLineId 會去 Firestore 讀取最新的 userPermissions
+    // 強制從 Firestore 讀取最新的權限物件
     const loginSuccess = await userStore.fetchUserByLineId(lineId); 
-    console.log('[Entry] Force sync user data result:', loginSuccess);
 
     if (!loginSuccess) {
       throw new Error('您的 LINE 帳號尚未綁定或無權限存取此系統。');
     }
 
-    // 3. 處理權限 (現在 userStore 裡的資料一定是最新的)
+    // 進入權限與建案過濾流程
     await processPermissions();
 
   } catch (err) {
-    console.error('Entry Error:', err);
+    console.error('Customer Management Entry Error:', err);
     errorMessage.value = err.message || '發生未知錯誤';
     isLoading.value = false;
   }
 };
 
+/**
+ * 核心邏輯 2：權限分流處理 (參考 ViewingReservationEntry 實作)
+ */
 const processPermissions = async () => {
-  console.log('>>> [Entry] processPermissions START <<<'); // Log Start
   statusMessage.value = '檢查系統權限...';
   
-  // 1. 確保 ProjectStore 已載入
+  // 1. 確保基礎建案資料已載入
   if (projectStore.projectsList.length === 0) {
-    console.log('[Entry] Project list empty, fetching from backend...');
     await projectStore.fetchProjects();
   }
-  console.log('[Entry] Project list loaded. Count:', projectStore.projectsList.length);
 
   const allowedProjects = [];
-  const targetSystems = ['客資系統-櫃台', '客資系統-銷售'];  
-  const userPermissions = userStore.user?.permissions || {}; // 取得使用者權限物件
+  // ✅ 針對客資管理系統的目標權限
+  const targetSystems = ['客資系統-櫃台', '客資系統-銷售']; 
+  const userPermissions = userStore.user?.permissions || {}; 
 
-  console.log('[Entry] Target Systems:', targetSystems);
-  console.log('[Entry] User Permissions Object:', userPermissions); 
-
-  // 2. 直接遍歷使用者的權限表
+  // 2. 遍歷權限表進行比對
   Object.keys(userPermissions).forEach(projectId => {
       const projectPerm = userPermissions[projectId];
       const systems = projectPerm.systems || [];
       
-      console.log(`--- Checking Project: ${projectId} ---`);
-      console.log(`    Systems:`, systems);
-
-      // 檢查此建案下是否有目標權限
+      // 檢查此建案下是否擁有客資相關權限
       const hasAccess = targetSystems.some(sys => systems.includes(sys));
-      console.log(`    Has Access?`, hasAccess);
 
       if (hasAccess) {
-          // 嘗試從 projectStore 取得最新名稱，若無則使用權限檔中的備份名稱
+          // 取得完整建案名稱
           const fullProjectData = projectStore.projectsList.find(p => p.id === projectId);
           const name = fullProjectData ? fullProjectData.name : (projectPerm.projectName || projectId);
 
@@ -161,35 +149,30 @@ const processPermissions = async () => {
       }
   });
 
-  console.log('[Entry] Final Allowed Projects:', allowedProjects);
-
-  // 3. 判斷結果
+  // 3. 根據結果進行跳轉或顯示選單
   if (allowedProjects.length === 0) {
-    console.warn('[Entry] No allowed projects found. Showing error.');
-    errorMessage.value = '您目前沒有任何建案的「報價系統」或「銷控系統」權限。';
+    errorMessage.value = '您目前沒有任何建案的「客資系統」存取權限。';
     isLoading.value = false;
     return;
   }
 
-  // 分流邏輯
   if (allowedProjects.length === 1) {
-    console.log('[Entry] Only 1 project found. Auto-redirecting to:', allowedProjects[0].name);
-    // 只有一個建案 -> 自動跳轉
+    // 只有一個建案 -> 自動跳轉至主系統
     statusMessage.value = `正在進入 ${allowedProjects[0].name}...`;
     selectProject(allowedProjects[0].id);
   } else {
-    console.log('[Entry] Multiple projects found. Showing selection menu.');
-    // 多個建案 -> 顯示選單
+    // 多個建案 -> 停止 Loading，顯示列表選單
     availableProjects.value = allowedProjects;
-    isLoading.value = false; // 停止 Loading，顯示選單 UI
+    isLoading.value = false;
   }
-  console.log('>>> [Entry] processPermissions END <<<');
 };
 
+/**
+ * 執行頁面跳轉
+ */
 const selectProject = (projectId) => {
-  console.log('[Entry] Selecting project:', projectId);
   router.replace({
-    name: 'ViewingReservationCalendar',
+    name: 'CustomerManagementSystem', // 導向客資管理主頁面
     params: { projectId }
   });
 };
@@ -197,7 +180,4 @@ const selectProject = (projectId) => {
 const retryLogin = () => {
   window.location.reload();
 };
-
-
-
 </script>

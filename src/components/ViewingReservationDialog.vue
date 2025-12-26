@@ -12,7 +12,7 @@
           <v-container>
             <v-row>
               <v-col cols="12" sm="6">
-                <label class="text-caption text-grey-darken-1">預約時間 (台灣時間)</label>
+                <label class="text-caption text-grey-darken-1">預約時間</label>
               <VueDatePicker 
                     v-model="formData.reservationTime" 
                     :enable-time-picker="true"
