@@ -92,7 +92,7 @@
 
           <v-tab value="inspection" class="text-h6 font-weight-bold px-4">
             <v-icon start size="large" class="mr-2" icon="mdi-clipboard-check"></v-icon>
-            雲端驗屋系統
+            雲端驗屋/修繕系統
           </v-tab>
         </v-tabs>
 
@@ -309,7 +309,7 @@ import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 
 // --- ✅ 2. 引入新圖片 (請確保檔案已存在於 src/assets/icons/) ---
 import parkingControlIcon from '@/assets/icons/parkingcontrol.png';      // 車位銷控設定
-import printerIcon from '@/assets/icons/printer.png';                   // 匯出報價單
+import accounting from '@/assets/icons/accounting.png';                   // 匯出報價單
 import smartphoneIcon from '@/assets/icons/smartphone.png';             // 自助式管理
 import scheduleIcon from '@/assets/icons/schedule.png';                 // 精準時段控管
 import bookingIcon from '@/assets/icons/booking.png';                   // 客製化預約項目
@@ -330,7 +330,7 @@ const mobileTabOptions = [
   { label: '雲端銷控/報價系統', value: 'sales', icon: 'mdi-home-analytics' },
   { label: '客戶管理系統', value: 'customer', icon: 'mdi-account-group' },
   { label: '線上預約系統', value: 'booking', icon: 'mdi-calendar-check' },
-  { label: '雲端驗屋系統', value: 'inspection', icon: 'mdi-clipboard-check' }
+  { label: '雲端驗屋/修繕系統', value: 'inspection', icon: 'mdi-clipboard-check' }
 ];
 
 // 產品資料結構
@@ -342,14 +342,15 @@ const products = ref([
     slogan: '打造高效、精準、移動化的現代案場',
     description: '本系統專為房地產銷售團隊設計，整合銷控管理與報價流程上雲端。透過即時數據同步與專業工具，提升團隊協作效率，優化客戶購屋體驗，決策快人一步。',
     features: [
-      { title: '人員權限管理', desc: '控管櫃台、銷售可用功能', icon: userManagementIcon },
-      { title: '戶別銷控設定', desc: '已售、未售、保留戶管理', icon: statusIcon },
-      { title: '底價表價調整', desc: '隨時隨地調整價格', icon: priceIcon },
-      { title: '車位銷控設定', desc: '車位報價圖面化管理', icon: parkingControlIcon },
-      { title: '平面圖測量', desc: '可測量任意距離、空間面積', icon: blueprintIcon },
+      { title: '銷控表系統', desc: '客戶報價、櫃台銷控，列表篩選等模式自由切換，告別紙本價目表', icon: statusIcon },
+      { title: '自動報價系統', desc: '各期付款方式比例系統自動計算，減少人為錯誤', icon: accounting },
       { title: '期款自訂義', desc: '適應各種不同價位、產品適合的比例', icon: subscriptionIcon },
-      { title: '雲端資料夾', desc: '成交相關文件訂單可上傳雲端共同協作', icon: databaseIcon },
-      { title: '匯出報價單', desc: '報價單可以建案調性調整', icon: printerIcon },
+      { title: '車位銷控設定', desc: '車位報價圖面化管理', icon: parkingControlIcon },
+      { title: '底價表價調整', desc: '隨時隨地調整價格', icon: priceIcon },
+      { title: '平面圖測量工具', desc: '獨家技術，各戶平面圖測量任意距離、空間面積，提升專業形象', icon: blueprintIcon },
+      { title: '人員權限管理', desc: '區分人員角色，櫃台、銷售各司其職', icon: userManagementIcon },
+      { title: '雲端資料夾', desc: '提供超大容量雲端空間，訂單、合約書、客戶證件資料可上傳雲端共同協作分享', icon: databaseIcon },
+      
     ],
     pricing: [
       {
@@ -471,9 +472,9 @@ const products = ref([
  // 4. [Inspection] 雲端驗屋系統
   {
     id: 'inspection',
-    name: '雲端驗屋系統',
+    name: '雲端驗屋/修繕系統',
     slogan: '數位化驗屋流程，讓交屋最後一哩路更完美',
-    description: '告別繁雜的紙本作業！從缺失紀錄、廠商修繕通知到住戶點交，提供全流程數位化解決方案。自動產出專業報告，即時追蹤修繕進度，大幅提升交屋效率與客戶滿意度。',
+    description: '告別繁雜的紙本作業！從缺失紀錄、廠商修繕通知到住戶點交，提供全流程數位化解決方案。自動產出專業報告，即時追蹤修繕進度，大幅提升交屋效率與售後服務滿意度。',
     features: [
       { title: '數位化驗屋紀錄', desc: '手機平板即時拍照標記，自動生成電子缺失單', icon: smartphoneIcon },
       
@@ -493,12 +494,21 @@ const products = ref([
     ],
     pricing: [
       {
-        name: '標準計價方案',
+        name: '驗屋系統計價方案',
         subName: '按戶計費 (Per Unit)',
         price: 'NT$ 500',
         unit: '戶',
         desc: '透明靈活的計價方式，依實際建案總戶數計算，用多少算多少。',
-        badge: '超值首選',
+        badge: '交屋階段',
+        isRecommended: true
+      },
+      {
+        name: '修繕系統計價方案',
+        subName: '',
+        price: '請洽詢報價',
+        unit: '',
+        desc: '',
+        badge: '售後服務階段',
         isRecommended: true
       }
     ],
