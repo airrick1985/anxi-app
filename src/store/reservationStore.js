@@ -331,8 +331,41 @@ export const useReservationStore = defineStore('reservation', {
         console.error("checkPhoneConflict Error:", err);
         return null; 
       }
+    },
+
+    /**
+ * 檢查客資資料庫 (vipGuests) 是否已存在此電話
+ */
+async checkVipGuestPhone(projectId, phone) {
+  if (!phone || !projectId) return null;
+  
+  try {
+    const q = query(
+      collection(db, "vipGuests"),
+      where("projectId", "==", projectId),
+      where("searchablePhones", "array-contains", phone)
+    );
+
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+      // 取得第一筆匹配的客資資料
+      const docSnap = snapshot.docs[0];
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        latestSalesName: data.latestSalesName || '未知銷售',
+        latestSalesPhone: data.latestSalesPhone || '' 
+      };
     }
+    return null;
+  } catch (err) {
+    console.error("checkVipGuestPhone Error:", err);
+    return null;
+  }
+},
 
 
   }
 });
+

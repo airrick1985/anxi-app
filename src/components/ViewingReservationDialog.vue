@@ -65,7 +65,6 @@
                   v-model="formData.customerPhone"
                   label="客戶電話"
                   variant="underlined"
-                  
                   placeholder="09xxxxxxxx"
                   :rules="phoneRules"
                   prepend-inner-icon="mdi-phone"
@@ -132,6 +131,26 @@
         <v-btn color="primary" variant="flat" @click="save" :loading="saving" :disabled="!valid">{{ isEdit ? '更新' : '新增' }}</v-btn>
       </v-card-actions>
     </v-card>
+
+    <v-dialog v-model="vipConflictDialog" max-width="450">
+        <v-card>
+            <v-card-title class="text-primary d-flex align-center">
+                <v-icon start color="primary">mdi-database-search</v-icon>
+                客資庫比對提醒
+            </v-card-title>
+            <v-card-text class="py-4">
+                此電話 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span> 
+                已存在 <span class="font-weight-bold">{{ currentProjectName }}</span> 資料庫，<br>
+                是否指定為銷售：<span class="text-subtitle-1 font-weight-bold">{{ vipGuestInfo?.latestSalesName }}</span>？
+            </v-card-text>
+            <v-divider></v-divider>
+            <v-card-actions class="pa-4">
+                <v-btn variant="text" @click="vipConflictDialog = false">不指定</v-btn>
+                <v-spacer></v-spacer>
+                <v-btn color="primary" variant="flat" @click="assignSalesFromVip">指定銷售</v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 
     <v-dialog v-model="conflictDialog" max-width="400">
         <v-card>
@@ -203,6 +222,72 @@ const reservationStore = useReservationStore();
 const userStore = useUserStore();
 const projectStore = useProjectStore(); // 用於查找建案名稱以驗證權限
 
+// --- 新增與調整的狀態 ---
+const vipConflictDialog = ref(false); // 客資重複彈窗
+const vipGuestInfo = ref(null);      // 儲存匹配到的客資資訊
+
+
+// 取得當前建案名稱
+const currentProjectName = computed(() => {
+    return projectStore.idToNameMap[props.projectId] || '本建案';
+});
+
+// --- 核心邏輯：失去焦點檢查 ---
+const handlePhoneBlur = async () => {
+  const phone = formData.value.customerPhone;
+  
+  // 1. 基本校驗：10碼且非編輯模式
+  if (phone && /^09\d{8}$/.test(phone) && !isEdit.value) { 
+     
+     // A. 檢查是否已有「現有預約」 (原有機制)
+     const resResult = await reservationStore.checkPhoneConflict(props.projectId, phone);
+     if (resResult) {
+         conflictInfo.value = resResult;
+         conflictDialog.value = true;
+         return; // 若已有預約，優先處理預約衝突
+     }
+
+     // B. 檢查是否已在「客資資料庫」 (新機制)
+     const vipResult = await reservationStore.checkVipGuestPhone(props.projectId, phone);
+     if (vipResult) {
+         vipGuestInfo.value = vipResult;
+         vipConflictDialog.value = true;
+     }
+  }
+};
+
+/**
+ * ✅ 修正版：點擊「指定銷售」後的處理流程
+ * 邏輯：Phone (Vip庫) -> 搜尋 salesList -> 取得 ID (UID) -> 填入表單
+ */
+const assignSalesFromVip = () => {
+    const targetPhone = vipGuestInfo.value?.latestSalesPhone; // 來自 Vip 客資庫
+    const targetName = vipGuestInfo.value?.latestSalesName;
+
+    if (targetPhone) {
+        // 1. 正規化電話號碼 (移除符號) 以利比對
+        const cleanTargetPhone = targetPhone.replace(/\D/g, '');
+
+        // 2. 從目前的專案銷售名單中，尋找「電話號碼」相符的人員
+        const matchedSales = reservationStore.salesList.find(s => {
+            const cleanSalesPhone = (s.phone || '').replace(/\D/g, '');
+            return cleanSalesPhone === cleanTargetPhone;
+        });
+
+        if (matchedSales) {
+            // 3. 成功找到匹配人員：將其 UID (id) 設為表單值
+            // 此時 v-select 會因為 ID 匹配成功，自動在畫面上顯示該員的「姓名」
+            formData.value.salesId = matchedSales.id;
+            console.log(`[Matching Success] 匹配到人員: ${matchedSales.name}`);
+        } else {
+            // 異常處理：客資庫雖然有這個人，但該人員目前沒被分配到這個建案
+            alert(`分配失敗：\n銷售 ${targetName}(${targetPhone}) 不在${currentProjectName.value}的銷售名單中。`);
+        }
+    }
+    
+    vipConflictDialog.value = false;
+};
+
 // ... (原有的 formRef, valid, formData 等 ref 保持不變) ...
 const formRef = ref(null);
 const valid = ref(false);
@@ -237,11 +322,26 @@ const canManageSales = computed(() => {
 
 // 下拉選單使用 "可見" 的名單
 const visibleSalesOptions = computed(() => {
-    const list = reservationStore.visibleSalesList.map(s => ({
+    // 1. 取得目前「未被隱藏」的業務員
+    let list = reservationStore.visibleSalesList.map(s => ({
         id: s.id,
         name: s.name,
         phone: s.phone
     }));
+
+    // 2. [優化重點]：如果目前的 formData.salesId 不在可見名單中（例如被隱藏了）
+    // 則從總名單 (salesList) 中找出該員並手動加入，確保選單能正確對應並顯示「姓名」
+    if (formData.value.salesId && !list.some(s => s.id === formData.value.salesId)) {
+        const matchedSales = reservationStore.salesList.find(s => s.id === formData.value.salesId);
+        if (matchedSales) {
+            list.push({
+                id: matchedSales.id,
+                name: `${matchedSales.name} (原負責人)`,
+                phone: matchedSales.phone
+            });
+        }
+    }
+
     return [
         { id: null, name: '不指定', phone: '' }, 
         ...list
@@ -287,18 +387,7 @@ watch(() => props.modelValue, async (val) => {
   }
 });
 
-const handlePhoneBlur = async () => {
-  const phone = formData.value.customerPhone;
-  if (phone && /^09\d{8}$/.test(phone) && !isEdit.value) { 
-     const result = await reservationStore.checkPhoneConflict(props.projectId, phone);
-     if (result) {
-         conflictInfo.value = result;
-         conflictDialog.value = true;
-     } else {
-         conflictInfo.value = null;
-     }
-  }
-};
+
 
 const resolveConflict = async (action) => {
     conflictDialog.value = false;

@@ -18409,8 +18409,7 @@ exports.onAppointmentChange = onDocumentWritten({
 /**
  * [Trigger] 監聽賞屋預約的寫入 (新增/修改/刪除)
  * 負責：
- * 1. 自動輪播指派銷售 (若未指定)
- * 2. 發送 LINE 廣播通知 (新增/取消/指派)
+ * 發送 LINE 廣播通知 (新增/取消/指派)
  */
 exports.onViewingReservationChange = onDocumentWritten({
     document: "viewing_reservations/{docId}",
