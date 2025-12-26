@@ -322,7 +322,7 @@
   <span>Powered by&nbsp;</span>
   <v-chip
     class="ml-1"
-    href="https://airrick1985.wixsite.com/anxi"
+    href="https://anxismart.com/"
     target="_blank"
     rel="noopener noreferrer"
     color="blue-grey"

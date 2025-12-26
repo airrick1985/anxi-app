@@ -4688,7 +4688,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -4842,7 +4842,7 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -5578,7 +5578,7 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -6128,7 +6128,7 @@ exports.handleDirectReportUpload = onCall({ region: "asia-east1",
     <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
     <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
     <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-      本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+      本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
     </p>
   </div>
 </div>
@@ -6656,7 +6656,7 @@ exports.completeAuthSigningProcess = onCall({ region: "asia-east1",
                   <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
                   <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
                   <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-                  本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+                  本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
                   </p>
                 </div>
               </div>
@@ -7100,7 +7100,7 @@ async function executeUploadReminderLogic() {
                             <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
                             <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
                             <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-                              本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+                              本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
                             </p>
                           </div>
 
@@ -8408,7 +8408,7 @@ const notificationTriggerFields = new Set([
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -12585,7 +12585,7 @@ async function _handleSaveBooking(data) {
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -12732,7 +12732,7 @@ async function _handleCancelBooking(data) {
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -13073,7 +13073,7 @@ async function _handleHandleDirectReportUpload(data) {
             <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
             <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
             <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-              本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+              本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
             </p>
           </div>
         </div>
@@ -14025,7 +14025,7 @@ async function _handleAddAppointmentAdmin(data) {
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
@@ -14293,7 +14293,7 @@ async function _handleUpdateAppointmentByAdmin(data) {
       <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
       <p style="margin: 5px 0 0 0;">${projectName} 預約系統</p>
       <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-        本服務由 <a href="https://airrick1985.wixsite.com/anxi" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+        本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
       </p>
     </div>
   </div>
