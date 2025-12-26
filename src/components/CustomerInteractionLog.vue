@@ -8,15 +8,15 @@
     <v-card class="d-flex flex-column bg-grey-lighten-5">
       <v-toolbar color="white" density="compact" elevation="1">
         <v-btn icon="mdi-close" @click="$emit('update:show', false)"></v-btn>
-       <v-toolbar-title class="text-h6 font-weight-bold text-primary">
-            {{ projectName || '建案' }}-客戶資料 - {{ guestData.latestName }}
+       <v-toolbar-title class="text-subtitle-1 font-weight-bold text-primary text-truncate">
+            {{ projectName || '建案' }}-客資 - {{ guestData.latestName }}
             </v-toolbar-title>
  
       </v-toolbar>
 
-      <v-card-text class="pa-0 flex-grow-1" style="overflow-y: auto;">
-        <v-container fluid class="fill-height align-start pa-4">
-<v-row :class="{ 'fill-height': $vuetify.display.mdAndUp }">
+      <v-card-text class="pa-0 flex-grow-1" style="overflow-y: auto; overflow-x: hidden;">
+        <v-container fluid class="pa-2 pa-md-4">
+  <v-row :class="{ 'fill-height': $vuetify.display.mdAndUp }" class="ma-0">
     <v-col cols="12" md="4" :class="{ 'fill-height': $vuetify.display.mdAndUp }">
                     <v-card class="mb-4" :class="{ 'fill-height': $vuetify.display.mdAndUp }" elevation="1">
                         <v-card-title class="bg-blue-grey-lighten-5 text-subtitle-1 font-weight-bold d-flex align-center justify-space-between">
@@ -356,27 +356,25 @@
 
 <v-col cols="12" md="8" :class="{ 'fill-height d-flex flex-column': $vuetify.display.mdAndUp }">
     <v-card :class="{ 'flex-grow-1 d-flex flex-column': $vuetify.display.mdAndUp }" elevation="1" style="min-height: 0;">
-                         <v-card-title class="text-subtitle-1 font-weight-bold border-b d-flex align-center justify-space-between bg-grey-lighten-4">
-                            <div class="d-flex align-center">
-                                <span>洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
-                                
-                                <v-divider vertical class="mx-3" v-if="guestData.updatedAt"></v-divider>
-                                <span v-if="guestData.updatedAt" class="text-caption text-grey-darken-1 font-weight-regular">
-                                    <v-icon size="x-small" start color="grey">mdi-clock-edit-outline</v-icon>
-                                    最後更新：{{ formatFullDateTime(guestData.updatedAt) }}
-                                </span>
-                            </div>
-                            
-                            <v-btn 
-                                color="teal" 
-                                variant="flat" 
-                                size="small"
-                                prepend-icon="mdi-pen-plus"
-                                @click="openAddLogDialog"
-                            >
-                                新增紀錄
-                            </v-btn>
-                        </v-card-title>
+                         <v-card-title class="text-subtitle-1 font-weight-bold border-b d-flex align-center justify-space-between bg-grey-lighten-4 px-2 px-md-4"> <div class="d-flex align-center flex-grow-1" style="min-width: 0;"> <span class="text-truncate">洽談紀錄 ({{ guestData.interactionLogs?.length || 0 }})</span>
+        
+        <v-divider vertical class="mx-2 d-none d-sm-flex" v-if="guestData.updatedAt"></v-divider>
+        <span v-if="guestData.updatedAt" class="text-caption text-grey-darken-1 font-weight-regular text-truncate d-none d-sm-inline-flex">
+            <v-icon size="x-small" start color="grey">mdi-clock-edit-outline</v-icon>
+            最後更新：{{ formatFullDateTime(guestData.updatedAt) }}
+        </span>
+    </div>
+    
+    <v-btn 
+        color="teal" 
+        variant="flat" 
+        size="small"
+        class="ml-2 flex-shrink-0" @click="openAddLogDialog"
+    >
+        <v-icon :start="!$vuetify.display.xs">mdi-pen-plus</v-icon>
+        <span class="d-none d-sm-inline">新增紀錄</span> 
+    </v-btn>
+</v-card-title>
 
                          <v-card-text class="pa-0" style="overflow-y: auto;">
                             <div class="pa-4 d-flex flex-column gap-3">
@@ -537,7 +535,7 @@
                 <v-time-picker
                   v-if="menuStart"
                   v-model="newLog.startTime"
-                  
+                  color="teal"
                   @update:model-value="menuStart = false"
                 ></v-time-picker>
               </v-menu>
@@ -560,7 +558,7 @@
     <v-time-picker
       v-if="menuEnd"
       v-model="newLog.endTime"
-      
+      color="teal"
       @update:model-value="menuEnd = false"
     ></v-time-picker>
   </v-menu>

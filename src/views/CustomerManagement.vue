@@ -30,16 +30,21 @@
               class="mb-4 bg-white"
             ></v-text-field>
 
-<v-data-iterator
-  v-if="isMobile"
-  :items="customerList"
-  :search="customerListSearch"
-  :loading="isLoadingCustomerList"
-  item-value="docId"
-  v-model:page="mobilePage"
-  :items-per-page="10"
->
-  <template v-slot:default="{ items }">
+            <div v-if="isLoadingCustomerList" class="text-center pa-10">
+              <v-progress-circular indeterminate color="primary" size="50"></v-progress-circular>
+              <p class="mt-3 text-grey">正在獲取客戶資料...</p>
+            </div>
+
+            <template v-else>
+              <v-data-iterator
+                v-if="isMobile"
+                :items="customerList"
+                :search="customerListSearch"
+                item-value="docId"
+                v-model:page="mobilePage"
+                :items-per-page="10"
+              >
+              <template v-slot:default="{ items }">
     <v-row dense>
       <v-col v-for="item in items" :key="item.raw.docId || item.raw.phone" cols="12">
         <v-card 
@@ -94,19 +99,20 @@
       <p class="mt-2">找不到符合的客資資料</p>
     </div>
   </template>
-</v-data-iterator>
-                  <v-data-table
-                    v-else
-                    :headers="customerTableHeaders"
-                    :items="customerList"
-                    :loading="isLoadingCustomerList"
-                    :search="customerListSearch"
-                    :sort-by="[{ key: 'updatedAt', order: 'desc' }]"  item-value="docId"
-                    class="elevation-1 cursor-pointer-row"
-                    @click:row="openInteractionLog"
-                    hover
-                  >
-                  <template v-slot:item.updatedAt="{ item }">
+                </v-data-iterator>
+
+              <v-data-table
+                v-else
+                :headers="customerTableHeaders"
+                :items="customerList"
+                :search="customerListSearch"
+                :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
+                item-value="docId"
+                class="elevation-1 cursor-pointer-row"
+                @click:row="openInteractionLog"
+                hover
+              >
+             <template v-slot:item.updatedAt="{ item }">
                   <div class="text-caption text-grey-darken-1">
                     {{ formatFullDateTime(item.updatedAt) }}
                   </div>
@@ -155,10 +161,10 @@
                 <div v-if="Array.isArray(item['房型需求'])" class="text-caption">
                   {{ item['房型需求'].join(', ') }}
                 </div>
-              </template>
-              
+              </template>    
             </v-data-table>
-              <CustomerInteractionLog
+            </template>
+          <CustomerInteractionLog
     v-if="isInteractionDialogVisible"
     v-model:show="isInteractionDialogVisible"
     :project-id="projectId"
@@ -167,6 +173,7 @@
     :settings="settings"
     @data-updated="loadCustomerList"
 />
+
           </v-card-text>
         </v-card>
       </v-window-item>
