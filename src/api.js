@@ -7399,3 +7399,21 @@ export const deleteInteractionLog = async (projectId, docId, logId, operatorPhon
     throw new Error(error.message);
   }
 };
+
+
+// 定義客資分配的路由函式 (強制指定 asia-east1 地區)
+export const leadAssignmentApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'processAndAssignLead');
+
+/**
+ * [API] 執行名單分配與 LINE 通知
+ * @param {object} data - { rawText, projectId, salesId, salesLineId, salesName }
+ */
+export const processAndAssignLeadAPI = async (data) => {
+  try {
+    const result = await leadAssignmentApi(data);
+    return result.data; // 回傳 { status: "success", leadId, ... }
+  } catch (error) {
+    console.error("[api.js] processAndAssignLeadAPI 錯誤:", error);
+    throw error;
+  }
+};

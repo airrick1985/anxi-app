@@ -39,6 +39,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const axios = require("axios");
 
 
 // --- 這些是輕量級或共用的，保留在頂部 ---
@@ -86,7 +87,7 @@ const {
 const line = require("@line/bot-sdk");
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-
+const { DateTime } = require('luxon'); // ✅ 處理台灣時區
 
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
@@ -18707,4 +18708,253 @@ async function _getProjectSalesLineIds(db, projectId) {
     }
 
     return Array.from(lineIds);
+}
+
+
+/**
+ * [V2 - 路由函數] 客資分配系統 (Lead Distribution)
+ * 參考 vipFormApi 流程，改為不強制要求 Firebase Auth
+ */
+exports.processAndAssignLead = onCall({
+    region: "asia-east1",
+    cors: true,
+    memory: "256MiB",
+    timeoutSeconds: 60,
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+}, async (request) => {
+    const functionName = "processAndAssignLead";
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    try {
+        // 修改點：不再依賴 request.data 傳入的 salesLineId
+        const { rawText, projectId, salesId, salesName } = request.data;
+
+        // ✅ 新增：根據 salesId (電話) 從 users 集合獲取最新的 lineId
+        const userDoc = await db.collection("users").doc(salesId).get();
+        const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
+        
+        console.log(`[${functionName}] 執行分配 - 業務: ${salesName}, LINE ID: ${salesLineId}`);
+
+        // 1. 執行解析引擎
+        const leadData = _parseLeadText(rawText);
+        if (!leadData || !leadData.phone) {
+            throw new HttpsError("invalid-argument", "無法解析名單內容。");
+        }
+
+        // 2. 比對重複
+        const dupQuery = await db.collection("leads")
+            .where("phone", "==", leadData.phone)
+            .where("isDeleted", "==", false)
+            .get();
+        const duplicateCount = dupQuery.size;
+
+        // 3. 準備寫入資料
+        const now = admin.firestore.Timestamp.now();
+        const newLead = {
+            ...leadData,
+            projectId,
+            assignedTo: salesId,
+            assignedName: salesName,
+            assignedAt: now,
+            status: "", 
+            isDeleted: false,
+            duplicateCount: duplicateCount,
+            createdAt: now,
+            lastModifiedAt: now,
+            lastModifiedBy: request.auth?.token?.name || "櫃檯人員"
+        };
+
+        const leadRef = await db.collection("leads").add(newLead);
+
+        // 4. 發送 LINE 通知 (使用剛從 users 抓到的 salesLineId)
+        if (salesLineId && salesLineId.startsWith('U')) {
+            const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+            if (channelToken) {
+                await _sendLeadAssignmentFlex(
+                    channelToken,
+                    salesLineId,
+                    newLead,
+                    leadRef.id
+                );
+                console.log(`[${functionName}] LINE 通知成功發送至: ${salesLineId}`);
+            }
+        } else {
+            console.warn(`[${functionName}] 警告：該業務員沒有綁定 LINE (ID: ${salesLineId})`);
+        }
+
+        return { status: "success", leadId: leadRef.id };
+
+    } catch (error) {
+        console.error(`[${functionName}] 錯誤:`, error);
+        throw new HttpsError('internal', error.message);
+    }
+});
+
+// =================================================================
+// 2. [Scheduled] 動態定時提醒 (每 15 分鐘執行一次檢查)
+// =================================================================
+/**
+ * 負責：根據各專案設定的提醒時間 (remindTime)，通知尚有未處理名單的人員
+ */
+exports.scheduledLeadReminder = onSchedule({
+    schedule: "*/15 * * * *", // 每 15 分鐘運行
+    timeZone: "Asia/Taipei",
+    region: "asia-east1",
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+}, async (event) => {
+    const functionName = "scheduledLeadReminder";
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const now = new Date();
+    const currentHHmm = now.toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
+
+    console.log(`[${functionName}] 檢查點: ${currentHHmm}`);
+
+    try {
+        // 1. 撈取開啟通知的專案設定
+        const settingsSnap = await db.collection("projectSettings")
+            .where("isRemindEnabled", "==", true)
+            .where("remindTime", "==", currentHHmm)
+            .get();
+
+        if (settingsSnap.empty) return;
+
+        for (const settingDoc of settingsSnap.docs) {
+            const projectId = settingDoc.id;
+            
+            // 2. 找出該專案「已分配但 status 為空」的名單
+            const uncompletedSnap = await db.collection("leads")
+                .where("projectId", "==", projectId)
+                .where("status", "==", "")
+                .where("isDeleted", "==", false)
+                .get();
+
+            // 若該專案今日都完成了 (且有分配過)，可考慮發送「已全部完成」訊息給櫃檯
+            if (uncompletedSnap.empty) {
+                // 發送完工通知邏輯 (略)
+                continue;
+            }
+
+            // 3. 彙整各銷售人員的未處理數量
+            const userSummary = {}; // { userId: { name: "", count: 0, lineId: "" } }
+            
+            uncompletedSnap.forEach(doc => {
+                const data = doc.data();
+                const uid = data.assignedTo;
+                if (!userSummary[uid]) {
+                    userSummary[uid] = { name: data.assignedName, count: 0 };
+                }
+                userSummary[uid].count++;
+            });
+
+            // 4. 取得 User LINE ID 並發送
+            for (const [uid, info] of Object.entries(userSummary)) {
+                const userDoc = await db.collection("users").doc(uid).get();
+                const lineId = userDoc.data()?.lineId;
+
+                if (lineId && lineId.startsWith('U')) {
+                    await _sendReminderFlex(
+                        process.env.ANXISMART_LINE_CRM_TOKEN,
+                        lineId,
+                        info.name,
+                        info.count
+                    );
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`[${functionName}] 定時任務失敗:`, error);
+    }
+});
+
+// =================================================================
+// 內部輔助函式 (Internal Helpers)
+// =================================================================
+
+/**
+ * 解析引擎：支援三種文本格式
+ */
+function _parseLeadText(text) {
+    let result = { name: "", phone: "", date: "", source: "", budget: "" };
+
+    if (text.includes("【新名單】")) {
+        // 格式一: 廠商提供
+        result.name = text.match(/姓名：(.*?)\n/)?.[1] || "";
+        result.phone = text.match(/連絡電話：(.*?)\n/)?.[1]?.replace("+886", "0").replace(/-/g, "") || "";
+        result.date = text.match(/日期：(\d{4}年\d{2}月\d{2}日)/)?.[1]?.replace(/年|月/g, "/").replace("日", "") || "";
+        result.source = text.match(/名單來源：(.*?)\n/)?.[1] || "廠商提供";
+        result.budget = text.match(/問題一：(.*?)\n/)?.[1] || "";
+    } 
+    else if (text.match(/\d{4}\/\d{2}\/\d{2}.*?T.*Z/)) {
+        // 格式二: WIX
+        const parts = text.trim().split(/\s+/);
+        result.date = parts[0];
+        result.name = parts[2];
+        result.phone = parts[3];
+        result.source = "WIX官網";
+        result.budget = parts[4] || "";
+    }
+    else if (text.includes("【591】")) {
+        // 格式三: 591
+        result.name = text.match(/顧客姓名：(.*?)\n/)?.[1] || "";
+        result.phone = text.match(/行動電話：(.*?)\n/)?.[1]?.replace(/-/g, "") || "";
+        result.date = text.match(/提交時間：(.*?)\n/)?.[1] || "";
+        result.source = "591平台";
+        result.budget = "諮詢物件:" + (text.match(/咨詢物件：(.*?)\n/)?.[1] || "");
+    }
+
+    return result;
+}
+
+/**
+ * LINE Flex: 新名單分配
+ */
+async function _sendLeadAssignmentFlex(token, to, lead, docId) {
+    const liffUrl = `https://liff.line.me/YOUR_LIFF_ID/contact?id=${docId}`;
+    const payload = {
+        to: to,
+        messages: [{
+            type: "flex",
+            altText: "🏠 新分配名單通知",
+            contents: {
+                type: "bubble",
+                header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "新名單分配", weight: "bold", color: "#FFFFFF" }], backgroundColor: "#283593" },
+                body: {
+                    type: "box", layout: "vertical", contents: [
+                        { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg" },
+                        { type: "text", text: `電話：${lead.phone}`, color: "#1565C0", size: "sm", margin: "sm" },
+                        { type: "text", text: `來源：${lead.source}`, color: "#666666", size: "xs" },
+                        { type: "separator", margin: "md" },
+                        { type: "text", text: lead.duplicateCount > 0 ? `⚠️ 此電話重複 ${lead.duplicateCount} 次` : "✨ 新開發客戶", color: lead.duplicateCount > 0 ? "#D32F2F" : "#2E7D32", size: "xs", margin: "md" }
+                    ]
+                },
+                footer: { type: "box", layout: "vertical", contents: [{ type: "button", action: { type: "uri", label: "查看並回報", uri: liffUrl }, style: "primary", color: "#283593" }] }
+            }
+        }]
+    };
+    return axios.post("https://api.line.me/v2/bot/message/push", payload, { headers: { Authorization: `Bearer ${token}` } });
+}
+
+/**
+ * LINE Flex: 定時提醒
+ */
+async function _sendReminderFlex(token, to, name, count) {
+    const payload = {
+        to: to,
+        messages: [{
+            type: "flex",
+            altText: "⏰ 名單回報提醒",
+            contents: {
+                type: "bubble",
+                body: {
+                    type: "box", layout: "vertical", contents: [
+                        { type: "text", text: `您好 ${name}`, size: "sm", color: "#666666" },
+                        { type: "text", text: `您目前尚有 ${count} 筆`, weight: "bold", size: "xl", margin: "md", color: "#D32F2F" },
+                        { type: "text", text: "未完成的聯絡名單回報", weight: "bold", size: "md" },
+                        { type: "text", text: "請撥空前往系統填寫進度。", size: "xs", color: "#aaaaaa", margin: "lg" }
+                    ]
+                }
+            }
+        }]
+    };
+    return axios.post("https://api.line.me/v2/bot/message/push", payload, { headers: { Authorization: `Bearer ${token}` } });
 }

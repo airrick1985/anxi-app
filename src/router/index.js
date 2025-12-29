@@ -627,6 +627,32 @@ const routes = [
     }
   },
 
+  // ✅ 客資系統 - 入口 (負責 LIFF 驗證與權限分流)
+{
+  path: '/lead-distribution-entry',
+  name: 'LeadDistributionEntry',
+  component: () => import('@/views/LeadDistributionEntry.vue'),
+  meta: {
+    requiresAuth: false, // 由頁面內部 LIFF 檢查
+    layout: PublicLayout,
+    title: '聯絡名單系統 - 驗證中'
+  }
+},
+
+// ✅ 客資系統 - 主頁面 (包含名單分配與回報列表)
+{
+  path: '/lead-distribution/:projectId',
+  name: 'LeadDistribution',
+  component: () => import('@/views/LeadDistribution.vue'),
+  props: true,
+  meta: {
+    requiresAuth: false,
+    layout: PublicLayout,
+    title: '聯絡名單管理'
+  }
+},
+
+
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 
 ];
