@@ -7402,16 +7402,17 @@ export const deleteInteractionLog = async (projectId, docId, logId, operatorPhon
 
 
 // 定義客資分配的路由函式 (強制指定 asia-east1 地區)
+// 在 src/api.js 中加入或更新
 export const leadAssignmentApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'processAndAssignLead');
 
 /**
- * [API] 執行名單分配與 LINE 通知
- * @param {object} data - { rawText, projectId, salesId, salesLineId, salesName }
+ * [API] 執行名單分配 (傳送文件ID)
+ * @param {object} data - { leadId, projectId, salesId, salesName }
  */
 export const processAndAssignLeadAPI = async (data) => {
   try {
     const result = await leadAssignmentApi(data);
-    return result.data; // 回傳 { status: "success", leadId, ... }
+    return result.data;
   } catch (error) {
     console.error("[api.js] processAndAssignLeadAPI 錯誤:", error);
     throw error;

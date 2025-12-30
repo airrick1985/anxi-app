@@ -18712,8 +18712,8 @@ async function _getProjectSalesLineIds(db, projectId) {
 
 
 /**
- * [V2 - 路由函數] 客資分配系統 (Lead Distribution)
- * 參考 vipFormApi 流程，改為不強制要求 Firebase Auth
+ * [V3 - 優化版] 客資分配系統
+ * 邏輯：根據 leadId 讀取 -> 更新分配資訊 -> 發送 LINE
  */
 exports.processAndAssignLead = onCall({
     region: "asia-east1",
@@ -18726,66 +18726,54 @@ exports.processAndAssignLead = onCall({
     const db = new Firestore({ databaseId: "anxi-app" });
 
     try {
-        // 修改點：不再依賴 request.data 傳入的 salesLineId
-        const { rawText, projectId, salesId, salesName } = request.data;
+        // ✅ 接收參數改為 leadId (文件ID)
+        const { leadId, projectId, salesId, salesName } = request.data;
 
-        // ✅ 新增：根據 salesId (電話) 從 users 集合獲取最新的 lineId
+        // 1. 取得該名單在資料庫中的現有資料
+        const leadRef = db.collection("leads").doc(leadId);
+        const leadSnap = await leadRef.get();
+
+        if (!leadSnap.exists) {
+            throw new HttpsError("not-found", "找不到該筆名單資料。");
+        }
+        const leadData = leadSnap.data();
+
+        // 2. 獲取業務員的 LINE ID (從 users 集合獲取)
         const userDoc = await db.collection("users").doc(salesId).get();
         const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
-        
-        console.log(`[${functionName}] 執行分配 - 業務: ${salesName}, LINE ID: ${salesLineId}`);
 
-        // 1. 執行解析引擎
-        const leadData = _parseLeadText(rawText);
-        if (!leadData || !leadData.phone) {
-            throw new HttpsError("invalid-argument", "無法解析名單內容。");
-        }
+        console.log(`[${functionName}] 指派名單: ${leadId}, 來源: ${leadData.source}, 業務: ${salesName}`);
 
-        // 2. 比對重複
-        const dupQuery = await db.collection("leads")
-            .where("phone", "==", leadData.phone)
-            .where("isDeleted", "==", false)
-            .get();
-        const duplicateCount = dupQuery.size;
-
-        // 3. 準備寫入資料
+        // 3. 執行原地更新 (Update) - 不再使用 .add() 建立新文件
         const now = admin.firestore.Timestamp.now();
-        const newLead = {
-            ...leadData,
-            projectId,
+        const updatePayload = {
             assignedTo: salesId,
             assignedName: salesName,
             assignedAt: now,
-            status: "", 
-            isDeleted: false,
-            duplicateCount: duplicateCount,
-            createdAt: now,
             lastModifiedAt: now,
-            lastModifiedBy: request.auth?.token?.name || "櫃檯人員"
+            lastModifiedBy: "櫃檯人員"
         };
+        await leadRef.update(updatePayload);
 
-        const leadRef = await db.collection("leads").add(newLead);
-
-        // 4. 發送 LINE 通知 (使用剛從 users 抓到的 salesLineId)
+        // 4. 發送 LINE 通知 (使用資料庫內已存好的精準 source 與 budget)
         if (salesLineId && salesLineId.startsWith('U')) {
             const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
             if (channelToken) {
+                // 合併更新後的資料傳給發送函式
+                const notifyData = { ...leadData, ...updatePayload };
                 await _sendLeadAssignmentFlex(
                     channelToken,
                     salesLineId,
-                    newLead,
-                    leadRef.id
+                    notifyData,
+                    leadId
                 );
-                console.log(`[${functionName}] LINE 通知成功發送至: ${salesLineId}`);
             }
-        } else {
-            console.warn(`[${functionName}] 警告：該業務員沒有綁定 LINE (ID: ${salesLineId})`);
         }
 
-        return { status: "success", leadId: leadRef.id };
+        return { status: "success", leadId: leadId };
 
     } catch (error) {
-        console.error(`[${functionName}] 錯誤:`, error);
+        console.error(`[${functionName}] 執行失敗:`, error);
         throw new HttpsError('internal', error.message);
     }
 });
@@ -18909,7 +18897,7 @@ function _parseLeadText(text) {
  * LINE Flex: 新名單分配
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
-    const liffUrl = `https://liff.line.me/YOUR_LIFF_ID/contact?id=${docId}`;
+   const liffUrl = `https://liff.line.me/2008257338-tSotJVRj/?liff_path=contact&id=${docId}`;
     const payload = {
         to: to,
         messages: [{

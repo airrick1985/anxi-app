@@ -652,6 +652,13 @@ const routes = [
   }
 },
 
+{
+  path: '/contact',
+  name: 'LeadReport',
+  component: () => import('@/views/LeadReport.vue'),
+  meta: { requiresAuth: false } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
+},
+
 
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 

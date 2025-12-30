@@ -478,29 +478,31 @@ const submitReport = async () => {
   }
 };
 
+// 請在 LeadDistribution.vue 中替換此函式
 const confirmAssignment = async () => {
   if (!selectedSalesId.value || selectedLeads.value.length === 0) return;
   
   try {
-    uiStore.setLoading(true);
+    uiStore.setLoading(true); // 使用修正後的 uiStore
+    
     const targetSales = salesStaff.value.find(s => s.id === selectedSalesId.value);
 
-    // 批次執行 API 呼叫
+    // ✅ 修改點：傳送 leadId 而非 rawText
     const promises = selectedLeads.value.map(leadId => {
-      const lead = allLeads.value.find(l => l.id === leadId);
       return processAndAssignLeadAPI({
-        rawText: lead.rawText || `客戶：${lead.name}\n電話：${lead.phone}`,
+        leadId: leadId,      // 傳送文件原始 ID
         projectId: props.projectId,
         salesId: targetSales.id,
-        salesLineId: targetSales.lineId || '',
         salesName: targetSales.name
       });
     });
 
     await Promise.all(promises);
+    
     uiStore.showSnackbar(`成功指派 ${selectedLeads.value.length} 筆名單並發送 LINE`, 'success');
     selectedLeads.value = []; // 清空選取項
   } catch (err) {
+    console.error("分配失敗:", err);
     uiStore.showSnackbar('指派失敗: ' + (err.message || '連線錯誤'), 'error');
   } finally {
     uiStore.setLoading(false);
