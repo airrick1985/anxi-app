@@ -656,7 +656,11 @@ const routes = [
   path: '/contact',
   name: 'LeadReport',
   component: () => import('@/views/LeadReport.vue'),
-  meta: { requiresAuth: false } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
+  meta: { 
+    requiresAuth: false,
+     layout: PublicLayout,
+     title: '聯絡名單'
+   } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
 },
 
 

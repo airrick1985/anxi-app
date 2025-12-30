@@ -126,7 +126,7 @@
           ANXI Smart System v1.0
         </div>
       </v-col>
-    </v-row>
+    </V-row>
   </v-container>
 </template>
 
@@ -140,45 +140,35 @@ import {
 } from 'firebase/firestore';
 import { useUserStore } from '@/store/user';
 import { useUiStore } from '@/store/uiStore';
-import liff from '@line/liff';
 
 const route = useRoute();
 const userStore = useUserStore();
 const uiStore = useUiStore();
 
 // --- 狀態定義 ---
-const leadId = route.query.id; // 從 URL 獲取 ?id=xxx
+const leadId = route.query.id; // 直接從 URL 參數 ?id=xxx 獲取
 const isLoading = ref(true);
 const leadData = ref(null);
 const historyLogs = ref([]);
 
 const form = ref({ status: '', reason: '', note: '' });
 const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
-const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '號碼錯誤/空號']);
+const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號']);
 
-// --- LIFF 與資料初始化 ---
+// --- 資料初始化 ---
 onMounted(async () => {
+  if (!leadId) {
+    isLoading.value = false;
+    return;
+  }
+
   try {
-    // 1. LIFF 初始化 (請替換為您的正式 LIFF ID)
-    await liff.init({ liffId: '2006718044-XXXXXX' });
-
-    // 2. 自動登入檢查
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-
-    if (!leadId) {
-      isLoading.value = false;
-      return;
-    }
-
-    // 3. 讀取 Firebase 資料
+    // 1. 讀取名單資料
     const leadSnap = await getDoc(doc(db, 'leads', leadId));
     if (leadSnap.exists()) {
       leadData.value = leadSnap.data();
       
-      // 讀取該專案的自訂選項設定
+      // 2. 讀取該專案的自訂選項設定 (包含不考慮原因)
       const setSnap = await getDoc(doc(db, 'projectSettings', leadData.value.projectId));
       if (setSnap.exists()) {
         const settings = setSnap.data();
@@ -186,7 +176,7 @@ onMounted(async () => {
         if (settings.reasonOptions) reasonOptions.value = settings.reasonOptions;
       }
 
-      // 讀取歷史回報
+      // 3. 讀取此客戶的歷史聯絡日誌
       const logsSnap = await getDocs(query(
         collection(db, `leads/${leadId}/contactLogs`),
         orderBy('createdAt', 'desc')
@@ -194,26 +184,26 @@ onMounted(async () => {
       historyLogs.value = logsSnap.docs.map(d => d.data());
     }
   } catch (err) {
-    console.error("初始化失敗:", err);
+    console.error("資料讀取失敗:", err);
   } finally {
     isLoading.value = false;
   }
 });
 
-// --- 送出回報 ---
+// --- 送出回報邏輯 ---
 const submitReport = async () => {
   if (!form.value.status) return;
 
   try {
     uiStore.setLoading(true);
 
-    // A. 更新名單主檔狀態
+    // A. 更新名單主檔的聯絡狀況
     await updateDoc(doc(db, 'leads', leadId), {
       status: form.value.status,
       lastReportedAt: serverTimestamp()
     });
 
-    // B. 新增一筆聯絡日誌
+    // B. 在子集合中新增一筆聯絡軌跡紀錄
     await addDoc(collection(db, `leads/${leadId}/contactLogs`), {
       ...form.value,
       createdBy: userStore.user?.name || '業務人員',
@@ -221,13 +211,16 @@ const submitReport = async () => {
     });
 
     uiStore.showSnackbar('回報提交成功！', 'success');
-
-    // C. 成功後延遲 1.5 秒自動關閉 LIFF 視窗
-    setTimeout(() => {
-      if (liff.isInClient()) {
-        liff.closeWindow();
-      }
-    }, 1500);
+    
+    // 清空目前輸入
+    form.value.note = '';
+    
+    // 重新載入日誌清單以顯示最新一筆
+    const logsSnap = await getDocs(query(
+      collection(db, `leads/${leadId}/contactLogs`),
+      orderBy('createdAt', 'desc')
+    ));
+    historyLogs.value = logsSnap.docs.map(d => d.data());
 
   } catch (err) {
     console.error("提交失敗:", err);
@@ -253,7 +246,6 @@ const getStatusColor = (status) => {
 </script>
 
 <style scoped>
-/* 讓手機版介面更有質感 */
 .v-container {
   max-width: 600px;
   margin: 0 auto;
