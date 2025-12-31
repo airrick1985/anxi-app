@@ -18897,7 +18897,7 @@ function _parseLeadText(text) {
  * LINE Flex: 新名單分配
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
-   const liffUrl = `https://liff.line.me/2008257338-tSotJVRj/?liff_path=contact&id=${docId}`;
+   const liffUrl = `https://glorious-barnacle-7rpgq4xjx4jfx79p-5173.app.github.dev/#/contact?id=${docId}`;
     const payload = {
         to: to,
         messages: [{

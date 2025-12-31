@@ -42,12 +42,12 @@
             <v-select
               v-model="form.status"
               :items="statusOptions"
-              label="選擇目前狀況"
+              label="狀況"
               variant="outlined"
               color="primary"
               density="comfortable"
               class="mb-2"
-              rounded="lg"
+              
             ></v-select>
 
             <v-expand-transition>
@@ -55,12 +55,12 @@
                 <v-select
                   v-model="form.reason"
                   :items="reasonOptions"
-                  label="請選擇未約原因"
+                  label="未約原因"
                   variant="outlined"
                   color="error"
                   density="comfortable"
                   class="mb-2"
-                  rounded="lg"
+                  
                 ></v-select>
               </div>
             </v-expand-transition>
