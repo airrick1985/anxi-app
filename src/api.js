@@ -7418,3 +7418,39 @@ export const processAndAssignLeadAPI = async (data) => {
     throw error;
   }
 };
+
+// 定義名單查重的路由函式 (強制指定 asia-east1)
+export const checkLeadDuplicatesApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'checkLeadDuplicates');
+
+/**
+ * [API] 執行名單查重比對
+ * @param {string} projectId - 建案 ID
+ * @param {string[]} phones - 待檢查的電話陣列
+ */
+export const checkLeadDuplicates = async (projectId, phones) => {
+  if (!projectId || !phones.length) return { results: {} };
+  
+  try {
+    const result = await checkLeadDuplicatesApi({
+      projectId,
+      phones
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] checkLeadDuplicates 失敗:", error);
+    throw error;
+  }
+};
+
+
+// ✅ 新增：批次匯入並直接分配名單的 API
+export const batchImportAndAssignLeadsAPI = async (data) => {
+  try {
+    const func = httpsCallable(getFunctions(undefined, 'asia-east1'), 'batchImportAndAssignLeads');
+    const result = await func(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] batchImportAndAssignLeadsAPI 異常:", error);
+    throw error;
+  }
+};

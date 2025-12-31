@@ -18894,32 +18894,86 @@ function _parseLeadText(text) {
 }
 
 /**
- * LINE Flex: 新名單分配
+ * LINE Flex: 新名單分配通知
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
-   const liffUrl = `https://glorious-barnacle-7rpgq4xjx4jfx79p-5173.app.github.dev/#/contact?id=${docId}`;
-    const payload = {
-        to: to,
-        messages: [{
-            type: "flex",
-            altText: "🏠 新分配名單通知",
-            contents: {
-                type: "bubble",
-                header: { type: "box", layout: "vertical", contents: [{ type: "text", text: "新名單分配", weight: "bold", color: "#FFFFFF" }], backgroundColor: "#283593" },
-                body: {
-                    type: "box", layout: "vertical", contents: [
-                        { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg" },
-                        { type: "text", text: `電話：${lead.phone}`, color: "#1565C0", size: "sm", margin: "sm" },
-                        { type: "text", text: `來源：${lead.source}`, color: "#666666", size: "xs" },
-                        { type: "separator", margin: "md" },
-                        { type: "text", text: lead.duplicateCount > 0 ? `⚠️ 此電話重複 ${lead.duplicateCount} 次` : "✨ 新開發客戶", color: lead.duplicateCount > 0 ? "#D32F2F" : "#2E7D32", size: "xs", margin: "md" }
-                    ]
-                },
-                footer: { type: "box", layout: "vertical", contents: [{ type: "button", action: { type: "uri", label: "查看並回報", uri: liffUrl }, style: "primary", color: "#283593" }] }
+  // 注意：這裡的 URL 請根據您的實際 domain 調整
+  const liffUrl = `https://anxismart.com/#/contact?id=${docId}`;
+  
+  const payload = {
+    to: to,
+    messages: [{
+      type: "flex",
+      altText: "📞 分配名單通知",
+      contents: {
+        type: "bubble",
+        header: {
+          type: "box",
+          layout: "vertical",
+          contents: [{
+            type: "text",
+            text: `名單分配-${lead.assignedName || "業務員"}`,
+            weight: "bold",
+            color: "#FFFFFF"
+          }],
+          backgroundColor: "#2E7D32" 
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg" },
+            { 
+              type: "text", 
+              text: `電話：${lead.phone}`, 
+              color: "#1565C0", 
+              size: "lg", 
+              margin: "sm",
+              decoration: "underline",
+              action: {
+                type: "clipboard",
+                label: "複製電話號碼",
+                // ✅ 修正點：屬性名稱必須為 clipboardText
+                clipboardText: lead.phone.replace(/\s+/g, '') 
+              }
+            },
+            { type: "text", text: `預算：${lead.budget || "未填寫"}`, color: "#666666", size: "lg" },
+            { type: "text", text: `來源：${lead.source || "未知"}`, color: "#666666", size: "lg" },
+            { type: "text", text: `日期：${lead.date || "未知"}`, color: "#666666", size: "lg" },
+            { type: "separator", margin: "md" },
+            { 
+              type: "text", 
+              text: lead.statusText || "", 
+              color: (lead.statusText?.includes("🚩") ? "#E65100" : "#2E7D32"), 
+              size: "xs", 
+              margin: "md" 
             }
-        }]
-    };
-    return axios.post("https://api.line.me/v2/bot/message/push", payload, { headers: { Authorization: `Bearer ${token}` } });
+          ]
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [{
+            type: "button",
+            action: {
+              type: "uri",
+              label: "回報聯絡狀況",
+              uri: liffUrl
+            },
+            style: "primary",
+            color: "#2E7D32" 
+          }]
+        }
+      }
+    }]
+  };
+
+  return axios.post("https://api.line.me/v2/bot/message/push", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
 }
 
 /**
@@ -18946,3 +19000,176 @@ async function _sendReminderFlex(token, to, name, count) {
     };
     return axios.post("https://api.line.me/v2/bot/message/push", payload, { headers: { Authorization: `Bearer ${token}` } });
 }
+
+
+/**
+ * [V3 - 優化版] 名單重複檢查系統
+ * 邏輯：解析名單後，比對電話是否存在於 vipGuests (成交) 或 leads (既有) 集合
+ */
+exports.checkLeadDuplicates = onCall({
+    region: "asia-east1",
+    cors: true,
+    memory: "256MiB",
+    timeoutSeconds: 60
+}, async (request) => {
+    const functionName = "checkLeadDuplicates";
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    try {
+        const { projectId, phones } = request.data;
+
+        if (!projectId || !phones || !Array.isArray(phones)) {
+            throw new HttpsError("invalid-argument", "缺少必要參數。");
+        }
+
+        // 1. 電話正規化 (只留數字) 並去除重複，確保比對準確
+        const cleanPhones = [...new Set(phones.map(p => p.replace(/\D/g, "")))];
+        const results = {};
+        
+        // 預設所有電話為無重複狀態
+        cleanPhones.forEach(p => { results[p] = { type: "none", data: null }; });
+
+        console.log(`[${functionName}] 專案: ${projectId}, 檢查數量: ${cleanPhones.length}`);
+
+        // 2. 第一階段：比對 vipGuests (成交客戶)
+        // array-contains-any 限制一次 10 筆
+        for (let i = 0; i < cleanPhones.length; i += 10) {
+            const chunk = cleanPhones.slice(i, i + 10);
+            const vipSnap = await db.collection("vipGuests")
+                .where("projectId", "==", projectId)
+                .where("searchablePhones", "array-contains-any", chunk)
+                .get();
+
+            vipSnap.forEach(doc => {
+                const guest = doc.data();
+                const matchedPhone = chunk.find(p => guest.searchablePhones?.includes(p));
+                if (matchedPhone) {
+                    results[matchedPhone] = {
+                        type: "vip",
+                        data: {
+                            name: guest.latestName || "未知",
+                            latestSalesName: guest.latestSalesName || "未指派",
+                            latestSalesPhone: guest.latestSalesPhone || "", // 分配的 KEY
+                            visitDate: guest.submissions?.[0]?.拜訪日期 || ""
+                        }
+                    };
+                }
+            });
+        }
+
+        // 3. 第二階段：比對 leads (既有名單)
+        // 僅檢查目前還是 "none" 的電話
+        const remainingPhones = cleanPhones.filter(p => results[p].type === "none");
+        for (let i = 0; i < remainingPhones.length; i += 30) {
+            const chunk = remainingPhones.slice(i, i + 30);
+            const leadsSnap = await db.collection("leads")
+                .where("projectId", "==", projectId)
+                .where("phone", "in", chunk)
+                .get();
+
+            const leadGroups = {};
+            leadsSnap.forEach(doc => {
+                const lead = doc.data();
+                if (!leadGroups[lead.phone]) leadGroups[lead.phone] = [];
+                leadGroups[lead.phone].push(lead);
+            });
+
+            Object.keys(leadGroups).forEach(phone => {
+                // 找出最晚分配的一筆
+                const sorted = leadGroups[phone].sort((a, b) => 
+                    (b.assignedAt?.toMillis() || 0) - (a.assignedAt?.toMillis() || 0)
+                );
+                const latest = sorted[0];
+                results[phone] = {
+                    type: "lead",
+                    data: {
+                        count: leadGroups[phone].length,
+                        assignedName: latest.assignedName || "未指派",
+                        assignedTo: latest.assignedTo || "", // 業務手機
+                        assignedAt: latest.assignedAt ? latest.assignedAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : ""
+                    }
+                };
+            });
+        }
+
+        return { status: "success", results };
+
+    } catch (error) {
+        console.error(`[${functionName}] 異常:`, error);
+        throw new HttpsError('internal', error.message);
+    }
+});
+
+
+/**
+ * ✅ [新函式] 批次匯入名單並直接分配 (簡化流程專用)
+ * 接收：{ projectId, leads, operator }
+ */
+exports.batchImportAndAssignLeads = onCall({
+    region: "asia-east1",
+    cors: true,
+    memory: "512MiB",
+    timeoutSeconds: 120,
+    secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+}, async (request) => {
+    const functionName = "batchImportAndAssignLeads";
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const { projectId, leads, operator } = request.data;
+
+    if (!projectId || !Array.isArray(leads)) {
+        throw new HttpsError("invalid-argument", "缺少必要參數。");
+    }
+
+    try {
+        const results = [];
+        const now = admin.firestore.Timestamp.now();
+        const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+
+        for (const leadData of leads) {
+            // 1. 建立名單基本資料
+            const payload = {
+                name: leadData.name || "",
+                phone: leadData.phone || "",
+                date: leadData.date || "",
+                source: leadData.source || "廠商提供",
+                statusText: leadData.statusText || "", // ✅ 確保前端傳遞的狀態文字存入 payload
+                budget: leadData.budget || "",
+                projectId: projectId,
+                status: "",
+                isDeleted: false,
+                createdAt: now,
+                importedBy: operator
+            };
+
+            // 如果有指派業務
+            if (leadData.assignedTo) {
+                payload.assignedTo = leadData.assignedTo;
+                payload.assignedName = leadData.assignedName;
+                payload.assignedAt = now;
+                payload.lastModifiedAt = now;
+                payload.lastModifiedBy = operator;
+            }
+
+            // 2. 寫入資料庫
+            const docRef = await db.collection("leads").add(payload);
+            const leadId = docRef.id;
+
+            // 3. 如果有指派，發送 LINE 通知
+            if (payload.assignedTo) {
+                const userDoc = await db.collection("users").doc(payload.assignedTo).get();
+                const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
+
+                if (salesLineId && salesLineId.startsWith('U') && channelToken) {
+                    // 使用既有的發送邏輯
+                await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, docRef.id);                }
+            }
+            results.push(leadId);
+        }
+
+        return { status: "success", count: results.length };
+
+    } catch (error) {
+        console.error(`[${functionName}] 執行失敗:`, error);
+        throw new HttpsError('internal', error.message);
+    }
+});

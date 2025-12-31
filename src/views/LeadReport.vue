@@ -8,10 +8,6 @@
           <p class="mt-4 text-grey-darken-1">正在讀取客戶資料...</p>
         </div>
 
-        <v-alert v-else-if="!leadData" type="error" variant="tonal" class="rounded-lg">
-          找不到該筆名單，請確認連結是否正確。
-        </v-alert>
-
         <v-card v-else class="rounded-xl elevation-3 overflow-hidden">
           <v-toolbar color="indigo-darken-4" density="comfortable">
             <v-toolbar-title class="text-subtitle-1 font-weight-bold">
@@ -122,9 +118,6 @@
           </v-card-text>
         </v-card>
 
-        <div class="text-center mt-6 text-caption text-grey-lighten-1">
-          ANXI Smart System v1.0
-        </div>
       </v-col>
     </V-row>
   </v-container>
