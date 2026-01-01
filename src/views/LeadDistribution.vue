@@ -573,7 +573,18 @@
 
         <v-divider></v-divider>
         <v-card-actions class="pa-4 bg-white">
-        <v-btn 
+        <v-btn v-if="uploadStep === 2" variant="text" color="grey-darken-1" prepend-icon="mdi-arrow-left" @click="uploadStep = 1">返回修改文本</v-btn>
+       
+          <v-spacer></v-spacer>
+          <v-btn 
+            v-if="uploadStep === 1" 
+            color="primary" 
+            variant="elevated" 
+            min-width="150" 
+            rounded="lg"
+            @click="handleParsing"
+          >開始解析文本</v-btn>
+           <v-btn 
           v-if="uploadStep === 2" 
           color="success" 
           variant="elevated" 
@@ -585,24 +596,6 @@
         >
           確認無誤並執行分配 ({{ previewLeads.length }}筆)
         </v-btn>
-          <v-spacer></v-spacer>
-          <v-btn 
-            v-if="uploadStep === 1" 
-            color="primary" 
-            variant="elevated" 
-            min-width="150" 
-            rounded="lg"
-            @click="handleParsing"
-          >開始解析文本</v-btn>
-          <v-btn 
-            v-if="uploadStep === 2" 
-            color="success" 
-            variant="elevated" 
-            min-width="250" 
-            rounded="lg"
-            :disabled="isCheckingDuplicates"
-            @click="executeBatchImportAndAssign"
-          >確認無誤並執行分配 ({{ previewLeads.length }}筆)</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
