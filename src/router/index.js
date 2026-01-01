@@ -685,6 +685,29 @@ router.beforeEach(async (to, from, next) => {
   const logPrefix = `[Router Guard Debug - ${isMobile ? 'Mobile' : 'Desktop'}]`;
   //console.log(`${logPrefix} Entry Point. To: ${to.fullPath}, From: ${from.name}, Query: ${JSON.stringify(to.query)}`);
 
+
+// **** 👇👇👇 新增：LIFF 路徑救援邏輯 👇👇👇 ****
+  
+  // 1. 取得網址中問號後的參數 (window.location.search 包含 ?liff.state=...)
+  const urlParams = new URLSearchParams(window.location.search);
+  const liffState = urlParams.get('liff.state');
+
+  // 2. 如果偵測到 liff.state 且目前路由停在首頁 '/'
+  if (liffState && to.path === '/') {
+    // 解碼路徑 (例如將 %23%2F 轉回 #/)
+    const decodedPath = decodeURIComponent(liffState);
+    // 移除最前面的 '#' 字元，以便 Vue Router 跳轉
+    const cleanPath = decodedPath.replace(/^#/, '');
+
+    console.log('[LIFF Redirect] 偵測到登入回傳狀態，自動導向目標路徑:', cleanPath);
+
+    // 強制跳轉至救援路徑，並結束此次守衛
+    return next(cleanPath);
+  }
+  
+  // **** 👆👆👆 修改點結束 👆👆👆 ****
+
+
   const userStore = useUserStore();
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn; // 獲取主系統登入狀態
