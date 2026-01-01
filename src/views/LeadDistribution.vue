@@ -99,28 +99,27 @@
               </v-col>
                 <v-col cols="12" md="6">
                   <v-card variant="flat" class="rounded-lg pa-4 fill-height">
-                    <div class="text-subtitle-2 font-weight-bold mb-4">
-                      聯絡狀況總計
-                    </div>
-                    <div style="height: 250px;">
+                    <div class="text-subtitle-2 font-weight-bold mb-4">聯絡狀況總計</div>
+                    <div v-if="allProjectLogs.length > 0" style="height: 250px;">
                       <Pie :data="statusDistributionChartData" :options="pieOptions" />
+                    </div>
+                    <div v-else class="d-flex align-center justify-center fill-height text-grey-lighten-1">
+                      尚無聯絡回報資料
                     </div>
                   </v-card>
                 </v-col>
 
               <v-col cols="12" md="6">
-                <v-card variant="flat" class="rounded-lg pa-4 fill-height">
-                  <div class="text-subtitle-2 font-weight-bold mb-4">
-                    不考慮原因分析
-                  </div>
-                  <div v-if="allLeads.filter(l => l.status === '不考慮').length > 0" style="height: 250px;">
-                    <Pie :data="deniedReasonChartData" :options="pieOptions" />
-                  </div>
-                  <div v-else class="d-flex align-center justify-center fill-height text-grey-lighten-1">
-                    尚無不考慮名單資料
-                  </div>
-                </v-card>
-              </v-col>
+              <v-card variant="flat" class="rounded-lg pa-4 fill-height">
+                <div class="text-subtitle-2 font-weight-bold mb-4">不考慮原因分析</div>
+                <div v-if="allProjectLogs.some(log => log.status === '不考慮')" style="height: 250px;">
+                  <Pie :data="deniedReasonChartData" :options="pieOptions" />
+                </div>
+                <div v-else class="d-flex align-center justify-center fill-height text-grey-lighten-1">
+                  尚無不考慮名單資料
+                </div>
+              </v-card>
+            </v-col>
             </v-row>
           </v-window-item>
 
@@ -622,7 +621,8 @@ import { useUiStore } from '@/store/uiStore';
 import { db } from '@/firebase';
 import { 
   collection, query, where, onSnapshot, orderBy, doc, 
-  getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp, addDoc 
+  getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp, addDoc,
+  collectionGroup // ✅ 新增此項
 } from 'firebase/firestore';
 
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI } from '@/api'; 
@@ -645,7 +645,8 @@ const props = defineProps(['projectId']);
 const router = useRouter();
 const userStore = useUserStore();
 const uiStore = useUiStore();
-
+// 2. 定義儲存所有日誌的變數
+const allProjectLogs = ref([]);
 
 // --- 狀態定義 ---
 const activeTab = ref('management');
@@ -810,64 +811,73 @@ const staffLoadChartData = computed(() => {
 
 // --- 新增：不考慮狀態與原因統計邏輯 ---
 
-// 1. 統計「不考慮」vs「其他狀態」的佔比
+
 const statusDistributionChartData = computed(() => {
   const counts = {};
-  
-  // 1. 定義顏色對照表 (確保顏色跟名稱綁定)
+  // 顏色對照表
   const colorMap = {
-    '不考慮': '#F44336',     // 紅
-    '已約賞屋': '#4CAF50',   // 綠
-    '還在討論': '#2196F3',   // 藍
-    '未接': '#FF9800',      // 橘
-    '空號': '#9E9E9E',      // 灰
-    '未處理': '#E0E0E0'     // 淺灰
+    '不考慮': '#F44336', // 紅
+    '已約賞屋': '#4CAF50', // 綠
+    '還在討論': '#2196F3', // 藍
+    '未接': '#FF9800',     // 橘
+    '空號': '#9E9E9E',     // 灰
+    '未處理': '#E0E0E0'    // 淺灰
   };
 
-  // 2. 初始化統計物件
+  // 1. 初始化統計 (確保顯示所有選項)
   statusOptions.value.forEach(opt => { counts[opt] = 0; });
-  counts['未處理'] = 0;
 
-  // 3. 執行統計 (依據 l.status 欄位)
-  allLeads.value.forEach(l => {
-    const key = l.status || '未處理';
-    counts[key] = (counts[key] || 0) + 1;
+  // 2. 從所有專案日誌中進行統計
+  allProjectLogs.value.forEach(log => {
+    const key = log.status;
+    if (key) {
+      counts[key] = (counts[key] || 0) + 1;
+    }
   });
 
-  // 4. 根據最終顯示的標籤順序，動態生成顏色陣列
-  const labels = Object.keys(counts);
-  const bgColors = labels.map(label => colorMap[label] || '#3949AB'); // 若找不到則預設靛藍
+  // 3. 過濾掉筆數為 0 的項目，並取得標籤 (讓圖表更乾淨)
+  const labels = Object.keys(counts).filter(k => counts[k] > 0);
+  
+  // 💡 安全檢查：若完全無資料，回傳空物件結構防止 Chart.js 報錯
+  if (labels.length === 0) {
+    return { 
+      labels: ['尚無資料'], 
+      datasets: [{ data: [1], backgroundColor: ['#E0E0E0'] }] 
+    };
+  }
+
+  // 4. 對應顏色陣列
+  const bgColors = labels.map(label => colorMap[label] || '#3949AB');
 
   return {
     labels: labels,
     datasets: [{
-      data: Object.values(counts),
-      backgroundColor: bgColors, // ✅ 這裡現在是動態對應的
+      data: labels.map(l => counts[l]),
+      backgroundColor: bgColors,
       hoverOffset: 4
     }]
   };
 });
-
-// 2. 針對「不考慮」的名單，統計其「未約原因」佔比
 const deniedReasonChartData = computed(() => {
   const counts = {};
-  // 僅篩選狀態為「不考慮」的名單
-  const deniedLeads = allLeads.value.filter(l => l.status === '不考慮');
+  // 僅篩選不考慮的日誌
+  const deniedLogs = allProjectLogs.value.filter(log => log.status === '不考慮');
   
-  deniedLeads.forEach(l => {
-    const key = l.reason || '未註明原因';
+  deniedLogs.forEach(log => {
+    const key = log.reason || '未註明原因';
     counts[key] = (counts[key] || 0) + 1;
   });
 
+  const labels = Object.keys(counts);
+  if (labels.length === 0) {
+    return { labels: ['無原因資料'], datasets: [{ data: [1], backgroundColor: ['#EEEEEE'] }] };
+  }
+
   return {
-    labels: Object.keys(counts),
+    labels: labels,
     datasets: [{
-      data: Object.values(counts),
-      // 使用一組對比明顯的顏色
-      backgroundColor: [
-        '#E91E63', '#9C27B0', '#673AB7', 
-        '#3F51B5', '#009688', '#FF9800', '#795548'
-      ]
+      data: labels.map(l => counts[l]),
+      backgroundColor: ['#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#009688', '#FF9800', '#795548']
     }]
   };
 });
@@ -1238,17 +1248,23 @@ const submitReport = async () => {
   }
   try {
     uiStore.setLoading(true);
+    // 更新主名單狀態
     await updateDoc(doc(db, 'leads', currentLead.value.id), {
       status: reportForm.value.status,
       lastReportedAt: serverTimestamp()
     });
+
+    // ✅ 關鍵：存入 contactLogs 時，務必確保有 projectId
     await addDoc(collection(db, `leads/${currentLead.value.id}/contactLogs`), {
       ...reportForm.value,
-      createdBy: userStore.user?.name,
+      projectId: props.projectId, // 👈 供 collectionGroup 統計使用
+      createdBy: userStore.user?.name || '系統人員',
       createdAt: serverTimestamp()
     });
+
     showMsg('回報成功', 'success');
     showReportDialog.value = false;
+    reportForm.value = { status: '', reason: '', note: '' }; // 重置表單
   } catch (err) {
     showMsg(err.message, 'error');
   } finally {
@@ -1338,6 +1354,24 @@ onMounted(async () => {
   if (!isReceptionist.value && !isAdmin.value) {
     activeTab.value = 'status';
   }
+
+  const logsQuery = query(
+    collectionGroup(db, 'contactLogs'),
+    where('projectId', '==', props.projectId)
+  );
+
+onSnapshot(logsQuery, (snap) => {
+  // ✅ 加入 Debug Log
+  console.log(`[Debug] 收到日誌快照，資料筆數: ${snap.size}`);
+  
+  if (snap.size > 0) {
+    console.log(`[Debug] 第一筆日誌內容範例:`, snap.docs[0].data());
+  } else {
+    console.warn(`[Debug] 警告：目前查無任何符合 projectId 為 "${props.projectId}" 的日誌。`);
+  }
+
+  allProjectLogs.value = snap.docs.map(d => d.data());
+});
 
   if (isAdmin.value) {
     fetchDeletedLeads(); 
