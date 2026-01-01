@@ -212,9 +212,36 @@ import { format } from 'date-fns';
 const props = defineProps({
   modelValue: Boolean,
   projectId: String,
-  initialData: Object,
+  initialData: { type: Object, default: () => ({}) },
   initialDate: Date // ✅ [新增] 接收外部傳入的預設時間
 });
+
+// 2. 建立統一的初始化方法
+const initDialogData = async () => {
+    // 讀取銷售名單
+    await reservationStore.fetchProjectSales(props.projectId);
+    
+    if (isEdit.value) {
+        // 編輯模式：複製舊有資料
+        const d = props.initialData;
+        formData.value = {
+            ...d,
+            reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
+        };
+    } else {
+        // 新增模式：處理預填資料
+        formData.value = {
+            // ✅ 優化：優先使用傳入的 initialData (如姓名、電話)，若無則為空
+            customerName: props.initialData?.customerName || '',
+            customerPhone: props.initialData?.customerPhone || '',
+            reservationTime: props.initialDate || new Date(),
+            type: '新客',
+            salesId: null,
+            note: props.initialData?.note || ''
+        };
+    }
+    conflictInfo.value = null;
+};
 
 const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
 
@@ -300,6 +327,8 @@ const formData = ref({
   salesId: null,
   note: ''
 });
+
+
 const conflictInfo = ref(null);
 const conflictDialog = ref(false);
 
@@ -358,34 +387,38 @@ const phoneRules = [
 
 // ... (watch, handlePhoneBlur, resolveConflict, confirmDelete, closeDialog, formatDate 保持不變) ...
 
-// ✅ [修改] 初始化邏輯
+// ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
     // 開啟時載入銷售名單
     await reservationStore.fetchProjectSales(props.projectId);
     
-    if (props.initialData) {
-      // 編輯模式：複製資料
+    // 1. 使用 isEdit (!!props.initialData?.id) 來區分 編輯 或 新增
+    if (isEdit.value) {
+      // 【編輯模式】：複製完整的現有預約資料
       const d = props.initialData;
       formData.value = {
         ...d,
         reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
       };
     } else {
-      // 新增模式：初始化
+      // 【新增模式】：初始化資料 (包含來自 LeadReport 的預填資訊)
       formData.value = {
-        customerName: '',
-        customerPhone: '',
-        // ✅ [關鍵修改] 使用傳入的 initialDate，若無則使用現在時間
+        // ✅ 修正：讀取傳入的預填資料，確保姓名、電話、備註正確帶入
+        customerName: props.initialData?.customerName || '',
+        customerPhone: props.initialData?.customerPhone || '',
+        note: props.initialData?.note || '',
+        
+        // 時間處理
         reservationTime: props.initialDate || new Date(),
         type: '新客',
-        salesId: null,
-        note: ''
+        salesId: null
       };
     }
+    // 重置衝突狀態
     conflictInfo.value = null;
   }
-});
+}, { immediate: true }); // 確保組件若是用 v-if 載入也能立即執行
 
 
 
@@ -420,6 +453,11 @@ const saveSettings = async () => {
     await reservationStore.updateSalesVisibility(props.projectId, tempHiddenIds.value);
     settingsDialog.value = false;
 };
+
+// 3. 在掛載時執行 (解決 v-if 開啟問題)
+onMounted(() => {
+    if (props.modelValue) initDialogData();
+});
 
 // ... (save 函式保持不變) ...
 const save = async () => {
@@ -459,7 +497,7 @@ const save = async () => {
         } else {
             await reservationStore.addReservation(payload);
         }
-        emit('saved');
+       emit('saved', payload);
         closeDialog();
     } catch (e) {
         alert("儲存失敗：" + e.message);

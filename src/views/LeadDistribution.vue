@@ -104,38 +104,119 @@
       </v-col>
     </v-row>
 
-    <v-dialog v-model="showReportDialog" fullscreen transition="dialog-bottom-transition">
-      <v-card class="bg-grey-lighten-4">
-        <v-toolbar color="primary">
-          <v-btn icon="mdi-close" @click="showReportDialog = false"></v-btn>
-          <v-toolbar-title>聯絡回報: {{ currentLead?.name }}</v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="submitReport">送出回報</v-btn>
-        </v-toolbar>
-        
-        <v-container>
-          <v-row>
-            <v-col cols="12">
-              <v-card class="pa-4 mb-4">
-                <v-select v-model="reportForm.status" :items="statusOptions" label="聯絡狀況"></v-select>
-                <v-select v-if="reportForm.status === '不考慮'" v-model="reportForm.reason" :items="reasonOptions" label="未約原因 (必填)"></v-select>
-                <v-textarea v-model="reportForm.note" label="備註內容" variant="outlined" placeholder="輸入詳細通話內容..."></v-textarea>
-              </v-card>
+   <v-dialog v-model="showReportDialog" fullscreen transition="dialog-bottom-transition">
+  <v-card class="bg-grey-lighten-4">
+    <v-toolbar color="primary" dark dense class="px-4">
+      <v-btn icon="mdi-close" @click="showReportDialog = false"></v-btn>
+      <v-toolbar-title class="text-subtitle-1 font-weight-bold">
+        聯絡回報: {{ currentLead?.name }} ({{ currentLead?.phone }})
+      </v-toolbar-title>
+      <v-spacer></v-spacer>
+      
+    </v-toolbar>
+    
+    <v-container>
+      <v-row justify="center">
+        <v-col cols="12" md="8" lg="6">
+          <v-card class="pa-5 mb-4 rounded-xl elevation-2">
+            <div class="text-subtitle-2 font-weight-bold mb-4 text-indigo">回報表單內容</div>
+            
+            <v-select 
+              v-model="reportForm.status" 
+              :items="statusOptions" 
+              label="聯絡狀況" 
+              variant="outlined" 
+              class="mb-2"
+              rounded="lg"
+            ></v-select>
 
-              <div class="text-subtitle-2 mb-2">歷史回報日誌</div>
-              <v-card v-for="(log, idx) in leadLogs" :key="idx" class="mb-2 pa-3" variant="outlined">
-                <div class="d-flex justify-space-between align-center">
-                  <v-chip size="x-small" :color="getStatusColor(log.status)">{{ log.status }}</v-chip>
-                  <span class="text-caption text-grey">{{ formatDateTime(log.createdAt) }}</span>
-                </div>
-                <div class="text-body-2 mt-1">{{ log.note }}</div>
-                <div class="text-caption text-primary">回報人：{{ log.createdBy }}</div>
-              </v-card>
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-card>
-    </v-dialog>
+            <template v-if="showReasonField">
+              <v-text-field
+                v-if="isReasonReadonly"
+                v-model="reportForm.reason"
+                label="未約原因 (自動填入)"
+                variant="filled"
+                readonly
+                rounded="lg"
+                class="mb-3"
+                bg-color="grey-lighten-3"
+              ></v-text-field>
+
+              <v-select
+                v-else
+                v-model="reportForm.reason"
+                :items="reasonOptions"
+                label="未約原因 (必填)"
+                variant="outlined"
+                rounded="lg"
+                class="mb-3"
+              ></v-select>
+            </template>
+
+            <v-btn 
+              v-if="reportForm.status === '已約賞屋'"
+              block 
+              color="primary" 
+              variant="elevated"
+              class="mb-4 font-weight-bold"
+              prepend-icon="mdi-calendar-check"
+              @click="openBookingDialog"
+            >
+              開啟預約視窗
+            </v-btn>
+
+            <v-textarea 
+              v-model="reportForm.note" 
+              label="備註內容" 
+              variant="outlined" 
+              placeholder="輸入詳細通話內容或預約摘要..."
+              rounded="lg"
+              rows="4"
+            ></v-textarea>
+
+           <div class="text-center mt-4">
+            <v-btn 
+              variant="elevated" 
+              color="success" 
+              size="large"
+              rounded="lg"
+              min-width="200"
+              @click="submitReport"
+            >
+              送出回報內容
+            </v-btn>
+          </div>
+          </v-card>
+
+          <div class="text-subtitle-2 mb-3 d-flex align-center ps-2">
+            <v-icon size="20" class="me-2 text-indigo">mdi-history</v-icon>回報日誌
+          </div>
+          
+          <v-card v-for="(log, idx) in leadLogs" :key="idx" class="mb-3 pa-4 rounded-xl shadow-sm border-s-lg" 
+                  :style="{ borderLeftColor: getStatusColor(log.status) }">
+            <div class="d-flex justify-space-between align-center mb-1">
+              <v-chip size="x-small" :color="getStatusColor(log.status)" variant="flat" class="font-weight-bold">
+                {{ log.status }}
+              </v-chip>
+              <span class="text-caption text-grey-darken-1 font-weight-bold">{{ formatDateTime(log.createdAt) }}</span>
+            </div>
+            <div v-if="log.reason" class="text-caption text-indigo-darken-2 font-weight-bold">原因：{{ log.reason }}</div>
+            <div class="text-body-2 mt-1 text-grey-darken-3">{{ log.note }}</div>
+            <div class="text-caption text-indigo-lighten-1 mt-1">回報人：{{ log.createdBy }}</div>
+          </v-card>
+        </v-col>
+      </v-row>
+    </v-container>
+  </v-card>
+</v-dialog>
+
+<ViewingReservationDialog 
+  v-if="showBookingDialog"
+  v-model="showBookingDialog"
+  :project-id="projectId"
+  :initial-data="bookingInitialData"
+  @saved="onBookingSaved"
+/>
 
     <v-dialog v-model="showRecycleBin" max-width="900" scrollable>
       <v-card class="rounded-xl">
@@ -358,12 +439,15 @@ import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, Li
 import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
 import LeadReport from './LeadReport.vue';
 
+import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
+
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement);
 
 const props = defineProps(['projectId']);
 const router = useRouter();
 const userStore = useUserStore();
 const uiStore = useUiStore();
+
 
 // --- 狀態定義 ---
 const activeTab = ref('management');
@@ -389,6 +473,55 @@ const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
 const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號']);
 
 const snackbar = reactive({ show: false, text: '', color: '' });
+
+// ... 保持原有 state 定義 ...
+const showBookingDialog = ref(false);
+const bookingInitialData = ref({});
+const isReasonReadonly = ref(false);
+
+// 2. 邏輯連動：當回報狀態改變時 (比照 LeadReport.vue)
+const showReasonField = computed(() => {
+  return ['還在討論', '空號', '未接', '不考慮'].includes(reportForm.value.status);
+});
+
+watch(() => reportForm.value.status, (newStatus) => {
+  if (newStatus === '還在討論') {
+    reportForm.value.reason = '家人討論';
+    isReasonReadonly.value = true;
+  } else if (newStatus === '空號' || newStatus === '未接') {
+    reportForm.value.reason = '號碼錯誤/空號';
+    isReasonReadonly.value = true;
+  } else if (newStatus === '不考慮') {
+    reportForm.value.reason = ''; // 讓使用者從選單中選
+    isReasonReadonly.value = false;
+  } else {
+    reportForm.value.reason = '';
+    isReasonReadonly.value = false;
+  }
+});
+
+// 3. 預約視窗連動方法
+const openBookingDialog = () => {
+  bookingInitialData.value = {
+    customerName: currentLead.value.name,
+    customerPhone: currentLead.value.phone,
+    source: currentLead.value.source,
+    note: ``
+  };
+  showBookingDialog.value = true;
+};
+
+const onBookingSaved = (bookingData) => {
+  // 格式化預約資訊並填入備註
+  const rawDate = bookingData.reservationTime;
+  const timeStr = rawDate?.toDate ? formatDateTime(rawDate) : new Date(rawDate).toLocaleString('zh-TW', { hour12: false });
+
+  const summary = `【系統同步：已完成賞屋預約】\n預約時間：${timeStr}\n預約類型：${bookingData.type}\n指定銷售：${bookingData.salesName || '不指定'}\n備註：${bookingData.note || '無'}`;
+  
+  reportForm.value.note = (reportForm.value.note ? reportForm.value.note + '\n' : '') + summary;
+  showMsg('預約成功，已同步至談話紀錄', 'success');
+};
+
 
 // --- 計算屬性 ---
 const userUid = computed(() => userStore.user?.phone || '');
@@ -733,14 +866,27 @@ const closeUploadDialog = () => {
   previewLeads.value = [];
 };
 
+// 4. 修改原本的 openReport 函式，確保開啟時重置狀態
 const openReport = async (item) => {
   currentLead.value = item;
   reportForm.value = { status: item.status || '', reason: item.reason || '', note: '' };
+  
+  // 讀取紀錄
   const logsSnap = await getDocs(query(
     collection(db, `leads/${item.id}/contactLogs`),
     orderBy('createdAt', 'desc')
   ));
   leadLogs.value = logsSnap.docs.map(d => d.data());
+  
+  // 檢查專案設定 (若 options 為空則重新讀取)
+  if (statusOptions.value.length <= 4) {
+    const setSnap = await getDoc(doc(db, 'projectSettings', props.projectId));
+    if (setSnap.exists()) {
+      statusOptions.value = setSnap.data().statusOptions || statusOptions.value;
+      reasonOptions.value = setSnap.data().reasonOptions || reasonOptions.value;
+    }
+  }
+  
   showReportDialog.value = true;
 };
 

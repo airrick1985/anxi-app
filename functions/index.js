@@ -18898,7 +18898,7 @@ function _parseLeadText(text) {
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
   // 注意：這裡的 URL 請根據您的實際 domain 調整
-  const liffUrl = `https://https://glorious-barnacle-7rpgq4xjx4jfx79p-5173.app.github.dev/#/contact?id=${docId}`;
+  const liffUrl = `https://anxismart.com/#/contact?id=${docId}`;
   
   const payload = {
     to: to,
