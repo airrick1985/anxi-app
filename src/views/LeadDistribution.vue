@@ -8,7 +8,32 @@
           <div class="text-caption text-grey">{{ projectName }}</div>
         </div>
         <v-spacer></v-spacer>
-        <v-btn v-if="isReceptionist" icon="mdi-cog" variant="text" color="grey-darken-1" @click="showSettings = true"></v-btn>
+        <v-btn 
+        v-if="isAdmin || isReceptionist"
+        icon="mdi-text-box-plus" 
+        variant="text" 
+        color="primary" 
+        @click="showUploadDialog = true" 
+        v-tooltip:bottom="'名單解析與分配'"
+      ></v-btn>
+
+<v-btn 
+  v-if="isAdmin" 
+  icon="mdi-trash-can-outline" 
+  variant="text" 
+  color="error" 
+  @click="showRecycleBin = true" 
+  v-tooltip:bottom="'名單垃圾桶'"
+></v-btn>
+
+<v-btn 
+  v-if="isAdmin || isReceptionist"
+  icon="mdi-cog" 
+  variant="text" 
+  color="grey-darken-1" 
+  @click="showSettings = true" 
+  v-tooltip:bottom="'聯絡名單系統設定'"
+></v-btn>
       </v-col>
 
       <v-col cols="12">
@@ -48,7 +73,7 @@
               </v-col>
               <v-col cols="12" md="6">
                 <v-card variant="flat" class="rounded-lg pa-4">
-                  <div class="text-subtitle-2 font-weight-bold mb-4">人員處理狀況 (含全案總計)</div> 
+                  <div class="text-subtitle-2 font-weight-bold mb-4">人員處理狀況</div> 
                   <div style="position: relative; height: 250px;">
                     <Bar :data="staffLoadChartData" :options="barOptions" />
                   </div>
@@ -72,34 +97,166 @@
                   </div>
                 </v-card>
               </v-col>
-              <v-col cols="12" class="d-flex gap-2">
-                <v-btn color="primary" prepend-icon="mdi-text-box-plus" @click="showUploadDialog = true">上傳名單文本</v-btn>
-                <v-btn v-if="isAdmin" variant="outlined" color="error" prepend-icon="mdi-trash-can-outline" @click="showRecycleBin = true">回收站</v-btn>
+                <v-col cols="12" md="6">
+                  <v-card variant="flat" class="rounded-lg pa-4 fill-height">
+                    <div class="text-subtitle-2 font-weight-bold mb-4">
+                      聯絡狀況總計
+                    </div>
+                    <div style="height: 250px;">
+                      <Pie :data="statusDistributionChartData" :options="pieOptions" />
+                    </div>
+                  </v-card>
+                </v-col>
+
+              <v-col cols="12" md="6">
+                <v-card variant="flat" class="rounded-lg pa-4 fill-height">
+                  <div class="text-subtitle-2 font-weight-bold mb-4">
+                    不考慮原因分析
+                  </div>
+                  <div v-if="allLeads.filter(l => l.status === '不考慮').length > 0" style="height: 250px;">
+                    <Pie :data="deniedReasonChartData" :options="pieOptions" />
+                  </div>
+                  <div v-else class="d-flex align-center justify-center fill-height text-grey-lighten-1">
+                    尚無不考慮名單資料
+                  </div>
+                </v-card>
               </v-col>
             </v-row>
           </v-window-item>
 
           <v-window-item value="status">
-            <v-data-table
-              :headers="statusHeaders"
-              :items="filteredLeads"
-              class="rounded-lg elevation-1"
-            >
-              <template v-slot:item.status="{ item }">
-                <v-chip :color="getStatusColor(item.status)" size="small">
-                  {{ item.status || '未處理' }}
-                </v-chip>
-              </template>
-              <template v-slot:item.actions="{ item }">
-                <v-btn icon="mdi-comment-edit" variant="text" color="primary" @click="openReport(item)"></v-btn>
-                <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" @click="handleSoftDelete(item)"></v-btn>
-              </template>
-            </v-data-table>
-            
-            <div class="mt-4">
-              
+<v-card variant="flat" class="mb-4 pa-4 rounded-xl border bg-white shadow-sm">
+  <v-row dense align="center">
+    <v-col cols="12" sm="4">
+      <v-text-field v-model="namePhoneSearch" label="搜尋姓名或電話" prepend-inner-icon="mdi-magnify" variant="outlined" density="comfortable" hide-details clearable rounded="lg"></v-text-field>
+    </v-col>
+    <v-col cols="12" sm="4">
+      <v-select v-model="statusSearch" :items="['未處理', ...statusOptions]" label="狀態" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
+        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">狀態 (+{{ statusSearch.length }})</span></template>
+      </v-select>
+    </v-col>
+    <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4">
+      <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
+        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">人員 (+{{ assignedSearch.length }})</span></template>
+      </v-select>
+    </v-col>
+
+    <v-col cols="12" sm="4" class="mt-sm-2">
+      <v-select v-model="sourceSearch" :items="sourceOptions" label="來源 (如 FB)" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
+        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">來源 (+{{ sourceSearch.length }})</span></template>
+      </v-select>
+    </v-col>
+    <v-col cols="12" sm="4" class="mt-sm-2">
+      <v-select v-model="budgetSearch" :items="budgetOptions" label="預算" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-currency-usd">
+        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">預算 (+{{ budgetSearch.length }})</span></template>
+      </v-select>
+    </v-col>
+    <v-col cols="6" sm="2" class="mt-sm-2">
+  <v-text-field
+    v-model="startDate"
+    label="填表日期(起)"
+    type="date"
+    variant="outlined"
+    density="comfortable"
+    hide-details
+    rounded="lg"
+    prepend-inner-icon="mdi-calendar-start"
+    color="primary"
+    clearable
+  ></v-text-field>
+</v-col>
+
+<v-col cols="6" sm="2" class="mt-sm-2">
+  <v-text-field
+    v-model="endDate"
+    label="填表日期(迄)"
+    type="date"
+    variant="outlined"
+    density="comfortable"
+    hide-details
+    rounded="lg"
+    prepend-inner-icon="mdi-calendar-end"
+    color="primary"
+    clearable
+    :min="startDate" 
+  ></v-text-field>
+</v-col>
+  </v-row>
+</v-card>
+
+  <v-data-table
+    :headers="statusHeaders"
+    :items="filteredLeads"
+    class="rounded-lg elevation-1 d-none d-md-block"
+  >
+    <template v-slot:item.status="{ item }">
+      <v-chip :color="getStatusColor(item.status)" size="small">
+        {{ item.status || '未處理' }}
+      </v-chip>
+    </template>
+    <template v-slot:item.actions="{ item }">
+      <v-btn icon="mdi-comment-edit" variant="text" color="primary" @click="openReport(item)"></v-btn>
+      <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" @click="handleSoftDelete(item)"></v-btn>
+    </template>
+  </v-data-table>
+
+  <div class="d-block d-md-none">
+    <v-card 
+      v-for="item in filteredLeads" 
+      :key="item.id" 
+      class="mb-4 rounded-xl elevation-2 overflow-hidden border-0"
+    >
+      <v-card-text class="pa-4">
+        <div class="d-flex align-center justify-space-between mb-3">
+          <div class="d-flex align-center">
+            <v-avatar color="indigo-darken-4" size="40" class="me-3">
+              <v-icon color="white" size="24">mdi-account</v-icon>
+            </v-avatar>
+            <div>
+              <div class="text-subtitle-1 font-weight-bold indigo--text text--darken-4">{{ item.name }}</div>
+              <div class="text-caption text-grey-darken-1">{{ item.phone }}</div>
             </div>
-          </v-window-item>
+          </div>
+          <div class="d-flex align-center">
+            <v-chip :color="getStatusColor(item.status)" size="x-small" class="font-weight-bold me-2">
+              {{ item.status || '未處理' }}
+            </v-chip>
+            <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="small" @click="openReport(item)"></v-btn>
+            <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" size="small" @click="handleSoftDelete(item)"></v-btn>
+          </div>
+        </div>
+
+        <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
+          <v-row no-gutters>
+            <v-col cols="4" class="pe-2">
+              <div class="info-label">來源</div>
+              <div class="info-value text-truncate">
+                <v-icon size="12" class="me-1">mdi-tray-arrow-down</v-icon>{{ item.source || '未註明' }}
+              </div>
+            </v-col>
+            <v-col cols="4" class="px-2 border-left-custom">
+              <div class="info-label">預算</div>
+              <div class="info-value text-truncate">
+                <v-icon size="12" class="me-1">mdi-currency-usd</v-icon>{{ item.budget || '未填寫' }}
+              </div>
+            </v-col>
+            <v-col cols="4" class="ps-2 border-left-custom">
+              <div class="info-label">填表日期</div>
+              <div class="info-value text-truncate">
+                <v-icon size="12" class="me-1">mdi-calendar-clock</v-icon>{{ item.date || '無日期' }}
+              </div>
+            </v-col>
+          </v-row>
+        </v-card>
+        
+        <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center">
+          <v-icon size="14" class="me-1">mdi-account-tie</v-icon>
+          負責人：<span class="font-weight-bold text-indigo-darken-2">{{ item.assignedName || '尚未指派' }}</span>
+        </div>
+      </v-card-text>
+    </v-card>
+  </div>
+</v-window-item>
         </v-window>
       </v-col>
     </v-row>
@@ -458,6 +615,7 @@ import {
 } from 'firebase/firestore';
 
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI } from '@/api'; 
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 
 // 修改項目：新增 Pie 圖表註冊
 import { Doughnut, Bar, Pie } from 'vue-chartjs';
@@ -467,7 +625,10 @@ import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
 
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
 
-ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement);
+ChartJS.register(
+  Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement,
+  ChartDataLabels // ✅ 新增註冊
+);
 
 const props = defineProps(['projectId']);
 const router = useRouter();
@@ -554,7 +715,7 @@ const onBookingSaved = (bookingData) => {
 const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', '未接': 'warning' }[s] || 'default');
 
 // --- 計算屬性 ---
-const userUid = computed(() => userStore.user?.phone || '');
+const userUid = computed(() => userStore.user?.key || userStore.user?.phone || '');
 const projectName = computed(() => userStore.user?.permissions?.[props.projectId]?.projectName || props.projectId);
 const userSystems = computed(() => userStore.user?.permissions?.[props.projectId]?.systems || []);
 
@@ -580,6 +741,7 @@ const progressChartData = computed(() => ({
   }]
 }));
 
+//儀表計算圖選項
 // 修改項目：新增 Budget 與 Source 統計邏輯
 const budgetChartData = computed(() => {
   const counts = {};
@@ -635,6 +797,70 @@ const staffLoadChartData = computed(() => {
   };
 });
 
+// --- 新增：不考慮狀態與原因統計邏輯 ---
+
+// 1. 統計「不考慮」vs「其他狀態」的佔比
+const statusDistributionChartData = computed(() => {
+  const counts = {};
+  
+  // 1. 定義顏色對照表 (確保顏色跟名稱綁定)
+  const colorMap = {
+    '不考慮': '#F44336',     // 紅
+    '已約賞屋': '#4CAF50',   // 綠
+    '還在討論': '#2196F3',   // 藍
+    '未接': '#FF9800',      // 橘
+    '空號': '#9E9E9E',      // 灰
+    '未處理': '#E0E0E0'     // 淺灰
+  };
+
+  // 2. 初始化統計物件
+  statusOptions.value.forEach(opt => { counts[opt] = 0; });
+  counts['未處理'] = 0;
+
+  // 3. 執行統計 (依據 l.status 欄位)
+  allLeads.value.forEach(l => {
+    const key = l.status || '未處理';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  // 4. 根據最終顯示的標籤順序，動態生成顏色陣列
+  const labels = Object.keys(counts);
+  const bgColors = labels.map(label => colorMap[label] || '#3949AB'); // 若找不到則預設靛藍
+
+  return {
+    labels: labels,
+    datasets: [{
+      data: Object.values(counts),
+      backgroundColor: bgColors, // ✅ 這裡現在是動態對應的
+      hoverOffset: 4
+    }]
+  };
+});
+
+// 2. 針對「不考慮」的名單，統計其「未約原因」佔比
+const deniedReasonChartData = computed(() => {
+  const counts = {};
+  // 僅篩選狀態為「不考慮」的名單
+  const deniedLeads = allLeads.value.filter(l => l.status === '不考慮');
+  
+  deniedLeads.forEach(l => {
+    const key = l.reason || '未註明原因';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return {
+    labels: Object.keys(counts),
+    datasets: [{
+      data: Object.values(counts),
+      // 使用一組對比明顯的顏色
+      backgroundColor: [
+        '#E91E63', '#9C27B0', '#673AB7', 
+        '#3F51B5', '#009688', '#FF9800', '#795548'
+      ]
+    }]
+  };
+});
+
 // --- 新增：業務員選單內容與排序邏輯 ---
 const salesStaffWithCounts = computed(() => {
   return salesStaff.value.map(staff => {
@@ -649,18 +875,89 @@ const salesStaffWithCounts = computed(() => {
 });
 
 
-const filteredLeads = computed(() => {
-  if (isReceptionist.value) return allLeads.value;
-  return allLeads.value.filter(l => l.assignedTo === userUid.value);
-});
 
+
+// 1. 更新表格欄位定義 (新增 來源、預算、填表日期)
 const statusHeaders = [
   { title: '姓名', key: 'name' },
   { title: '電話', key: 'phone' },
+  { title: '來源', key: 'source' },       // 新增
+  { title: '預算', key: 'budget' },       // 新增
+  { title: '填表日期', key: 'date' },     // 新增
   { title: '指派給', key: 'assignedName' },
   { title: '狀態', key: 'status' },
   { title: '動作', key: 'actions', sortable: false }
 ];
+
+
+// 1. 新增搜尋與過濾的響應式變數
+const namePhoneSearch = ref('');
+const statusSearch = ref([]);
+const assignedSearch = ref([]);
+// 2. 新增搜尋變數
+const sourceSearch = ref([]);
+const budgetSearch = ref([]);
+const startDate = ref(null);
+const endDate = ref(null);
+const dateSearch = ref([]);
+
+// 3. 自動從資料中提取現有的過濾選項 (確保勾選清單準確)
+const sourceOptions = computed(() => [...new Set(allLeads.value.map(l => l.source || '未註明'))]);
+const budgetOptions = computed(() => [...new Set(allLeads.value.map(l => l.budget || '未填寫'))]);
+
+
+// 4. 更新過濾邏輯
+const filteredLeads = computed(() => {
+  let list = allLeads.value;
+
+  // 1. 權限過濾
+  if (isReceptionist.value || isAdmin.value) {
+    // 管理端：看全部，不需過濾指派人
+  } else {
+    // 業務端：僅看指派給自己的
+    // ✅ 增加安全檢查：若 userUid 尚未載入，先不顯示或顯示空陣列，避免比對錯誤
+    if (!userUid.value) return []; 
+    list = list.filter(l => l.assignedTo === userUid.value);
+  }
+
+  // 2. 關鍵字搜尋 (姓名/電話)
+  if (namePhoneSearch.value) {
+    const s = namePhoneSearch.value.toLowerCase();
+    list = list.filter(l => 
+      (l.name && l.name.toLowerCase().includes(s)) || 
+      (l.phone && l.phone.includes(s))
+    );
+  }
+
+  // 3. 狀態勾選過濾
+  if (statusSearch.value.length > 0) {
+    list = list.filter(l => statusSearch.value.includes(l.status || '未處理'));
+  }
+
+  // 4. 其他屬性過濾 (來源、預算、日期)
+  if (sourceSearch.value.length > 0) {
+    list = list.filter(l => sourceSearch.value.includes(l.source || '未註明'));
+  }
+  if (budgetSearch.value.length > 0) {
+    list = list.filter(l => budgetSearch.value.includes(l.budget || '未填寫'));
+  }
+  if (dateSearch.value.length > 0) {
+    list = list.filter(l => dateSearch.value.includes(l.date || '無日期'));
+  }
+
+if (startDate.value) {
+    // 將 HTML5 date input 的 YYYY-MM-DD 轉為 YYYY/MM/DD 以匹配資料庫格式
+    const sDate = startDate.value.replace(/-/g, '/');
+    list = list.filter(l => l.date && l.date >= sDate);
+  }
+  
+  if (endDate.value) {
+    const eDate = endDate.value.replace(/-/g, '/');
+    list = list.filter(l => l.date && l.date <= eDate);
+  }
+
+  return list;
+});
 
 const recycleHeaders = [
   { title: '客戶姓名', key: 'name' },
@@ -1008,22 +1305,37 @@ const onSettingsUpdated = (s) => {
   reasonOptions.value = s.reasonOptions;
 };
 
+
+
 onMounted(async () => {
+  // 1. 設定監聽名單資料
   onSnapshot(query(collection(db, 'leads'), where('projectId', '==', props.projectId), where('isDeleted', '==', false), orderBy('createdAt', 'desc')), (snap) => {
     allLeads.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   });
+
+  // ✅ 修改：改用 watch 確保使用者權限載入後才執行切換，避免 onMounted 執行時 userStore 還在載入
+  watch(() => userStore.user, (newUser) => {
+    if (newUser && !isReceptionist.value && !isAdmin.value) {
+      activeTab.value = 'status';
+    }
+  }, { immediate: true });
+
+  // 2. ✅ 修正點：如果不是櫃檯或管理員，強制將預設分頁設為 'status' (聯絡狀況)
+  if (!isReceptionist.value && !isAdmin.value) {
+    activeTab.value = 'status';
+  }
 
   if (isAdmin.value) {
     fetchDeletedLeads(); 
   }
 
   await fetchProjectStaff();
+  
   const setSnap = await getDoc(doc(db, 'projectSettings', props.projectId));
   if (setSnap.exists()) {
     statusOptions.value = setSnap.data().statusOptions || statusOptions.value;
     reasonOptions.value = setSnap.data().reasonOptions || reasonOptions.value;
   }
-  
 });
 
 // 修改項目：圖表設定優化
@@ -1031,9 +1343,12 @@ const chartOptions = {
   cutout: '80%', 
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { display: false } } 
+ plugins: { 
+    datalabels: { display: false } // 在不需要的圖表關閉它
+  }
 };
 
+// 修改項目：圖表設定優化，加入 datalabels 設定
 const pieOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -1042,10 +1357,28 @@ const pieOptions = {
       display: true, 
       position: 'right',
       labels: { boxWidth: 12, font: { size: 11 } }
-    } 
+    },
+    // ✅ 新增 datalabels 配置
+    datalabels: {
+      color: '#fff', // 數字顏色
+      font: {
+        weight: 'bold',
+        size: 14
+      },
+      
+      // 也可以顯示百分比，若需要請改用以下邏輯：
+  
+      formatter: (value, ctx) => {
+        let sum = 0;
+        let dataArr = ctx.chart.data.datasets[0].data;
+        dataArr.map(data => { sum += data; });
+        let percentage = (value * 100 / sum).toFixed(0) + "%";
+        return value > 0 ? `${value}\n(${percentage})` : '';
+      }
+    
+    }
   }
 };
-// 修改項目結束
 
 const barOptions = { 
   responsive: true, 
@@ -1130,5 +1463,32 @@ const barOptions = {
 .status-warning { border-left-color: #ff9800 !important; }
 
 .border-dashed { border: 2px dashed #e0e0e0; }
+
+/* 資訊卡片內的標籤與數值樣式 */
+.info-label {
+  font-size: 0.65rem;
+  color: #5c6bc0;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.info-value {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #1a237e;
+  line-height: 1.2;
+}
+
+/* 垂直分隔線 */
+.border-left-custom {
+  border-left: 1px solid rgba(63, 81, 181, 0.15);
+}
+
+/* 讓手機版文字截斷防止撐開 */
+.text-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 </style>

@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.380",
+  "version": "1.0.381",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -47,6 +47,7 @@
     "ag-grid-vue3": "^34.1.2",
     "axios": "^1.10.0",
     "chart.js": "^4.5.1",
+    "chartjs-plugin-datalabels": "^2.2.0",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
