@@ -574,7 +574,18 @@
 
         <v-divider></v-divider>
         <v-card-actions class="pa-4 bg-white">
-          <v-btn v-if="uploadStep === 2" variant="text" color="grey-darken-1" prepend-icon="mdi-arrow-left" @click="uploadStep = 1">返回修改文本</v-btn>
+        <v-btn 
+          v-if="uploadStep === 2" 
+          color="success" 
+          variant="elevated" 
+          min-width="250" 
+          rounded="lg"
+          :disabled="isCheckingDuplicates"
+          :loading="isImporting"
+          @click="executeBatchImportAndAssign"
+        >
+          確認無誤並執行分配 ({{ previewLeads.length }}筆)
+        </v-btn>
           <v-spacer></v-spacer>
           <v-btn 
             v-if="uploadStep === 1" 
@@ -1152,6 +1163,8 @@ const handleParsing = async () => {
   // --- 修改結束 ---
 };
 
+const isImporting = ref(false);
+
 const executeBatchImportAndAssign = async () => {
   try {
     uiStore.setLoading(true);
@@ -1182,6 +1195,7 @@ const executeBatchImportAndAssign = async () => {
   } catch (err) {
     showMsg('執行失敗：' + err.message, 'error');
   } finally {
+  isImporting.value = false;
     uiStore.setLoading(false);
   }
 };
