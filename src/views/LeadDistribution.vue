@@ -97,7 +97,7 @@
             </v-data-table>
             
             <div class="mt-4">
-              <LeadReport :project-id="projectId" />
+              
             </div>
           </v-window-item>
         </v-window>
@@ -106,39 +106,43 @@
 
    <v-dialog v-model="showReportDialog" fullscreen transition="dialog-bottom-transition">
   <v-card class="bg-grey-lighten-4">
-    <v-toolbar color="primary" dark dense class="px-4">
+    <v-toolbar color="primary" dark>
       <v-btn icon="mdi-close" @click="showReportDialog = false"></v-btn>
       <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-        聯絡回報: {{ currentLead?.name }} ({{ currentLead?.phone }})
+        聯絡回報: {{ currentLead?.name }}
       </v-toolbar-title>
-      <v-spacer></v-spacer>
-      
     </v-toolbar>
     
     <v-container>
       <v-row justify="center">
         <v-col cols="12" md="8" lg="6">
-          <v-card class="pa-5 mb-4 rounded-xl elevation-2">
-            <div class="text-subtitle-2 font-weight-bold mb-4 text-indigo">回報表單內容</div>
+          
+          <v-card class="pa-5 mb-6 rounded-xl elevation-2">
+            <div class="section-title mb-3">聯絡狀況</div>
             
-            <v-select 
-              v-model="reportForm.status" 
-              :items="statusOptions" 
-              label="聯絡狀況" 
-              variant="outlined" 
-              class="mb-2"
+            <v-select
+              v-model="reportForm.status"
+              :items="statusOptions"
+              label="選擇聯絡結果"
+              variant="outlined"
               rounded="lg"
+              class="mb-3"
+              density="comfortable"
+              hide-details
+              color="indigo-darken-4"
             ></v-select>
 
             <template v-if="showReasonField">
               <v-text-field
                 v-if="isReasonReadonly"
                 v-model="reportForm.reason"
-                label="未約原因 (自動填入)"
+                label="未約原因 (系統自動填入)"
                 variant="filled"
                 readonly
                 rounded="lg"
                 class="mb-3"
+                density="comfortable"
+                hide-details
                 bg-color="grey-lighten-3"
               ></v-text-field>
 
@@ -146,10 +150,13 @@
                 v-else
                 v-model="reportForm.reason"
                 :items="reasonOptions"
-                label="未約原因 (必填)"
+                label="請選擇未約原因"
                 variant="outlined"
                 rounded="lg"
                 class="mb-3"
+                density="comfortable"
+                color="indigo-darken-4"
+                hide-details
               ></v-select>
             </template>
 
@@ -165,45 +172,65 @@
               開啟預約視窗
             </v-btn>
 
-            <v-textarea 
-              v-model="reportForm.note" 
-              label="備註內容" 
-              variant="outlined" 
-              placeholder="輸入詳細通話內容或預約摘要..."
+            <v-textarea
+              v-model="reportForm.note"
+              label="詳細談話紀錄"
+              variant="outlined"
+              placeholder="請輸入通話內容摘要..."
               rounded="lg"
-              rows="4"
+              rows="3"
+              class="mb-4"
+              hide-details
+              color="indigo-darken-4"
             ></v-textarea>
 
-           <div class="text-center mt-4">
-            <v-btn 
-              variant="elevated" 
-              color="success" 
-              size="large"
-              rounded="lg"
-              min-width="200"
-              @click="submitReport"
-            >
-              送出回報內容
-            </v-btn>
-          </div>
+            <div class="text-center mt-6">
+              <v-btn 
+                color="green" 
+                size="x-large" 
+                rounded="lg"
+                elevation="2"
+                min-width="200"
+                :disabled="!reportForm.status || (showReasonField && !reportForm.reason)"
+                @click="submitReport"
+                class="font-weight-bold"
+              >
+                完成回報
+              </v-btn>
+            </div>
           </v-card>
 
-          <div class="text-subtitle-2 mb-3 d-flex align-center ps-2">
-            <v-icon size="20" class="me-2 text-indigo">mdi-history</v-icon>回報日誌
+          <div class="section-title mt-8 mb-3 d-flex align-center">
+            <v-icon size="20" class="me-2">mdi-history</v-icon>回報日誌
           </div>
           
-          <v-card v-for="(log, idx) in leadLogs" :key="idx" class="mb-3 pa-4 rounded-xl shadow-sm border-s-lg" 
-                  :style="{ borderLeftColor: getStatusColor(log.status) }">
-            <div class="d-flex justify-space-between align-center mb-1">
-              <v-chip size="x-small" :color="getStatusColor(log.status)" variant="flat" class="font-weight-bold">
-                {{ log.status }}
-              </v-chip>
-              <span class="text-caption text-grey-darken-1 font-weight-bold">{{ formatDateTime(log.createdAt) }}</span>
-            </div>
-            <div v-if="log.reason" class="text-caption text-indigo-darken-2 font-weight-bold">原因：{{ log.reason }}</div>
-            <div class="text-body-2 mt-1 text-grey-darken-3">{{ log.note }}</div>
-            <div class="text-caption text-indigo-lighten-1 mt-1">回報人：{{ log.createdBy }}</div>
-          </v-card>
+          <div v-if="leadLogs.length === 0" class="text-center py-6 text-grey-lighten-1 border-dashed rounded-lg">
+            無紀錄
+          </div>
+
+          <div v-else class="history-timeline">
+            <v-card
+              v-for="(log, idx) in leadLogs"
+              :key="idx"
+              variant="flat"
+              class="mb-3 pa-4 rounded-xl history-item shadow-sm"
+              :class="`status-${getStatusKey(log.status)}`"
+            >
+              <div class="d-flex justify-space-between align-start mb-2">
+                <v-chip size="small" :color="getStatusColor(log.status)" class="font-weight-bold" variant="flat">
+                  {{ log.status }}
+                </v-chip>
+                <span class="text-caption text-grey-darken-1 font-weight-bold">
+                  {{ formatDateTime(log.createdAt) }}
+                </span>
+              </div>
+              <div v-if="log.reason" class="text-caption text-indigo-darken-4 font-weight-bold mb-1">
+                原因：{{ log.reason }}
+              </div>
+              <div class="text-body-2 font-weight-bold text-grey-darken-3 mb-1">{{ log.note }}</div>
+              <div class="text-caption text-grey-darken-1">回報人：{{ log.createdBy }}</div>
+            </v-card>
+          </div>
         </v-col>
       </v-row>
     </v-container>
@@ -217,7 +244,6 @@
   :initial-data="bookingInitialData"
   @saved="onBookingSaved"
 />
-
     <v-dialog v-model="showRecycleBin" max-width="900" scrollable>
       <v-card class="rounded-xl">
         <v-toolbar color="error" density="compact" class="px-4">
@@ -437,7 +463,7 @@ import { checkLeadDuplicates, batchImportAndAssignLeadsAPI } from '@/api';
 import { Doughnut, Bar, Pie } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
-import LeadReport from './LeadReport.vue';
+
 
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
 
@@ -488,11 +514,14 @@ watch(() => reportForm.value.status, (newStatus) => {
   if (newStatus === '還在討論') {
     reportForm.value.reason = '家人討論';
     isReasonReadonly.value = true;
-  } else if (newStatus === '空號' || newStatus === '未接') {
+  } else if (newStatus === '空號') {
+    reportForm.value.reason = '號碼錯誤/空號';
+    isReasonReadonly.value = true;
+  } else if (newStatus === '未接') {
     reportForm.value.reason = '號碼錯誤/空號';
     isReasonReadonly.value = true;
   } else if (newStatus === '不考慮') {
-    reportForm.value.reason = ''; // 讓使用者從選單中選
+    reportForm.value.reason = '';
     isReasonReadonly.value = false;
   } else {
     reportForm.value.reason = '';
@@ -506,22 +535,23 @@ const openBookingDialog = () => {
     customerName: currentLead.value.name,
     customerPhone: currentLead.value.phone,
     source: currentLead.value.source,
-    note: ``
+    note: ''
   };
   showBookingDialog.value = true;
 };
 
 const onBookingSaved = (bookingData) => {
-  // 格式化預約資訊並填入備註
   const rawDate = bookingData.reservationTime;
   const timeStr = rawDate?.toDate ? formatDateTime(rawDate) : new Date(rawDate).toLocaleString('zh-TW', { hour12: false });
 
-  const summary = `【系統同步：已完成賞屋預約】\n預約時間：${timeStr}\n預約類型：${bookingData.type}\n指定銷售：${bookingData.salesName || '不指定'}\n備註：${bookingData.note || '無'}`;
-  
-  reportForm.value.note = (reportForm.value.note ? reportForm.value.note + '\n' : '') + summary;
-  showMsg('預約成功，已同步至談話紀錄', 'success');
+  const summary = `【已約賞屋】\n時間：${timeStr}\n類型：${bookingData.type}\n姓名：${bookingData.customerName}\n電話：${bookingData.customerPhone}\n銷售：${bookingData.salesName || '不指定'}\n備註：${bookingData.note || '無'}`;
+
+  reportForm.value.note = summary;
+  showMsg('預約成功，已自動帶入談話紀錄', 'success');
 };
 
+// ✅ 狀態 Key 對應 (用於 CSS Class)
+const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', '未接': 'warning' }[s] || 'default');
 
 // --- 計算屬性 ---
 const userUid = computed(() => userStore.user?.phone || '');
@@ -930,7 +960,16 @@ const handleSoftDelete = async (item) => {
 };
 
 const formatDateTime = (ts) => ts ? (ts.toDate ? ts.toDate() : new Date(ts)).toLocaleString('zh-TW', { hour12: false }) : '-';
-const getStatusColor = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', '未接': 'warning', '空號': 'grey' }[s] || 'primary');
+const getStatusColor = (s) => {
+  const colors = {
+    '已約賞屋': '#4CAF50', // success
+    '不考慮': '#F44336',   // error
+    '未接': '#FF9800',     // warning
+    '空號': '#9E9E9E'      // grey
+  };
+  return colors[s] || '#3949AB'; // 預設為 indigo
+};
+
 const showMsg = (t, c = 'info') => { snackbar.text = t; snackbar.color = c; snackbar.show = true; };
 
 const fetchProjectStaff = async () => {
@@ -1057,4 +1096,39 @@ const barOptions = {
 .bg-blue-grey-lighten-5 {
   background-color: #ECEFF1 !important;
 }
+
+.section-title { 
+  font-size: 0.9rem; 
+  font-weight: 800; 
+  color: #3949ab; 
+  border-left: 4px solid #3949ab; 
+  padding-left: 10px; 
+}
+
+.history-item {
+  /* 基礎側邊粗線 (您目前的樣式) */
+  border-left: 6px solid #bdbdbd; 
+  
+  /* ✅ 加入全框線：淡灰色 */
+  border: 1px solid #e0e0e0 !important; 
+  
+  /* ✅ 加入細緻陰影 */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05) !important;
+  
+  transition: transform 0.2s ease-in-out;
+}
+
+/* 滑鼠經過或點擊時的微互動 (選配) */
+.history-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ✅ 依照狀態顯示邊框顏色 */
+.status-success { border-left-color: #4caf50 !important; }
+.status-error { border-left-color: #f44336 !important; }
+.status-warning { border-left-color: #ff9800 !important; }
+
+.border-dashed { border: 2px dashed #e0e0e0; }
+
 </style>

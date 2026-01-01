@@ -179,10 +179,10 @@
             <div v-else class="history-timeline">
               <v-card
                 v-for="(log, idx) in historyLogs"
-                :key="idx"
-                variant="flat"
-                class="mb-3 pa-4 rounded-xl history-item shadow-sm"
-                :class="`status-${getStatusKey(log.status)}`"
+              :key="idx"
+              variant="flat" 
+              class="mb-3 pa-4 rounded-xl history-item custom-shadow"
+              :class="`status-${getStatusKey(log.status)}`"
               >
                 <div class="d-flex justify-space-between align-start mb-2">
                   <v-chip size="small" :color="getStatusColor(log.status)" class="font-weight-bold" variant="flat">
@@ -430,4 +430,24 @@ const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', 
 .status-success { border-left-color: #4caf50; }
 .status-error { border-left-color: #f44336; }
 .status-warning { border-left-color: #ff9800; }
+
+.history-item {
+  /* 基礎側邊粗線 (您目前的樣式) */
+  border-left: 6px solid #bdbdbd; 
+  
+  /* ✅ 加入全框線：淡灰色 */
+  border: 1px solid #e0e0e0 !important; 
+  
+  /* ✅ 加入細緻陰影 */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05) !important;
+  
+  transition: transform 0.2s ease-in-out;
+}
+
+/* 滑鼠經過或點擊時的微互動 (選配) */
+.history-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1) !important;
+}
+
 </style>
