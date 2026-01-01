@@ -948,6 +948,10 @@ const filteredLeads = computed(() => {
     list = list.filter(l => statusSearch.value.includes(l.status || '未處理'));
   }
 
+  if (assignedSearch.value && assignedSearch.value.length > 0) {
+    list = list.filter(l => assignedSearch.value.includes(l.assignedTo));
+  }
+
   // 4. 其他屬性過濾 (來源、預算、日期)
   if (sourceSearch.value.length > 0) {
     list = list.filter(l => sourceSearch.value.includes(l.source || '未註明'));
