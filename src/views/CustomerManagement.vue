@@ -2,7 +2,7 @@
   <v-container>
     <v-tabs v-model="tab" color="primary" grow>
       <v-tab value="management">客戶資料管理</v-tab>
-      <v-tab value="downloadLeads">下載客資</v-tab>
+      <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
       <v-tab value="settings" v-if="canManageSettings">客資系統設定</v-tab>
       <v-tab value="vipSettings" v-if="canManageSettings">貴賓資料設定</v-tab>
       <v-tab value="otherSettings" v-if="canManageSettings">其他設定</v-tab>
@@ -182,7 +182,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="downloadLeads">
+      <v-window-item value="downloadLeads" v-if="canManageSettings">
   <v-container fluid class="bg-grey-lighten-5 pa-4">
     <v-card elevation="2" class="rounded-xl">
       <v-card-item>
@@ -1460,6 +1460,12 @@ const calculateLogDuration = (startTime, endTime) => {
 
 // ✓ [打勾] 簡易版 Excel 匯出執行函數
 const executeSimpleExport = async () => {
+  // ✓ [新增] 即使按鈕被隱藏，函數層級也要攔截
+  if (!canManageSettings.value) {
+    alert('您沒有權限執行此操作');
+    return;
+  }
+  
   isSimpleExporting.value = true;
   try {
     // 獲取完整資料以便讀取 interactionLogs 與 profile
