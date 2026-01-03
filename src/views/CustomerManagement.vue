@@ -2,6 +2,7 @@
   <v-container>
     <v-tabs v-model="tab" color="primary" grow>
       <v-tab value="management">客戶資料管理</v-tab>
+      <v-tab value="downloadLeads">下載客資</v-tab>
       <v-tab value="settings" v-if="canManageSettings">客資系統設定</v-tab>
       <v-tab value="vipSettings" v-if="canManageSettings">貴賓資料設定</v-tab>
       <v-tab value="otherSettings" v-if="canManageSettings">其他設定</v-tab>
@@ -55,7 +56,10 @@
         >
           <v-card-text class="pa-3">
             <div class="d-flex justify-space-between align-center mb-1">
-              <span class="text-subtitle-1 font-weight-bold">{{ item.raw['姓名'] || '未知姓名' }}</span>
+              <span class="text-subtitle-1 font-weight-bold">{{ item.raw['姓名'] || '未知姓名' }}
+              </span>
+
+              
               <v-chip :color="getRatingColor(item.raw['等級研判'])" size="x-small" label variant="flat">
                 {{ item.raw['等級研判'] || '未定級' }}
               </v-chip>
@@ -177,6 +181,85 @@
           </v-card-text>
         </v-card>
       </v-window-item>
+
+      <v-window-item value="downloadLeads">
+  <v-container fluid class="bg-grey-lighten-5 pa-4">
+    <v-card elevation="2" class="rounded-xl">
+      <v-card-item>
+        <v-card-title class="text-h6 font-weight-bold text-primary">
+         客資報表下載
+        </v-card-title>
+        
+      </v-card-item>
+
+      <v-card-text>
+        <v-row>
+          <v-col cols="12" md="3">
+  <v-text-field
+    v-model="exportFilters.startDate"
+    label="開始日期"
+    type="date"
+    variant="outlined"
+    density="compact"
+  ></v-text-field>
+</v-col>
+
+<v-col cols="12" md="3">
+  <v-text-field
+    v-model="exportFilters.endDate"
+    label="結束日期"
+    type="date"
+    variant="outlined"
+    density="compact"
+    :min="exportFilters.startDate" 
+  ></v-text-field> </v-col>
+
+          <v-col cols="12">
+  <div class="text-subtitle-2 mb-2 d-flex align-center">
+    銷售人員篩選：
+    <v-checkbox
+      v-model="isAllSalesSelected"
+      label="全選"
+      density="compact"
+      hide-details
+      color="secondary"
+      class="ml-4 font-weight-bold"
+      :indeterminate="isSalesIndeterminate"
+    ></v-checkbox>
+  </div>
+  
+  <div class="d-flex flex-wrap gap-2">
+    <v-checkbox
+      v-for="sales in availableSalesNames"
+      :key="sales"
+      v-model="exportFilters.selectedSales"
+      :label="sales"
+      :value="sales"
+      density="compact"
+      hide-details
+      color="primary"
+      class="mr-4"
+    ></v-checkbox>
+  </div>
+</v-col>
+        </v-row>
+
+        <v-divider class="my-4"></v-divider>
+
+        <v-btn
+          color="success"
+          size="large"
+          prepend-icon="mdi-download"
+          :loading="isSimpleExporting"
+          @click="executeSimpleExport"
+          :disabled="!exportFilters.startDate || !exportFilters.endDate"
+        >
+          下載客資報表
+        </v-btn>
+      </v-card-text>
+    </v-card>
+  </v-container>
+</v-window-item>
 
       <v-window-item value="settings" v-if="canManageSettings">
         <v-card>
@@ -1348,8 +1431,128 @@ function formatDisplayDate(dateString) {
   }
 }
 
+// ✓ [打勾] 新增篩選與下載狀態
+const isSimpleExporting = ref(false);
+const exportFilters = ref({
+  startDate: '',
+  endDate: '',
+  selectedSales: []
+});
 
-// ✓ END: 新增
+// ✓ [打勾] 從現有列表提取銷售人員名單供勾選
+const availableSalesNames = computed(() => {
+  const names = customerList.value
+    .map(c => c['銷售人員'])
+    .filter(name => name && name.trim() !== '');
+  return [...new Set(names)].sort();
+});
+
+// ✓ [打勾] 洽談時間計算函數 (最後一筆 log 的持續分鐘數)
+const calculateLogDuration = (startTime, endTime) => {
+  if (!startTime || !endTime) return '';
+  try {
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    const diff = (eH * 60 + eM) - (sH * 60 + sM);
+    return diff > 0 ? `${diff} 分鐘` : '';
+  } catch (e) { return ''; }
+};
+
+// ✓ [打勾] 簡易版 Excel 匯出執行函數
+const executeSimpleExport = async () => {
+  isSimpleExporting.value = true;
+  try {
+    // 獲取完整資料以便讀取 interactionLogs 與 profile
+    const allData = await fetchFullCustomersForExport(
+      props.projectId,
+      userStore.user.key,
+      userStore.user?.permissions?.[props.projectId]?.systems || []
+    );
+
+    // 執行篩選邏輯
+    const filtered = allData.filter(item => {
+      const logs = item.interactionLogs || [];
+      if (logs.length === 0) return false;
+      
+      // 依據 interactionLogs 第一筆資料的日期進行區間篩選
+      const firstLogDate = logs[0].date; 
+      const isDateInRange = firstLogDate >= exportFilters.value.startDate && 
+                            firstLogDate <= exportFilters.value.endDate;
+      
+      // 依據銷售人員篩選
+      const isSalesMatch = exportFilters.value.selectedSales.length === 0 || 
+                           exportFilters.value.selectedSales.includes(item.latestSalesName);
+      
+      return isDateInRange && isSalesMatch;
+    });
+
+    // 格式化輸出資料
+    const exportRows = filtered.map((item, index) => {
+      const logs = item.interactionLogs || [];
+      const firstLog = logs[0] || {};
+      const lastLog = logs[logs.length - 1] || {};
+      const p = item.profile || {};
+      
+      // 輔助函式：取得 Profile 陣列最後一個值
+      const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
+
+      return {
+        '順序': index + 1,
+        '日期': firstLog.date ? firstLog.date.replace(/-/g, '/') : '',
+        '銷售人員': item.latestSalesName || '',
+        '客戶姓名': item.latestName || '',
+        '來人（位）': lastLog.tags?.visitors || '',
+        '年齡': getP('年齡'),
+        '性別': getP('性別'),
+        '職業': getP('職業'),
+        '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
+        '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
+        '區域': getP('居住城市'),
+        '洽談時間': calculateLogDuration(lastLog.startTime, lastLog.endTime),
+        '行動電話': item.phone || ''
+      };
+    });
+
+    // 建立並下載 Excel
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    XLSX.utils.book_append_sheet(wb, ws, "客資資料");
+    const fileName = `${projectName.value}_客資資料_${exportFilters.value.startDate}_${exportFilters.value.endDate}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+  } catch (err) {
+    console.error("匯出失敗:", err);
+    alert('下載發生錯誤: ' + err.message);
+  } finally {
+    isSimpleExporting.value = false;
+  }
+};
+
+// ✓ [打勾] 新增：全選邏輯的計算屬性
+const isAllSalesSelected = computed({
+  // 檢查是否所有人員都被選中
+  get: () => {
+    return availableSalesNames.value.length > 0 && 
+           exportFilters.value.selectedSales.length === availableSalesNames.value.length;
+  },
+  // 處理點擊全選的動作
+  set: (val) => {
+    if (val) {
+      // 全選：將所有可選人員名稱放入陣列
+      exportFilters.value.selectedSales = [...availableSalesNames.value];
+    } else {
+      // 取消全選：清空陣列
+      exportFilters.value.selectedSales = [];
+    }
+  }
+});
+
+// ✓ [打勾] 新增：處理「部分選中」的視覺狀態 (Indeterminate)
+const isSalesIndeterminate = computed(() => {
+  const selectedCount = exportFilters.value.selectedSales.length;
+  const totalCount = availableSalesNames.value.length;
+  return selectedCount > 0 && selectedCount < totalCount;
+});
 
 // ✓ START: 新增：Chip 顏色輔助函式 (範例)
 function getChipColor(motive) {

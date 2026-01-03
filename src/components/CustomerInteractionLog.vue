@@ -65,6 +65,19 @@
             </v-icon>
             {{ getProfileDisplayValue('性別') }}
         </v-chip>
+
+        <v-chip
+            v-if="getProfileDisplayValue('年齡')"
+            size="x-small"
+            variant="flat"
+            color="teal-lighten-5"
+            class="text-teal-darken-3 font-weight-bold px-2 ml-1"
+        >
+            
+            {{ getProfileDisplayValue('年齡') }}歲
+        </v-chip>
+
+
     </div>
 </div>
                                 <div class="info-row mb-3">
@@ -253,6 +266,18 @@
             <v-btn value="女" size="small" prepend-icon="mdi-gender-female">女</v-btn>
         </v-btn-toggle>
     </div>
+
+            <v-select
+            v-if="fieldSettings['age']"
+            label="年齡區間"
+            v-model="editingData.profile['年齡']"
+            :items="fieldSettings['age'].options"
+            density="compact"
+            variant="outlined"
+            hide-details="auto"
+            class="mb-3"
+            placeholder="請選擇年齡區間"
+        ></v-select>
 
     <v-divider class="mb-4 border-dashed"></v-divider>
 
@@ -1184,8 +1209,8 @@ const startEditProfile = () => {
         return Array.isArray(val) ? (val.length > 0 ? val[val.length - 1] : '') : (val || '');
     };
 
-    const fieldsToFlatten = ['職業', '任職公司', '居住城市', '居住鄉鎮市區', '居住詳細地址', '性別'];
-    
+const fieldsToFlatten = ['職業', '任職公司', '居住城市', '居住鄉鎮市區', '居住詳細地址', '性別', '年齡'];
+
     fieldsToFlatten.forEach(key => {
         editingData.value.profile[key] = getSingleValue(key);
     });
@@ -1208,6 +1233,7 @@ const saveProfile = async () => {
     try {
         const targetProfileFields = [
             '性別', 
+            '年齡', 
             '職業', '任職公司', 
             '居住城市', '居住鄉鎮市區', '居住詳細地址'
         ];
