@@ -4,9 +4,13 @@
       <v-btn icon="mdi-arrow-left" @click="goBack"></v-btn>
       <v-toolbar-title>
         平面圖測量工具 - {{ unitId || '讀取中...' }}
+        
       </v-toolbar-title>
       <v-spacer></v-spacer>
+      
     </v-toolbar>
+
+
 
     <div v-if="isLoading" class="loading-container">
       <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
@@ -38,12 +42,22 @@
                      <v-icon>mdi-texture-box</v-icon>
                      <span class="d-none d-sm-inline ml-2">測量面積</span>
                  </v-btn>
+
+                
+                 
              </v-btn-toggle>
              <v-spacer></v-spacer>
+             <v-tooltip location="bottom" text="數位測量可能因原始圖檔解析度產生細微誤差，不建議作為精確工程放樣依據。">
+                <template v-slot:activator="{ props }">
+                    <v-icon v-bind="props" color="grey" size="small" class="ml-2">mdi-help-circle-outline</v-icon>
+                </template>
+            </v-tooltip>
+             
              <v-btn v-if="hasMeasurements" @click="clearMeasurements" variant="text" color="error" size="small">
                  <v-icon left>mdi-delete-sweep</v-icon>
                  清除標記
              </v-btn>
+             
              <div v-if="isCalibrated" class="scale-info text-success">
                  <v-icon color="success">mdi-check-circle</v-icon>
                  <span class="ml-1">已校準</span>
@@ -53,8 +67,12 @@
                  <span class="ml-1">未校準</span>
              </div>
         </div>
+
+        
         
         <div v-if="isCalibrating || isMeasuringDistance || isMeasuringArea || tool === 'pan'" class="action-prompt">
+           
+           
             <v-icon color="white" class="mr-2" size="small">mdi-information-outline</v-icon>
             
             <div class="d-flex align-center flex-wrap justify-center" style="gap: 8px;">
@@ -63,9 +81,22 @@
                 <span v-if="isMeasuringDistance">請點擊測量距離的【起點】{{ currentDistance.p1 ? '和【終點】' : '' }}</span>
                 <span v-if="isMeasuringArea">請依序點擊測量區域的【頂點】<span v-if="!mobile">，雙擊左鍵可封閉圖形</span></span>
 
+                
+                
+
                 <div class="d-flex align-center">
                     <v-btn v-if="isCalibrating && calibrationPoints.length > 0" size="x-small" variant="tonal" color="white" @click="resetCalibration" class="ml-2">重設</v-btn>
                     <v-btn v-if="isMeasuringDistance && currentDistance.p1" size="x-small" variant="tonal" color="white" @click="resetCurrentDistance" class="ml-2">取消本次</v-btn>
+                     <v-alert
+                    type="warning"
+                    variant="tonal"
+                   
+                    class="mx-2 mt-1 py-1 text-caption font-weight-bold d-none d-sm-flex" 
+                    border="start"
+                    
+                >
+                💡 提醒：測量數值係透過圖面比例換算，僅供參考，實際尺寸請以合約圖面及現場實測為準。
+                </v-alert>
                     
                    <v-btn 
               v-if="isTouchDevice && isMeasuringArea && currentAreaPoints.length > 2" 

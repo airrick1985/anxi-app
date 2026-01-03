@@ -540,7 +540,7 @@
                   :items="salesStaffWithCounts"
                   item-title="displayName"
                   item-value="id"
-                  label="選擇業務員"
+                  label="選擇銷售"
                   density="compact"
                   hide-details
                   variant="outlined"
@@ -875,7 +875,7 @@ const deniedReasonChartData = computed(() => {
   };
 });
 
-// --- 新增：業務員選單內容與排序邏輯 ---
+// --- 新增：銷售員選單內容與排序邏輯 ---
 const salesStaffWithCounts = computed(() => {
   return salesStaff.value.map(staff => {
     // 從 allLeads 中計算該人員目前被指派的名單數量 (排除已刪除的)
@@ -928,7 +928,7 @@ const filteredLeads = computed(() => {
   if (isReceptionist.value || isAdmin.value) {
     // 管理端：看全部，不需過濾指派人
   } else {
-    // 業務端：僅看指派給自己的
+    // 銷售端：僅看指派給自己的
     // ✅ 增加安全檢查：若 userUid 尚未載入，先不顯示或顯示空陣列，避免比對錯誤
     if (!userUid.value) return []; 
     list = list.filter(l => l.assignedTo === userUid.value);
@@ -1154,15 +1154,15 @@ const handleParsing = async () => {
   // 執行查重 API
   await runCheck(phones);
 
-  // --- 修改段落：查重後自動指派業務人員 ---
+  // --- 修改段落：查重後自動指派銷售人員 ---
   previewLeads.value.forEach(lead => {
     const res = duplicateResults.value[lead.phone];
     if (res) {
       if (res.type === 'vip' && res.data.latestSalesPhone) {
-        // 情況 A：成交客戶，自動選擇「原成交業務」(對應 latestSalesPhone)
+        // 情況 A：成交客戶，自動選擇「原成交銷售」(對應 latestSalesPhone)
         quickAssignInPreview(lead, res.data.latestSalesPhone);
       } else if (res.type === 'lead' && res.data.assignedTo) {
-        // 情況 B：重複名單，自動選擇「最後指派業務」(對應 assignedTo)
+        // 情況 B：重複名單，自動選擇「最後指派銷售」(對應 assignedTo)
         quickAssignInPreview(lead, res.data.assignedTo);
       }
     }
@@ -1174,15 +1174,20 @@ const isImporting = ref(false);
 
 const executeBatchImportAndAssign = async () => {
   try {
+    // ✓ [打勾] 修正：手動開啟按鈕的 loading 狀態，解決看不到 LOADING 的問題
+    isImporting.value = true; 
     uiStore.setLoading(true);
 
     const leadsWithStatus = previewLeads.value.map(l => {
       const res = duplicateResults.value[l.phone];
       let statusText = "✨ 全新名單"; 
+      
       if (res?.type === 'vip') {
-        statusText = `🚩 已有客資 (來客: ${res.data.name})`; 
+        // ✓ [打勾] 確保 salesName 在此處正確宣告，並處理 null 值
+        const salesName = res.data?.latestSalesName || '未知';
+        statusText = `🚩 已有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`; 
       } else if (res?.type === 'lead') {
-        statusText = `⚠️ 重複名單 (共 ${res.data.count} 筆)`;
+        statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
       }
       return { ...l, statusText }; 
     });
@@ -1200,9 +1205,11 @@ const executeBatchImportAndAssign = async () => {
       throw new Error(res.message);
     }
   } catch (err) {
+    // 這裡會捕捉到之前的 "salesName is not defined" 錯誤
     showMsg('執行失敗：' + err.message, 'error');
   } finally {
-  isImporting.value = false;
+    // ✓ [打勾] 確保在最後關閉所有載入狀態
+    isImporting.value = false;
     uiStore.setLoading(false);
   }
 };

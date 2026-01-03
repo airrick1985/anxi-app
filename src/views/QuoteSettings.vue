@@ -108,10 +108,24 @@
       <v-card-text>
         <v-row align="center">
           <v-col cols="12" md="2">
-            <v-select variant="outlined" label="報價人員" :items="personnelOptions" v-model="selectedPersonnel" :readonly="!canEditPersonnel" item-title="name" return-object></v-select>
+          <v-select 
+                  variant="outlined" 
+                  label="報價人員" 
+                  :items="personnelOptions" 
+                  v-model="selectedPersonnel" 
+                  :readonly="!canEditPersonnel" 
+                  item-title="name" 
+                  return-object
+                  :loading="loading"  ></v-select>
           </v-col>
+
           <v-col cols="12" md="2">
-            <v-text-field variant="outlined" label="聯絡電話" :model-value="personnelPhone" readonly></v-text-field>
+              <v-text-field 
+                  variant="outlined" 
+                  label="聯絡電話" 
+                  :model-value="personnelPhone" 
+                  readonly
+                  :loading="loading"  ></v-text-field>
           </v-col>
           <v-col cols="12" md="8" class="text-right">
           <v-btn 
