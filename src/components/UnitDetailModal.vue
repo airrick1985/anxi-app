@@ -276,7 +276,15 @@
                             <v-col cols="12" md="4">
                                 <div class="info-section">
                                     <div class="section-title">{{ unitData.unitId }} 買方資訊</div>
-                                    <v-list dense><v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item><v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item><v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item><v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item><v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item></v-list>
+                                    <v-list dense>
+                                      <v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item>
+                                      <v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item>
+                                      <v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item>
+                                      <v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item>
+                                      <v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item>
+                                      <v-list-item title="出生年月日 (西元)" :subtitle="formatDate(unitData.buyerDateOfBirth)"></v-list-item>
+
+                                      <v-list-item title="出生年月日 (民國)" :subtitle="formatROCDate(unitData.buyerDateOfBirth)"></v-list-item>                                    </v-list>
                                 </div>
                             </v-col>
                         </v-row>
@@ -568,6 +576,12 @@ const savingText = ref('儲存中，請稍候...');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
 const showInfoOverlay = ref(false); // 控制全螢幕下的資訊面板顯示
 
+// 1. [新增] 定義暫存變數
+const tempParkingSelection = ref(null);      // 用於「付款表設定」暫存
+const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存
+
+
+
 // ✅ [新增] 編輯模式即時計算 - 表價單價
 const editingListUnitPrice = computed(() => {
   if (!editingData.value) return '0.00';
@@ -753,25 +767,46 @@ const calculatedTransactionUnitPrice = computed(() => {
   return 'N/A';
 });
 
+
+
+// 2. [優化] 修改 enrichedUnitData，確保編輯模式下 UI 優先讀取暫存資料
 const enrichedUnitData = computed(() => {
   if (!props.unitData) return null;
+  
+  // 如果正在編輯，直接返回 editingData (它包含了 handleParkingUpdate 更新後的持有車位)
+  if (isEditing.value && editingData.value) {
+      return JSON.parse(JSON.stringify(editingData.value));
+  }
+
   const enriched = JSON.parse(JSON.stringify(props.unitData));
+  
+  // 處理「付款表設定」暫存模式 (非編輯狀態)
+  if (!isEditing.value && tempParkingSelection.value) {
+    enriched['持有車位'] = tempParkingSelection.value.map(p => ({
+      ...p,
+      '車位編號': p.spotId,
+      '車位尺寸': p.size || '標準',
+      '車位成交價': p.price_transaction,
+      '車位底價': p.price_floor || p['底價'] || p['車位底價'] || 0,
+    }));
+    return enriched;
+  }
+
+  // 預設模式：讀取資料庫原始關聯
   const allParkingLotsForProject = props.allData?.['車位'] || [];
   const currentUnitId = props.unitData.unitId;
 
   const assignedParkings = allParkingLotsForProject
     .filter(parkingLot => parkingLot.buyerUnitId === currentUnitId)
     .map(parkingLot => ({
-      '車位編號': parkingLot.spotId,
-      '車位尺寸': parkingLot.size,
-      '車位類別': parkingLot.type,
-      '車位坪數': parkingLot.area_ping || 'N/A',
-      '車位總價': parkingLot.price_list,
-      '車位底價': parkingLot.price_floor,
-      '車位狀態': parkingLot.status,
+      ...parkingLot,
+      '車位編號': parkingLot.spotId || parkingLot['車位編號'],
+      '車位尺寸': parkingLot.size || parkingLot['車位尺寸'] || '標準',
+      // ✅ [修復] 確保原始資料也能正確對到底價
+      '車位底價': parkingLot.price_floor || parkingLot['底價'] || parkingLot['車位底價'] || 0,
       '車位成交價': parkingLot.price_transaction !== undefined && parkingLot.price_transaction !== null 
                     ? parkingLot.price_transaction 
-                    : (parkingLot.price_list || 0),
+                    : (parkingLot.price_list || parkingLot['表價'] || 0),
     }));
 
   enriched['持有車位'] = assignedParkings;
@@ -887,6 +922,7 @@ function cancelEditing() {
   editingData.value = null;
 }
 
+// 5. [修改] saveChanges：儲存成功後才執行車位寫入
 async function saveChanges() {
   if (!editingData.value) return;
   isSaving.value = true;
@@ -895,19 +931,19 @@ async function saveChanges() {
       const data = editingData.value;
       const payload = {
           projectName: props.projectName,
-          projectId: props.projectId, // ✅ 修正：改成讀取 props.projectId
+          projectId: props.projectId,
           unitId: props.unitData.unitId, 
           data: data 
       };
-      console.log('🔍 [UnitDetailModal] 準備儲存的資料:', {
-          projectName: payload.projectName,
-          projectId: payload.projectId,
-          unitId: payload.unitId,
-          dataFields: Object.keys(data)
-      });
       
       const result = await updateSalesData(payload); 
       if (result.status !== 'success') throw new Error(result.message);
+      
+      // ✅ [關鍵] 戶別資料儲存成功後，才寫入暫存的車位變動
+      if (editingParkingSelection.value) {
+          console.log('🚗 正在執行延遲的車位資料庫更新...');
+          await commitParkingChanges(props.unitData.unitId, editingParkingSelection.value);
+      }
       
       alert('儲存成功！');
       emit('data-updated');
@@ -917,6 +953,7 @@ async function saveChanges() {
       alert(`儲存失敗: ${error.message}`);
   } finally {
       isSaving.value = false;
+      editingParkingSelection.value = null; // 清除暫存
   }
 }
 
@@ -1042,8 +1079,10 @@ const openSizingTool = () => {
 watch(() => props.show, (newVal) => {
   if (newVal) {
       tab.value = 'info';
+      tempParkingSelection.value = null; 
+      editingParkingSelection.value = null; // 重置編輯暫存
       currentImageIndex.value = 0; 
-      showInfoOverlay.value = false; // 每次開啟 Modal 時預設關閉資訊層
+      showInfoOverlay.value = false;
       if (isEditing.value) cancelEditing();
   } else {
       sizingToolDialog.value = false;
@@ -1092,65 +1131,98 @@ function formatAddress(data, type) {
     return fullAddress || '-';
 }
 
-// 📋 處理車位更新事件
+
+
+// 3. [重構] handleParkingUpdate：現在只做前端暫存，不再執行資料庫寫入
 async function handleParkingUpdate(parkingUpdateData) {
-    try {
-        console.log('🚗 [UnitDetailModal] 處理車位更新:', parkingUpdateData);
-        
-        const { unitId, parkingList } = parkingUpdateData;
-        const allParkingData = props.allData?.['車位'] || [];
-        
-        // 🔄 步驟1：清除該戶別原有的車位關聯
-        const currentOwnedParkings = allParkingData.filter(p => p.buyerUnitId === unitId);
-        
-        for (const parking of currentOwnedParkings) {
-            const docId = parking.id; // Firestore 文件 ID
-            if (docId) {
-                // ✅ 【修正】僅更新銷售相關欄位，不影響管理員控制的欄位
-                await updateParkingLot(docId, {
-                    buyerUnitId: null,
-                    buyerName: null,
-                    price_transaction: null,
-                    status: null,
-                    status_backend: null,
-                    salesperson: null,
-                    remarks: null,
-                    updatedAt: new Date()
-                    // 🔒 不更新以下管理員欄位：floor, number, price_floor, price_list, projectId, size, slidePosition, spotId, type
-                });
-                console.log(`🚗 清除車位 ${parking.spotId} 的買方關聯`);
-            }
+    const { unitId, parkingList } = parkingUpdateData;
+
+    // 情境 A：來自「付款表設定」
+    if (!isEditing.value) {
+        console.log('🧪 [前端模式] 僅更新付款表暫存');
+        tempParkingSelection.value = parkingList;
+        return; 
+    }
+
+    // 情境 B：來自「修改銷控」編輯中
+    console.log('🧪 [編輯暫存] 記錄車位變動，待儲存變更時才寫入資料庫');
+    
+    // 編輯暫存模式
+    editingData.value['持有車位'] = parkingList.map(p => ({
+        ...p,
+        '車位編號': p.spotId || p['車位編號'],
+        '車位成交價': p.price_transaction || p['車位成交價'],
+        // ✅ [修復] 確保暫存時也對應到正確的底價鍵名
+        '車位底價': p.price_floor || p['底價'] || p['車位底價'] || 0,
+        '車位尺寸': p.size || p['車位尺寸'] || '標準'
+    }));
+
+    // 記錄這份清單供儲存按鈕使用
+    editingParkingSelection.value = parkingList;
+}
+
+// 4. [新增] 專門處理資料庫寫入的輔助函式
+async function commitParkingChanges(unitId, parkingList) {
+    const allParkingData = props.allData?.['車位'] || [];
+    
+    // 🔄 步驟1：清除舊關聯
+    const currentOwnedParkings = allParkingData.filter(p => p.buyerUnitId === unitId);
+    for (const parking of currentOwnedParkings) {
+        if (parking.id) {
+            await updateParkingLot(parking.id, {
+                buyerUnitId: null,
+                buyerName: null,
+                price_transaction: null,
+                status: null,
+                status_backend: null,
+                salesperson: null,
+                remarks: null,
+                updatedAt: new Date()
+            });
         }
-        
-        // 🔄 步驟2：設定新的車位關聯
-        for (const newParking of parkingList) {
-            // 找到對應的車位文件
-            const existingParking = allParkingData.find(p => p.spotId === newParking.spotId);
-            if (existingParking && existingParking.id) {
-                // ✅ 【修正】僅更新銷售相關欄位，不影響管理員控制的欄位
-                await updateParkingLot(existingParking.id, {
-                    buyerUnitId: unitId,
-                    buyerName: editingData.value?.buyerName || null,
-                    price_transaction: newParking.price_transaction || null,
-                    status: '已售',
-                    status_backend: editingData.value?.salesStatus_backend || null,
-                    salesperson: editingData.value?.salesperson || null,
-                    remarks: newParking.remarks || null,
-                    updatedAt: new Date()
-                    // 🔒 不更新以下管理員欄位：floor, number, price_floor, price_list, projectId, size, slidePosition, spotId, type
-                });
-                console.log(`🚗 設定車位 ${newParking.spotId} 給戶別 ${unitId}`);
-            }
+    }
+    
+    // 🔄 步驟2：設定新關聯
+    for (const newParking of parkingList) {
+        const existingParking = allParkingData.find(p => p.spotId === newParking.spotId);
+        if (existingParking && existingParking.id) {
+            await updateParkingLot(existingParking.id, {
+                buyerUnitId: unitId,
+                buyerName: editingData.value?.buyerName || null,
+                price_transaction: newParking.price_transaction || null,
+                status: '已售',
+                status_backend: editingData.value?.salesStatus_backend || null,
+                salesperson: editingData.value?.salesperson || null,
+                remarks: newParking.remarks || null,
+                updatedAt: new Date()
+            });
         }
-        
-        console.log('🚗 車位更新完成，資料將透過 Firestore 監聽器自動同步');
-    } catch (error) {
-        console.error('🚗 處理車位更新失敗:', error);
-        alert(`車位更新失敗: ${error.message}`);
     }
 }
 
 
+
+
+// ✅ [打勾] 新增：格式化民國日期函數
+function formatROCDate(timestamp) {
+  if (!timestamp) return '-';
+  
+  let date;
+  // 處理 Firestore Timestamp 或原生 Date 物件
+  if (typeof timestamp.toDate === 'function') {
+    date = timestamp.toDate();
+  } else {
+    date = new Date(timestamp);
+  }
+  
+  if (isNaN(date.getTime())) return '無效日期';
+
+  const rocYear = date.getFullYear() - 1911;
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  
+  return `民國 ${rocYear} 年 ${month} 月 ${day} 日`;
+}
 
 </script>
 

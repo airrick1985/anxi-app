@@ -129,7 +129,7 @@
                 <v-card-text>
                     <v-row>
                         <v-col cols="12" sm="6">
-                            <v-select
+                        <v-combobox
                                 v-model="formData.銷售"
                                 :items="personnelOptions"
                                 label="銷售人員"
@@ -137,7 +137,9 @@
                                 dense
                                 item-title="name"
                                 item-value="name"
-                            ></v-select>
+                                :return-object="false"
+                                clearable
+                            ></v-combobox>
                         </v-col>
                         <v-col cols="12" sm="6">
                             <v-text-field
@@ -379,21 +381,34 @@
         variant="flat"
         :href="unitData['資料夾URL']"
         target="_blank"
+        class="mr-2"
     >
         <v-icon start>mdi-folder-google-drive</v-icon>
          {{ unitData['戶別'] }}資料夾
     </v-btn>
 
     <v-btn
-       color="secondary"
-        variant="flat"
-        @click="handleGenerateDocument"
-        :loading="isGenerating"
-        :disabled="isGenerating"
-    >
-        <v-icon start>mdi-file-document-edit-outline</v-icon>
-        製作付款表
-    </v-btn>
+            v-if="projectStore.getProjectById(props.projectId)?.paymentScheduleFolderUrl"
+            color="cyan-darken-1"
+            variant="flat"
+            :href="projectStore.getProjectById(props.projectId).paymentScheduleFolderUrl"
+            target="_blank"
+            class="mr-2"
+        >
+            <v-icon start>mdi-folder-table</v-icon>
+            付款表資料夾
+        </v-btn>
+
+        <v-btn
+                color="secondary"
+                variant="flat"
+                @click="handleGenerateDocument"
+                :loading="isGenerating"
+                :disabled="isGenerating || !formData?.銷售"
+            >
+                <v-icon start>mdi-file-document-edit-outline</v-icon>
+                製作付款表
+            </v-btn>
 
     <v-btn color="primary" variant="text" @click="$emit('update:show', false)">關閉</v-btn>
 
@@ -511,13 +526,17 @@ const salesPhone = computed(() => {
 });
 
 const ownedParkingSpots = computed(() => {
-    // 1. 獲取完整的車位列表
+    // ✅ [打勾] 改為優先讀取 props.unitData 中已處理好的「持有車位」
+    // 這包含了父組件傳入的 tempParkingSelection 暫存資料
+    if (props.unitData && Array.isArray(props.unitData['持有車位'])) {
+        return props.unitData['持有車位'];
+    }
+    
+    // 備援邏輯（若上述不存在才執行原本的過濾）
     const allParkings = props.allData['車位'] || [];
-    // 2. 獲取當前戶別 ID
     const currentUnitId = props.unitData?.unitId || formData.value?.unitId;
     if (!allParkings.length || !currentUnitId) return [];
     
-    // 3. 過濾出屬於此戶別的車位
     return allParkings.filter(parking => parking.buyerUnitId === currentUnitId);
 });
 
@@ -598,13 +617,14 @@ const showPreferredPaymentOption = computed(() => {
 // --- 監聽器 (Watchers) ---
 watch(() => props.show, (newVal) => {
     if (newVal) {
+        projectStore.setCurrentProject(props.projectId);
         const defaultStructure = {
             '戶別': 'N/A', '房屋成交價': 0, '配套價': 0, price_package_deal: 0, 
             '合約方式': props.contractTypes.length > 0 ? props.contractTypes[0] : '',
             // ✓ 修改：'是否首購' 的 key 改為 'isFirstTimeBuyer' 並預設為 false
             'isFirstTimeBuyer': false, 
             'usePreferredPayment': false,
-            '銷售': (props.allData['銷售人員'] && props.allData['銷售人員'].length > 0) ? props.allData['銷售人員'][0].name : '',            
+           '銷售': '',            
             '房屋總底價': 0, '房屋總表價': 0, '房屋面積(坪)': 0,
             '房屋面積(平方公尺)': 0, '公設比': 0, '主建物面積(坪)': 0, '主建物面積(平方公尺)': 0,
             '附屬建物面積(坪)': 0, '附屬建物面積(平方公尺)': 0, '共用部分面積(坪)': 0,
@@ -644,7 +664,7 @@ watch(() => props.show, (newVal) => {
             // ✓ 修正「銷售人員」(您回報的問題)
             // 正體中文註解：將 'salesperson' (英文 key) 的值，賦值給 '銷售' (中文 key)
             if (props.unitData.salesperson) {
-                initialData['銷售'] = props.unitData.salesperson;
+                initialData['銷售'] = props.unitData.salesperson || '';
             }
 
             // 1. 合約方式 (英文 key 'contractType' 映射到 中文 key '合約方式')

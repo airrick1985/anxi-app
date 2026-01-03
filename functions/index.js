@@ -2841,16 +2841,16 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     if (!projectId) {
       throw new HttpsError("invalid-argument", `請求缺少 projectId。請確保前端已傳遞此參數。`);
     }
-    
+   
     const finalProjectId = projectId;
     const docId = `${finalProjectId}_${unitId}`;
-    
+   
     console.log(`[${functionName}] 使用 projectId: "${finalProjectId}"`);
     console.log(`[${functionName}] 計算的文檔 ID: ${docId}`);
 
     // 準備要儲存的資料
     const dataToSave = { ...data, projectId: finalProjectId, unitId };
-    
+   
     console.log(`[${functionName}] 準備儲存的資料:`, JSON.stringify(dataToSave, null, 2));
 
     // ========================================
@@ -2859,12 +2859,12 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
 
     // 數值欄位轉換
     const numericFields = [
-      'area_ancillary_ping', 'area_ancillary_sqm', 'area_terrace_ping', 'area_common_ping', 
-      'area_common_sqm', 'area_house_ping', 'area_house_sqm', 'area_main_ping', 
+      'area_ancillary_ping', 'area_ancillary_sqm', 'area_terrace_ping', 'area_common_ping',
+      'area_common_sqm', 'area_house_ping', 'area_house_sqm', 'area_main_ping',
       'area_main_sqm', 'land_share_ping', 'land_share_sqm', 'land_share_ratio', 'common_area_ratio',
-      'payment_contract_amount', 'payment_deposit_amount', 'payment_supplement_amount', 
-      'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only', 
-      'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit', 
+      'payment_contract_amount', 'payment_deposit_amount', 'payment_supplement_amount',
+      'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only',
+      'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit',
       'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
       'price_transaction_house', 'price_transaction_total'
     ];
@@ -2929,13 +2929,13 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     // ========================================
     // 車位資料特殊處理
     // ========================================
-    
+   
     // 提取車位資料，準備寫入 salesParkings 集合
     let parkingData = null;
     if (dataToSave.parkingSpots && Array.isArray(dataToSave.parkingSpots)) {
       parkingData = dataToSave.parkingSpots;
       console.log(`[${functionName}] 檢測到車位資料，共 ${parkingData.length} 筆`);
-      
+     
       // 從 salesHouseholds 資料中移除 parkingSpots，因為它不屬於戶別文檔
       delete dataToSave.parkingSpots;
     }
@@ -2946,9 +2946,9 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
       'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'remarks',
       'buyerMailingAddressCity', 'buyerMailingAddressDistrict', 'buyerMailingAddressDetail',
       'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail',
-      
+     
       // ✅ [新增] 加入 propertyType 以確保單筆更新時能正確處理字串格式
-      'propertyType' 
+      'propertyType'
     ];
 
     for (const field of stringFields) {
@@ -2967,32 +2967,32 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     // ========================================
     // 儲存到 Firestore
     // ========================================
-    
+   
     // 檢查資料庫連接
     console.log(`[${functionName}] 資料庫實例:`, db.databaseId || '預設專案');
-    
+   
     const docRef = db.collection("salesHouseholds").doc(docId);
     console.log(`[${functionName}] 文檔參考路徑: salesHouseholds/${docId}`);
-    
+   
     // 檢查文檔是否存在
     const docSnapshot = await docRef.get();
     console.log(`[${functionName}] 目標文檔存在:`, docSnapshot.exists);
     if (docSnapshot.exists) {
       console.log(`[${functionName}] 現有文檔資料欄位:`, Object.keys(docSnapshot.data()));
     }
-    
+   
     // 使用 set 搭配 merge: true，確保只更新提供的欄位
     await docRef.set(dataToSave, { merge: true });
     console.log(`[${functionName}] 戶別資料寫入完成`);
-    
+   
     // ========================================
     // 處理車位資料寫入 salesParkings
     // ========================================
-    
+   
     let parkingUpdateCount = 0;
     if (parkingData && parkingData.length > 0) {
       console.log(`[${functionName}] 開始處理車位資料...`);
-      
+     
       for (const parking of parkingData) {
         try {
           //  修復：車位文檔 ID 格式應該是 {projectId}_{spotId}
@@ -3001,17 +3001,17 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
             console.warn(`[${functionName}] 車位資料缺少 spotId，跳過此筆資料:`, parking);
             continue;
           }
-          
+         
           const parkingDocId = `${finalProjectId}_${spotId}`;
           console.log(`[${functionName}] 車位文檔 ID: ${parkingDocId} (spotId: ${spotId})`);
-          
+         
           if (!parkingDocId) {
             console.warn(`[${functionName}] 無法生成車位文檔 ID，跳過此筆資料:`, parking);
             continue;
           }
-          
+         
           //  修復：準備車位資料時，只更新可變的銷售相關欄位
-          // 核心車位資料（floor, number, price_floor, price_list, projectId, 
+          // 核心車位資料（floor, number, price_floor, price_list, projectId,
           // spotId, type, size, slidePosition）保持不變
           const parkingDataToSave = {
             // 銷售相關欄位（可更新）
@@ -3023,27 +3023,27 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
             status: parking.status || null,
             status_backend: parking.status_backend || null,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            
+           
             // 注意：以下核心欄位不會被更新，保持資料庫中的原始值
             // floor, number, price_floor, price_list, projectId, spotId, type, size, slidePosition
           };
-          
+         
           // 寫入 salesParkings 集合
           const parkingDocRef = db.collection("salesParkings").doc(parkingDocId);
           await parkingDocRef.set(parkingDataToSave, { merge: true });
-          
+         
           console.log(`[${functionName}] 車位資料更新成功: ${parkingDocId}`);
           parkingUpdateCount++;
-          
+         
         } catch (parkingError) {
           console.error(`[${functionName}] 車位資料寫入失敗:`, parkingError);
           // 繼續處理其他車位，不中斷整個流程
         }
       }
-      
+     
       console.log(`[${functionName}] 車位資料處理完成，共更新 ${parkingUpdateCount} 筆`);
     }
-    
+   
     // 驗證寫入結果
     const verifySnapshot = await docRef.get();
     console.log(`[${functionName}] 寫入後驗證 - 文檔存在:`, verifySnapshot.exists);
@@ -3059,15 +3059,15 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     }
 
     console.log(`[${functionName}] 銷控資料更新成功！`);
-    
+   
     // 準備回傳訊息
     let message = "銷控資料更新成功！";
     if (parkingUpdateCount > 0) {
       message += ` (包含 ${parkingUpdateCount} 筆車位資料)`;
     }
-    
-    return { 
-      status: "success", 
+   
+    return {
+      status: "success",
       message: message,
       updatedFields: Object.keys(data).length,
       parkingUpdated: parkingUpdateCount,
@@ -3079,6 +3079,7 @@ exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }
     throw new HttpsError("internal", `Error updating sales data: ${error.message}`);
   }
 });
+
 
 // ✅ 新增：輕量級單一欄位更新函式 (專門給 Switch 開關使用)
 exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {

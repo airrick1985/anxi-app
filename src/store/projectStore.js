@@ -42,6 +42,10 @@ getters: {
         return project?.systems || [];
       };
     },
+    // ✅ [新增] 讓組件可以直接透過傳入的 ID 找專案資料，不依賴 state.currentProjectId
+    getProjectById: (state) => {
+      return (projectId) => state.projectsList.find(p => p.id === projectId);
+    },
     currentProject: (state) => {
       if (!state.currentProjectId || state.projectsList.length === 0) return null;
       return state.projectsList.find(p => p.id === state.currentProjectId);

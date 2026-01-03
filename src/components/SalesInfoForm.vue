@@ -82,8 +82,44 @@
             <v-text-field label="買方姓名" v-model="editableData.buyerName" class="mb-2"></v-text-field>
             <v-text-field label="聯絡電話" v-model="editableData.buyerPhone" type="tel" class="mb-2"></v-text-field>
             <v-text-field label="身分證字號" v-model="editableData.buyerIdNumber" class="mb-2"></v-text-field>
-            <label class="v-label text-caption">出生年月日</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData.buyerDateOfBirth" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-2"></VueDatePicker>
+           <v-col cols="12">
+    <label class="form-label">出生年月日 (民國)</label>
+    <v-row dense>
+        <v-col cols="4">
+            <v-text-field
+                v-model.number="rocYear"
+                label="年"
+                suffix="年"
+                variant="outlined"
+                density="compact"
+                type="number"
+                :rules="rocYearRules"
+                @update:model-value="syncToCE"
+            ></v-text-field> </v-col>
+        <v-col cols="4">
+            <v-select
+                v-model="rocMonth"
+                :items="monthOptions"
+                label="月"
+                variant="outlined"
+                density="compact"
+                :rules="rocMonthRules"
+                @update:model-value="syncToCE"
+            ></v-select> </v-col>
+        <v-col cols="4">
+            <v-text-field
+                v-model.number="rocDay"
+                label="日"
+                suffix="日"
+                variant="outlined"
+                density="compact"
+                type="number"
+                :rules="rocDayRules"
+                @update:model-value="syncToCE"
+            ></v-text-field> </v-col>
+    </v-row>
+    <div v-if="!isDateValid" class="text-caption text-error">請輸入正確的日期格式</div>
+</v-col>
             <v-text-field label="EMAIL" v-model="editableData.buyerEmail" type="email" class="mb-4"></v-text-field>
             
             <div>
@@ -214,6 +250,66 @@ const editableData = computed({
 const salesImageOptions = computed(() => {
   return props.allSalesImages.map(img => img.imageName);
 });
+
+// ✓ [打勾] 新增民國年月日暫存狀態
+const rocYear = ref(null);
+const rocMonth = ref(null);
+const rocDay = ref(null);
+
+const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
+
+// ✓ [打勾] 驗證邏輯：檢查日期是否合法 (含閏年判斷)
+const isDateValid = computed(() => {
+    if (!rocYear.value || !rocMonth.value || !rocDay.value) return true;
+    const ceYear = rocYear.value + 1911;
+    const date = new Date(ceYear, rocMonth.value - 1, rocDay.value);
+    // 檢查 Date 物件是否發生自動進位 (例如 2/30 變成 3/2)
+    return date.getFullYear() === ceYear && 
+           date.getMonth() === rocMonth.value - 1 && 
+           date.getDate() === rocDay.value;
+});
+
+// ✓ [打勾] 驗證規則
+const rocYearRules = [
+    v => !!v || '必填',
+    v => v > 0 || '年份需大於 0',
+    v => v <= (new Date().getFullYear() - 1911) || '年份不可超過今年'
+];
+const rocMonthRules = [v => !!v || '必填'];
+const rocDayRules = [
+    v => !!v || '必填',
+    v => (v >= 1 && v <= 31) || '日期範圍錯誤'
+];
+
+// ✓ [打勾] 函數：將民國轉換為西元 Date 並寫入編輯模型 (台灣時區)
+function syncToCE() {
+    if (rocYear.value && rocMonth.value && rocDay.value && isDateValid.value) {
+        const ceYear = rocYear.value + 1911;
+        // 以台灣時區為準建立 Date 物件
+        editableData.value.buyerDateOfBirth = new Date(ceYear, rocMonth.value - 1, rocDay.value);
+    } else {
+        editableData.value.buyerDateOfBirth = null;
+    }
+}
+
+// ✓ [打勾] 監聽初始資料，將後端 Date 拆解回民國顯示
+watch(() => props.modelValue.buyerDateOfBirth, (newVal) => {
+    if (newVal) {
+        let dateObj;
+        // 處理 Firestore Timestamp 或 JS Date
+        if (typeof newVal.toDate === 'function') {
+            dateObj = newVal.toDate();
+        } else {
+            dateObj = new Date(newVal);
+        }
+        
+        if (!isNaN(dateObj.getTime())) {
+            rocYear.value = dateObj.getFullYear() - 1911;
+            rocMonth.value = dateObj.getMonth() + 1;
+            rocDay.value = dateObj.getDate();
+        }
+    }
+}, { immediate: true });
 
 // ✅ 3. 新增 Watcher，確保 salesImages 永遠是陣列
 watch(() => editableData.value, (newData) => {
@@ -367,6 +463,16 @@ watch(() => editableData.value.buyerMailingAddressDetail, (val) => {
 
 // 📋 從 salesParkings 集合中找出該戶別持有的車位
 const ownedParkingSpots = computed(() => {
+  // 1. 如果已存在編輯中的暫存資料，優先使用它
+  if (editableData.value?.['持有車位'] && editableData.value['持有車位'].length > 0) {
+    return editableData.value['持有車位'].map(p => ({
+        ...p,
+        spotId: p.spotId || p['車位編號'], // 確保 Key 相容
+        price_transaction: p.price_transaction || p['車位成交價']
+    }));
+  }
+
+  // 2. 否則才從原始資料庫列表過濾 (原本的邏輯)
   if (!props.allParkingData || !editableData.value?.unitId) return [];
   return props.allParkingData.filter(parking => parking.buyerUnitId === editableData.value.unitId);
 });
