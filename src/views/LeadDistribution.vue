@@ -180,6 +180,22 @@
     :min="startDate" 
   ></v-text-field>
 </v-col>
+
+<v-col cols="12" md="4" class="mt-2 d-flex align-center">
+      <v-btn
+        color="success"
+        prepend-icon="mdi-file-excel"
+        variant="elevated"
+        rounded="lg"
+        block
+        :loading="isLeadsExporting"
+        @click="executeLeadsExport"
+        class="font-weight-bold"
+      >
+        下載聯絡狀況 EXCEL
+      </v-btn>
+    </v-col>
+
   </v-row>
 </v-card>
 
@@ -628,6 +644,8 @@ import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
 
 
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
+import * as XLSX from 'xlsx-js-style';
+
 
 ChartJS.register(
   Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement,
@@ -662,7 +680,7 @@ const isCheckingDuplicates = ref(false);
 
 const reportForm = ref({ status: '', reason: '', note: '' });
 const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
-const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號']);
+const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號', '未接電話']);
 
 const snackbar = reactive({ show: false, text: '', color: '' });
 
@@ -684,7 +702,7 @@ watch(() => reportForm.value.status, (newStatus) => {
     reportForm.value.reason = '號碼錯誤/空號';
     isReasonReadonly.value = true;
   } else if (newStatus === '未接') {
-    reportForm.value.reason = '號碼錯誤/空號';
+    reportForm.value.reason = '未接電話';
     isReasonReadonly.value = true;
   } else if (newStatus === '不考慮') {
     reportForm.value.reason = '';
@@ -1290,7 +1308,6 @@ const handleSoftDelete = async (item) => {
   }
 };
 
-const formatDateTime = (ts) => ts ? (ts.toDate ? ts.toDate() : new Date(ts)).toLocaleString('zh-TW', { hour12: false }) : '-';
 const getStatusColor = (s) => {
   const colors = {
     '已約賞屋': '#4CAF50', // success
@@ -1365,17 +1382,13 @@ onMounted(async () => {
   );
 
 onSnapshot(logsQuery, (snap) => {
-  // ✅ 加入 Debug Log
-  console.log(`[Debug] 收到日誌快照，資料筆數: ${snap.size}`);
-  
-  if (snap.size > 0) {
-    console.log(`[Debug] 第一筆日誌內容範例:`, snap.docs[0].data());
-  } else {
-    console.warn(`[Debug] 警告：目前查無任何符合 projectId 為 "${props.projectId}" 的日誌。`);
-  }
-
-  allProjectLogs.value = snap.docs.map(d => d.data());
+  // ✓ [打勾] 修改：在 map 時加入 leadId，方便後續與名單對接
+  allProjectLogs.value = snap.docs.map(d => ({
+    ...d.data(),
+    leadId: d.ref.parent.parent.id // 取得父文件 (leads/{id}) 的 ID
+  }));
 });
+
 
   if (isAdmin.value) {
     fetchDeletedLeads(); 
@@ -1441,6 +1454,67 @@ const barOptions = {
   },
   plugins: { legend: { display: true, position: 'bottom' } } 
 };
+
+// ✓ [打勾] 在 script setup 內加入此變數宣告
+const isLeadsExporting = ref(false);
+
+// ✓ [打勾] 修正：專用於「聯絡名單」的匯出函數
+const executeLeadsExport = async () => {
+  if (filteredLeads.value.length === 0) {
+    return alert('目前列表無資料可供匯出');
+  }
+
+  isLeadsExporting.value = true;
+
+  try {
+    const exportRows = filteredLeads.value.map((item) => {
+      return {
+        '建檔日期': formatDateTime(item.createdAt), // ✓ [共用] 格式化 YYYY/MM/DD HH:mm:ss
+        '填表日期': item.date || '',                // ✓ [原始字串] 如 2026/01/02
+        '分配銷售': item.assignedName || '',
+        '客戶姓名': item.name || '',
+        '客戶電話': item.phone || '',
+        '名單來源': item.source || '',
+        '預算': item.budget || '',
+        '聯絡狀況': item.status || '未處理',
+        '不考慮原因': item.reason || '',
+        '名單狀態': item.statusText || ''
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    XLSX.utils.book_append_sheet(wb, ws, "聯絡狀況報表");
+    
+    const dateTag = new Date().toISOString().split('T')[0];
+    const fileName = `${projectName.value}_聯絡名單狀況_${dateTag}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+  } catch (err) {
+    console.error("匯出失敗:", err);
+    alert('匯出失敗: ' + err.message);
+  } finally {
+    isLeadsExporting.value = false;
+  }
+};
+
+// ✓ [打勾] 修改後的共用函數：確保兩位數補零 (2-digit)
+const formatDateTime = (ts) => {
+  if (!ts) return '-';
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(date.getTime())) return '-';
+  
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit', // 確保月份為兩位數
+    day: '2-digit',   // 確保日期為兩位數
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false     // 24小時制
+  }).replace(/\//g, '/'); // 確保斜線分隔
+};
+
 
 </script>
 

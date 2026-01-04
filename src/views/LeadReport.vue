@@ -266,7 +266,7 @@ watch(() => form.value.status, (newStatus) => {
     form.value.reason = '號碼錯誤/空號';
     isReasonReadonly.value = true;
   } else if (newStatus === '未接') {
-    form.value.reason = '號碼錯誤/空號';
+    form.value.reason = '未接電話';
     isReasonReadonly.value = true;
   } else if (newStatus === '不考慮') {
     form.value.reason = '';
