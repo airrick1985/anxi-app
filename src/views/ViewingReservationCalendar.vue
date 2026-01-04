@@ -58,33 +58,73 @@
     </v-navigation-drawer>
 
     <v-main class="d-flex flex-column fill-height">
-      <v-toolbar v-if="$vuetify.display.xs" color="white" border="bottom" density="comfortable">
-        <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
-        <v-btn variant="text" @click="showMobileMiniCalendar = !showMobileMiniCalendar" class="text-h6 font-weight-bold px-2" color="primary">
-          {{ currentTitle }}
-          <v-icon right>{{ showMobileMiniCalendar ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-        </v-btn>
-        <v-spacer></v-spacer>
-        <v-btn icon="mdi-refresh" @click="fetchData"></v-btn>
-      </v-toolbar>
-
-      <v-toolbar v-else color="white" border="bottom" density="comfortable">
+      <v-toolbar color="white" border="bottom" density="comfortable">
         <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
         <v-toolbar-title class="text-h6 font-weight-bold">{{ projectName }} 賞屋預約</v-toolbar-title>
-        <v-btn variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
+        <v-spacer></v-spacer>
+        <v-btn v-if="!$vuetify.display.xs" variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
         <div class="d-flex align-center ml-2">
           <v-btn icon="mdi-chevron-left" variant="text" @click="goPrev"></v-btn>
           <v-btn icon="mdi-chevron-right" variant="text" @click="goNext"></v-btn>
         </div>
-        <span class="text-h6 ml-2 font-weight-regular">{{ currentTitle }}</span>
-        <v-spacer></v-spacer>
-        <v-btn icon="mdi-refresh" @click="fetchData"></v-btn>
+        <span class="text-h6 ml-2 font-weight-regular d-none d-sm-inline">{{ currentTitle }}</span>
+        <v-btn icon="mdi-refresh" @click="fetchData" class="ml-2"></v-btn>
       </v-toolbar>
 
+      <v-sheet color="grey-lighten-4" class="pa-2 pa-md-3 border-b">
+        <v-autocomplete
+          v-if="!$vuetify.display.xs"
+          v-model="selectedSearchItem"
+          :items="searchItems"
+          item-title="searchLabel"
+          placeholder="搜尋預約：輸入客戶姓名或電話..."
+          prepend-inner-icon="mdi-magnify"
+          variant="solo"
+          density="comfortable"
+          hide-details
+          flat
+          rounded="lg"
+          class="w-100"
+          return-object
+          clearable
+          @update:model-value="onSearchSelect"
+        >
+          <template v-slot:item="{ props, item }">
+            <v-list-item v-bind="props" :subtitle="item.raw.customerPhone + ' | 負責銷售：' + (item.raw.salesName || '未指定')"></v-list-item>
+          </template>
+        </v-autocomplete>
+
+        <v-text-field
+          v-else
+          v-model="searchQuery"
+          placeholder="搜尋姓名或電話..."
+          prepend-inner-icon="mdi-magnify"
+          append-inner-icon="mdi-close"
+          @click:append-inner="searchQuery = ''"
+          hide-details
+          density="compact"
+          variant="solo"
+          flat
+          rounded="lg"
+          class="w-100"
+        ></v-text-field>
+      </v-sheet>
+
       <v-expand-transition v-if="$vuetify.display.xs">
-        <div v-show="showMobileMiniCalendar" class="bg-grey-lighten-5 border-b">
-          <v-date-picker v-model="miniCalendarDate" hide-header flat density="compact" color="primary" class="w-100 calendar-mini" @update:model-value="onMobileDateSelect"></v-date-picker>
-        </div>
+        <v-list v-if="searchQuery" class="bg-white border-b" style="max-height: 300px; overflow-y: auto;">
+          <v-list-item
+            v-for="res in filteredSearchItems"
+            :key="res.id"
+            @click="onSearchSelect(res)"
+            :prepend-icon="res.type === '新客' ? 'mdi-account-plus' : 'mdi-account-arrow-right'"
+          >
+            <v-list-item-title>{{ res.customerName }} ({{ res.customerPhone }})</v-list-item-title>
+            <v-list-item-subtitle>{{ formatDate(res.reservationTime) }} | {{ res.salesName }}</v-list-item-subtitle>
+          </v-list-item>
+          <v-list-item v-if="filteredSearchItems.length === 0">
+            <v-list-item-title class="text-grey text-center">找不到相符的預約</v-list-item-title>
+          </v-list-item>
+        </v-list>
       </v-expand-transition>
 
       <div 
@@ -102,12 +142,14 @@
 
     <v-btn position="fixed" location="bottom right" icon="mdi-plus" color="primary" size="x-large" class="ma-6 elevation-8 fab-btn" @click="openAddDialog"></v-btn>
 
-    <v-snackbar v-model="conflictWarning.show" color="warning" location="top" timeout="4000">
-      <v-icon start>mdi-alert</v-icon>
-      注意：{{ conflictWarning.time }} 該時段已有 {{ conflictWarning.count }} 筆預約，建議錯開時段。
-    </v-snackbar>
-
-    <ViewingReservationDialog v-model="showDialog" :projectId="projectId" :initialData="selectedReservation" :initialDate="selectedDate" @saved="fetchData" @deleted="fetchData" />
+    <ViewingReservationDialog 
+      v-model="showDialog" 
+      :projectId="projectId" 
+      :initialData="selectedReservation" 
+      :initialDate="selectedDate" 
+      @saved="fetchData" 
+      @deleted="fetchData" 
+    />
   </v-layout>
 </template>
 
@@ -276,6 +318,57 @@ onMounted(async () => {
     }
     await fetchData();
 });
+
+// ✓ [新增] 搜尋相關狀態
+const showMobileSearch = ref(false);
+const searchQuery = ref('');
+const selectedSearchItem = ref(null);
+
+// ✓ [新增] 格式化搜尋清單
+const searchItems = computed(() => {
+    return reservationStore.activeReservations.map(res => ({
+        ...res,
+        searchLabel: `${res.customerName} (${res.customerPhone})`
+    }));
+});
+
+// ✓ [新增] 手機版過濾邏輯
+const filteredSearchItems = computed(() => {
+    if (!searchQuery.value) return [];
+    const q = searchQuery.value.toLowerCase();
+    return searchItems.value.filter(item => 
+        item.customerName.toLowerCase().includes(q) || 
+        item.customerPhone.includes(q)
+    );
+});
+
+// ✓ [新增] 選取搜尋結果的處理
+function onSearchSelect(res) {
+    if (!res) return;
+    
+    // 1. 設定對話框資料並開啟
+    selectedReservation.value = { ...res };
+    showDialog.value = true;
+
+    // 2. 自動跳轉日曆至該預約日期
+    const dateObj = res.reservationTime.toDate ? res.reservationTime.toDate() : new Date(res.reservationTime);
+    syncCalendarDate(dateObj);
+
+    // 3. 清理搜尋狀態
+    if (xs.value) {
+        showMobileSearch.value = false;
+        searchQuery.value = '';
+    } else {
+        selectedSearchItem.value = null;
+    }
+}
+
+// 輔助格式化日期
+const formatDate = (ts) => {
+    if (!ts) return '';
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return date.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
 
 function handleEventClick(info) {
     const resDate = info.event.start;
