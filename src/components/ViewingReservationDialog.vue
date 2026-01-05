@@ -14,7 +14,8 @@
               <v-col cols="12" sm="6">
                 <label class="text-caption text-grey-darken-1">預約時間(必填)</label>
               <VueDatePicker 
-                    v-model="formData.reservationTime" 
+                    v-model="formData.reservationTime"
+                     
                     :enable-time-picker="true"
                     :is-24="false"
                     format="yyyy/MM/dd aa hh:mm" 
@@ -45,7 +46,7 @@
                   label="預約類型"
                   :items="['新客', '回訪']"
                   variant="underlined"
-                  
+                  density="compact"
                   :rules="[v => !!v || '請選擇類型']"
                   prepend-inner-icon="mdi-account-tag"
                 ></v-select>
@@ -56,7 +57,7 @@
                   v-model="formData.customerName"
                   label="客戶姓名"
                   variant="underlined"
-                  
+                  density="compact"
                   :rules="[v => !!v || '請輸入姓名']"
                   prepend-inner-icon="mdi-account"
                 ></v-text-field>
@@ -67,6 +68,7 @@
                   v-model="formData.customerPhone"
                   label="客戶電話"
                   variant="underlined"
+                  density="compact"
                   placeholder="09xxxxxxxx"
                   :rules="phoneRules"
                   prepend-inner-icon="mdi-phone"
@@ -86,7 +88,7 @@
                       item-title="name"
                       item-value="id"
                       variant="underlined"
-                      
+                      density="compact"
                       prepend-inner-icon="mdi-badge-account"
                       clearable
                       class="flex-grow-1"
@@ -114,6 +116,7 @@
                   v-model="formData.note"
                   label="備註事項"
                   variant="underlined"
+                  density="compact"
                   rows="2"
                   auto-grow
                   prepend-inner-icon="mdi-note-text"
