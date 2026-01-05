@@ -12,7 +12,7 @@
           <v-container>
             <v-row>
               <v-col cols="12" sm="6">
-                <label class="text-caption text-grey-darken-1">預約時間</label>
+                <label class="text-caption text-grey-darken-1">預約時間(必填)</label>
               <VueDatePicker 
                     v-model="formData.reservationTime" 
                     :enable-time-picker="true"
@@ -24,6 +24,7 @@
                     select-text="確認選擇" 
                     cancel-text="取消"
                     class="mt-1"
+                    :state="formData.reservationTime ? null : false"
                 >
                     <template #am-pm-button="{ toggle, value }">
                         <button 
@@ -35,7 +36,8 @@
                         </button>
                     </template>
                 </VueDatePicker>
-              </v-col>
+              <div v-if="!formData.reservationTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
+                </v-col>
               
               <v-col cols="12" sm="6">
                  <v-select
@@ -128,7 +130,14 @@
         <v-btn v-if="isEdit" color="error" variant="text" prepend-icon="mdi-delete" @click="confirmDelete">取消預約</v-btn>
         <v-spacer></v-spacer>
         <v-btn variant="underlined" @click="closeDialog">關閉</v-btn>
-        <v-btn color="primary" variant="flat" @click="save" :loading="saving" :disabled="!valid">{{ isEdit ? '更新' : '新增' }}</v-btn>
+                <v-btn 
+                color="primary" 
+                variant="flat" 
+                @click="save" 
+                :loading="saving" 
+                :disabled="!valid || !formData.reservationTime" 
+                > {{ isEdit ? '更新' : '新增' }}
+                </v-btn>
       </v-card-actions>
     </v-card>
 
@@ -216,25 +225,22 @@ const props = defineProps({
   initialDate: Date // ✅ [新增] 接收外部傳入的預設時間
 });
 
-// 2. 建立統一的初始化方法
+
+// 2. 修改 initDialogData (處理新增模式)
 const initDialogData = async () => {
-    // 讀取銷售名單
     await reservationStore.fetchProjectSales(props.projectId);
     
     if (isEdit.value) {
-        // 編輯模式：複製舊有資料
         const d = props.initialData;
         formData.value = {
             ...d,
             reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
         };
     } else {
-        // 新增模式：處理預填資料
         formData.value = {
-            // ✅ 優化：優先使用傳入的 initialData (如姓名、電話)，若無則為空
             customerName: props.initialData?.customerName || '',
             customerPhone: props.initialData?.customerPhone || '',
-            reservationTime: props.initialDate || new Date(),
+            reservationTime: props.initialDate || null, // ✅ 若無傳入則預設 null
             type: '新客',
             salesId: null,
             note: props.initialData?.note || ''
@@ -322,7 +328,7 @@ const saving = ref(false);
 const formData = ref({
   customerName: '',
   customerPhone: '',
-  reservationTime: new Date(),
+  reservationTime: null,
   type: '新客',
   salesId: null,
   note: ''
@@ -390,35 +396,27 @@ const phoneRules = [
 // ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
-    // 開啟時載入銷售名單
     await reservationStore.fetchProjectSales(props.projectId);
     
-    // 1. 使用 isEdit (!!props.initialData?.id) 來區分 編輯 或 新增
     if (isEdit.value) {
-      // 【編輯模式】：複製完整的現有預約資料
       const d = props.initialData;
       formData.value = {
         ...d,
         reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
       };
     } else {
-      // 【新增模式】：初始化資料 (包含來自 LeadReport 的預填資訊)
       formData.value = {
-        // ✅ 修正：讀取傳入的預填資料，確保姓名、電話、備註正確帶入
         customerName: props.initialData?.customerName || '',
         customerPhone: props.initialData?.customerPhone || '',
         note: props.initialData?.note || '',
-        
-        // 時間處理
-        reservationTime: props.initialDate || new Date(),
+        reservationTime: props.initialDate || null, // ✅ 改為 null
         type: '新客',
         salesId: null
       };
     }
-    // 重置衝突狀態
     conflictInfo.value = null;
   }
-}, { immediate: true }); // 確保組件若是用 v-if 載入也能立即執行
+}, { immediate: true });
 
 
 

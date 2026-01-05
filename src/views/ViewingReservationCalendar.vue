@@ -180,7 +180,7 @@ const drawer = ref(mdAndUp.value);
 const showDialog = ref(false);
 const showMobileMiniCalendar = ref(false); 
 const selectedReservation = ref(null);
-const selectedDate = ref(new Date());
+const selectedDate = ref(null);
 const miniCalendarDate = ref(new Date());
 const currentTitle = ref('');
 const currentView = ref('dayGridMonth');
@@ -396,7 +396,7 @@ function handleDateClick(info) {
 
 function openAddDialog() {
     selectedReservation.value = null;
-    selectedDate.value = new Date();
+    selectedDate.value = null;
     showDialog.value = true;
 }
 </script>
