@@ -3,10 +3,10 @@
     <v-tabs v-model="tab" color="primary" grow>
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
-      <v-tab value="settings" v-if="canManageSettings">客資系統設定</v-tab>
-      <v-tab value="vipSettings" v-if="canManageSettings">貴賓資料設定</v-tab>
-      <v-tab value="otherSettings" v-if="canManageSettings">其他設定</v-tab>
-      <v-tab value="batchUpdate" v-if="canManageSettings">客資批次更新</v-tab>
+      <v-tab value="settings" v-if="isSuperAdmin">客資系統設定</v-tab>
+      <v-tab value="vipSettings" v-if="isSuperAdmin">貴賓資料設定</v-tab>
+      <v-tab value="otherSettings" v-if="isSuperAdmin">其他設定</v-tab>
+      <v-tab value="batchUpdate" v-if="isSuperAdmin">客資批次更新</v-tab>
       <v-tab value="anxiSettings" v-if="isSuperAdmin">ANXI系統設定</v-tab>
       </v-tabs>
 
@@ -261,7 +261,7 @@
   </v-container>
 </v-window-item>
 
-      <v-window-item value="settings" v-if="canManageSettings">
+      <v-window-item value="settings" v-if="isSuperAdmin">
         <v-card>
           <v-toolbar color="blue-grey-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
@@ -344,7 +344,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="vipSettings" v-if="canManageSettings">
+      <v-window-item value="vipSettings" v-if="isSuperAdmin">
         <v-card>
           <v-toolbar color="teal-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
@@ -519,7 +519,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="otherSettings" v-if="canManageSettings">
+      <v-window-item value="otherSettings" v-if="isSuperAdmin">
         <v-card>
           <v-toolbar color="brown-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">

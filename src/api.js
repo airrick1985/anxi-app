@@ -7454,3 +7454,47 @@ export const batchImportAndAssignLeadsAPI = async (data) => {
     throw error;
   }
 };
+
+
+
+// 定義簡訊 API 路由
+export const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
+
+
+/**
+ * [API] 獲取簡訊帳號餘額
+ * @param {string} userKey - 自定義的使用者 ID
+ */
+export const getSmsBalanceAPI = async (userKey) => {
+  try {
+    // 定義路由 (確保名稱與 index.js 導出一致)
+    const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
+    
+    const result = await smsApiRouter({ 
+      action: 'getBalance',
+      userKey: userKey // 這裡傳遞給後端的 request.data
+    });
+    
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] getSmsBalanceAPI 錯誤:", error);
+    throw error;
+  }
+};
+
+/**
+ * [API] 發送測試簡訊
+ */
+export const sendSmsAPI = async (data) => {
+  try {
+    const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
+    const result = await smsApiRouter({ 
+      action: 'sendSms',
+      ...data 
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] sendSmsAPI 錯誤:", error);
+    throw error;
+  }
+};

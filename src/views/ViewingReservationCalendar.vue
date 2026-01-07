@@ -1,13 +1,12 @@
 <template>
   <v-layout class="fill-height bg-white">
-    <v-navigation-drawer
-      v-model="drawer"
-      :permanent="$vuetify.display.mdAndUp"
-      :temporary="$vuetify.display.smAndDown"
-      width="320"
-      border="right"
-      class="pa-3"
-    >
+      <v-navigation-drawer
+          v-model="drawer"
+          :permanent="$vuetify.display.mdAndUp"
+          :temporary="$vuetify.display.smAndDown"
+          width="350" border="right"
+          class="pa-3"
+      >
       <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">視圖切換</div>
       <v-list density="compact" nav class="pa-0 mb-2">
         <v-list-item 
@@ -26,18 +25,18 @@
         </v-list-item>
       </v-list>
 
-      <div v-if="mdAndUp">
+      <div>
         <v-divider class="mb-4"></v-divider>
         <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">快速跳轉</div>
-        <v-date-picker
-          v-model="miniCalendarDate"
-          hide-header
-          flat
-          density="compact"
-          color="primary"
-          class="border rounded-lg mb-6 calendar-mini"
-          @update:model-value="syncCalendarDate"
-        ></v-date-picker>
+          <v-date-picker
+              v-model="miniCalendarDate"
+              :hide-header="false" 
+              flat
+              density="compact"
+              color="primary"
+              class="border rounded-lg mb-6 calendar-mini"
+              @update:model-value="onMiniCalendarChange" 
+          > </v-date-picker>
       </div>
 
       <v-divider class="mb-4"></v-divider>
@@ -55,19 +54,68 @@
       <div style="max-height: 200px; overflow-y: auto;">
         <v-checkbox v-for="name in allSalesPeople" :key="name" v-model="filters.salesNames" :label="name || '未指派'" :value="name" color="primary" density="compact" hide-details></v-checkbox>
       </div>
-    </v-navigation-drawer>
+
+      <v-divider v-if="canAccessSettings" class="my-4"></v-divider>
+      <div v-if="canAccessSettings" class="px-2 pb-4">
+          <v-btn 
+            block 
+            color="grey-darken-3" 
+            prepend-icon="mdi-message-cog"
+            variant="flat"
+            class="mb-2"
+            @click="smsSettingsDialog = true"
+          >
+            簡訊提醒設定
+          </v-btn>
+
+          <v-btn 
+            block 
+            color="primary" 
+            prepend-icon="mdi-monitor-dashboard"
+            variant="tonal"
+            @click="router.push('/sms-monitor')"
+          >
+            簡訊回報監控
+          </v-btn>
+      </div>
+      </v-navigation-drawer>
+
+      <SmsReminderSettingsDialog 
+        v-model="smsSettingsDialog" 
+        :projectId="projectId" 
+      />
 
     <v-main class="d-flex flex-column fill-height">
       <v-toolbar color="white" border="bottom" density="comfortable">
         <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
-        <v-toolbar-title class="text-h6 font-weight-bold">{{ projectName }} 賞屋預約</v-toolbar-title>
+        
+        <v-toolbar-title class="pl-0"> 
+          <div class="d-flex flex-column justify-center" style="line-height: 1.2;"> 
+            <span v-if="!$vuetify.display.xs" class="text-caption text-grey-darken-1">{{ projectName }} 賞屋預約</span> 
+            <span class="text-subtitle-1 text-sm-h6 font-weight-bold">{{ currentTitle }}</span> 
+          </div> 
+        </v-toolbar-title> 
+
         <v-spacer></v-spacer>
+        
         <v-btn v-if="!$vuetify.display.xs" variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
+        
         <div class="d-flex align-center ml-2">
           <v-btn icon="mdi-chevron-left" variant="text" @click="goPrev"></v-btn>
           <v-btn icon="mdi-chevron-right" variant="text" @click="goNext"></v-btn>
         </div>
-        <span class="text-h6 ml-2 font-weight-regular d-none d-sm-inline">{{ currentTitle }}</span>
+
+        <v-btn
+          v-if="canAccessSettings && !$vuetify.display.xs"
+          color="primary"
+          prepend-icon="mdi-monitor-dashboard"
+          variant="elevated"
+          class="ml-2"
+          @click="router.push('/sms-monitor')"
+        >
+          簡訊回報監控
+        </v-btn>
+        
         <v-btn icon="mdi-refresh" @click="fetchData" class="ml-2"></v-btn>
       </v-toolbar>
 
@@ -167,6 +215,8 @@ import interactionPlugin from '@fullcalendar/interaction';
 import listPlugin from '@fullcalendar/list';
 import zhTwLocale from '@fullcalendar/core/locales/zh-tw';
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
+import SmsReminderSettingsDialog from '@/components/SmsReminderSettingsDialog.vue';
+
 
 const props = defineProps({ projectId: { type: String, required: true } });
 const router = useRouter();
@@ -184,6 +234,13 @@ const selectedDate = ref(null);
 const miniCalendarDate = ref(new Date());
 const currentTitle = ref('');
 const currentView = ref('dayGridMonth');
+const smsSettingsDialog = ref(false);
+
+// 權限判斷：包含系統管理員或超級管理員
+ const canAccessSettings = computed(() => {
+    const roles = userStore.user?.roles || [];
+    return roles.includes('系統管理員') || roles.includes('超級管理員');
+});
 
 const transitionClass = ref('');
 let touchstartX = 0;
@@ -216,7 +273,6 @@ const calendarEvents = computed(() => {
             const start = res.reservationTime.toDate();
             return {
                 id: res.id,
-                // ✅ 標題內容優化：不含時間，交給引擎渲染
                 title: `${res.customerName}(${res.salesName || '未指派'})-${res.type}`,
                 start: start,
                 end: new Date(start.getTime() + 90 * 60000),
@@ -253,7 +309,6 @@ const calendarOptions = ref({
     dayMaxEvents: true,
     stickyHeaderDates: true,
     eventClassNames: 'google-style-event',
-    // ✅ 開啟原生時間標籤，方便 CSS 精確控制顯示/隱藏
     displayEventTime: true,
     eventTimeFormat: {
         hour: '2-digit',
@@ -300,6 +355,14 @@ const syncCalendarDate = (date) => {
     currentView.value = 'timeGridDay';
 };
 
+const onMiniCalendarChange = (date) => {
+    if (!date) return;
+    syncCalendarDate(date);
+    if (xs.value) {
+        drawer.value = false;
+    }
+};
+
 const onMobileDateSelect = (date) => {
     syncCalendarDate(date);
     showMobileMiniCalendar.value = false;
@@ -319,12 +382,9 @@ onMounted(async () => {
     await fetchData();
 });
 
-// ✓ [新增] 搜尋相關狀態
-const showMobileSearch = ref(false);
 const searchQuery = ref('');
 const selectedSearchItem = ref(null);
 
-// ✓ [新增] 格式化搜尋清單
 const searchItems = computed(() => {
     return reservationStore.activeReservations.map(res => ({
         ...res,
@@ -332,7 +392,6 @@ const searchItems = computed(() => {
     }));
 });
 
-// ✓ [新增] 手機版過濾邏輯
 const filteredSearchItems = computed(() => {
     if (!searchQuery.value) return [];
     const q = searchQuery.value.toLowerCase();
@@ -342,40 +401,32 @@ const filteredSearchItems = computed(() => {
     );
 });
 
-// ✓ [新增] 選取搜尋結果的處理
 function onSearchSelect(res) {
     if (!res) return;
-    
-    // 1. 設定對話框資料並開啟
     selectedReservation.value = { ...res };
     showDialog.value = true;
-
-    // 2. 自動跳轉日曆至該預約日期
     const dateObj = res.reservationTime.toDate ? res.reservationTime.toDate() : new Date(res.reservationTime);
     syncCalendarDate(dateObj);
-
-    // 3. 清理搜尋狀態
     if (xs.value) {
-        showMobileSearch.value = false;
         searchQuery.value = '';
     } else {
         selectedSearchItem.value = null;
     }
 }
 
-// 輔助格式化日期
 const formatDate = (ts) => {
     if (!ts) return '';
     const date = ts.toDate ? ts.toDate() : new Date(ts);
-    return date.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('zh-TW', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    }); 
 };
 
 function handleEventClick(info) {
-    const resDate = info.event.start;
-    const count = getConflictCount(resDate);
-    if (count > MAX_CONCURRENT_RESERVATIONS) {
-        conflictWarning.value = { show: true, count, time: resDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) };
-    }
     selectedReservation.value = info.event.extendedProps;
     showDialog.value = true;
 }
@@ -384,10 +435,6 @@ function handleDateClick(info) {
     if (currentView.value === 'dayGridMonth') {
         syncCalendarDate(info.date);
         return;
-    }
-    const count = getConflictCount(info.date);
-    if (count >= MAX_CONCURRENT_RESERVATIONS) {
-        conflictWarning.value = { show: true, count, time: info.date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) };
     }
     selectedReservation.value = null;
     selectedDate.value = info.date;
@@ -402,16 +449,12 @@ function openAddDialog() {
 </script>
 
 <style lang="scss" scoped>
-/* ✅ 使用 :deep(.fc) 確保能滲透到 FullCalendar 內部節點 */
 :deep(.fc.calendar-container) {
   font-family: 'Roboto', sans-serif;
   border: none;
-
   .fc-view-harness { background-color: #ffffff; }
   .fc-timegrid-slot, .fc-daygrid-day { border-color: #f1f3f4 !important; }
   .fc-timegrid-now-indicator-line { border-color: #ea4335; border-width: 2px; }
-
-  /* 通用事件樣式 */
   .google-style-event {
     border-left-width: 4px !important;
     border-radius: 4px !important;
@@ -423,72 +466,37 @@ function openAddDialog() {
     transition: transform 0.1s;
     &:hover { filter: brightness(0.95); transform: scale(1.02); }
   }
-
-  /* ✅ 強制修正手機版月視圖樣式 */
   @media (max-width: 600px) {
     .fc-daygrid-body, .fc-view-dayGridMonth {
-      
-      /* 1. 強制隱藏月視圖的時間標籤 */
-      .fc-event-time {
-        display: none !important;
-      }
-
-      /* 2. 縮小標題字體並強制重置樣式 */
+      .fc-event-time { display: none !important; }
       .fc-event-title {
-        display: inline-block !important; /* 改為 inline-block 以利 transform */
+        display: inline-block !important;
         font-size: 10px !important;
-        /* ✅ 關鍵：使用縮放突破手機瀏覽器 12px 最小字體限制，達成視覺上的 8.5px */
         transform: scale(0.85);
         transform-origin: left center;
         line-height: 1.2 !important;
         white-space: nowrap !important;
-        width: 118%; /* 補償縮放後的寬度 */
+        width: 118%;
         padding: 0 !important;
       }
-
-      /* 3. 調整事件區塊的高度與間距 */
-      .fc-daygrid-event {
-        margin: 1px 0 !important;
-        min-height: 14px !important;
-        padding: 0 2px !important;
-      }
-
-      /* 4. 修正內距讓文字更緊湊 */
-      .fc-event-main {
-        padding: 0 !important;
-      }
+      .fc-daygrid-event { margin: 1px 0 !important; min-height: 14px !important; padding: 0 2px !important; }
+      .fc-event-main { padding: 0 !important; }
     }
   }
 }
-
-/* 滑動動畫效果 */
 .calendar-wrapper {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
   &.slide-next { animation: slideNext 0.3s ease-out; }
   &.slide-prev { animation: slidePrev 0.3s ease-out; }
 }
-
-@keyframes slideNext {
-  0% { transform: translateX(0); opacity: 1; }
-  50% { transform: translateX(-20px); opacity: 0.6; }
-  100% { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes slidePrev {
-  0% { transform: translateX(0); opacity: 1; }
-  50% { transform: translateX(20px); opacity: 0.6; }
-  100% { transform: translateX(0); opacity: 1; }
-}
-
+@keyframes slideNext { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(-20px); opacity: 0.6; } 100% { transform: translateX(0); opacity: 1; } }
+@keyframes slidePrev { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(20px); opacity: 0.6; } 100% { transform: translateX(0); opacity: 1; } }
 .calendar-mini {
   width: 100% !important;
-  :deep(.v-date-picker-month__days) { padding: 0 !important; }
-  :deep(.v-btn--icon) { width: 32px !important; height: 32px !important; }
+  max-width: 100% !important;
+  :deep(.v-picker__body) { width: 100% !important; margin: 0 !important; }
+  :deep(.v-date-picker-month) { padding: 0 4px !important; }
+  :deep(.v-date-picker-month__days) { padding: 0 !important; justify-content: space-around !important; }
 }
-
-.fab-btn { 
-  z-index: 1000; 
-  transition: transform 0.2s; 
-  &:hover { transform: rotate(90deg); } 
-}
+.fab-btn { z-index: 1000; transition: transform 0.2s; &:hover { transform: rotate(90deg); } }
 </style>

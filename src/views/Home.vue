@@ -50,6 +50,7 @@ import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 import profileIcon from '@/assets/icons/profile.png'; 
+import SMSIcon from '@/assets/icons/SMS.png';
 
 
 const router = useRouter();
@@ -94,6 +95,9 @@ const allButtons = ref([
   { id: 'quoteSystem', text: '報價系統', icon: priceIcon, permissionType: 'system', permissionArgs: ['報價系統'], nav: { name: 'QuoteSystemEntry', query: { viewMode: 'quote' } } },
   { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
   
+
+
+
   // ✓ START: 新增「客資系統」按鈕
   { 
     id: 'customerSystem', 
@@ -107,6 +111,15 @@ const allButtons = ref([
 
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
   { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' } 
+  },
+
+  { 
+    id: 'smsMonitor', 
+    text: '簡訊監控', 
+    icon: SMSIcon, // 建議使用代表監控或狀態的圖示
+    permissionType: 'system', 
+    permissionArgs: ['系統管理員','超級管理員'], // 依照您的 Home.vue 邏輯，會檢查角色是否包含此權限
+    nav: { name: 'SmsReportMonitor' } // 導向您在 router/index.js 定義的名稱
   },
 ]);
 

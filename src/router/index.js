@@ -21,7 +21,7 @@ const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue');
-
+const SmsReportMonitor = () => import('@/views/SmsReportMonitor.vue');
 
 const routes = [
   {
@@ -614,6 +614,20 @@ const routes = [
     }
   },
 
+  // ✅ [新增] 簡訊回報監控頁面
+  {
+    path: '/sms-monitor',
+    name: 'SmsReportMonitor',
+    component: SmsReportMonitor,
+    meta: {
+      requiresAuth: true,               // 需要登入主系統
+      requiredRoles: ['超級管理員', '系統管理員'], // 僅限管理員層級進入
+      layout: DefaultLayout,             // 依照您的需求使用 PublicLayout (或依專案改為 DefaultLayout)
+      title: '簡訊回報監控'
+    }
+  },
+
+
   // ✅ [修改] 賞屋預約系統 - 行事曆主頁
   {
     path: '/viewing-reservation/:projectId',
@@ -662,6 +676,8 @@ const routes = [
      title: '聯絡名單'
    } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
 },
+
+
 
 
    { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }

@@ -14,8 +14,15 @@ import {
   fetchBookingOptions,
   getAllBookingRules,
   fetchAllHouseholdsForProject,
+  getSmsBalanceAPI,
+  sendSmsAPI,
 
 } from '@/api';
+
+import { useUserStore } from '@/store/user'; // 引入 userStore
+
+import { db } from '@/firebase'; 
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export const useProjectStore = defineStore('projects', {
   state: () => ({
@@ -30,7 +37,7 @@ export const useProjectStore = defineStore('projects', {
     projectBookingOptionsCache: {}, // 格式: { 'projectId': { ... } }
     projectBookingRulesCache: {},   // 格式: { 'projectId': { ... } }
     projectDateRangeCache: {},      // 格式: { 'projectId': { minDate, maxDate } }
-    // 注意: projectHouseholdsCache 已經存在，可以共用
+    smsBalance: null, // ✅ 確保有這一行
   }),
 
 getters: {
@@ -314,6 +321,102 @@ getters: {
       }
     },
 
+
+
+      async fetchSmsBalance() {
+        const userStore = useUserStore();
+        const userKey = userStore.user?.key; // 這裡對應 user.js 的 state
+
+        if (!userKey) {
+          // 如果這裡噴錯，代表前端 userStore 還沒載入使用者資料
+          console.error('[ProjectStore] 使用者未登入，無法查詢餘額');
+          return;
+        }
+        try {
+          const data = await getSmsBalanceAPI(userKey);
+          if (data.status === 'success') {
+            this.smsBalance = data.credit;
+            return data.credit;
+          } else {
+            throw new Error(data.message);
+          }
+        } catch (error) {
+          this.smsBalance = 0;
+          throw error;
+        }
+      },
+
+          // ✅ 修正 2: 實作 fetchProjectSettings (對應組件報錯)
+      // 實際上是包裝 fetchProjectConfig 或是直接讀取 Firestore
+      async fetchProjectSettings(projectId) {
+        try {
+          const docRef = doc(db, "projects", projectId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            // 將設定存入快取 (如果有需要)
+            this.projectDetailsCache[projectId] = data;
+            return data;
+          }
+          return null;
+        } catch (error) {
+          console.error('[ProjectStore] fetchProjectSettings 失敗:', error);
+          throw error;
+        }
+      },
+
+          // ✅ 修正 3: 實作 updateProjectSettings (預防儲存時報錯)
+          async updateProjectSettings(projectId, payload) {
+        try {
+          // 這裡直接使用 Firestore SDK，不需要 api.js 的轉發
+          const { doc, updateDoc } = await import("firebase/firestore"); // 或是放在檔案頂部 import
+          const { db } = await import("@/firebase");
+          
+          const docRef = doc(db, "projects", projectId);
+          await updateDoc(docRef, payload);
+
+          // 更新本地快取
+          if (this.projectDetailsCache[projectId]) {
+            this.projectDetailsCache[projectId] = {
+              ...this.projectDetailsCache[projectId],
+              ...payload
+            };
+          }
+          return { status: 'success' };
+        } catch (error) {
+          console.error('[ProjectStore] updateProjectSettings 失敗:', error);
+          throw error;
+        }
+      },
+
+
+
+      async sendTestSms(payload) {
+        const userStore = useUserStore();
+        const userKey = userStore.user?.key;
+
+        if (!userKey) throw new Error('使用者未登入');
+
+        try {
+          const res = await sendSmsAPI({
+            userKey,
+            phoneNumber: payload.phoneNumber,
+            message: payload.message,
+            subject: payload.subject
+          });
+
+          if (res.status === 'success') {
+            // ✅ 發送成功後，順便更新 Store 裡的餘額
+            this.smsBalance = res.credit;
+            return res;
+          } else {
+            throw new Error(res.message);
+          }
+        } catch (error) {
+          console.error('[ProjectStore] sendTestSms 失敗:', error);
+          throw error;
+        }
+      },
 
     // --- START: ✓ 新增 setProjectMaps action ---
     // 設置建案 ID 與名稱的雙向映射 (供外部調用，例如 UserManagement)

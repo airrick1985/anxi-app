@@ -86,6 +86,8 @@ const {
 
 const line = require("@line/bot-sdk");
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
+const client = new SecretManagerServiceClient();
+
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { DateTime } = require('luxon'); // ✅ 處理台灣時區
 
@@ -160,6 +162,22 @@ const gmailSecrets = [
     "SENDER_EMAIL",
     "GMAIL_APP_PASSWORD" 
 ];
+
+//EVERY8D API
+// 修正 smsApi 的引用 (建議統一風格)
+const smsApi = require("./sms/smsApi");
+exports.smsApi = smsApi;
+
+// ✅ 修正點：直接引用模組，不要加 .autoSmsReminderTrigger
+const autoSmsReminderTrigger = require("./sms/smsScheduler");
+exports.autoSmsReminderTrigger = autoSmsReminderTrigger;
+
+
+// ✅ 依照相同的結構，註冊回報接收函式
+const smsReportCallback = require("./sms/smsCallback");
+exports.smsReportCallback = smsReportCallback;
+
+
 
 // ✓ START: 新增輔助函式，從 GCS 公開 URL 解析出檔案路徑
 /**
@@ -19174,3 +19192,6 @@ exports.batchImportAndAssignLeads = onCall({
         throw new HttpsError('internal', error.message);
     }
 });
+
+
+
