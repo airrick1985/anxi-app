@@ -2,6 +2,7 @@
   <v-container>
     <v-tabs v-model="tab" color="primary" grow>
       <v-tab value="management">客戶資料管理</v-tab>
+      <v-tab value="leadDistribution" >聯絡名單</v-tab>
       <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
       <v-tab value="settings" v-if="isSuperAdmin">客資系統設定</v-tab>
       <v-tab value="vipSettings" v-if="isSuperAdmin">貴賓資料設定</v-tab>
@@ -181,6 +182,13 @@
           </v-card-text>
         </v-card>
       </v-window-item>
+
+      <v-window-item value="leadDistribution">
+    <LeadDistribution 
+      :projectId="props.projectId" 
+      :hide-back="true" 
+    />
+  </v-window-item>
 
       <v-window-item value="downloadLeads" v-if="canManageSettings">
   <v-container fluid class="bg-grey-lighten-5 pa-4">
@@ -779,13 +787,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch,defineAsyncComponent } from 'vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
 import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
-
+const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
 import { 
   collection, 
   query, 

@@ -2,7 +2,13 @@
   <v-container fluid class="pa-4 bg-grey-lighten-4 fill-height align-start">
     <v-row>
       <v-col cols="12" class="d-flex align-center pb-0">
-        <v-btn icon="mdi-arrow-left" variant="text" @click="router.push({ name: 'LeadDistributionEntry' })" class="me-2"></v-btn>
+      <v-btn 
+          v-if="!hideBack"
+          icon="mdi-arrow-left" 
+          variant="text" 
+          @click="router.push({ name: 'LeadDistributionEntry' })" 
+          class="me-2"
+        ></v-btn>
         <div>
           <h2 class="text-h6 font-weight-bold text-primary">聯絡名單管理</h2>
           <div class="text-caption text-grey">{{ projectName }}</div>
@@ -652,7 +658,17 @@ ChartJS.register(
   ChartDataLabels // ✅ 新增註冊
 );
 
-const props = defineProps(['projectId']);
+const props = defineProps({
+  projectId: {
+    type: String,
+    required: true
+  },
+  // ✅ 新增：用來控制是否隱藏返回按鈕
+  hideBack: {
+    type: Boolean,
+    default: false
+  }
+});
 const router = useRouter();
 const userStore = useUserStore();
 const uiStore = useUiStore();

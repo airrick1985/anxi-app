@@ -627,6 +627,22 @@ const routes = [
     }
   },
 
+   {
+    path: '/viewing-reservation-entry',
+    name: 'ViewingReservationCalendarEntry',
+    component: ProjectSelector, // 重用 ProjectSelector
+    meta: {
+      requiresAuth: true,
+      // 權限檢查：使用者必須至少有這兩個權限之一
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'], 
+      layout: DefaultLayout,
+      // 點選建案後要導向的目標路由
+      targetRouteName: 'ViewingReservationCalendar', 
+      // 傳遞的參數名稱
+      paramKey: 'projectId'                        
+    }
+  },
+
 
   // ✅ [修改] 賞屋預約系統 - 行事曆主頁
   {
@@ -636,7 +652,7 @@ const routes = [
     props: true,
     meta: {
       requiresAuth: false, // ⚠️ 關鍵：設為 false，由組件內部檢查狀態
-      layout: PublicLayout,
+      layout: DefaultLayout,
       title: '賞屋預約行事曆'
     }
   },
@@ -661,7 +677,7 @@ const routes = [
   props: true,
   meta: {
     requiresAuth: false,
-    layout: PublicLayout,
+    layout: DefaultLayout,
     title: '聯絡名單管理'
   }
 },

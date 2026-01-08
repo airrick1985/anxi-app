@@ -18804,7 +18804,7 @@ exports.processAndAssignLead = onCall({
  * 負責：根據各專案設定的提醒時間 (remindTime)，通知尚有未處理名單的人員
  */
 exports.scheduledLeadReminder = onSchedule({
-    schedule: "*/15 * * * *", // 每 15 分鐘運行
+    schedule: "*/30 * * * *", // 每 30 分鐘運行
     timeZone: "Asia/Taipei",
     region: "asia-east1",
     secrets: ["ANXISMART_LINE_CRM_TOKEN"]
@@ -18996,9 +18996,12 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
 }
 
 /**
- * LINE Flex: 定時提醒
+ * LINE Flex: 定時提醒 (優化版：改為按鈕引導)
  */
 async function _sendReminderFlex(token, to, name, count) {
+    // 聯絡名單系統入口 LIFF URL
+    const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
+
     const payload = {
         to: to,
         messages: [{
@@ -19007,17 +19010,33 @@ async function _sendReminderFlex(token, to, name, count) {
             contents: {
                 type: "bubble",
                 body: {
-                    type: "box", layout: "vertical", contents: [
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
                         { type: "text", text: `您好 ${name}`, size: "sm", color: "#666666" },
                         { type: "text", text: `您目前尚有 ${count} 筆`, weight: "bold", size: "xl", margin: "md", color: "#D32F2F" },
                         { type: "text", text: "未完成的聯絡名單回報", weight: "bold", size: "md" },
-                        { type: "text", text: "請撥空前往系統填寫進度。", size: "xs", color: "#aaaaaa", margin: "lg" }
+                        // ✅ [修改] 將原本的文字改為按鈕元件
+                        {
+                            type: "button",
+                            action: {
+                                type: "uri",
+                                label: "🔎名單聯絡狀況",
+                                uri: liffUrl
+                            },
+                            style: "primary",
+                            color: "#1A237E", // 使用與系統一致的深藍色
+                            margin: "xl"
+                        }
                     ]
                 }
             }
         }]
     };
-    return axios.post("https://api.line.me/v2/bot/message/push", payload, { headers: { Authorization: `Bearer ${token}` } });
+
+    return axios.post("https://api.line.me/v2/bot/message/push", payload, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
 }
 
 

@@ -133,10 +133,10 @@ const settings = ref({
 
 const newItem = ref({ status: '', reason: '' });
 
-// 產生時間選項 (每 15 分鐘一個單位)
-const timeOptions = Array.from({ length: 96 }, (_, i) => {
-  const h = Math.floor(i / 4).toString().padStart(2, '0');
-  const m = ((i % 4) * 15).toString().padStart(2, '0');
+// 產生時間選項 (每 30 分鐘一個單位)
+const timeOptions = Array.from({ length: 48 }, (_, i) => { // ✓ 修改：24小時 * 2 = 48 筆
+  const h = Math.floor(i / 2).toString().padStart(2, '0'); // ✓ 修改：每小時 2 筆
+  const m = ((i % 2) * 30).toString().padStart(2, '0');    // ✓ 修改：間隔 30 分鐘
   return `${h}:${m}`;
 });
 

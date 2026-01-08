@@ -49,6 +49,7 @@ import tableIcon from '@/assets/icons/table.png';
 import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
+import reservationCalenderIcon from '@/assets/icons/reservation-calender.png';
 import profileIcon from '@/assets/icons/profile.png'; 
 import SMSIcon from '@/assets/icons/SMS.png';
 
@@ -111,6 +112,14 @@ const allButtons = ref([
 
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
   { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' } 
+  },
+   { 
+    id: 'ViewingReservation', 
+    text: '賞屋預約', 
+    icon: reservationCalenderIcon, 
+    permissionType: 'anySystem', // 使用 'anySystem'
+    permissionArgs: ['客資系統-櫃台', '客資系統-銷售'], // 檢查這兩個權限
+    nav: { name: 'ViewingReservationCalendarEntry' } // 導向新的路由入口
   },
 
   { 
