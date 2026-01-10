@@ -18801,10 +18801,10 @@ exports.processAndAssignLead = onCall({
 // 2. [Scheduled] 動態定時提醒 (每 15 分鐘執行一次檢查)
 // =================================================================
 /**
- * 負責：根據各專案設定的提醒時間 (remindTime)，通知尚有未處理名單的人員
+ * [Scheduled] 動態定時提醒 (修正版：支援傳遞建案名稱)
  */
 exports.scheduledLeadReminder = onSchedule({
-    schedule: "*/30 * * * *", // 每 30 分鐘運行
+    schedule: "0,30 * * * *", // 每 30 分鐘運行一次
     timeZone: "Asia/Taipei",
     region: "asia-east1",
     secrets: ["ANXISMART_LINE_CRM_TOKEN"]
@@ -18827,6 +18827,10 @@ exports.scheduledLeadReminder = onSchedule({
 
         for (const settingDoc of settingsSnap.docs) {
             const projectId = settingDoc.id;
+
+            // ✅ [新增] 獲取建案正式名稱
+            const projectDoc = await db.collection("projects").doc(projectId).get();
+            const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
             
             // 2. 找出該專案「已分配但 status 為空」的名單
             const uncompletedSnap = await db.collection("leads")
@@ -18835,15 +18839,10 @@ exports.scheduledLeadReminder = onSchedule({
                 .where("isDeleted", "==", false)
                 .get();
 
-            // 若該專案今日都完成了 (且有分配過)，可考慮發送「已全部完成」訊息給櫃檯
-            if (uncompletedSnap.empty) {
-                // 發送完工通知邏輯 (略)
-                continue;
-            }
+            if (uncompletedSnap.empty) continue;
 
             // 3. 彙整各銷售人員的未處理數量
-            const userSummary = {}; // { userId: { name: "", count: 0, lineId: "" } }
-            
+            const userSummary = {}; 
             uncompletedSnap.forEach(doc => {
                 const data = doc.data();
                 const uid = data.assignedTo;
@@ -18859,11 +18858,13 @@ exports.scheduledLeadReminder = onSchedule({
                 const lineId = userDoc.data()?.lineId;
 
                 if (lineId && lineId.startsWith('U')) {
+                    // ✅ [修改] 傳入 projectName 參數
                     await _sendReminderFlex(
                         process.env.ANXISMART_LINE_CRM_TOKEN,
                         lineId,
                         info.name,
-                        info.count
+                        info.count,
+                        projectName
                     );
                 }
             }
@@ -18913,7 +18914,7 @@ function _parseLeadText(text) {
 }
 
 /**
- * LINE Flex: 新名單分配通知
+ * LINE Flex: 新名單分配通知 (優化版：新增建案名稱顯示)
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
   // 注意：這裡的 URL 請根據您的實際 domain 調整
@@ -18923,7 +18924,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
     to: to,
     messages: [{
       type: "flex",
-      altText: "📞 分配名單通知",
+      altText: `📞 [${lead.projectName || "新名單"}] 分配通知`, // ✅ 預覽文字加入建案名稱
       contents: {
         type: "bubble",
         header: {
@@ -18931,7 +18932,8 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
           layout: "vertical",
           contents: [{
             type: "text",
-            text: `名單分配-${lead.assignedName || "業務員"}`,
+            // ✅ 修改點：標題整合建案名稱與業務員姓名
+            text: `[${lead.projectName || "客資系統"}] 名單分配`,
             weight: "bold",
             color: "#FFFFFF"
           }],
@@ -18941,7 +18943,10 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
           type: "box",
           layout: "vertical",
           contents: [
-            { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg" },
+            // ✅ [新增] 內容第一行明確顯示建案名稱
+            { type: "text", text: `建案：${lead.projectName || "未註明"}`, color: "#2E7D32", size: "sm", weight: "bold", margin: "xs" },
+            { type: "separator", margin: "md" },
+            { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg", margin: "md" },
             { 
               type: "text", 
               text: `電話：${lead.phone}`, 
@@ -18952,13 +18957,12 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
               action: {
                 type: "clipboard",
                 label: "複製電話號碼",
-                // ✅ 修正點：屬性名稱必須為 clipboardText
                 clipboardText: lead.phone.replace(/\s+/g, '') 
               }
             },
-            { type: "text", text: `預算：${lead.budget || "未填寫"}`, color: "#666666", size: "lg" },
-            { type: "text", text: `來源：${lead.source || "未知"}`, color: "#666666", size: "lg" },
-            { type: "text", text: `日期：${lead.date || "未知"}`, color: "#666666", size: "lg" },
+            { type: "text", text: `預算：${lead.budget || "未填寫"}`, color: "#666666", size: "lg", margin: "sm" },
+            { type: "text", text: `來源：${lead.source || "未知"}`, color: "#666666", size: "lg", margin: "sm" },
+            { type: "text", text: `日期：${lead.date || "未知"}`, color: "#666666", size: "lg", margin: "sm" },
             { type: "separator", margin: "md" },
             { 
               type: "text", 
@@ -18996,9 +19000,9 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
 }
 
 /**
- * LINE Flex: 定時提醒 (優化版：改為按鈕引導)
+ * LINE Flex: 定時提醒 (優化版：加入建案名稱與按鈕)
  */
-async function _sendReminderFlex(token, to, name, count) {
+async function _sendReminderFlex(token, to, name, count, projectName) {
     // 聯絡名單系統入口 LIFF URL
     const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
 
@@ -19006,17 +19010,34 @@ async function _sendReminderFlex(token, to, name, count) {
         to: to,
         messages: [{
             type: "flex",
-            altText: "⏰ 名單回報提醒",
+            altText: `⏰ [${projectName || "客資系統"}] 名單回報提醒`, // ✅ 加入建案預覽
             contents: {
                 type: "bubble",
+                header: { // ✅ 新增 Header 區塊顯示建案
+                    type: "box",
+                    layout: "vertical",
+                    contents: [{
+                        type: "text",
+                        text: `[${projectName || "客資系統"}] 定時提醒`,
+                        weight: "bold",
+                        color: "#FFFFFF"
+                    }],
+                    backgroundColor: "#1A237E" // 深藍色
+                },
                 body: {
                     type: "box",
                     layout: "vertical",
                     contents: [
                         { type: "text", text: `您好 ${name}`, size: "sm", color: "#666666" },
-                        { type: "text", text: `您目前尚有 ${count} 筆`, weight: "bold", size: "xl", margin: "md", color: "#D32F2F" },
+                        { 
+                            type: "text", 
+                            text: `您目前尚有 ${count} 筆`, 
+                            weight: "bold", 
+                            size: "xl", 
+                            margin: "md", 
+                            color: "#D32F2F" 
+                        },
                         { type: "text", text: "未完成的聯絡名單回報", weight: "bold", size: "md" },
-                        // ✅ [修改] 將原本的文字改為按鈕元件
                         {
                             type: "button",
                             action: {
@@ -19025,7 +19046,7 @@ async function _sendReminderFlex(token, to, name, count) {
                                 uri: liffUrl
                             },
                             style: "primary",
-                            color: "#1A237E", // 使用與系統一致的深藍色
+                            color: "#1A237E",
                             margin: "xl"
                         }
                     ]
@@ -19159,6 +19180,10 @@ exports.batchImportAndAssignLeads = onCall({
     }
 
     try {
+        // ✅ [新增] 在迴圈開始前，先獲取建案名稱
+        const projectDoc = await db.collection("projects").doc(projectId).get();
+        const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+
         const results = [];
         const now = admin.firestore.Timestamp.now();
         const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
@@ -19170,9 +19195,10 @@ exports.batchImportAndAssignLeads = onCall({
                 phone: leadData.phone || "",
                 date: leadData.date || "",
                 source: leadData.source || "廠商提供",
-                statusText: leadData.statusText || "", // ✅ 確保前端傳遞的狀態文字存入 payload
+                statusText: leadData.statusText || "", 
                 budget: leadData.budget || "",
                 projectId: projectId,
+                projectName: projectName, // ✅ [新增] 將建案名稱寫入 payload
                 status: "",
                 isDeleted: false,
                 createdAt: now,
@@ -19199,7 +19225,8 @@ exports.batchImportAndAssignLeads = onCall({
 
                 if (salesLineId && salesLineId.startsWith('U') && channelToken) {
                     // 使用既有的發送邏輯
-                await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, docRef.id);                }
+                    await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, leadId);
+                }
             }
             results.push(leadId);
         }

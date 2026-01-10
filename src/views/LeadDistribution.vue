@@ -45,7 +45,7 @@
       <v-col cols="12">
         <v-tabs v-model="activeTab" color="primary" grow density="compact">
           <v-tab v-if="isReceptionist || isAdmin" value="management">
-            <v-icon start>mdi-tray-arrow-down</v-icon>名單分配管理
+            <v-icon start>mdi-tray-arrow-down</v-icon>聯絡名單統計
           </v-tab>
           <v-tab value="status">
             <v-icon start>mdi-clipboard-text-clock</v-icon>名單聯絡狀況
@@ -247,28 +247,35 @@
           </div>
         </div>
 
-        <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
-          <v-row no-gutters>
-            <v-col cols="4" class="pe-2">
-              <div class="info-label">來源</div>
-              <div class="info-value text-truncate">
-                <v-icon size="12" class="me-1">mdi-tray-arrow-down</v-icon>{{ item.source || '未註明' }}
-              </div>
-            </v-col>
-            <v-col cols="4" class="px-2 border-left-custom">
-              <div class="info-label">預算</div>
-              <div class="info-value text-truncate">
-                <v-icon size="12" class="me-1">mdi-currency-usd</v-icon>{{ item.budget || '未填寫' }}
-              </div>
-            </v-col>
-            <v-col cols="4" class="ps-2 border-left-custom">
-              <div class="info-label">填表日期</div>
-              <div class="info-value text-truncate">
-                <v-icon size="12" class="me-1">mdi-calendar-clock</v-icon>{{ item.date || '無日期' }}
-              </div>
-            </v-col>
-          </v-row>
-        </v-card>
+          <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
+            <v-row no-gutters class="flex-wrap">
+              
+              <v-col cols="12" class="mb-2 pb-2 border-bottom-custom">
+                <div class="info-label">來源管道</div>
+                <div class="info-value">
+                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-tray-arrow-down</v-icon>
+                  {{ item.source || '未註明' }}
+                </div>
+              </v-col>
+
+              <v-col cols="6" class="pe-2">
+                <div class="info-label">預算範圍</div>
+                <div class="info-value">
+                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-currency-usd</v-icon>
+                  {{ item.budget || '未填寫' }}
+                </div>
+              </v-col>
+
+              <v-col cols="6" class="ps-2 border-left-custom">
+                <div class="info-label">填表日期</div>
+                <div class="info-value">
+                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-calendar-clock</v-icon>
+                  {{ item.date || '無日期' }}
+                </div>
+              </v-col>
+
+            </v-row>
+          </v-card>
         
         <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center">
           <v-icon size="14" class="me-1">mdi-account-tie</v-icon>
@@ -1607,30 +1614,35 @@ const formatDateTime = (ts) => {
 .border-dashed { border: 2px dashed #e0e0e0; }
 
 /* 資訊卡片內的標籤與數值樣式 */
+/* 調整標籤字體大小 */
 .info-label {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   color: #5c6bc0;
   font-weight: 800;
   margin-bottom: 2px;
 }
 
 .info-value {
-  font-size: 0.8rem;
+  font-size: 0.85rem; /* 稍微調大一點點，更易讀 */
   font-weight: 800;
   color: #1a237e;
-  line-height: 1.2;
+  line-height: 1.3;
+  display: flex;      /* 使用 flex 確保圖標與文字對齊 */
+  align-items: center;
+  white-space: normal; /* 允許換行 */
+  word-break: break-all; /* 強制長字串換行 */
 }
 
-/* 垂直分隔線 */
+/* 新增：水平分割線，用於區分來源與下方的預算/日期 */
+.border-bottom-custom {
+  border-bottom: 1px solid rgba(63, 81, 181, 0.1);
+}
+
+
+/* 調整：原本的垂直分割線 */
 .border-left-custom {
   border-left: 1px solid rgba(63, 81, 181, 0.15);
 }
 
-/* 讓手機版文字截斷防止撐開 */
-.text-truncate {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 </style>

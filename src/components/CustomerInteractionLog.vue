@@ -470,11 +470,13 @@
 
                                             <v-spacer></v-spacer>
                                             
-                                            <div class="d-flex flex-column align-end mr-2">
+                                           <div class="d-flex flex-column align-end mr-2">
                                                 <span class="text-caption text-grey-darken-1">
                                                     記錄人: {{ log.recorderName }}
                                                 </span>
-                                               
+                                                <span class="text-caption text-indigo-darken-2 font-weight-bold">
+                                                    銷售: {{ guestData.latestSalesName || '未指派' }}
+                                                </span>
                                             </div>
 
                                            <v-btn

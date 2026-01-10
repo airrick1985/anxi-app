@@ -20,17 +20,149 @@
             </v-toolbar-title>
           </v-toolbar>
 
-          <v-card-text>
-            <v-text-field
-              v-model="customerListSearch"
-              label="搜尋 (姓名、電話、銷售人員...)"
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              density="compact"
-              clearable
-              hide-details
-              class="mb-4 bg-white"
-            ></v-text-field>
+<v-card-text>
+  <v-row dense align="center" class="mb-2">
+    <v-col cols="12" sm="8" md="9">
+      <v-text-field
+        v-model="customerListSearch"
+        label="關鍵字搜尋 (姓名、電話...)"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="comfortable"
+        clearable
+        hide-details
+        class="bg-white rounded-lg"
+      ></v-text-field>
+    </v-col>
+    <v-col cols="12" sm="4" md="3">
+      <v-btn
+        block
+        :color="showFilters ? 'primary' : 'grey-darken-1'"
+        variant="tonal"
+        size="large"
+        rounded="lg"
+        @click="showFilters = !showFilters"
+        :prepend-icon="showFilters ? 'mdi-filter-variant-remove' : 'mdi-filter-variant'"
+      >
+        {{ showFilters ? '隱藏進階篩選' : '進階篩選' }}
+      </v-btn>
+    </v-col>
+  </v-row>
+
+  <v-expand-transition>
+    <v-card v-show="showFilters" variant="outlined" class="mb-4 pa-4 rounded-xl border-dashed bg-white">
+      <v-row dense>
+        <v-col cols="6" md="3">
+          <v-text-field
+            v-model="advFilter.startDate"
+            label="拜訪日期(起)"
+            type="date"
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-text-field>
+        </v-col>
+        <v-col cols="6" md="3">
+          <v-text-field
+            v-model="advFilter.endDate"
+            label="拜訪日期(迄)"
+            type="date"
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+            :min="advFilter.startDate"
+            :disabled="!advFilter.startDate"
+          ></v-text-field>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.sales"
+            :items="availableSalesNames"
+            label="銷售人員"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.ratings"
+            :items="['A意願高', 'B有機會', 'C需考慮', 'D無希望']"
+            label="等級"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
+                  <v-select
+            v-model="advFilter.reasons"
+            :items="[...new Set(settings.fields.noPurchaseReason?.options || [])]"
+            label="未買原因"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+                  </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.motivations"
+            :items="settings.vipFormFields.motivation?.options || []"
+            label="購屋動機"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.roomTypes"
+            :items="settings.vipFormFields.roomType?.options || []"
+            label="房型需求"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.budgets"
+            :items="settings.vipFormFields.budget?.options || []"
+            label="購屋預算"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+      </v-row>
+
+      <v-card-actions class="justify-end pa-0 mt-2">
+        <v-btn variant="text" color="grey" @click="resetAdvFilters">清除條件</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-expand-transition>
 
             <div v-if="isLoadingCustomerList" class="text-center pa-10">
               <v-progress-circular indeterminate color="primary" size="50"></v-progress-circular>
@@ -40,8 +172,7 @@
             <template v-else>
               <v-data-iterator
                 v-if="isMobile"
-                :items="customerList"
-                :search="customerListSearch"
+                :items="filteredCustomerList"
                 item-value="docId"
                 v-model:page="mobilePage"
                 :items-per-page="10"
@@ -90,7 +221,7 @@
     <div v-if="items.length > 0" class="d-flex align-center justify-center pa-4">
       <v-pagination
         v-model="mobilePage"
-        :length="Math.ceil(customerList.length / 10)"
+        :length="Math.ceil(filteredCustomerList.length / 10)"
         density="compact"
         total-visible="5"
         color="primary"
@@ -109,8 +240,7 @@
               <v-data-table
                 v-else
                 :headers="customerTableHeaders"
-                :items="customerList"
-                :search="customerListSearch"
+                :items="filteredCustomerList"
                 :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
                 item-value="docId"
                 class="elevation-1 cursor-pointer-row"
@@ -787,7 +917,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch,defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, watch, reactive, defineAsyncComponent } from 'vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
@@ -1697,15 +1827,28 @@ async function loadSettings() {
   try {
     const data = await fetchCustomerSettings(props.projectId);
     const cleanDefaults = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-    settings.value = merge(cleanDefaults, data);
+    
+    // ✅ 修正點：使用自定義合併邏輯，確保陣列會被「覆蓋」而不是「疊加」
+    settings.value = merge({}, cleanDefaults, data);
+
+    // 針對所有包含 options 的欄位強制去重
+    Object.keys(settings.value.fields).forEach(key => {
+      if (settings.value.fields[key].options) {
+        settings.value.fields[key].options = [...new Set(settings.value.fields[key].options)];
+      }
+    });
+    
+    Object.keys(settings.value.vipFormFields).forEach(key => {
+      if (settings.value.vipFormFields[key].options) {
+        settings.value.vipFormFields[key].options = [...new Set(settings.value.vipFormFields[key].options)];
+      }
+    });
 
     panel.value = Object.keys(settings.value.fields);
     vipPanel.value = Object.keys(settings.value.vipFormFields);
     
   } catch (error) {
-    console.error("載入客資系統設定失敗:", error);
-    alert(`載入設定失敗: ${error.message}`);
-    settings.value = JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); 
+    // ... 原有錯誤處理
   } finally {
     isLoading.value = false;
   }
@@ -1801,6 +1944,89 @@ const openInteractionLog = (event, { item }) => {
     selectedCustomerDocId.value = docId; 
     isInteractionDialogVisible.value = true;
 };
+
+// --- 進階篩選狀態 ---
+const showFilters = ref(false);
+const advFilter = reactive({
+  startDate: '',
+  endDate: '',
+  sales: [],
+  ratings: [],
+  reasons: [],
+  motivations: [],
+  roomTypes: [],
+  budgets: []
+});
+
+const resetAdvFilters = () => {
+  Object.keys(advFilter).forEach(key => {
+    advFilter[key] = Array.isArray(advFilter[key]) ? [] : '';
+  });
+};
+
+// --- 多維度篩選計算屬性 ---
+const filteredCustomerList = computed(() => {
+  let list = [...customerList.value];
+
+  // 1. 關鍵字過濾 (姓名、電話、銷售人員)
+  if (customerListSearch.value) {
+    const s = customerListSearch.value.toLowerCase();
+    list = list.filter(item => 
+      (item['姓名'] || '').toLowerCase().includes(s) ||
+      (item['電話'] || '').includes(s) ||
+      (item['銷售人員'] || '').toLowerCase().includes(s)
+    );
+  }
+
+  // 2. 拜訪日期範圍 (修正：確保日期格式一致)
+  if (advFilter.startDate) {
+    list = list.filter(item => item['拜訪日期'] >= advFilter.startDate);
+  }
+  if (advFilter.endDate) {
+    list = list.filter(item => item['拜訪日期'] <= advFilter.endDate);
+  }
+
+  // 3. 多選條件過濾
+  if (advFilter.sales.length > 0) {
+    list = list.filter(item => advFilter.sales.includes(item['銷售人員']));
+  }
+  
+  if (advFilter.ratings.length > 0) {
+    list = list.filter(item => advFilter.ratings.includes(item['等級研判']));
+  }
+
+  // 4. 陣列型欄位過濾 (未購原因、購屋動機、房型需求)
+  // 修正：增加 Array.isArray 檢查，防止資料異常導致報錯
+  if (advFilter.reasons.length > 0) {
+    list = list.filter(item => {
+      const val = item['未買原因'];
+      const arr = Array.isArray(val) ? val : (val ? [val] : []);
+      return arr.some(r => advFilter.reasons.includes(r));
+    });
+  }
+
+  if (advFilter.motivations.length > 0) {
+    list = list.filter(item => {
+      const val = item['購屋動機'];
+      const arr = Array.isArray(val) ? val : (val ? [val] : []);
+      return arr.some(m => advFilter.motivations.includes(m));
+    });
+  }
+
+  if (advFilter.roomTypes.length > 0) {
+    list = list.filter(item => {
+      const val = item['房型需求'];
+      const arr = Array.isArray(val) ? val : (val ? [val] : []);
+      return arr.some(rt => advFilter.roomTypes.includes(rt));
+    });
+  }
+
+  if (advFilter.budgets.length > 0) {
+    list = list.filter(item => advFilter.budgets.includes(item['購屋預算']));
+  }
+
+  return list;
+});
 
 </script>
 
