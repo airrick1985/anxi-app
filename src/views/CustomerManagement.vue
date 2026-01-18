@@ -1645,14 +1645,14 @@ const executeSimpleExport = async () => {
         '日期': firstLog.date ? firstLog.date.replace(/-/g, '/') : '',
         '銷售人員': item.latestSalesName || '',
         '客戶姓名': item.latestName || '',
-        '來人（位）': lastLog.tags?.visitors || '',
+        '來人（位）': firstLog.tags?.visitors || '',
         '年齡': getP('年齡'),
         '性別': getP('性別'),
         '職業': getP('職業'),
         '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
         '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
         '區域': getP('居住城市'),
-        '洽談時間': calculateLogDuration(lastLog.startTime, lastLog.endTime),
+        '洽談時間': calculateLogDuration(firstLog.startTime, firstLog.endTime),
         '行動電話': item.phone || '',
         '未買原因': Array.isArray(lastLog.tags?.noPurchaseReason) 
                    ? lastLog.tags.noPurchaseReason.join(',') 
