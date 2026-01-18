@@ -147,7 +147,7 @@
     </v-col>
 
     <v-col cols="12" sm="4" class="mt-sm-2">
-      <v-select v-model="sourceSearch" :items="sourceOptions" label="來源 (如 FB)" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
+      <v-select v-model="sourceSearch" :items="sourceOptions" label="來源" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">來源 (+{{ sourceSearch.length }})</span></template>
       </v-select>
     </v-col>
