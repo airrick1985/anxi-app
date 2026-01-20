@@ -40,6 +40,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const xlsx = require("xlsx");
 
 
 // --- 這些是輕量級或共用的，保留在頂部 ---

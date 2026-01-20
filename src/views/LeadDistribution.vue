@@ -135,28 +135,46 @@
     <v-col cols="12" sm="4">
       <v-text-field v-model="namePhoneSearch" label="搜尋姓名或電話" prepend-inner-icon="mdi-magnify" variant="outlined" density="comfortable" hide-details clearable rounded="lg"></v-text-field>
     </v-col>
+     <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4" >
+      <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
+        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">人員 (+{{ assignedSearch.length }})</span></template>
+      </v-select>
+    </v-col>
     <v-col cols="12" sm="4">
       <v-select v-model="statusSearch" :items="['未處理', ...statusOptions]" label="狀態" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">狀態 (+{{ statusSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4">
-      <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
-        <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">人員 (+{{ assignedSearch.length }})</span></template>
-      </v-select>
-    </v-col>
+    <v-col cols="12" sm="4" >
+  <v-select 
+    v-model="reasonSearch" 
+    :items="reasonFilterOptions" 
+    label="不考慮原因" 
+    multiple 
+    variant="outlined" 
+    density="comfortable" 
+    hide-details 
+    rounded="lg" 
+    prepend-inner-icon="mdi-comment-question"
+  >
+    <template v-slot:selection="{ index }">
+      <span v-if="index === 0" class="text-caption">原因 (+{{ reasonSearch.length }})</span>
+    </template>
+  </v-select>
+</v-col>
+   
 
-    <v-col cols="12" sm="4" class="mt-sm-2">
+    <v-col cols="12" sm="4">
       <v-select v-model="sourceSearch" :items="sourceOptions" label="來源" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">來源 (+{{ sourceSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col cols="12" sm="4" class="mt-sm-2">
+    <v-col cols="12" sm="4" >
       <v-select v-model="budgetSearch" :items="budgetOptions" label="預算" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-currency-usd">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">預算 (+{{ budgetSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col cols="6" sm="2" class="mt-sm-2">
+    <v-col cols="6" sm="2" class="mt-sm-2" >
   <v-text-field
     v-model="startDate"
     label="填表日期(起)"
@@ -165,7 +183,7 @@
     density="comfortable"
     hide-details
     rounded="lg"
-    prepend-inner-icon="mdi-calendar-start"
+    
     color="primary"
     clearable
   ></v-text-field>
@@ -180,7 +198,7 @@
     density="comfortable"
     hide-details
     rounded="lg"
-    prepend-inner-icon="mdi-calendar-end"
+   
     color="primary"
     clearable
     :min="startDate" 
@@ -247,35 +265,37 @@
           </div>
         </div>
 
-          <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
-            <v-row no-gutters class="flex-wrap">
-              
-              <v-col cols="12" class="mb-2 pb-2 border-bottom-custom">
-                <div class="info-label">來源管道</div>
-                <div class="info-value">
-                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-tray-arrow-down</v-icon>
-                  {{ item.source || '未註明' }}
-                </div>
-              </v-col>
+        <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
+          <v-row no-gutters class="flex-wrap">
+            
+            <v-col cols="12" class="mb-2 pb-2 border-bottom-custom">
+              <div class="info-label">來源管道</div>
+              <div class="info-value">
+                <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-tray-arrow-down</v-icon>
+                {{ item.source || '未註明' }}
+              </div>
+            </v-col>
 
-              <v-col cols="6" class="pe-2">
-                <div class="info-label">預算範圍</div>
-                <div class="info-value">
-                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-currency-usd</v-icon>
-                  {{ item.budget || '未填寫' }}
-                </div>
-              </v-col>
+            <v-col cols="12" class="mt-1 pb-2 border-bottom-custom" v-if="item.status === '不考慮'">
+              <div class="info-label text-error font-weight-black">不考慮原因</div>
+              <div class="info-value text-error font-weight-bold">
+                <v-icon size="16" class="me-1" color="error">mdi-alert-circle-outline</v-icon>
+                {{ item.reason || '未註明' }}
+              </div>
+            </v-col>
 
-              <v-col cols="6" class="ps-2 border-left-custom">
-                <div class="info-label">填表日期</div>
-                <div class="info-value">
-                  <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-calendar-clock</v-icon>
-                  {{ item.date || '無日期' }}
-                </div>
-              </v-col>
+            <v-col cols="6" class="pe-2 mt-2">
+              <div class="info-label">預算範圍</div>
+              <div class="info-value">{{ item.budget || '未填寫' }}</div>
+            </v-col>
 
-            </v-row>
-          </v-card>
+            <v-col cols="6" class="ps-2 border-left-custom mt-2">
+              <div class="info-label">填表日期</div>
+              <div class="info-value">{{ item.date || '無日期' }}</div>
+            </v-col>
+
+          </v-row>
+        </v-card>
         
         <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center">
           <v-icon size="14" class="me-1">mdi-account-tie</v-icon>
@@ -682,6 +702,7 @@ const uiStore = useUiStore();
 // 2. 定義儲存所有日誌的變數
 const allProjectLogs = ref([]);
 
+
 // --- 狀態定義 ---
 const activeTab = ref('management');
 const allLeads = ref([]);
@@ -704,6 +725,17 @@ const isCheckingDuplicates = ref(false);
 const reportForm = ref({ status: '', reason: '', note: '' });
 const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
 const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號', '未接電話']);
+// 1. 新增搜尋變數
+const reasonSearch = ref([]);
+
+// 2. 自動提取現有的「不考慮原因」供篩選使用
+const reasonFilterOptions = computed(() => {
+  const reasons = allLeads.value
+    .filter(l => l.status === '不考慮' && l.reason)
+    .map(l => l.reason);
+  return [...new Set(reasons), '未註明'];
+});
+
 
 const snackbar = reactive({ show: false, text: '', color: '' });
 
@@ -807,9 +839,25 @@ const budgetChartData = computed(() => {
 const sourceChartData = computed(() => {
   const counts = {};
   allLeads.value.forEach(l => {
-    const key = l.source || '未知來源';
-    counts[key] = (counts[key] || 0) + 1;
+    // 1. 取得原始來源並去除首尾空格
+    const rawSource = (l.source || '未知來源').trim();
+    
+    // 2. 進行標準化判定 (不分大小寫)
+    let normalizedSource = rawSource;
+    const upper = rawSource.toUpperCase();
+    
+    if (upper === 'FB') {
+      normalizedSource = 'FB';
+    } else if (upper === 'IG') {
+      normalizedSource = 'IG';
+    } else if (upper === 'LINE') {
+      normalizedSource = 'LINE'; // 建議同步處理 LINE
+    }
+    
+    // 3. 執行統計
+    counts[normalizedSource] = (counts[normalizedSource] || 0) + 1;
   });
+
   return {
     labels: Object.keys(counts),
     datasets: [{
@@ -821,8 +869,7 @@ const sourceChartData = computed(() => {
 // 修改項目結束
 
 const staffLoadChartData = computed(() => { 
-  const labels = ['全案總計', ...salesStaff.value.map(s => s.name)];
-  
+  // 輔助函式：計算特定人員或全案的統計數據
   const getCounts = (staffId = null) => {
     const leads = staffId ? allLeads.value.filter(l => l.assignedTo === staffId) : allLeads.value;
     const total = leads.length;
@@ -831,14 +878,42 @@ const staffLoadChartData = computed(() => {
     return { total, done, pending };
   };
 
-  const stats = [getCounts(), ...salesStaff.value.map(s => getCounts(s.id))];
+  // 🚩 1. 先計算所有銷售人員的數據並存入陣列
+  const staffListWithStats = salesStaff.value.map(s => ({
+    name: s.name,
+    stats: getCounts(s.id)
+  }));
+
+  // 🚩 2. 依照「總名單數量 (total)」進行遞減排序 (大 -> 小)
+  staffListWithStats.sort((a, b) => b.stats.total - a.stats.total);
+
+  // 🚩 3. 組合最終的標籤與數據
+  // 第一位始終保留「全案總計」
+  const projectTotal = getCounts();
+  const labels = ['全案總計', ...staffListWithStats.map(s => s.name)];
+  const finalStats = [projectTotal, ...staffListWithStats.map(s => s.stats)];
 
   return {
     labels,
     datasets: [
-      { label: '總名單', data: stats.map(s => s.total), backgroundColor: '#9E9E9E' },
-      { label: '已完成', data: stats.map(s => s.done), backgroundColor: 'green' },
-      { label: '未處理', data: stats.map(s => s.pending), backgroundColor: 'red' }
+      { 
+        label: '總名單', 
+        data: finalStats.map(s => s.total), 
+        backgroundColor: '#90A4AE', 
+        borderRadius: 4 
+      },
+      { 
+        label: '已完成', 
+        data: finalStats.map(s => s.done), 
+        backgroundColor: '#43A047', 
+        borderRadius: 4 
+      },
+      { 
+        label: '未處理', 
+        data: finalStats.map(s => s.pending), 
+        backgroundColor: '#E53935', 
+        borderRadius: 4 
+      }
     ]
   };
 });
@@ -850,29 +925,27 @@ const statusDistributionChartData = computed(() => {
   const counts = {};
   // 顏色對照表
   const colorMap = {
-    '不考慮': '#F44336', // 紅
-    '已約賞屋': '#4CAF50', // 綠
-    '還在討論': '#2196F3', // 藍
-    '未接': '#FF9800',     // 橘
-    '空號': '#9E9E9E',     // 灰
-    '未處理': '#E0E0E0'    // 淺灰
+    '不考慮': '#F44336', 
+    '已約賞屋': '#4CAF50', 
+    '還在討論': '#2196F3', 
+    '未接': '#FF9800',     
+    '空號': '#9E9E9E',     
+    '未處理': '#E0E0E0'    
   };
 
-  // 1. 初始化統計 (確保顯示所有選項)
+  // 1. 初始化統計：包含自定義選項與「未處理」
   statusOptions.value.forEach(opt => { counts[opt] = 0; });
+  counts['未處理'] = 0;
 
-  // 2. 從所有專案日誌中進行統計
-  allProjectLogs.value.forEach(log => {
-    const key = log.status;
-    if (key) {
-      counts[key] = (counts[key] || 0) + 1;
-    }
+  // 2. 改從 allLeads.value (目前顯示的名單) 進行統計
+  allLeads.value.forEach(lead => {
+    const key = lead.status || '未處理'; // 若無狀態則歸類為未處理
+    counts[key] = (counts[key] || 0) + 1;
   });
 
-  // 3. 過濾掉筆數為 0 的項目，並取得標籤 (讓圖表更乾淨)
+  // 3. 過濾掉筆數為 0 的項目，確保圖表乾淨
   const labels = Object.keys(counts).filter(k => counts[k] > 0);
   
-  // 💡 安全檢查：若完全無資料，回傳空物件結構防止 Chart.js 報錯
   if (labels.length === 0) {
     return { 
       labels: ['尚無資料'], 
@@ -880,7 +953,6 @@ const statusDistributionChartData = computed(() => {
     };
   }
 
-  // 4. 對應顏色陣列
   const bgColors = labels.map(label => colorMap[label] || '#3949AB');
 
   return {
@@ -892,14 +964,29 @@ const statusDistributionChartData = computed(() => {
     }]
   };
 });
+
+
 const deniedReasonChartData = computed(() => {
   const counts = {};
-  // 僅篩選不考慮的日誌
-  const deniedLogs = allProjectLogs.value.filter(log => log.status === '不考慮');
   
-  deniedLogs.forEach(log => {
-    const key = log.reason || '未註明原因';
-    counts[key] = (counts[key] || 0) + 1;
+  // 1. 取得所有「目前狀態」為「不考慮」的名單 (基準點與狀況總計一致)
+  const deniedLeads = allLeads.value.filter(l => l.status === '不考慮');
+  
+  // 2. 預處理日誌：將日誌按 leadId 索引，取出每個客戶最新的不考慮原因
+  const latestLogMap = {};
+  allProjectLogs.value.forEach(log => {
+    if (log.status === '不考慮' && log.leadId) {
+      const logDate = log.createdAt?.toDate?.() || new Date(0);
+      if (!latestLogMap[log.leadId] || logDate > latestLogMap[log.leadId].date) {
+        latestLogMap[log.leadId] = { reason: log.reason, date: logDate };
+      }
+    }
+  });
+
+  deniedLeads.forEach(lead => {
+    // 優先權：名單主表欄位 > 最新日誌原因 > 未註明原因
+    const reason = lead.reason || latestLogMap[lead.id]?.reason || '未註明原因';
+    counts[reason] = (counts[reason] || 0) + 1;
   });
 
   const labels = Object.keys(counts);
@@ -936,11 +1023,12 @@ const salesStaffWithCounts = computed(() => {
 const statusHeaders = [
   { title: '姓名', key: 'name' },
   { title: '電話', key: 'phone' },
-  { title: '來源', key: 'source' },       // 新增
-  { title: '預算', key: 'budget' },       // 新增
-  { title: '填表日期', key: 'date' },     // 新增
+  { title: '來源', key: 'source' },
+  { title: '預算', key: 'budget' },
+  { title: '填表日期', key: 'date' },
   { title: '指派給', key: 'assignedName' },
   { title: '狀態', key: 'status' },
+  { title: '不考慮原因', key: 'reason' }, // ✅ 新增此欄位
   { title: '動作', key: 'actions', sortable: false }
 ];
 
@@ -957,7 +1045,21 @@ const endDate = ref(null);
 const dateSearch = ref([]);
 
 // 3. 自動從資料中提取現有的過濾選項 (確保勾選清單準確)
-const sourceOptions = computed(() => [...new Set(allLeads.value.map(l => l.source || '未註明'))]);
+const sourceOptions = computed(() => {
+  const sources = allLeads.value.map(l => {
+    const raw = (l.source || '未註明').trim();
+    const upper = raw.toUpperCase();
+    if (upper === 'FB') return 'FB';
+    if (upper === 'IG') return 'IG';
+    if (upper === 'LINE') return 'LINE';
+    return raw;
+  });
+  // 使用 Set 去除重複項
+  return [...new Set(sources)];
+});
+
+
+
 const budgetOptions = computed(() => [...new Set(allLeads.value.map(l => l.budget || '未填寫'))]);
 
 
@@ -1013,6 +1115,10 @@ if (startDate.value) {
   if (endDate.value) {
     const eDate = endDate.value.replace(/-/g, '/');
     list = list.filter(l => l.date && l.date <= eDate);
+  }
+
+  if (reasonSearch.value.length > 0) {
+    list = list.filter(l => reasonSearch.value.includes(l.reason || '未註明'));
   }
 
   return list;
@@ -1175,6 +1281,18 @@ const parseLeadText = (text) => {
     const budgetMatch = cleanText.match(/(\d+[-~、\d]*萬[以上下]*)/);
     if (budgetMatch) result.budget = budgetMatch[1];
   }
+
+  // 🚩 在 return 之前加入「來源標準化」邏輯
+  if (result.source) {
+    const s = result.source.trim();
+    const upper = s.toUpperCase();
+    
+    if (upper === 'FB') result.source = 'FB';
+    else if (upper === 'IG') result.source = 'IG';
+    else if (upper === 'LINE') result.source = 'LINE';
+    // 如果有其他需要統一的來源，可以在此繼續添加
+  }
+
   
   return result;
 };
@@ -1219,18 +1337,30 @@ const executeBatchImportAndAssign = async () => {
     isImporting.value = true; 
     uiStore.setLoading(true);
 
+// 在 map 處理時，加入 source 的標準化檢查
     const leadsWithStatus = previewLeads.value.map(l => {
+      // 🚩 強制標準化來源 (處理手動修改的大小寫不一問題)
+      let normalizedSource = (l.source || '未註明').trim();
+      const upper = normalizedSource.toUpperCase();
+      if (upper === 'FB') normalizedSource = 'FB';
+      else if (upper === 'IG') normalizedSource = 'IG';
+      else if (upper === 'LINE') normalizedSource = 'LINE';
+
       const res = duplicateResults.value[l.phone];
       let statusText = "✨ 全新名單"; 
       
       if (res?.type === 'vip') {
-        // ✓ [打勾] 確保 salesName 在此處正確宣告，並處理 null 值
         const salesName = res.data?.latestSalesName || '未知';
         statusText = `🚩 已有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`; 
       } else if (res?.type === 'lead') {
         statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
       }
-      return { ...l, statusText }; 
+
+      return { 
+        ...l, 
+        source: normalizedSource, // ✅ 使用標準化後的來源
+        statusText 
+      }; 
     });
 
     const res = await batchImportAndAssignLeadsAPI({
@@ -1296,6 +1426,7 @@ const submitReport = async () => {
     // 更新主名單狀態
     await updateDoc(doc(db, 'leads', currentLead.value.id), {
       status: reportForm.value.status,
+      reason: reportForm.value.reason,
       lastReportedAt: serverTimestamp()
     });
 
@@ -1471,11 +1602,50 @@ const pieOptions = {
 const barOptions = { 
   responsive: true, 
   maintainAspectRatio: false, 
-  scales: { 
-    x: { stacked: false }, 
-    y: { beginAtZero: true, ticks: { precision: 0 } } 
+  // 🚩 第一層防護：增加佈局頂部內邊距，為標籤留出物理空間
+  layout: {
+    padding: {
+      top: 35 
+    }
   },
-  plugins: { legend: { display: true, position: 'bottom' } } 
+  scales: { 
+    x: { 
+      stacked: false,
+      grid: { display: false } 
+    }, 
+    y: { 
+      beginAtZero: true, 
+      ticks: { precision: 0 },
+      // 🚩 第二層防護：使用 grace 屬性。它會自動在最大值上方增加 15% 的空間
+      // 這樣無論最大值是多少，頂部永遠會有餘裕
+      grace: '15%', 
+      grid: { color: '#ECEFF1' }
+    } 
+  },
+  plugins: { 
+    legend: { 
+      display: true, 
+      position: 'bottom',
+      labels: { boxWidth: 12, usePointStyle: true }
+    },
+    datalabels: {
+      anchor: 'end',      // 錨點在長條末端
+      align: 'top',       // 對齊長條上方
+      offset: 5,          // 數值與長條頂端的間距
+      color: '#263238',   // 高對比深色文字
+      font: {
+        weight: 'bold',
+        size: 12
+      },
+      // 🚩 第三層防護：禁用裁切。確保即使超出繪圖區，標籤仍會被繪製出來
+      clip: false, 
+      formatter: (value) => value > 0 ? value : ''
+    },
+    tooltip: {
+      backgroundColor: 'rgba(33, 33, 33, 0.9)',
+      padding: 10
+    }
+  } 
 };
 
 // ✓ [打勾] 在 script setup 內加入此變數宣告
