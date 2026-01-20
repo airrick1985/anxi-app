@@ -496,49 +496,92 @@
           <v-btn icon="mdi-close" variant="text" @click="closeUploadDialog"></v-btn>
         </v-toolbar>
 
-        <v-card-text v-if="uploadStep === 1" class="pa-6 bg-grey-lighten-4">
-          <div v-for="(input, index) in uploadInputs" :key="index" class="mb-3">
-            <v-textarea
-              v-model="uploadInputs[index]"
-              label="請貼入完整的客戶訊息 (系統將自動解析)"
-              variant="flat"
-              bg-color="white"
-              rounded="lg"
-              rows="3"
-              density="comfortable"
-              prepend-inner-icon="mdi-card-text-outline"
-              persistent-placeholder
-              hide-details
-            ></v-textarea>
-          </div>
-          <v-btn variant="dashed" color="primary" block class="mt-2 rounded-lg" prepend-icon="mdi-plus" @click="uploadInputs.push('')">
-            新增另一組文本內容
-          </v-btn>
-        </v-card-text>
+<v-card-text v-if="uploadStep === 1" class="pa-6 bg-grey-lighten-4">
+  <v-tabs v-model="uploadMode" color="primary" class="mb-4" grow density="compact">
+    <v-tab value="text">文本模式</v-tab>
+    <v-tab value="excel">EXCEL 模式</v-tab>
+  </v-tabs>
+
+  <v-window v-model="uploadMode">
+    <v-window-item value="text">
+      <div v-for="(input, index) in uploadInputs" :key="index" class="mb-3">
+        <v-textarea
+          v-model="uploadInputs[index]"
+          label="請貼入完整的客戶訊息 (系統將自動解析)"
+          variant="flat"
+          bg-color="white"
+          rounded="lg"
+          rows="3"
+          density="comfortable"
+          prepend-inner-icon="mdi-card-text-outline"
+          persistent-placeholder
+          hide-details
+        ></v-textarea>
+      </div>
+      <v-btn variant="dashed" color="primary" block class="mt-2 rounded-lg" prepend-icon="mdi-plus" @click="uploadInputs.push('')">
+        新增另一組文本內容
+      </v-btn>
+    </v-window-item>
+
+    <v-window-item value="excel">
+      <v-file-input
+        v-model="excelFile"
+        label="點擊或拖放 EXCEL 檔案至此"
+        accept=".xlsx, .xls"
+        variant="outlined" 
+        bg-color="white"
+        prepend-inner-icon="mdi-file-excel"
+        rounded="lg"
+        show-size
+        hide-details
+        @update:model-value="handleExcelFileSelect"
+      ></v-file-input>
+      <v-alert type="info" variant="tonal" density="compact" class="mt-2 text-caption">
+        請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、**指派銷售(選填)**
+      </v-alert>
+    </v-window-item>
+  </v-window>
+</v-card-text>
 
         <v-card-text v-if="uploadStep === 2" class="pa-0">
-          <div class="bg-primary-lighten-5 pa-3 d-flex align-center gap-4 border-bottom">
-            <span class="text-caption font-weight-bold text-primary">解析摘要：</span>
-            <v-chip size="x-small" color="primary" variant="flat">總計 {{ previewLeads.length }} 筆</v-chip>
-            <v-chip size="x-small" color="orange-darken-2" variant="flat" v-if="summaryCount.vip">🚩 已有客資 {{ summaryCount.vip }} 筆</v-chip>
-            <v-chip size="x-small" color="blue-grey-darken-1" variant="flat" v-if="summaryCount.lead">⚠️ 重複名單 {{ summaryCount.lead }} 筆</v-chip>
-            <v-spacer></v-spacer>
-            <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
-            <span v-if="isCheckingDuplicates" class="text-caption text-primary">系統檢查重複中...</span>
-          </div>
+<div class="bg-primary-lighten-5 pa-3 d-flex align-center gap-4 border-bottom flex-wrap">
+  <span class="text-caption font-weight-bold text-primary">解析摘要：</span>
+  <v-chip size="x-small" color="primary" variant="flat">總計 {{ previewLeads.length }} 筆</v-chip>
+  
+  <v-chip size="x-small" color="success" variant="flat">✨ 全新名單 {{ summaryCount.new }} 筆</v-chip>
+  
+  <v-chip size="x-small" color="error" variant="elevated" class="font-weight-bold" v-if="summaryCount.unassigned">
+    ⚠️ 待指派銷售 {{ summaryCount.unassigned }} 筆
+  </v-chip>
+
+  <v-chip size="x-small" color="orange-darken-2" variant="flat" v-if="summaryCount.vip">🚩 已有客資 {{ summaryCount.vip }} 筆</v-chip>
+  
+  <v-chip size="x-small" color="yellow-darken-3" variant="flat" v-if="summaryCount.internalDup">
+    🔄 本次名單重複 {{ summaryCount.internalDup }} 筆
+  </v-chip>
+
+  <v-chip size="x-small" color="blue-grey-darken-1" variant="flat" v-if="summaryCount.lead">⚠️ 系統重複 {{ summaryCount.lead }} 筆</v-chip>
+  
+  <v-spacer></v-spacer>
+  <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
+</div>
 
           <v-table density="comfortable" fixed-header height="500px" class="preview-table">
-            <thead>
-              <tr class="bg-grey-lighten-4">
-                <th class="text-left" width="220">客戶資訊</th>
-                <th class="text-center" width="160">檢查狀態與日期</th>
-                <th class="text-left" width="180">指派銷售人員</th>
-                <th class="text-left">名單屬性</th>
-                <th class="text-center" width="60">操作</th>
-              </tr>
-            </thead>
+                <thead>
+                  <tr class="bg-grey-lighten-4">
+                    <th class="text-left" width="100">客戶資訊</th>
+                    <th class="text-center" width="100">檢查狀態與日期</th>
+                    <th class="text-left" width="180">指派銷售人員</th> 
+                    <th class="text-left" width="180">名單屬性</th>
+                    <th class="text-center" width="60">操作</th>
+                  </tr>
+                </thead>
             <tbody>
-              <tr v-for="(lead, idx) in previewLeads" :key="idx" :class="getRowClass(lead.phone)">
+              <tr 
+                  v-for="(lead, idx) in previewLeads" 
+                  :key="idx" 
+                  :class="[!lead.assignedTo ? 'bg-red-lighten-5' : getRowClass(lead.phone)]"
+                >
                 <td class="pa-4">
                   <v-text-field
                     v-model="lead.name"
@@ -554,27 +597,29 @@
                     density="compact"
                     hide-details
                     prepend-inner-icon="mdi-phone"
-                    :color="!lead.phone ? 'error' : ''"
+                    :color="lead.phone.length !== 10 ? 'error' : ''"
+                    :hint="lead.phone.length !== 10 ? '電話長度異常' : ''"
+                    persistent-hint
                   ></v-text-field>
                 </td>
 
                 <td class="text-center">
+                  <div v-if="internalDuplicateMap[lead.phone]?.length > 1" class="mb-2">
+                    <v-chip color="warning" size="x-small" variant="flat" class="font-weight-bold">
+                      ⚠️ 本次名單重複
+                    </v-chip>
+                  </div>
+
                   <div v-if="duplicateResults[lead.phone]">
                     <div v-if="duplicateResults[lead.phone].type === 'vip'" class="d-flex flex-column align-center">
                       <v-chip color="orange-darken-2" size="x-small" class="font-weight-bold mb-1">🚩 已有客資</v-chip>
                       <div class="text-caption font-weight-bold text-orange-darken-4">{{ duplicateResults[lead.phone].data.latestSalesName }}</div>
-                      <div class="text-grey text-caption" style="font-size: 10px !important;">
-                        {{ duplicateResults[lead.phone].data.visitDate || '無日期' }}
-                      </div>
                       <v-btn size="x-small" color="orange-darken-2" variant="tonal" class="mt-1" @click="quickAssignInPreview(lead, duplicateResults[lead.phone].data.latestSalesPhone)">選擇</v-btn>
                     </div>
 
                     <div v-else-if="duplicateResults[lead.phone].type === 'lead'" class="d-flex flex-column align-center">
                       <v-chip color="blue-grey-darken-1" size="x-small" class="mb-1">⚠️ 重複</v-chip>
                       <div class="text-caption font-weight-bold">{{ duplicateResults[lead.phone].data.assignedName }}</div>
-                      <div class="text-grey text-caption" style="font-size: 10px !important;">
-                        {{ duplicateResults[lead.phone].data.assignedAt }}
-                      </div>
                       <v-btn size="x-small" color="blue-grey-darken-1" variant="tonal" class="mt-1" @click="quickAssignInPreview(lead, duplicateResults[lead.phone].data.assignedTo)">選擇</v-btn>
                     </div>
 
@@ -583,20 +628,22 @@
                   <v-progress-circular v-else indeterminate size="14" width="2" color="grey"></v-progress-circular>
                 </td>
 
-                <td>
-                  <v-select
-                  v-model="lead.assignedTo"
-                  :items="salesStaffWithCounts"
-                  item-title="displayName"
-                  item-value="id"
-                  label="選擇銷售"
-                  density="compact"
-                  hide-details
-                  variant="outlined"
-                  class="mt-1"
-                  @update:model-value="(val) => updateAssignedInfo(lead, val)"
-                ></v-select>
-                </td>
+                  <td>
+                <v-select
+                      v-model="lead.assignedTo"
+                      :items="salesStaffWithCounts" 
+                      item-title="displayName"
+                      item-value="id"
+                      :label="!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售'"
+                      :error="!lead.assignedTo"
+                      density="compact"
+                      hide-details="auto"
+                      variant="outlined"
+                      class="mt-1 font-weight-bold"
+                      style="max-width: 260px;"
+                      @update:model-value="(val) => { updateAssignedInfo(lead, val); applySorting(); }"
+                    ></v-select>
+                  </td>
 
                 <td class="pa-4">
                   <v-row dense>
@@ -606,9 +653,9 @@
                     <v-col cols="6">
                       <v-text-field v-model="lead.budget" label="預算" variant="underlined" density="compact" hide-details></v-text-field>
                     </v-col>
-                    <v-col cols="12">
-                      <v-text-field v-model="lead.date" label="提交日期" variant="underlined" density="compact" hide-details prepend-inner-icon="mdi-calendar-clock"></v-text-field>
-                    </v-col>
+                <v-col cols="12">
+                        <v-text-field v-model="lead.date" label="提交日期" variant="underlined" density="compact" hide-details prepend-inner-icon="mdi-calendar-clock"></v-text-field>
+                      </v-col>
                   </v-row>
                 </td>
 
@@ -841,20 +888,23 @@ const sourceChartData = computed(() => {
   allLeads.value.forEach(l => {
     // 1. 取得原始來源並去除首尾空格
     const rawSource = (l.source || '未知來源').trim();
-    
-    // 2. 進行標準化判定 (不分大小寫)
-    let normalizedSource = rawSource;
     const upper = rawSource.toUpperCase();
     
-    if (upper === 'FB') {
+    let normalizedSource = rawSource;
+
+    // 🚩 [優化點]：合併邏輯
+    // 只要包含「官網」兩字，一律視為目前的動態專案官網
+    if (rawSource.includes('官網')) {
+      normalizedSource = `${projectName.value}官網`;
+    } else if (upper === 'FB' || rawSource.includes('臉書')) {
       normalizedSource = 'FB';
-    } else if (upper === 'IG') {
+    } else if (upper === 'IG' || rawSource.includes('Instagram')) {
       normalizedSource = 'IG';
     } else if (upper === 'LINE') {
-      normalizedSource = 'LINE'; // 建議同步處理 LINE
+      normalizedSource = 'LINE';
     }
-    
-    // 3. 執行統計
+
+    // 2. 執行統計
     counts[normalizedSource] = (counts[normalizedSource] || 0) + 1;
   });
 
@@ -1003,17 +1053,31 @@ const deniedReasonChartData = computed(() => {
   };
 });
 
-// --- 新增：銷售員選單內容與排序邏輯 ---
+// ✅ 優化後的計算屬性：結合資料庫現有量與本次分配量
 const salesStaffWithCounts = computed(() => {
   return salesStaff.value.map(staff => {
-    // 從 allLeads 中計算該人員目前被指派的名單數量 (排除已刪除的)
-    const count = allLeads.value.filter(l => l.assignedTo === staff.id).length;
+    // A. 統計資料庫中已有的名單數量
+    const dbCount = allLeads.value.filter(l => l.assignedTo === staff.id).length;
+    
+    // B. 即時統計本次預覽表格中已選擇該銷售人員的數量
+    const previewCount = previewLeads.value.filter(l => l.assignedTo === staff.id).length;
+    
+    // 總計 = 現有 + 預計
+    const totalCount = dbCount + previewCount;
+
     return {
       ...staff,
-      displayName: `${staff.name} (${count})`, // 選單顯示的名稱後綴數量
-      leadCount: count
+      totalCount,
+      // 顯示格式：姓名 (現有+本次)
+      displayName: `${staff.name} (${totalCount})` 
     };
-  }).sort((a, b) => b.leadCount - a.leadCount); // 依照數量 多 > 少 排序
+  }).sort((a, b) => {
+    // 🚩 這裡可以決定排序邏輯：
+    // a. 數量少到多 (推薦)：讓負載輕的人排在上面，方便櫃檯平均分配
+    return a.totalCount - b.totalCount; 
+    
+    // b. 數量多到少： return b.totalCount - a.totalCount;
+  });
 });
 
 
@@ -1048,10 +1112,17 @@ const dateSearch = ref([]);
 const sourceOptions = computed(() => {
   const sources = allLeads.value.map(l => {
     const raw = (l.source || '未註明').trim();
+
+    
+    
+    // 🚩 若包含官網，統一回傳目前的動態名稱
+    if (raw.includes('官網')) return `${projectName.value}官網`;
+    
     const upper = raw.toUpperCase();
-    if (upper === 'FB') return 'FB';
-    if (upper === 'IG') return 'IG';
+    if (upper === 'FB' || raw.includes('臉書')) return 'FB';
+    if (upper === 'IG' || raw.includes('Instagram')) return 'IG';
     if (upper === 'LINE') return 'LINE';
+    
     return raw;
   });
   // 使用 Set 去除重複項
@@ -1067,17 +1138,13 @@ const budgetOptions = computed(() => [...new Set(allLeads.value.map(l => l.budge
 const filteredLeads = computed(() => {
   let list = allLeads.value;
 
-  // 1. 權限過濾
-  if (isReceptionist.value || isAdmin.value) {
-    // 管理端：看全部，不需過濾指派人
-  } else {
-    // 銷售端：僅看指派給自己的
-    // ✅ 增加安全檢查：若 userUid 尚未載入，先不顯示或顯示空陣列，避免比對錯誤
+  // 1. 權限過濾：判斷是管理端還是銷售個人端
+  if (!(isReceptionist.value || isAdmin.value)) {
     if (!userUid.value) return []; 
     list = list.filter(l => l.assignedTo === userUid.value);
   }
 
-  // 2. 關鍵字搜尋 (姓名/電話)
+  // 2. 關鍵字搜尋：支援姓名與電話模糊比對
   if (namePhoneSearch.value) {
     const s = namePhoneSearch.value.toLowerCase();
     list = list.filter(l => 
@@ -1091,23 +1158,39 @@ const filteredLeads = computed(() => {
     list = list.filter(l => statusSearch.value.includes(l.status || '未處理'));
   }
 
+  // 4. 指派人員過濾
   if (assignedSearch.value && assignedSearch.value.length > 0) {
     list = list.filter(l => assignedSearch.value.includes(l.assignedTo));
   }
 
-  // 4. 其他屬性過濾 (來源、預算、日期)
+  // 🚩 5. 來源管道過濾 (關鍵優化：支援新舊名稱合併)
   if (sourceSearch.value.length > 0) {
-    list = list.filter(l => sourceSearch.value.includes(l.source || '未註明'));
+    list = list.filter(l => {
+      const raw = (l.source || '未註明').trim();
+      
+      // 將資料庫原始資料進行「即時標準化」
+      let normalized = raw;
+      if (raw.includes('官網')) {
+        normalized = `${projectName.value}官網`; // 統一轉化為當前專案官網名稱
+      } else {
+        const upper = raw.toUpperCase();
+        if (upper === 'FB' || raw.includes('臉書')) normalized = 'FB';
+        else if (upper === 'IG' || raw.includes('Instagram')) normalized = 'IG';
+        else if (upper === 'LINE') normalized = 'LINE';
+      }
+
+      // 判斷標準化後的結果是否在用戶勾選的篩選清單中
+      return sourceSearch.value.includes(normalized);
+    });
   }
+
+  // 6. 購屋預算過濾
   if (budgetSearch.value.length > 0) {
     list = list.filter(l => budgetSearch.value.includes(l.budget || '未填寫'));
   }
-  if (dateSearch.value.length > 0) {
-    list = list.filter(l => dateSearch.value.includes(l.date || '無日期'));
-  }
 
-if (startDate.value) {
-    // 將 HTML5 date input 的 YYYY-MM-DD 轉為 YYYY/MM/DD 以匹配資料庫格式
+  // 7. 填表日期範圍過濾
+  if (startDate.value) {
     const sDate = startDate.value.replace(/-/g, '/');
     list = list.filter(l => l.date && l.date >= sDate);
   }
@@ -1117,6 +1200,7 @@ if (startDate.value) {
     list = list.filter(l => l.date && l.date <= eDate);
   }
 
+  // 8. 不考慮原因過濾
   if (reasonSearch.value.length > 0) {
     list = list.filter(l => reasonSearch.value.includes(l.reason || '未註明'));
   }
@@ -1203,17 +1287,46 @@ const updateAssignedInfo = (lead, salesId) => {
 };
 
 const summaryCount = computed(() => {
-  const counts = { vip: 0, lead: 0, none: 0 };
+  const counts = { vip: 0, lead: 0, new: 0, internalDup: 0, unassigned: 0 };
+  
   previewLeads.value.forEach(l => {
+    // 1. 檢查查重狀態 (已有客資/重複名單/全新)
     const res = duplicateResults.value[l.phone];
     if (res?.type === 'vip') counts.vip++;
     else if (res?.type === 'lead') counts.lead++;
-    else counts.none++;
+    else counts.new++;
+
+    // 2. 統計內部重複 (本次名單重複)
+    if (internalDuplicateMap.value[l.phone]?.length > 1) {
+      counts.internalDup++;
+    }
+
+    // 3. 統計尚未選擇銷售
+    if (!l.assignedTo) {
+      counts.unassigned++;
+    }
   });
   return counts;
 });
 
+// ✅ 新增：計算預覽名單中內部電話重複的情況
+const internalDuplicateMap = computed(() => {
+  const map = {};
+  previewLeads.value.forEach((lead, index) => {
+    if (!lead.phone) return;
+    const phone = lead.phone;
+    if (!map[phone]) map[phone] = [];
+    map[phone].push(index + 1); // 存入行號 (index + 1)
+  });
+  return map;
+});
+
 const getRowClass = (phone) => {
+  // 🚩 優先檢查本次名單內部重複
+  if (internalDuplicateMap.value[phone]?.length > 1) {
+    return 'bg-yellow-lighten-5'; 
+  }
+  
   const res = duplicateResults.value[phone];
   if (res?.type === 'vip') return 'bg-orange-lighten-5';
   if (res?.type === 'lead') return 'bg-blue-grey-lighten-5';
@@ -1222,10 +1335,67 @@ const getRowClass = (phone) => {
 
 const normalizePhone = (p) => {
   if (!p) return '';
-  let clean = p.toString().replace(/[\s-()]/g, '');
+  let clean = p.toString().replace(/[\s-()]/g, ''); // 移除符號
+  
+  // 處理國碼
   if (clean.startsWith('+886')) clean = '0' + clean.slice(4);
   else if (clean.startsWith('886')) clean = '0' + clean.slice(3);
-  return clean.replace(/\D/g, ''); 
+  
+  clean = clean.replace(/\D/g, ''); // 僅留數字
+  
+  // 🚩 [優化] 自動補 0：處理 Excel 數值化導致的開頭遺失 (如 912345678 補為 0912345678)
+  if (clean.length === 9 && !clean.startsWith('0')) {
+    clean = '0' + clean;
+  }
+  
+  return clean;
+};
+
+const normalizeDate = (val) => {
+  if (!val) return new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+
+  let date;
+
+  // 1. 處理 Excel 的數值型日期 (例如: 45659)
+  if (typeof val === 'number') {
+    date = new Date((val - 25569) * 86400 * 1000);
+  } else {
+    // 2. 處理字串格式 (如 2026-01-20 或 2026/1/2)
+    const cleanStr = val.toString().trim().replace(/-/g, '/');
+    date = new Date(cleanStr);
+  }
+
+  // 3. 檢查日期有效性，若無效則回傳今天
+  if (isNaN(date.getTime())) {
+    date = new Date();
+  }
+
+  // 4. 統一轉化為 YYYY/MM/DD 並補零
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+
+  return `${y}/${m}/${d}`;
+};
+
+const normalizeSource = (s) => {
+  if (!s) return '未註明';
+  
+  const raw = s.toString().trim();
+  const upper = raw.toUpperCase();
+  
+  // 標準化常見管道名稱
+  if (upper === 'FB' || raw.includes('臉書') || raw.includes('Facebook')) return 'FB';
+  if (upper === 'IG' || raw.includes('Instagram')) return 'IG';
+  if (upper === 'LINE') return 'LINE';
+  if (raw.includes('591')) return '591平台';
+  
+  // ✓ [修改] 自動帶入當前建案名稱，例如：「富宇天賦官網」或「首馥官網」
+  if (raw.includes('官網')) {
+    return `${projectName.value}官網`;
+  }
+  
+  return raw;
 };
 
 const parseLeadText = (text) => {
@@ -1254,7 +1424,7 @@ const parseLeadText = (text) => {
     // 針對多行格式，擷取標籤下一行的內容
     result.name = cleanText.match(/姓名：\s*\n\s*([^\n\r]+)/)?.[1]?.trim() || '';
     result.phone = normalizePhone(cleanText.match(/電話：\s*\n\s*([^\n\r]+)/)?.[1]);
-    result.source = '首馥官網';
+    result.source = `${projectName.value}官網`;
     
     // 擷取提交時間: 2025年12月29日
     const dateMatch = cleanText.match(/提交時間:\s*(\d{4})年(\d{1,2})月(\d{1,2})日/);
@@ -1293,6 +1463,8 @@ const parseLeadText = (text) => {
     // 如果有其他需要統一的來源，可以在此繼續添加
   }
 
+  
+result.source = normalizeSource(result.source);
   
   return result;
 };
@@ -1388,8 +1560,10 @@ const executeBatchImportAndAssign = async () => {
 const closeUploadDialog = () => {
   showUploadDialog.value = false;
   uploadStep.value = 1;
+  uploadMode.value = 'text'; // 重置為文本模式
   uploadInputs.value = [''];
   previewLeads.value = [];
+  excelFile.value = null;
 };
 
 // 4. 修改原本的 openReport 函式，確保開啟時重置狀態
@@ -1708,6 +1882,96 @@ const formatDateTime = (ts) => {
   }).replace(/\//g, '/'); // 確保斜線分隔
 };
 
+// ✓ [新增] 模式與檔案控制變數
+const uploadMode = ref('text');
+const excelFile = ref(null);
+
+const applySorting = () => {
+  previewLeads.value.sort((a, b) => {
+    // 1. 待指派最優先 (Priority 0)
+    const aUn = !a.assignedTo ? 0 : 1;
+    const bUn = !b.assignedTo ? 0 : 1;
+    if (aUn !== bUn) return aUn - bUn;
+
+    // 2. 已有客資次之 (Priority 1)
+    const aVip = duplicateResults.value[a.phone]?.type === 'vip' ? 0 : 1;
+    const bVip = duplicateResults.value[b.phone]?.type === 'vip' ? 0 : 1;
+    if (aVip !== bVip) return aVip - bVip;
+
+    // 3. 本次內部重複 (Priority 2)
+    const aInt = (internalDuplicateMap.value[a.phone]?.length > 1) ? 0 : 1;
+    const bInt = (internalDuplicateMap.value[b.phone]?.length > 1) ? 0 : 1;
+    if (aInt !== bInt) return aInt - bInt;
+
+    return 0;
+  });
+};
+
+// ✓ [打勾] 完整的 Excel 解析與多層級排序優化
+const handleExcelFileSelect = async (input) => {
+  const file = Array.isArray(input) ? input[0] : input;
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      uiStore.setLoading(true);
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      
+      const mappedLeads = jsonData.map(row => {
+        // 1. 解析指派人員
+        const excelSalesName = (row['指派銷售'] || row['銷售人員'] || row['業務'] || '').toString().trim();
+        let assignedTo = null;
+        let assignedName = '';
+        if (excelSalesName) {
+          const foundStaff = salesStaff.value.find(s => s.name === excelSalesName);
+          if (foundStaff) {
+            assignedTo = foundStaff.id;
+            assignedName = foundStaff.name;
+          }
+        }
+
+        return {
+          name: (row['客戶姓名'] || row['姓名'] || '').toString().trim(),
+          phone: normalizePhone(row['聯絡電話'] || row['電話']), // 自動補0
+          source: normalizeSource(row['來源管道'] || row['來源']), // ✅ 統一來源格式
+          budget: (row['購屋預算'] || row['預算'] || '').toString().trim(),
+          date: normalizeDate(row['填表日期'] || row['日期']),   // 統一日期 YYYY/MM/DD
+          rawText: 'EXCEL匯入',
+          assignedTo,
+          assignedName
+        };
+      });
+
+      previewLeads.value = mappedLeads.filter(l => l.phone);
+      uploadStep.value = 2;
+      
+      await runCheck(previewLeads.value.map(l => l.phone));
+      
+      // 自動指派與多層級排序邏輯
+      previewLeads.value.forEach(lead => {
+        if (!lead.assignedTo) {
+          const res = duplicateResults.value[lead.phone];
+          if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
+            quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
+          }
+        }
+      });
+
+      applySorting(); // 執行排序：未指派 > 已有客資 > 本次重複
+
+    } catch (err) {
+      showMsg('解析失敗: ' + err.message, 'error');
+    } finally {
+      uiStore.setLoading(false);
+      excelFile.value = null;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
 
 </script>
 
@@ -1814,5 +2078,17 @@ const formatDateTime = (ts) => {
   border-left: 1px solid rgba(63, 81, 181, 0.15);
 }
 
+
+
+.bg-yellow-lighten-5 {
+  background-color: #FFFDE7 !important; /* 淡黃色警告 */
+  border-left: 4px solid #FBC02D !important; /* 左側加入黃色邊框加強識別 */
+}
+
+/* ✓ [打勾] 在 <style scoped> 中新增 */
+.bg-red-lighten-5 {
+  background-color: #FFEBEE !important;
+  border-left: 4px solid #FF5252 !important;
+}
 
 </style>
