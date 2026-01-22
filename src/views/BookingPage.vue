@@ -523,18 +523,28 @@
                         :rules="[v => !!v || '必填']"
                         variant="outlined"
                       ></v-text-field>
-                      <v-btn
-                        :color="isSigningInitiated ? 'success' : projectConfig.themeColor"
-                        @click="openAuthDialog"
-                        block
-                        class="mb-4"
-                        variant="tonal"
-                        size="large"
-                        :disabled="isLoading"  
-                      >
-                        <v-icon left>{{ isSigningInitiated ? 'mdi-email-check-outline' : 'mdi-draw' }}</v-icon>
-                        {{ isSigningInitiated ? '已寄送簽署邀請' : '按此處完成「驗屋授權書(線上授權)」才可進行下一步' }}
-                      </v-btn>
+                  <div class="d-flex flex-column mb-4">
+                    <v-btn
+                      :color="isSigningInitiated ? 'success' : projectConfig.themeColor"
+                      @click="openAuthDialog"
+                      block
+                      variant="tonal"
+                      size="large"
+                      :disabled="isLoading"
+                    >
+                      <v-icon left>{{ isSigningInitiated ? 'mdi-email-check-outline' : 'mdi-draw' }}</v-icon>
+                      {{ isSigningInitiated ? '已寄送簽署邀請' : '按此處「驗屋授權書(線上授權)」' }}
+                    </v-btn>
+
+                    <div 
+                      v-if="!isSigningInitiated" 
+                      class="text-red text-caption mt-1 animate-pulse"
+                      style="font-weight: 500; letter-spacing: 0.5px;"
+                    >
+                      <v-icon size="14" color="red" class="mr-1">mdi-alert-circle-outline</v-icon>
+                      需要完成授權書填寫才可進行下一步
+                    </div>
+                  </div>
                       <v-divider class="my-4"></v-divider>
                     </template>
                 </v-form>
