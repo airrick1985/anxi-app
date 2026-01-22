@@ -2684,127 +2684,130 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
  * @param {object} payload - 包含 { batchData, resolutions } 的物件
  * @returns {Promise<object>}
  */
+/**
+ * [V2.1 - 解決 IN 30 限制版] 儲存批次與其關聯的每日規則
+ */
 export async function saveBatchWithRules(payload) {
     const { batchData, resolutions } = payload;
-    const isNewBatch = !batchData.id; // ✓ 判斷是新增還是更新批次
-    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id; // ✓ 如果是新增，產生新 ID
-    const now = serverTimestamp(); // ✓ 獲取伺服器時間戳
+    const isNewBatch = !batchData.id;
+    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id;
+    const now = serverTimestamp();
 
     try {
         const batch = writeBatch(db);
         const batchDocRef = doc(db, "bookingBatches", batchId);
 
-        // 步驟 1: 新增/更新 bookingBatches 主文件
-        const dataToSave = { ...batchData, id: batchId }; // ✓ 確保 ID 存在
+        // 步驟 1: 主文件設定
+        const dataToSave = { ...batchData, id: batchId };
         dataToSave.lastModified = now;
         if (isNewBatch) {
             dataToSave.createdAt = now;
-            dataToSave.isDeleted = false; // ✓ 新增時預設為未刪除
+            dataToSave.isDeleted = false;
         }
-        delete dataToSave.dailyRules; // ✓ 移除規則資料，不存主文件
-        // ✓【修改】確保 isDeleted 狀態不會意外被覆蓋成 true (只在新增時設 false)
+        delete dataToSave.dailyRules;
         if (!isNewBatch) {
-            delete dataToSave.isDeleted; // 更新時不修改 isDeleted
-            delete dataToSave.deletedAt; // 更新時不修改 deletedAt
+            delete dataToSave.isDeleted;
+            delete dataToSave.deletedAt;
         }
         batch.set(batchDocRef, dataToSave, { merge: true });
 
-        // 步驟 2: 處理規則，先 *冷刪除* 此批次在 *此次異動日期中* 的所有 *未被刪除的* 舊關聯
+        // 步驟 2: 處理規則關聯 (修正 IN 30 限制) ✓
         const datesToUpdate = Object.keys(resolutions);
         if (datesToUpdate.length > 0) {
-            // ✓【修改】查詢條件增加 isDeleted == false
-            const oldLinksQuery = query(collection(db, "batchRuleLinks"),
-                where("batchId", "==", batchId),
-                where("date", "in", datesToUpdate),
-                where("isDeleted", "==", false) // ✓ 只找未刪除的舊連結
-            );
-            const oldLinksSnapshot = await getDocs(oldLinksQuery);
-            // ✓【修改】從 delete 改為 update，標記為已刪除
-            oldLinksSnapshot.forEach(doc => {
-                batch.update(doc.ref, {
-                  isDeleted: true,
-                  deletedAt: now
+            // 將日期陣列切割成每 30 個一組 ✓
+            const chunks = [];
+            for (let i = 0; i < datesToUpdate.length; i += 30) {
+                chunks.push(datesToUpdate.slice(i, i + 30));
+            }
+
+            // 平行執行查詢 ✓
+            const queryPromises = chunks.map(dateChunk => {
+                const oldLinksQuery = query(
+                    collection(db, "batchRuleLinks"),
+                    where("batchId", "==", batchId),
+                    where("date", "in", dateChunk), // 分段後的 dateChunk 不會超過 30 個
+                    where("isDeleted", "==", false)
+                );
+                return getDocs(oldLinksQuery);
+            });
+
+            const snapshots = await Promise.all(queryPromises);
+
+            // 將所有找到的舊連結標記為刪除 ✓
+            snapshots.forEach(snapshot => {
+                snapshot.forEach(doc => {
+                    batch.update(doc.ref, {
+                        isDeleted: true,
+                        deletedAt: now
+                    });
                 });
             });
-            console.log(`[api.js] saveBatchWithRules: Marked ${oldLinksSnapshot.size} old links for soft deletion.`); // ✓ Log
+            
+            console.log(`[api.js] 已處理 ${datesToUpdate.length} 天的舊連結檢查。`);
         }
 
-        // 步驟 3: 根據 resolutions 建立新規則或新關聯
+        // 步驟 3: 根據 resolutions 建立新規則或新關聯 (此處邏輯不變)
         for (const date in resolutions) {
             const resolution = resolutions[date];
             const ruleContent = batchData.dailyRules[date];
 
-            // 如果該日期沒有設定規則內容，則跳過 (避免產生空的連結或規則)
-            if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) {
-                console.log(`[api.js] saveBatchWithRules: Skipping date ${date} due to empty rule content.`); // ✓ Log
-                continue;
-            }
+            if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) continue;
 
-            // --- 建立新連結或新規則的邏輯 (基本不變，但新增 isDeleted: false) ---
             if (resolution.mode === 'link' && resolution.targetRuleId) {
-                // 模式 A: 連結至現有規則
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
                 batch.set(linkDocRef, {
-                    batchId: batchId,
+                    batchId,
                     ruleId: resolution.targetRuleId,
-                    date: date,
+                    date,
                     projectId: batchData.projectId,
-                    isDeleted: false, // ✓ 新連結預設未刪除
-                    createdAt: now,   // ✓ 增加建立時間
+                    isDeleted: false,
+                    createdAt: now,
                 });
-
             } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
-                // 模式 C: 更新現有共享規則，然後連結
                 const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
-                // ✓【修改】更新時也加入 isDeleted: false，確保規則是有效的
                 batch.update(ruleToUpdateRef, {
                     slots: ruleContent.slots,
                     lastModified: now,
-                    isDeleted: false, // ✓ 確保更新後的規則是未刪除狀態
-                    deletedAt: null   // ✓ 清除可能的舊刪除時間
+                    isDeleted: false,
+                    deletedAt: null
                 });
-
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
                 batch.set(linkDocRef, {
-                    batchId: batchId,
+                    batchId,
                     ruleId: resolution.targetRuleId,
-                    date: date,
+                    date,
                     projectId: batchData.projectId,
-                    isDeleted: false, // ✓ 新連結預設未刪除
-                    createdAt: now,   // ✓ 增加建立時間
+                    isDeleted: false,
+                    createdAt: now,
                 });
-
             } else if (resolution.mode === 'create_independent' || resolution.mode === 'create_shared') {
-                // 模式 B (獨立) 或新日期的共享規則
                 const newRuleDocRef = doc(collection(db, "dateRules"));
                 batch.set(newRuleDocRef, {
                     slots: ruleContent.slots,
-                    date: date,
+                    date,
                     projectId: batchData.projectId,
                     isShared: resolution.mode === 'create_shared',
                     createdAt: now,
-                    isDeleted: false, // ✓ 新規則預設未刪除
+                    isDeleted: false,
                 });
-
                 const linkDocRef = doc(collection(db, "batchRuleLinks"));
                 batch.set(linkDocRef, {
-                    batchId: batchId,
+                    batchId,
                     ruleId: newRuleDocRef.id,
-                    date: date,
+                    date,
                     projectId: batchData.projectId,
-                    isDeleted: false, // ✓ 新連結預設未刪除
-                    createdAt: now,   // ✓ 增加建立時間
+                    isDeleted: false,
+                    createdAt: now,
                 });
             }
         }
 
         await batch.commit();
-        console.log(`[api.js] saveBatchWithRules: Successfully saved batch ${batchId} and rules.`); // ✓ Log
         return { status: 'success', id: batchId };
 
     } catch (e) {
-        console.error(`[api.js] saveBatchWithRules: Error saving batch ${batchId}:`, e); // ✓ Log 錯誤
-        return { status: 'error', message: `儲存批次與規則時發生錯誤: ${e.message}` };
+        console.error(`[api.js] saveBatchWithRules 發生錯誤:`, e);
+        return { status: 'error', message: `儲存失敗: ${e.message}` };
     }
 }
 

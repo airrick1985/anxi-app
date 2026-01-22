@@ -156,14 +156,14 @@
               <v-form>
                 <v-card variant="outlined" class="mb-6">
   <v-card-text>
-    <div class="d-flex align-center justify-space-between">
+    <div class="d-flex align-center">
       <div>
         <div class="text-h6 font-weight-bold">系統開放狀態</div>
         <div class="text-caption text-grey-darken-1">總開關必須開啟，排程設定才會生效</div>
       </div>
       <v-switch
         v-model="projectSettings.isPublished"
-        :label="projectSettings.isPublished ? '系統已啟用' : '系統已關閉'"
+        :label="projectSettings.isPublished ? '預約系統啟用中' : '預約系統已關閉'"
         color="success"
         hide-details
         inset
@@ -174,7 +174,7 @@
 
     <v-checkbox
       v-model="projectSettings.enableScheduledPublish"
-      label="啟用自動開啟/關閉排程"
+      label="啟用定時開關預約系統"
       color="primary"
       hide-details
       class="mb-2"
@@ -573,8 +573,9 @@
                   class="mt-4"
                 ></v-switch>
 
-                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告上傳網址</p>
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin">驗屋報告上傳網址</p>
                 <v-text-field
+                  v-if="isAdmin"
                   v-model="projectSettings.reportSettings.uploadReminderEmail.uploadUrl"
                   variant="outlined"
                   density="compact"
@@ -582,8 +583,9 @@
                    placeholder="輸入驗屋報告上傳網址"
                 ></v-text-field>
 
-                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告資料夾</p>
+                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >驗屋報告資料夾</p>
                 <v-text-field
+                v-if="isAdmin"
                   v-model="projectSettings.reportSettings.reportDataFolderUrl"
                   variant="outlined"
                   density="compact"
@@ -592,8 +594,9 @@
                 ></v-text-field>
 
                  <!-- ✓✓✓ START: 新增驗屋報告模板欄位 ✓✓✓ -->
-                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">驗屋報告模板</p>
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >驗屋報告模板</p>
                 <v-text-field
+                v-if="isAdmin"
                   v-model="projectSettings.inspectionReportTemplateUrl"
                   variant="outlined"
                   density="compact"
@@ -602,7 +605,8 @@
                   hint="用於自動產製 PDF 報告的樣板 (需包含佔位符)"
                   persistent-hint
                 ></v-text-field>
-                <!-- ✓✓✓ END: 新增驗屋報告模板欄位 ✓✓✓ -->
+
+                <v-divider class="my-6"></v-divider>
 
                 <p class="text-subtitle-1 font-weight-bold mb-2">上傳頁說明</p>
                 <RichTextEditor v-model="projectSettings.reportUploadIntro.body" class="mb-6" />
@@ -682,7 +686,7 @@
                   ></v-checkbox>
                   <v-checkbox
                     v-model="projectSettings.reportSettings.uploadReminderMethods"
-                    label="LINE"
+                    label="LINE(功能尚未開放)"
                     value="LINE"
                     density="compact"
                     hide-details
@@ -692,9 +696,9 @@
 
                 
 
-                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">未上傳報告 - 每日提醒排程</p>
+                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2">客戶未上傳報告 - 每日提醒排程</p>
                 <p class="text-body-2 text-medium-emphasis mb-4">
-                  設定每日自動檢查並發送提醒的固定時間點。函式會每小時檢查一次，當下時間符合此處設定時，才會執行任務。
+                  設定每日自動檢查並發送提醒的固定時間點。
                 </p>
                 <v-sheet border rounded class="pa-4">
                   <v-switch
@@ -731,6 +735,9 @@
                 <v-divider class="my-6"></v-divider>
 
                 <p class="text-subtitle-1 font-weight-bold mb-2">未上傳驗屋報告 EMAIL 通知格式</p>
+                <p class="text-body-2 text-medium-emphasis mb-4">
+                  若您需要協助設定請洽詢ANXI安熙系統管理員。
+                </p>
                 <div class="d-flex align-center">
                   <label class="v-label text-caption">主旨</label>
                   <v-btn size="x-small" variant="tonal" @click="applyTemplate('uploadReminderEmailSubject')" class="ml-4">套用範本</v-btn>
