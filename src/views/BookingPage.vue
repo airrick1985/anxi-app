@@ -478,7 +478,35 @@
                     <v-text-field label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="電話" v-model="formStep2.電話" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="EMAIL" v-model="formStep2.EMAIL" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined"></v-text-field>
-                    <template v-if="formStep1.bookingMethod !== '屋主自驗' && formStep1.isOwnerPresent === false">
+                   
+                    <v-date-picker
+                        v-model="formStep2.預約日期"
+                        :min="bookingSlots.startDate"
+                        :max="bookingSlots.endDate"
+                        :allowed-dates="isDateAllowed"
+                        @update:model-value="onDateChange"
+                        :color="projectConfig.themeColor"
+                        width="100%"
+                        title="請選擇預約日期"
+                    ></v-date-picker>
+
+                    <v-select
+                      label="預約時段"
+                      v-model="formStep2.預約時段"
+                      :items="availableTimeSlots"
+                      :disabled="!formStep2.預約日期"
+                      :rules="[v => !!v || '必填']"
+                      variant="outlined"
+                      no-data-text="請先選擇日期"
+                      class="mt-4"
+                      item-title="title"
+                      item-value="value"
+                  >
+                      <template v-slot:item="{ props, item }">
+                          <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
+                      </template>
+                  </v-select>
+                   <template v-if="formStep1.bookingMethod !== '屋主自驗' && formStep1.isOwnerPresent === false">
                     <v-divider class="my-4"></v-divider>
                       <p class="mb-2 text-subtitle-1 font-weight-medium">
                         委託驗屋資訊 (請填寫受託人資料)
@@ -509,33 +537,6 @@
                       </v-btn>
                       <v-divider class="my-4"></v-divider>
                     </template>
-                    <v-date-picker
-                        v-model="formStep2.預約日期"
-                        :min="bookingSlots.startDate"
-                        :max="bookingSlots.endDate"
-                        :allowed-dates="isDateAllowed"
-                        @update:model-value="onDateChange"
-                        :color="projectConfig.themeColor"
-                        width="100%"
-                        title="請選擇預約日期"
-                    ></v-date-picker>
-
-                    <v-select
-                      label="預約時段"
-                      v-model="formStep2.預約時段"
-                      :items="availableTimeSlots"
-                      :disabled="!formStep2.預約日期"
-                      :rules="[v => !!v || '必填']"
-                      variant="outlined"
-                      no-data-text="請先選擇日期"
-                      class="mt-4"
-                      item-title="title"
-                      item-value="value"
-                  >
-                      <template v-slot:item="{ props, item }">
-                          <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
-                      </template>
-                  </v-select>
                 </v-form>
              </v-card-text>
              <v-card-actions class="pa-4">
