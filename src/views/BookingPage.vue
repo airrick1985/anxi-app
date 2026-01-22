@@ -505,7 +505,7 @@
                         :disabled="isLoading"  
                       >
                         <v-icon left>{{ isSigningInitiated ? 'mdi-email-check-outline' : 'mdi-draw' }}</v-icon>
-                        {{ isSigningInitiated ? '已寄送簽署邀請' : '驗屋授權書(網路版)' }}
+                        {{ isSigningInitiated ? '已寄送簽署邀請' : '按此處完成「驗屋授權書(線上授權)」才可進行下一步' }}
                       </v-btn>
                       <v-divider class="my-4"></v-divider>
                     </template>
