@@ -18964,6 +18964,14 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
             { type: "text", text: `預算：${lead.budget || "未填寫"}`, color: "#666666", size: "lg", margin: "sm" },
             { type: "text", text: `來源：${lead.source || "未知"}`, color: "#666666", size: "lg", margin: "sm" },
             { type: "text", text: `日期：${lead.date || "未知"}`, color: "#666666", size: "lg", margin: "sm" },
+            { 
+                type: "text", 
+                text: `備註：${lead.note || "無"}`, 
+                color: "#666666", 
+                size: "lg", 
+                margin: "sm", 
+                wrap: true 
+              },
             { type: "separator", margin: "md" },
             { 
               type: "text", 
@@ -19189,22 +19197,23 @@ exports.batchImportAndAssignLeads = onCall({
         const now = admin.firestore.Timestamp.now();
         const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
 
-        for (const leadData of leads) {
-            // 1. 建立名單基本資料
-            const payload = {
-                name: leadData.name || "",
-                phone: leadData.phone || "",
-                date: leadData.date || "",
-                source: leadData.source || "廠商提供",
-                statusText: leadData.statusText || "", 
-                budget: leadData.budget || "",
-                projectId: projectId,
-                projectName: projectName, // ✅ [新增] 將建案名稱寫入 payload
-                status: "",
-                isDeleted: false,
-                createdAt: now,
-                importedBy: operator
-            };
+          for (const leadData of leads) {
+              const payload = {
+                  name: leadData.name || "",
+                  phone: leadData.phone || "",
+                  date: leadData.date || "",
+                  source: leadData.source || "廠商提供",
+                  statusText: leadData.statusText || "", 
+                  budget: leadData.budget || "",
+                  note: leadData.note || "",       // ✅ 新增：將前端傳來的備註寫入資料庫
+                  rawText: leadData.rawText || "",  // ✅ 新增：記錄原始匯入方式 (如 "手動錄入")
+                  projectId: projectId,
+                  projectName: projectName,
+                  status: "",
+                  isDeleted: false,
+                  createdAt: now,
+                  importedBy: operator
+              };
 
             // 如果有指派業務
             if (leadData.assignedTo) {

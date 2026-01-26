@@ -155,18 +155,18 @@
               color="indigo-darken-4"
             ></v-textarea>
 
-            <v-btn 
-              block 
-              color="green" 
-              size="x-large" 
-              rounded="lg"
-              elevation="2"
-              :disabled="!form.status || (showReasonField && !form.reason)"
-              @click="submitReport"
-              class="font-weight-bold"
-            >
-              送出回報內容
-            </v-btn>
+              <v-btn 
+                block 
+                :color="form.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
+                size="x-large" 
+                rounded="lg"
+                elevation="2"
+                :disabled="isSubmitDisabled"
+                @click="submitReport"
+                class="font-weight-bold"
+              >
+                {{ submitBtnText }}
+              </v-btn>
 
             <div class="section-title mt-8 mb-3 d-flex align-center">
               <v-icon size="20" class="me-2">mdi-history</v-icon>回報日誌
@@ -258,7 +258,13 @@ const showReasonField = computed(() => {
   return ['還在討論', '空號', '未接', '不考慮'].includes(form.value.status);
 });
 
+// ✅ 新增：追蹤預約是否完成
+const isBookingCompleted = ref(false);
+
 watch(() => form.value.status, (newStatus) => {
+  // ✅ 每次切換狀態時，重置預約完成標記
+  isBookingCompleted.value = false;
+
   if (newStatus === '還在討論') {
     form.value.reason = '家人討論';
     isReasonReadonly.value = true;
@@ -383,9 +389,28 @@ const onBookingSaved = (bookingData) => {
   // 3. 填入詳細談話紀錄 TEXTAREA
   form.value.note = summary;
 
-  // 4. 提示使用者
+
+
+// ✅ 4. 標記預約已完成
+  isBookingCompleted.value = true;
+
   showMsg('預約成功，已自動帶入談話紀錄', 'success');
 };
+
+// ✅ 新增：計算按鈕文字
+const submitBtnText = computed(() => {
+  if (form.value.status === '已約賞屋' && !isBookingCompleted.value) {
+    return '請先完成賞屋預約';
+  }
+  return '送出回報內容';
+});
+
+// ✅ 新增：計算按鈕是否禁用
+const isSubmitDisabled = computed(() => {
+  const baseValidation = !form.value.status || (showReasonField.value && !form.value.reason);
+  const bookingValidation = (form.value.status === '已約賞屋' && !isBookingCompleted.value);
+  return baseValidation || bookingValidation;
+});
 
 const submitReport = async () => {
   const currentUserName = userStore.user?.name || '業務人員';

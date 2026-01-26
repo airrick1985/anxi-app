@@ -133,7 +133,7 @@
 <v-card variant="flat" class="mb-4 pa-4 rounded-xl border bg-white shadow-sm">
   <v-row dense align="center">
     <v-col cols="12" sm="4">
-      <v-text-field v-model="namePhoneSearch" label="搜尋姓名或電話" prepend-inner-icon="mdi-magnify" variant="outlined" density="comfortable" hide-details clearable rounded="lg"></v-text-field>
+      <v-text-field v-model="namePhoneSearch" label="關鍵字搜尋" prepend-inner-icon="mdi-magnify" variant="outlined" density="comfortable" hide-details clearable rounded="lg"></v-text-field>
     </v-col>
      <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4" >
       <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
@@ -268,6 +268,14 @@
         <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
           <v-row no-gutters class="flex-wrap">
             
+            <v-col cols="12" class="mt-2 pt-2 border-top-custom" v-if="item.note">
+          <div class="info-label text-indigo-darken-3">備註</div>
+          <div class="info-value text-indigo-darken-4">
+            <v-icon size="14" class="me-1">mdi-note-text-outline</v-icon>
+            {{ item.note }}
+          </div>
+        </v-col>
+
             <v-col cols="12" class="mb-2 pb-2 border-bottom-custom">
               <div class="info-label">來源管道</div>
               <div class="info-value">
@@ -318,127 +326,173 @@
       </v-toolbar-title>
     </v-toolbar>
     
-    <v-container>
-      <v-row justify="center">
-        <v-col cols="12" md="8" lg="6">
-          
-          <v-card class="pa-5 mb-6 rounded-xl elevation-2">
-            <div class="section-title mb-3">聯絡狀況</div>
-            
-            <v-select
-              v-model="reportForm.status"
-              :items="statusOptions"
-              label="選擇聯絡結果"
-              variant="outlined"
-              rounded="lg"
-              class="mb-3"
-              density="comfortable"
-              hide-details
-              color="indigo-darken-4"
-            ></v-select>
-
-            <template v-if="showReasonField">
-              <v-text-field
-                v-if="isReasonReadonly"
-                v-model="reportForm.reason"
-                label="未約原因 (系統自動填入)"
-                variant="filled"
-                readonly
-                rounded="lg"
-                class="mb-3"
-                density="comfortable"
-                hide-details
-                bg-color="grey-lighten-3"
-              ></v-text-field>
-
-              <v-select
-                v-else
-                v-model="reportForm.reason"
-                :items="reasonOptions"
-                label="請選擇未約原因"
-                variant="outlined"
-                rounded="lg"
-                class="mb-3"
-                density="comfortable"
-                color="indigo-darken-4"
-                hide-details
-              ></v-select>
-            </template>
-
-            <v-btn 
-              v-if="reportForm.status === '已約賞屋'"
-              block 
-              color="primary" 
-              variant="elevated"
-              class="mb-4 font-weight-bold"
-              prepend-icon="mdi-calendar-check"
-              @click="openBookingDialog"
-            >
-              開啟預約視窗
-            </v-btn>
-
-            <v-textarea
-              v-model="reportForm.note"
-              label="詳細談話紀錄"
-              variant="outlined"
-              placeholder="請輸入通話內容摘要..."
-              rounded="lg"
-              rows="3"
-              class="mb-4"
-              hide-details
-              color="indigo-darken-4"
-            ></v-textarea>
-
-            <div class="text-center mt-6">
-              <v-btn 
-                color="green" 
-                size="x-large" 
-                rounded="lg"
-                elevation="2"
-                min-width="200"
-                :disabled="!reportForm.status || (showReasonField && !reportForm.reason)"
-                @click="submitReport"
-                class="font-weight-bold"
-              >
-                完成回報
-              </v-btn>
+<v-container>
+  <v-row justify="center">
+    <v-col cols="12" md="8" lg="6">
+      
+      <v-card class="pa-4 mb-4 rounded-xl elevation-2 bg-indigo-darken-4 text-white">
+        <v-row align="center" no-gutters>
+          <v-col cols="auto" class="me-4">
+            <v-avatar color="white" size="56">
+              <v-icon color="indigo-darken-4" size="32">mdi-account</v-icon>
+            </v-avatar>
+          </v-col>
+          <v-col>
+            <div class="text-h6 font-weight-bold">{{ currentLead?.name }}</div>
+            <div class="text-subtitle-2 opacity-80 d-flex align-center">
+              <v-icon size="16" class="me-1">mdi-phone</v-icon>
+              {{ currentLead?.phone }}
             </div>
-          </v-card>
+          </v-col>
+        </v-row>
 
-          <div class="section-title mt-8 mb-3 d-flex align-center">
-            <v-icon size="20" class="me-2">mdi-history</v-icon>回報日誌
-          </div>
+        <v-divider class="my-3 border-opacity-25" color="white"></v-divider>
+
+        <v-row dense>
+          <v-col cols="6">
+            <div class="text-caption opacity-70">來源管道</div>
+            <div class="text-body-2 font-weight-bold">{{ currentLead?.source || '未註明' }}</div>
+          </v-col>
+          <v-col cols="6">
+            <div class="text-caption opacity-70">購屋預算</div>
+            <div class="text-body-2 font-weight-bold">{{ currentLead?.budget || '未填寫' }}</div>
+          </v-col>
+          <v-col cols="12" class="mt-2">
+            <div class="text-caption opacity-70">填表日期</div>
+            <div class="text-body-2 font-weight-bold">{{ currentLead?.date || '無日期' }}</div>
+          </v-col>
           
-          <div v-if="leadLogs.length === 0" class="text-center py-6 text-grey-lighten-1 border-dashed rounded-lg">
-            無紀錄
-          </div>
-
-          <div v-else class="history-timeline">
-            <v-card
-              v-for="(log, idx) in leadLogs"
-              :key="idx"
-              variant="flat"
-              class="mb-3 pa-4 rounded-xl history-item shadow-sm"
-              :class="`status-${getStatusKey(log.status)}`"
+          <v-col cols="12" class="mt-2" v-if="currentLead?.note">
+            <v-alert
+              density="compact"
+              color="indigo-lighten-1"
+              icon="mdi-note-text"
+              class="text-caption rounded-lg mt-1"
             >
-              <div class="d-flex justify-space-between align-start mb-2">
-                <v-chip size="small" :color="getStatusColor(log.status)" class="font-weight-bold" variant="flat">
-                  {{ log.status }}
-                </v-chip>
-                <span class="text-caption text-grey-darken-1 font-weight-bold">
-                  {{ formatDateTime(log.createdAt) }}
-                </span>
-              </div>
-              <div v-if="log.reason" class="text-caption text-indigo-darken-4 font-weight-bold mb-1">
-                原因：{{ log.reason }}
-              </div>
-              <div class="text-body-2 font-weight-bold text-grey-darken-3 mb-1">{{ log.note }}</div>
-              <div class="text-caption text-grey-darken-1">回報人：{{ log.createdBy }}</div>
-            </v-card>
+              <div class="font-weight-bold mb-1">備註：</div>
+              {{ currentLead.note }}
+            </v-alert>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <v-card class="pa-5 mb-6 rounded-xl elevation-2">
+        <div class="section-title mb-3">聯絡狀況回報</div>
+        
+        <v-select
+          v-model="reportForm.status"
+          :items="statusOptions"
+          label="選擇聯絡結果"
+          variant="outlined"
+          rounded="lg"
+          class="mb-3"
+          density="comfortable"
+          hide-details
+          color="indigo-darken-4"
+        ></v-select>
+
+        <template v-if="showReasonField">
+          <v-text-field
+            v-if="isReasonReadonly"
+            v-model="reportForm.reason"
+            label="未約原因 (系統自動填入)"
+            variant="filled"
+            readonly
+            rounded="lg"
+            class="mb-3"
+            density="comfortable"
+            hide-details
+            bg-color="grey-lighten-3"
+          ></v-text-field>
+
+          <v-select
+            v-else
+            v-model="reportForm.reason"
+            :items="reasonOptions"
+            label="請選擇未約原因"
+            variant="outlined"
+            rounded="lg"
+            class="mb-3"
+            density="comfortable"
+            color="indigo-darken-4"
+            hide-details
+          ></v-select>
+        </template>
+
+        <v-btn 
+          v-if="reportForm.status === '已約賞屋'"
+          block 
+          :color="isBookingCompleted ? 'success' : 'primary'" 
+          variant="elevated"
+          class="mb-4 font-weight-bold"
+          :prepend-icon="isBookingCompleted ? 'mdi-check-circle' : 'mdi-calendar-check'"
+          @click="openBookingDialog"
+        >
+          {{ isBookingCompleted ? '預約已完成 (點擊可修改)' : '開啟預約視窗' }}
+        </v-btn>
+
+        <v-textarea
+          v-model="reportForm.note"
+          label="詳細談話紀錄"
+          variant="outlined"
+          placeholder="請輸入通話內容摘要..."
+          rounded="lg"
+          rows="3"
+          class="mb-4"
+          hide-details
+          color="indigo-darken-4"
+        ></v-textarea>
+
+        <div class="text-center mt-6">
+          <v-btn 
+            :color="reportForm.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
+            size="x-large" 
+            rounded="lg"
+            elevation="2"
+            min-width="200"
+            :disabled="isSubmitDisabled"
+            @click="submitReport"
+            class="font-weight-bold"
+          >
+            {{ submitBtnText }}
+          </v-btn>
+        </div>
+      </v-card>
+
+      <div class="section-title mt-8 mb-3 d-flex align-center">
+        <v-icon size="20" class="me-2">mdi-history</v-icon>回報日誌
+      </div>
+      
+      <div v-if="leadLogs.length === 0" class="text-center py-6 text-grey-lighten-1 border-dashed rounded-lg">
+        尚無聯絡紀錄
+      </div>
+
+      <div v-else class="history-timeline">
+        <v-card
+          v-for="(log, idx) in leadLogs"
+          :key="idx"
+          variant="flat"
+          class="mb-3 pa-4 rounded-xl history-item shadow-sm"
+          :class="`status-${getStatusKey(log.status)}`"
+        >
+          <div class="d-flex justify-space-between align-start mb-2">
+            <v-chip size="small" :color="getStatusColor(log.status)" class="font-weight-bold" variant="flat">
+              {{ log.status }}
+            </v-chip>
+            <span class="text-caption text-grey-darken-1 font-weight-bold">
+              {{ formatDateTime(log.createdAt) }}
+            </span>
           </div>
-        </v-col>
-      </v-row>
-    </v-container>
+          <div v-if="log.reason" class="text-caption text-indigo-darken-4 font-weight-bold mb-1">
+            原因：{{ log.reason }}
+          </div>
+          <div class="text-body-2 font-weight-bold text-grey-darken-3 mb-1" style="white-space: pre-line;">{{ log.note }}</div>
+          <div class="text-caption text-grey-darken-1">回報人：{{ log.createdBy }}</div>
+        </v-card>
+      </div>
+    </v-col>
+  </v-row>
+</v-container>
   </v-card>
 </v-dialog>
 
@@ -497,10 +551,11 @@
         </v-toolbar>
 
 <v-card-text v-if="uploadStep === 1" class="pa-6 bg-grey-lighten-4">
-  <v-tabs v-model="uploadMode" color="primary" class="mb-4" grow density="compact">
-    <v-tab value="text">文本模式</v-tab>
-    <v-tab value="excel">EXCEL 模式</v-tab>
-  </v-tabs>
+<v-tabs v-model="uploadMode" color="primary" class="mb-4" grow density="compact">
+  <v-tab value="text">文本模式</v-tab>
+  <v-tab value="excel">EXCEL 模式</v-tab>
+  <v-tab value="manual">手動輸入</v-tab>
+</v-tabs>
 
   <v-window v-model="uploadMode">
     <v-window-item value="text">
@@ -540,6 +595,42 @@
         請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、**指派銷售(選填)**
       </v-alert>
     </v-window-item>
+
+<v-window-item value="manual">
+  <div v-for="(item, index) in manualInputs" :key="index" class="mb-4 pa-4 border rounded-lg bg-white">
+    <v-row dense>
+      <v-col cols="12" sm="6">
+        <v-text-field v-model="item.name" label="客戶姓名" variant="outlined" density="comfortable" hide-details class="mb-2"></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6">
+        <v-text-field v-model="item.phone" label="聯絡電話" variant="outlined" density="comfortable" hide-details class="mb-2"></v-text-field>
+      </v-col>
+      
+      <v-col cols="12" sm="4">
+        <v-text-field 
+          v-model="item.source" 
+          label="來源管道 (如：公司介紹、跑單介紹..." 
+          variant="outlined" 
+          density="comfortable" 
+          hide-details
+          prepend-inner-icon="mdi-tray-arrow-down"
+        ></v-text-field>
+      </v-col>
+
+      <v-col cols="12" sm="4">
+        <v-select v-model="item.budget" :items="budgetOptions" label="預算" variant="outlined" density="comfortable" hide-details></v-select>
+      </v-col>
+      <v-col cols="12" sm="4">
+        <v-text-field v-model="item.date" label="填表日期" type="date" variant="outlined" density="comfortable" hide-details></v-text-field>
+      </v-col>
+      <v-col cols="12">
+        <v-text-field v-model="item.note" label="備註事項" variant="outlined" density="comfortable" hide-details prepend-inner-icon="mdi-note-edit"></v-text-field>
+      </v-col>
+    </v-row>
+    </div>
+</v-window-item>
+
+
   </v-window>
 </v-card-text>
 
@@ -645,27 +736,38 @@
                     ></v-select>
                   </td>
 
-                <td class="pa-4">
-                  <v-row dense>
-                    <v-col cols="6">
-                      <v-text-field v-model="lead.source" label="來源" variant="underlined" density="compact" hide-details></v-text-field>
-                    </v-col>
-                    <v-col cols="6">
-                      <v-text-field v-model="lead.budget" label="預算" variant="underlined" density="compact" hide-details></v-text-field>
-                    </v-col>
+            <td class="pa-4">
+              <v-row dense>
+                <v-col cols="6">
+                  <v-text-field v-model="lead.source" label="來源" variant="underlined" density="compact" hide-details></v-text-field>
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model="lead.budget" label="預算" variant="underlined" density="compact" hide-details></v-text-field>
+                </v-col>
                 <v-col cols="12">
-                        <v-text-field v-model="lead.date" label="提交日期" variant="underlined" density="compact" hide-details prepend-inner-icon="mdi-calendar-clock"></v-text-field>
-                      </v-col>
-                  </v-row>
-                </td>
+                  <v-text-field v-model="lead.date" label="提交日期" variant="underlined" density="compact" hide-details prepend-inner-icon="mdi-calendar-clock"></v-text-field>
+                </v-col>
+                <v-col cols="12">
+                  <v-text-field 
+                    v-model="lead.note" 
+                    label="備註" 
+                    variant="underlined" 
+                    density="compact" 
+                    hide-details 
+                    prepend-inner-icon="mdi-note-text-outline"
+                    color="primary"
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+            </td>
 
-                <td class="text-center">
-                  <v-btn icon="mdi-trash-can-outline" variant="text" color="grey-lighten-1" size="small" @click="previewLeads.splice(idx, 1)"></v-btn>
-                </td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card-text>
+                            <td class="text-center">
+                              <v-btn icon="mdi-trash-can-outline" variant="text" color="grey-lighten-1" size="small" @click="previewLeads.splice(idx, 1)"></v-btn>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </v-table>
+                    </v-card-text>
 
         <v-divider></v-divider>
         <v-card-actions class="pa-4 bg-white">
@@ -797,6 +899,9 @@ const showReasonField = computed(() => {
 });
 
 watch(() => reportForm.value.status, (newStatus) => {
+
+  isBookingCompleted.value = false; // ✅ 切換狀態即重置預約標記
+
   if (newStatus === '還在討論') {
     reportForm.value.reason = '家人討論';
     isReasonReadonly.value = true;
@@ -832,9 +937,26 @@ const onBookingSaved = (bookingData) => {
 
   const summary = `【已約賞屋】\n時間：${timeStr}\n類型：${bookingData.type}\n姓名：${bookingData.customerName}\n電話：${bookingData.customerPhone}\n銷售：${bookingData.salesName || '不指定'}\n備註：${bookingData.note || '無'}`;
 
-  reportForm.value.note = summary;
+reportForm.value.note = summary;
+  
+  isBookingCompleted.value = true; // ✅ 標記預約完成
   showMsg('預約成功，已自動帶入談話紀錄', 'success');
 };
+
+// ✅ 新增：按鈕文字計算
+const submitBtnText = computed(() => {
+  if (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value) {
+    return '請先完成賞屋預約';
+  }
+  return '完成回報';
+});
+
+// ✅ 新增：按鈕禁用邏輯
+const isSubmitDisabled = computed(() => {
+  const baseValidation = !reportForm.value.status || (showReasonField.value && !reportForm.value.reason);
+  const bookingValidation = (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value);
+  return baseValidation || bookingValidation;
+});
 
 // ✅ 狀態 Key 對應 (用於 CSS Class)
 const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', '未接': 'warning' }[s] || 'default');
@@ -1092,7 +1214,8 @@ const statusHeaders = [
   { title: '填表日期', key: 'date' },
   { title: '指派給', key: 'assignedName' },
   { title: '狀態', key: 'status' },
-  { title: '不考慮原因', key: 'reason' }, // ✅ 新增此欄位
+  { title: '不考慮原因', key: 'reason' }, 
+  { title: '備註', key: 'note' }, // ✅ [新增] 備註欄位
   { title: '動作', key: 'actions', sortable: false }
 ];
 
@@ -1145,13 +1268,22 @@ const filteredLeads = computed(() => {
   }
 
   // 2. 關鍵字搜尋：支援姓名與電話模糊比對
-  if (namePhoneSearch.value) {
-    const s = namePhoneSearch.value.toLowerCase();
-    list = list.filter(l => 
-      (l.name && l.name.toLowerCase().includes(s)) || 
-      (l.phone && l.phone.includes(s))
-    );
-  }
+if (namePhoneSearch.value) {
+  const s = namePhoneSearch.value.toLowerCase();
+  list = list.filter(l => 
+    (l.name && l.name.toLowerCase().includes(s)) || 
+    (l.phone && l.phone.includes(s)) ||
+    // ✅ 新增：支援搜尋銷售人員姓名
+    (l.assignedName && l.assignedName.toLowerCase().includes(s)) ||
+    // ✅ 新增：支援搜尋狀態 (如：已約、未接)
+    ((l.status || '未處理').toLowerCase().includes(s)) ||
+    // ✅ 新增：支援搜尋不考慮原因
+    (l.reason && l.reason.toLowerCase().includes(s)) ||
+    // ✅ 新增：支援搜尋備註內容
+    (l.note && l.note.toLowerCase().includes(s))||
+    (l.source && l.source.toLowerCase().includes(s)) // 新增：支援搜尋來源管道
+  );
+}
 
   // 3. 狀態勾選過濾
   if (statusSearch.value.length > 0) {
@@ -1469,21 +1601,56 @@ result.source = normalizeSource(result.source);
   return result;
 };
 
+// ✅ 新增：手動輸入的響應式變數 (預設帶入台灣今日日期)
+const today = new Date().toISOString().split('T')[0];
+const manualInputs = ref([{ 
+  name: '', 
+  phone: '', 
+  source: '', // ✅ 取消預設字串
+  budget: '', 
+  date: today, 
+  note: '' 
+}]);
+
+const addManualRow = () => {
+  manualInputs.value.push({ 
+    name: '', 
+    phone: '', 
+    source: '', // ✅ 保持乾淨
+    budget: '', 
+    date: today, 
+    note: '' 
+  });
+};
+
 const handleParsing = async () => {
-  const leads = uploadInputs.value
-    .filter(txt => txt && txt.trim() !== '')
-    .map(txt => parseLeadText(txt));
-  
+  let leads = [];
+
+  if (uploadMode.value === 'text') {
+    leads = uploadInputs.value
+      .filter(txt => txt && txt.trim() !== '')
+      .map(txt => parseLeadText(txt));
+  } else if (uploadMode.value === 'manual') {
+    // 🚩 處理手動輸入資料
+    leads = manualInputs.value
+      .filter(item => item.name || item.phone)
+      .map(item => ({
+        ...item,
+       source: item.source.trim() || "手動輸入", 
+        phone: normalizePhone(item.phone),
+        date: item.date.replace(/-/g, '/'),
+        rawText: '手動輸入模式' 
+      }));
+  }
+
   if (leads.length === 0) {
-    showMsg('請先貼入有效的名單文本', 'warning');
+    showMsg('請先輸入名單資料', 'warning');
     return;
   }
+  
   previewLeads.value = leads;
   uploadStep.value = 2;
-  const phones = leads.map(l => l.phone).filter(p => p);
-  
-  // 執行查重 API
-  await runCheck(phones);
+  await runCheck(leads.map(l => l.phone).filter(p => p));
 
   // --- 修改段落：查重後自動指派銷售人員 ---
   previewLeads.value.forEach(lead => {
@@ -1528,12 +1695,14 @@ const executeBatchImportAndAssign = async () => {
         statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
       }
 
-      return { 
-        ...l, 
-        source: normalizedSource, // ✅ 使用標準化後的來源
-        statusText 
-      }; 
-    });
+        return { 
+            ...l, 
+            source: normalizedSource,
+            statusText,
+            note: l.note || "", // ✅ 確保傳出備註
+            rawText: l.rawText || "未註明來源" 
+          }; 
+        });
 
     const res = await batchImportAndAssignLeadsAPI({
       projectId: props.projectId,
@@ -1566,11 +1735,15 @@ const closeUploadDialog = () => {
   excelFile.value = null;
 };
 
+// ✅ 新增：追蹤預約是否完成
+const isBookingCompleted = ref(false);
+
 // 4. 修改原本的 openReport 函式，確保開啟時重置狀態
 const openReport = async (item) => {
   currentLead.value = item;
   reportForm.value = { status: item.status || '', reason: item.reason || '', note: '' };
-  
+  isBookingCompleted.value = false; // 每次開啟時重置
+
   // 讀取紀錄
   const logsSnap = await getDocs(query(
     collection(db, `leads/${item.id}/contactLogs`),
@@ -1972,6 +2145,8 @@ const handleExcelFileSelect = async (input) => {
   };
   reader.readAsArrayBuffer(file);
 };
+
+
 
 </script>
 
