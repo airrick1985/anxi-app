@@ -94,6 +94,11 @@
             <v-icon start size="large" class="mr-2" icon="mdi-clipboard-check"></v-icon>
             雲端驗屋/修繕系統
           </v-tab>
+
+          <v-tab value="website" class="text-h6 font-weight-bold px-4">
+            <v-icon start size="large" class="mr-2" icon="mdi-web"></v-icon>
+            建案形象網站/電子表板
+          </v-tab>
         </v-tabs>
 
       </v-card>
@@ -170,7 +175,7 @@
                       <span class="text-h3 font-weight-black text-primary">
                         {{ plan.price }}
                       </span>
-                      <span class="text-body-1 text-grey font-weight-bold"> / {{ plan.unit }}</span>
+                      <span class="text-body-1 text-grey font-weight-bold"> {{ plan.unit ? ' / ' + plan.unit : '' }}</span>
                       <div v-if="plan.priceNote" class="text-caption text-error font-weight-bold mt-1">
                         {{ plan.priceNote }}
                       </div>
@@ -236,7 +241,7 @@
               從銷售控管到售後服務，全方位提升您的專業形象與管理效率。
             </p>
             <div class="text-caption text-grey-darken-1">
-              &copy; {{ new Date().getFullYear() }} ANXI Smart System. All rights reserved.
+              &copy; {{ new Date().getFullYear() }} ANXI Smart System. All rights reserved. [cite: 2025-06-18]
             </div>
           </v-col>
           
@@ -302,35 +307,41 @@ import priceIcon from '@/assets/icons/price.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import subscriptionIcon from '@/assets/icons/subscription.png';
 import databaseIcon from '@/assets/icons/database.png';
-import sendEmailIcon from '@/assets/icons/send-email.png'; 
 import emailIcon from '@/assets/icons/email.png';
-import customerIcon from '@/assets/icons/customer.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 
-// --- ✅ 2. 引入新圖片 (請確保檔案已存在於 src/assets/icons/) ---
-import parkingControlIcon from '@/assets/icons/parkingcontrol.png';      // 車位銷控設定
-import accounting from '@/assets/icons/accounting.png';                   // 匯出報價單
-import smartphoneIcon from '@/assets/icons/smartphone.png';             // 自助式管理
-import scheduleIcon from '@/assets/icons/schedule.png';                 // 精準時段控管
-import bookingIcon from '@/assets/icons/booking.png';                   // 客製化預約項目
-import realTimeMonitoringIcon from '@/assets/icons/real-time-monitoring.png'; // 後台即時監控
-import notesIcon from '@/assets/icons/notes.png';       // 洽談紀錄追蹤
-import argumentIcon from '@/assets/icons/argument.png'; // 客戶重疊通知
-import monitorIcon from '@/assets/icons/monitor.png';   // 數據匯出分析
+// --- ✅ 2. 引入新圖片 ---
+import parkingControlIcon from '@/assets/icons/parkingcontrol.png';
+import accounting from '@/assets/icons/accounting.png';
+import smartphoneIcon from '@/assets/icons/smartphone.png';
+import scheduleIcon from '@/assets/icons/schedule.png';
+import bookingIcon from '@/assets/icons/booking.png';
+import realTimeMonitoringIcon from '@/assets/icons/real-time-monitoring.png';
+import notesIcon from '@/assets/icons/notes.png';
+import argumentIcon from '@/assets/icons/argument.png';
+import monitorIcon from '@/assets/icons/monitor.png';
 
-import checkListIcon from '@/assets/icons/check-list.png';        // 缺失改善追蹤
-import fileIcon from '@/assets/icons/file.png';                  // 自動化報告生成
-import phoneCheckIcon from '@/assets/icons/phonecheck.png';      // 住戶線上專區
-import digitalSignatureIcon from '@/assets/icons/digital-signature.png'; // 電子簽名點交
+import checkListIcon from '@/assets/icons/check-list.png';
+import fileIcon from '@/assets/icons/file.png';
+import phoneCheckIcon from '@/assets/icons/phonecheck.png';
+import digitalSignatureIcon from '@/assets/icons/digital-signature.png';
+
+import floorLayoutIcon from '@/assets/icons/floor-layout.png';
+import architectIcon from '@/assets/icons/architect.png';
+import emailMarketingIcon from '@/assets/icons/email-marketing.png';
+import webDesignIcon from '@/assets/icons/web-design.png';
+import refreshdataIcon from '@/assets/icons/refresh-data.png';
+
 
 const activeTab = ref('sales');
 
-// ✅ [NEW] 手機版下拉選單的選項資料
+// ✓ 更新手機版下拉選單選項 [cite: 2025-08-25]
 const mobileTabOptions = [
   { label: '雲端銷控/報價系統', value: 'sales', icon: 'mdi-home-analytics' },
   { label: '客戶管理系統', value: 'customer', icon: 'mdi-account-group' },
   { label: '線上預約系統', value: 'booking', icon: 'mdi-calendar-check' },
-  { label: '雲端驗屋/修繕系統', value: 'inspection', icon: 'mdi-clipboard-check' }
+  { label: '雲端驗屋/修繕系統', value: 'inspection', icon: 'mdi-clipboard-check' },
+  { label: '建案形象網站/電子表板', value: 'website', icon: 'mdi-web' }
 ];
 
 // 產品資料結構
@@ -477,19 +488,10 @@ const products = ref([
     description: '告別繁雜的紙本作業！從缺失紀錄、廠商修繕通知到住戶點交，提供全流程數位化解決方案。自動產出專業報告，即時追蹤修繕進度，大幅提升交屋效率與售後服務滿意度。',
     features: [
       { title: '數位化驗屋紀錄', desc: '手機平板即時拍照標記，自動生成電子缺失單', icon: smartphoneIcon },
-      
-      // ✅ [Modified] Icon: check-list.png
       { title: '缺失改善追蹤', desc: '燈號管理修繕進度，廠商派工與回報一目瞭然', icon: checkListIcon },
-      
-      // ✅ [Modified] Icon: file.png
       { title: '自動化報告生成', desc: '一鍵匯出專業 PDF 驗屋報告，節省大量文書時間', icon: fileIcon },
-      
-      // ✅ [Modified] Icon: phonecheck.png
       { title: '住戶線上專區', desc: '住戶可掃碼登入查詢進度，即時查看修繕照片', icon: phoneCheckIcon },
-      
       { title: '驗屋預約管理', desc: '智慧行事曆排程，自動防呆避免時段衝突', icon: inspectionCalenderIcon },
-      
-      // ✅ [Modified] Icon: digital-signature.png
       { title: '電子簽名點交', desc: '支援現場數位簽名確認，無紙化完成交屋手續', icon: digitalSignatureIcon },
     ],
     pricing: [
@@ -517,6 +519,48 @@ const products = ref([
       '住戶端查詢介面不另收費。',
       '以上金額未含稅。'
     ]
+  },
+
+  // ✓ 5. [Website] 建案形象網站/電子表板 [cite: 2025-08-25]
+  {
+    id: 'website',
+    name: '建案形象網站 / 電子表板',
+    slogan: '數位美學整合行銷，打造最具感染力的建案門面',
+    description: '從線上的第一眼驚艷到案場的沉浸式解說。我們提供量身定做的形象網站與互動式電子表板，將建案的環境優勢、團隊實力與工法細節數位化。',
+    features: [
+      { title: '專屬主視覺設計', desc: '根據建案風格量身打造，強化品牌記憶點', icon: webDesignIcon },
+      { title: 'RWD 響應式佈局', desc: '手機、平板、電腦完美適配，隨時隨地輕鬆瀏覽', icon: smartphoneIcon },
+      { title: '即時留資通知', desc: '表單留資後自動透過 LINE 或 Email 即時推送', icon: emailMarketingIcon },
+      { title: '案場互動表板', desc: '專為銷售現場設計，流暢展示周邊與建築外觀', icon: realTimeMonitoringIcon },
+      { title: '數位化建材工法', desc: '將繁雜的施工與建材圖案化，提升銷售說服力', icon: architectIcon },
+      { title: '產品規劃展示', desc: '清晰呈現樓層平面圖、家具配置與公設示意', icon: floorLayoutIcon },
+      { title: '雲端更新資料', desc: '支援雲端即時更新表版內容，一次更新所有電腦確保資訊同步(*僅線上版可雲端更新)', icon: refreshdataIcon },
+    ],
+    pricing: [
+      {
+        name: '形象網站方案',
+        subName: '線上行銷首選',
+        price: 'NT$ 50,000',
+        unit: '案',
+        desc: '含一次預告階段以及正式公開階段網站、LINE/Email 預約名單即時通知功能。',
+        isRecommended: false
+      },
+      {
+        name: '電子表板方案',
+        subName: '案場解說利器',
+        price: 'NT$ 150,000',
+        unit: '案',
+        desc: '雲端/離線皆可使用的互動式電子表板，提升案場解說效率與專業形象。',
+        isRecommended: false
+      },
+    
+    ],
+    notes: [
+      '網站與表板內容資料（如圖檔、文案）由客戶提供。',
+      '形象網站包含首年伺服器空間與網址費用。',
+      'LINE 通知功能需搭配建案官方帳號權限。',
+      '以上金額未含稅。'
+    ]
   }
 ]);
 
@@ -535,27 +579,17 @@ const products = ref([
 .hero-section {
   width: 100%;
   position: relative;
-  /* 背景圖設定 */
   background-image: url('@/assets/home-banner.jpg');
   background-repeat: no-repeat;
-  
-  /* --- 手機版設定 (保持原樣，避免太矮) --- */
   height: 60vh; 
   background-size: cover;
   background-position: center;
 }
 
-/* --- 電腦版優化 (寬螢幕) --- */
 @media (min-width: 960px) {
   .hero-section {
-    /* 1. 取消固定高度，讓高度隨寬度自動變化 */
     height: auto;
-    
-    /* 2. 設定長寬比 (Aspect Ratio) */
-    /* 請依照您圖片的實際比例修改，例如 16/9 或 21/9 */
     aspect-ratio: 16/9; 
-    
-    /* 3. 確保圖片填滿 */
     background-size: 100% auto; 
     background-position: center top;
   }
@@ -672,8 +706,6 @@ const products = ref([
   .pricing-card {
     margin-bottom: 20px;
   }
-  
-  /* 手機版讓 Tab 字更小一些 */
   .product-tabs .v-btn__content {
     letter-spacing: 0px;
   }
@@ -683,6 +715,4 @@ const products = ref([
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-
 </style>
