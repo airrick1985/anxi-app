@@ -1630,6 +1630,13 @@ const executeSimpleExport = async () => {
       return isDateInRange && isSalesMatch;
     });
 
+    // ✅ 2. 新增：以第一筆紀錄的日期進行 A > Z 排序
+    filtered.sort((a, b) => {
+      const dateA = a.interactionLogs?.[0]?.date || '';
+      const dateB = b.interactionLogs?.[0]?.date || '';
+      return dateA.localeCompare(dateB); 
+    });
+
     // 格式化輸出資料
     const exportRows = filtered.map((item, index) => {
       const logs = item.interactionLogs || [];
@@ -1656,7 +1663,8 @@ const executeSimpleExport = async () => {
         '行動電話': item.phone || '',
         '未買原因': Array.isArray(lastLog.tags?.noPurchaseReason) 
                    ? lastLog.tags.noPurchaseReason.join(',') 
-                   : (lastLog.tags?.noPurchaseReason || '')
+                   : (lastLog.tags?.noPurchaseReason || ''),
+        '洽談紀錄': firstLog.content || ''
       };
     });
 
