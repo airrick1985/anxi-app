@@ -114,7 +114,7 @@
     </v-footer>
     
     <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
-    <UpdateDialog v-model="showUpdateDialog" :release-version="releaseVersion" :release-notes="releaseNotes" @confirm="doUpdate" />
+
         <v-dialog v-model="logoutDialog" persistent max-width="300">
         <v-card>
             <v-card-title>確定要登出？</v-card-title>
@@ -226,7 +226,6 @@ import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
 import EditProfileDialog from '../components/EditProfileDialog.vue';
-import UpdateDialog from '../components/UpdateDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
 import manifest from '../../public/manifest.json';
 import { useDisplay } from 'vuetify';
@@ -278,29 +277,7 @@ const showFooter = computed(() => {
 });
 
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true });
-const showUpdateDialog = ref(false);
-const releaseVersion = ref('');
-const releaseNotes = ref('');
-watch(needRefresh, async (val) => {
-  if (val) {
-    try {
-      const { version, notes } = await getLatestRelease();
-      releaseVersion.value = version;
-      releaseNotes.value = notes;
-      showUpdateDialog.value = true;
-    } catch (err) {
-      console.error('讀取 Release Notes 錯誤:', err);
-      releaseNotes.value = '有新版本可用，請更新應用程式';
-      showUpdateDialog.value = true;
-    }
-  }
-});
-const doUpdate = async () => {
-  userStore.clearUser(); 
-  await updateServiceWorker(true);
-  showSnackbar('更新完成，請重新登入');
-  setTimeout(() => window.location.reload(), 1000);
-};
+// Update logic removed as requested
 
 async function confirmLogout() {
   logoutDialog.value = false;
@@ -364,9 +341,6 @@ onMounted(() => {
   if (user.value) {
     initializeUnreadCount();
   }
-  window.addEventListener('triggerUpdateDialog', () => {
-    showUpdateDialog.value = true;
-  });
 });
 
 watch(user, (newUser, oldUser) => {
