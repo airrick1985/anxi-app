@@ -230,12 +230,21 @@
 
             <!-- 覆蓋層避免直接點擊 (確保是背景播放體驗) -->
             <div class="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_0_50px_rgba(0,0,0,0.5)]"></div>
+
+            <!-- 音效開關按鈕 (pointer-events-auto 啟用點擊) -->
+            <button onclick="toggleAudio()" id="audioBtn"
+                class="absolute bottom-6 right-6 z-30 w-12 h-12 bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-gold transition-colors pointer-events-auto border border-white/20">
+                <!-- 預設靜音 Icon -->
+                <span id="icon-mute" class="text-xl">🔇</span>
+                <!-- 開啟聲音 Icon -->
+                <span id="icon-sound" class="text-xl hidden">🔊</span>
+            </button>
         </div>
 
         <!-- 標題 -->
         <div class="absolute bottom-8 left-0 w-full text-center z-20">
             <p class="text-gold tracking-[0.4em] text-xs font-light uppercase opacity-80 mb-2">Concept Video</p>
-            <h3 class="text-white text-xl font-serif font-medium tracking-widest">森態生活．搶先預覽</h3>
+            <h3 class="text-white text-xl font-serif font-medium tracking-widest">森態日常，悄然揭幕</h3>
         </div>
     </section>
 
@@ -431,6 +440,25 @@
                 onEnterBack: () => event.target.playVideo(),
                 onLeaveBack: () => event.target.pauseVideo()
             });
+        }
+
+        function toggleAudio() {
+            if (!player) return;
+            const btn = document.getElementById('audioBtn');
+            const iconMute = document.getElementById('icon-mute');
+            const iconSound = document.getElementById('icon-sound');
+
+            if (player.isMuted()) {
+                player.unMute();
+                iconMute.classList.add('hidden');
+                iconSound.classList.remove('hidden');
+                // 解除靜音後稍微調大音量以免太小聲
+                player.setVolume(100);
+            } else {
+                player.mute();
+                iconMute.classList.remove('hidden');
+                iconSound.classList.add('hidden');
+            }
         }
 
         // --- 替換為您的 Google 腳本網址 ---
