@@ -265,9 +265,14 @@
                     <v-expansion-panel
                       v-for="(item, i) in projectConfig.intro.faq"
                       :key="i"
-                      :title="item.q"
-                      :text="item.a"
-                    ></v-expansion-panel>
+                    >
+                      <template v-slot:title>
+                        <div v-html="item.q" class="prose" style="font-weight: 500;"></div>
+                      </template>
+                      <v-expansion-panel-text>
+                        <div v-html="item.a" class="prose"></div>
+                      </v-expansion-panel-text>
+                    </v-expansion-panel>
                   </v-expansion-panels>
                 </div>
                 <div v-if="projectConfig.intro.showAttachments && projectConfig.intro.attachments?.length > 0" class="mt-6">
@@ -276,16 +281,24 @@
                     <v-list-item
                       v-for="(item, i) in projectConfig.intro.attachments"
                       :key="item.url || i"
-                      :href="item.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      prepend-icon="mdi-paperclip"
+                      @click="openAttachmentPreview(item)"
+                      link
                       rounded="lg"
                       class="mb-2 border"
                     >
+                       <template v-slot:prepend>
+                        <v-icon color="red" v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
+                        <v-icon color="grey-darken-1" v-else>mdi-image-outline</v-icon>
+                      </template>
                       <v-list-item-title class="text-primary">{{ item.name }}</v-list-item-title>
                       <template v-slot:append>
-                        <v-icon color="grey">mdi-download-outline</v-icon>
+                        <v-btn
+                          icon="mdi-download-outline"
+                          variant="text"
+                          color="grey"
+                          size="small"
+                          @click.stop="downloadAttachment(item)"
+                        ></v-btn>
                       </template>
                     </v-list-item>
                   </v-list>
@@ -797,6 +810,41 @@
   </v-card>
 </v-dialog>
 
+<!-- 附件預覽 Dialog -->
+<v-dialog v-model="isAttachmentPreviewVisible" max-width="900px" height="90vh">
+  <v-card class="h-100 d-flex flex-column">
+    <v-card-title class="d-flex align-center bg-grey-lighten-4 py-2">
+      <span class="text-truncate">{{ currentPreviewAttachment?.name }}</span>
+      <v-spacer></v-spacer>
+      <v-btn icon="mdi-download" variant="text" color="primary" @click="downloadAttachment(currentPreviewAttachment)"></v-btn>
+      <v-btn icon="mdi-close" variant="text" @click="isAttachmentPreviewVisible = false"></v-btn>
+    </v-card-title>
+    <v-divider></v-divider>
+    <v-card-text class="flex-grow-1 pa-0 d-flex justify-center align-center bg-grey-lighten-3" style="min-height: 300px; position: relative;">
+      <!-- PDF 預覽 -->
+      <iframe
+        v-if="currentPreviewAttachment?.name.toLowerCase().endsWith('.pdf')"
+        :src="currentPreviewAttachment?.url"
+        type="application/pdf"
+        width="100%"
+        height="100%"
+        style="border: none;"
+      ></iframe>
+      
+      <!-- 圖片預覽 -->
+      <v-img
+        v-else-if="currentPreviewAttachment?.url"
+        :src="currentPreviewAttachment?.url"
+        contain
+        max-height="100%"
+        max-width="100%"
+      ></v-img>
+
+      <div v-else class="text-grey">無法預覽此檔案</div>
+    </v-card-text>
+  </v-card>
+</v-dialog>
+
 <v-dialog v-model="isSizeErrorDialogVisible" max-width="500px" persistent>
   <v-card>
     <v-card-title class="d-flex align-center bg-error">
@@ -1253,6 +1301,9 @@ const getMinguoDate = () => {
  const delegatorSignaturePad = ref(null);
 
 
+const isAttachmentPreviewVisible = ref(false); // 附件預覽 Dialog
+const currentPreviewAttachment = ref(null); // 當前預覽的附件
+
  // 打開授權書對話框
  const openAuthDialog = () => {
    // 自動帶入已填寫的受託人資訊
@@ -1366,6 +1417,24 @@ const startTimeoutTimer = (token) => {
 const handleTimeoutDialogClose = () => {
   isTimeoutDialogVisible.value = false;
   resetBookingFlow(); // 關閉提示框後重置流程
+};
+
+// 開啟附件預覽
+const openAttachmentPreview = (item) => {
+  currentPreviewAttachment.value = item;
+  isAttachmentPreviewVisible.value = true;
+};
+
+// 下載附件
+const downloadAttachment = (item) => {
+  if (!item || !item.url) return;
+  const link = document.createElement('a');
+  link.href = item.url;
+  link.target = '_blank'; // 開啟新分頁下載
+  link.download = item.name || 'download';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
 // --- END: 預約逾時機制所需函數 ---

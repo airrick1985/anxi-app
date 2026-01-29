@@ -449,23 +449,21 @@
                             <span class="font-weight-bold">問題 {{ index + 1 }}</span>
                             <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
                         </div>
-                        <v-text-field
+                        <div class="d-flex justify-space-between align-center mb-1">
+                            <label class="v-label text-caption">問題 (Q)</label>
+                        </div>
+                        <RichTextEditor
                             v-model="item.q"
-                            label="問題 (Q)"
-                            variant="outlined"
-                            density="compact"
-                        ></v-text-field>
-                        <div class="d-flex justify-space-between align-center mt-2">
+                            class="mb-3"
+                        ></RichTextEditor>
+                        
+                        <div class="d-flex justify-space-between align-center mt-2 mb-1">
                           <label class="v-label text-caption">回答 (A)</label>
                         </div>
-                        <v-textarea
+                        <RichTextEditor
                             v-model="item.a"
-                            variant="outlined"
-                            density="compact"
                             class="mt-1"
-                            rows="3"
-                            auto-grow
-                        ></v-textarea>
+                        ></RichTextEditor>
                     </v-sheet>
                 </div>
 
@@ -483,9 +481,9 @@
 
                 <v-file-input
                   v-model="filesToUpload"
-                  label="選擇要上傳的附件圖檔"
+                  label="選擇要上傳的附件 (圖片或 PDF)"
                   multiple
-                  accept="image/*"
+                  accept="image/*,.pdf"
                   variant="outlined"
                   density="compact"
                   prepend-icon="mdi-paperclip"
@@ -493,7 +491,7 @@
                   show-size
                   counter
                   class="mb-2"
-                  hint="可一次選擇多個圖檔"
+                  hint="可一次選擇多個檔案 (圖片或 PDF)"
                   persistent-hint
                 ></v-file-input>
 
@@ -517,7 +515,8 @@
                   <template v-for="(item, index) in projectSettings.intro.attachments" :key="item.url || index">
                     <v-list-item>
                       <template v-slot:prepend>
-                        <v-icon color="grey-darken-1">mdi-image-outline</v-icon>
+                        <v-icon color="red" v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
+                        <v-icon color="grey-darken-1" v-else>mdi-image-outline</v-icon>
                       </template>
                       <v-list-item-title>
                         <a :href="item.url" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-primary">{{ item.name }}</a>

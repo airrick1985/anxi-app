@@ -3,23 +3,16 @@
     <v-card class="pa-4">
 
 
-       <v-overlay
-        v-model="isLoading"
-        contained
-        class="align-center justify-center"
-        persistent
-      >
-        <v-progress-circular
-          indeterminate
-          color="primary"
-          size="64"
-        ></v-progress-circular>
-        <div class="mt-4 text-white font-weight-bold">資料載入中...</div>
-      </v-overlay>
+      <div v-if="isLoading" class="d-flex flex-column gap-4">
+        <!-- 模擬篩選區塊 -->
+        <v-skeleton-loader class="mb-4 rounded" type="heading, list-item" height="100"></v-skeleton-loader>
+        <!-- 模擬月曆表格 -->
+        <v-skeleton-loader class="rounded" type="table-heading, table-row-divider@6" height="600"></v-skeleton-loader>
+      </div>
 
       <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
 
-      <div v-if="!projectStore.isLoading && !error">
+      <div v-if="!projectStore.isLoading && !error && !isLoading">
         <div id="custom-calendar-container">
           </div>
       </div>
@@ -89,7 +82,7 @@
       <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
 
 
-      <div v-if="!isLoading && !error">
+      <div v-show="!isLoading && !error">
        <v-row id="filter-panel" class="mb-4 align-center bg-grey-lighten-4 pa-3 rounded d-none d-md-flex" dense>
   
   <v-col cols="12" sm="8" md="4">
