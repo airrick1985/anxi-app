@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import pkg from '../package.json' assert { type: 'json' }; // 導入 package.json 以獲取版本號
+import pkg from '../package.json' with { type: 'json' }; // 導入 package.json 以獲取版本號
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,7 +46,7 @@ const changelog = readFileSync(changelogPath, 'utf-8');
 
 // 2. 找出最新版本區塊
 // 匹配格式: ## [版本號] - YYYY-MM-DD
-const sectionMatch = changelog.match(/## \[(.*?)\] - (\d{4}-\d{2}-\d{2})\n([\s\S]*?)(?=\n## |\n*$)/);
+const sectionMatch = changelog.match(/## \[(.*?)\] - (\d{4}-\d{2}-\d{2})\r?\n([\s\S]*?)(?=\r?\n## |\r?\n*$)/);
 
 if (!sectionMatch) {
   console.error('❌ 找不到 CHANGELOG.md 的最新版本區塊');
@@ -58,7 +58,7 @@ const [, versionFromChangelog, dateFromChangelogMarkdown, notesBlock] = sectionM
 // 產生現在時間 yyyy-mm-dd-hh-mm-ss (作為 fallback 或額外資訊)
 const now = new Date();
 const pad = (n) => String(n).padStart(2, '0');
-const currentTimestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours()+8)}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+const currentTimestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours() + 8)}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
 
 // 優先使用 CHANGELOG.md 中的日期，如果沒有則使用當前時間戳
 const finalDate = dateFromChangelogMarkdown || currentTimestamp;
