@@ -5,7 +5,7 @@
       <div class="hero-overlay">
         <div class="hero-content">
           <h1 class="main-title">ANXI</h1>
-          <h2 class="sub-title">您的建案管理專家</h2>
+          <h2 class="sub-title">您的建案管理專家-TEST</h2>
           <p class="hero-desc">智慧整合 · 高效管理 · 數據驅動</p>
           
           <div class="hero-actions">
