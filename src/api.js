@@ -21,15 +21,15 @@ import {
   deleteDoc,
   Timestamp,
   addDoc,
-  limit, 
+  limit,
 } from "firebase/firestore";
 import { format } from 'date-fns';
 
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject 
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
 } from "firebase/storage";
 
 import { ref as dbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, remove } from 'firebase/database';
@@ -50,21 +50,22 @@ export const salesApiRouter = httpsCallable(functions, 'salesApi');
 export const customerApiRouter = httpsCallable(functions, 'customerApi');
 export const vipFormApiRouter = httpsCallable(functions, 'vipFormApi');
 export const customerSheetApiRouter = httpsCallable(functions, 'customerSheetApi');
+export const optimizeInteractionLog = httpsCallable(functions, 'optimizeInteractionLog');
 
 
 
 
 export const IMAGE_PROXY_BASE_URL = 'https://vercel-proxy-api2.vercel.app';
-const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`; 
+const BASE_API_URL = `${IMAGE_PROXY_BASE_URL}/api`;
 const INSPECTION_API = `${BASE_API_URL}/inspection`;
 const DROPDOWN_API = `${BASE_API_URL}/dropdown`;
 const USER_API = `${BASE_API_URL}/user`;
 const METADATA_API = `${BASE_API_URL}/metadata`;
 const UPLOAD_API = `${BASE_API_URL}/upload`;
 const SALES_API = `${BASE_API_URL}/sales`;
-const MESSAGE_API = `${BASE_API_URL}/message`; 
+const MESSAGE_API = `${BASE_API_URL}/message`;
 const USER_MANAGEMENT_API = `${BASE_API_URL}/userManagement`;
-const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`; 
+const SUBSCRIPTION_API = `${BASE_API_URL}/subscriptionManagement`;
 
 
 
@@ -123,14 +124,14 @@ export async function fetchSalesPersonnelList(projectId) {
   if (!projectId) {
     return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 fetchSalesPersonnelList 時缺少 projectId。' });
   }
-  
+
   try {
     const q = query(
-      collection(db, 'salesPersonnel'), 
+      collection(db, 'salesPersonnel'),
       where('projectId', '==', projectId)
     );
     const querySnapshot = await getDocs(q);
-    
+
     const personnelList = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
@@ -143,7 +144,7 @@ export async function fetchSalesPersonnelList(projectId) {
         order: data.order
       });
     });
-    
+
     return {
       status: 'success',
       data: { personnelList }
@@ -169,11 +170,11 @@ export async function fetchPaymentTermTemplates(projectId) {
 
   try {
     const q = query(
-      collection(db, 'paymentTermTemplates'), 
+      collection(db, 'paymentTermTemplates'),
       where('projectId', '==', projectId)
     );
     const querySnapshot = await getDocs(q);
-    
+
     const templates = [];
     querySnapshot.forEach((doc) => {
       templates.push({
@@ -181,7 +182,7 @@ export async function fetchPaymentTermTemplates(projectId) {
         ...doc.data()
       });
     });
-    
+
     return {
       status: 'success',
       data: templates
@@ -204,18 +205,18 @@ export async function fetchPaymentTermTemplates(projectId) {
  * @returns {Array} 符合條件的範本列表
  */
 export function selectApplicableTemplates(templates, totalPrice, buyerType, propertyType) {
-  
+
   // 1. 鎖定目標物件類型 (若戶別資料沒有該欄位，預設為 '住家')
   const targetPropertyType = propertyType || '住家';
 
   const applicable = templates.filter(template => {
-    
+
     // ✅ [優先判斷] 範本物件類型 (若舊範本沒欄位，預設為 '住家')
     const templatePropType = template.propertyType || '住家';
 
     // 🔴 嚴格比對：類型不符，直接排除 (無論價格是否符合)
     if (templatePropType !== targetPropertyType) {
-        return false;
+      return false;
     }
 
     // 2. 價格區間判斷
@@ -224,16 +225,16 @@ export function selectApplicableTemplates(templates, totalPrice, buyerType, prop
 
     // 3. 買家身分判斷
     return (
-      totalPrice >= min && 
-      totalPrice <= max && 
+      totalPrice >= min &&
+      totalPrice <= max &&
       template.buyerType === buyerType
     );
   });
-  
+
   return applicable;
 }
 
-export async function getProjectList(userKey) { 
+export async function getProjectList(userKey) {
 
   if (!userKey) {
     console.error("[api.js] getProjectList: userKey is missing!");
@@ -242,7 +243,7 @@ export async function getProjectList(userKey) {
   }
   // 將 userKey 包含在傳遞給 fetchPost 的 body 中
   return fetchPost({ action: 'get_project_list', key: userKey }, USER_API);
-  
+
 }
 
 
@@ -260,7 +261,7 @@ export async function loginUser(key, password, sessionId) {
   try {
     const handleLogin = httpsCallable(functions, 'handleLogin');
     const result = await handleLogin({ key, password, sessionId });
-    
+
     // Cloud Function 成功時，回傳的資料會在 result.data 中
     return result.data;
 
@@ -323,7 +324,7 @@ export async function forgotPasswordUser(key) {
   try {
     // 獲取 Cloud Function 的引用
     const forgotPasswordSender = httpsCallable(functions, 'forgotPasswordSender');
-    
+
     // 呼叫 Cloud Function 並傳遞資料
     const result = await forgotPasswordSender({ key: key });
 
@@ -497,15 +498,15 @@ async function fetchPost(body, url) {
       body: JSON.stringify(body)
     });
     if (!res.ok) { // 檢查 HTTP 狀態碼
-        const errorText = await res.text();
-        console.error(`${body.action || 'unknown'} API HTTP error ${res.status}:`, errorText);
-        try {
-            // 嘗試解析為 JSON，如果代理層返回 JSON 錯誤
-            const errorJson = JSON.parse(errorText);
-            return { status: 'error', message: errorJson.message || `HTTP error ${res.status}`, raw: errorText };
-        } catch (e) {
-            return { status: 'error', message: `HTTP error ${res.status}`, raw: errorText };
-        }
+      const errorText = await res.text();
+      console.error(`${body.action || 'unknown'} API HTTP error ${res.status}:`, errorText);
+      try {
+        // 嘗試解析為 JSON，如果代理層返回 JSON 錯誤
+        const errorJson = JSON.parse(errorText);
+        return { status: 'error', message: errorJson.message || `HTTP error ${res.status}`, raw: errorText };
+      } catch (e) {
+        return { status: 'error', message: `HTTP error ${res.status}`, raw: errorText };
+      }
     }
     return await res.json();
   } catch (e) {
@@ -617,23 +618,23 @@ export async function fetchInspectionUpdateWithPhotos(payload, projectName) {
 
 //  上傳簽名圖 (假設不需要 projectName，如果需要，請添加)
 export async function uploadSignature(filename, base64) {
-    //console.log(`[api.js] uploadSignature called with filename: ${filename}`);
-    return fetchPost({ action: 'upload_signature', filename, base64, token: 'anxi111003' }, UPLOAD_API); // GAS doPost 的 upload_signature case 沒有接收 ssId
+  //console.log(`[api.js] uploadSignature called with filename: ${filename}`);
+  return fetchPost({ action: 'upload_signature', filename, base64, token: 'anxi111003' }, UPLOAD_API); // GAS doPost 的 upload_signature case 沒有接收 ssId
 }
 
 //  確認驗屋 (將簽名等資訊寫入)
 export async function confirmInspection(payload, projectName) {
-    //console.log(`[api.js] confirmInspection called with projectName: ${projectName}, payload:`, payload);
-    if (!projectName) {
-        console.error("[api.js] confirmInspection: projectName is missing!");
-        return { status: 'error', message: '前端錯誤：呼叫 confirmInspection 時缺少 projectName。' };
-    }
-    return fetchPost({
-        action: 'confirm_inspection',
-        projectName,
-        token: 'anxi111003', // 假設代理層會檢查 token
-        ...payload
-    }, INSPECTION_API);
+  //console.log(`[api.js] confirmInspection called with projectName: ${projectName}, payload:`, payload);
+  if (!projectName) {
+    console.error("[api.js] confirmInspection: projectName is missing!");
+    return { status: 'error', message: '前端錯誤：呼叫 confirmInspection 時缺少 projectName。' };
+  }
+  return fetchPost({
+    action: 'confirm_inspection',
+    projectName,
+    token: 'anxi111003', // 假設代理層會檢查 token
+    ...payload
+  }, INSPECTION_API);
 }
 
 //  產出驗屋 PDF
@@ -705,11 +706,11 @@ export async function generateQuotePdf(payload) {
  */
 export async function updateSalesData(payload) {
   //console.log('[api.js] updateSalesData called with payload:', payload);
-  
+
   if (!payload.projectName || !payload.unitId || !payload.data) {
     return { status: "error", message: "前端錯誤：缺少 projectName、unitId 或 data。" };
   }
-  
+
   try {
     const updateFunction = httpsCallable(functions, 'updateSalesData');
     const result = await updateFunction({
@@ -741,7 +742,7 @@ export async function fetchSalesOptions(projectName) {
     action: 'get_sales_options',
     projectName,
     token: 'anxi111003' // 如果需要 token 的話
-  }, SALES_API); 
+  }, SALES_API);
 }
 
 
@@ -792,7 +793,7 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
  * @returns {Promise<object>} API 響應，成功時 data 中應包含 slideId
  */
 export async function updateAndGetParkingSlide(projectId, slideType) {
-  
+
   if (!projectId || !slideType) {
     return { status: 'error', message: '前端錯誤：呼叫時缺少 projectId 或 slideType。' };
   }
@@ -800,7 +801,7 @@ export async function updateAndGetParkingSlide(projectId, slideType) {
   try {
     // 獲取對我們剛剛部署的 Cloud Function 的引用
     const updateParkingSlideFunction = httpsCallable(functions, 'updateParkingSlide');
-    
+
     // 呼叫 Cloud Function 並傳遞資料
     const result = await updateParkingSlideFunction({ projectId, slideType });
 
@@ -825,11 +826,11 @@ export async function updateAndGetParkingSlide(projectId, slideType) {
  */
 export async function cancelPurchase(projectName, projectId, unitId, operatorName) {
   //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName });
-  
+
   if (!projectId || !unitId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少 projectId、unitId 或 operatorName。" };
   }
-  
+
   try {
     const cancelFunction = httpsCallable(functions, 'cancelPurchase');
     const result = await cancelFunction({
@@ -837,7 +838,7 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
       unitId: unitId,
       operatorName: operatorName
     });
-    
+
     //console.log('[api.js] cancelPurchase success:', result.data);
     return result.data; // 直接回傳 Cloud Function 的回應
   } catch (error) {
@@ -856,65 +857,65 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
  * @returns {Promise<object>} - 返回權限物件 { projectName: [system1, system2] }
  */
 export async function fetchMessagePermissionOptions(userKey) {
-    // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
-    const permissionDocRef = doc(db, "userPermissions", userKey);
-    const docSnap = await getDoc(permissionDocRef);
+  // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
+  const permissionDocRef = doc(db, "userPermissions", userKey);
+  const docSnap = await getDoc(permissionDocRef);
 
-    if (!docSnap.exists()) {
-        return {}; // 如果沒有權限文件，直接回傳空物件
+  if (!docSnap.exists()) {
+    return {}; // 如果沒有權限文件，直接回傳空物件
+  }
+
+  const permissions = {};
+  const perms = docSnap.data().permissions || {};
+
+  // 2. 遍歷權限物件，篩選出 "寄信-" 開頭的權限
+  for (const projectId in perms) {
+    const project = perms[projectId];
+    if (project && project.projectName && Array.isArray(project.systems)) {
+      const sendingSystems = project.systems
+        .filter(system => system.startsWith('寄信-'))
+        .map(system => system.replace('寄信-', '')); // 移除 "寄信-" 前綴
+
+      if (sendingSystems.length > 0) {
+        permissions[project.projectName] = sendingSystems;
+      }
     }
-
-    const permissions = {};
-    const perms = docSnap.data().permissions || {};
-
-    // 2. 遍歷權限物件，篩選出 "寄信-" 開頭的權限
-    for (const projectId in perms) {
-        const project = perms[projectId];
-        if (project && project.projectName && Array.isArray(project.systems)) {
-            const sendingSystems = project.systems
-                .filter(system => system.startsWith('寄信-'))
-                .map(system => system.replace('寄信-', '')); // 移除 "寄信-" 前綴
-
-            if (sendingSystems.length > 0) {
-                permissions[project.projectName] = sendingSystems;
-            }
-        }
-    }
-    return permissions;
+  }
+  return permissions;
 }
 
 /**
  *  [已修正] 根據建案和系統功能獲取收件人列表
  */
 export async function fetchRecipientList(projectName, systemFunction) {
-    const targetPermission = `收信-${systemFunction}`;
-    const permissionsRef = collection(db, "userPermissions");
+  const targetPermission = `收信-${systemFunction}`;
+  const permissionsRef = collection(db, "userPermissions");
 
-    const snapshot = await getDocs(permissionsRef);
-    const userPhones = [];
+  const snapshot = await getDocs(permissionsRef);
+  const userPhones = [];
 
-    snapshot.forEach(doc => {
-        const perms = doc.data().permissions || {};
-        for (const projectId in perms) {
-            if (perms[projectId].projectName === projectName && perms[projectId].systems.includes(targetPermission)) {
-                userPhones.push(doc.id);
-                break;
-            }
-        }
-    });
+  snapshot.forEach(doc => {
+    const perms = doc.data().permissions || {};
+    for (const projectId in perms) {
+      if (perms[projectId].projectName === projectName && perms[projectId].systems.includes(targetPermission)) {
+        userPhones.push(doc.id);
+        break;
+      }
+    }
+  });
 
-    if (userPhones.length === 0) return [];
+  if (userPhones.length === 0) return [];
 
-    const usersRef = collection(db, "users");
-    const usersQuery = query(usersRef, where(documentId(), 'in', [...new Set(userPhones)]));
-    const usersSnapshot = await getDocs(usersQuery);
+  const usersRef = collection(db, "users");
+  const usersQuery = query(usersRef, where(documentId(), 'in', [...new Set(userPhones)]));
+  const usersSnapshot = await getDocs(usersQuery);
 
-    const recipients = [];
-    usersSnapshot.forEach(doc => {
-        recipients.push({ name: doc.data().name, phone: doc.id });
-    });
+  const recipients = [];
+  usersSnapshot.forEach(doc => {
+    recipients.push({ name: doc.data().name, phone: doc.id });
+  });
 
-    return recipients;
+  return recipients;
 }
 
 /**
@@ -923,21 +924,21 @@ export async function fetchRecipientList(projectName, systemFunction) {
  * @returns {Promise<object>} - 返回包含 { name, url, path } 的物件
  */
 export async function uploadMessageAttachment(file) {
-    // 建立一個對 Firebase Storage 的引用
-    const storageRef = ref(storage, `attachments/${Date.now()}_${file.name}`);
-    
-    // 上傳檔案
-    const snapshot = await uploadBytes(storageRef, file);
-    
-    // 獲取下載 URL
-    const downloadURL = await getDownloadURL(snapshot.ref);
+  // 建立一個對 Firebase Storage 的引用
+  const storageRef = ref(storage, `attachments/${Date.now()}_${file.name}`);
 
-    // 回傳包含檔案資訊的物件，供後續使用
-    return {
-        name: file.name,
-        url: downloadURL,
-        path: snapshot.ref.fullPath // 儲存完整路徑以便未來管理 (例如刪除)
-    };
+  // 上傳檔案
+  const snapshot = await uploadBytes(storageRef, file);
+
+  // 獲取下載 URL
+  const downloadURL = await getDownloadURL(snapshot.ref);
+
+  // 回傳包含檔案資訊的物件，供後續使用
+  return {
+    name: file.name,
+    url: downloadURL,
+    path: snapshot.ref.fullPath // 儲存完整路徑以便未來管理 (例如刪除)
+  };
 }
 
 
@@ -946,41 +947,41 @@ export async function uploadMessageAttachment(file) {
  * @param {object} messageData - 包含所有訊息內容的物件
  */
 export async function sendMessage(messageData) {
-    // 1. 建立一個批次寫入操作，確保資料一致性
-    const batch = writeBatch(db);
+  // 1. 建立一個批次寫入操作，確保資料一致性
+  const batch = writeBatch(db);
 
-    // 2. 在 'messages' 集合中建立一個新文件並取得其 ID
-    const messageRef = doc(collection(db, 'messages'));
-    const messageId = messageRef.id;
+  // 2. 在 'messages' 集合中建立一個新文件並取得其 ID
+  const messageRef = doc(collection(db, 'messages'));
+  const messageId = messageRef.id;
 
-    // 3. 準備要寫入 'messages' 集合的資料
-    const messagePayload = {
-        senderKey: messageData.senderKey,
-        senderName: messageData.senderName,
-        sentTimestamp: serverTimestamp(), // 使用伺服器時間，更準確
-        projectName: messageData.projectName,
-        systemFunction: messageData.systemFunction,
-        subject: messageData.subject,
-        body: messageData.body,
-        attachments: JSON.stringify(messageData.attachments) // 將附件陣列轉為 JSON 字串儲存
+  // 3. 準備要寫入 'messages' 集合的資料
+  const messagePayload = {
+    senderKey: messageData.senderKey,
+    senderName: messageData.senderName,
+    sentTimestamp: serverTimestamp(), // 使用伺服器時間，更準確
+    projectName: messageData.projectName,
+    systemFunction: messageData.systemFunction,
+    subject: messageData.subject,
+    body: messageData.body,
+    attachments: JSON.stringify(messageData.attachments) // 將附件陣列轉為 JSON 字串儲存
+  };
+  batch.set(messageRef, messagePayload);
+
+  // 4. 為每一位收件人（包含寄件人自己）在 'messageStatus' 集合中建立對應的狀態文件
+  messageData.recipientPhones.forEach(phone => {
+    const statusRef = doc(collection(db, 'messageStatus')); // 自動產生唯一 ID
+    const statusPayload = {
+      messageId: messageId,
+      recipientPhone: phone,
+      readTimestamp: null,
+      isImportant: false,
+      isDeleted: false
     };
-    batch.set(messageRef, messagePayload);
+    batch.set(statusRef, statusPayload);
+  });
 
-    // 4. 為每一位收件人（包含寄件人自己）在 'messageStatus' 集合中建立對應的狀態文件
-    messageData.recipientPhones.forEach(phone => {
-        const statusRef = doc(collection(db, 'messageStatus')); // 自動產生唯一 ID
-        const statusPayload = {
-            messageId: messageId,
-            recipientPhone: phone,
-            readTimestamp: null,
-            isImportant: false,
-            isDeleted: false
-        };
-        batch.set(statusRef, statusPayload);
-    });
-
-    // 5. 提交所有寫入操作
-    await batch.commit();
+  // 5. 提交所有寫入操作
+  await batch.commit();
 }
 /**
  * [Firestore 版] 獲取我的收件匣列表
@@ -988,52 +989,52 @@ export async function sendMessage(messageData) {
  * @returns {Promise<Array>}
  */
 export async function fetchMyMessages(userKey) {
-    // 1. 查詢 messageStatus 集合，找到所有屬於該用戶且未刪除的訊息狀態
-    const statusRef = collection(db, "messageStatus");
-    const statusQuery = query(
-        statusRef,
-        where("recipientPhone", "==", userKey),
-        where("isDeleted", "==", false)
-    );
-    const statusSnapshot = await getDocs(statusQuery);
-    if (statusSnapshot.empty) return [];
+  // 1. 查詢 messageStatus 集合，找到所有屬於該用戶且未刪除的訊息狀態
+  const statusRef = collection(db, "messageStatus");
+  const statusQuery = query(
+    statusRef,
+    where("recipientPhone", "==", userKey),
+    where("isDeleted", "==", false)
+  );
+  const statusSnapshot = await getDocs(statusQuery);
+  if (statusSnapshot.empty) return [];
 
-    // 2. 從狀態中提取所有不重複的 messageId
-    const messageStatusMap = new Map();
-    statusSnapshot.forEach(doc => {
-        messageStatusMap.set(doc.data().messageId, { id: doc.id, ...doc.data() });
-    });
-    const messageIds = Array.from(messageStatusMap.keys());
-    if (messageIds.length === 0) return [];
-    
-    // 3. 使用 'in' 查詢，一次性從 messages 集合獲取所有相關的訊息主體
-    const messagesRef = collection(db, "messages");
-    const messagesQuery = query(
-        messagesRef, 
-        where(documentId(), 'in', messageIds),
-        orderBy("sentTimestamp", "desc") // 直接在查詢時排序
-    );
-    const messagesSnapshot = await getDocs(messagesQuery);
+  // 2. 從狀態中提取所有不重複的 messageId
+  const messageStatusMap = new Map();
+  statusSnapshot.forEach(doc => {
+    messageStatusMap.set(doc.data().messageId, { id: doc.id, ...doc.data() });
+  });
+  const messageIds = Array.from(messageStatusMap.keys());
+  if (messageIds.length === 0) return [];
 
-    // 4. 組合訊息主體和個人狀態，回傳給前端
-    const myMessages = messagesSnapshot.docs.map(doc => {
-        const message = doc.data();
-        const status = messageStatusMap.get(doc.id);
+  // 3. 使用 'in' 查詢，一次性從 messages 集合獲取所有相關的訊息主體
+  const messagesRef = collection(db, "messages");
+  const messagesQuery = query(
+    messagesRef,
+    where(documentId(), 'in', messageIds),
+    orderBy("sentTimestamp", "desc") // 直接在查詢時排序
+  );
+  const messagesSnapshot = await getDocs(messagesQuery);
 
-        return {
-            statusId: status.id,
-            messageId: doc.id,
-            senderName: message.senderName,
-            subject: message.subject,
-            sentTimestamp: message.sentTimestamp?.toDate(), // 將 Firestore Timestamp 轉為 JS Date
-            isRead: !!status.readTimestamp,
-            isImportant: status.isImportant,
-            projectName: message.projectName,
-            systemFunction: message.systemFunction
-        };
-    });
+  // 4. 組合訊息主體和個人狀態，回傳給前端
+  const myMessages = messagesSnapshot.docs.map(doc => {
+    const message = doc.data();
+    const status = messageStatusMap.get(doc.id);
 
-    return myMessages;
+    return {
+      statusId: status.id,
+      messageId: doc.id,
+      senderName: message.senderName,
+      subject: message.subject,
+      sentTimestamp: message.sentTimestamp?.toDate(), // 將 Firestore Timestamp 轉為 JS Date
+      isRead: !!status.readTimestamp,
+      isImportant: status.isImportant,
+      projectName: message.projectName,
+      systemFunction: message.systemFunction
+    };
+  });
+
+  return myMessages;
 }
 
 /**
@@ -1043,34 +1044,34 @@ export async function fetchMyMessages(userKey) {
  * @returns {Promise<object|null>}
  */
 export async function fetchMessageDetail(statusId, userKey) {
-    // 1. 獲取狀態文件，並驗證所有權
-    const statusDocRef = doc(db, "messageStatus", statusId);
-    const statusDocSnap = await getDoc(statusDocRef);
+  // 1. 獲取狀態文件，並驗證所有權
+  const statusDocRef = doc(db, "messageStatus", statusId);
+  const statusDocSnap = await getDoc(statusDocRef);
 
-    if (!statusDocSnap.exists() || statusDocSnap.data().recipientPhone !== userKey) {
-        console.error("權限不足或找不到訊息狀態");
-        return null;
-    }
+  if (!statusDocSnap.exists() || statusDocSnap.data().recipientPhone !== userKey) {
+    console.error("權限不足或找不到訊息狀態");
+    return null;
+  }
 
-    // 2. 根據狀態文件中的 messageId 獲取訊息主體
-    const messageId = statusDocSnap.data().messageId;
-    const messageDocRef = doc(db, "messages", messageId);
-    const messageDocSnap = await getDoc(messageDocRef);
+  // 2. 根據狀態文件中的 messageId 獲取訊息主體
+  const messageId = statusDocSnap.data().messageId;
+  const messageDocRef = doc(db, "messages", messageId);
+  const messageDocSnap = await getDoc(messageDocRef);
 
-    if (!messageDocSnap.exists()) {
-        console.error("找不到對應的訊息主體");
-        return null;
-    }
+  if (!messageDocSnap.exists()) {
+    console.error("找不到對應的訊息主體");
+    return null;
+  }
 
-    const message = messageDocSnap.data();
-    return {
-        messageId: messageDocSnap.id,
-        senderName: message.senderName,
-        sentTimestamp: message.sentTimestamp?.toDate(),
-        subject: message.subject,
-        body: message.body,
-        attachments: JSON.parse(message.attachments || '[]')
-    };
+  const message = messageDocSnap.data();
+  return {
+    messageId: messageDocSnap.id,
+    senderName: message.senderName,
+    sentTimestamp: message.sentTimestamp?.toDate(),
+    subject: message.subject,
+    body: message.body,
+    attachments: JSON.parse(message.attachments || '[]')
+  };
 }
 
 /**
@@ -1079,17 +1080,17 @@ export async function fetchMessageDetail(statusId, userKey) {
  * @returns {Promise<number>}
  */
 export async function fetchUnreadMessageCount(userKey) {
-    const statusRef = collection(db, "messageStatus");
-    const q = query(
-        statusRef,
-        where("recipientPhone", "==", userKey),
-        where("isDeleted", "==", false),
-        where("readTimestamp", "==", null)
-    );
-    
-    // 使用 getCountFromServer 效能更好
-    const snapshot = await getCountFromServer(q);
-    return snapshot.data().count;
+  const statusRef = collection(db, "messageStatus");
+  const q = query(
+    statusRef,
+    where("recipientPhone", "==", userKey),
+    where("isDeleted", "==", false),
+    where("readTimestamp", "==", null)
+  );
+
+  // 使用 getCountFromServer 效能更好
+  const snapshot = await getCountFromServer(q);
+  return snapshot.data().count;
 }
 
 /**
@@ -1098,25 +1099,25 @@ export async function fetchUnreadMessageCount(userKey) {
  * @param {string} actionType - 'markRead', 'markUnread', 'toggleImportant', 'delete'
  */
 export async function setMessageStatus(statusId, actionType) {
-    const docRef = doc(db, "messageStatus", statusId);
+  const docRef = doc(db, "messageStatus", statusId);
 
-    switch (actionType) {
-        case 'markRead':
-            return updateDoc(docRef, { readTimestamp: serverTimestamp() });
-        case 'markUnread':
-            return updateDoc(docRef, { readTimestamp: null });
-        case 'toggleImportant': {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const currentStatus = docSnap.data().isImportant;
-                return updateDoc(docRef, { isImportant: !currentStatus });
-            }
-            break;
-        }
-        case 'delete':
-            return updateDoc(docRef, { isDeleted: true });
+  switch (actionType) {
+    case 'markRead':
+      return updateDoc(docRef, { readTimestamp: serverTimestamp() });
+    case 'markUnread':
+      return updateDoc(docRef, { readTimestamp: null });
+    case 'toggleImportant': {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const currentStatus = docSnap.data().isImportant;
+        return updateDoc(docRef, { isImportant: !currentStatus });
+      }
+      break;
     }
-    return Promise.resolve(); // 如果 actionType 無效，返回一個 resolved promise
+    case 'delete':
+      return updateDoc(docRef, { isDeleted: true });
+  }
+  return Promise.resolve(); // 如果 actionType 無效，返回一個 resolved promise
 }
 
 // =================================================================
@@ -1128,9 +1129,9 @@ export async function setMessageStatus(statusId, actionType) {
  * @returns {Promise<Array>}
  */
 export async function fetchAllRoles() {
-    const rolesCollection = collection(db, 'roles');
-    const rolesSnapshot = await getDocs(rolesCollection);
-    return rolesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const rolesCollection = collection(db, 'roles');
+  const rolesSnapshot = await getDocs(rolesCollection);
+  return rolesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 /**
@@ -1139,14 +1140,14 @@ export async function fetchAllRoles() {
  * @param {object} roleData - 角色的資料物件 (現在只包含 grantableRoles 和 fieldPermissions)
  */
 export async function updateRole(roleId, roleData) {
-    const roleDocRef = doc(db, "roles", roleId);
-    // 確保只儲存我們定義的欄位
-    const dataToSave = {
-      name: roleData.name,
-      grantableRoles: roleData.grantableRoles || [],
-      fieldPermissions: roleData.fieldPermissions || {}
-    };
-    await setDoc(roleDocRef, dataToSave, { merge: true });
+  const roleDocRef = doc(db, "roles", roleId);
+  // 確保只儲存我們定義的欄位
+  const dataToSave = {
+    name: roleData.name,
+    grantableRoles: roleData.grantableRoles || [],
+    fieldPermissions: roleData.fieldPermissions || {}
+  };
+  await setDoc(roleDocRef, dataToSave, { merge: true });
 }
 
 /**
@@ -1154,8 +1155,8 @@ export async function updateRole(roleId, roleData) {
  * @param {string} roleId - 角色名稱 (文件 ID)
  */
 export async function deleteRole(roleId) {
-    const roleDocRef = doc(db, "roles", roleId);
-    await deleteDoc(roleDocRef);
+  const roleDocRef = doc(db, "roles", roleId);
+  await deleteDoc(roleDocRef);
 }
 // ===============================================
 // /  人員管理系統 API
@@ -1169,14 +1170,14 @@ export async function fetchManageableUsersWithDetails(adminKey) {
     console.error("fetchManageableUsersWithDetails: 缺少 adminKey。");
     return []; // 如果沒有 adminKey，直接返回空陣列
   }
-  
+
   try {
     // 1. 獲取對後端 Cloud Function 的引用
     const fetcher = httpsCallable(functions, 'fetchManageableUsersWithDetails');
-    
+
     // 2. 呼叫後端函式，並將 adminKey 作為參數傳遞
     const result = await fetcher({ adminKey });
-    
+
     // 3. 直接回傳後端經過完整權限過濾後的結果
     return result.data; // result.data 將會是您需要的人員陣列
 
@@ -1230,7 +1231,7 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
   try {
     // 1. 獲取對後端 Cloud Function 的引用
     const fetcher = httpsCallable(functions, 'fetchUserDetailsForAdmin');
-    
+
     // 2. 呼叫後端函式，並傳遞所有必要的參數
     const result = await fetcher({
       targetUserKey: targetUserKey,
@@ -1251,76 +1252,76 @@ export async function fetchUserDetailsForAdmin(targetUserKey, adminKey) {
  * [新] 管理員更新用戶資料 (包含後端欄位權限驗證)
  */
 export async function updateUserDetailsForAdmin(payload) {
-    //  接收 isNewUser 參數
-    const { targetUserKey, adminKey, adminName, basicInfo, permissions, isNewUser } = payload;
+  //  接收 isNewUser 參數
+  const { targetUserKey, adminKey, adminName, basicInfo, permissions, isNewUser } = payload;
 
-    try {
-        const adminUserDoc = await getDoc(doc(db, "users", adminKey));
-        const adminRoles = adminUserDoc.exists() ? adminUserDoc.data().roles || [] : [];
-        
-        let finalBasicInfo = { ...basicInfo };
-        let mergedFieldPerms = {};
+  try {
+    const adminUserDoc = await getDoc(doc(db, "users", adminKey));
+    const adminRoles = adminUserDoc.exists() ? adminUserDoc.data().roles || [] : [];
 
-        if (!adminRoles.includes('超級管理員')) {
-            const rolesDocs = await getDocs(query(collection(db, 'roles'), where('name', 'in', adminRoles)));
-            
-            rolesDocs.forEach(roleDoc => {
-                const perms = roleDoc.data().fieldPermissions?.UserManagement || {};
-                Object.assign(mergedFieldPerms, perms);
-            });
-            
-            const allowedBasicInfo = {};
-            for (const key in basicInfo) {
-                const perm = mergedFieldPerms[key];
-                
-                //  核心修改點：根據 isNewUser 執行不同的權限判斷
-                const canWrite = 
-                    (isNewUser && (perm === 'RU' || perm === 'C')) || // 新建模式: RU 或 C 都可以寫
-                    (!isNewUser && perm === 'RU');                     // 編輯模式: 只有 RU 可以寫
+    let finalBasicInfo = { ...basicInfo };
+    let mergedFieldPerms = {};
 
-                if (canWrite) {
-                    allowedBasicInfo[key] = basicInfo[key];
-                }
-            }
-            // 確保 phone 和 name 總是存在，因為它們是基礎欄位
-            allowedBasicInfo.phone = basicInfo.phone; 
-            allowedBasicInfo.name = basicInfo.name;
-            finalBasicInfo = allowedBasicInfo;
+    if (!adminRoles.includes('超級管理員')) {
+      const rolesDocs = await getDocs(query(collection(db, 'roles'), where('name', 'in', adminRoles)));
+
+      rolesDocs.forEach(roleDoc => {
+        const perms = roleDoc.data().fieldPermissions?.UserManagement || {};
+        Object.assign(mergedFieldPerms, perms);
+      });
+
+      const allowedBasicInfo = {};
+      for (const key in basicInfo) {
+        const perm = mergedFieldPerms[key];
+
+        //  核心修改點：根據 isNewUser 執行不同的權限判斷
+        const canWrite =
+          (isNewUser && (perm === 'RU' || perm === 'C')) || // 新建模式: RU 或 C 都可以寫
+          (!isNewUser && perm === 'RU');                     // 編輯模式: 只有 RU 可以寫
+
+        if (canWrite) {
+          allowedBasicInfo[key] = basicInfo[key];
         }
-
-        const batch = writeBatch(db);
-        const userDocRef = doc(db, "users", targetUserKey);
-        
-        const infoToSave = {
-            ...finalBasicInfo,
-            lastModifiedBy: adminName,
-            lastModifiedByPhone: adminKey
-        };
-        
-        // 密碼處理邏輯維持不變：只有在有內容時才寫入
-        if (!infoToSave.password) {
-            delete infoToSave.password;
-        }
-
-        batch.set(userDocRef, infoToSave, { merge: true });
-
-        // 系統權限的儲存邏輯維持不變
-        if (adminRoles.includes('超級管理員') || (mergedFieldPerms && mergedFieldPerms['permissions'] === 'RU')) {
-            const permissionDocRef = doc(db, "userPermissions", targetUserKey);
-            batch.set(permissionDocRef, {
-                userName: basicInfo.name,
-                permissions: permissions,
-                lastModifiedBy: adminName,
-                lastModifiedAt: serverTimestamp()
-            }, { merge: true });
-        }
-
-        await batch.commit();
-        return { status: 'success' };
-    } catch (e) {
-        console.error("更新 Firestore 資料失敗: ", e);
-        return { status: 'error', message: e.message };
+      }
+      // 確保 phone 和 name 總是存在，因為它們是基礎欄位
+      allowedBasicInfo.phone = basicInfo.phone;
+      allowedBasicInfo.name = basicInfo.name;
+      finalBasicInfo = allowedBasicInfo;
     }
+
+    const batch = writeBatch(db);
+    const userDocRef = doc(db, "users", targetUserKey);
+
+    const infoToSave = {
+      ...finalBasicInfo,
+      lastModifiedBy: adminName,
+      lastModifiedByPhone: adminKey
+    };
+
+    // 密碼處理邏輯維持不變：只有在有內容時才寫入
+    if (!infoToSave.password) {
+      delete infoToSave.password;
+    }
+
+    batch.set(userDocRef, infoToSave, { merge: true });
+
+    // 系統權限的儲存邏輯維持不變
+    if (adminRoles.includes('超級管理員') || (mergedFieldPerms && mergedFieldPerms['permissions'] === 'RU')) {
+      const permissionDocRef = doc(db, "userPermissions", targetUserKey);
+      batch.set(permissionDocRef, {
+        userName: basicInfo.name,
+        permissions: permissions,
+        lastModifiedBy: adminName,
+        lastModifiedAt: serverTimestamp()
+      }, { merge: true });
+    }
+
+    await batch.commit();
+    return { status: 'success' };
+  } catch (e) {
+    console.error("更新 Firestore 資料失敗: ", e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -1348,89 +1349,89 @@ export async function saveUserPreferencesToBackend(userKey, preferences) {
  *  [已修正] 檢查指定用戶是否為超級管理員 (依角色判斷)
  */
 async function isSuperAdmin(userKey) {
-    if (!userKey) return false;
-    try {
-        const userDocRef = doc(db, "users", userKey);
-        const userDocSnap = await getDoc(userDocRef);
+  if (!userKey) return false;
+  try {
+    const userDocRef = doc(db, "users", userKey);
+    const userDocSnap = await getDoc(userDocRef);
 
-        if (!userDocSnap.exists()) {
-            return false;
-        }
-        const userData = userDocSnap.data();
-        const roles = userData.roles || [];
-        return Array.isArray(roles) && roles.includes("超級管理員");
-    } catch (error) {
-        console.error(`檢查使用者 ${userKey} 超級管理員權限時出錯:`, error);
-        return false;
+    if (!userDocSnap.exists()) {
+      return false;
     }
+    const userData = userDocSnap.data();
+    const roles = userData.roles || [];
+    return Array.isArray(roles) && roles.includes("超級管理員");
+  } catch (error) {
+    console.error(`檢查使用者 ${userKey} 超級管理員權限時出錯:`, error);
+    return false;
+  }
 }
 
 /**
  *  [已修正] 獲取擁有特定系統權限的所有使用者
  */
 export async function getUsersWithSystemPermission(systemName) {
-    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
-    const users = [];
-    permissionsSnapshot.forEach(doc => {
-        const perms = doc.data().permissions || {};
-        for (const projectId in perms) {
-            const project = perms[projectId];
-            if (project && Array.isArray(project.systems) && project.systems.includes(systemName)) {
-                users.push({
-                    phone: doc.id,
-                    name: doc.data().userName || 'N/A',
-                    projectName: project.projectName
-                });
-            }
-        }
-    });
-    return users;
+  const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+  const users = [];
+  permissionsSnapshot.forEach(doc => {
+    const perms = doc.data().permissions || {};
+    for (const projectId in perms) {
+      const project = perms[projectId];
+      if (project && Array.isArray(project.systems) && project.systems.includes(systemName)) {
+        users.push({
+          phone: doc.id,
+          name: doc.data().userName || 'N/A',
+          projectName: project.projectName
+        });
+      }
+    }
+  });
+  return users;
 }
 
 /**
  *  [已修正] 獲取所有建案的訂閱狀況
  */
 export async function fetchUsersForSubscriptionManagement() {
-    const projectsSnapshot = await getDocs(collection(db, "projects"));
-    const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+  const projectsSnapshot = await getDocs(collection(db, "projects"));
+  const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
 
-    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
-    const permissionsByUser = new Map();
-    permissionsSnapshot.forEach(doc => {
-        permissionsByUser.set(doc.id, doc.data().permissions || {});
-    });
+  const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+  const permissionsByUser = new Map();
+  permissionsSnapshot.forEach(doc => {
+    permissionsByUser.set(doc.id, doc.data().permissions || {});
+  });
 
-    const result = [];
-    permissionsByUser.forEach((perms, userPhone) => {
-        for (const projectId in perms) {
-            const project = perms[projectId];
-            if (project && project.projectName) {
-                 result.push({
-                    userPhone: userPhone,
-                    projectName: project.projectName,
-                    systems: project.systems || []
-                });
-            }
-        }
-    });
-    return result;
+  const result = [];
+  permissionsByUser.forEach((perms, userPhone) => {
+    for (const projectId in perms) {
+      const project = perms[projectId];
+      if (project && project.projectName) {
+        result.push({
+          userPhone: userPhone,
+          projectName: project.projectName,
+          systems: project.systems || []
+        });
+      }
+    }
+  });
+  return result;
 }
 
 /**
  *  [已修正] 獲取所有存在於系統中的系統功能名稱
  */
 export async function getAllSystemFunctions() {
-    const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
-    const systemFunctions = new Set();
-    permissionsSnapshot.forEach(doc => {
-        const perms = doc.data().permissions || {};
-        for (const projectId in perms) {
-            if (perms[projectId] && Array.isArray(perms[projectId].systems)) {
-                perms[projectId].systems.forEach(system => systemFunctions.add(system));
-            }
-        }
-    });
-    return Array.from(systemFunctions).sort();
+  const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
+  const systemFunctions = new Set();
+  permissionsSnapshot.forEach(doc => {
+    const perms = doc.data().permissions || {};
+    for (const projectId in perms) {
+      if (perms[projectId] && Array.isArray(perms[projectId].systems)) {
+        perms[projectId].systems.forEach(system => systemFunctions.add(system));
+      }
+    }
+  });
+  return Array.from(systemFunctions).sort();
 }
 
 /**
@@ -1438,65 +1439,65 @@ export async function getAllSystemFunctions() {
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function fetchAllSubscriptions(adminKey) {
-    if (!await isSuperAdmin(adminKey)) {
-        throw new Error("權限不足。");
-    }
-    const subscriptionsRef = collection(db, "subscriptions");
-    const snapshot = await getDocs(subscriptionsRef);
-    const subscriptions = [];
-    
-    //  【核心修改點】強制使用台灣時區來定義「今天」
-    const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-    const today = new Date(taiwanDateString);
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+  const subscriptionsRef = collection(db, "subscriptions");
+  const snapshot = await getDocs(subscriptionsRef);
+  const subscriptions = [];
 
-    snapshot.forEach(doc => {
-        const record = { id: doc.id, ...doc.data() };
-        
-        const startDateValue = record.startDate?.toDate();
-        const endDateValue = record.endDate?.toDate();
-        
-        // 這裡的 startDateValue 本身就是一個帶有時區資訊的物件，
-        // 與我們新定義的 today 比較時，會得到正確的結果。
-        // 因此下方原有的 normalizedStartDate 邏輯可以簡化或維持不變。
-        
-        let status = '狀態不明';
-        let color = 'grey';
-        
-        if (startDateValue && endDateValue) {
-            if (today < startDateValue) {
-                status = '尚未啟用';
-                color = 'blue-grey';
-            } else if (today > endDateValue) {
-                status = '已到期';
-                color = 'red';
-            } else {
-                const diffTime = endDateValue.getTime() - today.getTime();
-                //  天數計算改為四捨五入，避免日光節約時間問題
-                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                if (diffDays <= 14) {
-                    //  顯示剩餘天數，至少為 0 天
-                    status = `即將到期 (${Math.max(0, diffDays)}天)`;
-                    color = 'orange';
-                } else {
-                    status = '啟用中';
-                    color = 'green';
-                }
-            }
+  //  【核心修改點】強制使用台灣時區來定義「今天」
+  const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  const today = new Date(taiwanDateString);
+
+  snapshot.forEach(doc => {
+    const record = { id: doc.id, ...doc.data() };
+
+    const startDateValue = record.startDate?.toDate();
+    const endDateValue = record.endDate?.toDate();
+
+    // 這裡的 startDateValue 本身就是一個帶有時區資訊的物件，
+    // 與我們新定義的 today 比較時，會得到正確的結果。
+    // 因此下方原有的 normalizedStartDate 邏輯可以簡化或維持不變。
+
+    let status = '狀態不明';
+    let color = 'grey';
+
+    if (startDateValue && endDateValue) {
+      if (today < startDateValue) {
+        status = '尚未啟用';
+        color = 'blue-grey';
+      } else if (today > endDateValue) {
+        status = '已到期';
+        color = 'red';
+      } else {
+        const diffTime = endDateValue.getTime() - today.getTime();
+        //  天數計算改為四捨五入，避免日光節約時間問題
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays <= 14) {
+          //  顯示剩餘天數，至少為 0 天
+          status = `即將到期 (${Math.max(0, diffDays)}天)`;
+          color = 'orange';
         } else {
-            status = '日期不完整';
-            color = 'orange';
+          status = '啟用中';
+          color = 'green';
         }
-        
-        record.status = status;
-        record.color = color;
-        
-        record.paymentDate = record.paymentDate?.toDate().toISOString().split('T')[0];
-        record.startDate = startDateValue?.toISOString().split('T')[0];
-        record.endDate = endDateValue?.toISOString().split('T')[0];
+      }
+    } else {
+      status = '日期不完整';
+      color = 'orange';
+    }
 
-        subscriptions.push(record);
-    });
-    return subscriptions;
+    record.status = status;
+    record.color = color;
+
+    record.paymentDate = record.paymentDate?.toDate().toISOString().split('T')[0];
+    record.startDate = startDateValue?.toISOString().split('T')[0];
+    record.endDate = endDateValue?.toISOString().split('T')[0];
+
+    subscriptions.push(record);
+  });
+  return subscriptions;
 }
 
 /**
@@ -1514,19 +1515,19 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
   const projects = [];
   snapshot.forEach(doc => {
     const data = doc.data(); // 先取得資料
-    projects.push({ 
-      id: doc.id, 
+    projects.push({
+      id: doc.id,
       ...data, // 展開所有既有資料
       iconUrl: data.iconUrl || '' // 確保 iconUrl 欄位存在，若無則給予空字串
     });
   });
-  
+
   const systemFunctions = ['驗屋系統', '銷控系統', '預約驗屋系統', '客資系統']; // (此處可保持不變)
 
   // 回傳完整的 projects 陣列
-  return { 
-    projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')), 
-    systemFunctions: systemFunctions 
+  return {
+    projects: projects.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')),
+    systemFunctions: systemFunctions
   };
 }
 /**
@@ -1536,31 +1537,31 @@ export async function fetchMasterDataForSubscriptionForm(adminKey) {
  * @param {string} adminKey - 超級管理員的手機號
  */
 export async function addSubscription(subscriptionId, subscriptionData, adminKey) {
-    if (!await isSuperAdmin(adminKey)) {
-        throw new Error("權限不足。");
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+
+  //  新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
+  if (subscriptionData.projectId && subscriptionData.projectName) {
+    const projectDocRef = doc(db, "projects", subscriptionData.projectId);
+    // 使用 setDoc + merge:true 可以同時處理新增和更新，確保資料存在
+    await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
+  }
+
+  const dataToSave = { ...subscriptionData };
+  delete dataToSave.id;
+
+  ['paymentDate', 'startDate', 'endDate'].forEach(field => {
+    if (dataToSave[field]) {
+      dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
+    } else {
+      dataToSave[field] = null;
     }
-    
-    //  新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
-    if (subscriptionData.projectId && subscriptionData.projectName) {
-        const projectDocRef = doc(db, "projects", subscriptionData.projectId);
-        // 使用 setDoc + merge:true 可以同時處理新增和更新，確保資料存在
-        await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
-    }
+  });
 
-    const dataToSave = { ...subscriptionData };
-    delete dataToSave.id; 
-
-    ['paymentDate', 'startDate', 'endDate'].forEach(field => {
-        if (dataToSave[field]) {
-            dataToSave[field] = Timestamp.fromDate(new Date(dataToSave[field]));
-        } else {
-            dataToSave[field] = null;
-        }
-    });
-
-    const docRef = doc(db, "subscriptions", subscriptionId);
-    await setDoc(docRef, dataToSave);
-    return { status: 'success' };
+  const docRef = doc(db, "subscriptions", subscriptionId);
+  await setDoc(docRef, dataToSave);
+  return { status: 'success' };
 }
 
 
@@ -1571,30 +1572,30 @@ export async function addSubscription(subscriptionId, subscriptionData, adminKey
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function updateSubscription(subscriptionId, subscriptionData, adminKey) {
-    if (!await isSuperAdmin(adminKey)) {
-        throw new Error("權限不足。");
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+
+  //  新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
+  if (subscriptionData.projectId && subscriptionData.projectName) {
+    const projectDocRef = doc(db, "projects", subscriptionData.projectId);
+    await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
+  }
+
+  const dataToUpdate = { ...subscriptionData };
+  delete dataToUpdate.id;
+
+  ['paymentDate', 'startDate', 'endDate'].forEach(field => {
+    if (dataToUpdate[field]) {
+      dataToUpdate[field] = Timestamp.fromDate(new Date(dataToUpdate[field]));
+    } else {
+      dataToUpdate[field] = null;
     }
+  });
 
-    //  新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
-    if (subscriptionData.projectId && subscriptionData.projectName) {
-        const projectDocRef = doc(db, "projects", subscriptionData.projectId);
-        await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
-    }
-
-    const dataToUpdate = { ...subscriptionData };
-    delete dataToUpdate.id;
-
-    ['paymentDate', 'startDate', 'endDate'].forEach(field => {
-        if (dataToUpdate[field]) {
-            dataToUpdate[field] = Timestamp.fromDate(new Date(dataToUpdate[field]));
-        } else {
-            dataToUpdate[field] = null;
-        }
-    });
-    
-    const docRef = doc(db, "subscriptions", subscriptionId);
-    await updateDoc(docRef, dataToUpdate);
-    return { status: 'success' };
+  const docRef = doc(db, "subscriptions", subscriptionId);
+  await updateDoc(docRef, dataToUpdate);
+  return { status: 'success' };
 }
 
 /**
@@ -1603,12 +1604,12 @@ export async function updateSubscription(subscriptionId, subscriptionData, admin
  * @param {string} adminKey - 超級管理員的手機號碼
  */
 export async function deleteSubscription(subscriptionId, adminKey) {
-    if (!await isSuperAdmin(adminKey)) {
-        throw new Error("權限不足。");
-    }
-    const docRef = doc(db, "subscriptions", subscriptionId);
-    await deleteDoc(docRef);
-    return { status: 'success' };
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+  const docRef = doc(db, "subscriptions", subscriptionId);
+  await deleteDoc(docRef);
+  return { status: 'success' };
 }
 
 /**
@@ -1616,68 +1617,68 @@ export async function deleteSubscription(subscriptionId, adminKey) {
  * @param {string} userKey - 當前登入用戶的手機號碼
  */
 export async function fetchMySubscriptionStatus(userKey) {
-    // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
-    const permissionDocRef = doc(db, "userPermissions", userKey);
-    const docSnap = await getDoc(permissionDocRef);
+  // 1. 從新的 userPermissions 集合中讀取使用者的單一權限文件
+  const permissionDocRef = doc(db, "userPermissions", userKey);
+  const docSnap = await getDoc(permissionDocRef);
 
-    if (!docSnap.exists()) {
-        return {}; // 如果沒有權限文件，直接回傳空物件
+  if (!docSnap.exists()) {
+    return {}; // 如果沒有權限文件，直接回傳空物件
+  }
+
+  // 2. 從權限文件中解析出使用者有權限的所有建案名稱
+  const perms = docSnap.data().permissions || {};
+  const accessibleProjects = Object.values(perms).map(p => p.projectName);
+
+  if (accessibleProjects.length === 0) {
+    return {};
+  }
+
+  // 3. 根據有權限的建案列表，去 subscriptions 集合中查找對應的訂閱紀錄
+  const subsRef = collection(db, "subscriptions");
+  const subsQuery = query(subsRef, where("projectName", "in", accessibleProjects));
+  const subsSnapshot = await getDocs(subsQuery);
+
+  const subscriptionsByProject = {};
+
+  // 4. (維持不變) 處理訂閱狀態與日期格式
+  const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  const today = new Date(taiwanDateString);
+
+  subsSnapshot.forEach(doc => {
+    const sub = doc.data();
+    if (!subscriptionsByProject[sub.projectName]) {
+      subscriptionsByProject[sub.projectName] = [];
     }
 
-    // 2. 從權限文件中解析出使用者有權限的所有建案名稱
-    const perms = docSnap.data().permissions || {};
-    const accessibleProjects = Object.values(perms).map(p => p.projectName);
+    const startDate = sub.startDate?.toDate();
+    const endDate = sub.endDate?.toDate();
+    let status = '日期不完整';
+    let color = 'orange';
 
-    if (accessibleProjects.length === 0) {
-        return {};
+    if (startDate && endDate) {
+      if (today < startDate) {
+        status = '尚未啟用';
+        color = 'blue-grey';
+      } else if (today > endDate) {
+        status = '已到期';
+        color = 'red';
+      } else {
+        status = '啟用中';
+        color = 'green';
+      }
     }
 
-    // 3. 根據有權限的建案列表，去 subscriptions 集合中查找對應的訂閱紀錄
-    const subsRef = collection(db, "subscriptions");
-    const subsQuery = query(subsRef, where("projectName", "in", accessibleProjects));
-    const subsSnapshot = await getDocs(subsQuery);
-
-    const subscriptionsByProject = {};
-
-    // 4. (維持不變) 處理訂閱狀態與日期格式
-    const taiwanDateString = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-    const today = new Date(taiwanDateString);
-
-    subsSnapshot.forEach(doc => {
-        const sub = doc.data();
-        if (!subscriptionsByProject[sub.projectName]) {
-            subscriptionsByProject[sub.projectName] = [];
-        }
-
-        const startDate = sub.startDate?.toDate();
-        const endDate = sub.endDate?.toDate();
-        let status = '日期不完整';
-        let color = 'orange';
-
-        if (startDate && endDate) {
-            if (today < startDate) {
-                status = '尚未啟用';
-                color = 'blue-grey';
-            } else if (today > endDate) {
-                status = '已到期';
-                color = 'red';
-            } else {
-                status = '啟用中';
-                color = 'green';
-            }
-        }
-
-        subscriptionsByProject[sub.projectName].push({
-            system: sub.systemFunction,
-            status: status,
-            color: color,
-            validityPeriod: `${startDate ? startDate.toISOString().split('T')[0] : 'N/A'} ~ ${endDate ? endDate.toISOString().split('T')[0] : 'N/A'}`,
-            contact: sub.contactName || '-',
-            contactPhone: sub.contactPhone || '-'
-        });
+    subscriptionsByProject[sub.projectName].push({
+      system: sub.systemFunction,
+      status: status,
+      color: color,
+      validityPeriod: `${startDate ? startDate.toISOString().split('T')[0] : 'N/A'} ~ ${endDate ? endDate.toISOString().split('T')[0] : 'N/A'}`,
+      contact: sub.contactName || '-',
+      contactPhone: sub.contactPhone || '-'
     });
+  });
 
-    return subscriptionsByProject;
+  return subscriptionsByProject;
 }
 
 /**
@@ -1694,7 +1695,7 @@ export async function fetchMySubscriptionStatus(userKey) {
  */
 export const listenToParkingLots = (projectId, onDataChange, onError) => {
   const q = query(
-    collection(db, "salesParkings"), 
+    collection(db, "salesParkings"),
     where("projectId", "==", projectId),
     orderBy("spotId", "asc") // 依照車位編號排序
   );
@@ -1724,7 +1725,7 @@ export const listenToParkingLots = (projectId, onDataChange, onError) => {
  */
 export const updateParkingLot = async (docId, dataToUpdate) => {
   if (!docId) throw new Error("缺少車位文件 ID。");
-  
+
   const docRef = doc(db, "salesParkings", docId);
   await updateDoc(docRef, dataToUpdate);
 };
@@ -1743,7 +1744,7 @@ export async function fetchParkingLotDetails(projectName) {
     action: 'get_parking_lot_details',
     projectName,
     token: 'anxi111003' // 遵循專案慣例
-  }, SALES_API); 
+  }, SALES_API);
 }
 
 /**
@@ -1754,7 +1755,7 @@ export async function fetchParkingLotDetails(projectName) {
 export async function updateParkingLotDetails(payload) {
   //console.log('[api.js] updateParkingLotDetails called with payload:', payload);
   if (!payload.projectName || !payload.key || !payload.data) {
-      return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 updateParkingLotDetails 時缺少參數。' });
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 updateParkingLotDetails 時缺少參數。' });
   }
   return fetchPost({
     action: 'update_parking_lot_details',
@@ -1794,17 +1795,17 @@ export async function downloadSheetsAsExcel(projectName, sheetNames) {
  * @returns {Promise<object>} API 響應
  */
 export async function uploadExcelToOverwrite(projectName, fileId) {
-    //console.log(`[api.js] uploadExcelToOverwrite called for project: ${projectName}`);
-    if (!projectName || !fileId) {
-        return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadExcelToOverwrite 時缺少參數。' });
-    }
-    // 注意：這個 action 可能會執行很久，前端需要有良好的等待提示
-    return fetchPost({
-        action: 'upload_excel_to_overwrite',
-        projectName,
-        fileId,
-        token: 'anxi111003'
-    }, SALES_API);
+  //console.log(`[api.js] uploadExcelToOverwrite called for project: ${projectName}`);
+  if (!projectName || !fileId) {
+    return Promise.resolve({ status: 'error', message: '前端錯誤：呼叫 uploadExcelToOverwrite 時缺少參數。' });
+  }
+  // 注意：這個 action 可能會執行很久，前端需要有良好的等待提示
+  return fetchPost({
+    action: 'upload_excel_to_overwrite',
+    projectName,
+    fileId,
+    token: 'anxi111003'
+  }, SALES_API);
 }
 
 /**
@@ -1814,14 +1815,14 @@ export async function uploadExcelToOverwrite(projectName, fileId) {
  * @returns {Promise<object>} API 響應，包含 fileId
  */
 export async function uploadFile(filename, base64) {
-    //console.log(`[api.js] uploadFile (for overwrite) called with filename: ${filename}`);
-    // 這個 action 我們明確地讓它走銷售系統的 API 端點
-    return fetchPost({ 
-        action: 'upload_excel_for_overwrite', // <--- 使用新的 action
-        filename, 
-        base64, 
-        token: 'anxi111003' 
-    }, SALES_API); // <--- 使用 SALES_API
+  //console.log(`[api.js] uploadFile (for overwrite) called with filename: ${filename}`);
+  // 這個 action 我們明確地讓它走銷售系統的 API 端點
+  return fetchPost({
+    action: 'upload_excel_for_overwrite', // <--- 使用新的 action
+    filename,
+    base64,
+    token: 'anxi111003'
+  }, SALES_API); // <--- 使用 SALES_API
 }
 
 /**
@@ -1830,12 +1831,12 @@ export async function uploadFile(filename, base64) {
  * @returns {Promise<object>} API 響應
  */
 export async function backupSpreadsheet(projectName) {
-    //console.log(`[api.js] backupSpreadsheet called for project: ${projectName}`);
-    return fetchPost({
-        action: 'backup_spreadsheet',
-        projectName,
-        token: 'anxi111003'
-    }, SALES_API);
+  //console.log(`[api.js] backupSpreadsheet called for project: ${projectName}`);
+  return fetchPost({
+    action: 'backup_spreadsheet',
+    projectName,
+    token: 'anxi111003'
+  }, SALES_API);
 }
 
 /**
@@ -1869,10 +1870,10 @@ export async function fetchAppointmentDateRange(projectId) {
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'getAppointmentDateRange',
-        data: { projectId }
+      action: 'getAppointmentDateRange',
+      data: { projectId }
     });
-    
+
     if (result.data.status === 'success') {
       return result.data.data;
     }
@@ -1891,20 +1892,20 @@ export async function fetchAppointmentDateRange(projectId) {
  *  [已修正] 獲取使用者有權限查看驗屋預約管理的建案列表
  */
 export async function getProjectsForInspectionCalendar(userKey) {
-    const permissionDocRef = doc(db, "userPermissions", userKey);
-    const docSnap = await getDoc(permissionDocRef);
-    if (!docSnap.exists()) return [];
+  const permissionDocRef = doc(db, "userPermissions", userKey);
+  const docSnap = await getDoc(permissionDocRef);
+  if (!docSnap.exists()) return [];
 
-    const perms = docSnap.data().permissions || {};
-    const projectOptions = [];
+  const perms = docSnap.data().permissions || {};
+  const projectOptions = [];
 
-    for (const projectId in perms) {
-        const project = perms[projectId];
-        if (project.systems.includes('驗屋預約管理-修改') || project.systems.includes('驗屋預約管理-檢視')) {
-            projectOptions.push({ text: project.projectName, value: projectId });
-        }
+  for (const projectId in perms) {
+    const project = perms[projectId];
+    if (project.systems.includes('驗屋預約管理-修改') || project.systems.includes('驗屋預約管理-檢視')) {
+      projectOptions.push({ text: project.projectName, value: projectId });
     }
-    return projectOptions;
+  }
+  return projectOptions;
 }
 
 
@@ -1917,87 +1918,87 @@ export async function getProjectsForInspectionCalendar(userKey) {
  * @returns {Promise<Array>}
  */
 export async function fetchCalendarData(projectId, startDate, endDate) {
-    // 1. 日期驗證 (保持不變)
-    if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
-        console.error('🔴 [API] 偵測到無效的 startDate!', startDate);
-        throw new Error('API 接收到無效的開始日期');
-    }
-    if (!(endDate instanceof Date) || isNaN(endDate.getTime())) {
-        console.error('🔴 [API] 偵測到無效的 endDate!', endDate);
-        throw new Error('API 接收到無效的結束日期');
-    }
+  // 1. 日期驗證 (保持不變)
+  if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
+    console.error('🔴 [API] 偵測到無效的 startDate!', startDate);
+    throw new Error('API 接收到無效的開始日期');
+  }
+  if (!(endDate instanceof Date) || isNaN(endDate.getTime())) {
+    console.error('🔴 [API] 偵測到無效的 endDate!', endDate);
+    throw new Error('API 接收到無效的結束日期');
+  }
 
-    try {
-        // 2. 呼叫後端路由 (保持不變)
-        const result = await inspectionCalendarApiRouter({
-            action: 'fetchCalendarData',
-            data: {
-                projectId,
-                startDate: startDate.toISOString(), // 傳送 ISO 字串給後端
-                endDate: endDate.toISOString()
-            }
-        });
-        
-        // 3. 【關鍵修正 V2】
-        // Cloud Function 回傳的是序列化的普通物件 (e.g., {_seconds: ..., _nanoseconds: ...})
-        // Vue 元件期望的是 Client SDK 的 Timestamp 物件 (有 .toDate() 方法)。
-        
-        /**
-         * 輔助函數：安全地將 "序列化的 Timestamp 物件" 轉為 "Client SDK Timestamp 物件"
-         * @param {object | string | null} serverTimestamp - 後端回傳的序列化物件
-         */
-        const toClientTimestamp = (serverTimestamp) => {
-            // 1. 檢查是否為 null 或 undefined
-            if (!serverTimestamp) return null;
-            
-            // 2. 【關鍵修正】檢查帶有底線的 _seconds 和 _nanoseconds
-            if (typeof serverTimestamp === 'object' && serverTimestamp !== null && 
-                typeof serverTimestamp._seconds === 'number' && typeof serverTimestamp._nanoseconds === 'number') {
-                
-                // 3. 【關鍵修正】使用帶底線的屬性來建立新的 Timestamp
-                return new Timestamp(serverTimestamp._seconds, serverTimestamp._nanoseconds);
-            }
-            
-            // 4. (備用) 如果它已經是 Timestamp 物件 (例如在重整時)，直接回傳
-            if (typeof serverTimestamp.toDate === 'function') {
-                return serverTimestamp;
-            }
-            
-            // 5. (備用) 處理 ISO 字串 (以防萬一)
-            if (typeof serverTimestamp === 'string') {
-                const date = new Date(serverTimestamp);
-                if (!isNaN(date.getTime())) {
-                    return Timestamp.fromDate(date);
-                }
-            }
+  try {
+    // 2. 呼叫後端路由 (保持不變)
+    const result = await inspectionCalendarApiRouter({
+      action: 'fetchCalendarData',
+      data: {
+        projectId,
+        startDate: startDate.toISOString(), // 傳送 ISO 字串給後端
+        endDate: endDate.toISOString()
+      }
+    });
 
-            // 6. 如果都不是，回傳 null
-            console.warn('[API] toClientTimestamp: 收到未知的時間格式:', serverTimestamp);
-            return null;
-        };
+    // 3. 【關鍵修正 V2】
+    // Cloud Function 回傳的是序列化的普通物件 (e.g., {_seconds: ..., _nanoseconds: ...})
+    // Vue 元件期望的是 Client SDK 的 Timestamp 物件 (有 .toDate() 方法)。
 
-        // 4. 重新加入 .map() 轉換邏輯
-        return result.data.map(appt => {
-            // 對所有可能的日期/時間戳記欄位執行安全轉換
-            const convertedAppt = { ...appt };
-            const dateFields = [
-                'appointmentDate', 'createdAt', 'updatedAt', 'cancelledAt',
-                'appropriationDate', 'handoverTime', 'uploadReportTime',
-                'initialInspectionDate', 'reInspectionDate'
-            ];
-            
-            for (const field of dateFields) {
-                convertedAppt[field] = toClientTimestamp(appt[field]);
-            }
-            
-            return convertedAppt;
-        });
+    /**
+     * 輔助函數：安全地將 "序列化的 Timestamp 物件" 轉為 "Client SDK Timestamp 物件"
+     * @param {object | string | null} serverTimestamp - 後端回傳的序列化物件
+     */
+    const toClientTimestamp = (serverTimestamp) => {
+      // 1. 檢查是否為 null 或 undefined
+      if (!serverTimestamp) return null;
 
-    } catch (e) {
-        // 5. 錯誤處理 (保持不變)
-        console.error(`[API] fetchCalendarData 呼叫路由時發生錯誤:`, e);
-        throw new Error(e.message || '獲取行事曆資料失敗');
-    }
+      // 2. 【關鍵修正】檢查帶有底線的 _seconds 和 _nanoseconds
+      if (typeof serverTimestamp === 'object' && serverTimestamp !== null &&
+        typeof serverTimestamp._seconds === 'number' && typeof serverTimestamp._nanoseconds === 'number') {
+
+        // 3. 【關鍵修正】使用帶底線的屬性來建立新的 Timestamp
+        return new Timestamp(serverTimestamp._seconds, serverTimestamp._nanoseconds);
+      }
+
+      // 4. (備用) 如果它已經是 Timestamp 物件 (例如在重整時)，直接回傳
+      if (typeof serverTimestamp.toDate === 'function') {
+        return serverTimestamp;
+      }
+
+      // 5. (備用) 處理 ISO 字串 (以防萬一)
+      if (typeof serverTimestamp === 'string') {
+        const date = new Date(serverTimestamp);
+        if (!isNaN(date.getTime())) {
+          return Timestamp.fromDate(date);
+        }
+      }
+
+      // 6. 如果都不是，回傳 null
+      console.warn('[API] toClientTimestamp: 收到未知的時間格式:', serverTimestamp);
+      return null;
+    };
+
+    // 4. 重新加入 .map() 轉換邏輯
+    return result.data.map(appt => {
+      // 對所有可能的日期/時間戳記欄位執行安全轉換
+      const convertedAppt = { ...appt };
+      const dateFields = [
+        'appointmentDate', 'createdAt', 'updatedAt', 'cancelledAt',
+        'appropriationDate', 'handoverTime', 'uploadReportTime',
+        'initialInspectionDate', 'reInspectionDate'
+      ];
+
+      for (const field of dateFields) {
+        convertedAppt[field] = toClientTimestamp(appt[field]);
+      }
+
+      return convertedAppt;
+    });
+
+  } catch (e) {
+    // 5. 錯誤處理 (保持不變)
+    console.error(`[API] fetchCalendarData 呼叫路由時發生錯誤:`, e);
+    throw new Error(e.message || '獲取行事曆資料失敗');
+  }
 }
 
 /**
@@ -2006,41 +2007,41 @@ export async function fetchCalendarData(projectId, startDate, endDate) {
  * @returns {Promise<object>}
  */
 export async function fetchBookingOptions(projectId) {
-    try {
-        // ✓ START: 修改此處，從資料庫讀取專案設定
-        const projectSettings = await getProjectSettings(projectId);
+  try {
+    // ✓ START: 修改此處，從資料庫讀取專案設定
+    const projectSettings = await getProjectSettings(projectId);
 
-        // 從專案設定中獲取選擇方式和人員，如果不存在則提供預設空陣列
-        const inspectionMethods = projectSettings?.bookingMethodOptions || ['自驗', '代驗公司'];
-        const inspectionStaff = projectSettings?.inspectionStaff || []; // ✓ 從這裡動態讀取驗屋人員
-        // ✓ END: 修改結束
+    // 從專案設定中獲取選擇方式和人員，如果不存在則提供預設空陣列
+    const inspectionMethods = projectSettings?.bookingMethodOptions || ['自驗', '代驗公司'];
+    const inspectionStaff = projectSettings?.inspectionStaff || []; // ✓ 從這裡動態讀取驗屋人員
+    // ✓ END: 修改結束
 
-        // 獲取棟別與戶別資料 (此部分邏輯不變)
-        const householdsRef = collection(db, "households");
-        const q = query(householdsRef, where("projectId", "==", projectId));
-        const snapshot = await getDocs(q);
-        const buildingsAndUnits = {};
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.building && data.unitId) {
-                if (!buildingsAndUnits[data.building]) {
-                    buildingsAndUnits[data.building] = [];
-                }
-                buildingsAndUnits[data.building].push(data.unitId);
-            }
-        });
+    // 獲取棟別與戶別資料 (此部分邏輯不變)
+    const householdsRef = collection(db, "households");
+    const q = query(householdsRef, where("projectId", "==", projectId));
+    const snapshot = await getDocs(q);
+    const buildingsAndUnits = {};
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.building && data.unitId) {
+        if (!buildingsAndUnits[data.building]) {
+          buildingsAndUnits[data.building] = [];
+        }
+        buildingsAndUnits[data.building].push(data.unitId);
+      }
+    });
 
-        return { inspectionMethods, inspectionStaff, buildingsAndUnits };
+    return { inspectionMethods, inspectionStaff, buildingsAndUnits };
 
-    } catch (error) {
-        console.error(`獲取預約選項時發生錯誤 (Project ID: ${projectId}):`, error);
-        // 發生錯誤時回傳預設值，避免頁面崩潰
-        return { 
-            inspectionMethods: ['自驗', '代驗公司'], 
-            inspectionStaff: [], 
-            buildingsAndUnits: {} 
-        };
-    }
+  } catch (error) {
+    console.error(`獲取預約選項時發生錯誤 (Project ID: ${projectId}):`, error);
+    // 發生錯誤時回傳預設值，避免頁面崩潰
+    return {
+      inspectionMethods: ['自驗', '代驗公司'],
+      inspectionStaff: [],
+      buildingsAndUnits: {}
+    };
+  }
 }
 
 /**
@@ -2049,39 +2050,39 @@ export async function fetchBookingOptions(projectId) {
  * @param {object} payload - 包含 { projectId, newBookingData, ... }
  */
 export async function addAppointmentAdmin(payload) {
-    try {
-        // 修改：呼叫 adminBookingApiRouter
-        const result = await adminBookingApiRouter({
-            action: 'addAppointmentAdmin',
-            data: payload
-        });
-        // 修改：後端路由會直接回傳 { status, data: { bookingCode } }
-        return result.data; 
-    } catch (error) {
-        console.error("呼叫 addAppointmentByAdmin 雲端函式時發生錯誤:", error);
-        // 修改：保持拋出錯誤，讓前端 UI 可以捕捉
-        throw new Error(error.message);
-    }
+  try {
+    // 修改：呼叫 adminBookingApiRouter
+    const result = await adminBookingApiRouter({
+      action: 'addAppointmentAdmin',
+      data: payload
+    });
+    // 修改：後端路由會直接回傳 { status, data: { bookingCode } }
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 addAppointmentByAdmin 雲端函式時發生錯誤:", error);
+    // 修改：保持拋出錯誤，讓前端 UI 可以捕捉
+    throw new Error(error.message);
+  }
 }
 
 /**
  * [Firebase 版] 更新預約紀錄 (透過 Cloud Function 處理)
  * (V2: 呼叫 inspectionCalendarApi 路由)
  */
-export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) { 
+export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) {
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'updateAppointment',
-        data: {
-          appointmentId,
-          bookingPayload: bookingUpdatePayload,
-          householdDocId,
-          householdPayload: householdUpdatePayload,
-          force: force 
-        }
+      action: 'updateAppointment',
+      data: {
+        appointmentId,
+        bookingPayload: bookingUpdatePayload,
+        householdDocId,
+        householdPayload: householdUpdatePayload,
+        force: force
+      }
     });
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error("API updateAppointment 錯誤:", error);
     throw new Error(error.message);
@@ -2097,17 +2098,17 @@ export async function cancelAppointment(appointmentId, projectId, unitId, bookin
   if (!appointmentId || !projectId || !unitId || !bookingType) {
     return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
   }
-  
+
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'cancelAppointment',
-        data: {
-          appointmentId,
-          projectId,
-          unitId,
-          bookingType
-        }
+      action: 'cancelAppointment',
+      data: {
+        appointmentId,
+        projectId,
+        unitId,
+        bookingType
+      }
     });
     return result.data;
   } catch (error) {
@@ -2128,11 +2129,11 @@ export const cancelBooking = async (payload) => {
   try {
     // 修改：呼叫 bookingApiRouter，傳入 action 和 data
     const result = await bookingApiRouter({
-        action: 'cancelBooking',
-        data: payload
+      action: 'cancelBooking',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, message }，因此 result.data 就是該物件
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error("API cancelBooking 錯誤:", error);
     return { status: 'error', message: error.message };
@@ -2148,8 +2149,8 @@ export async function getBookingInitialData(projectName, projectId) {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getBookingInitialData',
-        data: { projectId, projectName } // 保持傳遞，即使後端可能不用 projectName
+      action: 'getBookingInitialData',
+      data: { projectId, projectName } // 保持傳遞，即使後端可能不用 projectName
     });
     // 修改：後端路由會回傳 { buildings, ... }，我們保持原有的包裝
     return { status: 'success', data: result.data };
@@ -2166,17 +2167,17 @@ export async function getBookingInitialData(projectName, projectId) {
  * @returns {Promise<object>} - 返回操作結果
  */
 export async function updateProjectSettings(projectId, settingsData) {
-    if (!projectId || !settingsData) {
-        return { status: 'error', message: '缺少 projectId 或設定資料。' };
-    }
-    try {
-        const projectDocRef = doc(db, "projects", projectId);
-        await updateDoc(projectDocRef, settingsData);
-        return { status: 'success' };
-    } catch (e) {
-        console.error('更新專案設定時發生錯誤:', e);
-        return { status: 'error', message: e.message };
-    }
+  if (!projectId || !settingsData) {
+    return { status: 'error', message: '缺少 projectId 或設定資料。' };
+  }
+  try {
+    const projectDocRef = doc(db, "projects", projectId);
+    await updateDoc(projectDocRef, settingsData);
+    return { status: 'success' };
+  } catch (e) {
+    console.error('更新專案設定時發生錯誤:', e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -2187,13 +2188,13 @@ export async function fetchProjectConfig(projectId) {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getProjectConfig',
-        data: { projectId }
+      action: 'getProjectConfig',
+      data: { projectId }
     });
     return result.data;
   } catch (error) {
     console.error("API fetchProjectConfig 錯誤:", error);
-    return null; 
+    return null;
   }
 }
 
@@ -2216,18 +2217,18 @@ export async function getUnitsByBuilding(projectName, building) {
  * 檢查是否已有有效預約 (V2: 呼叫 bookingApi 路由)
  */
 export async function checkExistingBooking(projectId, unitId, bookingType) {
- try {
-  // 修改：呼叫 bookingApiRouter
-  const result = await bookingApiRouter({
+  try {
+    // 修改：呼叫 bookingApiRouter
+    const result = await bookingApiRouter({
       action: 'checkExistingBooking',
       data: { projectId, unitId, bookingType }
-  });
-  // 修改：後端路由會直接回傳 { status, data: { status } }，這符合原函式 return result.data 的預期
-  return result.data;
- } catch (error) {
-  console.error("API checkExistingBooking 錯誤:", error);
-  return { status: 'error', message: error.message };
- }
+    });
+    // 修改：後端路由會直接回傳 { status, data: { status } }，這符合原函式 return result.data 的預期
+    return result.data;
+  } catch (error) {
+    console.error("API checkExistingBooking 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
 }
 
 /**
@@ -2237,8 +2238,8 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getAvailableSlots',
-        data: { projectId, unitId, bookingType, bookingMethod, projectName }
+      action: 'getAvailableSlots',
+      data: { projectId, unitId, bookingType, bookingMethod, projectName }
     });
     // 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
     return {
@@ -2260,36 +2261,36 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
  * @returns {Promise<object>} - 返回包含批次規則的物件
  */
 export async function getAllBookingRules(projectId) {
-    if (!projectId) {
-        console.error("[api.js] getAllBookingRules: 缺少 projectId。");
-        return { status: 'error', message: '缺少 projectId' };
-    }
+  if (!projectId) {
+    console.error("[api.js] getAllBookingRules: 缺少 projectId。");
+    return { status: 'error', message: '缺少 projectId' };
+  }
 
-    try {
-        // 直接查詢 bookingBatches 集合，找出屬於該建案的所有批次
-        const batchesRef = collection(db, "bookingBatches");
-        const q = query(batchesRef, where("projectId", "==", projectId));
-        const querySnapshot = await getDocs(q);
+  try {
+    // 直接查詢 bookingBatches 集合，找出屬於該建案的所有批次
+    const batchesRef = collection(db, "bookingBatches");
+    const q = query(batchesRef, where("projectId", "==", projectId));
+    const querySnapshot = await getDocs(q);
 
-        const batchRules = {};
-        querySnapshot.forEach((doc) => {
-            // 將每筆批次資料以其文件 ID 為 key 存入物件
-            // 這正是前端 watch 函式所期望的資料結構
-            batchRules[doc.id] = { id: doc.id, ...doc.data() };
-        });
+    const batchRules = {};
+    querySnapshot.forEach((doc) => {
+      // 將每筆批次資料以其文件 ID 為 key 存入物件
+      // 這正是前端 watch 函式所期望的資料結構
+      batchRules[doc.id] = { id: doc.id, ...doc.data() };
+    });
 
-        // 模仿舊版 API 的回傳格式，確保前端相容性
-        return { 
-            status: 'success', 
-            data: { 
-                batchRules: batchRules 
-            } 
-        };
+    // 模仿舊版 API 的回傳格式，確保前端相容性
+    return {
+      status: 'success',
+      data: {
+        batchRules: batchRules
+      }
+    };
 
-    } catch (e) {
-        console.error(`獲取建案 ${projectId} 的預約批次規則時發生錯誤:`, e);
-        return { status: 'error', message: e.message, data: { batchRules: {} } };
-    }
+  } catch (e) {
+    console.error(`獲取建案 ${projectId} 的預約批次規則時發生錯誤:`, e);
+    return { status: 'error', message: e.message, data: { batchRules: {} } };
+  }
 }
 
 
@@ -2301,8 +2302,8 @@ export const saveBooking = async (payload) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'saveBooking',
-        data: payload // 整個 payload { projectId, bookingData } 作為 data 傳遞
+      action: 'saveBooking',
+      data: payload // 整個 payload { projectId, bookingData } 作為 data 傳遞
     });
     // 修改：後端路由會回傳 { status, data: { bookingCode } }
     // 我們將其包裝成前端期望的 { status, ...result.data }
@@ -2322,8 +2323,8 @@ export const initiateBookingConfirmation = async (payload) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: functionName, // 使用函式名稱作為 action
-        data: payload
+      action: functionName, // 使用函式名稱作為 action
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, token }
     return result.data;
@@ -2343,8 +2344,8 @@ export const fetchAllUnitsForBooking = async (projectName, projectId) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getAllUnitsForBooking',
-        data: { projectId: projectId, projectName: projectName }
+      action: 'getAllUnitsForBooking',
+      data: { projectId: projectId, projectName: projectName }
     });
     // 修改：後端路由會直接回傳 allUnitsByBuilding 物件，我們保持原有的包裝
     return { status: 'success', data: result.data };
@@ -2362,8 +2363,8 @@ export const validateId = async (projectName, unitId, idNumber, projectId) => {
   try {
     // 修改：呼叫 bookingApiRouter
     await bookingApiRouter({
-        action: 'validateId',
-        data: { projectId, unitId, idNumber, projectName }
+      action: 'validateId',
+      data: { projectId, unitId, idNumber, projectName }
     });
     // 修改：保持原有的成功回傳 (因為後端成功時不回傳 data)
     return { status: 'success' };
@@ -2385,7 +2386,7 @@ export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) 
     const result = await bookingApiRouter({
       action: 'uploadAuthLetter',
       data: {
-        projectId: projectId, 
+        projectId: projectId,
         unitId: unitId,
         fileName: fileName,
         base64: pureBase64
@@ -2481,7 +2482,7 @@ function fileToBase64(file) {
     reader.onload = () => {
       // 結果格式為 "data:application/pdf;base64,JVBERi0xLjQKJ..."
       // 我們只需要逗號後面的部分
-        let encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
+      let encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
       if ((encoded.length % 4) > 0) {
         encoded += '='.repeat(4 - (encoded.length % 4));
       }
@@ -2506,10 +2507,10 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
     // 設定暫存路徑，建議包含專案ID以方便管理
     const storagePath = `temp_reports/${payload.projectId}/${timestamp}_${fileObject.name}`;
     const storageRef = ref(storage, storagePath);
-    
+
     // 執行上傳 (Firebase SDK 會自動處理大檔案分片上傳)
     const snapshot = await uploadBytes(storageRef, fileObject);
-    
+
     // 2. 取得檔案的公開下載連結
     const downloadURL = await getDownloadURL(snapshot.ref);
 
@@ -2522,11 +2523,11 @@ export async function uploadReportDirectlyToDrive(payload, fileObject) {
       contentType: fileObject.type,
       // fileContent: base64Content, // ❌ 已移除
     };
-    
+
     // 4. 呼叫後端處理 (後端會用 fetch(fileUrl) 讀取並轉存 Drive)
     const result = await bookingApiRouter({
-        action: 'handleDirectReportUpload',
-        data: functionPayload
+      action: 'handleDirectReportUpload',
+      data: functionPayload
     });
 
     // 修改：後端路由會直接回傳 { status, message }
@@ -2608,7 +2609,7 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
       const { ruleId, batchId } = doc.data();
       // ✓【修改】排除當前正在編輯的批次 ID (如果提供了 currentBatchId)
       if (currentBatchId && batchId === currentBatchId) {
-          return; // 跳過自己批次的連結
+        return; // 跳過自己批次的連結
       }
       batchIds.add(batchId);
       if (!ruleToBatchIdsMap.has(ruleId)) {
@@ -2619,8 +2620,8 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
 
     // 如果過濾掉自己後，沒有其他批次連結到這些規則，則無衝突
     if (batchIds.size === 0) {
-        console.log(`[api.js] checkDateConflicts: Conflicts only involved the current batch (${currentBatchId}). No external conflicts.`); // ✓ Log
-        return { conflictingDates: [], nonConflictingDates: dates };
+      console.log(`[api.js] checkDateConflicts: Conflicts only involved the current batch (${currentBatchId}). No external conflicts.`); // ✓ Log
+      return { conflictingDates: [], nonConflictingDates: dates };
     }
 
     // 步驟 3: 根據批次 ID，一次性獲取所有 *有效* 批次的詳細資料
@@ -2655,15 +2656,15 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
     conflictingRulesMap.forEach(rule => {
       // ✓【修改】只有當 rule.sharedBy 陣列不為空時，才算真正的衝突
       if (rule.sharedBy.length > 0) {
-          conflictingDates.push({
-            date: rule.date,
-            existingRule: {
-              ruleId: rule.ruleId,
-              rule: rule.slots, // 規則內容
-              sharedBy: rule.sharedBy // 使用此規則的其他有效批次
-            }
-          });
-          foundDates.add(rule.date);
+        conflictingDates.push({
+          date: rule.date,
+          existingRule: {
+            ruleId: rule.ruleId,
+            rule: rule.slots, // 規則內容
+            sharedBy: rule.sharedBy // 使用此規則的其他有效批次
+          }
+        });
+        foundDates.add(rule.date);
       }
     });
 
@@ -2688,127 +2689,127 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
  * [V2.1 - 解決 IN 30 限制版] 儲存批次與其關聯的每日規則
  */
 export async function saveBatchWithRules(payload) {
-    const { batchData, resolutions } = payload;
-    const isNewBatch = !batchData.id;
-    const batchId = batchData.id || doc(collection(db, "bookingBatches")).id;
-    const now = serverTimestamp();
+  const { batchData, resolutions } = payload;
+  const isNewBatch = !batchData.id;
+  const batchId = batchData.id || doc(collection(db, "bookingBatches")).id;
+  const now = serverTimestamp();
 
-    try {
-        const batch = writeBatch(db);
-        const batchDocRef = doc(db, "bookingBatches", batchId);
+  try {
+    const batch = writeBatch(db);
+    const batchDocRef = doc(db, "bookingBatches", batchId);
 
-        // 步驟 1: 主文件設定
-        const dataToSave = { ...batchData, id: batchId };
-        dataToSave.lastModified = now;
-        if (isNewBatch) {
-            dataToSave.createdAt = now;
-            dataToSave.isDeleted = false;
-        }
-        delete dataToSave.dailyRules;
-        if (!isNewBatch) {
-            delete dataToSave.isDeleted;
-            delete dataToSave.deletedAt;
-        }
-        batch.set(batchDocRef, dataToSave, { merge: true });
-
-        // 步驟 2: 處理規則關聯 (修正 IN 30 限制) ✓
-        const datesToUpdate = Object.keys(resolutions);
-        if (datesToUpdate.length > 0) {
-            // 將日期陣列切割成每 30 個一組 ✓
-            const chunks = [];
-            for (let i = 0; i < datesToUpdate.length; i += 30) {
-                chunks.push(datesToUpdate.slice(i, i + 30));
-            }
-
-            // 平行執行查詢 ✓
-            const queryPromises = chunks.map(dateChunk => {
-                const oldLinksQuery = query(
-                    collection(db, "batchRuleLinks"),
-                    where("batchId", "==", batchId),
-                    where("date", "in", dateChunk), // 分段後的 dateChunk 不會超過 30 個
-                    where("isDeleted", "==", false)
-                );
-                return getDocs(oldLinksQuery);
-            });
-
-            const snapshots = await Promise.all(queryPromises);
-
-            // 將所有找到的舊連結標記為刪除 ✓
-            snapshots.forEach(snapshot => {
-                snapshot.forEach(doc => {
-                    batch.update(doc.ref, {
-                        isDeleted: true,
-                        deletedAt: now
-                    });
-                });
-            });
-            
-            console.log(`[api.js] 已處理 ${datesToUpdate.length} 天的舊連結檢查。`);
-        }
-
-        // 步驟 3: 根據 resolutions 建立新規則或新關聯 (此處邏輯不變)
-        for (const date in resolutions) {
-            const resolution = resolutions[date];
-            const ruleContent = batchData.dailyRules[date];
-
-            if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) continue;
-
-            if (resolution.mode === 'link' && resolution.targetRuleId) {
-                const linkDocRef = doc(collection(db, "batchRuleLinks"));
-                batch.set(linkDocRef, {
-                    batchId,
-                    ruleId: resolution.targetRuleId,
-                    date,
-                    projectId: batchData.projectId,
-                    isDeleted: false,
-                    createdAt: now,
-                });
-            } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
-                const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
-                batch.update(ruleToUpdateRef, {
-                    slots: ruleContent.slots,
-                    lastModified: now,
-                    isDeleted: false,
-                    deletedAt: null
-                });
-                const linkDocRef = doc(collection(db, "batchRuleLinks"));
-                batch.set(linkDocRef, {
-                    batchId,
-                    ruleId: resolution.targetRuleId,
-                    date,
-                    projectId: batchData.projectId,
-                    isDeleted: false,
-                    createdAt: now,
-                });
-            } else if (resolution.mode === 'create_independent' || resolution.mode === 'create_shared') {
-                const newRuleDocRef = doc(collection(db, "dateRules"));
-                batch.set(newRuleDocRef, {
-                    slots: ruleContent.slots,
-                    date,
-                    projectId: batchData.projectId,
-                    isShared: resolution.mode === 'create_shared',
-                    createdAt: now,
-                    isDeleted: false,
-                });
-                const linkDocRef = doc(collection(db, "batchRuleLinks"));
-                batch.set(linkDocRef, {
-                    batchId,
-                    ruleId: newRuleDocRef.id,
-                    date,
-                    projectId: batchData.projectId,
-                    isDeleted: false,
-                    createdAt: now,
-                });
-            }
-        }
-
-        await batch.commit();
-        return { status: 'success', id: batchId };
-
-    } catch (e) {
-        console.error(`[api.js] saveBatchWithRules 發生錯誤:`, e);
-        return { status: 'error', message: `儲存失敗: ${e.message}` };
+    // 步驟 1: 主文件設定
+    const dataToSave = { ...batchData, id: batchId };
+    dataToSave.lastModified = now;
+    if (isNewBatch) {
+      dataToSave.createdAt = now;
+      dataToSave.isDeleted = false;
     }
+    delete dataToSave.dailyRules;
+    if (!isNewBatch) {
+      delete dataToSave.isDeleted;
+      delete dataToSave.deletedAt;
+    }
+    batch.set(batchDocRef, dataToSave, { merge: true });
+
+    // 步驟 2: 處理規則關聯 (修正 IN 30 限制) ✓
+    const datesToUpdate = Object.keys(resolutions);
+    if (datesToUpdate.length > 0) {
+      // 將日期陣列切割成每 30 個一組 ✓
+      const chunks = [];
+      for (let i = 0; i < datesToUpdate.length; i += 30) {
+        chunks.push(datesToUpdate.slice(i, i + 30));
+      }
+
+      // 平行執行查詢 ✓
+      const queryPromises = chunks.map(dateChunk => {
+        const oldLinksQuery = query(
+          collection(db, "batchRuleLinks"),
+          where("batchId", "==", batchId),
+          where("date", "in", dateChunk), // 分段後的 dateChunk 不會超過 30 個
+          where("isDeleted", "==", false)
+        );
+        return getDocs(oldLinksQuery);
+      });
+
+      const snapshots = await Promise.all(queryPromises);
+
+      // 將所有找到的舊連結標記為刪除 ✓
+      snapshots.forEach(snapshot => {
+        snapshot.forEach(doc => {
+          batch.update(doc.ref, {
+            isDeleted: true,
+            deletedAt: now
+          });
+        });
+      });
+
+      console.log(`[api.js] 已處理 ${datesToUpdate.length} 天的舊連結檢查。`);
+    }
+
+    // 步驟 3: 根據 resolutions 建立新規則或新關聯 (此處邏輯不變)
+    for (const date in resolutions) {
+      const resolution = resolutions[date];
+      const ruleContent = batchData.dailyRules[date];
+
+      if (!ruleContent || !ruleContent.slots || Object.keys(ruleContent.slots).length === 0) continue;
+
+      if (resolution.mode === 'link' && resolution.targetRuleId) {
+        const linkDocRef = doc(collection(db, "batchRuleLinks"));
+        batch.set(linkDocRef, {
+          batchId,
+          ruleId: resolution.targetRuleId,
+          date,
+          projectId: batchData.projectId,
+          isDeleted: false,
+          createdAt: now,
+        });
+      } else if (resolution.mode === 'update_shared' && resolution.targetRuleId) {
+        const ruleToUpdateRef = doc(db, "dateRules", resolution.targetRuleId);
+        batch.update(ruleToUpdateRef, {
+          slots: ruleContent.slots,
+          lastModified: now,
+          isDeleted: false,
+          deletedAt: null
+        });
+        const linkDocRef = doc(collection(db, "batchRuleLinks"));
+        batch.set(linkDocRef, {
+          batchId,
+          ruleId: resolution.targetRuleId,
+          date,
+          projectId: batchData.projectId,
+          isDeleted: false,
+          createdAt: now,
+        });
+      } else if (resolution.mode === 'create_independent' || resolution.mode === 'create_shared') {
+        const newRuleDocRef = doc(collection(db, "dateRules"));
+        batch.set(newRuleDocRef, {
+          slots: ruleContent.slots,
+          date,
+          projectId: batchData.projectId,
+          isShared: resolution.mode === 'create_shared',
+          createdAt: now,
+          isDeleted: false,
+        });
+        const linkDocRef = doc(collection(db, "batchRuleLinks"));
+        batch.set(linkDocRef, {
+          batchId,
+          ruleId: newRuleDocRef.id,
+          date,
+          projectId: batchData.projectId,
+          isDeleted: false,
+          createdAt: now,
+        });
+      }
+    }
+
+    await batch.commit();
+    return { status: 'success', id: batchId };
+
+  } catch (e) {
+    console.error(`[api.js] saveBatchWithRules 發生錯誤:`, e);
+    return { status: 'error', message: `儲存失敗: ${e.message}` };
+  }
 }
 
 /**
@@ -2870,29 +2871,29 @@ export async function fetchRulesForBatch(batchId) {
  * @returns {Promise<object>} - 返回操作結果，包含 status 和 id
  */
 export async function saveBookingBatch(batchData) {
-    try {
-        const isNew = !batchData.id;
-        const docRef = isNew
-            ? doc(collection(db, "bookingBatches"))
-            : doc(db, "bookingBatches", batchData.id);
+  try {
+    const isNew = !batchData.id;
+    const docRef = isNew
+      ? doc(collection(db, "bookingBatches"))
+      : doc(db, "bookingBatches", batchData.id);
 
-        const dataToSave = { ...batchData };
-        
-        if (isNew) {
-            dataToSave.createdAt = serverTimestamp();
-            delete dataToSave.id; 
-        }
-        dataToSave.lastModified = serverTimestamp();
-        // 移除從 payload 傳過來的每日規則，避免存到主文件裡
-        delete dataToSave.dailyRules; 
+    const dataToSave = { ...batchData };
 
-        await setDoc(docRef, dataToSave, { merge: true });
-
-        return { status: 'success', id: docRef.id };
-    } catch (e) {
-        console.error("儲存預約批次時發生錯誤: ", e);
-        return { status: 'error', message: e.message };
+    if (isNew) {
+      dataToSave.createdAt = serverTimestamp();
+      delete dataToSave.id;
     }
+    dataToSave.lastModified = serverTimestamp();
+    // 移除從 payload 傳過來的每日規則，避免存到主文件裡
+    delete dataToSave.dailyRules;
+
+    await setDoc(docRef, dataToSave, { merge: true });
+
+    return { status: 'success', id: docRef.id };
+  } catch (e) {
+    console.error("儲存預約批次時發生錯誤: ", e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -2902,22 +2903,22 @@ export async function saveBookingBatch(batchData) {
  * @returns {Promise<object>}
  */
 export async function saveDailyRules(batchId, dailyRules) {
-    try {
-        const batch = writeBatch(db);
+  try {
+    const batch = writeBatch(db);
 
-        for (const date in dailyRules) {
-            const ruleData = dailyRules[date];
-            // 建立指向子集合中文件的參照，文件 ID 就是日期
-            const dailyRuleRef = doc(db, "bookingBatches", batchId, "dailyRules", date);
-            batch.set(dailyRuleRef, ruleData);
-        }
-
-        await batch.commit();
-        return { status: 'success' };
-    } catch (e) {
-        console.error(`儲存批次 ${batchId} 的每日規則時發生錯誤:`, e);
-        return { status: 'error', message: e.message };
+    for (const date in dailyRules) {
+      const ruleData = dailyRules[date];
+      // 建立指向子集合中文件的參照，文件 ID 就是日期
+      const dailyRuleRef = doc(db, "bookingBatches", batchId, "dailyRules", date);
+      batch.set(dailyRuleRef, ruleData);
     }
+
+    await batch.commit();
+    return { status: 'success' };
+  } catch (e) {
+    console.error(`儲存批次 ${batchId} 的每日規則時發生錯誤:`, e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -2926,18 +2927,18 @@ export async function saveDailyRules(batchId, dailyRules) {
  * @returns {Promise<object>} - 返回以日期為 key 的規則物件
  */
 export async function fetchDailyRules(batchId) {
-    try {
-        const dailyRulesRef = collection(db, "bookingBatches", batchId, "dailyRules");
-        const snapshot = await getDocs(dailyRulesRef);
-        const rules = {};
-        snapshot.forEach(doc => {
-            rules[doc.id] = doc.data(); // doc.id 就是日期 'YYYY-MM-DD'
-        });
-        return rules;
-    } catch (e) {
-        console.error(`獲取批次 ${batchId} 的每日規則時發生錯誤:`, e);
-        return {};
-    }
+  try {
+    const dailyRulesRef = collection(db, "bookingBatches", batchId, "dailyRules");
+    const snapshot = await getDocs(dailyRulesRef);
+    const rules = {};
+    snapshot.forEach(doc => {
+      rules[doc.id] = doc.data(); // doc.id 就是日期 'YYYY-MM-DD'
+    });
+    return rules;
+  } catch (e) {
+    console.error(`獲取批次 ${batchId} 的每日規則時發生錯誤:`, e);
+    return {};
+  }
 }
 
 /**
@@ -2979,14 +2980,14 @@ export async function fetchBookingBatches(projectId) {
  * @returns {Promise<Array>}
  */
 export async function fetchTimeSlotRules(projectId) {
-    const rulesRef = collection(db, "timeSlotRules");
-    const q = query(rulesRef, where("projectId", "==", projectId));
-    const snapshot = await getDocs(q);
-    const rules = [];
-    snapshot.forEach(doc => {
-        rules.push({ id: doc.id, ...doc.data() });
-    });
-    return rules;
+  const rulesRef = collection(db, "timeSlotRules");
+  const q = query(rulesRef, where("projectId", "==", projectId));
+  const snapshot = await getDocs(q);
+  const rules = [];
+  snapshot.forEach(doc => {
+    rules.push({ id: doc.id, ...doc.data() });
+  });
+  return rules;
 }
 
 /**
@@ -2995,34 +2996,34 @@ export async function fetchTimeSlotRules(projectId) {
  * @returns {Promise<object>}
  */
 export async function saveTimeSlotRule(ruleData) {
-    const rulesRef = collection(db, "timeSlotRules");
-    // 查詢是否已存在相同 (projectId, bookingType, inspectionMethod) 的規則
-    const q = query(
-        rulesRef,
-        where("projectId", "==", ruleData.projectId),
-        where("bookingType", "==", ruleData.bookingType),
-        where("inspectionMethod", "==", ruleData.inspectionMethod)
-    );
+  const rulesRef = collection(db, "timeSlotRules");
+  // 查詢是否已存在相同 (projectId, bookingType, inspectionMethod) 的規則
+  const q = query(
+    rulesRef,
+    where("projectId", "==", ruleData.projectId),
+    where("bookingType", "==", ruleData.bookingType),
+    where("inspectionMethod", "==", ruleData.inspectionMethod)
+  );
 
-    try {
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-            // 不存在，新增一筆
-            const docRef = await addDoc(rulesRef, { ...ruleData, createdAt: serverTimestamp() });
-            return { status: 'success', id: docRef.id };
-        } else {
-            // 已存在，更新第一筆找到的資料
-            const docId = snapshot.docs[0].id;
-            await updateDoc(doc(db, "timeSlotRules", docId), {
-                timeSlots: ruleData.timeSlots,
-                lastModified: serverTimestamp()
-            });
-            return { status: 'success', id: docId };
-        }
-    } catch (e) {
-        console.error("儲存時段規則時發生錯誤:", e);
-        return { status: 'error', message: e.message };
+  try {
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      // 不存在，新增一筆
+      const docRef = await addDoc(rulesRef, { ...ruleData, createdAt: serverTimestamp() });
+      return { status: 'success', id: docRef.id };
+    } else {
+      // 已存在，更新第一筆找到的資料
+      const docId = snapshot.docs[0].id;
+      await updateDoc(doc(db, "timeSlotRules", docId), {
+        timeSlots: ruleData.timeSlots,
+        lastModified: serverTimestamp()
+      });
+      return { status: 'success', id: docId };
     }
+  } catch (e) {
+    console.error("儲存時段規則時發生錯誤:", e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -3032,18 +3033,18 @@ export async function saveTimeSlotRule(ruleData) {
  * @returns {Promise<Array>}
  */
 export async function fetchDateCapacities(projectId, date) {
-    // 我們將每日的名額存在一個文件中，文件ID格式為 'projectId_date'
-    const docId = `${projectId}_${date}`;
-    const docRef = doc(db, "dailyCapacities", docId);
-    const docSnap = await getDoc(docRef);
+  // 我們將每日的名額存在一個文件中，文件ID格式為 'projectId_date'
+  const docId = `${projectId}_${date}`;
+  const docRef = doc(db, "dailyCapacities", docId);
+  const docSnap = await getDoc(docRef);
 
-    if (docSnap.exists()) {
-        const data = docSnap.data().slots; // { "09:00": 5, "10:00": 3 }
-        // 將其轉換回元件習慣的陣列格式
-        return Object.entries(data).map(([timeSlot, capacity]) => ({ timeSlot, capacity }));
-    } else {
-        return []; // 如果文件不存在，回傳空陣列
-    }
+  if (docSnap.exists()) {
+    const data = docSnap.data().slots; // { "09:00": 5, "10:00": 3 }
+    // 將其轉換回元件習慣的陣列格式
+    return Object.entries(data).map(([timeSlot, capacity]) => ({ timeSlot, capacity }));
+  } else {
+    return []; // 如果文件不存在，回傳空陣列
+  }
 }
 
 /**
@@ -3054,27 +3055,27 @@ export async function fetchDateCapacities(projectId, date) {
  * @returns {Promise<object>}
  */
 export async function saveDateCapacities(projectId, date, capacities) {
-    const docId = `${projectId}_${date}`;
-    const docRef = doc(db, "dailyCapacities", docId);
-    
-    // 將陣列轉換為 Firestore 中儲存的 map 格式
-    const slotsMap = capacities.reduce((acc, curr) => {
-        acc[curr.timeSlot] = Number(curr.capacity) || 0;
-        return acc;
-    }, {});
+  const docId = `${projectId}_${date}`;
+  const docRef = doc(db, "dailyCapacities", docId);
 
-    try {
-        await setDoc(docRef, {
-            projectId,
-            date,
-            slots: slotsMap,
-            lastModified: serverTimestamp()
-        }, { merge: true }); // merge:true 確保我們只更新 slots 欄位
-        return { status: 'success' };
-    } catch (e) {
-        console.error("儲存每日名額時發生錯誤:", e);
-        return { status: 'error', message: e.message };
-    }
+  // 將陣列轉換為 Firestore 中儲存的 map 格式
+  const slotsMap = capacities.reduce((acc, curr) => {
+    acc[curr.timeSlot] = Number(curr.capacity) || 0;
+    return acc;
+  }, {});
+
+  try {
+    await setDoc(docRef, {
+      projectId,
+      date,
+      slots: slotsMap,
+      lastModified: serverTimestamp()
+    }, { merge: true }); // merge:true 確保我們只更新 slots 欄位
+    return { status: 'success' };
+  } catch (e) {
+    console.error("儲存每日名額時發生錯誤:", e);
+    return { status: 'error', message: e.message };
+  }
 }
 
 /**
@@ -3210,7 +3211,7 @@ export async function fetchAllHouseholds(projectId) {
     const householdsRef = collection(db, "households");
     const q = query(householdsRef, where("projectId", "==", projectId));
     const querySnapshot = await getDocs(q);
-    
+
     const households = [];
     querySnapshot.forEach((doc) => {
       // 將 Firestore Timestamp 轉換為 JavaScript Date 物件，AG Grid 更易處理
@@ -3222,18 +3223,18 @@ export async function fetchAllHouseholds(projectId) {
         }
       });
 
-    // 為了向下相容，將資料庫中可能存為 "ON" / "OFF" 的字串轉換為布林值
-      ['initialReportUploadSwitch', 'reInspectionReportUploadSwitch', 'showInMenu'].forEach(key => { 
+      // 為了向下相容，將資料庫中可能存為 "ON" / "OFF" 的字串轉換為布林值
+      ['initialReportUploadSwitch', 'reInspectionReportUploadSwitch', 'showInMenu'].forEach(key => {
         if (formattedData[key] === 'ON') {
           formattedData[key] = true;
         } else if (formattedData[key] === 'OFF') {
           formattedData[key] = false;
         }
       });
-      
+
       households.push({
         // 將 Firestore document ID 也存起來，方便更新
-        _docId: doc.id, 
+        _docId: doc.id,
         ...formattedData
       });
     });
@@ -3253,7 +3254,7 @@ export async function fetchAllHouseholds(projectId) {
 export async function updateHouseholdData(householdDocId, dataToUpdate) {
   try {
     if (!householdDocId) throw new Error("缺少戶別文件 ID。");
-    
+
     const processedData = { ...dataToUpdate };
     const dateFields = ['initialInspectionDate', 'reInspectionDate', 'statusDate', 'appropriationDate'];
 
@@ -3289,7 +3290,7 @@ export async function batchUpdateHouseholds(updates) {
   }
 
   const batch = writeBatch(db);
-  
+
   updates.forEach(update => {
     if (update.docId && update.data) {
       const docRef = doc(db, "households", update.docId);
@@ -3316,7 +3317,7 @@ export const uploadInspectionHouseholds = async (projectId, householdsData) => {
   if (!projectId || !householdsData) {
     return { status: "error", message: "前端錯誤：缺少 projectId 或戶別資料。" };
   }
-  
+
   try {
     const uploadFunction = httpsCallable(functions, 'uploadInspectionHouseholds');
     const result = await uploadFunction({ projectId, householdsData });
@@ -3444,7 +3445,7 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
     const households = [];
     // ✓ 我們可以從 snapshot.docChanges() 中獲取更詳細的變動類型
     snapshot.docChanges().forEach((change) => {
-        // 這部分邏輯先在 Vue 元件中處理，以簡化 API
+      // 這部分邏輯先在 Vue 元件中處理，以簡化 API
     });
 
     // 為了簡化初版，我們先回傳完整資料列表
@@ -3452,7 +3453,7 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
       // 驗屋預約管理 START: 新增修改處
       const data = doc.data();
       const formattedData = { ...data };
-      
+
       // 遍歷所有可能的日期欄位
       ['initialInspectionDate', 'reInspectionDate', 'statusDate', 'appropriationDate'].forEach(key => {
         // 如果欄位存在，且是 Firestore Timestamp 物件 (可以呼叫 toDate() 方法)
@@ -3461,9 +3462,9 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
           formattedData[key] = data[key].toDate();
         }
       });
-      
+
       households.push({
-        _docId: doc.id, 
+        _docId: doc.id,
         ...formattedData // 使用處理過的資料
       });
       // 驗屋預約管理 END: 新增修改處
@@ -3528,7 +3529,7 @@ export const listenToSalesParameters = (projectId, callback) => {
     orderBy('order', 'asc')
   );
 
-  const unsubscribe = onSnapshot(q, 
+  const unsubscribe = onSnapshot(q,
     (querySnapshot) => {
 
       const parameters = [];
@@ -3598,36 +3599,36 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   const parametersQuery = query(collection(db, 'salesParameters'), where('projectId', '==', projectId));
   const householdsQuery = query(collection(db, 'salesHouseholds'), where('projectId', '==', projectId));
   //  取得同專案的所有車位資料
-  const parkingsQuery = query(collection(db, 'salesParkings'), where('projectId', '==', projectId)); 
+  const parkingsQuery = query(collection(db, 'salesParkings'), where('projectId', '==', projectId));
   const personnelQuery = query(collection(db, 'salesPersonnel'), where('projectId', '==', projectId));
 
- let combinedData = {
+  let combinedData = {
     project: null,
     parameters: [],
     households: [],
     parkings: [],
     personnel: [] // ✓ 新增 personnel 屬性
   };
-  
+
   let projectLoaded = false;
   let paramsLoaded = false;
   let householdsLoaded = false;
-  let parkingsLoaded = false; 
+  let parkingsLoaded = false;
   let personnelLoaded = false; // ✓ 新增 personnel 載入旗標
 
-const checkAndEmitData = () => {
+  const checkAndEmitData = () => {
     // ✓ 修改：確保 personnelLoaded 也為 true
     if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded && personnelLoaded) {
       onDataChange(combinedData);
     }
   };
-  
+
   const unsubProject = onSnapshot(projectDocRef, (docSnap) => {
     if (docSnap.exists()) {
       combinedData.project = docSnap.data();
     } else {
       console.warn(`[API] 找不到專案文件: ${projectId}`);
-      combinedData.project = {}; 
+      combinedData.project = {};
     }
     projectLoaded = true;
     checkAndEmitData();
@@ -3665,7 +3666,7 @@ const checkAndEmitData = () => {
     unsubProject();
     unsubParams();
     unsubHouseholds();
-    unsubParkings(); 
+    unsubParkings();
     unsubPersonnel(); // ✓ 確保停止 personnel 監聽
   };
 };
@@ -3681,7 +3682,7 @@ export const uploadParkingLots = async (projectId, parkingData) => {
   if (!projectId || !parkingData) {
     return { status: "error", message: "前端錯誤：缺少 projectId 或車位資料。" };
   }
-  
+
   try {
     const uploadFunction = httpsCallable(functions, 'uploadParkingLots');
     const result = await uploadFunction({ projectId, parkingData });
@@ -3705,7 +3706,7 @@ export const uploadHouseholds = async (projectId, householdsData) => {
   if (!projectId || !householdsData) {
     return { status: "error", message: "前端錯誤：缺少 projectId 或戶別資料。" };
   }
-  
+
   try {
     const uploadFunction = httpsCallable(functions, 'uploadHouseholds');
     const result = await uploadFunction({ projectId, householdsData });
@@ -3774,7 +3775,7 @@ export const uploadSalesImage = async (storagePath, fileName, fileBase64, projec
 
     const result = await uploader(payload);
     if (result.data.status === 'success') {
-      return result.data; 
+      return result.data;
     } else {
       throw new Error(result.data.message || 'Cloud Function 回報錯誤');
     }
@@ -3807,7 +3808,7 @@ export const deleteSalesImage = async (docId, storagePath) => {
   if (!docId || !storagePath) {
     throw new Error('缺少 docId 或 storagePath，無法刪除圖片。');
   }
-  
+
   try {
     const deleter = httpsCallable(functions, 'handleSalesImageDelete');
     const result = await deleter({ docId, storagePath });
@@ -3857,7 +3858,7 @@ export async function checkInToSystem(projectId, system, userKey, userName) {
  * @param {boolean} setupOnDisconnect 是否設定離線時自動移除
  */
 export async function setUserOnlineStatus(userKey, userName, projectId, system, setupOnDisconnect = false) {
-  if (!userKey) return; 
+  if (!userKey) return;
   const presenceRef = dbRef(rtdb, `onlineStatus/${userKey}`);
   const statusPayload = {
     userId: userKey,
@@ -3894,7 +3895,7 @@ export async function goOnline(userKey, userName, projectId, system) {
 
   // onDisconnect 必須在 set() 之前設定，確保不會有遺漏
   await onDisconnect(presenceRef).remove();
-  
+
   // 將使用者狀態寫入 RTDB
   await set(presenceRef, statusPayload);
 }
@@ -3952,15 +3953,15 @@ export const goOffline = (userKey) => {
   console.log(`>>> API goOffline: Attempting RTDB set for ${userKey}... <<<`);
   // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
   return set(userStatusRef, offlineStatus).then(() => {
-      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
-      console.log(`>>> API goOffline: RTDB set SUCCESS for ${userKey}. <<<`);
-      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+    // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+    console.log(`>>> API goOffline: RTDB set SUCCESS for ${userKey}. <<<`);
+    // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
   }).catch(error => {
-      // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
-      console.error(`>>> API goOffline: RTDB set FAILED for ${userKey}:`, error);
-      // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
-      // 選擇是否重新拋出錯誤，目前 userStore 會捕獲
-      // throw error;
+    // **** 👇👇👇 在這裡加入 Log 👇👇👇 ****
+    console.error(`>>> API goOffline: RTDB set FAILED for ${userKey}:`, error);
+    // **** 👆👆👆 加入 Log 結束 👆👆👆 ****
+    // 選擇是否重新拋出錯誤，目前 userStore 會捕獲
+    // throw error;
   });
 };
 
@@ -3971,7 +3972,7 @@ export const goOffline = (userKey) => {
  * @param {string} searchText 
  * @returns {Promise<object>}
  */
- // 替換舊的 searchAppointments 函式
+// 替換舊的 searchAppointments 函式
 export async function searchAppointments(projectId, searchText) {
   try {
     const searchFunction = httpsCallable(functions, 'handleAppointmentSearch');
@@ -4043,15 +4044,15 @@ export async function deleteBackupJob(jobId) {
  * @returns {Promise<object>}
  */
 export async function triggerBackupJob(jobId, jobConfig) {
-    try {
-        const runBackupJob = httpsCallable(functions, 'runBackupJob');
-        const result = await runBackupJob({ jobId, jobConfig });
-        return result.data;
-    } catch (error) {
-        console.error(`觸發備份任務 (Job ID: ${jobId}) 時發生錯誤:`, error);
-        // 將 HttpsError 轉換為前端可用的格式
-        return { status: 'error', message: error.message };
-    }
+  try {
+    const runBackupJob = httpsCallable(functions, 'runBackupJob');
+    const result = await runBackupJob({ jobId, jobConfig });
+    return result.data;
+  } catch (error) {
+    console.error(`觸發備份任務 (Job ID: ${jobId}) 時發生錯誤:`, error);
+    // 將 HttpsError 轉換為前端可用的格式
+    return { status: 'error', message: error.message };
+  }
 }
 //  END: 新增備份任務管理 API
 
@@ -4077,13 +4078,13 @@ export async function fetchFirestoreCollections() {
 
 //  新增觸發刪除的 API
 export async function triggerDeleteJob(jobId, jobConfig, isDryRun) {
-    try {
-        const runDeleteJob = httpsCallable(functions, 'runDeleteJob');
-        const result = await runDeleteJob({ jobId, jobConfig, isDryRun });
-        return result.data;
-    } catch (error) {
-        return { status: 'error', message: error.message };
-    }
+  try {
+    const runDeleteJob = httpsCallable(functions, 'runDeleteJob');
+    const result = await runDeleteJob({ jobId, jobConfig, isDryRun });
+    return result.data;
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
 }
 
 //  START: 新增備份檔案瀏覽 API
@@ -4245,7 +4246,7 @@ export const uploadSalesSvgViaFunction = async (storagePath, fileName, fileBase6
       fileBase64,
       storagePath,
     });
-    
+
     if (result.data.status === 'success') {
       return result.data; // 回傳 { downloadURL, storagePath }
     } else {
@@ -4275,20 +4276,20 @@ export const setSalesSvgMetadata = async (docId, metadata) => {
  * @returns {Promise<void>}
  */
 export const deleteSalesSvgViaFunction = async (docId, storagePath) => {
-    if (!docId || !storagePath) {
-        throw new Error('缺少 docId 或 storagePath，無法刪除 SVG。');
+  if (!docId || !storagePath) {
+    throw new Error('缺少 docId 或 storagePath，無法刪除 SVG。');
+  }
+  try {
+    // 注意：我們將在下一步為 SVG 建立一個專用的刪除 Cloud Function
+    const deleter = httpsCallable(functions, 'handleSalesSvgDelete');
+    const result = await deleter({ docId, storagePath });
+    if (result.data.status !== 'success') {
+      throw new Error(result.data.message || 'Cloud Function 回報 SVG 刪除錯誤');
     }
-    try {
-        // 注意：我們將在下一步為 SVG 建立一個專用的刪除 Cloud Function
-        const deleter = httpsCallable(functions, 'handleSalesSvgDelete');
-        const result = await deleter({ docId, storagePath });
-        if (result.data.status !== 'success') {
-            throw new Error(result.data.message || 'Cloud Function 回報 SVG 刪除錯誤');
-        }
-    } catch (error) {
-        console.error("呼叫 SVG 刪除雲端函式時發生錯誤:", error);
-        throw new Error(error.message || "代理刪除 SVG 失敗");
-    }
+  } catch (error) {
+    console.error("呼叫 SVG 刪除雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "代理刪除 SVG 失敗");
+  }
 };
 
 /**
@@ -4300,14 +4301,14 @@ export async function getUniqueSvgBuildings(projectId) {
   const svgRef = collection(db, "salesSVGs");
   const q = query(svgRef, where("projectId", "==", projectId));
   const snapshot = await getDocs(q);
-  
+
   const buildings = new Set();
   snapshot.forEach(doc => {
     if (doc.data().building) {
       buildings.add(doc.data().building);
     }
   });
-  
+
   return Array.from(buildings).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 }
 
@@ -4350,7 +4351,7 @@ export const batchDeleteSalesSvgsViaFunction = async (svgsToDelete) => {
     const batchDeleter = httpsCallable(functions, 'handleSalesSvgBatchDelete');
     const result = await batchDeleter({ svgsToDelete });
     // 直接回傳後端的完整結果，讓前端可以根據 status 決定提示訊息
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error("呼叫 SVG 批次刪除雲端函式時發生錯誤:", error);
     throw new Error(error.message || "代理批次刪除 SVG 失敗");
@@ -4424,7 +4425,7 @@ export const listenToSalesPersonnel = (projectId, onDataChange) => {
     collection(db, "salesPersonnel"),
     where("projectId", "==", projectId),
     // ✅ [修改] 改為先依 order 排序，再依 name 排序
-    orderBy("order", "asc"), 
+    orderBy("order", "asc"),
     orderBy("name", "asc")
   );
 
@@ -4672,21 +4673,21 @@ export async function updateSystemFunction(functionData) {
  */
 export async function updateAppointmentInspectors(appointmentId, inspectors) {
   if (!appointmentId) throw new Error("缺少預約 ID。");
-  
+
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'updateAppointmentInspectors',
-        data: {
-            appointmentId,
-            inspectors
-        }
+      action: 'updateAppointmentInspectors',
+      data: {
+        appointmentId,
+        inspectors
+      }
     });
     // 修改：後端路由會直接回傳 { status }
     return result.data;
   } catch (e) {
-      console.error("API updateAppointmentInspectors 錯誤:", e);
-      throw new Error(e.message || '更新驗屋人員失敗');
+    console.error("API updateAppointmentInspectors 錯誤:", e);
+    throw new Error(e.message || '更新驗屋人員失敗');
   }
 }
 
@@ -4698,12 +4699,12 @@ export async function updateAppointmentInspectors(appointmentId, inspectors) {
  */
 export async function fetchAllHouseholdsForProject(projectId) {
   if (!projectId) return [];
-  
+
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'fetchAllHouseholds',
-        data: { projectId }
+      action: 'fetchAllHouseholds',
+      data: { projectId }
     });
     // 修改：後端路由會直接回傳陣列
     return result.data;
@@ -4722,18 +4723,18 @@ export async function fetchAllHouseholdsForProject(projectId) {
  * @returns {Promise<Array<string>>}
  */
 export async function getSlotsForAdmin(projectId, dateStr) {
-    try {
-        // 修改：呼叫 adminBookingApiRouter
-        const result = await adminBookingApiRouter({
-            action: 'getSlotsForAdmin',
-            data: { projectId, dateStr }
-        });
-        // 修改：後端路由會直接回傳 slots 陣列
-        return result.data;
-    } catch (error) {
-        console.error("獲取管理員時段選項時發生錯誤:", error);
-        throw new Error(error.message);
-    }
+  try {
+    // 修改：呼叫 adminBookingApiRouter
+    const result = await adminBookingApiRouter({
+      action: 'getSlotsForAdmin',
+      data: { projectId, dateStr }
+    });
+    // 修改：後端路由會直接回傳 slots 陣列
+    return result.data;
+  } catch (error) {
+    console.error("獲取管理員時段選項時發生錯誤:", error);
+    throw new Error(error.message);
+  }
 }
 
 
@@ -4744,8 +4745,8 @@ export async function fetchBuildingListForUpload(projectId) {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getBuildingsForUpload',
-        data: { projectId: projectId }
+      action: 'getBuildingsForUpload',
+      data: { projectId: projectId }
     });
     // 修改：後端路由會直接回傳 { status, data }
     return result.data;
@@ -4762,12 +4763,12 @@ export async function fetchAllUnitsForUpload(projectId) {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'getAllUnitsForUpload',
-        data: { projectId: projectId }
+      action: 'getAllUnitsForUpload',
+      data: { projectId: projectId }
     });
     // 修改：後端路由會直接回傳 { status, data }
     return result.data;
-  } catch (error) { 
+  } catch (error) {
     console.error("API fetchAllUnitsForUpload 呼叫錯誤:", error);
     return { status: 'error', message: error.message };
   }
@@ -4785,12 +4786,12 @@ export async function searchAppointmentsAndHouseholds(projectId, keyword) {
   if (!projectId || !keyword) {
     return { status: 'error', message: '缺少 projectId 或 keyword' };
   }
-  
+
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'searchAppointmentsAndHouseholds',
-        data: { projectId, keyword }
+      action: 'searchAppointmentsAndHouseholds',
+      data: { projectId, keyword }
     });
 
     if (result.data.status === 'success') {
@@ -4817,7 +4818,7 @@ export async function fetchUserPreferencesFromBackend(userKey) {
     // 修正：使用 Firestore v9 的語法
     const userDocRef = doc(db, 'users', userKey);
     const userDoc = await getDoc(userDocRef);
-    
+
     if (userDoc.exists()) {
       const userData = userDoc.data();
       return userData.preferences || {};
@@ -4837,8 +4838,8 @@ export async function initiateAuthSigningProcess(payload) {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'initiateAuthSigningProcess',
-        data: payload
+      action: 'initiateAuthSigningProcess',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, message }
     return result.data;
@@ -4888,8 +4889,8 @@ export const verifyUploadPrerequisites = async (payload) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
-        action: 'verifyUploadPrerequisites',
-        data: payload
+      action: 'verifyUploadPrerequisites',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, ... }
     return result.data;
@@ -4959,8 +4960,7 @@ export const checkLineBindingStatus = async (payload) => {
     const checkFunction = httpsCallable(functions, 'checkLineBindingStatus');
     const result = await checkFunction(payload);
     return result.data;
-  } catch (error)
- {
+  } catch (error) {
     console.error("API Error in checkLineBindingStatus:", error);
     throw new Error(error.message);
   }
@@ -5015,8 +5015,8 @@ export const getLiffUserData = async (payload) => {
   try {
     //  修改：呼叫 liffCalendarApiRouter
     const result = await liffCalendarApiRouter({
-        action: 'getLiffUserData', //  對應後端的 action
-        data: payload
+      action: 'getLiffUserData', //  對應後端的 action
+      data: payload
     });
     return result.data;
   } catch (error) {
@@ -5038,8 +5038,8 @@ export const liffSearchAppointments = async (payload) => {
   try {
     //  修改：呼叫 liffCalendarApiRouter
     const result = await liffCalendarApiRouter({
-        action: 'liffSearchAppointments', //  呼叫優化版的 action
-        data: payload
+      action: 'liffSearchAppointments', //  呼叫優化版的 action
+      data: payload
     });
     return result.data;
   } catch (error) {
@@ -5062,8 +5062,8 @@ export const getAllLiffAppointmentsForProject = async (payload) => {
   try {
     //  修改：呼叫 liffCalendarApiRouter
     const result = await liffCalendarApiRouter({
-        action: 'getAllLiffAppointmentsForProject', //  對應後端的 action
-        data: payload
+      action: 'getAllLiffAppointmentsForProject', //  對應後端的 action
+      data: payload
     });
     return result.data;
   } catch (error) {
@@ -5083,8 +5083,8 @@ export const getLiffCalendarDataForDay = async (payload) => {
   try {
     //  修改：呼叫 liffCalendarApiRouter
     const result = await liffCalendarApiRouter({
-        action: 'getLiffCalendarDataForDay', //  呼叫優化版的 action
-        data: payload
+      action: 'getLiffCalendarDataForDay', //  呼叫優化版的 action
+      data: payload
     });
     return result.data;
   } catch (error) {
@@ -5102,11 +5102,11 @@ export const getLiffCalendarDataForDay = async (payload) => {
  */
 export async function fetchAllHouseholdsForLiff(projectId) {
   if (!projectId) return [];
-  
+
   try {
     const result = await liffCalendarApiRouter({
-        action: 'fetchAllHouseholds', //  對應後端的 action
-        data: { projectId }
+      action: 'fetchAllHouseholds', //  對應後端的 action
+      data: { projectId }
     });
     return result.data; // 後端直接回傳陣列
   } catch (e) {
@@ -5148,8 +5148,8 @@ export const searchHouseholdsForAdmin = async (payload) => {
   try {
     // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
-        action: 'searchHouseholdsForAdmin',
-        data: payload
+      action: 'searchHouseholdsForAdmin',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, data }
     return result.data;
@@ -5169,8 +5169,8 @@ export const getProjectBatchDetails = async (payload) => {
   try {
     // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
-        action: 'getProjectBatchDetails',
-        data: payload
+      action: 'getProjectBatchDetails',
+      data: payload
     });
     // 修改：後端路由會直接回傳 data 物件 (或拋錯)
     return result.data;
@@ -5190,8 +5190,8 @@ export const getAdminBookingCalendarData = async (payload) => {
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
-        action: 'getAdminBookingCalendarData',
-        data: payload
+      action: 'getAdminBookingCalendarData',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, data }
     return result.data;
@@ -5211,8 +5211,8 @@ export const getAppointmentsForHousehold = async (payload) => {
   try {
     // 修改：呼叫 adminBookingApiRouter
     const result = await adminBookingApiRouter({
-        action: 'getAppointmentsForHousehold',
-        data: payload
+      action: 'getAppointmentsForHousehold',
+      data: payload
     });
     // 修改：後端路由會直接回傳 { status, data }
     return result.data;
@@ -5341,8 +5341,8 @@ export async function fetchInspectionAdminProjects(userKey) {
           // ❗ 權限檢查: Admin 是否應看到所有建案，或只限有'驗屋系統'權限的?
           // 這裡暫時假設 Admin 需要有 '驗屋系統' 權限才能管理
           if (projectData?.systems && Array.isArray(projectData.systems) && projectData.systems.includes('驗屋系統')) {
-             allowedProjects.push({ id: projectId, name: projectData.projectName });
-           }
+            allowedProjects.push({ id: projectId, name: projectData.projectName });
+          }
         }
         allowedProjects.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
         console.log('API: Fetched Accessible Projects (Inspection Admin):', allowedProjects);
@@ -5383,11 +5383,11 @@ export async function fetchBuildingsForProject(projectId) {
 
     const buildings = querySnapshot.docs.map(doc => {
       console.log(`API: fetchBuildingsForProject - Processing doc ${doc.id}, data:`, doc.data());
-       return {
-         id: doc.id,
-         // ❗ 請再次確認❗ 棟別名稱欄位是否【確實】是 'buildingName'？
-         name: doc.data().buildingName
-       }
+      return {
+        id: doc.id,
+        // ❗ 請再次確認❗ 棟別名稱欄位是否【確實】是 'buildingName'？
+        name: doc.data().buildingName
+      }
     }).filter(b => b.name); // 過濾掉 name 無效的
 
     console.log(`API: Fetched Buildings for ${projectId} (processed):`, JSON.parse(JSON.stringify(buildings)))
@@ -5687,7 +5687,7 @@ export const updateProjectIcon = async (projectId, iconUrl, adminKey) => {
   if (!adminKey) throw new Error('缺少管理者金鑰');
 
   const projectDocRef = doc(db, 'projects', projectId);
-  
+
   try {
     await updateDoc(projectDocRef, {
       iconUrl: iconUrl
@@ -5753,17 +5753,17 @@ export async function getInspectionRecordsForProjectFB(projectId) {
   try {
     // 依照您的風格，在函式內部建立 httpsCallable 引用
     const getFunction = httpsCallable(functions, 'getInspectionRecordsForProjectFB');
-    
+
     // 呼叫後端函式
     const result = await getFunction({ projectId });
-    
+
     // 直接回傳後端的 { status, data }
-    return result.data; 
+    return result.data;
 
   } catch (error) {
     console.error("API getInspectionRecordsForProjectFB 錯誤:", error);
     // 參照 getInspectionRecordsFB 的錯誤處理
-    return { status: "error", message: error.message, data: [] }; 
+    return { status: "error", message: error.message, data: [] };
   }
 }
 
@@ -6007,10 +6007,10 @@ export async function uploadInspectionPhotoFB(projectId, unitId, fileObject) {
   try {
     // 1. 將 File 物件轉為 Base64 (移除 dataURL 前綴)
     const base64Content = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(fileObject);
-        reader.onload = () => resolve(reader.result.toString().split(',')[1]);
-        reader.onerror = error => reject(error);
+      const reader = new FileReader();
+      reader.readAsDataURL(fileObject);
+      reader.onload = () => resolve(reader.result.toString().split(',')[1]);
+      reader.onerror = error => reject(error);
     });
 
     // 2. 呼叫 Cloud Function
@@ -6220,10 +6220,10 @@ export const fetchPotentialPersonnelAPI = async (projectId) => {
       // 條件修改：檢查 projectPerm 是否存在，userName 是否存在，
       //   以及 projectPerm.systems 是否包含所需權限
       if (projectPerm && userName && Array.isArray(projectPerm.systems)) {
-         console.log(`[API fetchPotentialPersonnelAPI] Checking systems for ${userName}:`, projectPerm.systems);
-        if (projectPerm.systems.includes('銷售StandBy') ) {
-           personnel.push({ id: doc.id, name: userName }); // ✓ 使用從頂層讀取的 userName
-           console.log(`[API fetchPotentialPersonnelAPI] Added: ${userName}`);
+        console.log(`[API fetchPotentialPersonnelAPI] Checking systems for ${userName}:`, projectPerm.systems);
+        if (projectPerm.systems.includes('銷售StandBy')) {
+          personnel.push({ id: doc.id, name: userName }); // ✓ 使用從頂層讀取的 userName
+          console.log(`[API fetchPotentialPersonnelAPI] Added: ${userName}`);
         }
       }
     });
@@ -6262,7 +6262,7 @@ export const fetchStandbyConfigAPI = async (projectId) => {
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      
+
       // ✅ [核心修正]
       // 使用預設值打底，並用 Firestore 的資料覆蓋
       // 這樣能確保 'alertThresholdMinutes' 總是存在
@@ -6292,21 +6292,21 @@ export const saveStandbyConfigAPI = async (projectId, configObject) => {
   if (!projectId) {
     return { status: 'error', message: '缺少 projectId' };
   }
-  
+
   // 驗證 configObject
   if (!configObject || typeof configObject !== 'object' || Array.isArray(configObject)) {
-     return { status: 'error', message: '無效的設定資料 (configObject)' };
+    return { status: 'error', message: '無效的設定資料 (configObject)' };
   }
 
   try {
     const configDocRef = doc(db, "standbyConfig", projectId);
-    
+
     // ✅ [核心修改] 
     // 將傳入的 configObject 完整儲存
     // 並總是覆蓋/新增 updatedAt 時間戳
     await setDoc(configDocRef, {
       ...configObject, // 展開 configObject (包含 visiblePersonnelIds, colors, alertThresholdMinutes)
-      updatedAt: serverTimestamp() 
+      updatedAt: serverTimestamp()
     }, { merge: true }); // merge: true 確保安全更新
 
     return { status: 'success' };
@@ -6329,7 +6329,7 @@ export const updateStandbyStatusAPI = async (projectId, personnelId, updates) =>
     // 將 rtdbServerTimestamp() 轉換為字串 'serverTimestamp' 傳給後端
     const finalUpdates = { ...updates };
     if (finalUpdates.currentStatusStartTime === rtdbServerTimestamp()) {
-        finalUpdates.currentStatusStartTime = 'serverTimestamp';
+      finalUpdates.currentStatusStartTime = 'serverTimestamp';
     }
     const result = await updateFunction({ projectId, personnelId, updates: finalUpdates });
     return result.data;
@@ -6369,12 +6369,12 @@ export const updateStandbyBatchAPI = async (projectId, updates) => {
     // 檢查 updates 物件中是否有 rtdbServerTimestamp()，並替換為 'serverTimestamp'
     const processedUpdates = {};
     for (const path in updates) {
-        const value = updates[path];
-        if (value === rtdbServerTimestamp()) {
-            processedUpdates[path] = 'serverTimestamp';
-        } else {
-            processedUpdates[path] = value;
-        }
+      const value = updates[path];
+      if (value === rtdbServerTimestamp()) {
+        processedUpdates[path] = 'serverTimestamp';
+      } else {
+        processedUpdates[path] = value;
+      }
     }
     const result = await updateFunction({ projectId, updates: processedUpdates });
     return result.data;
@@ -6412,7 +6412,7 @@ export const fetchStandbyScreenshotsAPI = async (projectId) => { // 新增函數
   try {
     const fetchFunction = httpsCallable(functions, 'fetchStandbyScreenshots');
     const result = await fetchFunction({ projectId });
-    
+
     // Cloud Function 回傳 { status: "success", screenshots: [...] }
     if (result.data.status === 'success') {
       return result.data.screenshots; // 直接回傳陣列
@@ -6522,9 +6522,9 @@ export async function deleteFloorPlanAPI(floorPlanId) { // 稍微改名避免衝
  * @param {string} projectId - 專案 ID
  * @returns {Promise<object>} - { status, message }
  */
-export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) { 
+export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) {
   const functionName = `saveSpotLayoutsAPI (via CF)`;
-  
+
   // START: 請加入這個 console.log
   console.log(`[API] 準備呼叫 Cloud Function 'saveSpotLayouts'，Payload 內容：`, JSON.stringify({ floorPlanId, layouts, projectId }, null, 2));
   // END: 加入 console.log
@@ -6532,7 +6532,7 @@ export async function saveSpotLayoutsAPI(floorPlanId, layouts, projectId) {
   try {
     const saveFunction = httpsCallable(functions, 'saveSpotLayouts'); // ✓ 呼叫後端函式
     const result = await saveFunction({ floorPlanId, layouts, projectId });
-    
+
     console.log(`[${functionName}] Cloud Function 回應:`, result.data);
     return result.data; // 直接回傳後端的 { status, message }
 
@@ -6681,10 +6681,10 @@ export const deleteAttachmentImage = async (storagePath) => {
 export const fetchUserManagementInitialData = async (adminKey) => {
   const functionName = 'fetchUserManagementInitialData'; // 用於 Log
   if (!adminKey) {
-      // 可以選擇拋出錯誤或返回錯誤狀態
-      console.error(`[${functionName}] 錯誤：缺少 adminKey。`);
-      return { status: "error", message: "缺少管理者金鑰" };
-      // throw new Error("缺少管理者金鑰");
+    // 可以選擇拋出錯誤或返回錯誤狀態
+    console.error(`[${functionName}] 錯誤：缺少 adminKey。`);
+    return { status: "error", message: "缺少管理者金鑰" };
+    // throw new Error("缺少管理者金鑰");
   }
   try {
     const getterFunction = httpsCallable(functions, 'getUserManagementInitialData'); // ✓ 對應後端函數名稱
@@ -6711,11 +6711,11 @@ export const fetchUserManagementInitialData = async (adminKey) => {
 export async function liffFetchBookingOptions(projectId) {
   try {
     const result = await liffCalendarApiRouter({
-        action: 'fetchBookingOptions',
-        data: { projectId }
+      action: 'fetchBookingOptions',
+      data: { projectId }
     });
     // 後端 _handleFetchBookingOptions 會直接回傳 { inspectionMethods, ... }
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error(`LIFF 獲取預約選項時發生錯誤 (Project ID: ${projectId}):`, error);
     throw new Error(error.message || '獲取預約選項失敗');
@@ -6726,19 +6726,19 @@ export async function liffFetchBookingOptions(projectId) {
  * [LIFF用] 更新預約紀錄
  * (V2: 呼叫 liffCalendarApi 路由)
  */
-export async function liffUpdateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) { 
+export async function liffUpdateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) {
   try {
     const result = await liffCalendarApiRouter({
-        action: 'updateAppointment',
-        data: {
-          appointmentId,
-          bookingPayload: bookingUpdatePayload,
-          householdDocId,
-          householdPayload: householdUpdatePayload,
-          force: force 
-        }
+      action: 'updateAppointment',
+      data: {
+        appointmentId,
+        bookingPayload: bookingUpdatePayload,
+        householdDocId,
+        householdPayload: householdUpdatePayload,
+        force: force
+      }
     });
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error("API liffUpdateAppointment 錯誤:", error);
     throw new Error(error.message);
@@ -6753,16 +6753,16 @@ export async function liffCancelAppointment(appointmentId, projectId, unitId, bo
   if (!appointmentId || !projectId || !unitId || !bookingType) {
     return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
   }
-  
+
   try {
     const result = await liffCalendarApiRouter({
-        action: 'cancelAppointment',
-        data: {
-          appointmentId,
-          projectId,
-          unitId,
-          bookingType
-        }
+      action: 'cancelAppointment',
+      data: {
+        appointmentId,
+        projectId,
+        unitId,
+        bookingType
+      }
     });
     return result.data;
   } catch (error) {
@@ -6777,19 +6777,19 @@ export async function liffCancelAppointment(appointmentId, projectId, unitId, bo
  */
 export async function liffUpdateAppointmentInspectors(appointmentId, inspectors) {
   if (!appointmentId) throw new Error("缺少預約 ID。");
-  
+
   try {
     const result = await liffCalendarApiRouter({
-        action: 'updateAppointmentInspectors',
-        data: {
-            appointmentId,
-            inspectors
-        }
+      action: 'updateAppointmentInspectors',
+      data: {
+        appointmentId,
+        inspectors
+      }
     });
     return result.data;
   } catch (e) {
-      console.error("API liffUpdateAppointmentInspectors 錯誤:", e);
-      throw new Error(e.message || '更新驗屋人員失敗');
+    console.error("API liffUpdateAppointmentInspectors 錯誤:", e);
+    throw new Error(e.message || '更新驗屋人員失敗');
   }
 }
 
@@ -6802,8 +6802,8 @@ export async function liffUpdateAppointmentInspectors(appointmentId, inspectors)
 export const liffGetAdminBookingCalendarData = async (payload) => {
   try {
     const result = await liffCalendarApiRouter({
-        action: 'getAdminBookingCalendarData',
-        data: payload
+      action: 'getAdminBookingCalendarData',
+      data: payload
     });
     return result.data;
   } catch (error) {
@@ -6823,13 +6823,13 @@ export async function saveQuotationTemplate(projectId, templateData) {
   if (!projectId || !templateData) {
     return { status: 'error', message: '前端錯誤：缺少 projectId 或 templateData' };
   }
-  
+
   try {
     // ✅ [打勾] 修正：移除 'data:' 包裝，直接擴展
     const result = await salesApiRouter({
-        action: 'saveQuotationTemplate',
-        projectId, 
-        templateData 
+      action: 'saveQuotationTemplate',
+      projectId,
+      templateData
     });
     return result.data;
   } catch (error) {
@@ -6849,12 +6849,12 @@ export async function loadQuotationTemplate(projectId) {
   if (!projectId) {
     return { status: 'error', message: '前端錯誤：缺少 projectId' };
   }
-  
+
   try {
     // ✅ [打勾] 修正：移除 'data:' 包裝
     const result = await salesApiRouter({
-        action: 'loadQuotationTemplate',
-        projectId // 直接傳遞
+      action: 'loadQuotationTemplate',
+      projectId // 直接傳遞
     });
     return result.data;
   } catch (error) {
@@ -6894,17 +6894,17 @@ export const exportSheetToPdf = async (payload) => {
  */
 export const fetchCustomerSettings = async (projectId) => {
   if (!projectId) return null;
-  
+
   try {
     // ✓ MUX: 呼叫 customerApiRouter
     const result = await customerApiRouter({
-        action: 'fetchCustomerSettings',
-        data: { projectId } // ✓ 將 projectId 包在 data 內
+      action: 'fetchCustomerSettings',
+      data: { projectId } // ✓ 將 projectId 包在 data 內
     });
-    
+
     // ✓ MUX: onCall 的回傳資料在 result.data
-    return result.data; 
-    
+    return result.data;
+
   } catch (error) {
     console.error(`[api.js] 獲取客資系統設定時發生錯誤 (Project: ${projectId}):`, error);
     throw error; // 拋出錯誤讓 .vue 檔案捕捉
@@ -6921,20 +6921,20 @@ export const saveCustomerSettings = async (projectId, settingsData) => {
   if (!projectId || !settingsData) {
     throw new Error("缺少 projectId 或 settingsData");
   }
-  
+
   try {
     // ✓ MUX: 呼叫 customerApiRouter
     const result = await customerApiRouter({
-        action: 'saveCustomerSettings',
-        data: { 
-            projectId, 
-            settingsData // ✓ 將 projectId 和 settingsData 都包在 data 內
-        }
+      action: 'saveCustomerSettings',
+      data: {
+        projectId,
+        settingsData // ✓ 將 projectId 和 settingsData 都包在 data 內
+      }
     });
-    
+
     // ✓ MUX: onCall 的回傳資料在 result.data
-    return result.data; 
-    
+    return result.data;
+
   } catch (error) {
     console.error(`[api.js] 儲存客資系統設定時發生錯誤 (Project: ${projectId}):`, error);
     throw error; // 拋出錯誤讓 .vue 檔案捕捉
@@ -6958,12 +6958,12 @@ export const fetchVipFormSettings = async (projectId) => {
   if (!projectId) {
     return { status: 'error', message: '缺少 projectId' };
   }
-  
+
   try {
     // ✓ 修改：呼叫 vipFormApiRouter
     const result = await vipFormApiRouter({
-        action: 'fetchVipFormSettings',
-        data: { projectId }
+      action: 'fetchVipFormSettings',
+      data: { projectId }
     });
     return result.data; // 直接回傳後端的 { status, ... }
   } catch (error) {
@@ -6980,12 +6980,12 @@ export const submitVipForm = async (projectId, formData) => {
   if (!projectId || !formData) {
     return { status: 'error', message: '缺少 projectId 或 formData' };
   }
-  
+
   try {
     // ✓ 修改：呼叫 vipFormApiRouter
     const result = await vipFormApiRouter({
-        action: 'submitVipForm',
-        data: { projectId, formData }
+      action: 'submitVipForm',
+      data: { projectId, formData }
     });
     return result.data; // 直接回傳後端的 { status, docId }
   } catch (error) {
@@ -7032,7 +7032,7 @@ export const fetchVipGuests = async (projectId) => {
     // result.data 是一個陣列 [ { id, name, phone, createdAt: {_seconds: ...} } ]
     const guests = result.data.map(guest => {
       let convertedDate = null;
-      
+
       // 檢查是否為 CF 回傳的序列化 Timestamp
       if (guest.createdAt && typeof guest.createdAt === 'object' && guest.createdAt._seconds !== undefined) {
         // 轉換序列化的 Timestamp (from Cloud Function) 為 Client-side Date 物件
@@ -7041,13 +7041,13 @@ export const fetchVipGuests = async (projectId) => {
         // 備用方案 (如果它意外地是其他格式，例如 ISO 字串)
         convertedDate = new Date(guest.createdAt);
       }
-      
+
       return {
         ...guest,
         createdAt: convertedDate // ✓ 覆蓋為 Date 物件
       };
     });
-    
+
     return guests; // ✓ 回傳轉換後的陣列
     // ✓ END: 轉換
 
@@ -7116,13 +7116,13 @@ export const fetchCustomerList = async (projectId, userPhone, userProjectSystems
   if (!projectId || !userPhone || !userProjectSystems) {
     return [];
   }
-  
+
   try {
     const result = await customerApiRouter({
-        action: 'fetchCustomerList',
-        data: { projectId, userPhone, userProjectSystems }
+      action: 'fetchCustomerList',
+      data: { projectId, userPhone, userProjectSystems }
     });
-    
+
     // 如果後端拋出錯誤，這裡會直接進入 catch
     if (!result.data || !Array.isArray(result.data)) return [];
 
@@ -7144,7 +7144,7 @@ export const fetchCustomerList = async (projectId, userPhone, userProjectSystems
         submittedAt: subDate
       };
     });
-    
+
   } catch (error) {
     console.error(`[api.js] 獲取客戶列表時發生錯誤:`, error);
     // 💡 ANXI 提醒：若錯誤訊息包含 "toDate is not a function"，
@@ -7217,13 +7217,13 @@ export const updateInteractionLog = async (projectId, docId, logId, logPayload, 
     // ✅ 改用統一的路由函式呼叫，避免 NOT_FOUND 錯誤
     const result = await customerApiRouter({
       action: 'updateInteractionLog',
-      data: { 
-        projectId, 
-        docId, 
-        logId, 
-        logPayload, 
-        operatorName, 
-        operatorPhone 
+      data: {
+        projectId,
+        docId,
+        logId,
+        logPayload,
+        operatorName,
+        operatorPhone
       }
     });
     return result.data;
@@ -7274,19 +7274,19 @@ export const fetchCustomersForExport = async (projectId, userPhone, userProjectS
   if (!projectId || !userPhone || !userProjectSystems) {
     return [];
   }
-  
+
   try {
     const result = await customerApiRouter({
-        action: 'fetchCustomersForExport', // 對應後端新路由
-        data: { 
-            projectId, 
-            userPhone, 
-            userProjectSystems 
-        }
+      action: 'fetchCustomersForExport', // 對應後端新路由
+      data: {
+        projectId,
+        userPhone,
+        userProjectSystems
+      }
     });
-    
+
     return result.data;
-    
+
   } catch (error) {
     console.error(`[api.js] 匯出客戶列表失敗:`, error);
     throw error;
@@ -7299,13 +7299,13 @@ export const fetchCustomersForExport = async (projectId, userPhone, userProjectS
  */
 export const updateProjectSheetSettings = async (projectId, sheetId, tabName) => {
   if (!projectId) return { status: 'error', message: '缺少 projectId' };
-  
+
   try {
     // 直接更新 projects 集合
     const docRef = doc(db, 'projects', projectId);
     await updateDoc(docRef, {
-        googleSheetId: sheetId,
-        googleSheetTabName: tabName
+      googleSheetId: sheetId,
+      googleSheetTabName: tabName
     });
     return { status: 'success' };
   } catch (e) {
@@ -7317,13 +7317,13 @@ export const updateProjectSheetSettings = async (projectId, sheetId, tabName) =>
  * [API] 呼叫後端執行 Sheet 同步
  */
 export const syncToGoogleSheet = async (projectId, startDate, endDate) => {
-    const syncFunc = httpsCallable(functions, 'syncBookingToSheet');
-    try {
-        const result = await syncFunc({ projectId, startDate, endDate });
-        return result.data;
-    } catch (e) {
-        throw new Error(e.message);
-    }
+  const syncFunc = httpsCallable(functions, 'syncBookingToSheet');
+  try {
+    const result = await syncFunc({ projectId, startDate, endDate });
+    return result.data;
+  } catch (e) {
+    throw new Error(e.message);
+  }
 };
 
 // ✅ 新增：呼叫後端單一欄位更新
@@ -7366,14 +7366,14 @@ export const fetchFullCustomersForExport = async (projectId, userPhone, userProj
  */
 export const batchImportCustomers = async (projectId, customers, operator) => {
   if (!projectId || !customers.length) return;
-  
+
   try {
     const result = await customerApiRouter({
       action: 'batchImportCustomers',
-      data: { 
-        projectId, 
-        customers: customers, 
-        operator 
+      data: {
+        projectId,
+        customers: customers,
+        operator
       }
     });
     return result.data;
@@ -7432,7 +7432,7 @@ export const checkLeadDuplicatesApi = httpsCallable(getFunctions(undefined, 'asi
  */
 export const checkLeadDuplicates = async (projectId, phones) => {
   if (!projectId || !phones.length) return { results: {} };
-  
+
   try {
     const result = await checkLeadDuplicatesApi({
       projectId,
@@ -7472,12 +7472,12 @@ export const getSmsBalanceAPI = async (userKey) => {
   try {
     // 定義路由 (確保名稱與 index.js 導出一致)
     const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
-    
-    const result = await smsApiRouter({ 
+
+    const result = await smsApiRouter({
       action: 'getBalance',
       userKey: userKey // 這裡傳遞給後端的 request.data
     });
-    
+
     return result.data;
   } catch (error) {
     console.error("[api.js] getSmsBalanceAPI 錯誤:", error);
@@ -7491,9 +7491,9 @@ export const getSmsBalanceAPI = async (userKey) => {
 export const sendSmsAPI = async (data) => {
   try {
     const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
-    const result = await smsApiRouter({ 
+    const result = await smsApiRouter({
       action: 'sendSms',
-      ...data 
+      ...data
     });
     return result.data;
   } catch (error) {

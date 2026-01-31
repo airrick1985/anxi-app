@@ -98,6 +98,7 @@ const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firest
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
 const { Transform } = require("stream"); //  3. 引入 Transform 來自訂資料轉換流
+const { GoogleGenerativeAI } = require("@google/generative-ai"); // 引入 Gemini AI SDK
 const { Readable } = require("stream"); //  新增此行，用於將 Buffer 轉為 Stream
 const readline = require("readline");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
@@ -19361,6 +19362,68 @@ exports.batchImportAndAssignLeads = onCall({
   } catch (error) {
     console.error(`[${functionName}] 執行失敗:`, error);
     throw new HttpsError('internal', error.message);
+  }
+});
+
+
+/**
+ * 🤖 AI 優化洽談紀錄 (使用 Gemini 1.5 Flash)
+ * 接收：{ text: "原始文本" }
+ * 回傳：{ optimizedText: "優化後的文本" }
+ */
+exports.optimizeInteractionLog = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "256MiB",
+  timeoutSeconds: 30, // Gemini 回應通常很快
+  minInstances: 0,
+  secrets: ["GEMINI_API_KEY"], // ✅ 啟用 Secret Manager
+}, async (request) => {
+  const { text } = request.data;
+
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    throw new HttpsError('invalid-argument', '請提供有效的文本內容');
+  }
+
+  // 從環境變數讀取 API Key
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error("❌ 缺少 GEMINI_API_KEY 環境變數");
+    throw new HttpsError('failed-precondition', '系統未設定 AI 金鑰，請聯繫管理員');
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const prompt = `
+作為一位房地產銷售專家，請優化以下「洽談紀錄」。
+
+**優化規則 (嚴格執行)**：
+1. **禁止使用星號 (*)**：不要使用 Markdown 粗體或清單符號。
+2. **尊重原始格式**：
+   - 若原始文本是「流水帳/段落式」，優化後維持「段落式」，**不要**強制轉為條列點。
+   - 若原始文本原本就是「條列式」，優化後才可使用條列 (但請用 - 或數字，勿用 *)。
+3. **語氣優化**：去除口語冗贅詞 (如: 客戶說、然後、覺得...)，改用精簡專業敘述。保留核心資訊 (價格、意願、抗性)。
+4. **客觀中立**：使用專業術語 (例如：預算不足 -> 預算受限；還在看 -> 觀望中)。
+5. **純文字輸出**：不需要加入「客戶洽談紀錄」等標題，也不要有任何開場白或結語。
+
+**原始文本**：
+"${text}"
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const optimizedText = response.text();
+
+    return {
+      status: "success",
+      optimizedText: optimizedText.trim()
+    };
+
+  } catch (error) {
+    console.error("❌ Gemini AI 優化失敗:", error);
+    throw new HttpsError('internal', 'AI 優化服務暫時無法使用，請稍後再試');
   }
 });
 

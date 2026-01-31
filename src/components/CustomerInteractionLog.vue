@@ -655,6 +655,20 @@
               placeholder="請輸入詳細洽談內容..."
               :rules="[v => !!v || '內容為必填']"
           ></v-textarea>
+          
+          <div class="d-flex justify-end mt-1">
+             <v-btn
+                size="small"
+                variant="text"
+                color="deep-purple-accent-3"
+                prepend-icon="mdi-magic-staff"
+                :loading="isOptimizing"
+                :disabled="!newLog.content || isOptimizing"
+                @click="handleOptimizeText"
+             >
+                AI 優化文本 (Gemini)
+             </v-btn>
+          </div>
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="pa-4">
@@ -791,7 +805,63 @@
     <v-overlay :model-value="isLoading" class="align-center justify-center" persistent>
       <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
     </v-overlay>
-  </v-dialog>
+</v-dialog>
+
+    <!-- 🤖 AI 優化確認對話框 -->
+    <v-dialog v-model="showOptimizeDialog" max-width="600" persistent>
+      <v-card class="rounded-lg">
+        <v-toolbar color="deep-purple-accent-3" density="compact">
+            <v-icon start class="ml-4">mdi-magic-staff</v-icon>
+            <v-toolbar-title class="text-subtitle-1 font-weight-bold">AI 優化結果 (Gemini)</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" variant="text" @click="showOptimizeDialog = false"></v-btn>
+        </v-toolbar>
+
+        <v-card-text class="pt-4 bg-grey-lighten-5">
+           <v-row>
+              <v-col cols="12">
+                  <div class="text-caption text-grey-darken-1 mb-1 font-weight-bold">
+                    <v-icon size="x-small" start>mdi-text-box-outline</v-icon>原始內容
+                  </div>
+                  <div class="pa-3 bg-white rounded border text-body-2 text-grey-darken-2" style="white-space: pre-wrap; max-height: 150px; overflow-y: auto;">{{ newLog.content }}</div>
+              </v-col>
+              <v-col cols="12" class="text-center">
+                  <v-icon color="grey-lighten-1">mdi-arrow-down</v-icon>
+              </v-col>
+              <v-col cols="12">
+                  <div class="text-caption text-deep-purple-accent-3 mb-1 font-weight-bold">
+                    <v-icon size="x-small" start>mdi-creation</v-icon>優化後內容
+                  </div>
+                  <v-textarea
+                    v-model="optimizedContent"
+                    variant="outlined"
+                    color="deep-purple-accent-3"
+                    bg-color="white"
+                    rows="6"
+                    hide-details
+                    auto-grow
+                    class="font-weight-medium"
+                  ></v-textarea>
+              </v-col>
+           </v-row>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-white">
+          <v-btn
+             variant="text"
+             color="deep-purple-accent-3"
+             prepend-icon="mdi-refresh"
+             :loading="isOptimizing"
+             @click="handleOptimizeText"
+          >
+            重新優化
+          </v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="showOptimizeDialog = false">取消</v-btn>
+          <v-btn color="deep-purple-accent-3" variant="elevated" prepend-icon="mdi-check" @click="applyOptimizedText">替換並使用</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 </template>
 
 <script setup>
@@ -803,7 +873,8 @@ import {
     addInteractionLog, 
     updateCustomerProfile, 
     updateInteractionLog,
-    deleteInteractionLog // ✅ 加入這行
+    deleteInteractionLog, // ✅ 加入這行
+    optimizeInteractionLog // 🤖 AI 優化
 } from '@/api';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -908,6 +979,41 @@ const customTagInput = ref('');
 
 const addPhoneForm = ref(null);
 const newPhoneData = ref({ name: '', relation: '', phone: '' });
+
+// 🤖 AI 優化相關
+const isOptimizing = ref(false);
+const showOptimizeDialog = ref(false);
+const optimizedContent = ref('');
+
+const handleOptimizeText = async () => {
+  if (!newLog.value.content) return;
+  isOptimizing.value = true;
+  try {
+    const result = await optimizeInteractionLog({ text: newLog.value.content });
+    // result.data 包含回傳的 { status, optimizedText }
+    if (result.data && result.data.status === 'success') {
+      optimizedContent.value = result.data.optimizedText;
+      showOptimizeDialog.value = true;
+    } else {
+      toast.error('優化失敗，請稍後再試');
+    }
+  } catch (e) {
+    console.error('AI Optimize Error:', e);
+    if (e.message && e.message.includes('系統未設定 AI 金鑰')) {
+       toast.error('尚未設定 API Key，請聯繫管理員');
+    } else {
+       toast.error(e.message || 'AI 服務暫時無法使用');
+    }
+  } finally {
+    isOptimizing.value = false;
+  }
+};
+
+const applyOptimizedText = () => {
+  newLog.value.content = optimizedContent.value;
+  showOptimizeDialog.value = false;
+  toast.success('文本已優化✨');
+};
 
 const logFields = ['visitors', 'interactionType', 'noPurchaseReason', 'keyTags', 'rating'];
 const fieldSettings = computed(() => props.settings.fields || {});
