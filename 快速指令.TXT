@@ -7,6 +7,8 @@
 發佈前升版存檔到GIT倉庫 ➔ 
 npm run release:github-pages
 
+npm run deploy：僅重新打包 + 部署（最適合只改圖片或修正錯字）。
+
 有修改要同步 GitHub ➔ npm run build-and-push
 
 存檔到GIT倉庫

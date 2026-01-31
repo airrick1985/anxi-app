@@ -227,7 +227,7 @@ import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
 import EditProfileDialog from '../components/EditProfileDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
-import manifest from '../../public/manifest.json';
+import { appVersion as versionString } from '@/version';
 import { useDisplay } from 'vuetify';
 import { useAutoLogout } from '../composables/useAutoLogout';
 
@@ -269,7 +269,8 @@ const showSnackbar = (message) => {
   snackbar.value = true;
 };
 
-const appVersion = ref(manifest.version);
+const appVersion = ref(versionString);
+
 const currentYear = ref(new Date().getFullYear());
 const showFooter = computed(() => {
   const targetRoutes = ['Login', 'Home'];

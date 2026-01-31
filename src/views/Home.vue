@@ -30,7 +30,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import draggable from 'vuedraggable';
-import manifest from '../../public/manifest.json';
+import { appVersion as versionString } from '@/version';
 
 // ✓ 導入新元件
 import IconButton from '@/components/IconButton.vue'; 
@@ -59,7 +59,7 @@ const userStore = useUserStore();
 const backgroundImageUrl = ref(myBackgroundImage);
 
 //  新增 footer 所需的響應式變數
-const appVersion = ref(manifest.version);
+const appVersion = ref(versionString);
 const currentYear = ref(new Date().getFullYear());
 
 // ✓ 新增控制縮放比例的 ref
