@@ -204,9 +204,6 @@ const getStoragePathFromUrl = (url) => {
 // ✓ END: 新增輔助函式
 
 
-// ✓ START: 新增 - 全域變數用於快取認證過的 Google Drive 客戶端
-let oauth2Client;
-let driveClient;
 
 
 // ✓ 新增：格式化數值方便 Email 顯示
@@ -236,27 +233,45 @@ function formatValueForEmail(key, value) {
   return String(value); // 其他情況轉為字串
 }
 
+
+// 全域變數快取
+let oauth2ClientInstance = null;
+let driveClientInstance = null;
+
 /**
- * [內部輔助函式] 獲取一個已認證的 Google Drive API 客戶端實例
- * 此函式會快取客戶端，避免在溫啟動時重複進行認證(優化冷啟動)
+ * [共用] 取得已認證的 OAuth2 Client
  */
-function getAuthenticatedDriveClient() {
-  if (driveClient) {
-    return driveClient;
+function getAuthenticatedOAuth2Client() {
+  if (oauth2ClientInstance) {
+    return oauth2ClientInstance;
   }
 
-  oauth2Client = new google.auth.OAuth2(
+  const client = new google.auth.OAuth2(
     process.env.DRIVE_CLIENT_ID,
     process.env.DRIVE_CLIENT_SECRET,
     'https://developers.google.com/oauthplayground'
   );
 
-  oauth2Client.setCredentials({
+  client.setCredentials({
     refresh_token: process.env.DRIVE_REFRESH_TOKEN,
   });
 
-  driveClient = google.drive({ version: "v3", auth: oauth2Client });
-  return driveClient;
+  oauth2ClientInstance = client;
+  return oauth2ClientInstance;
+}
+
+/**
+ * [內部輔助函式] 獲取一個已認證的 Google Drive API 客戶端實例
+ * 此函式會快取客戶端，避免在溫啟動時重複進行認證(優化冷啟動)
+ */
+function getAuthenticatedDriveClient() {
+  if (driveClientInstance) {
+    return driveClientInstance;
+  }
+
+  const auth = getAuthenticatedOAuth2Client();
+  driveClientInstance = google.drive({ version: "v3", auth });
+  return driveClientInstance;
 }
 // ✓ END: 新增輔助函式
 
@@ -19407,6 +19422,9 @@ exports.optimizeInteractionLog = onCall({
 3. **語氣優化**：去除口語冗贅詞 (如: 客戶說、然後、覺得...)，改用精簡專業敘述。保留核心資訊 (價格、意願、抗性)。
 4. **客觀中立**：使用專業術語 (例如：預算不足 -> 預算受限；還在看 -> 觀望中)。
 5. **純文字輸出**：不需要加入「客戶洽談紀錄」等標題，也不要有任何開場白或結語。
+6. **金額單位**：用戶輸入預算1000~2000，指的是新台幣，1000~2000萬， 不需要額外家住「新台幣」
+7. **面積單位**：用戶輸入面積100~200，指的是坪，100~200坪，若用戶有特別提是平方公尺
+8. **慣用詞語**：請使用台灣慣用繁體中文，請勿使用中國大陸用語，例如：台灣使用「戶別」或是「戶型」，請勿使用「單位」
 
 **原始文本**：
 "${text}"
@@ -19424,6 +19442,121 @@ exports.optimizeInteractionLog = onCall({
   } catch (error) {
     console.error("❌ Gemini AI 優化失敗:", error);
     throw new HttpsError('internal', 'AI 優化服務暫時無法使用，請稍後再試');
+  }
+});
+
+
+// =================================================================
+// / Google Sheets Sync Functions
+// =================================================================
+
+/**
+ * 列出指定 Google Sheet 的所有工作表名稱
+ * 也會嘗試回傳授權帳號的 Email，以便用戶設定共用
+ */
+exports.listGoogleSheets = onCall({
+  region: "asia-east1",
+  secrets: driveSecrets
+}, async (request) => {
+  const { spreadsheetInput } = request.data;
+
+  if (!spreadsheetInput) {
+    throw new HttpsError('invalid-argument', '請輸入 Google Sheet 網址或 ID');
+  }
+
+  // 嘗試從 URL 解析 ID
+  let spreadsheetId = spreadsheetInput;
+  const match = spreadsheetInput.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) {
+    spreadsheetId = match[1];
+  }
+
+  try {
+    const auth = getAuthenticatedOAuth2Client();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // 1. 取得工作表資訊
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId
+    });
+
+    const sheetNames = response.data.sheets.map(s => s.properties.title);
+
+    // 2. 嘗試取得授權帳號的 Email (用於提示用戶共用)
+    // 這裡使用 drive api 的 about 來獲取 UserInfo，因為這通常在 drive scope 內
+    let agentEmail = '';
+    try {
+      const drive = google.drive({ version: 'v3', auth });
+      const aboutRes = await drive.about.get({ fields: 'user' });
+      agentEmail = aboutRes.data.user.emailAddress;
+    } catch (e) {
+      console.warn('無法獲取 Agent Email:', e);
+      agentEmail = '系統授權帳號 (請聯繫管理員確認)';
+    }
+
+    return {
+      status: 'success',
+      spreadsheetId, // 回傳解析後的 ID
+      sheetNames,
+      agentEmail
+    };
+
+  } catch (error) {
+    console.error('listGoogleSheets Error:', error);
+    // 判斷是否為權限問題
+    if (error.code === 403 || error.code === 401) {
+      throw new HttpsError('permission-denied', '系統無權限讀取此檔案。請確認您已將 Google Sheet 共用給系統帳號。');
+    }
+    if (error.code === 404) {
+      throw new HttpsError('not-found', '找不到此 Google Sheet，請確認網址/ID 是否正確。');
+    }
+    throw new HttpsError('internal', `讀取 Google Sheet 失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 將資料寫入指定的 Google Sheet
+ * 模式：覆蓋指定工作表
+ */
+exports.exportToGoogleSheet = onCall({
+  region: "asia-east1",
+  secrets: driveSecrets
+}, async (request) => {
+  const { spreadsheetId, sheetName, values } = request.data;
+
+  if (!spreadsheetId || !sheetName || !values || !Array.isArray(values)) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (spreadsheetId, sheetName, values)');
+  }
+
+  try {
+    const auth = getAuthenticatedOAuth2Client();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // 1. 清空該工作表 (Clear)
+    // 範圍設為 SheetName!A:ZZZ，確保清空所有內容
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: `'${sheetName}'!A:ZZZ`
+    });
+
+    // 2. 寫入新資料 (Update)
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetName}'!A1`,
+      valueInputOption: 'USER_ENTERED', // 讓 Google Sheets 自動判斷格式 (日期、數字等)
+      requestBody: {
+        values: values
+      }
+    });
+
+    return { status: 'success', message: '資料同步成功' };
+
+  } catch (error) {
+    console.error('exportToGoogleSheet Error:', error);
+    if (error.code === 403) {
+      throw new HttpsError('permission-denied', '系統無權限寫入此檔案。請確認您以「編輯者」身分共用了 Google Sheet。');
+    }
+    throw new HttpsError('internal', `寫入 Google Sheet 失敗: ${error.message}`);
   }
 });
 

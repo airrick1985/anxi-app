@@ -747,6 +747,7 @@ export async function fetchSalesOptions(projectName) {
 
 
 // ✓ 新增：呼叫新的 Cloud Function
+// ✓ 新增：呼叫新的 Cloud Function
 /**
  * [API] 呼叫後端，複製 Google Sheet 付款表模板並回填資料
  * @param {object} payload - 包含 projectId, unitId, data 等...
@@ -761,6 +762,39 @@ export const generatePaymentSheet = async (payload) => {
     console.error("API Error in generatePaymentSheet:", error);
     // 將 HttpsError 的 message 提取出來拋出
     throw new Error(error.message || '產製付款表失敗');
+  }
+};
+
+
+/**
+ * [API] 列出 Google Sheet 的工作表
+ * @param {string} spreadsheetInput - Google Sheet ID 或 URL
+ * @returns {Promise<object>} - { status, sheetNames, agentEmail }
+ */
+export const listGoogleSheets = async (spreadsheetInput) => {
+  try {
+    const func = httpsCallable(functions, 'listGoogleSheets');
+    const result = await func({ spreadsheetInput });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in listGoogleSheets:", error);
+    throw new Error(error.message || '無法讀取 Google Sheet');
+  }
+};
+
+/**
+ * [API] 將資料寫入 Google Sheet
+ * @param {object} payload - { spreadsheetId, sheetName, values }
+ * @returns {Promise<object>} - { status, message }
+ */
+export const exportToGoogleSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'exportToGoogleSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in exportToGoogleSheet:", error);
+    throw new Error(error.message || '資料寫入失敗');
   }
 };
 

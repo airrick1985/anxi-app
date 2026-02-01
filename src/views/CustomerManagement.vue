@@ -384,18 +384,135 @@
 
         <v-divider class="my-4"></v-divider>
 
-        <v-btn
-          color="success"
-          size="large"
-          prepend-icon="mdi-download"
-          :loading="isSimpleExporting"
-          @click="executeSimpleExport"
-          :disabled="!exportFilters.startDate || !exportFilters.endDate"
-        >
-          下載客資報表
-        </v-btn>
+        <div class="d-flex align-center mt-4">
+          <v-btn
+            color="success"
+            size="large"
+            prepend-icon="mdi-download"
+            :loading="isSimpleExporting"
+            @click="executeSimpleExport"
+            :disabled="!exportFilters.startDate || !exportFilters.endDate"
+            class="mr-4"
+          >
+            下載客資報表
+          </v-btn>
+
+          <v-btn
+            color="blue-grey"
+            size="large"
+            prepend-icon="mdi-google-spreadsheet"
+            :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
+            @click="openSyncDialog"
+            :disabled="!exportFilters.startDate || !exportFilters.endDate"
+          >
+            同步到 Google Sheet
+          </v-btn>
+        </div>
       </v-card-text>
     </v-card>
+
+    <!-- Google Sheet Sync Dialog -->
+    <v-dialog v-model="googleSheetDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="bg-blue-grey text-white">
+          <v-icon start>mdi-google-spreadsheet</v-icon>
+          同步資料到 Google Sheet
+        </v-card-title>
+        
+        <v-card-text class="pt-6">
+          <v-window v-model="googleSheetForm.step">
+            <!-- Step 1: Input URL and Fetch Sheets -->
+            <v-window-item :value="1">
+              <p class="mb-4 text-body-2 text-grey-darken-1">
+                請輸入目標 Google Sheet 的完整網址或是 ID。
+                <br>
+                <span class="text-caption text-red">* 請注意：您需要擁有該試算表的編輯權限。</span>
+              </p>
+              
+              <v-text-field
+                v-model="googleSheetForm.url"
+                label="Google Sheet 網址 / ID"
+                variant="outlined"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                prepend-inner-icon="mdi-link"
+                :error="!googleSheetForm.url && googleSheetForm.step === 1"
+              ></v-text-field>
+              
+            </v-window-item>
+
+            <!-- Step 2: Select Sheet and Confirm -->
+            <v-window-item :value="2">
+              <v-alert
+                type="info"
+                variant="tonal"
+                class="mb-4 text-caption"
+                icon="mdi-information"
+              >
+                為了讓系統能寫入資料，請將您的 Google Sheet 共用給以下 Email (編輯者權限)：
+                <div class="font-weight-bold mt-1 text-selectable select-all">
+                  {{ googleSheetForm.agentEmail || '讀取中...' }}
+                </div>
+              </v-alert>
+
+               <v-select
+                v-model="googleSheetForm.sheetName"
+                :items="googleSheetForm.sheetNames"
+                label="選擇要寫入的工作表 (Sheet)"
+                variant="outlined"
+                prepend-inner-icon="mdi-table"
+                required
+              ></v-select>
+
+              <v-alert
+                type="warning"
+                variant="tonal"
+                class="mt-2"
+                icon="mdi-alert"
+              >
+                <strong>警告：</strong> 點擊同步後，該工作表 ({{ googleSheetForm.sheetName || '未選擇' }}) 的現有資料將被<strong>清除並覆蓋</strong>。
+              </v-alert>
+
+              <v-checkbox
+                v-model="googleSheetForm.rememberUrl"
+                label="將此網址設為本專案預設 (所有管理員共享)"
+                density="compact"
+                hide-details
+                color="primary"
+                class="mt-2"
+              ></v-checkbox>
+            </v-window-item>
+          </v-window>
+        </v-card-text>
+
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="googleSheetDialog = false">取消</v-btn>
+          
+          <v-btn
+            v-if="googleSheetForm.step === 1"
+            color="primary"
+            variant="flat"
+            @click="fetchSheetNames"
+            :loading="googleSheetForm.isLoadingSheets"
+            :disabled="!googleSheetForm.url"
+          >
+            下一步
+          </v-btn>
+          
+          <v-btn
+            v-if="googleSheetForm.step === 2"
+            color="success"
+            variant="flat"
+            @click="executeGoogleSync"
+            :loading="isSyncingToGoogle"
+            :disabled="!googleSheetForm.sheetName"
+          >
+            確認同步
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </v-window-item>
 
@@ -925,17 +1042,13 @@ import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
 const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
 import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
-  setDoc, 
-  Timestamp 
-} from 'firebase/firestore';
-
-// 請確認引入了 db 實例 (依據您的專案路徑可能有所不同，通常是這樣)
-import { db } from '@/firebase';
+  collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, 
+  serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc
+} from "firebase/firestore";
+import { 
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject 
+} from "firebase/storage";
+import { db } from '@/firebase'; // ✅ 確保有引入 db
 
 
 import { 
@@ -947,7 +1060,9 @@ import {
   batchUpdateCustomers,
   fetchCustomersForExport,
   fetchFullCustomersForExport,
-  batchImportCustomers
+  batchImportCustomers,
+  listGoogleSheets,
+  exportToGoogleSheet
 } from '@/api';
 import { merge } from 'lodash-es'; 
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
@@ -1597,6 +1712,75 @@ const calculateLogDuration = (startTime, endTime) => {
 };
 
 // ✓ [打勾] 簡易版 Excel 匯出執行函數
+// 提取共用的資料獲取與篩選邏輯
+const getSimpleExportData = async (filterFunc, sortFunc) => {
+  // 獲取完整資料以便讀取 interactionLogs 與 profile
+  const allData = await fetchFullCustomersForExport(
+    props.projectId,
+    userStore.user.key,
+    userStore.user?.permissions?.[props.projectId]?.systems || []
+  );
+
+  // 執行篩選邏輯 (預設篩選)
+  const defaultFilter = (item) => {
+    const logs = item.interactionLogs || [];
+    if (logs.length === 0) return false;
+    
+    // 依據 interactionLogs 第一筆資料的日期進行區間篩選
+    const firstLogDate = logs[0].date; 
+    const isDateInRange = firstLogDate >= exportFilters.value.startDate && 
+                          firstLogDate <= exportFilters.value.endDate;
+    
+    // 依據銷售人員篩選
+    const isSalesMatch = exportFilters.value.selectedSales.length === 0 || 
+                         exportFilters.value.selectedSales.includes(item.latestSalesName);
+    
+    return isDateInRange && isSalesMatch;
+  };
+
+  const filtered = allData.filter(filterFunc || defaultFilter);
+
+  // 排序 (預設排序)
+  const defaultSort = (a, b) => {
+    const dateA = a.interactionLogs?.[0]?.date || '';
+    const dateB = b.interactionLogs?.[0]?.date || '';
+    return dateA.localeCompare(dateB); 
+  };
+
+  filtered.sort(sortFunc || defaultSort);
+
+  // 格式化輸出資料
+  return filtered.map((item, index) => {
+    const logs = item.interactionLogs || [];
+    const firstLog = logs[0] || {};
+    const lastLog = logs[logs.length - 1] || {};
+    const p = item.profile || {};
+    
+    // 輔助函式：取得 Profile 陣列最後一個值
+    const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
+
+    return {
+      '順序': index + 1,
+      '日期': firstLog.date ? firstLog.date.replace(/-/g, '/') : '',
+      '銷售人員': item.latestSalesName || '',
+      '客戶姓名': item.latestName || '',
+      '來人（位）': firstLog.tags?.visitors || '',
+      '年齡': getP('年齡'),
+      '性別': getP('性別'),
+      '職業': getP('職業'),
+      '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
+      '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
+      '區域': getP('居住城市'),
+      '洽談時間': calculateLogDuration(firstLog.startTime, firstLog.endTime),
+      '行動電話': item.phone || '',
+      '未買原因': Array.isArray(lastLog.tags?.noPurchaseReason) 
+                 ? lastLog.tags.noPurchaseReason.join(',') 
+                 : (lastLog.tags?.noPurchaseReason || ''),
+      '洽談紀錄': firstLog.content || ''
+    };
+  });
+};
+
 const executeSimpleExport = async () => {
   // ✓ [新增] 即使按鈕被隱藏，函數層級也要攔截
   if (!canManageSettings.value) {
@@ -1606,67 +1790,7 @@ const executeSimpleExport = async () => {
   
   isSimpleExporting.value = true;
   try {
-    // 獲取完整資料以便讀取 interactionLogs 與 profile
-    const allData = await fetchFullCustomersForExport(
-      props.projectId,
-      userStore.user.key,
-      userStore.user?.permissions?.[props.projectId]?.systems || []
-    );
-
-    // 執行篩選邏輯
-    const filtered = allData.filter(item => {
-      const logs = item.interactionLogs || [];
-      if (logs.length === 0) return false;
-      
-      // 依據 interactionLogs 第一筆資料的日期進行區間篩選
-      const firstLogDate = logs[0].date; 
-      const isDateInRange = firstLogDate >= exportFilters.value.startDate && 
-                            firstLogDate <= exportFilters.value.endDate;
-      
-      // 依據銷售人員篩選
-      const isSalesMatch = exportFilters.value.selectedSales.length === 0 || 
-                           exportFilters.value.selectedSales.includes(item.latestSalesName);
-      
-      return isDateInRange && isSalesMatch;
-    });
-
-    // ✅ 2. 新增：以第一筆紀錄的日期進行 A > Z 排序
-    filtered.sort((a, b) => {
-      const dateA = a.interactionLogs?.[0]?.date || '';
-      const dateB = b.interactionLogs?.[0]?.date || '';
-      return dateA.localeCompare(dateB); 
-    });
-
-    // 格式化輸出資料
-    const exportRows = filtered.map((item, index) => {
-      const logs = item.interactionLogs || [];
-      const firstLog = logs[0] || {};
-      const lastLog = logs[logs.length - 1] || {};
-      const p = item.profile || {};
-      
-      // 輔助函式：取得 Profile 陣列最後一個值
-      const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
-
-      return {
-        '順序': index + 1,
-        '日期': firstLog.date ? firstLog.date.replace(/-/g, '/') : '',
-        '銷售人員': item.latestSalesName || '',
-        '客戶姓名': item.latestName || '',
-        '來人（位）': firstLog.tags?.visitors || '',
-        '年齡': getP('年齡'),
-        '性別': getP('性別'),
-        '職業': getP('職業'),
-        '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
-        '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
-        '區域': getP('居住城市'),
-        '洽談時間': calculateLogDuration(firstLog.startTime, firstLog.endTime),
-        '行動電話': item.phone || '',
-        '未買原因': Array.isArray(lastLog.tags?.noPurchaseReason) 
-                   ? lastLog.tags.noPurchaseReason.join(',') 
-                   : (lastLog.tags?.noPurchaseReason || ''),
-        '洽談紀錄': firstLog.content || ''
-      };
-    });
+    const exportRows = await getSimpleExportData();
 
     // 建立並下載 Excel
     const wb = XLSX.utils.book_new();
@@ -1680,6 +1804,124 @@ const executeSimpleExport = async () => {
     alert('下載發生錯誤: ' + err.message);
   } finally {
     isSimpleExporting.value = false;
+  }
+};
+
+// --- Google Sheet Sync Logic ---
+const googleSheetDialog = ref(false);
+const isSyncingToGoogle = ref(false);
+const googleSheetForm = reactive({
+  url: '',
+  sheetName: '',
+  sheetNames: [],
+  isLoadingSheets: false,
+  agentEmail: '',
+  step: 1,
+  rememberUrl: true // ✅ 新增：控制是否記住網址
+});
+
+const openSyncDialog = async () => {
+  if (!exportFilters.value.startDate || !exportFilters.value.endDate) {
+    alert('請先選擇起訖日期');
+    return;
+  }
+  
+  googleSheetForm.url = '';
+  
+  // 嘗試從專案設定 (Firestore) 讀取上次使用的 URL
+  try {
+    const projectRef = doc(db, 'projects', props.projectId);
+    const projectSnap = await getDoc(projectRef);
+    if (projectSnap.exists()) {
+      const data = projectSnap.data();
+      // ✅ 使用獨立欄位 customerExportSheetUrl
+      if (data.customerExportSheetUrl) {
+        googleSheetForm.url = data.customerExportSheetUrl;
+      }
+    }
+  } catch (err) {
+    console.error('讀取專案設定失敗:', err);
+  }
+
+  googleSheetForm.sheetName = '';
+  googleSheetForm.sheetNames = [];
+  googleSheetForm.step = 1;
+  googleSheetDialog.value = true;
+};
+
+const fetchSheetNames = async () => {
+  if (!googleSheetForm.url) return;
+  googleSheetForm.isLoadingSheets = true;
+  try {
+    const res = await listGoogleSheets(googleSheetForm.url);
+    googleSheetForm.sheetNames = res.sheetNames || [];
+    googleSheetForm.agentEmail = res.agentEmail || '';
+    googleSheetForm.spreadsheetId = res.spreadsheetId; // Store the ID
+    googleSheetForm.step = 2; // Move to select sheet step
+  } catch (error) {
+    alert('讀取失敗: ' + error.message);
+  } finally {
+    googleSheetForm.isLoadingSheets = false;
+  }
+};
+
+const executeGoogleSync = async () => {
+  if (!googleSheetForm.sheetName) return;
+  
+  isSyncingToGoogle.value = true;
+  try {
+    // 1. 準備資料
+    const exportRows = await getSimpleExportData();
+    
+    // ✅ 新增：檢查是否有資料
+    if (exportRows.length === 0) {
+      alert('沒有符合條件的資料可同步 (但網址設定已保留)');
+    }
+
+    // ✅ 新增：檢查是否要儲存網址設定 (存入 customerExportSheetUrl)
+    if (googleSheetForm.rememberUrl && googleSheetForm.url) {
+       updateDoc(doc(db, 'projects', props.projectId), {
+        customerExportSheetUrl: googleSheetForm.url
+      }).catch(e => console.error('更新專案設定失敗:', e));
+    }
+
+    // 若無資料，存完設定後就中止
+    if (exportRows.length === 0) {
+        isSyncingToGoogle.value = false;
+        return;
+    }
+
+    // 2. 轉換為二維陣列 (Header + Data)
+    const headers = [
+      '順序', '日期', '銷售人員', '客戶姓名', '來人（位）', 
+      '年齡', '性別', '職業', '動機', '媒體', '區域', 
+      '洽談時間', '行動電話', '未買原因', '洽談紀錄'
+    ];
+    
+    const values = [headers];
+    exportRows.forEach(row => {
+      values.push([
+        row['順序'], row['日期'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
+        row['年齡'], row['性別'], row['職業'], row['動機'], row['媒體'], row['區域'],
+        row['洽談時間'], row['行動電話'], row['未買原因'], row['洽談紀錄']
+      ]);
+    });
+
+    // 3. 呼叫後端同步
+    await exportToGoogleSheet({
+      spreadsheetId: googleSheetForm.spreadsheetId || googleSheetForm.url, // Use stored ID or fallback to URL (which backend might fail if not handled)
+      sheetName: googleSheetForm.sheetName,
+      values: values
+    });
+
+    alert('同步成功！');
+    googleSheetDialog.value = false;
+
+  } catch (error) {
+    console.error(error);
+    alert('同步失敗: ' + error.message);
+  } finally {
+    isSyncingToGoogle.value = false;
   }
 };
 
