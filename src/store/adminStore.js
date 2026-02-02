@@ -16,7 +16,7 @@ export const useAdminStore = defineStore('admin', {
     roles: [],
     systemFunctions: [],
     allUserPermissionsMap: new Map(),
-    
+
     // (projectStore 相關資料，我們依賴 projectStore 自身)
   }),
 
@@ -35,7 +35,7 @@ export const useAdminStore = defineStore('admin', {
     allFunctionNames(state) {
       return state.systemFunctions.map(f => f.name).sort();
     },
-    
+
     // 建立 Getter 獲取所有角色名稱 (取代 Vue 檔中的 computed)
     allRoleNames(state) {
       return state.roles.map(r => r.name);
@@ -46,14 +46,19 @@ export const useAdminStore = defineStore('admin', {
     /**
      * 獲取所有管理資料，如果已載入則使用快取
      */
-    async loadAdminData(adminKey) {
+    async loadAdminData(adminKey, forceReload = false) {
       // 1. 檢查快取
-      if (this.isLoaded) {
+      if (this.isLoaded && !forceReload) {
         console.log('[AdminStore] 從快取載入管理資料...');
         return;
       }
 
-      console.log('[AdminStore] 首次載入，正在從後端獲取...');
+      // 如果強制重新載入，先清空舊資料
+      if (forceReload) {
+        this.invalidateCache();
+      }
+
+      console.log('[AdminStore] 正在從後端獲取管理資料...');
       this.isLoading = true;
       const projectStore = useProjectStore();
 
@@ -81,13 +86,13 @@ export const useAdminStore = defineStore('admin', {
         const scopeByProjectName = {};
         if (scopeData) {
           for (const projectId in scopeData) {
-const projectName = projectStore.idToNameMap[projectId]; // 應使用 idToNameMap
+            const projectName = projectStore.idToNameMap[projectId]; // 應使用 idToNameMap
             if (projectName) {
               scopeByProjectName[projectName] = scopeData[projectId].systems;
             }
           }
         }
-        
+
         // 5. 更新 State
         this.adminScope = scopeByProjectName;
         this.manageableUsers = users.map(u => ({ ...u, rolesLoading: false }));

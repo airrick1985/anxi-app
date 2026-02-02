@@ -11702,34 +11702,63 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (r
     ]);
 
     // --- 1. 處理管理員權限範圍 (Admin Scope) ---
+    // adminScopeData 結構: { [projectId]: { projectName: '...', systems: [...] } }
     const adminScopeData = adminPermDoc.exists ? adminPermDoc.data().permissions || {} : {};
     console.log(`[${functionName}] 管理員權限範圍獲取完成。`);
+
+    // 準備管理員的 Project ID 集合 (用於後續過濾)
+    const adminProjectIds = new Set(Object.keys(adminScopeData));
+
+    // 檢查是否為超級管理員或系統管理員
+    const adminUserData = adminUserDoc.exists ? adminUserDoc.data() : {};
+    const adminRoles = adminUserData.roles || [];
+    const isSuperAdmin = adminRoles.includes('超級管理員');
+    const isSystemAdmin = adminRoles.includes('系統管理員');
 
     // --- 2 & 3. 處理可管理用戶列表 (Manageable Users) ---
     let manageableUsers = [];
     if (!adminUserDoc.exists) {
       console.warn(`[${functionName}] 警告：找不到管理者 ${adminKey} 的用戶資料。`);
-      // 根據您的業務邏輯，這裡可以拋出錯誤或繼續 (返回空列表)
-      // throw new HttpsError('unauthenticated', '無效的操作者身份。');
     } else {
-      const adminUserRoles = adminUserDoc.data().roles || [];
       const allUsers = [];
       allUsersSnapshot.forEach(doc => allUsers.push({ phone: doc.id, ...doc.data() }));
 
-      manageableUsers = allUsers.filter(targetUser => {
+      // 建立所有用戶的權限映射 (暫時完整版，後面會過濾)
+      const fullPermissionsMap = {};
+      allPermissionsSnapshot.forEach(doc => {
+        fullPermissionsMap[doc.id] = doc.data().permissions || {};
+      });
 
+      manageableUsers = allUsers.filter(targetUser => {
+        // A. 基本角色層級過濾 (防止低階管高階)
         const targetUserRoles = targetUser.roles || [];
-        if (adminUserRoles.includes('超級管理員')) return true;
-        if (targetUserRoles.includes('超級管理員')) return false;
-        if (targetUserRoles.includes('系統管理員')) return adminUserRoles.includes('系統管理員');
-        return true;
+        if (targetUser.phone === adminKey) return true; // 自己管理自己
+        if (isSuperAdmin) return true; // 超級管理員可管理所有人
+        if (targetUserRoles.includes('超級管理員')) return false; // 一般人不可管理超級管理員
+
+        // 如果是系統管理員，可以管理非超管的所有人 (視需求而定，這裡假設系統管理員權限也很大)
+        if (isSystemAdmin) return !targetUserRoles.includes('超級管理員');
+
+        // B. 【核心優化】範圍過濾 (Scope-Based Filtering)
+        // 如果不是超管/系管，則檢查是否有「共同建案」
+        // 檢查目標用戶擁有的權限中，是否有任何一個 projectId 存在於 adminProjectIds
+        const targetUserPerms = fullPermissionsMap[targetUser.phone];
+        if (!targetUserPerms) return false; // 無權限資料的用戶，一般管理員看不到
+
+        // 遍歷目標用戶的所有 projectId
+        for (const pid in targetUserPerms) {
+          if (adminProjectIds.has(pid)) {
+            return true; // 只要有一個共同建案，就允許看到此人
+          }
+        }
+        return false; // 完全沒有交集，隱藏此人
+
       }).map(u => ({ // 只回傳前端需要的欄位
         phone: u.phone,
         name: u.name || 'N/A',
-        email: u.email || '', // <-- 新增此行
+        email: u.email || '',
         roles: u.roles || [],
-        lineId: u.lineId || null // ✓ 加入 lineId
-        // 可以加入其他列表需要的欄位，例如 department
+        lineId: u.lineId || null
       }));
       // 依姓名排序
       manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
@@ -11742,11 +11771,27 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (r
     console.log(`[${functionName}] 角色定義獲取完成，共 ${rolesData.length} 個。`);
 
     // --- 5. 處理建案列表 (Projects) ---
-    const projectsData = projectsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name,
-      iconUrl: doc.data().iconUrl || null // 包含 iconUrl
-    }));
+    // 一般管理員只能看到自己有權限的建案？通常前端需要完整列表來顯示選單，但內容可能是空的
+    // 為了安全，這裡我們只回傳「出現在 adminScope」或「所有建案(如果是超管)」
+    // 但為了簡化前端邏輯 (projectStore 已有完整列表)，這裡回傳完整列表通常危害較小 (建案名稱非敏感個資)
+    // 為了符合需求「嚴格根據操作者的權限」，我們這裡也做過濾
+    let projectsData = [];
+    if (isSuperAdmin || isSystemAdmin) {
+      projectsData = projectsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name,
+        iconUrl: doc.data().iconUrl || null
+      }));
+    } else {
+      // 只回傳管理員有權限的建案
+      projectsData = projectsSnapshot.docs
+        .filter(doc => adminProjectIds.has(doc.id))
+        .map(doc => ({
+          id: doc.id,
+          name: doc.data().name,
+          iconUrl: doc.data().iconUrl || null
+        }));
+    }
     console.log(`[${functionName}] 建案列表獲取完成，共 ${projectsData.length} 個。`);
 
     // --- 6. 處理系統功能定義 (System Functions) ---
@@ -11755,10 +11800,41 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (r
 
     // --- 7. 處理所有用戶權限 (All User Permissions Map) ---
     const allUserPermissionsMap = {};
+
+    // 預先建立一個 Set 包含所有 manageableUsers 的 phone，加速查找
+    const manageablePhones = new Set(manageableUsers.map(u => u.phone));
+
     allPermissionsSnapshot.forEach(doc => {
-      allUserPermissionsMap[doc.id] = doc.data().permissions || {}; // 以 phone 為 key
+      const targetPhone = doc.id;
+
+      // 過濾條件 1: 必須在 manageableUsers 列表中
+      if (!manageablePhones.has(targetPhone)) return;
+
+      const originalPerms = doc.data().permissions || {};
+
+      // 如果是超管/系管，回傳完整權限
+      if (isSuperAdmin || isSystemAdmin) {
+        allUserPermissionsMap[targetPhone] = originalPerms;
+      } else {
+        // 過濾條件 2: 只回傳 adminProjectIds 範圍內的權限
+        const filteredPerms = {};
+        let hasPerms = false;
+
+        for (const pid in originalPerms) {
+          if (adminProjectIds.has(pid)) {
+            filteredPerms[pid] = originalPerms[pid];
+            hasPerms = true;
+          }
+          // 如果 pid 不在 admin 範圍內，則直接忽略 (隱藏)
+        }
+
+        // 只有當使用者在這些專案下有權限資料時才加入 (通常既然在 manageableUsers 裡就設定會有)
+        if (hasPerms) {
+          allUserPermissionsMap[targetPhone] = filteredPerms;
+        }
+      }
     });
-    console.log(`[${functionName}] 所有用戶權限映射處理完成。`);
+    console.log(`[${functionName}] 所有用戶權限映射處理完成 (已執行範圍過濾)。`);
 
     // --- 組合最終回傳物件 ---
     const responseData = {

@@ -592,6 +592,20 @@
                   placeholder="輸入驗屋報告雲端資料夾位置"
                 ></v-text-field>
 
+                 <!-- ✓✓✓ START: 新增 LINE Token 密鑰名稱欄位 ✓✓✓ -->
+                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >LINE驗屋小助理Channel access token</p>
+                 <v-text-field
+                   v-if="isAdmin"
+                   v-model="projectSettings.lineChannelAccessTokenSecretName"
+                   variant="outlined"
+                   density="compact"
+                   class="mt-1"
+                   placeholder="輸入 Secret Manager 中的密鑰名稱"
+                   hint="請輸入用於獲取 LINE Token 的 Secret Name (例如: FUYU141_LINE_TOKEN)"
+                   persistent-hint
+                 ></v-text-field>
+                 <!-- ✓✓✓ END: 新增 LINE Token 密鑰名稱欄位 ✓✓✓ -->
+
                  <!-- ✓✓✓ START: 新增驗屋報告模板欄位 ✓✓✓ -->
                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >驗屋報告模板</p>
                 <v-text-field
@@ -1789,6 +1803,7 @@ const defaultSettings = computed(() => ({
     enableScheduledPublish: false, // [新增]
     publishStartTime: null,        // [新增]
     publishEndTime: null,          // [新增]
+    lineChannelAccessTokenSecretName: '', // [新增] LINE Token Secret Name
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
@@ -2216,6 +2231,8 @@ async function loadDataForProject() {
        };
         // ✓ 新增：讀取驗屋報告模板 URL
         projectSettings.value.inspectionReportTemplateUrl = settings.inspectionReportTemplateUrl || '';
+        // ✓ 新增：讀取 LINE Token Secret Name
+        projectSettings.value.lineChannelAccessTokenSecretName = settings.lineChannelAccessTokenSecretName || '';
         // ... existing settings loading ...
 
       } else {

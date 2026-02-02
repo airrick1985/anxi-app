@@ -143,6 +143,30 @@
                             </span>
                           </div>
                         </template>
+                        <template v-else-if="field.key === 'roles'">
+                           <div v-if="canViewAndEditRoles" class="mt-1">
+                            <v-combobox
+                              :model-value="item.roles"
+                              @update:model-value="newRoles => handleRolesChange(item, newRoles)"
+                              :items="availableRolesForAssignment"
+                              multiple
+                              chips
+                              closable-chips
+                              variant="outlined"
+                              density="compact"
+                              hide-details
+                              placeholder="點此新增角色"
+                              :loading="item.rolesLoading"
+                            >
+                             <template v-slot:selection="{ item: chipItem, index }">
+                                <v-chip :key="index" closable size="small" @click:close="removeRole(item, chipItem.title)">
+                                  {{ chipItem.title }}
+                                </v-chip>
+                              </template>
+                            </v-combobox>
+                           </div>
+                           <span v-else class="ml-2">{{ item.roles ? item.roles.join(', ') : 'N/A' }}</span>
+                        </template>
                         <template v-else>
                           <span class="ml-2">{{ item[field.key] || 'N/A' }}</span>
                         </template>
@@ -1143,6 +1167,7 @@ const displayFields = ref([
   { key: 'email', label: 'Email' },
   { key: 'lineId', label: 'LINE綁定', type: 'chip', options: { trueColor: 'green', falseColor: 'grey', trueText: '已綁定', falseText: '未綁定' } },
   { key: 'projects', label: '所屬建案', type: 'projects' },
+  { key: 'roles', label: '角色' },
 ]);
 // --- END: 修改 displayFields ---
 
@@ -1156,7 +1181,7 @@ const tableHeaders = computed(() => {
     { title: '所屬建案', key: 'projects', sortable: false, width: '20%' },
   ];
   if (canViewAndEditRoles.value) {
-    headers.push({ title: '角色', key: 'roles', sortable: false, width: '10%' });
+    headers.push({ title: '角色', key: 'roles', sortable: false, width: '20%' });
   }
   headers.push({ title: '操作', key: 'actions', sortable: false, align: 'center', width: '10%' });
   return headers;
@@ -1233,8 +1258,8 @@ const loadInitialData = async () => {
     // 確保 projectStore 已載入 (它有自己的快取)
     await projectStore.fetchProjects();
     
-    // 呼叫 adminStore (它也有自己的快取)
-    await adminStore.loadAdminData(adminKey.value);
+    // 呼叫 adminStore (強制重新載入以避免身分切換時的資料殘留)
+    await adminStore.loadAdminData(adminKey.value, true);
 
   } catch (error) {
     console.error('[UserManagement.vue] loadInitialData 失敗:', error);
@@ -1458,7 +1483,7 @@ const handleRolesChange = async (user, newRoles) => {
     userInTable.roles = newRoles;
     toast.success(`已更新 ${user.name} 的角色`);
     // 更改角色後，清除快取 (因為權限可能已改變)
-    adminStore.invalidateCache();
+    // adminStore.invalidateCache(); // Remove this line to prevent data clearing
     // (下次載入 loadInitialData 會自動重抓)
   } catch (error) {
     toast.error(`更新角色失敗: ${error.message}`);
