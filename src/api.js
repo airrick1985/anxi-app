@@ -7494,7 +7494,57 @@ export const batchImportAndAssignLeadsAPI = async (data) => {
 
 
 
+
+/**
+ * [API] 儲存專案的 Grid 狀態 (Column State)
+ * @param {string} projectId 
+ * @param {string} gridName (e.g., 'households')
+ * @param {Array} columnState 
+ */
+export const saveProjectGridState = async (projectId, gridName, columnState) => {
+  if (!projectId || !gridName) return { status: 'error', message: 'Missing projectId or gridName' };
+
+  try {
+    const docRef = doc(db, 'projectSettings', projectId, 'gridSettings', gridName);
+    await setDoc(docRef, {
+      columnState: columnState,
+      updatedAt: serverTimestamp()
+    }, { merge: true }); // 使用 merge 避免覆蓋其他可能的欄位
+    return { status: 'success' };
+  } catch (e) {
+    console.error(`[api.js] saveProjectGridState error:`, e);
+    return { status: 'error', message: e.message };
+  }
+};
+
+/**
+ * [API] 監聽專案的 Grid 狀態
+ * @param {string} projectId 
+ * @param {string} gridName 
+ * @param {Function} onUpdate (callback with newState)
+ */
+export const listenToProjectGridState = (projectId, gridName, onUpdate) => {
+  if (!projectId || !gridName) return () => { };
+
+  const docRef = doc(db, 'projectSettings', projectId, 'gridSettings', gridName);
+  const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.columnState) {
+        onUpdate(data.columnState);
+      }
+    } else {
+      onUpdate(null); // Document doesn't exist
+    }
+  }, (error) => {
+    console.error(`[api.js] listenToProjectGridState error:`, error);
+  });
+
+  return unsubscribe;
+};
+
 // 定義簡訊 API 路由
+
 export const smsApiRouter = httpsCallable(getFunctions(undefined, 'asia-east1'), 'smsApi');
 
 

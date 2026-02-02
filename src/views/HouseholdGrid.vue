@@ -4,7 +4,10 @@
 <v-card-title class="d-flex align-center justify-space-between text-h6 text-primary" >
   <span>{{ pageTitle }}</span>
   <div class="d-flex align-center ga-2">
-     <v-tooltip text="新增資料欄位" location="bottom">
+
+
+    <v-tooltip text="新增資料欄位" location="bottom">
+
   <template v-slot:activator="{ props }">
     <v-btn 
       v-bind="props"
@@ -57,7 +60,7 @@
     :columnDefs="finalColDefs"
     :rowData="rowData"
     :defaultColDef="defaultColDef"
-    :sideBar="true"
+    :sideBar="sideBarConfig"
     :localeText="AG_GRID_LOCALE_TW"
     @grid-ready="onGridReady"
     @cell-value-changed="onCellValueChanged"
@@ -209,6 +212,7 @@
 import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
+import { useUserStore } from '@/store/user';
 import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
@@ -223,6 +227,7 @@ import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
 const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
+const userStore = useUserStore(); // Initialize User Store
 const projectId = ref(route.params.projectId);
 
 // --- AG Grid 狀態 ---
@@ -236,6 +241,14 @@ const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 let unsubscribeHouseholds = null;
 let unsubscribeFields = null;
+
+// --- 權限與 Grid 設定 ---
+const isAdmin = computed(() => {
+  const adminRoles = ['超級管理員', '系統管理員'];
+  return userStore.currentUserRoles.some(role => adminRoles.includes(role));
+});
+
+const sideBarConfig = ref(true); // Maintain default sidebar as requested, visibility controlled by render
 
 // 上傳功能狀態 ---
 const uploadDialog = ref(false);
@@ -296,7 +309,7 @@ const linkRenderer = (params) => {
   if (!params.value) return '<span>-</span>';
   // 將文字替換為 Material Design Icon 的 HTML 標籤
   return `<a href="${params.value}" target="_blank" rel="noopener noreferrer" style="color: #1976D2; font-size: 1.2rem; text-decoration: none;">
-            <i class="mdi mdi-open-in-new"></i>
+            <i class="mdi mdi-folder"></i>
           </a>`;
 };
 const SwitchHeaderRenderer = {
@@ -412,33 +425,49 @@ const SwitchRenderer = {
 };
 
 // --- 動態欄位相關方法 ---
-const baseColDefs = ref([
-   { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+const baseColDefs = computed(() => {
+  const isUserAdmin = isAdmin.value;
+
+  const cols = [
+    { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
     { headerName: '交屋', field: '交屋', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-   { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
-   { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
-   { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
-   { headerName: '買方姓名', field: 'buyerName', editable: true },
-   { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
-   { headerName: '買方Email', field: 'buyerEmail', editable: true, minWidth: 200 },
-   { headerName: '買方身分證', field: 'buyerIdNumber', editable: true },
-   { headerName: '車位', field: 'parkingLots', editable: true },
-   { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
-   { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
-   { headerName: '銀行', field: 'bank', editable: true },
-   { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
-   { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-   { headerName: '初驗方式', field: 'initialInspectionMethod' },
-   { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
-   { headerName: '複驗日期', field: 'reInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-   { headerName: '複驗方式', field: 'reInspectionMethod' },
-   { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-   { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-   { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, flex: 1.5 },
-   { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, flex: 1.5, editable: false },
-   
-   { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
-]);
+    { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
+    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
+    { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
+    { headerName: '買方姓名', field: 'buyerName', editable: true },
+     { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
+    { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
+    { headerName: '買方Email', field: 'buyerEmail', editable: true, minWidth: 200 },
+    { headerName: '買方身分證', field: 'buyerIdNumber', editable: true },
+    { headerName: '車位', field: 'parkingLots', editable: true },
+    { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
+    { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
+    { headerName: '銀行', field: 'bank', editable: true },
+    { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
+    { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
+    { headerName: '初驗方式', field: 'initialInspectionMethod' },
+    { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
+    { headerName: '複驗日期', field: 'reInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
+    { headerName: '複驗方式', field: 'reInspectionMethod' },
+    { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+    { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+     { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false } ,
+    { headerName: '驗屋報告資料夾', field: 'inspectionReportFolderUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
+    { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
+
+     
+    // 敏感欄位 - 嚴格權限控管
+    // 只有管理員可以看到這些欄位，非管理員完全不會渲染
+    ...(isUserAdmin ? [
+  
+
+ 
+    ] : []), // 非管理員回傳空陣列 (不渲染)
+    
+  ];
+
+  return cols;
+});
 
 // 2. 根據從 Firestore 獲取的自訂欄位定義，動態生成 AG-Grid 欄位
 const dynamicColDefs = computed(() => {
@@ -771,6 +800,8 @@ onMounted(async () => {
         error.value = `欄位定義監聽失敗: ${err.message}`;
       }
     );
+
+
   } else {
     error.value = "未提供建案 ID";
     isLoading.value = false;
@@ -799,6 +830,7 @@ onUnmounted(() => {
     console.log('停止監聽欄位定義');
     unsubscribeFields();
   }
+
 });
 
 </script>

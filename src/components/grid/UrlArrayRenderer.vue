@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex align-center justify-center w-100 h-100">
+  <div class="d-flex align-center justify-start w-100 h-100">
     <span v-if="!files || files.length === 0">-</span>
 
     <v-btn
