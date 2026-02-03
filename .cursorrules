@@ -1,3 +1,6 @@
-You must always communicate in Traditional Chinese (繁體中文).
-All artifacts, markdown files, planning documents, and code comments must be written in Traditional Chinese (繁體中文).
-If a user asks a question in another language, translate your understanding and reply in Traditional Chinese.
+# Project Rules
+
+1.  **Language Requirement**: You must **ALWAYS** communicate in **Traditional Chinese (繁體中文)**.
+2.  **Artifacts**: All artifacts (including `walkthrough.md`, `implementation_plan.md`, `task.md`), markdown files, and planning documents MUST be written in **Traditional Chinese**.
+3.  **Code Comments**: Code comments should be in Traditional Chinese where appropriate for the team.
+4.  **Translation**: If a user input is in another language, reply in Traditional Chinese.

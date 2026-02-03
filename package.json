@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.418",
+  "version": "1.0.419",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -59,7 +59,7 @@
     "google-auth-library": "^10.3.1",
     "googleapis": "^160.0.0",
     "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.1",
+    "jspdf": "^4.1.0",
     "lodash-es": "^4.17.21",
     "marked": "^15.0.12",
     "pinia": "^3.0.2",
@@ -84,12 +84,11 @@
     "vue-toastification": "^2.0.0-rc.5",
     "vuedraggable": "^4.1.0",
     "vuetify": "^3.10.5",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz",
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.2",
-    "@vue/cli-plugin-pwa": "^3.12.1",
     "cross-env": "^10.1.0",
     "gh-pages": "^6.3.0",
     "sass-embedded": "^1.93.2",
@@ -98,5 +97,8 @@
     "vue-tsc": "^2.0.21"
   },
   "homepage": "https://airrick1985.github.io/anxi-app/",
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "tar": "^7.5.7"
+  }
 }
