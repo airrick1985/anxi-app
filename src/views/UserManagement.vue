@@ -100,7 +100,16 @@
                   </v-combobox>
                 </template>
                 <template v-slot:item.actions="{ item }">
-                  <v-btn small color="primary" @click="openEditDialog(item.phone)">編輯</v-btn>
+                  <v-btn small color="primary" @click="openEditDialog(item.phone)" class="mr-2">編輯</v-btn>
+                  <v-btn 
+                    v-if="canViewAndEditRoles" 
+                    icon="mdi-email" 
+                    size="small" 
+                    color="indigo" 
+                    variant="tonal" 
+                    @click="openEmailDialog(item)"
+                    title="傳送確認信"
+                  ></v-btn>
                 </template>
               </v-data-table>
             </div>
@@ -174,6 +183,14 @@
                     </v-card-text>
                     <v-card-actions>
                     <v-spacer></v-spacer>
+                    <v-btn
+                      v-if="canViewAndEditRoles"
+                      icon="mdi-email"
+                      color="indigo"
+                      variant="text"
+                      @click="openEmailDialog(item)"
+                      class="mr-2"
+                    ></v-btn>
                     <v-btn color="primary" variant="tonal" @click="openEditDialog(item.phone)">
                       編輯
                     </v-btn>
@@ -695,6 +712,144 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+ 
+    <!-- 郵件發送對話框 -->
+    <v-dialog v-model="emailDialogVisible" max-width="800px" persistent>
+      <v-card>
+        <v-card-title class="bg-indigo text-white d-flex align-center">
+          <v-icon start>mdi-email-send</v-icon>
+          傳送系統通知郵件
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="emailDialogVisible = false"></v-btn>
+        </v-card-title>
+        
+        <v-card-text class="pa-4">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="selectedTemplateKey"
+                :items="Object.entries(emailTemplates).map(([key, t]) => ({ title: t.name, value: key }))"
+                label="選擇郵件範本"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mb-4"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="emailData.to"
+                label="收件人 Email"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mb-4"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12">
+              <v-text-field
+                v-model="emailData.subject"
+                label="郵件主旨"
+                variant="outlined"
+                density="compact"
+                class="mb-2"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12">
+              <v-file-input
+                v-model="attachments"
+                label="上傳附件 (可多選)"
+                variant="outlined"
+                density="compact"
+                multiple
+                prepend-icon="mdi-paperclip"
+                show-size
+                chips
+                placeholder="選取檔案"
+              ></v-file-input>
+            </v-col>
+          </v-row>
+ 
+          <div class="editor-container mt-2">
+            <!-- Tiptap 工具列 -->
+            <div v-if="editor" class="editor-toolbar d-flex flex-wrap pa-1">
+                <v-btn 
+                  icon="mdi-format-bold" 
+                  size="small"
+                  variant="text"
+                  :active="editor.isActive('bold')" 
+                  @click="editor.chain().focus().toggleBold().run()"
+                  class="mr-1 mb-1"
+                ></v-btn>
+                <v-btn 
+                  icon="mdi-format-italic" 
+                  size="small"
+                  variant="text"
+                  :active="editor.isActive('italic')" 
+                  @click="editor.chain().focus().toggleItalic().run()"
+                  class="mr-1 mb-1"
+                ></v-btn>
+                <v-btn 
+                  icon="mdi-format-list-bulleted" 
+                  size="small"
+                  variant="text"
+                  :active="editor.isActive('bulletList')" 
+                  @click="editor.chain().focus().toggleBulletList().run()"
+                  class="mr-1 mb-1"
+                ></v-btn>
+                <v-btn 
+                  icon="mdi-format-align-left" 
+                  size="small"
+                  variant="text"
+                  :active="editor.isActive({ textAlign: 'left' })" 
+                  @click="editor.chain().focus().setTextAlign('left').run()"
+                  class="mr-1 mb-1"
+                ></v-btn>
+                <v-btn 
+                  icon="mdi-format-align-center" 
+                  size="small"
+                  variant="text"
+                  :active="editor.isActive({ textAlign: 'center' })" 
+                  @click="editor.chain().focus().setTextAlign('center').run()"
+                  class="mr-1 mb-1"
+                ></v-btn>
+                <v-btn 
+                  icon="mdi-palette" 
+                  size="small"
+                  variant="text"
+                  title="選擇文字顏色"
+                  class="mr-1 mb-1 position-relative"
+                >
+                  <v-icon>mdi-palette</v-icon>
+                  <input
+                    type="color"
+                    @input="editor.chain().focus().setColor($event.target.value).run()"
+                    class="color-picker-input"
+                  />
+                </v-btn>
+            </div>
+            
+            <!-- Tiptap 編輯區域 -->
+            <editor-content :editor="editor" class="tiptap-editor" />
+          </div>
+        </v-card-text>
+ 
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-grey-lighten-5">
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="emailDialogVisible = false">取消</v-btn>
+          <v-btn 
+            color="indigo" 
+            variant="flat" 
+            @click="handleSendEmail" 
+            :loading="sendingEmail"
+            prepend-icon="mdi-send"
+          >
+            立即發送
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="deleteRoleDialog" persistent max-width="400px">
         <v-card>
@@ -720,6 +875,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 // 引入新的 adminStore
 import { useAdminStore } from '@/store/adminStore'; 
 import {
@@ -733,6 +889,13 @@ import {
   // fetchUserManagementInitialData, // 由 adminStore 處理
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
+
+// --- Tiptap 相關引入 ---
+import { useEditor, EditorContent } from '@tiptap/vue-3';
+import { StarterKit } from '@tiptap/starter-kit';
+import { Color } from '@tiptap/extension-color';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { TextAlign } from '@tiptap/extension-text-align';
 
 
 const { mobile: isMobile } = useDisplay();
@@ -801,6 +964,57 @@ const savingRole = ref(false);
 const deleteRoleDialog = ref(false);
 const roleToDelete = ref(null);
 const deletingRole = ref(false);
+
+// --- 郵件發送相關 State ---
+const emailDialogVisible = ref(false);
+const sendingEmail = ref(false);
+const selectedTemplateKey = ref('activation');
+const emailData = ref({
+  to: '',
+  subject: '',
+  name: '',
+  phone: '',
+  password: ''
+});
+const attachments = ref([]); // 用於存放準備上傳的檔案
+
+// 郵件範本定義
+const emailTemplates = {
+  activation: {
+    name: '帳號開通通知',
+    subject: '【ANIX建案管理系統】帳號開通通知 - {NAME} 先生/小姐',
+    content: `
+      <p>{NAME} 您好：</p>
+      <p>歡迎加入 ANIX建案管理系統。</p>
+      <p>您的系統登入帳號已正式開通，請使用以下資訊進行登入並確認權限：</p>
+      <p><strong>登入網址：</strong> <a href="https://anxismart.com/#/login">https://anxismart.com/#/login</a><br>
+      <strong>登入帳號：</strong> {phone}<br>
+      <strong>初始密碼：</strong> {password}</p>
+      <p style="color: #d32f2f;"><strong>【安全提醒】</strong> 為了保障您的帳號安全，建議您在首次登入後，盡快前往「個人資料」頁面修改您的密碼。</p>
+      <p>如果您在登入過程中遇到任何問題，或發現權限設定有誤，請隨時聯繫系統管理員。</p>
+      <p>祝 工作順利！</p>
+      <p>ANIX建案管理系統團隊<br>發信日期：${new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    `
+  },
+  general: {
+    name: '一般通知',
+    subject: '【ANIX建案管理系統】系統通知',
+    content: '<p>{NAME} 您好：</p><p>請在此輸入郵件內容...</p>'
+  }
+};
+
+// 初始化 Tiptap 編輯器
+const editor = useEditor({
+  content: '',
+  extensions: [
+    StarterKit,
+    TextStyle,
+    Color,
+    TextAlign.configure({
+      types: ['heading', 'paragraph'],
+    }),
+  ],
+});
 
 
 const usersWithProjectData = computed(() => {
@@ -1146,7 +1360,7 @@ const filteredManagedProjects = computed(() => {
 });
 
 const currentUserRoles = computed(() => userStore.currentUserRoles);
-const canViewAndEditRoles = computed(() => currentUserRoles.value.includes('超級管理員') || currentUserRoles.value.includes('系統管理員') || currentUserRoles.value.some(role => role.includes('主管')));
+const canViewAndEditRoles = computed(() => currentUserRoles.value.includes('超級管理員') || currentUserRoles.value.includes('系統管理員'));
 
 const availableRolesForAssignment = computed(() => {
   if (isSuperAdmin.value) return allRoleNames.value;
@@ -1622,6 +1836,119 @@ const saveSystemFunction = async () => {
   }
 };
 
+// --- 郵件發送邏輯 ---
+
+/**
+ * 開啟郵件對話框
+ */
+const openEmailDialog = async (user) => {
+  // 由於清單中可能沒有密碼資訊，需先獲取完整細節
+  try {
+    const result = await fetchUserDetailsForAdmin(user.phone, adminKey.value);
+    if (result.status === 'success') {
+      const fullUser = result.data.basicInfo;
+      emailData.value = {
+        to: fullUser.email || '',
+        name: fullUser.name || '',
+        phone: fullUser.phone || '',
+        password: fullUser.password || '' 
+      };
+      
+      // 預設選擇帳號開通範本
+      selectedTemplateKey.value = 'activation';
+      applyTemplate('activation');
+      emailDialogVisible.value = true;
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    console.error('開啟郵件對話框失敗:', error);
+    toast.error('無法獲取該人員的完整資料 (包含密碼)');
+  }
+};
+
+/**
+ * 切換並套用範本
+ */
+const applyTemplate = (key) => {
+  const template = emailTemplates[key];
+  if (!template) return;
+
+  const replaceVars = (str) => {
+    return str.replace(/{NAME}/g, emailData.value.name)
+              .replace(/{phone}/g, emailData.value.phone)
+              .replace(/{password}/g, emailData.value.password);
+  };
+
+  emailData.value.subject = replaceVars(template.subject);
+  
+  if (editor.value) {
+    editor.value.commands.setContent(replaceVars(template.content));
+  }
+};
+
+// 監聽範本選擇變動
+watch(selectedTemplateKey, (newKey) => {
+  applyTemplate(newKey);
+});
+
+/**
+ * 呼叫後端發送郵件
+ */
+const handleSendEmail = async () => {
+  if (!emailData.value.to) {
+    toast.error('收件人 Email 不可為空');
+    return;
+  }
+  
+  sendingEmail.value = true;
+  try {
+    const functions = getFunctions(undefined, 'asia-east1');
+    const sendCustomEmail = httpsCallable(functions, 'sendCustomEmail');
+    
+    // 處理附件：將檔案轉換為 Base64
+    const processedAttachments = await Promise.all(attachments.value.map(async (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // 格式: data:xxxx/xxxx;base64,..... -> 我們只需要逗號後面的 base64 字串
+          const base64Content = reader.result.split(',')[1];
+          resolve({
+            filename: file.name,
+            content: base64Content,
+            encoding: 'base64',
+            contentType: file.type
+          });
+        };
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    }));
+    
+    const result = await sendCustomEmail({
+      to: emailData.value.to,
+      subject: emailData.value.subject,
+      htmlContent: editor.value.getHTML(),
+      adminKey: userStore.user?.key,
+      sessionId: userStore.sessionId,
+      attachments: processedAttachments
+    });
+
+    if (result.data.status === 'success') {
+      toast.success('郵件已成功寄出');
+      attachments.value = []; // 清空附件
+      emailDialogVisible.value = false;
+    } else {
+      throw new Error(result.data.message);
+    }
+  } catch (error) {
+    console.error('發送郵件失敗:', error);
+    toast.error('發送郵件失敗: ' + error.message);
+  } finally {
+    sendingEmail.value = false;
+  }
+};
+
 </script>
 
 <style scoped>
@@ -1647,4 +1974,45 @@ const saveSystemFunction = async () => {
 .gap-1 {
   gap: 4px;
 }
+
+/* Tiptap 編輯器樣式 */
+.editor-container {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  background: #f5f5f5;
+  padding: 8px;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.tiptap-editor {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.tiptap-editor :deep(.tiptap) {
+  outline: none;
+}
+
+.tiptap-editor :deep(.tiptap p) {
+  margin-bottom: 0.5em;
+}
+
+.tiptap-editor :deep(.tiptap ul) {
+  padding-left: 1.5em;
+}
+
+.tiptap-editor :deep(.tiptap a) {
+  color: #3f51b5;
+  text-decoration: underline;
+}
+
 </style>

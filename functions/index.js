@@ -19636,5 +19636,67 @@ exports.exportToGoogleSheet = onCall({
   }
 });
 
+/**
+ * [管理者功能] 發送自定義 HTML 郵件
+ * 支援富文本內容，僅限已登入的管理員呼叫
+ */
+exports.sendCustomEmail = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  const { to, subject, htmlContent, adminKey, sessionId, attachments } = request.data;
 
+  // 1. 驗證必要參數
+  if (!to || !subject || !htmlContent || !adminKey || !sessionId) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (to, subject, htmlContent, adminKey 或 sessionId)');
+  }
 
+  // 2. 驗證管理員身分 (Session 檢查)
+  try {
+    const userDocSnap = await db.collection('users').doc(adminKey).get();
+    if (!userDocSnap.exists) {
+      throw new HttpsError('not-found', '找不到管理員帳號');
+    }
+
+    const userData = userDocSnap.data();
+    if (userData.activeSessionId !== sessionId) {
+      throw new HttpsError('unauthenticated', 'Session 已過期或無效，請重新登入');
+    }
+
+    // 這裡可以選擇性加入更多的權限檢查 (例如：isAdmin)
+  } catch (authError) {
+    if (authError instanceof HttpsError) throw authError;
+    console.error('[sendCustomEmail] Auth Error:', authError);
+    throw new HttpsError('internal', '權限驗證失敗');
+  }
+
+  try {
+    // 3. 建立郵件傳輸實例 (使用現有的寄件者設定)
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SENDER_EMAIL,
+        pass: process.env.GMAIL_APP_PASSWORD
+      }
+    });
+
+    const mailOptions = {
+      from: `"ANIX建案管理系統" <${process.env.SENDER_EMAIL}>`,
+      to: to,
+      subject: subject,
+      html: htmlContent,
+      attachments: attachments
+    };
+
+    // 4. 發送郵件
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[sendCustomEmail] 成功發送至 ${to}:`, info.messageId);
+
+    return {
+      status: 'success',
+      message: '郵件發送成功',
+      messageId: info.messageId
+    };
+  } catch (error) {
+    console.error('[sendCustomEmail] 錯誤:', error);
+    throw new HttpsError('internal', '發送郵件時發生技術錯誤，請稍後再試。');
+  }
+});
