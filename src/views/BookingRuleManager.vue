@@ -1032,10 +1032,58 @@
                      <DynamicFieldEditor v-model:fields="editedCustomerMessageConfig.customFields" />
 
                   </v-card-text>
-                  <v-card-actions class="pa-4 border-t">
+                   <v-card-actions class="pa-4 border-t">
+                    <v-btn color="info" variant="tonal" prepend-icon="mdi-eye" @click="isCustomerMessagePreviewDialogOpen = true">預覽畫面</v-btn>
                     <v-spacer></v-spacer>
                     <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
                     <v-btn color="primary" variant="elevated" @click="saveCustomerMessageConfig">儲存設定</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+
+              <!-- Customer Message Preview Dialog -->
+              <v-dialog v-model="isCustomerMessagePreviewDialogOpen" max-width="600px">
+                <v-card>
+                  <v-card-title class="bg-info text-white d-flex align-center">
+                    <v-icon start>mdi-eye</v-icon>
+                    預覽：{{ editedCustomerMessageConfig.dialogTitle || editedCustomerMessageConfig.buttonText }}
+                    <v-spacer></v-spacer>
+                    <v-btn icon variant="text" @click="isCustomerMessagePreviewDialogOpen = false">
+                      <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                  </v-card-title>
+                  <v-card-text class="pa-6" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="mb-4 text-center">
+                      <v-chip color="info" variant="tonal" size="small">這是預覽畫面，樣式與實際使用時一致</v-chip>
+                    </div>
+                    
+                    <div v-if="editedCustomerMessageConfig.enableBuildingSelect || editedCustomerMessageConfig.enableUnitSelect" class="bg-grey-lighten-4 pa-3 rounded mb-4">
+                       <div class="text-caption text-grey-darken-1 mb-2">預設欄位 (已啟用)</div>
+                       <v-row dense>
+                          <v-col v-if="editedCustomerMessageConfig.enableBuildingSelect" cols="12" sm="6">
+                             <v-select label="棟別" variant="outlined" density="comfortable" disabled></v-select>
+                          </v-col>
+                          <v-col v-if="editedCustomerMessageConfig.enableUnitSelect" cols="12" sm="6">
+                             <v-select label="戶別" variant="outlined" density="comfortable" disabled></v-select>
+                          </v-col>
+                       </v-row>
+                    </div>
+
+                    <DynamicFormRenderer 
+                      :fields="editedCustomerMessageConfig.customFields" 
+                      v-model="customerMessagePreviewData"
+                    />
+
+                    <div v-if="editedCustomerMessageConfig.enableFileUpload" class="mt-4 pa-3 border rounded border-dashed text-center bg-blue-lighten-5">
+                       <v-icon color="primary" class="mb-1">mdi-cloud-upload</v-icon>
+                       <div class="text-subtitle-2 text-primary font-weight-bold">附件上傳功能已啟用</div>
+                       <div class="text-caption text-grey-darken-1">預覽模式下不提供實際檔案上傳</div>
+                    </div>
+                  </v-card-text>
+                  <v-divider></v-divider>
+                  <v-card-actions class="pa-4">
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="tonal" @click="isCustomerMessagePreviewDialogOpen = false">關閉預覽</v-btn>
                   </v-card-actions>
                 </v-card>
               </v-dialog>
@@ -1055,49 +1103,72 @@
                       連線設定
                     </v-card-title>
                     <v-card-text class="pt-4">
-                      <p class="text-body-2 text-grey-darken-1 mb-4">
-                        設定同步目標。請確保 Sheet 已分享給 Service Account。
+                       <p class="text-body-2 text-grey-darken-1 mb-4">
+                        設定同步目標。系統將會把戶別資料同步到指定的 Google Sheet。
                       </p>
                       
                       <v-text-field
                         v-model="projectSettings.googleSheetId"
-                        label="Sheet ID (試算表 ID)"
+                        label="Google Sheet ID"
                         variant="outlined"
                         density="compact"
-                        class="mb-4"
+                        class="mb-2"
                         prepend-inner-icon="mdi-identifier"
                         hint="網址列中 /d/ 後面的字串"
                         persistent-hint
-                      ></v-text-field>
+                      >
+                         <template v-slot:append>
+                            <v-btn 
+                                color="info" 
+                                variant="tonal" 
+                                size="small" 
+                                :loading="isFetchingSheets"
+                                :disabled="!projectSettings.googleSheetId"
+                                @click="fetchSheetTabs"
+                            >取得工作表</v-btn>
+                         </template>
+                      </v-text-field>
 
-                      <v-text-field
+                      <v-select
                         v-model="projectSettings.googleSheetTabName"
-                        label="工作表名稱 (Tab Name)"
+                        :items="sheetTabs"
+                        label="選擇工作表 (Tab Name)"
                         variant="outlined"
                         density="compact"
                         prepend-inner-icon="mdi-table"
-                        hint="下方頁籤名稱，例如 '工作表1'"
+                        hint="請選擇要同步的頁籤"
                         persistent-hint
-                      ></v-text-field>
+                        class="mt-4"
+                        :disabled="sheetTabs.length === 0"
+                        no-data-text="請先輸入 ID 並點擊「取得工作表」"
+                      ></v-select>
 
-                      <v-alert type="info" variant="tonal" class="mt-6" density="compact" border="start">
+                      <v-alert type="warning" variant="tonal" class="mt-6" density="compact" border="start" icon="mdi-account-key">
                         <div class="text-caption">
-                          <strong>權限提示:</strong><br>
-                          請將試算表分享給：<br>
-                          <code>firebase-adminsdk-xxxx@....com</code>
+                          <strong>授權設定 (必要):</strong><br>
+                          請務必將該 Google Sheet "編輯權限" 分享給系統帳號：<br>
+                          <code class="d-block mt-1 pa-1 bg-grey-lighten-3 rounded user-select-all">{{ serviceAccountEmail || '點擊取得工作表以獲取 Email' }}</code>
                         </div>
                       </v-alert>
+                      
+                      <!-- Sync Status / Result -->
+                      <v-alert v-if="syncResult" :type="syncResult.status === 'success' ? 'success' : 'error'" variant="tonal" class="mt-4" density="compact">
+                         {{ syncResult.message }}
+                      </v-alert>
+
                     </v-card-text>
                     <v-divider></v-divider>
                     <v-card-actions class="pa-4">
                       <v-spacer></v-spacer>
                       <v-btn 
                         color="primary" 
-                        variant="flat"
-                        @click="saveSheetSettings"
-                        :loading="isSavingSheetSettings"
+                        variant="elevated"
+                        @click="handleSyncHouseholds"
+                        :loading="isSyncingHouseholds"
+                        prepend-icon="mdi-sync"
+                        :disabled="!projectSettings.googleSheetId || !projectSettings.googleSheetTabName"
                       >
-                        儲存設定
+                        儲存設定並立即同步
                       </v-btn>
                     </v-card-actions>
                   </v-card>
@@ -1741,7 +1812,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
-import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue'; // Import DynamicFieldEditor
+import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue'; 
+import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue'; 
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
@@ -1763,7 +1835,8 @@ import {
   uploadAttachmentImage,
   deleteAttachmentImage,
   updateProjectSheetSettings, // 設定用
-  syncToGoogleSheet           // 同步用 (新增)
+  listGoogleSheets,           // 列出 Sheet
+  syncHouseholdsToSheet       // 同步
 } from '@/api';
 
 
@@ -1870,6 +1943,57 @@ const isSendingLineNotification = ref(false);
 const filesToUpload = ref([]); // ✓ 新增：綁定 v-file-input
 const isUploadingAttachments = ref(false); // ✓ 新增：控制上傳按鈕 loading
 const isDeletingAttachment = ref(-1); // ✓ 新增：控制刪除按鈕 loading (用索引區分)
+
+// --- Sheet Sync States ---
+const sheetTabs = ref([]);
+const serviceAccountEmail = ref('');
+const isFetchingSheets = ref(false);
+const isSyncingHouseholds = ref(false);
+const syncResult = ref(null);
+
+const fetchSheetTabs = async () => {
+    if (!projectSettings.value.googleSheetId) return;
+    
+    isFetchingSheets.value = true;
+    syncResult.value = null;
+    try {
+        const res = await listGoogleSheets(projectSettings.value.googleSheetId);
+        sheetTabs.value = res.sheetNames || [];
+        serviceAccountEmail.value = res.agentEmail || '';
+        showSnackbar('成功讀取工作表列表', 'success');
+    } catch (error) {
+        showSnackbar(error.message, 'error');
+    } finally {
+        isFetchingSheets.value = false;
+    }
+};
+
+const handleSyncHouseholds = async () => {
+    if (!projectSettings.value.googleSheetId || !projectSettings.value.googleSheetTabName) return;
+
+    // 1. Save Settings First
+    await saveSettings();
+
+    // 2. Trigger Sync
+    if (!confirm('確定要執行全量同步嗎？這將會覆蓋 Sheet 上的現有資料。')) return;
+
+    isSyncingHouseholds.value = true;
+    syncResult.value = null;
+    try {
+        const res = await syncHouseholdsToSheet({
+            projectId: projectId.value,
+            spreadsheetId: projectSettings.value.googleSheetId,
+            sheetName: projectSettings.value.googleSheetTabName
+        });
+        syncResult.value = { status: 'success', message: `${res.message} (共 ${res.count} 筆)` };
+        showSnackbar('同步成功！', 'success');
+    } catch (error) {
+        syncResult.value = { status: 'error', message: error.message };
+        showSnackbar('同步失敗: ' + error.message, 'error');
+    } finally {
+        isSyncingHouseholds.value = false;
+    }
+};
 
 const scheduleTimeOptions = computed(() => {
   const options = [];
@@ -2138,6 +2262,9 @@ const editedCustomerMessageConfig = ref({
   enableFileUpload: false,
   customFields: []
 });
+const isCustomerMessagePreviewDialogOpen = ref(false);
+const customerMessagePreviewData = ref({});
+
 
 const openCustomerMessageDialog = (config = null, index = -1) => {
   if (config) {

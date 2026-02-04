@@ -798,6 +798,22 @@ export const exportToGoogleSheet = async (payload) => {
   }
 };
 
+/**
+ * [API] 同步戶別資料到 Google Sheet (全量)
+ * @param {object} payload - { projectId, spreadsheetId, sheetName }
+ * @returns {Promise<object>} - { status, message, count }
+ */
+export const syncHouseholdsToSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'syncHouseholdsToSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncHouseholdsToSheet:", error);
+    throw new Error(error.message || '同步失敗');
+  }
+};
+
 
 /**
  * 從指定的 Google Drive 資料夾 URL 中獲取唯一的 SVG 檔案內容

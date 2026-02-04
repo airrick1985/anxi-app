@@ -110,6 +110,31 @@
             此欄位為必填
         </div>
       </template>
+      
+      <!-- Display-Only: Header -->
+      <template v-else-if="field.type === 'header'">
+        <div class="text-subtitle-1 font-weight-bold mb-1 mt-2 text-primary">
+          {{ field.label }}
+        </div>
+        <div v-if="field.placeholder" class="text-caption text-grey-darken-1 mb-2">
+          {{ field.placeholder }}
+        </div>
+      </template>
+
+      <!-- Display-Only: Description -->
+      <template v-else-if="field.type === 'description'">
+        <div class="text-subtitle-2 mb-1">
+          {{ field.label }}
+        </div>
+        <div v-if="field.placeholder" class="text-body-2 text-grey-darken-1 mb-2 preserve-whitespace">
+          {{ field.placeholder }}
+        </div>
+      </template>
+
+      <!-- Display-Only: Divider -->
+      <template v-else-if="field.type === 'divider'">
+        <v-divider class="my-4"></v-divider>
+      </template>
 
     </div>
   </div>
@@ -146,5 +171,8 @@ const isArrayIncludes = (arr: any, val: any) => {
 <style scoped>
 .border-s-md {
     border-left-width: 4px !important;
+}
+.preserve-whitespace {
+    white-space: pre-wrap;
 }
 </style>

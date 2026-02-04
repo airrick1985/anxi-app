@@ -49,7 +49,7 @@
             </div>
             
              <v-text-field
-                v-if="field.type === 'text'"
+                v-if="['text', 'header', 'description'].includes(field.type)"
                 v-model="field.placeholder"
                 label="提示文字 (Placeholder)"
                 density="compact"
@@ -146,7 +146,7 @@ import draggable from 'vuedraggable';
 // Exporting types so parent can use them if needed (though Vue handles props mostly)
 export interface DynamicField {
   id: string;
-  type: 'radio' | 'checkbox' | 'text';
+  type: 'radio' | 'checkbox' | 'text' | 'phone' | 'date' | 'header' | 'description' | 'divider';
   label: string;
   required: boolean;
   placeholder?: string;
@@ -182,6 +182,9 @@ const fieldTypes = [
   { title: '文字輸入 (Text)', value: 'text' },
   { title: '電話 (Phone)', value: 'phone' },
   { title: '日期 (Date)', value: 'date' },
+  { title: '標題 (Header)', value: 'header' },
+  { title: '描述文字 (Description)', value: 'description' },
+  { title: '分隔線 (Divider)', value: 'divider' },
 ];
 
 const addField = () => {
