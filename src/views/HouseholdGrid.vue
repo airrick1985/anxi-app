@@ -184,6 +184,68 @@
    </v-card>
  </v-dialog>
 
+
+ <!-- Customer Message View Dialog -->
+ <v-dialog v-model="isMessageDialogVisible" max-width="800px">
+    <v-card>
+       <v-card-title class="bg-info text-white d-flex justify-space-between align-center">
+          <span>戶別 {{ selectedHouseholdUnit }} - 客戶回傳訊息 ({{ selectedHouseholdMessages.length }})</span>
+          <v-btn icon="mdi-close" variant="text" color="white" @click="isMessageDialogVisible = false"></v-btn>
+       </v-card-title>
+       <v-card-text class="pa-0" style="max-height: 80vh; overflow-y: auto; background-color: #f5f5f5;">
+          <v-container>
+             <v-card v-for="msg in selectedHouseholdMessages" :key="msg.id" class="mb-4" border variant="outlined">
+                <v-card-header>
+                   <v-card-header-text>
+                      <v-card-title class="text-subtitle-1 font-weight-bold text-primary">
+                         {{ msg.functionName || '未命名功能' }}
+                      </v-card-title>
+                      <v-card-subtitle>
+                         {{ formatMessageDate(msg.createdAt) }}
+                      </v-card-subtitle>
+                   </v-card-header-text>
+                   <template v-slot:append>
+                      <v-chip v-if="msg.status === 'new'" color="error" size="small" class="mr-2">新訊息</v-chip>
+                   </template>
+                </v-card-header>
+                <v-divider></v-divider>
+                
+                <v-card-text class="pt-3">
+                   <!-- Dynamic Data Key-Values -->
+                   <v-table density="compact" class="mb-3 border rounded">
+                      <tbody>
+                         <tr v-for="(value, key) in msg.data" :key="key">
+                            <td class="bg-grey-lighten-4 font-weight-bold" style="width: 150px;">{{ getFieldLabel(msg, key) }}</td>
+                            <td>{{ value }}</td>
+                         </tr>
+                      </tbody>
+                   </v-table>
+
+                   <!-- Attachments -->
+                   <div v-if="msg.attachments && msg.attachments.length > 0">
+                      <div class="text-subtitle-2 font-weight-bold mb-1">附件 ({{ msg.attachments.length }})</div>
+                      <div class="d-flex flex-wrap gap-2">
+                         <v-chip
+                            v-for="file in msg.attachments"
+                            :key="file.path"
+                            prepend-icon="mdi-paperclip"
+                            :href="file.url"
+                            target="_blank"
+                            color="primary"
+                            variant="outlined"
+                            label
+                         >
+                            {{ file.name }}
+                         </v-chip>
+                      </div>
+                   </div>
+                </v-card-text>
+             </v-card>
+          </v-container>
+       </v-card-text>
+    </v-card>
+ </v-dialog>
+
   <v-dialog v-model="isConfirmingSave" width="auto" persistent>
    <v-card>
      <v-card-title class="text-h5">
@@ -260,6 +322,7 @@ const uploadMessage = ref('');
 const uploadMessageType = ref('success');
 
 // 動態欄位相關狀態 ---
+const projectConfig = ref(null); // [新增] 用於查找客戶回傳功能的設定
 const customFieldDefs = ref([]);
 const hasFieldsLoaded = ref(false);
 const fieldDialog = reactive({
@@ -424,7 +487,76 @@ const SwitchRenderer = {
   },
 };
 
+// --- Customer Message Renderer ---
+const CustomerMessageRenderer = {
+  template: `
+    <div class="d-flex justify-center align-center h-100">
+       <v-btn v-if="messageCount > 0"
+          color="info" size="small" variant="tonal"
+          @click.stop="onClick"
+          class="px-2"
+          style="min-width: 60px;"
+       >
+          {{ messageCount }} 則
+       </v-btn>
+       <span v-else class="text-grey-lighten-1">-</span>
+    </div>
+  `,
+  setup(props) {
+     const messageCount = computed(() => {
+        const msgs = props.params.value;
+        return Array.isArray(msgs) ? msgs.length : 0;
+     });
+     const onClick = () => {
+        if (props.params.colDef.cellRendererParams && props.params.colDef.cellRendererParams.onClick) {
+           props.params.colDef.cellRendererParams.onClick(props.params.data);
+        }
+     };
+     return { messageCount, onClick };
+  }
+};
+
+// --- Customer Message Dialog Logic ---
+const isMessageDialogVisible = ref(false);
+const selectedHouseholdMessages = ref([]); // Array of messages
+const selectedHouseholdUnit = ref('');
+
+const openMessageDialog = (householdData) => {
+   const msgs = householdData.customerMessages || [];
+   if (msgs.length === 0) return;
+   
+   // Sort by date desc
+   selectedHouseholdMessages.value = [...msgs].sort((a, b) => {
+      const tA = a.createdAt?.seconds || 0;
+      const tB = b.createdAt?.seconds || 0;
+      return tB - tA;
+   });
+   selectedHouseholdUnit.value = householdData.unitId;
+   isMessageDialogVisible.value = true;
+};
+
+const formatMessageDate = (timestamp) => {
+   if (!timestamp) return '';
+   // Firestore Timestamp to JS Date
+   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
+   return format(date, 'yyyy/MM/dd HH:mm');
+};
+
 // --- 動態欄位相關方法 ---
+// [新增] 取得欄位顯示名稱 (將 ID 轉為 Label)
+const getFieldLabel = (msg, fieldKey) => {
+   // 如果還沒載入設定，直接回傳 key
+   if (!projectConfig.value || !projectConfig.value.customerMessageConfigs) return fieldKey;
+   
+   // 1. 找到對應的功能設定
+   const config = projectConfig.value.customerMessageConfigs.find(c => c.id === msg.configId);
+   if (!config || !config.customFields) return fieldKey;
+   
+   // 2. 找到對應的欄位定義
+   const field = config.customFields.find(f => f.id === fieldKey);
+   return field ? field.label : fieldKey;
+};
+
 const baseColDefs = computed(() => {
   const isUserAdmin = isAdmin.value;
 
@@ -454,6 +586,14 @@ const baseColDefs = computed(() => {
      { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false } ,
     { headerName: '驗屋報告資料夾', field: 'inspectionReportFolderUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
+    { 
+       headerName: '客戶回傳', 
+       field: 'customerMessages', 
+       width: 130, 
+       cellRenderer: CustomerMessageRenderer,
+       cellRendererParams: { onClick: (data) => openMessageDialog(data) },
+       editable: false
+    },
 
      
     // 敏感欄位 - 嚴格權限控管
@@ -774,6 +914,13 @@ async function onCellValueChanged(event) {
 onMounted(async () => {
   if (projectId.value) {
     await projectStore.fetchProjects();
+
+    // [新增] 載入專案設定以取得客戶回傳功能的欄位定義
+    try {
+      projectConfig.value = await projectStore.fetchProjectSettings(projectId.value);
+    } catch (e) {
+      console.error("Failed to load project settings:", e);
+    }
 
     // 1. 監聽戶別資料
     unsubscribeHouseholds = listenToAllHouseholds(

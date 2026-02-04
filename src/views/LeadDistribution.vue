@@ -1074,7 +1074,7 @@ import {
   onSnapshot // ✅ 補回
 } from 'firebase/firestore';
 
-import { checkLeadDuplicates, batchImportAndAssignLeadsAPI as batchImportAndAssignLeads,
+import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
   listGoogleSheets,
   exportToGoogleSheet
 } from '@/api'; 

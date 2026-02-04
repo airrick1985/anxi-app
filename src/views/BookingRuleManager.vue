@@ -15,10 +15,12 @@
       <v-tabs v-model="activeTab" bg-color="primary">
         <v-tab value="batches">批次管理</v-tab>
         <v-tab value="settings">驗屋預約設定</v-tab>
+        <v-tab value="customer-messages">客戶回傳功能</v-tab>
         <v-tab value="report-settings">驗屋報告設定</v-tab>
         <v-tab value="sheet-sync" v-if="isAdmin">Sheet 同步管理</v-tab>
         <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
         <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
+    
       </v-tabs>
 
       <div v-if="isLoading" class="text-center pa-10">
@@ -272,7 +274,8 @@
   </v-card-text>
 </v-card>
                 <v-divider class="my-6"></v-divider>
-                <p class="text-subtitle-1 font-weight-bold mb-2">Logo 上傳</p>
+                <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳()</p>
+                <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
                 <v-sheet border rounded class="pa-4 text-center">
                   <v-img :src="projectSettings.logoUrl" height="60" contain class="mb-4 bg-grey-lighten-4">
                     <template v-slot:placeholder>
@@ -355,17 +358,74 @@
                   hint="可從下拉選單快選，或輸入文字後按 Enter 新增"
                   persistent-hint
                 >
-                  <template v-slot:selection="{ attrs, item, parent }">
-                    <v-chip
-                      v-bind="attrs"
-                      :model-value="true"
-                      closable
-                      @click:close="parent.selectItem(item)"
-                    >
-                      {{ item.title }}
-                    </v-chip>
-                  </template>
                 </v-combobox>
+
+                <div v-if="projectSettings.bookingMethodOptions && projectSettings.bookingMethodOptions.length > 0" class="mt-4 pa-4 border rounded bg-grey-lighten-5">
+                   <div class="d-flex align-center mb-2">
+                      <v-icon color="primary" class="mr-2">mdi-cog-box</v-icon>
+                      <span class="text-subtitle-2 font-weight-bold">針對個別方式設定額外欄位</span>
+                   </div>
+                   <div class="d-flex flex-wrap gap-2">
+                      <v-chip
+                        v-for="(methodName, idx) in projectSettings.bookingMethodOptions"
+                        :key="idx"
+                        class="ma-1"
+                        color="indigo"
+                        text-color="indigo-darken-4"
+                        label
+                      >
+                        <span class="font-weight-medium mr-2">{{ typeof methodName === 'object' ? methodName.title : methodName }}</span>
+                        <v-btn
+                          icon
+                          variant="tonal"
+                          size="x-small"
+                          density="compact"
+                          color="primary"
+                          @click="openDynamicFieldsDialog(typeof methodName === 'object' ? methodName.title : methodName)"
+                          title="設定額外欄位"
+                        >
+                           <v-icon size="14">mdi-cog</v-icon>
+                        </v-btn>
+                      </v-chip>
+                   </div>
+                </div>
+
+                <!-- Dynamic Fields Configuration Dialog -->
+                <v-dialog v-model="isDynamicFieldsDialogVisible" max-width="800px">
+                  <v-card>
+                    <v-card-title class="d-flex align-center bg-primary text-white">
+                      <v-icon start>mdi-form-select</v-icon>
+                      設定額外欄位 - {{ currentConfiguringMethod }}
+                      <v-spacer></v-spacer>
+                      <v-btn icon variant="text" @click="isDynamicFieldsDialogVisible = false">
+                        <v-icon>mdi-close</v-icon>
+                      </v-btn>
+                    </v-card-title>
+                    <v-card-text class="pa-4" style="max-height: 70vh; overflow-y: auto;">
+                       <v-alert
+                        type="info"
+                        variant="tonal"
+                        border="start"
+                        density="compact"
+                        class="mb-4"
+                      >
+                        當用戶選擇「{{ currentConfiguringMethod }}」時，顯示以下額外欄位。
+                      </v-alert>
+                      
+                      <DynamicFieldEditor 
+                        v-model:fields="tempDynamicFields"
+                      />
+                    </v-card-text>
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-4">
+                      <v-spacer></v-spacer>
+                      <v-btn variant="text" @click="isDynamicFieldsDialogVisible = false">取消</v-btn>
+                      <v-btn color="primary" variant="elevated" @click="saveDynamicFieldsConfig">
+                        確認儲存
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
 
                    <v-combobox
                   v-model="projectSettings.inspectionStaff"
@@ -860,6 +920,125 @@
              <v-container fluid class="pa-4">
                <inspCategoriesItems :project-id="projectId" />
              </v-container>
+          </v-window-item>
+
+          <v-window-item value="customer-messages" class="settings-tab-content">
+             <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+             </div>
+             <div v-else class="settings-form-container pa-4">
+               <v-toolbar flat color="transparent" class="mb-4">
+                 <v-toolbar-title class="text-h6 font-weight-bold">客戶回傳功能設定</v-toolbar-title>
+                 <v-spacer></v-spacer>
+                 <v-btn color="primary" @click="openCustomerMessageDialog()" prepend-icon="mdi-plus">新增功能</v-btn>
+               </v-toolbar>
+
+               <v-row>
+                 <v-col v-for="(config, index) in projectSettings.customerMessageConfigs || []" :key="config.id" cols="12" md="6" lg="4">
+                   <v-card variant="outlined" class="h-100">
+                     <v-card-title class="d-flex justify-space-between align-center">
+                       <span>{{ config.functionName }}</span>
+                       <v-chip size="small" :color="config.enableIdVerification ? 'green' : 'grey'">
+                         {{ config.enableIdVerification ? '需驗證身分' : '免驗證' }}
+                       </v-chip>
+                     </v-card-title>
+                     <v-card-subtitle class="mb-2">
+                       按鈕文字: {{ config.buttonText }}
+                     </v-card-subtitle>
+                     <v-card-text>
+                       <div class="d-flex flex-wrap gap-2 mb-2">
+                         <v-chip size="x-small" v-if="config.enableBuildingSelect">棟別選單</v-chip>
+                         <v-chip size="x-small" v-if="config.enableUnitSelect">戶別選單</v-chip>
+                         <v-chip size="x-small" v-if="config.enableFileUpload">附件上傳</v-chip>
+                       </div>
+                       <div class="text-caption text-grey">
+                         自訂欄位: {{ config.customFields ? config.customFields.length : 0 }} 個
+                       </div>
+                     </v-card-text>
+                     <v-divider></v-divider>
+                     <v-card-actions>
+                       <v-spacer></v-spacer>
+                       <v-btn color="primary" variant="text" size="small" @click="openCustomerMessageDialog(config, index)">編輯</v-btn>
+                       <v-btn color="error" variant="text" size="small" @click="deleteCustomerMessageConfig(index)">刪除</v-btn>
+                     </v-card-actions>
+                   </v-card>
+                 </v-col>
+                 <v-col v-if="(!projectSettings.customerMessageConfigs || projectSettings.customerMessageConfigs.length === 0)" cols="12">
+                    <div class="text-center text-grey pa-10 border rounded border-dashed">
+                      尚未建立任何客戶回傳功能，請點擊右上角新增。
+                    </div>
+                 </v-col>
+               </v-row>
+             </div>
+
+              <!-- Customer Message Config Dialog -->
+              <v-dialog v-model="isCustomerMessageDialogOpen" max-width="900px" persistent>
+                <v-card>
+                  <v-card-title class="bg-primary text-white">
+                    {{ editedCustomerMessageConfig.id ? '編輯' : '新增' }}客戶回傳功能
+                  </v-card-title>
+                  <v-card-text class="pa-4" style="max-height: 80vh; overflow-y: auto;">
+                     <v-row>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.functionName"
+                              label="功能名稱 (辨識用)"
+                              placeholder="例如：自覓銀行回傳"
+                              variant="outlined"
+                              density="compact"
+                              :rules="[v => !!v || '必填']"
+                           ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.buttonText"
+                              label="按鈕顯示文字 (前端顯示)"
+                              placeholder="回傳自覓銀行資訊"
+                              variant="outlined"
+                              density="compact"
+                              :rules="[v => !!v || '必填']"
+                           ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.dialogTitle"
+                              label="對話框標題"
+                              placeholder="填寫銀行資訊"
+                              variant="outlined"
+                              density="compact"
+                           ></v-text-field>
+                        </v-col>
+                     </v-row>
+                     
+                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-2">功能開關</div>
+                     <v-sheet border rounded class="pa-3 mb-4">
+                        <v-row dense>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableBuildingSelect" label="啟用棟別選單 (必要)" color="success" density="compact" hide-details></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableUnitSelect" label="啟用戶別選單 (必要)" color="success" density="compact" hide-details></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證驗證" color="success" density="compact" hide-details hint="啟用後需輸入身分證並比對後端權限" persistent-hint></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableFileUpload" label="啟用附件上傳" color="success" density="compact" hide-details hint="單檔30MB，最多10個" persistent-hint></v-switch>
+                           </v-col>
+                        </v-row>
+                     </v-sheet>
+
+                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-4">自定義欄位</div>
+                     <DynamicFieldEditor v-model:fields="editedCustomerMessageConfig.customFields" />
+
+                  </v-card-text>
+                  <v-card-actions class="pa-4 border-t">
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
+                    <v-btn color="primary" variant="elevated" @click="saveCustomerMessageConfig">儲存設定</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
           </v-window-item>
 
           <v-window-item value="sheet-sync" class="settings-tab-content" v-if="isAdmin">
@@ -1561,7 +1740,8 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
-import RichTextEditor from '@/components/RichTextEditor.vue'; 
+import RichTextEditor from '@/components/RichTextEditor.vue';
+import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue'; // Import DynamicFieldEditor
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
@@ -1682,6 +1862,8 @@ const deleteAttachment = async (index) => {
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue'; // <--- ❗ 確認路徑
 import inspCategoriesItems from '@/views/admin/inspCategoriesItems.vue'; // <--- ❗ 確認路徑
 
+import { v4 as uuidv4 } from 'uuid';
+
 
 const isTesting = ref(false);
 const isSendingLineNotification = ref(false);
@@ -1796,7 +1978,10 @@ const defaultSettings = computed(() => ({
     bookingTypes: [],
     showBookingMethod: false,
     showReportUploadButton: false, 
+    showReportUploadButton: false, 
     bookingMethodOptions: [],
+    bookingMethodConfigs: {}, // [New]
+    customerMessageConfigs: [], // [New] 客戶回傳功能設定
     inspectionStaff: [], 
     inspectionReportTemplateUrl: '',
     isPublished: false,
@@ -1906,6 +2091,10 @@ const isDeleteDialogVisible = ref(false);
 const isPreviewDialogVisible = ref(false);
 const isConflictDialogVisible = ref(false);
 const isAlertPreviewDialogVisible = ref(false); // 新增預覽 Dialog 狀態
+const isDynamicFieldsDialogVisible = ref(false); // [New]
+const currentConfiguringMethod = ref(''); // [New]
+const tempDynamicFields = ref([]); // [New]
+const isSavingDynamicFields = ref(false); // [New]
 
 
 const batchToDelete = ref(null);
@@ -1933,6 +2122,74 @@ const weekDays = [
   { key: 'saturday', label: '星期六' },
   { key: 'sunday', label: '星期日' },
 ];
+
+// --- Customer Message Logic ---
+const isCustomerMessageDialogOpen = ref(false);
+const editedCustomerMessageType = ref(''); // 'add' or 'edit'
+const editedCustomerMessageIndex = ref(-1);
+const editedCustomerMessageConfig = ref({
+  id: '',
+  functionName: '',
+  buttonText: '',
+  dialogTitle: '',
+  enableBuildingSelect: true,
+  enableUnitSelect: true,
+  enableIdVerification: false,
+  enableFileUpload: false,
+  customFields: []
+});
+
+const openCustomerMessageDialog = (config = null, index = -1) => {
+  if (config) {
+    editedCustomerMessageType.value = 'edit';
+    editedCustomerMessageIndex.value = index;
+    // Deep copy to check
+    editedCustomerMessageConfig.value = JSON.parse(JSON.stringify(config));
+  } else {
+    editedCustomerMessageType.value = 'add';
+    editedCustomerMessageIndex.value = -1;
+    editedCustomerMessageConfig.value = {
+      id: uuidv4(),
+      functionName: '',
+      buttonText: '回傳資訊',
+      dialogTitle: '填寫資訊',
+      enableBuildingSelect: true,
+      enableUnitSelect: true,
+      enableIdVerification: true, 
+      enableFileUpload: false,
+      customFields: []
+    };
+  }
+  isCustomerMessageDialogOpen.value = true;
+};
+
+const saveCustomerMessageConfig = async () => {
+    // Basic validation
+    if (!editedCustomerMessageConfig.value.functionName || !editedCustomerMessageConfig.value.buttonText) {
+        showSnackbar('請填寫功能名稱與按鈕文字', 'error');
+        return;
+    }
+
+    if (!projectSettings.value.customerMessageConfigs) {
+        projectSettings.value.customerMessageConfigs = [];
+    }
+
+    if (editedCustomerMessageType.value === 'add') {
+        projectSettings.value.customerMessageConfigs.push(editedCustomerMessageConfig.value);
+    } else {
+        projectSettings.value.customerMessageConfigs[editedCustomerMessageIndex.value] = editedCustomerMessageConfig.value;
+    }
+
+    isCustomerMessageDialogOpen.value = false;
+    await saveSettings(); // Auto save to firestore
+};
+
+const deleteCustomerMessageConfig = async (index) => {
+    if (!confirm('確定要刪除此功能設定嗎？')) return;
+    
+    projectSettings.value.customerMessageConfigs.splice(index, 1);
+    await saveSettings();
+};
 
 
 // Conflict resolution state
@@ -2157,6 +2414,7 @@ async function loadDataForProject() {
         projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
         projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
         projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
+        projectSettings.value.bookingMethodConfigs = settings.bookingMethodConfigs || {}; // [New] Load configs
         projectSettings.value.inspectionStaff = settings.inspectionStaff || []; 
         // 👇👇👇 [新增：讀取排程設定] 👇👇👇
         
@@ -2166,6 +2424,7 @@ async function loadDataForProject() {
         // 👇👇👇 [新增：讀取 Google Sheet 設定] 👇👇👇
         projectSettings.value.googleSheetId = settings.googleSheetId || '';
         projectSettings.value.googleSheetTabName = settings.googleSheetTabName || '';
+        projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
         // 👆👆👆 [新增結束] 👆👆👆
 
         // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
@@ -2253,6 +2512,30 @@ async function loadDataForProject() {
     showSnackbar(`錯誤：找不到建案 ID ${projectId.value}`, 'error');
   }
   isLoading.value = false;
+}
+
+// --- Dynamic Fields Logic ---
+function openDynamicFieldsDialog(methodName) {
+  currentConfiguringMethod.value = methodName;
+  // Initialize with existing config or empty array
+  // We need to clone deep to avoid direct mutation
+  const existingConfig = projectSettings.value.bookingMethodConfigs?.[methodName] || { fields: [] };
+  tempDynamicFields.value = JSON.parse(JSON.stringify(existingConfig.fields));
+  isDynamicFieldsDialogVisible.value = true;
+}
+
+function saveDynamicFieldsConfig() {
+  if (!projectSettings.value.bookingMethodConfigs) {
+    projectSettings.value.bookingMethodConfigs = {};
+  }
+  
+  // Save to projectSettings
+  projectSettings.value.bookingMethodConfigs[currentConfiguringMethod.value] = {
+    fields: JSON.parse(JSON.stringify(tempDynamicFields.value))
+  };
+  
+  isDynamicFieldsDialogVisible.value = false;
+  showSnackbar(`已暫存「${currentConfiguringMethod.value}」的欄位設定，請記得點擊「儲存設定」以寫入資料庫。`, 'info');
 }
 
 // --- Dialog Open/Close Functions ---

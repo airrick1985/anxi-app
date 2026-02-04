@@ -12062,6 +12062,10 @@ exports.bookingApi = onCall({
       case 'handleDirectReportUpload':
         return await _handleHandleDirectReportUpload(data);
 
+      // --- 客戶回傳訊息 (Customer Messages) ---
+      case 'submitCustomerMessage':
+        return await _handleSubmitCustomerMessage(data);
+
       // --- 預設情況 ---
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
@@ -12595,6 +12599,9 @@ async function _handleSaveBooking(data) {
         agentName: bookingData.agentName || '', agentIdNumber: bookingData.agentIdNumber || '',
         agentAddress: bookingData.agentAddress || '', agentPhone: bookingData.agentPhone || '',
         bookingCode: bookingCode, reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
+        bookingMethodDetails: bookingData.bookingMethodDetails || {},
+        bookingMethodDetailsDisplay: bookingData.bookingMethodDetailsDisplay || [],
+
       };
       transaction.set(appointmentRef, newAppointmentData);
       return { bookingCode, newAppointmentData };
@@ -12695,6 +12702,14 @@ async function _handleSaveBooking(data) {
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
+          ${newAppointmentData.bookingMethodDetailsDisplay && newAppointmentData.bookingMethodDetailsDisplay.length > 0 ?
+        newAppointmentData.bookingMethodDetailsDisplay.map(item => `
+              <tr style="border-bottom: 1px solid #eeeeee;">
+                <td style="padding: 12px 0; font-weight: bold; color: #555555;">${item.label}</td>
+                <td style="padding: 12px 0;">${item.value}</td>
+              </tr>
+            `).join('')
+        : ''}
           ${newAppointmentData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${newAppointmentData.inspectionCompanyName}</td></tr>
           ` : ''}
@@ -12839,6 +12854,14 @@ async function _handleCancelBooking(data) {
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
+          ${bookingData.bookingMethodDetailsDisplay && bookingData.bookingMethodDetailsDisplay.length > 0 ?
+          bookingData.bookingMethodDetailsDisplay.map(item => `
+              <tr style="border-bottom: 1px solid #eeeeee;">
+                <td style="padding: 12px 0; font-weight: bold; color: #555555;">${item.label}</td>
+                <td style="padding: 12px 0;">${item.value}</td>
+              </tr>
+            `).join('')
+          : ''}
           ${bookingData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${bookingData.inspectionCompanyName}</td></tr>
           ` : ''}
@@ -14058,6 +14081,7 @@ async function _handleAddAppointmentAdmin(data) {
         bookingCode: bookingCode,
         reportUploaded: !['初驗', '複驗', '驗屋'].includes(newBookingData.bookingType),
         bookingRemarks: newBookingData.bookingRemarks || "",
+        bookingMethodDetails: newBookingData.bookingMethodDetails || {},
         createdByName: newBookingData.createdByName || null,
         lastModifiedByName: newBookingData.lastModifiedByName || null,
         isDeleted: false,
@@ -14297,6 +14321,8 @@ async function _handleUpdateAppointmentByAdmin(data) {
         const finalBookingPayload = { ...bookingPayload };
         if (finalBookingPayload.appointmentDate) finalBookingPayload.appointmentDate = Timestamp.fromDate(new Date(newDateStr));
         if (finalBookingPayload.appointmentTimeSlot) finalBookingPayload.appointmentTimeSlot = newTimeSlotKey;
+        if (bookingPayload.bookingMethodDetails) finalBookingPayload.bookingMethodDetails = bookingPayload.bookingMethodDetails;
+
         finalBookingPayload.updatedAt = FieldValue.serverTimestamp();
         batchForTx.update(appointmentRef, finalBookingPayload);
         Object.assign(combinedPayload, finalBookingPayload);
@@ -19700,3 +19726,88 @@ exports.sendCustomEmail = onCall({ region: "asia-east1", secrets: gmailSecrets }
     throw new HttpsError('internal', '發送郵件時發生技術錯誤，請稍後再試。');
   }
 });
+
+/**
+ * [內部函式] 處理客戶回傳訊息提交
+ */
+async function _handleSubmitCustomerMessage(data) {
+  // 由於在 Cloud Functions 環境，使用 admin.firestore() 或 new Firestore() 
+  // 這裡 bookingApi 上下文通常是 admin sdk 環境，但前面 _handleGetProjectConfig 用了 new Firestore
+  // 我們保持一致使用 admin.firestore() 若已有 admin 初始化，或者 new Firestore
+  // 參考前方程式碼: const db = new Firestore({ databaseId: 'anxi-app' });
+  const db = new Firestore({ databaseId: 'anxi-app' });
+
+  const { projectId, building, unit, idNumber, configId, dynamicData, attachments } = data;
+
+  // 1. 基本參數驗證
+  if (!projectId || !building || !unit) {
+    throw new HttpsError('invalid-argument', '缺少必要的戶別資訊 (projectId, building, unit)');
+  }
+  if (!configId) {
+    throw new HttpsError('invalid-argument', '缺少 configId');
+  }
+
+  try {
+    // 2. 獲取專案設定並驗證 configId
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+      throw new HttpsError('not-found', '找不到指定的專案');
+    }
+    const projectConfig = projectDoc.data();
+    const customerMessageConfigs = projectConfig.customerMessageConfigs || [];
+    const config = customerMessageConfigs.find(c => c.id === configId);
+
+    if (!config) {
+      throw new HttpsError('not-found', '找不到指定的回傳功能設定');
+    }
+
+    // 3. 身分驗證 (如果有啟用)
+    if (config.enableIdVerification) {
+      if (!idNumber) {
+        throw new HttpsError('invalid-argument', '此功能需驗證身分證字號');
+      }
+      // 重用現有的驗證邏輯
+      // 注意：_handleValidateId 若失敗會直接拋錯
+      // 我們假設 _handleValidateId 在此作用域可訪問 (它在 bookingApi 內部被調用，應該是同一個檔案的函式)
+      await _handleValidateId({ projectId, unitId: unit, idNumber });
+    }
+
+    // 4. 查找戶別文件
+    // 使用與 _handleValidateId 相同的路徑邏輯: households 為根集合，ID 為 ${projectId}_${unit}
+    const householdDocId = `${projectId}_${unit}`;
+    const householdRef = db.collection('households').doc(householdDocId);
+    const householdDoc = await householdRef.get();
+
+    if (!householdDoc.exists) {
+      throw new HttpsError('not-found', '找不到指定的戶別資料');
+    }
+
+    // 5. 準備訊息物件
+    const messageId = crypto.randomUUID();
+    const messageData = {
+      id: messageId,
+      createdAt: Timestamp.now(),
+      configId: config.id,
+      functionName: config.functionName, // 冗餘儲存方便顯示
+      data: dynamicData || {}, // 動態表單資料
+      attachments: attachments || [], // 附件列表 [{name, url, path}]
+      status: 'new' // 初始狀態
+    };
+
+    // 6. 更新戶別文件 (Array Union)
+    await householdRef.update({
+      customerMessages: FieldValue.arrayUnion(messageData)
+    });
+
+    return {
+      status: 'success',
+      messageId: messageId,
+      message: '提交成功'
+    };
+
+  } catch (error) {
+    console.error('[_handleSubmitCustomerMessage] Error:', error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `提交失敗: ${error.message}`);
+  }
+}

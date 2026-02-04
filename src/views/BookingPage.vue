@@ -183,7 +183,129 @@
               >
                 上傳驗屋報告
               </v-btn>
+
+              <div class="d-none d-sm-block ml-2">
+                 <v-btn
+                    v-for="msgConfig in projectConfig.customerMessageConfigs || []"
+                    :key="msgConfig.id"
+                    variant="outlined"
+                    class="ml-2"
+                    @click="openCustomerMessageDialog(msgConfig)"
+                 >
+                    {{ msgConfig.buttonText }}
+                 </v-btn>
+              </div>
+              <!-- Mobile view for extra buttons -->
+              <div class="d-sm-none w-100 text-center mt-2" v-if="projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0">
+                 <v-btn
+                    v-for="msgConfig in projectConfig.customerMessageConfigs"
+                    :key="msgConfig.id"
+                    variant="outlined"
+                    class="ma-1"
+                    size="small"
+                    @click="openCustomerMessageDialog(msgConfig)"
+                 >
+                    {{ msgConfig.buttonText }}
+                 </v-btn>
+              </div>
+
             </v-card-title>
+
+            <!-- Customer Message Dialog -->
+             <v-dialog v-model="isCustomerMessageDialogOpen" max-width="600px" persistent>
+                <v-card>
+                   <v-card-title class="bg-primary text-white d-flex justify-space-between align-center">
+                      {{ currentCustomerMessageConfig?.dialogTitle || '填寫資訊' }}
+                      <v-btn icon="mdi-close" variant="text" color="white" @click="isCustomerMessageDialogOpen = false"></v-btn>
+                   </v-card-title>
+                   <v-card-text class="pa-4" style="max-height: 80vh; overflow-y: auto;">
+                      <v-form ref="customerMessageFormRef" @submit.prevent="submitCustomerMessage">
+                         
+                         <!-- Selection Section -->
+                         <v-row v-if="currentCustomerMessageConfig?.enableBuildingSelect">
+                            <v-col cols="12" sm="6">
+                               <v-select
+                                  v-model="customerMessageForm.building"
+                                  :items="initialData.buildings || []"
+                                  label="棟別"
+                                  variant="outlined"
+                                  density="comfortable"
+                                  :rules="[v => !!v || '必填']"
+                                  @update:model-value="onCustomerMessageBuildingChange"
+                               ></v-select>
+                            </v-col>
+                            <v-col cols="12" sm="6" v-if="currentCustomerMessageConfig?.enableUnitSelect">
+                               <v-select
+                                  v-model="customerMessageForm.unit"
+                                  :items="customerMessageUnitList"
+                                  item-title="unit"
+                                  item-value="unit"
+                                  label="戶別"
+                                  variant="outlined"
+                                  density="comfortable"
+                                  :rules="[v => !!v || '必填']"
+                                  :disabled="!customerMessageForm.building"
+                               ></v-select>
+                            </v-col>
+                         </v-row>
+
+                         <!-- ID Verification -->
+                         <v-text-field
+                            v-if="currentCustomerMessageConfig?.enableIdVerification"
+                            v-model="customerMessageForm.idNumber"
+                            label="身分證字號 (驗證用)"
+                            variant="outlined"
+                            density="comfortable"
+                            class="mb-2"
+                            
+                         ></v-text-field>
+
+                         <v-divider class="my-3"></v-divider>
+
+                         <!-- Dynamic Fields -->
+                         <div v-if="currentCustomerMessageConfig?.customFields?.length > 0">
+                            <DynamicFormRenderer 
+                               :fields="currentCustomerMessageConfig.customFields" 
+                               v-model="customerMessageDynamicData"
+                            />
+                         </div>
+
+                         <!-- File Upload -->
+                         <div v-if="currentCustomerMessageConfig?.enableFileUpload" class="mt-4">
+                            <p class="text-subtitle-2 font-weight-bold mb-1">附件上傳 (最多10個，單檔30MB)</p>
+                            <v-file-input
+                               v-model="customerMessageFiles"
+                               label="選擇檔案 (圖片或PDF)"
+                               multiple
+                               chips
+                               show-size
+                               counter
+                               variant="outlined"
+                               density="comfortable"
+                               accept="image/*,.pdf"
+                               :rules="[
+                                  v => !v || v.length <= 10 || '最多上傳 10 個檔案',
+                                  v => !v || v.every(f => f.size <= 30 * 1024 * 1024) || '單一檔案不可超過 30MB'
+                               ]"
+                            ></v-file-input>
+                         </div>
+
+                      </v-form>
+                   </v-card-text>
+                   <v-card-actions class="pa-4 border-t">
+                      <v-spacer></v-spacer>
+                      <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
+                      <v-btn 
+                         color="primary" 
+                         variant="elevated" 
+                         @click="submitCustomerMessage" 
+                         :loading="isSubmittingCustomerMessage"
+                      >
+                         確認送出
+                      </v-btn>
+                   </v-card-actions>
+                </v-card>
+             </v-dialog>
             <v-divider></v-divider>
 
             <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
@@ -415,6 +537,19 @@
                     variant="outlined"
                     :disabled="isLoading || !isBookingActive"
                   ></v-text-field>
+
+                  <!-- Dynamic Fields Renderer -->
+                  <div v-if="currentDynamicFields.length > 0" class="mt-4 pa-4 border rounded bg-grey-lighten-5">
+                    <p class="text-subtitle-1 font-weight-bold mb-3 text-primary">
+                        <v-icon start size="small">mdi-pencil-box-outline</v-icon>
+                        其他資訊 ({{ formStep1.bookingMethod }})
+                    </p>
+                    <DynamicFormRenderer
+                        :fields="currentDynamicFields"
+                        v-model="dynamicFormData"
+                    />
+                  </div>
+                  
                   </v-form>
                 </v-card-text>
                 <v-card-actions class="pa-4">
@@ -452,6 +587,23 @@
         <v-divider class="my-2"></v-divider>
         <v-list-item title="預約項目" :subtitle="existingBookingInfo.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
         <v-list-item title="選擇方式" :subtitle="existingBookingInfo.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+        <template v-if="existingBookingInfo.bookingMethodDetailsDisplay && existingBookingInfo.bookingMethodDetailsDisplay.length > 0">
+            <v-list-item
+              v-for="field in existingBookingInfo.bookingMethodDetailsDisplay"
+              :key="field.label"
+              title=""
+              :subtitle="field.value"
+              prepend-icon="mdi-information-outline"
+              density="compact"
+            >
+                <template v-slot:title>
+                  <span class="text-caption text-grey">{{ field.label }}</span>
+                </template>
+                <template v-slot:subtitle="{ subtitle }">
+                  <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
+                </template>
+            </v-list-item>
+        </template>
         <v-list-item v-if="existingBookingInfo.inspectionCompanyName" title="代驗公司" :subtitle="existingBookingInfo.inspectionCompanyName" prepend-icon="mdi-office-building"></v-list-item>
         <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo.appointmentDate)" prepend-icon="mdi-calendar-check-outline"></v-list-item>
         <v-list-item title="預約時段" :subtitle="existingBookingInfo.appointmentTimeSlot" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
@@ -602,6 +754,23 @@
                 <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
 
                 <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
+                <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
+                  <v-list-item
+                    v-for="field in displayDynamicFields"
+                    :key="field.label"
+                    title=""
+                    :subtitle="field.value"
+                    prepend-icon="mdi-arrow-right-bottom"
+                    density="compact"
+                  >
+                     <template v-slot:title>
+                        <span class="text-caption text-grey">{{ field.label }}</span>
+                     </template>
+                     <template v-slot:subtitle="{ subtitle }">
+                        <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
+                     </template>
+                  </v-list-item>
+                </template>
                 <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName"></v-list-item>
                 <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
                 <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
@@ -659,6 +828,23 @@
           
           <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
           <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+          <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
+              <v-list-item
+                v-for="field in displayDynamicFields"
+                :key="field.label"
+                title=""
+                :subtitle="field.value"
+                prepend-icon="mdi-information-outline"
+                density="compact"
+              >
+                  <template v-slot:title>
+                    <span class="text-caption text-grey">{{ field.label }}</span>
+                  </template>
+                  <template v-slot:subtitle="{ subtitle }">
+                    <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
+                  </template>
+              </v-list-item>
+          </template>
           <v-list-item v-if="finalBookingData.companyName" title="代驗公司" :subtitle="finalBookingData.companyName" prepend-icon="mdi-office-building"></v-list-item>
           <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
           <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
@@ -978,6 +1164,13 @@ import { useDate } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
 
+// --- Customer Message Imports ---
+import { functions, storage } from '@/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue'; // Import DynamicFormRenderer
+
+
 
 const loadingText = ref('處理中...');
 
@@ -1143,6 +1336,7 @@ const step1Form = ref(null);
 const step2Form = ref(null);
 const bookingResultCard = ref(null);
 
+
 // 代表「今天」的常數，並將時間設為午夜
 const today = new Date();
 today.setHours(0, 0, 0, 0); // 將時間部分歸零，以便進行日期比較
@@ -1170,8 +1364,11 @@ const formStep1 = ref({
   companyName: '',
   address: '',
   idNumber: '',
-  isOwnerPresent: true // 新增此行，預設為 true (屋主本人到場)
+  idNumber: '',
+  isOwnerPresent: true 
 });
+
+const dynamicFormData = ref({}); // [New] Store dynamic field values
 
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
@@ -1223,6 +1420,7 @@ const isIdValidationRequired = computed(() => {
 const finalBookingData = computed(() => ({
   ...formStep1.value,
   ...formStep2.value,
+  bookingMethodDetails: dynamicFormData.value,
   戶別: formStep1.value.unit,
   預約日期: formStep2.value.預約日期 ? dateAdapter.format(formStep2.value.預約日期, 'keyboardDate') : null,
 }));
@@ -1448,6 +1646,7 @@ const resetBookingFlow = () => {
   
   // 重置表單資料
   formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '',isOwnerPresent: true };
+  dynamicFormData.value = {}; // [New] Reset dynamic data
   formStep2.value = { 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' };
 
   // 重置授權書相關狀態
@@ -1508,8 +1707,51 @@ watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
 
   // 切換驗屋方式時，重設授權書寄送狀態
   isSigningInitiated.value = false;
+  dynamicFormData.value = {}; // [New] Reset dynamic data when method changes
 });
 // --- END: ✓ 修改 watch 監聽 bookingMethod ---
+
+const currentDynamicFields = computed(() => {
+   if (!formStep1.value.bookingMethod || !projectConfig.value || !projectConfig.value.bookingMethodConfigs) {
+       return [];
+   }
+   const config = projectConfig.value.bookingMethodConfigs[formStep1.value.bookingMethod];
+   return config ? config.fields : [];
+});
+
+const displayDynamicFields = computed(() => {
+    const data = dynamicFormData.value;
+    if (!data || Object.keys(data).length === 0) return [];
+
+    const flatten = (fields) => {
+        let res = [];
+        if (!fields) return res;
+        for (const f of fields) {
+            res.push(f);
+            if (f.options) {
+                for (const opt of f.options) {
+                    if (opt.subFields) {
+                        res = res.concat(flatten(opt.subFields));
+                    }
+                }
+            }
+        }
+        return res;
+    };
+
+    const allFields = flatten(currentDynamicFields.value);
+
+    return Object.entries(data).map(([key, val]) => {
+        const fieldParam = allFields.find(f => f.id === key);
+        let displayVal = val;
+        if (Array.isArray(val)) displayVal = val.join(', ');
+        return {
+            label: fieldParam ? fieldParam.label : key,
+            value: displayVal
+        };
+    });
+});
+
 
 
 // ✅ 3. 大幅簡化 onMounted 邏輯
@@ -1817,7 +2059,10 @@ const submitBooking = async () => {
         authorizationLetterUrl: authLetterFinalUrl,
         // 加入從後端獲取的確認 Token
         confirmationToken: confirmationToken.value,
-
+        // [New] Dynamic Data
+        bookingMethodDetails: finalBookingData.value.bookingMethodDetails,
+        bookingMethodDetailsDisplay: displayDynamicFields.value,
+        bookingMethodDetails: dynamicFormData.value
       }
     };
     
@@ -2063,6 +2308,114 @@ const resetUploadMode = () => {
 };
 
 // 組件卸載時清除計時器，防止內存洩漏
+// --- Customer Message Logic ---
+const isCustomerMessageDialogOpen = ref(false);
+const currentCustomerMessageConfig = ref(null);
+const customerMessageForm = ref({
+  building: null,
+  unit: null,
+  idNumber: ''
+});
+const customerMessageDynamicData = ref({});
+const customerMessageFiles = ref([]);
+const customerMessageUnitList = ref([]);
+const isSubmittingCustomerMessage = ref(false);
+const customerMessageFormRef = ref(null);
+
+const openCustomerMessageDialog = (config) => {
+  currentCustomerMessageConfig.value = config;
+  // Initialize form
+  customerMessageForm.value = {
+    building: null,
+    unit: null,
+    idNumber: ''
+  };
+  customerMessageDynamicData.value = {}; // Reset dynamic data
+  customerMessageFiles.value = [];
+  customerMessageUnitList.value = [];
+  isCustomerMessageDialogOpen.value = true;
+};
+
+const onCustomerMessageBuildingChange = (building) => {
+  customerMessageForm.value.unit = null;
+  if (!building) {
+    customerMessageUnitList.value = [];
+    return;
+  }
+  // Try to use allUnitsData (from booking init step) or allUnitsDataForUpload (from upload init step)
+  // Assuming booking data is loaded. If not, we might need to fetch it.
+  // But initialData.buildings is populated, so allUnitsData should be populated if Step 1 loaded.
+  // However, check if allUnitsData is keyed by building.
+  // Code at 1347: :items="unitList" which comes from onBuildingChange -> unitList.value = allUnitsData.value[building]
+  customerMessageUnitList.value = allUnitsData.value[building] || [];
+};
+
+const submitCustomerMessage = async () => {
+   const { valid } = await customerMessageFormRef.value.validate();
+   if (!valid) return;
+
+   isSubmittingCustomerMessage.value = true;
+   try {
+      const config = currentCustomerMessageConfig.value;
+      const uploadedAttachments = [];
+
+      // 1. Upload Files
+      if (config.enableFileUpload && customerMessageFiles.value.length > 0) {
+         for (const file of customerMessageFiles.value) {
+            const uniqueId = Date.now() + Math.floor(Math.random() * 1000);
+            const storagePath = `customer-messages/${projectId.value}/${config.id}/${uniqueId}_${file.name}`;
+            const fileRef = storageRef(storage, storagePath);
+            const snapshot = await uploadBytes(fileRef, file);
+            const downloadUrl = await getDownloadURL(snapshot.ref);
+            
+            uploadedAttachments.push({
+               name: file.name,
+               url: downloadUrl,
+               path: storagePath,
+               size: file.size,
+               type: file.type
+            });
+         }
+      }
+
+      // 2. Prepare Payload
+      const payload = {
+         projectId: projectId.value,
+         building: customerMessageForm.value.building, // Require building/unit usually logic-dependent but we enforce if enabled
+         unit: customerMessageForm.value.unit,
+         idNumber: customerMessageForm.value.idNumber,
+         configId: config.id,
+         dynamicData: customerMessageDynamicData.value,
+         attachments: uploadedAttachments
+      };
+      
+      // If building/select is disabled in config, we might not have building/unit. 
+      // But submitCustomerMessage backend REQUIRES building/unit to find household.
+      // Design implicit: It's tied to a household. So building/unit selection is practically required for now.
+      // (The UI code enables loops v-if enableBuildingSelect, so if disabled, these are null)
+      // If disabled, user can't select, so backend fails. 
+      // Admin config "enableBuildingSelect (必要)" confirms this.
+
+      const res = await httpsCallable(functions, 'bookingApi')({ 
+          action: 'submitCustomerMessage', 
+          data: payload 
+      });
+
+      if (res.data.status === 'success') {
+         alert('提交成功！');
+         isCustomerMessageDialogOpen.value = false;
+      } else {
+         throw new Error(res.data.message || 'Unknown error');
+      }
+
+   } catch (error) {
+      console.error('Submit Message Error:', error);
+      alert(`提交失敗: ${error.message}`);
+   } finally {
+      isSubmittingCustomerMessage.value = false;
+   }
+};
+
 onUnmounted(() => {
   clearTimeoutTimer();
 // [新增] 清除計時器

@@ -283,6 +283,22 @@
                     </v-row>
                     <v-divider v-if="index < panel.fields.length - 1"></v-divider>
                   </template>
+
+                  <!-- [New] Additional Dynamic Fields Display -->
+                  <template v-if="panel.title === '驗屋與預約詳情' && additionalFields.length > 0">
+                    <v-divider class="my-3" color="primary"></v-divider>
+                    <div class="d-flex align-center text-subtitle-2 text-primary font-weight-bold mb-2">
+                       <v-icon start size="small">mdi-playlist-plus</v-icon>
+                       額外預約資訊 ({{ appointment.bookingMethod || appointment.inspectionMethod }})
+                    </div>
+                    <div class="bg-blue-grey-lighten-5 rounded pa-3">
+                        <v-row v-for="item in additionalFields" :key="item.label" dense class="mb-1">
+                        <v-col cols="12" sm="4" class="text-caption text-grey-darken-2 font-weight-bold">{{ item.label }}</v-col>
+                        <v-col cols="12" sm="8" class="text-body-2">{{ item.value || '-' }}</v-col>
+                        </v-row>
+                    </div>
+                  </template>
+
                 </div>
               </v-expansion-panel-text>
             </template>
@@ -800,6 +816,13 @@ watch(() => props.modelValue, (isOpen) => {
     } else {
       editableInspectors.value = [];
     }
+
+    // [New] Fetch project config to decode dynamic fields
+    if (!projectConfig.value) { // Or check ID if you handle multiple projects switch
+         fetchProjectConfig(props.appointment.projectId).then(config => {
+             projectConfig.value = config;
+         });
+    }
   } 
   // 條件二：當對話框關閉時，執行「清理與重置」
   else {
@@ -808,6 +831,48 @@ watch(() => props.modelValue, (isOpen) => {
     editableEvent.value = null;
     isOverbooking.value = false;
   }
+});
+
+// [New] Helper to Recursively find field label
+const findFieldLabel = (fields, id) => {
+    if (!fields) return null;
+    for (const field of fields) {
+        if (field.id === id) return field.label;
+        if (field.options) {
+            for (const option of field.options) {
+                if (option.subFields) {
+                    const found = findFieldLabel(option.subFields, id);
+                    if (found) return found;
+                }
+            }
+        }
+    }
+    return null;
+};
+
+// [New] Computed for Additional Fields
+const additionalFields = computed(() => {
+    if (!props.appointment || !props.appointment.bookingMethodDetails || !projectConfig.value) return [];
+    
+    const details = props.appointment.bookingMethodDetails;
+    const methodName = props.appointment.bookingType === '其他' ? props.appointment.bookingMethod : (props.appointment.inspectionMethod || props.appointment.bookingMethod);
+    // Fallback logic to find the method name.
+
+    if (!methodName) return [];
+
+    const config = projectConfig.value.bookingMethodConfigs?.[methodName];
+    if (!config || !config.fields) return [];
+
+    const formatValue = (val) => Array.isArray(val) ? val.join(', ') : val;
+
+    const result = [];
+    for (const [key, value] of Object.entries(details)) {
+        const label = findFieldLabel(config.fields, key);
+        if (label) {
+            result.push({ label, value: formatValue(value) });
+        }
+    }
+    return result;
 });
 
 const handleDateChange = (newDate) => {
