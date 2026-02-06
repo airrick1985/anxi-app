@@ -336,7 +336,13 @@ const verifyAccess = async (lineId) => {
 onMounted(async () => {
   if (!leadId) { authStatus.value = 'denied'; return; }
   try {
-    await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+    const liffId = import.meta.env.VITE_LIFF_ID;
+    if (!liffId) {
+      console.error('錯誤: .env 中找不到 VITE_LIFF_ID');
+      authStatus.value = 'denied';
+      return;
+    }
+    await liff.init({ liffId });
     if (!liff.isLoggedIn()) {
       liff.login({ redirectUri: window.location.href });
       return;
