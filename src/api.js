@@ -798,6 +798,25 @@ export const exportToGoogleSheet = async (payload) => {
   }
 };
 
+
+
+
+/**
+ * [API] 銷控資料全量同步到 Google Sheet
+ * @param {object} payload - { projectId, spreadsheetId, sheetName }
+ * @returns {Promise<object>} - { status, message, count }
+ */
+export const syncSalesHouseholdsToSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'syncSalesHouseholdsToSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncSalesHouseholdsToSheet:", error);
+    throw new Error(error.message || '銷控資料同步失敗');
+  }
+};
+
 /**
  * [API] 同步戶別資料到 Google Sheet (全量)
  * @param {object} payload - { projectId, spreadsheetId, sheetName }
@@ -811,6 +830,22 @@ export const syncHouseholdsToSheet = async (payload) => {
   } catch (error) {
     console.error("API Error in syncHouseholdsToSheet:", error);
     throw new Error(error.message || '同步失敗');
+  }
+};
+
+/**
+ * [API] 同步預約資料到 Google Sheet (全量)
+ * @param {object} payload - { projectId, spreadsheetId, sheetName }
+ * @returns {Promise<object>} - { status, message, count }
+ */
+export const syncAppointmentsToSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'syncAppointmentsToSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncAppointmentsToSheet:", error);
+    throw new Error(error.message || '預約資料同步失敗');
   }
 };
 

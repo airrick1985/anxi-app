@@ -37,30 +37,30 @@ const routes = [
 
   { path: '/login', name: 'Login', component: () => import('@/views/Login.vue') }, // ✅
   { path: '/home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { requiresAuth: true } }, // ✅
- 
+
 
   {
-  path: '/admin/inspection-admin',
-  name: 'InspectionAdmin',
-  component: InspectionAdmin,
-  meta: {
-    requiredSystem: '驗屋系統',
-    requiredRoles: ['超級管理員','系統管理員','客服主管','工務主管'],
-    requiresAuth: true,
-    layout: DefaultLayout // ✅
-  }
-},
-
-
-{
-  path: '/test', 
-  name: 'Test',
-  component: () => import('@/views/PrintQuotation.vue'),
-  meta: {
-     title: 'TEST',
-     layout: PublicLayout // ✅
+    path: '/admin/inspection-admin',
+    name: 'InspectionAdmin',
+    component: InspectionAdmin,
+    meta: {
+      requiredSystem: '驗屋系統',
+      requiredRoles: ['超級管理員', '系統管理員', '客服主管', '工務主管'],
+      requiresAuth: true,
+      layout: DefaultLayout // ✅
     }
- },
+  },
+
+
+  {
+    path: '/test',
+    name: 'Test',
+    component: () => import('@/views/PrintQuotation.vue'),
+    meta: {
+      title: 'TEST',
+      layout: PublicLayout // ✅
+    }
+  },
 
   {
     path: '/profile',
@@ -85,7 +85,7 @@ const routes = [
     props: true,
     meta: { requiresAuth: true, layout: DefaultLayout } // ✅
   },
- {
+  {
     // ✅ 3. 修改「銷控系統」入口
     path: '/sales-control-entry',
     name: 'SalesControlSystemEntry',
@@ -94,8 +94,8 @@ const routes = [
       requiresAuth: true,
       requiredSystem: '銷控系統',
       layout: DefaultLayout, // ✅
-      targetRouteName: 'SalesControlSystem', 
-      paramKey: 'projectName'              
+      targetRouteName: 'SalesControlSystem',
+      paramKey: 'projectName'
     }
   },
   {
@@ -105,10 +105,10 @@ const routes = [
     component: ProjectSelector, // (保持延遲載入)
     meta: {
       requiresAuth: true,
-      requiredSystem: '報價系統', 
+      requiredSystem: '報價系統',
       layout: DefaultLayout, // ✅
-      targetRouteName: 'QuoteSystem', 
-      paramKey: 'projectName'           
+      targetRouteName: 'QuoteSystem',
+      paramKey: 'projectName'
     }
   },
 
@@ -117,10 +117,10 @@ const routes = [
     path: '/inspection-console/:projectId?', // ✓ 保持 '?'
     name: 'InspectionConsole',
     component: InspectionConsole, // (保持延遲載入)
-    props: true, 
+    props: true,
     meta: {
       layout: PublicLayout, // ✅
-      title: '驗屋紀錄' 
+      title: '驗屋紀錄'
     }
   },
   // ✓ END: 修改
@@ -171,15 +171,15 @@ const routes = [
     }
   },
   {
-  path: '/sales-settings/:projectId',
-  name: 'SalesSettings',
-  component: () => import('@/views/SalesSettings.vue'),
-  meta: {
-    requiresAuth: true,
-    requiredSystem: '銷控系統',
-    title: '銷控設定'
-  }
-},
+    path: '/sales-settings/:projectId',
+    name: 'SalesSettings',
+    component: () => import('@/views/SalesSettings.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '銷控系統',
+      title: '銷控設定'
+    }
+  },
   {
     path: '/quote-summary',
     name: 'QuoteSummary',
@@ -213,27 +213,27 @@ const routes = [
     }
   },
   {
-        path: '/user-management',
-        name: 'UserManagement',
-        component: UserManagement, // (保持延遲載入)
-        meta: {
-            requiresAuth: true,
-            requiredSystem: '人員管理',
-            layout: DefaultLayout // ✅
-        }
-    },
-    {
-        path: '/subscription-management',
-        name: 'SubscriptionManagement',
-        component: SubscriptionManagement, // (保持延遲載入)
-        meta: {
-            requiresAuth: true,
-            requiredSystem: '訂閱管理',
-            requiredProjectForSystem: '安熙智慧',
-            layout: DefaultLayout // ✅
-        }
-    },
- {
+    path: '/user-management',
+    name: 'UserManagement',
+    component: UserManagement, // (保持延遲載入)
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '人員管理',
+      layout: DefaultLayout // ✅
+    }
+  },
+  {
+    path: '/subscription-management',
+    name: 'SubscriptionManagement',
+    component: SubscriptionManagement, // (保持延遲載入)
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '訂閱管理',
+      requiredProjectForSystem: '安熙智慧',
+      layout: DefaultLayout // ✅
+    }
+  },
+  {
     path: '/subscription-status',
     name: 'SubscriptionStatus',
     component: SubscriptionStatus, // (保持延遲載入)
@@ -249,7 +249,7 @@ const routes = [
     component: () => import('@/views/BookingPage.vue'),
     props: true,
     meta: {
-    layout: PublicLayout // ✅
+      layout: PublicLayout // ✅
     }
   },
   {
@@ -274,11 +274,11 @@ const routes = [
     }
   },
 
-{
+  {
     // ✓ 1. 新增「銷售人員登入」專用路徑 (沒有 props)
     path: '/customer-data-sheet',
     name: 'CustomerDataSheetLogin', // 登入頁
-    component: () => import('@/views/CustomerDataSheet.vue'), 
+    component: () => import('@/views/CustomerDataSheet.vue'),
     props: false, // ✓ 確保 props 為 false
     meta: {
       layout: PublicLayout,
@@ -287,25 +287,25 @@ const routes = [
   },
   {
     // ✓ 2. 修改「客戶 QR Code」專用路徑 (有 props)
-    path: '/customer-data-sheet/:projectId/:docId?', 
+    path: '/customer-data-sheet/:projectId/:docId?',
     name: 'CustomerDataSheetForm', // 表單頁
-    component: () => import('@/views/CustomerDataSheet.vue'), 
+    component: () => import('@/views/CustomerDataSheet.vue'),
     props: true,
     meta: {
       layout: PublicLayout,
       title: '客戶資料表'
     }
   },
-// ✅ [新增] 客資查詢 - 入口 (負責 LIFF 驗證與分流)
+  // ✅ [新增] 客資查詢 - 入口 (負責 LIFF 驗證與分流)
   {
     path: '/customer-query-entry',
     name: 'CustomerQueryEntry',
     component: () => import('@/views/CustomerQueryEntry.vue'),
-    meta: { 
-       layout: PublicLayout,
-        title: '客資查詢系統入口',
+    meta: {
+      layout: PublicLayout,
+      title: '客資查詢系統入口',
       requiresAuth: false
-     } // 頁面內部處理 LIFF 登入
+    } // 頁面內部處理 LIFF 登入
   },
 
   // ✅ [新增] 客資查詢 - 主頁面 (需權限)
@@ -313,7 +313,7 @@ const routes = [
     path: '/customer-query/:projectId',
     name: 'CustomerQuery',
     component: () => import('@/views/CustomerQuery.vue'),
-    meta: { 
+    meta: {
       layout: PublicLayout,
       title: '客資查詢系統',
       requiresAuth: true,
@@ -332,7 +332,7 @@ const routes = [
     }
   },
 
-    {
+  {
     path: '/line-binding',
     name: 'LineBindingPage',
     component: () => import('@/views/public/LineBinding.vue'),
@@ -341,7 +341,7 @@ const routes = [
     }
   },
 
-   {
+  {
     path: '/verify-line-binding',
     name: 'VerifyLineBindingPage',
     component: () => import('@/views/public/VerifyLineBinding.vue'),
@@ -350,7 +350,7 @@ const routes = [
     }
   },
 
-   {
+  {
     path: '/appointment-query',
     name: 'AppointmentQueryPage',
     component: () => import('@/views/public/AppointmentQuery.vue'),
@@ -358,17 +358,17 @@ const routes = [
       layout: PublicLayout // ✅
     }
   },
-  
-{
+
+  {
     path: '/liffinspection-calendar',
     name: 'LiffInspectionCalendar',
     component: () => import('@/views/public/LiffInspectionCalendar.vue'),
     meta: {
-     layout: PublicLayout // ✅
+      layout: PublicLayout // ✅
     }
   },
 
-{
+  {
     path: '/report-folder-manager/:projectId?',
     name: 'ReportFolderManager',
     component: () => import('@/views/public/ReportFolderManager.vue'),
@@ -379,7 +379,7 @@ const routes = [
     }
   },
   // ✓ START: 新增客戶端驗屋報告路由
- {
+  {
     path: '/customer-report', // Path matches the URL
     name: 'CustomerInspectionReport',
     component: () => import('@/views/public/CustomerInspectionReport.vue'),
@@ -391,27 +391,27 @@ const routes = [
     }
   },
   // ✓ END: 新增客戶端驗屋報告路由
-{
-        path: '/inspection-calendar/:projectId',
-        name: 'InspectionCalendar',
-        component: InspectionCalendar, // (保持延遲載入)
-        meta: {
-          title: '驗屋預約表',
-          layout: PublicLayout // ✅
-        }
-      },
-  
-      {
+  {
+    path: '/inspection-calendar/:projectId',
+    name: 'InspectionCalendar',
+    component: InspectionCalendar, // (保持延遲載入)
+    meta: {
+      title: '驗屋預約表',
+      layout: PublicLayout // ✅
+    }
+  },
+
+  {
 
     path: '/privacy',
     name: 'PrivacyPolicy',
     component: () => import('@/views/public/PrivacyPolicy.vue'),
     meta: {
       title: '隱私權政策',
-      layout: PublicLayout 
+      layout: PublicLayout
     }
   },
-  
+
   // ✅ [新增] 服務條款路由
   {
     path: '/terms',
@@ -423,7 +423,7 @@ const routes = [
     }
   },
 
-  
+
   {
     // ✅ 5. 修改「驗屋預約」入口
     path: '/inspection-calendar-entry',
@@ -431,10 +431,10 @@ const routes = [
     component: ProjectSelector, // (保持延遲載入)
     meta: {
       requiresAuth: true,
-      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'], 
+      requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
       layout: DefaultLayout, // ✅
-      targetRouteName: 'InternalInspectionCalendar', 
-      paramKey: 'projectId'                        
+      targetRouteName: 'InternalInspectionCalendar',
+      paramKey: 'projectId'
     }
   },
   {
@@ -477,32 +477,32 @@ const routes = [
     ]
   },
 
-{
+  {
     path: '/backup-management',
     name: 'BackupManagement',
     component: () => import('@/views/BackupManagement.vue'),
-    meta: { 
+    meta: {
       requiresAuth: true,
       requiredRoles: ['超級管理員']
-    } 
+    }
   },
 
   {
-  path: '/special-report-upload/:projectId',
-  name: 'SpecialReportUpload',
-  component: () => import('@/views/SpecialReportUpload.vue'),
-   meta: {
-    layout: PublicLayout // ✅
+    path: '/special-report-upload/:projectId',
+    name: 'SpecialReportUpload',
+    component: () => import('@/views/SpecialReportUpload.vue'),
+    meta: {
+      layout: PublicLayout // ✅
     }
-},
+  },
 
   {
     path: '/sizing-tool/:projectId/:unitId',
     name: 'FloorplanSizingTool',
     component: () => import('@/views/FloorplanSizingTool.vue'),
-    meta: { 
+    meta: {
       requiresAuth: true,
-      title: '平面圖測量工具' 
+      title: '平面圖測量工具'
     }
   },
 
@@ -531,41 +531,41 @@ const routes = [
     }
   },
 
- {
+  {
     path: '/customer-system-entry',
     name: 'CustomerSystemEntry',
     component: ProjectSelector, // 重用 ProjectSelector
     meta: {
       requiresAuth: true,
       // 權限檢查：使用者必須至少有這兩個權限之一
-      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'], 
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'],
       layout: DefaultLayout,
       // 點選建案後要導向的目標路由
-      targetRouteName: 'CustomerManagementSystem', 
+      targetRouteName: 'CustomerManagementSystem',
       // 傳遞的參數名稱
-      paramKey: 'projectId'                        
+      paramKey: 'projectId'
     }
   },
   // ✓ END: 新增「客資系統」入口
 
   // 1. 新增入口路由 (負責驗證與建案選擇)
-{
-  path: '/customer-management-entry',
-  name: 'CustomerManagementEntry',
-  component: () => import('@/views/CustomerManagementEntry.vue'),
-  meta: {
-    requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
-    layout: PublicLayout,
-    title: '客資系統 - 建案選擇'
-  }
-},
+  {
+    path: '/customer-management-entry',
+    name: 'CustomerManagementEntry',
+    component: () => import('@/views/CustomerManagementEntry.vue'),
+    meta: {
+      requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
+      layout: PublicLayout,
+      title: '客資系統 - 建案選擇'
+    }
+  },
 
   // ✓ START: 新增「客資系統」最終頁面 (待開發)
   {
     path: '/customer-management/:projectId',
     name: 'CustomerManagementSystem',
     // 指向我們即將建立的 CustomerManagement.vue 檔案
-    component: () => import('@/views/CustomerManagement.vue'), 
+    component: () => import('@/views/CustomerManagement.vue'),
     props: true,
     meta: {
       requiresAuth: true,
@@ -587,6 +587,18 @@ const routes = [
     }
   },
 
+  // ✅ [新增] 自訂表單公開連結
+  {
+    path: '/s/:token',
+    name: 'PublicFormLink',
+    component: () => import('@/views/public/PublicFormPage.vue'),
+    meta: {
+      layout: PublicLayout,
+      title: '填寫表單',
+      requiresAuth: false
+    }
+  },
+
   // --- ✅ START: 新增 Standby 路由 ---
   {
     path: '/standby/:projectId', // ✓ 路由路徑，包含 projectId 參數
@@ -596,7 +608,7 @@ const routes = [
     meta: {
       layout: PublicLayout, // ✅
       title: '接待狀態看板' // ✓ 頁面標題
-     
+
     }
   },
   // --- ✅ END: 新增 Standby 路由 ---
@@ -627,19 +639,19 @@ const routes = [
     }
   },
 
-   {
+  {
     path: '/viewing-reservation-entry',
     name: 'ViewingReservationCalendarEntry',
     component: ProjectSelector, // 重用 ProjectSelector
     meta: {
       requiresAuth: true,
       // 權限檢查：使用者必須至少有這兩個權限之一
-      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'], 
+      requiredAnySystem: ['客資系統-櫃台', '客資系統-銷售'],
       layout: DefaultLayout,
       // 點選建案後要導向的目標路由
-      targetRouteName: 'ViewingReservationCalendar', 
+      targetRouteName: 'ViewingReservationCalendar',
       // 傳遞的參數名稱
-      paramKey: 'projectId'                        
+      paramKey: 'projectId'
     }
   },
 
@@ -658,45 +670,45 @@ const routes = [
   },
 
   // ✅ 客資系統 - 入口 (負責 LIFF 驗證與權限分流)
-{
-  path: '/lead-distribution-entry',
-  name: 'LeadDistributionEntry',
-  component: () => import('@/views/LeadDistributionEntry.vue'),
-  meta: {
-    requiresAuth: false, // 由頁面內部 LIFF 檢查
-    layout: PublicLayout,
-    title: '聯絡名單系統 - 驗證中'
-  }
-},
+  {
+    path: '/lead-distribution-entry',
+    name: 'LeadDistributionEntry',
+    component: () => import('@/views/LeadDistributionEntry.vue'),
+    meta: {
+      requiresAuth: false, // 由頁面內部 LIFF 檢查
+      layout: PublicLayout,
+      title: '聯絡名單系統 - 驗證中'
+    }
+  },
 
-// ✅ 客資系統 - 主頁面 (包含名單分配與回報列表)
-{
-  path: '/lead-distribution/:projectId',
-  name: 'LeadDistribution',
-  component: () => import('@/views/LeadDistribution.vue'),
-  props: true,
-  meta: {
-    requiresAuth: false,
-    layout: DefaultLayout,
-    title: '聯絡名單管理'
-  }
-},
+  // ✅ 客資系統 - 主頁面 (包含名單分配與回報列表)
+  {
+    path: '/lead-distribution/:projectId',
+    name: 'LeadDistribution',
+    component: () => import('@/views/LeadDistribution.vue'),
+    props: true,
+    meta: {
+      requiresAuth: false,
+      layout: DefaultLayout,
+      title: '聯絡名單管理'
+    }
+  },
 
-{
-  path: '/contact',
-  name: 'LeadReport',
-  component: () => import('@/views/LeadReport.vue'),
-  meta: { 
-    requiresAuth: false,
-     layout: PublicLayout,
-     title: '聯絡名單'
-   } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
-},
-
-
+  {
+    path: '/contact',
+    name: 'LeadReport',
+    component: () => import('@/views/LeadReport.vue'),
+    meta: {
+      requiresAuth: false,
+      layout: PublicLayout,
+      title: '聯絡名單'
+    } // 因為是從 LINE 直接點擊，通常由頁面內部判斷或透過 LIFF 登入
+  },
 
 
-   { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
+
+
+  { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
 
 ];
 
@@ -718,8 +730,8 @@ router.beforeEach(async (to, from, next) => {
   //console.log(`${logPrefix} Entry Point. To: ${to.fullPath}, From: ${from.name}, Query: ${JSON.stringify(to.query)}`);
 
 
-// **** 👇👇👇 新增：LIFF 路徑救援邏輯 👇👇👇 ****
-  
+  // **** 👇👇👇 新增：LIFF 路徑救援邏輯 👇👇👇 ****
+
   // 1. 取得網址中問號後的參數 (window.location.search 包含 ?liff.state=...)
   const urlParams = new URLSearchParams(window.location.search);
   const liffState = urlParams.get('liff.state');
@@ -736,7 +748,7 @@ router.beforeEach(async (to, from, next) => {
     // 強制跳轉至救援路徑，並結束此次守衛
     return next(cleanPath);
   }
-  
+
   // **** 👆👆👆 修改點結束 👆👆👆 ****
 
 
@@ -789,10 +801,10 @@ router.beforeEach(async (to, from, next) => {
     return next();
   }
 
-// --- 需要驗證的路由 ---
+  // --- 需要驗證的路由 ---
   if (!isLoggedIn) {
-     const redirectTarget = { name: 'Login', query: { redirect: to.fullPath } };
-     return next(redirectTarget);
+    const redirectTarget = { name: 'Login', query: { redirect: to.fullPath } };
+    return next(redirectTarget);
   }
 
   // --- 使用者已登入 (主系統)，執行後續權限檢查 ---
@@ -817,114 +829,114 @@ router.beforeEach(async (to, from, next) => {
   const requiredAny = to.meta.requiredAnySystem;
   if (requiredAny && Array.isArray(requiredAny)) {
     const projectId = to.params.projectId;
-    
+
     // 情境 A: 路由包含 projectId，需檢查「該建案」是否擁有任一權限
     if (projectId) {
-        const fullProjectName = projectStore.idToNameMap[projectId];
-        
-        if (!fullProjectName) {
-            console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
-            alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
-            return next({ name: 'Home' });
-        }
+      const fullProjectName = projectStore.idToNameMap[projectId];
 
-        // 檢查使用者在該建案下，是否擁有 requiredAny 中的任一個系統權限
-        const hasProjectAccess = requiredAny.some(sys => userStore.hasProjectPermission(sys, fullProjectName));
+      if (!fullProjectName) {
+        console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
+        alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
+        return next({ name: 'Home' });
+      }
 
-        if (!hasProjectAccess) {
-            alert(`權限不足：您沒有進入建案「${fullProjectName}」的權限 (需具備 ${requiredAny.join(' 或 ')} )。`);
-            return next({ name: 'Home' });
-        }
-    } 
+      // 檢查使用者在該建案下，是否擁有 requiredAny 中的任一個系統權限
+      const hasProjectAccess = requiredAny.some(sys => userStore.hasProjectPermission(sys, fullProjectName));
+
+      if (!hasProjectAccess) {
+        alert(`權限不足：您沒有進入建案「${fullProjectName}」的權限 (需具備 ${requiredAny.join(' 或 ')} )。`);
+        return next({ name: 'Home' });
+      }
+    }
     // 情境 B: 一般全域權限檢查 (如入口頁)
     else {
-        const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
-        if (!hasAccess) {
-          alert(`權限不足：您沒有進入此系統的權限。`);
-          return next({ name: 'Home' });
-        }
+      const hasAccess = requiredAny.some(permissionName => userStore.hasPermission(permissionName));
+      if (!hasAccess) {
+        alert(`權限不足：您沒有進入此系統的權限。`);
+        return next({ name: 'Home' });
+      }
     }
   }
 
   const requiredPermission = to.meta.requiresPermission;
   if (requiredPermission && !userStore[requiredPermission]) {
-      alert(`權限不足：您沒有執行此操作的權限。`);
-      return next({ name: 'Home' });
+    alert(`權限不足：您沒有執行此操作的權限。`);
+    return next({ name: 'Home' });
   }
-    
+
   const requiredSystem = to.meta.requiredSystem;
   if (requiredSystem) {
-      const requiredProjectForSystem = to.meta.requiredProjectForSystem; // 特定建案的特定系統 (如訂閱管理)
+    const requiredProjectForSystem = to.meta.requiredProjectForSystem; // 特定建案的特定系統 (如訂閱管理)
 
-      if (requiredProjectForSystem) {
-          // 情況 A: 檢查特定建案的特定系統權限 (邏輯不變)
-          if (!userStore.hasProjectPermission(requiredSystem, requiredProjectForSystem)) {
-              alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
-              return next({ name: 'Home' });
-          }
-      } else {
-          // 情況 B: 檢查路由參數中的建案權限 或 檢查是否有任一建案權限
-          const projectId = to.params.projectId; // 獲取 projectId
-          const projectNameParam = to.params.projectName; // 獲取 projectName
-
-          if (projectId) {
-              // 情況 B.1: 路由包含 projectId (例如 /inspection-console/:projectId)
-              // ✓ START: 修改 - 路由守衛現在會檢查 projectStore
-              // 我們需要確保 projectStore 已經載入
-              if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
-                 await projectStore.fetchProjects(); // 確保 idToNameMap 是最新的
-              }
-              // ✓ END: 修改
-              const fullProjectName = projectStore.idToNameMap[projectId];
-              if (!fullProjectName) {
-                  // 如果 projectStore 還沒載入完畢，可能需要等待或顯示錯誤
-                  console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
-                  alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
-                  // 可以在這裡加載 projectStore 或直接跳轉
-                  // await projectStore.fetchProjects(); // 嘗試重新加載
-                  // const retryName = projectStore.idToNameMap[projectId];
-                  // if(!retryName) ...
-                  return next({ name: 'Home' });
-              }
-              if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
-                alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
-                return next({ name: 'Home' });
-              }
-          } else if (projectNameParam) {
-            // 情況 B.2: 路由包含 projectName (需要修改)
-              // **** 👇👇👇 修改點開始 👇👇👇 ****
-              // 1. 從 projectStore 透過 ID ('fuyu141') 查找完整的建案名稱
-              const fullProjectName = projectStore.idToNameMap[projectNameParam];
-              //console.log(`${logPrefix} ProjectNameParam ('${projectNameParam}') resolved to FullProjectName: '${fullProjectName}'`);
-
-              // 2. 檢查是否成功找到建案名稱
-              if (!fullProjectName) {
-                  console.error(`${logPrefix} 找不到建案 ID "${projectNameParam}" 對應的建案名稱。Project Store Data:`, projectStore.idToNameMap);
-                  alert(`錯誤：無法驗證建案權限 (ID: ${projectNameParam})。請確認建案資料已載入。`);
-                  return next({ name: 'Home' }); // 中斷並導向 Home
-              }
-
-              // 3. 使用找到的完整建案名稱進行權限驗證
-              if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
-                alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
-                return next({ name: 'Home' }); // 權限不足，導向 Home
-              }
-              // **** 👆👆👆 修改點結束 👆👆👆 ****
-          }
-          else {
-              // 情況 B.3: 路由不包含建案參數 (例如入口路由 /inspection-console-entry)
-              // 檢查使用者是否 *至少有一個* 該系統的權限
-              const hasAnyAccess = userStore.hasPermission(requiredSystem);
-              if (!hasAnyAccess) {
-                alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
-                return next({ name: 'Home' });
-              }
-              // 如果有任一權限，則放行，讓 ProjectSelector 元件去處理顯示哪些建案
-          }
+    if (requiredProjectForSystem) {
+      // 情況 A: 檢查特定建案的特定系統權限 (邏輯不變)
+      if (!userStore.hasProjectPermission(requiredSystem, requiredProjectForSystem)) {
+        alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+        return next({ name: 'Home' });
       }
+    } else {
+      // 情況 B: 檢查路由參數中的建案權限 或 檢查是否有任一建案權限
+      const projectId = to.params.projectId; // 獲取 projectId
+      const projectNameParam = to.params.projectName; // 獲取 projectName
+
+      if (projectId) {
+        // 情況 B.1: 路由包含 projectId (例如 /inspection-console/:projectId)
+        // ✓ START: 修改 - 路由守衛現在會檢查 projectStore
+        // 我們需要確保 projectStore 已經載入
+        if (projectStore.projectsList.length === 0 && !projectStore.isLoading) {
+          await projectStore.fetchProjects(); // 確保 idToNameMap 是最新的
+        }
+        // ✓ END: 修改
+        const fullProjectName = projectStore.idToNameMap[projectId];
+        if (!fullProjectName) {
+          // 如果 projectStore 還沒載入完畢，可能需要等待或顯示錯誤
+          console.error(`路由守衛：找不到 projectId "${projectId}" 對應的建案名稱。`);
+          alert(`錯誤：無法驗證建案權限 (ID: ${projectId})。`);
+          // 可以在這裡加載 projectStore 或直接跳轉
+          // await projectStore.fetchProjects(); // 嘗試重新加載
+          // const retryName = projectStore.idToNameMap[projectId];
+          // if(!retryName) ...
+          return next({ name: 'Home' });
+        }
+        if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
+          alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
+          return next({ name: 'Home' });
+        }
+      } else if (projectNameParam) {
+        // 情況 B.2: 路由包含 projectName (需要修改)
+        // **** 👇👇👇 修改點開始 👇👇👇 ****
+        // 1. 從 projectStore 透過 ID ('fuyu141') 查找完整的建案名稱
+        const fullProjectName = projectStore.idToNameMap[projectNameParam];
+        //console.log(`${logPrefix} ProjectNameParam ('${projectNameParam}') resolved to FullProjectName: '${fullProjectName}'`);
+
+        // 2. 檢查是否成功找到建案名稱
+        if (!fullProjectName) {
+          console.error(`${logPrefix} 找不到建案 ID "${projectNameParam}" 對應的建案名稱。Project Store Data:`, projectStore.idToNameMap);
+          alert(`錯誤：無法驗證建案權限 (ID: ${projectNameParam})。請確認建案資料已載入。`);
+          return next({ name: 'Home' }); // 中斷並導向 Home
+        }
+
+        // 3. 使用找到的完整建案名稱進行權限驗證
+        if (!userStore.hasProjectPermission(requiredSystem, fullProjectName)) {
+          alert(`權限不足：您沒有進入建案「${fullProjectName}」的「${requiredSystem}」權限。`);
+          return next({ name: 'Home' }); // 權限不足，導向 Home
+        }
+        // **** 👆👆👆 修改點結束 👆👆👆 ****
+      }
+      else {
+        // 情況 B.3: 路由不包含建案參數 (例如入口路由 /inspection-console-entry)
+        // 檢查使用者是否 *至少有一個* 該系統的權限
+        const hasAnyAccess = userStore.hasPermission(requiredSystem);
+        if (!hasAnyAccess) {
+          alert(`權限不足：您沒有進入「${requiredSystem}」的權限。`);
+          return next({ name: 'Home' });
+        }
+        // 如果有任一權限，則放行，讓 ProjectSelector 元件去處理顯示哪些建案
+      }
+    }
   }
 
-//console.log(`${logPrefix} All permission checks passed.`);
+  //console.log(`${logPrefix} All permission checks passed.`);
   //console.log(`${logPrefix} --> Allowing protected route via next(). Target: ${to.fullPath}`); // <-- Log 允許受保護路由
   return next();
 });

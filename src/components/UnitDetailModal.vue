@@ -319,7 +319,7 @@
             <v-icon left>mdi-account-cancel-outline</v-icon>
             辦理退戶
           </v-btn>
-          <v-btn
+            <v-btn
             v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
             color="primary"
             variant="flat"
@@ -328,6 +328,10 @@
           >
               <v-icon left>mdi-folder-google-drive</v-icon>
               {{ unitData.unitId }} 資料夾
+            </v-btn>
+            <v-btn v-if="viewMode === 'sales'" color="success" variant="flat" @click="downloadExcel">
+                <v-icon left>mdi-microsoft-excel</v-icon>
+                下載本戶資料
             </v-btn>
             <v-btn color="success" variant="flat" @click="handleAddToQuote" :disabled="!canAddToQuote">
                 <v-icon left>mdi-home-plus-outline</v-icon>
@@ -377,6 +381,16 @@
             >
               <v-icon>mdi-folder-google-drive</v-icon>
               <span class="text-caption">資料夾</span>
+            </v-btn>
+             <v-btn
+              stacked
+              variant="text"
+              color="success"
+              class="flex-grow-1"
+              @click="downloadExcel"
+            >
+              <v-icon>mdi-microsoft-excel</v-icon>
+              <span class="text-caption">下載</span>
             </v-btn>
             <v-btn
               stacked
@@ -569,9 +583,11 @@ import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
+import * as XLSX from 'xlsx';
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
+
 const savingText = ref('儲存中，請稍候...');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
 const showInfoOverlay = ref(false); // 控制全螢幕下的資訊面板顯示
@@ -1113,13 +1129,34 @@ function formatBoolean(value) {
   return '-';
 }
 
-function formatDate(timestamp) {
-  if (!timestamp || typeof timestamp.toDate !== 'function') return '-';
-  try {
-    return timestamp.toDate().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-  } catch (e) {
-    return '無效日期';
+function formatDate(dateInput) {
+  if (!dateInput) return '-';
+
+  // 1. 處理新格式：ROC 物件 { year, month, day }
+  if (typeof dateInput === 'object' && 'year' in dateInput && 'month' in dateInput) {
+      const ceYear = Number(dateInput.year) + 1911;
+      const month = String(dateInput.month).padStart(2, '0');
+      const day = String(dateInput.day).padStart(2, '0');
+      return `${ceYear}/${month}/${day}`;
   }
+
+  let date;
+
+  // 2. 處理 Firestore Timestamp (原本的物件)
+  if (typeof dateInput.toDate === 'function') {
+    date = dateInput.toDate();
+  } 
+  // 3. [新增] 處理 Firestore Timestamp 序列化後的物件 (JSON.stringify 後的結果)
+  else if (typeof dateInput === 'object' && 'seconds' in dateInput) {
+      date = new Date(dateInput.seconds * 1000);
+  }
+  // 4. 處理 JS Date 或 timestamps
+  else {
+      date = new Date(dateInput);
+  }
+  
+  if (isNaN(date.getTime())) return '無效日期';
+  return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 function formatAddress(data, type) {
@@ -1130,8 +1167,6 @@ function formatAddress(data, type) {
     const fullAddress = `${city}${district}${detail}`;
     return fullAddress || '-';
 }
-
-
 
 // 3. [重構] handleParkingUpdate：現在只做前端暫存，不再執行資料庫寫入
 async function handleParkingUpdate(parkingUpdateData) {
@@ -1201,18 +1236,24 @@ async function commitParkingChanges(unitId, parkingList) {
 }
 
 
-
-
 // ✅ [打勾] 新增：格式化民國日期函數
-function formatROCDate(timestamp) {
-  if (!timestamp) return '-';
+function formatROCDate(dateInput) {
+  if (!dateInput) return '-';
   
+  // 1. 處理新格式：ROC 物件 { year, month, day }
+  if (typeof dateInput === 'object' && 'year' in dateInput && 'month' in dateInput) {
+      return `民國 ${dateInput.year} 年 ${dateInput.month} 月 ${dateInput.day} 日`;
+  }
+
   let date;
   // 處理 Firestore Timestamp 或原生 Date 物件
-  if (typeof timestamp.toDate === 'function') {
-    date = timestamp.toDate();
+  if (typeof dateInput.toDate === 'function') {
+    date = dateInput.toDate();
+  } else if (typeof dateInput === 'object' && 'seconds' in dateInput) {
+      // [新增] 處理序列化後的 Timestamp
+      date = new Date(dateInput.seconds * 1000);
   } else {
-    date = new Date(timestamp);
+    date = new Date(dateInput);
   }
   
   if (isNaN(date.getTime())) return '無效日期';
@@ -1223,6 +1264,119 @@ function formatROCDate(timestamp) {
   
   return `民國 ${rocYear} 年 ${month} 月 ${day} 日`;
 }
+
+// ✅ [新增] 下載 Excel 功能
+const downloadExcel = () => {
+    const sourceData = enrichedUnitData.value || props.unitData;
+    if (!sourceData) {
+        toast.error('無資料可下載');
+        return;
+    }
+
+    const mainData = {
+        '建案名稱': props.projectName || '',
+        '戶別': sourceData.unitId || '',
+        
+        // 面積資訊
+        '房屋總面積(坪)': formatNumber(sourceData.area_house_ping, 2),
+        '房屋總面積(m²)': formatNumber(sourceData.area_house_sqm, 2),
+        '公設比': formatPercentage(sourceData.common_area_ratio),
+        '主建物(坪)': formatNumber(sourceData.area_main_ping, 2),
+        '主建物(m²)': formatNumber(sourceData.area_main_sqm, 2),
+        '附屬建物(坪)': formatNumber(sourceData.area_ancillary_ping, 2),
+        '附屬建物(m²)': formatNumber(sourceData.area_ancillary_sqm, 2),
+        '共用部分(坪)': formatNumber(sourceData.area_common_ping, 2),
+        '共用部分(m²)': formatNumber(sourceData.area_common_sqm, 2),
+        '露臺(坪)': formatNumber(sourceData.area_terrace_ping, 2),
+        '土地持分(坪)': formatNumber(sourceData.land_share_ping, 2),
+        '土地持分(m²)': formatNumber(sourceData.land_share_sqm, 2),
+
+        '合約方式': sourceData.contractType || '',
+        '是否首購': formatBoolean(sourceData.isFirstTimeBuyer),
+        '房屋成交價(萬)': formatNumber(sourceData.price_transaction_house),
+        '房屋單價(萬/坪)': formatNumber(calculatedTransactionUnitPrice.value, 2),
+        '房屋底價(萬)': formatNumber(sourceData.price_floor_house_total),
+        '房屋底價單價(萬/坪)': formatNumber(calculatedBaseUnitPrice.value, 2),
+        '車位總成交價(萬)': formatNumber(parkingTotalTransactionPrice.value),
+        '車位總底價(萬)': formatNumber(parkingTotalFloorPrice.value),
+        '成交總價(萬)': formatNumber(grandTotalTransactionPrice.value),
+        '總底價(萬)': formatNumber(totalFloorPrice.value),
+        '溢差價(萬)': formatNumber(pricePremium.value),
+        '銷控後台狀態': sourceData.salesStatus_backend || '',
+        '銷售人員': sourceData.salesperson || '',
+        '小訂日期': formatDate(sourceData.payment_deposit_date),
+  
+        '補足日期': formatDate(sourceData.payment_complete_date) || formatDate(sourceData.payment_top_up_date), // 嘗試多種可能命名
+  
+        '簽約日期': formatDate(sourceData.payment_contract_date),
+       
+        '買方姓名': sourceData.buyerName || '',
+        '身分證字號': sourceData.buyerIdNumber || '',
+        '聯絡電話': sourceData.buyerPhone || '',
+        'EMAIL': sourceData.buyerEmail || '',
+        '通訊地址': formatAddress(sourceData, 'Mailing'),
+        '戶籍地址': formatAddress(sourceData, 'Permanent'),
+        '出生年月日 (西元)': formatDate(sourceData.buyerDateOfBirth),
+        '出生年月日 (民國)': formatROCDate(sourceData.buyerDateOfBirth),
+        '備註': sourceData.remarks || ''
+    };
+
+    const parkingItems = assignedParkingLots.value || [];
+    const rowCount = Math.max(1, parkingItems.length);
+    const data = [];
+
+    // 定義欄位順序
+    const headers = [
+         '建案名稱', '戶別',
+         '車位編號', '車位尺寸', '車位底價(萬)', '車位成交價(萬)',
+         '房屋總面積(坪)', '房屋總面積(m²)', '公設比',
+         '主建物(坪)', '主建物(m²)', '附屬建物(坪)', '附屬建物(m²)', '共用部分(坪)', '共用部分(m²)', '露臺(坪)', '土地持分(坪)', '土地持分(m²)',
+         
+         '合約方式', '是否首購', 
+         '房屋成交價(萬)', '房屋單價(萬/坪)', '房屋底價(萬)', '房屋底價單價(萬/坪)',
+         '車位總成交價(萬)', '車位總底價(萬)', '成交總價(萬)', '總底價(萬)', '溢差價(萬)',
+         '銷控後台狀態', '銷售人員', 
+         '小訂日期', '補足日期', '簽約日期', 
+         '買方姓名', '身分證字號', '聯絡電話', 'EMAIL', 
+         '通訊地址', '戶籍地址', '出生年月日 (西元)', '出生年月日 (民國)', '備註'
+ 
+    ];
+
+    for (let i = 0; i < rowCount; i++) {
+        const row = {};
+        
+        // 第一行填入主要資料，之後的行留空
+        if (i === 0) {
+            Object.assign(row, mainData);
+        } else {
+             // 填入空字串
+             Object.keys(mainData).forEach(key => row[key] = '');
+        }
+
+        // 填入車位資料
+        if (i < parkingItems.length) {
+            const p = parkingItems[i];
+            row['車位編號'] = p['車位編號'];
+            row['車位尺寸'] = p['車位尺寸'] || '標準';
+            row['車位底價(萬)'] = formatNumber(p['車位底價']);
+            row['車位成交價(萬)'] = formatNumber(p['車位成交價']);
+        } else {
+            row['車位編號'] = '';
+            row['車位尺寸'] = '';
+            row['車位底價(萬)'] = '';
+            row['車位成交價(萬)'] = '';
+        }
+        
+        data.push(row);
+    }
+
+    const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "HouseholdData");
+    
+    const fileName = `${props.projectName || '建案'}_${sourceData.unitId}_${sourceData.buyerName || 'Export'}_銷售資料.xlsx`;
+    XLSX.writeFile(wb, fileName);
+};
 
 </script>
 

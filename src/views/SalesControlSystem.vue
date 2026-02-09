@@ -2097,6 +2097,33 @@ const exportToExcel = () => {
     const dataAsArray = sortedItems.map(item => {
         return exportOrder.value.map(key => {
             const value = item[key];
+            if (key === 'buyerDateOfBirth') {
+                if (!value) return '';
+                // 1. 新格式 { year, month, day }
+                if (typeof value === 'object' && 'year' in value) {
+                    return `${value.year}年${value.month}月${value.day}日`;
+                }
+                // 2. 舊格式 (Timestamp / Date)
+                let dateObj;
+                if (typeof value.toDate === 'function') {
+                    dateObj = value.toDate();
+                } else if (value instanceof Date) {
+                    dateObj = value;
+                } else {
+                    // 嘗試解析字串
+                    const d = new Date(value);
+                    if (!isNaN(d.getTime())) dateObj = d;
+                }
+
+                if (dateObj) {
+                    const rocYear = dateObj.getFullYear() - 1911;
+                    const month = dateObj.getMonth() + 1;
+                    const day = dateObj.getDate();
+                    return `${rocYear}年${month}月${day}日`;
+                }
+                return '';
+            }
+
             if (key === 'salesImages' && Array.isArray(value)) {
                 return value.join(','); 
             }
@@ -2190,12 +2217,26 @@ const handleFileChange = () => {
                 for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
                     let value = rowArray[colIndex] ?? null;
 
-                    // ✅ [新增] 針對布林值欄位進行轉換 (將 Excel 的 "TRUE"/"FALSE" 字串轉回 Boolean)
+                    // ✅ [新增] 針對布林值欄位進行轉換
                     if (['isPreferredPayment', 'isFirstTimeBuyer'].includes(englishKey)) {
                         if (typeof value === 'string') {
                             const upperVal = value.toUpperCase().trim();
                             if (upperVal === 'TRUE') value = true;
-                            else if (upperVal === 'FALSE') value = false;
+                            if (upperVal === 'FALSE') value = false;
+                        }
+                    }
+
+                    // ✅ [新增] 針對 buyerDateOfBirth 進行民國年解析
+                    if (englishKey === 'buyerDateOfBirth' && typeof value === 'string') {
+                        // 嘗試解析 "114年5月4日" 或 "114/5/4" 等格式
+                        const rocDateRegex = /^(\d{2,3})[年/](\d{1,2})[月/](\d{1,2})日?$/;
+                        const match = value.match(rocDateRegex);
+                        if (match) {
+                            value = {
+                                year: Number(match[1]),
+                                month: Number(match[2]),
+                                day: Number(match[3])
+                            };
                         }
                     }
 

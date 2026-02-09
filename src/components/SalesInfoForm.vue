@@ -94,7 +94,7 @@
                 density="compact"
                 type="number"
                 :rules="rocYearRules"
-                @update:model-value="syncToCE"
+                @update:model-value="syncToModel"
             ></v-text-field> </v-col>
         <v-col cols="4">
             <v-select
@@ -104,7 +104,7 @@
                 variant="outlined"
                 density="compact"
                 :rules="rocMonthRules"
-                @update:model-value="syncToCE"
+                @update:model-value="syncToModel"
             ></v-select> </v-col>
         <v-col cols="4">
             <v-text-field
@@ -115,7 +115,7 @@
                 density="compact"
                 type="number"
                 :rules="rocDayRules"
-                @update:model-value="syncToCE"
+                @update:model-value="syncToModel"
             ></v-text-field> </v-col>
     </v-row>
     <div v-if="!isDateValid" class="text-caption text-error">請輸入正確的日期格式</div>
@@ -281,33 +281,49 @@ const rocDayRules = [
     v => (v >= 1 && v <= 31) || '日期範圍錯誤'
 ];
 
-// ✓ [打勾] 函數：將民國轉換為西元 Date 並寫入編輯模型 (台灣時區)
-function syncToCE() {
+// ✓ [打勾] 函數：將民國年月日寫入編輯模型 (儲存為物件格式 { year, month, day })
+function syncToModel() {
     if (rocYear.value && rocMonth.value && rocDay.value && isDateValid.value) {
-        const ceYear = rocYear.value + 1911;
-        // 以台灣時區為準建立 Date 物件
-        editableData.value.buyerDateOfBirth = new Date(ceYear, rocMonth.value - 1, rocDay.value);
+        // 修改：不再轉為 Date，而是儲存為自訂物件
+        editableData.value.buyerDateOfBirth = {
+            year: rocYear.value,
+            month: rocMonth.value,
+            day: rocDay.value
+        };
     } else {
         editableData.value.buyerDateOfBirth = null;
     }
 }
 
-// ✓ [打勾] 監聽初始資料，將後端 Date 拆解回民國顯示
+// ✓ [打勾] 監聽初始資料，將後端格式 (Timestamp/Date 或 ROC物件) 拆解回民國顯示
 watch(() => props.modelValue.buyerDateOfBirth, (newVal) => {
-    if (newVal) {
-        let dateObj;
-        // 處理 Firestore Timestamp 或 JS Date
-        if (typeof newVal.toDate === 'function') {
-            dateObj = newVal.toDate();
-        } else {
-            dateObj = new Date(newVal);
-        }
-        
-        if (!isNaN(dateObj.getTime())) {
-            rocYear.value = dateObj.getFullYear() - 1911;
-            rocMonth.value = dateObj.getMonth() + 1;
-            rocDay.value = dateObj.getDate();
-        }
+    if (!newVal) {
+        rocYear.value = null;
+        rocMonth.value = null;
+        rocDay.value = null;
+        return;
+    }
+
+    // 情況 A: 新格式 (物件 { year, month, day })
+    if (typeof newVal === 'object' && 'year' in newVal && 'month' in newVal) {
+        rocYear.value = newVal.year;
+        rocMonth.value = newVal.month;
+        rocDay.value = newVal.day;
+        return;
+    }
+
+    // 情況 B: 舊格式 (Firestore Timestamp 或 JS Date)
+    let dateObj;
+    if (typeof newVal.toDate === 'function') {
+        dateObj = newVal.toDate();
+    } else {
+        dateObj = new Date(newVal);
+    }
+    
+    if (!isNaN(dateObj.getTime())) {
+        rocYear.value = dateObj.getFullYear() - 1911;
+        rocMonth.value = dateObj.getMonth() + 1;
+        rocDay.value = dateObj.getDate();
     }
 }, { immediate: true });
 

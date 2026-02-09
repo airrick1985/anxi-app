@@ -910,6 +910,144 @@
          
           </v-window-item>
 
+          <v-window-item value="sheet-sync" class="settings-tab-content">
+             <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+             </div>
+             <div v-else class="settings-form-container pa-4">
+               <v-row>
+                 <v-col cols="12" md="6">
+                   <v-card variant="outlined" class="mb-4">
+                     <v-card-title class="bg-grey-lighten-4">
+                       <v-icon start color="primary">mdi-home-city</v-icon>
+                       戶別資料同步 (Households)
+                     </v-card-title>
+                     <v-card-text class="pa-4">
+                       <v-alert type="info" variant="tonal" class="mb-4" density="compact">
+                         將 <code>households</code> 集合的資料同步至指定的 Google Sheet。
+                         <br>包含欄位：System ID, Updated At, 棟別, 戶號, 買方資訊, 驗屋批次等。
+                       </v-alert>
+                       <div class="d-flex align-center mb-2">
+                         <v-text-field
+                           v-model="projectSettings.googleSheetId"
+                           label="Google Sheet ID"
+                           placeholder="1BxiMVs0XRA5nSLqo..."
+                           variant="outlined"
+                           density="compact"
+                           hide-details
+                           class="flex-grow-1"
+                         ></v-text-field>
+                         <v-btn
+                           color="primary"
+                           variant="text"
+                           class="ml-2"
+                           :loading="isLoadingTabsHouseholds"
+                           @click="fetchSheetTabs('households')"
+                           icon="mdi-refresh"
+                           title="取得工作表列表"
+                         ></v-btn>
+                       </div>
+                       
+                       <v-combobox
+                         v-model="projectSettings.googleSheetTabName"
+                         :items="sheetTabsHouseholds"
+                         label="工作表名稱 (Tab Name)"
+                         placeholder="請選擇或輸入工作表名稱"
+                         variant="outlined"
+                         density="compact"
+                         class="mb-4"
+                       ></v-combobox>
+
+                       <v-btn 
+                         block
+                         color="primary" 
+                         variant="tonal"
+                         :loading="isSyncingHouseholds"
+                         @click="handleManualSync('households')"
+                         prepend-icon="mdi-sync"
+                       >
+                         立即手動同步
+                       </v-btn>
+                     </v-card-text>
+                   </v-card>
+                 </v-col>
+
+                 <v-col cols="12" md="6">
+                   <v-card variant="outlined" class="mb-4">
+                     <v-card-title class="bg-grey-lighten-4">
+                       <v-icon start color="secondary">mdi-calendar-check</v-icon>
+                       預約資料同步 (Appointments)
+                     </v-card-title>
+                     <v-card-text class="pa-4">
+                       <v-alert type="info" variant="tonal" class="mb-4" density="compact">
+                         將 <code>appointments</code> 集合的資料同步至指定的 Google Sheet。
+                         <br>包含欄位：預約代碼, 狀態, 預約人, 時間, 檢驗方式等。
+                       </v-alert>
+                       <div class="d-flex align-center mb-2">
+                         <v-text-field
+                           v-model="projectSettings.appointmentsSheetId"
+                           label="Google Sheet ID"
+                           placeholder="1BxiMVs0XRA5nSLqo..."
+                           variant="outlined"
+                           density="compact"
+                           hide-details
+                           class="flex-grow-1"
+                           hint="可與戶別資料使用同一個 Sheet ID，但建議區分不同 Tab"
+                           persistent-hint
+                         ></v-text-field>
+                         <v-btn
+                           color="secondary"
+                           variant="text"
+                           class="ml-2"
+                           :loading="isLoadingTabsAppointments"
+                           @click="fetchSheetTabs('appointments')"
+                           icon="mdi-refresh"
+                           title="取得工作表列表"
+                         ></v-btn>
+                       </div>
+
+                       <v-combobox
+                         v-model="projectSettings.appointmentsSheetTabName"
+                         :items="sheetTabsAppointments"
+                         label="工作表名稱 (Tab Name)"
+                         placeholder="請選擇或輸入工作表名稱"
+                         variant="outlined"
+                         density="compact"
+                         class="mb-4"
+                       ></v-combobox>
+
+                       <v-btn 
+                         block
+                         color="secondary" 
+                         variant="tonal"
+                         :loading="isSyncingAppointments"
+                         @click="handleManualSync('appointments')"
+                         prepend-icon="mdi-sync"
+                       >
+                         立即手動同步
+                       </v-btn>
+                     </v-card-text>
+                   </v-card>
+                 </v-col>
+               </v-row>
+               
+               <v-divider class="my-4"></v-divider>
+               
+                <div class="d-flex justify-end">
+                  <v-btn 
+                    color="success" 
+                    variant="elevated" 
+                    size="large"
+                    @click="saveSettings"
+                    :loading="isSavingSettings"
+                    prepend-icon="mdi-content-save"
+                  >
+                    儲存同步設定
+                  </v-btn>
+               </div>
+             </div>
+          </v-window-item>
+
           <v-window-item value="inspProjectSettings">
             <InspProjectSettings :project-id="projectId" />
           </v-window-item>
@@ -1835,8 +1973,9 @@ import {
   uploadAttachmentImage,
   deleteAttachmentImage,
   updateProjectSheetSettings, // 設定用
-  listGoogleSheets,           // 列出 Sheet
-  syncHouseholdsToSheet       // 同步
+  listGoogleSheets,           // 列出 Sheet 
+  syncHouseholdsToSheet,      // 同步
+  syncAppointmentsToSheet     // 同步預約
 } from '@/api';
 
 
@@ -1945,53 +2084,94 @@ const isUploadingAttachments = ref(false); // ✓ 新增：控制上傳按鈕 lo
 const isDeletingAttachment = ref(-1); // ✓ 新增：控制刪除按鈕 loading (用索引區分)
 
 // --- Sheet Sync States ---
-const sheetTabs = ref([]);
+const sheetTabsHouseholds = ref([]);
+const sheetTabsAppointments = ref([]);
 const serviceAccountEmail = ref('');
-const isFetchingSheets = ref(false);
+const isLoadingTabsHouseholds = ref(false);
+const isLoadingTabsAppointments = ref(false);
 const isSyncingHouseholds = ref(false);
+const isSyncingAppointments = ref(false);
 const syncResult = ref(null);
 
-const fetchSheetTabs = async () => {
-    if (!projectSettings.value.googleSheetId) return;
+const fetchSheetTabs = async (type) => {
+    let sheetId, targetTabsRef, loadingRef;
+
+    if (type === 'households') {
+        sheetId = projectSettings.value.googleSheetId;
+        targetTabsRef = sheetTabsHouseholds;
+        loadingRef = isLoadingTabsHouseholds;
+    } else if (type === 'appointments') {
+        sheetId = projectSettings.value.appointmentsSheetId;
+        targetTabsRef = sheetTabsAppointments;
+        loadingRef = isLoadingTabsAppointments;
+    } else {
+        return;
+    }
+
+    if (!sheetId) {
+        showSnackbar('請先輸入 Google Sheet ID', 'warning');
+        return;
+    }
     
-    isFetchingSheets.value = true;
+    loadingRef.value = true;
     syncResult.value = null;
     try {
-        const res = await listGoogleSheets(projectSettings.value.googleSheetId);
-        sheetTabs.value = res.sheetNames || [];
+        const res = await listGoogleSheets(sheetId);
+        targetTabsRef.value = res.sheetNames || [];
         serviceAccountEmail.value = res.agentEmail || '';
         showSnackbar('成功讀取工作表列表', 'success');
     } catch (error) {
-        showSnackbar(error.message, 'error');
+        showSnackbar(`讀取失敗: ${error.message}`, 'error');
     } finally {
-        isFetchingSheets.value = false;
+        loadingRef.value = false;
     }
 };
 
-const handleSyncHouseholds = async () => {
-    if (!projectSettings.value.googleSheetId || !projectSettings.value.googleSheetTabName) return;
+const handleManualSync = async (type) => {
+    let sheetId, tabName, syncFunc, label, syncingRef;
+
+    if (type === 'households') {
+      sheetId = projectSettings.value.googleSheetId;
+      tabName = projectSettings.value.googleSheetTabName;
+      syncFunc = syncHouseholdsToSheet;
+      label = '戶別資料';
+      syncingRef = isSyncingHouseholds;
+    } else if (type === 'appointments') {
+      sheetId = projectSettings.value.appointmentsSheetId;
+      tabName = projectSettings.value.appointmentsSheetTabName;
+      syncFunc = syncAppointmentsToSheet;
+      label = '預約資料';
+      syncingRef = isSyncingAppointments;
+    } else {
+      return;
+    }
+
+    if (!sheetId || !tabName) {
+      showSnackbar(`請先設定 ${label} 的 Sheet ID 與 Tab Name`, 'error');
+      return;
+    }
 
     // 1. Save Settings First
     await saveSettings();
 
     // 2. Trigger Sync
-    if (!confirm('確定要執行全量同步嗎？這將會覆蓋 Sheet 上的現有資料。')) return;
+    if (!confirm(`確定要執行「${label}」全量同步嗎？這將會覆蓋 Sheet 上的現有資料。`)) return;
 
-    isSyncingHouseholds.value = true;
+    syncingRef.value = true;
     syncResult.value = null;
     try {
-        const res = await syncHouseholdsToSheet({
+        const res = await syncFunc({
             projectId: projectId.value,
-            spreadsheetId: projectSettings.value.googleSheetId,
-            sheetName: projectSettings.value.googleSheetTabName
+            spreadsheetId: sheetId,
+            sheetName: tabName
         });
         syncResult.value = { status: 'success', message: `${res.message} (共 ${res.count} 筆)` };
-        showSnackbar('同步成功！', 'success');
+        showSnackbar(`${label} 同步成功！`, 'success');
     } catch (error) {
         syncResult.value = { status: 'error', message: error.message };
-        showSnackbar('同步失敗: ' + error.message, 'error');
+        showSnackbar(`${label} 同步失敗: ` + error.message, 'error');
     } finally {
-        isSyncingHouseholds.value = false;
+        syncingRef.value = false;
     }
 };
 
@@ -2040,7 +2220,7 @@ const isAdmin = computed(() => {
 
 // --- Google Sheet 同步相關狀態 ---
 const syncDateRange = ref(null);
-const isSyncing = ref(false);
+// const isSyncing = ref(false); // Removed in favor of specific sync states
 const isSavingSheetSettings = ref(false);
 
 // 日期範圍驗證 Computed
@@ -2551,6 +2731,8 @@ async function loadDataForProject() {
         // 👇👇👇 [新增：讀取 Google Sheet 設定] 👇👇👇
         projectSettings.value.googleSheetId = settings.googleSheetId || '';
         projectSettings.value.googleSheetTabName = settings.googleSheetTabName || '';
+        projectSettings.value.appointmentsSheetId = settings.appointmentsSheetId || ''; // [新增]
+        projectSettings.value.appointmentsSheetTabName = settings.appointmentsSheetTabName || ''; // [新增]
         projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
         // 👆👆👆 [新增結束] 👆👆👆
 

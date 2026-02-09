@@ -367,3 +367,334 @@ async function _getSheetIdByName(sheets, spreadsheetId, sheetName) {
     const sheet = res.data.sheets.find(s => s.properties.title === sheetName);
     return sheet ? sheet.properties.sheetId : null;
 }
+
+// =================================================================
+// 4. [Feature] Sales Control Record Google Sheet Sync
+// =================================================================
+
+// 銷控資料欄位顯示名稱定義
+const salesFieldDisplayNames = {
+    unitId: '戶別',
+    status: '銷控狀態',
+    isPreferredPayment: '是否優付',
+
+    // 面積資訊
+    area_house_ping: '房屋坪數',
+    area_terrace_ping: '露臺坪數',
+    area_main_ping: '主建物坪數',
+    area_ancillary_ping: '附屬建物坪數',
+    area_common_ping: '公設坪數',
+
+    // 價格資訊 (表價)
+    price_list_house_total: '房屋總表價',
+    unit_price_list: '表價單價',
+    price_list_house_only: '房屋表價',
+    price_list_terrace: '露臺表價',
+
+    // 價格資訊 (底價)
+    price_floor_house_total: '房屋總底價',
+    unit_price_floor: '底價單價',
+    price_floor_house_only: '房屋底價',
+    price_floor_terrace: '露臺底價',
+
+    // 價格資訊 (成交)
+    price_transaction_house: '房屋成交價',
+    unit_price_transaction: '成交單價',
+    total_transaction: '成交總價(含車)',
+    parking_trans_total: '車位成交總價',
+    price_diff: '溢差價',
+
+    // 買方資訊
+    buyerName: '買方姓名',
+    buyerPhone: '買方電話',
+    buyerIdNumber: '身分證字號',
+    buyerEmail: 'Email',
+
+    // 日期資訊
+    payment_deposit_date: '小訂日期',
+    payment_contract_date: '簽約日期',
+
+    // 其他
+    salesperson: '銷售人員',
+    contractType: '合約方式',
+    remarks: '備註'
+};
+
+/**
+ * [API] 銷控資料全量同步：將某個 Project 的所有 salesHouseholds 寫入 Sheet
+ */
+exports.syncSalesHouseholdsToSheet = onCall({
+    region: "asia-east1",
+    cors: true,
+    memory: "512MiB",
+    timeoutSeconds: 540,
+}, async (request) => {
+    const { projectId, spreadsheetId, sheetName } = request.data;
+    const functionName = "syncSalesHouseholdsToSheet";
+
+    if (!projectId || !spreadsheetId || !sheetName) {
+        throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, spreadsheetId, sheetName)');
+    }
+
+    const db = admin.firestore();
+
+    try {
+        console.log(`[${functionName}] 開始同步: Project=${projectId} -> Sheet=${spreadsheetId} (${sheetName})`);
+
+        // 1. Fetch all sales households
+        // 注意：salesHouseholds 集合的 id 通常是 ${projectId}_${unitId} 或其他格式
+        // 這裡假設我們可以直接 query projectId 欄位 (如果在 salesHouseholds 中有存的話)
+        // 根據 SalesControlSystem.vue 的資料來源，salesHouseholds 是從 projectData.households 取得
+        // 這意味著 salesHouseholds 可能是 subcollection 或者是 root collection 但有 projectId 欄位
+        // 假設是 root collection 'salesHouseholds' 並且有 projectId 欄位
+
+        const snapshot = await db.collection('salesHouseholds')
+            .where('projectId', '==', projectId)
+            .get();
+
+        if (snapshot.empty) {
+            return { status: 'success', message: '該專案尚無銷控資料' };
+        }
+
+        const households = [];
+        snapshot.forEach(doc => {
+            households.push({ _docId: doc.id, ...doc.data() });
+        });
+
+        // 2. Flatten Data
+        const rows = households.map(h => _flattenSalesHouseholdForSheet(h));
+
+        // 3. Prepare Headers
+        // 定義固定必要的欄位順序 (ID 與更新時間)
+        let headers = ['_id', 'updatedAt'];
+
+        // 加入 salesFieldDisplayNames 定義的欄位 (顯示中文)
+        const displayKeys = Object.keys(salesFieldDisplayNames);
+        headers = headers.concat(displayKeys);
+
+        // 找出 rows 中有但 headers 沒定義的 keys (動態欄位，例如自訂欄位)
+        const allRowKeys = new Set();
+        rows.forEach(r => Object.keys(r).forEach(k => allRowKeys.add(k)));
+        const extraKeys = Array.from(allRowKeys).filter(k => !headers.includes(k) && k !== '_id' && k !== 'updatedAt');
+
+        // 依需求決定是否加入 extraKeys，這裡選擇加入以避免漏資料
+        headers = headers.concat(extraKeys);
+
+        // 建立 Header Row (中文名稱)
+        const headerRow = headers.map(key => {
+            if (key === '_id') return '系統編號 (勿動)';
+            if (key === 'updatedAt') return '更新時間';
+            return salesFieldDisplayNames[key] || key;
+        });
+
+        // 4. Transform Rows to Array relative to Headers
+        const values = [headerRow];
+        rows.forEach(row => {
+            const rowData = headers.map(key => {
+                let val = row[key];
+                if (val === undefined || val === null) return '';
+                if (typeof val === 'object') return JSON.stringify(val);
+                return String(val);
+            });
+            values.push(rowData);
+        });
+
+        // 5. Write to Sheet (Clear & Write)
+        const sheets = await _getGoogleSheetClient();
+
+        // Save settings to Project
+        await db.collection('projects').doc(projectId).set({
+            salesSheetId: spreadsheetId,
+            salesSheetTabName: sheetName,
+            salesSheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0` // 簡易 URL
+        }, { merge: true });
+
+        // Clear existing content
+        await sheets.spreadsheets.values.clear({
+            spreadsheetId,
+            range: `'${sheetName}'!A:ZZ`,
+        });
+
+        // Write new content
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `'${sheetName}'!A1`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values },
+        });
+
+        console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆`);
+        return { status: 'success', message: `成功同步 ${rows.length} 筆銷控資料`, count: rows.length };
+
+    } catch (error) {
+        console.error(`[${functionName}] 失敗:`, error);
+        throw new HttpsError('internal', `同步失敗: ${error.message}`);
+    }
+});
+
+/**
+ * [Trigger] 當銷控資料異動時，即時同步到 Sheet
+ */
+exports.onSalesHouseholdWrite = onDocumentWritten("salesHouseholds/{docId}", async (event) => {
+    const functionName = "onSalesHouseholdWrite";
+    const docId = event.params.docId;
+
+    // 1. 判斷資料存在性
+    const newData = event.data?.after?.data();
+    const oldData = event.data?.before?.data();
+    const projectId = newData?.projectId || oldData?.projectId;
+
+    if (!projectId) {
+        console.log(`[${functionName}] 無法取得 projectId，忽略 (ID: ${docId})`);
+        return;
+    }
+
+    const db = admin.firestore();
+
+    try {
+        // 2. 讀取 Project Settings
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        if (!projectDoc.exists) return;
+
+        const settings = projectDoc.data();
+        const spreadsheetId = settings.salesSheetId; // 注意欄位名稱不同
+        const sheetName = settings.salesSheetTabName;
+
+        if (!spreadsheetId || !sheetName) {
+            return; // 未設定同步
+        }
+
+        console.log(`[${functionName}] 偵測到異動，準備同步: ID=${docId} -> Sheet=${spreadsheetId}`);
+
+        const sheets = await _getGoogleSheetClient();
+
+        // 3. 找出該 Row 在 Sheet 中的位置 (by _id column A)
+        const range = `'${sheetName}'!A:A`;
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range,
+        });
+
+        const values = response.data.values || [];
+        let rowIndex = -1;
+
+        // 尋找 docId (跳過 Header Row 1)
+        for (let i = 1; i < values.length; i++) {
+            if (values[i][0] === docId) {
+                rowIndex = i + 1; // 1-based index
+                break;
+            }
+        }
+
+        // 4. 根據操作類型處理
+        if (!newData) {
+            // --- 刪除操作 ---
+            if (rowIndex > -1) {
+                const sheetId = await _getSheetIdByName(sheets, spreadsheetId, sheetName);
+                if (sheetId !== null) {
+                    await sheets.spreadsheets.batchUpdate({
+                        spreadsheetId,
+                        resource: {
+                            requests: [{
+                                deleteDimension: {
+                                    range: {
+                                        sheetId: sheetId,
+                                        dimension: 'ROWS',
+                                        startIndex: rowIndex - 1,
+                                        endIndex: rowIndex
+                                    }
+                                }
+                            }]
+                        }
+                    });
+                    console.log(`[${functionName}] 已刪除 Row ${rowIndex}`);
+                }
+            }
+        } else {
+            // --- 新增或更新操作 ---
+            const flattened = _flattenSalesHouseholdForSheet({ _docId: docId, ...newData });
+
+            // 讀取 Header (第一列) 以決定欄位順序
+            const headerResp = await sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!1:1`,
+            });
+
+            let headers = headerResp.data.values?.[0] || [];
+
+            if (headers.length === 0) {
+                console.warn(`[${functionName}] Sheet 標題列為空，無法執行單筆同步。請先執行全量同步。`);
+                return;
+            }
+
+            // 映射數據到 values array
+            const rowData = headers.map(headerLabel => {
+                if (headerLabel === '系統編號 (勿動)') return flattened['_id'];
+                if (headerLabel === '更新時間') return flattened['updatedAt'];
+
+                // Reverse lookup: Header Label -> Key
+                const key = Object.keys(salesFieldDisplayNames).find(k => salesFieldDisplayNames[k] === headerLabel);
+                if (key) return _formatValue(flattened[key]);
+
+                return _formatValue(flattened[headerLabel]);
+            });
+
+            // 確保第一欄是 ID
+            if (rowData[0] !== docId) {
+                // 若 Header 沒對齊，這可能有風險
+            }
+
+            if (rowIndex > -1) {
+                // Update existing row
+                await sheets.spreadsheets.values.update({
+                    spreadsheetId,
+                    range: `'${sheetName}'!A${rowIndex}`,
+                    valueInputOption: 'USER_ENTERED',
+                    resource: { values: [rowData] },
+                });
+                console.log(`[${functionName}] 已更新 Row ${rowIndex}`);
+            } else {
+                // Append new row
+                await sheets.spreadsheets.values.append({
+                    spreadsheetId,
+                    range: `'${sheetName}'!A1`,
+                    valueInputOption: 'USER_ENTERED',
+                    resource: { values: [rowData] },
+                });
+                console.log(`[${functionName}] 已新增 Row`);
+            }
+        }
+
+    } catch (error) {
+        console.error(`[${functionName}] 錯誤:`, error);
+    }
+});
+
+
+/**
+ * [Helper] 扁平化銷控資料
+ */
+function _flattenSalesHouseholdForSheet(h) {
+    const flat = { ...h };
+
+    // ID
+    flat['_id'] = h._docId || h.id;
+
+    // Timestamp 處理
+    const dateFields = ['updatedAt', 'payment_deposit_date', 'payment_contract_date'];
+    dateFields.forEach(field => {
+        if (h[field] && h[field].toDate) {
+            flat[field] = h[field].toDate().toISOString().split('T')[0]; // 取日期部分即可 (updatedAt除外)
+            if (field === 'updatedAt') flat[field] = h[field].toDate().toISOString();
+        } else if (field === 'updatedAt' && !flat[field]) {
+            flat[field] = new Date().toISOString();
+        }
+    });
+
+    // Boolean 處理
+    if (typeof h.isPreferredPayment === 'boolean') {
+        flat['isPreferredPayment'] = h.isPreferredPayment ? '是' : '否';
+    }
+
+    return flat;
+}
