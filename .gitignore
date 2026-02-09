@@ -45,3 +45,5 @@ node_modules/
 /dist
 /build
 .env
+.agent/
+temp_skill_repo/
