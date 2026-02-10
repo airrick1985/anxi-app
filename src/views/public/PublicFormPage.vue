@@ -28,6 +28,17 @@
            </div>
            
            <p v-else class="text-white text-body-1 opacity-90">感謝您的填寫，資料已成功送出。</p>
+
+           <div class="mt-6">
+             <v-btn
+               color="white"
+               variant="outlined"
+               prepend-icon="mdi-pencil"
+               @click="modifyResponse"
+             >
+               修改回覆
+             </v-btn>
+           </div>
         </v-card>
 
         <!-- Form Content -->
@@ -117,7 +128,7 @@
             pill
           >
             <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
-            anxismart安熙智慧建案管理系統
+            anxismart
           </v-chip>
         </div>
       </v-container>
@@ -180,6 +191,7 @@ const lockedUnitId = ref<string | null>(null);
 const projectId = ref('');
 const units = ref<any[]>([]);
 const householdData = ref<any>(null); // Cache for auto-fill
+const currentSubmissionId = ref<string | null>(null); // Track ID for session overwrite
 
 // --- Intialization ---
 
@@ -373,8 +385,13 @@ const submitForm = async () => {
   submitting.value = true;
   try {
       const timestamp = new Date();
-      // Generate Submisison ID
-      const submissionId = `${projectId.value}_${formData.unitId}_${form.value.title}_${timestamp.getTime()}`;
+      // Generate Submission ID or reuse existing one for this session
+      let submissionId = currentSubmissionId.value;
+      
+      if (!submissionId) {
+         submissionId = `${projectId.value}_${formData.unitId}_${form.value.title}_${timestamp.getTime()}`;
+         currentSubmissionId.value = submissionId;
+      }
       
       // Generate Readable Snapshot (Label -> Value)
       const readableSnapshot: Record<string, any> = {};
@@ -436,6 +453,11 @@ const submitForm = async () => {
   } finally {
       submitting.value = false;
   }
+};
+
+const modifyResponse = () => {
+  submitted.value = false;
+  // Keep form data as is
 };
 
 // --- Share Logic ---
