@@ -33,18 +33,19 @@
         :model-value="modelValue"
         @update:model-value="$emit('update:modelValue', $event)"
         :label="field.label"
-        variant="filled"
+        variant="outlined"
+        :placeholder="field.placeholder"
         density="comfortable"
         :readonly="field.readOnly"
-        :rules="field.required ? [v => !!v || `${field.label} 為必填`] : []"
+        :rules="field.required ? [v => !!v || `必填`] : []"
         :hint="field.hint || (field.readOnly ? '系統自動帶入' : '')"
         persistent-hint
-        bg-color="grey-lighten-4"
-        disabled
+        persistent-placeholder
+        :bg-color="field.readOnly ? 'grey-lighten-4' : undefined"
         class="input-premium"
       >
         <template v-slot:prepend-inner>
-          <v-icon color="indigo">mdi-lock-outline</v-icon>
+          <v-icon v-if="field.readOnly" color="indigo">mdi-lock-outline</v-icon>
         </template>
       </v-text-field>
     </template>
@@ -68,6 +69,8 @@
              density="comfortable"
              :rules="field.required ? [v => !!v || '請選擇縣市'] : []"
              class="input-premium"
+             :hint="field.hint"
+             persistent-hint
            ></v-select>
          </v-col>
          <v-col cols="12" sm="6">
@@ -82,6 +85,8 @@
              :rules="field.required ? [v => !!v || '請選擇區域'] : []"
              :disabled="!modelValue?.city"
              class="input-premium"
+             :hint="field.hint"
+             persistent-hint
            ></v-select>
          </v-col>
          <v-col cols="12">
@@ -95,6 +100,8 @@
              density="comfortable"
              :rules="field.required ? [v => !!v || '請輸入詳細地址'] : []"
              class="input-premium"
+             :hint="field.hint"
+             persistent-hint
            ></v-text-field>
          </v-col>
        </v-row>
@@ -111,9 +118,11 @@
         variant="outlined"
         color="primary"
         density="comfortable"
-        :rules="field.required ? [v => !!v || '此欄位必填'] : []"
+        :rules="field.required ? [v => !!v || '必填'] : []"
         :type="field.type === 'phone' ? 'tel' : 'text'"
         class="input-premium"
+        :hint="field.hint"
+        persistent-hint
       ></v-text-field>
 
       <v-textarea
@@ -129,6 +138,8 @@
         auto-grow
         :rules="field.required ? [v => !!v || '此欄位必填'] : []"
         class="input-premium"
+        :hint="field.hint"
+        persistent-hint
       ></v-textarea>
 
       <v-text-field
@@ -142,9 +153,11 @@
         density="comfortable"
         :rules="field.required ? [v => !!v || '請選擇日期'] : []"
         class="input-premium"
+        :hint="field.hint"
+        persistent-hint
       ></v-text-field>
 
-      <!-- Radio / Checkbox -->
+       <!-- Radio / Checkbox -->
        <div v-if="['radio', 'checkbox'].includes(field.type)">
          <div class="text-subtitle-1 font-weight-bold mb-3 d-flex align-center">
             {{ field.label }} 
@@ -157,48 +170,69 @@
           @update:model-value="$emit('update:modelValue', $event)"
           :rules="field.required ? [v => !!v || '請選擇一個項目'] : []"
           class="custom-radio-group"
+          :hint="field.hint"
+          persistent-hint
         >
-          <v-radio
-            v-for="opt in field.options"
-            :key="opt.value"
-            :label="opt.label"
-            :value="opt.value"
-            color="primary"
-            class="mb-1 option-item"
-          ></v-radio>
-        </v-radio-group>
-        
-         <div v-if="field.type === 'checkbox'" class="d-flex flex-column gap-2">
-            <v-checkbox
-              v-for="opt in field.options"
-              :key="opt.value"
-              :model-value="modelValue"
-              @update:model-value="$emit('update:modelValue', $event)"
+          <template v-for="opt in field.options" :key="opt.value">
+            <v-radio
               :label="opt.label"
               :value="opt.value"
               color="primary"
-              multiple
-              hide-details
-              density="comfortable"
               class="mb-1 option-item"
-            ></v-checkbox>
-         </div>
+            ></v-radio>
 
-         <!-- Sub-fields Logic (Recursive with Animation) -->
-         <v-expand-transition>
-            <div v-if="hasActiveSubFields()">
-               <template v-for="opt in field.options" :key="opt.value + '_sub'">
-                 <div 
-                   v-if="(
-                     (field.type === 'radio' && modelValue === opt.value) ||
-                     (field.type === 'checkbox' && Array.isArray(modelValue) && modelValue.includes(opt.value))
-                   ) && opt.subFields && opt.subFields.length > 0"
-                   class="ml-2 mt-3 pa-4 bg-indigo-lighten-5 rounded-lg position-relative subfield-container"
-                 >
+            <!-- Inline Sub-fields for Radio -->
+            <v-expand-transition>
+              <div 
+                v-if="modelValue === opt.value && opt.subFields && opt.subFields.length > 0"
+                class="ml-8 mt-1 mb-2 pa-4 bg-indigo-lighten-5 rounded-lg position-relative subfield-container"
+              >
+                 <div class="subfield-indicator"></div>
+                 <div class="text-caption text-indigo mb-2 font-weight-bold">
+                   <v-icon size="small" start>mdi-arrow-right-bottom</v-icon>
+                   {{ opt.label }}
+                 </div>
+                 
+                 <div v-for="subf in opt.subFields" :key="subf.id">
+                    <FormRenderItem
+                       :field="subf"
+                       :model-value="formData[subf.id]"
+                       @update:model-value="(val) => updateSubField(subf.id, val)"
+                       :formData="formData"
+                       :preview="preview"
+                    />
+                 </div>
+              </div>
+            </v-expand-transition>
+          </template>
+        </v-radio-group>
+        
+         <div v-if="field.type === 'checkbox'" class="d-flex flex-column gap-2">
+            <template v-for="(opt, index) in field.options" :key="opt.value">
+              <v-checkbox
+                :model-value="modelValue"
+                @update:model-value="$emit('update:modelValue', $event)"
+                :label="opt.label"
+                :value="opt.value"
+                color="primary"
+                multiple
+                hide-details
+                density="comfortable"
+                class="mb-1 option-item"
+                :hint="index === field.options.length - 1 ? field.hint : undefined"
+                :persistent-hint="index === field.options.length - 1"
+              ></v-checkbox>
+
+              <!-- Inline Sub-fields for Checkbox -->
+              <v-expand-transition>
+                <div 
+                  v-if="Array.isArray(modelValue) && modelValue.includes(opt.value) && opt.subFields && opt.subFields.length > 0"
+                  class="ml-8 mt-1 mb-2 pa-4 bg-indigo-lighten-5 rounded-lg position-relative subfield-container"
+                >
                    <div class="subfield-indicator"></div>
                    <div class="text-caption text-indigo mb-2 font-weight-bold">
                      <v-icon size="small" start>mdi-arrow-right-bottom</v-icon>
-                     補充資訊 ({{ opt.label }})
+                     {{ opt.label }}
                    </div>
                    
                    <div v-for="subf in opt.subFields" :key="subf.id">
@@ -210,11 +244,15 @@
                          :preview="preview"
                       />
                    </div>
-                 </div>
-               </template>
-            </div>
-         </v-expand-transition>
+                </div>
+              </v-expand-transition>
+            </template>
+         </div>
+         <div v-if="field.type === 'checkbox' && field.hint" class="v-messages px-4 text-caption text-medium-emphasis">
+            {{ field.hint }}
+         </div>
        </div>
+
     </template>
   </div>
 </template>

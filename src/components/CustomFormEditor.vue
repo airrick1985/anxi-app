@@ -92,7 +92,7 @@
               <span>Powered by&nbsp;</span>
               <v-chip class="ml-1" color="blue-grey" variant="tonal" size="small" pill>
                 <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
-                anxismart安熙智慧建案管理系統
+                anxismart
               </v-chip>
            </div>
         </v-container>
@@ -137,9 +137,9 @@
         
         <v-divider class="my-6"></v-divider>
 
-        <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3">提交後設定</h3>
+        <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3">表單送出後設定</h3>
         
-        <v-label class="mb-2">提交成功顯示訊息 (Rich Text)</v-label>
+        <v-label class="mb-2">表單送出成功顯示訊息</v-label>
         <RichTextEditor
           v-model="form.submitSuccessMessage"
           class="mb-4"

@@ -20,7 +20,7 @@
           <v-list-item @click="addField('radio')" prepend-icon="mdi-radiobox-marked" title="單選題"></v-list-item>
           <v-list-item @click="addField('checkbox')" prepend-icon="mdi-checkbox-marked" title="多選題"></v-list-item>
           <v-list-item @click="addField('date')" prepend-icon="mdi-calendar" title="日期"></v-list-item>
-          <v-list-item @click="addField('address')" prepend-icon="mdi-map-marker-radius" title="地址 (台灣縣市選單)"></v-list-item>
+          <v-list-item @click="addField('address')" prepend-icon="mdi-map-marker-radius" title="地址"></v-list-item>
           
           <v-divider class="my-2"></v-divider>
           <v-list-subheader>版面元件</v-list-subheader>
@@ -32,7 +32,7 @@
           <template v-if="allowSystemFields">
             <v-divider class="my-2"></v-divider>
             <v-list-subheader>系統欄位 (自動帶入)</v-list-subheader>
-            <v-list-item @click="addSystemField('unitId')" prepend-icon="mdi-home" title="戶別 (Unit ID)"></v-list-item>
+            <v-list-item @click="addSystemField('unitId')" prepend-icon="mdi-home" title="戶別"></v-list-item>
             <v-list-item @click="addSystemField('buyerName')" prepend-icon="mdi-account" title="買方姓名"></v-list-item>
             <v-list-item @click="addSystemField('buyerPhone')" prepend-icon="mdi-phone" title="買方電話"></v-list-item>
             <v-list-item @click="addSystemField('buyerAddress')" prepend-icon="mdi-map-marker" title="買方地址"></v-list-item>
@@ -118,18 +118,34 @@
                   </v-col>
                 </v-row>
 
+                 <!-- Hint & Placeholder -->
+                 <v-row dense>
+                   <v-col cols="12" v-if="!['header', 'description', 'divider', 'link', 'radio', 'checkbox', 'system'].includes(field.type)">
+                      <v-text-field
+                        v-model="field.placeholder"
+                        label="提示文字 (Placeholder)"
+                        density="compact"
+                        variant="outlined"
+                        hide-details
+                      ></v-text-field>
+                   </v-col>
+                   <v-col cols="12" v-if="!['header', 'description', 'divider'].includes(field.type)">
+                      <v-text-field
+                        v-model="field.hint"
+                        label="輔助說明 (Hint)"
+                        placeholder="顯示在欄位下方的說明文字"
+                        density="compact"
+                        variant="outlined"
+                        hide-details
+                      ></v-text-field>
+                   </v-col>
+                 </v-row>
+                 
+                 <div class="mt-2"></div>
+ 
                  <v-text-field
-                  v-if="['text', 'textarea', 'phone'].includes(field.type)"
-                  v-model="field.placeholder"
-                  label="提示文字 (Placeholder)"
-                  density="compact"
-                  variant="outlined"
-                  class="mb-2"
-                ></v-text-field>
-
-                <v-text-field
-                  v-if="field.type === 'link'"
-                  v-model="field.url"
+                   v-if="field.type === 'link'"
+                   v-model="field.url"
                   label="連結網址 (URL)"
                   placeholder="https://example.com"
                   density="compact"
@@ -184,11 +200,10 @@
                          class="mt-0"
                       ></v-checkbox>
                     </v-col>
-                    <v-col cols="12">
+                     <v-col cols="12">
                       <v-text-field
-                        v-model="field.hint"
-                        label="提示文字 (Hint)"
-                        placeholder="例如: 請確認資料是否正確"
+                        v-model="field.placeholder"
+                        label="提示文字 (Placeholder)"
                         density="compact"
                         variant="outlined"
                         bg-color="white"
@@ -200,12 +215,13 @@
 
                 <!-- Options Editor for Radio/Checkbox -->
                 <div v-if="['radio', 'checkbox'].includes(field.type)" class="mt-2">
-                  <div class="text-subtitle-2 mb-2">選項設定</div>
+                 
                   <draggable 
                     v-model="field.options" 
                     item-key="id" 
                     handle=".option-drag"
-                    class="v-row dense"
+                    animation="200"
+                    class="d-flex flex-column w-100"
                   >
                     <template #item="{ element: option, index: optIndex }">
                       <div class="w-100 mb-2">
@@ -237,12 +253,12 @@
                               prepend-icon="mdi-plus"
                               @click="initSubFields(option)"
                             >
-                              啟用關聯子欄位
+                            新增子欄位
                             </v-btn>
                             
                             <div v-else class="pl-3 border-s-md mt-2" style="border-color: #e0e0e0;">
                               <div class="d-flex justify-space-between align-center mb-1">
-                                <span class="text-caption text-grey">關聯欄位 (當選中 "{{ option.label }}" 時顯示)</span>
+                                <span class="text-caption text-grey">子欄位 (當選中 "{{ option.label }}" 時顯示)</span>
                                 <v-btn icon="mdi-delete" variant="text" size="x-small" color="error" @click="removeSubFields(option)"></v-btn>
                               </div>
                               <DynamicFieldEditor 
@@ -278,7 +294,7 @@
     
     <div v-if="localFields.length === 0" class="text-center pa-8 border dashed rounded text-grey">
       <v-icon size="48" class="mb-2">mdi-form-select</v-icon>
-      <p>點擊上方「新增元件」按鈕開始設計表單</p>
+      <p>點擊上方「新增元件」</p>
     </div>
 
   </div>
@@ -351,6 +367,14 @@ watch(() => props.fields, (newVal) => {
   }
 }, { deep: true });
 
+// Initial emit ensures parent gets initial structure with IDs if needed
+// updateFields(); // No, don't emit on mount, might trigger form dirty check prematurely
+
+// Watch localFields deeply to emit changes
+watch(localFields, () => {
+  emit('update:fields', localFields.value);
+}, { deep: true });
+
 const updateFields = () => {
   // Emit event, but do not update localFields again here immediately if watcher handles it
   // The emit will cause parent to update prop, triggering watcher.
@@ -358,10 +382,10 @@ const updateFields = () => {
 };
 
 const systemKeyOptions = [
-  { title: '戶別 (Unit ID)', value: 'unitId' },
+  { title: '戶別', value: 'unitId' },
   { title: '買方姓名', value: 'buyerName' },
   { title: '買方電話', value: 'buyerPhone' },
-  { title: '買方地址 (戶籍)', value: 'buyerAddress' },
+  { title: '買方戶籍地址', value: 'buyerAddress' },
   { title: '身分證字號', value: 'buyerIdNumber' },
   { title: '銷售人員', value: 'salesPerson' },
 ];
@@ -402,7 +426,7 @@ const addField = (type: string) => {
   }
 
   localFields.value.push(newField);
-  updateFields();
+  // updateFields();
 };
 
 const addSystemField = (key: string) => {
@@ -415,14 +439,15 @@ const addSystemField = (key: string) => {
     required: true,
     autoFill: true,
     readOnly: true,
+    placeholder: '',
     expanded: true
   });
-  updateFields();
+  // updateFields(); // handled by watcher now
 };
 
 const removeField = (index: number) => {
   localFields.value.splice(index, 1);
-  updateFields();
+  // updateFields();
 };
 
 const addOption = (field: DynamicField) => {
@@ -433,24 +458,24 @@ const addOption = (field: DynamicField) => {
     value: '新選項',
     subFields: []
   });
-  updateFields(); // Ensure deep reactivity triggers update if needed
+  // updateFields(); // Ensure deep reactivity triggers update if needed
 };
 
 const removeOption = (field: DynamicField, index: number) => {
   if (field.options) {
     field.options.splice(index, 1);
-    updateFields();
+    // updateFields();
   }
 };
 
 const initSubFields = (option: FieldOption) => {
   if (!option.subFields) option.subFields = [];
-  updateFields();
+  // updateFields();
 };
 
 const removeSubFields = (option: FieldOption) => {
   option.subFields = undefined;
-  updateFields();
+  // updateFields();
 };
 
 </script>

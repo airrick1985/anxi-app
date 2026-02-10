@@ -146,18 +146,34 @@
              </v-col>
            </v-row>
 
-           <v-text-field
-            v-model.number="expiryMinutes"
-            label="連結有效時間 (分鐘)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="mb-4"
-            hint="若為空或 0 則代表永久有效"
-            persistent-hint
-            min="0"
-          ></v-text-field>
+           <v-label class="mb-2 text-caption">連結有效時間</v-label>
+           <v-row dense class="mb-4">
+             <v-col cols="8">
+               <v-text-field
+                v-model.number="expiryValue"
+                type="number"
+                variant="outlined"
+                density="compact"
+                hide-details
+                min="0"
+                placeholder="輸入數值"
+              ></v-text-field>
+             </v-col>
+             <v-col cols="4">
+               <v-select
+                v-model="expiryUnit"
+                :items="expiryUnitOptions"
+                variant="outlined"
+                density="compact"
+                hide-details
+              ></v-select>
+             </v-col>
+             <v-col cols="12">
+               <div class="text-caption text-grey">
+                 若設為 0 則代表永久有效
+               </div>
+             </v-col>
+           </v-row>
 
            <div v-if="generatedUrl" class="mt-4 pa-3 bg-grey-lighten-4 rounded border">
             <div class="text-caption font-weight-bold mb-1">分享連結 (點擊複製):</div>
@@ -334,7 +350,15 @@ const filteredUnits = computed(() => {
 });
 
 // Update Open logic to reset selection
-const expiryMinutes = ref<number | null>(60); // Default 60 minutes
+// Update Open logic to reset selection
+const expiryValue = ref<number | null>(7); 
+const expiryUnit = ref('days');
+const expiryUnitOptions = [
+  { title: '分鐘', value: 'minutes' },
+  { title: '小時', value: 'hours' },
+  { title: '天', value: 'days' },
+  { title: '月', value: 'months' }
+];
 
 // ... (existing helper methods)
 
@@ -347,7 +371,10 @@ const openShareDialog = async (form: any) => {
   generatedUrl.value = '';
   selectedUnitId.value = null;
   selectedBuilding.value = null; // Reset building filter
-  expiryMinutes.value = 60; // Reset to default
+  selectedUnitId.value = null;
+  selectedBuilding.value = null; // Reset building filter
+  expiryValue.value = 3;  // Default 3 days
+  expiryUnit.value = 'days';
   shareType.value = 'general';
   
   if (units.value.length === 0) {
@@ -360,11 +387,18 @@ const openShareDialog = async (form: any) => {
 const generateShareLink = async () => {
   generatingLink.value = true;
   try {
-    // Determine expiration based on minutes
+    // Determine expiration based on units
     let expiresAt = null;
-    if (expiryMinutes.value && expiryMinutes.value > 0) {
+    if (expiryValue.value && expiryValue.value > 0) {
       const now = new Date();
-      now.setTime(now.getTime() + expiryMinutes.value * 60 * 1000);
+      let minutesToAdd = 0;
+      switch (expiryUnit.value) {
+        case 'minutes': minutesToAdd = expiryValue.value; break;
+        case 'hours': minutesToAdd = expiryValue.value * 60; break;
+        case 'days': minutesToAdd = expiryValue.value * 60 * 24; break;
+        case 'months': minutesToAdd = expiryValue.value * 60 * 24 * 30; break;
+      }
+      now.setTime(now.getTime() + minutesToAdd * 60 * 1000);
       expiresAt = now;
     }
 
