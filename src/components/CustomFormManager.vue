@@ -56,6 +56,14 @@
             >
               分享
             </v-btn>
+            <v-btn
+              variant="text"
+              color="teal"
+              prepend-icon="mdi-format-list-bulleted"
+              @click="openResponses(form)"
+            >
+              回覆
+            </v-btn>
             <v-spacer></v-spacer>
             <v-btn
               variant="text"
@@ -97,6 +105,16 @@
         :formId="editingFormId"
         @close="closeEditor"
         @saved="onFormSaved"
+      />
+    </v-dialog>
+
+    <!-- Responses Dialog -->
+    <v-dialog v-model="responsesDialog" fullscreen transition="dialog-bottom-transition">
+      <CustomFormResponses
+        v-if="responsesDialog"
+        :projectId="projectId"
+        :form="viewingForm"
+        @close="closeResponses"
       />
     </v-dialog>
 
@@ -230,6 +248,7 @@ import { useToast } from 'vue-toastification';
 
 // 假設 CustomFormEditor 是另一個要建立的組件
 const CustomFormEditor = defineAsyncComponent(() => import('./CustomFormEditor.vue'));
+const CustomFormResponses = defineAsyncComponent(() => import('./CustomFormResponses.vue'));
 
 const props = defineProps<{
   projectId: string;
@@ -242,6 +261,10 @@ const forms = ref<any[]>([]);
 // Editor State
 const editorDialog = ref(false);
 const editingFormId = ref<string | null>(null);
+
+// Responses State
+const responsesDialog = ref(false);
+const viewingForm = ref<any>(null);
 
 // Share State
 const shareDialog = ref(false);
@@ -285,8 +308,18 @@ const closeEditor = () => {
 
 const onFormSaved = () => {
   closeEditor();
-  loadForms(); // Reload list
+  loadForms();
   toast.success('表單已儲存');
+};
+
+const openResponses = (form: any) => {
+  viewingForm.value = form;
+  responsesDialog.value = true;
+};
+
+const closeResponses = () => {
+  responsesDialog.value = false;
+  viewingForm.value = null;
 };
 
 const confirmDelete = async (form: any) => {

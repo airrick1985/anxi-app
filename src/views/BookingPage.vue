@@ -383,13 +383,14 @@
                 
                 <div v-if="projectConfig.intro.faq && projectConfig.intro.faq.length > 0" class="mt-6">
                   <v-list-subheader>常見問答</v-list-subheader>
-              <v-expansion-panels variant="inset">
+              <v-expansion-panels variant="accordion">
                     <v-expansion-panel
                       v-for="(item, i) in projectConfig.intro.faq"
                       :key="i"
+                      class="faq-panel"
                     >
                       <template v-slot:title>
-                        <div v-html="item.q" class="prose" style="font-weight: 500;"></div>
+                        <div v-html="item.q" class="prose faq-title" style="font-weight: 600;"></div>
                       </template>
                       <v-expansion-panel-text>
                         <div v-html="item.a" class="prose"></div>
@@ -452,6 +453,16 @@
                 <v-card-text>
                   <h3 class="text-h6 mb-2">步驟一：請選擇您的預約項目與戶別</h3>
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
+
+                
+                   <v-text-field
+                    v-model="formStep1.idNumber"
+                    :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
+                    :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
+                    variant="outlined"
+                    class="mt-4"
+                    :disabled="isLoading || !isBookingActive"
+                  ></v-text-field>
               
                 <v-autocomplete
                       v-model="formStep1.building"
@@ -487,7 +498,7 @@
 
                 <v-select
                   v-model="formStep1.bookingType"
-                 :items="projectConfig.bookingTypes" 
+                  :items="availableBookingTypes"
                   label="預約項目"
                   variant="outlined"
                   :rules="[v => !!v || '預約項目為必填項']"
@@ -498,11 +509,12 @@
                <v-select
                   v-if="projectConfig.showBookingMethod"
                   v-model="formStep1.bookingMethod"
-                  :items="projectConfig.bookingMethodOptions"
+                  :items="availableMethodOptions"
                   label="選擇方式"
                   variant="outlined"
                   :rules="[v => !!v || '選擇方式為必填項']"
                   :disabled="isLoading || !formStep1.unit || !isBookingActive"
+                  no-data-text="請先選擇預約項目"
                   ></v-select>
 
                       <div v-if="formStep1.bookingMethod && formStep1.bookingMethod !== '屋主自驗' && formStep1.bookingMethod !== '授權驗屋' && formStep1.bookingType !== '對保'" class="mb-4">                      
@@ -530,13 +542,7 @@
                     :rules="[v => !!v || '請輸入代驗公司名稱']"
                     :disabled="isLoading || !isBookingActive"
                   ></v-text-field>
-                  <v-text-field
-                    v-model="formStep1.idNumber"
-                    :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
-                    :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []"
-                    variant="outlined"
-                    :disabled="isLoading || !isBookingActive"
-                  ></v-text-field>
+                 
 
                   <!-- Dynamic Fields Renderer -->
                   <div v-if="currentDynamicFields.length > 0" class="mt-4 pa-4 border rounded bg-grey-lighten-5">
@@ -548,7 +554,9 @@
                         :fields="currentDynamicFields"
                         v-model="dynamicFormData"
                     />
+                    
                   </div>
+
                   
                   </v-form>
                 </v-card-text>
@@ -655,22 +663,38 @@
                         title="請選擇預約日期"
                     ></v-date-picker>
 
+                
+                <!-- [New] Owner Presence Question -->
+                <v-col cols="12" v-if="showOwnerPresenceQuestion">
+                   <v-card variant="tonal" color="warning" class="mb-4">
+                      <v-card-text>
+                         <div class="text-subtitle-1 font-weight-bold mb-2">請問本人是否到場?</div>
+                         <v-radio-group v-model="formStep1.isOwnerPresent" inline hide-details>
+                            <v-radio label="是 (本人到場)" :value="true" color="primary"></v-radio>
+                            <v-radio label="否 (委託或授權)" :value="false" color="error"></v-radio>
+                         </v-radio-group>
+                      </v-card-text>
+                   </v-card>
+                </v-col>
+
+                <v-col cols="12">
                     <v-select
-                      label="預約時段"
-                      v-model="formStep2.預約時段"
-                      :items="availableTimeSlots"
-                      :disabled="!formStep2.預約日期"
-                      :rules="[v => !!v || '必填']"
-                      variant="outlined"
-                      no-data-text="請先選擇日期"
-                      class="mt-4"
-                      item-title="title"
-                      item-value="value"
-                  >
-                      <template v-slot:item="{ props, item }">
-                          <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
-                      </template>
-                  </v-select>
+                        label="預約時段"
+                        v-model="formStep2.預約時段"
+                        :items="availableTimeSlots"
+                        :disabled="!formStep2.預約日期"
+                        :rules="[v => !!v || '必填']"
+                        variant="outlined"
+                        no-data-text="請先選擇日期"
+                        class="mt-4"
+                        item-title="title"
+                        item-value="value"
+                    >
+                        <template v-slot:item="{ props, item }">
+                            <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
+                        </template>
+                    </v-select>
+                </v-col>
                    <template v-if="formStep1.bookingMethod !== '屋主自驗' && formStep1.isOwnerPresent === false">
                     <v-divider class="my-4"></v-divider>
                       <p class="mb-2 text-subtitle-1 font-weight-medium">
@@ -695,7 +719,7 @@
                       block
                       variant="tonal"
                       size="large"
-                      :disabled="isLoading"
+                      :disabled="isLoading || isSigningInitiated"
                     >
                       <v-icon left>{{ isSigningInitiated ? 'mdi-email-check-outline' : 'mdi-draw' }}</v-icon>
                       {{ isSigningInitiated ? '已寄送簽署邀請' : '按此處「驗屋授權書(線上授權)」' }}
@@ -1370,6 +1394,102 @@ const formStep1 = ref({
 
 const dynamicFormData = ref({}); // [New] Store dynamic field values
 
+// --- Booking Menu Logic (Parent-Child) ---
+const currentDynamicFields = ref([]);
+const showOwnerPresenceQuestion = ref(false); // [New]
+
+// Watcher: Owner Present Change
+watch(() => formStep1.value.isOwnerPresent, (newVal) => {
+    if (showOwnerPresenceQuestion.value && newVal === false) {
+       // User selected "No" -> Trigger Auth
+       setTimeout(() => {
+           openAuthDialog();
+       }, 300);
+    }
+});
+
+const availableBookingTypes = computed(() => {
+    if (!projectConfig.value) return [];
+    
+    // New Structure
+    if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
+        return projectConfig.value.bookingMenu.map(item => item.title);
+    }
+    
+    // Fallback Legacy
+    return projectConfig.value.bookingTypes || [];
+});
+
+const availableMethodOptions = computed(() => {
+    if (!projectConfig.value || !formStep1.value.bookingType) return [];
+
+    // New Structure
+    if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
+        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType);
+        if (selectedItem && selectedItem.methods) {
+            return selectedItem.methods.map(m => m.title);
+        }
+        return [];
+    }
+
+    // Fallback Legacy
+    return projectConfig.value.bookingMethodOptions || [];
+});
+
+// Watcher: Type Change -> Reset Method
+watch(() => formStep1.value.bookingType, (newVal) => {
+    formStep1.value.bookingMethod = null;
+    currentDynamicFields.value = [];
+    dynamicFormData.value = {};
+});
+
+// Watcher: Method Change -> Update Fields
+watch(() => formStep1.value.bookingMethod, (newMethodName) => {
+    currentDynamicFields.value = [];
+    if (!newMethodName) return;
+
+    if (!projectConfig.value) return;
+
+    // 1. Try New Structure
+    if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
+        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType);
+        if (selectedItem && selectedItem.methods) {
+            const methodObj = selectedItem.methods.find(m => m.title === newMethodName);
+            if (methodObj && methodObj.customFields) {
+                currentDynamicFields.value = methodObj.customFields;
+            }
+            // 授權流程判斷
+            if (methodObj && methodObj.triggerAuthFlow) {
+                // 檢查是否需要詢問「本人是否到場」
+                if (methodObj.askOwnerPresence) {
+                    // 開啟詢問模式：顯示單選題，暫不觸發
+                    showOwnerPresenceQuestion.value = true;
+                    // 重置選項，讓使用者自己選
+                     formStep1.value.isOwnerPresent = null; 
+                } else {
+                    // 不詢問模式 (關閉)：視同「否」(本人不到場) -> 強制觸發
+                     showOwnerPresenceQuestion.value = false;
+                    formStep1.value.isOwnerPresent = false;
+                    // 觸發授權書視窗
+                    setTimeout(() => {
+                       openAuthDialog();
+                    }, 300);
+                }
+            } else {
+                // 若切換到不需要授權的方式，重置相關狀態
+                 showOwnerPresenceQuestion.value = false;
+                 formStep1.value.isOwnerPresent = true; // 預設視為本人
+            }
+            return;
+        }
+    }
+
+    // 2. Try Legacy Configs (if any exist independently)
+    if (projectConfig.value.bookingMethodConfigs && projectConfig.value.bookingMethodConfigs[newMethodName]) {
+         currentDynamicFields.value = projectConfig.value.bookingMethodConfigs[newMethodName];
+    }
+});
+
 const formStep2 = ref({ 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' });
 const existingBookingInfo = ref(null);
 
@@ -1711,13 +1831,7 @@ watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
 });
 // --- END: ✓ 修改 watch 監聽 bookingMethod ---
 
-const currentDynamicFields = computed(() => {
-   if (!formStep1.value.bookingMethod || !projectConfig.value || !projectConfig.value.bookingMethodConfigs) {
-       return [];
-   }
-   const config = projectConfig.value.bookingMethodConfigs[formStep1.value.bookingMethod];
-   return config ? config.fields : [];
-});
+
 
 const displayDynamicFields = computed(() => {
     const data = dynamicFormData.value;
@@ -2462,5 +2576,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 常見問答 (FAQ) 漸層標題樣式 */
+.faq-panel :deep(.v-expansion-panel-title) {
+  transition: background-color 0.3s ease;
+}
+.faq-panel :deep(.v-expansion-panel-title--active) .faq-title {
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.faq-panel :deep(.v-expansion-panel-title--active) {
+  background-color: rgba(106, 92, 231, 0.04);
 }
 </style>

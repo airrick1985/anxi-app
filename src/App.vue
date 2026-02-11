@@ -49,6 +49,9 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- 系統問題回報（全域浮動按鈕） -->
+  <SystemBugReport />
   </template>
 
 <script setup>
@@ -62,6 +65,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useToast } from 'vue-toastification'; 
 import DefaultLayout from './layouts/DefaultLayout.vue'; 
 import { useRegisterSW } from 'virtual:pwa-register/vue';
+import SystemBugReport from '@/components/SystemBugReport.vue';
 
 // ✓ 步驟二：建立 router 實例
 const router = useRouter(); // <--- 新增此行

@@ -274,7 +274,7 @@
   </v-card-text>
 </v-card>
                 <v-divider class="my-6"></v-divider>
-                <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳()</p>
+                <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳</p>
                 <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
                 <v-sheet border rounded class="pa-4 text-center">
                   <v-img :src="projectSettings.logoUrl" height="60" contain class="mb-4 bg-grey-lighten-4">
@@ -304,18 +304,7 @@
                   persistent-hint
                   class="mb-6"
                 ></v-text-field>
-                <v-combobox
-                  v-model="projectSettings.bookingTypes"
-                  :items="defaultBookingTypes"  
-                  label="預約項目"
-                  hint="可從下拉選單快選，或輸入文字後按 Enter 新增"
-                  persistent-hint
-                  multiple
-                  chips
-                  closable-chips
-                  variant="outlined"
-                  density="compact"
-                ></v-combobox>
+
                 <v-switch
                   v-model="projectSettings.validateId"
                   label="啟用身分證驗證"
@@ -335,110 +324,288 @@
                   inset
                   hint="啟用後，系統會檢查同一戶別、同一預約項目是否已有有效預約"
                   persistent-hint
-                  class="mt-4"
+                  class="mt-4 mb-6"
                 ></v-switch>
-                
-                <v-switch
-                  v-model="projectSettings.showBookingMethod"
-                  label="顯示選擇方式選項"
-                  color="primary"
-                  inset
-                  class="mt-4"
-                ></v-switch>
-                <v-combobox
-                  v-model="projectSettings.bookingMethodOptions"
-                  :items="defaultBookingMethods"
-                  label="編輯選擇方式選項"
-                  multiple
-                  chips
-                  closable-chips
-                  variant="outlined"
-                  density="compact"
-                  :disabled="!projectSettings.showBookingMethod"
-                  hint="可從下拉選單快選，或輸入文字後按 Enter 新增"
-                  persistent-hint
-                >
-                </v-combobox>
 
-                <div v-if="projectSettings.bookingMethodOptions && projectSettings.bookingMethodOptions.length > 0" class="mt-4 pa-4 border rounded bg-grey-lighten-5">
-                   <div class="d-flex align-center mb-2">
-                      <v-icon color="primary" class="mr-2">mdi-cog-box</v-icon>
-                      <span class="text-subtitle-2 font-weight-bold">針對個別方式設定額外欄位</span>
-                   </div>
-                   <div class="d-flex flex-wrap gap-2">
-                      <v-chip
-                        v-for="(methodName, idx) in projectSettings.bookingMethodOptions"
-                        :key="idx"
-                        class="ma-1"
-                        color="indigo"
-                        text-color="indigo-darken-4"
-                        label
-                      >
-                        <span class="font-weight-medium mr-2">{{ typeof methodName === 'object' ? methodName.title : methodName }}</span>
-                        <v-btn
-                          icon
-                          variant="tonal"
-                          size="x-small"
-                          density="compact"
-                          color="primary"
-                          @click="openDynamicFieldsDialog(typeof methodName === 'object' ? methodName.title : methodName)"
-                          title="設定額外欄位"
-                        >
-                           <v-icon size="14">mdi-cog</v-icon>
-                        </v-btn>
-                      </v-chip>
-                   </div>
+                <!-- NEW: Booking Menu Configuration (Parent-Child Structure) -->
+                <div class="mb-4">
+                   <p class="text-subtitle-1 font-weight-bold mb-2">預約選單設定 (項目 > 方式)</p>
+                   <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="openEditBookingItemDialog()">新增預約項目</v-btn>
                 </div>
 
-                <!-- Dynamic Fields Configuration Dialog -->
-                <v-dialog v-model="isDynamicFieldsDialogVisible" max-width="800px">
-                  <v-card>
-                    <v-card-title class="d-flex align-center bg-primary text-white">
-                      <v-icon start>mdi-form-select</v-icon>
-                      設定額外欄位 - {{ currentConfiguringMethod }}
-                      <v-spacer></v-spacer>
-                      <v-btn icon variant="text" @click="isDynamicFieldsDialogVisible = false">
-                        <v-icon>mdi-close</v-icon>
-                      </v-btn>
-                    </v-card-title>
-                    <v-card-text class="pa-4" style="max-height: 70vh; overflow-y: auto;">
-                       <v-alert
-                        type="info"
-                        variant="tonal"
-                        border="start"
-                        density="compact"
-                        class="mb-4"
-                      >
-                        當用戶選擇「{{ currentConfiguringMethod }}」時，顯示以下額外欄位。
-                      </v-alert>
-                      
-                      <DynamicFieldEditor 
-                        v-model:fields="tempDynamicFields"
-                      />
-                    </v-card-text>
-                    <v-divider></v-divider>
-                    <v-card-actions class="pa-4">
-                      <v-spacer></v-spacer>
-                      <v-btn variant="text" @click="isDynamicFieldsDialogVisible = false">取消</v-btn>
-                      <v-btn color="primary" variant="elevated" @click="saveDynamicFieldsConfig">
-                        確認儲存
-                      </v-btn>
-                    </v-card-actions>
-                  </v-card>
+                <div v-if="!projectSettings.bookingMenu || projectSettings.bookingMenu.length === 0" class="text-center text-grey pa-6 border rounded border-dashed mb-6">
+                   <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-file-tree</v-icon>
+                   <p>尚未建立預約選單結構，請點擊上方按鈕新增。</p>
+                </div>
+
+                <draggable 
+                   v-else 
+                   v-model="projectSettings.bookingMenu" 
+                   item-key="title" 
+                   handle=".drag-handle"
+                   tag="v-expansion-panels"
+                   :component-data="{ variant: 'accordion', class: 'mb-6' }"
+                >
+                   <template #item="{ element: item, index: itemIndex }">
+                       <v-expansion-panel>
+                          <v-expansion-panel-title>
+                             <div class="d-flex align-center flex-grow-1">
+                                <!-- Drag Handle for item -->
+                                <v-icon class="drag-handle mr-3 cursor-move" color="grey">mdi-drag-horizontal-variant</v-icon>
+                                
+                                <v-icon color="primary" class="mr-3">mdi-folder-outline</v-icon>
+                                <span class="font-weight-bold mr-2">{{ item.title }}</span>
+                                <v-chip size="x-small" color="grey" variant="outlined" class="mr-2">{{ item.methods ? item.methods.length : 0 }} 種方式</v-chip>
+                                <v-btn icon variant="text" size="small" color="primary" @click.stop="openEditBookingItemDialog(item, itemIndex)" title="編輯項目名稱">
+                                   <v-icon>mdi-pencil</v-icon>
+                                </v-btn>
+                                <v-btn icon variant="text" size="small" color="error" @click.stop="deleteBookingItem(itemIndex)" title="刪除項目">
+                                   <v-icon>mdi-delete</v-icon>
+                                </v-btn>
+                             </div>
+                             <template v-slot:actions="{ expanded }">
+                                <v-icon :icon="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></v-icon>
+                             </template>
+                          </v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                             <div class="d-flex justify-start mb-2">
+                                 <v-btn size="small" variant="tonal" color="secondary" prepend-icon="mdi-plus" @click="openEditMethodDialog(itemIndex)">新增選擇方式</v-btn>
+                             </div>
+                             
+                             <div v-if="!item.methods || item.methods.length === 0" class="text-center text-grey-darken-1 text-caption pa-4 bg-grey-lighten-5 rounded">
+                                此項目下尚未設定選擇方式
+                             </div>
+   
+                             <draggable 
+                               v-else 
+                               v-model="item.methods" 
+                               item-key="title" 
+                               handle=".method-drag-handle"
+                               tag="v-list"
+                               :component-data="{ density: 'compact', class: 'bg-grey-lighten-5 rounded' }"
+                             >
+                                <template #item="{ element: method, index: methodIndex }">
+                                   <div>
+                                      <v-list-item class="py-0">
+                                         <div class="d-flex align-center w-100 py-2">
+                                            <!-- Method Drag Handle -->
+                                            <v-icon class="method-drag-handle mr-2 cursor-move" size="small" color="grey">mdi-drag</v-icon>
+                                            <v-icon size="small" color="secondary" class="mr-2">mdi-subdirectory-arrow-right</v-icon>
+                                            
+                                            <span class="font-weight-medium mr-4 text-subtitle-2">{{ method.title }}</span>
+
+                                            <!-- Action Buttons (Now closer to title) -->
+                                             <v-btn
+                                               icon
+                                               variant="text"
+                                               size="x-small"
+                                               color="primary"
+                                               class="mr-1"
+                                               @click="openDynamicFieldsDialog(method, itemIndex, methodIndex)"
+                                               title="設定額外欄位"
+                                            >
+                                               <v-icon>mdi-cog</v-icon>
+                                            </v-btn>
+                                             <v-btn
+                                               icon
+                                               variant="text"
+                                               size="x-small"
+                                               color="grey-darken-1"
+                                                class="mr-1"
+                                               @click="openEditMethodDialog(itemIndex, method, methodIndex)"
+                                               title="編輯方式名稱"
+                                            >
+                                               <v-icon>mdi-pencil</v-icon>
+                                            </v-btn>
+                                            <v-btn
+                                               icon
+                                               variant="text"
+                                               size="x-small"
+                                               color="error"
+                                               @click="deleteMethod(itemIndex, methodIndex)"
+                                               title="刪除方式"
+                                            >
+                                               <v-icon>mdi-close</v-icon>
+                                            </v-btn>
+
+                                            <v-spacer></v-spacer>
+                                            
+                                            <!-- Info Chips -->
+                                             <v-chip
+                                                v-if="method.triggerAuthFlow"
+                                                size="x-small"
+                                                color="warning"
+                                                class="mr-2"
+                                                variant="outlined"
+                                             >
+                                                需授權
+                                             </v-chip>
+                                            <v-chip
+                                               v-if="method.customFields && method.customFields.length > 0"
+                                               size="x-small"
+                                               color="info"
+                                               variant="tonal"
+                                            >
+                                               {{ method.customFields.length }} 欄位
+                                            </v-chip>
+                                         </div>
+                                      </v-list-item>
+                                      <v-divider v-if="methodIndex < item.methods.length - 1" inset></v-divider>
+                                   </div>
+                                </template>
+                             </draggable>
+                          </v-expansion-panel-text>
+                       </v-expansion-panel>
+                   </template>
+                </draggable>
+
+                <div v-if="false"> <!-- Hidden Legacy Fields (Keep for logic safety until full migration confirmed) -->
+                    <v-combobox
+                      v-model="projectSettings.bookingTypes"
+                      label="預約項目 (Legacy)"
+                      multiple
+                      chips
+                    ></v-combobox>
+                     <v-combobox
+                      v-model="projectSettings.bookingMethodOptions"
+                      label="選擇方式 (Legacy)"
+                      multiple
+                      chips
+                    ></v-combobox>
+                </div>
+
+                 <!-- Dialog: Add/Edit Booking Item -->
+                 <v-dialog v-model="isBookingItemDialogVisible" max-width="400px">
+                    <v-card>
+                       <v-card-title class="bg-primary text-white">
+                          {{ editedBookingItemIndex === -1 ? '新增預約項目' : '編輯預約項目' }}
+                       </v-card-title>
+                       <v-card-text class="pa-4">
+                          <v-text-field
+                             v-model="editedBookingItemTitle"
+                             label="項目名稱"
+                             placeholder="例如：初驗、複驗"
+                             variant="outlined"
+                             autofocus
+                             @keyup.enter="saveBookingItem"
+                          ></v-text-field>
+                       </v-card-text>
+                       <v-card-actions class="pa-4">
+                          <v-spacer></v-spacer>
+                          <v-btn variant="text" @click="isBookingItemDialogVisible = false">取消</v-btn>
+                          <v-btn color="primary" variant="elevated" @click="saveBookingItem" :disabled="!editedBookingItemTitle">確認</v-btn>
+                       </v-card-actions>
+                    </v-card>
+                 </v-dialog>
+
+                 <!-- Dialog: Add/Edit Method -->
+                 <v-dialog v-model="isMethodDialogVisible" max-width="400px">
+                    <v-card>
+                       <v-card-title class="bg-secondary text-white">
+                          {{ editedMethodIndex === -1 ? '新增選擇方式' : '編輯選擇方式' }}
+                       </v-card-title>
+                       <v-card-text class="pa-4">
+                          <v-text-field
+                             v-model="editedMethodTitle"
+                             :label="editedMethodParentTitle + '方式'"
+                             variant="outlined"
+                          ></v-text-field>
+
+
+
+                          <div class="mt-4">
+                             <div class="text-caption text-grey-darken-1 mb-2">常用建議 (點擊帶入)：</div>
+                             <v-chip-group column>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '屋主自驗'">屋主自驗</v-chip>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '委託代驗'">委託代驗</v-chip>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '授權驗屋'">授權驗屋</v-chip>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '設計師陪驗'">設計師陪驗</v-chip>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '不貸款'">不貸款</v-chip>
+                                <v-chip size="small" variant="outlined" @click="editedMethodTitle = '自覓銀行'">自覓銀行</v-chip>
+                             </v-chip-group>
+                          </div>
+                          <v-switch
+                             v-model="editedMethodTriggerAuth"
+                             label="啟用授權/委託流程"
+                             color="warning"
+                             hide-details
+                             density="compact"
+                             class="mb-2"
+                             inset
+                          >
+                             <template v-slot:label>
+                                <div>
+                                   <div class="font-weight-bold">啟用授權/委託流程</div>
+                                   <div class="text-caption">使用者選擇此方式時將觸發「授權委託書」簽署流程。</div>
+                                </div>
+                             </template>
+                          </v-switch>
+
+                          <v-expand-transition>
+                             <div v-if="editedMethodTriggerAuth" class="pl-4 border-s-md" style="border-color: #eee;">
+                                <v-switch
+                                   v-model="editedMethodAskPresence"
+                                   label="詢問客戶本人是否到場 (選「否」才觸發)"
+                                   color="info"
+                                   hide-details
+                                   density="compact"
+                                   class="mt-0 mb-2"
+                                   inset
+                                >
+                                   <template v-slot:label>
+                                      <div>
+                                         <div class="font-weight-bold">詢問客戶本人是否到場</div>
+                                         <div class="text-caption">
+                                            開啟時，詢問本人是否到場，不到場才進行授權流程
+                                            關閉時，不詢問本人是否到場，直接進行授權流程
+                                         </div>
+                                      </div>
+                                   </template>
+                                </v-switch>
+                             </div>
+                          </v-expand-transition>
+
+                       </v-card-text>
+                       <v-card-actions class="pa-4">
+                          <v-spacer></v-spacer>
+                          <v-btn variant="text" @click="isMethodDialogVisible = false">取消</v-btn>
+                          <v-btn color="secondary" variant="elevated" @click="saveMethod" :disabled="!editedMethodTitle">確認</v-btn>
+                       </v-card-actions>
+                    </v-card>
                 </v-dialog>
 
-                   <v-combobox
-                  v-model="projectSettings.inspectionStaff"
-                  label="編輯驗屋人員"
-                  multiple
-                  chips
-                  closable-chips
-                  variant="outlined"
-                  density="compact"
-                  hint="在此新增修改驗屋人員"
-                  persistent-hint
-                  class="mt-6"
-                ></v-combobox>
+                 <!-- Dialog: Dynamic Fields Editor -->
+                 <v-dialog v-model="isDynamicFieldsDialogVisible" max-width="800px" persistent>
+                    <v-card>
+                       <v-card-title class="bg-info text-white">
+                          設定額外欄位：{{ currentConfiguringMethod }}
+                       </v-card-title>
+                       <v-card-text class="pa-4" style="max-height: 70vh; overflow-y: auto;">
+                          <div class="mb-4 text-caption text-grey-darken-1">
+                             在此設定使用者選擇此方式後，需填寫的額外資訊 (例如：代驗公司名稱、銀行及分行、承辦人電話等)。
+                          </div>
+                          <DynamicFieldEditor v-model:fields="tempDynamicFields" />
+                       </v-card-text>
+                       <v-card-actions class="pa-4 border-t">
+                          <v-spacer></v-spacer>
+                          <v-btn variant="text" @click="isDynamicFieldsDialogVisible = false">取消</v-btn>
+                          <v-btn color="info" variant="elevated" @click="saveDynamicFieldsConfig" :loading="isSavingDynamicFields">暫存設定</v-btn>
+                       </v-card-actions>
+                    </v-card>
+                 </v-dialog>
+
+                <v-combobox
+                   v-model="projectSettings.inspectionStaff"
+                   label="編輯驗屋人員"
+                   multiple
+                   chips
+                   closable-chips
+                   variant="outlined"
+                   density="compact"
+                   hint="在此新增修改驗屋人員"
+                   persistent-hint
+                   class="mt-6"
+                 ></v-combobox>
 
 
                 <v-divider class="my-6"></v-divider>
@@ -1411,7 +1578,7 @@
                         </v-chip>
                         <div class="pl-2 d-flex flex-wrap ga-2">
                      <v-chip
-                              v-for="method in projectSettings.bookingMethodOptions"
+                              v-for="method in previewBatchMethods"
                               :key="method"
                               :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
                               :color="slot.methods.includes(method) ? 'green' : 'grey'"
@@ -1725,9 +1892,10 @@
                         @update:model-value="handleSelectAll($event, slot)"
                       ></v-checkbox>
                       <v-divider vertical class="mx-2 d-none d-sm-flex"></v-divider>
-                      <v-checkbox
-                        v-for="method in projectSettings.bookingMethodOptions"
-                        :key="method"
+                      <template v-if="availableBatchMethods.length > 0">
+                        <v-checkbox
+                          v-for="method in availableBatchMethods"
+                          :key="method"
                         :model-value="isMethodSelectedForSlot(slot, method)"
                         @update:model-value="updateMethodsForSlot(slot, method, $event)"
                         :label="method"
@@ -1735,6 +1903,7 @@
                         hide-details
                         class="d-inline-block mr-2"
                       ></v-checkbox>
+                      </template>
                       </div>
                     </div>
                   </v-sheet>
@@ -1764,7 +1933,7 @@
                 已有設定的日期
               </h3>            
               <p class="text-body-2 mb-4">
-              以下 {{ conflictData.conflictingDates.length }} 天已有設定日期，請選擇 <strong>沿用</strong> 或 <strong>覆蓋</strong> ：
+              以下 {{ conflictData.conflictingDates.length }} 天已有設定日期，請選擇 <strong>沿用</strong>、<strong>獨立</strong>或<strong>覆蓋</strong> ：
             </p>
             <v-sheet border rounded class="pa-4">
             <div v-for="(dateInfo, index) in conflictData.conflictingDates" :key="dateInfo.date">
@@ -1812,11 +1981,11 @@
               </v-radio>
               
               
-              <v-radio value="create_independent" class="mb-4" v-if="false"> // 暫時隱藏此選項
+              <v-radio value="create_independent" class="mb-4">
                 <template v-slot:label>
                   <div>
-                    <div class="font-weight-bold">建立獨立規則 (獨立)</div>
-                    <div class="text-caption">為您的批次『建立』一套全新的、獨立的規則。<br/>結果：您的批次擁有自己的時段與名額，與其他批次完全無關。</div>
+                    <div class="font-weight-bold">獨立 (不影響其他預約)</div>
+                    <div class="text-caption">不覆蓋原本也不沿用共用名額。<br/>此預約項目的名額獨立存在，與其他預約項目互不影響。</div>
                   </div>
                 </template>
               </v-radio>
@@ -1952,6 +2121,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue'; 
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue'; 
+import draggable from 'vuedraggable'; // [New]
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
 import { eachDayOfInterval, parseISO } from 'date-fns';
@@ -2254,10 +2424,45 @@ const bookingBatches = ref([]);
 
 //  建立 computed 屬性，動態產生預約項目選項
 const bookingTypeOptions = computed(() => {
-  // 確保 projectSettings.bookingTypes 是陣列，避免出錯
+  if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
+      return projectSettings.value.bookingMenu.map(item => item.title);
+  }
+  // Fallback
   const types = Array.isArray(projectSettings.value.bookingTypes) ? projectSettings.value.bookingTypes : [];
-  // 將設定中的項目與固定的「其他」選項合併
-  return [...types];
+  return [...types, '其他'];
+});
+
+// [New] Computed: Available methods for the selected batch booking type
+const availableBatchMethods = computed(() => {
+    const selectedType = editedBatch.value.bookingType;
+    if (!selectedType || selectedType === '其他') return [];
+
+    if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
+        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType);
+        if (item && item.methods) {
+            return item.methods.map(m => m.title);
+        }
+    }
+    
+    // Fallback
+    return projectSettings.value.bookingMethodOptions || [];
+});
+
+// [New] Computed: Available methods for the previewed batch
+const previewBatchMethods = computed(() => {
+    if (!batchToPreview.value) return [];
+    const selectedType = batchToPreview.value.bookingType;
+    if (!selectedType || selectedType === '其他') return [];
+
+    if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
+        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType);
+        if (item && item.methods) {
+            return item.methods.map(m => m.title);
+        }
+    }
+    
+    // Fallback
+    return projectSettings.value.bookingMethodOptions || [];
 });
 
 // [新增] 排程時間選擇器的狀態
@@ -2399,6 +2604,146 @@ const isDynamicFieldsDialogVisible = ref(false); // [New]
 const currentConfiguringMethod = ref(''); // [New]
 const tempDynamicFields = ref([]); // [New]
 const isSavingDynamicFields = ref(false); // [New]
+
+// --- Booking Menu Management State ---
+const isBookingItemDialogVisible = ref(false);
+const editedBookingItemTitle = ref('');
+const editedBookingItemIndex = ref(-1);
+
+const isMethodDialogVisible = ref(false);
+const editedMethodTitle = ref('');
+const editedMethodParentTitle = ref('');
+const editedMethodIndex = ref(-1);
+const editedMethodParentIndex = ref(-1);
+
+// --- Booking Menu Methods ---
+
+// 1. Booking Item (Parent)
+const openEditBookingItemDialog = (item = null, index = -1) => {
+    if (item) {
+        editedBookingItemTitle.value = item.title;
+        editedBookingItemIndex.value = index;
+    } else {
+        editedBookingItemTitle.value = '';
+        editedBookingItemIndex.value = -1;
+    }
+    isBookingItemDialogVisible.value = true;
+};
+
+const saveBookingItem = async () => {
+    if (!editedBookingItemTitle.value.trim()) return;
+
+    if (!projectSettings.value.bookingMenu) {
+        projectSettings.value.bookingMenu = [];
+    }
+
+    if (editedBookingItemIndex.value === -1) {
+        // Add new
+        projectSettings.value.bookingMenu.push({
+            title: editedBookingItemTitle.value,
+            methods: [] // Start with empty methods
+        });
+    } else {
+        // Edit existing
+        projectSettings.value.bookingMenu[editedBookingItemIndex.value].title = editedBookingItemTitle.value;
+    }
+
+    isBookingItemDialogVisible.value = false;
+    await saveSettings();
+};
+
+const deleteBookingItem = async (index) => {
+    if (!confirm('確定要刪除此預約項目嗎？其下所有選擇方式與設定也將一併刪除。')) return;
+    projectSettings.value.bookingMenu.splice(index, 1);
+    await saveSettings();
+};
+
+const editedMethodTriggerAuth = ref(false); // [New]
+const editedMethodAskPresence = ref(false); // [New]
+
+// 2. Selection Method (Child)
+const openEditMethodDialog = (parentIndex, method = null, methodIndex = -1) => {
+    editedMethodParentIndex.value = parentIndex;
+    if (projectSettings.value.bookingMenu[parentIndex]) {
+         editedMethodParentTitle.value = projectSettings.value.bookingMenu[parentIndex].title;
+    }
+    
+    if (method) {
+        editedMethodTitle.value = method.title;
+        editedMethodTriggerAuth.value = method.triggerAuthFlow || false; // [New] Load existing
+        editedMethodAskPresence.value = method.askOwnerPresence || false; // [New] Load existing
+        editedMethodIndex.value = methodIndex;
+    } else {
+        editedMethodTitle.value = '';
+        editedMethodTriggerAuth.value = false; // [New] Default false
+        editedMethodAskPresence.value = false; // [New] Default false
+        editedMethodIndex.value = -1;
+    }
+    isMethodDialogVisible.value = true;
+};
+
+const saveMethod = async () => {
+    if (!editedMethodTitle.value.trim()) return;
+
+    const parentItem = projectSettings.value.bookingMenu[editedMethodParentIndex.value];
+    if (!parentItem.methods) parentItem.methods = [];
+
+    if (editedMethodIndex.value === -1) {
+        // Add new
+        parentItem.methods.push({
+            title: editedMethodTitle.value,
+            customFields: [],
+            triggerAuthFlow: editedMethodTriggerAuth.value, // [New] Save
+            askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false // [New] Save (only if trigger is on)
+        });
+    } else {
+        // Edit
+        parentItem.methods[editedMethodIndex.value].title = editedMethodTitle.value;
+        parentItem.methods[editedMethodIndex.value].triggerAuthFlow = editedMethodTriggerAuth.value; // [New] Save
+        parentItem.methods[editedMethodIndex.value].askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false; // [New] Save
+    }
+
+    isMethodDialogVisible.value = false;
+    await saveSettings();
+};
+
+const deleteMethod = async (parentIndex, methodIndex) => {
+    if (!confirm('確定要刪除此選擇方式嗎？')) return;
+    projectSettings.value.bookingMenu[parentIndex].methods.splice(methodIndex, 1);
+    await saveSettings();
+};
+
+// 3. Dynamic Fields
+const openDynamicFieldsDialog = (methodOrTitle, parentIndex = null, methodIndex = null) => {
+    if (parentIndex !== null && methodIndex !== null) {
+        // New Structure Access
+        const method = projectSettings.value.bookingMenu[parentIndex].methods[methodIndex];
+        currentConfiguringMethod.value = method.title; // 顯示用
+        // Deep copy with array check
+        const fields = method.customFields;
+        tempDynamicFields.value = Array.isArray(fields) ? JSON.parse(JSON.stringify(fields)) : [];
+        
+        // Store indices
+        editedMethodParentIndex.value = parentIndex;
+        editedMethodIndex.value = methodIndex;
+    } else {
+        // Fallback or Legacy
+         currentConfiguringMethod.value = typeof methodOrTitle === 'object' ? methodOrTitle.title : methodOrTitle;
+         tempDynamicFields.value = []; 
+    }
+    
+    isDynamicFieldsDialogVisible.value = true;
+};
+
+const saveDynamicFieldsConfig = async () => {
+    if (editedMethodParentIndex.value !== -1 && editedMethodIndex.value !== -1) {
+         projectSettings.value.bookingMenu[editedMethodParentIndex.value]
+            .methods[editedMethodIndex.value].customFields = tempDynamicFields.value;
+    }
+    
+    isDynamicFieldsDialogVisible.value = false;
+    await saveSettings();
+};
 
 
 const batchToDelete = ref(null);
@@ -2734,6 +3079,34 @@ async function loadDataForProject() {
         projectSettings.value.appointmentsSheetId = settings.appointmentsSheetId || ''; // [新增]
         projectSettings.value.appointmentsSheetTabName = settings.appointmentsSheetTabName || ''; // [新增]
         projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
+        
+        // --- Migration Logic for Booking Menu (NEW) ---
+        projectSettings.value.bookingMenu = settings.bookingMenu || [];
+        
+        if (projectSettings.value.bookingMenu.length === 0) {
+           const legacyTypes = projectSettings.value.bookingTypes || [];
+           const legacyMethods = projectSettings.value.bookingMethodOptions || [];
+           
+           if (legacyTypes.length > 0 && legacyMethods.length > 0) {
+               console.log('Migrating legacy booking structure to Booking Menu...');
+               projectSettings.value.bookingMenu = legacyTypes.map(type => ({
+                   title: type,
+                   methods: legacyMethods.map(m => {
+                       const title = typeof m === 'object' ? m.title : m;
+                       // Try to preserve existing custom fields configs if they match by name?
+                       // For now, simple migration. Detailed field migration might need more complex logic 
+                       // if we stored them keyed by method name globally.
+                       // Checking settings.bookingMethodConfigs if exists
+                       let existingFields = [];
+                       if (settings.bookingMethodConfigs && settings.bookingMethodConfigs[title]) {
+                            existingFields = settings.bookingMethodConfigs[title];
+                       }
+                       
+                       return { title, customFields: existingFields };
+                   })
+               }));
+           }
+        }
         // 👆👆👆 [新增結束] 👆👆👆
 
         // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
@@ -2824,28 +3197,7 @@ async function loadDataForProject() {
 }
 
 // --- Dynamic Fields Logic ---
-function openDynamicFieldsDialog(methodName) {
-  currentConfiguringMethod.value = methodName;
-  // Initialize with existing config or empty array
-  // We need to clone deep to avoid direct mutation
-  const existingConfig = projectSettings.value.bookingMethodConfigs?.[methodName] || { fields: [] };
-  tempDynamicFields.value = JSON.parse(JSON.stringify(existingConfig.fields));
-  isDynamicFieldsDialogVisible.value = true;
-}
 
-function saveDynamicFieldsConfig() {
-  if (!projectSettings.value.bookingMethodConfigs) {
-    projectSettings.value.bookingMethodConfigs = {};
-  }
-  
-  // Save to projectSettings
-  projectSettings.value.bookingMethodConfigs[currentConfiguringMethod.value] = {
-    fields: JSON.parse(JSON.stringify(tempDynamicFields.value))
-  };
-  
-  isDynamicFieldsDialogVisible.value = false;
-  showSnackbar(`已暫存「${currentConfiguringMethod.value}」的欄位設定，請記得點擊「儲存設定」以寫入資料庫。`, 'info');
-}
 
 // --- Dialog Open/Close Functions ---
 async function openBatchDialog(item = null) {
@@ -3163,8 +3515,8 @@ const isDayConfigured = (day) => {
 function handleSelectAll(isChecked, slot) {
   selectedDaysForEditing.value.forEach(day => {
     const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
-    //  將 allMethodOptions 改為 projectSettings.bookingMethodOptions
-    if (daySlot) daySlot.methods = isChecked ? [...projectSettings.value.bookingMethodOptions] : [];
+    //  將 allMethodOptions 改為 availableBatchMethods
+    if (daySlot) daySlot.methods = isChecked ? [...availableBatchMethods.value] : [];
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
@@ -3176,8 +3528,8 @@ function getSelectAllState(slot) {
   if (!methodsArray) return { checked: false, indeterminate: false };
 
   const selectedCount = methodsArray.length;
-  //  將 allMethodOptions 改為從 projectSettings 中讀取，並加上 .value
-  const totalCount = projectSettings.value.bookingMethodOptions.length;
+  //  將 allMethodOptions 改為 availableBatchMethods
+  const totalCount = availableBatchMethods.value.length;
 
   return {
     checked: selectedCount === totalCount && totalCount > 0,

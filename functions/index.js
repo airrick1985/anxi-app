@@ -12222,7 +12222,7 @@ async function _handleValidateId(data) {
     const inputId = String(idNumber).trim();
 
     const storedIdsArray = storedIdString
-      .split(/[/\s]+/)
+      .split(/[/\s\-\uFF0F\u3001,+\&]+/)
       .map(id => id.trim())
       .filter(id => id !== '');
 
@@ -20905,3 +20905,233 @@ function _flattenAppointmentForSheet(appt) {
 
   return flat;
 }
+
+
+// =================================================================
+//   系統問題回報 (Bug Report)
+// =================================================================
+
+/**
+ * [submitBugReport] 接收前端的問題回報資料
+ * 1. 將附件圖片上傳至 Firebase Storage
+ * 2. 將回報紀錄寫入 Firestore bugReports 集合
+ * 3. 查詢系統管理員 / 超級管理員的 Email
+ * 4. 發送通知郵件
+ */
+exports.submitBugReport = onCall({ region: "asia-east1", secrets: gmailSecrets, memory: "512MiB", timeoutSeconds: 120 }, async (request) => {
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  const functionName = 'submitBugReport';
+
+  const {
+    reporterName,
+    reporterPhone,
+    description,
+    pagePath,
+    pageName,
+    projectId,
+    projectName,
+    userKey,
+    userAgent,
+    attachments  // [{ filename, content (base64), contentType }]
+  } = request.data;
+
+  // 1. 驗證必要參數
+  if (!reporterName || !reporterPhone || !description) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (reporterName, reporterPhone, description)');
+  }
+
+  console.log(`[${functionName}] 收到問題回報 - 回報者: ${reporterName}, 電話: ${reporterPhone}`);
+
+  try {
+    // 2. 產生唯一 Report ID
+    const reportRef = db.collection('bugReports').doc();
+    const reportId = reportRef.id;
+    const attachmentUrls = [];
+
+    // 3. 上傳附件至 Firebase Storage
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      const bucket = getStorage().bucket();
+
+      for (const attachment of attachments) {
+        if (!attachment.content || !attachment.filename) continue;
+
+        // 將 base64 轉為 Buffer
+        const buffer = Buffer.from(attachment.content, 'base64');
+
+        // 產生安全的檔案名稱（加時間戳避免重複）
+        const timestamp = Date.now();
+        const safeFilename = `${timestamp}_${attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const filePath = `bugReports/${reportId}/${safeFilename}`;
+        const file = bucket.file(filePath);
+
+        // 上傳至 Storage
+        await file.save(buffer, {
+          metadata: {
+            contentType: attachment.contentType || 'image/jpeg',
+          },
+        });
+
+        // 設定公開讀取
+        await file.makePublic();
+
+        // 取得公開 URL
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        attachmentUrls.push(publicUrl);
+
+        console.log(`[${functionName}] 附件已上傳: ${filePath}`);
+      }
+    }
+
+    // 4. 寫入 Firestore
+    const reportData = {
+      createdAt: FieldValue.serverTimestamp(),
+      reporterName: reporterName,
+      reporterPhone: reporterPhone,
+      description: description,
+      pagePath: pagePath || '',
+      pageName: pageName || '',
+      projectId: projectId || null,
+      projectName: projectName || null,
+      userKey: userKey || null,
+      userAgent: userAgent || '',
+      attachmentUrls: attachmentUrls,
+      status: 'pending', // pending → processing → resolved
+    };
+
+    await reportRef.set(reportData);
+    console.log(`[${functionName}] 回報紀錄已寫入 Firestore: ${reportId}`);
+
+    // 5. 查詢系統管理員 / 超級管理員的 Email
+    const adminEmails = new Set();
+
+    // 查詢角色為「系統管理員」的使用者
+    const sysAdminSnapshot = await db.collection('users')
+      .where('roles', 'array-contains', '系統管理員')
+      .get();
+
+    sysAdminSnapshot.forEach(doc => {
+      const email = doc.data().email;
+      if (email) adminEmails.add(email);
+    });
+
+    // 查詢角色為「超級管理員」的使用者
+    const superAdminSnapshot = await db.collection('users')
+      .where('roles', 'array-contains', '超級管理員')
+      .get();
+
+    superAdminSnapshot.forEach(doc => {
+      const email = doc.data().email;
+      if (email) adminEmails.add(email);
+    });
+
+    // 加入固定的管理員通知信箱
+    if (ADMIN_ERROR_RECIPIENT) {
+      adminEmails.add(ADMIN_ERROR_RECIPIENT);
+    }
+
+    console.log(`[${functionName}] 找到 ${adminEmails.size} 個管理員 Email`);
+
+    // 6. 發送通知 Email
+    if (adminEmails.size > 0) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.SENDER_EMAIL,
+          pass: process.env.GMAIL_APP_PASSWORD,
+        },
+      });
+
+      // 產生附件圖片的 HTML
+      const attachmentHtml = attachmentUrls.length > 0
+        ? attachmentUrls.map((url, i) =>
+          `<div style="margin: 8px 0;">
+              <a href="${url}" target="_blank" style="color: #1976D2; text-decoration: none;">
+                📎 附件 ${i + 1}
+              </a>
+            </div>`
+        ).join('')
+        : '<span style="color: #999;">無附件</span>';
+
+      // 格式化回報時間
+      const reportTime = new Date().toLocaleString('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+
+      const emailHtml = `
+        <div style="font-family: 'Microsoft JhengHei', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #C62828, #E53935); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="margin: 0; font-size: 20px;">🐛 系統問題回報通知</h2>
+            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">ANXI 安熙智慧建案管理系統</p>
+          </div>
+
+          <div style="border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; padding: 20px; background: #fafafa;">
+
+            <div style="background: white; border-radius: 6px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #1976D2;">
+              <h3 style="margin: 0 0 8px; color: #333; font-size: 14px;">📋 回報者資訊</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr><td style="color: #666; padding: 4px 8px 4px 0; width: 100px;">姓名</td><td style="padding: 4px 0;"><strong>${reporterName}</strong></td></tr>
+                <tr><td style="color: #666; padding: 4px 8px 4px 0;">電話</td><td style="padding: 4px 0;">${reporterPhone}</td></tr>
+                <tr><td style="color: #666; padding: 4px 8px 4px 0;">系統帳號</td><td style="padding: 4px 0;">${userKey || '<span style="color:#999;">非系統用戶</span>'}</td></tr>
+              </table>
+            </div>
+
+            <div style="background: white; border-radius: 6px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #FF9800;">
+              <h3 style="margin: 0 0 8px; color: #333; font-size: 14px;">📍 問題環境</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr><td style="color: #666; padding: 4px 8px 4px 0; width: 100px;">頁面路徑</td><td style="padding: 4px 0;">${pagePath || '無'}</td></tr>
+                <tr><td style="color: #666; padding: 4px 8px 4px 0;">頁面名稱</td><td style="padding: 4px 0;">${pageName || '無'}</td></tr>
+                <tr><td style="color: #666; padding: 4px 8px 4px 0;">建案名稱</td><td style="padding: 4px 0;">${projectName || '<span style="color:#999;">無</span>'}</td></tr>
+                <tr><td style="color: #666; padding: 4px 8px 4px 0;">建案 ID</td><td style="padding: 4px 0;">${projectId || '<span style="color:#999;">無</span>'}</td></tr>
+              </table>
+            </div>
+
+            <div style="background: white; border-radius: 6px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #C62828;">
+              <h3 style="margin: 0 0 8px; color: #333; font-size: 14px;">📝 問題描述</h3>
+              <p style="margin: 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; color: #333;">${description}</p>
+            </div>
+
+            <div style="background: white; border-radius: 6px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #4CAF50;">
+              <h3 style="margin: 0 0 8px; color: #333; font-size: 14px;">📎 附件圖片（${attachmentUrls.length} 張）</h3>
+              ${attachmentHtml}
+            </div>
+
+            <div style="text-align: center; padding: 12px; color: #999; font-size: 12px; border-top: 1px solid #e0e0e0; margin-top: 8px;">
+              ⏰ 回報時間：${reportTime}<br>
+              🌐 瀏覽器：${(userAgent || '').substring(0, 100)}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const mailOptions = {
+        from: `"ANXI 系統問題回報" <${process.env.SENDER_EMAIL}>`,
+        to: Array.from(adminEmails).join(','),
+        subject: `【系統問題回報】${reporterName} 回報了一個問題`,
+        html: emailHtml,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[${functionName}] 通知郵件已發送: ${info.messageId}, 收件人: ${Array.from(adminEmails).join(', ')}`);
+    } else {
+      console.warn(`[${functionName}] 未找到管理員 Email，無法發送通知`);
+    }
+
+    return {
+      status: 'success',
+      message: '問題回報已成功送出',
+      reportId: reportId,
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', '送出問題回報時發生錯誤，請稍後再試。');
+  }
+});

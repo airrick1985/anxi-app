@@ -342,7 +342,7 @@ const localFields = ref<DynamicField[]>([]);
 
 // Initialize fields ensuring options have IDs, WITHOUT mutating props
 const initializeFields = (fields: DynamicField[]) => {
-  if (!fields) return [];
+  if (!fields || !Array.isArray(fields)) return [];
   // Deep clone to avoid mutation of props and return new structure with ensured IDs
   return fields.map(field => {
     const newField = { ...field }; // Shallow copy field
