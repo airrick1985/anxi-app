@@ -123,6 +123,20 @@
             color="black"
             variant="tonal"
             class="ml-4"
+            @click="isCancelledPurchaseDialogVisible = true"
+            icon="mdi-account-cancel"
+          ></v-btn>
+        </template>
+        <span>退戶記錄管理</span>
+      </v-tooltip>
+
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
             @click="exportToExcel"
             icon="mdi-tray-arrow-down"
           ></v-btn>
@@ -737,6 +751,12 @@
             </template>
             <v-list-item-title>車位銷控管理</v-list-item-title>
           </v-list-item>
+          <v-list-item @click="isCancelledPurchaseDialogVisible = true">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-account-cancel</v-icon>
+            </template>
+            <v-list-item-title>退戶記錄管理</v-list-item-title>
+          </v-list-item>
           
          <v-list-item
             v-if="project.paymentScheduleFolderUrl"
@@ -771,6 +791,12 @@
       :contract-types="project.contractTypes || []" @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
+
+    <CancelledPurchaseManager
+      v-model:show="isCancelledPurchaseDialogVisible"
+      :project-id="projectId"
+      @data-updated="handleRefreshData"
+    />
     
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
@@ -1050,12 +1076,14 @@ import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
 import UpdateControl from './UpdateControl.vue'; 
 import ParkingCanvas from '@/components/ParkingCanvas.vue';
+import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue';
 import { useTextStyleStore } from '@/store/textStyleStore'; 
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
+const isCancelledPurchaseDialogVisible = ref(false);
 
 // 1. 修改 filters 定義 (加入銷控專用欄位)
 const filters = reactive({

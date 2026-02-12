@@ -177,6 +177,9 @@ const currentColor = computed(() => {
     padding: 8px 12px;
     min-height: 150px;
     outline: none;
+    overflow-x: hidden;
+    overflow-wrap: break-word;
+    word-break: break-word;
 
     p.is-editor-empty:first-child::before {
       content: attr(data-placeholder);
@@ -184,6 +187,29 @@ const currentColor = computed(() => {
       color: #adb5bd;
       pointer-events: none;
       height: 0;
+    }
+
+    // 清單樣式：確保編號/項目符號不超出編輯器框線
+    ul, ol {
+      padding-left: 1.5em;
+      margin-left: 0;
+    }
+
+    ul {
+      list-style-type: disc;
+    }
+
+    ol {
+      list-style-type: decimal;
+    }
+
+    li {
+      margin-bottom: 2px;
+
+      p {
+        margin: 0;
+        display: inline; // 避免段落標籤造成額外換行
+      }
     }
   }
 

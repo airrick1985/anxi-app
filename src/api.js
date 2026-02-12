@@ -933,6 +933,50 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
 }
 
 // ===============================================
+// /  退戶資料管理 API
+// ===============================================
+
+/**
+ * 讀取指定專案的所有退戶資料列表
+ * @param {string} projectId - 專案 ID
+ * @returns {Promise<object>}
+ */
+export async function getCancelledPurchases(projectId) {
+  if (!projectId) {
+    return { status: "error", message: "前端錯誤：缺少 projectId。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'getCancelledPurchases');
+    const result = await func({ projectId });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 getCancelledPurchases 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 復原退戶資料
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶備份文件 ID
+ * @param {string} operatorName - 操作者名稱
+ * @returns {Promise<object>}
+ */
+export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'restoreCancelledPurchase');
+    const result = await func({ projectId, cancelledDocId, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 restoreCancelledPurchase 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+// ===============================================
 // /  訊息系統 API (Firestore 遷移版)
 // ===============================================
 

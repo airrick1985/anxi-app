@@ -3247,6 +3247,27 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
     };
 
     // ========================================
+    // 步驟 2.5：寫入「退戶資料」集合 (完整備份)
+    // ========================================
+
+    const cancelledDocId = `${projectId}_${unitId}_${timestamp}`;
+    console.log(`[${functionName}] 退戶資料備份文檔 ID: ${cancelledDocId}`);
+
+    const cancelledPurchaseData = {
+      // 展開原始戶別的所有欄位（包含面積、價格等不被清空的欄位）
+      ...originalHouseholdData,
+      // 加入車位資料完整備份
+      parkingData: originalParkingData.map(p => p.data),
+      // 加入退戶元資料
+      _cancellationMeta: {
+        operatorName: operatorName,
+        cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
+        originalDocId: docId,
+        parkingCount: originalParkingData.length,
+      }
+    };
+
+    // ========================================
     // 步驟 3：準備資料清理操作
     // ========================================
 
@@ -3295,6 +3316,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
       referrerName: null,
       referrerPhone: null,
       remarks: "",
+      '持有車位': [],  // 清除車位關聯陣列
 
       // 更新時間
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -3306,14 +3328,18 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
 
     const batch = db.batch();
 
-    // 1. 建立退戶紀錄
+    // 1. 建立退戶紀錄 (日誌)
     const cancellationDocRef = db.collection("purchaseCancellations").doc(cancellationDocId);
     batch.set(cancellationDocRef, cancellationRecord);
 
-    // 2. 清理戶別資料
+    // 2. 寫入「退戶資料」集合 (完整備份，供日後查閱)
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+    batch.set(cancelledDocRef, cancelledPurchaseData);
+
+    // 3. 清理戶別資料
     batch.update(householdDocRef, householdResetData);
 
-    // 3. 清理關聯車位資料
+    // 4. 清理關聯車位資料
     for (const parking of originalParkingData) {
       const parkingDocRef = db.collection("salesParkings").doc(parking.docId);
       const parkingResetData = {
@@ -3334,6 +3360,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
 
     console.log(`[${functionName}] 退戶作業完成！`);
     console.log(`[${functionName}] - 已建立退戶紀錄: ${cancellationDocId}`);
+    console.log(`[${functionName}] - 已備份退戶資料: ${cancelledDocId}`);
     console.log(`[${functionName}] - 已清理戶別資料: ${docId}`);
     console.log(`[${functionName}] - 已釋出車位數量: ${originalParkingData.length}`);
 
@@ -3347,6 +3374,217 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
   } catch (error) {
     console.error(`[${functionName}] Error occurred:`, error);
     throw new HttpsError("internal", `退戶作業失敗: ${error.message}`);
+  }
+});
+
+// =================================================================
+// / 【新增】退戶資料管理 Cloud Functions
+// =================================================================
+
+/**
+ * 讀取指定專案的所有退戶資料列表
+ */
+exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getCancelledPurchases (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 查詢退戶資料列表...`);
+
+    const snapshot = await db.collection("cancelledPurchases")
+      .where("projectId", "==", projectId)
+      .orderBy("_cancellationMeta.cancellationDate", "desc")
+      .get();
+
+    if (snapshot.empty) {
+      console.log(`[${functionName}] 沒有退戶資料`);
+      return { status: "success", data: [], total: 0 };
+    }
+
+    const items = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const meta = data._cancellationMeta || {};
+      const parkingData = data.parkingData || [];
+      items.push({
+        docId: doc.id,
+        unitId: data.unitId || '',
+        // 買方資訊
+        buyerName: data.buyerName || '',
+        buyerPhone: data.buyerPhone || '',
+        buyerIdNumber: data.buyerIdNumber || '',
+        buyerEmail: data.buyerEmail || '',
+        // 銷售資訊
+        salesperson: data.salesperson || '',
+        salesStatus_backend: data.salesStatus_backend || '',
+        contractType: data.contractType || '',
+        // 面積資訊
+        area_house_ping: data.area_house_ping || null,
+        area_public_ping: data.area_public_ping || null,
+        area_terrace_ping: data.area_terrace_ping || null,
+        area_main_ping: data.area_main_ping || null,
+        area_ancillary_ping: data.area_ancillary_ping || null,
+        // 價格資訊
+        price_list_house_total: data.price_list_house_total || null,
+        price_floor_house_total: data.price_floor_house_total || null,
+        price_transaction_house: data.price_transaction_house || null,
+        price_package_deal: data.price_package_deal || null,
+        // 付款資訊
+        payment_deposit_amount: data.payment_deposit_amount || null,
+        payment_deposit_date: data.payment_deposit_date || null,
+        payment_contract_amount: data.payment_contract_amount || null,
+        payment_contract_date: data.payment_contract_date || null,
+        // 車位詳細資料
+        parkingDetails: parkingData.map(p => ({
+          spotId: p.spotId || '',
+          floor: p.floor || '',
+          type: p.type || '',
+          price_transaction: p.price_transaction || null,
+          price_list: p.price_list || null,
+          status: p.status || '',
+        })),
+        parkingCount: meta.parkingCount || parkingData.length || 0,
+        // 退戶元資料
+        operatorName: meta.operatorName || '',
+        cancellationDate: meta.cancellationDate || null,
+        originalDocId: meta.originalDocId || '',
+        // 持有車位
+        '持有車位': data['持有車位'] || [],
+      });
+    });
+
+    console.log(`[${functionName}] 找到 ${items.length} 筆退戶資料`);
+    return { status: "success", data: items, total: items.length };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `查詢退戶資料失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 復原退戶資料（將備份資料回寫到原始戶別）
+ */
+exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, operatorName } = request.data;
+  const functionName = `restoreCancelledPurchase (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始復原退戶資料...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    // ========================================
+    // 步驟 1：讀取退戶備份資料
+    // ========================================
+
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+    const cancelledSnapshot = await cancelledDocRef.get();
+
+    if (!cancelledSnapshot.exists) {
+      throw new HttpsError("not-found", `找不到退戶資料: ${cancelledDocId}`);
+    }
+
+    const cancelledData = cancelledSnapshot.data();
+    const unitId = cancelledData.unitId;
+    const targetDocId = `${projectId}_${unitId}`;
+
+    console.log(`[${functionName}] 目標戶別: ${unitId}, 文檔 ID: ${targetDocId}`);
+
+    // ========================================
+    // 步驟 2：檢查目標戶別是否有有效資料
+    // ========================================
+
+    const householdDocRef = db.collection("salesHouseholds").doc(targetDocId);
+    const householdSnapshot = await householdDocRef.get();
+
+    if (householdSnapshot.exists) {
+      const currentData = householdSnapshot.data();
+      if (currentData.salesStatus_backend) {
+        console.log(`[${functionName}] 衝突：目標戶別已有有效銷售資料`);
+        return {
+          status: "conflict",
+          message: `戶別 ${unitId} 目前已有有效銷售資料（狀態：${currentData.salesStatus_backend}），請先至銷控畫面辦理退戶後再進行復原。`,
+          currentBuyerName: currentData.buyerName || '',
+          currentStatus: currentData.salesStatus_backend
+        };
+      }
+    }
+
+    // ========================================
+    // 步驟 3：準備復原資料
+    // ========================================
+
+    const parkingBackup = cancelledData.parkingData || [];
+
+    // 準備戶別復原資料（去除退戶元資料和車位資料）
+    const householdRestoreData = { ...cancelledData };
+    delete householdRestoreData._cancellationMeta;
+    delete householdRestoreData.parkingData;
+    householdRestoreData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    console.log(`[${functionName}] 準備復原 ${Object.keys(householdRestoreData).length} 個戶別欄位`);
+    console.log(`[${functionName}] 準備復原 ${parkingBackup.length} 筆車位資料`);
+
+    // ========================================
+    // 步驟 4：使用批次寫入執行復原
+    // ========================================
+
+    const batch = db.batch();
+
+    // 1. 回寫戶別資料
+    batch.set(householdDocRef, householdRestoreData, { merge: true });
+
+    // 2. 復原車位資料
+    for (const parkingData of parkingBackup) {
+      if (!parkingData.spotId) continue;
+      const parkingDocId = `${projectId}_${parkingData.spotId}`;
+      const parkingDocRef = db.collection("salesParkings").doc(parkingDocId);
+      const parkingRestoreData = {
+        buyerName: parkingData.buyerName || null,
+        buyerUnitId: unitId,
+        price_transaction: parkingData.price_transaction || null,
+        remarks: parkingData.remarks || '',
+        salesperson: parkingData.salesperson || null,
+        status: parkingData.status || null,
+        status_backend: parkingData.status_backend || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      batch.set(parkingDocRef, parkingRestoreData, { merge: true });
+    }
+
+    // 3. 刪除已復原的退戶備份
+    batch.delete(cancelledDocRef);
+
+    await batch.commit();
+
+    console.log(`[${functionName}] 退戶復原完成！`);
+    console.log(`[${functionName}] - 已回寫戶別資料: ${targetDocId}`);
+    console.log(`[${functionName}] - 已復原車位數量: ${parkingBackup.length}`);
+    console.log(`[${functionName}] - 已刪除退戶備份: ${cancelledDocId}`);
+
+    return {
+      status: "success",
+      message: `戶別 ${unitId} 已成功復原！`,
+      restoredUnitId: unitId,
+      restoredParkingCount: parkingBackup.length
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error occurred:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `退戶復原失敗: ${error.message}`);
   }
 });
 

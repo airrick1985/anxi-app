@@ -17,7 +17,7 @@
         <v-tab value="settings">驗屋預約設定</v-tab>
         <v-tab value="customer-messages">客戶回傳功能</v-tab>
         <v-tab value="report-settings">驗屋報告設定</v-tab>
-        <v-tab value="sheet-sync" v-if="isAdmin">Sheet 同步管理</v-tab>
+        <v-tab value="sheet-sync" v-if="isAdmin"><v-icon size="small" color="amber-darken-2" class="mr-1">mdi-shield-crown-outline</v-icon>Sheet 同步管理</v-tab>
         <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
         <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
     
@@ -156,6 +156,33 @@
             
             <div v-else class="settings-form-container pa-4">
               <v-form>
+                <!-- 預約頁面路徑顯示 -->
+                <v-card variant="outlined" class="mb-6">
+                  <v-card-text>
+                    <div class="text-subtitle-2 font-weight-bold mb-2">{{ projectName }}-預約系統網址</div>
+                    <div class="d-flex align-center ga-2">
+                      <v-text-field
+                        :model-value="bookingPageUrl"
+                        variant="outlined"
+                        density="compact"
+                        readonly
+                        hide-details
+                        prepend-inner-icon="mdi-link-variant"
+                        bg-color="grey-lighten-4"
+                        class="flex-grow-1"
+                      ></v-text-field>
+                      <v-btn
+                        color="primary"
+                        variant="tonal"
+                        prepend-icon="mdi-qrcode"
+                        @click="showQrDialog = true"
+                      >
+                        產生網址 QR Code
+                      </v-btn>
+                    </div>
+                  </v-card-text>
+                </v-card>
+
                 <v-card variant="outlined" class="mb-6">
   <v-card-text>
     <div class="d-flex align-center">
@@ -718,8 +745,7 @@
                   show-size
                   counter
                   class="mb-2"
-                  hint="可一次選擇多個檔案 (圖片或 PDF)"
-                  persistent-hint
+                 
                 ></v-file-input>
 
                 <v-btn
@@ -799,52 +825,54 @@
                   class="mt-4"
                 ></v-switch>
 
-                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin">驗屋報告上傳網址</p>
-                <v-text-field
-                  v-if="isAdmin"
-                  v-model="projectSettings.reportSettings.uploadReminderEmail.uploadUrl"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-1"
-                   placeholder="輸入驗屋報告上傳網址"
-                ></v-text-field>
+                <!-- 管理員專屬欄位區塊 -->
+                <v-sheet v-if="isAdmin" class="admin-only-section pa-4 mb-4 mt-6" border rounded>
+                  <div class="d-flex align-center mb-4">
+                    <v-icon color="amber-darken-2" class="mr-2">mdi-shield-crown-outline</v-icon>
+                    <span class="text-subtitle-1 font-weight-bold">管理員專屬設定</span>
+                    <v-chip size="x-small" color="amber-darken-2" variant="flat" class="ml-2 text-white">Admin Only</v-chip>
+                  </div>
 
-                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >驗屋報告資料夾</p>
-                <v-text-field
-                v-if="isAdmin"
-                  v-model="projectSettings.reportSettings.reportDataFolderUrl"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-1"
-                  placeholder="輸入驗屋報告雲端資料夾位置"
-                ></v-text-field>
+                  <p class="text-subtitle-1 font-weight-bold mb-2">驗屋報告上傳網址</p>
+                  <v-text-field
+                    v-model="projectSettings.reportSettings.uploadReminderEmail.uploadUrl"
+                    variant="outlined"
+                    density="compact"
+                    class="mt-1"
+                    placeholder="輸入驗屋報告上傳網址"
+                  ></v-text-field>
 
-                 <!-- ✓✓✓ START: 新增 LINE Token 密鑰名稱欄位 ✓✓✓ -->
-                 <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >LINE驗屋小助理Channel access token</p>
-                 <v-text-field
-                   v-if="isAdmin"
-                   v-model="projectSettings.lineChannelAccessTokenSecretName"
-                   variant="outlined"
-                   density="compact"
-                   class="mt-1"
-                   placeholder="輸入 Secret Manager 中的密鑰名稱"
-                   hint="請輸入用於獲取 LINE Token 的 Secret Name (例如: FUYU141_LINE_TOKEN)"
-                   persistent-hint
-                 ></v-text-field>
-                 <!-- ✓✓✓ END: 新增 LINE Token 密鑰名稱欄位 ✓✓✓ -->
+                  <p class="text-subtitle-1 font-weight-bold mt-4 mb-2">驗屋報告資料夾</p>
+                  <v-text-field
+                    v-model="projectSettings.reportSettings.reportDataFolderUrl"
+                    variant="outlined"
+                    density="compact"
+                    class="mt-1"
+                    placeholder="輸入驗屋報告雲端資料夾位置"
+                  ></v-text-field>
 
-                 <!-- ✓✓✓ START: 新增驗屋報告模板欄位 ✓✓✓ -->
-                <p class="text-subtitle-1 font-weight-bold mt-6 mb-2" v-if="isAdmin" >驗屋報告模板</p>
-                <v-text-field
-                v-if="isAdmin"
-                  v-model="projectSettings.inspectionReportTemplateUrl"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-1"
-                  placeholder="輸入驗屋報告 Google Slides 模板的 URL"
-                  hint="用於自動產製 PDF 報告的樣板 (需包含佔位符)"
-                  persistent-hint
-                ></v-text-field>
+                  <p class="text-subtitle-1 font-weight-bold mt-4 mb-2">LINE驗屋小助理Channel access token</p>
+                  <v-text-field
+                    v-model="projectSettings.lineChannelAccessTokenSecretName"
+                    variant="outlined"
+                    density="compact"
+                    class="mt-1"
+                    placeholder="輸入 Secret Manager 中的密鑰名稱"
+                    hint="請輸入用於獲取 LINE Token 的 Secret Name (例如: FUYU141_LINE_TOKEN)"
+                    persistent-hint
+                  ></v-text-field>
+
+                  <p class="text-subtitle-1 font-weight-bold mt-4 mb-2">驗屋報告模板</p>
+                  <v-text-field
+                    v-model="projectSettings.inspectionReportTemplateUrl"
+                    variant="outlined"
+                    density="compact"
+                    class="mt-1"
+                    placeholder="輸入驗屋報告 Google Slides 模板的 URL"
+                    hint="用於自動產製 PDF 報告的樣板 (需包含佔位符)"
+                    persistent-hint
+                  ></v-text-field>
+                </v-sheet>
 
                 <v-divider class="my-6"></v-divider>
 
@@ -2107,6 +2135,9 @@
 
 
        
+<!-- QR Code 產生器 Dialog -->
+    <QrCodeGenerator v-model="showQrDialog" :target-url="bookingPageUrl" />
+
 <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="top right">
       {{ snackbar.text }}
       <template v-slot:actions>
@@ -2121,6 +2152,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue'; 
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue'; 
+import QrCodeGenerator from '@/components/QrCodeGenerator.vue'; // QR Code 產生器
 import draggable from 'vuedraggable'; // [New]
 import { useRoute, useRouter } from 'vue-router'; 
 import { useProjectStore } from '@/store/projectStore';
@@ -2413,6 +2445,10 @@ const syncDateError = computed(() => {
 
 const userStore = useUserStore(); // <--- 1. 初始化 UserStore
 const projectId = ref(route.params.projectId);
+const showQrDialog = ref(false);
+const bookingPageUrl = computed(() => {
+  return `${window.location.origin}/#/booking/${projectId.value}`;
+});
 const isLoading = ref(true);
 const isSaving = ref(false);
 const activeTab = ref('batches');
@@ -3942,6 +3978,11 @@ watch(menuAppEnd, (isOpen) => {
 .v-window-item[value="inspProjectSettings"] .v-container,
 .v-window-item[value="inspCategoriesItems"] .v-container {
   padding-top: 16px;
+}
+/* 管理員專屬欄位區塊樣式 */
+.admin-only-section {
+  border-left: 4px solid #f9a825 !important; /* amber-darken-2 色條 */
+  background-color: #fffde7 !important; /* 淡黃底色 */
 }
 </style>
 

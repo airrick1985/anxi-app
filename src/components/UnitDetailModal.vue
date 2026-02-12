@@ -621,7 +621,7 @@ const isSold = computed(() => {
 
 const cancelDialogMessage = computed(() => {
   const unitId = props.unitData ? `【${props.unitData.unitId}】` : '';
-  return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>此操作將會清除所有相關的銷售、客戶資料，並將車位釋出。<b>此動作無法復原。</b>`;
+  return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>系統會先將完整資料備份至「退戶資料」集合，再清除銷售與客戶資料並釋出車位。`;
 });
 
 function openCancelPurchaseDialog() {
