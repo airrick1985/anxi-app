@@ -818,6 +818,22 @@ export const syncSalesHouseholdsToSheet = async (payload) => {
 };
 
 /**
+ * [API] 自訂表單回覆全量同步到 Google Sheet
+ * @param {object} payload - { projectId, formId, spreadsheetId, sheetName }
+ * @returns {Promise<object>} - { status, message, count }
+ */
+export const syncCustomFormSubmissionsToSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'syncCustomFormSubmissionsToSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncCustomFormSubmissionsToSheet:", error);
+    throw new Error(error.message || '自訂表單回覆同步失敗');
+  }
+};
+
+/**
  * [API] 同步戶別資料到 Google Sheet (全量)
  * @param {object} payload - { projectId, spreadsheetId, sheetName }
  * @returns {Promise<object>} - { status, message, count }

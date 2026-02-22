@@ -539,7 +539,7 @@
         @click="showInfoOverlay = !showInfoOverlay"
       >
         <v-icon left>{{ showInfoOverlay ? 'mdi-information' : 'mdi-information-outline' }}</v-icon>
-        面積資訊
+        面積價格
       </v-btn>
 
       <v-btn
@@ -551,6 +551,18 @@
       >
         <v-icon left>mdi-ruler-square-compass</v-icon>
         測量工具
+      </v-btn>
+
+      <v-btn
+        v-if="currentImage"
+        color="green"
+        variant="flat"
+        elevation="4"
+        class="ml-2"
+        @click="printImage"
+      >
+        <v-icon left>mdi-printer</v-icon>
+        列印
       </v-btn>
     </div>
   </v-card>
@@ -1090,6 +1102,68 @@ const openSizingTool = () => {
     fullscreenViewerDialog.value = false;
   }
   sizingToolDialog.value = true;
+};
+
+const printImage = () => {
+  if (currentImage.value && currentImage.value.downloadURL) {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    iframe.onload = () => {
+      // 確保 iframe 內部載入完成後再寫入內容
+      const doc = iframe.contentWindow.document;
+      doc.open();
+      // 使用 onload 觸發列印，確保圖片完全載入
+      doc.write(`
+        <html>
+          <head>
+            <title>列印圖面 - ${props.unitData?.unitId || ''}</title>
+            <style>
+              body { 
+                margin: 0; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                height: 100vh; 
+                background-color: #fff; 
+              }
+              img { 
+                max-width: 100%; 
+                max-height: 100vh; 
+                object-fit: contain; 
+              }
+              @media print {
+                @page { margin: 10mm; size: auto; }
+                body { margin: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            <img src="${currentImage.value.downloadURL}" onload="window.print();" />
+          </body>
+        </html>
+      `);
+      doc.close();
+      
+      // 列印結束或取消後移除 iframe (設置一個安全的延遲以免列印對話框還沒完全開啟就被移除了)
+      iframe.contentWindow.onbeforeunload = () => {
+         document.body.removeChild(iframe);
+      };
+      // 備用的移除機制
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 10000); // 10秒後自動清理
+    };
+
+    // 觸發 onload
+    iframe.src = 'about:blank';
+  }
 };
 
 watch(() => props.show, (newVal) => {

@@ -753,10 +753,14 @@
   <span class="text-caption font-weight-bold text-primary">解析摘要：</span>
   <v-chip size="x-small" color="primary" variant="flat">總計 {{ previewLeads.length }} 筆</v-chip>
   
-  <v-chip size="x-small" color="success" variant="flat">✨ 全新名單 {{ summaryCount.new }} 筆</v-chip>
+<v-chip size="x-small" color="success" variant="flat">✨ 全新名單 {{ summaryCount.new }} 筆</v-chip>
   
   <v-chip size="x-small" color="error" variant="elevated" class="font-weight-bold" v-if="summaryCount.unassigned">
     ⚠️ 待指派銷售 {{ summaryCount.unassigned }} 筆
+  </v-chip>
+
+  <v-chip size="x-small" color="green-darken-3" variant="elevated" class="font-weight-bold" v-if="summaryCount.purchased">
+    ✅ 本案已購戶 {{ summaryCount.purchased }} 筆
   </v-chip>
 
   <v-chip size="x-small" color="orange-darken-2" variant="flat" v-if="summaryCount.vip">🚩 既有客資 {{ summaryCount.vip }} 筆</v-chip>
@@ -855,6 +859,19 @@
                         >
                             詳情
                         </v-btn>
+                    </div> <!-- Added missing closing div for 'lead' -->
+
+                    <!-- Purchased: Existing Household (Compact Mode) -->
+                    <div v-else-if="duplicateResults[lead.phone].type === 'purchased'">
+                        <v-chip color="green-lighten-4" class="text-green-darken-4 font-weight-bold mb-1" size="small" label>
+                            <v-icon start icon="mdi-check-bold" size="x-small"></v-icon> 本案已購戶
+                        </v-chip>
+                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center text-left flex-wrap">
+                            <span class="font-weight-bold me-1">{{ duplicateResults[lead.phone].data.name }}</span>
+                            <span class="text-grey me-1">({{ duplicateResults[lead.phone].data.unitId || '--' }})</span>
+                            <span class="mx-1 text-grey">|</span>
+                            <span class="text-grey">銷售: {{ duplicateResults[lead.phone].data.assignedName }}</span>
+                        </div>
                     </div>
 
                     <!-- New Lead -->
@@ -964,6 +981,16 @@
                                             @click="openDetail(lead.phone, duplicateResults[lead.phone], 'lead')"
                                         >
                                             <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單 ({{ duplicateResults[lead.phone].data.assignedName }}) 詳情 >
+                                        </v-chip>
+
+                                        <v-chip 
+                                            v-else-if="duplicateResults[lead.phone].type === 'purchased'" 
+                                            color="green-lighten-4" 
+                                            class="text-green-darken-4 font-weight-bold" 
+                                            size="x-small" 
+                                            label
+                                        >
+                                            <v-icon start icon="mdi-home-heart" size="x-small"></v-icon> 本案已購戶 ({{ duplicateResults[lead.phone].data.name }} | {{ duplicateResults[lead.phone].data.unitId || '未知戶別' }} | 銷售: {{ duplicateResults[lead.phone].data.assignedName }})
                                         </v-chip>
                                          <v-chip v-else color="success" size="x-small" variant="elevated" prepend-icon="mdi-check-circle">✨ 全新名單</v-chip>
                                      </template>
@@ -1729,13 +1756,14 @@ const updateAssignedInfo = (lead, salesId) => {
 };
 
 const summaryCount = computed(() => {
-  const counts = { vip: 0, lead: 0, new: 0, internalDup: 0, unassigned: 0 };
+  const counts = { vip: 0, lead: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0 };
   
   previewLeads.value.forEach(l => {
-    // 1. 檢查查重狀態 (已有客資/重複名單/全新)
+    // 1. 檢查查重狀態 (已有客資/重複名單/全新/已購戶)
     const res = duplicateResults.value[l.phone];
     if (res?.type === 'vip') counts.vip++;
     else if (res?.type === 'lead') counts.lead++;
+    else if (res?.type === 'purchased') counts.purchased++;
     else counts.new++;
 
     // 2. 統計內部重複 (本次名單重複)
@@ -1770,6 +1798,7 @@ const getRowClass = (phone) => {
   }
   
   const res = duplicateResults.value[phone];
+  if (res?.type === 'purchased') return 'bg-green-lighten-5';
   if (res?.type === 'vip') return 'bg-orange-lighten-5';
   if (res?.type === 'lead') return 'bg-blue-grey-lighten-5';
   return '';
@@ -2001,6 +2030,9 @@ const executeBatchImportAndAssign = async () => {
       if (res?.type === 'vip') {
         const salesName = res.data?.latestSalesName || '未知';
         statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`; 
+      } else if (res?.type === 'purchased') {
+        const salesName = res.data?.assignedName || '未知';
+        statusText = `🏡 本案已購戶 (銷售: ${salesName} | 戶別: ${res.data?.unitId || '未知'})`;
       } else if (res?.type === 'lead') {
         statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
       }

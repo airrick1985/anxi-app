@@ -21373,3 +21373,312 @@ exports.submitBugReport = onCall({ region: "asia-east1", secrets: gmailSecrets, 
     throw new HttpsError('internal', '送出問題回報時發生錯誤，請稍後再試。');
   }
 });
+
+// =================================================================
+// 6. [Feature] Custom Form Responses Google Sheet Sync
+// =================================================================
+
+// Since listGoogleSheets is in index.js, but sheet_sync_code requires it independently,
+// we'll implement the custom form sync logic directly here to avoid circular dependencies
+// and leverage the existing environment.
+
+const { google: googleApi } = require("googleapis");
+
+/**
+ * [API] 自訂表單回覆全量同步：將某個 Form 的所有 Submissions 寫入 Sheet
+ */
+exports.syncCustomFormSubmissionsToSheet = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 540,
+}, async (request) => {
+  const { projectId, formId, spreadsheetId, sheetName } = request.data;
+  const functionName = "syncCustomFormSubmissionsToSheet";
+
+  if (!projectId || !formId || !spreadsheetId || !sheetName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, formId, spreadsheetId, sheetName)");
+  }
+
+  const db = defaultDb; // Use explicit anxi-app db instance
+
+  // Initialize google auth
+  const auth = new googleApi.auth.GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+  const authClient = await auth.getClient();
+  const sheets = googleApi.sheets({ version: 'v4', auth: authClient });
+
+  try {
+    console.log(`[${functionName}] 開始同步: Project=${projectId}, Form=${formId} -> Sheet=${spreadsheetId} (${sheetName})`);
+
+    // 1. 取得該表單的定義 (為了擷取原始依序的標籤)
+    const formDoc = await db.collection("customFormTemplates").doc(formId).get();
+    if (!formDoc.exists) {
+      throw new HttpsError("not-found", "找不到表單定義");
+    }
+    const formData = formDoc.data();
+
+    // Helper: extract labels recursively
+    const extractFieldLabels = (fields) => {
+      const labels = [];
+      if (!fields) return labels;
+      fields.forEach(f => {
+        if (["header", "description", "divider"].includes(f.type)) return;
+        if (f.label) labels.push(f.label);
+        if (f.options) {
+          f.options.forEach((opt) => {
+            if (opt.subFields) {
+              labels.push(...extractFieldLabels(opt.subFields));
+            }
+          });
+        }
+      });
+      return labels;
+    };
+    const orderedLabels = extractFieldLabels(formData.fields || []);
+
+    // 2. Fetch all submissions
+    const snapshot = await db.collection("customFormSubmissions")
+      .where("projectId", "==", projectId)
+      .where("formId", "==", formId)
+      .get();
+
+    if (snapshot.empty) {
+      return { status: "success", message: "該表單尚無回覆資料" };
+    }
+
+    const submissions = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.isDeleted) return; // Exclude soft-deleted records
+      submissions.push({ _docId: doc.id, ...data });
+    });
+
+    // 3. Flatten Data
+    const flattenSub = (sub) => {
+      const flat = {};
+      flat["_id"] = sub._docId || sub.id;
+      const displayData = (sub.snapshotAvailable && sub.readableSnapshot)
+        ? sub.readableSnapshot
+        : sub.data || {};
+
+      flat["_unitId"] = sub.unitId || displayData["戶別"] || "";
+
+      let subAt = "";
+      if (sub.submittedAt && sub.submittedAt.toDate) {
+        const d = sub.submittedAt.toDate();
+        subAt = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+      }
+      flat["_submittedAt"] = subAt;
+
+      Object.entries(displayData).forEach(([key, val]) => {
+        flat[key] = val;
+      });
+      return flat;
+    };
+    const rows = submissions.map(s => flattenSub(s));
+
+    // 4. 定義 Headers 結構
+    let headers = ["_id", "_unitId", "_submittedAt"];
+    const existingKeys = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => {
+      if (!k.startsWith("_")) existingKeys.add(k);
+    }));
+
+    orderedLabels.forEach(label => {
+      if (existingKeys.has(label)) {
+        headers.push(label);
+        existingKeys.delete(label);
+      }
+    });
+    existingKeys.forEach(k => headers.push(k));
+
+    const headerRow = headers.map(key => {
+      if (key === "_id") return "系統編號 (勿動)";
+      if (key === "_unitId") return "戶別";
+      if (key === "_submittedAt") return "提交時間";
+      return key;
+    });
+
+    // 5. Transform Rows to Array
+    const values = [headerRow];
+    rows.sort((a, b) => {
+      const dateA = new Date(a._submittedAt || 0).getTime();
+      const dateB = new Date(b._submittedAt || 0).getTime();
+      return dateA - dateB;
+    });
+
+    rows.forEach(row => {
+      const rowData = headers.map(key => {
+        let val = row[key];
+        if (val === undefined || val === null) return "";
+        if (typeof val === "object") return JSON.stringify(val);
+        return String(val);
+      });
+      values.push(rowData);
+    });
+
+    // 6. Write to Sheet
+    await db.collection("customFormTemplates").doc(formId).set({
+      syncConfig: {
+        spreadsheetId: spreadsheetId,
+        sheetName: sheetName,
+        sheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0`,
+        lastSyncAt: admin.firestore.FieldValue.serverTimestamp()
+      }
+    }, { merge: true });
+
+    // Clear existing content
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: `'${sheetName}'!A:ZZ`,
+    });
+
+    // Write new content
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetName}'!A1`,
+      valueInputOption: "USER_ENTERED",
+      resource: { values },
+    });
+
+    console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆`);
+    return { status: "success", message: `成功同步 ${rows.length} 筆回覆資料`, count: rows.length };
+
+  } catch (error) {
+    console.error(`[${functionName}] 失敗:`, error);
+    throw new HttpsError("internal", `同步失敗: ${error.message}`);
+  }
+});
+
+/**
+ * [Trigger] 當自訂表單回覆異動時，即時同步到 Sheet
+ */
+exports.onCustomFormSubmissionWrite = onDocumentWritten({
+  document: "customFormSubmissions/{docId}",
+  database: "anxi-app"
+}, async (event) => {
+  const functionName = "onCustomFormSubmissionWrite";
+  // The event.params.docId can sometimes be parsed as Latin-1 instead of UTF-8 in GCF triggers.
+  // We use the safely decoded id from the DocumentSnapshot instead to avoid mojibake.
+  const docId = event.data?.after?.id || event.data?.before?.id || event.params.docId;
+  const newData = event.data?.after?.data();
+  const oldData = event.data?.before?.data();
+
+  const formId = newData?.formId || oldData?.formId;
+  if (!formId) return;
+
+  try {
+    const db = defaultDb; // Use explicit anxi-app db instance
+    const formDoc = await db.collection("customFormTemplates").doc(formId).get();
+    if (!formDoc.exists) return;
+
+    const syncConfig = formDoc.data().syncConfig;
+    if (!syncConfig || !syncConfig.spreadsheetId || !syncConfig.sheetName) return;
+
+    const spreadsheetId = syncConfig.spreadsheetId;
+    const sheetName = syncConfig.sheetName;
+
+    const auth = new googleApi.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+    const authClient = await auth.getClient();
+    const sheets = googleApi.sheets({ version: 'v4', auth: authClient });
+
+    const range = `'${sheetName}'!A:A`;
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const values = response.data.values || [];
+
+    let rowIndex = -1;
+    for (let i = 1; i < values.length; i++) {
+      if (values[i][0] === docId) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (!newData || newData.isDeleted === true) {
+      // Delete operation (Hard delete or Soft delete)
+      if (rowIndex > -1) {
+        const sheetResponse = await sheets.spreadsheets.get({ spreadsheetId });
+        const targetSheet = sheetResponse.data.sheets.find(s => s.properties.title === sheetName);
+        if (targetSheet) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            resource: {
+              requests: [{
+                deleteDimension: {
+                  range: {
+                    sheetId: targetSheet.properties.sheetId,
+                    dimension: "ROWS",
+                    startIndex: rowIndex - 1,
+                    endIndex: rowIndex
+                  }
+                }
+              }]
+            }
+          });
+        }
+      }
+    } else {
+      // Upsert operation
+      const flattenSub = (sub) => {
+        const flat = {};
+        flat["_id"] = sub._docId || sub.id;
+        const displayData = (sub.snapshotAvailable && sub.readableSnapshot) ? sub.readableSnapshot : sub.data || {};
+        flat["_unitId"] = sub.unitId || displayData["戶別"] || "";
+
+        let subAt = "";
+        if (sub.submittedAt && sub.submittedAt.toDate) {
+          const d = sub.submittedAt.toDate();
+          subAt = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+        }
+        flat["_submittedAt"] = subAt;
+
+        Object.entries(displayData).forEach(([key, val]) => flat[key] = val);
+        return flat;
+      };
+
+      const flattened = flattenSub({ _docId: docId, ...newData });
+
+      const headerResp = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${sheetName}'!1:1`,
+      });
+      const headers = headerResp.data.values?.[0] || [];
+      if (headers.length === 0) return;
+
+      const formatVal = (v) => {
+        if (v === undefined || v === null) return '';
+        if (typeof v === 'object') return JSON.stringify(v);
+        return String(v);
+      };
+
+      const rowData = headers.map(h => {
+        if (h === "系統編號 (勿動)") return flattened["_id"];
+        if (h === "戶別") return flattened["_unitId"];
+        if (h === "提交時間") return flattened["_submittedAt"];
+        return formatVal(flattened[h]);
+      });
+
+      if (rowIndex > -1) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `'${sheetName}'!A${rowIndex}`,
+          valueInputOption: "USER_ENTERED",
+          resource: { values: [rowData] },
+        });
+      } else {
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'${sheetName}'!A1`,
+          valueInputOption: "USER_ENTERED",
+          resource: { values: [rowData] },
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+  }
+});

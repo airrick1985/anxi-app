@@ -537,7 +537,7 @@ exports.syncSalesHouseholdsToSheet = onCall({
  */
 exports.onSalesHouseholdWrite = onDocumentWritten("salesHouseholds/{docId}", async (event) => {
     const functionName = "onSalesHouseholdWrite";
-    const docId = event.params.docId;
+    const docId = event.data?.after?.id || event.data?.before?.id || event.params.docId;
 
     // 1. 判斷資料存在性
     const newData = event.data?.after?.data();

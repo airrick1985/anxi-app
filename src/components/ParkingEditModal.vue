@@ -90,7 +90,7 @@
         <v-btn 
           color="success" 
           @click="confirm" 
-          :disabled="localParking.length === 0"
+          
         >
           確定
         </v-btn>

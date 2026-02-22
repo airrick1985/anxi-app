@@ -80,7 +80,17 @@
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-account-details</v-icon>買方資訊</div>
             <v-text-field label="買方姓名" v-model="editableData.buyerName" class="mb-2"></v-text-field>
-            <v-text-field label="聯絡電話" v-model="editableData.buyerPhone" type="tel" class="mb-2"></v-text-field>
+            <v-combobox 
+              label="聯絡電話" 
+              v-model="buyerPhonesList" 
+              multiple 
+              chips 
+              clearable 
+              closable-chips 
+              class="mb-2"
+              hint="可手動輸入多筆電話，輸入後按 Enter 新增"
+              persistent-hint
+            ></v-combobox>
             <v-text-field label="身分證字號" v-model="editableData.buyerIdNumber" class="mb-2"></v-text-field>
            <v-col cols="12">
     <label class="form-label">出生年月日 (民國)</label>
@@ -249,6 +259,18 @@ const editableData = computed({
 // ✅ 2. 新增 Computed，將圖片物件陣列轉換為名稱字串陣列
 const salesImageOptions = computed(() => {
   return props.allSalesImages.map(img => img.imageName);
+});
+
+// ✅ 新增：處理多筆聯絡電話，綁定至逗號分隔字串
+const buyerPhonesList = computed({
+  get: () => {
+    if (!editableData.value.buyerPhone) return [];
+    if (Array.isArray(editableData.value.buyerPhone)) return editableData.value.buyerPhone;
+    return String(editableData.value.buyerPhone).split(',').map(p => p.trim()).filter(Boolean);
+  },
+  set: (val) => {
+    editableData.value.buyerPhone = Array.isArray(val) ? val.join(',') : val;
+  }
 });
 
 // ✓ [打勾] 新增民國年月日暫存狀態
@@ -506,6 +528,13 @@ const parkingSalePrice = computed(() => {
     return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
 });
 const totalSalePrice = computed(() => (Number(editableData.value?.price_transaction_house) || 0) + parkingSalePrice.value);
+
+// ✅ [新增] 監聽 totalSalePrice 變動，自動同步到資料庫要儲存的欄位 price_transaction_total
+watch(totalSalePrice, (newVal) => {
+    if (editableData.value) {
+        editableData.value.price_transaction_total = newVal;
+    }
+}, { immediate: true });
 const unitSalePrice = computed(() => {
     const housePrice = Number(editableData.value?.price_transaction_house) || 0;
     const area = Number(editableData.value?.area_house_ping);
@@ -520,6 +549,12 @@ const priceDifference = computed(() => {
 // 📋 處理車位更新：透過 API 直接更新 salesParkings 集合
 async function handleParkingUpdate(updatedParkingList) {
     try {
+        // ✅ [新增/修正] 即時更新前端顯示綁定
+        // 若清空車位或變更車位，在此處即時將新陣列塞入 editableData (對應 ownedParkingSpots 取值來源)
+        if (editableData.value) {
+           editableData.value['持有車位'] = updatedParkingList;
+        }
+
         // 觸發父元件進行車位資料更新
         // 傳遞更新的車位清單給父元件處理
         emit('parking-updated', {
