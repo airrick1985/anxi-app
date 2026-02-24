@@ -566,83 +566,89 @@
                 </v-card-actions>
               </div>
           
-                    <div v-if="existingBookingInfo && step === 1">
-            <v-card-text>
-    <v-alert type="info" variant="tonal" border="start" class="mb-4">
-        <h3 class="text-h6 mb-2">您已完成預約</h3>
-        <p>我們查詢到您已有一筆有效的預約紀錄，資訊如下，若您要修改預約時間請先取消預約。</p>
-    </v-alert>
+<div v-if="existingBookingInfoList.length > 0 && step === 1">
+  <div v-for="(booking, index) in existingBookingInfoList" :key="booking.bookingCode">
+    <v-card-text>
+      <v-alert :type="index === 0 ? 'info' : 'warning'" variant="tonal" border="start" class="mb-4">
+          <h3 class="text-h6 mb-2">{{ index === 0 ? '您已完成預約' : `第 ${index + 1} 筆預約` }}</h3>
+          <p v-if="index === 0">我們查詢到您已有有效的預約紀錄，資訊如下，若您要修改預約時間請先取消預約。</p>
+      </v-alert>
 
-    <v-list lines="two" class="text-left" density="compact" >
-        
-        <v-list-item title="預約代碼" :subtitle="existingBookingInfo.bookingCode" prepend-icon="mdi-pound-box-outline">
-            <template v-slot:subtitle="{ subtitle }">
-                <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
-            </template>
-        </v-list-item>
+      <v-list lines="two" class="text-left" density="compact" >
+          
+          <v-list-item title="預約代碼" :subtitle="booking.bookingCode" prepend-icon="mdi-pound-box-outline">
+              <template v-slot:subtitle="{ subtitle }">
+                  <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
+              </template>
+          </v-list-item>
 
-        <v-list-item 
-            title="建案名稱" 
-            :subtitle="projectConfig?.name || '載入中...'" 
-            prepend-icon="mdi-domain"
-        >
-        </v-list-item>
-        
-        <v-list-item title="戶別" :subtitle="existingBookingInfo.unitId" prepend-icon="mdi-home-variant-outline"></v-list-item>
-        <v-list-item title="姓名" :subtitle="existingBookingInfo.bookerName" prepend-icon="mdi-account-outline"></v-list-item>
-        <v-list-item title="電話" :subtitle="existingBookingInfo.bookerPhone" prepend-icon="mdi-phone-outline"></v-list-item>
-        <v-list-item title="EMAIL" :subtitle="existingBookingInfo.bookerEmail" prepend-icon="mdi-email-outline"></v-list-item>
-        <v-divider class="my-2"></v-divider>
-        <v-list-item title="預約項目" :subtitle="existingBookingInfo.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
-        <v-list-item title="選擇方式" :subtitle="existingBookingInfo.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
-        <template v-if="existingBookingInfo.bookingMethodDetailsDisplay && existingBookingInfo.bookingMethodDetailsDisplay.length > 0">
-            <v-list-item
-              v-for="field in existingBookingInfo.bookingMethodDetailsDisplay"
-              :key="field.label"
-              title=""
-              :subtitle="field.value"
-              prepend-icon="mdi-information-outline"
-              density="compact"
-            >
-                <template v-slot:title>
-                  <span class="text-caption text-grey">{{ field.label }}</span>
-                </template>
-                <template v-slot:subtitle="{ subtitle }">
-                  <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
-                </template>
-            </v-list-item>
-        </template>
-        <v-list-item v-if="existingBookingInfo.inspectionCompanyName" title="代驗公司" :subtitle="existingBookingInfo.inspectionCompanyName" prepend-icon="mdi-office-building"></v-list-item>
-        <v-list-item title="預約日期" :subtitle="formatDisplayDate(existingBookingInfo.appointmentDate)" prepend-icon="mdi-calendar-check-outline"></v-list-item>
-        <v-list-item title="預約時段" :subtitle="existingBookingInfo.appointmentTimeSlot" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
-        <v-list-item title="預約狀態" :subtitle="existingBookingInfo.status" prepend-icon="mdi-list-status">
-            <template v-slot:subtitle="{ subtitle }">
-                <v-chip color="green" variant="flat" size="small" >{{ subtitle }}</v-chip>
-            </template>
-        </v-list-item>
-    </v-list>
-</v-card-text>
-             <v-card-actions class="pa-4 d-flex justify-end">
-            <v-btn 
-        class="mr-2"
-        variant="text"
-        size="large"
-        @click="resetBookingFlow"
-      >
-        返回預約頁面
-      </v-btn>
-      <v-btn 
-        color="error" 
-        size="large" 
-        variant="elevated" 
-        @click="confirmCancelBooking" 
-        :loading="isCanceling" 
-        :disabled="!isBookingActive"
-      >
-        取消預約
-      </v-btn>
+          <v-list-item 
+              title="建案名稱" 
+              :subtitle="projectConfig?.name || '載入中...'" 
+              prepend-icon="mdi-domain"
+          >
+          </v-list-item>
+          
+          <v-list-item title="戶別" :subtitle="booking.unitId" prepend-icon="mdi-home-variant-outline"></v-list-item>
+          <v-list-item title="姓名" :subtitle="booking.bookerName" prepend-icon="mdi-account-outline"></v-list-item>
+          <v-list-item title="電話" :subtitle="booking.bookerPhone" prepend-icon="mdi-phone-outline"></v-list-item>
+          <v-list-item title="EMAIL" :subtitle="booking.bookerEmail" prepend-icon="mdi-email-outline"></v-list-item>
+          <v-divider class="my-2"></v-divider>
+          <v-list-item title="預約項目" :subtitle="booking.bookingType" prepend-icon="mdi-format-list-checks"></v-list-item>
+          <v-list-item title="選擇方式" :subtitle="booking.inspectionMethod" prepend-icon="mdi-account-search-outline"></v-list-item>
+          <template v-if="booking.bookingMethodDetailsDisplay && booking.bookingMethodDetailsDisplay.length > 0">
+              <v-list-item
+                v-for="field in booking.bookingMethodDetailsDisplay"
+                :key="field.label"
+                title=""
+                :subtitle="field.value"
+                prepend-icon="mdi-information-outline"
+                density="compact"
+              >
+                  <template v-slot:title>
+                    <span class="text-caption text-grey">{{ field.label }}</span>
+                  </template>
+                  <template v-slot:subtitle="{ subtitle }">
+                    <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
+                  </template>
+              </v-list-item>
+          </template>
+          <v-list-item v-if="booking.inspectionCompanyName" title="代驗公司" :subtitle="booking.inspectionCompanyName" prepend-icon="mdi-office-building"></v-list-item>
+          <v-list-item title="預約日期" :subtitle="formatDisplayDate(booking.appointmentDate)" prepend-icon="mdi-calendar-check-outline"></v-list-item>
+          <v-list-item title="預約時段" :subtitle="booking.appointmentTimeSlot" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
+          <v-list-item title="預約狀態" :subtitle="booking.status" prepend-icon="mdi-list-status">
+              <template v-slot:subtitle="{ subtitle }">
+                  <v-chip color="green" variant="flat" size="small" >{{ subtitle }}</v-chip>
+              </template>
+          </v-list-item>
+      </v-list>
+    </v-card-text>
+    <v-card-actions class="pa-4 d-flex justify-end pt-0">
+      <v-btn color="error" size="small" variant="outlined" @click="confirmCancelBookingByCode(booking.bookingCode)" :loading="cancelingCode === booking.bookingCode" :disabled="!isBookingActive">取消此筆預約</v-btn>
     </v-card-actions>
-          </div>
+    <v-card-text v-if="index < existingBookingInfoList.length - 1" class="pb-0 pt-0">
+        <v-divider></v-divider>
+    </v-card-text>
+  </div>
+  
+  <v-card-actions class="pa-4 d-flex justify-end">
+    <v-btn class="mr-2" variant="text" size="large" @click="resetBookingFlow">
+      返回預約頁面
+    </v-btn>
+    <v-btn 
+      v-if="selectedUnitAllowMultipleBookings"
+      color="success" 
+      size="large" 
+      variant="elevated" 
+      class="mr-2"
+      @click="proceedToNextBooking" 
+      :loading="isLoading" 
+      :disabled="!isBookingActive"
+    >
+      繼續新增預約 (第 {{ existingBookingInfoList.length + 1 }} 筆)
+    </v-btn>
+  </v-card-actions>
+</div>
 
                     <div v-if="step === 2">
              <v-card-text>
@@ -1371,6 +1377,8 @@ const isLoading = ref(true);
 const isCanceling = ref(false);
 const step = ref(1);
 const savedBookingCode = ref(''); 
+const existingBookingInfoList = ref([]); // Support multiple bookings
+const cancelingCode = ref(null); // Track which booking code is currently being canceled
 const projectId = ref('');
 const projectConfig = ref(null);
 
@@ -1536,6 +1544,13 @@ const isIdValidationRequired = computed(() => {
   return initialData.value.validateId === 'ON';
 });
 
+// 計算目前選擇的戶別是否允許重複預約
+const selectedUnitAllowMultipleBookings = computed(() => {
+  if (!formStep1.value.unit || !unitList.value) return false;
+  const selectedUnitData = unitList.value.find(u => u.unit === formStep1.value.unit);
+  return selectedUnitData && selectedUnitData.allowMultipleBookings === true;
+});
+
 // 將兩個表單資料合併，並進行必要的轉換
 const finalBookingData = computed(() => ({
   ...formStep1.value,
@@ -1595,6 +1610,35 @@ const isDateAllowed = (date) => {
  const isPreviewDialogVisible = ref(false); // 控制預覽對話框的顯示
 
  // 獲取民國年日期
+const confirmCancelBookingByCode = async (bookingCode) => {
+  if (!bookingCode) return;
+  if (confirm("即將取消這筆預約，您確定嗎？")) {
+    cancelingCode.value = bookingCode; // 設定特定代碼載入狀態
+    try {
+      const res = await cancelBooking({
+        projectId: projectId.value,
+        bookingCode: bookingCode
+      }); // API 需要支援取消特定 Code
+      
+      if (res.status === 'success') {
+          alert('您的預約已取消成功。');
+          // 移除已取消的預約
+          existingBookingInfoList.value = existingBookingInfoList.value.filter(b => b.bookingCode !== bookingCode);
+          if (existingBookingInfoList.value.length === 0) {
+              step.value = 1; 
+          }
+      } else {
+          alert(`取消失敗: ${res.message}`);
+      }
+    } catch (error) {
+       console.error("取消預約失敗:", error);
+       alert("系統忙碌中，取消失敗，請稍後再試或聯繫客服。");
+    } finally {
+      cancelingCode.value = null;
+    }
+  }
+};
+
 const getMinguoDate = () => {
   const date = new Date();
   const year = date.getFullYear() - 1911;
@@ -1875,8 +1919,8 @@ onMounted(async () => {
   loadingText.value = '正在載入建案資訊...';
 
   try {
-    // 呼叫 Pinia action 來獲取資料 (它會自動處理快取)
-    const data = await projectStore.fetchProjectStaticData(projectId.value);
+    // 呼叫 Pinia action 來獲取資料 (傳入 true 強制更新快取)
+    const data = await projectStore.fetchProjectStaticData(projectId.value, true);
 
     // 將 Pinia store 回傳的資料指派給 local refs
     projectConfig.value = data.projectConfig;
@@ -1955,10 +1999,36 @@ const onUnitChange = (unitValue) => {
     formStep2.value.EMAIL = '';
   }
   formStep1.value.bookingType = null;
-  existingBookingInfo.value = null;
+  existingBookingInfoList.value = [];
   step.value = 1;
 };
 const onDateChange = () => { formStep2.value.預約時段 = null; };
+
+const proceedToNextBooking = async () => {
+  loadingText.value = '正在獲取可預約時段...';
+  isLoading.value = true;
+  try {
+    const res = await getBookingSlots(
+        projectConfig.value.name, 
+        formStep1.value.unit, 
+        formStep1.value.bookingType, 
+        formStep1.value.bookingMethod,
+        projectId.value
+      );
+
+    if (res.status === 'success' && res.data) {
+     bookingSlots.value = res.data;
+     step.value = 2;
+    } else {
+     throw new Error(res.message || '無法獲取可預約時段');
+    }
+  } catch (error) {
+    console.error("獲取時段失敗:", error);
+    alert(`操作失敗：${error.message}`);
+  } finally {
+    isLoading.value = false;
+  }
+};
 
 const handleStep1Submit = async () => {
  const { valid } = await step1Form.value.validate();
@@ -1966,7 +2036,7 @@ const handleStep1Submit = async () => {
 
  loadingText.value = '正在驗證戶別資訊...';
  isLoading.value = true;
- existingBookingInfo.value = null;
+ existingBookingInfoList.value = [];
 
 
  try {
@@ -1987,7 +2057,6 @@ const handleStep1Submit = async () => {
 
     // --- 步驟 2: 檢查現有預約 ---
    if (initialData.value.checkDuplicate === 'ON') {
-// ✓ START: 修正參數傳遞錯誤
       const res = await checkExistingBooking(
           projectId.value, 
           formStep1.value.unit, 
@@ -1995,7 +2064,8 @@ const handleStep1Submit = async () => {
         );
         
       if (res.status === 'success' && res.data.status === 'found') {
-          existingBookingInfo.value = res.data.booking;
+          // 支援多筆預約列表
+          existingBookingInfoList.value = res.data.bookings || [];
           isLoading.value = false;
           return;
       }

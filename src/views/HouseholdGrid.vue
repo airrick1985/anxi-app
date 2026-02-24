@@ -595,15 +595,7 @@ const baseColDefs = computed(() => {
        editable: false
     },
 
-     
-    // 敏感欄位 - 嚴格權限控管
-    // 只有管理員可以看到這些欄位，非管理員完全不會渲染
-    ...(isUserAdmin ? [
-  
-
- 
-    ] : []), // 非管理員回傳空陣列 (不渲染)
-    
+    { headerName: '允許重複預約', field: 'allowMultipleBookings', width: 140, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
   ];
 
   return cols;
@@ -766,10 +758,20 @@ const handleFileChange = () => {
         uploadedHeaders.forEach((header, index) => {
           const key = headerMap.get(header);
           if (key) {
-            if (key === '_docId' && (rowArray[index] === null || rowArray[index] === undefined || rowArray[index] === '')) {
+            let val = rowArray[index] ?? null;
+
+            if (key === 'allowMultipleBookings' || key === 'showInMenu' || key === 'initialReportUploadSwitch' || key === 'reInspectionReportUploadSwitch') {
+              if (typeof val === 'string') {
+                const upperVal = val.toUpperCase().trim();
+                if (upperVal === 'TRUE') val = true;
+                if (upperVal === 'FALSE') val = false;
+              }
+            }
+
+            if (key === '_docId' && (val === null || val === undefined || val === '')) {
                  newRow[key] = null;
             } else {
-                 newRow[key] = rowArray[index] ?? null;
+                 newRow[key] = val;
             }
           }
         });

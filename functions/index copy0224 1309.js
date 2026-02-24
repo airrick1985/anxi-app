@@ -428,7 +428,7 @@ exports.updateProjectCacheOnHouseholdChange = onDocumentWritten({
     // 這些是 bookingMenuCache 和 uploadUnitsCache 關心的欄位
     const fieldsToWatch = [
       'showInMenu', 'building', 'unitId', 'address',
-      'buyerName', 'buyerPhone', 'buyerEmail', 'allowMultipleBookings'
+      'buyerName', 'buyerPhone', 'buyerEmail'
     ];
 
     // 檢查是否有任何一個關鍵欄位發生了變化
@@ -501,8 +501,7 @@ exports.updateProjectCacheOnHouseholdChange = onDocumentWritten({
           address: unitData.address || '',
           buyerName: unitData.buyerName || '',
           buyerPhone: unitData.buyerPhone || '',
-          buyerEmail: unitData.buyerEmail || null,
-          allowMultipleBookings: unitData.allowMultipleBookings === true
+          buyerEmail: unitData.buyerEmail || null
         });
       }
     });
@@ -12499,32 +12498,29 @@ async function _handleCheckExistingBooking(data) {
   try {
     const db = new Firestore({ databaseId: 'anxi-app' });
 
-    // 移除 .limit(1)，改為撈取所有有效預約
     const query = db.collection('appointments')
       .where('projectId', '==', projectId)
       .where('unitId', '==', unitId)
       .where('bookingType', '==', bookingType)
       .where('status', '==', '預約中')
-      .orderBy('createdAt', 'desc');
+      .orderBy('createdAt', 'desc')
+      .limit(1);
 
     const snapshot = await query.get();
 
     if (snapshot.empty) {
       return { status: 'success', data: { status: 'not_found' } };
     } else {
-      // 將所有預約轉換成陣列，並處理 Timestamp 欄位
-      const bookings = snapshot.docs.map(doc => {
-        const bookingData = { ...doc.data() };
-        if (bookingData.appointmentDate && bookingData.appointmentDate.toDate) {
-          bookingData.appointmentDate = bookingData.appointmentDate.toDate().toISOString();
-        }
-        if (bookingData.createdAt && bookingData.createdAt.toDate) {
-          bookingData.createdAt = bookingData.createdAt.toDate().toISOString();
-        }
-        return bookingData;
-      });
+      const bookingData = snapshot.docs[0].data();
 
-      return { status: 'success', data: { status: 'found', bookings: bookings } };
+      if (bookingData.appointmentDate && bookingData.appointmentDate.toDate) {
+        bookingData.appointmentDate = bookingData.appointmentDate.toDate().toISOString();
+      }
+      if (bookingData.createdAt && bookingData.createdAt.toDate) {
+        bookingData.createdAt = bookingData.createdAt.toDate().toISOString();
+      }
+
+      return { status: 'success', data: { status: 'found', booking: bookingData } };
     }
   } catch (error) {
     throw new HttpsError("internal", "檢查現有預約時發生錯誤。");
@@ -12838,19 +12834,15 @@ async function _handleSaveBooking(data) {
       const slotInfo = ruleData.slots[timeSlotKey];
       if (!slotInfo || !slotInfo.methods.includes(bookingData.bookingMethod)) throw new HttpsError("failed-precondition", `時段 ${timeSlotKey} 不適用於「${bookingData.bookingMethod}」。`);
       const capacity = slotInfo.capacity || 0;
-
       const allowMultipleBookings = householdData.allowMultipleBookings === true;
 
-      // 只有在【不允許重複預約】時，才去查詢並阻擋
       if (!allowMultipleBookings) {
         const appointmentsQueryDuplicate = db.collection('appointments').where('projectId', '==', projectId).where('unitId', '==', bookingData.unitId).where('bookingType', '==', bookingData.bookingType).where('status', '==', '預約中');
         const existingBookingSnapshot = await transaction.get(appointmentsQueryDuplicate);
         if (!existingBookingSnapshot.empty) {
           throw new HttpsError("already-exists", `此戶別的「${bookingData.bookingType}」已有有效預約，請返回第一步重新操作。`);
         }
-      }
-
-      const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00');
+      } const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00');
       const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
       const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
       const currentBookings = appointmentsSnapshot.size;
