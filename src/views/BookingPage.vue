@@ -184,25 +184,32 @@
                 上傳驗屋報告
               </v-btn>
 
-              <div class="d-none d-sm-block ml-2">
+              <div class="d-none d-sm-flex align-center ml-2">
                  <v-btn
                     v-for="msgConfig in projectConfig.customerMessageConfigs || []"
                     :key="msgConfig.id"
-                    variant="outlined"
-                    class="ml-2"
+                    color="error"
+                    variant="elevated"
+                    elevation="4"
+                    class="ml-3 font-weight-bold shimmer-button text-white rounded-pill"
+                    prepend-icon="mdi-message-alert-outline"
                     @click="openCustomerMessageDialog(msgConfig)"
                  >
                     {{ msgConfig.buttonText }}
                  </v-btn>
               </div>
               <!-- Mobile view for extra buttons -->
-              <div class="d-sm-none w-100 text-center mt-2" v-if="projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0">
+              <div class="d-sm-none w-100 text-center mt-3 mb-2" v-if="projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0">
                  <v-btn
                     v-for="msgConfig in projectConfig.customerMessageConfigs"
                     :key="msgConfig.id"
-                    variant="outlined"
-                    class="ma-1"
-                    size="small"
+                    color="error"
+                    variant="elevated"
+                    elevation="4"
+                    class="ma-2 font-weight-bold shimmer-button text-white rounded-pill"
+                    prepend-icon="mdi-message-alert-outline"
+                    size="default"
+                    block
                     @click="openCustomerMessageDialog(msgConfig)"
                  >
                     {{ msgConfig.buttonText }}
@@ -2660,5 +2667,34 @@ onUnmounted(() => {
 }
 .faq-panel :deep(.v-expansion-panel-title--active) {
   background-color: rgba(106, 92, 231, 0.04);
+}
+
+/* 聯絡/資訊按鈕的反光掃過動畫 (Shimmer Effect) */
+.shimmer-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-20deg);
+  animation: shimmer 4s infinite; /* 總時間長度包含間歇 */
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  80% { left: 200%; } /* 反光掃過時間佔比 */
+  100% { left: 200%; } /* 剩餘時間為間歇停頓 */
 }
 </style>
