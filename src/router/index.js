@@ -473,6 +473,17 @@ const routes = [
           requiredSystem: '驗屋預約管理-修改',
           layout: DefaultLayout // ✅
         }
+      },
+      {
+        path: 'reports',
+        name: 'InternalReportFolderManager',
+        component: () => import('@/views/public/ReportFolderManager.vue'),
+        props: true,
+        meta: {
+          requiresAuth: true,
+          requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
+          layout: DefaultLayout // ✅
+        }
       }
     ]
   },

@@ -57,7 +57,8 @@
                     <v-icon start>mdi-eraser</v-icon>清除
                   </v-btn>
                 </div>
-                <v-card-text>
+                <!-- 加上 touch-action: none 與 user-select: none 避免手機滑動與選取 -->
+                <v-card-text style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;">
                   <VueSignaturePad ref="delegateeSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
                 </v-card-text>
               </v-card>

@@ -354,6 +354,57 @@
                   class="mt-4 mb-6"
                 ></v-switch>
 
+                <!-- 新增：驗屋授權書範本編輯器 -->
+                <v-card v-if="isAdmin" variant="outlined" class="mb-6">
+                  <v-card-text>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                      <div>
+                        <div class="text-subtitle-1 font-weight-bold">驗屋授權書格式設定</div>
+                        <div class="text-caption text-grey-darken-1">設定受託人簽署時所看到的授權書內容與版面配置。</div>
+                      </div>
+                      <v-btn-toggle v-model="isAuthLetterPreviewMode" mandatory density="compact" color="primary" variant="outlined">
+                        <v-btn :value="false" prepend-icon="mdi-code-tags">編輯 HTML</v-btn>
+                        <v-btn :value="true" prepend-icon="mdi-eye">預覽渲染結果</v-btn>
+                      </v-btn-toggle>
+                    </div>
+
+                    <v-expand-transition>
+                      <div v-if="!isAuthLetterPreviewMode">
+                        <div class="d-flex flex-wrap align-center mb-2 gap-2">
+                          <span class="text-caption font-weight-medium">可用變數：</span>
+                          <v-chip size="x-small" variant="tonal"> {建案名稱}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {戶別}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {委託人姓名}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {受託人姓名}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {委託人身分證字號}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {受託人身分證字號}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {TODAY}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {logoUrl}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {委託人簽名圖檔}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {受託人簽名圖檔}</v-chip>
+                          <v-spacer></v-spacer>
+                          <v-btn size="x-small" variant="tonal" color="warning" @click="loadDefaultAuthLetterTemplate">載入系統預設範本</v-btn>
+                        </div>
+                        <v-textarea
+                          v-model="projectSettings.authLetterTemplate"
+                          variant="outlined"
+                          rows="15"
+                          auto-grow
+                          bg-color="grey-lighten-4"
+                          placeholder="請輸入 HTML 格式的授權書範本..."
+                          class="font-mono text-body-2"
+                        ></v-textarea>
+                      </div>
+                      <div v-else>
+                        <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml"></div>
+                        <div class="text-caption text-center text-grey mt-2">
+                          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
+                        </div>
+                      </div>
+                    </v-expand-transition>
+                  </v-card-text>
+                </v-card>
+
                 <!-- NEW: Booking Menu Configuration (Parent-Child Structure) -->
                 <div class="mb-4">
                    <p class="text-subtitle-1 font-weight-bold mb-2">預約選單設定 (項目 > 方式)</p>
@@ -2534,6 +2585,7 @@ const defaultSettings = computed(() => ({
     publishStartTime: null,        // [新增]
     publishEndTime: null,          // [新增]
     lineChannelAccessTokenSecretName: '', // [新增] LINE Token Secret Name
+    authLetterTemplate: '', // [新增] 授權書範本
     //  intro 物件中的 "富宇富御" 全部替換為 ${projectName.value}
     intro: {
       greeting: `<p>親愛的 <strong>${projectName.value }</strong> 貴賓您好：</p>`,
@@ -2648,6 +2700,32 @@ const editedBookingItemIndex = ref(-1);
 
 const isMethodDialogVisible = ref(false);
 const editedMethodTitle = ref('');
+
+// --- Auth Letter Template State ---
+const isAuthLetterPreviewMode = ref(false); // 切換編輯或預覽模式
+const loadDefaultAuthLetterTemplate = () => {
+    projectSettings.value.authLetterTemplate = `<div style="padding: 40px; font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif; line-height: 1.8; color: #333; background-color: white;"> <header style="text-align: center; margin-bottom: 40px;"> <img src="{logoUrl}" alt="Logo" style="max-height: 60px; margin-bottom: 20px;"> <h1 style="font-size: 28px; margin: 0; font-weight: bold;">驗屋授權書</h1> </header> <section> <p style="font-size: 16px;"> 茲因本人 (委託人) <strong style="font-size: 18px;">{委託人姓名}</strong> 不克親自辦理 <strong style="font-size: 18px;">「{建案名稱}」</strong>建案之房屋驗交相關事宜，特委託 <strong style="font-size: 18px;">{受託人姓名}</strong> 君代為全權處理。 </p> <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">授權標的</h3> <p style="font-size: 16px;">建案：<strong>{建案名稱}</strong></p> <p style="font-size: 16px;">戶別：<strong>{戶別}</strong></p> <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">授權範圍</h3> <p style="font-size: 16px;"> 受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。 </p> <table style="width: 100%; margin-top: 40px; border-collapse: collapse; font-size: 16px;"> <tr> <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;"> <strong style="display: block; margin-bottom: 10px;">委託人 (立書人)</strong> <p style="margin: 5px 0;">姓名：{委託人姓名}</p> <p style="margin: 5px 0;">身分證字號：{委託人身分證字號}</p> <p style="margin: 5px 0;">戶籍地址：{委託人戶籍地址}</p> <p style="margin: 5px 0;">簽名：</p> <img src="{委託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;"> </td> <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;"> <strong style="display: block; margin-bottom: 10px;">受託人</strong> <p style="margin: 5px 0;">姓名：{受託人姓名}</p> <p style="margin: 5px 0;">身分證字號：{受託人身分證字號}</p> <p style="margin: 5px 0;">戶籍地址：{受託人戶籍地址}</p> <p style="margin: 5px 0;">簽名：</p> <img src="{受託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;"> </td> </tr> </table> <footer style="text-align: right; margin-top: 40px; font-size: 16px;"> <p>此致</p> <p><strong>{建案名稱} 專案團隊</strong></p> <br> <p>日期：{TODAY}</p> </footer> </section> </div>`;
+};
+const authLetterPreviewHtml = computed(() => {
+  if (!projectSettings.value.authLetterTemplate) return '<div class="text-center text-grey pa-4">尚未設定授權書範本，請點擊上方按鈕載入。</div>';
+  
+  const today = new Date();
+  const yyyymmdd = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+  
+  return projectSettings.value.authLetterTemplate
+    .replace(/{建案名稱}/g, projectName.value || '測試建案')
+    .replace(/{戶別}/g, 'A1-1')
+    .replace(/{委託人姓名}/g, '王大明')
+    .replace(/{委託人身分證字號}/g, 'A123456789')
+    .replace(/{委託人戶籍地址}/g, '台北市信義區市府路1號')
+    .replace(/{受託人姓名}/g, '林小華')
+    .replace(/{受託人身分證字號}/g, 'F223456789')
+    .replace(/{受託人戶籍地址}/g, '台北市中正區重慶南路一段122號')
+    .replace(/{TODAY}/g, yyyymmdd)
+    .replace(/{logoUrl}/g, projectSettings.value.logoUrl || '')
+    .replace(/{委託人簽名圖檔}/g, 'https://dummyimage.com/200x80/cccccc/000000.png&text=Signature+1')
+    .replace(/{受託人簽名圖檔}/g, 'https://dummyimage.com/200x80/cccccc/000000.png&text=Signature+2');
+});
 const editedMethodParentTitle = ref('');
 const editedMethodIndex = ref(-1);
 const editedMethodParentIndex = ref(-1);
@@ -3115,6 +3193,7 @@ async function loadDataForProject() {
         projectSettings.value.appointmentsSheetId = settings.appointmentsSheetId || ''; // [新增]
         projectSettings.value.appointmentsSheetTabName = settings.appointmentsSheetTabName || ''; // [新增]
         projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
+        projectSettings.value.authLetterTemplate = settings.authLetterTemplate || ''; // [新增] 授權書範本
         
         // --- Migration Logic for Booking Menu (NEW) ---
         projectSettings.value.bookingMenu = settings.bookingMenu || [];

@@ -156,15 +156,91 @@
           </v-row>
         </div>
         
+        <!-- 重要備註 -->
         <v-alert
-          v-if="appointment.remarks"
+          v-if="!isEditMode && !isEditingImportantRemarks && appointment.remarks"
           variant="tonal" color="error" icon="mdi-alert-circle-outline"
-          border="start" class="my-4"
+          border="start" class="mt-4 mb-2 cursor-pointer"
           style="white-space: pre-wrap; word-wrap: break-word;"
+          @click="canEdit ? startInlineEdit('importantRemarks') : null"
+          :title="canEdit ? '點擊即可編輯重要備註' : ''"
         >
-          <template v-slot:title><div class="font-weight-bold">重要備註</div></template>
+          <template v-slot:title><div class="font-weight-bold">重要備註 <v-icon v-if="canEdit" size="x-small" color="grey-darken-1">mdi-pencil</v-icon></div></template>
           {{ appointment.remarks }}
         </v-alert>
+        
+        <div v-else-if="!isEditMode && canEdit && (!appointment.remarks || isEditingImportantRemarks)" class="mt-4 mb-2">
+           <v-textarea
+            v-if="isEditingImportantRemarks"
+            v-model="inlineEditingValues.remarks"
+            label="重要備註"
+            variant="outlined"
+            density="compact"
+            auto-grow
+            rows="2"
+            hide-details="auto"
+            bg-color="red-lighten-5"
+            color="error"
+            prepend-inner-icon="mdi-alert-circle-outline"
+            autofocus
+            :loading="isSavingInline"
+            @blur="saveInlineRemark('remarks')"
+          ></v-textarea>
+          <v-btn v-else-if="!appointment.remarks" variant="text" color="error" prepend-icon="mdi-plus" @click="startInlineEdit('importantRemarks')" size="small">新增重要備註</v-btn>
+        </div>
+
+        <div v-if="isEditMode && editableEvent" class="mt-4 mb-2">
+            重要備註請在下方快速編輯模式修改
+        </div>
+
+
+        <!-- 預約備註 (獨立顯眼區塊) -->
+        <div v-if="isEditMode && editableEvent" :class="['mb-4', !appointment.remarks ? 'mt-4' : '']">
+          <v-textarea
+            v-model="editableEvent.bookingRemarks"
+            label="預約備註"
+            variant="outlined"
+            density="compact"
+            auto-grow
+            rows="2"
+            hide-details="auto"
+            bg-color="amber-lighten-5"
+            color="warning"
+            prepend-inner-icon="mdi-note-text-outline"
+          ></v-textarea>
+        </div>
+        <v-alert
+          v-else-if="!isEditMode && !isEditingBookingRemarks && appointment.bookingRemarks"
+          variant="tonal" color="warning" icon="mdi-note-text-outline"
+          border="start" :class="['mb-4', !appointment.remarks ? 'mt-4' : 'mt-2', 'cursor-pointer']"
+          style="white-space: pre-wrap; word-wrap: break-word;"
+          @click="canEdit ? startInlineEdit('bookingRemarks') : null"
+          :title="canEdit ? '點擊即可編輯預約備註' : ''"
+        >
+          <template v-slot:title><div class="font-weight-bold">預約備註 <v-icon v-if="canEdit" size="x-small" color="grey-darken-1">mdi-pencil</v-icon></div></template>
+          {{ appointment.bookingRemarks }}
+        </v-alert>
+
+        <div v-else-if="!isEditMode && canEdit && (!appointment.bookingRemarks || isEditingBookingRemarks)" :class="['mb-4', !appointment.remarks ? 'mt-4' : 'mt-2']">
+           <v-textarea
+            v-if="isEditingBookingRemarks"
+            v-model="inlineEditingValues.bookingRemarks"
+            label="預約備註"
+            variant="outlined"
+            density="compact"
+            auto-grow
+            rows="2"
+            hide-details="auto"
+            bg-color="amber-lighten-5"
+            color="warning"
+            prepend-inner-icon="mdi-note-text-outline"
+            autofocus
+            :loading="isSavingInline"
+            @blur="saveInlineRemark('bookingRemarks')"
+          ></v-textarea>
+          <v-btn v-else-if="!appointment.bookingRemarks" variant="text" color="warning" prepend-icon="mdi-plus" @click="startInlineEdit('bookingRemarks')" size="small">新增預約備註</v-btn>
+        </div>
+
         <v-divider class="my-4"></v-divider>
         
         <v-expansion-panels v-model="panels" multiple variant="accordion">
@@ -402,7 +478,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel-appointment', 'update-inspectors', 'request-calendar-data']);
+const emit = defineEmits(['update:modelValue', 'save', 'inline-save', 'cancel-appointment', 'update-inspectors', 'request-calendar-data']);
 
 const dateAdapter = useDate();
 const isEditMode = ref(false);
@@ -421,6 +497,11 @@ const isOverbooking = ref(false);
 const isOverbookingConfirmDialogVisible = ref(false);
 const overbookingDetails = reactive({ date: '', time: '' });
 
+// 快速編輯狀態
+const isEditingImportantRemarks = ref(false);
+const isEditingBookingRemarks = ref(false);
+const isSavingInline = ref(false);
+const inlineEditingValues = reactive({ remarks: '', bookingRemarks: '' });
 
 const panels = ref([]);
 const projectConfig = ref(null);
@@ -464,7 +545,7 @@ const fieldConfig = [
   { title: '系統功能', fields: [ { key: 'showInMenu', label: '預約系統', icon: 'mdi-calendar-sync', isSwitch: true }, { key: 'allowMultipleBookings', label: '允許重複預約', icon: 'mdi-account-multiple-check-outline', isSwitch: true }, { key: 'initialReportUploadSwitch', label: '初驗報告上傳', icon: 'mdi-upload-network-outline', isSwitch: true }, { key: 'reInspectionReportUploadSwitch', label: '複驗報告上傳', icon: 'mdi-upload-network', isSwitch: true }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]},
   { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證', icon: 'mdi-card-account-details-outline' },{ key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' } ]},
   { title: '預約人資料', fields: [ { key: 'bookerName', label: '預約人姓名', icon: 'mdi-account-outline' }, { key: 'bookerPhone', label: '預約人電話', icon: 'mdi-cellphone', isTel: true }, { key: 'bookerEmail', label: '預約人EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'bookerIdNumber', label: '預約人身分證', icon: 'mdi-card-account-details-outline' } ]},
-  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true }, { key: 'bookingRemarks', label: '預約備註', icon: 'mdi-note-text-outline' }, ]},
+  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true } ]},
   { title: '驗屋文件及報告', fields: [  { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, ]}
 ];
 
@@ -523,6 +604,7 @@ async function enterEditMode() {
     fieldConfig.forEach(panel => panel.fields.forEach(field => allKeys.add(field.key)));
     allKeys.add('appointmentDate');
     allKeys.add('appointmentTimeSlot');
+    allKeys.add('bookingRemarks');
     
     allKeys.forEach(key => {
       const value = props.appointment[key];
@@ -585,7 +667,7 @@ async function saveChanges() {
     fieldConfig.flatMap(p => p.fields).filter(f => f.isDate).map(f => f.key)
   );
 const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => field.key));
-  const keysToCompare = [...new Set([...allFieldKeys, 'appointmentDate', 'appointmentTimeSlot', 'manualTimeSlot'])];
+  const keysToCompare = [...new Set([...allFieldKeys, 'appointmentDate', 'appointmentTimeSlot', 'manualTimeSlot', 'bookingRemarks'])];
 
   keysToCompare.forEach(key => {
     // ... (比較原始值和編輯後的值，填充 payload 的邏輯) ...
@@ -594,9 +676,27 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
     const editedValue = editableEvent.value[key];
     let changeDetected = false;
     if (key === 'appointmentDate' || dateKeys.has(key)) {
-      const originalTime = originalValue ? ((typeof originalValue.toDate === 'function') ? originalValue.toDate() : new Date(originalValue)).getTime() : null;
-      const editedTime = editedValue ? new Date(editedValue).getTime() : null;
-      if (!isNaN(editedTime) && originalTime !== editedTime) {
+      let originalStr = '';
+      let editedStr = '';
+
+      if (originalValue) {
+        const oDate = (typeof originalValue.toDate === 'function') ? originalValue.toDate() : new Date(originalValue);
+        if (!isNaN(oDate.getTime())) {
+          originalStr = format(oDate, 'yyyy-MM-dd');
+        }
+      }
+
+      if (editedValue) {
+        // 如果是字串格式 yyyy-MM-dd，Date 建構在不同瀏覽器可能轉為 UTC，改以穩定方式處理
+        const eDate = typeof editedValue === 'string' && editedValue.includes('-') 
+                      ? new Date(editedValue.split('-').join('/')) 
+                      : new Date(editedValue);
+        if (!isNaN(eDate.getTime())) {
+          editedStr = format(eDate, 'yyyy-MM-dd');
+        }
+      }
+
+      if (originalStr !== editedStr) {
         changeDetected = true;
       }
     } else {
@@ -727,6 +827,73 @@ async function handleInspectorsChange(newInspectors) {
     appointmentId: props.appointment.id,
     inspectors: newInspectors
   });
+}
+
+// 快速編輯處理
+function startInlineEdit(field) {
+  if (field === 'importantRemarks') {
+    inlineEditingValues.remarks = props.appointment?.remarks || '';
+    isEditingImportantRemarks.value = true;
+  } else if (field === 'bookingRemarks') {
+    inlineEditingValues.bookingRemarks = props.appointment?.bookingRemarks || '';
+    isEditingBookingRemarks.value = true;
+  }
+}
+
+async function saveInlineRemark(field) {
+  const originalValue = field === 'remarks' ? props.appointment?.remarks : props.appointment?.bookingRemarks;
+  const newValue = inlineEditingValues[field];
+  
+  if (originalValue === newValue) {
+    // 沒變動直接關閉編輯狀態
+    if (field === 'remarks') isEditingImportantRemarks.value = false;
+    else isEditingBookingRemarks.value = false;
+    return;
+  }
+
+  isSavingInline.value = true;
+  try {
+    const bookingPayload = {};
+    const householdPayload = {};
+    const householdDocId = props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`;
+
+    if (field === 'remarks') {
+      householdPayload['remarks'] = newValue; // 重要備註存於戶別
+    } else {
+      bookingPayload['bookingRemarks'] = newValue; // 預約備註存於預約
+    }
+
+    await updateAppointment(
+      props.appointment.id, 
+      bookingPayload, 
+      householdDocId, 
+      householdPayload
+    );
+
+    // 成功後直接修改本地 reference 以達到即時渲染的效果
+    if (field === 'remarks') {
+      props.appointment.remarks = newValue;
+    } else {
+      props.appointment.bookingRemarks = newValue;
+    }
+
+    // 發射專屬於 inline-edit 的事件，避免觸發父層監聽的 'save' 導致對話框自動關閉
+    const savedPayload = {
+      appointmentId: props.appointment.id,
+      householdDocId: householdDocId,
+      bookingPayload,
+      householdPayload
+    };
+    emit('inline-save', savedPayload);
+
+  } catch (error) {
+    console.error(`快速儲存備註失敗:`, error);
+    // 可加入全域錯誤提示，例如使用 Snackbar
+  } finally {
+    isSavingInline.value = false;
+    if (field === 'remarks') isEditingImportantRemarks.value = false;
+    else isEditingBookingRemarks.value = false;
+  }
 }
 
 //  新增：當日期變更時，重新獲取可用時段

@@ -995,10 +995,9 @@
                 清除
               </v-btn>
             </div>
-            <v-card-text>
+            <v-card-text style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;">
               <VueSignaturePad ref="delegatorSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }"></VueSignaturePad>
-              
-       </v-card-text>
+            </v-card-text>
       
           </v-card>
         <p class="text-caption text-grey text-center mt-1">完成簽名表示同意授權內容</p>

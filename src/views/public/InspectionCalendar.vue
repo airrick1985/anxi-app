@@ -745,7 +745,7 @@ import 'shepherd.js/dist/css/shepherd.css';
 import { ref, onMounted, computed, watch, reactive, onUnmounted ,nextTick} from 'vue';
 import { useRoute, useRouter } from 'vue-router'; 
 import { useUserStore } from '@/store/user';
-import { watchDebounced } from '@vueuse/core'; //
+import { watchDebounced, useStorage } from '@vueuse/core'; //
 import { getAuth } from 'firebase/auth';
 
 // ✅ 1. 引入新的 API 函數
@@ -818,8 +818,8 @@ const allPossibleTimeSlots = Array.from({ length: 48 }, (_, i) => {
   return `${hour}:${minute}`;
 });
 
-// 2. 用於儲存使用者勾選的時間
-const selectedTimeSlots = ref([]);
+// 2. 用於儲存使用者勾選的時間 (優化：使用 useStorage 並預設開啟全部時段)
+const selectedTimeSlots = useStorage(`inspection_calendar_time_slots_${projectId.value}`, [...allPossibleTimeSlots]);
 
 // 3. 控制時間選擇器選單的開關
 const timeSelectorMenu = ref({});
@@ -960,11 +960,17 @@ const fieldConfig = {
     { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'bankContact', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true }, { key: 'remarks', label: '重要備註', icon: 'mdi-alert-circle-outline', type: 'remark' }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]}
   ]
 };
-const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bookerName', label: '預約人姓名' }, { key: 'bookingType', label: '預約項目' }, { key: 'inspectionMethod', label: '選擇方式' }, { key: 'inspectionCompanyName', label: '代驗公司名稱' }, { key: 'bookingRemarks', label: '預約備註' }, { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null }, ]);
+const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bookerName', label: '預約人姓名' }, { key: 'bookingType', label: '預約項目' }, { key: 'inspectionMethod', label: '選擇方式' }, { key: 'inspectionCompanyName', label: '代驗公司名稱' }, { key: 'remarks', label: '重要備註' }, { key: 'bookingRemarks', label: '預約備註' }, { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null }, ]);
 const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' }, { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' }, ];
 const EXCEL_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' }, { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' }, ];
-const selectedDisplayFields = ref(displayFieldOptions.value.map(field => field.key));
+
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
+
+// 優化：使用 useStorage 記住使用者的標題顯示選項設定，key 加入 projectId 區分不同建案
+const selectedDisplayFields = useStorage(
+  `inspection_calendar_display_fields_${projectId.value}`, 
+  displayFieldOptions.value.map(field => field.key)
+);
 const pageTitle = computed(() => `${projectName.value} - 預約時間表`);
 const currentTypeOptions = computed(() => {
   if (projectSettings.value && Array.isArray(projectSettings.value.bookingTypes)) {
@@ -972,8 +978,9 @@ const currentTypeOptions = computed(() => {
   }
   return []; 
 });
-const selectedTypes = ref([]);
-const selectedStatuses = ref(['預約中', '取消', '已完成']);
+// 優化：使用 useStorage 記住使用者的項目與狀態篩選設定
+const selectedTypes = useStorage(`inspection_calendar_selected_types_${projectId.value}`, []);
+const selectedStatuses = useStorage(`inspection_calendar_selected_statuses_${projectId.value}`, ['預約中', '取消', '已完成']);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const isAnyOverlayActive = computed(() => {
@@ -1460,51 +1467,7 @@ async function loadDataForProject() {
   }
 }
 
-const isInitializing = ref(false);
-watch([
-  projectName, 
-  () => userStore.currentUserPreferences
-], ([newName, preferences]) => {
-  // 確保 projectName 有效
-  if (newName && newName !== '讀取中...') {
-    
-    // ✅ [新增建議] 如果 preferences 是空的物件，且使用者剛登入，可能會有短暫的時間差
-    // 但因為我們在 setUser 就寫入了，理論上是同步的。
-    
-    const savedTimeSlots = preferences?.calendarTimeSlots;
-
-    // 檢查是否真的需要更新（避免不必要的觸發）
-    const currentSelectionStr = JSON.stringify([...selectedTimeSlots.value].sort());
-    const savedSlotsStr = savedTimeSlots ? JSON.stringify([...savedTimeSlots].sort()) : null;
-
-    if (savedTimeSlots && savedTimeSlots.length > 0) {
-      // 只有當儲存的設定與目前選擇不同時，才更新
-      if (currentSelectionStr !== savedSlotsStr) {
-        isInitializing.value = true;
-        selectedTimeSlots.value = [...savedTimeSlots];
-        
-        // Debug Log: 確認有讀取到
-        console.log('已載入使用者自訂時段:', savedTimeSlots);
-
-        nextTick(() => {
-          isInitializing.value = false;
-        });
-      }
-    } else if (selectedTimeSlots.value.length === 0) {
-      // 如果沒有儲存過的設定，且目前是空的，才使用專案預設值
-      const defaultSlots = PROJECT_TIME_SLOTS[newName] || PROJECT_TIME_SLOTS.default;
-      isInitializing.value = true;
-      selectedTimeSlots.value = [...defaultSlots];
-      
-      // Debug Log
-      console.log('無自訂時段，載入專案預設值');
-
-      nextTick(() => {
-        isInitializing.value = false;
-      });
-    }
-  }
-}, { immediate: true, deep: true });
+/* 移除舊版 userStore 偏好設定同步邏輯，改用 useStorage */
 
 // 監聽 Dialog 開啟，開啟時預設勾選所有當前篩選的項目
 watch(isStatisticsDialogVisible, (newValue) => {
@@ -1610,33 +1573,7 @@ watchDebounced(searchQuery, async (newQuery) => {
 }, { debounce: 500 } // 延遲 500ms 觸發
 );
 
-// ✅ 新增：監聽 selectedTimeSlots 的變化，並將其儲存回使用者偏好設定
-watchDebounced(
-  selectedTimeSlots,
-  (newTimeSlots) => {
-    // 檢查 isInitializing 旗標，
-    // 避免在組件剛載入並「套用」偏好設定時，又立刻觸發「儲存」
-    if (isInitializing.value) {
-      return;
-    }
-
-    if (userStore.user) {
-      console.log('[InspectionCalendar] 偵測到時間篩選變更，正在儲存使用者偏好設定...');
-      // 呼叫 userStore 中的 action，
-      // 它會觸發 api.js 中的 saveUserPreferencesToBackend
-      userStore.updateUserPreferences({
-        calendarTimeSlots: newTimeSlots
-      });
-      
-      // (可選) 顯示一個短暫的提示
-      // showSnackbar('已儲存您的時間篩選偏好', 'info');
-    }
-  },
-  { 
-    debounce: 2000, // 延遲 2 秒儲存
-    deep: true 
-  }
-);
+/* 移除舊版 watchDebounced 同步 backend 的邏輯，因為已經由 useStorage 管理自動寫入 localStorage */
 
 
 // (watch dateRange 函數保持不變)

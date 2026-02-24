@@ -263,6 +263,44 @@
  </v-dialog>
 
 
+  <v-dialog v-model="isConfirmingDeleteReport" width="auto" persistent>
+   <v-card>
+     <v-card-title class="text-h5 text-error">
+       ⚠️ 確認刪除驗屋報告
+     </v-card-title>
+     <v-card-text>
+       您確定要將戶別 <strong>{{ deleteReportRowData?.unitId }}</strong> 的驗屋報告「{{ deleteReportTarget?.name }}」作廢嗎？<br><br>
+       此操作會：<br>
+       1. 將 Google Drive 上的資料夾名稱加上(作廢)標記以保留檔案。<br>
+       2. 報告將從清單中移除，無法復原。
+     </v-card-text>
+     <v-card-actions>
+       <v-spacer></v-spacer>
+       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingDeleteReport = false" :disabled="isDeletingReport">取消</v-btn>
+       <v-btn color="error" variant="flat" @click="executeDeleteReport" :loading="isDeletingReport">確認作廢</v-btn>
+     </v-card-actions>
+   </v-card>
+ </v-dialog>
+
+  <v-dialog v-model="isConfirmingMarkDownloaded" width="auto" persistent>
+   <v-card>
+     <v-card-title class="text-h5 text-success">
+       ✅ 標記驗屋報告為已下載
+     </v-card-title>
+     <v-card-text>
+       您確定要將戶別 <strong>{{ markDownloadedRowData?.unitId }}</strong> 的驗屋報告「{{ markDownloadedTarget?.name }}」標記為已下載嗎？<br><br>
+       此操作會：<br>
+       1. 將 Google Drive 上的檔案加註(已下載)。<br>
+       2. LINE小助理將不再提醒未下載<br>
+     </v-card-text>
+     <v-card-actions>
+       <v-spacer></v-spacer>
+       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingMarkDownloaded = false" :disabled="isMarkingDownloaded">取消</v-btn>
+       <v-btn color="success" variant="flat" @click="executeMarkDownloaded" :loading="isMarkingDownloaded">確認標記</v-btn>
+     </v-card-actions>
+   </v-card>
+ </v-dialog>
+
  <v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
   {{ snackbar.text }}
 </v-snackbar>
@@ -275,7 +313,7 @@ import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "ag-grid-enterprise";
@@ -320,6 +358,103 @@ const isParsing = ref(false);
 const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
+
+// --- 作廢驗屋報告狀態 ---
+const isConfirmingDeleteReport = ref(false);
+const isDeletingReport = ref(false);
+const deleteReportTarget = ref(null);
+const deleteReportRowData = ref(null);
+
+const confirmDeleteReport = (file, rowData) => {
+  deleteReportTarget.value = file;
+  deleteReportRowData.value = rowData;
+  isConfirmingDeleteReport.value = true;
+};
+
+const executeDeleteReport = async () => {
+  if (!deleteReportTarget.value || !deleteReportRowData.value) return;
+  isDeletingReport.value = true;
+  
+  try {
+    const operatorName = userStore.user?.name || '未知使用者';
+    const response = await deprecateInspectionReport({
+      projectId: projectId.value,
+      unitId: deleteReportRowData.value._docId,
+      fileUrl: deleteReportTarget.value.url,
+      operatorName: operatorName
+    });
+    
+    if (response.status === 'success') {
+      snackbar.text = '報告已成功作廢並移除';
+      snackbar.color = 'success';
+      snackbar.show = true;
+    } else {
+      throw new Error(response.message || '作廢失敗');
+    }
+  } catch (err) {
+    console.error(err);
+    snackbar.text = `作廢報告失敗: ${err.message}`;
+    snackbar.color = 'error';
+    snackbar.show = true;
+  } finally {
+    isDeletingReport.value = false;
+    isConfirmingDeleteReport.value = false;
+    deleteReportTarget.value = null;
+    deleteReportRowData.value = null;
+  }
+};
+
+// --- 標記已下載狀態 ---
+const isConfirmingMarkDownloaded = ref(false);
+const isMarkingDownloaded = ref(false);
+const markDownloadedTarget = ref(null);
+const markDownloadedRowData = ref(null);
+
+const confirmMarkDownloaded = (file, rowData) => {
+  markDownloadedTarget.value = file;
+  markDownloadedRowData.value = rowData;
+  isConfirmingMarkDownloaded.value = true;
+};
+
+const executeMarkDownloaded = async () => {
+  if (!markDownloadedTarget.value || !markDownloadedRowData.value) return;
+  isMarkingDownloaded.value = true;
+  
+  try {
+    const operatorName = userStore.user?.name || '未知使用者';
+    let fileUrl = markDownloadedTarget.value.url;
+    
+    // 如果網址沒有附帶協議，預防性補上
+    if (!fileUrl.startsWith('http')) {
+        fileUrl = 'https://' + fileUrl;
+    }
+    
+    const response = await markInspectionReportDownloaded({
+      projectId: projectId.value,
+      unitId: markDownloadedRowData.value._docId,
+      fileUrl: fileUrl,
+      operatorName: operatorName
+    });
+    
+    if (response.status === 'success') {
+      snackbar.text = '報告已成功標記為已下載';
+      snackbar.color = 'success';
+      snackbar.show = true;
+    } else {
+      throw new Error(response.message || '標記失敗');
+    }
+  } catch (err) {
+    console.error(err);
+    snackbar.text = `標記報告失敗: ${err.message}`;
+    snackbar.color = 'error';
+    snackbar.show = true;
+  } finally {
+    isMarkingDownloaded.value = false;
+    isConfirmingMarkDownloaded.value = false;
+    markDownloadedTarget.value = null;
+    markDownloadedRowData.value = null;
+  }
+};
 
 // 動態欄位相關狀態 ---
 const projectConfig = ref(null); // [新增] 用於查找客戶回傳功能的設定
@@ -583,7 +718,7 @@ const baseColDefs = computed(() => {
     { headerName: '複驗方式', field: 'reInspectionMethod' },
     { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
     { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-     { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false } ,
+     { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false, cellRendererParams: { onDelete: confirmDeleteReport, onDownloadMark: confirmMarkDownloaded } } ,
     { headerName: '驗屋報告資料夾', field: 'inspectionReportFolderUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { 

@@ -2525,7 +2525,11 @@ export const validateId = async (projectName, unitId, idNumber, projectId) => {
  * 上傳驗屋授權書 (Firebase Function 版) (V2: 呼叫 bookingApi 路由)
  */
 export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) => {
-  const pureBase64 = base64Data.split(',')[1];
+  console.log('[API] uploadAuthLetter params:', { fileName, projectId, unitId, hasBase64: !!base64Data });
+  if (!projectId || !unitId || !fileName || !base64Data) {
+    return { status: 'error', message: `前端缺少必要參數 (projectId=${projectId}, unitId=${unitId}, fileName=${fileName}, hasBase64=${!!base64Data})` };
+  }
+  const pureBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
@@ -3472,6 +3476,38 @@ export const uploadInspectionHouseholds = async (projectId, householdsData) => {
     return { status: "error", message: error.message };
   }
 }
+
+/**
+ * 【新增】停用/刪除驗屋報告，並重命名 Google Drive 資料夾作廢
+ * @param {object} data - { projectId, unitId, fileUrl, operatorName }
+ * @returns {Promise<object>}
+ */
+export const deprecateInspectionReport = async (data) => {
+  try {
+    const fn = httpsCallable(functions, 'deprecateInspectionReport');
+    const result = await fn(data);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 deprecateInspectionReport 時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+};
+
+/**
+ * 【新增】標記驗屋報告為已下載
+ * @param {object} data - { projectId, unitId, fileUrl, operatorName }
+ * @returns {Promise<object>}
+ */
+export const markInspectionReportDownloaded = async (data) => {
+  try {
+    const fn = httpsCallable(functions, 'markInspectionReportDownloaded');
+    const result = await fn(data);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 markInspectionReportDownloaded 時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+};
 
 
 /**

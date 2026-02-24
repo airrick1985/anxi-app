@@ -21695,3 +21695,222 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
     console.error(`[${functionName}] 錯誤:`, error);
   }
 });
+
+
+/**
+ * [新增] 停用/刪除驗屋報告，並重命名 Google Drive 資料夾作廢
+ * 
+ * 步驟：
+ * 1. 利用 fileUrl 反查 Google Drive fileId。
+ * 2. 獲取該檔案的父資料夾。
+ * 3. 取得父資料夾原名並重命名為 `${原名}-${operatorName}-(作廢)`。
+ * 4. 從 Firestore `households` 文件中移除該 URL。
+ */
+exports.deprecateInspectionReport = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
+  const { projectId, unitId, fileUrl, operatorName } = request.data;
+  const functionName = `deprecateInspectionReport (Project: ${projectId}, Unit: ${unitId})`;
+
+  if (!projectId || !unitId || !fileUrl || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 1. 從 URL 提取 fileId
+    let fileId = null;
+    const dMatch = fileUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const idMatch = fileUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (dMatch && dMatch[1]) {
+      fileId = dMatch[1];
+    } else if (idMatch && idMatch[1]) {
+      fileId = idMatch[1];
+    }
+
+    if (!fileId) {
+      throw new HttpsError("invalid-argument", "無法從 URL 解析出 Google Drive 檔案 ID。");
+    }
+
+    const drive = getAuthenticatedDriveClient();
+
+    // 2. 取得此檔案資訊 (我們需要 parents)
+    const fileRes = await drive.files.get({ fileId: fileId, fields: 'name, parents' });
+    if (!fileRes.data.parents || fileRes.data.parents.length === 0) {
+      throw new HttpsError("failed-precondition", "找不到該檔案的父資料夾。");
+    }
+    const parentId = fileRes.data.parents[0];
+
+    // 新增：檔案名稱加上 (作廢)
+    const originalFileName = fileRes.data.name;
+    if (!originalFileName.includes('(作廢)')) {
+      const newFileName = `(作廢)${originalFileName}`;
+      await drive.files.update({
+        fileId: fileId,
+        requestBody: { name: newFileName }
+      });
+      console.log(`[${functionName}] 檔案已重命名為: ${newFileName}`);
+    } else {
+      console.log(`[${functionName}] 檔案已包含 (作廢)，跳過檔案更名。`);
+    }
+
+    // 3. 取得父資料夾資訊與原名稱
+    const folderRes = await drive.files.get({ fileId: parentId, fields: 'name' });
+    const originalFolderName = folderRes.data.name;
+
+    // 此部分避免已經被作廢過又被執行
+    if (!originalFolderName.includes('(作廢)')) {
+      // 4. 更名父資料夾 (加上登入人員姓名與作廢)
+      const newFolderName = `${originalFolderName}-${operatorName}-(作廢)`;
+      await drive.files.update({
+        fileId: parentId,
+        requestBody: { name: newFolderName }
+      });
+      console.log(`[${functionName}] 父資料夾已重命名為: ${newFolderName}`);
+    } else {
+      console.log(`[${functionName}] 父資料夾已作廢過，跳過更名。`);
+    }
+
+    // 5. 從 Firestore 移除該筆資料
+    const docRef = db.collection('households').doc(unitId);
+    await db.runTransaction(async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+      if (!docSnap.exists) {
+        throw new HttpsError("not-found", "找不到指定的戶別資料。");
+      }
+
+      const data = docSnap.data();
+      if (data.projectId !== projectId) {
+        throw new HttpsError("permission-denied", "專案 ID 不符。");
+      }
+
+      const currentReports = data.inspectionReportUrl || [];
+      // 過濾掉符合該 fileUrl 的項目
+      const updatedReports = currentReports.filter(report => report.url !== fileUrl);
+
+      transaction.update(docRef, { inspectionReportUrl: updatedReports });
+    });
+
+    console.log(`[${functionName}] 已從 Firestore households 更新並移除驗屋報告 URL: ${fileUrl}`);
+
+    return { status: "success", message: "報告已成功作廢並移除記錄。" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `作廢報告時發生內部錯誤: ${error.message}`);
+  }
+});
+
+
+/**
+ * [新增] 標記驗屋報告為已下載
+ *
+ * 步驟：
+ * 1. 利用 fileUrl 反查 Google Drive fileId。
+ * 2. 更名檔案，加上 `-(已下載)` (若無)。
+ * 3. 獲取該檔案的父資料夾，並更名為 `${原名}-${operatorName}-(已下載)` (若無)。
+ * 4. 在 Firestore households.inspectionReportUrl 中，針對對應的報告加上 isDownloaded: true 屬性。
+ */
+exports.markInspectionReportDownloaded = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
+  const { projectId, unitId, fileUrl, operatorName } = request.data;
+  const functionName = `markInspectionReportDownloaded (Project: ${projectId}, Unit: ${unitId})`;
+
+  if (!projectId || !unitId || !fileUrl || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 1. 從 URL 提取 fileId
+    let fileId = null;
+    const dMatch = fileUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const idMatch = fileUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (dMatch && dMatch[1]) {
+      fileId = dMatch[1];
+    } else if (idMatch && idMatch[1]) {
+      fileId = idMatch[1];
+    }
+
+    if (!fileId) {
+      throw new HttpsError("invalid-argument", "無法從 URL 解析出 Google Drive 檔案 ID。");
+    }
+
+    const drive = getAuthenticatedDriveClient();
+
+    // 2. 取得檔案本身名稱與 parent 資訊
+    const fileRes = await drive.files.get({ fileId: fileId, fields: 'name, parents' });
+    const originalFileName = fileRes.data.name;
+
+    // 若尚未加上 (已下載)，則更名檔案
+    if (!originalFileName.includes('(已下載)')) {
+      const newFileName = `(已下載)${originalFileName}`;
+
+      await drive.files.update({
+        fileId: fileId,
+        requestBody: { name: newFileName }
+      });
+      console.log(`[${functionName}] 檔案已重命名為: ${newFileName}`);
+    } else {
+      console.log(`[${functionName}] 檔案已包含 (已下載)，跳過更名。`);
+    }
+
+    if (!fileRes.data.parents || fileRes.data.parents.length === 0) {
+      throw new HttpsError("failed-precondition", "找不到該檔案的父資料夾。");
+    }
+
+    const parentId = fileRes.data.parents[0];
+    const folderRes = await drive.files.get({ fileId: parentId, fields: 'name' });
+    const originalFolderName = folderRes.data.name;
+
+    // 3. 處理父資料夾更名
+    if (!originalFolderName.includes('(已下載)')) {
+      const newFolderName = `${originalFolderName}-${operatorName}-(已下載)`;
+      await drive.files.update({
+        fileId: parentId,
+        requestBody: { name: newFolderName }
+      });
+      console.log(`[${functionName}] 父資料夾已重命名為: ${newFolderName}`);
+    } else {
+      console.log(`[${functionName}] 父資料夾已包含 (已下載)，跳過更名。`);
+    }
+
+    // 4. 更新 Firestore
+    const docRef = db.collection('households').doc(unitId);
+    await db.runTransaction(async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+      if (!docSnap.exists) {
+        throw new HttpsError("not-found", "找不到指定的戶別資料。");
+      }
+
+      const data = docSnap.data();
+      if (data.projectId !== projectId) {
+        throw new HttpsError("permission-denied", "專案 ID 不符。");
+      }
+
+      const currentReports = data.inspectionReportUrl || [];
+      let isUpdated = false;
+
+      // 更新目標報告的屬性
+      const updatedReports = currentReports.map(report => {
+        if (report.url === fileUrl) {
+          isUpdated = true;
+          return { ...report, isDownloaded: true };
+        }
+        return report;
+      });
+
+      if (isUpdated) {
+        transaction.update(docRef, { inspectionReportUrl: updatedReports });
+      }
+    });
+
+    console.log(`[${functionName}] 已在 Firestore households 更新目標檔案屬性為 isDownloaded: true`);
+
+    return { status: "success", message: "報告已成功標記並更新 Google Drive 名稱。" };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `標記報告已下載時發生內部錯誤: ${error.message}`);
+  }
+});
+

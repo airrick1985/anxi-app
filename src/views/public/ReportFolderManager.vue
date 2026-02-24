@@ -5,6 +5,7 @@
         <v-toolbar-title class="font-weight-bold">驗屋報告管理</v-toolbar-title>
         <v-spacer></v-spacer>
        <v-btn
+          v-if="!isInternal"
           variant="outlined"
           @click="goBack"
           prepend-icon="mdi-arrow-left"
@@ -182,7 +183,7 @@
 <script setup>
 import { ref, onMounted, computed, watch, reactive } from 'vue';
 import liff from '@line/liff';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useDriveStore } from '@/store/driveStore';
 import { getProjectSettings, getReportFolderStructure, driveProxyList } from '@/api';
 import { useUserStore } from '@/store/user';
@@ -198,6 +199,8 @@ const props = defineProps({
 // ✓ END: 修改
 
 const router = useRouter();
+const route = useRoute();
+const isInternal = computed(() => route.name === 'InternalReportFolderManager');
 const driveStore = useDriveStore();
 const userStore = useUserStore();
 const isLoading = ref(true);
@@ -232,6 +235,45 @@ const getStatusChipColor = (status) => { if (status.includes('作廢')) return '
 // ✓ START: 修改 - 處理有/無 projectId 的不同載入邏輯
 onMounted(async () => {
   try {
+    // 優先檢查是否在主系統已經登入 (Web App 的狀態)
+    if (userStore.isLoggedIn && userStore.user?.key) {
+      isBound.value = true;
+      username.value = userStore.user?.name || 'User';
+      if (props.projectId) {
+        selectedProject.value = props.projectId;
+        await loadProjectData(selectedProject.value);
+      } else if (authorizedProjects.value.length === 1) {
+        selectedProject.value = authorizedProjects.value[0].value;
+        await loadProjectData(selectedProject.value);
+      }
+      isLoading.value = false;
+      return; // 結束，不走 LIFF 初始化
+    }
+
+    // 檢查 URL 中是否有 userKey 參數
+    const userKey = route.query.userKey;
+    if (userKey) {
+      loadingText.value = '正在驗證使用者身份...';
+      const success = await userStore.fetchUserByUserKey(userKey);
+      
+      if (success) {
+        isBound.value = true;
+        username.value = userStore.user?.name || 'User';
+        
+        if (props.projectId) {
+          selectedProject.value = props.projectId;
+          await loadProjectData(selectedProject.value);
+        } else if (authorizedProjects.value.length === 1) {
+          selectedProject.value = authorizedProjects.value[0].value;
+          await loadProjectData(selectedProject.value);
+        }
+      } else {
+        isBound.value = false;
+      }
+      isLoading.value = false;
+      return; // 結束，不走 LIFF 初始化
+    }
+
     loadingText.value = '正在與 LINE 連接...';
     await liff.init({ liffId: '2008257338-gYnbKlpR' });  //正式 2008257338-gYnbKlpR      測試 2008257338-6N3jwqxA
     if (!liff.isLoggedIn()) {

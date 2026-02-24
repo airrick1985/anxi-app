@@ -63,7 +63,7 @@
       v-bind="props"
       prepend-icon="mdi-folder-google-drive"
       title="驗屋報告管理"
-      :to="{ name: 'ReportFolderManager', params: { projectId: projectId } }"
+      :to="{ name: 'InternalReportFolderManager', params: { projectId: projectId } }"
       exact-path
     ></v-list-item>
   </template>

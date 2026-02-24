@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { db } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence,getLiffUserData } from '@/api';
-import router from '@/router'; 
+import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence, getLiffUserData } from '@/api';
+import router from '@/router';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -16,7 +16,7 @@ export const useUserStore = defineStore('user', {
   actions: {
     setUser(userData, sessionId) {
       if (userData && typeof userData === 'object' && userData.key) {
-        
+
         // ✅ 新增：在設定 user state 之前，先處理權限資料的轉換
         const permissions = {};
         if (Array.isArray(userData.detailedPermissions)) {
@@ -35,14 +35,14 @@ export const useUserStore = defineStore('user', {
             permissions[p.projectId].systems.push(p.system);
           });
         }
-        
+
         this.user = {
           key: userData.key,
           email: userData.email || null,
           name: userData.name || null,
           roles: userData.roles || [],
           // ✅ 修改：使用上面轉換好的 permissions 物件，而不是舊的邏輯
-          permissions: permissions, 
+          permissions: permissions,
           preferences: userData.preferences || {},
         };
         this.sessionId = sessionId;
@@ -59,7 +59,7 @@ export const useUserStore = defineStore('user', {
 
     clearUser() {
       this.user = null;
-      this.sessionId = null; 
+      this.sessionId = null;
       this.detailedPermissions = [];
       this.unreadCount = 0;
     },
@@ -69,19 +69,19 @@ export const useUserStore = defineStore('user', {
         this.clearUser();
         return false;
       }
-      
+
       try {
         // 1. 呼叫 API 驗證綁定 (維持原樣，這是為了確認 LIFF 身份)
         const liffData = await getLiffUserData({ lineId: lineId });
-        
+
         if (liffData.status === 'not_bound') {
-            console.warn(`[UserStore] LIFF ID [${lineId}] 尚未綁定。`);
-            this.clearUser();
-            return false;
+          console.warn(`[UserStore] LIFF ID [${lineId}] 尚未綁定。`);
+          this.clearUser();
+          return false;
         }
 
         if (liffData.status !== 'bound') {
-            throw new Error(liffData.message || '獲取 LIFF 用戶資料失敗');
+          throw new Error(liffData.message || '獲取 LIFF 用戶資料失敗');
         }
 
         // 2. 查詢 Users 集合取得 userKey
@@ -94,28 +94,28 @@ export const useUserStore = defineStore('user', {
           this.clearUser();
           return false;
         }
-        
+
         const userDoc = userSnapshot.docs[0];
         const userData = userDoc.data();
         const userKey = userDoc.id;
-        
+
         // ✅ [關鍵升級] 直接從資料庫讀取完整權限，不依賴 API 回傳的簡略版
         console.log(`[UserStore] 正在讀取權限資料: userPermissions/${userKey}`);
         const permRef = doc(db, "userPermissions", userKey);
         const permSnap = await getDoc(permRef);
-        
+
         let finalPermissions = {};
-        
+
         if (permSnap.exists()) {
-            const permData = permSnap.data();
-            // 使用資料庫裡的 permissions 物件 (包含客資、驗屋等所有系統)
-            finalPermissions = permData.permissions || {};
-            console.log('[UserStore] 成功取得完整權限:', Object.keys(finalPermissions));
+          const permData = permSnap.data();
+          // 使用資料庫裡的 permissions 物件 (包含客資、驗屋等所有系統)
+          finalPermissions = permData.permissions || {};
+          console.log('[UserStore] 成功取得完整權限:', Object.keys(finalPermissions));
         } else {
-            // 如果沒有獨立權限檔，才勉強使用 API 回傳的 (降級備案)
-            // 但根據您的資料結構，應該都有 userPermissions
-            console.warn(`[UserStore] 找不到 userPermissions/${userKey}，將使用 API 回傳資料`);
-            // 這裡可以放舊的轉換邏輯當備案，或者直接留空
+          // 如果沒有獨立權限檔，才勉強使用 API 回傳的 (降級備案)
+          // 但根據您的資料結構，應該都有 userPermissions
+          console.warn(`[UserStore] 找不到 userPermissions/${userKey}，將使用 API 回傳資料`);
+          // 這裡可以放舊的轉換邏輯當備案，或者直接留空
         }
 
         const preferences = await fetchUserPreferencesFromBackend(userKey);
@@ -128,13 +128,13 @@ export const useUserStore = defineStore('user', {
           email: userData.email,
           roles: userData.roles || [],
           // ✅ 將完整的權限資料寫入 State
-          permissions: finalPermissions, 
+          permissions: finalPermissions,
           preferences: preferences || {},
         };
-        
+
         // 更新 detailedPermissions 供 UI 使用
         this.detailedPermissions = this.getDetailedPermissions(finalPermissions);
-        
+
         manageUserPresence(userKey);
         return true;
 
@@ -145,22 +145,73 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    async fetchUserByUserKey(userKey) {
+      if (!userKey) {
+        this.clearUser();
+        return false;
+      }
+      try {
+        const userRef = doc(db, "users", userKey);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          console.warn(`在 Firestore 中找不到對應的 userKey: ${userKey}`);
+          this.clearUser();
+          return false;
+        }
+
+        const userData = userSnap.data();
+
+        console.log(`[UserStore] 正在讀取權限資料: userPermissions/${userKey}`);
+        const permRef = doc(db, "userPermissions", userKey);
+        const permSnap = await getDoc(permRef);
+
+        let finalPermissions = {};
+        if (permSnap.exists()) {
+          finalPermissions = permSnap.data().permissions || {};
+          console.log('[UserStore] 成功取得完整權限:', Object.keys(finalPermissions));
+        } else {
+          console.warn(`[UserStore] 找不到 userPermissions/${userKey}`);
+        }
+
+        const preferences = await fetchUserPreferencesFromBackend(userKey);
+
+        this.user = {
+          key: userKey,
+          lineId: userData.lineId || null,
+          name: userData.name,
+          email: userData.email,
+          roles: userData.roles || [],
+          permissions: finalPermissions,
+          preferences: preferences || {},
+        };
+
+        this.detailedPermissions = this.getDetailedPermissions(finalPermissions);
+        manageUserPresence(userKey);
+        return true;
+      } catch (error) {
+        console.error("fetchUserByUserKey 發生錯誤:", error);
+        this.clearUser();
+        return false;
+      }
+    },
+
     async loginWithLine(lineId) {
       try {
         console.log('[UserStore] 嘗試使用 LINE ID 登入:', lineId);
-        
+
         // 呼叫後端 API 檢查此 Line ID 是否綁定
         // 注意: 這裡假設您有一支 API 叫 getLiffUserData 或類似名稱
         // 如果您的後端檢查函數名稱不同，請在此替換
-        const response = await getLiffUserData(lineId); 
+        const response = await getLiffUserData(lineId);
 
         if (response && response.status === 'success' && response.userData) {
           // 綁定成功，設定使用者狀態
           // 注意：後端回傳的 userData 結構可能需要轉換以符合 setUser 的預期
           // 這裡假設 setUser 會處理權限轉換 (因為您之前的代碼有寫轉換邏輯)
-          
+
           const userData = response.userData;
-          
+
           // 呼叫自身的 setUser 來更新 Pinia state
           this.setUser(userData, null); // sessionId 暫時傳 null 或由後端提供
 
@@ -193,10 +244,10 @@ export const useUserStore = defineStore('user', {
       }
       return permsArray;
     },
-    
+
     async loadUserPreferencesFromDatabase() {
       if (!this.user?.key) return;
-      
+
       try {
         const preferences = await fetchUserPreferencesFromBackend(this.user.key);
         if (preferences) {
@@ -296,23 +347,23 @@ export const useUserStore = defineStore('user', {
     isLoggedIn: (state) => !!state.user,
     currentUserRoles: (state) => state.user?.roles || [],
     currentUserPreferences: (state) => state.user?.preferences || {},
-    
+
     hasProjectPermission: (state) => (systemName, projectName) => {
       const permissions = state.user?.permissions;
       if (!permissions || !projectName) {
         return false;
       }
-      
+
       for (const projectId in permissions) {
         const project = permissions[projectId];
         if (project.projectName === projectName) {
           return project.systems?.includes(systemName) || false;
         }
       }
-      
+
       return false;
     },
-    
+
     hasPermission: (state) => (systemName) => {
       const permissions = state.user?.permissions;
       if (!permissions) return false;
@@ -347,7 +398,7 @@ export const useUserStore = defineStore('user', {
 
   persist: {
     key: 'anxi-user-session',
-    storage: sessionStorage, 
+    storage: sessionStorage,
     paths: ['user', 'detailedPermissions', 'unreadCount', 'sessionId']
   }
 });
