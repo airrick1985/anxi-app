@@ -15,8 +15,6 @@
       <v-tabs v-model="activeTab" bg-color="primary">
         <v-tab value="batches">批次管理</v-tab>
         <v-tab value="settings">驗屋預約設定</v-tab>
-        <v-tab value="customer-messages">客戶回傳功能</v-tab>
-        <v-tab value="report-settings">驗屋報告設定</v-tab>
         <v-tab value="sheet-sync" v-if="isAdmin"><v-icon size="small" color="amber-darken-2" class="mr-1">mdi-shield-crown-outline</v-icon>Sheet 同步管理</v-tab>
         <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
         <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
@@ -155,8 +153,19 @@
             </div>
             
             <div v-else class="settings-form-container pa-4">
+              <v-tabs v-model="settingsSubTab" color="primary" class="mb-4">
+                <v-tab value="general">一般與狀態設定</v-tab>
+                <v-tab value="content">頁面內容與公告</v-tab>
+                <v-tab value="rules">預約選單與人員</v-tab>
+                <v-tab value="report-settings">驗屋報告上傳設定</v-tab>
+                <v-tab value="customer-messages">客戶回傳功能設定</v-tab>
+              </v-tabs>
+              
               <v-form>
-                <!-- 預約頁面路徑顯示 -->
+                <v-window v-model="settingsSubTab">
+                  <!-- Tab 1: 一般與狀態設定 -->
+                  <v-window-item value="general" transition="fade-transition" reverse-transition="fade-transition">
+                    <!-- 預約頁面路徑顯示 -->
                 <v-card variant="outlined" class="mb-6">
                   <v-card-text>
                     <div class="text-subtitle-2 font-weight-bold mb-2">{{ projectName }}-預約系統網址</div>
@@ -185,6 +194,42 @@
 
                 <v-card variant="outlined" class="mb-6">
   <v-card-text>
+    <div class="d-flex align-center mb-4">
+      <div class="flex-grow-1">
+        <v-switch
+          v-model="projectSettings.validateId"
+          label="啟用身分證驗證"
+          true-value="ON"
+          false-value="OFF"
+          color="primary"
+          inset
+          hide-details
+        ></v-switch>
+        <div class="text-caption text-grey-darken-1 ml-4 mt-n2">啟用後，客戶在預約時需輸入與產權人相符身分證號，以免預約時戶別及產權人不符</div>
+      </div>
+    </div>
+    <div class="d-flex align-center mb-6">
+      <div class="flex-grow-1">
+        <v-switch
+          v-if="isAdmin"
+          v-model="projectSettings.checkDuplicate"
+          true-value="ON"
+          false-value="OFF"
+          color="primary"
+          inset
+          hide-details
+        >
+          <template v-slot:label>
+            <v-icon color="amber-darken-2" class="mr-2">mdi-shield-crown-outline</v-icon>
+            <span>檢查重複預約</span>
+          </template>
+        </v-switch>
+        <div v-if="isAdmin" class="text-caption text-grey-darken-1 ml-4 mt-n2">啟用後，系統會檢查同一戶別、同一預約項目是否已有有效預約</div>
+      </div>
+    </div>
+
+    <v-divider class="my-4"></v-divider>
+
     <div class="d-flex align-center">
       <div>
         <div class="text-h6 font-weight-bold">系統開放狀態</div>
@@ -300,110 +345,11 @@
     </v-expand-transition>
   </v-card-text>
 </v-card>
-                <v-divider class="my-6"></v-divider>
-                <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳</p>
-                <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
-                <v-sheet border rounded class="pa-4 text-center">
-                  <v-img :src="projectSettings.logoUrl" height="60" contain class="mb-4 bg-grey-lighten-4">
-                    <template v-slot:placeholder>
-                      <div class="d-flex align-center justify-center fill-height">
-                        <span class="text-grey-darken-1">圖片檔案大小請勿超過 1MB</span>
-                      </div>
-                    </template>
-                  </v-img>
-                  <v-file-input
-                    label="選擇 Logo 圖片"
-                    accept="image/*"
-                    variant="outlined"
-                    density="compact"
-                    prepend-icon="mdi-camera"
-                    hide-details
-                    @change="handleLogoUpload"
-                  ></v-file-input>
-                </v-sheet>
-                <v-divider class="my-6"></v-divider>
-                <v-text-field
-                  v-model="projectSettings.pageTitle"
-                  label="預約頁面大標題"
-                  variant="outlined"
-                  density="compact"
-                  hint="顯示在預約頁面最上方的標題文字"
-                  persistent-hint
-                  class="mb-6"
-                ></v-text-field>
-
-                <v-switch
-                  v-model="projectSettings.validateId"
-                  label="啟用身分證驗證"
-                  true-value="ON"
-                  false-value="OFF"
-                  color="primary"
-                  inset
-                  hint="啟用後，客戶在預約時需輸入與產權人相符身分證號，以免預約時戶別及產權人不符"
-                  persistent-hint
-                ></v-switch>
-                <v-switch
-                  v-model="projectSettings.checkDuplicate"
-                  label="檢查重複預約"
-                  true-value="ON"
-                  false-value="OFF"
-                  color="primary"
-                  inset
-                  hint="啟用後，系統會檢查同一戶別、同一預約項目是否已有有效預約"
-                  persistent-hint
-                  class="mt-4 mb-6"
-                ></v-switch>
-
-                <!-- 新增：驗屋授權書範本編輯器 -->
-                <v-card v-if="isAdmin" variant="outlined" class="mb-6">
-                  <v-card-text>
-                    <div class="d-flex align-center justify-space-between mb-4">
-                      <div>
-                        <div class="text-subtitle-1 font-weight-bold">驗屋授權書格式設定</div>
-                        <div class="text-caption text-grey-darken-1">設定受託人簽署時所看到的授權書內容與版面配置。</div>
-                      </div>
-                      <v-btn-toggle v-model="isAuthLetterPreviewMode" mandatory density="compact" color="primary" variant="outlined">
-                        <v-btn :value="false" prepend-icon="mdi-code-tags">編輯 HTML</v-btn>
-                        <v-btn :value="true" prepend-icon="mdi-eye">預覽渲染結果</v-btn>
-                      </v-btn-toggle>
-                    </div>
-
-                    <v-expand-transition>
-                      <div v-if="!isAuthLetterPreviewMode">
-                        <div class="d-flex flex-wrap align-center mb-2 gap-2">
-                          <span class="text-caption font-weight-medium">可用變數：</span>
-                          <v-chip size="x-small" variant="tonal"> {建案名稱}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {戶別}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {委託人姓名}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {受託人姓名}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {委託人身分證字號}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {受託人身分證字號}</v-chip>
-                          <v-chip size="x-small" variant="tonal"> {TODAY}</v-chip>
-                          <v-chip size="x-small" variant="tonal" color="primary"> {logoUrl}</v-chip>
-                          <v-chip size="x-small" variant="tonal" color="primary"> {委託人簽名圖檔}</v-chip>
-                          <v-chip size="x-small" variant="tonal" color="primary"> {受託人簽名圖檔}</v-chip>
-                          <v-spacer></v-spacer>
-                          <v-btn size="x-small" variant="tonal" color="warning" @click="loadDefaultAuthLetterTemplate">載入系統預設範本</v-btn>
-                        </div>
-                        <v-textarea
-                          v-model="projectSettings.authLetterTemplate"
-                          variant="outlined"
-                          rows="15"
-                          auto-grow
-                          bg-color="grey-lighten-4"
-                          placeholder="請輸入 HTML 格式的授權書範本..."
-                          class="font-mono text-body-2"
-                        ></v-textarea>
-                      </div>
-                      <div v-else>
-                        <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml"></div>
-                        <div class="text-caption text-center text-grey mt-2">
-                          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
-                        </div>
-                      </div>
-                    </v-expand-transition>
-                  </v-card-text>
-                </v-card>
+                  <div class="mb-4"></div>
+                  </v-window-item>
+                  
+                  <!-- Tab 2: 預約規則與人員 -->
+                  <v-window-item value="rules" transition="fade-transition" reverse-transition="fade-transition">
 
                 <!-- NEW: Booking Menu Configuration (Parent-Child Structure) -->
                 <div class="mb-4">
@@ -674,52 +620,62 @@
 
                 <v-combobox
                    v-model="projectSettings.inspectionStaff"
-                   label="編輯驗屋人員"
+                   label="編輯人員"
                    multiple
                    chips
                    closable-chips
                    variant="outlined"
                    density="compact"
-                   hint="在此新增修改驗屋人員"
+                   hint="在此新增修改工作人員"
                    persistent-hint
                    class="mt-6"
                  ></v-combobox>
 
+                  <div class="mb-4"></div>
+                  </v-window-item>
 
-                <v-divider class="my-6"></v-divider>
-                <div class="d-flex align-center"> <label class="v-label text-caption">招呼語</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
-                <div class="d-flex align-center"> <label class="v-label text-caption">內文說明</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
-<div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
-                <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.closingText" class="mb-4" />
-                <v-divider class="my-6"></v-divider>
-                <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
-                <v-text-field                  v-model="projectSettings.intro.contact.name"
-                  label="聯絡單位名稱"
-                  variant="outlined"
-                  density="compact"
-                ></v-text-field>
+                  <!-- Tab 3: 頁面內容與公告 -->
+                  <v-window-item value="content" transition="fade-transition" reverse-transition="fade-transition">
                 <v-text-field
-                  v-model="projectSettings.intro.contact.phone"
-                  label="聯絡電話"
+                  v-model="projectSettings.pageTitle"
+                  label="預約頁面大標題"
                   variant="outlined"
                   density="compact"
+                  hint="顯示在預約頁面最上方的標題文字"
+                  persistent-hint
                   class="mt-2"
                 ></v-text-field>
+
+                <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳</p>
+                <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
+                <v-sheet border rounded class="pa-4 text-center">
+                  <v-img :src="projectSettings.logoUrl" height="60" contain class="mb-4 bg-grey-lighten-4">
+                    <template v-slot:placeholder>
+                      <div class="d-flex align-center justify-center fill-height">
+                        <span class="text-grey-darken-1">圖片檔案大小請勿超過 1MB</span>
+                      </div>
+                    </template>
+                  </v-img>
+                  <v-file-input
+                    label="選擇 Logo 圖片"
+                    accept="image/*"
+                    variant="outlined"
+                    density="compact"
+                    prepend-icon="mdi-camera"
+                    hide-details
+                    @change="handleLogoUpload"
+                  ></v-file-input>
+                </v-sheet>
+
                 <v-divider class="my-6"></v-divider>
+
                 <p class="text-subtitle-1 font-weight-bold mb-2">預約說明設定</p>
                 <v-switch
                   v-model="projectSettings.intro.alert.show"
                   label="顯示預約說明"
                   color="primary"
                   inset
+                  @update:model-value="(val) => { if(!val) projectSettings.intro.alert.showConfirmation = false; }"
                 ></v-switch>
                 <v-switch
                   v-model="projectSettings.intro.alert.showConfirmation"
@@ -740,7 +696,41 @@
                 <div class="d-flex align-center"> <label class="v-label text-caption">提示框內容</label>
   <v-btn size="x-small" variant="tonal" @click="applyTemplate('alertText')" :disabled="!projectSettings.intro.alert.show" class="ml-4">套用範本</v-btn> </div>
                 <RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
+
                 <v-divider class="my-6"></v-divider>
+
+                <!-- 聯絡資訊設定 -->
+                <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+                <v-text-field
+                  v-model="projectSettings.intro.contact.name"
+                  label="聯絡單位名稱"
+                  variant="outlined"
+                  density="compact"
+                ></v-text-field>
+                <v-text-field
+                  v-model="projectSettings.intro.contact.phone"
+                  label="聯絡電話"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-2"
+                ></v-text-field>
+
+                <v-divider class="my-6"></v-divider>
+
+                <div class="d-flex align-center mt-2"> <label class="v-label text-caption">招呼語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
+                <div class="d-flex align-center"> <label class="v-label text-caption">內文說明</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
+<div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
+                <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.intro.closingText" class="mb-4" />
+                <v-divider class="my-6"></v-divider>
+
                 <div class="d-flex justify-space-between align-center mb-2">
                     <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
                     <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
@@ -749,7 +739,7 @@
                     點擊「新增問答」來建立 FAQ
                 </div>
                 <div v-else>
-                    <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4">
+                    <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4 faq-panel">
                         <div class="d-flex justify-space-between align-center mb-3">
                             <span class="font-weight-bold">問題 {{ index + 1 }}</span>
                             <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
@@ -771,6 +761,57 @@
                         ></RichTextEditor>
                     </v-sheet>
                 </div>
+
+                <!-- 新增：驗屋授權書範本編輯器 (移至此處) -->
+                <v-card v-if="isAdmin" variant="outlined" class="mb-6">
+                  <v-card-text>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                      <div>
+                        <div class="text-subtitle-1 font-weight-bold">驗屋授權書格式設定</div>
+                        <div class="text-caption text-grey-darken-1">設定受託人簽署時所看到的授權書內容與版面配置。</div>
+                      </div>
+                      <v-btn-toggle v-model="isAuthLetterPreviewMode" mandatory density="compact" color="primary" variant="outlined">
+                        <v-btn :value="false" prepend-icon="mdi-code-tags">編輯 HTML</v-btn>
+                        <v-btn :value="true" prepend-icon="mdi-eye">預覽渲染結果</v-btn>
+                      </v-btn-toggle>
+                    </div>
+
+                    <v-expand-transition>
+                      <div v-if="!isAuthLetterPreviewMode">
+                        <div class="d-flex flex-wrap align-center mb-2 gap-2">
+                          <span class="text-caption font-weight-medium">可用變數：</span>
+                          <v-chip size="x-small" variant="tonal"> {建案名稱}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {戶別}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {委託人姓名}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {受託人姓名}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {委託人身分證字號}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {受託人身分證字號}</v-chip>
+                          <v-chip size="x-small" variant="tonal"> {TODAY}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {logoUrl}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {委託人簽名圖檔}</v-chip>
+                          <v-chip size="x-small" variant="tonal" color="primary"> {受託人簽名圖檔}</v-chip>
+                          <v-spacer></v-spacer>
+                          <v-btn size="x-small" variant="tonal" color="warning" @click="loadDefaultAuthLetterTemplate">載入系統預設範本</v-btn>
+                        </div>
+                        <v-textarea
+                          v-model="projectSettings.authLetterTemplate"
+                          variant="outlined"
+                          rows="15"
+                          auto-grow
+                          bg-color="grey-lighten-4"
+                          placeholder="請輸入 HTML 格式的授權書範本..."
+                          class="font-mono text-body-2"
+                        ></v-textarea>
+                      </div>
+                      <div v-else>
+                        <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml"></div>
+                        <div class="text-caption text-center text-grey mt-2">
+                          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
+                        </div>
+                      </div>
+                    </v-expand-transition>
+                  </v-card-text>
+                </v-card>
 
                 <p class="text-h6 font-weight-bold mb-4">附件管理 (公開預約頁)</p>
 
@@ -840,30 +881,9 @@
                   </template>
                 </v-list>
                 
-
-              </v-form>
-            </div>
-
-            <v-card-actions class="sticky-actions pa-4">
-              <v-spacer></v-spacer>
-              <v-btn 
-                color="primary" 
-                variant="elevated"
-                @click="saveSettings"
-                :loading="isSavingSettings"
-                size="large"
-              >
-                儲存設定
-              </v-btn>
-            </v-card-actions>
-          </v-window-item>
-
-<v-window-item value="report-settings" class="settings-tab-content">
-            <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
-              <v-progress-circular indeterminate color="primary"></v-progress-circular>
-            </div>
-            <div v-else-if="projectSettings.reportSettings" class="settings-form-container pa-4">
-              <v-form>
+                  </v-window-item>
+                  <!-- Tab 4: 驗屋報告上傳設定 -->
+                  <v-window-item value="report-settings" transition="fade-transition" reverse-transition="fade-transition">
                 <p class="text-h6 font-weight-bold mb-4">上傳頁面設定</p>
 
                 <v-switch
@@ -1136,8 +1156,175 @@
 
 
 
+                  </v-window-item>
+
+                  <!-- Tab 5: 客戶回傳功能 -->
+                  <v-window-item value="customer-messages" transition="fade-transition" reverse-transition="fade-transition">
+               <v-toolbar flat color="transparent" class="mb-4">
+                 <v-toolbar-title class="text-h6 font-weight-bold">客戶回傳功能設定</v-toolbar-title>
+                 <v-spacer></v-spacer>
+                 <v-btn color="primary" @click="openCustomerMessageDialog()" prepend-icon="mdi-plus">新增功能</v-btn>
+               </v-toolbar>
+
+               <v-row>
+                 <v-col v-for="(config, index) in projectSettings.customerMessageConfigs || []" :key="config.id" cols="12" md="6" lg="4">
+                   <v-card variant="outlined" class="h-100">
+                     <v-card-title class="d-flex justify-space-between align-center">
+                       <span>{{ config.functionName }}</span>
+                       <v-chip size="small" :color="config.enableIdVerification ? 'green' : 'grey'">
+                         {{ config.enableIdVerification ? '需驗證身分' : '免驗證' }}
+                       </v-chip>
+                     </v-card-title>
+                     <v-card-subtitle class="mb-2">
+                       按鈕文字: {{ config.buttonText }}
+                     </v-card-subtitle>
+                     <v-card-text>
+                       <div class="d-flex flex-wrap gap-2 mb-2">
+                         <v-chip size="x-small" v-if="config.enableBuildingSelect">棟別選單</v-chip>
+                         <v-chip size="x-small" v-if="config.enableUnitSelect">戶別選單</v-chip>
+                         <v-chip size="x-small" v-if="config.enableFileUpload">附件上傳</v-chip>
+                       </div>
+                       <div class="text-caption text-grey">
+                         自訂欄位: {{ config.customFields ? config.customFields.length : 0 }} 個
+                       </div>
+                     </v-card-text>
+                     <v-divider></v-divider>
+                     <v-card-actions>
+                       <v-spacer></v-spacer>
+                       <v-btn color="primary" variant="text" size="small" @click="openCustomerMessageDialog(config, index)">編輯</v-btn>
+                       <v-btn color="error" variant="text" size="small" @click="deleteCustomerMessageConfig(index)">刪除</v-btn>
+                     </v-card-actions>
+                   </v-card>
+                 </v-col>
+                 <v-col v-if="(!projectSettings.customerMessageConfigs || projectSettings.customerMessageConfigs.length === 0)" cols="12">
+                    <div class="text-center text-grey pa-10 border rounded border-dashed">
+                      尚未建立任何客戶回傳功能，請點擊右上角新增。
+                    </div>
+                 </v-col>
+               </v-row>
+
+              <!-- Customer Message Config Dialog -->
+              <v-dialog v-model="isCustomerMessageDialogOpen" max-width="900px" persistent>
+                <v-card>
+                  <v-card-title class="bg-primary text-white">
+                    {{ editedCustomerMessageConfig.id ? '編輯' : '新增' }}客戶回傳功能
+                  </v-card-title>
+                  <v-card-text class="pa-4" style="max-height: 80vh; overflow-y: auto;">
+                     <v-row>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.functionName"
+                              label="功能名稱 (辨識用)"
+                              placeholder="例如：自覓銀行回傳"
+                              variant="outlined"
+                              density="compact"
+                              :rules="[v => !!v || '必填']"
+                           ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.buttonText"
+                              label="按鈕顯示文字 (前端顯示)"
+                              placeholder="回傳自覓銀行資訊"
+                              variant="outlined"
+                              density="compact"
+                              :rules="[v => !!v || '必填']"
+                           ></v-text-field>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                           <v-text-field
+                              v-model="editedCustomerMessageConfig.dialogTitle"
+                              label="對話框標題"
+                              placeholder="填寫銀行資訊"
+                              variant="outlined"
+                              density="compact"
+                           ></v-text-field>
+                        </v-col>
+                     </v-row>
+                     
+                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-2">功能開關</div>
+                     <v-sheet border rounded class="pa-3 mb-4">
+                        <v-row dense>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableBuildingSelect" label="啟用棟別選單 (必要)" color="success" density="compact" hide-details></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableUnitSelect" label="啟用戶別選單 (必要)" color="success" density="compact" hide-details></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證驗證" color="success" density="compact" hide-details hint="啟用後需輸入身分證並比對後端權限" persistent-hint></v-switch>
+                           </v-col>
+                           <v-col cols="12" sm="6">
+                              <v-switch v-model="editedCustomerMessageConfig.enableFileUpload" label="啟用附件上傳" color="success" density="compact" hide-details hint="單檔30MB，最多10個" persistent-hint></v-switch>
+                           </v-col>
+                        </v-row>
+                     </v-sheet>
+
+                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-4">自定義欄位</div>
+                     <DynamicFieldEditor v-model:fields="editedCustomerMessageConfig.customFields" />
+
+                  </v-card-text>
+                   <v-card-actions class="pa-4 border-t">
+                    <v-btn color="info" variant="tonal" prepend-icon="mdi-eye" @click="isCustomerMessagePreviewDialogOpen = true">預覽畫面</v-btn>
+                    <v-spacer></v-spacer>
+                    <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
+                    <v-btn color="primary" variant="elevated" @click="saveCustomerMessageConfig">儲存設定</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+
+              <!-- Customer Message Preview Dialog -->
+              <v-dialog v-model="isCustomerMessagePreviewDialogOpen" max-width="600px">
+                <v-card>
+                  <v-card-title class="bg-info text-white d-flex align-center">
+                    <v-icon start>mdi-eye</v-icon>
+                    預覽：{{ editedCustomerMessageConfig.dialogTitle || editedCustomerMessageConfig.buttonText }}
+                    <v-spacer></v-spacer>
+                    <v-btn icon variant="text" @click="isCustomerMessagePreviewDialogOpen = false">
+                      <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                  </v-card-title>
+                  <v-card-text class="pa-6" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="mb-4 text-center">
+                      <v-chip color="info" variant="tonal" size="small">這是預覽畫面，樣式與實際使用時一致</v-chip>
+                    </div>
+                    
+                    <div v-if="editedCustomerMessageConfig.enableBuildingSelect || editedCustomerMessageConfig.enableUnitSelect" class="bg-grey-lighten-4 pa-3 rounded mb-4">
+                       <div class="text-caption text-grey-darken-1 mb-2">預設欄位 (已啟用)</div>
+                       <v-row dense>
+                          <v-col v-if="editedCustomerMessageConfig.enableBuildingSelect" cols="12" sm="6">
+                             <v-select label="棟別" variant="outlined" density="comfortable" disabled></v-select>
+                          </v-col>
+                          <v-col v-if="editedCustomerMessageConfig.enableUnitSelect" cols="12" sm="6">
+                             <v-select label="戶別" variant="outlined" density="comfortable" disabled></v-select>
+                          </v-col>
+                       </v-row>
+                    </div>
+
+                    <DynamicFormRenderer 
+                      :fields="editedCustomerMessageConfig.customFields" 
+                      v-model="customerMessagePreviewData"
+                    />
+
+                    <div v-if="editedCustomerMessageConfig.enableFileUpload" class="mt-4 pa-3 border rounded border-dashed text-center bg-blue-lighten-5">
+                       <v-icon color="primary" class="mb-1">mdi-cloud-upload</v-icon>
+                       <div class="text-subtitle-2 text-primary font-weight-bold">附件上傳功能已啟用</div>
+                       <div class="text-caption text-grey-darken-1">預覽模式下不提供實際檔案上傳</div>
+                    </div>
+                  </v-card-text>
+                  <v-divider></v-divider>
+                  <v-card-actions class="pa-4">
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="tonal" @click="isCustomerMessagePreviewDialogOpen = false">關閉預覽</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+                  </v-window-item>
+
+                </v-window>
               </v-form>
             </div>
+
             <v-card-actions class="sticky-actions pa-4">
               <v-spacer></v-spacer>
               <v-btn 
@@ -1150,11 +1337,8 @@
                 儲存設定
               </v-btn>
             </v-card-actions>
-         
-         
-         
-         
           </v-window-item>
+
 
           <v-window-item value="sheet-sync" class="settings-tab-content">
              <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
@@ -1306,172 +1490,6 @@
              </v-container>
           </v-window-item>
 
-          <v-window-item value="customer-messages" class="settings-tab-content">
-             <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
-                <v-progress-circular indeterminate color="primary"></v-progress-circular>
-             </div>
-             <div v-else class="settings-form-container pa-4">
-               <v-toolbar flat color="transparent" class="mb-4">
-                 <v-toolbar-title class="text-h6 font-weight-bold">客戶回傳功能設定</v-toolbar-title>
-                 <v-spacer></v-spacer>
-                 <v-btn color="primary" @click="openCustomerMessageDialog()" prepend-icon="mdi-plus">新增功能</v-btn>
-               </v-toolbar>
-
-               <v-row>
-                 <v-col v-for="(config, index) in projectSettings.customerMessageConfigs || []" :key="config.id" cols="12" md="6" lg="4">
-                   <v-card variant="outlined" class="h-100">
-                     <v-card-title class="d-flex justify-space-between align-center">
-                       <span>{{ config.functionName }}</span>
-                       <v-chip size="small" :color="config.enableIdVerification ? 'green' : 'grey'">
-                         {{ config.enableIdVerification ? '需驗證身分' : '免驗證' }}
-                       </v-chip>
-                     </v-card-title>
-                     <v-card-subtitle class="mb-2">
-                       按鈕文字: {{ config.buttonText }}
-                     </v-card-subtitle>
-                     <v-card-text>
-                       <div class="d-flex flex-wrap gap-2 mb-2">
-                         <v-chip size="x-small" v-if="config.enableBuildingSelect">棟別選單</v-chip>
-                         <v-chip size="x-small" v-if="config.enableUnitSelect">戶別選單</v-chip>
-                         <v-chip size="x-small" v-if="config.enableFileUpload">附件上傳</v-chip>
-                       </div>
-                       <div class="text-caption text-grey">
-                         自訂欄位: {{ config.customFields ? config.customFields.length : 0 }} 個
-                       </div>
-                     </v-card-text>
-                     <v-divider></v-divider>
-                     <v-card-actions>
-                       <v-spacer></v-spacer>
-                       <v-btn color="primary" variant="text" size="small" @click="openCustomerMessageDialog(config, index)">編輯</v-btn>
-                       <v-btn color="error" variant="text" size="small" @click="deleteCustomerMessageConfig(index)">刪除</v-btn>
-                     </v-card-actions>
-                   </v-card>
-                 </v-col>
-                 <v-col v-if="(!projectSettings.customerMessageConfigs || projectSettings.customerMessageConfigs.length === 0)" cols="12">
-                    <div class="text-center text-grey pa-10 border rounded border-dashed">
-                      尚未建立任何客戶回傳功能，請點擊右上角新增。
-                    </div>
-                 </v-col>
-               </v-row>
-             </div>
-
-              <!-- Customer Message Config Dialog -->
-              <v-dialog v-model="isCustomerMessageDialogOpen" max-width="900px" persistent>
-                <v-card>
-                  <v-card-title class="bg-primary text-white">
-                    {{ editedCustomerMessageConfig.id ? '編輯' : '新增' }}客戶回傳功能
-                  </v-card-title>
-                  <v-card-text class="pa-4" style="max-height: 80vh; overflow-y: auto;">
-                     <v-row>
-                        <v-col cols="12" md="6">
-                           <v-text-field
-                              v-model="editedCustomerMessageConfig.functionName"
-                              label="功能名稱 (辨識用)"
-                              placeholder="例如：自覓銀行回傳"
-                              variant="outlined"
-                              density="compact"
-                              :rules="[v => !!v || '必填']"
-                           ></v-text-field>
-                        </v-col>
-                        <v-col cols="12" md="6">
-                           <v-text-field
-                              v-model="editedCustomerMessageConfig.buttonText"
-                              label="按鈕顯示文字 (前端顯示)"
-                              placeholder="回傳自覓銀行資訊"
-                              variant="outlined"
-                              density="compact"
-                              :rules="[v => !!v || '必填']"
-                           ></v-text-field>
-                        </v-col>
-                        <v-col cols="12" md="6">
-                           <v-text-field
-                              v-model="editedCustomerMessageConfig.dialogTitle"
-                              label="對話框標題"
-                              placeholder="填寫銀行資訊"
-                              variant="outlined"
-                              density="compact"
-                           ></v-text-field>
-                        </v-col>
-                     </v-row>
-                     
-                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-2">功能開關</div>
-                     <v-sheet border rounded class="pa-3 mb-4">
-                        <v-row dense>
-                           <v-col cols="12" sm="6">
-                              <v-switch v-model="editedCustomerMessageConfig.enableBuildingSelect" label="啟用棟別選單 (必要)" color="success" density="compact" hide-details></v-switch>
-                           </v-col>
-                           <v-col cols="12" sm="6">
-                              <v-switch v-model="editedCustomerMessageConfig.enableUnitSelect" label="啟用戶別選單 (必要)" color="success" density="compact" hide-details></v-switch>
-                           </v-col>
-                           <v-col cols="12" sm="6">
-                              <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證驗證" color="success" density="compact" hide-details hint="啟用後需輸入身分證並比對後端權限" persistent-hint></v-switch>
-                           </v-col>
-                           <v-col cols="12" sm="6">
-                              <v-switch v-model="editedCustomerMessageConfig.enableFileUpload" label="啟用附件上傳" color="success" density="compact" hide-details hint="單檔30MB，最多10個" persistent-hint></v-switch>
-                           </v-col>
-                        </v-row>
-                     </v-sheet>
-
-                     <div class="text-subtitle-1 font-weight-bold mb-2 mt-4">自定義欄位</div>
-                     <DynamicFieldEditor v-model:fields="editedCustomerMessageConfig.customFields" />
-
-                  </v-card-text>
-                   <v-card-actions class="pa-4 border-t">
-                    <v-btn color="info" variant="tonal" prepend-icon="mdi-eye" @click="isCustomerMessagePreviewDialogOpen = true">預覽畫面</v-btn>
-                    <v-spacer></v-spacer>
-                    <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
-                    <v-btn color="primary" variant="elevated" @click="saveCustomerMessageConfig">儲存設定</v-btn>
-                  </v-card-actions>
-                </v-card>
-              </v-dialog>
-
-              <!-- Customer Message Preview Dialog -->
-              <v-dialog v-model="isCustomerMessagePreviewDialogOpen" max-width="600px">
-                <v-card>
-                  <v-card-title class="bg-info text-white d-flex align-center">
-                    <v-icon start>mdi-eye</v-icon>
-                    預覽：{{ editedCustomerMessageConfig.dialogTitle || editedCustomerMessageConfig.buttonText }}
-                    <v-spacer></v-spacer>
-                    <v-btn icon variant="text" @click="isCustomerMessagePreviewDialogOpen = false">
-                      <v-icon>mdi-close</v-icon>
-                    </v-btn>
-                  </v-card-title>
-                  <v-card-text class="pa-6" style="max-height: 70vh; overflow-y: auto;">
-                    <div class="mb-4 text-center">
-                      <v-chip color="info" variant="tonal" size="small">這是預覽畫面，樣式與實際使用時一致</v-chip>
-                    </div>
-                    
-                    <div v-if="editedCustomerMessageConfig.enableBuildingSelect || editedCustomerMessageConfig.enableUnitSelect" class="bg-grey-lighten-4 pa-3 rounded mb-4">
-                       <div class="text-caption text-grey-darken-1 mb-2">預設欄位 (已啟用)</div>
-                       <v-row dense>
-                          <v-col v-if="editedCustomerMessageConfig.enableBuildingSelect" cols="12" sm="6">
-                             <v-select label="棟別" variant="outlined" density="comfortable" disabled></v-select>
-                          </v-col>
-                          <v-col v-if="editedCustomerMessageConfig.enableUnitSelect" cols="12" sm="6">
-                             <v-select label="戶別" variant="outlined" density="comfortable" disabled></v-select>
-                          </v-col>
-                       </v-row>
-                    </div>
-
-                    <DynamicFormRenderer 
-                      :fields="editedCustomerMessageConfig.customFields" 
-                      v-model="customerMessagePreviewData"
-                    />
-
-                    <div v-if="editedCustomerMessageConfig.enableFileUpload" class="mt-4 pa-3 border rounded border-dashed text-center bg-blue-lighten-5">
-                       <v-icon color="primary" class="mb-1">mdi-cloud-upload</v-icon>
-                       <div class="text-subtitle-2 text-primary font-weight-bold">附件上傳功能已啟用</div>
-                       <div class="text-caption text-grey-darken-1">預覽模式下不提供實際檔案上傳</div>
-                    </div>
-                  </v-card-text>
-                  <v-divider></v-divider>
-                  <v-card-actions class="pa-4">
-                    <v-spacer></v-spacer>
-                    <v-btn color="primary" variant="tonal" @click="isCustomerMessagePreviewDialogOpen = false">關閉預覽</v-btn>
-                  </v-card-actions>
-                </v-card>
-              </v-dialog>
-          </v-window-item>
 
           <v-window-item value="sheet-sync" class="settings-tab-content" v-if="isAdmin">
             <div v-if="isSettingsLoading" class="d-flex justify-center align-center flex-grow-1 pa-10">
@@ -2503,6 +2521,7 @@ const bookingPageUrl = computed(() => {
 const isLoading = ref(true);
 const isSaving = ref(false);
 const activeTab = ref('batches');
+const settingsSubTab = ref('general');
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 const isBatchLoading = ref(false);
 const isBatchDialogVisible = ref(false);
@@ -3713,11 +3732,21 @@ function extractBookingType(sharedByArray) {
 
 
 
+import { nextTick } from 'vue';
+
 function addFaqItem() {
   if (!projectSettings.value.intro.faq) {
     projectSettings.value.intro.faq = [];
   }
   projectSettings.value.intro.faq.push({ q: '', a: '' });
+  
+  nextTick(() => {
+    const panels = document.querySelectorAll('.faq-panel');
+    if (panels.length > 0) {
+      const lastPanel = panels[panels.length - 1];
+      lastPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
 }
 
 function removeFaqItem(index) {

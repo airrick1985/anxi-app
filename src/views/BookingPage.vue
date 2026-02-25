@@ -340,7 +340,7 @@
                 <div v-html="projectConfig.intro.greeting"></div>
                 <div v-html="projectConfig.intro.body"></div>
 
-                <div v-if="projectConfig.intro.alert.show && projectConfig.intro.alert.showConfirmation">
+                <div v-if="projectConfig.intro.alert.show">
   
                   <v-btn
                     block
@@ -353,6 +353,7 @@
                   </v-btn>
 
                   <v-checkbox
+                    v-if="projectConfig.intro.alert.showConfirmation"
                     v-model="isInstructionsConfirmed"
                     label="我已詳細閱讀並了解以上預約說明"
                     :color="projectConfig.themeColor"
@@ -375,12 +376,12 @@
                     <v-card-actions class="pa-4">
                       <v-spacer></v-spacer>
                       <v-btn
-                        color="success"
+                        :color="projectConfig.intro.alert.showConfirmation ? 'success' : 'primary'"
                         variant="elevated"
                         size="large"
                         @click="() => { isInstructionsConfirmed = true; isInstructionsDialogVisible = false; }"
                       >
-                        我已閱讀並同意
+                        {{ projectConfig.intro.alert.showConfirmation ? '我已閱讀並同意' : '關閉' }}
                       </v-btn>
                     </v-card-actions>
                   </v-card>
