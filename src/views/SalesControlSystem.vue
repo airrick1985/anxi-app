@@ -137,6 +137,20 @@
             color="black"
             variant="tonal"
             class="ml-4"
+            @click="isAIAssistantDialogVisible = true"
+            icon="mdi-robot-outline"
+          ></v-btn>
+        </template>
+        <span>AI 銷售助理</span>
+      </v-tooltip>
+
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
             @click="exportToExcel"
             icon="mdi-tray-arrow-down"
           ></v-btn>
@@ -751,14 +765,22 @@
             </template>
             <v-list-item-title>車位銷控管理</v-list-item-title>
           </v-list-item>
+
           <v-list-item @click="isCancelledPurchaseDialogVisible = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-account-cancel</v-icon>
             </template>
             <v-list-item-title>退戶記錄管理</v-list-item-title>
           </v-list-item>
+
+          <v-list-item @click="isAIAssistantDialogVisible = true">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-robot-outline</v-icon>
+            </template>
+            <v-list-item-title>AI 銷售助理</v-list-item-title>
+          </v-list-item>
           
-         <v-list-item
+          <v-list-item
             v-if="project.paymentScheduleFolderUrl"
             :href="project.paymentScheduleFolderUrl"
             target="_blank"
@@ -957,6 +979,36 @@
       </v-card>
     </v-dialog>
 
+    <!-- 全域 AI 助理對話框 -->
+    <!-- 全域 AI 助理對話框 -->
+    <v-dialog 
+      v-model="isAIAssistantDialogVisible" 
+      max-width="1000px" 
+      :fullscreen="$vuetify.display.smAndDown"
+      scrollable
+      transition="dialog-bottom-transition"
+    >
+      <v-card :rounded="$vuetify.display.smAndDown ? '0' : 'lg'">
+        <v-card-title class="d-flex justify-space-between align-center px-4 py-3 bg-grey-lighten-4">
+          <span class="text-h6 font-weight-bold">
+            <v-icon color="primary" class="mr-2">mdi-robot-outline</v-icon>{{ projectName }} AI助理
+          </span>
+          <v-btn icon="mdi-close" variant="text" size="small" @click="isAIAssistantDialogVisible = false"></v-btn>
+        </v-card-title>
+        
+        <v-card-text class="pa-0 d-flex flex-column" :style="{ height: $vuetify.display.smAndDown ? '100%' : '80vh' }">
+          <SalesBotChat 
+            v-if="isAIAssistantDialogVisible"
+            :project-id="projectId"
+            :unit-data="null"
+            :all-parking-data="allDataForModal['車位'] || []"
+            :all-units-data="allDataForModal['戶別'] || []"
+            class="flex-grow-1"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="isParkingCanvasDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
         <v-toolbar dark color="#f5f5f7" density="compact">
@@ -1077,6 +1129,7 @@ import { useDisplay } from 'vuetify';
 import UpdateControl from './UpdateControl.vue'; 
 import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue';
+import SalesBotChat from '@/components/SalesBotChat.vue';
 import { useTextStyleStore } from '@/store/textStyleStore'; 
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
@@ -1608,6 +1661,8 @@ const priceDisplayMode = ref('list');
 
 const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
+
+const isAIAssistantDialogVisible = ref(false);
 const isParkingCanvasDialogVisible = ref(false);
 const parkingCanvasFloorPlans = ref([]);
 const activeParkingCanvasFloorPlan = ref(null);
@@ -1626,6 +1681,7 @@ const allDataForModal = computed(() => {
   return {
     '參數': salesParameters.value,
     '車位': salesParkings.value,
+    '戶別': salesHouseholds.value,  // ✅ 新增：讓 AI 助理能取得全案戶別資料
     '銷控圖片': salesImages.value,
     '銷售人員': salesPersonnel.value, 
   };

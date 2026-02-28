@@ -18,6 +18,7 @@
             <tr>
               <th>車位編號</th>
               <!-- 4. 根據 mode 顯示不同欄位 -->
+              <th v-if="mode === 'sales'">表價</th>
               <th v-if="mode === 'sales'">底價</th>
               <th v-if="mode === 'sales'" style="width: 150px;">成交價</th>
               <th v-if="mode === 'quote'">尺寸</th>
@@ -29,6 +30,7 @@
             <tr v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']">
               <td>{{ p.spotId || p['車位編號'] }}</td>
               <!-- 5. 根據 mode 顯示不同資料 -->
+              <td v-if="mode === 'sales'">{{ p.price_list || p['車位表價'] || p['表價'] }}</td>
               <td v-if="mode === 'sales'">{{ p.price_floor || p['車位底價'] || p['底價'] }}</td>
               <td v-if="mode === 'sales'">
                 <v-text-field
@@ -313,10 +315,8 @@ function addParking() {
       type: newSpotData.type || newSpotData['類型'] || newSpotData['車位類型'],
       price_list: newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
       price_floor: newSpotData.price_floor || newSpotData['底價'] || newSpotData['車位底價'],
-      // ✅ 如果成交價不存在，預設帶入表價
-      price_transaction: (newSpotData.price_transaction !== undefined && newSpotData.price_transaction !== null) 
-                         ? newSpotData.price_transaction 
-                         : (newSpotData['車位成交價'] || newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價']),
+      // ✅ 如果成交價不存在或為空，預設帶入表價
+      price_transaction: newSpotData.price_transaction || newSpotData['車位成交價'] || newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
     };
     localParking.value.push(newSpot);
     newParkingSelection.value = null;

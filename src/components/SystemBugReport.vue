@@ -57,6 +57,19 @@
               />
             </v-col>
           </v-row>
+          <v-row dense>
+            <v-col cols="12">
+              <v-text-field
+                v-model="formData.reporterEmail"
+                label="Email"
+                prepend-inner-icon="mdi-email-outline"
+                :rules="[rules.required, rules.email]"
+                variant="outlined"
+                density="compact"
+                :readonly="!!userStore.user?.email"
+              />
+            </v-col>
+          </v-row>
 
           <v-divider class="my-3" />
 
@@ -206,6 +219,7 @@ const recentSubmissions = ref([]);
 const formData = ref({
   reporterName: '',
   reporterPhone: '',
+  reporterEmail: '',
   description: '',
   pagePath: '',
   pageName: '',
@@ -222,6 +236,7 @@ const showFab = computed(() => {
 // --- 驗證規則 ---
 const rules = {
   required: (v) => !!v || '此欄位為必填',
+  email: (v) => !v || /.+@.+\..+/.test(v) || '請輸入有效的 Email',
   maxFiles: (files) => {
     if (!files || !Array.isArray(files)) return true;
     return files.length <= 5 || '最多上傳 5 張圖片';
@@ -242,6 +257,7 @@ const openDialog = () => {
   // 自動帶入已登入用戶資訊
   formData.value.reporterName = userStore.user?.name || '';
   formData.value.reporterPhone = userStore.user?.key || '';
+  formData.value.reporterEmail = userStore.user?.email || '';
 
   // 自動帶入當前頁面資訊
   formData.value.pagePath = route.fullPath || '';
@@ -350,6 +366,7 @@ const handleSubmit = async () => {
     const result = await submitBugReport({
       reporterName: formData.value.reporterName,
       reporterPhone: formData.value.reporterPhone,
+      reporterEmail: formData.value.reporterEmail,
       description: formData.value.description,
       pagePath: formData.value.pagePath,
       pageName: formData.value.pageName,

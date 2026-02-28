@@ -28,9 +28,9 @@
                 </div>
             </v-card-title>
             <v-divider></v-divider>
-            <v-tabs v-model="tab" color="primary" grow :disabled="isEditing">
+            <v-tabs v-if="viewMode === 'sales'" v-model="tab" color="primary" grow :disabled="isEditing">
                 <v-tab value="info">詳細資訊</v-tab>
-               
+                <v-tab value="aiAssistant">AI助理</v-tab>
             </v-tabs>
             <v-divider></v-divider>
         </div>
@@ -70,11 +70,37 @@
                         suffix="萬"
                         type="number"
                         variant="outlined"
-                       
                         bg-color="white"
                         class="input-price-floor"
-                        
                         :hint="`單價: ${editingFloorUnitPrice} 萬/坪`"
+                        persistent-hint
+                    ></v-text-field>
+                </v-col>
+
+                <v-col cols="12" md="3" v-if="viewMode === 'sales' && editingData.area_terrace_ping > 0">
+                    <v-text-field
+                        v-model="editingData.price_floor_house_only"
+                        label="房屋底價(不含露臺)"
+                        suffix="萬"
+                        type="number"
+                        variant="outlined"
+                        bg-color="white"
+                        class="input-price-floor"
+                        :hint="`單價: ${editingFloorHouseOnlyUnitPrice} 萬/坪`"
+                        persistent-hint
+                    ></v-text-field>
+                </v-col>
+
+                <v-col cols="12" md="3" v-if="viewMode === 'sales' && editingData.area_terrace_ping > 0">
+                    <v-text-field
+                        v-model="editingData.price_floor_terrace"
+                        label="露臺底價"
+                        suffix="萬"
+                        type="number"
+                        variant="outlined"
+                        bg-color="white"
+                        class="input-price-floor"
+                        :hint="`單價: ${editingFloorTerraceUnitPrice} 萬/坪`"
                         persistent-hint
                     ></v-text-field>
                 </v-col>
@@ -224,6 +250,24 @@
                                 <div class="price-block-unit">({{ calculatedBaseUnitPrice }} 萬/坪)</div>
                             </div>
                         </v-col>
+                        <v-col v-if="viewMode === 'sales' && unitData.area_terrace_ping > 0" cols="12">
+                            <div class="price-block mb-2">
+                                <div class="price-block-title">房屋底價(不含露臺)</div>
+                                <div class="price-block-value text-grey-darken-2">
+                                    {{ formatNumber(unitData.price_floor_house_only) }} <span class="price-block-currency">萬</span>
+                                </div>
+                                <div class="price-block-unit">({{ calculatedFloorHouseOnlyUnitPrice }} 萬/坪)</div>
+                            </div>
+                        </v-col>
+                        <v-col v-if="viewMode === 'sales' && unitData.area_terrace_ping > 0" cols="12">
+                            <div class="price-block mb-2">
+                                <div class="price-block-title">露臺底價</div>
+                                <div class="price-block-value text-grey-darken-2">
+                                    {{ formatNumber(unitData.price_floor_terrace) }} <span class="price-block-currency">萬</span>
+                                </div>
+                                <div class="price-block-unit">({{ calculatedFloorTerraceUnitPrice }} 萬/坪)</div>
+                            </div>
+                        </v-col>
                         <v-col v-if="viewMode === 'sales' && unitData.price_transaction_house" cols="12">
                             <div class="price-block">
                                 <div class="price-block-title">房屋成交價</div>
@@ -292,6 +336,16 @@
                 </div>
                 <div v-else class="text-center pa-5"><p>沒有可顯示的資料。</p></div>
             </template>
+            </v-window-item>
+
+            <v-window-item value="aiAssistant">
+                <SalesBotChat 
+                  v-if="tab === 'aiAssistant'"
+                  :project-id="projectId"
+                  :unit-data="unitData"
+                  :all-parking-data="allData['車位'] || []"
+                  :all-units-data="allData['戶別'] || []"
+                />
             </v-window-item>
         
             </v-window>
@@ -591,6 +645,7 @@ import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
+import SalesBotChat from './SalesBotChat.vue';
 import { useQuoteStore } from '@/store/quoteStore'; 
 import PaymentSettings from '@/views/PaymentSettings.vue'; 
 import ConfirmationDialog from './ConfirmationDialog.vue';
@@ -623,6 +678,22 @@ const editingFloorUnitPrice = computed(() => {
   if (!editingData.value) return '0.00';
   const price = Number(editingData.value.price_floor_house_total) || 0;
   const area = Number(editingData.value.area_house_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
+// ✅ 編輯模式即時計算 - 房屋(不含露臺)底價單價
+const editingFloorHouseOnlyUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_floor_house_only) || 0;
+  const area = Number(editingData.value.area_house_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
+// ✅ 編輯模式即時計算 - 露臺底價單價
+const editingFloorTerraceUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_floor_terrace) || 0;
+  const area = Number(editingData.value.area_terrace_ping) || 0;
   return area > 0 ? (price / area).toFixed(2) : '0.00';
 });
 
@@ -780,6 +851,24 @@ const calculatedUnitPrice = computed(() => {
 const calculatedBaseUnitPrice = computed(() => {
   const price = props.unitData?.price_floor_house_total;
   const area = props.unitData?.area_house_ping;
+  if (price && area > 0) {
+    return formatNumber(price / area, 2);
+  }
+  return 'N/A';
+});
+
+const calculatedFloorHouseOnlyUnitPrice = computed(() => {
+  const price = props.unitData?.price_floor_house_only;
+  const area = props.unitData?.area_house_ping;
+  if (price && area > 0) {
+    return formatNumber(price / area, 2);
+  }
+  return 'N/A';
+});
+
+const calculatedFloorTerraceUnitPrice = computed(() => {
+  const price = props.unitData?.price_floor_terrace;
+  const area = props.unitData?.area_terrace_ping;
   if (price && area > 0) {
     return formatNumber(price / area, 2);
   }

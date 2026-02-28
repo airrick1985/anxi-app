@@ -63,6 +63,10 @@
         <v-icon start>mdi-google-spreadsheet</v-icon>
         Google Sheet 同步銷控資料
       </v-tab>
+      <v-tab value="aiAssistant">
+        <v-icon start>mdi-robot-outline</v-icon>
+        AI 助理設定
+      </v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -820,6 +824,62 @@
           </div>
         </v-card>
       </v-window-item>
+
+      <v-window-item value="aiAssistant">
+        <v-card class="pa-4" elevation="2">
+          <v-card-title class="text-h5 text-purple">
+            <v-icon start>mdi-robot-outline</v-icon>
+            AI 助理設定
+          </v-card-title>
+          <v-card-subtitle>管理 AI 銷售助理的 Token 額度與使用狀況</v-card-subtitle>
+          <v-divider class="my-4"></v-divider>
+
+          <v-skeleton-loader v-if="projectLoading" type="article"></v-skeleton-loader>
+
+          <v-form v-if="!projectLoading && project" ref="aiForm">
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-text-field
+                  v-model.number="project.aiTokenQuota"
+                  label="Token 額度上限"
+                  type="number"
+                  variant="outlined"
+                  density="compact"
+                  hint="設定該建案可使用的 AI Token 上限 (預設 0 表示停用)"
+                  persistent-hint
+                ></v-text-field>
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-card variant="outlined" class="pa-3 bg-grey-lighten-4 d-flex align-center justify-space-between">
+                  <div>
+                    <div class="text-caption text-grey-darken-1">目前已使用 Token</div>
+                    <div class="text-h6 font-weight-bold text-primary">{{ project.aiTokenUsed || 0 }}</div>
+                  </div>
+                  <v-btn 
+                    color="warning" 
+                    variant="tonal" 
+                    prepend-icon="mdi-refresh" 
+                    @click="resetAIToken" 
+                    :loading="isResettingToken"
+                  >
+                    重置為 0
+                  </v-btn>
+                </v-card>
+              </v-col>
+            </v-row>
+            <v-btn
+              color="primary"
+              @click="saveProjectSettings"
+              :loading="isSavingProject"
+              block
+              class="mt-6"
+              prepend-icon="mdi-content-save"
+            >
+              儲存 AI 設定
+            </v-btn>
+          </v-form>
+        </v-card>
+      </v-window-item>
     </v-window>
 
         <v-dialog v-model="deleteBatchSvgDialog" persistent max-width="500px">
@@ -1160,6 +1220,10 @@ const syncResult = ref(null);
 const serviceAccountEmail = ref(''); // Store the service account email
 // ✅ END: Google Sheet Sync State 
 
+// ✅ START: AI Assistant State
+const isResettingToken = ref(false);
+// ✅ END: AI Assistant State
+
 
 // --- Methods ---
 
@@ -1223,6 +1287,23 @@ const saveProjectSettings = async () => {
     toast.error(`儲存專案設定失敗: ${error.message}`);
   } finally {
     isSavingProject.value = false;
+  }
+};
+
+const resetAIToken = async () => {
+  if (confirm('確定要將已使用 Token 重置為 0 嗎？')) {
+    isResettingToken.value = true;
+    try {
+      if (project.value) {
+        project.value.aiTokenUsed = 0;
+        await updateProjectSalesSettings(project.value.id, { aiTokenUsed: 0 });
+        toast.success('Token 已成功重置為 0！');
+      }
+    } catch (error) {
+      toast.error(`重置失敗: ${error.message}`);
+    } finally {
+      isResettingToken.value = false;
+    }
   }
 };
 

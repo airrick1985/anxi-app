@@ -15,11 +15,11 @@
 
 <script setup>
 import { ref } from 'vue';
-import { registerSW } from 'virtual:pwa-register';
+import { useRegisterSW } from 'virtual:pwa-register/vue';
 
 const isUpdating = ref(false);
 
-registerSW({
+const { updateServiceWorker } = useRegisterSW({
   onRegistered(r) {
     console.log(`Service Worker registered: ${r}`);
   },
@@ -27,6 +27,7 @@ registerSW({
     console.error('Service Worker registration error:', error);
   },
   onNeedRefresh() {
+    console.log('Update required. Refreshing...');
     // 偵測到需要更新時，直接顯示遮罩並執行更新
     isUpdating.value = true;
     updateServiceWorker();
@@ -35,9 +36,6 @@ registerSW({
     console.log('App is ready to work offline.');
   },
 });
-
-// updateServiceWorker 會在 onNeedRefresh 內部被呼叫，但我們需要從 registerSW 返回值中獲取它
-const { updateServiceWorker } = registerSW();
 
 </script>
 

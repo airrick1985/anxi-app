@@ -7728,7 +7728,18 @@ export const sendSmsAPI = async (data) => {
     });
     return result.data;
   } catch (error) {
-    console.error("[api.js] sendSmsAPI 錯誤:", error);
+    console.error("[api.js] sendSmsAPI 發生錯誤:", error);
+    throw error;
+  }
+};
+
+export const askSalesBotAPI = async (data) => {
+  try {
+    const askBot = httpsCallable(functions, 'askSalesBot');
+    const result = await askBot(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] askSalesBotAPI 發生錯誤:", error);
     throw error;
   }
 };
