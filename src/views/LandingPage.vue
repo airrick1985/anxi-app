@@ -331,6 +331,7 @@ import architectIcon from '@/assets/icons/architect.png';
 import emailMarketingIcon from '@/assets/icons/email-marketing.png';
 import webDesignIcon from '@/assets/icons/web-design.png';
 import refreshdataIcon from '@/assets/icons/refresh-data.png';
+import robotIcon from '@/assets/icons/robot.png';
 
 
 const activeTab = ref('sales');
@@ -361,7 +362,8 @@ const products = ref([
       { title: '平面圖測量工具', desc: '獨家技術，各戶平面圖測量任意距離、空間面積，提升專業形象', icon: blueprintIcon },
       { title: '人員權限管理', desc: '區分人員角色，櫃台、銷售各司其職', icon: userManagementIcon },
       { title: '雲端資料夾', desc: '提供超大容量雲端空間，訂單、合約書、客戶證件資料可上傳雲端共同協作分享', icon: databaseIcon },
-      
+      { title: 'AI 銷控助理', desc: '24小時專屬 AI 助理，隨時透過文字聊天為您解析成交統計與底價差異，精準掌握各戶及車位的銷售狀態', icon: robotIcon },
+
     ],
     pricing: [
       {
