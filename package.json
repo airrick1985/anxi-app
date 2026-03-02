@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.435",
+  "version": "1.0.436",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -52,6 +52,7 @@
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "dompurify": "^3.2.6",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "fabric": "^5.5.2",
     "file-saver": "^2.0.5",

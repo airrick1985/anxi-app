@@ -10,8 +10,26 @@ npm run release:github-pages
 日常開發/修小 Bug (前端) 👉 用 npm run build-and-deploy
 
 npm run deploy：僅重新打包 + 部署（最適合只改圖片或修正錯字）。
+deploy 的定義是： "deploy": "npm run build && gh-pages -d dist"
 
 有修改要同步 GitHub ➔ npm run build-and-push
+
+
+簡單來說，npm run build 就是把您的「原始碼」轉換成「可以發布的網站成品」並放在 dist 資料夾裡。
+
+2. npm run deploy：將建置好的應用程式發佈到網路上
+這個指令的功能是自動化網站的發佈流程。
+
+在您的專案中，deploy 的定義是： "deploy": "npm run build && gh-pages -d dist"
+
+它包含了兩個動作：
+
+第一步 (npm run build)：它會先執行上面提到的建置指令。這是因為發布前必須確保有最新且打包好的靜態檔案。
+第二步 (gh-pages -d dist)：當建置成功完成後，它會自動呼叫一個名為 gh-pages 的工具。這個工具會專門把剛剛建置出來的 dist 資料夾裡面的所有檔案，推送到您 GitHub 儲存庫（Repository）中的一個特殊分支（通常名為 gh-pages）。GitHub Pages 服務會讀取這個分支的內容，並把它直接發布成一個公開的網站。
+簡單來說，npm run deploy 就是「先幫您打包好最新版本的網站 (build)，然後一口氣幫您上傳並發佈到網路上 (gh-pages)」。 這樣您就不需要手動複製檔案或輸入複雜的 Git 指令來發布網站了。
+
+
+
 
 存檔到GIT倉庫
 git status && git add . && git commit -m "$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')" && git push

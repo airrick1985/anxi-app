@@ -165,7 +165,8 @@
                   item-value="value"
                   label="檢查區域"
                   variant="outlined"
-                
+                  class="large-text-select"
+                  :menu-props="{ class: 'large-select-menu' }"
                   required
                   :rules="[v => !!v || '必填']"
                 ></v-select>
@@ -182,7 +183,8 @@
                   item-value="value"
                   label="工程種類"
                   variant="outlined"
-             
+                  class="large-text-select"
+                  :menu-props="{ class: 'large-select-menu' }"
                   required
                   :rules="[v => !!v || '必填']"
                   @update:model-value="formData.subCategory = null"
@@ -199,7 +201,8 @@
                   item-value="value"
                   label="工程細項"
                   variant="outlined"
-             
+                  class="large-text-select"
+                  :menu-props="{ class: 'large-select-menu' }"
                   required
                   :rules="[v => !!v || '必填']"
                   :disabled="!formData.category"
@@ -796,8 +799,9 @@ function formatDate(dateInput) {
   border: 1px solid rgba(0, 0, 0, 0.38) !important;
   border-radius: 4px !important;
   padding: 8px 12px !important;
-  font-size: 16px !important;
-  min-height: 40px;
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  min-height: 56px;
   line-height: 1.5;
   background-color: transparent !important;
 }
@@ -829,5 +833,18 @@ function formatDate(dateInput) {
   top: -5px;
   right: -5px;
   background-color: rgba(255, 255, 255, 0.7);
+}
+
+/* 1. 變更選中後顯示在輸入框內的文字 */
+.large-text-select .v-select__selection-text,
+.large-text-select .v-field__input {
+  font-size: 25px !important;
+  font-weight: 500 !important;
+}
+
+/* 2. 變更下拉選單展開後的選項文字 */
+.large-select-menu .v-list-item-title {
+  font-size: 25px !important;
+  font-weight: 500 !important;
 }
 </style>

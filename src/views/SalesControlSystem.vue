@@ -1173,7 +1173,7 @@ const filters = reactive({
 
 // 2. ✅ [新增] 下拉選單選項 (依賴 salesParameters 和 salesPersonnel)
 const statusOptions = computed(() => {
-  return salesParameters.value.map(p => p.statusName);
+  return ['(無)', ...salesParameters.value.map(p => p.statusName)];
 });
 
 const personnelOptions = computed(() => {
@@ -1269,7 +1269,10 @@ const filteredTableItems = computed(() => {
         
         // 5. 銷控狀態 (多選)
         if (filters.statuses && filters.statuses.length > 0) {
-            if (!filters.statuses.includes(item.status)) return false;
+            const hasEmptyFilter = filters.statuses.includes('(無)');
+            const isStatusEmpty = item.status === null || item.status === undefined || item.status === '';
+            const matchStatus = filters.statuses.includes(item.status) || (hasEmptyFilter && isStatusEmpty);
+            if (!matchStatus) return false;
         }
 
         // 6. 銷售人員 (多選)

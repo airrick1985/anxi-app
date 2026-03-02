@@ -69,18 +69,6 @@
 
     <!-- Input Area -->
     <div class="pa-3 bg-white d-flex align-end">
-      <!-- Voice Input Button -->
-      <v-btn
-        icon
-        variant="tonal"
-        :color="isListening ? 'red' : 'primary'"
-        class="mr-2 mb-1"
-        @click="toggleVoiceInput"
-        :disabled="isLoading || isTokenExhausted"
-      >
-        <v-icon>{{ isListening ? 'mdi-microphone-off' : 'mdi-microphone' }}</v-icon>
-      </v-btn>
-
       <v-textarea
         v-model="inputText"
         placeholder="請輸入問題 (Shift + Enter 換行)"
@@ -109,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { askSalesBotAPI, fetchProjectConfig } from '@/api';
 import { useToast } from 'vue-toastification';
 import { useProjectStore } from '@/store/projectStore';
@@ -433,69 +421,9 @@ const formatMessage = (text) => {
   return formatted;
 };
 
-// Voice Input using Web Speech API
-const isListening = ref(false);
-let recognition = null;
-
 onMounted(() => {
-  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'cmn-Hant-TW'; // Traditional Chinese
-
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      if (finalTranscript) {
-          inputText.value = (inputText.value + ' ' + finalTranscript).trim();
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error', event.error);
-      isListening.value = false;
-      toast.error('語音辨識發生錯誤');
-    };
-
-    recognition.onend = () => {
-      isListening.value = false;
-    };
-  }
-
   loadProjectData();
   loadChatHistory();
-});
-
-const toggleVoiceInput = () => {
-  if (!recognition) {
-    toast.error('您的瀏覽器不支援語音輸入功能');
-    return;
-  }
-
-  if (isListening.value) {
-    recognition.stop();
-  } else {
-    inputText.value = ''; // clear input before recording
-    recognition.start();
-    isListening.value = true;
-  }
-};
-
-onUnmounted(() => {
-    if (recognition && isListening.value) {
-        recognition.stop();
-    }
 });
 
 </script>

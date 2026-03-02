@@ -1036,7 +1036,18 @@
         <v-divider></v-divider>
         <v-card-actions class="pa-4 bg-white">
         <v-btn v-if="uploadStep === 2" variant="text" color="grey-darken-1" prepend-icon="mdi-arrow-left" @click="uploadStep = 1">返回修改文本</v-btn>
-       
+        
+        <v-btn
+          v-if="isAdmin && uploadStep === 1"
+          color="info"
+          variant="tonal"
+          prepend-icon="mdi-robot-outline"
+          class="mr-2"
+          @click="showAITemplateDialog = true"
+        >
+          AI 解析範本管理
+        </v-btn>
+
           <v-spacer></v-spacer>
           <v-btn 
             v-if="uploadStep === 1" 
@@ -1058,6 +1069,87 @@
         >
           確認無誤並執行分配 ({{ previewLeads.length }}筆)
         </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showAITemplateDialog" max-width="800">
+      <v-card class="rounded-xl">
+        <v-toolbar color="info" title="🤖 AI 解析範本管理 (限管理員)" dark>
+          <v-btn icon="mdi-close" @click="showAITemplateDialog = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-4 bg-grey-lighten-4">
+          <v-window v-model="aiTab">
+            <v-window-item value="list">
+              <div class="d-flex justify-space-between align-center mb-4">
+                <div class="text-subtitle-1 font-weight-bold">已儲存的解析範本 ({{ customParsingRules.length }})</div>
+                <v-btn color="primary" prepend-icon="mdi-plus" @click="aiTab = 'add'">新增範本</v-btn>
+              </div>
+              <v-card v-for="(rule, idx) in customParsingRules" :key="idx" class="mb-3 pa-3 rounded-lg elevation-1 bg-white">
+                 <div class="d-flex justify-space-between align-center">
+                     <div class="font-weight-bold text-primary">📋 {{ rule.templateName }}</div>
+                     <v-btn icon="mdi-delete" size="small" color="error" variant="text" @click="deleteAITemplate(rule.id)"></v-btn>
+                 </div>
+                 <v-divider class="my-2"></v-divider>
+                 <div style="font-size: 11px" class="text-grey-darken-2">
+                     <div>姓名 > {{ rule.nameRegex }}</div>
+                     <div>電話 > {{ rule.phoneRegex }}</div>
+                     <div>預算 > {{ rule.budgetRegex || '未設定' }}</div>
+                     <div>來源 > {{ rule.sourceRegex || '未設定' }}</div>
+                     <div>日期 > {{ rule.dateRegex }}</div>
+                     <div v-if="rule.noteRegex">備註 > {{ rule.noteRegex }}</div>
+                 </div>
+              </v-card>
+              <div v-if="customParsingRules.length === 0" class="text-center py-6 text-grey">
+                 尚未建立任何自訂範本，請點擊右上方新增。
+              </div>
+            </v-window-item>
+            <v-window-item value="add">
+              <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-2" @click="aiTab = 'list'">返回列表</v-btn>
+              
+              <v-text-field v-model="newAITemplate.name" label="範本名稱 (例如: 樂居留單)" variant="outlined" density="compact" bg-color="white" class="mb-3"></v-text-field>
+              <v-textarea v-model="newAITemplate.sampleText" label="貼上範例文字" rows="5" variant="outlined" bg-color="white" class="mb-3" hint="請貼上完整的一筆客戶留單文字" persistent-hint></v-textarea>
+              
+              <div class="d-flex gap-2 mb-4">
+                <v-btn color="info" @click="generateRegexWithAI" :loading="isGeneratingRegex" :disabled="!newAITemplate.sampleText" prepend-icon="mdi-auto-fix" class="flex-grow-1">
+                  1. 使用 AI 產生解析規則
+                </v-btn>
+              </div>
+              
+              <v-card v-if="newAITemplate.regexResult" class="pa-3 mb-4 rounded-lg border bg-white">
+                 <div class="text-subtitle-2 font-weight-bold mb-2 text-primary">AI 產生的 Regex 規則 (可手動微調)：</div>
+                 <v-row dense>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.nameRegex" label="姓名 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.phoneRegex" label="電話 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.budgetRegex" label="預算 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.sourceRegex" label="來源 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.dateRegex" label="日期 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                     <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.noteRegex" label="備註 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
+                 </v-row>
+                 <div class="mt-3 text-center">
+                     <v-btn color="secondary" variant="tonal" @click="testRegexExtraction" size="small">2. 測試擷取結果</v-btn>
+                 </div>
+              </v-card>
+              
+              <v-card v-if="newAITemplate.testResult" class="pa-3 mb-4 rounded-lg bg-green-lighten-5 border-success">
+                  <div class="text-subtitle-2 font-weight-bold text-success mb-2">測試結果預覽：</div>
+                  <div class="text-body-2">
+                     <div><span class="font-weight-bold">姓名：</span>{{ newAITemplate.testResult.name }}</div>
+                     <div><span class="font-weight-bold">電話：</span>{{ newAITemplate.testResult.phone }}</div>
+                     <div><span class="font-weight-bold">預算：</span>{{ newAITemplate.testResult.budget }}</div>
+                     <div><span class="font-weight-bold">來源：</span>{{ newAITemplate.testResult.source }}</div>
+                     <div><span class="font-weight-bold">日期：</span>{{ newAITemplate.testResult.date }}</div>
+                     <div v-if="newAITemplate.testResult.note"><span class="font-weight-bold">備註：</span>{{ newAITemplate.testResult.note }}</div>
+                  </div>
+              </v-card>
+            </v-window-item>
+          </v-window>
+        </v-card-text>
+        <v-card-actions class="pa-3 bg-white" v-if="aiTab === 'add'">
+            <v-spacer></v-spacer>
+            <v-btn color="success" variant="elevated" @click="saveAITemplate" :disabled="!newAITemplate.testResult || !newAITemplate.name" :loading="isSavingAITemplate">
+                3. 確認無誤並儲存
+            </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1104,7 +1196,8 @@ import {
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
   listGoogleSheets,
   exportToGoogleSheet
-} from '@/api'; 
+} from '@/api';
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 
 // 修改項目：新增 Pie 圖表註冊
@@ -1203,7 +1296,105 @@ const showRecycleBin = ref(false);
 const showReportDialog = ref(false);
 
 const uploadStep = ref(1);
-const uploadInputs = ref(['']); 
+const uploadInputs = ref(['']);
+
+// --- AI 解析範本管理 --- 
+const showAITemplateDialog = ref(false);
+const aiTab = ref('list');
+const customParsingRules = ref([]);
+const isGeneratingRegex = ref(false);
+const isSavingAITemplate = ref(false);
+const newAITemplate = ref({ name: '', sampleText: '', regexResult: null, testResult: null });
+
+const fetchAITemplates = async () => {
+  try {
+    onSnapshot(query(collection(db, 'aiLeadTemplates'), where('projectId', '==', props.projectId), orderBy('createdAt', 'desc')), (snap) => {
+      customParsingRules.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    });
+  } catch (err) {
+    console.error('獲取 AI 範本失敗', err);
+  }
+};
+
+const generateRegexWithAI = async () => {
+  if (!newAITemplate.value.sampleText) return;
+  try {
+    isGeneratingRegex.value = true;
+    const generateLeadParsingRegex = httpsCallable(getFunctions(undefined, 'asia-east1'), 'generateLeadParsingRegex');
+    const result = await generateLeadParsingRegex({ sampleText: newAITemplate.value.sampleText });
+    if (result.data.status === 'success') {
+      newAITemplate.value.regexResult = result.data.data;
+      showMsg('✅ 成功產生規則，請測試擷取結果', 'success');
+    }
+  } catch (err) {
+    showMsg('❌ AI 產生規則失敗：' + err.message, 'error');
+  } finally {
+    isGeneratingRegex.value = false;
+  }
+};
+
+const testRegexExtraction = () => {
+  if (!newAITemplate.value.regexResult || !newAITemplate.value.sampleText) return;
+  const text = newAITemplate.value.sampleText;
+  const rules = newAITemplate.value.regexResult;
+  
+  const extract = (regexStr) => {
+      if (!regexStr) return '';
+      // 如果不包含括號，視為使用者想手動寫死的「固定字串」，直接回傳
+      if (!regexStr.includes('(')) return regexStr;
+
+      try {
+          const match = text.match(new RegExp(regexStr, 'm'));
+          return match ? match[1].trim() : '';
+      } catch (e) {
+          console.warn('Invalid regex:', regexStr);
+          return '正則錯誤';
+      }
+  };
+
+  newAITemplate.value.testResult = {
+      name: extract(rules.nameRegex),
+      phone: normalizePhone(extract(rules.phoneRegex)),
+      budget: extract(rules.budgetRegex),
+      source: normalizeSource(extract(rules.sourceRegex)),
+      date: extract(rules.dateRegex) || normalizeDate(new Date()),
+      note: extract(rules.noteRegex)
+  };
+};
+
+const saveAITemplate = async () => {
+  if (!newAITemplate.value.testResult || !newAITemplate.value.name) return;
+  try {
+      isSavingAITemplate.value = true;
+      await addDoc(collection(db, 'aiLeadTemplates'), {
+          projectId: props.projectId,
+          templateName: newAITemplate.value.name,
+          sampleText: newAITemplate.value.sampleText,
+          ...newAITemplate.value.regexResult,
+          createdBy: userStore.user?.name || '管理員',
+          createdAt: serverTimestamp()
+      });
+      showMsg('✅ 成功儲存解析範本', 'success');
+      aiTab.value = 'list';
+      newAITemplate.value = { name: '', sampleText: '', regexResult: null, testResult: null };
+  } catch (err) {
+      showMsg('❌ 儲存失敗：' + err.message, 'error');
+  } finally {
+      isSavingAITemplate.value = false;
+  }
+};
+
+const deleteAITemplate = async (id) => {
+   if (!confirm('確定要刪除這組解析範本嗎？')) return;
+   try {
+       await deleteDoc(doc(db, 'aiLeadTemplates', id));
+       showMsg('已刪除範本', 'info');
+   } catch (err) {
+       showMsg('刪除失敗', 'error');
+   }
+};
+
+// --- AI 解析範本管理結束 --- 
 const previewLeads = ref([]);   
 const duplicateResults = ref({}); 
 const isCheckingDuplicates = ref(false);
@@ -1872,23 +2063,76 @@ const normalizeSource = (s) => {
 const parseLeadText = (text) => {
   let result = { 
     name: '', phone: '', date: '', source: '', budget: '', rawText: text, 
-    assignedTo: null, assignedName: '' 
+    assignedTo: null, assignedName: '', note: ''
   };
   const cleanText = text.trim();
 
   // 內部輔助函式：標準化日期為 yyyy/mm/dd
   const formatDate = (y, m, d) => `${y}/${m.toString().padStart(2, '0')}/${d.toString().padStart(2, '0')}`;
 
-  // 1. 解析 【新名單】 格式
-  if (cleanText.includes('【新名單】')) {
-    result.name = cleanText.match(/^姓名：(.*?)$/m)?.[1]?.trim() || '';
-    result.phone = normalizePhone(cleanText.match(/^連絡電話：(.*?)$/m)?.[1]);
-    result.source = cleanText.match(/^平台途徑：(.*?)$/m)?.[1]?.trim() || '廠商名單';
-    
-    // 擷取日期: 2025年12月29日
-    const dateMatch = cleanText.match(/^日期：(\d{4})年(\d{1,2})月(\d{1,2})日/m);
-    if (dateMatch) result.date = formatDate(dateMatch[1], dateMatch[2], dateMatch[3]);
-  } 
+  // 0. 優先使用 AI 自訂解析範本進行擷取
+  for (const rule of customParsingRules.value) {
+    try {
+      const nameMatch = cleanText.match(new RegExp(rule.nameRegex, 'm'));
+      const phoneMatch = cleanText.match(new RegExp(rule.phoneRegex, 'm'));
+      
+      if (nameMatch && phoneMatch) {
+        result.name = nameMatch[1].trim();
+        result.phone = normalizePhone(phoneMatch[1]);
+        
+        if (rule.sourceRegex) {
+          if (!rule.sourceRegex.includes('(')) {
+            result.source = rule.sourceRegex.trim();
+          } else {
+            const sourceMatch = cleanText.match(new RegExp(rule.sourceRegex, 'm'));
+            if (sourceMatch) result.source = sourceMatch[1].trim();
+          }
+        }
+        if (rule.budgetRegex) {
+          if (!rule.budgetRegex.includes('(')) {
+            result.budget = rule.budgetRegex.trim();
+          } else {
+            const budgetMatch = cleanText.match(new RegExp(rule.budgetRegex, 'm'));
+            if (budgetMatch) result.budget = budgetMatch[1].trim();
+          }
+        }
+        if (rule.noteRegex) {
+          if (!rule.noteRegex.includes('(')) {
+            result.note = rule.noteRegex.trim();
+          } else {
+            const noteMatch = cleanText.match(new RegExp(rule.noteRegex, 'm'));
+            if (noteMatch) result.note = noteMatch[1].trim();
+          }
+        }
+        if (rule.dateRegex) {
+          if (!rule.dateRegex.includes('(')) {
+            result.date = rule.dateRegex.trim();
+          } else {
+            const dateMatch = cleanText.match(new RegExp(rule.dateRegex, 'm'));
+            if (dateMatch) {
+              const d = dateMatch[1].trim().replace(/[-\.]/g, '/');
+              result.date = d;
+            }
+          }
+        }
+        break; // 成功配對，跳出迴圈不執行後面的預設模式
+      }
+    } catch (e) {
+      console.warn('Skip invalid regex in rule:', rule.templateName);
+    }
+  }
+
+  if (!result.name || !result.phone) {
+    // 1. 解析 【新名單】 格式
+    if (cleanText.includes('【新名單】')) {
+      result.name = cleanText.match(/^姓名：(.*?)$/m)?.[1]?.trim() || '';
+      result.phone = normalizePhone(cleanText.match(/^連絡電話：(.*?)$/m)?.[1]);
+      result.source = cleanText.match(/^平台途徑：(.*?)$/m)?.[1]?.trim() || '廠商名單';
+      
+      // 擷取日期: 2025年12月29日
+      const dateMatch = cleanText.match(/^日期：(\d{4})年(\d{1,2})月(\d{1,2})日/m);
+      if (dateMatch) result.date = formatDate(dateMatch[1], dateMatch[2], dateMatch[3]);
+    } 
   
   // 2. 解析 富宇首馥官網 格式 (包含多行內容)
   else if (cleanText.includes('官網 提交了「預約賞屋」')) {
@@ -1916,6 +2160,7 @@ const parseLeadText = (text) => {
     const dateMatch = cleanText.match(/提交時間：(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
     if (dateMatch) result.date = formatDate(dateMatch[1], dateMatch[2], dateMatch[3]);
   }
+}
 
   // 通用邏輯：若特定格式未抓到預算，則嘗試從全文本搜尋「xx萬」關鍵字
   if (!result.budget) {
@@ -2202,6 +2447,8 @@ const onSettingsUpdated = (s) => {
 
 
 onMounted(async () => {
+  fetchAITemplates();
+
   // 1. 設定監聽名單資料
   onSnapshot(query(collection(db, 'leads'), where('projectId', '==', props.projectId), where('isDeleted', '==', false), orderBy('createdAt', 'desc')), (snap) => {
     allLeads.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));

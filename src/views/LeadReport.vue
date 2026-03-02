@@ -44,53 +44,59 @@
             </v-toolbar-title>
           </v-toolbar>
 
-          <v-card-text class="pa-4">
-            <div class="d-flex align-center mb-5">
-              <v-avatar color="indigo-darken-4" size="60" class="elevation-2 me-4">
-                <v-icon color="white" size="36">mdi-account</v-icon>
-              </v-avatar>
-              <div>
-                <div class="text-h5 font-weight-bold indigo--text text--darken-4">{{ leadData.name }}</div>
-                <a 
-                  :href="`tel:${leadData.phone ? leadData.phone.replace(/\D/g, '') : ''}`"
-                  class="text-subtitle-1 text-indigo-darken-2 font-weight-bold clickable-phone d-flex align-center mt-1"
-                >
-                  <v-icon size="20" class="me-1">mdi-phone-outgoing</v-icon>
-                  <span>{{ leadData.phone }}</span>
-                  <v-chip size="x-small" color="indigo-lighten-4" variant="flat" class="ms-2 text-indigo-darken-4">撥打</v-chip>
-                </a>
-              </div>
-            </div>
+          <v-card-text class="pa-4 bg-grey-lighten-4">
+            <v-card class="pa-4 mb-4 rounded-xl elevation-2 bg-indigo-darken-4 text-white">
+              <v-row align="center" no-gutters>
+                <v-col cols="auto" class="me-4">
+                  <v-avatar color="white" size="56">
+                    <v-icon color="indigo-darken-4" size="32">mdi-account</v-icon>
+                  </v-avatar>
+                </v-col>
+                <v-col>
+                  <div class="text-h6 font-weight-bold">{{ leadData?.name }}</div>
+                  <a 
+                    :href="`tel:${leadData?.phone ? leadData.phone.replace(/\\D/g, '') : ''}`"
+                    class="text-subtitle-2 opacity-80 d-flex align-center text-white text-decoration-none mt-1"
+                  >
+                    <v-icon size="16" class="me-1">mdi-phone</v-icon>
+                    <span>{{ leadData?.phone }}</span>
+                    <v-chip size="x-small" color="white" variant="flat" class="ms-2 text-indigo-darken-4 font-weight-bold">撥打</v-chip>
+                  </a>
+                </v-col>
+              </v-row>
 
-            <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg mb-6 border-indigo-lighten-4 border">
-              <div class="pa-3">
-                <v-row no-gutters>
-                  <v-col cols="6" class="pe-2">
-                    <div class="info-label">來源</div>
-                    <div class="info-value text-truncate">
-                      <v-icon size="14" class="me-1">mdi-tray-arrow-down</v-icon>{{ leadData.source || '未註明' }}
-                    </div>
-                  </v-col>
-                  <v-col cols="6" class="ps-2 border-left-custom">
-                    <div class="info-label">預算</div>
-                    <div class="info-value text-truncate">
-                      <v-icon size="14" class="me-1">mdi-currency-usd</v-icon>{{ leadData.budget || '未填寫' }}
-                    </div>
-                  </v-col>
-                  
-                  <v-col cols="12"><v-divider class="my-3 opacity-30"></v-divider></v-col>
-                  
-                  <v-col cols="12">
-                    <div class="info-label">填表日期</div>
-                    <div class="info-value">
-                      <v-icon size="14" class="me-1">mdi-calendar-clock</v-icon>{{ leadData.date || '無日期' }}
-                    </div>
-                  </v-col>
-                </v-row>
-              </div>
+              <v-divider class="my-3 border-opacity-25" color="white"></v-divider>
+
+              <v-row dense>
+                <v-col cols="6">
+                  <div class="text-caption opacity-70">來源管道</div>
+                  <div class="text-body-2 font-weight-bold">{{ leadData?.source || '未註明' }}</div>
+                </v-col>
+                <v-col cols="6">
+                  <div class="text-caption opacity-70">購屋預算</div>
+                  <div class="text-body-2 font-weight-bold">{{ leadData?.budget || '未填寫' }}</div>
+                </v-col>
+                <v-col cols="12" class="mt-2">
+                  <div class="text-caption opacity-70">填表日期</div>
+                  <div class="text-body-2 font-weight-bold">{{ leadData?.date || '無日期' }}</div>
+                </v-col>
+                
+                <v-col cols="12" class="mt-2" v-if="leadData?.note">
+                  <v-alert
+                    density="compact"
+                    color="indigo-lighten-1"
+                    icon="mdi-note-text"
+                    class="text-caption rounded-lg mt-1"
+                  >
+                    <div class="font-weight-bold mb-1">備註：</div>
+                    {{ leadData.note }}
+                  </v-alert>
+                </v-col>
+              </v-row>
             </v-card>
 
-            <div class="section-title mb-3">聯絡狀況</div>
+            <v-card class="pa-5 mb-6 rounded-xl elevation-2">
+              <div class="section-title mb-3">聯絡狀況回報</div>
             <v-select
               v-model="form.status"
               :items="statusOptions"
@@ -155,18 +161,21 @@
               color="indigo-darken-4"
             ></v-textarea>
 
-              <v-btn 
-                block 
-                :color="form.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
-                size="x-large" 
-                rounded="lg"
-                elevation="2"
-                :disabled="isSubmitDisabled"
-                @click="submitReport"
-                class="font-weight-bold"
-              >
-                {{ submitBtnText }}
-              </v-btn>
+              <div class="text-center mt-6">
+                <v-btn 
+                  :color="form.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
+                  size="x-large" 
+                  rounded="lg"
+                  elevation="2"
+                  min-width="200"
+                  :disabled="isSubmitDisabled"
+                  @click="submitReport"
+                  class="font-weight-bold"
+                >
+                  {{ submitBtnText }}
+                </v-btn>
+              </div>
+            </v-card>
 
             <div class="section-title mt-8 mb-3 d-flex align-center">
               <v-icon size="20" class="me-2">mdi-history</v-icon>回報日誌
@@ -238,7 +247,7 @@ const userStore = useUserStore();
 const leadId = route.query.id;
 const authStatus = ref('loading');
 const projectName = ref('');
-const leadData = ref({ name: '', phone: '', projectId: '', source: '', budget: '', date: '' });
+const leadData = ref({ name: '', phone: '', projectId: '', source: '', budget: '', date: '', note: '' });
 const form = ref({ status: '', reason: '', note: '' });
 const historyLogs = ref([]);
 const snackbar = reactive({ show: false, text: '', color: '' });
@@ -335,6 +344,49 @@ const verifyAccess = async (lineId) => {
 
 onMounted(async () => {
   if (!leadId) { authStatus.value = 'denied'; return; }
+
+  // 加上本地環境判斷，略過 LINE LIFF 驗證方便開發
+  if (window.location.hostname === 'localhost') {
+    try {
+      const leadSnap = await getDoc(doc(db, 'leads', leadId));
+      if (leadSnap.exists()) {
+        const leadInfo = leadSnap.data();
+        leadData.value = { id: leadSnap.id, ...leadInfo };
+        const targetProjectId = leadInfo.projectId;
+        projectName.value = targetProjectId || '測試專案';
+        
+        // 取得專案設定的選項
+        if (targetProjectId) {
+          const setSnap = await getDoc(doc(db, 'projectSettings', targetProjectId));
+          if (setSnap.exists()) {
+            const settings = setSnap.data();
+            if (settings.statusOptions?.length > 0) statusOptions.value = settings.statusOptions;
+            if (settings.reasonOptions?.length > 0) reasonOptions.value = settings.reasonOptions;
+          }
+        }
+
+        userStore.user = { 
+            name: '本地開發人員', 
+            phone: '0900000000', 
+            key: '0900000000' 
+        };
+        authStatus.value = 'granted';
+        
+        const logsSnap = await getDocs(query(
+          collection(db, `leads/${leadId}/contactLogs`),
+          orderBy('createdAt', 'desc')
+        ));
+        historyLogs.value = logsSnap.docs.map(d => d.data());
+      } else {
+        authStatus.value = 'denied';
+      }
+    } catch (err) {
+      console.error('Local dev mock error:', err);
+      authStatus.value = 'denied';
+    }
+    return;
+  }
+
   try {
     const liffId = import.meta.env.VITE_LIFF_ID;
     if (!liffId) {

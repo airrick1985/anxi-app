@@ -22147,3 +22147,8 @@ ${JSON.stringify(contextData, null, 2)}
     throw new HttpsError("internal", `AI 助理發生錯誤: ${error.message}`);
   }
 });
+
+
+// AI Regex Generation Backend
+const aiRegexGeneration = require('./aiRegexGeneration');
+exports.generateLeadParsingRegex = aiRegexGeneration.generateLeadParsingRegex;

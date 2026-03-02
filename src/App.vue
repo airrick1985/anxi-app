@@ -143,6 +143,12 @@ watch(() => userStore.user, (newUser) => {
     unsubscribe();
     unsubscribe = null;
   }
+  
+  // ✅ 加上本地環境除外判斷，開發時不要檢查 activeSessionId，避免頻繁登出
+  if (window.location.hostname === 'localhost') {
+    return;
+  }
+
   if (newUser && newUser.key) {
     const userDocRef = doc(db, 'users', newUser.key);
     unsubscribe = onSnapshot(userDocRef, (docSnap) => {

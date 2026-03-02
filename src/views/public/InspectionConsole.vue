@@ -129,6 +129,13 @@
                     <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
                       <v-list-item-title>產製報告</v-list-item-title>
                     </v-list-item>
+                    <v-divider></v-divider>
+                    <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
+                      <v-list-item-title>下載 Excel</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item @click="handleDownloadPdf" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
+                      <v-list-item-title>下載 PDF</v-list-item-title>
+                    </v-list-item>
                   </v-list>
                 </v-menu>
                 </div>
@@ -504,6 +511,18 @@
     <v-dialog v-model="showDeleteDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-error"> <v-icon start>mdi-alert-circle-outline</v-icon> 確認刪除紀錄 </v-card-title> <v-card-text> 您確定要將這筆驗屋紀錄移至資源回收桶嗎？ <div v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToDelete.inspectionDate) }} <br> 區域: {{ recordToDelete.area }} <br> 種類: {{ recordToDelete.category }} / {{ recordToDelete.subCategory }} </div> <br> <strong class="text-error">您之後可以在資源回收桶中還原。</strong> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn> <v-btn color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn> </v-card-actions> </v-card> </v-dialog>
     <v-dialog v-model="showRestoreDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-success"> <v-icon start>mdi-restore</v-icon> 確認還原紀錄 </v-card-title> <v-card-text> 您確定要還原這筆驗屋紀錄嗎？ <div v-if="recordToRestore" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToRestore.inspectionDate) }} <br> 區域: {{ recordToRestore.area }} <br> 種類: {{ recordToRestore.category }} / {{ recordToRestore.subCategory }} </div> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showRestoreDialog = false" :disabled="isRestoring">取消</v-btn> <v-btn color="success" variant="flat" @click="confirmRestoreRecord" :loading="isRestoring">確認還原</v-btn> </v-card-actions> </v-card> </v-dialog>
 
+    <v-dialog v-model="isDownloading" persistent max-width="420px">
+      <v-card color="primary">
+        <v-card-text class="d-flex align-center pa-4">
+          <v-progress-circular indeterminate color="white" class="mr-4"></v-progress-circular>
+          <div>
+            <div class="text-h6">{{ downloadingText }}</div>
+            <div class="text-caption">請稍候，檔案準備中...</div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-bottom-navigation
       v-if="mobile && projectId"
       color="primary"
@@ -555,6 +574,13 @@
           </v-list-item>
           <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
             <v-list-item-title>產製報告</v-list-item-title>
+          </v-list-item>
+          <v-divider></v-divider>
+          <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
+            <v-list-item-title>下載 Excel</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="handleDownloadPdf" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
+            <v-list-item-title>下載 PDF</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
@@ -670,6 +696,8 @@ const confirmedBatches = ref([]); // 儲存從後端獲取的批次列表
 const selectedBatchId = ref(null); // 儲存用戶選擇的批次 ID
 const inspectorNameForPdf = ref(''); // 儲存報告上的產製人員名稱
 const showProcessingDialog = ref(false); // 控制處理中提示 Dialog
+const isDownloading = ref(false); // 控制下載報告進度 Dialog
+const downloadingText = ref(''); // 下載進度文字
 
 
 
@@ -737,12 +765,78 @@ const headers = computed(() => {
 });
 
 // --- Methods ---
+async function initProjectData() {
+  loadingText.value = '正在載入建案權限...';
+  await projectStore.fetchProjects();
+  const allProjects = projectStore.projectsList;
+  authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name));
+  
+  if (props.projectId) {
+    loadingText.value = '正在載入建案資料...';
+    if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) {
+      loadingText.value = '權限不足...';
+      isBound.value = true;
+      isLoading.value = false;
+      alert('權限不足');
+      return;
+    }
+    await loadProjectStructure();
+    await loadOptionsForChips();
+    await loadData();
+  } else {
+    loadingText.value = '請選擇建案';
+  }
+}
+
 onMounted(async () => {
- try { loadingText.value = '正在與 LINE 連接...'; await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
- 
- if (!liff.isLoggedIn()) { liff.login(); return; } loadingText.value = '正在驗證使用者權限...'; const profile = await liff.getProfile(); const success = await userStore.fetchUserByLineId(profile.userId); if (success) { isBound.value = true; loadingText.value = '正在載入建案權限...'; await projectStore.fetchProjects(); const allProjects = projectStore.projectsList; authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name)); if (props.projectId) { loadingText.value = '正在載入建案資料...'; if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) { loadingText.value = '權限不足...'; isBound.value = true; isLoading.value = false; alert('權限不足'); return; } await loadProjectStructure(); await loadOptionsForChips();
- await loadData(); 
- } else { loadingText.value = '請選擇建案'; } } else { isBound.value = false; } } catch (error) { console.error('頁面初始化失敗:', error); loadingText.value = `初始化失敗: ${error.message}`; } finally { isLoading.value = false; viewMode.value = mobile.value ? 'card' : 'table'; }
+  try {
+    // 優先檢查是否在主系統已經登入 (Web App 的狀態)
+    if (userStore.isLoggedIn && userStore.user?.key) {
+      isBound.value = true;
+      await initProjectData();
+      return; // 結束，不走 LIFF 初始化
+    }
+
+    // 檢查 URL 中是否有 userKey 參數
+    const userKey = route.query.userKey;
+    if (userKey) {
+      loadingText.value = '正在驗證使用者身份...';
+      const success = await userStore.fetchUserByUserKey(userKey);
+      
+      if (success) {
+        isBound.value = true;
+        await initProjectData();
+      } else {
+        isBound.value = false;
+      }
+      return; // 結束，不走 LIFF 初始化
+    }
+
+    loadingText.value = '正在與 LINE 連接...';
+    await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
+    
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    
+    loadingText.value = '正在驗證使用者權限...';
+    const profile = await liff.getProfile();
+    const success = await userStore.fetchUserByLineId(profile.userId);
+    
+    if (success) {
+      isBound.value = true;
+      await initProjectData();
+    } else {
+      isBound.value = false;
+    }
+  } catch (error) {
+    console.error('頁面初始化失敗:', error);
+    loadingText.value = `初始化失敗: ${error.message}`;
+  } finally {
+    isLoading.value = false;
+    viewMode.value = mobile.value ? 'card' : 'table';
+  }
 });
 
 async function loadProjectStructure() { if (!props.projectId) return; isLoadingStructure.value = true; const result = await getProjectStructureFB(props.projectId); if (result.status === 'success') projectStructure.value = result.data; else console.error("載入建案結構失敗:", result.message); isLoadingStructure.value = false; }
@@ -969,6 +1063,286 @@ function handleModeChange(newModeValue) {
   selectedBuilding.value = null;
   selectedUnit.value = null;
   loadData();
+}
+
+// === 下載報告功能 ===
+async function loadImageAsBase64(url) {
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn('圖片載入失敗:', url, e);
+    return null;
+  }
+}
+
+async function handleDownloadExcel() {
+  if (filteredRecords.value.length === 0) {
+    alert('目前沒有可下載的資料。');
+    return;
+  }
+  isDownloading.value = true;
+  downloadingText.value = '正在準備 Excel 報告...';
+  try {
+    const ExcelJS = await import('exceljs');
+    const { saveAs } = await import('file-saver');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('驗屋報告');
+
+    // 中文標頭定義
+    worksheet.columns = [
+      { header: '建案', key: 'projectName', width: 14 },
+      { header: '戶別', key: 'unitId', width: 12 },
+      { header: '日期', key: 'date', width: 14 },
+      { header: '階段', key: 'phase', width: 10 },
+      { header: '區域', key: 'area', width: 12 },
+      { header: '種類', key: 'category', width: 12 },
+      { header: '細項', key: 'subCategory', width: 15 },
+      { header: '狀態', key: 'status', width: 10 },
+      { header: '等級', key: 'level', width: 10 },
+      { header: '進度', key: 'progress', width: 10 },
+      { header: '買方確認', key: 'confirmed', width: 14 },
+      { header: '說明', key: 'description', width: 35 },
+      { header: '人員', key: 'inspector', width: 10 },
+      { header: '時間', key: 'createdAt', width: 18 },
+      { header: '照片 1', key: 'photo1', width: 23 },
+      { header: '照片 2', key: 'photo2', width: 23 },
+      { header: '照片 3', key: 'photo3', width: 23 },
+      { header: '照片 4', key: 'photo4', width: 23 },
+    ];
+
+    // 標頭樣式
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 25;
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, size: 11, color: { argb: 'FF333333' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      };
+    });
+
+    const records = filteredRecords.value;
+    for (let i = 0; i < records.length; i++) {
+      downloadingText.value = `正在處理資料 (${i + 1}/${records.length})...`;
+      const item = records[i];
+      const row = worksheet.addRow({
+        projectName: projectName.value || '',
+        unitId: item.unitId || '',
+        date: formatDate(item.inspectionDate),
+        phase: item.phase || '',
+        area: item.area || '',
+        category: item.category || '',
+        subCategory: item.subCategory || '',
+        status: item.status || '',
+        level: item.level || '',
+        progress: item.progress || '',
+        confirmed: item.customerConfirmedAt ? formatDate(item.customerConfirmedAt) : '未確認',
+        description: item.description || '',
+        inspector: item.inspectorName || '',
+        createdAt: formatDateTime(item.createdAt),
+        photo1: '',
+        photo2: '',
+        photo3: '',
+        photo4: '',
+      });
+      // 設定資料列高度為 120
+      row.height = 120;
+      row.alignment = { vertical: 'middle', wrapText: true };
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          right: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+        };
+      });
+
+      // 嵌入圖片
+      if (item.photos && item.photos.length > 0) {
+        const maxPhotos = Math.min(item.photos.length, 4);
+        const imgW = 120;
+        const imgH = 80;
+
+
+        for (let j = 0; j < maxPhotos; j++) {
+          try {
+            downloadingText.value = `正在載入圖片 (${i + 1}/${records.length}) - 圖 ${j + 1}/${maxPhotos}...`;
+            const dataUrl = await loadImageAsBase64(item.photos[j].url);
+            if (dataUrl) {
+              const base64Raw = dataUrl.split(',')[1];
+              const ext = dataUrl.includes('image/png') ? 'png' : 'jpeg';
+              const imageId = workbook.addImage({ base64: base64Raw, extension: ext });
+              
+              // 14 為第 15 欄（照片 1 的起始欄位，0-based offset）
+              worksheet.addImage(imageId, {
+                tl: { col: 14 + j + 0.1, row: i + 1 + 0.1 }, // 微調邊框
+                ext: { width: imgW, height: imgH },
+              });
+            }
+          } catch (e) {
+            console.warn('圖片嵌入失敗:', e);
+          }
+        }
+      }
+    }
+
+    downloadingText.value = '正在產生檔案...';
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const dateStr = format(new Date(), 'yyyyMMdd');
+    const fileName = `驗屋報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.xlsx`;
+    saveAs(blob, fileName);
+  } catch (error) {
+    console.error('下載 Excel 失敗:', error);
+    alert(`下載 Excel 失敗: ${error.message}`);
+  } finally {
+    isDownloading.value = false;
+  }
+}
+
+async function handleDownloadPdf() {
+  if (filteredRecords.value.length === 0) {
+    alert('目前沒有可下載的資料。');
+    return;
+  }
+  isDownloading.value = true;
+  downloadingText.value = '正在準備 PDF 報告...';
+  try {
+    const { jsPDF } = await import('jspdf');
+    const html2canvasModule = await import('html2canvas');
+    const html2canvas = html2canvasModule.default || html2canvasModule;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210;
+    const pageH = 297;
+    const margin = 8;
+    const usableW = pageW - 2 * margin; // 194mm
+    const halfH = pageH / 2; // 148.5mm
+    const cardH = halfH - margin - 2; // 每段可用高度
+    const renderPxW = 760;
+    const renderPxH = 540;
+    const records = filteredRecords.value;
+
+    // 預載所有圖片
+    downloadingText.value = '正在載入圖片...';
+    const imageCache = {};
+    let imgCount = 0;
+    const totalImgs = records.reduce((s, r) => s + (r.photos?.length || 0), 0);
+    for (const record of records) {
+      if (record.photos && record.photos.length > 0) {
+        for (const photo of record.photos) {
+          if (!imageCache[photo.url]) {
+            imgCount++;
+            downloadingText.value = `正在載入圖片 (${imgCount}/${totalImgs})...`;
+            imageCache[photo.url] = await loadImageAsBase64(photo.url);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < records.length; i++) {
+      downloadingText.value = `正在產生 PDF (${i + 1}/${records.length})...`;
+      const record = records[i];
+      const isTop = (i % 2 === 0);
+      if (i > 0 && isTop) doc.addPage();
+
+      // 建立卡片 HTML 元素
+      const cardDiv = document.createElement('div');
+      cardDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:14px;box-sizing:border-box;display:flex;flex-direction:column;`;
+
+      // 標頭區 4x3 格線 (為了加入建案和人員，改為4列)
+      const fields = [
+        ['建案', projectName.value || ''], ['戶別', record.unitId || ''], ['日期', formatDate(record.inspectionDate)],
+        ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
+        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''], 
+        ['等級', record.level || ''], ['進度', record.progress || ''], [''], // 最後一格空白補齊
+      ];
+      let tblHtml = '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">';
+      for (let r = 0; r < 4; r++) {
+        tblHtml += '<tr>';
+        for (let c = 0; c < 3; c++) {
+          const [label, val] = fields[r * 3 + c];
+          if (label) {
+             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
+          } else {
+             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
+          }
+        }
+        tblHtml += '</tr>';
+      }
+      tblHtml += '</table>';
+
+      // 說明區
+      const desc = record.description || '(無)';
+      const descHtml = `<div style="border:1px solid #ddd;padding:6px 8px;margin-bottom:6px;font-size:12px;max-height:70px;overflow:hidden;line-height:1.5;"><span style="color:#888;font-weight:bold">說明:</span> <span style="color:#333">${desc}</span></div>`;
+
+      // 圖片區
+      let photosHtml = '';
+      if (record.photos && record.photos.length > 0) {
+        const photos = record.photos;
+        const cnt = photos.length;
+        photosHtml = '<div style="flex:1;display:flex;gap:6px;align-items:flex-start;overflow:hidden;min-height:0;">';
+        if (cnt === 1) {
+          const src = imageCache[photos[0].url];
+          if (src) photosHtml += `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
+        } else {
+          const maxShow = Math.min(cnt, 4);
+          const maxW = Math.floor((renderPxW - 28 - (maxShow - 1) * 6) / maxShow);
+          for (let j = 0; j < maxShow; j++) {
+            const src = imageCache[photos[j].url];
+            if (src) photosHtml += `<img src="${src}" style="max-width:${maxW}px;max-height:100%;object-fit:contain;" />`;
+          }
+        }
+        photosHtml += '</div>';
+      }
+
+      cardDiv.innerHTML = tblHtml + descHtml + photosHtml;
+      document.body.appendChild(cardDiv);
+
+      // 等待圖片在 DOM 中載入完成
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const canvas = await html2canvas(cardDiv, {
+        width: renderPxW,
+        height: renderPxH,
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      document.body.removeChild(cardDiv);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const yPos = isTop ? margin : halfH + 1;
+      doc.addImage(imgData, 'JPEG', margin, yPos, usableW, cardH);
+
+      // 繪製分隔線（在頁面中間）
+      if (isTop && i + 1 < records.length) {
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.3);
+        doc.line(margin, halfH, pageW - margin, halfH);
+      }
+    }
+
+    const dateStr = format(new Date(), 'yyyyMMdd');
+    doc.save(`驗屋報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`);
+  } catch (error) {
+    console.error('下載 PDF 失敗:', error);
+    alert(`下載 PDF 失敗: ${error.message}`);
+  } finally {
+    isDownloading.value = false;
+  }
 }
 
 
