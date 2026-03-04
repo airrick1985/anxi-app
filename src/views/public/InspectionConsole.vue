@@ -129,7 +129,23 @@
                     <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
                       <v-list-item-title>產製報告</v-list-item-title>
                     </v-list-item>
-                    <v-divider></v-divider>
+                  </v-list>
+                </v-menu>
+
+                <v-menu offset-y>
+                  <template v-slot:activator="{ props }">
+                    <v-btn
+                      color="primary"
+                      v-bind="props"
+                      size="small"
+                      variant="outlined"
+                      prepend-icon="mdi-download"
+                      :disabled="filteredRecords.length === 0"
+                    >
+                      下載報告
+                    </v-btn>
+                  </template>
+                  <v-list density="compact">
                     <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
                       <v-list-item-title>下載 Excel</v-list-item-title>
                     </v-list-item>
@@ -478,14 +494,25 @@
             取消
           </v-btn>
           <v-btn
+            color="secondary"
+            variant="outlined"
+            @click="handleDownloadBatchPdf"
+            :disabled="!selectedBatchId || isLoadingBatches"
+            size="large"
+            prepend-icon="mdi-download"
+            class="mr-2"
+          >
+            下載報告 PDF
+          </v-btn>
+          <v-btn
             color="primary"
             variant="elevated"
             @click="startPdfGeneration"
             :disabled="!selectedBatchId || isLoadingBatches"
             size="large"
-            prepend-icon="mdi-file-pdf-box"
+            prepend-icon="mdi-cloud-upload"
           >
-            開始產製報告
+            上傳產製報告
           </v-btn>
         </v-card-actions>
         </v-card>
@@ -575,7 +602,22 @@
           <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
             <v-list-item-title>產製報告</v-list-item-title>
           </v-list-item>
-          <v-divider></v-divider>
+        </v-list>
+      </v-menu>
+
+      <v-menu location="top" offset-y>
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            value="download"
+            class="pa-0"
+            :disabled="filteredRecords.length === 0"
+          >
+            <v-icon size="small">mdi-download</v-icon>
+            <span class="mobile-btn-text">下載報告</span>
+          </v-btn>
+        </template>
+        <v-list density="compact" class="mb-2">
           <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
             <v-list-item-title>下載 Excel</v-list-item-title>
           </v-list-item>
@@ -1340,6 +1382,151 @@ async function handleDownloadPdf() {
   } catch (error) {
     console.error('下載 PDF 失敗:', error);
     alert(`下載 PDF 失敗: ${error.message}`);
+  } finally {
+    isDownloading.value = false;
+  }
+}
+
+async function handleDownloadBatchPdf() {
+  if (!selectedBatchId.value) {
+    alert('請先選擇要下載的批次。');
+    return;
+  }
+  
+  // 從所有的 records 裡面撈出符合此批次的資料
+  const batchRecords = filteredRecords.value.filter(r => r.confirmationBatchId === selectedBatchId.value && !r.isDeleted);
+  
+  if (batchRecords.length === 0) {
+    alert('此批次沒有可下載的資料。');
+    return;
+  }
+
+  // 關閉對話框
+  showGeneratePdfDialog.value = false;
+
+  isDownloading.value = true;
+  downloadingText.value = '正在準備批次 PDF 報告...';
+  try {
+    const { jsPDF } = await import('jspdf');
+    const html2canvasModule = await import('html2canvas');
+    const html2canvas = html2canvasModule.default || html2canvasModule;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210;
+    const pageH = 297;
+    const margin = 8;
+    const usableW = pageW - 2 * margin; // 194mm
+    const halfH = pageH / 2; // 148.5mm
+    const cardH = halfH - margin - 2; // 每段可用高度
+    const renderPxW = 760;
+    const renderPxH = 540;
+    
+    // 預載所有圖片
+    downloadingText.value = '正在載入圖片...';
+    const imageCache = {};
+    let imgCount = 0;
+    const totalImgs = batchRecords.reduce((s, r) => s + (r.photos?.length || 0), 0);
+    for (const record of batchRecords) {
+      if (record.photos && record.photos.length > 0) {
+        for (const photo of record.photos) {
+          if (!imageCache[photo.url]) {
+            imgCount++;
+            downloadingText.value = `正在載入圖片 (${imgCount}/${totalImgs})...`;
+            imageCache[photo.url] = await loadImageAsBase64(photo.url);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < batchRecords.length; i++) {
+      downloadingText.value = `正在產生 PDF (${i + 1}/${batchRecords.length})...`;
+      const record = batchRecords[i];
+      const isTop = (i % 2 === 0);
+      if (i > 0 && isTop) doc.addPage();
+
+      // 建立卡片 HTML 元素
+      const cardDiv = document.createElement('div');
+      cardDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:14px;box-sizing:border-box;display:flex;flex-direction:column;`;
+
+      // 標頭區 4x3 格線
+      const fields = [
+        ['建案', projectName.value || ''], ['戶別', record.unitId || ''], ['日期', formatDate(record.inspectionDate)],
+        ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
+        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''], 
+        ['等級', record.level || ''], ['進度', record.progress || ''], [''],
+      ];
+      let tblHtml = '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">';
+      for (let r = 0; r < 4; r++) {
+        tblHtml += '<tr>';
+        for (let c = 0; c < 3; c++) {
+          const [label, val] = fields[r * 3 + c];
+          if (label) {
+             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
+          } else {
+             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
+          }
+        }
+        tblHtml += '</tr>';
+      }
+      tblHtml += '</table>';
+
+      // 說明區
+      const desc = record.description || '(無)';
+      const descHtml = `<div style="border:1px solid #ddd;padding:6px 8px;margin-bottom:6px;font-size:12px;max-height:70px;overflow:hidden;line-height:1.5;"><span style="color:#888;font-weight:bold">說明:</span> <span style="color:#333">${desc}</span></div>`;
+
+      // 圖片區
+      let photosHtml = '';
+      if (record.photos && record.photos.length > 0) {
+        const photos = record.photos;
+        const cnt = photos.length;
+        photosHtml = '<div style="flex:1;display:flex;gap:6px;align-items:flex-start;overflow:hidden;min-height:0;">';
+        if (cnt === 1) {
+          const src = imageCache[photos[0].url];
+          if (src) photosHtml += `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
+        } else {
+          const maxShow = Math.min(cnt, 4);
+          const maxW = Math.floor((renderPxW - 28 - (maxShow - 1) * 6) / maxShow);
+          for (let j = 0; j < maxShow; j++) {
+            const src = imageCache[photos[j].url];
+            if (src) photosHtml += `<img src="${src}" style="max-width:${maxW}px;max-height:100%;object-fit:contain;" />`;
+          }
+        }
+        photosHtml += '</div>';
+      }
+
+      cardDiv.innerHTML = tblHtml + descHtml + photosHtml;
+      document.body.appendChild(cardDiv);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const canvas = await html2canvas(cardDiv, {
+        width: renderPxW,
+        height: renderPxH,
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      document.body.removeChild(cardDiv);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const yPos = isTop ? margin : halfH + 1;
+      doc.addImage(imgData, 'JPEG', margin, yPos, usableW, cardH);
+
+      if (isTop && i + 1 < batchRecords.length) {
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.3);
+        doc.line(margin, halfH, pageW - margin, halfH);
+      }
+    }
+
+    const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value);
+    const dateStr = batchInfo ? batchInfo.dateString.replace(/\//g, '') : format(new Date(), 'yyyyMMdd');
+    
+    doc.save(`批次報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`);
+  } catch (error) {
+    console.error('下載批次 PDF 失敗:', error);
+    alert(`下載批次 PDF 失敗: ${error.message}`);
   } finally {
     isDownloading.value = false;
   }

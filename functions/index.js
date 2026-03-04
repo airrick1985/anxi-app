@@ -41,6 +41,7 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const xlsx = require("xlsx");
+const PDFDocument = require("pdfkit");
 
 
 // --- 這些是輕量級或共用的，保留在頂部 ---
@@ -10814,133 +10815,25 @@ async function sendErrorNotification(projectId, unitId, confirmationBatchId, err
 // ✓ END: 寄送錯誤通知函式
 
 /**
- * [內部輔助函式] 在簡報中根據替代文字描述查找投影片 ID
- * @param {google.slides_v1.Slides} slides - 已認證的 Google Slides API 客戶端
- * @param {string} presentationId - 簡報的 ID
- * @param {string} altText - 要查找的替代文字描述
- * @returns {Promise<string|null>} - 找到的投影片 ID 或 null
- */
-async function findSlideIdByAltText(slides, presentationId, altText) {
-  const functionName = `findSlideIdByAltText`;
-  console.log(`[${functionName}] 正在簡報 [${presentationId}] 中查找替代文字 "${altText}"...`); // 新增日誌
-  try {
-    const res = await slides.presentations.get({
-      presentationId: presentationId,
-      fields: 'slides(objectId,pageElements)',
-    });
-
-    if (!res.data.slides) {
-      console.warn(`[${functionName}] 簡報 [${presentationId}] 中找不到任何投影片。`);
-      return null;
-    }
-
-    for (const slide of res.data.slides) {
-      if (slide.pageElements) {
-        for (const element of slide.pageElements) {
-          const description = element.description || element.shape?.shapeProperties?.contentDescription || element.shape?.placeholder?.altText;
-
-          if (description === altText) {
-            console.log(`[${functionName}] 在簡報 [${presentationId}] 的投影片 ${slide.objectId} 上找到替代文字為 "${altText}" 的形狀。`); // 更新日誌
-            return slide.objectId;
-          }
-        }
-      }
-    }
-
-    console.warn(`[${functionName}] 在簡報 [${presentationId}] 中找不到替代文字為 "${altText}" 的形狀。`); // 更新日誌
-    return null;
-
-  } catch (error) {
-    console.error(`[${functionName}] 查找替代文字 "${altText}" 時發生錯誤:`, error);
-    throw new Error(`查找替代文字 "${altText}" 失敗: ${error.message}`);
-  }
-}
-
-/**
- * [內部輔助函式 V2] 在指定投影片中根據替代文字描述查找形狀 ID、位置和大小
- * @param {google.slides_v1.Slides} slides - 已認證的 Google Slides API 客戶端
- * @param {string} presentationId - 簡報的 ID
- * @param {string} slideId - 要搜尋的投影片 ID
- * @param {string} altText - 要查找的替代文字描述
- * @returns {Promise<object|null>} - 找到則返回 { id, size, transform } 或 null
- */
-async function findShapeIdByAltText(slides, presentationId, slideId, altText) {
-  // ✓ 返回 id, size, transform
-  const functionName = `findShapeIdByAltText_V2`; // ✓ 版本 V2
-  console.log(`[${functionName}] 正在簡報 [${presentationId}] 的投影片 [${slideId}] 中查找替代文字 "${altText}"...`);
-  try {
-    // ✓✓✓ 請求更多欄位：size, transform ✓✓✓
-    const res = await slides.presentations.pages.get({
-      presentationId: presentationId,
-      pageObjectId: slideId,
-      // ✓ 增加請求 size 和 transform 欄位
-      fields: 'pageElements(objectId,description,size,transform,shape)',
-    });
-
-    const pageElements = res.data.pageElements;
-    if (!pageElements) {
-      console.warn(`[${functionName}] 投影片 ${slideId} 中找不到任何頁面元素。`);
-      return null;
-    }
-
-    for (const element of pageElements) {
-      // ✓ description 的獲取邏輯保持不變
-      const description = element.description
-        || element.shape?.shapeProperties?.contentDescription
-        || element.shape?.placeholder?.altText; // 嘗試兼容不同情況
-
-      if (description === altText) {
-        // ✓✓✓ 返回包含 id, size, transform 的物件 ✓✓✓
-        const result = {
-          id: element.objectId,
-          size: element.size,
-          transform: element.transform
-        };
-        console.log(`[${functionName}] 找到替代文字 "${altText}" 的形狀，資訊:`, JSON.stringify(result));
-        return result;
-      }
-    }
-
-    console.warn(`[${functionName}] 在投影片 ${slideId} 中找不到替代文字為 "${altText}" 的形狀。`);
-    return null;
-
-  } catch (error) {
-    console.error(`[${functionName}] 在投影片 ${slideId} 上查找替代文字 "${altText}" 時發生錯誤:`, error);
-    // ✓ 保持拋出錯誤
-    throw new Error(`在投影片 ${slideId} 上查找替代文字 "${altText}" 失敗: ${error.message}`);
-  }
-}
-
-/**
- * ✓【修正 V4.3 - 移除 Logo 插入邏輯】[內部異步函式] 使用 Google Slides API 執行 PDF 產生
+ * [內部異步函式] 使用 PDFKit 生成驗屋報告 PDF
  */
 async function generatePdfInBackground(projectId, unitId, confirmationBatchId, inspectorName, triggeringUserEmail) {
-
-
-  // ✓ 移除 Logo 插入邏輯
-  const functionName = `generatePdfInBackground_CopyPresentation_V4.3 (Batch: ${confirmationBatchId})`; // ✓ 版本 V4.3
+  const functionName = `generatePdfInBackground_PdfKit_V5.0 (Batch: ${confirmationBatchId})`;
   const db = new Firestore({ databaseId: "anxi-app" });
   const drive = getAuthenticatedDriveClient();
-  const slides = google.slides({ version: "v1", auth: oauth2Client });
-  let copiedPresentationId = null;
 
   try {
     console.log(`[${functionName}] 背景任務開始，查詢資料...`);
 
-    // --- 1. 查詢所需資料 (保持不變) ---
-    // (省略查詢 confirmation, project, records 的程式碼...)
+    // --- 1. 查詢所需資料 ---
     const confirmationQuery = db.collection("inspectionConfirmations").where("confirmationBatchId", "==", confirmationBatchId).limit(1);
     const confirmationSnapshot = await confirmationQuery.get();
     if (confirmationSnapshot.empty) throw new Error(`找不到確認紀錄 (Batch ID: ${confirmationBatchId})`);
     const confirmationData = confirmationSnapshot.docs[0].data();
-    const buyerNameForRecordPage = confirmationData.buyerInfo?.name || '';
 
     const projectDoc = await db.collection('projects').doc(projectId).get();
     if (!projectDoc.exists) throw new Error(`找不到建案資料 (Project ID: ${projectId})`);
     const projectData = projectDoc.data();
-    const templateId = projectData.inspectionReportTemplateUrl;
-    if (!templateId) throw new Error(`建案 ${projectId} 未設定驗屋報告模板 ID (inspectionReportTemplateUrl)。`);
-    // ❗ 注意：不再讀取 projectData.logoUrl
 
     const recordsQuery = db.collection("inspectionRecords")
       .where("confirmationBatchId", "==", confirmationBatchId)
@@ -10952,248 +10845,246 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     if (records.length === 0) throw new Error("找不到符合此批次的驗屋紀錄。");
     console.log(`[${functionName}] 資料查詢完成，共 ${records.length} 筆紀錄。`);
 
-
-    // --- 2. 複製來源樣板簡報 (保持不變) ---
-    // (省略複製簡報程式碼...)
-    const newPresentationTitle = `驗屋報告_${unitId}_${confirmationBatchId}_${Date.now()}`;
-    console.log(`[${functionName}] 準備複製樣板簡報 ${templateId} 為 ${newPresentationTitle}...`);
-    const copyResponse = await drive.files.copy({
-      fileId: templateId,
-      requestBody: { name: newPresentationTitle },
-      fields: 'id'
-    });
-    copiedPresentationId = copyResponse.data.id;
-    if (!copiedPresentationId) throw new Error(`複製樣板簡報 ${templateId} 失敗。`);
-    console.log(`[${functionName}] 樣板簡報複製成功，新簡報 ID: ${copiedPresentationId}`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-
-    // --- 3. 在新複製的簡報 (copiedPresentationId) 上查找模板投影片 ID (保持不變) ---
-    // (省略查找模板頁 ID 程式碼...)
-    console.log(`[${functionName}] 在新複製的簡報 ${copiedPresentationId} 上查找模板投影片 ID...`);
-    const coverSlideId = await findSlideIdByAltText(slides, copiedPresentationId, '驗屋報告封面');
-    const recordSlideTemplateId = await findSlideIdByAltText(slides, copiedPresentationId, '驗屋報告內頁');
-    if (!coverSlideId) throw new Error(`在新複製的簡報 ${copiedPresentationId} 中找不到替代文字為 "驗屋報告封面" 的形狀。`);
-    if (!recordSlideTemplateId) throw new Error(`在新複製的簡報 ${copiedPresentationId} 中找不到替代文字為 "驗屋報告內頁" 的形狀。`);
-    console.log(`[${functionName}] 模板投影片 ID 查找成功 (在新簡報中): Cover=${coverSlideId}, RecordTemplate=${recordSlideTemplateId}`);
-
-
-    // --- 4. 準備批量更新請求 (所有操作都在 copiedPresentationId 上) ---
-    const requests = [];
-
-    // --- 4.1 處理封面頁替換 ---
-    console.log(`[${functionName}] 準備封面頁 (${coverSlideId}) 的替換請求...`);
-    // 文字替換 (保持不變)
-    requests.push( /* ... 省略封面文字替換請求 ... */
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{projectName}}', matchCase: false }, replaceText: projectData.name || projectId } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{unitId}}', matchCase: false }, replaceText: unitId } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerName}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.name || '' } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerPhone}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.phone || '' } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{buyerEmail}}', matchCase: false }, replaceText: confirmationData.buyerInfo?.email || '' } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{inspectionDateStr}}', matchCase: false }, replaceText: records[0].inspectionDate?.toDate ? formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : 'N/A' } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{inspectorName}}', matchCase: false }, replaceText: inspectorName } },
-      { replaceAllText: { pageObjectIds: [coverSlideId], containsText: { text: '{{generatedDateStr}}', matchCase: false }, replaceText: formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd') } },
-    );
-
-    // ✓✓✓ 移除 Logo 圖片替換邏輯 ✓✓✓
-    // const logoPlaceholderInfo = await findShapeIdByAltText(slides, copiedPresentationId, coverSlideId, 'logoImage');
-    // if (logoPlaceholderInfo && projectData.logoUrl) { ... }
-    console.log(`[${functionName}] 跳過 Logo 圖片處理。`);
-
-    // 簽名圖片替換 (保持不變)
-    const signaturePlaceholderInfo = await findShapeIdByAltText(slides, copiedPresentationId, coverSlideId, 'signatureImage');
-    if (signaturePlaceholderInfo && confirmationData.signatureImageUrl) {
-      console.log(`[${functionName}] 找到簽名佔位符 ID: ${signaturePlaceholderInfo.id}，準備替換...`);
-      requests.push({ deleteObject: { objectId: signaturePlaceholderInfo.id } }); // 刪除佔位符
-      requests.push({ // 創建新圖片
-        createImage: {
-          url: confirmationData.signatureImageUrl,
-          elementProperties: {
-            pageObjectId: coverSlideId,
-            size: signaturePlaceholderInfo.size,
-            transform: signaturePlaceholderInfo.transform
-          }
-        }
-      });
-    } else { console.warn(`[${functionName}] 封面頁 ${coverSlideId} 找不到 signatureImage 形狀或無簽名 URL。`); }
-
-    // --- 4.2 處理紀錄頁複製與替換 (保持不變) ---
-    // (省略紀錄頁處理的程式碼，與 V4.2 版本相同...)
-    console.log(`[${functionName}] 準備循環處理 ${records.length} 筆驗屋紀錄的複製與替換...`);
-    const slideIdsToDelete = new Set();
-    const finalRecordSlideIds = [];
-
-    for (let i = 0; i < records.length; i++) {
-      const record = records[i];
-      let currentRecordSlideId;
-
-      if (i === 0) {
-        currentRecordSlideId = recordSlideTemplateId;
-        console.log(`[${functionName}]   處理紀錄 ${record.id} (使用原始模板頁 ${currentRecordSlideId})...`);
-      } else {
-        const previousSlideId = finalRecordSlideIds[i - 1];
-        console.log(`[${functionName}]   處理紀錄 ${record.id} (複製上一頁 ${previousSlideId})...`);
-        const duplicateRecordRequest = [{ duplicateObject: { objectId: previousSlideId } }];
-        const duplicateRecordResponse = await slides.presentations.batchUpdate({
-          presentationId: copiedPresentationId,
-          requestBody: { requests: duplicateRecordRequest }
-        });
-        currentRecordSlideId = duplicateRecordResponse.data.replies?.[0]?.duplicateObject?.objectId;
-        if (!currentRecordSlideId) throw new Error(`複製紀錄頁失敗 (來源: ${previousSlideId})`);
-        console.log(`[${functionName}]   紀錄頁複製成功，新 Slide ID: ${currentRecordSlideId}`);
+    // --- 2. 預載簽名與驗屋照片 ---
+    console.log(`[${functionName}] 下載簽名與所有驗屋照片緩存...`);
+    let signatureBuf = null;
+    if (confirmationData.signatureImageUrl) {
+      try {
+        const sigResp = await axios.get(confirmationData.signatureImageUrl, { responseType: 'arraybuffer' });
+        signatureBuf = sigResp.data;
+      } catch (e) {
+        console.warn(`[${functionName}] 下載簽名圖片失敗:`, e.message);
       }
-      finalRecordSlideIds.push(currentRecordSlideId);
+    }
 
-      // 文字替換
-      requests.push(
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{unitId}}', matchCase: false }, replaceText: unitId } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{buyerName}}', matchCase: false }, replaceText: buyerNameForRecordPage } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.area}}', matchCase: false }, replaceText: record.area || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.category}}', matchCase: false }, replaceText: record.category || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.subCategory}}', matchCase: false }, replaceText: record.subCategory || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.description}}', matchCase: false }, replaceText: record.description || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.status}}', matchCase: false }, replaceText: record.status || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.inspectorName}}', matchCase: false }, replaceText: record.inspectorName || '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.createdAt}}', matchCase: false }, replaceText: record.createdAt?.toDate ? formatInTimeZone(record.createdAt.toDate(), 'Asia/Taipei', 'yyyy/MM/dd HH:mm') : '' } },
-        { replaceAllText: { pageObjectIds: [currentRecordSlideId], containsText: { text: '{{record.phase}}', matchCase: false }, replaceText: record.phase || '' } },
-      );
-
-      // 圖片替換
-      const photoPlaceholderInfos = await Promise.all(
-        [1, 2, 3, 4].map(p =>
-          findShapeIdByAltText(slides, copiedPresentationId, currentRecordSlideId, `photo_placeholder_${p}`)
-        )
-      );
-      for (let p = 0; p < 4; p++) {
-        const placeholderInfo = photoPlaceholderInfos[p];
-        const photoData = record.photos?.[p];
-        if (placeholderInfo && photoData?.url) {
-          requests.push({ deleteObject: { objectId: placeholderInfo.id } });
-          requests.push({ createImage: { url: photoData.url, elementProperties: { pageObjectId: currentRecordSlideId, size: placeholderInfo.size, transform: placeholderInfo.transform } } });
-        } else if (placeholderInfo) {
-          requests.push({ deleteObject: { objectId: placeholderInfo.id } });
+    const imageCache = {};
+    for (const record of records) {
+      if (record.photos && record.photos.length > 0) {
+        for (const photo of record.photos) {
+          if (!imageCache[photo.url]) {
+            try {
+              const imgResp = await axios.get(photo.url, { responseType: 'arraybuffer' });
+              imageCache[photo.url] = imgResp.data;
+            } catch (e) {
+              console.warn(`[${functionName}] 無法載入圖片 ${photo.url}:`, e.message);
+            }
+          }
         }
       }
     }
-    console.log(`[${functionName}] 所有紀錄頁的替換請求準備完成。`);
 
+    // --- 3. 生成 PDF ---
+    console.log(`[${functionName}] 開始產生 PDF...`);
+    const fontPath = path.join(__dirname, 'fonts', 'NotoSansTC-Regular.ttf');
+    if (!require('fs').existsSync(fontPath)) {
+      throw new Error(`找不到字體檔案: ${fontPath}`);
+    }
 
-    // --- 4.3 準備刪除多餘的模板頁 (保持不變) ---
-    // (省略刪除多餘頁程式碼...)
-    console.log(`[${functionName}] 準備刪除多餘的模板頁...`);
-    const presentationData = await slides.presentations.get({
-      presentationId: copiedPresentationId,
-      fields: 'slides(objectId)'
-    });
-    const allSlideIds = presentationData.data.slides?.map(s => s.objectId) || [];
-    const slidesToKeep = new Set([coverSlideId, ...finalRecordSlideIds]);
-    allSlideIds.forEach(id => { if (!slidesToKeep.has(id)) { slideIdsToDelete.add(id); } });
-    slideIdsToDelete.forEach(id => { requests.push({ deleteObject: { objectId: id } }); });
-    console.log(`[${functionName}] 共找到 ${slideIdsToDelete.size} 個多餘頁面待刪除。`);
+    const doc = new PDFDocument({ size: 'A4', margin: 24 });
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
 
+    doc.font(fontPath);
+    const textOptions = { fallbackFonts: [fontPath] }; // 確保 Emoji 等不會崩潰
 
-    // --- 5. 執行所有更新請求 (保持不變) ---
-    // (省略執行 batchUpdate 程式碼，包含重試...)
-    if (requests.length > 0) {
-      console.log(`[${functionName}] 準備在新簡報 ${copiedPresentationId} 上執行 ${requests.length} 個更新請求...`);
-      let retries = 3;
-      let success = false;
-      while (retries > 0 && !success) {
-        try {
-          await slides.presentations.batchUpdate({
-            presentationId: copiedPresentationId,
-            requestBody: { requests: requests }
-          });
-          success = true;
-          console.log(`[${functionName}] 所有更新請求執行完成。`);
-        } catch (batchError) {
-          retries--;
-          console.error(`[${functionName}] batchUpdate 失敗 (剩餘 ${retries} 次重試):`, batchError.message);
-          if (retries === 0) throw batchError;
-          await new Promise(resolve => setTimeout(resolve, 2000 * (3 - retries)));
-        }
+    // --- 3.1 繪製封面 ---
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const margin = 24;
+    const usableW = pageW - 2 * margin;
+    const halfH = pageH / 2;
+    const cardH = halfH - margin - 5;
+
+    doc.fontSize(24).text(`${projectData.name || projectId} 驗屋報告`, { align: 'center' });
+    doc.moveDown(3);
+
+    doc.fontSize(14).lineGap(6);
+    doc.text(`戶別：${unitId}`);
+    doc.text(`產權人：${confirmationData.buyerInfo?.name || ''}`);
+    doc.text(`電話：${confirmationData.buyerInfo?.phone || ''}`);
+    doc.text(`Email：${confirmationData.buyerInfo?.email || ''}`);
+    
+    let inspectionDateStr = 'N/A';
+    if (records[0].inspectionDate?.toDate) {
+      inspectionDateStr = formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd');
+    }
+    doc.text(`驗屋日期：${inspectionDateStr}`);
+    
+    doc.moveDown(3);
+    doc.fontSize(12);
+    doc.text(`☑️ 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。`);
+    
+    doc.moveDown(1.5);
+    doc.fontSize(14).text(`產權人簽名：`);
+    
+    if (signatureBuf) {
+      try {
+        doc.image(signatureBuf, { width: 150 });
+      } catch (e) {
+        doc.text('(簽名載入失敗)', { color: 'red' });
+        doc.fillColor('black');
       }
-    } else { console.log(`[${functionName}] 沒有需要執行的更新請求。`); }
+    } else {
+      doc.text('(無簽名)');
+    }
+    
+    doc.moveDown(3);
+    doc.fontSize(12).text(`報告產製日期：${formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd')}`);
 
+    // --- 3.2 繪製驗屋紀錄內頁 ---
+    for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        const isTop = (i % 2 === 0);
+        if (i > 0 && isTop) doc.addPage();
+        
+        const startY = isTop ? margin : (halfH + 5);
+        let currentY = startY;
 
-    // --- 6. 匯出最終簡報為 PDF (保持不變) ---
-    // (省略匯出 PDF 程式碼...)
-    console.log(`[${functionName}] 準備匯出最終 PDF (Presentation ID: ${copiedPresentationId})...`);
-    const exportResponse = await drive.files.export({
-      fileId: copiedPresentationId,
-      mimeType: 'application/pdf'
-    }, { responseType: 'stream' });
-    console.log(`[${functionName}] PDF 匯出完成。`);
+        // 表格區域 (4列3欄)
+        const fields = [
+            ['建案', projectData.name || projectId], ['戶別', record.unitId || ''], ['日期', record.inspectionDate?.toDate ? formatInTimeZone(record.inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : ''],
+            ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
+            ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
+            ['等級', record.level || ''], ['進度', record.progress || ''], ['']
+        ];
+        
+        const colW = usableW / 3;
+        const rowH = 18;
+        doc.fontSize(10);
+        
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 3; c++) {
+                const [label, val] = fields[r * 3 + c];
+                const x = margin + c * colW;
+                const y = currentY + r * rowH;
+                
+                doc.rect(x, y, colW, rowH).stroke('#e0e0e0');
+                if (label) {
+                    doc.fillColor('#757575').text(`${label}:`, x + 5, y + 4, { continued: true });
+                    doc.fillColor('#212121').text(` ${val || ''}`);
+                }
+            }
+        }
+        currentY += 4 * rowH + 6;
 
-    // --- 7. 上傳 PDF 至 Drive (保持不變) ---
-    // (省略上傳 Drive 程式碼...)
+        // 說明區
+        const desc = record.description || '(無)';
+        doc.rect(margin, currentY, usableW, 25).stroke('#e0e0e0');
+        doc.fillColor('#757575').text(`說明:`, margin + 5, currentY + 5, { continued: true });
+        doc.fillColor('#212121').text(` ${desc}`, { width: usableW - 10, height: 15, ellipsis: true });
+        
+        currentY += 25 + 6;
+        
+        // 圖片區
+        if (record.photos && record.photos.length > 0) {
+            const photos = record.photos;
+            const cnt = photos.length;
+            const maxShow = Math.min(cnt, 4);
+            const gap = 8;
+            const imgMaxW = (usableW - gap * (maxShow - 1)) / maxShow;
+            const imgMaxH = cardH - (currentY - startY) - 5; 
+
+            if (imgMaxH > 20) {
+                if (cnt === 1) {
+                    const imgBuf = imageCache[photos[0].url];
+                    if (imgBuf) {
+                        try {
+                            doc.image(imgBuf, margin, currentY, { fit: [usableW, imgMaxH], align: 'left', valign: 'top' });
+                        } catch(e) {}
+                    }
+                } else {
+                    let currX = margin;
+                    for (let j = 0; j < maxShow; j++) {
+                        const imgBuf = imageCache[photos[j].url];
+                        if (imgBuf) {
+                            try {
+                                doc.image(imgBuf, currX, currentY, { fit: [imgMaxW, imgMaxH], align: 'left', valign: 'top' });
+                            } catch(e) {}
+                        }
+                        currX += imgMaxW + gap;
+                    }
+                }
+            }
+        }
+        
+        // 繪製分隔線
+        if (isTop && i + 1 < records.length) {
+            doc.moveTo(margin, halfH).lineTo(pageW - margin, halfH).stroke('#eeeeee');
+        }
+    }
+
+    doc.end();
+
+    const pdfBuffer = await new Promise((resolve, reject) => {
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
+    });
+    console.log(`[${functionName}] PDF 產生完成，大小: ${pdfBuffer.length} bytes`);
+
+    // --- 4. 上傳至 Drive ---
+    // (邏輯同原先 V4 版本)
     const householdDoc = await db.collection('households').doc(`${projectId}_${unitId}`).get();
     if (!householdDoc.exists) throw new Error(`找不到戶別資料 (${projectId}_${unitId})`);
     const reportFolderUrl = householdDoc.data().inspectionReportFolderUrl;
     if (!reportFolderUrl) throw new Error("戶別資料缺少 inspectionReportFolderUrl");
-    const parentFolderId = reportFolderUrl.match(/[-\w]{25,}/)?.[0];
+    const parentFolderId = reportFolderUrl.match(/[-w]{25,}/)?.[0];
     if (!parentFolderId) throw new Error("無效的 Drive 資料夾 URL");
+
     const subFolderName = confirmationData.buyerInfo?.name ? `${unitId}(${confirmationData.buyerInfo.name}自驗)` : `${unitId}`;
     const searchFolderRes = await drive.files.list({ q: `name='${subFolderName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`, fields: 'files(id)' });
+    
     let subFolderId;
-    if (searchFolderRes.data.files.length > 0) { subFolderId = searchFolderRes.data.files[0].id; } else { const folderMetadata = { name: subFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }; const createdFolder = await drive.files.create({ resource: folderMetadata, fields: 'id' }); subFolderId = createdFolder.data.id; }
+    if (searchFolderRes.data.files.length > 0) { 
+        subFolderId = searchFolderRes.data.files[0].id; 
+    } else { 
+        const folderMetadata = { name: subFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }; 
+        const createdFolder = await drive.files.create({ resource: folderMetadata, fields: 'id' }); 
+        subFolderId = createdFolder.data.id; 
+    }
+
     const timestamp = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH-mm');
     const pdfFilename = `${projectData.name || projectId}-${unitId}-驗屋報告-${confirmationData.buyerInfo.name}-${timestamp}.pdf`;
     const fileMetadata = { name: pdfFilename, parents: [subFolderId] };
+    
     const uploadedFile = await drive.files.create({
       resource: fileMetadata,
-      media: { mimeType: 'application/pdf', body: exportResponse.data },
+      media: { mimeType: 'application/pdf', body: Readable.from(pdfBuffer) },
       fields: 'id, name, webViewLink'
     });
+    
     const driveFileUrl = uploadedFile.data.webViewLink;
     if (!driveFileUrl) throw new Error("上傳 PDF 至 Drive 後未獲取到有效連結。");
     console.log(`[${functionName}] PDF 已成功上傳至 Drive: ${driveFileUrl}`);
 
-
-    // --- 8. 更新 Firestore (保持不變) ---
-    // (省略更新 Firestore 程式碼...)
+    // --- 5. 更新 Firestore ---
     await db.collection("households").doc(`${projectId}_${unitId}`).update({
       inspectionReportUrl: FieldValue.arrayUnion({ name: pdfFilename, url: driveFileUrl })
     });
     console.log(`[${functionName}] 已更新戶別資料庫中的報告連結。`);
 
-    // --- 9. 寄送 Email 通知 (保持不變) ---
-    // (省略寄送 Email 程式碼...)
+    // --- 6. 寄送 Email 通知 ---
     const mailTransport = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD } });
     const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
     const allCc = [...new Set([...ccRecipients, triggeringUserEmail].filter(Boolean))];
     const subject = `【${projectData.name || projectId}】您的驗屋報告已產製完成 (${unitId})`;
     const confirmedAtDate = confirmationData.confirmedAt.toDate();
     const htmlBody = `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h2 style="color: #333;">驗屋報告已完成</h2>
-            <p>親愛的 ${confirmationData.buyerInfo.name || '住戶'} 您好：</p>
-            <p>關於「${projectData.name || projectId}」建案 ${unitId} 戶別，您於 ${formatInTimeZone(confirmedAtDate, 'Asia/Taipei', 'yyyy/MM/dd HH:mm')} 確認的驗屋報告 (${records.length}筆紀錄) 已產製完成。</p>
-            <p>您可以點擊下方按鈕查看或下載報告檔案：</p>
-            <div style="text-align: center; margin: 30px 0;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">查看驗屋報告</a></div>
-            <p>報告產製人員：${inspectorName}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"><p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p></div>
-        `;
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2 style="color: #333;">驗屋報告已完成</h2>
+        <p>親愛的 ${confirmationData.buyerInfo.name || '住戶'} 您好：</p>
+        <p>關於「${projectData.name || projectId}」建案 ${unitId} 戶別，您於 ${formatInTimeZone(confirmedAtDate, 'Asia/Taipei', 'yyyy/MM/dd HH:mm')} 確認的驗屋報告 (${records.length}筆紀錄) 已產製完成。</p>
+        <p>您可以點擊下方按鈕查看或下載報告檔案：</p>
+        <div style="text-align: center; margin: 30px 0;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">查看驗屋報告</a></div>
+        <p>報告產製人員：${inspectorName}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"><p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p></div>
+    `;
     await mailTransport.sendMail({ from: `"${projectData.name || projectId} 驗屋系統" <${process.env.SENDER_EMAIL}>`, to: confirmationData.buyerInfo.email, cc: allCc.join(', '), subject: subject, html: htmlBody });
     console.log(`[${functionName}] 已成功寄送報告完成通知 Email。`);
-
 
   } catch (error) {
     console.error(`[${functionName}] 🔴 背景任務執行失敗:`, error);
     await sendErrorNotification(projectId, unitId, confirmationBatchId, error);
-  } finally {
-    // --- 10. 清理 (保持不變) ---
-    if (copiedPresentationId) {
-      try {
-        console.log(`[${functionName}] 準備刪除臨時簡報 ${copiedPresentationId}...`);
-        await drive.files.delete({ fileId: copiedPresentationId });
-        console.log(`[${functionName}] 臨時簡報刪除成功。`);
-      } catch (deleteError) {
-        console.error(`[${functionName}] 刪除臨時簡報 ${copiedPresentationId} 失敗:`, deleteError.message);
-      }
-    }
   }
 }
-
 
 // =================================================================
 // /  結束：驗屋紀錄相關 Cloud Functions

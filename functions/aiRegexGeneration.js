@@ -28,7 +28,7 @@ exports.generateLeadParsingRegex = onCall({ region: "asia-east1" }, async (reque
 
         // 使用 gemini-3-flash-preview 模型
         const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash-preview",
+            model: "gemini-1.5-flash", // Update to standard 1.5 flash since 3 flash preview may not be reliable or available
             generationConfig: {
                 responseMimeType: "application/json",
             }
