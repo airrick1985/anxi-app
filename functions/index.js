@@ -10692,6 +10692,7 @@ exports.getConfirmedInspectionBatches = onCall({ region: "asia-east1" }, async (
         dateString: dateString,           // 格式化後的確認日期字串
         recordCount: data.recordCount || 0, // 該批次包含的紀錄數量
         buyerInfo: data.buyerInfo || {},   // 當時確認的買方資訊
+        signatureUrl: data.signatureImageUrl || '',
         confirmationDocId: doc.id          // inspectionConfirmations 文件本身的 ID (可能有用)
       };
     });
@@ -10786,7 +10787,7 @@ async function sendErrorNotification(projectId, unitId, confirmationBatchId, err
               <li><strong>建案 ID:</strong> ${projectId}</li>
               <li><strong>戶別 ID:</strong> ${unitId}</li>
               <li><strong>確認批次 ID:</strong> ${confirmationBatchId}</li>
-              <li><strong>錯誤發生時間:</strong> ${errorTime} (台灣時間)</li>
+              <li><strong>錯誤發生時間:</strong> ${errorTime}</li>
             </ul>
             <hr>
             <h3>錯誤詳情:</h3>
@@ -10903,20 +10904,20 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     doc.text(`產權人：${confirmationData.buyerInfo?.name || ''}`);
     doc.text(`電話：${confirmationData.buyerInfo?.phone || ''}`);
     doc.text(`Email：${confirmationData.buyerInfo?.email || ''}`);
-    
+
     let inspectionDateStr = 'N/A';
     if (records[0].inspectionDate?.toDate) {
       inspectionDateStr = formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd');
     }
     doc.text(`驗屋日期：${inspectionDateStr}`);
-    
+
     doc.moveDown(3);
     doc.fontSize(12);
     doc.text(`☑️ 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。`);
-    
+
     doc.moveDown(1.5);
     doc.fontSize(14).text(`產權人簽名：`);
-    
+
     if (signatureBuf) {
       try {
         doc.image(signatureBuf, { width: 150 });
@@ -10927,97 +10928,97 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     } else {
       doc.text('(無簽名)');
     }
-    
+
     doc.moveDown(3);
     doc.fontSize(12).text(`報告產製日期：${formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd')}`);
 
     // --- 3.2 繪製驗屋紀錄內頁 ---
     for (let i = 0; i < records.length; i++) {
-        const record = records[i];
-        const isTop = (i % 2 === 0);
-        if (i > 0 && isTop) doc.addPage();
-        
-        const startY = isTop ? margin : (halfH + 5);
-        let currentY = startY;
+      const record = records[i];
+      const isTop = (i % 2 === 0);
+      if (i > 0 && isTop) doc.addPage();
 
-        // 表格區域 (4列3欄)
-        const fields = [
-            ['建案', projectData.name || projectId], ['戶別', record.unitId || ''], ['日期', record.inspectionDate?.toDate ? formatInTimeZone(record.inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : ''],
-            ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
-            ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
-            ['等級', record.level || ''], ['進度', record.progress || ''], ['']
-        ];
-        
-        const colW = usableW / 3;
-        const rowH = 18;
-        doc.fontSize(10);
-        
-        for (let r = 0; r < 4; r++) {
-            for (let c = 0; c < 3; c++) {
-                const [label, val] = fields[r * 3 + c];
-                const x = margin + c * colW;
-                const y = currentY + r * rowH;
-                
-                doc.rect(x, y, colW, rowH).stroke('#e0e0e0');
-                if (label) {
-                    doc.fillColor('#757575').text(`${label}:`, x + 5, y + 4, { continued: true });
-                    doc.fillColor('#212121').text(` ${val || ''}`);
-                }
+      const startY = isTop ? margin : (halfH + 5);
+      let currentY = startY;
+
+      // 表格區域 (4列3欄)
+      const fields = [
+        ['建案', projectData.name || projectId], ['戶別', record.unitId || ''], ['日期', record.inspectionDate?.toDate ? formatInTimeZone(record.inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : ''],
+        ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
+        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
+        ['等級', record.level || ''], ['進度', record.progress || ''], ['']
+      ];
+
+      const colW = usableW / 3;
+      const rowH = 18;
+      doc.fontSize(10);
+
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 3; c++) {
+          const [label, val] = fields[r * 3 + c];
+          const x = margin + c * colW;
+          const y = currentY + r * rowH;
+
+          doc.rect(x, y, colW, rowH).stroke('#e0e0e0');
+          if (label) {
+            doc.fillColor('#757575').text(`${label}:`, x + 5, y + 4, { continued: true });
+            doc.fillColor('#212121').text(` ${val || ''}`);
+          }
+        }
+      }
+      currentY += 4 * rowH + 6;
+
+      // 說明區
+      const desc = record.description || '(無)';
+      doc.rect(margin, currentY, usableW, 25).stroke('#e0e0e0');
+      doc.fillColor('#757575').text(`說明:`, margin + 5, currentY + 5, { continued: true });
+      doc.fillColor('#212121').text(` ${desc}`, { width: usableW - 10, height: 15, ellipsis: true });
+
+      currentY += 25 + 6;
+
+      // 圖片區
+      if (record.photos && record.photos.length > 0) {
+        const photos = record.photos;
+        const cnt = photos.length;
+        const maxShow = Math.min(cnt, 4);
+        const gap = 8;
+        const imgMaxW = (usableW - gap * (maxShow - 1)) / maxShow;
+        const imgMaxH = cardH - (currentY - startY) - 5;
+
+        if (imgMaxH > 20) {
+          if (cnt === 1) {
+            const imgBuf = imageCache[photos[0].url];
+            if (imgBuf) {
+              try {
+                doc.image(imgBuf, margin, currentY, { fit: [usableW, imgMaxH], align: 'left', valign: 'top' });
+              } catch (e) { }
             }
-        }
-        currentY += 4 * rowH + 6;
-
-        // 說明區
-        const desc = record.description || '(無)';
-        doc.rect(margin, currentY, usableW, 25).stroke('#e0e0e0');
-        doc.fillColor('#757575').text(`說明:`, margin + 5, currentY + 5, { continued: true });
-        doc.fillColor('#212121').text(` ${desc}`, { width: usableW - 10, height: 15, ellipsis: true });
-        
-        currentY += 25 + 6;
-        
-        // 圖片區
-        if (record.photos && record.photos.length > 0) {
-            const photos = record.photos;
-            const cnt = photos.length;
-            const maxShow = Math.min(cnt, 4);
-            const gap = 8;
-            const imgMaxW = (usableW - gap * (maxShow - 1)) / maxShow;
-            const imgMaxH = cardH - (currentY - startY) - 5; 
-
-            if (imgMaxH > 20) {
-                if (cnt === 1) {
-                    const imgBuf = imageCache[photos[0].url];
-                    if (imgBuf) {
-                        try {
-                            doc.image(imgBuf, margin, currentY, { fit: [usableW, imgMaxH], align: 'left', valign: 'top' });
-                        } catch(e) {}
-                    }
-                } else {
-                    let currX = margin;
-                    for (let j = 0; j < maxShow; j++) {
-                        const imgBuf = imageCache[photos[j].url];
-                        if (imgBuf) {
-                            try {
-                                doc.image(imgBuf, currX, currentY, { fit: [imgMaxW, imgMaxH], align: 'left', valign: 'top' });
-                            } catch(e) {}
-                        }
-                        currX += imgMaxW + gap;
-                    }
-                }
+          } else {
+            let currX = margin;
+            for (let j = 0; j < maxShow; j++) {
+              const imgBuf = imageCache[photos[j].url];
+              if (imgBuf) {
+                try {
+                  doc.image(imgBuf, currX, currentY, { fit: [imgMaxW, imgMaxH], align: 'left', valign: 'top' });
+                } catch (e) { }
+              }
+              currX += imgMaxW + gap;
             }
+          }
         }
-        
-        // 繪製分隔線
-        if (isTop && i + 1 < records.length) {
-            doc.moveTo(margin, halfH).lineTo(pageW - margin, halfH).stroke('#eeeeee');
-        }
+      }
+
+      // 繪製分隔線
+      if (isTop && i + 1 < records.length) {
+        doc.moveTo(margin, halfH).lineTo(pageW - margin, halfH).stroke('#eeeeee');
+      }
     }
 
     doc.end();
 
     const pdfBuffer = await new Promise((resolve, reject) => {
-        doc.on('end', () => resolve(Buffer.concat(buffers)));
-        doc.on('error', reject);
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
     });
     console.log(`[${functionName}] PDF 產生完成，大小: ${pdfBuffer.length} bytes`);
 
@@ -11032,26 +11033,26 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
 
     const subFolderName = confirmationData.buyerInfo?.name ? `${unitId}(${confirmationData.buyerInfo.name}自驗)` : `${unitId}`;
     const searchFolderRes = await drive.files.list({ q: `name='${subFolderName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`, fields: 'files(id)' });
-    
+
     let subFolderId;
-    if (searchFolderRes.data.files.length > 0) { 
-        subFolderId = searchFolderRes.data.files[0].id; 
-    } else { 
-        const folderMetadata = { name: subFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] }; 
-        const createdFolder = await drive.files.create({ resource: folderMetadata, fields: 'id' }); 
-        subFolderId = createdFolder.data.id; 
+    if (searchFolderRes.data.files.length > 0) {
+      subFolderId = searchFolderRes.data.files[0].id;
+    } else {
+      const folderMetadata = { name: subFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] };
+      const createdFolder = await drive.files.create({ resource: folderMetadata, fields: 'id' });
+      subFolderId = createdFolder.data.id;
     }
 
     const timestamp = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH-mm');
     const pdfFilename = `${projectData.name || projectId}-${unitId}-驗屋報告-${confirmationData.buyerInfo.name}-${timestamp}.pdf`;
     const fileMetadata = { name: pdfFilename, parents: [subFolderId] };
-    
+
     const uploadedFile = await drive.files.create({
       resource: fileMetadata,
       media: { mimeType: 'application/pdf', body: Readable.from(pdfBuffer) },
       fields: 'id, name, webViewLink'
     });
-    
+
     const driveFileUrl = uploadedFile.data.webViewLink;
     if (!driveFileUrl) throw new Error("上傳 PDF 至 Drive 後未獲取到有效連結。");
     console.log(`[${functionName}] PDF 已成功上傳至 Drive: ${driveFileUrl}`);
@@ -11085,6 +11086,144 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     await sendErrorNotification(projectId, unitId, confirmationBatchId, error);
   }
 }
+
+// =================================================================
+// /  新增：PDF 預覽後手動寄出 Email 函式
+// =================================================================
+
+/**
+ * [API] 接收前端傳來的 PDF (Base64)，上傳至對應戶別資料夾，並發送 Email
+ * @param {string} projectId - 建案 ID
+ * @param {string} unitId - 戶別 ID
+ * @param {string} buyerName - 買方姓名 (用於檔名)
+ * @param {Array<string>} toEmails - 主要收件人 (To) 列表
+ * @param {Array<string>} bccEmails - 副本收件人 (Bcc) 列表
+ * @param {string} pdfBase64 - PDF 的 Base64 字串
+ * @returns {Promise<object>} - { status: 'success', driveFileUrl: string }
+ */
+exports.sendInspectionReportEmails = onCall({
+  region: "asia-east1",
+  secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD", "DRIVE_CLIENT_ID", "DRIVE_CLIENT_SECRET", "DRIVE_REFRESH_TOKEN"],
+  memory: "1GiB",
+  timeoutSeconds: 300
+}, async (request) => {
+  const { projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64 } = request.data;
+  const functionName = `sendInspectionReportEmails (${projectId}/${unitId})`;
+
+  if (!projectId || !unitId || !pdfBase64) {
+    throw new HttpsError("invalid-argument", "缺少必要的參數 (projectId, unitId, pdfBase64)。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const drive = getAuthenticatedDriveClient();
+
+  try {
+    console.log(`[${functionName}] 開始處理上傳與寄信要求...`);
+
+    // 1. 將 Base64 轉換為 Buffer
+    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, "");
+    const pdfBuffer = Buffer.from(base64Data, "base64");
+    console.log(`[${functionName}] 接收到的 PDF Buffer 大小: ${pdfBuffer.length} bytes`);
+
+    // 2. 獲取 households 中的 inspectionReportFolderUrl
+    const householdDoc = await db.collection("households").doc(`${projectId}_${unitId}`).get();
+    if (!householdDoc.exists) throw new Error(`找不到戶別資料 (${projectId}_${unitId})`);
+
+    const householdData = householdDoc.data();
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+
+    const reportFolderUrl = householdData.inspectionReportFolderUrl;
+    if (!reportFolderUrl) throw new Error("該戶別尚未設定 inspectionReportFolderUrl。");
+
+    const parentFolderIdMatch = reportFolderUrl.match(/[-\w]{25,}/);
+    if (!parentFolderIdMatch) throw new Error("無效的 Drive 資料夾 URL。");
+    const parentFolderId = parentFolderIdMatch[0];
+
+    // 3. 在 Drive 建立子資料夾
+    const safeBuyerName = buyerName || '買方';
+    const subFolderName = `${unitId}`;
+    const searchFolderRes = await drive.files.list({
+      q: `name='${subFolderName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`,
+      fields: "files(id)"
+    });
+
+    let subFolderId;
+    if (searchFolderRes.data.files.length > 0) {
+      subFolderId = searchFolderRes.data.files[0].id;
+    } else {
+      const folderMetadata = { name: subFolderName, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] };
+      const createdFolder = await drive.files.create({ resource: folderMetadata, fields: "id" });
+      subFolderId = createdFolder.data.id;
+    }
+
+    // 4. 上傳 PDF 檔案
+    const timestamp = formatInTimeZone(new Date(), "Asia/Taipei", "yyyyMMdd-HHmm");
+    const pdfFilename = `ANXI驗屋報告-${unitId}-${safeBuyerName}-${timestamp}.pdf`;
+    const fileMetadata = { name: pdfFilename, parents: [subFolderId] };
+
+    // 使用 PassThrough 確保 Buffer 完整寫入 Stream，防範 20 bytes 截斷問題
+    const { PassThrough } = require('stream');
+    const bufferStream = new PassThrough();
+    bufferStream.end(pdfBuffer);
+
+    const uploadedFile = await drive.files.create({
+      resource: fileMetadata,
+      media: {
+        mimeType: "application/pdf",
+        body: bufferStream
+      },
+      fields: "id, name, webViewLink"
+    });
+
+    const driveFileUrl = uploadedFile.data.webViewLink;
+    if (!driveFileUrl) throw new Error("上傳 PDF 至 Drive 後未獲取到有效連結。");
+    console.log(`[${functionName}] PDF 已成功上傳至 Drive: ${driveFileUrl}`);
+
+    // 更新 households 報告連結紀錄
+    await db.collection("households").doc(`${projectId}_${unitId}`).update({
+      inspectionReportUrl: FieldValue.arrayUnion({ name: pdfFilename, url: driveFileUrl })
+    });
+
+    // 5. 使用 Nodemailer 寄送信件
+    const mailTransport = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD }
+    });
+
+    const toList = (toEmails && toEmails.length > 0) ? toEmails.join(', ') : process.env.SENDER_EMAIL;
+    const bccList = (bccEmails && bccEmails.length > 0) ? bccEmails.join(', ') : '';
+
+    const subject = `【${projectName}】驗屋紀錄總表 (${unitId})`;
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4CAF50; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">驗屋紀錄總表</h2>
+        <p>您好，</p>
+        <p>這是【<strong>${projectName} - ${unitId}</strong>】戶別的驗屋紀錄暨總表。</p>
+        <p>此報告產製時間為：${formatInTimeZone(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm")}，由系統發送。</p>
+        <div style="margin: 30px 0; text-align: center;">
+          <a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">查看 / 下載驗屋報告</a>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="font-size: 12px; color: #888;">此為系統自動發送信件，若有任何問題請聯繫相關人員。</p>
+      </div>
+    `;
+
+    await mailTransport.sendMail({
+      from: `"${projectName} 驗屋系統" <${process.env.SENDER_EMAIL}>`,
+      to: toList,
+      bcc: bccList,
+      subject: subject,
+      html: htmlBody
+    });
+    console.log(`[${functionName}] 成功寄送報告 Email 至 To: ${toList}, Bcc: ${bccList}`);
+
+    return { status: "success", driveFileUrl };
+  } catch (error) {
+    console.error(`[${functionName}] 處理上傳與寄出 Email 時發生錯誤:`, error);
+    throw new HttpsError("internal", error.message);
+  }
+});
 
 // =================================================================
 // /  結束：驗屋紀錄相關 Cloud Functions

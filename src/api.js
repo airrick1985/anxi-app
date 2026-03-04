@@ -6420,6 +6420,68 @@ export const fetchPotentialPersonnelAPI = async (projectId) => {
 };
 
 /**
+ * [API] 獲取具備「驗屋系統」權限的人員名單 (含 Email)
+ * @param {string} projectId - 建案 ID
+ * @returns {Promise<Array<object>>} - 包含 { label, email } 的人員陣列
+ */
+export const fetchInspectionPersonnelWithEmailsAPI = async (projectId) => {
+  if (!projectId) return [];
+  try {
+    const permissionsRef = collection(db, "userPermissions");
+    const q = query(permissionsRef);
+    const snapshot = await getDocs(q);
+
+    const personnel = [];
+    for (const docSnapshot of snapshot.docs) {
+      const docData = docSnapshot.data();
+      const userName = docData.userName;
+      const userPhone = docSnapshot.id;
+      const perms = docData.permissions || {};
+      const projectPerm = perms[projectId];
+
+      if (projectPerm && userName && Array.isArray(projectPerm.systems)) {
+        if (projectPerm.systems.includes('驗屋系統')) {
+          // 透過 Document ID (手機) 去 users 拉取 Email
+          const userDocRef = doc(db, 'users', userPhone);
+          const userSnap = await getDoc(userDocRef);
+          let userEmail = '';
+          if (userSnap.exists() && userSnap.data().email) {
+            userEmail = userSnap.data().email;
+          }
+          if (userEmail) { // 只有具備 Email 的才加入
+            personnel.push({ label: userName, email: userEmail, selected: false });
+          }
+        }
+      }
+    }
+
+    // 依名字排序
+    personnel.sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
+    return personnel;
+
+  } catch (error) {
+    console.error(`API Error fetching inspection personnel emails for ${projectId}:`, error);
+    throw new Error(`獲取人員 Email 列表時發生錯誤: ${error.message}`);
+  }
+};
+
+/**
+ * [API] 呼叫寄送驗屋報告 PDF 信件
+ */
+export const sendInspectionReportEmailsAPI = async (projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64) => {
+  try {
+    const sendEmailCallable = httpsCallable(functions, 'sendInspectionReportEmails');
+    const response = await sendEmailCallable({
+      projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64
+    });
+    return response.data;
+  } catch (error) {
+    console.error("API Error sending inspection report emails:", error);
+    throw error;
+  }
+};
+
+/**
  * [API] 獲取 Standby 看板的設定 (包含所有欄位)
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - 返回完整的設定物件

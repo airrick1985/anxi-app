@@ -34,7 +34,7 @@
       <div v-else-if="isBound && projectId">
         <v-sheet class="pa-3 border-b">
           <v-row dense align="center">
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12" sm="4" md="2" lg="2">
               <v-select
                 v-model="selectedBuilding"
                 :items="buildingItems"
@@ -48,7 +48,7 @@
                 :disabled="showDeleted"
               ></v-select>
             </v-col>
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12" sm="4" md="2" lg="2">
               <v-select
                 v-model="selectedUnit"
                 :items="unitItems"
@@ -61,7 +61,7 @@
                 @update:model-value="loadData()"
               ></v-select>
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" sm="4" md="3" lg="3">
               <v-text-field
                 v-model="searchFilter"
                 label="搜尋所有欄位"
@@ -72,8 +72,8 @@
                 clearable
               ></v-text-field>
             </v-col>
-            <v-col cols="12" md="3" class="d-flex justify-end align-center ga-2 mt-2 mt-md-0">
-              <div v-if="!mobile" class="d-flex justify-end align-center ga-2" style="width: 100%;">
+            <v-col cols="12" md="5" lg="5" class="d-flex justify-end align-center mt-2 mt-md-0">
+              <div v-if="!mobile" class="d-flex justify-end align-center flex-wrap ga-2" style="width: 100%;">
                 <v-btn
                   color="primary"
                   @click="openAddDialog"
@@ -99,7 +99,7 @@
                       <v-btn v-bind="props" :value="false" icon="mdi-file-document-outline" aria-label="全案紀錄"></v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip location="top" text="垃圾桶">
+                  <v-tooltip location="top" text="刪除資料">
                     <template v-slot:activator="{ props }">
                       <v-btn v-bind="props" :value="true" icon="mdi-delete-outline" aria-label="已刪除紀錄"></v-btn>
                     </template>
@@ -119,15 +119,15 @@
                       prepend-icon="mdi-export-variant"
                       :disabled="!selectedUnit || showDeleted"
                     >
-                      匯出報告
+                      寄出報告
                     </v-btn>
                   </template>
                   <v-list density="compact">
                     <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
-                      <v-list-item-title>分享連結</v-list-item-title>
+                      <v-list-item-title>傳送記錄連結</v-list-item-title>
                     </v-list-item>
                     <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
-                      <v-list-item-title>產製報告</v-list-item-title>
+                      <v-list-item-title>預覽與寄出報告</v-list-item-title>
                     </v-list-item>
                   </v-list>
                 </v-menu>
@@ -396,10 +396,39 @@
             <p class="text-caption">{{ batchError }}</p>
             <v-btn color="primary" @click="loadConfirmedBatches" class="mt-4">重試</v-btn>
           </div>
-          <div v-else-if="confirmedBatches.length === 0" class="text-center py-10 text-grey">
-            <v-icon size="40">mdi-file-question-outline</v-icon>
-            <p class="mt-3">找不到此戶別已確認簽署的驗屋紀錄批次。</p>
-            <p class="text-caption">客戶需要先在分享的報告頁面完成簽名確認。</p>
+          <div v-if="confirmedBatches.length === 0" class="text-center pa-4">
+            <v-icon size="64" color="warning" class="mb-3">mdi-alert-circle-outline</v-icon>
+            <div class="text-h6 mb-2">尚未產生可供產製報告的「驗屋紀錄批次」</div>
+            <p class="text-body-1 text-grey-darken-1 mb-6">
+              請先「傳送記錄連結」給買方，當買方在線上確認缺失並簽名後，系統便會自動產生確認批次，屆時您才能在此處產製正式的 PDF 報告。
+            </p>
+            
+            <v-card variant="outlined" class="pa-4 bg-grey-lighten-4 rounded-lg">
+               <div class="text-subtitle-1 font-weight-bold mb-3 text-primary">提供給買方的專屬確認連結：</div>
+               
+               <p class="mb-4 text-grey-darken-1">請將下方連結或 QR Code 提供給客戶：</p>
+               <qrcode-vue
+                 :value="shareUrl"
+                 :size="200"
+                 level="H"
+                 class="mb-4 d-inline-block border pa-1 bg-white"
+               ></qrcode-vue>
+   
+               <v-text-field
+                 :model-value="shareUrl"
+                 label="分享連結 (有效期限 90 天)"
+                 readonly
+                 variant="outlined"
+                 density="compact"
+                 append-inner-icon="mdi-content-copy"
+                 @click:append-inner="copyShareUrl"
+                 hide-details
+                 class="bg-white"
+               ></v-text-field>
+               <v-scroll-y-transition>
+                 <div v-if="copySuccess" class="text-success text-caption mt-1">已複製！</div>
+               </v-scroll-y-transition>
+            </v-card>
           </div>
           <div v-else>
             <v-row dense class="mb-4">
@@ -460,6 +489,17 @@
                             共 {{ batch.recordCount }} 筆紀錄
                           </div>
                           <v-divider class="my-1"></v-divider>
+                          <div class="text-caption mb-2">
+                             <strong>紀錄摘要：</strong>
+                             <ul style="padding-left: 16px; margin-top: 4px;">
+                               <li v-for="(record, index) in getBatchRecordsSummary(batch.batchId)" :key="index" class="text-truncate">
+                                 {{ record.area }} - {{ record.category }} / {{ record.subCategory }} <span v-if="record.level">({{ record.level }})</span>
+                                 <span v-if="record.description" class="text-grey-darken-1"> - {{ record.description }}</span>
+                               </li>
+                             </ul>
+                             <div v-if="batch.recordCount > 5" class="text-grey ml-1 mt-1">...等共 {{ batch.recordCount }} 筆</div>
+                          </div>
+                          <v-divider class="my-1"></v-divider>
                           <div class="text-caption">買方姓名: {{ batch.buyerInfo?.name || '無' }}</div>
                           <div class="text-caption">電話: {{ batch.buyerInfo?.phone || '無' }}</div>
                           <div class="text-caption">Email: {{ batch.buyerInfo?.email || '無' }}</div>
@@ -484,7 +524,7 @@
           </div>
         </v-card-text>
 
-   <v-divider></v-divider> <v-card-actions class="pa-4">
+        <v-card-actions class="pa-4">
           <v-spacer></v-spacer>
           <v-btn
             color="grey-darken-1"
@@ -494,28 +534,104 @@
             取消
           </v-btn>
           <v-btn
-            color="secondary"
-            variant="outlined"
+            color="primary"
+            variant="elevated"
             @click="handleDownloadBatchPdf"
             :disabled="!selectedBatchId || isLoadingBatches"
             size="large"
-            prepend-icon="mdi-download"
+            prepend-icon="mdi-file-document-outline"
             class="mr-2"
           >
-            下載報告 PDF
-          </v-btn>
-          <v-btn
-            color="primary"
-            variant="elevated"
-            @click="startPdfGeneration"
-            :disabled="!selectedBatchId || isLoadingBatches"
-            size="large"
-            prepend-icon="mdi-cloud-upload"
-          >
-            上傳產製報告
+            觀看預覽與寄出
           </v-btn>
         </v-card-actions>
         </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showPdfPreviewDialog" max-width="450px" persistent>
+      <v-card class="pa-4 text-center rounded-xl">
+        <v-card-text>
+          <v-icon color="success" size="64" class="mb-4">mdi-check-circle-outline</v-icon>
+          <div class="text-h5 font-weight-bold mb-2">報告產製成功</div>
+          <div class="text-body-1 text-medium-emphasis mb-6">
+            您的驗屋報告 PDF 已經準備就緒。<br>您想要執行什麼操作？
+          </div>
+          
+          <v-btn
+            color="info"
+            variant="flat"
+            block
+            size="large"
+            class="mb-3"
+            :href="previewPdfUrl"
+            target="_blank"
+            prepend-icon="mdi-file-pdf-box"
+          >
+            在新分頁開啟預覽
+          </v-btn>
+
+          <v-btn
+            color="primary"
+            variant="flat"
+            block
+            size="large"
+            class="mb-3"
+            @click="openEmailDialog"
+            prepend-icon="mdi-email-fast"
+          >
+            透過系統寄出報告
+          </v-btn>
+
+          <v-btn
+            color="secondary"
+            variant="outlined"
+            block
+            size="large"
+            class="mb-6"
+            @click="downloadPreviewPdf"
+            prepend-icon="mdi-download"
+          >
+            下載檔案至本機
+          </v-btn>
+        </v-card-text>
+        
+        <v-card-actions class="justify-center border-t pt-4">
+          <v-btn variant="text" color="grey-darken-1" @click="showPdfPreviewDialog = false">關閉此視窗</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showEmailListDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h6 bg-blue-grey-lighten-5">
+          <v-icon start>mdi-account-multiple-check</v-icon>
+          勾選信件收件人
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <p class="mb-4 text-subtitle-2 text-primary">主要收件人(買方)將顯示在信件 TO 欄位，其餘將顯示於 BCC (密件抄送)。</p>
+          <v-list density="compact" class="bg-grey-lighten-4 rounded" max-height="300" style="overflow-y: auto;">
+             <v-list-item
+               v-for="(recipient, index) in emailRecipients"
+               :key="index"
+               @click="recipient.selected = !recipient.selected"
+             >
+               <template v-slot:prepend>
+                 <v-checkbox-btn v-model="recipient.selected"></v-checkbox-btn>
+               </template>
+               <v-list-item-title class="font-weight-medium">{{ recipient.label }}</v-list-item-title>
+               <v-list-item-subtitle>{{ recipient.email }}</v-list-item-subtitle>
+             </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions>
+          <v-btn variant="text" @click="toggleAllEmails(true)">全選</v-btn>
+          <v-btn variant="text" @click="toggleAllEmails(false)">取消全選</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="showEmailListDialog = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" @click="sendInspectionEmail" :loading="isSendingEmail">確認寄出</v-btn>
+        </v-card-actions>
+      </v-card>
     </v-dialog>
 
     <v-dialog v-model="showProcessingDialog" persistent max-width="400px">
@@ -593,14 +709,14 @@
             :disabled="!selectedUnit || showDeleted"
           >
             <v-icon size="small">mdi-export-variant</v-icon>
-            <span class="mobile-btn-text">匯出報告</span>
+            <span class="mobile-btn-text">寄出報告</span>
           </v-btn>
         </template>
         <v-list density="compact" class="mb-2"> <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
-            <v-list-item-title>分享連結</v-list-item-title>
+            <v-list-item-title>傳送記錄連結</v-list-item-title>
           </v-list-item>
           <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
-            <v-list-item-title>產製報告</v-list-item-title>
+            <v-list-item-title>預覽與寄出報告</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
@@ -680,7 +796,9 @@ import {
   getInspectionRecordsForProjectFB,
   generateShareableUrl,
   getConfirmedInspectionBatches,
-  generateInspectionPdf 
+  generateInspectionPdf,
+  fetchInspectionPersonnelWithEmailsAPI,
+  sendInspectionReportEmailsAPI
 } from '@/api';
 import { VDataTable } from 'vuetify/components/VDataTable';
 import { useDisplay } from 'vuetify';
@@ -691,6 +809,7 @@ import { zhTW } from 'date-fns/locale';
 import IconButton from '@/components/IconButton.vue';
 import defaultProjectIcon from '@/assets/icons/property.png';
 import QrcodeVue from 'qrcode.vue';
+import { saveAs } from 'file-saver';
 
 const route = useRoute();
 const userStore = useUserStore();
@@ -710,6 +829,17 @@ const isLoadingRecords = ref(false);
 const projectStructure = ref({});
 const selectedBuilding = ref(null);
 const selectedUnit = ref(null);
+const standbyUsers = ref([]);
+
+// --- PDF 預覽與寄送相關狀態 ---
+const showPdfPreviewDialog = ref(false);
+const previewPdfUrl = ref(null);
+const currentPdfBase64 = ref(null);
+const currentPdfBlob = ref(null);
+const showEmailListDialog = ref(false);
+const isSendingEmail = ref(false);
+const emailRecipients = ref([]);
+// ------------------------------
 const allRecords = ref([]);
 const searchFilter = ref('');
 const showEditorDialog = ref(false);
@@ -773,6 +903,13 @@ const filteredRecords = computed(() => {
       return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
     });
 });
+
+const getBatchRecordsSummary = (batchId) => {
+   if (!allRecords.value) return [];
+   return allRecords.value
+     .filter(r => r.confirmationBatchId === batchId && !r.isDeleted)
+     .slice(0, 5); // 最多顯示 5 筆
+};
 
 const currentProject = computed(() => authorizedProjects.value.find(p => p.id === props.projectId));
 const otherProjects = computed(() => authorizedProjects.value.filter(p => p.id !== props.projectId));
@@ -932,7 +1069,7 @@ async function handleFieldUpdate(item, field, newValue) {
   console.log('[handleFieldUpdate] Received:', { id: item.id, field, newValue }); // ✓ 新增日誌
  if (showDeleted.value) return; if (item[field] === newValue || (updatingRecord.id === item.id && updatingRecord.field === field)) return; updatingRecord.id = item.id; updatingRecord.field = field; const payload = { [field]: newValue, inspectorName: userStore.user?.name || '未知', inspectorPhone: userStore.user?.key || '未知' };
  const unitForUpdate = item.unitId;
- if (!unitForUpdate) { alert('錯誤：找不到戶別 ID，無法更新。'); updatingRecord.id = null; updatingRecord.field = null; return; }
+  if (!unitForUpdate) { alert('錯誤：找不到戶別 ID，無法更新。'); updatingRecord.id = null; updatingRecord.field = null; return; }
  console.log('[handleFieldUpdate] Calling API with:', { projectId: props.projectId, unitId: unitForUpdate, recordId: item.id, payload });
  const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload); if (result.status === 'success') { const recordIndex = allRecords.value.findIndex(r => r.id === item.id); if (recordIndex !== -1) { allRecords.value[recordIndex] = { ...allRecords.value[recordIndex], ...payload }; } } else { alert(`更新失敗: ${result.message}`); } updatingRecord.id = null; updatingRecord.field = null;
 }
@@ -1001,6 +1138,21 @@ async function handleGeneratePdf() {
   selectedBatchId.value = null;
   // 預設填入當前登入者名稱
   inspectorNameForPdf.value = userStore.user?.name || '';
+  
+  // 提前準備好分享連結，供沒有批次時的引導畫面使用
+  try {
+    const payload = {
+      projectId: props.projectId,
+      unitId: selectedUnit.value,
+    };
+    const result = await generateShareableUrl(payload);
+    if (result.status === 'success' && result.shareUrl) {
+      shareUrl.value = result.shareUrl;
+    }
+  } catch (err) {
+    console.error("無法產生分享連結:", err);
+  }
+
   // 開啟 Dialog
   showGeneratePdfDialog.value = true;
   // 載入已確認的批次
@@ -1031,57 +1183,6 @@ async function loadConfirmedBatches() {
   }
 }
 // ✅ END: 新增載入已確認批次的函式
-
-// ✅ START: 新增開始產製 PDF 的函式 (最終版)
-async function startPdfGeneration() {
-  if (!selectedBatchId.value || !inspectorNameForPdf.value) {
-    alert('請選擇一個批次並確認產製人員名稱。');
-    return;
-  }
-
-  showProcessingDialog.value = true;
-  showGeneratePdfDialog.value = false;
-
-  console.log('--- Trigger PDF Generation ---');
-  console.log('Project ID:', props.projectId);
-  console.log('Unit ID:', selectedUnit.value);
-  console.log('Selected Batch ID:', selectedBatchId.value);
-  console.log('Inspector Name:', inspectorNameForPdf.value);
-  console.log('Triggering User Email:', userStore.user?.email || '未知');
-
-  try {
-    const payload = {
-       projectId: props.projectId,
-       unitId: selectedUnit.value,
-       confirmationBatchId: selectedBatchId.value,
-       inspectorName: inspectorNameForPdf.value,
-       triggeringUserEmail: userStore.user?.email || null,
-    };
-    console.log('Calling generateInspectionPdf API with payload:', payload);
-
-    // ✅ ***修改點: 實際呼叫 API***
-    const result = await generateInspectionPdf(payload); // <--- 呼叫 API
-
-    // 檢查後端是否按預期回傳 processing 狀態
-    if (result.status !== 'processing') {
-      throw new Error(result.message || '啟動 PDF 產製失敗，後端未回傳處理中狀態');
-    }
-    // ✅ ***修改點結束***
-
-    console.log('後端 PDF 產製已觸發');
-
-    // 提示用戶可以關閉視窗，後續會收到 Email
-    // showProcessingDialog 會保持開啟，直到用戶手動關閉
-
-  } catch (error) {
-     console.error('觸發 PDF 產製失敗:', error);
-     alert(`啟動報告產製失敗: ${error.message}`);
-     // 出錯時關閉處理中提示
-     closeProcessingDialog();
-  }
-  // 注意：這裡不再需要 finally isSaving=false，因為是背景處理
-}
-// ✅ END: 新增開始產製 PDF 的函式
 
 // ✅ START: 新增關閉處理中提示的函式
 function closeProcessingDialog() {
@@ -1438,11 +1539,173 @@ async function handleDownloadBatchPdf() {
       }
     }
 
+    const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value) || {};
+    const buyerName = batchInfo.buyerInfo?.name || '(未填寫)';
+    const buyerPhone = batchInfo.buyerInfo?.phone || '(未填寫)';
+    const buyerEmail = batchInfo.buyerInfo?.email || '(未填寫)';
+    const inspectionDateStr = batchInfo.dateString || formatDate(new Date());
+    const signatureUrl = batchInfo.signatureUrl || '';
+    
+    let signatureBase64 = '';
+    if (signatureUrl) {
+       downloadingText.value = `正在載入簽名檔...`;
+       try {
+         signatureBase64 = await loadImageAsBase64(signatureUrl);
+       } catch (e) {
+         console.error('簽章圖片載入失敗', e);
+       }
+    }
+
+    // 產生封面
+    downloadingText.value = `正在產生封面 PDF...`;
+    const coverDiv = document.createElement('div');
+    coverDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH*2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
+    
+    const nowStr = format(new Date(), 'yyyy-MM-dd HH:mm');
+    coverDiv.innerHTML = `
+      <div style="text-align:center; margin-bottom: 40px;">
+        <h1 style="font-size: 32px; color: #333;">${projectName.value} 驗屋報告</h1>
+      </div>
+      <div style="flex:1; font-size: 18px; line-height: 2;">
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">戶別</div>
+          <div>${selectedUnit.value || '全案'}</div>
+        </div>
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">產權人</div>
+          <div>${buyerName}</div>
+        </div>
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">電話</div>
+          <div>${buyerPhone}</div>
+        </div>
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">Email</div>
+          <div>${buyerEmail}</div>
+        </div>
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">驗屋日期</div>
+          <div>${inspectionDateStr}</div>
+        </div>
+        
+        <div style="margin-top: 40px; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+           <span style="font-size: 20px; color: #4CAF50;">☑️</span> 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。
+        </div>
+
+        <div style="margin-top: 40px; display: flex; align-items: flex-end;">
+           <div style="font-weight: bold; margin-right: 20px;">產權人簽名：</div>
+           ${signatureBase64 ? `<img src="${signatureBase64}" style="max-height: 100px; max-width: 300px; border-bottom: 1px solid #333;" />` : '<div style="width: 300px; border-bottom: 1px solid #333;"></div>'}
+        </div>
+      </div>
+      <div style="text-align: right; color: #999; font-size: 12px; margin-top: auto;">
+        報告產製時間: ${nowStr} (台灣時間)
+      </div>
+    `;
+    
+    document.body.appendChild(coverDiv);
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const coverCanvas = await html2canvas(coverDiv, {
+      width: renderPxW,
+      height: renderPxH * 2,
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+    document.body.removeChild(coverDiv);
+    
+    // 將封面畫在第一頁 (A4 滿版，扣除一點 margin 或是直接畫滿)
+    const coverImgData = coverCanvas.toDataURL('image/jpeg', 0.95);
+    // 放入封面，高度依照 A4 比例畫，或者直接把整個圖放進去
+    doc.addImage(coverImgData, 'JPEG', margin, margin, usableW, pageH - 2 * margin);
+
+    // --- 產生驗屋紀錄總表 ---
+    downloadingText.value = `正在產生總表...`;
+    const tableChunkSize = 12; // 每頁總表最多顯示 12 筆
+    const tableChunks = [];
+    for (let i = 0; i < batchRecords.length; i += tableChunkSize) {
+      tableChunks.push(batchRecords.slice(i, i + tableChunkSize));
+    }
+
+    const tablePhaseStr = batchRecords.length > 0 ? (batchRecords[0].phase || '初驗') : '初驗';
+
+    for (let cIndex = 0; cIndex < tableChunks.length; cIndex++) {
+      downloadingText.value = `正在產生總表 PDF (${cIndex + 1}/${tableChunks.length})...`;
+      doc.addPage();
+      
+      const chunk = tableChunks[cIndex];
+      const tableDiv = document.createElement('div');
+      tableDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH*2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
+      
+      let tableRowsHtml = '';
+      chunk.forEach(record => {
+        tableRowsHtml += `
+          <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;">${record.area || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${record.category || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${record.subCategory || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${record.status || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${record.level || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${record.progress || ''}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; word-break: break-all; white-space: pre-wrap;">${record.description || ''}</td>
+          </tr>
+        `;
+      });
+
+      tableDiv.innerHTML = `
+        <h2 style="text-align: center; margin-bottom: 20px; font-size: 26px; color: #333;">驗屋紀錄總表</h2>
+        <div style="margin-bottom: 16px; font-size: 16px; font-weight: bold; color: #555; display: flex; gap: 24px;">
+          <span>建案: ${projectName.value}</span>
+          <span>戶別: ${selectedUnit.value || '全案'}</span>
+          <span>階段: ${tablePhaseStr}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed;">
+          <thead>
+            <tr style="background-color: #f5f5f5;">
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 12%;">區域</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 12%;">種類</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 14%;">細項</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 8%;">狀態</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 8%;">等級</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 8%;">進度</th>
+              <th style="border: 1px solid #ddd; padding: 10px 8px; width: 38%;">說明</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+          </tbody>
+        </table>
+        <div style="text-align: right; color: #999; font-size: 12px; margin-top: auto;">
+          總表 - 第 ${cIndex + 1} 頁 / 共 ${tableChunks.length} 頁
+        </div>
+      `;
+      
+      document.body.appendChild(tableDiv);
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      const tableCanvas = await html2canvas(tableDiv, {
+        width: renderPxW,
+        height: renderPxH * 2,
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      document.body.removeChild(tableDiv);
+      
+      const tableImgData = tableCanvas.toDataURL('image/jpeg', 0.95);
+      doc.addImage(tableImgData, 'JPEG', margin, margin, usableW, pageH - 2 * margin);
+    }
+    // --- 總表產生結束 ---
+
+
     for (let i = 0; i < batchRecords.length; i++) {
       downloadingText.value = `正在產生 PDF (${i + 1}/${batchRecords.length})...`;
       const record = batchRecords[i];
       const isTop = (i % 2 === 0);
-      if (i > 0 && isTop) doc.addPage();
+      // 當 i 是偶數時（代表一張新頁面的上半部），就建立一頁新頁面
+      if (isTop) doc.addPage();
 
       // 建立卡片 HTML 元素
       const cardDiv = document.createElement('div');
@@ -1520,18 +1783,138 @@ async function handleDownloadBatchPdf() {
       }
     }
 
-    const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value);
-    const dateStr = batchInfo ? batchInfo.dateString.replace(/\//g, '') : format(new Date(), 'yyyyMMdd');
+    // 轉換成 Blob 用於預覽
+    const pdfBlob = doc.output('blob');
     
-    doc.save(`批次報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`);
+    // 使用 FileReader 確保大型 PDF 能安全轉為 Data URL
+    const pdfDataUri = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(pdfBlob);
+    });
+    
+    console.log("Generated PDF Base64 string length:", pdfDataUri.length);
+
+    currentPdfBlob.value = pdfBlob;
+    currentPdfBase64.value = pdfDataUri;
+    previewPdfUrl.value = URL.createObjectURL(pdfBlob);
+    
+    showGeneratePdfDialog.value = false;
+    showPdfPreviewDialog.value = true;
+    
   } catch (error) {
     console.error('下載批次 PDF 失敗:', error);
-    alert(`下載批次 PDF 失敗: ${error.message}`);
+    alert(`產製批次 PDF 失敗: ${error.message}`);
   } finally {
     isDownloading.value = false;
   }
 }
 
+// ------------------------------
+// --- PDF 信件寄送邏輯 ---
+// ------------------------------
+
+function downloadPreviewPdf() {
+  if (currentPdfBlob.value) {
+    const dateStr = format(new Date(), 'yyyyMMdd');
+    const fileName = `批次報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`;
+    saveAs(currentPdfBlob.value, fileName);
+  }
+}
+
+async function openEmailDialog() {
+  showEmailListDialog.value = true;
+  emailRecipients.value = [];
+  try {
+    // 1. 取得買方信箱 (如果有)
+    const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value) || {};
+    if (batchInfo.buyerInfo?.email) {
+      emailRecipients.value.push({ 
+        label: `[買方] ${batchInfo.buyerInfo.name}`, 
+        email: batchInfo.buyerInfo.email, 
+        selected: true 
+      });
+    }
+
+    // 2. 取得當下操作者信箱
+    if (userStore.user?.email) {
+      // 避免重複
+      if (!emailRecipients.value.some(r => r.email === userStore.user.email)) {
+        emailRecipients.value.push({ 
+          label: `[本人] ${userStore.user.name || '目前操作者'}`, 
+          email: userStore.user.email, 
+          selected: true 
+        });
+      }
+    }
+
+    // 3. 取得內部有「驗屋系統」權限的人員信箱
+    const internalStaff = await fetchInspectionPersonnelWithEmailsAPI(props.projectId);
+    internalStaff.forEach(staff => {
+      // 避免跟買方或本人重複
+      if (!emailRecipients.value.some(r => r.email === staff.email)) {
+        emailRecipients.value.push(staff);
+      }
+    });
+
+  } catch (e) {
+    console.error("載入收件人名單失敗", e);
+    alert("載入收件人名單失敗: " + e.message);
+  }
+}
+
+function toggleAllEmails(selectAll) {
+  emailRecipients.value.forEach(r => r.selected = selectAll);
+}
+
+async function sendInspectionEmail() {
+  const selectedEmails = emailRecipients.value.filter(r => r.selected);
+  if (selectedEmails.length === 0) {
+    alert("請至少先選擇一位收件人！");
+    return;
+  }
+
+  isSendingEmail.value = true;
+
+  try {
+    const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value) || {};
+    const buyerName = batchInfo.buyerInfo?.name || '(未填寫)';
+
+    // 將第一順序買方的信箱分離為 To, 其餘所有的列為 Bcc
+    const toEmails = [];
+    const bccEmails = [];
+    
+    selectedEmails.forEach(rec => {
+      if (rec.label.startsWith('[買方]')) {
+         toEmails.push(rec.email);
+      } else {
+         bccEmails.push(rec.email);
+      }
+    });
+
+    const response = await sendInspectionReportEmailsAPI(
+      props.projectId,
+      selectedUnit.value,
+      buyerName,
+      toEmails,
+      bccEmails,
+      currentPdfBase64.value
+    );
+
+    if (response && response.status === 'success') {
+       alert("信件已成功寄出！檔案已存至 Google Drive。");
+       showEmailListDialog.value = false;
+    }
+  } catch (e) {
+    console.error('寄送信件失敗:', e);
+    alert(`寄出失敗: ${e.message}`);
+  } finally {
+    isSendingEmail.value = false;
+  }
+}
+
+// ------------------------------
 
 </script>
 
