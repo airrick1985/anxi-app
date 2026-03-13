@@ -134,15 +134,15 @@
                           </v-list-item>
 
                           <v-list-item>
-                            <v-list-item-title>複驗批次</v-list-item-title>
+                            <v-list-item-title>{{ dynamicBatchTitle }}</v-list-item-title>
                             
                             <div v-if="reInspectionBatchInfo.statusText" class="text-body-2 text-medium-emphasis">
-                              {{ selectedHouseholdDetails.reInspectionBatch }} /
+                              {{ dynamicBatchCode }} /
                               <v-chip :color="reInspectionBatchInfo.color" size="x-small" label class="ml-1">{{ reInspectionBatchInfo.statusText }}</v-chip>
                               <div class="text-caption mt-1">{{ reInspectionBatchInfo.range }}</div>
                             </div>
                             
-                            <div v-else class="text-caption text-error">無指定批次，請確認是否已可複驗</div>
+                            <div v-else class="text-caption text-error">無指定批次，請確認是否已開放</div>
                           </v-list-item>
                             <v-list-item title="戶別文件">
                                <v-btn v-if="selectedHouseholdDetails.inspectionDocsUrl" size="small" variant="tonal" color="blue" :href="selectedHouseholdDetails.inspectionDocsUrl" target="_blank">開啟 {{ formStep1.unitId }} 文件夾</v-btn>
@@ -192,10 +192,10 @@
                   <v-form ref="step2FormRef">
                     <v-row dense>
                       <v-col cols="12" sm="6">
-                        <v-select label="預約項目" :items="bookingOptions.bookingTypes" v-model="formStep2.bookingType" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
+                        <v-select label="預約項目" :items="availableBookingTypes" v-model="formStep2.bookingType" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
                       </v-col>
                        <v-col cols="12" sm="6">
-                        <v-select label="選擇方式" :items="bookingOptions.inspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']"></v-select>
+                        <v-select label="選擇方式" :items="availableInspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']" no-data-text="請先選擇預約項目"></v-select>
                       </v-col>
                       <v-col v-if="formStep2.inspectionMethod === '代驗公司'" cols="12">
                         <v-text-field label="代驗公司名稱" v-model="formStep2.inspectionCompanyName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
@@ -634,8 +634,42 @@ const formStep2 = reactive({
   manualTimeSlot: '',
 });
 const bookingOptions = reactive({
-    bookingTypes: [],
-    inspectionMethods: [],
+    bookingTypes: [], // 已棄用，改用 availableBookingTypes
+    inspectionMethods: [], // 已棄用，改用 availableInspectionMethods
+});
+
+const currentProjectConfig = computed(() => {
+    return projectStore.projectDetailsCache[props.projectId]?.projectConfig || null;
+});
+
+const availableBookingTypes = computed(() => {
+    const config = currentProjectConfig.value;
+    if (!config) return [];
+    
+    // 1. 優先取用新的選單結構
+    if (config.bookingMenu && config.bookingMenu.length > 0) {
+        return config.bookingMenu.map(item => item.title);
+    }
+    
+    // 2. 回退到舊的結構
+    return config.bookingTypes || [];
+});
+
+const availableInspectionMethods = computed(() => {
+    const config = currentProjectConfig.value;
+    const selectedType = formStep2.bookingType;
+    if (!config || !selectedType) return [];
+
+    // 1. 優先從 bookingMenu 查找
+    if (config.bookingMenu && config.bookingMenu.length > 0) {
+        const menuItem = config.bookingMenu.find(item => item.title === selectedType);
+        if (menuItem && menuItem.methods) {
+            return menuItem.methods.map(m => m.title);
+        }
+    }
+
+    // 2. 回退到全域設定 (如果有標記 showBookingMethod)
+    return config.bookingMethodOptions || [];
 });
 
 const isBlockingDialogVisible = ref(false);
@@ -803,22 +837,41 @@ const initialBatchInfo = computed(() => {
   return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
 });
 
+const dynamicBatchTargetType = computed(() => {
+    return formStep2.bookingType !== '初驗' ? formStep2.bookingType : '複驗';
+});
+
+const dynamicBatchTitle = computed(() => {
+    return formStep2.bookingType !== '初驗' ? `${formStep2.bookingType}批次` : '複驗/其他批次';
+});
+
+const dynamicBatchCode = computed(() => {
+    const type = dynamicBatchTargetType.value;
+    return selectedHouseholdDetails.value?.customBatches?.[type] || selectedHouseholdDetails.value?.reInspectionBatch;
+});
+
 const reInspectionBatchInfo = computed(() => {
-    const code = selectedHouseholdDetails.value?.reInspectionBatch;
+    const code = dynamicBatchCode.value;
+    const type = dynamicBatchTargetType.value;
     
-    console.log('🔍 [Debug] Target Code (Re-inspection):', code);
+    console.log(`🔍 [Debug] Target Code (${type}):`, code);
 
     if (!code) {
       return {};
     }
 
-    let info = allBatchDetails.value['複驗']?.[code];
+    let info = allBatchDetails.value[type]?.[code];
     
-    if (!info && allBatchDetails.value['複驗']) {
-        info = allBatchDetails.value['複驗'][String(code)];
+    if (!info && allBatchDetails.value[type]) {
+        info = allBatchDetails.value[type][String(code)];
     }
 
-     console.log('🔍 [Debug] Found Info (Re-inspection):', info);
+    // 若仍找不到，且 type 不是複驗，則試著看看這 code 是不是原本舊系統裡作為「對保/交屋」設定在「複驗」的批次
+    if (!info && type !== '複驗' && allBatchDetails.value['複驗']) {
+        info = allBatchDetails.value['複驗']?.[code] || allBatchDetails.value['複驗'][String(code)];
+    }
+
+    console.log(`🔍 [Debug] Found Info (${type}):`, info);
 
     if (!info) {
       return {};
@@ -885,6 +938,10 @@ const resetState = () => {
 };
 
 watch(() => formStep2.bookingType, (newVal) => {
+  // 重置選擇方式，修正 BUG
+  formStep2.inspectionMethod = null;
+  formStep2.inspectionCompanyName = '';
+
   if (!newVal) return;
 
   const blockingAppt = appointmentHistory.value.find(

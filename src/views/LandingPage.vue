@@ -241,7 +241,7 @@
               從銷售控管到售後服務，全方位提升您的專業形象與管理效率。
             </p>
             <div class="text-caption text-grey-darken-1">
-              &copy; {{ new Date().getFullYear() }} ANXI Smart System. All rights reserved. [cite: 2025-06-18]
+              &copy; {{ new Date().getFullYear() }} ANXI Smart System. All rights reserved.
             </div>
           </v-col>
           

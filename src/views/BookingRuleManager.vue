@@ -14,7 +14,7 @@
       
       <v-tabs v-model="activeTab" bg-color="primary">
         <v-tab value="batches">批次管理</v-tab>
-        <v-tab value="settings">驗屋預約設定</v-tab>
+        <v-tab value="settings">預約系統狀態設定</v-tab>
         <v-tab value="sheet-sync" v-if="isAdmin"><v-icon size="small" color="amber-darken-2" class="mr-1">mdi-shield-crown-outline</v-icon>Sheet 同步管理</v-tab>
         <v-tab value="inspProjectSettings">棟戶別設定 (驗屋)</v-tab>
         <v-tab value="inspCategoriesItems">分類與細項 (驗屋)</v-tab>
@@ -121,7 +121,7 @@
             </div>
           </div>
           <div>
-            <div class="text-caption text-grey-darken-1">可驗屋區間</div>
+            <div class="text-caption text-grey-darken-1">可預約區間</div>
             <div>
               <span class="font-weight-bold text-teal-darken-2 mr-1">起:</span>
               <span>{{ item.bookingStart || '未設定' }}</span>
@@ -155,7 +155,8 @@
             <div v-else class="settings-form-container pa-4">
               <v-tabs v-model="settingsSubTab" color="primary" class="mb-4">
                 <v-tab value="general">一般與狀態設定</v-tab>
-                <v-tab value="content">頁面內容與公告</v-tab>
+                <v-tab value="shared-page-settings">頁面LOGO及授權書設定</v-tab>
+                <v-tab value="content">預約頁面設定</v-tab>
                 <v-tab value="rules">預約選單與人員</v-tab>
                 <v-tab value="report-settings">驗屋報告上傳設定</v-tab>
                 <v-tab value="customer-messages">客戶回傳功能設定</v-tab>
@@ -629,23 +630,57 @@
                    density="compact"
                    hint="在此新增修改工作人員"
                    persistent-hint
-                   class="mt-6"
+                   class="mt-6 mb-6"
                  ></v-combobox>
+
+                <v-divider class="my-6"></v-divider>
+
+                <!-- NEW: Capacity Groups Configuration -->
+                <div class="mb-4">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <p class="text-subtitle-1 font-weight-bold mb-0">預約名額計算群組設定</p>
+                    <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="addCapacityGroup">新增群組</v-btn>
+                  </div>
+                  <p class="text-caption text-grey-darken-1 mb-4">
+                    在此設定哪些預約項目的名額要「合併計算」。例如：設定一個群組包含【初驗、複驗】，代表這兩者在同一時段會共用名額上限。未加入任何群組的項目，將預設為**獨立計算**名額。
+                  </p>
+
+                  <div v-if="!projectSettings.bookingCapacityGroups || projectSettings.bookingCapacityGroups.length === 0" class="text-center text-grey pa-6 border rounded border-dashed">
+                    <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-account-group-outline</v-icon>
+                    <p>目前所有預約項目皆為「獨立計算」名額</p>
+                  </div>
+
+                  <div v-else class="d-flex flex-column gap-3">
+                    <v-card v-for="(group, groupIndex) in projectSettings.bookingCapacityGroups" :key="groupIndex" variant="outlined" class="bg-grey-lighten-5">
+                      <v-card-title class="d-flex align-center py-2 text-subtitle-2">
+                        <v-icon size="small" class="mr-2" color="primary">mdi-set-merge</v-icon>
+                        群組 {{ groupIndex + 1 }}
+                        <v-spacer></v-spacer>
+                        <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="removeCapacityGroup(groupIndex)"></v-btn>
+                      </v-card-title>
+                      <v-divider></v-divider>
+                      <v-card-text class="pa-3">
+                        <v-combobox
+                          v-model="projectSettings.bookingCapacityGroups[groupIndex].types"
+                          :items="availableBookingTypes"
+                          label="選擇要合併計算的預約項目"
+                          multiple
+                          chips
+                          closable-chips
+                          variant="outlined"
+                          density="compact"
+                          hide-details
+                        ></v-combobox>
+                      </v-card-text>
+                    </v-card>
+                  </div>
+                </div>
 
                   <div class="mb-4"></div>
                   </v-window-item>
 
-                  <!-- Tab 3: 頁面內容與公告 -->
-                  <v-window-item value="content" transition="fade-transition" reverse-transition="fade-transition">
-                <v-text-field
-                  v-model="projectSettings.pageTitle"
-                  label="預約頁面大標題"
-                  variant="outlined"
-                  density="compact"
-                  hint="顯示在預約頁面最上方的標題文字"
-                  persistent-hint
-                  class="mt-2"
-                ></v-text-field>
+                  <!-- 新增 Tab: 頁面LOGO及授權書設定 -->
+                  <v-window-item value="shared-page-settings" transition="fade-transition" reverse-transition="fade-transition">
 
                 <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳</p>
                 <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
@@ -670,100 +705,7 @@
 
                 <v-divider class="my-6"></v-divider>
 
-                <p class="text-subtitle-1 font-weight-bold mb-2">預約說明設定</p>
-                <v-switch
-                  v-model="projectSettings.intro.alert.show"
-                  label="顯示預約說明"
-                  color="primary"
-                  inset
-                  @update:model-value="(val) => { if(!val) projectSettings.intro.alert.showConfirmation = false; }"
-                ></v-switch>
-                <v-switch
-                  v-model="projectSettings.intro.alert.showConfirmation"
-                  label="須勾選「我已閱讀」後才可開始預約"
-                  color="primary"
-                  inset
-                  persistent-hint
-                  :disabled="!projectSettings.intro.alert.show"
-                ></v-switch>
-                <v-text-field
-                  v-model="projectSettings.intro.alert.title"
-                  label="預約說明標題"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-2"
-                  :disabled="!projectSettings.intro.alert.show"
-                ></v-text-field>
-                <div class="d-flex align-center"> <label class="v-label text-caption">提示框內容</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('alertText')" :disabled="!projectSettings.intro.alert.show" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.alert.text" class="mb-4" :disabled="!projectSettings.intro.alert.show"/>
-
-                <v-divider class="my-6"></v-divider>
-
-                <!-- 聯絡資訊設定 -->
-                <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
-                <v-text-field
-                  v-model="projectSettings.intro.contact.name"
-                  label="聯絡單位名稱"
-                  variant="outlined"
-                  density="compact"
-                ></v-text-field>
-                <v-text-field
-                  v-model="projectSettings.intro.contact.phone"
-                  label="聯絡電話"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-2"
-                ></v-text-field>
-
-                <v-divider class="my-6"></v-divider>
-
-                <div class="d-flex align-center mt-2"> <label class="v-label text-caption">招呼語</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.greeting" class="mb-4" />
-                <div class="d-flex align-center"> <label class="v-label text-caption">內文說明</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.body" class="mb-4" />
-<div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.footer" class="mb-4" />
-                <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
-  <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
-                <RichTextEditor v-model="projectSettings.intro.closingText" class="mb-4" />
-                <v-divider class="my-6"></v-divider>
-
-                <div class="d-flex justify-space-between align-center mb-2">
-                    <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
-                    <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
-                </div>
-                <div v-if="projectSettings.intro.faq.length === 0" class="text-center text-grey pa-4 border rounded">
-                    點擊「新增問答」來建立 FAQ
-                </div>
-                <div v-else>
-                    <v-sheet v-for="(item, index) in projectSettings.intro.faq" :key="index" border rounded class="pa-4 mb-4 faq-panel">
-                        <div class="d-flex justify-space-between align-center mb-3">
-                            <span class="font-weight-bold">問題 {{ index + 1 }}</span>
-                            <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
-                        </div>
-                        <div class="d-flex justify-space-between align-center mb-1">
-                            <label class="v-label text-caption">問題 (Q)</label>
-                        </div>
-                        <RichTextEditor
-                            v-model="item.q"
-                            class="mb-3"
-                        ></RichTextEditor>
-                        
-                        <div class="d-flex justify-space-between align-center mt-2 mb-1">
-                          <label class="v-label text-caption">回答 (A)</label>
-                        </div>
-                        <RichTextEditor
-                            v-model="item.a"
-                            class="mt-1"
-                        ></RichTextEditor>
-                    </v-sheet>
-                </div>
-
-                <!-- 新增：驗屋授權書範本編輯器 (移至此處) -->
+                <!-- 驗屋授權書範本編輯器 -->
                 <v-card v-if="isAdmin" variant="outlined" class="mb-6">
                   <v-card-text>
                     <div class="d-flex align-center justify-space-between mb-4">
@@ -813,11 +755,133 @@
                     </v-expand-transition>
                   </v-card-text>
                 </v-card>
+                  </v-window-item>
+
+                  <!-- Tab 3: 預約頁面設定 -->
+                  <v-window-item value="content" transition="fade-transition" reverse-transition="fade-transition">
+                  <div v-if="!projectSettings.bookingMenu || projectSettings.bookingMenu.length === 0" class="text-center text-grey pa-6 border rounded border-dashed my-6">
+                    <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-file-tree</v-icon>
+                    <p>尚未建立預約選單結構，請先至「預約選單與人員」分頁新增預約項目。</p>
+                  </div>
+                  <div v-else>
+                    <p class="text-subtitle-1 font-weight-bold mb-2">請選擇要設定的預約項目：</p>
+                    <v-chip-group v-model="selectedBookingItemForSetting" selected-class="bg-primary text-white" mandatory column class="mb-4">
+                      <v-chip v-for="item in projectSettings.bookingMenu" :key="item.title" :value="item.title" variant="outlined">{{ item.title }}</v-chip>
+                    </v-chip-group>
+
+                    <div v-if="selectedBookingItemForSetting && projectSettings.pageSettingsByItem && projectSettings.pageSettingsByItem[selectedBookingItemForSetting]">
+
+                <v-text-field
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].pageTitle"
+                  label="預約頁面大標題"
+                  variant="outlined"
+                  density="compact"
+                  hint="顯示在預約頁面最上方的標題文字"
+                  persistent-hint
+                  class="mt-2"
+                ></v-text-field>
+
+
+
+                <p class="text-subtitle-1 font-weight-bold mb-2">預約說明設定</p>
+                <v-switch
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.show"
+                  label="顯示預約說明"
+                  color="primary"
+                  inset
+                  @update:model-value="(val) => { if(!val) projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.showConfirmation = false; }"
+                ></v-switch>
+                <v-switch
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.showConfirmation"
+                  label="須勾選「我已閱讀」後才可開始預約"
+                  color="primary"
+                  inset
+                  persistent-hint
+                  :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.show"
+                ></v-switch>
+                <v-text-field
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.title"
+                  label="預約說明標題"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-2"
+                  :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.show"
+                ></v-text-field>
+                <div class="d-flex align-center"> <label class="v-label text-caption">提示框內容</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('alertText')" :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.show" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.text" class="mb-4" :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.alert.show"/>
+
+                <v-divider class="my-6"></v-divider>
+
+                <!-- 聯絡資訊設定 -->
+                <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+                <v-text-field
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.contact.name"
+                  label="聯絡單位名稱"
+                  variant="outlined"
+                  density="compact"
+                ></v-text-field>
+                <v-text-field
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.contact.phone"
+                  label="聯絡電話"
+                  variant="outlined"
+                  density="compact"
+                  class="mt-2"
+                ></v-text-field>
+
+                <v-divider class="my-6"></v-divider>
+
+                <div class="d-flex align-center mt-2"> <label class="v-label text-caption">招呼語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('greeting')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.greeting" class="mb-4" />
+                <div class="d-flex align-center"> <label class="v-label text-caption">內文說明</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('body')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.body" class="mb-4" />
+<div class="d-flex align-center"> <label class="v-label text-caption">頁尾文字</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('footer')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.footer" class="mb-4" />
+                <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
+  <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
+                <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.closingText" class="mb-4" />
+                <v-divider class="my-6"></v-divider>
+
+                <div class="d-flex justify-space-between align-center mb-2">
+                    <p class="text-subtitle-1 font-weight-bold">常見問答 (FAQ) 設定</p>
+                    <v-btn color="primary" size="small" @click="addFaqItem" prepend-icon="mdi-plus">新增問答</v-btn>
+                </div>
+                <div v-if="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.faq.length === 0" class="text-center text-grey pa-4 border rounded">
+                    點擊「新增問答」來建立 FAQ
+                </div>
+                <div v-else>
+                    <v-sheet v-for="(item, index) in projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.faq" :key="index" border rounded class="pa-4 mb-4 faq-panel">
+                        <div class="d-flex justify-space-between align-center mb-3">
+                            <span class="font-weight-bold">問題 {{ index + 1 }}</span>
+                            <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small" @click="removeFaqItem(index)"></v-btn>
+                        </div>
+                        <div class="d-flex justify-space-between align-center mb-1">
+                            <label class="v-label text-caption">問題 (Q)</label>
+                        </div>
+                        <RichTextEditor
+                            v-model="item.q"
+                            class="mb-3"
+                        ></RichTextEditor>
+                        
+                        <div class="d-flex justify-space-between align-center mt-2 mb-1">
+                          <label class="v-label text-caption">回答 (A)</label>
+                        </div>
+                        <RichTextEditor
+                            v-model="item.a"
+                            class="mt-1"
+                        ></RichTextEditor>
+                    </v-sheet>
+                </div>
+
+                
 
                 <p class="text-h6 font-weight-bold mb-4">附件管理 (公開預約頁)</p>
 
                 <v-switch
-                  v-model="projectSettings.intro.showAttachments"
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"
                   label="在公開預約頁面顯示附件區塊"
                   color="primary"
                   inset
@@ -854,11 +918,11 @@
                 </v-btn>
 
                 <p class="text-subtitle-1 font-weight-medium mb-2">已上傳的附件：</p>
-                <div v-if="!projectSettings.intro.attachments || projectSettings.intro.attachments.length === 0" class="text-center text-grey pa-4 border rounded">
+                <div v-if="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments || projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments.length === 0" class="text-center text-grey pa-4 border rounded">
                   尚未上傳任何附件
                 </div>
                 <v-list v-else density="compact" class="border rounded pa-0">
-                  <template v-for="(item, index) in projectSettings.intro.attachments" :key="item.url || index">
+                  <template v-for="(item, index) in projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments" :key="item.url || index">
                     <v-list-item>
                       <template v-slot:prepend>
                         <v-icon color="red" v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
@@ -878,12 +942,15 @@
                         ></v-btn>
                       </template>
                     </v-list-item>
-                    <v-divider v-if="index < projectSettings.intro.attachments.length - 1"></v-divider>
+                    <v-divider v-if="index < projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments.length - 1"></v-divider>
                   </template>
-                </v-list>
+                                </v-list>
+                    </div>
+                  </div>
                 
                   </v-window-item>
-                  <!-- Tab 4: 驗屋報告上傳設定 -->
+
+<!-- Tab 4: 驗屋報告上傳設定 -->
                   <v-window-item value="report-settings" transition="fade-transition" reverse-transition="fade-transition">
                 <p class="text-h6 font-weight-bold mb-4">上傳頁面設定</p>
 
@@ -1660,7 +1727,7 @@
           <div v-else>
             <div v-if="Object.keys(previewData).length === 0" class="text-center pa-8 text-grey-darken-1">
               <v-icon size="48">mdi-calendar-remove-outline</v-icon>
-              <p class="mt-2">此批次未設定「可驗屋區間」。</p>
+              <p class="mt-2">此批次未設定「可預約區間」。</p>
             </div>
             <v-list v-else lines="two">
               <template v-for="(dayData, date) in previewData" :key="date">
@@ -1768,7 +1835,7 @@
                   v-model="editedBatch.bookingType" 
                   :items="bookingTypeOptions" 
                   label="預約項目" 
-                  hint="請至「驗屋預約設定」新增選項"
+                  hint="請至「預約系統狀態設定」新增選項"
                   persistent-hint
                   :rules="[v => !!v || '必填', batchUniquenessRule]"
                   :readonly="!!editedBatch.id"
@@ -1872,7 +1939,7 @@
                   <template v-slot:activator="{ props }">
                     <v-text-field
                       v-model="editedBatch.bookingStart"
-                      label="可驗屋起始日"
+                      label="可預約起始日"
                       prepend-inner-icon="mdi-calendar"
                       readonly
                       v-bind="props"
@@ -1894,7 +1961,7 @@
                   <template v-slot:activator="{ props }">
                     <v-text-field
                       v-model="editedBatch.bookingEnd"
-                      label="可驗屋結束日"
+                      label="可預約結束日"
                       prepend-inner-icon="mdi-calendar"
                       readonly
                       v-bind="props"
@@ -1915,7 +1982,7 @@
           </v-form>
           <v-divider class="my-4"></v-divider>
           <div v-if="!editedBatch.bookingStart || !editedBatch.bookingEnd">
-             <p class="text-center text-grey-darken-1 pa-4">請先設定可驗屋的起訖日期</p>
+             <p class="text-center text-grey-darken-1 pa-4">請先設定可預約的起訖日期</p>
           </div>
           <v-row v-else>
             <v-col cols="12" md="4">
@@ -2276,10 +2343,11 @@ const uploadAttachments = async () => {
   // 將成功上傳的結果加入 projectSettings
   results.forEach(result => {
     if (result) {
-      if (!projectSettings.value.intro.attachments) {
-        projectSettings.value.intro.attachments = []; // 確保陣列存在
+      const currentIntro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
+      if (!currentIntro.attachments) {
+        currentIntro.attachments = []; // 確保陣列存在
       }
-      projectSettings.value.intro.attachments.push(result);
+      currentIntro.attachments.push(result);
       uploadSuccessCount++;
     }
   });
@@ -2305,7 +2373,8 @@ const uploadAttachments = async () => {
 // --- START: ✓ 修改附件刪除邏輯 ---
 // 正體中文註解：刪除附件。現在改為從附件物件中直接讀取 'path' 屬性。
 const deleteAttachment = async (index) => {
-  const attachmentToDelete = projectSettings.value.intro.attachments?.[index];
+  const currentIntro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
+  const attachmentToDelete = currentIntro.attachments?.[index];
   if (!attachmentToDelete || !confirm(`您確定要刪除附件 "${attachmentToDelete.name}" 嗎？`)) {
     return;
   }
@@ -2326,7 +2395,7 @@ const deleteAttachment = async (index) => {
     await deleteAttachmentImage(attachmentToDelete.path);
 
     // 2. 正體中文註解：從 projectSettings 陣列中移除
-    projectSettings.value.intro.attachments.splice(index, 1);
+    currentIntro.attachments.splice(index, 1);
 
     // 3. 正體中文註解：儲存變更回 Firestore
     showSnackbar(`附件 "${attachmentToDelete.name}" 已刪除，正在儲存...`, 'info');
@@ -2538,6 +2607,24 @@ const bookingTypeOptions = computed(() => {
   const types = Array.isArray(projectSettings.value.bookingTypes) ? projectSettings.value.bookingTypes : [];
   return [...types, '其他'];
 });
+
+// Derived Available Booking Types for Capacity Groups
+const availableBookingTypes = computed(() => {
+  return bookingTypeOptions.value.filter(type => type !== '其他');
+});
+
+const addCapacityGroup = () => {
+  if (!projectSettings.value.bookingCapacityGroups) {
+    projectSettings.value.bookingCapacityGroups = [];
+  }
+  projectSettings.value.bookingCapacityGroups.push({ types: [] });
+};
+
+const removeCapacityGroup = (index) => {
+  if (projectSettings.value.bookingCapacityGroups && projectSettings.value.bookingCapacityGroups.length > index) {
+    projectSettings.value.bookingCapacityGroups.splice(index, 1);
+  }
+};
 
 // [New] Computed: Available methods for the selected batch booking type
 const availableBatchMethods = computed(() => {
@@ -3025,12 +3112,13 @@ const batchHeaders = [
   { title: '批次代號', key: 'batchCode' },
   { title: '預約項目', key: 'bookingType' },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
-  { title: '可驗屋區間', key: 'bookingWindow', sortable: false },
+  { title: '可預約區間', key: 'bookingWindow', sortable: false },
   { title: '狀態', key: 'statusText', sortable: true }, 
   { title: '操作', key: 'actions', sortable: false, align: 'end' },
 ];
 
 
+const selectedBookingItemForSetting = ref('');
 const processedBookingBatches = computed(() => {
   return bookingBatches.value.map(item => ({
     ...item,
@@ -3214,6 +3302,35 @@ async function loadDataForProject() {
         projectSettings.value.appointmentsSheetTabName = settings.appointmentsSheetTabName || ''; // [新增]
         projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
         projectSettings.value.authLetterTemplate = settings.authLetterTemplate || ''; // [新增] 授權書範本
+        projectSettings.value.bookingCapacityGroups = settings.bookingCapacityGroups || []; // [新增] 名額共用群組
+        
+        // --- Migration Logic for Page Settings By Item (NEW) ---
+        projectSettings.value.pageSettingsByItem = settings.pageSettingsByItem || {};
+
+        // 確保每個 BookingItem 都有對應的 pageSettings（向下相容遷移）
+        const ensurePageSettingsForItems = () => {
+          const menu = projectSettings.value.bookingMenu || [];
+          menu.forEach(item => {
+            if (!projectSettings.value.pageSettingsByItem[item.title]) {
+              // 若 DB 中沒有此項目的設定，則用原有全域 intro/pageTitle 作為預設值
+              projectSettings.value.pageSettingsByItem[item.title] = {
+                pageTitle: settings.pageTitle || defaultSettings.value.pageTitle,
+                intro: {
+                  ...defaultSettings.value.intro,
+                  ...(settings.intro || {}),
+                  alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
+                  contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) },
+                  faq: settings.intro?.faq ? JSON.parse(JSON.stringify(settings.intro.faq)) : [],
+                  attachments: settings.intro?.attachments ? JSON.parse(JSON.stringify(settings.intro.attachments)) : []
+                }
+              };
+            }
+          });
+          // 預設選取第一個項目
+          if (menu.length > 0 && !selectedBookingItemForSetting.value) {
+            selectedBookingItemForSetting.value = menu[0].title;
+          }
+        };
         
         // --- Migration Logic for Booking Menu (NEW) ---
         projectSettings.value.bookingMenu = settings.bookingMenu || [];
@@ -3243,6 +3360,9 @@ async function loadDataForProject() {
            }
         }
         // 👆👆👆 [新增結束] 👆👆👆
+
+        // 呼叫 migration：確保每個 bookingMenu 項目都有 pageSettingsByItem
+        ensurePageSettingsForItems();
 
         // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
         const toDate = (val) => {
@@ -3736,10 +3856,11 @@ function extractBookingType(sharedByArray) {
 import { nextTick } from 'vue';
 
 function addFaqItem() {
-  if (!projectSettings.value.intro.faq) {
-    projectSettings.value.intro.faq = [];
+  const intro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
+  if (!intro.faq) {
+    intro.faq = [];
   }
-  projectSettings.value.intro.faq.push({ q: '', a: '' });
+  intro.faq.push({ q: '', a: '' });
   
   nextTick(() => {
     const panels = document.querySelectorAll('.faq-panel');
@@ -3751,7 +3872,7 @@ function addFaqItem() {
 }
 
 function removeFaqItem(index) {
-  projectSettings.value.intro.faq.splice(index, 1);
+  projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro.faq.splice(index, 1);
 }
 
 
@@ -3868,7 +3989,7 @@ function applyTemplate(fieldName) {
 
 // 使用者在 Dialog 按下確認後，才真正執行的函式
 function handleConfirmApplyTemplate() {
-  const targetIntro = projectSettings.value.intro;
+  const targetIntro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
   const targetReportSettings = projectSettings.value.reportSettings;
 
   switch(currentTargetField.value) {

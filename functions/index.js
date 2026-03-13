@@ -738,8 +738,10 @@ exports.getAvailableSlots = onCall(async (request) => {
       throw new HttpsError("not-found", `找不到戶別 "${unitId}" 的資料。`);
     }
     const householdData = householdDoc.data();
-    const batchCodeField = bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
-    const batchCode = householdData[batchCodeField];
+    let batchCode = householdData.customBatches?.[bookingType];
+    if (!batchCode) {
+      batchCode = bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
+    }
     if (!batchCode) {
       console.error(`[${functionName}] ERROR: Batch code not assigned for ${bookingType}.`); // ✓ Log 錯誤
       throw new HttpsError("permission-denied", `此戶別的 "${bookingType}" 預約目前未開放。`);
@@ -4761,8 +4763,10 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
       }
       const householdData = householdDoc.data();
 
-      const batchCodeField = bookingData.bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
-      const batchCode = householdData[batchCodeField];
+      let batchCode = householdData.customBatches?.[bookingData.bookingType];
+      if (!batchCode) {
+        batchCode = bookingData.bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
+      }
       if (!batchCode) {
         throw new HttpsError("permission-denied", `此戶別的 "${bookingData.bookingType}" 預約目前未指派批次。`);
       }
@@ -4809,8 +4813,24 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
       }
 
       // 3. 在 Transaction 中執行關鍵檢查：時段名額
+      // --- START: 計算共用名額的目標 bookingType 陣列 ---
+      const projectDataForCap = projectDoc.exists ? projectDoc.data() : {};
+      const capacityGroups = projectDataForCap.bookingCapacityGroups || [];
+      let targetBookingTypes = [bookingData.bookingType]; // 預設獨立計算
+      for (const group of capacityGroups) {
+        if (group && Array.isArray(group.types) && group.types.includes(bookingData.bookingType)) {
+          targetBookingTypes = group.types;
+          break;
+        }
+      }
+      // --- END: 計算共用名額的目標 bookingType 陣列 ---
       const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00'); // 指定時區
-      const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
+      const appointmentsQueryCapacity = db.collection('appointments')
+        .where('projectId', '==', projectId)
+        .where('appointmentDate', '==', appointmentDateObj)
+        .where('appointmentTimeSlot', '==', timeSlotKey)
+        .where('status', '==', '預約中')
+        .where('bookingType', 'in', targetBookingTypes); // 加入群組過濾
       const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
       const currentBookings = appointmentsSnapshot.size;
 
@@ -8276,7 +8296,12 @@ exports.getAdminBookingCalendarData = onCall(async (request) => {
       throw new HttpsError("not-found", "找不到指定的戶別資料。");
     }
     const householdData = householdDoc.data();
-    const ownBatchCodes = new Set([householdData.initialInspectionBatch, householdData.reInspectionBatch].filter(Boolean));
+    const customBatchValues = householdData.customBatches ? Object.values(householdData.customBatches) : [];
+    const ownBatchCodes = new Set([
+      householdData.initialInspectionBatch,
+      householdData.reInspectionBatch,
+      ...customBatchValues
+    ].filter(Boolean));
     console.log(`[${functionName}] Target household batch codes:`, Array.from(ownBatchCodes)); // ✓ Log
 
     // 步驟 2: 獲取專案所有 *有效* 批次的 ID 與代碼對照表
@@ -12583,8 +12608,10 @@ async function _handleGetAvailableSlots(data) {
       throw new HttpsError("not-found", `找不到戶別 "${unitId}" 的資料。`);
     }
     const householdData = householdDoc.data();
-    const batchCodeField = bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
-    const batchCode = householdData[batchCodeField];
+    let batchCode = householdData.customBatches?.[bookingType];
+    if (!batchCode) {
+      batchCode = bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
+    }
     if (!batchCode) {
       throw new HttpsError("permission-denied", `此戶別的 "${bookingType}" 預約目前未開放。`);
     }
@@ -12642,11 +12669,26 @@ async function _handleGetAvailableSlots(data) {
     }
     const startDate = new Date(batchData.bookingStart + 'T00:00:00+08:00');
     const endDate = new Date(batchData.bookingEnd + 'T23:59:59+08:00');
+
+    // --- START: 計算共用名額的目標 bookingType 陣列 ---
+    const projectDocForCap = await db.collection('projects').doc(projectId).get();
+    const projectData = projectDocForCap.exists ? projectDocForCap.data() : {};
+    const capacityGroups = projectData.bookingCapacityGroups || [];
+    let targetBookingTypes = [bookingType]; // 預設獨立計算
+    for (const group of capacityGroups) {
+      if (group && Array.isArray(group.types) && group.types.includes(bookingType)) {
+        targetBookingTypes = group.types;
+        break; // 找到所屬群組就套用並跳出
+      }
+    }
+    // --- END: 計算共用名額的目標 bookingType 陣列 ---
+
     const appointmentsQuery = await db.collection('appointments')
       .where('projectId', '==', projectId)
       .where('status', '==', '預約中')
       .where('appointmentDate', '>=', startDate)
       .where('appointmentDate', '<=', endDate)
+      .where('bookingType', 'in', targetBookingTypes) // 新增此行過濾陣列
       .get();
     const bookingsCount = {};
     appointmentsQuery.forEach(doc => {
@@ -12847,8 +12889,10 @@ async function _handleSaveBooking(data) {
       const householdDoc = await transaction.get(householdRef);
       if (!householdDoc.exists) throw new HttpsError("not-found", `找不到戶別 "${bookingData.unitId}" 的資料。`);
       const householdData = householdDoc.data();
-      const batchCodeField = bookingData.bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
-      const batchCode = householdData[batchCodeField];
+      let batchCode = householdData.customBatches?.[bookingData.bookingType];
+      if (!batchCode) {
+        batchCode = bookingData.bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
+      }
       if (!batchCode) throw new HttpsError("permission-denied", `此戶別的 "${bookingData.bookingType}" 預約目前未指派批次。`);
       const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingData.bookingType).where('isDeleted', '==', false).limit(1);
       const batchSnapshot = await transaction.get(batchQuery);
@@ -12880,8 +12924,25 @@ async function _handleSaveBooking(data) {
         }
       }
 
+      // --- START: 計算共用名額的目標 bookingType 陣列 ---
+      const projectDataForCap = projectDoc.exists ? projectDoc.data() : {};
+      const capacityGroups = projectDataForCap.bookingCapacityGroups || [];
+      let targetBookingTypes = [bookingData.bookingType]; // 預設獨立計算
+      for (const group of capacityGroups) {
+        if (group && Array.isArray(group.types) && group.types.includes(bookingData.bookingType)) {
+          targetBookingTypes = group.types;
+          break; // 找到所屬群組就套用並跳出
+        }
+      }
+      // --- END: 計算共用名額的目標 bookingType 陣列 ---
+
       const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00');
-      const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', appointmentDateObj).where('appointmentTimeSlot', '==', timeSlotKey).where('status', '==', '預約中');
+      const appointmentsQueryCapacity = db.collection('appointments')
+        .where('projectId', '==', projectId)
+        .where('appointmentDate', '==', appointmentDateObj)
+        .where('appointmentTimeSlot', '==', timeSlotKey)
+        .where('status', '==', '預約中')
+        .where('bookingType', 'in', targetBookingTypes); // 加入群組過濾
       const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
       const currentBookings = appointmentsSnapshot.size;
       if (currentBookings >= capacity) throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段名額剛好額滿，請返回上一步重新選擇時段。`);
@@ -14043,7 +14104,12 @@ async function _handleGetAdminBookingCalendarData(data) {
       throw new HttpsError("not-found", "找不到指定的戶別資料。");
     }
     const householdData = householdDoc.data();
-    const ownBatchCodes = new Set([householdData.initialInspectionBatch, householdData.reInspectionBatch].filter(Boolean));
+    const customBatchValues = householdData.customBatches ? Object.values(householdData.customBatches) : [];
+    const ownBatchCodes = new Set([
+      householdData.initialInspectionBatch,
+      householdData.reInspectionBatch,
+      ...customBatchValues
+    ].filter(Boolean));
     console.log(`[${functionName}] Target household batch codes:`, Array.from(ownBatchCodes));
 
     const batchesRef = db.collection("bookingBatches");
@@ -14233,8 +14299,10 @@ async function _handleAddAppointmentAdmin(data) {
         throw new HttpsError("not-found", `找不到戶別 "${newBookingData.unitId}" 的資料。`);
       }
       const householdData = householdDoc.data();
-      const batchCodeField = newBookingData.bookingType === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch';
-      const batchCode = householdData[batchCodeField];
+      let batchCode = householdData.customBatches?.[newBookingData.bookingType];
+      if (!batchCode) {
+        batchCode = newBookingData.bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
+      }
       if (!batchCode) {
         if (!force) {
           console.error(`[${functionName}] ERROR TX: Batch code not assigned for ${newBookingData.bookingType}.`);
@@ -14603,7 +14671,7 @@ async function _handleUpdateAppointmentByAdmin(data) {
         needsSummaryUpdate = true;
         let isRuleCheckSkipped = false;
         let capacity = 0;
-        const householdDoc = await transaction.get(db.collection('households').doc(`${projectId}_${unitId}`)); if (!householdDoc.exists) throw new HttpsError("not-found", `找不到戶別資料 ${unitId}`); const householdData = householdDoc.data(); const bookingTypeToCheck = bookingPayload?.bookingType || originalAppointmentData.bookingType; const batchCodeField = bookingTypeToCheck === '初驗' ? 'initialInspectionBatch' : 'reInspectionBatch'; const batchCode = householdData[batchCodeField]; if (!batchCode) throw new HttpsError("permission-denied", `此戶別的 "${bookingTypeToCheck}" 預約未指派批次。`); const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingTypeToCheck).where('isDeleted', '==', false).limit(1); const batchSnapshot = await transaction.get(batchQuery);
+        const householdDoc = await transaction.get(db.collection('households').doc(`${projectId}_${unitId}`)); if (!householdDoc.exists) throw new HttpsError("not-found", `找不到戶別資料 ${unitId}`); const householdData = householdDoc.data(); const bookingTypeToCheck = bookingPayload?.bookingType || originalAppointmentData.bookingType; let batchCode = householdData.customBatches?.[bookingTypeToCheck]; if (!batchCode) { batchCode = bookingTypeToCheck === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch; } if (!batchCode) throw new HttpsError("permission-denied", `此戶別的 "${bookingTypeToCheck}" 預約未指派批次。`); const batchQuery = db.collection('bookingBatches').where('projectId', '==', projectId).where('batchCode', '==', batchCode).where('bookingType', '==', bookingTypeToCheck).where('isDeleted', '==', false).limit(1); const batchSnapshot = await transaction.get(batchQuery);
         if (batchSnapshot.empty) { if (!force) throw new HttpsError("not-found", `找不到戶別 ${unitId} 對應的有效預約批次 (${batchCode})。`); else { console.warn(`WARN TX (Force Mode): Active batch ${batchCode} not found.`); isRuleCheckSkipped = true; } }
         else {
           const batchId = batchSnapshot.docs[0].id; const linksQuery = db.collection('batchRuleLinks').where('batchId', '==', batchId).where('date', '==', newDateStr).where('isDeleted', '==', false).limit(1); const linksSnapshot = await transaction.get(linksQuery);
@@ -14618,7 +14686,32 @@ async function _handleUpdateAppointmentByAdmin(data) {
             }
           }
         }
-        if (!force && !isRuleCheckSkipped) { const newAppointmentDateObj = new Date(newDateStr + 'T00:00:00+08:00'); const appointmentsQueryCapacity = db.collection('appointments').where('projectId', '==', projectId).where('appointmentDate', '==', newAppointmentDateObj).where('appointmentTimeSlot', '==', newTimeSlotKey).where('status', '==', '預約中'); const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity); const currentBookings = appointmentsSnapshot.size; console.log(`TX: Current bookings for new slot: ${currentBookings}`); if (currentBookings >= capacity) { console.warn(`WARN: New slot capacity reached.`); throw new HttpsError('failed-precondition', `SLOT_FULL: 目標時段名額已滿 (目前 ${currentBookings} 人)。`); } }
+        if (!force && !isRuleCheckSkipped) {
+          // --- START: 計算共用名額的目標 bookingType 陣列 ---
+          const projectDocForCap = await transaction.get(db.collection('projects').doc(projectId));
+          const projectDataForCap = projectDocForCap.exists ? projectDocForCap.data() : {};
+          const capacityGroups = projectDataForCap.bookingCapacityGroups || [];
+          const currentBookingType = bookingPayload?.bookingType || originalAppointmentData.bookingType;
+          let targetBookingTypes = [currentBookingType]; // 預設獨立計算
+          for (const group of capacityGroups) {
+            if (group && Array.isArray(group.types) && group.types.includes(currentBookingType)) {
+              targetBookingTypes = group.types;
+              break;
+            }
+          }
+          // --- END: 計算共用名額的目標 bookingType 陣列 ---
+          const newAppointmentDateObj = new Date(newDateStr + 'T00:00:00+08:00');
+          const appointmentsQueryCapacity = db.collection('appointments')
+            .where('projectId', '==', projectId)
+            .where('appointmentDate', '==', newAppointmentDateObj)
+            .where('appointmentTimeSlot', '==', newTimeSlotKey)
+            .where('status', '==', '預約中')
+            .where('bookingType', 'in', targetBookingTypes); // 加入群組過濾
+          const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
+          const currentBookings = appointmentsSnapshot.size;
+          console.log(`TX: Current bookings for new slot: ${currentBookings}`);
+          if (currentBookings >= capacity) { console.warn(`WARN: New slot capacity reached.`); throw new HttpsError('failed-precondition', `SLOT_FULL: 目標時段名額已滿 (目前 ${currentBookings} 人)。`); }
+        }
         else if (force) { console.log(`TX: Force mode enabled, skipping capacity check.`); }
         else { console.log(`TX: Rule check was skipped, skipping capacity check.`); }
         console.log(`[${functionName}] TX: Rule and capacity checks done (or bypassed).`);

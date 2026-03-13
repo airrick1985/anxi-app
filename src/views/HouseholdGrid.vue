@@ -738,7 +738,7 @@ const baseColDefs = computed(() => {
 
 // 2. 根據從 Firestore 獲取的自訂欄位定義，動態生成 AG-Grid 欄位
 const dynamicColDefs = computed(() => {
-  return customFieldDefs.value.map(def => {
+  const _customFieldCols = customFieldDefs.value.map(def => {
     const colDef = {
       headerName: def.fieldName,
       field: def.fieldName, // 直接使用中文欄位名作為 field key
@@ -768,11 +768,60 @@ const dynamicColDefs = computed(() => {
     }
     return colDef;
   });
+
+  // [新增] 根據專案設定中的預約項目，動態產生對應的自訂批次欄位
+  const _customBatchCols = [];
+  if (projectConfig.value) {
+    let availableTypes = [];
+    if (Array.isArray(projectConfig.value.bookingMenu) && projectConfig.value.bookingMenu.length > 0) {
+      availableTypes = projectConfig.value.bookingMenu.map(item => item.title);
+    } else if (Array.isArray(projectConfig.value.bookingTypes)) {
+      availableTypes = projectConfig.value.bookingTypes;
+    }
+    
+    // 排除已獨立硬編碼的 '初驗' 和 '複驗'
+    const customTypes = availableTypes.filter(t => t !== '初驗' && t !== '複驗' && t);
+    customTypes.forEach(type => {
+      _customBatchCols.push({
+        headerName: `${type}批次`,
+        field: `customBatches.${type}`, // 使用 dot notation，AG-Grid 支援巢狀讀寫，也能直接送給 Firestore Update 處理
+        editable: true,
+        width: 150,
+        valueGetter: params => {
+          return params.data?.customBatches?.[type] || '';
+        },
+        valueSetter: params => {
+          const newVal = params.newValue || '';
+          if (!params.data.customBatches) {
+            params.data.customBatches = {};
+          }
+          if (params.data.customBatches[type] !== newVal) {
+            params.data.customBatches[type] = newVal;
+            return true; // 告知 AG-Grid 資料有更新，這會觸發 onCellValueChanged
+          }
+          return false;
+        }
+      });
+    });
+  }
+
+  return [..._customFieldCols, ..._customBatchCols];
 });
 
 // 3. 組合基礎欄位和動態欄位，成為最終要在 Grid 中顯示的欄位
 const finalColDefs = computed(() => {
-  return [...baseColDefs.value, ...dynamicColDefs.value];
+  const baseCols = baseColDefs.value;
+  const insertIndex = baseCols.findIndex(col => col.field === 'initialReportUploadSwitch');
+  
+  if (insertIndex !== -1) {
+    return [
+      ...baseCols.slice(0, insertIndex),
+      ...dynamicColDefs.value,
+      ...baseCols.slice(insertIndex)
+    ];
+  }
+  
+  return [...baseCols, ...dynamicColDefs.value];
 });
 
 
@@ -793,7 +842,18 @@ const exportToExcel = () => {
   // 3. 轉換資料格式
   const dataAsArray = sortedItems.map(item => {
     return exportFields.map(key => {
-      const value = item[key];
+      let value;
+      if (key.includes('.')) {
+        const parts = key.split('.');
+        value = item;
+        for (const p of parts) {
+          if (value === null || value === undefined) break;
+          value = value[p];
+        }
+      } else {
+        value = item[key];
+      }
+
       if (value instanceof Date) {
         return format(value, 'yyyy/MM/dd');
       }
@@ -905,6 +965,14 @@ const handleFileChange = () => {
 
             if (key === '_docId' && (val === null || val === undefined || val === '')) {
                  newRow[key] = null;
+            } else if (key.includes('.')) {
+                 const parts = key.split('.');
+                 let current = newRow;
+                 for (let i = 0; i < parts.length - 1; i++) {
+                     if (!current[parts[i]]) current[parts[i]] = {};
+                     current = current[parts[i]];
+                 }
+                 current[parts[parts.length - 1]] = val;
             } else {
                  newRow[key] = val;
             }

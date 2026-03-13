@@ -168,53 +168,31 @@
 
           <template v-else>
           <v-card-title 
-           class="text-h5 font-weight-bold py-2 d-sm-flex align-center text-center text-sm-left"
+           class="text-h5 font-weight-bold py-2 d-flex align-center"
             :style="{ backgroundColor: projectConfig.themeColor, color: projectConfig.titleColor }"
           >
-              <span>{{ projectConfig.pageTitle }}</span>
-              <v-spacer class="d-none d-sm-flex"></v-spacer>
               <v-btn
-                v-if="step === 1 && projectConfig.showReportUploadButton"        
-                prepend-icon="mdi-file-upload-outline"
-                variant="elevated"
-                @click="isUploadMode = true"
-                class="mt-3 mt-sm-0"
-                :block="$vuetify.display.xs"
+                v-if="step > 0 && step < 3"
+                variant="outlined"
+                :color="projectConfig.titleColor"
+                @click="goBackToStep0"
+                class="mr-2 font-weight-bold"
+                size="small"
+                rounded="pill"
+                :density="$vuetify.display.xs ? 'comfortable' : 'default'"
               >
-                上傳驗屋報告
+                <v-icon start>mdi-arrow-left</v-icon>
+                <span>{{ $vuetify.display.xs ? '返回' : '返回預約項目' }}</span>
               </v-btn>
+              <span 
+                class="text-truncate flex-grow-1" 
+                :class="[$vuetify.display.xs ? 'text-subtitle-1' : 'text-h6']"
+                :style="{ lineHeight: '1.2' }"
+              >
+                {{ step === 0 ? (projectConfig.name + " 預約系統") : (currentPageSettings?.pageTitle || projectConfig.pageTitle) }}
+              </span>
+              <v-spacer></v-spacer>
 
-              <div class="d-none d-sm-flex align-center ml-2">
-                 <v-btn
-                    v-for="msgConfig in projectConfig.customerMessageConfigs || []"
-                    :key="msgConfig.id"
-                    color="error"
-                    variant="elevated"
-                    elevation="4"
-                    class="ml-3 font-weight-bold shimmer-button text-white rounded-pill"
-                    prepend-icon="mdi-message-alert-outline"
-                    @click="openCustomerMessageDialog(msgConfig)"
-                 >
-                    {{ msgConfig.buttonText }}
-                 </v-btn>
-              </div>
-              <!-- Mobile view for extra buttons -->
-              <div class="d-sm-none w-100 text-center mt-3 mb-2" v-if="projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0">
-                 <v-btn
-                    v-for="msgConfig in projectConfig.customerMessageConfigs"
-                    :key="msgConfig.id"
-                    color="error"
-                    variant="elevated"
-                    elevation="4"
-                    class="ma-2 font-weight-bold shimmer-button text-white rounded-pill"
-                    prepend-icon="mdi-message-alert-outline"
-                    size="default"
-                    block
-                    @click="openCustomerMessageDialog(msgConfig)"
-                 >
-                    {{ msgConfig.buttonText }}
-                 </v-btn>
-              </div>
 
             </v-card-title>
 
@@ -335,12 +313,12 @@
   {{ systemStatus.message }}
 </v-alert>
 
-            <v-card-text v-if="step < 3">
+            <v-card-text v-if="step > 0 && step < 3 && currentPageSettings">
               <div class="prose">
-                <div v-html="projectConfig.intro.greeting"></div>
-                <div v-html="projectConfig.intro.body"></div>
+                <div v-html="currentPageSettings.intro.greeting"></div>
+                <div v-html="currentPageSettings.intro.body"></div>
 
-                <div v-if="projectConfig.intro.alert.show">
+                <div v-if="currentPageSettings.intro.alert.show">
   
                   <v-btn
                     block
@@ -353,7 +331,7 @@
                   </v-btn>
 
                   <v-checkbox
-                    v-if="projectConfig.intro.alert.showConfirmation"
+                    v-if="currentPageSettings.intro.alert.showConfirmation"
                     v-model="isInstructionsConfirmed"
                     label="我已詳細閱讀並了解以上預約說明"
                     :color="projectConfig.themeColor"
@@ -366,22 +344,22 @@
                 <v-dialog v-model="isInstructionsDialogVisible" max-width="800px" persistent>
                   <v-card>
                     <v-card-title class="text-h5 font-weight-bold text-center bg-red-darken-2">
-                    {{ projectConfig.intro.alert.title }}
+                    {{ currentPageSettings.intro.alert.title }}
                   </v-card-title>
                     <v-divider></v-divider>
                     <v-card-text style="max-height: 60vh; overflow-y: auto;">
-                      <div v-html="projectConfig.intro.alert.text" class="prose"></div>
+                      <div v-html="currentPageSettings.intro.alert.text" class="prose"></div>
                     </v-card-text>
                     <v-divider></v-divider>
                     <v-card-actions class="pa-4">
                       <v-spacer></v-spacer>
                       <v-btn
-                        :color="projectConfig.intro.alert.showConfirmation ? 'success' : 'primary'"
+                        :color="currentPageSettings.intro.alert.showConfirmation ? 'success' : 'primary'"
                         variant="elevated"
                         size="large"
                         @click="() => { isInstructionsConfirmed = true; isInstructionsDialogVisible = false; }"
                       >
-                        {{ projectConfig.intro.alert.showConfirmation ? '我已閱讀並同意' : '關閉' }}
+                        {{ currentPageSettings.intro.alert.showConfirmation ? '我已閱讀並同意' : '關閉' }}
                       </v-btn>
                     </v-card-actions>
                   </v-card>
@@ -389,11 +367,11 @@
 
                 
                 
-                <div v-if="projectConfig.intro.faq && projectConfig.intro.faq.length > 0" class="mt-6">
+                <div v-if="currentPageSettings.intro.faq && currentPageSettings.intro.faq.length > 0" class="mt-6">
                   <v-list-subheader>常見問答</v-list-subheader>
               <v-expansion-panels variant="accordion">
                     <v-expansion-panel
-                      v-for="(item, i) in projectConfig.intro.faq"
+                      v-for="(item, i) in currentPageSettings.intro.faq"
                       :key="i"
                       class="faq-panel"
                     >
@@ -406,11 +384,11 @@
                     </v-expansion-panel>
                   </v-expansion-panels>
                 </div>
-                <div v-if="projectConfig.intro.showAttachments && projectConfig.intro.attachments?.length > 0" class="mt-6">
+                <div v-if="currentPageSettings.intro.showAttachments && currentPageSettings.intro.attachments?.length > 0" class="mt-6">
                   <v-list-subheader>附件下載</v-list-subheader>
                   <v-list density="compact">
                     <v-list-item
-                      v-for="(item, i) in projectConfig.intro.attachments"
+                      v-for="(item, i) in currentPageSettings.intro.attachments"
                       :key="item.url || i"
                       @click="openAttachmentPreview(item)"
                       link
@@ -437,16 +415,16 @@
 
 
 
-               <div v-if="projectConfig && projectConfig.intro && projectConfig.intro.footer" class="text-caption text-grey text-center mt-4 prose" v-html="projectConfig.intro.footer">
+               <div v-if="projectConfig && currentPageSettings.intro && currentPageSettings.intro.footer" class="text-caption text-grey text-center mt-4 prose" v-html="currentPageSettings.intro.footer">
                 </div>
-                <div v-if="projectConfig.intro && projectConfig.intro.contact" class="contact-info mt-6">
+                <div v-if="currentPageSettings.intro && currentPageSettings.intro.contact" class="contact-info mt-6">
                   <v-list-subheader>聯絡資訊</v-list-subheader>
                   <v-list density="compact">
-                    <v-list-item v-if="projectConfig.intro.contact.name" prepend-icon="mdi-office-building-outline">
-                      <v-list-item-title>{{ projectConfig.intro.contact.name }}</v-list-item-title>
+                    <v-list-item v-if="currentPageSettings.intro.contact.name" prepend-icon="mdi-office-building-outline">
+                      <v-list-item-title>{{ currentPageSettings.intro.contact.name }}</v-list-item-title>
                     </v-list-item>
-                    <v-list-item v-if="projectConfig.intro.contact.phone" prepend-icon="mdi-phone-outline" :href="`tel:${projectConfig.intro.contact.phone}`">
-                      <v-list-item-title>{{ projectConfig.intro.contact.phone }}</v-list-item-title>
+                    <v-list-item v-if="currentPageSettings.intro.contact.phone" prepend-icon="mdi-phone-outline" :href="`tel:${currentPageSettings.intro.contact.phone}`">
+                      <v-list-item-title>{{ currentPageSettings.intro.contact.phone }}</v-list-item-title>
                     </v-list-item>
                   </v-list>
                 </div>
@@ -455,11 +433,103 @@
             </v-card-text>
             <v-divider v-if="step < 3"></v-divider>
 
-            <div v-if="!projectConfig.intro.alert.showConfirmation || isInstructionsConfirmed">
+            <div v-if="step === 0" class="pa-0">
+                <!-- 頂部英雄區 -->
+                <div class="pa-8 text-center bg-grey-lighten-4 rounded-t-lg">
+                  <h3 class="text-h4 font-weight-bold mb-2 text-primary">歡迎使用預約系統</h3>
+                  <p class="text-subtitle-1 text-grey-darken-1">請選擇您要進行的服務項目</p>
+                </div>
+
+                <!-- 1. 預約服務區 -->
+                <div class="pa-6" v-if="systemStatus.code === 'OPEN'">
+                  <div class="d-flex align-center mb-6">
+                    <div class="bg-primary rounded-pill mr-3" style="width: 8px; height: 32px;"></div>
+                    <h4 class="text-h5 font-weight-black">選擇您的預約服務</h4>
+                  </div>
+                  
+                  <div v-if="availableBookingTypes && availableBookingTypes.length > 0">
+                    <v-row>
+                      <v-col cols="12" sm="6" v-for="type in availableBookingTypes" :key="type">
+                        <v-btn
+                          block
+                          size="x-large"
+                          color="primary"
+                          variant="elevated"
+                          class="py-8 text-h6 font-weight-bold rounded-xl"
+                          @click="selectBookingType(type)"
+                        >
+                          <v-icon start size="32" class="mr-2">mdi-calendar-edit</v-icon>
+                          {{ type }}
+                        </v-btn>
+                      </v-col>
+                    </v-row>
+                  </div>
+                  <div v-else class="text-center py-8 text-grey border rounded-xl" style="border-style: dashed !important;">
+                    <v-icon size="48" class="mb-2">mdi-calendar-remove</v-icon>
+                    <p>目前暫無開放的預約項目</p>
+                  </div>
+                </div>
+
+                <!-- 2. 其他服務區 -->
+                <div v-if="projectConfig.showReportUploadButton || (projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0)" 
+                     class="pa-6 bg-grey-lighten-5 border-t">
+                  
+                  <div class="d-flex align-center mb-6">
+                    <div class="bg-secondary rounded-pill mr-3" style="width: 8px; height: 32px;"></div>
+                    <h4 class="text-h5 font-weight-black text-secondary">其他服務</h4>
+                  </div>
+
+                  <v-row>
+                    <!-- 報告上傳入口 -->
+                    <v-col cols="12" v-if="projectConfig.showReportUploadButton">
+                      <v-card variant="outlined" class="rounded-xl pa-4 d-flex align-center flex-sm-row flex-column text-center text-sm-left" color="secondary">
+                        <v-icon size="48" color="secondary" class="mr-sm-4 mb-sm-0 mb-4">mdi-file-upload-outline</v-icon>
+                        <div class="flex-grow-1">
+                          <h5 class="text-h6 font-weight-bold mb-1">我有驗屋報告欲上傳</h5>
+                          <p class="text-caption text-grey-darken-1 mb-0">若您已經有驗屋公司完成之驗屋報告需上傳，請由此進入</p>
+                        </div>
+                        <v-btn
+                          color="secondary"
+                          variant="elevated"
+                          class="ml-sm-4 mt-sm-0 mt-4 px-8 font-weight-bold rounded-pill"
+                          @click="isUploadMode = true"
+                        >
+                          立即上傳
+                        </v-btn>
+                      </v-card>
+                    </v-col>
+
+                    <!-- 客戶回傳按鈕網格 -->
+                    <v-col cols="12" v-if="projectConfig.customerMessageConfigs && projectConfig.customerMessageConfigs.length > 0">
+                      <v-row dense>
+                        <v-col cols="12" sm="6" v-for="msgConfig in projectConfig.customerMessageConfigs" :key="msgConfig.id">
+                          <v-btn
+                            block
+                            color="error"
+                            variant="elevated"
+                            class="py-4 font-weight-bold rounded-lg shimmer-button text-white h-auto"
+                            prepend-icon="mdi-message-alert-outline"
+                            @click="openCustomerMessageDialog(msgConfig)"
+                          >
+                            {{ msgConfig.buttonText }}
+                          </v-btn>
+                        </v-col>
+                      </v-row>
+                    </v-col>
+                  </v-row>
+                </div>
+              </div>
+
+            <div v-if="step > 0 && (!currentPageSettings?.intro?.alert?.showConfirmation || isInstructionsConfirmed)">
               
-              <div v-if="step === 1 && !existingBookingInfo">
+              
+              
+<div v-if="step === 1 && !existingBookingInfo">
                 <v-card-text>
-                  <h3 class="text-h6 mb-2">步驟一：請選擇您的預約項目與戶別</h3>
+                  <div class="mb-4">
+                    <h3 class="text-h6 mb-0 font-weight-bold">步驟一：填寫預約資料 ({{ selectedBookingType }})</h3>
+                  </div>
+
               <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
 
                 
@@ -504,15 +574,7 @@
                   disabled
                 ></v-text-field>
 
-                <v-select
-                  v-model="formStep1.bookingType"
-                  :items="availableBookingTypes"
-                  label="預約項目"
-                  variant="outlined"
-                  :rules="[v => !!v || '預約項目為必填項']"
-                  :disabled="isLoading || !formStep1.unit || !isBookingActive"
-                  no-data-text="請先選擇戶別"
-                ></v-select>
+                
                 
                <v-select
                   v-if="projectConfig.showBookingMethod"
@@ -1382,7 +1444,15 @@ today.setHours(0, 0, 0, 0); // 將時間部分歸零，以便進行日期比較
 // --- State ---
 const isLoading = ref(true);
 const isCanceling = ref(false);
-const step = ref(1);
+const step = ref(0);
+const selectedBookingType = ref(null);
+
+// 根據選取的預約項目，動態回傳對應的頁面設定
+const currentPageSettings = computed(() => {
+  if (!projectConfig.value) return null;
+  if (!selectedBookingType.value) return projectConfig.value; // fallback 到全域設定
+  return projectConfig.value.pageSettingsByItem?.[selectedBookingType.value] || projectConfig.value;
+});
 const savedBookingCode = ref(''); 
 const existingBookingInfoList = ref([]); // Support multiple bookings
 const cancelingCode = ref(null); // Track which booking code is currently being canceled
@@ -1968,7 +2038,6 @@ onMounted(async () => {
 const onBuildingChange = (building) => {
   formStep1.value.unit = null;
   formStep1.value.address = '';
-  formStep1.value.bookingType = null;
   existingBookingInfo.value = null;
   step.value = 1;
 
@@ -1999,13 +2068,7 @@ const onUnitChange = (unitValue) => {
     formStep2.value.EMAIL = selectedUnit.buyerEmail || '';
     // --- END: ✓ 新增自動帶入 ---
 
-  } else {
-    // 正體中文註解：如果清空選項，也清空步驟二的表單
-    formStep2.value.姓名 = '';
-    formStep2.value.電話 = '';
-    formStep2.value.EMAIL = '';
   }
-  formStep1.value.bookingType = null;
   existingBookingInfoList.value = [];
   step.value = 1;
 };
@@ -2614,6 +2677,19 @@ onUnmounted(() => {
 });
 
 
+
+const selectBookingType = (type) => {
+  selectedBookingType.value = type;
+  formStep1.value.bookingType = type;
+  step.value = 1;
+};
+
+const goBackToStep0 = () => {
+  step.value = 0;
+  selectedBookingType.value = null;
+  formStep1.value.bookingType = null;
+  isInstructionsConfirmed.value = false;
+};
 </script>
 
 <style scoped>
