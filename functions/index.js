@@ -13643,9 +13643,15 @@ async function _handleVerifyUploadPrerequisites(data) {
     const householdDoc = await db.collection('households').doc(householdDocId).get();
     if (!householdDoc.exists) throw new HttpsError('not-found', `找不到戶別 "${unitId}" 的資料。`);
     const householdData = householdDoc.data();
-    const storedId = String(householdData.buyerIdNumber || '').trim();
+    const storedIdString = String(householdData.buyerIdNumber || '').trim();
     const inputId = String(idNumber).trim();
-    if (storedId !== inputId && inputId !== projectId) throw new HttpsError('permission-denied', '身分證號碼驗證失敗，請重新確認。');
+
+    const storedIdsArray = storedIdString
+      .split(/[/\s\-\uFF0F\u3001,+\&]+/)
+      .map(id => id.trim())
+      .filter(id => id !== '');
+
+    if (!storedIdsArray.includes(inputId) && inputId !== projectId) throw new HttpsError('permission-denied', '身分證號碼驗證失敗，請重新確認。');
     console.log(`[${functionName}] 身分證驗證成功。`);
     console.log(`[${functionName}] 步驟 2/3: 檢查上傳開關...`);
     const bookingTypeForSwitch = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';

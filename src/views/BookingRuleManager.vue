@@ -418,6 +418,26 @@
                                             
                                             <span class="font-weight-medium mr-4 text-subtitle-2">{{ method.title }}</span>
 
+                                            <!-- Info Chips -->
+                                             <v-chip
+                                                v-if="method.triggerAuthFlow"
+                                                size="x-small"
+                                                color="warning"
+                                                class="mr-2"
+                                                variant="outlined"
+                                             >
+                                                需授權
+                                             </v-chip>
+                                            <v-chip
+                                               v-if="method.customFields && method.customFields.length > 0"
+                                               size="x-small"
+                                               color="info"
+                                               class="mr-4"
+                                               variant="tonal"
+                                            >
+                                               {{ method.customFields.length }} 欄位
+                                            </v-chip>
+
                                             <!-- Action Buttons (Now closer to title) -->
                                              <v-btn
                                                icon
@@ -453,25 +473,6 @@
                                             </v-btn>
 
                                             <v-spacer></v-spacer>
-                                            
-                                            <!-- Info Chips -->
-                                             <v-chip
-                                                v-if="method.triggerAuthFlow"
-                                                size="x-small"
-                                                color="warning"
-                                                class="mr-2"
-                                                variant="outlined"
-                                             >
-                                                需授權
-                                             </v-chip>
-                                            <v-chip
-                                               v-if="method.customFields && method.customFields.length > 0"
-                                               size="x-small"
-                                               color="info"
-                                               variant="tonal"
-                                            >
-                                               {{ method.customFields.length }} 欄位
-                                            </v-chip>
                                          </div>
                                       </v-list-item>
                                       <v-divider v-if="methodIndex < item.methods.length - 1" inset></v-divider>
