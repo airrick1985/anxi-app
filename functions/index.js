@@ -4894,31 +4894,59 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
     // 【已新增】在此處呼叫統一的摘要更新函式
     await updateHouseholdSummary(db, projectId, newAppointmentData.unitId);
 
-    // --- 準備 Email ---
+    // --- 準備 Email 動態內容 ---
+    let emailGreeting = '您已成功完成預約，以下是您的預約詳細資訊，請再次確認。';
+    let emailBody = '';
     let closingText = '請於預約時段準時抵達，感謝您的配合。';
     let inspectionNotesHtml = '';
     let contactInfoHtml = '';
 
     if (projectDoc.exists) {
       const projectData = projectDoc.data();
-      // ... (獲取 closingText, inspectionNotesHtml, contactInfoHtml 的邏輯不變) ...
-      if (projectData.intro && projectData.intro.closingText) {
-        closingText = projectData.intro.closingText;
+      const bookingType = newAppointmentData.bookingType;
+
+      // 優先從 pageSettingsByItem 獲取該項目的特定設定 (對應所選的預約項目)
+      const itemSettings = projectData.pageSettingsByItem?.[bookingType];
+      const itemIntro = itemSettings?.intro;
+      const globalIntro = projectData.intro;
+
+      // 1. 取得招呼語與公告內文 (Greeting & Body)
+      if (itemIntro && itemIntro.greeting) {
+        emailGreeting = itemIntro.greeting;
+      } else if (globalIntro && globalIntro.greeting) {
+        emailGreeting = globalIntro.greeting;
+      }
+
+      if (itemIntro && itemIntro.body) {
+        emailBody = itemIntro.body;
+      } else if (globalIntro && globalIntro.body) {
+        emailBody = globalIntro.body;
+      }
+
+      // 2. 取得結束語 (優先順序: 項目設定 > 全域公告 > 全域Email配置)
+      if (itemIntro && itemIntro.closingText) {
+        closingText = itemIntro.closingText;
+      } else if (globalIntro && globalIntro.closingText) {
+        closingText = globalIntro.closingText;
       } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
         closingText = projectData.emailConfig.closingText;
       }
 
-      if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
-        inspectionNotesHtml = projectData.intro.alert.text;
+      // 3. 取得預約說明 (alert.text)
+      if (itemIntro && itemIntro.alert && itemIntro.alert.text) {
+        inspectionNotesHtml = itemIntro.alert.text;
+      } else if (globalIntro && globalIntro.alert && globalIntro.alert.text) {
+        inspectionNotesHtml = globalIntro.alert.text;
       }
 
-      if (projectData.intro && projectData.intro.contact) {
-        const contact = projectData.intro.contact;
-        if (contact.name || contact.phone) {
-          const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
-          const phonePart = contact.phone ? `電話：${contact.phone}` : '';
-          const separator = contact.name && contact.phone ? ' / ' : '';
-          contactInfoHtml = `
+      // 4. 取得聯絡資訊 (優先順序: 項目設定 > 全域公告)
+      const contact = itemIntro?.contact || globalIntro?.contact;
+
+      if (contact && (contact.name || contact.phone)) {
+        const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+        const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+        const separator = contact.name && contact.phone ? ' / ' : '';
+        contactInfoHtml = `
                         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
                             <p style="margin: 0; font-size: 14px; color: #555;">
                                 如有任何疑問，請洽詢：<br>
@@ -4926,7 +4954,6 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
                             </p>
                         </div>
                     `;
-        }
       }
     }
 
@@ -4964,7 +4991,9 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
     </div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${newAppointmentData.bookerName}</strong> 您好：</p>
-      <p>您已成功完成預約，以下是您的預約詳細資訊，請再次確認。</p>
+      <div style="margin-bottom: 5px;">${emailGreeting}</div>
+      ${emailBody ? `<div style="margin-bottom: 20px; background-color: #fffaf0; padding: 12px; border: 1px solid #ffe4b5; border-radius: 4px;">${emailBody}</div>` : ''}
+      <p>以下是您的預約詳細資訊，請再次確認。</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0; font-weight: bold; font-size: 16px; color: #D32F2F;">${newAppointmentData.bookingCode}</td></tr>
@@ -5131,7 +5160,7 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
     </div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
-      <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+      <p>已取消您的預約，以下是已取消的預約資訊：</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
@@ -6056,7 +6085,7 @@ exports.cancelAppointmentByAdmin = onCall({ region: "asia-east1", secrets: ["SEN
     <div style="background-color: #dc3545; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">預約取消通知</h2></div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
-      <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+      <p>已取消您的預約，以下是已取消的預約資訊：</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
@@ -12974,30 +13003,48 @@ async function _handleSaveBooking(data) {
     const { bookingCode, newAppointmentData } = result;
     await updateHouseholdSummary(db, projectId, newAppointmentData.unitId);
 
+    // --- 準備 Email 動態內容 ---
+
+
     let closingText = '請於預約時段準時抵達，感謝您的配合。';
     let inspectionNotesHtml = '';
     let contactInfoHtml = '';
 
     if (projectDoc.exists) {
       const projectData = projectDoc.data();
-      // ... (獲取 closingText, inspectionNotesHtml, contactInfoHtml 的邏輯不變) ...
-      if (projectData.intro && projectData.intro.closingText) {
-        closingText = projectData.intro.closingText;
+      const bookingType = newAppointmentData.bookingType;
+
+      // 優先從 pageSettingsByItem 獲取該項目的特定設定 (對應所選的預約項目)
+      const itemSettings = projectData.pageSettingsByItem?.[bookingType];
+      const itemIntro = itemSettings?.intro;
+      const globalIntro = projectData.intro;
+
+
+
+      //  取得結束語 (優先順序: 項目設定 > 全域公告 > 全域Email配置)
+      if (itemIntro && itemIntro.closingText) {
+        closingText = itemIntro.closingText;
+      } else if (globalIntro && globalIntro.closingText) {
+        closingText = globalIntro.closingText;
       } else if (projectData.emailConfig && projectData.emailConfig.closingText) {
         closingText = projectData.emailConfig.closingText;
       }
 
-      if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) {
-        inspectionNotesHtml = projectData.intro.alert.text;
+      //  取得預約說明 (alert.text)
+      if (itemIntro && itemIntro.alert && itemIntro.alert.text) {
+        inspectionNotesHtml = itemIntro.alert.text;
+      } else if (globalIntro && globalIntro.alert && globalIntro.alert.text) {
+        inspectionNotesHtml = globalIntro.alert.text;
       }
 
-      if (projectData.intro && projectData.intro.contact) {
-        const contact = projectData.intro.contact;
-        if (contact.name || contact.phone) {
-          const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
-          const phonePart = contact.phone ? `電話：${contact.phone}` : '';
-          const separator = contact.name && contact.phone ? ' / ' : '';
-          contactInfoHtml = `
+      // 取得聯絡資訊 (優先順序: 項目設定 > 全域公告)
+      const contact = itemIntro?.contact || globalIntro?.contact;
+
+      if (contact && (contact.name || contact.phone)) {
+        const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+        const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+        const separator = contact.name && contact.phone ? ' / ' : '';
+        contactInfoHtml = `
                         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
                             <p style="margin: 0; font-size: 14px; color: #555;">
                                 如有任何疑問，請洽詢：<br>
@@ -13005,7 +13052,6 @@ async function _handleSaveBooking(data) {
                             </p>
                         </div>
                     `;
-        }
       }
     }
 
@@ -13175,13 +13221,18 @@ async function _handleCancelBooking(data) {
       let contactInfoHtml = '';
       if (projectDoc.exists) {
         const projectData = projectDoc.data();
-        if (projectData.intro && projectData.intro.contact) {
-          const contact = projectData.intro.contact;
-          if (contact.name || contact.phone) {
-            const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
-            const phonePart = contact.phone ? `電話：${contact.phone}` : '';
-            const separator = contact.name && contact.phone ? ' / ' : '';
-            contactInfoHtml = `
+        const bookingType = bookingData.bookingType;
+
+        // 優先從 pageSettingsByItem 獲取該預約項目的聯絡資訊
+        const itemIntro = projectData.pageSettingsByItem?.[bookingType]?.intro;
+        const globalIntro = projectData.intro;
+        const contact = itemIntro?.contact || globalIntro?.contact;
+
+        if (contact && (contact.name || contact.phone)) {
+          const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+          const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+          const separator = contact.name && contact.phone ? ' / ' : '';
+          contactInfoHtml = `
                             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;">
                                 <p style="margin: 0; font-size: 14px; color: #555;">
                                     如有任何疑問，請洽詢：<br>
@@ -13189,7 +13240,6 @@ async function _handleCancelBooking(data) {
                                 </p>
                             </div>
                         `;
-          }
         }
       }
 
@@ -13211,7 +13261,7 @@ async function _handleCancelBooking(data) {
     </div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
-      <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+      <p>已取消您的預約，以下是已取消的預約資訊：</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>
@@ -14500,16 +14550,27 @@ async function _handleAddAppointmentAdmin(data) {
       let contactInfoHtml = '';
       if (projectDoc.exists) {
         const projectData = projectDoc.data();
-        if (projectData.intro && projectData.intro.closingText) { closingText = projectData.intro.closingText; }
-        if (projectData.intro && projectData.intro.alert && projectData.intro.alert.text) { inspectionNotesHtml = projectData.intro.alert.text; }
-        if (projectDoc.exists && projectDoc.data().intro?.contact) {
-          const contact = projectDoc.data().intro.contact;
-          if (contact.name || contact.phone) {
-            const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
-            const phonePart = contact.phone ? `電話：${contact.phone}` : '';
-            const separator = contact.name && contact.phone ? ' / ' : '';
-            contactInfoHtml = `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><p style="margin: 0; font-size: 14px; color: #555;">如有任何疑問，請洽詢：<br>${namePart}${separator}${phonePart}</p></div>`;
-          }
+        // 優先從 pageSettingsByItem[bookingType] 取得對應預約項目的設定
+        const bookingType = finalAppointmentData.bookingType;
+        const itemIntro = projectData.pageSettingsByItem?.[bookingType]?.intro;
+        // Fallback 到全域 intro
+        const globalIntro = projectData.intro;
+
+        // closingText: 優先 item-level → 全域 → 預設
+        if (itemIntro?.closingText) { closingText = itemIntro.closingText; }
+        else if (globalIntro?.closingText) { closingText = globalIntro.closingText; }
+
+        // alert.text: 優先 item-level → 全域
+        if (itemIntro?.alert?.text) { inspectionNotesHtml = itemIntro.alert.text; }
+        else if (globalIntro?.alert?.text) { inspectionNotesHtml = globalIntro.alert.text; }
+
+        // contact: 優先 item-level → 全域
+        const contact = itemIntro?.contact || globalIntro?.contact;
+        if (contact && (contact.name || contact.phone)) {
+          const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+          const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+          const separator = contact.name && contact.phone ? ' / ' : '';
+          contactInfoHtml = `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><p style="margin: 0; font-size: 14px; color: #555;">如有任何疑問，請洽詢：<br>${namePart}${separator}${phonePart}</p></div>`;
         }
       }
 
@@ -14794,9 +14855,13 @@ async function _handleUpdateAppointmentByAdmin(data) {
           const projectDoc = await projectRef.get();
           const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
           let contactInfoHtml = '';
-          if (projectDoc.exists && projectDoc.data().intro?.contact) {
-            const contact = projectDoc.data().intro.contact;
-            if (contact.name || contact.phone) {
+          if (projectDoc.exists) {
+            const projectData = projectDoc.data();
+            const currentBookingType = bookingPayload?.bookingType || originalAppointmentData.bookingType;
+            const itemIntro = projectData.pageSettingsByItem?.[currentBookingType]?.intro;
+            const globalIntro = projectData.intro;
+            const contact = itemIntro?.contact || globalIntro?.contact;
+            if (contact && (contact.name || contact.phone)) {
               const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
               const phonePart = contact.phone ? `電話：${contact.phone}` : '';
               const separator = contact.name && contact.phone ? ' / ' : '';
@@ -14955,12 +15020,15 @@ async function _handleCancelAppointmentByAdmin(data) {
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
       let contactInfoHtml = '';
-      if (projectDoc.exists && projectDoc.data().intro?.contact) {
-        const { name, phone } = projectDoc.data().intro.contact;
-        if (name || phone) {
-          const namePart = name ? `<strong>${name}</strong>` : '';
-          const phonePart = phone ? `電話：${phone}` : '';
-          const separator = name && phone ? ' / ' : '';
+      if (projectDoc.exists) {
+        const projectData = projectDoc.data();
+        const itemIntro = projectData.pageSettingsByItem?.[bookingType]?.intro;
+        const globalIntro = projectData.intro;
+        const contact = itemIntro?.contact || globalIntro?.contact;
+        if (contact && (contact.name || contact.phone)) {
+          const namePart = contact.name ? `<strong>${contact.name}</strong>` : '';
+          const phonePart = contact.phone ? `電話：${contact.phone}` : '';
+          const separator = contact.name && contact.phone ? ' / ' : '';
           contactInfoHtml = `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eeeeee;"><p style="margin: 0; font-size: 14px; color: #555;">如有任何疑問，請洽詢：<br>${namePart}${separator}${phonePart}</p></div>`;
         }
       }
@@ -14979,7 +15047,7 @@ async function _handleCancelAppointmentByAdmin(data) {
     <div style="background-color: #dc3545; color: #ffffff; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 24px;">預約取消通知</h2></div>
     <div style="padding: 24px; line-height: 1.6; color: #333333;">
       <p>親愛的 <strong>${bookingData.bookerName}</strong> 您好：</p>
-      <p>您已成功取消您的預約，以下是已取消的預約資訊：</p>
+      <p>已取消您的預約，以下是已取消的預約資訊：</p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; opacity: 0.7;">
         <tbody>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555; width: 100px;">預約代碼</td><td style="padding: 12px 0;">${bookingData.bookingCode}</td></tr>

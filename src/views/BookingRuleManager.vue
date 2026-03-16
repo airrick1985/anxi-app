@@ -354,18 +354,24 @@
 
                 <!-- NEW: Booking Menu Configuration (Parent-Child Structure) -->
                 <div class="mb-4">
-                   <p class="text-subtitle-1 font-weight-bold mb-2">預約選單設定 (項目 > 方式)</p>
-                   <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="openEditBookingItemDialog()">新增預約項目</v-btn>
+                   <div class="d-flex align-center justify-space-between">
+                     <div>
+                       <p class="text-subtitle-1 font-weight-bold mb-2">預約選單設定 (項目 > 方式)</p>
+                     </div>
+                     <div class="d-flex align-center ga-2">
+                       <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="openEditBookingItemDialog()">新增預約項目</v-btn>
+                     </div>
+                   </div>
                 </div>
 
-                <div v-if="!projectSettings.bookingMenu || projectSettings.bookingMenu.length === 0" class="text-center text-grey pa-6 border rounded border-dashed mb-6">
+                <div v-if="activeBookingMenu.length === 0 && deletedBookingMenu.length === 0" class="text-center text-grey pa-6 border rounded border-dashed mb-6">
                    <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-file-tree</v-icon>
                    <p>尚未建立預約選單結構，請點擊上方按鈕新增。</p>
                 </div>
 
                 <draggable 
-                   v-else 
-                   v-model="projectSettings.bookingMenu" 
+                   v-if="activeBookingMenu.length > 0" 
+                   v-model="activeBookingMenu" 
                    item-key="title" 
                    handle=".drag-handle"
                    tag="v-expansion-panels"
@@ -380,7 +386,7 @@
                                 
                                 <v-icon color="primary" class="mr-3">mdi-folder-outline</v-icon>
                                 <span class="font-weight-bold mr-2">{{ item.title }}</span>
-                                <v-chip size="x-small" color="grey" variant="outlined" class="mr-2">{{ item.methods ? item.methods.length : 0 }} 種方式</v-chip>
+                                <v-chip size="x-small" color="grey" variant="outlined" class="mr-2">{{ item.methods ? item.methods.filter(m => !m.deleted).length : 0 }} 種方式</v-chip>
                                 <v-btn icon variant="text" size="small" color="primary" @click.stop="openEditBookingItemDialog(item, itemIndex)" title="編輯項目名稱">
                                    <v-icon>mdi-pencil</v-icon>
                                 </v-btn>
@@ -397,13 +403,14 @@
                                  <v-btn size="small" variant="tonal" color="secondary" prepend-icon="mdi-plus" @click="openEditMethodDialog(itemIndex)">新增選擇方式</v-btn>
                              </div>
                              
-                             <div v-if="!item.methods || item.methods.length === 0" class="text-center text-grey-darken-1 text-caption pa-4 bg-grey-lighten-5 rounded">
+                             <div v-if="!item.methods || item.methods.filter(m => !m.deleted).length === 0" class="text-center text-grey-darken-1 text-caption pa-4 bg-grey-lighten-5 rounded">
                                 此項目下尚未設定選擇方式
                              </div>
    
                              <draggable 
-                               v-else 
-                               v-model="item.methods" 
+                               v-if="item.methods && item.methods.filter(m => !m.deleted).length > 0" 
+                               :model-value="item.methods.filter(m => !m.deleted)" 
+                               @update:model-value="(newVal) => { const deletedMethods = (item.methods || []).filter(m => m.deleted); item.methods = [...newVal, ...deletedMethods]; }" 
                                item-key="title" 
                                handle=".method-drag-handle"
                                tag="v-list"
@@ -439,7 +446,7 @@
                                                {{ method.customFields.length }} 欄位
                                             </v-chip>
 
-                                            <!-- Action Buttons (Now closer to title) -->
+                                            <!-- Action Buttons -->
                                              <v-btn
                                                icon
                                                variant="text"
@@ -476,14 +483,79 @@
                                             <v-spacer></v-spacer>
                                          </div>
                                       </v-list-item>
-                                      <v-divider v-if="methodIndex < item.methods.length - 1" inset></v-divider>
+                                      <v-divider v-if="methodIndex < item.methods.filter(m => !m.deleted).length - 1" inset></v-divider>
                                    </div>
                                 </template>
                              </draggable>
+                             
+                             <!-- 已刪除的方式列表 -->
+                             <div v-if="item.methods && item.methods.filter(m => m.deleted).length > 0" class="mt-3">
+                               <v-expansion-panels variant="accordion">
+                                 <v-expansion-panel>
+                                   <v-expansion-panel-title class="py-2" style="min-height: auto;">
+                                     <v-icon size="small" color="grey" class="mr-2">mdi-delete-clock-outline</v-icon>
+                                     <span class="text-caption text-grey-darken-1">已刪除的方式 ({{ item.methods.filter(m => m.deleted).length }})</span>
+                                   </v-expansion-panel-title>
+                                   <v-expansion-panel-text>
+                                     <v-list density="compact" class="bg-red-lighten-5 rounded">
+                                       <v-list-item v-for="(method, delMethodIdx) in item.methods.filter(m => m.deleted)" :key="'del-' + method.title" class="py-1">
+                                         <div class="d-flex align-center w-100">
+                                           <v-icon size="small" color="grey" class="mr-2">mdi-subdirectory-arrow-right</v-icon>
+                                           <span class="text-decoration-line-through text-grey-darken-1 text-subtitle-2 mr-2">{{ method.title }}</span>
+                                           <v-chip size="x-small" color="grey" variant="tonal" class="mr-auto">
+                                             {{ method.deletedAt ? new Date(method.deletedAt).toLocaleDateString('zh-TW') + ' 刪除' : '已刪除' }}
+                                           </v-chip>
+                                           <v-btn icon variant="text" size="x-small" color="success" @click="restoreMethod(itemIndex, delMethodIdx)" title="復原">
+                                             <v-icon>mdi-restore</v-icon>
+                                           </v-btn>
+                                           <v-btn icon variant="text" size="x-small" color="error" @click="permanentlyDeleteMethod(itemIndex, delMethodIdx)" title="永久刪除">
+                                             <v-icon>mdi-delete-forever</v-icon>
+                                           </v-btn>
+                                         </div>
+                                       </v-list-item>
+                                     </v-list>
+                                   </v-expansion-panel-text>
+                                 </v-expansion-panel>
+                               </v-expansion-panels>
+                             </div>
                           </v-expansion-panel-text>
                        </v-expansion-panel>
                    </template>
                 </draggable>
+
+                <!-- 已刪除的預約項目區塊 -->
+                <v-expand-transition>
+                  <div v-if="deletedBookingMenu.length > 0" class="mb-6">
+                    <v-card variant="outlined" color="error" class="border-dashed">
+                      <v-card-title class="d-flex align-center py-2 px-4 bg-red-lighten-5 cursor-pointer" @click="showDeletedItems = !showDeletedItems">
+                        <v-icon size="small" color="error" class="mr-2">mdi-delete-clock-outline</v-icon>
+                        <span class="text-subtitle-2 text-error">已刪除的預約項目 ({{ deletedBookingMenu.length }})</span>
+                        <v-spacer></v-spacer>
+                        <v-icon :icon="showDeletedItems ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="error"></v-icon>
+                      </v-card-title>
+                      <v-expand-transition>
+                        <v-card-text v-if="showDeletedItems" class="pa-2">
+                          <v-list density="compact">
+                            <v-list-item v-for="(item, delIdx) in deletedBookingMenu" :key="'deleted-' + item.title" class="mb-1 rounded bg-red-lighten-5">
+                              <div class="d-flex align-center w-100 py-1">
+                                <v-icon color="grey" class="mr-2">mdi-folder-remove-outline</v-icon>
+                                <div class="flex-grow-1">
+                                  <span class="text-decoration-line-through font-weight-bold text-grey-darken-1">{{ item.title }}</span>
+                                  <div class="text-caption text-grey">
+                                    {{ item.methods ? item.methods.length : 0 }} 種方式
+                                    <span v-if="item.deletedAt"> · {{ new Date(item.deletedAt).toLocaleDateString('zh-TW') }} 刪除</span>
+                                  </div>
+                                </div>
+                                <v-btn variant="tonal" size="small" color="success" prepend-icon="mdi-restore" class="mr-2" @click="restoreBookingItem(delIdx)">復原</v-btn>
+                                <v-btn variant="tonal" size="small" color="error" prepend-icon="mdi-delete-forever" @click="permanentlyDeleteBookingItem(delIdx)">永久刪除</v-btn>
+                              </div>
+                            </v-list-item>
+                          </v-list>
+                        </v-card-text>
+                      </v-expand-transition>
+                    </v-card>
+                  </div>
+                </v-expand-transition>
 
                 <div v-if="false"> <!-- Hidden Legacy Fields (Keep for logic safety until full migration confirmed) -->
                     <v-combobox
@@ -766,7 +838,7 @@
                   <div v-else>
                     <p class="text-subtitle-1 font-weight-bold mb-2">請選擇要設定的預約項目：</p>
                     <v-chip-group v-model="selectedBookingItemForSetting" selected-class="bg-primary text-white" mandatory column class="mb-4">
-                      <v-chip v-for="item in projectSettings.bookingMenu" :key="item.title" :value="item.title" variant="outlined">{{ item.title }}</v-chip>
+                      <v-chip v-for="item in activeBookingMenu" :key="item.title" :value="item.title" variant="outlined">{{ item.title }}</v-chip>
                     </v-chip-group>
 
                     <div v-if="selectedBookingItemForSetting && projectSettings.pageSettingsByItem && projectSettings.pageSettingsByItem[selectedBookingItemForSetting]">
@@ -2594,6 +2666,7 @@ const activeTab = ref('batches');
 const settingsSubTab = ref('general');
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 const isBatchLoading = ref(false);
+const showDeletedItems = ref(false); // 控制是否顯示已刪除的預約項目
 const isBatchDialogVisible = ref(false);
 const batchForm = ref(null);
 const bookingBatches = ref([]);
@@ -2601,11 +2674,30 @@ const bookingBatches = ref([]);
 //  建立 computed 屬性，動態產生預約項目選項
 const bookingTypeOptions = computed(() => {
   if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
-      return projectSettings.value.bookingMenu.map(item => item.title);
+      return projectSettings.value.bookingMenu.filter(item => !item.deleted).map(item => item.title);
   }
   // Fallback
   const types = Array.isArray(projectSettings.value.bookingTypes) ? projectSettings.value.bookingTypes : [];
   return [...types, '其他'];
+});
+
+// 篩選出未刪除的 bookingMenu 項目（用於 draggable 顯示）
+const activeBookingMenu = computed({
+  get: () => {
+    if (!projectSettings.value.bookingMenu) return [];
+    return projectSettings.value.bookingMenu.filter(item => !item.deleted);
+  },
+  set: (newVal) => {
+    // draggable 排序時，合併回已刪除的項目
+    const deletedItems = (projectSettings.value.bookingMenu || []).filter(item => item.deleted);
+    projectSettings.value.bookingMenu = [...newVal, ...deletedItems];
+  }
+});
+
+// 已刪除的項目列表
+const deletedBookingMenu = computed(() => {
+  if (!projectSettings.value.bookingMenu) return [];
+  return projectSettings.value.bookingMenu.filter(item => item.deleted);
 });
 
 // Derived Available Booking Types for Capacity Groups
@@ -2632,9 +2724,9 @@ const availableBatchMethods = computed(() => {
     if (!selectedType || selectedType === '其他') return [];
 
     if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
-        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType);
+        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
         if (item && item.methods) {
-            return item.methods.map(m => m.title);
+            return item.methods.filter(m => !m.deleted).map(m => m.title);
         }
     }
     
@@ -2649,9 +2741,9 @@ const previewBatchMethods = computed(() => {
     if (!selectedType || selectedType === '其他') return [];
 
     if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
-        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType);
+        const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
         if (item && item.methods) {
-            return item.methods.map(m => m.title);
+            return item.methods.filter(m => !m.deleted).map(m => m.title);
         }
     }
     
@@ -2839,6 +2931,22 @@ const editedMethodParentIndex = ref(-1);
 
 // --- Booking Menu Methods ---
 
+// 工具函式：從 activeBookingMenu 索引轉換為 bookingMenu 實際索引
+const getRealBookingMenuIndex = (activeIndex) => {
+    const item = activeBookingMenu.value[activeIndex];
+    if (!item) return -1;
+    return projectSettings.value.bookingMenu.findIndex(i => i.title === item.title && !i.deleted);
+};
+
+// 工具函式：從過濾後的 methods 索引轉換為 methods 陣列實際索引
+const getRealMethodIndex = (realParentIndex, activeMethodIndex) => {
+    const allMethods = projectSettings.value.bookingMenu[realParentIndex]?.methods || [];
+    const activeMethods = allMethods.filter(m => !m.deleted);
+    const method = activeMethods[activeMethodIndex];
+    if (!method) return -1;
+    return allMethods.findIndex(m => m.title === method.title && !m.deleted);
+};
+
 // 1. Booking Item (Parent)
 const openEditBookingItemDialog = (item = null, index = -1) => {
     if (item) {
@@ -2865,8 +2973,11 @@ const saveBookingItem = async () => {
             methods: [] // Start with empty methods
         });
     } else {
-        // Edit existing
-        projectSettings.value.bookingMenu[editedBookingItemIndex.value].title = editedBookingItemTitle.value;
+        // Edit existing - 將 activeBookingMenu 索引轉為實際索引
+        const realIndex = getRealBookingMenuIndex(editedBookingItemIndex.value);
+        if (realIndex !== -1) {
+            projectSettings.value.bookingMenu[realIndex].title = editedBookingItemTitle.value;
+        }
     }
 
     isBookingItemDialogVisible.value = false;
@@ -2874,9 +2985,39 @@ const saveBookingItem = async () => {
 };
 
 const deleteBookingItem = async (index) => {
-    if (!confirm('確定要刪除此預約項目嗎？其下所有選擇方式與設定也將一併刪除。')) return;
-    projectSettings.value.bookingMenu.splice(index, 1);
+    if (!confirm('確定要刪除此預約項目嗎？（項目將被標記為已刪除，可隨時復原）')) return;
+    // 找到實際在 bookingMenu 中的索引（因為 draggable 使用的是 activeBookingMenu）
+    const itemTitle = activeBookingMenu.value[index]?.title;
+    const realIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === itemTitle && !item.deleted);
+    if (realIndex === -1) return;
+    projectSettings.value.bookingMenu[realIndex].deleted = true;
+    projectSettings.value.bookingMenu[realIndex].deletedAt = new Date().toISOString();
     await saveSettings();
+    showSnackbar('項目已標記為刪除，可至「已刪除項目」中復原', 'info');
+};
+
+// 復原已刪除的預約項目
+const restoreBookingItem = async (index) => {
+    const deletedItems = deletedBookingMenu.value;
+    const itemTitle = deletedItems[index]?.title;
+    const realIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === itemTitle && item.deleted);
+    if (realIndex === -1) return;
+    delete projectSettings.value.bookingMenu[realIndex].deleted;
+    delete projectSettings.value.bookingMenu[realIndex].deletedAt;
+    await saveSettings();
+    showSnackbar('預約項目已成功復原！', 'success');
+};
+
+// 永久刪除預約項目
+const permanentlyDeleteBookingItem = async (index) => {
+    if (!confirm('⚠️ 確定要永久刪除此預約項目嗎？此操作無法復原！')) return;
+    const deletedItems = deletedBookingMenu.value;
+    const itemTitle = deletedItems[index]?.title;
+    const realIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === itemTitle && item.deleted);
+    if (realIndex === -1) return;
+    projectSettings.value.bookingMenu.splice(realIndex, 1);
+    await saveSettings();
+    showSnackbar('項目已永久刪除', 'warning');
 };
 
 const editedMethodTriggerAuth = ref(false); // [New]
@@ -2885,8 +3026,9 @@ const editedMethodAskPresence = ref(false); // [New]
 // 2. Selection Method (Child)
 const openEditMethodDialog = (parentIndex, method = null, methodIndex = -1) => {
     editedMethodParentIndex.value = parentIndex;
-    if (projectSettings.value.bookingMenu[parentIndex]) {
-         editedMethodParentTitle.value = projectSettings.value.bookingMenu[parentIndex].title;
+    const realParentIndex = getRealBookingMenuIndex(parentIndex);
+    if (realParentIndex !== -1 && projectSettings.value.bookingMenu[realParentIndex]) {
+         editedMethodParentTitle.value = projectSettings.value.bookingMenu[realParentIndex].title;
     }
     
     if (method) {
@@ -2906,7 +3048,9 @@ const openEditMethodDialog = (parentIndex, method = null, methodIndex = -1) => {
 const saveMethod = async () => {
     if (!editedMethodTitle.value.trim()) return;
 
-    const parentItem = projectSettings.value.bookingMenu[editedMethodParentIndex.value];
+    const realParentIndex = getRealBookingMenuIndex(editedMethodParentIndex.value);
+    if (realParentIndex === -1) return;
+    const parentItem = projectSettings.value.bookingMenu[realParentIndex];
     if (!parentItem.methods) parentItem.methods = [];
 
     if (editedMethodIndex.value === -1) {
@@ -2914,14 +3058,17 @@ const saveMethod = async () => {
         parentItem.methods.push({
             title: editedMethodTitle.value,
             customFields: [],
-            triggerAuthFlow: editedMethodTriggerAuth.value, // [New] Save
-            askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false // [New] Save (only if trigger is on)
+            triggerAuthFlow: editedMethodTriggerAuth.value,
+            askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false
         });
     } else {
-        // Edit
-        parentItem.methods[editedMethodIndex.value].title = editedMethodTitle.value;
-        parentItem.methods[editedMethodIndex.value].triggerAuthFlow = editedMethodTriggerAuth.value; // [New] Save
-        parentItem.methods[editedMethodIndex.value].askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false; // [New] Save
+        // Edit - 將過濾後的 method 索引轉為實際索引
+        const realMethodIndex = getRealMethodIndex(realParentIndex, editedMethodIndex.value);
+        if (realMethodIndex !== -1) {
+            parentItem.methods[realMethodIndex].title = editedMethodTitle.value;
+            parentItem.methods[realMethodIndex].triggerAuthFlow = editedMethodTriggerAuth.value;
+            parentItem.methods[realMethodIndex].askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false;
+        }
     }
 
     isMethodDialogVisible.value = false;
@@ -2929,22 +3076,68 @@ const saveMethod = async () => {
 };
 
 const deleteMethod = async (parentIndex, methodIndex) => {
-    if (!confirm('確定要刪除此選擇方式嗎？')) return;
-    projectSettings.value.bookingMenu[parentIndex].methods.splice(methodIndex, 1);
+    if (!confirm('確定要刪除此選擇方式嗎？（可隨時復原）')) return;
+    // parentIndex 是在 activeBookingMenu 中的索引，需轉換
+    const parentTitle = activeBookingMenu.value[parentIndex]?.title;
+    const realParentIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === parentTitle && !item.deleted);
+    if (realParentIndex === -1) return;
+    // methodIndex 是在過濾後的 methods 中的索引，需轉換
+    const activeMethods = (projectSettings.value.bookingMenu[realParentIndex].methods || []).filter(m => !m.deleted);
+    const methodTitle = activeMethods[methodIndex]?.title;
+    const realMethodIndex = projectSettings.value.bookingMenu[realParentIndex].methods.findIndex(m => m.title === methodTitle && !m.deleted);
+    if (realMethodIndex === -1) return;
+    projectSettings.value.bookingMenu[realParentIndex].methods[realMethodIndex].deleted = true;
+    projectSettings.value.bookingMenu[realParentIndex].methods[realMethodIndex].deletedAt = new Date().toISOString();
     await saveSettings();
+    showSnackbar('選擇方式已標記為刪除', 'info');
+};
+
+// 復原已刪除的選擇方式
+const restoreMethod = async (parentIndex, methodIndex) => {
+    // parentIndex 是在 activeBookingMenu 中的索引
+    const parentTitle = activeBookingMenu.value[parentIndex]?.title;
+    const realParentIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === parentTitle && !item.deleted);
+    if (realParentIndex === -1) return;
+    const deletedMethods = (projectSettings.value.bookingMenu[realParentIndex].methods || []).filter(m => m.deleted);
+    const methodTitle = deletedMethods[methodIndex]?.title;
+    const realMethodIndex = projectSettings.value.bookingMenu[realParentIndex].methods.findIndex(m => m.title === methodTitle && m.deleted);
+    if (realMethodIndex === -1) return;
+    delete projectSettings.value.bookingMenu[realParentIndex].methods[realMethodIndex].deleted;
+    delete projectSettings.value.bookingMenu[realParentIndex].methods[realMethodIndex].deletedAt;
+    await saveSettings();
+    showSnackbar('選擇方式已成功復原！', 'success');
+};
+
+// 永久刪除選擇方式
+const permanentlyDeleteMethod = async (parentIndex, methodIndex) => {
+    if (!confirm('⚠️ 確定要永久刪除此選擇方式嗎？此操作無法復原！')) return;
+    const parentTitle = activeBookingMenu.value[parentIndex]?.title;
+    const realParentIndex = projectSettings.value.bookingMenu.findIndex(item => item.title === parentTitle && !item.deleted);
+    if (realParentIndex === -1) return;
+    const deletedMethods = (projectSettings.value.bookingMenu[realParentIndex].methods || []).filter(m => m.deleted);
+    const methodTitle = deletedMethods[methodIndex]?.title;
+    const realMethodIndex = projectSettings.value.bookingMenu[realParentIndex].methods.findIndex(m => m.title === methodTitle && m.deleted);
+    if (realMethodIndex === -1) return;
+    projectSettings.value.bookingMenu[realParentIndex].methods.splice(realMethodIndex, 1);
+    await saveSettings();
+    showSnackbar('選擇方式已永久刪除', 'warning');
 };
 
 // 3. Dynamic Fields
 const openDynamicFieldsDialog = (methodOrTitle, parentIndex = null, methodIndex = null) => {
     if (parentIndex !== null && methodIndex !== null) {
-        // New Structure Access
-        const method = projectSettings.value.bookingMenu[parentIndex].methods[methodIndex];
+        // New Structure Access - 將 activeBookingMenu 索引轉為實際索引
+        const realParentIndex = getRealBookingMenuIndex(parentIndex);
+        if (realParentIndex === -1) return;
+        const realMethodIndex = getRealMethodIndex(realParentIndex, methodIndex);
+        if (realMethodIndex === -1) return;
+        const method = projectSettings.value.bookingMenu[realParentIndex].methods[realMethodIndex];
         currentConfiguringMethod.value = method.title; // 顯示用
         // Deep copy with array check
         const fields = method.customFields;
         tempDynamicFields.value = Array.isArray(fields) ? JSON.parse(JSON.stringify(fields)) : [];
         
-        // Store indices
+        // Store indices (儲存的是 activeBookingMenu 的索引，後續 save 時會轉換)
         editedMethodParentIndex.value = parentIndex;
         editedMethodIndex.value = methodIndex;
     } else {
@@ -2958,8 +3151,12 @@ const openDynamicFieldsDialog = (methodOrTitle, parentIndex = null, methodIndex 
 
 const saveDynamicFieldsConfig = async () => {
     if (editedMethodParentIndex.value !== -1 && editedMethodIndex.value !== -1) {
-         projectSettings.value.bookingMenu[editedMethodParentIndex.value]
-            .methods[editedMethodIndex.value].customFields = tempDynamicFields.value;
+        const realParentIndex = getRealBookingMenuIndex(editedMethodParentIndex.value);
+        if (realParentIndex === -1) return;
+        const realMethodIndex = getRealMethodIndex(realParentIndex, editedMethodIndex.value);
+        if (realMethodIndex === -1) return;
+         projectSettings.value.bookingMenu[realParentIndex]
+            .methods[realMethodIndex].customFields = tempDynamicFields.value;
     }
     
     isDynamicFieldsDialogVisible.value = false;

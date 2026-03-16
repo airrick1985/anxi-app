@@ -1498,7 +1498,7 @@ const availableBookingTypes = computed(() => {
     
     // New Structure
     if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
-        return projectConfig.value.bookingMenu.map(item => item.title);
+        return projectConfig.value.bookingMenu.filter(item => !item.deleted).map(item => item.title);
     }
     
     // Fallback Legacy
@@ -1510,9 +1510,9 @@ const availableMethodOptions = computed(() => {
 
     // New Structure
     if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
-        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType);
+        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
         if (selectedItem && selectedItem.methods) {
-            return selectedItem.methods.map(m => m.title);
+            return selectedItem.methods.filter(m => !m.deleted).map(m => m.title);
         }
         return [];
     }
@@ -1537,7 +1537,7 @@ watch(() => formStep1.value.bookingMethod, (newMethodName) => {
 
     // 1. Try New Structure
     if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
-        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType);
+        const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
         if (selectedItem && selectedItem.methods) {
             const methodObj = selectedItem.methods.find(m => m.title === newMethodName);
             if (methodObj && methodObj.customFields) {

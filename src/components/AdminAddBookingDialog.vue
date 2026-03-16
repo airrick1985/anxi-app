@@ -648,7 +648,7 @@ const availableBookingTypes = computed(() => {
     
     // 1. 優先取用新的選單結構
     if (config.bookingMenu && config.bookingMenu.length > 0) {
-        return config.bookingMenu.map(item => item.title);
+        return config.bookingMenu.filter(item => !item.deleted).map(item => item.title);
     }
     
     // 2. 回退到舊的結構
@@ -662,9 +662,9 @@ const availableInspectionMethods = computed(() => {
 
     // 1. 優先從 bookingMenu 查找
     if (config.bookingMenu && config.bookingMenu.length > 0) {
-        const menuItem = config.bookingMenu.find(item => item.title === selectedType);
+        const menuItem = config.bookingMenu.find(item => item.title === selectedType && !item.deleted);
         if (menuItem && menuItem.methods) {
-            return menuItem.methods.map(m => m.title);
+            return menuItem.methods.filter(m => !m.deleted).map(m => m.title);
         }
     }
 
