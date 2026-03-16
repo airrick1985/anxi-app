@@ -62,9 +62,10 @@
     :defaultColDef="defaultColDef"
     :sideBar="sideBarConfig"
     :localeText="AG_GRID_LOCALE_TW"
+    :getRowId="getRowId"
+    :enableRangeSelection="true"
     @grid-ready="onGridReady"
     @cell-value-changed="onCellValueChanged"
-    :getRowId="getRowId"
   >
   </ag-grid-vue>
 </div>
@@ -1085,24 +1086,99 @@ const onGridReady = (params) => {
   gridApi.value = params.api;
 };
 
-// 當儲存格資料被修改時觸發
+
+// 旗標：是否正在進行批次動作
+const isBatchProcessing = ref(false);
+
+
+// 處理批次貼上的防抖/收集機制
+let pasteTimer = null;
+function handleBatchPaste(api) {
+  if (pasteTimer) clearTimeout(pasteTimer);
+  isBatchProcessing.value = true;
+  
+  pasteTimer = setTimeout(async () => {
+    try {
+      console.log('開始收集並執行批次貼上更新...');
+      const updates = [];
+      
+      // 遍歷所有已變動的 nodes
+      // 注意：在貼上後，變動的資料已經在 rowData 中，但我們需要找出哪些變動了
+      // 這裡簡單的做法是收集所有處於「已修改」狀態的資料，或者直接利用 AG-Grid 的 cellValueChanged 累積的資料
+      // 但最精準的方法是監聽貼上事件起迄。
+      // 由於 AG-Grid node.data 已經是最新值，我們直接對所有 data 進行一次性同步（這取決於使用者選取的範圍）
+      
+      // 實際上最簡單且穩健的方式是：利用 AG-Grid 的 getRenderedNodes 或 API 找出變動列
+      // 在此範案中，我們針對所有變動的列進行檢查
+      api.forEachNode(node => {
+        // 如果資料存在且含有 _docId
+        if (node.data && node.data._docId) {
+          // 這裡我們無法輕易得知哪些欄位變了，除非我們紀錄 oldValue
+          // 優化策略：直接使用 AG-Grid 的回呼函式累積更新
+        }
+      });
+      
+      // 重新修正策略：因為貼上會觸發多次 onCellValueChanged
+      // 我們在第一次觸發時開啟 isBatchProcessing，並開始收集 updatePayload
+      // 等待貼上結束後一次送出。
+      
+      if (collectedUpdates.length > 0) {
+        // 合併相同 docId 的更新
+        const mergedUpdates = {};
+        collectedUpdates.forEach(u => {
+          if (!mergedUpdates[u.docId]) {
+            mergedUpdates[u.docId] = {};
+          }
+          Object.assign(mergedUpdates[u.docId], u.data);
+        });
+        
+        const finalUpdates = Object.entries(mergedUpdates).map(([docId, data]) => ({ docId, data }));
+        
+        await batchUpdateHouseholds(finalUpdates);
+        snackbar.text = `成功批次更新 ${finalUpdates.length} 筆戶別資料！`;
+        snackbar.color = 'success';
+        snackbar.show = true;
+      }
+    } catch (err) {
+      console.error("批次更新失敗:", err);
+      snackbar.text = `批次更新失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+    } finally {
+      isBatchProcessing.value = false;
+      collectedUpdates = [];
+      pasteTimer = null;
+    }
+  }, 200); // 200ms 確保所有 paste 產生的 cellValueChanged 都已觸發
+}
+
+let collectedUpdates = [];
+
+// 修改後的 onCellValueChanged 輔助邏輯
 async function onCellValueChanged(event) {
-  // ✓ 【新增】最重要的偵錯日誌，用來確認此事件是否有被觸發
-  console.log('onCellValueChanged 事件已觸發!', event);
-  const { data, colDef, newValue, oldValue } = event;
-  const field = colDef.field;
+  const { data, colDef, newValue, oldValue, source } = event;
   if (oldValue === newValue) return;
 
-  if (!data || !data._docId) {
-    snackbar.text = `更新失敗：內部錯誤，找不到行資料 ID。`;
-    snackbar.color = 'error';
-    snackbar.show = true;
+  const field = colDef.field;
+  const householdDocId = data?._docId;
+  if (!householdDocId) return;
+
+  // 如果是貼上動作
+  if (source === 'paste') {
+    collectedUpdates.push({
+      docId: householdDocId,
+      data: { [field]: newValue }
+    });
+    handleBatchPaste(event.api);
     return;
   }
-  const householdDocId = data._docId;
-  const updatePayload = { [field]: newValue };
+
+  // 一般手動修改動作
+  if (isBatchProcessing.value) return;
+
+  console.log('單一單元格更新:', householdDocId, field, newValue);
   try {
-    await updateHouseholdData(householdDocId, updatePayload);
+    await updateHouseholdData(householdDocId, { [field]: newValue });
     snackbar.text = `戶別 [${data.unitId}] 的 [${colDef.headerName}] 已更新成功！`;
     snackbar.color = 'success';
     snackbar.show = true;
@@ -1110,8 +1186,7 @@ async function onCellValueChanged(event) {
     console.error("更新戶別資料時發生錯誤:", err);
     snackbar.text = `更新失敗: ${err.message}`;
     snackbar.color = 'error';
-     snackbar.show = true;
-    // 更新失敗時，讓監聽器自動從 Firestore 把值還原回來，無需手動操作
+    snackbar.show = true;
   }
 }
 
