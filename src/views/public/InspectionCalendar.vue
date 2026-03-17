@@ -390,6 +390,14 @@
           </div>
           <v-divider class="my-3"></v-divider>
 
+          <div class="mb-3">
+            <v-label class="text-subtitle-1 font-weight-bold mb-2">選擇方式</v-label>
+            <div class="d-flex align-center flex-wrap ga-2">
+              <v-checkbox v-for="method in currentMethodOptions" :key="method" v-model="selectedMethods" :label="method" :value="method" density="compact" hide-details color="black"></v-checkbox>
+            </div>
+          </div>
+          <v-divider class="my-3"></v-divider>
+
           <div>
             <v-label class="text-subtitle-1 font-weight-bold mb-2">標題顯示</v-label>
             <div class="d-flex align-center flex-wrap ga-2">
@@ -576,6 +584,11 @@
       <div>
         <v-label class="mb-2">預約項目</v-label>
         <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
+      </div>
+      <v-divider class="my-3"></v-divider>
+      <div>
+        <v-label class="mb-2">選擇方式</v-label>
+        <v-checkbox v-for="method in currentMethodOptions" :key="method" v-model="selectedMethods" :label="method" :value="method" density="compact" hide-details color="black"></v-checkbox>
       </div>
       <v-divider class="my-3"></v-divider>
       <div>
@@ -991,7 +1004,11 @@ const displayFieldOptions = computed(() => {
       }
     }
   }
-  return [...baseFields, ...dynamicFields];
+  // 將動態欄位插入到「選擇方式」之後
+  const insertIndex = baseFields.findIndex(f => f.key === 'inspectionMethod') + 1;
+  const result = [...baseFields];
+  result.splice(insertIndex, 0, ...dynamicFields);
+  return result;
 });
 
 // 從事件資料中取得欄位值的輔助函式
@@ -1040,8 +1057,22 @@ const currentTypeOptions = computed(() => {
   }
   return []; 
 });
-// 優化：使用 useStorage 記住使用者的項目與狀態篩選設定
+// 從 bookingMenu 取得所有選擇方式選項
+const currentMethodOptions = computed(() => {
+  const menu = projectSettings.value?.bookingMenu;
+  if (!Array.isArray(menu)) return [];
+  const methods = new Set();
+  for (const item of menu) {
+    if (!Array.isArray(item.methods)) continue;
+    for (const m of item.methods) {
+      if (m.title && !m.deleted) methods.add(m.title);
+    }
+  }
+  return [...methods];
+});
+// 優化：使用 useStorage 記住使用者的篩選設定
 const selectedTypes = useStorage(`inspection_calendar_selected_types_${projectId.value}`, []);
+const selectedMethods = useStorage(`inspection_calendar_selected_methods_${projectId.value}`, []);
 const selectedStatuses = useStorage(`inspection_calendar_selected_statuses_${projectId.value}`, ['預約中', '取消', '已完成']);
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
@@ -1185,7 +1216,8 @@ const filteredAppointments = computed(() => {
   const filteredAppts = allAppointments.value.filter(appt => {
     const statusMatch = selectedStatuses.value.includes(appt.status);
     const typeMatch = selectedTypes.value.includes(appt.bookingType);
-    return statusMatch && typeMatch;
+    const methodMatch = selectedMethods.value.length === 0 || selectedMethods.value.includes(appt.inspectionMethod);
+    return statusMatch && typeMatch && methodMatch;
   });
 
   // 2. 合併戶別資料並處理顯示
@@ -1716,6 +1748,11 @@ async function handleBookingSuccess() { // ✅ 設為 async
 // (watch currentTypeOptions 函數保持不變)
 watch(currentTypeOptions, (newOptions) => {
   selectedTypes.value = [...newOptions];
+});
+watch(currentMethodOptions, (newOptions) => {
+  if (selectedMethods.value.length === 0 && newOptions.length > 0) {
+    selectedMethods.value = [...newOptions];
+  }
 });
 
 // (handleSaveNewAppointment, handleConfirmBatchMismatch, proceedWithSaveChecks, handleConfirmForceSave 函數保持不變)
