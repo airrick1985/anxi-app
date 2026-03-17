@@ -698,7 +698,7 @@ const baseColDefs = computed(() => {
 
   const cols = [
     { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-    { headerName: '交屋', field: '交屋', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+    { headerName: '交屋', field: '交屋', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer, valueGetter: params => !!params.data?.['交屋'] },
     { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
     { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
     { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
@@ -956,7 +956,7 @@ const handleFileChange = () => {
           if (key) {
             let val = rowArray[index] ?? null;
 
-            if (key === 'allowMultipleBookings' || key === 'showInMenu' || key === 'initialReportUploadSwitch' || key === 'reInspectionReportUploadSwitch') {
+            if (key === 'allowMultipleBookings' || key === 'showInMenu' || key === 'initialReportUploadSwitch' || key === 'reInspectionReportUploadSwitch' || key === '交屋') {
               if (typeof val === 'string') {
                 const upperVal = val.toUpperCase().trim();
                 if (upperVal === 'TRUE') val = true;

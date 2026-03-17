@@ -7362,10 +7362,18 @@ async function executeUploadReminderLogic() {
       continue;
     }
 
+    // 動態讀取需要提醒的「選擇方式」清單
+    const reminderMethods = settings.uploadReminderInspectionMethods || [];
+    if (reminderMethods.length === 0) {
+      console.log(`[${functionName}] 建案 [${projectName}] 未設定「適用提醒的選擇方式」，已跳過。`);
+      continue;
+    }
+
     const ccEmails = await getCcRecipients(projectId, "提醒上傳驗屋報告副本");
+    // 注意：Firestore 不允許同一 query 中對不同欄位使用多個 'in'，
+    // 因此 inspectionMethod 的篩選改在記憶體中進行。
     const appointmentsQuery = db.collection('appointments')
       .where('projectId', '==', projectId)
-      .where('inspectionMethod', '==', '代驗公司')
       .where('status', 'in', ['預約中', '已完成'])
       .where('reportUploaded', '==', false);
     const appointmentsSnapshot = await appointmentsQuery.get();
@@ -7381,6 +7389,11 @@ async function executeUploadReminderLogic() {
     for (const apptDoc of appointmentsSnapshot.docs) {
       const appointment = apptDoc.data();
       const unitId = appointment.unitId; // 獲取戶別 ID
+
+      // 記憶體過濾：inspectionMethod 是否在設定的提醒清單中
+      if (!reminderMethods.includes(appointment.inspectionMethod)) {
+        continue;
+      }
 
       if (!appointment.appointmentDate || !appointment.bookerEmail || !unitId) {
         console.warn(`[${functionName}] 預約 ${apptDoc.id} 缺少必要欄位 (appointmentDate, bookerEmail, unitId)，已跳過。`);
@@ -21186,6 +21199,7 @@ exports.onAppointmentWrite = onDocumentWritten({
   document: "appointments/{appointmentId}",
   database: "anxi-app", // Specify the database name
   region: "asia-east1", // Ensure region matches if needed
+  memory: "512MiB",     // 預設 256MiB 不足，提升以避免 OOM
 }, async (event) => {
   const functionName = "onAppointmentWrite";
   const appointmentId = event.params.appointmentId;

@@ -1140,6 +1140,22 @@
                 <p class="text-h6 font-weight-bold mb-4">自動化提醒設定</p>
                 
                 <p class="text-subtitle-1 font-weight-bold mb-2">提醒上傳驗屋報告</p>
+
+                <v-select
+                  v-model="projectSettings.reportSettings.uploadReminderInspectionMethods"
+                  :items="allInspectionMethodOptions"
+                  label="適用提醒的選擇方式"
+                  hint="選擇哪些預約方式需要發送未上傳報告提醒（未選擇則不發送）"
+                  persistent-hint
+                  multiple
+                  chips
+                  closable-chips
+                  variant="outlined"
+                  density="compact"
+                  class="mb-4"
+                  no-data-text="請先至『預約選單與人員』分頁建立預約項目及選擇方式"
+                ></v-select>
+
                 <v-combobox
                   v-model="projectSettings.reportSettings.uploadReminderDays"
                   :items="[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"
@@ -2694,6 +2710,25 @@ const activeBookingMenu = computed({
   }
 });
 
+// 收集 bookingMenu 中所有不重複的 method title（用於提醒設定的選項）
+const allInspectionMethodOptions = computed(() => {
+  const menu = projectSettings.value.bookingMenu;
+  if (!menu || menu.length === 0) {
+    // Fallback: 使用舊版 bookingMethodOptions
+    return projectSettings.value.bookingMethodOptions || [];
+  }
+  const methodSet = new Set();
+  menu.forEach(item => {
+    if (item.deleted) return;
+    (item.methods || []).forEach(method => {
+      if (!method.deleted && method.title) {
+        methodSet.add(method.title);
+      }
+    });
+  });
+  return Array.from(methodSet);
+});
+
 // 已刪除的項目列表
 const deletedBookingMenu = computed(() => {
   if (!projectSettings.value.bookingMenu) return [];
@@ -2840,6 +2875,7 @@ const defaultSettings = computed(() => ({
     reportSettings: {
       uploadReminderDays: [7, 14],
       uploadReminderMethods: ['EMAIL'],
+      uploadReminderInspectionMethods: [], // 適用提醒的選擇方式（動態）
       uploadReminderSchedule: {
         enabled: false,
         time: '10:00'
