@@ -197,9 +197,17 @@
                        <v-col cols="12" sm="6">
                         <v-select label="選擇方式" :items="availableInspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']" no-data-text="請先選擇預約項目"></v-select>
                       </v-col>
-                      <v-col v-if="formStep2.inspectionMethod === '代驗公司'" cols="12">
-                        <v-text-field label="代驗公司名稱" v-model="formStep2.inspectionCompanyName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
-                      </v-col>
+                      <!-- 動態自訂欄位 -->
+                      <template v-if="currentCustomFields.length > 0">
+                        <v-col v-for="field in currentCustomFields" :key="field.id" cols="12" sm="6">
+                          <v-text-field
+                            :label="field.label"
+                            v-model="dynamicFormData[field.id]"
+                            variant="outlined"
+                            :rules="field.required ? [v => !!v || '必填'] : []"
+                          ></v-text-field>
+                        </v-col>
+                      </template>
                       <template v-if="formStep2.inspectionMethod === '授權驗屋'">
                         <v-col cols="12" sm="4"><v-text-field label="受託人姓名" v-model="formStep2.agentName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
                         <v-col cols="12" sm="4"><v-text-field label="受託人電話" v-model="formStep2.agentPhone" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
@@ -391,7 +399,9 @@
                       <v-divider class="my-2"></v-divider>
                       <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
                       <v-list-item title="選擇方式" :subtitle="finalBookingData.inspectionMethod"></v-list-item>
-                      <v-list-item v-if="finalBookingData.inspectionCompanyName" title="代驗公司" :subtitle="finalBookingData.inspectionCompanyName"></v-list-item>
+                      <template v-for="field in currentCustomFields" :key="field.id">
+                        <v-list-item v-if="dynamicFormData[field.id]" :title="field.label" :subtitle="dynamicFormData[field.id]"></v-list-item>
+                      </template>
                       <template v-if="finalBookingData.inspectionMethod === '授權驗屋'">
                         <v-list-item title="受託人姓名" :subtitle="finalBookingData.agentName"></v-list-item>
                         <v-list-item title="受託人電話" :subtitle="finalBookingData.agentPhone"></v-list-item>
@@ -670,6 +680,35 @@ const availableInspectionMethods = computed(() => {
 
     // 2. 回退到全域設定 (如果有標記 showBookingMethod)
     return config.bookingMethodOptions || [];
+});
+
+// 根據選中的 inspectionMethod 動態取得 customFields
+const currentCustomFields = computed(() => {
+  const config = currentProjectConfig.value;
+  const selectedType = formStep2.bookingType;
+  const selectedMethod = formStep2.inspectionMethod;
+  if (!config?.bookingMenu || !selectedType || !selectedMethod) return [];
+
+  const menuItem = config.bookingMenu.find(item => item.title === selectedType && !item.deleted);
+  if (!menuItem?.methods) return [];
+
+  const method = menuItem.methods.find(m => m.title === selectedMethod && !m.deleted);
+  if (!method?.customFields) return [];
+
+  return method.customFields.filter(cf => !cf.deleted);
+});
+
+// 動態欄位的表單資料
+const dynamicFormData = reactive({});
+
+// 當選擇方式改變時，重置動態欄位
+watch(() => formStep2.inspectionMethod, () => {
+  // 清空舊的動態資料
+  Object.keys(dynamicFormData).forEach(key => delete dynamicFormData[key]);
+  // 初始化新的動態欄位
+  currentCustomFields.value.forEach(field => {
+    dynamicFormData[field.id] = '';
+  });
 });
 
 const isBlockingDialogVisible = ref(false);
@@ -1175,12 +1214,12 @@ const submitAdminBooking = async () => {
             projectId: props.projectId,
             newBookingData: {
                 ...finalBookingData.value,
-                // ✓ START: 修改
-                // [原始碼]
-                // appointmentDate: finalBookingData.value.appointmentDate ? new Date(finalBookingData.value.appointmentDate).toISOString().split('T')[0] : null,
-                // [修正] 直接使用 date-fns format 轉換本地 Date 物件為 'yyyy-MM-dd' 字串
+                // 動態欄位寫入
+                bookingMethodDetails: { ...dynamicFormData },
+                bookingMethodDetailsDisplay: currentCustomFields.value
+                  .filter(cf => dynamicFormData[cf.id])
+                  .map(cf => ({ label: cf.label, value: dynamicFormData[cf.id] })),
                 appointmentDate: formStep2.appointmentDate ? format(formStep2.appointmentDate, 'yyyy-MM-dd') : null,
-                // ✓ END: 修改
             },
            force: isAdminForcing.value, // ✓ 使用 isAdminForcing 的值
         };
