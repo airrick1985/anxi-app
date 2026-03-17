@@ -960,7 +960,49 @@ const fieldConfig = {
     { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'bankContact', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true }, { key: 'remarks', label: '重要備註', icon: 'mdi-alert-circle-outline', type: 'remark' }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]}
   ]
 };
-const displayFieldOptions = ref([ { key: 'unitId', label: '戶別' }, { key: 'bookerName', label: '預約人姓名' }, { key: 'bookingType', label: '預約項目' }, { key: 'inspectionMethod', label: '選擇方式' }, { key: 'inspectionCompanyName', label: '代驗公司名稱' }, { key: 'remarks', label: '重要備註' }, { key: 'bookingRemarks', label: '預約備註' }, { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null }, ]);
+// 動態顯示欄位選項：基礎欄位 + 從 bookingMenu 的 customFields (expanded: true) 動態掃描
+const displayFieldOptions = computed(() => {
+  const baseFields = [
+    { key: 'unitId', label: '戶別' },
+    { key: 'bookerName', label: '預約人姓名' },
+    { key: 'bookingType', label: '預約項目' },
+    { key: 'inspectionMethod', label: '選擇方式' },
+    { key: 'remarks', label: '重要備註' },
+    { key: 'bookingRemarks', label: '預約備註' },
+    { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
+  ];
+  // 動態掃描 bookingMenu 中所有 methods 的 customFields，篩選 expanded === true
+  const dynamicFields = [];
+  const menu = projectSettings.value?.bookingMenu;
+  if (Array.isArray(menu)) {
+    const seenLabels = new Set(baseFields.map(f => f.label));
+    for (const item of menu) {
+      if (!Array.isArray(item.methods)) continue;
+      for (const method of item.methods) {
+        if (method.deleted) continue;
+        if (!Array.isArray(method.customFields)) continue;
+        for (const cf of method.customFields) {
+          if (cf.expanded && cf.label && !seenLabels.has(cf.label)) {
+            seenLabels.add(cf.label);
+            // isDynamic 標記為動態欄位，取值時從 bookingMethodDetails[key] 讀取
+            dynamicFields.push({ key: cf.id, label: cf.label, isDynamic: true });
+          }
+        }
+      }
+    }
+  }
+  return [...baseFields, ...dynamicFields];
+});
+
+// 從事件資料中取得欄位值的輔助函式
+// 靜態欄位直接從 event[key] 讀取，動態欄位從 event.bookingMethodDetails[key] 讀取
+function getFieldValue(eventData, fieldOption) {
+  if (fieldOption.isDynamic) {
+    return eventData.bookingMethodDetails?.[fieldOption.key] ?? null;
+  }
+  return eventData[fieldOption.key] ?? null;
+}
+
 const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' }, { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' }, ];
 const EXCEL_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '交屋', backgroundColor: 'ffc107', textColor: '212529' }, { keyword: '初驗', backgroundColor: 'd4edda', textColor: '155724' }, { keyword: '複驗', backgroundColor: 'f8d7da', textColor: '721c24' }, ];
 
@@ -969,12 +1011,32 @@ const projectName = computed(() => projectStore.idToNameMap[projectId.value] || 
 // 優化：使用 useStorage 記住使用者的標題顯示選項設定，key 加入 projectId 區分不同建案
 const selectedDisplayFields = useStorage(
   `inspection_calendar_display_fields_${projectId.value}`, 
-  displayFieldOptions.value.map(field => field.key)
+  []
 );
+// 當 displayFieldOptions 變化時，同步更新 selectedDisplayFields
+// - 若快取為空：全選
+// - 若已有快取：清除已不存在的 key，並自動加入新出現的動態欄位
+watch(displayFieldOptions, (newOptions) => {
+  const validKeys = new Set(newOptions.map(f => f.key));
+  if (selectedDisplayFields.value.length === 0 && newOptions.length > 0) {
+    // 首次使用或快取為空，預設全選
+    selectedDisplayFields.value = newOptions.map(f => f.key);
+  } else if (newOptions.length > 0) {
+    // 清除已不存在的舊 key
+    const cleaned = selectedDisplayFields.value.filter(k => validKeys.has(k));
+    // 找出新出現的動態欄位 key，自動加入
+    const existingKeys = new Set(selectedDisplayFields.value);
+    const newDynamicKeys = newOptions
+      .filter(f => f.isDynamic && !existingKeys.has(f.key))
+      .map(f => f.key);
+    selectedDisplayFields.value = [...cleaned, ...newDynamicKeys];
+  }
+}, { immediate: true });
 const pageTitle = computed(() => `${projectName.value} - 預約時間表`);
 const currentTypeOptions = computed(() => {
-  if (projectSettings.value && Array.isArray(projectSettings.value.bookingTypes)) {
-    return projectSettings.value.bookingTypes;
+  // 從 bookingMenu 陣列取用 title 欄位，不論 deleted 是否為 true
+  if (projectSettings.value && Array.isArray(projectSettings.value.bookingMenu) && projectSettings.value.bookingMenu.length > 0) {
+    return projectSettings.value.bookingMenu.map(item => item.title).filter(Boolean);
   }
   return []; 
 });
@@ -1086,7 +1148,7 @@ function processAppointments(rawAppointments) {
         const displayParts = displayFieldOptions.value
           .filter(option => selectedDisplayFields.value.includes(option.key))
           .map(option => {
-            const value = combinedData[option.key]; // ✅ 從合併後的資料取值
+            const value = getFieldValue(combinedData, option); // ✅ 使用輔助函式取值（支援動態欄位）
             if (value === null || value === undefined) return null; // 修正：允許 0
             
             // ✅ 修正：確保日期被正確格式化
@@ -2070,13 +2132,14 @@ async function handleDownloadExcel() {
       .filter(option => selectedDisplayFields.value.includes(option.key));
 
     const excelHeaders = [
-      { key: 'appointmentTimeSlot', label: '時間', wch: 12 }, // [修正] 將 key 從 '預約時段' 改為 'appointmentTimeSlot'
+      { key: 'appointmentTimeSlot', label: '時間', wch: 12 },
       ...selectedOptions.map(option => ({
         key: option.key,
         label: option.label,
+        isDynamic: option.isDynamic || false,
         wch: 20
       })),
-      { key: 'status', label: '狀態', wch: 12 }, // [修正] 將 key 從 '預約狀態' 改為 'status'
+      { key: 'status', label: '狀態', wch: 12 },
     ];
     const headerLabels = excelHeaders.map(h => h.label);
     const numColumns = excelHeaders.length;
@@ -2149,7 +2212,9 @@ async function handleDownloadExcel() {
               let finalCellStyle = JSON.parse(JSON.stringify(defaultCellStyle));
               finalCellStyle.fill = { patternType: "solid", fgColor: { rgb: rowStyle.backgroundColor } };
               finalCellStyle.font.color = { rgb: rowStyle.textColor };
-              ws[cellRef] = { v: event[header.key] || '', t: 's', s: finalCellStyle };
+              // 使用 getFieldValue 輔助函式取值，支援動態 customField 欄位
+              const cellValue = getFieldValue(event, header);
+              ws[cellRef] = { v: cellValue || '', t: 's', s: finalCellStyle };
             } else {
               ws[cellRef] = { v: '', t: 's', s: defaultCellStyle };
             }

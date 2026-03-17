@@ -949,7 +949,7 @@
           <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期" prepend-icon="mdi-calendar-check-outline"></v-list-item>
           <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段" prepend-icon="mdi-clock-time-four-outline"></v-list-item>
 
-         <div v-if="projectConfig?.intro?.closingText" class="mt-4">
+         <div v-if="dynamicClosingText" class="mt-4">
             <v-alert
               border="start"
               variant="tonal"
@@ -961,7 +961,7 @@
               <template v-slot:title>
                 <div class="font-weight-bold">重要提醒</div>
               </template>
-              <div class="prose" v-html="projectConfig.intro.closingText"></div>
+              <div class="prose" v-html="dynamicClosingText"></div>
             </v-alert>
           </div>
 
@@ -1636,6 +1636,17 @@ const finalBookingData = computed(() => ({
   戶別: formStep1.value.unit,
   預約日期: formStep2.value.預約日期 ? dateAdapter.format(formStep2.value.預約日期, 'keyboardDate') : null,
 }));
+
+// 根據選中的預約項目動態取得對應的 closingText
+const dynamicClosingText = computed(() => {
+  const selectedType = finalBookingData.value?.bookingType;
+  // 優先從預約項目專屬設定取得
+  if (selectedType && projectConfig.value?.pageSettingsByItem?.[selectedType]?.intro?.closingText) {
+    return projectConfig.value.pageSettingsByItem[selectedType].intro.closingText;
+  }
+  // 回退到全域預設
+  return projectConfig.value?.intro?.closingText || '';
+});
 
 // 依據所選日期，動態產生可用的時間選項
 const availableTimeSlots = computed(() => {

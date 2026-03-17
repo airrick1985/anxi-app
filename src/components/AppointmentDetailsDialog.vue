@@ -9,138 +9,36 @@
       </v-card-title>
       
       <v-card-text v-if="appointment">
-        <div class="bg-grey-lighten-5 pa-4 rounded">
-          <v-row v-if="!isEditMode" align="center" dense>
+        <!-- 頂部摘要 (檢視/編輯模式共用版面) -->
+        <div :class="['pa-4 rounded', isEditMode ? 'edit-mode-header' : 'bg-grey-lighten-5']">
+          <v-row align="center" dense>
             <v-col cols="12" sm="2">
               <div class="text-caption text-grey-darken-1">戶別</div>
               <div class="text-h5 font-weight-bold text-primary">{{ appointment?.unitId }}</div>
             </v-col>
-            
+
             <v-col cols="12" sm="6">
               <div class="text-caption text-grey-darken-1">預約日期與時段</div>
               <div class="text-body-1 font-weight-medium">
                 {{ formatDate(appointment?.appointmentDate, 'yyyy-MM-dd') }}
                 <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
                 {{ appointment?.appointmentTimeSlot }}
+                <v-chip v-if="isEditMode" size="x-small" color="info" variant="tonal" class="ml-2">
+                  <v-icon start size="x-small">mdi-pencil</v-icon>可在下方面板修改
+                </v-chip>
               </div>
             </v-col>
 
             <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
               <v-chip :color="getStatusColor(appointment?.status)" size="small" label>{{ appointment?.status }}</v-chip>
               <v-chip v-if="appointment?.bookingType" color="teal" variant="tonal" size="small" label>{{ appointment?.bookingType }}</v-chip>
+              <v-chip v-if="isEditMode" color="warning" size="small" variant="flat" label>
+                <v-icon start size="small">mdi-pencil-outline</v-icon>編輯中
+              </v-chip>
             </v-col>
           </v-row>
 
-          <div v-else-if="editableEvent">
-            <v-row dense align="center">
-              <v-col cols="12" sm="2">
-                <div class="text-caption text-grey-darken-1">戶別</div>
-                <div class="text-h5 font-weight-bold text-primary">{{ appointment?.unitId }}</div>
-              </v-col>
-              <v-col cols="12" sm="10" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
-                <v-chip :color="getStatusColor(appointment.status)" size="small" label>{{ appointment.status }}</v-chip>
-                <v-chip v-if="appointment.bookingType" color="teal" variant="tonal" size="small" label>{{ appointment.bookingType }}</v-chip>
-              </v-col>
-            </v-row>
-            <v-divider class="my-3"></v-divider>
-            <v-row dense>
-              <v-col cols="12" md="auto">
-                 <div class="text-caption text-grey-darken-1 mb-1">預約日期</div>
-                <div class="position-relative">
-                <VueDatePicker
-                  v-model="editableEvent.appointmentDate"
-                  auto-apply
-                  locale="zh-TW"
-                  format="yyyy-MM-dd"
-                  :enable-time-picker="false"
-                  :month-change-on-scroll="false"
-                  @update:model-value="handleDateChange"
-                  :min-date="new Date()"
-                >
-                  <template #day="{ date }">
-                    <div class="custom-day-cell">
-                      <div class="date-number">{{ date.getDate() }}</div>
-                      <div v-if="dateMarkers[format(date, 'yyyy-MM-dd')]" class="date-marker">
-                        <v-icon
-                          :icon="dateMarkers[format(date, 'yyyy-MM-dd')].icon"
-                          :color="dateMarkers[format(date, 'yyyy-MM-dd')].color"
-                          size="x-small"
-                        ></v-icon>
-                      </div>
-                    </div>
-                  </template>
-                 </VueDatePicker>
-                  <v-overlay
-                    :model-value="isFetchingCalendarData"
-                    contained
-                    class="align-center justify-center"
-                  >
-                    <v-progress-circular indeterminate color="white"></v-progress-circular>
-                  </v-overlay>
-                </div>
-                <div class="d-flex align-center justify-start ga-4 mt-2 text-caption text-medium-emphasis">
-                  <div class="d-flex align-center ga-1">
-                    <v-icon icon="mdi-circle-outline" color="green" size="small"></v-icon>
-                    <span>本戶批次</span>
-                  </div>
-                  <div class="d-flex align-center ga-1">
-                    <v-icon icon="mdi-triangle-outline" color="blue" size="small"></v-icon>
-                    <span>其他批次</span>
-                  </div>
-                </div>
-              </v-col>
-              <v-col cols="12" md>
-                <div class="text-caption text-grey-darken-1 mb-1">預約時段</div>
-                <div v-if="isFetchingSlots" class="text-center pa-4 border rounded">
-                  <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
-                  <div class="text-caption text-grey">查詢可預約時段...</div>
-                </div>
-                <div v-else-if="!editableEvent.appointmentDate" class="text-caption text-grey pa-4 border rounded">
-                  請先選擇預約日期
-                </div>
-                <div v-else-if="availableTimeSlots.length === 0" class="text-caption text-grey pa-4 border rounded">
-                  此日期無可預約時段，請手動輸入
-                </div>
-                <v-chip-group
-                  v-else
-                  v-model="editableEvent.appointmentTimeSlot"
-                  column
-                  mandatory
-                  filter
-                >
-                  <v-chip
-                    v-for="slot in availableTimeSlots"
-                    :key="slot.value"
-                    :value="slot.value"
-                    variant="outlined"
-                    color="blue"
-                    label
-                    size="large"
-                    class="ma-1"
-                  >
-                    {{ slot.title }}
-                  </v-chip>
-                </v-chip-group>
-
-                <v-text-field
-                  v-model="editableEvent.manualTimeSlot"
-                  label="手動輸入時段"
-                  placeholder="HH:MM"
-                  variant="outlined"
-                  density="compact"
-                  class="mt-4"
-                  :rules="[manualTimeRule]"
-                  persistent-hint
-                  hint="若無可用時段，請手動輸入 24 小時制時間"
-                ></v-text-field>
-
-                <div v-if="timeSlotError" class="v-input__details text-error px-2 pt-1">
-                  <div class="v-messages__message">{{ timeSlotError }}</div>
-                </div>
-              </v-col>
-            </v-row>
-          </div>
-          
+          <!-- 驗屋人員 -->
           <v-row dense class="mt-2" v-if="canEdit">
             <v-col cols="12">
               <v-combobox
@@ -190,7 +88,18 @@
         </div>
 
         <div v-if="isEditMode && editableEvent" class="mt-4 mb-2">
-            重要備註請在下方快速編輯模式修改
+          <v-textarea
+            v-model="editableEvent.remarks"
+            label="重要備註"
+            variant="outlined"
+            density="compact"
+            auto-grow
+            rows="2"
+            hide-details="auto"
+            bg-color="red-lighten-5"
+            color="error"
+            prepend-inner-icon="mdi-alert-circle-outline"
+          ></v-textarea>
         </div>
 
 
@@ -273,6 +182,58 @@
               <v-expansion-panel-title class="font-weight-bold">{{ panel.title }}</v-expansion-panel-title>
               <v-expansion-panel-text class="pa-0">
                 <div class="px-4">
+                  <!-- 編輯模式：日期/時段選擇器 (僅在驗屋與預約詳情面板中顯示) -->
+                  <template v-if="isEditMode && editableEvent && panel.title === '驗屋與預約詳情'">
+                    <v-row dense>
+                      <v-col cols="12" md="auto">
+                        <div class="text-caption text-grey-darken-1 mb-1">
+                          <v-icon size="small" start>mdi-calendar-edit</v-icon>修改預約日期
+                        </div>
+                        <div class="position-relative">
+                          <VueDatePicker
+                            v-model="editableEvent.appointmentDate"
+                            auto-apply locale="zh-TW" format="yyyy-MM-dd"
+                            :enable-time-picker="false" :month-change-on-scroll="false"
+                            @update:model-value="handleDateChange" :min-date="new Date()"
+                          >
+                            <template #day="{ date }">
+                              <div class="custom-day-cell">
+                                <div class="date-number">{{ date.getDate() }}</div>
+                                <div v-if="dateMarkers[format(date, 'yyyy-MM-dd')]" class="date-marker">
+                                  <v-icon :icon="dateMarkers[format(date, 'yyyy-MM-dd')].icon" :color="dateMarkers[format(date, 'yyyy-MM-dd')].color" size="x-small"></v-icon>
+                                </div>
+                              </div>
+                            </template>
+                          </VueDatePicker>
+                          <v-overlay :model-value="isFetchingCalendarData" contained class="align-center justify-center">
+                            <v-progress-circular indeterminate color="white"></v-progress-circular>
+                          </v-overlay>
+                        </div>
+                        <div class="d-flex align-center justify-start ga-4 mt-2 text-caption text-medium-emphasis">
+                          <div class="d-flex align-center ga-1"><v-icon icon="mdi-circle-outline" color="green" size="small"></v-icon><span>本戶批次</span></div>
+                          <div class="d-flex align-center ga-1"><v-icon icon="mdi-triangle-outline" color="blue" size="small"></v-icon><span>其他批次</span></div>
+                        </div>
+                      </v-col>
+                      <v-col cols="12" md>
+                        <div class="text-caption text-grey-darken-1 mb-1">
+                          <v-icon size="small" start>mdi-clock-edit-outline</v-icon>修改預約時段
+                        </div>
+                        <div v-if="isFetchingSlots" class="text-center pa-4 border rounded">
+                          <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
+                          <div class="text-caption text-grey">查詢可預約時段...</div>
+                        </div>
+                        <div v-else-if="!editableEvent.appointmentDate" class="text-caption text-grey pa-4 border rounded">請先選擇預約日期</div>
+                        <div v-else-if="availableTimeSlots.length === 0" class="text-caption text-grey pa-4 border rounded">此日期無可預約時段，請手動輸入</div>
+                        <v-chip-group v-else v-model="editableEvent.appointmentTimeSlot" column mandatory filter>
+                          <v-chip v-for="slot in availableTimeSlots" :key="slot.value" :value="slot.value" variant="outlined" color="blue" label size="large" class="ma-1">{{ slot.title }}</v-chip>
+                        </v-chip-group>
+                        <v-text-field v-model="editableEvent.manualTimeSlot" label="手動輸入時段" placeholder="HH:MM" variant="outlined" density="compact" class="mt-4" :rules="[manualTimeRule]" persistent-hint hint="若無可用時段，請手動輸入 24 小時制時間"></v-text-field>
+                        <div v-if="timeSlotError" class="v-input__details text-error px-2 pt-1"><div class="v-messages__message">{{ timeSlotError }}</div></div>
+                      </v-col>
+                    </v-row>
+                    <v-divider class="my-3"></v-divider>
+                  </template>
+
                   <template v-for="(field, index) in panel.fields" :key="field.key">
                     <v-row dense align="center" class="py-3">
                       <v-col cols="12" sm="4" class="d-flex align-center text-grey-darken-2 text-subtitle-2">
@@ -360,17 +321,29 @@
                     <v-divider v-if="index < panel.fields.length - 1"></v-divider>
                   </template>
 
-                  <!-- [New] Additional Dynamic Fields Display -->
+                  <!-- 額外預約資訊 (動態 customFields) -->
                   <template v-if="panel.title === '驗屋與預約詳情' && additionalFields.length > 0">
                     <v-divider class="my-3" color="primary"></v-divider>
                     <div class="d-flex align-center text-subtitle-2 text-primary font-weight-bold mb-2">
                        <v-icon start size="small">mdi-playlist-plus</v-icon>
-                       額外預約資訊 ({{ appointment.bookingMethod || appointment.inspectionMethod }})
+                       額外預約資訊 ({{ editableEvent?.inspectionMethod || appointment.inspectionMethod || appointment.bookingMethod }})
                     </div>
                     <div class="bg-blue-grey-lighten-5 rounded pa-3">
-                        <v-row v-for="item in additionalFields" :key="item.label" dense class="mb-1">
-                        <v-col cols="12" sm="4" class="text-caption text-grey-darken-2 font-weight-bold">{{ item.label }}</v-col>
-                        <v-col cols="12" sm="8" class="text-body-2">{{ item.value || '-' }}</v-col>
+                        <v-row v-for="item in additionalFields" :key="item.key || item.label" dense class="mb-1" align="center">
+                          <v-col cols="12" sm="4" class="text-caption text-grey-darken-2 font-weight-bold">{{ item.label }}</v-col>
+                          <v-col cols="12" sm="8">
+                            <!-- 編輯模式：顯示可輸入欄位 -->
+                            <v-text-field
+                              v-if="isEditMode && editableEvent && item.key"
+                              v-model="editableEvent._bookingMethodDetails[item.key]"
+                              :placeholder="item.label"
+                              density="compact"
+                              hide-details="auto"
+                              variant="outlined"
+                            ></v-text-field>
+                            <!-- 檢視模式：顯示文字 -->
+                            <span v-else class="text-body-2">{{ item.value || '-' }}</span>
+                          </v-col>
                         </v-row>
                     </div>
                   </template>
@@ -545,7 +518,7 @@ const fieldConfig = [
   { title: '系統功能', fields: [ { key: 'showInMenu', label: '預約系統', icon: 'mdi-calendar-sync', isSwitch: true }, { key: 'allowMultipleBookings', label: '允許重複預約', icon: 'mdi-account-multiple-check-outline', isSwitch: true }, { key: 'initialReportUploadSwitch', label: '初驗報告上傳', icon: 'mdi-upload-network-outline', isSwitch: true }, { key: 'reInspectionReportUploadSwitch', label: '複驗報告上傳', icon: 'mdi-upload-network', isSwitch: true }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]},
   { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證', icon: 'mdi-card-account-details-outline' },{ key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' } ]},
   { title: '預約人資料', fields: [ { key: 'bookerName', label: '預約人姓名', icon: 'mdi-account-outline' }, { key: 'bookerPhone', label: '預約人電話', icon: 'mdi-cellphone', isTel: true }, { key: 'bookerEmail', label: '預約人EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'bookerIdNumber', label: '預約人身分證', icon: 'mdi-card-account-details-outline' } ]},
-  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'inspectionCompanyName', label: '代驗公司', icon: 'mdi-domain' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true } ]},
+  { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true } ]},
   { title: '驗屋文件及報告', fields: [  { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, ]}
 ];
 
@@ -561,8 +534,35 @@ const editableFields = computed(() => {
   return fields;
 });
 
-const bookingTypeOptions = computed(() => projectConfig.value?.bookingTypes || []);
-const bookingMethodOptions = computed(() => projectConfig.value?.bookingMethodOptions || []);
+const bookingTypeOptions = computed(() => {
+  const menu = projectConfig.value?.bookingMenu;
+  if (Array.isArray(menu)) {
+    return menu.filter(item => !item.deleted).map(item => item.title);
+  }
+  return projectConfig.value?.bookingTypes || [];
+});
+
+// 根據選中的 bookingType 動態取得對應的選擇方式
+const bookingMethodOptions = computed(() => {
+  const menu = projectConfig.value?.bookingMenu;
+  const selectedType = editableEvent.value?.bookingType || props.appointment?.bookingType;
+  if (Array.isArray(menu) && selectedType) {
+    const matchedItem = menu.find(item => item.title === selectedType && !item.deleted);
+    if (matchedItem && Array.isArray(matchedItem.methods)) {
+      return matchedItem.methods.filter(m => !m.deleted).map(m => m.title);
+    }
+  }
+  return projectConfig.value?.bookingMethodOptions || [];
+});
+
+// 當 bookingType 變更時，清空 inspectionMethod（因為方式已不對應）
+watch(() => editableEvent.value?.bookingType, (newType, oldType) => {
+  if (isEditMode.value && oldType && newType !== oldType) {
+    editableEvent.value.inspectionMethod = '';
+    // 同時清空動態欄位（不同預約項目的 customFields 不同）
+    editableEvent.value._bookingMethodDetails = {};
+  }
+});
 
 
 
@@ -627,14 +627,17 @@ async function enterEditMode() {
     }
   });
     
-    cleanCopy.manualTimeSlot = ''; 
+    cleanCopy.manualTimeSlot = '';
+
+    // 複製 bookingMethodDetails 到可編輯物件中（用於動態 customFields 編輯）
+    const originalDetails = props.appointment.bookingMethodDetails || {};
+    cleanCopy._bookingMethodDetails = { ...originalDetails };
 
     editableEvent.value = cleanCopy;
 
-    // 5. 切換到編輯模式，並展開所有面板
-    // isEditMode 設為 true 後，會自動觸發 watch 來獲取可用時段
+    // 5. 切換到編輯模式，僅展開「驗屋與預約詳情」面板方便用戶聚焦
     isEditMode.value = true;
-    panels.value = [0, 1, 2, 3, 4];
+    panels.value = [3];
 
   } catch (error) {
     console.error("進入編輯模式失敗:", error);
@@ -724,6 +727,28 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
     : editableEvent.value.appointmentTimeSlot;
   if (String(originalTimeSlot) !== String(finalTimeSlot ?? '')) {
       bookingPayload.appointmentTimeSlot = finalTimeSlot;
+  }
+
+  // --- 動態 customFields (bookingMethodDetails) 變更偵測 ---
+  const originalDetails = props.appointment.bookingMethodDetails || {};
+  const editedDetails = editableEvent.value._bookingMethodDetails || {};
+  const updatedDetails = {};
+  let detailsChanged = false;
+  for (const [uuid, editedVal] of Object.entries(editedDetails)) {
+    const originalVal = originalDetails[uuid] ?? '';
+    if (String(originalVal) !== String(editedVal ?? '')) {
+      detailsChanged = true;
+    }
+    updatedDetails[uuid] = editedVal;
+  }
+  if (detailsChanged) {
+    bookingPayload.bookingMethodDetails = updatedDetails;
+    // 同步更新 bookingMethodDetailsDisplay 陣列
+    const labelMap = buildCustomFieldLabelMap(projectConfig.value?.bookingMenu);
+    bookingPayload.bookingMethodDetailsDisplay = Object.entries(updatedDetails).map(([uuid, val]) => ({
+      label: labelMap[uuid] || uuid,
+      value: val
+    }));
   }
   // --- Payload 計算結束 ---
 
@@ -1000,44 +1025,95 @@ watch(() => props.modelValue, (isOpen) => {
   }
 });
 
-// [New] Helper to Recursively find field label
-const findFieldLabel = (fields, id) => {
-    if (!fields) return null;
-    for (const field of fields) {
-        if (field.id === id) return field.label;
-        if (field.options) {
-            for (const option of field.options) {
-                if (option.subFields) {
-                    const found = findFieldLabel(option.subFields, id);
-                    if (found) return found;
-                }
-            }
+// 從 bookingMenu 中所有 methods 的 customFields 建立 UUID → label 映射表
+function buildCustomFieldLabelMap(bookingMenu) {
+  const map = {};
+  if (!Array.isArray(bookingMenu)) return map;
+  for (const item of bookingMenu) {
+    if (!Array.isArray(item.methods)) continue;
+    for (const method of item.methods) {
+      if (method.deleted) continue;
+      if (!Array.isArray(method.customFields)) continue;
+      for (const cf of method.customFields) {
+        if (cf.id && cf.label) {
+          map[cf.id] = cf.label;
         }
+      }
     }
-    return null;
-};
+  }
+  return map;
+}
 
-// [New] Computed for Additional Fields
+// 根據 bookingType + inspectionMethod 從 bookingMenu 取得該方式的 customFields 定義
+function getMethodCustomFields(bookingMenu, bookingType, methodName) {
+  if (!Array.isArray(bookingMenu) || !bookingType || !methodName) return [];
+  const menuItem = bookingMenu.find(item => item.title === bookingType && !item.deleted);
+  if (!menuItem || !Array.isArray(menuItem.methods)) return [];
+  const method = menuItem.methods.find(m => m.title === methodName && !m.deleted);
+  if (!method || !Array.isArray(method.customFields)) return [];
+  return method.customFields;
+}
+
+// 動態顯示 customFields 額外欄位
 const additionalFields = computed(() => {
-    if (!props.appointment || !props.appointment.bookingMethodDetails || !projectConfig.value) return [];
-    
+    if (!props.appointment) return [];
+
+    const menu = projectConfig.value?.bookingMenu;
+
+    // ===== 編輯模式：根據 bookingMenu 定義產生所有 customFields =====
+    if (isEditMode.value && editableEvent.value && menu) {
+      const selectedType = editableEvent.value.bookingType || props.appointment.bookingType;
+      const selectedMethod = editableEvent.value.inspectionMethod || props.appointment.inspectionMethod;
+      const customFields = getMethodCustomFields(menu, selectedType, selectedMethod);
+      if (customFields.length === 0) return [];
+
+      // 確保 _bookingMethodDetails 中每個欄位都有初始值
+      if (!editableEvent.value._bookingMethodDetails) {
+        editableEvent.value._bookingMethodDetails = {};
+      }
+      return customFields.map(cf => {
+        // 若 _bookingMethodDetails 中尚無此 key，初始化為空字串
+        if (editableEvent.value._bookingMethodDetails[cf.id] === undefined) {
+          editableEvent.value._bookingMethodDetails[cf.id] = '';
+        }
+        return {
+          key: cf.id,
+          label: cf.label,
+          value: editableEvent.value._bookingMethodDetails[cf.id] || '-'
+        };
+      });
+    }
+
+    // ===== 檢視模式：從 appointment 資料讀取 =====
     const details = props.appointment.bookingMethodDetails;
-    const methodName = props.appointment.bookingType === '其他' ? props.appointment.bookingMethod : (props.appointment.inspectionMethod || props.appointment.bookingMethod);
-    // Fallback logic to find the method name.
 
-    if (!methodName) return [];
+    // 優先使用 bookingMethodDetailsDisplay + 配合 bookingMethodDetails 的 UUID key
+    if (Array.isArray(props.appointment.bookingMethodDetailsDisplay) && props.appointment.bookingMethodDetailsDisplay.length > 0) {
+      const labelToKey = {};
+      if (details) {
+        const labelMap = buildCustomFieldLabelMap(menu);
+        for (const [uuid, _] of Object.entries(details)) {
+          const label = labelMap[uuid];
+          if (label) labelToKey[label] = uuid;
+        }
+      }
+      return props.appointment.bookingMethodDetailsDisplay.map(item => ({
+        key: labelToKey[item.label] || null,
+        label: item.label || '未知欄位',
+        value: Array.isArray(item.value) ? item.value.join(', ') : (item.value || '-')
+      }));
+    }
 
-    const config = projectConfig.value.bookingMethodConfigs?.[methodName];
-    if (!config || !config.fields) return [];
-
-    const formatValue = (val) => Array.isArray(val) ? val.join(', ') : val;
-
+    // 備用：從 bookingMethodDetails (UUID map) + bookingMenu customFields 映射 label
+    if (!details || !menu) return [];
+    const labelMap = buildCustomFieldLabelMap(menu);
     const result = [];
     for (const [key, value] of Object.entries(details)) {
-        const label = findFieldLabel(config.fields, key);
-        if (label) {
-            result.push({ label, value: formatValue(value) });
-        }
+      const label = labelMap[key];
+      if (label) {
+        const formattedValue = Array.isArray(value) ? value.join(', ') : value;
+        result.push({ key, label, value: formattedValue || '-' });
+      }
     }
     return result;
 });
@@ -1097,5 +1173,10 @@ const getStatusColor = (status) => {
   position: absolute;
   bottom: -12px;
   line-height: 1;
+}
+
+.edit-mode-header {
+  background-color: #e3f2fd;
+  border-left: 4px solid #1976d2;
 }
 </style>
