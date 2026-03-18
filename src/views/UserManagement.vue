@@ -424,6 +424,21 @@
               <template v-slot:item.isCore="{ value }">
                 <v-chip :color="value ? 'red' : 'grey'" small label>{{ value ? '是' : '否' }}</v-chip>
               </template>
+              <template v-slot:item.quotaSummary="{ item }">
+                <div v-if="item.quotaPerProject && Object.keys(item.quotaPerProject).length > 0" class="d-flex flex-wrap" style="gap: 4px;">
+                  <v-chip
+                    v-for="(limit, projectId) in item.quotaPerProject"
+                    :key="projectId"
+                    size="x-small"
+                    label
+                    color="deep-purple-lighten-4"
+                    variant="flat"
+                  >
+                    {{ projectStore.idToNameMap[projectId] || projectId }}: {{ limit }}人
+                  </v-chip>
+                </div>
+                <span v-else class="text-grey-lighten-1 text-body-2">未設定</span>
+              </template>
               <template v-slot:item.actions="{ item }">
                 <v-btn small color="primary" @click="openFunctionDialog(item)">編輯</v-btn>
               </template>
@@ -433,7 +448,7 @@
       </v-window>
     </v-card>
 
-<v-dialog v-model="isFunctionDialogVisible" persistent max-width="600px">
+<v-dialog v-model="isFunctionDialogVisible" persistent max-width="750px">
       <v-card>
         <v-card-title class="bg-indigo text-white">
           <span class="text-h5">{{ isNewFunction ? '新增權限功能' : '編輯權限功能' }}</span>
@@ -467,6 +482,37 @@
                 label="設為核心功能 (保護)"
                 :disabled="!isNewFunction"
               ></v-checkbox>
+
+            <!-- 每個建案人數上限設定 -->
+            <v-divider class="my-4"></v-divider>
+            <h4 class="mb-3 d-flex align-center">
+              <v-icon class="mr-2" color="deep-purple">mdi-account-check</v-icon>
+              每個建案名額上限設定
+            </h4>
+            <p class="text-body-2 text-grey mb-3">
+              設定此權限功能在每個建案中可指派的最大人數。角色為「超級管理員」或「系統管理員」不計入名額。
+              留空或設為 0 表示不限制。
+            </p>
+            <div class="quota-settings-container">
+              <v-row dense v-for="project in projectStore.projectsList" :key="project.id" class="align-center mb-1">
+                <v-col cols="7" sm="8">
+                  <span class="text-body-2 font-weight-medium">{{ project.name }}</span>
+                </v-col>
+                <v-col cols="5" sm="4">
+                  <v-text-field
+                    :model-value="editedFunction.quotaPerProject?.[project.id] || ''"
+                    @update:model-value="val => setQuota(project.id, val)"
+                    type="number"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    placeholder="不限"
+                    min="0"
+                    suffix="人"
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+            </div>
           </v-form>
         </v-card-text>
         <v-card-actions class="pa-4">
@@ -659,13 +705,14 @@
                       >
                         <v-tooltip
                             location="top"
-                            :text="functionDescriptionMap[system]"
-                            :disabled="!functionDescriptionMap[system]"
+                            :text="getQuotaTooltip(system, project) || functionDescriptionMap[system]"
+                            :disabled="!getQuotaTooltip(system, project) && !functionDescriptionMap[system]"
                           >
                           <template v-slot:activator="{ props }">
+                            <div v-bind="props">
                             <v-checkbox
-                              v-bind="props"
-                              v-model="permissionMatrix[system][project]"
+                              :model-value="permissionMatrix[system][project]"
+                              @update:model-value="val => handlePermissionToggle(system, project, val)"
                               :label="system"
                               hide-details
                               density="compact"
@@ -678,7 +725,13 @@
                                                 !adminStore.adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
                                               )
                                           )"
+                              :color="isQuotaFull(system, project) && !permissionMatrix[system][project] ? 'grey' : undefined"
                             ></v-checkbox>
+                            <div v-if="isQuotaFull(system, project) && !permissionMatrix[system][project]" class="quota-full-hint">
+                              <v-icon size="12" color="warning" class="mr-1">mdi-alert-circle</v-icon>
+                              <span>已達上限 {{ getQuotaLimit(system, project) }} 人</span>
+                            </div>
+                            </div>
                           </template>
                         </v-tooltip>
                       </v-col>
@@ -916,13 +969,15 @@ const editedFunction = ref({
   functionId: '',
   name: '',
   description: '',
-  isCore: false
+  isCore: false,
+  quotaPerProject: {}
 });
 const functionTableHeaders = [
   { title: '顯示名稱', key: 'name' },
   { title: '功能 ID (內部代號)', key: 'functionId' },
   { title: '描述', key: 'description', sortable: false },
   { title: '核心功能', key: 'isCore' },
+  { title: '名額設定', key: 'quotaSummary', sortable: false },
   { title: '操作', key: 'actions', sortable: false, align: 'center' },
 ];
 
@@ -1585,11 +1640,31 @@ const isIndeterminateForProject = (project) => {
 
 const toggleAllForProject = (project, isSelected) => {
   const systemsAdminCanManage = adminStore.adminScope[project] || [];
+  const quotaBlockedSystems = []; // 記錄因 quota 被擋的權限
+
+  // 判斷被編輯者是否為管理員角色 (不受 quota 限制)
+  let isTargetAdmin = false;
+  if (targetUser.value) {
+    const targetRoles = targetUser.value.basicInfo.roles || [];
+    isTargetAdmin = targetRoles.includes('系統管理員') || targetRoles.includes('超級管理員');
+  }
+
   systemsAdminCanManage.forEach(system => {
     if (permissionMatrix.value[system]) {
+      if (isSelected && !isTargetAdmin) {
+        // 勾選時檢查 quota
+        if (isQuotaFull(system, project)) {
+          quotaBlockedSystems.push(system);
+          return; // 跳過此項
+        }
+      }
       permissionMatrix.value[system][project] = isSelected;
     }
   });
+
+  if (quotaBlockedSystems.length > 0) {
+    toast.warning(`以下權限功能已達名額上限，無法勾選：${quotaBlockedSystems.join('、')}`);
+  }
 };
 
 const handleSave = async () => {
@@ -1798,13 +1873,137 @@ const openFunctionDialog = (func = null) => {
   if (func) {
     // 編輯模式
     isNewFunction.value = false;
-    editedFunction.value = { ...func };
+    editedFunction.value = { ...func, quotaPerProject: { ...(func.quotaPerProject || {}) } };
   } else {
     // 新增模式
     isNewFunction.value = true;
-    editedFunction.value = { functionId: '', name: '', description: '', isCore: false };
+    editedFunction.value = { functionId: '', name: '', description: '', isCore: false, quotaPerProject: {} };
   }
   isFunctionDialogVisible.value = true;
+};
+
+// --- 名額上限 (Quota) 相關方法 ---
+
+/** 設定某建案的名額上限 */
+const setQuota = (projectId, value) => {
+  const num = parseInt(value, 10);
+  if (!editedFunction.value.quotaPerProject) {
+    editedFunction.value.quotaPerProject = {};
+  }
+  if (isNaN(num) || num <= 0) {
+    // 清除此建案的 quota 設定
+    delete editedFunction.value.quotaPerProject[projectId];
+  } else {
+    editedFunction.value.quotaPerProject[projectId] = num;
+  }
+};
+
+/**
+ * 建立 quota 查詢 Map: { functionName: { projectId: limit } }
+ * 從 adminStore.systemFunctions 整理而來
+ */
+const quotaMap = computed(() => {
+  const map = {};
+  adminStore.systemFunctions.forEach(func => {
+    if (func.quotaPerProject && Object.keys(func.quotaPerProject).length > 0) {
+      map[func.name] = func.quotaPerProject;
+    }
+  });
+  return map;
+});
+
+/**
+ * 計算某建案在某權限功能下「已佔用」的名額 (排除系統管理員 & 超級管理員)
+ */
+const getQuotaUsed = (systemFuncName, projectName) => {
+  const projectId = projectStore.nameToIdMap[projectName];
+  if (!projectId) return 0;
+
+  let count = 0;
+  // 遍歷所有使用者的權限
+  adminStore.allUserPermissionsMap.forEach((perms, userPhone) => {
+    // 檢查此使用者在該建案是否有此權限
+    if (perms[projectId]?.systems?.includes(systemFuncName)) {
+      // 檢查此使用者是否為管理員角色 (需排除)
+      const user = adminStore.manageableUsers.find(u => u.phone === userPhone);
+      const userRoles = user?.roles || [];
+      const isAdminRole = userRoles.includes('系統管理員') || userRoles.includes('超級管理員');
+      if (!isAdminRole) {
+        count++;
+      }
+    }
+  });
+  return count;
+};
+
+/** 取得某權限功能在某建案的 quota 上限 */
+const getQuotaLimit = (systemFuncName, projectName) => {
+  const projectId = projectStore.nameToIdMap[projectName];
+  if (!projectId) return 0;
+  return quotaMap.value[systemFuncName]?.[projectId] || 0;
+};
+
+/** 判斷某權限功能在某建案是否已達上限 */
+const isQuotaFull = (systemFuncName, projectName) => {
+  const limit = getQuotaLimit(systemFuncName, projectName);
+  if (!limit || limit <= 0) return false; // 無限制
+
+  // 計算已使用數量 (但要排除正在編輯的使用者，因為他目前的勾選不應重複計算)
+  let used = getQuotaUsed(systemFuncName, projectName);
+
+  // 如果是編輯模式 (非新增)，且「被編輯者」目前已擁有此權限，
+  // 則應從 used 中扣除 1 (因為他的名額已被計算在內)
+  if (!isNewUser.value && targetUser.value) {
+    const editingPhone = targetUser.value.basicInfo.phone;
+    const editingUser = adminStore.manageableUsers.find(u => u.phone === editingPhone);
+    const editingRoles = editingUser?.roles || [];
+    const isEditingAdmin = editingRoles.includes('系統管理員') || editingRoles.includes('超級管理員');
+    if (!isEditingAdmin) {
+      // 如果被編輯者「原本」就有此權限，扣 1
+      const projectId = projectStore.nameToIdMap[projectName];
+      const originalPerms = adminStore.allUserPermissionsMap.get(editingPhone);
+      if (originalPerms?.[projectId]?.systems?.includes(systemFuncName)) {
+        used--;
+      }
+    }
+  }
+
+  return used >= limit;
+};
+
+/** 取得 quota 相關的 tooltip 文字 */
+const getQuotaTooltip = (systemFuncName, projectName) => {
+  const limit = getQuotaLimit(systemFuncName, projectName);
+  if (!limit || limit <= 0) return ''; // 無限制，不顯示
+  const used = getQuotaUsed(systemFuncName, projectName);
+  return `名額使用狀態：${used} / ${limit} 人`;
+};
+
+/** 處理 checkbox 切換 - 加入 quota 檢查 */
+const handlePermissionToggle = (systemFuncName, projectName, newValue) => {
+  // 如果是「取消勾選」，直接允許
+  if (!newValue) {
+    permissionMatrix.value[systemFuncName][projectName] = false;
+    return;
+  }
+
+  // 如果是「勾選」，檢查 quota
+  // 被編輯者若為系統管理員/超級管理員，不受 quota 限制
+  if (targetUser.value) {
+    const targetRoles = targetUser.value.basicInfo.roles || [];
+    if (targetRoles.includes('系統管理員') || targetRoles.includes('超級管理員')) {
+      permissionMatrix.value[systemFuncName][projectName] = true;
+      return;
+    }
+  }
+
+  if (isQuotaFull(systemFuncName, projectName)) {
+    const limit = getQuotaLimit(systemFuncName, projectName);
+    toast.error(`「${systemFuncName}」在此建案已達名額上限 ${limit} 人，如需新增更多名額請洽系統管理人員。`);
+    return; // 不允許勾選
+  }
+
+  permissionMatrix.value[systemFuncName][projectName] = true;
 };
 
 const saveSystemFunction = async () => {
@@ -1953,11 +2152,28 @@ const handleSendEmail = async () => {
 
 <style scoped>
 .permission-panels-container {
-  border: 1px solid #e0e000;
+  border: 1px solid #e0e0e0;
   border-radius: 4px;
   height: 55vh;
   overflow-y: auto;
   padding: 8px;
+}
+.quota-settings-container {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+}
+.quota-full-hint {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #e65100;
+  padding-left: 32px;
+  margin-top: -4px;
+  margin-bottom: 4px;
 }
 .field-permission-row {
   border-bottom: 1px solid #eee;

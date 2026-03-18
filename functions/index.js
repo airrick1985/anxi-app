@@ -5240,7 +5240,7 @@ exports.getSystemFunctions = onCall({ region: "asia-east1", cors: true }, async 
  */
 exports.createSystemFunction = onCall({ region: "asia-east1", cors: true }, async (request) => {
   // 可以在此加入超級管理員權限驗證
-  const { functionId, name, description, isCore } = request.data;
+  const { functionId, name, description, isCore, quotaPerProject } = request.data;
   if (!functionId || !name) {
     throw new HttpsError('invalid-argument', '缺少 functionId 或 name 參數。');
   }
@@ -5258,6 +5258,7 @@ exports.createSystemFunction = onCall({ region: "asia-east1", cors: true }, asyn
     name,
     description: description || '',
     isCore: isCore || false,
+    quotaPerProject: quotaPerProject || {},
     createdAt: Timestamp.now()
   });
 
@@ -5269,7 +5270,7 @@ exports.createSystemFunction = onCall({ region: "asia-east1", cors: true }, asyn
  */
 exports.updateSystemFunction = onCall({ region: "asia-east1", cors: true }, async (request) => {
   // 可以在此加入超級管理員權限驗證
-  const { functionId, name, description } = request.data;
+  const { functionId, name, description, quotaPerProject } = request.data;
   if (!functionId || !name) {
     throw new HttpsError('invalid-argument', '缺少 functionId 或 name 參數。');
   }
@@ -5282,10 +5283,16 @@ exports.updateSystemFunction = onCall({ region: "asia-east1", cors: true }, asyn
     throw new HttpsError('not-found', `找不到 ID 為 "${functionId}" 的權限功能。`);
   }
 
-  await docRef.update({
+  const updateData = {
     name,
     description: description || ''
-  });
+  };
+  // 僅在有傳入 quotaPerProject 時才更新，避免覆蓋
+  if (quotaPerProject !== undefined) {
+    updateData.quotaPerProject = quotaPerProject;
+  }
+
+  await docRef.update(updateData);
 
   return { status: 'success', id: functionId };
 });
@@ -9137,6 +9144,80 @@ exports.getReportFolderStructure = onCall({ region: "asia-east1", secrets: drive
 
 
 
+// ✓ 新增：獲取符合 LINE 通知條件的人員名單
+exports.getNotificationRecipients = onCall({
+  region: "asia-east1",
+}, async (request) => {
+  const { projectId } = request.data;
+  const functionName = `getNotificationRecipients (Project: ${projectId})`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 查詢擁有 "LINE通知驗屋報告未下載" 權限的使用者
+    const permQuery = db.collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', "LINE通知驗屋報告未下載");
+    const permSnapshot = await permQuery.get();
+
+    if (permSnapshot.empty) {
+      return { status: "success", recipients: [] };
+    }
+
+    // 取得使用者 phone keys
+    const userPhoneKeys = permSnapshot.docs.map(doc => doc.id);
+
+    // 批次查詢使用者資料（Firestore 的 'in' 查詢最多支援 30 個）
+    const lineIdRegex = /^U[0-9a-f]{32}$/;
+    const recipients = [];
+
+    // 分批處理（每批最多 10 個，避免 'in' 查詢限制）
+    const batchSize = 10;
+    for (let i = 0; i < userPhoneKeys.length; i += batchSize) {
+      const batch = userPhoneKeys.slice(i, i + batchSize);
+      const usersSnapshot = await db.collection('users')
+        .where(FieldPath.documentId(), 'in', batch)
+        .get();
+
+      usersSnapshot.docs.forEach(doc => {
+        const userData = doc.data();
+        const lineId = userData.lineId;
+        const hasValidLineId = lineId && typeof lineId === 'string' && lineIdRegex.test(lineId);
+
+        recipients.push({
+          phone: doc.id,
+          name: userData.name || userData.displayName || doc.id,
+          lineId: hasValidLineId ? lineId : null,
+          hasLineBinding: hasValidLineId,
+        });
+      });
+    }
+
+    // 也把有權限但在 users 集合中找不到的加入（標記為無 LINE 綁定）
+    const foundPhones = new Set(recipients.map(r => r.phone));
+    userPhoneKeys.forEach(phone => {
+      if (!foundPhones.has(phone)) {
+        recipients.push({
+          phone: phone,
+          name: phone,
+          lineId: null,
+          hasLineBinding: false,
+        });
+      }
+    });
+
+    console.log(`[${functionName}] 找到 ${recipients.length} 位通知對象。`);
+    return { status: "success", recipients };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    throw new HttpsError("internal", `查詢通知對象時發生錯誤: ${error.message}`);
+  }
+});
+
 exports.sendNotDownloadedReportReminder = onCall({
   region: "asia-east1",
   invoker: 'public',
@@ -9144,14 +9225,14 @@ exports.sendNotDownloadedReportReminder = onCall({
   timeoutSeconds: 300,
   memory: "1GiB",
 }, async (request) => {
-  const { projectId } = request.data;
+  const { projectId, selectedLineIds } = request.data;
   if (!projectId) {
     throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
   }
 
   try {
-    // 直接呼叫核心邏輯函式
-    const message = await executeReminderForProject(projectId);
+    // 呼叫核心邏輯函式，傳入可選的 selectedLineIds
+    const message = await executeReminderForProject(projectId, selectedLineIds);
     return { status: "success", message: message };
   } catch (error) {
     // 將內部錯誤轉換為前端可讀的 HttpsError
@@ -9255,9 +9336,10 @@ exports.scheduledReportReminder = onSchedule({
 /**
  * [內部核心邏輯] 執行單一建案的未下載報告提醒
  * @param {string} projectId - 要執行提醒的建案 ID
+ * @param {Array<string>|null} selectedLineIds - 可選，若提供則僅對指定的 LINE ID 發送通知
  * @returns {Promise<string>} - 返回執行的結果訊息
  */
-async function executeReminderForProject(projectId) {
+async function executeReminderForProject(projectId, selectedLineIds = null) {
   const functionName = `executeReminderForProject (Project: ${projectId})`;
   const db = new Firestore({ databaseId: "anxi-app" });
 
@@ -9288,19 +9370,29 @@ async function executeReminderForProject(projectId) {
       throw new Error("無法從 Secret Manager 獲取 LINE Channel Token。");
     }
 
-    // --- 步驟 2: 尋找通知對象 (此部分邏輯不變) ---
-    const permQuery = db.collection('userPermissions').where(`permissions.${projectId}.systems`, 'array-contains', "LINE通知驗屋報告未下載");
-    const permSnapshot = await permQuery.get();
-    if (permSnapshot.empty) {
-      throw new Error("找不到擁有此建案檢視權限的使用者。");
-    }
-    const userPhones = permSnapshot.docs.map(doc => doc.id);
-    const usersSnapshot = await db.collection('users').where(FieldPath.documentId(), 'in', userPhones).get();
+    // --- 步驟 2: 尋找通知對象 ---
+    let lineIdsToSend;
 
-    const lineIdRegex = /^U[0-9a-f]{32}$/;
-    const lineIdsToSend = usersSnapshot.docs
-      .map(doc => doc.data().lineId)
-      .filter(lineId => lineId && typeof lineId === 'string' && lineIdRegex.test(lineId));
+    if (selectedLineIds && Array.isArray(selectedLineIds) && selectedLineIds.length > 0) {
+      // 手動模式：使用前端傳來的指定 LINE IDs
+      const lineIdRegex = /^U[0-9a-f]{32}$/;
+      lineIdsToSend = selectedLineIds.filter(id => id && typeof id === 'string' && lineIdRegex.test(id));
+      console.log(`[${functionName}] 手動模式：前端指定 ${selectedLineIds.length} 位，驗證有效 ${lineIdsToSend.length} 位。`);
+    } else {
+      // 自動模式：從權限系統查詢所有有權限的使用者
+      const permQuery = db.collection('userPermissions').where(`permissions.${projectId}.systems`, 'array-contains', "LINE通知驗屋報告未下載");
+      const permSnapshot = await permQuery.get();
+      if (permSnapshot.empty) {
+        throw new Error("找不到擁有此建案檢視權限的使用者。");
+      }
+      const userPhones = permSnapshot.docs.map(doc => doc.id);
+      const usersSnapshot = await db.collection('users').where(FieldPath.documentId(), 'in', userPhones).get();
+
+      const lineIdRegex = /^U[0-9a-f]{32}$/;
+      lineIdsToSend = usersSnapshot.docs
+        .map(doc => doc.data().lineId)
+        .filter(lineId => lineId && typeof lineId === 'string' && lineIdRegex.test(lineId));
+    }
 
     if (lineIdsToSend.length === 0) {
       throw new Error("找不到任何有效的 LINE 通知對象。");

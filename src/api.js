@@ -5496,6 +5496,21 @@ export const triggerNotDownloadedReportReminder = async (payload) => {
   }
 };
 
+/**
+ * [新] 獲取符合 LINE 通知條件的人員名單
+ * @param {object} payload - 包含 { projectId } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, recipients }
+ */
+export const getNotificationRecipients = async (payload) => {
+  try {
+    const getRecipientsFunction = httpsCallable(functions, 'getNotificationRecipients');
+    const result = await getRecipientsFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getNotificationRecipients:", error);
+    throw new Error(error.message);
+  }
+};
 
 
 // --- 驗屋系統設定 API ---

@@ -1271,45 +1271,172 @@
                 <v-divider class="my-8"></v-divider>
 
                 <p class="text-h6 font-weight-bold mb-4">排程設定</p>
-                  <p class="text-subtitle-1 font-weight-bold mb-2">驗屋報告未下載通知</p>
-                  <p class="text-body-2 text-medium-emphasis mb-4">
-                    設定系統每週固定檢查的時間點。當系統發現有報告未下載時，將會觸發通知。
-                  </p>
-                  <v-sheet border rounded class="pa-4">
-                    <div v-for="day in weekDays" :key="day.key" class="d-flex align-center my-2">
-                      <v-checkbox
-                        v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
-                        :label="day.label"
-                        density="compact"
-                        hide-details
-                        class="flex-shrink-0"
-                        style="width: 120px;"
-                      ></v-checkbox>
-                      
-                      <v-select
-                        v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].time"
-                        :items="scheduleTimeOptions"
-                        density="compact"
-                        variant="outlined"
-                        hide-details
-                        :disabled="!projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
-                        style="max-width: 150px;"
-                      ></v-select>
+
+                <!-- 驗屋報告未下載通知 -->
+                <v-card variant="outlined" class="mb-4">
+                  <v-card-title class="bg-grey-lighten-4 d-flex align-center">
+                    <v-icon start color="green">mdi-bell-ring-outline</v-icon>
+                    驗屋報告未下載通知
+                  </v-card-title>
+                  <v-card-text class="pa-4">
+                    <v-alert type="info" variant="tonal" density="compact" class="mb-4" border="start">
+                      設定系統每週固定檢查的時間點。當系統發現有報告未下載時，將會透過 LINE 觸發通知給有權限的人員。
+                    </v-alert>
+
+                    <v-sheet border rounded class="pa-4">
+                      <div v-for="day in weekDays" :key="day.key" class="d-flex align-center my-2">
+                        <v-checkbox
+                          v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                          :label="day.label"
+                          density="compact"
+                          hide-details
+                          class="flex-shrink-0"
+                          style="width: 120px;"
+                        ></v-checkbox>
+                        
+                        <v-select
+                          v-model="projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].time"
+                          :items="scheduleTimeOptions"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          :disabled="!projectSettings.reportSettings.notDownloadedReminderSchedule[day.key].enabled"
+                          style="max-width: 150px;"
+                        ></v-select>
                       </div>
-                  </v-sheet>
+                    </v-sheet>
+                  </v-card-text>
+                  <v-divider></v-divider>
+                  <v-card-actions class="pa-4">
+                    <v-btn
+                      @click="handleManualLineNotification"
+                      :loading="isLoadingRecipients"
+                      color="green"
+                      variant="elevated"
+                      prepend-icon="mdi-send"
+                    >
+                      手動通知 (LINE)
+                    </v-btn>
+                  </v-card-actions>
+                </v-card>
 
-                <v-btn
-      @click="handleManualLineNotification"
-      :loading="isSendingLineNotification"
-      color="green"
-      variant="elevated"
-      class="ma-4"
-    >
-      <v-icon start>mdi-chat</v-icon>
-      手動通知 (LINE)
-    </v-btn>
+                <!-- LINE 通知對象選擇 Dialog -->
+                <v-dialog v-model="isRecipientDialogOpen" max-width="650px" persistent>
+                  <v-card>
+                    <v-card-title class="bg-green-darken-1 text-white d-flex align-center">
+                      <v-icon start>mdi-account-check-outline</v-icon>
+                      選擇通知對象
+                      <v-spacer></v-spacer>
+                      <v-btn icon variant="text" @click="isRecipientDialogOpen = false" :disabled="isSendingLineNotification">
+                        <v-icon>mdi-close</v-icon>
+                      </v-btn>
+                    </v-card-title>
 
+                    <v-card-text class="pa-4" style="max-height: 60vh; overflow-y: auto;">
+                      <!-- 載入中 -->
+                      <div v-if="isLoadingRecipients" class="text-center pa-8">
+                        <v-progress-circular indeterminate color="green"></v-progress-circular>
+                        <p class="mt-3 text-grey-darken-1">正在查詢通知對象...</p>
+                      </div>
 
+                      <!-- 無資料 -->
+                      <div v-else-if="recipientList.length === 0" class="text-center pa-8 text-grey-darken-1">
+                        <v-icon size="48" class="mb-2">mdi-account-off-outline</v-icon>
+                        <p>找不到擁有「LINE通知驗屋報告未下載」權限的使用者。</p>
+                        <p class="text-caption">請先至權限管理（userPermissions）為使用者新增此權限。</p>
+                      </div>
+
+                      <!-- 名單列表 -->
+                      <div v-else>
+                        <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                          共 {{ recipientList.length }} 位擁有權限，其中 {{ validRecipientCount }} 位已綁定 LINE。
+                          已勾選 <strong>{{ selectedLineIds.length }}</strong> 位將接收通知。
+                        </v-alert>
+
+                        <!-- 全選 / 取消全選 -->
+                        <div class="d-flex align-center mb-2">
+                          <v-checkbox
+                            :model-value="isAllValidSelected"
+                            @update:model-value="toggleSelectAll"
+                            label="全選可通知對象"
+                            density="compact"
+                            hide-details
+                            color="green"
+                          ></v-checkbox>
+                        </div>
+
+                        <v-divider class="mb-2"></v-divider>
+
+                        <v-list density="compact" class="pa-0">
+                          <v-list-item
+                            v-for="recipient in recipientList"
+                            :key="recipient.phone"
+                            :class="{ 'bg-grey-lighten-4': !recipient.hasLineBinding }"
+                          >
+                            <template v-slot:prepend>
+                              <v-checkbox
+                                :model-value="selectedRecipients.includes(recipient.phone)"
+                                @update:model-value="val => {
+                                  if (val) {
+                                    selectedRecipients.push(recipient.phone);
+                                  } else {
+                                    const idx = selectedRecipients.indexOf(recipient.phone);
+                                    if (idx > -1) selectedRecipients.splice(idx, 1);
+                                  }
+                                }"
+                                :disabled="!recipient.hasLineBinding"
+                                density="compact"
+                                hide-details
+                                color="green"
+                              ></v-checkbox>
+                            </template>
+
+                            <v-list-item-title class="d-flex align-center">
+                              <span class="font-weight-medium">{{ recipient.name }}</span>
+                              <v-chip
+                                v-if="recipient.hasLineBinding"
+                                size="x-small"
+                                color="green"
+                                variant="tonal"
+                                class="ml-2"
+                              >
+                                <v-icon start size="12">mdi-check-circle</v-icon>
+                                LINE 已綁定
+                              </v-chip>
+                              <v-chip
+                                v-else
+                                size="x-small"
+                                color="grey"
+                                variant="tonal"
+                                class="ml-2"
+                              >
+                                <v-icon start size="12">mdi-close-circle</v-icon>
+                                未綁定 LINE
+                              </v-chip>
+                            </v-list-item-title>
+                            <v-list-item-subtitle>{{ recipient.phone }}</v-list-item-subtitle>
+                          </v-list-item>
+                        </v-list>
+                      </div>
+                    </v-card-text>
+
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-4">
+                      <v-btn variant="text" @click="isRecipientDialogOpen = false" :disabled="isSendingLineNotification">取消</v-btn>
+                      <v-spacer></v-spacer>
+                      <v-btn
+                        color="green"
+                        variant="elevated"
+                        :loading="isSendingLineNotification"
+                        :disabled="selectedLineIds.length === 0"
+                        prepend-icon="mdi-send"
+                        @click="confirmSendLineNotification"
+                      >
+                        發送通知 ({{ selectedLineIds.length }} 人)
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
 
 
                   </v-window-item>
@@ -2397,6 +2524,7 @@ import {
   deleteBookingBatch,
   manualTriggerSendReminders,
   triggerNotDownloadedReportReminder,
+  getNotificationRecipients,
   uploadAttachmentImage,
   deleteAttachmentImage,
   updateProjectSheetSettings, // 設定用
@@ -2508,6 +2636,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 const isTesting = ref(false);
 const isSendingLineNotification = ref(false);
+
+// --- LINE 通知名單 Dialog 相關 ---
+const isRecipientDialogOpen = ref(false);
+const isLoadingRecipients = ref(false);
+const recipientList = ref([]);
+const selectedRecipients = ref([]);
 const filesToUpload = ref([]); // ✓ 新增：綁定 v-file-input
 const isUploadingAttachments = ref(false); // ✓ 新增：控制上傳按鈕 loading
 const isDeletingAttachment = ref(-1); // ✓ 新增：控制刪除按鈕 loading (用索引區分)
@@ -4286,14 +4420,79 @@ function handleLogoUpload(event) {
   reader.readAsDataURL(file);
 }
 
+// 手動通知 - 步驟 1：查詢並展示通知對象名單
 async function handleManualLineNotification() {
-  if (!confirm(`您確定要手動發送「${projectName.value}」的驗屋報告未下載 LINE 提醒嗎？`)) {
+  isLoadingRecipients.value = true;
+  isRecipientDialogOpen.value = true;
+  recipientList.value = [];
+  selectedRecipients.value = [];
+
+  try {
+    const result = await getNotificationRecipients({ projectId: projectId.value });
+    recipientList.value = result.recipients || [];
+    // 預設勾選：已綁定 LINE 的人員
+    selectedRecipients.value = recipientList.value
+      .filter(r => r.hasLineBinding)
+      .map(r => r.phone);
+  } catch (error) {
+    showSnackbar(`查詢通知對象失敗：${error.message}`, 'error');
+    isRecipientDialogOpen.value = false;
+  } finally {
+    isLoadingRecipients.value = false;
+  }
+}
+
+// 計算勾選人員中有效的 LINE IDs
+const selectedLineIds = computed(() => {
+  return recipientList.value
+    .filter(r => selectedRecipients.value.includes(r.phone) && r.hasLineBinding)
+    .map(r => r.lineId);
+});
+
+// 通知名單中有 LINE 綁定的數量
+const validRecipientCount = computed(() => {
+  return recipientList.value.filter(r => r.hasLineBinding).length;
+});
+
+// 全選/取消全選（僅限有 LINE 綁定的）
+const isAllValidSelected = computed(() => {
+  const validPhones = recipientList.value.filter(r => r.hasLineBinding).map(r => r.phone);
+  return validPhones.length > 0 && validPhones.every(p => selectedRecipients.value.includes(p));
+});
+
+function toggleSelectAll() {
+  const validPhones = recipientList.value.filter(r => r.hasLineBinding).map(r => r.phone);
+  if (isAllValidSelected.value) {
+    // 取消全選
+    selectedRecipients.value = selectedRecipients.value.filter(p => !validPhones.includes(p));
+  } else {
+    // 全選
+    const currentSet = new Set(selectedRecipients.value);
+    validPhones.forEach(p => currentSet.add(p));
+    selectedRecipients.value = Array.from(currentSet);
+  }
+}
+
+// 手動通知 - 步驟 2：確認並發送通知
+async function confirmSendLineNotification() {
+  const ids = selectedLineIds.value;
+  if (ids.length === 0) {
+    showSnackbar('請至少勾選一位有 LINE 綁定的通知對象。', 'warning');
     return;
   }
+
+  if (!confirm(`確定要向 ${ids.length} 位人員發送 LINE 通知嗎？`)) {
+    return;
+  }
+
   isSendingLineNotification.value = true;
   try {
-    const result = await triggerNotDownloadedReportReminder({ projectId: projectId.value });
-    showSnackbar(result.message, 'success'); // 假設您已有 showSnackbar 函式
+    const result = await triggerNotDownloadedReportReminder({
+      projectId: projectId.value,
+      selectedLineIds: ids,
+    });
+    showSnackbar(result.message, 'success');
+    isRecipientDialogOpen.value = false;
   } catch (error) {
     showSnackbar(`發送失敗：${error.message}`, 'error');
   } finally {
