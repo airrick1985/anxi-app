@@ -42,7 +42,7 @@
                 variant="outlined"
                 hide-details
                 clearable
-                @update:model-value="selectedUnit = null; loadData()"
+                @update:model-value="selectedUnit = null; clearAllFiltersQuiet(); loadData()"
                 :loading="isLoadingStructure"
                 :disabled="showDeleted"
               ></v-select>
@@ -56,7 +56,7 @@
                 hide-details
                 clearable
                 :disabled="showDeleted || !selectedBuilding"
-                @update:model-value="loadData()"
+                @update:model-value="clearAllFiltersQuiet(); loadData()"
               ></v-select>
             </v-col>
             <v-col cols="12" sm="4" :md="mobile ? 12 : 3" :lg="mobile ? 12 : 3">
@@ -1076,6 +1076,41 @@ import defaultProjectIcon from '@/assets/icons/property.png';
 import QrcodeVue from 'qrcode.vue';
 import { saveAs } from 'file-saver';
 
+// 手機 WebView 安全下載（支援 LINE LIFF 等無法使用 saveAs 的環境）
+function mobileSafeDownload(blob, fileName) {
+  try {
+    // 偵測是否在 LIFF / LINE WebView 中
+    const ua = navigator.userAgent || '';
+    const isLineOrWebView = /Line/i.test(ua) || /LIFF/i.test(ua) || /wv|WebView/i.test(ua);
+
+    if (isLineOrWebView) {
+      // WebView 中：用 window.open 在新分頁開啟 blob
+      const blobUrl = URL.createObjectURL(blob);
+      const newWindow = window.open(blobUrl, '_blank');
+      if (!newWindow) {
+        // popup 被阻擋，改用 location.href
+        window.location.href = blobUrl;
+      }
+      // 延遲清除 URL（給瀏覽器時間下載）
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } else {
+      // 一般瀏覽器：用 <a download> 觸發下載
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    }
+  } catch (e) {
+    console.warn('mobileSafeDownload 失敗，fallback 到 saveAs:', e);
+    saveAs(blob, fileName);
+  }
+}
+
 const route = useRoute();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
@@ -1225,8 +1260,16 @@ const activeFilterCount = computed(() => {
 
 // 清除所有進階篩選
 function clearAllFilters() {
-  // 先暫停 watch 避免重複觸發
   const hadDateFilter = !!(advancedFilters.dateFrom || advancedFilters.dateTo);
+  clearAllFiltersQuiet();
+  // 如果之前有日期篩選且是全案模式，需要重新從後端載入（不帶日期條件）
+  if (hadDateFilter && !selectedUnit.value) {
+    loadData(false);
+  }
+}
+
+// 靜默清空篩選（不觸發 loadData，用於棟別/戶別變更時）
+function clearAllFiltersQuiet() {
   advancedFilters.dateFrom = null;
   advancedFilters.dateTo = null;
   advancedFilters.phase = [];
@@ -1234,13 +1277,11 @@ function clearAllFilters() {
   advancedFilters.progress = [];
   advancedFilters.level = [];
   advancedFilters.confirmed = null;
-  // 如果之前有日期篩選，需要重新從後端載入（不帶日期條件）
-  if (hadDateFilter) {
-    loadData(false);
-  }
+  showAdvancedFilter.value = false;
+  searchFilter.value = '';
 }
 
-// 監聽日期變更 → 從後端重新載入 (debounce 500ms)
+// 監聽日期變更 → 全案模式才從後端重新載入，戶別模式由前端 computed 自動處理
 let dateFilterTimer = null;
 watch(
   () => [advancedFilters.dateFrom, advancedFilters.dateTo],
@@ -1248,10 +1289,16 @@ watch(
     // 避免 clearAllFilters 觸發的重複載入
     if (!newVal[0] && !newVal[1] && !oldVal[0] && !oldVal[1]) return;
     
+    // 戶別模式：已載入全部資料，日期篩選由前端 filteredRecords 處理，不需重載
+    if (selectedUnit.value) {
+      console.log(`[日期篩選變更] 戶別模式，前端篩選即可。`);
+      return;
+    }
+
     if (dateFilterTimer) clearTimeout(dateFilterTimer);
     dateFilterTimer = setTimeout(() => {
       console.log(`[日期篩選變更] ${newVal[0] || 'N/A'} ~ ${newVal[1] || 'N/A'}，重新從後端載入...`);
-      loadData(false); // 不使用快取，強制重新載入
+      loadData(false);
     }, 500);
   }
 );
@@ -1373,11 +1420,13 @@ function showMoreCards() {
   cardPageSize.value += 20;
 }
 
-// 快取 key 產生器 (包含日期範圍)
+// 快取 key 產生器
 function getCacheKey() {
-  const datePart = (advancedFilters.dateFrom || '') + '_' + (advancedFilters.dateTo || '');
   if (showDeleted.value) return `deleted_${props.projectId}`;
-  if (selectedUnit.value) return `unit_${props.projectId}_${selectedUnit.value}_${datePart}`;
+  // 戶別模式：載入全部，不含日期
+  if (selectedUnit.value) return `unit_${props.projectId}_${selectedUnit.value}`;
+  // 全案模式：包含日期範圍
+  const datePart = (advancedFilters.dateFrom || '') + '_' + (advancedFilters.dateTo || '');
   return `project_${props.projectId}_${datePart}`;
 }
 
@@ -1530,15 +1579,15 @@ async function loadData(useCache = true) {
       console.log(`Loading DELETED records for Project: ${props.projectId}`);
       result = await getDeletedInspectionRecordsForProjectFB(props.projectId);
     } else {
-      // 建立分頁參數 (包含日期範圍)
-      const paginationOpts = { limit: PAGE_SIZE };
-      if (advancedFilters.dateFrom) paginationOpts.dateFrom = advancedFilters.dateFrom;
-      if (advancedFilters.dateTo) paginationOpts.dateTo = advancedFilters.dateTo;
-
       if (selectedUnit.value) {
-        console.log(`Loading ACTIVE records for Unit: ${props.projectId}/${selectedUnit.value} (limit: ${PAGE_SIZE}, date: ${advancedFilters.dateFrom || 'N/A'} ~ ${advancedFilters.dateTo || 'N/A'})`);
-        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value, paginationOpts);
+        // 戶別模式：載入該戶別全部資料（不分頁、不傳日期，日期篩選由前端處理）
+        console.log(`Loading ALL records for Unit: ${props.projectId}/${selectedUnit.value}`);
+        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value, { limit: 200 });
       } else {
+        // 全案模式：傳日期參數給後端篩選 + 分頁
+        const paginationOpts = { limit: PAGE_SIZE };
+        if (advancedFilters.dateFrom) paginationOpts.dateFrom = advancedFilters.dateFrom;
+        if (advancedFilters.dateTo) paginationOpts.dateTo = advancedFilters.dateTo;
         console.log(`Loading ACTIVE records for Project: ${props.projectId} (limit: ${PAGE_SIZE}, date: ${advancedFilters.dateFrom || 'N/A'} ~ ${advancedFilters.dateTo || 'N/A'})`);
         result = await getInspectionRecordsForProjectFB(props.projectId, paginationOpts);
       }
@@ -2005,7 +2054,7 @@ async function handleDownloadExcel() {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const dateStr = format(new Date(), 'yyyyMMdd');
     const fileName = `驗屋報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.xlsx`;
-    saveAs(blob, fileName);
+    mobileSafeDownload(blob, fileName);
   } catch (error) {
     console.error('下載 Excel 失敗:', error);
     alert(`下載 Excel 失敗: ${error.message}`);
@@ -2153,7 +2202,8 @@ async function handleDownloadPdf() {
     }
 
     const dateStr = format(new Date(), 'yyyyMMdd');
-    doc.save(`驗屋報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`);
+    const pdfBlob = doc.output('blob');
+    mobileSafeDownload(pdfBlob, `驗屋報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`);
   } catch (error) {
     console.error('下載 PDF 失敗:', error);
     alert(`下載 PDF 失敗: ${error.message}`);
@@ -2493,7 +2543,7 @@ function downloadPreviewPdf() {
   if (currentPdfBlob.value) {
     const dateStr = format(new Date(), 'yyyyMMdd');
     const fileName = `批次報告_${projectName.value}_${selectedUnit.value || '全案'}_${dateStr}.pdf`;
-    saveAs(currentPdfBlob.value, fileName);
+    mobileSafeDownload(currentPdfBlob.value, fileName);
   }
 }
 

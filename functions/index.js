@@ -9222,17 +9222,26 @@ exports.scheduledReportReminder = onSchedule({
         //    這表示「當前時間」是「排定時間」之後的第一個觸發點
         if (diffMinutes >= 0 && diffMinutes < TRIGGER_INTERVAL_MINUTES) {
           console.log(`[${functionName}]  建案 [${projectId}] 符合條件，準備執行...`);
-          tasks.push(
-            executeReminderForProject(projectId).catch(err => {
-              console.error(`[${functionName}] ❌ 處理建案 [${projectId}] 時發生錯誤:`, err.message);
-            })
-          );
+          tasks.push(projectId);
         }
       }
     }
 
+    // ✓ 改為序列執行，避免同時對 LINE API 發送大量請求導致 429 錯誤
     if (tasks.length > 0) {
-      await Promise.all(tasks);
+      console.log(`[${functionName}] 共 ${tasks.length} 個建案需要處理，開始序列執行...`);
+      for (const taskProjectId of tasks) {
+        try {
+          await executeReminderForProject(taskProjectId);
+          console.log(`[${functionName}] ✅ 建案 [${taskProjectId}] 處理完成。`);
+          // 每個建案執行完後等待 1 秒，避免觸發 LINE API 速率限制
+          if (tasks.indexOf(taskProjectId) < tasks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (err) {
+          console.error(`[${functionName}] ❌ 處理建案 [${taskProjectId}] 時發生錯誤:`, err.message);
+        }
+      }
     }
 
     console.log(`[${functionName}] 所有符合條件的建案處理完畢。`);
@@ -9280,7 +9289,7 @@ async function executeReminderForProject(projectId) {
     }
 
     // --- 步驟 2: 尋找通知對象 (此部分邏輯不變) ---
-    const permQuery = db.collection('userPermissions').where(`permissions.${projectId}.systems`, 'array-contains', "驗屋預約管理-檢視");
+    const permQuery = db.collection('userPermissions').where(`permissions.${projectId}.systems`, 'array-contains', "LINE通知驗屋報告未下載");
     const permSnapshot = await permQuery.get();
     if (permSnapshot.empty) {
       throw new Error("找不到擁有此建案檢視權限的使用者。");
@@ -9349,11 +9358,25 @@ async function executeReminderForProject(projectId) {
       resultMessage = "提醒訊息已成功發送。";
     }
 
-    // 無論是哪種情況，都發送 LINE 訊息
-    await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
-
-    console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。`);
-    return resultMessage; // 回傳執行的結果訊息
+    // 無論是哪種情況，都發送 LINE 訊息（含指數退避重試機制）
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await lineClient.multicast(lineIdsToSend, [{ type: 'text', text: messageText }]);
+        console.log(`[${functionName}] 已成功將通知發送至 ${lineIdsToSend.length} 個目標。(第 ${attempt} 次嘗試)`);
+        return resultMessage; // 回傳執行的結果訊息
+      } catch (sendError) {
+        if (sendError.statusCode === 429 && attempt < MAX_RETRIES) {
+          // 指數退避：第1次等2秒，第2次等4秒
+          const waitSeconds = Math.pow(2, attempt);
+          console.warn(`[${functionName}] ⚠️ LINE API 回傳 429 (第 ${attempt} 次)，等待 ${waitSeconds} 秒後重試...`);
+          await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+        } else {
+          // 非 429 錯誤或已達最大重試次數，向上拋出
+          throw sendError;
+        }
+      }
+    }
 
   } catch (error) {
     console.error(`[${functionName}] 執行失敗:`, error);
