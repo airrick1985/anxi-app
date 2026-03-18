@@ -5903,48 +5903,41 @@ export async function addInspectionRecordFB(payload) { // 命名為 addInspectio
 }
 
 /**
- * 獲取指定戶別的所有驗屋紀錄
+ * 獲取指定戶別的驗屋紀錄 (支援游標分頁)
  * @param {string} projectId - 建案 ID
  * @param {string} unitId - 戶別 ID
- * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ * @param {object} [paginationOptions] - 分頁選項 { limit?: number, startAfterDocId?: string }
+ * @returns {Promise<object>} - { status, data: Array<object>, hasMore: boolean, lastDocId: string|null }
  */
-export async function getInspectionRecordsFB(projectId, unitId) { // 命名為 getInspectionRecordsFB
+export async function getInspectionRecordsFB(projectId, unitId, paginationOptions = {}) {
   try {
     const getFunction = httpsCallable(functions, 'getInspectionRecords');
-    const result = await getFunction({ projectId, unitId });
-    // 後端已將 Timestamp 轉為 ISO String，前端可直接使用
-    return result.data; // 直接回傳 Cloud Function 的 { status, data }
+    const result = await getFunction({ projectId, unitId, ...paginationOptions });
+    return result.data;
   } catch (error) {
     console.error("API getInspectionRecordsFB 錯誤:", error);
-    return { status: "error", message: error.message, data: [] }; // 發生錯誤時回傳空陣列
+    return { status: "error", message: error.message, data: [], hasMore: false, lastDocId: null };
   }
 }
 
-// ✓ START: 請將以下函式新增到您的 api.js 中
 /**
- * 獲取指定建案 (projectId) 底下所有戶別的驗屋紀錄
+ * 獲取指定建案 (projectId) 底下所有戶別的驗屋紀錄 (支援游標分頁)
  * @param {string} projectId - 建案 ID
- * @returns {Promise<object>} - 後端回傳的結果 { status, data: Array<object> }
+ * @param {object} [paginationOptions] - 分頁選項 { limit?: number, startAfterDocId?: string }
+ * @returns {Promise<object>} - { status, data: Array<object>, hasMore: boolean, lastDocId: string|null }
  */
-export async function getInspectionRecordsForProjectFB(projectId) {
+export async function getInspectionRecordsForProjectFB(projectId, paginationOptions = {}) {
   if (!projectId) {
     return { status: 'error', message: '缺少 projectId' };
   }
 
   try {
-    // 依照您的風格，在函式內部建立 httpsCallable 引用
     const getFunction = httpsCallable(functions, 'getInspectionRecordsForProjectFB');
-
-    // 呼叫後端函式
-    const result = await getFunction({ projectId });
-
-    // 直接回傳後端的 { status, data }
+    const result = await getFunction({ projectId, ...paginationOptions });
     return result.data;
-
   } catch (error) {
     console.error("API getInspectionRecordsForProjectFB 錯誤:", error);
-    // 參照 getInspectionRecordsFB 的錯誤處理
-    return { status: "error", message: error.message, data: [] };
+    return { status: "error", message: error.message, data: [], hasMore: false, lastDocId: null };
   }
 }
 

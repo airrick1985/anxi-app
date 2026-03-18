@@ -10043,14 +10043,16 @@ exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) =
 
 
 /**
- *  [最終修正版] 獲取指定戶別的所有驗屋紀錄 (排除已刪除)
+ *  [效能優化版] 獲取指定戶別的驗屋紀錄 (排除已刪除，支援游標分頁)
  * 使用 Admin SDK 鏈式查詢語法
  * @param {string} projectId - 建案 ID
  * @param {string} unitId - 戶別 ID
- * @returns {Promise<object>} - { status, data: Array<object> }
+ * @param {number} [limit=50] - 每次載入筆數 (預設 50)
+ * @param {string} [startAfterDocId] - 上一頁最後一筆文件 ID (游標分頁)
+ * @returns {Promise<object>} - { status, data: Array<object>, hasMore: boolean, lastDocId: string|null }
  */
 exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) => {
-  const { projectId, unitId } = request.data;
+  const { projectId, unitId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   const functionName = `getInspectionRecords (Project: ${projectId}, Unit: ${unitId})`;
 
   if (!projectId || !unitId) {
@@ -10058,25 +10060,58 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
     throw new HttpsError("invalid-argument", "缺少 projectId 或 unitId。");
   }
 
-  try {
-    // ✓ 確保使用正確的 Firestore 實例
-    const db = new Firestore({ databaseId: "anxi-app" });
-    const recordsRef = db.collection("inspectionRecords"); // ✓ 取得集合參考
+  // 分頁參數：預設 50 筆，最大 200 筆
+  const pageSize = Math.min(Math.max(requestLimit || 50, 1), 200);
 
-    // ✓✓✓ 使用 Admin SDK 的鏈式查詢語法 ✓✓✓
-    const snapshot = await recordsRef
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const recordsRef = db.collection("inspectionRecords");
+
+    // 建立基礎查詢
+    let queryRef = recordsRef
       .where("projectId", "==", projectId)
       .where("unitId", "==", unitId)
-      .where("isDeleted", "==", false) // ✓ 保持軟刪除過濾
-      .orderBy("createdAt", "desc")
-      .get(); // ✓ .get() 在最後
+      .where("isDeleted", "==", false);
 
-    // 後續處理 snapshot 的邏輯保持不變
+    // 日期範圍篩選
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom + 'T00:00:00+08:00'); // 台灣時間開始
+      queryRef = queryRef.where("inspectionDate", ">=", fromDate);
+      console.log(`[${functionName}] 日期篩選 from: ${dateFrom}`);
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo + 'T23:59:59+08:00'); // 台灣時間結束
+      queryRef = queryRef.where("inspectionDate", "<=", toDate);
+      console.log(`[${functionName}] 日期篩選 to: ${dateTo}`);
+    }
+
+    queryRef = queryRef.orderBy("inspectionDate", "desc");
+
+    // 如果有游標，從指定文件之後開始查詢
+    if (startAfterDocId) {
+      const startAfterDoc = await recordsRef.doc(startAfterDocId).get();
+      if (startAfterDoc.exists) {
+        queryRef = queryRef.startAfter(startAfterDoc);
+        console.log(`[${functionName}] 使用游標分頁，從文件 ${startAfterDocId} 之後開始查詢。`);
+      } else {
+        console.warn(`[${functionName}] 游標文件 ${startAfterDocId} 不存在，從頭開始查詢。`);
+      }
+    }
+
+    // 多撈 1 筆用於判斷是否還有更多資料
+    const snapshot = await queryRef.limit(pageSize + 1).get();
+
     if (snapshot.empty) {
       console.log(`[${functionName}] 找不到戶別 ${unitId} 的有效驗屋紀錄。`);
-      return { status: "success", data: [] };
+      return { status: "success", data: [], hasMore: false, lastDocId: null };
     }
-    const records = snapshot.docs.map(doc => {
+
+    // 判斷是否還有下一頁
+    const hasMore = snapshot.docs.length > pageSize;
+    // 只取實際需要的筆數 (不含多撈的那 1 筆)
+    const docsToReturn = hasMore ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
+
+    const records = docsToReturn.map(doc => {
       const data = doc.data();
       // 日期轉換邏輯
       if (data.inspectionDate && typeof data.inspectionDate.toDate === 'function') {
@@ -10088,34 +10123,34 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
       if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
         data.updatedAt = data.updatedAt.toDate().toISOString();
       }
-      //  START: 新增 customerConfirmedAt 的轉換
       if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
         data.customerConfirmedAt = data.customerConfirmedAt.toDate().toISOString();
       }
-      //  END: 新增轉換
       return { id: doc.id, ...data };
     });
 
-    console.log(`[${functionName}] 成功獲取 ${records.length} 筆有效紀錄。`);
-    return { status: "success", data: records };
+    // 取得最後一筆文件的 ID 作為下次查詢的游標
+    const lastDocId = docsToReturn.length > 0 ? docsToReturn[docsToReturn.length - 1].id : null;
+
+    console.log(`[${functionName}] 成功獲取 ${records.length} 筆有效紀錄。hasMore: ${hasMore}, lastDocId: ${lastDocId}`);
+    return { status: "success", data: records, hasMore, lastDocId };
 
   } catch (error) {
     console.error(`[${functionName}] 查詢紀錄時發生錯誤:`, error);
-    // 拋出 HttpsError 讓前端 api.js 能捕捉到 message
     throw new HttpsError("internal", `查詢驗屋紀錄時發生錯誤: ${error.message}`);
   }
 });
 
 
 /**
- * [修改] 獲取單一建案 (projectId) 底下所有戶別的驗屋紀錄 (排除已刪除)
+ * [效能優化版] 獲取單一建案 (projectId) 底下所有戶別的驗屋紀錄 (排除已刪除，支援游標分頁)
  *
- * @param {object} data - { projectId: string }
+ * @param {object} data - { projectId: string, limit?: number, startAfterDocId?: string }
  * @param {object} context - 包含驗證資訊
- * @returns {Promise<{status: string, data: Array<object>}>}
+ * @returns {Promise<{status: string, data: Array<object>, hasMore: boolean, lastDocId: string|null}>}
  */
 exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
-  const { projectId } = request.data;
+  const { projectId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   if (!projectId) {
     throw new HttpsError("invalid-argument", "缺少 'projectId' 參數。");
   }
@@ -10123,29 +10158,56 @@ exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
   const db = new Firestore({ databaseId: 'anxi-app' });
   const functionName = `getInspectionRecordsForProjectFB (Project: ${projectId})`;
 
+  // 分頁參數：預設 50 筆，最大 200 筆
+  const pageSize = Math.min(Math.max(requestLimit || 50, 1), 200);
+
   try {
-    console.log(`[${functionName}] Executing collectionGroup query...`);
-    const recordsRef = db.collectionGroup("inspectionRecords")
+    console.log(`[${functionName}] Executing query with limit ${pageSize}...`);
+
+    // 使用頂層集合查詢 (inspectionRecords 是頂層集合)
+    let queryRef = db.collection("inspectionRecords")
       .where("projectId", "==", projectId)
-      // **** 👇👇👇 修改點：增加過濾條件 👇👇👇 ****
-      .where("isDeleted", "==", false) // ✓ 只撈取 isDeleted 為 false 的紀錄
-      // **** 👆👆👆 修改點結束 👆👆👆 ****
-      .orderBy("inspectionDate", "desc"); // 排序保持不變
+      .where("isDeleted", "==", false);
 
-    // ❗ 注意：此查詢可能需要新的 Firestore 複合索引 ❗
-    // 索引應包含：projectId (ASC), isDeleted (ASC), inspectionDate (DESC)
-    // 如果執行時報錯，請依照 Firebase 控制台連結建立索引。
-
-    const snapshot = await recordsRef.get();
-    console.log(`[${functionName}] Query completed. Found ${snapshot.size} non-deleted documents.`); // ✓ 更新 Log
-
-    // ... (後續處理 snapshot 的邏輯保持不變) ...
-    if (snapshot.empty) {
-      return { status: "success", data: [] };
+    // 日期範圍篩選
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom + 'T00:00:00+08:00');
+      queryRef = queryRef.where("inspectionDate", ">=", fromDate);
+      console.log(`[${functionName}] 日期篩選 from: ${dateFrom}`);
     }
-    const records = snapshot.docs.map(doc => {
+    if (dateTo) {
+      const toDate = new Date(dateTo + 'T23:59:59+08:00');
+      queryRef = queryRef.where("inspectionDate", "<=", toDate);
+      console.log(`[${functionName}] 日期篩選 to: ${dateTo}`);
+    }
+
+    queryRef = queryRef.orderBy("inspectionDate", "desc");
+
+    // 如果有游標，從指定文件之後開始查詢
+    if (startAfterDocId) {
+      const startAfterDoc = await db.collection("inspectionRecords").doc(startAfterDocId).get();
+      if (startAfterDoc.exists) {
+        queryRef = queryRef.startAfter(startAfterDoc);
+        console.log(`[${functionName}] 使用游標分頁，從文件 ${startAfterDocId} 之後開始查詢。`);
+      } else {
+        console.warn(`[${functionName}] 游標文件 ${startAfterDocId} 不存在，從頭開始查詢。`);
+      }
+    }
+
+    // 多撈 1 筆用於判斷是否還有更多資料
+    const snapshot = await queryRef.limit(pageSize + 1).get();
+    console.log(`[${functionName}] Query completed. Found ${snapshot.size} documents.`);
+
+    if (snapshot.empty) {
+      return { status: "success", data: [], hasMore: false, lastDocId: null };
+    }
+
+    // 判斷是否還有下一頁
+    const hasMore = snapshot.docs.length > pageSize;
+    const docsToReturn = hasMore ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
+
+    const records = docsToReturn.map(doc => {
       const data = doc.data();
-      // ... (日期轉換邏輯保持不變) ...
       const inspectionDate = data.inspectionDate?.toDate ? data.inspectionDate.toDate().toISOString() : data.inspectionDate;
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt;
       if (data.customerConfirmedAt && typeof data.customerConfirmedAt.toDate === 'function') {
@@ -10155,12 +10217,13 @@ exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
       return { id: doc.id, ...data, inspectionDate, createdAt };
     });
 
-    console.log(`[${functionName}] Successfully processed ${records.length} non-deleted records.`); // ✓ 更新 Log
-    return { status: "success", data: records };
+    const lastDocId = docsToReturn.length > 0 ? docsToReturn[docsToReturn.length - 1].id : null;
+
+    console.log(`[${functionName}] Successfully processed ${records.length} records. hasMore: ${hasMore}, lastDocId: ${lastDocId}`);
+    return { status: "success", data: records, hasMore, lastDocId };
 
   } catch (error) {
-    console.error(`[${functionName}] Error fetching project records (collectionGroup):`, error);
-    // ... (索引錯誤處理保持不變) ...
+    console.error(`[${functionName}] Error fetching project records:`, error);
     if (error.code === 9 && error.message.includes('index')) {
       throw new HttpsError("failed-precondition", `查詢全建案紀錄失敗：資料庫缺少必要的複合索引 (可能需要包含 isDeleted 欄位)。請檢查 Cloud Functions 日誌中的連結以建立索引。`);
     }

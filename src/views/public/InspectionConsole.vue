@@ -40,7 +40,6 @@
                 :items="buildingItems"
                 label="選擇棟別"
                 variant="outlined"
-                
                 hide-details
                 clearable
                 @update:model-value="selectedUnit = null; loadData()"
@@ -54,41 +53,59 @@
                 :items="unitItems"
                 label="選擇戶別"
                 variant="outlined"
-               
                 hide-details
                 clearable
-                 :disabled="showDeleted || !selectedBuilding"
+                :disabled="showDeleted || !selectedBuilding"
                 @update:model-value="loadData()"
               ></v-select>
             </v-col>
-            <v-col cols="12" sm="4" md="3" lg="3">
+            <v-col cols="12" sm="4" :md="mobile ? 12 : 3" :lg="mobile ? 12 : 3">
               <v-text-field
                 v-model="searchFilter"
                 label="搜尋所有欄位"
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
-               
                 hide-details
                 clearable
-              ></v-text-field>
+              >
+                <template v-slot:append-inner>
+                  <v-chip
+                    size="small"
+                    :color="activeFilterCount > 0 ? 'primary' : (showAdvancedFilter ? 'primary' : 'default')"
+                    :variant="activeFilterCount > 0 || showAdvancedFilter ? 'flat' : 'outlined'"
+                    prepend-icon="mdi-filter-outline"
+                    @click="showAdvancedFilter = !showAdvancedFilter"
+                    style="cursor: pointer;"
+                  >
+                    篩選
+                    <template v-if="activeFilterCount > 0">
+                      ({{ activeFilterCount }})
+                    </template>
+                  </v-chip>
+                </template>
+              </v-text-field>
             </v-col>
             <v-col cols="12" md="5" lg="5" class="d-flex justify-end align-center mt-2 mt-md-0">
               <div v-if="!mobile" class="d-flex justify-end align-center flex-wrap ga-2" style="width: 100%;">
-                <v-btn
-                  color="primary"
-                  @click="openAddDialog"
-                  prepend-icon="mdi-plus"
-                  :disabled="showDeleted || !(selectedUnit && selectedBuilding)"
-                 
-                >
-                  新增
-                </v-btn>
+                <v-tooltip location="top" :text="!(selectedUnit && selectedBuilding) ? '請先選擇棟別與戶別' : showDeleted ? '無法在刪除模式新增' : '新增驗屋紀錄'">
+                  <template v-slot:activator="{ props: tooltipProps }">
+                    <span v-bind="tooltipProps">
+                      <v-btn
+                        color="primary"
+                        @click="openAddDialog"
+                        prepend-icon="mdi-plus"
+                        :disabled="showDeleted || !(selectedUnit && selectedBuilding)"
+                      >
+                        新增
+                      </v-btn>
+                    </span>
+                  </template>
+                </v-tooltip>
                 <v-btn-toggle
                   v-model="showDeleted"
                   :true-value="true"
                   :false-value="false"
                   mandatory
-                 
                   variant="outlined"
                   divided
                   color="primary"
@@ -157,6 +174,193 @@
                 </div>
             </v-col>
           </v-row>
+
+          <!-- 進階篩選面板 -->
+          <v-expand-transition>
+            <div v-show="showAdvancedFilter" class="mt-3">
+              <v-sheet rounded="lg" class="pa-3 bg-blue-grey-lighten-5 advanced-filter-panel">
+                <div class="d-flex align-center mb-2">
+                  <v-icon size="small" color="primary" class="mr-1">mdi-filter-cog-outline</v-icon>
+                  <span class="text-subtitle-2 font-weight-bold text-primary">進階篩選</span>
+                  <v-chip v-if="activeFilterCount > 0" size="x-small" color="primary" variant="tonal" class="ml-2">
+                    {{ activeFilterCount }} 個條件
+                  </v-chip>
+                  <v-spacer></v-spacer>
+                  <v-btn
+                    v-if="activeFilterCount > 0"
+                    variant="text"
+                    size="small"
+                    color="error"
+                    prepend-icon="mdi-filter-off-outline"
+                    @click="clearAllFilters"
+                  >
+                    清除全部
+                  </v-btn>
+                  <v-btn
+                    icon="mdi-close"
+                    variant="text"
+                    size="x-small"
+                    @click="showAdvancedFilter = false"
+                  ></v-btn>
+                </div>
+
+                <v-row dense>
+                  <!-- 日期範圍 -->
+                  <v-col cols="12" sm="6" md="3">
+                    <v-text-field
+                      v-model="advancedFilters.dateFrom"
+                      label="開始日期"
+                      type="date"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      prepend-inner-icon="mdi-calendar-start"
+                      bg-color="white"
+                      @update:model-value="onDateFromChange"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="6" md="3">
+                    <v-text-field
+                      v-model="advancedFilters.dateTo"
+                      label="結束日期"
+                      type="date"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      prepend-inner-icon="mdi-calendar-end"
+                      bg-color="white"
+                      :disabled="!advancedFilters.dateFrom"
+                      :min="advancedFilters.dateFrom || undefined"
+                    ></v-text-field>
+                  </v-col>
+
+                  <!-- 階段 -->
+                  <v-col cols="12" sm="6" md="3">
+                    <v-select
+                      v-model="advancedFilters.phase"
+                      :items="phaseFilterItems"
+                      label="階段"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      multiple
+                      chips
+                      closable-chips
+                      prepend-inner-icon="mdi-layers-outline"
+                      bg-color="white"
+                    ></v-select>
+                  </v-col>
+
+                  <!-- 買方確認 -->
+                  <v-col cols="12" sm="6" md="3">
+                    <v-select
+                      v-model="advancedFilters.confirmed"
+                      :items="confirmedFilterItems"
+                      label="買方確認"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      prepend-inner-icon="mdi-check-decagram-outline"
+                      bg-color="white"
+                    ></v-select>
+                  </v-col>
+                </v-row>
+
+                <v-row dense class="mt-1">
+                  <!-- 狀態 -->
+                  <v-col cols="12" sm="6" md="4">
+                    <v-select
+                      v-model="advancedFilters.status"
+                      :items="statusFilterItems"
+                      label="狀態"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      multiple
+                      chips
+                      closable-chips
+                      prepend-inner-icon="mdi-clipboard-check-outline"
+                      bg-color="white"
+                    ></v-select>
+                  </v-col>
+
+                  <!-- 進度 -->
+                  <v-col cols="12" sm="6" md="4">
+                    <v-select
+                      v-model="advancedFilters.progress"
+                      :items="progressFilterItems"
+                      label="進度"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      multiple
+                      chips
+                      closable-chips
+                      prepend-inner-icon="mdi-progress-wrench"
+                      bg-color="white"
+                    ></v-select>
+                  </v-col>
+
+                  <!-- 等級 -->
+                  <v-col cols="12" sm="6" md="4">
+                    <v-select
+                      v-model="advancedFilters.level"
+                      :items="levelFilterItems"
+                      label="等級"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                      multiple
+                      chips
+                      closable-chips
+                      prepend-inner-icon="mdi-alert-circle-outline"
+                      bg-color="white"
+                    ></v-select>
+                  </v-col>
+                </v-row>
+
+                <!-- 篩選結果統計 + 未完全載入警告 -->
+                <div v-if="activeFilterCount > 0" class="mt-2">
+                  <v-alert
+                    v-if="hasMore && !showDeleted"
+                    type="warning"
+                    variant="tonal"
+                    density="compact"
+                    class="mb-2"
+                  >
+                    <div class="d-flex align-center flex-wrap ga-2">
+                      <span class="text-body-2">
+                        ⚠️ 目前僅載入部分紀錄 ({{ allRecords.length }} 筆)，篩選結果可能不完整。
+                      </span>
+                      <v-btn
+                        size="small"
+                        variant="outlined"
+                        color="warning"
+                        prepend-icon="mdi-database-sync"
+                        @click="loadAllRecords"
+                        :loading="isLoadingAll"
+                      >
+                        載入全部紀錄
+                      </v-btn>
+                    </div>
+                  </v-alert>
+                  <div class="d-flex align-center">
+                    <v-icon size="small" color="grey" class="mr-1">mdi-information-outline</v-icon>
+                    <span class="text-caption text-grey">
+                      篩選結果：{{ filteredRecords.length }} 筆 / 共 {{ allRecords.length }} 筆{{ hasMore && !showDeleted ? ' (未全部載入)' : '' }}
+                    </span>
+                  </div>
+                </div>
+              </v-sheet>
+            </div>
+          </v-expand-transition>
         </v-sheet>
         <div v-if="isLoadingRecords" class="text-center pa-10"> <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular> <p class="mt-4 text-grey">正在載入紀錄...</p> </div>
         <div v-else-if="filteredRecords.length > 0">
@@ -245,7 +449,7 @@
           </div>
           <div v-if="viewMode === 'card'" class="pa-2 pa-sm-4">
             <v-row dense>
-              <v-col v-for="item in filteredRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
+              <v-col v-for="item in cardDisplayRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
                 <v-card
                   class="mb-3 record-card"
                   variant="outlined"
@@ -303,6 +507,25 @@
                 </v-card>
               </v-col>
             </v-row>
+            <!-- Card View 前端分頁：顯示更多 -->
+            <div v-if="hasMoreCards" class="text-center py-4">
+              <v-btn variant="outlined" color="primary" @click="showMoreCards" prepend-icon="mdi-chevron-down">
+                顯示更多 (已顯示 {{ cardDisplayRecords.length }} / {{ filteredRecords.length }} 筆)
+              </v-btn>
+            </div>
+          </div>
+          <!-- 「載入更多」按鈕 (後端分頁，Table & Card 共用) -->
+          <div v-if="hasMore && !showDeleted" class="text-center py-4 border-t">
+            <v-btn
+              variant="tonal"
+              color="primary"
+              @click="loadMoreRecords"
+              :loading="isLoadingMore"
+              prepend-icon="mdi-database-arrow-down"
+            >
+              從資料庫載入更多紀錄 (目前已載入 {{ allRecords.length }} 筆)
+            </v-btn>
+            <p class="text-caption text-grey mt-1">每次會從資料庫讀取 {{ PAGE_SIZE }} 筆新紀錄</p>
           </div>
           </div>
         <div v-else class="pa-10 text-center text-grey"> {{ noDataText }} </div>
@@ -700,63 +923,105 @@
         <v-icon size="small">{{ viewMode === 'table' ? 'mdi-view-dashboard-outline' : 'mdi-table' }}</v-icon>
         <span class="mobile-btn-text">切換顯示</span>
       </v-btn>
-      <v-menu location="top" offset-y>
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            value="export"
-            class="pa-0"
-            :disabled="!selectedUnit || showDeleted"
-          >
-            <v-icon size="small">mdi-export-variant</v-icon>
-            <span class="mobile-btn-text">寄出報告</span>
-          </v-btn>
-        </template>
-        <v-list density="compact" class="mb-2"> <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
+      <v-btn
+        @click="handleMobileExport"
+        value="export"
+        class="pa-0"
+        :disabled="!selectedUnit || showDeleted"
+      >
+        <v-icon size="small">mdi-export-variant</v-icon>
+        <span class="mobile-btn-text">寄出報告</span>
+      </v-btn>
+
+      <v-btn
+        @click="showMobileDownloadDialog = true"
+        value="download"
+        class="pa-0"
+        :disabled="filteredRecords.length === 0"
+      >
+        <v-icon size="small">mdi-download</v-icon>
+        <span class="mobile-btn-text">下載報告</span>
+      </v-btn>
+      </v-bottom-navigation>
+
+    <!-- 手機版：寄出報告選單 -->
+    <v-dialog v-model="showMobileExportDialog" max-width="320">
+      <v-card>
+        <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center">
+          <v-icon start color="primary">mdi-export-variant</v-icon>
+          寄出報告
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-list density="compact">
+          <v-list-item @click="showMobileExportDialog = false; handleShareReport()">
+            <template v-slot:prepend><v-icon color="blue">mdi-share-variant-outline</v-icon></template>
             <v-list-item-title>傳送記錄連結</v-list-item-title>
           </v-list-item>
-          <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
+          <v-list-item @click="showMobileExportDialog = false; handleGeneratePdf()">
+            <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
             <v-list-item-title>預覽與寄出報告</v-list-item-title>
           </v-list-item>
         </v-list>
-      </v-menu>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showMobileExportDialog = false">取消</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
-      <v-menu location="top" offset-y>
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            value="download"
-            class="pa-0"
-            :disabled="filteredRecords.length === 0"
-          >
-            <v-icon size="small">mdi-download</v-icon>
-            <span class="mobile-btn-text">下載報告</span>
-          </v-btn>
-        </template>
-        <v-list density="compact" class="mb-2">
-          <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
+    <!-- 手機版：下載報告選單 -->
+    <v-dialog v-model="showMobileDownloadDialog" max-width="320">
+      <v-card>
+        <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center">
+          <v-icon start color="primary">mdi-download</v-icon>
+          下載報告
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-list density="compact">
+          <v-list-item @click="showMobileDownloadDialog = false; handleDownloadExcel()">
+            <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
             <v-list-item-title>下載 Excel</v-list-item-title>
           </v-list-item>
-          <v-list-item @click="handleDownloadPdf" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
+          <v-list-item @click="showMobileDownloadDialog = false; handleDownloadPdf()">
+            <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
             <v-list-item-title>下載 PDF</v-list-item-title>
           </v-list-item>
         </v-list>
-      </v-menu>
-      </v-bottom-navigation>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showMobileDownloadDialog = false">取消</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
-    <v-btn
-      v-if="mobile && projectId"
-      @click="openAddDialog"
-      :disabled="showDeleted || !(selectedUnit && selectedBuilding)"
-      color="primary"
-      rounded="circle"
-      elevation="8"
-      size="large"
-      class="mobile-fab"
-      icon
+    <v-tooltip location="top" :text="!(selectedUnit && selectedBuilding) ? '請先選擇棟別與戶別' : '新增驗屋紀錄'">
+      <template v-slot:activator="{ props: tooltipProps }">
+        <v-btn
+          v-if="mobile && projectId"
+          v-bind="tooltipProps"
+          @click="handleMobileFabClick"
+          :color="!(selectedUnit && selectedBuilding) || showDeleted ? 'grey' : 'primary'"
+          rounded="circle"
+          elevation="8"
+          size="large"
+          class="mobile-fab"
+          icon
+        >
+          <v-icon size="large">mdi-plus</v-icon>
+        </v-btn>
+      </template>
+    </v-tooltip>
+
+    <!-- 提示 Snackbar -->
+    <v-snackbar
+      v-model="showHintSnackbar"
+      :timeout="2500"
+      color="warning"
+      location="top"
     >
-      <v-icon size="large">mdi-plus</v-icon>
-    </v-btn>
+      <v-icon start>mdi-alert-circle-outline</v-icon>
+      {{ hintSnackbarText }}
+    </v-snackbar>
 
     <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
   <span>Powered by&nbsp;</span>
@@ -779,7 +1044,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import liff from '@line/liff';
 import { useUserStore } from '@/store/user';
@@ -819,7 +1084,7 @@ const { mobile } = useDisplay(); // ✓ 確保 useDisplay 和 mobile 已定義
 
 const props = defineProps({ projectId: { type: String, default: null } });
 
-const viewMode = ref('table');
+const viewMode = ref(mobile.value ? 'card' : 'table');
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || '建案');
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
@@ -871,8 +1136,156 @@ const showProcessingDialog = ref(false); // 控制處理中提示 Dialog
 const isDownloading = ref(false); // 控制下載報告進度 Dialog
 const downloadingText = ref(''); // 下載進度文字
 
+// --- 分頁與快取相關狀態 ---
+// --- 日期工具函式 ---
+function formatDateToISO(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+function getDefaultDateFrom() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return formatDateToISO(d);
+}
+function getDefaultDateTo() {
+  return formatDateToISO(new Date());
+}
+function onDateFromChange(newVal) {
+  if (!newVal) {
+    // 開始日期被清除 → 同時清除結束日期
+    advancedFilters.dateTo = null;
+  } else if (advancedFilters.dateTo && advancedFilters.dateTo < newVal) {
+    // 開始日期比結束日期晚 → 自動把結束日期設為開始日期
+    advancedFilters.dateTo = newVal;
+  }
+}
 
+const PAGE_SIZE = 50; // 每次載入筆數
+const hasMore = ref(false); // 是否還有更多資料
+const lastDocId = ref(null); // 游標分頁用的最後一筆文件 ID
+const isLoadingMore = ref(false); // 是否正在載入更多（非首次載入）
+const recordsCache = new Map(); // 快取：Map<cacheKey, { records, hasMore, lastDocId }>
+const cardPageSize = ref(20); // Card View 每次顯示的筆數
 
+// --- 進階篩選相關狀態 ---
+const showAdvancedFilter = ref(false);
+const advancedFilters = reactive({
+  dateFrom: getDefaultDateFrom(),  // 開始日期：今天-7天
+  dateTo: getDefaultDateTo(),      // 結束日期：今天
+  phase: [],         // 階段 (多選)
+  status: [],        // 狀態 (多選)
+  progress: [],      // 進度 (多選)
+  level: [],         // 等級 (多選)
+  confirmed: null,   // 買方確認 (單選: 'confirmed' | 'unconfirmed' | null)
+});
+
+// 篩選選項 — 從已載入的資料和 optionsForChips 動態產生
+const phaseFilterItems = computed(() => {
+  const phases = new Set(allRecords.value.map(r => r.phase).filter(Boolean));
+  return [...phases].sort();
+});
+const statusFilterItems = computed(() => {
+  // 優先使用 optionsForChips 的配置，若為空則從資料中提取
+  if (optionsForChips.status.length > 0) {
+    return optionsForChips.status.map(opt => opt.value || opt);
+  }
+  const statuses = new Set(allRecords.value.map(r => r.status).filter(Boolean));
+  return [...statuses].sort();
+});
+const progressFilterItems = computed(() => {
+  if (optionsForChips.progress.length > 0) {
+    return optionsForChips.progress.map(opt => opt.value || opt);
+  }
+  const items = new Set(allRecords.value.map(r => r.progress).filter(Boolean));
+  return [...items].sort();
+});
+const levelFilterItems = computed(() => {
+  if (optionsForChips.level.length > 0) {
+    return optionsForChips.level.map(opt => opt.value || opt);
+  }
+  const items = new Set(allRecords.value.map(r => r.level).filter(Boolean));
+  return [...items].sort();
+});
+const confirmedFilterItems = [
+  { title: '已確認', value: 'confirmed' },
+  { title: '未確認', value: 'unconfirmed' },
+];
+
+// 活躍篩選條件計數
+const activeFilterCount = computed(() => {
+  let count = 0;
+  if (advancedFilters.dateFrom) count++;
+  if (advancedFilters.dateTo) count++;
+  if (advancedFilters.phase.length > 0) count++;
+  if (advancedFilters.status.length > 0) count++;
+  if (advancedFilters.progress.length > 0) count++;
+  if (advancedFilters.level.length > 0) count++;
+  if (advancedFilters.confirmed) count++;
+  return count;
+});
+
+// 清除所有進階篩選
+function clearAllFilters() {
+  // 先暫停 watch 避免重複觸發
+  const hadDateFilter = !!(advancedFilters.dateFrom || advancedFilters.dateTo);
+  advancedFilters.dateFrom = null;
+  advancedFilters.dateTo = null;
+  advancedFilters.phase = [];
+  advancedFilters.status = [];
+  advancedFilters.progress = [];
+  advancedFilters.level = [];
+  advancedFilters.confirmed = null;
+  // 如果之前有日期篩選，需要重新從後端載入（不帶日期條件）
+  if (hadDateFilter) {
+    loadData(false);
+  }
+}
+
+// 監聽日期變更 → 從後端重新載入 (debounce 500ms)
+let dateFilterTimer = null;
+watch(
+  () => [advancedFilters.dateFrom, advancedFilters.dateTo],
+  (newVal, oldVal) => {
+    // 避免 clearAllFilters 觸發的重複載入
+    if (!newVal[0] && !newVal[1] && !oldVal[0] && !oldVal[1]) return;
+    
+    if (dateFilterTimer) clearTimeout(dateFilterTimer);
+    dateFilterTimer = setTimeout(() => {
+      console.log(`[日期篩選變更] ${newVal[0] || 'N/A'} ~ ${newVal[1] || 'N/A'}，重新從後端載入...`);
+      loadData(false); // 不使用快取，強制重新載入
+    }, 500);
+  }
+);
+
+// 將各種日期格式統一轉為 'YYYY-MM-DD' 以便比較
+function normalizeDate(dateInput) {
+  if (!dateInput) return null;
+  try {
+    // Firestore Timestamp 物件
+    if (typeof dateInput === 'object' && dateInput !== null && typeof dateInput.toDate === 'function') {
+      const d = dateInput.toDate();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    // 字串處理
+    if (typeof dateInput === 'string') {
+      // ISO 格式 '2026-03-15T16:00:00.000Z' → 轉為本地日期
+      if (dateInput.includes('T')) {
+        const d = new Date(dateInput);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+      // 'YYYY/MM/DD' → 'YYYY-MM-DD'
+      if (dateInput.includes('/')) {
+        return dateInput.replace(/\//g, '-');
+      }
+      // 已經是 'YYYY-MM-DD'
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+        return dateInput;
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
 const noDataText = computed(() => {
   if (isLoadingRecords.value) return '正在載入紀錄...';
   if (showDeleted.value) {
@@ -891,18 +1304,82 @@ const buildingItems = computed(() => {
 const unitItems = computed(() => projectStructure.value[selectedBuilding.value] || []);
 
 const filteredRecords = computed(() => {
-    if (!searchFilter.value) return allRecords.value;
-    const lowerSearch = searchFilter.value.toLowerCase();
-    return allRecords.value.filter(record => {
-      const searchableValues = [
-        record.inspectionDate, record.phase, record.area, record.category,
-        record.subCategory, record.status, record.level, record.progress,
-        record.description, record.inspectorName, record.createdAt, record.deletedAt,
-        record.unitId
-      ];
-      return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
-    });
+    let records = allRecords.value;
+
+    // 1. 進階篩選 — 日期範圍
+    if (advancedFilters.dateFrom || advancedFilters.dateTo) {
+      records = records.filter(r => {
+        if (!r.inspectionDate) return false;
+        const recDate = normalizeDate(r.inspectionDate);
+        if (!recDate) return false;
+        if (advancedFilters.dateFrom && recDate < advancedFilters.dateFrom) return false;
+        if (advancedFilters.dateTo && recDate > advancedFilters.dateTo) return false;
+        return true;
+      });
+    }
+
+    // 2. 進階篩選 — 階段
+    if (advancedFilters.phase.length > 0) {
+      records = records.filter(r => advancedFilters.phase.includes(r.phase));
+    }
+
+    // 3. 進階篩選 — 狀態
+    if (advancedFilters.status.length > 0) {
+      records = records.filter(r => advancedFilters.status.includes(r.status));
+    }
+
+    // 4. 進階篩選 — 進度
+    if (advancedFilters.progress.length > 0) {
+      records = records.filter(r => advancedFilters.progress.includes(r.progress));
+    }
+
+    // 5. 進階篩選 — 等級
+    if (advancedFilters.level.length > 0) {
+      records = records.filter(r => advancedFilters.level.includes(r.level));
+    }
+
+    // 6. 進階篩選 — 買方確認
+    if (advancedFilters.confirmed === 'confirmed') {
+      records = records.filter(r => !!r.customerConfirmedAt);
+    } else if (advancedFilters.confirmed === 'unconfirmed') {
+      records = records.filter(r => !r.customerConfirmedAt);
+    }
+
+    // 7. 文字搜尋 (原有邏輯)
+    if (searchFilter.value) {
+      const lowerSearch = searchFilter.value.toLowerCase();
+      records = records.filter(record => {
+        const searchableValues = [
+          record.inspectionDate, record.phase, record.area, record.category,
+          record.subCategory, record.status, record.level, record.progress,
+          record.description, record.inspectorName, record.createdAt, record.deletedAt,
+          record.unitId
+        ];
+        return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
+      });
+    }
+
+    return records;
 });
+
+// Card View 的分頁顯示
+const cardDisplayRecords = computed(() => {
+  return filteredRecords.value.slice(0, cardPageSize.value);
+});
+const hasMoreCards = computed(() => {
+  return cardPageSize.value < filteredRecords.value.length;
+});
+function showMoreCards() {
+  cardPageSize.value += 20;
+}
+
+// 快取 key 產生器 (包含日期範圍)
+function getCacheKey() {
+  const datePart = (advancedFilters.dateFrom || '') + '_' + (advancedFilters.dateTo || '');
+  if (showDeleted.value) return `deleted_${props.projectId}`;
+  if (selectedUnit.value) return `unit_${props.projectId}_${selectedUnit.value}_${datePart}`;
+  return `project_${props.projectId}_${datePart}`;
+}
 
 const getBatchRecordsSummary = (batchId) => {
    if (!allRecords.value) return [];
@@ -934,7 +1411,7 @@ const headers = computed(() => {
     let finalHeaders = [...baseHeaders];
 
   if (!selectedUnit.value) {
-    finalHeaders.splice(1, 0, { title: '戶別', key: 'unitId', sortable: true, width: '100px' });
+    finalHeaders.splice(0, 0, { title: '戶別', key: 'unitId', sortable: true, width: '100px' });
   }
 
   if (showDeleted.value) {
@@ -1020,7 +1497,7 @@ onMounted(async () => {
 
 async function loadProjectStructure() { if (!props.projectId) return; isLoadingStructure.value = true; const result = await getProjectStructureFB(props.projectId); if (result.status === 'success') projectStructure.value = result.data; else console.error("載入建案結構失敗:", result.message); isLoadingStructure.value = false; }
 
-async function loadData() {
+async function loadData(useCache = true) {
   if (!props.projectId) {
       console.warn('[loadData] projectId is not yet available. Aborting load.'); 
       allRecords.value = []; 
@@ -1028,26 +1505,56 @@ async function loadData() {
       return; 
   }
 
+  // 重置分頁狀態
+  hasMore.value = false;
+  lastDocId.value = null;
+  cardPageSize.value = 20;
+
+  // 檢查快取
+  const cacheKey = getCacheKey();
+  if (useCache && recordsCache.has(cacheKey)) {
+    const cached = recordsCache.get(cacheKey);
+    allRecords.value = cached.records;
+    hasMore.value = cached.hasMore;
+    lastDocId.value = cached.lastDocId;
+    console.log(`[loadData] 使用快取載入 ${cached.records.length} 筆紀錄 (cacheKey: ${cacheKey})`);
+    return;
+  }
+
   isLoadingRecords.value = true;
   allRecords.value = [];
   let result;
   try {
     if (showDeleted.value) {
+      // 已刪除紀錄 — 不分頁（通常量不大）
       console.log(`Loading DELETED records for Project: ${props.projectId}`);
       result = await getDeletedInspectionRecordsForProjectFB(props.projectId);
     } else {
+      // 建立分頁參數 (包含日期範圍)
+      const paginationOpts = { limit: PAGE_SIZE };
+      if (advancedFilters.dateFrom) paginationOpts.dateFrom = advancedFilters.dateFrom;
+      if (advancedFilters.dateTo) paginationOpts.dateTo = advancedFilters.dateTo;
+
       if (selectedUnit.value) {
-        console.log(`Loading ACTIVE records for Unit: ${props.projectId}/${selectedUnit.value}`);
-        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value);
+        console.log(`Loading ACTIVE records for Unit: ${props.projectId}/${selectedUnit.value} (limit: ${PAGE_SIZE}, date: ${advancedFilters.dateFrom || 'N/A'} ~ ${advancedFilters.dateTo || 'N/A'})`);
+        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value, paginationOpts);
       } else {
-        console.log(`Loading ACTIVE records for Project: ${props.projectId}`);
-        result = await getInspectionRecordsForProjectFB(props.projectId);
+        console.log(`Loading ACTIVE records for Project: ${props.projectId} (limit: ${PAGE_SIZE}, date: ${advancedFilters.dateFrom || 'N/A'} ~ ${advancedFilters.dateTo || 'N/A'})`);
+        result = await getInspectionRecordsForProjectFB(props.projectId, paginationOpts);
       }
     }
 
     if (result.status === 'success') {
       allRecords.value = result.data;
-      console.log(`Loaded ${allRecords.value.length} records.`);
+      hasMore.value = result.hasMore || false;
+      lastDocId.value = result.lastDocId || null;
+      console.log(`Loaded ${allRecords.value.length} records. hasMore: ${hasMore.value}`);
+      // 寫入快取
+      recordsCache.set(cacheKey, {
+        records: [...allRecords.value],
+        hasMore: hasMore.value,
+        lastDocId: lastDocId.value
+      });
     } else {
       console.error("載入驗屋紀錄失敗:", result.message);
       allRecords.value = [];
@@ -1060,6 +1567,133 @@ async function loadData() {
   } finally {
     isLoadingRecords.value = false;
   }
+}
+
+// 載入更多紀錄 (分頁載入下一頁)
+async function loadMoreRecords() {
+  if (!hasMore.value || isLoadingMore.value || !lastDocId.value) return;
+
+  isLoadingMore.value = true;
+  let result;
+  try {
+    const paginationOpts = {
+      limit: PAGE_SIZE,
+      startAfterDocId: lastDocId.value
+    };
+    if (advancedFilters.dateFrom) paginationOpts.dateFrom = advancedFilters.dateFrom;
+    if (advancedFilters.dateTo) paginationOpts.dateTo = advancedFilters.dateTo;
+
+    if (selectedUnit.value) {
+      result = await getInspectionRecordsFB(props.projectId, selectedUnit.value, paginationOpts);
+    } else {
+      result = await getInspectionRecordsForProjectFB(props.projectId, paginationOpts);
+    }
+
+    if (result.status === 'success') {
+      // 將新資料追加到現有資料後面
+      allRecords.value = [...allRecords.value, ...result.data];
+      hasMore.value = result.hasMore || false;
+      lastDocId.value = result.lastDocId || null;
+      console.log(`載入更多: +${result.data.length} 筆，總計 ${allRecords.value.length} 筆。hasMore: ${hasMore.value}`);
+      // 更新快取
+      const cacheKey = getCacheKey();
+      recordsCache.set(cacheKey, {
+        records: [...allRecords.value],
+        hasMore: hasMore.value,
+        lastDocId: lastDocId.value
+      });
+    } else {
+      console.error('載入更多紀錄失敗:', result.message);
+    }
+  } catch (error) {
+    console.error('載入更多紀錄時發生錯誤:', error);
+  } finally {
+    isLoadingMore.value = false;
+  }
+}
+
+// 載入全部紀錄 (連續分頁直到全部載完，用於精確篩選)
+const isLoadingAll = ref(false);
+
+async function loadAllRecords() {
+  if (!hasMore.value || isLoadingAll.value) return;
+
+  isLoadingAll.value = true;
+  let loadedCount = 0;
+  try {
+    while (hasMore.value && lastDocId.value) {
+      let result;
+      const paginationOpts = {
+        limit: 200,
+        startAfterDocId: lastDocId.value
+      };
+      if (advancedFilters.dateFrom) paginationOpts.dateFrom = advancedFilters.dateFrom;
+      if (advancedFilters.dateTo) paginationOpts.dateTo = advancedFilters.dateTo;
+
+      if (selectedUnit.value) {
+        result = await getInspectionRecordsFB(props.projectId, selectedUnit.value, paginationOpts);
+      } else {
+        result = await getInspectionRecordsForProjectFB(props.projectId, paginationOpts);
+      }
+
+      if (result.status === 'success' && result.data.length > 0) {
+        allRecords.value = [...allRecords.value, ...result.data];
+        hasMore.value = result.hasMore || false;
+        lastDocId.value = result.lastDocId || null;
+        loadedCount += result.data.length;
+        console.log(`載入全部: +${result.data.length} 筆，總計 ${allRecords.value.length} 筆。hasMore: ${hasMore.value}`);
+      } else {
+        hasMore.value = false;
+        break;
+      }
+    }
+
+    // 更新快取
+    const cacheKey = getCacheKey();
+    recordsCache.set(cacheKey, {
+      records: [...allRecords.value],
+      hasMore: false,
+      lastDocId: null
+    });
+    console.log(`全部載入完成，共 ${allRecords.value.length} 筆紀錄。`);
+  } catch (error) {
+    console.error('載入全部紀錄時發生錯誤:', error);
+  } finally {
+    isLoadingAll.value = false;
+  }
+}
+// --- 提示 Snackbar ---
+const showHintSnackbar = ref(false);
+const hintSnackbarText = ref('');
+
+function showHint(text) {
+  hintSnackbarText.value = text;
+  showHintSnackbar.value = true;
+}
+
+function handleMobileFabClick() {
+  if (showDeleted.value) {
+    showHint('⚠️ 無法在刪除模式下新增紀錄');
+    return;
+  }
+  if (!selectedBuilding.value) {
+    showHint('📋 請先選擇「棟別」與「戶別」');
+    return;
+  }
+  if (!selectedUnit.value) {
+    showHint('📋 請先選擇「戶別」才能新增紀錄');
+    return;
+  }
+  openAddDialog();
+}
+
+// --- 手機版選單 Dialog ---
+const showMobileDownloadDialog = ref(false);
+const showMobileExportDialog = ref(false);
+
+function handleMobileExport() {
+  if (!selectedUnit.value || showDeleted.value) return;
+  showMobileExportDialog.value = true;
 }
 
 async function loadOptionsForChips() { if (!props.projectId) return; const result = await getInspectionOptionsForProjectFB(props.projectId); if (result.status === 'success') { optionsForChips.status = result.data.status || []; optionsForChips.level = result.data.level || []; optionsForChips.progress = result.data.progress || []; } else console.error("載入 Chip 選項失敗:", result.message); }
@@ -1193,14 +1827,23 @@ function closeProcessingDialog() {
 
 function openAddDialog() { recordBeingEdited.value = null; showEditorDialog.value = true; }
 function openEditDialog(record) { recordBeingEdited.value = record; showEditorDialog.value = true; }
-function handleRecordSaved() { showEditorDialog.value = false; loadData(); }
+function handleRecordSaved() {
+  showEditorDialog.value = false;
+  // 新增/編輯後清除相關快取，強制重新載入
+  const cacheKey = getCacheKey();
+  recordsCache.delete(cacheKey);
+  loadData(false); // 不使用快取
+}
 function showImagePreview(url) { previewImageUrl.value = url; showPreviewDialog.value = true; }
 function formatDate(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd', { locale: zhTW }); } catch (e) { return dateString; } }
 function formatDateTime(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd HH:mm', { locale: zhTW }); } catch (e) { return dateString; } }
 function openDeleteDialog(item) { recordToDelete.value = item; showDeleteDialog.value = true; }
-async function confirmDeleteRecord() { if (!recordToDelete.value?.id) return; isDeleting.value = true; try { const result = await deleteInspectionRecordFB(recordToDelete.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id); showDeleteDialog.value = false; alert('紀錄已移至資源回收桶。'); } else throw new Error(result.message || '刪除失敗'); } catch (error) { console.error("刪除紀錄時發生錯誤:", error); alert(`刪除失敗: ${error.message}`); } finally { isDeleting.value = false; recordToDelete.value = null; } }
+async function confirmDeleteRecord() { if (!recordToDelete.value?.id) return; isDeleting.value = true; try { const result = await deleteInspectionRecordFB(recordToDelete.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id); showDeleteDialog.value = false; // 清除相關快取 (刪除後資料會移到刪除區)
+      recordsCache.delete(getCacheKey()); recordsCache.delete(`deleted_${props.projectId}`); // 同時更新當前快取
+      const cacheKey = getCacheKey(); recordsCache.set(cacheKey, { records: [...allRecords.value], hasMore: hasMore.value, lastDocId: lastDocId.value }); alert('紀錄已移至資源回收桶。'); } else throw new Error(result.message || '刪除失敗'); } catch (error) { console.error("刪除紀錄時發生錯誤:", error); alert(`刪除失敗: ${error.message}`); } finally { isDeleting.value = false; recordToDelete.value = null; } }
 function openRestoreDialog(item) { recordToRestore.value = item; showRestoreDialog.value = true; }
-async function confirmRestoreRecord() { if (!recordToRestore.value?.id) return; isRestoring.value = true; try { const result = await restoreInspectionRecordFB(recordToRestore.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToRestore.value.id); showRestoreDialog.value = false; alert('紀錄已成功還原。'); } else throw new Error(result.message || '還原失敗'); } catch (error) { console.error("還原紀錄時發生錯誤:", error); alert(`還原失敗: ${error.message}`); } finally { isRestoring.value = false; recordToRestore.value = null; } }
+async function confirmRestoreRecord() { if (!recordToRestore.value?.id) return; isRestoring.value = true; try { const result = await restoreInspectionRecordFB(recordToRestore.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToRestore.value.id); showRestoreDialog.value = false; // 清除相關快取 (還原後資料會移回正常區)
+      recordsCache.delete(`deleted_${props.projectId}`); recordsCache.delete(`project_${props.projectId}`); if (recordToRestore.value?.unitId) recordsCache.delete(`unit_${props.projectId}_${recordToRestore.value.unitId}`); alert('紀錄已成功還原。'); } else throw new Error(result.message || '還原失敗'); } catch (error) { console.error("還原紀錄時發生錯誤:", error); alert(`還原失敗: ${error.message}`); } finally { isRestoring.value = false; recordToRestore.value = null; } }
 
 function handleModeChange(newModeValue) {
   selectedBuilding.value = null;
@@ -1225,13 +1868,30 @@ async function loadImageAsBase64(url) {
   }
 }
 
+const DOWNLOAD_EXCEL_LIMIT = 500; // Excel 下載上限
+const DOWNLOAD_PDF_LIMIT = 100;   // PDF 下載上限（圖片載入較慢）
+
 async function handleDownloadExcel() {
   if (filteredRecords.value.length === 0) {
     alert('目前沒有可下載的資料。');
     return;
   }
+
+  let recordsToExport = filteredRecords.value;
+
+  if (recordsToExport.length > DOWNLOAD_EXCEL_LIMIT) {
+    const userChoice = confirm(
+      `目前共有 ${recordsToExport.length} 筆紀錄，下載全部可能需要較長時間。\n\n` +
+      `• 按「確定」→ 僅下載前 ${DOWNLOAD_EXCEL_LIMIT} 筆\n` +
+      `• 按「取消」→ 放棄下載\n\n` +
+      `💡 建議使用「進階篩選」縮小範圍後再下載。`
+    );
+    if (!userChoice) return;
+    recordsToExport = recordsToExport.slice(0, DOWNLOAD_EXCEL_LIMIT);
+  }
+
   isDownloading.value = true;
-  downloadingText.value = '正在準備 Excel 報告...';
+  downloadingText.value = `正在準備 Excel 報告 (${recordsToExport.length} 筆)...`;
   try {
     const ExcelJS = await import('exceljs');
     const { saveAs } = await import('file-saver');
@@ -1275,7 +1935,7 @@ async function handleDownloadExcel() {
       };
     });
 
-    const records = filteredRecords.value;
+    const records = recordsToExport;
     for (let i = 0; i < records.length; i++) {
       downloadingText.value = `正在處理資料 (${i + 1}/${records.length})...`;
       const item = records[i];
@@ -1359,8 +2019,22 @@ async function handleDownloadPdf() {
     alert('目前沒有可下載的資料。');
     return;
   }
+
+  let recordsToExport = filteredRecords.value;
+
+  if (recordsToExport.length > DOWNLOAD_PDF_LIMIT) {
+    const userChoice = confirm(
+      `目前共有 ${recordsToExport.length} 筆紀錄，PDF 報告需要載入大量圖片，可能需要很長時間。\n\n` +
+      `• 按「確定」→ 僅下載前 ${DOWNLOAD_PDF_LIMIT} 筆\n` +
+      `• 按「取消」→ 放棄下載\n\n` +
+      `💡 建議使用「進階篩選」縮小範圍後再下載。`
+    );
+    if (!userChoice) return;
+    recordsToExport = recordsToExport.slice(0, DOWNLOAD_PDF_LIMIT);
+  }
+
   isDownloading.value = true;
-  downloadingText.value = '正在準備 PDF 報告...';
+  downloadingText.value = `正在準備 PDF 報告 (${recordsToExport.length} 筆)...`;
   try {
     const { jsPDF } = await import('jspdf');
     const html2canvasModule = await import('html2canvas');
@@ -1375,7 +2049,7 @@ async function handleDownloadPdf() {
     const cardH = halfH - margin - 2; // 每段可用高度
     const renderPxW = 760;
     const renderPxH = 540;
-    const records = filteredRecords.value;
+    const records = recordsToExport;
 
     // 預載所有圖片
     downloadingText.value = '正在載入圖片...';
@@ -1957,13 +2631,13 @@ async function sendInspectionEmail() {
   line-height: 1.2;
 }
 
-/* ✓ 新增：中間 FAB 按鈕的樣式 (fixed) */
+/* ✓ FAB 按鈕：水平置中，位於底部導覽列上方 */
 .mobile-fab {
   position: fixed;
-  bottom: 28px; /* 調整 FAB 的垂直位置 (使其懸浮在 nav 之上) */
+  bottom: 76px; /* 底部導覽列約 56px + 20px 間距 */
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10 !important; /* 確保在 v-bottom-navigation 之上 (nav 預設 z-index 8) */
+  z-index: 10 !important;
 }
 
 
@@ -1991,6 +2665,19 @@ async function sendInspectionEmail() {
 
 .confirmed-record-bg {
   background-color: #f5f5f5 !important; /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
+}
+
+/* 進階篩選面板 */
+.advanced-filter-panel {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.advanced-filter-panel .v-chip {
+  max-width: 120px;
+}
+.advanced-filter-panel .v-chip__content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 </style>

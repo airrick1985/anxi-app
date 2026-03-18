@@ -267,7 +267,7 @@ function renderInspectionSchedule() {
         .clearContent()
         .clearFormat()
         .setFontFamily("標楷體")
-        .setFontSize(10)
+        .setFontSize(12)
         .setVerticalAlignment("middle")
         .setWrap(true);
 
