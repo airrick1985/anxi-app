@@ -778,21 +778,31 @@
                 <v-divider class="my-6"></v-divider>
 
                 <!-- 驗屋授權書範本編輯器 -->
-                <v-card v-if="isAdmin" variant="outlined" class="mb-6">
+                <v-card variant="outlined" class="mb-6">
                   <v-card-text>
                     <div class="d-flex align-center justify-space-between mb-4">
                       <div>
-                        <div class="text-subtitle-1 font-weight-bold">驗屋授權書格式設定</div>
-                        <div class="text-caption text-grey-darken-1">設定受託人簽署時所看到的授權書內容與版面配置。</div>
+                        <div class="text-subtitle-1 font-weight-bold d-flex align-center">
+                          驗屋授權書格式設定
+                          <v-chip v-if="!isAdmin" size="x-small" color="grey" variant="flat" class="ml-2 text-white">
+                            <v-icon start size="x-small">mdi-eye-lock-outline</v-icon>
+                            僅供預覽
+                          </v-chip>
+                        </div>
+                        <div class="text-caption text-grey-darken-1">
+                          {{ isAdmin ? '設定受託人簽署時所看到的授權書內容與版面配置。' : '以下為目前授權書範本的預覽，如需修改請聯繫系統管理員。' }}
+                        </div>
                       </div>
-                      <v-btn-toggle v-model="isAuthLetterPreviewMode" mandatory density="compact" color="primary" variant="outlined">
+                      <!-- 管理員：顯示編輯/預覽切換按鈕 -->
+                      <v-btn-toggle v-if="isAdmin" v-model="isAuthLetterPreviewMode" mandatory density="compact" color="primary" variant="outlined">
                         <v-btn :value="false" prepend-icon="mdi-code-tags">編輯 HTML</v-btn>
                         <v-btn :value="true" prepend-icon="mdi-eye">預覽渲染結果</v-btn>
                       </v-btn-toggle>
                     </div>
 
+                    <!-- 管理員：編輯模式 -->
                     <v-expand-transition>
-                      <div v-if="!isAuthLetterPreviewMode">
+                      <div v-if="isAdmin && !isAuthLetterPreviewMode">
                         <div class="d-flex flex-wrap align-center mb-2 gap-2">
                           <span class="text-caption font-weight-medium">可用變數：</span>
                           <v-chip size="x-small" variant="tonal"> {建案名稱}</v-chip>
@@ -818,13 +828,19 @@
                           class="font-mono text-body-2"
                         ></v-textarea>
                       </div>
-                      <div v-else>
-                        <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml"></div>
-                        <div class="text-caption text-center text-grey mt-2">
-                          <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
-                        </div>
-                      </div>
                     </v-expand-transition>
+
+                    <!-- 預覽模式（管理員預覽 or 非管理員唯讀預覽） -->
+                    <div v-if="!isAdmin || isAuthLetterPreviewMode">
+                      <v-alert v-if="!isAdmin" type="info" variant="tonal" density="compact" class="mb-4">
+                        <v-icon start>mdi-information-outline</v-icon>
+                        此為唯讀預覽模式，您可以查看目前授權書的版面配置，但無法進行編輯。
+                      </v-alert>
+                      <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml"></div>
+                      <div class="text-caption text-center text-grey mt-2">
+                        <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
+                      </div>
+                    </div>
                   </v-card-text>
                 </v-card>
                   </v-window-item>
@@ -887,6 +903,9 @@
 
                 <!-- 聯絡資訊設定 -->
                 <p class="text-subtitle-1 font-weight-bold mb-2">聯絡資訊設定</p>
+                <v-alert type="warning" variant="tonal" density="compact" class="mb-4" border="start">
+                  此處設定的聯絡單位名稱及電話，將會顯示於<strong>公開預約網站頁面</strong>及系統發送的<strong>通知 EMAIL</strong> 中，請確認資訊正確。
+                </v-alert>
                 <v-text-field
                   v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.contact.name"
                   label="聯絡單位名稱"
@@ -1229,7 +1248,10 @@
                 
                 <v-divider class="my-6"></v-divider>
 
-                <p class="text-subtitle-1 font-weight-bold mb-2">未上傳驗屋報告 EMAIL 通知格式</p>
+                <div class="d-flex align-center justify-space-between mb-2">
+                  <p class="text-subtitle-1 font-weight-bold mb-0">未上傳驗屋報告 EMAIL 通知格式</p>
+                  <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-eye-outline" @click="isEmailPreviewDialogVisible = true">預覽 EMAIL</v-btn>
+                </div>
                 <p class="text-body-2 text-medium-emphasis mb-4">
                   若您需要協助設定請洽詢ANXI安熙系統管理員。
                 </p>
@@ -1267,6 +1289,43 @@
                 
          
            
+
+                <!-- Email 預覽 Dialog -->
+                <v-dialog v-model="isEmailPreviewDialogVisible" max-width="700px">
+                  <v-card>
+                    <v-card-title class="bg-grey-darken-3 text-white d-flex align-center">
+                      <v-icon start>mdi-email-outline</v-icon>
+                      EMAIL 預覽
+                      <v-spacer></v-spacer>
+                      <v-btn icon variant="text" @click="isEmailPreviewDialogVisible = false">
+                        <v-icon color="white">mdi-close</v-icon>
+                      </v-btn>
+                    </v-card-title>
+                    <v-card-text class="pa-0">
+                      <!-- 主旨預覽 -->
+                      <div class="pa-4 bg-grey-lighten-4 border-b">
+                        <div class="d-flex align-center mb-1">
+                          <span class="text-caption text-grey-darken-1 mr-2">主旨：</span>
+                          <span class="text-body-2 font-weight-bold">{{ emailPreviewSubject }}</span>
+                        </div>
+                        <div class="d-flex align-center">
+                          <span class="text-caption text-grey-darken-1 mr-2">收件人：</span>
+                          <span class="text-caption">wang@example.com</span>
+                        </div>
+                      </div>
+                      <!-- 內文預覽 -->
+                      <div class="email-preview-wrapper" v-html="emailPreviewHtml"></div>
+                    </v-card-text>
+                    <v-divider></v-divider>
+                    <v-card-actions class="pa-3 bg-grey-lighten-4">
+                      <v-alert type="info" variant="tonal" density="compact" class="flex-grow-1 mr-2" style="font-size: 12px;">
+                        <v-icon start size="small">mdi-information-outline</v-icon>
+                        此為測試資料預覽，實際發送時將帶入用戶真實資料。
+                      </v-alert>
+                      <v-btn color="primary" variant="flat" @click="isEmailPreviewDialogVisible = false">關閉</v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-dialog>
 
                 <v-divider class="my-8"></v-divider>
 
@@ -3079,7 +3138,7 @@ const authLetterPreviewHtml = computed(() => {
   if (!projectSettings.value.authLetterTemplate) return '<div class="text-center text-grey pa-4">尚未設定授權書範本，請點擊上方按鈕載入。</div>';
   
   const today = new Date();
-  const yyyymmdd = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+  const yyyymmdd = `${today.getFullYear()}年${(today.getMonth() + 1).toString().padStart(2, '0')}月${today.getDate().toString().padStart(2, '0')}日`;
   
   return projectSettings.value.authLetterTemplate
     .replace(/{建案名稱}/g, projectName.value || '測試建案')
@@ -3347,6 +3406,61 @@ const emailPlaceholders = [
   { value: '{bookerName}', text: '預約人姓名' },
   { value: '{appointmentDate}', text: '驗屋日期' },
 ];
+
+// Email 預覽功能
+const isEmailPreviewDialogVisible = ref(false);
+
+const emailPreviewSubject = computed(() => {
+  const template = projectSettings.value?.reportSettings?.uploadReminderEmail?.subject || '{projectName} {unitId} 未收到驗屋報告通知';
+  return template
+    .replace(/{projectName}/g, projectName.value || '測試建案')
+    .replace(/{unitId}/g, 'A1-1')
+    .replace(/{bookerName}/g, '王大明')
+    .replace(/{appointmentDate}/g, '2026/03/15');
+});
+
+const emailPreviewHtml = computed(() => {
+  const emailTemplate = projectSettings.value?.reportSettings?.uploadReminderEmail || {};
+  const pName = projectName.value || '測試建案';
+
+  let body = emailTemplate.body || '您已完成驗屋，但尚未收到您的驗屋報告。';
+  body = body
+    .replace(/{bookerName}/g, '王大明')
+    .replace(/{appointmentDate}/g, '2026/03/15')
+    .replace(/{unitId}/g, 'A1-1')
+    .replace(/{projectName}/g, pName);
+
+  let reminder = emailTemplate.reminder || '';
+  reminder = reminder
+    .replace(/{bookerName}/g, '王大明')
+    .replace(/{appointmentDate}/g, '2026/03/15')
+    .replace(/{unitId}/g, 'A1-1')
+    .replace(/{projectName}/g, pName);
+
+  const uploadUrl = emailTemplate.uploadUrl || '#';
+  const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
+
+  return `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+        <div style="background-color: #ab0300; color: #ffffff; padding: 20px; text-align: center;">
+          <h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2>
+        </div>
+        <div style="padding: 24px; line-height: 1.6; color: #333333;">
+          ${body}
+          ${reminder ? `<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">${reminder}</div>` : ''}
+          ${uploadButtonHtml}
+        </div>
+        <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+          <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+          <p style="margin: 5px 0 0 0;">${pName} 驗屋報告系統</p>
+          <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+            本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+          </p>
+        </div>
+      </div>
+    </div>`;
+});
 
 
 // 新增星期幾的設定

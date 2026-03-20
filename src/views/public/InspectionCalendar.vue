@@ -257,42 +257,87 @@
         v-model="timeSelectorMenu[index]" :close-on-content-click="false"
         location="end"
         transition="scale-transition"
+        @update:model-value="(val) => { if(val) dismissTimeSlotHint(); }"
       >
         <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" variant="text" size="small" append-icon="mdi-chevron-down">
-            時間
-          </v-btn>
+          <v-tooltip :model-value="!hasSeenTimeSlotHint && index === 0" location="bottom" content-class="time-hint-tooltip">
+            <template v-slot:activator="{ props: tooltipProps }">
+              <v-btn v-bind="{ ...props, ...tooltipProps }" variant="text" size="small" append-icon="mdi-chevron-down" class="time-selector-btn">
+                時間
+                <v-badge v-if="!hasSeenTimeSlotHint && index === 0" dot color="info" floating class="time-hint-badge">
+                </v-badge>
+              </v-btn>
+            </template>
+            <div class="d-flex align-center">
+              <v-icon size="small" class="mr-1">mdi-gesture-tap</v-icon>
+              <span>點擊此處可篩選要顯示的時段</span>
+            </div>
+          </v-tooltip>
         </template>
 
 
-          <v-card max-width="350">
-            <v-list style="max-height: 400px" class="overflow-y-auto" density="compact">
-              <v-list-item>
-                <div class="d-flex justify-space-between">
-                  <v-btn size="small" variant="text" @click="selectAllTimeSlots">全選</v-btn>
-                  <v-btn size="small" variant="text" @click="clearAllTimeSlots">清空</v-btn>
+          <v-card max-width="380">
+            <v-list density="compact">
+              <v-list-item class="px-3 py-2">
+                <div class="d-flex align-center justify-space-between">
+                  <v-btn-toggle v-model="autoTimeSlotMode" mandatory density="compact" color="primary" variant="outlined" class="flex-grow-1">
+                    <v-btn :value="true" size="small" prepend-icon="mdi-auto-fix" class="flex-grow-1">自動顯示</v-btn>
+                    <v-btn :value="false" size="small" prepend-icon="mdi-tune-variant" class="flex-grow-1">手動選擇</v-btn>
+                  </v-btn-toggle>
+                </div>
+                <div class="text-caption text-grey-darken-1 mt-1">
+                  {{ autoTimeSlotMode ? '根據預約資料自動顯示有資料的時段' : '自行勾選要顯示的時段' }}
                 </div>
               </v-list-item>
-              <v-divider></v-divider>
-              
-              <v-row no-gutters>
-                <v-col v-for="time in allPossibleTimeSlots" :key="time" cols="6">
-                  <v-checkbox
-                    v-model="selectedTimeSlots"
-                    :label="time"
-                    :value="time"
-                    density="compact"
-                    hide-details
-                    class="pa-2"
-                  ></v-checkbox>
-                </v-col>
-              </v-row>
-
             </v-list>
+            <v-divider></v-divider>
+
+            <v-expand-transition>
+              <v-list v-if="!autoTimeSlotMode" style="max-height: 350px" class="overflow-y-auto" density="compact">
+                <v-list-item class="px-3 py-1">
+                  <div class="d-flex justify-space-between">
+                    <v-btn size="small" variant="text" @click="selectAllTimeSlots">全選</v-btn>
+                    <v-btn size="small" variant="text" @click="clearAllTimeSlots">清空</v-btn>
+                  </div>
+                </v-list-item>
+                <v-divider></v-divider>
+                
+                <v-row no-gutters>
+                  <v-col v-for="time in allPossibleTimeSlots" :key="time" cols="6">
+                    <v-checkbox
+                      v-model="selectedTimeSlots"
+                      :label="time"
+                      :value="time"
+                      density="compact"
+                      hide-details
+                      class="pa-2"
+                    ></v-checkbox>
+                  </v-col>
+                </v-row>
+              </v-list>
+            </v-expand-transition>
+
+            <v-expand-transition>
+              <div v-if="autoTimeSlotMode" class="pa-3">
+                <v-alert v-if="dataBasedTimeSlots.length === 0" type="info" variant="tonal" density="compact">
+                  目前日期範圍內無預約資料
+                </v-alert>
+                <div v-else>
+                  <div class="text-caption text-grey-darken-1 mb-2">目前偵測到 {{ dataBasedTimeSlots.length }} 個時段有預約資料：</div>
+                  <v-chip-group column>
+                    <v-chip v-for="slot in dataBasedTimeSlots" :key="slot" size="small" variant="tonal" color="primary">
+                      <v-icon start size="x-small">mdi-clock-outline</v-icon>
+                      {{ slot }}
+                    </v-chip>
+                  </v-chip-group>
+                </div>
+              </div>
+            </v-expand-transition>
+
             <v-divider></v-divider>
             <v-card-actions>
               <v-spacer></v-spacer>
-            <v-btn color="primary" variant="text" @click="timeSelectorMenu[index] = false">
+              <v-btn color="primary" variant="text" @click="timeSelectorMenu[index] = false">
                 完成
               </v-btn>
             </v-card-actions>
@@ -372,8 +417,16 @@
         <v-divider></v-divider>
         
         <v-card-text class="pa-4">
+          <!-- 功能說明區塊 -->
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4" border="start">
+            <div class="text-body-2">
+              透過以下篩選條件，您可以自訂時間表上要顯示的預約紀錄及其標籤內容。勾選的項目會即時反映在行事曆上。
+            </div>
+          </v-alert>
+
           <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-2">狀態</v-label>
+            <v-label class="text-subtitle-1 font-weight-bold mb-1">狀態</v-label>
+            <div class="text-caption text-grey-darken-1 mb-2">選擇要在時間表上顯示的預約狀態</div>
             <div class="d-flex align-center flex-wrap ga-2">
               <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="black"></v-checkbox>
               <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="black"></v-checkbox>
@@ -383,7 +436,8 @@
           <v-divider class="my-3"></v-divider>
           
           <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-2">項目</v-label>
+            <v-label class="text-subtitle-1 font-weight-bold mb-1">項目</v-label>
+            <div class="text-caption text-grey-darken-1 mb-2">選擇要顯示哪些預約項目類型（如初驗、複驗等）</div>
             <div class="d-flex align-center flex-wrap ga-2">
               <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
             </div>
@@ -391,7 +445,8 @@
           <v-divider class="my-3"></v-divider>
 
           <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-2">選擇方式</v-label>
+            <v-label class="text-subtitle-1 font-weight-bold mb-1">選擇方式</v-label>
+            <div class="text-caption text-grey-darken-1 mb-2">篩選特定的預約方式（如屋主自驗、委託代驗等）</div>
             <div class="d-flex align-center flex-wrap ga-2">
               <v-checkbox v-for="method in currentMethodOptions" :key="method" v-model="selectedMethods" :label="method" :value="method" density="compact" hide-details color="black"></v-checkbox>
             </div>
@@ -399,7 +454,8 @@
           <v-divider class="my-3"></v-divider>
 
           <div>
-            <v-label class="text-subtitle-1 font-weight-bold mb-2">標題顯示</v-label>
+            <v-label class="text-subtitle-1 font-weight-bold mb-1">標題顯示</v-label>
+            <div class="text-caption text-grey-darken-1 mb-2">設定每筆預約紀錄在時間表格子中要顯示的欄位資訊</div>
             <div class="d-flex align-center flex-wrap ga-2">
               <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="black"></v-checkbox>
             </div>
@@ -831,11 +887,38 @@ const allPossibleTimeSlots = Array.from({ length: 48 }, (_, i) => {
   return `${hour}:${minute}`;
 });
 
-// 2. 用於儲存使用者勾選的時間 (優化：使用 useStorage 並預設開啟全部時段)
+// 2. 用於儲存使用者勾選的時間 (手動模式使用)
 const selectedTimeSlots = useStorage(`inspection_calendar_time_slots_${projectId.value}`, [...allPossibleTimeSlots]);
+
+// 2-1. 自動/手動時段模式切換 (預設自動)
+const autoTimeSlotMode = useStorage(`inspection_calendar_auto_time_mode_${projectId.value}`, true);
+
+// 2-2. 從實際預約資料中提取有資料的時段
+const dataBasedTimeSlots = computed(() => {
+  const timeSet = new Set();
+  allAppointments.value.forEach(appt => {
+    if (!appt.appointmentTimeSlot) return;
+    const timeSlotStr = String(appt.appointmentTimeSlot);
+    const timeMatch = timeSlotStr.match(/(\d{1,2}[:：]\d{2})/);
+    if (timeMatch) {
+      const normalizedTime = timeMatch[0].replace(/：/g, ':');
+      // 對齊到半小時制
+      const [h, m] = normalizedTime.split(':').map(Number);
+      const alignedMinute = m < 30 ? '00' : '30';
+      timeSet.add(`${h.toString().padStart(2, '0')}:${alignedMinute}`);
+    }
+  });
+  return [...timeSet].sort();
+});
 
 // 3. 控制時間選擇器選單的開關
 const timeSelectorMenu = ref({});
+
+// 5. 時段篩選引導提示（僅首次顯示）
+const hasSeenTimeSlotHint = useStorage(`inspection_calendar_seen_time_hint_${projectId.value}`, false);
+const dismissTimeSlotHint = () => {
+  hasSeenTimeSlotHint.value = true;
+};
 
 // 4. 全選/清空時間的輔助函式
 function selectAllTimeSlots() {
@@ -1089,6 +1172,15 @@ const isAnyOverlayActive = computed(() => {
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
 const unitOptions = computed(() => newAppointmentData.building ? (bookingOptions.value.buildingsAndUnits[newAppointmentData.building] || []) : []);
 const timeSlots = computed(() => {
+  if (autoTimeSlotMode.value) {
+    // 自動模式：顯示有預約資料的時段，若無資料則回退顯示預設工作時段
+    if (dataBasedTimeSlots.value.length > 0) {
+      return dataBasedTimeSlots.value;
+    }
+    // 無資料時顯示預設工作時段 08:00 ~ 18:00
+    return allPossibleTimeSlots.filter(t => t >= '08:00' && t <= '18:00');
+  }
+  // 手動模式：使用者自選
   return [...selectedTimeSlots.value].sort();
 });
 
@@ -2385,6 +2477,26 @@ function navigateToHouseholdGrid() {
 
 
 <style>
+/* --- 時段篩選引導提示動畫 --- */
+.time-hint-badge .v-badge__badge {
+  animation: pulse-hint 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-hint {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.5; }
+}
+
+.time-hint-tooltip {
+  font-size: 13px !important;
+  background-color: rgba(33, 150, 243, 0.95) !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+}
+
+.time-selector-btn {
+  position: relative;
+}
 /* --- 全局樣式 --- */
 .primary-bg { background-color: #1a73e8; color: white; }
 

@@ -9,7 +9,7 @@
       indeterminate
       size="64"
     ></v-progress-circular>
-    <div class="text-center mt-4 text-white">應用程式更新中...</div>
+    <div class="text-center mt-4 text-white">更新中...</div>
   </v-overlay>
 </template>
 
