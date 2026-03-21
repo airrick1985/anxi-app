@@ -678,7 +678,7 @@ const availableInspectionMethods = computed(() => {
         }
     }
 
-    // 2. 回退到全域設定 (如果有標記 showBookingMethod)
+    // 2. 回退到全域設定
     return config.bookingMethodOptions || [];
 });
 

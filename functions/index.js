@@ -744,7 +744,7 @@ exports.getAvailableSlots = onCall(async (request) => {
     }
     if (!batchCode) {
       console.error(`[${functionName}] ERROR: Batch code not assigned for ${bookingType}.`); // ✓ Log 錯誤
-      throw new HttpsError("permission-denied", `此戶別的 "${bookingType}" 預約目前未開放。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
     }
     console.log(`[${functionName}] Household ${unitId} is assigned to batch code: ${batchCode}`); // ✓ Log
 
@@ -759,7 +759,7 @@ exports.getAvailableSlots = onCall(async (request) => {
 
     if (batchQuery.empty) {
       console.error(`[${functionName}] ERROR: Active batch not found for code ${batchCode}.`); // ✓ Log 錯誤
-      throw new HttpsError("not-found", `找不到對應的有效預約批次 (代號: ${batchCode})。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
     }
     const batchDoc = batchQuery.docs[0];
     const batchData = batchDoc.data();
@@ -12833,7 +12833,7 @@ async function _handleGetAvailableSlots(data) {
       batchCode = bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
     }
     if (!batchCode) {
-      throw new HttpsError("permission-denied", `此戶別的 "${bookingType}" 預約目前未開放。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
     }
     const batchQuery = await db.collection('bookingBatches')
       .where('projectId', '==', projectId)
@@ -12842,7 +12842,7 @@ async function _handleGetAvailableSlots(data) {
       .where('isDeleted', '==', false)
       .get();
     if (batchQuery.empty) {
-      throw new HttpsError("not-found", `找不到對應的有效預約批次 (代號: ${batchCode})。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
     }
     const batchDoc = batchQuery.docs[0];
     const batchData = batchDoc.data();

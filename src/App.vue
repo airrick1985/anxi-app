@@ -13,7 +13,7 @@
       indeterminate
       size="64"
     ></v-progress-circular>
-    <div class="text-center mt-4" style="color: white;">應用程式更新中...</div>
+    <div class="text-center mt-4" style="color: white;">更新中，請稍後...(重新整理頁面)</div>
   </v-overlay>
 
   <v-dialog

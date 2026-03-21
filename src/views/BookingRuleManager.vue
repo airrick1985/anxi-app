@@ -2999,7 +2999,6 @@ const defaultSettings = computed(() => ({
     checkDuplicate: "OFF",
     validateId: "OFF",
     bookingTypes: [],
-    showBookingMethod: false,
     showReportUploadButton: false, 
     showReportUploadButton: false, 
     bookingMethodOptions: [],
@@ -3766,7 +3765,6 @@ async function loadDataForProject() {
         projectSettings.value.checkDuplicate = settings.checkDuplicate || "OFF";
         projectSettings.value.validateId = settings.validateId || "OFF";
         projectSettings.value.bookingTypes = settings.bookingTypes || [];
-        projectSettings.value.showBookingMethod = settings.showBookingMethod || false;
         projectSettings.value.showReportUploadButton = settings.showReportUploadButton || false; 
         projectSettings.value.bookingMethodOptions = settings.bookingMethodOptions || [];
         projectSettings.value.bookingMethodConfigs = settings.bookingMethodConfigs || {}; // [New] Load configs

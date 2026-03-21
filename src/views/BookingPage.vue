@@ -577,7 +577,7 @@
                 
                 
                <v-select
-                  v-if="projectConfig.showBookingMethod"
+                  v-if="availableMethodOptions.length > 0"
                   v-model="formStep1.bookingMethod"
                   :items="availableMethodOptions"
                   label="選擇方式"

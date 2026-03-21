@@ -9,7 +9,7 @@
       indeterminate
       size="64"
     ></v-progress-circular>
-    <div class="text-center mt-4 text-white">更新中...</div>
+    <div class="text-center mt-4 text-white">更新中，請稍後...(重新整理頁面)</div>
   </v-overlay>
 </template>
 
