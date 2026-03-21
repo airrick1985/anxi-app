@@ -724,22 +724,11 @@
              <v-card-text>
                 <h3 class="text-h6 mb-4">步驟二：填寫您的聯絡資訊與預約時段</h3>
                 <v-form ref="step2Form" @submit.prevent="handleStep2Submit">
-                    <v-text-field label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
+                    <v-text-field ref="step2NameField" label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
                     <v-text-field label="電話" v-model="formStep2.電話" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
-                    <v-text-field label="EMAIL" v-model="formStep2.EMAIL" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined"></v-text-field>
+                    <v-text-field ref="step2EmailField" label="EMAIL" v-model="formStep2.EMAIL" :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']" variant="outlined"></v-text-field>
                    
-                    <v-date-picker
-                        v-model="formStep2.預約日期"
-                        :min="bookingSlots.startDate"
-                        :max="bookingSlots.endDate"
-                        :allowed-dates="isDateAllowed"
-                        @update:model-value="onDateChange"
-                        :color="projectConfig.themeColor"
-                        width="100%"
-                        title="請選擇預約日期"
-                    ></v-date-picker>
-
-                <!-- 日期選擇提醒事項 -->
+ <!-- 日期選擇提醒事項 -->
                 <v-alert
                   v-if="datePickerReminderContent"
                   type="warning"
@@ -754,6 +743,19 @@
                   </template>
                   <div class="prose reminder-content" v-html="datePickerReminderContent"></div>
                 </v-alert>
+
+                    <v-date-picker
+                        v-model="formStep2.預約日期"
+                        :min="bookingSlots.startDate"
+                        :max="bookingSlots.endDate"
+                        :allowed-dates="isDateAllowed"
+                        @update:model-value="onDateChange"
+                        :color="projectConfig.themeColor"
+                        width="100%"
+                        title="請選擇預約日期"
+                    ></v-date-picker>
+
+               
 
                 
                 <!-- [New] Owner Presence Question -->
@@ -1467,6 +1469,8 @@ const dateAdapter = useDate();
 const projectStore = useProjectStore();
 const step1Form = ref(null);
 const step2Form = ref(null);
+const step2NameField = ref(null);
+const step2EmailField = ref(null);
 const bookingResultCard = ref(null);
 
 // 表單驗證失敗提示 Snackbar 狀態
@@ -1546,6 +1550,25 @@ const dynamicFormData = ref({}); // [New] Store dynamic field values
 // --- Booking Menu Logic (Parent-Child) ---
 const currentDynamicFields = ref([]);
 const showOwnerPresenceQuestion = ref(false); // [New]
+
+// Watcher: 進入 STEP2 時，自動捲動到表單區域並聚焦「姓名」欄位
+watch(step, async (newStep) => {
+  if (newStep === 2) {
+    await nextTick();
+    // 延遲以確保 loading overlay 消失、DOM 完全渲染
+    setTimeout(() => {
+      if (step2NameField.value) {
+        // 先捲動到姓名欄位位置
+        const el = step2NameField.value.$el;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        // 聚焦到姓名 input
+        step2NameField.value.focus();
+      }
+    }, 500);
+  }
+});
 
 // Watcher: Owner Present Change
 watch(() => formStep1.value.isOwnerPresent, (newVal) => {
