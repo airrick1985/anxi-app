@@ -190,25 +190,89 @@
  <v-dialog v-model="isMessageDialogVisible" max-width="800px">
     <v-card>
        <v-card-title class="bg-info text-white d-flex justify-space-between align-center">
-          <span>戶別 {{ selectedHouseholdUnit }} - 客戶回傳訊息 ({{ selectedHouseholdMessages.length }})</span>
-          <v-btn icon="mdi-close" variant="text" color="white" @click="isMessageDialogVisible = false"></v-btn>
+          <span>戶別 {{ selectedHouseholdUnit }} - 客戶回傳訊息 ({{ activeMessageCount }})</span>
+          <div class="d-flex align-center">
+             <v-switch
+                v-model="showDeletedMessages"
+                label="顯示已刪除"
+                color="white"
+                hide-details
+                density="compact"
+                class="mr-2"
+             ></v-switch>
+             <v-btn icon="mdi-close" variant="text" color="white" @click="isMessageDialogVisible = false"></v-btn>
+          </div>
        </v-card-title>
        <v-card-text class="pa-0" style="max-height: 80vh; overflow-y: auto; background-color: #f5f5f5;">
           <v-container>
-             <v-card v-for="msg in selectedHouseholdMessages" :key="msg.id" class="mb-4" border variant="outlined">
-                <v-card-header>
-                   <v-card-header-text>
-                      <v-card-title class="text-subtitle-1 font-weight-bold text-primary">
+             <div v-if="filteredMessages.length === 0" class="text-center pa-6 text-grey">
+                <v-icon size="48" class="mb-2">mdi-email-open-outline</v-icon>
+                <div>{{ showDeletedMessages ? '沒有任何訊息' : '沒有有效訊息' }}</div>
+             </div>
+             <v-card
+                v-for="msg in filteredMessages"
+                :key="msg.id"
+                class="mb-4"
+                border
+                variant="outlined"
+                :style="msg.isDeleted ? 'opacity: 0.5; border-left: 4px solid #e53935;' : ''"
+             >
+                <v-card-item>
+                   <template v-slot:default>
+                      <v-card-title class="text-subtitle-1 font-weight-bold" :class="msg.isDeleted ? 'text-grey text-decoration-line-through' : 'text-primary'">
                          {{ msg.functionName || '未命名功能' }}
+                         <v-chip v-if="msg.isDeleted" color="error" size="x-small" variant="flat" class="ml-2">已刪除</v-chip>
                       </v-card-title>
                       <v-card-subtitle>
                          {{ formatMessageDate(msg.createdAt) }}
+                         <span v-if="msg.isDeleted && msg.deletedAt" class="text-error ml-2">
+                            (刪除於 {{ formatMessageDate(msg.deletedAt) }})
+                         </span>
                       </v-card-subtitle>
-                   </v-card-header-text>
-                   <template v-slot:append>
-                      <v-chip v-if="msg.status === 'new'" color="error" size="small" class="mr-2">新訊息</v-chip>
                    </template>
-                </v-card-header>
+                   <template v-slot:append>
+                      <v-chip v-if="!msg.isDeleted && msg.status === 'new'" color="error" size="small" class="mr-2">新訊息</v-chip>
+                      <!-- 冷刪除按鈕 -->
+                      <v-btn
+                         v-if="!msg.isDeleted"
+                         icon="mdi-delete-outline"
+                         variant="text"
+                         color="error"
+                         size="small"
+                         :loading="messageActionLoading === msg.id"
+                         @click.stop="softDeleteMessage(msg)"
+                      >
+                         <v-icon>mdi-delete-outline</v-icon>
+                         <v-tooltip activator="parent" location="top">刪除此訊息</v-tooltip>
+                      </v-btn>
+                      <!-- 復原按鈕 -->
+                      <v-btn
+                         v-if="msg.isDeleted"
+                         icon="mdi-undo-variant"
+                         variant="text"
+                         color="success"
+                         size="small"
+                         :loading="messageActionLoading === msg.id"
+                         @click.stop="restoreMessage(msg)"
+                      >
+                         <v-icon>mdi-undo-variant</v-icon>
+                         <v-tooltip activator="parent" location="top">復原此訊息</v-tooltip>
+                      </v-btn>
+                      <!-- 硬刪除按鈕 -->
+                      <v-btn
+                         v-if="msg.isDeleted"
+                         icon="mdi-delete-forever-outline"
+                         variant="text"
+                         color="error"
+                         size="small"
+                         :loading="messageActionLoading === msg.id"
+                         @click.stop="confirmHardDeleteMessage(msg)"
+                      >
+                         <v-icon>mdi-delete-forever-outline</v-icon>
+                         <v-tooltip activator="parent" location="top">永久刪除</v-tooltip>
+                      </v-btn>
+                   </template>
+                </v-card-item>
                 <v-divider></v-divider>
                 
                 <v-card-text class="pt-3">
@@ -244,6 +308,28 @@
              </v-card>
           </v-container>
        </v-card-text>
+    </v-card>
+ </v-dialog>
+
+ <!-- 永久刪除確認 Dialog -->
+ <v-dialog v-model="isConfirmingHardDeleteMsg" width="auto" persistent>
+    <v-card>
+       <v-card-title class="text-h5 text-error">
+          ⚠️ 確認永久刪除訊息
+       </v-card-title>
+       <v-card-text>
+          您確定要永久刪除此訊息嗎？<br><br>
+          <strong>功能名稱：</strong>{{ hardDeleteMsgTarget?.functionName || '未命名' }}<br>
+          <strong>提交時間：</strong>{{ formatMessageDate(hardDeleteMsgTarget?.createdAt) }}<br><br>
+          <v-alert type="error" variant="tonal" density="compact">
+             此操作無法復原，訊息將被完全移除。
+          </v-alert>
+       </v-card-text>
+       <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="isConfirmingHardDeleteMsg = false" :disabled="messageActionLoading !== null">取消</v-btn>
+          <v-btn color="error" variant="flat" @click="executeHardDeleteMessage" :loading="messageActionLoading !== null">確認永久刪除</v-btn>
+       </v-card-actions>
     </v-card>
  </v-dialog>
 
@@ -641,7 +727,9 @@ const CustomerMessageRenderer = {
   setup(props) {
      const messageCount = computed(() => {
         const msgs = props.params.value;
-        return Array.isArray(msgs) ? msgs.length : 0;
+        if (!Array.isArray(msgs)) return 0;
+        // 正體中文註解：只計算未被冷刪除的訊息數量
+        return msgs.filter(m => !m.isDeleted).length;
      });
      const onClick = () => {
         if (props.params.colDef.cellRendererParams && props.params.colDef.cellRendererParams.onClick) {
@@ -654,21 +742,148 @@ const CustomerMessageRenderer = {
 
 // --- Customer Message Dialog Logic ---
 const isMessageDialogVisible = ref(false);
-const selectedHouseholdMessages = ref([]); // Array of messages
+const selectedHouseholdMessages = ref([]); // 完整陣列 (含已刪除)
 const selectedHouseholdUnit = ref('');
+const selectedHouseholdDocId = ref(''); // 用於寫回 Firestore
+const showDeletedMessages = ref(false); // 是否顯示已刪除訊息
+const messageActionLoading = ref(null); // 正在操作的訊息 ID
+const isConfirmingHardDeleteMsg = ref(false);
+const hardDeleteMsgTarget = ref(null);
+
+// 正體中文註解：過濾後的訊息列表（依據 showDeletedMessages 開關決定是否顯示已刪除項目）
+const filteredMessages = computed(() => {
+   if (showDeletedMessages.value) return selectedHouseholdMessages.value;
+   return selectedHouseholdMessages.value.filter(m => !m.isDeleted);
+});
+
+// 正體中文註解：僅計算未刪除的訊息數量
+const activeMessageCount = computed(() => {
+   return selectedHouseholdMessages.value.filter(m => !m.isDeleted).length;
+});
 
 const openMessageDialog = (householdData) => {
    const msgs = householdData.customerMessages || [];
    if (msgs.length === 0) return;
    
-   // Sort by date desc
+   // 正體中文註解：依日期排序（含已刪除），最新的在前面
    selectedHouseholdMessages.value = [...msgs].sort((a, b) => {
       const tA = a.createdAt?.seconds || 0;
       const tB = b.createdAt?.seconds || 0;
       return tB - tA;
    });
    selectedHouseholdUnit.value = householdData.unitId;
+   selectedHouseholdDocId.value = householdData._docId;
+   showDeletedMessages.value = false; // 每次開啟時重置
    isMessageDialogVisible.value = true;
+};
+
+/**
+ * 正體中文註解：冷刪除 - 標記訊息為已刪除（不從陣列中移除）
+ */
+const softDeleteMessage = async (msg) => {
+   if (!confirm(`確定要刪除「${msg.functionName || '未命名'}」的訊息嗎？`)) return;
+   messageActionLoading.value = msg.id;
+   try {
+      // 正體中文註解：在本地陣列中找到目標訊息並標記為已刪除
+      const targetMsg = selectedHouseholdMessages.value.find(m => m.id === msg.id);
+      if (targetMsg) {
+         targetMsg.isDeleted = true;
+         targetMsg.deletedAt = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 };
+      }
+      // 正體中文註解：寫回 Firestore
+      await updateHouseholdData(selectedHouseholdDocId.value, {
+         customerMessages: selectedHouseholdMessages.value
+      });
+      snackbar.text = '訊息已標記為刪除';
+      snackbar.color = 'info';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('冷刪除訊息失敗:', err);
+      // 正體中文註解：失敗時還原本地狀態
+      const targetMsg = selectedHouseholdMessages.value.find(m => m.id === msg.id);
+      if (targetMsg) {
+         delete targetMsg.isDeleted;
+         delete targetMsg.deletedAt;
+      }
+      snackbar.text = `刪除失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      messageActionLoading.value = null;
+   }
+};
+
+/**
+ * 正體中文註解：復原 - 移除已刪除標記
+ */
+const restoreMessage = async (msg) => {
+   messageActionLoading.value = msg.id;
+   try {
+      const targetMsg = selectedHouseholdMessages.value.find(m => m.id === msg.id);
+      if (targetMsg) {
+         delete targetMsg.isDeleted;
+         delete targetMsg.deletedAt;
+      }
+      await updateHouseholdData(selectedHouseholdDocId.value, {
+         customerMessages: selectedHouseholdMessages.value
+      });
+      snackbar.text = '訊息已成功復原';
+      snackbar.color = 'success';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('復原訊息失敗:', err);
+      // 正體中文註解：失敗時還原本地狀態
+      const targetMsg = selectedHouseholdMessages.value.find(m => m.id === msg.id);
+      if (targetMsg) {
+         targetMsg.isDeleted = true;
+         targetMsg.deletedAt = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 };
+      }
+      snackbar.text = `復原失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      messageActionLoading.value = null;
+   }
+};
+
+/**
+ * 正體中文註解：確認永久刪除 - 打開確認 Dialog
+ */
+const confirmHardDeleteMessage = (msg) => {
+   hardDeleteMsgTarget.value = msg;
+   isConfirmingHardDeleteMsg.value = true;
+};
+
+/**
+ * 正體中文註解：永久刪除 - 從陣列中完全移除訊息
+ */
+const executeHardDeleteMessage = async () => {
+   if (!hardDeleteMsgTarget.value) return;
+   const msgId = hardDeleteMsgTarget.value.id;
+   messageActionLoading.value = msgId;
+   try {
+      // 正體中文註解：從本地陣列中移除
+      const idx = selectedHouseholdMessages.value.findIndex(m => m.id === msgId);
+      if (idx !== -1) {
+         selectedHouseholdMessages.value.splice(idx, 1);
+      }
+      // 正體中文註解：寫回 Firestore
+      await updateHouseholdData(selectedHouseholdDocId.value, {
+         customerMessages: selectedHouseholdMessages.value
+      });
+      snackbar.text = '訊息已永久刪除';
+      snackbar.color = 'warning';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('永久刪除訊息失敗:', err);
+      snackbar.text = `永久刪除失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      messageActionLoading.value = null;
+      isConfirmingHardDeleteMsg.value = false;
+      hardDeleteMsgTarget.value = null;
+   }
 };
 
 const formatMessageDate = (timestamp) => {
