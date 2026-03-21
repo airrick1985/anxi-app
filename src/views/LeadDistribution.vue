@@ -675,7 +675,7 @@
       <div v-for="(input, index) in uploadInputs" :key="index" class="mb-3">
         <v-textarea
           v-model="uploadInputs[index]"
-          label="請貼入完整的客戶訊息 (系統將自動解析)"
+          label="請貼入完整的客戶訊息 (系統將自動偵測格式並解析)"
           variant="flat"
           bg-color="white"
           rounded="lg"
@@ -685,11 +685,65 @@
           prepend-inner-icon="mdi-card-text-outline"
           persistent-placeholder
           hide-details
+          @update:model-value="(val) => onTextInput(index, val)"
         ></v-textarea>
+        <!-- ✅ 即時偵測結果提示（每個文本框獨立） -->
+        <v-slide-y-transition>
+          <v-alert
+            v-if="input && input.trim() && detectedTemplateInfoMap[index]"
+            :type="detectedTemplateInfoMap[index].type"
+            variant="tonal"
+            density="compact"
+            class="mt-1 text-caption"
+            :icon="detectedTemplateInfoMap[index].icon"
+          >
+            {{ detectedTemplateInfoMap[index].message }}
+          </v-alert>
+        </v-slide-y-transition>
       </div>
       <v-btn variant="dashed" color="primary" block class="mt-2 rounded-lg" prepend-icon="mdi-plus" @click="uploadInputs.push('')">
         新增另一組文本內容
       </v-btn>
+
+      <!-- ✅ 手動指定範本（可選覆蓋） -->
+      <v-expansion-panels variant="accordion" class="mt-3">
+        <v-expansion-panel>
+          <v-expansion-panel-title class="text-caption py-2">
+            <v-icon size="small" class="me-2">mdi-tune-variant</v-icon>
+            進階：手動指定解析範本（覆蓋自動偵測）
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <v-select
+              v-model="selectedTemplateId"
+              :items="templateOptions"
+              item-title="title"
+              item-value="value"
+              label="選擇解析範本"
+              variant="outlined"
+              density="compact"
+              bg-color="white"
+              rounded="lg"
+              hide-details
+              prepend-inner-icon="mdi-file-document-check-outline"
+            >
+              <template v-slot:item="{ item, props: itemProps }">
+                <v-list-item v-bind="itemProps">
+                  <template v-slot:subtitle v-if="item.value !== 'auto'">
+                    <span class="text-caption text-grey">
+                      關鍵字：{{ customParsingRules.find(r => r.id === item.value)?.keywords?.join('、') || '未設定' }}
+                    </span>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
+            <v-alert v-if="selectedTemplateId !== 'auto'" type="warning" variant="tonal" density="compact" class="mt-2 text-caption">
+              ⚠️ 已手動指定範本「{{ customParsingRules.find(r => r.id === selectedTemplateId)?.templateName }}」，
+              將忽略自動偵測結果。
+              <v-btn size="x-small" variant="text" color="warning" class="ms-2" @click="selectedTemplateId = 'auto'">清除手動指定</v-btn>
+            </v-alert>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
     </v-window-item>
 
     <v-window-item value="excel">
@@ -1083,12 +1137,21 @@
             <v-window-item value="list">
               <div class="d-flex justify-space-between align-center mb-4">
                 <div class="text-subtitle-1 font-weight-bold">已儲存的解析範本 ({{ customParsingRules.length }})</div>
-                <v-btn color="primary" prepend-icon="mdi-plus" @click="aiTab = 'add'">新增範本</v-btn>
+                <v-btn color="primary" prepend-icon="mdi-plus" @click="startAddTemplate">新增範本</v-btn>
               </div>
               <v-card v-for="(rule, idx) in customParsingRules" :key="idx" class="mb-3 pa-3 rounded-lg elevation-1 bg-white">
                  <div class="d-flex justify-space-between align-center">
                      <div class="font-weight-bold text-primary">📋 {{ rule.templateName }}</div>
-                     <v-btn icon="mdi-delete" size="small" color="error" variant="text" @click="deleteAITemplate(rule.id)"></v-btn>
+                     <div class="d-flex gap-1">
+                       <v-btn icon="mdi-pencil" size="small" color="info" variant="text" @click="editAITemplate(rule)" v-tooltip:bottom="'編輯範本'"></v-btn>
+                       <v-btn icon="mdi-delete" size="small" color="error" variant="text" @click="deleteAITemplate(rule.id)" v-tooltip:bottom="'刪除範本'"></v-btn>
+                     </div>
+                 </div>
+                 <!-- ✅ 顯示識別關鍵字 -->
+                 <div v-if="rule.keywords && rule.keywords.length" class="mt-1 mb-1 d-flex flex-wrap gap-1">
+                     <v-chip v-for="kw in rule.keywords" :key="kw" size="x-small" color="info" variant="tonal" label class="font-weight-bold">
+                         🔑 {{ kw }}
+                     </v-chip>
                  </div>
                  <v-divider class="my-2"></v-divider>
                  <div style="font-size: 11px" class="text-grey-darken-2">
@@ -1105,8 +1168,12 @@
               </div>
             </v-window-item>
             <v-window-item value="add">
-              <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-2" @click="aiTab = 'list'">返回列表</v-btn>
+              <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-2" @click="cancelTemplateEdit">返回列表</v-btn>
               
+              <v-alert v-if="editingTemplateId" type="info" variant="tonal" density="compact" class="mb-3 text-caption">
+                ✏️ 正在編輯範本，修改後請測試並儲存
+              </v-alert>
+
               <v-text-field v-model="newAITemplate.name" label="範本名稱 (例如: 樂居留單)" variant="outlined" density="compact" bg-color="white" class="mb-3"></v-text-field>
               <v-textarea v-model="newAITemplate.sampleText" label="貼上範例文字" rows="5" variant="outlined" bg-color="white" class="mb-3" hint="請貼上完整的一筆客戶留單文字" persistent-hint></v-textarea>
               
@@ -1126,6 +1193,28 @@
                      <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.dateRegex" label="日期 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
                      <v-col cols="12"><v-text-field v-model="newAITemplate.regexResult.noteRegex" label="備註 Regex" density="compact" variant="underlined" hide-details></v-text-field></v-col>
                  </v-row>
+
+                 <!-- ✅ 識別關鍵字設定 -->
+                 <v-divider class="my-3"></v-divider>
+                 <div class="text-subtitle-2 font-weight-bold mb-2 text-info">
+                   🔑 識別關鍵字 <span class="text-caption text-grey font-weight-regular">(用於自動匹配範本，文本中包含任一關鍵字即自動選擇此範本)</span>
+                 </div>
+                 <v-combobox
+                   v-model="newAITemplate.keywords"
+                   label="輸入關鍵字後按 Enter 新增"
+                   variant="outlined"
+                   density="compact"
+                   bg-color="white"
+                   multiple
+                   chips
+                   closable-chips
+                   hide-details
+                   class="mb-2"
+                   prepend-inner-icon="mdi-key-variant"
+                   hint="例如：【樂居用戶留單通知】、【591】、官網 提交了"
+                   persistent-hint
+                 ></v-combobox>
+
                  <div class="mt-3 text-center">
                      <v-btn color="secondary" variant="tonal" @click="testRegexExtraction" size="small">2. 測試擷取結果</v-btn>
                  </div>
@@ -1147,8 +1236,15 @@
         </v-card-text>
         <v-card-actions class="pa-3 bg-white" v-if="aiTab === 'add'">
             <v-spacer></v-spacer>
-            <v-btn color="success" variant="elevated" @click="saveAITemplate" :disabled="!newAITemplate.testResult || !newAITemplate.name" :loading="isSavingAITemplate">
-                3. 確認無誤並儲存
+            <v-btn 
+              :color="editingTemplateId ? 'info' : 'success'" 
+              variant="elevated" 
+              @click="saveAITemplate" 
+              :disabled="!newAITemplate.name || (!newAITemplate.testResult && !editingTemplateId)" 
+              :loading="isSavingAITemplate"
+              :prepend-icon="editingTemplateId ? 'mdi-content-save-edit' : 'mdi-content-save'"
+            >
+                {{ editingTemplateId ? '更新範本' : '3. 確認無誤並儲存' }}
             </v-btn>
         </v-card-actions>
       </v-card>
@@ -1304,7 +1400,46 @@ const aiTab = ref('list');
 const customParsingRules = ref([]);
 const isGeneratingRegex = ref(false);
 const isSavingAITemplate = ref(false);
-const newAITemplate = ref({ name: '', sampleText: '', regexResult: null, testResult: null });
+const newAITemplate = ref({ name: '', sampleText: '', regexResult: null, testResult: null, keywords: [] });
+const editingTemplateId = ref(null); // ✅ 編輯中的範本 ID（null = 新增模式）
+
+// ✅ 重置表單
+const resetTemplateForm = () => {
+  newAITemplate.value = { name: '', sampleText: '', regexResult: null, testResult: null, keywords: [] };
+  editingTemplateId.value = null;
+};
+
+// ✅ 開始新增範本
+const startAddTemplate = () => {
+  resetTemplateForm();
+  aiTab.value = 'add';
+};
+
+// ✅ 取消編輯 / 返回列表
+const cancelTemplateEdit = () => {
+  resetTemplateForm();
+  aiTab.value = 'list';
+};
+
+// ✅ 編輯現有範本
+const editAITemplate = (rule) => {
+  editingTemplateId.value = rule.id;
+  newAITemplate.value = {
+    name: rule.templateName || '',
+    sampleText: rule.sampleText || '',
+    keywords: rule.keywords ? [...rule.keywords] : [],
+    regexResult: {
+      nameRegex: rule.nameRegex || '',
+      phoneRegex: rule.phoneRegex || '',
+      budgetRegex: rule.budgetRegex || '',
+      sourceRegex: rule.sourceRegex || '',
+      dateRegex: rule.dateRegex || '',
+      noteRegex: rule.noteRegex || ''
+    },
+    testResult: null // 編輯模式不強制要求重新測試
+  };
+  aiTab.value = 'add';
+};
 
 const fetchAITemplates = async () => {
   try {
@@ -1324,7 +1459,22 @@ const generateRegexWithAI = async () => {
     const result = await generateLeadParsingRegex({ sampleText: newAITemplate.value.sampleText });
     if (result.data.status === 'success') {
       newAITemplate.value.regexResult = result.data.data;
-      showMsg('✅ 成功產生規則，請測試擷取結果', 'success');
+
+      // ✅ 自動從範例文本提取識別關鍵字
+      const sampleText = newAITemplate.value.sampleText;
+      const autoKeywords = [];
+      const bracketMatches = sampleText.match(/【[^】]+】/g);
+      if (bracketMatches) autoKeywords.push(...bracketMatches);
+      const submitMatch = sampleText.match(/(\S+\s*提交了[「「].*?[」」])/); 
+      if (submitMatch) autoKeywords.push(submitMatch[1]);
+      if (sampleText.includes('樂居')) autoKeywords.push('樂居');
+      if (sampleText.includes('591')) autoKeywords.push('591');
+      if (sampleText.includes('官網')) autoKeywords.push('官網');
+      // 去重，保留現有的關鍵字
+      const existing = newAITemplate.value.keywords || [];
+      newAITemplate.value.keywords = [...new Set([...existing, ...autoKeywords])];
+
+      showMsg('✅ 成功產生規則與關鍵字，請確認後測試', 'success');
     }
   } catch (err) {
     showMsg('❌ AI 產生規則失敗：' + err.message, 'error');
@@ -1340,7 +1490,6 @@ const testRegexExtraction = () => {
   
   const extract = (regexStr) => {
       if (!regexStr) return '';
-      // 如果不包含括號，視為使用者想手動寫死的「固定字串」，直接回傳
       if (!regexStr.includes('(')) return regexStr;
 
       try {
@@ -1363,20 +1512,45 @@ const testRegexExtraction = () => {
 };
 
 const saveAITemplate = async () => {
-  if (!newAITemplate.value.testResult || !newAITemplate.value.name) return;
+  if (!newAITemplate.value.name) return;
+  // ✅ 新增模式必須有測試結果，編輯模式可以沒有
+  if (!editingTemplateId.value && !newAITemplate.value.testResult) return;
+  // ✅ 驗證至少要有一個關鍵字
+  if (!newAITemplate.value.keywords || newAITemplate.value.keywords.length === 0) {
+    showMsg('⚠️ 請至少設定一個識別關鍵字，以便自動匹配範本', 'warning');
+    return;
+  }
+  // ✅ 驗證必須有 regex 規則
+  if (!newAITemplate.value.regexResult) {
+    showMsg('⚠️ 請先產生或填寫解析規則', 'warning');
+    return;
+  }
   try {
       isSavingAITemplate.value = true;
-      await addDoc(collection(db, 'aiLeadTemplates'), {
+      
+      const templateData = {
           projectId: props.projectId,
           templateName: newAITemplate.value.name,
           sampleText: newAITemplate.value.sampleText,
+          keywords: newAITemplate.value.keywords,
           ...newAITemplate.value.regexResult,
-          createdBy: userStore.user?.name || '管理員',
-          createdAt: serverTimestamp()
-      });
-      showMsg('✅ 成功儲存解析範本', 'success');
-      aiTab.value = 'list';
-      newAITemplate.value = { name: '', sampleText: '', regexResult: null, testResult: null };
+          updatedBy: userStore.user?.name || '管理員',
+          updatedAt: serverTimestamp()
+      };
+
+      if (editingTemplateId.value) {
+        // ✅ 編輯模式：更新現有範本
+        await updateDoc(doc(db, 'aiLeadTemplates', editingTemplateId.value), templateData);
+        showMsg('✅ 範本已更新', 'success');
+      } else {
+        // ✅ 新增模式：建立新範本
+        templateData.createdBy = userStore.user?.name || '管理員';
+        templateData.createdAt = serverTimestamp();
+        await addDoc(collection(db, 'aiLeadTemplates'), templateData);
+        showMsg('✅ 成功儲存解析範本', 'success');
+      }
+
+      cancelTemplateEdit();
   } catch (err) {
       showMsg('❌ 儲存失敗：' + err.message, 'error');
   } finally {
@@ -2070,8 +2244,8 @@ const parseLeadText = (text) => {
   // 內部輔助函式：標準化日期為 yyyy/mm/dd
   const formatDate = (y, m, d) => `${y}/${m.toString().padStart(2, '0')}/${d.toString().padStart(2, '0')}`;
 
-  // 0. 優先使用 AI 自訂解析範本進行擷取
-  for (const rule of customParsingRules.value) {
+  // ✅ 內部輔助函式：用指定的範本規則解析文本
+  const applyRule = (rule) => {
     try {
       const nameMatch = cleanText.match(new RegExp(rule.nameRegex, 'm'));
       const phoneMatch = cleanText.match(new RegExp(rule.phoneRegex, 'm'));
@@ -2115,10 +2289,33 @@ const parseLeadText = (text) => {
             }
           }
         }
-        break; // 成功配對，跳出迴圈不執行後面的預設模式
+        return true; // 解析成功
       }
     } catch (e) {
-      console.warn('Skip invalid regex in rule:', rule.templateName);
+      console.warn('Skip invalid regex in rule:', rule.templateName, e);
+    }
+    return false; // 解析失敗
+  };
+
+  // 0. 根據範本策略進行解析
+  if (selectedTemplateId.value !== 'auto') {
+    // ✅ 用戶手動指定了特定範本，直接使用
+    const selectedRule = customParsingRules.value.find(r => r.id === selectedTemplateId.value);
+    if (selectedRule) {
+      applyRule(selectedRule);
+    }
+  } else {
+    // ✅ 自動偵測模式：先依關鍵字匹配範本
+    const detectedRule = autoDetectTemplate(cleanText);
+    if (detectedRule) {
+      applyRule(detectedRule);
+    } else {
+      // 如果關鍵字沒匹配到，嘗試所有範本的 regex（向下相容）
+      for (const rule of customParsingRules.value) {
+        if (applyRule(rule)) {
+          break;
+        }
+      }
     }
   }
 
@@ -2320,6 +2517,9 @@ const closeUploadDialog = () => {
   uploadInputs.value = [''];
   previewLeads.value = [];
   excelFile.value = null;
+  selectedTemplateId.value = 'auto'; // ✅ 重置範本選擇
+  // ✅ 清空所有偵測結果
+  Object.keys(detectedTemplateInfoMap).forEach(k => delete detectedTemplateInfoMap[k]);
 };
 
 // ✅ 新增：追蹤預約是否完成
@@ -2777,6 +2977,82 @@ const formatDateTime = (ts) => {
 // ✓ [新增] 模式與檔案控制變數
 const uploadMode = ref('text');
 const excelFile = ref(null);
+
+// ✅ 用戶選擇的解析範本 ID（'auto' = 自動偵測關鍵字匹配）
+const selectedTemplateId = ref('auto');
+
+// ✅ 自動偵測到的範本資訊（每個文本框獨立儲存）
+const detectedTemplateInfoMap = reactive({});
+
+// ✅ 範本選擇下拉選單的選項（手動覆蓋用）
+const templateOptions = computed(() => {
+  const options = [{ title: '🔍 自動偵測 (根據關鍵字)', value: 'auto' }];
+  customParsingRules.value.forEach(rule => {
+    const kwStr = rule.keywords?.length ? ` [${rule.keywords.join(', ')}]` : '';
+    options.push({ title: `📋 ${rule.templateName}${kwStr}`, value: rule.id });
+  });
+  return options;
+});
+
+// ✅ 根據文本內容的關鍵字自動偵測匹配的範本
+const autoDetectTemplate = (text) => {
+  if (!text || !text.trim()) return null;
+  const cleanText = text.trim();
+  
+  // 計算每個範本的關鍵字匹配數，選擇匹配最多的
+  let bestMatch = null;
+  let bestScore = 0;
+  
+  for (const rule of customParsingRules.value) {
+    if (!rule.keywords || rule.keywords.length === 0) continue;
+    
+    let score = 0;
+    for (const kw of rule.keywords) {
+      if (cleanText.includes(kw)) {
+        score++;
+      }
+    }
+    
+    if (score > 0 && score > bestScore) {
+      bestScore = score;
+      bestMatch = rule;
+    }
+  }
+  
+  return bestMatch;
+};
+
+// ✅ 文本輸入時即時偵測範本（每個文本框獨立偵測）
+const onTextInput = (index, newValue) => {
+  const text = (newValue || '').trim();
+  
+  if (!text) {
+    delete detectedTemplateInfoMap[index];
+    return;
+  }
+  
+  const matched = autoDetectTemplate(text);
+  
+  if (matched) {
+    const matchedKws = matched.keywords.filter(kw => text.includes(kw));
+    detectedTemplateInfoMap[index] = {
+      type: 'success',
+      icon: 'mdi-check-circle',
+      message: `✅ 自動識別為「${matched.templateName}」格式 (匹配關鍵字：${matchedKws.join('、')})`
+    };
+  } else {
+    // 檢查是否匹配內建格式
+    if (text.includes('【新名單】')) {
+      detectedTemplateInfoMap[index] = { type: 'info', icon: 'mdi-format-list-bulleted', message: '📋 偵測為【新名單】內建格式' };
+    } else if (text.includes('官網 提交了')) {
+      detectedTemplateInfoMap[index] = { type: 'info', icon: 'mdi-web', message: '📋 偵測為「官網預約賞屋」內建格式' };
+    } else if (text.includes('【591】')) {
+      detectedTemplateInfoMap[index] = { type: 'info', icon: 'mdi-home-search', message: '📋 偵測為【591】內建格式' };
+    } else {
+      detectedTemplateInfoMap[index] = { type: 'warning', icon: 'mdi-help-circle', message: '⚠️ 未識別到匹配的範本，將嘗試自動解析或使用內建格式' };
+    }
+  }
+};
 
 const applySorting = () => {
   previewLeads.value.sort((a, b) => {
