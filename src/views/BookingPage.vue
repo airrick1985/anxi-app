@@ -618,7 +618,7 @@
                   <div v-if="currentDynamicFields.length > 0" class="mt-4 pa-4 border rounded bg-grey-lighten-5">
                     <p class="text-subtitle-1 font-weight-bold mb-3 text-primary">
                         <v-icon start size="small">mdi-pencil-box-outline</v-icon>
-                        其他資訊 ({{ formStep1.bookingMethod }})
+                         ({{ formStep1.bookingMethod }})
                     </p>
                     <DynamicFormRenderer
                         :fields="currentDynamicFields"
@@ -738,6 +738,22 @@
                         width="100%"
                         title="請選擇預約日期"
                     ></v-date-picker>
+
+                <!-- 日期選擇提醒事項 -->
+                <v-alert
+                  v-if="datePickerReminderContent"
+                  type="warning"
+                  variant="tonal"
+                  border="start"
+                  prominent
+                  class="mt-4 mb-2 date-picker-reminder"
+                  icon="mdi-calendar-alert"
+                >
+                  <template v-slot:title>
+                    <div class="font-weight-bold">預約提醒事項</div>
+                  </template>
+                  <div class="prose reminder-content" v-html="datePickerReminderContent"></div>
+                </v-alert>
 
                 
                 <!-- [New] Owner Presence Question -->
@@ -1235,6 +1251,24 @@
       </v-card>
     </v-dialog>
 
+<!-- 表單驗證失敗提示 Snackbar -->
+<v-snackbar
+  v-model="validationSnackbar.show"
+  :timeout="4000"
+  color="error"
+  location="top"
+  variant="elevated"
+  class="validation-snackbar"
+>
+  <div class="d-flex align-center">
+    <v-icon class="mr-2">mdi-alert-circle-outline</v-icon>
+    <span class="font-weight-bold">{{ validationSnackbar.message }}</span>
+  </div>
+  <template v-slot:actions>
+    <v-btn variant="text" @click="validationSnackbar.show = false">關閉</v-btn>
+  </template>
+</v-snackbar>
+
 </v-container>
 </template>
 
@@ -1434,6 +1468,36 @@ const projectStore = useProjectStore();
 const step1Form = ref(null);
 const step2Form = ref(null);
 const bookingResultCard = ref(null);
+
+// 表單驗證失敗提示 Snackbar 狀態
+const validationSnackbar = ref({
+  show: false,
+  message: ''
+});
+
+/**
+ * 輔助函式：捲動到第一個驗證失敗的欄位，並顯示提示
+ * @param {string} formSelector - 表單區域的 CSS 選擇器（可選，預設爲整個頁面）
+ */
+const scrollToFirstError = async (formSelector = null) => {
+  await nextTick();
+  // Vuetify v-input 驗證失敗時會加上 .v-input--error class
+  const scope = formSelector ? document.querySelector(formSelector) : document;
+  if (!scope) return;
+  const firstError = scope.querySelector('.v-input--error');
+  if (firstError) {
+    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 嘗試聚焦到該欄位的 input 元素
+    const inputEl = firstError.querySelector('input, textarea, select');
+    if (inputEl) {
+      setTimeout(() => inputEl.focus(), 400);
+    }
+  }
+  validationSnackbar.value = {
+    show: true,
+    message: '請填寫所有必填欄位後再繼續'
+  };
+};
 
 
 // 代表「今天」的常數，並將時間設為午夜
@@ -1646,6 +1710,15 @@ const dynamicClosingText = computed(() => {
   }
   // 回退到全域預設
   return projectConfig.value?.intro?.closingText || '';
+});
+
+// 日期選擇提醒事項：根據選中的預約項目動態取得
+const datePickerReminderContent = computed(() => {
+  const reminder = currentPageSettings.value?.intro?.datePickerReminder;
+  if (reminder?.show && reminder?.content) {
+    return reminder.content;
+  }
+  return null;
 });
 
 // 依據所選日期，動態產生可用的時間選項
@@ -2113,7 +2186,10 @@ const proceedToNextBooking = async () => {
 
 const handleStep1Submit = async () => {
  const { valid } = await step1Form.value.validate();
- if (!valid) return;
+ if (!valid) {
+   scrollToFirstError();
+   return;
+ }
 
  loadingText.value = '正在驗證戶別資訊...';
  isLoading.value = true;
@@ -2192,7 +2268,10 @@ const handleStep2Submit = async () => {
   // --- END: ✓ 新增授權書完成檢查 ---
 
   const { valid } = await step2Form.value.validate();
-  if (!valid) return;
+  if (!valid) {
+    scrollToFirstError();
+    return;
+  }
 
   // 檢查：如果選擇了「授權驗屋」，則必須先完成「發起簽署」(維持不變)
   if (formStep1.value.bookingMethod === '授權驗屋' && !isSigningInitiated.value) {
@@ -2783,5 +2862,51 @@ const goBackToStep0 = () => {
   0% { left: -100%; }
   80% { left: 200%; } /* 反光掃過時間佔比 */
   100% { left: 200%; } /* 剩餘時間為間歇停頓 */
+}
+
+/* 日期選擇提醒事項的樣式 */
+.date-picker-reminder {
+  border-radius: 8px !important;
+}
+.date-picker-reminder .reminder-content {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.date-picker-reminder .reminder-content :deep(ul),
+.date-picker-reminder .reminder-content :deep(ol) {
+  padding-left: 1.5em;
+  margin-top: 4px;
+}
+.date-picker-reminder .reminder-content :deep(li) {
+  margin-bottom: 4px;
+}
+.date-picker-reminder .reminder-content :deep(strong) {
+  color: #e65100; /* 深橘色，加重提醒感 */
+}
+
+/* 表單驗證失敗時的欄位強化樣式 */
+:deep(.v-input--error) {
+  animation: shake 0.4s ease-in-out;
+}
+:deep(.v-input--error .v-field) {
+  background-color: rgba(244, 67, 54, 0.04) !important;
+  border-color: #F44336 !important;
+}
+:deep(.v-input--error .v-field__outline) {
+  --v-field-border-opacity: 1;
+}
+
+/* 搖晃動畫 - 驗證失敗時吸引注意力 */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* Snackbar 驗證提示的樣式 */
+.validation-snackbar :deep(.v-snackbar__content) {
+  font-size: 1rem;
 }
 </style>

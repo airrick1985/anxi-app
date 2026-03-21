@@ -934,6 +934,31 @@
                 <div class="d-flex align-center"> <label class="v-label text-caption">結束語</label>
   <v-btn size="x-small" variant="tonal" @click="applyTemplate('closingText')" class="ml-4">套用範本</v-btn> </div>
                 <RichTextEditor v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.closingText" class="mb-4" />
+
+                <v-divider class="my-6"></v-divider>
+
+                <!-- 日期選擇提醒事項 -->
+                <p class="text-subtitle-1 font-weight-bold mb-2">
+                  <v-icon start size="small" color="warning">mdi-calendar-alert</v-icon>
+                  日期選擇提醒事項
+                </p>
+                <p class="text-caption text-grey-darken-1 mb-2">
+                  此內容將顯示在前台「步驟二：選擇預約日期」的日期選擇器上方，以醒目的提示框呈現。
+                </p>
+                <v-switch
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.datePickerReminder.show"
+                  label="顯示日期選擇提醒事項"
+                  color="warning"
+                  inset
+                  hide-details
+                  class="mb-2"
+                ></v-switch>
+                <RichTextEditor
+                  v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.datePickerReminder.content"
+                  class="mb-4"
+                  :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.datePickerReminder.show"
+                />
+
                 <v-divider class="my-6"></v-divider>
 
                 <div class="d-flex justify-space-between align-center mb-2">
@@ -3045,6 +3070,10 @@ const defaultSettings = computed(() => ({
       },
       footer: '<p>如有任何疑問，請洽您的專屬服務人員或撥打以下電話：</p>',
       closingText: '<p>請於預約時段準時抵達，並至社區大廳櫃檯完成報到，感謝您的配合。</p>',
+      datePickerReminder: {
+        show: false,
+        content: ''
+      },
       contact: { name: "XX建設", phone: "" },
       attachments: [],
       faq: [
@@ -3799,10 +3828,17 @@ async function loadDataForProject() {
                   ...(settings.intro || {}),
                   alert: { ...defaultSettings.value.intro.alert, ...(settings.intro?.alert || {}) },
                   contact: { ...defaultSettings.value.intro.contact, ...(settings.intro?.contact || {}) },
+                  datePickerReminder: { ...defaultSettings.value.intro.datePickerReminder },
                   faq: settings.intro?.faq ? JSON.parse(JSON.stringify(settings.intro.faq)) : [],
                   attachments: settings.intro?.attachments ? JSON.parse(JSON.stringify(settings.intro.attachments)) : []
                 }
               };
+            } else {
+              // 對已存在的項目，補齊新增的 datePickerReminder 欄位（向下相容）
+              const existingIntro = projectSettings.value.pageSettingsByItem[item.title].intro;
+              if (!existingIntro.datePickerReminder) {
+                existingIntro.datePickerReminder = { ...defaultSettings.value.intro.datePickerReminder };
+              }
             }
           });
           // 預設選取第一個項目
@@ -4757,6 +4793,24 @@ watch(menuAppEnd, (isOpen) => {
 .admin-only-section {
   border-left: 4px solid #f9a825 !important; /* amber-darken-2 色條 */
   background-color: #fffde7 !important; /* 淡黃底色 */
+}
+
+/*
+ * 修正 RichTextEditor Sticky Toolbar：
+ * Vuetify 的 v-window-item 預設有 overflow: hidden，
+ * 會截斷 position: sticky 的定位行為鏈。
+ * 必須將捲動容器 (.settings-form-container) 到 sticky 元素之間
+ * 所有中間層的 overflow 設為 visible。
+ * 使用 :deep() 穿透 scoped 限制，作用於 Vuetify 子元件內部 DOM。
+ */
+.settings-form-container :deep(.v-window) {
+  overflow: visible !important;
+}
+.settings-form-container :deep(.v-window__container) {
+  overflow: visible !important;
+}
+.settings-form-container :deep(.v-window-item) {
+  overflow: visible !important;
 }
 </style>
 

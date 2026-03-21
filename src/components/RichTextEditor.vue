@@ -1,6 +1,6 @@
 <template>
-  <div v-if="editor" class="tiptap-editor" :class="{ 'is-disabled': disabled }">
-    <div class="toolbar">
+  <div v-if="editor" class="tiptap-editor" :class="{ 'is-disabled': disabled, 'is-focused': isFocused }">
+    <div class="toolbar" :class="{ 'toolbar--sticky': isFocused }">
       <v-btn icon="mdi-format-bold" size="small" variant="text" @click="editor.chain().focus().toggleBold().run()" :class="{ 'is-active': editor.isActive('bold') }"></v-btn>
       <v-btn icon="mdi-format-italic" size="small" variant="text" @click="editor.chain().focus().toggleItalic().run()" :class="{ 'is-active': editor.isActive('italic') }"></v-btn>
       <v-btn icon="mdi-format-underline" size="small" variant="text" @click="editor.chain().focus().toggleUnderline().run()" :class="{ 'is-active': editor.isActive('underline') }"></v-btn>
@@ -64,7 +64,7 @@ import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
-import { watch, onBeforeUnmount, computed } from 'vue';
+import { watch, onBeforeUnmount, computed, ref } from 'vue';
 
 // 1. 定義 props 和 emits
 const props = defineProps({
@@ -84,6 +84,11 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
+// 追蹤編輯器 focus 狀態，用於 sticky toolbar
+const isFocused = ref(false);
+// 延遲 blur 的計時器 ID，避免點擊 toolbar 按鈕時因短暫 blur 導致 sticky 閃爍
+let blurTimer = null;
+
 // 2. 初始化 TipTap 編輯器
 const editor = useEditor({
   content: props.modelValue,
@@ -99,6 +104,21 @@ const editor = useEditor({
   ],
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.getHTML());
+  },
+  // 監聽 focus / blur 事件，控制 sticky toolbar
+  onFocus: () => {
+    // 清除任何待執行的 blur 計時器
+    if (blurTimer) {
+      clearTimeout(blurTimer);
+      blurTimer = null;
+    }
+    isFocused.value = true;
+  },
+  onBlur: () => {
+    // 延遲 200ms 再取消 sticky，讓使用者點擊 toolbar 按鈕時不會閃爍
+    blurTimer = setTimeout(() => {
+      isFocused.value = false;
+    }, 200);
   },
 });
 
@@ -116,8 +136,11 @@ watch(() => props.modelValue, (value) => {
   }
 });
 
-// 5. 元件銷毀前，銷毀編輯器實例
+// 5. 元件銷毀前，銷毀編輯器實例與計時器
 onBeforeUnmount(() => {
+  if (blurTimer) {
+    clearTimeout(blurTimer);
+  }
   if (editor.value) {
     editor.value.destroy();
   }
@@ -158,6 +181,12 @@ const currentColor = computed(() => {
   border: 1px solid #BDBDBD; // Vuetify's grey-lighten-1
   border-radius: 4px;
 
+  // 編輯器獲得 focus 時加上視覺提示邊框
+  &.is-focused {
+    border-color: #1976D2; // Vuetify primary blue
+    box-shadow: 0 0 0 1px #1976D2;
+  }
+
   .toolbar {
     display: flex;
     align-items: center;
@@ -170,6 +199,16 @@ const currentColor = computed(() => {
       &.is-active {
         background-color: rgba(0, 0, 0, 0.1);
       }
+    }
+
+    // Sticky 模式：只在編輯器 focused 時啟用
+    &--sticky {
+      position: sticky;
+      top: 0;
+      z-index: 10; // 確保工具列在其他內容之上
+      border-bottom: 2px solid #1976D2;
+      background-color: #E3F2FD; // 淡藍色背景，提示使用者正在編輯
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
   }
 
