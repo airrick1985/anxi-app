@@ -125,6 +125,7 @@ const fieldDisplayNames = {
   agentName: '受託人姓名',
   agentPhone: '受託人電話',
   agentIdNumber: '受託人身分證',
+  agentRelationship: '與委託人關係',
   bookerName: '預約人姓名',
   bookerPhone: '預約人電話',
   bookerEmail: '預約人EMAIL',
@@ -938,6 +939,20 @@ exports.getBookingInitialData = onCall(async (request) => {
     });
     const buildings = Array.from(buildingsSet).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
 
+    // 任務新增: 從 batches 集合獲取這個建案狀態為「開放中」的批次的預約項目
+    const batchSnapshot = await db.collection('batches')
+      .where('projectId', '==', projectId)
+      .where('status', '==', '開放中')
+      .get();
+
+    const activeBookingTypesSet = new Set();
+    batchSnapshot.forEach(doc => {
+      const bType = doc.data().bookingType;
+      if (bType) {
+        activeBookingTypesSet.add(bType);
+      }
+    });
+
     // 組合回傳資料，格式與舊版 GAS API 相同，以確保前端相容
     return {
       buildings: buildings,
@@ -947,7 +962,8 @@ exports.getBookingInitialData = onCall(async (request) => {
       // inspectionMethods 和 inspectionStaff 在舊版中有，但您的 BookingPage.vue 已改用 projectConfig 控制，
       // 這裡回傳空陣列以保持相容性
       inspectionMethods: [],
-      inspectionStaff: []
+      inspectionStaff: [],
+      activeBookingTypes: Array.from(activeBookingTypesSet)
     };
 
   } catch (error) {
@@ -4878,6 +4894,7 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
         agentIdNumber: bookingData.agentIdNumber || '',
         agentAddress: bookingData.agentAddress || '',
         agentPhone: bookingData.agentPhone || '',
+        agentRelationship: bookingData.agentRelationship || '',
         bookingCode: bookingCode,
         reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
       };
@@ -5005,7 +5022,8 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${newAppointmentData.bookerEmail}</td></tr>
           ${newAppointmentData.agentName ? `
            <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${newAppointmentData.agentName}</td></tr>
-           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${newAppointmentData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${newAppointmentData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">與委託人關係</td><td style="padding: 12px 0;">${newAppointmentData.agentRelationship || '未填寫'}</td></tr>
           ` : ''}
           ${newAppointmentData.authorizationLetterUrl ? `
             <tr style="border-bottom: 1px solid #eeeeee;">
@@ -5173,7 +5191,8 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
           ` : ''}
           ${bookingData.agentName ? `
            <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${bookingData.agentName}</td></tr>
-           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${bookingData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${bookingData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">與委託人關係</td><td style="padding: 12px 0;">${bookingData.agentRelationship || '未填寫'}</td></tr>
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
@@ -5825,6 +5844,7 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
         agentIdNumber: newBookingData.agentIdNumber || "",
         agentAddress: newBookingData.agentAddress || "",
         agentPhone: newBookingData.agentPhone || "",
+        agentRelationship: newBookingData.agentRelationship || "",
         bookingCode: bookingCode,
         reportUploaded: !['初驗', '複驗', '驗屋'].includes(newBookingData.bookingType), // ✓ 沿用此邏輯
         bookingRemarks: newBookingData.bookingRemarks || "",
@@ -7013,6 +7033,7 @@ exports.completeAuthSigningProcess = onCall({
                     <p style="margin: 5px 0;"><strong>戶別:</strong> ${sessionData.unitId}</p>
                     <p style="margin: 5px 0;"><strong>委託人:</strong> ${sessionData.formData.委託人姓名}</p>
                     <p style="margin: 5px 0;"><strong>受託人:</strong> ${sessionData.formData.受託人姓名}</p>
+                    <p style="margin: 5px 0;"><strong>與委託人關係:</strong> ${sessionData.formData.受託人關係 === '其他' ? (sessionData.formData.受託人關係其他 || '其他') : (sessionData.formData.受託人關係 || '未填寫')}</p>
                   </div>
                 </div>
                 <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
@@ -11081,6 +11102,56 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     if (!projectDoc.exists) throw new Error(`找不到建案資料 (Project ID: ${projectId})`);
     const projectData = projectDoc.data();
 
+    // --- 讀取 PDF 模板設定（有自訂用自訂，否則用預設值）---
+    const DEFAULT_PDF_TEMPLATE = {
+      cover: {
+        title: '{建案名稱} 驗屋報告',
+        showProjectInfo: true,
+        infoFields: [
+          { label: '戶別', variable: '{戶別}', enabled: true },
+          { label: '客戶', variable: '{客戶姓名}', enabled: true },
+          { label: '電話', variable: '{客戶電話}', enabled: true },
+          { label: 'Email', variable: '{客戶EMAIL}', enabled: true },
+          { label: '服務日期', variable: '{服務日期}', enabled: true },
+        ],
+        showDisclaimer: true,
+        disclaimer: '☑️ 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。',
+        signatureLabel: '客戶簽名：',
+        showSignature: true,
+        showDate: true,
+        dateLabel: '報告產製日期：',
+      },
+      detail: {
+        headerNote: '',
+        footerNote: '',
+        showInspectorName: true,
+        showPhotos: true,
+        maxPhotosPerRecord: 4,
+      },
+      email: {
+        subject: '【{建案名稱}】您的驗屋報告已產製完成 ({戶別})',
+        bodyHtml: '<p>親愛的 {客戶姓名} 您好：</p><p>關於「{建案名稱}」建案 {戶別} 戶別，您的驗屋報告已產製完成。</p>',
+        showDriveButton: true,
+        buttonText: '查看驗屋報告',
+        footerText: '此為系統自動發送的郵件，請勿直接回覆。',
+      }
+    };
+    const savedTpl = projectData.inspectionPdfTemplate || {};
+    console.log(`[${functionName}] 🔍 DB inspectionPdfTemplate 存在: ${!!projectData.inspectionPdfTemplate}`, JSON.stringify(savedTpl.cover?.title || 'N/A'));
+    const pdfTemplate = {
+      cover: {
+        ...DEFAULT_PDF_TEMPLATE.cover, ...(savedTpl.cover || {}),
+        infoFields: (savedTpl.cover?.infoFields?.length > 0) ? savedTpl.cover.infoFields : DEFAULT_PDF_TEMPLATE.cover.infoFields,
+      },
+      detail: { ...DEFAULT_PDF_TEMPLATE.detail, ...(savedTpl.detail || {}) },
+      email: { ...DEFAULT_PDF_TEMPLATE.email, ...(savedTpl.email || {}) },
+    };
+    console.log(`[${functionName}] 🔍 合併後 pdfTemplate.cover.title: ${pdfTemplate.cover.title}`);
+    console.log(`[${functionName}] 🔍 合併後 infoFields count: ${pdfTemplate.cover.infoFields.length}, showDisclaimer: ${pdfTemplate.cover.showDisclaimer}, showSignature: ${pdfTemplate.cover.showSignature}`);
+
+    // 準備變數替換資料
+    let inspectionDateStr = 'N/A';
+    // (先查詢 records 以取得服務日期)
     const recordsQuery = db.collection("inspectionRecords")
       .where("confirmationBatchId", "==", confirmationBatchId)
       .where("isDeleted", "==", false)
@@ -11090,6 +11161,32 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     const records = recordsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     if (records.length === 0) throw new Error("找不到符合此批次的驗屋紀錄。");
     console.log(`[${functionName}] 資料查詢完成，共 ${records.length} 筆紀錄。`);
+
+    if (records[0].inspectionDate?.toDate) {
+      inspectionDateStr = formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd');
+    }
+
+    const templateVars = {
+      '{建案名稱}': projectData.name || projectId,
+      '{戶別}': unitId,
+      '{產權人姓名}': confirmationData.buyerInfo?.name || '',
+      '{產權人電話}': confirmationData.buyerInfo?.phone || '',
+      '{產權人EMAIL}': confirmationData.buyerInfo?.email || '',
+      '{驗屋日期}': inspectionDateStr,
+      '{紀錄筆數}': String(records.length),
+      '{確認日期}': confirmationData.confirmedAt?.toDate ? formatInTimeZone(confirmationData.confirmedAt.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : '',
+      '{產製日期}': formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd'),
+      '{驗屋人員}': inspectorName || '',
+    };
+
+    function replaceTemplateVars(text) {
+      if (!text) return '';
+      let result = text;
+      for (const [key, val] of Object.entries(templateVars)) {
+        result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val);
+      }
+      return result;
+    }
 
     // --- 2. 預載簽名與驗屋照片 ---
     console.log(`[${functionName}] 下載簽名與所有驗屋照片緩存...`);
@@ -11133,7 +11230,7 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     doc.font(fontPath);
     const textOptions = { fallbackFonts: [fontPath] }; // 確保 Emoji 等不會崩潰
 
-    // --- 3.1 繪製封面 ---
+    // --- 3.1 繪製封面（模板驅動）---
     const pageW = doc.page.width;
     const pageH = doc.page.height;
     const margin = 24;
@@ -11141,55 +11238,77 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     const halfH = pageH / 2;
     const cardH = halfH - margin - 5;
 
-    doc.fontSize(24).text(`${projectData.name || projectId} 驗屋報告`, { align: 'center' });
+    // 封面標題
+    doc.fontSize(24).text(replaceTemplateVars(pdfTemplate.cover.title), { align: 'center' });
     doc.moveDown(3);
 
+    // 封面資訊欄位（依模板設定的順序與啟停狀態）
     doc.fontSize(14).lineGap(6);
-    doc.text(`戶別：${unitId}`);
-    doc.text(`產權人：${confirmationData.buyerInfo?.name || ''}`);
-    doc.text(`電話：${confirmationData.buyerInfo?.phone || ''}`);
-    doc.text(`Email：${confirmationData.buyerInfo?.email || ''}`);
-
-    let inspectionDateStr = 'N/A';
-    if (records[0].inspectionDate?.toDate) {
-      inspectionDateStr = formatInTimeZone(records[0].inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd');
+    const enabledFields = (pdfTemplate.cover.infoFields || []).filter(f => f.enabled);
+    for (const field of enabledFields) {
+      const value = replaceTemplateVars(field.variable);
+      doc.text(`${field.label}：${value}`);
     }
-    doc.text(`驗屋日期：${inspectionDateStr}`);
 
-    doc.moveDown(3);
-    doc.fontSize(12);
-    doc.text(`☑️ 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。`);
+    // 聲明文字（依開關）
+    if (pdfTemplate.cover.showDisclaimer !== false) {
+      doc.moveDown(3);
+      doc.fontSize(12);
+      doc.text(replaceTemplateVars(pdfTemplate.cover.disclaimer));
+    }
 
-    doc.moveDown(1.5);
-    doc.fontSize(14).text(`產權人簽名：`);
+    // 簽名區（依開關）
+    if (pdfTemplate.cover.showSignature !== false) {
+      doc.moveDown(1.5);
+      doc.fontSize(14).text(replaceTemplateVars(pdfTemplate.cover.signatureLabel));
 
-    if (signatureBuf) {
-      try {
-        doc.image(signatureBuf, { width: 150 });
-      } catch (e) {
-        doc.text('(簽名載入失敗)', { color: 'red' });
-        doc.fillColor('black');
+      if (signatureBuf) {
+        try {
+          doc.image(signatureBuf, { width: 150 });
+        } catch (e) {
+          doc.text('(簽名載入失敗)', { color: 'red' });
+          doc.fillColor('black');
+        }
+      } else {
+        doc.text('(無簽名)');
       }
-    } else {
-      doc.text('(無簽名)');
     }
 
-    doc.moveDown(3);
-    doc.fontSize(12).text(`報告產製日期：${formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd')}`);
+    // 報告產製日期（依開關）
+    if (pdfTemplate.cover.showDate !== false) {
+      doc.moveDown(3);
+      doc.fontSize(12).text(`${replaceTemplateVars(pdfTemplate.cover.dateLabel)}${formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy/MM/dd')}`);
+    }
 
     // --- 3.2 繪製驗屋紀錄內頁 ---
+    doc.addPage();
+    const drawPageNotes = () => {
+      if (pdfTemplate.detail.headerNote) {
+        doc.fontSize(10).fillColor('#757575').text(replaceTemplateVars(pdfTemplate.detail.headerNote), margin, 10, { width: usableW, align: 'right' });
+      }
+      if (pdfTemplate.detail.footerNote) {
+        doc.fontSize(10).fillColor('#757575').text(replaceTemplateVars(pdfTemplate.detail.footerNote), margin, pageH - 20, { width: usableW, align: 'center' });
+      }
+    };
+    drawPageNotes();
+
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
       const isTop = (i % 2 === 0);
-      if (i > 0 && isTop) doc.addPage();
+      if (i > 0 && isTop) {
+        doc.addPage();
+        drawPageNotes();
+      }
 
-      const startY = isTop ? margin : (halfH + 5);
+      const startY = isTop ? margin + 10 : (halfH + 5);
       let currentY = startY;
 
       // 表格區域 (4列3欄)
+      const inspectorLabel = pdfTemplate.detail.showInspectorName !== false ? '人員' : '';
+      const inspectorVal = pdfTemplate.detail.showInspectorName !== false ? (record.inspectorName || '') : '';
       const fields = [
         ['建案', projectData.name || projectId], ['戶別', record.unitId || ''], ['日期', record.inspectionDate?.toDate ? formatInTimeZone(record.inspectionDate.toDate(), 'Asia/Taipei', 'yyyy/MM/dd') : ''],
-        ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
+        ['階段', record.phase || ''], ['區域', record.area || ''], [inspectorLabel, inspectorVal],
         ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
         ['等級', record.level || ''], ['進度', record.progress || ''], ['']
       ];
@@ -11221,11 +11340,13 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
 
       currentY += 25 + 6;
 
-      // 圖片區
-      if (record.photos && record.photos.length > 0) {
+      // 圖片區（依模板設定的照片數量限制）
+      const showPhotos = pdfTemplate.detail.showPhotos !== false;
+      if (showPhotos && record.photos && record.photos.length > 0) {
         const photos = record.photos;
         const cnt = photos.length;
-        const maxShow = Math.min(cnt, 4);
+        const maxPhotos = pdfTemplate.detail.maxPhotosPerRecord || 4;
+        const maxShow = Math.min(cnt, maxPhotos);
         const gap = 8;
         const imgMaxW = (usableW - gap * (maxShow - 1)) / maxShow;
         const imgMaxH = cardH - (currentY - startY) - 5;
@@ -11268,12 +11389,17 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     console.log(`[${functionName}] PDF 產生完成，大小: ${pdfBuffer.length} bytes`);
 
     // --- 4. 上傳至 Drive ---
-    // (邏輯同原先 V4 版本)
+    // (容錯邏輯：如果沒有戶別專屬資料夾，則使用專案的全域報告資料夾)
     const householdDoc = await db.collection('households').doc(`${projectId}_${unitId}`).get();
-    if (!householdDoc.exists) throw new Error(`找不到戶別資料 (${projectId}_${unitId})`);
-    const reportFolderUrl = householdDoc.data().inspectionReportFolderUrl;
-    if (!reportFolderUrl) throw new Error("戶別資料缺少 inspectionReportFolderUrl");
-    const parentFolderId = reportFolderUrl.match(/[-w]{25,}/)?.[0];
+    const householdData = householdDoc.exists ? householdDoc.data() : {};
+
+    let reportFolderUrl = householdData.inspectionReportFolderUrl;
+    if (!reportFolderUrl && projectData.reportSettings && projectData.reportSettings.reportDataFolderUrl) {
+      reportFolderUrl = projectData.reportSettings.reportDataFolderUrl;
+    }
+    if (!reportFolderUrl) throw new Error(`找不到戶別資料 (${projectId}_${unitId}) 或專案報告夾設定`);
+
+    const parentFolderId = reportFolderUrl.match(/[-\w]{25,}/)?.[0];
     if (!parentFolderId) throw new Error("無效的 Drive 資料夾 URL");
 
     const subFolderName = confirmationData.buyerInfo?.name ? `${unitId}(${confirmationData.buyerInfo.name}自驗)` : `${unitId}`;
@@ -11308,22 +11434,65 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
     });
     console.log(`[${functionName}] 已更新戶別資料庫中的報告連結。`);
 
-    // --- 6. 寄送 Email 通知 ---
+    // --- 6. 寄送 Email 通知（模板驅動）---
     const mailTransport = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD } });
     const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
     const allCc = [...new Set([...ccRecipients, triggeringUserEmail].filter(Boolean))];
-    const subject = `【${projectData.name || projectId}】您的驗屋報告已產製完成 (${unitId})`;
+    const subject = replaceTemplateVars(pdfTemplate.email.subject);
     const confirmedAtDate = confirmationData.confirmedAt.toDate();
+
+    // 組裝 Email HTML
+    const emailBodyHtml = replaceTemplateVars(pdfTemplate.email.bodyHtml);
+    const showDriveButton = pdfTemplate.email.showDriveButton !== false;
+    const buttonText = replaceTemplateVars(pdfTemplate.email.buttonText) || '查看驗屋報告';
+    const footerText = replaceTemplateVars(pdfTemplate.email.footerText) || '';
+
     const htmlBody = `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #333;">驗屋報告已完成</h2>
-        <p>親愛的 ${confirmationData.buyerInfo.name || '住戶'} 您好：</p>
-        <p>關於「${projectData.name || projectId}」建案 ${unitId} 戶別，您於 ${formatInTimeZone(confirmedAtDate, 'Asia/Taipei', 'yyyy/MM/dd HH:mm')} 確認的驗屋報告 (${records.length}筆紀錄) 已產製完成。</p>
-        <p>您可以點擊下方按鈕查看或下載報告檔案：</p>
-        <div style="text-align: center; margin: 30px 0;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">查看驗屋報告</a></div>
-        <p>報告產製人員：${inspectorName}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"><p style="font-size: 12px; color: #888;">此為系統自動發送的郵件，請勿直接回覆。</p></div>
+        ${emailBodyHtml}
+        ${showDriveButton ? `<div style="text-align: center; margin: 30px 0;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">${buttonText}</a></div>` : ''}
+        <p>報告產製人員：${inspectorName}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"><p style="font-size: 12px; color: #888;">${footerText}</p></div>
     `;
-    await mailTransport.sendMail({ from: `"${projectData.name || projectId} 驗屋系統" <${process.env.SENDER_EMAIL}>`, to: confirmationData.buyerInfo.email, cc: allCc.join(', '), subject: subject, html: htmlBody });
+
+    // 讀取報告夾帶附件設定
+    const emailAttachmentsConfig = projectData.inspectionPdfTemplate?.emailAttachments;
+    const mailAttachments = [];
+
+    if (emailAttachmentsConfig?.enabled && emailAttachmentsConfig?.files?.length > 0) {
+      console.log(`[${functionName}] 偵測到 ${emailAttachmentsConfig.files.length} 個夾帶附件，開始下載...`);
+      const fetch = require('node-fetch');
+      for (const att of emailAttachmentsConfig.files) {
+        try {
+          const response = await fetch(att.url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.buffer();
+          mailAttachments.push({
+            filename: att.name,
+            content: buffer,
+          });
+          console.log(`[${functionName}] 附件「${att.name}」下載完成 (${buffer.length} bytes)`);
+        } catch (attErr) {
+          console.error(`[${functionName}] 附件「${att.name}」下載失敗:`, attErr.message);
+          // 單一附件下載失敗不中斷整個寄信流程
+        }
+      }
+    }
+
+    const mailOptions = {
+      from: `"${projectData.name || projectId} 驗屋系統" <${process.env.SENDER_EMAIL}>`,
+      to: confirmationData.buyerInfo.email,
+      cc: allCc.join(', '),
+      subject: subject,
+      html: htmlBody,
+    };
+
+    if (mailAttachments.length > 0) {
+      mailOptions.attachments = mailAttachments;
+      console.log(`[${functionName}] 將夾帶 ${mailAttachments.length} 個附件`);
+    }
+
+    await mailTransport.sendMail(mailOptions);
     console.log(`[${functionName}] 已成功寄送報告完成通知 Email。`);
 
   } catch (error) {
@@ -11352,7 +11521,7 @@ exports.sendInspectionReportEmails = onCall({
   memory: "1GiB",
   timeoutSeconds: 300
 }, async (request) => {
-  const { projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64 } = request.data;
+  const { projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64, includeAttachments, selectedAttachments } = request.data;
   const functionName = `sendInspectionReportEmails (${projectId}/${unitId})`;
 
   if (!projectId || !unitId || !pdfBase64) {
@@ -11370,16 +11539,19 @@ exports.sendInspectionReportEmails = onCall({
     const pdfBuffer = Buffer.from(base64Data, "base64");
     console.log(`[${functionName}] 接收到的 PDF Buffer 大小: ${pdfBuffer.length} bytes`);
 
-    // 2. 獲取 households 中的 inspectionReportFolderUrl
-    const householdDoc = await db.collection("households").doc(`${projectId}_${unitId}`).get();
-    if (!householdDoc.exists) throw new Error(`找不到戶別資料 (${projectId}_${unitId})`);
-
-    const householdData = householdDoc.data();
+    // 2. 獲取 households 與專案中的資料夾位置
     const projectDoc = await db.collection("projects").doc(projectId).get();
-    const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
+    const projectData = projectDoc.exists ? projectDoc.data() : {};
+    const projectName = projectData.name || projectId;
 
-    const reportFolderUrl = householdData.inspectionReportFolderUrl;
-    if (!reportFolderUrl) throw new Error("該戶別尚未設定 inspectionReportFolderUrl。");
+    const householdDoc = await db.collection("households").doc(`${projectId}_${unitId}`).get();
+    const householdData = householdDoc.exists ? householdDoc.data() : {};
+
+    let reportFolderUrl = householdData.inspectionReportFolderUrl;
+    if (!reportFolderUrl && projectData.reportSettings && projectData.reportSettings.reportDataFolderUrl) {
+      reportFolderUrl = projectData.reportSettings.reportDataFolderUrl;
+    }
+    if (!reportFolderUrl) throw new Error(`找不到戶別資料 (${projectId}_${unitId}) 或專案報告夾設定`);
 
     const parentFolderIdMatch = reportFolderUrl.match(/[-\w]{25,}/);
     if (!parentFolderIdMatch) throw new Error("無效的 Drive 資料夾 URL。");
@@ -11439,28 +11611,92 @@ exports.sendInspectionReportEmails = onCall({
     const toList = (toEmails && toEmails.length > 0) ? toEmails.join(', ') : process.env.SENDER_EMAIL;
     const bccList = (bccEmails && bccEmails.length > 0) ? bccEmails.join(', ') : '';
 
-    const subject = `【${projectName}】驗屋紀錄總表 (${unitId})`;
+    // 讀取 PDF/Email 模板設定
+    const emailTpl = projectData.inspectionPdfTemplate?.email || {};
+
+    // 變數替換函式
+    const tplVars = {
+      '{建案名稱}': projectName,
+      '{戶別}': unitId,
+      '{產權人姓名}': safeBuyerName,
+      '{驗屋日期}': formatInTimeZone(new Date(), "Asia/Taipei", "yyyy-MM-dd"), // 若未傳入，預設使用發信當日
+      '{客戶姓名}': safeBuyerName, // 向下相容舊設定
+      '{服務日期}': formatInTimeZone(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm"), // 向下相容舊設定
+    };
+    const replaceTplVars = (text) => {
+      if (!text) return '';
+      let result = text;
+      for (const [key, val] of Object.entries(tplVars)) {
+        result = result.split(key).join(val);
+      }
+      return result;
+    };
+
+    // 使用模板或預設值
+    const subject = replaceTplVars(emailTpl.subject || '【{建案名稱}】驗屋紀錄總表 ({戶別})');
+    const bodyHtml = replaceTplVars(emailTpl.bodyHtml || '<p>您好，</p><p>這是【<strong>{建案名稱} - {戶別}</strong>】戶別的驗屋紀錄暨總表。</p>');
+    const showDriveButton = emailTpl.showDriveButton !== false;
+    const buttonText = replaceTplVars(emailTpl.buttonText || '查看 / 下載驗屋報告');
+    const footerText = replaceTplVars(emailTpl.footerText || '此為系統自動發送信件，若有任何問題請聯繫相關人員。');
+
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #4CAF50; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">驗屋紀錄總表</h2>
-        <p>您好，</p>
-        <p>這是【<strong>${projectName} - ${unitId}</strong>】戶別的驗屋紀錄暨總表。</p>
-        <p>此報告產製時間為：${formatInTimeZone(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm")}，由系統發送。</p>
-        <div style="margin: 30px 0; text-align: center;">
-          <a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">查看 / 下載驗屋報告</a>
-        </div>
+        <h2 style="color: #4CAF50; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">驗屋報告通知</h2>
+        ${bodyHtml}
+        ${showDriveButton ? `<div style="margin: 30px 0; text-align: center;"><a href="${driveFileUrl}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">${buttonText}</a></div>` : ''}
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="font-size: 12px; color: #888;">此為系統自動發送信件，若有任何問題請聯繫相關人員。</p>
+        <p style="font-size: 12px; color: #888;">${footerText}</p>
       </div>
     `;
 
-    await mailTransport.sendMail({
+    // 讀取報告夾帶附件設定
+    const emailAttachmentsConfig = projectData.inspectionPdfTemplate?.emailAttachments;
+    const mailAttachments = [];
+
+    let filesToAttach = [];
+    if (emailAttachmentsConfig?.enabled && emailAttachmentsConfig?.files?.length > 0) {
+      if (Array.isArray(selectedAttachments)) {
+        filesToAttach = emailAttachmentsConfig.files.filter(f => selectedAttachments.includes(f.url));
+      } else if (includeAttachments !== false) {
+        filesToAttach = emailAttachmentsConfig.files;
+      }
+    }
+
+    if (filesToAttach.length > 0) {
+      console.log(`[${functionName}] 偵測到 ${filesToAttach.length} 個夾帶附件，開始下載...`);
+      const fetch = require('node-fetch');
+      for (const att of filesToAttach) {
+        try {
+          const response = await fetch(att.url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.buffer();
+          mailAttachments.push({
+            filename: att.name,
+            content: buffer,
+          });
+          console.log(`[${functionName}] 附件「${att.name}」下載完成 (${buffer.length} bytes)`);
+        } catch (attErr) {
+          console.error(`[${functionName}] 附件「${att.name}」下載失敗:`, attErr.message);
+          // 單一附件下載失敗不中斷整個寄信流程
+        }
+      }
+    }
+
+    // 6. 使用 Nodemailer 寄送信件
+    const mailOptions = {
       from: `"${projectName} 驗屋系統" <${process.env.SENDER_EMAIL}>`,
       to: toList,
       bcc: bccList,
       subject: subject,
-      html: htmlBody
-    });
+      html: htmlBody,
+    };
+
+    if (mailAttachments.length > 0) {
+      mailOptions.attachments = mailAttachments;
+      console.log(`[${functionName}] 將夾帶 ${mailAttachments.length} 個附件`);
+    }
+
+    await mailTransport.sendMail(mailOptions);
     console.log(`[${functionName}] 成功寄送報告 Email 至 To: ${toList}, Bcc: ${bccList}`);
 
     return { status: "success", driveFileUrl };
@@ -12984,6 +13220,59 @@ async function _handleGetBookingInitialData(data) {
     //    (快取欄位 buildingListCache 是由我們新增的背景函數產生的)
     const buildings = projectData.buildingListCache || [];
 
+    // 任務 3: 從 bookingBatches 集合獲取這個建案的批次，並依據時間判斷是否開放
+    const batchSnapshot = await db.collection('bookingBatches')
+      .where('projectId', '==', projectId)
+      .where('isDeleted', '==', false)
+      .get();
+
+    const activeBookingTypesSet = new Set();
+    const now = new Date();
+
+    console.log(`[DEBUG] init - 取得 batches 數量: ${batchSnapshot.size}, 檢查現在時間: ${now.toISOString()}`);
+
+    batchSnapshot.forEach(doc => {
+      const data = doc.data();
+      const bType = data.bookingType;
+
+      // 解析日期
+      const parseDateStr = (val) => {
+        if (!val) return null;
+        if (typeof val === 'object') {
+          if (val._seconds !== undefined) return new Date(val._seconds * 1000);
+          if (val.seconds !== undefined) return new Date(val.seconds * 1000);
+        }
+        let dateString = String(val);
+        // 若為字串且沒有包含時區 (如 Z 或 +08:00) 時，強制加上台灣時區
+        if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+') && dateString.indexOf('-', dateString.indexOf('T')) === -1) {
+          dateString += '+08:00';
+        }
+        const d = new Date(dateString);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      const start = parseDateStr(data.applicationStart);
+      const end = parseDateStr(data.applicationEnd);
+
+      let isOpened = false;
+
+      console.log(`[DEBUG] Batch ${doc.id} (${bType}) => start: ${start ? start.toISOString() : null}, end: ${end ? end.toISOString() : null}`);
+
+      if (start && end && now >= start && now <= end) {
+        isOpened = true;
+      } else if (start && !end && now >= start) {
+        isOpened = true;
+      }
+
+      if (bType && isOpened) {
+        console.log(`[DEBUG] Batch ${doc.id} 是開放的, 將加入: ${bType}`);
+        activeBookingTypesSet.add(bType);
+      }
+    });
+
+    const finalTypes = Array.from(activeBookingTypesSet);
+    console.log(`[DEBUG] init - 最終決定的開放項目: ${finalTypes.join(', ')}`);
+
     // 組合回傳資料
     return {
       buildings: buildings, //  回傳快取
@@ -12991,7 +13280,8 @@ async function _handleGetBookingInitialData(data) {
       bookingTypes: projectData.bookingTypes || [],
       validateId: projectData.validateId || 'OFF',
       inspectionMethods: [],
-      inspectionStaff: []
+      inspectionStaff: [],
+      activeBookingTypes: finalTypes
     };
 
   } catch (error) {
@@ -13183,6 +13473,7 @@ async function _handleSaveBooking(data) {
         principalIdNumber: bookingData.principalIdNumber || '', principalAddress: bookingData.principalAddress || '',
         agentName: bookingData.agentName || '', agentIdNumber: bookingData.agentIdNumber || '',
         agentAddress: bookingData.agentAddress || '', agentPhone: bookingData.agentPhone || '',
+        agentRelationship: bookingData.agentRelationship || '',
         bookingCode: bookingCode, reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
         bookingMethodDetails: bookingData.bookingMethodDetails || {},
         bookingMethodDetailsDisplay: bookingData.bookingMethodDetailsDisplay || [],
@@ -13292,7 +13583,8 @@ async function _handleSaveBooking(data) {
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${newAppointmentData.bookerEmail}</td></tr>
           ${newAppointmentData.agentName ? `
            <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${newAppointmentData.agentName}</td></tr>
-           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${newAppointmentData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px dashed #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${newAppointmentData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">與委託人關係</td><td style="padding: 12px 0;">${newAppointmentData.agentRelationship || '未填寫'}</td></tr>
           ` : ''}
           ${newAppointmentData.authorizationLetterUrl ? `
             <tr style="border-bottom: 1px solid #eeeeee;">
@@ -13473,7 +13765,8 @@ async function _handleCancelBooking(data) {
           ` : ''}
           ${bookingData.agentName ? `
            <tr style="border-top: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人姓名</td><td style="padding: 12px 0;">${bookingData.agentName}</td></tr>
-           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${bookingData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px dashed #cccccc;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">受託人電話</td><td style="padding: 12px 0;">${bookingData.agentPhone}</td></tr>
+           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">與委託人關係</td><td style="padding: 12px 0;">${bookingData.agentRelationship || '未填寫'}</td></tr>
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約日期</td><td style="padding: 12px 0;">${bookingData.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">原預約時段</td><td style="padding: 12px 0;">${bookingData.appointmentTimeSlot}</td></tr>
@@ -14697,6 +14990,7 @@ async function _handleAddAppointmentAdmin(data) {
         agentIdNumber: newBookingData.agentIdNumber || "",
         agentAddress: newBookingData.agentAddress || "",
         agentPhone: newBookingData.agentPhone || "",
+        agentRelationship: newBookingData.agentRelationship || "",
         bookingCode: bookingCode,
         reportUploaded: !['初驗', '複驗', '驗屋'].includes(newBookingData.bookingType),
         bookingRemarks: newBookingData.bookingRemarks || "",

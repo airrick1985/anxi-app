@@ -1,82 +1,65 @@
 <template>
-  <v-container
-    fluid
-    :class="mobile ? 'pa-0' : 'pa-2 pa-sm-4'"
-    style="background-color: #F4F4F7; min-height: 100vh;"
-    :style="mobile && projectId ? 'padding-bottom: 72px;' : ''"
-  >
+  <v-container fluid :class="mobile ? 'pa-0' : 'pa-2 pa-sm-4'" style="background-color: #F4F4F7; min-height: 100vh;"
+    :style="mobile && projectId ? 'padding-bottom: 72px;' : ''">
     <v-card class="mx-auto" max-width="1600">
 
-      <v-toolbar
-        color="primary"
-        dark
-        flat
-        :class="{ 'mobile-toolbar-wrap': mobile, 'py-2': mobile }"
-        height="auto"
-      >
-       <v-btn icon="mdi-home" variant="text" to="/home" aria-label="回系統選單"></v-btn>
-        <v-toolbar-title
-          class="font-weight-bold"
-          :class="{ 'mobile-title-scaling': mobile }"
-        >
-        
+      <v-toolbar color="primary" dark flat :class="{ 'mobile-toolbar-wrap': mobile, 'py-2': mobile }" height="auto">
+        <v-btn icon="mdi-home" variant="text" to="/home" aria-label="回系統選單"></v-btn>
+        <v-toolbar-title class="font-weight-bold" :class="{ 'mobile-title-scaling': mobile }">
+
           {{ projectId ? `${projectName} 驗屋紀錄` : '驗屋系統 (選擇建案)' }}
           <span v-if="projectId && showDeleted" class="text-caption font-weight-light ml-2">(垃圾桶)</span>
-           <span v-if="projectId && !showDeleted && !selectedUnit" class="text-caption font-weight-light ml-2">(全案紀錄)</span>
+          <span v-if="projectId && !showDeleted && !selectedUnit"
+            class="text-caption font-weight-light ml-2">(全案紀錄)</span>
         </v-toolbar-title>
         <v-spacer></v-spacer>
-        <template v-if="projectId && otherProjects.length > 0"> <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <v-btn v-bind="menuProps" variant="text" class="pa-1" style="text-transform: none; letter-spacing: normal;" aria-label="切換建案"> <v-avatar size="32" class="mr-2"><v-img :src="currentProject?.iconUrl || defaultProjectIcon" :alt="currentProject?.name"></v-img></v-avatar> <v-icon size="small">mdi-chevron-down</v-icon> </v-btn> </template> <v-list density="compact" class="pa-0"> <v-list-item v-for="project in otherProjects" :key="project.id" @click="enterProject(project)" link> <template v-slot:prepend><v-avatar size="32" class="mr-3"><v-img :src="project.iconUrl || defaultProjectIcon" :alt="project.name"></v-img></v-avatar></template> <v-list-item-title>{{ project.name }}</v-list-item-title> </v-list-item> </v-list> </v-menu> </template>
+        <v-btn icon="mdi-help-circle-outline" variant="text" @click="showOnboarding = true" aria-label="功能導覽"
+          v-if="projectId"></v-btn>
+        <template v-if="projectId && otherProjects.length > 0"> <v-menu offset-y> <template
+              v-slot:activator="{ props: menuProps }"> <v-btn v-bind="menuProps" variant="text" class="pa-1"
+                style="text-transform: none; letter-spacing: normal;" aria-label="切換建案"> <v-avatar size="32"
+                  class="mr-2"><v-img :src="currentProject?.iconUrl || defaultProjectIcon"
+                    :alt="currentProject?.name"></v-img></v-avatar> <v-icon size="small">mdi-chevron-down</v-icon>
+              </v-btn> </template>
+            <v-list density="compact" class="pa-0"> <v-list-item v-for="project in otherProjects" :key="project.id"
+                @click="enterProject(project)" link> <template v-slot:prepend><v-avatar size="32" class="mr-3"><v-img
+                      :src="project.iconUrl || defaultProjectIcon" :alt="project.name"></v-img></v-avatar></template>
+                <v-list-item-title>{{ project.name }}</v-list-item-title> </v-list-item> </v-list> </v-menu> </template>
       </v-toolbar>
 
-      <div v-if="isLoading" class="text-center pa-10"> <v-progress-circular indeterminate color="primary" size="50"></v-progress-circular> <p class="mt-4 text-grey">{{ loadingText }}</p> </div>
-      <div v-else-if="!isBound" class="text-center pa-10"> <v-icon size="60" color="warning" class="mb-4">mdi-account-alert-outline</v-icon> <p class="text-h6">無法使用此功能</p> <p class="mt-2 text-grey-darken-1">您的 LINE 帳號尚未綁定系統手機，請先完成綁定。</p> <v-btn color="primary" class="mt-6" href="/?liff_path=line-binding" variant="elevated"> 前往綁定頁面 </v-btn> </div>
+      <div v-if="isLoading" class="text-center pa-10"> <v-progress-circular indeterminate color="primary"
+          size="50"></v-progress-circular>
+        <p class="mt-4 text-grey">{{ loadingText }}</p>
+      </div>
+      <div v-else-if="!isBound" class="text-center pa-10"> <v-icon size="60" color="warning"
+          class="mb-4">mdi-account-alert-outline</v-icon>
+        <p class="text-h6">無法使用此功能</p>
+        <p class="mt-2 text-grey-darken-1">您的 LINE 帳號尚未綁定系統手機，請先完成綁定。</p> <v-btn color="primary" class="mt-6"
+          href="/?liff_path=line-binding" variant="elevated"> 前往綁定頁面 </v-btn>
+      </div>
 
       <div v-else-if="isBound && projectId">
         <v-sheet class="pa-3 border-b">
           <v-row dense align="center">
             <v-col cols="12" sm="4" md="2" lg="2">
-              <v-select
-                v-model="selectedBuilding"
-                :items="buildingItems"
-                label="選擇棟別"
-                variant="outlined"
-                hide-details
-                clearable
-                @update:model-value="selectedUnit = null; clearAllFiltersQuiet(); loadData()"
-                :loading="isLoadingStructure"
-                :disabled="showDeleted"
-              ></v-select>
+              <v-select v-model="selectedBuilding" :items="buildingItems" label="選擇棟別" variant="outlined" hide-details
+                clearable @update:model-value="selectedUnit = null; clearAllFiltersQuiet(); loadData()"
+                :loading="isLoadingStructure" :disabled="showDeleted"></v-select>
             </v-col>
             <v-col cols="12" sm="4" md="2" lg="2">
-              <v-select
-                v-model="selectedUnit"
-                :items="unitItems"
-                label="選擇戶別"
-                variant="outlined"
-                hide-details
-                clearable
+              <v-select v-model="selectedUnit" :items="unitItems" label="選擇戶別" variant="outlined" hide-details clearable
                 :disabled="showDeleted || !selectedBuilding"
-                @update:model-value="clearAllFiltersQuiet(); loadData()"
-              ></v-select>
+                @update:model-value="clearAllFiltersQuiet(); loadData()"></v-select>
             </v-col>
             <v-col cols="12" sm="4" :md="mobile ? 12 : 3" :lg="mobile ? 12 : 3">
-              <v-text-field
-                v-model="searchFilter"
-                label="搜尋所有欄位"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                clearable
-              >
+              <v-text-field v-model="searchFilter" label="搜尋所有欄位" prepend-inner-icon="mdi-magnify" variant="outlined"
+                hide-details clearable>
                 <template v-slot:append-inner>
-                  <v-chip
-                    size="small"
+                  <v-chip size="small"
                     :color="activeFilterCount > 0 ? 'primary' : (showAdvancedFilter ? 'primary' : 'default')"
                     :variant="activeFilterCount > 0 || showAdvancedFilter ? 'flat' : 'outlined'"
-                    prepend-icon="mdi-filter-outline"
-                    @click="showAdvancedFilter = !showAdvancedFilter"
-                    style="cursor: pointer;"
-                  >
+                    prepend-icon="mdi-filter-outline" @click="showAdvancedFilter = !showAdvancedFilter"
+                    style="cursor: pointer;">
                     篩選
                     <template v-if="activeFilterCount > 0">
                       ({{ activeFilterCount }})
@@ -87,30 +70,19 @@
             </v-col>
             <v-col cols="12" md="5" lg="5" class="d-flex justify-end align-center mt-2 mt-md-0">
               <div v-if="!mobile" class="d-flex justify-end align-center flex-wrap ga-2" style="width: 100%;">
-                <v-tooltip location="top" :text="!(selectedUnit && selectedBuilding) ? '請先選擇棟別與戶別' : showDeleted ? '無法在刪除模式新增' : '新增驗屋紀錄'">
+                <v-tooltip location="top"
+                  :text="!(selectedUnit && selectedBuilding) ? '請先選擇棟別與戶別' : showDeleted ? '無法在刪除模式新增' : '新增驗屋紀錄'">
                   <template v-slot:activator="{ props: tooltipProps }">
                     <span v-bind="tooltipProps">
-                      <v-btn
-                        color="primary"
-                        @click="openAddDialog"
-                        prepend-icon="mdi-plus"
-                        :disabled="showDeleted || !(selectedUnit && selectedBuilding)"
-                      >
+                      <v-btn color="primary" @click="openAddDialog" prepend-icon="mdi-plus"
+                        :disabled="showDeleted || !(selectedUnit && selectedBuilding)">
                         新增
                       </v-btn>
                     </span>
                   </template>
                 </v-tooltip>
-                <v-btn-toggle
-                  v-model="showDeleted"
-                  :true-value="true"
-                  :false-value="false"
-                  mandatory
-                  variant="outlined"
-                  divided
-                  color="primary"
-                  @update:model-value="handleModeChange"
-                >
+                <v-btn-toggle v-model="showDeleted" :true-value="true" :false-value="false" mandatory variant="outlined"
+                  divided color="primary" @update:model-value="handleModeChange">
                   <v-tooltip location="top" text="全案紀錄">
                     <template v-slot:activator="{ props }">
                       <v-btn v-bind="props" :value="false" icon="mdi-file-document-outline" aria-label="全案紀錄"></v-btn>
@@ -123,27 +95,28 @@
                   </v-tooltip>
                 </v-btn-toggle>
                 <v-btn-toggle v-model="viewMode" mandatory density="compact" variant="outlined" divided>
-                  <v-tooltip location="top" text="表格模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="table" icon="mdi-table" aria-label="表格視圖"></v-btn> </template> </v-tooltip>
-                  <v-tooltip location="top" text="卡片模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" value="card" icon="mdi-view-dashboard" aria-label="卡片視圖"></v-btn> </template> </v-tooltip>
+                  <v-tooltip location="top" text="表格模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props"
+                        value="table" icon="mdi-table" aria-label="表格視圖"></v-btn> </template>
+                  </v-tooltip>
+                  <v-tooltip location="top" text="卡片模式"> <template v-slot:activator="{ props }"> <v-btn v-bind="props"
+                        value="card" icon="mdi-view-dashboard" aria-label="卡片視圖"></v-btn> </template>
+                  </v-tooltip>
                 </v-btn-toggle>
 
                 <v-menu offset-y>
                   <template v-slot:activator="{ props }">
-                    <v-btn
-                      color="secondary"
-                      v-bind="props"
-                      size="small"
-                      prepend-icon="mdi-export-variant"
-                      :disabled="!selectedUnit || showDeleted"
-                    >
+                    <v-btn color="secondary" v-bind="props" size="small" prepend-icon="mdi-export-variant"
+                      :disabled="!selectedUnit || showDeleted">
                       寄出報告
                     </v-btn>
                   </template>
                   <v-list density="compact">
-                    <v-list-item @click="handleShareReport"> <template v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
+                    <v-list-item @click="handleShareReport"> <template
+                        v-slot:prepend><v-icon>mdi-share-variant-outline</v-icon></template>
                       <v-list-item-title>傳送記錄連結</v-list-item-title>
                     </v-list-item>
-                    <v-list-item @click="handleGeneratePdf"> <template v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
+                    <v-list-item @click="handleGeneratePdf"> <template
+                        v-slot:prepend><v-icon>mdi-file-pdf-box</v-icon></template>
                       <v-list-item-title>預覽與寄出報告</v-list-item-title>
                     </v-list-item>
                   </v-list>
@@ -151,27 +124,23 @@
 
                 <v-menu offset-y>
                   <template v-slot:activator="{ props }">
-                    <v-btn
-                      color="primary"
-                      v-bind="props"
-                      size="small"
-                      variant="outlined"
-                      prepend-icon="mdi-download"
-                      :disabled="filteredRecords.length === 0"
-                    >
+                    <v-btn color="primary" v-bind="props" size="small" variant="outlined" prepend-icon="mdi-download"
+                      :disabled="filteredRecords.length === 0">
                       下載報告
                     </v-btn>
                   </template>
                   <v-list density="compact">
-                    <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
+                    <v-list-item @click="handleDownloadExcel" :disabled="filteredRecords.length === 0"> <template
+                        v-slot:prepend><v-icon color="green">mdi-file-excel-box</v-icon></template>
                       <v-list-item-title>下載 Excel</v-list-item-title>
                     </v-list-item>
-                    <v-list-item @click="handleDownloadPdf" :disabled="filteredRecords.length === 0"> <template v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
+                    <v-list-item @click="handleDownloadPdf" :disabled="filteredRecords.length === 0"> <template
+                        v-slot:prepend><v-icon color="red">mdi-file-pdf-box</v-icon></template>
                       <v-list-item-title>下載 PDF</v-list-item-title>
                     </v-list-item>
                   </v-list>
                 </v-menu>
-                </div>
+              </div>
             </v-col>
           </v-row>
 
@@ -186,167 +155,73 @@
                     {{ activeFilterCount }} 個條件
                   </v-chip>
                   <v-spacer></v-spacer>
-                  <v-btn
-                    v-if="activeFilterCount > 0"
-                    variant="text"
-                    size="small"
-                    color="error"
-                    prepend-icon="mdi-filter-off-outline"
-                    @click="clearAllFilters"
-                  >
+                  <v-btn v-if="activeFilterCount > 0" variant="text" size="small" color="error"
+                    prepend-icon="mdi-filter-off-outline" @click="clearAllFilters">
                     清除全部
                   </v-btn>
-                  <v-btn
-                    icon="mdi-close"
-                    variant="text"
-                    size="x-small"
-                    @click="showAdvancedFilter = false"
-                  ></v-btn>
+                  <v-btn icon="mdi-close" variant="text" size="x-small" @click="showAdvancedFilter = false"></v-btn>
                 </div>
 
                 <v-row dense>
                   <!-- 日期範圍 -->
                   <v-col cols="12" sm="6" md="3">
-                    <v-text-field
-                      v-model="advancedFilters.dateFrom"
-                      label="開始日期"
-                      type="date"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      prepend-inner-icon="mdi-calendar-start"
-                      bg-color="white"
-                      @update:model-value="onDateFromChange"
-                    ></v-text-field>
+                    <v-text-field v-model="advancedFilters.dateFrom" label="開始日期" type="date" variant="outlined"
+                      density="compact" hide-details clearable prepend-inner-icon="mdi-calendar-start" bg-color="white"
+                      @update:model-value="onDateFromChange"></v-text-field>
                   </v-col>
                   <v-col cols="12" sm="6" md="3">
-                    <v-text-field
-                      v-model="advancedFilters.dateTo"
-                      label="結束日期"
-                      type="date"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      prepend-inner-icon="mdi-calendar-end"
-                      bg-color="white"
-                      :disabled="!advancedFilters.dateFrom"
-                      :min="advancedFilters.dateFrom || undefined"
-                    ></v-text-field>
+                    <v-text-field v-model="advancedFilters.dateTo" label="結束日期" type="date" variant="outlined"
+                      density="compact" hide-details clearable prepend-inner-icon="mdi-calendar-end" bg-color="white"
+                      :disabled="!advancedFilters.dateFrom" :min="advancedFilters.dateFrom || undefined"></v-text-field>
                   </v-col>
 
                   <!-- 階段 -->
                   <v-col cols="12" sm="6" md="3">
-                    <v-select
-                      v-model="advancedFilters.phase"
-                      :items="phaseFilterItems"
-                      label="階段"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      multiple
-                      chips
-                      closable-chips
-                      prepend-inner-icon="mdi-layers-outline"
-                      bg-color="white"
-                    ></v-select>
+                    <v-select v-model="advancedFilters.phase" :items="phaseFilterItems" label="階段" variant="outlined"
+                      density="compact" hide-details clearable multiple chips closable-chips
+                      prepend-inner-icon="mdi-layers-outline" bg-color="white"></v-select>
                   </v-col>
 
-                  <!-- 買方確認 -->
+                  <!-- 客戶確認 -->
                   <v-col cols="12" sm="6" md="3">
-                    <v-select
-                      v-model="advancedFilters.confirmed"
-                      :items="confirmedFilterItems"
-                      label="買方確認"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      prepend-inner-icon="mdi-check-decagram-outline"
-                      bg-color="white"
-                    ></v-select>
+                    <v-select v-model="advancedFilters.confirmed" :items="confirmedFilterItems" label="客戶確認"
+                      variant="outlined" density="compact" hide-details clearable
+                      prepend-inner-icon="mdi-check-decagram-outline" bg-color="white"></v-select>
                   </v-col>
                 </v-row>
 
                 <v-row dense class="mt-1">
                   <!-- 狀態 -->
                   <v-col cols="12" sm="6" md="4">
-                    <v-select
-                      v-model="advancedFilters.status"
-                      :items="statusFilterItems"
-                      label="狀態"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      multiple
-                      chips
-                      closable-chips
-                      prepend-inner-icon="mdi-clipboard-check-outline"
-                      bg-color="white"
-                    ></v-select>
+                    <v-select v-model="advancedFilters.status" :items="statusFilterItems" label="狀態" variant="outlined"
+                      density="compact" hide-details clearable multiple chips closable-chips
+                      prepend-inner-icon="mdi-clipboard-check-outline" bg-color="white"></v-select>
                   </v-col>
 
                   <!-- 進度 -->
                   <v-col cols="12" sm="6" md="4">
-                    <v-select
-                      v-model="advancedFilters.progress"
-                      :items="progressFilterItems"
-                      label="進度"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      multiple
-                      chips
-                      closable-chips
-                      prepend-inner-icon="mdi-progress-wrench"
-                      bg-color="white"
-                    ></v-select>
+                    <v-select v-model="advancedFilters.progress" :items="progressFilterItems" label="進度"
+                      variant="outlined" density="compact" hide-details clearable multiple chips closable-chips
+                      prepend-inner-icon="mdi-progress-wrench" bg-color="white"></v-select>
                   </v-col>
 
                   <!-- 等級 -->
                   <v-col cols="12" sm="6" md="4">
-                    <v-select
-                      v-model="advancedFilters.level"
-                      :items="levelFilterItems"
-                      label="等級"
-                      variant="outlined"
-                      density="compact"
-                      hide-details
-                      clearable
-                      multiple
-                      chips
-                      closable-chips
-                      prepend-inner-icon="mdi-alert-circle-outline"
-                      bg-color="white"
-                    ></v-select>
+                    <v-select v-model="advancedFilters.level" :items="levelFilterItems" label="等級" variant="outlined"
+                      density="compact" hide-details clearable multiple chips closable-chips
+                      prepend-inner-icon="mdi-alert-circle-outline" bg-color="white"></v-select>
                   </v-col>
                 </v-row>
 
                 <!-- 篩選結果統計 + 未完全載入警告 -->
                 <div v-if="activeFilterCount > 0" class="mt-2">
-                  <v-alert
-                    v-if="hasMore && !showDeleted"
-                    type="warning"
-                    variant="tonal"
-                    density="compact"
-                    class="mb-2"
-                  >
+                  <v-alert v-if="hasMore && !showDeleted" type="warning" variant="tonal" density="compact" class="mb-2">
                     <div class="d-flex align-center flex-wrap ga-2">
                       <span class="text-body-2">
                         ⚠️ 目前僅載入部分紀錄 ({{ allRecords.length }} 筆)，篩選結果可能不完整。
                       </span>
-                      <v-btn
-                        size="small"
-                        variant="outlined"
-                        color="warning"
-                        prepend-icon="mdi-database-sync"
-                        @click="loadAllRecords"
-                        :loading="isLoadingAll"
-                      >
+                      <v-btn size="small" variant="outlined" color="warning" prepend-icon="mdi-database-sync"
+                        @click="loadAllRecords" :loading="isLoadingAll">
                         載入全部紀錄
                       </v-btn>
                     </div>
@@ -354,7 +229,8 @@
                   <div class="d-flex align-center">
                     <v-icon size="small" color="grey" class="mr-1">mdi-information-outline</v-icon>
                     <span class="text-caption text-grey">
-                      篩選結果：{{ filteredRecords.length }} 筆 / 共 {{ allRecords.length }} 筆{{ hasMore && !showDeleted ? ' (未全部載入)' : '' }}
+                      篩選結果：{{ filteredRecords.length }} 筆 / 共 {{ allRecords.length }} 筆
+                      <template v-if="hasMore && !showDeleted"> (未全部載入)</template>
                     </span>
                   </div>
                 </div>
@@ -362,20 +238,16 @@
             </div>
           </v-expand-transition>
         </v-sheet>
-        <div v-if="isLoadingRecords" class="text-center pa-10"> <v-progress-circular indeterminate color="primary" size="40"></v-progress-circular> <p class="mt-4 text-grey">正在載入紀錄...</p> </div>
+        <div v-if="isLoadingRecords" class="text-center pa-10"> <v-progress-circular indeterminate color="primary"
+            size="40"></v-progress-circular>
+          <p class="mt-4 text-grey">正在載入紀錄...</p>
+        </div>
         <div v-else-if="filteredRecords.length > 0">
           <div v-if="viewMode === 'table'">
-            <v-data-table
-              :headers="headers"
-              :items="filteredRecords"
-              :loading="isLoadingRecords"
-              :search="searchFilter"
-              item-value="id"
-              class="elevation-0"
-              :items-per-page="10"
-              :items-per-page-options="[{ value: 10, title: '10' },{ value: 25, title: '25' },{ value: 50, title: '50' },{ value: 100, title: '100' },{ value: -1, title: '全部顯示' }]"
-              density="compact"
-            >
+            <v-data-table :headers="headers" :items="filteredRecords" :loading="isLoadingRecords" :search="searchFilter"
+              item-value="id" class="elevation-0" :items-per-page="10"
+              :items-per-page-options="[{ value: 10, title: '10' }, { value: 25, title: '25' }, { value: 50, title: '50' }, { value: 100, title: '100' }, { value: -1, title: '全部顯示' }]"
+              density="compact">
               <template v-slot:item="{ item }">
                 <tr :class="{ 'confirmed-record-bg': !!item.customerConfirmedAt }">
                   <td v-if="!selectedUnit">{{ item.unitId }}</td>
@@ -383,8 +255,13 @@
                   <td>{{ item.phase }}</td>
                   <td>
                     <div class="d-flex ga-1 pa-1">
-                      <v-img v-for="(photo, index) in item.photos.slice(0, 4)" :key="index" :src="photo.url" aspect-ratio="1" cover width="40" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)">
-                        <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate color="grey-lighten-4"></v-progress-circular> </div> </template>
+                      <v-img v-for="(photo, index) in item.photos.slice(0, 4)" :key="index" :src="photo.url"
+                        aspect-ratio="1" cover width="40" class="rounded border cursor-pointer"
+                        @click="showImagePreview(photo.url)">
+                        <template v-slot:placeholder>
+                          <div class="d-flex align-center justify-center fill-height"> <v-progress-circular
+                              indeterminate color="grey-lighten-4"></v-progress-circular> </div>
+                        </template>
                       </v-img>
                     </div>
                   </td>
@@ -392,38 +269,73 @@
                   <td>{{ item.category }}</td>
                   <td>{{ item.subCategory }}</td>
                   <td>
-                    <ChipRenderer v-if="showDeleted" :value="item.status" type="status" :options="optionsForChips.status" size="small"/>
+                    <ChipRenderer v-if="showDeleted" :value="item.status" type="status"
+                      :options="optionsForChips.status" size="small" />
                     <div v-else class="position-relative">
-                      <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
-                      <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.status" type="status" :options="optionsForChips.status" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.status" @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }"> <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu>
+                      <v-fade-transition> <v-overlay
+                          v-if="updatingRecord.id === item.id && updatingRecord.field === 'status'" contained persistent
+                          class="align-center justify-center"> <v-progress-circular indeterminate
+                            size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                      <v-menu offset-y> <template v-slot:activator="{ props: menuProps }">
+                          <ChipRenderer v-bind="menuProps" :value="item.status" type="status"
+                            :options="optionsForChips.status" style="cursor: pointer;" size="small" />
+                        </template>
+                        <v-sheet class="pa-2"> <v-chip-group column :model-value="item.status"
+                            @update:model-value="(newValue) => { handleFieldUpdate(item, 'status', newValue); }">
+                            <v-chip v-for="option in optionsForChips.status" :key="option.id" :value="option.value"
+                              :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon
+                                v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }}
+                            </v-chip> </v-chip-group> </v-sheet>
+                      </v-menu>
                     </div>
                   </td>
                   <td>
-                     <ChipRenderer v-if="showDeleted" :value="item.level" type="level" :options="optionsForChips.level" size="small"/>
-                     <div v-else class="position-relative">
-                         <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
-                         <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.level" type="level" :options="optionsForChips.level" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.level" @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }"> <v-chip v-for="option in optionsForChips.level" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value }}</v-chip> </v-chip-group> </v-sheet> </v-menu>
-                     </div>
+                    <ChipRenderer v-if="showDeleted" :value="item.level" type="level" :options="optionsForChips.level"
+                      size="small" />
+                    <div v-else class="position-relative">
+                      <v-fade-transition> <v-overlay
+                          v-if="updatingRecord.id === item.id && updatingRecord.field === 'level'" contained persistent
+                          class="align-center justify-center"> <v-progress-circular indeterminate
+                            size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                      <v-menu offset-y> <template v-slot:activator="{ props: menuProps }">
+                          <ChipRenderer v-bind="menuProps" :value="item.level" type="level"
+                            :options="optionsForChips.level" style="cursor: pointer;" size="small" />
+                        </template>
+                        <v-sheet class="pa-2"> <v-chip-group column :model-value="item.level"
+                            @update:model-value="(newValue) => { handleFieldUpdate(item, 'level', newValue); }"> <v-chip
+                              v-for="option in optionsForChips.level" :key="option.id" :value="option.value"
+                              :color="option.color || 'grey'" filter variant="outlined" size="small">{{ option.value
+                              }}</v-chip>
+                          </v-chip-group> </v-sheet> </v-menu>
+                    </div>
                   </td>
                   <td>
-                     <ChipRenderer v-if="showDeleted" :value="item.progress" type="progress" :options="optionsForChips.progress" size="small"/>
-                     <div v-else class="position-relative">
-                         <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained persistent class="align-center justify-center"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
-                         <v-menu offset-y> <template v-slot:activator="{ props: menuProps }"> <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress" :options="optionsForChips.progress" style="cursor: pointer;" size="small"/> </template> <v-sheet class="pa-2"> <v-chip-group column :model-value="item.progress" @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }"> <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value" :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }} </v-chip> </v-chip-group> </v-sheet> </v-menu>
-                     </div>
+                    <ChipRenderer v-if="showDeleted" :value="item.progress" type="progress"
+                      :options="optionsForChips.progress" size="small" />
+                    <div v-else class="position-relative">
+                      <v-fade-transition> <v-overlay
+                          v-if="updatingRecord.id === item.id && updatingRecord.field === 'progress'" contained
+                          persistent class="align-center justify-center"> <v-progress-circular indeterminate
+                            size="20"></v-progress-circular> </v-overlay> </v-fade-transition>
+                      <v-menu offset-y> <template v-slot:activator="{ props: menuProps }">
+                          <ChipRenderer v-bind="menuProps" :value="item.progress" type="progress"
+                            :options="optionsForChips.progress" style="cursor: pointer;" size="small" />
+                        </template>
+                        <v-sheet class="pa-2"> <v-chip-group column :model-value="item.progress"
+                            @update:model-value="(newValue) => { handleFieldUpdate(item, 'progress', newValue); }">
+                            <v-chip v-for="option in optionsForChips.progress" :key="option.id" :value="option.value"
+                              :color="option.color || 'grey'" filter variant="outlined" size="small"> <v-icon
+                                v-if="option.icon" start size="small">{{ option.icon }}</v-icon> {{ option.value }}
+                            </v-chip> </v-chip-group> </v-sheet>
+                      </v-menu>
+                    </div>
                   </td>
                   <td>
                     <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1">
-                        {{ formatDate(item.customerConfirmedAt) }}
+                      {{ formatDate(item.customerConfirmedAt) }}
                     </span>
-                    <v-chip
-                      v-else
-                      color="red"
-                      text-color="white"
-                      size="small"
-                      label
-                    >
-                      買方未確認
+                    <v-chip v-else color="red" text-color="white" size="small" label>
+                      客戶未確認
                     </v-chip>
                   </td>
                   <td>{{ item.description }}</td>
@@ -433,75 +345,122 @@
                   <td>
                     <div class="d-flex align-center justify-start ga-0">
                       <template v-if="!showDeleted">
-                        <div class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained persistent class="align-center justify-center" scrim="rgba(255, 255, 255, 0.7)"> <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay> </v-fade-transition> <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small" density="compact" @click="() => { console.log('Eye Btn Clicked:', { id: item.id, current: item.customerView, next: !(item.customerView ?? true) }); handleFieldUpdate(item, 'customerView', !(item.customerView ?? true)); }" :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" aria-label="切換客戶檢視狀態"></v-btn> </template> </v-tooltip> </div>
-                        <v-tooltip location="top" text="編輯"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-pencil" variant="text" size="small" density="compact" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn> </template> </v-tooltip>
-                        <v-tooltip location="top" text="刪除"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-delete" variant="text" size="small" density="compact" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn> </template> </v-tooltip>
+                        <div class="position-relative"> <v-fade-transition> <v-overlay
+                              v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained
+                              persistent class="align-center justify-center" scrim="rgba(255, 255, 255, 0.7)">
+                              <v-progress-circular indeterminate size="20"></v-progress-circular> </v-overlay>
+                          </v-fade-transition> <v-tooltip location="top"
+                            :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template
+                              v-slot:activator="{ props }"> <v-btn v-bind="props"
+                                :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small"
+                                density="compact"
+                                @click="() => { console.log('Eye Btn Clicked:', { id: item.id, current: item.customerView, next: !(item.customerView ?? true) }); handleFieldUpdate(item, 'customerView', !(item.customerView ?? true)); }"
+                                :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'"
+                                aria-label="切換客戶檢視狀態"></v-btn> </template>
+                          </v-tooltip>
+                        </div>
+                        <v-tooltip location="top" text="編輯"> <template v-slot:activator="{ props }"> <v-btn
+                              v-bind="props" icon="mdi-pencil" variant="text" size="small" density="compact"
+                              @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn> </template>
+                        </v-tooltip>
+                        <v-tooltip location="top" text="刪除"> <template v-slot:activator="{ props }"> <v-btn
+                              v-bind="props" icon="mdi-delete" variant="text" size="small" density="compact"
+                              @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn> </template>
+                        </v-tooltip>
                       </template>
                       <template v-else>
-                        <v-tooltip location="top" text="還原"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" icon="mdi-restore" variant="text" size="small" density="compact" @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn> </template> </v-tooltip>
+                        <v-tooltip location="top" text="還原"> <template v-slot:activator="{ props }"> <v-btn
+                              v-bind="props" icon="mdi-restore" variant="text" size="small" density="compact"
+                              @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn> </template>
+                        </v-tooltip>
                       </template>
                     </div>
                   </td>
                 </tr>
               </template>
-              <template v-slot:no-data> <div class="pa-4 text-center text-grey"> {{ noDataText }} </div> </template>
+              <template v-slot:no-data>
+                <div class="pa-4 text-center text-grey"> {{ noDataText }} </div>
+              </template>
             </v-data-table>
           </div>
           <div v-if="viewMode === 'card'" class="pa-2 pa-sm-4">
             <v-row dense>
               <v-col v-for="item in cardDisplayRecords" :key="item.id" cols="12" sm="6" md="4" lg="3">
-                <v-card
-                  class="mb-3 record-card"
-                  variant="outlined"
-                  :class="{ 'deleted-card-look': showDeleted, 'confirmed-record-bg': !!item.customerConfirmedAt }"
-                >
-                  <div v-if="!selectedUnit" class="pa-2 border-b" :class="showDeleted ? 'bg-grey-lighten-4' : 'bg-blue-grey-lighten-5'">
-                    <strong :class="showDeleted ? 'text-grey-darken-2' : 'text-blue-grey-darken-3'">戶別: {{ item.unitId }}</strong>
+                <v-card class="mb-3 record-card" variant="outlined"
+                  :class="{ 'deleted-card-look': showDeleted, 'confirmed-record-bg': !!item.customerConfirmedAt }">
+                  <div v-if="!selectedUnit" class="pa-2 border-b"
+                    :class="showDeleted ? 'bg-grey-lighten-4' : 'bg-blue-grey-lighten-5'">
+                    <strong :class="showDeleted ? 'text-grey-darken-2' : 'text-blue-grey-darken-3'">戶別: {{ item.unitId
+                    }}</strong>
                   </div>
                   <div v-if="item.photos && item.photos.length > 0" class="d-flex ga-1 pa-2 border-b photo-strip">
-                     <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url" aspect-ratio="1" cover height="50" class="rounded border cursor-pointer" @click="showImagePreview(photo.url)">
-                       <template v-slot:placeholder> <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate size="20" color="grey-lighten-2"></v-progress-circular> </div> </template>
-                       <div v-if="index === 4 && item.photos.length > 5" class="photo-overlay d-flex align-center justify-center"> +{{ item.photos.length - 5 }} </div>
-                     </v-img>
+                    <v-img v-for="(photo, index) in item.photos.slice(0, 5)" :key="index" :src="photo.url"
+                      aspect-ratio="1" cover height="50" class="rounded border cursor-pointer"
+                      @click="showImagePreview(photo.url)">
+                      <template v-slot:placeholder>
+                        <div class="d-flex align-center justify-center fill-height"> <v-progress-circular indeterminate
+                            size="20" color="grey-lighten-2"></v-progress-circular> </div>
+                      </template>
+                      <div v-if="index === 4 && item.photos.length > 5"
+                        class="photo-overlay d-flex align-center justify-center">
+                        +{{ item.photos.length - 5 }} </div>
+                    </v-img>
                   </div>
                   <v-card-item class="pb-1 pt-2">
-                     <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span> </div>
-                     <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p>
+                    <div> <span class="text-subtitle-1 font-weight-bold mr-2">{{ item.area }}</span> <span
+                        class="text-caption text-grey">{{ formatDate(item.inspectionDate) }} - {{ item.phase }}</span>
+                    </div>
+                    <p class="text-body-2 text-medium-emphasis mt-1"> {{ item.category }} / {{ item.subCategory }} </p>
                   </v-card-item>
                   <v-card-text class="py-2">
-                     <div class="d-flex ga-2 flex-wrap mb-1">
-                       <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" />
-                       <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" />
-                       <ChipRenderer size="small" :value="item.progress" type="progress" :options="optionsForChips.progress" />
-                     </div>
-                     <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1"> {{ item.description }} </p>
-                     <p v-if="showDeleted && item.deletedAt" class="text-caption text-error mt-1"> 刪除時間: {{ formatDateTime(item.deletedAt) }} </p>
+                    <div class="d-flex ga-2 flex-wrap mb-1">
+                      <ChipRenderer size="small" :value="item.status" type="status" :options="optionsForChips.status" />
+                      <ChipRenderer size="small" :value="item.level" type="level" :options="optionsForChips.level" />
+                      <ChipRenderer size="small" :value="item.progress" type="progress"
+                        :options="optionsForChips.progress" />
+                    </div>
+                    <p v-if="item.description" class="text-caption text-medium-emphasis description-truncate mt-1"> {{
+                      item.description }} </p>
+                    <p v-if="showDeleted && item.deletedAt" class="text-caption text-error mt-1"> 刪除時間: {{
+                      formatDateTime(item.deletedAt) }} </p>
                   </v-card-text>
                   <v-divider></v-divider>
                   <v-card-actions class="px-3 py-1">
                     <div class="d-flex flex-column flex-grow-1 mr-2">
-                         <span class="text-caption text-grey"> 驗屋人員: {{ item.inspectorName }} @ {{ formatDateTime(item.createdAt) }} </span>
-                         <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
-                             買方確認：{{ formatDate(item.customerConfirmedAt) }}
-                         </span>
-                         <v-chip
-                           v-else
-                           color="red"
-                           text-color="white"
-                           size="x-small"
-                           label
-                           class="mt-1"
-                         >
-                           買方未確認
-                         </v-chip>
+                      <span class="text-caption text-grey"> 驗屋人員: {{ item.inspectorName }} @ {{
+                        formatDateTime(item.createdAt) }}
+                      </span>
+                      <span v-if="item.customerConfirmedAt" class="text-caption text-success-darken-1 mt-1">
+                        客戶確認：{{ formatDate(item.customerConfirmedAt) }}
+                      </span>
+                      <v-chip v-else color="red" text-color="white" size="x-small" label class="mt-1">
+                        客戶未確認
+                      </v-chip>
                     </div>
                     <template v-if="!showDeleted">
-                      <div class="position-relative"> <v-fade-transition> <v-overlay v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained scrim="rgba(255, 255, 255, 0.7)" persistent class="align-center justify-center"> <v-progress-circular indeterminate size="16" width="2"></v-progress-circular> </v-overlay> </v-fade-transition> <v-tooltip location="top" :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template v-slot:activator="{ props }"> <v-btn v-bind="props" :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small" @click="handleFieldUpdate(item, 'customerView', !(item.customerView ?? true))" :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" aria-label="切換客戶檢視狀態"></v-btn> </template> </v-tooltip> </div>
-                      <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditDialog(item)" color="primary" aria-label="編輯紀錄"></v-btn>
-                      <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteDialog(item)" color="error" aria-label="刪除紀錄"></v-btn>
+                      <div class="position-relative"> <v-fade-transition> <v-overlay
+                            v-if="updatingRecord.id === item.id && updatingRecord.field === 'customerView'" contained
+                            scrim="rgba(255, 255, 255, 0.7)" persistent class="align-center justify-center">
+                            <v-progress-circular indeterminate size="16" width="2"></v-progress-circular> </v-overlay>
+                        </v-fade-transition> <v-tooltip location="top"
+                          :text="item.customerView === false ? '不顯示於報告' : '顯示於報告'"> <template
+                            v-slot:activator="{ props }"> <v-btn v-bind="props"
+                              :icon="item.customerView === false ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                              :color="item.customerView === false ? 'grey' : 'primary'" variant="text" size="small"
+                              @click="handleFieldUpdate(item, 'customerView', !(item.customerView ?? true))"
+                              :disabled="updatingRecord.id === item.id && updatingRecord.field === 'customerView'"
+                              aria-label="切換客戶檢視狀態"></v-btn> </template>
+                        </v-tooltip>
+                      </div>
+                      <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditDialog(item)" color="primary"
+                        aria-label="編輯紀錄"></v-btn>
+                      <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteDialog(item)" color="error"
+                        aria-label="刪除紀錄"></v-btn>
                     </template>
                     <template v-else>
-                      <v-btn icon="mdi-restore" variant="text" size="small" @click="openRestoreDialog(item)" color="success" aria-label="還原紀錄"></v-btn>
+                      <v-btn icon="mdi-restore" variant="text" size="small" @click="openRestoreDialog(item)"
+                        color="success" aria-label="還原紀錄"></v-btn>
                     </template>
                   </v-card-actions>
                 </v-card>
@@ -516,34 +475,30 @@
           </div>
           <!-- 「載入更多」按鈕 (後端分頁，Table & Card 共用) -->
           <div v-if="hasMore && !showDeleted" class="text-center py-4 border-t">
-            <v-btn
-              variant="tonal"
-              color="primary"
-              @click="loadMoreRecords"
-              :loading="isLoadingMore"
-              prepend-icon="mdi-database-arrow-down"
-            >
+            <v-btn variant="tonal" color="primary" @click="loadMoreRecords" :loading="isLoadingMore"
+              prepend-icon="mdi-database-arrow-down">
               從資料庫載入更多紀錄 (目前已載入 {{ allRecords.length }} 筆)
             </v-btn>
             <p class="text-caption text-grey mt-1">每次會從資料庫讀取 {{ PAGE_SIZE }} 筆新紀錄</p>
           </div>
-          </div>
+        </div>
         <div v-else class="pa-10 text-center text-grey"> {{ noDataText }} </div>
       </div>
 
-      <div v-else-if="isBound && !projectId" class="pa-6"> <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br> 請選擇您要進入的驗屋系統建案： </p> <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4"> <IconButton v-for="project in authorizedProjects" :key="project.id" :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8" @click="enterProject(project)" /> </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert> </div>
+      <div v-else-if="isBound && !projectId" class="pa-6">
+        <p class="text-h6 text-center mb-6"> 歡迎，{{ userStore.user?.name }}！<br> 請選擇您要進入的驗屋系統建案： </p>
+        <div v-if="authorizedProjects.length > 0" class="d-flex flex-wrap justify-center ga-4">
+          <IconButton v-for="project in authorizedProjects" :key="project.id"
+            :icon="project.iconUrl || defaultProjectIcon" :text="project.name" :scale="0.8"
+            @click="enterProject(project)" />
+        </div> <v-alert v-else type="warning" variant="tonal" class="mt-4"> 您目前沒有任何建案的「驗屋系統」權限。 </v-alert>
+      </div>
 
     </v-card>
 
-    <InspectionRecordEditor
-      v-model="showEditorDialog"
-      :project-id="projectId"
-      :project-name="projectName"
-      :unit-id="recordBeingEdited ? recordBeingEdited.unitId : selectedUnit"
-      :record-to-edit="recordBeingEdited"
-      @saved="handleRecordSaved"
-      fullscreen
-    />
+    <InspectionRecordEditor v-model="showEditorDialog" :project-id="projectId" :project-name="projectName"
+      :unit-id="recordBeingEdited ? recordBeingEdited.unitId : selectedUnit" :record-to-edit="recordBeingEdited"
+      @saved="handleRecordSaved" fullscreen />
 
     <v-dialog v-model="showShareDialog" persistent max-width="500px">
       <v-card :loading="isGeneratingUrl">
@@ -568,23 +523,10 @@
           </div>
           <div v-else class="py-4">
             <p class="mb-4">請將下方連結或 QR Code 提供給客戶：</p>
-            <qrcode-vue
-              :value="shareUrl"
-              :size="200"
-              level="H"
-              class="mb-4 d-inline-block border pa-1"
-            ></qrcode-vue>
+            <qrcode-vue :value="shareUrl" :size="200" level="H" class="mb-4 d-inline-block border pa-1"></qrcode-vue>
 
-            <v-text-field
-              :model-value="shareUrl"
-              label="分享連結 (有效期限 90 天)"
-              readonly
-              variant="outlined"
-              density="compact"
-              append-inner-icon="mdi-content-copy"
-              @click:append-inner="copyShareUrl"
-              hide-details
-            ></v-text-field>
+            <v-text-field :model-value="shareUrl" label="分享連結 (有效期限 90 天)" readonly variant="outlined" density="compact"
+              append-inner-icon="mdi-content-copy" @click:append-inner="copyShareUrl" hide-details></v-text-field>
             <v-scroll-y-transition>
               <div v-if="copySuccess" class="text-success text-caption mt-1">已複製！</div>
             </v-scroll-y-transition>
@@ -600,13 +542,13 @@
 
     <v-dialog v-model="showGeneratePdfDialog" persistent fullscreen transition="dialog-bottom-transition">
       <v-card>
-       <v-toolbar dark color="secondary">
+        <v-toolbar dark color="secondary">
           <v-btn icon dark @click="showGeneratePdfDialog = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
           <v-toolbar-title>產製驗屋報告 PDF</v-toolbar-title>
           <v-spacer></v-spacer>
-          </v-toolbar>
+        </v-toolbar>
 
         <v-card-text class="pa-4">
           <div v-if="isLoadingBatches" class="text-center py-10">
@@ -623,86 +565,47 @@
             <v-icon size="64" color="warning" class="mb-3">mdi-alert-circle-outline</v-icon>
             <div class="text-h6 mb-2">尚未產生可供產製報告的「驗屋紀錄批次」</div>
             <p class="text-body-1 text-grey-darken-1 mb-6">
-              請先「傳送記錄連結」給買方，當買方在線上確認缺失並簽名後，系統便會自動產生確認批次，屆時您才能在此處產製正式的 PDF 報告。
+              請先「傳送記錄連結」給客戶，當客戶在線上確認缺失並簽名後，系統便會自動產生確認批次，屆時您才能在此處產製正式的 PDF 報告。
             </p>
-            
+
             <v-card variant="outlined" class="pa-4 bg-grey-lighten-4 rounded-lg">
-               <div class="text-subtitle-1 font-weight-bold mb-3 text-primary">提供給買方的專屬確認連結：</div>
-               
-               <p class="mb-4 text-grey-darken-1">請將下方連結或 QR Code 提供給客戶：</p>
-               <qrcode-vue
-                 :value="shareUrl"
-                 :size="200"
-                 level="H"
-                 class="mb-4 d-inline-block border pa-1 bg-white"
-               ></qrcode-vue>
-   
-               <v-text-field
-                 :model-value="shareUrl"
-                 label="分享連結 (有效期限 90 天)"
-                 readonly
-                 variant="outlined"
-                 density="compact"
-                 append-inner-icon="mdi-content-copy"
-                 @click:append-inner="copyShareUrl"
-                 hide-details
-                 class="bg-white"
-               ></v-text-field>
-               <v-scroll-y-transition>
-                 <div v-if="copySuccess" class="text-success text-caption mt-1">已複製！</div>
-               </v-scroll-y-transition>
+              <div class="text-subtitle-1 font-weight-bold mb-3 text-primary">提供給客戶的專屬確認連結：</div>
+
+              <p class="mb-4 text-grey-darken-1">請將下方連結或 QR Code 提供給客戶：</p>
+              <qrcode-vue :value="shareUrl" :size="200" level="H"
+                class="mb-4 d-inline-block border pa-1 bg-white"></qrcode-vue>
+
+              <v-text-field :model-value="shareUrl" label="分享連結 (有效期限 90 天)" readonly variant="outlined"
+                density="compact" append-inner-icon="mdi-content-copy" @click:append-inner="copyShareUrl" hide-details
+                class="bg-white"></v-text-field>
+              <v-scroll-y-transition>
+                <div v-if="copySuccess" class="text-success text-caption mt-1">已複製！</div>
+              </v-scroll-y-transition>
             </v-card>
           </div>
           <div v-else>
             <v-row dense class="mb-4">
               <v-col cols="12" sm="4">
-                <v-text-field
-                  label="建案名稱"
-                  :model-value="projectName"
-                  readonly
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                ></v-text-field>
+                <v-text-field label="建案名稱" :model-value="projectName" readonly variant="outlined" density="compact"
+                  hide-details></v-text-field>
               </v-col>
               <v-col cols="12" sm="4">
-                <v-text-field
-                  label="戶別"
-                  :model-value="selectedUnit"
-                  readonly
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                ></v-text-field>
+                <v-text-field label="戶別" :model-value="selectedUnit" readonly variant="outlined" density="compact"
+                  hide-details></v-text-field>
               </v-col>
               <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model="inspectorNameForPdf"
-                  label="報告產製人員 (可修改)"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  clearable
-                ></v-text-field>
+                <v-text-field v-model="inspectorNameForPdf" label="報告產製人員 (可修改)" variant="outlined" density="compact"
+                  hide-details clearable></v-text-field>
               </v-col>
             </v-row>
 
             <p class="text-subtitle-1 mb-2">請選擇要產製報告的驗屋紀錄批次：</p>
             <v-item-group v-model="selectedBatchId" mandatory>
               <v-row dense>
-                <v-col
-                  v-for="batch in confirmedBatches"
-                  :key="batch.batchId"
-                  cols="12" md="6" lg="4"
-                >
+                <v-col v-for="batch in confirmedBatches" :key="batch.batchId" cols="12" md="6" lg="4">
                   <v-item v-slot="{ isSelected, toggle }" :value="batch.batchId">
-                    <v-card
-                      :color="isSelected ? 'primary' : ''"
-                      :variant="isSelected ? 'elevated' : 'outlined'"
-                      class="fill-height d-flex flex-column"
-                      @click="toggle"
-                      style="cursor: pointer;"
-                    >
+                    <v-card :color="isSelected ? 'primary' : ''" :variant="isSelected ? 'elevated' : 'outlined'"
+                      class="fill-height d-flex flex-column" @click="toggle" style="cursor: pointer;">
                       <v-card-item>
                         <div>
                           <div class="text-overline mb-1">
@@ -713,32 +616,32 @@
                           </div>
                           <v-divider class="my-1"></v-divider>
                           <div class="text-caption mb-2">
-                             <strong>紀錄摘要：</strong>
-                             <ul style="padding-left: 16px; margin-top: 4px;">
-                               <li v-for="(record, index) in getBatchRecordsSummary(batch.batchId)" :key="index" class="text-truncate">
-                                 {{ record.area }} - {{ record.category }} / {{ record.subCategory }} <span v-if="record.level">({{ record.level }})</span>
-                                 <span v-if="record.description" class="text-grey-darken-1"> - {{ record.description }}</span>
-                               </li>
-                             </ul>
-                             <div v-if="batch.recordCount > 5" class="text-grey ml-1 mt-1">...等共 {{ batch.recordCount }} 筆</div>
+                            <strong>紀錄摘要：</strong>
+                            <ul style="padding-left: 16px; margin-top: 4px;">
+                              <li v-for="(record, index) in getBatchRecordsSummary(batch.batchId)" :key="index"
+                                class="text-truncate">
+                                {{ record.area }} - {{ record.category }} / {{ record.subCategory }} <span
+                                  v-if="record.level">({{ record.level }})</span>
+                                <span v-if="record.description" class="text-grey-darken-1"> - {{ record.description
+                                }}</span>
+                              </li>
+                            </ul>
+                            <div v-if="batch.recordCount > 5" class="text-grey ml-1 mt-1">...等共 {{ batch.recordCount }}
+                              筆
+                            </div>
                           </div>
                           <v-divider class="my-1"></v-divider>
-                          <div class="text-caption">買方姓名: {{ batch.buyerInfo?.name || '無' }}</div>
+                          <div class="text-caption">客戶姓名: {{ batch.buyerInfo?.name || '無' }}</div>
                           <div class="text-caption">電話: {{ batch.buyerInfo?.phone || '無' }}</div>
                           <div class="text-caption">Email: {{ batch.buyerInfo?.email || '無' }}</div>
                         </div>
                       </v-card-item>
                       <v-spacer></v-spacer>
                       <v-fade-transition>
-                         <v-overlay
-                            v-if="isSelected"
-                            contained
-                            scrim="primary"
-                            class="align-center justify-center"
-                          >
-                           <v-icon size="x-large">mdi-check-circle-outline</v-icon>
-                          </v-overlay>
-                       </v-fade-transition>
+                        <v-overlay v-if="isSelected" contained scrim="primary" class="align-center justify-center">
+                          <v-icon size="x-large">mdi-check-circle-outline</v-icon>
+                        </v-overlay>
+                      </v-fade-transition>
                     </v-card>
                   </v-item>
                 </v-col>
@@ -749,26 +652,16 @@
 
         <v-card-actions class="pa-4">
           <v-spacer></v-spacer>
-          <v-btn
-            color="grey-darken-1"
-            variant="text"
-            @click="showGeneratePdfDialog = false"
-          >
+          <v-btn color="grey-darken-1" variant="text" @click="showGeneratePdfDialog = false">
             取消
           </v-btn>
-          <v-btn
-            color="primary"
-            variant="elevated"
-            @click="handleDownloadBatchPdf"
-            :disabled="!selectedBatchId || isLoadingBatches"
-            size="large"
-            prepend-icon="mdi-file-document-outline"
-            class="mr-2"
-          >
+          <v-btn color="primary" variant="elevated" @click="handleDownloadBatchPdf"
+            :disabled="!selectedBatchId || isLoadingBatches" size="large" prepend-icon="mdi-file-document-outline"
+            class="mr-2">
             觀看預覽與寄出
           </v-btn>
         </v-card-actions>
-        </v-card>
+      </v-card>
     </v-dialog>
 
     <v-dialog v-model="showPdfPreviewDialog" max-width="450px" persistent>
@@ -779,45 +672,23 @@
           <div class="text-body-1 text-medium-emphasis mb-6">
             您的驗屋報告 PDF 已經準備就緒。<br>您想要執行什麼操作？
           </div>
-          
-          <v-btn
-            color="info"
-            variant="flat"
-            block
-            size="large"
-            class="mb-3"
-            :href="previewPdfUrl"
-            target="_blank"
-            prepend-icon="mdi-file-pdf-box"
-          >
+
+          <v-btn color="info" variant="flat" block size="large" class="mb-3" :href="previewPdfUrl" target="_blank"
+            prepend-icon="mdi-file-pdf-box">
             在新分頁開啟預覽
           </v-btn>
 
-          <v-btn
-            color="primary"
-            variant="flat"
-            block
-            size="large"
-            class="mb-3"
-            @click="openEmailDialog"
-            prepend-icon="mdi-email-fast"
-          >
+          <v-btn color="primary" variant="flat" block size="large" class="mb-3" @click="openEmailDialog"
+            prepend-icon="mdi-email-fast">
             透過系統寄出報告
           </v-btn>
 
-          <v-btn
-            color="secondary"
-            variant="outlined"
-            block
-            size="large"
-            class="mb-6"
-            @click="downloadPreviewPdf"
-            prepend-icon="mdi-download"
-          >
+          <v-btn color="secondary" variant="outlined" block size="large" class="mb-6" @click="downloadPreviewPdf"
+            prepend-icon="mdi-download">
             下載檔案至本機
           </v-btn>
         </v-card-text>
-        
+
         <v-card-actions class="justify-center border-t pt-4">
           <v-btn variant="text" color="grey-darken-1" @click="showPdfPreviewDialog = false">關閉此視窗</v-btn>
         </v-card-actions>
@@ -831,20 +702,40 @@
           勾選信件收件人
         </v-card-title>
         <v-card-text class="pt-4">
-          <p class="mb-4 text-subtitle-2 text-primary">主要收件人(買方)將顯示在信件 TO 欄位，其餘將顯示於 BCC (密件抄送)。</p>
+          <p class="mb-4 text-subtitle-2 text-primary">主要收件人(客戶)將顯示在信件 TO 欄位，其餘將顯示於 BCC (密件抄送)。</p>
           <v-list density="compact" class="bg-grey-lighten-4 rounded" max-height="300" style="overflow-y: auto;">
-             <v-list-item
-               v-for="(recipient, index) in emailRecipients"
-               :key="index"
-               @click="recipient.selected = !recipient.selected"
-             >
-               <template v-slot:prepend>
-                 <v-checkbox-btn v-model="recipient.selected"></v-checkbox-btn>
-               </template>
-               <v-list-item-title class="font-weight-medium">{{ recipient.label }}</v-list-item-title>
-               <v-list-item-subtitle>{{ recipient.email }}</v-list-item-subtitle>
-             </v-list-item>
+            <v-list-item v-for="(recipient, index) in emailRecipients" :key="index"
+              @click="recipient.selected = !recipient.selected">
+              <template v-slot:prepend>
+                <v-checkbox-btn v-model="recipient.selected"></v-checkbox-btn>
+              </template>
+              <v-list-item-title class="font-weight-medium">{{ recipient.label }}</v-list-item-title>
+              <v-list-item-subtitle>{{ recipient.email }}</v-list-item-subtitle>
+            </v-list-item>
           </v-list>
+          <v-divider class="my-4"></v-divider>
+          <template v-if="pdfTemplate?.emailAttachments?.enabled && pdfTemplate?.emailAttachments?.files?.length > 0">
+            <v-checkbox v-model="includeAttachments" label="一併夾帶專案預設附件" color="primary" hide-details
+              density="compact"></v-checkbox>
+            <div v-if="includeAttachments" class="mt-3 pl-8">
+              <div class="text-caption text-grey-darken-1 mb-2">請勾選要夾帶的附件 (名稱點擊可預覽)：</div>
+              <div class="d-flex flex-column ga-1">
+                <v-checkbox v-for="(file, idx) in pdfTemplate.emailAttachments.files" :key="idx"
+                  v-model="selectedAttachments" :value="file.url" color="blue-grey" density="compact" hide-details>
+                  <template v-slot:label>
+                    <a :href="file.url" target="_blank" @click.stop
+                      class="text-decoration-none text-blue-grey-darken-2 font-weight-medium">
+                      <v-icon size="small" class="mr-1">mdi-paperclip</v-icon>
+                      {{ file.name }}
+                    </a>
+                  </template>
+                </v-checkbox>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="text-caption text-grey mt-4">此建案目前無設定預設附件。</div>
+          </template>
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
@@ -863,7 +754,7 @@
           <v-progress-circular indeterminate color="white" class="mr-4"></v-progress-circular>
           <div>
             <div class="text-h6">報告產製中...</div>
-            <div class="text-caption">完成後將會寄送 Email 通知買方及產製人員。此視窗可關閉。</div>
+            <div class="text-caption">完成後將會寄送 Email 通知客戶及產製人員。此視窗可關閉。</div>
           </div>
         </v-card-text>
         <v-card-actions>
@@ -873,9 +764,30 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh"> <v-card> <v-toolbar dense flat class="border-b"> <v-spacer></v-spacer> <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn> </v-toolbar> <v-card-text class="pa-0"> <v-img :src="previewImageUrl" contain max-height="calc(90vh - 48px)"></v-img> </v-card-text> </v-card> </v-dialog>
-    <v-dialog v-model="showDeleteDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-error"> <v-icon start>mdi-alert-circle-outline</v-icon> 確認刪除紀錄 </v-card-title> <v-card-text> 您確定要將這筆驗屋紀錄移至資源回收桶嗎？ <div v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToDelete.inspectionDate) }} <br> 區域: {{ recordToDelete.area }} <br> 種類: {{ recordToDelete.category }} / {{ recordToDelete.subCategory }} </div> <br> <strong class="text-error">您之後可以在資源回收桶中還原。</strong> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn> <v-btn color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn> </v-card-actions> </v-card> </v-dialog>
-    <v-dialog v-model="showRestoreDialog" persistent max-width="400px"> <v-card> <v-card-title class="text-h6 text-success"> <v-icon start>mdi-restore</v-icon> 確認還原紀錄 </v-card-title> <v-card-text> 您確定要還原這筆驗屋紀錄嗎？ <div v-if="recordToRestore" class="mt-2 text-caption text-medium-emphasis"> 日期: {{ formatDate(recordToRestore.inspectionDate) }} <br> 區域: {{ recordToRestore.area }} <br> 種類: {{ recordToRestore.category }} / {{ recordToRestore.subCategory }} </div> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text @click="showRestoreDialog = false" :disabled="isRestoring">取消</v-btn> <v-btn color="success" variant="flat" @click="confirmRestoreRecord" :loading="isRestoring">確認還原</v-btn> </v-card-actions> </v-card> </v-dialog>
+    <v-dialog v-model="showPreviewDialog" max-width="80vw" max-height="90vh"> <v-card> <v-toolbar dense flat
+          class="border-b"> <v-spacer></v-spacer> <v-btn icon="mdi-close" @click="showPreviewDialog = false"></v-btn>
+        </v-toolbar> <v-card-text class="pa-0"> <v-img :src="previewImageUrl" contain
+            max-height="calc(90vh - 48px)"></v-img> </v-card-text> </v-card> </v-dialog>
+    <v-dialog v-model="showDeleteDialog" persistent max-width="400px"> <v-card> <v-card-title
+          class="text-h6 text-error">
+          <v-icon start>mdi-alert-circle-outline</v-icon> 確認刪除紀錄 </v-card-title> <v-card-text> 您確定要將這筆驗屋紀錄移至資源回收桶嗎？ <div
+            v-if="recordToDelete" class="mt-2 text-caption text-medium-emphasis"> 日期: {{
+              formatDate(recordToDelete.inspectionDate) }} <br> 區域: {{ recordToDelete.area }} <br> 種類: {{
+              recordToDelete.category }} / {{ recordToDelete.subCategory }} </div> <br> <strong
+            class="text-error">您之後可以在資源回收桶中還原。</strong> </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn
+            color="grey-darken-1" text @click="showDeleteDialog = false" :disabled="isDeleting">取消</v-btn> <v-btn
+            color="error" variant="flat" @click="confirmDeleteRecord" :loading="isDeleting">確認刪除</v-btn>
+        </v-card-actions>
+      </v-card> </v-dialog>
+    <v-dialog v-model="showRestoreDialog" persistent max-width="400px"> <v-card> <v-card-title
+          class="text-h6 text-success">
+          <v-icon start>mdi-restore</v-icon> 確認還原紀錄 </v-card-title> <v-card-text> 您確定要還原這筆驗屋紀錄嗎？ <div
+            v-if="recordToRestore" class="mt-2 text-caption text-medium-emphasis"> 日期: {{
+              formatDate(recordToRestore.inspectionDate) }} <br> 區域: {{
+              recordToRestore.area }} <br> 種類: {{ recordToRestore.category }} / {{ recordToRestore.subCategory }} </div>
+        </v-card-text> <v-card-actions> <v-spacer></v-spacer> <v-btn color="grey-darken-1" text
+            @click="showRestoreDialog = false" :disabled="isRestoring">取消</v-btn> <v-btn color="success" variant="flat"
+            @click="confirmRestoreRecord" :loading="isRestoring">確認還原</v-btn> </v-card-actions> </v-card> </v-dialog>
 
     <v-dialog v-model="isDownloading" persistent max-width="420px">
       <v-card color="primary">
@@ -889,60 +801,32 @@
       </v-card>
     </v-dialog>
 
-    <v-bottom-navigation
-      v-if="mobile && projectId"
-      color="primary"
-      elevation="8"
-      class="mobile-bottom-nav"
-      grow >
-      <v-btn
-        @click="showDeleted = false; handleModeChange(false)"
-        :active="!showDeleted"
-        value="records"
-        class="pa-0"
-      >
+    <v-bottom-navigation v-if="mobile && projectId" color="primary" elevation="8" class="mobile-bottom-nav" grow>
+      <v-btn @click="showDeleted = false; handleModeChange(false)" :active="!showDeleted" value="records" class="pa-0">
         <v-icon size="small">mdi-file-document-outline</v-icon>
         <span class="mobile-btn-text">全案紀錄</span>
       </v-btn>
 
-      <v-btn
-        @click="showDeleted = true; handleModeChange(true)"
-        :active="showDeleted"
-        value="trash"
-        class="pa-0"
-      >
+      <v-btn @click="showDeleted = true; handleModeChange(true)" :active="showDeleted" value="trash" class="pa-0">
         <v-icon size="small">mdi-delete-outline</v-icon>
         <span class="mobile-btn-text">刪除紀錄</span>
       </v-btn>
 
-      <v-btn
-        @click="viewMode = (viewMode === 'table' ? 'card' : 'table')"
-        value="switchMode"
-        class="pa-0"
-      >
+      <v-btn @click="viewMode = (viewMode === 'table' ? 'card' : 'table')" value="switchMode" class="pa-0">
         <v-icon size="small">{{ viewMode === 'table' ? 'mdi-view-dashboard-outline' : 'mdi-table' }}</v-icon>
         <span class="mobile-btn-text">切換顯示</span>
       </v-btn>
-      <v-btn
-        @click="handleMobileExport"
-        value="export"
-        class="pa-0"
-        :disabled="!selectedUnit || showDeleted"
-      >
+      <v-btn @click="handleMobileExport" value="export" class="pa-0" :disabled="!selectedUnit || showDeleted">
         <v-icon size="small">mdi-export-variant</v-icon>
         <span class="mobile-btn-text">寄出報告</span>
       </v-btn>
 
-      <v-btn
-        @click="showMobileDownloadDialog = true"
-        value="download"
-        class="pa-0"
-        :disabled="filteredRecords.length === 0"
-      >
+      <v-btn @click="showMobileDownloadDialog = true" value="download" class="pa-0"
+        :disabled="filteredRecords.length === 0">
         <v-icon size="small">mdi-download</v-icon>
         <span class="mobile-btn-text">下載報告</span>
       </v-btn>
-      </v-bottom-navigation>
+    </v-bottom-navigation>
 
     <!-- 手機版：寄出報告選單 -->
     <v-dialog v-model="showMobileExportDialog" max-width="320">
@@ -996,49 +880,88 @@
 
     <v-tooltip location="top" :text="!(selectedUnit && selectedBuilding) ? '請先選擇棟別與戶別' : '新增驗屋紀錄'">
       <template v-slot:activator="{ props: tooltipProps }">
-        <v-btn
-          v-if="mobile && projectId"
-          v-bind="tooltipProps"
-          @click="handleMobileFabClick"
-          :color="!(selectedUnit && selectedBuilding) || showDeleted ? 'grey' : 'primary'"
-          rounded="circle"
-          elevation="8"
-          size="large"
-          class="mobile-fab"
-          icon
-        >
+        <v-btn v-if="mobile && projectId" v-bind="tooltipProps" @click="handleMobileFabClick"
+          :color="!(selectedUnit && selectedBuilding) || showDeleted ? 'grey' : 'primary'" rounded="circle"
+          elevation="8" size="large" class="mobile-fab" icon>
           <v-icon size="large">mdi-plus</v-icon>
         </v-btn>
       </template>
     </v-tooltip>
 
+    <!-- ===== Onboarding Tour ===== -->
+    <v-dialog v-model="showOnboarding" max-width="520" persistent>
+      <v-card class="onboarding-card rounded-xl overflow-hidden">
+        <!-- 頂部漸層區域 -->
+        <div class="onboarding-hero" :style="{ background: onboardingSteps[onboardingStep]?.gradient }">
+          <v-btn icon="mdi-close" variant="text" size="small" class="onboarding-close-btn"
+            @click="finishOnboarding"></v-btn>
+          <div class="onboarding-icon-wrapper">
+            <v-icon size="64" color="white" class="onboarding-icon">{{ onboardingSteps[onboardingStep]?.icon }}</v-icon>
+          </div>
+          <div class="text-h5 font-weight-bold text-white text-center mt-3 px-4">{{
+            onboardingSteps[onboardingStep]?.title
+          }}</div>
+          <div class="text-body-2 text-white text-center mt-1 px-6" style="opacity: 0.85;">{{
+            onboardingSteps[onboardingStep]?.subtitle }}</div>
+        </div>
+
+        <!-- 內容區域 -->
+        <v-window v-model="onboardingStep">
+          <v-window-item v-for="(step, index) in onboardingSteps" :key="index" :value="index">
+            <v-card-text class="pa-5">
+              <div class="d-flex align-start mb-3" v-for="(tip, tIdx) in step.tips" :key="tIdx">
+                <v-avatar size="28" :color="step.chipColor" class="mr-3 mt-0 flex-shrink-0" variant="tonal">
+                  <v-icon size="16">{{ tip.icon }}</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-body-1 font-weight-medium">{{ tip.text }}</div>
+                </div>
+              </div>
+            </v-card-text>
+          </v-window-item>
+        </v-window>
+
+        <!-- 底部操作區 -->
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <!-- 步驟指示器 -->
+          <div class="d-flex align-center ga-1">
+            <div v-for="(s, i) in onboardingSteps" :key="i" class="onboarding-dot"
+              :class="{ 'onboarding-dot--active': i === onboardingStep, 'onboarding-dot--done': i < onboardingStep }"
+              @click="onboardingStep = i"></div>
+          </div>
+          <v-spacer></v-spacer>
+          <v-btn v-if="onboardingStep > 0" variant="text" @click="onboardingStep--" class="mr-1">
+            <v-icon start size="small">mdi-chevron-left</v-icon>
+            上一步
+          </v-btn>
+          <v-btn v-if="onboardingStep < onboardingSteps.length - 1" color="primary" variant="elevated"
+            @click="onboardingStep++" class="px-5">
+            下一步
+            <v-icon end size="small">mdi-chevron-right</v-icon>
+          </v-btn>
+          <v-btn v-else color="success" variant="elevated" @click="finishOnboarding" class="px-5">
+            <v-icon start size="small">mdi-check</v-icon>
+            開始使用
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 提示 Snackbar -->
-    <v-snackbar
-      v-model="showHintSnackbar"
-      :timeout="2500"
-      color="warning"
-      location="top"
-    >
+    <v-snackbar v-model="showHintSnackbar" :timeout="2500" color="warning" location="top">
       <v-icon start>mdi-alert-circle-outline</v-icon>
       {{ hintSnackbarText }}
     </v-snackbar>
 
     <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
-  <span>Powered by&nbsp;</span>
-  <v-chip
-    class="ml-1"
-    href="https://anxismart.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-    color="blue-grey"
-    variant="tonal"
-    size="small"
-    pill
-  >
-    <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
-    anxismart安熙智慧建案管理系統
-  </v-chip>
-</div>
+      <span>Powered by&nbsp;</span>
+      <v-chip class="ml-1" href="https://anxismart.com/" target="_blank" rel="noopener noreferrer" color="blue-grey"
+        variant="tonal" size="small" pill>
+        <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+        anxismart安熙智慧建案管理系統
+      </v-chip>
+    </div>
 
   </v-container>
 </template>
@@ -1061,9 +984,9 @@ import {
   getInspectionRecordsForProjectFB,
   generateShareableUrl,
   getConfirmedInspectionBatches,
-  generateInspectionPdf,
   fetchInspectionPersonnelWithEmailsAPI,
-  sendInspectionReportEmailsAPI
+  sendInspectionReportEmailsAPI,
+  fetchProjectConfig
 } from '@/api';
 import { VDataTable } from 'vuetify/components/VDataTable';
 import { useDisplay } from 'vuetify';
@@ -1121,6 +1044,35 @@ const props = defineProps({ projectId: { type: String, default: null } });
 
 const viewMode = ref(mobile.value ? 'card' : 'table');
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || '建案');
+
+// PDF 模板設定（從 Firestore 讀取，未設定時用預設值）
+const DEFAULT_PDF_TEMPLATE = {
+  cover: {
+    title: '{建案名稱} 驗屋報告',
+    showProjectInfo: true,
+    infoFields: [
+      { label: '戶別', variable: '{戶別}', enabled: true },
+      { label: '客戶', variable: '{客戶姓名}', enabled: true },
+      { label: '電話', variable: '{客戶電話}', enabled: true },
+      { label: 'Email', variable: '{客戶EMAIL}', enabled: true },
+      { label: '服務日期', variable: '{服務日期}', enabled: true },
+    ],
+    showDisclaimer: true,
+    disclaimer: '☑️ 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。',
+    signatureLabel: '客戶簽名：',
+    showSignature: true,
+    showDate: true,
+    dateLabel: '報告產製日期：',
+  },
+  detail: {
+    headerNote: '',
+    footerNote: '',
+    showInspectorName: true,
+    showPhotos: true,
+    maxPhotosPerRecord: 4,
+  },
+};
+const pdfTemplate = ref(DEFAULT_PDF_TEMPLATE);
 const isLoading = ref(true);
 const loadingText = ref('正在初始化...');
 const isBound = ref(false);
@@ -1139,6 +1091,8 @@ const currentPdfBlob = ref(null);
 const showEmailListDialog = ref(false);
 const isSendingEmail = ref(false);
 const emailRecipients = ref([]);
+const includeAttachments = ref(true);
+const selectedAttachments = ref([]);
 // ------------------------------
 const allRecords = ref([]);
 const searchFilter = ref('');
@@ -1170,6 +1124,95 @@ const inspectorNameForPdf = ref(''); // 儲存報告上的產製人員名稱
 const showProcessingDialog = ref(false); // 控制處理中提示 Dialog
 const isDownloading = ref(false); // 控制下載報告進度 Dialog
 const downloadingText = ref(''); // 下載進度文字
+
+// --- Onboarding Tour 引導狀態 ---
+const ONBOARDING_KEY = 'inspection_console_onboarding_done';
+const showOnboarding = ref(false);
+const onboardingStep = ref(0);
+
+const onboardingSteps = [
+  {
+    icon: 'mdi-hand-wave',
+    title: '歡迎使用驗屋系統！',
+    subtitle: '讓我們快速了解各項功能',
+    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    chipColor: 'deep-purple',
+    tips: [
+      { icon: 'mdi-lightbulb-outline', text: '本系統協助您管理所有驗屋紀錄，從新增、編輯到產製報告，一站完成。' },
+      { icon: 'mdi-clock-outline', text: '導覽僅需約 30 秒，您隨時可以從右上角的「?」按鈕重新觀看。' },
+    ]
+  },
+  {
+    icon: 'mdi-home-search-outline',
+    title: '選擇棟別與戶別',
+    subtitle: '定位到您要記錄的住戶',
+    gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    chipColor: 'pink',
+    tips: [
+      { icon: 'mdi-numeric-1-circle', text: '先從「選擇棟別」下拉選單選取建物棟號。' },
+      { icon: 'mdi-numeric-2-circle', text: '再從「選擇戶別」精確定位到要紀錄的戶別。' },
+      { icon: 'mdi-information-outline', text: '選擇戶別後，系統會自動載入該戶的全部驗屋紀錄。' },
+    ]
+  },
+  {
+    icon: 'mdi-magnify',
+    title: '搜尋與篩選',
+    subtitle: '快速找到您需要的紀錄',
+    gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    chipColor: 'cyan',
+    tips: [
+      { icon: 'mdi-text-search', text: '使用搜尋框可即時全文搜尋所有欄位內容。' },
+      { icon: 'mdi-filter-outline', text: '點擊搜尋框旁的「篩選」按鈕可展開進階篩選（日期、階段、狀態、進度、等級等）。' },
+      { icon: 'mdi-view-dashboard-outline', text: '可切換「表格模式」或「卡片模式」來瀏覽紀錄。' },
+    ]
+  },
+  {
+    icon: 'mdi-plus-circle-outline',
+    title: '新增與管理紀錄',
+    subtitle: '建立和編輯驗屋缺失',
+    gradient: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    chipColor: 'teal',
+    tips: [
+      { icon: 'mdi-plus', text: '選擇戶別後，點擊「新增」按鈕即可建立新的驗屋缺失紀錄。' },
+      { icon: 'mdi-pencil', text: '每筆紀錄都可以直接修改狀態、等級、進度欄位（點擊 Chip 即可切換）。' },
+      { icon: 'mdi-eye-outline', text: '「眼睛」圖示可控制該筆紀錄是否顯示在客戶報告中。' },
+      { icon: 'mdi-delete-outline', text: '刪除的紀錄會移至「垃圾桶」，可隨時還原。' },
+    ]
+  },
+  {
+    icon: 'mdi-file-send-outline',
+    title: '寄出與下載報告',
+    subtitle: '將成果分享給客戶',
+    gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    chipColor: 'orange',
+    tips: [
+      { icon: 'mdi-share-variant-outline', text: '「傳送記錄連結」可產生一組安全連結與 QR Code，供客戶線上確認缺失。' },
+      { icon: 'mdi-file-pdf-box', text: '「預覽與寄出報告」可產製正式 PDF，並透過 Email 寄送給客戶。' },
+      { icon: 'mdi-download', text: '「下載報告」支援 Excel 和 PDF 兩種格式匯出。' },
+    ]
+  },
+];
+
+function finishOnboarding() {
+  showOnboarding.value = false;
+  onboardingStep.value = 0;
+  try {
+    localStorage.setItem(ONBOARDING_KEY, 'true');
+  } catch (e) {
+    // localStorage 不可用時靜默失敗
+  }
+}
+
+function checkOnboardingStatus() {
+  try {
+    const done = localStorage.getItem(ONBOARDING_KEY);
+    if (!done) {
+      showOnboarding.value = true;
+    }
+  } catch (e) {
+    // localStorage 不可用時不顯示引導
+  }
+}
 
 // --- 分頁與快取相關狀態 ---
 // --- 日期工具函式 ---
@@ -1210,7 +1253,7 @@ const advancedFilters = reactive({
   status: [],        // 狀態 (多選)
   progress: [],      // 進度 (多選)
   level: [],         // 等級 (多選)
-  confirmed: null,   // 買方確認 (單選: 'confirmed' | 'unconfirmed' | null)
+  confirmed: null,   // 客戶確認 (單選: 'confirmed' | 'unconfirmed' | null)
 });
 
 // 篩選選項 — 從已載入的資料和 optionsForChips 動態產生
@@ -1288,7 +1331,7 @@ watch(
   (newVal, oldVal) => {
     // 避免 clearAllFilters 觸發的重複載入
     if (!newVal[0] && !newVal[1] && !oldVal[0] && !oldVal[1]) return;
-    
+
     // 戶別模式：已載入全部資料，日期篩選由前端 filteredRecords 處理，不需重載
     if (selectedUnit.value) {
       console.log(`[日期篩選變更] 戶別模式，前端篩選即可。`);
@@ -1351,62 +1394,62 @@ const buildingItems = computed(() => {
 const unitItems = computed(() => projectStructure.value[selectedBuilding.value] || []);
 
 const filteredRecords = computed(() => {
-    let records = allRecords.value;
+  let records = allRecords.value;
 
-    // 1. 進階篩選 — 日期範圍
-    if (advancedFilters.dateFrom || advancedFilters.dateTo) {
-      records = records.filter(r => {
-        if (!r.inspectionDate) return false;
-        const recDate = normalizeDate(r.inspectionDate);
-        if (!recDate) return false;
-        if (advancedFilters.dateFrom && recDate < advancedFilters.dateFrom) return false;
-        if (advancedFilters.dateTo && recDate > advancedFilters.dateTo) return false;
-        return true;
-      });
-    }
+  // 1. 進階篩選 — 日期範圍
+  if (advancedFilters.dateFrom || advancedFilters.dateTo) {
+    records = records.filter(r => {
+      if (!r.inspectionDate) return false;
+      const recDate = normalizeDate(r.inspectionDate);
+      if (!recDate) return false;
+      if (advancedFilters.dateFrom && recDate < advancedFilters.dateFrom) return false;
+      if (advancedFilters.dateTo && recDate > advancedFilters.dateTo) return false;
+      return true;
+    });
+  }
 
-    // 2. 進階篩選 — 階段
-    if (advancedFilters.phase.length > 0) {
-      records = records.filter(r => advancedFilters.phase.includes(r.phase));
-    }
+  // 2. 進階篩選 — 階段
+  if (advancedFilters.phase.length > 0) {
+    records = records.filter(r => advancedFilters.phase.includes(r.phase));
+  }
 
-    // 3. 進階篩選 — 狀態
-    if (advancedFilters.status.length > 0) {
-      records = records.filter(r => advancedFilters.status.includes(r.status));
-    }
+  // 3. 進階篩選 — 狀態
+  if (advancedFilters.status.length > 0) {
+    records = records.filter(r => advancedFilters.status.includes(r.status));
+  }
 
-    // 4. 進階篩選 — 進度
-    if (advancedFilters.progress.length > 0) {
-      records = records.filter(r => advancedFilters.progress.includes(r.progress));
-    }
+  // 4. 進階篩選 — 進度
+  if (advancedFilters.progress.length > 0) {
+    records = records.filter(r => advancedFilters.progress.includes(r.progress));
+  }
 
-    // 5. 進階篩選 — 等級
-    if (advancedFilters.level.length > 0) {
-      records = records.filter(r => advancedFilters.level.includes(r.level));
-    }
+  // 5. 進階篩選 — 等級
+  if (advancedFilters.level.length > 0) {
+    records = records.filter(r => advancedFilters.level.includes(r.level));
+  }
 
-    // 6. 進階篩選 — 買方確認
-    if (advancedFilters.confirmed === 'confirmed') {
-      records = records.filter(r => !!r.customerConfirmedAt);
-    } else if (advancedFilters.confirmed === 'unconfirmed') {
-      records = records.filter(r => !r.customerConfirmedAt);
-    }
+  // 6. 進階篩選 — 客戶確認
+  if (advancedFilters.confirmed === 'confirmed') {
+    records = records.filter(r => !!r.customerConfirmedAt);
+  } else if (advancedFilters.confirmed === 'unconfirmed') {
+    records = records.filter(r => !r.customerConfirmedAt);
+  }
 
-    // 7. 文字搜尋 (原有邏輯)
-    if (searchFilter.value) {
-      const lowerSearch = searchFilter.value.toLowerCase();
-      records = records.filter(record => {
-        const searchableValues = [
-          record.inspectionDate, record.phase, record.area, record.category,
-          record.subCategory, record.status, record.level, record.progress,
-          record.description, record.inspectorName, record.createdAt, record.deletedAt,
-          record.unitId
-        ];
-        return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
-      });
-    }
+  // 7. 文字搜尋 (原有邏輯)
+  if (searchFilter.value) {
+    const lowerSearch = searchFilter.value.toLowerCase();
+    records = records.filter(record => {
+      const searchableValues = [
+        record.inspectionDate, record.phase, record.area, record.category,
+        record.subCategory, record.status, record.level, record.progress,
+        record.description, record.inspectorName, record.createdAt, record.deletedAt,
+        record.unitId
+      ];
+      return searchableValues.some(val => val && String(val).toLowerCase().includes(lowerSearch));
+    });
+  }
 
-    return records;
+  return records;
 });
 
 // Card View 的分頁顯示
@@ -1431,10 +1474,10 @@ function getCacheKey() {
 }
 
 const getBatchRecordsSummary = (batchId) => {
-   if (!allRecords.value) return [];
-   return allRecords.value
-     .filter(r => r.confirmationBatchId === batchId && !r.isDeleted)
-     .slice(0, 5); // 最多顯示 5 筆
+  if (!allRecords.value) return [];
+  return allRecords.value
+    .filter(r => r.confirmationBatchId === batchId && !r.isDeleted)
+    .slice(0, 5); // 最多顯示 5 筆
 };
 
 const currentProject = computed(() => authorizedProjects.value.find(p => p.id === props.projectId));
@@ -1442,22 +1485,22 @@ const otherProjects = computed(() => authorizedProjects.value.filter(p => p.id !
 
 const headers = computed(() => {
   const baseHeaders = [
-   { title: '日期', key: 'inspectionDate', sortable: true }, 
-   { title: '階段', key: 'phase', sortable: true }, 
-   { title: '照片', key: 'photos', sortable: false }, 
-   { title: '區域', key: 'area', sortable: true }, 
-   { title: '種類', key: 'category', sortable: true }, 
-   { title: '細項', key: 'subCategory', sortable: true }, 
-   { title: '狀態', key: 'status', sortable: true }, 
-   { title: '等級', key: 'level', sortable: true }, 
-   { title: '進度', key: 'progress', sortable: true }, 
-   { title: '買方確認', key: 'customerConfirmedAt', sortable: true },
-   { title: '說明', key: 'description', sortable: false }, 
-   { title: '人員', key: 'inspectorName', sortable: true }, 
-   { title: '時間', key: 'createdAt', sortable: true }, 
-   { title: '操作', key: 'actions', sortable: false },
+    { title: '日期', key: 'inspectionDate', sortable: true },
+    { title: '階段', key: 'phase', sortable: true },
+    { title: '照片', key: 'photos', sortable: false },
+    { title: '區域', key: 'area', sortable: true },
+    { title: '種類', key: 'category', sortable: true },
+    { title: '細項', key: 'subCategory', sortable: true },
+    { title: '狀態', key: 'status', sortable: true },
+    { title: '等級', key: 'level', sortable: true },
+    { title: '進度', key: 'progress', sortable: true },
+    { title: '客戶確認', key: 'customerConfirmedAt', sortable: true },
+    { title: '說明', key: 'description', sortable: false },
+    { title: '人員', key: 'inspectorName', sortable: true },
+    { title: '時間', key: 'createdAt', sortable: true },
+    { title: '操作', key: 'actions', sortable: false },
   ];
-    let finalHeaders = [...baseHeaders];
+  let finalHeaders = [...baseHeaders];
 
   if (!selectedUnit.value) {
     finalHeaders.splice(0, 0, { title: '戶別', key: 'unitId', sortable: true, width: '100px' });
@@ -1475,7 +1518,7 @@ async function initProjectData() {
   await projectStore.fetchProjects();
   const allProjects = projectStore.projectsList;
   authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name));
-  
+
   if (props.projectId) {
     loadingText.value = '正在載入建案資料...';
     if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) {
@@ -1488,6 +1531,15 @@ async function initProjectData() {
     await loadProjectStructure();
     await loadOptionsForChips();
     await loadData();
+    // 載入 PDF 模板設定
+    try {
+      const config = await fetchProjectConfig(props.projectId);
+      if (config?.inspectionPdfTemplate) {
+        pdfTemplate.value = config.inspectionPdfTemplate;
+      }
+    } catch (e) {
+      console.warn('PDF 模板設定載入失敗，使用預設值', e);
+    }
   } else {
     loadingText.value = '請選擇建案';
   }
@@ -1507,7 +1559,7 @@ onMounted(async () => {
     if (userKey) {
       loadingText.value = '正在驗證使用者身份...';
       const success = await userStore.fetchUserByUserKey(userKey);
-      
+
       if (success) {
         isBound.value = true;
         await initProjectData();
@@ -1519,16 +1571,16 @@ onMounted(async () => {
 
     loadingText.value = '正在與 LINE 連接...';
     await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
-    
+
     if (!liff.isLoggedIn()) {
       liff.login();
       return;
     }
-    
+
     loadingText.value = '正在驗證使用者權限...';
     const profile = await liff.getProfile();
     const success = await userStore.fetchUserByLineId(profile.userId);
-    
+
     if (success) {
       isBound.value = true;
       await initProjectData();
@@ -1541,6 +1593,10 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
     viewMode.value = mobile.value ? 'card' : 'table';
+    // 初次使用引導：頁面載入完成後檢查
+    if (isBound.value && props.projectId) {
+      checkOnboardingStatus();
+    }
   }
 });
 
@@ -1548,10 +1604,10 @@ async function loadProjectStructure() { if (!props.projectId) return; isLoadingS
 
 async function loadData(useCache = true) {
   if (!props.projectId) {
-      console.warn('[loadData] projectId is not yet available. Aborting load.'); 
-      allRecords.value = []; 
-      isLoadingRecords.value = false; 
-      return; 
+    console.warn('[loadData] projectId is not yet available. Aborting load.');
+    allRecords.value = [];
+    isLoadingRecords.value = false;
+    return;
   }
 
   // 重置分頁狀態
@@ -1607,12 +1663,12 @@ async function loadData(useCache = true) {
     } else {
       console.error("載入驗屋紀錄失敗:", result.message);
       allRecords.value = [];
-      console.warn(`載入紀錄失敗 (API Status Error): ${result.message}`); 
+      console.warn(`載入紀錄失敗 (API Status Error): ${result.message}`);
     }
-  } catch (error) { 
-     console.error("呼叫 API 載入紀錄時發生錯誤:", error);
-     allRecords.value = [];
-     console.error(`載入紀錄時發生前端錯誤: ${error.message}`); 
+  } catch (error) {
+    console.error("呼叫 API 載入紀錄時發生錯誤:", error);
+    allRecords.value = [];
+    console.error(`載入紀錄時發生前端錯誤: ${error.message}`);
   } finally {
     isLoadingRecords.value = false;
   }
@@ -1750,11 +1806,11 @@ function enterProject(project) { if (project && project.id && project.id !== pro
 
 async function handleFieldUpdate(item, field, newValue) {
   console.log('[handleFieldUpdate] Received:', { id: item.id, field, newValue }); // ✓ 新增日誌
- if (showDeleted.value) return; if (item[field] === newValue || (updatingRecord.id === item.id && updatingRecord.field === field)) return; updatingRecord.id = item.id; updatingRecord.field = field; const payload = { [field]: newValue, inspectorName: userStore.user?.name || '未知', inspectorPhone: userStore.user?.key || '未知' };
- const unitForUpdate = item.unitId;
+  if (showDeleted.value) return; if (item[field] === newValue || (updatingRecord.id === item.id && updatingRecord.field === field)) return; updatingRecord.id = item.id; updatingRecord.field = field; const payload = { [field]: newValue, inspectorName: userStore.user?.name || '未知', inspectorPhone: userStore.user?.key || '未知' };
+  const unitForUpdate = item.unitId;
   if (!unitForUpdate) { alert('錯誤：找不到戶別 ID，無法更新。'); updatingRecord.id = null; updatingRecord.field = null; return; }
- console.log('[handleFieldUpdate] Calling API with:', { projectId: props.projectId, unitId: unitForUpdate, recordId: item.id, payload });
- const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload); if (result.status === 'success') { const recordIndex = allRecords.value.findIndex(r => r.id === item.id); if (recordIndex !== -1) { allRecords.value[recordIndex] = { ...allRecords.value[recordIndex], ...payload }; } } else { alert(`更新失敗: ${result.message}`); } updatingRecord.id = null; updatingRecord.field = null;
+  console.log('[handleFieldUpdate] Calling API with:', { projectId: props.projectId, unitId: unitForUpdate, recordId: item.id, payload });
+  const result = await updateInspectionRecordFieldFB(props.projectId, unitForUpdate, item.id, payload); if (result.status === 'success') { const recordIndex = allRecords.value.findIndex(r => r.id === item.id); if (recordIndex !== -1) { allRecords.value[recordIndex] = { ...allRecords.value[recordIndex], ...payload }; } } else { alert(`更新失敗: ${result.message}`); } updatingRecord.id = null; updatingRecord.field = null;
 }
 
 async function handleShareReport() {
@@ -1821,7 +1877,7 @@ async function handleGeneratePdf() {
   selectedBatchId.value = null;
   // 預設填入當前登入者名稱
   inspectorNameForPdf.value = userStore.user?.name || '';
-  
+
   // 提前準備好分享連結，供沒有批次時的引導畫面使用
   try {
     const payload = {
@@ -1887,12 +1943,24 @@ function showImagePreview(url) { previewImageUrl.value = url; showPreviewDialog.
 function formatDate(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd', { locale: zhTW }); } catch (e) { return dateString; } }
 function formatDateTime(dateString) { if (!dateString) return ''; try { return format(parseISO(dateString), 'yyyy/MM/dd HH:mm', { locale: zhTW }); } catch (e) { return dateString; } }
 function openDeleteDialog(item) { recordToDelete.value = item; showDeleteDialog.value = true; }
-async function confirmDeleteRecord() { if (!recordToDelete.value?.id) return; isDeleting.value = true; try { const result = await deleteInspectionRecordFB(recordToDelete.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id); showDeleteDialog.value = false; // 清除相關快取 (刪除後資料會移到刪除區)
+async function confirmDeleteRecord() {
+  if (!recordToDelete.value?.id) return; isDeleting.value = true; try {
+    const result = await deleteInspectionRecordFB(recordToDelete.value.id); if (result.status === 'success') {
+      allRecords.value = allRecords.value.filter(record => record.id !== recordToDelete.value.id); showDeleteDialog.value = false; // 清除相關快取 (刪除後資料會移到刪除區)
       recordsCache.delete(getCacheKey()); recordsCache.delete(`deleted_${props.projectId}`); // 同時更新當前快取
-      const cacheKey = getCacheKey(); recordsCache.set(cacheKey, { records: [...allRecords.value], hasMore: hasMore.value, lastDocId: lastDocId.value }); alert('紀錄已移至資源回收桶。'); } else throw new Error(result.message || '刪除失敗'); } catch (error) { console.error("刪除紀錄時發生錯誤:", error); alert(`刪除失敗: ${error.message}`); } finally { isDeleting.value = false; recordToDelete.value = null; } }
+      const cacheKey = getCacheKey(); recordsCache.set(cacheKey, { records: [...allRecords.value], hasMore: hasMore.value, lastDocId: lastDocId.value }); alert('紀錄已移至資源回收桶。');
+    } else throw new Error(result.message || '刪除失敗');
+  } catch (error) { console.error("刪除紀錄時發生錯誤:", error); alert(`刪除失敗: ${error.message}`); } finally { isDeleting.value = false; recordToDelete.value = null; }
+}
 function openRestoreDialog(item) { recordToRestore.value = item; showRestoreDialog.value = true; }
-async function confirmRestoreRecord() { if (!recordToRestore.value?.id) return; isRestoring.value = true; try { const result = await restoreInspectionRecordFB(recordToRestore.value.id); if (result.status === 'success') { allRecords.value = allRecords.value.filter(record => record.id !== recordToRestore.value.id); showRestoreDialog.value = false; // 清除相關快取 (還原後資料會移回正常區)
-      recordsCache.delete(`deleted_${props.projectId}`); recordsCache.delete(`project_${props.projectId}`); if (recordToRestore.value?.unitId) recordsCache.delete(`unit_${props.projectId}_${recordToRestore.value.unitId}`); alert('紀錄已成功還原。'); } else throw new Error(result.message || '還原失敗'); } catch (error) { console.error("還原紀錄時發生錯誤:", error); alert(`還原失敗: ${error.message}`); } finally { isRestoring.value = false; recordToRestore.value = null; } }
+async function confirmRestoreRecord() {
+  if (!recordToRestore.value?.id) return; isRestoring.value = true; try {
+    const result = await restoreInspectionRecordFB(recordToRestore.value.id); if (result.status === 'success') {
+      allRecords.value = allRecords.value.filter(record => record.id !== recordToRestore.value.id); showRestoreDialog.value = false; // 清除相關快取 (還原後資料會移回正常區)
+      recordsCache.delete(`deleted_${props.projectId}`); recordsCache.delete(`project_${props.projectId}`); if (recordToRestore.value?.unitId) recordsCache.delete(`unit_${props.projectId}_${recordToRestore.value.unitId}`); alert('紀錄已成功還原。');
+    } else throw new Error(result.message || '還原失敗');
+  } catch (error) { console.error("還原紀錄時發生錯誤:", error); alert(`還原失敗: ${error.message}`); } finally { isRestoring.value = false; recordToRestore.value = null; }
+}
 
 function handleModeChange(newModeValue) {
   selectedBuilding.value = null;
@@ -1959,7 +2027,7 @@ async function handleDownloadExcel() {
       { header: '狀態', key: 'status', width: 10 },
       { header: '等級', key: 'level', width: 10 },
       { header: '進度', key: 'progress', width: 10 },
-      { header: '買方確認', key: 'confirmed', width: 14 },
+      { header: '客戶確認', key: 'confirmed', width: 14 },
       { header: '說明', key: 'description', width: 35 },
       { header: '人員', key: 'inspector', width: 10 },
       { header: '時間', key: 'createdAt', width: 18 },
@@ -2035,7 +2103,7 @@ async function handleDownloadExcel() {
               const base64Raw = dataUrl.split(',')[1];
               const ext = dataUrl.includes('image/png') ? 'png' : 'jpeg';
               const imageId = workbook.addImage({ base64: base64Raw, extension: ext });
-              
+
               // 14 為第 15 欄（照片 1 的起始欄位，0-based offset）
               worksheet.addImage(imageId, {
                 tl: { col: 14 + j + 0.1, row: i + 1 + 0.1 }, // 微調邊框
@@ -2131,7 +2199,7 @@ async function handleDownloadPdf() {
       const fields = [
         ['建案', projectName.value || ''], ['戶別', record.unitId || ''], ['日期', formatDate(record.inspectionDate)],
         ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
-        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''], 
+        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
         ['等級', record.level || ''], ['進度', record.progress || ''], [''], // 最後一格空白補齊
       ];
       let tblHtml = '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">';
@@ -2140,9 +2208,9 @@ async function handleDownloadPdf() {
         for (let c = 0; c < 3; c++) {
           const [label, val] = fields[r * 3 + c];
           if (label) {
-             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
+            tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
           } else {
-             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
+            tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
           }
         }
         tblHtml += '</tr>';
@@ -2217,10 +2285,10 @@ async function handleDownloadBatchPdf() {
     alert('請先選擇要下載的批次。');
     return;
   }
-  
+
   // 從所有的 records 裡面撈出符合此批次的資料
   const batchRecords = filteredRecords.value.filter(r => r.confirmationBatchId === selectedBatchId.value && !r.isDeleted);
-  
+
   if (batchRecords.length === 0) {
     alert('此批次沒有可下載的資料。');
     return;
@@ -2245,7 +2313,7 @@ async function handleDownloadBatchPdf() {
     const cardH = halfH - margin - 2; // 每段可用高度
     const renderPxW = 760;
     const renderPxH = 540;
-    
+
     // 預載所有圖片
     downloadingText.value = '正在載入圖片...';
     const imageCache = {};
@@ -2269,63 +2337,103 @@ async function handleDownloadBatchPdf() {
     const buyerEmail = batchInfo.buyerInfo?.email || '(未填寫)';
     const inspectionDateStr = batchInfo.dateString || formatDate(new Date());
     const signatureUrl = batchInfo.signatureUrl || '';
-    
+
     let signatureBase64 = '';
     if (signatureUrl) {
-       downloadingText.value = `正在載入簽名檔...`;
-       try {
-         signatureBase64 = await loadImageAsBase64(signatureUrl);
-       } catch (e) {
-         console.error('簽章圖片載入失敗', e);
-       }
+      downloadingText.value = `正在載入簽名檔...`;
+      try {
+        signatureBase64 = await loadImageAsBase64(signatureUrl);
+      } catch (e) {
+        console.error('簽章圖片載入失敗', e);
+      }
     }
 
     // 產生封面
     downloadingText.value = `正在產生封面 PDF...`;
     const coverDiv = document.createElement('div');
-    coverDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH*2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
-    
+    coverDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH * 2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
+
     const nowStr = format(new Date(), 'yyyy-MM-dd HH:mm');
+
+    // 取得合併後的模板設定
+    const tpl = {
+      ...DEFAULT_PDF_TEMPLATE.cover,
+      ...(pdfTemplate.value?.cover || {}),
+      infoFields: (pdfTemplate.value?.cover?.infoFields?.length > 0)
+        ? pdfTemplate.value.cover.infoFields
+        : DEFAULT_PDF_TEMPLATE.cover.infoFields,
+    };
+    const detailTpl = {
+      ...DEFAULT_PDF_TEMPLATE.detail,
+      ...(pdfTemplate.value?.detail || {}),
+    };
+
+    // 變數替換資料
+    const tplVars = {
+      '{建案名稱}': projectName.value,
+      '{戶別}': selectedUnit.value || '全案',
+      '{產權人姓名}': buyerName,
+      '{產權人電話}': buyerPhone,
+      '{產權人EMAIL}': buyerEmail,
+      '{驗屋日期}': inspectionDateStr,
+      '{服務日期}': inspectionDateStr, // 向下相容
+    };
+    const replaceTplVars = (text) => {
+      if (!text) return '';
+      let result = text;
+      for (const [key, val] of Object.entries(tplVars)) {
+        result = result.replaceAll(key, val);
+      }
+      return result;
+    };
+
+    // 產生封面資訊欄位 HTML
+    const enabledFields = (tpl.infoFields || []).filter(f => f.enabled);
+    let fieldsHtml = '';
+    for (const field of enabledFields) {
+      const value = replaceTplVars(field.variable);
+      fieldsHtml += `
+        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
+          <div style="width: 150px; color: #666; font-weight: bold;">${field.label}</div>
+          <div>${value}</div>
+        </div>
+      `;
+    }
+
+    // 聲明文字
+    const disclaimerHtml = (tpl.showDisclaimer !== false) ? `
+      <div style="margin-top: 40px; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+        ${replaceTplVars(tpl.disclaimer)}
+      </div>
+    ` : '';
+
+    // 簽名區
+    const signatureHtml = (tpl.showSignature !== false) ? `
+      <div style="margin-top: 40px; display: flex; align-items: flex-end;">
+        <div style="font-weight: bold; margin-right: 20px;">${replaceTplVars(tpl.signatureLabel)}</div>
+        ${signatureBase64 ? `<img src="${signatureBase64}" style="max-height: 100px; max-width: 300px; border-bottom: 1px solid #333;" />` : '<div style="width: 300px; border-bottom: 1px solid #333;"></div>'}
+      </div>
+    ` : '';
+
+    // 日期
+    const dateHtml = (tpl.showDate !== false) ? `
+      <div style="text-align: right; color: #999; font-size: 12px; margin-top: auto;">
+        ${replaceTplVars(tpl.dateLabel)} ${nowStr} (台灣時間)
+      </div>
+    ` : '';
+
     coverDiv.innerHTML = `
       <div style="text-align:center; margin-bottom: 40px;">
-        <h1 style="font-size: 32px; color: #333;">${projectName.value} 驗屋報告</h1>
+        <h1 style="font-size: 32px; color: #333;">${replaceTplVars(tpl.title)}</h1>
       </div>
       <div style="flex:1; font-size: 18px; line-height: 2;">
-        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
-          <div style="width: 150px; color: #666; font-weight: bold;">戶別</div>
-          <div>${selectedUnit.value || '全案'}</div>
-        </div>
-        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
-          <div style="width: 150px; color: #666; font-weight: bold;">產權人</div>
-          <div>${buyerName}</div>
-        </div>
-        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
-          <div style="width: 150px; color: #666; font-weight: bold;">電話</div>
-          <div>${buyerPhone}</div>
-        </div>
-        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
-          <div style="width: 150px; color: #666; font-weight: bold;">Email</div>
-          <div>${buyerEmail}</div>
-        </div>
-        <div style="display:flex; border-bottom: 1px solid #eee; padding: 10px 0;">
-          <div style="width: 150px; color: #666; font-weight: bold;">驗屋日期</div>
-          <div>${inspectionDateStr}</div>
-        </div>
-        
-        <div style="margin-top: 40px; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
-           <span style="font-size: 20px; color: #4CAF50;">☑️</span> 本人確認已詳閱本次驗屋紀錄，並同意於後續檢驗時，以本報告作為判斷依據。
-        </div>
-
-        <div style="margin-top: 40px; display: flex; align-items: flex-end;">
-           <div style="font-weight: bold; margin-right: 20px;">產權人簽名：</div>
-           ${signatureBase64 ? `<img src="${signatureBase64}" style="max-height: 100px; max-width: 300px; border-bottom: 1px solid #333;" />` : '<div style="width: 300px; border-bottom: 1px solid #333;"></div>'}
-        </div>
+        ${fieldsHtml}
+        ${disclaimerHtml}
+        ${signatureHtml}
       </div>
-      <div style="text-align: right; color: #999; font-size: 12px; margin-top: auto;">
-        報告產製時間: ${nowStr} (台灣時間)
-      </div>
+      ${dateHtml}
     `;
-    
+
     document.body.appendChild(coverDiv);
     await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -2338,7 +2446,7 @@ async function handleDownloadBatchPdf() {
       backgroundColor: '#ffffff',
     });
     document.body.removeChild(coverDiv);
-    
+
     // 將封面畫在第一頁 (A4 滿版，扣除一點 margin 或是直接畫滿)
     const coverImgData = coverCanvas.toDataURL('image/jpeg', 0.95);
     // 放入封面，高度依照 A4 比例畫，或者直接把整個圖放進去
@@ -2357,11 +2465,11 @@ async function handleDownloadBatchPdf() {
     for (let cIndex = 0; cIndex < tableChunks.length; cIndex++) {
       downloadingText.value = `正在產生總表 PDF (${cIndex + 1}/${tableChunks.length})...`;
       doc.addPage();
-      
+
       const chunk = tableChunks[cIndex];
       const tableDiv = document.createElement('div');
-      tableDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH*2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
-      
+      tableDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderPxW}px;height:${renderPxH * 2}px;font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;background:#fff;padding:40px;box-sizing:border-box;display:flex;flex-direction:column;`;
+
       let tableRowsHtml = '';
       chunk.forEach(record => {
         tableRowsHtml += `
@@ -2404,7 +2512,7 @@ async function handleDownloadBatchPdf() {
           總表 - 第 ${cIndex + 1} 頁 / 共 ${tableChunks.length} 頁
         </div>
       `;
-      
+
       document.body.appendChild(tableDiv);
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -2417,7 +2525,7 @@ async function handleDownloadBatchPdf() {
         backgroundColor: '#ffffff',
       });
       document.body.removeChild(tableDiv);
-      
+
       const tableImgData = tableCanvas.toDataURL('image/jpeg', 0.95);
       doc.addImage(tableImgData, 'JPEG', margin, margin, usableW, pageH - 2 * margin);
     }
@@ -2439,7 +2547,7 @@ async function handleDownloadBatchPdf() {
       const fields = [
         ['建案', projectName.value || ''], ['戶別', record.unitId || ''], ['日期', formatDate(record.inspectionDate)],
         ['階段', record.phase || ''], ['區域', record.area || ''], ['人員', record.inspectorName || ''],
-        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''], 
+        ['種類', record.category || ''], ['細項', record.subCategory || ''], ['狀態', record.status || ''],
         ['等級', record.level || ''], ['進度', record.progress || ''], [''],
       ];
       let tblHtml = '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">';
@@ -2448,9 +2556,9 @@ async function handleDownloadBatchPdf() {
         for (let c = 0; c < 3; c++) {
           const [label, val] = fields[r * 3 + c];
           if (label) {
-             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
+            tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"><span style="color:#888;font-weight:bold">${label}:</span> <span style="color:#222">${val}</span></td>`;
           } else {
-             tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
+            tblHtml += `<td style="padding:4px 8px;border:1px solid #ddd;font-size:12px;width:33.33%"></td>`;
           }
         }
         tblHtml += '</tr>';
@@ -2471,7 +2579,7 @@ async function handleDownloadBatchPdf() {
           const src = imageCache[photos[0].url];
           if (src) photosHtml += `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
         } else {
-          const maxShow = Math.min(cnt, 4);
+          const maxShow = Math.min(cnt, detailTpl.maxPhotosPerRecord || 4);
           const maxW = Math.floor((renderPxW - 28 - (maxShow - 1) * 6) / maxShow);
           for (let j = 0; j < maxShow; j++) {
             const src = imageCache[photos[j].url];
@@ -2481,7 +2589,17 @@ async function handleDownloadBatchPdf() {
         photosHtml += '</div>';
       }
 
-      cardDiv.innerHTML = tblHtml + descHtml + photosHtml;
+      // 頁首備註
+      const headerNoteHtml = detailTpl.headerNote
+        ? `<div style="font-size:10px;color:#888;text-align:center;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:3px;">${detailTpl.headerNote}</div>`
+        : '';
+
+      // 頁尾備註
+      const footerNoteHtml = detailTpl.footerNote
+        ? `<div style="font-size:10px;color:#888;text-align:center;margin-top:auto;border-top:1px solid #eee;padding-top:3px;">${detailTpl.footerNote}</div>`
+        : '';
+
+      cardDiv.innerHTML = headerNoteHtml + tblHtml + descHtml + photosHtml + footerNoteHtml;
       document.body.appendChild(cardDiv);
 
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -2509,7 +2627,7 @@ async function handleDownloadBatchPdf() {
 
     // 轉換成 Blob 用於預覽
     const pdfBlob = doc.output('blob');
-    
+
     // 使用 FileReader 確保大型 PDF 能安全轉為 Data URL
     const pdfDataUri = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -2517,16 +2635,16 @@ async function handleDownloadBatchPdf() {
       reader.onerror = reject;
       reader.readAsDataURL(pdfBlob);
     });
-    
+
     console.log("Generated PDF Base64 string length:", pdfDataUri.length);
 
     currentPdfBlob.value = pdfBlob;
     currentPdfBase64.value = pdfDataUri;
     previewPdfUrl.value = URL.createObjectURL(pdfBlob);
-    
+
     showGeneratePdfDialog.value = false;
     showPdfPreviewDialog.value = true;
-    
+
   } catch (error) {
     console.error('下載批次 PDF 失敗:', error);
     alert(`產製批次 PDF 失敗: ${error.message}`);
@@ -2550,14 +2668,16 @@ function downloadPreviewPdf() {
 async function openEmailDialog() {
   showEmailListDialog.value = true;
   emailRecipients.value = [];
+  includeAttachments.value = true;
+  selectedAttachments.value = pdfTemplate.value?.emailAttachments?.files?.map(f => f.url) || [];
   try {
-    // 1. 取得買方信箱 (如果有)
+    // 1. 取得客戶信箱 (如果有)
     const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value) || {};
     if (batchInfo.buyerInfo?.email) {
-      emailRecipients.value.push({ 
-        label: `[買方] ${batchInfo.buyerInfo.name}`, 
-        email: batchInfo.buyerInfo.email, 
-        selected: true 
+      emailRecipients.value.push({
+        label: `[客戶] ${batchInfo.buyerInfo.name}`,
+        email: batchInfo.buyerInfo.email,
+        selected: true
       });
     }
 
@@ -2565,10 +2685,10 @@ async function openEmailDialog() {
     if (userStore.user?.email) {
       // 避免重複
       if (!emailRecipients.value.some(r => r.email === userStore.user.email)) {
-        emailRecipients.value.push({ 
-          label: `[本人] ${userStore.user.name || '目前操作者'}`, 
-          email: userStore.user.email, 
-          selected: true 
+        emailRecipients.value.push({
+          label: `[本人] ${userStore.user.name || '目前操作者'}`,
+          email: userStore.user.email,
+          selected: true
         });
       }
     }
@@ -2576,7 +2696,7 @@ async function openEmailDialog() {
     // 3. 取得內部有「驗屋系統」權限的人員信箱
     const internalStaff = await fetchInspectionPersonnelWithEmailsAPI(props.projectId);
     internalStaff.forEach(staff => {
-      // 避免跟買方或本人重複
+      // 避免跟客戶或本人重複
       if (!emailRecipients.value.some(r => r.email === staff.email)) {
         emailRecipients.value.push(staff);
       }
@@ -2605,15 +2725,15 @@ async function sendInspectionEmail() {
     const batchInfo = confirmedBatches.value.find(b => b.batchId === selectedBatchId.value) || {};
     const buyerName = batchInfo.buyerInfo?.name || '(未填寫)';
 
-    // 將第一順序買方的信箱分離為 To, 其餘所有的列為 Bcc
+    // 將第一順序客戶的信箱分離為 To, 其餘所有的列為 Bcc
     const toEmails = [];
     const bccEmails = [];
-    
+
     selectedEmails.forEach(rec => {
-      if (rec.label.startsWith('[買方]')) {
-         toEmails.push(rec.email);
+      if (rec.label.startsWith('[客戶]')) {
+        toEmails.push(rec.email);
       } else {
-         bccEmails.push(rec.email);
+        bccEmails.push(rec.email);
       }
     });
 
@@ -2623,12 +2743,13 @@ async function sendInspectionEmail() {
       buyerName,
       toEmails,
       bccEmails,
-      currentPdfBase64.value
+      currentPdfBase64.value,
+      includeAttachments.value ? selectedAttachments.value : []
     );
 
     if (response && response.status === 'success') {
-       alert("信件已成功寄出！檔案已存至 Google Drive。");
-       showEmailListDialog.value = false;
+      alert("信件已成功寄出！檔案已存至 Google Drive。");
+      showEmailListDialog.value = false;
     }
   } catch (e) {
     console.error('寄送信件失敗:', e);
@@ -2643,25 +2764,83 @@ async function sendInspectionEmail() {
 </script>
 
 <style scoped>
-.cursor-pointer { cursor: pointer; } .record-card { transition: box-shadow 0.2s ease-in-out; } .record-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); } .photo-strip .v-img { max-width: calc(20% - 4px); flex-basis: calc(20% - 4px); } .description-truncate { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; min-height: 1.5em; } .border-b { border-bottom: 1px solid rgba(0, 0, 0, 0.12); } .photo-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); color: white; font-size: 0.9rem; font-weight: bold; } .position-relative { position: relative; } .deleted-card-look { opacity: 0.65; } .deleted-card-look .v-card-actions button { opacity: 1; pointer-events: auto; } .deleted-card-look .photo-strip .v-img { pointer-events: none; }
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.record-card {
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+.record-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.photo-strip .v-img {
+  max-width: calc(20% - 4px);
+  flex-basis: calc(20% - 4px);
+}
+
+.description-truncate {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.5em;
+}
+
+.border-b {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.photo-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.position-relative {
+  position: relative;
+}
+
+.deleted-card-look {
+  opacity: 0.65;
+}
+
+.deleted-card-look .v-card-actions button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.deleted-card-look .photo-strip .v-img {
+  pointer-events: none;
+}
 
 /* ✓ 修改：(原 .mobile-title-scaling)
    從 "縮放" (clamp) 改為 "允許換行" (white-space: normal)
 */
 .mobile-title-scaling {
   /* 1. 允許文字換行 */
-  white-space: normal !important; 
-  
+  white-space: normal !important;
+
   /* 2. 移除溢出隱藏，讓它可以撐開高度 */
   overflow: visible !important;
   text-overflow: clip !important;
-  
+
   /* 3. 設定一個舒適的行高 */
   line-height: 1.35rem !important;
 
   /* 4. 移除 clamp() 縮放，使用繼承的字體大小 */
-  font-size: inherit !important; 
-  
+  font-size: inherit !important;
+
   /* 5. 確保 title 自身高度是自動的 */
   height: auto !important;
   min-height: 0 !important;
@@ -2672,19 +2851,24 @@ async function sendInspectionEmail() {
 */
 .mobile-toolbar-wrap {
   height: auto !important;
-  min-height: 56px !important; /* 保留一個最小高度 (Vuetify 手機版預設值) */
+  min-height: 56px !important;
+  /* 保留一個最小高度 (Vuetify 手機版預設值) */
 }
+
 /* ✓ 新增：手機版底部導覽列樣式 */
 .mobile-btn-text {
-  font-size: 0.7rem; /* 調整文字大小以適應按鈕 */
-  margin-top: 2px;   /* 與圖標的間距 */
+  font-size: 0.7rem;
+  /* 調整文字大小以適應按鈕 */
+  margin-top: 2px;
+  /* 與圖標的間距 */
   line-height: 1.2;
 }
 
 /* ✓ FAB 按鈕：水平置中，位於底部導覽列上方 */
 .mobile-fab {
   position: fixed;
-  bottom: 76px; /* 底部導覽列約 56px + 20px 間距 */
+  bottom: 76px;
+  /* 底部導覽列約 56px + 20px 間距 */
   left: 50%;
   transform: translateX(-50%);
   z-index: 10 !important;
@@ -2694,40 +2878,112 @@ async function sendInspectionEmail() {
 
 /* ✓ 新增：強制 v-bottom-navigation 固定在底部 */
 .mobile-bottom-nav {
-  position: fixed !important; /* 強制 fixed 定位 */
+  position: fixed !important;
+  /* 強制 fixed 定位 */
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 8 !important; /* 確保 z-index 低於 FAB */
+  z-index: 8 !important;
+  /* 確保 z-index 低於 FAB */
 }
 
 /* ✅ 可選：如果希望底部按鈕文字更小 */
 .mobile-bottom-nav .v-btn .mobile-btn-text {
-  font-size: 0.65rem; /* 再稍微縮小一點 */
+  font-size: 0.65rem;
+  /* 再稍微縮小一點 */
 }
 
 /* ✅ 可選：為 QR Code 加上邊框和內距 */
 .border.pa-1 {
   border: 1px solid #e0e0e0;
   padding: 4px;
-  background-color: white; /* 確保背景是白色 */
+  background-color: white;
+  /* 確保背景是白色 */
 }
 
 .confirmed-record-bg {
-  background-color: #f5f5f5 !important; /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
+  background-color: #f5f5f5 !important;
+  /* 使用 !important 確保覆蓋 Vuetify 預設樣式 */
 }
 
 /* 進階篩選面板 */
 .advanced-filter-panel {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
+
 .advanced-filter-panel .v-chip {
   max-width: 120px;
 }
+
 .advanced-filter-panel .v-chip__content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* ===== Onboarding Tour 導覽樣式 ===== */
+.onboarding-card {
+  overflow: hidden;
+}
+
+.onboarding-hero {
+  position: relative;
+  padding: 32px 16px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.onboarding-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.onboarding-close-btn:hover {
+  color: white !important;
+}
+
+.onboarding-icon-wrapper {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: onboarding-bounce 2s ease-in-out infinite;
+}
+
+@keyframes onboarding-bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.onboarding-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.onboarding-dot--active {
+  width: 24px;
+  border-radius: 4px;
+  background: #1976d2;
+}
+
+.onboarding-dot--done {
+  background: #81c784;
+}
 </style>

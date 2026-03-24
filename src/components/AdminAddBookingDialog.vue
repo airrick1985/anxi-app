@@ -208,11 +208,39 @@
                           ></v-text-field>
                         </v-col>
                       </template>
-                      <template v-if="formStep2.inspectionMethod === '授權驗屋'">
-                        <v-col cols="12" sm="4"><v-text-field label="受託人姓名" v-model="formStep2.agentName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
-                        <v-col cols="12" sm="4"><v-text-field label="受託人電話" v-model="formStep2.agentPhone" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
-                        <v-col cols="12" sm="4"><v-text-field label="受託人身分證" v-model="formStep2.agentIdNumber" variant="outlined"></v-text-field></v-col>
-                      </template>
+                    </v-row>
+
+                    <!-- 屋主本人是否到場 (依據 askOwnerPresence 設定) -->
+                    <v-card v-if="adminShowOwnerPresenceQuestion" variant="tonal" color="warning" class="my-4">
+                      <v-card-text>
+                        <div class="text-subtitle-1 font-weight-bold mb-2">請問本人是否到場?</div>
+                        <v-radio-group v-model="formStep2.isOwnerPresent" inline hide-details>
+                          <v-radio label="是 (本人到場)" :value="true" color="primary"></v-radio>
+                          <v-radio label="否 (委託或授權)" :value="false" color="error"></v-radio>
+                        </v-radio-group>
+                      </v-card-text>
+                    </v-card>
+
+                    <!-- 受託人資訊 (依據 adminShowAuthFields 判斷) -->
+                    <v-row v-if="adminShowAuthFields" dense class="mt-2">
+                      <v-col cols="12">
+                        <v-alert type="info" variant="tonal" density="compact" class="mb-2">委託驗屋 - 請填寫受託人資訊</v-alert>
+                      </v-col>
+                      <v-col cols="12" sm="4"><v-text-field label="受託人姓名" v-model="formStep2.agentName" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
+                      <v-col cols="12" sm="4"><v-text-field label="受託人電話" v-model="formStep2.agentPhone" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field></v-col>
+                      <v-col cols="12" sm="4">
+                        <v-select
+                          label="與委託人關係"
+                          v-model="formStep2.agentRelationship"
+                          :items="['配偶', '父母', '子女', '兄弟姊妹', '朋友', '其他']"
+                          variant="outlined"
+                          :rules="[v => !!v || '必填']"
+                        ></v-select>
+                      </v-col>
+                      <v-col v-if="formStep2.agentRelationship === '其他'" cols="12" sm="4">
+                        <v-text-field label="請輸入關係" v-model="formStep2.agentRelationshipOther" variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="4"><v-text-field label="受託人身分證" v-model="formStep2.agentIdNumber" variant="outlined"></v-text-field></v-col>
                     </v-row>
 
                     <v-divider class="my-4"></v-divider>
@@ -402,9 +430,10 @@
                       <template v-for="field in currentCustomFields" :key="field.id">
                         <v-list-item v-if="dynamicFormData[field.id]" :title="field.label" :subtitle="dynamicFormData[field.id]"></v-list-item>
                       </template>
-                      <template v-if="finalBookingData.inspectionMethod === '授權驗屋'">
+                      <template v-if="adminShowAuthFields">
                         <v-list-item title="受託人姓名" :subtitle="finalBookingData.agentName"></v-list-item>
                         <v-list-item title="受託人電話" :subtitle="finalBookingData.agentPhone"></v-list-item>
+                        <v-list-item title="與委託人關係" :subtitle="finalBookingData.agentRelationship"></v-list-item>
                       </template>
                       <v-divider class="my-2"></v-divider>
                        <v-list-item title="預約人姓名" :subtitle="finalBookingData.bookerName"></v-list-item>
@@ -635,6 +664,9 @@ const formStep2 = reactive({
   agentName: '',
   agentPhone: '',
   agentIdNumber: '',
+  agentRelationship: '',
+  agentRelationshipOther: '',
+  isOwnerPresent: null,
   bookerName: '',
   bookerPhone: '',
   bookerEmail: '',
@@ -701,7 +733,7 @@ const currentCustomFields = computed(() => {
 // 動態欄位的表單資料
 const dynamicFormData = reactive({});
 
-// 當選擇方式改變時，重置動態欄位
+// 當選擇方式改變時，重置動態欄位與受託人資料
 watch(() => formStep2.inspectionMethod, () => {
   // 清空舊的動態資料
   Object.keys(dynamicFormData).forEach(key => delete dynamicFormData[key]);
@@ -709,6 +741,13 @@ watch(() => formStep2.inspectionMethod, () => {
   currentCustomFields.value.forEach(field => {
     dynamicFormData[field.id] = '';
   });
+  // 重置受託人與問答狀態
+  formStep2.agentName = '';
+  formStep2.agentPhone = '';
+  formStep2.agentIdNumber = '';
+  formStep2.agentRelationship = '';
+  formStep2.agentRelationshipOther = '';
+  formStep2.isOwnerPresent = null;
 });
 
 const isBlockingDialogVisible = ref(false);
@@ -918,15 +957,49 @@ const reInspectionBatchInfo = computed(() => {
     return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
 });
 
+// 判斷後台是否需要顯示「本人是否到場」問答
+const adminShowOwnerPresenceQuestion = computed(() => {
+  const config = currentProjectConfig.value;
+  const selectedType = formStep2.bookingType;
+  const selectedMethod = formStep2.inspectionMethod;
+  if (!config?.bookingMenu?.length || !selectedType || !selectedMethod) return false;
+  const menuItem = config.bookingMenu.find(item => item.title === selectedType && !item.deleted);
+  if (!menuItem?.methods) return false;
+  const methodObj = menuItem.methods.find(m => m.title === selectedMethod && !m.deleted);
+  return !!(methodObj && methodObj.askOwnerPresence);
+});
+
+// 判斷後台是否需要顯示受託人欄位
+const adminShowAuthFields = computed(() => {
+  const config = currentProjectConfig.value;
+  const selectedType = formStep2.bookingType;
+  const selectedMethod = formStep2.inspectionMethod;
+  if (!config?.bookingMenu?.length || !selectedType || !selectedMethod) return false;
+  const menuItem = config.bookingMenu.find(item => item.title === selectedType && !item.deleted);
+  if (!menuItem?.methods) return false;
+  const methodObj = menuItem.methods.find(m => m.title === selectedMethod && !m.deleted);
+  if (!methodObj?.triggerAuthFlow) return false;
+  // 若有問答 → 回答「否」才顯示；若無問答 → 直接顯示
+  if (adminShowOwnerPresenceQuestion.value) {
+    return formStep2.isOwnerPresent === false;
+  }
+  return true;
+});
+
 const finalBookingData = computed(() => {
     const timeSlotValue = typeof formStep2.appointmentTimeSlot === 'object'
         ? formStep2.appointmentTimeSlot?.value
         : formStep2.appointmentTimeSlot;
 
+    const agentRel = formStep2.agentRelationship === '其他'
+      ? formStep2.agentRelationshipOther
+      : formStep2.agentRelationship;
+
     return {
         unitId: formStep1.unitId,
         address: selectedHouseholdDetails.value?.address || '',
         ...formStep2,
+        agentRelationship: agentRel || '',
         appointmentDate: formStep2.appointmentDate ? dateAdapter.format(formStep2.appointmentDate, 'keyboardDate') : null,
         appointmentTimeSlot: formStep2.manualTimeSlot || formStep2.appointmentTimeSlot,
     };
@@ -965,8 +1038,9 @@ const resetState = () => {
     isBookerSameAsBuyer.value = false;
  Object.assign(formStep2, {
         bookingType: null, inspectionMethod: null, inspectionCompanyName: '',
-        agentName: '', agentPhone: '', agentIdNumber: '', bookerName: '',
-        bookerPhone: '', bookerEmail: '', bookerIdNumber: '',
+        agentName: '', agentPhone: '', agentIdNumber: '',
+        agentRelationship: '', agentRelationshipOther: '', isOwnerPresent: null,
+        bookerName: '', bookerPhone: '', bookerEmail: '', bookerIdNumber: '',
         appointmentDate: new Date(), appointmentTimeSlot: null,
         manualTimeSlot: '',
     });

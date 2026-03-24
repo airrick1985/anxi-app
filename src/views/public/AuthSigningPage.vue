@@ -11,15 +11,17 @@
           </v-overlay>
 
           <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
-                    <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
-                  </div>
+            <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
+          </div>
 
-          <v-card-title class="text-h5 font-weight-bold py-3 text-center" style="background-color: #007bff; color: white;">
+          <v-card-title class="text-h5 font-weight-bold py-3 text-center"
+            style="background-color: #007bff; color: white;">
             驗屋授權書簽署
           </v-card-title>
 
           <div v-if="error" class="pa-4">
-            <v-alert type="error" variant="tonal" border="start" prominent :title="error.title" :text="error.text"></v-alert>
+            <v-alert type="error" variant="tonal" border="start" prominent :title="error.title"
+              :text="error.text"></v-alert>
           </div>
 
           <div v-if="!isLoading && !error && step === 'signing'">
@@ -35,20 +37,14 @@
                 </v-list>
               </v-sheet>
 
-              <v-alert
-            type="info"
-            variant="tonal"
-            border="start"
-            density="compact"
-            class="mt-4"
-          >
-            <template v-slot:title>
-              <div class="font-weight-bold">授權範圍</div>
-            </template>
-            <div>
-              受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。
-            </div>
-          </v-alert>
+              <v-alert type="info" variant="tonal" border="start" density="compact" class="mt-4">
+                <template v-slot:title>
+                  <div class="font-weight-bold">授權範圍</div>
+                </template>
+                <div>
+                  受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。
+                </div>
+              </v-alert>
 
               <v-card variant="outlined" class="mt-4">
                 <div class="d-flex justify-space-between align-center pa-4 pb-0">
@@ -58,13 +54,15 @@
                   </v-btn>
                 </div>
                 <!-- 加上 touch-action: none 與 user-select: none 避免手機滑動與選取 -->
-                <v-card-text style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;">
-                  <VueSignaturePad ref="delegateeSignaturePad" width="100%" height="200px" :options="{ penColor: '#000' }" />
+                <v-card-text
+                  style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;">
+                  <VueSignaturePad ref="delegateeSignaturePad" width="100%" height="200px"
+                    :options="{ penColor: '#000' }" />
                 </v-card-text>
               </v-card>
-               <p class="text-caption text-grey text-center mt-1">完成簽名表示同意授權內容</p>
+              <p class="text-caption text-grey text-center mt-1">完成簽名表示同意授權內容</p>
             </v-card-text>
-         
+
             <v-card-actions class="pa-4">
               <v-spacer></v-spacer>
               <v-btn color="success" size="large" variant="elevated" @click="handleSubmitSignature">我已確認並完成簽署</v-btn>
@@ -77,28 +75,21 @@
             <p class="mb-6">您已成功簽署授權書，系統將會通知委託人(屋主)。</p>
           </div>
         </v-card>
-        
+
       </v-col>
     </v-row>
-    <div ref="authLetterRenderRef" style="position: absolute; left: -9999px; top: -9999px; width: 794px; background-color: white;"></div>
-  
-  <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
-    <span>Powered by&nbsp;</span>
-    <v-chip
-      class="ml-1"
-      href="https://anxismart.com/"
-      target="_blank"
-      rel="noopener noreferrer"
-      color="blue-grey"
-      variant="tonal"
-      size="small"
-      pill
-    >
-      <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
-      anxismart安熙智慧建案管理系統
-    </v-chip>
-  </div>
-  
+    <div ref="authLetterRenderRef"
+      style="position: absolute; left: -9999px; top: -9999px; width: 794px; background-color: white;"></div>
+
+    <div class="text-caption text-grey text-center mt-4 d-flex align-center justify-center">
+      <span>Powered by&nbsp;</span>
+      <v-chip class="ml-1" href="https://anxismart.com/" target="_blank" rel="noopener noreferrer" color="blue-grey"
+        variant="tonal" size="small" pill>
+        <v-icon start size="x-small">mdi-rocket-launch-outline</v-icon>
+        anxismart安熙智慧建案管理系統
+      </v-chip>
+    </div>
+
   </v-container>
 </template>
 
@@ -159,10 +150,12 @@ const handleSubmitSignature = async () => {
       .replace(/{受託人簽名圖檔}/g, delegateeSignature) // 使用剛剛簽的
       .replace(/{受託人身分證字號}/g, sessionData.value.formData.受託人身分證)
       .replace(/{受託人戶籍地址}/g, sessionData.value.formData.受託人戶籍地)
+      .replace(/{與委託人關係}/g, sessionData.value.formData.受託人關係 === '其他' ? (sessionData.value.formData.受託人關係其他 || '其他') : (sessionData.value.formData.受託人關係 || ''))
+      .replace(/{受託人關係}/g, sessionData.value.formData.受託人關係 === '其他' ? (sessionData.value.formData.受託人關係其他 || '其他') : (sessionData.value.formData.受託人關係 || '')) // 向下相容舊版變數名
       .replace(/{TODAY}/g, getMinguoDate());
 
     authLetterRenderRef.value.innerHTML = populatedHtml;
-    
+
     await new Promise(resolve => setTimeout(resolve, 100));
 
     const canvas = await html2canvas(authLetterRenderRef.value, { scale: 2, useCORS: true });

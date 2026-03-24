@@ -6476,11 +6476,11 @@ export const fetchInspectionPersonnelWithEmailsAPI = async (projectId) => {
 /**
  * [API] 呼叫寄送驗屋報告 PDF 信件
  */
-export const sendInspectionReportEmailsAPI = async (projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64) => {
+export const sendInspectionReportEmailsAPI = async (projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64, selectedAttachments = null) => {
   try {
     const sendEmailCallable = httpsCallable(functions, 'sendInspectionReportEmails');
     const response = await sendEmailCallable({
-      projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64
+      projectId, unitId, buyerName, toEmails, bccEmails, pdfBase64, selectedAttachments
     });
     return response.data;
   } catch (error) {

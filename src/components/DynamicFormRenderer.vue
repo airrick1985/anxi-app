@@ -9,9 +9,27 @@
             :label="field.label"
             :placeholder="field.placeholder"
             :rules="field.required ? [v => !!v || '此欄位為必填'] : []"
+            :hint="field.hint"
+            :persistent-hint="!!field.hint"
             variant="outlined"
             density="comfortable"
          ></v-text-field>
+      </template>
+
+      <!-- Textarea Input -->
+      <template v-else-if="field.type === 'textarea'">
+         <v-textarea
+            v-model="internalModel[field.id]"
+            :label="field.label"
+            :placeholder="field.placeholder"
+            :rules="field.required ? [v => !!v || '此欄位為必填'] : []"
+            :hint="field.hint"
+            :persistent-hint="!!field.hint"
+            variant="outlined"
+            density="comfortable"
+            rows="3"
+            auto-grow
+         ></v-textarea>
       </template>
 
       <!-- Phone Input -->
@@ -25,7 +43,7 @@
             variant="outlined"
             density="comfortable"
             type="tel"
-            hint="輸入時自動去除符號，僅保留數字"
+            :hint="field.hint || '輸入時自動去除符號，僅保留數字'"
             persistent-hint
          ></v-text-field>
       </template>
@@ -40,7 +58,36 @@
             variant="outlined"
             density="comfortable"
             type="date"
-           
+         ></v-text-field>
+      </template>
+
+      <!-- Address Input -->
+      <template v-else-if="field.type === 'address'">
+         <v-text-field
+            v-model="internalModel[field.id]"
+            :label="field.label"
+            :placeholder="field.placeholder || '請輸入地址'"
+            :rules="field.required ? [v => !!v || '此欄位為必填'] : []"
+            :hint="field.hint"
+            :persistent-hint="!!field.hint"
+            variant="outlined"
+            density="comfortable"
+            prepend-inner-icon="mdi-map-marker-outline"
+         ></v-text-field>
+      </template>
+
+      <!-- System Auto-fill Input -->
+      <template v-else-if="field.type === 'system'">
+         <v-text-field
+            v-model="internalModel[field.id]"
+            :label="field.label"
+            :placeholder="field.placeholder"
+            :rules="field.required ? [v => !!v || '此欄位為必填'] : []"
+            :readonly="field.readOnly"
+            variant="outlined"
+            density="comfortable"
+            prepend-inner-icon="mdi-database-outline"
+            :bg-color="field.readOnly ? 'grey-lighten-4' : undefined"
          ></v-text-field>
       </template>
 
@@ -78,8 +125,6 @@
          <div class="text-subtitle-2 mb-2 font-weight-bold">
             {{ field.label }} <span v-if="field.required" class="text-red">*</span>
         </div>
-        <!-- Note: We need to handle array initialization for checkboxes -->
-        <!-- We can't easily use v-model with v-checkbox group for custom layout (subfields), so we iterate options -->
         
         <div v-for="option in field.options" :key="option.value" class="mb-1">
             <v-checkbox
@@ -121,19 +166,33 @@
         </div>
       </template>
 
-      <!-- Display-Only: Description -->
+      <!-- Display-Only: Description (修正：讀取 field.content) -->
       <template v-else-if="field.type === 'description'">
         <div class="text-subtitle-2 mb-1">
           {{ field.label }}
         </div>
-        <div v-if="field.placeholder" class="text-body-2 text-grey-darken-1 mb-2 preserve-whitespace">
-          {{ field.placeholder }}
+        <div v-if="field.content" class="text-body-2 text-grey-darken-1 mb-2 preserve-whitespace">
+          {{ field.content }}
         </div>
       </template>
 
       <!-- Display-Only: Divider -->
       <template v-else-if="field.type === 'divider'">
         <v-divider class="my-4"></v-divider>
+      </template>
+
+      <!-- Display-Only: Link -->
+      <template v-else-if="field.type === 'link'">
+        <a
+          v-if="field.url"
+          :href="field.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-body-2 text-primary text-decoration-underline d-inline-flex align-center"
+        >
+          <v-icon size="small" class="mr-1">mdi-open-in-new</v-icon>
+          {{ field.label || '點擊前往' }}
+        </a>
       </template>
 
     </div>
