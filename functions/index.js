@@ -13227,6 +13227,7 @@ async function _handleGetBookingInitialData(data) {
       .get();
 
     const activeBookingTypesSet = new Set();
+    const allBatchSchedules = {}; // 新增：收集所有批次的時段資訊
     const now = new Date();
 
     console.log(`[DEBUG] init - 取得 batches 數量: ${batchSnapshot.size}, 檢查現在時間: ${now.toISOString()}`);
@@ -13268,6 +13269,19 @@ async function _handleGetBookingInitialData(data) {
         console.log(`[DEBUG] Batch ${doc.id} 是開放的, 將加入: ${bType}`);
         activeBookingTypesSet.add(bType);
       }
+
+      // 新增：收集所有批次時段資訊（無論是否開放）
+      if (bType) {
+        if (!allBatchSchedules[bType]) {
+          allBatchSchedules[bType] = [];
+        }
+        allBatchSchedules[bType].push({
+          batchCode: data.batchCode || doc.id,
+          applicationStart: start ? start.toISOString() : null,
+          applicationEnd: end ? end.toISOString() : null,
+          isActive: isOpened
+        });
+      }
     });
 
     const finalTypes = Array.from(activeBookingTypesSet);
@@ -13281,7 +13295,8 @@ async function _handleGetBookingInitialData(data) {
       validateId: projectData.validateId || 'OFF',
       inspectionMethods: [],
       inspectionStaff: [],
-      activeBookingTypes: finalTypes
+      activeBookingTypes: finalTypes,
+      allBatchSchedules: allBatchSchedules // 新增：所有批次時段資訊
     };
 
   } catch (error) {

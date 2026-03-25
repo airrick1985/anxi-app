@@ -206,7 +206,8 @@
             <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
               找不到對應的建案設定，請確認網址是否正確。
             </v-alert>
-            <v-alert v-if="projectConfig && systemStatus.code !== 'OPEN' && !isLoading"
+            <!-- 系統狀態提示（僅 Step 0 時顯示全域狀態，Step 1 由批次提示取代） -->
+            <v-alert v-if="projectConfig && systemStatus.code !== 'OPEN' && !isLoading && step === 0"
               :type="systemStatus.code === 'NOT_STARTED' ? 'info' : (systemStatus.code === 'ENDED' ? 'error' : 'error')"
               :icon="systemStatus.icon" border="start" prominent variant="tonal" class="mb-4">
               <template v-slot:title>
@@ -222,6 +223,46 @@
               <div class="prose">
                 <div v-html="currentPageSettings.intro.greeting"></div>
                 <div v-html="currentPageSettings.intro.body"></div>
+
+                <!-- 批次未開放提示（顯示在閒讀說明上方） -->
+                <v-alert v-if="step === 1 && !isSelectedTypeActive && nextBatchSchedule" type="warning" variant="tonal"
+                  border="start" prominent icon="mdi-clock-alert-outline" class="batch-not-open-alert mb-4">
+                  <template v-slot:title>
+                    <span class="font-weight-bold text-subtitle-1">
+                      目前「{{ selectedBookingType }}」尚未開始
+                    </span>
+                  </template>
+                  <div class="mt-2">
+                    <p class="mb-3 text-body-1">
+                      <v-icon size="18" class="mr-1">mdi-calendar-range</v-icon>
+                      開放時間：
+                      <strong>{{ formatScheduleDateTime(nextBatchSchedule.applicationStart) }}</strong>
+                      ~
+                      <strong>{{ formatScheduleDateTime(nextBatchSchedule.applicationEnd) }}</strong>
+                    </p>
+                    <div class="d-flex flex-wrap ga-2">
+                      <v-btn size="small" variant="outlined" color="primary" prepend-icon="mdi-google"
+                        @click="addToGoogleCalendar(nextBatchSchedule)">
+                        加入 Google 行事曆
+                      </v-btn>
+                      <v-btn size="small" variant="outlined" color="primary" prepend-icon="mdi-calendar-export"
+                        @click="downloadIcsFile(nextBatchSchedule)">
+                        下載行事曆提醒 (.ics)
+                      </v-btn>
+                    </div>
+                  </div>
+                </v-alert>
+
+                <!-- 無任何批次可用提示 -->
+                <v-alert v-else-if="step === 1 && !isSelectedTypeActive && !nextBatchSchedule" type="info"
+                  variant="tonal" border="start" prominent icon="mdi-information-outline" class="mb-4">
+                  <template v-slot:title>
+                    <span class="font-weight-bold">
+                      「{{ selectedBookingType }}」尚未設定開放時間
+                    </span>
+                  </template>
+                  <p class="mt-2">目前該預約服務尚未安排批次，請洽詢服務人員。</p>
+                </v-alert>
 
                 <div v-if="currentPageSettings.intro.alert.show">
 
@@ -321,20 +362,42 @@
                 <p class="text-subtitle-1 text-grey-darken-1">請選擇您要進行的服務項目</p>
               </div>
 
-              <!-- 1. 預約服務區 -->
-              <div class="pa-6" v-if="systemStatus.code === 'OPEN'">
+              <!-- 1. 預約服務區（常駐顯示，不受批次開放狀態限制） -->
+              <div class="pa-6">
                 <div class="d-flex align-center mb-6">
                   <div class="bg-primary rounded-pill mr-3" style="width: 8px; height: 32px;"></div>
                   <h4 class="text-h5 font-weight-black">選擇您的預約服務</h4>
                 </div>
 
-                <div v-if="availableBookingTypes && availableBookingTypes.length > 0">
+                <div v-if="allBookingTypes && allBookingTypes.length > 0">
                   <v-row>
-                    <v-col cols="12" sm="6" v-for="type in availableBookingTypes" :key="type">
-                      <v-btn block size="x-large" color="primary" variant="elevated"
-                        class="py-8 text-h6 font-weight-bold rounded-xl" @click="selectBookingType(type)">
+                    <v-col cols="12" sm="6" v-for="type in allBookingTypes" :key="type">
+                      <!-- 開放中：主色按鈕 -->
+                      <v-btn v-if="availableBookingTypes.includes(type)" block size="x-large" color="primary"
+                        variant="elevated" class="py-8 text-h6 font-weight-bold rounded-xl"
+                        @click="selectBookingType(type)">
                         <v-icon start size="32" class="mr-2">mdi-calendar-edit</v-icon>
                         {{ type }}
+                      </v-btn>
+                      <!-- 未開放：次色按鈕 + 狀態標籤 + 開放時間 -->
+                      <v-btn v-else block size="x-large" color="blue-grey-lighten-1" variant="elevated"
+                        class="py-6 text-h6 font-weight-bold rounded-xl" style="height: auto; min-height: 80px;"
+                        @click="selectBookingType(type)">
+                        <div class="d-flex flex-column align-center" style="width: 100%;">
+                          <div class="d-flex align-center">
+                            <v-icon start size="32" class="mr-2">mdi-calendar-clock</v-icon>
+                            {{ type }}
+                          </div>
+                          <v-chip size="x-small" color="orange" variant="flat" class="mt-2">
+                            <v-icon start size="12">mdi-clock-outline</v-icon>
+                            尚未開放
+                          </v-chip>
+                          <div v-if="getNextBatchForType(type)" class="text-caption text-white mt-1"
+                            style="opacity: 0.9; font-weight: 400;">
+                            開放時間：{{ formatScheduleDateTime(getNextBatchForType(type).applicationStart) }}
+                            ~ {{ formatScheduleDateTime(getNextBatchForType(type).applicationEnd) }}
+                          </div>
+                        </div>
                       </v-btn>
                     </v-col>
                   </v-row>
@@ -342,7 +405,7 @@
                 <div v-else class="text-center py-8 text-grey border rounded-xl"
                   style="border-style: dashed !important;">
                   <v-icon size="48" class="mb-2">mdi-calendar-remove</v-icon>
-                  <p>目前暫無開放的預約項目</p>
+                  <p>目前暫無設定的預約項目</p>
                 </div>
               </div>
 
@@ -396,7 +459,8 @@
 
 
 
-              <div v-if="step === 1 && !existingBookingInfo">
+              <!-- 表單區域（僅批次開放中才顯示） -->
+              <div v-if="step === 1 && !existingBookingInfo && isSelectedTypeActive">
                 <v-card-text>
                   <div class="mb-4">
                     <h3 class="text-h6 mb-0 font-weight-bold">步驟一：填寫預約資料 ({{ selectedBookingType }})</h3>
@@ -1401,6 +1465,161 @@ const availableBookingTypes = computed(() => {
   return types;
 });
 
+// [新增] 取得所有設定的預約服務類型（不過濾開放狀態，用於 Step 0 常駐顯示）
+const allBookingTypes = computed(() => {
+  if (!projectConfig.value) return [];
+
+  // 從 bookingMenu 取得所有未刪除的項目
+  if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
+    return projectConfig.value.bookingMenu
+      .filter(item => !item.deleted)
+      .map(item => item.title);
+  }
+
+  // Fallback Legacy
+  return projectConfig.value.bookingTypes || [];
+});
+
+// [新增] 判斷使用者選取的預約服務是否在開放中的批次列表裡
+const isSelectedTypeActive = computed(() => {
+  if (!selectedBookingType.value) return false;
+  return availableBookingTypes.value.includes(selectedBookingType.value);
+});
+
+// [新增] 計算該服務對應「距當下最近的未來批次」的起訖時段
+const nextBatchSchedule = computed(() => {
+  if (!selectedBookingType.value) return null;
+
+  const allSchedules = initialData.value?.allBatchSchedules;
+  if (!allSchedules) return null;
+
+  const schedules = allSchedules[selectedBookingType.value];
+  if (!schedules || schedules.length === 0) return null;
+
+  const now = currentTime.value;
+
+  // 找到最近的未來批次（applicationStart > now）
+  const futureSchedules = schedules
+    .filter(s => {
+      const start = parseDateValue(s.applicationStart);
+      return start && start > now;
+    })
+    .sort((a, b) => {
+      const aStart = parseDateValue(a.applicationStart);
+      const bStart = parseDateValue(b.applicationStart);
+      return aStart - bStart;
+    });
+
+  return futureSchedules.length > 0 ? futureSchedules[0] : null;
+});
+
+// [新增] 依服務類型取得最近的未來批次（供 Step 0 按鈕顯示開放時間）
+const getNextBatchForType = (typeName) => {
+  const allSchedules = initialData.value?.allBatchSchedules;
+  if (!allSchedules) return null;
+
+  const schedules = allSchedules[typeName];
+  if (!schedules || schedules.length === 0) return null;
+
+  const now = currentTime.value;
+
+  const futureSchedules = schedules
+    .filter(s => {
+      const start = parseDateValue(s.applicationStart);
+      return start && start > now;
+    })
+    .sort((a, b) => {
+      const aStart = parseDateValue(a.applicationStart);
+      const bStart = parseDateValue(b.applicationStart);
+      return aStart - bStart;
+    });
+
+  return futureSchedules.length > 0 ? futureSchedules[0] : null;
+};
+
+// [新增] 格式化批次時段的日期時間顯示 (YYYY/M/DD HH:MM)
+const formatScheduleDateTime = (isoString) => {
+  if (!isoString) return '未設定';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '未設定';
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${y}/${m}/${day} ${hh}:${mm}`;
+};
+
+// [新增] 將批次開放時間加入 Google 行事曆
+const addToGoogleCalendar = (schedule) => {
+  const start = parseDateValue(schedule.applicationStart);
+  const end = parseDateValue(schedule.applicationEnd);
+  if (!start) return;
+
+  const projectName = projectConfig.value?.name || '預約系統';
+  const typeName = selectedBookingType.value || '預約';
+
+  const title = encodeURIComponent(`${projectName} - ${typeName} 預約開放`);
+  const details = encodeURIComponent(`${projectName}「${typeName}」預約系統已開放，請把握時間完成預約。`);
+
+  // Google Calendar 格式：YYYYMMDDTHHmmssZ
+  const formatGCal = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+  const startStr = formatGCal(start);
+  // 若無結束時間，預設為開始後 1 小時
+  const endDate = end || new Date(start.getTime() + 60 * 60 * 1000);
+  const endStr = formatGCal(endDate);
+
+  const url = `https://calendar.google.com/calendar/event?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}`;
+  window.open(url, '_blank');
+};
+
+// [新增] 產生 .ics 行事曆檔並下載（含鬧鐘提醒：提前30分鐘 + 提前1天）
+const downloadIcsFile = (schedule) => {
+  const start = parseDateValue(schedule.applicationStart);
+  const end = parseDateValue(schedule.applicationEnd);
+  if (!start) return;
+
+  const projectName = projectConfig.value?.name || '預約系統';
+  const typeName = selectedBookingType.value || '預約';
+
+  // ICS 格式日期
+  const formatICS = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+  const startStr = formatICS(start);
+  const endDate = end || new Date(start.getTime() + 60 * 60 * 1000);
+  const endStr = formatICS(endDate);
+
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//AnxiSmart//BookingReminder//ZH',
+    'BEGIN:VEVENT',
+    `DTSTART:${startStr}`,
+    `DTEND:${endStr}`,
+    `SUMMARY:${projectName} - ${typeName} 預約開放`,
+    `DESCRIPTION:${projectName}「${typeName}」預約系統已開放，請把握時間完成預約。`,
+    'BEGIN:VALARM',
+    'TRIGGER:-PT30M',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:${typeName}預約即將開放！`,
+    'END:VALARM',
+    'BEGIN:VALARM',
+    'TRIGGER:-P1D',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:明天${typeName}預約將開放`,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${typeName}_預約提醒.ics`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+};
 const availableMethodOptions = computed(() => {
   if (!projectConfig.value || !formStep1.value.bookingType) return [];
 
@@ -2772,5 +2991,22 @@ const goBackToStep0 = () => {
 /* Snackbar 驗證提示的樣式 */
 .validation-snackbar :deep(.v-snackbar__content) {
   font-size: 1rem;
+}
+
+/* 批次未開放提示區塊 */
+.batch-not-open-alert {
+  animation: fadeSlideIn 0.4s ease-out;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
