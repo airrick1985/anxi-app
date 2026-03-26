@@ -27,7 +27,7 @@
       </div>
       <div v-else>
 
-        <v-window v-model="activeTab">
+        <v-window v-model="activeTab" :touch="false">
           <v-window-item value="batches" class="pa-4">
             <v-toolbar flat color="transparent">
               <v-text-field v-model="searchQuery" label="搜尋..." prepend-inner-icon="mdi-magnify" variant="solo-filled"
@@ -69,12 +69,7 @@
                   </div>
                 </template>
                 <template v-slot:item.quotaMode="{ item }">
-                  <v-chip
-                    :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'"
-                    size="small"
-                    label
-                    variant="tonal"
-                  >
+                  <v-chip :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'" size="small" label variant="tonal">
                     <v-icon start size="x-small">
                       {{ item.quotaMode === 'isolated' ? 'mdi-lock-outline' : 'mdi-link-variant' }}
                     </v-icon>
@@ -106,12 +101,8 @@
                   <v-card-title class="d-flex justify-space-between align-center text-body-1 font-weight-bold py-2">
                     <span>{{ item.bookingType }}: {{ item.batchCode }}</span>
                     <div class="d-flex align-center ga-1">
-                      <v-chip
-                        :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'"
-                        size="x-small"
-                        label
-                        variant="tonal"
-                      >
+                      <v-chip :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'" size="x-small" label
+                        variant="tonal">
                         {{ item.quotaMode === 'isolated' ? '🔒 獨立' : '🔗 共用' }}
                       </v-chip>
                       <v-chip :color="getBatchStatus(item).color" size="small" label>{{ item.statusText }}</v-chip>
@@ -173,7 +164,7 @@
               </v-tabs>
 
               <v-form>
-                <v-window v-model="settingsSubTab">
+                <v-window v-model="settingsSubTab" :touch="false">
                   <!-- Tab 1: 一般與狀態設定 -->
                   <v-window-item value="general" transition="fade-transition" reverse-transition="fade-transition">
                     <!-- 預約頁面路徑顯示 -->
@@ -487,7 +478,7 @@
                                     <div class="flex-grow-1">
                                       <span class="text-decoration-line-through font-weight-bold text-grey-darken-1">{{
                                         item.title
-                                      }}</span>
+                                        }}</span>
                                       <div class="text-caption text-grey">
                                         {{ item.methods ? item.methods.length : 0 }} 種方式
                                         <span v-if="item.deletedAt"> · {{ new
@@ -1590,7 +1581,7 @@
               <v-tab value="inspCategoriesItems">分類與細項</v-tab>
               <v-tab value="pdfTemplate">報告模板設定</v-tab>
             </v-tabs>
-            <v-window v-model="inspSystemSubTab">
+            <v-window v-model="inspSystemSubTab" :touch="false">
               <v-window-item value="inspProjectSettings">
                 <InspProjectSettings :project-id="projectId" />
               </v-window-item>
@@ -1743,7 +1734,7 @@
             <v-list v-else lines="two">
               <template v-for="(dayData, date) in previewData" :key="date">
                 <v-list-subheader class="font-weight-bold text-primary">{{ formatDateWithWeekday(date)
-                }}</v-list-subheader>
+                  }}</v-list-subheader>
                 <v-list-item>
                   <div v-if="dayData.length > 0">
                     <div v-for="slot in dayData" :key="slot.time" class="mb-2">
@@ -1882,13 +1873,8 @@
                     </template>
                   </v-radio>
                 </v-radio-group>
-                <v-alert
-                  v-if="editedBatch.id && editedBatch.quotaMode !== (editedBatch._originalQuotaMode || 'shared')"
-                  type="warning"
-                  variant="tonal"
-                  density="compact"
-                  class="mt-2 mb-0"
-                >
+                <v-alert v-if="editedBatch.id && editedBatch.quotaMode !== (editedBatch._originalQuotaMode || 'shared')"
+                  type="warning" variant="tonal" density="compact" class="mt-2 mb-0">
                   <v-icon start size="small">mdi-alert-outline</v-icon>
                   名額模式已變更，儲存後將立即生效。若此批次已有客戶預約，名額計算方式會隨之改變。
                 </v-alert>
