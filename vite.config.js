@@ -34,7 +34,7 @@ export default defineConfig({
       // --- 【關鍵修改】 ---
       // 根據錯誤訊息，將大小限制設定放在 injectManifest 物件中
       injectManifest: {
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 設定為 5 MB
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 設定為 8 MB
       },
       // --- 【修改結束】 ---
 
