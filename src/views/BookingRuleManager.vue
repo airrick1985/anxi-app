@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <v-container fluid style="background-color: #f5f5f7;">
     <v-card>
       <v-toolbar color="primary" density="compact">
@@ -68,6 +68,19 @@
                     </div>
                   </div>
                 </template>
+                <template v-slot:item.quotaMode="{ item }">
+                  <v-chip
+                    :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'"
+                    size="small"
+                    label
+                    variant="tonal"
+                  >
+                    <v-icon start size="x-small">
+                      {{ item.quotaMode === 'isolated' ? 'mdi-lock-outline' : 'mdi-link-variant' }}
+                    </v-icon>
+                    {{ item.quotaMode === 'isolated' ? '獨立名額' : '共用名額' }}
+                  </v-chip>
+                </template>
                 <template v-slot:item.statusText="{ item }">
                   <v-chip :color="getBatchStatus(item).color" size="small">
                     {{ item.statusText }}
@@ -92,7 +105,17 @@
                 <v-card v-for="item in filteredBatchesForCards" :key="item.id" class="mb-3" variant="outlined">
                   <v-card-title class="d-flex justify-space-between align-center text-body-1 font-weight-bold py-2">
                     <span>{{ item.bookingType }}: {{ item.batchCode }}</span>
-                    <v-chip :color="getBatchStatus(item).color" size="small" label>{{ item.statusText }}</v-chip>
+                    <div class="d-flex align-center ga-1">
+                      <v-chip
+                        :color="item.quotaMode === 'isolated' ? 'orange' : 'blue'"
+                        size="x-small"
+                        label
+                        variant="tonal"
+                      >
+                        {{ item.quotaMode === 'isolated' ? '🔒 獨立' : '🔗 共用' }}
+                      </v-chip>
+                      <v-chip :color="getBatchStatus(item).color" size="small" label>{{ item.statusText }}</v-chip>
+                    </div>
                   </v-card-title>
                   <v-divider></v-divider>
                   <v-card-text class="py-2">
@@ -1822,6 +1845,56 @@
                   :variant="editedBatch.id ? 'filled' : 'outlined'"></v-text-field>
               </v-col>
             </v-row>
+
+            <v-divider class="my-2"></v-divider>
+            <v-row>
+              <v-col cols="12">
+                <div class="text-subtitle-1 font-weight-bold mb-2 d-flex align-center">
+                  <v-icon start color="amber-darken-2">mdi-tune-variant</v-icon>
+                  名額計算模式
+                </div>
+                <v-radio-group v-model="editedBatch.quotaMode" inline hide-details>
+                  <v-radio value="shared">
+                    <template v-slot:label>
+                      <div>
+                        <div class="d-flex align-center">
+                          <v-icon size="small" color="blue" class="mr-1">mdi-link-variant</v-icon>
+                          <span class="font-weight-bold">共用名額</span>
+                          <v-chip size="x-small" color="blue" variant="tonal" class="ml-2">預設</v-chip>
+                        </div>
+                        <div class="text-caption text-grey-darken-1 mt-1">
+                          同日期、同時段的其他批次若有人預約，此批次的剩餘名額也會減少。
+                        </div>
+                      </div>
+                    </template>
+                  </v-radio>
+                  <v-radio value="isolated">
+                    <template v-slot:label>
+                      <div>
+                        <div class="d-flex align-center">
+                          <v-icon size="small" color="orange" class="mr-1">mdi-lock-outline</v-icon>
+                          <span class="font-weight-bold">獨立名額</span>
+                        </div>
+                        <div class="text-caption text-grey-darken-1 mt-1">
+                          此批次的名額獨立計算，其他批次的預約不影響此批次的剩餘名額。
+                        </div>
+                      </div>
+                    </template>
+                  </v-radio>
+                </v-radio-group>
+                <v-alert
+                  v-if="editedBatch.id && editedBatch.quotaMode !== (editedBatch._originalQuotaMode || 'shared')"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-2 mb-0"
+                >
+                  <v-icon start size="small">mdi-alert-outline</v-icon>
+                  名額模式已變更，儲存後將立即生效。若此批次已有客戶預約，名額計算方式會隨之改變。
+                </v-alert>
+              </v-col>
+            </v-row>
+
             <v-divider class="my-2"></v-divider>
             <v-row>
               <v-col cols="12" sm="6" md="3">
@@ -3308,15 +3381,18 @@ const defaultBatch = {
   bookingStart: '',
   bookingEnd: '',
   dailyRules: {},
+  quotaMode: 'shared', // 名額計算模式：'shared' 共用名額 | 'isolated' 獨立名額
 };
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]);
+const isLoadingBatchData = ref(false); // 防止編輯載入時 watcher 清空已選日期
 
 
 
 const batchHeaders = [
   { title: '批次代號', key: 'batchCode' },
   { title: '預約項目', key: 'bookingType' },
+  { title: '名額模式', key: 'quotaMode', sortable: true },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
   { title: '可預約區間', key: 'bookingWindow', sortable: false },
   { title: '狀態', key: 'statusText', sortable: true },
@@ -3668,6 +3744,7 @@ async function loadDataForProject() {
 
 // --- Dialog Open/Close Functions ---
 async function openBatchDialog(item = null) {
+  isLoadingBatchData.value = true; // 防止 bookingStart/End watcher 清空 selectedDaysForEditing
   customBookingType.value = '';
   if (item) {
     // ✓ START: 處理從後端讀取的時間物件
@@ -3694,17 +3771,39 @@ async function openBatchDialog(item = null) {
       }
     }
     // 3. 使用處理過後的 itemFromServer
-    editedBatch.value = { ...itemFromServer, dailyRules };
+    // 載入 quotaMode 並暫存原始值（用於偵測是否修改並顯示警告）
+    editedBatch.value = {
+      ...itemFromServer,
+      dailyRules,
+      quotaMode: itemFromServer.quotaMode || 'shared',  // 向下相容：舊批次預設 shared
+      _originalQuotaMode: itemFromServer.quotaMode || 'shared'
+    };
 
     if (!bookingTypeOptions.value.includes(item.bookingType)) {
       editedBatch.value.bookingType = '其他';
       customBookingType.value = item.bookingType;
     }
   } else {
-    editedBatch.value = { ...defaultBatch, dailyRules: {} };
+    editedBatch.value = { ...defaultBatch, dailyRules: {}, quotaMode: 'shared' };
   }
-  selectedDaysForEditing.value = [];
+
+  // 編輯模式下，自動選中資料庫中已設定時段的日期，讓右側面板直接顯示時段資料
+  if (item && editedBatch.value.dailyRules) {
+    const configuredDates = Object.keys(editedBatch.value.dailyRules)
+      .filter(date => {
+        const slots = editedBatch.value.dailyRules[date]?.slots;
+        return slots && Object.keys(slots).length > 0;
+      })
+      .sort();
+    selectedDaysForEditing.value = configuredDates.map(d => parseISO(d));
+  } else {
+    selectedDaysForEditing.value = [];
+  }
   isBatchDialogVisible.value = true;
+
+  // 等 DOM 更新完畢後才解除 flag，避免 watcher 誤清空
+  await nextTick();
+  isLoadingBatchData.value = false;
 }
 
 async function openDeleteDialog(item) {
@@ -4398,7 +4497,10 @@ watch(menuPublishEnd, (val) => {
 onMounted(loadDataForProject);
 
 watch(() => [editedBatch.value.bookingStart, editedBatch.value.bookingEnd], () => {
-  selectedDaysForEditing.value = [];
+  // 只在用戶手動更動日期時才清空，載入資料期間跳過
+  if (!isLoadingBatchData.value) {
+    selectedDaysForEditing.value = [];
+  }
 });
 
 watch(() => editedBatch.value.bookingType, () => {

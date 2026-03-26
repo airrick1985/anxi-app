@@ -673,9 +673,9 @@
             您的驗屋報告 PDF 已經準備就緒。<br>您想要執行什麼操作？
           </div>
 
-          <v-btn color="info" variant="flat" block size="large" class="mb-3" :href="previewPdfUrl" target="_blank"
+          <v-btn color="info" variant="flat" block size="large" class="mb-3" @click="handlePreviewReport"
             prepend-icon="mdi-file-pdf-box">
-            在新分頁開啟預覽
+            在系統內預覽報告
           </v-btn>
 
           <v-btn color="primary" variant="flat" block size="large" class="mb-3" @click="openEmailDialog"
@@ -692,6 +692,25 @@
         <v-card-actions class="justify-center border-t pt-4">
           <v-btn variant="text" color="grey-darken-1" @click="showPdfPreviewDialog = false">關閉此視窗</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 線上預覽 PDF (使用 vue-pdf-embed) -->
+    <v-dialog v-model="showInnerPdfPreview" fullscreen transition="dialog-bottom-transition" style="z-index: 3000;">
+      <v-card class="bg-grey-lighten-4">
+        <v-toolbar color="primary" dark>
+          <v-btn icon @click="showInnerPdfPreview = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+          <v-toolbar-title>{{ innerPreviewTitle }}</v-toolbar-title>
+          <v-spacer></v-spacer>
+        </v-toolbar>
+        <v-card-text class="pa-2 pa-sm-4 overflow-y-auto w-100" style="background-color: #525659; height: 100%;">
+          <div class="mx-auto" style="max-width: 900px;">
+            <vue-pdf-embed v-if="pdfEmbedSource" :source="pdfEmbedSource" class="mb-4 elevation-4 bg-white" />
+            <div v-else class="text-center text-white py-10">資料載入中...</div>
+          </div>
+        </v-card-text>
       </v-card>
     </v-dialog>
 
@@ -723,7 +742,7 @@
                 <v-checkbox v-for="(file, idx) in pdfTemplate.emailAttachments.files" :key="idx"
                   v-model="selectedAttachments" :value="file.url" color="blue-grey" density="compact" hide-details>
                   <template v-slot:label>
-                    <a :href="file.url" target="_blank" @click.stop
+                    <a href="javascript:void(0)" @click.stop.prevent="handlePreviewAttachment(file)"
                       class="text-decoration-none text-blue-grey-darken-2 font-weight-medium">
                       <v-icon size="small" class="mr-1">mdi-paperclip</v-icon>
                       {{ file.name }}
@@ -970,6 +989,7 @@
 import { ref, onMounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import liff from '@line/liff';
+import VuePdfEmbed from 'vue-pdf-embed';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import {
@@ -1085,6 +1105,9 @@ const standbyUsers = ref([]);
 
 // --- PDF 預覽與寄送相關狀態 ---
 const showPdfPreviewDialog = ref(false);
+const showInnerPdfPreview = ref(false);
+const innerPreviewTitle = ref('報告線上預覽');
+const pdfEmbedSource = ref(null);
 const previewPdfUrl = ref(null);
 const currentPdfBase64 = ref(null);
 const currentPdfBlob = ref(null);
@@ -2656,6 +2679,31 @@ async function handleDownloadBatchPdf() {
 // ------------------------------
 // --- PDF 信件寄送邏輯 ---
 // ------------------------------
+
+function handlePreviewReport() {
+  innerPreviewTitle.value = '報告格式預覽';
+  pdfEmbedSource.value = currentPdfBase64.value;
+  showInnerPdfPreview.value = true;
+}
+
+function handlePreviewAttachment(file) {
+  if (!file || !file.url) return;
+  const url = file.url.toLowerCase();
+  const name = (file.name || '').toLowerCase();
+
+  if (name.endsWith('.pdf') || url.includes('.pdf') || url.includes('.pdf?alt=media')) {
+    innerPreviewTitle.value = `預覽附件：${file.name}`;
+    pdfEmbedSource.value = file.url;
+    showInnerPdfPreview.value = true;
+  } else if (name.match(/\.(png|jpe?g|webp|gif|bmp)$/i) || url.match(/\.(png|jpe?g|webp|gif|bmp)(\?|$)/i) || url.includes('alt=media')) {
+    // Firebase Storage 通常帶有 alt=media
+    previewImageUrl.value = file.url;
+    showPreviewDialog.value = true;
+  } else {
+    // 其他文件若不支援內建預覽，仍以開新分頁 fallback 處理
+    window.open(file.url, '_blank');
+  }
+}
 
 function downloadPreviewPdf() {
   if (currentPdfBlob.value) {

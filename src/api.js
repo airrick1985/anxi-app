@@ -2855,6 +2855,7 @@ export async function saveBatchWithRules(payload) {
       dataToSave.isDeleted = false;
     }
     delete dataToSave.dailyRules;
+    delete dataToSave._originalQuotaMode; // 移除前端暫存的比對用欄位，不寫入 Firestore
     if (!isNewBatch) {
       delete dataToSave.isDeleted;
       delete dataToSave.deletedAt;

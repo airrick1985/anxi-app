@@ -10285,7 +10285,7 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
  * @param {object} context - 包含驗證資訊
  * @returns {Promise<{status: string, data: Array<object>, hasMore: boolean, lastDocId: string|null}>}
  */
-exports.getInspectionRecordsForProjectFB = onCall(async (request) => {
+exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1" }, async (request) => {
   const { projectId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   if (!projectId) {
     throw new HttpsError("invalid-argument", "缺少 'projectId' 參數。");
@@ -10423,7 +10423,7 @@ exports.getProjectStructure = onCall({ region: "asia-east1" }, async (request) =
 });
 
 // ✓ 再次確認 onCall 包裝和 HttpsError 使用
-exports.updateInspectionRecordField = onCall(async (request) => {
+exports.updateInspectionRecordField = onCall({ region: "asia-east1" }, async (request) => {
   // 將所有邏輯包在 try...catch 中，確保拋出 HttpsError
   try {
     const { projectId, unitId, recordId, payload } = request.data;
@@ -10484,7 +10484,7 @@ exports.updateInspectionRecordField = onCall(async (request) => {
  * @param {object} payload - 包含要更新的所有欄位的物件
  * @returns {Promise<object>} - { status: 'success' } 或 { status: 'error', message: '...' }
  */
-exports.updateInspectionRecord = onCall(async (request) => {
+exports.updateInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
   // 從 request.data 中解構出前端傳來的參數
   const { recordId, payload } = request.data;
   const functionName = `updateInspectionRecord (Record: ${recordId})`; // 用於 Log
@@ -10554,7 +10554,7 @@ exports.updateInspectionRecord = onCall(async (request) => {
  * @param {string} recordId - 要刪除的驗屋紀錄文件 ID (自訂格式)
  * @returns {Promise<object>} - { status: 'success' } 或 { status: 'error', message: '...' }
  */
-exports.deleteInspectionRecord = onCall(async (request) => {
+exports.deleteInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
   const { recordId } = request.data;
   const functionName = `deleteInspectionRecord (Record: ${recordId})`;
   console.log(`[${functionName}] Function called at ${new Date().toISOString()}`);
@@ -13126,26 +13126,42 @@ async function _handleGetAvailableSlots(data) {
     const startDate = new Date(batchData.bookingStart + 'T00:00:00+08:00');
     const endDate = new Date(batchData.bookingEnd + 'T23:59:59+08:00');
 
-    // --- START: 計算共用名額的目標 bookingType 陣列 ---
-    const projectDocForCap = await db.collection('projects').doc(projectId).get();
-    const projectData = projectDocForCap.exists ? projectDocForCap.data() : {};
-    const capacityGroups = projectData.bookingCapacityGroups || [];
-    let targetBookingTypes = [bookingType]; // 預設獨立計算
-    for (const group of capacityGroups) {
-      if (group && Array.isArray(group.types) && group.types.includes(bookingType)) {
-        targetBookingTypes = group.types;
-        break; // 找到所屬群組就套用並跳出
-      }
-    }
-    // --- END: 計算共用名額的目標 bookingType 陣列 ---
+    // --- START: 根據 quotaMode 決定名額查詢邏輯 ---
+    const quotaMode = batchData.quotaMode || 'shared'; // 向下相容：預設 shared
+    console.log(`[${functionName}] quotaMode: ${quotaMode}, batchCode: ${batchData.batchCode}`);
 
-    const appointmentsQuery = await db.collection('appointments')
-      .where('projectId', '==', projectId)
-      .where('status', '==', '預約中')
-      .where('appointmentDate', '>=', startDate)
-      .where('appointmentDate', '<=', endDate)
-      .where('bookingType', 'in', targetBookingTypes) // 新增此行過濾陣列
-      .get();
+    let appointmentsQuery;
+    if (quotaMode === 'isolated') {
+      // isolated 模式：僅查詢屬於此批次的預約（透過 batchCode 過濾）
+      appointmentsQuery = await db.collection('appointments')
+        .where('projectId', '==', projectId)
+        .where('status', '==', '預約中')
+        .where('appointmentDate', '>=', startDate)
+        .where('appointmentDate', '<=', endDate)
+        .where('batchCode', '==', batchData.batchCode)
+        .get();
+    } else {
+      // shared 模式：維持現有邏輯（按 bookingType + capacityGroups 合併計算）
+      const projectDocForCap = await db.collection('projects').doc(projectId).get();
+      const projectData = projectDocForCap.exists ? projectDocForCap.data() : {};
+      const capacityGroups = projectData.bookingCapacityGroups || [];
+      let targetBookingTypes = [bookingType]; // 預設獨立計算
+      for (const group of capacityGroups) {
+        if (group && Array.isArray(group.types) && group.types.includes(bookingType)) {
+          targetBookingTypes = group.types;
+          break; // 找到所屬群組就套用並跳出
+        }
+      }
+      appointmentsQuery = await db.collection('appointments')
+        .where('projectId', '==', projectId)
+        .where('status', '==', '預約中')
+        .where('appointmentDate', '>=', startDate)
+        .where('appointmentDate', '<=', endDate)
+        .where('bookingType', 'in', targetBookingTypes)
+        .get();
+    }
+    // --- END: 根據 quotaMode 決定名額查詢邏輯 ---
+
     const bookingsCount = {};
     appointmentsQuery.forEach(doc => {
       const appt = doc.data();
@@ -13423,6 +13439,8 @@ async function _handleSaveBooking(data) {
       const batchSnapshot = await transaction.get(batchQuery);
       if (batchSnapshot.empty) throw new HttpsError("not-found", `找不到對應的預約批次。`);
       const batchId = batchSnapshot.docs[0].id;
+      const batchDataForQuota = batchSnapshot.docs[0].data(); // 讀取批次資料以取得 quotaMode
+      const quotaMode = batchDataForQuota.quotaMode || 'shared'; // 向下相容：預設 shared
       const appointmentDateForCompare = new Date(bookingData.bookingDate);
       const appointmentDateStr = appointmentDateForCompare.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }); // 'YYYY-MM-DD'
       const linksQuery = db.collection('batchRuleLinks').where('batchId', '==', batchId).where('date', '==', appointmentDateStr).where('isDeleted', '==', false).limit(1);
@@ -13449,25 +13467,36 @@ async function _handleSaveBooking(data) {
         }
       }
 
-      // --- START: 計算共用名額的目標 bookingType 陣列 ---
-      const projectDataForCap = projectDoc.exists ? projectDoc.data() : {};
-      const capacityGroups = projectDataForCap.bookingCapacityGroups || [];
-      let targetBookingTypes = [bookingData.bookingType]; // 預設獨立計算
-      for (const group of capacityGroups) {
-        if (group && Array.isArray(group.types) && group.types.includes(bookingData.bookingType)) {
-          targetBookingTypes = group.types;
-          break; // 找到所屬群組就套用並跳出
-        }
-      }
-      // --- END: 計算共用名額的目標 bookingType 陣列 ---
-
+      // --- START: 根據 quotaMode 決定名額查詢範圍 ---
       const appointmentDateObj = new Date(appointmentDateStr + 'T00:00:00+08:00');
-      const appointmentsQueryCapacity = db.collection('appointments')
-        .where('projectId', '==', projectId)
-        .where('appointmentDate', '==', appointmentDateObj)
-        .where('appointmentTimeSlot', '==', timeSlotKey)
-        .where('status', '==', '預約中')
-        .where('bookingType', 'in', targetBookingTypes); // 加入群組過濾
+      let appointmentsQueryCapacity;
+      if (quotaMode === 'isolated') {
+        // isolated 模式：僅計算屬於同一 batchCode 的預約
+        appointmentsQueryCapacity = db.collection('appointments')
+          .where('projectId', '==', projectId)
+          .where('appointmentDate', '==', appointmentDateObj)
+          .where('appointmentTimeSlot', '==', timeSlotKey)
+          .where('status', '==', '預約中')
+          .where('batchCode', '==', batchCode);
+      } else {
+        // shared 模式：維持現有邏輯（按 bookingType + capacityGroups 合併計算）
+        const projectDataForCap = projectDoc.exists ? projectDoc.data() : {};
+        const capacityGroups = projectDataForCap.bookingCapacityGroups || [];
+        let targetBookingTypes = [bookingData.bookingType]; // 預設獨立計算
+        for (const group of capacityGroups) {
+          if (group && Array.isArray(group.types) && group.types.includes(bookingData.bookingType)) {
+            targetBookingTypes = group.types;
+            break; // 找到所屬群組就套用並跳出
+          }
+        }
+        appointmentsQueryCapacity = db.collection('appointments')
+          .where('projectId', '==', projectId)
+          .where('appointmentDate', '==', appointmentDateObj)
+          .where('appointmentTimeSlot', '==', timeSlotKey)
+          .where('status', '==', '預約中')
+          .where('bookingType', 'in', targetBookingTypes);
+      }
+      // --- END: 根據 quotaMode 決定名額查詢範圍 ---
       const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
       const currentBookings = appointmentsSnapshot.size;
       if (currentBookings >= capacity) throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段名額剛好額滿，請返回上一步重新選擇時段。`);
@@ -13492,7 +13521,8 @@ async function _handleSaveBooking(data) {
         bookingCode: bookingCode, reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
         bookingMethodDetails: bookingData.bookingMethodDetails || {},
         bookingMethodDetailsDisplay: bookingData.bookingMethodDetailsDisplay || [],
-
+        batchCode: batchCode,    // 新增：記錄此預約所屬的批次代號（用於 isolated 模式的名額查詢）
+        batchId: batchId,        // 新增：記錄此預約所屬的批次文件 ID
       };
       transaction.set(appointmentRef, newAppointmentData);
       return { bookingCode, newAppointmentData };
