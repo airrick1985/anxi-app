@@ -436,7 +436,8 @@ export default {
       const naturalW = canvasWidth.value;
       const naturalH = canvasHeight.value;
       const scale = Math.min(containerW / naturalW, containerH / naturalH);
-      canvasScale.value = scale > 1 ? 1 : scale;
+      // 依據容器尺寸自動縮放（不再限制最大為 1）
+      canvasScale.value = parseFloat(scale.toFixed(2));
     };
 
     const onToolbarDragStart = (e) => {
@@ -497,7 +498,10 @@ export default {
       const isSvg = img.src.toLowerCase().includes('.svg') || img.src.startsWith('data:image/svg+xml');
 
       if (canvasWidth.value === 1700 && canvasHeight.value === 850) { 
-         if (!bgImageStyles.value.width && !bgImageStyles.value.height) {
+         const noFixedWidth = !bgImageStyles.value.width || bgImageStyles.value.width === '100%' || bgImageStyles.value.width === 'auto';
+         const noFixedHeight = !bgImageStyles.value.height || bgImageStyles.value.height === '100%' || bgImageStyles.value.height === 'auto';
+         
+         if (noFixedWidth && noFixedHeight) {
             let targetWidth = img.naturalWidth;
             let targetHeight = img.naturalHeight;
 
@@ -607,8 +611,8 @@ export default {
         bgImageStyles.value = {
           left: `${left}px`,
           top: `${top}px`,
-          width: width ? `${width}px` : 'auto', 
-          height: height ? `${height}px` : 'auto', 
+          width: width ? `${width}px` : '100%', 
+          height: height ? `${height}px` : '100%', 
           transform: `rotate(${angle}deg)`,
           transformOrigin: 'top left',
         };
@@ -886,6 +890,9 @@ export default {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   z-index: 0; 
   pointer-events: none; 
   /* 確保 SVG 縮放時銳利不模糊 */
