@@ -451,8 +451,9 @@
                 <v-list-item-title class="font-weight-bold">{{ image.imageName }}</v-list-item-title>
                 <v-list-item-subtitle>
                   檔名: {{ image.fileName }}
-                  <span class="d-none d-sm-inline"> | 上傳於: 
-                    {{ image.createdAt ? new Date(image.createdAt.seconds * 1000).toLocaleDateString() : 'N/A' }}
+                  <span class="d-none d-sm-inline">
+                    | {{ image.updatedAt && image.createdAt && image.updatedAt.seconds > image.createdAt.seconds ? '重新上傳於' : '上傳於' }}: 
+                    {{ (image.updatedAt || image.createdAt) ? new Date((image.updatedAt || image.createdAt).seconds * 1000).toLocaleDateString() : 'N/A' }}
                   </span>
                 </v-list-item-subtitle>
                 
