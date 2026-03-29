@@ -327,7 +327,7 @@
                 label="點擊選擇圖片 (可多選)"
                 variant="outlined"
                 multiple
-                accept="image/png, image/jpeg"
+                accept="image/png, image/jpeg, image/webp"
                 prepend-icon="mdi-camera"
                 :loading="isReadingFiles"
                 clearable
@@ -491,7 +491,7 @@
             type="file"
             ref="reuploadInput"
             @change="handleReuploadFile"
-            accept="image/png, image/jpeg"
+            accept="image/png, image/jpeg, image/webp"
             style="display: none"
           />
         </v-card>
@@ -1437,19 +1437,15 @@ const processFiles = async (files) => {
 
 const validateImage = (file) => {
   return new Promise((resolve) => {
-    if (file.size > 2 * 1024 * 1024) { 
-      resolve({ valid: false, error: '檔案大小超過 2MB' });
+    if (file.size > 1 * 1024 * 1024) { 
+      resolve({ valid: false, error: '檔案大小超過 1MB' });
       return;
     }
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        if (img.width > 3840 || img.height > 2160) {
-          resolve({ valid: false, error: '圖片尺寸超過 3840x2160', width: img.width, height: img.height });
-        } else {
-          resolve({ valid: true, error: null, width: img.width, height: img.height });
-        }
+        resolve({ valid: true, error: null, width: img.width, height: img.height });
       };
       img.src = e.target.result;
     };
