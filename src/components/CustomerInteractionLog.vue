@@ -10,8 +10,33 @@
         <v-btn icon="mdi-close" @click="$emit('update:show', false)"></v-btn>
        <v-toolbar-title class="text-subtitle-1 font-weight-bold text-primary text-truncate">
             {{ projectName || '建案' }}-客資 - {{ guestData.latestName }}
-            </v-toolbar-title>
- 
+            <v-chip v-if="guestData.isDeleted" color="red" size="x-small" class="ml-2">已刪除</v-chip>
+       </v-toolbar-title>
+       <v-spacer></v-spacer>
+       <v-btn
+         v-if="guestData.isDeleted && canEdit"
+         color="success"
+         size="small"
+         variant="flat"
+         prepend-icon="mdi-restore"
+         @click="handleRestoreCustomer"
+         :loading="isRestoringCustomer"
+         class="mr-2"
+       >
+         復原客戶
+       </v-btn>
+       <v-btn
+         v-else-if="canEdit"
+         color="error"
+         size="small"
+         variant="outlined"
+         prepend-icon="mdi-delete"
+         @click="handleDeleteCustomer"
+         :loading="isDeletingCustomer"
+         class="mr-2"
+       >
+         刪除客戶
+       </v-btn>
       </v-toolbar>
 
       <v-card-text class="pa-0 flex-grow-1" style="overflow-y: auto; overflow-x: hidden;">
@@ -329,13 +354,25 @@
     </div>
     <v-row dense>
         <v-col cols="6">
-            <v-text-field 
+            <v-select 
                 label="職業" 
-                v-model="editingData.profile['職業']" 
+                v-model="occupationSelection" 
+                :items="occupationOptionsWithOther"
                 density="compact" 
                 variant="outlined" 
                 hide-details="auto"
                 class="mb-2"
+                clearable
+            ></v-select>
+            <v-text-field
+                v-if="occupationSelection === '其他'"
+                v-model="customOccupation"
+                label="請輸入職業"
+                density="compact"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+                placeholder="自行填寫職業"
             ></v-text-field>
         </v-col>
         <v-col cols="6">
@@ -350,6 +387,47 @@
         </v-col>
     </v-row>
     
+    <v-divider class="my-4 border-dashed"></v-divider>
+
+    <div class="text-caption text-primary font-weight-bold mb-2 mt-2">
+        <v-icon size="small" start>mdi-text-box-search-outline</v-icon>詳細需求
+    </div>
+    <v-row dense>
+        <v-col 
+            v-for="field in sortedProfileFields" 
+            :key="field.key" 
+            cols="12" 
+            sm="6"
+        >
+            <v-combobox
+                v-if="vipFieldSettings[field.key]?.allowCustom"
+                v-model="editingData.profile[field.label]"
+                :label="field.label"
+                :items="vipFieldSettings[field.key]?.options || []"
+                :multiple="vipFieldSettings[field.key]?.selectionMode === 'multiple'"
+                chips
+                closable-chips
+                density="compact"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+            ></v-combobox>
+            <v-select
+                v-else
+                v-model="editingData.profile[field.label]"
+                :label="field.label"
+                :items="vipFieldSettings[field.key]?.options || []"
+                :multiple="vipFieldSettings[field.key]?.selectionMode === 'multiple'"
+                :chips="vipFieldSettings[field.key]?.selectionMode === 'multiple'"
+                density="compact"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+                clearable
+            ></v-select>
+        </v-col>
+    </v-row>
+
     <v-divider class="my-4 border-dashed"></v-divider>
 
     <div class="d-flex justify-space-between align-center mb-2">
@@ -873,8 +951,10 @@ import {
     addInteractionLog, 
     updateCustomerProfile, 
     updateInteractionLog,
-    deleteInteractionLog, // ✅ 加入這行
-    optimizeInteractionLog // 🤖 AI 優化
+    deleteInteractionLog, 
+    optimizeInteractionLog, 
+    softDeleteCustomer,
+    restoreCustomer
 } from '@/api';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -1017,6 +1097,14 @@ const applyOptimizedText = () => {
 
 const logFields = ['visitors', 'interactionType', 'noPurchaseReason', 'keyTags', 'rating'];
 const fieldSettings = computed(() => props.settings.fields || {});
+
+// --- 職業欄位「其他」邏輯 ---
+const occupationSelection = ref(null);
+const customOccupation = ref('');
+const occupationOptionsWithOther = computed(() => {
+    const opts = fieldSettings.value['occupation']?.options || [];
+    return [...opts, '其他'];
+});
 
 // 修改 isValidLog 計算屬性，加入時間驗證
 const isValidLog = computed(() => {
@@ -1261,6 +1349,55 @@ const careerList = computed(() => {
 
 // --- Methods ---
 
+// --- 客戶冷刪除/復原 邏輯 ---
+const isDeletingCustomer = ref(false);
+const isRestoringCustomer = ref(false);
+
+const handleDeleteCustomer = async () => {
+    if (!props.salesName) {
+        toast.warning("缺少銷售人員資訊，無法針對特定銷售執行刪除");
+        return;
+    }
+    if (!confirm(`確定要將此客戶從【${props.salesName}】的名單中隱藏(冷刪除)嗎？（刪除後須開啟「顯示已刪除」才能復原）`)) return;
+    
+    isDeletingCustomer.value = true;
+    try {
+        const operatorPhone = userStore.user?.key;
+        await softDeleteCustomer(props.projectId, props.docId, props.salesName, operatorPhone);
+        toast.success("客戶資料已從該名單中移除");
+        guestData.value.isDeleted = true;
+        // 同步更新本地 state
+        if (!guestData.value.deletedSales) guestData.value.deletedSales = [];
+        if (!guestData.value.deletedSales.includes(props.salesName)) {
+            guestData.value.deletedSales.push(props.salesName);
+        }
+        emit('data-updated'); 
+    } catch (error) {
+        toast.error(`刪除失敗: ${error.message}`);
+    } finally {
+        isDeletingCustomer.value = false;
+    }
+};
+
+const handleRestoreCustomer = async () => {
+    if (!props.salesName) return;
+    isRestoringCustomer.value = true;
+    try {
+        await restoreCustomer(props.projectId, props.docId, props.salesName);
+        toast.success("客戶資料已復原並顯示於名單中");
+        guestData.value.isDeleted = false;
+        // 同步更新本地 state
+        if (guestData.value.deletedSales) {
+            guestData.value.deletedSales = guestData.value.deletedSales.filter(name => name !== props.salesName);
+        }
+        emit('data-updated'); 
+    } catch (error) {
+        toast.error(`復原失敗: ${error.message}`);
+    } finally {
+        isRestoringCustomer.value = false;
+    }
+};
+
 const loadData = async () => {
     if (!props.docId) {
         return;
@@ -1278,6 +1415,9 @@ const loadData = async () => {
         if (result.status === 'success') {
             guestData.value = result.data.guestData;
             canEdit.value = result.data.canEdit;
+            
+            // 判斷該指定的銷售人員，是否已將該客資刪除 (只針對該業務)
+            guestData.value.isDeleted = props.salesName ? (guestData.value.deletedSales || []).includes(props.salesName) : false;
             
             if (!guestData.value.otherPhones) guestData.value.otherPhones = [];
             if (!guestData.value.interactionLogs) guestData.value.interactionLogs = [];
@@ -1322,6 +1462,33 @@ const fieldsToFlatten = ['職業', '任職公司', '居住城市', '居住鄉鎮
     fieldsToFlatten.forEach(key => {
         editingData.value.profile[key] = getSingleValue(key);
     });
+
+    // 初始化 VIP 詳細需求欄位（根據 selectionMode 決定保留陣列或取單值）
+    const vipFields = props.settings.vipFormFields || {};
+    Object.entries(vipFields).forEach(([key, config]) => {
+        const label = config.label;
+        const val = editingData.value.profile[label];
+        if (config.selectionMode === 'multiple') {
+            // 複選：保持陣列格式
+            editingData.value.profile[label] = Array.isArray(val) ? [...val] : (val ? [val] : []);
+        } else {
+            // 單選：取最新的單一值
+            editingData.value.profile[label] = Array.isArray(val) 
+                ? (val.length > 0 ? val[val.length - 1] : null) 
+                : (val || null);
+        }
+    });
+
+    // 初始化職業選擇狀態：若現有值不在選項中，視為「其他」
+    const currentOccupation = editingData.value.profile['職業'] || '';
+    const occupationOpts = fieldSettings.value['occupation']?.options || [];
+    if (currentOccupation && !occupationOpts.includes(currentOccupation)) {
+        occupationSelection.value = '其他';
+        customOccupation.value = currentOccupation;
+    } else {
+        occupationSelection.value = currentOccupation || null;
+        customOccupation.value = '';
+    }
     
     isEditingProfile.value = true;
 };
@@ -1339,12 +1506,25 @@ const saveProfile = async () => {
     isSavingProfile.value = true;
     
     try {
+        // 儲存前：將職業選擇結果寫回 profile
+        if (occupationSelection.value === '其他') {
+            editingData.value.profile['職業'] = customOccupation.value || '';
+        } else {
+            editingData.value.profile['職業'] = occupationSelection.value || '';
+        }
+
         const targetProfileFields = [
             '性別', 
             '年齡', 
             '職業', '任職公司', 
             '居住城市', '居住鄉鎮市區', '居住詳細地址'
         ];
+
+        // 動態加入 VIP 詳細需求欄位的 label
+        const vipFields = props.settings.vipFormFields || {};
+        Object.values(vipFields).forEach(config => {
+            if (config.label) targetProfileFields.push(config.label);
+        });
 
         const profileUpdates = {};
         targetProfileFields.forEach(key => {
@@ -1607,6 +1787,9 @@ const sortedProfileFields = computed(() => {
     }))
     .sort((a, b) => a.order - b.order);
 });
+
+// VIP 欄位設定（用於編輯模式中取得各欄位的 options、selectionMode、allowCustom）
+const vipFieldSettings = computed(() => props.settings.vipFormFields || {});
 
 // --- 時間處理輔助函式 ---
 

@@ -16797,7 +16797,7 @@ async function _handleFetchCustomerList(data, db) {
           '銷售人員': latestSub['銷售人員'],
 
           'docId': doc.id,
-
+          'isDeleted': (docData.deletedSales || []).includes(latestSub['銷售人員']),
           'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
 
           'updatedAt': docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null,
@@ -17005,6 +17005,11 @@ exports.customerApi = onCall({
       case 'deleteInteractionLog':
         return await _handleDeleteInteractionLog(data, db);
 
+      // ✅ [新增] 冷刪除/還原客戶
+      case 'softDeleteCustomer':
+        return await _handleSoftDeleteCustomer(data, db);
+      case 'restoreCustomer':
+        return await _handleRestoreCustomer(data, db);
 
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
@@ -17022,6 +17027,60 @@ exports.customerApi = onCall({
   }
 });
 
+
+/**
+ * [內部函式] 客戶資料冷刪除 (將指定銷售人員加入 deletedSales 陣列)
+ */
+async function _handleSoftDeleteCustomer(data, db) {
+  const { projectId, docId, salesName, operatorPhone } = data;
+  const functionName = '_handleSoftDeleteCustomer';
+  if (!projectId || !docId || !salesName) {
+    throw new HttpsError('invalid-argument', '缺少 projectId, docId 或 salesName 參數。');
+  }
+  try {
+    const docRef = db.collection('vipGuests').doc(docId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', '找不到指定的客戶資料。');
+    }
+    await docRef.update({
+      deletedSales: FieldValue.arrayUnion(salesName)
+    });
+    console.log(`[${functionName}] 客戶 ${docId} 已冷刪除。`);
+    return { status: 'success', message: '客戶資料已刪除' };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `刪除客戶資料失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 復原已冷刪除的客戶資料
+ */
+async function _handleRestoreCustomer(data, db) {
+  const { projectId, docId, salesName } = data;
+  const functionName = '_handleRestoreCustomer';
+  if (!projectId || !docId || !salesName) {
+    throw new HttpsError('invalid-argument', '缺少 projectId, docId 或 salesName 參數。');
+  }
+  try {
+    const docRef = db.collection('vipGuests').doc(docId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', '找不到指定的客戶資料。');
+    }
+    await docRef.update({
+      deletedSales: FieldValue.arrayRemove(salesName)
+    });
+    console.log(`[${functionName}] 客戶 ${docId} 已復原。`);
+    return { status: 'success', message: '客戶資料已復原' };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `復原客戶資料失敗: ${error.message}`);
+  }
+}
 
 // ✅ [打勾] 後端批次匯入核心邏輯 (functions/index.js)
 async function _handleBatchImportCustomers(data, db) {
@@ -17327,7 +17386,8 @@ async function _handleFetchSingleVipGuest(data, db) {
     status: "success",
     data: {
       profile: docData.profile,
-      submissions: docData.submissions || []
+      submissions: docData.submissions || [],
+      isDeleted: docData.isDeleted === true
     }
   };
 }
@@ -17709,10 +17769,13 @@ async function _handleSubmitCustomerSheet(data, db) {
 
   const now = admin.firestore.Timestamp.now();
 
+  const source = formData.submissionSource || 'internal_sheet';
+  delete formData.submissionSource;
+
   const submissionLog = {
     ...formData,
     submittedAt: now,
-    submissionSource: 'internal_sheet'
+    submissionSource: source
   };
 
   try {

@@ -7327,11 +7327,11 @@ export const fetchCustomerSheetSettings = async (projectId) => {
 /**
  * [API] 提交客戶資料表 (建立或更新)
  */
-export const submitCustomerSheet = async (projectId, formData, docId = null) => {
+export const submitCustomerSheet = async (projectId, formData, docId = null, source = 'internal_sheet') => {
   try {
     const result = await customerSheetApiRouter({
       action: 'submitCustomerSheet',
-      data: { projectId, formData, docId }
+      data: { projectId, formData: { ...formData, submissionSource: source }, docId }
     });
     return result.data;
   } catch (error) {
@@ -7654,6 +7654,39 @@ export const deleteInteractionLog = async (projectId, docId, logId, operatorPhon
     throw new Error(error.message);
   }
 };
+
+/**
+ * [API] 冷刪除客戶資料 (針對指定業務人員隱藏)
+ */
+export const softDeleteCustomer = async (projectId, docId, salesName, operatorPhone) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'softDeleteCustomer',
+      data: { projectId, docId, salesName, operatorPhone }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] softDeleteCustomer 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 復原已冷刪除的客戶資料
+ */
+export const restoreCustomer = async (projectId, docId, salesName) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'restoreCustomer',
+      data: { projectId, docId, salesName }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] restoreCustomer 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
 
 
 // 定義客資分配的路由函式 (強制指定 asia-east1 地區)

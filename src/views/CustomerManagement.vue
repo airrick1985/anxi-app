@@ -4,11 +4,21 @@
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="leadDistribution" >聯絡名單</v-tab>
       <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
-      <v-tab value="settings" v-if="isSuperAdmin">客資系統設定</v-tab>
-      <v-tab value="vipSettings" v-if="isSuperAdmin">貴賓資料設定</v-tab>
-      <v-tab value="otherSettings" v-if="isSuperAdmin">其他設定</v-tab>
-      <v-tab value="batchUpdate" v-if="isSuperAdmin">客資批次更新</v-tab>
-      <v-tab value="anxiSettings" v-if="isSuperAdmin">ANXI系統設定</v-tab>
+      <v-tab value="settings" v-if="isSuperAdmin" class="admin-tab">
+        <v-icon start size="small">mdi-shield-crown</v-icon>客資系統設定
+      </v-tab>
+      <v-tab value="vipSettings" v-if="isSuperAdmin" class="admin-tab">
+        <v-icon start size="small">mdi-shield-crown</v-icon>貴賓資料設定
+      </v-tab>
+      <v-tab value="otherSettings" v-if="isSuperAdmin" class="admin-tab">
+        <v-icon start size="small">mdi-shield-crown</v-icon>其他設定
+      </v-tab>
+      <v-tab value="batchUpdate" v-if="isSuperAdmin" class="admin-tab">
+        <v-icon start size="small">mdi-shield-crown</v-icon>客資批次更新
+      </v-tab>
+      <v-tab value="anxiSettings" v-if="isSuperAdmin" class="admin-tab">
+        <v-icon start size="small">mdi-shield-crown</v-icon>ANXI系統設定
+      </v-tab>
       </v-tabs>
 
     <v-window v-model="tab">
@@ -18,6 +28,17 @@
             <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3">
               {{ projectName }} 客戶資料列表
             </v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="teal"
+              variant="flat"
+              size="small"
+              prepend-icon="mdi-account-plus"
+              @click="openAddCustomerDialog"
+              class="mr-2"
+            >
+              新增客戶
+            </v-btn>
           </v-toolbar>
 
 <v-card-text>
@@ -156,6 +177,16 @@
             rounded="lg"
           ></v-select>
         </v-col>
+        <v-col cols="12" sm="6" md="3" v-if="isCurrentUserCounter">
+          <v-switch
+            v-model="advFilter.showDeleted"
+            label="顯示已刪除"
+            color="red"
+            hide-details
+            density="compact"
+            class="mt-1"
+          ></v-switch>
+        </v-col>
       </v-row>
 
       <v-card-actions class="justify-end pa-0 mt-2">
@@ -188,7 +219,9 @@
         >
           <v-card-text class="pa-3">
             <div class="d-flex justify-space-between align-center mb-1">
-              <span class="text-subtitle-1 font-weight-bold">{{ item.raw['姓名'] || '未知姓名' }}
+              <span class="text-subtitle-1 font-weight-bold" :class="{'text-decoration-line-through text-grey': item.raw.isDeleted}">
+                {{ item.raw['姓名'] || '未知姓名' }}
+                <v-chip v-if="item.raw.isDeleted" color="red" size="x-small" label class="ml-1">已刪除</v-chip>
               </span>
 
               
@@ -247,9 +280,10 @@
                 @click:row="openInteractionLog"
                 hover
               >
-             <template v-slot:item.updatedAt="{ item }">
-                  <div class="text-caption text-grey-darken-1">
-                    {{ formatFullDateTime(item.updatedAt) }}
+              <template v-slot:item.updatedAt="{ item }">
+                  <div class="text-caption text-grey-darken-1 d-flex flex-column">
+                    <span>{{ formatFullDateTime(item.updatedAt) }}</span>
+                    <v-chip v-if="item.isDeleted" color="red" size="x-small" label class="align-self-start mt-1">已刪除</v-chip>
                   </div>
                 </template>
 
@@ -305,6 +339,7 @@
     :project-id="projectId"
     :project-name="projectName"
     :doc-id="selectedCustomerDocId"
+    :sales-name="selectedCustomerSalesName"
     :settings="settings"
     @data-updated="loadCustomerList"
 />
@@ -517,7 +552,19 @@
 </v-window-item>
 
       <v-window-item value="settings" v-if="isSuperAdmin">
-        <v-card>
+        <v-card class="admin-section-card">
+          <v-banner
+            icon="mdi-shield-lock"
+            color="amber-darken-2"
+            class="admin-banner"
+            lines="one"
+            density="comfortable"
+          >
+            <template v-slot:text>
+              <span class="font-weight-bold">🔒 系統管理員專用區域</span>
+              <span class="text-medium-emphasis ml-2">— 僅限超級管理員檢視與操作</span>
+            </template>
+          </v-banner>
           <v-toolbar color="blue-grey-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
               {{ projectName }} 客資系統欄位設定
@@ -600,7 +647,19 @@
       </v-window-item>
 
       <v-window-item value="vipSettings" v-if="isSuperAdmin">
-        <v-card>
+        <v-card class="admin-section-card">
+          <v-banner
+            icon="mdi-shield-lock"
+            color="amber-darken-2"
+            class="admin-banner"
+            lines="one"
+            density="comfortable"
+          >
+            <template v-slot:text>
+              <span class="font-weight-bold">🔒 系統管理員專用區域</span>
+              <span class="text-medium-emphasis ml-2">— 僅限超級管理員檢視與操作</span>
+            </template>
+          </v-banner>
           <v-toolbar color="teal-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
               {{ projectName }} 貴賓資料設定
@@ -775,7 +834,19 @@
       </v-window-item>
 
       <v-window-item value="otherSettings" v-if="isSuperAdmin">
-        <v-card>
+        <v-card class="admin-section-card">
+          <v-banner
+            icon="mdi-shield-lock"
+            color="amber-darken-2"
+            class="admin-banner"
+            lines="one"
+            density="comfortable"
+          >
+            <template v-slot:text>
+              <span class="font-weight-bold">🔒 系統管理員專用區域</span>
+              <span class="text-medium-emphasis ml-2">— 僅限超級管理員檢視與操作</span>
+            </template>
+          </v-banner>
           <v-toolbar color="brown-lighten-5" >
             <v-toolbar-title class="text-subtitle-1">
               {{ projectName }} 其他設定
@@ -887,6 +958,18 @@
       </v-window-item>
 
       <v-window-item value="batchUpdate">
+        <v-banner
+          icon="mdi-shield-lock"
+          color="amber-darken-2"
+          class="admin-banner"
+          lines="one"
+          density="comfortable"
+        >
+          <template v-slot:text>
+            <span class="font-weight-bold">🔒 系統管理員專用區域</span>
+            <span class="text-medium-emphasis ml-2">— 僅限超級管理員檢視與操作</span>
+          </template>
+        </v-banner>
         <v-container fluid class="h-100 bg-grey-lighten-5 pa-4">
           <v-row>
             <v-col cols="12" md="6">
@@ -1030,6 +1113,93 @@
       </v-card>
     </v-dialog>
 
+    <!-- 新增客戶資料 Dialog -->
+    <v-dialog v-model="addCustomerDialog" max-width="550px" persistent>
+      <v-card class="rounded-xl">
+        <v-card-title class="bg-teal text-white d-flex align-center">
+          <v-icon start>mdi-account-plus</v-icon>
+          新增客戶資料
+        </v-card-title>
+
+        <v-card-text class="pt-6">
+          <v-form ref="addCustomerFormRef">
+            <v-text-field
+              v-model="newCustomerForm.phone"
+              label="手機號碼 *"
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-phone"
+              placeholder="09XXXXXXXX"
+              :rules="[v => !!v || '必填', v => (v && v.length === 10 && v.startsWith('09')) || '請輸入有效的10碼手機號碼']"
+              class="mb-2"
+            ></v-text-field>
+
+            <v-text-field
+              v-model="newCustomerForm.name"
+              label="姓名 *"
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-account"
+              :rules="[v => !!v || '必填']"
+              class="mb-2"
+            ></v-text-field>
+
+            <v-select
+              v-model="newCustomerForm.salesPhone"
+              :items="addCustomerSalesOptions"
+              item-title="name"
+              item-value="phone"
+              label="歸屬銷售人員 *"
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-account-tie"
+              :rules="[v => !!v || '必填']"
+              :disabled="!isCurrentUserCounter"
+              :hint="!isCurrentUserCounter ? '僅能指定為自己' : '可選擇該建案的銷售/櫃台人員'"
+              persistent-hint
+              class="mb-2"
+            >
+              <template v-slot:item="{ item, props: itemProps }">
+                <v-list-item v-bind="itemProps">
+                  <template v-slot:append>
+                    <span class="text-caption text-grey">{{ item.raw.phone }}</span>
+                  </template>
+                </v-list-item>
+              </template>
+            </v-select>
+
+            <v-text-field
+              v-model="newCustomerForm.visitDate"
+              label="拜訪日期"
+              type="date"
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-calendar"
+              class="mb-2"
+            ></v-text-field>
+          </v-form>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn
+            color="grey-darken-1"
+            variant="text"
+            @click="addCustomerDialog = false"
+            :disabled="isSubmittingNewCustomer"
+          >取消</v-btn>
+          <v-btn
+            color="teal"
+            variant="elevated"
+            prepend-icon="mdi-check"
+            @click="handleSubmitNewCustomer"
+            :loading="isSubmittingNewCustomer"
+          >確認新增</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -1062,7 +1232,8 @@ import {
   fetchFullCustomersForExport,
   batchImportCustomers,
   listGoogleSheets,
-  exportToGoogleSheet
+  exportToGoogleSheet,
+  submitCustomerSheet
 } from '@/api';
 import { merge } from 'lodash-es'; 
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
@@ -1267,6 +1438,135 @@ const isSuperAdmin = computed(() =>
 const currentUserPhone = computed(() => userStore.user?.key);
 const currentUserProjectSystems = computed(() => userStore.user?.permissions?.[props.projectId]?.systems || []);
 
+// --- 新增客戶資料功能 ---
+const addCustomerDialog = ref(false);
+const addCustomerFormRef = ref(null);
+const isSubmittingNewCustomer = ref(false);
+const isLoadingProjectStaff = ref(false);
+const projectStaffList = ref([]); // 建案人員清單
+
+const newCustomerForm = ref({
+  phone: '',
+  name: '',
+  salesPhone: '',
+  visitDate: new Date().toISOString().split('T')[0]
+});
+
+// 判斷當前用戶是否擁有櫃台權限
+const isCurrentUserCounter = computed(() => {
+  const systems = currentUserProjectSystems.value;
+  return systems.includes('客資系統-櫃台') || isSuperAdmin.value;
+});
+
+// 銷售人員下拉選單選項
+const addCustomerSalesOptions = computed(() => {
+  if (!isCurrentUserCounter.value) {
+    // 非櫃台：只能選自己
+    return [{
+      name: userStore.user?.name || '未知',
+      phone: userStore.user?.key || ''
+    }];
+  }
+  // 櫃台：顯示建案內有「客資系統-銷售」或「客資系統-櫃台」權限的所有人員
+  return projectStaffList.value;
+});
+
+// 讀取建案人員清單
+async function loadProjectStaff() {
+  if (!props.projectId) return;
+  isLoadingProjectStaff.value = true;
+  try {
+    const usersRef = collection(db, 'users');
+    const snapshot = await getDocs(usersRef);
+    const staff = [];
+
+    for (const userDoc of snapshot.docs) {
+      const userData = userDoc.data();
+      const userKey = userDoc.id;
+      if (!userData.name) continue;
+
+      // 過濾掉管理員帳號
+      const roles = userData.roles || [];
+      if (roles.includes('超級管理員') || roles.includes('系統管理員')) continue;
+
+      const permRef = doc(db, 'userPermissions', userKey);
+      const permSnap = await getDoc(permRef);
+
+      if (permSnap.exists()) {
+        const perms = permSnap.data().permissions || {};
+        const projectPerms = perms[props.projectId];
+        if (projectPerms && projectPerms.systems) {
+          const hasCrmPerm = projectPerms.systems.includes('客資系統-銷售') || 
+                             projectPerms.systems.includes('客資系統-櫃台');
+          if (hasCrmPerm) {
+            staff.push({
+              name: userData.name,
+              phone: userKey
+            });
+          }
+        }
+      }
+    }
+    projectStaffList.value = staff.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+  } catch (error) {
+    console.error('讀取建案人員失敗:', error);
+  } finally {
+    isLoadingProjectStaff.value = false;
+  }
+}
+
+function openAddCustomerDialog() {
+  // 重置表單
+  newCustomerForm.value = {
+    phone: '',
+    name: '',
+    salesPhone: isCurrentUserCounter.value ? '' : (userStore.user?.key || ''),
+    visitDate: new Date().toISOString().split('T')[0]
+  };
+  addCustomerDialog.value = true;
+
+  // 櫃台權限且尚未讀取人員清單時，讀取一次
+  if (isCurrentUserCounter.value && projectStaffList.value.length === 0) {
+    loadProjectStaff();
+  }
+}
+
+async function handleSubmitNewCustomer() {
+  const { valid } = await addCustomerFormRef.value.validate();
+  if (!valid) return;
+
+  isSubmittingNewCustomer.value = true;
+  try {
+    // 查找銷售人員名稱
+    const salesOption = addCustomerSalesOptions.value.find(
+      s => s.phone === newCustomerForm.value.salesPhone
+    );
+
+    const formData = {
+      '姓名': newCustomerForm.value.name,
+      '電話': newCustomerForm.value.phone,
+      '銷售人員': salesOption?.name || '',
+      '銷售人員電話': newCustomerForm.value.salesPhone,
+      '拜訪日期': newCustomerForm.value.visitDate || new Date().toISOString().split('T')[0]
+    };
+
+    const result = await submitCustomerSheet(props.projectId, formData, null, 'public_form');
+
+    if (result.status !== 'success') {
+      throw new Error(result.message || '新增失敗');
+    }
+
+    addCustomerDialog.value = false;
+    alert('客戶資料已新增成功！');
+    loadCustomerList(); // 重新整理列表
+  } catch (error) {
+    console.error('新增客戶失敗:', error);
+    alert(`新增失敗: ${error.message}`);
+  } finally {
+    isSubmittingNewCustomer.value = false;
+  }
+}
+
 
 // --- 設定 Tab 邏輯 (保持不變) ---
 const isLoading = ref(false); // 這是「設定頁」的 Loading
@@ -1309,6 +1609,7 @@ const customerTableHeaders = ref([
 
 const isInteractionDialogVisible = ref(false);
 const selectedCustomerDocId = ref(null);
+const selectedCustomerSalesName = ref('');
 
 const getSeconds = (val) => {
   if (!val) return 0;
@@ -2192,6 +2493,7 @@ const openInteractionLog = (event, { item }) => {
     }
 
     selectedCustomerDocId.value = docId; 
+    selectedCustomerSalesName.value = item.raw && item.raw['銷售人員'] ? item.raw['銷售人員'] : '';
     isInteractionDialogVisible.value = true;
 };
 
@@ -2205,18 +2507,29 @@ const advFilter = reactive({
   reasons: [],
   motivations: [],
   roomTypes: [],
-  budgets: []
+  budgets: [],
+  showDeleted: false
 });
 
 const resetAdvFilters = () => {
   Object.keys(advFilter).forEach(key => {
-    advFilter[key] = Array.isArray(advFilter[key]) ? [] : '';
+    if (key === 'showDeleted') {
+      advFilter[key] = false;
+    } else {
+      advFilter[key] = Array.isArray(advFilter[key]) ? [] : '';
+    }
   });
 };
 
 // --- 多維度篩選計算屬性 ---
 const filteredCustomerList = computed(() => {
   let list = [...customerList.value];
+
+  // 0. 過濾已被冷刪除的資料 (除非開啟 showDeleted)
+  if (!advFilter.showDeleted) {
+    list = list.filter(item => !item.isDeleted);
+  }
+
 
   // 1. 關鍵字過濾 (姓名、電話、銷售人員)
   if (customerListSearch.value) {
@@ -2291,6 +2604,35 @@ const filteredCustomerList = computed(() => {
 
 .text-pre-wrap {
   white-space: pre-wrap;
+}
+
+/* ===== 系統管理員專用標示樣式 ===== */
+
+/* Tab 標籤 - 琥珀色底色 + 盾牌圖示 */
+:deep(.admin-tab) {
+  background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%) !important;
+  border-top: 2px solid #ffa000 !important;
+  position: relative;
+}
+:deep(.admin-tab .v-icon) {
+  color: #e65100 !important;
+}
+:deep(.admin-tab.v-tab--selected) {
+  background: linear-gradient(135deg, #ffe082 0%, #ffca28 100%) !important;
+}
+
+/* 管理員頁面頂部橫幅 */
+.admin-banner {
+  border-bottom: 2px solid #ffa000 !important;
+  background: linear-gradient(90deg, #fff8e1, #fff3e0) !important;
+}
+:deep(.admin-banner .v-banner__icon) {
+  color: #e65100 !important;
+}
+
+/* 管理員專用卡片 - 左側橙色邊框 */
+.admin-section-card {
+  border-left: 4px solid #ff8f00 !important;
 }
 
 </style>
