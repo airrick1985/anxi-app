@@ -1662,7 +1662,8 @@ const savePersonnel = async (data) => {
       return;
     }
     
-    const docId = `${payload.name}_${payload.phone}`;
+    // ✅ 修改 docId 產生邏輯：加上 projectId，讓多個專案即使用相同姓名和電話，也不會互相覆蓋文檔
+    const docId = `${projectId.value}_${payload.name}_${payload.phone}`;
 
     if (id) { // 編輯模式
       await setSalesPersonnel(id, payload);

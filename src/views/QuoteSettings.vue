@@ -746,8 +746,9 @@ onMounted(async () => {
             await adminStore.loadAdminData(userStore.user.key);
 
             // 檢查該用戶在「當前建案」下，是否擁有「報價系統銷售選單」權限
-            // adminStore.adminScope 的結構為 { "建案名稱": ["功能1", "功能2"] }
-            const hasMenuPermission = adminStore.adminScope[projectName.value]?.includes('報價系統銷售選單');
+            // ✅ 使用 userStore 自身綁定的權限，避免使用 adminStore 導致一般用戶誤判
+            const userPermissions = userStore.user?.permissions || {};
+            const hasMenuPermission = userPermissions[projectId.value]?.systems?.includes('報價系統銷售選單');
 
             // 權限判斷：
             // 只要擁有「報價系統銷售選單」權限，或者本身是系統管理員/超級管理員，即可選擇其他人員

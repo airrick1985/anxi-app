@@ -12,6 +12,7 @@ export const useAdminStore = defineStore('admin', {
 
     // 快取的資料
     adminScope: {},
+    adminScopeById: {}, // 以 projectId 為 key 的權限範圍，解決中文名稱 mapping 延遲問題
     manageableUsers: [],
     roles: [],
     systemFunctions: [],
@@ -95,6 +96,7 @@ export const useAdminStore = defineStore('admin', {
 
         // 5. 更新 State
         this.adminScope = scopeByProjectName;
+        this.adminScopeById = scopeData || {}; // 直接保留以 id 為 key 的原始資料
         this.manageableUsers = users.map(u => ({ ...u, rolesLoading: false }));
         this.roles = rolesData;
         this.systemFunctions = functionsData;
@@ -121,6 +123,7 @@ export const useAdminStore = defineStore('admin', {
       this.systemFunctions = [];
       this.allUserPermissionsMap = new Map();
       this.adminScope = {};
+      this.adminScopeById = {};
       console.log('[AdminStore] 快取已清除。');
     }
   },
