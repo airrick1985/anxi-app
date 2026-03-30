@@ -114,29 +114,66 @@
                             報告產製完成 Email 通知設定
                         </v-card-title>
                         <v-card-text class="pt-4">
-                            <v-text-field v-model="templateConfig.email.subject" label="Email 主旨" variant="outlined"
-                                density="compact" hint="可使用變數：{建案名稱}, {戶別}" persistent-hint class="mb-4"></v-text-field>
+                            <v-row>
+                                <!-- 設定區塊 -->
+                                <v-col cols="12" md="6" class="border-e-md pr-md-4">
+                                    <div class="text-subtitle-1 font-weight-bold mb-4 text-orange-darken-2">編輯設定</div>
+                                    <v-text-field v-model="templateConfig.email.subject" label="Email 主旨" variant="outlined"
+                                        density="compact" hint="可使用變數：{建案名稱}, {戶別}" persistent-hint class="mb-4"></v-text-field>
 
-                            <div class="text-subtitle-2 mb-2 text-grey-darken-1">Email 內文 (支援 HTML)</div>
-                            <!-- 可以考慮引入 RichTextEditor，但先用 textarea -->
-                            <v-textarea v-model="templateConfig.email.bodyHtml" variant="outlined" density="compact"
-                                rows="4" auto-grow hint="可使用變數：{建案名稱}, {戶別}, {產權人姓名}" persistent-hint
-                                class="mb-4"></v-textarea>
+                                    <div class="text-subtitle-2 mb-2 text-grey-darken-1">Email 內文 (支援 HTML)</div>
+                                    <!-- 可以考慮引入 RichTextEditor，但先用 textarea -->
+                                    <v-textarea v-model="templateConfig.email.bodyHtml" variant="outlined" density="compact"
+                                        rows="4" auto-grow hint="可使用變數：{建案名稱}, {戶別}, {產權人姓名}" persistent-hint
+                                        class="mb-4"></v-textarea>
 
-                            <v-row dense class="align-center mb-4">
-                                <v-col cols="12" sm="4">
-                                    <v-switch v-model="templateConfig.email.showDriveButton" label="顯示「查看報告」按鈕"
-                                        color="orange" density="compact" hide-details></v-switch>
+                                    <v-row dense class="align-center mb-4">
+                                        <v-col cols="12" sm="5">
+                                            <v-switch v-model="templateConfig.email.showDriveButton" label="顯示「查看報告」按鈕"
+                                                color="orange" density="compact" hide-details></v-switch>
+                                        </v-col>
+                                        <v-col cols="12" sm="7">
+                                            <v-text-field v-if="templateConfig.email.showDriveButton"
+                                                v-model="templateConfig.email.buttonText" label="按鈕文字" variant="outlined"
+                                                density="compact" hide-details></v-text-field>
+                                        </v-col>
+                                    </v-row>
+
+                                    <v-text-field v-model="templateConfig.email.footerText" label="Email 頁尾文字"
+                                        variant="outlined" density="compact" hide-details></v-text-field>
                                 </v-col>
-                                <v-col cols="12" sm="8">
-                                    <v-text-field v-if="templateConfig.email.showDriveButton"
-                                        v-model="templateConfig.email.buttonText" label="按鈕文字" variant="outlined"
-                                        density="compact" hide-details></v-text-field>
+
+                                <!-- 即時預覽區塊 -->
+                                <v-col cols="12" md="6" class="pl-md-4">
+                                    <div class="text-subtitle-1 font-weight-bold mb-4 text-blue-grey-darken-2">即時預覽</div>
+                                    <v-card variant="flat" class="bg-grey-lighten-4 border rounded" style="overflow: hidden;">
+                                        <!-- Email 標頭模擬 -->
+                                        <div class="bg-grey-lighten-2 pa-3 border-b">
+                                            <div class="text-caption text-grey-darken-2 mb-1">主旨：</div>
+                                            <div class="text-body-1 font-weight-bold">{{ parseVars(templateConfig.email.subject) || '(未設定主旨)' }}</div>
+                                        </div>
+                                        <!-- Email 內容模擬 -->
+                                        <div class="pa-4 bg-white" style="min-height: 200px;">
+                                            <!-- HTML 內文 -->
+                                            <div class="mb-6 email-preview-html text-body-1" style="color: #333;" v-html="parseVars(templateConfig.email.bodyHtml) || '<p class=\'text-grey\'>無內文</p>'"></div>
+                                            
+                                            <!-- 按鈕模擬 -->
+                                            <div v-if="templateConfig.email.showDriveButton" class="mb-6">
+                                                <v-btn color="primary" disabled style="pointer-events: none; opacity: 1 !important;">
+                                                    {{ parseVars(templateConfig.email.buttonText) || '查看報告' }}
+                                                </v-btn>
+                                            </div>
+
+                                            <v-divider class="mb-4"></v-divider>
+
+                                            <!-- 頁尾模擬 -->
+                                            <div class="text-caption text-grey" style="white-space: pre-line;">
+                                                {{ parseVars(templateConfig.email.footerText) }}
+                                            </div>
+                                        </div>
+                                    </v-card>
                                 </v-col>
                             </v-row>
-
-                            <v-text-field v-model="templateConfig.email.footerText" label="Email 頁尾文字"
-                                variant="outlined" density="compact" hide-details></v-text-field>
                         </v-card-text>
                     </v-card>
 
