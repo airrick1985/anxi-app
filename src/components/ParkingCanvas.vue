@@ -171,9 +171,14 @@
       </div>
     </div>
 
-    <div v-if="selectedSpot" class="spot-properties-panel">
-      <div class="panel-header">
-        <h4>車位屬性</h4>
+    <div 
+      v-if="selectedSpot" 
+      class="spot-properties-panel"
+      :style="propertiesPanelStyle"
+      @mousedown="onPropertiesPanelDragStart"
+    >
+      <div class="panel-header" style="cursor: move;">
+        <h4 style="margin: 0; pointer-events: none;">車位屬性</h4>
         <button @click="closePropertiesPanel" class="btn-close">
           <svg-icon type="mdi" :path="mdiClose"></svg-icon>
         </button>
@@ -519,6 +524,17 @@ export default {
     const zoomInitialX = ref(0);
     const zoomInitialY = ref(0);
 
+    // 車位屬性面板 拖曳狀態
+    const propertiesPanelStyle = ref({
+      top: '20px',
+      right: '250px',
+    });
+    const isDraggingPropertiesPanel = ref(false);
+    const propertiesDragStartX = ref(0);
+    const propertiesDragStartY = ref(0);
+    const propertiesInitialX = ref(0);
+    const propertiesInitialY = ref(0);
+
     // Floor-chip-group 拖曳狀態
     const floorChipGroupStyle = ref({
       position: 'absolute',
@@ -664,6 +680,32 @@ export default {
       isDraggingZoomControls.value = false;
       document.removeEventListener('mousemove', onZoomControlsDragMove);
       document.removeEventListener('mouseup', onZoomControlsDragEnd);
+    };
+
+    const onPropertiesPanelDragStart = (e) => {
+      // 只有按住 panel-header 才能拖曳，避免影響輸入框和滾動條
+      if (!e.target.closest('.panel-header') || e.target.closest('button')) return; 
+      isDraggingPropertiesPanel.value = true;
+      const currentTop = parseInt(propertiesPanelStyle.value.top, 10) || 20;
+      const currentRight = parseInt(propertiesPanelStyle.value.right, 10) || 250;
+      propertiesInitialY.value = currentTop;
+      propertiesInitialX.value = currentRight; 
+      propertiesDragStartX.value = e.clientX;
+      propertiesDragStartY.value = e.clientY;
+      document.addEventListener('mousemove', onPropertiesPanelDragMove);
+      document.addEventListener('mouseup', onPropertiesPanelDragEnd);
+    };
+    const onPropertiesPanelDragMove = (e) => {
+      if (!isDraggingPropertiesPanel.value) return;
+      const dx = e.clientX - propertiesDragStartX.value;
+      const dy = e.clientY - propertiesDragStartY.value;
+      propertiesPanelStyle.value.top = `${propertiesInitialY.value + dy}px`;
+      propertiesPanelStyle.value.right = `${propertiesInitialX.value - dx}px`; 
+    };
+    const onPropertiesPanelDragEnd = () => {
+      isDraggingPropertiesPanel.value = false;
+      document.removeEventListener('mousemove', onPropertiesPanelDragMove);
+      document.removeEventListener('mouseup', onPropertiesPanelDragEnd);
     };
 
     /**
@@ -1023,6 +1065,8 @@ export default {
       window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousemove', onFloorChipGroupDragMove);
       document.removeEventListener('mouseup', onFloorChipGroupDragEnd);
+      document.removeEventListener('mousemove', onPropertiesPanelDragMove);
+      document.removeEventListener('mouseup', onPropertiesPanelDragEnd);
     });
     
     watch(() => props.floorPlan.id, () => {
@@ -1034,7 +1078,7 @@ export default {
 
     return {
       containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
-      getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, toolbarStyle, onToolbarDragStart, zoomControlsStyle, onZoomControlsDragStart, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, floorChipGroupStyle, onFloorChipGroupDragStart, zoomIn, zoomOut, isCanvasLoading,
+      getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, toolbarStyle, onToolbarDragStart, zoomControlsStyle, onZoomControlsDragStart, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, floorChipGroupStyle, onFloorChipGroupDragStart, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus
     }
@@ -1131,8 +1175,6 @@ export default {
 
 .spot-properties-panel {
   position: absolute;
-  top: 20px;
-  right: 20px;
   width: 280px;
   background: white;
   border-radius: 8px;
