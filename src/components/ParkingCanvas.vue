@@ -302,6 +302,18 @@
             <div class="info-section">
               <div class="section-title">基本資訊</div>
               <div class="info-row">
+                <span class="info-label">樓層</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">類型</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">形式</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
+              </div>
+              <div class="info-row">
                 <span class="info-label">尺寸</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
               </div>
@@ -318,6 +330,18 @@
           <template v-else-if="contextMode === 'quote'">
             <div class="info-section">
               <div class="section-title">基本資訊</div>
+              <div class="info-row">
+                <span class="info-label">樓層</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">類型</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">形式</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
+              </div>
               <div class="info-row">
                 <span class="info-label">尺寸</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
@@ -343,6 +367,10 @@
               <div class="info-row">
                 <span class="info-label">類型</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">形式</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
               </div>
               <div class="info-row">
                 <span class="info-label">尺寸</span>

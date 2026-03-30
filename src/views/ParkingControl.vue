@@ -216,7 +216,8 @@
               <v-col cols="12" sm="6">
                 <div class="form-section-title">基本資料</div>
                 <v-text-field v-model="editedItem.spotId" label="車位編號" readonly variant="outlined" density="compact" class="readonly-field"></v-text-field>
-                <v-text-field v-model="editedItem.type" label="類型"  variant="outlined" density="compact" ></v-text-field>
+                <v-combobox v-model="editedItem.type" :items="['法定', '增設', '獎勵']" label="車位類型 (法定/增設...)" variant="outlined" density="compact" clearable></v-combobox>
+                <v-combobox v-model="editedItem.type2" :items="['坡道平面', '坡道機械', '升降平面', '升降機械', '機械平面', '機械升降', '塔式車位']" label="車位形式 (坡平/機升...)" variant="outlined" density="compact" clearable></v-combobox>
                 <v-text-field v-model="editedItem.size" label="車位尺寸"  variant="outlined" density="compact" ></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
@@ -384,6 +385,8 @@ const COLUMN_DEFINITIONS = [
         sort: (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'zh-TW', { numeric: true, sensitivity: 'base' })
     },
     { key: 'spotId', title: '車位編號' },
+    { key: 'type', title: '車位類型' },
+    { key: 'type2', title: '車位形式' },
     { key: 'size', title: '車位尺寸' },
     { key: 'price_list', title: '車位表價', align: 'end' },    
     { key: 'price_floor', title: '車位底價', align: 'end' },   

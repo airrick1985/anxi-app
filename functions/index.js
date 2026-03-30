@@ -1250,7 +1250,7 @@ exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets
       const dataToSave = {};
 
       // 🔒 管理員控制的欄位列表（只有在 Excel 中明確提供時才更新）
-      const adminFields = ['floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type'];
+      const adminFields = ['floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type', 'type2'];
 
       // 🔄 遍歷 Excel 提供的所有欄位
       for (const [key, value] of Object.entries(row)) {
