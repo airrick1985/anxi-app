@@ -1238,18 +1238,7 @@ function checkOnboardingStatus() {
 }
 
 // --- 分頁與快取相關狀態 ---
-// --- 日期工具函式 ---
-function formatDateToISO(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-function getDefaultDateFrom() {
-  const d = new Date();
-  d.setDate(d.getDate() - 7);
-  return formatDateToISO(d);
-}
-function getDefaultDateTo() {
-  return formatDateToISO(new Date());
-}
+
 function onDateFromChange(newVal) {
   if (!newVal) {
     // 開始日期被清除 → 同時清除結束日期
@@ -1270,8 +1259,8 @@ const cardPageSize = ref(20); // Card View 每次顯示的筆數
 // --- 進階篩選相關狀態 ---
 const showAdvancedFilter = ref(false);
 const advancedFilters = reactive({
-  dateFrom: getDefaultDateFrom(),  // 開始日期：今天-7天
-  dateTo: getDefaultDateTo(),      // 結束日期：今天
+  dateFrom: null,  // 開始日期
+  dateTo: null,    // 結束日期
   phase: [],         // 階段 (多選)
   status: [],        // 狀態 (多選)
   progress: [],      // 進度 (多選)
