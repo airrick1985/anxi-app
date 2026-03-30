@@ -1399,6 +1399,7 @@ const measureActive = ref(false);           // 丈量模式是否啟用
 const measureMode = ref('calibrate');       // 'calibrate' | 'distance' | 'area'
 const measurePxPerCm = ref(0);             // 像素對公分的比例
 const measurePoints = ref([]);             // 當前操作中的座標點
+const currentMousePos = ref(null);         // [新增] 當前滑鼠位置 (用於引導線)
 const completedMeasurements = ref([]);     // 已完成的測量區塊
 const measureResultText = ref('請在圖上點兩點進行校準');
 const measureCalibrateCm = ref(120);       // 校準長度輸入
@@ -1535,13 +1536,26 @@ function onMeasureCanvasClick(e) {
   const coords = getMeasureCanvasCoords(e);
   if (!coords) return;
 
-  const { x: px, y: py } = coords;
+  let { x: px, y: py } = coords;
+
+  // [新增] Shift 鍵正交鎖定
+  if (e.shiftKey && measurePoints.value.length > 0) {
+    const lastPt = measurePoints.value[measurePoints.value.length - 1];
+    const dx = Math.abs(px - lastPt.x);
+    const dy = Math.abs(py - lastPt.y);
+    if (dx > dy) {
+      py = lastPt.y;
+    } else {
+      px = lastPt.x;
+    }
+  }
 
   if (measureMode.value === 'calibrate') {
     if (measurePoints.value.length >= 2) measurePoints.value = [];
     measurePoints.value.push({ x: px, y: py });
     if (measurePoints.value.length === 2) {
       calculateMeasureCalibration();
+      currentMousePos.value = null; // 清除引導線標記
     } else {
       measureResultText.value = '請點擊第二點完成校準線';
     }
@@ -1560,6 +1574,44 @@ function onMeasureCanvasClick(e) {
       btnFloatingFinishRef.value.style.display = 'block';
     }
   }
+  drawMeasurement();
+}
+
+// --- 滑鼠移動 (即時引導線) ---
+function onMeasureCanvasMouseMove(e) {
+  if (!measureActive.value || measurePoints.value.length === 0) return;
+  
+  // 校準模式如果已經完成兩點，不畫引導線
+  if (measureMode.value === 'calibrate' && measurePoints.value.length >= 2) return;
+
+  const coords = getMeasureCanvasCoords(e);
+  if (!coords) return;
+
+  let { x: px, y: py } = coords;
+
+  if (e.shiftKey) {
+    const lastPt = measurePoints.value[measurePoints.value.length - 1];
+    const dx = Math.abs(px - lastPt.x);
+    const dy = Math.abs(py - lastPt.y);
+    if (dx > dy) {
+      py = lastPt.y;
+    } else {
+      px = lastPt.x;
+    }
+  }
+
+  currentMousePos.value = { x: px, y: py };
+  
+  // 即時計算結果
+  const tempPts = [...measurePoints.value, currentMousePos.value];
+  calculateMeasureResult(tempPts);
+  
+  drawMeasurement();
+}
+
+function onMeasureCanvasMouseLeave() {
+  currentMousePos.value = null;
+  calculateMeasureResult(); // 恢復只計算已確認的點
   drawMeasurement();
 }
 
@@ -1592,9 +1644,15 @@ function onCalibrateCmChange() {
 }
 
 // --- 測量計算 ---
-function calculateMeasureResult() {
-  const pts = measurePoints.value;
-  if (pts.length < 2) return;
+function calculateMeasureResult(tempPts = null) {
+  const pts = tempPts && Array.isArray(tempPts) ? tempPts : measurePoints.value;
+  if (pts.length < 2) {
+    if (!tempPts) {
+      if (measureMode.value === 'distance') measureResultText.value = '點擊畫面畫出測距線';
+      if (measureMode.value === 'area') measureResultText.value = '點選畫出多邊形封閉範圍';
+    }
+    return;
+  }
 
   if (measureMode.value === 'distance') {
     let totalDistPx = 0;
@@ -1606,7 +1664,14 @@ function calculateMeasureResult() {
     measureResultText.value = `總實測長度：${cm.toFixed(1)} cm`;
   } else if (measureMode.value === 'area') {
     if (pts.length < 3) {
-      measureResultText.value = '請標記至少三點以形成面積';
+      if (!tempPts) measureResultText.value = '請標記至少三點以形成面積';
+      else if (pts.length === 2) {
+        // 只有兩點時，先顯示長度
+        const p1 = pts[0], p2 = pts[1];
+        const distPx = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        const cm = distPx / measurePxPerCm.value;
+        measureResultText.value = `即時長度：${cm.toFixed(1)} cm`;
+      }
       return;
     }
     let areaPx = 0;
@@ -1638,7 +1703,11 @@ function drawMeasurement() {
 
   // 2. 再繪製「操作中」的點位
   if (measurePoints.value.length > 0) {
-    renderMeasureShape(ctx, canvas, measureMode.value, measurePoints.value, false);
+    const pts = [...measurePoints.value];
+    if (currentMousePos.value && (measureMode.value !== 'calibrate' || measurePoints.value.length < 2)) {
+      pts.push(currentMousePos.value);
+    }
+    renderMeasureShape(ctx, canvas, measureMode.value, pts, false);
   }
 }
 
@@ -1750,6 +1819,7 @@ function finishMeasureBlock(e) {
       resultHtml: measureResultText.value
     });
     measurePoints.value = [];
+    currentMousePos.value = null;
     if (btnFloatingFinishRef.value) btnFloatingFinishRef.value.style.display = 'none';
     drawMeasurement();
     measureResultText.value = '已保存當前圖形，可繼續點選圖面測量新區塊';
@@ -1759,6 +1829,7 @@ function finishMeasureBlock(e) {
 // --- 清除所有標記 ---
 function clearAllMeasurements() {
   measurePoints.value = [];
+  currentMousePos.value = null;
   completedMeasurements.value = [];
   if (btnFloatingFinishRef.value) btnFloatingFinishRef.value.style.display = 'none';
   drawMeasurement();
@@ -1802,6 +1873,8 @@ function toggleMeasureMode() {
       const canvas = measureCanvasRef.value;
       if (canvas) {
         canvas.addEventListener('mousedown', onMeasureCanvasClick);
+        canvas.addEventListener('mousemove', onMeasureCanvasMouseMove);
+        canvas.addEventListener('mouseleave', onMeasureCanvasMouseLeave);
         canvas.addEventListener('touchstart', onMeasureCanvasTouch, { passive: false });
       }
       resetMeasureCanvasSize();
@@ -1812,6 +1885,8 @@ function toggleMeasureMode() {
     const canvas = measureCanvasRef.value;
     if (canvas) {
       canvas.removeEventListener('mousedown', onMeasureCanvasClick);
+      canvas.removeEventListener('mousemove', onMeasureCanvasMouseMove);
+      canvas.removeEventListener('mouseleave', onMeasureCanvasMouseLeave);
       canvas.removeEventListener('touchstart', onMeasureCanvasTouch);
     }
     cleanupMeasureResizeObserver();
