@@ -133,7 +133,7 @@
             v-model:display-mode="parkingCanvasDisplayMode" 
             
             :allow-import="false" :allow-adjust-all="false" :show-status-toggle="props.mode === 'sales'" 
-
+            :context-mode="props.mode"
             :text-styles="textStyleStore.styles" 
             :status-colors="statusColorStore.colors" 
             @floor-switched="handleEditorFloorSwitch"

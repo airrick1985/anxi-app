@@ -1043,6 +1043,7 @@
             :allow-import="false" 
             :allow-adjust-all="false" 
             :show-status-toggle="currentViewMode === 'sales'" 
+            :context-mode="currentViewMode"
             :text-styles="textStyleStore.styles" 
             :status-colors="statusColorStore.colors" 
             @floor-switched="handleParkingCanvasFloorSwitch"

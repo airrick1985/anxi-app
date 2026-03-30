@@ -213,6 +213,7 @@
             :project-id="selectedProjectId"
             :preview-mode="isPreviewMode"
             v-model:display-mode="displayMode"
+            context-mode="sales"
             :text-styles="textStyleStore.styles"
             :status-colors="statusColorStore.colors" 
             :show-tools="showCanvasTools"

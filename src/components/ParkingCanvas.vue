@@ -53,6 +53,8 @@
         <div 
           class="spot-content" 
           :style="getSpotStyle(spot)"
+          :class="{ 'clickable-spot': previewMode && spot.parkingData }"
+          @click.stop="handleSpotClick(spot)"
         >
           <span 
             v-for="field in getDisplayFields(displayMode, spot.parkingData)"
@@ -276,6 +278,112 @@
       </button>
     </div>
 
+    <!-- 車位詳細資訊 Modal -->
+    <div v-if="showDetailModal && selectedDetailSpot" class="modal-overlay detail-modal-overlay" @click.self="closeDetailModal">
+      <div class="modal-content detail-modal-content">
+        <div class="modal-header detail-header">
+          <div class="d-flex align-center" style="gap: 12px;">
+            <h3 class="mb-0 text-h5 font-weight-bold">🅿️ {{ selectedDetailSpot.parkingData.number || selectedDetailSpot.spotId }}</h3>
+            <span 
+              class="status-chip" 
+              :style="getDetailStatusStyle(selectedDetailSpot.parkingData)"
+            >
+              {{ contextMode === 'sales' ? (selectedDetailSpot.parkingData.status_backend || '未設定') : (selectedDetailSpot.parkingData.status || '未設定') }}
+            </span>
+          </div>
+          <button @click="closeDetailModal" class="btn-close detail-close-btn">
+            <svg-icon type="mdi" :path="mdiClose"></svg-icon>
+          </button>
+        </div>
+        
+        <div class="modal-body detail-body">
+          <!-- 報價模式且已售 -->
+          <template v-if="contextMode === 'quote' && selectedDetailSpot.parkingData.status === '已售'">
+            <div class="info-section">
+              <div class="section-title">基本資訊</div>
+              <div class="info-row">
+                <span class="info-label">尺寸</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
+              </div>
+            </div>
+            <div class="info-section">
+              <div class="section-title">價格資訊</div>
+              <div class="info-row" style="justify-content: center; padding: 1.5rem 0;">
+                <span class="text-h5 font-weight-black" style="color: #dc3545;">已售</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- 報價模式且未售 -->
+          <template v-else-if="contextMode === 'quote'">
+            <div class="info-section">
+              <div class="section-title">基本資訊</div>
+              <div class="info-row">
+                <span class="info-label">尺寸</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
+              </div>
+            </div>
+            <div class="info-section">
+              <div class="section-title">價格資訊</div>
+              <div class="info-row">
+                <span class="info-label">車位價格</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.price_list ? `${selectedDetailSpot.parkingData.price_list} 萬` : '未設定' }}</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- 銷控模式 -->
+          <template v-else-if="contextMode === 'sales'">
+            <div class="info-section">
+              <div class="section-title">基本資訊</div>
+              <div class="info-row">
+                <span class="info-label">樓層</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">類型</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">尺寸</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
+              </div>
+            </div>
+            <div class="info-section">
+              <div class="section-title">價格資訊</div>
+              <div class="info-row">
+                <span class="info-label">表價</span>
+                <span class="info-value font-weight-bold">{{ selectedDetailSpot.parkingData.price_list ? `${selectedDetailSpot.parkingData.price_list} 萬` : '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label" style="color: #dc3545;">底價</span>
+                <span class="info-value font-weight-bold" style="color: #dc3545;">{{ selectedDetailSpot.parkingData.price_floor ? `${selectedDetailSpot.parkingData.price_floor} 萬` : '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label" style="color: #198754;">成交價</span>
+                <span class="info-value font-weight-bold" style="color: #198754;">{{ selectedDetailSpot.parkingData.price_transaction ? `${selectedDetailSpot.parkingData.price_transaction} 萬` : '—' }}</span>
+              </div>
+            </div>
+            <div class="info-section" v-if="selectedDetailSpot.parkingData.status_backend === '已售' || selectedDetailSpot.parkingData.buyerName">
+              <div class="section-title">銷售資訊</div>
+              <div class="info-row">
+                <span class="info-label">買方戶別</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.buyerUnitId || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">買方姓名</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.buyerName || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">銷售人員</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.salesperson || '—' }}</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -346,6 +454,11 @@ export default {
     showStatusToggle: {
       type: Boolean,
       default: true 
+    },
+    contextMode: {
+      type: String,
+      default: 'sales',
+      validator: (v) => ['sales', 'quote'].includes(v)
     }
   },
   emits: ['spots-changed', 'canvas-ready', 'zoom-changed', 'pan-changed', 'update:displayMode', 'floor-switched'],
@@ -427,6 +540,41 @@ export default {
 
     const availableFloorPlans = ref([]);
     const isCanvasLoading = ref(true);
+
+    const showDetailModal = ref(false);
+    const selectedDetailSpot = ref(null);
+
+    const handleSpotClick = (spot) => {
+      if (!props.previewMode || !spot.parkingData) return;
+      console.log('[ParkingCanvas] handleSpotClick - contextMode:', props.contextMode, '| displayMode:', props.displayMode);
+      selectedDetailSpot.value = spot;
+      showDetailModal.value = true;
+    };
+
+    const closeDetailModal = () => {
+      showDetailModal.value = false;
+      selectedDetailSpot.value = null;
+    };
+
+    const getDetailStatusStyle = (data) => {
+      const statusText = props.contextMode === 'sales' ? (data.status_backend || '預設') : (data.status || '預設');
+      const colors = {
+        '可售': { bg: '#dcfce7', text: '#166534' },
+        '已售': { bg: '#fee2e2', text: '#991b1b' },
+        '保留': { bg: '#fef3c7', text: '#92400e' },
+        '主管保留': { bg: '#e0e7ff', text: '#3730a3' },
+        '預設': { bg: '#f3f4f6', text: '#374151' }
+      };
+      const cs = colors[statusText] || colors['預設'];
+      return {
+        backgroundColor: cs.bg,
+        color: cs.text,
+        padding: '2px 8px',
+        borderRadius: '12px',
+        fontSize: '0.8rem',
+        fontWeight: 'bold'
+      };
+    };
 
     // Methods
     const fitToScreen = () => {
@@ -521,6 +669,10 @@ export default {
     };
 
     const handleKeyDown = (event) => {
+      if (showDetailModal.value && event.key === 'Escape') {
+        closeDetailModal();
+        return;
+      }
       if (!selectedSpotId.value) return;
       const spot = spotLayouts.value.find(s => s.id === selectedSpotId.value);
       if (!spot) return;
@@ -853,8 +1005,9 @@ export default {
     watch(() => props.projectId, (newVal, oldVal) => { if (newVal !== oldVal) fetchAvailableFloors(); })
 
     return {
-      containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode),
+      containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, toolbarStyle, onToolbarDragStart, zoomControlsStyle, onZoomControlsDragStart, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, floorChipGroupStyle, onFloorChipGroupDragStart, zoomIn, zoomOut, isCanvasLoading,
+      showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus
     }
   }
@@ -1090,6 +1243,107 @@ export default {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* 新增的 Modal 樣式 */
+.detail-modal-overlay {
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(4px);
+}
+
+.detail-modal-content {
+  max-width: 420px !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-enter {
+  0% { opacity: 0; transform: translateY(24px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.detail-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 1.25rem 1.5rem !important;
+}
+
+.detail-body {
+  padding: 0 !important;
+  max-height: calc(90vh - 80px);
+  overflow-y: auto;
+}
+
+.detail-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.detail-close-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.info-section {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+}
+
+.section-title {
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+}
+
+.info-label {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.info-value {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #111827;
+  text-align: right;
+}
+
+/* 車位按鈕化效果 */
+.clickable-spot {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clickable-spot:hover {
+  filter: brightness(1.08);
+  transform: scale(1.03);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  z-index: 20;
+}
+
+.clickable-spot:active {
+  transform: scale(0.97);
 }
 
 </style>
