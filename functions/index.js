@@ -16654,7 +16654,8 @@ async function _handleFetchCustomerList(data, db) {
   try {
     const isCounter = userProjectSystems.includes('客資系統-櫃台');
     const guestsRef = db.collection("vipGuests");
-    const query = guestsRef.where("projectId", "==", projectId);
+    // ✅ [參考建案] 改用 allProjectIds array-contains 查詢，同時查出關聯客戶
+    const query = guestsRef.where("allProjectIds", "array-contains", projectId);
     const snapshot = await query.get();
     if (snapshot.empty) {
       return [];
@@ -16803,6 +16804,9 @@ async function _handleFetchCustomerList(data, db) {
           'updatedAt': docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null,
           'createdAt': docData.createdAt ? docData.createdAt.toDate().toISOString() : null,
 
+          // ✅ [參考建案] 標記來源建案與關聯狀態
+          'sourceProjectId': docData.projectId || '',
+          'isLinked': docData.projectId !== projectId, // true = 此客戶來自其他建案的關聯
 
           // 來自 interactionLogs 的最新資訊 (共用)
 
@@ -16859,7 +16863,8 @@ async function _handleFetchCustomersForExport(data, db) {
   try {
     const isCounter = userProjectSystems.includes('客資系統-櫃台');
     const guestsRef = db.collection("vipGuests");
-    const query = guestsRef.where("projectId", "==", projectId);
+    // ✅ [參考建案] 改用 allProjectIds array-contains 查詢
+    const query = guestsRef.where("allProjectIds", "array-contains", projectId);
     const snapshot = await query.get();
 
     if (snapshot.empty) {
@@ -17011,6 +17016,12 @@ exports.customerApi = onCall({
       case 'restoreCustomer':
         return await _handleRestoreCustomer(data, db);
 
+      // ✅ [新增] 參考建案功能
+      case 'updateLinkedProjects':
+        return await _handleUpdateLinkedProjects(data, db);
+      case 'unlinkProject':
+        return await _handleUnlinkProject(data, db);
+
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
         throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
@@ -17082,6 +17093,237 @@ async function _handleRestoreCustomer(data, db) {
   }
 }
 
+/**
+ * [新增 - 參考建案] 更新客戶的關聯建案列表
+ * 同步維護 linkedProjectIds 與 allProjectIds 合成欄位
+ */
+async function _handleUpdateLinkedProjects(data, db) {
+  const { projectId, docId, linkedProjectIds, userKey } = data;
+  const functionName = '_handleUpdateLinkedProjects';
+
+  if (!projectId || !docId || !userKey) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, docId, userKey)。');
+  }
+
+  // 確保 linkedProjectIds 為陣列
+  const newLinked = Array.isArray(linkedProjectIds) ? linkedProjectIds : [];
+
+  try {
+    // 1. 驗證使用者對主建案有權限
+    const userPermRef = db.collection('userPermissions').doc(userKey);
+    const userPermSnap = await userPermRef.get();
+    if (!userPermSnap.exists) {
+      throw new HttpsError('permission-denied', '找不到使用者權限資料。');
+    }
+    const perms = userPermSnap.data().permissions || {};
+    const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
+
+    // 檢查主建案權限
+    const mainPerm = perms[projectId];
+    if (!mainPerm || !mainPerm.systems?.some(s => targetSystems.includes(s))) {
+      throw new HttpsError('permission-denied', '您沒有此建案的客資系統權限。');
+    }
+
+    // 2. 驗證使用者對每個 linkedProjectId 都有權限
+    for (const lpid of newLinked) {
+      if (lpid === projectId) continue; // 跳過主建案自身
+      const lpPerm = perms[lpid];
+      if (!lpPerm || !lpPerm.systems?.some(s => targetSystems.includes(s))) {
+        throw new HttpsError('permission-denied', `您沒有建案 ${lpid} 的客資系統權限。`);
+      }
+    }
+
+    // 3. 過濾掉主建案自身（避免重複）
+    const filteredLinked = newLinked.filter(id => id !== projectId);
+
+    // 4. 組合 allProjectIds 合成欄位
+    const allProjectIds = [projectId, ...filteredLinked];
+
+    // 5. 驗證文件存在並讀取主文件資料
+    const guestRef = db.collection('vipGuests').doc(docId);
+    const guestSnap = await guestRef.get();
+    if (!guestSnap.exists) {
+      throw new HttpsError('not-found', '找不到該客戶資料。');
+    }
+    const mainGuestData = guestSnap.data();
+
+    // 6. ✅ [合併檢查] 對每個新增的關聯建案，檢查是否有可合併的文件
+    const previousLinked = mainGuestData.linkedProjectIds || [];
+    const newlyAdded = filteredLinked.filter(id => !previousLinked.includes(id));
+    const mergedDocs = [];
+
+    for (const lpid of newlyAdded) {
+      try {
+        // 查詢目標建案中電話相同的文件
+        const conflictSnap = await db.collection('vipGuests')
+          .where('projectId', '==', lpid)
+          .where('phone', '==', mainGuestData.phone)
+          .get();
+
+        if (!conflictSnap.empty) {
+          for (const conflictDoc of conflictSnap.docs) {
+            const conflictData = conflictDoc.data();
+            
+            // 電話相同 + 銷售相同 → 合併
+            if (conflictData.latestSalesName === mainGuestData.latestSalesName) {
+              console.log(`[${functionName}] 偵測到可合併文件: ${conflictDoc.id} (建案: ${lpid})`);
+              
+              // 合併 submissions (用 submittedAt 去重)
+              const mainSubs = mainGuestData.submissions || [];
+              const conflictSubs = conflictData.submissions || [];
+              const existingSubKeys = new Set(mainSubs.map(s => JSON.stringify({ phone: s['電話'], date: s.submittedAt })));
+              const newSubs = conflictSubs.filter(s => !existingSubKeys.has(JSON.stringify({ phone: s['電話'], date: s.submittedAt })));
+              
+              // 合併 interactionLogs (用 logId 去重)
+              const mainLogs = mainGuestData.interactionLogs || [];
+              const conflictLogs = conflictData.interactionLogs || [];
+              const existingLogIds = new Set(mainLogs.map(l => l.logId));
+              const newLogs = conflictLogs.filter(l => !existingLogIds.has(l.logId));
+              
+              // 合併 otherPhones (用 phone 去重)
+              const mainPhones = mainGuestData.otherPhones || [];
+              const conflictPhones = conflictData.otherPhones || [];
+              const existingPhoneNums = new Set(mainPhones.map(p => p.phone));
+              const newPhones = conflictPhones.filter(p => !existingPhoneNums.has(p.phone));
+              
+              // 合併 searchablePhones
+              const allSearchPhones = new Set([
+                ...(mainGuestData.searchablePhones || []),
+                ...(conflictData.searchablePhones || [])
+              ]);
+              
+              // 合併 searchableNames
+              const allSearchNames = new Set([
+                ...(mainGuestData.searchableNames || []),
+                ...(conflictData.searchableNames || [])
+              ]);
+              
+              // 更新主文件 (追加合併資料)
+              const mergeUpdate = {};
+              if (newSubs.length > 0) {
+                mergeUpdate.submissions = [...mainSubs, ...newSubs];
+              }
+              if (newLogs.length > 0) {
+                mergeUpdate.interactionLogs = [...mainLogs, ...newLogs];
+              }
+              if (newPhones.length > 0) {
+                mergeUpdate.otherPhones = [...mainPhones, ...newPhones];
+              }
+              mergeUpdate.searchablePhones = Array.from(allSearchPhones);
+              mergeUpdate.searchableNames = Array.from(allSearchNames);
+              
+              if (Object.keys(mergeUpdate).length > 0) {
+                await guestRef.update(mergeUpdate);
+                // 更新 mainGuestData 以反映合併結果
+                Object.assign(mainGuestData, mergeUpdate);
+              }
+              
+              // 刪除被合併的文件
+              await conflictDoc.ref.delete();
+              
+              mergedDocs.push({
+                docId: conflictDoc.id,
+                projectId: lpid,
+                name: conflictData.latestName || '未知',
+                mergedSubs: newSubs.length,
+                mergedLogs: newLogs.length
+              });
+              
+              console.log(`[${functionName}] 已合併並刪除文件 ${conflictDoc.id}`);
+            }
+            // 銷售不同 → 不合併，各自獨立存在
+          }
+        }
+      } catch (mergeError) {
+        console.error(`[${functionName}] 合併檢查時發生錯誤 (建案: ${lpid}):`, mergeError);
+        // 合併失敗不中斷主流程
+      }
+    }
+
+    // 7. 更新主文件的關聯建案欄位
+    await guestRef.update({
+      linkedProjectIds: filteredLinked,
+      allProjectIds: allProjectIds,
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    const mergeMsg = mergedDocs.length > 0 
+      ? `，並合併了 ${mergedDocs.length} 筆重複資料` 
+      : '';
+    console.log(`[${functionName}] 成功更新客戶 ${docId} 的關聯建案: [${filteredLinked.join(', ')}]${mergeMsg}`);
+    return {
+      status: 'success',
+      message: `關聯建案已更新${mergeMsg}`,
+      linkedProjectIds: filteredLinked,
+      allProjectIds: allProjectIds,
+      mergedDocs: mergedDocs
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `更新關聯建案失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [新增 - 參考建案] 取消客戶與特定建案的關聯
+ * 從 linkedProjectIds / allProjectIds 中移除指定建案
+ */
+async function _handleUnlinkProject(data, db) {
+  const { docId, projectIdToRemove, userKey } = data;
+  const functionName = '_handleUnlinkProject';
+
+  if (!docId || !projectIdToRemove || !userKey) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (docId, projectIdToRemove, userKey)。');
+  }
+
+  try {
+    // 1. 驗證使用者權限
+    const userPermRef = db.collection('userPermissions').doc(userKey);
+    const userPermSnap = await userPermRef.get();
+    if (!userPermSnap.exists) {
+      throw new HttpsError('permission-denied', '找不到使用者權限資料。');
+    }
+    const perms = userPermSnap.data().permissions || {};
+    const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
+
+    const projPerm = perms[projectIdToRemove];
+    if (!projPerm || !projPerm.systems?.some(s => targetSystems.includes(s))) {
+      throw new HttpsError('permission-denied', '您沒有此建案的客資系統權限。');
+    }
+
+    // 2. 驗證文件存在
+    const guestRef = db.collection('vipGuests').doc(docId);
+    const guestSnap = await guestRef.get();
+    if (!guestSnap.exists) {
+      throw new HttpsError('not-found', '找不到該客戶資料。');
+    }
+
+    const guestData = guestSnap.data();
+
+    // 3. 不允許移除主歸屬建案
+    if (guestData.projectId === projectIdToRemove) {
+      throw new HttpsError('failed-precondition', '不可取消主歸屬建案的關聯。');
+    }
+
+    // 4. 從 linkedProjectIds 和 allProjectIds 移除
+    await guestRef.update({
+      linkedProjectIds: FieldValue.arrayRemove(projectIdToRemove),
+      allProjectIds: FieldValue.arrayRemove(projectIdToRemove),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    console.log(`[${functionName}] 成功移除客戶 ${docId} 與建案 ${projectIdToRemove} 的關聯`);
+    return { status: 'success', message: '已取消關聯' };
+
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `取消關聯失敗: ${error.message}`);
+  }
+}
+
 // ✅ [打勾] 後端批次匯入核心邏輯 (functions/index.js)
 async function _handleBatchImportCustomers(data, db) {
   const { projectId, customers, operator } = data;
@@ -17136,6 +17378,12 @@ async function _handleBatchImportCustomers(data, db) {
       dataToSave.profile.submittedAt = dataToSave.profile.submittedAt.map(s => ensureTimestamp(s));
     }
 
+    // ✅ [參考建案] 確保新文件有 allProjectIds（merge 不會覆蓋已有值）
+    if (!dataToSave.allProjectIds) {
+      dataToSave.allProjectIds = [projectId];
+      dataToSave.linkedProjectIds = dataToSave.linkedProjectIds || [];
+    }
+
     // ✅ 使用 merge: true 進行增量更新
     currentBatch.set(docRef, dataToSave, { merge: true });
     count++;
@@ -17167,8 +17415,9 @@ async function _handleFetchFullCustomersForExport(data, db) {
   }
 
   try {
+    // ✅ [參考建案] 改用 allProjectIds array-contains 查詢
     const snapshot = await db.collection("vipGuests")
-      .where("projectId", "==", projectId)
+      .where("allProjectIds", "array-contains", projectId)
       .get();
 
     if (snapshot.empty) return [];
@@ -17191,6 +17440,10 @@ async function _handleFetchFullCustomersForExport(data, db) {
         profile: docData.profile || {},
         interactionLogs: docData.interactionLogs || [],
         submissions: docData.submissions || [], // ✅ 用於關聯「記錄人員電話」
+        // ✅ [參考建案] 加入關聯建案資訊
+        linkedProjectIds: docData.linkedProjectIds || [],
+        allProjectIds: docData.allProjectIds || [docData.projectId || projectId],
+        isLinked: (docData.projectId || projectId) !== projectId, // 標記是否為關聯來源
         createdAt: toIso(docData.createdAt),
         updatedAt: toIso(docData.updatedAt)
       });
@@ -17316,7 +17569,11 @@ async function _handleSubmitVipForm(data, db) {
           profile: formData,
           submissions: [submissionLog],
 
-          searchablePhones: Array.from(allPhones) // ✅ [新增] 寫入搜尋欄位
+          searchablePhones: Array.from(allPhones), // ✅ [新增] 寫入搜尋欄位
+
+          // ✅ [參考建案] 初始化關聯建案欄位
+          linkedProjectIds: [],
+          allProjectIds: [projectId]
         });
       } else {
         // --- 3B. 電話重複 (舊客戶) ---
@@ -17661,8 +17918,9 @@ async function _handleFetchVipGuests(data, db) {
     throw new HttpsError("invalid-argument", "缺少建案 ID。");
   }
 
+  // ✅ [參考建案] 改用 allProjectIds array-contains 查詢
   const snapshot = await db.collection("vipGuests")
-    .where("projectId", "==", projectId)
+    .where("allProjectIds", "array-contains", projectId)
     .orderBy("updatedAt", "desc")
     .get();
 
@@ -17815,7 +18073,11 @@ async function _handleSubmitCustomerSheet(data, db) {
           submissions: [submissionLog],
 
           searchablePhones: Array.from(allPhones),
-          searchableNames: Array.from(allNames)
+          searchableNames: Array.from(allNames),
+
+          // ✅ [參考建案] 初始化關聯建案欄位
+          linkedProjectIds: [],
+          allProjectIds: [projectId]
         });
       }
       // ----------------------------------------------------------
@@ -17955,6 +18217,7 @@ exports.onVipGuestDuplicate = onDocumentWritten({
   const beforeData = event.data.before?.data();
   const afterData = event.data.after?.data();
 
+  // ✅ 提前退出：刪除事件
   if (!afterData) return;
 
   const docId = event.params.docId;
@@ -17964,34 +18227,74 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
   if (!projectId || !currentPhone) return;
 
+  // ✅ 提前退出：Excel 匯入不觸發重複檢查
+  const latestSub = (afterData.submissions || []).slice(-1)[0];
+  if (latestSub?.importSource === 'Excel Batch Upload') {
+    console.log(`[${functionName}] Excel 匯入，略過重複檢查。`);
+    return;
+  }
+
+  // ✅ [參考建案] 收集所有關聯建案 ID
+  const allPids = afterData.allProjectIds || [projectId];
+  const allPidsSet = new Set(allPids);
+
+  // ============================================================
+  // 輔助函式：批次取得建案名稱 (一次查詢，避免 N+1)
+  // ============================================================
+  const projectNameCache = {};
+  async function getProjectName(pid) {
+    if (projectNameCache[pid]) return projectNameCache[pid];
+    // 延遲載入，在第一次需要時批次查
+    return pid;
+  }
+  // 預先批次載入所有可能用到的建案名稱
+  async function preloadProjectNames(pids) {
+    const uniquePids = [...new Set(pids)].filter(p => !projectNameCache[p]);
+    if (uniquePids.length === 0) return;
+
+    // 用 getAll 一次查詢多個文件
+    const refs = uniquePids.map(pid => anxiDb.collection('projects').doc(pid));
+    try {
+      const docs = await anxiDb.getAll(...refs);
+      docs.forEach((doc, i) => {
+        projectNameCache[uniquePids[i]] = doc.exists ? (doc.data().name || uniquePids[i]) : uniquePids[i];
+      });
+    } catch (e) {
+      console.warn(`[${functionName}] 批次查詢建案名稱失敗:`, e.message);
+      uniquePids.forEach(pid => { projectNameCache[pid] = pid; });
+    }
+  }
+
   // ============================================================
   // 任務 A: 檢查電話重複 (跨文件檢查)
   // ============================================================
   console.log(`[${functionName}] 開始檢查電話重複 (Doc: ${docId})...`);
 
-  const existingNumbers = new Set();
+  // ✅ 優化：只收集「新增」的電話號碼，避免每次都查全部
+  const beforePhones = new Set();
   if (beforeData) {
-    if (beforeData.otherPhones && Array.isArray(beforeData.otherPhones)) {
-      beforeData.otherPhones.forEach(p => {
-        if (p.phone) existingNumbers.add(p.phone);
-      });
+    if (beforeData.phone) beforePhones.add(beforeData.phone);
+    if (Array.isArray(beforeData.otherPhones)) {
+      beforeData.otherPhones.forEach(p => { if (p.phone) beforePhones.add(p.phone); });
     }
   }
 
   const numbersToCheck = [];
 
-  // 總是檢查主電話
-  numbersToCheck.push({
-    number: currentPhone,
-    type: 'main',
-    name: currentName,
-    relation: '本人'
-  });
+  // 主電話：只有新建或電話變更時才檢查
+  if (!beforeData || currentPhone !== beforeData.phone) {
+    numbersToCheck.push({
+      number: currentPhone,
+      type: 'main',
+      name: currentName,
+      relation: '本人'
+    });
+  }
 
-  // 檢查其他電話
-  if (afterData.otherPhones && Array.isArray(afterData.otherPhones)) {
+  // 其他電話：只檢查「新增」的號碼
+  if (Array.isArray(afterData.otherPhones)) {
     afterData.otherPhones.forEach(p => {
-      if (p.phone && !existingNumbers.has(p.phone)) {
+      if (p.phone && !beforePhones.has(p.phone)) {
         numbersToCheck.push({
           number: p.phone,
           type: 'other',
@@ -18004,20 +18307,25 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
   if (numbersToCheck.length > 0) {
     const conflicts = [];
+
+    // ✅ 優化：用 Promise.all 並行查詢所有號碼
     const queryPromises = numbersToCheck.map(async (checkItem) => {
-      const targetNumber = checkItem.number;
-      const conflictQuery = anxiDb.collection('vipGuests')
-        .where('projectId', '==', projectId)
-        .where('searchablePhones', 'array-contains', targetNumber)
+      const snapshot = await anxiDb.collection('vipGuests')
+        .where('searchablePhones', 'array-contains', checkItem.number)
         .get();
 
-      const snapshot = await conflictQuery;
       snapshot.forEach(doc => {
         if (doc.id !== docId) {
-          conflicts.push({
-            sourceItem: checkItem,
-            targetData: doc.data()
-          });
+          const targetData = doc.data();
+          // 後過濾：只保留與當前客戶有共同建案的文件
+          const targetPids = targetData.allProjectIds || [targetData.projectId];
+          const hasOverlap = targetPids.some(pid => allPidsSet.has(pid));
+          if (hasOverlap) {
+            conflicts.push({
+              sourceItem: checkItem,
+              targetData: targetData
+            });
+          }
         }
       });
     });
@@ -18025,13 +18333,26 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     await Promise.all(queryPromises);
 
     if (conflicts.length > 0) {
+      // ✅ 預載所有涉及的建案名稱 (一次批次查詢)
+      const involvedPids = new Set(allPids);
+      involvedPids.add(projectId);
+      conflicts.forEach(c => {
+        const tPid = c.targetData.projectId;
+        if (tPid) involvedPids.add(tPid);
+        (c.targetData.allProjectIds || []).forEach(p => involvedPids.add(p));
+      });
+      await preloadProjectNames([...involvedPids]);
+
       const currentSales = afterData.latestSalesName || '未知';
+      const currentProjectName = projectNameCache[projectId] || projectId;
 
       // --- 標頭 ---
-      let finalMessage = `⚠️客資重複提醒\n----------------------`;
-      finalMessage += `\n主電話:${currentPhone}`;
-      finalMessage += `\n姓名:${currentName}`;
-      finalMessage += `\n銷售:${currentSales}`;
+      let finalMessage = `⚠️客資重複提醒`;
+      finalMessage += `\n📋 建案: ${currentProjectName}`;
+      finalMessage += `\n----------------------`;
+      finalMessage += `\n主電話: ${currentPhone}`;
+      finalMessage += `\n姓名: ${currentName}`;
+      finalMessage += `\n銷售: ${currentSales}`;
       finalMessage += `\n----------------------`;
 
       // --- 資料分組 (Grouping) ---
@@ -18044,11 +18365,18 @@ exports.onVipGuestDuplicate = onDocumentWritten({
             targets: []
           };
         }
-        groupedConflicts[key].targets.push(c.targetData);
+        // ✅ 去重：避免同一衝突文件重複列出
+        const existingIds = groupedConflicts[key].targets.map(t => `${t.projectId}_${t.phone}`);
+        const newId = `${c.targetData.projectId}_${c.targetData.phone}`;
+        if (!existingIds.includes(newId)) {
+          groupedConflicts[key].targets.push(c.targetData);
+        }
       });
 
       // --- 組裝內容 ---
-      Object.values(groupedConflicts).forEach((group, index) => {
+      const groupKeys = Object.keys(groupedConflicts);
+      groupKeys.forEach((_, index) => {
+        const group = Object.values(groupedConflicts)[index];
         const src = group.source;
         const targets = group.targets;
 
@@ -18062,72 +18390,77 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
         finalMessage += `\n\n與以下 ${targets.length} 筆資料重複：`;
 
-        // 2. 條列重複對象
+        // 2. 條列重複對象 (含建案名稱)
         targets.forEach((tgt, tIndex) => {
           const targetSales = tgt.latestSalesName || '未知';
-          // ✅ [新增] 獲取拜訪日期 (優先取根目錄，若無則找 profile)
           const visitDate = tgt['拜訪日期'] || tgt.profile?.['拜訪日期'] || '未知';
+          // ✅ 顯示衝突對象的建案名稱
+          const tgtProjectName = projectNameCache[tgt.projectId] || tgt.projectId || '未知';
 
-          finalMessage += `\n${tIndex + 1}. 主電話: ${tgt.phone}`;
+          finalMessage += `\n${tIndex + 1}. 🏠 ${tgtProjectName}`;
+          finalMessage += `\n   主電話: ${tgt.phone}`;
           finalMessage += `\n   姓名: ${tgt.latestName}`;
-          finalMessage += `\n   拜訪日期: ${visitDate}`; // ✅ 顯示拜訪日期
+          finalMessage += `\n   拜訪日期: ${Array.isArray(visitDate) ? visitDate[0] : visitDate}`;
           finalMessage += `\n   銷售: ${targetSales}`;
 
           // 檢查是否包含在對方的其他電話中
-          if (tgt.phone !== src.number) {
-            if (tgt.otherPhones && Array.isArray(tgt.otherPhones)) {
-              const matchedOther = tgt.otherPhones.find(p => p.phone === src.number);
-              if (matchedOther) {
-                finalMessage += `\n   ↳ 包含此其他電話`;
-              }
+          if (tgt.phone !== src.number && Array.isArray(tgt.otherPhones)) {
+            const matchedOther = tgt.otherPhones.find(p => p.phone === src.number);
+            if (matchedOther) {
+              finalMessage += `\n   ↳ 包含此其他電話`;
             }
           }
           if (tIndex < targets.length - 1) finalMessage += `\n`;
         });
 
-        if (index < Object.keys(groupedConflicts).length - 1) {
+        if (index < groupKeys.length - 1) {
           finalMessage += `\n----------------------\n`;
         }
       });
 
-      await sendLineNotification(anxiDb, projectId, finalMessage);
+      // ✅ [參考建案] 異動通知瀏及所有關聯建案
+      await sendLineNotification(anxiDb, allPids, finalMessage);
     }
   }
 
   // ============================================================
-  // 任務 B: 檢查提交次數 (邏輯保持 V8 版本)
+  // 任務 B: 檢查提交次數 (同文件內重複提交)
   // ============================================================
   const beforeSubmissions = beforeData?.submissions || [];
   const afterSubmissions = afterData.submissions || [];
 
+  // ✅ 提前退出：提交數沒有增加
+  if (afterSubmissions.length <= beforeSubmissions.length) return;
+
   let shouldTriggerTaskB = false;
   let isSalesFirstScenario = false;
 
-  if (afterSubmissions.length > beforeSubmissions.length) {
-    if (afterSubmissions.length > 2) {
-      shouldTriggerTaskB = true;
-    }
-    else if (afterSubmissions.length === 2) {
-      const firstSub = afterSubmissions[0];
-      const secondSub = afterSubmissions[1];
-      const firstHasSales = !!firstSub['銷售人員'];
-      const secondHasSales = !!secondSub['銷售人員'];
+  if (afterSubmissions.length > 2) {
+    shouldTriggerTaskB = true;
+  }
+  else if (afterSubmissions.length === 2) {
+    const firstSub = afterSubmissions[0];
+    const secondSub = afterSubmissions[1];
+    const firstHasSales = !!firstSub['銷售人員'];
+    const secondHasSales = !!secondSub['銷售人員'];
 
-      if (firstHasSales) {
-        shouldTriggerTaskB = true;
-        if (secondHasSales) {
-          isSalesFirstScenario = false;
-        } else {
-          isSalesFirstScenario = true;
-        }
-      } else if (!secondHasSales) {
-        shouldTriggerTaskB = true;
-      }
+    if (firstHasSales) {
+      shouldTriggerTaskB = true;
+      isSalesFirstScenario = !secondHasSales;
+    } else if (!secondHasSales) {
+      shouldTriggerTaskB = true;
     }
   }
 
   if (shouldTriggerTaskB) {
     console.log(`[${functionName}] 偵測到內部重複提交，準備發送通知...`);
+
+    // ✅ 確保建案名稱已載入
+    if (!projectNameCache[projectId]) {
+      await preloadProjectNames([projectId]);
+    }
+    const currentProjectName = projectNameCache[projectId] || projectId;
+
     let countMsgBody = "";
     let listedCount = 0;
 
@@ -18136,8 +18469,7 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
       if (isSalesFirstScenario) {
         if (index !== 0) return;
-      }
-      else {
+      } else {
         if (!salesName) return;
       }
 
@@ -18151,7 +18483,7 @@ exports.onVipGuestDuplicate = onDocumentWritten({
       countMsgBody += `\n拜訪日期: ${visitDate}`;
       countMsgBody += `\n銷售人員: ${displaySalesName}`;
 
-      if (submission.otherPhones && Array.isArray(submission.otherPhones)) {
+      if (Array.isArray(submission.otherPhones)) {
         submission.otherPhones.forEach(p => {
           if (p.phone) countMsgBody += `\n(其他) ${p.name || ''} ${p.phone}`;
         });
@@ -18159,18 +18491,28 @@ exports.onVipGuestDuplicate = onDocumentWritten({
     });
 
     if (listedCount > 0) {
-      const countMessage = `⚠️客資重複提醒 (共 ${listedCount} 筆)\n\n🛑 衝突號碼: ${currentPhone}` + countMsgBody;
-      await sendLineNotification(anxiDb, projectId, countMessage);
+      const countMessage = `⚠️客資重複提醒 (共 ${listedCount} 筆)\n📋 建案: ${currentProjectName}\n\n🛑 衝突號碼: ${currentPhone}` + countMsgBody;
+      // ✅ [參考建案] 通知瀏及所有關聯建案
+      await sendLineNotification(anxiDb, allPids, countMessage);
     }
   }
 });
 
 /**
  * [內部輔助] 發送 LINE 通知 (共用)
+ * ✅ [參考建案] 支援多建案通知 + LINE ID 去重
+ * @param {Firestore} db
+ * @param {string|Array<string>} projectIds - 單一建案 ID 或建案 ID 陣列
+ * @param {string} messageText
  */
-async function sendLineNotification(db, projectId, messageText) {
+async function sendLineNotification(db, projectIds, messageText) {
   try {
-    const settingsDoc = await db.collection("customerFieldSettings").doc(projectId).get();
+    // 向下相容：允許傳入單一字串或陣列
+    const pids = Array.isArray(projectIds) ? projectIds : [projectIds];
+    if (pids.length === 0) return;
+
+    // 用第一個建案的設定來取得 Token
+    const settingsDoc = await db.collection("customerFieldSettings").doc(pids[0]).get();
     if (!settingsDoc.exists) return;
     const settings = settingsDoc.data();
 
@@ -18181,16 +18523,19 @@ async function sendLineNotification(db, projectId, messageText) {
     const tokenSecretName = settings.anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
     if (!tokenSecretName || !process.env[tokenSecretName]) return;
 
+    // ✅ [參考建案] 遍歷所有關聯建案，收集通知對象（自動去重）
     const phonesToNotify = new Set();
     const permissionsRef = db.collection("userPermissions");
 
-    if (notifyCounter) {
-      const snap = await permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台').get();
-      snap.forEach(doc => phonesToNotify.add(doc.id));
-    }
-    if (notifySales) {
-      const snap = await permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售').get();
-      snap.forEach(doc => phonesToNotify.add(doc.id));
+    for (const pid of pids) {
+      if (notifyCounter) {
+        const snap = await permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台').get();
+        snap.forEach(doc => phonesToNotify.add(doc.id));
+      }
+      if (notifySales) {
+        const snap = await permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-銷售').get();
+        snap.forEach(doc => phonesToNotify.add(doc.id));
+      }
     }
 
     if (phonesToNotify.size === 0) return;
@@ -18216,9 +18561,11 @@ async function sendLineNotification(db, projectId, messageText) {
 
     if (lineIds.length === 0) return;
 
+    // 去重 LINE ID
+    const uniqueLineIds = [...new Set(lineIds)];
     const lineClient = new line.Client({ channelAccessToken: process.env[tokenSecretName] });
-    await lineClient.multicast(lineIds, [{ type: 'text', text: messageText }]);
-    console.log(`LINE 通知發送成功 (對象數: ${lineIds.length})`);
+    await lineClient.multicast(uniqueLineIds, [{ type: 'text', text: messageText }]);
+    console.log(`LINE 通知發送成功 (對象數: ${uniqueLineIds.length}, 建案數: ${pids.length})`);
 
   } catch (error) {
     console.error("發送 LINE 通知失敗:", error);
@@ -18465,11 +18812,17 @@ exports.getCustomerInteractionDetails = onCall(async (request) => {
       }
     }
 
-    // 4. 回傳整合資料
+    // 4. 回傳整合資料 (含參考建案欄位)
     return {
       status: "success",
       data: {
-        guestData: { id: guestSnap.id, ...guestData },
+        guestData: {
+          id: guestSnap.id,
+          ...guestData,
+          // 確保前端可讀取參考建案欄位 (向下相容：若不存在則給預設值)
+          linkedProjectIds: guestData.linkedProjectIds || [],
+          allProjectIds: guestData.allProjectIds || [guestData.projectId]
+        },
         canEdit: canEdit
       }
     };
@@ -18484,13 +18837,15 @@ exports.getCustomerInteractionDetails = onCall(async (request) => {
  * [新增] 新增一筆洽談紀錄
  */
 async function _handleAddInteractionLog(data, db) {
-  const { projectId, docId, logData, operatorName, operatorPhone } = data;
+  const { projectId, docId, logData, operatorName, operatorPhone, sourceProjectId, sourceProjectName } = data;
   const guestRef = db.collection("vipGuests").doc(docId);
   const newLog = {
     logId: admin.firestore.Timestamp.now().toMillis().toString(),
     ...logData,
     recorderName: operatorName,
     recorderPhone: operatorPhone || "",
+    sourceProjectId: sourceProjectId || projectId,       // 紀錄來源建案 ID
+    sourceProjectName: sourceProjectName || "",           // 紀錄來源建案名稱
     createdAt: admin.firestore.Timestamp.now()
   };
   await guestRef.update({
@@ -18695,13 +19050,13 @@ exports.queryCustomerData = onCall(async (request) => {
 
   if (isPhone) {
     const cleanPhone = queryText.trim();
+    // ✅ [參考建案] 改用 allProjectIds array-contains 查詢
+    // Firestore 限制：不能同時使用兩個 array-contains，因此電話查詢改用先查 searchablePhones，再後過濾 projectId
     query = db.collection('vipGuests')
-      .where('projectId', '==', projectId)
       .where('searchablePhones', 'array-contains', cleanPhone);
   } else {
-    // 姓名查詢：使用 searchableNames
+    // 姓名查詢：同理，先查 searchableNames，再後過濾
     query = db.collection('vipGuests')
-      .where('projectId', '==', projectId)
       .where('searchableNames', 'array-contains', queryText.trim());
   }
 
@@ -18715,13 +19070,18 @@ exports.queryCustomerData = onCall(async (request) => {
     const results = [];
     snapshot.forEach(doc => {
       const d = doc.data();
+      // ✅ [參考建案] 後過濾：確保該文件與當前建案有關聯
+      const docAllProjects = d.allProjectIds || [d.projectId];
+      if (!docAllProjects.includes(projectId)) return; // 跳過無關文件
+      
       results.push({
         docId: doc.id,
         latestName: d.latestName || '未知',
         phone: d.phone || '',
         otherPhones: Array.isArray(d.otherPhones) ? d.otherPhones : [],
         submissions: Array.isArray(d.submissions) ? d.submissions : [],
-        salesPerson: d.latestSalesName || ''
+        salesPerson: d.latestSalesName || '',
+        sourceProjectId: d.projectId || '' // 標記來源建案
       });
     });
 
@@ -18862,6 +19222,9 @@ async function _handleBatchUpdateCustomers(data, db) {
         updatePayload.profile = profile;
       }
 
+      // ✅ [參考建案] 確保 allProjectIds 至少包含當前建案
+      updatePayload.allProjectIds = FieldValue.arrayUnion(projectId);
+
       // --- 5. 加入 Batch ---
       batch.set(docRef, updatePayload, { merge: true });
 
@@ -18980,6 +19343,8 @@ exports.onVipGuestSubmission = onDocumentWritten({
     const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
     // 3. 準備發送名單與訊息內容
+    // ✅ [參考建案] 收集所有關聯建案的通知對象
+    const allPids = afterData.allProjectIds || [projectId];
     const lineIdsToSend = new Set();
     const permissionsRef = anxiDb.collection('userPermissions');
     let messageText = '';
@@ -18995,14 +19360,16 @@ exports.onVipGuestSubmission = onDocumentWritten({
     // 情境 A: 客戶掃描 QR Code (VipForm)
     // ============================================================
     if (source === 'public_form') {
-      // 對象：櫃台 + 所有銷售
-      const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
-      const counterSnap = await counterQuery.get();
-      counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
+      // 對象：櫃台 + 所有銷售 (遍歷所有關聯建案)
+      for (const pid of allPids) {
+        const counterQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台');
+        const counterSnap = await counterQuery.get();
+        counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
 
-      const salesQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售');
-      const salesSnap = await salesQuery.get();
-      salesSnap.forEach(doc => lineIdsToSend.add(doc.id));
+        const salesQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-銷售');
+        const salesSnap = await salesQuery.get();
+        salesSnap.forEach(doc => lineIdsToSend.add(doc.id));
+      }
 
       // {第一則} 格式
       messageText = `✨${projectName} 新貴賓資料
@@ -19022,10 +19389,12 @@ exports.onVipGuestSubmission = onDocumentWritten({
     // 情境 B: 銷售人員補全資料 (CustomerDataSheet)
     // ============================================================
     else if (source === 'internal_sheet') {
-      // 對象：櫃台 + 指定銷售
-      const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
-      const counterSnap = await counterQuery.get();
-      counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
+      // 對象：櫃台 + 指定銷售 (遍歷所有關聯建案)
+      for (const pid of allPids) {
+        const counterQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台');
+        const counterSnap = await counterQuery.get();
+        counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
+      }
 
       if (salesPhone) {
         lineIdsToSend.add(salesPhone);

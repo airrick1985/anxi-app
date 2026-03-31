@@ -7426,18 +7426,59 @@ export const fetchCustomerInteractionDetails = async (projectId, docId, userKey)
  * @param {string} docId - 客戶文件 ID
  * @param {object} logData - 紀錄內容 (date, content, tags...)
  * @param {string} operatorName - 記錄人姓名
- * @param {string} operatorPhone - 記錄人電話 (新增參數)
+ * @param {string} operatorPhone - 記錄人電話
+ * @param {string} sourceProjectId - 來源建案 ID（參考建案功能）
+ * @param {string} sourceProjectName - 來源建案名稱（參考建案功能）
  */
-export const addInteractionLog = async (projectId, docId, logData, operatorName, operatorPhone) => {
+export const addInteractionLog = async (projectId, docId, logData, operatorName, operatorPhone, sourceProjectId = '', sourceProjectName = '') => {
   try {
     // ✅ 改用統一的路由函式呼叫
     const result = await customerApiRouter({
       action: 'addInteractionLog',
-      data: { projectId, docId, logData, operatorName, operatorPhone }
+      data: { projectId, docId, logData, operatorName, operatorPhone, sourceProjectId, sourceProjectName }
     });
     return result.data;
   } catch (error) {
     console.error("[api.js] addInteractionLog 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API - 參考建案] 更新客戶的關聯建案列表
+ * @param {string} projectId - 主歸屬建案 ID
+ * @param {string} docId - 客戶文件 ID
+ * @param {Array<string>} linkedProjectIds - 關聯建案 ID 陣列
+ * @param {string} userKey - 操作者 ID
+ */
+export const updateLinkedProjects = async (projectId, docId, linkedProjectIds, userKey) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'updateLinkedProjects',
+      data: { projectId, docId, linkedProjectIds, userKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] updateLinkedProjects 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API - 參考建案] 取消客戶與特定建案的關聯
+ * @param {string} docId - 客戶文件 ID
+ * @param {string} projectIdToRemove - 要取消關聯的建案 ID
+ * @param {string} userKey - 操作者 ID
+ */
+export const unlinkProject = async (docId, projectIdToRemove, userKey) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'unlinkProject',
+      data: { docId, projectIdToRemove, userKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] unlinkProject 失敗:", error);
     throw new Error(error.message);
   }
 };

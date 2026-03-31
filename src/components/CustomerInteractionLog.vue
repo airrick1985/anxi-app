@@ -13,8 +13,21 @@
             <v-chip v-if="guestData.isDeleted" color="red" size="x-small" class="ml-2">已刪除</v-chip>
        </v-toolbar-title>
        <v-spacer></v-spacer>
+       <!-- 參考建案：關聯模式下顯示「取消關聯」，非關聯模式顯示原本的刪除/復原 -->
        <v-btn
-         v-if="guestData.isDeleted && canEdit"
+         v-if="isLinkedMode"
+         color="orange-darken-1"
+         size="small"
+         variant="outlined"
+         prepend-icon="mdi-link-variant-off"
+         @click="handleUnlinkProject"
+         :loading="isUnlinking"
+         class="mr-2"
+       >
+         取消關聯
+       </v-btn>
+       <v-btn
+         v-else-if="guestData.isDeleted && canEdit"
          color="success"
          size="small"
          variant="flat"
@@ -261,6 +274,101 @@
 </div>
                            
                                 
+<!-- ========== 參考建案區塊 ========== -->
+<v-divider class="my-4"></v-divider>
+<div class="d-flex align-center justify-space-between mb-2">
+    <div class="d-flex align-center">
+        <v-icon size="small" color="indigo" class="mr-1">mdi-office-building-marker</v-icon>
+        <span class="text-caption text-grey font-weight-bold">參考建案</span>
+    </div>
+    <v-btn
+        v-if="!isEditingLinkedProjects && availableLinkedProjects.length > 0"
+        icon="mdi-pencil"
+        variant="text"
+        size="small"
+        color="primary"
+        @click="startEditLinkedProjects"
+    ></v-btn>
+    <div v-if="isEditingLinkedProjects" class="d-flex align-center">
+        <v-btn color="grey-darken-1" variant="text" size="small" class="mr-2" @click="cancelEditLinkedProjects" :disabled="isSavingLinkedProjects">取消</v-btn>
+        <v-btn color="success" variant="elevated" size="small" prepend-icon="mdi-content-save" @click="saveLinkedProjects" :loading="isSavingLinkedProjects">儲存</v-btn>
+    </div>
+</div>
+
+<!-- 關聯模式 Banner -->
+<v-alert
+    v-if="isLinkedMode"
+    type="info"
+    variant="tonal"
+    density="compact"
+    class="mb-3"
+    border="start"
+>
+    <div class="text-caption">
+        <v-icon size="small" start>mdi-link-variant</v-icon>
+        此客戶資料來自 <strong>{{ sourceProjectName }}</strong>
+    </div>
+</v-alert>
+
+<!-- 主歸屬建案 -->
+<div class="mb-2">
+    <span class="text-caption text-grey">主歸屬建案</span>
+    <div class="mt-1">
+        <v-chip
+            size="small"
+            color="indigo"
+            variant="flat"
+            label
+            prepend-icon="mdi-home-city"
+        >
+            {{ mainProjectName }}
+        </v-chip>
+    </div>
+</div>
+
+<!-- 唯讀模式：顯示已關聯建案 -->
+<div v-if="!isEditingLinkedProjects">
+    <span class="text-caption text-grey">關聯建案</span>
+    <div v-if="guestData.linkedProjectIds && guestData.linkedProjectIds.length > 0" class="d-flex flex-wrap gap-1 mt-1">
+        <v-chip
+            v-for="lpid in guestData.linkedProjectIds"
+            :key="lpid"
+            size="small"
+            color="teal"
+            variant="tonal"
+            label
+            prepend-icon="mdi-link-variant"
+        >
+            {{ projectStore.idToNameMap[lpid] || lpid }}
+        </v-chip>
+    </div>
+    <div v-else class="text-caption text-grey-lighten-1 font-italic mt-1">
+        尚未關聯其他建案
+    </div>
+</div>
+
+<!-- 編輯模式：勾選建案 -->
+<div v-else>
+    <span class="text-caption text-grey">勾選關聯建案</span>
+    <div v-if="availableLinkedProjects.length > 0" class="mt-1">
+        <v-checkbox
+            v-for="proj in availableLinkedProjects"
+            :key="proj.id"
+            v-model="editingLinkedProjectIds"
+            :value="proj.id"
+            :label="proj.name"
+            density="compact"
+            hide-details
+            color="teal"
+            class="mb-n2"
+        ></v-checkbox>
+    </div>
+    <div v-else class="text-caption text-grey-lighten-1 font-italic mt-1">
+        您目前沒有其他建案的客資系統權限
+    </div>
+</div>
+<!-- ========== 參考建案區塊結束 ========== -->
+
                                 <div class="mt-6 pt-4 border-t text-caption text-grey-lighten-1">
                                     <div>建立時間: {{ guestData.createdAt ? new Date(guestData.createdAt).toLocaleString() : '-' }}</div>
                                
@@ -547,6 +655,21 @@
                                             </v-chip>
 
                                             <v-spacer></v-spacer>
+
+                                            <!-- 參考建案：來源建案標籤 -->
+                                            <v-chip
+                                                v-if="log.sourceProjectId && log.sourceProjectId !== projectId"
+                                                size="small"
+                                                color="indigo-lighten-4"
+                                                variant="flat"
+                                                label
+                                                class="mr-2"
+                                                prepend-icon="mdi-arrow-top-right-thin"
+                                            >
+                                                <span class="text-indigo-darken-3 font-weight-medium">
+                                                    來自 {{ log.sourceProjectName || projectStore.idToNameMap[log.sourceProjectId] || log.sourceProjectId }}
+                                                </span>
+                                            </v-chip>
                                             
                                            <div class="d-flex flex-column align-end mr-2">
                                                 <span class="text-caption text-grey-darken-1">
@@ -954,7 +1077,9 @@ import {
     deleteInteractionLog, 
     optimizeInteractionLog, 
     softDeleteCustomer,
-    restoreCustomer
+    restoreCustomer,
+    updateLinkedProjects,
+    unlinkProject
 } from '@/api';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -1398,6 +1523,110 @@ const handleRestoreCustomer = async () => {
     }
 };
 
+// --- 參考建案 邏輯 ---
+const isEditingLinkedProjects = ref(false);
+const editingLinkedProjectIds = ref([]);
+const isSavingLinkedProjects = ref(false);
+const isUnlinking = ref(false);
+
+// 判斷目前是否為關聯建案模式（從非主歸屬建案進入）
+const isLinkedMode = computed(() => {
+    return guestData.value.projectId && guestData.value.projectId !== props.projectId;
+});
+
+// 主歸屬建案名稱
+const mainProjectName = computed(() => {
+    const pid = guestData.value.projectId || props.projectId;
+    return projectStore.idToNameMap[pid] || pid;
+});
+
+// 來源建案名稱（關聯模式下使用）
+const sourceProjectName = computed(() => {
+    if (!isLinkedMode.value) return '';
+    return projectStore.idToNameMap[guestData.value.projectId] || guestData.value.projectId;
+});
+
+// 取得使用者可勾選的建案列表（排除主歸屬建案）
+const availableLinkedProjects = computed(() => {
+    const permissions = userStore.user?.permissions || {};
+    const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
+    const mainPid = guestData.value.projectId || props.projectId;
+    
+    return Object.entries(permissions)
+        .filter(([projectId, perm]) => {
+            // 排除主歸屬建案
+            if (projectId === mainPid) return false;
+            // 檢查是否有客資相關權限
+            return perm.systems?.some(sys => targetSystems.includes(sys));
+        })
+        .map(([projectId, perm]) => ({
+            id: projectId,
+            name: projectStore.idToNameMap[projectId] || perm.projectName || projectId
+        }));
+});
+
+const startEditLinkedProjects = () => {
+    editingLinkedProjectIds.value = [...(guestData.value.linkedProjectIds || [])];
+    isEditingLinkedProjects.value = true;
+};
+
+const cancelEditLinkedProjects = () => {
+    isEditingLinkedProjects.value = false;
+    editingLinkedProjectIds.value = [];
+};
+
+const saveLinkedProjects = async () => {
+    isSavingLinkedProjects.value = true;
+    try {
+        const mainPid = guestData.value.projectId || props.projectId;
+        const result = await updateLinkedProjects(
+            mainPid,
+            props.docId,
+            editingLinkedProjectIds.value,
+            userStore.user.key
+        );
+        
+        // 同步更新本地 state
+        guestData.value.linkedProjectIds = result.linkedProjectIds || editingLinkedProjectIds.value;
+        guestData.value.allProjectIds = result.allProjectIds || [mainPid, ...editingLinkedProjectIds.value];
+        
+        // 合併結果提示
+        if (result.mergedDocs && result.mergedDocs.length > 0) {
+            const mergeInfo = result.mergedDocs.map(m => 
+                `${m.name} (${projectStore.idToNameMap[m.projectId] || m.projectId}): 合併 ${m.mergedSubs} 筆提交 + ${m.mergedLogs} 筆紀錄`
+            ).join('\n');
+            toast.success(`關聯建案已更新，並自動合併了 ${result.mergedDocs.length} 筆重複資料`);
+            console.log('[參考建案] 合併結果:', mergeInfo);
+            // 合併後重新載入完整資料
+            await loadData();
+        } else {
+            toast.success('關聯建案已更新');
+        }
+        
+        isEditingLinkedProjects.value = false;
+        emit('data-updated');
+    } catch (error) {
+        toast.error(`更新失敗: ${error.message}`);
+    } finally {
+        isSavingLinkedProjects.value = false;
+    }
+};
+
+const handleUnlinkProject = async () => {
+    if (!confirm(`確定要取消此客戶與【${projectStore.idToNameMap[props.projectId] || props.projectId}】的關聯嗎？`)) return;
+    
+    isUnlinking.value = true;
+    try {
+        await unlinkProject(props.docId, props.projectId, userStore.user.key);
+        toast.success('已取消關聯');
+        emit('update:show', false);
+        emit('data-updated');
+    } catch (error) {
+        toast.error(`取消關聯失敗: ${error.message}`);
+    } finally {
+        isUnlinking.value = false;
+    }
+};
 const loadData = async () => {
     if (!props.docId) {
         return;
@@ -1682,7 +1911,9 @@ const handleSaveLog = async () => {
                 props.docId,
                 logPayload,
                 currentUserName,
-                currentUserPhone 
+                currentUserPhone,
+                props.projectId,
+                projectStore.idToNameMap[props.projectId] || props.projectId
             );
             toast.success('紀錄已新增');
         }

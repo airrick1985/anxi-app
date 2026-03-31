@@ -284,6 +284,9 @@
                   <div class="text-caption text-grey-darken-1 d-flex flex-column">
                     <span>{{ formatFullDateTime(item.updatedAt) }}</span>
                     <v-chip v-if="item.isDeleted" color="red" size="x-small" label class="align-self-start mt-1">已刪除</v-chip>
+                    <v-chip v-if="item.isLinked" color="indigo" size="x-small" label variant="tonal" class="align-self-start mt-1" prepend-icon="mdi-link-variant">
+                      {{ projectStore.idToNameMap[item.sourceProjectId] || '關聯' }}
+                    </v-chip>
                   </div>
                 </template>
 
@@ -1751,9 +1754,12 @@ const executeBatchExport = async () => {
             .join('; ')
         : '';
 
-      // --- Sheet 1: 客戶資料 (已新增欄位) ---
+      // --- Sheet 1: 客戶資料 (已新增參考建案欄位) ---
       profileRows.push({
         '建案ID': data.projectId,
+        // ✅ [參考建案] 新增關聯建案欄位
+        '來源建案': data.isLinked ? (projectStore.idToNameMap[data.projectId] || data.projectId) : '主建案',
+        '關聯建案': (data.linkedProjectIds || []).map(pid => projectStore.idToNameMap[pid] || pid).join(', ') || '',
         '建立時間': safeFormatDate(data.createdAt),
         '電話(主鍵)': phone,
         '姓名': data.latestName,
@@ -1766,11 +1772,11 @@ const executeBatchExport = async () => {
         '居住城市': formatArr(p['居住城市']),
         '居住區域': formatArr(p['居住鄉鎮市區']),
         '居住詳細地址': formatArr(p['居住詳細地址']),
-        '購屋動機': formatArr(p['購屋動機']),           // ✅ [新增]
+        '購屋動機': formatArr(p['購屋動機']),
         '房型需求': formatArr(p['房型需求']),
-        '坪數需求': formatArr(p['坪數需求']),           // ✅ [新增]
+        '坪數需求': formatArr(p['坪數需求']),
         '購屋預算': formatArr(p['購屋預算']),
-        '從何得知本建案': formatArr(p['從何得知本建案']), // ✅ [新增]
+        '從何得知本建案': formatArr(p['從何得知本建案']),
         '職業': formatArr(p['職業']),
         '任職公司': formatArr(p['任職公司']),
         '最後更新': safeFormatDate(data.updatedAt)
