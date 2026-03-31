@@ -25,20 +25,78 @@
       <v-window-item value="management">
         <v-card class="bg-grey-lighten-5 h-100">
           <v-toolbar color="white" elevation="1" density="compact">
-            <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3">
-              {{ projectName }} 客戶資料列表
+            <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3" style="min-width: 0;">
+              <!-- ✅ 專案切換選單 -->
+              <v-menu v-if="availableProjects.length > 1">
+                <template v-slot:activator="{ props: menuProps }">
+                  <v-btn
+                    v-bind="menuProps"
+                    variant="text"
+                    class="px-1 font-weight-bold text-grey-darken-3 text-none toolbar-project-btn"
+                    append-icon="mdi-chevron-down"
+                    :size="isMobile ? 'small' : 'default'"
+                  >
+                    <span class="text-truncate" style="max-width: 40vw;">
+                      {{ projectName }}
+                    </span>
+                    <span v-if="!isMobile" class="ml-1">客戶資料列表</span>
+                  </v-btn>
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    v-for="proj in availableProjects"
+                    :key="proj.id"
+                    :value="proj.id"
+                    @click="switchProject(proj.id)"
+                    :active="proj.id === props.projectId"
+                    color="primary"
+                  >
+                    <v-list-item-title>{{ proj.name }}</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+              <span v-else class="text-truncate d-inline-block" style="max-width: 45vw; vertical-align: middle;">
+                {{ projectName }} <span v-if="!isMobile">客戶資料列表</span>
+              </span>
             </v-toolbar-title>
             <v-spacer></v-spacer>
-            <v-btn
-              color="teal"
-              variant="flat"
-              size="small"
-              prepend-icon="mdi-account-plus"
-              @click="openAddCustomerDialog"
-              class="mr-2"
-            >
-              新增客戶
-            </v-btn>
+            <!-- ✅ 重新整理按鈕 -->
+            <v-tooltip text="重新整理" location="bottom">
+              <template v-slot:activator="{ props: tipProps }">
+                <v-btn
+                  v-bind="tipProps"
+                  color="primary"
+                  variant="text"
+                  :size="isMobile ? 'small' : 'default'"
+                  :icon="isMobile"
+                  :prepend-icon="isMobile ? undefined : 'mdi-refresh'"
+                  @click="loadCustomerList"
+                  class="mr-1"
+                  :loading="isLoadingCustomerList"
+                >
+                  <v-icon v-if="isMobile">mdi-refresh</v-icon>
+                  <template v-if="!isMobile">重新整理</template>
+                </v-btn>
+              </template>
+            </v-tooltip>
+            <!-- ✅ 新增客戶按鈕 -->
+            <v-tooltip text="新增客戶" location="bottom">
+              <template v-slot:activator="{ props: tipProps }">
+                <v-btn
+                  v-bind="tipProps"
+                  color="teal"
+                  variant="flat"
+                  :size="isMobile ? 'small' : 'default'"
+                  :icon="isMobile"
+                  :prepend-icon="isMobile ? undefined : 'mdi-account-plus'"
+                  @click="openAddCustomerDialog"
+                  class="mr-1"
+                >
+                  <v-icon v-if="isMobile">mdi-account-plus</v-icon>
+                  <template v-if="!isMobile">新增客戶</template>
+                </v-btn>
+              </template>
+            </v-tooltip>
           </v-toolbar>
 
 <v-card-text>
@@ -1208,6 +1266,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, reactive, defineAsyncComponent } from 'vue';
+import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
@@ -1253,6 +1312,34 @@ const props = defineProps({
 const tab = ref('management');
 const userStore = useUserStore();
 const projectStore = useProjectStore();
+const router = useRouter();
+
+// ===============================================
+// ✅ [新增] 可存取建案清單與切換邏輯
+// ===============================================
+const availableProjects = computed(() => {
+  const allowed = [];
+  const targetSystems = ['客資系統-櫃台', '客資系統-銷售'];
+  const userPermissions = userStore.user?.permissions || {};
+  
+  Object.keys(userPermissions).forEach(pid => {
+    const projectPerm = userPermissions[pid];
+    const systems = projectPerm.systems || [];
+    const hasAccess = targetSystems.some(sys => systems.includes(sys));
+    if (hasAccess) {
+      const fullProjectData = projectStore.projectsList.find(p => p.id === pid);
+      const name = fullProjectData ? fullProjectData.name : (projectPerm.projectName || pid);
+      allowed.push({ id: pid, name: name });
+    }
+  });
+  return allowed;
+});
+
+const switchProject = (pid) => {
+  if (pid !== props.projectId) {
+    router.replace({ name: 'CustomerManagementSystem', params: { projectId: pid } });
+  }
+};
 
 // ✅ [新增] 取得手機模式狀態
 const { mobile: isMobile } = useDisplay();
@@ -1289,9 +1376,23 @@ const EXCEL_COLUMN_MAP = [
   { header: '從何得知本建案', key: '從何得知本建案', target: 'profile', type: 'array' },
   { header: '職業', key: '職業', target: 'profile', type: 'array' },
   { header: '任職公司', key: '任職公司', target: 'profile', type: 'array' },
-
-  
+  // ✅ [修正] 關聯建案欄位 (匯入/匯出統一使用 projectId)
+  { header: '關聯建案', key: 'linkedProjectIds', target: 'root', type: 'linkedProjects' },
 ];
+
+// ✅ [新增] 輔助函式：解析 Excel 日期 (支援 "2026/3/8 15:23:51" 格式與 Excel 序號)
+const parseExcelDate = (val) => {
+  if (!val) return null;
+  // Excel 數字日期序號 (例如 46088.641 = 某日期)
+  if (typeof val === 'number') {
+    const excelEpoch = new Date(1899, 11, 30); // Excel 日期起點
+    const d = new Date(excelEpoch.getTime() + val * 86400000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // 字串格式 ("2026/3/8 15:23:51" 或 "2026-03-08")
+  const d = new Date(String(val).replace(/\//g, '-'));
+  return isNaN(d.getTime()) ? null : d;
+};
 
 // 🔧 [新增] 輔助函式：將單一值轉換為資料庫要求的陣列格式
 const toArr = (val) => (val && String(val).trim()) ? [String(val).trim()] : [];
@@ -1654,11 +1755,11 @@ async function loadCustomerList() {
       currentUserProjectSystems.value
     );
 
-    // ✅ 統一根據 updatedAt 進行排序 (由新到舊)
+    // ✅ 根據拜訪日期排序 (Z→A，最新在上)
     customerList.value = list.sort((a, b) => {
-      const timeA = getSeconds(a.updatedAt);
-      const timeB = getSeconds(b.updatedAt);
-      return timeB - timeA; 
+      const dateA = a['拜訪日期'] || '';
+      const dateB = b['拜訪日期'] || '';
+      return dateB.localeCompare(dateA);
     });
 
   } catch (error) {
@@ -1679,17 +1780,6 @@ const batchState = ref({
   logs: []
 });
 
-// --- 輔助函式：處理 Excel 日期 ---
-const parseExcelDate = (excelVal) => {
-  if (!excelVal) return null;
-  // 處理 Excel 序列號 (e.g. 45678)
-  if (typeof excelVal === 'number') {
-    const date = new Date(Math.round((excelVal - 25569) * 86400 * 1000));
-    return date.toISOString().split('T')[0]; // 回傳 YYYY-MM-DD
-  }
-  // 處理字串 (e.g. "2025/12/16")
-  return String(excelVal).replace(/\//g, '-').split('T')[0];
-};
 
 // [輔助函式] 日期格式化 (YYYY/MM/DD HH:mm:ss)
 const formatDateStr = (val) => {
@@ -1757,9 +1847,9 @@ const executeBatchExport = async () => {
       // --- Sheet 1: 客戶資料 (已新增參考建案欄位) ---
       profileRows.push({
         '建案ID': data.projectId,
-        // ✅ [參考建案] 新增關聯建案欄位
+        // ✅ [參考建案] 新增關聯建案欄位 (使用 projectId 以利匯入回寫)
         '來源建案': data.isLinked ? (projectStore.idToNameMap[data.projectId] || data.projectId) : '主建案',
-        '關聯建案': (data.linkedProjectIds || []).map(pid => projectStore.idToNameMap[pid] || pid).join(', ') || '',
+        '關聯建案': (data.linkedProjectIds || []).join(', ') || '',
         '建立時間': safeFormatDate(data.createdAt),
         '電話(主鍵)': phone,
         '姓名': data.latestName,
@@ -1872,10 +1962,17 @@ const executeBatchImport = async () => {
     // 取得該客戶對應的洽談紀錄
     const myLogs = logsGroupByPhone[phone] || [];
 
-    // ✅ [打勾] 建立提交紀錄 Snapshot (與前端建立結構一致)
+    // ✅ [修正] 從 Excel「建立時間」欄位解析拜訪日期，而非使用當前時間
+    const rawCreatedAt = row['建立時間'];
+    const parsedDate = parseExcelDate(rawCreatedAt);
+    const visitDate = parsedDate ? parsedDate.toISOString().split('T')[0] : jsNow.toISOString().split('T')[0];
+    const createdAtDate = parsedDate || jsNow;
+
+    // ✅ 建立提交紀錄 Snapshot (與前端建立結構一致)
     const submissionEntry = {
       submissionSource: 'excel_import',
-      submittedAt: jsNow, 
+      importSource: 'Excel Batch Upload',
+      submittedAt: createdAtDate, 
       姓名: name,
       電話: phone,
       銷售人員: row['銷售人員'] || '',
@@ -1889,9 +1986,37 @@ const executeBatchImport = async () => {
       從何得知本建案: toArr(row['從何得知本建案']),
       職業: row['職業'] || '',
       任職公司: row['任職公司'] || '',
-      // ✅ [打勾] 使用原生 JS 取代 format 函式避免 ReferenceError
-      拜訪日期: jsNow.toISOString().split('T')[0] 
+      拜訪日期: visitDate
     };
+
+    // ✅ [修正] 等級：從 Excel 讀取後寫入 interactionLogs，讓前端等級研判能正確顯示
+    const importedRating = String(row['等級'] || '').trim();
+    if (importedRating && myLogs.length === 0) {
+      // 若 Excel 有等級但該客戶沒有洽談紀錄，則自動建立一筆系統紀錄帶入等級
+      myLogs.push({
+        logId: String(Date.now() + Math.floor(Math.random() * 1000)),
+        date: visitDate,
+        content: '(Excel 匯入自動建立)',
+        recorderName: '系統匯入',
+        recorderPhone: '',
+        createdAt: createdAtDate,
+        tags: {
+          interactionType: 'Excel匯入',
+          rating: importedRating,
+          visitors: '1',
+          noPurchaseReason: [],
+          keyTags: []
+        }
+      });
+    }
+
+    // ✅ [修正] 關聯建案：從 Excel 欄位解析 linkedProjectIds (逗號分隔的 projectId)
+    const linkedPidsRaw = String(row['關聯建案'] || '').trim();
+    const linkedPids = linkedPidsRaw
+      ? linkedPidsRaw.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+      : [];
+    // allProjectIds = 當前建案 + 關聯建案 (去重)
+    const allPids = [...new Set([props.projectId, ...linkedPids])];
 
     const data = {
       projectId: props.projectId,
@@ -1900,19 +2025,22 @@ const executeBatchImport = async () => {
       latestSalesName: row['銷售人員'] || '',
       latestSalesPhone: row['銷售人員PHONE'] || '',
       otherPhones: otherPhones,
-      // ✅ [打勾] 建立搜尋索引陣列
+      // ✅ 建立搜尋索引陣列
       searchableNames: Array.from(new Set([name, ...otherPhones.map(p => p.name)])).filter(Boolean),
       searchablePhones: Array.from(new Set([phone, ...otherPhones.map(p => p.phone)])).filter(Boolean),
       submissions: [submissionEntry],
-      interactionLogs: myLogs, // ✅ 寫入洽談紀錄
+      interactionLogs: myLogs, // ✅ 寫入洽談紀錄 (含等級)
       updatedAt: jsNow,
-      createdAt: jsNow,
+      createdAt: createdAtDate, // ✅ [修正] 使用 Excel 建立時間
+      // ✅ [修正] 關聯建案
+      allProjectIds: allPids,
+      linkedProjectIds: linkedPids,
       profile: {
         姓名: [name],
         電話: [phone],
         otherPhones: otherPhones,
         submissionSource: ['excel_import'],
-        submittedAt: [jsNow] // ✅ 傳送 Date 物件，交由後端 ensureTimestamp 轉為 Timestamp
+        submittedAt: [createdAtDate]
       }
     };
 
@@ -1920,6 +2048,9 @@ const executeBatchImport = async () => {
     EXCEL_COLUMN_MAP.forEach(cfg => {
       let rawVal = row[cfg.header];
       if (rawVal === undefined || rawVal === null || rawVal === '') return;
+      
+      // 跳過已特殊處理的欄位
+      if (cfg.type === 'linkedProjects' || cfg.type === 'timestamp') return;
       
       let finalVal = (cfg.type === 'array') ? toArr(rawVal) : rawVal;
       
