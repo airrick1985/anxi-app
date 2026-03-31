@@ -402,6 +402,7 @@
     :doc-id="selectedCustomerDocId"
     :sales-name="selectedCustomerSalesName"
     :settings="settings"
+    :is-deleted="selectedCustomerIsDeleted"
     @data-updated="loadCustomerList"
 />
 
@@ -1714,6 +1715,7 @@ const customerTableHeaders = ref([
 const isInteractionDialogVisible = ref(false);
 const selectedCustomerDocId = ref(null);
 const selectedCustomerSalesName = ref('');
+const selectedCustomerIsDeleted = ref(false);
 
 const getSeconds = (val) => {
   if (!val) return 0;
@@ -2630,7 +2632,20 @@ const openInteractionLog = (event, { item }) => {
     }
 
     selectedCustomerDocId.value = docId; 
-    selectedCustomerSalesName.value = item.raw && item.raw['銷售人員'] ? item.raw['銷售人員'] : '';
+    
+    // 如果有使用「單一進階篩選」，且此客資也有對應該銷售人員，就強制使用篩選者的視角
+    let contextSalesName = item.raw?.['銷售人員'] || item['銷售人員'] || '';
+    if (advFilter.sales && advFilter.sales.length === 1) {
+        const singleFilter = advFilter.sales[0];
+        if (Array.isArray(contextSalesName) && contextSalesName.includes(singleFilter)) {
+            contextSalesName = [singleFilter];
+        } else if (typeof contextSalesName === 'string' && contextSalesName.includes(singleFilter)) {
+            contextSalesName = [singleFilter];
+        }
+    }
+    
+    selectedCustomerSalesName.value = contextSalesName;
+    selectedCustomerIsDeleted.value = !!(item.raw?.isDeleted || item.isDeleted);
     isInteractionDialogVisible.value = true;
 };
 

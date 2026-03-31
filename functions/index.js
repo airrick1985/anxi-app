@@ -17163,41 +17163,41 @@ async function _handleUpdateLinkedProjects(data, db) {
         if (!conflictSnap.empty) {
           for (const conflictDoc of conflictSnap.docs) {
             const conflictData = conflictDoc.data();
-            
+
             // 電話相同 + 銷售相同 → 合併
             if (conflictData.latestSalesName === mainGuestData.latestSalesName) {
               console.log(`[${functionName}] 偵測到可合併文件: ${conflictDoc.id} (建案: ${lpid})`);
-              
+
               // 合併 submissions (用 submittedAt 去重)
               const mainSubs = mainGuestData.submissions || [];
               const conflictSubs = conflictData.submissions || [];
               const existingSubKeys = new Set(mainSubs.map(s => JSON.stringify({ phone: s['電話'], date: s.submittedAt })));
               const newSubs = conflictSubs.filter(s => !existingSubKeys.has(JSON.stringify({ phone: s['電話'], date: s.submittedAt })));
-              
+
               // 合併 interactionLogs (用 logId 去重)
               const mainLogs = mainGuestData.interactionLogs || [];
               const conflictLogs = conflictData.interactionLogs || [];
               const existingLogIds = new Set(mainLogs.map(l => l.logId));
               const newLogs = conflictLogs.filter(l => !existingLogIds.has(l.logId));
-              
+
               // 合併 otherPhones (用 phone 去重)
               const mainPhones = mainGuestData.otherPhones || [];
               const conflictPhones = conflictData.otherPhones || [];
               const existingPhoneNums = new Set(mainPhones.map(p => p.phone));
               const newPhones = conflictPhones.filter(p => !existingPhoneNums.has(p.phone));
-              
+
               // 合併 searchablePhones
               const allSearchPhones = new Set([
                 ...(mainGuestData.searchablePhones || []),
                 ...(conflictData.searchablePhones || [])
               ]);
-              
+
               // 合併 searchableNames
               const allSearchNames = new Set([
                 ...(mainGuestData.searchableNames || []),
                 ...(conflictData.searchableNames || [])
               ]);
-              
+
               // 更新主文件 (追加合併資料)
               const mergeUpdate = {};
               if (newSubs.length > 0) {
@@ -17211,16 +17211,16 @@ async function _handleUpdateLinkedProjects(data, db) {
               }
               mergeUpdate.searchablePhones = Array.from(allSearchPhones);
               mergeUpdate.searchableNames = Array.from(allSearchNames);
-              
+
               if (Object.keys(mergeUpdate).length > 0) {
                 await guestRef.update(mergeUpdate);
                 // 更新 mainGuestData 以反映合併結果
                 Object.assign(mainGuestData, mergeUpdate);
               }
-              
+
               // 刪除被合併的文件
               await conflictDoc.ref.delete();
-              
+
               mergedDocs.push({
                 docId: conflictDoc.id,
                 projectId: lpid,
@@ -17228,7 +17228,7 @@ async function _handleUpdateLinkedProjects(data, db) {
                 mergedSubs: newSubs.length,
                 mergedLogs: newLogs.length
               });
-              
+
               console.log(`[${functionName}] 已合併並刪除文件 ${conflictDoc.id}`);
             }
             // 銷售不同 → 不合併，各自獨立存在
@@ -17247,8 +17247,8 @@ async function _handleUpdateLinkedProjects(data, db) {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    const mergeMsg = mergedDocs.length > 0 
-      ? `，並合併了 ${mergedDocs.length} 筆重複資料` 
+    const mergeMsg = mergedDocs.length > 0
+      ? `，並合併了 ${mergedDocs.length} 筆重複資料`
       : '';
     console.log(`[${functionName}] 成功更新客戶 ${docId} 的關聯建案: [${filteredLinked.join(', ')}]${mergeMsg}`);
     return {
@@ -18208,7 +18208,7 @@ exports.onVipGuestDuplicate = onDocumentWritten({
   region: 'asia-east1',
   secrets: ["ANXISMART_LINE_CRM_TOKEN"],
   timeoutSeconds: 60,
-  memory: "256MiB"
+  memory: "512MiB"
 }, async (event) => {
   const functionName = "onVipGuestDuplicate";
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
@@ -19073,7 +19073,7 @@ exports.queryCustomerData = onCall(async (request) => {
       // ✅ [參考建案] 後過濾：確保該文件與當前建案有關聯
       const docAllProjects = d.allProjectIds || [d.projectId];
       if (!docAllProjects.includes(projectId)) return; // 跳過無關文件
-      
+
       results.push({
         docId: doc.id,
         latestName: d.latestName || '未知',
