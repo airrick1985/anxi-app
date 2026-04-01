@@ -20851,7 +20851,10 @@ exports.batchImportAndAssignLeads = onCall({
 }, async (request) => {
   const functionName = "batchImportAndAssignLeads";
   const db = new Firestore({ databaseId: "anxi-app" });
-  const { projectId, leads, operator } = request.data;
+  const { projectId, leads, operator, sendLineNotify } = request.data;
+
+  // ✅ sendLineNotify: 預設為 true（向下相容舊版前端）
+  const shouldNotify = sendLineNotify !== false;
 
   if (!projectId || !Array.isArray(leads)) {
     throw new HttpsError("invalid-argument", "缺少必要參數。");
@@ -20897,8 +20900,8 @@ exports.batchImportAndAssignLeads = onCall({
       const docRef = await db.collection("leads").add(payload);
       const leadId = docRef.id;
 
-      // 3. 如果有指派，發送 LINE 通知
-      if (payload.assignedTo) {
+      // 3. 如果有指派且需要發送通知，發送 LINE 通知
+      if (shouldNotify && payload.assignedTo) {
         const userDoc = await db.collection("users").doc(payload.assignedTo).get();
         const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
 
@@ -20910,6 +20913,7 @@ exports.batchImportAndAssignLeads = onCall({
       results.push(leadId);
     }
 
+    console.log(`[${functionName}] 完成：匯入 ${results.length} 筆，LINE 通知: ${shouldNotify ? '已發送' : '已跳過'}`);
     return { status: "success", count: results.length };
 
   } catch (error) {

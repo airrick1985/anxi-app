@@ -747,6 +747,35 @@
     </v-window-item>
 
     <v-window-item value="excel">
+      <!-- ✅ 匯出目前名單（供下載後編輯再回匯入） -->
+      <v-card variant="tonal" color="blue-grey-lighten-5" class="pa-4 mb-4 rounded-lg">
+        <div class="d-flex align-center mb-2">
+          <v-icon color="blue-grey-darken-2" class="me-2">mdi-download</v-icon>
+          <span class="text-subtitle-2 font-weight-bold text-blue-grey-darken-2">步驟一：先下載目前的聯絡名單</span>
+        </div>
+        <div class="text-caption text-grey-darken-1 mb-3">
+          下載的 EXCEL 檔案使用與匯入相同的表頭格式，您可以在此基礎上新增資料後再上傳匯入。
+        </div>
+        <v-btn
+          color="blue-grey-darken-1"
+          variant="elevated"
+          prepend-icon="mdi-file-download"
+          rounded="lg"
+          :loading="isTemplateExporting"
+          @click="exportLeadsForImport"
+          class="font-weight-bold"
+        >
+          下載目前名單 EXCEL ({{ allLeads.length }} 筆)
+        </v-btn>
+      </v-card>
+
+      <v-divider class="mb-4"></v-divider>
+
+      <!-- ✅ 上傳匯入區塊 -->
+      <div class="d-flex align-center mb-2">
+        <v-icon color="primary" class="me-2">mdi-upload</v-icon>
+        <span class="text-subtitle-2 font-weight-bold text-primary">步驟二：上傳 EXCEL 檔案匯入名單</span>
+      </div>
       <v-file-input
         v-model="excelFile"
         label="點擊或拖放 EXCEL 檔案至此"
@@ -760,7 +789,7 @@
         @update:model-value="handleExcelFileSelect"
       ></v-file-input>
       <v-alert type="info" variant="tonal" density="compact" class="mt-2 text-caption">
-        請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、**指派銷售(選填)**
+        請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、指派銷售(選填)、備註(選填)
       </v-alert>
     </v-window-item>
 
@@ -1088,7 +1117,7 @@
                     </v-card-text>
 
         <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-white">
+        <v-card-actions class="pa-4 bg-white flex-wrap">
         <v-btn v-if="uploadStep === 2" variant="text" color="grey-darken-1" prepend-icon="mdi-arrow-left" @click="uploadStep = 1">返回修改文本</v-btn>
         
         <v-btn
@@ -1103,6 +1132,28 @@
         </v-btn>
 
           <v-spacer></v-spacer>
+
+          <!-- ✅ LINE 通知開關（僅在 Step 2 預覽階段顯示） -->
+          <div v-if="uploadStep === 2" class="d-flex align-center me-4">
+            <v-switch
+              v-model="sendLineNotify"
+              color="green"
+              density="compact"
+              hide-details
+              inset
+              class="me-1"
+            ></v-switch>
+            <div class="d-flex flex-column">
+              <span class="text-caption font-weight-bold" :class="sendLineNotify ? 'text-green-darken-2' : 'text-grey'">
+                <v-icon size="14" class="me-1">{{ sendLineNotify ? 'mdi-bell-ring' : 'mdi-bell-off' }}</v-icon>
+                {{ sendLineNotify ? '分配後發送 LINE 通知' : 'LINE 通知已關閉' }}
+              </span>
+              <span class="text-caption text-grey-darken-1" style="font-size: 10px;">
+                {{ sendLineNotify ? '銷售人員將收到名單推播' : '僅寫入資料庫，不推播通知' }}
+              </span>
+            </div>
+          </div>
+
           <v-btn 
             v-if="uploadStep === 1" 
             color="primary" 
@@ -1123,6 +1174,150 @@
         >
           確認無誤並執行分配 ({{ previewLeads.length }}筆)
         </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ Excel 匯入重複名單比對 Dialog -->
+    <v-dialog v-model="excelDuplicateDialog" max-width="1000" persistent scrollable>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar color="orange-darken-2" density="compact" class="px-4">
+          <v-icon start>mdi-file-compare</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">
+            偵測到重複名單 — 請選擇處理方式
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="cancelExcelDuplicates"></v-btn>
+        </v-toolbar>
+
+        <div class="bg-orange-lighten-5 pa-3 d-flex align-center gap-3 flex-wrap border-bottom">
+          <v-chip size="small" color="orange" variant="flat" class="font-weight-bold">
+            ⚠️ 重複 {{ excelDuplicates.length }} 筆
+          </v-chip>
+          <v-chip size="small" color="success" variant="flat" class="font-weight-bold">
+            ✨ 全新 {{ excelParsedNewLeads.length }} 筆
+          </v-chip>
+          <v-spacer></v-spacer>
+          <v-btn size="small" variant="tonal" color="orange-darken-3" prepend-icon="mdi-select-all" @click="setAllDuplicateAction('overwrite')">
+            全部覆蓋
+          </v-btn>
+          <v-btn size="small" variant="tonal" color="blue-grey" prepend-icon="mdi-select-remove" @click="setAllDuplicateAction('skip')">
+            全部跳過
+          </v-btn>
+        </div>
+
+        <v-card-text class="pa-0" style="max-height: 500px; overflow-y: auto;">
+          <v-table density="comfortable" fixed-header class="d-none d-md-block">
+            <thead>
+              <tr class="bg-grey-lighten-4">
+                <th width="80">處理</th>
+                <th>客戶姓名</th>
+                <th>聯絡電話</th>
+                <th>來源管道</th>
+                <th>購屋預算</th>
+                <th>指派銷售</th>
+                <th>備註</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="(dup, idx) in excelDuplicates" :key="idx">
+                <!-- 舊資料列 -->
+                <tr class="bg-red-lighten-5">
+                  <td rowspan="2" class="text-center" style="vertical-align: middle;">
+                    <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg" class="flex-column">
+                      <v-btn value="overwrite" size="x-small" class="font-weight-bold px-2">覆蓋</v-btn>
+                      <v-btn value="skip" size="x-small" class="font-weight-bold px-2">跳過</v-btn>
+                    </v-btn-toggle>
+                  </td>
+                  <td>
+                    <div class="d-flex align-center">
+                      <v-chip size="x-small" color="red-lighten-1" variant="flat" class="me-2 text-white">舊</v-chip>
+                      {{ dup.existing.name }}
+                    </div>
+                  </td>
+                  <td class="text-caption">{{ dup.existing.phone }}</td>
+                  <td class="text-caption">{{ dup.existing.source || '—' }}</td>
+                  <td class="text-caption">{{ dup.existing.budget || '—' }}</td>
+                  <td class="text-caption">{{ dup.existing.assignedName || '—' }}</td>
+                  <td class="text-caption">{{ dup.existing.note || '—' }}</td>
+                </tr>
+                <!-- 新資料列 -->
+                <tr :class="dup.action === 'overwrite' ? 'bg-green-lighten-5' : 'bg-grey-lighten-4'">
+                  <td>
+                    <div class="d-flex align-center">
+                      <v-chip size="x-small" color="green" variant="flat" class="me-2 text-white">新</v-chip>
+                      <span :class="dup.incoming.name !== dup.existing.name ? 'font-weight-bold text-orange-darken-3' : ''">
+                        {{ dup.incoming.name }}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="text-caption">{{ dup.incoming.phone }}</td>
+                  <td class="text-caption" :class="dup.incoming.source !== dup.existing.source ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming.source || '—' }}
+                  </td>
+                  <td class="text-caption" :class="dup.incoming.budget !== dup.existing.budget ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming.budget || '—' }}
+                  </td>
+                  <td class="text-caption" :class="dup.incoming.assignedName !== dup.existing.assignedName ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming.assignedName || '—' }}
+                  </td>
+                  <td class="text-caption" :class="dup.incoming.note !== (dup.existing.note || '') ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming.note || '—' }}
+                  </td>
+                </tr>
+                <!-- 分隔線 -->
+                <tr v-if="idx < excelDuplicates.length - 1"><td colspan="7" class="pa-0"><v-divider></v-divider></td></tr>
+              </template>
+            </tbody>
+          </v-table>
+
+          <!-- 手機版卡片 -->
+          <div class="d-block d-md-none pa-3">
+            <v-card v-for="(dup, idx) in excelDuplicates" :key="idx" class="mb-3 rounded-lg" border elevation="1">
+              <v-card-text class="pa-3">
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <div class="font-weight-bold">{{ dup.existing.phone }}</div>
+                  <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg">
+                    <v-btn value="overwrite" size="x-small" class="font-weight-bold">覆蓋</v-btn>
+                    <v-btn value="skip" size="x-small" class="font-weight-bold">跳過</v-btn>
+                  </v-btn-toggle>
+                </div>
+                <v-row dense>
+                  <v-col cols="6">
+                    <div class="text-caption text-red font-weight-bold mb-1">舊資料</div>
+                    <div class="text-caption">姓名：{{ dup.existing.name }}</div>
+                    <div class="text-caption">來源：{{ dup.existing.source || '—' }}</div>
+                    <div class="text-caption">預算：{{ dup.existing.budget || '—' }}</div>
+                    <div class="text-caption">銷售：{{ dup.existing.assignedName || '—' }}</div>
+                  </v-col>
+                  <v-col cols="6">
+                    <div class="text-caption text-green font-weight-bold mb-1">新資料</div>
+                    <div class="text-caption">姓名：{{ dup.incoming.name }}</div>
+                    <div class="text-caption">來源：{{ dup.incoming.source || '—' }}</div>
+                    <div class="text-caption">預算：{{ dup.incoming.budget || '—' }}</div>
+                    <div class="text-caption">銷售：{{ dup.incoming.assignedName || '—' }}</div>
+                  </v-col>
+                </v-row>
+              </v-card-text>
+            </v-card>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-white">
+          <v-btn variant="text" color="grey-darken-1" @click="cancelExcelDuplicates">取消匯入</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            rounded="lg"
+            prepend-icon="mdi-check-bold"
+            class="font-weight-bold"
+            :loading="isResolvingDuplicates"
+            @click="resolveExcelDuplicates"
+          >
+            確認並繼續 (匯入 {{ excelResolvedCount }} 筆)
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1572,6 +1767,94 @@ const deleteAITemplate = async (id) => {
 const previewLeads = ref([]);   
 const duplicateResults = ref({}); 
 const isCheckingDuplicates = ref(false);
+const sendLineNotify = ref(true); // ✅ LINE 通知開關（預設開啟）
+
+// --- Excel 匯入重複比對 ---
+const excelDuplicateDialog = ref(false);
+const excelDuplicates = ref([]); // { existing, incoming, action: 'skip'|'overwrite' }
+const excelParsedNewLeads = ref([]);
+const isResolvingDuplicates = ref(false);
+
+const excelResolvedCount = computed(() => {
+  const overwriteCount = excelDuplicates.value.filter(d => d.action === 'overwrite').length;
+  return excelParsedNewLeads.value.length + overwriteCount;
+});
+
+const setAllDuplicateAction = (action) => {
+  excelDuplicates.value.forEach(d => { d.action = action; });
+};
+
+const cancelExcelDuplicates = () => {
+  excelDuplicateDialog.value = false;
+  excelDuplicates.value = [];
+  excelParsedNewLeads.value = [];
+};
+
+const resolveExcelDuplicates = async () => {
+  isResolvingDuplicates.value = true;
+  try {
+    // 1. 處理「覆蓋」的名單：直接更新 Firestore 現有文件
+    const overwriteItems = excelDuplicates.value.filter(d => d.action === 'overwrite');
+    let updatedCount = 0;
+    for (const dup of overwriteItems) {
+      const updateData = {
+        name: dup.incoming.name || dup.existing.name,
+        source: dup.incoming.source || dup.existing.source,
+        budget: dup.incoming.budget || dup.existing.budget,
+        date: dup.incoming.date || dup.existing.date,
+        note: dup.incoming.note ?? dup.existing.note,
+        updatedAt: serverTimestamp(),
+        updatedBy: userStore.user?.name || '系統'
+      };
+      // 若 Excel 有指定銷售且比對成功，也一併更新
+      if (dup.incoming.assignedTo) {
+        updateData.assignedTo = dup.incoming.assignedTo;
+        updateData.assignedName = dup.incoming.assignedName;
+      }
+      await updateDoc(doc(db, 'leads', dup.existing.id), updateData);
+      updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+      showMsg(`已覆蓋更新 ${updatedCount} 筆現有名單`, 'info');
+    }
+
+    // 2. 將全新名單送入預覽流程
+    const newLeads = excelParsedNewLeads.value;
+    excelDuplicateDialog.value = false;
+
+    if (newLeads.length === 0) {
+      const skippedCount = excelDuplicates.value.filter(d => d.action === 'skip').length;
+      showMsg(`處理完成！覆蓋 ${updatedCount} 筆${skippedCount > 0 ? `，跳過 ${skippedCount} 筆` : ''}，無新名單需匯入`, 'success');
+      excelDuplicates.value = [];
+      excelParsedNewLeads.value = [];
+      return;
+    }
+
+    // 繼續原有的預覽流程
+    previewLeads.value = newLeads;
+    uploadStep.value = 2;
+    await runCheck(newLeads.map(l => l.phone).filter(p => p));
+
+    // 自動指派
+    previewLeads.value.forEach(lead => {
+      if (!lead.assignedTo) {
+        const res = duplicateResults.value[lead.phone];
+        if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
+          quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
+        }
+      }
+    });
+    applySorting();
+
+    excelDuplicates.value = [];
+    excelParsedNewLeads.value = [];
+  } catch (err) {
+    showMsg('處理重複名單失敗：' + err.message, 'error');
+  } finally {
+    isResolvingDuplicates.value = false;
+  }
+};
 
 const reportForm = ref({ status: '', reason: '', note: '' });
 const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
@@ -2491,7 +2774,8 @@ const executeBatchImportAndAssign = async () => {
     const res = await batchImportAndAssignLeadsAPI({
       projectId: props.projectId,
       leads: leadsWithStatus, 
-      operator: userStore.user?.name || "櫃檯人員"
+      operator: userStore.user?.name || "櫃檯人員",
+      sendLineNotify: sendLineNotify.value // ✅ 傳入 LINE 通知開關
     });
 
     if (res.status === 'success') {
@@ -2517,6 +2801,7 @@ const closeUploadDialog = () => {
   uploadInputs.value = [''];
   previewLeads.value = [];
   excelFile.value = null;
+  sendLineNotify.value = true; // ✅ 重置 LINE 通知開關
   selectedTemplateId.value = 'auto'; // ✅ 重置範本選擇
   // ✅ 清空所有偵測結果
   Object.keys(detectedTemplateInfoMap).forEach(k => delete detectedTemplateInfoMap[k]);
@@ -2832,6 +3117,52 @@ const executeLeadsExport = async () => {
   }
 };
 
+// ✅ 匯出名單（使用與匯入相同的表頭格式，方便下載→編輯→再匯入）
+const isTemplateExporting = ref(false);
+
+const exportLeadsForImport = async () => {
+  isTemplateExporting.value = true;
+  try {
+    // 使用與匯入解析完全對應的中文表頭
+    const exportRows = allLeads.value.map((item) => ({
+      '客戶姓名': item.name || '',
+      '聯絡電話': item.phone || '',
+      '來源管道': item.source || '',
+      '購屋預算': item.budget || '',
+      '填表日期': item.date || '',
+      '指派銷售': item.assignedName || '',
+      '備註': item.note || ''
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+
+    // 設定欄寬，提升可讀性
+    ws['!cols'] = [
+      { wch: 12 }, // 客戶姓名
+      { wch: 14 }, // 聯絡電話
+      { wch: 14 }, // 來源管道
+      { wch: 14 }, // 購屋預算
+      { wch: 14 }, // 填表日期
+      { wch: 12 }, // 指派銷售
+      { wch: 20 }  // 備註
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, '聯絡名單');
+
+    const dateTag = new Date().toISOString().split('T')[0];
+    const fileName = `${projectName.value}_聯絡名單_${dateTag}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+    showMsg(`已匯出 ${exportRows.length} 筆名單`, 'success');
+  } catch (err) {
+    console.error('匯出失敗:', err);
+    showMsg('匯出失敗: ' + err.message, 'error');
+  } finally {
+    isTemplateExporting.value = false;
+  }
+};
+
 // --- Google Sheet Sync Logic ---
 const googleSheetDialog = ref(false);
 const isSyncingToGoogle = ref(false);
@@ -3075,7 +3406,7 @@ const applySorting = () => {
   });
 };
 
-// ✓ [打勾] 完整的 Excel 解析與多層級排序優化
+// ✓ [打勾] 完整的 Excel 解析與多層級排序優化（含重複偵測）
 const handleExcelFileSelect = async (input) => {
   const file = Array.isArray(input) ? input[0] : input;
   if (!file) return;
@@ -3108,28 +3439,59 @@ const handleExcelFileSelect = async (input) => {
           source: normalizeSource(row['來源管道'] || row['來源']), // ✅ 統一來源格式
           budget: (row['購屋預算'] || row['預算'] || '').toString().trim(),
           date: normalizeDate(row['填表日期'] || row['日期']),   // 統一日期 YYYY/MM/DD
+          note: (row['備註'] || '').toString().trim(), // ✅ 支援匯入備註欄位
           rawText: 'EXCEL匯入',
           assignedTo,
           assignedName
         };
       });
 
-      previewLeads.value = mappedLeads.filter(l => l.phone);
-      uploadStep.value = 2;
-      
-      await runCheck(previewLeads.value.map(l => l.phone));
-      
-      // 自動指派與多層級排序邏輯
-      previewLeads.value.forEach(lead => {
-        if (!lead.assignedTo) {
-          const res = duplicateResults.value[lead.phone];
-          if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
-            quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
-          }
+      const validLeads = mappedLeads.filter(l => l.phone);
+
+      // ✅ 重複偵測：以電話號碼比對現有名單
+      const existingPhoneMap = {};
+      allLeads.value.forEach(lead => {
+        if (lead.phone) existingPhoneMap[lead.phone] = lead;
+      });
+
+      const newLeads = [];
+      const duplicates = [];
+
+      validLeads.forEach(lead => {
+        const existing = existingPhoneMap[lead.phone];
+        if (existing) {
+          duplicates.push({
+            existing: existing,
+            incoming: lead,
+            action: 'skip' // 預設保留舊資料
+          });
+        } else {
+          newLeads.push(lead);
         }
       });
 
-      applySorting(); // 執行排序：未指派 > 既有客資 > 本次重複
+      // ✅ 有重複 → 顯示比對 Dialog，讓用戶決定
+      if (duplicates.length > 0) {
+        excelDuplicates.value = duplicates;
+        excelParsedNewLeads.value = newLeads;
+        excelDuplicateDialog.value = true;
+      } else {
+        // 無重複，直接進入預覽
+        previewLeads.value = newLeads;
+        uploadStep.value = 2;
+        await runCheck(newLeads.map(l => l.phone).filter(p => p));
+
+        // 自動指派與多層級排序
+        previewLeads.value.forEach(lead => {
+          if (!lead.assignedTo) {
+            const res = duplicateResults.value[lead.phone];
+            if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
+              quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
+            }
+          }
+        });
+        applySorting();
+      }
 
     } catch (err) {
       showMsg('解析失敗: ' + err.message, 'error');
