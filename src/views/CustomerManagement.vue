@@ -1068,10 +1068,9 @@
                 </v-card-item>
 
                 <v-card-text>
-                  <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-                    <v-icon start size="small">mdi-alert</v-icon> 
-                    <b>注意：</b> 匯入將以「電話」為主鍵。<br>
-                    若電話存在，系統將<b>覆蓋</b>現有資料 (包含互動紀錄)。
+                  <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+                    <v-icon start size="small">mdi-information</v-icon> 
+                    匯入將以「電話」為主鍵。若電話與現有客戶重複，系統將顯示比對並讓您決定是否覆蓋。
                   </v-alert>
 
                   <v-file-input
@@ -1115,6 +1114,143 @@
       </v-window-item>
 
       </v-window>
+
+    <!-- ✅ 客資匯入重複比對 Dialog -->
+    <v-dialog v-model="customerDuplicateDialog" max-width="1000" persistent scrollable>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar color="orange-darken-2" density="compact" class="px-4">
+          <v-icon start>mdi-file-compare</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">
+            偵測到重複客戶資料 — 請選擇處理方式
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="cancelCustomerDuplicates"></v-btn>
+        </v-toolbar>
+
+        <div class="bg-orange-lighten-5 pa-3 d-flex align-center gap-3 flex-wrap border-bottom">
+          <v-chip size="small" color="orange" variant="flat" class="font-weight-bold">
+            ⚠️ 重複 {{ customerDuplicates.length }} 筆
+          </v-chip>
+          <v-chip size="small" color="success" variant="flat" class="font-weight-bold">
+            ✨ 全新 {{ customerNewProfiles.length }} 筆
+          </v-chip>
+          <v-spacer></v-spacer>
+          <v-btn size="small" variant="tonal" color="orange-darken-3" prepend-icon="mdi-select-all" @click="setAllCustomerDupAction('overwrite')">
+            全部覆蓋
+          </v-btn>
+          <v-btn size="small" variant="tonal" color="blue-grey" prepend-icon="mdi-select-remove" @click="setAllCustomerDupAction('skip')">
+            全部跳過
+          </v-btn>
+        </div>
+
+        <v-card-text class="pa-0" style="max-height: 500px; overflow-y: auto;">
+          <v-table density="comfortable" fixed-header class="d-none d-md-block">
+            <thead>
+              <tr class="bg-grey-lighten-4">
+                <th width="80">處理</th>
+                <th>姓名</th>
+                <th>電話(主鍵)</th>
+                <th>銷售人員</th>
+                <th>等級</th>
+                <th>購屋預算</th>
+                <th>房型需求</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="(dup, idx) in customerDuplicates" :key="idx">
+                <!-- 舊資料列 -->
+                <tr class="bg-red-lighten-5">
+                  <td rowspan="2" class="text-center" style="vertical-align: middle;">
+                    <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg" class="flex-column">
+                      <v-btn value="overwrite" size="x-small" class="font-weight-bold px-2">覆蓋</v-btn>
+                      <v-btn value="skip" size="x-small" class="font-weight-bold px-2">跳過</v-btn>
+                    </v-btn-toggle>
+                  </td>
+                  <td>
+                    <div class="d-flex align-center">
+                      <v-chip size="x-small" color="red-lighten-1" variant="flat" class="me-2 text-white">舊</v-chip>
+                      {{ dup.existing['姓名'] || '—' }}
+                    </div>
+                  </td>
+                  <td class="text-caption">{{ dup.existing['電話'] || dup.existingPhone }}</td>
+                  <td class="text-caption">{{ dup.existing['銷售人員'] || '—' }}</td>
+                  <td class="text-caption">{{ dup.existing['等級研判'] || '—' }}</td>
+                  <td class="text-caption">{{ dup.existing['購屋預算'] || '—' }}</td>
+                  <td class="text-caption">{{ Array.isArray(dup.existing['房型需求']) ? dup.existing['房型需求'].join(',') : (dup.existing['房型需求'] || '—') }}</td>
+                </tr>
+                <!-- 新資料列 -->
+                <tr :class="dup.action === 'overwrite' ? 'bg-green-lighten-5' : 'bg-grey-lighten-4'">
+                  <td>
+                    <div class="d-flex align-center">
+                      <v-chip size="x-small" color="green" variant="flat" class="me-2 text-white">新</v-chip>
+                      <span :class="(dup.incoming['姓名'] || '') !== (dup.existing['姓名'] || '') ? 'font-weight-bold text-orange-darken-3' : ''">
+                        {{ dup.incoming['姓名'] || '—' }}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="text-caption">{{ dup.incoming['電話(主鍵)'] }}</td>
+                  <td class="text-caption" :class="(dup.incoming['銷售人員'] || '') !== (dup.existing['銷售人員'] || '') ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming['銷售人員'] || '—' }}
+                  </td>
+                  <td class="text-caption" :class="(dup.incoming['等級'] || '') !== (dup.existing['等級研判'] || '') ? 'font-weight-bold text-orange-darken-3' : ''">
+                    {{ dup.incoming['等級'] || '—' }}
+                  </td>
+                  <td class="text-caption">{{ dup.incoming['購屋預算'] || '—' }}</td>
+                  <td class="text-caption">{{ dup.incoming['房型需求'] || '—' }}</td>
+                </tr>
+                <tr v-if="idx < customerDuplicates.length - 1"><td colspan="7" class="pa-0"><v-divider></v-divider></td></tr>
+              </template>
+            </tbody>
+          </v-table>
+
+          <!-- 手機版卡片 -->
+          <div class="d-block d-md-none pa-3">
+            <v-card v-for="(dup, idx) in customerDuplicates" :key="idx" class="mb-3 rounded-lg" border elevation="1">
+              <v-card-text class="pa-3">
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <div class="font-weight-bold">{{ dup.existingPhone }}</div>
+                  <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg">
+                    <v-btn value="overwrite" size="x-small" class="font-weight-bold">覆蓋</v-btn>
+                    <v-btn value="skip" size="x-small" class="font-weight-bold">跳過</v-btn>
+                  </v-btn-toggle>
+                </div>
+                <v-row dense>
+                  <v-col cols="6">
+                    <div class="text-caption text-red font-weight-bold mb-1">舊資料</div>
+                    <div class="text-caption">姓名：{{ dup.existing['姓名'] || '—' }}</div>
+                    <div class="text-caption">銷售：{{ dup.existing['銷售人員'] || '—' }}</div>
+                    <div class="text-caption">等級：{{ dup.existing['等級研判'] || '—' }}</div>
+                  </v-col>
+                  <v-col cols="6">
+                    <div class="text-caption text-green font-weight-bold mb-1">新資料</div>
+                    <div class="text-caption">姓名：{{ dup.incoming['姓名'] || '—' }}</div>
+                    <div class="text-caption">銷售：{{ dup.incoming['銷售人員'] || '—' }}</div>
+                    <div class="text-caption">等級：{{ dup.incoming['等級'] || '—' }}</div>
+                  </v-col>
+                </v-row>
+              </v-card-text>
+            </v-card>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-white">
+          <v-btn variant="text" color="grey-darken-1" @click="cancelCustomerDuplicates">取消匯入</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            rounded="lg"
+            prepend-icon="mdi-check-bold"
+            class="font-weight-bold"
+            :loading="batchState.isImporting"
+            @click="resolveCustomerDuplicates"
+          >
+            確認並執行匯入 (共 {{ customerResolvedCount }} 筆)
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="batchUploadDialog" max-width="600px" persistent>
       <v-card>
@@ -1776,11 +1912,34 @@ async function loadCustomerList() {
 const batchState = ref({
   isExporting: false,
   isImporting: false,
-  isUploadSuccess: false, // 新增
+  isUploadSuccess: false,
   uploadFile: null,
-  profilesRaw: [],        // ✅ 新增：用來存放解析後的原始資料
+  profilesRaw: [],
+  logsRaw: [],
   logs: []
 });
+
+// --- 客資匯入重複比對 ---
+const customerDuplicateDialog = ref(false);
+const customerDuplicates = ref([]); // { existing, incoming, existingPhone, action: 'skip'|'overwrite' }
+const customerNewProfiles = ref([]); // 全新的 profilesRaw rows
+const customerNewLogsGroup = ref({}); // 全新名單對應的 logsRaw
+
+const customerResolvedCount = computed(() => {
+  const overwriteCount = customerDuplicates.value.filter(d => d.action === 'overwrite').length;
+  return customerNewProfiles.value.length + overwriteCount;
+});
+
+const setAllCustomerDupAction = (action) => {
+  customerDuplicates.value.forEach(d => { d.action = action; });
+};
+
+const cancelCustomerDuplicates = () => {
+  customerDuplicateDialog.value = false;
+  customerDuplicates.value = [];
+  customerNewProfiles.value = [];
+  customerNewLogsGroup.value = {};
+};
 
 
 // [輔助函式] 日期格式化 (YYYY/MM/DD HH:mm:ss)
@@ -1911,22 +2070,82 @@ const executeBatchExport = async () => {
   }
 };
 
-// ✅ [打勾] 完整修正版：處理雙分頁關聯與資料結構對齊
+// ✅ [打勾] 完整修正版：處理雙分頁關聯與資料結構對齊（含重複偵測）
 const executeBatchImport = async () => {
   if (!batchState.value.profilesRaw || !batchState.value.profilesRaw.length) {
     return alert("請先選擇並解析檔案");
   }
-  
-  batchState.value.isImporting = true;
-  const jsNow = new Date(); // 台灣時間格式將由後端轉為 Timestamp
 
-  // ✅ [打勾] 輔助函式：確保字串轉為陣列 (避免型別錯誤)
+  // ✅ 重複偵測：以電話比對現有客戶列表
+  const existingPhoneMap = {};
+  customerList.value.forEach(c => {
+    const phone = String(c['電話'] || '').trim();
+    if (phone) existingPhoneMap[phone] = c;
+  });
+
+  const newProfiles = [];
+  const duplicates = [];
+
+  batchState.value.profilesRaw.forEach(row => {
+    const phone = String(row['電話(主鍵)'] || '').trim();
+    if (!phone) return;
+
+    const existing = existingPhoneMap[phone];
+    if (existing) {
+      duplicates.push({
+        existing: existing,
+        incoming: row,
+        existingPhone: phone,
+        action: 'skip' // 預設保留舊資料
+      });
+    } else {
+      newProfiles.push(row);
+    }
+  });
+
+  // ✅ 有重複 → 顯示比對 Dialog
+  if (duplicates.length > 0) {
+    customerDuplicates.value = duplicates;
+    customerNewProfiles.value = newProfiles;
+    customerDuplicateDialog.value = true;
+    return; // 等用戶決定後再繼續
+  }
+
+  // 無重複，直接執行匯入
+  await _doBatchImport(newProfiles);
+};
+
+// ✅ 用戶解決重複後執行
+const resolveCustomerDuplicates = async () => {
+  const overwriteProfiles = customerDuplicates.value
+    .filter(d => d.action === 'overwrite')
+    .map(d => d.incoming);
+
+  const finalProfiles = [...customerNewProfiles.value, ...overwriteProfiles];
+  customerDuplicateDialog.value = false;
+
+  if (finalProfiles.length === 0) {
+    const skippedCount = customerDuplicates.value.filter(d => d.action === 'skip').length;
+    alert(`處理完成！跳過 ${skippedCount} 筆重複資料，無新資料需匯入。`);
+    cancelCustomerDuplicates();
+    return;
+  }
+
+  await _doBatchImport(finalProfiles);
+  cancelCustomerDuplicates();
+};
+
+// ✅ 實際執行匯入的核心函數
+const _doBatchImport = async (profilesToImport) => {
+  batchState.value.isImporting = true;
+  const jsNow = new Date();
+
   const toArr = (val) => {
     if (val === undefined || val === null || val === '') return [];
     return String(val).split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
   };
 
-  // ✅ [打勾] 1. 處理「洽談紀錄」分組邏輯 (從 batchState.logsRaw 取得)
+  // 1. 處理「洽談紀錄」分組邏輯
   const logsGroupByPhone = {};
   if (batchState.value.logsRaw && batchState.value.logsRaw.length > 0) {
     batchState.value.logsRaw.forEach(log => {
@@ -1952,8 +2171,8 @@ const executeBatchImport = async () => {
     });
   }
 
-  // 2. 開始建立客戶資料 Payload
-  const customerPayloads = batchState.value.profilesRaw.map(row => {
+  // 2. 建立客戶資料 Payload
+  const customerPayloads = profilesToImport.map(row => {
     const phone = String(row['電話(主鍵)'] || '').trim();
     if (!phone) return null;
 
@@ -1961,16 +2180,13 @@ const executeBatchImport = async () => {
     const otherPhonesStr = String(row['其他聯絡人'] || '');
     const otherPhones = parseOtherPhonesStr(otherPhonesStr);
 
-    // 取得該客戶對應的洽談紀錄
     const myLogs = logsGroupByPhone[phone] || [];
 
-    // ✅ [修正] 從 Excel「建立時間」欄位解析拜訪日期，而非使用當前時間
     const rawCreatedAt = row['建立時間'];
     const parsedDate = parseExcelDate(rawCreatedAt);
     const visitDate = parsedDate ? parsedDate.toISOString().split('T')[0] : jsNow.toISOString().split('T')[0];
     const createdAtDate = parsedDate || jsNow;
 
-    // ✅ 建立提交紀錄 Snapshot (與前端建立結構一致)
     const submissionEntry = {
       submissionSource: 'excel_import',
       importSource: 'Excel Batch Upload',
@@ -1991,10 +2207,8 @@ const executeBatchImport = async () => {
       拜訪日期: visitDate
     };
 
-    // ✅ [修正] 等級：從 Excel 讀取後寫入 interactionLogs，讓前端等級研判能正確顯示
     const importedRating = String(row['等級'] || '').trim();
     if (importedRating && myLogs.length === 0) {
-      // 若 Excel 有等級但該客戶沒有洽談紀錄，則自動建立一筆系統紀錄帶入等級
       myLogs.push({
         logId: String(Date.now() + Math.floor(Math.random() * 1000)),
         date: visitDate,
@@ -2012,12 +2226,10 @@ const executeBatchImport = async () => {
       });
     }
 
-    // ✅ [修正] 關聯建案：從 Excel 欄位解析 linkedProjectIds (逗號分隔的 projectId)
     const linkedPidsRaw = String(row['關聯建案'] || '').trim();
     const linkedPids = linkedPidsRaw
       ? linkedPidsRaw.split(/[,，]/).map(s => s.trim()).filter(Boolean)
       : [];
-    // allProjectIds = 當前建案 + 關聯建案 (去重)
     const allPids = [...new Set([props.projectId, ...linkedPids])];
 
     const data = {
@@ -2027,14 +2239,12 @@ const executeBatchImport = async () => {
       latestSalesName: row['銷售人員'] || '',
       latestSalesPhone: row['銷售人員PHONE'] || '',
       otherPhones: otherPhones,
-      // ✅ 建立搜尋索引陣列
       searchableNames: Array.from(new Set([name, ...otherPhones.map(p => p.name)])).filter(Boolean),
       searchablePhones: Array.from(new Set([phone, ...otherPhones.map(p => p.phone)])).filter(Boolean),
       submissions: [submissionEntry],
-      interactionLogs: myLogs, // ✅ 寫入洽談紀錄 (含等級)
+      interactionLogs: myLogs,
       updatedAt: jsNow,
-      createdAt: createdAtDate, // ✅ [修正] 使用 Excel 建立時間
-      // ✅ [修正] 關聯建案
+      createdAt: createdAtDate,
       allProjectIds: allPids,
       linkedProjectIds: linkedPids,
       profile: {
@@ -2046,16 +2256,11 @@ const executeBatchImport = async () => {
       }
     };
 
-    // 3. 根據 EXCEL_COLUMN_MAP 分配剩餘欄位到 Profile
     EXCEL_COLUMN_MAP.forEach(cfg => {
       let rawVal = row[cfg.header];
       if (rawVal === undefined || rawVal === null || rawVal === '') return;
-      
-      // 跳過已特殊處理的欄位
       if (cfg.type === 'linkedProjects' || cfg.type === 'timestamp') return;
-      
       let finalVal = (cfg.type === 'array') ? toArr(rawVal) : rawVal;
-      
       if (cfg.target === 'profile') {
         data.profile[cfg.key] = finalVal;
       }
@@ -2068,17 +2273,15 @@ const executeBatchImport = async () => {
   }).filter(Boolean);
 
   try {
-    // 呼叫 API 執行批次寫入
     const res = await batchImportCustomers(props.projectId, customerPayloads, currentUserPhone.value);
     alert(`匯入完成！成功處理 ${res.count || 0} 筆資料`);
     
-    // ✅ [打勾] 重設上傳狀態
     batchState.value.profilesRaw = [];
-    batchState.value.logsRaw = []; // 需確保 handleBatchUploadFile 有填入此值
+    batchState.value.logsRaw = [];
     batchState.value.uploadFile = null;
     batchState.value.isUploadSuccess = false;
     
-    loadCustomerList(); // 重新載入列表同步資料
+    loadCustomerList();
   } catch (err) {
     console.error("匯入失敗:", err);
     alert("匯入失敗: " + err.message);
