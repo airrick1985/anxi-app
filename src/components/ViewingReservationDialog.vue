@@ -12,33 +12,39 @@
           <v-container>
             <v-row>
               <v-col cols="12" sm="6">
-                <label class="text-caption text-grey-darken-1">預約時間(必填)</label>
-              <VueDatePicker 
-                    v-model="formData.reservationTime"
-                     
-                    :enable-time-picker="true"
-                    :is-24="false"
-                    format="yyyy/MM/dd aa hh:mm" 
-                    locale="zh-TW"
-                    :min-date="new Date()"
-                    :teleport="true"
-                    select-text="確認選擇" 
-                    cancel-text="取消"
-                    class="mt-1"
-                    :state="formData.reservationTime ? null : false"
+                <label class="native-dt-label">
+                  <v-icon size="18" class="mr-1">mdi-calendar-clock</v-icon>
+                  預約時間(必填)
+                </label>
+
+                <!-- 原生日期時間選擇器 -->
+                <div 
+                  class="native-dt-wrapper" 
+                  :class="{ 
+                    'native-dt-wrapper--filled': !!formData.reservationTime,
+                    'native-dt-wrapper--error': !formData.reservationTime 
+                  }"
                 >
-                    <template #am-pm-button="{ toggle, value }">
-                        <button 
-                            @click="toggle" 
-                            class="dp__pm_am_button" 
-                            type="button"
-                        >
-                            {{ value === 'AM' ? '上午' : '下午' }}
-                        </button>
-                    </template>
-                </VueDatePicker>
-              <div v-if="!formData.reservationTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
-                </v-col>
+                  <input
+                    type="datetime-local"
+                    lang="en-GB"
+                    :value="dateTimeLocalValue"
+                    @input="onNativeDateTimeInput($event)"
+                    :min="minDateTimeLocal"
+                    step="300"
+                    class="native-dt-input"
+                  />
+                  <v-icon 
+                    v-if="formData.reservationTime" 
+                    size="18" 
+                    class="native-dt-clear" 
+                    @click.stop="formData.reservationTime = null"
+                  >mdi-close-circle</v-icon>
+                </div>
+
+
+                <div v-if="!formData.reservationTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
+              </v-col>
               
               <v-col cols="12" sm="6">
                  <v-select
@@ -217,9 +223,40 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useReservationStore } from '@/store/reservationStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore'; // 確保引用
-import VueDatePicker from '@vuepic/vue-datepicker';
-import '@vuepic/vue-datepicker/dist/main.css';
-import { format } from 'date-fns';
+import { format, addDays, setHours, setMinutes, startOfDay } from 'date-fns';
+
+// ===== 原生 datetime-local 轉換工具 =====
+
+// Date → 原生 input 值 (yyyy-MM-ddTHH:mm)
+const toDateTimeLocalString = (date) => {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// 計算 input 的 value
+const dateTimeLocalValue = computed(() => {
+  return toDateTimeLocalString(formData.value.reservationTime);
+});
+
+// 計算 min 屬性（不能選過去時間）
+const minDateTimeLocal = computed(() => {
+  return toDateTimeLocalString(new Date());
+});
+
+// 原生 input 事件處理
+const onNativeDateTimeInput = (e) => {
+  const val = e.target.value;
+  if (val) {
+    formData.value.reservationTime = new Date(val);
+  } else {
+    formData.value.reservationTime = null;
+  }
+};
+
+
 
 const props = defineProps({
   modelValue: Boolean,
@@ -527,7 +564,97 @@ const formatDate = (ts) => {
 </script>
 
 <style scoped>
-.dp__main {
-    font-family: inherit;
+/* ===== 標籤 ===== */
+.native-dt-label {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    color: #757575;
+    margin-bottom: 6px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
+
+/* ===== 原生日期時間輸入框容器 ===== */
+.native-dt-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border: 1.5px solid #bdbdbd;
+    border-radius: 10px;
+    background: #fafafa;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 48px;
+}
+
+.native-dt-wrapper:focus-within {
+    border-color: #1976d2;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.15);
+}
+
+.native-dt-wrapper--error:not(:focus-within) {
+    border-color: #e53935;
+    background: #fff5f5;
+}
+
+.native-dt-wrapper--filled {
+    border-color: #4caf50;
+    background: #f9fff9;
+}
+
+.native-dt-wrapper--filled:focus-within {
+    border-color: #1976d2;
+    background: #fff;
+}
+
+/* ===== 原生 input 本體 ===== */
+.native-dt-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 16px;
+    font-weight: 500;
+    color: #212121;
+    font-family: inherit;
+    letter-spacing: 0.3px;
+    min-width: 0;
+    /* 讓 input 佔滿高度，增加點擊區域 */
+    padding: 8px 0;
+    cursor: pointer;
+}
+
+/* iOS / Safari 移除預設樣式 */
+.native-dt-input::-webkit-inner-spin-button,
+.native-dt-input::-webkit-calendar-picker-indicator {
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 4px;
+}
+
+.native-dt-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* placeholder 樣式（未選值時） */
+.native-dt-input:invalid {
+    color: #9e9e9e;
+}
+
+/* ===== 清除按鈕 ===== */
+.native-dt-clear {
+    color: #bdbdbd;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: color 0.2s;
+    padding: 4px;
+}
+
+.native-dt-clear:hover {
+    color: #e53935;
+}
+
 </style>
