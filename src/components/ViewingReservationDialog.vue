@@ -17,33 +17,59 @@
                   預約時間(必填)
                 </label>
 
-                <!-- 原生日期時間選擇器 -->
+                <!-- 已確認的時間顯示 -->
                 <div 
-                  class="native-dt-wrapper" 
-                  :class="{ 
-                    'native-dt-wrapper--filled': !!formData.reservationTime,
-                    'native-dt-wrapper--error': !formData.reservationTime 
-                  }"
+                  v-if="formData.reservationTime && !isEditingTime" 
+                  class="native-dt-wrapper native-dt-wrapper--filled"
+                  @click="startEditTime"
                 >
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    :value="dateTimeLocalValue"
-                    @input="onNativeDateTimeInput($event)"
-                    :min="minDateTimeLocal"
-                    step="300"
-                    class="native-dt-input"
-                  />
-                  <v-icon 
-                    v-if="formData.reservationTime" 
-                    size="18" 
-                    class="native-dt-clear" 
-                    @click.stop="formData.reservationTime = null"
-                  >mdi-close-circle</v-icon>
+                  <span class="native-dt-display">
+                    {{ formatSelectedTime(formData.reservationTime) }}
+                  </span>
+                  <v-icon size="16" color="grey" class="ml-auto">mdi-pencil</v-icon>
                 </div>
 
+                <!-- 編輯模式：原生日期時間選擇器 -->
+                <div v-else>
+                  <div 
+                    class="native-dt-wrapper" 
+                    :class="{ 'native-dt-wrapper--error': !tempDateTime }"
+                  >
+                    <input
+                      ref="dtInputRef"
+                      type="datetime-local"
+                      lang="en-GB"
+                      v-model="tempDateTime"
+                      :min="minDateTimeLocal"
+                      step="300"
+                      class="native-dt-input"
+                    />
+                  </div>
 
-                <div v-if="!formData.reservationTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
+                  <!-- 確認 / 取消 按鈕列 -->
+                  <div class="native-dt-actions mt-2">
+                    <v-btn 
+                      size="small" 
+                      variant="text" 
+                      color="grey"
+                      @click="cancelEditTime"
+                    >
+                      取消
+                    </v-btn>
+                    <v-btn 
+                      size="small" 
+                      variant="flat" 
+                      color="primary"
+                      :disabled="!tempDateTime"
+                      @click="confirmDateTime"
+                      prepend-icon="mdi-check"
+                    >
+                      確認選擇
+                    </v-btn>
+                  </div>
+                </div>
+
+                <div v-if="!formData.reservationTime && !isEditingTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
               </v-col>
               
               <v-col cols="12" sm="6">
@@ -219,13 +245,17 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useReservationStore } from '@/store/reservationStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore'; // 確保引用
-import { format, addDays, setHours, setMinutes, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
 
 // ===== 原生 datetime-local 轉換工具 =====
+
+const dtInputRef = ref(null);
+const tempDateTime = ref(''); // 暫存值（字串格式）
+const isEditingTime = ref(false); // 是否正在編輯時間
 
 // Date → 原生 input 值 (yyyy-MM-ddTHH:mm)
 const toDateTimeLocalString = (date) => {
@@ -236,24 +266,39 @@ const toDateTimeLocalString = (date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// 計算 input 的 value
-const dateTimeLocalValue = computed(() => {
-  return toDateTimeLocalString(formData.value.reservationTime);
-});
-
 // 計算 min 屬性（不能選過去時間）
 const minDateTimeLocal = computed(() => {
   return toDateTimeLocalString(new Date());
 });
 
-// 原生 input 事件處理
-const onNativeDateTimeInput = (e) => {
-  const val = e.target.value;
-  if (val) {
-    formData.value.reservationTime = new Date(val);
-  } else {
-    formData.value.reservationTime = null;
+// 顯示已選擇的時間（友善格式）
+const formatSelectedTime = (date) => {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  return format(d, 'yyyy/MM/dd HH:mm');
+};
+
+// 開始編輯時間
+const startEditTime = () => {
+  tempDateTime.value = toDateTimeLocalString(formData.value.reservationTime);
+  isEditingTime.value = true;
+  nextTick(() => {
+    dtInputRef.value?.focus();
+  });
+};
+
+// 確認選擇
+const confirmDateTime = () => {
+  if (tempDateTime.value) {
+    formData.value.reservationTime = new Date(tempDateTime.value);
   }
+  isEditingTime.value = false;
+};
+
+// 取消編輯
+const cancelEditTime = () => {
+  tempDateTime.value = '';
+  isEditingTime.value = false;
 };
 
 
@@ -657,4 +702,28 @@ const formatDate = (ts) => {
     color: #e53935;
 }
 
+/* ===== 已確認時間顯示 ===== */
+.native-dt-wrapper--filled {
+    cursor: pointer;
+}
+
+.native-dt-wrapper--filled:hover {
+    border-color: #1976d2;
+    background: #f5f9ff;
+}
+
+.native-dt-display {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 600;
+    color: #212121;
+    letter-spacing: 0.5px;
+}
+
+/* ===== 確認/取消按鈕列 ===== */
+.native-dt-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
 </style>
