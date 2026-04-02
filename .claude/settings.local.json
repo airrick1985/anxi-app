@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(firebase deploy:*)",
+      "Bash(firebase login:use airrick1985@gmail.com)",
+      "Bash(firebase use:*)",
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m 'feat\\(HouseholdGrid\\): 新增動態預約資訊欄位展示:*)"
+    ]
+  }
+}

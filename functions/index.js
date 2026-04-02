@@ -5035,6 +5035,9 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
+          ${newAppointmentData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${newAppointmentData.bookingSubOption}</td></tr>
+          ` : ''}
           ${newAppointmentData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${newAppointmentData.inspectionCompanyName}</td></tr>
           ` : ''}
@@ -5186,6 +5189,9 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
+          ${bookingData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${bookingData.bookingSubOption}</td></tr>
+          ` : ''}
           ${bookingData.inspectionCompanyName ? `
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">代驗公司</td><td style="padding: 12px 0;">${bookingData.inspectionCompanyName}</td></tr>
           ` : ''}
@@ -5944,6 +5950,9 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${finalAppointmentData.bookerEmail}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${finalAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionMethod}</td></tr>
+          ${finalAppointmentData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${finalAppointmentData.bookingSubOption}</td></tr>
+          ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${formattedAppointmentDate}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${finalAppointmentData.appointmentTimeSlot}</td></tr>
         </tbody>
@@ -12716,7 +12725,7 @@ exports.exportAppointmentsByProject = onRequest(
         // 3.1. 加入標頭 (Header Row)
         // ❗ 順序必須與 3.2 中 push 的欄位順序完全一致
         outputData.push([
-          "預約ID", "建立時間", "戶別", "預約項目", "預約日期", "預約時段", "預約人", "電話", "Email", "狀態", "預約方式", "代驗公司", "受託人"
+          "預約ID", "建立時間", "戶別", "預約項目", "預約日期", "預約時段", "預約人", "電話", "Email", "狀態", "預約方式", "子選項", "代驗公司", "受託人"
         ]);
 
         // 3.2. 處理資料 (Data Rows)
@@ -12737,6 +12746,7 @@ exports.exportAppointmentsByProject = onRequest(
               data.bookerEmail || "", // Email (修正了之前可能的 bookKERmail 錯字)
               data.status || "", // 狀態
               data.inspectionMethod || "", // 驗屋方式
+              data.bookingSubOption || "", // 子選項
               data.inspectionCompanyName || "", // 代驗公司
               data.agentName || "" // 受託人
             ]);
@@ -13046,7 +13056,7 @@ async function _handleCheckExistingBooking(data) {
  * [內部函式] 獲取可預約時段
  */
 async function _handleGetAvailableSlots(data) {
-  const { projectId, unitId, bookingType, bookingMethod } = data;
+  const { projectId, unitId, bookingType, bookingMethod, subOption } = data; // 新增 subOption
   const functionName = `_handleGetAvailableSlots (Project: ${projectId}, Unit: ${unitId})`;
 
   // ... (此函數的完整內部邏輯保持不變，直接複製過來) ...
@@ -13163,6 +13173,8 @@ async function _handleGetAvailableSlots(data) {
     // --- END: 根據 quotaMode 決定名額查詢邏輯 ---
 
     const bookingsCount = {};
+    const subOptionBookingsCount = {};
+    const methodBookingsCount = {}; // 各方式個別預約數
     appointmentsQuery.forEach(doc => {
       const appt = doc.data();
       let apptDate;
@@ -13172,6 +13184,15 @@ async function _handleGetAvailableSlots(data) {
         } else throw new Error('Invalid date format');
         const key = `${apptDate}_${appt.appointmentTimeSlot}`;
         bookingsCount[key] = (bookingsCount[key] || 0) + 1;
+
+        if (appt.bookingSubOption) {
+          const subKey = `${key}_${appt.bookingSubOption}`;
+          subOptionBookingsCount[subKey] = (subOptionBookingsCount[subKey] || 0) + 1;
+        }
+        if (appt.inspectionMethod) {
+          const methodKey = `${key}_${appt.inspectionMethod}`;
+          methodBookingsCount[methodKey] = (methodBookingsCount[methodKey] || 0) + 1;
+        }
       } catch (dateError) {
         console.warn(`[${functionName}] WARN: Skipping appointment ${doc.id} due to invalid date:`, appt.appointmentDate);
       }
@@ -13182,21 +13203,42 @@ async function _handleGetAvailableSlots(data) {
         return;
       }
       const slotsForDay = [];
+      let hasAvailableSlot = false;
       const sortedTimeKeys = Object.keys(rule.slots).sort();
       for (const timeSlot of sortedTimeKeys) {
         const slotInfo = rule.slots[timeSlot];
         if (slotInfo && Array.isArray(slotInfo.methods) && slotInfo.methods.includes(bookingMethod)) {
           const bookingKey = `${dateStr}_${timeSlot}`;
-          const currentBookings = bookingsCount[bookingKey] || 0;
-          const capacity = slotInfo.capacity || 0;
-          if (currentBookings < capacity) {
-            slotsForDay.push(`${timeSlot} (尚餘 ${capacity - currentBookings} 位)`);
+          let remaining;
+
+          // 名額優先級：subOption > methodLimit > 全局 capacity (向下相容)
+          // 只要該時段有設定任何 subOptionLimits，就以子選項為準（未列入的子選項 = 0 名額）
+          if (subOption && slotInfo.subOptionLimits && Object.keys(slotInfo.subOptionLimits).length > 0) {
+            const subCap = slotInfo.subOptionLimits[subOption] || 0;
+            const subCurrentBookings = subOptionBookingsCount[`${bookingKey}_${subOption}`] || 0;
+            remaining = Math.max(0, subCap - subCurrentBookings);
+          } else if (slotInfo.methodLimits?.[bookingMethod] !== undefined) {
+            // 方式獨立名額
+            const methodCap = slotInfo.methodLimits[bookingMethod] || 0;
+            const methodCurrentBookings = methodBookingsCount[`${bookingKey}_${bookingMethod}`] || 0;
+            remaining = Math.max(0, methodCap - methodCurrentBookings);
+          } else {
+            // 向下相容：舊有全局 capacity
+            const cap = slotInfo.capacity || 0;
+            const currentBookings = bookingsCount[bookingKey] || 0;
+            remaining = Math.max(0, cap - currentBookings);
+          }
+
+          if (remaining > 0) {
+            slotsForDay.push(`${timeSlot} (尚餘 ${remaining} 位)`);
+            hasAvailableSlot = true;
           } else {
             slotsForDay.push(`${timeSlot} (已額滿)`);
           }
         }
       }
-      if (slotsForDay.length > 0) {
+      // 只有當天至少有一個時段有剩餘名額，才將該日期加入可選日期清單
+      if (hasAvailableSlot) {
         timeSlotsByDate[dateStr] = slotsForDay;
       }
     });
@@ -13499,7 +13541,42 @@ async function _handleSaveBooking(data) {
       // --- END: 根據 quotaMode 決定名額查詢範圍 ---
       const appointmentsSnapshot = await transaction.get(appointmentsQueryCapacity);
       const currentBookings = appointmentsSnapshot.size;
-      if (currentBookings >= capacity) throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段名額剛好額滿，請返回上一步重新選擇時段。`);
+
+      // 名額檢查優先級：subOption > methodLimit > 全局 capacity (向下相容)
+      // 只要該時段有設定任何 subOptionLimits，就以子選項為準（未列入的子選項 = 0 名額）
+      const subOption = bookingData.subOption;
+      const bookingMethodForCheck = bookingData.bookingMethod;
+      if (subOption && slotInfo.subOptionLimits && Object.keys(slotInfo.subOptionLimits).length > 0) {
+        const subCap = slotInfo.subOptionLimits[subOption] || 0;
+        if (subCap === 0) {
+          throw new HttpsError("failed-precondition", `SLOT_FULL: 該時段未開放給「${subOption}」。`);
+        }
+        let subCurrentBookings = 0;
+        appointmentsSnapshot.forEach(doc => {
+          if (doc.data().bookingSubOption === subOption) subCurrentBookings++;
+        });
+        if (subCurrentBookings >= subCap) {
+          throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段「${subOption}」名額剛好額滿，請重新選擇時段。`);
+        }
+      } else if (slotInfo.methodLimits?.[bookingMethodForCheck] !== undefined) {
+        // 方式獨立名額
+        const methodCap = slotInfo.methodLimits[bookingMethodForCheck] || 0;
+        if (methodCap === 0) {
+          throw new HttpsError("failed-precondition", `SLOT_FULL: 該時段未開放給「${bookingMethodForCheck}」。`);
+        }
+        let methodCurrentBookings = 0;
+        appointmentsSnapshot.forEach(doc => {
+          if (doc.data().inspectionMethod === bookingMethodForCheck) methodCurrentBookings++;
+        });
+        if (methodCurrentBookings >= methodCap) {
+          throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段「${bookingMethodForCheck}」名額剛好額滿，請重新選擇時段。`);
+        }
+      } else {
+        // 向下相容：舊有全局 capacity
+        if (currentBookings >= capacity) {
+          throw new HttpsError("resource-exhausted", `SLOT_FULL: 此時段總名額剛好額滿，請返回上一步重新選擇時段。`);
+        }
+      }
       const bookingCode = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').sort(() => 0.5 - Math.random()).join('').substring(0, 6);
       const now = new Date();
       const timeStr = now.toLocaleTimeString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(/:/g, '-');
@@ -13521,6 +13598,7 @@ async function _handleSaveBooking(data) {
         bookingCode: bookingCode, reportUploaded: !['初驗', '複驗', '驗屋'].includes(bookingData.bookingType),
         bookingMethodDetails: bookingData.bookingMethodDetails || {},
         bookingMethodDetailsDisplay: bookingData.bookingMethodDetailsDisplay || [],
+        bookingSubOption: bookingData.subOption || '', // 新增：記錄所選的第三層子選項
         batchCode: batchCode,    // 新增：記錄此預約所屬的批次代號（用於 isolated 模式的名額查詢）
         batchId: batchId,        // 新增：記錄此預約所屬的批次文件 ID
       };
@@ -13641,6 +13719,9 @@ async function _handleSaveBooking(data) {
           ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${newAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${newAppointmentData.inspectionMethod}</td></tr>
+          ${newAppointmentData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${newAppointmentData.bookingSubOption}</td></tr>
+          ` : ''}
           ${newAppointmentData.bookingMethodDetailsDisplay && newAppointmentData.bookingMethodDetailsDisplay.length > 0 ?
         newAppointmentData.bookingMethodDetailsDisplay.map(item => `
               <tr style="border-bottom: 1px solid #eeeeee;">
@@ -13797,6 +13878,9 @@ async function _handleCancelBooking(data) {
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">戶別</td><td style="padding: 12px 0;">${bookingData.unitId}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${bookingData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${bookingData.inspectionMethod || '未提供'}</td></tr>
+          ${bookingData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${bookingData.bookingSubOption}</td></tr>
+          ` : ''}
           ${bookingData.bookingMethodDetailsDisplay && bookingData.bookingMethodDetailsDisplay.length > 0 ?
           bookingData.bookingMethodDetailsDisplay.map(item => `
               <tr style="border-bottom: 1px solid #eeeeee;">
@@ -15136,6 +15220,9 @@ async function _handleAddAppointmentAdmin(data) {
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">EMAIL</td><td style="padding: 12px 0;">${finalAppointmentData.bookerEmail}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約項目</td><td style="padding: 12px 0;">${finalAppointmentData.bookingType}</td></tr>
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">選擇方式</td><td style="padding: 12px 0;">${finalAppointmentData.inspectionMethod}</td></tr>
+          ${finalAppointmentData.bookingSubOption ? `
+          <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">子選項</td><td style="padding: 12px 0;">${finalAppointmentData.bookingSubOption}</td></tr>
+          ` : ''}
           <tr style="border-bottom: 1px solid #eeeeee;"><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約日期</td><td style="padding: 12px 0;">${formattedAppointmentDate}</td></tr>
           <tr><td style="padding: 12px 0; font-weight: bold; color: #555555;">預約時段</td><td style="padding: 12px 0;">${finalAppointmentData.appointmentTimeSlot}</td></tr>
         </tbody>
@@ -20902,12 +20989,22 @@ exports.batchImportAndAssignLeads = onCall({
 
       // 3. 如果有指派且需要發送通知，發送 LINE 通知
       if (shouldNotify && payload.assignedTo) {
-        const userDoc = await db.collection("users").doc(payload.assignedTo).get();
-        const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
+        try {
+          const userDoc = await db.collection("users").doc(payload.assignedTo).get();
+          const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
 
-        if (salesLineId && salesLineId.startsWith('U') && channelToken) {
-          // 使用既有的發送邏輯
-          await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, leadId);
+          if (salesLineId && salesLineId.startsWith('U') && channelToken) {
+            await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, leadId);
+          }
+        } catch (lineError) {
+          // LINE 通知失敗不中斷主流程（可能是月度上限、Token 失效等）
+          const status = lineError?.response?.status;
+          const lineMsg = lineError?.response?.data?.message || lineError.message;
+          if (status === 429) {
+            console.warn(`[${functionName}] LINE 通知跳過 (已達月度上限): leadId=${leadId}`);
+          } else {
+            console.error(`[${functionName}] LINE 通知失敗: leadId=${leadId}, status=${status}, msg=${lineMsg}`);
+          }
         }
       }
       results.push(leadId);

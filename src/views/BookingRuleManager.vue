@@ -577,6 +577,14 @@
                             </div>
                           </v-expand-transition>
 
+                          <!-- 新增：子選項設定 -->
+                          <v-divider class="my-4"></v-divider>
+                          <div class="text-subtitle-2 font-weight-bold mb-2">子選項設定 (選填)</div>
+                          <div class="text-caption text-grey-darken-1 mb-2">
+                            若需讓客戶在選擇此方式後進一步選擇項目（例如：填寫需貸款後，需進一步選擇台灣銀行、土地銀行等），請在此設定。輸入項目後按下 Enter 新增。
+                          </div>
+                          <v-combobox v-model="editedMethodSubOptions" label="子選單項目 (按 Enter 新增多筆)" multiple chips clearable variant="outlined" density="compact"></v-combobox>
+
                         </v-card-text>
                         <v-card-actions class="pa-4">
                           <v-spacer></v-spacer>
@@ -1741,16 +1749,28 @@
                       <v-chip color="indigo" variant="tonal" label class="mb-1">
                         <v-icon start>mdi-clock-time-four-outline</v-icon>
                         <strong>{{ slot.time }}</strong>
-                        <v-divider vertical class="mx-2"></v-divider>
-                        <span class="font-weight-regular">{{ slot.capacity }} 名</span>
                       </v-chip>
-                      <div class="pl-2 d-flex flex-wrap ga-2">
-                        <v-chip v-for="method in previewBatchMethods" :key="method"
-                          :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
-                          :color="slot.methods.includes(method) ? 'green' : 'grey'" size="x-small" label>
-                          {{ method }}
-                        </v-chip>
+                      <div class="pl-2 d-flex flex-wrap ga-1 align-center">
+                        <template v-for="method in previewBatchMethods" :key="method">
+                          <v-chip v-if="slot.methods.includes(method)"
+                            color="green" variant="elevated" size="x-small" label>
+                            {{ method }}
+                            <template v-if="slot.methodLimits[method] !== undefined">
+                              : {{ slot.methodLimits[method] }} 名
+                            </template>
+                            <template v-else-if="slot.capacity > 0">
+                              : {{ slot.capacity }} 名
+                            </template>
+                          </v-chip>
+                        </template>
                         <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
+                      </div>
+                      <div v-if="Object.keys(slot.subOptionLimits).length > 0" class="pl-2 mt-1 d-flex flex-wrap ga-1 align-center">
+                        <v-icon size="x-small" color="primary" class="mr-1">mdi-sitemap-outline</v-icon>
+                        <v-chip v-for="(limit, subOpt) in slot.subOptionLimits" :key="subOpt"
+                          size="x-small" variant="tonal" :color="limit > 0 ? 'blue' : 'grey'" label>
+                          {{ subOpt }}: {{ limit }} 名
+                        </v-chip>
                       </div>
                     </div>
                   </div>
@@ -1997,38 +2017,86 @@
                     {{ isDayConfigured(selectedDaysForEditing[0]) ? '已設定' : '未設定' }}
                   </v-chip>
                 </h3>
-                <v-combobox v-model="currentDaySlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
-                  label="選擇或輸入時段 (例如: 09:00)" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
-                  persistent-hint></v-combobox>
-                <v-divider class="my-4"></v-divider>
-                <p class="text-subtitle-1 mb-2">設定各時段名額與可預約方式</p>
+                <!-- 快速新增時段面板 -->
+                <v-sheet border rounded class="pa-3 mb-3 bg-grey-lighten-5">
+                  <div class="text-subtitle-2 font-weight-bold mb-2 d-flex align-center">
+                    <v-icon start size="small" color="primary">mdi-plus-circle-outline</v-icon>
+                    新增時段
+                  </div>
+                  <div class="d-flex align-start ga-2 flex-wrap mb-2">
+                    <v-combobox v-model="pendingNewSlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
+                      label="選擇或輸入時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
+                      persistent-hint style="flex: 1; min-width: 180px"></v-combobox>
+                    <v-combobox v-model="pendingNewCapacity" :items="capacityPresets" type="number" label="名額" min="0"
+                      variant="outlined" density="compact" hide-details style="max-width: 90px"></v-combobox>
+                  </div>
+                  <div class="mb-2">
+                    <div class="text-caption text-grey-darken-1 mb-1">可預約方式 (新增時預設)：</div>
+                    <div class="d-flex flex-wrap align-center">
+                      <v-checkbox v-for="method in availableBatchMethods" :key="method"
+                        v-model="pendingNewMethods" :value="method" :label="method"
+                        density="compact" hide-details class="d-inline-block mr-2"></v-checkbox>
+                      <span v-if="availableBatchMethods.length === 0" class="text-caption text-grey">（請先儲存批次預約項目後再設定方式）</span>
+                    </div>
+                  </div>
+                  <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-plus"
+                    :disabled="!pendingNewSlots.length" @click="applyPendingSlots">新增至已選日期</v-btn>
+                </v-sheet>
+                <v-divider class="my-3"></v-divider>
+                <p class="text-subtitle-1 mb-2">已設定時段</p>
                 <div style="max-height: 400px; overflow-y: auto;" class="pr-2">
                   <div v-if="sortedCurrentDaySlots.length === 0" class="text-center text-grey pa-4">
-                    請先在上方輸入時段
+                    尚無時段，請使用上方「新增時段」面板新增
                   </div>
                   <v-sheet v-for="slot in sortedCurrentDaySlots" :key="slot" border rounded class="pa-3 mb-3">
-                    <div class="d-flex justify-space-between align-center">
+                    <div class="d-flex justify-space-between align-center mb-1">
                       <span class="font-weight-bold text-h6 text-grey-darken-2">{{ slot }}</span>
-                      <v-combobox label="名額" :model-value="getCapacityForSlot(slot)"
-                        @update:model-value="setCapacityForSlot(slot, $event)" :items="capacityPresets" type="number"
-                        min="0" variant="outlined" density="compact" hide-details
-                        style="max-width: 120px;"></v-combobox>
+                      <v-btn icon="mdi-delete-outline" size="small" color="error" variant="tonal"
+                        density="compact" @click="removeSlot(slot)"></v-btn>
                     </div>
                     <v-divider class="my-2"></v-divider>
                     <div>
-                      <div class="text-caption mb-1 ml-1">可預約方式</div>
-                      <div class="d-flex flex-wrap align-center">
+                      <div class="d-flex align-center mb-2">
+                        <span class="text-caption font-weight-bold mr-2">可預約方式與名額</span>
                         <v-checkbox :model-value="getSelectAllState(slot).checked"
                           :indeterminate="getSelectAllState(slot).indeterminate" label="全選" density="compact"
-                          hide-details class="d-inline-block mr-2 font-weight-bold"
+                          hide-details class="d-inline-block"
                           @update:model-value="handleSelectAll($event, slot)"></v-checkbox>
-                        <v-divider vertical class="mx-2 d-none d-sm-flex"></v-divider>
-                        <template v-if="availableBatchMethods.length > 0">
-                          <v-checkbox v-for="method in availableBatchMethods" :key="method"
-                            :model-value="isMethodSelectedForSlot(slot, method)"
-                            @update:model-value="updateMethodsForSlot(slot, method, $event)" :label="method"
-                            density="compact" hide-details class="d-inline-block mr-2"></v-checkbox>
+                      </div>
+                      <div v-if="availableBatchMethods.length === 0" class="text-caption text-grey ml-1">請先儲存批次預約項目</div>
+                      <div v-for="method in availableBatchMethods" :key="method" class="d-flex align-center mb-1 ga-2 flex-wrap">
+                        <v-checkbox :model-value="isMethodSelectedForSlot(slot, method)"
+                          @update:model-value="updateMethodsForSlot(slot, method, $event)"
+                          :label="method" density="compact" hide-details
+                          style="min-width: 130px;"></v-checkbox>
+                        <template v-if="isMethodSelectedForSlot(slot, method)">
+                          <v-chip v-if="(batchMethodSubOptionsMap[method] || []).length > 0"
+                            size="x-small" color="primary" variant="tonal" label>
+                            <v-icon start size="x-small">mdi-sitemap-outline</v-icon>
+                            由子選項名額決定
+                          </v-chip>
+                          <v-text-field v-else
+                            :model-value="getMethodLimitForSlot(slot, method)"
+                            @update:model-value="setMethodLimitForSlot(slot, method, $event)"
+                            type="number" min="0" label="名額" variant="outlined" density="compact"
+                            hide-details style="max-width: 90px;"></v-text-field>
                         </template>
+                      </div>
+                    </div>
+
+                    <!-- 子項目名額設定 -->
+                    <div v-if="availableBatchSubOptions.length > 0" class="mt-2 pl-2 border-s-sm" style="border-color: var(--v-theme-primary)!important;">
+                      <div class="text-caption text-primary mb-1 font-weight-bold">特定子選項名額限制 (若留空則總量管制，不個別限制)：</div>
+                      <div class="d-flex flex-wrap align-center ga-2 mb-1">
+                        <div v-for="subOpt in availableBatchSubOptions" :key="subOpt" style="max-width: 140px;">
+                          <v-text-field 
+                            :label="subOpt" 
+                            :model-value="getSubOptionCapacityForSlot(slot, subOpt)"
+                            @update:model-value="setSubOptionCapacityForSlot(slot, subOpt, $event)"
+                            type="number" min="0" class="bg-white"
+                            variant="outlined" density="compact" hide-details>
+                          </v-text-field>
+                        </div>
                       </div>
                     </div>
                   </v-sheet>
@@ -2644,6 +2712,38 @@ const availableBatchMethods = computed(() => {
   return projectSettings.value.bookingMethodOptions || [];
 });
 
+// 計算各方式是否有子選項（用於 UI 判斷是否顯示方式名額輸入）
+const batchMethodSubOptionsMap = computed(() => {
+  const selectedType = editedBatch.value.bookingType;
+  if (!selectedType || !projectSettings.value.bookingMenu?.length) return {};
+  const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
+  if (!item?.methods) return {};
+  const map = {};
+  item.methods.filter(m => !m.deleted).forEach(m => {
+    map[m.title] = (m.subOptions && Array.isArray(m.subOptions)) ? m.subOptions : [];
+  });
+  return map;
+});
+
+// [New] Computed: Available sub-options for the selected batch methods
+const availableBatchSubOptions = computed(() => {
+  const selectedType = editedBatch.value.bookingType;
+  if (!selectedType || selectedType === '其他') return [];
+  if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
+    const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
+    if (item && item.methods) {
+      let subOpts = [];
+      item.methods.filter(m => !m.deleted).forEach(m => {
+        if (m.subOptions && Array.isArray(m.subOptions)) {
+          subOpts.push(...m.subOptions);
+        }
+      });
+      return [...new Set(subOpts)];
+    }
+  }
+  return [];
+});
+
 // [New] Computed: Available methods for the previewed batch
 const previewBatchMethods = computed(() => {
   if (!batchToPreview.value) return [];
@@ -3035,6 +3135,7 @@ const permanentlyDeleteBookingItem = async (index) => {
 
 const editedMethodTriggerAuth = ref(false); // [New]
 const editedMethodAskPresence = ref(false); // [New]
+const editedMethodSubOptions = ref([]); // 新增：用於子選單
 
 // 2. Selection Method (Child)
 const openEditMethodDialog = (parentIndex, method = null, methodIndex = -1) => {
@@ -3048,11 +3149,13 @@ const openEditMethodDialog = (parentIndex, method = null, methodIndex = -1) => {
     editedMethodTitle.value = method.title;
     editedMethodTriggerAuth.value = method.triggerAuthFlow || false; // [New] Load existing
     editedMethodAskPresence.value = method.askOwnerPresence || false; // [New] Load existing
+    editedMethodSubOptions.value = method.subOptions || []; // 新增
     editedMethodIndex.value = methodIndex;
   } else {
     editedMethodTitle.value = '';
     editedMethodTriggerAuth.value = false; // [New] Default false
     editedMethodAskPresence.value = false; // [New] Default false
+    editedMethodSubOptions.value = []; // 新增
     editedMethodIndex.value = -1;
   }
   isMethodDialogVisible.value = true;
@@ -3072,7 +3175,8 @@ const saveMethod = async () => {
       title: editedMethodTitle.value,
       customFields: [],
       triggerAuthFlow: editedMethodTriggerAuth.value,
-      askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false
+      askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false,
+      subOptions: editedMethodSubOptions.value // 新增
     });
   } else {
     // Edit - 將過濾後的 method 索引轉為實際索引
@@ -3081,6 +3185,7 @@ const saveMethod = async () => {
       parentItem.methods[realMethodIndex].title = editedMethodTitle.value;
       parentItem.methods[realMethodIndex].triggerAuthFlow = editedMethodTriggerAuth.value;
       parentItem.methods[realMethodIndex].askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false;
+      parentItem.methods[realMethodIndex].subOptions = editedMethodSubOptions.value; // 新增
     }
   }
 
@@ -3372,6 +3477,10 @@ const defaultBatch = {
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]);
 const isLoadingBatchData = ref(false); // 防止編輯載入時 watcher 清空已選日期
+// 快速新增時段面板的暫存狀態
+const pendingNewSlots = ref([]);
+const pendingNewCapacity = ref(1);
+const pendingNewMethods = ref([]);
 
 
 
@@ -3785,6 +3894,9 @@ async function openBatchDialog(item = null) {
   } else {
     selectedDaysForEditing.value = [];
   }
+  pendingNewSlots.value = [];
+  pendingNewMethods.value = [];
+  pendingNewCapacity.value = 1;
   isBatchDialogVisible.value = true;
 
   // 等 DOM 更新完畢後才解除 flag，避免 watcher 誤清空
@@ -3850,7 +3962,9 @@ async function openPreviewDialog(item) {
             slotsData.push({
               time: time,
               capacity: slotInfo.capacity || 0,
-              methods: slotInfo.methods || []
+              methods: slotInfo.methods || [],
+              methodLimits: slotInfo.methodLimits || {},
+              subOptionLimits: slotInfo.subOptionLimits || {}
             });
           }
         }
@@ -4037,6 +4151,96 @@ function setCapacityForSlot(slot, capacity) {
     const slots = editedBatch.value.dailyRules[formatDate(day)]?.slots;
     if (slots && slots[slot]) slots[slot].capacity = cap;
   });
+}
+
+// 讀取特定時段特定方式的名額
+function getMethodLimitForSlot(slot, method) {
+  if (selectedDaysForEditing.value.length === 0) return '';
+  const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
+  return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.methodLimits?.[method] ?? '';
+}
+
+// 設定特定時段特定方式的名額
+function setMethodLimitForSlot(slot, method, value) {
+  const valStr = String(value).trim();
+  selectedDaysForEditing.value.forEach(day => {
+    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    if (daySlot) {
+      if (!daySlot.methodLimits) daySlot.methodLimits = {};
+      if (valStr === '') {
+        delete daySlot.methodLimits[method];
+      } else {
+        daySlot.methodLimits[method] = Number(valStr) || 0;
+      }
+    }
+  });
+}
+
+// 新增：讀取特定時段的子選項名額
+function getSubOptionCapacityForSlot(slot, subOption) {
+  if (selectedDaysForEditing.value.length === 0) return '';
+  const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
+  return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.subOptionLimits?.[subOption] ?? '';
+}
+
+// 新增：設定特定時段的子選項名額
+function setSubOptionCapacityForSlot(slot, subOption, capacity) {
+  const capStr = String(capacity).trim();
+  selectedDaysForEditing.value.forEach(day => {
+    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    if (daySlot) {
+      if (!daySlot.subOptionLimits) {
+        daySlot.subOptionLimits = {};
+      }
+      if (capStr === '') {
+        delete daySlot.subOptionLimits[subOption];
+      } else {
+        daySlot.subOptionLimits[subOption] = Number(capStr) || 0;
+      }
+    }
+  });
+}
+
+// 快速新增時段：將 pendingNewSlots 套用到所有已選日期，並預設 methods/capacity
+function applyPendingSlots() {
+  if (!pendingNewSlots.value.length || !selectedDaysForEditing.value.length) return;
+  selectedDaysForEditing.value.forEach(day => {
+    const dateKey = formatDate(day);
+    if (!editedBatch.value.dailyRules[dateKey]) {
+      editedBatch.value.dailyRules[dateKey] = { slots: {} };
+    }
+    const daySlots = { ...editedBatch.value.dailyRules[dateKey].slots };
+    pendingNewSlots.value.forEach(slot => {
+      if (!daySlots[slot]) {
+        const methodLimits = {};
+        pendingNewMethods.value.forEach(m => {
+          methodLimits[m] = Number(pendingNewCapacity.value) || 1;
+        });
+        daySlots[slot] = {
+          capacity: 0,
+          methods: [...pendingNewMethods.value],
+          methodLimits
+        };
+      }
+    });
+    editedBatch.value.dailyRules[dateKey].slots = daySlots;
+  });
+  editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
+  pendingNewSlots.value = [];
+}
+
+// 刪除單一時段（從所有已選日期中移除）
+function removeSlot(slot) {
+  selectedDaysForEditing.value.forEach(day => {
+    const dateKey = formatDate(day);
+    const dayRule = editedBatch.value.dailyRules[dateKey];
+    if (dayRule?.slots?.[slot] !== undefined) {
+      const newSlots = { ...dayRule.slots };
+      delete newSlots[slot];
+      dayRule.slots = newSlots;
+    }
+  });
+  editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
 
 function isMethodSelectedForSlot(slot, method) {

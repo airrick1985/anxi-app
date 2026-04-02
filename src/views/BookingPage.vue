@@ -491,6 +491,11 @@
                       :items="availableMethodOptions" label="選擇方式" variant="outlined" :rules="[v => !!v || '選擇方式為必填項']"
                       :disabled="isLoading || !formStep1.unit || !isBookingActive" no-data-text="請先選擇預約項目"></v-select>
 
+                    <!-- 新增：第三層子選項 (例如：銀行選擇) -->
+                    <v-select v-if="availableSubOptions.length > 0" v-model="formStep1.subOption"
+                      :items="availableSubOptions" label="請選擇項目" variant="outlined" :rules="[v => !!v || '此項為必填']"
+                      :disabled="isLoading || !formStep1.bookingMethod || !isBookingActive"></v-select>
+
 
 
 
@@ -562,6 +567,8 @@
                         prepend-icon="mdi-format-list-checks"></v-list-item>
                       <v-list-item title="選擇方式" :subtitle="booking.inspectionMethod"
                         prepend-icon="mdi-account-search-outline"></v-list-item>
+                      <v-list-item v-if="booking.bookingSubOption" title="子選項" :subtitle="booking.bookingSubOption"
+                        prepend-icon="mdi-arrow-right-bottom"></v-list-item>
                       <template
                         v-if="booking.bookingMethodDetailsDisplay && booking.bookingMethodDetailsDisplay.length > 0">
                         <v-list-item v-for="field in booking.bookingMethodDetailsDisplay" :key="field.label" title=""
@@ -629,24 +636,33 @@
                       <div class="prose reminder-content" v-html="datePickerReminderContent"></div>
                     </v-alert>
 
-                    <v-date-picker v-model="formStep2.預約日期" :min="bookingSlots.startDate" :max="bookingSlots.endDate"
-                      :allowed-dates="isDateAllowed" @update:model-value="onDateChange"
-                      :color="projectConfig.themeColor" width="100%" title="請選擇預約日期"></v-date-picker>
+                    <!-- 無可預約日期：隱藏日期與時段選擇，直接顯示錯誤提示 -->
+                    <template v-if="!hasAvailableDates">
+                      <v-alert type="error" variant="flat" icon="mdi-calendar-remove-outline"
+                        class="my-6 text-center" prominent border="start">
+                        <div class="text-h6 font-weight-bold mb-1">無可預約日期</div>
+                        <div>{{ noAvailableDatesMessage }}</div>
+                      </v-alert>
+                    </template>
 
+                    <!-- 有可預約日期：正常顯示日期與時段選擇 -->
+                    <template v-else>
+                      <v-date-picker v-model="formStep2.預約日期" :min="bookingSlots.startDate" :max="bookingSlots.endDate"
+                        :allowed-dates="isDateAllowed" @update:model-value="onDateChange"
+                        :color="projectConfig.themeColor" width="100%" title="請選擇預約日期"></v-date-picker>
 
+                      <!-- Owner Presence Question 已移至 Step 1 -->
 
-
-                    <!-- Owner Presence Question 已移至 Step 1 -->
-
-                    <v-col cols="12">
-                      <v-select label="預約時段" v-model="formStep2.預約時段" :items="availableTimeSlots"
-                        :disabled="!formStep2.預約日期" :rules="[v => !!v || '必填']" variant="outlined" no-data-text="請先選擇日期"
-                        class="mt-4" item-title="title" item-value="value">
-                        <template v-slot:item="{ props, item }">
-                          <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
-                        </template>
-                      </v-select>
-                    </v-col>
+                      <v-col cols="12">
+                        <v-select label="預約時段" v-model="formStep2.預約時段" :items="availableTimeSlots"
+                          :disabled="!formStep2.預約日期" :rules="[v => !!v || '必填']" variant="outlined" no-data-text="請先選擇日期"
+                          class="mt-4" item-title="title" item-value="value">
+                          <template v-slot:item="{ props, item }">
+                            <v-list-item v-bind="props" :disabled="item.raw.title.includes('已額滿')"></v-list-item>
+                          </template>
+                        </v-select>
+                      </v-col>
+                    </template>
                     <template v-if="shouldShowAuthFlow">
                       <v-divider class="my-4"></v-divider>
                       <p class="mb-2 text-subtitle-1 font-weight-medium">
@@ -738,6 +754,7 @@
                     <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
 
                     <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
+                    <v-list-item v-if="finalBookingData.subOption" title="子選項" :subtitle="finalBookingData.subOption"></v-list-item>
 
                     <template v-if="shouldShowAuthFlow">
                       <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"></v-list-item>
@@ -812,6 +829,8 @@
                       prepend-icon="mdi-format-list-checks"></v-list-item>
                     <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"
                       prepend-icon="mdi-account-search-outline"></v-list-item>
+                    <v-list-item v-if="finalBookingData.subOption" title="子選項" :subtitle="finalBookingData.subOption"
+                      prepend-icon="mdi-arrow-right-bottom"></v-list-item>
 
                     <template v-if="shouldShowAuthFlow">
                       <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"
@@ -1375,6 +1394,7 @@ const formStep1 = ref({
   unit: null,
   bookingType: null,
   bookingMethod: null,
+  subOption: null, // 新增：第三層子選項
   companyName: '',
   address: '',
   idNumber: '',
@@ -1636,9 +1656,22 @@ const availableMethodOptions = computed(() => {
   return projectConfig.value.bookingMethodOptions || [];
 });
 
+// 新增：子選項 computed
+const availableSubOptions = computed(() => {
+  if (!projectConfig.value?.bookingMenu?.length || !formStep1.value.bookingMethod) return [];
+  const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
+  if (!selectedItem?.methods) return [];
+  const methodObj = selectedItem.methods.find(m => m.title === formStep1.value.bookingMethod && !m.deleted);
+  if (methodObj && methodObj.subOptions && Array.isArray(methodObj.subOptions) && methodObj.subOptions.length > 0) {
+    return methodObj.subOptions;
+  }
+  return [];
+});
+
 // Watcher: Type Change -> Reset Method
 watch(() => formStep1.value.bookingType, (newVal) => {
   formStep1.value.bookingMethod = null;
+  formStep1.value.subOption = null; // 新增
   currentDynamicFields.value = [];
   dynamicFormData.value = {};
 });
@@ -1646,6 +1679,7 @@ watch(() => formStep1.value.bookingType, (newVal) => {
 // Watcher: Method Change -> Update Fields
 watch(() => formStep1.value.bookingMethod, (newMethodName) => {
   currentDynamicFields.value = [];
+  formStep1.value.subOption = null; // 新增：切換方式時清空子選項
   if (!newMethodName) return;
 
   if (!projectConfig.value) return;
@@ -1756,6 +1790,19 @@ const datePickerReminderContent = computed(() => {
     return reminder.content;
   }
   return null;
+});
+
+// 是否有可預約日期（用於 Step 2 日期選擇器遮罩判斷）
+const hasAvailableDates = computed(() => {
+  return Object.keys(bookingSlots.value.timeSlotsByDate || {}).length > 0;
+});
+
+// 無可預約日期時的提示文字
+const noAvailableDatesMessage = computed(() => {
+  const method = formStep1.value.bookingMethod || '';
+  const sub = formStep1.value.subOption || '';
+  const label = sub ? `${method} - ${sub}` : method;
+  return `您選擇的「${label}」目前無可預約的日期，請回上一步改選其他項目`;
 });
 
 // 依據所選日期，動態產生可用的時間選項
@@ -2030,7 +2077,7 @@ const resetBookingFlow = () => {
   existingBookingInfo.value = null;
 
   // 重置表單資料
-  formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '', isOwnerPresent: true };
+  formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, subOption: null, companyName: '', address: '', idNumber: '', isOwnerPresent: true };
   dynamicFormData.value = {}; // [New] Reset dynamic data
   formStep2.value = { 姓名: '', 電話: '', EMAIL: '', 預約日期: null, 預約時段: null, 受託人姓名: '', 受託人電話: '' };
 
@@ -2216,7 +2263,8 @@ const proceedToNextBooking = async () => {
       formStep1.value.unit,
       formStep1.value.bookingType,
       formStep1.value.bookingMethod,
-      projectId.value
+      projectId.value,
+      formStep1.value.subOption // 新增：傳遞子選項
     );
 
     if (res.status === 'success' && res.data) {
@@ -2283,7 +2331,8 @@ const handleStep1Submit = async () => {
       formStep1.value.unit,
       formStep1.value.bookingType,
       formStep1.value.bookingMethod,
-      projectId.value // 傳入 projectId
+      projectId.value, // 傳入 projectId
+      formStep1.value.subOption // 新增：傳遞子選項
     );
 
 
@@ -2431,6 +2480,7 @@ const submitBooking = async () => {
         bookingDate: finalBookingData.value.預約日期, // YYYY/MM/DD
         bookingTimeSlot: finalBookingData.value.預約時段, // '09:00-10:00 (尚餘 X 位)'
         bookingMethod: finalBookingData.value.bookingMethod,
+        subOption: finalBookingData.value.subOption || '',
         companyName: finalBookingData.value.companyName,
         // 授權書相關
         principalName: authFormData.value.委託人姓名,
@@ -2546,7 +2596,8 @@ const captureAndSave = async () => {
 
 // 產生並打開 Google 行事曆連結
 const addToCalendar = () => {
-  const title = `${projectConfig.value.name}-${finalBookingData.value.bookingType}預約 (${finalBookingData.value.戶別})`;
+  const subLabel = finalBookingData.value.subOption ? `-${finalBookingData.value.subOption}` : '';
+  const title = `${projectConfig.value.name}-${finalBookingData.value.bookingType}${subLabel}預約 (${finalBookingData.value.戶別})`;
   const dateStr = finalBookingData.value.預約日期;
 
   const timeMatch = finalBookingData.value.預約時段.match(/(\d{1,2}:\d{2})/);
@@ -2571,6 +2622,9 @@ const addToCalendar = () => {
   eventDetails += `門牌：${finalBookingData.value.address}\n\n`;
   eventDetails += `預約項目：${finalBookingData.value.bookingType}\n`;
   eventDetails += `選擇方式：${finalBookingData.value.bookingMethod}\n`;
+  if (finalBookingData.value.subOption) {
+    eventDetails += `子選項：${finalBookingData.value.subOption}\n`;
+  }
   if (finalBookingData.value.companyName) {
     eventDetails += `代驗公司：${finalBookingData.value.companyName}\n`;
   }
