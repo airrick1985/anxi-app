@@ -980,7 +980,6 @@ const baseColDefs = computed(() => {
     { headerName: '車位', field: 'parkingLots', editable: true },
     { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
     { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
-    { headerName: '銀行', field: 'bank', editable: true },
     { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
     { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
     { headerName: '初驗方式', field: 'initialInspectionMethod' },
