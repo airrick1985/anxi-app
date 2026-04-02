@@ -20916,6 +20916,48 @@ exports.checkLeadDuplicates = onCall({
       }));
     }
 
+    // 4. 第三階段：比對 viewing_reservations (已有賞屋預約)
+    // 僅檢查目前還是 "none" 的電話
+    const remainingAfterLeads = cleanPhones.filter(p => results[p].type === "none");
+
+    for (let i = 0; i < remainingAfterLeads.length; i += 30) {
+      const chunk = remainingAfterLeads.slice(i, i + 30);
+      const reservSnap = await db.collection("viewing_reservations")
+        .where("projectId", "==", projectId)
+        .where("customerPhone", "in", chunk)
+        .where("status", "==", "active")
+        .get();
+
+      reservSnap.forEach(doc => {
+        const r = doc.data();
+        const phone = r.customerPhone;
+        if (!phone || results[phone]?.type !== "none") return;
+
+        let reservationTimeStr = "";
+        if (r.reservationTime && r.reservationTime.toDate) {
+          try {
+            reservationTimeStr = r.reservationTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+          } catch (e) { reservationTimeStr = ""; }
+        }
+
+        results[phone] = {
+          type: "reservation",
+          data: {
+            name: r.customerName || "未知",
+            assignedName: r.salesName || "不指定",
+            assignedTo: r.salesId || "",
+            salesPhone: r.salesPhone || "",
+            reservationTime: reservationTimeStr,
+            reservationType: r.type || "",           // 預約類型（新客/複訪等）
+            note: r.note || "",
+            source: "賞屋預約",
+            date: reservationTimeStr,
+            interactionLogs: []
+          }
+        };
+      });
+    }
+
     return { status: "success", results };
 
   } catch (error) {

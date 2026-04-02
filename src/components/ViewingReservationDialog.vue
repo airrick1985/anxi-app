@@ -2,8 +2,14 @@
   <v-dialog v-model="dialog" max-width="600px" persistent>
     <v-card>
       <v-card-title class="bg-primary text-white d-flex align-center">
-        <span class="text-h6">{{ isEdit ? '編輯預約' : '新增賞屋預約' }}</span>
-        <v-spacer></v-spacer>
+        <div class="flex-grow-1">
+          <div class="text-h6">{{ isEdit ? '編輯預約' : '新增賞屋預約' }}</div>
+          <!-- ✅ 新增：顯示編輯模式下的建立者信息 -->
+          <div v-if="isEdit && formData" class="text-caption opacity-80 mt-1">
+            建立者：{{ formData.operatorName || '不詳' }} |
+            建立時間：{{ formatDate(formData.createdAt) }}
+          </div>
+        </div>
         <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
       </v-card-title>
 
@@ -196,14 +202,106 @@
         </v-card>
     </v-dialog>
 
-    <v-dialog v-model="conflictDialog" max-width="400">
-        <v-card>
-            <v-card-title class="text-warning">重複預約確認</v-card-title>
-            <v-card-text>此電話號碼在 <strong>{{ formatDate(conflictInfo?.reservationTime) }}</strong> 已預約。<br>請問您要如何處理？</v-card-text>
-            <v-card-actions class="flex-column align-stretch pa-4">
-                <v-btn color="error" variant="tonal" class="mb-2" @click="resolveConflict('replace')">刪除舊預約，建立新預約</v-btn>
-                <v-btn color="primary" variant="tonal" class="mb-2" @click="resolveConflict('keep')">保留舊預約，繼續建立 (重複)</v-btn>
-                <v-btn variant="text" @click="conflictDialog = false">取消操作</v-btn>
+    <v-dialog v-model="conflictDialog" max-width="450">
+        <v-card class="rounded-lg">
+            <v-card-title class="bg-warning text-white d-flex align-center pa-4">
+                <v-icon start size="24">mdi-alert-circle</v-icon>
+                <span class="text-subtitle-1 font-weight-bold">重複預約確認</span>
+            </v-card-title>
+
+            <v-card-text class="pa-6">
+                <div class="text-body-2 mb-4 text-grey-darken-2">
+                    此電話號碼 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span>
+                    已有預約記錄，請確認處理方式：
+                </div>
+
+                <!-- 既有預約信息卡片 -->
+                <v-card variant="flat" class="mb-5 bg-orange-lighten-5 border-l-5" style="border-left-color: #ff9800;">
+                    <v-card-text class="pa-4">
+                        <div class="d-flex align-center mb-3">
+                            <v-icon size="20" color="orange">mdi-calendar-check</v-icon>
+                            <span class="text-caption text-grey-darken-1 ms-2 font-weight-bold">既有預約詳情</span>
+                        </div>
+
+                        <v-row dense class="mt-1">
+                            <v-col cols="12" class="pb-2">
+                                <div class="text-caption text-grey-darken-1">預約時間</div>
+                                <div class="text-body-2 font-weight-bold text-grey-darken-3">
+                                    {{ formatDate(conflictInfo?.reservationTime) }}
+                                </div>
+                            </v-col>
+
+                            <v-col cols="12" class="pb-2">
+                                <div class="text-caption text-grey-darken-1">負責銷售</div>
+                                <div class="d-flex align-center mt-1">
+                                    <v-icon size="18" color="indigo" class="me-1">mdi-badge-account</v-icon>
+                                    <span class="text-body-2 font-weight-bold text-grey-darken-3">
+                                        {{ conflictInfo?.salesName || '未指定' }}
+                                    </span>
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </v-card-text>
+                </v-card>
+
+                <v-divider class="my-4"></v-divider>
+
+                <div class="text-caption font-weight-bold text-grey-darken-1 mb-3">
+                    請選擇處理方式：
+                </div>
+            </v-card-text>
+
+            <v-card-actions class="pa-4 pt-0 flex-column align-stretch gap-2">
+                <!-- ✅ 優化：添加權限限制和禁用提示 -->
+                <div v-if="!canDeleteConflictReservation" class="mb-2">
+                    <v-alert
+                        type="warning"
+                        variant="tonal"
+                        density="compact"
+                        class="text-caption"
+                        icon="mdi-lock"
+                    >
+                        <div class="font-weight-bold">無法刪除此預約</div>
+                        <div>您不是此預約的負責銷售，且無櫃台權限</div>
+                    </v-alert>
+                </div>
+
+                <v-btn
+                    color="error"
+                    variant="tonal"
+                    prepend-icon="mdi-delete"
+                    @click="resolveConflict('replace')"
+                    :disabled="!canDeleteConflictReservation"
+                    class="font-weight-bold"
+                >
+                    <template v-if="!canDeleteConflictReservation">
+                        <v-icon start>mdi-lock</v-icon>
+                        刪除舊預約，建立新預約 (無權限)
+                    </template>
+                    <template v-else>
+                        刪除舊預約，建立新預約
+                    </template>
+                </v-btn>
+
+                <v-btn
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-plus-multiple"
+                    @click="resolveConflict('keep')"
+                    class="font-weight-bold"
+                >
+                    保留舊預約，繼續建立 (重複)
+                </v-btn>
+
+                <v-divider class="my-2"></v-divider>
+
+                <v-btn
+                    variant="text"
+                    color="grey-darken-1"
+                    @click="conflictDialog = false"
+                >
+                    取消操作
+                </v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -353,15 +451,16 @@ const currentProjectName = computed(() => {
 // --- 核心邏輯：失去焦點檢查 ---
 const handlePhoneBlur = async () => {
   const phone = formData.value.customerPhone;
-  
+
   // 1. 基本校驗：10碼且非編輯模式
-  if (phone && /^09\d{8}$/.test(phone) && !isEdit.value) { 
-     
+  if (phone && /^09\d{8}$/.test(phone) && !isEdit.value) {
+
      // A. 檢查是否已有「現有預約」 (原有機制)
      const resResult = await reservationStore.checkPhoneConflict(props.projectId, phone);
      if (resResult) {
-         conflictInfo.value = resResult;
-         conflictDialog.value = true;
+         conflictInfo.value = resResult; // ✅ 確保資料先賦值
+         await nextTick(); // ✅ 確保 DOM 更新完成
+         conflictDialog.value = true; // ✅ 再打開 Dialog
          return; // 若已有預約，優先處理預約衝突
      }
 
@@ -369,6 +468,7 @@ const handlePhoneBlur = async () => {
      const vipResult = await reservationStore.checkVipGuestPhone(props.projectId, phone);
      if (vipResult) {
          vipGuestInfo.value = vipResult;
+         await nextTick();
          vipConflictDialog.value = true;
      }
   }
@@ -416,7 +516,9 @@ const formData = ref({
   reservationTime: null,
   type: '新客',
   salesId: null,
-  note: ''
+  note: '',
+  operatorName: '', // ✅ 新增：記錄建立者名稱
+  createdAt: null   // ✅ 新增：記錄建立時間
 });
 
 
@@ -438,6 +540,23 @@ const canManageSales = computed(() => {
     // 透過 projectId 查找完整建案名稱 (Store 中 idToNameMap)
     const fullProjectName = projectStore.idToNameMap[props.projectId] || props.projectId;
     return userStore.hasProjectPermission('銷控系統', fullProjectName);
+});
+
+// ✅ 新增：判斷是否可以刪除重複預約
+const canDeleteConflictReservation = computed(() => {
+    if (!conflictInfo.value || !userStore.user) return false;
+
+    const fullProjectName = projectStore.idToNameMap[props.projectId] || props.projectId;
+    const currentUserId = userStore.user.key; // 當前用戶 ID
+    const reservationSalesId = conflictInfo.value.salesId; // 既有預約的銷售人員 ID
+
+    // 條件 1：當前用戶是該預約的負責銷售
+    if (currentUserId === reservationSalesId) {
+        return true;
+    }
+
+    // 條件 2：當前用戶有「客資系統-櫃台」權限
+    return userStore.hasProjectPermission('客資系統-櫃台', fullProjectName);
 });
 
 // 下拉選單使用 "可見" 的名單
@@ -482,7 +601,7 @@ const phoneRules = [
 watch(() => props.modelValue, async (val) => {
   if (val) {
     await reservationStore.fetchProjectSales(props.projectId);
-    
+
     if (isEdit.value) {
       const d = props.initialData;
       formData.value = {
@@ -494,12 +613,19 @@ watch(() => props.modelValue, async (val) => {
         customerName: props.initialData?.customerName || '',
         customerPhone: props.initialData?.customerPhone || '',
         note: props.initialData?.note || '',
-        reservationTime: props.initialDate || null, // ✅ 改為 null
+        reservationTime: props.initialDate || null,
         type: '新客',
         salesId: null
       };
+
+      // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
+      if (formData.value.customerPhone) {
+        conflictInfo.value = null; // 先清除舊的 conflictInfo
+        await nextTick(); // 確保表單已更新
+        await handlePhoneBlur(); // 自動觸發檢查並等待完成
+        await nextTick(); // 確保 conflictInfo 已更新
+      }
     }
-    conflictInfo.value = null;
   }
 }, { immediate: true });
 

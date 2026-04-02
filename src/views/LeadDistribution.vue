@@ -130,105 +130,114 @@
           </v-window-item>
 
           <v-window-item value="status">
-<v-card variant="flat" class="mb-4 pa-4 rounded-xl border bg-white shadow-sm">
+<v-card variant="flat" class="mb-4 pa-3 pa-sm-4 rounded-xl border bg-white shadow-sm">
   <v-row dense align="center">
+    <!-- ✅ 優化：手機上全寬，平板以上 1/3 寬 -->
     <v-col cols="12" sm="4">
-      <v-text-field v-model="namePhoneSearch" label="關鍵字搜尋" prepend-inner-icon="mdi-magnify" variant="outlined" density="comfortable" hide-details clearable rounded="lg"></v-text-field>
+      <v-text-field v-model="namePhoneSearch" label="關鍵字搜尋" prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable rounded="lg"></v-text-field>
     </v-col>
-     <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4" >
-      <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
+    <v-col v-if="isReceptionist || isAdmin" cols="12" sm="4">
+      <v-select v-model="assignedSearch" :items="salesStaff" item-title="name" item-value="id" label="人員" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-account-search">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">人員 (+{{ assignedSearch.length }})</span></template>
       </v-select>
     </v-col>
     <v-col cols="12" sm="4">
-      <v-select v-model="statusSearch" :items="['未處理', ...statusOptions]" label="狀態" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
+      <v-select v-model="statusSearch" :items="['未處理', ...statusOptions]" label="狀態" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">狀態 (+{{ statusSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col cols="12" sm="4" >
-  <v-select 
-    v-model="reasonSearch" 
-    :items="reasonFilterOptions" 
-    label="不考慮原因" 
-    multiple 
-    variant="outlined" 
-    density="comfortable" 
-    hide-details 
-    rounded="lg" 
-    prepend-inner-icon="mdi-comment-question"
-  >
-    <template v-slot:selection="{ index }">
-      <span v-if="index === 0" class="text-caption">原因 (+{{ reasonSearch.length }})</span>
-    </template>
-  </v-select>
-</v-col>
-   
-
     <v-col cols="12" sm="4">
-      <v-select v-model="sourceSearch" :items="sourceOptions" label="來源" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
+      <v-select
+        v-model="reasonSearch"
+        :items="reasonFilterOptions"
+        label="不考慮原因"
+        multiple
+        variant="outlined"
+        density="compact"
+        hide-details
+        rounded="lg"
+        prepend-inner-icon="mdi-comment-question"
+      >
+        <template v-slot:selection="{ index }">
+          <span v-if="index === 0" class="text-caption">原因 (+{{ reasonSearch.length }})</span>
+        </template>
+      </v-select>
+    </v-col>
+    <v-col cols="12" sm="4">
+      <v-select v-model="sourceSearch" :items="sourceOptions" label="來源" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-tray-arrow-down">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">來源 (+{{ sourceSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col cols="12" sm="4" >
-      <v-select v-model="budgetSearch" :items="budgetOptions" label="預算" multiple variant="outlined" density="comfortable" hide-details rounded="lg" prepend-inner-icon="mdi-currency-usd">
+    <v-col cols="12" sm="4">
+      <v-select v-model="budgetSearch" :items="budgetOptions" label="預算" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-currency-usd">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">預算 (+{{ budgetSearch.length }})</span></template>
       </v-select>
     </v-col>
-    <v-col cols="6" sm="2" class="mt-sm-2" >
+    <!-- ✅ 優化：手機上全寬，平板以上並排 -->
+    <v-col cols="12" sm="2" class="mt-sm-2">
   <v-text-field
     v-model="startDate"
     label="填表日期(起)"
     type="date"
     variant="outlined"
-    density="comfortable"
+    density="compact"
     hide-details
     rounded="lg"
-    
     color="primary"
     clearable
+    size="small"
   ></v-text-field>
 </v-col>
 
-<v-col cols="6" sm="2" class="mt-sm-2">
+<v-col cols="12" sm="2" class="mt-2 mt-sm-2">
   <v-text-field
     v-model="endDate"
     label="填表日期(迄)"
     type="date"
     variant="outlined"
-    density="comfortable"
+    density="compact"
     hide-details
     rounded="lg"
-   
     color="primary"
     clearable
-    :min="startDate" 
+    size="small"
+    :min="startDate"
   ></v-text-field>
 </v-col>
 
-<v-col cols="12" md="6" class="mt-2 d-flex align-center">
-      <v-btn
-        color="success"
-        prepend-icon="mdi-file-excel"
-        variant="elevated"
-        rounded="lg"
-        :loading="isLeadsExporting"
-        @click="executeLeadsExport"
-        class="font-weight-bold me-2 flex-grow-1"
-      >
-        下載聯絡狀況 EXCEL
-      </v-btn>
+<v-col cols="12" class="mt-2">
+      <!-- ✅ 優化：手機上縱向排列，平板以上橫向排列 -->
+      <v-row no-gutters class="gap-2">
+        <v-col cols="12" sm="6" class="flex-grow-1">
+          <v-btn
+            color="success"
+            prepend-icon="mdi-file-excel"
+            variant="elevated"
+            rounded="lg"
+            :loading="isLeadsExporting"
+            @click="executeLeadsExport"
+            class="font-weight-bold w-100 text-truncate"
+            size="small"
+          >
+            <span class="text-truncate">下載聯絡狀況 EXCEL</span>
+          </v-btn>
+        </v-col>
 
-       <v-btn
-        color="blue-grey"
-        prepend-icon="mdi-google-spreadsheet"
-        variant="elevated"
-        rounded="lg"
-        :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
-        @click="openSyncDialog"
-        class="font-weight-bold flex-grow-1"
-      >
-        同步到 Google Sheet
-      </v-btn>
+        <v-col cols="12" sm="6" class="flex-grow-1">
+          <v-btn
+            color="blue-grey"
+            prepend-icon="mdi-google-spreadsheet"
+            variant="elevated"
+            rounded="lg"
+            :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
+            @click="openSyncDialog"
+            class="font-weight-bold w-100 text-truncate"
+            size="small"
+          >
+            <span class="text-truncate">同步到 Google Sheet</span>
+          </v-btn>
+        </v-col>
+      </v-row>
     </v-col>
 
   </v-row>
@@ -346,6 +355,37 @@
         {{ item.status || '未處理' }}
       </v-chip>
     </template>
+
+    <!-- ✅ 優化：預約狀態欄位（支援排序且保留樣式） -->
+    <template v-slot:item.reservationCount="{ item }">
+      <div v-if="getCustomerReservations(item.phone)?.length > 0" class="d-flex align-center gap-1">
+        <v-icon size="18" color="success">mdi-calendar-check</v-icon>
+        <span class="text-caption font-weight-bold text-success">
+          {{ getCustomerReservations(item.phone).length }} 筆
+        </span>
+        <v-menu>
+          <template v-slot:activator="{ props }">
+            <v-btn
+              size="x-small"
+              variant="text"
+              color="primary"
+              icon="mdi-information-outline"
+              v-bind="props"
+            ></v-btn>
+          </template>
+          <v-card max-width="300">
+            <v-card-text class="pa-3">
+              <div v-for="res in getCustomerReservations(item.phone)" :key="res.id" class="mb-3 pb-3 border-bottom">
+                <div class="text-caption font-weight-bold">{{ formatTime(res.reservationTime) }}</div>
+                <div class="text-caption text-grey-darken-1">銷售: {{ res.salesName || '未指定' }}</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-menu>
+      </div>
+      <span v-else class="text-caption text-grey-lighten-1">無預約</span>
+    </template>
+
     <template v-slot:item.actions="{ item }">
       <v-btn icon="mdi-comment-edit" variant="text" color="primary" @click="openReport(item)"></v-btn>
       <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" @click="handleSoftDelete(item)"></v-btn>
@@ -358,69 +398,88 @@
       :key="item.id" 
       class="mb-4 rounded-xl elevation-2 overflow-hidden border-0"
     >
-      <v-card-text class="pa-4">
-        <div class="d-flex align-center justify-space-between mb-3">
-          <div class="d-flex align-center">
-            <v-avatar color="indigo-darken-4" size="40" class="me-3">
-              <v-icon color="white" size="24">mdi-account</v-icon>
+      <v-card-text class="pa-3 pa-sm-4">
+        <!-- ✅ 優化：分層設計，避免手機上溢出 -->
+        <div class="d-flex align-center justify-space-between mb-3 flex-wrap gap-2">
+          <div class="d-flex align-center flex-shrink-1 min-width-0">
+            <v-avatar color="indigo-darken-4" size="36" size-sm="32" class="me-2 flex-shrink-0">
+              <v-icon color="white" size="20">mdi-account</v-icon>
             </v-avatar>
-            <div>
-              <div class="text-subtitle-1 font-weight-bold indigo--text text--darken-4">{{ item.name }}</div>
-              <div class="text-caption text-grey-darken-1">{{ item.phone }}</div>
+            <div class="min-width-0 flex-grow-1">
+              <div class="text-subtitle-2 text-sm-subtitle-1 font-weight-bold indigo--text text--darken-4 text-truncate">
+                {{ item.name }}
+              </div>
+              <div class="text-caption text-grey-darken-1 text-truncate">{{ item.phone }}</div>
             </div>
           </div>
-          <div class="d-flex align-center">
-            <v-chip :color="getStatusColor(item.status)" size="x-small" class="font-weight-bold me-2">
+          <div class="d-flex align-center gap-1 flex-shrink-0">
+            <v-chip :color="getStatusColor(item.status)" size="x-small" class="font-weight-bold">
               {{ item.status || '未處理' }}
             </v-chip>
-            <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="small" @click="openReport(item)"></v-btn>
-            <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" size="small" @click="handleSoftDelete(item)"></v-btn>
+            <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="x-small" @click="openReport(item)"></v-btn>
+            <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" size="x-small" @click="handleSoftDelete(item)"></v-btn>
           </div>
         </div>
 
-        <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-3">
+        <!-- ✅ 新增：顯示現有預約紀錄提示 -->
+        <v-card v-if="getCustomerReservations(item.phone)?.length > 0" class="mb-3 pa-2 pa-sm-3 rounded-lg" style="border-left: 4px solid #4caf50; background-color: #f1f8f4; border: 1px solid #c8e6c9;">
+          <div class="d-flex align-start gap-2">
+            <v-icon size="18" color="success" class="flex-shrink-0 mt-1">mdi-calendar-check</v-icon>
+            <div class="flex-grow-1 min-width-0">
+              <div class="text-caption font-weight-bold text-success">已預約</div>
+              <div class="text-caption text-sm-body-2 font-weight-bold text-grey-darken-3 text-break">
+                {{ formatTime(getCustomerReservations(item.phone)[0]?.reservationTime) }}
+              </div>
+              <div class="text-caption text-grey-darken-1 mt-1 text-break">
+                銷售：{{ getCustomerReservations(item.phone)[0]?.salesName || '未指定' }}
+              </div>
+            </div>
+          </div>
+        </v-card>
+
+        <v-card variant="flat" class="bg-indigo-lighten-5 rounded-lg border-indigo-lighten-4 border pa-2 pa-sm-3">
           <v-row no-gutters class="flex-wrap">
-            
-            <v-col cols="12" class="mt-2 pt-2 border-top-custom" v-if="item.note">
-          <div class="info-label text-indigo-darken-3">備註</div>
-          <div class="info-value text-indigo-darken-4">
-            <v-icon size="14" class="me-1">mdi-note-text-outline</v-icon>
+
+            <v-col cols="12" class="mt-1 pt-1 border-top-custom" v-if="item.note">
+          <div class="info-label text-indigo-darken-3 text-caption">備註</div>
+          <div class="info-value text-indigo-darken-4 text-caption text-break">
+            <v-icon size="12" class="me-1">mdi-note-text-outline</v-icon>
             {{ item.note }}
           </div>
         </v-col>
 
-            <v-col cols="12" class="mb-2 pb-2 border-bottom-custom">
-              <div class="info-label">來源管道</div>
-              <div class="info-value">
-                <v-icon size="14" class="me-1" color="indigo-darken-2">mdi-tray-arrow-down</v-icon>
+            <v-col cols="12" class="mb-1 pb-1 border-bottom-custom">
+              <div class="info-label text-caption">來源管道</div>
+              <div class="info-value text-caption">
+                <v-icon size="12" class="me-1" color="indigo-darken-2">mdi-tray-arrow-down</v-icon>
                 {{ item.source || '未註明' }}
               </div>
             </v-col>
 
-            <v-col cols="12" class="mt-1 pb-2 border-bottom-custom" v-if="item.status === '不考慮'">
-              <div class="info-label text-error font-weight-black">不考慮原因</div>
-              <div class="info-value text-error font-weight-bold">
-                <v-icon size="16" class="me-1" color="error">mdi-alert-circle-outline</v-icon>
+            <v-col cols="12" class="mt-1 pb-1 border-bottom-custom" v-if="item.status === '不考慮'">
+              <div class="info-label text-error font-weight-black text-caption">不考慮原因</div>
+              <div class="info-value text-error font-weight-bold text-caption">
+                <v-icon size="14" class="me-1" color="error">mdi-alert-circle-outline</v-icon>
                 {{ item.reason || '未註明' }}
               </div>
             </v-col>
 
-            <v-col cols="6" class="pe-2 mt-2">
-              <div class="info-label">預算範圍</div>
-              <div class="info-value">{{ item.budget || '未填寫' }}</div>
+            <v-col cols="6" class="pe-1 mt-1">
+              <div class="info-label text-caption">預算範圍</div>
+              <div class="info-value text-caption text-break">{{ item.budget || '未填寫' }}</div>
             </v-col>
 
-            <v-col cols="6" class="ps-2 border-left-custom mt-2">
-              <div class="info-label">填表日期</div>
-              <div class="info-value">{{ item.date || '無日期' }}</div>
+            <v-col cols="6" class="ps-1 border-left-custom mt-1">
+              <div class="info-label text-caption">填表日期</div>
+              <div class="info-value text-caption">{{ item.date || '無日期' }}</div>
             </v-col>
 
           </v-row>
         </v-card>
         
-        <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center">
-          <v-icon size="14" class="me-1">mdi-account-tie</v-icon>
-          負責人：<span class="font-weight-bold text-indigo-darken-2">{{ item.assignedName || '尚未指派' }}</span>
+        <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center gap-1 flex-wrap">
+          <v-icon size="13" class="flex-shrink-0">mdi-account-tie</v-icon>
+          <span>負責人：</span><span class="font-weight-bold text-indigo-darken-2 text-truncate">{{ item.assignedName || '尚未指派' }}</span>
         </div>
       </v-card-text>
     </v-card>
@@ -488,6 +547,69 @@
           </v-col>
         </v-row>
       </v-card>
+
+      <!-- ✅ 新增：顯示現有預約記錄 -->
+      <div v-if="getCustomerReservations(currentLead?.phone)?.length > 0" class="mb-6">
+        <v-card class="pa-5 rounded-xl elevation-3" style="border-top: 5px solid #4caf50; background: linear-gradient(135deg, #f1f8f4 0%, #e8f5e9 100%);">
+          <div class="d-flex align-center mb-4">
+            <v-icon size="28" color="success" class="me-3">mdi-calendar-check</v-icon>
+            <div>
+              <div class="text-h6 font-weight-bold text-success">已預約</div>
+              <div class="text-caption text-grey-darken-1">共 {{ getCustomerReservations(currentLead?.phone).length }} 筆預約</div>
+            </div>
+          </div>
+
+          <v-divider class="my-3"></v-divider>
+
+          <div
+            v-for="(res, idx) in getCustomerReservations(currentLead?.phone)"
+            :key="res.id"
+            class="mb-4"
+            :class="{ 'pb-3 border-bottom': idx < getCustomerReservations(currentLead?.phone).length - 1 }"
+          >
+            <v-row dense align="start">
+              <v-col cols="12" sm="6">
+                <div class="text-caption font-weight-bold text-primary mb-1">預約日期時間</div>
+                <div class="d-flex align-center">
+                  <v-icon size="20" color="success" class="me-2">mdi-calendar-clock</v-icon>
+                  <span class="text-body-2 font-weight-bold">{{ formatTime(res.reservationTime) }}</span>
+                </div>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <div class="text-caption font-weight-bold text-primary mb-1">預約類型</div>
+                <v-chip size="small" color="primary" variant="flat" class="font-weight-bold">
+                  {{ res.type }}
+                </v-chip>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <div class="text-caption font-weight-bold text-primary mb-1">負責銷售</div>
+                <div class="d-flex align-center">
+                  <v-icon size="20" color="indigo-darken-4" class="me-2">mdi-badge-account</v-icon>
+                  <span class="text-body-2 font-weight-bold text-indigo-darken-4">
+                    {{ res.salesName || '未指定' }}
+                  </span>
+                </div>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <div class="text-caption font-weight-bold text-primary mb-1">操作人員</div>
+                <div class="text-body-2 text-grey-darken-2">
+                  {{ res.operatorName || '不詳' }}
+                </div>
+              </v-col>
+
+              <v-col v-if="res.note" cols="12">
+                <div class="text-caption font-weight-bold text-primary mb-1">備註</div>
+                <div class="text-body-2 text-grey-darken-2 pa-2 rounded" style="background-color: rgba(255, 255, 255, 0.5);">
+                  {{ res.note }}
+                </div>
+              </v-col>
+            </v-row>
+          </div>
+        </v-card>
+      </div>
 
       <v-card class="pa-5 mb-6 rounded-xl elevation-2">
         <div class="section-title mb-3">聯絡狀況回報</div>
@@ -853,7 +975,9 @@
   </v-chip>
 
   <v-chip size="x-small" color="blue-grey-darken-1" variant="flat" v-if="summaryCount.lead">⚠️ 重複名單 {{ summaryCount.lead }} 筆</v-chip>
-  
+
+  <v-chip size="x-small" color="purple-darken-1" variant="flat" v-if="summaryCount.reservation">📅 賞屋預約 {{ summaryCount.reservation }} 筆</v-chip>
+
   <v-spacer></v-spacer>
   <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
 </div>
@@ -943,6 +1067,27 @@
                             詳情
                         </v-btn>
                     </div> <!-- Added missing closing div for 'lead' -->
+
+                    <!-- Reservation: Viewing Reservation (Compact Mode) -->
+                    <div v-else-if="duplicateResults[lead.phone].type === 'reservation'">
+                        <v-chip color="purple-lighten-4" class="text-purple-darken-3 font-weight-bold mb-1" size="small" label>
+                            <v-icon start icon="mdi-calendar-check" size="x-small"></v-icon> 已有賞屋預約
+                        </v-chip>
+                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center text-left flex-wrap">
+                            <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.assignedName }}</span>
+                            <span class="text-grey">{{ duplicateResults[lead.phone].data.date || '--' }}</span>
+                        </div>
+                        <v-btn
+                            size="x-small"
+                            variant="tonal"
+                            color="purple-darken-2"
+                            class="px-2"
+                            prepend-icon="mdi-magnify"
+                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'reservation')"
+                        >
+                            詳情
+                        </v-btn>
+                    </div>
 
                     <!-- Purchased: Existing Household (Compact Mode) -->
                     <div v-else-if="duplicateResults[lead.phone].type === 'purchased'">
@@ -1066,11 +1211,22 @@
                                             <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單 ({{ duplicateResults[lead.phone].data.assignedName }}) 詳情 >
                                         </v-chip>
 
-                                        <v-chip 
-                                            v-else-if="duplicateResults[lead.phone].type === 'purchased'" 
-                                            color="green-lighten-4" 
-                                            class="text-green-darken-4 font-weight-bold" 
-                                            size="x-small" 
+                                        <v-chip
+                                            v-else-if="duplicateResults[lead.phone].type === 'reservation'"
+                                            color="purple-lighten-4"
+                                            class="text-purple-darken-3 font-weight-bold"
+                                            size="x-small"
+                                            label
+                                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'reservation')"
+                                        >
+                                            <v-icon start icon="mdi-calendar-check" size="x-small"></v-icon> 已有賞屋預約 ({{ duplicateResults[lead.phone].data.assignedName }}) 詳情 >
+                                        </v-chip>
+
+                                        <v-chip
+                                            v-else-if="duplicateResults[lead.phone].type === 'purchased'"
+                                            color="green-lighten-4"
+                                            class="text-green-darken-4 font-weight-bold"
+                                            size="x-small"
                                             label
                                         >
                                             <v-icon start icon="mdi-home-heart" size="x-small"></v-icon> 本案已購戶 ({{ duplicateResults[lead.phone].data.name }} | {{ duplicateResults[lead.phone].data.unitId || '未知戶別' }} | 銷售: {{ duplicateResults[lead.phone].data.assignedName }})
@@ -1578,6 +1734,7 @@ const activeTab = ref('management');
 const allLeads = ref([]);
 const deletedLeads = ref([]);
 const salesStaff = ref([]);
+const allReservations = ref([]); // ✅ 新增：存儲所有預約記錄
 const leadLogs = ref([]);
 const currentLead = ref(null);
 
@@ -2199,8 +2356,9 @@ const statusHeaders = [
   { title: '填表日期', key: 'date' },
   { title: '指派給', key: 'assignedName' },
   { title: '狀態', key: 'status' },
-  { title: '不考慮原因', key: 'reason' }, 
-  { title: '備註', key: 'note' }, // ✅ [新增] 備註欄位
+  { title: '預約紀錄', key: 'reservationCount' }, // ✅ [優化] 使用 reservationCount 欄位支援排序
+  { title: '不考慮原因', key: 'reason' },
+  { title: '備註', key: 'note' },
   { title: '動作', key: 'actions', sortable: false }
 ];
 
@@ -2322,7 +2480,11 @@ if (namePhoneSearch.value) {
     list = list.filter(l => reasonSearch.value.includes(l.reason || '未註明'));
   }
 
-  return list;
+  // ✅ 新增：為每筆記錄添加預約計數欄位，以支援排序
+  return list.map(item => ({
+    ...item,
+    reservationCount: getCustomerReservations(item.phone)?.length || 0
+  }));
 });
 
 const recycleHeaders = [
@@ -2404,13 +2566,14 @@ const updateAssignedInfo = (lead, salesId) => {
 };
 
 const summaryCount = computed(() => {
-  const counts = { vip: 0, lead: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0 };
-  
+  const counts = { vip: 0, lead: 0, reservation: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0 };
+
   previewLeads.value.forEach(l => {
-    // 1. 檢查查重狀態 (已有客資/重複名單/全新/已購戶)
+    // 1. 檢查查重狀態 (已有客資/重複名單/賞屋預約/全新/已購戶)
     const res = duplicateResults.value[l.phone];
     if (res?.type === 'vip') counts.vip++;
     else if (res?.type === 'lead') counts.lead++;
+    else if (res?.type === 'reservation') counts.reservation++;
     else if (res?.type === 'purchased') counts.purchased++;
     else counts.new++;
 
@@ -2442,13 +2605,14 @@ const internalDuplicateMap = computed(() => {
 const getRowClass = (phone) => {
   // 🚩 優先檢查本次名單內部重複
   if (internalDuplicateMap.value[phone]?.length > 1) {
-    return 'bg-yellow-lighten-5'; 
+    return 'bg-yellow-lighten-5';
   }
-  
+
   const res = duplicateResults.value[phone];
   if (res?.type === 'purchased') return 'bg-green-lighten-5';
   if (res?.type === 'vip') return 'bg-orange-lighten-5';
   if (res?.type === 'lead') return 'bg-blue-grey-lighten-5';
+  if (res?.type === 'reservation') return 'bg-purple-lighten-5';
   return '';
 };
 
@@ -2726,6 +2890,9 @@ const handleParsing = async () => {
       } else if (res.type === 'lead' && res.data.assignedTo) {
         // 情況 B：重複名單，自動選擇「最後指派銷售」(對應 assignedTo)
         quickAssignInPreview(lead, res.data.assignedTo);
+      } else if (res.type === 'reservation' && res.data.assignedTo) {
+        // 情況 C：賞屋預約，自動選擇「預約時的業務」(對應 assignedTo)
+        quickAssignInPreview(lead, res.data.assignedTo);
       }
     }
   });
@@ -2754,10 +2921,13 @@ const executeBatchImportAndAssign = async () => {
       
       if (res?.type === 'vip') {
         const salesName = res.data?.latestSalesName || '未知';
-        statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`; 
+        statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`;
       } else if (res?.type === 'purchased') {
         const salesName = res.data?.assignedName || '未知';
         statusText = `🏡 本案已購戶 (銷售: ${salesName} | 戶別: ${res.data?.unitId || '未知'})`;
+      } else if (res?.type === 'reservation') {
+        const salesName = res.data?.assignedName || '不指定';
+        statusText = `📅 已有賞屋預約 (業務: ${salesName} | 預約時間: ${res.data?.date || '--'})`;
       } else if (res?.type === 'lead') {
         statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
       }
@@ -2891,6 +3061,29 @@ const getStatusColor = (s) => {
   return colors[s] || '#3949AB'; // 預設為 indigo
 };
 
+// ✅ 新增：根據電話號碼取得該客戶的有效預約記錄
+const getCustomerReservations = (phone) => {
+  if (!phone) return [];
+  const now = new Date();
+  return allReservations.value
+    .filter(res => res.customerPhone === phone && res.reservationTime > now)
+    .sort((a, b) => a.reservationTime - b.reservationTime);
+};
+
+// ✅ 新增：格式化時間顯示
+const formatTime = (date) => {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+};
+
 const showMsg = (t, c = 'info') => { snackbar.text = t; snackbar.color = c; snackbar.show = true; };
 
 const fetchProjectStaff = async () => {
@@ -2937,6 +3130,19 @@ onMounted(async () => {
   // 1. 設定監聽名單資料
   onSnapshot(query(collection(db, 'leads'), where('projectId', '==', props.projectId), where('isDeleted', '==', false), orderBy('createdAt', 'desc')), (snap) => {
     allLeads.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  });
+
+  // ✅ 新增：監聽預約記錄資料
+  onSnapshot(query(collection(db, 'viewing_reservations'), where('projectId', '==', props.projectId), where('status', '==', 'active')), (snap) => {
+    allReservations.value = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        reservationTime: data.reservationTime?.toDate ? data.reservationTime.toDate() : new Date(data.reservationTime)
+      };
+    });
+    console.log('📋 預約記錄已加載，共', allReservations.value.length, '筆');
   });
 
   // ✅ 修改：改用 watch 確保使用者權限載入後才執行切換，避免 onMounted 執行時 userStore 還在載入

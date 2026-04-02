@@ -95,6 +95,69 @@
               </v-row>
             </v-card>
 
+            <!-- ✅ 新增：明顯位置顯示現有預約記錄 -->
+            <div v-if="existingReservations.length > 0" class="mb-6">
+              <v-card class="pa-5 rounded-xl elevation-3" style="border-top: 5px solid #4caf50; background: linear-gradient(135deg, #f1f8f4 0%, #e8f5e9 100%);">
+                <div class="d-flex align-center mb-4">
+                  <v-icon size="28" color="success" class="me-3">mdi-calendar-check</v-icon>
+                  <div>
+                    <div class="text-h6 font-weight-bold text-success">現有預約紀錄</div>
+                    <div class="text-caption text-grey-darken-1">共 {{ existingReservations.length }} 筆有效預約</div>
+                  </div>
+                </div>
+
+                <v-divider class="my-3"></v-divider>
+
+                <div
+                  v-for="(res, idx) in existingReservations"
+                  :key="res.id"
+                  class="mb-4"
+                  :class="{ 'pb-3 border-bottom': idx < existingReservations.length - 1 }"
+                >
+                  <v-row dense align="start">
+                    <v-col cols="12" sm="6">
+                      <div class="text-caption font-weight-bold text-primary mb-1">預約日期時間</div>
+                      <div class="d-flex align-center">
+                        <v-icon size="20" color="success" class="me-2">mdi-calendar-clock</v-icon>
+                        <span class="text-body-1 font-weight-bold">{{ formatTime(res.reservationTime) }}</span>
+                      </div>
+                    </v-col>
+
+                    <v-col cols="12" sm="6">
+                      <div class="text-caption font-weight-bold text-primary mb-1">預約類型</div>
+                      <v-chip size="small" color="primary" variant="flat" class="font-weight-bold">
+                        {{ res.type }}
+                      </v-chip>
+                    </v-col>
+
+                    <v-col cols="12" sm="6">
+                      <div class="text-caption font-weight-bold text-primary mb-1">負責銷售</div>
+                      <div class="d-flex align-center">
+                        <v-icon size="20" color="indigo-darken-4" class="me-2">mdi-badge-account</v-icon>
+                        <span class="text-body-2 font-weight-bold text-indigo-darken-4">
+                          {{ res.salesName || '未指定' }}
+                        </span>
+                      </div>
+                    </v-col>
+
+                    <v-col cols="12" sm="6">
+                      <div class="text-caption font-weight-bold text-primary mb-1">操作人員</div>
+                      <div class="text-body-2 text-grey-darken-2">
+                        {{ res.operatorName || '不詳' }}
+                      </div>
+                    </v-col>
+
+                    <v-col v-if="res.note" cols="12">
+                      <div class="text-caption font-weight-bold text-primary mb-1">備註</div>
+                      <div class="text-body-2 text-grey-darken-2 pa-2 rounded" style="background-color: rgba(255, 255, 255, 0.5);">
+                        {{ res.note }}
+                      </div>
+                    </v-col>
+                  </v-row>
+                </div>
+              </v-card>
+            </div>
+
             <v-card class="pa-5 mb-6 rounded-xl elevation-2">
               <div class="section-title mb-3">聯絡狀況回報</div>
             <v-select
@@ -137,10 +200,10 @@
               ></v-select>
             </template>
 
-            <v-btn 
+            <v-btn
               v-if="form.status === '已約賞屋'"
-              block 
-              color="primary" 
+              block
+              color="primary"
               variant="elevated"
               class="mb-4 font-weight-bold"
               prepend-icon="mdi-calendar-check"
@@ -255,6 +318,7 @@ const snackbar = reactive({ show: false, text: '', color: '' });
 // 預約連動相關
 const showBookingDialog = ref(false);
 const bookingInitialData = ref({});
+const existingReservations = ref([]); // ✅ 新增：存儲現有預約記錄
 
 const statusOptions = ref(['不考慮', '已約賞屋', '還在討論', '空號', '未接']);
 const reasonOptions = ref([]);
@@ -365,18 +429,21 @@ onMounted(async () => {
           }
         }
 
-        userStore.user = { 
-            name: '本地開發人員', 
-            phone: '0900000000', 
-            key: '0900000000' 
+        userStore.user = {
+            name: '本地開發人員',
+            phone: '0900000000',
+            key: '0900000000'
         };
         authStatus.value = 'granted';
-        
+
         const logsSnap = await getDocs(query(
           collection(db, `leads/${leadId}/contactLogs`),
           orderBy('createdAt', 'desc')
         ));
         historyLogs.value = logsSnap.docs.map(d => d.data());
+
+        // ✅ 新增：加載該客戶的預約記錄
+        await loadCustomerReservations();
       } else {
         authStatus.value = 'denied';
       }
@@ -408,6 +475,9 @@ onMounted(async () => {
         orderBy('createdAt', 'desc')
       ));
       historyLogs.value = logsSnap.docs.map(d => d.data());
+
+      // ✅ 新增：加載該客戶的預約記錄
+      await loadCustomerReservations();
     } else {
       authStatus.value = 'denied';
     }
@@ -415,6 +485,52 @@ onMounted(async () => {
     authStatus.value = 'denied';
   }
 });
+
+// ✅ 新增：查詢該客戶的有效預約記錄
+const loadCustomerReservations = async () => {
+  console.log('🔍 開始查詢預約記錄...');
+  console.log('📱 客戶電話:', leadData.value.phone);
+  console.log('🏢 項目ID:', leadData.value.projectId);
+
+  if (!leadData.value.phone || !leadData.value.projectId) {
+    console.warn('⚠️ 缺少客戶電話或項目ID，跳過查詢');
+    return;
+  }
+
+  try {
+    const reservationsQuery = query(
+      collection(db, 'viewing_reservations'),
+      where('projectId', '==', leadData.value.projectId),
+      where('customerPhone', '==', leadData.value.phone),
+      where('status', '==', 'active'),
+      orderBy('reservationTime', 'desc')
+    );
+
+    const reservationsSnap = await getDocs(reservationsQuery);
+    console.log('📊 查詢結果數量:', reservationsSnap.size);
+
+    const now = new Date();
+
+    // 篩選有效預約（未來的預約）
+    existingReservations.value = reservationsSnap.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          reservationTime: data.reservationTime?.toDate ? data.reservationTime.toDate() : new Date(data.reservationTime)
+        };
+      })
+      .filter(res => res.reservationTime > now)
+      .sort((a, b) => a.reservationTime - b.reservationTime);
+
+    console.log('✅ 有效預約數量:', existingReservations.value.length);
+    console.log('📋 預約記錄:', existingReservations.value);
+  } catch (err) {
+    console.error('❌ 查詢預約記錄失敗:', err);
+    console.error('錯誤詳情:', err.message);
+  }
+};
 
 const openBookingDialog = () => {
   bookingInitialData.value = {

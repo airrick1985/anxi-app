@@ -126,14 +126,23 @@
         >
             指派給原銷售 ({{ leadData.latestSalesName }})
         </v-btn>
-         <v-btn 
+         <v-btn
             v-else-if="type === 'lead'"
-            color="blue-grey-darken-1" 
-            variant="flat" 
+            color="blue-grey-darken-1"
+            variant="flat"
             prepend-icon="mdi-account-check"
              @click="$emit('assign', leadData.assignedTo)"
         >
             指派給負責人 ({{ leadData.assignedName }})
+        </v-btn>
+        <v-btn
+            v-else-if="type === 'reservation'"
+            color="deep-purple"
+            variant="flat"
+            prepend-icon="mdi-calendar-check"
+            @click="$emit('assign', leadData.assignedTo)"
+        >
+            指派給預約業務 ({{ leadData.assignedName }})
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -165,11 +174,31 @@ const visible = computed({
 const tab = ref('profile');
 
 const isVip = computed(() => props.type === 'vip');
+const isReservation = computed(() => props.type === 'reservation');
 
-const title = computed(() => isVip.value ? '既有客資詳情' : '重複名單詳情');
-const headerColor = computed(() => isVip.value ? 'orange-darken-2' : 'blue-grey-darken-2');
-const headerIcon = computed(() => isVip.value ? 'mdi-crown' : 'mdi-alert-circle');
-const statusText = computed(() => isVip.value ? '既有客資' : '重複名單');
+const title = computed(() => {
+  if (isVip.value) return '既有客資詳情';
+  if (isReservation.value) return '賞屋預約詳情';
+  return '重複名單詳情';
+});
+
+const headerColor = computed(() => {
+  if (isVip.value) return 'orange-darken-2';
+  if (isReservation.value) return 'deep-purple';
+  return 'blue-grey-darken-2';
+});
+
+const headerIcon = computed(() => {
+  if (isVip.value) return 'mdi-crown';
+  if (isReservation.value) return 'mdi-calendar-check';
+  return 'mdi-alert-circle';
+});
+
+const statusText = computed(() => {
+  if (isVip.value) return '既有客資';
+  if (isReservation.value) return '賞屋預約';
+  return '重複名單';
+});
 
 // 格式化個人資料
 const displayProfile = computed(() => {
