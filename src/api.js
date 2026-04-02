@@ -2379,12 +2379,12 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
 /**
  * 獲取可預約的日期和時段 (V2: 呼叫 bookingApi 路由)
  */
-export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId) => {
+export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId, subOption) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
       action: 'getAvailableSlots',
-      data: { projectId, unitId, bookingType, bookingMethod, projectName }
+      data: { projectId, unitId, bookingType, bookingMethod, projectName, subOption }
     });
     // 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
     return {
@@ -3656,6 +3656,50 @@ export const listenToAllHouseholds = (projectId, onDataChange, onError) => {
 
   }, (error) => {
     console.error("監聽戶別總表時發生錯誤: ", error);
+    if (onError) {
+      onError(error);
+    }
+  });
+
+  return unsubscribe;
+};
+
+
+/**
+ * ✓ 【新增】監聽指定專案的預約資料（appointments）
+ * 篩選有效預約：status === "預約中" 或 status === "已完成"
+ * @param {string} projectId - 專案 ID
+ * @param {function} onDataChange - 資料變動時的回呼函式
+ * @param {function} onError - 錯誤時的回呼函式
+ * @returns {function} - 用於停止監聽的 unsubscribe 函式
+ */
+export const listenToAppointments = (projectId, onDataChange, onError) => {
+  const appointmentsCol = collection(db, 'appointments');
+  const q = query(
+    appointmentsCol,
+    where("projectId", "==", projectId),
+    where("status", "in", ["預約中", "已完成"])
+  );
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const appointments = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      const formattedData = { ...data };
+
+      // 將 Firestore Timestamp 轉換為 JavaScript Date
+      if (data.appointmentDate && typeof data.appointmentDate.toDate === 'function') {
+        formattedData.appointmentDate = data.appointmentDate.toDate();
+      }
+
+      appointments.push({
+        _docId: doc.id,
+        ...formattedData
+      });
+    });
+    onDataChange(appointments);
+  }, (error) => {
+    console.error("監聽預約資料時發生錯誤: ", error);
     if (onError) {
       onError(error);
     }

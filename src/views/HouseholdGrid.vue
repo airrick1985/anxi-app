@@ -400,7 +400,7 @@ import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "ag-grid-enterprise";
@@ -428,6 +428,11 @@ const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 let unsubscribeHouseholds = null;
 let unsubscribeFields = null;
+let unsubscribeAppointments = null;
+
+// --- 預約資料 ---
+const appointments = ref([]);
+const appointmentsByUnitAndType = ref({});
 
 // --- 權限與 Grid 設定 ---
 const isAdmin = computed(() => {
@@ -568,6 +573,56 @@ const fieldDialogItems = [
 // 用於表單驗證與確認對話框
 const fieldForm = ref(null);
 const isConfirmingSave = ref(false);
+
+// --- 處理預約資料的函數 ---
+/**
+ * 將 appointments 資料轉換為按 unitId × bookingType 索引的 Map
+ * 每個單位 × 類型只保留 appointmentDate 最新的一筆有效預約
+ */
+const buildAppointmentMap = (appointmentsList) => {
+  const map = {};
+
+  appointmentsList.forEach(appt => {
+    const unitId = appt.unitId;
+    const bookingType = appt.bookingType;
+
+    if (!unitId || !bookingType) return; // 跳過無效資料
+
+    // 初始化該 unitId 的對象
+    if (!map[unitId]) {
+      map[unitId] = {};
+    }
+
+    // 取得當前該類型的最新預約（依 appointmentDate 比較）
+    const current = map[unitId][bookingType];
+    const currentDate = current?.appointmentDate instanceof Date ? current.appointmentDate : null;
+    const newDate = appt.appointmentDate instanceof Date ? appt.appointmentDate : null;
+
+    // 若無當前預約，或新預約的日期更新，則更新該類型的預約
+    if (!current || (newDate && (!currentDate || newDate > currentDate))) {
+      map[unitId][bookingType] = {
+        date: appt.appointmentDate || null,
+        timeSlot: appt.appointmentTimeSlot || '',
+        method: formatAppointmentMethod(appt)
+      };
+    }
+  });
+
+  return map;
+};
+
+/**
+ * 組合選擇方式的顯示文字
+ * 若有 bookingSubOption，顯示為 "{inspectionMethod} - {bookingSubOption}"
+ */
+const formatAppointmentMethod = (appointment) => {
+  const method = appointment.inspectionMethod || '';
+  const subOption = appointment.bookingSubOption || '';
+  if (subOption) {
+    return `${method} - ${subOption}`;
+  }
+  return method;
+};
 
 
 
@@ -994,7 +1049,7 @@ const dynamicColDefs = computed(() => {
     } else if (Array.isArray(projectConfig.value.bookingTypes)) {
       availableTypes = projectConfig.value.bookingTypes;
     }
-    
+
     // 排除已獨立硬編碼的 '初驗' 和 '複驗'
     const customTypes = availableTypes.filter(t => t !== '初驗' && t !== '複驗' && t);
     customTypes.forEach(type => {
@@ -1021,7 +1076,55 @@ const dynamicColDefs = computed(() => {
     });
   }
 
-  return [..._customFieldCols, ..._customBatchCols];
+  // [新增] 根據預約項目（bookingMenu）動態產生預約資訊欄位（預約日期、時段、選擇方式）
+  const _bookingInfoCols = [];
+  if (projectConfig.value) {
+    let availableTypes = [];
+    if (Array.isArray(projectConfig.value.bookingMenu) && projectConfig.value.bookingMenu.length > 0) {
+      availableTypes = projectConfig.value.bookingMenu.map(item => item.title);
+    } else if (Array.isArray(projectConfig.value.bookingTypes)) {
+      availableTypes = projectConfig.value.bookingTypes;
+    }
+
+    availableTypes.forEach(type => {
+      // 預約日期欄位
+      _bookingInfoCols.push({
+        headerName: `${type}(預約日期)`,
+        field: `_booking_${type}_date`,
+        width: 140,
+        editable: false,
+        valueGetter: params => {
+          return params.data?._bookingInfo?.[type]?.date || '';
+        },
+        valueFormatter: dateFormatter,
+        filter: 'agDateColumnFilter',
+      });
+
+      // 時段欄位
+      _bookingInfoCols.push({
+        headerName: `${type}(時段)`,
+        field: `_booking_${type}_timeSlot`,
+        width: 120,
+        editable: false,
+        valueGetter: params => {
+          return params.data?._bookingInfo?.[type]?.timeSlot || '';
+        },
+      });
+
+      // 選擇方式欄位
+      _bookingInfoCols.push({
+        headerName: `${type}(選擇方式)`,
+        field: `_booking_${type}_method`,
+        width: 160,
+        editable: false,
+        valueGetter: params => {
+          return params.data?._bookingInfo?.[type]?.method || '';
+        },
+      });
+    });
+  }
+
+  return [..._customFieldCols, ..._customBatchCols, ..._bookingInfoCols];
 });
 
 // 3. 組合基礎欄位和動態欄位，成為最終要在 Grid 中顯示的欄位
@@ -1059,7 +1162,29 @@ const exportToExcel = () => {
   const dataAsArray = sortedItems.map(item => {
     return exportFields.map(key => {
       let value;
-      if (key.includes('.')) {
+
+      // [新增] 處理預約資訊欄位（_booking_*_date, _booking_*_timeSlot, _booking_*_method）
+      if (key.startsWith('_booking_') && key.endsWith('_date')) {
+        // 抽取預約類型，例如從 "_booking_對保_date" 抽取 "對保"
+        const typeMatch = key.match(/_booking_(.+)_date/);
+        if (typeMatch) {
+          const type = typeMatch[1];
+          value = item._bookingInfo?.[type]?.date;
+        }
+      } else if (key.startsWith('_booking_') && key.endsWith('_timeSlot')) {
+        const typeMatch = key.match(/_booking_(.+)_timeSlot/);
+        if (typeMatch) {
+          const type = typeMatch[1];
+          value = item._bookingInfo?.[type]?.timeSlot;
+        }
+      } else if (key.startsWith('_booking_') && key.endsWith('_method')) {
+        const typeMatch = key.match(/_booking_(.+)_method/);
+        if (typeMatch) {
+          const type = typeMatch[1];
+          value = item._bookingInfo?.[type]?.method;
+        }
+      } else if (key.includes('.')) {
+        // 原有的巢狀欄位處理邏輯
         const parts = key.split('.');
         value = item;
         for (const p of parts) {
@@ -1422,7 +1547,11 @@ onMounted(async () => {
       projectId.value,
       (households) => {
         console.log('接收到 Firestore 戶別資料更新...');
-        rowData.value = households;
+        // 將已有的預約資訊合併到新的 households 資料
+        rowData.value = households.map(household => ({
+          ...household,
+          _bookingInfo: appointmentsByUnitAndType.value[household.unitId] || {}
+        }));
       },
       (err) => {
         error.value = `戶別資料監聽失敗: ${err.message}`;
@@ -1443,6 +1572,25 @@ onMounted(async () => {
       }
     );
 
+    // 3. [新增] 監聽預約資料
+    unsubscribeAppointments = listenToAppointments(
+      projectId.value,
+      (appointmentsList) => {
+        console.log('接收到 Firestore 預約資料更新...');
+        appointments.value = appointmentsList;
+        // 重建 appointments map
+        appointmentsByUnitAndType.value = buildAppointmentMap(appointmentsList);
+        // 將 _bookingInfo 合併至 rowData
+        rowData.value = rowData.value.map(household => ({
+          ...household,
+          _bookingInfo: appointmentsByUnitAndType.value[household.unitId] || {}
+        }));
+      },
+      (err) => {
+        console.error(`預約資料監聽失敗: ${err.message}`);
+        // 不阻止頁面載入，只記錄錯誤
+      }
+    );
 
   } else {
     error.value = "未提供建案 ID";
@@ -1471,6 +1619,10 @@ onUnmounted(() => {
   if (unsubscribeFields) {
     console.log('停止監聽欄位定義');
     unsubscribeFields();
+  }
+  if (unsubscribeAppointments) {
+    console.log('停止監聽預約資料');
+    unsubscribeAppointments();
   }
 
 });
