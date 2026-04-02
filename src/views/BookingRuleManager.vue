@@ -370,40 +370,52 @@
                               <template #item="{ element: method, index: methodIndex }">
                                 <div>
                                   <v-list-item class="py-0">
-                                    <div class="d-flex align-center w-100 py-2">
-                                      <!-- Method Drag Handle -->
-                                      <v-icon class="method-drag-handle mr-2 cursor-move" size="small"
-                                        color="grey">mdi-drag</v-icon>
-                                      <v-icon size="small" color="secondary"
-                                        class="mr-2">mdi-subdirectory-arrow-right</v-icon>
+                                    <div class="d-flex flex-column w-100 py-2">
+                                      <div class="d-flex align-center">
+                                        <!-- Method Drag Handle -->
+                                        <v-icon class="method-drag-handle mr-2 cursor-move" size="small"
+                                          color="grey">mdi-drag</v-icon>
+                                        <v-icon size="small" color="secondary"
+                                          class="mr-2">mdi-subdirectory-arrow-right</v-icon>
 
-                                      <span class="font-weight-medium mr-4 text-subtitle-2">{{ method.title }}</span>
+                                        <span class="font-weight-medium mr-4 text-subtitle-2">{{ method.title }}</span>
 
-                                      <!-- Info Chips -->
-                                      <v-chip v-if="method.triggerAuthFlow" size="x-small" color="warning" class="mr-2"
-                                        variant="outlined">
-                                        需授權
-                                      </v-chip>
-                                      <v-chip v-if="method.customFields && method.customFields.length > 0"
-                                        size="x-small" color="info" class="mr-4" variant="tonal">
-                                        {{ method.customFields.length }} 欄位
-                                      </v-chip>
+                                        <!-- Info Chips -->
+                                        <v-chip v-if="method.triggerAuthFlow" size="x-small" color="warning" class="mr-2"
+                                          variant="outlined">
+                                          需授權
+                                        </v-chip>
+                                        <v-chip v-if="method.customFields && method.customFields.length > 0"
+                                          size="x-small" color="info" class="mr-2" variant="tonal">
+                                          {{ method.customFields.length }} 欄位
+                                        </v-chip>
+                                        <v-chip v-if="method.subOptions && method.subOptions.length > 0"
+                                          size="x-small" color="success" variant="tonal">
+                                          {{ method.subOptions.length }} 子選項
+                                        </v-chip>
 
-                                      <!-- Action Buttons -->
-                                      <v-btn icon variant="text" size="x-small" color="primary" class="mr-1"
-                                        @click="openDynamicFieldsDialog(method, itemIndex, methodIndex)" title="設定額外欄位">
-                                        <v-icon>mdi-cog</v-icon>
-                                      </v-btn>
-                                      <v-btn icon variant="text" size="x-small" color="grey-darken-1" class="mr-1"
-                                        @click="openEditMethodDialog(itemIndex, method, methodIndex)" title="編輯方式名稱">
-                                        <v-icon>mdi-pencil</v-icon>
-                                      </v-btn>
-                                      <v-btn icon variant="text" size="x-small" color="error"
-                                        @click="deleteMethod(itemIndex, methodIndex)" title="刪除方式">
-                                        <v-icon>mdi-close</v-icon>
-                                      </v-btn>
+                                        <!-- Action Buttons -->
+                                        <v-btn icon variant="text" size="x-small" color="primary" class="mr-1"
+                                          @click="openDynamicFieldsDialog(method, itemIndex, methodIndex)" title="設定額外欄位">
+                                          <v-icon>mdi-cog</v-icon>
+                                        </v-btn>
+                                        <v-btn icon variant="text" size="x-small" color="grey-darken-1" class="mr-1"
+                                          @click="openEditMethodDialog(itemIndex, method, methodIndex)" title="編輯方式名稱">
+                                          <v-icon>mdi-pencil</v-icon>
+                                        </v-btn>
+                                        <v-btn icon variant="text" size="x-small" color="error"
+                                          @click="deleteMethod(itemIndex, methodIndex)" title="刪除方式">
+                                          <v-icon>mdi-close</v-icon>
+                                        </v-btn>
 
-                                      <v-spacer></v-spacer>
+                                        <v-spacer></v-spacer>
+                                      </div>
+                                      <!-- Sub Options Display -->
+                                      <div v-if="method.subOptions && method.subOptions.length > 0" class="mt-2 ml-8">
+                                        <div class="text-caption text-grey-darken-1">
+                                          {{ method.subOptions.join(', ') }}
+                                        </div>
+                                      </div>
                                     </div>
                                   </v-list-item>
                                   <v-divider v-if="methodIndex < item.methods.filter(m => !m.deleted).length - 1"
@@ -1749,20 +1761,15 @@
                       <v-chip color="indigo" variant="tonal" label class="mb-1">
                         <v-icon start>mdi-clock-time-four-outline</v-icon>
                         <strong>{{ slot.time }}</strong>
+                        <v-divider vertical class="mx-2"></v-divider>
+                        <span class="font-weight-regular">{{ slot.capacity }} 名</span>
                       </v-chip>
-                      <div class="pl-2 d-flex flex-wrap ga-1 align-center">
-                        <template v-for="method in previewBatchMethods" :key="method">
-                          <v-chip v-if="slot.methods.includes(method)"
-                            color="green" variant="elevated" size="x-small" label>
-                            {{ method }}
-                            <template v-if="slot.methodLimits[method] !== undefined">
-                              : {{ slot.methodLimits[method] }} 名
-                            </template>
-                            <template v-else-if="slot.capacity > 0">
-                              : {{ slot.capacity }} 名
-                            </template>
-                          </v-chip>
-                        </template>
+                      <div class="pl-2 d-flex flex-wrap ga-2">
+                        <v-chip v-for="method in previewBatchMethods" :key="method"
+                          :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
+                          :color="slot.methods.includes(method) ? 'green' : 'grey'" size="x-small" label>
+                          {{ method }}
+                        </v-chip>
                         <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
                       </div>
                       <div v-if="Object.keys(slot.subOptionLimits).length > 0" class="pl-2 mt-1 d-flex flex-wrap ga-1 align-center">
@@ -1834,8 +1841,12 @@
 
     <v-dialog v-model="isBatchDialogVisible" max-width="1200px" persistent>
       <v-card>
-        <v-card-title class="primary-bg">
+        <v-card-title class="primary-bg d-flex align-center">
           <span class="text-h6">{{ editedBatch.id ? '編輯' : '新增' }}預約批次</span>
+          <v-spacer></v-spacer>
+          <v-btn icon variant="text" color="white" size="small" @click="isBatchGuideVisible = true" title="操作說明">
+            <v-icon>mdi-help-circle-outline</v-icon>
+          </v-btn>
         </v-card-title>
         <v-card-text style="max-height: 80vh; overflow-y: auto;">
           <v-form ref="batchForm">
@@ -2027,7 +2038,7 @@
                     <v-combobox v-model="pendingNewSlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
                       label="選擇或輸入時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
                       persistent-hint style="flex: 1; min-width: 180px"></v-combobox>
-                    <v-combobox v-model="pendingNewCapacity" :items="capacityPresets" type="number" label="名額" min="0"
+                    <v-combobox v-if="false" v-model="pendingNewCapacity" :items="capacityPresets" type="number" label="名額" min="0"
                       variant="outlined" density="compact" hide-details style="max-width: 90px"></v-combobox>
                   </div>
                   <div class="mb-2">
@@ -2049,54 +2060,65 @@
                     尚無時段，請使用上方「新增時段」面板新增
                   </div>
                   <v-sheet v-for="slot in sortedCurrentDaySlots" :key="slot" border rounded class="pa-3 mb-3">
-                    <div class="d-flex justify-space-between align-center mb-1">
+                    <div class="d-flex justify-space-between align-center">
                       <span class="font-weight-bold text-h6 text-grey-darken-2">{{ slot }}</span>
-                      <v-btn icon="mdi-delete-outline" size="small" color="error" variant="tonal"
-                        density="compact" @click="removeSlot(slot)"></v-btn>
+                      <div class="d-flex align-center ga-2">
+                        <v-chip label color="grey-darken-1" variant="tonal" size="small">
+                          總計 {{ getCapacityForSlot(slot) }} 名
+                        </v-chip>
+                        <v-btn icon="mdi-delete-outline" size="small" color="error" variant="tonal"
+                          density="compact" @click="removeSlot(slot)"></v-btn>
+                      </div>
                     </div>
                     <v-divider class="my-2"></v-divider>
                     <div>
-                      <div class="d-flex align-center mb-2">
-                        <span class="text-caption font-weight-bold mr-2">可預約方式與名額</span>
+                      <div class="text-caption mb-1 ml-1">可預約方式</div>
+                      <div class="d-flex flex-wrap align-center">
                         <v-checkbox :model-value="getSelectAllState(slot).checked"
                           :indeterminate="getSelectAllState(slot).indeterminate" label="全選" density="compact"
-                          hide-details class="d-inline-block"
+                          hide-details class="d-inline-block mr-2 font-weight-bold"
                           @update:model-value="handleSelectAll($event, slot)"></v-checkbox>
-                      </div>
-                      <div v-if="availableBatchMethods.length === 0" class="text-caption text-grey ml-1">請先儲存批次預約項目</div>
-                      <div v-for="method in availableBatchMethods" :key="method" class="d-flex align-center mb-1 ga-2 flex-wrap">
-                        <v-checkbox :model-value="isMethodSelectedForSlot(slot, method)"
-                          @update:model-value="updateMethodsForSlot(slot, method, $event)"
-                          :label="method" density="compact" hide-details
-                          style="min-width: 130px;"></v-checkbox>
-                        <template v-if="isMethodSelectedForSlot(slot, method)">
-                          <v-chip v-if="(batchMethodSubOptionsMap[method] || []).length > 0"
-                            size="x-small" color="primary" variant="tonal" label>
-                            <v-icon start size="x-small">mdi-sitemap-outline</v-icon>
-                            由子選項名額決定
-                          </v-chip>
-                          <v-text-field v-else
-                            :model-value="getMethodLimitForSlot(slot, method)"
-                            @update:model-value="setMethodLimitForSlot(slot, method, $event)"
-                            type="number" min="0" label="名額" variant="outlined" density="compact"
-                            hide-details style="max-width: 90px;"></v-text-field>
+                        <v-divider vertical class="mx-2 d-none d-sm-flex"></v-divider>
+                        <template v-if="availableBatchMethods.length > 0">
+                          <v-checkbox v-for="method in availableBatchMethods" :key="method"
+                            :model-value="isMethodSelectedForSlot(slot, method)"
+                            @update:model-value="updateMethodsForSlot(slot, method, $event)" :label="method"
+                            density="compact" hide-details class="d-inline-block mr-2"></v-checkbox>
                         </template>
                       </div>
                     </div>
 
-                    <!-- 子項目名額設定 -->
-                    <div v-if="availableBatchSubOptions.length > 0" class="mt-2 pl-2 border-s-sm" style="border-color: var(--v-theme-primary)!important;">
-                      <div class="text-caption text-primary mb-1 font-weight-bold">特定子選項名額限制 (若留空則總量管制，不個別限制)：</div>
-                      <div class="d-flex flex-wrap align-center ga-2 mb-1">
-                        <div v-for="subOpt in availableBatchSubOptions" :key="subOpt" style="max-width: 140px;">
-                          <v-text-field 
-                            :label="subOpt" 
-                            :model-value="getSubOptionCapacityForSlot(slot, subOpt)"
-                            @update:model-value="setSubOptionCapacityForSlot(slot, subOpt, $event)"
-                            type="number" min="0" class="bg-white"
-                            variant="outlined" density="compact" hide-details>
-                          </v-text-field>
-                        </div>
+                    <!-- 各方式獨立名額設定 -->
+                    <div v-if="availableBatchMethods.length > 0 && getSelectedMethodsForSlot(slot).length > 0" class="mt-3 pl-2 border-s-sm" style="border-color: var(--v-theme-secondary)!important;">
+                      <div class="text-caption text-secondary mb-2 font-weight-bold">各方式獨立名額：</div>
+                      <div class="d-flex flex-wrap align-start ga-4">
+                        <template v-for="method in getSelectedMethodsForSlot(slot)" :key="method">
+                          <!-- 無子選項方式：顯示方式名額 -->
+                          <div v-if="!batchMethodSubOptionsMap[method] || batchMethodSubOptionsMap[method].length === 0" style="max-width: 150px;">
+                            <v-text-field
+                              :label="method"
+                              :model-value="getMethodLimitForSlot(slot, method)"
+                              @update:model-value="setMethodLimitForSlot(slot, method, $event)"
+                              type="number" min="0" class="bg-white"
+                              variant="outlined" density="compact" hide-details placeholder="(留空=不限)">
+                            </v-text-field>
+                          </div>
+                          <!-- 有子選項方式：顯示子選項名額，以方式名稱為標題 -->
+                          <div v-else class="d-flex flex-column ga-1">
+                            <div class="text-caption text-grey-darken-1 font-weight-bold">{{ method }}</div>
+                            <div class="d-flex flex-wrap ga-2">
+                              <div v-for="subOpt in batchMethodSubOptionsMap[method]" :key="subOpt" style="max-width: 140px;">
+                                <v-text-field
+                                  :label="subOpt"
+                                  :model-value="getSubOptionCapacityForSlot(slot, subOpt)"
+                                  @update:model-value="setSubOptionCapacityForSlot(slot, subOpt, $event)"
+                                  type="number" min="0" class="bg-white"
+                                  variant="outlined" density="compact" hide-details placeholder="(留空=不限)">
+                                </v-text-field>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
                       </div>
                     </div>
                   </v-sheet>
@@ -2109,6 +2131,127 @@
           <v-spacer></v-spacer>
           <v-btn color="grey-darken-1" variant="text" @click="isBatchDialogVisible = false">取消</v-btn>
           <v-btn color="success" variant="flat" @click="initiateSaveProcess" :loading="isSaving">儲存</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 批次設定操作說明 Dialog -->
+    <v-dialog v-model="isBatchGuideVisible" max-width="700px">
+      <v-card>
+        <v-card-title class="bg-info text-white d-flex align-center">
+          <v-icon start>mdi-help-circle-outline</v-icon>
+          預約批次設定 — 操作說明
+        </v-card-title>
+        <v-card-text style="max-height: 70vh; overflow-y: auto;">
+          <v-list>
+            <!-- Section 1: 基本設定 -->
+            <v-list-subheader class="text-subtitle-2 font-weight-bold mt-4 mb-2">
+              <v-icon start size="small" color="primary">mdi-format-list-numbered</v-icon>
+              基本設定
+            </v-list-subheader>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">批次代號</div>
+                <div class="text-grey-darken-1">唯一識別此批次，新增後不可修改。建議使用有意義的編碼（如：初驗20260401、複驗0331）。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">預約項目</div>
+                <div class="text-grey-darken-1">此批次屬於哪個項目（如：初驗、複驗、對保）。新增後不可修改。</div>
+              </div>
+            </v-list-item>
+
+            <v-divider class="my-3"></v-divider>
+
+            <!-- Section 2: 名額計算模式 -->
+            <v-list-subheader class="text-subtitle-2 font-weight-bold mt-4 mb-2">
+              <v-icon start size="small" color="primary">mdi-tune-variant</v-icon>
+              名額計算模式
+            </v-list-subheader>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">共用名額（預設）</div>
+                <div class="text-grey-darken-1">同日期、同時段被其他批次預約時，此批次的剩餘名額也會減少。適合多批次共用同一時段的場景。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">獨立名額</div>
+                <div class="text-grey-darken-1">此批次的名額獨立計算，其他批次的預約不會影響此批次的剩餘名額。</div>
+              </div>
+            </v-list-item>
+
+            <v-divider class="my-3"></v-divider>
+
+            <!-- Section 3: 時間設定 -->
+            <v-list-subheader class="text-subtitle-2 font-weight-bold mt-4 mb-2">
+              <v-icon start size="small" color="primary">mdi-calendar-clock</v-icon>
+              時間設定
+            </v-list-subheader>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">預約開放 / 結束時間</div>
+                <div class="text-grey-darken-1">客戶何時可以開始送出預約申請，何時截止。不同批次可設定不同時間。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">可預約起始 / 結束日</div>
+                <div class="text-grey-darken-1">客戶可以選擇預約的日期範圍。例如設定 04/01 ~ 04/30，客戶只能在這個範圍內選日期。</div>
+              </div>
+            </v-list-item>
+
+            <v-divider class="my-3"></v-divider>
+
+            <!-- Section 4: 日曆與時段設定 -->
+            <v-list-subheader class="text-subtitle-2 font-weight-bold mt-4 mb-2">
+              <v-icon start size="small" color="primary">mdi-calendar-plus</v-icon>
+              日曆與時段設定
+            </v-list-subheader>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">📅 日期選擇</div>
+                <div class="text-grey-darken-1">點選一天或多天。多選時，後續新增的時段會同時套用到所有選中的日期。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">⏰ 新增時段</div>
+                <div class="text-grey-darken-1">輸入時段（如 09:00、14:00），選擇可預約方式，點「新增至已選日期」。時段支持多筆（例如：09:00、10:00、14:00）。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">🎯 各方式獨立名額</div>
+                <div class="text-grey-darken-1">為每個預約方式或子選項設定獨立的名額上限。留空表示不限（不佔用總容量）。</div>
+              </div>
+            </v-list-item>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">📊 總計名額</div>
+                <div class="text-grey-darken-1">自動加總所有方式 / 子選項的名額，無法手動編輯。後端配額檢查會以此為準。</div>
+              </div>
+            </v-list-item>
+
+            <v-divider class="my-3"></v-divider>
+
+            <!-- Section 5: 儲存 -->
+            <v-list-subheader class="text-subtitle-2 font-weight-bold mt-4 mb-2">
+              <v-icon start size="small" color="primary">mdi-content-save</v-icon>
+              儲存
+            </v-list-subheader>
+            <v-list-item density="comfortable">
+              <div class="text-body-2">
+                <div class="font-weight-bold mb-1">點「儲存」完成設定</div>
+                <div class="text-grey-darken-1">所有已選日期的時段設定會一次寫入。修改後可隨時重新編輯。</div>
+              </div>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="isBatchGuideVisible = false">關閉</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2627,6 +2770,7 @@ const snackbar = reactive({ show: false, text: '', color: 'success' });
 const isBatchLoading = ref(false);
 const showDeletedItems = ref(false); // 控制是否顯示已刪除的預約項目
 const isBatchDialogVisible = ref(false);
+const isBatchGuideVisible = ref(false);
 const batchForm = ref(null);
 const bookingBatches = ref([]);
 
@@ -3963,7 +4107,6 @@ async function openPreviewDialog(item) {
               time: time,
               capacity: slotInfo.capacity || 0,
               methods: slotInfo.methods || [],
-              methodLimits: slotInfo.methodLimits || {},
               subOptionLimits: slotInfo.subOptionLimits || {}
             });
           }
@@ -4153,6 +4296,27 @@ function setCapacityForSlot(slot, capacity) {
   });
 }
 
+// 新增：自動計算並更新時段總容量（依據各方式/子選項名額加總）
+function recalcCapacityForSlot(dateKey, slotTime) {
+  const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slotTime];
+  if (!daySlot) return;
+  let total = 0;
+  const methods = daySlot.methods || [];
+  methods.forEach(method => {
+    const subOpts = batchMethodSubOptionsMap.value[method] || [];
+    if (subOpts.length > 0) {
+      // 有子選項的方式：加總所有子選項名額
+      subOpts.forEach(sub => {
+        total += Number(daySlot.subOptionLimits?.[sub]) || 0;
+      });
+    } else {
+      // 無子選項的方式：直接加上方式名額
+      total += Number(daySlot.methodLimits?.[method]) || 0;
+    }
+  });
+  daySlot.capacity = total;
+}
+
 // 讀取特定時段特定方式的名額
 function getMethodLimitForSlot(slot, method) {
   if (selectedDaysForEditing.value.length === 0) return '';
@@ -4164,7 +4328,8 @@ function getMethodLimitForSlot(slot, method) {
 function setMethodLimitForSlot(slot, method, value) {
   const valStr = String(value).trim();
   selectedDaysForEditing.value.forEach(day => {
-    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    const dateKey = formatDate(day);
+    const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
     if (daySlot) {
       if (!daySlot.methodLimits) daySlot.methodLimits = {};
       if (valStr === '') {
@@ -4172,6 +4337,8 @@ function setMethodLimitForSlot(slot, method, value) {
       } else {
         daySlot.methodLimits[method] = Number(valStr) || 0;
       }
+      // 修改後自動重算該時段的總容量
+      recalcCapacityForSlot(dateKey, slot);
     }
   });
 }
@@ -4187,7 +4354,8 @@ function getSubOptionCapacityForSlot(slot, subOption) {
 function setSubOptionCapacityForSlot(slot, subOption, capacity) {
   const capStr = String(capacity).trim();
   selectedDaysForEditing.value.forEach(day => {
-    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    const dateKey = formatDate(day);
+    const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
     if (daySlot) {
       if (!daySlot.subOptionLimits) {
         daySlot.subOptionLimits = {};
@@ -4197,6 +4365,8 @@ function setSubOptionCapacityForSlot(slot, subOption, capacity) {
       } else {
         daySlot.subOptionLimits[subOption] = Number(capStr) || 0;
       }
+      // 修改後自動重算該時段的總容量
+      recalcCapacityForSlot(dateKey, slot);
     }
   });
 }
@@ -4221,6 +4391,8 @@ function applyPendingSlots() {
           methods: [...pendingNewMethods.value],
           methodLimits
         };
+        // 新增時段後自動計算總容量
+        recalcCapacityForSlot(dateKey, slot);
       }
     });
     editedBatch.value.dailyRules[dateKey].slots = daySlots;
@@ -4249,9 +4421,16 @@ function isMethodSelectedForSlot(slot, method) {
   return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.methods.includes(method) || false;
 }
 
+function getSelectedMethodsForSlot(slot) {
+  if (selectedDaysForEditing.value.length === 0) return [];
+  const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
+  return editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.methods || [];
+}
+
 function updateMethodsForSlot(slot, method, isSelected) {
   selectedDaysForEditing.value.forEach(day => {
-    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    const dateKey = formatDate(day);
+    const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
     if (!daySlot || !daySlot.methods) return;
 
     const methods = daySlot.methods;
@@ -4259,6 +4438,9 @@ function updateMethodsForSlot(slot, method, isSelected) {
 
     if (isSelected && index === -1) methods.push(method);
     else if (!isSelected && index > -1) methods.splice(index, 1);
+
+    // 修改方式列表後自動重算該時段的總容量
+    recalcCapacityForSlot(dateKey, slot);
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
@@ -4270,9 +4452,14 @@ const isDayConfigured = (day) => {
 
 function handleSelectAll(isChecked, slot) {
   selectedDaysForEditing.value.forEach(day => {
-    const daySlot = editedBatch.value.dailyRules[formatDate(day)]?.slots?.[slot];
+    const dateKey = formatDate(day);
+    const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
     //  將 allMethodOptions 改為 availableBatchMethods
-    if (daySlot) daySlot.methods = isChecked ? [...availableBatchMethods.value] : [];
+    if (daySlot) {
+      daySlot.methods = isChecked ? [...availableBatchMethods.value] : [];
+      // 修改方式列表後自動重算該時段的總容量
+      recalcCapacityForSlot(dateKey, slot);
+    }
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }

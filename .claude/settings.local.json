@@ -6,7 +6,9 @@
       "Bash(firebase use:*)",
       "Bash(npm run:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m 'feat\\(HouseholdGrid\\): 新增動態預約資訊欄位展示:*)"
+      "Bash(git commit -m 'feat\\(HouseholdGrid\\): 新增動態預約資訊欄位展示:*)",
+      "Bash(git commit -m 'refactor\\(HouseholdGrid\\): 移除已停用的'\\\\''銀行'\\\\''欄位:*)",
+      "Bash(git commit -m 'refactor\\(HouseholdGrid\\): 優化選擇方式欄位格式:*)"
     ]
   }
 }
