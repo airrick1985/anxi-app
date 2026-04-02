@@ -619,7 +619,7 @@ const formatAppointmentMethod = (appointment) => {
   const method = appointment.inspectionMethod || '';
   const subOption = appointment.bookingSubOption || '';
   if (subOption) {
-    return `${method} - ${subOption}`;
+    return `${method}-${subOption}`;
   }
   return method;
 };

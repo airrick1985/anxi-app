@@ -10,7 +10,7 @@
 | `{項目名}(時段)`      | `appointmentTimeSlot`     | 對保(時段) → 09:00             |
 | `{項目名}(選擇方式)`   | `inspectionMethod`        | 對保(選擇方式) → 台灣銀行      |
 
-- 若該預約項目有子選項 (`bookingSubOption`)，選擇方式欄位應顯示完整路徑，例如：`需貸款 - 台灣銀行`。
+- 若該預約項目有子選項 (`bookingSubOption`)，選擇方式欄位應顯示完整路徑，例如：`需貸款-台灣銀行`。
 - 欄位為 **唯讀**（`editable: false`），僅供檢視。
 
 ---
@@ -145,7 +145,7 @@ function formatMethod(appointment) {
   const method = appointment.inspectionMethod || '';
   const subOption = appointment.bookingSubOption || '';
   if (subOption) {
-    return `${method} - ${subOption}`;
+    return `${method}-${subOption}`;
   }
   return method;
 }
@@ -215,6 +215,6 @@ function formatMethod(appointment) {
 2. 欄位僅顯示 `status === "預約中"` 或 `status === "已完成"` 的有效預約資料。
 3. 同一戶別同一預約項目有多筆有效預約時，顯示最新一筆。
 4. 預約被取消後，欄位即時更新（透過 onSnapshot）。
-5. 選擇方式含子選項時，顯示格式為 `{方式} - {子選項}`。
+5. 選擇方式含子選項時，顯示格式為 `{方式}-{子選項}`（無空格）。
 6. 所有新增欄位可正常匯出至 Excel。
 7. 新增欄位為唯讀，不可編輯。
