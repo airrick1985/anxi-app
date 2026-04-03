@@ -50,6 +50,8 @@
             </div>
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
+            <label class="v-label text-caption">補足日期</label>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_complete_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
             <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>

@@ -340,6 +340,7 @@
                           <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
                           <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
                           <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
+                          <v-list-item title="補足日期" :subtitle="formatDate(unitData.payment_complete_date)"></v-list-item>
                           <v-list-item title="簽約日期"
                             :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
                           <v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{

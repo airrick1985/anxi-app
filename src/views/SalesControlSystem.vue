@@ -151,6 +151,20 @@
             color="black"
             variant="tonal"
             class="ml-4"
+            @click="isAnalyticsPanelVisible = true"
+            icon="mdi-chart-box"
+          ></v-btn>
+        </template>
+        <span>銷控統計分析</span>
+      </v-tooltip>
+
+      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="black"
+            variant="tonal"
+            class="ml-4"
             @click="exportToExcel"
             icon="mdi-tray-arrow-down"
           ></v-btn>
@@ -640,6 +654,7 @@
           </template>
 
           <template v-slot:item.payment_deposit_date="{ item }">{{ formatDate(item.payment_deposit_date) }}</template>
+          <template v-slot:item.payment_complete_date="{ item }">{{ formatDate(item.payment_complete_date) }}</template>
           <template v-slot:item.payment_contract_date="{ item }">{{ formatDate(item.payment_contract_date) }}</template>
         </v-data-table>
       </div>
@@ -1092,6 +1107,13 @@
       </v-card>
     </v-dialog>
 
+    <!-- 統計分析面板 -->
+    <AnalyticsPanel
+      :show="isAnalyticsPanelVisible"
+      @update:show="isAnalyticsPanelVisible = $event"
+      :project-id="projectId"
+    />
+
     <div v-if="loading || error" class="status-overlay">
       <div v-if="loading" class="loading-container">
         <span class="loader"></span>
@@ -1131,7 +1153,8 @@ import UpdateControl from './UpdateControl.vue';
 import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue';
 import SalesBotChat from '@/components/SalesBotChat.vue';
-import { useTextStyleStore } from '@/store/textStyleStore'; 
+import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
+import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
 
@@ -1667,6 +1690,7 @@ const isActivityDialogVisible = ref(false);
 const isActivityLoading = ref(false);
 
 const isAIAssistantDialogVisible = ref(false);
+const isAnalyticsPanelVisible = ref(false);
 const isParkingCanvasDialogVisible = ref(false);
 const parkingCanvasFloorPlans = ref([]);
 const activeParkingCanvasFloorPlan = ref(null);
@@ -1858,6 +1882,7 @@ const tableHeaders = computed(() => {
       { title: '銷售人員', key: 'salesperson', align: 'start' },
       { title: '買方姓名', key: 'buyerName', align: 'start' },
       { title: '小訂日期', key: 'payment_deposit_date', align: 'center' },
+      { title: '補足日期', key: 'payment_complete_date', align: 'center' },
       { title: '簽約日期', key: 'payment_contract_date', align: 'center' },
       { title: '備註', key: 'remarks', align: 'start' },
     ];
