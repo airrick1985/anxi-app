@@ -3,6 +3,7 @@
     <v-tabs v-model="tab" color="primary" grow>
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="leadDistribution" >聯絡名單</v-tab>
+      <v-tab value="viewingReservation">賞屋預約</v-tab>
       <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
       <v-tab value="settings" v-if="isSuperAdmin" class="admin-tab">
         <v-icon start size="small">mdi-shield-crown</v-icon>客資系統設定
@@ -411,11 +412,17 @@
       </v-window-item>
 
       <v-window-item value="leadDistribution">
-    <LeadDistribution 
-      :projectId="props.projectId" 
-      :hide-back="true" 
+    <LeadDistribution
+      :projectId="props.projectId"
+      :hide-back="true"
     />
   </v-window-item>
+
+      <v-window-item value="viewingReservation" class="pa-0">
+        <div style="height: 100vh; overflow: hidden;">
+          <ViewingReservationCalendar :projectId="props.projectId" />
+        </div>
+      </v-window-item>
 
       <v-window-item value="downloadLeads" v-if="canManageSettings">
   <v-container fluid class="bg-grey-lighten-5 pa-4">
@@ -1410,6 +1417,7 @@ import { useDisplay } from 'vuetify';
 import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
 const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
+const ViewingReservationCalendar = defineAsyncComponent(() => import('@/views/ViewingReservationCalendar.vue'));
 import { 
   collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, 
   serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc

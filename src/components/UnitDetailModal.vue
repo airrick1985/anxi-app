@@ -227,10 +227,15 @@
                           <div class="price-block mb-2">
                             <div class="price-block-title">房價</div>
                             <template v-if="props.viewMode === 'quote' && unitData.salesStatus_quote === '已售'">
-                              <div class="price-block-value text-grey">
+                              <div v-if="!showHiddenPriceQuote" class="price-block-value text-grey">
                                 已售不提供報價
                               </div>
-                              <div class="price-block-unit">&nbsp;</div>
+                              <div v-else class="price-block-value text-red-darken-2">
+                                {{ formatNumber(unitData.price_list_house_total) }} <span
+                                  class="price-block-currency">萬</span>
+                              </div>
+                              <div v-if="!showHiddenPriceQuote" class="price-block-unit">&nbsp;</div>
+                              <div v-else class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
                             </template>
                             <template v-else>
                               <div class="price-block-value text-red-darken-2">
@@ -680,6 +685,24 @@ const showInfoOverlay = ref(false); // 控制全螢幕下的資訊面板顯示
 const tempParkingSelection = ref(null);      // 用於「付款表設定」暫存
 const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存
 
+// 🔐 [隱藏功能] 連續按 8 次 'a' 鍵來顯示已售不提供報價
+const keySequence = ref('');
+const showHiddenPriceQuote = ref(false);
+const handleKeyPress = (e) => {
+  if (e.key.toLowerCase() === 'a') {
+    keySequence.value += 'a';
+    if (keySequence.value.length > 8) {
+      keySequence.value = keySequence.value.slice(-8);
+    }
+    if (keySequence.value.length === 8 && keySequence.value === 'aaaaaaaa') {
+      showHiddenPriceQuote.value = !showHiddenPriceQuote.value;
+      keySequence.value = '';
+    }
+  } else {
+    keySequence.value = '';
+  }
+};
+
 
 
 // ✅ [新增] 編輯模式即時計算 - 表價單價
@@ -1121,8 +1144,8 @@ const currentSalesStatus = computed(() => {
 const canAddToQuote = computed(() => {
   if (!props.unitData) return false;
 
-  // 在報價模式下檢查銷售狀態
-  if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售') {
+  // 在報價模式下檢查銷售狀態 (🔐 隱藏功能：已售可加報價)
+  if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售' && !showHiddenPriceQuote.value) {
     return false;
   }
 
@@ -2265,6 +2288,14 @@ const downloadExcel = () => {
   XLSX.writeFile(wb, fileName);
 };
 
+// 🔐 [隱藏功能] 事件監聽器設定
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyPress);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyPress);
+});
 </script>
 
 <style scoped>
