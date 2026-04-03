@@ -18,7 +18,7 @@
       </div>
 
    <v-list lines="one" class="bg-transparent">
-    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn></div></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
@@ -139,7 +139,12 @@
     </v-menu>
    </div>
 
-   <div class="item-cell flex-1 highlight-dark">{{ displayHousePrice }} 萬</div>
+   <div class="item-cell flex-1 highlight-dark">
+    <div class="d-flex align-center justify-center gap-2">
+      <span>{{ displayHousePrice }} 萬</span>
+      <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn>
+    </div>
+   </div>
    <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
    <div class="item-cell flex-2"><v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
@@ -398,6 +403,114 @@
       :unitId="item.unitId"
       :project-id="props.projectId" @request-open-slide="emit('request-open-slide')"
     />
+
+    <!-- ✅ [新增] 議價調整對話框 -->
+    <v-dialog v-model="isNegotiationDialogVisible" max-width="500">
+      <v-card>
+        <v-card-title class="bg-primary text-white d-flex align-center gap-2">
+          <v-icon>mdi-percent</v-icon>
+          議價調整 - {{ item.unitId }}
+        </v-card-title>
+
+        <v-card-text class="pt-6">
+          <div class="mb-6">
+            <div class="text-caption text-grey-darken-1 mb-2">目前房屋總價</div>
+            <div class="text-h5 font-weight-bold text-primary">{{ displayHousePrice }} 萬元</div>
+            <div class="text-caption text-grey">房屋總面積: {{ formatNumber(item.unitDetails.area_house_ping, 2) }} 坪</div>
+          </div>
+
+          <v-divider class="my-4"></v-divider>
+
+          <!-- 方式選擇 -->
+          <div class="mb-6">
+            <div class="text-subtitle-2 font-weight-bold mb-4">選擇調整方式</div>
+
+            <v-radio-group v-model="negotiationMode" @update:model-value="negotiationValue = ''; calculateNegotiatedPrice()">
+              <!-- 方式 1: 每坪減價 -->
+              <v-radio value="perTsubo" class="mb-4">
+                <template v-slot:label>
+                  <div class="d-flex flex-column ml-2">
+                    <span class="font-weight-bold">每坪減價</span>
+                    <span class="text-caption text-grey-darken-1">輸入負數 (如 -1.5) 表示每坪減少 1.5 萬元</span>
+                  </div>
+                </template>
+              </v-radio>
+
+              <v-text-field
+                v-if="negotiationMode === 'perTsubo'"
+                v-model="negotiationValue"
+                label="每坪調整價格 (萬元)"
+                type="number"
+                suffix="萬/坪"
+                placeholder="例如: -1.5 (減) 或 +0.5 (加)"
+                variant="outlined"
+                density="compact"
+                class="ml-8 mb-4"
+                @update:model-value="calculateNegotiatedPrice"
+              ></v-text-field>
+
+              <!-- 方式 2: 直接減價 -->
+              <v-radio value="directAmount" class="mb-4">
+                <template v-slot:label>
+                  <div class="d-flex flex-column ml-2">
+                    <span class="font-weight-bold">直接調整總價</span>
+                    <span class="text-caption text-grey-darken-1">輸入負數 (如 -15) 表示總價減少 15 萬元</span>
+                  </div>
+                </template>
+              </v-radio>
+
+              <v-text-field
+                v-if="negotiationMode === 'directAmount'"
+                v-model="negotiationValue"
+                label="調整金額 (萬元)"
+                type="number"
+                suffix="萬"
+                placeholder="例如: -15 (減) 或 +10 (加)"
+                variant="outlined"
+                density="compact"
+                class="ml-8 mb-4"
+                @update:model-value="calculateNegotiatedPrice"
+              ></v-text-field>
+            </v-radio-group>
+          </div>
+
+          <v-divider class="my-4"></v-divider>
+
+          <!-- 預覽結果 -->
+          <div class="mb-4">
+            <div class="text-subtitle-2 font-weight-bold mb-3">調整預覽</div>
+            <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
+              <div class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">原房屋總價</span>
+                <span class="font-weight-bold">{{ quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬</span>
+              </div>
+              <v-divider class="my-2"></v-divider>
+              <div class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">調整金額</span>
+                <span :class="(negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
+                  {{ (negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? '+' : '' }}{{ negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬
+                </span>
+              </div>
+              <v-divider class="my-2"></v-divider>
+              <div class="d-flex justify-space-between align-center">
+                <span class="text-h6 font-weight-bold">新房屋總價</span>
+                <span class="text-h5 font-weight-bold text-primary">{{ negotiatedPrice }} 萬</span>
+              </div>
+            </v-card>
+          </div>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey" variant="text" @click="isNegotiationDialogVisible = false">
+            取消
+          </v-btn>
+          <v-btn color="primary" variant="flat" @click="saveNegotiatedPrice">
+            確認調整
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     </div>
 </template>
 
@@ -429,6 +542,12 @@ const isPaymentDetailsVisible = ref(false);
 
 // 車位選擇相關狀態
 const isParkingModalOpen = ref(false);
+
+// ✅ [新增] 議價調整相關狀態
+const isNegotiationDialogVisible = ref(false);
+const negotiationMode = ref('perTsubo'); // 'perTsubo' 或 'directAmount'
+const negotiationValue = ref('');
+const negotiatedPrice = ref(0);
 
 // ★★★ 2. 新增：支援項目名稱引用的新計算引擎 ★★★
 
@@ -1154,6 +1273,57 @@ function handleParkingUpdate(updatedParkingList) {
 
 function openParkingModal() {
   isParkingModalOpen.value = true;
+}
+
+// ✅ [新增] 議價調整相關方法
+function openNegotiationDialog() {
+  negotiationMode.value = 'perTsubo';
+  negotiationValue.value = '';
+  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
+  const rawPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
+  negotiatedPrice.value = rawPrice;
+  isNegotiationDialogVisible.value = true;
+}
+
+function calculateNegotiatedPrice() {
+  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
+  const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
+  const area = Number(props.item.unitDetails.area_house_ping) || 0;
+  let adjustment = 0;
+
+  if (negotiationMode.value === 'perTsubo') {
+    // 每坪減價方式：面積 × 每坪減價 = 總減少金額
+    const pricePerTsubo = Number(negotiationValue.value) || 0;
+    adjustment = area * pricePerTsubo;
+  } else {
+    // 直接減價方式
+    adjustment = Number(negotiationValue.value) || 0;
+  }
+
+  // 四捨五入到整數
+  adjustment = Math.round(adjustment);
+  negotiatedPrice.value = Math.round(currentPrice + adjustment);
+}
+
+function saveNegotiatedPrice() {
+  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
+  const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
+  const newPrice = negotiatedPrice.value;
+  const priceDifference = newPrice - currentPrice;
+
+  // 如果是加價，要求確認
+  if (priceDifference > 0) {
+    const confirmed = confirm(
+      `此操作將加價 ${priceDifference} 萬元，\n原價: ${currentPrice} 萬 → 新價: ${newPrice} 萬\n\n確定要加價嗎？`
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  // 保存新價格
+  quoteStore.updateHousePrice(props.item.internalId, newPrice);
+  isNegotiationDialogVisible.value = false;
 }
 </script>
 
