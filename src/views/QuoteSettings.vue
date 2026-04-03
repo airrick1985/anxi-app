@@ -363,12 +363,19 @@ const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
 const adminStore = useAdminStore();
 
+// ✅ [新增] 進入時清空所有議價調整（避免殘留）
+onMounted(() => {
+  quoteStore.clearAllNegotiations();
+});
 
 onUnmounted(() => {
     parkingStore.cleanup();
 });
 
 onBeforeRouteLeave((to, from, next) => {
+  // ✅ [新增] 離開時一律清空所有議價調整（下次進入無殘留）
+  quoteStore.clearAllNegotiations();
+
   // 定義允許返回的頁面 (銷控系統 或 報價系統)
   const allowedBackRoutes = ['SalesControlSystem', 'QuoteSystem'];
 

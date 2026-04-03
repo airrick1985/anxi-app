@@ -1323,18 +1323,28 @@ function openNegotiationDialog() {
 }
 
 function calculateNegotiatedPrice() {
-  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
   const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
   const area = Number(props.item.unitDetails.area_house_ping) || 0;
+  const hasPerTsuboValue = negotiationPerTsuboValue.value !== '';
+  const hasDirectAmountValue = negotiationDirectAmountValue.value !== '';
 
-  // ✅ [優化] 兩種方式並存、累加計算
+  // ✅ [優化] 兩欄位都空 → 顯示原始價格（恢復狀態）
+  if (!hasPerTsuboValue && !hasDirectAmountValue) {
+    const originalPrice = props.item.negotiationState?.originalPrice;
+    negotiatedPrice.value = (originalPrice !== null && originalPrice !== undefined)
+      ? Math.round(originalPrice)
+      : Math.round(currentPrice);
+    return;
+  }
+
+  // 兩種方式並存、累加計算
   // 每坪調整
-  const perTsuboAdj = negotiationPerTsuboValue.value !== ''
+  const perTsuboAdj = hasPerTsuboValue
     ? Math.round((Number(negotiationPerTsuboValue.value) || 0) * area)
     : 0;
 
   // 直接調整
-  const directAdj = negotiationDirectAmountValue.value !== ''
+  const directAdj = hasDirectAmountValue
     ? Math.round(Number(negotiationDirectAmountValue.value) || 0)
     : 0;
 
@@ -1344,6 +1354,16 @@ function calculateNegotiatedPrice() {
 }
 
 function saveNegotiatedPrice() {
+  const hasDirectAmount = negotiationDirectAmountValue.value !== '';
+  const hasPerTsubo = negotiationPerTsuboValue.value !== '';
+
+  // ✅ [新增] 兩欄位都空 → 視同取消調整，恢復原始價格
+  if (!hasDirectAmount && !hasPerTsubo) {
+    quoteStore.resetNegotiationPrice(props.item.internalId);
+    isNegotiationDialogVisible.value = false;
+    return;
+  }
+
   // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
   const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
   const newPrice = negotiatedPrice.value;
@@ -1362,10 +1382,6 @@ function saveNegotiatedPrice() {
   // 首次調整時記錄原始價格
   const existingState = props.item.negotiationState;
   const originalPrice = existingState?.originalPrice ?? currentPrice;
-
-  // ✅ [優化] 判斷使用了哪種調整方式
-  const hasDirectAmount = negotiationDirectAmountValue.value !== '';
-  const hasPerTsubo = negotiationPerTsuboValue.value !== '';
 
   // 保存新價格
   quoteStore.updateHousePrice(props.item.internalId, newPrice);
@@ -1390,6 +1406,14 @@ function saveNegotiatedPrice() {
 function resetNegotiation() {
   quoteStore.resetNegotiationPrice(props.item.internalId);
 }
+
+// ✅ [新增] 監聽 Modal 關閉：若兩欄位都空，自動清空調整狀態（不需按確認）
+watch(isNegotiationDialogVisible, (isVisible) => {
+  if (!isVisible && negotiationPerTsuboValue.value === '' && negotiationDirectAmountValue.value === '') {
+    // Modal 關閉且兩欄位都空 → 清空調整狀態
+    quoteStore.resetNegotiationPrice(props.item.internalId);
+  }
+});
 </script>
 
 <style scoped>

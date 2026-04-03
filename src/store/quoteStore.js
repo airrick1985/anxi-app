@@ -161,10 +161,29 @@ function addItem(unitData) {
       item.unitDetails.price_list_house_total = item.negotiationState.originalPrice;
       item.negotiationState = {
         originalPrice: null,
-        mode: 'perTsubo',
-        value: ''
+        activeMode: '',
+        perTsuboValue: '',
+        directAmountValue: ''
       };
     }
+  }
+
+  // ✅ [新增] 清空所有議價調整：離開報價設定時呼叫，恢復所有原始價格並清除調整狀態
+  function clearAllNegotiations() {
+    items.value.forEach(item => {
+      // 若有原始價格，先恢復
+      if (item.negotiationState?.originalPrice !== null &&
+          item.negotiationState?.originalPrice !== undefined) {
+        item.unitDetails.price_list_house_total = item.negotiationState.originalPrice;
+      }
+      // 清空調整狀態
+      item.negotiationState = {
+        originalPrice: null,
+        activeMode: '',
+        perTsuboValue: '',
+        directAmountValue: ''
+      };
+    });
   }
 
   // ★★★ 2. 新增：更新配套價子項目的 action ★★★
@@ -214,6 +233,7 @@ function addItem(unitData) {
     updateHousePrice,
     updateNegotiationState,
     resetNegotiationPrice,
+    clearAllNegotiations,
     updateItemPackageItems,
     updateItemCalculatedPayments,
     clearQuote
