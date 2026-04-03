@@ -462,22 +462,50 @@
 
           <v-divider class="my-4"></v-divider>
 
-          <!-- 預覽結果 -->
+          <!-- ✅ [優化] 預覽結果 - 分別顯示兩種調整的明細 -->
           <div class="mb-4">
             <div class="text-subtitle-2 font-weight-bold mb-3">調整預覽</div>
             <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
+              <!-- 原房屋總價 -->
               <div class="d-flex justify-space-between align-center mb-3">
                 <span class="text-grey-darken-2">原房屋總價</span>
                 <span class="font-weight-bold">{{ quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬</span>
               </div>
               <v-divider class="my-2"></v-divider>
+
+              <!-- 每坪調整 (僅在有值時顯示) -->
+              <div v-if="negotiationPerTsuboValue !== ''" class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">
+                  每坪調整 ({{ negotiationPerTsuboValue }} × {{ formatNumber(item.unitDetails.area_house_ping, 2) }} 坪)
+                </span>
+                <span :class="(Number(negotiationPerTsuboValue) * Number(item.unitDetails.area_house_ping)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
+                  {{ (Number(negotiationPerTsuboValue) * Number(item.unitDetails.area_house_ping)) > 0 ? '+' : '' }}{{ Math.round(Number(negotiationPerTsuboValue) * Number(item.unitDetails.area_house_ping)) }} 萬
+                </span>
+              </div>
+
+              <!-- 直接調整 (僅在有值時顯示) -->
+              <div v-if="negotiationDirectAmountValue !== ''" class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">直接調整</span>
+                <span :class="Number(negotiationDirectAmountValue) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
+                  {{ Number(negotiationDirectAmountValue) > 0 ? '+' : '' }}{{ negotiationDirectAmountValue }} 萬
+                </span>
+              </div>
+
+              <!-- 分隔線 (若有任一調整) -->
+              <div v-if="negotiationPerTsuboValue !== '' || negotiationDirectAmountValue !== ''">
+                <v-divider class="my-2"></v-divider>
+              </div>
+
+              <!-- 調整合計 -->
               <div class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">調整金額</span>
+                <span class="text-grey-darken-2 font-weight-bold">調整合計</span>
                 <span :class="(negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
                   {{ (negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? '+' : '' }}{{ negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬
                 </span>
               </div>
               <v-divider class="my-2"></v-divider>
+
+              <!-- 新房屋總價 -->
               <div class="d-flex justify-space-between align-center">
                 <span class="text-h6 font-weight-bold">新房屋總價</span>
                 <span class="text-h5 font-weight-bold text-primary">{{ negotiatedPrice }} 萬</span>
@@ -1298,24 +1326,21 @@ function calculateNegotiatedPrice() {
   // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
   const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
   const area = Number(props.item.unitDetails.area_house_ping) || 0;
-  let adjustment = 0;
 
-  // ✅ 優化：根據哪個欄位有值來決定計算方式
-  const hasPerTsuboValue = negotiationPerTsuboValue.value !== '';
-  const hasDirectAmountValue = negotiationDirectAmountValue.value !== '';
+  // ✅ [優化] 兩種方式並存、累加計算
+  // 每坪調整
+  const perTsuboAdj = negotiationPerTsuboValue.value !== ''
+    ? Math.round((Number(negotiationPerTsuboValue.value) || 0) * area)
+    : 0;
 
-  if (hasDirectAmountValue) {
-    // 優先使用直接調整（如果兩個都填，直接調整優先）
-    adjustment = Number(negotiationDirectAmountValue.value) || 0;
-  } else if (hasPerTsuboValue) {
-    // 使用每坪調整
-    const pricePerTsubo = Number(negotiationPerTsuboValue.value) || 0;
-    adjustment = area * pricePerTsubo;
-  }
+  // 直接調整
+  const directAdj = negotiationDirectAmountValue.value !== ''
+    ? Math.round(Number(negotiationDirectAmountValue.value) || 0)
+    : 0;
 
-  // 四捨五入到整數
-  adjustment = Math.round(adjustment);
-  negotiatedPrice.value = Math.round(currentPrice + adjustment);
+  // 合計調整 = 每坪 + 直接（並存累加）
+  const totalAdjustment = perTsuboAdj + directAdj;
+  negotiatedPrice.value = Math.round(currentPrice + totalAdjustment);
 }
 
 function saveNegotiatedPrice() {
@@ -1338,7 +1363,7 @@ function saveNegotiatedPrice() {
   const existingState = props.item.negotiationState;
   const originalPrice = existingState?.originalPrice ?? currentPrice;
 
-  // 判斷使用了哪種調整方式
+  // ✅ [優化] 判斷使用了哪種調整方式
   const hasDirectAmount = negotiationDirectAmountValue.value !== '';
   const hasPerTsubo = negotiationPerTsuboValue.value !== '';
 
@@ -1346,7 +1371,11 @@ function saveNegotiatedPrice() {
   quoteStore.updateHousePrice(props.item.internalId, newPrice);
 
   // 保存調整狀態：原始價格、調整方式、兩個調整值
-  const activeMode = hasDirectAmount ? 'directAmount' : (hasPerTsubo ? 'perTsubo' : '');
+  // activeMode: 'perTsubo' | 'directAmount' | 'both' | ''
+  const activeMode = (hasPerTsubo && hasDirectAmount) ? 'both'
+    : hasDirectAmount ? 'directAmount'
+    : hasPerTsubo ? 'perTsubo' : '';
+
   quoteStore.updateNegotiationState(props.item.internalId, {
     originalPrice,
     activeMode,
