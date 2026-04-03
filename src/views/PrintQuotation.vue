@@ -1035,6 +1035,9 @@ function addNegotiationNotes(tableGroup) {
     );
   });
 
+  // ✅ [新增] 最後一列：主管確認提醒
+  lines.push('⚠️ 議價後價格請經由專案主管確認，若無主管確認報價無效。');
+
   // 4. 建立 Fabric.Textbox
   const textboxOptions = {
     left: tableGroup.left + 10,
