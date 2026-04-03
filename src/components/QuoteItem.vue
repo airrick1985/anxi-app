@@ -423,57 +423,41 @@
 
           <v-divider class="my-4"></v-divider>
 
-          <!-- 方式選擇 -->
+          <!-- ✅ [優化] 調整方式：並排兩個欄位，各自獨立保存 -->
           <div class="mb-6">
-            <div class="text-subtitle-2 font-weight-bold mb-4">選擇調整方式</div>
+            <div class="text-subtitle-2 font-weight-bold mb-4">調整方式</div>
 
-            <v-radio-group v-model="negotiationMode" @update:model-value="negotiationValue = ''; calculateNegotiatedPrice()">
-              <!-- 方式 1: 每坪減價 -->
-              <v-radio value="perTsubo" class="mb-4">
-                <template v-slot:label>
-                  <div class="d-flex flex-column ml-2">
-                    <span class="font-weight-bold">每坪減價</span>
-                    <span class="text-caption text-grey-darken-1">輸入負數 (如 -1.5) 表示每坪減少 1.5 萬元</span>
-                  </div>
-                </template>
-              </v-radio>
-
+            <!-- 第一欄：每坪調整 -->
+            <div class="mb-4">
+              <label class="text-caption text-grey-darken-1 d-block mb-2">每坪調整 (萬/坪)</label>
               <v-text-field
-                v-if="negotiationMode === 'perTsubo'"
-                v-model="negotiationValue"
-                label="每坪調整價格 (萬元)"
+                v-model="negotiationPerTsuboValue"
                 type="number"
                 suffix="萬/坪"
                 placeholder="例如: -1.5 (減) 或 +0.5 (加)"
                 variant="outlined"
                 density="compact"
-                class="ml-8 mb-4"
+                hint="輸入負數表示每坪減少"
+                persistent-hint
                 @update:model-value="calculateNegotiatedPrice"
               ></v-text-field>
+            </div>
 
-              <!-- 方式 2: 直接減價 -->
-              <v-radio value="directAmount" class="mb-4">
-                <template v-slot:label>
-                  <div class="d-flex flex-column ml-2">
-                    <span class="font-weight-bold">直接調整總價</span>
-                    <span class="text-caption text-grey-darken-1">輸入負數 (如 -15) 表示總價減少 15 萬元</span>
-                  </div>
-                </template>
-              </v-radio>
-
+            <!-- 第二欄：直接調整 -->
+            <div class="mb-4">
+              <label class="text-caption text-grey-darken-1 d-block mb-2">直接調整總價 (萬)</label>
               <v-text-field
-                v-if="negotiationMode === 'directAmount'"
-                v-model="negotiationValue"
-                label="調整金額 (萬元)"
+                v-model="negotiationDirectAmountValue"
                 type="number"
                 suffix="萬"
                 placeholder="例如: -15 (減) 或 +10 (加)"
                 variant="outlined"
                 density="compact"
-                class="ml-8 mb-4"
+                hint="輸入負數表示總價減少"
+                persistent-hint
                 @update:model-value="calculateNegotiatedPrice"
               ></v-text-field>
-            </v-radio-group>
+            </div>
           </div>
 
           <v-divider class="my-4"></v-divider>
@@ -547,8 +531,9 @@ const isParkingModalOpen = ref(false);
 
 // ✅ [新增] 議價調整相關狀態
 const isNegotiationDialogVisible = ref(false);
-const negotiationMode = ref('perTsubo'); // 'perTsubo' 或 'directAmount'
-const negotiationValue = ref('');
+const negotiationPerTsuboValue = ref('');    // 每坪調整值
+const negotiationDirectAmountValue = ref(''); // 直接調整值
+const negotiationActiveMode = ref('');       // '' | 'perTsubo' | 'directAmount'
 const negotiatedPrice = ref(0);
 
 // ★★★ 2. 新增：支援項目名稱引用的新計算引擎 ★★★
@@ -1293,15 +1278,16 @@ function openParkingModal() {
 function openNegotiationDialog() {
   // 從 negotiationState 讀取暫存的調整設定
   const savedState = props.item.negotiationState;
-  negotiationMode.value = savedState?.mode || 'perTsubo';
-  negotiationValue.value = savedState?.value || '';
+  negotiationPerTsuboValue.value = savedState?.perTsuboValue || '';
+  negotiationDirectAmountValue.value = savedState?.directAmountValue || '';
+  negotiationActiveMode.value = savedState?.activeMode || '';
 
   // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
   const rawPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
   negotiatedPrice.value = rawPrice;
 
   // 若有暫存數值，重新計算預覽
-  if (negotiationValue.value) {
+  if (negotiationPerTsuboValue.value || negotiationDirectAmountValue.value) {
     calculateNegotiatedPrice();
   }
 
@@ -1314,13 +1300,17 @@ function calculateNegotiatedPrice() {
   const area = Number(props.item.unitDetails.area_house_ping) || 0;
   let adjustment = 0;
 
-  if (negotiationMode.value === 'perTsubo') {
-    // 每坪減價方式：面積 × 每坪減價 = 總減少金額
-    const pricePerTsubo = Number(negotiationValue.value) || 0;
+  // ✅ 優化：根據哪個欄位有值來決定計算方式
+  const hasPerTsuboValue = negotiationPerTsuboValue.value !== '';
+  const hasDirectAmountValue = negotiationDirectAmountValue.value !== '';
+
+  if (hasDirectAmountValue) {
+    // 優先使用直接調整（如果兩個都填，直接調整優先）
+    adjustment = Number(negotiationDirectAmountValue.value) || 0;
+  } else if (hasPerTsuboValue) {
+    // 使用每坪調整
+    const pricePerTsubo = Number(negotiationPerTsuboValue.value) || 0;
     adjustment = area * pricePerTsubo;
-  } else {
-    // 直接減價方式
-    adjustment = Number(negotiationValue.value) || 0;
   }
 
   // 四捨五入到整數
@@ -1348,14 +1338,20 @@ function saveNegotiatedPrice() {
   const existingState = props.item.negotiationState;
   const originalPrice = existingState?.originalPrice ?? currentPrice;
 
+  // 判斷使用了哪種調整方式
+  const hasDirectAmount = negotiationDirectAmountValue.value !== '';
+  const hasPerTsubo = negotiationPerTsuboValue.value !== '';
+
   // 保存新價格
   quoteStore.updateHousePrice(props.item.internalId, newPrice);
 
-  // 保存調整狀態：原始價格、調整方式、調整數值
+  // 保存調整狀態：原始價格、調整方式、兩個調整值
+  const activeMode = hasDirectAmount ? 'directAmount' : (hasPerTsubo ? 'perTsubo' : '');
   quoteStore.updateNegotiationState(props.item.internalId, {
     originalPrice,
-    mode: negotiationMode.value,
-    value: negotiationValue.value
+    activeMode,
+    perTsuboValue: negotiationPerTsuboValue.value,
+    directAmountValue: negotiationDirectAmountValue.value
   });
 
   isNegotiationDialogVisible.value = false;

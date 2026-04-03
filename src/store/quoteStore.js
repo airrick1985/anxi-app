@@ -107,9 +107,10 @@ function addItem(unitData) {
       calculatedPayments: [],
       // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
       negotiationState: {
-        originalPrice: null, // null = 未調整；首次調整時記錄原始價格
-        mode: 'perTsubo',    // 'perTsubo' | 'directAmount'
-        value: ''            // 暫存上次輸入的數值
+        originalPrice: null,    // null = 未調整；首次調整時記錄原始價格
+        activeMode: '',         // '' | 'perTsubo' | 'directAmount' - 最後使用的模式
+        perTsuboValue: '',      // 每坪調整的值（獨立保存）
+        directAmountValue: ''   // 直接調整的值（獨立保存）
       }
     });
 
