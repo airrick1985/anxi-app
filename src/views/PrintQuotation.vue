@@ -1005,6 +1005,55 @@ function addQuoteTable() {
   return tableGroup;
 }
 
+// ✅ [新增] 議價調整提醒渲染函數
+function addNegotiationNotes(tableGroup) {
+  // 1. 過濾有議價調整的 items
+  const adjustedItems = quoteStore.items.filter(item =>
+    item.negotiationState?.originalPrice !== null &&
+    item.negotiationState?.originalPrice !== undefined
+  );
+
+  // 2. 無調整 → 不渲染
+  if (adjustedItems.length === 0) return null;
+
+  // 3. 建立文字內容
+  const lines = ['★ 議價調整提醒：'];
+  adjustedItems.forEach(item => {
+    const originalPrice = item.negotiationState.originalPrice;
+    const currentPrice = Number(item.unitDetails.price_list_house_total) || 0;
+    const totalDelta = currentPrice - originalPrice;
+    const area = Number(item.unitDetails.area_house_ping) || 1;
+    const perTsuboDelta = totalDelta / area;
+
+    const sign = totalDelta > 0 ? '+' : '';
+    const tsSign = perTsuboDelta > 0 ? '+' : '';
+
+    lines.push(
+      `${item.unitId}　｜　` +
+      `原始總價 ${formatNumber(originalPrice)} 萬 → 調整後 ${formatNumber(currentPrice)} 萬　` +
+      `｜　調整 ${sign}${formatNumber(totalDelta)} 萬（每坪 ${tsSign}${Number(perTsuboDelta.toFixed(2))} 萬）`
+    );
+  });
+
+  // 4. 建立 Fabric.Textbox
+  const textboxOptions = {
+    left: tableGroup.left + 10,
+    top: tableGroup.top + tableGroup.getScaledHeight() + 12,
+    width: tableGroup.getScaledWidth() - 20,
+    fontSize: 13,
+    fontWeight: 'bold',
+    fill: '#d32f2f',
+    lineHeight: 1.6,
+    editable: false,
+    hasControls: false,
+    selectable: false
+  };
+
+  const notesBox = new fabric.Textbox(lines.join('\n'), textboxOptions);
+  notesBox.set('isNegotiationNote', true);
+  return notesBox;
+}
+
 // --- 右側面板功能 ---
 
 function deleteSelected() {
@@ -1434,18 +1483,32 @@ async function loadAndRenderTemplate() {
             scaleX: template.tablePlaceholder.scaleX,
             scaleY: template.tablePlaceholder.scaleY,
           });
-          tableGroup.setCoords(); 
+          tableGroup.setCoords();
         } else {
-          applyDefaultTableLayout(tableGroup); 
+          applyDefaultTableLayout(tableGroup);
         }
         fabricCanvas.value.add(tableGroup);
         // (移除 setActiveObject 和 handleSelection，載入時不需要預選)
       }
-      
-      // A.4: 載入銷售人員 (保持不變)
+
+      // ✅ [新增] A.3.5: 議價調整提醒 (在表格下方)
+      let notesEndY = null;
+      if (tableGroup) {
+        const notesBox = addNegotiationNotes(tableGroup);
+        if (notesBox) {
+          fabricCanvas.value.add(notesBox);
+          notesBox.setCoords();
+          notesEndY = notesBox.top + notesBox.height + 20;
+        }
+      }
+
+      // A.4: 載入銷售人員 (注意 Y 偏移)
+      const personnelStartY = notesEndY
+        ?? (tableGroup ? tableGroup.top + tableGroup.getScaledHeight() + 40 : 100);
+
       const [nameText, phoneText] = addPersonnelInfo(
         template.personnelPlaceholders,
-        tableGroup ? tableGroup.top + tableGroup.getScaledHeight() + 40 : 100
+        personnelStartY
       );
       if (nameText) {
         fabricCanvas.value.add(nameText);
@@ -1511,9 +1574,20 @@ async function renderDefaultItems() {
     fabricCanvas.value.setActiveObject(tableGroup);
     handleSelection({ target: tableGroup });
   }
-  
-  // B.2: 插入銷售人員 (使用預設位置)
-  const startY = tableGroup ? (tableGroup.top + tableGroup.getScaledHeight() + 40) : 100;
+
+  // ✅ [新增] B.1.5: 議價調整提醒
+  let notesEndY = null;
+  if (tableGroup) {
+    const notesBox = addNegotiationNotes(tableGroup);
+    if (notesBox) {
+      fabricCanvas.value.add(notesBox);
+      notesEndY = notesBox.top + notesBox.height + 20;
+    }
+  }
+
+  // B.2: 插入銷售人員 (注意 Y 偏移)
+  const startY = notesEndY
+    ?? (tableGroup ? (tableGroup.top + tableGroup.getScaledHeight() + 40) : 100);
   const [nameText, phoneText] = addPersonnelInfo(null, startY);
   if (nameText) fabricCanvas.value.add(nameText);
   if (phoneText) fabricCanvas.value.add(phoneText);
