@@ -131,6 +131,14 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 修改房屋總價
+  function updateHousePrice(internalId, newPrice) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.unitDetails.price_list_house_total = Number(newPrice) || 0;
+    }
+  }
+
   // ★★★ 2. 新增：更新配套價子項目的 action ★★★
   function updateItemPackageItems(internalId, newPackageItems) {
     const item = items.value.find(i => i.internalId === internalId);
@@ -175,6 +183,7 @@ function addItem(unitData) {
     removeItem,
     updateUnitField,
     updateParking,
+    updateHousePrice,
     updateItemPackageItems,
     updateItemCalculatedPayments,
     clearQuote
