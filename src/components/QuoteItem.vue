@@ -18,7 +18,7 @@
       </div>
 
    <v-list lines="one" class="bg-transparent">
-    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn></div></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
@@ -142,7 +142,9 @@
    <div class="item-cell flex-1 highlight-dark">
     <div class="d-flex align-center justify-center gap-2">
       <span>{{ displayHousePrice }} 萬</span>
+      <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
       <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn>
+      <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
     </div>
    </div>
    <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
@@ -1204,6 +1206,18 @@ const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.i
 const displayHousePrice = computed(() => formatNumber(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
 const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPrice(props.item.internalId), 2));
 
+// ✅ [新增] 判斷是否有議價調整
+const hasNegotiation = computed(() => {
+  const state = props.item.negotiationState;
+  return state?.originalPrice !== null && state?.originalPrice !== undefined;
+});
+
+// ✅ [新增] 計算調整差額：當前價格 - 原始價格
+const negotiationDelta = computed(() => {
+  if (!hasNegotiation.value) return 0;
+  const current = quoteStore.getRawDisplayHousePrice(props.item.internalId);
+  return current - (props.item.negotiationState?.originalPrice ?? current);
+});
 
 // ★★★ 3. 新增：計算配套價子項目的 computed 屬性 ★★★
 const calculatedPackageItems = computed(() => {
@@ -1277,11 +1291,20 @@ function openParkingModal() {
 
 // ✅ [新增] 議價調整相關方法
 function openNegotiationDialog() {
-  negotiationMode.value = 'perTsubo';
-  negotiationValue.value = '';
+  // 從 negotiationState 讀取暫存的調整設定
+  const savedState = props.item.negotiationState;
+  negotiationMode.value = savedState?.mode || 'perTsubo';
+  negotiationValue.value = savedState?.value || '';
+
   // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
   const rawPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
   negotiatedPrice.value = rawPrice;
+
+  // 若有暫存數值，重新計算預覽
+  if (negotiationValue.value) {
+    calculateNegotiatedPrice();
+  }
+
   isNegotiationDialogVisible.value = true;
 }
 
@@ -1321,9 +1344,26 @@ function saveNegotiatedPrice() {
     }
   }
 
+  // 首次調整時記錄原始價格
+  const existingState = props.item.negotiationState;
+  const originalPrice = existingState?.originalPrice ?? currentPrice;
+
   // 保存新價格
   quoteStore.updateHousePrice(props.item.internalId, newPrice);
+
+  // 保存調整狀態：原始價格、調整方式、調整數值
+  quoteStore.updateNegotiationState(props.item.internalId, {
+    originalPrice,
+    mode: negotiationMode.value,
+    value: negotiationValue.value
+  });
+
   isNegotiationDialogVisible.value = false;
+}
+
+// ✅ [新增] 重置議價調整：恢復原始價格並清除調整狀態
+function resetNegotiation() {
+  quoteStore.resetNegotiationPrice(props.item.internalId);
 }
 </script>
 

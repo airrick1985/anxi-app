@@ -104,7 +104,13 @@ function addItem(unitData) {
       // ★★★ 1. 新增：初始化 packageItems 屬性 ★★★
       packageItems: {},
       // ✅ [打勾] 新增：初始化期款計算結果
-      calculatedPayments: []
+      calculatedPayments: [],
+      // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
+      negotiationState: {
+        originalPrice: null, // null = 未調整；首次調整時記錄原始價格
+        mode: 'perTsubo',    // 'perTsubo' | 'directAmount'
+        value: ''            // 暫存上次輸入的數值
+      }
     });
 
     return true; // 保持回傳 true，以便 UnitDetailModal 顯示 toast
@@ -136,6 +142,27 @@ function addItem(unitData) {
     const item = items.value.find(i => i.internalId === internalId);
     if (item) {
       item.unitDetails.price_list_house_total = Number(newPrice) || 0;
+    }
+  }
+
+  // ✅ [新增] 更新議價調整狀態：儲存每個 item 的調整方式、數值和原始價格
+  function updateNegotiationState(internalId, negotiationState) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.negotiationState = { ...item.negotiationState, ...negotiationState };
+    }
+  }
+
+  // ✅ [新增] 重置議價調整：恢復原始價格並清除調整狀態
+  function resetNegotiationPrice(internalId) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item && item.negotiationState?.originalPrice !== null && item.negotiationState?.originalPrice !== undefined) {
+      item.unitDetails.price_list_house_total = item.negotiationState.originalPrice;
+      item.negotiationState = {
+        originalPrice: null,
+        mode: 'perTsubo',
+        value: ''
+      };
     }
   }
 
@@ -184,6 +211,8 @@ function addItem(unitData) {
     updateUnitField,
     updateParking,
     updateHousePrice,
+    updateNegotiationState,
+    resetNegotiationPrice,
     updateItemPackageItems,
     updateItemCalculatedPayments,
     clearQuote
