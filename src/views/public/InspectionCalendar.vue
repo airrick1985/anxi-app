@@ -902,10 +902,9 @@ const dataBasedTimeSlots = computed(() => {
     const timeMatch = timeSlotStr.match(/(\d{1,2}[:：]\d{2})/);
     if (timeMatch) {
       const normalizedTime = timeMatch[0].replace(/：/g, ':');
-      // 對齊到半小時制
+      // 直接使用實際預約時間，支援任意分鐘數（09:10, 09:15, 09:20 等）
       const [h, m] = normalizedTime.split(':').map(Number);
-      const alignedMinute = m < 30 ? '00' : '30';
-      timeSet.add(`${h.toString().padStart(2, '0')}:${alignedMinute}`);
+      timeSet.add(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
     }
   });
   return [...timeSet].sort();
@@ -1345,21 +1344,15 @@ const dateChunks = computed(() => {
 
 
 
-const groupedEvents = computed(() => { 
+const groupedEvents = computed(() => {
   // ( ... 保持不變 ...)
   const grouped = {};
   filteredAppointments.value.forEach(event => {
     if (!event.start) return;
     const dateKey = format(event.start, 'yyyy-MM-dd');
     const eventStartTime = format(event.start, 'HH:mm');
-    let timeKey = timeSlots.value[0]; 
-    for (let i = timeSlots.value.length - 1; i >= 0; i--) {
-      const slot = timeSlots.value[i];
-      if (eventStartTime >= slot) {
-        timeKey = slot;
-        break; 
-      }
-    }
+    // 精確匹配時段，如果不存在則使用第一個時段
+    const timeKey = timeSlots.value.find(slot => slot === eventStartTime) || timeSlots.value[0];
     if (!grouped[dateKey]) grouped[dateKey] = {};
     if (!grouped[dateKey][timeKey]) grouped[dateKey][timeKey] = [];
     grouped[dateKey][timeKey].push(event);
@@ -2106,10 +2099,8 @@ async function handleDownloadPng() {
   eventsInRange.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
     const eventStartTime = format(event.start, 'HH:mm');
-    const timeKey = timeSlots.value.find((slot, index) => {
-        const nextSlot = timeSlots.value[index + 1] || '23:59';
-        return eventStartTime >= slot && eventStartTime < nextSlot;
-    }) || timeSlots.value[0];
+    // 精確匹配時段，如果不存在則使用第一個時段
+    const timeKey = timeSlots.value.find(slot => slot === eventStartTime) || timeSlots.value[0];
 
     if (!groupedEventsInRange[dateKey]) groupedEventsInRange[dateKey] = {};
     if (!groupedEventsInRange[dateKey][timeKey]) groupedEventsInRange[dateKey][timeKey] = [];
