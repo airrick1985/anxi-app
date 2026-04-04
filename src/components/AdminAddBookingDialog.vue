@@ -197,15 +197,17 @@
                        <v-col cols="12" sm="6">
                         <v-select label="選擇方式" :items="availableInspectionMethods" v-model="formStep2.inspectionMethod" variant="outlined" :rules="[v => !!v || '必填']" no-data-text="請先選擇預約項目"></v-select>
                       </v-col>
-                      <!-- 動態自訂欄位 -->
+                      <!-- 新增：子選項選擇 -->
+                      <v-col v-if="availableSubOptions.length > 0" cols="12" sm="6">
+                        <v-select label="請選擇項目" :items="availableSubOptions" v-model="formStep2.subOption" variant="outlined" :rules="[v => !!v || '此項為必填']"></v-select>
+                      </v-col>
+                      <!-- 動態自訂欄位 - 使用 DynamicFormRenderer 支持各種欄位類型 -->
                       <template v-if="currentCustomFields.length > 0">
-                        <v-col v-for="field in currentCustomFields" :key="field.id" cols="12" sm="6">
-                          <v-text-field
-                            :label="field.label"
-                            v-model="dynamicFormData[field.id]"
-                            variant="outlined"
-                            :rules="field.required ? [v => !!v || '必填'] : []"
-                          ></v-text-field>
+                        <v-col cols="12">
+                          <DynamicFormRenderer
+                            :fields="currentCustomFields"
+                            v-model="dynamicFormData"
+                          />
                         </v-col>
                       </template>
                     </v-row>
@@ -427,6 +429,7 @@
                       <v-divider class="my-2"></v-divider>
                       <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
                       <v-list-item title="選擇方式" :subtitle="finalBookingData.inspectionMethod"></v-list-item>
+                      <v-list-item v-if="finalBookingData.subOption" title="子選項" :subtitle="finalBookingData.subOption"></v-list-item>
                       <template v-for="field in currentCustomFields" :key="field.id">
                         <v-list-item v-if="dynamicFormData[field.id]" :title="field.label" :subtitle="dynamicFormData[field.id]"></v-list-item>
                       </template>
@@ -596,6 +599,7 @@ import '@vuepic/vue-datepicker/dist/main.css';      // ✓ 新增
 import { format } from 'date-fns';                 // ✓ 新增
 
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
+import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import {
@@ -607,7 +611,7 @@ import {
   addAppointmentAdmin,
   // fetchAllHouseholds, // <--- 由 Store 處理
   getAppointmentsForHousehold,
-  updateAppointment, 
+  updateAppointment,
   cancelAppointment,
 } from '@/api'; // ✅ 簡化 api 引入
 
@@ -660,6 +664,7 @@ const isBookerSameAsBuyer = ref(false);
 const formStep2 = reactive({
   bookingType: null,
   inspectionMethod: null,
+  subOption: null, // 新增：第三層子選項
   inspectionCompanyName: '',
   agentName: '',
   agentPhone: '',
@@ -714,6 +719,23 @@ const availableInspectionMethods = computed(() => {
     return config.bookingMethodOptions || [];
 });
 
+// 新增：子選項 computed（比照 BookingPage 邏輯）
+const availableSubOptions = computed(() => {
+  const config = currentProjectConfig.value;
+  const selectedType = formStep2.bookingType;
+  const selectedMethod = formStep2.inspectionMethod;
+  if (!config?.bookingMenu?.length || !selectedType || !selectedMethod) return [];
+
+  const menuItem = config.bookingMenu.find(item => item.title === selectedType && !item.deleted);
+  if (!menuItem?.methods) return [];
+
+  const methodObj = menuItem.methods.find(m => m.title === selectedMethod && !m.deleted);
+  if (methodObj && methodObj.subOptions && Array.isArray(methodObj.subOptions) && methodObj.subOptions.length > 0) {
+    return methodObj.subOptions;
+  }
+  return [];
+});
+
 // 根據選中的 inspectionMethod 動態取得 customFields
 const currentCustomFields = computed(() => {
   const config = currentProjectConfig.value;
@@ -735,6 +757,8 @@ const dynamicFormData = reactive({});
 
 // 當選擇方式改變時，重置動態欄位與受託人資料
 watch(() => formStep2.inspectionMethod, () => {
+  // 重置子選項
+  formStep2.subOption = null;
   // 清空舊的動態資料
   Object.keys(dynamicFormData).forEach(key => delete dynamicFormData[key]);
   // 初始化新的動態欄位
@@ -1037,7 +1061,7 @@ const resetState = () => {
     unitList.value = [];
     isBookerSameAsBuyer.value = false;
  Object.assign(formStep2, {
-        bookingType: null, inspectionMethod: null, inspectionCompanyName: '',
+        bookingType: null, inspectionMethod: null, subOption: null, inspectionCompanyName: '',
         agentName: '', agentPhone: '', agentIdNumber: '',
         agentRelationship: '', agentRelationshipOther: '', isOwnerPresent: null,
         bookerName: '', bookerPhone: '', bookerEmail: '', bookerIdNumber: '',
@@ -1051,8 +1075,9 @@ const resetState = () => {
 };
 
 watch(() => formStep2.bookingType, (newVal) => {
-  // 重置選擇方式，修正 BUG
+  // 重置選擇方式與子選項，修正 BUG
   formStep2.inspectionMethod = null;
+  formStep2.subOption = null;
   formStep2.inspectionCompanyName = '';
 
   if (!newVal) return;
