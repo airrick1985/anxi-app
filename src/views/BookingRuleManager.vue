@@ -2063,10 +2063,6 @@
                     <div class="d-flex justify-space-between align-center">
                       <span class="font-weight-bold text-h6 text-grey-darken-2">{{ slot }}</span>
                       <div class="d-flex align-center ga-2">
-                        <v-chip label :color="isSlotOverMaxCapacity(slot) ? 'error' : 'grey-darken-1'" variant="tonal" size="small">
-                          <v-icon v-if="isSlotOverMaxCapacity(slot)" start size="small">mdi-alert</v-icon>
-                          總計 {{ getCapacityForSlot(slot) }} 名
-                        </v-chip>
                         <v-btn icon="mdi-delete-outline" size="small" color="error" variant="tonal"
                           density="compact" @click="removeSlot(slot)"></v-btn>
                       </div>
