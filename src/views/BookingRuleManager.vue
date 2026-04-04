@@ -1762,10 +1762,8 @@
                         <v-chip color="indigo" variant="tonal" label>
                           <v-icon start>mdi-clock-time-four-outline</v-icon>
                           <strong>{{ slot.time }}</strong>
-                          <v-divider vertical class="mx-2"></v-divider>
-                          <span class="font-weight-regular">{{ slot.capacity }} 名</span>
                         </v-chip>
-                        <v-chip v-if="slot.maxCapacity" color="amber" variant="tonal" label size="small">
+                        <v-chip v-if="slot.maxCapacity" color="error" variant="tonal" label size="small">
                           <v-icon start size="small">mdi-crown-outline</v-icon>
                           <span>上限 {{ slot.maxCapacity }} 名</span>
                         </v-chip>
@@ -4156,13 +4154,28 @@ async function openPreviewDialog(item) {
   }
 }
 
-// 取得方式的名額顯示文字
+// 取得方式的名額顯示文字（若有子項目則加總子項目，否則使用方式名額）
 function getMethodLimitDisplay(slot, method) {
-  const limit = slot.methodLimits?.[method];
-  if (!limit) {
-    return '(無限制)';
+  const subOpts = batchMethodSubOptionsMap.value?.[method] || [];
+
+  if (subOpts.length > 0) {
+    // 有子項目：加總子項目的名額
+    let total = 0;
+    subOpts.forEach(subOpt => {
+      total += Number(slot.subOptionLimits?.[subOpt]) || 0;
+    });
+    if (total > 0) {
+      return `(${total} 名)`;
+    }
+  } else {
+    // 無子項目：使用方式的名額
+    const limit = slot.methodLimits?.[method];
+    if (limit) {
+      return `(${limit} 名)`;
+    }
   }
-  return `(${limit} 名)`;
+
+  return '(無限制)';
 }
 
 // --- Save & Delete Process ---
