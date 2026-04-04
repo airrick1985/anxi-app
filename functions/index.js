@@ -13211,12 +13211,23 @@ async function _handleGetAvailableSlots(data) {
           const bookingKey = `${dateStr}_${timeSlot}`;
           let remaining;
 
-          // 名額優先級：subOption > methodLimit > 全局 capacity (向下相容)
-          // 只要該時段有設定任何 subOptionLimits，就以子選項為準（未列入的子選項 = 0 名額）
-          if (subOption && slotInfo.subOptionLimits && Object.keys(slotInfo.subOptionLimits).length > 0) {
-            const subCap = slotInfo.subOptionLimits[subOption] || 0;
+          // 名額計算邏輯（根據新規則調整）
+          // 1. 若有子選項且該子選項有設定名額 > 0，使用子選項名額
+          // 2. 若子選項未設定或為 0，共用時段總名額上限的剩餘部分
+          // 3. 若方式有設定名額，使用方式名額（與時段總名額上限搭配）
+          if (subOption && slotInfo.subOptionLimits?.[subOption] && slotInfo.subOptionLimits[subOption] > 0) {
+            // 子選項有設定名額 > 0：使用子選項名額
+            const subCap = slotInfo.subOptionLimits[subOption];
             const subCurrentBookings = subOptionBookingsCount[`${bookingKey}_${subOption}`] || 0;
             remaining = Math.max(0, subCap - subCurrentBookings);
+          } else if (subOption && slotInfo.maxCapacity) {
+            // 子選項未設定名額，有時段總名額上限：共用剩餘部分
+            // 計算所有子選項的合計預約數
+            let totalSubOptionBookings = 0;
+            for (const sub in slotInfo.subOptionLimits || {}) {
+              totalSubOptionBookings += subOptionBookingsCount[`${bookingKey}_${sub}`] || 0;
+            }
+            remaining = Math.max(0, slotInfo.maxCapacity - totalSubOptionBookings);
           } else if (slotInfo.methodLimits?.[bookingMethod] !== undefined || slotInfo.maxCapacity !== null && slotInfo.maxCapacity !== undefined) {
             // 新邏輯：考慮方式獨立名額和時段總名額上限
             const methodCap = slotInfo.methodLimits?.[bookingMethod] || 0;
