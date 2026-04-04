@@ -1758,12 +1758,18 @@
                 <v-list-item>
                   <div v-if="dayData.length > 0">
                     <div v-for="slot in dayData" :key="slot.time" class="mb-2">
-                      <v-chip color="indigo" variant="tonal" label class="mb-1">
-                        <v-icon start>mdi-clock-time-four-outline</v-icon>
-                        <strong>{{ slot.time }}</strong>
-                        <v-divider vertical class="mx-2"></v-divider>
-                        <span class="font-weight-regular">{{ slot.capacity }} 名</span>
-                      </v-chip>
+                      <div class="d-flex align-center flex-wrap ga-2 mb-1">
+                        <v-chip color="indigo" variant="tonal" label>
+                          <v-icon start>mdi-clock-time-four-outline</v-icon>
+                          <strong>{{ slot.time }}</strong>
+                          <v-divider vertical class="mx-2"></v-divider>
+                          <span class="font-weight-regular">{{ slot.capacity }} 名</span>
+                        </v-chip>
+                        <v-chip v-if="slot.maxCapacity" color="amber" variant="tonal" label size="small">
+                          <v-icon start size="small">mdi-crown-outline</v-icon>
+                          <span>上限 {{ slot.maxCapacity }} 名</span>
+                        </v-chip>
+                      </div>
                       <div class="pl-2 d-flex flex-wrap ga-2">
                         <v-chip v-for="method in previewBatchMethods" :key="method"
                           :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
@@ -4129,6 +4135,7 @@ async function openPreviewDialog(item) {
             slotsData.push({
               time: time,
               capacity: slotInfo.capacity || 0,
+              maxCapacity: slotInfo.maxCapacity || null,
               methods: slotInfo.methods || [],
               subOptionLimits: slotInfo.subOptionLimits || {}
             });
