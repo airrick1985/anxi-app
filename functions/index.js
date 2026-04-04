@@ -13217,11 +13217,48 @@ async function _handleGetAvailableSlots(data) {
             const subCap = slotInfo.subOptionLimits[subOption] || 0;
             const subCurrentBookings = subOptionBookingsCount[`${bookingKey}_${subOption}`] || 0;
             remaining = Math.max(0, subCap - subCurrentBookings);
-          } else if (slotInfo.methodLimits?.[bookingMethod] !== undefined) {
-            // 方式獨立名額
-            const methodCap = slotInfo.methodLimits[bookingMethod] || 0;
+          } else if (slotInfo.methodLimits?.[bookingMethod] !== undefined || slotInfo.maxCapacity !== null && slotInfo.maxCapacity !== undefined) {
+            // 新邏輯：考慮方式獨立名額和時段總名額上限
+            const methodCap = slotInfo.methodLimits?.[bookingMethod] || 0;
             const methodCurrentBookings = methodBookingsCount[`${bookingKey}_${bookingMethod}`] || 0;
-            remaining = Math.max(0, methodCap - methodCurrentBookings);
+
+            // 計算所有有填寫名額的方式的合計預約數（用於驗證是否超過 maxCapacity）
+            let totalAssignedBookings = 0;
+            let totalAssignedCapacity = 0;
+            for (const method in slotInfo.methodLimits || {}) {
+              const cap = slotInfo.methodLimits[method] || 0;
+              if (cap > 0) {
+                totalAssignedCapacity += cap;
+                totalAssignedBookings += methodBookingsCount[`${bookingKey}_${method}`] || 0;
+              }
+            }
+
+            const maxCapacity = slotInfo.maxCapacity;
+
+            if (methodCap > 0) {
+              // 此方式有設定名額：使用方式自身的名額
+              remaining = Math.max(0, methodCap - methodCurrentBookings);
+
+              // 若有時段總名額上限，檢查是否超過
+              if (maxCapacity && totalAssignedCapacity > maxCapacity) {
+                // 超過總名額：該方式的可用名額被限制
+                const usedCapacity = totalAssignedBookings;
+                const remainingFromMax = Math.max(0, maxCapacity - usedCapacity);
+                remaining = Math.min(remaining, remainingFromMax);
+              }
+            } else {
+              // 此方式未設定名額：共用時段總名額上限中的剩餘部分
+              if (maxCapacity) {
+                const usedCapacity = totalAssignedBookings;
+                const remainingFromMax = Math.max(0, maxCapacity - usedCapacity);
+                remaining = remainingFromMax;
+              } else {
+                // 無時段總名額上限，向下相容：使用全局 capacity
+                const cap = slotInfo.capacity || 0;
+                const currentBookings = bookingsCount[bookingKey] || 0;
+                remaining = Math.max(0, cap - currentBookings);
+              }
+            }
           } else {
             // 向下相容：舊有全局 capacity
             const cap = slotInfo.capacity || 0;
