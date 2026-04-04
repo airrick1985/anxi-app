@@ -2063,7 +2063,8 @@
                     <div class="d-flex justify-space-between align-center">
                       <span class="font-weight-bold text-h6 text-grey-darken-2">{{ slot }}</span>
                       <div class="d-flex align-center ga-2">
-                        <v-chip label color="grey-darken-1" variant="tonal" size="small">
+                        <v-chip label :color="isSlotOverMaxCapacity(slot) ? 'error' : 'grey-darken-1'" variant="tonal" size="small">
+                          <v-icon v-if="isSlotOverMaxCapacity(slot)" start size="small">mdi-alert</v-icon>
                           總計 {{ getCapacityForSlot(slot) }} 名
                         </v-chip>
                         <v-btn icon="mdi-delete-outline" size="small" color="error" variant="tonal"
@@ -2090,7 +2091,33 @@
 
                     <!-- 各方式獨立名額設定 -->
                     <div v-if="availableBatchMethods.length > 0 && getSelectedMethodsForSlot(slot).length > 0" class="mt-3 pl-2 border-s-sm" style="border-color: var(--v-theme-secondary)!important;">
-                      <div class="text-caption text-secondary mb-2 font-weight-bold">各方式獨立名額：</div>
+                      <div class="d-flex align-center flex-wrap ga-2 mb-2">
+                        <div class="text-caption text-secondary font-weight-bold">各方式獨立名額：</div>
+                        <v-spacer></v-spacer>
+                        <v-text-field
+                          label="時段總名額上限"
+                          :model-value="getMaxCapacityForSlot(slot)"
+                          @update:model-value="setMaxCapacityForSlot(slot, $event)"
+                          type="number" min="0" class="bg-white"
+                          style="max-width: 155px;"
+                          variant="outlined" density="compact" hide-details placeholder="(留空=不限)">
+                        </v-text-field>
+                        <v-chip v-if="getMaxCapacityForSlot(slot) !== ''"
+                          :color="isSlotOverMaxCapacity(slot) ? 'error' : 'success'"
+                          variant="tonal" size="small" label>
+                          <v-icon v-if="isSlotOverMaxCapacity(slot)" start size="small">mdi-alert</v-icon>
+                          <v-icon v-else start size="small">mdi-account-group</v-icon>
+                          已分配 {{ getAssignedCapacityForSlot(slot) }} / {{ getMaxCapacityForSlot(slot) }} 名
+                          <span v-if="!isSlotOverMaxCapacity(slot)">
+                            （共用剩餘 {{ Number(getMaxCapacityForSlot(slot)) - getAssignedCapacityForSlot(slot) }} 名）
+                          </span>
+                          <span v-else>（超出 {{ getAssignedCapacityForSlot(slot) - Number(getMaxCapacityForSlot(slot)) }} 名）</span>
+                        </v-chip>
+                      </div>
+                      <!-- 超出警告 -->
+                      <v-alert v-if="isSlotOverMaxCapacity(slot)" type="error" variant="tonal" density="compact" class="mb-2">
+                        各方式名額合計已超出時段總名額上限，請調整。
+                      </v-alert>
                       <div class="d-flex flex-wrap align-start ga-4">
                         <template v-for="method in getSelectedMethodsForSlot(slot)" :key="method">
                           <!-- 無子選項方式：顯示方式名額 -->
@@ -2224,7 +2251,7 @@
             <v-list-item density="comfortable">
               <div class="text-body-2">
                 <div class="font-weight-bold mb-1">🎯 各方式獨立名額</div>
-                <div class="text-grey-darken-1">為每個預約方式或子選項設定獨立的名額上限。留空表示不限（不佔用總容量）。</div>
+                <div class="text-grey-darken-1">為每個預約方式設定名額上限，並可設定「時段總名額上限」。有填名額的方式為獨立計算，名額空白或0的方式共用剩餘名額。各方式合計不能超過時段總名額上限。</div>
               </div>
             </v-list-item>
             <v-list-item density="comfortable">
@@ -4315,6 +4342,56 @@ function recalcCapacityForSlot(dateKey, slotTime) {
     }
   });
   daySlot.capacity = total;
+}
+
+// 讀取時段總名額上限
+function getMaxCapacityForSlot(slot) {
+  if (selectedDaysForEditing.value.length === 0) return '';
+  const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
+  const val = editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot]?.maxCapacity;
+  return (val === null || val === undefined) ? '' : val;
+}
+
+// 設定時段總名額上限
+function setMaxCapacityForSlot(slot, value) {
+  const valStr = String(value).trim();
+  selectedDaysForEditing.value.forEach(day => {
+    const dateKey = formatDate(day);
+    const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
+    if (daySlot) {
+      daySlot.maxCapacity = (valStr === '') ? null : (Number(valStr) || 0);
+    }
+  });
+}
+
+// 計算有填寫名額（非空白非0）的方式合計（不含共用的方式）
+function getAssignedCapacityForSlot(slot) {
+  if (selectedDaysForEditing.value.length === 0) return 0;
+  const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
+  const daySlot = editedBatch.value.dailyRules[firstDateKey]?.slots?.[slot];
+  if (!daySlot) return 0;
+  let total = 0;
+  const methods = daySlot.methods || [];
+  methods.forEach(method => {
+    const subOpts = batchMethodSubOptionsMap.value[method] || [];
+    if (subOpts.length > 0) {
+      subOpts.forEach(sub => {
+        const v = Number(daySlot.subOptionLimits?.[sub]) || 0;
+        total += v;
+      });
+    } else {
+      const v = Number(daySlot.methodLimits?.[method]) || 0;
+      total += v;
+    }
+  });
+  return total;
+}
+
+// 是否超出總名額上限
+function isSlotOverMaxCapacity(slot) {
+  const max = getMaxCapacityForSlot(slot);
+  if (max === '' || max === null) return false;
+  return getAssignedCapacityForSlot(slot) > Number(max);
 }
 
 // 讀取特定時段特定方式的名額
