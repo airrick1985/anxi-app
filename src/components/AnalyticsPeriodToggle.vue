@@ -1,6 +1,7 @@
 <template>
   <div class="period-toggle-container">
     <div class="toggle-and-picker">
+      <!-- 桌面版本：5個按鈕水平排列 -->
       <v-btn-toggle
         :model-value="period"
         @update:model-value="handlePeriodChange"
@@ -8,7 +9,7 @@
         variant="outlined"
         density="compact"
         mandatory
-        class="period-toggle"
+        class="period-toggle d-none d-md-flex"
       >
         <v-btn value="today">
           <v-icon start>mdi-calendar-today</v-icon>
@@ -31,6 +32,19 @@
           累計
         </v-btn>
       </v-btn-toggle>
+
+      <!-- 手機版本：下拉選擇 -->
+      <v-select
+        :model-value="period"
+        @update:model-value="handlePeriodChange"
+        :items="periodOptions"
+        item-title="label"
+        item-value="value"
+        label="選擇期間"
+        variant="outlined"
+        density="compact"
+        class="d-md-none"
+      ></v-select>
 
       <!-- 自訂日期選擇器 -->
       <div v-if="period === 'custom'" class="custom-date-picker mt-3">
@@ -76,6 +90,14 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:period', 'update:custom-date-range'])
+
+const periodOptions = [
+  { value: 'today', label: '本日' },
+  { value: 'week', label: '本週' },
+  { value: 'month', label: '本月' },
+  { value: 'custom', label: '自訂日期' },
+  { value: 'all', label: '累計' },
+]
 
 const customDateRange = ref({
   start: props.customDateRange.start || formatDateToInput(new Date()),

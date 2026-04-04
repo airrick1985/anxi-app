@@ -1738,8 +1738,8 @@ function drawMeasurement() {
 function renderMeasureShape(ctx, canvas, mode, points, isCompleted) {
   if (!points || points.length === 0) return;
 
-  ctx.lineWidth = Math.max(2, canvas.width / 800);
-  const radius = Math.max(4, canvas.width / 400);
+  ctx.lineWidth = Math.max(1, canvas.width / 1200);
+  const crossSize = Math.max(3, canvas.width / 600);
 
   let strokeColor = mode === 'calibrate' ? '#bd985c' : '#2563eb';
   let fillColor = strokeColor;
@@ -1765,12 +1765,20 @@ function renderMeasureShape(ctx, canvas, mode, points, isCompleted) {
   }
   ctx.stroke();
 
-  // 繪製頂點圓點
-  ctx.fillStyle = isCompleted ? '#059669' : '#ef4444';
+  // 繪製頂點十字線
+  ctx.strokeStyle = isCompleted ? '#059669' : '#ef4444';
+  ctx.lineWidth = Math.max(1, canvas.width / 1500);
   points.forEach((p, index) => {
+    // 繪製十字線
     ctx.beginPath();
-    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(p.x - crossSize, p.y);
+    ctx.lineTo(p.x + crossSize, p.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - crossSize);
+    ctx.lineTo(p.x, p.y + crossSize);
+    ctx.stroke();
 
     // 距離模式: 在每段線段中點標註長度
     if (mode === 'distance' && index > 0 && measurePxPerCm.value > 0) {

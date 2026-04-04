@@ -2,8 +2,22 @@
   <div class="sales-control-page">
     
     <div class="toolbar d-none d-md-flex">
+      <!-- Project 選擇器 -->
+      <v-select
+        :model-value="projectId"
+        @update:model-value="switchProject"
+        :items="availableProjects"
+        item-title="name"
+        item-value="id"
+        label="選擇建案"
+        variant="outlined"
+        density="compact"
+        class="project-selector mr-4"
+        style="max-width: 200px"
+      ></v-select>
+
       <span class="toolbar-title d-none d-sm-inline">{{ projectName }}-{{ pageTitle }}</span>
-      
+
       <v-btn-toggle
         v-model="viewFormat"
         color="indigo"
@@ -746,6 +760,25 @@
           </v-btn>
         </template>
         <v-list>
+          <!-- 切換建案 -->
+          <v-list-item>
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-home-city</v-icon>
+            </template>
+            <v-select
+              :model-value="projectId"
+              @update:model-value="switchProject"
+              :items="availableProjects"
+              item-title="name"
+              item-value="id"
+              label="選擇建案"
+              variant="plain"
+              density="compact"
+              class="mobile-project-selector"
+            ></v-select>
+          </v-list-item>
+          <v-divider></v-divider>
+
           <v-list-item @click="handleRefreshData" :loading="isRefreshing">
             <template v-slot:prepend>
               <v-icon color="black">mdi-refresh</v-icon>
@@ -794,7 +827,14 @@
             </template>
             <v-list-item-title>AI 銷售助理</v-list-item-title>
           </v-list-item>
-          
+
+          <v-list-item @click="isAnalyticsPanelVisible = true">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-chart-box</v-icon>
+            </template>
+            <v-list-item-title>銷控統計分析</v-list-item-title>
+          </v-list-item>
+
           <v-list-item
             v-if="project.paymentScheduleFolderUrl"
             :href="project.paymentScheduleFolderUrl"
@@ -1143,6 +1183,7 @@ import {
 
 import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
+import { useProjectStore } from '@/store/projectStore';
 import * as XLSX from 'xlsx-js-style';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
@@ -1721,11 +1762,13 @@ const activitySlideEmbedUrl = computed(() => {
 });
 
 // --- Computed Properties ---
+const projectStore = useProjectStore();
 const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
 const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => project.value.name);
+const availableProjects = computed(() => projectStore.projectsList || []);
 
 // [Grid Computed]
 const filteredHouseholds = computed(() => {
@@ -2145,6 +2188,22 @@ const handleUnitListUpdate = async (payload, onSuccess, onError) => {
   }
 };
 
+/**
+ * 切換建案
+ */
+const switchProject = (newProjectId) => {
+  if (newProjectId === projectId.value) return;
+
+  console.log(`🔄 切換建案: ${projectId.value} → ${newProjectId}`);
+
+  // 使用 router.push 導航到新的 project
+  router.push({
+    name: route.name,
+    params: { projectName: newProjectId },
+    meta: route.meta
+  });
+};
+
 const handleRefreshData = async () => {
   console.log('🔄 [Manual Refresh] 用戶要求刷新數據');
   isRefreshing.value = true;
@@ -2161,9 +2220,11 @@ const handleRefreshData = async () => {
 };
 
 onMounted(async () => {
-  
+  // 載入所有可用的建案列表
+  if (projectStore.projectsList.length === 0) {
+    await projectStore.fetchProjects();
+  }
 
-  
   console.log('🏗️ [SalesControlSystem] 開始載入銷控資料...');
   loading.value = true;
   try {
@@ -2404,6 +2465,17 @@ const uploadData = async () => {
 </script>
 
 <style scoped>
+/* Project 選擇器樣式 */
+.project-selector {
+  min-width: 150px;
+  max-width: 200px;
+}
+
+.mobile-project-selector {
+  width: 100%;
+  padding: 0 12px;
+}
+
 /* (原本的 CSS 樣式全部保留) */
 .sales-control-page {
   /* 電腦版維持原樣：扣除 Toolbar */

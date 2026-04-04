@@ -32,17 +32,23 @@
             @update:period="handlePeriodChange"
             @update:custom-date-range="handleCustomDateRange"
           />
-          <span v-if="statistics" class="date-range-text">
+          <div v-if="statistics" class="date-range-text mt-2">
             <template v-if="selectedPeriod === 'all'">
-              累計統計（全部資料）
+              <span class="text-caption text-grey">累計統計（全部資料）</span>
             </template>
             <template v-else-if="selectedPeriod === 'custom'">
-              自訂期間: {{ formatDate(customDateRange.start) }} ~ {{ formatDate(customDateRange.end) }}
+              <div class="text-caption text-grey">
+                <div>自訂期間:</div>
+                <div>{{ formatDate(customDateRange.start) }} ~ {{ formatDate(customDateRange.end) }}</div>
+              </div>
             </template>
             <template v-else-if="statistics.dateRange">
-              期間: {{ formatDate(statistics.dateRange.start) }} ~ {{ formatDate(statistics.dateRange.end) }}
+              <div class="text-caption text-grey">
+                <div>期間:</div>
+                <div>{{ formatDate(statistics.dateRange.start) }} ~ {{ formatDate(statistics.dateRange.end) }}</div>
+              </div>
             </template>
-          </span>
+          </div>
         </div>
 
         <!-- 加載狀態 -->
@@ -60,15 +66,15 @@
           <!-- Section 1: 銷售狀況 + 銷況明細 -->
           <v-row class="mb-6" no-gutters>
             <!-- 左側：銷售狀況卡片 -->
-            <v-col cols="12" xl="6" class="pr-2">
+            <v-col cols="12" lg="6" class="mb-lg-0 mb-4 pr-lg-2">
               <div class="section-header mb-4">
                 <div class="section-title">📊 銷售狀況</div>
-                <div class="d-flex gap-2">
+                <div class="copy-buttons">
                   <v-btn
                     :text="copyButtonText"
                     size="small"
                     variant="outlined"
-                    @click="copyToClipboard"
+                    @click="showCopyDialog('full')"
                     class="copy-btn"
                   />
                   <v-btn
@@ -76,7 +82,7 @@
                     size="small"
                     variant="outlined"
                     color="info"
-                    @click="copySimpleText"
+                    @click="showCopyDialog('simple')"
                     class="copy-btn"
                   />
                 </div>
@@ -191,7 +197,7 @@
             </v-col>
 
             <!-- 右側：銷況明細 -->
-            <v-col cols="12" xl="6" class="pl-2">
+            <v-col cols="12" lg="6" class="pl-lg-2">
               <div class="section-title mb-4">📋 銷況明細</div>
               <v-expansion-panels>
                 <v-expansion-panel
@@ -205,7 +211,7 @@
                   <v-card-text>
                     <div class="units-list">
                       <div v-for="unit in statistics.households.byStatusUnits[status]" :key="unit.unitId" class="unit-item">
-                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.total_transaction) }}萬 / {{ calculateUnitPrice(unit.unitId) }}萬/坪)-{{ unit.salesperson }}</span>
+                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId) }}萬/坪)-{{ unit.salesperson }}</span>
                       </div>
                     </div>
                   </v-card-text>
@@ -234,6 +240,25 @@
         </v-alert>
       </v-card-text>
     </v-card>
+
+    <!-- 複製文本預覽對話框 -->
+    <v-dialog v-model="copyPreviewDialog.show" max-width="600">
+      <v-card>
+        <v-card-title class="d-flex justify-space-between align-center">
+          <span>預覽複製內容</span>
+          <v-btn icon="mdi-close" variant="text" @click="copyPreviewDialog.show = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="preview-content">
+          <pre class="text-body2">{{ copyPreviewDialog.text }}</pre>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="justify-end gap-2">
+          <v-btn variant="tonal" @click="copyPreviewDialog.show = false">取消</v-btn>
+          <v-btn variant="flat" color="primary" @click="confirmCopy">確認複製</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-dialog>
 </template>
 
@@ -320,12 +345,14 @@ const calculateUnitPrice = (unitId) => {
 
   if (!household) return 'N/A'
 
-  // 直接使用資料庫的 unit_price_transaction 欄位，並四捨五入到第二位
-  const unitPrice = Number(household.unit_price_transaction) || 0
+  // 使用房屋成交價 / 坪數計算單價
+  const housePrice = Number(household.price_transaction_house) || 0
+  const areaPing = Number(household.area_house_ping) || 0
 
-  if (unitPrice === 0) return 'N/A'
+  if (areaPing === 0 || housePrice === 0) return 'N/A'
 
-  return unitPrice.toFixed(2)
+  const unitPrice = (housePrice / areaPing).toFixed(2)
+  return unitPrice
 }
 
 /**
@@ -448,7 +475,7 @@ const generateStatisticsText = () => {
           parkingText = parkings.map(p => `-${p.spotId}(${Math.floor(p.price_transaction)}萬)`).join('')
         }
 
-        text += `  • ${unit.unitId}(${Math.floor(unit.total_transaction)}萬 / ${unitPrice}萬/坪)${parkingText}-${unit.salesperson}\n`
+        text += `  • ${unit.unitId}(${Math.floor(unit.price_transaction_total)}萬 / ${unitPrice}萬/坪)${parkingText}-${unit.salesperson}\n`
       })
     })
   }
@@ -548,6 +575,56 @@ const copySimpleText = async () => {
 const copyButtonText = ref('📋 複製完整文本')
 const copySimpleButtonText = ref('📝 複製簡易文本')
 
+/**
+ * 複製預覽對話框
+ */
+const copyPreviewDialog = ref({
+  show: false,
+  text: '',
+  type: '', // 'full' or 'simple'
+})
+
+/**
+ * 顯示複製預覽對話框
+ */
+const showCopyDialog = (type) => {
+  if (type === 'full') {
+    copyPreviewDialog.value.text = generateStatisticsText()
+  } else {
+    copyPreviewDialog.value.text = generateSimpleText()
+  }
+  copyPreviewDialog.value.type = type
+  copyPreviewDialog.value.show = true
+}
+
+/**
+ * 確認並複製文本
+ */
+const confirmCopy = async () => {
+  try {
+    await navigator.clipboard.writeText(copyPreviewDialog.value.text)
+
+    // 顯示複製成功提示
+    const originalText = copyPreviewDialog.value.type === 'full' ? copyButtonText.value : copySimpleButtonText.value
+    if (copyPreviewDialog.value.type === 'full') {
+      copyButtonText.value = '已複製！'
+      setTimeout(() => {
+        copyButtonText.value = originalText
+      }, 2000)
+    } else {
+      copySimpleButtonText.value = '已複製！'
+      setTimeout(() => {
+        copySimpleButtonText.value = originalText
+      }, 2000)
+    }
+
+    // 關閉預覽對話框
+    copyPreviewDialog.value.show = false
+  } catch (err) {
+    console.error('複製失敗:', err)
+  }
+}
+
 const projectData = computed(() => {
   return salesDataStore.getProjectData(props.projectId)
 })
@@ -637,6 +714,43 @@ const loadStatistics = async () => {
         parkings: statistics.value.parkings,
         personnelCount: statistics.value.personnel?.length,
       })
+
+      // 追踪已售車位的詳細信息
+      console.log('[AnalyticsPanel] 車位詳細分析:')
+      const allParkings = projectData.value.parkings || []
+      console.log('  總車位數:', allParkings.length)
+      console.log('  統計中的已售車位數:', statistics.value.parkings.sold)
+
+      // 分析每個車位的狀態
+      const soldParkings = []
+      const unsoldParkings = []
+
+      allParkings.forEach(p => {
+        const relatedHousehold = projectData.value.households?.find(h => h.unitId === p.buyerUnitId)
+        const hasBuyerUnitId = !!(p.buyerUnitId && p.buyerUnitId !== '')
+        const isRelatedHouseholdSold = relatedHousehold && (relatedHousehold.payment_deposit_date !== null && ['小訂', '補足', '簽約'].includes(relatedHousehold.salesStatus_backend))
+        const status = !hasBuyerUnitId ? '未分配' : !relatedHousehold ? '戶別不存在' : !isRelatedHouseholdSold ? '戶別未小訂' : '已售'
+
+        const parkingInfo = {
+          spotId: p.spotId,
+          buyerUnitId: p.buyerUnitId,
+          status,
+          householdInfo: relatedHousehold ? {
+            payment_deposit_date: relatedHousehold.payment_deposit_date,
+            salesStatus_backend: relatedHousehold.salesStatus_backend,
+            unitId: relatedHousehold.unitId
+          } : null
+        }
+
+        if (status === '已售') {
+          soldParkings.push(parkingInfo)
+        } else {
+          unsoldParkings.push(parkingInfo)
+        }
+      })
+
+      console.log(`  ✓ 已售車位 (${soldParkings.length}):`, soldParkings)
+      console.log(`  ✗ 未售車位 (${unsoldParkings.length}):`, unsoldParkings)
     }
   } catch (err) {
     console.error('[AnalyticsPanel] 統計計算失敗:', err)
@@ -716,9 +830,17 @@ watch(
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 599px) {
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .section-title {
@@ -730,16 +852,53 @@ watch(
   flex: 1;
 }
 
+.copy-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 599px) {
+  .copy-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+}
+
 .copy-btn {
   font-size: 12px !important;
   height: 28px !important;
-  margin-bottom: 8px;
+  min-width: fit-content;
+}
+
+@media (max-width: 599px) {
+  .copy-btn {
+    width: 100%;
+  }
+}
+
+.preview-content {
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.preview-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #333;
 }
 
 .period-info {
   display: flex;
-  align-items: center;
-  gap: 24px;
+  flex-direction: column;
+  gap: 12px;
   padding: 12px 16px;
   background: white;
   border-radius: 8px;
@@ -747,15 +906,30 @@ watch(
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
+@media (min-width: 600px) {
+  .period-info {
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
+  }
+}
+
 .date-range-text {
   font-size: 12px;
   color: white;
   font-weight: 600;
-  margin-left: auto;
-  padding: 4px 12px;
+  padding: 8px 12px;
   background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
   border-radius: 6px;
   box-shadow: 0 2px 6px rgba(25, 118, 210, 0.2);
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .date-range-text {
+    margin-left: auto;
+    width: auto;
+  }
 }
 
 .metric-group {

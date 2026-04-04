@@ -308,15 +308,15 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
       if (!byStatus[status]) byStatus[status] = 0
       byStatus[status]++
 
-      const totalTransaction = Number(h.total_transaction) || 0
-      byStatusAmount[status] = (byStatusAmount[status] || 0) + totalTransaction
+      const priceTransactionTotal = Number(h.price_transaction_total) || 0
+      byStatusAmount[status] = (byStatusAmount[status] || 0) + priceTransactionTotal
 
       if (!byStatusUnits[status]) byStatusUnits[status] = []
       byStatusUnits[status].push({
         unitId: h.unitId,
         unitName: h.unitName,
         amount: transactionAmount,
-        total_transaction: Number(h.total_transaction) || 0,
+        price_transaction_total: Number(h.price_transaction_total) || 0,
         salesperson: h.salesperson,
       })
     })
