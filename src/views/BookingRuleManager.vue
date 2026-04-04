@@ -1775,6 +1775,9 @@
                           :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
                           :color="slot.methods.includes(method) ? 'green' : 'grey'" size="x-small" label>
                           {{ method }}
+                          <span v-if="slot.methods.includes(method)" class="ml-1">
+                            {{ getMethodLimitDisplay(slot, method) }}
+                          </span>
                         </v-chip>
                         <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
                       </div>
@@ -4137,6 +4140,7 @@ async function openPreviewDialog(item) {
               capacity: slotInfo.capacity || 0,
               maxCapacity: slotInfo.maxCapacity || null,
               methods: slotInfo.methods || [],
+              methodLimits: slotInfo.methodLimits || {},
               subOptionLimits: slotInfo.subOptionLimits || {}
             });
           }
@@ -4150,6 +4154,15 @@ async function openPreviewDialog(item) {
   } finally {
     isPreviewLoading.value = false;
   }
+}
+
+// 取得方式的名額顯示文字
+function getMethodLimitDisplay(slot, method) {
+  const limit = slot.methodLimits?.[method];
+  if (!limit) {
+    return '(無限制)';
+  }
+  return `(${limit} 名)`;
 }
 
 // --- Save & Delete Process ---
