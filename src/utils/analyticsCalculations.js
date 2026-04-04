@@ -52,10 +52,16 @@ const isDateInRange = (dateValue, startDate, endDate) => {
 }
 
 /**
- * 判斷戶別是否已成交（有任何日期）
+ * 判斷戶別是否已成交
+ * 條件：必須有小訂日期(payment_deposit_date)，且狀態為小訂、補足或簽約
  */
 const isSoldHousehold = (household) => {
-  return !!(household.payment_deposit_date || household.payment_complete_date || household.payment_contract_date)
+  // 必須有小訂日期
+  if (!household.payment_deposit_date) return false
+
+  // 狀態必須是小訂、補足或簽約
+  const validStatuses = ['小訂', '補足', '簽約']
+  return validStatuses.includes(household.salesStatus_backend)
 }
 
 /**
@@ -262,18 +268,31 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
   const byStatusAmount = {} // 按狀態統計金額
   const byStatusUnits = {} // 按狀態統計戶別列表
 
-  const soldHouseholdSet = new Set() // 用於計算不重複的已售戶別（考慮日期範圍）
+  const cumulativeSoldSet = new Set() // 累計已售（所有有任何日期的戶別）
+  const periodSoldSet = new Set() // 該時間段內的新銷售（只計算該時間段內有成交的戶別）
 
   households.forEach(h => {
+    // 先檢查該戶別的銷售狀態是否有效（必須是小訂、補足或簽約）
+    const validStatuses = ['小訂', '補足', '簽約']
+    if (!validStatuses.includes(h.salesStatus_backend)) return // 跳過無效狀態（如保留）
+
     // 獲取該戶別的所有狀態
     const statuses = getHouseholdStatuses(h)
     const transactionAmount = getHouseTransactionPrice(h)
 
+    // 檢查該戶別是否已成交（使用新的已售定義：小訂日期 + 有效狀態）
+    if (isSoldHousehold(h)) {
+      cumulativeSoldSet.add(h.unitId)
+    }
+
     // 檢查該戶別是否在日期範圍內有任何成交狀態
     let isInDateRange = false
 
-    // 針對每個狀態分別統計
+    // 針對每個狀態分別統計（只納入小訂、補足、簽約）
     statuses.forEach(status => {
+      // 只統計有效的狀態
+      if (!validStatuses.includes(status)) return
+
       // 檢查該狀態的日期是否在範圍內
       let shouldCount = true
       if (dateRange) {
@@ -289,52 +308,59 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
       if (!byStatus[status]) byStatus[status] = 0
       byStatus[status]++
 
-      byStatusAmount[status] = (byStatusAmount[status] || 0) + transactionAmount
+      const totalTransaction = Number(h.total_transaction) || 0
+      byStatusAmount[status] = (byStatusAmount[status] || 0) + totalTransaction
 
       if (!byStatusUnits[status]) byStatusUnits[status] = []
       byStatusUnits[status].push({
         unitId: h.unitId,
         unitName: h.unitName,
         amount: transactionAmount,
+        total_transaction: Number(h.total_transaction) || 0,
         salesperson: h.salesperson,
       })
     })
 
-    // 只有在日期範圍內有成交時才加入已售集合
-    if (isInDateRange) {
-      soldHouseholdSet.add(h.unitId)
+    // 只有在日期範圍內有成交且符合已售條件時才加入該時間段的已售集合
+    if (isInDateRange && isSoldHousehold(h)) {
+      periodSoldSet.add(h.unitId)
     }
   })
 
-  // 計算已售（不重複計算，只計入日期範圍內的戶別）
-  const sold = soldHouseholdSet.size
-  const soldAmount = Array.from(soldHouseholdSet)
+  // 計算累計已售（所有有任何日期的戶別）
+  const cumulativeSold = cumulativeSoldSet.size
+  const cumulativeSoldAmount = Array.from(cumulativeSoldSet)
     .reduce((sum, unitId) => {
       const household = households.find(h => h.unitId === unitId)
       return sum + getHouseTransactionPrice(household)
     }, 0)
 
-  // 計算未售（累計視圖才會有未售）
-  let unsold = 0
-  let unsoldAmount = 0
-  if (!dateRange) {
-    // 累計視圖：計算沒有任何日期的戶別
-    unsold = households.filter(h => !isSoldHousehold(h)).length
-    unsoldAmount = households
-      .filter(h => !isSoldHousehold(h))
-      .reduce((sum, h) => sum + getHouseFloorPrice(h), 0)
-  }
+  // 計算該時間段內的新銷售
+  const periodSold = periodSoldSet.size
+  const periodSoldAmount = Array.from(periodSoldSet)
+    .reduce((sum, unitId) => {
+      const household = households.find(h => h.unitId === unitId)
+      return sum + getHouseTransactionPrice(household)
+    }, 0)
+
+  // 計算未售（總數 - 累計已售）
+  const unsold = totalUnfiltered - cumulativeSold
+  const unsoldAmount = totalAmountUnfiltered - cumulativeSoldAmount
 
   return {
     // 總計（不受日期過濾）
     total: totalUnfiltered,
     totalAmount: totalAmountUnfiltered,
 
-    // 已售（不重複計算）
-    sold,
-    soldAmount,
+    // 累計已售（所有有任何日期的戶別）
+    sold: cumulativeSold,
+    soldAmount: cumulativeSoldAmount,
 
-    // 未售（只在累計視圖顯示）
+    // 該時間段內的新銷售
+    periodSold,
+    periodSoldAmount,
+
+    // 未售（總數 - 累計已售）
     unsold,
     unsoldAmount,
 
@@ -391,6 +417,16 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   const totalUnfiltered = parkings.length
   const totalAmountUnfiltered = parkings.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0)
 
+  // 計算累計已售（關聯到已成交戶別的車位）
+  const cumulativeAssigned = parkings.filter(p => {
+    if (!p.buyerUnitId || p.buyerUnitId === '') return false
+    // 只計算關聯到已成交戶別的車位
+    const relatedHousehold = households?.find(h => h.unitId === p.buyerUnitId)
+    return relatedHousehold && isSoldHousehold(relatedHousehold)
+  })
+  const cumulativeSold = cumulativeAssigned.length
+  const cumulativeSoldAmount = cumulativeAssigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
+
   let filtered = parkings
 
   // 如果提供了日期範圍和戶別數據，只計算該日期範圍內關聯戶別的車位
@@ -412,21 +448,30 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   }
 
   const assigned = filtered.filter(p => p.buyerUnitId && p.buyerUnitId !== '')
-  const unassigned = filtered.filter(p => !p.buyerUnitId || p.buyerUnitId === '')
 
-  // 計算金額
-  const unsoldAmount = unassigned.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0) // 未售車位底價
-  const soldAmount = assigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0) // 已售車位成交價
+  // 計算該時間段內的新銷售
+  const periodSold = assigned.length
+  const periodSoldAmount = assigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
+
+  // 計算未售（總車位數 - 累計已售車位數）
+  const unsold = totalUnfiltered - cumulativeSold
+  const unsoldAmount = totalAmountUnfiltered - cumulativeSoldAmount
 
   return {
     // 總計（不受日期過濾）
     total: totalUnfiltered,
     totalAmount: totalAmountUnfiltered,
 
-    // 已售/未售（受日期過濾）
-    sold: assigned.length,
-    soldAmount,
-    unsold: unassigned.length,
+    // 累計已售
+    sold: cumulativeSold,
+    soldAmount: cumulativeSoldAmount,
+
+    // 該時間段內的新銷售
+    periodSold,
+    periodSoldAmount,
+
+    // 未售（總車位數 - 累計已售）
+    unsold,
     unsoldAmount,
     dataPoints: filtered,
   }

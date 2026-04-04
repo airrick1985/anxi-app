@@ -610,35 +610,23 @@
                 <v-card-text class="pt-4">
                     <v-row>
                         <v-col cols="12" sm="6">
-                            <VueDatePicker v-model="newLog.date" :teleport="true" :enable-time-picker="false"
-                                format="yyyy-MM-dd" auto-apply placeholder="選擇日期" locale="zh-TW" :max-date="new Date()">
-                            </VueDatePicker>
+                            <input type="date" v-model="newLogDate" :max="todayDate"
+                                class="w-100 pa-3 rounded border" style="border-color: rgba(0,0,0,0.12); font-family: inherit;">
                         </v-col>
                     </v-row>
 
                     <v-row dense class="mt-2">
                         <v-col cols="6">
-                            <v-menu v-model="menuStart" :close-on-content-click="false">
-                                <template v-slot:activator="{ props }">
-                                    <v-text-field v-model="newLog.startTime" label="開始時間" readonly v-bind="props"
-                                        variant="outlined" density="compact" prepend-inner-icon="mdi-clock-outline"
-                                        hide-details="auto"></v-text-field>
-                                </template>
-                                <v-time-picker v-if="menuStart" v-model="newLog.startTime" color="teal"
-                                    @update:model-value="menuStart = false"></v-time-picker>
-                            </v-menu>
+                            <input type="time" v-model="newLog.startTime"
+                                class="w-100 pa-3 rounded border" style="border-color: rgba(0,0,0,0.12); font-family: inherit;">
+                            <div v-if="newLog.startTime" class="text-caption text-grey mt-1">開始時間</div>
                         </v-col>
                         <v-col cols="6">
-                            <v-menu v-model="menuEnd" :close-on-content-click="false">
-                                <template v-slot:activator="{ props }">
-                                    <v-text-field v-model="newLog.endTime" label="結束時間" readonly v-bind="props"
-                                        variant="outlined" density="compact" prepend-inner-icon="mdi-clock-outline"
-                                        hide-details="auto"
-                                        :rules="[v => isEndTimeValid(newLog.startTime, v) || '結束時間不可早於開始時間']"></v-text-field>
-                                </template>
-                                <v-time-picker v-if="menuEnd" v-model="newLog.endTime" color="teal"
-                                    @update:model-value="menuEnd = false"></v-time-picker>
-                            </v-menu>
+                            <input type="time" v-model="newLog.endTime"
+                                class="w-100 pa-3 rounded border" style="border-color: rgba(0,0,0,0.12); font-family: inherit;">
+                            <div v-if="newLog.endTime" class="text-caption text-grey mt-1">結束時間</div>
+                            <div v-if="newLog.endTime && !isEndTimeValid(newLog.startTime, newLog.endTime)"
+                                class="text-caption text-error mt-1">結束時間不可早於開始時間</div>
                         </v-col>
                     </v-row>
                     <div class="mt-4">
@@ -862,8 +850,6 @@ import {
     updateLinkedProjects,
     unlinkProject
 } from '@/api';
-import VueDatePicker from '@vuepic/vue-datepicker';
-import '@vuepic/vue-datepicker/dist/main.css';
 import { useToast } from 'vue-toastification';
 import TwCities from '@/assets/TwCities.json';
 
@@ -919,10 +905,6 @@ const detailsPanel = ref(null);
 
 const isDeletingLog = ref(false); // 控制刪除按鈕的 Loading 狀態
 
-// ✅ [打勾] 新增控制 TimePicker 選單的狀態
-const menuStart = ref(false);
-const menuEnd = ref(false);
-
 // 計算持續時間 (分鐘)
 const calculateDuration = (start, end) => {
     if (!start || !end) return null;
@@ -961,6 +943,33 @@ const newLog = ref({
     date: new Date(),
     content: '',
     tags: {}
+});
+
+// 日期的YYYY-MM-DD格式（給input type="date"使用）
+const newLogDate = computed({
+    get: () => {
+        const date = newLog.value.date;
+        if (!date) return '';
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    },
+    set: (val) => {
+        if (val) {
+            newLog.value.date = new Date(val);
+        }
+    }
+});
+
+// 今天的YYYY-MM-DD格式（給input type="date"的max屬性使用）
+const todayDate = computed(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 });
 
 const tempTags = ref([]);
@@ -1740,8 +1749,8 @@ const openAddLogDialog = () => {
     const nowTime = getNowTimeStr();
     newLog.value = {
         date: new Date(),
-        startTime: nowTime,              // ✅ 預設現在時間
-        endTime: addMinutesToTimeStr(nowTime, 120), // ✅ 預設 120 分鐘後
+        startTime: addMinutesToTimeStr(nowTime, -120), // ✅ 預設現在時間 - 2小時
+        endTime: nowTime,                              // ✅ 預設現在時間
         content: '',
         tags: {}
     };
