@@ -1152,6 +1152,8 @@
       :show="isAnalyticsPanelVisible"
       @update:show="isAnalyticsPanelVisible = $event"
       :project-id="projectId"
+      @update:projectId="switchProjectWithinAnalytics"
+      :available-projects="availableProjects"
     />
 
     <div v-if="loading || error" class="status-overlay">
@@ -2204,6 +2206,25 @@ const switchProject = (newProjectId) => {
   });
 };
 
+/**
+ * 在 AnalyticsPanel 内切換建案（不關閉面板）
+ */
+const switchProjectWithinAnalytics = (newProjectId) => {
+  if (newProjectId === projectId.value) return;
+
+  console.log(`🔄 [AnalyticsPanel] 切換建案: ${projectId.value} → ${newProjectId}`);
+
+  // 設置標記，告訴頁面切換後要保持面板打開
+  sessionStorage.setItem('keepAnalyticsPanelOpen', 'true');
+
+  // 使用 router.push 導航到新的 project，但面板會在導航後保持打開
+  router.push({
+    name: route.name,
+    params: { projectName: newProjectId },
+    meta: route.meta
+  });
+};
+
 const handleRefreshData = async () => {
   console.log('🔄 [Manual Refresh] 用戶要求刷新數據');
   isRefreshing.value = true;
@@ -2249,6 +2270,14 @@ onMounted(async () => {
     }
   } finally {
     loading.value = false;
+  }
+
+  // 檢查是否需要保持 AnalyticsPanel 打開
+  if (sessionStorage.getItem('keepAnalyticsPanelOpen') === 'true') {
+    await nextTick();
+    isAnalyticsPanelVisible.value = true;
+    sessionStorage.removeItem('keepAnalyticsPanelOpen');
+    console.log('📊 [SalesControlSystem] AnalyticsPanel 已重新打開');
   }
 });
 

@@ -20,6 +20,22 @@
         </div>
       </v-card-title>
 
+      <!-- Project Selector -->
+      <div v-if="availableProjects.length > 0" class="px-4 py-3 project-selector-section">
+        <v-select
+          :model-value="projectId"
+          @update:model-value="emit('update:projectId', $event)"
+          :items="availableProjects"
+          item-title="name"
+          item-value="id"
+          label="選擇建案"
+          variant="outlined"
+          density="compact"
+          style="max-width: 300px"
+          prepend-icon="mdi-home-city"
+        />
+      </div>
+
       <v-divider></v-divider>
 
       <!-- Content -->
@@ -32,22 +48,54 @@
             @update:period="handlePeriodChange"
             @update:custom-date-range="handleCustomDateRange"
           />
-          <div v-if="statistics" class="date-range-text mt-2">
+          <div v-if="statistics" class="date-range-text mt-2" style="margin-left: 0;">
             <template v-if="selectedPeriod === 'all'">
-              <span class="text-caption text-grey">累計統計（全部資料）</span>
+              <v-chip
+                label
+                color="primary"
+                text-color="white"
+                prepend-icon="mdi-calendar-multiple"
+              >
+                累計統計（全部資料）
+              </v-chip>
             </template>
             <template v-else-if="selectedPeriod === 'custom'">
-              <div class="text-caption text-grey">
-                <div>自訂期間:</div>
-                <div>{{ formatDate(customDateRange.start) }} ~ {{ formatDate(customDateRange.end) }}</div>
-              </div>
+              <v-chip
+                label
+                color="white"
+                text-color="white"
+                prepend-icon="mdi-calendar-range"
+              >
+                {{ formatDate(customDateRange.start) }} ~ {{ formatDate(customDateRange.end) }}
+              </v-chip>
             </template>
             <template v-else-if="statistics.dateRange">
-              <div class="text-caption text-grey">
-                <div>期間:</div>
-                <div>{{ formatDate(statistics.dateRange.start) }} ~ {{ formatDate(statistics.dateRange.end) }}</div>
-              </div>
+              <v-chip
+                label
+                color="white"
+                text-color="white"
+                prepend-icon="mdi-calendar-range"
+              >
+                {{ formatDate(statistics.dateRange.start) }} ~ {{ formatDate(statistics.dateRange.end) }}
+              </v-chip>
             </template>
+          </div>
+          <div class="copy-buttons mt-3">
+            <v-btn
+              :text="copyButtonText"
+              size="large"
+              variant="outlined"
+              @click="showCopyDialog('full')"
+              class="copy-btn"
+            />
+            <v-btn
+              :text="copySimpleButtonText"
+              size="large"
+              variant="outlined"
+              color="info"
+              @click="showCopyDialog('simple')"
+              class="copy-btn"
+            />
           </div>
         </div>
 
@@ -63,29 +111,167 @@
 
         <!-- 統計面板 (無加載時顯示) -->
         <template v-if="statistics && !isLoading">
+          <!-- Section 0: 來人概況 -->
+          <div v-if="vipGuestStats" class="section-title mb-6">👥 來人概況</div>
+          <div v-if="vipGuestStats" class="metric-group mb-6">
+            <v-row>
+              <v-col cols="12" sm="6" md="4">
+                <MetricCard
+                  title="新客"
+                  :value="vipGuestStats.newCustomers"
+                  icon="mdi-account-plus"
+                  icon-color="success"
+                  value-color="h5 text-success"
+                />
+              </v-col>
+              <v-col cols="12" sm="6" md="4">
+                <MetricCard
+                  title="回訪"
+                  :value="vipGuestStats.returningCustomers"
+                  icon="mdi-account-check"
+                  icon-color="info"
+                  value-color="h5 text-info"
+                />
+              </v-col>
+              <v-col cols="12" sm="6" md="4">
+                <MetricCard
+                  title="總來訪"
+                  :value="vipGuestStats.totalVisitors"
+                  icon="mdi-account-multiple"
+                  icon-color="primary"
+                  value-color="h5 text-primary"
+                />
+              </v-col>
+            </v-row>
+            <!-- 來訪詳細列表 (外層展開) -->
+            <div v-if="vipGuestStats.details.length > 0" class="mt-4">
+              <!-- 外層展開按鈕 -->
+              <div
+                class="d-flex align-center gap-2 pa-3 mb-2"
+                style="background: #f8f9fa; border-radius: 8px; cursor: pointer; user-select: none;"
+                @click="showVipGuestList = !showVipGuestList"
+              >
+                <v-icon :icon="showVipGuestList ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small"></v-icon>
+                <span class="text-caption font-weight-500">
+                  來訪客戶列表（共 {{ vipGuestStats.details.length }} 人）
+                </span>
+              </div>
+
+              <!-- 客戶列表（收合時隱藏）-->
+              <div v-show="showVipGuestList">
+                <v-expansion-panels>
+                  <v-expansion-panel
+                    v-for="guest in vipGuestStats.details"
+                    :key="guest.guestId"
+                  >
+                  <template #title>
+                    <div class="d-flex align-center gap-2 flex-wrap">
+                      <v-chip
+                        :label="true"
+                        :color="guest.type === 'new' ? 'success' : 'info'"
+                        size="small"
+                        class="flex-shrink-0"
+                      >
+                        {{ guest.type === 'new' ? '新客' : '回訪' }}
+                      </v-chip>
+                      <span class="text-body2 font-weight-500">{{ guest.guestName }}</span>
+                      <span class="text-caption text-grey">{{ guest.guestPhone }}</span>
+                      <v-divider vertical class="mx-1"></v-divider>
+                      <span class="text-caption">👨‍💼 {{ guest.salesName }}</span>
+                      <v-divider vertical class="mx-1"></v-divider>
+                      <span class="text-caption">📅 {{ formatDate(guest.interactionLogs[0].date) }}</span>
+                      <v-spacer></v-spacer>
+                      <span class="text-caption text-grey">第 {{ guest.visitIndex }} 次現場介紹 (共 {{ guest.interactionLogs.length }} 筆互動)</span>
+                    </div>
+                  </template>
+                  <template #text>
+                    <div class="guest-info">
+                      <!-- 客戶信息和銷售人員 -->
+                      <v-row no-gutters class="mb-4">
+                        <v-col cols="12" sm="6">
+                          <p class="text-caption mb-2">
+                            <strong>👤 客戶信息</strong>
+                          </p>
+                          <p class="text-caption mb-1">
+                            <strong>姓名：</strong>{{ guest.guestName }}
+                          </p>
+                          <p class="text-caption mb-1">
+                            <strong>電話：</strong>{{ guest.guestPhone }}
+                          </p>
+                          <p class="text-caption">
+                            <strong>類型：</strong>
+                            <v-chip
+                              :color="guest.type === 'new' ? 'success' : 'info'"
+                              size="x-small"
+                              variant="tonal"
+                            >
+                              {{ guest.type === 'new' ? '新客' : '回訪客戶' }}
+                            </v-chip>
+                          </p>
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <p class="text-caption mb-2">
+                            <strong>👨‍💼 銷售人員</strong>
+                          </p>
+                          <p class="text-caption mb-1">
+                            <strong>姓名：</strong>{{ guest.salesName }}
+                          </p>
+                          <p class="text-caption">
+                            <strong>訪問次數：</strong>第 {{ guest.visitIndex }} 次訪問
+                          </p>
+                        </v-col>
+                      </v-row>
+
+                      <!-- 互動紀錄內容 -->
+                      <v-divider class="my-3"></v-divider>
+                      <p class="text-caption mb-3">
+                        <strong>📝 互動紀錄（共 {{ guest.interactionLogs.length }} 次）</strong>
+                      </p>
+                      <div class="interaction-history">
+                        <div
+                          v-for="(log, index) in guest.interactionLogs"
+                          :key="index"
+                          class="interaction-item mb-4 pa-3"
+                          style="background: #f8f9fa; border-radius: 8px; border-left: 3px solid #1976d2;"
+                        >
+                          <div class="d-flex align-center gap-2 mb-2 flex-wrap">
+                            <v-chip
+                              :label="true"
+                              :color="log.interactionType === '現場介紹' ? 'primary' : 'default'"
+                              size="x-small"
+                            >
+                              {{ log.interactionType }}
+                            </v-chip>
+                            <span class="text-caption font-weight-500">
+                              📅 {{ formatDate(log.date) }}
+                            </span>
+                            <v-divider vertical class="mx-1"></v-divider>
+                            <span class="text-caption">
+                              👤 {{ log.recorderName }}
+                            </span>
+                          </div>
+                          <p class="text-caption mb-0" style="white-space: pre-wrap; line-height: 1.6; color: #555;">
+                            {{ log.content }}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </v-expansion-panel>
+                </v-expansion-panels>
+              </div>
+            </div>
+            <div v-else class="text-center text-grey py-4">
+              (暫無來訪紀錄)
+            </div>
+          </div>
+
           <!-- Section 1: 銷售狀況 + 銷況明細 -->
           <v-row class="mb-6" no-gutters>
             <!-- 左側：銷售狀況卡片 -->
             <v-col cols="12" lg="6" class="mb-lg-0 mb-4 pr-lg-2">
               <div class="section-header mb-4">
                 <div class="section-title">📊 銷售狀況</div>
-                <div class="copy-buttons">
-                  <v-btn
-                    :text="copyButtonText"
-                    size="small"
-                    variant="outlined"
-                    @click="showCopyDialog('full')"
-                    class="copy-btn"
-                  />
-                  <v-btn
-                    :text="copySimpleButtonText"
-                    size="small"
-                    variant="outlined"
-                    color="info"
-                    @click="showCopyDialog('simple')"
-                    class="copy-btn"
-                  />
-                </div>
               </div>
               <!-- 分組 1: 本日/周/月銷售 (非累計時顯示) -->
               <div v-if="selectedPeriod !== 'all'" class="metric-group mb-6">
@@ -210,7 +396,15 @@
 
                   <v-card-text>
                     <div class="units-list">
-                      <div v-for="unit in statistics.households.byStatusUnits[status]" :key="unit.unitId" class="unit-item">
+                      <div
+                        v-for="unit in statistics.households.byStatusUnits[status]"
+                        :key="unit.unitId"
+                        class="unit-item"
+                        style="cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;"
+                        @click="openUnitDetail(unit)"
+                        @mouseover="$event.target.style.backgroundColor = '#f0f7ff'"
+                        @mouseout="$event.target.style.backgroundColor = 'transparent'"
+                      >
                         <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId) }}萬/坪)-{{ unit.salesperson }}</span>
                       </div>
                     </div>
@@ -259,6 +453,23 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- UnitDetailModal -->
+    <UnitDetailModal
+      :show="showUnitModal"
+      :unit-data="selectedUnitData"
+      :all-data="{
+        '戶別': projectData.households || [],
+        '車位': projectData.parkings || [],
+        '銷控圖片': projectData.images || [],
+        '參數': projectData.parameters || [],
+        '銷售人員': projectData.personnel || [],
+      }"
+      :project-name="projectData.project?.name || '專案'"
+      :project-id="props.projectId"
+      :contract-types="[]"
+      @update:show="showUnitModal = $event"
+    />
   </v-dialog>
 </template>
 
@@ -270,10 +481,14 @@ import {
   calculateHouseholdStats,
   calculateParkingStats,
   calculatePersonnelStats,
+  calculateVipGuestStats,
+  getDateRange,
 } from '@/utils/analyticsCalculations'
+import { fetchVipGuests } from '@/api'
 import AnalyticsPeriodToggle from './AnalyticsPeriodToggle.vue'
 import MetricCard from './MetricCard.vue'
 import PersonnelRanking from './PersonnelRanking.vue'
+import UnitDetailModal from './UnitDetailModal.vue'
 
 const props = defineProps({
   show: {
@@ -284,9 +499,13 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  availableProjects: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['update:show'])
+const emit = defineEmits(['update:show', 'update:projectId'])
 
 const salesDataStore = useSalesDataStore()
 const analyticsStore = useAnalyticsStore()
@@ -306,6 +525,10 @@ const selectedPeriod = ref('today')
 const isLoading = ref(false)
 const error = ref(null)
 const statistics = ref(null)
+const vipGuestStats = ref(null)
+const showVipGuestList = ref(false)
+const showUnitModal = ref(false)
+const selectedUnitData = ref(null)
 const customDateRange = ref({
   start: formatDateToInput(new Date()),
   end: formatDateToInput(new Date()),
@@ -362,7 +585,7 @@ const getPeriodLabel = () => {
   if (selectedPeriod.value === 'today') return '本日'
   if (selectedPeriod.value === 'week') return '本週'
   if (selectedPeriod.value === 'month') return '本月'
-  if (selectedPeriod.value === 'custom') return '自訂期間'
+  if (selectedPeriod.value === 'custom') return '期間'
   return ''
 }
 
@@ -394,7 +617,7 @@ const generateStatisticsText = () => {
   const periodLabel = selectedPeriod.value === 'all' ? '累計' :
                       selectedPeriod.value === 'today' ? '本日' :
                       selectedPeriod.value === 'week' ? '本週' :
-                      selectedPeriod.value === 'month' ? '本月' : '自訂期間'
+                      selectedPeriod.value === 'month' ? '本月' : '期間'
 
   let text = `${periodLabel}${projectName}銷況\n`
 
@@ -506,6 +729,14 @@ const generateSimpleText = () => {
 
   text += `\n`
 
+  // 📌 新增：來人概況段落
+  if (vipGuestStats.value) {
+    text += `來人概況\n`
+    text += `新客：${vipGuestStats.value.newCustomers}\n`
+    text += `回訪：${vipGuestStats.value.returningCustomers}\n`
+    text += `\n`
+  }
+
   // 計算金額
   const totalHouseholdAmount = statistics.value.households.totalAmount
   const totalParkingAmount = statistics.value.parkings.totalAmount
@@ -523,7 +754,41 @@ const generateSimpleText = () => {
 
     text += `${getPeriodLabel()}銷售戶數：${statistics.value.households.periodSold}戶 (${formatAmount(periodHouseholdAmount)}萬)\n`
     text += `${getPeriodLabel()}銷售車位：${statistics.value.parkings.periodSold}個 (${formatAmount(periodParkingAmount)}萬)\n`
-    text += `${getPeriodLabel()}銷售總銷：${formatAmount(periodTotalAmount)}萬 (${calculatePercentage(periodTotalAmount, totalAllAmount)}%)\n\n`
+    text += `${getPeriodLabel()}銷售總銷：${formatAmount(periodTotalAmount)}萬 (${calculatePercentage(periodTotalAmount, totalAllAmount)}%)\n`
+
+    // 📌 新增：成交戶別詳情（包含銷售人員）
+    if (statistics.value.households.byStatusUnits) {
+      // 檢查是否有任何成交戶別
+      const statusOrder = ['小訂', '補足', '簽約']
+      let hasUnits = false
+
+      statusOrder.forEach(status => {
+        const units = statistics.value.households.byStatusUnits[status]
+        if (units && units.length > 0) {
+          hasUnits = true
+        }
+      })
+
+      if (hasUnits) {
+        text += `成交戶別\n`
+        // 遍歷所有狀態，並列出該狀態下的戶別及其銷售人員
+        statusOrder.forEach(status => {
+          const units = statistics.value.households.byStatusUnits[status]
+          if (units && units.length > 0) {
+            // 為每個戶別添加銷售人員信息
+            const unitDetails = units.map(u => {
+              const salesperson = u.salesperson || '未知'
+              return `${u.unitId}(${salesperson})`
+            }).join('、')
+            text += `${status}:${unitDetails}\n`
+          }
+        })
+      } else {
+        // 若無成交戶別，顯示(無)
+        text += `成交戶別(無)\n`
+      }
+      text += `\n`
+    }
   }
 
   // 累積已售
@@ -572,8 +837,8 @@ const copySimpleText = async () => {
   }
 }
 
-const copyButtonText = ref('📋 複製完整文本')
-const copySimpleButtonText = ref('📝 複製簡易文本')
+const copyButtonText = ref('📋 複製銷況完整文本')
+const copySimpleButtonText = ref('📝 複製銷況簡易文本')
 
 /**
  * 複製預覽對話框
@@ -652,6 +917,7 @@ const loadStatistics = async () => {
   try {
     isLoading.value = true
     error.value = null
+    vipGuestStats.value = null
 
     // 🔄 清除統計緩存，強制重新計算
     console.log('[AnalyticsPanel] 清除緩存並重新加載統計...')
@@ -752,10 +1018,36 @@ const loadStatistics = async () => {
       console.log(`  ✓ 已售車位 (${soldParkings.length}):`, soldParkings)
       console.log(`  ✗ 未售車位 (${unsoldParkings.length}):`, unsoldParkings)
     }
+
+    // 🔍 查詢並計算VIP客人的來人概況統計
+    try {
+      const vipGuests = await fetchVipGuests(props.projectId)
+      if (vipGuests && Array.isArray(vipGuests)) {
+        // 計算日期範圍
+        const dateRange = selectedPeriod.value === 'custom'
+          ? {
+              start: new Date(customDateRange.value.start),
+              end: new Date(customDateRange.value.end),
+            }
+          : getDateRange(selectedPeriod.value)
+
+        if (dateRange && dateRange.end) {
+          dateRange.end.setHours(23, 59, 59)
+        }
+
+        vipGuestStats.value = calculateVipGuestStats(vipGuests, dateRange)
+        console.log('[AnalyticsPanel] VIP客人統計:', vipGuestStats.value)
+      }
+    } catch (err) {
+      console.error('[AnalyticsPanel] VIP客人統計失敗:', err)
+      // 不影響主要統計，只記錄錯誤
+      vipGuestStats.value = null
+    }
   } catch (err) {
     console.error('[AnalyticsPanel] 統計計算失敗:', err)
     error.value = err.message || '統計計算失敗'
     statistics.value = null
+    vipGuestStats.value = null
   } finally {
     isLoading.value = false
   }
@@ -782,6 +1074,27 @@ const handleCustomDateRange = (dateRange) => {
  */
 const close = () => {
   emit('update:show', false)
+}
+
+/**
+ * 打開單位詳細信息modal
+ */
+const openUnitDetail = (unit) => {
+  // 📌 從projectData.households中查找完整的單位數據
+  const completeUnitData = projectData.value.households?.find(h => h.unitId === unit.unitId)
+
+  if (completeUnitData) {
+    selectedUnitData.value = completeUnitData
+    console.log('[AnalyticsPanel] 打開UnitDetailModal:', {
+      unitId: completeUnitData.unitId,
+      hasData: !!completeUnitData,
+      dataKeys: Object.keys(completeUnitData).slice(0, 10),
+    })
+  } else {
+    console.warn('[AnalyticsPanel] 未找到完整的單位數據:', unit.unitId)
+  }
+
+  showUnitModal.value = true
 }
 
 /**
@@ -866,8 +1179,7 @@ watch(
 }
 
 .copy-btn {
-  font-size: 12px !important;
-  height: 28px !important;
+  font-size: 14px !important;
   min-width: fit-content;
 }
 
@@ -881,7 +1193,7 @@ watch(
   background: #f5f5f5;
   border-radius: 6px;
   padding: 12px;
-  max-height: 400px;
+  max-height: 60vh;
   overflow-y: auto;
 }
 
@@ -908,9 +1220,9 @@ watch(
 
 @media (min-width: 600px) {
   .period-info {
-    flex-direction: row;
-    align-items: center;
-    gap: 24px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 }
 
@@ -927,7 +1239,7 @@ watch(
 
 @media (min-width: 600px) {
   .date-range-text {
-    margin-left: auto;
+    margin-left: 0;
     width: auto;
   }
 }
