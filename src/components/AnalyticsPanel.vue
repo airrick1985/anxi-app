@@ -669,7 +669,7 @@ const generateStatisticsText = () => {
   // 總數（第四組）
   text += `\n總戶數：${statistics.value.households.total}戶 (${formatAmount(totalHouseholdAmount)}萬)\n`
   text += `總車位：${statistics.value.parkings.total}個 (${formatAmount(totalParkingAmount)}萬)\n`
-  text += `全部總銷：${formatAmount(totalAllAmount)}萬\n`
+  text += `總銷：${formatAmount(totalAllAmount)}萬\n`
 
   text += `\n【銷況明細】\n`
   const validStatuses = ['小訂', '補足', '簽約']
@@ -794,7 +794,12 @@ const generateSimpleText = () => {
   // 累計已售
   text += `累計已售戶數：${statistics.value.households.sold}戶 (${formatAmount(soldHouseholdAmount)}萬)\n`
   text += `累計已售車位：${statistics.value.parkings.sold}個 (${formatAmount(soldParkingAmount)}萬)\n`
-  text += `累計已售總銷：${formatAmount(totalSoldAmount)}萬 (${calculatePercentage(totalSoldAmount, totalAllAmount)}%)`
+  text += `累計已售總銷：${formatAmount(totalSoldAmount)}萬 (${calculatePercentage(totalSoldAmount, totalAllAmount)}%)\n`
+
+  // 總數
+  text += `\n總戶數：${statistics.value.households.total}戶 (${formatAmount(totalHouseholdAmount)}萬)\n`
+  text += `總車位：${statistics.value.parkings.total}個 (${formatAmount(totalParkingAmount)}萬)\n`
+  text += `總銷：${formatAmount(totalAllAmount)}萬`
 
   return text
 }
