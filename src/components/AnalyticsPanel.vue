@@ -791,10 +791,10 @@ const generateSimpleText = () => {
     }
   }
 
-  // 累積已售
-  text += `累積已售戶數：${statistics.value.households.sold}戶 (${formatAmount(soldHouseholdAmount)}萬)\n`
-  text += `累積已售車位：${statistics.value.parkings.sold}個 (${formatAmount(soldParkingAmount)}萬)\n`
-  text += `累積已售總銷：${formatAmount(totalSoldAmount)}萬 (${calculatePercentage(totalSoldAmount, totalAllAmount)}%)`
+  // 累計已售
+  text += `累計已售戶數：${statistics.value.households.sold}戶 (${formatAmount(soldHouseholdAmount)}萬)\n`
+  text += `累計已售車位：${statistics.value.parkings.sold}個 (${formatAmount(soldParkingAmount)}萬)\n`
+  text += `累計已售總銷：${formatAmount(totalSoldAmount)}萬 (${calculatePercentage(totalSoldAmount, totalAllAmount)}%)`
 
   return text
 }
