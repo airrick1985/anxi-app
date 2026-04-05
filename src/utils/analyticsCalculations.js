@@ -672,6 +672,134 @@ export const getStatusDistributionData = (byStatus) => {
 }
 
 /**
+ * 計算VIP客人的來人概況統計
+ * @param {Array} vipGuests - VIP客人列表
+ * @param {Object} dateRange - {start: Date, end: Date}
+ * @returns {Object} {newCustomers: 數字, returningCustomers: 數字, totalVisitors: 數字, details: Array}
+ */
+export const calculateVipGuestStats = (vipGuests, dateRange) => {
+  if (!vipGuests || !Array.isArray(vipGuests)) {
+    return {
+      newCustomers: 0,
+      returningCustomers: 0,
+      totalVisitors: 0,
+      details: [],
+    }
+  }
+
+  let newCustomersCount = 0
+  let returningCustomersCount = 0
+  const details = []
+
+  vipGuests.forEach(guest => {
+    if (!guest.interactionLogs || !Array.isArray(guest.interactionLogs)) {
+      return
+    }
+
+    // 📌 第一步：獲取客人全部歷史中的所有"現場介紹"（不受dateRange限制）
+    const allShowingLogs = guest.interactionLogs
+      .filter(log => log.tags?.interactionType === '現場介紹')
+      .sort((a, b) => {
+        const dateA = parseDate(a.date)
+        const dateB = parseDate(b.date)
+        return dateA - dateB
+      })
+
+    if (allShowingLogs.length === 0) {
+      return
+    }
+
+    // 📌 第二步：根據dateRange過濾時間段內的interactionLogs
+    let filteredLogs = guest.interactionLogs
+    if (dateRange && dateRange.start && dateRange.end) {
+      filteredLogs = guest.interactionLogs.filter(log => {
+        const logDate = parseDate(log.date)
+        return logDate && isDateInRange(logDate, dateRange.start, dateRange.end)
+      })
+    }
+
+    if (filteredLogs.length === 0) {
+      return
+    }
+
+    // 📌 第三步：在該時間段內找出"現場介紹"紀錄
+    const timeRangeShowingLogs = filteredLogs
+      .filter(log => log.tags?.interactionType === '現場介紹')
+      .sort((a, b) => {
+        const dateA = parseDate(a.date)
+        const dateB = parseDate(b.date)
+        return dateA - dateB
+      })
+
+    if (timeRangeShowingLogs.length === 0) {
+      return
+    }
+
+    // 取得銷售人員信息
+    const salesName = guest.latestSalesName || '未指定'
+    const salesPhone = guest.latestSalesPhone || ''
+
+    // 📌 第四步：構建該客人的全部互動紀錄
+    // 將全部interactionLogs按時間排序
+    const allInteractionLogs = (guest.interactionLogs || [])
+      .sort((a, b) => {
+        const dateA = parseDate(a.date)
+        const dateB = parseDate(b.date)
+        return dateA - dateB
+      })
+      .map(log => {
+        const interactionType = log.tags?.interactionType || '其他'
+
+        return {
+          date: log.date || '未知',
+          content: log.content || '(無內容)',
+          interactionType: interactionType,
+          recorderName: log.recorderName || '未知',
+        }
+      })
+
+    // 📌 第五步：判定該客人的新客/回訪狀態
+    // 基於"現場介紹"紀錄判定
+    const firstVisitInRange = timeRangeShowingLogs[0]
+    const historyIndexOfFirstVisit = allShowingLogs.findIndex(
+      historyLog => historyLog.logId === firstVisitInRange.logId
+    )
+    const isNewCustomer = historyIndexOfFirstVisit === 0
+
+    if (isNewCustomer) {
+      newCustomersCount++
+    } else {
+      returningCustomersCount++
+    }
+
+    // 添加一個detail項目（代表該客人在該時間段內的訪問）
+    details.push({
+      guestId: guest.id,
+      guestName: guest.latestName || '未知',
+      guestPhone: guest.phone || guest.profile?.['電話']?.[0] || '未知',
+      salesName: salesName,
+      salesPhone: salesPhone,
+      type: isNewCustomer ? 'new' : 'returning',
+      interactionLogs: allInteractionLogs, // 全部互動紀錄
+      visitIndex: historyIndexOfFirstVisit + 1, // 該時間段內首次訪問的全部歷史序號
+    })
+  })
+
+  return {
+    newCustomers: newCustomersCount,
+    returningCustomers: returningCustomersCount,
+    totalVisitors: newCustomersCount + returningCustomersCount,
+    details: details.sort((a, b) => {
+      // 按客人ID和訪問順序排序
+      if (a.guestId !== b.guestId) {
+        return a.guestId.localeCompare(b.guestId)
+      }
+      return a.visitIndex - b.visitIndex
+    }),
+  }
+}
+
+/**
  * 綜合統計接口 - 一次性獲取所有統計數據
  * @param {Object} projectData - {households, parkings, personnel, parameters}
  * @param {string} period - 'today' | 'week' | 'month'

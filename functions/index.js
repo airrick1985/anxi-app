@@ -18092,10 +18092,16 @@ async function _handleFetchVipGuests(data, db) {
       updatedAt: data.updatedAt,
       submissionsCount: submissions.length,
       latestSalesName: data.latestSalesName || null,
+      latestSalesPhone: data.latestSalesPhone || null,
       gender: gender,
 
       // ✅ [新增] 回傳計算好的最後提交時間
-      lastSubmittedAt: lastSubmittedAt
+      lastSubmittedAt: lastSubmittedAt,
+
+      // ✅ [新增] 回傳來人概況所需的欄位
+      interactionLogs: data.interactionLogs || [],
+      profile: data.profile || {},
+      latestName: data.latestName || '未知',
     };
   });
 }
