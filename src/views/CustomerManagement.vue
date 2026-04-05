@@ -197,43 +197,19 @@
             rounded="lg"
           ></v-select>
                   </v-col>
-        <v-col cols="12" sm="6" md="3">
+        <!-- ✅ 動態生成 VIP 欄位篩選器 -->
+        <v-col v-for="field in sortedVipFields" :key="field.key" cols="12" sm="6" md="3">
           <v-select
-            v-model="advFilter.motivations"
-            :items="settings.vipFormFields.motivation?.options || []"
-            label="購屋動機"
-            multiple
-            chips
+            v-model="advFilter.vipFilters[field.label]"
+            :items="field.options || []"
+            :label="field.label"
+            :multiple="field.selectionMode === 'multiple'"
+            :chips="field.selectionMode === 'multiple'"
             variant="outlined"
             density="compact"
             hide-details
             rounded="lg"
-          ></v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.roomTypes"
-            :items="settings.vipFormFields.roomType?.options || []"
-            label="房型需求"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.budgets"
-            :items="settings.vipFormFields.budget?.options || []"
-            label="購屋預算"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
+            clearable
           ></v-select>
         </v-col>
         <v-col cols="12" sm="6" md="3" v-if="isCurrentUserCounter">
@@ -373,26 +349,37 @@
                 </div>
               </template>
 
-              <template v-slot:item.購屋動機="{ item }">
-                <v-chip
-                  v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length"
-                  :color="getChipColor(item['購屋動機'][0])"
-                  size="small"
-                  label
-                  variant="tonal"
-                >
-                  {{ item['購屋動機'][0] }}
-                </v-chip>
-                <span v-if="Array.isArray(item['購屋動機']) && item['購屋動機'].length > 1" class="text-caption text-grey ml-1">
-                  (+{{ item['購屋動機'].length - 1 }})
-                </span>
+              <!-- ✅ 動態 VIP 欄位模板 -->
+              <template v-for="field in sortedVipFields" :key="field.key" v-slot:[`item.${field.label}`]="{ item }">
+                <template v-if="field.selectionMode === 'multiple'">
+                  <!-- 多選欄位：顯示第一個值為 chip，其他值用 (+N) 表示 -->
+                  <v-chip
+                    v-if="Array.isArray(item[field.label]) && item[field.label].length"
+                    :color="getChipColor(item[field.label][0])"
+                    size="small"
+                    label
+                    variant="tonal"
+                  >
+                    {{ item[field.label][0] }}
+                  </v-chip>
+                  <span v-if="Array.isArray(item[field.label]) && item[field.label].length > 1" class="text-caption text-grey ml-1">
+                    (+{{ item[field.label].length - 1 }})
+                  </span>
+                </template>
+                <template v-else>
+                  <!-- 單選欄位：顯示為 chip -->
+                  <v-chip
+                    v-if="item[field.label]"
+                    :color="getChipColor(item[field.label])"
+                    size="small"
+                    label
+                    variant="tonal"
+                  >
+                    {{ item[field.label] }}
+                  </v-chip>
+                  <span v-else class="text-caption text-grey">—</span>
+                </template>
               </template>
-
-              <template v-slot:item.房型需求="{ item }">
-                <div v-if="Array.isArray(item['房型需求'])" class="text-caption">
-                  {{ item['房型需求'].join(', ') }}
-                </div>
-              </template>    
             </v-data-table>
             </template>
           <CustomerInteractionLog
@@ -1842,18 +1829,24 @@ const settings = ref({
 const isLoadingCustomerList = ref(false); // 這是「列表頁」的 Loading
 const customerListSearch = ref('');
 const customerList = ref([]); // 儲存後端回傳的扁平化列表
-const customerTableHeaders = ref([
-  { title: '最後更新', key: 'updatedAt', width: '160px', sortable: true }, // 新增這行
-  { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
-  { title: '等級', key: '等級研判', width: '90px', sortable: true }, // 新增
-  { title: '未購原因', key: '未買原因', width: '160px', sortable: false }, // 新增
-  { title: '姓名', key: '姓名', width: '100px' },
-  { title: '電話', key: '電話', width: '120px' },
-  { title: '銷售', key: '銷售人員', width: '100px' },
-  { title: '購屋動機', key: '購屋動機', width: '110px' },
-  { title: '房型需求', key: '房型需求', width: '120px' },
- { title: '購屋預算', key: '購屋預算', width: '120px' }, // 空間不足可隱藏
-]);
+const customerTableHeaders = computed(() => {
+  const baseHeaders = [
+    { title: '最後更新', key: 'updatedAt', width: '160px', sortable: true },
+    { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
+    { title: '等級', key: '等級研判', width: '90px', sortable: true },
+    { title: '未購原因', key: '未買原因', width: '160px', sortable: false },
+    { title: '姓名', key: '姓名', width: '100px' },
+    { title: '電話', key: '電話', width: '120px' },
+    { title: '銷售', key: '銷售人員', width: '100px' },
+  ];
+  const vipHeaders = sortedVipFields.value.map(f => ({
+    title: f.label,
+    key: f.label,
+    width: '120px',
+    sortable: false,
+  }));
+  return [...baseHeaders, ...vipHeaders];
+});
 // ✓ END: 新增
 
 const isInteractionDialogVisible = ref(false);
@@ -2868,21 +2861,27 @@ const advFilter = reactive({
   sales: [],
   ratings: [],
   reasons: [],
-  motivations: [],
-  roomTypes: [],
-  budgets: [],
+  vipFilters: {},  // ✅ 動態存儲所有 vipFormFields 的篩選值
   showDeleted: false
 });
 
 const resetAdvFilters = () => {
-  Object.keys(advFilter).forEach(key => {
-    if (key === 'showDeleted') {
-      advFilter[key] = false;
-    } else {
-      advFilter[key] = Array.isArray(advFilter[key]) ? [] : '';
-    }
-  });
+  advFilter.startDate = '';
+  advFilter.endDate = '';
+  advFilter.sales = [];
+  advFilter.ratings = [];
+  advFilter.reasons = [];
+  advFilter.vipFilters = {};
+  advFilter.showDeleted = false;
 };
+
+// --- VIP 欄位動態排序（與 CustomerInteractionLog.vue 同步） ---
+const sortedVipFields = computed(() => {
+  const fields = settings.value.vipFormFields || {};
+  return Object.entries(fields)
+    .map(([key, config]) => ({ key, ...config }))
+    .sort((a, b) => a.order - b.order);
+});
 
 // --- 多維度篩選計算屬性 ---
 const filteredCustomerList = computed(() => {
@@ -2931,25 +2930,26 @@ const filteredCustomerList = computed(() => {
     });
   }
 
-  if (advFilter.motivations.length > 0) {
-    list = list.filter(item => {
-      const val = item['購屋動機'];
-      const arr = Array.isArray(val) ? val : (val ? [val] : []);
-      return arr.some(m => advFilter.motivations.includes(m));
-    });
-  }
+  // ✅ 動態 VIP 欄位篩選（取代硬編碼的 motivations / roomTypes / budgets）
+  sortedVipFields.value.forEach(field => {
+    const filterValues = advFilter.vipFilters[field.label];
+    // 跳過空的篩選
+    if (!filterValues || (Array.isArray(filterValues) ? filterValues.length === 0 : !filterValues)) {
+      return;
+    }
 
-  if (advFilter.roomTypes.length > 0) {
     list = list.filter(item => {
-      const val = item['房型需求'];
-      const arr = Array.isArray(val) ? val : (val ? [val] : []);
-      return arr.some(rt => advFilter.roomTypes.includes(rt));
+      const val = item[field.label];
+      if (field.selectionMode === 'multiple') {
+        // 多選模式：檢查陣列是否包含篩選值
+        const arr = Array.isArray(val) ? val : (val ? [val] : []);
+        return arr.some(v => filterValues.includes(v));
+      } else {
+        // 單選模式：直接檢查等於關係
+        return filterValues.includes(val);
+      }
     });
-  }
-
-  if (advFilter.budgets.length > 0) {
-    list = list.filter(item => advFilter.budgets.includes(item['購屋預算']));
-  }
+  });
 
   return list;
 });

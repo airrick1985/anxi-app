@@ -16915,27 +16915,49 @@ async function _handleFetchCustomerList(data, db) {
 
 
         // 加入列表
+        // ✅ [重要] 優先使用 docData.profile 中的 vipFormFields，以確保與「詳細需求」面板完全同步
+        const profileData = docData.profile || {};
+
+        // 多選欄位需要 ensureArray；單選欄位保持字符串
+        const multiSelectFields = ['購屋動機', '房型需求', '坪數需求', '從何得知本建案'];
+        const singleSelectFields = ['購屋預算'];
+
+        const vipFieldsData = {};
+
+        // 處理多選欄位
+        multiSelectFields.forEach(label => {
+          const profileValue = profileData[label];
+          const subValue = latestSub[label];
+          const value = profileValue !== undefined ? profileValue : subValue;
+          vipFieldsData[label] = ensureArray(value);
+        });
+
+        // 處理單選欄位（標準化為字符串，處理所有格式）
+        const normalizeSingleSelect = (value) => {
+          if (!value) return '';
+          // 如果是數組，取第一個非空值
+          if (Array.isArray(value)) {
+            const nonEmpty = value.find(v => v && v.trim && v.trim() !== '');
+            return nonEmpty || '';
+          }
+          // 如果是字符串
+          return String(value).trim() || '';
+        };
+
+        singleSelectFields.forEach(label => {
+          const profileValue = profileData[label];
+          const subValue = latestSub[label];
+          const rawValue = profileValue !== undefined ? profileValue : subValue;
+          vipFieldsData[label] = normalizeSingleSelect(rawValue);
+        });
 
         flatSubmissions.push({
-
-          '拜訪日期': latestSub['拜訪日期'] || null,
-
-          '姓名': latestSub['姓名'] || '',
-
-          '電話': latestSub['電話'] || '',
-
-          '購屋動機': ensureArray(latestSub['購屋動機']),
-
-          '房型需求': ensureArray(latestSub['房型需求']),
-
-          '購屋預算': latestSub['購屋預算'] || '',
-
-          '銷售人員': latestSub['銷售人員'],
+          ...latestSub,  // 包含所有提交欄位
+          ...vipFieldsData,  // ✅ 用 profile 的 vipFormFields 覆蓋（如果存在）
+          'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
 
           'docId': doc.id,
           'isDeleted': (docData.deletedSales || []).includes(latestSub['銷售人員']),
-          'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
-
           'updatedAt': docData.updatedAt ? docData.updatedAt.toDate().toISOString() : null,
           'createdAt': docData.createdAt ? docData.createdAt.toDate().toISOString() : null,
 
@@ -16944,11 +16966,8 @@ async function _handleFetchCustomerList(data, db) {
           'isLinked': docData.projectId !== projectId, // true = 此客戶來自其他建案的關聯
 
           // 來自 interactionLogs 的最新資訊 (共用)
-
           '等級研判': latestRating,
-
           '未買原因': latestNoBuyReasons
-
         });
 
       });
