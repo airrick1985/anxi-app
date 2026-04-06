@@ -19570,12 +19570,10 @@ exports.onVipGuestSubmission = onDocumentWritten({
     // 情境 B: 銷售人員補全資料 (CustomerDataSheet)
     // ============================================================
     else if (source === 'internal_sheet') {
-      // 對象：櫃台 + 指定銷售 (遍歷所有關聯建案)
-      for (const pid of allPids) {
-        const counterQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台');
-        const counterSnap = await counterQuery.get();
-        counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
-      }
+      // 對象：只有當前建案的櫃台 + 指定銷售本人
+      const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
+      const counterSnap = await counterQuery.get();
+      counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
 
       if (salesPhone) {
         lineIdsToSend.add(salesPhone);
@@ -20348,10 +20346,40 @@ exports.onViewingReservationChange = onDocumentWritten({
         });
       }
 
-      // 2. 獲取發送對象 (全體廣播)
-      const lineIds = await _getProjectSalesLineIds(db, projectId);
+      // 2. 獲取發送對象 (根據銷售人員指派狀態分流)
+      const permissionsRef2 = db.collection('userPermissions');
+      const phonesToNotify = new Set();
 
-      if (lineIds.length > 0) {
+      // 客資系統-櫃台 永遠發送
+      const counterSnap2 = await permissionsRef2
+        .where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台').get();
+      counterSnap2.forEach(doc => phonesToNotify.add(doc.id));
+
+      if (afterData.salesPhone) {
+        // 有指定銷售：只發給該銷售本人
+        phonesToNotify.add(afterData.salesPhone);
+      } else {
+        // 不指定銷售：發給所有 客資系統-銷售
+        const salesSnap2 = await permissionsRef2
+          .where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售').get();
+        salesSnap2.forEach(doc => phonesToNotify.add(doc.id));
+      }
+
+      // 轉換為 LINE ID
+      const lineIds = [];
+      const phoneArr = Array.from(phonesToNotify);
+      for (let i = 0; i < phoneArr.length; i += 30) {
+        const chunk = phoneArr.slice(i, i + 30);
+        const usersSnap2 = await db.collection('users')
+          .where(FieldPath.documentId(), 'in', chunk).get();
+        usersSnap2.forEach(doc => {
+          const lid = doc.data().lineId;
+          if (lid && lid.startsWith('U')) lineIds.push(lid);
+        });
+      }
+      const uniqueLineIds = [...new Set(lineIds)];
+
+      if (uniqueLineIds.length > 0) {
         // 3. 發送
         let channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
 
@@ -20377,7 +20405,7 @@ exports.onViewingReservationChange = onDocumentWritten({
               if (attempt > 1) {
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt - 1)));
               }
-              await lineClient.multicast(lineIds, [{ type: "flex", altText: title, contents: flexMessage }]);
+              await lineClient.multicast(uniqueLineIds, [{ type: "flex", altText: title, contents: flexMessage }]);
               success = true;
               break;
             } catch (error) {
@@ -20392,12 +20420,12 @@ exports.onViewingReservationChange = onDocumentWritten({
           if (!success) {
             throw new Error("發送 LINE 通知失敗: 超過最大重試次數");
           }
-          console.log(`[${functionName}] 廣播通知已發送給 ${lineIds.length} 人。`);
+          console.log(`[${functionName}] 廣播通知已發送給 ${uniqueLineIds.length} 人。`);
         } else {
           console.warn(`[${functionName}] 找不到可用的 LINE Channel Token，無法發送通知。`);
         }
       } else {
-        console.log(`[${functionName}] 該建案 (${projectId}) 沒有綁定 LINE 的銷售人員，跳過通知。`);
+        console.log(`[${functionName}] 該建案 (${projectId}) 沒有符合條件的接收人員，跳過通知。`);
       }
     }
 
@@ -20615,6 +20643,7 @@ exports.scheduledLeadReminder = onSchedule({
   schedule: "0,30 * * * *", // 每 30 分鐘運行一次
   timeZone: "Asia/Taipei",
   region: "asia-east1",
+  memory: "512MB",
   secrets: ["ANXISMART_LINE_CRM_TOKEN"]
 }, async (event) => {
   const functionName = "scheduledLeadReminder";
