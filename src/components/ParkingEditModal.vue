@@ -65,19 +65,21 @@
           </v-col>
           
           <v-col cols="12" sm="5">
-            <v-select
-              label="選擇車位"
-              :items="availableParkingOptions"
-              v-model="newParkingSelection"
-              item-title="displayText"
-              :item-props="itemProps"
-              return-object
-              hide-details
-              no-data-text="請先選擇樓層"
-              :disabled="!selectedFloor"
-              density="compact"
-              variant="outlined"
-            ></v-select>
+            <div>
+              <v-select
+                :label="`選擇車位${canSelectSoldParking ? ' ✨(已售可選)' : ''}`"
+                :items="availableParkingOptions"
+                v-model="newParkingSelection"
+                item-title="displayText"
+                :item-props="itemProps"
+                return-object
+                hide-details
+                no-data-text="請先選擇樓層"
+                :disabled="!selectedFloor"
+                density="compact"
+                variant="outlined"
+              ></v-select>
+            </div>
           </v-col>
           
           <v-col cols="12" sm="1">
@@ -148,7 +150,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, defineProps, defineEmits } from 'vue';
+import { ref, computed, watch, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
 
 // ✓ START: 匯入 ParkingCanvas 相關
 import ParkingCanvas from '@/components/ParkingCanvas.vue'; 
@@ -196,6 +198,11 @@ const newParkingSelection = ref(null);
 const selectedFloor = ref(null);
 
 const toast = useToast(); // ✓ 實例化 toast
+
+// 🆕 連按 A 鍵解除已售車位相關狀態
+let aKeyPressCount = 0;
+let aKeyPressTimer = null;
+const canSelectSoldParking = ref(false); // 是否允許選擇已售車位
 
 // ✓ START: 實例化樣式 Store
 const textStyleStore = useTextStyleStore();
@@ -299,8 +306,8 @@ const availableParkingOptions = computed(() => {
 });
 
 const itemProps = (item) => ({
-  disabled: item.disabled,
-  class: item.disabled ? 'text-grey' : ''
+  disabled: item.disabled && !canSelectSoldParking.value,
+  class: (item.disabled && !canSelectSoldParking.value) ? 'text-grey' : ''
 });
 
 // ✅ 更新新增邏輯，使其使用正確的欄位名稱
@@ -382,6 +389,46 @@ if (props.mode === 'quote') {
 const handleEditorFloorSwitch = (plan) => {
   activeEditorFloorPlan.value = plan;
 };
+
+// 🆕 連按 A 鍵解除已售車位的邏輯
+const handleKeyPress = (event) => {
+  const key = event.key.toUpperCase();
+
+  if (key === 'A') {
+    event.preventDefault();
+    aKeyPressCount++;
+
+    // 清除之前的計時器
+    if (aKeyPressTimer) {
+      clearTimeout(aKeyPressTimer);
+    }
+
+    // 如果達到 8 次，解除已售車位禁用
+    if (aKeyPressCount >= 8) {
+      canSelectSoldParking.value = true;
+      aKeyPressCount = 0;
+      toast.success('✨ 已售車位已解除禁用');
+    } else {
+      // 3 秒內沒有按下 A 鍵，則重置計數
+      aKeyPressTimer = setTimeout(() => {
+        aKeyPressCount = 0;
+      }, 3000);
+    }
+  }
+};
+
+// 生命週期：掛載時添加鍵盤事件監聽
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyPress);
+});
+
+// 生命週期：卸載時移除鍵盤事件監聽
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyPress);
+  if (aKeyPressTimer) {
+    clearTimeout(aKeyPressTimer);
+  }
+});
 
 
 </script>
