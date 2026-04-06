@@ -1031,7 +1031,7 @@ function addNegotiationNotes(tableGroup) {
     lines.push(
       `${item.unitId}　｜　` +
       `原始總價 ${formatNumber(originalPrice)} 萬 → 調整後 ${formatNumber(currentPrice)} 萬　` +
-      `｜　調整 ${sign}${formatNumber(totalDelta)} 萬（每坪 ${tsSign}${Number(perTsuboDelta.toFixed(2))} 萬）`
+      `｜　調整 ${sign}${formatNumber(totalDelta)} 萬（每坪 ${tsSign}${perTsuboDelta.toFixed(1)} 萬）`
     );
   });
 
