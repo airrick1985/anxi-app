@@ -58,6 +58,36 @@
                                 <v-card-text class="pt-4"
                                     :style="$vuetify.display.mdAndUp ? 'overflow-y: auto; max-height: calc(100vh - 150px);' : ''">
                                     <div v-if="!isEditingProfile">
+                                        <!-- 銷售人員欄位 -->
+                                        <div class="info-row mb-3">
+                                            <span class="text-caption text-grey">銷售人員</span>
+                                            <div class="d-flex flex-wrap gap-2 align-center">
+                                                <template v-if="guestData.profile?.['銷售人員'] && guestData.profile['銷售人員'].length > 0">
+                                                    <div v-for="(name, idx) in guestData.profile['銷售人員']" :key="idx"
+                                                        class="d-flex align-center">
+                                                        <v-chip size="small" variant="flat"
+                                                            :color="name === guestData.latestSalesName ? 'primary' : 'grey-lighten-2'"
+                                                            :text-color="name === guestData.latestSalesName ? 'white' : 'grey-darken-3'"
+                                                            :prepend-icon="name === guestData.latestSalesName ? 'mdi-star' : ''">
+                                                            {{ name }}
+                                                            <template v-if="name === guestData.latestSalesName">
+                                                                <v-tooltip text="目前負責人員" location="top">
+                                                                    <template v-slot:activator="{ props }">
+                                                                        <v-icon v-bind="props" size="x-small" class="ml-1">mdi-information</v-icon>
+                                                                    </template>
+                                                                </v-tooltip>
+                                                            </template>
+                                                        </v-chip>
+                                                    </div>
+                                                </template>
+                                                <div v-else class="text-body-2 text-grey-lighten-1 font-italic">
+                                                    未設定
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <v-divider class="my-3"></v-divider>
+
                                         <div class="info-row mb-3">
                                             <span class="text-caption text-grey">姓名</span>
                                             <div class="d-flex align-center">
@@ -330,6 +360,38 @@
                                     </div>
 
                                     <v-form v-else ref="profileForm">
+                                        <!-- 銷售人員選擇器（只有"客資系統-櫃台"權限才能修改） -->
+                                        <div v-if="hasCounterPermission" class="mb-3">
+                                            <v-select
+                                                v-model="editingData.selectedSalesPersons"
+                                                label="銷售人員"
+                                                :items="salesPersonList"
+                                                item-title="name"
+                                                item-value="phone"
+                                                multiple
+                                                density="compact"
+                                                variant="outlined"
+                                                hide-details="auto"
+                                                chips
+                                                clearable>
+                                            </v-select>
+
+                                            <!-- 選擇目前負責的銷售人員 -->
+                                            <div v-if="editingData.selectedSalesPersons && editingData.selectedSalesPersons.length > 0" class="mt-3">
+                                                <v-select
+                                                    v-model="editingData.latestSalesPhone"
+                                                    label="目前負責人員（帶星號★）"
+                                                    :items="getSalesPersonChipOptions()"
+                                                    item-title="label"
+                                                    item-value="phone"
+                                                    density="compact"
+                                                    variant="outlined"
+                                                    hide-details="auto"
+                                                    :prepend-icon="'mdi-star'">
+                                                </v-select>
+                                            </div>
+                                        </div>
+
                                         <v-text-field label="姓名" v-model="editingData.latestName" variant="outlined"
                                             density="compact" :rules="[v => !!v || '必填']" class="mb-3"></v-text-field>
 
@@ -629,6 +691,7 @@
                                 class="text-caption text-error mt-1">結束時間不可早於開始時間</div>
                         </v-col>
                     </v-row>
+
                     <div class="mt-4">
                         <v-row dense>
                             <template v-for="(fieldKey, idx) in logFields" :key="idx">
@@ -848,10 +911,25 @@ import {
     softDeleteCustomer,
     restoreCustomer,
     updateLinkedProjects,
-    unlinkProject
+    unlinkProject,
+    getUsersWithSystemPermission
 } from '@/api';
 import { useToast } from 'vue-toastification';
 import TwCities from '@/assets/TwCities.json';
+
+/**
+ * 格式化銷售人員名稱
+ */
+const formatSalesNames = (names) => {
+    if (!names) return '';
+    if (typeof names === 'string') {
+        return names;
+    }
+    if (Array.isArray(names)) {
+        return names.join('、');
+    }
+    return '';
+};
 
 /**
  * 格式化完整的日期時間 (用於洽談紀錄更新時間)
@@ -1418,11 +1496,38 @@ const sourceProjectName = computed(() => {
     return projectStore.idToNameMap[guestData.value.projectId] || guestData.value.projectId;
 });
 
+// 取得主項目 ID
+const mainProjectId = computed(() => {
+    return guestData.value.projectId || props.projectId;
+});
+
+// 調試用：顯示權限檢查的詳細信息
+const permissionDebugInfo = computed(() => {
+    const permissions = userStore.user?.permissions || {};
+    const mainPid = mainProjectId.value;
+    const permission = permissions[mainPid];
+
+    return {
+        mainPid,
+        hasPermission: permission ? true : false,
+        systems: permission?.systems || [],
+        hasCabinetSystem: permission?.systems?.includes('客資系統-櫃台') || false
+    };
+});
+
+// 檢查使用者是否有"客資系統-櫃台"權限
+const hasCounterPermission = computed(() => {
+    return permissionDebugInfo.value.hasCabinetSystem;
+});
+
+// 銷售人員列表（該建案中有相應權限的用戶，排除管理員）
+const salesPersonList = ref([]);
+
 // 取得使用者可勾選的建案列表（排除主歸屬建案）
 const availableLinkedProjects = computed(() => {
     const permissions = userStore.user?.permissions || {};
     const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
-    const mainPid = guestData.value.projectId || props.projectId;
+    const mainPid = mainProjectId.value;
 
     return Object.entries(permissions)
         .filter(([projectId, perm]) => {
@@ -1571,14 +1676,55 @@ const getFieldLabel = (key) => {
     return fieldSettings.value[key]?.label || key;
 };
 
+// 獲取銷售人員選項（用於選擇目前負責人員）
+const getSalesPersonChipOptions = () => {
+    if (!editingData.value.selectedSalesPersons || editingData.value.selectedSalesPersons.length === 0) {
+        return [];
+    }
+
+    return editingData.value.selectedSalesPersons.map(phone => {
+        const person = salesPersonList.value.find(p => p.phone === phone);
+        return {
+            phone: phone,
+            label: person ? person.name : phone
+        };
+    });
+};
+
 const startEditProfile = () => {
     const rawData = JSON.parse(JSON.stringify(guestData.value));
 
     editingData.value = {
         latestName: rawData.latestName,
         otherPhones: rawData.otherPhones || [],
-        profile: rawData.profile || {}
+        profile: rawData.profile || {},
+        selectedSalesPersons: [],
+        latestSalesPhone: rawData.latestSalesPhone || ''
     };
+
+    // 將銷售人員名稱轉換為電話號碼陣列（用於在選單中預設已選中的人員）
+    // 優先從 profile.銷售人員 讀取，若無則用 props.salesName
+    let salesNameArray = [];
+
+    if (guestData.value.profile?.['銷售人員'] && Array.isArray(guestData.value.profile['銷售人員'])) {
+        salesNameArray = guestData.value.profile['銷售人員'].filter(Boolean);
+    } else if (props.salesName) {
+        salesNameArray = typeof props.salesName === 'string'
+            ? props.salesName.split('、').map(name => name.trim())
+            : Array.isArray(props.salesName) ? props.salesName : [];
+    }
+
+    // 根據銷售人員名稱查找對應的電話號碼
+    if (salesNameArray.length > 0 && salesPersonList.value.length > 0) {
+        const selectedPhones = salesNameArray
+            .map(name => {
+                const person = salesPersonList.value.find(p => p.name === name);
+                return person ? person.phone : null;
+            })
+            .filter(phone => phone !== null);
+
+        editingData.value.selectedSalesPersons = selectedPhones;
+    }
 
     const getSingleValue = (key) => {
         const val = editingData.value.profile[key];
@@ -1659,9 +1805,43 @@ const saveProfile = async () => {
             profileUpdates[`profile.${key}`] = editingData.value.profile[key] || '';
         });
 
+        // 將選定的銷售人員電話號碼轉換回名稱和電話陣列
+        let salesNames = [];
+        let salesPhones = [];
+
+        if (editingData.value.selectedSalesPersons && editingData.value.selectedSalesPersons.length > 0) {
+            editingData.value.selectedSalesPersons.forEach(phone => {
+                const person = salesPersonList.value.find(p => p.phone === phone);
+                if (person) {
+                    salesNames.push(person.name);
+                    salesPhones.push(person.phone);
+                }
+            });
+        }
+
+        // 最新的銷售人員由用戶選擇，若未選擇則使用列表中的最後一個
+        let latestSalesName = '';
+        let latestSalesPhone = editingData.value.latestSalesPhone || '';
+
+        if (latestSalesPhone) {
+            // 根據用戶選擇的 latestSalesPhone 取得對應的名稱
+            const person = salesPersonList.value.find(p => p.phone === latestSalesPhone);
+            if (person) {
+                latestSalesName = person.name;
+            }
+        } else if (salesNames.length > 0) {
+            // 若未選擇，則使用列表中的最後一個
+            latestSalesName = salesNames[salesNames.length - 1];
+            latestSalesPhone = salesPhones[salesPhones.length - 1];
+        }
+
         const apiPayload = {
             latestName: editingData.value.latestName,
             otherPhones: editingData.value.otherPhones,
+            latestSalesName: latestSalesName,
+            latestSalesPhone: latestSalesPhone,
+            'profile.銷售人員': salesNames,
+            'profile.銷售人員電話': salesPhones,
             ...profileUpdates
         };
 
@@ -1675,11 +1855,19 @@ const saveProfile = async () => {
         guestData.value.latestName = editingData.value.latestName;
         guestData.value.otherPhones = editingData.value.otherPhones;
 
+        // 更新銷售人員相關字段
+        guestData.value.latestSalesName = latestSalesName;
+        guestData.value.latestSalesPhone = latestSalesPhone;
+
         if (!guestData.value.profile) guestData.value.profile = {};
 
         targetProfileFields.forEach(key => {
             guestData.value.profile[key] = editingData.value.profile[key];
         });
+
+        // 更新 profile 中的銷售人員數組
+        guestData.value.profile['銷售人員'] = salesNames;
+        guestData.value.profile['銷售人員電話'] = salesPhones;
 
         toast.success('基本資料已更新');
         isEditingProfile.value = false;
@@ -1963,9 +2151,43 @@ function getRatingStyle(rating) {
     return { color: 'blue-grey-lighten-4', textClass: 'text-blue-grey-darken-3' };
 }
 
-onMounted(() => {
+onMounted(async () => {
     if (props.show && props.docId) {
         loadData();
+    }
+    // 加載銷售人員列表：該建案中有相應權限的用戶
+    try {
+        const projectId = props.projectId;
+        if (!projectId) return;
+
+        // 從該系統的用戶列表中篩選 - 只取該建案的人員
+        const allUsers = await getUsersWithSystemPermission('客資系統-銷售', projectId);
+        const counterUsers = await getUsersWithSystemPermission('客資系統-櫃台', projectId);
+        const combinedUsers = [...allUsers, ...counterUsers];
+
+        // 去重並排除管理員
+        const seenPhones = new Set();
+        const filteredUsers = [];
+
+        combinedUsers.forEach(user => {
+            if (!seenPhones.has(user.phone)) {
+                // 檢查該用戶的角色是否包含管理員
+                const roles = user.roles || [];
+                const isAdmin = roles.some(role => role === '系統管理員' || role === '超級管理員');
+
+                if (!isAdmin) {
+                    filteredUsers.push({
+                        phone: user.phone,
+                        name: user.name || user.phone
+                    });
+                    seenPhones.add(user.phone);
+                }
+            }
+        });
+
+        salesPersonList.value = filteredUsers;
+    } catch (error) {
+        console.error('載入銷售人員列表失敗:', error);
     }
 });
 

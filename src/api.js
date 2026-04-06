@@ -1512,24 +1512,63 @@ async function isSuperAdmin(userKey) {
 }
 
 /**
- *  [已修正] 獲取擁有特定系統權限的所有使用者
+ *  [已修正] 獲取擁有特定系統權限的使用者
+ *  @param {string} systemName - 系統權限名稱 (e.g., '客資系統-銷售')
+ *  @param {string} [filterProjectId] - 可選的建案ID篩選，若提供則只返回該建案的用戶
  */
-export async function getUsersWithSystemPermission(systemName) {
+export async function getUsersWithSystemPermission(systemName, filterProjectId) {
   const permissionsSnapshot = await getDocs(collection(db, "userPermissions"));
-  const users = [];
+  const userPhones = [];
+
+  // 先收集符合條件的用戶 phone
   permissionsSnapshot.forEach(doc => {
     const perms = doc.data().permissions || {};
     for (const projectId in perms) {
+      // 如果有篩選條件，只返回符合的建案用戶
+      if (filterProjectId && projectId !== filterProjectId) {
+        continue;
+      }
+
       const project = perms[projectId];
       if (project && Array.isArray(project.systems) && project.systems.includes(systemName)) {
-        users.push({
+        userPhones.push({
           phone: doc.id,
-          name: doc.data().userName || 'N/A',
+          projectId: projectId,
           projectName: project.projectName
         });
       }
     }
   });
+
+  if (userPhones.length === 0) return [];
+
+  // 從 users 表中獲取用戶的詳細資訊（包括 roles）
+  const usersRef = collection(db, "users");
+  const phoneList = [...new Set(userPhones.map(u => u.phone))];
+  const usersQuery = query(usersRef, where(documentId(), 'in', phoneList));
+  const usersSnapshot = await getDocs(usersQuery);
+
+  // 構建用戶詳細資訊的 map
+  const userDetailsMap = new Map();
+  usersSnapshot.forEach(doc => {
+    userDetailsMap.set(doc.id, {
+      name: doc.data().name || 'N/A',
+      roles: doc.data().roles || []
+    });
+  });
+
+  // 合併權限和用戶詳細資訊
+  const users = userPhones.map(item => {
+    const userDetails = userDetailsMap.get(item.phone) || { name: 'N/A', roles: [] };
+    return {
+      phone: item.phone,
+      name: userDetails.name,
+      roles: userDetails.roles,
+      projectId: item.projectId,
+      projectName: item.projectName
+    };
+  });
+
   return users;
 }
 

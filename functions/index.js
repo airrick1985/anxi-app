@@ -18724,8 +18724,29 @@ async function sendLineNotification(db, projectIds, messageText) {
     // 去重 LINE ID
     const uniqueLineIds = [...new Set(lineIds)];
     const lineClient = new line.Client({ channelAccessToken: process.env[tokenSecretName] });
-    await lineClient.multicast(uniqueLineIds, [{ type: 'text', text: messageText }]);
-    console.log(`LINE 通知發送成功 (對象數: ${uniqueLineIds.length}, 建案數: ${pids.length})`);
+
+    // 添加重試邏輯以處理 429 限流
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000;
+    let success = false;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 1) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt - 1)));
+        }
+        await lineClient.multicast(uniqueLineIds, [{ type: 'text', text: messageText }]);
+        success = true;
+        console.log(`LINE 通知發送成功 (對象數: ${uniqueLineIds.length}, 建案數: ${pids.length})`);
+        break;
+      } catch (error) {
+        if (error.statusCode === 429 && attempt < MAX_RETRIES) {
+          console.warn(`觸發速率限制 (429)，${RETRY_DELAY_MS * attempt}ms 後重試...`);
+          continue;
+        }
+        throw error;
+      }
+    }
 
   } catch (error) {
     console.error("發送 LINE 通知失敗:", error);
@@ -19621,11 +19642,37 @@ exports.onVipGuestSubmission = onDocumentWritten({
       return;
     }
 
-    // 5. 發送
+    // 5. 發送（含重試和延迟以避免 429 限流）
     const lineClient = new line.Client({ channelAccessToken: lineToken });
-    await lineClient.multicast(Array.from(finalLineIds), [{ type: 'text', text: messageText }]);
+    const lineIdArray = Array.from(finalLineIds);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000; // 初始延迟 1 秒
 
-    console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source})。`);
+    let success = false;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // 發送前等待，避免速率限制
+        if (attempt > 1) {
+          console.log(`[${functionName}] 第 ${attempt} 次重試（延迟 ${RETRY_DELAY_MS * (attempt - 1)}ms）...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt - 1)));
+        }
+
+        await lineClient.multicast(lineIdArray, [{ type: 'text', text: messageText }]);
+        success = true;
+        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source})。`);
+        break;
+      } catch (error) {
+        if (error.statusCode === 429 && attempt < MAX_RETRIES) {
+          console.warn(`[${functionName}] 觸發速率限制 (429)，${RETRY_DELAY_MS * attempt}ms 後重試...`);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!success) {
+      throw new Error("發送 LINE 通知失敗: 超過最大重試次數");
+    }
 
   } catch (error) {
     console.error(`[${functionName}] 執行失敗:`, error);
@@ -20319,7 +20366,32 @@ exports.onViewingReservationChange = onDocumentWritten({
 
         if (channelToken) {
           const lineClient = new line.Client({ channelAccessToken: channelToken });
-          await lineClient.multicast(lineIds, [{ type: "flex", altText: title, contents: flexMessage }]);
+
+          // 添加重試邏輯以處理 429 限流
+          const MAX_RETRIES = 3;
+          const RETRY_DELAY_MS = 1000;
+          let success = false;
+
+          for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              if (attempt > 1) {
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt - 1)));
+              }
+              await lineClient.multicast(lineIds, [{ type: "flex", altText: title, contents: flexMessage }]);
+              success = true;
+              break;
+            } catch (error) {
+              if (error.statusCode === 429 && attempt < MAX_RETRIES) {
+                console.warn(`[onBookingStatusChange] 觸發速率限制 (429)，${RETRY_DELAY_MS * attempt}ms 後重試...`);
+                continue;
+              }
+              throw error;
+            }
+          }
+
+          if (!success) {
+            throw new Error("發送 LINE 通知失敗: 超過最大重試次數");
+          }
           console.log(`[${functionName}] 廣播通知已發送給 ${lineIds.length} 人。`);
         } else {
           console.warn(`[${functionName}] 找不到可用的 LINE Channel Token，無法發送通知。`);
