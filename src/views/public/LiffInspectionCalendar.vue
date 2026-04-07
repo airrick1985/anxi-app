@@ -171,6 +171,14 @@
                         </template>
                         <span>顯示設定</span>
                       </v-tooltip>
+
+                      <!-- ✅ 新增：時段設定按鈕 -->
+                      <v-tooltip location="bottom">
+                        <template v-slot:activator="{ props }">
+                          <v-btn v-bind="props" icon="mdi-clock-outline" @click="isTimeSlotDialogVisible = true"></v-btn>
+                        </template>
+                        <span>時段設定</span>
+                      </v-tooltip>
                  </v-toolbar>                 
                 
                 <div
@@ -249,6 +257,83 @@
             color="primary"
             variant="flat"
             @click="isFilterDialogVisible = false"
+          >
+            完成
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ 新增：時段設定對話框 -->
+    <v-dialog v-model="isTimeSlotDialogVisible" max-width="500px" scrollable>
+      <v-card>
+        <v-card-title class="pa-4 bg-grey-lighten-3">
+          <span class="text-h6">時段設定</span>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text>
+          <!-- 自動/手動切換按鈕 -->
+          <v-label class="text-subtitle-1 font-weight-bold mb-2 d-block">顯示模式</v-label>
+          <v-btn-toggle v-model="autoTimeSlotMode" mandatory density="compact" color="primary" variant="outlined" class="flex-grow-1 mb-3 d-flex">
+            <v-btn :value="true" size="small" prepend-icon="mdi-auto-fix" class="flex-grow-1">自動顯示</v-btn>
+            <v-btn :value="false" size="small" prepend-icon="mdi-tune-variant" class="flex-grow-1">手動選擇</v-btn>
+          </v-btn-toggle>
+
+          <div class="text-caption text-grey-darken-1 mb-4">
+            {{ autoTimeSlotMode ? '根據當天預約資料自動顯示有資料的時段' : '自行勾選要顯示的時段' }}
+          </div>
+
+          <!-- 手動模式：checkbox 列表 -->
+          <v-expand-transition>
+            <div v-if="!autoTimeSlotMode">
+              <v-label class="text-subtitle-1 font-weight-bold mb-2 d-block">選擇時段</v-label>
+              <div class="d-flex justify-space-between mb-2">
+                <v-btn size="small" variant="text" @click="selectAllTimeSlots">全選</v-btn>
+                <v-btn size="small" variant="text" @click="clearAllTimeSlots">清空</v-btn>
+              </div>
+              <v-row no-gutters style="max-height: 300px; overflow-y: auto;">
+                <v-col v-for="time in allPossibleTimeSlots" :key="time" cols="6">
+                  <v-checkbox
+                    v-model="selectedTimeSlots"
+                    :label="time"
+                    :value="time"
+                    density="compact"
+                    hide-details
+                    class="pa-1"
+                  ></v-checkbox>
+                </v-col>
+              </v-row>
+            </div>
+          </v-expand-transition>
+
+          <!-- 自動模式：顯示偵測到的時段 -->
+          <v-expand-transition>
+            <div v-if="autoTimeSlotMode">
+              <v-label class="text-subtitle-1 font-weight-bold mb-2 d-block">偵測到的時段</v-label>
+              <v-alert v-if="dataBasedTimeSlots.length === 0" type="info" variant="tonal" density="compact">
+                當天無預約資料，將顯示預設 08:00-18:00
+              </v-alert>
+              <div v-else>
+                <div class="text-caption text-grey-darken-1 mb-2">
+                  偵測到 {{ dataBasedTimeSlots.length }} 個時段有預約資料：
+                </div>
+                <v-chip-group column>
+                  <v-chip v-for="slot in dataBasedTimeSlots" :key="slot" size="small" variant="tonal" color="primary">
+                    <v-icon start size="x-small">mdi-clock-outline</v-icon>
+                    {{ slot }}
+                  </v-chip>
+                </v-chip-group>
+              </div>
+            </div>
+          </v-expand-transition>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <v-spacer></v-spacer>
+          <v-btn
+            color="primary"
+            variant="flat"
+            @click="isTimeSlotDialogVisible = false"
           >
             完成
           </v-btn>
@@ -453,6 +538,8 @@ const lastSearchText = ref('');
 const isDialogVisible = ref(false);
 const selectedAppointment = ref(null);
 const isFilterDialogVisible = ref(false);
+// ✅ 新增：時段設定對話框的可見性
+const isTimeSlotDialogVisible = ref(false);
 // [新增] 用來儲存從後端獲取的詳細專案資訊 (包含 bookingTypes)
 const liffProjects = ref([]);
 
@@ -758,13 +845,62 @@ const responsiveToolbarTitle = computed(() => {
   }
 });
 
-const timeSlots = computed(() => 
-  Array.from({ length: 21 }, (_, i) => {
-    const hour = 8 + Math.floor(i / 2);
-    const minute = (i % 2) * 30;
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-  })
+// ✅ 新增：完整時段列表（00:00 ~ 23:30，共 48 個）
+const allPossibleTimeSlots = Array.from({ length: 48 }, (_, i) => {
+  const hour = Math.floor(i / 2).toString().padStart(2, '0');
+  const minute = (i % 2 === 0) ? '00' : '30';
+  return `${hour}:${minute}`;
+});
+
+// ✅ 新增：用户手动勾选的时段（useStorage，key绑定 selectedProject）
+const selectedTimeSlots = useStorage(
+  computed(() => `liff_inspection_calendar_time_slots_${selectedProject.value}`),
+  [...allPossibleTimeSlots]
 );
+
+// ✅ 新增：自动/手动模式切换（useStorage，key绑定 selectedProject）
+const autoTimeSlotMode = useStorage(
+  computed(() => `liff_inspection_calendar_auto_time_mode_${selectedProject.value}`),
+  true  // 预设：自动模式
+);
+
+// ✅ 新增：从当天预约资料中提取有资料的时段
+const dataBasedTimeSlots = computed(() => {
+  const timeSet = new Set();
+  dailyAppointments.value.forEach(appt => {
+    if (!appt.appointmentTimeSlot) return;
+    const timeSlotStr = String(appt.appointmentTimeSlot);
+    const timeMatch = timeSlotStr.match(/(\d{1,2}[:：]\d{2})/);
+    if (timeMatch) {
+      const normalizedTime = timeMatch[0].replace(/：/g, ':');
+      const [h, m] = normalizedTime.split(':').map(Number);
+      timeSet.add(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+    }
+  });
+  return [...timeSet].sort();
+});
+
+// ✅ 修改：timeSlots 计算属性，支持自动/手动模式
+const timeSlots = computed(() => {
+  if (autoTimeSlotMode.value) {
+    // 自动模式：优先使用当天有预约的时段
+    if (dataBasedTimeSlots.value.length > 0) {
+      return dataBasedTimeSlots.value;
+    }
+    // 无数据时回退：显示默认工作时段 08:00 ~ 18:00
+    return allPossibleTimeSlots.filter(t => t >= '08:00' && t <= '18:00');
+  }
+  // 手动模式：使用者自选（排序后输出）
+  return [...selectedTimeSlots.value].sort();
+});
+
+// ✅ 新增：全选/清空时段的辅助函数
+function selectAllTimeSlots() {
+  selectedTimeSlots.value = [...allPossibleTimeSlots];
+}
+function clearAllTimeSlots() {
+  selectedTimeSlots.value = [];
+}
 
 const processAppointments = (rawAppointments) => {
   if (!Array.isArray(rawAppointments)) return [];
