@@ -147,11 +147,13 @@ export const useReservationStore = defineStore('reservation', {
                     const projectPerms = perms[projectId];
 
                     if (projectPerms && projectPerms.systems) {
-                      // ✅ 優化：改為 includes 判定，確保「客資系統-銷售」等人員能出現在選單中
-                      const hasAuth = projectPerms.systems.some(sys => 
-                          sys === '報價系統' || 
-                          sys === '銷控系統' || 
-                          sys.includes('客資系統') // 新增支援
+                      // ✅ 優化：支持新的權限命名規則（客資系統-銷售 或 客資系統-櫃台）
+                      const hasAuth = projectPerms.systems.some(sys =>
+                          sys === '報價系統' ||
+                          sys === '銷控系統' ||
+                          sys === '客資系統-銷售' ||
+                          sys === '客資系統-櫃台' ||
+                          sys.includes('客資系統') // 向後相容
                       );
                          
                          if (hasAuth) {

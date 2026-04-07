@@ -3091,7 +3091,14 @@ const fetchProjectStaff = async () => {
     const permSnap = await getDocs(query(collection(db, "userPermissions")));
     const authorizedIds = [];
     permSnap.forEach(d => {
-      if (d.data().permissions?.[props.projectId]?.systems?.some(s => s.includes('客資系統'))) {
+      // ✅ 修復：支持新的權限命名規則（客資系統-銷售 或 客資系統-櫃台）
+      const systems = d.data().permissions?.[props.projectId]?.systems || [];
+      const hasRole = systems.some(s =>
+        s === '客資系統-銷售' ||
+        s === '客資系統-櫃台' ||
+        s.includes('客資系統')
+      );
+      if (hasRole) {
         authorizedIds.push(d.id);
       }
     });
