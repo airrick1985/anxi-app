@@ -324,17 +324,18 @@ import { ref, onMounted, computed, watch, defineAsyncComponent, reactive } from 
 import { useStorage } from '@vueuse/core';
 import liff from '@line/liff';
 import html2canvas from 'html2canvas';
-import { 
-  getLiffUserData, 
-  liffSearchAppointments, 
-  getLiffCalendarDataForDay, 
+import {
+  getLiffUserData,
+  liffSearchAppointments,
+  getLiffCalendarDataForDay,
   getAllLiffAppointmentsForProject, // ✓ 引入新函式
-  liffFetchBookingOptions, 
-  liffUpdateAppointment, 
+  liffFetchBookingOptions,
+  liffUpdateAppointment,
   liffCancelAppointment,
   liffUpdateAppointmentInspectors,
   liffGetAdminBookingCalendarData,
   fetchAllHouseholdsForLiff, // ✓ 加上這個 import
+  fetchProjectConfig, // ✓ 新增：獲取完整的項目配置（包含 bookingMenu）
 
 } from '@/api';
 import { useDate, useDisplay } from 'vuetify';
@@ -356,7 +357,7 @@ const selectedProject = ref(null);
 
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
 
-// 動態計算顯示欄位選項
+// 動態計算顯示欄位選項（與 InspectionCalendar 邏輯一致）
 const displayFieldOptions = computed(() => {
   const baseFields = [
     { key: 'unitId', label: '戶別' },
@@ -367,7 +368,37 @@ const displayFieldOptions = computed(() => {
     { key: 'bookingRemarks', label: '預約備註' },
     { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
   ];
-  return baseFields;
+
+  // 動態掃描 bookingMenu 中所有 methods 的 customFields，篩選 expanded === true
+  const dynamicFields = [];
+  if (!selectedProject.value) return baseFields;
+
+  const projectData = liffProjects.value.find(p => p.projectId === selectedProject.value);
+  const menu = projectData?.bookingMenu;
+
+  if (Array.isArray(menu)) {
+    const seenLabels = new Set(baseFields.map(f => f.label));
+    for (const item of menu) {
+      if (!Array.isArray(item.methods)) continue;
+      for (const method of item.methods) {
+        if (method.deleted) continue;
+        if (!Array.isArray(method.customFields)) continue;
+        for (const cf of method.customFields) {
+          if (cf.expanded && cf.label && !seenLabels.has(cf.label)) {
+            seenLabels.add(cf.label);
+            // isDynamic 標記為動態欄位，取值時從 bookingMethodDetails[key] 讀取
+            dynamicFields.push({ key: cf.id, label: cf.label, isDynamic: true });
+          }
+        }
+      }
+    }
+  }
+
+  // 將動態欄位插入到「選擇方式」之後
+  const insertIndex = baseFields.findIndex(f => f.key === 'inspectionMethod') + 1;
+  const result = [...baseFields];
+  result.splice(insertIndex, 0, ...dynamicFields);
+  return result;
 });
 
 // 使用 useStorage 記住使用者的篩選設定（與 InspectionCalendar 邏輯一致，key 包含 projectId）
@@ -568,6 +599,14 @@ const currentTypeOptions = computed(() => {
   return [];
 });
 
+// [新增] 監聽 selectedProject 的變化
+watch(selectedProject, (newProjectId) => {
+  if (newProjectId) {
+    const projectData = liffProjects.value.find(p => p.projectId === newProjectId);
+    console.log('[watch selectedProject] loaded bookingMenu for', newProjectId, ':', projectData?.bookingMenu?.length || 0, 'items');
+  }
+}, { immediate: true });
+
 // [修改] 監聽 currentTypeOptions 的變化 (與 InspectionCalendar 邏輯一致)
 watch(currentTypeOptions, (newOptions) => {
   selectedTypes.value = [...newOptions];
@@ -598,6 +637,15 @@ watch(currentMethodOptions, (newOptions) => {
     selectedMethods.value = [...newOptions];
   }
 });
+
+// 從事件資料中取得欄位值的輔助函式（與 InspectionCalendar 邏輯一致）
+// 靜態欄位直接從 event[key] 讀取，動態欄位從 event.bookingMethodDetails[key] 讀取
+function getFieldValue(eventData, fieldOption) {
+  if (fieldOption.isDynamic) {
+    return eventData.bookingMethodDetails?.[fieldOption.key] ?? null;
+  }
+  return eventData[fieldOption.key] ?? null;
+}
 
 // 當 displayFieldOptions 變化時，同步更新 selectedDisplayFields
 // - 若快取為空：全選
@@ -656,7 +704,26 @@ onMounted(async () => {
       // 2. 將 API 回傳的 projects (包含 bookingTypes) 存入本地變數
       liffProjects.value = userData.projects || [];
 
-      console.log('📋 DEBUG - liffProjects loaded:', liffProjects.value);
+
+      // 2.5. ✓ 新增：為每個項目獲取完整的項目配置（包含 bookingMenu）
+      console.log('📋 [LIFF] 開始為所有項目獲取完整配置...');
+      for (let i = 0; i < liffProjects.value.length; i++) {
+        const projectId = liffProjects.value[i].projectId;
+        try {
+          console.log(`📋 [LIFF] 正在為 ${projectId} 獲取完整配置...`);
+          const fullConfig = await fetchProjectConfig(projectId);
+          if (fullConfig && fullConfig.bookingMenu) {
+            // 將完整的 bookingMenu 添加到對應的項目
+            liffProjects.value[i].bookingMenu = fullConfig.bookingMenu;
+            console.log(`✅ [LIFF] ${projectId} 的 bookingMenu 已加載:`, fullConfig.bookingMenu);
+          } else {
+            console.warn(`⚠️ [LIFF] ${projectId} 沒有 bookingMenu 數據`);
+          }
+        } catch (configError) {
+          console.error(`❌ [LIFF] 獲取 ${projectId} 配置失敗:`, configError);
+        }
+      }
+      console.log('📋 [LIFF] 所有項目配置加載完成:', liffProjects.value);
 
       // 3. 同步呼叫 userStore 以確保全域權限狀態 (如 canEdit) 正確更新
       // (雖然 getLiffUserData 已經拿了資料，但為了讓 userStore 狀態同步，我們仍執行此動作)
@@ -716,7 +783,7 @@ const processAppointments = (rawAppointments) => {
       const displayParts = displayFieldOptions.value
         .filter(option => selectedDisplayFields.value.includes(option.key))
         .map(option => {
-          const value = appt[option.key];
+          const value = getFieldValue(appt, option);  // ✅ 使用輔助函式取值（支援動態欄位）
           if (!value) return null;
           const formattedValue = option.formatter ? option.formatter(value) : String(value);
           return { text: formattedValue, isHousehold: option.key === 'unitId' };

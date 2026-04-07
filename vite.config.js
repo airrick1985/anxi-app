@@ -19,7 +19,8 @@ export default defineConfig({
       'localhost:5173',
       '127.0.0.1',
       'shirt-material-decade-numerical.trycloudflare.com',
-      'worthy-programs-reality-runner.trycloudflare.com'
+      'worthy-programs-reality-runner.trycloudflare.com',
+      'undergraduate-economy-ours-genesis.trycloudflare.com'
     ],
     proxy: {
       '/api-nlsc': {
