@@ -483,12 +483,15 @@ onMounted(async () => {
   }
 
   try {
-    const liffId = import.meta.env.VITE_LIFF_ID;
+    // ✅ 使用名單回報專用的 LIFF ID
+    const liffId = import.meta.env.VITE_LIFF_ID_LEAD_REPORT;
+
     if (!liffId) {
-      console.error('錯誤: .env 中找不到 VITE_LIFF_ID');
+      console.error('❌ 錯誤: .env 中找不到 VITE_LIFF_ID_LEAD_REPORT');
       authStatus.value = 'denied';
       return;
     }
+    console.log(`[LeadReport] 初始化 LIFF...`);
     await liff.init({ liffId });
     if (!liff.isLoggedIn()) {
       liff.login({ redirectUri: window.location.href });
