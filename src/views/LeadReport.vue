@@ -361,10 +361,13 @@ watch(() => form.value.status, (newStatus) => {
  */
 const verifyAccess = async (lineId) => {
   try {
+    console.log(`[權限驗證] 開始檢查 lineId: ${lineId}`);
+
     const leadSnap = await getDoc(doc(db, 'leads', leadId));
     if (!leadSnap.exists()) throw new Error('名單不存在');
     const leadInfo = leadSnap.data();
     const targetProjectId = leadInfo.projectId;
+    console.log(`[權限驗證] 名單所屬項目: ${targetProjectId}`);
 
     const setSnap = await getDoc(doc(db, 'projectSettings', targetProjectId));
     if (setSnap.exists()) {
@@ -373,35 +376,60 @@ const verifyAccess = async (lineId) => {
       if (settings.reasonOptions?.length > 0) reasonOptions.value = settings.reasonOptions;
     }
 
+    // 查詢 users 表
     const userQuery = query(collection(db, 'users'), where('lineId', '==', lineId));
     const userSnap = await getDocs(userQuery);
-    if (userSnap.empty) return false;
-    
+    console.log(`[權限驗證] 查詢 users 表結果: ${userSnap.size} 筆`);
+
+    if (userSnap.empty) {
+      console.error(`[權限驗證] ❌ 找不到綁定此 lineId 的用戶: ${lineId}`);
+      return false;
+    }
+
     const userData = userSnap.docs[0].data();
     const userPhone = userData.phone;
+    console.log(`[權限驗證] 用戶電話: ${userPhone}`);
 
+    // 查詢 userPermissions 表
     const permSnap = await getDoc(doc(db, 'userPermissions', userPhone));
-    if (!permSnap.exists()) return false;
+    console.log(`[權限驗證] userPermissions 存在: ${permSnap.exists()}`);
+
+    if (!permSnap.exists()) {
+      console.error(`[權限驗證] ❌ 用戶 ${userPhone} 的權限記錄不存在`);
+      return false;
+    }
 
     const permissions = permSnap.data().permissions || {};
     const projectPerm = permissions[targetProjectId];
+    console.log(`[權限驗證] 項目 ${targetProjectId} 的權限:`, projectPerm);
 
     if (projectPerm && projectPerm.systems) {
-      const hasRole = projectPerm.systems.some(s => s.includes('客資系統'));
+      // ✅ 修復：檢查新的權限命名規則（客資系統-銷售 或 客資系統-櫃台）
+      // 同時保留向後相容性，檢查是否包含 '客資系統'
+      const hasRole = projectPerm.systems.some(s =>
+        s === '客資系統-銷售' ||
+        s === '客資系統-櫃台' ||
+        s.includes('客資系統')
+      );
+      console.log(`[權限驗證] 系統權限:`, projectPerm.systems, `| 有客資系統權限: ${hasRole}`);
+
       if (hasRole) {
         projectName.value = projectPerm.projectName || targetProjectId;
         // ✅ 修正點：加入 key 屬性，避免預約組件 operatorId 報錯
-        userStore.user = { 
-            name: userData.name, 
-            phone: userPhone, 
-            key: userPhone 
+        userStore.user = {
+            name: userData.name,
+            phone: userPhone,
+            key: userPhone
         };
         leadData.value = { id: leadSnap.id, ...leadInfo };
+        console.log(`[權限驗證] ✅ 權限驗證成功`);
         return true;
       }
     }
+    console.error(`[權限驗證] ❌ 用戶沒有此項目的客資系統權限`);
     return false;
   } catch (err) {
+    console.error(`[權限驗證] ❌ 驗證失敗:`, err.message);
     return false;
   }
 };

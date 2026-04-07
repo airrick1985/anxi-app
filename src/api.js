@@ -1420,8 +1420,10 @@ export async function updateUserDetailsForAdmin(payload) {
 
     batch.set(userDocRef, infoToSave, { merge: true });
 
-    // 系統權限的儲存邏輯維持不變
-    if (adminRoles.includes('超級管理員') || (mergedFieldPerms && mergedFieldPerms['permissions'] === 'RU')) {
+    // ✅ 修復：只要有 permissions 參數就應該保存，不要被欄位權限限制
+    // 這樣即使管理員沒有'permissions'='RU'權限，也能保存傳入的權限數據
+    if (permissions && (Object.keys(permissions).length > 0 || adminRoles.includes('超級管理員'))) {
+      console.log(`[updateUserDetailsForAdmin] 準備保存用戶 ${targetUserKey} 的權限:`, permissions);
       const permissionDocRef = doc(db, "userPermissions", targetUserKey);
       batch.set(permissionDocRef, {
         userName: basicInfo.name,
@@ -1429,6 +1431,11 @@ export async function updateUserDetailsForAdmin(payload) {
         lastModifiedBy: adminName,
         lastModifiedAt: serverTimestamp()
       }, { merge: true });
+    } else {
+      console.warn(`[updateUserDetailsForAdmin] ⚠️ 權限未被保存 - permissions為空或非超級管理員:`, {
+        hasPermissions: !!permissions,
+        isAdmin: adminRoles.includes('超級管理員')
+      });
     }
 
     await batch.commit();
