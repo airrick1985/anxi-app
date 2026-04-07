@@ -1,0 +1,1664 @@
+[
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d45e220006e1b16afc596e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getsystemfunctions",
+        "revision_name": "getsystemfunctions-00006-rul",
+        "service_name": "getsystemfunctions",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:30:10.450993Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "008c15ff08c612a19237cd7cd12492e3e71a30fe51f799405710c05d81b285e1c0dc163b983026d24f6d7303af0e32ad3081ab958315ab6372f48b7b831d0b9ea8c58a9bf8890973f1f4ad0bf8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-drz-cloudfunctions-id": "getsystemfunctions",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:30:10.485670083Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d45e520006e559731ac35d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "revision_name": "getsystemfunctions-00006-rul",
+        "configuration_name": "getsystemfunctions",
+        "location": "asia-east1",
+        "service_name": "getsystemfunctions"
+      }
+    },
+    "timestamp": "2026-04-07T01:30:58.451929Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff083d8725c8e816779be1dbe507a0e5cbfe159e8fed73cfb37b5afacd938d7f41e1e3525b1c78c65c1b3f6b8f362ee1e5ec93dd5a89ee5a40293cded1b5120782ab9907e95279c5e11d",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-id": "getsystemfunctions",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:30:58.456051945Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d45e800006e95987d2072e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getsystemfunctions",
+        "revision_name": "getsystemfunctions-00006-rul",
+        "location": "asia-east1",
+        "service_name": "getsystemfunctions"
+      }
+    },
+    "timestamp": "2026-04-07T01:31:44.452953Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getsystemfunctions",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08cfe2df21d8bb92dd3dae28c2e5c0799dc35d5b1625343c9aec1904de19ca5f8e5b6a8f7b714deebf2d219d6657e31e114619352d0f96cc4464ba738e13bb0fccdaa55eca137f1b6c",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:31:44.457382200Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 258 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46006000f2b8cec2ca0d7",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "handlelogin",
+        "revision_name": "handlelogin-00006-yum",
+        "service_name": "handlelogin",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:38:14.994188Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff0884681e5951bfffead5d1bef89ef5d2320235edd68d64937b53802926a6a905e47bb97e340d2ba2fb52a88f4a621f74852c51f53ea8636c50c6d047d81ab7793e6efa11028b2e03c2",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "handlelogin"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:38:15.109296920Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46143000457ef1e9c1f6a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "getprojecttextstyle",
+        "location": "asia-east1",
+        "revision_name": "getprojecttextstyle-00006-vod",
+        "configuration_name": "getprojecttextstyle"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:31.284655Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getprojecttextstyle",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff086ad507a2991f43e75cc85edee68aa7cf7a8a0f5d5e300a5f51f323f6261f6bebc9067592dfa0c2da9e6c455bba664a10b2f965d3e2334c8b86f006b0547e2ff60568d7b76336b598",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:31.501579566Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 262 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4614b0004585497f114ca",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "getprojecttextstyle",
+        "location": "asia-east1",
+        "revision_name": "getprojecttextstyle-00006-vod",
+        "configuration_name": "getprojecttextstyle",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:39.284756Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08e6ed8b88ffb3d1090f91aff7bf134ad91fe7c6c9a4b5a465d6ed356fb996f873fe85cc7a86336ed9777214d5be1999ba214f12cc1e5dc6d869d3008e47275347aaaea73afa4410c1",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getprojecttextstyle"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:39.494726964Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46150000d1e2a73dd5e98",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "updateprojecttextstyle",
+        "location": "asia-east1",
+        "revision_name": "updateprojecttextstyle-00006-kov",
+        "configuration_name": "updateprojecttextstyle"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:44.859690Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updateprojecttextstyle",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff0890766d13d90e4a8d1c0f7b25a757845a114fd0160092b8fc13959587fe3c74ba625c6a5711fce767faec7d6e7bed3acb336f87bd1b003f00764edf261fe7895b93d6a86887895af1",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:45.060568732Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 259 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46152000691aaf1f7a18b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getprojectstatuscolors",
+        "revision_name": "getprojectstatuscolors-00006-vay",
+        "service_name": "getprojectstatuscolors",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:46.430506Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getprojectstatuscolors",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08c837e455dac54f863bd642d74b930412b76d3120ffa97ba75b4bb50943dac2ac8ac6b13c4b4e306dd8f0badd312044d89b5913271062e9d27a6649805d62443924c72a64651355ba",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:46.724814097Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4615a000045a1bb0a1d5c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "revision_name": "updateprojectstatuscolors-00006-tic",
+        "configuration_name": "updateprojectstatuscolors",
+        "location": "asia-east1",
+        "service_name": "updateprojectstatuscolors"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:54.017825Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updateprojectstatuscolors",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08f9f42e6e73dbad42b1cd6ac13489bd98735e9c839e057a031d79478b60f5cd42ca6de06dedbe277c3570a4595607ac82304e9e5f238fd45510cf8791680bf589a8ed803cb73fa352"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:54.083445819Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4615a000d1e9ae2aad7f1",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "updateprojecttextstyle",
+        "revision_name": "updateprojecttextstyle-00006-kov",
+        "service_name": "updateprojecttextstyle",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:43:54.859802Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updateprojecttextstyle",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff08c3019c3065f248f797d90133106a2050e30911c6cb1cd488b8cba9c350f10d66f83cf62909e64b5bebfe595500c445cf34ba876d1c59fd576fc847d23074569b16f39ab0947c5838",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:43:55.050435225Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4618500004846f12c4926",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "updateprojectstatuscolors",
+        "location": "asia-east1",
+        "configuration_name": "updateprojectstatuscolors",
+        "revision_name": "updateprojectstatuscolors-00006-tic",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:44:37.018502Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08048a5156a9d16f56bd3c5013a87217e14cebd65bebfb1416997a72c028a49e581f15b22a1c51dcf3d9dc5b631cc57f76c49b4160f8838eca2ec80f00d546825e1fc79d1fea748675",
+      "goog-drz-cloudfunctions-id": "updateprojectstatuscolors",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:44:37.021319326Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4618b000048866aa88e6b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "asia-east1",
+        "service_name": "updateprojectstatuscolors",
+        "configuration_name": "updateprojectstatuscolors",
+        "revision_name": "updateprojectstatuscolors-00006-tic",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:44:43.018566Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08012588e170f3b7302d03ed51534b412e085f88152f2f2360a45309885ee60d7d8f8decb3f8681835e484079a41b30abbe7f7c5ef48370d4514095c9ba47561d080e2c91c2c70e985",
+      "goog-drz-cloudfunctions-id": "updateprojectstatuscolors",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:44:43.348916911Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d461e700053718f5af13b9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "revision_name": "updatesalesdata-00010-lal",
+        "configuration_name": "updatesalesdata",
+        "service_name": "updatesalesdata",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:46:15.341784Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "updatesalesdata",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "d11241b0783a9470bdba8a19ef0409d29fac12fa",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08debbab0ede897ab591a13ae91b0bad57fc4c0f67afb5b817fdd2c9696d71870dafdb5d0e65c26ae0bbb087c079b5d32fc502535ed726f8f38644b3db451ee9a168af78f383a53dd7",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:46:15.420857769Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d461ee00097ae903abc37d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onsaleshouseholdwrite",
+        "revision_name": "onsaleshouseholdwrite-00005-rux",
+        "location": "asia-east1",
+        "service_name": "onsaleshouseholdwrite",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:46:22.621289Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onsaleshouseholdwrite",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff086fb7b370546cfba0948fa00b2dd6b7702169d6e4f06407ae2adb4fb3c1724f616e5e39f7d2fb5a7c2bb6ba5552760c37766dab0c49a2162218c5fa8ba1b450f99848e71d581b0e93",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:46:22.707089166Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4628000001abe0b0febc4",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "handlelogin-00006-yum",
+        "configuration_name": "handlelogin",
+        "location": "asia-east1",
+        "service_name": "handlelogin",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:48:48.006846Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "008c15ff085579e93fcd165605c73edb65355c08a6624bbe0324a917b874b2c1ab508fff215ade45a6a79e47a9b305f9221bdf8de6c64585ca0ce4a89d626ecf6c70c67396523b89818c2a4020",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-id": "handlelogin",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:48:48.011699826Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4628900001ae2443e247d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "handlelogin",
+        "location": "asia-east1",
+        "revision_name": "handlelogin-00006-yum",
+        "configuration_name": "handlelogin",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:48:57.006882Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "handlelogin",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08176a938832055ee5997db499eccfc875bd055d7678efac1b062f70004710abda3dc8b95a4f4b48a03ac1142afada694f44ac8e73f53946af7a36f4535a9470d593a0619a0c10f574",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:48:57.335198051Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4629400047d9be453d7b9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getprojecttextstyle",
+        "revision_name": "getprojecttextstyle-00006-vod",
+        "service_name": "getprojecttextstyle",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:49:08.294299Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getprojecttextstyle",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff080290ea8e2d00f67e6e9ece1a88a550e8455100de4a3801739de99542e510e0b37e46eca6fa66ea7e995b1e1c61ad95542e4ca5c209a06eb19f241349452f941e3853da9733bcf6ca"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:49:08.562636843Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d462950006af516afb93bf",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "getprojectstatuscolors",
+        "location": "asia-east1",
+        "configuration_name": "getprojectstatuscolors",
+        "revision_name": "getprojectstatuscolors-00006-vay",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:49:09.438097Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getprojectstatuscolors",
+      "goog-managed-by": "cloudfunctions",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff081c8abcc4ebfddce20d0a87ced98139b3f04a7d76a86714801dbc936774e0e19b65509ea7645fd44643d8c3aa06b04e7fdff3a062e865904a0aa3212bf01aeddafc8a5b7a79a596d1"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:49:09.442553844Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4629800005a5d9180e5a6",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "updateprojectstatuscolors-00006-tic",
+        "configuration_name": "updateprojectstatuscolors",
+        "service_name": "updateprojectstatuscolors",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:49:12.023133Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08f082bf7561e81ec9dfa3fec8907d195b10281a258a540ef9b7db5c443f8b49293cc7bf2c60d63f5adb8408f5bcc19fdbeb1fbdf719ef3d195ba519adbbe4be217d2e7dcf7be13fa4",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updateprojectstatuscolors"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:49:12.027121878Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46298000d367d22495ce0",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "updateprojecttextstyle-00006-kov",
+        "configuration_name": "updateprojecttextstyle",
+        "location": "asia-east1",
+        "service_name": "updateprojecttextstyle",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:49:12.865917Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff089bd8cc6baac82c69c3d3aede41953330ae63b031ba2ed6992fbbf82acb963758548cd25be47d4fef099c7f1adc6a9880f962fdc576b4ab4850c10822d71cf3cbce8734b3501212ce",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-id": "updateprojecttextstyle",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:49:12.868784286Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d462ee00054554b91a393f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "updatesalesdata",
+        "location": "asia-east1",
+        "configuration_name": "updatesalesdata",
+        "revision_name": "updatesalesdata-00010-lal"
+      }
+    },
+    "timestamp": "2026-04-07T01:50:38.345428Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updatesalesdata",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff087a1943cd3b1c3e9a404e86b1441afe309e5300bc240570a1c7b2fe6eff1e4135da2e40a1e081d2416877727ff1d7a67ded1056b0b872122519f0094795158331e892d003e94ea926",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "d11241b0783a9470bdba8a19ef0409d29fac12fa"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:50:38.350185969Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d462f400098b804328c7de",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onsaleshouseholdwrite",
+        "location": "asia-east1",
+        "revision_name": "onsaleshouseholdwrite-00005-rux",
+        "configuration_name": "onsaleshouseholdwrite",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:50:44.625536Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onsaleshouseholdwrite",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08055d94b34bbf212392ead7a348913e07d384f46ccba81eb8f101cdf10e83c5755969a203a1a6fd301ea10dee548f8ec4f1bcff6619fcc493e186cc11fbe4d33e6185fc2a469fc8e5",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:50:44.880450250Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 259 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4630c0000b748338676e0",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "location": "asia-east1",
+        "service_name": "scheduledjobrunner",
+        "revision_name": "scheduledjobrunner-00006-sis",
+        "configuration_name": "scheduledjobrunner"
+      }
+    },
+    "timestamp": "2026-04-07T01:51:08.046920Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "008c15ff088404f876a539ad27bc72ad491cc07b6f9df546dfbab1224b841124a5fa45d84440d9247b238a94bbc35ff25558f31640ef95ec32c622ad14bb0a424f181138c0d76922e4e27d4969",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-scheduled": "true",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "scheduledjobrunner"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:51:08.201325035Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 264 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d463490004ca306c6a1567",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "senduploadreminders",
+        "revision_name": "senduploadreminders-00009-ten",
+        "service_name": "senduploadreminders",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:52:09.313904Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "d11241b0783a9470bdba8a19ef0409d29fac12fa",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08fc1b7002e1164a6f866a5d53c796ec334888b42ea4e908c4548d5477d05169ca8914de4cf8212e0310a77817752d24da6448ee688357441ebec983b455ab9c5a8305a4d128500b47d7",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "deployment-scheduled": "true",
+      "goog-drz-cloudfunctions-id": "senduploadreminders",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:52:09.334683658Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d463f0000a7660645eac1c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getprojectstructure-00005-duw",
+        "configuration_name": "getprojectstructure",
+        "service_name": "getprojectstructure",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:54:56.685664Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getprojectstructure",
+      "instanceId": "008c15ff086a119525287756f14595750b37a0c039b0a66081711176abb226140b25e517ed9f779544aaaa3c9dccf460e0bbc9a0291ef43eeac56f32d78127cc0cb543f69236201c62b5a0bbfa",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:54:56.846613698Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 258 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d463f5000419e6d66bee24",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "asia-east1",
+        "service_name": "getinspectionoptionsforproject",
+        "configuration_name": "getinspectionoptionsforproject",
+        "revision_name": "getinspectionoptionsforproject-00005-yon",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:01.268774Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff0855baecbdc2d17d7c6d854c3b71988d270a3a6804ecdf7dc5bb38692475d902719b37978c78b74332c93d16bd3464a25bf0305334c301a7941b8dd3dcf440a014eb6d9b9d133c8014",
+      "goog-drz-cloudfunctions-id": "getinspectionoptionsforproject",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:01.568506358Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d463fb0006f451e7f46680",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getinspectionrecordsforprojectfb",
+        "revision_name": "getinspectionrecordsforprojectfb-00009-los",
+        "location": "asia-east1",
+        "service_name": "getinspectionrecordsforprojectfb"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:07.455761Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08947dcbed6795f1e3b13685ca6a1d5e3aadf26398fe1fdfe8742e813e87066667ee6152f758408291b3714e5fa7db73d4029d2539a8f5b2417d1f014b0054019e389f7f68dcead295b9",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecordsforprojectfb"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:07.592854762Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 260 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464080004e6d225b80b6b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "getinspectionrecords",
+        "revision_name": "getinspectionrecords-00010-sim",
+        "location": "asia-east1",
+        "service_name": "getinspectionrecords",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:20.321234Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff08f51ce72f28f8093eaaa707953128b7e4e133be5889b310c95ecc6e625d77417ce42c8878a12757e9629f83c10f84af72a2a0a7235ffbbf013478117ecd0e4ec54050e96f71accefa",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecords"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:20.331666121Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464110004e6cd126f9f79",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "getinspectionrecords",
+        "location": "asia-east1",
+        "revision_name": "getinspectionrecords-00010-sim",
+        "configuration_name": "getinspectionrecords"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:29.321229Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getinspectionrecords",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff08bbbf1df66e0ec39ef24b3088b65269cd6666c2a9c3795180024b00c742000adc387bdeb9ad142b5efe69195d43ff9eba64d064fdb537ba9faaee7803b5280c87738418b7c324c24a",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:29.654359070Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4641200041ba53f78713c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "getinspectionoptionsforproject",
+        "location": "asia-east1",
+        "revision_name": "getinspectionoptionsforproject-00005-yon",
+        "configuration_name": "getinspectionoptionsforproject"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:30.269221Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff08580a76eb707ea308c887e47018f813254c384c1f2248578302bcaaf833c683b0bfcc1488294a6a62fbc57d13d5af82f84ae8e6d20cd00386756819b7415d0339d20bbc57247256ac",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-drz-cloudfunctions-id": "getinspectionoptionsforproject",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:30.274258763Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464170004e71b7b9a34cf",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getinspectionrecords-00010-sim",
+        "configuration_name": "getinspectionrecords",
+        "location": "asia-east1",
+        "service_name": "getinspectionrecords",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:55:35.321307Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecords",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff089d49aa0962ec698e9c092b52adc122680ccf21f6e627be6857a84402efd988f38cc4a2b81f39a315c8b914e911dab317f667816dc49b56a14283bff061b5693a7e42b4453f252466",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:55:35.647653889Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4643a0004e9327f778094",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "getinspectionrecords",
+        "location": "asia-east1",
+        "configuration_name": "getinspectionrecords",
+        "revision_name": "getinspectionrecords-00010-sim"
+      }
+    },
+    "timestamp": "2026-04-07T01:56:10.321842Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff082aa06384db44e646db4afc54f0894d13d8ca0050022a6804a2dfaaf0478249566acf4933be87fa42c8e540ecf4a0e22bde55d5b87b55ec9fadee0554aeda0da57fb2409965d56cd4",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-drz-cloudfunctions-id": "getinspectionrecords",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:56:10.325855316Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 261 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4644000028022e3788d3a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "addinspectionrecord",
+        "revision_name": "addinspectionrecord-00011-boy",
+        "service_name": "addinspectionrecord",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T01:56:16.163874Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "addinspectionrecord",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff087e7f87b82ff12f0ac69d0baf66da07ad43c4b7742050a28f1506405ad2169aad2eac2f270b91264fbfc2d33790999d539a765b4903fb167304c811af4d8cf004615d5ec8e32630d5"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:56:16.214822157Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 259 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464520004ea11af8cf8f8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getinspectionrecords-00010-sim",
+        "configuration_name": "getinspectionrecords",
+        "service_name": "getinspectionrecords",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:56:34.322065Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecords",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff0825dc17f115eac68581afbfed77d9e34a5a6a1a40292fd080007085185d5d45900dc8969a6850c7d9f90304ee42f556c24e2e31e873554af939e9326b1011c91e3cf16d2cada13283",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:56:34.325103267Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46456000421057081c0cb",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "getinspectionoptionsforproject",
+        "revision_name": "getinspectionoptionsforproject-00005-yon",
+        "location": "asia-east1",
+        "service_name": "getinspectionoptionsforproject",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:56:38.270597Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff0898f07ed7e17f814dd8d1d44ad8953d9712fb603cb71369caac52852098925e9c79039a4eeb51629e8035ad5914529df0d2278cf6f8cc04ae3cac0769baf14880fbeb8db01d065a4e",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-id": "getinspectionoptionsforproject",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:56:38.276902307Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464ce000286ecb7e5949a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "addinspectionrecord",
+        "location": "asia-east1",
+        "revision_name": "addinspectionrecord-00011-boy",
+        "configuration_name": "addinspectionrecord"
+      }
+    },
+    "timestamp": "2026-04-07T01:58:38.165612Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "008c15ff08342456789f9d9a4eed11740a140acc5b5deedceb57e3373771b8765ec2ac407a1b5ba322c2e59c87dad06efad039bc7fb6e8a49204010bf0c03c99574652bc72b58a46c19536dc67",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-id": "addinspectionrecord",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:58:38.168044717Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d464d00004f14c9f57b4a4",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "asia-east1",
+        "service_name": "getinspectionrecords",
+        "revision_name": "getinspectionrecords-00010-sim",
+        "configuration_name": "getinspectionrecords",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T01:58:40.323916Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08f05de7eb27f51142addc5aaa7ab9efbbb2858212b300fce7afa3023904d01a2fd8a18a22a9b22e15977ad6ff406888f9fe2091db7e6f088c659ec3c186d473999c8bbe07c251e066",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecords"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T01:58:40.327625585Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 258 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d467230000999813253247",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "handlelogin",
+        "revision_name": "handlelogin-00006-yum",
+        "location": "asia-east1",
+        "service_name": "handlelogin"
+      }
+    },
+    "timestamp": "2026-04-07T02:08:35.039320Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08f8f5fa8d1bf098998d975929491adad3cad58367717d932e8cd552f928dde4efaa424193a9ce4ef9ce0c1b9628b3282cdd193a4d7f1f02307bfb5e173300486214ccd753e19d3dee",
+      "goog-drz-cloudfunctions-id": "handlelogin",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:08:35.315235607Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4672f0005046c36faa9e8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "getprojecttextstyle",
+        "revision_name": "getprojecttextstyle-00006-vod",
+        "service_name": "getprojecttextstyle",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:08:47.328812Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getprojecttextstyle",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff086e18b2ffa015a1489a40ad509e3009c9a783c729a3a1569626b6aed58d8983fc9608fba23731de3d4e639b4fdc0371e83e38be48a00fc1f7b2a1becd385c80138dc7d5198e26dfc7",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:08:47.335557345Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 259 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4673b00050577b9a1cca5",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "asia-east1",
+        "service_name": "getprojecttextstyle",
+        "revision_name": "getprojecttextstyle-00006-vod",
+        "configuration_name": "getprojecttextstyle",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:08:59.329079Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff081cff33cfd7cf3e0ecdb1486ab9c3ff74a34ca9700c733e91f82c76aa71022ec18057b016c271cc5fae7303375b841973b7b9ba1ff04934da9188678bae1f4209f38abce53394a6f4",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-drz-cloudfunctions-id": "getprojecttextstyle",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:08:59.655576752Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4673b000720ae4665c612",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "revision_name": "getprojectstatuscolors-00006-vay",
+        "configuration_name": "getprojectstatuscolors",
+        "location": "asia-east1",
+        "service_name": "getprojectstatuscolors"
+      }
+    },
+    "timestamp": "2026-04-07T02:08:59.467118Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getprojectstatuscolors",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08c92fd2b626ae28fc9c9939c8ab67d59ef69bc665e736d18f854bd71328f90b49c3bdd394d4e30f807b6d4300b0c8849b2441f42319640a38a510d7c6d876de15d3843f4a378a3bf8",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:08:59.472596980Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46778000aa5b007242958",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getprojectstructure-00005-duw",
+        "configuration_name": "getprojectstructure",
+        "service_name": "getprojectstructure",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:10:00.697776Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getprojectstructure",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff0828c4c91b6c30028661d6d50f760bc8b62a10bb6541dda82854bed87623a2e5d874bd05ded718c75d9a2807187e1aa48fdc8be18b3c68c3e7eae5ccc0a2a8529ceec524f9b27e2d87"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:10:00.701303133Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4677a000451349bd7b720",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getinspectionoptionsforproject-00005-yon",
+        "configuration_name": "getinspectionoptionsforproject",
+        "service_name": "getinspectionoptionsforproject",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:10:02.282932Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff08a3341f0d3707714042cc6386400078513104fac4976c66840c941932545789d293f9b6dc0ebe9a59d5c3bcd9ae562c9d9863c7aec0a3acf0aae09a5ed1e5463d2acf976d90634b90",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-drz-cloudfunctions-id": "getinspectionoptionsforproject",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:10:02.286109727Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 259 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4677a0007448caffa916f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "revision_name": "getinspectionrecordsforprojectfb-00009-los",
+        "configuration_name": "getinspectionrecordsforprojectfb",
+        "service_name": "getinspectionrecordsforprojectfb",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T02:10:02.476300Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08d7666c84b25c120efa3df27d912410cc575141b223a84ea9a2cd3b20c5cc83fe9671d83d7bf9e9917ac7fbd868ea7978ffd4983c128f567261a713cf3d382bdab144c046f0ac386396",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getinspectionrecordsforprojectfb"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:10:02.479872248Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 258 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46785000451c36a457eaf",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "service_name": "getinspectionoptionsforproject",
+        "location": "asia-east1",
+        "configuration_name": "getinspectionoptionsforproject",
+        "revision_name": "getinspectionoptionsforproject-00005-yon"
+      }
+    },
+    "timestamp": "2026-04-07T02:10:13.283075Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08e038497f99e0358cea040f48c29684649e83d3396059683c9cd5a62484bfe73e89e89295f9536657a04ccb8e32bfa8a6a6bf63188b3076b037154d25850e2f1cf8275335b1cffaa9",
+      "goog-drz-cloudfunctions-id": "getinspectionoptionsforproject",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:10:13.608495535Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 256 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d468e30000cc169ee68805",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "updateprojectstatuscolors-00006-tic",
+        "configuration_name": "updateprojectstatuscolors",
+        "service_name": "updateprojectstatuscolors",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:03.052246Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "updateprojectstatuscolors",
+      "instanceId": "008c15ff0816c2dbe28014b2f25393a92d63f5edc3cc0c2c06e6705c152300252a0ec3acf9ee155d8196782666795248c48d21e74f5d36dcbdf9aa9a9a6860e02197d249ae2ce62a749e3ae9b9",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:03.054929894Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 262 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d468f40009a2a057b013b8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "getfloorplans",
+        "revision_name": "getfloorplans-00006-yax",
+        "service_name": "getfloorplans",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:20.631456Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "getfloorplans",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08ecb5988c8c849a7d32ea83c45dae60f2ec25d3edb51ecb69ea01088b01adda0ea5481f1a4e5db17e3c130c48ba16c2d16c939f4e398fd25a7111a947f5fd95797d06510703999d42"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:20.804741009Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d468f90009f8d20762875b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "getsalesparkingsbyfloor",
+        "location": "asia-east1",
+        "configuration_name": "getsalesparkingsbyfloor",
+        "revision_name": "getsalesparkingsbyfloor-00007-xet",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:25.653522Z",
+    "severity": "ERROR",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getsalesparkingsbyfloor",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff08e6f485a28f678ddf15157daf2290a6a6becf700f3b71a0db5ff59f2390ac49e58b8b21b36bcb7e944ff384b8e8d0da6f320902785d6c41d03ae51e7c2fbd30e632530b3a7acabf63",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:25.859103704Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 262 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d468fe00093464387d6e0f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "asia-east1",
+        "service_name": "getspotlayouts",
+        "revision_name": "getspotlayouts-00006-raz",
+        "configuration_name": "getspotlayouts",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:30.603236Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "deployment-callable": "true",
+      "instanceId": "008c15ff081ff14a2a0778653873154216cafabc05a51fd813551c5bae90f6cadb165c9645e04fb3f14bda653a30d02a76ee8e2af59eafe9679f1cb3e3160e009f9a3a6c429a0586b6822dfea8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getspotlayouts"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:30.793812568Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 260 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4690c000934b62534df89",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getspotlayouts-00006-raz",
+        "configuration_name": "getspotlayouts",
+        "service_name": "getspotlayouts",
+        "location": "asia-east1",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:44.603318Z",
+    "severity": "ERROR",
+    "labels": {
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff08b4f614ad38e331561dd96146600e456bdfd373b2fd99f4f5125f6cef08dc6ab5a923eb43c9f7b88ed0c8bd919e5905a31d134a545cd13e302d731bbecf59f5c1fdf1661392a6a39d",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getspotlayouts"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:44.779024710Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 258 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d4690c0009faa739fdb559",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "apps-script-api-443402",
+        "configuration_name": "getsalesparkingsbyfloor",
+        "revision_name": "getsalesparkingsbyfloor-00007-xet",
+        "service_name": "getsalesparkingsbyfloor",
+        "location": "asia-east1"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:44.653991Z",
+    "severity": "ERROR",
+    "labels": {
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "instanceId": "008c15ff0899836323541a6f96ba2cb21e2222bc7612ac9c8b0c18e6545ec10ec49f99cbc1719aab034788cd91b4758987afe4608eb100c68d258b4c4830ff8bf586181241f4a2f427caf5c5e9",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "getsalesparkingsbyfloor"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:44.840888745Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  },
+  {
+    "textPayload": "'Memory limit of 256 MiB exceeded with 257 MiB used. Consider increasing the memory limit, see https://cloud.google.com/functions/docs/configuring/memory'",
+    "insertId": "69d46911000934aea2b474cb",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "getspotlayouts-00006-raz",
+        "configuration_name": "getspotlayouts",
+        "location": "asia-east1",
+        "service_name": "getspotlayouts",
+        "project_id": "apps-script-api-443402"
+      }
+    },
+    "timestamp": "2026-04-07T02:16:49.603310Z",
+    "severity": "ERROR",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260329_22_22_0_RC00",
+      "instanceId": "008c15ff0830e0e5365c79377addd014a24fab2e595fb64398efdb508c27b728f4d82a603deb7513b98fc29b6513c3bedaf8fe864ef5e542cfaece8971d88f62c79073c95576dd301bb18f3d5f",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "firebase-functions-hash": "b3610f6d21a43b762a59b5378ea9c809b5e04339",
+      "goog-drz-cloudfunctions-id": "getspotlayouts",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/apps-script-api-443402/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-04-07T02:16:49.774754381Z",
+    "errorGroups": [
+      {
+        "id": "CKnV1_TJwMrDQw"
+      }
+    ]
+  }
+]

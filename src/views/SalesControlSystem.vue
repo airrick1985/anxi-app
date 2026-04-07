@@ -891,14 +891,6 @@
           >
             車位銷控管理
           </v-btn>
-          <v-btn 
-            icon 
-            dark 
-            @click="handleRefreshSlide"
-            :disabled="isLoadingSlide"
-          >
-            <v-icon>mdi-refresh</v-icon>
-          </v-btn>
         </v-toolbar>
         <div class="flex-grow-1" style="position: relative;">
           <v-overlay
@@ -1695,11 +1687,10 @@ const tableHeight = computed(() => {
 
 const { 
   isSlideDialogVisible, 
-  slideEmbedUrl, 
+  slideEmbedUrl,
   isLoadingSlide,
   isContentLoaded,
-  openSlideViewer, 
-  refreshSlide
+  openSlideViewer
 } = useSlideViewer();
 
 const textStyleStore = useTextStyleStore(); 
@@ -2079,10 +2070,6 @@ function openUnitDetail(unitData) {
 function handleOpenSlideViewer() {
   const slideId = currentViewMode.value === 'quote' ? project.value.parkingSlideId_quote : project.value.parkingSlideId_sales;
   openSlideViewer(slideId);
-}
-
-function handleRefreshSlide() {
-  refreshSlide(currentViewMode.value);
 }
 
 function handleOpenActivityMessage() {

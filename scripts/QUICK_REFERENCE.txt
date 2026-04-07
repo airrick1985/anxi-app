@@ -1,0 +1,133 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           Cloud Functions 内存升级 - 快速参考卡                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📋 情况摘要
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • 问题函数: 18 个
+  • 当前内存: 256 MB
+  • 新内存: 512 MB
+  • 升级耗时: 3-5 分钟
+  • 项目: apps-script-api-443402
+  • 地区: asia-east1
+
+🚀 快速开始
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+选项 1: PowerShell（推荐）
+  # 试运行（安全）
+  .\upgrade-functions-memory.ps1 -DryRun
+
+  # 实际执行
+  .\upgrade-functions-memory.ps1
+
+  # 仅验证
+  .\upgrade-functions-memory.ps1 -VerifyOnly
+
+选项 2: Bash
+  # 完整版
+  chmod +x upgrade-functions-memory.sh
+  ./upgrade-functions-memory.sh
+
+  # 简化版
+  chmod +x upgrade-functions-memory-simple.sh
+  ./upgrade-functions-memory-simple.sh
+
+选项 3: 手动执行
+  gcloud functions update getinspectionrecords \
+    --memory=512MB \
+    --region=asia-east1 \
+    --project=apps-script-api-443402 \
+    --quiet
+
+❌ 需要升级的 18 个函数
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+严重级别 (6x 错误) 🔴
+  1. getinspectionrecords
+
+严重级别 (5x 错误) 🔴
+  2. getprojecttextstyle
+  3. updateprojectstatuscolors
+  4. getinspectionoptionsforproject
+  5. handlelogin
+
+中等级别 (3-4x 错误) 🟡
+  6. getsystemfunctions
+  7. updateprojecttextstyle
+  8. getprojectstatuscolors
+  9. getspotlayouts
+
+轻微级别 (1-2x 错误) 🟢
+  10. updatesalesdata
+  11. onsaleshouseholdwrite
+  12. getprojectstructure
+  13. getinspectionrecordsforprojectfb
+  14. addinspectionrecord
+  15. getsalesparkingsbyfloor
+  16. scheduledjobrunner
+  17. senduploadreminders
+  18. getfloorplans
+
+✅ 验证升级
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+升级后检查：
+  # 查看升级报告
+  cat upgrade-report-*.txt
+
+  # 验证单个函数
+  gcloud functions describe getinspectionrecords \
+    --region=asia-east1 \
+    --project=apps-script-api-443402 \
+    --format="value(availableMemoryMb)"
+
+  # 在 Cloud Logging 中验证
+  https://console.cloud.google.com/logs/query
+
+⚙️ 脚本信息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+可用脚本：
+  • upgrade-functions-memory.sh          (完整 Bash 版本)
+  • upgrade-functions-memory-simple.sh   (简化 Bash 版本)
+  • upgrade-functions-memory.ps1         (完整 PowerShell 版本)
+  • UPGRADE_GUIDE.md                     (详细指南)
+  • QUICK_REFERENCE.txt                  (本文件)
+
+📊 成本估算
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  当前 (256 MB):      $0.40 / 百万请求
+  升级后 (512 MB):    $0.80 / 百万请求
+
+  预期成本增加: ~2 倍内存费用
+
+🔧 故障排除
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+问题: gcloud: command not found
+解决: 安装 Google Cloud SDK
+  Windows: https://cloud.google.com/sdk/docs/install
+  Mac: brew install --cask google-cloud-sdk
+  Linux: curl https://sdk.cloud.google.com | bash
+
+问题: 权限被拒绝
+解决: 验证认证
+  gcloud auth login
+  gcloud config set project apps-script-api-443402
+
+问题: 需要查看错误详情
+解决: 去掉 --quiet 参数
+  gcloud functions update [FUNCTION] --memory=512MB \
+    --region=asia-east1 --project=apps-script-api-443402
+
+📚 更多信息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+完整指南: 参考 UPGRADE_GUIDE.md
+日志分析: 参考 docs/downloaded-logs-20260407-101700.json
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ 推荐流程: 试运行 → 执行升级 → 验证 → 监控日志                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝

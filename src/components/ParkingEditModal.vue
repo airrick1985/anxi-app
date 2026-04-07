@@ -234,6 +234,17 @@ watch(() => props.show, (newVal) => {
     localParking.value = JSON.parse(JSON.stringify(props.initialSelectedParking));
     newParkingSelection.value = null;
     selectedFloor.value = null; // ✅ [打勾] 3. 新增：重置樓層選擇
+    // 🆕 Modal 開啟時添加鍵盤監聽
+    document.addEventListener('keydown', handleKeyPress);
+  } else {
+    // 🆕 Modal 關閉時移除鍵盤監聽
+    document.removeEventListener('keydown', handleKeyPress);
+    // 清理計時器和計數
+    if (aKeyPressTimer) {
+      clearTimeout(aKeyPressTimer);
+      aKeyPressTimer = null;
+    }
+    aKeyPressCount = 0;
   }
 });
 
@@ -417,14 +428,11 @@ const handleKeyPress = (event) => {
   }
 };
 
-// 生命週期：掛載時添加鍵盤事件監聽
-onMounted(() => {
-  document.addEventListener('keydown', handleKeyPress);
-});
-
-// 生命週期：卸載時移除鍵盤事件監聽
+// 生命週期：卸載時的清理工作
 onUnmounted(() => {
+  // 移除鍵盤監聽（如果還沒被 watch 移除的話）
   document.removeEventListener('keydown', handleKeyPress);
+  // 清理計時器
   if (aKeyPressTimer) {
     clearTimeout(aKeyPressTimer);
   }

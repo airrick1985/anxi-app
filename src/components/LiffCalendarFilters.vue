@@ -54,21 +54,39 @@
               </div>
               </div> <v-divider class="my-4"></v-divider>
 
-                <div>
-              <h4 class="text-subtitle-1 mb-2">事件顯示內容</h4>
-              <div v-for="(field, index) in displayFieldOptions" :key="field.key" class="switch-row">
-              <label class="v-label text-body-1" :for="`field-switch-${index}`">{{ field.label }}</label>
-              <v-switch
-              :id="`field-switch-${index}`"
-              v-model="selectedDisplayFields"
-              :value="field.key"
-              color="indigo"
-              hide-details
-              inset
-              ></v-switch>
-              </div>
-              </div>
-              </div>
+    <div>
+      <h4 class="text-subtitle-1 mb-2">選擇方式</h4>
+      <div v-if="availableMethods.length === 0" class="text-body-2 text-grey">（無選擇方式資料）</div>
+      <div v-for="(method, index) in availableMethods" :key="method" class="switch-row">
+        <label class="v-label text-body-1" :for="`method-switch-${index}`">{{ method }}</label>
+        <v-switch
+          :id="`method-switch-${index}`"
+          v-model="selectedMethods"
+          :value="method"
+          color="deep-purple-darken-1"
+          hide-details
+          inset
+        ></v-switch>
+      </div>
+    </div>
+
+    <v-divider class="my-4"></v-divider>
+
+    <div>
+      <h4 class="text-subtitle-1 mb-2">事件顯示內容</h4>
+      <div v-for="(field, index) in displayFieldOptions" :key="field.key" class="switch-row">
+        <label class="v-label text-body-1" :for="`field-switch-${index}`">{{ field.label }}</label>
+        <v-switch
+          :id="`field-switch-${index}`"
+          v-model="selectedDisplayFields"
+          :value="field.key"
+          color="indigo"
+          hide-details
+          inset
+        ></v-switch>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -79,6 +97,7 @@ import { defineModel, defineProps, ref } from 'vue';
 // 使用 defineModel 來建立與父元件的雙向綁定
 const selectedStatuses = defineModel('selectedStatuses', { default: [] });
 const selectedTypes = defineModel('selectedTypes', { default: [] });
+const selectedMethods = defineModel('selectedMethods', { default: [] });
 const selectedDisplayFields = defineModel('selectedDisplayFields', { default: [] });
 
 // props 和 typeOptions 保持不變
@@ -91,8 +110,12 @@ const props = defineProps({
   availableTypes: {
     type: Array,
     default: () => ['初驗', '複驗'] // 提供一個預設值
-  }
+  },
   // --- END: ✓ 新增 availableTypes Prop ---
+  availableMethods: {
+    type: Array,
+    default: () => []
+  }
 });
 
 

@@ -235,9 +235,11 @@
           <FilterCheckboxes
           v-model:selectedStatuses="selectedStatuses"
           v-model:selectedTypes="selectedTypes"
+          v-model:selectedMethods="selectedMethods"
           v-model:selectedDisplayFields="selectedDisplayFields"
           :displayFieldOptions="displayFieldOptions"
-          :availableTypes="currentTypeOptions" 
+          :availableTypes="currentTypeOptions"
+          :availableMethods="currentMethodOptions"
         />
         </v-card-text>
         <v-divider></v-divider>
@@ -317,8 +319,9 @@
   </v-container>
 </template>
 <script setup>
-import { useRouter } from 'vue-router'; 
+import { useRouter } from 'vue-router';
 import { ref, onMounted, computed, watch, defineAsyncComponent, reactive } from 'vue';
+import { useStorage } from '@vueuse/core';
 import liff from '@line/liff';
 import html2canvas from 'html2canvas';
 import { 
@@ -353,19 +356,37 @@ const selectedProject = ref(null);
 
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
 
-const displayFieldOptions = ref([
-  { key: 'unitId', label: '戶別' },
-  { key: 'bookingType', label: '預約項目' },
-  { key: 'bookerName', label: '預約人姓名' },
-  { key: 'inspectionMethod', label: '選擇方式' },
-  { key: 'inspectionCompanyName', label: '代驗公司名稱' },
-  { key: 'bookingRemarks', label: '預約備註' },
-  { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
-]);
+// 動態計算顯示欄位選項
+const displayFieldOptions = computed(() => {
+  const baseFields = [
+    { key: 'unitId', label: '戶別' },
+    { key: 'bookerName', label: '預約人姓名' },
+    { key: 'bookingType', label: '預約項目' },
+    { key: 'inspectionMethod', label: '選擇方式' },
+    { key: 'inspectionCompanyName', label: '代驗公司名稱' },
+    { key: 'bookingRemarks', label: '預約備註' },
+    { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
+  ];
+  return baseFields;
+});
 
-const selectedStatuses = ref(['預約中', '已完成', '取消']);
-const selectedTypes = ref(['初驗', '複驗', '交屋']);
-const selectedDisplayFields = ref(displayFieldOptions.value.map(opt => opt.key));
+// 使用 useStorage 記住使用者的篩選設定（與 InspectionCalendar 邏輯一致，key 包含 projectId）
+const selectedStatuses = useStorage(
+  computed(() => `liff_inspection_calendar_selected_statuses_${selectedProject.value}`),
+  ['預約中', '取消', '已完成']
+);
+const selectedTypes = useStorage(
+  computed(() => `liff_inspection_calendar_selected_types_${selectedProject.value}`),
+  []
+);
+const selectedMethods = useStorage(
+  computed(() => `liff_inspection_calendar_selected_methods_${selectedProject.value}`),
+  []
+);
+const selectedDisplayFields = useStorage(
+  computed(() => `liff_inspection_calendar_display_fields_${selectedProject.value}`),
+  []
+);
 
 
 
@@ -532,30 +553,69 @@ const authorizedProjects = computed(() => {
   })).sort((a, b) => a.projectName.localeCompare(b.projectName, 'zh-Hant'));
 });
 
-// [修改] currentTypeOptions 改為從 liffProjects 查找
-// 邏輯：當選擇建案變更時，從 liffProjects 找出該建案的 bookingTypes 設定
+// [修改] currentTypeOptions - 從 bookingMenu 取用 title 欄位（與 InspectionCalendar 邏輯一致）
 const currentTypeOptions = computed(() => {
   if (!selectedProject.value) return [];
-  
+
   const projectData = liffProjects.value.find(p => p.projectId === selectedProject.value);
-  
-  // 如果有設定 bookingTypes 且為陣列，則回傳
-  if (projectData && Array.isArray(projectData.bookingTypes) && projectData.bookingTypes.length > 0) {
-    return projectData.bookingTypes;
+
+  // 從 bookingMenu 陣列取用 title 欄位
+  if (projectData && Array.isArray(projectData.bookingMenu) && projectData.bookingMenu.length > 0) {
+    return projectData.bookingMenu.map(item => item.title).filter(Boolean);
   }
-  
-  // 若無設定，回傳預設值 (與後端 InspectionCalendar 邏輯保持一致的備案)
-  return ['初驗', '複驗'];
+
+  // 若無 bookingMenu，回傳預設值
+  return [];
 });
 
 // [修改] 監聽 currentTypeOptions 的變化 (與 InspectionCalendar 邏輯一致)
 watch(currentTypeOptions, (newOptions) => {
-  // 當選項變更時，將篩選器的「已選項目」更新為全選
-  if (newOptions && newOptions.length > 0) {
-    selectedTypes.value = [...newOptions];
-  } else {
-    // 若無選項，給予一組預設值避免空白 (可選)
-    selectedTypes.value = ['初驗', '複驗'];
+  selectedTypes.value = [...newOptions];
+});
+
+// [修改] currentMethodOptions - 從 bookingMenu 的 methods 取用（與 InspectionCalendar 邏輯一致）
+const currentMethodOptions = computed(() => {
+  if (!selectedProject.value) return [];
+
+  const projectData = liffProjects.value.find(p => p.projectId === selectedProject.value);
+  const menu = projectData?.bookingMenu;
+
+  if (!Array.isArray(menu)) return [];
+
+  const methods = new Set();
+  for (const item of menu) {
+    if (!Array.isArray(item.methods)) continue;
+    for (const m of item.methods) {
+      if (m.title && !m.deleted) methods.add(m.title);
+    }
+  }
+  return [...methods];
+});
+
+// [新增] 監聽 currentMethodOptions 的變化，初始化 selectedMethods（與 InspectionCalendar 邏輯一致）
+watch(currentMethodOptions, (newOptions) => {
+  if (selectedMethods.value.length === 0 && newOptions.length > 0) {
+    selectedMethods.value = [...newOptions];
+  }
+});
+
+// 當 displayFieldOptions 變化時，同步更新 selectedDisplayFields
+// - 若快取為空：全選
+// - 若已有快取：清除已不存在的 key，並自動加入新出現的動態欄位
+watch(displayFieldOptions, (newOptions) => {
+  const validKeys = new Set(newOptions.map(f => f.key));
+  if (selectedDisplayFields.value.length === 0 && newOptions.length > 0) {
+    // 首次使用或快取為空，預設全選
+    selectedDisplayFields.value = newOptions.map(f => f.key);
+  } else if (newOptions.length > 0) {
+    // 清除已不存在的舊 key
+    const cleaned = selectedDisplayFields.value.filter(k => validKeys.has(k));
+    // 找出新出現的動態欄位 key，自動加入
+    const existingKeys = new Set(selectedDisplayFields.value);
+    const newDynamicKeys = newOptions
+      .filter(f => f.isDynamic && !existingKeys.has(f.key))
+      .map(f => f.key);
+    selectedDisplayFields.value = [...cleaned, ...newDynamicKeys];
   }
 }, { immediate: true });
 
@@ -570,8 +630,13 @@ const canEdit = computed(() => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    // 請確認此處的 liffId 是否正確 (測試用或正式用)
-    await liff.init({ liffId: '2008257338-o8grV0ZD' }); //2008257338-o8grV0ZD (驗屋預約)、2008257338-6N3jwqxA(測試用)
+    // 根據環境選擇 LIFF ID
+    const isDev = import.meta.env.DEV;
+    const liffId = isDev
+      ? import.meta.env.VITE_LIFF_ID_DEV    // 測試用: 2008257338-6N3jwqxA
+      : import.meta.env.VITE_LIFF_ID_PROD;  // 正式用: 2008257338-o8grV0ZD
+
+    await liff.init({ liffId });
 
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -587,9 +652,11 @@ onMounted(async () => {
 
     if (userData.status === 'bound') {
       isBound.value = true;
-      
+
       // 2. 將 API 回傳的 projects (包含 bookingTypes) 存入本地變數
       liffProjects.value = userData.projects || [];
+
+      console.log('📋 DEBUG - liffProjects loaded:', liffProjects.value);
 
       // 3. 同步呼叫 userStore 以確保全域權限狀態 (如 canEdit) 正確更新
       // (雖然 getLiffUserData 已經拿了資料，但為了讓 userStore 狀態同步，我們仍執行此動作)
@@ -671,10 +738,12 @@ const processAppointments = (rawAppointments) => {
 };
 
 const filteredAppointments = computed(() => {
-  const appointmentsToProcess = dailyAppointments.value.filter(appt => 
-    selectedStatuses.value.includes(appt.status) && 
-    selectedTypes.value.includes(appt.bookingType)
-  );
+  const appointmentsToProcess = dailyAppointments.value.filter(appt => {
+    const statusMatch = selectedStatuses.value.includes(appt.status);
+    const typeMatch = selectedTypes.value.includes(appt.bookingType);
+    const methodMatch = selectedMethods.value.length === 0 || selectedMethods.value.includes(appt.inspectionMethod);
+    return statusMatch && typeMatch && methodMatch;
+  });
   return processAppointments(appointmentsToProcess);
 });
 

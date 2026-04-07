@@ -973,236 +973,6 @@ exports.getBookingInitialData = onCall(async (request) => {
   }
 });
 
-
-/**
- * ✓ 【Firebase Function 版】更新車位銷控圖
- * 核心邏輯：
- * 1. 從 Firestore 'projects' 集合讀取 Google Slide ID。
- * 2. 從 Firestore 'salesParkings' 集合讀取所有車位資料。
- * 3. 使用 Google Slides API 將最新的車位狀態渲染到簡報的圖形上。
- */
-exports.updateParkingSlide = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
-  const { projectId, slideType } = request.data;
-
-  if (!projectId || !slideType) {
-    throw new HttpsError("invalid-argument", "請求缺少 projectId 或 slideType。");
-  }
-
-  const db = new Firestore({ databaseId: "anxi-app" });
-  const functionName = `updateParkingSlide (Project: ${projectId})`;
-
-  try {
-    // --- 步驟 1 & 2: 讀取資料 (邏輯不變) ---
-    console.log(`[${functionName}] 步驟 1/3: 正在讀取專案設定...`);
-    const projectDoc = await db.collection("projects").doc(projectId).get();
-    if (!projectDoc.exists) {
-      throw new HttpsError("not-found", `在 projects 集合中找不到 ID 為 ${projectId} 的建案。`);
-    }
-    const projectData = projectDoc.data();
-    const presentationId = slideType === "quote" ?
-      projectData.parkingSlideId_quote :
-      projectData.parkingSlideId_sales;
-
-    if (!presentationId) {
-      throw new HttpsError("not-found", `專案 ${projectId} 缺少 ${slideType} 模式的 Slide ID 設定。`);
-    }
-
-    console.log(`[${functionName}] 步驟 2/3: 正在讀取車位資料...`);
-    const parkingSnapshot = await db.collection("salesParkings")
-      .where("projectId", "==", projectId).get();
-
-    const parkingDataMap = new Map();
-    parkingSnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.slidePosition) {
-        parkingDataMap.set(data.slidePosition, data);
-      }
-    });
-
-    // --- 步驟 3: 更新 Google Slide ---
-    console.log(`[${functionName}] 步驟 3/3: 正在更新 Google Slide (ID: ${presentationId})...`);
-
-    const auth = new google.auth.GoogleAuth({
-      scopes: ["https://www.googleapis.com/auth/presentations"],
-    });
-    const authClient = await auth.getClient();
-    const slides = google.slides({ version: "v1", auth: authClient });
-
-    const presentation = await slides.presentations.get({
-      presentationId: presentationId,
-      fields: "slides(pageElements(objectId,shape(text)))",
-    });
-
-    const requests = [];
-    let shapeCounter = 0;
-
-    const fillColors = {
-      yellow: { rgbColor: { red: 1, green: 1, blue: 0 } },
-      blue: { rgbColor: { red: 0.643, green: 0.761, blue: 0.957 } },
-      purple: { rgbColor: { red: 0.8, green: 0.753, blue: 0.851 } },
-    };
-    const textColors = {
-      red: { opaqueColor: { rgbColor: { red: 1, green: 0, blue: 0 } } },
-      black: { opaqueColor: { rgbColor: { red: 0, green: 0, blue: 0 } } },
-    };
-
-    presentation.data.slides.forEach((slide, slideIndex) => {
-      slide.pageElements?.forEach((element) => {
-        if (!element.shape || !element.shape.text) return;
-
-        shapeCounter++;
-        const identifier = `Slide${slideIndex + 1}-Shape${shapeCounter}`;
-        const data = parkingDataMap.get(identifier);
-        const objectId = element.objectId;
-
-        let newText = "";
-        let shapeFill = { shapeBackgroundFill: {} };
-        const styleRequests = [];
-
-        requests.push({ deleteText: { objectId, textRange: { type: "ALL" } } });
-
-        if (data) {
-          if (slideType === "quote") {
-            if (!data.status_backend) {
-              // ✓ 將 data.spotId 改為 data.number
-              const spotId = String(data.number || "");
-              const priceList = String(data.price_list || "");
-              newText = `${spotId}\n${priceList}`;
-
-              // 🔑 設定透明填充
-              shapeFill = {
-                shapeBackgroundFill: {
-                  solidFill: {
-                    color: {
-                      rgbColor: { red: 1, green: 1, blue: 1 }
-                    },
-                    alpha: 0.0
-                  }
-                }
-              };
-
-              let startIndex = 0;
-              if (spotId.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length }, style: { foregroundColor: textColors.black, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-              startIndex += spotId.length + 1;
-              if (priceList.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + priceList.length }, style: { foregroundColor: textColors.red, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-            } else {
-              // ✓ 將 data.spotId 改為 data.number
-              const spotId = String(data.number || "");
-              const status = String(data.status || "");
-              newText = `${spotId}\n${status}`;
-              shapeFill = { shapeBackgroundFill: { solidFill: { color: fillColors.yellow } } };
-
-              let startIndex = 0;
-              if (spotId.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length }, style: { foregroundColor: textColors.black, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-              startIndex += spotId.length + 1;
-              if (status.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + status.length }, style: { foregroundColor: textColors.red, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-            }
-          } else { // 銷控模式
-            if (!data.status_backend) {
-              // ✓ 將 data.spotId 改為 data.number
-              const spotId = String(data.number || "");
-              const priceList = String(data.price_list || "");
-              newText = `${spotId}\n${priceList}`;
-
-              // 🔑 設定透明填充
-              shapeFill = {
-                shapeBackgroundFill: {
-                  solidFill: {
-                    color: {
-                      rgbColor: { red: 1, green: 1, blue: 1 }
-                    },
-                    alpha: 0.0
-                  }
-                }
-              };
-
-              let startIndex = 0;
-              if (spotId.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + spotId.length }, style: { foregroundColor: textColors.black, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-              startIndex += spotId.length + 1;
-              if (priceList.length > 0) {
-                styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + priceList.length }, style: { foregroundColor: textColors.red, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              }
-            } else {
-              const lines = [
-                // ✓ 將 data.spotId 改為 data.number
-                String(data.number || ""), String(data.price_list || ""),
-                String(data.buyerUnitId || ""), String(data.buyerName || ""),
-                String(data.salesperson || ""),
-              ];
-              newText = lines.join("\n");
-
-              let finalColor = fillColors.yellow;
-              if (lines[3].includes("保留")) finalColor = fillColors.blue;
-              if (lines[3].includes("現場銷控")) finalColor = fillColors.purple;
-              shapeFill = { shapeBackgroundFill: { solidFill: { color: finalColor } } };
-
-              let startIndex = 0;
-              if (lines[0].length > 0) styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + lines[0].length }, style: { foregroundColor: textColors.black, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              startIndex += lines[0].length + 1;
-
-              if (lines[1].length > 0) styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + lines[1].length }, style: { foregroundColor: textColors.red, bold: true, fontSize: { magnitude: 9, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-              startIndex += lines[1].length + 1;
-
-              [lines[2], lines[3], lines[4]].forEach(line => {
-                if (line.length > 0) {
-                  styleRequests.push({ updateTextStyle: { objectId, textRange: { type: "FIXED_RANGE", startIndex, endIndex: startIndex + line.length }, style: { foregroundColor: textColors.black, bold: false, fontSize: { magnitude: 6, unit: "PT" } }, fields: "foregroundColor,bold,fontSize" } });
-                }
-                startIndex += line.length + 1;
-              });
-            }
-          }
-        } else {
-          // 🔑 沒有資料的圖形也設定為透明
-          shapeFill = {
-            shapeBackgroundFill: {
-              solidFill: {
-                color: {
-                  rgbColor: { red: 1, green: 1, blue: 1 }
-                },
-                alpha: 0.0
-              }
-            }
-          };
-        }
-
-        if (newText) {
-          requests.push({ insertText: { objectId, text: newText, insertionIndex: 0 } });
-        }
-        requests.push({
-          updateShapeProperties: { objectId, shapeProperties: shapeFill, fields: "shapeBackgroundFill" },
-        });
-        requests.push(...styleRequests);
-      });
-      shapeCounter = 0;
-    });
-
-    if (requests.length > 0) {
-      await slides.presentations.batchUpdate({
-        presentationId: presentationId,
-        requestBody: { requests },
-      });
-    }
-
-    console.log(`[${functionName}] Google Slide 更新成功！`);
-    return { status: "success", slideId: presentationId };
-
-  } catch (error) {
-    console.error(`[${functionName}] 發生錯誤:`, error);
-    if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", `更新停車位銷控圖時發生錯誤: ${error.message}`);
-  }
-});
-
 /**
  * ✓ 【新增】 上傳車位資料 更新firestore
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesParkings 集合
@@ -1602,7 +1372,7 @@ exports.checkInToSystem = onCall(async (request) => {
 });
 
 
-exports.handleLogin = onCall(async (request) => {
+exports.handleLogin = onCall({ memory: "512MB" }, async (request) => {
   const { key, password, sessionId } = request.data;
 
   if (!key || !password || !sessionId) {
@@ -2000,110 +1770,11 @@ exports.runDeleteJob = onCall({ region: "asia-east1", timeoutSeconds: 540, memor
 //  END: 新增 runDeleteJob 雲端函式
 
 //  START: 新增 scheduledJobRunner 排程函式
-
-// 設定排程：每小時的第 0 分執行一次 (例如 01:00, 02:00, 03:00)
-exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => {
-  console.log("Scheduler triggered: Checking for due jobs...");
-  const anxiDb = new Firestore({ databaseId: "anxi-app" });
-  const now = new Date();
-
-  // --- 步驟 1: 查詢所有到期且已啟用的任務 ---
-  const jobsRef = anxiDb.collection("backupJobs");
-  const query = jobsRef
-    .where("status", "==", "enabled")
-    .where("nextRunTimestamp", "<=", now);
-
-  const dueJobsSnapshot = await query.get();
-
-  if (dueJobsSnapshot.empty) {
-    console.log("No due jobs found.");
-    return;
-  }
-
-  console.log(`Found ${dueJobsSnapshot.size} due jobs to process.`);
-
-  // --- 步驟 2: 遍歷並執行每一個到期的任務 ---
-  for (const doc of dueJobsSnapshot.docs) {
-    const jobData = { id: doc.id, ...doc.data() };
-    const jobDocRef = doc.ref;
-
-    console.log(`Processing job: ${jobData.jobName} (ID: ${jobData.id})`);
-
-    try {
-      if (jobData.jobType === 'backup') {
-        // 觸發備份邏輯 (但我們不直接呼叫，而是透過 API 以免超時)
-        // 這裡我們直接使用內部邏輯，因為排程函式有更長的執行時間
-        // 注意：這裡複製了 runBackupJob 的核心邏輯，未來可重構為共用函式
-        const bucket = getStorage().bucket();
-        const dateStr = now.toISOString().slice(0, 10);
-        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
-        const filePath = `backups/${jobData.targetCollection}/${dateStr}/backup-scheduled-${timeStr}.jsonl`;
-        const file = bucket.file(filePath);
-
-        let query = anxiDb.collection(jobData.targetCollection);
-        if (jobData.filters && jobData.filters.projectId) {
-          query = query.where("projectId", "==", jobData.filters.projectId);
-        }
-
-        const firestoreStream = query.stream();
-        let docCount = 0;
-        const jsonlTransform = new Transform({
-          writableObjectMode: true,
-          transform(doc, encoding, callback) { /* ... 內容同 runBackupJob ... */ },
-        });
-
-        await pipeline(firestoreStream, jsonlTransform, file.createWriteStream());
-
-        console.log(`Scheduled backup for job [${jobData.id}] successful. ${docCount} docs written.`);
-
-        // 更新 lastRun
-        await jobDocRef.update({
-          lastRun: { timestamp: now, status: "success", docsAffected: docCount, outputPath: `gs://${bucket.name}/${filePath}` }
-        });
-
-      } else if (jobData.jobType === 'delete') {
-        // 觸發刪除邏輯 (真實刪除)
-        // 注意：這裡也複製了 runDeleteJob 的核心邏輯
-        let query = anxiDb.collection(jobData.targetCollection);
-        if (jobData.filters && jobData.filters.projectId) {
-          query = query.where("projectId", "==", jobData.filters.projectId);
-        }
-        const snapshot = await query.get();
-        // ... (省略批次刪除的詳細程式碼，與 runDeleteJob 相同)
-        const docCount = snapshot.size;
-
-        console.log(`Scheduled delete for job [${jobData.id}] successful. ${docCount} docs deleted.`);
-
-        await jobDocRef.update({
-          lastRun: { timestamp: now, status: "success", docsAffected: docCount }
-        });
-      }
-
-      // --- 步驟 3: 計算並更新下一次的執行時間 ---
-      const newNextRunTimestamp = new Date(now);
-      if (jobData.scheduleType === 'daily') {
-        newNextRunTimestamp.setDate(now.getDate() + 1);
-      } else if (jobData.scheduleType === 'weekly') {
-        newNextRunTimestamp.setDate(now.getDate() + 7);
-      }
-
-      // 設定為指定的執行時間，例如 03:00
-      if (jobData.scheduleTime) {
-        const [hours, minutes] = jobData.scheduleTime.split(':');
-        newNextRunTimestamp.setHours(hours, minutes, 0, 0);
-      }
-
-      await jobDocRef.update({ nextRunTimestamp: newNextRunTimestamp });
-      console.log(`Job [${jobData.id}] next run scheduled for: ${newNextRunTimestamp.toISOString()}`);
-
-    } catch (error) {
-      console.error(`Error processing job [${jobData.id}]:`, error);
-      await jobDocRef.update({
-        lastRun: { timestamp: now, status: "failed", error: error.message }
-      });
-    }
-  }
-});
+//  [DISABLED] 此排程函式已停用 - 自動定時備份/刪除功能已關閉
+//  若要重新啟用，請取消下方的註釋
+//
+//  exports.scheduledJobRunner = onSchedule("every 1 hours", async (event) => { ... });
+//
 //  END: 新增 scheduledJobRunner 排程函式
 
 //  START: 新增 listBackupFiles 雲端函式
@@ -2878,7 +2549,7 @@ exports.handleSalesSvgBatchDelete = onCall(async (request) => {
  * 【新增】更新銷控資料
  * 處理單一戶別的銷控資料更新，包含所有欄位的資料驗證和型別轉換
  */
-exports.updateSalesData = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MB", secrets: gmailSecrets }, async (request) => {
   const { projectName, projectId, unitId, data } = request.data;
   const functionName = `updateSalesData (Project: ${projectName}, Unit: ${unitId})`;
 
@@ -3691,7 +3362,7 @@ exports.getProjectFloors = onCall(async (request) => {
 /**
  * 獲取平面圖列表及其基本資訊
  */
-exports.getFloorPlans = onCall(async (request) => {
+exports.getFloorPlans = onCall({ memory: "512MB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getFloorPlans (Project: ${projectId})`;
 
@@ -3964,7 +3635,7 @@ exports.deleteFloorPlan = onCall(async (request) => {
 /**
  * 獲取特定平面圖的所有車位佈局
  */
-exports.getSpotLayouts = onCall(async (request) => {
+exports.getSpotLayouts = onCall({ memory: "512MB" }, async (request) => {
   const { floorPlanId, projectId } = request.data;
   const functionName = `getSpotLayouts (FloorPlan: ${floorPlanId})`;
 
@@ -4250,7 +3921,7 @@ exports.updateFloorPlanParameters = onCall(async (request) => {
  * @param {string} projectId - 專案 ID
  * @returns {object} 儲存的樣式物件，如果不存在則回傳空物件
  */
-exports.getProjectTextStyle = onCall(async (request) => {
+exports.getProjectTextStyle = onCall({ memory: "512MB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectTextStyle (Project: ${projectId})`;
 
@@ -4283,7 +3954,7 @@ exports.getProjectTextStyle = onCall(async (request) => {
  * @param {string} projectId - 專案 ID
  * @param {object} styles - 完整的樣式物件
  */
-exports.updateProjectTextStyle = onCall(async (request) => {
+exports.updateProjectTextStyle = onCall({ memory: "512MB" }, async (request) => {
   const { projectId, styles } = request.data;
   const functionName = `updateProjectTextStyle (Project: ${projectId})`;
 
@@ -4356,7 +4027,7 @@ exports.updateFloorPlanBackground = onCall(async (request) => {
 });
 
 //  新增：根據 projectId 和 floor 查詢 salesParkings 車位資料
-exports.getSalesParkingsByFloor = onCall(async (request) => {
+exports.getSalesParkingsByFloor = onCall({ memory: "512MB" }, async (request) => {
   const functionName = "getSalesParkingsByFloor";
 
 
@@ -4444,7 +4115,7 @@ exports.getSalesParkingsByFloor = onCall(async (request) => {
  * @param {string} projectId - 專案 ID
  * @returns {object} 儲存的顏色設定物件，如果不存在則回傳空物件
  */
-exports.getProjectStatusColors = onCall(async (request) => {
+exports.getProjectStatusColors = onCall({ memory: "512MB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectStatusColors (Project: ${projectId})`;
 
@@ -4476,7 +4147,7 @@ exports.getProjectStatusColors = onCall(async (request) => {
  * @param {string} projectId - 專案 ID
  * @param {object} colors - 完整的顏色設定物件
  */
-exports.updateProjectStatusColors = onCall(async (request) => {
+exports.updateProjectStatusColors = onCall({ memory: "512MB" }, async (request) => {
   const { projectId, colors } = request.data;
   const functionName = `updateProjectStatusColors (Project: ${projectId})`;
 
@@ -5251,7 +4922,7 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
 /**
  * 獲取所有系統權限功能的列表
  */
-exports.getSystemFunctions = onCall({ region: "asia-east1", cors: true }, async (request) => {
+exports.getSystemFunctions = onCall({ region: "asia-east1", memory: "512MB", cors: true }, async (request) => {
   const db = new Firestore({ databaseId: "anxi-app" });
   const snapshot = await db.collection('systemFunctions').orderBy('name', 'asc').get();
   if (snapshot.empty) {
@@ -7546,6 +7217,7 @@ exports.sendUploadReminders = onSchedule({
   region: "asia-east1",
   schedule: "every 1 hours",
   timeZone: "Asia/Taipei",
+  memory: "512MB",
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (event) => {
   const functionName = "sendUploadReminders_scheduled";
@@ -7931,6 +7603,7 @@ exports.getLiffUserData = onCall(async (request) => {
             projectId: projectId,
             projectName: projectPerms.projectName,
             bookingTypes: projectData.bookingTypes || [],
+            bookingMenu: projectData.bookingMenu || [], // 🆕 新增 bookingMenu
             systems: projectPerms.systems
           };
         }).catch(err => {
@@ -10126,7 +9799,7 @@ exports.exportInspectionOptionsToExcel = onCall({
  * @returns {Promise<object>} - { status, id }
  */
 //  1. 修改函式名稱，移除 "FB"
-exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) => {
+exports.addInspectionRecord = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
   const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone, customerView } = request.data;
   const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -10196,7 +9869,7 @@ exports.addInspectionRecord = onCall({ region: "asia-east1" }, async (request) =
  * @param {string} [startAfterDocId] - 上一頁最後一筆文件 ID (游標分頁)
  * @returns {Promise<object>} - { status, data: Array<object>, hasMore: boolean, lastDocId: string|null }
  */
-exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) => {
+exports.getInspectionRecords = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
   const { projectId, unitId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   const functionName = `getInspectionRecords (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -10294,7 +9967,7 @@ exports.getInspectionRecords = onCall({ region: "asia-east1" }, async (request) 
  * @param {object} context - 包含驗證資訊
  * @returns {Promise<{status: string, data: Array<object>, hasMore: boolean, lastDocId: string|null}>}
  */
-exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1" }, async (request) => {
+exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
   const { projectId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   if (!projectId) {
     throw new HttpsError("invalid-argument", "缺少 'projectId' 參數。");
@@ -10381,7 +10054,7 @@ exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1" }, asyn
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - { status, data: object } e.g., { "A棟": ["A1-01", "A1-02"], ... }
  */
-exports.getProjectStructure = onCall({ region: "asia-east1" }, async (request) => {
+exports.getProjectStructure = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectStructure (Project: ${projectId})`;
 
@@ -11728,7 +11401,7 @@ exports.sendInspectionReportEmails = onCall({
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - { status, data: object } 按 type 分類的選項
  */
-exports.getInspectionOptionsForProject = onCall({ region: "asia-east1" }, async (request) => {
+exports.getInspectionOptionsForProject = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
   // 這個函式與之前為 InspectionAdmin 建立的 getInspectionOptions 幾乎一樣
   // 但為了區分用途或未來可能的差異，可以保留獨立的函式
   const { projectId } = request.data;
@@ -22173,7 +21846,8 @@ exports.syncSalesHouseholdsToSheet = onCall({
 exports.onSalesHouseholdWrite = onDocumentWritten({
   document: "salesHouseholds/{docId}",
   database: 'anxi-app',
-  region: 'asia-east1'
+  region: 'asia-east1',
+  memory: '512MB'
 }, async (event) => {
   const functionName = "onSalesHouseholdWrite";
   const docId = event.params.docId;

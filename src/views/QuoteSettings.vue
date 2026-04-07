@@ -151,14 +151,6 @@
           </v-btn>
           <v-toolbar-title>車位表</v-toolbar-title>
           <v-spacer></v-spacer>
-          <v-btn 
-            icon 
-            dark 
-            @click="handleRefreshSlide"
-            :disabled="isLoadingSlide"
-          >
-            <v-icon>mdi-refresh</v-icon>
-          </v-btn>
         </v-toolbar>
 
         <div class="flex-grow-1" style="position: relative;">
@@ -342,12 +334,11 @@ import { useParkingStore } from '@/store/parkingStore';
 import { useAdminStore } from '@/store/adminStore'; // 1. 引入 adminStore
 import { 
   generateQuotePdf, 
-  fetchSalesControlData, 
-  fetchQuotePersonnelList, 
+  fetchSalesControlData,
+  fetchQuotePersonnelList,
   fetchSalesPersonnelList, // 新增 Firestore 版本
   fetchPaymentTermTemplates, // 新增：期款範本 API
   selectApplicableTemplates, // 新增：範本選擇邏輯
-  updateAndGetParkingSlide,
   fetchActivityMessageSlideId // 匯入新 API
 } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -388,12 +379,11 @@ onBeforeRouteLeave((to, from, next) => {
 });
 
 const { 
-  isSlideDialogVisible, 
-  slideEmbedUrl, 
+  isSlideDialogVisible,
+  slideEmbedUrl,
   openSlideViewer,
   isLoadingSlide,
-  isContentLoaded,
-  refreshSlide
+  isContentLoaded
 } = useSlideViewer();
 
 const loading = ref(true);
@@ -639,10 +629,6 @@ function applyNewRounding(value, method, roundingValue = 1) {
 // --- 其他所有函式 ---
 
 
-function handleRefreshSlide() {
-  refreshSlide('quote');
-}
-
 // --- 新增：處理活動訊息點擊事件 ---
 async function handleOpenActivityMessage() {
   isActivityLoading.value = true;
@@ -724,17 +710,8 @@ onMounted(async () => {
         console.error('載入資料失敗:', err);
         error.value = err.message;
     }
-    
-    // 更新車位表 slideId
-    updateAndGetParkingSlide(projectId.value, 'quote').then(result => {
-        if (result.status === 'success' && result.slideId) {
-            quoteParkingSlideId.value = result.slideId;
-        }
-    }).catch(err => {
-        console.warn('背景更新報價模式車位表失敗:', err.message);
-    });
 
- try {
+  try {
         // 使用新的 Firestore API 獲取報價人員
         const personnelRes = await fetchSalesPersonnelList(projectId.value);
         

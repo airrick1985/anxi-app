@@ -888,36 +888,6 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
 }
 
 /**
- * ✓ 【Firebase Function 版】觸發後端更新停車位銷控圖，並回傳最新的 Slide ID
- * @param {string} projectId 建案 ID (注意：參數名稱從 projectName 改為 projectId)
- * @param {string} slideType 模式 ('sales' 或 'quote')
- * @returns {Promise<object>} API 響應，成功時 data 中應包含 slideId
- */
-export async function updateAndGetParkingSlide(projectId, slideType) {
-
-  if (!projectId || !slideType) {
-    return { status: 'error', message: '前端錯誤：呼叫時缺少 projectId 或 slideType。' };
-  }
-
-  try {
-    // 獲取對我們剛剛部署的 Cloud Function 的引用
-    const updateParkingSlideFunction = httpsCallable(functions, 'updateParkingSlide');
-
-    // 呼叫 Cloud Function 並傳遞資料
-    const result = await updateParkingSlideFunction({ projectId, slideType });
-
-    // Cloud Function 的回傳結果會被包裹在 result.data 中
-    // 我們直接回傳這個結果，它應該包含 { status: 'success', slideId: '...' }
-    return result.data;
-
-  } catch (error) {
-    console.error("呼叫 updateParkingSlide 雲端函式時發生錯誤:", error);
-    // 將 Firebase Function 拋出的 HttpsError 轉換為前端習慣的格式
-    return { status: 'error', message: error.message };
-  }
-}
-
-/**
  * 請求後端執行退戶操作
  * @param {string} projectName - 建案名稱
  * @param {string} projectId - 專案 ID

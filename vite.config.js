@@ -14,6 +14,13 @@ export default defineConfig({
     }
   },
   server: {
+    allowedHosts: [
+      'localhost',
+      'localhost:5173',
+      '127.0.0.1',
+      'shirt-material-decade-numerical.trycloudflare.com',
+      'worthy-programs-reality-runner.trycloudflare.com'
+    ],
     proxy: {
       '/api-nlsc': {
         target: 'https://api.nlsc.gov.tw',
