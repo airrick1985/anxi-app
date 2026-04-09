@@ -2045,8 +2045,9 @@
                     <v-combobox v-model="pendingNewSlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
                       label="選擇或輸入時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
                       persistent-hint style="flex: 1; min-width: 180px"></v-combobox>
-                    <v-combobox v-if="false" v-model="pendingNewCapacity" :items="capacityPresets" type="number" label="名額" min="0"
-                      variant="outlined" density="compact" hide-details style="max-width: 90px"></v-combobox>
+                    <v-text-field v-model="pendingNewCapacity" type="number" label="預設名額" min="1"
+                      variant="outlined" density="compact" hide-details placeholder="新增時段的名額（建議≥1）"
+                      style="max-width: 140px;" class="bg-white"></v-text-field>
                   </div>
                   <div class="mb-2">
                     <div class="text-caption text-grey-darken-1 mb-1">可預約方式 (新增時預設)：</div>
@@ -2075,6 +2076,20 @@
                       </div>
                     </div>
                     <v-divider class="my-2"></v-divider>
+                    <!-- 時段名額設定 -->
+                    <div class="mb-3">
+                      <div class="d-flex align-center ga-2 mb-2">
+                        <div class="text-caption font-weight-bold text-primary" style="min-width: 100px;">時段名額設定</div>
+                        <v-text-field
+                          :model-value="getCapacityForSlot(slot)"
+                          @update:model-value="setCapacityForSlot(slot, $event)"
+                          type="number" min="1" label="名額" class="bg-white"
+                          style="max-width: 120px;"
+                          variant="outlined" density="compact" hide-details placeholder="1">
+                        </v-text-field>
+                        <span class="text-caption text-grey">（各方式共用此名額）</span>
+                      </div>
+                    </div>
                     <div>
                       <div class="text-caption mb-1 ml-1">可預約方式</div>
                       <div class="d-flex flex-wrap align-center">
@@ -2097,14 +2112,6 @@
                       <div class="d-flex align-center flex-wrap ga-2 mb-2">
                         <div class="text-caption text-secondary font-weight-bold">各方式獨立名額：</div>
                         <v-spacer></v-spacer>
-                        <v-text-field
-                          label="時段總名額上限"
-                          :model-value="getMaxCapacityForSlot(slot)"
-                          @update:model-value="setMaxCapacityForSlot(slot, $event)"
-                          type="number" min="0" class="bg-white"
-                          style="max-width: 155px;"
-                          variant="outlined" density="compact" hide-details placeholder="(留空=不限)">
-                        </v-text-field>
                         <v-chip v-if="getMaxCapacityForSlot(slot) !== ''"
                           :color="isSlotOverMaxCapacity(slot) ? 'error' : 'success'"
                           variant="tonal" size="small" label>
@@ -4178,10 +4185,37 @@ function getMethodLimitDisplay(slot, method) {
   return '(無限制)';
 }
 
+// 驗證時段名額配置（名額必須 ≤ 時段總名額上限）
+function validateSlotCapacities() {
+  for (const dateKey in editedBatch.value.dailyRules) {
+    const slots = editedBatch.value.dailyRules[dateKey].slots || {};
+    for (const slotTime in slots) {
+      const slotData = slots[slotTime];
+      const capacity = slotData.capacity || 0;
+      const maxCapacity = slotData.maxCapacity ? Number(slotData.maxCapacity) : null;
+
+      // 如果設定了時段總名額上限，則名額必須 ≤ 上限
+      if (maxCapacity !== null && capacity > maxCapacity) {
+        showSnackbar(
+          `時段 ${slotTime} 的名額(${capacity})不能超過時段總名額上限(${maxCapacity})，請調整。`,
+          'error'
+        );
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // --- Save & Delete Process ---
 async function initiateSaveProcess() {
   const { valid } = await batchForm.value.validate();
   if (!valid) return;
+
+  // 驗證名額配置
+  if (!validateSlotCapacities()) {
+    return;
+  }
 
   isSaving.value = true;
   await checkConflictsAndShowDialog();
@@ -4216,11 +4250,39 @@ async function checkConflictsAndShowDialog() {
     };
   });
 
-  conflictResult.nonConflictingDates.forEach(date => {
-    dateResolutions[date] = {
-      mode: 'create_shared'
-    };
-  });
+  // 對於無衝突的日期，需要檢查是否屬於當前批次
+  // 如果已屬於當前批次 → update_shared（更新現有規則）
+  // 如果是新日期 → create_shared（創建新規則）
+
+  // 只有在編輯現有批次時才進行檢查
+  if (!editedBatch.value.id) {
+    // 新增批次，所有非衝突日期都是新規則
+    conflictResult.nonConflictingDates.forEach(date => {
+      dateResolutions[date] = {
+        mode: 'create_shared'
+      };
+    });
+  } else {
+    // 編輯現有批次，需要檢查哪些日期已屬於該批次
+    // editedBatch.value.dailyRules 包含已加載的規則，其中有 ruleId
+    const currentBatchRules = editedBatch.value.dailyRules || {};
+
+    for (const date of conflictResult.nonConflictingDates) {
+      const existingRule = currentBatchRules[date];
+      if (existingRule && existingRule.ruleId) {
+        // 日期已屬於當前批次，應更新現有規則
+        dateResolutions[date] = {
+          mode: 'update_shared',
+          targetRuleId: existingRule.ruleId
+        };
+      } else {
+        // 日期是新的，創建新規則
+        dateResolutions[date] = {
+          mode: 'create_shared'
+        };
+      }
+    }
+  }
 
   if (conflictData.value.conflictingDates.length > 0) {
     isConflictDialogVisible.value = true;
@@ -4352,25 +4414,37 @@ function setCapacityForSlot(slot, capacity) {
   });
 }
 
-// 新增：自動計算並更新時段總容量（依據各方式/子選項名額加總）
+// 新增：自動計算並更新時段總名額（依據各方式/子選項名額加總）
 function recalcCapacityForSlot(dateKey, slotTime) {
   const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slotTime];
   if (!daySlot) return;
+
   let total = 0;
+  let hasAnyLimit = false;  // 追蹤是否至少有一個限額被填寫
   const methods = daySlot.methods || [];
+
   methods.forEach(method => {
     const subOpts = batchMethodSubOptionsMap.value[method] || [];
     if (subOpts.length > 0) {
       // 有子選項的方式：加總所有子選項名額
       subOpts.forEach(sub => {
-        total += Number(daySlot.subOptionLimits?.[sub]) || 0;
+        const subVal = Number(daySlot.subOptionLimits?.[sub]) || 0;
+        if (subVal > 0) hasAnyLimit = true;
+        total += subVal;
       });
     } else {
       // 無子選項的方式：直接加上方式名額
-      total += Number(daySlot.methodLimits?.[method]) || 0;
+      const methodVal = Number(daySlot.methodLimits?.[method]) || 0;
+      if (methodVal > 0) hasAnyLimit = true;
+      total += methodVal;
     }
   });
-  daySlot.capacity = total;
+
+  // 只有當至少有一個方式/子選項有填寫限額時，才更新總名額
+  // 否則保持原有的全局 capacity，讓使用者手動設定
+  if (hasAnyLimit) {
+    daySlot.capacity = total;
+  }
 }
 
 // 讀取時段總名額上限
@@ -4443,7 +4517,7 @@ function setMethodLimitForSlot(slot, method, value) {
       } else {
         daySlot.methodLimits[method] = Number(valStr) || 0;
       }
-      // 修改後自動重算該時段的總容量
+      // 修改後自動重算該時段的總名額
       recalcCapacityForSlot(dateKey, slot);
     }
   });
@@ -4471,13 +4545,16 @@ function setSubOptionCapacityForSlot(slot, subOption, capacity) {
       } else {
         daySlot.subOptionLimits[subOption] = Number(capStr) || 0;
       }
-      // 修改後自動重算該時段的總容量
+      // 修改後自動重算該時段的總名額
       recalcCapacityForSlot(dateKey, slot);
     }
   });
 }
 
-// 快速新增時段：將 pendingNewSlots 套用到所有已選日期，並預設 methods/capacity
+// 快速新增時段：將 pendingNewSlots 套用到所有已選日期
+// 說明：新增時段時不預設各方式的名額，讓使用者自行決定是否使用【各方式獨立名額】
+// - 如果不輸入各方式名額 → 多個方式共用時段總名額
+// - 如果輸入某些方式的名額 → 該時段的名額自動計算為各方式名額之和
 function applyPendingSlots() {
   if (!pendingNewSlots.value.length || !selectedDaysForEditing.value.length) return;
   selectedDaysForEditing.value.forEach(day => {
@@ -4488,17 +4565,13 @@ function applyPendingSlots() {
     const daySlots = { ...editedBatch.value.dailyRules[dateKey].slots };
     pendingNewSlots.value.forEach(slot => {
       if (!daySlots[slot]) {
-        const methodLimits = {};
-        pendingNewMethods.value.forEach(m => {
-          methodLimits[m] = Number(pendingNewCapacity.value) || 1;
-        });
+        // 新增時段時，methodLimits 保持為空對象
+        // 使用者可以選擇填寫各方式名額，或保持空白表示共用時段總名額
         daySlots[slot] = {
-          capacity: 0,
+          capacity: 1,  // 預設名額，使用者應自行修改為所需的時段總名額
           methods: [...pendingNewMethods.value],
-          methodLimits
+          methodLimits: {}  // 空對象，表示尚未設定各方式獨立名額
         };
-        // 新增時段後自動計算總容量
-        recalcCapacityForSlot(dateKey, slot);
       }
     });
     editedBatch.value.dailyRules[dateKey].slots = daySlots;
@@ -4545,7 +4618,7 @@ function updateMethodsForSlot(slot, method, isSelected) {
     if (isSelected && index === -1) methods.push(method);
     else if (!isSelected && index > -1) methods.splice(index, 1);
 
-    // 修改方式列表後自動重算該時段的總容量
+    // 修改方式列表後自動重算該時段的總名額
     recalcCapacityForSlot(dateKey, slot);
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
@@ -4563,7 +4636,7 @@ function handleSelectAll(isChecked, slot) {
     //  將 allMethodOptions 改為 availableBatchMethods
     if (daySlot) {
       daySlot.methods = isChecked ? [...availableBatchMethods.value] : [];
-      // 修改方式列表後自動重算該時段的總容量
+      // 修改方式列表後自動重算該時段的總名額
       recalcCapacityForSlot(dateKey, slot);
     }
   });

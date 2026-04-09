@@ -2508,6 +2508,24 @@ const submitBooking = async () => {
       if (res.data && res.data.bookingCode) {
         savedBookingCode.value = res.data.bookingCode;
       }
+
+      // 預約成功後，自動刷新時段列表以更新其他使用者的可見容量
+      try {
+        const refreshRes = await getBookingSlots(
+          projectConfig.value.name,
+          formStep1.value.unit,
+          formStep1.value.bookingType,
+          formStep1.value.bookingMethod,
+          projectId.value
+        );
+        if (refreshRes.status === 'success' && refreshRes.data) {
+          bookingSlots.value = refreshRes.data;
+        }
+      } catch (refreshError) {
+        console.warn('時段列表刷新失敗，但預約已成功:', refreshError);
+        // 時段列表刷新失敗不應影響預約成功的體驗
+      }
+
       step.value = 4;
     } else {
       // --- START: 修正點 ---

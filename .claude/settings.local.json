@@ -11,7 +11,8 @@
       "Bash(git commit -m 'refactor\\(HouseholdGrid\\): 優化選擇方式欄位格式:*)",
       "Bash(ls -la c:/Project/anxi-app/anxi-app/functions/src/*.js)",
       "Bash(grep -E \"\\\\.\\(js|ts|vue\\)$\")",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(python3)"
     ]
   }
 }

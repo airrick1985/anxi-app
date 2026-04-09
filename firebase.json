@@ -1,8 +1,11 @@
 {
-  "functions": [ 
+  "functions": [
     {
       "source": "functions",
       "codebase": "default",
+      "runtime": "nodejs22",
+      "memory": "512MB",
+      "timeoutSeconds": 540,
       "ignore": [
         "node_modules",
         ".git",

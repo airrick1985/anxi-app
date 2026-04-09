@@ -3019,8 +3019,12 @@ export async function fetchRulesForBatch(batchId) {
     const rules = {};
     rulesSnapshot.forEach(doc => {
       const data = doc.data();
-      // ✓ 回傳前端習慣的格式 { 'YYYY-MM-DD': { slots: {...} } }
-      rules[data.date] = { slots: data.slots };
+      // ✓ 回傳前端習慣的格式 { 'YYYY-MM-DD': { slots: {...}, ruleId: '...' } }
+      // ✓ 新增 ruleId，以便前端判斷該日期是否已屬於當前批次
+      rules[data.date] = {
+        slots: data.slots,
+        ruleId: doc.id  // ✓ 新增：規則的唯一 ID
+      };
     });
 
     console.log(`[api.js] fetchRulesForBatch: Fetched ${Object.keys(rules).length} active rules for batch ${batchId}.`); // ✓ Log
