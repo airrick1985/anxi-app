@@ -4557,6 +4557,10 @@ function setSubOptionCapacityForSlot(slot, subOption, capacity) {
 // - 如果輸入某些方式的名額 → 該時段的名額自動計算為各方式名額之和
 function applyPendingSlots() {
   if (!pendingNewSlots.value.length || !selectedDaysForEditing.value.length) return;
+
+  // 使用預設名額，如果未輸入則預設為 1
+  const initialCapacity = Number(pendingNewCapacity.value) || 1;
+
   selectedDaysForEditing.value.forEach(day => {
     const dateKey = formatDate(day);
     if (!editedBatch.value.dailyRules[dateKey]) {
@@ -4568,7 +4572,7 @@ function applyPendingSlots() {
         // 新增時段時，methodLimits 保持為空對象
         // 使用者可以選擇填寫各方式名額，或保持空白表示共用時段總名額
         daySlots[slot] = {
-          capacity: 1,  // 預設名額，使用者應自行修改為所需的時段總名額
+          capacity: initialCapacity,  // ✅ 使用預設名額，使用者在上方欄位輸入
           methods: [...pendingNewMethods.value],
           methodLimits: {}  // 空對象，表示尚未設定各方式獨立名額
         };
@@ -4578,6 +4582,7 @@ function applyPendingSlots() {
   });
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
   pendingNewSlots.value = [];
+  pendingNewCapacity.value = '';  // ✅ 清空預設名額欄位
 }
 
 // 刪除單一時段（從所有已選日期中移除）
