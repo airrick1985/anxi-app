@@ -3016,22 +3016,109 @@ export async function fetchRulesForBatch(batchId) {
     );
     const rulesSnapshot = await getDocs(rulesQuery);
 
-    const rules = {};
+    // ✓【新增】收集所有規則，用於排序
+    const allRules = [];
     rulesSnapshot.forEach(doc => {
-      const data = doc.data();
-      // ✓ 回傳前端習慣的格式 { 'YYYY-MM-DD': { slots: {...}, ruleId: '...' } }
-      // ✓ 新增 ruleId，以便前端判斷該日期是否已屬於當前批次
-      rules[data.date] = {
-        slots: data.slots,
-        ruleId: doc.id  // ✓ 新增：規則的唯一 ID
-      };
+      allRules.push({
+        id: doc.id,
+        ...doc.data()
+      });
     });
 
-    console.log(`[api.js] fetchRulesForBatch: Fetched ${Object.keys(rules).length} active rules for batch ${batchId}.`); // ✓ Log
+    // ✓【新增】按 createdAt 排序，最新的規則優先
+    allRules.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || (a.createdAt?.toDate?.().getTime?.() / 1000) || 0;
+      const timeB = b.createdAt?.seconds || (b.createdAt?.toDate?.().getTime?.() / 1000) || 0;
+      return timeB - timeA; // 降序：最新的優先
+    });
+
+    // ✓【修改】只保留每個日期的第一筆（最新的）規則
+    const rules = {};
+    allRules.forEach(data => {
+      if (!rules[data.date]) {  // ✓ 如果該日期還沒有規則，才新增
+        rules[data.date] = {
+          slots: data.slots,
+          ruleId: data.id  // ✓ 規則的唯一 ID
+        };
+      }
+    });
+
+    console.log(`[api.js] fetchRulesForBatch: Fetched ${Object.keys(rules).length} active rules for batch ${batchId} (sorted by createdAt, newest first).`); // ✓ Log
     return rules;
   } catch (e) {
     console.error(`[api.js] fetchRulesForBatch: Error fetching rules for batch ${batchId}:`, e); // ✓ Log 錯誤
     return {}; // 發生錯誤時回傳空物件
+  }
+}
+
+/**
+ * 【診斷工具】查詢同一 projectId 中有重複 date 的情況
+ * 重複定義：同一 projectId + 同一 date 有多個文件
+ * 不同 projectId 的相同 date 不算重複
+ * @returns {Promise<object>} 返回結構：{ duplicateGroups: { "projectId_date": [...], ... } }
+ */
+export async function findDuplicateDateRules() {
+  try {
+    const rulesRef = collection(db, "dateRules");
+    const rulesQuery = query(
+      rulesRef,
+      where("isDeleted", "==", false)  // 只查詢未刪除的規則
+    );
+    const rulesSnapshot = await getDocs(rulesQuery);
+
+    // 按 (projectId, date) 組合分組
+    const groupMap = {};  // key: "projectId_date"
+    const allRules = [];
+
+    rulesSnapshot.forEach(doc => {
+      const data = doc.data();
+      const projectId = data.projectId || '未設定';
+      const date = data.date || '未設定';
+      const groupKey = `${projectId}_${date}`;
+
+      if (!groupMap[groupKey]) {
+        groupMap[groupKey] = [];
+      }
+
+      const ruleInfo = {
+        id: doc.id,
+        projectId,
+        date,
+        createdAt: data.createdAt,
+        slotCount: Object.keys(data.slots || {}).length,
+        isShared: data.isShared
+      };
+
+      groupMap[groupKey].push(ruleInfo);
+      allRules.push(ruleInfo);
+    });
+
+    // 過濾出有重複的組合（同一 projectId 的同一 date 有多於一個文件）
+    const duplicateGroups = {};
+    for (const groupKey in groupMap) {
+      if (groupMap[groupKey].length > 1) {
+        duplicateGroups[groupKey] = groupMap[groupKey].sort((a, b) => {
+          return new Date(b.createdAt) - new Date(a.createdAt);  // 按建立時間降序排列
+        });
+      }
+    }
+
+    const duplicateCount = Object.keys(duplicateGroups).length;
+    console.log(`[api.js] findDuplicateDateRules: Found ${duplicateCount} duplicate (projectId, date) groups.`);
+
+    return {
+      status: 'success',
+      totalRules: rulesSnapshot.size,
+      duplicateCount,  // 有重複的 (projectId, date) 組合數
+      duplicateGroups
+    };
+  } catch (e) {
+    console.error(`[api.js] findDuplicateDateRules: Error:`, e);
+    return {
+      status: 'error',
+      message: e.message,
+      duplicateGroups: {}
+    };
   }
 }
 /**

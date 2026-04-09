@@ -821,6 +821,7 @@ exports.getAvailableSlots = onCall(async (request) => {
 
     // ✓【修改】分批查詢 dateRules 並增加 isDeleted 條件
     const MAX_IN_QUERY_RULES = 30; // Firestore 'in' 查詢上限
+    const allRules = []; // ✓【新增】臨時存放所有規則，用於排序
     for (let i = 0; i < ruleIds.length; i += MAX_IN_QUERY_RULES) {
       const ruleIdChunk = ruleIds.slice(i, i + MAX_IN_QUERY_RULES);
       const ruleQuery = await db.collection('dateRules')
@@ -828,11 +829,24 @@ exports.getAvailableSlots = onCall(async (request) => {
         .where('isDeleted', '==', false) // ✓ 只獲取有效的規則
         .get();
       ruleQuery.forEach(ruleDoc => {
-        const ruleData = ruleDoc.data();
-        dateRulesMap.set(ruleData.date, ruleData);
+        allRules.push(ruleDoc.data());
       });
     }
-    console.log(`[${functionName}] Fetched ${dateRulesMap.size} active date rules.`); // ✓ Log
+
+    // ✓【新增】按 createdAt 排序，最新的規則優先
+    allRules.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || (a.createdAt?.toDate?.().getTime?.() / 1000) || 0;
+      const timeB = b.createdAt?.seconds || (b.createdAt?.toDate?.().getTime?.() / 1000) || 0;
+      return timeB - timeA; // 降序：最新的優先
+    });
+
+    // ✓【修改】只保留每個日期的第一筆（最新的）規則
+    allRules.forEach(ruleData => {
+      if (!dateRulesMap.has(ruleData.date)) {
+        dateRulesMap.set(ruleData.date, ruleData);
+      }
+    });
+    console.log(`[${functionName}] Fetched ${dateRulesMap.size} active date rules (sorted by createdAt, newest first).`); // ✓ Log
 
     // 步驟 5: 計算現有預約數量 (邏輯不變，只查 '預約中' 狀態)
     const startDate = new Date(batchData.bookingStart + 'T00:00:00+08:00'); // ✓ 確保時區
@@ -875,6 +889,13 @@ exports.getAvailableSlots = onCall(async (request) => {
           const bookingKey = `${dateStr}_${timeSlot}`;
           const currentBookings = bookingsCount[bookingKey] || 0;
           const capacity = slotInfo.capacity || 0;
+
+          // ✓【修復】名額為 0 表示該時段不提供此方式，直接跳過（不顯示）
+          if (capacity === 0) {
+            console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has capacity 0 for method ${bookingMethod}.`); // ✓ Log
+            continue;
+          }
+
           if (currentBookings < capacity) {
             slotsForDay.push(`${timeSlot} (尚餘 ${capacity - currentBookings} 位)`);
           } else {
@@ -12885,12 +12906,19 @@ async function _handleGetAvailableSlots(data) {
           let remaining;
 
           // 名額計算邏輯（根據新規則調整）
-          // 1. 若有子選項且該子選項有設定名額 > 0，使用子選項名額
-          // 2. 若子選項未設定或為 0，共用時段總名額上限的剩餘部分
+          // 1. 若有子選項且該子選項在 subOptionLimits 中有定義（包括 0），使用該名額
+          // 2. 若子選項未在 subOptionLimits 中定義，共用時段總名額上限的剩餘部分
           // 3. 若方式有設定名額，使用方式名額（與時段總名額上限搭配）
-          if (subOption && slotInfo.subOptionLimits?.[subOption] && slotInfo.subOptionLimits[subOption] > 0) {
-            // 子選項有設定名額 > 0：使用子選項名額
-            const subCap = slotInfo.subOptionLimits[subOption];
+          if (subOption && slotInfo.subOptionLimits && subOption in slotInfo.subOptionLimits) {
+            // 子選項在 subOptionLimits 中有定義（包括 0 或 null）：使用子選項名額
+            const subCap = slotInfo.subOptionLimits[subOption] ?? 0;
+
+            // ✓【防呆】如果子選項名額為 0，表示不提供此子選項，直接跳過
+            if (subCap === 0) {
+              console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has sub-option cap 0 for ${subOption}.`);
+              continue;
+            }
+
             const subCurrentBookings = subOptionBookingsCount[`${bookingKey}_${subOption}`] || 0;
             remaining = Math.max(0, subCap - subCurrentBookings);
           } else if (subOption && slotInfo.maxCapacity) {
@@ -12930,6 +12958,10 @@ async function _handleGetAvailableSlots(data) {
                 const remainingFromMax = Math.max(0, maxCapacity - usedCapacity);
                 remaining = Math.min(remaining, remainingFromMax);
               }
+            } else if (methodCap === 0) {
+              // ✓【防呆】此方式名額設為 0，表示不提供此方式，直接跳過
+              console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has method cap 0 for ${bookingMethod}.`);
+              continue;
             } else {
               // 此方式未設定名額：共用時段總名額上限中的剩餘部分
               if (maxCapacity) {
@@ -12946,6 +12978,13 @@ async function _handleGetAvailableSlots(data) {
           } else {
             // 向下相容：舊有全局 capacity
             const cap = slotInfo.capacity || 0;
+
+            // ✓【防呆】如果全局 capacity 為 0，表示不提供此時段，直接跳過
+            if (cap === 0) {
+              console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has global capacity 0.`);
+              continue;
+            }
+
             const currentBookings = bookingsCount[bookingKey] || 0;
             remaining = Math.max(0, cap - currentBookings);
           }
