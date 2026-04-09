@@ -4644,6 +4644,17 @@ function getCapacityForSlot(slot) {
 
 function setCapacityForSlot(slot, capacity) {
   const cap = Number(capacity) || 0;
+
+  // ✓【驗證】時段總名額不能小於所有方式名額的總和
+  const assignedCapacity = getAssignedCapacityForSlot(slot);
+  if (cap > 0 && cap < assignedCapacity) {
+    showSnackbar(
+      `時段總名額(${cap})不能小於所有方式名額的總和(${assignedCapacity})，請調整。`,
+      'error'
+    );
+    return;
+  }
+
   selectedDaysForEditing.value.forEach(day => {
     const slots = editedBatch.value.dailyRules[formatDate(day)]?.slots;
     if (slots && slots[slot]) slots[slot].capacity = cap;
