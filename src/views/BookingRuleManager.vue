@@ -1763,7 +1763,13 @@
                           <v-icon start>mdi-clock-time-four-outline</v-icon>
                           <strong>{{ slot.time }}</strong>
                         </v-chip>
-                        <v-chip v-if="slot.maxCapacity" color="error" variant="tonal" label size="small">
+                        <!-- 時段名額 -->
+                        <v-chip color="success" variant="tonal" label size="small">
+                          <v-icon start size="small">mdi-account-group-outline</v-icon>
+                          <span>名額 {{ slot.capacity }} 名</span>
+                        </v-chip>
+                        <!-- 時段上限（如果有設定） -->
+                        <v-chip v-if="slot.maxCapacity" color="amber" variant="tonal" label size="small">
                           <v-icon start size="small">mdi-crown-outline</v-icon>
                           <span>上限 {{ slot.maxCapacity }} 名</span>
                         </v-chip>
