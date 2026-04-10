@@ -412,7 +412,7 @@ const props = defineProps({
 // 2. 修改 initDialogData (處理新增模式)
 const initDialogData = async () => {
     await reservationStore.fetchProjectSales(props.projectId);
-    
+
     if (isEdit.value) {
         const d = props.initialData;
         formData.value = {
@@ -420,12 +420,27 @@ const initDialogData = async () => {
             reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
         };
     } else {
+        // ✅ 新增模式：優化指定銷售欄位預設值
+        let defaultSalesId = null;
+
+        // 取得當前用戶的 ID
+        const currentUserId = userStore.user?.key;
+
+        // 從可見銷售列表中查找當前用戶
+        if (currentUserId) {
+          const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
+          if (currentUserInSales) {
+            defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
+          }
+          // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
+        }
+
         formData.value = {
             customerName: props.initialData?.customerName || '',
             customerPhone: props.initialData?.customerPhone || '',
             reservationTime: props.initialDate || null, // ✅ 若無傳入則預設 null
             type: '新客',
-            salesId: null,
+            salesId: defaultSalesId,
             note: props.initialData?.note || ''
         };
     }
@@ -609,13 +624,28 @@ watch(() => props.modelValue, async (val) => {
         reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
       };
     } else {
+      // ✅ 新增模式：優化指定銷售欄位預設值
+      let defaultSalesId = null;
+
+      // 取得當前用戶的 ID
+      const currentUserId = userStore.user?.key;
+
+      // 從可見銷售列表中查找當前用戶
+      if (currentUserId) {
+        const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
+        if (currentUserInSales) {
+          defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
+        }
+        // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
+      }
+
       formData.value = {
         customerName: props.initialData?.customerName || '',
         customerPhone: props.initialData?.customerPhone || '',
         note: props.initialData?.note || '',
         reservationTime: props.initialDate || null,
         type: '新客',
-        salesId: null
+        salesId: defaultSalesId
       };
 
       // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示

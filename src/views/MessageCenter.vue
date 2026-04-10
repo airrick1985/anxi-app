@@ -206,6 +206,13 @@ export default {
         try {
           this.messages = await fetchMyMessages(this.user.key);
         } catch (error) {
+          console.error('[MessageCenter] 載入訊息失敗', {
+            userKey: this.user.key,
+            timestamp: new Date().toISOString(),
+            errorMessage: error?.message,
+            errorStack: error?.stack,
+            errorResponse: error?.response?.data || error?.response
+          });
           alert('載入訊息失敗，請稍後再試。');
           console.error(error);
         } finally {

@@ -2096,7 +2096,9 @@ const submitBtnText = computed(() => {
 // ✅ 新增：按鈕禁用邏輯
 const isSubmitDisabled = computed(() => {
   const baseValidation = !reportForm.value.status || (showReasonField.value && !reportForm.value.reason);
-  const bookingValidation = (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value);
+  // ✅ 優化：若有「客資系統-櫃台」權限，即使未完成預約也可以提交
+  const hasReceptionistPermission = userSystems.value.includes('客資系統-櫃台');
+  const bookingValidation = (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value && !hasReceptionistPermission);
   return baseValidation || bookingValidation;
 });
 

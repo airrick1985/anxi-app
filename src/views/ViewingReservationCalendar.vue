@@ -175,11 +175,12 @@
         </v-list>
       </v-expand-transition>
 
-      <div 
+      <div
         class="flex-grow-1 w-100 position-relative calendar-wrapper"
         :class="transitionClass"
         @touchstart="handleTouchStart"
         @touchend="handleTouchEnd"
+        @click="handleCalendarAreaClick"
       >
         <FullCalendar ref="calendarRef" :options="calendarOptions" class="calendar-container" />
         <v-overlay :model-value="reservationStore.loading" contained class="align-center justify-center">
@@ -190,14 +191,46 @@
 
     <v-btn position="fixed" location="bottom right" icon="mdi-plus" color="primary" size="x-large" class="ma-6 elevation-8 fab-btn" @click="openAddDialog"></v-btn>
 
-    <ViewingReservationDialog 
-      v-model="showDialog" 
-      :projectId="projectId" 
-      :initialData="selectedReservation" 
-      :initialDate="selectedDate" 
-      @saved="fetchData" 
-      @deleted="fetchData" 
+    <ViewingReservationDialog
+      v-model="showDialog"
+      :projectId="projectId"
+      :initialData="selectedReservation"
+      :initialDate="selectedDate"
+      @saved="fetchData"
+      @deleted="fetchData"
     />
+
+    <!-- ✅ 列表視圖優化：日期統計 modal -->
+    <v-dialog v-model="daySummaryDialog" max-width="400">
+      <v-card rounded="xl">
+        <v-card-title class="bg-primary text-white d-flex align-center pa-4">
+          <v-icon start>mdi-account-group</v-icon>
+          {{ daySummaryTitle }}
+        </v-card-title>
+        <v-card-text class="pa-0">
+          <v-list lines="one">
+            <v-list-item
+              v-for="item in daySummaryItems"
+              :key="item.name"
+              :prepend-icon="'mdi-badge-account'"
+            >
+              <v-list-item-title>{{ item.name }}</v-list-item-title>
+              <template v-slot:append>
+                <v-chip color="primary" variant="tonal" size="small">{{ item.count }} 筆</v-chip>
+              </template>
+            </v-list-item>
+            <v-list-item v-if="daySummaryItems.length === 0">
+              <v-list-item-title class="text-grey text-center">當日無預約</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="daySummaryDialog = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-layout>
 </template>
 
@@ -231,6 +264,11 @@ const showDialog = ref(false);
 const showMobileMiniCalendar = ref(false); 
 const selectedReservation = ref(null);
 const selectedDate = ref(null);
+
+// ✅ 列表視圖優化：日期統計 modal
+const daySummaryDialog = ref(false);
+const daySummaryTitle = ref('');
+const daySummaryItems = ref([]);
 const miniCalendarDate = ref(new Date());
 const currentTitle = ref('');
 const currentView = ref('dayGridMonth');
@@ -314,6 +352,28 @@ const calendarOptions = ref({
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
+    },
+    firstDay: 1, // ✅ 列表視圖優化：週一開始
+    views: {
+        listWeek: {
+            dayHeaderContent: (arg) => {
+                const date = arg.date;
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+                const dayOfWeek = dayNames[date.getDay()];
+                const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
+                const count = calendarEvents.value.filter(e => {
+                    const d = new Date(e.start);
+                    return d.getFullYear() === date.getFullYear() &&
+                           d.getMonth() === date.getMonth() &&
+                           d.getDate() === date.getDate();
+                }).length;
+                return {
+                    html: `<span class="list-header-content">${mm}/${dd} 星期${dayOfWeek}<span class="list-day-count-badge" data-date="${dateStr}">(${count})</span></span>`
+                };
+            }
+        }
     },
     datesSet: (info) => {
         currentTitle.value = info.view.title;
@@ -446,6 +506,33 @@ function openAddDialog() {
     selectedDate.value = null;
     showDialog.value = true;
 }
+
+// ✅ 列表視圖優化：顯示日期統計 modal
+function showDaySummary(dateStr) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const events = calendarEvents.value.filter(e => {
+        const d = new Date(e.start);
+        return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+    });
+    const breakdown = {};
+    events.forEach(e => {
+        const name = e.extendedProps.salesName || '未指派';
+        breakdown[name] = (breakdown[name] || 0) + 1;
+    });
+    daySummaryTitle.value = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')} 預約分佈`;
+    daySummaryItems.value = Object.entries(breakdown)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+    daySummaryDialog.value = true;
+}
+
+function handleCalendarAreaClick(e) {
+    const badge = e.target.closest('.list-day-count-badge');
+    if (badge) {
+        e.stopPropagation();
+        showDaySummary(badge.dataset.date);
+    }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -499,4 +586,26 @@ function openAddDialog() {
   :deep(.v-date-picker-month__days) { padding: 0 !important; justify-content: space-around !important; }
 }
 .fab-btn { z-index: 1000; transition: transform 0.2s; &:hover { transform: rotate(90deg); } }
+
+// ✅ 列表視圖優化：日期統計樣式
+:deep(.list-header-content) {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+:deep(.list-day-count-badge) {
+  margin-left: 6px;
+  cursor: pointer;
+  background-color: #e3f2fd;
+  color: #1565c0;
+  padding: 1px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 700;
+  transition: background-color 0.2s, color 0.2s;
+  user-select: none;
+  &:hover {
+    background-color: #1976d2;
+    color: white;
+  }
+}
 </style>

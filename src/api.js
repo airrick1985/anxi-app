@@ -1124,16 +1124,30 @@ export async function fetchMyMessages(userKey) {
   if (messageIds.length === 0) return [];
 
   // 3. 使用 'in' 查詢，一次性從 messages 集合獲取所有相關的訊息主體
+  // 注意：Firestore IN 查詢最多支持 30 個值，需要分批查詢
   const messagesRef = collection(db, "messages");
-  const messagesQuery = query(
-    messagesRef,
-    where(documentId(), 'in', messageIds),
-    orderBy("sentTimestamp", "desc") // 直接在查詢時排序
-  );
-  const messagesSnapshot = await getDocs(messagesQuery);
+  const batchSize = 30;
+  let allMessagesSnapshot = [];
+
+  for (let i = 0; i < messageIds.length; i += batchSize) {
+    const batch = messageIds.slice(i, i + batchSize);
+    const messagesQuery = query(
+      messagesRef,
+      where(documentId(), 'in', batch)
+    );
+    const snapshot = await getDocs(messagesQuery);
+    allMessagesSnapshot.push(...snapshot.docs);
+  }
+
+  // 按 sentTimestamp 排序（客户端排序）
+  allMessagesSnapshot.sort((a, b) => {
+    const timeA = a.data().sentTimestamp?.toDate().getTime() || 0;
+    const timeB = b.data().sentTimestamp?.toDate().getTime() || 0;
+    return timeB - timeA; // 降序
+  });
 
   // 4. 組合訊息主體和個人狀態，回傳給前端
-  const myMessages = messagesSnapshot.docs.map(doc => {
+  const myMessages = allMessagesSnapshot.map(doc => {
     const message = doc.data();
     const status = messageStatusMap.get(doc.id);
 
