@@ -67,6 +67,10 @@
         <v-icon start>mdi-robot-outline</v-icon>
         AI 助理設定
       </v-tab>
+      <v-tab value="aiKnowledge">
+        <v-icon start>mdi-brain</v-icon>
+        AI 知識庫
+      </v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -881,6 +885,295 @@
           </v-form>
         </v-card>
       </v-window-item>
+
+      <v-window-item value="aiKnowledge">
+        <v-card class="pa-4" elevation="2">
+          <v-card-title class="text-h5 text-blue">
+            <v-icon start>mdi-brain</v-icon>
+            AI 知識庫
+          </v-card-title>
+          <v-card-subtitle>提供建案產品知識，讓 AI 在分析客戶互動時生成更準確的建議</v-card-subtitle>
+          <v-divider class="my-4"></v-divider>
+
+          <v-skeleton-loader v-if="projectLoading" type="article"></v-skeleton-loader>
+
+          <v-form v-if="!projectLoading && project" ref="knowledgeForm">
+            <!-- 建案基本資訊 -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-blue-lighten-5">🏢 建案基本資訊</v-card-title>
+              <v-card-text class="pt-4">
+                <v-row>
+                  <v-col cols="12">
+                    <v-text-field
+                      v-model="project.projectKnowledge.address"
+                      label="建案地址"
+                      variant="outlined"
+                      density="compact"
+                      hint="完整地址（含行政區）"
+                      persistent-hint
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="project.projectKnowledge.projectType"
+                      label="建案類型"
+                      :items="['純住宅', '住商混合', '商辦', '其他']"
+                      variant="outlined"
+                      density="compact"
+                      class="mb-4"
+                    ></v-select>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="project.projectKnowledge.totalUnits"
+                      label="總戶數"
+                      type="number"
+                      variant="outlined"
+                      density="compact"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.totalFloors"
+                      label="樓層/棟數說明"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：地上28層 2棟"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.deliveryDate"
+                      label="預估交屋時間"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：2027年Q2"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+              </v-card-text>
+            </v-card>
+
+            <!-- 核心賣點 -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-orange-lighten-5">⭐ 核心賣點</v-card-title>
+              <v-card-text class="pt-4">
+                <v-textarea
+                  v-model="project.projectKnowledge.locationAdvantage"
+                  label="地段優勢"
+                  variant="outlined"
+                  density="compact"
+                  rows="3"
+                  class="mb-4"
+                  hint="地理位置、交通便利性等"
+                  persistent-hint
+                ></v-textarea>
+                <v-textarea
+                  v-model="project.projectKnowledge.architectureFeature"
+                  label="建築特色"
+                  variant="outlined"
+                  density="compact"
+                  rows="3"
+                  class="mb-4"
+                  hint="建材、建商、設計師等"
+                  persistent-hint
+                ></v-textarea>
+                <v-textarea
+                  v-model="project.projectKnowledge.communityFacilities"
+                  label="社區設施"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  class="mb-4"
+                  hint="健身房、泳池、閱覽室等"
+                  persistent-hint
+                ></v-textarea>
+                <v-textarea
+                  v-model="project.projectKnowledge.surroundingAmenities"
+                  label="周邊生活機能"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  hint="學校、捷運、商圈、醫院等"
+                  persistent-hint
+                ></v-textarea>
+              </v-card-text>
+            </v-card>
+
+            <!-- 戶型與價格 -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-green-lighten-5">💰 戶型與價格</v-card-title>
+              <v-card-text class="pt-4">
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.mainAreaRange"
+                      label="主力坪數範圍"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：35～55坪"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.priceRange"
+                      label="主力總價範圍"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：1,500～2,500萬"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-textarea
+                  v-model="project.projectKnowledge.specialUnits"
+                  label="特殊戶型說明"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  hint="頂樓、邊間等特殊戶型"
+                  persistent-hint
+                ></v-textarea>
+              </v-card-text>
+            </v-card>
+
+            <!-- 目標客群 -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-purple-lighten-5">👥 目標客群</v-card-title>
+              <v-card-text class="pt-4">
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.primaryAudience"
+                      label="主力客群"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：換屋自住家庭（35-50歲）"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="project.projectKnowledge.secondaryAudience"
+                      label="次要客群"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="如：投資置產族"
+                      class="mb-4"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+              </v-card-text>
+            </v-card>
+
+            <!-- 常見問題 FAQ -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-indigo-lighten-5">❓ 常見問題（FAQ）</v-card-title>
+              <v-card-subtitle class="text-caption">最多設定 10 條常見問題</v-card-subtitle>
+              <v-card-text class="pt-4">
+                <div v-if="!project.projectKnowledge.faqs">
+                  <p class="text-caption text-grey-darken-1">尚未設定常見問題</p>
+                </div>
+                <div v-for="(faq, index) in project.projectKnowledge.faqs" :key="index" class="mb-4">
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <strong class="text-caption">問題 {{ index + 1 }}</strong>
+                    <v-btn
+                      icon="mdi-delete"
+                      size="x-small"
+                      variant="text"
+                      @click="removeFaq(index)"
+                    ></v-btn>
+                  </div>
+                  <v-text-field
+                    v-model="faq.question"
+                    label="提問"
+                    variant="outlined"
+                    density="compact"
+                    class="mb-2"
+                  ></v-text-field>
+                  <v-textarea
+                    v-model="faq.answer"
+                    label="標準回覆"
+                    variant="outlined"
+                    density="compact"
+                    rows="2"
+                  ></v-textarea>
+                </div>
+                <v-btn
+                  v-if="!project.projectKnowledge.faqs || project.projectKnowledge.faqs.length < 10"
+                  prepend-icon="mdi-plus"
+                  variant="outlined"
+                  @click="addFaq"
+                  class="mt-2"
+                >
+                  新增問題
+                </v-btn>
+              </v-card-text>
+            </v-card>
+
+            <!-- 當前銷售策略 -->
+            <v-card class="mb-4" variant="outlined">
+              <v-card-title class="text-subtitle-1 bg-red-lighten-5">🎯 當前銷售策略</v-card-title>
+              <v-card-text class="pt-4">
+                <v-textarea
+                  v-model="project.projectKnowledge.currentPromotion"
+                  label="當前主打優惠"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  class="mb-4"
+                  hint="本月優惠、簽約贈品等"
+                  persistent-hint
+                ></v-textarea>
+                <v-textarea
+                  v-model="project.projectKnowledge.salesFocus"
+                  label="當前主要銷售目標"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  class="mb-4"
+                  hint="推哪幾戶、衝業績目標等"
+                  persistent-hint
+                ></v-textarea>
+                <v-textarea
+                  v-model="project.projectKnowledge.competitorNotes"
+                  label="與競品的比較優勢"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  hint="相比周邊競品的優勢"
+                  persistent-hint
+                ></v-textarea>
+              </v-card-text>
+            </v-card>
+
+            <!-- 更新時間 -->
+            <div v-if="project.projectKnowledge.updatedAt" class="text-caption text-grey-darken-1 mb-4">
+              最後更新：{{ formatDate(project.projectKnowledge.updatedAt) }}
+            </div>
+
+            <v-btn
+              color="primary"
+              @click="saveProjectSettings"
+              :loading="isSavingProject"
+              block
+              class="mt-6"
+              prepend-icon="mdi-content-save"
+            >
+              儲存知識庫
+            </v-btn>
+          </v-form>
+        </v-card>
+      </v-window-item>
     </v-window>
 
         <v-dialog v-model="deleteBatchSvgDialog" persistent max-width="500px">
@@ -1265,9 +1558,38 @@ const loadProjectSettings = async () => {
         // Fallback: 如果只有 ID，嘗試組合成 URL (為了顯示方便)
         googleSheetForm.url = `https://docs.google.com/spreadsheets/d/${project.value.salesSheetId}`;
       }
-      
+
       if (project.value.salesSheetTabName) {
         googleSheetForm.sheetName = project.value.salesSheetTabName;
+      }
+    }
+
+    // ✅ [新增] 初始化 AI 知識庫欄位
+    if (project.value) {
+      if (!project.value.projectKnowledge) {
+        project.value.projectKnowledge = {
+          address: '',
+          projectType: '',
+          totalUnits: null,
+          totalFloors: '',
+          deliveryDate: '',
+          locationAdvantage: '',
+          architectureFeature: '',
+          communityFacilities: '',
+          surroundingAmenities: '',
+          mainAreaRange: '',
+          priceRange: '',
+          specialUnits: '',
+          primaryAudience: '',
+          secondaryAudience: '',
+          faqs: [],
+          currentPromotion: '',
+          salesFocus: '',
+          competitorNotes: '',
+          updatedAt: null
+        };
+      } else if (!project.value.projectKnowledge.faqs) {
+        project.value.projectKnowledge.faqs = [];
       }
     }
 
@@ -1282,6 +1604,10 @@ const saveProjectSettings = async () => {
   isSavingProject.value = true;
   try {
     const { id, ...dataToUpdate } = project.value;
+    // 更新知識庫的 updatedAt 時間戳
+    if (dataToUpdate.projectKnowledge) {
+      dataToUpdate.projectKnowledge.updatedAt = serverTimestamp();
+    }
     await updateProjectSalesSettings(id, dataToUpdate);
     toast.success('專案設定已成功儲存！');
   } catch (error) {
@@ -1289,6 +1615,55 @@ const saveProjectSettings = async () => {
   } finally {
     isSavingProject.value = false;
   }
+};
+
+/**
+ * 移除 FAQ
+ */
+const removeFaq = (index) => {
+  if (project.value?.projectKnowledge?.faqs) {
+    project.value.projectKnowledge.faqs.splice(index, 1);
+  }
+};
+
+/**
+ * 新增 FAQ
+ */
+const addFaq = () => {
+  if (!project.value.projectKnowledge.faqs) {
+    project.value.projectKnowledge.faqs = [];
+  }
+  if (project.value.projectKnowledge.faqs.length < 10) {
+    project.value.projectKnowledge.faqs.push({ question: '', answer: '' });
+  } else {
+    toast.warning('最多只能設定 10 條常見問題');
+  }
+};
+
+/**
+ * 格式化日期顯示
+ */
+const formatDate = (timestamp) => {
+  if (!timestamp) return '';
+  let date;
+  if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+    // Firestore Timestamp
+    date = timestamp.toDate();
+  } else if (typeof timestamp === 'number') {
+    date = new Date(timestamp);
+  } else if (timestamp instanceof Date) {
+    date = timestamp;
+  } else {
+    return '';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 };
 
 const resetAIToken = async () => {

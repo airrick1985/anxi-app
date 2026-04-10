@@ -112,7 +112,20 @@
         <!-- 統計面板 (無加載時顯示) -->
         <template v-if="statistics && !isLoading">
           <!-- Section 0: 來人概況 -->
-          <div v-if="vipGuestStats" class="section-title mb-6">👥 來人概況</div>
+          <div v-if="vipGuestStats" class="d-flex align-center justify-space-between mb-6">
+            <div class="section-title">👥 來人概況</div>
+            <v-btn
+              variant="outlined"
+              size="small"
+              :loading="isAnalyzing"
+              :disabled="!vipGuestStats?.details?.length"
+              @click="analyzeCustomers"
+              class="ml-2"
+            >
+              <v-icon start>mdi-robot</v-icon>
+              AI 狀況彙整
+            </v-btn>
+          </div>
           <div v-if="vipGuestStats" class="metric-group mb-6">
             <v-row>
               <v-col cols="12" sm="6" md="4">
@@ -470,6 +483,68 @@
       :contract-types="[]"
       @update:show="showUnitModal = $event"
     />
+
+    <!-- 客戶狀況彙整 Dialog -->
+    <v-dialog v-model="showAnalysisDialog" max-width="700" scrollable>
+      <v-card>
+        <v-card-title>客戶狀況彙整報告</v-card-title>
+        <v-card-subtitle>{{ getPeriodLabel() }} · AI 生成</v-card-subtitle>
+        <v-divider />
+        <v-card-text
+          ref="reportContentRef"
+          style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.8; color: #1a1a1a;"
+        >
+          {{ analysisReport }}
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-btn
+            variant="outlined"
+            size="small"
+            :loading="isDownloadingPng"
+            @click="downloadPng"
+          >
+            <v-icon start>mdi-image</v-icon>PNG
+          </v-btn>
+          <v-btn
+            variant="outlined"
+            size="small"
+            :loading="isDownloadingDocx"
+            @click="downloadDocx"
+          >
+            <v-icon start>mdi-file-word</v-icon>WORD
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="showAnalysisDialog = false">關閉</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :prepend-icon="analysisCopied ? 'mdi-check' : 'mdi-content-copy'"
+            @click="copyAnalysisReport"
+          >
+            {{ analysisCopied ? '已複製' : '複製報告' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- AI 分析中全屏遮罩 -->
+    <Teleport to="body">
+      <v-overlay
+        :model-value="isAnalyzing"
+        persistent
+        class="ai-analyzing-overlay"
+        style="z-index: 9999 !important; display: flex; align-items: center; justify-content: center;"
+      >
+        <div class="d-flex flex-column align-center ga-4">
+          <v-progress-circular indeterminate size="72" width="6" color="white" />
+          <div class="text-white text-h6">AI 分析中...</div>
+          <div class="text-white text-body-2 text-center" style="opacity: 0.8; max-width: 300px;">
+            正在彙整客戶互動記錄，請稍候
+          </div>
+        </div>
+      </v-overlay>
+    </Teleport>
   </v-dialog>
 </template>
 
@@ -484,7 +559,10 @@ import {
   calculateVipGuestStats,
   getDateRange,
 } from '@/utils/analyticsCalculations'
-import { fetchVipGuests } from '@/api'
+import { fetchVipGuests, analyzeCustomerStatus } from '@/api'
+import html2canvas from 'html2canvas'
+import { saveAs } from 'file-saver'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
 import AnalyticsPeriodToggle from './AnalyticsPeriodToggle.vue'
 import MetricCard from './MetricCard.vue'
 import PersonnelRanking from './PersonnelRanking.vue'
@@ -528,6 +606,13 @@ const statistics = ref(null)
 const vipGuestStats = ref(null)
 const showVipGuestList = ref(false)
 const showUnitModal = ref(false)
+const isAnalyzing = ref(false)
+const showAnalysisDialog = ref(false)
+const analysisReport = ref('')
+const analysisCopied = ref(false)
+const isDownloadingPng = ref(false)
+const isDownloadingDocx = ref(false)
+const reportContentRef = ref(null)
 const selectedUnitData = ref(null)
 const customDateRange = ref({
   start: formatDateToInput(new Date()),
@@ -619,7 +704,7 @@ const generateStatisticsText = () => {
                       selectedPeriod.value === 'week' ? '本週' :
                       selectedPeriod.value === 'month' ? '本月' : '期間'
 
-  let text = `${periodLabel}${projectName}銷況\n`
+  let text = `${periodLabel}【${projectName}】銷況\n`
 
   // 日期或期間信息
   if (selectedPeriod.value === 'today' && statistics.value.dateRange) {
@@ -642,8 +727,6 @@ const generateStatisticsText = () => {
   const unsoldHouseholdAmount = statistics.value.households.unsoldAmount
   const unsoldParkingAmount = statistics.value.parkings.unsoldAmount
   const totalUnsoldAmount = unsoldHouseholdAmount + unsoldParkingAmount
-
-  text += `\n【銷售狀況】\n`
 
   // 如果不是累計，顯示該時間段的新銷售（第一組）
   if (selectedPeriod.value !== 'all') {
@@ -671,7 +754,7 @@ const generateStatisticsText = () => {
   text += `總車位：${statistics.value.parkings.total}個 (${formatAmount(totalParkingAmount)}萬)\n`
   text += `總銷：${formatAmount(totalAllAmount)}萬\n`
 
-  text += `\n【銷況明細】\n`
+  text += `\n【戶別明細】\n`
   const validStatuses = ['小訂', '補足', '簽約']
   const byStatusEntries = Object.entries(statistics.value.households.byStatus).filter(
     ([status]) => validStatuses.includes(status)
@@ -714,7 +797,7 @@ const generateSimpleText = () => {
 
   const projectName = projectData.value.project?.name || '專案'
 
-  let text = `${projectName}銷況\n`
+  let text = `【${projectName}】銷況\n`
 
   // 添加日期
   if (selectedPeriod.value === 'today' && statistics.value.dateRange) {
@@ -770,7 +853,7 @@ const generateSimpleText = () => {
       })
 
       if (hasUnits) {
-        text += `成交戶別\n`
+        text += `戶別狀況\n`
         // 遍歷所有狀態，並列出該狀態下的戶別及其銷售人員
         statusOrder.forEach(status => {
           const units = statistics.value.households.byStatusUnits[status]
@@ -785,7 +868,7 @@ const generateSimpleText = () => {
         })
       } else {
         // 若無成交戶別，顯示(無)
-        text += `成交戶別(無)\n`
+        text += `戶別狀況(無)\n`
       }
       text += `\n`
     }
@@ -1100,6 +1183,200 @@ const openUnitDetail = (unit) => {
   }
 
   showUnitModal.value = true
+}
+
+/**
+ * 分析客戶狀況
+ */
+const analyzeCustomers = async () => {
+  if (!vipGuestStats.value?.details?.length) return
+
+  isAnalyzing.value = true
+  try {
+    const guests = vipGuestStats.value.details
+    const currentProject = props.availableProjects.find(p => p.id === props.projectId)
+    const projectName = currentProject?.name || ''
+
+    const result = await analyzeCustomerStatus({
+      guests,
+      periodLabel: getPeriodLabel(),
+      projectName,
+      projectId: props.projectId,  // ← 傳入 projectId，讓 CF 讀取知識庫
+    })
+    analysisReport.value = result.data.report
+    showAnalysisDialog.value = true
+  } catch (e) {
+    console.error('[分析失敗]', e)
+    error.value = '客戶狀況分析失敗，請稍後再試'
+  } finally {
+    isAnalyzing.value = false
+  }
+}
+
+/**
+ * 複製分析報告
+ */
+const copyAnalysisReport = async () => {
+  try {
+    await navigator.clipboard.writeText(analysisReport.value)
+    analysisCopied.value = true
+    setTimeout(() => {
+      analysisCopied.value = false
+    }, 2000)
+  } catch (e) {
+    console.error('[複製失敗]', e)
+  }
+}
+
+/**
+ * 解析報告文本，轉換為 HTML 格式（用於 PNG）
+ */
+const renderReportHtml = (reportText) => {
+  const lines = reportText.split('\n')
+  const html = lines.map(line => {
+    const trimmed = line.trim()
+    if (!trimmed) return '<br />'
+
+    // 大標題：以「一、」「二、」等開頭
+    if (/^[一二三四五六七八九十]+[、]/.test(trimmed)) {
+      return `<h2 style="font-size: 16px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #1a1a1a;">${trimmed}</h2>`
+    }
+
+    // 條列：以數字或 ･ 開頭
+    if (/^\d+[.]/.test(trimmed) || /^[･]/.test(trimmed)) {
+      return `<p style="margin-left: 24px; margin-bottom: 4px; line-height: 1.6;">${trimmed}</p>`
+    }
+
+    // 一般段落
+    return `<p style="margin-bottom: 4px; line-height: 1.6;">${trimmed}</p>`
+  }).join('')
+
+  return html
+}
+
+/**
+ * 解析報告文本為 docx Paragraph 陣列
+ */
+const parseReportToParagraphs = (reportText) => {
+  const lines = reportText.split('\n')
+  const paragraphs = []
+
+  lines.forEach(line => {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      paragraphs.push(new Paragraph({ text: '' }))
+      return
+    }
+
+    // 大標題：以「一、」「二、」等開頭
+    if (/^[一二三四五六七八九十]+[、]/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: trimmed,
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 200, after: 100 }
+      }))
+      return
+    }
+
+    // 條列：以數字或 ･ 開頭
+    if (/^\d+[.]/.test(trimmed) || /^[･]/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: trimmed,
+        indent: { firstLine: 0, left: 360 },
+        spacing: { after: 50 }
+      }))
+      return
+    }
+
+    // 一般段落
+    paragraphs.push(new Paragraph({
+      text: trimmed,
+      spacing: { after: 50 }
+    }))
+  })
+
+  return paragraphs
+}
+
+/**
+ * 下載報告為 PNG
+ */
+const downloadPng = async () => {
+  isDownloadingPng.value = true
+  try {
+    // 建立 A4 容器（794px × 1123px @ 96dpi）
+    const container = document.createElement('div')
+    container.style.cssText = `
+      width: 794px;
+      min-height: 1123px;
+      padding: 60px;
+      background: white;
+      font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #1a1a1a;
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      box-sizing: border-box;
+    `
+    container.innerHTML = renderReportHtml(analysisReport.value)
+    document.body.appendChild(container)
+
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    })
+    document.body.removeChild(container)
+
+    canvas.toBlob(blob => {
+      saveAs(blob, `客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.png`)
+    })
+  } catch (e) {
+    console.error('[PNG 下載失敗]', e)
+    error.value = 'PNG 下載失敗，請稍後再試'
+  } finally {
+    isDownloadingPng.value = false
+  }
+}
+
+/**
+ * 下載報告為 DOCX
+ */
+const downloadDocx = async () => {
+  isDownloadingDocx.value = true
+  try {
+    const paragraphs = parseReportToParagraphs(analysisReport.value)
+
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            size: {
+              width: 11906,  // A4 寬度（1/20mm）
+              height: 16838  // A4 高度（1/20mm）
+            }
+          },
+          margin: {
+            top: 1134,      // 2cm
+            bottom: 1134,
+            left: 1134,
+            right: 1134
+          }
+        },
+        children: paragraphs
+      }]
+    })
+
+    const blob = await Packer.toBlob(doc)
+    saveAs(blob, `客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.docx`)
+  } catch (e) {
+    console.error('[DOCX 下載失敗]', e)
+    error.value = 'DOCX 下載失敗，請稍後再試'
+  } finally {
+    isDownloadingDocx.value = false
+  }
 }
 
 /**

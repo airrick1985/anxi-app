@@ -51,6 +51,7 @@ export const customerApiRouter = httpsCallable(functions, 'customerApi');
 export const vipFormApiRouter = httpsCallable(functions, 'vipFormApi');
 export const customerSheetApiRouter = httpsCallable(functions, 'customerSheetApi');
 export const optimizeInteractionLog = httpsCallable(functions, 'optimizeInteractionLog');
+export const analyzeCustomerStatus = httpsCallable(functions, 'analyzeCustomerStatus');
 
 
 

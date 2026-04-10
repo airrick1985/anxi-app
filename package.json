@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.504",
+  "version": "1.0.505",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -51,6 +51,7 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "docx": "^9.6.1",
     "dompurify": "^3.2.6",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",

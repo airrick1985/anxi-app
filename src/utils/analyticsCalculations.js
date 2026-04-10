@@ -321,8 +321,26 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
       })
     })
 
-    // 只有在日期範圍內有成交且符合已售條件時才加入該時間段的已售集合
-    if (isInDateRange && isSoldHousehold(h)) {
+    // 廢棄：舊邏輯依賴狀態判斷，新邏輯改在下方統一處理
+  })
+
+  // 重新計算 periodSoldSet：只根據小訂日期判斷，不考慮狀態
+  households.forEach(h => {
+    // 只計算有小訂日期的戶別
+    if (!h.payment_deposit_date) return
+
+    // 檢查狀態是否為有效狀態（小訂、補足、簽約）
+    const validStatuses = ['小訂', '補足', '簽約']
+    if (!validStatuses.includes(h.salesStatus_backend)) return
+
+    // 檢查小訂日期是否在時間範圍內
+    let isDepositInRange = true
+    if (dateRange) {
+      isDepositInRange = isDateInRange(h.payment_deposit_date, dateRange.start, dateRange.end)
+    }
+
+    // 只要小訂日期在範圍內且狀態有效，就加入 periodSoldSet
+    if (isDepositInRange) {
       periodSoldSet.add(h.unitId)
     }
   })
@@ -417,12 +435,15 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   const totalUnfiltered = parkings.length
   const totalAmountUnfiltered = parkings.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0)
 
-  // 計算累計已售（關聯到已成交戶別的車位）
+  // 計算累計已售（關聯到有小訂日期且狀態有效的戶別的車位）
   const cumulativeAssigned = parkings.filter(p => {
     if (!p.buyerUnitId || p.buyerUnitId === '') return false
-    // 只計算關聯到已成交戶別的車位
     const relatedHousehold = households?.find(h => h.unitId === p.buyerUnitId)
-    return relatedHousehold && isSoldHousehold(relatedHousehold)
+    if (!relatedHousehold || !relatedHousehold.payment_deposit_date) return false
+
+    // 檢查狀態是否為有效狀態（小訂、補足、簽約）
+    const validStatuses = ['小訂', '補足', '簽約']
+    return validStatuses.includes(relatedHousehold.salesStatus_backend)
   })
   const cumulativeSold = cumulativeAssigned.length
   const cumulativeSoldAmount = cumulativeAssigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
@@ -431,16 +452,16 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
 
   // 如果提供了日期範圍和戶別數據，只計算該日期範圍內關聯戶別的車位
   if (dateRange && households && households.length > 0) {
-    // 篩選日期範圍內有任何成交的戶別
+    // 篩選日期範圍內有小訂日期且狀態有效的戶別
     const householdsInRange = households.filter(h => {
-      if (!isSoldHousehold(h)) return false
+      if (!h.payment_deposit_date) return false
 
-      const statuses = getHouseholdStatuses(h)
-      // 如果任何一個狀態的日期在範圍內，就計入
-      return statuses.some(status => {
-        const statusDate = getDateByStatus(h, status)
-        return isDateInRange(statusDate, dateRange.start, dateRange.end)
-      })
+      // 檢查狀態是否為有效狀態（小訂、補足、簽約）
+      const validStatuses = ['小訂', '補足', '簽約']
+      if (!validStatuses.includes(h.salesStatus_backend)) return false
+
+      // 檢查小訂日期是否在範圍內
+      return isDateInRange(h.payment_deposit_date, dateRange.start, dateRange.end)
     })
 
     const unitIdsInRange = new Set(householdsInRange.map(h => h.unitId))

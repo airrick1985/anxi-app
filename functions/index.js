@@ -21012,6 +21012,162 @@ exports.optimizeInteractionLog = onCall({
   }
 });
 
+/**
+ * 🤖 客戶狀況彙整分析 (使用 Gemini 3 Flash Preview)
+ * 接收：{ guests: Array, periodLabel: string, projectName: string }
+ * 回傳：{ report: "AI 生成的分析報告" }
+ */
+exports.analyzeCustomerStatus = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 60,
+  minInstances: 0,
+  secrets: ["Admin_Gemini_API_Key"],
+}, async (request) => {
+  const { guests, periodLabel, projectName, projectId } = request.data;
+
+  if (!guests || !Array.isArray(guests) || guests.length === 0) {
+    throw new HttpsError('invalid-argument', '缺少客戶數據');
+  }
+
+  const apiKey = process.env.Admin_Gemini_API_Key;
+  if (!apiKey) {
+    console.error("❌ 缺少 Admin_Gemini_API_Key 環境變數");
+    throw new HttpsError('failed-precondition', '系統未設定 AI 金鑰，請聯繫管理員');
+  }
+
+  try {
+    // 從 Firestore 讀取建案知識庫
+    let projectKnowledge = {};
+    if (projectId) {
+      try {
+        const projectDoc = await db.collection('projects').doc(projectId).get();
+        projectKnowledge = projectDoc.data()?.projectKnowledge || {};
+      } catch (err) {
+        console.warn("⚠️  無法讀取建案知識庫:", err.message);
+      }
+    }
+
+    // 格式化客戶數據供 AI 分析
+    const formattedGuests = guests.map(g => ({
+      guestName: g.guestName || '未知',
+      guestPhone: g.guestPhone || '',
+      salesName: g.salesName || '未指定',
+      type: g.type === 'new' ? '新客' : '回訪',
+      visitCount: g.interactionLogs?.length || 0,
+      interactionLogs: (g.interactionLogs || []).map(log => ({
+        date: log.date || '未知',
+        content: log.content || '',
+      })),
+    }));
+
+    const prompt = buildCustomerAnalysisPrompt(
+      formattedGuests,
+      periodLabel,
+      projectName,
+      projectKnowledge
+    );
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const report = result.response.text();
+
+    return {
+      status: "success",
+      report: report.trim()
+    };
+
+  } catch (error) {
+    console.error("❌ 客戶狀況分析失敗:", error);
+    throw new HttpsError('internal', 'AI 分析服務暫時無法使用，請稍後再試');
+  }
+});
+
+/**
+ * 構建客戶狀況分析的 Prompt
+ */
+function buildCustomerAnalysisPrompt(guests, periodLabel, projectName, projectKnowledge = {}) {
+  const guestsJson = JSON.stringify(guests, null, 2);
+
+  // 構建知識庫部分（如果有資料）
+  let knowledgeSection = '';
+  if (projectKnowledge && Object.keys(projectKnowledge).length > 0) {
+    knowledgeSection = `
+
+【建案產品知識庫】
+地址：${projectKnowledge.address || '未設定'}
+建案類型：${projectKnowledge.projectType || '未設定'}
+總戶數：${projectKnowledge.totalUnits || '未設定'}
+樓層說明：${projectKnowledge.totalFloors || '未設定'}
+交屋時程：${projectKnowledge.deliveryDate || '未設定'}
+
+【核心賣點】
+地段優勢：${projectKnowledge.locationAdvantage || '未設定'}
+建築特色：${projectKnowledge.architectureFeature || '未設定'}
+社區設施：${projectKnowledge.communityFacilities || '未設定'}
+周邊生活機能：${projectKnowledge.surroundingAmenities || '未設定'}
+
+【產品規格】
+主力坪數：${projectKnowledge.mainAreaRange || '未設定'}
+主力總價：${projectKnowledge.priceRange || '未設定'}
+特殊戶型：${projectKnowledge.specialUnits || '未設定'}
+
+【目標客群】
+主力客群：${projectKnowledge.primaryAudience || '未設定'}
+次要客群：${projectKnowledge.secondaryAudience || '未設定'}
+
+【常見問題標準回覆】
+${projectKnowledge.faqs && projectKnowledge.faqs.length > 0
+      ? projectKnowledge.faqs.map((f, i) => `${i + 1}. Q: ${f.question || '未設定'}\n   A: ${f.answer || '未設定'}`).join('\n')
+      : '（尚未設定常見問題）'}
+
+【當前銷售策略】
+主打優惠：${projectKnowledge.currentPromotion || '未設定'}
+銷售目標：${projectKnowledge.salesFocus || '未設定'}
+競品優勢：${projectKnowledge.competitorNotes || '未設定'}
+
+【針對此建案的提示】
+- 在提出建議時，應考慮此建案的特色賣點和目標客群
+- 參考常見問題的標準回覆，讓建議與銷售訊息保持一致
+- 優惠方案應符合當前銷售策略和目標`;
+  }
+
+  return `
+你是房地產銷售分析專家。請分析以下客戶互動記錄，產生高管級的狀況彙整報告。${knowledgeSection}
+
+【背景資訊】
+建案名稱：${projectName}
+統計期間：${periodLabel}
+訪客總數：${guests.length}人
+
+【客戶互動記錄數據】
+${guestsJson}
+
+【分析要求】
+1. 識別 TOP 5 客戶關切點（按提及頻次排序），每項附上出現次數
+2. 針對每個關切點，指出客戶的核心痛點和隱含需求
+3. 標記需要風險預警的客戶：
+   - 多次訪問但未決定者（含客戶姓名）
+   - 提及預算困難者
+   - 有其他疑慮或負面反饋者
+4. 評析銷售人員的表現（按姓名），指出亮點和改進空間
+5. 提供 3-5 條立即可執行的改善建議
+
+【輸出格式要求 — 嚴格遵守】
+1. 禁止所有 Markdown 格式：不得出現 ##、###、**、*、---、> 等任何符號
+2. 標題使用中文書名號加空白，例如：「一、客戶關切點分析」
+3. 條列使用數字或 ･ 符號，例如：1. 或 ･（不要使用 - 或 *）
+4. 使用繁體中文，包含具體數字和百分比
+5. 客戶和銷售人員姓名可直接使用
+6. 不需要前言，直接進入分析內容
+7. 純文字輸出，無任何格式標記
+
+請開始分析：
+  `;
+}
+
 
 // =================================================================
 // / Google Sheets Sync Functions
