@@ -5626,7 +5626,21 @@ export const driveProxySearch = async (payload) => {
   }
 };
 
-
+/**
+ * [新] 呼叫後端，代理下載 Google Drive 檔案
+ * @param {object} payload - 包含 { fileId, fileName } 的物件
+ * @returns {Promise<object>} - 後端回傳的結果 { status, downloadUrl }
+ */
+export const driveProxyDownload = async (payload) => {
+  try {
+    const downloadFunction = httpsCallable(functions, 'driveProxyDownload');
+    const result = await downloadFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in driveProxyDownload:", error);
+    throw new Error(error.message);
+  }
+};
 
 // ✓ START: 新增 - 呼叫後端獲取扁平化結構的 API
 /**

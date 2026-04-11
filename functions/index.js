@@ -23536,3 +23536,31 @@ ${JSON.stringify(contextData, null, 2)}
 // AI Regex Generation Backend
 const aiRegexGeneration = require('./aiRegexGeneration');
 exports.generateLeadParsingRegex = aiRegexGeneration.generateLeadParsingRegex;
+
+
+/**
+ * [新] 代理下載 Google Drive 檔案
+ * 用於繞過 LINE 內瀏覽器的下載限制
+ */
+exports.driveProxyDownload = onCall({ region: "asia-east1" }, async (request) => {
+  try {
+    const { fileId, fileName } = request.data;
+
+    if (!fileId) {
+      throw new HttpsError("invalid-argument", "檔案 ID 未提供");
+    }
+
+    // 直接返回 Google Drive 的直接下載 URL
+    // 這個 URL 格式可以強制下載，而不會打開 Google Drive
+    const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+    return {
+      status: 'success',
+      downloadUrl: downloadUrl,
+      fileName: fileName
+    };
+  } catch (error) {
+    console.error('driveProxyDownload 錯誤:', error);
+    throw new HttpsError("internal", error.message || '下載失敗');
+  }
+});
