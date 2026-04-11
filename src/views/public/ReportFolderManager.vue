@@ -320,7 +320,28 @@ onMounted(async () => {
 watch(selectedProject, (newProjectId, oldProjectId) => { if (newProjectId && newProjectId !== oldProjectId) { loadProjectData(newProjectId); } });
 async function onUpdateExpanded(newExpandedIds) { const newlyExpandedId = newExpandedIds.find(id => expandedPdfFiles.value[id] === undefined); if (!newlyExpandedId) { return; } const item = tableData.value.find(i => i.rowId === newlyExpandedId); if (item) { try { expandedPdfFiles.value[newlyExpandedId] = 'loading'; const res = await driveProxyList({ folderId: item.reportFolder.id }); expandedPdfFiles.value[newlyExpandedId] = res.files.filter(f => !f.isFolder); } catch (e) { console.error(`獲取資料夾 ${item.reportFolder.name} 內容失敗:`, e); expandedPdfFiles.value[newlyExpandedId] = []; } } }
 async function loadProjectData(pId, forceRefresh = false) { if (!pId) return; isFetchingFiles.value = true; isRefreshing.value = forceRefresh; try { const settings = await getProjectSettings(pId); const folderUrl = settings?.reportSettings?.reportDataFolderUrl; if (!folderUrl) throw new Error('找不到報告資料夾設定'); rootFolderId.value = folderUrl.match(/[-\w]{25,}/)?.[0]; if (!rootFolderId.value) throw new Error('無效的 Drive 資料夾連結'); const response = await getReportFolderStructure({ rootFolderId: rootFolderId.value }); if (response.status === 'success') { allReportData.value = response.files; } else { throw new Error(response.message); } } catch (error) { alert(`載入資料失敗: ${error.message}`); } finally { isFetchingFiles.value = false; isRefreshing.value = false; } }
-function downloadPreviewFile() { const item = previewDialog.value.item; if (!item || !item.url) return; const link = document.createElement('a'); link.href = item.url; link.setAttribute('download', item.name); document.body.appendChild(link); link.click(); document.body.removeChild(link); }
+function downloadPreviewFile() {
+  const item = previewDialog.value.item;
+  if (!item || !item.url) return;
+
+  // 從 Google Drive URL 提取文件 ID
+  const fileIdMatch = item.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (!fileIdMatch) {
+    console.error('無法從 URL 提取文件 ID');
+    return;
+  }
+
+  const fileId = fileIdMatch[1];
+  // 使用 Google Drive 的直接下載 URL
+  const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.setAttribute('download', item.name || '下載');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 async function startRenameTask(suffix) {
   isStartingTask.value = true;
   const selectedItems = selected.value.map(rowId => tableData.value.find(i => i.rowId === rowId)).filter(Boolean);
