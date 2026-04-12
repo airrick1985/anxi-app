@@ -2889,7 +2889,7 @@ exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
  */
 exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
-  const { projectId, unitId, operatorName } = request.data;
+  const { projectId, unitId, operatorName, cancelReasons = [] } = request.data;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
 
   if (!projectId || !unitId || !operatorName) {
@@ -2952,6 +2952,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
       projectId: projectId,
       unitId: unitId,
       operatorName: operatorName,
+      cancelReasons: cancelReasons,
       cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
       originalHouseholdData: originalHouseholdData,
       originalParkingData: originalParkingData,
@@ -2976,7 +2977,11 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
         cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
         originalDocId: docId,
         parkingCount: originalParkingData.length,
-      }
+      },
+      // 加入退戶原因
+      cancelReasons: cancelReasons,
+      parkingDetails: originalParkingData.map(p => p.data),
+      docId: cancelledDocId
     };
 
     // ========================================
@@ -3157,8 +3162,9 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
           spotId: p.spotId || '',
           floor: p.floor || '',
           type: p.type || '',
-          price_transaction: p.price_transaction || null,
           price_list: p.price_list || null,
+          price_floor: p.price_floor || null,
+          price_transaction: p.price_transaction || null,
           status: p.status || '',
         })),
         parkingCount: meta.parkingCount || parkingData.length || 0,
@@ -3166,6 +3172,8 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
         operatorName: meta.operatorName || '',
         cancellationDate: meta.cancellationDate || null,
         originalDocId: meta.originalDocId || '',
+        // 退戶原因
+        cancelReasons: data.cancelReasons || [],
         // 持有車位
         '持有車位': data['持有車位'] || [],
       });
@@ -3177,6 +3185,51 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
     throw new HttpsError("internal", `查詢退戶資料失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 修改退戶原因
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {Array<string>} cancelReasons - 退戶原因陣列
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+exports.updateCancelReason = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, cancelReasons, operatorName } = request.data;
+  const functionName = `updateCancelReason (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始修改退戶原因...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    // 更新退戶資料集合中的 cancelReasons
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    const updateData = {
+      cancelReasons: cancelReasons || [],
+      '_cancellationMeta.lastEditedBy': operatorName,
+      '_cancellationMeta.lastEditedAt': admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await cancelledDocRef.update(updateData);
+
+    console.log(`[${functionName}] 退戶原因已更新`);
+
+    return {
+      status: "success",
+      message: "退戶原因已更新成功！"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `修改退戶原因失敗: ${error.message}`);
   }
 });
 
@@ -21248,10 +21301,16 @@ exports.exportToGoogleSheet = onCall({
   region: "asia-east1",
   secrets: driveSecrets
 }, async (request) => {
-  const { spreadsheetId, sheetName, values } = request.data;
+  let { spreadsheetId, sheetName, values } = request.data;
 
   if (!spreadsheetId || !sheetName || !values || !Array.isArray(values)) {
     throw new HttpsError('invalid-argument', '缺少必要參數 (spreadsheetId, sheetName, values)');
+  }
+
+  // 嘗試從 URL 解析 ID（相容前端可能傳入完整 URL）
+  const match = spreadsheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) {
+    spreadsheetId = match[1];
   }
 
   try {

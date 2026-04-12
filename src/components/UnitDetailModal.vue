@@ -474,7 +474,7 @@
     </v-card>
   </v-dialog>
 
-  <ConfirmationDialog :show="showCancelDialog" @update:show="showCancelDialog = $event" title="確認辦理退戶"
+  <CancelPurchaseDialog :show="showCancelDialog" @update:show="showCancelDialog = $event" title="確認辦理退戶"
     :message="cancelDialogMessage" confirm-text="確認退戶" confirm-color="error" :loading="isSaving"
     @confirm="handleConfirmCancelPurchase" @cancel="showCancelDialog = false" />
 
@@ -670,6 +670,7 @@ import SalesBotChat from './SalesBotChat.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
+import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
 import * as XLSX from 'xlsx';
 
@@ -744,15 +745,28 @@ const isSold = computed(() => {
 });
 
 const cancelDialogMessage = computed(() => {
-  const unitId = props.unitData ? `【${props.unitData.unitId}】` : '';
-  return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>系統會先將完整資料備份至「退戶資料」集合，再清除銷售與客戶資料並釋出車位。`;
+  if (!props.unitData) return '您確定要辦理退戶嗎？';
+
+  const unitId = `【${props.unitData.unitId}】`;
+  const buyerName = props.unitData.buyerName || '—';
+  const salesperson = props.unitData.salesperson || '—';
+  const parkingInfo = props.unitData['持有車位'] && props.unitData['持有車位'].length > 0
+    ? props.unitData['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、')
+    : '無';
+
+  return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>` +
+    `<strong>客戶資訊：</strong><br>` +
+    `客戶姓名：${buyerName}<br>` +
+    `銷售人員：${salesperson}<br>` +
+    `持有車位：${parkingInfo}<br><br>` +
+    `系統會先將完整資料備份至「退戶資料」集合，再清除銷售與客戶資料並釋出車位。`;
 });
 
 function openCancelPurchaseDialog() {
   showCancelDialog.value = true;
 }
 
-async function handleConfirmCancelPurchase() {
+async function handleConfirmCancelPurchase(selectedReasons) {
   if (!props.unitData || !userStore.user) {
     alert('缺少必要資訊，無法執行退戶。');
     return;
@@ -765,26 +779,28 @@ async function handleConfirmCancelPurchase() {
       projectName: props.projectName,
 
       // 🔴 錯誤 (原本的寫法)：projectId 變數未定義
-      // projectId: projectId.value, 
+      // projectId: projectId.value,
 
       // ✅ 正確修正：從 props 讀取
       projectId: props.projectId,
 
       unitId: props.unitData.unitId,
-      operatorName: userStore.user.name
+      operatorName: userStore.user.name,
+      cancelReasons: selectedReasons
     });
 
     const result = await cancelPurchase(
       props.projectName,
 
       // 🔴 錯誤 (原本的寫法)
-      // projectId.value, 
+      // projectId.value,
 
       // ✅ 正確修正：
       props.projectId,
 
       props.unitData.unitId,
-      userStore.user.name
+      userStore.user.name,
+      selectedReasons
     );
     if (result.status !== 'success') {
       throw new Error(result.message);

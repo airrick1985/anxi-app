@@ -894,10 +894,11 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
  * @param {string} projectId - 專案 ID
  * @param {string} unitId - 要退戶的戶別 ID
  * @param {string} operatorName - 執行此操作的使用者名稱
+ * @param {Array<string>} cancelReasons - 退戶原因列表 (可複選)
  * @returns {Promise<object>}
  */
-export async function cancelPurchase(projectName, projectId, unitId, operatorName) {
-  //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName });
+export async function cancelPurchase(projectName, projectId, unitId, operatorName, cancelReasons = []) {
+  //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName, cancelReasons });
 
   if (!projectId || !unitId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少 projectId、unitId 或 operatorName。" };
@@ -908,7 +909,8 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
     const result = await cancelFunction({
       projectId: projectId,
       unitId: unitId,
-      operatorName: operatorName
+      operatorName: operatorName,
+      cancelReasons: cancelReasons
     });
 
     //console.log('[api.js] cancelPurchase success:', result.data);
@@ -959,6 +961,27 @@ export async function restoreCancelledPurchase(projectId, cancelledDocId, operat
     return result.data;
   } catch (error) {
     console.error("呼叫 restoreCancelledPurchase 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 修改退戶原因
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {Array<string>} cancelReasons - 退戶原因陣列
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+export async function updateCancelReason(projectId, cancelledDocId, cancelReasons, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'updateCancelReason');
+    const result = await func({ projectId, cancelledDocId, cancelReasons, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 updateCancelReason 雲端函式時發生錯誤:", error);
     return { status: "error", message: error.message };
   }
 }

@@ -15,6 +15,15 @@
         <v-spacer></v-spacer>
         <v-btn
           variant="tonal"
+          prepend-icon="mdi-chart-bar"
+          @click="statisticsDialog = true"
+          :disabled="items.length === 0"
+          class="mr-2"
+        >
+          統計分析
+        </v-btn>
+        <v-btn
+          variant="tonal"
           prepend-icon="mdi-refresh"
           @click="loadData"
           :loading="isLoading"
@@ -41,163 +50,236 @@
 
         <!-- 列表 -->
         <template v-else>
-          <v-alert type="info" variant="tonal" class="mb-4" density="compact">
-            共 {{ items.length }} 筆退戶記錄
-          </v-alert>
+          <!-- 搜索欄 -->
+          <v-row class="mb-4">
+            <v-col cols="12" md="8">
+              <v-text-field
+                v-model="searchQuery"
+                prepend-inner-icon="mdi-magnify"
+                placeholder="搜尋關鍵字（戶別、買方、業務員、原因等）"
+                variant="outlined"
+                density="compact"
+                clearable
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-alert type="info" variant="tonal" density="compact" class="h-100 d-flex align-center">
+                共 {{ filteredItems.length }} / {{ items.length }} 筆
+              </v-alert>
+            </v-col>
+          </v-row>
 
-          <v-card
-            v-for="item in items"
-            :key="item.docId"
-            variant="outlined"
-            class="mb-3"
-            :class="{ 'expanded-card': expandedDocId === item.docId }"
+          <v-data-table
+            :headers="tableHeaders"
+            :items="filteredItems"
+            v-model:expanded="expanded"
+            item-value="docId"
+            density="compact"
+            class="mt-2"
+            :loading="isLoading"
+            @click:row="onRowClick"
+            hover
           >
-            <!-- 摘要列 -->
-            <v-card-item @click="toggleExpand(item.docId)" style="cursor: pointer;">
-              <template v-slot:prepend>
-                <v-avatar color="error" variant="tonal" size="40">
-                  <v-icon>mdi-account-cancel</v-icon>
-                </v-avatar>
-              </template>
-              <v-card-title class="text-body-1 font-weight-bold">
-                {{ item.unitId }}
-                <v-chip size="x-small" label color="error" variant="flat" class="ml-2">{{ item.salesStatus_backend || '退戶' }}</v-chip>
-                <v-chip v-if="item.parkingCount > 0" size="x-small" label color="info" variant="tonal" class="ml-1">
-                  車位 {{ item.parkingCount }}
+            <!-- 戶別 + 車位 chips -->
+            <template v-slot:item.unitId="{ item }">
+              <span class="font-weight-bold">{{ item.unitId }}</span>
+              <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal" class="ml-1">
+                車位 {{ item.parkingCount }}
+              </v-chip>
+            </template>
+
+            <!-- 退戶原因 chips -->
+            <template v-slot:item.cancelReasons="{ item }">
+              <template v-if="item.cancelReasons && item.cancelReasons.length > 0">
+                <v-chip
+                  v-for="(reason, idx) in item.cancelReasons.slice(0, 2)"
+                  :key="idx"
+                  label
+                  size="small"
+                  color="error"
+                  variant="tonal"
+                  class="mr-1 my-1"
+                >
+                  {{ reason }}
                 </v-chip>
-              </v-card-title>
-              <v-card-subtitle>
-                {{ item.buyerName || '—' }} ｜ {{ item.salesperson || '—' }}
-                <span v-if="item.price_transaction_house"> ｜ 成交 {{ formatPrice(item.price_transaction_house) }} 萬</span>
-                <span v-if="item.area_house_ping"> ｜ {{ item.area_house_ping }} 坪</span>
-              </v-card-subtitle>
-              <template v-slot:append>
-                <div class="text-right">
-                  <div class="text-caption text-grey">{{ formatDate(item.cancellationDate) }}</div>
-                  <div class="text-caption text-grey">操作人：{{ item.operatorName }}</div>
-                </div>
-                <v-icon class="ml-2">{{ expandedDocId === item.docId ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                <v-chip
+                  v-if="item.cancelReasons.length > 2"
+                  label
+                  size="x-small"
+                  color="grey"
+                  variant="tonal"
+                >
+                  +{{ item.cancelReasons.length - 2 }} 項
+                </v-chip>
               </template>
-            </v-card-item>
+            </template>
 
-            <!-- 展開詳情 -->
-            <v-expand-transition>
-              <div v-if="expandedDocId === item.docId">
-                <v-divider></v-divider>
-                <v-card-text class="pa-4">
-                  <v-row dense>
-                    <!-- 買方資訊 -->
-                    <v-col cols="12" md="4">
+            <!-- 成交總價 -->
+            <template v-slot:item.totalPrice="{ item }">
+              <span v-if="calculateTotalTransactionPrice(item) > 0" class="font-weight-bold text-success">
+                {{ formatPrice(calculateTotalTransactionPrice(item)) }} 萬
+              </span>
+              <span v-else>—</span>
+            </template>
+
+            <!-- 退戶日期 -->
+            <template v-slot:item.cancellationDate="{ item }">
+              {{ formatDate(item.cancellationDate) }}
+            </template>
+
+            <!-- 展開列（保留現有詳情內容） -->
+            <template v-slot:expanded-row="{ columns, item }">
+              <tr>
+                <td :colspan="columns.length" class="pa-0">
+                  <v-card flat class="pa-4 bg-grey-lighten-5">
+                    <v-row dense>
+                      <!-- 買方資訊 -->
+                      <v-col cols="12" md="4">
+                        <div class="section-title">
+                          <v-icon size="small" class="mr-1" color="primary">mdi-account</v-icon>
+                          買方資訊
+                        </div>
+                        <v-table density="compact" class="detail-table">
+                          <tbody>
+                            <tr><td class="label-cell">姓名</td><td class="font-weight-bold">{{ item.buyerName || '—' }}</td></tr>
+                            <tr><td class="label-cell">電話</td><td>{{ item.buyerPhone || '—' }}</td></tr>
+                            <tr><td class="label-cell">身分證</td><td>{{ item.buyerIdNumber || '—' }}</td></tr>
+                            <tr><td class="label-cell">Email</td><td>{{ item.buyerEmail || '—' }}</td></tr>
+                            <tr><td class="label-cell">業務</td><td>{{ item.salesperson || '—' }}</td></tr>
+                            <tr><td class="label-cell">合約類型</td><td>{{ item.contractType || '—' }}</td></tr>
+                          </tbody>
+                        </v-table>
+                      </v-col>
+
+                      <!-- 面積資訊 -->
+                      <v-col cols="12" md="4">
+                        <div class="section-title">
+                          <v-icon size="small" class="mr-1" color="teal">mdi-ruler-square</v-icon>
+                          面積資訊
+                        </div>
+                        <v-table density="compact" class="detail-table">
+                          <tbody>
+                            <tr><td class="label-cell">權狀坪數</td><td class="font-weight-bold">{{ formatNum(item.area_house_ping) }} 坪</td></tr>
+                            <tr><td class="label-cell">主建物</td><td>{{ formatNum(item.area_main_ping) }} 坪</td></tr>
+                            <tr><td class="label-cell">附屬建物</td><td>{{ formatNum(item.area_ancillary_ping) }} 坪</td></tr>
+                            <tr><td class="label-cell">公設</td><td>{{ formatNum(item.area_public_ping) }} 坪</td></tr>
+                            <tr><td class="label-cell">露臺</td><td>{{ formatNum(item.area_terrace_ping) }} 坪</td></tr>
+                          </tbody>
+                        </v-table>
+                      </v-col>
+
+                      <!-- 價格資訊 -->
+                      <v-col cols="12" md="4">
+                        <div class="section-title">
+                          <v-icon size="small" class="mr-1" color="warning">mdi-currency-usd</v-icon>
+                          價格資訊
+                        </div>
+                        <v-table density="compact" class="detail-table">
+                          <tbody>
+                            <tr><td class="label-cell">房屋表價</td><td>{{ formatPrice(item.price_list_house_total) }} 萬</td></tr>
+                            <tr><td class="label-cell">房屋底價</td><td class="text-red font-weight-bold">{{ formatPrice(item.price_floor_house_total) }} 萬</td></tr>
+                            <tr><td class="label-cell">房屋成交價</td><td class="text-success font-weight-bold">{{ formatPrice(item.price_transaction_house) }} 萬</td></tr>
+                            <tr><td class="label-cell">配套金額</td><td>{{ formatPrice(item.price_package_deal) }} 萬</td></tr>
+                            <tr><td class="label-cell">成交總價</td><td class="text-success font-weight-bold text-h6">{{ formatPrice(calculateTotalTransactionPrice(item)) }} 萬</td></tr>
+                            <tr><td class="label-cell">溢差價</td><td class="font-weight-bold" :class="calculatePremiumPrice(item) >= 0 ? 'text-success' : 'text-red'">{{ formatPrice(calculatePremiumPrice(item)) }} 萬</td></tr>
+                            <tr v-if="item.payment_deposit_amount"><td class="label-cell">小訂金額</td><td>{{ formatPrice(item.payment_deposit_amount) }} 萬</td></tr>
+                            <tr v-if="item.payment_contract_amount"><td class="label-cell">簽約金額</td><td>{{ formatPrice(item.payment_contract_amount) }} 萬</td></tr>
+                          </tbody>
+                        </v-table>
+                      </v-col>
+                    </v-row>
+
+                    <!-- 車位資訊 -->
+                    <template v-if="item.parkingDetails && item.parkingDetails.length > 0">
+                      <v-divider class="my-3"></v-divider>
                       <div class="section-title">
-                        <v-icon size="small" class="mr-1" color="primary">mdi-account</v-icon>
-                        買方資訊
+                        <v-icon size="small" class="mr-1" color="indigo">mdi-car</v-icon>
+                        車位資訊（{{ item.parkingDetails.length }} 個）
                       </div>
                       <v-table density="compact" class="detail-table">
+                        <thead>
+                          <tr>
+                            <th>車位編號</th>
+                            <th>樓層</th>
+                            <th>類型</th>
+                            <th>表價</th>
+                            <th>底價</th>
+                            <th>成交價</th>
+                          </tr>
+                        </thead>
                         <tbody>
-                          <tr><td class="label-cell">姓名</td><td class="font-weight-bold">{{ item.buyerName || '—' }}</td></tr>
-                          <tr><td class="label-cell">電話</td><td>{{ item.buyerPhone || '—' }}</td></tr>
-                          <tr><td class="label-cell">身分證</td><td>{{ item.buyerIdNumber || '—' }}</td></tr>
-                          <tr><td class="label-cell">Email</td><td>{{ item.buyerEmail || '—' }}</td></tr>
-                          <tr><td class="label-cell">業務</td><td>{{ item.salesperson || '—' }}</td></tr>
-                          <tr><td class="label-cell">合約類型</td><td>{{ item.contractType || '—' }}</td></tr>
+                          <tr v-for="(p, idx) in item.parkingDetails" :key="idx">
+                            <td class="font-weight-bold">{{ p.spotId || '—' }}</td>
+                            <td>{{ p.floor || '—' }}</td>
+                            <td>{{ p.type || '—' }}</td>
+                            <td>{{ formatPrice(p.price_list) }} 萬</td>
+                            <td class="text-red">{{ formatPrice(p.price_floor) }} 萬</td>
+                            <td class="text-success font-weight-bold">{{ formatPrice(p.price_transaction) }} 萬</td>
+                          </tr>
                         </tbody>
                       </v-table>
-                    </v-col>
+                    </template>
 
-                    <!-- 面積資訊 -->
-                    <v-col cols="12" md="4">
-                      <div class="section-title">
-                        <v-icon size="small" class="mr-1" color="teal">mdi-ruler-square</v-icon>
-                        面積資訊
+                    <!-- 持有車位 -->
+                    <template v-if="item['持有車位'] && item['持有車位'].length > 0">
+                      <div class="mt-2 text-caption text-grey">
+                        持有車位：{{ item['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、') }}
                       </div>
-                      <v-table density="compact" class="detail-table">
-                        <tbody>
-                          <tr><td class="label-cell">權狀坪數</td><td class="font-weight-bold">{{ formatNum(item.area_house_ping) }} 坪</td></tr>
-                          <tr><td class="label-cell">主建物</td><td>{{ formatNum(item.area_main_ping) }} 坪</td></tr>
-                          <tr><td class="label-cell">附屬建物</td><td>{{ formatNum(item.area_ancillary_ping) }} 坪</td></tr>
-                          <tr><td class="label-cell">公設</td><td>{{ formatNum(item.area_public_ping) }} 坪</td></tr>
-                          <tr><td class="label-cell">露臺</td><td>{{ formatNum(item.area_terrace_ping) }} 坪</td></tr>
-                        </tbody>
-                      </v-table>
-                    </v-col>
+                    </template>
 
-                    <!-- 價格資訊 -->
-                    <v-col cols="12" md="4">
-                      <div class="section-title">
-                        <v-icon size="small" class="mr-1" color="warning">mdi-currency-usd</v-icon>
-                        價格資訊
-                      </div>
-                      <v-table density="compact" class="detail-table">
-                        <tbody>
-                          <tr><td class="label-cell">表價總價</td><td>{{ formatPrice(item.price_list_house_total) }} 萬</td></tr>
-                          <tr><td class="label-cell">底價總價</td><td class="text-red font-weight-bold">{{ formatPrice(item.price_floor_house_total) }} 萬</td></tr>
-                          <tr><td class="label-cell">成交總價</td><td class="text-success font-weight-bold">{{ formatPrice(item.price_transaction_house) }} 萬</td></tr>
-                          <tr><td class="label-cell">配套金額</td><td>{{ formatPrice(item.price_package_deal) }} 萬</td></tr>
-                          <tr v-if="item.payment_deposit_amount"><td class="label-cell">小訂金額</td><td>{{ formatPrice(item.payment_deposit_amount) }} 萬</td></tr>
-                          <tr v-if="item.payment_contract_amount"><td class="label-cell">簽約金額</td><td>{{ formatPrice(item.payment_contract_amount) }} 萬</td></tr>
-                        </tbody>
-                      </v-table>
-                    </v-col>
-                  </v-row>
-
-                  <!-- 車位資訊 -->
-                  <template v-if="item.parkingDetails && item.parkingDetails.length > 0">
+                    <!-- 退戶原因 -->
                     <v-divider class="my-3"></v-divider>
-                    <div class="section-title">
-                      <v-icon size="small" class="mr-1" color="indigo">mdi-car</v-icon>
-                      車位資訊（{{ item.parkingDetails.length }} 個）
+                    <div class="d-flex align-center justify-space-between mb-2">
+                      <div class="section-title">
+                        <v-icon size="small" class="mr-1" color="warning">mdi-information-outline</v-icon>
+                        退戶原因
+                      </div>
+                      <v-btn icon size="x-small" variant="text" @click="handleEditReasons(item)">
+                        <v-icon size="small">mdi-pencil</v-icon>
+                        <v-tooltip activator="parent">修改退戶原因</v-tooltip>
+                      </v-btn>
                     </div>
-                    <v-table density="compact" class="detail-table">
-                      <thead>
-                        <tr>
-                          <th>車位編號</th>
-                          <th>樓層</th>
-                          <th>類型</th>
-                          <th>表價</th>
-                          <th>成交價</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="(p, idx) in item.parkingDetails" :key="idx">
-                          <td class="font-weight-bold">{{ p.spotId || '—' }}</td>
-                          <td>{{ p.floor || '—' }}</td>
-                          <td>{{ p.type || '—' }}</td>
-                          <td>{{ formatPrice(p.price_list) }} 萬</td>
-                          <td class="text-success font-weight-bold">{{ formatPrice(p.price_transaction) }} 萬</td>
-                        </tr>
-                      </tbody>
-                    </v-table>
-                  </template>
+                    <template v-if="item.cancelReasons && item.cancelReasons.length > 0">
+                      <div class="cancel-reasons-container">
+                        <v-chip
+                          v-for="(reason, idx) in item.cancelReasons"
+                          :key="idx"
+                          label
+                          size="medium"
+                          color="error"
+                          variant="tonal"
+                          class="mr-2 mb-2"
+                        >
+                          {{ reason }}
+                        </v-chip>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="text-caption text-grey">
+                        <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+                        本筆退戶記錄建立於新功能上線前，未記錄退戶原因
+                      </div>
+                    </template>
 
-                  <!-- 持有車位 -->
-                  <template v-if="item['持有車位'] && item['持有車位'].length > 0">
-                    <div class="mt-2 text-caption text-grey">
-                      持有車位：{{ item['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、') }}
-                    </div>
-                  </template>
+                    <!-- 退戶資訊 & 復原 -->
+                    <v-divider class="my-3"></v-divider>
+                    <div class="d-flex align-center justify-space-between">
 
-                  <!-- 退戶資訊 & 復原 -->
-                  <v-divider class="my-3"></v-divider>
-                  <div class="d-flex align-center justify-space-between">
-                    <div class="text-caption text-grey">
-                      退戶日期：{{ formatDate(item.cancellationDate) }} ｜
-                      操作人員：{{ item.operatorName }} ｜
-                      原始文檔：{{ item.originalDocId }}
+                      <v-btn
+                        color="success"
+                        variant="flat"
+                        prepend-icon="mdi-restore"
+                        :loading="restoringDocId === item.docId"
+                        @click="handleRestore(item)"
+                      >
+                        復原此筆退戶
+                      </v-btn>
                     </div>
-                    <v-btn
-                      color="success"
-                      variant="flat"
-                      prepend-icon="mdi-restore"
-                      :loading="restoringDocId === item.docId"
-                      @click="handleRestore(item)"
-                    >
-                      復原此筆退戶
-                    </v-btn>
-                  </div>
-                </v-card-text>
-              </div>
-            </v-expand-transition>
-          </v-card>
+                  </v-card>
+                </td>
+              </tr>
+            </template>
+          </v-data-table>
         </template>
       </v-card-text>
     </v-card>
@@ -247,14 +329,71 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- 修改退戶原因 Dialog -->
+    <v-dialog v-model="editReasonsDialog.show" max-width="560" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon left class="mr-2">mdi-pencil</v-icon>
+          修改退戶原因
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-3">
+            戶別：<strong>【{{ editReasonsDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ editReasonsDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <p class="text-body-2 font-weight-bold mb-3">選擇退戶原因（可複選）</p>
+          <v-container class="pa-0">
+            <v-row>
+              <v-col
+                v-for="reason in CANCEL_REASONS"
+                :key="reason"
+                cols="12"
+                sm="6"
+                class="pb-2"
+              >
+                <v-checkbox
+                  :model-value="editReasonsDialog.selectedReasons"
+                  :label="reason"
+                  :value="reason"
+                  @update:model-value="editReasonsDialog.selectedReasons = $event"
+                  density="compact"
+                  hide-details
+                ></v-checkbox>
+              </v-col>
+            </v-row>
+          </v-container>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="editReasonsDialog.show = false">取消</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="editReasonsDialog.loading"
+            @click="executeUpdateReasons"
+          >
+            確認修改
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 退戶統計分析 Dialog -->
+    <CancelledPurchaseStatistics
+      :show="statisticsDialog"
+      :items="items"
+      @update:show="statisticsDialog = $event"
+    />
   </v-dialog>
 </template>
 
 <script setup>
-import { ref, watch, reactive } from 'vue';
-import { getCancelledPurchases, restoreCancelledPurchase } from '@/api';
+import { ref, watch, reactive, computed } from 'vue';
+import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
+import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -266,10 +405,66 @@ const emit = defineEmits(['update:show', 'data-updated']);
 const userStore = useUserStore();
 const toast = useToast();
 
+// 退戶原因選項列表
+const CANCEL_REASONS = [
+  '總價太高',
+  '單價太高',
+  '自備款不足',
+  '貸款成數太少',
+  '地點不符',
+  '家人反對',
+  '家人意外、重病',
+  '資金斷鏈',
+  '神明指示',
+  '風水忌諱',
+  '生活機能不足',
+  '環境不喜歡',
+  '換戶',
+  '景氣不好',
+  '工期太久',
+  '財務規劃暫不買房'
+];
+
 const isLoading = ref(false);
 const items = ref([]);
-const expandedDocId = ref(null);
+const expanded = ref([]);
 const restoringDocId = ref(null);
+const statisticsDialog = ref(false);
+const searchQuery = ref('');
+
+// Table headers
+const tableHeaders = [
+  { title: '戶別', key: 'unitId', sortable: true, width: '120px' },
+  { title: '買方', key: 'buyerName', sortable: true },
+  { title: '業務員', key: 'salesperson', sortable: true },
+  { title: '成交總價', key: 'totalPrice', sortable: false },
+  { title: '坪數', key: 'area_house_ping', sortable: true, width: '80px' },
+  { title: '退戶原因', key: 'cancelReasons', sortable: false },
+  { title: '退戶日期', key: 'cancellationDate', sortable: true, width: '150px' },
+  { title: '操作人', key: 'operatorName', sortable: true },
+];
+
+// 搜尋過濾邏輯
+const filteredItems = computed(() => {
+  const query = searchQuery.value.toLowerCase().trim();
+  if (!query) return items.value;
+
+  return items.value.filter(item => {
+    const searchFields = [
+      item.unitId,
+      item.buyerName,
+      item.salesperson,
+      item.operatorName,
+      item.area_house_ping,
+      formatDate(item.cancellationDate),
+      (item.cancelReasons || []).join(' '),
+      formatPrice(calculateTotalTransactionPrice(item))
+    ];
+    return searchFields.some(field =>
+      field && String(field).toLowerCase().includes(query)
+    );
+  });
+});
 
 const confirmDialog = reactive({
   show: false,
@@ -283,6 +478,13 @@ const conflictDialog = reactive({
   message: '',
   currentBuyerName: '',
   currentStatus: '',
+});
+
+const editReasonsDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  selectedReasons: [],
 });
 
 async function loadData() {
@@ -302,8 +504,14 @@ async function loadData() {
   }
 }
 
-function toggleExpand(docId) {
-  expandedDocId.value = expandedDocId.value === docId ? null : docId;
+function onRowClick(event, { item }) {
+  const docId = item.docId;
+  const idx = expanded.value.indexOf(docId);
+  if (idx === -1) {
+    expanded.value = [docId]; // 單次只展開一筆
+  } else {
+    expanded.value = [];
+  }
 }
 
 function formatDate(timestamp) {
@@ -328,11 +536,36 @@ function formatNum(val) {
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+// 計算車位相關價格
+function calculateParkingPrices(item) {
+  const parkingDetails = item.parkingDetails || [];
+  const parkingTransactionSum = parkingDetails.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
+  const parkingFloorSum = parkingDetails.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
+  return { parkingTransactionSum, parkingFloorSum };
+}
+
+// 計算新的成交總價 = 房屋成交價 + 車位成交價
+function calculateTotalTransactionPrice(item) {
+  const housePrice = Number(item.price_transaction_house) || 0;
+  const { parkingTransactionSum } = calculateParkingPrices(item);
+  return housePrice + parkingTransactionSum;
+}
+
+// 計算溢差價 = 成交總價 - 房屋底價 - 車位底價
+function calculatePremiumPrice(item) {
+  const totalTransactionPrice = calculateTotalTransactionPrice(item);
+  const houseFloorPrice = Number(item.price_floor_house_total) || 0;
+  const { parkingFloorSum } = calculateParkingPrices(item);
+  return totalTransactionPrice - houseFloorPrice - parkingFloorSum;
+}
+
 function handleRestore(item) {
   confirmDialog.targetItem = item;
+  const totalPrice = calculateTotalTransactionPrice(item);
   confirmDialog.message = `確定要將 <strong>【${item.unitId}】</strong> 的退戶資料復原嗎？<br><br>` +
     `買方：<strong>${item.buyerName || '—'}</strong><br>` +
-    `成交價：<strong>${formatPrice(item.price_transaction_house)} 萬</strong><br>` +
+    `銷售人員：<strong>${item.salesperson || '—'}</strong><br>` +
+    `成交總價：<strong>${formatPrice(totalPrice)} 萬</strong><br>` +
     `車位：<strong>${item.parkingCount} 個</strong><br><br>` +
     `系統會將備份資料回寫至原始戶別，並恢復車位關聯。`;
   confirmDialog.show = true;
@@ -356,7 +589,7 @@ async function executeRestore() {
       toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
       confirmDialog.show = false;
       items.value = items.value.filter(i => i.docId !== item.docId);
-      expandedDocId.value = null;
+      expanded.value = [];
       emit('data-updated');
     } else if (result.status === 'conflict') {
       confirmDialog.show = false;
@@ -376,11 +609,50 @@ async function executeRestore() {
   }
 }
 
+function handleEditReasons(item) {
+  editReasonsDialog.targetItem = item;
+  editReasonsDialog.selectedReasons = [...(item.cancelReasons || [])];
+  editReasonsDialog.show = true;
+}
+
+async function executeUpdateReasons() {
+  const item = editReasonsDialog.targetItem;
+  if (!item) return;
+
+  editReasonsDialog.loading = true;
+
+  try {
+    const result = await updateCancelReason(
+      props.projectId,
+      item.docId,
+      editReasonsDialog.selectedReasons,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      // 即時更新列表中該筆記錄的 cancelReasons
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].cancelReasons = editReasonsDialog.selectedReasons;
+      }
+      editReasonsDialog.show = false;
+    } else {
+      toast.error(`修改失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('修改退戶原因失敗:', error);
+    toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    editReasonsDialog.loading = false;
+  }
+}
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
     loadData();
   } else {
-    expandedDocId.value = null;
+    expanded.value = [];
     items.value = [];
   }
 });
@@ -415,5 +687,12 @@ watch(() => props.show, (newVal) => {
   color: #757575;
   white-space: nowrap;
   width: 90px;
+}
+
+.cancel-reasons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
 }
 </style>
