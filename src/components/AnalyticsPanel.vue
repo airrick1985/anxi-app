@@ -55,6 +55,7 @@
                 color="primary"
                 text-color="white"
                 prepend-icon="mdi-calendar-multiple"
+                style="color: white !important;"
               >
                 累計統計（全部資料）
               </v-chip>
@@ -313,6 +314,23 @@
                 </v-row>
               </div>
 
+              <!-- 分組 1.5: 本日/周/月退戶 (非累計時顯示) -->
+              <div v-if="selectedPeriod !== 'all' && cancelledStats !== null" class="metric-group mb-6">
+                <div class="group-header">🚫 {{ getPeriodLabel() }}退戶</div>
+                <v-row>
+                  <v-col cols="12" sm="6">
+                    <MetricCard
+                      :title="`${getPeriodLabel()}退戶戶數`"
+                      :value="cancelledStats?.count ?? 0"
+                      :subtitle="cancelledStats?.amount > 0 ? `成交金額 ${formatAmount(cancelledStats.amount)}萬` : '—'"
+                      icon="mdi-account-cancel"
+                      icon-color="error"
+                      value-color="h5 text-error"
+                    />
+                  </v-col>
+                </v-row>
+              </div>
+
               <!-- 分組 2: 已售 (累計) -->
               <div class="metric-group mb-6">
                 <div class="group-header">✅ 已售 (累計)</div>
@@ -360,23 +378,6 @@
                       :value="statistics.parkings.unsold"
                       :subtitle="`${formatAmount(statistics.parkings.unsoldAmount)}萬 (${calculatePercentage(statistics.parkings.unsoldAmount, statistics.parkings.totalAmount)}%)`"
                       icon="mdi-parking"
-                      icon-color="error"
-                      value-color="h5 text-error"
-                    />
-                  </v-col>
-                </v-row>
-              </div>
-
-              <!-- 分組 5: 退戶 -->
-              <div v-if="cancelledStats !== null" class="metric-group mb-6">
-                <div class="group-header">🚫 {{ selectedPeriod === 'all' ? '累計' : getPeriodLabel() }}退戶</div>
-                <v-row>
-                  <v-col cols="12" sm="6">
-                    <MetricCard
-                      :title="`${selectedPeriod === 'all' ? '累計' : getPeriodLabel()}退戶戶數`"
-                      :value="cancelledStats?.count ?? 0"
-                      :subtitle="cancelledStats?.amount > 0 ? `成交金額 ${formatAmount(cancelledStats.amount)}萬` : '—'"
-                      icon="mdi-account-cancel"
                       icon-color="error"
                       value-color="h5 text-error"
                     />
