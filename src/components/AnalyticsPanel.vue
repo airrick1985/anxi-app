@@ -798,7 +798,7 @@ const generateStatisticsText = () => {
   text += `總銷：${formatAmount(totalAllAmount)}萬\n`
 
   text += `\n【戶別明細】\n`
-  const validStatuses = ['小訂', '補足', '簽約']
+  const validStatuses = ['小訂', '補足', '簽約', '退戶']
   const byStatusEntries = Object.entries(statistics.value.households.byStatus).filter(
     ([status]) => validStatuses.includes(status)
   )
@@ -882,10 +882,19 @@ const generateSimpleText = () => {
     text += `${getPeriodLabel()}銷售車位：${statistics.value.parkings.periodSold}個 (${formatAmount(periodParkingAmount)}萬)\n`
     text += `${getPeriodLabel()}銷售總銷：${formatAmount(periodTotalAmount)}萬 (${calculatePercentage(periodTotalAmount, totalAllAmount)}%)\n`
 
+    // 📌 新增：退戶資訊
+    if (cancelledStats.value && cancelledStats.value.count > 0) {
+      text += `${getPeriodLabel()}退戶戶數：${cancelledStats.value.count}戶`
+      if (cancelledStats.value.amount > 0) {
+        text += ` (成交金額 ${formatAmount(cancelledStats.value.amount)}萬)`
+      }
+      text += `\n`
+    }
+
     // 📌 新增：成交戶別詳情（包含銷售人員）
     if (statistics.value.households.byStatusUnits) {
-      // 檢查是否有任何成交戶別
-      const statusOrder = ['小訂', '補足', '簽約']
+      // 檢查是否有任何成交戶別或退戶
+      const statusOrder = ['小訂', '補足', '簽約', '退戶']
       let hasUnits = false
 
       statusOrder.forEach(status => {
@@ -916,6 +925,15 @@ const generateSimpleText = () => {
       text += `\n`
     }
   }
+
+  // 累計退戶
+  if (statistics.value.households.byStatus['退戶']) {
+    const cancelledCount = statistics.value.households.byStatus['退戶'] || 0
+    const cancelledAmount = statistics.value.households.byStatusAmount['退戶'] || 0
+    text += `累計退戶戶數：${cancelledCount}戶 (退戶金額 ${formatAmount(cancelledAmount)}萬)\n`
+  }
+
+  text += `\n`
 
   // 累計已售
   text += `累計已售戶數：${statistics.value.households.sold}戶 (${formatAmount(soldHouseholdAmount)}萬)\n`
