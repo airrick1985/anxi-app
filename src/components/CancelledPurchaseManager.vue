@@ -227,6 +227,30 @@
                       </div>
                     </template>
 
+                    <!-- 退戶日期 -->
+                    <v-divider class="my-3"></v-divider>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                      <div class="section-title">
+                        <v-icon size="small" class="mr-1" color="warning">mdi-calendar</v-icon>
+                        退戶日期
+                      </div>
+                      <v-btn icon size="x-small" variant="text" @click="handleEditCancellationDate(item)">
+                        <v-icon size="small">mdi-pencil</v-icon>
+                        <v-tooltip activator="parent">修改退戶日期</v-tooltip>
+                      </v-btn>
+                    </div>
+                    <div class="mb-4">
+                      <v-chip
+                        label
+                        color="info"
+                        variant="tonal"
+                        size="small"
+                        prepend-icon="mdi-calendar-outline"
+                      >
+                        {{ formatDate(item.cancellationDate) }}
+                      </v-chip>
+                    </div>
+
                     <!-- 退戶原因 -->
                     <v-divider class="my-3"></v-divider>
                     <div class="d-flex align-center justify-space-between mb-2">
@@ -379,6 +403,41 @@
       </v-card>
     </v-dialog>
 
+    <!-- 修改退戶日期 Dialog -->
+    <v-dialog v-model="editDateDialog.show" max-width="480" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon left class="mr-2">mdi-calendar</v-icon>
+          修改退戶日期
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-4">
+            戶別：<strong>【{{ editDateDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ editDateDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <v-text-field
+            v-model="editDateDialog.selectedDate"
+            type="date"
+            label="選擇退戶日期"
+            variant="outlined"
+            density="compact"
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="editDateDialog.show = false">取消</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="editDateDialog.loading"
+            @click="executeUpdateDate"
+          >
+            確認修改
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 退戶統計分析 Dialog -->
     <CancelledPurchaseStatistics
       :show="statisticsDialog"
@@ -390,7 +449,7 @@
 
 <script setup>
 import { ref, watch, reactive, computed } from 'vue';
-import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason } from '@/api';
+import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, updateCancellationDate } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
@@ -485,6 +544,13 @@ const editReasonsDialog = reactive({
   loading: false,
   targetItem: null,
   selectedReasons: [],
+});
+
+const editDateDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  selectedDate: '',
 });
 
 async function loadData() {
@@ -645,6 +711,65 @@ async function executeUpdateReasons() {
     toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
   } finally {
     editReasonsDialog.loading = false;
+  }
+}
+
+function handleEditCancellationDate(item) {
+  editDateDialog.targetItem = item;
+  // 將 Timestamp 轉換為 YYYY-MM-DD 格式
+  if (item.cancellationDate) {
+    const timestamp = item.cancellationDate;
+    let date;
+    if (timestamp._seconds) {
+      date = new Date(timestamp._seconds * 1000);
+    } else if (timestamp instanceof Date) {
+      date = timestamp;
+    } else {
+      date = new Date();
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    editDateDialog.selectedDate = `${year}-${month}-${day}`;
+  } else {
+    editDateDialog.selectedDate = new Date().toISOString().split('T')[0];
+  }
+  editDateDialog.show = true;
+}
+
+async function executeUpdateDate() {
+  const item = editDateDialog.targetItem;
+  if (!item || !editDateDialog.selectedDate) {
+    toast.error('請選擇退戶日期', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+
+  editDateDialog.loading = true;
+
+  try {
+    const result = await updateCancellationDate(
+      props.projectId,
+      item.docId,
+      editDateDialog.selectedDate,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      // 即時更新列表中該筆記錄的 cancellationDate
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].cancellationDate = result.cancellationDate;
+      }
+      editDateDialog.show = false;
+    } else {
+      toast.error(`修改失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('修改退戶日期失敗:', error);
+    toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    editDateDialog.loading = false;
   }
 }
 

@@ -420,9 +420,12 @@
                 <v-expansion-panel
                   v-for="(count, status) in getFilteredByStatus()"
                   :key="status"
+                  :class="status === '退戶' ? 'cancelled-panel' : ''"
                 >
                   <template v-slot:title>
-                    <span class="status-detail-text">{{ status }} {{ count }}戶 ({{ formatAmount(statistics.households.byStatusAmount[status] || 0) }}萬)</span>
+                    <span :class="status === '退戶' ? 'status-detail-text cancelled-status' : 'status-detail-text'">
+                      {{ status }} {{ count }}戶 ({{ formatAmount(statistics.households.byStatusAmount[status] || 0) }}萬)
+                    </span>
                   </template>
 
                   <v-card-text>
@@ -430,11 +433,11 @@
                       <div
                         v-for="unit in statistics.households.byStatusUnits[status]"
                         :key="unit.unitId"
-                        class="unit-item"
+                        :class="status === '退戶' ? 'unit-item cancelled-unit-item' : 'unit-item'"
                         style="cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;"
                         @click="openUnitDetail(unit)"
-                        @mouseover="$event.target.style.backgroundColor = '#f0f7ff'"
-                        @mouseout="$event.target.style.backgroundColor = 'transparent'"
+                        @mouseover="$event.target.style.backgroundColor = status === '退戶' ? '#ffebee' : '#f0f7ff'"
+                        @mouseout="$event.target.style.backgroundColor = status === '退戶' ? 'transparent' : 'transparent'"
                       >
                         <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId) }}萬/坪)-{{ unit.salesperson }}</span>
                       </div>
@@ -694,12 +697,12 @@ const getPeriodLabel = () => {
 }
 
 /**
- * 過濾銷況明細：只顯示小訂、補足、簽約
+ * 過濾銷況明細：顯示小訂、補足、簽約、退戶
  */
 const getFilteredByStatus = () => {
   if (!statistics.value?.households?.byStatus) return {}
 
-  const validStatuses = ['小訂', '補足', '簽約']
+  const validStatuses = ['小訂', '補足', '簽約', '退戶']
   const filtered = {}
 
   Object.entries(statistics.value.households.byStatus).forEach(([status, count]) => {
@@ -1217,6 +1220,21 @@ const loadStatistics = async () => {
           }))
         }
 
+        // 將退戶數據添加到 statistics.households 的 byStatus 中（銷況明細）
+        if (statistics.value?.households) {
+          statistics.value.households.byStatus['退戶'] = filtered.length
+          statistics.value.households.byStatusAmount['退戶'] = totalAmount
+
+          // 準備退戶單位列表
+          statistics.value.households.byStatusUnits['退戶'] = filtered.map(item => ({
+            unitId: item.unitId,
+            unitName: item.unitName || item.unitId,
+            price_transaction_total: (Number(item.price_transaction_house) || 0) +
+                                     ((item.parkingDetails || []).reduce((s, p) => s + (Number(p.price_transaction) || 0), 0)),
+            salesperson: item.salesperson || '—'
+          }))
+        }
+
         console.log('[AnalyticsPanel] 退戶統計:', cancelledStats.value)
       }
     } catch (err) {
@@ -1662,6 +1680,33 @@ watch(
   font-weight: 600;
   font-size: 14px;
   color: #1a1a1a;
+}
+
+.status-detail-text.cancelled-status {
+  color: #d32f2f;
+}
+
+:deep(.cancelled-panel) {
+  border-left: 4px solid #d32f2f;
+}
+
+:deep(.cancelled-panel .v-expansion-panel__header) {
+  background-color: #fff5f5 !important;
+}
+
+:deep(.cancelled-panel:hover .v-expansion-panel__header) {
+  background-color: #ffebee !important;
+}
+
+.cancelled-unit-item {
+  background: linear-gradient(135deg, #fff5f5 0%, #ffebee 100%);
+  border-color: #ef9a9a;
+}
+
+.cancelled-unit-item:hover {
+  background: linear-gradient(135deg, #ffcdd2 0%, #ffebee 100%);
+  border-color: #d32f2f;
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.2);
 }
 
 .units-list {

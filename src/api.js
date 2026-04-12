@@ -988,6 +988,28 @@ export async function updateCancelReason(projectId, cancelledDocId, cancelReason
   }
 }
 
+/**
+ * 修改退戶日期
+ * @param {string} projectId 建案 ID
+ * @param {string} cancelledDocId 退戶記錄的 docId
+ * @param {string} cancellationDate YYYY-MM-DD 格式的日期字符串
+ * @param {string} operatorName 操作人員名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function updateCancellationDate(projectId, cancelledDocId, cancellationDate, operatorName) {
+  if (!projectId || !cancelledDocId || !cancellationDate || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'updateCancellationDate');
+    const result = await func({ projectId, cancelledDocId, cancellationDate, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 updateCancellationDate 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
 // ===============================================
 // /  訊息系統 API (Firestore 遷移版)
 // ===============================================

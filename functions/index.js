@@ -3250,6 +3250,60 @@ exports.updateCancelReason = onCall({ region: "asia-east1" }, async (request) =>
 });
 
 /**
+ * 修改退戶日期
+ */
+exports.updateCancellationDate = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, cancellationDate, operatorName } = request.data;
+  const functionName = `updateCancellationDate (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !cancellationDate || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId、cancellationDate 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始修改退戶日期...`);
+    console.log(`[${functionName}] 新日期: ${cancellationDate}`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    // 將 YYYY-MM-DD 字符串轉換為 Firestore Timestamp
+    let cancellationTimestamp;
+    try {
+      const [year, month, day] = cancellationDate.split('-');
+      const dateObj = new Date(year, month - 1, day, 0, 0, 0);
+      cancellationTimestamp = admin.firestore.Timestamp.fromDate(dateObj);
+    } catch (err) {
+      console.error(`[${functionName}] 日期轉換失敗:`, err);
+      cancellationTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    // 更新退戶資料集合中的 cancellationDate
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    const updateData = {
+      cancellationDate: cancellationTimestamp,
+      '_cancellationMeta.lastEditedBy': operatorName,
+      '_cancellationMeta.lastEditedAt': admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await cancelledDocRef.update(updateData);
+
+    console.log(`[${functionName}] 退戶日期已更新`);
+
+    return {
+      status: "success",
+      message: "退戶日期已更新成功！",
+      cancellationDate: cancellationTimestamp
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `修改退戶日期失敗: ${error.message}`);
+  }
+});
+
+/**
  * 復原退戶資料（將備份資料回寫到原始戶別）
  */
 exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
