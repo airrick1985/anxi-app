@@ -26,7 +26,17 @@
         </div>
 
         <div v-if="showReasonSelection" class="mt-4">
-          <p class="font-weight-bold mb-3">請選擇退戶原因（可複選）</p>
+          <div class="d-flex align-center justify-space-between mb-3">
+            <p class="font-weight-bold">請選擇退戶原因（可複選）</p>
+            <v-chip
+              label
+              color="error"
+              text-color="white"
+              size="small"
+            >
+              至少須選一項
+            </v-chip>
+          </div>
           <v-container class="pa-0">
             <v-row>
               <v-col
@@ -47,6 +57,16 @@
               </v-col>
             </v-row>
           </v-container>
+          <v-alert
+            v-if="showReasonError"
+            type="error"
+            variant="tonal"
+            class="mt-3"
+            density="compact"
+            icon="mdi-alert-circle"
+          >
+            請至少選擇一項退戶原因
+          </v-alert>
         </div>
       </v-card-text>
 
@@ -61,8 +81,9 @@
         <v-btn
           :color="confirmColor"
           variant="flat"
-          @click="$emit('confirm', { reasons: selectedReasons, date: selectedDate })"
+          @click="handleConfirm"
           :loading="loading"
+          :disabled="isConfirmDisabled"
         >
           {{ confirmText }}
         </v-btn>
@@ -72,7 +93,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, watch } from 'vue';
+import { defineProps, defineEmits, ref, watch, computed } from 'vue';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -88,6 +109,15 @@ const emit = defineEmits(['update:show', 'confirm', 'cancel']);
 
 const selectedReasons = ref([]);
 const selectedDate = ref(getTodayDate());
+const showReasonError = ref(false);
+
+// 計算是否應該禁用確認按鈕
+const isConfirmDisabled = computed(() => {
+  // 如果不需要顯示原因選擇，不禁用
+  if (!props.showReasonSelection) return false;
+  // 如果沒有選擇任何原因，禁用
+  return selectedReasons.value.length === 0;
+});
 
 // 退戶原因選項
 const cancelReasons = [
@@ -119,6 +149,19 @@ function getTodayDate() {
 
 function updateSelectedReasons(value) {
   selectedReasons.value = value;
+  // 清除錯誤提示
+  showReasonError.value = false;
+}
+
+function handleConfirm() {
+  // 驗證：如果需要選擇原因且未選擇，顯示錯誤
+  if (props.showReasonSelection && selectedReasons.value.length === 0) {
+    showReasonError.value = true;
+    return;
+  }
+
+  // 驗證通過，發送確認事件
+  emit('confirm', { reasons: selectedReasons.value, date: selectedDate.value });
 }
 
 // 重置選項和日期
@@ -126,6 +169,7 @@ watch(() => props.show, (newVal) => {
   if (newVal) {
     selectedReasons.value = [];
     selectedDate.value = getTodayDate();
+    showReasonError.value = false;
   }
 });
 </script>
