@@ -1196,7 +1196,26 @@ const loadStatistics = async () => {
           return sum + housePrice + parkingSum
         }, 0)
 
-        cancelledStats.value = { count: filtered.length, amount: totalAmount }
+        // 按業務員分組計算退戶數
+        const byPersonnel = {}
+        filtered.forEach(item => {
+          const salesperson = item.salesperson || '未知'
+          if (!byPersonnel[salesperson]) {
+            byPersonnel[salesperson] = 0
+          }
+          byPersonnel[salesperson]++
+        })
+
+        cancelledStats.value = { count: filtered.length, amount: totalAmount, byPersonnel }
+
+        // 將退戶數據添加到 statistics.personnel 中
+        if (statistics.value?.personnel && Array.isArray(statistics.value.personnel)) {
+          statistics.value.personnel = statistics.value.personnel.map(personnel => ({
+            ...personnel,
+            cancelledCount: byPersonnel[personnel.name] || 0
+          }))
+        }
+
         console.log('[AnalyticsPanel] 退戶統計:', cancelledStats.value)
       }
     } catch (err) {

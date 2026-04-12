@@ -59,6 +59,23 @@
         </div>
       </template>
 
+      <!-- 退戶列 -->
+      <template v-slot:item.cancelledCount="{ item }">
+        <div class="text-center">
+          <v-chip
+            v-if="item.cancelledCount > 0"
+            label
+            color="error"
+            text-color="white"
+            size="small"
+            class="font-weight-bold"
+          >
+            {{ item.cancelledCount }}
+          </v-chip>
+          <span v-else class="text-grey">—</span>
+        </div>
+      </template>
+
       <!-- 空狀態 -->
       <template v-slot:no-data>
         <div class="py-8 text-center text-grey">
@@ -77,7 +94,7 @@ const props = defineProps({
   personnelStats: {
     type: Array,
     required: true,
-    // 每個項目格式: { name, soldCount, totalAmount, premiumAmount, byStatus, byStatusAmount }
+    // 每個項目格式: { name, soldCount, totalAmount, premiumAmount, byStatus, byStatusAmount, cancelledCount }
   },
 })
 
@@ -87,6 +104,7 @@ const headers = [
   { title: '成交戶數', key: 'soldCount', width: '100px', align: 'center' },
   { title: '銷售金額', key: 'totalAmount', width: '150px', align: 'end' },
   { title: '溢差價', key: 'premiumAmount', width: '120px', align: 'end' },
+  { title: '退戶', key: 'cancelledCount', width: '80px', align: 'center' },
 ]
 
 
