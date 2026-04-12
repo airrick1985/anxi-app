@@ -59,20 +59,10 @@
         </div>
       </template>
 
-      <!-- 退戶列 -->
+      <!-- 退戶戶數列 -->
       <template v-slot:item.cancelledCount="{ item }">
-        <div class="text-center">
-          <v-chip
-            v-if="item.cancelledCount > 0"
-            label
-            color="error"
-            text-color="white"
-            size="small"
-            class="font-weight-bold"
-          >
-            {{ item.cancelledCount }}
-          </v-chip>
-          <span v-else class="text-grey">—</span>
+        <div class="text-center font-weight-bold text-h6 text-error">
+          {{ item.cancelledCount || 0 }}
         </div>
       </template>
 
@@ -102,9 +92,9 @@ const headers = [
   { title: '排名', key: 'rank', width: '60px', align: 'center' },
   { title: '銷售人員', key: 'name', width: '120px' },
   { title: '成交戶數', key: 'soldCount', width: '100px', align: 'center' },
+  { title: '退戶戶數', key: 'cancelledCount', width: '100px', align: 'center' },
   { title: '銷售金額', key: 'totalAmount', width: '150px', align: 'end' },
   { title: '溢差價', key: 'premiumAmount', width: '120px', align: 'end' },
-  { title: '退戶', key: 'cancelledCount', width: '80px', align: 'center' },
 ]
 
 
