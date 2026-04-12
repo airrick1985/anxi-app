@@ -367,6 +367,23 @@
                 </v-row>
               </div>
 
+              <!-- 分組 5: 退戶 -->
+              <div v-if="cancelledStats !== null" class="metric-group mb-6">
+                <div class="group-header">🚫 {{ selectedPeriod === 'all' ? '累計' : getPeriodLabel() }}退戶</div>
+                <v-row>
+                  <v-col cols="12" sm="6">
+                    <MetricCard
+                      :title="`${selectedPeriod === 'all' ? '累計' : getPeriodLabel()}退戶戶數`"
+                      :value="cancelledStats?.count ?? 0"
+                      :subtitle="cancelledStats?.amount > 0 ? `成交金額 ${formatAmount(cancelledStats.amount)}萬` : '—'"
+                      icon="mdi-account-cancel"
+                      icon-color="error"
+                      value-color="h5 text-error"
+                    />
+                  </v-col>
+                </v-row>
+              </div>
+
               <!-- 分組 4: 總數 -->
               <div class="metric-group">
                 <div class="group-header">📊 總數</div>
@@ -559,7 +576,7 @@ import {
   calculateVipGuestStats,
   getDateRange,
 } from '@/utils/analyticsCalculations'
-import { fetchVipGuests, analyzeCustomerStatus } from '@/api'
+import { fetchVipGuests, analyzeCustomerStatus, getCancelledPurchases } from '@/api'
 import html2canvas from 'html2canvas'
 import { saveAs } from 'file-saver'
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
@@ -604,6 +621,7 @@ const isLoading = ref(false)
 const error = ref(null)
 const statistics = ref(null)
 const vipGuestStats = ref(null)
+const cancelledStats = ref(null)
 const showVipGuestList = ref(false)
 const showUnitModal = ref(false)
 const isAnalyzing = ref(false)
@@ -748,6 +766,16 @@ const generateStatisticsText = () => {
   text += `\n未售戶數：${statistics.value.households.unsold}戶 (${formatAmount(unsoldHouseholdAmount)}萬)\n`
   text += `未售車位：${statistics.value.parkings.unsold}個 (${formatAmount(unsoldParkingAmount)}萬)\n`
   text += `未售總銷：${formatAmount(totalUnsoldAmount)}萬 (${calculatePercentage(totalUnsoldAmount, totalAllAmount)}%)\n`
+
+  // 退戶（新增）
+  if (cancelledStats.value !== null && cancelledStats.value.count > 0) {
+    const label = selectedPeriod.value === 'all' ? '累計' : getPeriodLabel()
+    text += `\n${label}退戶戶數：${cancelledStats.value.count}戶`
+    if (cancelledStats.value.amount > 0) {
+      text += ` (成交金額 ${formatAmount(cancelledStats.value.amount)}萬)`
+    }
+    text += '\n'
+  }
 
   // 總數（第四組）
   text += `\n總戶數：${statistics.value.households.total}戶 (${formatAmount(totalHouseholdAmount)}萬)\n`
@@ -1130,6 +1158,50 @@ const loadStatistics = async () => {
       console.error('[AnalyticsPanel] VIP客人統計失敗:', err)
       // 不影響主要統計，只記錄錯誤
       vipGuestStats.value = null
+    }
+
+    // 🔍 查詢退戶統計
+    try {
+      const result = await getCancelledPurchases(props.projectId)
+      if (result.status === 'success' && Array.isArray(result.data)) {
+        const cancelledList = result.data
+
+        // 根據 selectedPeriod 建立 dateRange
+        const dateRange = selectedPeriod.value === 'custom'
+          ? {
+              start: new Date(customDateRange.value.start),
+              end: new Date(customDateRange.value.end),
+            }
+          : getDateRange(selectedPeriod.value)
+
+        if (dateRange && dateRange.end) {
+          dateRange.end.setHours(23, 59, 59)
+        }
+
+        // 過濾落在 dateRange 內的退戶（cancellationDate 格式：{ _seconds, _nanoseconds }）
+        const filtered = (dateRange == null)
+          ? cancelledList
+          : cancelledList.filter(item => {
+              if (!item.cancellationDate?._seconds) return false
+              const d = new Date(item.cancellationDate._seconds * 1000)
+              return d >= dateRange.start && d <= dateRange.end
+            })
+
+        // 計算成交總金額（房屋成交價 + 各車位成交價）
+        const totalAmount = filtered.reduce((sum, item) => {
+          const housePrice = Number(item.price_transaction_house) || 0
+          const parkingSum = (item.parkingDetails || []).reduce(
+            (s, p) => s + (Number(p.price_transaction) || 0), 0
+          )
+          return sum + housePrice + parkingSum
+        }, 0)
+
+        cancelledStats.value = { count: filtered.length, amount: totalAmount }
+        console.log('[AnalyticsPanel] 退戶統計:', cancelledStats.value)
+      }
+    } catch (err) {
+      console.error('[AnalyticsPanel] 退戶統計失敗:', err)
+      cancelledStats.value = null
     }
   } catch (err) {
     console.error('[AnalyticsPanel] 統計計算失敗:', err)
