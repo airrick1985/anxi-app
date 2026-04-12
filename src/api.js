@@ -895,10 +895,11 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
  * @param {string} unitId - 要退戶的戶別 ID
  * @param {string} operatorName - 執行此操作的使用者名稱
  * @param {Array<string>} cancelReasons - 退戶原因列表 (可複選)
+ * @param {string} cancellationDate - 退戶日期 (YYYY-MM-DD 格式)
  * @returns {Promise<object>}
  */
-export async function cancelPurchase(projectName, projectId, unitId, operatorName, cancelReasons = []) {
-  //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName, cancelReasons });
+export async function cancelPurchase(projectName, projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null) {
+  //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName, cancelReasons, cancellationDate });
 
   if (!projectId || !unitId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少 projectId、unitId 或 operatorName。" };
@@ -910,7 +911,8 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
       projectId: projectId,
       unitId: unitId,
       operatorName: operatorName,
-      cancelReasons: cancelReasons
+      cancelReasons: cancelReasons,
+      cancellationDate: cancellationDate
     });
 
     //console.log('[api.js] cancelPurchase success:', result.data);

@@ -2889,11 +2889,25 @@ exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
  */
 exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
-  const { projectId, unitId, operatorName, cancelReasons = [] } = request.data;
+  const { projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null } = request.data;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
 
   if (!projectId || !unitId || !operatorName) {
     throw new HttpsError("invalid-argument", "請求缺少 projectId、unitId 或 operatorName。");
+  }
+
+  // 處理退戶日期：如果提供了 cancellationDate (YYYY-MM-DD 格式)，轉換為 Firestore Timestamp
+  let cancellationTimestamp;
+  if (cancellationDate) {
+    try {
+      const dateObj = new Date(cancellationDate);
+      cancellationTimestamp = admin.firestore.Timestamp.fromDate(dateObj);
+    } catch (e) {
+      console.warn(`[${functionName}] 無效的退戶日期格式: ${cancellationDate}，使用伺服器時間`);
+      cancellationTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    }
+  } else {
+    cancellationTimestamp = admin.firestore.FieldValue.serverTimestamp();
   }
 
   const db = new Firestore({ databaseId: "anxi-app" });
@@ -2953,7 +2967,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
       unitId: unitId,
       operatorName: operatorName,
       cancelReasons: cancelReasons,
-      cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
+      cancellationDate: cancellationTimestamp,
       originalHouseholdData: originalHouseholdData,
       originalParkingData: originalParkingData,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -2974,12 +2988,14 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
       // 加入退戶元資料
       _cancellationMeta: {
         operatorName: operatorName,
-        cancellationDate: admin.firestore.FieldValue.serverTimestamp(),
+        cancellationDate: cancellationTimestamp,
         originalDocId: docId,
         parkingCount: originalParkingData.length,
       },
       // 加入退戶原因
       cancelReasons: cancelReasons,
+      // 退戶日期（頂級字段，方便查詢）
+      cancellationDate: cancellationTimestamp,
       parkingDetails: originalParkingData.map(p => p.data),
       docId: cancelledDocId
     };

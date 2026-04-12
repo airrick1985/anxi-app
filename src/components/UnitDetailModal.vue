@@ -766,41 +766,41 @@ function openCancelPurchaseDialog() {
   showCancelDialog.value = true;
 }
 
-async function handleConfirmCancelPurchase(selectedReasons) {
+async function handleConfirmCancelPurchase(data) {
   if (!props.unitData || !userStore.user) {
     alert('缺少必要資訊，無法執行退戶。');
     return;
   }
+
+  // 解構 data 物件，提取 reasons 和 date
+  const selectedReasons = data?.reasons || [];
+  const cancellationDate = data?.date;
+
+  if (!cancellationDate) {
+    alert('請選擇退戶日期');
+    return;
+  }
+
   isSaving.value = true;
   savingText.value = '正在辦理退戶...';
   showCancelDialog.value = false;
   try {
     console.log('🔍 [UnitDetailModal] 準備執行退戶:', {
       projectName: props.projectName,
-
-      // 🔴 錯誤 (原本的寫法)：projectId 變數未定義
-      // projectId: projectId.value,
-
-      // ✅ 正確修正：從 props 讀取
       projectId: props.projectId,
-
       unitId: props.unitData.unitId,
       operatorName: userStore.user.name,
-      cancelReasons: selectedReasons
+      cancelReasons: selectedReasons,
+      cancellationDate: cancellationDate
     });
 
     const result = await cancelPurchase(
       props.projectName,
-
-      // 🔴 錯誤 (原本的寫法)
-      // projectId.value,
-
-      // ✅ 正確修正：
       props.projectId,
-
       props.unitData.unitId,
       userStore.user.name,
-      selectedReasons
+      selectedReasons,
+      cancellationDate
     );
     if (result.status !== 'success') {
       throw new Error(result.message);

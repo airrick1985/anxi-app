@@ -14,6 +14,17 @@
       <v-card-text class="py-4">
         <div class="text-body-2" v-html="message"></div>
 
+        <!-- 退戶日期選擇 -->
+        <div class="mt-4 mb-4">
+          <p class="font-weight-bold mb-2">退戶日期</p>
+          <v-text-field
+            v-model="selectedDate"
+            type="date"
+            variant="outlined"
+            density="compact"
+          ></v-text-field>
+        </div>
+
         <div v-if="showReasonSelection" class="mt-4">
           <p class="font-weight-bold mb-3">請選擇退戶原因（可複選）</p>
           <v-container class="pa-0">
@@ -50,7 +61,7 @@
         <v-btn
           :color="confirmColor"
           variant="flat"
-          @click="$emit('confirm', selectedReasons)"
+          @click="$emit('confirm', { reasons: selectedReasons, date: selectedDate })"
           :loading="loading"
         >
           {{ confirmText }}
@@ -76,6 +87,7 @@ const props = defineProps({
 const emit = defineEmits(['update:show', 'confirm', 'cancel']);
 
 const selectedReasons = ref([]);
+const selectedDate = ref(getTodayDate());
 
 // 退戶原因選項
 const cancelReasons = [
@@ -97,14 +109,23 @@ const cancelReasons = [
   '財務規劃暫不買房'
 ];
 
+function getTodayDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function updateSelectedReasons(value) {
   selectedReasons.value = value;
 }
 
-// 重置選項
+// 重置選項和日期
 watch(() => props.show, (newVal) => {
   if (newVal) {
     selectedReasons.value = [];
+    selectedDate.value = getTodayDate();
   }
 });
 </script>
