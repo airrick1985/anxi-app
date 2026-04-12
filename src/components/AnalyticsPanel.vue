@@ -439,7 +439,7 @@
                         @mouseover="$event.target.style.backgroundColor = status === '退戶' ? '#ffebee' : '#f0f7ff'"
                         @mouseout="$event.target.style.backgroundColor = status === '退戶' ? 'transparent' : 'transparent'"
                       >
-                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId) }}萬/坪)-{{ unit.salesperson }}</span>
+                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping) }}萬/坪)-{{ unit.salesperson }}</span>
                       </div>
                     </div>
                   </v-card-text>
@@ -668,20 +668,31 @@ const calculatePercentage = (part, total) => {
 
 /**
  * 計算單價（萬/坪）
+ * @param {string} unitId - 戶別 ID
+ * @param {number} [housePrice] - 房屋成交價（可選，用於退戶單位）
+ * @param {number} [areaPing] - 坪數（可選，用於退戶單位）
  */
-const calculateUnitPrice = (unitId) => {
+const calculateUnitPrice = (unitId, housePrice = null, areaPing = null) => {
+  // 如果提供了價格和面積，直接使用（用於退戶單位）
+  if (housePrice !== null && areaPing !== null) {
+    const price = Number(housePrice) || 0
+    const area = Number(areaPing) || 0
+    if (area === 0 || price === 0) return 'N/A'
+    return (price / area).toFixed(2)
+  }
+
   // 從 projectData 中找到該戶別
   const household = projectData.value.households?.find(h => h.unitId === unitId)
 
   if (!household) return 'N/A'
 
   // 使用房屋成交價 / 坪數計算單價
-  const housePrice = Number(household.price_transaction_house) || 0
-  const areaPing = Number(household.area_house_ping) || 0
+  const price = Number(household.price_transaction_house) || 0
+  const area = Number(household.area_house_ping) || 0
 
-  if (areaPing === 0 || housePrice === 0) return 'N/A'
+  if (area === 0 || price === 0) return 'N/A'
 
-  const unitPrice = (housePrice / areaPing).toFixed(2)
+  const unitPrice = (price / area).toFixed(2)
   return unitPrice
 }
 
@@ -802,7 +813,7 @@ const generateStatisticsText = () => {
       const units = statistics.value.households.byStatusUnits[status] || []
       units.forEach(unit => {
         // 使用資料庫的 total_transaction 和 unit_price_transaction
-        const unitPrice = calculateUnitPrice(unit.unitId)
+        const unitPrice = calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping)
 
         // 找到該戶對應的所有車位
         const parkings = projectData.value.parkings?.filter(p => p.buyerUnitId === unit.unitId) || []
@@ -1231,6 +1242,8 @@ const loadStatistics = async () => {
             unitName: item.unitName || item.unitId,
             price_transaction_total: (Number(item.price_transaction_house) || 0) +
                                      ((item.parkingDetails || []).reduce((s, p) => s + (Number(p.price_transaction) || 0), 0)),
+            price_transaction_house: item.price_transaction_house || 0,
+            area_house_ping: item.area_house_ping || 0,
             salesperson: item.salesperson || '—'
           }))
         }
