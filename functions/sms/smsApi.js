@@ -14,7 +14,7 @@ const db = getFirestore("anxi-app");
 module.exports = onCall({
     region: "asia-east1",
     cors: true,
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 60,
     secrets: ["EVERY8D_UID", "EVERY8D_PWD"]
 }, async (request) => {

@@ -59,9 +59,9 @@
         <v-icon start>mdi-form-select</v-icon>
         自訂表單
       </v-tab>
-      <v-tab value="sync">
+      <v-tab value="sheetSync">
         <v-icon start>mdi-google-spreadsheet</v-icon>
-        Google Sheet 同步銷控資料
+        Google Sheet 同步設定
       </v-tab>
       <v-tab value="aiAssistant">
         <v-icon start>mdi-robot-outline</v-icon>
@@ -705,127 +705,249 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="sync">
+      <v-window-item value="sheetSync">
         <v-card class="pa-4" elevation="2">
-          <v-card-title class="text-h5 text-green-darken-2">
+          <v-card-title class="text-h5">
             <v-icon start>mdi-google-spreadsheet</v-icon>
-            銷控資料同步
+            Google Sheet 同步設定
           </v-card-title>
           <v-card-subtitle>
-            設定並同步銷控資料到 Google Sheet。系統將自動監聽資料變更並即時更新。
+            設定並同步銷控資料和退戶資料到 Google Sheet。系統將自動監聽資料變更並即時更新。
           </v-card-subtitle>
           <v-divider class="my-4"></v-divider>
 
           <v-skeleton-loader v-if="projectLoading" type="article"></v-skeleton-loader>
-          
+
           <div v-else>
-            <v-alert
-              type="info"
-              variant="tonal"
-              class="mb-4"
-              density="compact"
-              icon="mdi-information"
-            >
-              設定完成後，銷控資料的任何變更（如狀態、價格、買方資訊等）將自動同步至指定的 Google Sheet。
-            </v-alert>
+            <v-row>
+              <!-- 左側：銷控資料同步 -->
+              <v-col cols="12" md="6">
+                <v-card class="pa-4" elevation="1" color="green-lighten-5">
+                  <v-card-title class="text-h6 text-green-darken-2">
+                    <v-icon start>mdi-google-spreadsheet</v-icon>
+                    銷控資料同步
+                  </v-card-title>
+                  <v-card-subtitle class="text-caption">
+                    同步銷控資料到 Google Sheet
+                  </v-card-subtitle>
+                  <v-divider class="my-3"></v-divider>
 
-            <v-form ref="syncForm" @submit.prevent>
-              <v-row>
-                <v-col cols="12" md="8">
-                  <v-text-field
-                    v-model="googleSheetForm.url"
-                    label="Google Sheet 網址或 ID"
-                    placeholder="https://docs.google.com/spreadsheets/d/..."
-                    variant="outlined"
-                    density="comfortable"
-                    :rules="[v => !!v || '請輸入 Google Sheet 網址']"
-                    prepend-inner-icon="mdi-link"
-                    clearable
-                  ></v-text-field>
-                </v-col>
-                <v-col cols="12" md="4" class="d-flex align-center">
-                  <v-btn
-                    color="primary"
-                    prepend-icon="mdi-refresh"
-                    :loading="loadingSheets"
-                    :disabled="!googleSheetForm.url"
-                    @click="fetchSheetNames"
-                  >
-                    讀取工作表
-                  </v-btn>
-                </v-col>
-
-                <!-- 显示 Service Account Email 提示 -->
-                <v-col cols="12" v-if="serviceAccountEmail">
                   <v-alert
                     type="info"
                     variant="tonal"
                     class="mb-4"
-                    border="start"
-                    closable
+                    density="compact"
+                    icon="mdi-information"
                   >
-                    <template v-slot:title>
-                      請共用權限給機器人
-                    </template>
-                    為了讓系統能寫入資料，請將您的 Google Sheet 共用給以下 Email (編輯者權限)：
-                    <div class="d-flex align-center mt-2 bg-grey-lighten-4 pa-2 rounded">
-                      <code class="text-subtitle-1 flex-grow-1">{{ serviceAccountEmail }}</code>
-                      <v-btn
-                        size="small"
-                        variant="text"
-                        icon="mdi-content-copy"
-                        @click="copyToClipboard(serviceAccountEmail)"
-                        v-tooltip="'複製 Email'"
-                      ></v-btn>
-                    </div>
+                    設定完成後，銷控資料的任何變更將自動同步至指定的 Google Sheet。
                   </v-alert>
-                </v-col>
 
-              </v-row>
+                  <v-form ref="syncForm" @submit.prevent>
+                    <v-text-field
+                      v-model="googleSheetForm.url"
+                      label="Google Sheet 網址或 ID"
+                      placeholder="https://docs.google.com/spreadsheets/d/..."
+                      variant="outlined"
+                      density="comfortable"
+                      :rules="[v => !!v || '請輸入 Google Sheet 網址']"
+                      prepend-inner-icon="mdi-link"
+                      clearable
+                      class="mb-3"
+                    ></v-text-field>
 
-              <v-expand-transition>
-                <div v-if="sheetNames.length > 0">
-                  <v-autocomplete
-                    v-model="googleSheetForm.sheetName"
-                    :items="sheetNames"
-                    label="選擇要同步的工作表 (Tab)"
-                    variant="outlined"
-                    density="comfortable"
-                    prepend-inner-icon="mdi-table"
-                    :rules="[v => !!v || '請選擇工作表']"
-                    class="mt-2"
-                  ></v-autocomplete>
-
-                  <v-card-actions class="px-0 mt-4">
-                     <v-btn
-                      color="success"
-                      size="large"
-                      prepend-icon="mdi-cloud-sync"
-                      variant="elevated"
-                      :loading="isSyncing"
-                      @click="executeSync"
-                      :disabled="!googleSheetForm.sheetName"
+                    <v-btn
+                      color="primary"
+                      prepend-icon="mdi-refresh"
+                      :loading="loadingSheets"
+                      :disabled="!googleSheetForm.url"
+                      @click="fetchSheetNames"
+                      block
+                      class="mb-3"
                     >
-                      開始全量同步與儲存設定
+                      讀取工作表
                     </v-btn>
-                  </v-card-actions>
-                </div>
-              </v-expand-transition>
-              
-              <v-alert v-if="syncResult" :type="syncResult.type" class="mt-4" variant="tonal">
-                {{ syncResult.message }}
-              </v-alert>
 
-            </v-form>
-            
-            <div class="mt-6 text-caption text-grey">
-               <p class="font-weight-bold mb-1">注意事項：</p>
-               <ol class="pl-4">
-                 <li>請確保您輸入的 Google Sheet 已共用編輯權限給系統帳號 (Agent Email)。</li>
-                 <li>全量同步將會<b>清除並覆蓋</b>該工作表的所有內容，請謹慎操作。</li>
-                 <li>首次同步後，系統即會自動啟動即時同步功能。</li>
-               </ol>
-            </div>
+                    <!-- 显示 Service Account Email 提示 -->
+                    <v-alert
+                      v-if="serviceAccountEmail"
+                      type="info"
+                      variant="tonal"
+                      class="mb-3"
+                      border="start"
+                      closable
+                      density="compact"
+                    >
+                      <template v-slot:title>
+                        請共用權限給機器人
+                      </template>
+                      <div class="d-flex align-center mt-2 bg-grey-lighten-4 pa-2 rounded">
+                        <code class="text-caption flex-grow-1">{{ serviceAccountEmail }}</code>
+                        <v-btn
+                          size="x-small"
+                          variant="text"
+                          icon="mdi-content-copy"
+                          @click="copyToClipboard(serviceAccountEmail)"
+                          v-tooltip="'複製 Email'"
+                        ></v-btn>
+                      </div>
+                    </v-alert>
+
+                    <v-expand-transition>
+                      <div v-if="sheetNames.length > 0">
+                        <v-autocomplete
+                          v-model="googleSheetForm.sheetName"
+                          :items="sheetNames"
+                          label="選擇要同步的工作表"
+                          variant="outlined"
+                          density="comfortable"
+                          prepend-inner-icon="mdi-table"
+                          :rules="[v => !!v || '請選擇工作表']"
+                          class="mb-3"
+                        ></v-autocomplete>
+
+                        <v-btn
+                          color="success"
+                          prepend-icon="mdi-cloud-sync"
+                          variant="elevated"
+                          :loading="isSyncing"
+                          @click="executeSync"
+                          :disabled="!googleSheetForm.sheetName"
+                          block
+                          class="mb-3"
+                        >
+                          開始全量同步
+                        </v-btn>
+                      </div>
+                    </v-expand-transition>
+
+                    <v-alert v-if="syncResult" :type="syncResult.type" class="mt-3" variant="tonal" density="compact">
+                      {{ syncResult.message }}
+                    </v-alert>
+                  </v-form>
+                </v-card>
+              </v-col>
+
+              <!-- 右側：退戶資料同步 -->
+              <v-col cols="12" md="6">
+                <v-card class="pa-4" elevation="1" color="orange-lighten-5">
+                  <v-card-title class="text-h6 text-orange-darken-2">
+                    <v-icon start>mdi-delete-restore</v-icon>
+                    退戶資料同步
+                  </v-card-title>
+                  <v-card-subtitle class="text-caption">
+                    同步退戶資料到 Google Sheet
+                  </v-card-subtitle>
+                  <v-divider class="my-3"></v-divider>
+
+                  <v-alert
+                    type="info"
+                    variant="tonal"
+                    class="mb-4"
+                    density="compact"
+                    icon="mdi-information"
+                  >
+                    設定完成後，退戶資料的任何變更將自動同步至指定的 Google Sheet。
+                  </v-alert>
+
+                  <v-form ref="cancelledSyncForm" @submit.prevent>
+                    <v-text-field
+                      v-model="cancelledSheetForm.url"
+                      label="Google Sheet 網址或 ID"
+                      placeholder="https://docs.google.com/spreadsheets/d/..."
+                      variant="outlined"
+                      density="comfortable"
+                      :rules="[v => !!v || '請輸入 Google Sheet 網址']"
+                      prepend-inner-icon="mdi-link"
+                      clearable
+                      class="mb-3"
+                    ></v-text-field>
+
+                    <v-btn
+                      color="primary"
+                      prepend-icon="mdi-refresh"
+                      :loading="loadingCancelledSheets"
+                      :disabled="!cancelledSheetForm.url"
+                      @click="fetchCancelledSheetNames"
+                      block
+                      class="mb-3"
+                    >
+                      讀取工作表
+                    </v-btn>
+
+                    <!-- 显示 Service Account Email 提示 -->
+                    <v-alert
+                      v-if="cancelledServiceAccountEmail"
+                      type="info"
+                      variant="tonal"
+                      class="mb-3"
+                      border="start"
+                      closable
+                      density="compact"
+                    >
+                      <template v-slot:title>
+                        請共用權限給機器人
+                      </template>
+                      <div class="d-flex align-center mt-2 bg-grey-lighten-4 pa-2 rounded">
+                        <code class="text-caption flex-grow-1">{{ cancelledServiceAccountEmail }}</code>
+                        <v-btn
+                          size="x-small"
+                          variant="text"
+                          icon="mdi-content-copy"
+                          @click="copyToClipboard(cancelledServiceAccountEmail)"
+                          v-tooltip="'複製 Email'"
+                        ></v-btn>
+                      </div>
+                    </v-alert>
+
+                    <v-expand-transition>
+                      <div v-if="cancelledSheetNames.length > 0">
+                        <v-autocomplete
+                          v-model="cancelledSheetForm.sheetName"
+                          :items="cancelledSheetNames"
+                          label="選擇要同步的工作表"
+                          variant="outlined"
+                          density="comfortable"
+                          prepend-inner-icon="mdi-table"
+                          :rules="[v => !!v || '請選擇工作表']"
+                          class="mb-3"
+                        ></v-autocomplete>
+
+                        <v-btn
+                          color="success"
+                          prepend-icon="mdi-cloud-sync"
+                          variant="elevated"
+                          :loading="isCancelledSyncing"
+                          @click="executeCancelledSync"
+                          :disabled="!cancelledSheetForm.sheetName"
+                          block
+                          class="mb-3"
+                        >
+                          開始全量同步
+                        </v-btn>
+                      </div>
+                    </v-expand-transition>
+
+                    <v-alert v-if="cancelledSyncResult" :type="cancelledSyncResult.type" class="mt-3" variant="tonal" density="compact">
+                      {{ cancelledSyncResult.message }}
+                    </v-alert>
+                  </v-form>
+                </v-card>
+              </v-col>
+            </v-row>
+
+            <!-- 共同的注意事項 -->
+            <v-row class="mt-4">
+              <v-col cols="12">
+                <div class="text-caption text-grey">
+                  <p class="font-weight-bold mb-1">注意事項：</p>
+                  <ol class="pl-4">
+                    <li>請確保您輸入的 Google Sheet 已共用編輯權限給系統帳號 (Agent Email)。</li>
+                    <li>全量同步將會<b>清除並覆蓋</b>該工作表的所有內容，請謹慎操作。</li>
+                    <li>首次同步後，系統即會自動啟動即時同步功能。</li>
+                  </ol>
+                </div>
+              </v-col>
+            </v-row>
           </div>
         </v-card>
       </v-window-item>
@@ -1430,6 +1552,7 @@ import {
   updateSalesPersonnelOrders,
   listGoogleSheets, // ✅ 新增
   syncSalesHouseholdsToSheet, // ✅ 新增
+  syncCancelledPurchasesToSheet, // ✅ 新增
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 import PaymentTermsSettings from './PaymentTermsSettings.vue'; 
@@ -1512,7 +1635,19 @@ const loadingSheets = ref(false);
 const isSyncing = ref(false);
 const syncResult = ref(null);
 const serviceAccountEmail = ref(''); // Store the service account email
-// ✅ END: Google Sheet Sync State 
+// ✅ END: Google Sheet Sync State
+
+// ✅ START: Cancelled Sync State
+const cancelledSheetForm = reactive({
+  url: '',
+  sheetName: '',
+});
+const cancelledSheetNames = ref([]);
+const loadingCancelledSheets = ref(false);
+const isCancelledSyncing = ref(false);
+const cancelledSyncResult = ref(null);
+const cancelledServiceAccountEmail = ref('');
+// ✅ END: Cancelled Sync State 
 
 // ✅ START: AI Assistant State
 const isResettingToken = ref(false);
@@ -1561,6 +1696,16 @@ const loadProjectSettings = async () => {
 
       if (project.value.salesSheetTabName) {
         googleSheetForm.sheetName = project.value.salesSheetTabName;
+      }
+    }
+
+    // ✅ [新增] 初始化退戶同步表單
+    if (project.value) {
+      if (project.value.cancelledSyncConfig?.sheetUrl) {
+        cancelledSheetForm.url = project.value.cancelledSyncConfig.sheetUrl;
+      }
+      if (project.value.cancelledSyncConfig?.sheetName) {
+        cancelledSheetForm.sheetName = project.value.cancelledSyncConfig.sheetName;
       }
     }
 
@@ -2364,6 +2509,78 @@ const executeSync = async () => {
     isSyncing.value = false;
   }
 };
+
+// ✅ START: Cancelled Sync Methods
+const fetchCancelledSheetNames = async () => {
+  loadingCancelledSheets.value = true;
+  cancelledSyncResult.value = null;
+  try {
+    const res = await listGoogleSheets(cancelledSheetForm.url);
+    if (res.status === 'success') {
+      cancelledSheetNames.value = res.sheetNames;
+      cancelledServiceAccountEmail.value = res.agentEmail || '';
+      toast.success('工作表讀取成功！');
+    } else {
+      throw new Error(res.message || '讀取失敗');
+    }
+  } catch (error) {
+    console.error('fetchCancelledSheetNames error:', error);
+    toast.error(`讀取工作表失敗: ${error.message}`);
+    cancelledSheetNames.value = [];
+  } finally {
+    loadingCancelledSheets.value = false;
+  }
+};
+
+const executeCancelledSync = async () => {
+  isCancelledSyncing.value = true;
+  cancelledSyncResult.value = null;
+  try {
+    let spreadsheetId = cancelledSheetForm.url;
+    const match = cancelledSheetForm.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) {
+      spreadsheetId = match[1];
+    }
+
+    const res = await syncCancelledPurchasesToSheet({
+      projectId: projectId.value,
+      spreadsheetId,
+      sheetName: cancelledSheetForm.sheetName,
+    });
+
+    if (res.status === 'success') {
+      const msg = `同步成功！已處理 ${res.count} 筆退戶資料。`;
+      toast.success(msg);
+      cancelledSyncResult.value = {
+        type: 'success',
+        message: msg + ' (即時同步功能已自動啟用)'
+      };
+
+      if (project.value) {
+        project.value.cancelledSyncConfig = {
+          ...(project.value.cancelledSyncConfig || {}),
+          spreadsheetId,
+          sheetName: cancelledSheetForm.sheetName,
+          sheetUrl: cancelledSheetForm.url,
+        };
+      }
+    } else {
+      throw new Error(res.message);
+    }
+  } catch (error) {
+    console.error('executeCancelledSync error:', error);
+    const msg = `同步失敗: ${error.message}`;
+    toast.error(msg);
+    cancelledSyncResult.value = {
+      type: 'error',
+      message: msg
+    };
+  } finally {
+    isCancelledSyncing.value = false;
+  }
+};
+// ✅ END: Cancelled Sync Methods
+
 // ✅ END: Google Sheet Sync Methods
 const isAllSelectedInBuilding = (building) => {
   const buildingSvgs = loadedSvgs[building] || [];
