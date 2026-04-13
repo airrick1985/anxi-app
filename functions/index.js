@@ -3124,7 +3124,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
  * 讀取指定專案的所有退戶資料列表
  */
 exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request) => {
-  const { projectId } = request.data;
+  const { projectId, includeDeleted } = request.data;
   const functionName = `getCancelledPurchases (Project: ${projectId})`;
 
   if (!projectId) {
@@ -3151,6 +3151,13 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
       const data = doc.data();
       const meta = data._cancellationMeta || {};
       const parkingData = data.parkingData || [];
+      const deletedMeta = data._deletedMeta || {};
+
+      // 過濾：若未指定 includeDeleted，則排除已被冷刪除的文件
+      if (!includeDeleted && data._isDeleted === true) {
+        return; // 跳過此筆
+      }
+
       items.push({
         docId: doc.id,
         unitId: data.unitId || '',
@@ -3196,6 +3203,10 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
         originalDocId: meta.originalDocId || '',
         // 退戶原因
         cancelReasons: data.cancelReasons || [],
+        // 冷刪除相關字段
+        isDeleted: data._isDeleted || false,
+        deletedBy: deletedMeta.deletedBy || '',
+        deletedAt: deletedMeta.deletedAt || null,
         // 持有車位
         '持有車位': data['持有車位'] || [],
       });
@@ -3426,6 +3437,160 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (reque
     console.error(`[${functionName}] Error occurred:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", `退戶復原失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 冷刪除退戶記錄（軟刪除，保留資料但標記為已刪除）
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+exports.softDeleteCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, operatorName } = request.data;
+  const functionName = `softDeleteCancelledPurchase (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始冷刪除退戶記錄...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    // 檢查文件是否存在
+    const docSnapshot = await cancelledDocRef.get();
+    if (!docSnapshot.exists) {
+      throw new HttpsError("not-found", `找不到退戶資料: ${cancelledDocId}`);
+    }
+
+    // 標記為冷刪除
+    const updateData = {
+      _isDeleted: true,
+      _deletedMeta: {
+        deletedBy: operatorName,
+        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }
+    };
+
+    await cancelledDocRef.update(updateData);
+
+    console.log(`[${functionName}] 退戶記錄已標記為冷刪除`);
+
+    return {
+      status: "success",
+      message: "退戶記錄已標記為刪除！"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `冷刪除失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 復原冷刪除的退戶記錄
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+exports.undoSoftDeleteCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, operatorName } = request.data;
+  const functionName = `undoSoftDeleteCancelledPurchase (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始復原冷刪除標記...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    // 檢查文件是否存在
+    const docSnapshot = await cancelledDocRef.get();
+    if (!docSnapshot.exists) {
+      throw new HttpsError("not-found", `找不到退戶資料: ${cancelledDocId}`);
+    }
+
+    // 復原冷刪除標記
+    const updateData = {
+      _isDeleted: false,
+      _deletedMeta: admin.firestore.FieldValue.delete(),
+    };
+
+    await cancelledDocRef.update(updateData);
+
+    console.log(`[${functionName}] 冷刪除標記已復原`);
+
+    return {
+      status: "success",
+      message: "冷刪除標記已復原！"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `復原失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 硬刪除退戶記錄（永久移除資料）
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+exports.hardDeleteCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
+  const { projectId, cancelledDocId, operatorName } = request.data;
+  const functionName = `hardDeleteCancelledPurchase (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始永久刪除退戶記錄...`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    // 檢查文件是否存在
+    const docSnapshot = await cancelledDocRef.get();
+    if (!docSnapshot.exists) {
+      throw new HttpsError("not-found", `找不到退戶資料: ${cancelledDocId}`);
+    }
+
+    // 檢查是否已被冷刪除（可選安全檢查）
+    const data = docSnapshot.data();
+    if (data._isDeleted !== true) {
+      console.warn(`[${functionName}] 警告：正在刪除尚未冷刪除的記錄`);
+    }
+
+    // 永久刪除文件
+    await cancelledDocRef.delete();
+
+    console.log(`[${functionName}] 退戶記錄已永久刪除`);
+
+    return {
+      status: "success",
+      message: "退戶記錄已永久刪除！"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `永久刪除失敗: ${error.message}`);
   }
 });
 

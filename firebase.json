@@ -4,7 +4,7 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "memory": "512MB",
+      "memory": "512MiB",
       "timeoutSeconds": 540,
       "ignore": [
         "node_modules",

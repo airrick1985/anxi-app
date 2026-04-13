@@ -17,7 +17,7 @@
           <v-col cols="12" sm="6" md="3">
             <v-card variant="outlined" class="pa-4 text-center">
               <div class="text-caption text-grey">總退戶數</div>
-              <div class="text-h5 font-weight-bold text-primary">{{ items.length }}</div>
+              <div class="text-h5 font-weight-bold text-primary">{{ validItems.length }}</div>
             </v-card>
           </v-col>
           <v-col cols="12" sm="6" md="3">
@@ -98,7 +98,7 @@
               <td>{{ reason }}</td>
               <td style="text-align: right" class="font-weight-bold">{{ count }}</td>
               <td style="text-align: right" class="text-caption">
-                {{ ((count / items.length) * 100).toFixed(1) }}%
+                {{ validItems.length > 0 ? ((count / validItems.length) * 100).toFixed(1) : 0 }}%
               </td>
             </tr>
           </tbody>
@@ -137,10 +137,15 @@ const props = defineProps({
 
 defineEmits(['update:show']);
 
+// 過濾掉冷刪除的項目
+const validItems = computed(() => {
+  return props.items.filter(item => !item.isDeleted);
+});
+
 // 退戶原因統計
 const reasonStats = computed(() => {
   const counts = {};
-  props.items.forEach(item => {
+  validItems.value.forEach(item => {
     (item.cancelReasons || []).forEach(reason => {
       counts[reason] = (counts[reason] || 0) + 1;
     });
@@ -152,7 +157,7 @@ const reasonStats = computed(() => {
 // 業務員退戶統計
 const salespersonStats = computed(() => {
   const counts = {};
-  props.items.forEach(item => {
+  validItems.value.forEach(item => {
     const name = item.salesperson || '未知';
     counts[name] = (counts[name] || 0) + 1;
   });
@@ -162,7 +167,7 @@ const salespersonStats = computed(() => {
 
 // KPI 計算
 const itemsWithReasons = computed(() => {
-  return props.items.filter(item => item.cancelReasons && item.cancelReasons.length > 0).length;
+  return validItems.value.filter(item => item.cancelReasons && item.cancelReasons.length > 0).length;
 });
 
 const topReason = computed(() => {

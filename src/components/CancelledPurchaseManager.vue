@@ -52,7 +52,7 @@
         <template v-else>
           <!-- 搜索欄 -->
           <v-row class="mb-4">
-            <v-col cols="12" md="8">
+            <v-col cols="12" md="6">
               <v-text-field
                 v-model="searchQuery"
                 prepend-inner-icon="mdi-magnify"
@@ -62,7 +62,17 @@
                 clearable
               ></v-text-field>
             </v-col>
-            <v-col cols="12" md="4">
+            <v-col cols="12" md="3">
+              <v-switch
+                v-model="showDeleted"
+                label="顯示已刪除記錄"
+                density="compact"
+                color="error"
+                hide-details
+                class="pt-2"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
               <v-alert type="info" variant="tonal" density="compact" class="h-100 d-flex align-center">
                 共 {{ filteredItems.length }} / {{ items.length }} 筆
               </v-alert>
@@ -82,10 +92,15 @@
           >
             <!-- 戶別 + 車位 chips -->
             <template v-slot:item.unitId="{ item }">
-              <span class="font-weight-bold">{{ item.unitId }}</span>
-              <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal" class="ml-1">
-                車位 {{ item.parkingCount }}
-              </v-chip>
+              <div class="d-flex align-center gap-1" :class="{ 'text-grey': item.isDeleted, 'deleted-text': item.isDeleted }">
+                <span class="font-weight-bold">{{ item.unitId }}</span>
+                <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal">
+                  車位 {{ item.parkingCount }}
+                </v-chip>
+                <v-chip v-if="item.isDeleted" size="x-small" color="error" variant="tonal">
+                  已刪除
+                </v-chip>
+              </div>
             </template>
 
             <!-- 退戶原因 chips -->
@@ -222,9 +237,7 @@
 
                     <!-- 持有車位 -->
                     <template v-if="item['持有車位'] && item['持有車位'].length > 0">
-                      <div class="mt-2 text-caption text-grey">
-                        持有車位：{{ item['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、') }}
-                      </div>
+                     
                     </template>
 
                     <!-- 退戶日期 -->
@@ -285,9 +298,20 @@
                       </div>
                     </template>
 
-                    <!-- 退戶資訊 & 復原 -->
+                    <!-- 文件 ID 顯示 -->
                     <v-divider class="my-3"></v-divider>
-                    <div class="d-flex align-center justify-space-between">
+                    <div class="d-flex align-center gap-2 mb-3">
+                      <span class="text-caption text-grey">文件 ID：</span>
+                      <code class="text-caption" style="background-color: #f5f5f5; padding: 2px 6px; border-radius: 4px;">{{ item.docId }}</code>
+                      <v-btn icon size="x-small" variant="text" @click="copyDocId(item.docId)" color="primary">
+                        <v-icon size="small">mdi-content-copy</v-icon>
+                        <v-tooltip activator="parent">複製 ID</v-tooltip>
+                      </v-btn>
+                    </div>
+
+                    <!-- 退戶資訊 & 復原 & 冷刪除 -->
+                    <v-divider class="my-3"></v-divider>
+                    <div class="d-flex align-center justify-space-between flex-wrap gap-2">
 
                       <v-btn
                         color="success"
@@ -298,6 +322,38 @@
                       >
                         復原此筆退戶
                       </v-btn>
+
+                      <!-- 冷刪除按鈕（未刪除狀態） -->
+                      <v-btn
+                        v-if="!item.isDeleted"
+                        color="error"
+                        variant="outlined"
+                        prepend-icon="mdi-delete-outline"
+                        @click="handleSoftDelete(item)"
+                      >
+                        冷刪除
+                      </v-btn>
+
+                      <!-- 復原冷刪除 + 永久刪除（已刪除狀態） -->
+                      <template v-else>
+                        <v-chip color="error" size="small" class="ml-auto">已標記刪除</v-chip>
+                        <v-btn
+                          color="success"
+                          variant="outlined"
+                          prepend-icon="mdi-undo"
+                          @click="handleUndoSoftDelete(item)"
+                        >
+                          復原冷刪除
+                        </v-btn>
+                        <v-btn
+                          color="error"
+                          variant="flat"
+                          prepend-icon="mdi-delete-forever"
+                          @click="handleHardDelete(item)"
+                        >
+                          永久刪除
+                        </v-btn>
+                      </template>
                     </div>
                   </v-card>
                 </td>
@@ -438,6 +494,132 @@
       </v-card>
     </v-dialog>
 
+    <!-- 冷刪除確認 Dialog -->
+    <v-dialog v-model="softDeleteDialog.show" max-width="500" persistent>
+      <v-card>
+        <v-card-title class="bg-error text-white d-flex align-center">
+          <v-icon left color="white" class="mr-2">mdi-delete-outline</v-icon>
+          冷刪除退戶記錄
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-3">
+            戶別：<strong>【{{ softDeleteDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ softDeleteDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
+            此操作會將記錄標記為已刪除，但不會從資料庫移除。可隨時復原。
+          </v-alert>
+          <p class="text-caption text-grey mb-2">文件 ID：</p>
+          <code class="d-block mb-4" style="background-color: #f5f5f5; padding: 8px; border-radius: 4px;">{{ softDeleteDialog.targetItem?.docId }}</code>
+          <v-text-field
+            v-model="softDeleteDialog.inputDocId"
+            label="請輸入文件 ID 以確認刪除"
+            variant="outlined"
+            density="compact"
+            hint="輸入正確的文件 ID 才能執行刪除"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="softDeleteDialog.show = false">取消</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            @click="executeSoftDelete"
+            :loading="softDeleteDialog.loading"
+            :disabled="softDeleteDialog.inputDocId !== softDeleteDialog.targetItem?.docId"
+          >
+            確認冷刪除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 復原冷刪除確認 Dialog -->
+    <v-dialog v-model="undoSoftDeleteDialog.show" max-width="500" persistent>
+      <v-card>
+        <v-card-title class="bg-success text-white d-flex align-center">
+          <v-icon left color="white" class="mr-2">mdi-undo</v-icon>
+          復原冷刪除記錄
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-3">
+            戶別：<strong>【{{ undoSoftDeleteDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ undoSoftDeleteDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
+            確認復原此筆記錄的刪除標記。復原後將在正常列表中顯示。
+          </v-alert>
+          <p class="text-caption text-grey mb-2">文件 ID：</p>
+          <code class="d-block mb-4" style="background-color: #f5f5f5; padding: 8px; border-radius: 4px;">{{ undoSoftDeleteDialog.targetItem?.docId }}</code>
+          <v-text-field
+            v-model="undoSoftDeleteDialog.inputDocId"
+            label="請輸入文件 ID 以確認復原"
+            variant="outlined"
+            density="compact"
+            hint="輸入正確的文件 ID 才能執行復原"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="undoSoftDeleteDialog.show = false">取消</v-btn>
+          <v-btn
+            color="success"
+            variant="flat"
+            @click="executeUndoSoftDelete"
+            :loading="undoSoftDeleteDialog.loading"
+            :disabled="undoSoftDeleteDialog.inputDocId !== undoSoftDeleteDialog.targetItem?.docId"
+          >
+            確認復原
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 永久刪除確認 Dialog -->
+    <v-dialog v-model="hardDeleteDialog.show" max-width="500" persistent>
+      <v-card>
+        <v-card-title class="bg-error text-white d-flex align-center">
+          <v-icon left color="white" class="mr-2">mdi-delete-forever</v-icon>
+          永久刪除退戶記錄
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-3">
+            戶別：<strong>【{{ hardDeleteDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ hardDeleteDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <v-alert type="error" variant="tonal" density="compact" class="mb-4">
+            <v-icon size="small" class="mr-1">mdi-alert-outline</v-icon>
+            <strong>此操作無法還原！</strong>記錄將永久從資料庫刪除，無法復原。
+          </v-alert>
+          <p class="text-caption text-grey mb-2">文件 ID：</p>
+          <code class="d-block mb-4" style="background-color: #f5f5f5; padding: 8px; border-radius: 4px;">{{ hardDeleteDialog.targetItem?.docId }}</code>
+          <v-text-field
+            v-model="hardDeleteDialog.inputDocId"
+            label="請輸入文件 ID 以確認永久刪除"
+            variant="outlined"
+            density="compact"
+            hint="輸入正確的文件 ID 才能執行永久刪除"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="hardDeleteDialog.show = false">取消</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            @click="executeHardDelete"
+            :loading="hardDeleteDialog.loading"
+            :disabled="hardDeleteDialog.inputDocId !== hardDeleteDialog.targetItem?.docId"
+          >
+            確認永久刪除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 退戶統計分析 Dialog -->
     <CancelledPurchaseStatistics
       :show="statisticsDialog"
@@ -449,7 +631,7 @@
 
 <script setup>
 import { ref, watch, reactive, computed } from 'vue';
-import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, updateCancellationDate } from '@/api';
+import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, updateCancellationDate, softDeleteCancelledPurchase, undoSoftDeleteCancelledPurchase, hardDeleteCancelledPurchase } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
@@ -490,6 +672,7 @@ const expanded = ref([]);
 const restoringDocId = ref(null);
 const statisticsDialog = ref(false);
 const searchQuery = ref('');
+const showDeleted = ref(false);
 
 // Table headers
 const tableHeaders = [
@@ -505,10 +688,18 @@ const tableHeaders = [
 
 // 搜尋過濾邏輯
 const filteredItems = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim();
-  if (!query) return items.value;
+  let result = items.value;
 
-  return items.value.filter(item => {
+  // 過濾冷刪除項目
+  if (!showDeleted.value) {
+    result = result.filter(item => !item.isDeleted);
+  }
+
+  // 搜尋過濾
+  const query = searchQuery.value.toLowerCase().trim();
+  if (!query) return result;
+
+  return result.filter(item => {
     const searchFields = [
       item.unitId,
       item.buyerName,
@@ -553,10 +744,31 @@ const editDateDialog = reactive({
   selectedDate: '',
 });
 
+const softDeleteDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  inputDocId: '',
+});
+
+const undoSoftDeleteDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  inputDocId: '',
+});
+
+const hardDeleteDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  inputDocId: '',
+});
+
 async function loadData() {
   isLoading.value = true;
   try {
-    const result = await getCancelledPurchases(props.projectId);
+    const result = await getCancelledPurchases(props.projectId, true);
     if (result.status === 'success') {
       items.value = result.data || [];
     } else {
@@ -773,6 +985,146 @@ async function executeUpdateDate() {
   }
 }
 
+// ========== 冷刪除相關函數 ==========
+
+function handleSoftDelete(item) {
+  softDeleteDialog.targetItem = item;
+  softDeleteDialog.inputDocId = '';
+  softDeleteDialog.show = true;
+}
+
+async function executeSoftDelete() {
+  const item = softDeleteDialog.targetItem;
+  if (!item) return;
+
+  if (softDeleteDialog.inputDocId !== item.docId) {
+    toast.error('文件 ID 不符', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+
+  softDeleteDialog.loading = true;
+
+  try {
+    const result = await softDeleteCancelledPurchase(
+      props.projectId,
+      item.docId,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].isDeleted = true;
+        items.value[itemIndex].deletedBy = userStore.user?.name || '未知用戶';
+        items.value[itemIndex].deletedAt = new Date();
+      }
+      softDeleteDialog.show = false;
+      expanded.value = [];
+    } else {
+      toast.error(`冷刪除失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('冷刪除失敗:', error);
+    toast.error(`冷刪除失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    softDeleteDialog.loading = false;
+  }
+}
+
+function handleUndoSoftDelete(item) {
+  undoSoftDeleteDialog.targetItem = item;
+  undoSoftDeleteDialog.inputDocId = '';
+  undoSoftDeleteDialog.show = true;
+}
+
+async function executeUndoSoftDelete() {
+  const item = undoSoftDeleteDialog.targetItem;
+  if (!item) return;
+
+  if (undoSoftDeleteDialog.inputDocId !== item.docId) {
+    toast.error('文件 ID 不符', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+
+  undoSoftDeleteDialog.loading = true;
+
+  try {
+    const result = await undoSoftDeleteCancelledPurchase(
+      props.projectId,
+      item.docId,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].isDeleted = false;
+        items.value[itemIndex].deletedBy = '';
+        items.value[itemIndex].deletedAt = null;
+      }
+      undoSoftDeleteDialog.show = false;
+      expanded.value = [];
+    } else {
+      toast.error(`復原失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('復原失敗:', error);
+    toast.error(`復原失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    undoSoftDeleteDialog.loading = false;
+  }
+}
+
+function handleHardDelete(item) {
+  hardDeleteDialog.targetItem = item;
+  hardDeleteDialog.inputDocId = '';
+  hardDeleteDialog.show = true;
+}
+
+async function executeHardDelete() {
+  const item = hardDeleteDialog.targetItem;
+  if (!item) return;
+
+  if (hardDeleteDialog.inputDocId !== item.docId) {
+    toast.error('文件 ID 不符', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+
+  hardDeleteDialog.loading = true;
+
+  try {
+    const result = await hardDeleteCancelledPurchase(
+      props.projectId,
+      item.docId,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      items.value = items.value.filter(i => i.docId !== item.docId);
+      hardDeleteDialog.show = false;
+      expanded.value = [];
+    } else {
+      toast.error(`永久刪除失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('永久刪除失敗:', error);
+    toast.error(`永久刪除失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    hardDeleteDialog.loading = false;
+  }
+}
+
+function copyDocId(docId) {
+  navigator.clipboard.writeText(docId).then(() => {
+    toast.success('文件 ID 已複製', { position: POSITION.BOTTOM_CENTER });
+  }).catch(() => {
+    toast.error('複製失敗', { position: POSITION.BOTTOM_CENTER });
+  });
+}
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
     loadData();
@@ -819,5 +1171,19 @@ watch(() => props.show, (newVal) => {
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 0;
+}
+
+/* 冷刪除項目樣式 */
+.deleted-row {
+  background-color: #f5f5f5 !important;
+  opacity: 0.65;
+}
+
+.deleted-text {
+  text-decoration: line-through;
+}
+
+.deleted-row:hover {
+  background-color: #efefef !important;
 }
 </style>

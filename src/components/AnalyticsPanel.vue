@@ -1193,11 +1193,12 @@ const loadStatistics = async () => {
       vipGuestStats.value = null
     }
 
-    // 🔍 查詢退戶統計
+    // 🔍 查詢退戶統計（過濾冷刪除的記錄）
     try {
-      const result = await getCancelledPurchases(props.projectId)
+      const result = await getCancelledPurchases(props.projectId, false)
       if (result.status === 'success' && Array.isArray(result.data)) {
-        const cancelledList = result.data
+        // 額外過濾冷刪除項目（防禦性編程）
+        const cancelledList = result.data.filter(item => !item.isDeleted)
 
         // 根據 selectedPeriod 建立 dateRange
         const dateRange = selectedPeriod.value === 'custom'

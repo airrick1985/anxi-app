@@ -932,13 +932,13 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
  * @param {string} projectId - 專案 ID
  * @returns {Promise<object>}
  */
-export async function getCancelledPurchases(projectId) {
+export async function getCancelledPurchases(projectId, includeDeleted = true) {
   if (!projectId) {
     return { status: "error", message: "前端錯誤：缺少 projectId。" };
   }
   try {
     const func = httpsCallable(functions, 'getCancelledPurchases');
-    const result = await func({ projectId });
+    const result = await func({ projectId, includeDeleted });
     return result.data;
   } catch (error) {
     console.error("呼叫 getCancelledPurchases 雲端函式時發生錯誤:", error);
@@ -1006,6 +1006,66 @@ export async function updateCancellationDate(projectId, cancelledDocId, cancella
     return result.data;
   } catch (error) {
     console.error("呼叫 updateCancellationDate 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 冷刪除退戶記錄（軟刪除，保留資料但標記為已刪除）
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+export async function softDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'softDeleteCancelledPurchase');
+    const result = await func({ projectId, cancelledDocId, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 softDeleteCancelledPurchase 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 復原冷刪除的退戶記錄
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+export async function undoSoftDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'undoSoftDeleteCancelledPurchase');
+    const result = await func({ projectId, cancelledDocId, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 undoSoftDeleteCancelledPurchase 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 硬刪除退戶記錄（永久移除資料）
+ * @param {string} projectId - 專案 ID
+ * @param {string} cancelledDocId - 退戶記錄文檔 ID
+ * @param {string} operatorName - 執行此操作的使用者名稱
+ */
+export async function hardDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'hardDeleteCancelledPurchase');
+    const result = await func({ projectId, cancelledDocId, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 hardDeleteCancelledPurchase 雲端函式時發生錯誤:", error);
     return { status: "error", message: error.message };
   }
 }
