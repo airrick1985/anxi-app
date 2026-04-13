@@ -3123,7 +3123,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
 /**
  * 讀取指定專案的所有退戶資料列表
  */
-exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request) => {
+exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, includeDeleted } = request.data;
   const functionName = `getCancelledPurchases (Project: ${projectId})`;
 
@@ -3203,6 +3203,8 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1" }, async (request)
         originalDocId: meta.originalDocId || '',
         // 退戶原因
         cancelReasons: data.cancelReasons || [],
+        // 備註
+        remarks: data.remarks || '',
         // 冷刪除相關字段
         isDeleted: data._isDeleted || false,
         deletedBy: deletedMeta.deletedBy || '',
@@ -3317,6 +3319,48 @@ exports.updateCancellationDate = onCall({ region: "asia-east1" }, async (request
   } catch (error) {
     console.error(`[${functionName}] Error:`, error);
     throw new HttpsError("internal", `修改退戶日期失敗: ${error.message}`);
+  }
+});
+
+/**
+ * 修改退戶備註
+ */
+exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
+  const { projectId, cancelledDocId, remarks, operatorName } = request.data;
+  const functionName = `updateRemarks (Doc: ${cancelledDocId})`;
+
+  if (!projectId || !cancelledDocId || !operatorName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數: projectId、cancelledDocId 或 operatorName。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    console.log(`[${functionName}] 開始修改退戶備註...`);
+    console.log(`[${functionName}] 備註內容: ${remarks}`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+
+    // 更新退戶資料集合中的 remarks
+    const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
+
+    const updateData = {
+      remarks: remarks || '',
+      '_cancellationMeta.lastEditedBy': operatorName,
+      '_cancellationMeta.lastEditedAt': admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await cancelledDocRef.update(updateData);
+
+    console.log(`[${functionName}] 退戶備註已更新`);
+
+    return {
+      status: "success",
+      message: "退戶備註已更新成功！"
+    };
+
+  } catch (error) {
+    console.error(`[${functionName}] Error:`, error);
+    throw new HttpsError("internal", `修改退戶備註失敗: ${error.message}`);
   }
 });
 
@@ -22179,6 +22223,253 @@ const salesFieldDisplayNames = {
   remarks: '備註'
 };
 
+// ✅ START: Sync Failure Notification Functions
+/**
+ * 查詢應接收失敗通知的使用者
+ * 條件：(1) 擁有該 projectId 的 "銷控系統" 權限 OR (2) 角色為 "系統管理員" 或 "超級管理員"
+ */
+async function _getSyncFailureNotificationRecipients(db, projectId) {
+  const recipients = new Map();
+
+  try {
+    // 條件 A: 查詢擁有 "銷控系統" 權限的使用者
+    const permSnap = await db
+      .collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', '銷控系統')
+      .get();
+
+    permSnap.forEach(doc => {
+      recipients.set(doc.id, true);
+    });
+
+    // 條件 B: 查詢系統管理員 / 超級管理員
+    const adminSnap = await db
+      .collection('users')
+      .where('roles', 'array-contains-any', ['系統管理員', '超級管理員'])
+      .get();
+
+    adminSnap.forEach(doc => {
+      if (!recipients.has(doc.id)) {
+        recipients.set(doc.id, true);
+      }
+    });
+
+    // 補充詳細資訊 (name + email)
+    const result = [];
+    for (const [userKey] of recipients) {
+      const userDoc = await db.collection('users').doc(userKey).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        if (userData.email) {
+          result.push({
+            name: userData.name || userKey,
+            email: userData.email
+          });
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('_getSyncFailureNotificationRecipients 錯誤:', error);
+    return [];
+  }
+}
+
+/**
+ * 發送同步失敗通知郵件
+ */
+async function _sendSyncFailureNotification(db, projectId, syncType, errorMessage, details = {}) {
+  const functionName = '_sendSyncFailureNotification';
+
+  try {
+    // 1️⃣ 檢查同步配置是否存在
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+      console.log(`[${functionName}] 專案不存在`);
+      return;
+    }
+
+    const project = projectDoc.data();
+
+    // 根據 syncType 檢查配置是否存在
+    let hasConfig = false;
+    if (syncType === 'sales') {
+      hasConfig = !!(project.salesSheetId && project.salesSheetTabName);
+    } else if (syncType === 'cancelled') {
+      hasConfig = !!(
+        project.cancelledSyncConfig?.spreadsheetId
+        && project.cancelledSyncConfig?.sheetName
+      );
+    }
+
+    // ⚠️ 關鍵：若未配置，則不發送通知
+    if (!hasConfig) {
+      console.log(`[${functionName}] ${syncType} 未配置，不發送通知`);
+      return;
+    }
+
+    // 2️⃣ 查詢收件人清單
+    const recipients = await _getSyncFailureNotificationRecipients(db, projectId);
+    if (recipients.length === 0) {
+      console.log(`[${functionName}] 找不到符合條件的收件人`);
+      return;
+    }
+
+    // 3️⃣ 為每位收件人發送郵件
+    const mailTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SENDER_EMAIL,
+        pass: process.env.GMAIL_APP_PASSWORD
+      }
+    });
+
+    const syncTypeDisplay = syncType === 'sales' ? '銷控資料' : '退戶';
+    const subject = `⚠️ [警告通知] ${project.name} - ${syncTypeDisplay}同步失敗`;
+
+    const promises = recipients.map(recipient => {
+      const htmlContent = _generateFailureEmailHTML(
+        recipient.name,
+        project.name,
+        syncType,
+        errorMessage,
+        details
+      );
+
+      const mailOptions = {
+        from: `"安熙智慧系統" <${process.env.SENDER_EMAIL}>`,
+        to: recipient.email,
+        subject,
+        html: htmlContent,
+        replyTo: 'noreply@system.local'
+      };
+
+      return mailTransporter.sendMail(mailOptions)
+        .catch(err => {
+          console.error(`[${functionName}] 發送郵件給 ${recipient.email} 失敗:`, err);
+        });
+    });
+
+    await Promise.all(promises);
+
+    // 4️⃣ 記錄通知日誌
+    await db.collection(`projects/${projectId}/syncLogs`).add({
+      timestamp: new Date().toISOString(),
+      syncType,
+      action: 'send_failure_notification',
+      errorMessage,
+      recipientCount: recipients.length,
+      recipientEmails: recipients.map(r => r.email),
+      status: 'sent'
+    });
+
+    console.log(`[${functionName}] 成功發送 ${recipients.length} 封失敗通知郵件`);
+
+  } catch (error) {
+    console.error(`[${functionName}] 發送通知時出錯:`, error);
+    // 不中斷主流程
+  }
+}
+
+/**
+ * 生成失敗通知郵件的 HTML 內容
+ */
+function _generateFailureEmailHTML(userName, projectName, syncType, errorMessage, details) {
+  const syncTypeDisplay = syncType === 'sales' ? '銷控資料' : '退戶';
+  const suggestion = _generateDynamicSuggestion(errorMessage, details.serviceAccountEmail);
+
+  return `
+    <html>
+      <body style="font-family: 'Microsoft JhengHei', Arial, sans-serif; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #d32f2f 0%, #f44336 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h1 style="margin: 0; font-size: 24px;">⚠️ 同步失敗警告</h1>
+            <p style="margin: 5px 0 0 0; font-size: 14px;">${syncTypeDisplay} Google Sheet 同步出現問題</p>
+          </div>
+
+          <div style="background: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px;">
+            <p>尊敬的 <strong>${userName}</strong>，</p>
+            <p>您好！您的專案「<strong>${projectName}</strong>」在同步${syncTypeDisplay}到 Google Sheet 時發生錯誤。</p>
+
+            <div style="background: white; border-left: 4px solid #d32f2f; padding: 15px; margin: 20px 0; border-radius: 4px;">
+              <h3 style="margin-top: 0; color: #d32f2f;">❌ 錯誤詳情</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr>
+                  <td style="padding: 8px; font-weight: bold; width: 100px;">失敗原因：</td>
+                  <td style="padding: 8px; color: #d32f2f; word-break: break-word;">${errorMessage}</td>
+                </tr>
+                <tr style="background: #f5f5f5;">
+                  <td style="padding: 8px; font-weight: bold;">失敗時間：</td>
+                  <td style="padding: 8px;">${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; font-weight: bold;">同步類型：</td>
+                  <td style="padding: 8px;">${syncTypeDisplay}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #e3f2fd; border-left: 4px solid #1976d2; padding: 15px; margin: 20px 0; border-radius: 4px;">
+              <h3 style="margin-top: 0; color: #1976d2;">💡 建議解決步驟</h3>
+              <div style="font-size: 13px; line-height: 1.6;">
+                ${suggestion}
+              </div>
+            </div>
+
+            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 15px 0; border-radius: 4px; font-size: 12px;">
+              <strong>📌 提醒：</strong> 若問題持續，請聯絡系統管理員。此為自動郵件，請勿回覆。
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
+ * 根據錯誤訊息生成動態建議
+ */
+function _generateDynamicSuggestion(errorMessage, serviceAccountEmail) {
+  const msg = (errorMessage || '').toLowerCase();
+
+  if (msg.includes('permission') || msg.includes('denied')) {
+    return `
+      <p><strong>❌ 機器人帳戶無編輯權限</strong></p>
+      <p>請將 Google Sheet 共用給此機器人帳戶（編輯者權限）：</p>
+      <p style="background: #f5f5f5; padding: 8px; border-radius: 3px; font-family: monospace; word-break: break-all; margin: 10px 0;">
+        ${serviceAccountEmail || 'service-account@project.iam.gserviceaccount.com'}
+      </p>
+    `;
+  } else if (msg.includes('quota') || msg.includes('exceeded')) {
+    return `
+      <p><strong>❌ Google Sheets API 配額超限</strong></p>
+      <p>⏳ 請等待 24 小時後重試，或升級 Google Cloud 配額。</p>
+    `;
+  } else if (msg.includes('not found') || msg.includes('does not exist')) {
+    return `
+      <p><strong>❌ 工作表不存在</strong></p>
+      <p>指定的工作表在 Google Sheet 中不存在。請檢查工作表名稱，或在 Google Sheet 中新建相同名稱的工作表。</p>
+    `;
+  } else if (msg.includes('firestore') || msg.includes('database')) {
+    return `
+      <p><strong>❌ 資料庫查詢失敗</strong></p>
+      <p>系統無法從資料庫讀取資料。⏳ 系統將自動重試，或請稍後手動重試同步。</p>
+    `;
+  } else if (msg.includes('format') || msg.includes('json')) {
+    return `
+      <p><strong>❌ 資料格式錯誤</strong></p>
+      <p>同步過程中發現資料格式問題（如特殊字符或超長字段）。請聯絡技術團隊進行檢查。</p>
+    `;
+  }
+
+  return `
+    <p><strong>❌ 發生預期外的錯誤</strong></p>
+    <p>請聯絡系統管理員尋求協助。</p>
+  `;
+}
+// ✅ END: Sync Failure Notification Functions
+
 /**
  * [API] 銷控資料全量同步：將某個 Project 的所有 salesHouseholds 寫入 Sheet
  */
@@ -22188,6 +22479,7 @@ exports.syncSalesHouseholdsToSheet = onCall({
   memory: "512MiB",
   timeoutSeconds: 540,
   invoker: 'public', // 確保可以被 public 呼叫 (由 Firebase SDK 處理 Auth)
+  secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (request) => {
   const { projectId, spreadsheetId, sheetName } = request.data;
   const functionName = "syncSalesHouseholdsToSheet";
@@ -22281,6 +22573,16 @@ exports.syncSalesHouseholdsToSheet = onCall({
 
   } catch (error) {
     console.error(`[${functionName}] 失敗:`, error);
+
+    // 發送失敗通知（非同步，不阻塞）
+    _sendSyncFailureNotification(
+      new Firestore({ databaseId: 'anxi-app' }),
+      projectId,
+      'sales',
+      error.message,
+      { spreadsheetId, sheetName, serviceAccountEmail: process.env.SERVICE_ACCOUNT_EMAIL }
+    ).catch(err => console.error('通知失敗:', err));
+
     throw new HttpsError('internal', `同步失敗: ${error.message}`);
   }
 });
@@ -22419,6 +22721,21 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
 
   } catch (error) {
     console.error(`[${functionName}] 錯誤:`, error);
+
+    // 發送失敗通知（非同步，不阻塞）
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (projectDoc.exists) {
+      const settings = projectDoc.data();
+      if (settings.salesSheetId && settings.salesSheetTabName) {
+        _sendSyncFailureNotification(
+          db,
+          projectId,
+          'sales',
+          `自動同步失敗: ${error.message}`,
+          { spreadsheetId: settings.salesSheetId, sheetName: settings.salesSheetTabName }
+        ).catch(err => console.error('通知失敗:', err));
+      }
+    }
   }
 });
 
@@ -22456,6 +22773,335 @@ function _flattenSalesHouseholdForSheet(h) {
   return flat;
 }
 
+/**
+ * 扁平化退戶購案資料用於 Google Sheet
+ */
+function _flattenCancelledPurchaseForSheet(doc) {
+  const flat = { ...doc };
+  flat['_id'] = doc._docId || doc.id;
+
+  // 處理取消日期 (Timestamp)
+  if (doc._cancellationMeta?.cancellationDate && doc._cancellationMeta.cancellationDate.toDate) {
+    flat['cancellationDate'] = doc._cancellationMeta.cancellationDate.toDate().toISOString().split('T')[0];
+  }
+
+  // 處理操作人員
+  if (doc._cancellationMeta?.operatorName) {
+    flat['operatorName'] = doc._cancellationMeta.operatorName;
+  }
+
+  // 處理取消原因 (Array → 逗號分隔字串)
+  if (Array.isArray(doc.cancelReasons)) {
+    flat['cancelReasons'] = doc.cancelReasons.join(', ');
+  }
+
+  // 處理首購 Boolean
+  if (typeof doc.isFirstTimeBuyer === 'boolean') {
+    flat['isFirstTimeBuyer'] = doc.isFirstTimeBuyer ? '是' : '否';
+  }
+
+  // 處理更新時間 Timestamp
+  if (doc.updatedAt && doc.updatedAt.toDate) {
+    flat['updatedAt'] = doc.updatedAt.toDate().toISOString();
+  }
+
+  // 處理停車位資料（取第一筆）
+  if (Array.isArray(doc.parkingData) && doc.parkingData.length > 0) {
+    const parking = doc.parkingData[0];
+    flat['parkingSpotId'] = parking.spotId || '';
+  }
+
+  return flat;
+}
+
+// ✅ START: Cancelled Purchases Sync
+/**
+ * [API] 退戶資料全量同步：將某個 Project 的所有 cancelledPurchases 寫入 Sheet
+ */
+exports.syncCancelledPurchasesToSheet = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 540,
+  invoker: 'public',
+  secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (request) => {
+  const { projectId, spreadsheetId, sheetName } = request.data;
+  const functionName = "syncCancelledPurchasesToSheet";
+
+  if (!projectId || !spreadsheetId || !sheetName) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, spreadsheetId, sheetName)');
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+
+  try {
+    console.log(`[${functionName}] 開始同步: Project=${projectId} -> Sheet=${spreadsheetId} (${sheetName})`);
+
+    // 1. 查詢所有退戶購案
+    const snapshot = await db.collection('cancelledPurchases')
+      .where('projectId', '==', projectId)
+      .get();
+
+    if (snapshot.empty) {
+      return { status: 'success', message: '該專案尚無退戶資料', count: 0 };
+    }
+
+    const docs = [];
+    snapshot.forEach(doc => {
+      docs.push({ _docId: doc.id, ...doc.data() });
+    });
+
+    // 2. 扁平化資料
+    const rows = docs.map(d => _flattenCancelledPurchaseForSheet(d));
+
+    // 3. 定義欄位對照表
+    const cancelledFieldDisplayNames = {
+      unitId: '戶別',
+      building: '棟別',
+      floor: '樓層',
+      layout: '格局',
+      propertyType: '物業類型',
+      area_house_ping: '房屋坪數',
+      area_terrace_ping: '露臺坪數',
+      common_area_ratio: '公設比',
+      price_list_house_total: '房屋總表價',
+      price_transaction_house: '房屋成交價',
+      price_transaction_total: '成交總價(含車)',
+      parking_trans_total: '車位成交總價',
+      buyerName: '買方姓名',
+      buyerPhone: '買方電話',
+      buyerIdNumber: '身分證字號',
+      buyerEmail: '買方Email',
+      isFirstTimeBuyer: '首購',
+      salesperson: '銷售人員',
+      referrerName: '介紹人',
+      cancellationDate: '退戶日期',
+      cancelReasons: '退戶原因',
+      operatorName: '操作人員',
+      contractType: '合約方式',
+      remarks: '備註',
+      status: '銷控狀態',
+      updatedAt: '更新時間'
+    };
+
+    // 4. 準備 Headers
+    let headers = ['_id', 'updatedAt'];
+    const displayKeys = Object.keys(cancelledFieldDisplayNames);
+    headers = headers.concat(displayKeys);
+
+    // 找出 rows 中有但 headers 沒定義的 keys (動態欄位)
+    const allRowKeys = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => allRowKeys.add(k)));
+    const extraKeys = Array.from(allRowKeys).filter(k => !headers.includes(k) && k !== '_id' && k !== 'updatedAt');
+    headers = headers.concat(extraKeys);
+
+    // 建立 Header Row (中文名稱)
+    const headerRow = headers.map(key => {
+      if (key === '_id') return '系統編號 (勿動)';
+      if (key === 'updatedAt') return '更新時間';
+      return cancelledFieldDisplayNames[key] || key;
+    });
+
+    // 5. 轉換 Rows
+    const values = [headerRow];
+    rows.forEach(row => {
+      const rowData = headers.map(key => {
+        let val = row[key];
+        if (val === undefined || val === null) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        return String(val);
+      });
+      values.push(rowData);
+    });
+
+    // 6. 寫入 Sheet
+    const sheets = await _getSalesSyncGoogleSheetClient();
+
+    // 保存設定到 Project
+    await db.collection('projects').doc(projectId).set({
+      cancelledSyncConfig: {
+        spreadsheetId,
+        sheetName,
+        sheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0`,
+        lastSyncAt: new Date().toISOString(),
+        syncedCount: rows.length,
+        status: 'success'
+      }
+    }, { merge: true });
+
+    // 清除現有內容
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: `'${sheetName}'!A:ZZ`,
+    });
+
+    // 寫入新內容
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetName}'!A1`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values },
+    });
+
+    console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆`);
+    return { status: 'success', message: `成功同步 ${rows.length} 筆退戶資料`, count: rows.length };
+
+  } catch (error) {
+    console.error(`[${functionName}] 失敗:`, error);
+
+    // 發送失敗通知（非同步，不阻塞）
+    _sendSyncFailureNotification(
+      db,
+      projectId,
+      'cancelled',
+      error.message,
+      { spreadsheetId, sheetName, serviceAccountEmail: process.env.SERVICE_ACCOUNT_EMAIL }
+    ).catch(err => console.error('通知失敗:', err));
+
+    throw new HttpsError('internal', `退戶同步失敗: ${error.message}`);
+  }
+});
+
+/**
+ * [Trigger] 當退戶購案異動時，即時同步到 Sheet
+ */
+exports.onCancelledPurchasesWrite = onDocumentWritten({
+  document: "cancelledPurchases/{docId}",
+  database: 'anxi-app',
+  region: 'asia-east1',
+  memory: '512MiB'
+}, async (event) => {
+  const functionName = "onCancelledPurchasesWrite";
+  const docId = event.params.docId;
+
+  const newData = event.data?.after?.data();
+  const oldData = event.data?.before?.data();
+  const projectId = newData?.projectId || oldData?.projectId;
+
+  if (!projectId) {
+    return;
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+
+  try {
+    // 讀取 Project Settings
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) return;
+
+    const settings = projectDoc.data();
+    const spreadsheetId = settings.cancelledSyncConfig?.spreadsheetId;
+    const sheetName = settings.cancelledSyncConfig?.sheetName;
+
+    if (!spreadsheetId || !sheetName) {
+      return; // 未設定同步
+    }
+
+    console.log(`[${functionName}] 偵測到異動，準備同步: ID=${docId} -> Sheet=${spreadsheetId}`);
+
+    const sheets = await _getSalesSyncGoogleSheetClient();
+
+    // 找出該 Row 在 Sheet 中的位置 (by _id column A)
+    const range = `'${sheetName}'!A:A`;
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+    });
+
+    const values = response.data.values || [];
+    let rowIndex = -1;
+
+    // 尋找 docId (跳過 Header Row 1)
+    for (let i = 1; i < values.length; i++) {
+      if (values[i][0] === docId) {
+        rowIndex = i + 1; // 1-based index
+        break;
+      }
+    }
+
+    // 根據操作類型處理
+    if (!newData) {
+      // --- 刪除操作 ---
+      if (rowIndex > -1) {
+        const sheetId = await _getSheetIdByName(sheets, spreadsheetId, sheetName);
+        if (sheetId !== null) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            resource: {
+              requests: [{
+                deleteDimension: {
+                  range: {
+                    sheetId: sheetId,
+                    dimension: 'ROWS',
+                    startIndex: rowIndex - 1,
+                    endIndex: rowIndex
+                  }
+                }
+              }]
+            }
+          });
+          console.log(`[${functionName}] 已刪除 Row ${rowIndex}`);
+        }
+      }
+    } else {
+      // --- 新增或更新操作 ---
+      const flattened = _flattenCancelledPurchaseForSheet({ _docId: docId, ...newData });
+
+      // 讀取 Header (第一列) 以決定欄位順序
+      const headerResp = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${sheetName}'!1:1`,
+      });
+
+      const headerRow = headerResp.data.values?.[0] || [];
+      const rowData = headerRow.map(header => {
+        // 從中文 header 反向查找英文 key
+        let key = header;
+        if (header === '系統編號 (勿動)') key = '_id';
+        if (header === '更新時間') key = 'updatedAt';
+
+        return flattened[key] ?? '';
+      });
+
+      if (rowIndex > -1) {
+        // 更新現有 Row
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `'${sheetName}'!A${rowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          resource: { values: [rowData] },
+        });
+        console.log(`[${functionName}] 已更新 Row ${rowIndex}`);
+      } else {
+        // 新增 Row
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'${sheetName}'!A:A`,
+          valueInputOption: 'USER_ENTERED',
+          resource: { values: [rowData] },
+        });
+        console.log(`[${functionName}] 已新增 Row`);
+      }
+    }
+  } catch (error) {
+    console.error(`[${functionName}] 監聽器同步失敗:`, error);
+
+    // 發送失敗通知
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (projectDoc.exists) {
+      const config = projectDoc.data().cancelledSyncConfig;
+      _sendSyncFailureNotification(
+        db,
+        projectId,
+        'cancelled',
+        `自動同步失敗: ${error.message}`,
+        { spreadsheetId: config?.spreadsheetId, sheetName: config?.sheetName }
+      ).catch(err => console.error('通知失敗:', err));
+    }
+  }
+});
+// ✅ END: Cancelled Purchases Sync
 
 // =================================================================
 // 4. [Feature] Appointments Google Sheet Sync

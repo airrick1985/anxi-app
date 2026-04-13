@@ -142,6 +142,12 @@
               {{ formatDate(item.cancellationDate) }}
             </template>
 
+            <!-- 備註 -->
+            <template v-slot:item.remarks="{ item }">
+              <span v-if="item.remarks" class="text-body-2">{{ item.remarks }}</span>
+              <span v-else class="text-grey text-caption">—</span>
+            </template>
+
             <!-- 展開列（保留現有詳情內容） -->
             <template v-slot:expanded-row="{ columns, item }">
               <tr>
@@ -297,6 +303,26 @@
                         本筆退戶記錄建立於新功能上線前，未記錄退戶原因
                       </div>
                     </template>
+
+                    <!-- 備註 -->
+                    <v-divider class="my-3"></v-divider>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                      <div class="section-title">
+                        <v-icon size="small" class="mr-1" color="info">mdi-note-text</v-icon>
+                        備註
+                      </div>
+                      <v-btn icon size="x-small" variant="text" @click="handleEditRemarks(item)">
+                        <v-icon size="small">mdi-pencil</v-icon>
+                        <v-tooltip activator="parent">修改備註</v-tooltip>
+                      </v-btn>
+                    </div>
+                    <div v-if="item.remarks" class="pa-2 bg-blue-lighten-5 rounded text-body-2">
+                      {{ item.remarks }}
+                    </div>
+                    <div v-else class="text-caption text-grey">
+                      <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+                      未填寫備註
+                    </div>
 
                     <!-- 文件 ID 顯示 -->
                     <v-divider class="my-3"></v-divider>
@@ -494,6 +520,46 @@
       </v-card>
     </v-dialog>
 
+    <!-- 修改退戶備註 Dialog -->
+    <v-dialog v-model="editRemarksDialog.show" max-width="560" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon left class="mr-2">mdi-note-text</v-icon>
+          修改備註
+        </v-card-title>
+        <v-card-text class="py-4">
+          <p class="text-body-2 text-grey mb-4">
+            戶別：<strong>【{{ editRemarksDialog.targetItem?.unitId }}】</strong>
+            買方：<strong>{{ editRemarksDialog.targetItem?.buyerName || '—' }}</strong>
+          </p>
+          <v-textarea
+            v-model="editRemarksDialog.inputRemarks"
+            label="備註內容"
+            placeholder="請輸入備註..."
+            variant="outlined"
+            density="compact"
+            rows="4"
+            no-resize
+            counter
+            maxlength="500"
+            hide-details="auto"
+          ></v-textarea>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="editRemarksDialog.show = false">取消</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="editRemarksDialog.loading"
+            @click="executeUpdateRemarks"
+          >
+            確認修改
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 冷刪除確認 Dialog -->
     <v-dialog v-model="softDeleteDialog.show" max-width="500" persistent>
       <v-card>
@@ -631,7 +697,7 @@
 
 <script setup>
 import { ref, watch, reactive, computed } from 'vue';
-import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, updateCancellationDate, softDeleteCancelledPurchase, undoSoftDeleteCancelledPurchase, hardDeleteCancelledPurchase } from '@/api';
+import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, updateCancellationDate, updateRemarks, softDeleteCancelledPurchase, undoSoftDeleteCancelledPurchase, hardDeleteCancelledPurchase } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
@@ -683,6 +749,7 @@ const tableHeaders = [
   { title: '坪數', key: 'area_house_ping', sortable: true, width: '80px' },
   { title: '退戶原因', key: 'cancelReasons', sortable: false },
   { title: '退戶日期', key: 'cancellationDate', sortable: true, width: '150px' },
+  { title: '備註', key: 'remarks', sortable: false },
   { title: '操作人', key: 'operatorName', sortable: true },
 ];
 
@@ -708,6 +775,7 @@ const filteredItems = computed(() => {
       item.area_house_ping,
       formatDate(item.cancellationDate),
       (item.cancelReasons || []).join(' '),
+      item.remarks,
       formatPrice(calculateTotalTransactionPrice(item))
     ];
     return searchFields.some(field =>
@@ -742,6 +810,13 @@ const editDateDialog = reactive({
   loading: false,
   targetItem: null,
   selectedDate: '',
+});
+
+const editRemarksDialog = reactive({
+  show: false,
+  loading: false,
+  targetItem: null,
+  inputRemarks: '',
 });
 
 const softDeleteDialog = reactive({
@@ -982,6 +1057,45 @@ async function executeUpdateDate() {
     toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
   } finally {
     editDateDialog.loading = false;
+  }
+}
+
+function handleEditRemarks(item) {
+  editRemarksDialog.targetItem = item;
+  editRemarksDialog.inputRemarks = item.remarks || '';
+  editRemarksDialog.show = true;
+}
+
+async function executeUpdateRemarks() {
+  const item = editRemarksDialog.targetItem;
+  if (!item) return;
+
+  editRemarksDialog.loading = true;
+
+  try {
+    const result = await updateRemarks(
+      props.projectId,
+      item.docId,
+      editRemarksDialog.inputRemarks,
+      userStore.user?.name || '未知用戶'
+    );
+
+    if (result.status === 'success') {
+      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
+      // 即時更新列表中該筆記錄的 remarks
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].remarks = editRemarksDialog.inputRemarks;
+      }
+      editRemarksDialog.show = false;
+    } else {
+      toast.error(`修改失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
+    }
+  } catch (error) {
+    console.error('修改退戶備註失敗:', error);
+    toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    editRemarksDialog.loading = false;
   }
 }
 

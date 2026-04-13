@@ -819,6 +819,22 @@ export const syncSalesHouseholdsToSheet = async (payload) => {
 };
 
 /**
+ * [API] 退戶資料全量同步到 Google Sheet
+ * @param {object} payload - { projectId, spreadsheetId, sheetName }
+ * @returns {Promise<object>} - { status, message, count }
+ */
+export const syncCancelledPurchasesToSheet = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'syncCancelledPurchasesToSheet');
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncCancelledPurchasesToSheet:", error);
+    throw new Error(error.message || '退戶資料同步失敗');
+  }
+};
+
+/**
  * [API] 自訂表單回覆全量同步到 Google Sheet
  * @param {object} payload - { projectId, formId, spreadsheetId, sheetName }
  * @returns {Promise<object>} - { status, message, count }
@@ -1006,6 +1022,28 @@ export async function updateCancellationDate(projectId, cancelledDocId, cancella
     return result.data;
   } catch (error) {
     console.error("呼叫 updateCancellationDate 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 修改退戶備註
+ * @param {string} projectId 建案 ID
+ * @param {string} cancelledDocId 退戶記錄的 docId
+ * @param {string} remarks 備註內容
+ * @param {string} operatorName 操作人員名稱
+ * @returns {Promise<object>} API 響應
+ */
+export async function updateRemarks(projectId, cancelledDocId, remarks, operatorName) {
+  if (!projectId || !cancelledDocId || !operatorName) {
+    return { status: "error", message: "前端錯誤：缺少必要參數。" };
+  }
+  try {
+    const func = httpsCallable(functions, 'updateRemarks');
+    const result = await func({ projectId, cancelledDocId, remarks, operatorName });
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 updateRemarks 雲端函式時發生錯誤:", error);
     return { status: "error", message: error.message };
   }
 }
