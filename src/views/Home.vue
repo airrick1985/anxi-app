@@ -50,7 +50,7 @@ import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 import reservationCalenderIcon from '@/assets/icons/reservation-calender.png';
-import profileIcon from '@/assets/icons/profile.png'; 
+import profileIcon from '@/assets/icons/profile.png';
 import SMSIcon from '@/assets/icons/SMS.png';
 
 
@@ -122,13 +122,23 @@ const allButtons = ref([
     nav: { name: 'ViewingReservationCalendarEntry' } // 導向新的路由入口
   },
 
-  { 
-    id: 'smsMonitor', 
-    text: '簡訊監控', 
+  {
+    id: 'smsMonitor',
+    text: '簡訊監控',
     icon: SMSIcon, // 建議使用代表監控或狀態的圖示
-    permissionType: 'system', 
+    permissionType: 'system',
     permissionArgs: ['系統管理員','超級管理員'], // 依照您的 Home.vue 邏輯，會檢查角色是否包含此權限
     nav: { name: 'SmsReportMonitor' } // 導向您在 router/index.js 定義的名稱
+  },
+
+  // ✅ 新增：管理員工具中心
+  {
+    id: 'adminToolsCenter',
+    text: '管理員工具',
+    icon: userManagementIcon, // 使用現有的管理圖標
+    permissionType: 'system',
+    permissionArgs: ['系統管理員', '超級管理員'],
+    nav: { name: 'AdminToolsCenter' }
   },
 ]);
 

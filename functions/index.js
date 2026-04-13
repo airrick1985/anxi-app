@@ -152,6 +152,12 @@ const fieldDisplayNames = {
   // ... 可根據需要添加更多欄位
 };
 
+/**
+ * 定義允許更新 reportUploaded 為 true 的 bookingType 列表
+ * 用於防止錯誤的預約類型（如「對保」）被標記為已上傳報告
+ * 可根據業務需求擴充此列表
+ */
+const BOOKING_TYPES_ALLOW_REPORT_UPLOAD = ['初驗', '複驗', '驗屋'];
 
 setGlobalOptions({ region: 'asia-east1' });
 
@@ -1266,7 +1272,7 @@ exports.uploadHouseholds = onCall({
 
 
 // ✓ 【替換】checkInToSystem 整個函式 (管理員不佔名額版)
-exports.checkInToSystem = onCall(async (request) => {
+exports.checkInToSystem = onCall({ memory: "512MiB" }, async (request)=> {
   const { projectId, system, userKey, userName } = request.data;
   const functionName = `checkInToSystem (Project: ${projectId}, System: ${system}, User: ${userKey})`;
 
@@ -1393,7 +1399,7 @@ exports.checkInToSystem = onCall(async (request) => {
 });
 
 
-exports.handleLogin = onCall({ memory: "512MB" }, async (request) => {
+exports.handleLogin = onCall({ memory: "512MiB" }, async (request) => {
   const { key, password, sessionId } = request.data;
 
   if (!key || !password || !sessionId) {
@@ -2570,7 +2576,7 @@ exports.handleSalesSvgBatchDelete = onCall(async (request) => {
  * 【新增】更新銷控資料
  * 處理單一戶別的銷控資料更新，包含所有欄位的資料驗證和型別轉換
  */
-exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MB", secrets: gmailSecrets }, async (request) => {
+exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secrets: gmailSecrets }, async (request) => {
   const { projectName, projectId, unitId, data } = request.data;
   const functionName = `updateSalesData (Project: ${projectName}, Unit: ${unitId})`;
 
@@ -3506,7 +3512,7 @@ exports.getProjectFloors = onCall(async (request) => {
 /**
  * 獲取平面圖列表及其基本資訊
  */
-exports.getFloorPlans = onCall({ memory: "512MB" }, async (request) => {
+exports.getFloorPlans = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getFloorPlans (Project: ${projectId})`;
 
@@ -3779,7 +3785,7 @@ exports.deleteFloorPlan = onCall(async (request) => {
 /**
  * 獲取特定平面圖的所有車位佈局
  */
-exports.getSpotLayouts = onCall({ memory: "512MB" }, async (request) => {
+exports.getSpotLayouts = onCall({ memory: "512MiB" }, async (request) => {
   const { floorPlanId, projectId } = request.data;
   const functionName = `getSpotLayouts (FloorPlan: ${floorPlanId})`;
 
@@ -4065,7 +4071,7 @@ exports.updateFloorPlanParameters = onCall(async (request) => {
  * @param {string} projectId - 專案 ID
  * @returns {object} 儲存的樣式物件，如果不存在則回傳空物件
  */
-exports.getProjectTextStyle = onCall({ memory: "512MB" }, async (request) => {
+exports.getProjectTextStyle = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectTextStyle (Project: ${projectId})`;
 
@@ -4098,7 +4104,7 @@ exports.getProjectTextStyle = onCall({ memory: "512MB" }, async (request) => {
  * @param {string} projectId - 專案 ID
  * @param {object} styles - 完整的樣式物件
  */
-exports.updateProjectTextStyle = onCall({ memory: "512MB" }, async (request) => {
+exports.updateProjectTextStyle = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId, styles } = request.data;
   const functionName = `updateProjectTextStyle (Project: ${projectId})`;
 
@@ -4171,7 +4177,7 @@ exports.updateFloorPlanBackground = onCall(async (request) => {
 });
 
 //  新增：根據 projectId 和 floor 查詢 salesParkings 車位資料
-exports.getSalesParkingsByFloor = onCall({ memory: "512MB" }, async (request) => {
+exports.getSalesParkingsByFloor = onCall({ memory: "512MiB" }, async (request) => {
   const functionName = "getSalesParkingsByFloor";
 
 
@@ -4259,7 +4265,7 @@ exports.getSalesParkingsByFloor = onCall({ memory: "512MB" }, async (request) =>
  * @param {string} projectId - 專案 ID
  * @returns {object} 儲存的顏色設定物件，如果不存在則回傳空物件
  */
-exports.getProjectStatusColors = onCall({ memory: "512MB" }, async (request) => {
+exports.getProjectStatusColors = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectStatusColors (Project: ${projectId})`;
 
@@ -4291,7 +4297,7 @@ exports.getProjectStatusColors = onCall({ memory: "512MB" }, async (request) => 
  * @param {string} projectId - 專案 ID
  * @param {object} colors - 完整的顏色設定物件
  */
-exports.updateProjectStatusColors = onCall({ memory: "512MB" }, async (request) => {
+exports.updateProjectStatusColors = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId, colors } = request.data;
   const functionName = `updateProjectStatusColors (Project: ${projectId})`;
 
@@ -5066,7 +5072,7 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
 /**
  * 獲取所有系統權限功能的列表
  */
-exports.getSystemFunctions = onCall({ region: "asia-east1", memory: "512MB", cors: true }, async (request) => {
+exports.getSystemFunctions = onCall({ region: "asia-east1", memory: "512MiB", cors: true }, async (request) => {
   const db = new Firestore({ databaseId: "anxi-app" });
   const snapshot = await db.collection('systemFunctions').orderBy('name', 'asc').get();
   if (snapshot.empty) {
@@ -6269,13 +6275,21 @@ exports.handleDirectReportUpload = onCall({
         inspectionReportUrl: admin.firestore.FieldValue.arrayUnion({ name: newFileName, url: uploadedFileLink })
       });
 
-      // 3. 更新預約紀錄
+      // 3. 更新預約紀錄 (僅更新允許的 bookingType)
       if (appointmentDocRef) {
-        transaction.update(appointmentDocRef, {
-          uploadReportTime: admin.firestore.FieldValue.serverTimestamp(),
-          reportUploaded: true
-        });
-        console.log(`[${functionName}] 已在事務中排定更新預約文件 [${appointmentDocRef.id}]`);
+        const appointmentDoc = await transaction.get(appointmentDocRef);
+        if (appointmentDoc.exists) {
+          const appointmentBookingType = appointmentDoc.data().bookingType;
+          if (BOOKING_TYPES_ALLOW_REPORT_UPLOAD.includes(appointmentBookingType)) {
+            transaction.update(appointmentDocRef, {
+              uploadReportTime: admin.firestore.FieldValue.serverTimestamp(),
+              reportUploaded: true
+            });
+            console.log(`[${functionName}] 已在事務中排定更新預約文件 [${appointmentDocRef.id}] (bookingType: ${appointmentBookingType})`);
+          } else {
+            console.warn(`[${functionName}] 預約 [${appointmentDocRef.id}] 的 bookingType [${appointmentBookingType}] 不在允許清單中，跳過 reportUploaded 更新。`);
+          }
+        }
       } else if (bookingCode) {
         console.warn(`[${functionName}] 在事務中找不到 bookingCode [${bookingCode}]，未更新上傳時間。`);
       }
@@ -7072,101 +7086,7 @@ exports.fetchManageableUsersWithDetails = onCall(async (request) => {
 
 
 
-// ✓ START: 新增 - 驗屋報告上傳前置驗證函式
-/**
- * [新增] 驗屋報告上傳前的第一步驗證
- * 驗證身分證、上傳開關、預約紀錄是否存在且尚未被使用
- */
-exports.verifyUploadPrerequisites = onCall(async (request) => {
-  const { projectId, unitId, reportType, idNumber } = request.data;
-  const functionName = `verifyUploadPrerequisites (Project: ${projectId}, Unit: ${unitId})`;
 
-  if (!projectId || !unitId || !reportType || !idNumber) {
-    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, unitId, reportType, idNumber)。");
-  }
-
-  const db = new Firestore({ databaseId: "anxi-app" });
-
-  try {
-    // --- 1. 驗證身分證 (邏輯同 validateId) ---
-    console.log(`[${functionName}] 步驟 1/3: 驗證身分證...`);
-    const householdDocId = `${projectId}_${unitId}`;
-    const householdDoc = await db.collection('households').doc(householdDocId).get();
-
-    if (!householdDoc.exists) {
-      throw new HttpsError('not-found', `找不到戶別 "${unitId}" 的資料。`);
-    }
-    const householdData = householdDoc.data();
-    const storedId = String(householdData.buyerIdNumber || '').trim();
-    const inputId = String(idNumber).trim();
-
-    if (storedId !== inputId && inputId !== projectId) {
-      throw new HttpsError('permission-denied', '身分證號碼驗證失敗，請重新確認。');
-    }
-    console.log(`[${functionName}] 身分證驗證成功。`);
-
-    // --- 2. 檢查上傳開關 ---
-    console.log(`[${functionName}] 步驟 2/3: 檢查上傳開關...`);
-    const bookingTypeForSwitch = reportType === '初驗報告' ? 'initialReportUploadSwitch' : 'reInspectionReportUploadSwitch';
-    if (householdData[bookingTypeForSwitch] !== true) {
-      throw new HttpsError('permission-denied', `此戶別的「${reportType}」上傳功能目前未開放或已關閉。`);
-    }
-    console.log(`[${functionName}] 上傳開關已開啟。`);
-
-    // --- 3. 檢查預約紀錄 ---
-    console.log(`[${functionName}] 步驟 3/3: 檢查相關預約紀錄...`);
-    const bookingTypeForQuery = reportType.replace('報告', ''); // "初驗報告" -> "初驗"
-
-    const appointmentsQuery = db.collection('appointments')
-      .where('projectId', '==', projectId)
-      .where('unitId', '==', unitId)
-      .where('bookingType', '==', bookingTypeForQuery)
-      .where('status', 'in', ['預約中', '已完成'])
-      .where('inspectionMethod', '==', '代驗公司')
-      .orderBy('createdAt', 'desc');
-
-    const appointmentSnapshot = await appointmentsQuery.get();
-
-    if (appointmentSnapshot.empty) {
-      // 找不到符合的「代驗公司」預約紀錄
-      const projectDoc = await db.collection('projects').doc(projectId).get();
-      const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
-      console.log(`[${functionName}] 找不到代驗公司預約紀錄，回傳需要確認。`);
-      return {
-        status: 'needs_confirmation',
-        message: `系統找不到 ${projectName} ${unitId} 的代驗公司「${bookingTypeForQuery}」紀錄，您確定要繼續上傳嗎？`
-      };
-    }
-
-    // 找到符合的預約紀錄，檢查是否已上傳過
-    const latestAppointment = appointmentSnapshot.docs[0].data();
-
-    // ✅ [修改] 取消驗證 uploadReportTime，允許重複上傳
-    /* if (latestAppointment.uploadReportTime) {
-      const uploadTime = latestAppointment.uploadReportTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-      const projectDoc = await db.collection('projects').doc(projectId).get();
-      const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
-      console.log(`[${functionName}] 發現已上傳紀錄，拒絕操作。`);
-      throw new HttpsError('already-exists', `${projectName} ${unitId} 已於 ${uploadTime} 上傳過 ${reportType}，如需重新上傳請洽客服人員。`);
-    }
-    */
-
-    // 所有驗證通過
-    console.log(`[${functionName}] 所有驗證通過。`);
-    return {
-      status: 'success',
-      bookingCode: latestAppointment.bookingCode,
-    };
-
-  } catch (error) {
-    console.error(`[${functionName}] 驗證失敗:`, error);
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-    throw new HttpsError('internal', `驗證時發生未預期的錯誤: ${error.message}`);
-  }
-});
-// ✓ END: 新增 - 驗屋報告上傳前置驗證函式
 
 /**
  * [核心邏輯] 檢查並寄送未上傳報告提醒
@@ -7361,7 +7281,7 @@ exports.sendUploadReminders = onSchedule({
   region: "asia-east1",
   schedule: "every 1 hours",
   timeZone: "Asia/Taipei",
-  memory: "512MB",
+  memory: "512MiB",
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (event) => {
   const functionName = "sendUploadReminders_scheduled";
@@ -9943,7 +9863,7 @@ exports.exportInspectionOptionsToExcel = onCall({
  * @returns {Promise<object>} - { status, id }
  */
 //  1. 修改函式名稱，移除 "FB"
-exports.addInspectionRecord = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
+exports.addInspectionRecord = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, unitId, inspectionDate, phase, photos, area, category, subCategory, status, level, progress, description, inspectorName, inspectorPhone, customerView } = request.data;
   const functionName = `addInspectionRecord (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -10013,7 +9933,7 @@ exports.addInspectionRecord = onCall({ region: "asia-east1", memory: "512MB" }, 
  * @param {string} [startAfterDocId] - 上一頁最後一筆文件 ID (游標分頁)
  * @returns {Promise<object>} - { status, data: Array<object>, hasMore: boolean, lastDocId: string|null }
  */
-exports.getInspectionRecords = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
+exports.getInspectionRecords = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, unitId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   const functionName = `getInspectionRecords (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -10111,7 +10031,7 @@ exports.getInspectionRecords = onCall({ region: "asia-east1", memory: "512MB" },
  * @param {object} context - 包含驗證資訊
  * @returns {Promise<{status: string, data: Array<object>, hasMore: boolean, lastDocId: string|null}>}
  */
-exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
+exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, limit: requestLimit, startAfterDocId, dateFrom, dateTo } = request.data;
   if (!projectId) {
     throw new HttpsError("invalid-argument", "缺少 'projectId' 參數。");
@@ -10198,7 +10118,7 @@ exports.getInspectionRecordsForProjectFB = onCall({ region: "asia-east1", memory
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - { status, data: object } e.g., { "A棟": ["A1-01", "A1-02"], ... }
  */
-exports.getProjectStructure = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
+exports.getProjectStructure = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId } = request.data;
   const functionName = `getProjectStructure (Project: ${projectId})`;
 
@@ -11545,7 +11465,7 @@ exports.sendInspectionReportEmails = onCall({
  * @param {string} projectId - 建案 ID
  * @returns {Promise<object>} - { status, data: object } 按 type 分類的選項
  */
-exports.getInspectionOptionsForProject = onCall({ region: "asia-east1", memory: "512MB" }, async (request) => {
+exports.getInspectionOptionsForProject = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   // 這個函式與之前為 InspectionAdmin 建立的 getInspectionOptions 幾乎一樣
   // 但為了區分用途或未來可能的差異，可以保留獨立的函式
   const { projectId } = request.data;
@@ -12261,7 +12181,7 @@ exports.handleAttachmentDelete = onCall({ region: "asia-east1" }, async (request
  * @param {object} data - { adminKey: string }
  * @returns {Promise<object>} - 包含 adminScope, manageableUsers, roles, projects, systemFunctions, allUserPermissions 的物件
  */
-exports.getUserManagementInitialData = onCall({ region: "asia-east1" }, async (request) => {
+exports.getUserManagementInitialData = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { adminKey } = request.data;
   const functionName = 'getUserManagementInitialData';
 
@@ -14059,13 +13979,24 @@ async function _handleHandleDirectReportUpload(data) {
     // 6. 執行資料庫更新事務
     console.log(`[${functionName}] 正在執行資料庫更新事務...`);
     await db.runTransaction(async (transaction) => {
+      // ✅ 【讀取階段】所有讀取必須在寫入前完成
       let appointmentDocRef = null;
+      let appointmentBookingType = null;
+
       if (bookingCode) {
         const appointmentQuery = db.collection('appointments').where('projectId', '==', projectId).where('bookingCode', '==', bookingCode).limit(1);
         const appointmentSnapshot = await transaction.get(appointmentQuery);
-        if (!appointmentSnapshot.empty) appointmentDocRef = appointmentSnapshot.docs[0].ref;
+        if (!appointmentSnapshot.empty) {
+          appointmentDocRef = appointmentSnapshot.docs[0].ref;
+          // ✅ 在讀取階段就取得 bookingType，避免寫入後再讀取
+          const appointmentDoc = await transaction.get(appointmentDocRef);
+          if (appointmentDoc.exists) {
+            appointmentBookingType = appointmentDoc.data().bookingType;
+          }
+        }
       }
 
+      // ✅ 【寫入階段】讀取全部完成後再進行寫入
       const logTimestamp = new Date();
       const logIdSuffix = `${String(logTimestamp.getFullYear()).slice(2)}${String(logTimestamp.getMonth() + 1).padStart(2, '0')}${String(logTimestamp.getDate()).padStart(2, '0')}${String(logTimestamp.getHours()).padStart(2, '0')}${String(logTimestamp.getMinutes()).padStart(2, '0')}${String(logTimestamp.getSeconds()).padStart(2, '0')}`;
       const logDocId = `${projectId}_${unit}_${logIdSuffix}`;
@@ -14082,8 +14013,12 @@ async function _handleHandleDirectReportUpload(data) {
         inspectionReportUrl: admin.firestore.FieldValue.arrayUnion({ name: newFileName, url: uploadedFileLink })
       });
 
-      if (appointmentDocRef) {
+      // 僅更新允許的 bookingType 的 reportUploaded
+      if (appointmentDocRef && appointmentBookingType && BOOKING_TYPES_ALLOW_REPORT_UPLOAD.includes(appointmentBookingType)) {
         transaction.update(appointmentDocRef, { uploadReportTime: admin.firestore.FieldValue.serverTimestamp(), reportUploaded: true });
+        console.log(`[${functionName}] 已更新預約 [${appointmentDocRef.id}] 的 reportUploaded (bookingType: ${appointmentBookingType})`);
+      } else if (appointmentDocRef && appointmentBookingType) {
+        console.warn(`[${functionName}] 預約 [${appointmentDocRef.id}] 的 bookingType [${appointmentBookingType}] 不在允許清單中，跳過 reportUploaded 更新。`);
       }
     });
     console.log(`[${functionName}] 資料庫事務成功。`);
@@ -14269,13 +14204,13 @@ async function _handleVerifyUploadPrerequisites(data) {
     const appointmentsQuery = db.collection('appointments')
       .where('projectId', '==', projectId).where('unitId', '==', unitId)
       .where('bookingType', '==', bookingTypeForQuery).where('status', 'in', ['預約中', '已完成'])
-      .where('inspectionMethod', '==', '代驗公司').orderBy('createdAt', 'desc');
+      .where('inspectionMethod', 'in', ['代驗公司', '驗屋公司']).orderBy('createdAt', 'desc');
     const appointmentSnapshot = await appointmentsQuery.get();
     if (appointmentSnapshot.empty) {
       const projectDoc = await db.collection('projects').doc(projectId).get();
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
-      console.log(`[${functionName}] 找不到代驗公司預約紀錄，回傳需要確認。`);
-      return { status: 'needs_confirmation', message: `系統找不到 ${projectName} ${unitId} 的代驗公司「${bookingTypeForQuery}」紀錄，您確定要繼續上傳嗎？` };
+      console.log(`[${functionName}] 找不到代驗公司或驗屋公司預約紀錄，回傳需要確認。`);
+      return { status: 'needs_confirmation', message: `系統找不到 ${projectName} ${unitId} 的代驗/驗屋公司「${bookingTypeForQuery}」紀錄，您確定要繼續上傳嗎？` };
     }
     const latestAppointment = appointmentSnapshot.docs[0].data();
     // ✅ [修改] 取消驗證 uploadReportTime，允許重複上傳
@@ -14288,7 +14223,28 @@ async function _handleVerifyUploadPrerequisites(data) {
     }
     */
     console.log(`[${functionName}] 所有驗證通過。`);
-    return { status: 'success', bookingCode: latestAppointment.bookingCode };
+
+    // 格式化預約日期為 YYYY/MM/DD
+    const appointmentDateObj = latestAppointment.appointmentDate.toDate();
+    const formattedAppointmentDate = appointmentDateObj.toLocaleDateString('zh-TW', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).replace(/\//g, '/'); // 確保使用 / 分隔符
+
+    return {
+      status: 'success',
+      bookingCode: latestAppointment.bookingCode,
+      appointmentDetails: {
+        bookingType: latestAppointment.bookingType,
+        inspectionMethod: latestAppointment.inspectionMethod,
+        inspectionCompanyName: latestAppointment.inspectionCompanyName,
+        appointmentDate: formattedAppointmentDate,
+        bookerName: latestAppointment.bookerName,
+        bookerEmail: latestAppointment.bookerEmail,
+      }
+    };
 
   } catch (error) {
     console.error(`[${functionName}] 驗證失敗:`, error);
@@ -20478,7 +20434,7 @@ exports.scheduledLeadReminder = onSchedule({
   schedule: "0,30 * * * *", // 每 30 分鐘運行一次
   timeZone: "Asia/Taipei",
   region: "asia-east1",
-  memory: "512MB",
+  memory: "512MiB",
   secrets: ["ANXISMART_LINE_CRM_TOKEN"]
 }, async (event) => {
   const functionName = "scheduledLeadReminder";
@@ -22171,7 +22127,7 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
   document: "salesHouseholds/{docId}",
   database: 'anxi-app',
   region: 'asia-east1',
-  memory: '512MB'
+  memory: '512MiB'
 }, async (event) => {
   const functionName = "onSalesHouseholdWrite";
   const docId = event.params.docId;
@@ -23666,6 +23622,10 @@ ${JSON.stringify(contextData, null, 2)}
 const aiRegexGeneration = require('./aiRegexGeneration');
 exports.generateLeadParsingRegex = aiRegexGeneration.generateLeadParsingRegex;
 
+// ✅ 報告上傳狀態檢查工具
+const reportUploadChecker = require('./checkReportUploadMismatch');
+exports.checkReportUploadMismatch = reportUploadChecker.checkReportUploadMismatch;
+exports.fixReportUploadMismatch = reportUploadChecker.fixReportUploadMismatch;
 
 /**
  * [新] 代理下載 Google Drive 檔案

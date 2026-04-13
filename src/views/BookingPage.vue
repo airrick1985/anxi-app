@@ -1073,21 +1073,80 @@
     </div>
 
 
-    <v-dialog v-model="isConfirmationDialogVisible" max-width="500px" persistent>
+    <!-- 預約詳情確認對話框 -->
+    <v-dialog v-model="isConfirmationDialogVisible" max-width="600px" persistent>
       <v-card>
         <v-card-title class="d-flex align-center bg-blue-grey-lighten-5">
-          <v-icon class="mr-3" color="info">mdi-help-circle-outline</v-icon>
-          <span class="text-h6">請確認</span>
+          <v-icon class="mr-3" color="info">mdi-clipboard-check-outline</v-icon>
+          <span class="text-h6">
+            {{ appointmentDetails ? '請確認預約詳情' : '請確認' }}
+          </span>
         </v-card-title>
-        <v-card-text class="pt-4 text-body-1" v-html="confirmationMessage">
+
+        <!-- 顯示預約詳情（如果有） -->
+        <v-card-text v-if="appointmentDetails" class="pt-6">
+          <v-alert type="info" variant="tonal" class="mb-6">
+            <span class="font-weight-bold">系統已找到您的預約紀錄，請確認以下資訊無誤後再開始上傳報告：</span>
+          </v-alert>
+
+          <div class="appointment-details">
+            <v-divider class="mb-4"></v-divider>
+            <div class="detail-row">
+              <span class="detail-label">預約項目：</span>
+              <span class="detail-value font-weight-bold">{{ appointmentDetails.bookingType }}</span>
+            </div>
+            <v-divider class="my-3"></v-divider>
+
+            <div class="detail-row">
+              <span class="detail-label">選擇方式：</span>
+              <span class="detail-value">{{ appointmentDetails.inspectionMethod }}</span>
+            </div>
+            <v-divider class="my-3"></v-divider>
+
+            <div class="detail-row">
+              <span class="detail-label">代驗公司：</span>
+              <span class="detail-value">{{ appointmentDetails.inspectionCompanyName || '(未提供)' }}</span>
+            </div>
+            <v-divider class="my-3"></v-divider>
+
+            <div class="detail-row">
+              <span class="detail-label">預約日期：</span>
+              <span class="detail-value">{{ appointmentDetails.appointmentDate }}</span>
+            </div>
+            <v-divider class="my-3"></v-divider>
+
+            <div class="detail-row">
+              <span class="detail-label">預約人姓名：</span>
+              <span class="detail-value">{{ appointmentDetails.bookerName }}</span>
+            </div>
+            <v-divider class="my-3"></v-divider>
+
+            <div class="detail-row">
+              <span class="detail-label">預約人郵箱：</span>
+              <span class="detail-value text-truncate" :title="appointmentDetails.bookerEmail">
+                {{ appointmentDetails.bookerEmail }}
+              </span>
+            </div>
+            <v-divider class="mt-4"></v-divider>
+          </div>
         </v-card-text>
+
+        <!-- 顯示通用確認訊息（如果沒有預約詳情） -->
+        <v-card-text v-else class="pt-4 text-body-1" v-html="confirmationMessage">
+        </v-card-text>
+
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn color="grey-darken-1" variant="text" @click="isConfirmationDialogVisible = false">
             取消
           </v-btn>
-          <v-btn color="primary" variant="elevated" @click="proceedWithUpload">
-            是，繼續上傳
+          <v-btn
+            color="primary"
+            variant="elevated"
+            @click="proceedWithUpload"
+            :prepend-icon="appointmentDetails ? 'mdi-check' : undefined"
+          >
+            {{ appointmentDetails ? '確認無誤，繼續上傳' : '是，繼續上傳' }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -1269,6 +1328,7 @@ const uploadStep = ref(1); // 控制目前在步驟一還是步驟二
 const verifiedBookingCode = ref(null); // 用於儲存從步驟一驗證成功後取得的 bookingCode
 const isConfirmationDialogVisible = ref(false); // 控制確認對話框的顯示
 const confirmationMessage = ref(''); // 確認對話框要顯示的訊息
+const appointmentDetails = ref(null); // 預約詳情（用於驗證成功時顯示）
 const uploadStep1FormRef = ref(null); // 給步驟一的 v-form 一個 ref
 // ✓ END: 新增
 
@@ -1290,9 +1350,17 @@ const handleUploadStep1Submit = async () => {
 
     if (result.status === 'success') {
       verifiedBookingCode.value = result.bookingCode;
-      uploadStep.value = 2; // 驗證成功，前往步驟二
+      appointmentDetails.value = result.appointmentDetails || null; // 保存預約詳情
+
+      // 如果有預約詳情，顯示確認對話框讓用戶確認，否則直接進入步驟二
+      if (result.appointmentDetails) {
+        isConfirmationDialogVisible.value = true; // 顯示預約詳情確認對話框
+      } else {
+        uploadStep.value = 2; // 驗證成功，前往步驟二
+      }
     } else if (result.status === 'needs_confirmation') {
       confirmationMessage.value = result.message;
+      appointmentDetails.value = null; // 清空預約詳情
       isConfirmationDialogVisible.value = true; // 跳出確認對話框
     }
   } catch (error) {
@@ -1303,7 +1371,11 @@ const handleUploadStep1Submit = async () => {
 };
 
 const proceedWithUpload = () => {
-  verifiedBookingCode.value = null; // 在沒有代驗紀錄的情況下繼續，bookingCode 設為 null
+  // 只在「無預約記錄」的情況下設為 null（appointmentDetails 為空）
+  // 如果已驗證到預約，則保留 bookingCode
+  if (!appointmentDetails.value) {
+    verifiedBookingCode.value = null;
+  }
   uploadStep.value = 2;
   isConfirmationDialogVisible.value = false;
 };
@@ -3080,5 +3152,32 @@ const goBackToStep0 = () => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 預約詳情確認對話框樣式 */
+.appointment-details {
+  padding: 0 8px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.detail-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: #555;
+  min-width: 120px;
+}
+
+.detail-value {
+  flex: 1;
+  text-align: right;
+  color: #333;
+  word-break: break-word;
+  margin-left: 16px;
 }
 </style>

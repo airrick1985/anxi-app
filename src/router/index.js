@@ -22,6 +22,8 @@ const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue');
 const SmsReportMonitor = () => import('@/views/SmsReportMonitor.vue');
+// ✅ 新增：管理員工具中心
+const AdminToolsCenter = () => import('@/views/AdminToolsCenter.vue');
 
 const routes = [
   {
@@ -647,6 +649,19 @@ const routes = [
       requiredRoles: ['超級管理員', '系統管理員'], // 僅限管理員層級進入
       layout: DefaultLayout,             // 依照您的需求使用 PublicLayout (或依專案改為 DefaultLayout)
       title: '簡訊回報監控'
+    }
+  },
+
+  // ✅ [新增] 管理員工具中心
+  {
+    path: '/admin-tools',
+    name: 'AdminToolsCenter',
+    component: AdminToolsCenter,
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員', '系統管理員'],
+      layout: DefaultLayout,
+      title: '管理員工具中心'
     }
   },
 
