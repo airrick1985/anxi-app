@@ -25,6 +25,17 @@
         </v-list-item>
       </v-list>
 
+      <v-divider class="mb-4"></v-divider>
+
+      <!-- ✅ 優化：銷售人員勾選區域移至最前面 -->
+      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2 d-flex align-center">
+        銷售人員
+        <v-chip size="x-small" class="ml-2" variant="tonal" @click="filters.salesNames = []">清除</v-chip>
+      </div>
+      <div style="max-height: 200px; overflow-y: auto;">
+        <v-checkbox v-for="name in allSalesPeople" :key="name" v-model="filters.salesNames" :label="name || '未指派'" :value="name" color="primary" density="compact" hide-details></v-checkbox>
+      </div>
+
       <div>
         <v-divider class="mb-4"></v-divider>
         <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">快速跳轉</div>
@@ -44,16 +55,6 @@
       <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">預約類型</div>
       <v-checkbox v-model="filters.type" label="新客預約" value="新客" color="light-blue-darken-1" density="compact" hide-details></v-checkbox>
       <v-checkbox v-model="filters.type" label="回訪/其他" value="回訪" color="red-darken-1" density="compact" hide-details></v-checkbox>
-
-      <v-divider class="my-4"></v-divider>
-
-      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2 d-flex align-center">
-        銷售人員 
-        <v-chip size="x-small" class="ml-2" variant="tonal" @click="filters.salesNames = []">清除</v-chip>
-      </div>
-      <div style="max-height: 200px; overflow-y: auto;">
-        <v-checkbox v-for="name in allSalesPeople" :key="name" v-model="filters.salesNames" :label="name || '未指派'" :value="name" color="primary" density="compact" hide-details></v-checkbox>
-      </div>
 
       <v-divider v-if="canAccessSettings" class="my-4"></v-divider>
       <div v-if="canAccessSettings" class="px-2 pb-4">
@@ -280,12 +281,31 @@ const smsSettingsDialog = ref(false);
     return roles.includes('系統管理員') || roles.includes('超級管理員');
 });
 
+// ✅ 新增：檢查用戶是否有「客資系統-管理」權限
+const hasLeadManagementPermission = computed(() => {
+    return userStore.hasProjectPermission('客資系統-管理', projectName.value);
+});
+
 const transitionClass = ref('');
 let touchstartX = 0;
 let touchstartY = 0;
 
 const MAX_CONCURRENT_RESERVATIONS = 3;
 const conflictWarning = ref({ show: false, count: 0, time: '' });
+
+// ✅ 修改：根據權限初始化銷售人員篩選
+// 如果沒有「客資系統-管理」權限，預設只顯示當前用戶的預約
+const defaultSalesNames = computed(() => {
+  if (hasLeadManagementPermission.value) {
+    // 有管理權限：不篩選任何人員
+    return [];
+  } else {
+    // 沒有管理權限：預設只顯示當前用戶的預約
+    const currentUserName = userStore.user?.name;
+    return currentUserName ? [currentUserName] : [];
+  }
+});
+
 const filters = ref({ type: ['新客', '回訪'], salesNames: [] });
 const viewLabelMap = { dayGridMonth: '月', timeGridWeek: '週', timeGridDay: '日', listWeek: '列表' };
 
@@ -440,6 +460,9 @@ onMounted(async () => {
         return;
     }
     await fetchData();
+
+    // ✅ 新增：根據權限初始化銷售人員篩選
+    filters.value.salesNames = defaultSalesNames.value;
 });
 
 const searchQuery = ref('');

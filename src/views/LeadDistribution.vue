@@ -43,7 +43,7 @@
       </v-col>
 
       <v-col cols="12">
-        <v-tabs v-model="activeTab" color="primary" grow density="compact">
+        <v-tabs v-model="activeTab" color="primary" grow density="compact" :touch="false">
           <v-tab v-if="isReceptionist || isAdmin" value="management">
             <v-icon start>mdi-tray-arrow-down</v-icon>聯絡名單統計
           </v-tab>
@@ -52,7 +52,7 @@
           </v-tab>
         </v-tabs>
 
-        <v-window v-model="activeTab" class="mt-4">
+        <v-window v-model="activeTab" class="mt-4" :touch="false">
           <v-window-item value="management" v-if="isReceptionist || isAdmin">
             <v-row>
               <v-col cols="12" md="6">
@@ -3165,6 +3165,17 @@ onMounted(async () => {
   if (!isReceptionist.value && !isAdmin.value) {
     activeTab.value = 'status';
   }
+
+  // ✅ 新增：權限檢查 - 防止非櫃檯/管理員通過滑動切換進入受保護TAB
+  watch(activeTab, (newTab) => {
+    const restrictedTabs = ['management'];
+
+    if (restrictedTabs.includes(newTab) && !isReceptionist.value && !isAdmin.value) {
+      // 非櫃檯或管理員試圖進入受保護區域，強制重定向回聯絡狀況頁面
+      activeTab.value = 'status';
+      return;
+    }
+  });
 
   const logsQuery = query(
     collectionGroup(db, 'contactLogs'),

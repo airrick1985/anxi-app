@@ -8,7 +8,7 @@
         </v-toolbar-title>
       </v-toolbar>
 
-      <v-tabs v-model="currentTab" bg-color="transparent" grow>
+      <v-tabs v-model="currentTab" bg-color="transparent" grow :touch="false">
         <v-tab value="users">人員列表</v-tab>
         <v-tab value="projects">建案列表</v-tab>
         <v-tab v-if="isSuperAdmin" value="roles">角色設定</v-tab>
@@ -41,7 +41,7 @@
         </v-alert>
       </v-card-text>
 
-      <v-window v-model="currentTab">
+      <v-window v-model="currentTab" :touch="false">
         <v-window-item value="users">
           <v-card-text>
             <div class="d-none d-md-block mt-2">
@@ -1540,6 +1540,17 @@ const loadInitialData = async () => {
 };
 
 onMounted(loadInitialData);
+
+// ✅ 新增：權限檢查 - 防止非管理員通過滑動切換進入受保護TAB
+watch(currentTab, (newTab) => {
+  const adminOnlyTabs = ['roles', 'functions'];
+
+  if (adminOnlyTabs.includes(newTab) && !isSuperAdmin.value) {
+    // 非超級管理員試圖進入管理員專用區域，強制重定向回用戶列表
+    currentTab.value = 'users';
+    return;
+  }
+});
 
 // --- User Editing Dialog Logic ---
 const resetPhoneValidation = () => {

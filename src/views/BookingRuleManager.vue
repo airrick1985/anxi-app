@@ -12,7 +12,7 @@
         </v-card-title>
       </v-toolbar>
 
-      <v-tabs v-model="activeTab" bg-color="primary">
+      <v-tabs v-model="activeTab" bg-color="primary" :touch="false">
         <v-tab value="batches">批次管理</v-tab>
         <v-tab value="settings">預約系統狀態設定</v-tab>
         <v-tab value="sheet-sync" v-if="isAdmin"><v-icon size="small" color="amber-darken-2"
@@ -5334,6 +5334,17 @@ watch(menuPublishEnd, (val) => {
 
 // --- Lifecycle & Watchers ---
 onMounted(loadDataForProject);
+
+// ✅ 新增：權限檢查 - 防止非管理員通過滑動切換進入受保護TAB
+watch(activeTab, (newTab) => {
+  const adminOnlyTabs = ['sheet-sync', 'diagnostics'];
+
+  if (adminOnlyTabs.includes(newTab) && !isAdmin.value) {
+    // 非管理員試圖進入管理員專用區域，強制重定向回預約批次
+    activeTab.value = 'batches';
+    return;
+  }
+});
 
 watch(() => [editedBatch.value.bookingStart, editedBatch.value.bookingEnd], () => {
   // 只在用戶手動更動日期時才清空，載入資料期間跳過

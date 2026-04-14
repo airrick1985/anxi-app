@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <v-tabs v-model="tab" color="primary" grow>
+    <v-tabs v-model="tab" color="primary" grow :touch="false">
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="leadDistribution" >聯絡名單</v-tab>
       <v-tab value="viewingReservation">賞屋預約</v-tab>
@@ -22,7 +22,7 @@
       </v-tab>
       </v-tabs>
 
-    <v-window v-model="tab">
+    <v-window v-model="tab" :touch="false">
       <v-window-item value="management">
         <v-card class="bg-grey-lighten-5 h-100">
           <v-toolbar color="white" elevation="1" density="compact">
@@ -2302,8 +2302,24 @@ function getRatingColor(rating) {
     return 'blue-grey-lighten-4';
 }
 
-// ✓ START: 新增：監聽 Tab 變化
+// ✓ START: 新增：監聽 Tab 變化 + 權限檢查
 watch(tab, (newTab) => {
+  // ✅ 新增：安全檢查 - 防止非管理員通過滑動切換進入受保護TAB
+  const adminOnlyTabs = ['settings', 'vipSettings', 'otherSettings', 'batchUpdate', 'anxiSettings'];
+
+  if (adminOnlyTabs.includes(newTab) && !isSuperAdmin.value) {
+    // 非超級管理員試圖進入管理員專用區域，強制重定向回管理頁面
+    tab.value = 'management';
+    return;
+  }
+
+  if (newTab === 'downloadLeads' && !canManageSettings.value) {
+    // 沒有櫃台權限，無法進入「下載客資」頁面
+    tab.value = 'management';
+    return;
+  }
+
+  // 原有邏輯保持不變
   if (newTab === 'management' && customerList.value.length === 0) {
     // 第一次點擊「客戶資料管理」時載入
     loadCustomerList();
