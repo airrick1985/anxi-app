@@ -64,6 +64,15 @@
             >
               回覆
             </v-btn>
+            <v-btn
+              variant="text"
+              color="green-darken-1"
+              prepend-icon="mdi-google-spreadsheet"
+              @click="openSyncDialog(form)"
+              size="small"
+            >
+              同步
+            </v-btn>
             <v-spacer></v-spacer>
             <v-btn
               variant="text"
@@ -226,25 +235,158 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Sync Dialog -->
+    <v-dialog v-model="syncDialog" max-width="600px">
+      <v-card>
+        <v-card-title class="text-h6 bg-green-darken-2 text-white d-flex align-center">
+          <v-icon start>mdi-google-spreadsheet</v-icon>
+          發布回覆至 Google Sheet
+        </v-card-title>
+
+        <v-card-text class="pt-4">
+          <!-- 顯示目前正在同步的設定 -->
+          <v-alert
+            v-if="activeSyncConfig"
+            type="success"
+            variant="tonal"
+            class="mb-4"
+            density="compact"
+            icon="mdi-check-circle-outline"
+          >
+            <div class="font-weight-bold mb-1">目前已設定自動同步至：</div>
+            <div class="text-body-2 text-truncate">
+              Google Sheet：<a :href="activeSyncConfig.url" target="_blank" class="text-decoration-underline text-success">{{ activeSyncConfig.url }}</a>
+            </div>
+            <div class="text-body-2 mt-1">
+              工作表名稱：<strong>{{ activeSyncConfig.sheetName }}</strong>
+            </div>
+          </v-alert>
+
+          <v-alert
+            type="info"
+            variant="tonal"
+            class="mb-4"
+            density="compact"
+            icon="mdi-information"
+          >
+            設定或更新後，使用者的回覆將自動同步至指定的 Google Sheet 工作表。
+          </v-alert>
+
+          <v-form ref="syncForm" @submit.prevent>
+            <v-text-field
+              v-model="googleSheetForm.url"
+              label="Google Sheet 網址或 ID"
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              variant="outlined"
+              density="comfortable"
+              :rules="[v => !!v || '請輸入 Google Sheet 網址']"
+              prepend-inner-icon="mdi-link"
+              clearable
+            ></v-text-field>
+
+            <div class="d-flex justify-end mb-4">
+              <v-btn
+                color="primary"
+                prepend-icon="mdi-refresh"
+                :loading="loadingSheets"
+                :disabled="!googleSheetForm.url"
+                @click="fetchSheetNames"
+              >
+                讀取工作表
+              </v-btn>
+            </div>
+
+            <!-- 顯示 Service Account Email 提示 -->
+            <v-alert
+              v-if="serviceAccountEmail"
+              type="info"
+              variant="tonal"
+              class="mb-4"
+              border="start"
+              closable
+            >
+              <template v-slot:title>
+                請共用權限給機器人
+              </template>
+              為了讓系統能寫入資料，請將您的 Google Sheet 共用給以下 Email (編輯者權限)：
+              <div class="d-flex align-center mt-2 bg-grey-lighten-4 pa-2 rounded">
+                <code class="text-subtitle-1 flex-grow-1" style="word-break: break-all;">{{ serviceAccountEmail }}</code>
+                <v-btn
+                  size="small"
+                  variant="text"
+                  icon="mdi-content-copy"
+                  @click="copyToClipboard(serviceAccountEmail)"
+                ></v-btn>
+              </div>
+            </v-alert>
+
+            <v-expand-transition>
+              <div v-if="sheetNames.length > 0">
+                <v-autocomplete
+                  v-model="googleSheetForm.sheetName"
+                  :items="sheetNames"
+                  label="選擇要同步的工作表 (Tab)"
+                  variant="outlined"
+                  density="comfortable"
+                  prepend-inner-icon="mdi-table"
+                  :rules="[v => !!v || '請選擇工作表']"
+                ></v-autocomplete>
+              </div>
+            </v-expand-transition>
+
+            <v-alert v-if="syncResult" :type="syncResult.type" class="mt-4" variant="tonal">
+              {{ syncResult.message }}
+            </v-alert>
+          </v-form>
+
+          <div class="mt-4 text-caption text-grey">
+             <p class="font-weight-bold mb-1">注意事項：</p>
+             <ol class="pl-4">
+               <li>請確保您輸入的 Google Sheet 已共用編輯權限給系統帳號。</li>
+               <li>全量同步將會<b>清除並覆蓋</b>該工作表的所有內容。</li>
+               <li>首次同步後，系統即會自動啟動即時同步功能。</li>
+             </ol>
+          </div>
+        </v-card-text>
+
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" color="grey" @click="syncDialog = false">取消</v-btn>
+          <v-btn
+            color="success"
+            variant="elevated"
+            prepend-icon="mdi-cloud-sync"
+            :loading="isSyncing"
+            @click="executeSync"
+            :disabled="!googleSheetForm.sheetName"
+          >
+            開始全量同步
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, defineAsyncComponent, computed } from 'vue';
+import { ref, onMounted, defineAsyncComponent, computed, reactive } from 'vue';
 import QrcodeVue from 'qrcode.vue';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
-  deleteDoc, 
-  addDoc, 
-  serverTimestamp, 
-  getFirestore 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  deleteDoc,
+  addDoc,
+  serverTimestamp,
+  getFirestore,
+  getDoc
 } from 'firebase/firestore'; // Assuming 'firebase/firestore' or local db instance
 import { db } from '@/firebase'; // Adjust based on your project structure, e.g., '@/firebase/config' or just 'firebase/firestore'
 import { useToast } from 'vue-toastification';
+import { listGoogleSheets, syncCustomFormSubmissionsToSheet } from '@/api';
 
 // 假設 CustomFormEditor 是另一個要建立的組件
 const CustomFormEditor = defineAsyncComponent(() => import('./CustomFormEditor.vue'));
@@ -276,6 +418,22 @@ const unitsLoading = ref(false);
 const generatedUrl = ref('');
 const generatingLink = ref(false);
 // const expiryOption and options removed
+
+// Sync State
+const syncDialog = ref(false);
+const loadingSheets = ref(false);
+const isSyncing = ref(false);
+const sheetNames = ref<string[]>([]);
+const serviceAccountEmail = ref('');
+const syncResult = ref<{ type: 'success' | 'error' | 'warning', message: string } | null>(null);
+const syncForm = ref<any>(null);
+const activeSyncConfig = ref<{ url: string, sheetName: string } | null>(null);
+const currentSyncForm = ref<any>(null); // 當前要同步的表單
+
+const googleSheetForm = reactive({
+  url: '',
+  sheetName: ''
+});
 
 // --- Methods ---
 
@@ -462,6 +620,132 @@ const generateShareLink = async () => {
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text);
   toast.success('連結已複製');
+};
+
+// --- Sync Functions ---
+const openSyncDialog = async (form: any) => {
+  currentSyncForm.value = form;
+  syncDialog.value = true;
+  syncResult.value = null;
+  googleSheetForm.url = '';
+  googleSheetForm.sheetName = '';
+  sheetNames.value = [];
+  serviceAccountEmail.value = '';
+  await loadSyncConfig(form);
+};
+
+const loadSyncConfig = async (form: any) => {
+  try {
+    const formRef = doc(db, 'customFormTemplates', form.id);
+    const snap = await getDoc(formRef);
+    if (snap.exists()) {
+      const config = snap.data()?.syncConfig;
+      if (config && config.spreadsheetId) {
+        const url = config.sheetUrl || `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`;
+        googleSheetForm.url = url;
+        if (config.sheetName) {
+          googleSheetForm.sheetName = config.sheetName;
+          activeSyncConfig.value = {
+            url: url,
+            sheetName: config.sheetName
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.error('載入同步設定失敗:', err);
+  }
+};
+
+const fetchSheetNames = async () => {
+  if (!googleSheetForm.url) return;
+  loadingSheets.value = true;
+  sheetNames.value = [];
+  serviceAccountEmail.value = '';
+  syncResult.value = null;
+
+  try {
+    const res: any = await listGoogleSheets(googleSheetForm.url);
+    if (res.status === 'success') {
+      sheetNames.value = res.sheetNames || [];
+      serviceAccountEmail.value = res.agentEmail || '';
+
+      if (!sheetNames.value.includes(googleSheetForm.sheetName)) {
+        googleSheetForm.sheetName = ''; // Reset if not found
+      }
+      toast.success('成功讀取工作表列表');
+    }
+  } catch (error: any) {
+    console.error('Fetch sheet names error:', error);
+    toast.error(`讀取失敗: ${error.message}`);
+    syncResult.value = { type: 'error', message: `讀取失敗: ${error.message}` };
+  } finally {
+    loadingSheets.value = false;
+  }
+};
+
+// 格式化數據（將地址對象轉換為可讀字符串）
+const formatDataForSync = (data: any): any => {
+  const formatted: any = {};
+  for (const [key, value] of Object.entries(data)) {
+    // 檢查是否是地址對象
+    if (typeof value === 'object' && value !== null && ('city' in value || 'district' in value || 'detail' in value)) {
+      const { city = '', district = '', detail = '' } = value as any;
+      formatted[key] = `${city}${district}${detail}`.trim();
+    } else {
+      formatted[key] = value;
+    }
+  }
+  return formatted;
+};
+
+const executeSync = async () => {
+  const { valid } = await syncForm.value.validate();
+  if (!valid) return;
+
+  isSyncing.value = true;
+  syncResult.value = null;
+
+  try {
+    // 簡易萃取 ID
+    let spreadsheetId = googleSheetForm.url;
+    const match = googleSheetForm.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) {
+      spreadsheetId = match[1];
+    }
+
+    // 格式化回覆數據（將地址等複雜對象轉換為字符串）
+    const formattedSubmissions = [];
+    // 這裡需要從responses中取出當前表單的回覆並進行格式化
+    // 但由於executeSync在CustomFormManager中，我們需要透過API直接處理
+
+    const payload = {
+      projectId: props.projectId,
+      formId: currentSyncForm.value.id,
+      spreadsheetId: spreadsheetId,
+      sheetName: googleSheetForm.sheetName,
+      formatData: true // 告訴後端進行數據格式化
+    };
+
+    const res: any = await syncCustomFormSubmissionsToSheet(payload);
+
+    if (res.status === 'success') {
+      syncResult.value = { type: 'success', message: res.message || '同步成功' };
+      activeSyncConfig.value = {
+        url: googleSheetForm.url,
+        sheetName: googleSheetForm.sheetName
+      };
+      toast.success('全量同步成功！未來的新回覆將會自動同步。');
+    } else {
+      syncResult.value = { type: 'error', message: res.message || '同步失敗' };
+      toast.error('同步失敗');
+    }
+  } catch (error: any) {
+    console.error('Sync error:', error);
+    syncResult.value = { type: 'error', message: `同步發生錯誤: ${error.message}` };
+  } finally {
+    isSyncing.value = false;
+  }
 };
 
 onMounted(() => {

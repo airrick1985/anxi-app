@@ -23873,7 +23873,15 @@ exports.syncCustomFormSubmissionsToSheet = onCall({
       const rowData = headers.map(key => {
         let val = row[key];
         if (val === undefined || val === null) return "";
-        if (typeof val === "object") return JSON.stringify(val);
+        if (typeof val === "object") {
+          // 格式化地址對象：{city, district, detail} -> "縣市鄉鎮詳細地址"
+          if ('city' in val || 'district' in val || 'detail' in val) {
+            const { city = '', district = '', detail = '' } = val;
+            return `${city}${district}${detail}`.trim();
+          }
+          // 其他物件保持 JSON 格式
+          return JSON.stringify(val);
+        }
         return String(val);
       });
       values.push(rowData);

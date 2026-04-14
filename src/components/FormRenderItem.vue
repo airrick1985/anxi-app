@@ -58,7 +58,7 @@
          <span v-if="field.required" class="text-error ml-1">*</span>
        </div>
        <v-row dense>
-         <v-col cols="12" sm="6">
+         <v-col cols="12">
            <v-select
              :model-value="modelValue?.city"
              @update:model-value="(val) => updateAddress('city', val)"
@@ -73,7 +73,7 @@
              persistent-hint
            ></v-select>
          </v-col>
-         <v-col cols="12" sm="6">
+         <v-col cols="12">
            <v-select
              :model-value="modelValue?.district"
              @update:model-value="(val) => updateAddress('district', val)"

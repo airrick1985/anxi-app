@@ -53,8 +53,21 @@
           </div>
 
           <v-card-text class="pa-6">
+            <!-- 驗證錯誤提示 -->
+            <v-alert
+              v-if="validationError"
+              type="error"
+              variant="tonal"
+              closable
+              class="mb-6"
+              icon="mdi-alert-circle-outline"
+              title="填寫不完整"
+            >
+              {{ validationError }}
+            </v-alert>
+
             <v-form ref="formRef" @submit.prevent="submitForm">
-              
+
               <!-- Unit Selector (if not locked) -->
               <div v-if="!lockedUnitId" class="mb-6">
                 <v-select
@@ -92,7 +105,12 @@
               </div>
 
               <!-- Dynamic Fields -->
-              <div v-for="field in form.fields" :key="field.id" class="mb-4">
+              <div
+                v-for="field in form.fields"
+                :key="field.id"
+                :data-field-id="field.id"
+                class="mb-4 field-item"
+              >
                 <FormRenderItem
                   :field="field"
                   v-model="formData[field.id]"
@@ -184,6 +202,8 @@ const loading = ref(true);
 const error = ref('');
 const submitted = ref(false);
 const submitting = ref(false);
+const validationError = ref(''); // 驗證錯誤訊息
+const formRef = ref<any>(null); // v-form ref
 
 const form = ref<any>({});
 const formData = reactive<Record<string, any>>({});
@@ -192,6 +212,7 @@ const projectId = ref('');
 const units = ref<any[]>([]);
 const householdData = ref<any>(null); // Cache for auto-fill
 const currentSubmissionId = ref<string | null>(null); // Track ID for session overwrite
+const fieldRefs = ref<Record<string, HTMLElement>>({});
 
 // --- Intialization ---
 
@@ -372,13 +393,78 @@ const getDistricts = (cityName: string) => {
   return city ? city.districts.map(d => d.name) : [];
 };
 
+// 檢查必填欄位並跳轉到第一個空欄位
+const findAndHighlightEmptyField = (): string | null => {
+  validationError.value = '';
+
+  // 檢查戶別（如果未鎖定）
+  if (!lockedUnitId.value && !formData.unitId) {
+    validationError.value = '請選擇您的戶別';
+    const unitSelector = document.querySelector('[label="請選擇您的戶別"]');
+    if (unitSelector) {
+      unitSelector.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      (unitSelector as any).focus?.();
+    }
+    return '戶別';
+  }
+
+  // 檢查各個表單欄位的必填項
+  for (const field of form.value.fields || []) {
+    if (field.required && ['header', 'description', 'divider', 'link'].includes(field.type)) {
+      continue; // 跳過非輸入類型
+    }
+
+    const fieldValue = formData[field.id];
+
+    if (field.required) {
+      let isEmpty = false;
+
+      // 檢查不同類型欄位的空值
+      if (field.type === 'address') {
+        isEmpty = !fieldValue || (!fieldValue.city && !fieldValue.district && !fieldValue.detail);
+      } else if (field.type === 'checkbox') {
+        isEmpty = !fieldValue || (Array.isArray(fieldValue) && fieldValue.length === 0);
+      } else if (field.type === 'radio') {
+        isEmpty = !fieldValue;
+      } else {
+        isEmpty = !fieldValue || fieldValue.toString().trim() === '';
+      }
+
+      if (isEmpty) {
+        validationError.value = `必填欄位「${field.label}」未填寫`;
+
+        // 滾動到該欄位並高亮
+        const fieldElement = document.querySelector(`[data-field-id="${field.id}"]`);
+        if (fieldElement) {
+          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // 添加高亮效果
+          fieldElement.classList.add('field-error-highlight');
+          setTimeout(() => {
+            fieldElement.classList.remove('field-error-highlight');
+          }, 3000);
+        }
+
+        return field.label;
+      }
+    }
+  }
+
+  return null;
+};
+
 const submitForm = async () => {
   // @ts-ignore
   const { valid } = await formRef.value?.validate() || { valid: false };
-  if (!valid) return;
+
+  // 找出並突出顯示第一個空的必填欄位
+  const emptyField = findAndHighlightEmptyField();
+
+  if (!valid || emptyField) {
+    return;
+  }
 
   if (!formData.unitId) {
-      alert('請選擇戶別'); // Fallback
+      validationError.value = '請選擇戶別';
       return;
   }
 
@@ -476,7 +562,6 @@ const copyLink = () => {
     alert('複製失敗，請手動複製');
   });
 };
-const formRef = ref<any>(null); // Define ref properly
 
 </script>
 
@@ -520,5 +605,27 @@ const formRef = ref<any>(null); // Define ref properly
 .rich-text-content :deep(ul), .rich-text-content :deep(ol) {
   padding-left: 1.5em;
   margin-bottom: 0.5em;
+}
+
+/* 欄位錯誤高亮效果 */
+.field-item {
+  transition: all 0.3s ease;
+}
+
+.field-item.field-error-highlight {
+  background: rgba(211, 47, 47, 0.1);
+  border-left: 4px solid #d32f2f;
+  padding-left: 12px;
+  margin-left: -12px;
+  animation: errorPulse 0.6s ease-in-out;
+}
+
+@keyframes errorPulse {
+  0%, 100% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(211, 47, 47, 0.15);
+  }
 }
 </style>

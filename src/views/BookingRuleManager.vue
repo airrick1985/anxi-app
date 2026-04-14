@@ -597,7 +597,7 @@
                           <div class="text-caption text-grey-darken-1 mb-2">
                             若需讓客戶在選擇此方式後進一步選擇項目（例如：填寫需貸款後，需進一步選擇台灣銀行、土地銀行等），請在此設定。輸入項目後按下 Enter 新增。
                           </div>
-                          <v-combobox v-model="editedMethodSubOptions" label="子選單項目 (按 Enter 新增多筆)" multiple chips clearable variant="outlined" density="compact"></v-combobox>
+                          <v-combobox v-model="editedMethodSubOptions" label="子選單項目 (按 Enter 新增多筆)" multiple chips closable-chips clearable variant="outlined" density="compact"></v-combobox>
 
                         </v-card-text>
                         <v-card-actions class="pa-4">
@@ -1888,11 +1888,11 @@
                         </v-chip>
                         <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
                       </div>
-                      <div v-if="Object.keys(slot.subOptionLimits).length > 0" class="pl-2 mt-1 d-flex flex-wrap ga-1 align-center">
+                      <div v-if="previewBatchSubOptions.length > 0" class="pl-2 mt-1 d-flex flex-wrap ga-1 align-center">
                         <v-icon size="x-small" color="primary" class="mr-1">mdi-sitemap-outline</v-icon>
-                        <v-chip v-for="(limit, subOpt) in slot.subOptionLimits" :key="subOpt"
-                          size="x-small" variant="tonal" :color="limit > 0 ? 'blue' : 'grey'" label>
-                          {{ subOpt }}: {{ limit }} 名
+                        <v-chip v-for="subOpt in previewBatchSubOptions" :key="subOpt"
+                          size="x-small" variant="tonal" :color="slot.subOptionLimits[subOpt] !== undefined ? ((slot.subOptionLimits[subOpt] > 0) ? 'blue' : 'grey') : 'orange'" label>
+                          {{ subOpt }}: {{ slot.subOptionLimits[subOpt] !== undefined ? slot.subOptionLimits[subOpt] : '無限制' }}
                         </v-chip>
                       </div>
                     </div>
@@ -3115,6 +3115,28 @@ const previewBatchMethods = computed(() => {
 
   // Fallback
   return projectSettings.value.bookingMethodOptions || [];
+});
+
+// [新增] 取得預覽批次的所有子項目
+const previewBatchSubOptions = computed(() => {
+  if (!batchToPreview.value) return [];
+  const selectedType = batchToPreview.value.bookingType;
+  if (!selectedType || selectedType === '其他') return [];
+
+  if (projectSettings.value.bookingMenu && projectSettings.value.bookingMenu.length > 0) {
+    const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
+    if (item && item.methods) {
+      const subOpts = [];
+      item.methods.filter(m => !m.deleted).forEach(m => {
+        if (m.subOptions && Array.isArray(m.subOptions)) {
+          subOpts.push(...m.subOptions);
+        }
+      });
+      return [...new Set(subOpts)]; // 去重
+    }
+  }
+
+  return [];
 });
 
 // [新增] 排程時間選擇器的狀態

@@ -11,37 +11,14 @@
       </v-toolbar-title>
       <v-spacer></v-spacer>
 
-      <v-btn
-        color="green-darken-1"
-        variant="text"
-        prepend-icon="mdi-google-spreadsheet"
-        @click="openSyncDialog"
-        class="mr-4"
-      >
-        設定同步
-      </v-btn>
-
       <v-switch
         v-model="showDeleted"
         label="顯示已刪除"
         color="error"
         density="compact"
         hide-details
-        class="mr-4"
         inset
       ></v-switch>
-
-      <!-- 模式切換 -->
-      <v-btn-toggle v-model="viewMode" mandatory density="compact" class="mr-4">
-        <v-btn value="list" size="small">
-          <v-icon start>mdi-format-list-bulleted</v-icon>
-          列表
-        </v-btn>
-        <v-btn value="detail" size="small" :disabled="responses.length === 0">
-          <v-icon start>mdi-eye</v-icon>
-          檢視
-        </v-btn>
-      </v-btn-toggle>
     </v-toolbar>
 
     <!-- Loading -->
@@ -59,7 +36,7 @@
     </div>
 
     <!-- List Mode -->
-    <div v-else-if="viewMode === 'list'" class="flex-grow-1 overflow-y-auto pa-4">
+    <div v-else class="flex-grow-1 overflow-y-auto pa-4">
       <div class="d-flex justify-space-between align-center mb-4">
         <v-text-field
           v-model="searchText"
@@ -90,6 +67,10 @@
         class="elevation-1 rounded-lg"
         density="comfortable"
         items-per-page="15"
+        v-model:expanded="expandedRows"
+        item-value="_id"
+        show-expand
+        @click:row="onRowClick"
       >
         <!-- 提交時間欄位 -->
         <template v-slot:item._submittedAt="{ item }">
@@ -98,40 +79,45 @@
 
         <!-- 操作欄位 -->
         <template v-slot:item._actions="{ item }">
-          <div class="d-flex justify-center">
-            <v-btn
-              icon="mdi-eye"
-              size="small"
-              variant="text"
-              color="primary"
-              title="檢視"
-              @click="viewDetail(item)"
-            ></v-btn>
+          <div class="d-flex justify-center gap-1">
+            <v-tooltip text="點擊列展開編輯">
+              <template v-slot:activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  size="small"
+                  color="primary"
+                  class="cursor-pointer"
+                  @click.stop="onRowClick($event, { item })"
+                >
+                  mdi-pencil
+                </v-icon>
+              </template>
+            </v-tooltip>
             <v-btn
               v-if="!showDeleted"
               icon="mdi-delete"
-              size="small"
+              size="x-small"
               variant="text"
               color="error"
               title="刪除"
-              @click="softDeleteResponse(item)"
+              @click.stop="softDeleteResponse(item)"
             ></v-btn>
             <template v-else>
               <v-btn
                 icon="mdi-restore"
-                size="small"
+                size="x-small"
                 variant="text"
                 color="success"
                 title="還原"
-                @click="restoreResponse(item)"
+                @click.stop="restoreResponse(item)"
               ></v-btn>
               <v-btn
                 icon="mdi-delete-forever"
-                size="small"
+                size="x-small"
                 variant="text"
                 color="error"
                 title="永久刪除"
-                @click="hardDeleteResponse(item)"
+                @click.stop="hardDeleteResponse(item)"
               ></v-btn>
             </template>
           </div>
@@ -139,238 +125,106 @@
 
         <!-- 通用 cell truncate -->
         <template v-for="col in dynamicColumns" v-slot:[`item.${col}`]="{ item }" :key="col">
-          <span class="text-truncate d-inline-block" style="max-width: 200px" :title="String(item[col] ?? '')">
-            {{ item[col] ?? '' }}
+          <span class="text-truncate d-inline-block" style="max-width: 200px" :title="formatCellValue(item[col])">
+            {{ formatCellValue(item[col]) }}
           </span>
+        </template>
+
+        <!-- 展開列 -->
+        <template v-slot:expanded-row="{ item }">
+          <td :colspan="tableHeaders.length" class="pa-0">
+            <div class="expanded-form-wrapper">
+              <v-form @submit.prevent class="compact-form-layout">
+                <!-- 動態渲染表單欄位 -->
+                <div class="form-grid">
+                  <div v-for="field in form?.fields" :key="`${item._id}-${field.id}`" :class="getFieldWrapperClass(field.type)">
+                    <FormRenderItem
+                      v-if="!['header', 'description', 'divider', 'link'].includes(field.type)"
+                      :key="`edit-${item._id}-${field.id}-${JSON.stringify(editingData[item._id]?.[field.id] ?? editingData[item._id]?.[field.label])}`"
+                      :field="getEditableField(field)"
+                      :model-value="editingData[item._id]?.[field.label] ?? ''"
+                      @update:model-value="updateEditingField(item._id, field.label, $event)"
+                      :formData="editingData[item._id] || {}"
+                      class="compact-field"
+                    />
+                    <!-- 顯示非輸入類型的欄位 -->
+                    <template v-else>
+                      <div v-if="field.type === 'header'" class="section-header">
+                        <v-icon size="small" color="primary" class="mr-1">mdi-folder-outline</v-icon>
+                        <span>{{ field.label }}</span>
+                      </div>
+                      <div v-else-if="field.type === 'description'" class="section-description">
+                        {{ field.content }}
+                      </div>
+                      <div v-else-if="field.type === 'divider'" class="section-divider"></div>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- 操作按鈕 - 底部固定欄 -->
+                <div class="form-actions">
+                  <v-btn
+                    color="success"
+                    variant="flat"
+                    icon="mdi-content-save"
+                    size="small"
+                    @click.stop="saveEditing(item)"
+                    :loading="savingId === item._id"
+                    class="action-btn"
+                  >
+                    保存
+                  </v-btn>
+                  <v-btn
+                    color="grey"
+                    variant="text"
+                    icon="mdi-refresh"
+                    size="small"
+                    @click.stop="resetEditing(item._id)"
+                    class="action-btn"
+                  >
+                    重置
+                  </v-btn>
+                  <v-spacer></v-spacer>
+                  <v-btn
+                    color="error"
+                    variant="text"
+                    icon="mdi-delete"
+                    size="small"
+                    @click.stop="softDeleteResponse(item)"
+                    class="action-btn"
+                  >
+                    刪除
+                  </v-btn>
+                  <v-btn
+                    color="info"
+                    variant="text"
+                    icon="mdi-microsoft-excel"
+                    size="small"
+                    @click.stop="exportSingleExcel(item)"
+                    :loading="exporting"
+                    class="action-btn"
+                  >
+                    匯出
+                  </v-btn>
+                </div>
+              </v-form>
+            </div>
+          </td>
         </template>
       </v-data-table>
     </div>
 
-    <!-- Detail Mode -->
-    <div v-else-if="viewMode === 'detail'" class="flex-grow-1 overflow-y-auto">
-      <!-- Navigation Bar -->
-      <div class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 border-b">
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-arrow-left"
-          @click="viewMode = 'list'"
-        >
-          返回列表
-        </v-btn>
 
-        <div class="d-flex align-center">
-          <v-btn
-            icon="mdi-chevron-left"
-            size="small"
-            variant="tonal"
-            :disabled="currentIndex <= 0"
-            @click="currentIndex--"
-            class="mr-2"
-          ></v-btn>
-          <span class="text-body-1 font-weight-bold mx-2">
-            {{ currentIndex + 1 }} / {{ responses.length }}
-          </span>
-          <v-btn
-            icon="mdi-chevron-right"
-            size="small"
-            variant="tonal"
-            :disabled="currentIndex >= responses.length - 1"
-            @click="currentIndex++"
-            class="ml-2"
-          ></v-btn>
-        </div>
-
-        <v-btn
-          color="success"
-          variant="flat"
-          prepend-icon="mdi-microsoft-excel"
-          size="small"
-          @click="exportSingleExcel"
-          :loading="exporting"
-        >
-          匯出此筆
-        </v-btn>
-      </div>
-
-      <!-- Detail Content -->
-      <v-container style="max-width: 700px" class="py-6">
-        <v-card v-if="currentResponse" variant="outlined" class="rounded-lg">
-          <!-- Header -->
-          <div class="pa-4 bg-primary rounded-t-lg">
-            <div class="d-flex justify-space-between align-center text-white">
-              <div>
-                <div class="text-h6 font-weight-bold">{{ currentResponse._unitId || '未指定戶別' }}</div>
-                <div class="text-caption opacity-80">{{ formatTimestamp(currentResponse._submittedAt) }}</div>
-              </div>
-              <v-chip color="white" variant="flat" size="small">
-                第 {{ currentIndex + 1 }} 筆
-              </v-chip>
-            </div>
-          </div>
-
-          <!-- Fields -->
-          <v-card-text class="pa-0">
-            <v-list lines="two" class="pa-0">
-              <template v-for="(value, key) in currentResponseFields" :key="key">
-                <v-list-item>
-                  <template v-slot:prepend>
-                    <v-icon color="grey" size="small" class="mr-2">mdi-form-textbox</v-icon>
-                  </template>
-                  <v-list-item-title class="text-caption text-grey-darken-1 font-weight-bold">
-                    {{ key }}
-                  </v-list-item-title>
-                  <v-list-item-subtitle class="text-body-1 text-black mt-1" style="white-space: pre-wrap; -webkit-line-clamp: unset; line-clamp: unset;">
-                    {{ value || '（未填寫）' }}
-                  </v-list-item-subtitle>
-                </v-list-item>
-                <v-divider></v-divider>
-              </template>
-            </v-list>
-          </v-card-text>
-        </v-card>
-      </v-container>
-    </div>
-
-    <!-- Sync Settings Dialog -->
-    <v-dialog v-model="syncDialog" max-width="600px">
-      <v-card>
-        <v-card-title class="text-h6 bg-green-darken-2 text-white d-flex align-center">
-          <v-icon start>mdi-google-spreadsheet</v-icon>
-          發布回覆至 Google Sheet
-        </v-card-title>
-        
-        <v-card-text class="pt-4">
-          <!-- 顯示目前正在同步的設定 -->
-          <v-alert
-            v-if="activeSyncConfig"
-            type="success"
-            variant="tonal"
-            class="mb-4"
-            density="compact"
-            icon="mdi-check-circle-outline"
-          >
-            <div class="font-weight-bold mb-1">目前已設定自動同步至：</div>
-            <div class="text-body-2 text-truncate">
-              Google Sheet：<a :href="activeSyncConfig.url" target="_blank" class="text-decoration-underline text-success">{{ activeSyncConfig.url }}</a>
-            </div>
-            <div class="text-body-2 mt-1">
-              工作表名稱：<strong>{{ activeSyncConfig.sheetName }}</strong>
-            </div>
-          </v-alert>
-
-          <v-alert
-            type="info"
-            variant="tonal"
-            class="mb-4"
-            density="compact"
-            icon="mdi-information"
-          >
-            設定或更新後，使用者的回覆將自動同步至指定的 Google Sheet 工作表。
-          </v-alert>
-
-          <v-form ref="syncForm" @submit.prevent>
-            <v-text-field
-              v-model="googleSheetForm.url"
-              label="Google Sheet 網址或 ID"
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              variant="outlined"
-              density="comfortable"
-              :rules="[v => !!v || '請輸入 Google Sheet 網址']"
-              prepend-inner-icon="mdi-link"
-              clearable
-            ></v-text-field>
-
-            <div class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                prepend-icon="mdi-refresh"
-                :loading="loadingSheets"
-                :disabled="!googleSheetForm.url"
-                @click="fetchSheetNames"
-              >
-                讀取工作表
-              </v-btn>
-            </div>
-
-            <!-- 顯示 Service Account Email 提示 -->
-            <v-alert
-              v-if="serviceAccountEmail"
-              type="info"
-              variant="tonal"
-              class="mb-4"
-              border="start"
-              closable
-            >
-              <template v-slot:title>
-                請共用權限給機器人
-              </template>
-              為了讓系統能寫入資料，請將您的 Google Sheet 共用給以下 Email (編輯者權限)：
-              <div class="d-flex align-center mt-2 bg-grey-lighten-4 pa-2 rounded">
-                <code class="text-subtitle-1 flex-grow-1" style="word-break: break-all;">{{ serviceAccountEmail }}</code>
-                <v-btn
-                  size="small"
-                  variant="text"
-                  icon="mdi-content-copy"
-                  @click="copyToClipboard(serviceAccountEmail)"
-                ></v-btn>
-              </div>
-            </v-alert>
-
-            <v-expand-transition>
-              <div v-if="sheetNames.length > 0">
-                <v-autocomplete
-                  v-model="googleSheetForm.sheetName"
-                  :items="sheetNames"
-                  label="選擇要同步的工作表 (Tab)"
-                  variant="outlined"
-                  density="comfortable"
-                  prepend-inner-icon="mdi-table"
-                  :rules="[v => !!v || '請選擇工作表']"
-                ></v-autocomplete>
-              </div>
-            </v-expand-transition>
-            
-            <v-alert v-if="syncResult" :type="syncResult.type" class="mt-4" variant="tonal">
-              {{ syncResult.message }}
-            </v-alert>
-          </v-form>
-          
-          <div class="mt-4 text-caption text-grey">
-             <p class="font-weight-bold mb-1">注意事項：</p>
-             <ol class="pl-4">
-               <li>請確保您輸入的 Google Sheet 已共用編輯權限給系統帳號。</li>
-               <li>全量同步將會<b>清除並覆蓋</b>該工作表的所有內容。</li>
-               <li>首次同步後，系統即會自動啟動即時同步功能。</li>
-             </ol>
-          </div>
-        </v-card-text>
-
-        <v-card-actions class="pa-4 pt-0">
-          <v-spacer></v-spacer>
-          <v-btn variant="text" color="grey" @click="syncDialog = false">取消</v-btn>
-          <v-btn
-            color="success"
-            variant="elevated"
-            prepend-icon="mdi-cloud-sync"
-            :loading="isSyncing"
-            @click="executeSync"
-            :disabled="!googleSheetForm.sheetName"
-          >
-            開始全量同步
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, defineAsyncComponent } from 'vue';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useToast } from 'vue-toastification';
 import * as XLSX from 'xlsx-js-style';
-import { listGoogleSheets, syncCustomFormSubmissionsToSheet } from '@/api';
+import FormRenderItem from '@/components/FormRenderItem.vue';
 
 const props = defineProps<{
   projectId: string;
@@ -382,26 +236,15 @@ defineEmits(['close']);
 const toast = useToast();
 const loading = ref(false);
 const exporting = ref(false);
-const viewMode = ref<'list' | 'detail'>('list');
 const searchText = ref('');
-const currentIndex = ref(0);
 const showDeleted = ref(false);
 
+// Response Editor State
+const expandedRows = ref<string[]>([]);
+const editingData = ref<Record<string, Record<string, any>>>({});
+const savingId = ref<string | null>(null);
+
 // Google Sheet Sync State
-const syncDialog = ref(false);
-const loadingSheets = ref(false);
-const isSyncing = ref(false);
-const sheetNames = ref<string[]>([]);
-const serviceAccountEmail = ref('');
-const syncResult = ref<{ type: 'success' | 'error' | 'warning', message: string } | null>(null);
-const syncForm = ref<any>(null);
-const activeSyncConfig = ref<{ url: string, sheetName: string } | null>(null);
-
-const googleSheetForm = reactive({
-  url: '',
-  sheetName: ''
-});
-
 // 所有回覆（已加工為扁平物件）
 const responses = ref<any[]>([]);
 
@@ -429,6 +272,8 @@ const loadResponses = async () => {
         _submittedAt: raw.submittedAt,
         _isDeleted: raw.isDeleted || false,
         ...displayData,
+        // 同時保留原始數據（用 ID 作為 key），以便子欄位值能正確顯示
+        ...(raw.data || {}),
       };
     });
 
@@ -449,111 +294,176 @@ const loadResponses = async () => {
 };
 
 // --- Google Sheet Sync 邏輯 ---
-const loadSyncConfig = async () => {
+// --- 編輯回覆內容 ---
+const resetEditing = (itemId: string) => {
+  // 找到對應的項目並重新初始化編輯數據
+  const item = filteredResponses.value.find((r: any) => r._id === itemId);
+  if (item) {
+    editingData.value = {
+      ...editingData.value,
+      [itemId]: { ...getResponseFields(item) }
+    };
+  }
+};
+
+const getEditingFields = (item: any): Record<string, any> => {
+  // 如果已初始化編輯數據，使用編輯數據；否則使用原始數據
+  if (editingData.value[item._id]) {
+    return editingData.value[item._id];
+  }
+  return getResponseFields(item);
+};
+
+const updateEditingField = (itemId: string, key: string, value: any) => {
+  editingData.value = {
+    ...editingData.value,
+    [itemId]: {
+      ...(editingData.value[itemId] || {}),
+      [key]: value
+    }
+  };
+};
+
+// 獲取編輯用的欄位定義（禁用 readOnly 並設置緊湊密度）
+const getEditableField = (field: any) => {
+  const editField = { ...field };
+
+  // 在編輯模式中，允許編輯系統欄位
+  if (field.type === 'system' && field.readOnly) {
+    editField.readOnly = false;
+  }
+
+  // 設置緊湊密度，除了需要更多空間的欄位
+  if (!['address', 'textarea'].includes(field.type)) {
+    editField.density = 'compact';
+  }
+
+  return editField;
+};
+
+// 根據欄位類型決定列寬（優化 16:9 屏幕布局）
+const getFieldColSize = (fieldType: string) => {
+  // 這些欄位應該佔滿整行
+  if (['address'].includes(fieldType)) {
+    return { cols: '12', sm: '12', md: '12', lg: '12', xl: '12' };
+  }
+  // 文本區佔 2/3 寬度
+  if (['textarea'].includes(fieldType)) {
+    return { cols: '12', sm: '12', md: '8', lg: '8', xl: '8' };
+  }
+  // 其他欄位在大屏上佔 1/4（支持 4 列）
+  return { cols: '12', sm: '12', md: '6', lg: '3', xl: '3' };
+};
+
+// 取得欄位包裝器 CSS 類別（新緊湊布局）
+const getFieldWrapperClass = (fieldType: string): string => {
+  if (['header', 'description', 'divider'].includes(fieldType)) {
+    return 'field-wrapper full-width';
+  }
+  if (['address', 'textarea'].includes(fieldType)) {
+    return 'field-wrapper full-width';
+  }
+  // 普通字段：在桌面上 2-3 列，平板上 2 列，手機上 1 列
+  return 'field-wrapper';
+};
+
+// 深度轉換 Proxy 對象為普通物件（Firestore 相容）
+const convertProxyToPlain = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertProxyToPlain(item));
+  }
+  const plain: Record<string, any> = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      plain[key] = convertProxyToPlain(obj[key]);
+    }
+  }
+  return plain;
+};
+
+const saveEditing = async (item: any) => {
+  savingId.value = item._id;
   try {
-    const formRef = doc(db, 'customFormTemplates', props.form.id);
-    const snap = await getDoc(formRef);
-    if (snap.exists()) {
-      const config = snap.data()?.syncConfig;
-      if (config && config.spreadsheetId) {
-        const url = config.sheetUrl || `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`;
-        googleSheetForm.url = url;
-        if (config.sheetName) {
-           googleSheetForm.sheetName = config.sheetName;
-           activeSyncConfig.value = {
-             url: url,
-             sheetName: config.sheetName
-           };
+    // 建立 ID 到 Label 的映射
+    const idToLabelMap = buildIdToLabelMap(props.form?.fields || []);
+    const labelToIdMap: Record<string, string> = {};
+    Object.entries(idToLabelMap).forEach(([id, label]) => {
+      labelToIdMap[label] = id;
+    });
+
+    const allFieldIds = extractAllFieldIds(props.form?.fields || []);
+    const idSet = new Set(allFieldIds);
+
+    // 分離 ID keys 和 Label keys
+    const dataPayload: Record<string, any> = {};      // 用 ID 作為 key
+    const readablePayload: Record<string, any> = {};  // 用 label 作為 key
+
+    Object.entries(editingData.value[item._id]).forEach(([key, value]) => {
+      // 跳過 undefined 和 null 值
+      if (value === undefined || value === null) return;
+
+      // 轉換 Proxy 為普通物件
+      const plainValue = convertProxyToPlain(value);
+
+      // 如果 key 是 field ID，放入 data
+      if (idSet.has(key)) {
+        dataPayload[key] = plainValue;
+      } else {
+        // 否則視為 label，放入 readableSnapshot
+        readablePayload[key] = plainValue;
+        // 【關鍵】同時將值同步到對應的 ID key
+        const correspondingId = labelToIdMap[key];
+        if (correspondingId) {
+          dataPayload[correspondingId] = plainValue;
         }
       }
-    }
-  } catch (err) {
-    console.error("載入同步設定失敗:", err);
-  }
-};
+    });
 
-const openSyncDialog = () => {
-  syncDialog.value = true;
-  syncResult.value = null;
-  loadSyncConfig();
-};
-
-const fetchSheetNames = async () => {
-  if (!googleSheetForm.url) return;
-  loadingSheets.value = true;
-  sheetNames.value = [];
-  serviceAccountEmail.value = '';
-  syncResult.value = null;
-
-  try {
-    const res: any = await listGoogleSheets(googleSheetForm.url);
-    if (res.status === 'success') {
-      sheetNames.value = res.sheetNames || [];
-      serviceAccountEmail.value = res.agentEmail || '';
-      
-      if (!sheetNames.value.includes(googleSheetForm.sheetName)) {
-        googleSheetForm.sheetName = ''; // Reset if not found
+    // 反向同步：確保 ID key 的值也更新到對應的 label key
+    Object.entries(dataPayload).forEach(([id, value]) => {
+      const label = idToLabelMap[id];
+      if (label && !(label in readablePayload)) {
+        readablePayload[label] = value;
       }
-      toast.success('成功讀取工作表列表');
-    }
-  } catch (error: any) {
-    console.error('Fetch sheet names error:', error);
-    toast.error(`讀取失敗: ${error.message}`);
-    syncResult.value = { type: 'error', message: `讀取失敗: ${error.message}` };
-  } finally {
-    loadingSheets.value = false;
-  }
-};
+    });
 
-const executeSync = async () => {
-  const { valid } = await syncForm.value.validate();
-  if (!valid) return;
+    console.log('✅ 保存數據 - data:', dataPayload);
+    console.log('✅ 保存數據 - readableSnapshot:', readablePayload);
 
-  isSyncing.value = true;
-  syncResult.value = null;
+    const docRef = doc(db, 'customFormSubmissions', item._id);
+    await updateDoc(docRef, {
+      data: dataPayload,
+      readableSnapshot: readablePayload,
+      snapshotAvailable: true,
+      updatedAt: new Date()
+    });
 
-  try {
-    // 簡易萃取 ID
-    let spreadsheetId = googleSheetForm.url;
-    const match = googleSheetForm.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    if (match) {
-      spreadsheetId = match[1];
-    }
+    // 更新本地數據
+    Object.assign(item, editingData.value[item._id]);
+    const newData = { ...editingData.value };
+    delete newData[item._id];
+    editingData.value = newData;
 
-    const payload = {
-      projectId: props.projectId,
-      formId: props.form.id,
-      spreadsheetId: spreadsheetId,
-      sheetName: googleSheetForm.sheetName
-    };
+    // 保存成功後，自動收合該行
+    expandedRows.value = [];
 
-    const res: any = await syncCustomFormSubmissionsToSheet(payload);
-
-    if (res.status === 'success') {
-      syncResult.value = { type: 'success', message: res.message || '同步成功' };
-      activeSyncConfig.value = {
-        url: googleSheetForm.url,
-        sheetName: googleSheetForm.sheetName
-      };
-      toast.success('全量同步成功！未來的新回覆將會自動同步。');
-    } else {
-      syncResult.value = { type: 'error', message: res.message || '同步失敗' };
-      toast.error('同步失敗');
-    }
-  } catch (error: any) {
-    console.error('Sync error:', error);
-    syncResult.value = { type: 'error', message: `同步發生錯誤: ${error.message}` };
-  } finally {
-    isSyncing.value = false;
-  }
-};
-
-const copyToClipboard = async (text: string) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success('已複製 Email');
+    toast.success('回覆已更新');
   } catch (err) {
-    toast.error('複製失敗');
+    console.error('❌ 更新回覆失敗:', err);
+    console.error('錯誤詳情:', (err as any).message);
+
+    if ((err as any).code === 'permission-denied') {
+      toast.error('沒有更新權限 - 請檢查 Firestore 安全規則');
+    } else if ((err as any).code === 'not-found') {
+      toast.error('文檔不存在');
+    } else {
+      toast.error(`更新失敗: ${(err as any).message}`);
+    }
+  } finally {
+    savingId.value = null;
   }
 };
 
@@ -577,17 +487,83 @@ const extractFieldLabels = (fields: any[]): string[] => {
   return labels;
 };
 
+// --- 從表單定義提取所有欄位 ID（含遞迴子欄位 ID）---
+const extractAllFieldIds = (fields: any[]): string[] => {
+  const ids: string[] = [];
+  if (!fields) return ids;
+  fields.forEach(f => {
+    // 排除純顯示欄位
+    if (['header', 'description', 'divider', 'link'].includes(f.type)) return;
+    if (f.id) ids.push(f.id);
+    // 遞迴提取子欄位 ID
+    if (f.options) {
+      f.options.forEach((opt: any) => {
+        if (opt.subFields) {
+          ids.push(...extractAllFieldIds(opt.subFields));
+        }
+      });
+    }
+  });
+  return ids;
+};
+
+// --- 建立 ID 到 Label 的映射（用於從原始數據查找標籤值）---
+const buildIdToLabelMap = (fields: any[]): Record<string, string> => {
+  const map: Record<string, string> = {};
+  if (!fields) return map;
+
+  fields.forEach(f => {
+    // 排除純顯示欄位
+    if (['header', 'description', 'divider', 'link'].includes(f.type)) return;
+    if (f.id && f.label) {
+      map[f.id] = f.label;
+    }
+    // 遞迴處理子欄位
+    if (f.options) {
+      f.options.forEach((opt: any) => {
+        if (opt.subFields) {
+          Object.assign(map, buildIdToLabelMap(opt.subFields));
+        }
+      });
+    }
+  });
+
+  return map;
+};
+
+// --- 提取頂級字段的 ID（不包括子字段）---
+const extractTopLevelFieldIds = (fields: any[]): string[] => {
+  const ids: string[] = [];
+  if (!fields) return ids;
+  fields.forEach(f => {
+    // 排除純顯示欄位
+    if (['header', 'description', 'divider', 'link'].includes(f.type)) return;
+    if (f.id) {
+      ids.push(f.id);  // 只添加頂級字段的 ID，不遞迴
+    }
+  });
+  return ids;
+};
+
 // --- 動態欄位（依照表單定義順序）---
 const dynamicColumns = computed(() => {
   // 從表單定義取得有序欄位標籤
   const orderedLabels = extractFieldLabels(props.form?.fields || []);
-  // 收集所有回覆中實際存在的 key
+
+  // 取得所有 ID keys（用於排除）
+  const allFieldIds = new Set(extractAllFieldIds(props.form?.fields || []));
+
+  // 收集所有回覆中實際存在的 key（排除 ID keys）
   const existingKeys = new Set<string>();
   responses.value.forEach(r => {
     Object.keys(r).forEach(k => {
-      if (!k.startsWith('_')) existingKeys.add(k);
+      // 跳過系統欄位（_開頭）和 ID keys
+      if (!k.startsWith('_') && !allFieldIds.has(k)) {
+        existingKeys.add(k);
+      }
     });
   });
+
   // 依表單順序排列，再補上不在表單定義但出現在回覆中的欄位
   const result: string[] = [];
   orderedLabels.forEach(label => {
@@ -596,14 +572,21 @@ const dynamicColumns = computed(() => {
       existingKeys.delete(label);
     }
   });
-  // 補上殘餘（例如舊版欄位）
-  existingKeys.forEach(k => result.push(k));
+
+  // 補上殘餘（例如舊版欄位，但排除 ID keys）
+  existingKeys.forEach(k => {
+    if (!allFieldIds.has(k)) {
+      result.push(k);
+    }
+  });
+
   return result;
 });
 
 // --- 表格 Headers ---
 const tableHeaders = computed(() => {
   const headers: any[] = [
+    { title: '', key: 'data-table-expand' },
     { title: '戶別', key: '_unitId', sortable: true, width: '120px' },
     { title: '提交時間', key: '_submittedAt', sortable: true, width: '160px' },
   ];
@@ -678,23 +661,78 @@ const restoreResponse = async (item: any) => {
   }
 };
 
-// --- 檢視模式 ---
-const currentResponse = computed(() => responses.value[currentIndex.value] || null);
+// --- 行展開控制 ---
+const onRowClick = (event: any, { item }: any) => {
+  const itemId = item._id;
+  const idx = expandedRows.value.indexOf(itemId);
+  if (idx === -1) {
+    // 展開該行
+    expandedRows.value = [itemId];
+    // 自動初始化編輯數據
+    if (!editingData.value[itemId]) {
+      editingData.value = {
+        ...editingData.value,
+        [itemId]: { ...getResponseFields(item) }
+      };
+    }
+  } else {
+    // 摺疊該行，取消編輯
+    expandedRows.value = [];
+    const newData = { ...editingData.value };
+    delete newData[itemId];
+    editingData.value = newData;
+  }
+};
 
-const currentResponseFields = computed(() => {
-  if (!currentResponse.value) return {};
+const getResponseFields = (item: any): Record<string, any> => {
   const fields: Record<string, any> = {};
-  // 依照 dynamicColumns 的順序排列
-  dynamicColumns.value.forEach(col => {
-    fields[col] = currentResponse.value[col] ?? '';
-  });
-  return fields;
-});
+  const idToLabelMap = buildIdToLabelMap(props.form?.fields || []);
 
-const viewDetail = (item: any) => {
-  const idx = responses.value.findIndex(r => r._id === item._id);
-  if (idx >= 0) currentIndex.value = idx;
-  viewMode.value = 'detail';
+  // 第一步：優先複製所有子欄位值（以 ID 為 key）
+  const allFieldIds = extractAllFieldIds(props.form?.fields || []);
+  allFieldIds.forEach(id => {
+    if (item[id] !== undefined) {
+      fields[id] = item[id];  // 保留 ID key 的值供子字段使用
+    }
+  });
+
+  // 第二步：複製動態欄位（以 label 為 key），用於頂級字段的 model-value
+  dynamicColumns.value.forEach(col => {
+    fields[col] = item[col] ?? '';
+  });
+
+  // 第三步：確保頂級字段的值優先級最高，不被子字段覆蓋
+  const topLevelIds = extractTopLevelFieldIds(props.form?.fields || []);
+  topLevelIds.forEach(id => {
+    const label = idToLabelMap[id];
+    if (label && item[id] !== undefined) {
+      fields[label] = item[id];  // 頂級字段的值覆蓋任何同名的子字段值
+    }
+  });
+
+  return fields;
+};
+
+
+// --- 格式化表格儲存格值 ---
+const formatCellValue = (value: any): string => {
+  if (value === null || value === undefined) return '';
+
+  // 如果是物件（address 類型），格式化為可讀的地址字符串
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    // address 物件格式：{ city, district, detail }
+    if ('city' in value || 'district' in value || 'detail' in value) {
+      const city = value.city || '';
+      const district = value.district || '';
+      const detail = value.detail || '';
+      return `${city}${district}${detail}`.trim() || '（未填）';
+    }
+    // 其他物件，轉為 JSON 字符串
+    return JSON.stringify(value);
+  }
+
+  // 基本類型直接轉字符串
+  return String(value);
 };
 
 // --- 時間格式化 ---
@@ -718,7 +756,10 @@ const formatTimestamp = (ts: any) => {
 const exportAllExcel = () => {
   exporting.value = true;
   try {
-    const columns = dynamicColumns.value;
+    // 只取出 label-based 的欄位（排除 UUID 亂數欄位）
+    const allFieldIds = new Set(extractAllFieldIds(props.form?.fields || []));
+    const columns = dynamicColumns.value.filter(c => !allFieldIds.has(c));
+
     // 表頭
     const headerRow = ['戶別', '提交時間', ...columns.filter(c => c !== '戶別')];
 
@@ -727,7 +768,15 @@ const exportAllExcel = () => {
       return [
         r._unitId || '',
         formatTimestamp(r._submittedAt),
-        ...columns.filter(c => c !== '戶別').map(c => r[c] ?? ''),
+        ...columns.filter(c => c !== '戶別').map(c => {
+          const val = r[c];
+          // 格式化地址物件
+          if (typeof val === 'object' && val !== null && ('city' in val || 'district' in val || 'detail' in val)) {
+            const { city = '', district = '', detail = '' } = val;
+            return `${city}${district}${detail}`.trim();
+          }
+          return val ?? '';
+        }),
       ];
     });
 
@@ -770,25 +819,41 @@ const exportAllExcel = () => {
 };
 
 // --- Excel 匯出：單筆 ---
-const exportSingleExcel = () => {
-  if (!currentResponse.value) return;
+const exportSingleExcel = (item: any) => {
   exporting.value = true;
   try {
-    const r = currentResponse.value;
-    const rows: string[][] = [
-      ['欄位名稱', '填寫內容'],
-      ['戶別', r._unitId || ''],
-      ['提交時間', formatTimestamp(r._submittedAt)],
+    const r = item;
+
+    // 只取出 label-based 的欄位（排除 UUID 亂數欄位）
+    const allFieldIds = new Set(extractAllFieldIds(props.form?.fields || []));
+    let fieldLabels = extractFieldLabels(props.form?.fields || []);
+
+    // 去重：保持順序，但去掉重複的欄位名稱
+    fieldLabels = Array.from(new Set(fieldLabels));
+
+    // 橫向格式：欄位標籤作為表頭
+    const headerRow = ['戶別', '提交時間', ...fieldLabels.filter(l => l !== '戶別')];
+
+    // 資料列
+    const dataRow = [
+      r._unitId || '',
+      formatTimestamp(r._submittedAt),
+      ...fieldLabels.filter(l => l !== '戶別').map(label => {
+        const val = r[label];
+        // 格式化地址物件
+        if (typeof val === 'object' && val !== null && ('city' in val || 'district' in val || 'detail' in val)) {
+          const { city = '', district = '', detail = '' } = val;
+          return `${city}${district}${detail}`.trim();
+        }
+        return val ?? '';
+      }),
     ];
 
-    Object.entries(currentResponseFields.value).forEach(([k, v]) => {
-      rows.push([k, String(v ?? '')]);
-    });
-
+    const rows = [headerRow, dataRow];
     const ws = XLSX.utils.aoa_to_sheet(rows);
 
     // 表頭樣式
-    for (let i = 0; i < 2; i++) {
+    headerRow.forEach((_h, i) => {
       const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
       if (cell) {
         cell.s = {
@@ -797,13 +862,16 @@ const exportSingleExcel = () => {
           alignment: { horizontal: 'center' },
         };
       }
-    }
+    });
 
-    // 欄寬
-    ws['!cols'] = [
-      { wch: 20 },
-      { wch: 40 },
-    ];
+    // 欄寬自動
+    ws['!cols'] = headerRow.map((h, i) => {
+      const maxLen = Math.max(
+        h.length,
+        String(dataRow[i] ?? '').length
+      );
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+    });
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '回覆內容');
@@ -828,5 +896,223 @@ onMounted(() => {
 <style scoped>
 .border-b {
   border-bottom: 1px solid #e0e0e0;
+}
+
+.border-t {
+  border-top: 1px solid #e0e0e0;
+}
+
+.compact-form-layout {
+  max-width: 100%;
+}
+
+/* 緊湊表單布局 - 優化 16:9 屏幕 */
+.compact-form-layout :deep(.v-text-field),
+.compact-form-layout :deep(.v-textarea),
+.compact-form-layout :deep(.v-select),
+.compact-form-layout :deep(.v-autocomplete),
+.compact-form-layout :deep(.v-radio-group),
+.compact-form-layout :deep(.v-checkbox) {
+  margin-bottom: 4px;
+}
+
+.compact-form-layout :deep(.v-field__outline) {
+  border-radius: 4px;
+}
+
+.compact-form-layout :deep(.v-input__control) {
+  min-height: auto;
+}
+
+.compact-form-layout :deep(.dynamic-field-render-item) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.compact-form-layout :deep(.v-input--density-compact) {
+  --v-input-control-height: 36px;
+}
+
+/* 按鈕縮小 */
+.compact-form-layout :deep(.v-btn) {
+  font-size: 0.875rem;
+  padding: 4px 12px;
+}
+
+/* 標題縮小 */
+.compact-form-layout h4 {
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+/* 行間距優化 */
+.compact-form-layout :deep(.v-row) {
+  --v-row-gutter: 8px;
+}
+
+.compact-form-layout :deep(.v-col) {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* 欄位類的緊湊設置 */
+.compact-field :deep(.v-text-field),
+.compact-field :deep(.v-textarea),
+.compact-field :deep(.v-select),
+.compact-field :deep(.v-autocomplete) {
+  --v-input-control-height: 36px;
+  margin-bottom: 0;
+}
+
+.compact-field :deep(.v-input__details) {
+  display: none;
+}
+
+.compact-field :deep(.v-field__label) {
+  font-size: 0.875rem;
+}
+
+/* Address 字段內部也改為單列 */
+.compact-field :deep(.v-row) {
+  --v-row-gutter: 4px !important;
+}
+
+.compact-field :deep(.v-col) {
+  width: 100% !important;
+  flex-basis: 100% !important;
+  max-width: 100% !important;
+}
+
+/* 地址欄位保持正常高度 */
+.compact-form-layout :deep(.pa-4.bg-grey-lighten-5.rounded-lg.border-thin) {
+  padding: 12px 8px !important;
+}
+
+/* 新緊湊布局 */
+.expanded-form-wrapper {
+  padding: 12px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 12px;
+  grid-template-columns: 1fr;
+}
+
+.field-wrapper {
+  min-width: 0;
+}
+
+.field-wrapper.full-width {
+  grid-column: 1 / -1;
+}
+
+/* 區段標題 */
+.section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1976d2;
+  padding: 8px 0;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  border-bottom: 2px solid rgba(25, 118, 210, 0.2);
+}
+
+.section-description {
+  grid-column: 1 / -1;
+  font-size: 0.8125rem;
+  color: #555;
+  background: #fff;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.section-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.12);
+  margin: 6px 0;
+}
+
+/* 操作按鈕欄 */
+.form-actions {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.action-btn {
+  font-size: 0.75rem;
+  padding: 4px 8px !important;
+  min-width: 60px;
+}
+
+/* 緊湊輸入框 */
+.compact-form-layout :deep(.v-text-field),
+.compact-form-layout :deep(.v-textarea),
+.compact-form-layout :deep(.v-select),
+.compact-form-layout :deep(.v-autocomplete),
+.compact-form-layout :deep(.v-radio-group),
+.compact-form-layout :deep(.v-checkbox) {
+  margin-bottom: 0;
+}
+
+.compact-form-layout :deep(.v-input__control) {
+  min-height: 32px;
+}
+
+.compact-form-layout :deep(.v-field__input) {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  font-size: 0.8125rem;
+}
+
+.compact-form-layout :deep(.v-field__label) {
+  font-size: 0.75rem;
+  top: 6px;
+}
+
+.compact-field :deep(.v-input__details) {
+  display: none;
+}
+
+/* 響應式設計 */
+@media (max-width: 600px) {
+  .expanded-form-wrapper {
+    padding: 8px;
+  }
+
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .action-btn {
+    flex: 1;
+    min-width: 45px;
+  }
+
+  .form-grid {
+    gap: 6px;
+  }
+}
+
+@media (min-width: 600px) {
+  .expanded-form-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+  }
 }
 </style>
