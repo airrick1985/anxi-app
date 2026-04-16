@@ -387,11 +387,23 @@ const convertProxyToPlain = (obj: any): any => {
 const saveEditing = async (item: any) => {
   savingId.value = item._id;
   try {
-    // 建立 ID 到 Label 的映射
+    // 建立 ID 到 Label 的映射（含所有層級）
     const idToLabelMap = buildIdToLabelMap(props.form?.fields || []);
+
+    // 建立 Label 到 ID 的映射，頂級欄位優先
+    // 重點：radio 的「其他」子欄位可能與父欄位同名（如「緊急聯絡人關係」、「行業別」），
+    // 必須確保 labelToIdMap 映射到頂級（父）欄位 ID，子欄位由 ID key 自行處理
+    const topLevelIds = new Set(extractTopLevelFieldIds(props.form?.fields || []));
     const labelToIdMap: Record<string, string> = {};
+    // 先放入所有映射（子欄位可能覆蓋父欄位）
     Object.entries(idToLabelMap).forEach(([id, label]) => {
       labelToIdMap[label] = id;
+    });
+    // 再用頂級欄位覆蓋回來，確保頂級優先
+    Object.entries(idToLabelMap).forEach(([id, label]) => {
+      if (topLevelIds.has(id)) {
+        labelToIdMap[label] = id;
+      }
     });
 
     const allFieldIds = extractAllFieldIds(props.form?.fields || []);
@@ -414,7 +426,7 @@ const saveEditing = async (item: any) => {
       } else {
         // 否則視為 label，放入 readableSnapshot
         readablePayload[key] = plainValue;
-        // 【關鍵】同時將值同步到對應的 ID key
+        // 【關鍵】同時將值同步到對應的頂級欄位 ID key
         const correspondingId = labelToIdMap[key];
         if (correspondingId) {
           dataPayload[correspondingId] = plainValue;
@@ -430,6 +442,27 @@ const saveEditing = async (item: any) => {
       }
     });
 
+    // 後處理：radio 欄位選擇帶有子欄位的選項時（如「其他」），
+    // 若子欄位與父欄位同名，readableSnapshot 應使用子欄位的輸入值而非選項值
+    // 例：行業別選「其他」→ 子欄位「行業別」輸入「保險業」→ Sheet 應顯示「保險業」
+    const formFields = props.form?.fields || [];
+    formFields.forEach((field: any) => {
+      if (field.type !== 'radio' || !field.options) return;
+      const selectedValue = readablePayload[field.label];
+      if (!selectedValue) return;
+
+      const selectedOption = field.options.find((opt: any) => opt.value === selectedValue);
+      if (!selectedOption?.subFields?.length) return;
+
+      for (const subField of selectedOption.subFields) {
+        if (subField.label === field.label && dataPayload[subField.id]) {
+          // 子欄位與父欄位同名，用子欄位的實際輸入值取代「其他」
+          readablePayload[field.label] = dataPayload[subField.id];
+          break;
+        }
+      }
+    });
+
     console.log('✅ 保存數據 - data:', dataPayload);
     console.log('✅ 保存數據 - readableSnapshot:', readablePayload);
 
@@ -441,16 +474,16 @@ const saveEditing = async (item: any) => {
       updatedAt: new Date()
     });
 
-    // 更新本地數據
-    Object.assign(item, editingData.value[item._id]);
+    // 保存成功後，清除編輯狀態並收合該行
     const newData = { ...editingData.value };
     delete newData[item._id];
     editingData.value = newData;
-
-    // 保存成功後，自動收合該行
     expandedRows.value = [];
 
     toast.success('回覆已更新');
+
+    // 重新從 Firestore 載入最新資料以刷新表格
+    await loadResponses();
   } catch (err) {
     console.error('❌ 更新回覆失敗:', err);
     console.error('錯誤詳情:', (err as any).message);

@@ -23815,6 +23815,27 @@ exports.syncCustomFormSubmissionsToSheet = onCall({
       submissions.push({ _docId: doc.id, ...data });
     });
 
+    // Helper: 對 radio 欄位，若選中的選項有同名子欄位（如「其他」→ 子欄位「行業別」），
+    // 用子欄位的實際輸入值取代選項值，讓 Sheet 顯示有意義的內容
+    const resolveRadioSubFieldValues = (flat, rawData, fields) => {
+      if (!fields || !rawData) return;
+      fields.forEach(field => {
+        if (field.type !== "radio" || !field.options) return;
+        const selectedValue = flat[field.label];
+        if (!selectedValue) return;
+
+        const selectedOption = field.options.find(opt => opt.value === selectedValue);
+        if (!selectedOption || !selectedOption.subFields || selectedOption.subFields.length === 0) return;
+
+        for (const subField of selectedOption.subFields) {
+          if (subField.label === field.label && rawData[subField.id]) {
+            flat[field.label] = rawData[subField.id];
+            break;
+          }
+        }
+      });
+    };
+
     // 3. Flatten Data
     const flattenSub = (sub) => {
       const flat = {};
@@ -23835,6 +23856,10 @@ exports.syncCustomFormSubmissionsToSheet = onCall({
       Object.entries(displayData).forEach(([key, val]) => {
         flat[key] = val;
       });
+
+      // 用子欄位輸入值取代 radio 選項值（如「其他」→ 實際輸入）
+      resolveRadioSubFieldValues(flat, sub.data || {}, formData.fields || []);
+
       return flat;
     };
     const rows = submissions.map(s => flattenSub(s));
@@ -23942,11 +23967,13 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
     const formDoc = await db.collection("customFormTemplates").doc(formId).get();
     if (!formDoc.exists) return;
 
-    const syncConfig = formDoc.data().syncConfig;
+    const formTemplateData = formDoc.data();
+    const syncConfig = formTemplateData.syncConfig;
     if (!syncConfig || !syncConfig.spreadsheetId || !syncConfig.sheetName) return;
 
     const spreadsheetId = syncConfig.spreadsheetId;
     const sheetName = syncConfig.sheetName;
+    const formTemplateFields = formTemplateData.fields || [];
 
     const auth = new googleApi.auth.GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/spreadsheets']
@@ -23991,6 +24018,26 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
       }
     } else {
       // Upsert operation
+      // Helper: 解析 radio 子欄位值（與全量同步相同邏輯）
+      const resolveRadioSubFieldValues = (flat, rawData, fields) => {
+        if (!fields || !rawData) return;
+        fields.forEach(field => {
+          if (field.type !== "radio" || !field.options) return;
+          const selectedValue = flat[field.label];
+          if (!selectedValue) return;
+
+          const selectedOption = field.options.find(opt => opt.value === selectedValue);
+          if (!selectedOption || !selectedOption.subFields || selectedOption.subFields.length === 0) return;
+
+          for (const subField of selectedOption.subFields) {
+            if (subField.label === field.label && rawData[subField.id]) {
+              flat[field.label] = rawData[subField.id];
+              break;
+            }
+          }
+        });
+      };
+
       const flattenSub = (sub) => {
         const flat = {};
         flat["_id"] = sub._docId || sub.id;
@@ -24005,6 +24052,10 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
         flat["_submittedAt"] = subAt;
 
         Object.entries(displayData).forEach(([key, val]) => flat[key] = val);
+
+        // 用子欄位輸入值取代 radio 選項值（如「其他」→ 實際輸入）
+        resolveRadioSubFieldValues(flat, sub.data || {}, formTemplateFields);
+
         return flat;
       };
 
@@ -24019,7 +24070,14 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
 
       const formatVal = (v) => {
         if (v === undefined || v === null) return '';
-        if (typeof v === 'object') return JSON.stringify(v);
+        if (typeof v === 'object') {
+          // 格式化地址對象：{city, district, detail} -> "縣市鄉鎮詳細地址"
+          if ('city' in v || 'district' in v || 'detail' in v) {
+            const { city = '', district = '', detail = '' } = v;
+            return `${city}${district}${detail}`.trim();
+          }
+          return JSON.stringify(v);
+        }
         return String(v);
       };
 
