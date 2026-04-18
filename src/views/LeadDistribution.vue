@@ -1853,13 +1853,30 @@ const testRegexExtraction = () => {
       }
   };
 
+  // noteRegex 特殊處理：支援多筆備註串聯成「標題：內容|標題：內容」
+  const extractNote = (regexStr) => {
+      if (!regexStr) return '';
+      if (!regexStr.includes('(')) return regexStr;
+      try {
+          const matches = [...text.matchAll(new RegExp(regexStr, 'gm'))];
+          if (matches.length === 0) return '';
+          if (matches[0].length >= 3) {
+              return matches.map(m => `${m[1]}：${m[2].trim()}`).join('|');
+          }
+          return matches.map(m => m[1].trim()).join('|');
+      } catch (e) {
+          console.warn('Invalid noteRegex:', regexStr);
+          return '正則錯誤';
+      }
+  };
+
   newAITemplate.value.testResult = {
       name: extract(rules.nameRegex),
       phone: normalizePhone(extract(rules.phoneRegex)),
       budget: extract(rules.budgetRegex),
       source: normalizeSource(extract(rules.sourceRegex)),
       date: extract(rules.dateRegex) || normalizeDate(new Date()),
-      note: extract(rules.noteRegex)
+      note: extractNote(rules.noteRegex)
   };
 };
 
@@ -2723,8 +2740,18 @@ const parseLeadText = (text) => {
           if (!rule.noteRegex.includes('(')) {
             result.note = rule.noteRegex.trim();
           } else {
-            const noteMatch = cleanText.match(new RegExp(rule.noteRegex, 'm'));
-            if (noteMatch) result.note = noteMatch[1].trim();
+            try {
+              const noteMatches = [...cleanText.matchAll(new RegExp(rule.noteRegex, 'gm'))];
+              if (noteMatches.length > 0) {
+                if (noteMatches[0].length >= 3) {
+                  result.note = noteMatches.map(m => `${m[1]}：${m[2].trim()}`).join('|');
+                } else {
+                  result.note = noteMatches.map(m => m[1].trim()).join('|');
+                }
+              }
+            } catch (e) {
+              console.warn('Invalid noteRegex:', rule.noteRegex);
+            }
           }
         }
         if (rule.dateRegex) {

@@ -16,7 +16,7 @@ async function getGeminiApiKey() {
     }
 }
 
-exports.generateLeadParsingRegex = onCall({ region: "asia-east1" }, async (request) => {
+exports.generateLeadParsingRegex = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
     const { sampleText } = request.data;
     if (!sampleText) {
         throw new HttpsError('invalid-argument', '缺少 sampleText 參數');
@@ -28,7 +28,7 @@ exports.generateLeadParsingRegex = onCall({ region: "asia-east1" }, async (reque
 
         // 使用 gemini-3-flash-preview 模型
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash", // Update to standard 1.5 flash since 3 flash preview may not be reliable or available
+            model: "gemini-3-flash-preview",
             generationConfig: {
                 responseMimeType: "application/json",
             }
@@ -45,10 +45,15 @@ exports.generateLeadParsingRegex = onCall({ region: "asia-east1" }, async (reque
 4. budget: 擷取購屋預算 (例如：1000萬, 2000-3000萬)。如果沒有寫預算，留空即可。
 5. date: 擷取日期時間 (例如：2026-03-01, 2026/03/01, 115年3月1日)。
 6. note: 擷取備註或其他額外資訊 (例如：email, 方便聯絡時間等欄位以外的資訊合輯)。
+   - 常見的備註欄位標題包含但不限於：備註、留言資訊、房型需求、需求、其他、補充說明
+   - noteRegex 必須使用「兩個捕獲組」格式：第 1 組擷取「標題」、第 2 組擷取「內容」，
+     範例：^(備註|留言資訊|房型需求|需求|其他|補充說明)[：:]\\s*([\\s\\S]*?)(?=\\r?\\n|$)
+   - 前端會以全域多行 (gm) 模式對 noteRegex 做 matchAll，並把所有匹配串成
+     「標題：內容|標題：內容」格式。所以請務必沿用上述兩組捕獲的寫法。
 
 產生規則的要求：
 - 必須是有效的 JavaScript RegExp 模式字串 (不包含首尾的斜線 / 以及修飾符，例如 ^姓名：(.*)$ 即可，前端會用 new RegExp(字串, 'm') 來建立物件)。
-- 需要擷取的目標資料應該放在第一個捕獲組 (Capture Group 1) 中。
+- 除了 noteRegex 使用兩個捕獲組外，其他欄位仍以「第一個捕獲組」為擷取目標。
 - 對於 note 這種可能涵蓋多行的資訊，可以考慮使用 [\s\S]* 或是其他方式捕捉。如果很難寫正則或沒有備註可以留空字串。
 
 === 輸入文字範例 ===
@@ -62,7 +67,7 @@ ${sampleText}
   "sourceRegex": "",
   "budgetRegex": "",
   "dateRegex": "^日期[：:]\\\\s*(.*?)(?:\\\\s|$)",
-  "noteRegex": "^備註[：:]\\\\s*([\\\\s\\\\S]*)"
+  "noteRegex": "^(備註|留言資訊|房型需求|需求|其他|補充說明)[：:]\\\\s*([\\\\s\\\\S]*?)(?=\\\\r?\\\\n|$)"
 }
 `;
 
