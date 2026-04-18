@@ -3271,7 +3271,7 @@ exports.updateCancelReason = onCall({ region: "asia-east1" }, async (request) =>
 /**
  * 修改退戶日期
  */
-exports.updateCancellationDate = onCall({ region: "asia-east1" }, async (request) => {
+exports.updateCancellationDate = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, cancelledDocId, cancellationDate, operatorName } = request.data;
   const functionName = `updateCancellationDate (Doc: ${cancelledDocId})`;
 
@@ -3289,7 +3289,7 @@ exports.updateCancellationDate = onCall({ region: "asia-east1" }, async (request
     // 將 YYYY-MM-DD 字符串轉換為 Firestore Timestamp
     let cancellationTimestamp;
     try {
-      const [year, month, day] = cancellationDate.split('-');
+      const [year, month, day] = cancellationDate.split('-').map(Number);
       const dateObj = new Date(year, month - 1, day, 0, 0, 0);
       cancellationTimestamp = admin.firestore.Timestamp.fromDate(dateObj);
     } catch (err) {
@@ -3298,10 +3298,13 @@ exports.updateCancellationDate = onCall({ region: "asia-east1" }, async (request
     }
 
     // 更新退戶資料集合中的 cancellationDate
+    // 注意：頂層 cancellationDate 與 _cancellationMeta.cancellationDate 必須同步更新，
+    // 因為 getCancelledPurchases 讀取的是 _cancellationMeta.cancellationDate
     const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
 
     const updateData = {
       cancellationDate: cancellationTimestamp,
+      '_cancellationMeta.cancellationDate': cancellationTimestamp,
       '_cancellationMeta.lastEditedBy': operatorName,
       '_cancellationMeta.lastEditedAt': admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -21337,24 +21340,93 @@ exports.analyzeCustomerStatus = onCall({
       }
     }
 
-    // 格式化客戶數據供 AI 分析
-    const formattedGuests = guests.map(g => ({
-      guestName: g.guestName || '未知',
-      guestPhone: g.guestPhone || '',
-      salesName: g.salesName || '未指定',
-      type: g.type === 'new' ? '新客' : '回訪',
-      visitCount: g.interactionLogs?.length || 0,
-      interactionLogs: (g.interactionLogs || []).map(log => ({
-        date: log.date || '未知',
-        content: log.content || '',
-      })),
-    }));
+    // 「未購原因」欄位實際上同時容納兩類值：
+    //   1) 已轉換為訂單的狀態（下訂、成交、已購、下定、補足、簽約）
+    //   2) 真正的未購疑慮（總價太高、地點不符…）
+    // 為避免 AI 望文生義，先依關鍵字把每個值歸類，後續 prompt 完全用語意化標籤。
+    const CONVERSION_KEYWORDS = /下訂|成交|已購|下定|補足|簽約/;
+    const classifyTags = (rawList) => {
+      const arr = Array.isArray(rawList) ? rawList.filter(Boolean) : [];
+      const conversion = [];
+      const concerns = [];
+      arr.forEach(v => {
+        const s = String(v);
+        if (CONVERSION_KEYWORDS.test(s)) conversion.push(s);
+        else concerns.push(s);
+      });
+      return { conversion, concerns };
+    };
+
+    // 格式化客戶數據供 AI 分析（欄位刻意使用中文鍵，避免技術詞彙混入 AI 輸出）
+    const formattedGuests = guests.map(g => {
+      const { conversion, concerns } = classifyTags(g.noPurchaseReasons);
+      return {
+        客戶姓名: g.guestName || '未知',
+        客戶電話: g.guestPhone || '',
+        銷售人員: g.salesName || '未指定',
+        客戶類型: g.type === 'new' ? '新客' : '回訪',
+        造訪次數: g.interactionLogs?.length || 0,
+        等級: g.guestLevel || '未評等',
+        已轉單狀態: conversion,        // 已成交/下訂類標籤
+        購屋疑慮: concerns,            // 真實購屋疑慮
+        是否已轉單: conversion.length > 0 ? '是' : '否',
+        互動紀錄: (g.interactionLogs || []).map(log => {
+          const c = classifyTags(log.noPurchaseReason);
+          return {
+            日期: log.date || '未知',
+            內容: log.content || '',
+            當次等級: log.rating || '',
+            當次已轉單狀態: c.conversion,
+            當次購屋疑慮: c.concerns,
+          };
+        }),
+      };
+    });
+
+    // 等級分布統計
+    const levelBuckets = { A: 0, B: 0, C: 0, D: 0, 其他: 0 };
+    formattedGuests.forEach(g => {
+      const lv = String(g.等級 || '');
+      if (lv.includes('A') || lv.includes('意願高')) levelBuckets.A++;
+      else if (lv.includes('B') || lv.includes('有機會')) levelBuckets.B++;
+      else if (lv.includes('C') || lv.includes('需考慮')) levelBuckets.C++;
+      else if (lv.includes('D') || lv.includes('無希望')) levelBuckets.D++;
+      else levelBuckets.其他++;
+    });
+
+    // 已轉單客戶數
+    const convertedCount = formattedGuests.filter(g => g.是否已轉單 === '是').length;
+
+    // 真實購屋疑慮 TOP 統計
+    const concernCounts = {};
+    formattedGuests.forEach(g => {
+      g.購屋疑慮.forEach(r => {
+        concernCounts[r] = (concernCounts[r] || 0) + 1;
+      });
+    });
+    const topConcerns = Object.entries(concernCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([reason, count]) => ({ reason, count }));
+
+    // 已轉單狀態值 TOP 統計
+    const conversionCounts = {};
+    formattedGuests.forEach(g => {
+      g.已轉單狀態.forEach(r => {
+        conversionCounts[r] = (conversionCounts[r] || 0) + 1;
+      });
+    });
+    const topConversions = Object.entries(conversionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([status, count]) => ({ status, count }));
 
     const prompt = buildCustomerAnalysisPrompt(
       formattedGuests,
       periodLabel,
       projectName,
-      projectKnowledge
+      projectKnowledge,
+      { levelBuckets, topConcerns, topConversions, convertedCount }
     );
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -21376,8 +21448,26 @@ exports.analyzeCustomerStatus = onCall({
 /**
  * 構建客戶狀況分析的 Prompt
  */
-function buildCustomerAnalysisPrompt(guests, periodLabel, projectName, projectKnowledge = {}) {
+function buildCustomerAnalysisPrompt(guests, periodLabel, projectName, projectKnowledge = {}, aggregates = {}) {
   const guestsJson = JSON.stringify(guests, null, 2);
+  const { levelBuckets = {}, topConcerns = [], topConversions = [], convertedCount = 0 } = aggregates;
+
+  // 等級分布摘要
+  const totalGuests = guests.length || 1;
+  const levelSummary = ['A', 'B', 'C', 'D', '其他']
+    .map(k => `${k}：${levelBuckets[k] || 0} 人 (${(((levelBuckets[k] || 0) / totalGuests) * 100).toFixed(1)}%)`)
+    .join('、');
+
+  // 已轉換客戶摘要
+  const conversionRate = ((convertedCount / totalGuests) * 100).toFixed(1);
+  const conversionSummary = topConversions.length > 0
+    ? `已轉換 ${convertedCount} 人 (${conversionRate}%)，狀態分布：${topConversions.map(r => `${r.status} (${r.count} 人)`).join('、')}`
+    : `已轉換 0 人 (0%)`;
+
+  // 真實購屋疑慮 TOP 摘要
+  const concernSummary = topConcerns.length > 0
+    ? topConcerns.map(r => `${r.reason} (${r.count} 次)`).join('、')
+    : '（無實質疑慮記錄）';
 
   // 構建知識庫部分（如果有資料）
   let knowledgeSection = '';
@@ -21430,18 +21520,41 @@ ${projectKnowledge.faqs && projectKnowledge.faqs.length > 0
 統計期間：${periodLabel}
 訪客總數：${guests.length}人
 
+【客戶等級分布】
+${levelSummary}
+（等級說明：A/意願高、B/有機會、C/需考慮、D/無希望）
+
+【已轉換客戶（依標籤值判定，已預先分類）】
+${conversionSummary}
+
+【購屋疑慮 TOP 10（已排除轉換狀態值）】
+${concernSummary}
+
+【重要資料說明 — 必讀】
+資料已預先依語意分類。判斷一位客戶是否「已成交/已下訂」，請看「是否已轉單」欄位（值為「是」或「否」），不要從「購屋疑慮」欄位推論成交狀態。「已轉單狀態」與「購屋疑慮」是兩組獨立清單，分別代表正向結果與真實疑慮。
+
 【客戶互動記錄數據】
 ${guestsJson}
 
 【分析要求】
-1. 識別 TOP 5 客戶關切點（按提及頻次排序），每項附上出現次數
-2. 針對每個關切點，指出客戶的核心痛點和隱含需求
-3. 標記需要風險預警的客戶：
-   - 多次訪問但未決定者（含客戶姓名）
-   - 提及預算困難者
-   - 有其他疑慮或負面反饋者
-4. 評析銷售人員的表現（按姓名），指出亮點和改進空間
-5. 提供 3-5 條立即可執行的改善建議
+1. 客戶結構洞察：說明 A/B/C/D 等級分布反映的銷售健康度；單獨陳述「已轉換為訂單」的客戶數與佔比
+2. 識別 TOP 5 客戶關切點（按提及頻次排序），資料來源限定「真實購屋疑慮」與互動內容，每項附上出現次數；不得把成交狀態值列為關切點
+3. 針對每個關切點，指出客戶的核心痛點和隱含需求
+4. 標記需要風險預警的客戶（請列出客戶姓名與目前等級）：
+   - 等級為 A/B、尚未轉換為訂單，但已表達實質疑慮者（最高優先級）
+   - 多次訪問但等級仍停留在 C/D 且未轉換者
+   - 提及預算困難或其他實質疑慮者
+   - 已轉換為訂單的客戶不得列入風險清單
+5. 評析銷售人員的表現（按姓名）：所負責客戶的訂單轉換比例、處理 C/D 客戶的轉化嘗試、處理疑慮的能力，指出亮點和改進空間
+6. 提供 3-5 條立即可執行的改善建議，需對應到等級分布與 TOP 購屋疑慮
+
+【輸出語言要求 — 嚴格遵守】
+1. 完全使用自然繁體中文敘述。報告中嚴禁出現任何技術欄位名稱、英文鍵名或代碼語法，包含但不限於：
+   hasConverted、conversionStatus、purchaseConcerns、guestLevel、interactionLogs、是否已轉單、已轉單狀態、購屋疑慮、true、false、=、==、===、null、undefined、JSON、key、value
+2. 描述狀態請改用自然語：例如「已成交」「已下訂」「尚未轉單」「仍有購屋疑慮」「等級 A」
+3. 嚴禁出現「hasConverted = true」「是否已轉單 = 是」「等於 true」「為 true」之類寫法，全部改為自然中文敘述
+4. 不得引用欄位名稱來解釋判斷依據，請直接寫結論
+5. 違反上述任一項即視為輸出錯誤
 
 【輸出格式要求 — 嚴格遵守】
 1. 禁止所有 Markdown 格式：不得出現 ##、###、**、*、---、> 等任何符號

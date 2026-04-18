@@ -770,12 +770,18 @@ export const calculateVipGuestStats = (vipGuests, dateRange) => {
       })
       .map(log => {
         const interactionType = log.tags?.interactionType || '其他'
+        const noPurchaseReasonRaw = log.tags?.noPurchaseReason || []
+        const noPurchaseReason = Array.isArray(noPurchaseReasonRaw)
+          ? noPurchaseReasonRaw.filter(Boolean)
+          : (noPurchaseReasonRaw ? [noPurchaseReasonRaw] : [])
 
         return {
           date: log.date || '未知',
           content: log.content || '(無內容)',
           interactionType: interactionType,
           recorderName: log.recorderName || '未知',
+          rating: log.tags?.rating || '',
+          noPurchaseReason: noPurchaseReason,
         }
       })
 
@@ -793,6 +799,18 @@ export const calculateVipGuestStats = (vipGuests, dateRange) => {
       returningCustomersCount++
     }
 
+    // 取得最新一筆互動紀錄的 tags（代表客人目前的等級與未購原因）
+    const latestLogWithTags = [...(guest.interactionLogs || [])]
+      .sort((a, b) => parseDate(b.date) - parseDate(a.date))
+      .find(log => log.tags?.rating || (log.tags?.noPurchaseReason?.length))
+    const latestTags = latestLogWithTags?.tags || {}
+
+    const guestLevel = guest.profile?.['等級研判'] || guest.profile?.rating || latestTags.rating || ''
+    const noPurchaseReasonRaw = guest.profile?.['未買原因'] || guest.profile?.noPurchaseReason || latestTags.noPurchaseReason || []
+    const noPurchaseReasons = Array.isArray(noPurchaseReasonRaw)
+      ? noPurchaseReasonRaw.filter(Boolean)
+      : (noPurchaseReasonRaw ? [noPurchaseReasonRaw] : [])
+
     // 添加一個detail項目（代表該客人在該時間段內的訪問）
     details.push({
       guestId: guest.id,
@@ -803,6 +821,8 @@ export const calculateVipGuestStats = (vipGuests, dateRange) => {
       type: isNewCustomer ? 'new' : 'returning',
       interactionLogs: allInteractionLogs, // 全部互動紀錄
       visitIndex: historyIndexOfFirstVisit + 1, // 該時間段內首次訪問的全部歷史序號
+      guestLevel: guestLevel,
+      noPurchaseReasons: noPurchaseReasons,
     })
   })
 

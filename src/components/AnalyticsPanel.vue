@@ -190,6 +190,26 @@
                       </v-chip>
                       <span class="text-body2 font-weight-500">{{ guest.guestName }}</span>
                       <span class="text-caption text-grey">{{ guest.guestPhone }}</span>
+                      <v-chip
+                        v-if="guest.guestLevel"
+                        :label="true"
+                        :color="getLevelColor(guest.guestLevel)"
+                        size="x-small"
+                        variant="tonal"
+                        class="flex-shrink-0"
+                      >
+                        等級：{{ guest.guestLevel }}
+                      </v-chip>
+                      <v-chip
+                        v-if="guest.noPurchaseReasons?.length"
+                        :label="true"
+                        :color="getNoPurchaseReasonColor(guest.noPurchaseReasons)"
+                        size="x-small"
+                        variant="tonal"
+                        class="flex-shrink-0"
+                      >
+                        未購：{{ guest.noPurchaseReasons.join('、') }}
+                      </v-chip>
                       <v-divider vertical class="mx-1"></v-divider>
                       <span class="text-caption">👨‍💼 {{ guest.salesName }}</span>
                       <v-divider vertical class="mx-1"></v-divider>
@@ -322,7 +342,7 @@
                     <MetricCard
                       :title="`${getPeriodLabel()}退戶戶數`"
                       :value="cancelledStats?.count ?? 0"
-                      :subtitle="cancelledStats?.amount > 0 ? `成交金額 ${formatAmount(cancelledStats.amount)}萬` : '—'"
+                      :subtitle="cancelledStats?.amount > 0 ? `- ${formatAmount(cancelledStats.amount)}萬` : '—'"
                       icon="mdi-account-cancel"
                       icon-color="error"
                       value-color="h5 text-error"
@@ -658,6 +678,21 @@ const formatDate = (date) => {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
 }
 
+const getLevelColor = (level) => {
+  const s = String(level || '')
+  if (s.includes('A') || s.includes('意願高')) return 'red'
+  if (s.includes('B') || s.includes('有機會')) return 'amber-darken-2'
+  if (s.includes('C') || s.includes('需考慮')) return 'green'
+  if (s.includes('D') || s.includes('無希望')) return 'grey'
+  return 'grey'
+}
+
+const getNoPurchaseReasonColor = (reasons) => {
+  const s = Array.isArray(reasons) ? reasons.join(' ') : String(reasons || '')
+  if (/下訂|成交|已購|下定|補足|簽約/.test(s)) return 'red'
+  return 'grey'
+}
+
 /**
  * 計算百分比
  */
@@ -787,7 +822,7 @@ const generateStatisticsText = () => {
     const label = selectedPeriod.value === 'all' ? '累計' : getPeriodLabel()
     text += `\n${label}退戶戶數：${cancelledStats.value.count}戶`
     if (cancelledStats.value.amount > 0) {
-      text += ` (成交金額 ${formatAmount(cancelledStats.value.amount)}萬)`
+      text += ` (- ${formatAmount(cancelledStats.value.amount)}萬)`
     }
     text += '\n'
   }
@@ -886,7 +921,7 @@ const generateSimpleText = () => {
     if (cancelledStats.value && cancelledStats.value.count > 0) {
       text += `${getPeriodLabel()}退戶戶數：${cancelledStats.value.count}戶`
       if (cancelledStats.value.amount > 0) {
-        text += ` (成交金額 ${formatAmount(cancelledStats.value.amount)}萬)`
+        text += ` (- ${formatAmount(cancelledStats.value.amount)}萬)`
       }
       text += `\n`
     }
@@ -930,7 +965,7 @@ const generateSimpleText = () => {
   if (statistics.value.households.byStatus['退戶']) {
     const cancelledCount = statistics.value.households.byStatus['退戶'] || 0
     const cancelledAmount = statistics.value.households.byStatusAmount['退戶'] || 0
-    text += `累計退戶戶數：${cancelledCount}戶 (退戶金額 ${formatAmount(cancelledAmount)}萬)\n`
+    text += `累計退戶戶數：${cancelledCount}戶 (- ${formatAmount(cancelledAmount)}萬)\n`
   }
 
   text += `\n`

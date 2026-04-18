@@ -23,12 +23,12 @@
         v-tooltip:bottom="'名單解析與分配'"
       ></v-btn>
 
-<v-btn 
-  v-if="isAdmin" 
-  icon="mdi-trash-can-outline" 
-  variant="text" 
-  color="error" 
-  @click="showRecycleBin = true" 
+<v-btn
+  v-if="isAdmin || isReceptionist"
+  icon="mdi-trash-can-outline"
+  variant="text"
+  color="error"
+  @click="showRecycleBin = true"
   v-tooltip:bottom="'名單垃圾桶'"
 ></v-btn>
 
@@ -738,11 +738,123 @@
   :initial-data="bookingInitialData"
   @saved="onBookingSaved"
 />
+    <v-dialog v-model="showSoftDeleteDialog" max-width="480" persistent>
+      <v-card class="rounded-xl">
+        <v-toolbar color="error" density="compact" class="px-4">
+          <v-icon start>mdi-alert-circle-outline</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">確認移至回收站</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="showSoftDeleteDialog = false" :disabled="softDeleteLoading"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pt-4">
+          <div class="text-body-2 mb-3">
+            此操作會將以下名單移至回收站，請輸入下方文件 ID 以確認刪除。
+          </div>
+          <div v-if="softDeleteTarget" class="mb-3 pa-3 rounded bg-grey-lighten-4">
+            <div class="text-caption text-grey mb-1">客戶姓名</div>
+            <div class="text-body-2 font-weight-medium mb-2">{{ softDeleteTarget.name || '—' }}</div>
+            <div class="text-caption text-grey mb-1">電話</div>
+            <div class="text-body-2 mb-2">{{ softDeleteTarget.phone || '—' }}</div>
+            <div class="text-caption text-grey mb-1">文件 ID</div>
+            <div class="d-flex align-center">
+              <code class="text-caption flex-grow-1 text-truncate" :title="softDeleteTarget.id">{{ softDeleteTarget.id }}</code>
+              <v-btn
+                icon="mdi-content-copy"
+                size="x-small"
+                variant="text"
+                @click="copySoftDeleteId"
+                v-tooltip:bottom="'複製文件 ID'"
+              ></v-btn>
+            </div>
+          </div>
+          <v-text-field
+            v-model="softDeleteInputId"
+            label="請輸入文件 ID 以確認"
+            placeholder="貼上上方文件 ID"
+            variant="outlined"
+            density="compact"
+            hide-details="auto"
+            autofocus
+            :disabled="softDeleteLoading"
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showSoftDeleteDialog = false" :disabled="softDeleteLoading">取消</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="softDeleteLoading"
+            :disabled="!softDeleteTarget || softDeleteInputId.trim() !== softDeleteTarget.id"
+            @click="confirmSoftDelete"
+          >
+            確認移至回收站
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showPermDeleteDialog" max-width="480" persistent>
+      <v-card class="rounded-xl">
+        <v-toolbar color="error" density="compact" class="px-4">
+          <v-icon start>mdi-alert-octagon-outline</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">確認永久刪除</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="showPermDeleteDialog = false" :disabled="permDeleteLoading"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pt-4">
+          <v-alert type="error" variant="tonal" density="compact" class="mb-3">
+            此操作將永久刪除資料且無法復原，請輸入下方文件 ID 以確認。
+          </v-alert>
+          <div v-if="permDeleteTarget" class="mb-3 pa-3 rounded bg-grey-lighten-4">
+            <div class="text-caption text-grey mb-1">客戶姓名</div>
+            <div class="text-body-2 font-weight-medium mb-2">{{ permDeleteTarget.name || '—' }}</div>
+            <div class="text-caption text-grey mb-1">電話</div>
+            <div class="text-body-2 mb-2">{{ permDeleteTarget.phone || '—' }}</div>
+            <div class="text-caption text-grey mb-1">文件 ID</div>
+            <div class="d-flex align-center">
+              <code class="text-caption flex-grow-1 text-truncate" :title="permDeleteTarget.id">{{ permDeleteTarget.id }}</code>
+              <v-btn
+                icon="mdi-content-copy"
+                size="x-small"
+                variant="text"
+                @click="copyPermDeleteId"
+                v-tooltip:bottom="'複製文件 ID'"
+              ></v-btn>
+            </div>
+          </div>
+          <v-text-field
+            v-model="permDeleteInputId"
+            label="請輸入文件 ID 以確認"
+            placeholder="貼上上方文件 ID"
+            variant="outlined"
+            density="compact"
+            hide-details="auto"
+            autofocus
+            :disabled="permDeleteLoading"
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showPermDeleteDialog = false" :disabled="permDeleteLoading">取消</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="permDeleteLoading"
+            :disabled="!permDeleteTarget || permDeleteInputId.trim() !== permDeleteTarget.id"
+            @click="confirmPermDelete"
+          >
+            確認永久刪除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="showRecycleBin" max-width="900" scrollable>
       <v-card class="rounded-xl">
         <v-toolbar color="error" density="compact" class="px-4">
           <v-icon start>mdi-trash-can-outline</v-icon>
-          <v-toolbar-title class="text-subtitle-1 font-weight-bold">回收站 (僅管理員可見)</v-toolbar-title>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">回收站</v-toolbar-title>
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" @click="showRecycleBin = false"></v-btn>
         </v-toolbar>
@@ -1743,6 +1855,16 @@ const showUploadDialog = ref(false);
 const showRecycleBin = ref(false);
 const showReportDialog = ref(false);
 
+const showSoftDeleteDialog = ref(false);
+const softDeleteTarget = ref(null);
+const softDeleteInputId = ref('');
+const softDeleteLoading = ref(false);
+
+const showPermDeleteDialog = ref(false);
+const permDeleteTarget = ref(null);
+const permDeleteInputId = ref('');
+const permDeleteLoading = ref(false);
+
 const uploadStep = ref(1);
 const uploadInputs = ref(['']);
 
@@ -2545,16 +2667,41 @@ const restoreLead = async (item) => {
   }
 };
 
-const permanentlyDeleteLead = async (item) => {
-  if (!confirm(`確定要永久刪除「${item.name}」嗎？此操作無法復原。`)) return;
+const permanentlyDeleteLead = (item) => {
+  permDeleteTarget.value = item;
+  permDeleteInputId.value = '';
+  showPermDeleteDialog.value = true;
+};
+
+const copyPermDeleteId = async () => {
+  const id = permDeleteTarget.value?.id;
+  if (!id) return;
   try {
-    uiStore.setLoading(true);
+    await navigator.clipboard.writeText(id);
+    showMsg('已複製文件 ID', 'success');
+  } catch {
+    showMsg('複製失敗，請手動複製', 'error');
+  }
+};
+
+const confirmPermDelete = async () => {
+  const item = permDeleteTarget.value;
+  if (!item) return;
+  if (permDeleteInputId.value.trim() !== item.id) {
+    showMsg('輸入的文件 ID 不相符', 'error');
+    return;
+  }
+  permDeleteLoading.value = true;
+  try {
     await deleteDoc(doc(db, 'leads', item.id));
     showMsg('已永久刪除名單', 'info');
+    showPermDeleteDialog.value = false;
+    permDeleteTarget.value = null;
+    permDeleteInputId.value = '';
   } catch (err) {
     showMsg('刪除失敗：' + err.message, 'error');
   } finally {
-    uiStore.setLoading(false);
+    permDeleteLoading.value = false;
   }
 };
 
@@ -3066,8 +3213,31 @@ const submitReport = async () => {
   }
 };
 
-const handleSoftDelete = async (item) => {
-  if (!confirm('將此名單移至回收站？')) return;
+const handleSoftDelete = (item) => {
+  softDeleteTarget.value = item;
+  softDeleteInputId.value = '';
+  showSoftDeleteDialog.value = true;
+};
+
+const copySoftDeleteId = async () => {
+  const id = softDeleteTarget.value?.id;
+  if (!id) return;
+  try {
+    await navigator.clipboard.writeText(id);
+    showMsg('已複製文件 ID', 'success');
+  } catch {
+    showMsg('複製失敗，請手動複製', 'error');
+  }
+};
+
+const confirmSoftDelete = async () => {
+  const item = softDeleteTarget.value;
+  if (!item) return;
+  if (softDeleteInputId.value.trim() !== item.id) {
+    showMsg('輸入的文件 ID 不相符', 'error');
+    return;
+  }
+  softDeleteLoading.value = true;
   try {
     await updateDoc(doc(db, 'leads', item.id), {
       isDeleted: true,
@@ -3075,8 +3245,13 @@ const handleSoftDelete = async (item) => {
       deletedBy: userStore.user?.name
     });
     showMsg('已移至回收站', 'info');
+    showSoftDeleteDialog.value = false;
+    softDeleteTarget.value = null;
+    softDeleteInputId.value = '';
   } catch (err) {
     showMsg('操作失敗', 'error');
+  } finally {
+    softDeleteLoading.value = false;
   }
 };
 
@@ -3218,8 +3393,8 @@ onSnapshot(logsQuery, (snap) => {
 });
 
 
-  if (isAdmin.value) {
-    fetchDeletedLeads(); 
+  if (isAdmin.value || isReceptionist.value) {
+    fetchDeletedLeads();
   }
 
   await fetchProjectStaff();

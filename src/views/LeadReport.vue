@@ -226,7 +226,7 @@
 
               <div class="text-center mt-6">
                 <v-btn 
-                  :color="form.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
+                  :color="form.status === '已約賞屋' && !hasBooking ? 'grey-darken-1' : 'green'"
                   size="x-large" 
                   rounded="lg"
                   elevation="2"
@@ -603,8 +603,10 @@ const onBookingSaved = (bookingData) => {
 };
 
 // ✅ 新增：計算按鈕文字
+const hasBooking = computed(() => isBookingCompleted.value || existingReservations.value.length > 0);
+
 const submitBtnText = computed(() => {
-  if (form.value.status === '已約賞屋' && !isBookingCompleted.value) {
+  if (form.value.status === '已約賞屋' && !hasBooking.value) {
     return '請先完成賞屋預約';
   }
   return '送出回報內容';
@@ -613,7 +615,7 @@ const submitBtnText = computed(() => {
 // ✅ 新增：計算按鈕是否禁用
 const isSubmitDisabled = computed(() => {
   const baseValidation = !form.value.status || (showReasonField.value && !form.value.reason);
-  const bookingValidation = (form.value.status === '已約賞屋' && !isBookingCompleted.value);
+  const bookingValidation = (form.value.status === '已約賞屋' && !hasBooking.value);
   return baseValidation || bookingValidation;
 });
 
