@@ -17276,7 +17276,7 @@ async function _handleRestoreCustomer(data, db) {
  * 同步維護 linkedProjectIds 與 allProjectIds 合成欄位
  */
 async function _handleUpdateLinkedProjects(data, db) {
-  const { projectId, docId, linkedProjectIds, userKey } = data;
+  const { projectId, docId, linkedProjectIds, userKey, newMainProjectId } = data;
   const functionName = '_handleUpdateLinkedProjects';
 
   if (!projectId || !docId || !userKey) {
@@ -17285,6 +17285,8 @@ async function _handleUpdateLinkedProjects(data, db) {
 
   // 確保 linkedProjectIds 為陣列
   const newLinked = Array.isArray(linkedProjectIds) ? linkedProjectIds : [];
+  // 是否變更主歸屬建案
+  const hasMainChange = !!newMainProjectId && newMainProjectId !== projectId;
 
   try {
     // 1. 驗證使用者對主建案有權限
@@ -17296,10 +17298,18 @@ async function _handleUpdateLinkedProjects(data, db) {
     const perms = userPermSnap.data().permissions || {};
     const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
 
-    // 檢查主建案權限
+    // 檢查（舊）主建案權限
     const mainPerm = perms[projectId];
     if (!mainPerm || !mainPerm.systems?.some(s => targetSystems.includes(s))) {
       throw new HttpsError('permission-denied', '您沒有此建案的客資系統權限。');
+    }
+
+    // 1b. 若變更主建案，額外檢查對新主建案的權限
+    if (hasMainChange) {
+      const newMainPerm = perms[newMainProjectId];
+      if (!newMainPerm || !newMainPerm.systems?.some(s => targetSystems.includes(s))) {
+        throw new HttpsError('permission-denied', '您沒有新主歸屬建案的客資系統權限。');
+      }
     }
 
     // 2. 驗證使用者對每個 linkedProjectId 都有權限
@@ -17311,11 +17321,19 @@ async function _handleUpdateLinkedProjects(data, db) {
       }
     }
 
-    // 3. 過濾掉主建案自身（避免重複）
-    const filteredLinked = newLinked.filter(id => id !== projectId);
+    // 3. 計算最終 main / linked / all
+    const effectiveMainId = hasMainChange ? newMainProjectId : projectId;
+    let filteredLinked;
+    if (hasMainChange) {
+      // 新主排除、舊主併入，並去重
+      const combined = [...newLinked.filter(id => id !== effectiveMainId), projectId];
+      filteredLinked = Array.from(new Set(combined));
+    } else {
+      filteredLinked = newLinked.filter(id => id !== projectId);
+    }
 
     // 4. 組合 allProjectIds 合成欄位
-    const allProjectIds = [projectId, ...filteredLinked];
+    const allProjectIds = [effectiveMainId, ...filteredLinked];
 
     // 5. 驗證文件存在並讀取主文件資料
     const guestRef = db.collection('vipGuests').doc(docId);
@@ -17325,9 +17343,9 @@ async function _handleUpdateLinkedProjects(data, db) {
     }
     const mainGuestData = guestSnap.data();
 
-    // 6. ✅ [合併檢查] 對每個新增的關聯建案，檢查是否有可合併的文件
-    const previousLinked = mainGuestData.linkedProjectIds || [];
-    const newlyAdded = filteredLinked.filter(id => !previousLinked.includes(id));
+    // 6. ✅ [合併檢查] 對每個「相對原狀態新加入」的建案檢查是否有可合併的文件
+    const previousAllProjects = [mainGuestData.projectId, ...(mainGuestData.linkedProjectIds || [])];
+    const newlyAdded = allProjectIds.filter(id => !previousAllProjects.includes(id));
     const mergedDocs = [];
 
     for (const lpid of newlyAdded) {
@@ -17419,19 +17437,25 @@ async function _handleUpdateLinkedProjects(data, db) {
     }
 
     // 7. 更新主文件的關聯建案欄位
-    await guestRef.update({
+    const updatePayload = {
       linkedProjectIds: filteredLinked,
       allProjectIds: allProjectIds,
       updatedAt: FieldValue.serverTimestamp()
-    });
+    };
+    if (hasMainChange) {
+      updatePayload.projectId = effectiveMainId;
+    }
+    await guestRef.update(updatePayload);
 
     const mergeMsg = mergedDocs.length > 0
       ? `，並合併了 ${mergedDocs.length} 筆重複資料`
       : '';
-    console.log(`[${functionName}] 成功更新客戶 ${docId} 的關聯建案: [${filteredLinked.join(', ')}]${mergeMsg}`);
+    const mainChangeMsg = hasMainChange ? `（主歸屬已變更為 ${effectiveMainId}）` : '';
+    console.log(`[${functionName}] 成功更新客戶 ${docId} 的關聯建案: [${filteredLinked.join(', ')}]${mergeMsg}${mainChangeMsg}`);
     return {
       status: 'success',
-      message: `關聯建案已更新${mergeMsg}`,
+      message: `${hasMainChange ? '主歸屬建案已變更' : '關聯建案已更新'}${mergeMsg}`,
+      projectId: effectiveMainId,
       linkedProjectIds: filteredLinked,
       allProjectIds: allProjectIds,
       mergedDocs: mergedDocs

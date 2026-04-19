@@ -312,14 +312,63 @@
 
                                         <!-- 主歸屬建案 -->
                                         <div class="mb-2">
-                                            <span class="text-caption text-grey">主歸屬建案</span>
+                                            <div class="d-flex align-center">
+                                                <span class="text-caption text-grey">主歸屬建案</span>
+                                                <v-btn v-if="!isEditingMainProject && availableMainProjects.length > 1"
+                                                    icon="mdi-pencil" size="x-small" variant="text" density="compact"
+                                                    class="ml-1" @click="startEditMainProject"></v-btn>
+                                            </div>
                                             <div class="mt-1">
-                                                <v-chip size="small" color="indigo" variant="flat" label
-                                                    prepend-icon="mdi-home-city">
-                                                    {{ mainProjectName }}
-                                                </v-chip>
+                                                <template v-if="!isEditingMainProject">
+                                                    <v-chip size="small" color="indigo" variant="flat" label
+                                                        prepend-icon="mdi-home-city">
+                                                        {{ mainProjectName }}
+                                                    </v-chip>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="d-flex align-center flex-wrap gap-2">
+                                                        <v-select v-model="editingMainProjectId"
+                                                            :items="availableMainProjects" item-title="name"
+                                                            item-value="id" density="compact" variant="outlined"
+                                                            hide-details style="min-width: 220px; max-width: 280px"
+                                                            prepend-inner-icon="mdi-home-city"></v-select>
+                                                        <v-btn size="small" variant="text"
+                                                            :disabled="isSavingMainProject"
+                                                            @click="cancelEditMainProject">取消</v-btn>
+                                                        <v-btn size="small" color="primary"
+                                                            :loading="isSavingMainProject"
+                                                            :disabled="!editingMainProjectId || editingMainProjectId === mainProjectId"
+                                                            @click="confirmChangeMainProject">變更</v-btn>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </div>
+
+                                        <!-- 變更主歸屬建案確認 Dialog -->
+                                        <v-dialog v-model="confirmMainProjectDialog" max-width="460">
+                                            <v-card>
+                                                <v-card-title class="text-h6">變更主歸屬建案</v-card-title>
+                                                <v-card-text>
+                                                    確定將主歸屬建案由
+                                                    <strong>「{{ mainProjectName }}」</strong>
+                                                    變更為
+                                                    <strong class="text-indigo">「{{ editingMainProjectName }}」</strong>
+                                                    ?
+                                                    <div class="mt-3 text-caption text-grey">
+                                                        • 原主建案會自動變為「關聯建案」<br>
+                                                        • 若新主建案已存在同電話且同銷售人員的客戶，將自動合併資料<br>
+                                                        • 此操作會同步更新客戶文件的 projectId，影響後續查詢
+                                                    </div>
+                                                </v-card-text>
+                                                <v-card-actions>
+                                                    <v-spacer></v-spacer>
+                                                    <v-btn variant="text" :disabled="isSavingMainProject"
+                                                        @click="confirmMainProjectDialog = false">取消</v-btn>
+                                                    <v-btn color="primary" :loading="isSavingMainProject"
+                                                        @click="saveMainProjectChange">確認變更</v-btn>
+                                                </v-card-actions>
+                                            </v-card>
+                                        </v-dialog>
 
                                         <!-- 唯讀模式：顯示已關聯建案 -->
                                         <div v-if="!isEditingLinkedProjects">
@@ -1541,6 +1590,84 @@ const availableLinkedProjects = computed(() => {
             name: projectStore.idToNameMap[projectId] || perm.projectName || projectId
         }));
 });
+
+// --- 主歸屬建案變更 ---
+const isEditingMainProject = ref(false);
+const editingMainProjectId = ref('');
+const isSavingMainProject = ref(false);
+const confirmMainProjectDialog = ref(false);
+
+// 可選為主歸屬的建案（所有具備 客資系統-銷售/櫃台 權限的建案）
+const availableMainProjects = computed(() => {
+    const permissions = userStore.user?.permissions || {};
+    const targetSystems = ['客資系統-銷售', '客資系統-櫃台'];
+    return Object.entries(permissions)
+        .filter(([_, perm]) => perm.systems?.some(sys => targetSystems.includes(sys)))
+        .map(([projectId, perm]) => ({
+            id: projectId,
+            name: projectStore.idToNameMap[projectId] || perm.projectName || projectId
+        }));
+});
+
+const editingMainProjectName = computed(() => {
+    const proj = availableMainProjects.value.find(p => p.id === editingMainProjectId.value);
+    return proj ? proj.name : editingMainProjectId.value;
+});
+
+const startEditMainProject = () => {
+    editingMainProjectId.value = mainProjectId.value;
+    isEditingMainProject.value = true;
+};
+
+const cancelEditMainProject = () => {
+    isEditingMainProject.value = false;
+    editingMainProjectId.value = '';
+};
+
+const confirmChangeMainProject = () => {
+    if (!editingMainProjectId.value || editingMainProjectId.value === mainProjectId.value) return;
+    confirmMainProjectDialog.value = true;
+};
+
+const saveMainProjectChange = async () => {
+    const oldMainId = mainProjectId.value;
+    const newMainId = editingMainProjectId.value;
+    if (!newMainId || newMainId === oldMainId) return;
+
+    isSavingMainProject.value = true;
+    try {
+        const currentLinked = guestData.value.linkedProjectIds || [];
+        // 交由後端做正規化（會自動排除新主、併入舊主）
+        const result = await updateLinkedProjects(
+            oldMainId,
+            props.docId,
+            currentLinked,
+            userStore.user.key,
+            newMainId
+        );
+
+        // 同步本地 state
+        guestData.value.projectId = result.projectId || newMainId;
+        guestData.value.linkedProjectIds = result.linkedProjectIds || currentLinked;
+        guestData.value.allProjectIds = result.allProjectIds || [newMainId, ...currentLinked];
+
+        if (result.mergedDocs && result.mergedDocs.length > 0) {
+            toast.success(`主歸屬建案已變更，並合併了 ${result.mergedDocs.length} 筆重複資料`);
+            await loadData();
+        } else {
+            toast.success('主歸屬建案已變更');
+        }
+
+        confirmMainProjectDialog.value = false;
+        isEditingMainProject.value = false;
+        editingMainProjectId.value = '';
+        emit('data-updated');
+    } catch (error) {
+        toast.error(`變更失敗: ${error.message}`);
+    } finally {
+        isSavingMainProject.value = false;
+    }
+};
 
 const startEditLinkedProjects = () => {
     editingLinkedProjectIds.value = [...(guestData.value.linkedProjectIds || [])];

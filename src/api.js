@@ -7776,11 +7776,13 @@ export const addInteractionLog = async (projectId, docId, logData, operatorName,
  * @param {Array<string>} linkedProjectIds - 關聯建案 ID 陣列
  * @param {string} userKey - 操作者 ID
  */
-export const updateLinkedProjects = async (projectId, docId, linkedProjectIds, userKey) => {
+export const updateLinkedProjects = async (projectId, docId, linkedProjectIds, userKey, newMainProjectId = null) => {
   try {
+    const payload = { projectId, docId, linkedProjectIds, userKey };
+    if (newMainProjectId) payload.newMainProjectId = newMainProjectId;
     const result = await customerApiRouter({
       action: 'updateLinkedProjects',
-      data: { projectId, docId, linkedProjectIds, userKey }
+      data: payload
     });
     return result.data;
   } catch (error) {
