@@ -7,6 +7,12 @@
 發佈前升版存檔到GIT倉庫 ➔ 
 npm run release:github-pages
 
+你做完修改 → 叫我 commit
+然後你執行： 👉 👉 👉
+npm run release:publish
+會自動 bump 版本 → 更新 manifest → 產 release notes → commit「Release vX.X.X」→ push → deploy。
+
+
 測試LIFF 時的通道
 wrangler tunnel quick-start http://localhost:5173
 

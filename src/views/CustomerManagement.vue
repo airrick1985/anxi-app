@@ -2393,7 +2393,7 @@ const calculateLogDuration = (startTime, endTime) => {
 };
 
 // ✓ [打勾] 簡易版 Excel 匯出執行函數
-// 提取共用的資料獲取與篩選邏輯
+// 以「現場介紹」每筆 log 各為一列，並依序標示 新客/回訪
 const getSimpleExportData = async (filterFunc, sortFunc) => {
   // 獲取完整資料以便讀取 interactionLogs 與 profile
   const allData = await fetchFullCustomersForExport(
@@ -2402,64 +2402,66 @@ const getSimpleExportData = async (filterFunc, sortFunc) => {
     userStore.user?.permissions?.[props.projectId]?.systems || []
   );
 
-  // 執行篩選邏輯 (預設篩選)
+  // 預設客戶層級篩選 (僅依銷售人員；日期與現場介紹改於逐列判斷)
   const defaultFilter = (item) => {
     const logs = item.interactionLogs || [];
     if (logs.length === 0) return false;
-    
-    // 依據 interactionLogs 第一筆資料的日期進行區間篩選
-    const firstLogDate = logs[0].date; 
-    const isDateInRange = firstLogDate >= exportFilters.value.startDate && 
-                          firstLogDate <= exportFilters.value.endDate;
-    
-    // 依據銷售人員篩選
-    const isSalesMatch = exportFilters.value.selectedSales.length === 0 || 
+    const hasOnSite = logs.some(l => l && l.tags && l.tags.interactionType === '現場介紹' && l.date);
+    if (!hasOnSite) return false;
+    const isSalesMatch = exportFilters.value.selectedSales.length === 0 ||
                          exportFilters.value.selectedSales.includes(item.latestSalesName);
-    
-    return isDateInRange && isSalesMatch;
+    return isSalesMatch;
   };
 
   const filtered = allData.filter(filterFunc || defaultFilter);
 
-  // 排序 (預設排序)
-  const defaultSort = (a, b) => {
-    const dateA = a.interactionLogs?.[0]?.date || '';
-    const dateB = b.interactionLogs?.[0]?.date || '';
-    return dateA.localeCompare(dateB); 
-  };
+  // 展平為「每筆現場介紹一列」
+  const { startDate, endDate } = exportFilters.value;
+  const rows = [];
 
-  filtered.sort(sortFunc || defaultSort);
-
-  // 格式化輸出資料
-  return filtered.map((item, index) => {
+  filtered.forEach(item => {
     const logs = item.interactionLogs || [];
-    const firstLog = logs[0] || {};
-    const lastLog = logs[logs.length - 1] || {};
     const p = item.profile || {};
-    
-    // 輔助函式：取得 Profile 陣列最後一個值
     const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
 
-    return {
-      '順序': index + 1,
-      '日期': firstLog.date ? firstLog.date.replace(/-/g, '/') : '',
-      '銷售人員': item.latestSalesName || '',
-      '客戶姓名': item.latestName || '',
-      '來人（位）': firstLog.tags?.visitors || '',
-      '年齡': getP('年齡'),
-      '性別': getP('性別'),
-      '職業': getP('職業'),
-      '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
-      '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
-      '區域': getP('居住城市'),
-      '洽談時間': calculateLogDuration(firstLog.startTime, firstLog.endTime),
-      '行動電話': item.phone || '',
-      '未買原因': Array.isArray(lastLog.tags?.noPurchaseReason) 
-                 ? lastLog.tags.noPurchaseReason.join(',') 
-                 : (lastLog.tags?.noPurchaseReason || ''),
-      '洽談紀錄': firstLog.content || ''
-    };
+    // 依日期升冪排序，用以判定新客/回訪順序
+    const onSiteLogs = logs
+      .filter(l => l && l.tags && l.tags.interactionType === '現場介紹' && l.date)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    onSiteLogs.forEach((log, idx) => {
+      // 依該列日期做區間篩選
+      if (startDate && log.date < startDate) return;
+      if (endDate && log.date > endDate) return;
+
+      rows.push({
+        '日期': log.date ? log.date.replace(/-/g, '/') : '',
+        '新客/回訪': idx === 0 ? '新客' : '回訪',
+        '銷售人員': item.latestSalesName || '',
+        '客戶姓名': item.latestName || '',
+        '來人（位）': log.tags?.visitors || '',
+        '年齡': getP('年齡'),
+        '性別': getP('性別'),
+        '職業': getP('職業'),
+        '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
+        '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
+        '區域': getP('居住城市'),
+        '洽談時間': calculateLogDuration(log.startTime, log.endTime),
+        '行動電話': item.phone || '',
+        '未買原因': Array.isArray(log.tags?.noPurchaseReason)
+                   ? log.tags.noPurchaseReason.join(',')
+                   : (log.tags?.noPurchaseReason || ''),
+        '洽談紀錄': log.content || ''
+      });
+    });
   });
+
+  // 依日期遞減排序 (最新在上)
+  const defaultSort = (a, b) => (b['日期'] || '').localeCompare(a['日期'] || '');
+  rows.sort(sortFunc || defaultSort);
+
+  // 編入順序
+  return rows.map((r, index) => ({ '順序': index + 1, ...r }));
 };
 
 const executeSimpleExport = async () => {
@@ -2574,15 +2576,15 @@ const executeGoogleSync = async () => {
 
     // 2. 轉換為二維陣列 (Header + Data)
     const headers = [
-      '順序', '日期', '銷售人員', '客戶姓名', '來人（位）', 
-      '年齡', '性別', '職業', '動機', '媒體', '區域', 
+      '順序', '日期', '新客/回訪', '銷售人員', '客戶姓名', '來人（位）',
+      '年齡', '性別', '職業', '動機', '媒體', '區域',
       '洽談時間', '行動電話', '未買原因', '洽談紀錄'
     ];
-    
+
     const values = [headers];
     exportRows.forEach(row => {
       values.push([
-        row['順序'], row['日期'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
+        row['順序'], row['日期'], row['新客/回訪'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
         row['年齡'], row['性別'], row['職業'], row['動機'], row['媒體'], row['區域'],
         row['洽談時間'], row['行動電話'], row['未買原因'], row['洽談紀錄']
       ]);
