@@ -185,6 +185,20 @@
         </v-col>
 
         <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="advFilter.visitStatus"
+            :items="['新客', '回訪']"
+            label="新客/回訪"
+            multiple
+            chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            rounded="lg"
+          ></v-select>
+        </v-col>
+
+        <v-col cols="12" sm="6" md="3">
                   <v-select
             v-model="advFilter.reasons"
             :items="[...new Set(settings.fields.noPurchaseReason?.options || [])]"
@@ -281,6 +295,18 @@
               更新：{{ formatFullDateTime(item.raw.updatedAt) }}
             </span>
           </div>
+
+          <!-- 最新洽談內容（2 行 line-clamp 預覽） -->
+          <div v-if="item.raw.latestContent" class="mt-2 pa-2 rounded bg-blue-grey-lighten-5">
+            <div class="d-flex align-center text-caption text-blue-grey-darken-1 mb-1" style="gap: 4px;">
+              <v-icon size="12">mdi-comment-text-outline</v-icon>
+              <span>{{ formatDisplayDate(item.raw.latestLogDate) }} 最新洽談</span>
+              <span v-if="item.raw.latestInteractionType" class="text-grey">· {{ item.raw.latestInteractionType }}</span>
+            </div>
+            <div class="text-body-2 text-grey-darken-3 line-clamp-2">
+              {{ item.raw.latestContent }}
+            </div>
+          </div>
           </v-card-text>
         </v-card>
       </v-col>
@@ -366,6 +392,24 @@
                 <div v-if="Array.isArray(item['未買原因']) && item['未買原因'].length > 0" class="text-caption text-grey-darken-2 text-truncate" style="max-width: 150px;">
                   {{ item['未買原因'].join(', ') }}
                 </div>
+              </template>
+
+              <!-- 最新洽談內容：單行截斷 + hover tooltip 顯示完整內容 -->
+              <template v-slot:item.latestContent="{ item }">
+                <div v-if="item.latestContent" class="d-flex flex-column" style="max-width: 240px;">
+                  <div class="text-caption text-blue-grey-darken-1 d-flex align-center" style="gap: 4px;">
+                    <v-icon size="12">mdi-comment-text-outline</v-icon>
+                    <span>{{ formatDisplayDate(item.latestLogDate) }}</span>
+                    <span v-if="item.latestInteractionType" class="text-grey">· {{ item.latestInteractionType }}</span>
+                  </div>
+                  <span class="text-body-2 text-truncate d-inline-block" style="max-width: 240px;">
+                    {{ item.latestContent }}
+                    <v-tooltip activator="parent" location="top" max-width="360">
+                      <div style="white-space: pre-wrap;">{{ item.latestContent }}</div>
+                    </v-tooltip>
+                  </span>
+                </div>
+                <span v-else class="text-caption text-grey">—</span>
               </template>
 
               <!-- ✅ 動態 VIP 欄位模板 -->
@@ -1855,6 +1899,7 @@ const customerTableHeaders = computed(() => {
     { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
     { title: '新客/回訪', key: 'visitStatus', width: '100px', sortable: true },
     { title: '等級', key: '等級研判', width: '90px', sortable: true },
+    { title: '最新洽談', key: 'latestContent', width: '240px', sortable: false },
     { title: '未購原因', key: '未買原因', width: '160px', sortable: false },
     { title: '姓名', key: '姓名', width: '100px' },
     { title: '電話', key: '電話', width: '120px' },
@@ -2923,6 +2968,7 @@ const advFilter = reactive({
   sales: [],
   ratings: [],
   reasons: [],
+  visitStatus: [],
   vipFilters: {},  // ✅ 動態存儲所有 vipFormFields 的篩選值
   showDeleted: false
 });
@@ -2933,6 +2979,7 @@ const resetAdvFilters = () => {
   advFilter.sales = [];
   advFilter.ratings = [];
   advFilter.reasons = [];
+  advFilter.visitStatus = [];
   advFilter.vipFilters = {};
   advFilter.showDeleted = false;
 };
@@ -2982,6 +3029,10 @@ const filteredCustomerList = computed(() => {
     list = list.filter(item => advFilter.ratings.includes(item['等級研判']));
   }
 
+  if (advFilter.visitStatus.length > 0) {
+    list = list.filter(item => advFilter.visitStatus.includes(item.visitStatus));
+  }
+
   // 4. 陣列型欄位過濾 (未購原因、購屋動機、房型需求)
   // 修正：增加 Array.isArray 檢查，防止資料異常導致報錯
   if (advFilter.reasons.length > 0) {
@@ -3029,6 +3080,17 @@ const filteredCustomerList = computed(() => {
 
 .text-pre-wrap {
   white-space: pre-wrap;
+}
+
+/* 2 行 line-clamp：用於手機卡片模式的最新洽談預覽 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 /* ===== 系統管理員專用標示樣式 ===== */

@@ -16842,7 +16842,10 @@ async function _handleFetchCustomerList(data, db) {
 
       let latestNoBuyReasons = [];
 
-
+      // ✅ [最新洽談] 取 interactionLogs 中日期最晚的一筆 content 與 meta
+      let latestContent = '';
+      let latestLogDate = '';
+      let latestInteractionType = '';
 
       // ✅ [拜訪日期] 取 interactionLogs 中 互動方式=現場介紹 且日期最晚者
       let latestOnSiteVisitDate = '';
@@ -16863,11 +16866,21 @@ async function _handleFetchCustomerList(data, db) {
 
         const latestLog = sortedLogs[0];
 
-        if (latestLog && latestLog.tags) {
+        if (latestLog) {
 
-          latestRating = latestLog.tags.rating || '';
+          latestContent = latestLog.content || '';
 
-          latestNoBuyReasons = ensureArray(latestLog.tags.noPurchaseReason);
+          latestLogDate = latestLog.date || '';
+
+          if (latestLog.tags) {
+
+            latestRating = latestLog.tags.rating || '';
+
+            latestNoBuyReasons = ensureArray(latestLog.tags.noPurchaseReason);
+
+            latestInteractionType = latestLog.tags.interactionType || '';
+
+          }
 
         }
 
@@ -17009,6 +17022,11 @@ async function _handleFetchCustomerList(data, db) {
           // 來自 interactionLogs 的最新資訊 (共用)
           '等級研判': latestRating,
           '未買原因': latestNoBuyReasons,
+
+          // ✅ 最新洽談內容（依 interactionLogs 日期最晚者）
+          'latestContent': latestContent,
+          'latestLogDate': latestLogDate,
+          'latestInteractionType': latestInteractionType,
 
           // ✅ 覆寫 拜訪日期：取 interactionLogs 中 互動方式=現場介紹 且日期最晚者
           '拜訪日期': latestOnSiteVisitDate,
