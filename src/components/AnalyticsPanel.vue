@@ -182,7 +182,7 @@
                     <div class="d-flex align-center gap-2 flex-wrap">
                       <v-chip
                         :label="true"
-                        :color="guest.type === 'new' ? 'success' : 'info'"
+                        :color="guest.type === 'new' ? 'green' : 'red'"
                         size="small"
                         class="flex-shrink-0"
                       >
@@ -235,7 +235,7 @@
                           <p class="text-caption">
                             <strong>類型：</strong>
                             <v-chip
-                              :color="guest.type === 'new' ? 'success' : 'info'"
+                              :color="guest.type === 'new' ? 'green' : 'red'"
                               size="x-small"
                               variant="tonal"
                             >

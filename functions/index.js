@@ -16821,6 +16821,11 @@ async function _handleFetchCustomerList(data, db) {
 
 
 
+      // ✅ [拜訪日期] 取 interactionLogs 中 互動方式=現場介紹 且日期最晚者
+      let latestOnSiteVisitDate = '';
+      // ✅ [新客/回訪] 計算 互動方式=現場介紹 的次數
+      let onSiteVisitCount = 0;
+
       if (interactionLogs.length > 0) {
 
         const sortedLogs = [...interactionLogs].sort((a, b) => {
@@ -16842,6 +16847,16 @@ async function _handleFetchCustomerList(data, db) {
           latestNoBuyReasons = ensureArray(latestLog.tags.noPurchaseReason);
 
         }
+
+        const onSiteLogs = sortedLogs.filter(log => log && log.date && log.tags && log.tags.interactionType === '現場介紹');
+
+        if (onSiteLogs.length > 0) {
+
+          latestOnSiteVisitDate = onSiteLogs[0].date; // 已降序，首筆即最晚
+
+        }
+
+        onSiteVisitCount = onSiteLogs.length;
 
       }
 
@@ -16970,7 +16985,13 @@ async function _handleFetchCustomerList(data, db) {
 
           // 來自 interactionLogs 的最新資訊 (共用)
           '等級研判': latestRating,
-          '未買原因': latestNoBuyReasons
+          '未買原因': latestNoBuyReasons,
+
+          // ✅ 覆寫 拜訪日期：取 interactionLogs 中 互動方式=現場介紹 且日期最晚者
+          '拜訪日期': latestOnSiteVisitDate,
+
+          // ✅ 新客/回訪：現場介紹 1 次=新客，2 次以上=回訪
+          'visitStatus': onSiteVisitCount === 0 ? '' : (onSiteVisitCount === 1 ? '新客' : '回訪')
         });
 
       });

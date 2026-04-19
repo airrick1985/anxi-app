@@ -329,7 +329,26 @@
                 {{ formatDisplayDate(item['拜訪日期']) }}
               </template>
 
-    
+              <template v-slot:item.visitStatus="{ item }">
+                <v-chip
+                  v-if="item.visitStatus === '新客'"
+                  color="green"
+                  size="small"
+                  label
+                  variant="flat"
+                  class="font-weight-bold"
+                >新客</v-chip>
+                <v-chip
+                  v-else-if="item.visitStatus === '回訪'"
+                  color="red"
+                  size="small"
+                  label
+                  variant="flat"
+                  class="font-weight-bold"
+                >回訪</v-chip>
+                <span v-else class="text-caption text-grey">—</span>
+              </template>
+
               <template v-slot:item.等級研判="{ item }">
                 <v-chip
                   v-if="item['等級研判']"
@@ -352,30 +371,31 @@
               <!-- ✅ 動態 VIP 欄位模板 -->
               <template v-for="field in sortedVipFields" :key="field.key" v-slot:[`item.${field.label}`]="{ item }">
                 <template v-if="field.selectionMode === 'multiple'">
-                  <!-- 多選欄位：顯示第一個值為 chip，其他值用 (+N) 表示 -->
-                  <v-chip
-                    v-if="Array.isArray(item[field.label]) && item[field.label].length"
-                    :color="getChipColor(item[field.label][0])"
-                    size="small"
-                    label
-                    variant="tonal"
-                  >
-                    {{ item[field.label][0] }}
-                  </v-chip>
-                  <span v-if="Array.isArray(item[field.label]) && item[field.label].length > 1" class="text-caption text-grey ml-1">
-                    (+{{ item[field.label].length - 1 }})
-                  </span>
+                  <!-- 多選欄位：每個值獨立顯示為 chip -->
+                  <div class="d-flex flex-wrap ga-1">
+                    <v-chip
+                      v-for="(v, idx) in normalizeMultiValues(item[field.label])"
+                      :key="idx"
+                      :color="getChipColor(v)"
+                      size="small"
+                      label
+                      variant="tonal"
+                    >
+                      {{ v }}
+                    </v-chip>
+                    <span v-if="!normalizeMultiValues(item[field.label]).length" class="text-caption text-grey">—</span>
+                  </div>
                 </template>
                 <template v-else>
                   <!-- 單選欄位：顯示為 chip -->
                   <v-chip
-                    v-if="item[field.label]"
-                    :color="getChipColor(item[field.label])"
+                    v-if="normalizeMultiValues(item[field.label])[0]"
+                    :color="getChipColor(normalizeMultiValues(item[field.label])[0])"
                     size="small"
                     label
                     variant="tonal"
                   >
-                    {{ item[field.label] }}
+                    {{ normalizeMultiValues(item[field.label])[0] }}
                   </v-chip>
                   <span v-else class="text-caption text-grey">—</span>
                 </template>
@@ -1833,6 +1853,7 @@ const customerTableHeaders = computed(() => {
   const baseHeaders = [
     { title: '最後更新', key: 'updatedAt', width: '160px', sortable: true },
     { title: '拜訪日期', key: '拜訪日期', width: '110px', sortable: true },
+    { title: '新客/回訪', key: 'visitStatus', width: '100px', sortable: true },
     { title: '等級', key: '等級研判', width: '90px', sortable: true },
     { title: '未購原因', key: '未買原因', width: '160px', sortable: false },
     { title: '姓名', key: '姓名', width: '100px' },
@@ -2619,6 +2640,29 @@ function getChipColor(motive) {
   return 'grey';
 }
 // ✓ END: 新增
+
+// 將多選欄位值正規化為乾淨的字串陣列（相容 JSON 字串、字串、陣列、巢狀陣列）
+function normalizeMultiValues(raw) {
+  const out = [];
+  const push = (v) => {
+    if (v === null || v === undefined) return;
+    if (Array.isArray(v)) { v.forEach(push); return; }
+    const s = String(v).trim();
+    if (!s) return;
+    // 嘗試解析 JSON 字串 (例如 '[""]' 或 '["自住","投資"]')
+    if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('"') && s.endsWith('"'))) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) || typeof parsed === 'string') { push(parsed); return; }
+      } catch (e) { /* 非 JSON，當純字串處理 */ }
+    }
+    // 逗號分隔字串拆開
+    if (s.includes(',')) { s.split(',').forEach(push); return; }
+    out.push(s);
+  };
+  push(raw);
+  return [...new Set(out)]; // 去重保持順序
+}
 
 // --- 預設欄位結構 (保持不變) ---
 const DEFAULT_SETTINGS = {
