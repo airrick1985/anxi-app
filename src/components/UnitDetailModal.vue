@@ -1071,6 +1071,7 @@ function startEditing() {
     };
 
     editingData.value.payment_deposit_date = timestampToDate(props.unitData.payment_deposit_date);
+    editingData.value.payment_complete_date = timestampToDate(props.unitData.payment_complete_date);
     editingData.value.payment_contract_date = timestampToDate(props.unitData.payment_contract_date);
 
     // ✅ [新增] 初始化優付欄位，若原資料無此欄位預設為 false

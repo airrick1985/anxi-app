@@ -1149,7 +1149,7 @@ exports.uploadHouseholds = onCall({
       'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
       'price_transaction_house', 'price_transaction_total'
     ];
-    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date'];
+    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
 
     for (const row of householdsData) {
       const unitId = row.unitId;
@@ -1240,6 +1240,16 @@ exports.uploadHouseholds = onCall({
             dataToSave[field] = stringValue;
           }
         }
+      }
+
+      // salesStatus_backend 與 status 必須連動
+      // Why: 前端/報表/同步邏輯同時參考這兩個欄位，必須保持一致
+      const batchHasBackend = Object.prototype.hasOwnProperty.call(dataToSave, 'salesStatus_backend');
+      const batchHasStatus = Object.prototype.hasOwnProperty.call(dataToSave, 'status');
+      if (batchHasBackend) {
+        dataToSave.status = dataToSave.salesStatus_backend;
+      } else if (batchHasStatus) {
+        dataToSave.salesStatus_backend = dataToSave.status;
       }
 
       const docId = `${projectId}_${unitId}`;
@@ -2634,7 +2644,7 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
 
     // 日期欄位轉換
     // ✅ 修改: 移除 buyerDateOfBirth，因為它現在儲存為物件 {year, month, day}
-    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date'];
+    const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
     for (const field of dateFields) {
       if (dataToSave[field]) {
         if (dataToSave[field] instanceof Date) {
@@ -2736,6 +2746,16 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
           dataToSave[field] = null;
         }
       }
+    }
+
+    // salesStatus_backend 與 status 必須連動
+    // Why: 前端/報表/同步邏輯同時參考這兩個欄位，必須保持一致，避免資料分歧
+    const hasBackendStatus = Object.prototype.hasOwnProperty.call(dataToSave, 'salesStatus_backend');
+    const hasStatus = Object.prototype.hasOwnProperty.call(dataToSave, 'status');
+    if (hasBackendStatus) {
+      dataToSave.status = dataToSave.salesStatus_backend;
+    } else if (hasStatus) {
+      dataToSave.salesStatus_backend = dataToSave.status;
     }
 
     // 設定更新時間
@@ -2894,7 +2914,7 @@ exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
  * 【新增】退戶功能
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
  */
-exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secrets: gmailSecrets }, async (request) => {
   const { projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null } = request.data;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
 
@@ -3043,11 +3063,13 @@ exports.cancelPurchase = onCall({ region: "asia-east1", secrets: gmailSecrets },
       payment_deposit_date: null,
       payment_supplement_amount: null,
       payment_supplement_date: null,
+      payment_complete_date: null,
 
       // 價格與銷售狀態
       price_package_deal: null,
       price_transaction_house: null,
       salesStatus_backend: null,
+      status: null, // 與 salesStatus_backend 連動
       salesStatus_quote: null,
       salesperson: null,
 
@@ -3184,6 +3206,7 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
         // 付款資訊
         payment_deposit_amount: data.payment_deposit_amount || null,
         payment_deposit_date: data.payment_deposit_date || null,
+        payment_complete_date: data.payment_complete_date || null,
         payment_contract_amount: data.payment_contract_amount || null,
         payment_contract_date: data.payment_contract_date || null,
         // 車位詳細資料
@@ -22373,6 +22396,7 @@ const salesFieldDisplayNames = {
 
   // 日期資訊
   payment_deposit_date: '小訂日期',
+  payment_complete_date: '補足日期',
   payment_contract_date: '簽約日期',
 
   // 其他
@@ -22898,6 +22922,17 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
 });
 
 /**
+ * [Helper] 將 Date 格式化為 YYYY/MM/DD（Asia/Taipei 時區）
+ */
+function _formatDateTaipei(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : (date && date.toDate ? date.toDate() : new Date(date));
+  if (!d || isNaN(d.getTime())) return '';
+  // sv-SE 使用 YYYY-MM-DD 格式，再替換為斜線
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(/-/g, '/');
+}
+
+/**
  * [Helper] 扁平化銷控資料
  */
 function _flattenSalesHouseholdForSheet(h) {
@@ -22906,16 +22941,18 @@ function _flattenSalesHouseholdForSheet(h) {
   // ID
   flat['_id'] = h._docId || h.id;
 
-  // Timestamp 處理
-  const dateFields = ['updatedAt', 'payment_deposit_date', 'payment_contract_date'];
-  dateFields.forEach(field => {
+  // Timestamp 處理（日期欄位統一格式為 YYYY/MM/DD，依 Asia/Taipei 時區）
+  const dateOnlyFields = ['payment_deposit_date', 'payment_complete_date', 'payment_contract_date'];
+  dateOnlyFields.forEach(field => {
     if (h[field] && h[field].toDate) {
-      flat[field] = h[field].toDate().toISOString().split('T')[0];
-      if (field === 'updatedAt') flat[field] = h[field].toDate().toISOString();
-    } else if (field === 'updatedAt' && !flat[field]) {
-      flat[field] = new Date().toISOString();
+      flat[field] = _formatDateTaipei(h[field].toDate());
     }
   });
+  if (h.updatedAt && h.updatedAt.toDate) {
+    flat['updatedAt'] = h.updatedAt.toDate().toISOString();
+  } else if (!flat['updatedAt']) {
+    flat['updatedAt'] = new Date().toISOString();
+  }
 
   // Boolean 處理
   if (typeof h.isPreferredPayment === 'boolean') {
@@ -22926,6 +22963,47 @@ function _flattenSalesHouseholdForSheet(h) {
   // 修正：資料庫欄位為 salesStatus_backend，但 syncConfig 預期為 status
   if (h.salesStatus_backend) {
     flat['status'] = h.salesStatus_backend;
+  }
+
+  // 衍生欄位即時計算（與前端 SalesControlSystem.vue computed 邏輯一致）
+  // Why: 這些欄位不應儲存在 Firestore，避免與原始欄位不同步；改由同步時計算
+  const parkingArr = Array.isArray(h['持有車位']) ? h['持有車位'] : [];
+  const parkingFloorTotal = parkingArr.reduce((sum, p) => sum + (Number(p && p.price_floor) || 0), 0);
+  const parkingTransTotal = parkingArr.reduce((sum, p) => sum + (Number(p && p.price_transaction) || 0), 0);
+  const houseTrans = Number(h.price_transaction_house) || 0;
+  const houseFloor = Number(h.price_floor_house_total) || 0;
+  const areaHousePing = Number(h.area_house_ping) || 0;
+  const calcUnit = (totalPrice) => {
+    const price = Number(totalPrice) || 0;
+    if (price <= 0 || areaHousePing === 0) return null;
+    return price / areaHousePing;
+  };
+
+  flat['parking_floor_total'] = parkingFloorTotal || null;
+  flat['parking_trans_total'] = parkingTransTotal || null;
+  flat['total_transaction'] = (houseTrans + parkingTransTotal) || null;
+  flat['total_floor'] = (houseFloor + parkingFloorTotal) || null;
+  flat['price_diff'] = houseTrans > 0 ? (houseTrans + parkingTransTotal) - (houseFloor + parkingFloorTotal) : null;
+  flat['unit_price_list'] = calcUnit(h.price_list_house_total);
+  flat['unit_price_floor'] = calcUnit(h.price_floor_house_total);
+  flat['unit_price_transaction'] = calcUnit(h.price_transaction_house);
+
+  // 報價模式專用：已售時清空，否則等於表價
+  const statusForQuote = h.salesStatus_quote || h.salesStatus_backend;
+  if (statusForQuote === '已售') {
+    flat['unit_price_value'] = null;
+    flat['quote_mode_total_price'] = null;
+  } else {
+    flat['unit_price_value'] = calcUnit(h.price_list_house_total);
+    flat['quote_mode_total_price'] = Number(h.price_list_house_total) || null;
+  }
+
+  // 持有車位：陣列僅取「車位編號」，以「、」串接
+  if (Array.isArray(h['持有車位'])) {
+    flat['持有車位'] = h['持有車位']
+      .map(p => (p && (p['車位編號'] || p.spotId)) || '')
+      .filter(Boolean)
+      .join('、');
   }
 
   return flat;
@@ -22940,7 +23018,7 @@ function _flattenCancelledPurchaseForSheet(doc) {
 
   // 處理取消日期 (Timestamp)
   if (doc._cancellationMeta?.cancellationDate && doc._cancellationMeta.cancellationDate.toDate) {
-    flat['cancellationDate'] = doc._cancellationMeta.cancellationDate.toDate().toISOString().split('T')[0];
+    flat['cancellationDate'] = _formatDateTaipei(doc._cancellationMeta.cancellationDate.toDate());
   }
 
   // 處理操作人員
@@ -22963,10 +23041,26 @@ function _flattenCancelledPurchaseForSheet(doc) {
     flat['updatedAt'] = doc.updatedAt.toDate().toISOString();
   }
 
+  // 處理付款日期 Timestamp (YYYY/MM/DD，Asia/Taipei 時區)
+  const paymentDateFields = ['payment_deposit_date', 'payment_complete_date', 'payment_contract_date'];
+  paymentDateFields.forEach(field => {
+    if (doc[field] && doc[field].toDate) {
+      flat[field] = _formatDateTaipei(doc[field].toDate());
+    }
+  });
+
   // 處理停車位資料（取第一筆）
   if (Array.isArray(doc.parkingData) && doc.parkingData.length > 0) {
     const parking = doc.parkingData[0];
     flat['parkingSpotId'] = parking.spotId || '';
+  }
+
+  // 持有車位：陣列僅取「車位編號」，以「、」串接（與銷控資料同步一致）
+  if (Array.isArray(doc['持有車位'])) {
+    flat['持有車位'] = doc['持有車位']
+      .map(p => (p && (p['車位編號'] || p.spotId)) || '')
+      .filter(Boolean)
+      .join('、');
   }
 
   return flat;
@@ -23032,6 +23126,9 @@ exports.syncCancelledPurchasesToSheet = onCall({
       buyerIdNumber: '身分證字號',
       buyerEmail: '買方Email',
       isFirstTimeBuyer: '首購',
+      payment_deposit_date: '小訂日期',
+      payment_complete_date: '補足日期',
+      payment_contract_date: '簽約日期',
       salesperson: '銷售人員',
       referrerName: '介紹人',
       cancellationDate: '退戶日期',

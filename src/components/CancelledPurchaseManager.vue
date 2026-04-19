@@ -137,6 +137,21 @@
               <span v-else>—</span>
             </template>
 
+            <!-- 小訂日期 -->
+            <template v-slot:item.payment_deposit_date="{ item }">
+              <span class="text-caption">{{ formatDateOnly(item.payment_deposit_date) }}</span>
+            </template>
+
+            <!-- 補足日期 -->
+            <template v-slot:item.payment_complete_date="{ item }">
+              <span class="text-caption">{{ formatDateOnly(item.payment_complete_date) }}</span>
+            </template>
+
+            <!-- 簽約日期 -->
+            <template v-slot:item.payment_contract_date="{ item }">
+              <span class="text-caption">{{ formatDateOnly(item.payment_contract_date) }}</span>
+            </template>
+
             <!-- 退戶日期 -->
             <template v-slot:item.cancellationDate="{ item }">
               {{ formatDate(item.cancellationDate) }}
@@ -747,6 +762,9 @@ const tableHeaders = [
   { title: '業務員', key: 'salesperson', sortable: true },
   { title: '成交總價', key: 'totalPrice', sortable: false },
   { title: '坪數', key: 'area_house_ping', sortable: true, width: '80px' },
+  { title: '小訂日期', key: 'payment_deposit_date', sortable: true, width: '120px' },
+  { title: '補足日期', key: 'payment_complete_date', sortable: true, width: '120px' },
+  { title: '簽約日期', key: 'payment_contract_date', sortable: true, width: '120px' },
   { title: '退戶原因', key: 'cancelReasons', sortable: false },
   { title: '退戶日期', key: 'cancellationDate', sortable: true, width: '150px' },
   { title: '備註', key: 'remarks', sortable: false },
@@ -877,6 +895,25 @@ function formatDate(timestamp) {
     return timestamp.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
   }
   return String(timestamp);
+}
+
+function formatDateOnly(value) {
+  if (!value) return '—';
+  let date;
+  if (value._seconds) {
+    date = new Date(value._seconds * 1000);
+  } else if (value instanceof Date) {
+    date = value;
+  } else {
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+    date = new Date(str);
+    if (isNaN(date.getTime())) return str;
+  }
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function formatPrice(val) {

@@ -412,6 +412,7 @@ const salesFieldDisplayNames = {
 
     // 日期資訊
     payment_deposit_date: '小訂日期',
+    payment_complete_date: '補足日期',
     payment_contract_date: '簽約日期',
 
     // 其他
@@ -672,6 +673,16 @@ exports.onSalesHouseholdWrite = onDocumentWritten("salesHouseholds/{docId}", asy
 
 
 /**
+ * [Helper] 將 Date 格式化為 YYYY/MM/DD（Asia/Taipei 時區）
+ */
+function _formatDateTaipei(date) {
+    if (!date) return '';
+    const d = date instanceof Date ? date : (date && date.toDate ? date.toDate() : new Date(date));
+    if (!d || isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(/-/g, '/');
+}
+
+/**
  * [Helper] 扁平化銷控資料
  */
 function _flattenSalesHouseholdForSheet(h) {
@@ -680,20 +691,67 @@ function _flattenSalesHouseholdForSheet(h) {
     // ID
     flat['_id'] = h._docId || h.id;
 
-    // Timestamp 處理
-    const dateFields = ['updatedAt', 'payment_deposit_date', 'payment_contract_date'];
-    dateFields.forEach(field => {
+    // Timestamp 處理（日期欄位統一格式為 YYYY/MM/DD，依 Asia/Taipei 時區）
+    const dateOnlyFields = ['payment_deposit_date', 'payment_complete_date', 'payment_contract_date'];
+    dateOnlyFields.forEach(field => {
         if (h[field] && h[field].toDate) {
-            flat[field] = h[field].toDate().toISOString().split('T')[0]; // 取日期部分即可 (updatedAt除外)
-            if (field === 'updatedAt') flat[field] = h[field].toDate().toISOString();
-        } else if (field === 'updatedAt' && !flat[field]) {
-            flat[field] = new Date().toISOString();
+            flat[field] = _formatDateTaipei(h[field].toDate());
         }
     });
+    if (h.updatedAt && h.updatedAt.toDate) {
+        flat['updatedAt'] = h.updatedAt.toDate().toISOString();
+    } else if (!flat['updatedAt']) {
+        flat['updatedAt'] = new Date().toISOString();
+    }
 
     // Boolean 處理
     if (typeof h.isPreferredPayment === 'boolean') {
         flat['isPreferredPayment'] = h.isPreferredPayment ? '是' : '否';
+    }
+
+    // salesStatus_backend 同步到 status
+    if (h.salesStatus_backend) {
+        flat['status'] = h.salesStatus_backend;
+    }
+
+    // 衍生欄位即時計算（與前端 SalesControlSystem.vue computed 邏輯一致）
+    // Why: 這些欄位不應儲存在 Firestore，避免與原始欄位不同步；改由同步時計算
+    const parkingArr = Array.isArray(h['持有車位']) ? h['持有車位'] : [];
+    const parkingFloorTotal = parkingArr.reduce((sum, p) => sum + (Number(p && p.price_floor) || 0), 0);
+    const parkingTransTotal = parkingArr.reduce((sum, p) => sum + (Number(p && p.price_transaction) || 0), 0);
+    const houseTrans = Number(h.price_transaction_house) || 0;
+    const houseFloor = Number(h.price_floor_house_total) || 0;
+    const areaHousePing = Number(h.area_house_ping) || 0;
+    const calcUnit = (totalPrice) => {
+        const price = Number(totalPrice) || 0;
+        if (price <= 0 || areaHousePing === 0) return null;
+        return price / areaHousePing;
+    };
+
+    flat['parking_floor_total'] = parkingFloorTotal || null;
+    flat['parking_trans_total'] = parkingTransTotal || null;
+    flat['total_transaction'] = (houseTrans + parkingTransTotal) || null;
+    flat['total_floor'] = (houseFloor + parkingFloorTotal) || null;
+    flat['price_diff'] = houseTrans > 0 ? (houseTrans + parkingTransTotal) - (houseFloor + parkingFloorTotal) : null;
+    flat['unit_price_list'] = calcUnit(h.price_list_house_total);
+    flat['unit_price_floor'] = calcUnit(h.price_floor_house_total);
+    flat['unit_price_transaction'] = calcUnit(h.price_transaction_house);
+
+    const statusForQuote = h.salesStatus_quote || h.salesStatus_backend;
+    if (statusForQuote === '已售') {
+        flat['unit_price_value'] = null;
+        flat['quote_mode_total_price'] = null;
+    } else {
+        flat['unit_price_value'] = calcUnit(h.price_list_house_total);
+        flat['quote_mode_total_price'] = Number(h.price_list_house_total) || null;
+    }
+
+    // 持有車位：陣列僅取「車位編號」，以「、」串接
+    if (Array.isArray(h['持有車位'])) {
+        flat['持有車位'] = h['持有車位']
+            .map(p => (p && (p['車位編號'] || p.spotId)) || '')
+            .filter(Boolean)
+            .join('、');
     }
 
     return flat;

@@ -309,7 +309,7 @@
                 v-else
                 :headers="customerTableHeaders"
                 :items="filteredCustomerList"
-                :sort-by="[{ key: '拜訪日期', order: 'desc' }]"
+                :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
                 item-value="docId"
                 class="elevation-1 cursor-pointer-row"
                 @click:row="openInteractionLog"
