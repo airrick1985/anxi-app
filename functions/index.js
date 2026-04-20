@@ -2778,6 +2778,11 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
       console.log(`[${functionName}] 現有文檔資料欄位:`, Object.keys(docSnapshot.data()));
     }
 
+    // 銷控通知：紀錄舊 salesStatus_backend，待寫入後比對
+    const oldSalesStatus = docSnapshot.exists
+      ? (docSnapshot.data().salesStatus_backend || null)
+      : null;
+
     // 使用 set 搭配 merge: true，確保只更新提供的欄位
     await docRef.set(dataToSave, { merge: true });
     console.log(`[${functionName}] 戶別資料寫入完成`);
@@ -2863,12 +2868,39 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
       message += ` (包含 ${parkingUpdateCount} 筆車位資料)`;
     }
 
+    // 銷控通知：比對舊新狀態，若有異動則查詢候選通知人員
+    let notification = { statusChanged: false };
+    try {
+      const newSalesStatus = Object.prototype.hasOwnProperty.call(dataToSave, 'salesStatus_backend')
+        ? (dataToSave.salesStatus_backend || null)
+        : oldSalesStatus;
+
+      if (newSalesStatus !== oldSalesStatus) {
+        const { classifySalesStatus } = require('./utils/salesStatusGroups');
+        const { getEligibleRecipients } = require('./utils/getEligibleRecipients');
+        const eligibleRecipients = await getEligibleRecipients(finalProjectId, db);
+
+        notification = {
+          statusChanged: true,
+          oldStatus: oldSalesStatus,
+          newStatus: newSalesStatus,
+          statusClass: classifySalesStatus(newSalesStatus),
+          triggerType: 'update',
+          eligibleRecipients,
+        };
+        console.log(`[${functionName}] 狀態變動 ${oldSalesStatus} → ${newSalesStatus}，候選 ${eligibleRecipients.length} 人`);
+      }
+    } catch (notifyErr) {
+      console.error(`[${functionName}] 通知前置查詢失敗（不影響儲存結果）:`, notifyErr);
+    }
+
     return {
       status: "success",
       message: message,
       updatedFields: Object.keys(data).length,
       parkingUpdated: parkingUpdateCount,
-      docId: docId
+      docId: docId,
+      notification,
     };
 
   } catch (error) {
@@ -3125,11 +3157,32 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     console.log(`[${functionName}] - 已清理戶別資料: ${docId}`);
     console.log(`[${functionName}] - 已釋出車位數量: ${originalParkingData.length}`);
 
+    // 銷控通知：退戶後查詢候選通知人員
+    let notification = { statusChanged: false };
+    try {
+      const { classifySalesStatus } = require('./utils/salesStatusGroups');
+      const { getEligibleRecipients } = require('./utils/getEligibleRecipients');
+      const eligibleRecipients = await getEligibleRecipients(projectId, db);
+
+      notification = {
+        statusChanged: true,
+        oldStatus: originalHouseholdData.salesStatus_backend || null,
+        newStatus: '退戶',
+        statusClass: classifySalesStatus('退戶'),
+        triggerType: 'cancel',
+        eligibleRecipients,
+      };
+      console.log(`[${functionName}] 通知候選 ${eligibleRecipients.length} 人`);
+    } catch (notifyErr) {
+      console.error(`[${functionName}] 通知前置查詢失敗（不影響退戶結果）:`, notifyErr);
+    }
+
     return {
       status: "success",
       message: "退戶作業完成！",
       cancellationId: cancellationDocId,
-      clearedParkingCount: originalParkingData.length
+      clearedParkingCount: originalParkingData.length,
+      notification,
     };
 
   } catch (error) {
@@ -3137,6 +3190,154 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     throw new HttpsError("internal", `退戶作業失敗: ${error.message}`);
   }
 });
+
+// =================================================================
+// 【新增】銷控狀態通知 Cloud Functions
+// =================================================================
+
+const lineSecrets = ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"];
+
+/**
+ * 寄送銷控狀態通知（操作者於對話框按下「發送通知」時呼叫）
+ *
+ * 入參：
+ *   projectId, projectName, unitId,
+ *   oldStatus, newStatus, operatorName, triggerType ('update'|'cancel'),
+ *   recipients: [{ userKey, channels: ['line','email'] }]
+ */
+exports.sendSalesStatusNotification = onCall(
+  { region: "asia-east1", memory: "512MiB", secrets: [...gmailSecrets, ...lineSecrets] },
+  async (request) => {
+    const {
+      projectId, projectName, unitId,
+      oldStatus, newStatus, operatorName,
+      triggerType, recipients,
+      customTag, remark,
+    } = request.data || {};
+    const fn = `sendSalesStatusNotification(${projectId}/${unitId})`;
+
+    if (!projectId || !unitId || !Array.isArray(recipients)) {
+      throw new HttpsError('invalid-argument', '缺少 projectId / unitId / recipients');
+    }
+
+    const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || '').trim();
+
+    if (recipients.length === 0 && !adminLineId) {
+      return { sent: 0, failed: 0, attempts: [], skipped: 'no-recipient' };
+    }
+
+    const db = new Firestore({ databaseId: 'anxi-app' });
+
+    // 二次驗證每位收件人是否仍擁有「銷控系統」或「報價系統」權限
+    const validRecipients = [];
+    const userMap = {};
+    for (const r of recipients) {
+      if (!r || !r.userKey) continue;
+      try {
+        const permDoc = await db.collection('userPermissions').doc(r.userKey).get();
+        if (!permDoc.exists) continue;
+        const systems = permDoc.data()?.permissions?.[projectId]?.systems || [];
+        if (!systems.includes('銷控系統') && !systems.includes('報價系統')) continue;
+
+        const userDoc = await db.collection('users').doc(r.userKey).get();
+        if (!userDoc.exists) continue;
+        const u = userDoc.data() || {};
+        userMap[r.userKey] = {
+          name: u.name || r.userKey,
+          email: typeof u.email === 'string' ? u.email : null,
+          lineId: typeof u.lineId === 'string' ? u.lineId : null,
+        };
+
+        // 過濾掉前端傳來但實際不可用的 channel
+        const channels = (Array.isArray(r.channels) ? r.channels : []).filter(c => {
+          if (c === 'line') return !!(userMap[r.userKey].lineId && userMap[r.userKey].lineId.startsWith('U'));
+          if (c === 'email') return !!userMap[r.userKey].email;
+          return false;
+        });
+        if (channels.length > 0) validRecipients.push({ userKey: r.userKey, channels });
+      } catch (e) {
+        console.error(`[${fn}] 驗證收件人 ${r.userKey} 失敗:`, e);
+      }
+    }
+
+    if (validRecipients.length === 0 && !adminLineId) {
+      console.log(`[${fn}] 二次驗證後無有效收件人`);
+      return { sent: 0, failed: 0, attempts: [], skipped: 'all-invalid' };
+    }
+
+    const { sendSalesStatusNotifications } = require('./notifications/salesStatusNotifier');
+    const { classifySalesStatus } = require('./utils/salesStatusGroups');
+    const result = await sendSalesStatusNotifications({
+      projectName, projectId, unitId,
+      oldStatus, newStatus, operatorName,
+      triggerType,
+      recipients: validRecipients,
+      userMap,
+      customTag, remark,
+      adminLineId,
+    });
+
+    // 寫入通知 log
+    try {
+      await db.collection('projects').doc(projectId)
+        .collection('notificationLogs').add({
+          type: 'salesStatus',
+          triggerType: triggerType || 'update',
+          unitId,
+          oldStatus: oldStatus || null,
+          newStatus: newStatus || null,
+          statusClass: classifySalesStatus(newStatus),
+          operatorName: operatorName || null,
+          recipients: validRecipients,
+          customTag: typeof customTag === 'string' ? customTag : null,
+          remark: typeof remark === 'string' ? remark : null,
+          attempts: result.attempts,
+          sent: result.sent,
+          failed: result.failed,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (logErr) {
+      console.error(`[${fn}] 寫入 notificationLogs 失敗:`, logErr);
+    }
+
+    console.log(`[${fn}] 完成：sent=${result.sent}, failed=${result.failed}`);
+    return result;
+  }
+);
+
+/**
+ * 紀錄「本次不通知」事件，僅寫 log 不寄送
+ */
+exports.logSalesStatusNotification = onCall(
+  { region: "asia-east1", memory: "512MiB" },
+  async (request) => {
+    const {
+      projectId, unitId, oldStatus, newStatus, operatorName,
+      triggerType, reason,
+    } = request.data || {};
+    if (!projectId || !unitId) {
+      throw new HttpsError('invalid-argument', '缺少 projectId / unitId');
+    }
+    const db = new Firestore({ databaseId: 'anxi-app' });
+    const { classifySalesStatus } = require('./utils/salesStatusGroups');
+    await db.collection('projects').doc(projectId)
+      .collection('notificationLogs').add({
+        type: 'salesStatus',
+        triggerType: triggerType || 'update',
+        unitId,
+        oldStatus: oldStatus || null,
+        newStatus: newStatus || null,
+        statusClass: classifySalesStatus(newStatus),
+        operatorName: operatorName || null,
+        reason: reason || 'skipped',
+        attempts: [],
+        sent: 0,
+        failed: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    return { status: 'success' };
+  }
+);
 
 // =================================================================
 // / 【新增】退戶資料管理 Cloud Functions
@@ -20689,9 +20890,9 @@ async function _getProjectSalesLineIds(db, projectId) {
 exports.processAndAssignLead = onCall({
   region: "asia-east1",
   cors: true,
-  memory: "256MiB",
+  memory: "512MiB",
   timeoutSeconds: 60,
-  secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+  secrets: ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"]
 }, async (request) => {
   const functionName = "processAndAssignLead";
   const db = new Firestore({ databaseId: "anxi-app" });
@@ -20727,17 +20928,22 @@ exports.processAndAssignLead = onCall({
     await leadRef.update(updatePayload);
 
     // 4. 發送 LINE 通知 (使用資料庫內已存好的精準 source 與 budget)
-    if (salesLineId && salesLineId.startsWith('U')) {
-      const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
-      if (channelToken) {
-        // 合併更新後的資料傳給發送函式
+    //    收件者：指派的業務員 + 系統管理員（所有建案通用）
+    const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+    const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || '').trim();
+    if (channelToken) {
+      const recipients = [];
+      if (salesLineId && salesLineId.startsWith('U')) recipients.push(salesLineId);
+      if (adminLineId && adminLineId.startsWith('U')) recipients.push(adminLineId);
+      if (recipients.length > 0) {
         const notifyData = { ...leadData, ...updatePayload };
-        await _sendLeadAssignmentFlex(
-          channelToken,
-          salesLineId,
-          notifyData,
-          leadId
-        );
+        try {
+          await _sendLeadAssignmentFlex(channelToken, recipients, notifyData, leadId);
+        } catch (lineError) {
+          const status = lineError?.response?.status;
+          const lineMsg = lineError?.response?.data?.message || lineError.message;
+          console.error(`[${functionName}] LINE 通知失敗: leadId=${leadId}, status=${status}, msg=${lineMsg}`);
+        }
       }
     }
 
@@ -20868,14 +21074,22 @@ function _parseLeadText(text) {
 
 /**
  * LINE Flex: 新名單分配通知 (優化版：新增建案名稱顯示)
+ * @param {string} token - LINE Channel Access Token
+ * @param {string|string[]} to - 單一 LINE ID 或多筆 LINE ID 陣列（多筆時走 multicast）
  */
 async function _sendLeadAssignmentFlex(token, to, lead, docId) {
+  // 統一為去重後的有效 LINE ID 陣列
+  const recipients = Array.from(new Set(
+    (Array.isArray(to) ? to : [to])
+      .filter(id => typeof id === 'string' && id.startsWith('U'))
+  ));
+
+  if (recipients.length === 0) return null;
+
   // 注意：這裡的 URL 請根據您的實際 domain 調整
   const liffUrl = `https://anxismart.com/#/contact?id=${docId}`;
 
-  const payload = {
-    to: to,
-    messages: [{
+  const messages = [{
       type: "flex",
       altText: `📞 [${lead.projectName || "新名單"}] 分配通知`, // ✅ 預覽文字加入建案名稱
       contents: {
@@ -20950,14 +21164,22 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
           }]
         }
       }
-    }]
-  };
+    }];
 
-  return axios.post("https://api.line.me/v2/bot/message/push", payload, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const headers = { Authorization: `Bearer ${token}` };
+
+  if (recipients.length > 1) {
+    return axios.post(
+      "https://api.line.me/v2/bot/message/multicast",
+      { to: recipients, messages },
+      { headers }
+    );
+  }
+  return axios.post(
+    "https://api.line.me/v2/bot/message/push",
+    { to: recipients[0], messages },
+    { headers }
+  );
 }
 
 /**
@@ -21266,7 +21488,7 @@ exports.batchImportAndAssignLeads = onCall({
   cors: true,
   memory: "512MiB",
   timeoutSeconds: 120,
-  secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+  secrets: ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"]
 }, async (request) => {
   const functionName = "batchImportAndAssignLeads";
   const db = new Firestore({ databaseId: "anxi-app" });
@@ -21287,6 +21509,8 @@ exports.batchImportAndAssignLeads = onCall({
     const results = [];
     const now = admin.firestore.Timestamp.now();
     const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+    // 系統管理員 LINE ID（不論建案皆通知）
+    const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || '').trim();
 
     for (const leadData of leads) {
       const payload = {
@@ -21319,14 +21543,19 @@ exports.batchImportAndAssignLeads = onCall({
       const docRef = await db.collection("leads").add(payload);
       const leadId = docRef.id;
 
-      // 3. 如果有指派且需要發送通知，發送 LINE 通知
+      // 3. 如果有指派且需要發送通知，發送 LINE 通知（業務員 + 系統管理員）
       if (shouldNotify && payload.assignedTo) {
         try {
           const userDoc = await db.collection("users").doc(payload.assignedTo).get();
           const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
 
-          if (salesLineId && salesLineId.startsWith('U') && channelToken) {
-            await _sendLeadAssignmentFlex(channelToken, salesLineId, payload, leadId);
+          if (channelToken) {
+            const recipients = [];
+            if (salesLineId && salesLineId.startsWith('U')) recipients.push(salesLineId);
+            if (adminLineId && adminLineId.startsWith('U')) recipients.push(adminLineId);
+            if (recipients.length > 0) {
+              await _sendLeadAssignmentFlex(channelToken, recipients, payload, leadId);
+            }
           }
         } catch (lineError) {
           // LINE 通知失敗不中斷主流程（可能是月度上限、Token 失效等）

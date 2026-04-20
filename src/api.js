@@ -940,6 +940,38 @@ export async function cancelPurchase(projectName, projectId, unitId, operatorNam
 }
 
 // ===============================================
+// 銷控狀態通知 API
+// ===============================================
+
+export async function sendSalesStatusNotification(payload) {
+  if (!payload || !payload.projectId || !payload.unitId || !Array.isArray(payload.recipients)) {
+    return { status: "error", message: "前端錯誤：缺少 projectId / unitId / recipients。" };
+  }
+  try {
+    const fn = httpsCallable(functions, 'sendSalesStatusNotification');
+    const result = await fn(payload);
+    return { status: "success", ...result.data };
+  } catch (error) {
+    console.error("呼叫 sendSalesStatusNotification 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+export async function logSalesStatusNotification(payload) {
+  if (!payload || !payload.projectId || !payload.unitId) {
+    return { status: "error", message: "前端錯誤：缺少 projectId / unitId。" };
+  }
+  try {
+    const fn = httpsCallable(functions, 'logSalesStatusNotification');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 logSalesStatusNotification 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+// ===============================================
 // /  退戶資料管理 API
 // ===============================================
 

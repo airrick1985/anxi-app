@@ -482,6 +482,15 @@
     message="您已修改房屋表價或房屋底價，是否確定要變更並儲存？" confirm-text="確定儲存" confirm-color="primary" :loading="isSaving"
     @confirm="executeSaveChanges" @cancel="showPriceChangeDialog = false" />
 
+  <SalesStatusNotifyDialog
+    :show="notifyDialog.show" @update:show="notifyDialog.show = $event"
+    :project-id="notifyDialog.projectId" :project-name="notifyDialog.projectName"
+    :unit-id="notifyDialog.unitId"
+    :old-status="notifyDialog.oldStatus" :new-status="notifyDialog.newStatus"
+    :trigger-type="notifyDialog.triggerType" :operator-name="notifyDialog.operatorName"
+    :recipients="notifyDialog.recipients"
+    @finished="onNotifyFinished" />
+
   <PaymentSettings v-if="paymentSettingsDialog" :show="paymentSettingsDialog"
     @update:show="paymentSettingsDialog = $event" :unit-data="enrichedUnitData" :project-name="projectName"
     :project-id="projectId" :all-data="allData" :contract-types="props.contractTypes"
@@ -671,6 +680,7 @@ import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
+import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
 import * as XLSX from 'xlsx';
 
@@ -766,6 +776,50 @@ function openCancelPurchaseDialog() {
   showCancelDialog.value = true;
 }
 
+// 銷控狀態通知對話框狀態
+const notifyDialog = ref({
+  show: false,
+  projectId: '',
+  projectName: '',
+  unitId: '',
+  oldStatus: null,
+  newStatus: null,
+  triggerType: 'update',
+  operatorName: '',
+  recipients: [],
+  pendingAfterFinish: null, // 'data-updated-close' | null
+});
+
+function openNotifyDialog(notification, triggerType, afterFinish) {
+  notifyDialog.value = {
+    show: true,
+    projectId: props.projectId,
+    projectName: props.projectName,
+    unitId: props.unitData?.unitId || '',
+    oldStatus: notification.oldStatus || null,
+    newStatus: notification.newStatus || null,
+    triggerType,
+    operatorName: userStore.user?.name || '',
+    recipients: notification.eligibleRecipients || [],
+    pendingAfterFinish: afterFinish || null,
+  };
+}
+
+function onNotifyFinished(payload) {
+  const action = notifyDialog.value.pendingAfterFinish;
+  notifyDialog.value.show = false;
+  if (action === 'data-updated-close') {
+    emit('data-updated');
+    close();
+  }
+  if (payload?.action === 'sent' && payload?.result) {
+    const { sent = 0, failed = 0 } = payload.result;
+    if (sent > 0 && failed === 0) toast.success(`已發送 ${sent} 筆通知`);
+    else if (sent > 0 && failed > 0) toast.warning(`發送 ${sent} 筆、失敗 ${failed} 筆`);
+    else if (failed > 0) toast.error(`通知全部失敗（${failed} 筆），請查 notificationLogs`);
+  }
+}
+
 async function handleConfirmCancelPurchase(data) {
   if (!props.unitData || !userStore.user) {
     alert('缺少必要資訊，無法執行退戶。');
@@ -805,9 +859,17 @@ async function handleConfirmCancelPurchase(data) {
     if (result.status !== 'success') {
       throw new Error(result.message);
     }
-    alert('退戶成功！');
-    emit('data-updated');
-    close();
+
+    // 退戶成功 → 若有候選通知人員，開啟通知對話框
+    const notif = result.notification;
+    if (notif?.statusChanged && (notif.eligibleRecipients?.length > 0)) {
+      toast.success('退戶成功');
+      openNotifyDialog(notif, 'cancel', 'data-updated-close');
+    } else {
+      toast.success(notif?.statusChanged ? '退戶成功（無可通知人員）' : '退戶成功');
+      emit('data-updated');
+      close();
+    }
   } catch (error) {
     console.error('退戶失敗:', error);
     alert(`退戶失敗: ${error.message}`);
@@ -1137,11 +1199,22 @@ async function executeSaveChanges() {
     if (editingParkingSelection.value) {
       console.log('🚗 正在執行延遲的車位資料庫更新...');
       await commitParkingChanges(props.unitData.unitId, editingParkingSelection.value);
+    } else {
+      // 車位未變動，仍需同步戶別欄位（後台狀態/銷售人員/買方姓名）至持有車位
+      await syncOwnedParkingFields(props.unitData.unitId);
     }
 
-    alert('儲存成功！');
-    emit('data-updated');
-    close();
+    // 銷控狀態若有變動且有候選通知人員 → 開啟通知對話框，由其關閉時收尾；否則直接收尾
+    const notif = result.notification;
+    if (notif?.statusChanged && (notif.eligibleRecipients?.length > 0)) {
+      toast.success('儲存成功');
+      openNotifyDialog(notif, 'update', 'data-updated-close');
+    } else {
+      if (notif?.statusChanged) toast.info('儲存成功（無可通知人員）');
+      else toast.success('儲存成功');
+      emit('data-updated');
+      close();
+    }
   } catch (error) {
     console.error('儲存失敗:', error);
     alert(`儲存失敗: ${error.message}`);
@@ -2130,6 +2203,29 @@ async function handleParkingUpdate(parkingUpdateData) {
 
   // 記錄這份清單供儲存按鈕使用
   editingParkingSelection.value = parkingList;
+}
+
+// ✅ [新增] 車位未變動時，同步戶別關鍵欄位至所有持有車位
+async function syncOwnedParkingFields(unitId) {
+  const data = editingData.value;
+  if (!data) return;
+
+  const allParkingData = props.allData?.['車位'] || [];
+  const ownedParkings = allParkingData.filter(p => p.buyerUnitId === unitId);
+
+  if (ownedParkings.length === 0) return;
+
+  console.log(`🚗 同步戶別欄位至 ${ownedParkings.length} 個持有車位...`);
+  for (const parking of ownedParkings) {
+    if (parking.id) {
+      await updateParkingLot(parking.id, {
+        status_backend: data.salesStatus_backend || null,
+        salesperson: data.salesperson || null,
+        buyerName: data.buyerName || null,
+        updatedAt: new Date()
+      });
+    }
+  }
 }
 
 // 4. [新增] 專門處理資料庫寫入的輔助函式
