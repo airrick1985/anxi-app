@@ -21091,7 +21091,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
 
   const messages = [{
       type: "flex",
-      altText: `📞 [${lead.projectName || "新名單"}] 分配通知`, // ✅ 預覽文字加入建案名稱
+      altText: `📞 [${lead.projectName || "新名單"}] 分配給 ${lead.assignedName || "未指定"}`, // ✅ 預覽文字加入建案名稱與分配銷售
       contents: {
         type: "bubble",
         header: {
@@ -21112,6 +21112,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
           contents: [
             // ✅ [新增] 內容第一行明確顯示建案名稱
             { type: "text", text: `建案：${lead.projectName || "未註明"}`, color: "#2E7D32", size: "sm", weight: "bold", margin: "xs" },
+            { type: "text", text: `分配銷售：${lead.assignedName || "未指定"}`, color: "#2E7D32", size: "sm", weight: "bold", margin: "xs" },
             { type: "separator", margin: "md" },
             { type: "text", text: `客戶：${lead.name}`, weight: "bold", size: "lg", margin: "md" },
             {

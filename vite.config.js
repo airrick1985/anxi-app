@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
 import path from 'path';
 import manifest from './public/manifest.json';
 
@@ -50,6 +51,13 @@ export default defineConfig({
         enabled: false,
         type: 'module',
       },
+    }),
+    visualizer({
+      filename: 'dist/stats.html',
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
+      template: 'treemap',
     })
   ],
 

@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.526",
+  "version": "1.0.527",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -95,6 +95,7 @@
     "@vitejs/plugin-vue": "^5.2.2",
     "cross-env": "^10.1.0",
     "gh-pages": "^6.3.0",
+    "rollup-plugin-visualizer": "^7.0.1",
     "sass-embedded": "^1.93.2",
     "vite": "^6.3.1",
     "vite-plugin-pwa": "^1.0.0",
