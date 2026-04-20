@@ -7,6 +7,24 @@
           width="350" border="right"
           class="pa-3"
       >
+      <!-- ✅ 新增：建案切換（有 客資系統-櫃台 或 客資系統-銷售 權限的建案） -->
+      <div v-if="switchableProjects.length > 1">
+        <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">選擇建案</div>
+        <v-select
+          :model-value="props.projectId"
+          :items="switchableProjects"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="mb-4"
+          :disabled="isSwitchingProject"
+          @update:model-value="switchProject"
+        ></v-select>
+        <v-divider class="mb-4"></v-divider>
+      </div>
+
       <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">視圖切換</div>
       <v-list density="compact" nav class="pa-0 mb-2">
         <v-list-item 
@@ -236,7 +254,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -286,6 +304,22 @@ const hasLeadManagementPermission = computed(() => {
     return userStore.hasProjectPermission('客資系統-管理', projectName.value);
 });
 
+// ✅ 檢查用戶是否為系統管理員或超級管理員
+const isAdmin = computed(() => {
+    const roles = userStore.user?.roles || [];
+    return roles.includes('系統管理員') || roles.includes('超級管理員');
+});
+
+// ✅ 檢查用戶是否有「客資系統-櫃台」權限
+const hasReceptionPermission = computed(() => {
+    return userStore.hasProjectPermission('客資系統-櫃台', projectName.value);
+});
+
+// ✅ 是否可查看所有銷售人員預約（管理員、櫃台、客資管理皆可）
+const canViewAllReservations = computed(() => {
+    return isAdmin.value || hasReceptionPermission.value || hasLeadManagementPermission.value;
+});
+
 const transitionClass = ref('');
 let touchstartX = 0;
 let touchstartY = 0;
@@ -294,16 +328,14 @@ const MAX_CONCURRENT_RESERVATIONS = 3;
 const conflictWarning = ref({ show: false, count: 0, time: '' });
 
 // ✅ 修改：根據權限初始化銷售人員篩選
-// 如果沒有「客資系統-管理」權限，預設只顯示當前用戶的預約
+// - 管理員 / 櫃台 / 客資管理：預設勾選所有銷售人員
+// - 其他：預設只勾選當前用戶
 const defaultSalesNames = computed(() => {
-  if (hasLeadManagementPermission.value) {
-    // 有管理權限：不篩選任何人員
-    return [];
-  } else {
-    // 沒有管理權限：預設只顯示當前用戶的預約
-    const currentUserName = userStore.user?.name;
-    return currentUserName ? [currentUserName] : [];
+  if (canViewAllReservations.value) {
+    return [...allSalesPeople.value];
   }
+  const currentUserName = userStore.user?.name;
+  return currentUserName ? [currentUserName] : [];
 });
 
 const filters = ref({ type: ['新客', '回訪'], salesNames: [] });
@@ -315,6 +347,29 @@ const getViewIcon = (view) => {
 };
 
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
+
+// ✅ 可切換建案：使用者具備「客資系統-櫃台」或「客資系統-銷售」權限的建案
+const switchableProjects = computed(() => {
+    return projectStore.projectsList.filter(project =>
+        userStore.hasProjectPermission('客資系統-櫃台', project.name) ||
+        userStore.hasProjectPermission('客資系統-銷售', project.name)
+    );
+});
+
+const isSwitchingProject = ref(false);
+async function switchProject(newProjectId) {
+    if (!newProjectId || newProjectId === props.projectId) return;
+    isSwitchingProject.value = true;
+    try {
+        await router.push({
+            name: 'ViewingReservationCalendar',
+            params: { projectId: newProjectId }
+        });
+        if (xs.value) drawer.value = false;
+    } finally {
+        isSwitchingProject.value = false;
+    }
+}
 const allSalesPeople = computed(() => {
     const names = reservationStore.activeReservations.map(res => res.salesName);
     return Array.from(new Set(names)).sort();
@@ -459,9 +514,18 @@ onMounted(async () => {
         router.replace({ name: 'ViewingReservationEntry' });
         return;
     }
+    // ✅ 確保建案清單已載入（供建案切換下拉使用）
+    await projectStore.fetchProjects();
     await fetchData();
 
     // ✅ 新增：根據權限初始化銷售人員篩選
+    filters.value.salesNames = defaultSalesNames.value;
+});
+
+// ✅ 切換建案時：重新載入預約資料並重設銷售人員篩選
+watch(() => props.projectId, async (newId, oldId) => {
+    if (!newId || newId === oldId) return;
+    await fetchData();
     filters.value.salesNames = defaultSalesNames.value;
 });
 

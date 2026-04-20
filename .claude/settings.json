@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(node --check c:/Project/anxi-app/anxi-app/functions/index.js)"
     ]
   }
 }
