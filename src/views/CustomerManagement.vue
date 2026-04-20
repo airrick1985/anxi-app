@@ -747,18 +747,43 @@
                     </v-col>
                   </v-row>
 
-                  <v-combobox
+                  <div class="text-caption text-grey-darken-1 mb-2">
+                    編輯選項（可拖曳調整順序，順序將同步至使用此設定的頁面）
+                  </div>
+                  <draggable
                     v-model="field.options"
-                    label="編輯選項"
-                    hint="按 Enter 新增項目，點擊 X 移除項目"
-                    multiple
-                    chips
-                    deletable-chips
-                    clearable
-                    variant="outlined"
-                    
+                    :item-key="(_, idx) => `${key}-opt-${idx}`"
+                    handle=".option-drag-handle"
+                    animation="200"
+                    class="d-flex flex-column"
                   >
-                  </v-combobox>
+                    <template #item="{ element, index: optIndex }">
+                      <div class="d-flex align-center mb-2">
+                        <v-icon class="option-drag-handle cursor-move mr-2 text-grey-darken-1">mdi-drag-vertical</v-icon>
+                        <v-text-field
+                          v-model="field.options[optIndex]"
+                          density="compact"
+                          hide-details
+                          variant="outlined"
+                          class="flex-grow-1 mr-2"
+                          placeholder="選項文字"
+                        ></v-text-field>
+                        <v-btn icon variant="text" color="error" size="small" @click="removeFieldOption(field, optIndex)">
+                          <v-icon>mdi-close</v-icon>
+                        </v-btn>
+                      </div>
+                    </template>
+                  </draggable>
+                  <v-btn
+                    variant="outlined"
+                    size="small"
+                    prepend-icon="mdi-plus"
+                    block
+                    class="mt-2"
+                    @click="addFieldOption(field)"
+                  >
+                    新增選項
+                  </v-btn>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -934,18 +959,43 @@
                       </v-radio-group>
                     </v-col>
                   </v-row>
-                  <v-combobox
+                  <div class="text-caption text-grey-darken-1 mb-2">
+                    編輯選項（可拖曳調整順序，順序將同步至貴賓表單與篩選器）
+                  </div>
+                  <draggable
                     v-model="field.options"
-                    label="編輯選項"
-                    hint="按 Enter 新增項目，點擊 X 移除項目"
-                    multiple
-                    chips
-                    deletable-chips
-                    clearable
-                    variant="outlined"
-                    
+                    :item-key="(_, idx) => `vip-${key}-opt-${idx}`"
+                    handle=".option-drag-handle"
+                    animation="200"
+                    class="d-flex flex-column"
                   >
-                  </v-combobox>
+                    <template #item="{ element, index: optIndex }">
+                      <div class="d-flex align-center mb-2">
+                        <v-icon class="option-drag-handle cursor-move mr-2 text-grey-darken-1">mdi-drag-vertical</v-icon>
+                        <v-text-field
+                          v-model="field.options[optIndex]"
+                          density="compact"
+                          hide-details
+                          variant="outlined"
+                          class="flex-grow-1 mr-2"
+                          placeholder="選項文字"
+                        ></v-text-field>
+                        <v-btn icon variant="text" color="error" size="small" @click="removeFieldOption(field, optIndex)">
+                          <v-icon>mdi-close</v-icon>
+                        </v-btn>
+                      </div>
+                    </template>
+                  </draggable>
+                  <v-btn
+                    variant="outlined"
+                    size="small"
+                    prepend-icon="mdi-plus"
+                    block
+                    class="mt-2"
+                    @click="addFieldOption(field)"
+                  >
+                    新增選項
+                  </v-btn>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -1493,7 +1543,8 @@ import {
   exportToGoogleSheet,
   submitCustomerSheet
 } from '@/api';
-import { merge } from 'lodash-es'; 
+import { merge } from 'lodash-es';
+import draggable from 'vuedraggable';
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
 
 const props = defineProps({
@@ -2821,6 +2872,16 @@ watch(coverImageFile, (newFile) => {
     tempCoverImageUrl.value = URL.createObjectURL(newFile);
   }
 });
+
+function addFieldOption(field) {
+  if (!Array.isArray(field.options)) field.options = [];
+  field.options.push('');
+}
+
+function removeFieldOption(field, index) {
+  if (!Array.isArray(field.options)) return;
+  field.options.splice(index, 1);
+}
 
 async function loadSettings() {
   if (!props.projectId) return;
