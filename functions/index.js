@@ -7369,12 +7369,29 @@ async function executeUploadReminderLogic() {
       continue;
     }
 
-    // 動態讀取需要提醒的「選擇方式」清單
-    const reminderMethods = settings.uploadReminderInspectionMethods || [];
-    if (reminderMethods.length === 0) {
-      console.log(`[${functionName}] 建案 [${projectName}] 未設定「適用提醒的選擇方式」，已跳過。`);
+    // 動態讀取提醒條件：
+    // 新結構 uploadReminderConditions: [{ bookingType, methods: [..] }]
+    //   —— 同時比對 bookingType + inspectionMethod，解決相同選擇方式名稱跨預約項目的歧義。
+    // 舊結構 uploadReminderInspectionMethods: [..]
+    //   —— 向下相容：僅比對 inspectionMethod。當新結構存在有效條件時會被忽略。
+    const rawConditions = Array.isArray(settings.uploadReminderConditions) ? settings.uploadReminderConditions : [];
+    const legacyReminderMethods = Array.isArray(settings.uploadReminderInspectionMethods) ? settings.uploadReminderInspectionMethods : [];
+
+    const conditionMap = new Map(); // Map<bookingType, Set<inspectionMethod>>
+    for (const cond of rawConditions) {
+      if (!cond || !cond.bookingType || !Array.isArray(cond.methods)) continue;
+      const methods = cond.methods.filter(m => typeof m === 'string' && m.length > 0);
+      if (methods.length === 0) continue;
+      conditionMap.set(cond.bookingType, new Set(methods));
+    }
+    const useNewStructure = conditionMap.size > 0;
+    const useLegacyStructure = !useNewStructure && legacyReminderMethods.length > 0;
+
+    if (!useNewStructure && !useLegacyStructure) {
+      console.log(`[${functionName}] 建案 [${projectName}] 未設定任何提醒條件（新/舊結構皆空），已跳過。`);
       continue;
     }
+    console.log(`[${functionName}] 建案 [${projectName}] 使用${useNewStructure ? '新結構（預約項目+選擇方式）' : '舊結構（僅選擇方式）'}進行條件比對。`);
 
     const ccEmails = await getCcRecipients(projectId, "提醒上傳驗屋報告副本");
     // 注意：Firestore 不允許同一 query 中對不同欄位使用多個 'in'，
@@ -7397,9 +7414,18 @@ async function executeUploadReminderLogic() {
       const appointment = apptDoc.data();
       const unitId = appointment.unitId; // 獲取戶別 ID
 
-      // 記憶體過濾：inspectionMethod 是否在設定的提醒清單中
-      if (!reminderMethods.includes(appointment.inspectionMethod)) {
-        continue;
+      // 記憶體過濾：依新/舊結構決定如何比對
+      if (useNewStructure) {
+        // 新結構：必須同時比對 bookingType 與 inspectionMethod
+        const allowedMethods = conditionMap.get(appointment.bookingType);
+        if (!allowedMethods || !allowedMethods.has(appointment.inspectionMethod)) {
+          continue;
+        }
+      } else {
+        // 舊結構：僅比對 inspectionMethod
+        if (!legacyReminderMethods.includes(appointment.inspectionMethod)) {
+          continue;
+        }
       }
 
       if (!appointment.appointmentDate || !appointment.bookerEmail || !unitId) {
@@ -7534,6 +7560,7 @@ exports.sendUploadReminders = onSchedule({
 
 exports.manualTriggerSendReminders = onCall({
   region: "asia-east1",
+  memory: "512MiB",
   // 核心邏輯會寄信，所以這裡也需要 secrets
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
 }, async (request) => {

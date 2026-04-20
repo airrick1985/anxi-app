@@ -1094,10 +1094,39 @@
 
                     <p class="text-subtitle-1 font-weight-bold mb-2">提醒上傳驗屋報告</p>
 
-                    <v-select v-model="projectSettings.reportSettings.uploadReminderInspectionMethods"
-                      :items="allInspectionMethodOptions" label="適用提醒的選擇方式" hint="選擇哪些預約方式需要發送未上傳報告提醒（未選擇則不發送）"
-                      persistent-hint multiple chips closable-chips variant="outlined" density="compact" class="mb-4"
-                      no-data-text="請先至『預約選單與人員』分頁建立預約項目及選擇方式"></v-select>
+                    <p class="text-body-2 text-medium-emphasis mb-3">
+                      請先選擇要發送提醒的「預約項目」，再勾選該項目下適用的「選擇方式」。未勾選任何選擇方式的預約項目視為不發送提醒。
+                    </p>
+
+                    <div v-if="activeBookingMenu.length === 0"
+                      class="text-body-2 text-medium-emphasis mb-4 pa-3 bg-grey-lighten-4 rounded">
+                      請先至『預約選單與人員』分頁建立預約項目及選擇方式
+                    </div>
+
+                    <v-card v-for="item in activeBookingMenu" :key="`reminder-${item.title}`" variant="outlined"
+                      class="mb-3">
+                      <v-card-text class="py-3">
+                        <div class="d-flex align-center mb-2">
+                          <v-icon size="small" class="mr-2" color="primary">mdi-calendar-check</v-icon>
+                          <span class="text-subtitle-2 font-weight-bold">預約項目：{{ item.title }}</span>
+                        </div>
+                        <div
+                          v-if="!item.methods || item.methods.filter(m => !m.deleted).length === 0"
+                          class="text-body-2 text-medium-emphasis pl-6">
+                          此預約項目尚未建立選擇方式
+                        </div>
+                        <div v-else class="d-flex flex-wrap pl-6">
+                          <v-checkbox
+                            v-for="method in item.methods.filter(m => !m.deleted)"
+                            :key="`${item.title}-${method.title}`"
+                            :label="method.title"
+                            :value="method.title"
+                            :model-value="getReminderMethodsForType(item.title)"
+                            @update:model-value="val => setReminderMethodsForType(item.title, val)"
+                            density="compact" hide-details class="mr-4"></v-checkbox>
+                        </div>
+                      </v-card-text>
+                    </v-card>
 
                     <v-combobox v-model="projectSettings.reportSettings.uploadReminderDays"
                       :items="[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]" label="驗屋完成後，間隔幾天後發送通知"
@@ -3009,24 +3038,30 @@ const activeBookingMenu = computed({
   }
 });
 
-// 收集 bookingMenu 中所有不重複的 method title（用於提醒設定的選項）
-const allInspectionMethodOptions = computed(() => {
-  const menu = projectSettings.value.bookingMenu;
-  if (!menu || menu.length === 0) {
-    // Fallback: 使用舊版 bookingMethodOptions
-    return projectSettings.value.bookingMethodOptions || [];
+// 取得某個預約項目目前已勾選的選擇方式陣列（給提醒設定 UI 使用）
+const getReminderMethodsForType = (bookingType) => {
+  const conditions = projectSettings.value.reportSettings?.uploadReminderConditions || [];
+  const condition = conditions.find(c => c.bookingType === bookingType);
+  return condition ? (condition.methods || []) : [];
+};
+
+// 更新某個預約項目的選擇方式陣列；若清空則移除該項目的條目
+const setReminderMethodsForType = (bookingType, methods) => {
+  if (!projectSettings.value.reportSettings) return;
+  if (!Array.isArray(projectSettings.value.reportSettings.uploadReminderConditions)) {
+    projectSettings.value.reportSettings.uploadReminderConditions = [];
   }
-  const methodSet = new Set();
-  menu.forEach(item => {
-    if (item.deleted) return;
-    (item.methods || []).forEach(method => {
-      if (!method.deleted && method.title) {
-        methodSet.add(method.title);
-      }
-    });
-  });
-  return Array.from(methodSet);
-});
+  const conditions = projectSettings.value.reportSettings.uploadReminderConditions;
+  const cleanMethods = Array.isArray(methods) ? methods.filter(m => !!m) : [];
+  const idx = conditions.findIndex(c => c.bookingType === bookingType);
+  if (cleanMethods.length === 0) {
+    if (idx !== -1) conditions.splice(idx, 1);
+  } else if (idx === -1) {
+    conditions.push({ bookingType, methods: cleanMethods });
+  } else {
+    conditions[idx].methods = cleanMethods;
+  }
+};
 
 // 已刪除的項目列表
 const deletedBookingMenu = computed(() => {
@@ -3231,7 +3266,8 @@ const defaultSettings = computed(() => ({
   reportSettings: {
     uploadReminderDays: [7, 14],
     uploadReminderMethods: ['EMAIL'],
-    uploadReminderInspectionMethods: [], // 適用提醒的選擇方式（動態）
+    uploadReminderInspectionMethods: [], // 舊結構（向下相容，不再由 UI 寫入）
+    uploadReminderConditions: [], // 新結構：[{ bookingType: '初驗', methods: ['屋主自驗'] }, ...]
     uploadReminderSchedule: {
       enabled: false,
       time: '10:00'
