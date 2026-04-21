@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(git commit -m ' *)",
-      "Bash(node --check c:/Project/anxi-app/anxi-app/functions/index.js)"
+      "Bash(node --check c:/Project/anxi-app/anxi-app/functions/index.js)",
+      "Bash(git -C \"c:\\\\Project\\\\anxi-app\\\\anxi-app\" status --short)",
+      "Bash(git -C \"c:/Project/anxi-app/anxi-app\" status --short)",
+      "Bash(git -C \"c:/Project/anxi-app/anxi-app\" diff src/views/BookingPage.vue)",
+      "Bash(git -C \"c:/Project/anxi-app/anxi-app\" log --oneline -10)",
+      "Bash(git -C \"c:/Project/anxi-app/anxi-app\" add src/views/BookingPage.vue)",
+      "Bash(git -C c:/Project/anxi-app/anxi-app commit -m ' *)"
     ]
   }
 }
