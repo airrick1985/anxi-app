@@ -2146,10 +2146,34 @@
             </v-row>
           </v-form>
           <v-divider class="my-4"></v-divider>
+
+          <!-- 設定方式切換 -->
+          <div class="d-flex align-center flex-wrap ga-3 mb-3">
+            <div class="text-subtitle-1 font-weight-bold d-flex align-center">
+              <v-icon start color="deep-purple">mdi-swap-horizontal</v-icon>
+              設定方式
+            </div>
+            <v-btn-toggle v-model="batchEditMode" mandatory color="primary" density="compact" variant="outlined">
+              <v-btn value="byDate" size="small">
+                <v-icon start size="small">mdi-calendar-edit</v-icon>依日期設定
+              </v-btn>
+              <v-btn value="byMethod" size="small">
+                <v-icon start size="small">mdi-target</v-icon>依方式設定
+              </v-btn>
+            </v-btn-toggle>
+            <span class="text-caption text-grey-darken-1">
+              {{ batchEditMode === 'byDate'
+                ? '先選日期 → 設定時段與方式名額'
+                : '先選方式 → 批次套用到多個日期與時段' }}
+            </span>
+          </div>
+
           <div v-if="!editedBatch.bookingStart || !editedBatch.bookingEnd">
             <p class="text-center text-grey-darken-1 pa-4">請先設定可預約的起訖日期</p>
           </div>
-          <v-row v-else>
+
+          <!-- ═══════════ 模式一：依日期設定（原有介面） ═══════════ -->
+          <v-row v-else-if="batchEditMode === 'byDate'">
             <!-- 左欄：日曆選擇器 -->
             <v-col cols="12" md="4">
               <v-date-picker v-model="selectedDaysForEditing" :min="editedBatch.bookingStart"
@@ -2203,7 +2227,7 @@
                   </div>
                   <div class="d-flex flex-column ga-2 mb-2">
                     <v-combobox v-model="pendingNewSlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
-                      label="選擇或輸入時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
+                      label="選擇或輸入任意時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
                       persistent-hint density="compact"></v-combobox>
                     <v-text-field v-model="pendingNewCapacity" type="number" label="預設名額" min="1"
                       variant="outlined" density="compact" hide-details placeholder="名額"
@@ -2364,6 +2388,217 @@
                   </div>
                 </div>
               </v-scroll-x-transition>
+            </v-col>
+          </v-row>
+
+          <!-- ═══════════ 模式二：依方式設定 ═══════════ -->
+          <v-row v-else-if="batchEditMode === 'byMethod'">
+            <!-- 左欄：方式 / 子項目選擇器（複選） -->
+            <v-col cols="12" md="3">
+              <div class="text-subtitle-2 font-weight-bold mb-2 d-flex align-center">
+                <v-icon start size="small" color="deep-purple">mdi-target</v-icon>
+                選擇方式 / 子項目
+                <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-2">
+                  已選 {{ methodModeTargetKeys.length }}
+                </v-chip>
+              </div>
+              <div v-if="methodModeTargets.length === 0" class="text-caption text-grey pa-3 text-center">
+                （請先儲存批次預約項目）
+              </div>
+              <template v-else>
+                <div class="d-flex align-center ga-1 mb-1">
+                  <v-btn size="x-small" variant="text" color="deep-purple"
+                    prepend-icon="mdi-checkbox-multiple-marked-outline" @click="methodModeSelectAll">全選</v-btn>
+                  <v-btn size="x-small" variant="text" color="grey"
+                    prepend-icon="mdi-checkbox-multiple-blank-outline" @click="methodModeClearSelection">清空</v-btn>
+                </div>
+                <v-sheet border rounded class="pa-2" style="max-height: 520px; overflow-y: auto;">
+                  <template v-for="method in availableBatchMethods" :key="method">
+                    <!-- 方式無子項目：直接列出 -->
+                    <template v-if="!batchMethodSubOptionsMap[method] || batchMethodSubOptionsMap[method].length === 0">
+                      <v-checkbox v-model="methodModeTargetKeys" :value="`m:${method}`"
+                        density="compact" hide-details class="mt-0">
+                        <template v-slot:label>
+                          <div class="d-flex align-center ga-1">
+                            <v-icon size="small" color="primary">mdi-circle-small</v-icon>
+                            <span class="font-weight-bold">{{ method }}</span>
+                          </div>
+                        </template>
+                      </v-checkbox>
+                    </template>
+                    <!-- 方式有子項目：列出所有子項目（複選子項目；父方式不直接選） -->
+                    <template v-else>
+                      <div class="text-caption text-grey-darken-1 mt-2 mb-1 d-flex align-center ga-1">
+                        <v-icon size="small" color="primary">mdi-folder-outline</v-icon>
+                        {{ method }}
+                      </div>
+                      <div class="pl-4">
+                        <v-checkbox v-for="subOpt in batchMethodSubOptionsMap[method]" :key="subOpt"
+                          v-model="methodModeTargetKeys" :value="`s:${method}:${subOpt}`"
+                          density="compact" hide-details class="mt-0">
+                          <template v-slot:label>
+                            <div class="d-flex align-center ga-1">
+                              <v-icon size="x-small" color="grey">mdi-circle-small</v-icon>
+                              <span class="text-body-2">{{ subOpt }}</span>
+                            </div>
+                          </template>
+                        </v-checkbox>
+                      </div>
+                    </template>
+                  </template>
+                </v-sheet>
+              </template>
+            </v-col>
+
+            <!-- 中欄：批次輸入 -->
+            <v-col cols="12" md="4">
+              <div v-if="!methodModeSelectedTargets.length" class="d-flex align-center justify-center h-100 text-grey" style="min-height: 300px;">
+                <div class="text-center">
+                  <v-icon size="48">mdi-target</v-icon>
+                  <p>請從左側選擇至少一個方式或子項目</p>
+                </div>
+              </div>
+              <div v-else>
+                <!-- 目前選中顯示（可多項） -->
+                <div class="mb-3 pa-3 bg-deep-purple-lighten-5 rounded">
+                  <div class="text-subtitle-2 font-weight-bold d-flex align-center ga-1 mb-2">
+                    <v-icon start color="deep-purple">mdi-pencil-outline</v-icon>
+                    <span>已選 {{ methodModeSelectedTargets.length }} 項，將同步套用相同名額</span>
+                  </div>
+                  <div class="d-flex flex-wrap ga-1">
+                    <v-chip v-for="t in methodModeSelectedTargets" :key="t.key"
+                      color="deep-purple" variant="tonal" size="small" label closable
+                      @click:close="toggleMethodModeTarget(t.key)">
+                      <template v-if="t.type === 'subOption'">
+                        <span class="text-caption">{{ t.parent }}</span>
+                        <v-icon size="x-small" class="mx-1">mdi-chevron-right</v-icon>
+                        <span class="font-weight-bold">{{ t.subOption }}</span>
+                      </template>
+                      <template v-else>
+                        <span class="font-weight-bold">{{ t.method }}</span>
+                      </template>
+                    </v-chip>
+                  </div>
+                </div>
+
+                <!-- 日期多選 -->
+                <div class="text-caption font-weight-bold text-primary mb-1">1️⃣ 選擇日期（可多選）</div>
+                <v-date-picker v-model="methodModeDates" :min="editedBatch.bookingStart"
+                  :max="editedBatch.bookingEnd" show-adjacent-months hide-header color="deep-purple"
+                  class="w-100 mb-2" multiple></v-date-picker>
+                <div v-if="methodModeDates.length > 0" class="d-flex flex-wrap ga-1 mb-3 pa-2 bg-deep-purple-lighten-5 rounded">
+                  <v-chip v-for="(d, idx) in formatMultipleDatesAsChips(methodModeDates)" :key="idx"
+                    color="deep-purple" size="x-small" label>{{ d }}</v-chip>
+                </div>
+
+                <!-- 時段輸入 -->
+                <div class="text-caption font-weight-bold text-primary mb-1">2️⃣ 選擇或輸入任意時段（可多個）</div>
+                <v-combobox v-model="methodModeSlots" :items="timeSlotPresets" :rules="[timeArrayRule]"
+                  label="時段" chips clearable multiple closable-chips hint="輸入後按 Enter 新增"
+                  persistent-hint density="compact" class="mb-2"></v-combobox>
+
+                <!-- 名額輸入 -->
+                <div class="text-caption font-weight-bold text-primary mb-1">3️⃣ 設定名額</div>
+                <v-row dense>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="methodModeCapacity" type="number" min="1"
+                      :label="methodModeUnlimited ? '該方式名額（無限制）' : '該方式名額（必填）'"
+                      variant="outlined" density="compact" hide-details
+                      :placeholder="methodModeUnlimited ? '共用時段總名額' : '請輸入 1 以上'"
+                      :disabled="methodModeUnlimited"></v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="methodModeSlotTotalCapacity" type="number" min="0"
+                      label="時段總名額（選填，僅新建時段生效）" variant="outlined" density="compact"
+                      hide-details placeholder="留空採用方式名額"></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-checkbox v-model="methodModeUnlimited" density="compact" hide-details class="mt-1">
+                  <template v-slot:label>
+                    <div class="text-caption">
+                      
+                      設為<strong class="text-warning">「無限制」</strong>（共用時段總名額，不設獨立上限）
+                    </div>
+                  </template>
+                </v-checkbox>
+                <v-alert type="info" variant="tonal" density="compact" class="mt-2 mb-3">
+                  <div class="text-caption">
+                    套用時：<br>
+                    • 一般名額：必填且需 &gt; 0；無限制則不寫入獨立上限，客戶預約時共用該時段總名額<br>
+                    • 日期+時段已存在 → 合併該方式名額，<strong>不覆蓋</strong>原有時段總名額<br>
+                    • 日期+時段不存在 → 以上方「時段總名額」建立新時段（未填則取方式名額或預設 1）
+                  </div>
+                </v-alert>
+
+                <v-btn color="deep-purple" variant="flat" prepend-icon="mdi-check" block @click="applyByMethod"
+                  :disabled="!methodModeSelectedTargets.length || !methodModeDates.length || !methodModeSlots.length || (!methodModeUnlimited && !(Number(methodModeCapacity) > 0))">
+                  套用至所選日期 × 時段（{{ methodModeSelectedTargets.length }} 項）
+                </v-btn>
+              </div>
+            </v-col>
+
+            <!-- 右欄：覆蓋範圍預覽（合併所選項目） -->
+            <v-col cols="12" md="5">
+              <div v-if="!methodModeSelectedTargets.length" class="d-flex align-center justify-center h-100 text-grey" style="min-height: 300px;">
+                <div class="text-center">
+                  <v-icon size="48">mdi-view-list-outline</v-icon>
+                  <p>選擇方式後，此處顯示您的設定</p>
+                </div>
+              </div>
+              <div v-else>
+                <div class="text-subtitle-2 font-weight-bold mb-2 d-flex align-center">
+                  <v-icon start size="small" color="deep-purple">mdi-view-list-outline</v-icon>
+                  目前設定
+                  <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-2">
+                    {{ methodModeCoverage.length }} 筆
+                  </v-chip>
+                </div>
+                <div v-if="methodModeCoverage.length === 0" class="text-center text-grey pa-4 text-body-2">
+                  所選項目尚未設定任何時段名額
+                </div>
+                <v-sheet v-else border rounded>
+                  <v-list density="compact" class="pa-0">
+                    <template v-for="(row, idx) in methodModeCoverage" :key="`${row.target.key}|${row.dateKey}|${row.slot}`">
+                      <v-list-item>
+                        <template v-slot:prepend>
+                          <v-icon size="small" color="deep-purple">mdi-calendar-clock</v-icon>
+                        </template>
+                        <v-list-item-title class="font-weight-bold text-body-2 d-flex align-center flex-wrap ga-1">
+                          <v-chip size="x-small" color="deep-purple" variant="outlined" label class="me-1">
+                            <template v-if="row.target.type === 'subOption'">
+                              {{ row.target.parent }} / {{ row.target.subOption }}
+                            </template>
+                            <template v-else>{{ row.target.method }}</template>
+                          </v-chip>
+                          <span :class="{ 'weekend-highlight': isWeekend(row.dateKey) }">
+                            {{ formatDateWithWeekday(row.dateKey) }}
+                          </span>
+                          <span class="text-grey-darken-1 mx-1">·</span>
+                          <span>{{ row.slot }}</span>
+                          <v-chip v-if="!row.parentEnabled" size="x-small" color="orange-darken-2" variant="tonal" label
+                            title="此 slot 尚未勾選父方式，子項目設定目前不會生效">
+                            <v-icon start size="x-small">mdi-alert-outline</v-icon>
+                            父方式未啟用
+                          </v-chip>
+                        </v-list-item-title>
+                        <v-list-item-subtitle class="text-caption">
+                          <span>{{ row.target.label }}名額：</span>
+                          <strong v-if="row.unlimited" class="text-warning">無限制</strong>
+                          <strong v-else>{{ row.capacity }}</strong>
+                          <span class="mx-1">|</span>
+                          <span>時段總名額：{{ row.slotCapacity }}</span>
+                        </v-list-item-subtitle>
+                        <template v-slot:append>
+                          <v-btn icon="mdi-close-circle-outline" size="x-small" color="error" variant="text"
+                            density="compact" @click="removeMethodFromSlotCoverage(row.dateKey, row.slot, row.target)"
+                            title="從此時段移除"></v-btn>
+                        </template>
+                      </v-list-item>
+                      <v-divider v-if="idx < methodModeCoverage.length - 1"></v-divider>
+                    </template>
+                  </v-list>
+                </v-sheet>
+              </div>
             </v-col>
           </v-row>
         </v-card-text>
@@ -3902,6 +4137,18 @@ const pendingNewMethods = ref([]);
 // ✓ 時段詳細設定側面板：追蹤目前選中的時段（null = 未選中）
 const selectedSlotForDetail = ref(null);
 
+// ── 預約批次 Dialog：設定方式切換（依日期 / 依方式）──
+const batchEditMode = ref('byDate'); // 'byDate' | 'byMethod'
+
+// 依方式設定：目前選中的方式/子項目 target keys（複選；格式：'m:方式' 或 's:方式:子項目'）
+const methodModeTargetKeys = ref([]);
+// 依方式設定：批次輸入狀態
+const methodModeDates = ref([]);            // Array<Date>
+const methodModeSlots = ref([]);            // Array<string> e.g. ['09:00', '10:00']
+const methodModeCapacity = ref('');         // 該方式於每個時段的名額
+const methodModeUnlimited = ref(false);     // 是否為「無限制」（共用時段總名額）
+const methodModeSlotTotalCapacity = ref(''); // （選填）僅用於全新時段：時段總名額
+
 
 
 const batchHeaders = [
@@ -4311,21 +4558,16 @@ async function openBatchDialog(item = null) {
     editedBatch.value = { ...defaultBatch, dailyRules: {}, quotaMode: 'shared' };
   }
 
-  // 編輯模式下，自動選中資料庫中已設定時段的日期，讓右側面板直接顯示時段資料
-  if (item && editedBatch.value.dailyRules) {
-    const configuredDates = Object.keys(editedBatch.value.dailyRules)
-      .filter(date => {
-        const slots = editedBatch.value.dailyRules[date]?.slots;
-        return slots && Object.keys(slots).length > 0;
-      })
-      .sort();
-    selectedDaysForEditing.value = configuredDates.map(d => parseISO(d));
-  } else {
-    selectedDaysForEditing.value = [];
-  }
+  // 預設不自動選取任何日期，讓使用者主動挑選要編輯 / 新增設定的日期
+  // （日曆下方的「已設定時段」區塊仍可供使用者參考哪些日期已有設定）
+  selectedDaysForEditing.value = [];
   pendingNewSlots.value = [];
   pendingNewMethods.value = [];
   pendingNewCapacity.value = 1;
+  // 重置依方式設定模式狀態
+  batchEditMode.value = 'byDate';
+  methodModeTargetKeys.value = [];
+  resetMethodModeInputs();
   isBatchDialogVisible.value = true;
 
   // 等 DOM 更新完畢後才解除 flag，避免 watcher 誤清空
@@ -4913,6 +5155,295 @@ function removeSlot(slot) {
   editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
 }
 
+// ───────────────────── 依方式設定模式 ─────────────────────
+
+// 方式/子項目扁平清單（用於 Radio 選擇）
+const methodModeTargets = computed(() => {
+  const methods = availableBatchMethods.value || [];
+  const subMap = batchMethodSubOptionsMap.value || {};
+  const targets = [];
+  methods.forEach(method => {
+    const subs = subMap[method] || [];
+    if (subs.length === 0) {
+      targets.push({
+        type: 'method',
+        method,
+        subOption: null,
+        label: method,
+        key: `m:${method}`
+      });
+    } else {
+      subs.forEach(sub => {
+        targets.push({
+          type: 'subOption',
+          method,
+          subOption: sub,
+          label: sub,
+          parent: method,
+          key: `s:${method}:${sub}`
+        });
+      });
+    }
+  });
+  return targets;
+});
+
+// 目前選中的 target 物件清單（依使用者勾選順序回傳，過濾掉不存在的 key）
+const methodModeSelectedTargets = computed(() => {
+  const map = new Map(methodModeTargets.value.map(t => [t.key, t]));
+  return (methodModeTargetKeys.value || [])
+    .map(k => map.get(k))
+    .filter(Boolean);
+});
+
+function methodModeSelectAll() {
+  methodModeTargetKeys.value = methodModeTargets.value.map(t => t.key);
+}
+function methodModeClearSelection() {
+  methodModeTargetKeys.value = [];
+}
+function toggleMethodModeTarget(key) {
+  const idx = methodModeTargetKeys.value.indexOf(key);
+  if (idx === -1) methodModeTargetKeys.value = [...methodModeTargetKeys.value, key];
+  else methodModeTargetKeys.value = methodModeTargetKeys.value.filter(k => k !== key);
+}
+
+// 所選方式/子項目目前已覆蓋的日期×時段清單（合併多個 target 的結果，每筆以 target 標示）
+const methodModeCoverage = computed(() => {
+  const targets = methodModeSelectedTargets.value;
+  if (!targets.length) return [];
+  const rows = [];
+  const dailyRules = editedBatch.value.dailyRules || {};
+
+  // 名額顯示規則（與預覽口徑一致）：
+  // - undefined / null / '' → 無限制（共用時段總名額），仍列出
+  // - 數值 > 0 → 顯示數字
+  // - 數值 === 0 → 明確未設定，不列出
+  const classifyCap = (raw) => {
+    if (raw === undefined || raw === null || raw === '') {
+      return { show: true, display: '無限制', unlimited: true };
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return { show: false };
+    return { show: true, display: n, unlimited: false };
+  };
+
+  const dateKeys = Object.keys(dailyRules).sort();
+  dateKeys.forEach(dateKey => {
+    const slots = dailyRules[dateKey]?.slots || {};
+    const slotKeys = Object.keys(slots).sort();
+    slotKeys.forEach(slot => {
+      const daySlot = slots[slot];
+      if (!daySlot) return;
+      targets.forEach(target => {
+        const parentEnabled = Array.isArray(daySlot.methods) && daySlot.methods.includes(target.method);
+        if (target.type === 'subOption') {
+          const info = classifyCap(daySlot.subOptionLimits?.[target.subOption]);
+          if (!info.show) return;
+          rows.push({
+            target,
+            dateKey,
+            slot,
+            capacity: info.display,
+            unlimited: info.unlimited,
+            slotCapacity: daySlot.capacity || 0,
+            parentEnabled
+          });
+        } else {
+          if (!parentEnabled) return;
+          const info = classifyCap(daySlot.methodLimits?.[target.method]);
+          if (!info.show) return;
+          rows.push({
+            target,
+            dateKey,
+            slot,
+            capacity: info.display,
+            unlimited: info.unlimited,
+            slotCapacity: daySlot.capacity || 0,
+            parentEnabled: true
+          });
+        }
+      });
+    });
+  });
+  return rows;
+});
+
+// 套用：將所有選中的方式/子項目以相同名額寫入指定日期×時段（合併；不覆蓋既有 slot 的總名額）
+function applyByMethod() {
+  const targets = methodModeSelectedTargets.value;
+  if (!targets.length) {
+    showSnackbar('請先選擇至少一個方式或子項目', 'warning');
+    return;
+  }
+  const dates = methodModeDates.value || [];
+  const slots = (methodModeSlots.value || []).filter(s => /^([01]\d|2[0-3]):([0-5]\d)$/.test(s));
+  if (dates.length === 0) {
+    showSnackbar('請選擇至少一個日期', 'warning');
+    return;
+  }
+  if (slots.length === 0) {
+    showSnackbar('請輸入至少一個時段（格式 HH:MM）', 'warning');
+    return;
+  }
+
+  const isUnlimited = methodModeUnlimited.value === true;
+  const methodCapStr = String(methodModeCapacity.value).trim();
+  const methodCap = methodCapStr === '' ? 0 : (Number(methodCapStr) || 0);
+  if (!isUnlimited && methodCap <= 0) {
+    showSnackbar('請輸入有效名額（需大於 0），或勾選「無限制」', 'warning');
+    return;
+  }
+  const slotTotalStr = String(methodModeSlotTotalCapacity.value).trim();
+  const slotTotalCap = slotTotalStr === '' ? null : (Number(slotTotalStr) || 0);
+
+  // 依父方式分組：以便一次把「未被任何選中項目覆蓋的兄弟子項目」補 0
+  // selectedSubsByParent[method] = Set<subOption>（此次套用涵蓋的子項目名稱）
+  const selectedSubsByParent = {};
+  // parentsWithoutSubSelection = 直接選中父方式（無子項目分支）的方式名稱
+  const parentsWithoutSubSelection = new Set();
+  targets.forEach(t => {
+    if (t.type === 'subOption') {
+      if (!selectedSubsByParent[t.method]) selectedSubsByParent[t.method] = new Set();
+      selectedSubsByParent[t.method].add(t.subOption);
+    } else {
+      parentsWithoutSubSelection.add(t.method);
+    }
+  });
+
+  let createdSlotCount = 0;
+  let mergedSlotCount = 0;
+
+  dates.forEach(d => {
+    const dateKey = formatDate(d);
+    if (!editedBatch.value.dailyRules[dateKey]) {
+      editedBatch.value.dailyRules[dateKey] = { slots: {} };
+    }
+    const daySlots = editedBatch.value.dailyRules[dateKey].slots;
+
+    slots.forEach(slot => {
+      const isNew = !daySlots[slot];
+      if (isNew) {
+        const initialCap = (slotTotalCap !== null && slotTotalCap > 0)
+          ? slotTotalCap
+          : (methodCap > 0 ? methodCap : 1);
+        daySlots[slot] = {
+          capacity: initialCap,
+          methods: [],
+          methodLimits: {},
+          subOptionLimits: {}
+        };
+        createdSlotCount++;
+      } else {
+        mergedSlotCount++;
+      }
+
+      const daySlot = daySlots[slot];
+      if (!daySlot.methods) daySlot.methods = [];
+      if (!daySlot.methodLimits) daySlot.methodLimits = {};
+      if (!daySlot.subOptionLimits) daySlot.subOptionLimits = {};
+
+      targets.forEach(target => {
+        if (!daySlot.methods.includes(target.method)) {
+          daySlot.methods.push(target.method);
+        }
+        if (target.type === 'subOption') {
+          if (isUnlimited) {
+            delete daySlot.subOptionLimits[target.subOption];
+          } else {
+            daySlot.subOptionLimits[target.subOption] = methodCap;
+          }
+        } else {
+          if (isUnlimited) {
+            delete daySlot.methodLimits[target.method];
+          } else {
+            daySlot.methodLimits[target.method] = methodCap;
+          }
+        }
+      });
+
+      // ✓【修復】同父方式下，未被勾選的兄弟子項目若尚未設定，補上明確的 0
+      // 否則下游會把 undefined 解讀為「共用 / 無限」，導致使用者沒設定的子項目被誤當成可預約
+      Object.entries(selectedSubsByParent).forEach(([parentMethod, selectedSet]) => {
+        const siblingSubs = batchMethodSubOptionsMap.value[parentMethod] || [];
+        siblingSubs.forEach(sib => {
+          if (!selectedSet.has(sib) && daySlot.subOptionLimits[sib] === undefined) {
+            daySlot.subOptionLimits[sib] = 0;
+          }
+        });
+      });
+
+      recalcCapacityForSlot(dateKey, slot);
+    });
+  });
+
+  editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
+
+  // ✓【修復】將新套用的日期併入 selectedDaysForEditing，executeSave 會根據此陣列過濾 dailyRules
+  const existingKeys = new Set(selectedDaysForEditing.value.map(d => formatDate(d)));
+  const mergedDays = [...selectedDaysForEditing.value];
+  dates.forEach(d => {
+    const k = formatDate(d);
+    if (!existingKeys.has(k)) {
+      mergedDays.push(d);
+      existingKeys.add(k);
+    }
+  });
+  if (mergedDays.length !== selectedDaysForEditing.value.length) {
+    selectedDaysForEditing.value = mergedDays;
+  }
+
+  showSnackbar(
+    `已套用 ${targets.length} 個項目至 ${dates.length} 個日期 × ${slots.length} 個時段（新增 ${createdSlotCount}，合併 ${mergedSlotCount}）`,
+    'success'
+  );
+
+  // 保留 targets 與日期選擇，僅清空時段與名額，方便連續設定
+  methodModeSlots.value = [];
+  methodModeCapacity.value = '';
+  methodModeUnlimited.value = false;
+  methodModeSlotTotalCapacity.value = '';
+}
+
+// 從單一日期×時段移除指定的方式/子項目（target 由呼叫端傳入，對應覆蓋列表中的該筆）
+function removeMethodFromSlotCoverage(dateKey, slot, target) {
+  if (!target) return;
+  const daySlot = editedBatch.value.dailyRules[dateKey]?.slots?.[slot];
+  if (!daySlot) return;
+
+  if (target.type === 'subOption') {
+    // ✓【修復】不能 delete — 原本就是 undefined（無限制）時 delete 是 no-op
+    //   要明確寫入 0，表示「此子項目於該時段不可用」，classifyCap 才會把它過濾掉
+    if (!daySlot.subOptionLimits) daySlot.subOptionLimits = {};
+    daySlot.subOptionLimits[target.subOption] = 0;
+  } else {
+    if (Array.isArray(daySlot.methods)) {
+      daySlot.methods = daySlot.methods.filter(m => m !== target.method);
+    }
+    if (daySlot.methodLimits) {
+      delete daySlot.methodLimits[target.method];
+    }
+  }
+
+  recalcCapacityForSlot(dateKey, slot);
+  editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
+
+  // ✓【修復】將該日期併入 selectedDaysForEditing，否則儲存時會被過濾掉導致變更未寫入
+  const existingKeys = new Set(selectedDaysForEditing.value.map(d => formatDate(d)));
+  if (!existingKeys.has(dateKey)) {
+    selectedDaysForEditing.value = [...selectedDaysForEditing.value, parseISO(dateKey)];
+  }
+}
+
+// 切換至依方式模式時，重置批次輸入狀態（保留 targetKey 以利連續操作）
+function resetMethodModeInputs() {
+  methodModeDates.value = [];
+  methodModeSlots.value = [];
+  methodModeCapacity.value = '';
+  methodModeUnlimited.value = false;
+  methodModeSlotTotalCapacity.value = '';
+}
+
 function isMethodSelectedForSlot(slot, method) {
   if (selectedDaysForEditing.value.length === 0) return false;
   const firstDateKey = formatDate(selectedDaysForEditing.value[0]);
@@ -5422,23 +5953,31 @@ watch(selectedDaysForEditing, (newDates, oldDates) => {
 
         if (Object.keys(templateSlots).length > 0) {
           // 為新日期複製時段配置
+          // ✓【保護】若該日期已有自身 slots（例如依方式設定模式剛寫入），跳過複製避免覆蓋使用者資料
+          const copiedDateKeys = [];
           newAddedDates.forEach(newDate => {
             const newDateKey = formatDate(newDate);
-            if (!editedBatch.value.dailyRules[newDateKey]) {
+            const existing = editedBatch.value.dailyRules[newDateKey];
+            if (existing && Object.keys(existing.slots || {}).length > 0) {
+              return;
+            }
+            if (!existing) {
               editedBatch.value.dailyRules[newDateKey] = { slots: {} };
             }
             // 深複製時段配置
             editedBatch.value.dailyRules[newDateKey].slots = JSON.parse(
               JSON.stringify(templateSlots)
             );
+            copiedDateKeys.push(newDateKey);
           });
-          editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
-
-          // ✓【提示用戶】顯示已自動複製時段
-          showSnackbar(
-            `✨ 已自動複製 ${templateDateKey} 的時段設定到 ${newAddedDates.map(d => formatDate(d)).join('、')}`,
-            'success'
-          );
+          if (copiedDateKeys.length > 0) {
+            editedBatch.value.dailyRules = { ...editedBatch.value.dailyRules };
+            // ✓【提示用戶】顯示已自動複製時段
+            showSnackbar(
+              `✨ 已自動複製 ${templateDateKey} 的時段設定到 ${copiedDateKeys.join('、')}`,
+              'success'
+            );
+          }
         }
       }
     }
