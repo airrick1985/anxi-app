@@ -1483,7 +1483,7 @@ const isAuthFlowRequired = computed(() => {
   if (!projectConfig.value?.bookingMenu?.length) return false;
   const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
   if (!selectedItem?.methods) return false;
-  const methodObj = selectedItem.methods.find(m => m.title === formStep1.value.bookingMethod);
+  const methodObj = selectedItem.methods.find(m => m.title === formStep1.value.bookingMethod && !m.deleted);
   return !!(methodObj && methodObj.triggerAuthFlow);
 });
 
@@ -1492,7 +1492,7 @@ const showOwnerPresenceQuestion = computed(() => {
   if (!projectConfig.value?.bookingMenu?.length) return false;
   const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
   if (!selectedItem?.methods) return false;
-  const methodObj = selectedItem.methods.find(m => m.title === formStep1.value.bookingMethod);
+  const methodObj = selectedItem.methods.find(m => m.title === formStep1.value.bookingMethod && !m.deleted);
   return !!(methodObj && methodObj.askOwnerPresence);
 });
 
@@ -1760,7 +1760,7 @@ watch(() => formStep1.value.bookingMethod, (newMethodName) => {
   if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
     const selectedItem = projectConfig.value.bookingMenu.find(item => item.title === formStep1.value.bookingType && !item.deleted);
     if (selectedItem && selectedItem.methods) {
-      const methodObj = selectedItem.methods.find(m => m.title === newMethodName);
+      const methodObj = selectedItem.methods.find(m => m.title === newMethodName && !m.deleted);
       if (methodObj && methodObj.customFields) {
         currentDynamicFields.value = methodObj.customFields;
       }
@@ -2190,17 +2190,14 @@ watch(() => formStep1.value.bookingType, (newType) => {
 // --- START: ✓ 修改 watch 監聽 bookingMethod ---
 // 監聽驗屋方式的變化，自動調整 isOwnerPresent 狀態 (排除對保)
 watch(() => formStep1.value.bookingMethod, (newMethod, oldMethod) => {
+  // 切換方式時，一律清空上一個方式殘留的動態欄位資料與授權狀態
+  isSigningInitiated.value = false;
+  dynamicFormData.value = {};
+
   // 如果預約項目是「對保」，則 isOwnerPresent 始終為 true，不受 bookingMethod 影響
   if (formStep1.value.bookingType === '對保') {
     formStep1.value.isOwnerPresent = true; // 再次確保是 true
-    isSigningInitiated.value = false; // 但仍然重設授權狀態
-    return; // 不執行後續判斷
   }
-
-  // 處理非「對保」時的情況
-  // 切換驗屋方式時，重設授權書寄送狀態
-  isSigningInitiated.value = false;
-  dynamicFormData.value = {}; // Reset dynamic data when method changes
 });
 // --- END: ✓ 修改 watch 監聯 bookingMethod ---
 
@@ -2228,15 +2225,18 @@ const displayDynamicFields = computed(() => {
 
   const allFields = flatten(currentDynamicFields.value);
 
-  return Object.entries(data).map(([key, val]) => {
-    const fieldParam = allFields.find(f => f.id === key);
-    let displayVal = val;
-    if (Array.isArray(val)) displayVal = val.join(', ');
-    return {
-      label: fieldParam ? fieldParam.label : key,
-      value: displayVal
-    };
-  });
+  return Object.entries(data)
+    .map(([key, val]) => {
+      const fieldParam = allFields.find(f => f.id === key);
+      if (!fieldParam) return null; // 欄位已不屬於目前方式（殘留資料），略過不顯示
+      let displayVal = val;
+      if (Array.isArray(val)) displayVal = val.join(', ');
+      return {
+        label: fieldParam.label,
+        value: displayVal
+      };
+    })
+    .filter(Boolean);
 });
 
 
