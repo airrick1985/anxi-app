@@ -59,6 +59,10 @@
         <v-icon start>mdi-form-select</v-icon>
         自訂表單
       </v-tab>
+      <v-tab value="realPriceReport">
+        <v-icon start>mdi-home-city-outline</v-icon>
+        實價登錄申報設定
+      </v-tab>
       <v-tab value="sheetSync">
         <v-icon start>mdi-google-spreadsheet</v-icon>
         Google Sheet 同步設定
@@ -172,6 +176,30 @@
                 ></v-btn>
               </div>
             </div>
+            <!-- 房土比計算公式設定 -->
+            <v-divider class="my-4"></v-divider>
+            <div class="mb-4">
+              <p class="text-subtitle-1 mb-2">房土比計算公式</p>
+              <p class="text-caption text-grey-darken-1 mb-3">
+                設定「房屋價款」與「土地價款」的自動計算公式。
+                目前公式：
+                <template v-if="project.priceFormulaSettings?.housePriceFormula">
+                  <br>• 房屋：{{ formulaPreview(project.priceFormulaSettings.housePriceFormula) }}
+                  <br>• 土地：{{ formulaPreview(project.priceFormulaSettings.landPriceFormula) }}
+                </template>
+                <template v-else>
+                  <span class="text-warning">尚未設定，將採用系統預設</span>
+                </template>
+              </p>
+              <v-btn
+                color="deep-orange"
+                variant="tonal"
+                prepend-icon="mdi-calculator-variant"
+                @click="priceFormulaDialog = true">
+                編輯公式
+              </v-btn>
+            </div>
+
             <v-btn
               color="primary"
               @click="saveProjectSettings"
@@ -703,6 +731,10 @@
         <v-card class="pa-4" elevation="2">
           <CustomFormManager :projectId="projectId" />
         </v-card>
+      </v-window-item>
+
+      <v-window-item value="realPriceReport">
+        <RealPriceReportSettings :projectId="projectId" />
       </v-window-item>
 
       <v-window-item value="sheetSync">
@@ -1519,7 +1551,15 @@
       </div>
       </v-card>
     </v-dialog>
-    
+
+    <!-- 房土比計算公式 -->
+    <PriceFormulaDialog
+      v-if="priceFormulaDialog"
+      :show="priceFormulaDialog"
+      :model-value="project?.priceFormulaSettings"
+      @update:show="priceFormulaDialog = $event"
+      @save="onPriceFormulaSave" />
+
   </v-container>
 </template>
 
@@ -1555,7 +1595,12 @@ import {
   syncCancelledPurchasesToSheet, // ✅ 新增
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
-import PaymentTermsSettings from './PaymentTermsSettings.vue'; 
+import PaymentTermsSettings from './PaymentTermsSettings.vue';
+import PriceFormulaDialog from '@/components/PriceFormulaDialog.vue';
+import {
+  formulaToDisplayString,
+  roundingToDisplayString,
+} from '@/composables/usePriceFormula';
 
 
 const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
@@ -1586,6 +1631,19 @@ const project = ref(null);
 const projectLoading = ref(true);
 const isSavingProject = ref(false);
 const newContractType = ref('');
+
+// 房土比計算公式對話框
+const priceFormulaDialog = ref(false);
+function formulaPreview(formula) {
+  if (!formula) return '(未設定)';
+  return `${formulaToDisplayString(formula)}，${roundingToDisplayString(formula.rounding)}`;
+}
+function onPriceFormulaSave(formulas) {
+  if (!project.value) return;
+  project.value.priceFormulaSettings = formulas;
+  priceFormulaDialog.value = false;
+  toast.info('公式已更新，請按「儲存專案設定」才會真正存檔');
+}
 
 
 // Sales Parameters State
@@ -2436,6 +2494,7 @@ const executeSvgDelete = async () => {
 };
 
 const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
+const RealPriceReportSettings = defineAsyncComponent(() => import('@/components/RealPriceReport/RealPriceReportSettings.vue'));
 
 
 const fetchSheetNames = async () => {

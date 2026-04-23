@@ -76,6 +76,17 @@
               </v-card>
 
               <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+                <div class="d-flex align-center mb-2">
+                  <v-icon color="brown" class="mr-2">mdi-map-marker-multiple</v-icon>
+                  <span class="text-subtitle-1 font-weight-bold" style="color: #795548;">土地標的清冊</span>
+                </div>
+                <LandParcelsPanel
+                  v-model="editingData.landParcels"
+                  :editable="true"
+                />
+              </v-card>
+
+              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <div class="d-flex align-center">
                     <v-icon color="primary" class="mr-2">mdi-cash-multiple</v-icon>
@@ -116,6 +127,52 @@
                   <v-col cols="12" md="3" v-if="viewMode === 'sales'" class="d-flex align-center">
                     <v-switch v-model="editingData.isPreferredPayment" label="優付" color="primary" hide-details
                       density="compact" class="ml-2" inset></v-switch>
+                  </v-col>
+                </v-row>
+              </v-card>
+
+              <!-- 房土比設定（兩比例加總必須=100） -->
+              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+                <div class="d-flex align-center mb-2">
+                  <v-icon color="deep-orange" class="mr-2">mdi-chart-donut</v-icon>
+                  <span class="text-subtitle-1 font-weight-bold" style="color: #e65100;">房土比</span>
+                  <v-spacer />
+                  <v-chip v-if="editingRatioSum > 0 && Math.abs(editingRatioSum - 100) > 0.001"
+                    size="small" color="error" variant="tonal">
+                    加總 {{ editingRatioSum }}% ≠ 100%，無法儲存
+                  </v-chip>
+                  <v-chip v-else-if="editingRatioSum === 100"
+                    size="small" color="success" variant="tonal" prepend-icon="mdi-check-circle">
+                    加總 100%
+                  </v-chip>
+                </div>
+                <v-row dense>
+                  <v-col cols="12" md="3">
+                    <v-text-field
+                      v-model="editingData.housePriceRatio"
+                      label="房屋價款比例"
+                      suffix="%"
+                      type="number"
+                      min="0" max="100" step="0.01"
+                      variant="outlined" density="compact"
+                      hide-details="auto" />
+                  </v-col>
+                  <v-col cols="12" md="3">
+                    <v-text-field
+                      v-model="editingData.landPriceRatio"
+                      label="土地價款比例"
+                      suffix="%"
+                      type="number"
+                      min="0" max="100" step="0.01"
+                      variant="outlined" density="compact"
+                      hide-details="auto" />
+                  </v-col>
+                  <v-col cols="12" md="6" class="d-flex align-center">
+                    <div class="text-caption text-grey-darken-1">
+                      依建案公式即時計算：
+                      <span class="ml-2">房屋價款 <strong>{{ formatNumber(priceCalcResult.housePrice, priceCalcDecimals.house) }}</strong> 萬</span>
+                      <span class="ml-2">土地價款 <strong>{{ formatNumber(priceCalcResult.landPrice, priceCalcDecimals.land) }}</strong> 萬</span>
+                    </div>
                   </v-col>
                 </v-row>
               </v-card>
@@ -207,6 +264,11 @@
                             <span>{{ formatNumber(unitData.land_share_sqm, 2) }}</span>
                           </div>
                         </div>
+                        <LandParcelsPanel
+                          class="mt-2"
+                          :model-value="unitData.landParcels || []"
+                          :editable="false"
+                        />
                       </div>
                     </div>
                   </v-col>
@@ -306,6 +368,54 @@
                             class="font-weight-bold total-price-item"><v-list-item-title>成交總價</v-list-item-title><template
                               v-slot:append><span class="highlight-price-final">{{
                                 formatNumber(grandTotalTransactionPrice) }} 萬</span></template></v-list-item>
+                          <!-- 特殊合約（毛胚/配套）：顯示配套拆分附註 -->
+                          <template v-if="isSpecialContract">
+                            <v-list-item class="package-annotation" title="配套房屋總價">
+                              <template v-slot:append>
+                                <span>{{ formatNumber(packageHouseTotal) }} 萬</span>
+                              </template>
+                            </v-list-item>
+                            <v-list-item class="package-annotation" title="配套價格">
+                              <template v-slot:append>
+                                <span>{{ formatNumber(packagePrice) }} 萬</span>
+                              </template>
+                            </v-list-item>
+                          </template>
+                          <!-- 房土比 + 依公式計算的房屋/土地價款（可收合） -->
+                          <v-list-item class="ratio-row ratio-row-toggle"
+                            @click="showRatioBreakdown = !showRatioBreakdown"
+                            :ripple="false" style="cursor: pointer;">
+                            <v-list-item-title class="d-flex align-center">
+                              <v-icon size="small" class="mr-1">
+                                {{ showRatioBreakdown ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
+                              </v-icon>
+                              <span>房土比</span>
+                              <v-chip v-if="ratioSum > 0 && Math.abs(ratioSum - 100) > 0.001"
+                                size="x-small" color="error" variant="tonal" class="ml-2">
+                                加總 {{ ratioSum }}% ≠ 100%
+                              </v-chip>
+                            </v-list-item-title>
+                            <template v-slot:append>
+                              <span class="text-body-2">
+                                房 <strong>{{ priceCalcSource?.housePriceRatio ?? 0 }}%</strong>
+                                / 土 <strong>{{ priceCalcSource?.landPriceRatio ?? 0 }}%</strong>
+                              </span>
+                            </template>
+                          </v-list-item>
+                          <template v-if="showRatioBreakdown">
+                            <v-list-item title="房屋價款" class="ratio-detail">
+                              <template v-slot:append>
+                                <span v-if="priceCalcResult.error" class="text-caption text-error">{{ priceCalcResult.error }}</span>
+                                <span v-else>{{ formatNumber(priceCalcResult.housePrice, priceCalcDecimals.house) }} 萬</span>
+                              </template>
+                            </v-list-item>
+                            <v-list-item title="土地價款" class="ratio-detail">
+                              <template v-slot:append>
+                                <span v-if="priceCalcResult.error" class="text-caption text-error">—</span>
+                                <span v-else>{{ formatNumber(priceCalcResult.landPrice, priceCalcDecimals.land) }} 萬</span>
+                              </template>
+                            </v-list-item>
+                          </template>
                           <v-list-item
                             class="font-weight-bold total-price-item"><v-list-item-title>合計底價</v-list-item-title><template
                               v-slot:append><span class="highlight-price">{{ formatNumber(totalFloorPrice) }}
@@ -343,6 +453,7 @@
                           <v-list-item title="補足日期" :subtitle="formatDate(unitData.payment_complete_date)"></v-list-item>
                           <v-list-item title="簽約日期"
                             :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
+                          <v-list-item title="申報書序號" :subtitle="unitData.reportNo || '-'"></v-list-item>
                           <v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{
                               unitData.remarks || '-'
                               }}</v-list-item-subtitle></v-list-item>
@@ -400,6 +511,11 @@
                 <v-icon left>mdi-account-cancel-outline</v-icon>
                 辦理退戶
               </v-btn>
+              <v-btn v-if="viewMode === 'sales'" color="deep-purple" variant="outlined"
+                @click="openRealPriceReportDialog">
+                <v-icon left>mdi-file-document-arrow-right-outline</v-icon>
+                實價登錄
+              </v-btn>
               <v-btn v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl" color="primary" variant="flat"
                 :href="unitData.driveFolderUrl" target="_blank">
                 <v-icon left>mdi-folder-google-drive</v-icon>
@@ -436,31 +552,39 @@
                 </v-btn>
               </template>
               <template v-else>
-                <v-btn v-if="viewMode === 'sales' && isSold" stacked variant="text" color="error" class="flex-grow-1"
-                  @click="openCancelPurchaseDialog">
-                  <v-icon>mdi-account-cancel-outline</v-icon>
-                  <span class="text-caption">退戶</span>
-                </v-btn>
-
-                <v-btn v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl" stacked variant="text"
-                  class="flex-grow-1" :href="unitData.driveFolderUrl" target="_blank">
-                  <v-icon>mdi-folder-google-drive</v-icon>
-                  <span class="text-caption">資料夾</span>
-                </v-btn>
-                <v-btn stacked variant="text" color="success" class="flex-grow-1" @click="downloadExcel">
-                  <v-icon>mdi-microsoft-excel</v-icon>
-                  <span class="text-caption">下載</span>
-                </v-btn>
+                <!-- 主要操作：加入報價 -->
                 <v-btn stacked variant="text" color="success" class="flex-grow-1" @click="handleAddToQuote"
                   :disabled="!canAddToQuote">
                   <v-icon>mdi-plus-box-outline</v-icon>
                   <span class="text-caption">{{ addToQuoteButtonText }}</span>
                 </v-btn>
+                <!-- 主要操作：付款表設定 -->
                 <v-btn v-if="viewMode === 'sales'" stacked variant="text" class="flex-grow-1"
                   @click="openPaymentSettings">
                   <v-icon>mdi-cash-register</v-icon>
                   <span class="text-caption">付款表</span>
                 </v-btn>
+                <!-- 更多操作：退戶 / 實價登錄 / 資料夾 / 下載 -->
+                <v-menu location="top end" :close-on-content-click="true">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" stacked variant="text" class="flex-grow-1">
+                      <v-icon>mdi-dots-horizontal</v-icon>
+                      <span class="text-caption">更多</span>
+                    </v-btn>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item v-if="viewMode === 'sales' && isSold" @click="openCancelPurchaseDialog"
+                      prepend-icon="mdi-account-cancel-outline" title="辦理退戶" />
+                    <v-list-item v-if="viewMode === 'sales'" @click="openRealPriceReportDialog"
+                      prepend-icon="mdi-file-document-arrow-right-outline" title="實價登錄" />
+                    <v-list-item v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
+                      :href="unitData.driveFolderUrl" target="_blank"
+                      prepend-icon="mdi-folder-google-drive" :title="`${unitData.unitId} 資料夾`" />
+                    <v-list-item v-if="viewMode === 'sales'" @click="downloadExcel"
+                      prepend-icon="mdi-microsoft-excel" title="下載本戶資料" />
+                  </v-list>
+                </v-menu>
+                <!-- 關閉 -->
                 <v-btn stacked variant="text" class="flex-grow-1" @click="close">
                   <v-icon>mdi-close</v-icon>
                   <span class="text-caption">關閉</span>
@@ -477,6 +601,15 @@
   <CancelPurchaseDialog :show="showCancelDialog" @update:show="showCancelDialog = $event" title="確認辦理退戶"
     :message="cancelDialogMessage" confirm-text="確認退戶" confirm-color="error" :loading="isSaving"
     @confirm="handleConfirmCancelPurchase" @cancel="showCancelDialog = false" />
+
+  <RealPriceReportExportDialog
+    v-if="showRealPriceReportDialog"
+    :show="showRealPriceReportDialog"
+    :project-id="projectId"
+    :project-name="projectName"
+    :unit-data="enrichedUnitData || unitData"
+    :price-formulas="priceFormulas"
+    @update:show="showRealPriceReportDialog = $event" />
 
   <ConfirmationDialog :show="showPriceChangeDialog" @update:show="showPriceChangeDialog = $event" title="確認變更價格"
     message="您已修改房屋表價或房屋底價，是否確定要變更並儲存？" confirm-text="確定儲存" confirm-color="primary" :loading="isSaving"
@@ -676,17 +809,33 @@ import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import SalesBotChat from './SalesBotChat.vue';
+import LandParcelsPanel from './LandParcelsPanel.vue';
+import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
 import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
+import RealPriceReportExportDialog from './RealPriceReport/ExportDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
 import * as XLSX from 'xlsx';
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
 const showPriceChangeDialog = ref(false); // ✅ [新增] 控制價格變更提醒框
+const showRealPriceReportDialog = ref(false);
+
+function openRealPriceReportDialog() {
+  if (!props.unitData) {
+    toast.error('無戶別資料可匯出');
+    return;
+  }
+  if (!props.unitData.building) {
+    toast.error('此戶別缺少棟別資訊，無法匯出實價登錄 JSON');
+    return;
+  }
+  showRealPriceReportDialog.value = true;
+}
 const isPriceEditable = ref(false); // ✅ [新增] 控制價格欄位是否可編輯
 
 const savingText = ref('儲存中，請稍候...');
@@ -890,7 +1039,7 @@ const props = defineProps({
   projectName: { type: String, required: true },
   contractTypes: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✅ 修正：新增這一行
-  contractTypes: { type: Array, default: () => [] }
+  priceFormulas: { type: Object, default: () => null }, // 房土比計算公式（建案層級）
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
@@ -1051,6 +1200,50 @@ const enrichedUnitData = computed(() => {
 
 const assignedParkingLots = computed(() => enrichedUnitData.value?.['持有車位'] || []);
 const houseTransactionPrice = computed(() => Number(props.unitData?.price_transaction_house) || 0);
+
+// 房土比明細（房屋/土地價款）預設收合，使用者點擊展開
+const showRatioBreakdown = ref(false);
+
+// 合約方式為「毛胚/配套」等特殊類型時，顯示配套拆分附註
+// SPECIAL_CONTRACT_TYPES 統一由 usePriceFormula.js 維護（房土比計算也會引用）
+const isSpecialContract = computed(() => isSpecialContractType(props.unitData?.contractType));
+const packageHouseTotal = computed(() => Number(props.unitData?.price_package_deal) || 0);
+const packagePrice = computed(() => {
+  const total = Number(props.unitData?.price_transaction_total) || grandTotalTransactionPrice.value || 0;
+  return total - packageHouseTotal.value;
+});
+
+// ── 房土比 & 計算結果（依建案公式即時計算，不寫回 Firestore） ──
+// 編輯中以 editingData 為依據（讓使用者改比例可立即看到結果），否則以 enrichedUnitData
+const priceCalcSource = computed(() => {
+  if (isEditing.value && editingData.value) return editingData.value;
+  return enrichedUnitData.value || props.unitData;
+});
+const priceCalcResult = computed(() => {
+  if (!priceCalcSource.value) return { housePrice: 0, landPrice: 0, error: '' };
+  return computeHouseLandPrices(priceCalcSource.value, props.priceFormulas);
+});
+// 依公式進位設定取得小數位數，用於顯示時的 formatNumber
+const priceCalcDecimals = computed(() => {
+  const fallback = buildDefaultFormulas();
+  const h = props.priceFormulas?.housePriceFormula?.rounding?.decimals
+    ?? fallback.housePriceFormula.rounding.decimals;
+  const l = props.priceFormulas?.landPriceFormula?.rounding?.decimals
+    ?? fallback.landPriceFormula.rounding.decimals;
+  return { house: Number(h) || 0, land: Number(l) || 0 };
+});
+const ratioSum = computed(() => {
+  const h = Number(priceCalcSource.value?.housePriceRatio) || 0;
+  const l = Number(priceCalcSource.value?.landPriceRatio) || 0;
+  return Math.round((h + l) * 100) / 100;  // 避免 0.1+0.2 浮點誤差
+});
+// 編輯中 editingData 的加總（供驗證 / 標籤顯示）
+const editingRatioSum = computed(() => {
+  if (!isEditing.value || !editingData.value) return 0;
+  const h = Number(editingData.value.housePriceRatio) || 0;
+  const l = Number(editingData.value.landPriceRatio) || 0;
+  return Math.round((h + l) * 100) / 100;
+});
 const parkingTotalTransactionPrice = computed(() => {
   if (!assignedParkingLots.value || assignedParkingLots.value.length === 0) return 0;
   return assignedParkingLots.value.reduce((total, parking) => total + (Number(parking['車位成交價']) || 0), 0);
@@ -1120,6 +1313,10 @@ function startEditing() {
   if (!editingData.value) {
     editingData.value = {};
   }
+  // 土地標的清冊：舊資料無此欄位時預設為空陣列，確保 v-model 綁定可運作
+  if (!Array.isArray(editingData.value.landParcels)) {
+    editingData.value.landParcels = [];
+  }
 
   // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
   if (props.unitData) {
@@ -1138,6 +1335,9 @@ function startEditing() {
 
     // ✅ [新增] 初始化優付欄位，若原資料無此欄位預設為 false
     editingData.value.isPreferredPayment = props.unitData.isPreferredPayment || false;
+
+    // ✅ [新增] 初始化是否首購欄位，僅在明確為 false 時才設為 false，其餘（含 null/undefined）預設為 true
+    editingData.value.isFirstTimeBuyer = props.unitData.isFirstTimeBuyer === false ? false : true;
   }
   // ✅ END: 新增
 
@@ -1163,6 +1363,15 @@ function cancelEditing() {
 // 5. [修改] saveChanges：儲存成功後才執行車位寫入
 async function saveChanges() {
   if (!editingData.value) return;
+
+  // 房土比驗證：兩比例加總必須=100（允許 0/0 代表未設定）
+  const h = Number(editingData.value.housePriceRatio) || 0;
+  const l = Number(editingData.value.landPriceRatio) || 0;
+  const sum = Math.round((h + l) * 100) / 100;
+  if (sum !== 0 && Math.abs(sum - 100) > 0.001) {
+    toast.error(`房土比加總 ${sum}% 不等於 100%，無法儲存。請調整「房屋價款比例」或「土地價款比例」。`);
+    return;
+  }
 
   // ✅ 檢查價格是否被變更
   const originalPriceList = Number(props.unitData?.price_list_house_total) || 0;
@@ -2652,6 +2861,24 @@ onUnmounted(() => {
   border-top: 1px solid #eee;
   margin-top: 4px;
   padding-top: 4px;
+}
+
+.ratio-row-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+.ratio-detail :deep(.v-list-item-title) {
+  padding-left: 20px;
+  font-size: 0.875rem;
+  color: #555;
+}
+.package-annotation {
+  background-color: #fff8e1;
+  border-left: 3px solid #ffa726;
+}
+.package-annotation :deep(.v-list-item-title) {
+  padding-left: 12px;
+  font-size: 0.875rem;
+  color: #6d4c00;
 }
 
 

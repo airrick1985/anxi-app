@@ -1047,7 +1047,7 @@ exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets
       const dataToSave = {};
 
       // 🔒 管理員控制的欄位列表（只有在 Excel 中明確提供時才更新）
-      const adminFields = ['floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type', 'type2'];
+      const adminFields = ['area', 'floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type', 'type2'];
 
       // 🔄 遍歷 Excel 提供的所有欄位
       for (const [key, value] of Object.entries(row)) {
@@ -1063,8 +1063,8 @@ exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets
         }
 
         // ✅ [修改處]：將 number 和 floor 從數字轉換清單中移除，並獨立處理為字串
-        if (['price_list', 'price_floor', 'price_transaction'].includes(key)) {
-          // 這些確實是金額，保持數字轉換
+        if (['price_list', 'price_floor', 'price_transaction', 'area'].includes(key)) {
+          // 這些確實是數值（金額或面積），保持數字轉換
           dataToSave[key] = Number(value) || 0;
         }
         else if (['number', 'floor'].includes(key)) {
@@ -1147,7 +1147,8 @@ exports.uploadHouseholds = onCall({
       'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only',
       'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit',
       'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
-      'price_transaction_house', 'price_transaction_total'
+      'price_transaction_house', 'price_transaction_total',
+      'housePriceRatio', 'landPriceRatio'
     ];
     const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
 
@@ -2630,7 +2631,8 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
       'price_diff', 'price_floor_ancillary', 'price_floor_terrace', 'price_floor_house_only',
       'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit',
       'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
-      'price_transaction_house', 'price_transaction_total'
+      'price_transaction_house', 'price_transaction_total',
+      'housePriceRatio', 'landPriceRatio'
     ];
 
     for (const field of numericFields) {

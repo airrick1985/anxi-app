@@ -402,7 +402,7 @@
         <v-btn
                 color="secondary"
                 variant="flat"
-                @click="handleGenerateDocument"
+                @click="showConfirmDialog = true"
                 :loading="isGenerating"
                 :disabled="isGenerating || !formData?.銷售"
             >
@@ -425,6 +425,67 @@
             
             :project-id="props.projectId" />
             </v-dialog>
+
+    <v-dialog v-model="showConfirmDialog" max-width="520px" persistent>
+        <v-card>
+            <v-card-title class="d-flex align-center pa-4 bg-secondary text-white">
+                <v-icon start>mdi-clipboard-check-outline</v-icon>
+                <span class="text-h6">製作付款表確認</span>
+            </v-card-title>
+            <v-card-text class="pa-0">
+                <div class="pa-4 text-body-2 text-grey-darken-2 bg-grey-lighten-4">
+                    請再次確認以下資訊，確認無誤後再執行製作。
+                </div>
+                <v-list density="comfortable" class="py-0">
+                    <template v-for="(item, idx) in confirmSummaryItems" :key="item.label">
+                        <v-list-item class="px-4">
+                            <template v-slot:prepend>
+                                <v-icon :color="item.color || 'primary'" size="small">{{ item.icon }}</v-icon>
+                            </template>
+                            <v-row no-gutters align="center">
+                                <v-col cols="4" class="text-body-2 text-grey-darken-1">
+                                    {{ item.label }}
+                                </v-col>
+                                <v-col cols="8">
+                                    <span
+                                        class="text-body-1"
+                                        :class="item.valueClass || (item.highlight ? 'font-weight-bold text-error' : 'text-black')"
+                                    >
+                                        {{ item.value }}
+                                    </span>
+                                    <div v-if="item.hint" class="text-caption text-grey mt-0">
+                                        {{ item.hint }}
+                                    </div>
+                                </v-col>
+                            </v-row>
+                        </v-list-item>
+                        <v-divider v-if="idx < confirmSummaryItems.length - 1"></v-divider>
+                    </template>
+                </v-list>
+            </v-card-text>
+            <v-divider></v-divider>
+            <v-card-actions class="pa-3">
+                <v-spacer></v-spacer>
+                <v-btn
+                    variant="text"
+                    color="grey-darken-1"
+                    @click="showConfirmDialog = false"
+                    :disabled="isGenerating"
+                >
+                    取消
+                </v-btn>
+                <v-btn
+                    color="secondary"
+                    variant="flat"
+                    @click="confirmAndGenerate"
+                    :loading="isGenerating"
+                >
+                    <v-icon start>mdi-check</v-icon>
+                    確認製作
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 
     <v-dialog v-model="showGeneratedLinkDialog" max-width="500px" persistent>
             <v-card>
@@ -621,8 +682,8 @@ watch(() => props.show, (newVal) => {
         const defaultStructure = {
             '戶別': 'N/A', '房屋成交價': 0, '配套價': 0, price_package_deal: 0, 
             '合約方式': props.contractTypes.length > 0 ? props.contractTypes[0] : '',
-            // ✓ 修改：'是否首購' 的 key 改為 'isFirstTimeBuyer' 並預設為 false
-            'isFirstTimeBuyer': false, 
+            // ✓ 修改：'是否首購' 的 key 改為 'isFirstTimeBuyer' 並預設為 true
+            'isFirstTimeBuyer': true,
             'usePreferredPayment': false,
            '銷售': '',            
             '房屋總底價': 0, '房屋總表價': 0, '房屋面積(坪)': 0,
@@ -673,12 +734,12 @@ watch(() => props.show, (newVal) => {
         }
 
         // 2. 是否首購 (英文 key 'isFirstTimeBuyer' 映射到 英文 key 'isFirstTimeBuyer')
-        //    (此處用於確保 null/undefined 被正確轉換為 false)
-        if (props.unitData.isFirstTimeBuyer === true) {
-            initialData.isFirstTimeBuyer = true;
-        } else {
-            // 處理 false, null, undefined, 或 ""
+        //    (此處用於確保 null/undefined 預設為 true，僅在明確為 false 時才設為 false)
+        if (props.unitData.isFirstTimeBuyer === false) {
             initialData.isFirstTimeBuyer = false;
+        } else {
+            // 處理 true, null, undefined, 或 ""，預設為 true
+            initialData.isFirstTimeBuyer = true;
         }
         
 
@@ -737,8 +798,81 @@ function updateSelectedParking(newParkingList) {
 }
 // --- [新增] 文件產出相關狀態 ---
 const isGenerating = ref(false); // 控制按鈕的 loading 狀態
+const showConfirmDialog = ref(false); // ✅ 控制「製作付款表」前的確認對話框
 const showGeneratedLinkDialog = ref(false); // 控制產製成功對話框
 const generatedSheetUrl = ref(''); // 儲存產製的 URL
+
+// ✅ [新增] 確認對話框摘要內容：戶別、車位、價格、溢差價、合約方式、是否首購、銷售人員
+const confirmSummaryItems = computed(() => {
+    const data = formData.value || {};
+    const spots = ownedParkingSpots.value || [];
+    const houseTotal = Math.round(Number(data.房屋成交價) || 0);
+    const parkingTotal = Math.round(Number(calculated.value.totalParkingSalePrice) || 0);
+    const grandTotal = Math.round(Number(calculated.value.grandTotalSalePrice) || 0);
+    const baseTotal = Math.round(Number(calculated.value.grandTotalBasePrice) || 0);
+    const priceDiff = Math.round(Number(calculated.value.priceDifference) || 0);
+    // 正體中文註解：溢差價 = 總成交價 − 總底價；正值為溢價（綠）、負值為差價（紅）、0 為持平（灰）
+    const diffPrefix = priceDiff > 0 ? '+' : '';
+    const diffClass = priceDiff > 0
+        ? 'font-weight-bold text-success'
+        : (priceDiff < 0 ? 'font-weight-bold text-error' : 'font-weight-bold text-grey-darken-1');
+    const diffIcon = priceDiff > 0
+        ? 'mdi-trending-up'
+        : (priceDiff < 0 ? 'mdi-trending-down' : 'mdi-minus');
+    const diffIconColor = priceDiff > 0 ? 'success' : (priceDiff < 0 ? 'error' : 'grey');
+
+    return [
+        {
+            label: '戶別',
+            icon: 'mdi-home-outline',
+            value: data.unitId || data['戶別'] || '-'
+        },
+        {
+            label: '車位',
+            icon: 'mdi-car',
+            value: spots.length > 0
+                ? spots.map(p => p.spotId).join('、')
+                : '無'
+        },
+        {
+            label: '總成交價',
+            icon: 'mdi-currency-usd',
+            color: 'error',
+            highlight: true,
+            value: `${grandTotal.toLocaleString()} 萬`,
+            hint: `房屋 ${houseTotal.toLocaleString()} 萬 + 車位 ${parkingTotal.toLocaleString()} 萬`
+        },
+        {
+            label: '溢差價',
+            icon: diffIcon,
+            color: diffIconColor,
+            valueClass: diffClass,
+            value: `${diffPrefix}${priceDiff.toLocaleString()} 萬`,
+            hint: `總成交價 ${grandTotal.toLocaleString()} 萬 − 總底價 ${baseTotal.toLocaleString()} 萬`
+        },
+        {
+            label: '合約方式',
+            icon: 'mdi-file-document-outline',
+            value: data.合約方式 || '-'
+        },
+        {
+            label: '是否首購',
+            icon: 'mdi-star-outline',
+            value: data.isFirstTimeBuyer ? '是' : '否'
+        },
+        {
+            label: '銷售人員',
+            icon: 'mdi-account-outline',
+            value: data.銷售 || '-'
+        }
+    ];
+});
+
+// ✅ [新增] 使用者在確認對話框按下「確認製作」後觸發實際產製
+function confirmAndGenerate() {
+    showConfirmDialog.value = false;
+    handleGenerateDocument();
+}
 
 function openGeneratedSheet() {
     if (generatedSheetUrl.value) {

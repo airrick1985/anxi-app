@@ -1,0 +1,122 @@
+{
+  "source": "NLSC 國土測繪中心 - 代碼服務·地段清單",
+  "apiBase": "https://api.nlsc.gov.tw/other/ListLandSection",
+  "fetchedAt": "2026-04-23T11:04:42.221Z",
+  "totalSections": 14822,
+  "pairsQueried": 365,
+  "pairsFailed": 0,
+  "pairsSkipped": 0,
+  "failedPairs": [],
+  "cities": [
+    {
+      "city": "A 臺北市",
+      "sections": 557,
+      "sizeKB": 56.6
+    },
+    {
+      "city": "B 臺中市",
+      "sections": 1418,
+      "sizeKB": 140.7
+    },
+    {
+      "city": "C 基隆市",
+      "sections": 134,
+      "sizeKB": 13.6
+    },
+    {
+      "city": "D 臺南市",
+      "sections": 1254,
+      "sizeKB": 124.1
+    },
+    {
+      "city": "E 高雄市",
+      "sections": 1505,
+      "sizeKB": 150
+    },
+    {
+      "city": "F 新北市",
+      "sections": 1347,
+      "sizeKB": 135.8
+    },
+    {
+      "city": "G 宜蘭縣",
+      "sections": 646,
+      "sizeKB": 64.1
+    },
+    {
+      "city": "H 桃園市",
+      "sections": 884,
+      "sizeKB": 87.8
+    },
+    {
+      "city": "I 嘉義市",
+      "sections": 163,
+      "sizeKB": 16.5
+    },
+    {
+      "city": "J 新竹縣",
+      "sections": 554,
+      "sizeKB": 55.3
+    },
+    {
+      "city": "K 苗栗縣",
+      "sections": 592,
+      "sizeKB": 58.8
+    },
+    {
+      "city": "M 南投縣",
+      "sections": 689,
+      "sizeKB": 68.3
+    },
+    {
+      "city": "N 彰化縣",
+      "sections": 787,
+      "sizeKB": 77.9
+    },
+    {
+      "city": "O 新竹市",
+      "sections": 153,
+      "sizeKB": 15.3
+    },
+    {
+      "city": "P 雲林縣",
+      "sections": 738,
+      "sizeKB": 73.1
+    },
+    {
+      "city": "Q 嘉義縣",
+      "sections": 836,
+      "sizeKB": 84
+    },
+    {
+      "city": "T 屏東縣",
+      "sections": 902,
+      "sizeKB": 89.5
+    },
+    {
+      "city": "U 花蓮縣",
+      "sections": 586,
+      "sizeKB": 58.1
+    },
+    {
+      "city": "V 臺東縣",
+      "sections": 559,
+      "sizeKB": 55.7
+    },
+    {
+      "city": "W 金門縣",
+      "sections": 252,
+      "sizeKB": 26
+    },
+    {
+      "city": "X 澎湖縣",
+      "sections": 223,
+      "sizeKB": 22.1
+    },
+    {
+      "city": "Z 連江縣",
+      "sections": 43,
+      "sizeKB": 4.4
+    }
+  ]
+}

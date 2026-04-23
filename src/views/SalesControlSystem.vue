@@ -80,12 +80,37 @@
         :model-value="itemCount > 0"
         color="error"
       >
-        <v-btn 
+        <v-btn
           icon="mdi-file-document-outline"
           @click="isQuoteSidebarOpen = true"
           title="查看報價單"
         ></v-btn>
       </v-badge>
+
+      <!-- 實價登錄申報提醒徽章：sales 模式且有待申報戶別時顯示 -->
+      <v-tooltip v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0" location="bottom">
+        <template #activator="{ props: ttp }">
+          <v-badge
+            v-bind="ttp"
+            :content="pendingReportUnits.length"
+            :color="overdueReportCount > 0 ? 'error' : 'warning'"
+            class="ml-2"
+          >
+            <v-btn
+              :color="overdueReportCount > 0 ? 'error' : 'warning'"
+              variant="tonal"
+              icon="mdi-file-document-alert-outline"
+              @click="showReportReminderDialog = true"
+            />
+          </v-badge>
+        </template>
+        <span>
+          {{ pendingReportUnits.length }} 筆待申報實價登錄
+          <template v-if="overdueReportCount > 0">
+            （{{ overdueReportCount }} 筆已逾 30 天）
+          </template>
+        </span>
+      </v-tooltip>
 
       <v-tooltip location="bottom">
         <template v-slot:activator="{ props }">
@@ -752,7 +777,9 @@
         </v-list>
       </v-menu>
 
-      <v-menu top v-if="currentViewMode === 'sales'">
+      <v-menu top v-if="currentViewMode === 'sales'"
+        v-model="isMoreMenuOpen"
+        :close-on-content-click="false">
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props">
             <v-icon>mdi-dots-vertical</v-icon>
@@ -760,26 +787,25 @@
           </v-btn>
         </template>
         <v-list>
-          <!-- 切換建案 -->
-          <v-list-item>
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-home-city</v-icon>
-            </template>
+          <!-- 切換建案：用原生 div 取代 v-list-item，避免 list-item 的點擊行為與 v-select 衝突 -->
+          <div class="d-flex align-center px-4 py-2">
+            <v-icon color="black" class="mr-3">mdi-home-city</v-icon>
             <v-select
               :model-value="projectId"
-              @update:model-value="switchProject"
+              @update:model-value="onSwitchProjectFromMenu"
               :items="availableProjects"
               item-title="name"
               item-value="id"
               label="選擇建案"
               variant="plain"
               density="compact"
-              class="mobile-project-selector"
+              hide-details
+              class="mobile-project-selector flex-grow-1"
             ></v-select>
-          </v-list-item>
+          </div>
           <v-divider></v-divider>
 
-          <v-list-item @click="handleRefreshData" :loading="isRefreshing">
+          <v-list-item @click="() => { isMoreMenuOpen = false; handleRefreshData(); }" :loading="isRefreshing">
             <template v-slot:prepend>
               <v-icon color="black">mdi-refresh</v-icon>
             </template>
@@ -787,48 +813,48 @@
           </v-list-item>
           <v-divider></v-divider>
           
-          <v-list-item @click="exportToExcel">
+          <v-list-item @click="isMoreMenuOpen = false; exportToExcel()">
             <template v-slot:prepend>
               <v-icon color="black">mdi-tray-arrow-down</v-icon>
             </template>
             <v-list-item-title>下載戶別資料EXCEL</v-list-item-title>
           </v-list-item>
-           <v-list-item @click="uploadDialog = true">
+          <v-list-item @click="isMoreMenuOpen = false; uploadDialog = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-tray-arrow-up</v-icon>
             </template>
             <v-list-item-title>上傳戶別資料EXCEL</v-list-item-title>
           </v-list-item>
           <v-divider></v-divider>
-          <v-list-item @click="handleOpenActivityMessage">
+          <v-list-item @click="isMoreMenuOpen = false; handleOpenActivityMessage()">
             <template v-slot:prepend>
               <v-icon color="black">mdi-bullhorn-outline</v-icon>
             </template>
             <v-list-item-title>活動訊息</v-list-item-title>
           </v-list-item>
-          
-          <v-list-item @click="navigateToParkingControl">
+
+          <v-list-item @click="isMoreMenuOpen = false; navigateToParkingControl()">
             <template v-slot:prepend>
               <v-icon color="black">mdi-car-cog</v-icon>
             </template>
             <v-list-item-title>車位銷控管理</v-list-item-title>
           </v-list-item>
 
-          <v-list-item @click="isCancelledPurchaseDialogVisible = true">
+          <v-list-item @click="isMoreMenuOpen = false; isCancelledPurchaseDialogVisible = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-account-cancel</v-icon>
             </template>
             <v-list-item-title>退戶記錄管理</v-list-item-title>
           </v-list-item>
 
-          <v-list-item @click="isAIAssistantDialogVisible = true">
+          <v-list-item @click="isMoreMenuOpen = false; isAIAssistantDialogVisible = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-robot-outline</v-icon>
             </template>
             <v-list-item-title>AI 銷售助理</v-list-item-title>
           </v-list-item>
 
-          <v-list-item @click="isAnalyticsPanelVisible = true">
+          <v-list-item @click="isMoreMenuOpen = false; isAnalyticsPanelVisible = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-chart-box</v-icon>
             </template>
@@ -840,13 +866,14 @@
             :href="project.paymentScheduleFolderUrl"
             target="_blank"
             rel="noopener noreferrer"
+            @click="isMoreMenuOpen = false"
           >
             <template v-slot:prepend>
               <v-icon color="black">mdi-folder-google-drive</v-icon>
             </template>
             <v-list-item-title>付款表資料夾</v-list-item-title>
           </v-list-item>
-          <v-list-item @click="navigateToSalesSettings">
+          <v-list-item @click="isMoreMenuOpen = false; navigateToSalesSettings()">
             <template v-slot:prepend>
               <v-icon>mdi-cog-outline</v-icon>
             </template>
@@ -857,15 +884,17 @@
        
        </v-bottom-navigation>
 
-   <UnitDetailModal 
+   <UnitDetailModal
       v-if="isModalVisible"
-      v-model:show="isModalVisible" 
+      v-model:show="isModalVisible"
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
       :project-name="project.name"
       :project-id="projectId"
       :all-data="allDataForModal"
-      :contract-types="project.contractTypes || []" @request-open-slide="handleOpenSlideViewer" />
+      :contract-types="project.contractTypes || []"
+      :price-formulas="project.priceFormulaSettings || null"
+      @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
@@ -874,6 +903,96 @@
       :project-id="projectId"
       @data-updated="handleRefreshData"
     />
+
+    <!-- 實價登錄申報 — 首次載入 Snackbar 提醒 -->
+    <v-snackbar
+      v-model="showReportSnackbar"
+      :timeout="12000"
+      :color="overdueReportCount > 0 ? 'error' : 'warning'"
+      location="top right"
+      multi-line
+      max-width="420"
+    >
+      <div class="d-flex align-center">
+        <v-icon start size="large">mdi-file-document-alert-outline</v-icon>
+        <div class="text-body-2">
+          有 <strong>{{ pendingReportUnits.length }}</strong> 筆戶別已簽約但尚未填入申報書序號。
+          <template v-if="overdueReportCount > 0">
+            其中 <strong>{{ overdueReportCount }}</strong> 筆已逾 30 天，可能面臨罰則。
+          </template>
+        </div>
+      </div>
+      <template #actions>
+        <v-btn variant="text" @click="showReportSnackbar = false; showReportReminderDialog = true">
+          查看詳情
+        </v-btn>
+        <v-btn icon="mdi-close" variant="text" size="small"
+          @click="showReportSnackbar = false" />
+      </template>
+    </v-snackbar>
+
+    <!-- 實價登錄申報提醒清單 -->
+    <v-dialog v-model="showReportReminderDialog" max-width="960" scrollable>
+      <v-card class="d-flex flex-column report-reminder-card">
+        <v-card-title class="d-flex align-center bg-warning-lighten-4 flex-shrink-0">
+          <v-icon start color="warning">mdi-file-document-alert-outline</v-icon>
+          待完成實價登錄申報 ({{ pendingReportUnits.length }} 筆)
+          <v-chip v-if="overdueReportCount > 0" size="small" color="error" variant="flat" class="ml-3">
+            逾期 {{ overdueReportCount }} 筆
+          </v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small"
+            @click="showReportReminderDialog = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0 report-reminder-body">
+          <v-alert v-if="overdueReportCount > 0" type="error" variant="tonal"
+            density="compact" class="ma-3 flex-shrink-0" icon="mdi-alarm-light-outline">
+            有 <strong>{{ overdueReportCount }}</strong> 筆戶別自簽約日起已逾 30 天，
+            依《平均地權條例》未依限申報將面臨罰則，請儘速完成申報。
+          </v-alert>
+          <v-list lines="two" density="compact">
+            <template v-for="(u, i) in pendingReportUnits" :key="u.id">
+              <v-list-item
+                :class="{ 'bg-red-lighten-5': u.overdue }"
+                @click="openPendingUnit(u)">
+                <template #prepend>
+                  <v-avatar :color="u.overdue ? 'error' : 'warning'" size="40" variant="tonal">
+                    <span class="text-caption font-weight-bold">{{ u.daysElapsed }}</span>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="font-weight-medium">
+                  {{ u.building ? `${u.building} / ` : '' }}{{ u.unitId }}
+                  <span v-if="u.buyerName" class="text-caption text-grey ml-1">（{{ u.buyerName }}）</span>
+                </v-list-item-title>
+                <v-list-item-subtitle>
+                  簽約日：{{ formatDate(u.contractDate) }}
+                  ·
+                  已過
+                  <strong :class="u.overdue ? 'text-error' : 'text-warning'">{{ u.daysElapsed }}</strong>
+                  天
+                  <span v-if="u.overdue" class="text-error ml-1">（已逾 30 天期限）</span>
+                  <span v-else class="text-grey ml-1">（還剩 {{ u.remaining }} 天）</span>
+                </v-list-item-subtitle>
+                <template #append>
+                  <v-btn size="small" variant="tonal" color="primary"
+                    prepend-icon="mdi-open-in-new">
+                    開啟戶別
+                  </v-btn>
+                </template>
+              </v-list-item>
+              <v-divider v-if="i < pendingReportUnits.length - 1" />
+            </template>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="flex-shrink-0">
+          <span class="text-caption text-grey ml-2">點擊任一列可直接開啟該戶別</span>
+          <v-spacer />
+          <v-btn variant="text" @click="showReportReminderDialog = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
@@ -1163,7 +1282,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, defineAsyncComponent, reactive, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; 
@@ -1179,6 +1298,14 @@ import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { useProjectStore } from '@/store/projectStore';
 import * as XLSX from 'xlsx-js-style';
+import {
+  LAND_PARCEL_SHEET_NAME,
+  HOUSEHOLDS_SHEET_NAME,
+  LAND_PARCEL_COLUMNS,
+  LAND_PARCEL_HEADERS,
+  landParcelToRow,
+  rowToLandParcel,
+} from '@/constants/landParcelColumns';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
@@ -1196,6 +1323,8 @@ import { mdiViewDashboardVariantOutline } from '@mdi/js';
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
 const isCancelledPurchaseDialogVisible = ref(false);
+// 手機版「更多」彈出選單的展開狀態（供選完項目後主動關閉用）
+const isMoreMenuOpen = ref(false);
 
 // 1. 修改 filters 定義 (加入銷控專用欄位)
 const filters = reactive({
@@ -1628,7 +1757,9 @@ const COLUMN_DEFINITIONS = [
     { key: 'price_floor_terrace', title: '露臺底價' },
     { key: 'price_floor_ancillary', title: '其他附屬底價' },
     { key: 'price_floor_house_total', title: '房屋總底價' },
-    { key: 'price_transaction_house', title: '房屋成交價' }, 
+    { key: 'price_transaction_house', title: '房屋成交價' },
+    { key: 'housePriceRatio', title: '房屋價款比例(%)' },
+    { key: 'landPriceRatio', title: '土地價款比例(%)' },
     { key: 'price_package_deal', title: '配套房屋總價' },
     { key: 'price_package', title: '配套價格' },
    { key: 'landBankName', title: '土地款匯款銀行' },
@@ -1648,6 +1779,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_deposit_amount', title: '小訂金額' },
     { key: 'payment_supplement_amount', title: '補足金額' },
     { key: 'payment_contract_amount', title: '簽約金額' },
+    { key: 'reportNo', title: '申報書序號' },
     { key: 'remarks', title: '備註' },
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
@@ -1708,6 +1840,56 @@ const salesParkings = computed(() => projectData.value.parkings);
 const salesImages = computed(() => projectData.value.images);
 const salesPersonnel = computed(() => projectData.value.personnel);
 
+// ============ 實價登錄申報提醒 ============
+// 篩出「簽約日期不為空、但申報書序號為空」的戶別，計算已過天數；≥30 天為逾期罰則風險
+// 注意：只在 sales 模式下觸發 UI；報價模式不提示以免干擾業務。
+function toDateOrNull(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v.toDate === 'function') {
+    const d = v.toDate();
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function daysBetween(from, to = new Date()) {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((end - start) / MS_PER_DAY);
+}
+const REPORT_DEADLINE_DAYS = 30;
+const pendingReportUnits = computed(() => {
+  const list = Array.isArray(salesHouseholds.value) ? salesHouseholds.value : [];
+  return list
+    .map(u => {
+      const date = toDateOrNull(u.payment_contract_date);
+      const no = String(u.reportNo ?? '').trim();
+      if (!date || no) return null;
+      const days = daysBetween(date);
+      return {
+        id: u.id,
+        unitId: u.unitId,
+        building: u.building,
+        buyerName: u.buyerName || '',
+        contractDate: date,
+        daysElapsed: days,
+        overdue: days >= REPORT_DEADLINE_DAYS,
+        remaining: REPORT_DEADLINE_DAYS - days,
+        _raw: u,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.daysElapsed - a.daysElapsed);
+});
+const overdueReportCount = computed(() => pendingReportUnits.value.filter(u => u.overdue).length);
+const showReportReminderDialog = ref(false);
+// Snackbar 一次性提醒：載入後若有待申報戶別則秀一次；關閉後同 session 不再重複
+const showReportSnackbar = ref(false);
+const reportSnackbarShown = ref(false);  // 避免資料重新到貨時重複觸發
+// 註：watch 移至 currentViewMode 宣告之後，避免 immediate:true 同步觸發時 TDZ 錯誤
+
 const isRefreshing = ref(false);
 const isDevelopment = computed(() => import.meta.env.DEV);
 
@@ -1758,6 +1940,19 @@ const activitySlideEmbedUrl = computed(() => {
 const projectStore = useProjectStore();
 const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
+
+// 實價登錄提醒：watch 必須放在 currentViewMode 之後 (immediate:true 同步觸發時會讀 currentViewMode.value)
+watch(pendingReportUnits, (list) => {
+  if (
+    currentViewMode.value === 'sales'
+    && !reportSnackbarShown.value
+    && list.length > 0
+  ) {
+    showReportSnackbar.value = true;
+    reportSnackbarShown.value = true;
+  }
+}, { immediate: true });
+
 const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => project.value.name);
@@ -2067,6 +2262,13 @@ function openUnitDetail(unitData) {
   }
 }
 
+// 從提醒清單點進某戶 → 開 UnitDetailModal；同時關閉提醒 Dialog 避免重疊
+function openPendingUnit(item) {
+  if (!item?._raw) return;
+  showReportReminderDialog.value = false;
+  openUnitDetail(item._raw);
+}
+
 function handleOpenSlideViewer() {
   const slideId = currentViewMode.value === 'quote' ? project.value.parkingSlideId_quote : project.value.parkingSlideId_sales;
   openSlideViewer(slideId);
@@ -2192,6 +2394,12 @@ const switchProject = (newProjectId) => {
     meta: route.meta
   });
 };
+
+// 手機版「更多」選單內切換建案：選完後關閉選單再導航
+function onSwitchProjectFromMenu(newProjectId) {
+  isMoreMenuOpen.value = false;
+  switchProject(newProjectId);
+}
 
 /**
  * 在 AnalyticsPanel 内切換建案（不關閉面板）
@@ -2348,7 +2556,33 @@ const exportToExcel = () => {
     }
     ws['!freeze'] = { ySplit: 2 };
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '戶別資料');
+    XLSX.utils.book_append_sheet(wb, ws, HOUSEHOLDS_SHEET_NAME);
+
+    // ── Sheet 2：土地標的清冊（一戶 N 筆 → N 列） ──
+    const landParcelRows = [];
+    for (const item of sortedItems) {
+        const parcels = Array.isArray(item.landParcels) ? item.landParcels : [];
+        for (const parcel of parcels) {
+            landParcelRows.push(landParcelToRow(parcel, item.unitId));
+        }
+    }
+    const landSheetData = [LAND_PARCEL_HEADERS, ...landParcelRows];
+    const wsLand = XLSX.utils.aoa_to_sheet(landSheetData);
+    // 套用灰色標頭樣式
+    const landRange = XLSX.utils.decode_range(wsLand['!ref']);
+    for (let C = landRange.s.c; C <= landRange.e.c; ++C) {
+        const address = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (wsLand[address]) wsLand[address].s = headerStyle;
+    }
+    wsLand['!freeze'] = { ySplit: 1 };
+    // 合理欄寬
+    wsLand['!cols'] = LAND_PARCEL_COLUMNS.map(c => {
+        if (c.key === 'section' || c.key === 'zoneText') return { wch: 18 };
+        if (c.key === 'unitId' || c.key === 'district' || c.key === 'city') return { wch: 10 };
+        return { wch: 12 };
+    });
+    XLSX.utils.book_append_sheet(wb, wsLand, LAND_PARCEL_SHEET_NAME);
+
     const exportFileName = projectName.value || 'unknown-project';
     XLSX.writeFile(wb, `${exportFileName}_戶別資料備份_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
@@ -2361,7 +2595,7 @@ const closeUploadDialog = () => {
 };
 
 const handleFileChange = () => {
-    uploadMessage.value = ''; 
+    uploadMessage.value = '';
     const file = uploadedFile.value;
     if (!file) {
         parsedData.value = [];
@@ -2375,7 +2609,10 @@ const handleFileChange = () => {
             const requiredHeaders = new Set(headerToKeyMap.keys());
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-            const sheetName = workbook.SheetNames[0];
+            // Sheet 1 戶別資料：優先以名稱查找，fallback 為首工作表（向後相容舊檔）
+            const sheetName = workbook.SheetNames.includes(HOUSEHOLDS_SHEET_NAME)
+                ? HOUSEHOLDS_SHEET_NAME
+                : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
 
@@ -2437,9 +2674,67 @@ const handleFileChange = () => {
             if (jsonDataWithEnglishKeys.some(row => !row.unitId)) {
                 throw new Error("資料驗證失敗：每一列都必須包含『戶別』。請檢查上傳的檔案。");
             }
+
+            // ── 解析 Sheet 2「土地標的清冊」(可選工作表) ──
+            const landSheet = workbook.Sheets[LAND_PARCEL_SHEET_NAME];
+            const landParcelsByUnit = new Map(); // unitId -> landParcel[]
+            if (landSheet) {
+                const landRowsJson = XLSX.utils.sheet_to_json(landSheet, { defval: '' });
+                // 驗證標頭：若工作表存在則所有欄位標頭必須齊備
+                const sampleRow = landRowsJson[0] || {};
+                const presentHeaders = new Set(Object.keys(sampleRow));
+                const missingLandHeaders = LAND_PARCEL_COLUMNS
+                    .map(c => c.title)
+                    .filter(t => !presentHeaders.has(t));
+                if (landRowsJson.length > 0 && missingLandHeaders.length > 0) {
+                    throw new Error(
+                        `「${LAND_PARCEL_SHEET_NAME}」工作表缺少欄位標頭：${missingLandHeaders.join('、')}`
+                    );
+                }
+
+                // 行號在 Excel 中從第 2 列開始（第 1 列是標頭）
+                const errors = [];
+                const unitIdSet = new Set(jsonDataWithEnglishKeys.map(r => String(r.unitId || '').trim()));
+
+                landRowsJson.forEach((row, i) => {
+                    // 整列全空白則跳過（不計入錯誤）
+                    const hasAnyValue = Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
+                    if (!hasAnyValue) return;
+
+                    const excelRowNo = i + 2;
+                    const { parcel, unitId, errors: rowErrors } = rowToLandParcel(row, excelRowNo);
+                    errors.push(...rowErrors);
+
+                    if (unitId && !unitIdSet.has(unitId)) {
+                        errors.push(`第 ${excelRowNo} 列：戶別「${unitId}」不存在於「${HOUSEHOLDS_SHEET_NAME}」工作表`);
+                        return;
+                    }
+                    if (!unitId) return; // 已在 rowToLandParcel 回報
+
+                    if (!landParcelsByUnit.has(unitId)) landParcelsByUnit.set(unitId, []);
+                    landParcelsByUnit.get(unitId).push(parcel);
+                });
+
+                if (errors.length > 0) {
+                    throw new Error(
+                        `「${LAND_PARCEL_SHEET_NAME}」工作表驗證失敗（整批拒絕）：\n- ${errors.join('\n- ')}`
+                    );
+                }
+            }
+
+            // ── 合併 landParcels 至戶別資料 ──
+            // 規則：Sheet 2 有資料 → 覆寫；無資料 → 留空陣列（代表該戶清空）
+            for (const row of jsonDataWithEnglishKeys) {
+                const key = String(row.unitId || '').trim();
+                row.landParcels = landParcelsByUnit.get(key) || [];
+            }
+
             parsedData.value = jsonDataWithEnglishKeys;
             uploadMessageType.value = 'success';
-            uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (含優付欄位)，可以開始上傳。`;
+            const landCount = [...landParcelsByUnit.values()].reduce((s, a) => s + a.length, 0);
+            uploadMessage.value = landSheet
+                ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料，含 ${landCount} 筆土地標的，可以開始上傳。`
+                : `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (含優付欄位)，可以開始上傳。`;
         } catch (err) {
             uploadMessageType.value = 'error';
             uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
@@ -2481,6 +2776,17 @@ const uploadData = async () => {
 </script>
 
 <style scoped>
+/* 實價登錄提醒 Dialog：固定 85vh 高度 + 內部 card-text 捲動 */
+.report-reminder-card {
+  height: 85vh;
+  max-height: 85vh;
+}
+.report-reminder-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* Project 選擇器樣式 */
 .project-selector {
   min-width: 150px;
