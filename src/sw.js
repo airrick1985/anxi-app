@@ -2,13 +2,33 @@
 
 // --- 【修改】只導入有用到的 Workbox 模組 ---
 import { precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
+import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { openDB } from 'idb';
 
-// 1. 預快取 (由 VitePWA 的 injectManifest 處理)
-precacheAndRoute(self.__WB_MANIFEST || []);
+// 1. 預快取（排除 index.html；它改走 NetworkFirst 以確保每次開啟網站拿到最新版本）
+// WHY：純 precache 會讓使用者開啟網站時先吃舊 HTML，必須等 SW 背景偵測到新版本才 reload。
+// 改 navigation 為 NetworkFirst 後，每次進站直接打網路要最新 index.html，斷網才 fallback cache。
+const manifest = self.__WB_MANIFEST || [];
+const precacheManifest = manifest.filter(entry => {
+  const url = typeof entry === 'string' ? entry : entry.url;
+  return !/(^|\/)index\.html$/.test(url);
+});
+precacheAndRoute(precacheManifest);
+
+// SPA 頁面請求走 NetworkFirst：3 秒內有網路回應就用最新，否則 fallback 快取版本
+registerRoute(
+  new NavigationRoute(
+    new NetworkFirst({
+      cacheName: 'html-cache',
+      networkTimeoutSeconds: 3,
+      plugins: [
+        new ExpirationPlugin({ maxEntries: 1, maxAgeSeconds: 24 * 60 * 60 }),
+      ],
+    })
+  )
+);
 
 // 2. 運行時快取策略
 registerRoute(

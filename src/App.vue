@@ -101,6 +101,8 @@ const { needRefresh, updateServiceWorker } = useRegisterSW({
   onRegistered(r) {
     console.log(`Service Worker registered: ${r}`);
     if (r) {
+      // 頁面載入即 check 一次新版本（否則要等 interval 或瀏覽器自行判斷）
+      r.update();
       setInterval(() => {
         r.update();
       }, 60 * 60 * 1000);

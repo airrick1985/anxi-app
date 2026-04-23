@@ -4,8 +4,9 @@ import { useProjectStore } from '@/store/projectStore';
 
 
 
-// ✅ 將 Layouts 改為延遲載入常數，方便重用
-const DefaultLayout = () => import('@/layouts/DefaultLayout.vue');
+// DefaultLayout 在 App.vue 已靜態 import 作為預設 layout，router 這裡也用靜態 import
+// 避免 Vite 警告 "dynamic import will not move module into another chunk"
+import DefaultLayout from '@/layouts/DefaultLayout.vue';
 const PublicLayout = () => import('@/layouts/PublicLayout.vue');
 
 // --- 保持您原有的延遲載入 View 元件 ---
