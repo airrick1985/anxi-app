@@ -18,11 +18,14 @@ const precacheManifest = manifest.filter(entry => {
 precacheAndRoute(precacheManifest);
 
 // SPA 頁面請求走 NetworkFirst：3 秒內有網路回應就用最新，否則 fallback 快取版本
+// fetchOptions.cache='no-store' 關鍵：跳過瀏覽器 HTTP cache，否則 GitHub Pages 對 index.html
+// 設的 max-age=600 會讓這個 fetch 直接從 HTTP cache 拿舊版（不會真的出網路），導致重開網站仍看到舊版
 registerRoute(
   new NavigationRoute(
     new NetworkFirst({
       cacheName: 'html-cache',
       networkTimeoutSeconds: 3,
+      fetchOptions: { cache: 'no-store' },
       plugins: [
         new ExpirationPlugin({ maxEntries: 1, maxAgeSeconds: 24 * 60 * 60 }),
       ],
