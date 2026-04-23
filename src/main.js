@@ -24,8 +24,15 @@ import 'vue-toastification/dist/index.css'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. 導入插件
 
-// 2. 導入 vite-plugin-pwa 提供的註冊模組
-import { registerSW } from 'virtual:pwa-register' // <--- 添加這一行
+// 直接註冊最小 SW（public/sw.js），僅為保留 PWA「安裝為 App」功能；SW 本身不做快取
+// 不透過 vite-plugin-pwa / virtual:pwa-register（那條路徑已被 stub 成 no-op）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('Service Worker registration failed:', err);
+    });
+  });
+}
 
 /* import the fontawesome core */
 import { library } from '@fortawesome/fontawesome-svg-core';
@@ -48,47 +55,7 @@ const app = createApp(App) // 先創建 app 實例
 
 
 
-// 3. 註冊 Service Worker (通常在創建 app 之後，掛載之前)
-registerSW({
-  onNeedRefresh() {
-    // 這裡可以彈出一個 Toast 通知用戶有新版本
-    // const toast = app.config.globalProperties.$toast; // 假設 Toast 被正確註冊到全局
-    // if (toast && typeof toast.info === 'function') {
-    //   toast.info('New content available. Please reload.', {
-    //     timeout: 0, // 永不自動關閉
-    //     closeButton: 'button',
-    //     icon: true,
-    //     actions: [
-    //       {
-    //         text: 'Reload',
-    //         onClick: (e, toastObject) => {
-    //           toastObject.goAway(0); // 立即關閉 toast
-    //           window.location.reload();
-    //         }
-    //       }
-    //     ]
-    //   });
-    // } else {
-    //   // 降級處理，如果 Toast 無法使用
-    //   if (confirm('新版本已推出，請更新')) {
-    //     window.location.reload();
-    //   }
-    // }
-    // ✅ 移除或註解掉上述所有 Toast 和 confirm 的邏輯
-    // 讓 UpdateDialog.vue 負責顯示更新提示
-    console.log('New content available, please refresh.');
-  },
-  onOfflineReady() {
-    // 這裡可以彈出一個 Toast 通知用戶應用已可離線使用
-    const toast = app.config.globalProperties.$toast;
-    if (toast && typeof toast.success === 'function') {
-      toast.success('App is ready to work offline!', {
-        timeout: 5000
-      });
-    }
-    console.log('App is ready to work offline.');
-  }
-})
+// SW 註冊已在檔案上方直接透過 navigator.serviceWorker.register 處理，此處不再需要
 
 
 // --- 使用插件和掛載 Vue 應用 ---
