@@ -28,8 +28,7 @@
                 :items="getNameOptionsFor(f.key)"
                 item-title="label" item-value="label"
                 :label="f.label"
-                :hint="`${f.key} (代碼：${row[nameToCodeKey(f.key)] || '—'})`"
-                persistent-hint variant="outlined" density="compact" clearable
+                variant="outlined" density="compact" clearable
                 @update:model-value="onNameSelectChange(idx, f.key, $event)" />
             </v-col>
             <!-- 其餘一般欄位 -->
@@ -37,9 +36,7 @@
               <v-text-field
                 v-model="row[f.key]"
                 :label="f.label"
-                :hint="f.key"
                 :type="f.type === 'number' ? 'number' : 'text'"
-                persistent-hint
                 variant="outlined"
                 density="compact"
                 clearable

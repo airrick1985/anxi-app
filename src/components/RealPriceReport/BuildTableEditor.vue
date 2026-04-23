@@ -26,9 +26,7 @@
             <v-text-field
               v-model="row[f.key]"
               :label="f.label"
-              :hint="f.key"
               :type="f.type === 'number' ? 'number' : 'text'"
-              persistent-hint
               variant="outlined"
               density="compact"
               clearable
@@ -39,8 +37,6 @@
             <v-text-field
               :model-value="totalArea(row)"
               label="交易總面積(m²)"
-              hint="自動計算 (主+陽+屋簷+雨遮+共有)"
-              persistent-hint
               variant="outlined"
               density="compact"
               readonly

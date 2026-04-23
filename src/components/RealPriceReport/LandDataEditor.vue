@@ -27,7 +27,7 @@
             <v-select
               :model-value="row.land_x45"
               :items="cityOptions" item-title="name" item-value="code"
-              label="縣市 (land_x45)"
+              label="縣市"
               hide-details variant="outlined" density="compact" clearable
               @update:model-value="onCityChange(idx, $event)" />
           </v-col>
@@ -35,7 +35,7 @@
             <v-select
               :model-value="row.land_x46"
               :items="townsOf(idx)" item-title="name" item-value="code"
-              label="區域 (land_x46)"
+              label="區域"
               :disabled="!row.land_x45"
               hide-details variant="outlined" density="compact" clearable
               @update:model-value="onTownChange(idx, $event)" />
@@ -46,12 +46,11 @@
               :items="sectionItemsFor(idx)"
               item-title="section" item-value="sectCode"
               :custom-filter="sectionFilter"
-              label="段小段 (land_x48)"
+              label="段小段"
               :disabled="!row.land_x46"
               :loading="rowStates[idx]?.loading"
-              :hint="sectionHint(idx, row)"
               :error-messages="rowStates[idx]?.error ? [`載入失敗：${rowStates[idx].error}`] : []"
-              persistent-hint variant="outlined" density="compact" clearable
+              variant="outlined" density="compact" clearable
               @update:model-value="onSectionChange(idx, $event)">
               <template #item="{ props: itemProps, item }">
                 <v-list-item v-bind="itemProps"
@@ -106,8 +105,6 @@
               :model-value="row[f.key]"
               :items="f.options" item-title="label" item-value="value"
               :label="f.label"
-              :hint="f.key"
-              persistent-hint
               variant="outlined"
               density="compact"
               clearable
@@ -116,9 +113,7 @@
               v-else
               v-model="row[f.key]"
               :label="f.label"
-              :hint="f.key"
               :type="f.type === 'number' ? 'number' : 'text'"
-              persistent-hint
               variant="outlined"
               density="compact"
               clearable />
@@ -219,14 +214,6 @@ function sectionFilter(value, query, item) {
   return String(raw.section || '').toLowerCase().includes(q)
     || String(raw.sectCode || '').toLowerCase().includes(q)
     || String(raw.officeName || '').toLowerCase().includes(q);
-}
-
-function sectionHint(idx, row) {
-  if (!row.land_x46) return 'land_x48';
-  const items = sectionItemsFor(idx);
-  if (rowStates[idx]?.loading) return '載入段清單中…';
-  if (items.length > 0) return `${items.length} 筆段小段可選 · land_x48`;
-  return 'land_x48';
 }
 
 // 段清單載入後的補救：
