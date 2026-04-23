@@ -1,17 +1,18 @@
 // /workspaces/anxi-app/vite.config.js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import { VitePWA } from 'vite-plugin-pwa';
 import { visualizer } from 'rollup-plugin-visualizer';
 import path from 'path';
-import manifest from './public/manifest.json';
 
-// 修正 injectManifest 策略的設定
+// 已停用 PWA：改用 public/sw.js 作為「自毀 SW」清理舊用戶，新 bundle 不再註冊 SW
 export default defineConfig({
   base: '/',
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      // 將舊 code 中的 virtual:pwa-register 匯入導向本地 no-op stub，讓既有呼叫全部失效
+      'virtual:pwa-register/vue': path.resolve(__dirname, './src/stubs/pwa-register-vue.js'),
+      'virtual:pwa-register': path.resolve(__dirname, './src/stubs/pwa-register.js'),
     }
   },
   server: {
@@ -33,25 +34,6 @@ export default defineConfig({
   },
   plugins: [
     vue(),
-    VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.js',
-      registerType: 'prompt',
-      manifest,
-
-      // --- 【關鍵修改】 ---
-      // 根據錯誤訊息，將大小限制設定放在 injectManifest 物件中
-      injectManifest: {
-        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 設定為 8 MB
-      },
-      // --- 【修改結束】 ---
-
-      devOptions: {
-        enabled: false,
-        type: 'module',
-      },
-    }),
     visualizer({
       filename: 'dist/stats.html',
       open: false,
