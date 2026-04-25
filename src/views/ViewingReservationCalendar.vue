@@ -72,7 +72,9 @@
 
       <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">預約類型</div>
       <v-checkbox v-model="filters.type" label="新客預約" value="新客" color="light-blue-darken-1" density="compact" hide-details></v-checkbox>
-      <v-checkbox v-model="filters.type" label="回訪/其他" value="回訪" color="red-darken-1" density="compact" hide-details></v-checkbox>
+      <v-checkbox v-model="filters.type" label="回訪" value="回訪" color="red-darken-1" density="compact" hide-details></v-checkbox>
+      <v-checkbox v-model="filters.type" label="簽約" value="簽約" color="green-darken-1" density="compact" hide-details></v-checkbox>
+      <v-checkbox v-model="filters.type" label="其他" value="__other__" color="amber-darken-2" density="compact" hide-details></v-checkbox>
 
       <v-divider v-if="canAccessSettings" class="my-4"></v-divider>
       <div v-if="canAccessSettings" class="px-2 pb-4">
@@ -338,7 +340,17 @@ const defaultSalesNames = computed(() => {
   return currentUserName ? [currentUserName] : [];
 });
 
-const filters = ref({ type: ['新客', '回訪'], salesNames: [] });
+const filters = ref({ type: ['新客', '回訪', '簽約', '__other__'], salesNames: [] });
+
+// 預設預約類型；非預設類型（如「已購客」自訂值）統一歸為 '__other__'
+const PREDEFINED_RESERVATION_TYPES = ['新客', '回訪', '簽約'];
+const TYPE_COLORS = {
+    '新客':   { bg: '#e1f5fe', border: '#039be5', text: '#01579b' },
+    '回訪':   { bg: '#ffebee', border: '#e53935', text: '#b71c1c' },
+    '簽約':   { bg: '#e8f5e9', border: '#43a047', text: '#1b5e20' },
+    '__other__': { bg: '#fff8e1', border: '#ffa000', text: '#e65100' },
+};
+const resolveTypeKey = (type) => PREDEFINED_RESERVATION_TYPES.includes(type) ? type : '__other__';
 const viewLabelMap = { dayGridMonth: '月', timeGridWeek: '週', timeGridDay: '日', listWeek: '列表' };
 
 const getViewIcon = (view) => {
@@ -378,20 +390,22 @@ const allSalesPeople = computed(() => {
 const calendarEvents = computed(() => {
     return reservationStore.activeReservations
         .filter(res => {
-            const typeMatch = filters.value.type.includes(res.type);
+            const typeKey = resolveTypeKey(res.type);
+            const typeMatch = filters.value.type.includes(typeKey);
             const salesMatch = filters.value.salesNames.length === 0 || filters.value.salesNames.includes(res.salesName);
             return typeMatch && salesMatch;
         })
         .map(res => {
             const start = res.reservationTime.toDate();
+            const colors = TYPE_COLORS[resolveTypeKey(res.type)] || TYPE_COLORS['__other__'];
             return {
                 id: res.id,
                 title: `${res.customerName}(${res.salesName || '未指派'})-${res.type}`,
                 start: start,
                 end: new Date(start.getTime() + 90 * 60000),
-                backgroundColor: res.type === '新客' ? '#e1f5fe' : '#ffebee',
-                borderColor: res.type === '新客' ? '#039be5' : '#e53935',
-                textColor: res.type === '新客' ? '#01579b' : '#b71c1c',
+                backgroundColor: colors.bg,
+                borderColor: colors.border,
+                textColor: colors.text,
                 extendedProps: { ...res }
             };
         });

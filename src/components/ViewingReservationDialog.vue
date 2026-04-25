@@ -82,12 +82,47 @@
                  <v-select
                   v-model="formData.type"
                   label="預約類型"
-                  :items="['新客', '回訪']"
+                  :items="['新客', '回訪', '簽約', '其他']"
                   variant="underlined"
                   density="compact"
                   :rules="[v => !!v || '請選擇類型']"
                   prepend-inner-icon="mdi-account-tag"
                 ></v-select>
+              </v-col>
+
+              <v-col v-if="formData.type === '其他'" cols="12" sm="6">
+                <v-text-field
+                  v-model="customType"
+                  label="請輸入預約類型"
+                  variant="underlined"
+                  density="compact"
+                  placeholder="例如：已購客"
+                  :rules="[v => !!(v && v.trim()) || '請輸入預約類型']"
+                  prepend-inner-icon="mdi-pencil"
+                ></v-text-field>
+              </v-col>
+
+              <v-col v-if="formData.type === '簽約'" cols="12" sm="6">
+                <v-combobox
+                  v-model="formData.unitId"
+                  :items="unitItems"
+                  label="戶別"
+                  variant="underlined"
+                  density="compact"
+                  placeholder="選擇或手動輸入"
+                  prepend-inner-icon="mdi-home-variant"
+                  hide-no-data
+                  clearable
+                  @update:modelValue="onUnitSelected"
+                >
+                  <template v-slot:item="{ props: itemProps, item }">
+                    <v-list-item
+                      v-bind="itemProps"
+                      :title="item.raw"
+                      :subtitle="getUnitBuyerInfo(item.raw)"
+                    ></v-list-item>
+                  </template>
+                </v-combobox>
               </v-col>
 
               <v-col cols="12" sm="6">
@@ -347,6 +382,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useReservationStore } from '@/store/reservationStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore'; // 確保引用
+import { useSalesDataStore } from '@/store/salesDataStore'; // 戶別/銷控資料
 import { format } from 'date-fns';
 
 // ===== 原生 datetime-local 轉換工具 =====
@@ -354,6 +390,10 @@ import { format } from 'date-fns';
 const dtInputRef = ref(null);
 const tempDateTime = ref(''); // 暫存值（字串格式）
 const isEditingTime = ref(false); // 是否正在編輯時間
+
+// 預約類型相關
+const PREDEFINED_TYPES = ['新客', '回訪', '簽約', '其他'];
+const customType = ref(''); // 「其他」類型的自訂輸入值
 
 // Date → 原生 input 值 (yyyy-MM-ddTHH:mm)
 const toDateTimeLocalString = (date) => {
@@ -419,6 +459,13 @@ const initDialogData = async () => {
             ...d,
             reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
         };
+        // 編輯模式：若 type 不在預設清單，視為「其他」並還原自訂值
+        if (d.type && !PREDEFINED_TYPES.includes(d.type)) {
+            customType.value = d.type;
+            formData.value.type = '其他';
+        } else {
+            customType.value = '';
+        }
     } else {
         // ✅ 新增模式：優化指定銷售欄位預設值
         let defaultSalesId = null;
@@ -441,9 +488,13 @@ const initDialogData = async () => {
             reservationTime: props.initialDate || null, // ✅ 若無傳入則預設 null
             type: '新客',
             salesId: defaultSalesId,
-            note: props.initialData?.note || ''
+            note: props.initialData?.note || '',
+            unitId: ''
         };
+        customType.value = '';
     }
+    // 編輯模式若為「簽約」則預載戶別資料供下拉使用
+    if (formData.value.type === '簽約') ensureHouseholdsLoaded();
     conflictInfo.value = null;
 };
 
@@ -452,6 +503,51 @@ const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
 const reservationStore = useReservationStore();
 const userStore = useUserStore();
 const projectStore = useProjectStore(); // 用於查找建案名稱以驗證權限
+const salesDataStore = useSalesDataStore(); // 戶別/銷控資料
+
+// ===== 戶別（簽約用）=====
+const projectHouseholds = computed(() => {
+    if (!props.projectId) return [];
+    const data = salesDataStore.getProjectData(props.projectId);
+    return data?.households || [];
+});
+
+// 戶別下拉選項（去重 + 排序）
+const unitItems = computed(() => {
+    const seen = new Set();
+    const items = [];
+    for (const h of projectHouseholds.value) {
+        if (h.unitId && !seen.has(h.unitId)) {
+            seen.add(h.unitId);
+            items.push(h.unitId);
+        }
+    }
+    return items.sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true }));
+});
+
+// 顯示在下拉項目副標題的買方資訊
+const getUnitBuyerInfo = (unitId) => {
+    if (!unitId) return '';
+    const h = projectHouseholds.value.find(x => x.unitId === unitId);
+    if (!h || !h.buyerName) return '';
+    return `買方：${h.buyerName}${h.buyerPhone ? ` / ${h.buyerPhone}` : ''}`;
+};
+
+// 使用者選/輸入戶別後，若匹配到資料則自動填入買方資訊
+// （只有 update:modelValue 事件會觸發；外部賦值給 formData 不會誤觸發 → 編輯模式安全）
+const onUnitSelected = (newUnitId) => {
+    if (!newUnitId) return;
+    const matched = projectHouseholds.value.find(h => h.unitId === newUnitId);
+    if (!matched) return;
+    if (matched.buyerName) formData.value.customerName = matched.buyerName;
+    if (matched.buyerPhone) formData.value.customerPhone = matched.buyerPhone;
+};
+
+// 簽約時預載戶別資料（store 內建快取，重複呼叫不會重複拉資料）
+const ensureHouseholdsLoaded = () => {
+    if (!props.projectId) return;
+    salesDataStore.loadProjectData(props.projectId);
+};
 
 // --- 新增與調整的狀態 ---
 const vipConflictDialog = ref(false); // 客資重複彈窗
@@ -532,8 +628,14 @@ const formData = ref({
   type: '新客',
   salesId: null,
   note: '',
+  unitId: '',       // ✅ 新增：簽約戶別
   operatorName: '', // ✅ 新增：記錄建立者名稱
   createdAt: null   // ✅ 新增：記錄建立時間
+});
+
+// 監聽 type → 切到「簽約」時自動載入該建案戶別資料
+watch(() => formData.value.type, (newType) => {
+    if (newType === '簽約') ensureHouseholdsLoaded();
 });
 
 
@@ -623,6 +725,13 @@ watch(() => props.modelValue, async (val) => {
         ...d,
         reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
       };
+      // 編輯模式：若 type 不在預設清單，視為「其他」並還原自訂值
+      if (d.type && !PREDEFINED_TYPES.includes(d.type)) {
+        customType.value = d.type;
+        formData.value.type = '其他';
+      } else {
+        customType.value = '';
+      }
     } else {
       // ✅ 新增模式：優化指定銷售欄位預設值
       let defaultSalesId = null;
@@ -645,8 +754,10 @@ watch(() => props.modelValue, async (val) => {
         note: props.initialData?.note || '',
         reservationTime: props.initialDate || null,
         type: '新客',
-        salesId: defaultSalesId
+        salesId: defaultSalesId,
+        unitId: ''
       };
+      customType.value = '';
 
       // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
       if (formData.value.customerPhone) {
@@ -656,6 +767,8 @@ watch(() => props.modelValue, async (val) => {
         await nextTick(); // 確保 conflictInfo 已更新
       }
     }
+    // 編輯/新增模式皆檢查：若 type 為「簽約」則預載該建案戶別資料
+    if (formData.value.type === '簽約') ensureHouseholdsLoaded();
   }
 }, { immediate: true });
 
@@ -721,9 +834,21 @@ const save = async () => {
         }
     }
 
+    // 「其他」類型時，將自訂輸入內容寫入 type
+    const finalType = formData.value.type === '其他'
+        ? (customType.value?.trim() || '其他')
+        : formData.value.type;
+
+    // 戶別僅在「簽約」時寫入，其他類型一律清空避免殘留
+    const finalUnitId = formData.value.type === '簽約'
+        ? (formData.value.unitId || '').trim()
+        : '';
+
     const payload = {
         projectId: props.projectId,
         ...formData.value,
+        type: finalType,
+        unitId: finalUnitId,
         salesName: sName,
         salesPhone: sPhone,
         operatorId: userStore.user.key,
