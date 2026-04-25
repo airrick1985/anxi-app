@@ -210,16 +210,18 @@ export const useReservationStore = defineStore('reservation', {
           customerPhone: payload.customerPhone,
           reservationTime: Timestamp.fromDate(payload.reservationTime),
           type: payload.type,
-          
+
+          unitId: payload.unitId || '', // 簽約戶別
+
           salesId: payload.salesId || null,
           salesName: payload.salesName || '',
           salesPhone: payload.salesPhone || '',
-          
+
           note: payload.note || '',
-          
+
           operatorId: payload.operatorId,
           operatorName: payload.operatorName,
-          
+
           status: 'active',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
