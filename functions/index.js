@@ -24538,18 +24538,29 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
   const docId = event.data?.after?.id || event.data?.before?.id || event.params.docId;
   const newData = event.data?.after?.data();
   const oldData = event.data?.before?.data();
+  const eventType = !oldData ? 'create' : (!newData ? 'delete' : 'update');
 
   const formId = newData?.formId || oldData?.formId;
-  if (!formId) return;
+  if (!formId) {
+    console.log(`[${functionName}] skip: no formId on docId=${docId}`);
+    return;
+  }
+  console.log(`[${functionName}] start: docId=${docId}, eventType=${eventType}, formId=${formId}`);
 
   try {
     const db = defaultDb; // Use explicit anxi-app db instance
     const formDoc = await db.collection("customFormTemplates").doc(formId).get();
-    if (!formDoc.exists) return;
+    if (!formDoc.exists) {
+      console.warn(`[${functionName}] skip: formTemplate ${formId} 不存在`);
+      return;
+    }
 
     const formTemplateData = formDoc.data();
     const syncConfig = formTemplateData.syncConfig;
-    if (!syncConfig || !syncConfig.spreadsheetId || !syncConfig.sheetName) return;
+    if (!syncConfig || !syncConfig.spreadsheetId || !syncConfig.sheetName) {
+      console.log(`[${functionName}] skip: 表單未設定 syncConfig (formId=${formId})`);
+      return;
+    }
 
     const spreadsheetId = syncConfig.spreadsheetId;
     const sheetName = syncConfig.sheetName;
@@ -24572,6 +24583,7 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
         break;
       }
     }
+    console.log(`[${functionName}] sheet 查找：rowIndex=${rowIndex} (total rows=${values.length})`);
 
     if (!newData || newData.isDeleted === true) {
       // Delete operation (Hard delete or Soft delete)
@@ -24675,6 +24687,7 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
           valueInputOption: "USER_ENTERED",
           resource: { values: [rowData] },
         });
+        console.log(`[${functionName}] 已更新 sheet 第 ${rowIndex} 列 (docId=${docId})`);
       } else {
         await sheets.spreadsheets.values.append({
           spreadsheetId,
@@ -24682,10 +24695,11 @@ exports.onCustomFormSubmissionWrite = onDocumentWritten({
           valueInputOption: "USER_ENTERED",
           resource: { values: [rowData] },
         });
+        console.log(`[${functionName}] 找不到既有列，已新增 sheet 列 (docId=${docId})`);
       }
     }
   } catch (error) {
-    console.error(`[${functionName}] 錯誤:`, error);
+    console.error(`[${functionName}] 錯誤 (docId=${docId}):`, error);
   }
 });
 

@@ -84,15 +84,15 @@
 2. 讀取 customFormTemplates/{formId} → 取得 notify 設定
 3. 收件人收集：
    a) 若 notifySalesAdmins:
-      - 查 userPermissions：permissions.{projectId}.systems array-contains '銷控系統'
-      - 用 userKeys 批次查 users 取得 lineId / email / name
+      - 查 userPermissions：permissions.{projectId}.systems array-contains-any ['銷控系統','報價系統']
+      - **此來源套用** 抑制名單與 admin 角色過濾
       - 標記 source='salesAdmin'
    b) 若 notifyUnitSalesPerson 且 submission.unitId 存在:
-      - 查 salesHouseholds where projectId == X AND unitId == Y → 取 salespersonUserKey
-      - 用 salespersonUserKey 查 users 取得 lineId / email / name
+      - 查 salesHouseholds/${projectId}_${unitId} → 取 salespersonUserKey
+      - **此來源凌駕**抑制名單與 admin 角色過濾（該戶銷售必收）
       - 標記 source='unitSalesPerson'
-4. 套用抑制名單：過濾掉 notificationExcludedUserKeys 中的 userKey
-5. 去重：以 userKey 為 key 合併（同人多來源時，source 取 'unitSalesPerson' 優先）
+4. 去重：以 userKey 為 key 合併（同人多來源時，source 取 'unitSalesPerson' 優先 → 因此抑制名單對該人也失效）
+5. 排除：系統/超級管理員角色僅對 source='salesAdmin' 生效；source='unitSalesPerson' 不受影響
 6. 為每位收件人選擇 channel：
    - lineId 以 'U' 開頭 → channel='line'
    - 否則若有 email → channel='email'
@@ -274,6 +274,8 @@ form.value = {
 | 抑制名單包含全部收件人 | 不發任何通知，仍寫一筆 log（recipients=[]）|
 | `notifySalesAdmins=false` 且 `notifyUnitSalesPerson=false` | 不發送，不寫 log |
 | 同一人既是銷控管理員也是該戶銷售 | 去重，source 取 `unitSalesPerson`，只發 1 則 |
+| 該戶銷售人員在抑制名單內 | 仍然發送（unitSalesPerson 凌駕抑制名單） |
+| 該戶銷售人員是系統管理員角色 | 仍然發送（unitSalesPerson 凌駕角色排除） |
 | 修改回覆時 trigger 不會再次觸發 | 因為是 onDocumentCreated 不是 onWrite，`updateDoc` 不會觸發 |
 | 表單軟刪除後（`isDeleted=true`） | PublicFormView 顯示「此回覆已被刪除」 |
 

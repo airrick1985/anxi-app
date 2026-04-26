@@ -174,7 +174,11 @@ async function fetchUserContacts(db, userKeys) {
 }
 
 /**
- * 收集應通知的人員（合併銷控管理員 + 該戶銷售人員，套用抑制名單，去重）
+ * 收集應通知的人員
+ * 規則：
+ *  - 銷控/報價權限者依抑制名單與 admin 角色過濾
+ *  - 「該戶銷售人員」(unitSalesPerson) 凌駕抑制名單與 admin 角色過濾，永遠通知
+ *  - 同人多來源時，source 取 'unitSalesPerson' 優先
  * @returns {Promise<Array<{userKey, name, lineId, email, source}>>}
  */
 async function resolveRecipients({
@@ -184,7 +188,6 @@ async function resolveRecipients({
 }) {
   const ADMIN_ROLES = new Set(['系統管理員', '超級管理員']);
   const exclusionSet = new Set(excludedUserKeys || []);
-  // userKey → source；同人多來源時 unitSalesPerson 優先
   const candidateKeys = new Set();
   const sourceByKey = new Map();
 
@@ -204,9 +207,10 @@ async function resolveRecipients({
     try {
       const householdDoc = await db.collection('salesHouseholds').doc(`${projectId}_${unitId}`).get();
       const salesKey = householdDoc.exists ? (householdDoc.data().salespersonUserKey || '') : '';
-      if (salesKey && !exclusionSet.has(salesKey)) {
+      if (salesKey) {
+        // 該戶銷售凌駕抑制名單：直接加入並覆蓋 source
         candidateKeys.add(salesKey);
-        sourceByKey.set(salesKey, 'unitSalesPerson');  // 覆蓋 salesAdmin 標記
+        sourceByKey.set(salesKey, 'unitSalesPerson');
       }
     } catch (e) {
       console.warn('[formSubmissionNotifier] 查詢戶別銷售人員失敗:', e.message);
@@ -220,8 +224,12 @@ async function resolveRecipients({
   for (const k of candidateKeys) {
     const u = userMap.get(k);
     if (!u) continue;
-    if (Array.isArray(u.roles) && u.roles.some(r => ADMIN_ROLES.has(r))) continue;  // 排除系統/超級管理員
-    result.push({ ...u, source: sourceByKey.get(k) });
+    const source = sourceByKey.get(k);
+    // 系統/超級管理員 排除：但 unitSalesPerson 來源凌駕（該戶銷售必收）
+    if (source !== 'unitSalesPerson'
+        && Array.isArray(u.roles)
+        && u.roles.some(r => ADMIN_ROLES.has(r))) continue;
+    result.push({ ...u, source });
   }
   return result;
 }

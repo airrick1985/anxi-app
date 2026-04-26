@@ -175,6 +175,18 @@
           <div class="text-caption text-grey mt-1">
             勾選＝接收此表單通知；取消勾選＝停止接收
           </div>
+          <v-alert
+            v-if="form.notifyUnitSalesPerson"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mt-2"
+            icon="mdi-information-outline"
+          >
+            <span class="text-caption">
+              「該戶別的銷售人員」會凌駕此名單 — 即使在上方取消勾選，當該戶別表單提交時仍會收到通知。
+            </span>
+          </v-alert>
 
           <v-divider class="my-6"></v-divider>
         </template>
