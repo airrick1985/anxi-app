@@ -2430,6 +2430,7 @@ async function syncOwnedParkingFields(unitId) {
       await updateParkingLot(parking.id, {
         status_backend: data.salesStatus_backend || null,
         salesperson: data.salesperson || null,
+        salespersonUserKey: data.salespersonUserKey || null,
         buyerName: data.buyerName || null,
         updatedAt: new Date()
       });
@@ -2452,6 +2453,7 @@ async function commitParkingChanges(unitId, parkingList) {
         status: null,
         status_backend: null,
         salesperson: null,
+        salespersonUserKey: null,
         remarks: null,
         updatedAt: new Date()
       });
@@ -2469,6 +2471,7 @@ async function commitParkingChanges(unitId, parkingList) {
         status: '已售',
         status_backend: editingData.value?.salesStatus_backend || null,
         salesperson: editingData.value?.salesperson || null,
+        salespersonUserKey: editingData.value?.salespersonUserKey || null,
         remarks: newParking.remarks || null,
         updatedAt: new Date()
       });

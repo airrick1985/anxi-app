@@ -283,6 +283,16 @@
                 </div>
               </div>
               <div class="text-caption mt-2">掃描 QR Code 開啟表單</div>
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-download"
+                class="mt-2"
+                @click="downloadQrPng"
+              >
+                下載 PNG（透明背景）
+              </v-btn>
             </div>
           </div>
 
@@ -439,6 +449,7 @@
 <script setup lang="ts">
 import { ref, onMounted, defineAsyncComponent, computed, reactive } from 'vue';
 import QrcodeVue from 'qrcode.vue';
+import QRCode from 'qrcode';
 import {
   collection,
   query,
@@ -700,6 +711,101 @@ const generateShareLink = async () => {
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text);
   toast.success('連結已複製');
+};
+
+const downloadQrPng = async () => {
+  if (!generatedUrl.value) return;
+  try {
+    const outputSize = 800;
+    const canvas = document.createElement('canvas');
+    await QRCode.toCanvas(canvas, generatedUrl.value, {
+      errorCorrectionLevel: 'H',
+      margin: 1,
+      width: outputSize,
+      color: {
+        dark: '#000000ff',
+        light: '#00000000'
+      }
+    });
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable');
+
+    const lines: string[] = [];
+    if (qrShowProjectName.value && props.projectName) {
+      lines.push(props.projectName);
+    }
+    if (qrShowUnit.value && shareType.value === 'locked' && selectedUnitLabel.value) {
+      lines.push(selectedUnitLabel.value);
+    }
+
+    if (lines.length > 0) {
+      const scale = outputSize / qrSize;
+      const fontSize = qrTextSize.value * scale;
+      const lineHeight = fontSize * 1.25;
+      const padY = 4 * scale;
+      const padX = 8 * scale;
+      const radius = 4 * scale;
+
+      ctx.font = `700 ${fontSize}px "Microsoft JhengHei", "PingFang TC", "Heiti TC", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      let maxTextWidth = 0;
+      for (const line of lines) {
+        const w = ctx.measureText(line).width;
+        if (w > maxTextWidth) maxTextWidth = w;
+      }
+      const boxWidth = Math.min(maxTextWidth + padX * 2, outputSize * 0.78);
+      const boxHeight = lineHeight * lines.length + padY * 2;
+      const boxX = (outputSize - boxWidth) / 2;
+      const boxY = (outputSize - boxHeight) / 2;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(boxX + radius, boxY);
+      ctx.lineTo(boxX + boxWidth - radius, boxY);
+      ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius);
+      ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius);
+      ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight);
+      ctx.lineTo(boxX + radius, boxY + boxHeight);
+      ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius);
+      ctx.lineTo(boxX, boxY + radius);
+      ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#000000';
+      const startY = boxY + padY + lineHeight / 2;
+      const maxLineWidth = boxWidth - padX * 2;
+      lines.forEach((line, i) => {
+        ctx.fillText(line, outputSize / 2, startY + i * lineHeight, maxLineWidth);
+      });
+    }
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error('產生 PNG 失敗');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (props.projectName || 'qrcode').replace(/[\\/:*?"<>|]/g, '_');
+      const unitPart = shareType.value === 'locked' && selectedUnitLabel.value
+        ? `_${selectedUnitLabel.value.replace(/[\\/:*?"<>|]/g, '_')}`
+        : '';
+      a.download = `${safeName}${unitPart}_QRCode.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('已下載 QR Code');
+    }, 'image/png');
+  } catch (err) {
+    console.error('Download QR PNG failed:', err);
+    toast.error('下載 QR Code 失敗');
+  }
 };
 
 // --- Sync Functions ---

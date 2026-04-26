@@ -2731,7 +2731,7 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
 
     // 字串欄位去除前後空白
     const stringFields = [
-      'salesStatus_backend', 'salesStatus_quote', 'salesperson', 'contractType',
+      'salesStatus_backend', 'salesStatus_quote', 'salesperson', 'salespersonUserKey', 'contractType',
       'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'remarks',
       'buyerMailingAddressCity', 'buyerMailingAddressDistrict', 'buyerMailingAddressDetail',
       'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail',

@@ -503,6 +503,21 @@ watch(() => props.modelValue.buyerDateOfBirth, (newVal) => {
     }
 }, { immediate: true });
 
+// ✅ [新增] 監聽銷售人員選擇變化，同步寫入 salespersonUserKey (來源：salesPersonnel.phone)
+// Why: salesHouseholds 原本只存姓名字串，造成同名衝突 / 改名失聯 / 反查效率差
+watch(
+  [() => editableData.value?.salesperson, () => props.personnelOptions],
+  ([name, options]) => {
+    if (!editableData.value) return;
+    const matched = name ? (options || []).find(p => p?.name === name) : null;
+    const newKey = matched?.phone || null;
+    if (editableData.value.salespersonUserKey !== newKey) {
+      editableData.value.salespersonUserKey = newKey;
+    }
+  },
+  { immediate: true }
+);
+
 // ✅ 3. 新增 Watcher，確保 salesImages 永遠是陣列
 watch(() => editableData.value, (newData) => {
   if (!newData) return; // 如果 newData 是 null/undefined，則跳過
