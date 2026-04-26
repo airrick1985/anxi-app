@@ -1733,6 +1733,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'referrerName', title: '介紹人姓名' },
     { key: 'referrerPhone', title: '介紹人電話' },
     { key: 'salesperson', title: '銷售人員' },
+    { key: 'salespersonUserKey', title: '銷售人員userKey' },
     { key: 'contractType', title: '合約方式' },
     { key: 'isFirstTimeBuyer', title: '是否首購' },
     { key: 'area_house_sqm', title: '房屋面積(平方公尺)' },

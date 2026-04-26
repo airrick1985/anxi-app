@@ -2548,6 +2548,7 @@ const downloadExcel = () => {
     '溢差價(萬)': formatNumber(pricePremium.value),
     '銷控後台狀態': sourceData.salesStatus_backend || '',
     '銷售人員': sourceData.salesperson || '',
+    '銷售人員userKey': sourceData.salespersonUserKey || '',
     '小訂日期': formatDate(sourceData.payment_deposit_date),
 
     '補足日期': formatDate(sourceData.payment_complete_date) || formatDate(sourceData.payment_top_up_date), // 嘗試多種可能命名

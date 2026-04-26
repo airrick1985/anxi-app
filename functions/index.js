@@ -1135,6 +1135,24 @@ exports.uploadHouseholds = onCall({
   try {
     console.log(`[${functionName}] 開始執行，準備更新 ${householdsData.length} 筆戶別資料...`);
 
+    // ✅ [新增] 預先載入該專案的銷售人員清單，建立「姓名 → userKey(phone)」反查表
+    // Why: Excel 上傳時若使用者只填了銷售人員姓名、salespersonUserKey 留白（或刪除該欄），
+    //      後端自動依姓名反查補上 userKey，避免資料倒退（已有 userKey 變回只有姓名）
+    const salespersonNameToUserKey = new Map();
+    try {
+      const personnelSnap = await db.collection("salesPersonnel")
+        .where("projectId", "==", projectId).get();
+      personnelSnap.forEach(doc => {
+        const d = doc.data();
+        if (d?.name && d?.phone) {
+          salespersonNameToUserKey.set(String(d.name).trim(), String(d.phone).trim());
+        }
+      });
+      console.log(`[${functionName}] 已建立銷售人員反查表，共 ${salespersonNameToUserKey.size} 筆。`);
+    } catch (e) {
+      console.warn(`[${functionName}] 載入銷售人員清單失敗，將略過 userKey 自動回填: ${e.message}`);
+    }
+
     let batch = db.batch();
     let operationsCount = 0;
     const MAX_OPERATIONS_PER_BATCH = 499;
@@ -1210,7 +1228,9 @@ exports.uploadHouseholds = onCall({
         'packageBankAccount',     // 配套款匯款帳號
         'packageBankAccountName', // 配套款戶名
         'constructionMethod',     // 興建方式
-        'propertyType'            // ✅ [新增] 物件類型 (住家/店面/其他)
+        'propertyType',           // ✅ [新增] 物件類型 (住家/店面/其他)
+        'salesperson',            // ✅ [新增] 銷售人員姓名（強制字串、trim）
+        'salespersonUserKey'      // ✅ [新增] 銷售人員 userKey (= salesPersonnel.phone)，需保留前導 0
       ];
 
       // 正體中文註解：定義「興建方式」的有效選項
@@ -1241,6 +1261,33 @@ exports.uploadHouseholds = onCall({
             dataToSave[field] = stringValue;
           }
         }
+      }
+
+      // ✅ [新增] 銷售人員 ↔ userKey 一致性處理
+      // 規則：
+      //  1) Excel 提供 salesperson 欄位且為空 → salesperson 與 salespersonUserKey 同步清為 null
+      //  2) Excel 提供 salesperson 姓名 + 同時提供非空 salespersonUserKey → 兩者皆採用 (trust user input)
+      //  3) Excel 提供 salesperson 姓名、salespersonUserKey 留白或欄位不存在 → 依姓名反查補上
+      //  4) Excel 完全沒有 salesperson 欄位 → 不動現有資料 (依 merge: true)
+      if (Object.prototype.hasOwnProperty.call(dataToSave, 'salesperson')) {
+        const name = dataToSave.salesperson ? String(dataToSave.salesperson).trim() : '';
+        if (!name) {
+          dataToSave.salesperson = null;
+          dataToSave.salespersonUserKey = null;
+        } else {
+          const providedKey = dataToSave.salespersonUserKey
+            ? String(dataToSave.salespersonUserKey).trim() : '';
+          if (providedKey) {
+            dataToSave.salespersonUserKey = providedKey;
+          } else if (salespersonNameToUserKey.has(name)) {
+            dataToSave.salespersonUserKey = salespersonNameToUserKey.get(name);
+          } else {
+            dataToSave.salespersonUserKey = null;
+          }
+        }
+      } else if (Object.prototype.hasOwnProperty.call(dataToSave, 'salespersonUserKey')) {
+        // 邊界：只有 userKey 欄位、沒有姓名欄位 → 至少把空字串清為 null，避免污染既有資料
+        if (!dataToSave.salespersonUserKey) dataToSave.salespersonUserKey = null;
       }
 
       // salesStatus_backend 與 status 必須連動

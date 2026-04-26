@@ -1363,6 +1363,37 @@ const openUnitDetail = (unit) => {
 }
 
 /**
+ * 取得資料區間文字（YYYY/MM/DD~YYYY/MM/DD）
+ */
+const getReportDateRange = () => {
+  const dr = statistics.value?.dateRange
+  if (dr?.start && dr?.end) {
+    const start = formatDate(dr.start)
+    const end = formatDate(dr.end)
+    return start === end ? start : `${start}~${end}`
+  }
+  if (dr?.start) return formatDate(dr.start)
+  return getPeriodLabel() || '全部期間'
+}
+
+/**
+ * 構建報告頭部（標題 + 建案資訊 + 警語 + 提醒）
+ */
+const buildReportHeader = (projectName, dateRange) => {
+  return `客戶狀況彙整報告
+建案名稱：${projectName}
+資料區間：${dateRange}
+
+【AI 分析提醒】
+本報告由 AI 自動分析生成，內容難免存在誤差，僅供參考使用，請結合實際業務情況審慎判斷。
+資料填寫越完整，AI 分析越精準 — 建議完整記錄客戶互動內容、購屋疑慮、客戶評等與後續追蹤狀態，有助於後續報告產出更具洞察力的建議。
+
+────────────────────────────────────
+
+`
+}
+
+/**
  * 分析客戶狀況
  */
 const analyzeCustomers = async () => {
@@ -1372,7 +1403,7 @@ const analyzeCustomers = async () => {
   try {
     const guests = vipGuestStats.value.details
     const currentProject = props.availableProjects.find(p => p.id === props.projectId)
-    const projectName = currentProject?.name || ''
+    const projectName = currentProject?.name || projectData.value.project?.name || '專案'
 
     const result = await analyzeCustomerStatus({
       guests,
@@ -1380,7 +1411,9 @@ const analyzeCustomers = async () => {
       projectName,
       projectId: props.projectId,  // ← 傳入 projectId，讓 CF 讀取知識庫
     })
-    analysisReport.value = result.data.report
+
+    const header = buildReportHeader(projectName, getReportDateRange())
+    analysisReport.value = header + (result.data.report || '')
     showAnalysisDialog.value = true
   } catch (e) {
     console.error('[分析失敗]', e)
@@ -1414,6 +1447,26 @@ const renderReportHtml = (reportText) => {
     const trimmed = line.trim()
     if (!trimmed) return '<br />'
 
+    // 主標題：客戶狀況彙整報告
+    if (trimmed === '客戶狀況彙整報告') {
+      return `<h1 style="font-size: 22px; font-weight: bold; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #1976d2; color: #1a1a1a; text-align: center;">${trimmed}</h1>`
+    }
+
+    // 建案資訊行：建案名稱 / 資料區間
+    if (/^(建案名稱|資料區間)：/.test(trimmed)) {
+      return `<p style="margin: 2px 0; font-size: 13px; color: #555; text-align: center;">${trimmed}</p>`
+    }
+
+    // 區塊副標題：以【】包覆
+    if (/^【.+】$/.test(trimmed)) {
+      return `<h3 style="font-size: 14px; font-weight: bold; margin: 12px 0 6px 0; padding: 6px 10px; background: #fff3e0; border-left: 4px solid #fb8c00; color: #e65100;">${trimmed}</h3>`
+    }
+
+    // 分隔線
+    if (/^[─━—-]{6,}$/.test(trimmed)) {
+      return `<hr style="border: none; border-top: 1px dashed #bbb; margin: 14px 0;" />`
+    }
+
     // 大標題：以「一、」「二、」等開頭
     if (/^[一二三四五六七八九十]+[、]/.test(trimmed)) {
       return `<h2 style="font-size: 16px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #1a1a1a;">${trimmed}</h2>`
@@ -1442,6 +1495,45 @@ const parseReportToParagraphs = (reportText) => {
     const trimmed = line.trim()
     if (!trimmed) {
       paragraphs.push(new Paragraph({ text: '' }))
+      return
+    }
+
+    // 主標題：客戶狀況彙整報告
+    if (trimmed === '客戶狀況彙整報告') {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, bold: true, size: 36 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 100, after: 200 }
+      }))
+      return
+    }
+
+    // 建案資訊行：建案名稱 / 資料區間
+    if (/^(建案名稱|資料區間)：/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, size: 22, color: '555555' })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 60 }
+      }))
+      return
+    }
+
+    // 區塊副標題：以【】包覆
+    if (/^【.+】$/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, bold: true, size: 24, color: 'E65100' })],
+        spacing: { before: 200, after: 80 }
+      }))
+      return
+    }
+
+    // 分隔線
+    if (/^[─━—-]{6,}$/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: '',
+        border: { bottom: { color: 'BBBBBB', space: 1, style: 'dashed', size: 6 } },
+        spacing: { before: 100, after: 100 }
+      }))
       return
     }
 
@@ -1507,8 +1599,9 @@ const downloadPng = async () => {
     })
     document.body.removeChild(container)
 
+    const projectName = projectData.value.project?.name || '專案'
     canvas.toBlob(blob => {
-      saveAs(blob, `客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.png`)
+      saveAs(blob, `${projectName}_客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.png`)
     })
   } catch (e) {
     console.error('[PNG 下載失敗]', e)
@@ -1546,8 +1639,9 @@ const downloadDocx = async () => {
       }]
     })
 
+    const projectName = projectData.value.project?.name || '專案'
     const blob = await Packer.toBlob(doc)
-    saveAs(blob, `客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.docx`)
+    saveAs(blob, `${projectName}_客戶狀況彙整_${getPeriodLabel()}_${new Date().toISOString().slice(0, 10)}.docx`)
   } catch (e) {
     console.error('[DOCX 下載失敗]', e)
     error.value = 'DOCX 下載失敗，請稍後再試'
