@@ -613,6 +613,18 @@ const routes = [
     }
   },
 
+  // 表單回覆檢視/修改頁（提供給 LINE 通知收件人代客修改）
+  {
+    path: '/form-view/:submissionId',
+    name: 'PublicFormView',
+    component: () => import('@/views/public/PublicFormView.vue'),
+    meta: {
+      layout: PublicLayout,
+      title: '修改表單回覆',
+      requiresAuth: false
+    }
+  },
+
   // --- ✅ START: 新增 Standby 路由 ---
   {
     path: '/standby/:projectId', // ✓ 路由路徑，包含 projectId 參數

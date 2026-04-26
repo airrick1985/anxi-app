@@ -5870,6 +5870,22 @@ export const getNotificationRecipients = async (payload) => {
   }
 };
 
+/**
+ * 取得該建案有「銷控系統」權限的人員清單，供表單通知抑制名單選擇器使用
+ * @param {{ projectId: string }} payload
+ * @returns {Promise<{ candidates: Array<{ userKey: string, name: string, phone: string }> }>}
+ */
+export const getFormNotificationCandidates = async (payload) => {
+  try {
+    const fn = httpsCallable(functions, 'getFormNotificationCandidates');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getFormNotificationCandidates:", error);
+    throw new Error(error.message);
+  }
+};
+
 
 // --- 驗屋系統設定 API ---
 

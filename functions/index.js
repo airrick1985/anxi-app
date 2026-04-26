@@ -24529,7 +24529,8 @@ exports.syncCustomFormSubmissionsToSheet = onCall({
  */
 exports.onCustomFormSubmissionWrite = onDocumentWritten({
   document: "customFormSubmissions/{docId}",
-  database: "anxi-app"
+  database: "anxi-app",
+  memory: "512MiB"
 }, async (event) => {
   const functionName = "onCustomFormSubmissionWrite";
   // The event.params.docId can sometimes be parsed as Latin-1 instead of UTF-8 in GCF triggers.
@@ -25107,5 +25108,160 @@ exports.driveProxyDownload = onCall({ region: "asia-east1" }, async (request) =>
   } catch (error) {
     console.error('driveProxyDownload 錯誤:', error);
     throw new HttpsError("internal", error.message || '下載失敗');
+  }
+});
+
+/**
+ * 取得該建案有「銷控系統」權限的人員清單（供表單編輯器的通知抑制名單使用）
+ */
+exports.getFormNotificationCandidates = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId } = request.data || {};
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId");
+  }
+
+  try {
+    const db = defaultDb;
+    const permSnap = await db.collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', '銷控系統')
+      .get();
+
+    if (permSnap.empty) return { candidates: [] };
+
+    const userKeys = permSnap.docs.map(d => d.id);
+    const candidates = [];
+
+    for (let i = 0; i < userKeys.length; i += 30) {
+      const chunk = userKeys.slice(i, i + 30);
+      const usersSnap = await db.collection('users')
+        .where(FieldPath.documentId(), 'in', chunk)
+        .get();
+      usersSnap.forEach(d => {
+        const data = d.data() || {};
+        candidates.push({
+          userKey: d.id,
+          name: data.name || d.id,
+          phone: data.phone || d.id,
+        });
+      });
+    }
+
+    candidates.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+    return { candidates };
+  } catch (e) {
+    console.error('[getFormNotificationCandidates] 失敗:', e);
+    throw new HttpsError("internal", e.message || '查詢失敗');
+  }
+});
+
+/**
+ * 自訂表單提交通知 trigger
+ * 監聽 customFormSubmissions 新增事件，依表單設定通知銷控管理員與該戶銷售人員
+ * - notifySalesAdmins / notifyUnitSalesPerson 兩設定皆 false → 不執行
+ * - 修改回覆（updateDoc）不會觸發此 trigger（onDocumentCreated 限定）
+ */
+exports.notifyOnFormSubmission = onDocumentCreated({
+  document: "customFormSubmissions/{submissionId}",
+  database: "anxi-app",
+  region: "asia-east1",
+  memory: "512MiB",
+  secrets: [...gmailSecrets, ...lineSecrets],
+}, async (event) => {
+  const submissionId = event.data?.id || event.params.submissionId;
+  const fn = `notifyOnFormSubmission(${submissionId})`;
+
+  try {
+    const submission = event.data?.data();
+    if (!submission) {
+      console.warn(`[${fn}] 文件無資料`);
+      return;
+    }
+
+    const { projectId, formId, unitId } = submission;
+    if (!projectId || !formId) {
+      console.warn(`[${fn}] 缺少 projectId 或 formId，跳過`);
+      return;
+    }
+
+    const db = defaultDb;
+
+    const formDoc = await db.collection('customFormTemplates').doc(formId).get();
+    if (!formDoc.exists) {
+      console.warn(`[${fn}] 找不到表單模板 ${formId}`);
+      return;
+    }
+    const formData = formDoc.data() || {};
+    const notifySalesAdmins = formData.notifySalesAdmins ?? true;
+    const notifyUnitSalesPerson = formData.notifyUnitSalesPerson ?? true;
+    const excludedUserKeys = Array.isArray(formData.notificationExcludedUserKeys)
+      ? formData.notificationExcludedUserKeys : [];
+
+    if (!notifySalesAdmins && !notifyUnitSalesPerson) {
+      console.log(`[${fn}] 表單通知設定皆關閉，跳過`);
+      await event.data.ref.update({
+        notificationSent: true,
+        notificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
+      return;
+    }
+
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    const projectName = projectDoc.exists ? (projectDoc.data().name || '建案') : '建案';
+
+    // 從 readableSnapshot 抽取買方姓名 / 電話（系統欄位的 label 是固定中文）
+    const snapshot = submission.readableSnapshot || {};
+    const buyerName = snapshot['買方姓名'] || '';
+    const buyerPhone = snapshot['買方電話'] || '';
+
+    const { sendFormSubmissionNotifications } = require('./notifications/formSubmissionNotifier');
+    const result = await sendFormSubmissionNotifications({
+      projectId,
+      projectName,
+      formId,
+      formTitle: formData.title || '自訂表單',
+      submissionId,
+      unitId: unitId || null,
+      buyerName,
+      buyerPhone,
+      submittedAt: submission.submittedAt || new Date(),
+      notifySalesAdmins,
+      notifyUnitSalesPerson,
+      excludedUserKeys,
+      dbInstance: db,
+    });
+
+    // 寫入通知 log
+    try {
+      await db.collection('projects').doc(projectId)
+        .collection('notificationLogs').add({
+          type: 'formSubmission',
+          formId,
+          formTitle: formData.title || '',
+          submissionId,
+          unitId: unitId || null,
+          notifySalesAdmins,
+          notifyUnitSalesPerson,
+          excludedUserKeys,
+          attempts: result.attempts,
+          sent: result.sent,
+          failed: result.failed,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (logErr) {
+      console.error(`[${fn}] 寫入 notificationLogs 失敗:`, logErr);
+    }
+
+    // 標記通知已發送
+    await event.data.ref.update({
+      notificationSent: true,
+      notificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch(e => console.warn(`[${fn}] 更新 notificationSent 失敗:`, e.message));
+
+    console.log(`[${fn}] 完成：sent=${result.sent}, failed=${result.failed}`);
+  } catch (err) {
+    console.error(`[${fn}] 處理失敗:`, err);
   }
 });

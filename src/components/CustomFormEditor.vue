@@ -138,12 +138,53 @@
         <v-divider class="my-6"></v-divider>
 
         <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3">表單送出後設定</h3>
-        
+
         <v-label class="mb-2">表單送出成功顯示訊息</v-label>
         <RichTextEditor
           v-model="form.submitSuccessMessage"
           class="mb-4"
         />
+
+        <template v-if="canEditNotify">
+          <v-divider class="my-6"></v-divider>
+
+          <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3 d-flex align-center">
+            <v-icon class="mr-2" color="primary">mdi-bell-ring-outline</v-icon>
+            通知設定
+          </h3>
+
+          <v-checkbox
+            v-model="form.notifySalesAdmins"
+            label="通知本建案的銷控系統管理員"
+            color="primary"
+            hide-details
+            density="comfortable"
+          ></v-checkbox>
+
+          <v-checkbox
+            v-model="form.notifyUnitSalesPerson"
+            label="通知該戶別的銷售人員（需表單包含「戶別」系統欄位）"
+            color="primary"
+            hide-details
+            density="comfortable"
+            class="mt-1"
+          ></v-checkbox>
+
+          <v-autocomplete
+            v-model="form.notificationExcludedUserKeys"
+            :items="notificationCandidates"
+            item-title="displayLabel"
+            item-value="userKey"
+            label="通知抑制名單（這些人不會收到此表單的通知）"
+            multiple chips clearable
+            variant="outlined"
+            density="comfortable"
+            class="mt-4"
+            :loading="loadingCandidates"
+            hint="從本建案有「銷控系統」權限的人員中選擇"
+            persistent-hint
+          ></v-autocomplete>
+        </template>
 
       </v-sheet>
     </div>
@@ -161,6 +202,8 @@ import RichTextEditor from '@/components/RichTextEditor.vue';
 const uuidv4 = () => crypto.randomUUID();
 import TwCities from '@/assets/TwCities.json';
 import FormRenderItem from '@/components/FormRenderItem.vue';
+import { useUserStore } from '@/store/user';
+import { getFormNotificationCandidates } from '@/api';
 
 const props = defineProps<{
   projectId: string;
@@ -169,11 +212,36 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'saved']);
 const toast = useToast();
+const userStore = useUserStore();
 
 const saving = ref(false);
 const isEditMode = ref(false);
 const previewDialog = ref(false);
 const previewData = ref<any>({});
+
+const canEditNotify = computed(() => {
+  const perms = (userStore.user as any)?.permissions;
+  return !!perms?.[props.projectId]?.systems?.includes('銷控系統');
+});
+
+const notificationCandidates = ref<Array<{ userKey: string; name: string; phone: string; displayLabel: string }>>([]);
+const loadingCandidates = ref(false);
+
+const loadNotificationCandidates = async () => {
+  if (!canEditNotify.value || !props.projectId) return;
+  loadingCandidates.value = true;
+  try {
+    const res = await getFormNotificationCandidates({ projectId: props.projectId });
+    notificationCandidates.value = (res.candidates || []).map((c: any) => ({
+      ...c,
+      displayLabel: `${c.name} (${c.phone})`,
+    }));
+  } catch (err) {
+    console.error('載入通知候選人員失敗:', err);
+  } finally {
+    loadingCandidates.value = false;
+  }
+};
 
 const openPreview = () => {
   // Initialize mock data
@@ -214,7 +282,10 @@ const form = ref({
   description: '',
   submitSuccessMessage: '', // New field
   isActive: true,
-  fields: [] as any[] // DynamicField[]
+  fields: [] as any[], // DynamicField[]
+  notifySalesAdmins: true,
+  notifyUnitSalesPerson: true,
+  notificationExcludedUserKeys: [] as string[],
 });
 
 const loadForm = async () => {
@@ -227,7 +298,7 @@ const loadForm = async () => {
     ];
     return;
   }
-  
+
   isEditMode.value = true;
   try {
     const docRef = doc(db, 'customFormTemplates', props.formId);
@@ -239,7 +310,11 @@ const loadForm = async () => {
         description: data.description || '',
         submitSuccessMessage: data.submitSuccessMessage || '',
         isActive: data.isActive ?? true,
-        fields: data.fields || []
+        fields: data.fields || [],
+        notifySalesAdmins: data.notifySalesAdmins ?? true,
+        notifyUnitSalesPerson: data.notifyUnitSalesPerson ?? true,
+        notificationExcludedUserKeys: Array.isArray(data.notificationExcludedUserKeys)
+          ? data.notificationExcludedUserKeys : [],
       };
     } else {
       toast.error('找不到表單資料');
@@ -259,19 +334,26 @@ const saveForm = async () => {
 
   saving.value = true;
   try {
-    const payload = {
+    const payload: any = {
       projectId: props.projectId,
       ...form.value,
       updatedAt: serverTimestamp()
     };
 
+    // 無編輯通知設定權限者：移除三個欄位以避免覆寫既有設定
+    if (!canEditNotify.value) {
+      delete payload.notifySalesAdmins;
+      delete payload.notifyUnitSalesPerson;
+      delete payload.notificationExcludedUserKeys;
+    }
+
     if (isEditMode.value && props.formId) {
       await updateDoc(doc(db, 'customFormTemplates', props.formId), payload);
     } else {
-      (payload as any).createdAt = serverTimestamp();
+      payload.createdAt = serverTimestamp();
       await addDoc(collection(db, 'customFormTemplates'), payload);
     }
-    
+
     emit('saved');
   } catch (err) {
     console.error(err);
@@ -283,6 +365,7 @@ const saveForm = async () => {
 
 onMounted(() => {
   loadForm();
+  loadNotificationCandidates();
 });
 </script>
 
