@@ -204,18 +204,85 @@
 
            <div v-if="generatedUrl" class="mt-4 pa-3 bg-grey-lighten-4 rounded border">
             <div class="text-caption font-weight-bold mb-1">分享連結 (點擊複製):</div>
-            <div 
+            <div
               class="d-flex align-center cursor-pointer text-primary text-decoration-underline text-break"
               @click="copyToClipboard(generatedUrl)"
             >
               {{ generatedUrl }}
               <v-icon size="small" class="ml-1">mdi-content-copy</v-icon>
             </div>
-            <div class="mt-3 text-center">
-            <div class="mt-3 text-center">
-              <qrcode-vue :value="generatedUrl" :size="200" level="H" class="mx-auto" />
+
+            <v-divider class="my-3"></v-divider>
+            <div class="text-caption font-weight-bold mb-2">QR Code 中央顯示設定</div>
+            <v-row dense align="center" class="mb-1">
+              <v-col cols="6">
+                <v-switch
+                  v-model="qrShowProjectName"
+                  label="顯示建案名稱"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  :disabled="!projectName"
+                ></v-switch>
+              </v-col>
+              <v-col cols="6">
+                <v-switch
+                  v-model="qrShowUnit"
+                  label="顯示鎖定戶別"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  :disabled="shareType !== 'locked' || !selectedUnitLabel"
+                ></v-switch>
+              </v-col>
+              <v-col cols="12">
+                <div class="d-flex align-center">
+                  <span class="text-caption mr-3" style="white-space: nowrap;">
+                    文字大小：{{ qrTextSize }}px
+                  </span>
+                  <v-slider
+                    v-model="qrTextSize"
+                    :min="8"
+                    :max="20"
+                    :step="1"
+                    hide-details
+                    density="compact"
+                    color="primary"
+                    thumb-label
+                  ></v-slider>
+                </div>
+              </v-col>
+            </v-row>
+
+            <div class="mt-2 text-center">
+              <div
+                class="qr-wrapper mx-auto"
+                :style="{ width: qrSize + 'px', height: qrSize + 'px' }"
+              >
+                <qrcode-vue :value="generatedUrl" :size="qrSize" level="H" />
+                <div
+                  v-if="(qrShowProjectName && projectName) || (qrShowUnit && shareType === 'locked' && selectedUnitLabel)"
+                  class="qr-overlay"
+                >
+                  <div class="qr-text-bg">
+                    <div
+                      v-if="qrShowProjectName && projectName"
+                      class="qr-text-line"
+                      :style="{ fontSize: qrTextSize + 'px' }"
+                    >
+                      {{ projectName }}
+                    </div>
+                    <div
+                      v-if="qrShowUnit && shareType === 'locked' && selectedUnitLabel"
+                      class="qr-text-line"
+                      :style="{ fontSize: qrTextSize + 'px' }"
+                    >
+                      {{ selectedUnitLabel }}
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="text-caption mt-2">掃描 QR Code 開啟表單</div>
-            </div>
             </div>
           </div>
 
@@ -394,6 +461,7 @@ const CustomFormResponses = defineAsyncComponent(() => import('./CustomFormRespo
 
 const props = defineProps<{
   projectId: string;
+  projectName?: string;
 }>();
 
 const toast = useToast();
@@ -417,6 +485,12 @@ const units = ref<any[]>([]); // { label: 'A-5', unitId: 'A-5' }
 const unitsLoading = ref(false);
 const generatedUrl = ref('');
 const generatingLink = ref(false);
+
+// QR Code 中央覆蓋顯示設定
+const qrSize = 240;
+const qrShowProjectName = ref(true);
+const qrShowUnit = ref(true);
+const qrTextSize = ref(12);
 // const expiryOption and options removed
 
 // Sync State
@@ -538,6 +612,12 @@ const uniqueBuildings = computed(() => {
 const filteredUnits = computed(() => {
   if (!selectedBuilding.value) return units.value;
   return units.value.filter(u => u.building === selectedBuilding.value);
+});
+
+const selectedUnitLabel = computed(() => {
+  if (!selectedUnitId.value) return '';
+  const u = units.value.find(u => u.unitId === selectedUnitId.value);
+  return u?.label || String(selectedUnitId.value);
 });
 
 // Update Open logic to reset selection
@@ -760,5 +840,38 @@ onMounted(() => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.qr-wrapper {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.qr-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.qr-text-bg {
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+  max-width: 78%;
+  line-height: 1.25;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.qr-text-line {
+  color: #000000;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

@@ -729,7 +729,7 @@
 
       <v-window-item value="customForms">
         <v-card class="pa-4" elevation="2">
-          <CustomFormManager :projectId="projectId" />
+          <CustomFormManager :projectId="projectId" :projectName="project?.name || ''" />
         </v-card>
       </v-window-item>
 
