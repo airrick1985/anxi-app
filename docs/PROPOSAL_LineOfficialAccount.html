@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>建設公司官方 LINE 提案 ─ 簽約客戶售後服務數位化升級</title>
+<style>
+  :root {
+    --navy: #0A2540;
+    --navy-2: #163A5F;
+    --gold: #C8A86B;
+    --gold-soft: #E5D4A6;
+    --bg: #F6F7FB;
+    --text: #1B2A3A;
+    --muted: #5C6B7A;
+    --line: #E2E8F0;
+    --green: #2E8B57;
+    --red: #C0392B;
+    --orange: #D98E28;
+    --blue: #1F6FB8;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15.5px;
+  }
+
+  /* 導覽列 */
+  .topnav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--navy);
+    color: #fff;
+    padding: 10px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 12px rgba(0,0,0,.15);
+  }
+  .topnav .brand {
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-size: 14px;
+  }
+  .topnav .brand span { color: var(--gold); }
+  .topnav nav a {
+    color: #cfd9e5;
+    text-decoration: none;
+    margin-left: 14px;
+    font-size: 13px;
+    transition: color .2s;
+  }
+  .topnav nav a:hover { color: var(--gold); }
+
+  /* 章節通用 */
+  section {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 64px 32px 48px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  section:nth-of-type(even) { background: var(--bg); }
+  .chapter-tag {
+    display: inline-block;
+    color: var(--gold);
+    font-weight: 600;
+    letter-spacing: 4px;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .chapter-title {
+    color: var(--navy);
+    font-size: 30px;
+    margin: 0 0 6px;
+    font-weight: 700;
+  }
+  .chapter-sub {
+    color: var(--muted);
+    font-size: 15px;
+    margin: 0 0 28px;
+  }
+  h3 {
+    color: var(--navy);
+    margin: 28px 0 10px;
+    font-size: 19px;
+    border-left: 4px solid var(--gold);
+    padding-left: 10px;
+  }
+
+  /* 封面 */
+  .cover {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff;
+    padding: 96px 32px 80px;
+    border-bottom: 6px solid var(--gold);
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: "";
+    position: absolute;
+    right: -120px;
+    top: -120px;
+    width: 480px;
+    height: 480px;
+    border: 2px solid rgba(200,168,107,.15);
+    border-radius: 50%;
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    bottom: -60px;
+    width: 320px;
+    height: 320px;
+    border: 2px solid rgba(200,168,107,.10);
+    border-radius: 50%;
+  }
+  .cover-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+  .cover .ribbon {
+    display: inline-block;
+    background: var(--gold);
+    color: var(--navy);
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    border-radius: 2px;
+    margin-bottom: 22px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    margin: 0 0 14px;
+    line-height: 1.3;
+    font-weight: 800;
+  }
+  .cover h1 em {
+    color: var(--gold);
+    font-style: normal;
+  }
+  .cover .lead {
+    font-size: 18px;
+    color: #d4dde9;
+    max-width: 760px;
+    margin: 0 0 36px;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    color: #b9c6d6;
+    font-size: 13px;
+    border-top: 1px solid rgba(255,255,255,.15);
+    padding-top: 18px;
+  }
+  .cover-meta b { color: #fff; font-weight: 600; }
+
+  /* 執行摘要三大數字 */
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 36px;
+  }
+  .summary-card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(200,168,107,.3);
+    padding: 20px;
+    border-radius: 6px;
+  }
+  .summary-card .num {
+    color: var(--gold);
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .summary-card .label {
+    color: #fff;
+    font-size: 14px;
+    margin-top: 6px;
+  }
+  .summary-card .desc {
+    color: #b9c6d6;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  /* 痛點區塊 */
+  .pain-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .pain-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--red);
+    padding: 18px 20px;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.03);
+  }
+  .pain-card h4 {
+    margin: 0 0 6px;
+    color: var(--navy);
+    font-size: 16px;
+  }
+  .pain-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* 數據條 */
+  .data-row {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .data-row .data-block {
+    flex: 1;
+    min-width: 160px;
+    border-right: 1px dashed var(--line);
+    padding-right: 20px;
+  }
+  .data-row .data-block:last-child { border-right: none; }
+  .data-row .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .data-row .num small {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .data-row .label {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* 解決方案總覽 */
+  .promise-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .promise {
+    background: linear-gradient(180deg, #fff 0%, #fafbfd 100%);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--gold);
+    padding: 22px;
+    border-radius: 6px;
+    text-align: center;
+  }
+  .promise .icon {
+    font-size: 32px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .promise h4 {
+    color: var(--navy);
+    margin: 6px 0;
+    font-size: 17px;
+  }
+  .promise p { font-size: 13.5px; color: var(--muted); margin: 0; }
+
+  /* 客戶生命週期流程圖 */
+  .lifecycle {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 24px;
+  }
+  .lifecycle .stage {
+    background: #fff;
+    border: 1px solid var(--line);
+    padding: 14px 10px;
+    text-align: center;
+    border-radius: 4px;
+    position: relative;
+    font-size: 13px;
+  }
+  .lifecycle .stage .stage-name {
+    color: var(--navy);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .lifecycle .stage .stage-line {
+    color: var(--gold);
+    font-size: 12px;
+    margin-top: 6px;
+    border-top: 1px dashed var(--gold);
+    padding-top: 6px;
+  }
+
+  /* 功能藍圖卡片 */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin-top: 24px;
+  }
+  .feature-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(10,37,64,.04);
+  }
+  .feature-card .head {
+    background: var(--navy);
+    color: #fff;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .feature-card .head .name {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .feature-card .head .badge {
+    background: var(--gold);
+    color: var(--navy);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+  .feature-card .body {
+    padding: 16px 18px 18px;
+  }
+  .feature-card ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .feature-card ul li { margin: 4px 0; }
+
+  /* 情境劇本 */
+  .scenario {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px 22px;
+    margin-top: 18px;
+  }
+  .scenario h4 {
+    color: var(--navy);
+    margin: 0 0 4px;
+    font-size: 17px;
+  }
+  .scenario .scene-meta {
+    color: var(--gold);
+    font-size: 12px;
+    letter-spacing: 2px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .chat-flow {
+    background: #f0f3f8;
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    font-size: 13.5px;
+  }
+  .chat-flow .msg {
+    margin: 6px 0;
+    display: flex;
+    gap: 8px;
+  }
+  .chat-flow .msg .who {
+    color: var(--navy);
+    font-weight: 700;
+    min-width: 70px;
+  }
+  .chat-flow .msg .what { color: var(--text); flex: 1; }
+  .chat-flow .msg.system .who { color: var(--blue); }
+  .chat-flow .msg.bot .who { color: var(--green); }
+
+  /* 系統架構圖 */
+  .arch {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 24px;
+    margin-top: 16px;
+  }
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr 60px 1fr;
+    gap: 8px;
+    align-items: center;
+  }
+  .arch-box {
+    background: var(--navy);
+    color: #fff;
+    border-radius: 6px;
+    padding: 14px;
+    text-align: center;
+    font-size: 13px;
+  }
+  .arch-box.gold { background: var(--gold); color: var(--navy); }
+  .arch-box.outline {
+    background: #fff;
+    color: var(--navy);
+    border: 2px solid var(--navy);
+  }
+  .arch-box .title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .arch-box .sub { font-size: 11.5px; opacity: .85; }
+  .arrow {
+    text-align: center;
+    color: var(--muted);
+    font-size: 22px;
+    font-weight: 300;
+  }
+  .arrow .label {
+    font-size: 11px;
+    color: var(--muted);
+    display: block;
+    margin-top: -4px;
+  }
+  .reuse-list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .reuse-item {
+    background: #f0f5fb;
+    border: 1px solid #d6e4f1;
+    border-left: 3px solid var(--blue);
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .reuse-item b { color: var(--navy); display: block; margin-bottom: 2px; }
+
+  /* 表格 */
+  table.biz {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 18px;
+    font-size: 14px;
+    background: #fff;
+    border: 1px solid var(--line);
+  }
+  table.biz th {
+    background: var(--navy);
+    color: #fff;
+    padding: 12px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13.5px;
+    border-right: 1px solid rgba(255,255,255,.1);
+  }
+  table.biz th:last-child { border-right: none; }
+  table.biz td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.biz td:last-child { border-right: none; }
+  table.biz tr:nth-child(even) td { background: #fafbfd; }
+  table.biz .recommend {
+    background: #FFF8E7 !important;
+    border-left: 3px solid var(--gold);
+  }
+  table.biz .recommend td:first-child b::before {
+    content: "★ ";
+    color: var(--gold);
+  }
+
+  /* 案例 */
+  .case-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .case {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px;
+  }
+  .case h4 {
+    color: var(--navy);
+    margin: 0 0 4px;
+    font-size: 16px;
+  }
+  .case .tag {
+    display: inline-block;
+    background: var(--gold-soft);
+    color: var(--navy);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+  }
+  .case ul { padding-left: 18px; margin: 6px 0; font-size: 13.5px; color: var(--muted); }
+  .case .takeaway {
+    background: #f0f5fb;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    margin-top: 10px;
+    color: var(--navy);
+  }
+  .case .takeaway b { color: var(--blue); }
+
+  /* 三面向效益 */
+  .benefit-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .benefit {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--gold);
+    padding: 18px 20px;
+    border-radius: 6px;
+  }
+  .benefit h4 {
+    color: var(--navy);
+    margin: 0 0 10px;
+    font-size: 17px;
+    border: none;
+    padding: 0;
+  }
+  .benefit .kpi {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 13.5px;
+  }
+  .benefit .kpi:last-child { border: none; }
+  .benefit .kpi .v {
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  /* ROI */
+  .roi-summary {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff;
+    border-radius: 8px;
+    padding: 28px;
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .roi-summary .item .label {
+    color: var(--gold);
+    font-size: 12px;
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+  .roi-summary .item .val {
+    font-size: 30px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .roi-summary .item .note {
+    color: #b9c6d6;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  /* 風險矩陣 */
+  .risk-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .risk {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 20px;
+  }
+  .risk-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .risk-header h4 {
+    margin: 0;
+    color: var(--navy);
+    font-size: 16px;
+    border: none;
+    padding: 0;
+  }
+  .risk-level {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .risk-level.high { background: #FBE4E2; color: var(--red); }
+  .risk-level.mid { background: #FBEFD9; color: var(--orange); }
+  .risk-level.low { background: #DDF1E4; color: var(--green); }
+  .risk .desc {
+    color: var(--muted);
+    font-size: 13.5px;
+    margin: 0 0 10px;
+  }
+  .risk .solve {
+    background: #f0f7f3;
+    border-left: 3px solid var(--green);
+    padding: 8px 12px;
+    font-size: 13.5px;
+    border-radius: 3px;
+  }
+  .risk .solve b { color: var(--green); }
+
+  /* 時程 */
+  .timeline {
+    margin-top: 24px;
+    border-left: 3px solid var(--gold);
+    padding-left: 24px;
+  }
+  .phase {
+    margin-bottom: 22px;
+    position: relative;
+  }
+  .phase::before {
+    content: "";
+    position: absolute;
+    left: -32px;
+    top: 4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--gold);
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 2px var(--gold);
+  }
+  .phase .phase-meta {
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+  .phase h4 {
+    color: var(--navy);
+    margin: 4px 0 8px;
+    font-size: 17px;
+    border: none;
+    padding: 0;
+  }
+  .phase .deliverables {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px 16px;
+    font-size: 13.5px;
+  }
+  .phase .deliverables b { color: var(--navy); }
+
+  /* 結論 CTA */
+  .cta {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff;
+    border-radius: 8px;
+    padding: 36px;
+    margin-top: 28px;
+    text-align: center;
+  }
+  .cta h3 {
+    color: #fff;
+    border: none;
+    padding: 0;
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+  .cta p { color: #d4dde9; max-width: 720px; margin: 0 auto 22px; }
+  .cta .actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .cta .btn {
+    background: var(--gold);
+    color: var(--navy);
+    padding: 12px 26px;
+    border-radius: 4px;
+    font-weight: 700;
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  .cta .btn.outline {
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+  }
+
+  /* footer */
+  footer {
+    background: #0A1A2D;
+    color: #8997a8;
+    padding: 24px 32px;
+    text-align: center;
+    font-size: 12.5px;
+  }
+  footer b { color: var(--gold); }
+
+  /* 共通輔助 */
+  .note {
+    background: #f0f5fb;
+    border-left: 3px solid var(--blue);
+    padding: 10px 14px;
+    color: var(--muted);
+    font-size: 13px;
+    border-radius: 3px;
+    margin-top: 16px;
+  }
+  .note b { color: var(--blue); }
+
+  @media (max-width: 880px) {
+    .summary-cards, .promise-grid, .feature-grid, .pain-grid,
+    .case-grid, .benefit-grid, .risk-grid, .reuse-list { grid-template-columns: 1fr 1fr; }
+    .roi-summary { grid-template-columns: 1fr; }
+    .lifecycle { grid-template-columns: 1fr 1fr; }
+    .arch-grid { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); margin: 4px 0; }
+    .cover h1 { font-size: 30px; }
+  }
+  @media (max-width: 540px) {
+    .summary-cards, .promise-grid, .feature-grid, .pain-grid,
+    .case-grid, .benefit-grid, .risk-grid, .reuse-list { grid-template-columns: 1fr; }
+    .topnav nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 導覽列 -->
+<header class="topnav">
+  <div class="brand">ANXI <span>×</span> LINE OFFICIAL ACCOUNT PROPOSAL</div>
+  <nav>
+    <a href="#ch1">摘要</a>
+    <a href="#ch4">功能</a>
+    <a href="#ch6">整合</a>
+    <a href="#ch10">成本</a>
+    <a href="#ch11">風險</a>
+    <a href="#ch13">結論</a>
+  </nav>
+</header>
+
+<!-- 1. 封面與執行摘要 -->
+<section class="cover" id="ch1">
+  <div class="cover-inner">
+    <div class="ribbon">PROPOSAL · 2026</div>
+    <h1>建設公司官方 LINE<br><em>簽約客戶售後服務數位化升級</em></h1>
+    <p class="lead">
+      以 LINE 官方帳號做為簽約客戶的單一售後服務介面，整合 anxi-app 既有客戶資料、自訂表單與通知模組，
+      在交屋、保固、社區生活、品牌經營四大階段提供即時、雙向、智慧的服務體驗。
+    </p>
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="num">&lt; 12<small> 個月</small></div>
+        <div class="label">投資回收期</div>
+        <div class="desc">客服人力節省 + 老客戶轉介成交</div>
+      </div>
+      <div class="summary-card">
+        <div class="num">~ 50<small> %</small></div>
+        <div class="label">客服電話量預估下降</div>
+        <div class="desc">自助查詢 + 自動化常見問答</div>
+      </div>
+      <div class="summary-card">
+        <div class="num">3,000+<small> 戶</small></div>
+        <div class="label">既有可導入客戶基數</div>
+        <div class="desc">直接擴大品牌觸及與經營面</div>
+      </div>
+    </div>
+
+    <div class="cover-meta">
+      <div><b>提案日期</b> 2026-04-26</div>
+      <div><b>提報對象</b> 業務／客服主管</div>
+      <div><b>提案範圍</b> 系統建置 + LINE OA 維運架構</div>
+      <div><b>決策性質</b> 資源投入與時程核可</div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. 提案背景與現況痛點 -->
+<section id="ch2">
+  <div class="chapter-tag">CHAPTER 02 · 背景</div>
+  <h2 class="chapter-title">為什麼是現在?售後服務的四個溝通斷點</h2>
+  <p class="chapter-sub">3,000 戶以上規模下,既有溝通方式正在邊際成本快速上升而服務品質難以同步提升。</p>
+
+  <div class="pain-grid">
+    <div class="pain-card">
+      <h4>① 紙本與電話的單向通知</h4>
+      <p>進度通知、繳款提醒透過郵寄或人工撥打,客戶是否收到、何時讀取無從追蹤,溝通結果無紀錄。</p>
+    </div>
+    <div class="pain-card">
+      <h4>② 客服尖峰電話壅塞</h4>
+      <p>保固期內查詢進度、報修、問繳款,集中於上班時段,客服人力高峰期接不完、離峰期閒置。</p>
+    </div>
+    <div class="pain-card">
+      <h4>③ 簡訊容量小、無法雙向</h4>
+      <p>SMS 字數受限、無法附圖、無法完成預約或表單,客戶仍需另外撥電話補充說明,流程斷裂。</p>
+    </div>
+    <div class="pain-card">
+      <h4>④ 既有 anxi-app 主要對內,缺少對外通道</h4>
+      <p>客戶資料、保固紀錄、繳款明細已在系統中,但客戶端沒有便捷介面查詢,業務需逐筆代查回覆。</p>
+    </div>
+  </div>
+
+  <div class="data-row">
+    <div class="data-block">
+      <div class="num">2,100<small> 萬</small></div>
+      <div class="label">台灣 LINE 月活躍用戶 (2025)</div>
+    </div>
+    <div class="data-block">
+      <div class="num">90<small> %+</small></div>
+      <div class="label">智慧型手機用戶使用 LINE</div>
+    </div>
+    <div class="data-block">
+      <div class="num">85<small> %</small></div>
+      <div class="label">客戶偏好以訊息取代電話往來</div>
+    </div>
+    <div class="data-block">
+      <div class="num">3 - 5x</div>
+      <div class="label">官方帳號訊息開封率 vs Email</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>結論:</b>客戶已在 LINE 上,業者卻不在。建設公司若不主動建立官方通道,售後服務就只能依賴
+    成本高、可追蹤性低的傳統方式,3,000+ 戶規模下這個落差會被放大。
+  </div>
+</section>
+
+<!-- 3. 解決方案總覽 -->
+<section id="ch3">
+  <div class="chapter-tag">CHAPTER 03 · 解決方案</div>
+  <h2 class="chapter-title">官方 LINE — 售後服務全生命週期的數位化介面</h2>
+  <p class="chapter-sub">不只是通知工具,而是涵蓋從交屋到老客戶經營的完整服務窗口。</p>
+
+  <h3>客戶生命週期與 LINE 角色</h3>
+  <div class="lifecycle">
+    <div class="stage">
+      <div class="stage-name">簽約</div>
+      <div>合約成立</div>
+      <div class="stage-line">會員綁定 · 加入官方</div>
+    </div>
+    <div class="stage">
+      <div class="stage-name">交屋前</div>
+      <div>施工至驗屋</div>
+      <div class="stage-line">進度推播 · 預約驗屋</div>
+    </div>
+    <div class="stage">
+      <div class="stage-name">交屋</div>
+      <div>對保撥款入住</div>
+      <div class="stage-line">手續提醒 · 文件下載</div>
+    </div>
+    <div class="stage">
+      <div class="stage-name">保固期</div>
+      <div>居住兩年內</div>
+      <div class="stage-line">線上報修 · 進度回報</div>
+    </div>
+    <div class="stage">
+      <div class="stage-name">長期經營</div>
+      <div>社區生活與再行銷</div>
+      <div class="stage-line">活動 · 新案 · 推薦獎勵</div>
+    </div>
+  </div>
+
+  <h3>核心承諾</h3>
+  <div class="promise-grid">
+    <div class="promise">
+      <div class="icon">⚡</div>
+      <h4>即時</h4>
+      <p>推播訊息秒級送達,進度、提醒、公告一次到位,讀取率與回應率遠優於傳統管道。</p>
+    </div>
+    <div class="promise">
+      <div class="icon">↔</div>
+      <h4>雙向</h4>
+      <p>客戶可直接在 LINE 報修、預約、查詢,不再需要切換電話、Email 或紙本表單。</p>
+    </div>
+    <div class="promise">
+      <div class="icon">🧠</div>
+      <h4>智慧</h4>
+      <p>串接 anxi-app 既有 Vertex AI 與 Cloud Functions,可自動回覆常見問題、自動分派工單。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. 四大核心功能藍圖 -->
+<section id="ch4">
+  <div class="chapter-tag">CHAPTER 04 · 功能藍圖</div>
+  <h2 class="chapter-title">四大核心功能模組</h2>
+  <p class="chapter-sub">由淺入深、可分階段啟用,任一模組皆可獨立交付業主價值。</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="head"><span class="name">① 單向推播通知</span><span class="badge">PHASE 1</span></div>
+      <div class="body">
+        <p>系統依事件條件主動發送訊息,讀取率與回應率遠高於電話與 Email。</p>
+        <ul>
+          <li>施工進度、驗屋日期、交屋手續提醒</li>
+          <li>繳款日提醒、撥款通知、合約異動公告</li>
+          <li>保固期到期前提醒、定期保養提示</li>
+          <li>社區活動、節日問候、品牌訊息</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="head"><span class="name">② 雙向客服互動</span><span class="badge">PHASE 2</span></div>
+      <div class="body">
+        <p>客戶在 LINE 上完成過去需要電話、紙本、跑現場的服務動作。</p>
+        <ul>
+          <li>線上報修:文字 + 拍照 + 位置一次提交</li>
+          <li>工班進度回報、完工確認簽收</li>
+          <li>業務 / 客服真人接手對談 (轉客服模式)</li>
+          <li>常見問題自動回覆 (FAQ 機器人)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="head"><span class="name">③ 自助查詢服務</span><span class="badge">PHASE 1-2</span></div>
+      <div class="body">
+        <p>透過 LIFF 嵌入 anxi-app 既有頁面,客戶不需登入 App 即可查詢。</p>
+        <ul>
+          <li>個人合約資料、戶別、坪數、車位</li>
+          <li>繳款明細與下次繳款日</li>
+          <li>保固期狀態、過往報修紀錄</li>
+          <li>合約附件、藍圖、建材說明書下載</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="head"><span class="name">④ 會員身分綁定</span><span class="badge">PHASE 1</span></div>
+      <div class="body">
+        <p>LINE UserId 與 anxi-app 客戶資料一一對應,所有服務有「身分」可依。</p>
+        <ul>
+          <li>簽約客戶限定加入,過濾陌生人</li>
+          <li>身分證末四碼 + 手機驗證綁定流程</li>
+          <li>多戶別客戶自動關聯所有戶別</li>
+          <li>解綁與重新綁定機制 (換手機 / 換 LINE)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. 四大應用情境劇本 -->
+<section id="ch5">
+  <div class="chapter-tag">CHAPTER 05 · 應用情境</div>
+  <h2 class="chapter-title">四大實際情境劇本</h2>
+  <p class="chapter-sub">具體呈現客戶在每個階段如何在 LINE 上完成服務,以及背後系統的協作流程。</p>
+
+  <div class="scenario">
+    <div class="scene-meta">SCENARIO 01</div>
+    <h4>交屋前進度通知 — 從工程進度到驗屋預約</h4>
+    <p>客戶從簽約後即可在 LINE 收到工程節點推播,並透過自助介面預約驗屋時段。</p>
+    <div class="chat-flow">
+      <div class="msg system"><span class="who">[系統]</span><span class="what">您好,XX 建案 B 棟 8F-2 室「結構體完成」進度已達標,本週將進行外牆作業 → 點此查看實景照片</span></div>
+      <div class="msg system"><span class="who">[系統]</span><span class="what">您好,本案預計 2026/08 進入驗屋階段,點此預約您方便的時段</span></div>
+      <div class="msg"><span class="who">[客戶]</span><span class="what">(點選日期 + 時段) 已預約 8/15 上午 10:00</span></div>
+      <div class="msg bot"><span class="who">[自動]</span><span class="what">已為您預約成功,前一日將自動提醒。如需異動點此</span></div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scene-meta">SCENARIO 02</div>
+    <h4>保固期維修服務 — 從報修到完工確認</h4>
+    <p>客戶不需打電話、不需填紙本,在 LINE 上報修、追蹤、確認完工一站完成。</p>
+    <div class="chat-flow">
+      <div class="msg"><span class="who">[客戶]</span><span class="what">浴室天花板有水漬 (附 2 張照片) + 點選「漏水」分類</span></div>
+      <div class="msg bot"><span class="who">[自動]</span><span class="what">已為您建立報修單 #R-20260426-018,已通知工班排程,預計 24 小時內回覆時段</span></div>
+      <div class="msg system"><span class="who">[系統]</span><span class="what">工班已排定 4/28 下午 2-4 點到府檢視,如需異動請回覆</span></div>
+      <div class="msg system"><span class="who">[系統]</span><span class="what">維修已完工,請確認狀況並完成簽收 → 點此</span></div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scene-meta">SCENARIO 03</div>
+    <h4>社區生活服務 — 公告、繳費、活動報名</h4>
+    <p>交屋後社區營運期間,管委會與住戶間的溝通也透過官方 LINE 統一管理。</p>
+    <div class="chat-flow">
+      <div class="msg system"><span class="who">[公告]</span><span class="what">本週六 (5/2) 社區大樓進行水塔清洗,上午 9-12 點將短暫停水</span></div>
+      <div class="msg system"><span class="who">[系統]</span><span class="what">5 月份管理費 NT$3,200 已產生,點此線上繳費 / 查看明細</span></div>
+      <div class="msg system"><span class="who">[活動]</span><span class="what">社區母親節下午茶 5/10 14:00 起,請點此報名 (限 80 名額)</span></div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scene-meta">SCENARIO 04</div>
+    <h4>公司品牌經營 — 新案介紹與推薦獎勵</h4>
+    <p>老客戶是最有效的推薦來源,LINE 是維繫關係並轉化為再次成交的最佳通道。</p>
+    <div class="chat-flow">
+      <div class="msg system"><span class="who">[品牌]</span><span class="what">感謝您支持 XX 建設,新案「OO 之森」即將公開,老客戶獨享 VIP 預先賞屋邀請</span></div>
+      <div class="msg system"><span class="who">[活動]</span><span class="what">推薦親友成交即贈裝潢家電金 NT$50,000,點此產生您的專屬推薦碼</span></div>
+      <div class="msg system"><span class="who">[節日]</span><span class="what">中秋佳節快樂 🎑 持下方券至社區管理處可兌換限量月餅禮盒</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. 與 anxi-app 深度整合架構 -->
+<section id="ch6">
+  <div class="chapter-tag">CHAPTER 06 · 系統整合</div>
+  <h2 class="chapter-title">與 anxi-app 深度整合架構</h2>
+  <p class="chapter-sub">不重造輪子。沿用既有資料、表單、通知、AI 模組,LINE 只是新的對外介面層。</p>
+
+  <h3>整體系統架構</h3>
+  <div class="arch">
+    <div class="arch-grid">
+      <div class="arch-box outline">
+        <div class="title">客戶端</div>
+        <div class="sub">LINE App<br>(LIFF 內嵌頁面)</div>
+      </div>
+      <div class="arrow">→<span class="label">webhook / api</span></div>
+      <div class="arch-box gold">
+        <div class="title">LINE Platform</div>
+        <div class="sub">Messaging API<br>LIFF SDK</div>
+      </div>
+      <div class="arrow">↔<span class="label">https</span></div>
+      <div class="arch-box">
+        <div class="title">anxi-app 後端</div>
+        <div class="sub">Firebase Cloud Functions<br>Firestore + Vertex AI</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>可直接沿用的既有資源</h3>
+  <div class="reuse-list">
+    <div class="reuse-item">
+      <b>@line/bot-sdk v10</b>已安裝於 functions,可直接撰寫推播與 webhook
+    </div>
+    <div class="reuse-item">
+      <b>@line/liff v2</b>已安裝於前端,可將既有 Vue 頁面包裝為 LIFF App
+    </div>
+    <div class="reuse-item">
+      <b>通知模組</b>functions/notifications/* 已是表單提交與業務狀態通知的成熟基礎
+    </div>
+    <div class="reuse-item">
+      <b>客戶資料庫</b>戶別、合約、繳款資料已結構化,可直接綁定 LINE userId
+    </div>
+    <div class="reuse-item">
+      <b>自訂表單編輯器</b>CustomFormEditor 已可由業主自行設計報修、預約、調查表單
+    </div>
+    <div class="reuse-item">
+      <b>Vertex AI</b>已用於既有功能,可擴充為常見問題自動回覆引擎
+    </div>
+    <div class="reuse-item">
+      <b>QR Code 模組</b>專案已有 QR 產生與分享功能,可用於現場引導加入
+    </div>
+    <div class="reuse-item">
+      <b>Firebase Auth</b>身分綁定可沿用既有驗證流程,降低安全風險
+    </div>
+  </div>
+
+  <div class="note">
+    <b>策略意義:</b>因為核心相依套件與基礎模組都已齊備,本案的開發焦點集中於
+    「介面整合」與「流程設計」,而非從零搭建。這直接縮短上線時程、降低開發風險。
+  </div>
+</section>
+
+<!-- 7. 客戶加入引導機制方案比較 -->
+<section id="ch7">
+  <div class="chapter-tag">CHAPTER 07 · 加入機制</div>
+  <h2 class="chapter-title">客戶加入官方 LINE 的四種方案比較</h2>
+  <p class="chapter-sub">加入率是後續所有效益的乘數,需審慎選擇引導策略。</p>
+
+  <table class="biz">
+    <thead>
+      <tr>
+        <th style="width:18%">方案</th>
+        <th style="width:22%">操作方式</th>
+        <th>預期加入率</th>
+        <th>人力成本</th>
+        <th>適用對象</th>
+        <th>主要風險</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>A. 簽約現場引導</b></td>
+        <td>業務於簽約時請客戶掃描專屬 QR Code,當場完成綁定</td>
+        <td><b style="color:var(--green)">85-95%</b></td>
+        <td>低<br><small>(融入既有流程)</small></td>
+        <td>新簽約客戶</td>
+        <td>需業務人員受訓、流程演練</td>
+      </tr>
+      <tr>
+        <td><b>B. 簽約後簡訊/Email 邀請</b></td>
+        <td>系統自動寄送加入連結與綁定步驟</td>
+        <td><b style="color:var(--orange)">35-55%</b></td>
+        <td>極低<br><small>(全自動)</small></td>
+        <td>已簽約但尚未加入的存量客戶</td>
+        <td>未開封率高、無人引導易放棄</td>
+      </tr>
+      <tr>
+        <td><b>C. 交屋活動引導</b></td>
+        <td>於交屋說明會、社區開幕活動上設立加入站</td>
+        <td><b style="color:var(--green)">70-85%</b></td>
+        <td>中<br><small>(活動人員)</small></td>
+        <td>交屋階段客戶</td>
+        <td>受活動辦理頻次限制</td>
+      </tr>
+      <tr class="recommend">
+        <td><b>D. 多管道並行</b></td>
+        <td>A + B + C 三方案組合,並輔以工地現場、文件夾印 QR Code</td>
+        <td><b style="color:var(--green)">90% +</b></td>
+        <td>中<br><small>(分散於各環節)</small></td>
+        <td>全體客戶</td>
+        <td>管理協調成本較高</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>建議:</b>新簽約客戶採方案 A 為主、方案 D 全面導入。對既有 3,000+ 戶存量客戶,
+    建議於下次主動接觸時 (繳款、保固提醒、社區活動) 同步引導,避免單純依賴方案 B 而流失機會。
+  </div>
+</section>
+
+<!-- 8. 建設業同業案例參考 -->
+<section id="ch8">
+  <div class="chapter-tag">CHAPTER 08 · 同業案例</div>
+  <h2 class="chapter-title">建設業 LINE 官方帳號實際案例</h2>
+  <p class="chapter-sub">同業已逐步導入,本案非「率先嘗試」而是「適時跟進」,可大幅降低決策風險。</p>
+
+  <div class="case-grid">
+    <div class="case">
+      <span class="tag">大型上市建商</span>
+      <h4>遠雄建設</h4>
+      <ul>
+        <li>建案資訊推播</li>
+        <li>賞屋預約整合</li>
+        <li>社區生活管家服務</li>
+      </ul>
+      <div class="takeaway"><b>啟示:</b>從售前一路延伸至售後,LINE 是貫穿生命週期的單一介面。</div>
+    </div>
+    <div class="case">
+      <span class="tag">大型上市建商</span>
+      <h4>國泰建設</h4>
+      <ul>
+        <li>建案介紹與看屋預約</li>
+        <li>客戶服務客服分流</li>
+        <li>會員制度結合 LINE Points</li>
+      </ul>
+      <div class="takeaway"><b>啟示:</b>會員制與 LINE 綁定可顯著提升再行銷與推薦轉換率。</div>
+    </div>
+    <div class="case">
+      <span class="tag">大型上市建商</span>
+      <h4>興富發建設</h4>
+      <ul>
+        <li>新案優先賞屋通知</li>
+        <li>客戶分眾推播 (依興趣 / 區域)</li>
+        <li>節慶與品牌經營訊息</li>
+      </ul>
+      <div class="takeaway"><b>啟示:</b>分眾推播可同時提升開封率與降低騷擾感,是進階階段必要能力。</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>資料來源說明:</b>上述案例為公開資訊整理,實際功能細節與導入規模建議於決策前
+    由業主商業情報團隊另行確認。本提案重點為「業界趨勢佐證」而非具體數據比對。
+  </div>
+</section>
+
+<!-- 9. 預期綜合效益分析 -->
+<section id="ch9">
+  <div class="chapter-tag">CHAPTER 09 · 預期效益</div>
+  <h2 class="chapter-title">三大面向綜合效益</h2>
+  <p class="chapter-sub">客戶滿意度、營運成本、品牌資產三軸並進,任一軸皆有量化指標可追蹤。</p>
+
+  <div class="benefit-grid">
+    <div class="benefit">
+      <h4>① 客戶滿意度面向</h4>
+      <div class="kpi"><span>NPS 淨推薦值</span><span class="v">+15 ~ +25</span></div>
+      <div class="kpi"><span>CSAT 服務滿意度</span><span class="v">85% +</span></div>
+      <div class="kpi"><span>首次回覆時間</span><span class="v">&lt; 30 分</span></div>
+      <div class="kpi"><span>報修完工平均週期</span><span class="v">縮短 30%</span></div>
+    </div>
+    <div class="benefit">
+      <h4>② 營運成本面向</h4>
+      <div class="kpi"><span>客服電話量</span><span class="v">↓ 50%</span></div>
+      <div class="kpi"><span>人工代查作業</span><span class="v">↓ 70%</span></div>
+      <div class="kpi"><span>紙本郵寄費用</span><span class="v">↓ 60%</span></div>
+      <div class="kpi"><span>客服人力配置</span><span class="v">節省 0.5-1 人</span></div>
+    </div>
+    <div class="benefit">
+      <h4>③ 品牌經營面向</h4>
+      <div class="kpi"><span>老客戶推薦成交</span><span class="v">+3 ~ +5%</span></div>
+      <div class="kpi"><span>新案 VIP 預約轉換</span><span class="v">+10 ~ +20%</span></div>
+      <div class="kpi"><span>客戶資料完整度</span><span class="v">&gt; 95%</span></div>
+      <div class="kpi"><span>客戶 LTV (生命週期價值)</span><span class="v">顯著提升</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10. 成本試算與 ROI 分析 -->
+<section id="ch10">
+  <div class="chapter-tag">CHAPTER 10 · 成本與 ROI</div>
+  <h2 class="chapter-title">成本試算與投資回收分析</h2>
+  <p class="chapter-sub">以 3,000 戶規模、每戶月均 4 則推播 (12,000 則/月) 為基礎試算,實際數字依推播策略調整。</p>
+
+  <h3>(1) LINE OA 平台月費 (台灣 2026 牌價)</h3>
+  <table class="biz">
+    <thead>
+      <tr><th>方案</th><th>月費</th><th>含訊息量</th><th>超量單價</th><th>適用情境</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>輕用量型</td><td>NT$1,200</td><td>5,000 則</td><td>NT$0.4 / 則</td><td>不適用 (本案規模超出)</td></tr>
+      <tr class="recommend"><td><b>標準型 (推薦)</b></td><td>NT$5,000</td><td>30,000 則</td><td>NT$0.2 / 則</td><td>3,000 戶月均 4 則,完全涵蓋</td></tr>
+      <tr><td>進階型</td><td>NT$12,000</td><td>60,000 則</td><td>NT$0.2 / 則</td><td>未來擴張至 5,000 戶以上時升級</td></tr>
+    </tbody>
+  </table>
+
+  <h3>(2) 一次性開發成本</h3>
+  <table class="biz">
+    <thead><tr><th>項目</th><th>內容</th><th>人月</th><th>成本估算</th></tr></thead>
+    <tbody>
+      <tr><td>需求分析與流程設計</td><td>四大功能模組規格、資料流設計、權限定義</td><td>0.5</td><td>NT$75,000</td></tr>
+      <tr><td>後端整合 (Cloud Functions)</td><td>Webhook、推播 API、會員綁定、報修工單</td><td>1.5</td><td>NT$225,000</td></tr>
+      <tr><td>前端 LIFF 頁面</td><td>查詢、繳款、報修、預約四類 LIFF 頁面</td><td>1.5</td><td>NT$225,000</td></tr>
+      <tr><td>圖文選單與機器人設計</td><td>主選單、FAQ 機器人、自動回覆腳本</td><td>0.5</td><td>NT$75,000</td></tr>
+      <tr><td>測試、上線、教育訓練</td><td>整合測試、業務 / 客服訓練、上線陪跑</td><td>0.5</td><td>NT$75,000</td></tr>
+      <tr><td><b>合計</b></td><td>—</td><td><b>4.5 人月</b></td><td><b>NT$675,000</b></td></tr>
+    </tbody>
+  </table>
+
+  <h3>(3) 年度維運成本</h3>
+  <table class="biz">
+    <thead><tr><th>項目</th><th>月費</th><th>年費</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td>LINE OA 標準型方案</td><td>NT$5,000</td><td>NT$60,000</td><td>含 30,000 則訊息</td></tr>
+      <tr><td>客服人力 (0.5 人)</td><td>NT$25,000</td><td>NT$300,000</td><td>真人客服與工單處理</td></tr>
+      <tr><td>雲端費用增加</td><td>NT$2,000</td><td>NT$24,000</td><td>Functions 呼叫量、流量、儲存</td></tr>
+      <tr><td>系統維護與優化</td><td>NT$8,000</td><td>NT$96,000</td><td>每年 1 人月維護工時</td></tr>
+      <tr><td><b>年度合計</b></td><td><b>NT$40,000</b></td><td><b>NT$480,000</b></td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h3>(4) 預期年度收益 (保守估)</h3>
+  <table class="biz">
+    <thead><tr><th>收益項目</th><th>計算基礎</th><th>年度貢獻</th></tr></thead>
+    <tbody>
+      <tr><td>客服電話量下降</td><td>每月節省 100 通 × 5 分鐘 × NT$30/分</td><td>NT$180,000</td></tr>
+      <tr><td>紙本郵寄費節省</td><td>3,000 戶 × 4 次/年 × NT$15</td><td>NT$180,000</td></tr>
+      <tr><td>業務代查工時節省</td><td>每月節省 20 小時 × NT$500/時</td><td>NT$120,000</td></tr>
+      <tr><td>老客戶推薦成交 (1 件)</td><td>1 件 × 平均房價 1,500 萬 × 5% 利潤</td><td>NT$750,000</td></tr>
+      <tr><td><b>保守估年度合計</b></td><td>—</td><td><b>NT$1,230,000</b></td></tr>
+    </tbody>
+  </table>
+
+  <div class="roi-summary">
+    <div class="item">
+      <div class="label">首年總投入</div>
+      <div class="val">~ 115 萬</div>
+      <div class="note">開發 67.5 萬 + 首年維運 48 萬</div>
+    </div>
+    <div class="item">
+      <div class="label">保守估年收益</div>
+      <div class="val">~ 123 萬</div>
+      <div class="note">含老客戶推薦 1 件成交</div>
+    </div>
+    <div class="item">
+      <div class="label">投資回收期</div>
+      <div class="val">&lt; 12 個月</div>
+      <div class="note">第二年起每年淨效益 ~ 75 萬</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>說明:</b>上述為保守估算,僅計入 1 件老客戶推薦成交。實際 3,000 戶基數下,
+    若推薦成交率達 0.1% (約 3 件/年),年收益將提升至 ~ 270 萬,投資回收期可縮短至 6 個月內。
+  </div>
+</section>
+
+<!-- 11. 潛在風險與完整解方 -->
+<section id="ch11">
+  <div class="chapter-tag">CHAPTER 11 · 風險管理</div>
+  <h2 class="chapter-title">潛在風險與完整解方</h2>
+  <p class="chapter-sub">主動揭露四類關鍵風險,並對每項風險給出可執行的緩解方案。</p>
+
+  <div class="risk-grid">
+    <div class="risk">
+      <div class="risk-header">
+        <h4>① 個資法規風險</h4>
+        <span class="risk-level high">高度關注</span>
+      </div>
+      <p class="desc">客戶資料與 LINE userId 綁定後,涉及個資法蒐集、處理、利用告知義務,
+        違規最重可處 NT$30 萬罰鍰並影響品牌。</p>
+      <div class="solve">
+        <b>解方:</b>(1) 加入時必出示同意書;(2) 提供隨時退出機制;(3) 資料儲存採加密;
+        (4) 建立內部存取權限分級;(5) 由法務審核「個資告知聲明」與「使用條款」。
+      </div>
+    </div>
+
+    <div class="risk">
+      <div class="risk-header">
+        <h4>② 客戶接受度風險</h4>
+        <span class="risk-level mid">中度關注</span>
+      </div>
+      <p class="desc">部分年長客戶不熟悉 LINE 操作,或不願將私人 LINE 加入官方帳號,
+        加入率不達預期將影響整體效益。</p>
+      <div class="solve">
+        <b>解方:</b>(1) 多管道並行 (LINE + Email + SMS) 降低單點依賴;
+        (2) 簽約現場由業務協助綁定,降低操作門檻;
+        (3) 提供「親屬代收訊息」機制,允許子女 / 配偶代為接收。
+      </div>
+    </div>
+
+    <div class="risk">
+      <div class="risk-header">
+        <h4>③ 維運人力負擔風險</h4>
+        <span class="risk-level mid">中度關注</span>
+      </div>
+      <p class="desc">雙向客服啟用後,客戶訊息湧入若無對應人力,反而傷害客戶體驗、
+        造成「已讀不回」負評。</p>
+      <div class="solve">
+        <b>解方:</b>(1) 採分階段啟用,Phase 1 先單向推播,人力到位再開放雙向;
+        (2) FAQ 機器人攔截 60-70% 常見問題;
+        (3) 設定明確客服服務時段並於圖文選單明示。
+      </div>
+    </div>
+
+    <div class="risk">
+      <div class="risk-header">
+        <h4>④ 系統相依與政策風險</h4>
+        <span class="risk-level low">可控管</span>
+      </div>
+      <p class="desc">LINE 平台政策、計費、API 規格可能變動,單一通路依賴具長期不確定性。</p>
+      <div class="solve">
+        <b>解方:</b>(1) 系統設計採介面層抽象,通知模組可同時走 LINE / Email / SMS;
+        (2) 客戶資料主存於 Firestore,LINE 僅為通道;
+        (3) 持續追蹤 LINE 平台公告並列入年度檢視。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12. 分階段實施時程 -->
+<section id="ch12">
+  <div class="chapter-tag">CHAPTER 12 · 實施時程</div>
+  <h2 class="chapter-title">分階段實施時程建議</h2>
+  <p class="chapter-sub">採 MVP → 擴展 → 全功能 → 持續優化四階段,每階段皆可單獨驗證價值。</p>
+
+  <div class="timeline">
+    <div class="phase">
+      <div class="phase-meta">PHASE 1 · 第 1-2 月</div>
+      <h4>MVP 上線 — 單向推播 + 會員綁定 + 自助查詢進度</h4>
+      <div class="deliverables">
+        <b>產出:</b>LINE OA 帳號開通、圖文選單、會員綁定 LIFF、進度查詢頁、繳款提醒推播<br>
+        <b>人力:</b>後端 1.5 人月 + 前端 1.0 人月<br>
+        <b>驗收:</b>新簽客戶 80% 加入率、推播送達率 99%
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-meta">PHASE 2 · 第 3-4 月</div>
+      <h4>雙向客服與報修流程</h4>
+      <div class="deliverables">
+        <b>產出:</b>線上報修 LIFF、工班指派後台、進度回報自動化、FAQ 機器人、客服轉真人模式<br>
+        <b>人力:</b>後端 1.0 人月 + 前端 0.5 人月<br>
+        <b>驗收:</b>客服電話量下降 30%、報修完工週期縮短 20%
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-meta">PHASE 3 · 第 5-6 月</div>
+      <h4>社區生活與品牌經營</h4>
+      <div class="deliverables">
+        <b>產出:</b>社區公告、活動報名、線上繳費、新案 VIP 預約、推薦獎勵機制<br>
+        <b>人力:</b>後端 0.5 人月 + 前端 0.5 人月<br>
+        <b>驗收:</b>活動報名線上化率 80%、推薦碼活躍使用
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-meta">PHASE 4 · 第 7 月起</div>
+      <h4>持續優化與 AI 擴展</h4>
+      <div class="deliverables">
+        <b>產出:</b>串接既有 Vertex AI 智慧客服、客戶分眾推播策略、數據分析儀表板<br>
+        <b>人力:</b>持續 0.3-0.5 人月 / 月<br>
+        <b>驗收:</b>年度 NPS 提升 +15 以上、客服人力節省達 0.5 人
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13. 結論與決策建議 -->
+<section id="ch13">
+  <div class="chapter-tag">CHAPTER 13 · 結論</div>
+  <h2 class="chapter-title">結論與決策建議</h2>
+  <p class="chapter-sub">綜合四大效益面向、12 個月內回收、低技術風險、高同業相關性,本案具備立即推動條件。</p>
+
+  <h3>核心結論</h3>
+  <table class="biz">
+    <thead>
+      <tr><th>面向</th><th>結論</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>必要性</b></td><td>3,000+ 戶規模下,傳統溝通方式邊際成本快速上升,LINE 是業界標準解</td></tr>
+      <tr><td><b>可行性</b></td><td>anxi-app 已具 LINE SDK、LIFF、通知模組基礎,屬「整合」而非「重建」</td></tr>
+      <tr><td><b>投資效益</b></td><td>首年投入 ~ 115 萬,保守估年收益 ~ 123 萬,回收期 &lt; 12 個月</td></tr>
+      <tr><td><b>風險程度</b></td><td>四類風險皆有對應解方,採分階段啟用可進一步降低風險</td></tr>
+      <tr><td><b>同業趨勢</b></td><td>遠雄、國泰、興富發等同業已導入,本案屬「適時跟進」非「率先嘗試」</td></tr>
+    </tbody>
+  </table>
+
+  <h3>建議決策</h3>
+  <ol style="font-size:14.5px; color:var(--text); padding-left:20px;">
+    <li><b>核可全案進入設計階段</b> — 由提案方完成 Phase 1 詳細規格與 UI 原型,2 週內提報。</li>
+    <li><b>確認預算編列方式</b> — 開發成本 67.5 萬列入年度資本支出,維運列入客服部年度預算。</li>
+    <li><b>指派業主側對口</b> — 建議由業務主管 + 客服主管 + 資訊窗口三人小組接洽。</li>
+    <li><b>設定 Phase 1 KPI</b> — 上線 3 個月內加入率、推播送達率、客服電話量下降三項指標。</li>
+    <li><b>規劃存量客戶導入計畫</b> — 透過下次主動接觸機會,於 6 個月內完成 50% 存量客戶引導。</li>
+  </ol>
+
+  <div class="cta">
+    <h3>下一步</h3>
+    <p>若業主同意推動本案,提案方可於兩週內提交 Phase 1 詳細規格書、UI 原型與正式報價單,並安排與業務 / 客服主管的需求訪談,進一步釐清作業流程的整合細節。</p>
+    <div class="actions">
+      <a class="btn" href="#ch1">回到摘要</a>
+      <a class="btn outline" href="#ch10">檢視成本</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <b>建設公司官方 LINE 提案</b> · 簽約客戶售後服務數位化升級 · 提案日期 2026-04-26<br>
+  本提案文件由 anxi-app 開發團隊製作,所有預估數據以本案實際導入規模為準,正式報價以後續報價單為憑。
+</footer>
+
+</body>
+</html>

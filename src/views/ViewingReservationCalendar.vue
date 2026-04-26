@@ -146,7 +146,7 @@
           v-model="selectedSearchItem"
           :items="searchItems"
           item-title="searchLabel"
-          placeholder="搜尋預約：輸入客戶姓名或電話..."
+          placeholder="搜尋預約：姓名、電話、戶別、備註、銷售..."
           prepend-inner-icon="mdi-magnify"
           variant="solo"
           density="comfortable"
@@ -156,6 +156,7 @@
           class="w-100"
           return-object
           clearable
+          :custom-filter="autocompleteFilter"
           @update:model-value="onSearchSelect"
         >
           <template v-slot:item="{ props, item }">
@@ -166,7 +167,7 @@
         <v-text-field
           v-else
           v-model="searchQuery"
-          placeholder="搜尋姓名或電話..."
+          placeholder="搜尋姓名、電話、戶別、備註..."
           prepend-inner-icon="mdi-magnify"
           append-inner-icon="mdi-close"
           @click:append-inner="searchQuery = ''"
@@ -400,7 +401,7 @@ const calendarEvents = computed(() => {
             const colors = TYPE_COLORS[resolveTypeKey(res.type)] || TYPE_COLORS['__other__'];
             return {
                 id: res.id,
-                title: `${res.customerName}(${res.salesName || '未指派'})-${res.type}`,
+                title: `${res.unitId ? res.unitId + ' ' : ''}${res.customerName}(${res.salesName || '未指派'})-${res.type}${res.note ? ' ' + res.note : ''}`,
                 start: start,
                 end: new Date(start.getTime() + 90 * 60000),
                 backgroundColor: colors.bg,
@@ -553,13 +554,42 @@ const searchItems = computed(() => {
     }));
 });
 
+// ✅ 跨所有欄位比對：字串/數字/布林直接比對；Firestore Timestamp 與 Date 轉成可讀字串比對
+function matchesAllFields(item, query) {
+    if (!query) return false;
+    const q = String(query).toLowerCase().trim();
+    if (!q) return false;
+    const SKIP_KEYS = new Set(['id', 'searchLabel', 'projectId', 'salesId']);
+    return Object.entries(item).some(([key, val]) => {
+        if (val == null || SKIP_KEYS.has(key)) return false;
+        if (typeof val === 'string') return val.toLowerCase().includes(q);
+        if (typeof val === 'number' || typeof val === 'boolean') return String(val).toLowerCase().includes(q);
+        if (typeof val.toDate === 'function') {
+            const d = val.toDate();
+            return formatDateForSearch(d).includes(q);
+        }
+        if (val instanceof Date) return formatDateForSearch(val).includes(q);
+        return false;
+    });
+}
+
+function formatDateForSearch(d) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
+// v-autocomplete 自訂過濾：value/queryText 由 Vuetify 傳入，item 包含原始資料
+function autocompleteFilter(value, queryText, item) {
+    return matchesAllFields(item?.raw || {}, queryText);
+}
+
 const filteredSearchItems = computed(() => {
     if (!searchQuery.value) return [];
-    const q = searchQuery.value.toLowerCase();
-    return searchItems.value.filter(item => 
-        item.customerName.toLowerCase().includes(q) || 
-        item.customerPhone.includes(q)
-    );
+    return searchItems.value.filter(item => matchesAllFields(item, searchQuery.value));
 });
 
 function onSearchSelect(res) {
