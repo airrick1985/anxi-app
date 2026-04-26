@@ -102,8 +102,85 @@
     <div class="d-flex flex-grow-1 overflow-hidden bg-grey-lighten-4">
       <!-- Left: Form Configuration -->
       <v-sheet class="flex-grow-1 ma-4 rounded-lg overflow-y-auto pa-6" elevation="1" max-width="800">
+
+        <template v-if="canEditNotify">
+          <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3 d-flex align-center">
+            <v-icon class="mr-2" color="primary">mdi-bell-ring-outline</v-icon>
+            通知設定
+          </h3>
+
+          <v-checkbox
+            v-model="form.requireLineLogin"
+            label="收集填寫者的 LINE ID（用戶填寫前需先登入 LINE）"
+            color="primary"
+            hide-details
+            density="comfortable"
+          ></v-checkbox>
+
+          <v-checkbox
+            v-model="form.notifyUnitSalesPerson"
+            label="通知該戶別的銷售人員（表單需包含「戶別」欄位）"
+            color="primary"
+            hide-details
+            density="comfortable"
+            class="mt-1"
+          ></v-checkbox>
+
+          <div class="mt-4 mb-2 d-flex align-center justify-space-between">
+            <span class="text-body-2 font-weight-medium">
+              此表單完成後 LINE 通知人員
+              <span class="text-caption text-grey ml-2">
+                ({{ activeReceiverCount }} / {{ notificationCandidates.length }} 人接收中)
+              </span>
+            </span>
+            <v-progress-circular v-if="loadingCandidates" indeterminate size="20" width="2" />
+          </div>
+
+          <v-card variant="outlined" class="rounded">
+            <div v-if="!loadingCandidates && notificationCandidates.length === 0" class="text-center pa-4 text-grey text-body-2">
+              本建案無符合「銷控系統」或「報價系統」權限的人員
+            </div>
+            <v-list v-else density="compact" class="py-0">
+              <v-list-item
+                v-for="(c, idx) in notificationCandidates"
+                :key="c.userKey"
+                :class="{ 'bg-grey-lighten-4': !isReceiving(c.userKey) }"
+                :border="idx < notificationCandidates.length - 1 ? 'b' : undefined"
+              >
+                <template v-slot:prepend>
+                  <v-checkbox-btn
+                    :model-value="isReceiving(c.userKey)"
+                    color="primary"
+                    @update:model-value="(v) => toggleReceiving(c.userKey, !!v)"
+                  />
+                </template>
+
+                <v-list-item-title class="d-flex align-center" style="gap: 6px">
+                  <span :class="{ 'text-grey text-decoration-line-through': !isReceiving(c.userKey) }">
+                    {{ c.name }}
+                  </span>
+                  <v-chip
+                    v-for="s in c.systems"
+                    :key="s"
+                    :color="systemChipColor(s)"
+                    size="x-small"
+                    variant="tonal"
+                    label
+                  >{{ s }}</v-chip>
+                </v-list-item-title>
+                <v-list-item-subtitle class="text-caption">{{ c.phone }}</v-list-item-subtitle>
+              </v-list-item>
+            </v-list>
+          </v-card>
+          <div class="text-caption text-grey mt-1">
+            勾選＝接收此表單通知；取消勾選＝停止接收
+          </div>
+
+          <v-divider class="my-6"></v-divider>
+        </template>
+
         <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3">表單設定</h3>
-        
+
         <v-text-field
           v-model="form.title"
           label="表單標題 (例如: 客戶資料調查表)"
@@ -145,47 +222,6 @@
           class="mb-4"
         />
 
-        <template v-if="canEditNotify">
-          <v-divider class="my-6"></v-divider>
-
-          <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3 d-flex align-center">
-            <v-icon class="mr-2" color="primary">mdi-bell-ring-outline</v-icon>
-            通知設定
-          </h3>
-
-          <v-checkbox
-            v-model="form.notifySalesAdmins"
-            label="通知本建案的銷控系統管理員"
-            color="primary"
-            hide-details
-            density="comfortable"
-          ></v-checkbox>
-
-          <v-checkbox
-            v-model="form.notifyUnitSalesPerson"
-            label="通知該戶別的銷售人員（需表單包含「戶別」系統欄位）"
-            color="primary"
-            hide-details
-            density="comfortable"
-            class="mt-1"
-          ></v-checkbox>
-
-          <v-autocomplete
-            v-model="form.notificationExcludedUserKeys"
-            :items="notificationCandidates"
-            item-title="displayLabel"
-            item-value="userKey"
-            label="通知抑制名單（這些人不會收到此表單的通知）"
-            multiple chips clearable
-            variant="outlined"
-            density="comfortable"
-            class="mt-4"
-            :loading="loadingCandidates"
-            hint="從本建案有「銷控系統」權限的人員中選擇"
-            persistent-hint
-          ></v-autocomplete>
-        </template>
-
       </v-sheet>
     </div>
   </v-card>
@@ -224,7 +260,13 @@ const canEditNotify = computed(() => {
   return !!perms?.[props.projectId]?.systems?.includes('銷控系統');
 });
 
-const notificationCandidates = ref<Array<{ userKey: string; name: string; phone: string; displayLabel: string }>>([]);
+interface NotificationCandidate {
+  userKey: string;
+  name: string;
+  phone: string;
+  systems: string[];
+}
+const notificationCandidates = ref<NotificationCandidate[]>([]);
 const loadingCandidates = ref(false);
 
 const loadNotificationCandidates = async () => {
@@ -233,8 +275,10 @@ const loadNotificationCandidates = async () => {
   try {
     const res = await getFormNotificationCandidates({ projectId: props.projectId });
     notificationCandidates.value = (res.candidates || []).map((c: any) => ({
-      ...c,
-      displayLabel: `${c.name} (${c.phone})`,
+      userKey: c.userKey,
+      name: c.name,
+      phone: c.phone,
+      systems: Array.isArray(c.systems) ? c.systems : [],
     }));
   } catch (err) {
     console.error('載入通知候選人員失敗:', err);
@@ -242,6 +286,22 @@ const loadNotificationCandidates = async () => {
     loadingCandidates.value = false;
   }
 };
+
+const isReceiving = (userKey: string) =>
+  !form.value.notificationExcludedUserKeys.includes(userKey);
+
+const toggleReceiving = (userKey: string, willReceive: boolean) => {
+  const list = form.value.notificationExcludedUserKeys;
+  const idx = list.indexOf(userKey);
+  if (willReceive && idx !== -1) list.splice(idx, 1);
+  else if (!willReceive && idx === -1) list.push(userKey);
+};
+
+const activeReceiverCount = computed(() =>
+  notificationCandidates.value.filter(c => isReceiving(c.userKey)).length
+);
+
+const systemChipColor = (s: string) => s === '銷控系統' ? 'indigo' : (s === '報價系統' ? 'teal' : 'grey');
 
 const openPreview = () => {
   // Initialize mock data
@@ -286,6 +346,7 @@ const form = ref({
   notifySalesAdmins: true,
   notifyUnitSalesPerson: true,
   notificationExcludedUserKeys: [] as string[],
+  requireLineLogin: false,
 });
 
 const loadForm = async () => {
@@ -315,6 +376,7 @@ const loadForm = async () => {
         notifyUnitSalesPerson: data.notifyUnitSalesPerson ?? true,
         notificationExcludedUserKeys: Array.isArray(data.notificationExcludedUserKeys)
           ? data.notificationExcludedUserKeys : [],
+        requireLineLogin: data.requireLineLogin ?? false,
       };
     } else {
       toast.error('找不到表單資料');
@@ -337,14 +399,17 @@ const saveForm = async () => {
     const payload: any = {
       projectId: props.projectId,
       ...form.value,
+      // notifySalesAdmins 已無 UI 控制，固定為 true，由抑制名單作為唯一控制來源
+      notifySalesAdmins: true,
       updatedAt: serverTimestamp()
     };
 
-    // 無編輯通知設定權限者：移除三個欄位以避免覆寫既有設定
+    // 無編輯通知設定權限者：移除通知/LINE 收集相關欄位以避免覆寫既有設定
     if (!canEditNotify.value) {
       delete payload.notifySalesAdmins;
       delete payload.notifyUnitSalesPerson;
       delete payload.notificationExcludedUserKeys;
+      delete payload.requireLineLogin;
     }
 
     if (isEditMode.value && props.formId) {

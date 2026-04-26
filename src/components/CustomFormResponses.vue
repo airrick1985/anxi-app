@@ -77,6 +77,15 @@
           {{ formatTimestamp(item._submittedAt) }}
         </template>
 
+        <!-- 填寫者 LINE 欄位（僅啟用收集 LINE 的表單顯示） -->
+        <template v-slot:item._submitterLineName="{ item }">
+          <span v-if="item._submitterLineName" :title="item._submitterLineId" class="text-body-2">
+            <v-icon size="small" color="green" class="mr-1">mdi-line</v-icon>
+            {{ item._submitterLineName }}
+          </span>
+          <span v-else class="text-grey">—</span>
+        </template>
+
         <!-- 操作欄位 -->
         <template v-slot:item._actions="{ item }">
           <div class="d-flex justify-center gap-1">
@@ -271,6 +280,8 @@ const loadResponses = async () => {
         _unitId: raw.unitId || displayData['戶別'] || '',
         _submittedAt: raw.submittedAt,
         _isDeleted: raw.isDeleted || false,
+        _submitterLineId: raw.submitterLineId || '',
+        _submitterLineName: raw.submitterLineName || '',
         ...displayData,
         // 同時保留原始數據（用 ID 作為 key），以便子欄位值能正確顯示
         ...(raw.data || {}),
@@ -624,6 +635,16 @@ const tableHeaders = computed(() => {
     { title: '提交時間', key: '_submittedAt', sortable: true, width: '160px' },
   ];
 
+  // 啟用「收集填寫者 LINE ID」的表單，加一欄顯示填寫者 LINE
+  if (props.form?.requireLineLogin) {
+    headers.push({
+      title: '填寫者 LINE',
+      key: '_submitterLineName',
+      sortable: true,
+      width: '160px',
+    });
+  }
+
   dynamicColumns.value.forEach(col => {
     // 戶別已在固定欄位，跳過
     if (col === '戶別') return;
@@ -794,13 +815,18 @@ const exportAllExcel = () => {
     const columns = dynamicColumns.value.filter(c => !allFieldIds.has(c));
 
     // 表頭
-    const headerRow = ['戶別', '提交時間', ...columns.filter(c => c !== '戶別')];
+    const lineHeaders = props.form?.requireLineLogin ? ['填寫者 LINE 名稱', '填寫者 LINE userId'] : [];
+    const headerRow = ['戶別', '提交時間', ...lineHeaders, ...columns.filter(c => c !== '戶別')];
 
     // 資料列
     const dataRows = responses.value.map(r => {
+      const lineCells = props.form?.requireLineLogin
+        ? [r._submitterLineName || '', r._submitterLineId || '']
+        : [];
       return [
         r._unitId || '',
         formatTimestamp(r._submittedAt),
+        ...lineCells,
         ...columns.filter(c => c !== '戶別').map(c => {
           const val = r[c];
           // 格式化地址物件
@@ -865,12 +891,17 @@ const exportSingleExcel = (item: any) => {
     fieldLabels = Array.from(new Set(fieldLabels));
 
     // 橫向格式：欄位標籤作為表頭
-    const headerRow = ['戶別', '提交時間', ...fieldLabels.filter(l => l !== '戶別')];
+    const lineHeaders = props.form?.requireLineLogin ? ['填寫者 LINE 名稱', '填寫者 LINE userId'] : [];
+    const headerRow = ['戶別', '提交時間', ...lineHeaders, ...fieldLabels.filter(l => l !== '戶別')];
 
     // 資料列
+    const lineCells = props.form?.requireLineLogin
+      ? [r._submitterLineName || '', r._submitterLineId || '']
+      : [];
     const dataRow = [
       r._unitId || '',
       formatTimestamp(r._submittedAt),
+      ...lineCells,
       ...fieldLabels.filter(l => l !== '戶別').map(label => {
         const val = r[label];
         // 格式化地址物件

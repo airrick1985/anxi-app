@@ -14,8 +14,13 @@ const HEADER_COLOR = '#1A237E';
 
 function formatTimestamp(d) {
   const date = d instanceof Date ? d : (d && typeof d.toDate === 'function' ? d.toDate() : new Date());
-  const pad = n => String(n).padStart(2, '0');
-  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type)?.value || '';
+  return `${get('year')}/${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
 function safeText(v, fallback = '') {
@@ -161,6 +166,7 @@ async function fetchUserContacts(db, userKeys) {
         name: data.name || d.id,
         lineId: lineId.startsWith('U') ? lineId : null,
         email: email || null,
+        roles: Array.isArray(data.roles) ? data.roles : [],
       });
     });
   }
@@ -176,15 +182,15 @@ async function resolveRecipients({
   notifySalesAdmins, notifyUnitSalesPerson,
   excludedUserKeys,
 }) {
+  const ADMIN_ROLES = new Set(['系統管理員', '超級管理員']);
   const exclusionSet = new Set(excludedUserKeys || []);
-  // userKey → { source, ... }；同人多來源時 unitSalesPerson 優先
-  const merged = new Map();
+  // userKey → source；同人多來源時 unitSalesPerson 優先
   const candidateKeys = new Set();
   const sourceByKey = new Map();
 
   if (notifySalesAdmins) {
     const permSnap = await db.collection('userPermissions')
-      .where(`permissions.${projectId}.systems`, 'array-contains', '銷控系統')
+      .where(`permissions.${projectId}.systems`, 'array-contains-any', ['銷控系統', '報價系統'])
       .get();
     permSnap.forEach(d => {
       const k = d.id;
@@ -214,8 +220,8 @@ async function resolveRecipients({
   for (const k of candidateKeys) {
     const u = userMap.get(k);
     if (!u) continue;
+    if (Array.isArray(u.roles) && u.roles.some(r => ADMIN_ROLES.has(r))) continue;  // 排除系統/超級管理員
     result.push({ ...u, source: sourceByKey.get(k) });
-    merged.set(k, true);
   }
   return result;
 }

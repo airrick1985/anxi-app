@@ -25112,7 +25112,8 @@ exports.driveProxyDownload = onCall({ region: "asia-east1" }, async (request) =>
 });
 
 /**
- * 取得該建案有「銷控系統」權限的人員清單（供表單編輯器的通知抑制名單使用）
+ * 取得該建案有「銷控系統」或「報價系統」權限的人員清單
+ * （供表單編輯器的通知抑制名單使用，排除系統管理員/超級管理員角色）
  */
 exports.getFormNotificationCandidates = onCall({
   region: "asia-east1",
@@ -25123,15 +25124,26 @@ exports.getFormNotificationCandidates = onCall({
     throw new HttpsError("invalid-argument", "缺少 projectId");
   }
 
+  const ADMIN_ROLES = new Set(['系統管理員', '超級管理員']);
+
   try {
     const db = defaultDb;
     const permSnap = await db.collection('userPermissions')
-      .where(`permissions.${projectId}.systems`, 'array-contains', '銷控系統')
+      .where(`permissions.${projectId}.systems`, 'array-contains-any', ['銷控系統', '報價系統'])
       .get();
 
     if (permSnap.empty) return { candidates: [] };
 
-    const userKeys = permSnap.docs.map(d => d.id);
+    // userKey → 該 user 在此 projectId 下擁有的目標 systems（限定 銷控系統 / 報價系統）
+    const TARGET_SYSTEMS = ['銷控系統', '報價系統'];
+    const systemsByUserKey = new Map();
+    permSnap.forEach(d => {
+      const allSystems = d.data()?.permissions?.[projectId]?.systems || [];
+      const matched = TARGET_SYSTEMS.filter(s => allSystems.includes(s));
+      if (matched.length > 0) systemsByUserKey.set(d.id, matched);
+    });
+
+    const userKeys = Array.from(systemsByUserKey.keys());
     const candidates = [];
 
     for (let i = 0; i < userKeys.length; i += 30) {
@@ -25141,10 +25153,13 @@ exports.getFormNotificationCandidates = onCall({
         .get();
       usersSnap.forEach(d => {
         const data = d.data() || {};
+        const roles = Array.isArray(data.roles) ? data.roles : [];
+        if (roles.some(r => ADMIN_ROLES.has(r))) return;  // 排除系統/超級管理員
         candidates.push({
           userKey: d.id,
           name: data.name || d.id,
           phone: data.phone || d.id,
+          systems: systemsByUserKey.get(d.id) || [],
         });
       });
     }

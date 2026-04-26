@@ -50,7 +50,31 @@
                <v-btn icon="mdi-share-variant" variant="text" color="white" @click="openShareDialog"></v-btn>
             </div>
             <p class="text-body-1 opacity-90" style="white-space: pre-line">{{ form.description }}</p>
+
+            <!-- LINE 登入身份標示 -->
+            <v-chip
+              v-if="lineProfile"
+              size="small"
+              color="white"
+              variant="outlined"
+              prepend-icon="mdi-line"
+              class="mt-3"
+            >
+              已以 LINE 帳號 {{ lineProfile.displayName }} 登入
+            </v-chip>
           </div>
+
+          <!-- 修改模式提示 -->
+          <v-alert
+            v-if="isModifyMode"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mx-6 mt-4 mb-0"
+            icon="mdi-pencil-outline"
+          >
+            您先前已填寫過此表單{{ formData.unitId ? `（戶別 ${formData.unitId}）` : '' }}，本次提交將覆寫先前的回覆
+          </v-alert>
 
           <v-card-text class="pa-6">
             <!-- 驗證錯誤提示 -->
@@ -194,6 +218,7 @@ import { db } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import TwCities from '@/assets/TwCities.json';
 import FormRenderItem from '@/components/FormRenderItem.vue';
+import liff from '@line/liff';
 
 const route = useRoute();
 const token = route.params.token as string;
@@ -213,6 +238,82 @@ const units = ref<any[]>([]);
 const householdData = ref<any>(null); // Cache for auto-fill
 const currentSubmissionId = ref<string | null>(null); // Track ID for session overwrite
 const fieldRefs = ref<Record<string, HTMLElement>>({});
+
+// --- LIFF / LINE 收集狀態 ---
+const lineProfile = ref<{ userId: string; displayName: string } | null>(null);
+const isModifyMode = ref(false);
+const lineModeChecked = ref(false);  // 標記目前載入流程已套用過修改模式檢查
+
+const sanitizeForId = (s: string) => String(s || '').replace(/[^\w-]/g, '_');
+const buildLineSubmissionId = (pid: string, fid: string, lineId: string, unitId?: string | null) => {
+  const base = `${pid}_${fid}_LINE_${lineId}`;
+  return unitId ? `${base}_${sanitizeForId(unitId)}` : base;
+};
+
+const initLineLogin = async (): Promise<boolean> => {
+  // DEV 環境 mock：localhost 不支援 LIFF（HTTPS only），使用假 profile 走完整流程
+  // 透過 ?mockLineId=Uxxx&mockLineName=測試A 可模擬不同用戶（測修改模式去重）
+  const env = (import.meta as any).env || {};
+  const isDevLocalhost = env.DEV && window.location.hostname === 'localhost';
+  if (isDevLocalhost) {
+    const mockId = (route.query.mockLineId as string) || 'U_DEV_MOCK_001';
+    const mockName = (route.query.mockLineName as string) || '開發測試帳號';
+    lineProfile.value = { userId: mockId, displayName: mockName };
+    console.warn('[PublicFormPage] DEV mock LINE profile:', lineProfile.value);
+    return true;
+  }
+
+  try {
+    const liffId = env.VITE_LIFF_ID_FORM;
+    if (!liffId) {
+      error.value = 'LIFF 設定缺失，無法繼續';
+      return false;
+    }
+    await liff.init({ liffId });
+
+    if (!liff.isLoggedIn()) {
+      // 跳到 LINE 授權，授權完成後 redirect 回當前頁
+      liff.login({ redirectUri: window.location.href });
+      // 跳轉中，標記 loading 持續到 redirect 完成
+      return false;
+    }
+
+    const profile = await liff.getProfile();
+    lineProfile.value = {
+      userId: profile.userId,
+      displayName: profile.displayName,
+    };
+    return true;
+  } catch (err: any) {
+    console.error('[PublicFormPage] LIFF init/login 失敗:', err);
+    error.value = '需要 LINE 授權才能填寫此表單，請允許授權後再試';
+    return false;
+  }
+};
+
+// 依目前 unitId（或無）嘗試載入既有 submission 預填
+const tryLoadExistingSubmission = async (unitId: string | null) => {
+  if (!lineProfile.value || !form.value.id || !projectId.value) return;
+  const sid = buildLineSubmissionId(projectId.value, form.value.id, lineProfile.value.userId, unitId);
+  try {
+    const snap = await getDoc(doc(db, 'customFormSubmissions', sid));
+    if (snap.exists() && snap.data().isDeleted !== true) {
+      const existing = snap.data();
+      const sourceData = existing.data || {};
+      // 覆寫 formData（保留原本初始化的鍵結構）
+      Object.keys(sourceData).forEach((k) => {
+        formData[k] = sourceData[k];
+      });
+      currentSubmissionId.value = sid;
+      isModifyMode.value = true;
+    } else {
+      isModifyMode.value = false;
+      currentSubmissionId.value = null;
+    }
+  } catch (err) {
+    console.warn('[PublicFormPage] 查詢既有 submission 失敗:', err);
+  }
+};
 
 // --- Intialization ---
 
@@ -255,17 +356,38 @@ onMounted(async () => {
     }
 
     form.value = { id: formDoc.id, ...formDoc.data() };
-    
+
     // Init form data structure
     initializeFormData();
+
+    // 2.5 若表單需收集 LINE，先完成 LIFF 登入（拒絕授權則 error 阻擋）
+    if (form.value.requireLineLogin) {
+      const ok = await initLineLogin();
+      if (!ok) {
+        // initLineLogin 內已設好 error，或正在 redirect 中
+        loading.value = false;
+        return;
+      }
+    }
 
     // 3. If locked unit, load unit data and auto-fill
     if (lockedUnitId.value) {
       formData.unitId = lockedUnitId.value;
       await fetchHouseholdData(lockedUnitId.value);
+      // 鎖定戶別 + 已 LINE 登入 → 嘗試預填既有 submission
+      if (lineProfile.value) {
+        await tryLoadExistingSubmission(lockedUnitId.value);
+        lineModeChecked.value = true;
+      }
     } else {
       // If public, load available units for selector
       await loadUnits();
+      // 無戶別欄位的表單（form.fields 沒有 systemKey: 'unitId'）也要查
+      const hasUnitField = (form.value.fields || []).some((f: any) => f.type === 'system' && f.systemKey === 'unitId');
+      if (lineProfile.value && !hasUnitField) {
+        await tryLoadExistingSubmission(null);
+        lineModeChecked.value = true;
+      }
     }
 
   } catch (err) {
@@ -349,6 +471,10 @@ const onUnitChanged = async (newUnitId: string) => {
       autoFillFields();
     } else {
       await fetchHouseholdData(newUnitId);
+    }
+    // 若已 LINE 登入：依新 unitId 查既有 submission，存在則覆寫表單為修改模式
+    if (lineProfile.value) {
+      await tryLoadExistingSubmission(newUnitId);
     }
   }
 };
@@ -471,10 +597,17 @@ const submitForm = async () => {
   submitting.value = true;
   try {
       const timestamp = new Date();
-      // Generate Submission ID or reuse existing one for this session
+      // Generate Submission ID:
+      //  - LINE 模式：用 deterministic ID (projectId, formId, lineId, unitId)，setDoc 自動 upsert
+      //  - 一般模式：沿用 session 既有 ID 或新建 timestamp ID
       let submissionId = currentSubmissionId.value;
-      
-      if (!submissionId) {
+
+      if (lineProfile.value) {
+        submissionId = buildLineSubmissionId(
+          projectId.value, form.value.id, lineProfile.value.userId, formData.unitId || null
+        );
+        currentSubmissionId.value = submissionId;
+      } else if (!submissionId) {
          submissionId = `${projectId.value}_${formData.unitId}_${form.value.title}_${timestamp.getTime()}`;
          currentSubmissionId.value = submissionId;
       }
@@ -521,16 +654,26 @@ const submitForm = async () => {
           readableSnapshot['戶別'] = formData.unitId;
       }
 
-      await setDoc(doc(db, 'customFormSubmissions', submissionId), {
+      const writePayload: any = {
         projectId: projectId.value,
         formId: form.value.id,
         unitId: formData.unitId,
-        data: submissionData, // Raw data (IDs) for system use
-        readableSnapshot: readableSnapshot, // Readable data (Labels) for humans/export
+        data: submissionData,
+        readableSnapshot: readableSnapshot,
         snapshotAvailable: true,
         submittedAt: serverTimestamp(),
-        tokenUsed: token
-      });
+        tokenUsed: token,
+      };
+      if (lineProfile.value) {
+        writePayload.submitterLineId = lineProfile.value.userId;
+        writePayload.submitterLineName = lineProfile.value.displayName;
+      }
+      // 修改模式：標記最後修改時間（不覆寫 submittedAt 由 merge 自動處理）
+      if (isModifyMode.value) {
+        writePayload.lastModifiedAt = serverTimestamp();
+      }
+
+      await setDoc(doc(db, 'customFormSubmissions', submissionId), writePayload, { merge: true });
 
       submitted.value = true;
   } catch (err) {
