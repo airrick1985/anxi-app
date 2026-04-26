@@ -474,7 +474,7 @@ const initSubFields = (option: FieldOption) => {
 };
 
 const removeSubFields = (option: FieldOption) => {
-  option.subFields = undefined;
+  delete option.subFields;
   // updateFields();
 };
 

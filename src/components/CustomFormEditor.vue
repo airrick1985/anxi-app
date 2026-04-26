@@ -235,10 +235,10 @@ const loadForm = async () => {
     if (snap.exists()) {
       const data = snap.data();
       form.value = {
-        title: data.title,
-        description: data.description,
+        title: data.title || '未命名表單',
+        description: data.description || '',
         submitSuccessMessage: data.submitSuccessMessage || '',
-        isActive: data.isActive,
+        isActive: data.isActive ?? true,
         fields: data.fields || []
       };
     } else {
