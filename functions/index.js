@@ -13858,11 +13858,14 @@ async function _handleSaveBooking(data) {
       const currentBookings = appointmentsSnapshot.size;
 
       // 名額檢查優先級：subOption > methodLimit > 全局 capacity (向下相容)
-      // 只要該時段有設定任何 subOptionLimits，就以子選項為準（未列入的子選項 = 0 名額）
+      // 子選項語義（與 getAvailableSlots 對齊）：
+      //   - 未列入 subOptionLimits（key 不存在）= 不限，fall through 到 method/總名額檢查
+      //   - 列入但值為 0 = 不開放
+      //   - 列入且值 > 0 = 該子選項獨立名額
       const subOption = bookingData.subOption;
       const bookingMethodForCheck = bookingData.bookingMethod;
-      if (subOption && slotInfo.subOptionLimits && Object.keys(slotInfo.subOptionLimits).length > 0) {
-        const subCap = slotInfo.subOptionLimits[subOption] || 0;
+      if (subOption && slotInfo.subOptionLimits && subOption in slotInfo.subOptionLimits) {
+        const subCap = slotInfo.subOptionLimits[subOption] ?? 0;
         if (subCap === 0) {
           throw new HttpsError("failed-precondition", `SLOT_FULL: 該時段未開放給「${subOption}」。`);
         }

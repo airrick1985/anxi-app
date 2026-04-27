@@ -2337,6 +2337,10 @@
                     <v-alert v-if="isSlotOverMaxCapacity(selectedSlotForDetail)" type="error" variant="tonal" density="compact" class="mb-3">
                       各方式名額合計已超出時段總名額上限，請調整。
                     </v-alert>
+                    <!-- 名額語義說明 -->
+                    <div class="text-caption text-grey mb-2">
+                      勾選「不限」或留空 = 不限（共用時段總名額）；輸入 0 = 不開放此選項
+                    </div>
                     <!-- 清單式佈局 -->
                     <div>
                       <template v-for="method in getSelectedMethodsForSlot(selectedSlotForDetail)" :key="method">
@@ -2348,10 +2352,16 @@
                             <v-text-field
                               :model-value="getMethodLimitForSlot(selectedSlotForDetail, method)"
                               @update:model-value="setMethodLimitForSlot(selectedSlotForDetail, method, $event)"
+                              :disabled="getMethodLimitForSlot(selectedSlotForDetail, method) === ''"
                               type="number" min="0" class="bg-white"
                               variant="outlined" density="compact" hide-details placeholder="不限"
                               style="width: 100px; flex: 0 0 auto;">
                             </v-text-field>
+                            <v-checkbox
+                              :model-value="getMethodLimitForSlot(selectedSlotForDetail, method) === ''"
+                              @update:model-value="(v) => setMethodLimitForSlot(selectedSlotForDetail, method, v ? '' : '1')"
+                              label="不限" density="compact" hide-details
+                              style="flex: 0 0 auto;"></v-checkbox>
                           </div>
                         </div>
 
@@ -2370,10 +2380,16 @@
                               <v-text-field
                                 :model-value="getSubOptionCapacityForSlot(selectedSlotForDetail, subOpt)"
                                 @update:model-value="setSubOptionCapacityForSlot(selectedSlotForDetail, subOpt, $event)"
+                                :disabled="getSubOptionCapacityForSlot(selectedSlotForDetail, subOpt) === ''"
                                 type="number" min="0" class="bg-white"
                                 variant="outlined" density="compact" hide-details placeholder="不限"
                                 style="width: 100px; flex: 0 0 auto;">
                               </v-text-field>
+                              <v-checkbox
+                                :model-value="getSubOptionCapacityForSlot(selectedSlotForDetail, subOpt) === ''"
+                                @update:model-value="(v) => setSubOptionCapacityForSlot(selectedSlotForDetail, subOpt, v ? '' : '1')"
+                                label="不限" density="compact" hide-details
+                                style="flex: 0 0 auto;"></v-checkbox>
                             </div>
                           </div>
                         </div>
