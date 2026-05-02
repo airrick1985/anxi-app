@@ -49,11 +49,11 @@
               <v-btn class="ml-2" variant="plain" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
             </div>
             <label class="v-label text-caption">小訂日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">補足日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_complete_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_complete_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
-            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" class="mb-4"></VueDatePicker>
+            <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>
           </div>
         </v-col>
@@ -810,5 +810,14 @@ function savePriceNegotiation() {
 }
 .mb-2 {
   margin-bottom: 8px;
+}
+</style>
+
+<style>
+/* VueDatePicker teleport 到 body 後需要全域樣式：拉高 z-index 避免被 v-dialog (2400) 蓋住 */
+.dp__outer_menu_wrap,
+.dp__menu,
+.dp__theme_light {
+  z-index: 3000 !important;
 }
 </style>
