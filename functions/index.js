@@ -20716,19 +20716,18 @@ exports.onViewingReservationChange = onDocumentWritten({
       }
 
       // 2. 獲取發送對象 (根據銷售人員指派狀態分流)
+      // - 有指定銷售：通知該銷售本人 + 客資系統-櫃台
+      // - 不指定銷售：通知所有客資系統-銷售 + 客資系統-櫃台
       const permissionsRef2 = db.collection('userPermissions');
       const phonesToNotify = new Set();
 
-      // 客資系統-櫃台 永遠發送
       const counterSnap2 = await permissionsRef2
         .where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台').get();
       counterSnap2.forEach(doc => phonesToNotify.add(doc.id));
 
       if (afterData.salesPhone) {
-        // 有指定銷售：只發給該銷售本人
         phonesToNotify.add(afterData.salesPhone);
       } else {
-        // 不指定銷售：發給所有 客資系統-銷售
         const salesSnap2 = await permissionsRef2
           .where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-銷售').get();
         salesSnap2.forEach(doc => phonesToNotify.add(doc.id));
@@ -23643,7 +23642,11 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
         if (header === '系統編號 (勿動)') key = '_id';
         if (header === '更新時間') key = 'updatedAt';
 
-        return flattened[key] ?? '';
+        // 與 syncCancelledPurchasesToSheet 一致：陣列/物件序列化，避免 Sheets API 拒收
+        const val = flattened[key];
+        if (val === undefined || val === null) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        return String(val);
       });
 
       if (rowIndex > -1) {
