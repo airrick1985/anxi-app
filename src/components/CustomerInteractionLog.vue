@@ -769,7 +769,8 @@
                                     </div>
                                 </v-col>
 
-                                <v-col cols="12" sm="6" v-else-if="fieldSettings[fieldKey]">
+                                <v-col cols="12" sm="6"
+                                    v-else-if="fieldSettings[fieldKey] && !(fieldKey === 'noPurchaseReason' && newLog.tags.interactionType === '已購回訪')">
                                     <v-select v-model="newLog.tags[fieldKey]" :label="fieldSettings[fieldKey].label"
                                         :items="getOptions(fieldKey)"
                                         :multiple="fieldSettings[fieldKey].selectionMode === 'multiple'"
@@ -1142,6 +1143,15 @@ const applyOptimizedText = () => {
 
 const logFields = ['visitors', 'interactionType', 'noPurchaseReason', 'keyTags', 'rating'];
 const fieldSettings = computed(() => props.settings.fields || {});
+
+// 互動方式為「已購回訪」時，自動鎖定未買原因為「已購回訪」並隱藏欄位
+watch(() => newLog.value.tags?.interactionType, (newVal, oldVal) => {
+    if (newVal === '已購回訪') {
+        newLog.value.tags.noPurchaseReason = ['已購回訪'];
+    } else if (oldVal === '已購回訪') {
+        newLog.value.tags.noPurchaseReason = [];
+    }
+});
 
 // --- 職業欄位「其他」邏輯 ---
 const occupationSelection = ref(null);

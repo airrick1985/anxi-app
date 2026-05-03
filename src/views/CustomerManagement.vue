@@ -2779,7 +2779,7 @@ const DEFAULT_SETTINGS = {
     },
     interactionType: {
       label: "互動方式", order: 4, isRequired: true, allowCustom: true, selectionMode: 'single',
-      options: ["現場介紹", "客戶來電", "電話", "LINE", "簡訊"]
+      options: ["現場介紹", "客戶來電", "電話", "LINE", "簡訊","已購回訪"]
     },
     mediaSource: {
       label: "來客媒體", order: 5, isRequired: false, allowCustom: true, selectionMode: 'single',

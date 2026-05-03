@@ -20585,6 +20585,7 @@ exports.onViewingReservationChange = onDocumentWritten({
   document: "viewing_reservations/{docId}",
   database: "anxi-app",
   region: "asia-east1",
+  memory: '512MiB',
   secrets: ["ANXISMART_LINE_CRM_TOKEN"]
 }, async (event) => {
   const functionName = "onViewingReservationChange";
