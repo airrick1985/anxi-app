@@ -348,10 +348,17 @@
   <v-data-table
     :headers="statusHeaders"
     :items="filteredLeads"
+    :row-props="leadRowProps"
     class="rounded-lg elevation-1 d-none d-md-block"
   >
     <template v-slot:item.status="{ item }">
-      <v-chip :color="getStatusColor(item.status)" size="small">
+      <v-chip
+        :color="getStatusColor(item.status)"
+        size="small"
+        variant="flat"
+        :prepend-icon="(!item.status || item.status === '未處理') ? 'mdi-alert-circle' : undefined"
+        :class="{ 'chip-unprocessed': !item.status || item.status === '未處理' }"
+      >
         {{ item.status || '未處理' }}
       </v-chip>
     </template>
@@ -393,10 +400,11 @@
   </v-data-table>
 
   <div class="d-block d-md-none">
-    <v-card 
-      v-for="item in filteredLeads" 
-      :key="item.id" 
-      class="mb-4 rounded-xl elevation-2 overflow-hidden border-0"
+    <v-card
+      v-for="item in filteredLeads"
+      :key="item.id"
+      class="mb-4 rounded-xl elevation-2 overflow-hidden"
+      :class="(!item.status || item.status === '未處理') ? 'lead-card-unprocessed' : 'border-0'"
     >
       <v-card-text class="pa-3 pa-sm-4">
         <!-- ✅ 優化：分層設計，避免手機上溢出 -->
@@ -413,7 +421,13 @@
             </div>
           </div>
           <div class="d-flex align-center gap-1 flex-shrink-0">
-            <v-chip :color="getStatusColor(item.status)" size="x-small" class="font-weight-bold">
+            <v-chip
+              :color="getStatusColor(item.status)"
+              size="x-small"
+              variant="flat"
+              :prepend-icon="(!item.status || item.status === '未處理') ? 'mdi-alert-circle' : undefined"
+              :class="['font-weight-bold', { 'chip-unprocessed': !item.status || item.status === '未處理' }]"
+            >
               {{ item.status || '未處理' }}
             </v-chip>
             <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="x-small" @click="openReport(item)"></v-btn>
@@ -2621,11 +2635,25 @@ if (namePhoneSearch.value) {
     list = list.filter(l => reasonSearch.value.includes(l.reason || '未註明'));
   }
 
-  // ✅ 新增：為每筆記錄添加預約計數欄位，以支援排序
-  return list.map(item => ({
+  // ✅ 為每筆記錄添加預約計數欄位
+  const enriched = list.map(item => ({
     ...item,
     reservationCount: getCustomerReservations(item.phone)?.length || 0
   }));
+
+  // ✅ 預設排序：「未處理」優先，未處理之間按分配日期由舊到新
+  const isUnprocessed = (l) => !l.status || l.status === '未處理';
+  return enriched.sort((a, b) => {
+    const au = isUnprocessed(a);
+    const bu = isUnprocessed(b);
+    if (au !== bu) return au ? -1 : 1;
+    if (au) {
+      const ta = a.assignedAt && a.assignedAt.toMillis ? a.assignedAt.toMillis() : 0;
+      const tb = b.assignedAt && b.assignedAt.toMillis ? b.assignedAt.toMillis() : 0;
+      return ta - tb;
+    }
+    return 0;
+  });
 });
 
 const recycleHeaders = [
@@ -3260,9 +3288,19 @@ const getStatusColor = (s) => {
     '已約賞屋': '#4CAF50', // success
     '不考慮': '#F44336',   // error
     '未接': '#FF9800',     // warning
-    '空號': '#9E9E9E'      // grey
+    '空號': '#9E9E9E',     // grey
+    '未處理': '#FF5722'    // 警示橘紅，最顯眼
   };
-  return colors[s] || '#3949AB'; // 預設為 indigo
+  if (!s) return colors['未處理']; // 空字串/null/undefined 視為「未處理」
+  return colors[s] || '#3949AB';   // 其他自定狀態預設為 indigo
+};
+
+// ✅ 桌面 v-data-table 整列強調：未處理時套用 lead-row-unprocessed
+const leadRowProps = ({ item }) => {
+  if (!item.status || item.status === '未處理') {
+    return { class: 'lead-row-unprocessed' };
+  }
+  return {};
 };
 
 // ✅ 新增：根據電話號碼取得該客戶的有效預約記錄
@@ -4049,6 +4087,30 @@ const handleExcelFileSelect = async (input) => {
 .bg-red-lighten-5 {
   background-color: #FFEBEE !important;
   border-left: 4px solid #FF5252 !important;
+}
+
+/* ✅ 未處理 chip：加粗 + 脈動光環，桌面與手機通用 */
+.chip-unprocessed {
+  font-weight: 700 !important;
+  animation: chip-pulse 2.2s ease-in-out infinite;
+}
+@keyframes chip-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 87, 34, 0); }
+}
+
+/* ✅ 未處理 桌面整列強調（v-data-table 子元素需 :deep 套用） */
+:deep(.lead-row-unprocessed) {
+  background-color: #FFF8F5 !important;
+}
+:deep(.lead-row-unprocessed > td:first-child) {
+  border-left: 4px solid #FF5722 !important;
+}
+
+/* ✅ 未處理 手機卡片強調 */
+.lead-card-unprocessed {
+  border-left: 5px solid #FF5722 !important;
+  background-color: #FFF8F5 !important;
 }
 
 </style>

@@ -21052,15 +21052,19 @@ exports.scheduledLeadReminder = onSchedule({
 
       if (uncompletedSnap.empty) continue;
 
-      // 3. 彙整各銷售人員的未處理數量
+      // 3. 彙整各銷售人員的未處理名單明細
       const userSummary = {};
       uncompletedSnap.forEach(doc => {
         const data = doc.data();
         const uid = data.assignedTo;
         if (!userSummary[uid]) {
-          userSummary[uid] = { name: data.assignedName, count: 0 };
+          userSummary[uid] = { name: data.assignedName, items: [] };
         }
-        userSummary[uid].count++;
+        userSummary[uid].items.push({
+          assignedAt: data.assignedAt,
+          leadName: data.name,
+          leadPhone: data.phone
+        });
       });
 
       // 4. 取得 User LINE ID 並發送
@@ -21069,12 +21073,11 @@ exports.scheduledLeadReminder = onSchedule({
         const lineId = userDoc.data()?.lineId;
 
         if (lineId && lineId.startsWith('U')) {
-          // ✅ [修改] 傳入 projectName 參數
-          await _sendReminderFlex(
+          await _sendReminderText(
             process.env.ANXISMART_LINE_CRM_TOKEN,
             lineId,
             info.name,
-            info.count,
+            info.items,
             projectName
           );
         }
@@ -21238,60 +21241,63 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
 /**
  * LINE Flex: 定時提醒 (優化版：加入建案名稱與按鈕)
  */
-async function _sendReminderFlex(token, to, name, count, projectName) {
-  // 聯絡名單系統入口 LIFF URL
+async function _sendReminderText(token, to, name, items, projectName) {
   const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
+  const MAX_DISPLAY = 20;
+  const totalCount = Array.isArray(items) ? items.length : 0;
+
+  // 由舊至新排序（最久未處理優先看到）
+  const sorted = [...(items || [])].sort((a, b) => {
+    const ta = a.assignedAt && a.assignedAt.toMillis ? a.assignedAt.toMillis() : 0;
+    const tb = b.assignedAt && b.assignedAt.toMillis ? b.assignedAt.toMillis() : 0;
+    return ta - tb;
+  });
+
+  const displayed = sorted.slice(0, MAX_DISPLAY);
+  const remaining = totalCount - displayed.length;
+
+  // 台北時區 MM/DD HH:mm，使用 formatToParts 確保格式穩定
+  const formatter = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const formatAssignedAt = (ts) => {
+    if (!ts || !ts.toDate) return '日期未知';
+    try {
+      const parts = formatter.formatToParts(ts.toDate());
+      const get = (type) => (parts.find(p => p.type === type) || {}).value || '';
+      return `${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
+    } catch (e) {
+      return '日期未知';
+    }
+  };
+
+  const lines = displayed.map(item =>
+    `${formatAssignedAt(item.assignedAt)} - ${item.leadName || '未知'} - ${item.leadPhone || '未知'}`
+  );
+
+  let body = `⏰ [${projectName || '客資系統'}] 名單回報提醒\n\n`;
+  body += `您好 ${name}\n`;
+  body += `您目前尚有 ${totalCount} 筆未完成的聯絡名單：\n\n`;
+  body += lines.join('\n');
+  if (remaining > 0) {
+    body += `\n⋯ 還有 ${remaining} 筆，請點下方連結查看`;
+  }
+  body += `\n\n🔎 回報聯絡狀況\n${liffUrl}`;
 
   const payload = {
     to: to,
     messages: [{
-      type: "flex",
-      altText: `⏰ [${projectName || "客資系統"}] 名單回報提醒`, // ✅ 加入建案預覽
-      contents: {
-        type: "bubble",
-        header: { // ✅ 新增 Header 區塊顯示建案
-          type: "box",
-          layout: "vertical",
-          contents: [{
-            type: "text",
-            text: `[${projectName || "客資系統"}] 定時提醒`,
-            weight: "bold",
-            color: "#FFFFFF"
-          }],
-          backgroundColor: "#1A237E" // 深藍色
-        },
-        body: {
-          type: "box",
-          layout: "vertical",
-          contents: [
-            { type: "text", text: `您好 ${name}`, size: "sm", color: "#666666" },
-            {
-              type: "text",
-              text: `您目前尚有 ${count} 筆`,
-              weight: "bold",
-              size: "xl",
-              margin: "md",
-              color: "#D32F2F"
-            },
-            { type: "text", text: "未完成的聯絡名單回報", weight: "bold", size: "md" },
-            {
-              type: "button",
-              action: {
-                type: "uri",
-                label: "🔎名單聯絡狀況",
-                uri: liffUrl
-              },
-              style: "primary",
-              color: "#1A237E",
-              margin: "xl"
-            }
-          ]
-        }
-      }
+      type: 'text',
+      text: body
     }]
   };
 
-  return axios.post("https://api.line.me/v2/bot/message/push", payload, {
+  return axios.post('https://api.line.me/v2/bot/message/push', payload, {
     headers: { Authorization: `Bearer ${token}` }
   });
 }
