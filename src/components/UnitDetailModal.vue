@@ -129,6 +129,39 @@
                       density="compact" class="ml-2" inset></v-switch>
                   </v-col>
                 </v-row>
+                <v-row>
+                  <v-col cols="12">
+                    <v-textarea v-model="editingData.priceRemarks" label="備註" rows="2" auto-grow
+                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'"
+                      :readonly="!isPriceEditable" density="compact"
+                      hint="輔助說明價格資訊（例如：含家具、特殊條件等）" persistent-hint></v-textarea>
+
+                    <!-- 備註圖片：上傳區（僅編輯狀態顯示）+ 縮圖列 -->
+                    <div class="mt-2">
+                      <input ref="priceRemarkFileInputRef" type="file" multiple
+                        accept="image/jpeg,image/png,image/webp" style="display:none"
+                        @change="handlePriceRemarkFileSelect" />
+                      <div v-if="isPriceEditable" class="d-flex align-center flex-wrap mb-2">
+                        <v-btn size="small" variant="outlined" color="primary" prepend-icon="mdi-image-plus"
+                          :disabled="priceRemarkTotalCount >= 5" @click="triggerPriceRemarkFilePicker">
+                          新增圖片 ({{ priceRemarkTotalCount }}/5)
+                        </v-btn>
+                        <span class="text-caption text-grey ml-2">支援 JPG / PNG / WEBP，單張最大 5MB</span>
+                      </div>
+                      <div v-if="priceRemarkCombinedImages.length > 0" class="d-flex flex-wrap" style="gap:8px;">
+                        <div v-for="img in priceRemarkCombinedImages" :key="img.previewId"
+                          class="price-remark-thumb">
+                          <v-img :src="img.previewUrl" width="80" height="80" cover class="rounded"
+                            style="cursor: zoom-in;" @click="openPriceRemarkFullscreen(img.previewUrl)"></v-img>
+                          <v-btn v-if="isPriceEditable" icon="mdi-close" size="x-small" color="error"
+                            class="price-remark-thumb-remove" @click.stop="removePriceRemarkImage(img)"></v-btn>
+                          <v-chip v-if="img.type === 'pending'" size="x-small" color="warning"
+                            class="price-remark-thumb-pending" variant="flat">待上傳</v-chip>
+                        </div>
+                      </div>
+                    </div>
+                  </v-col>
+                </v-row>
               </v-card>
 
               <!-- 房土比設定（兩比例加總必須=100） -->
@@ -287,7 +320,28 @@
                       <v-row dense>
                         <v-col cols="12">
                           <div class="price-block mb-2">
-                            <div class="price-block-title">房價</div>
+                            <div class="price-block-title d-flex align-center">
+                              <span>房價</span>
+                              <v-menu v-if="unitData.priceRemarks || (unitData.priceRemarkImages && unitData.priceRemarkImages.length > 0)"
+                                location="bottom start" :close-on-content-click="false" max-width="400">
+                                <template v-slot:activator="{ props: activatorProps }">
+                                  <v-btn v-bind="activatorProps" icon="mdi-note-text-outline" size="x-small"
+                                    variant="text" color="primary" class="ml-1"></v-btn>
+                                </template>
+                                <v-card max-width="400">
+                                  <v-card-text v-if="unitData.priceRemarks" class="text-body-2"
+                                    style="white-space: pre-wrap;">{{ unitData.priceRemarks }}</v-card-text>
+                                  <div v-if="unitData.priceRemarkImages && unitData.priceRemarkImages.length > 0"
+                                    class="d-flex flex-wrap pa-3"
+                                    :class="{ 'pt-0': unitData.priceRemarks }" style="gap:8px;">
+                                    <v-img v-for="img in unitData.priceRemarkImages" :key="img.path || img.url"
+                                      :src="img.url" width="80" height="80" cover class="rounded"
+                                      style="cursor: zoom-in;"
+                                      @click="openPriceRemarkFullscreen(img.url)"></v-img>
+                                  </div>
+                                </v-card>
+                              </v-menu>
+                            </div>
                             <template v-if="props.viewMode === 'quote' && unitData.salesStatus_quote === '已售'">
                               <div v-if="!showHiddenPriceQuote" class="price-block-value text-grey">
                                 已售不提供報價
@@ -799,6 +853,16 @@
       :unit-id="unitData.unitId" @close="sizingToolDialog = false" />
   </v-dialog>
 
+  <!-- ✅ [新增] 備註圖片：全螢幕預覽 -->
+  <v-dialog v-model="isFullscreenImageOpen" fullscreen hide-overlay transition="dialog-bottom-transition">
+    <v-card class="price-remark-fullscreen-card" @click="isFullscreenImageOpen = false">
+      <v-btn icon="mdi-close" size="large" color="white" variant="text"
+        class="price-remark-fullscreen-close" @click.stop="isFullscreenImageOpen = false"></v-btn>
+      <img v-if="fullscreenImageUrl" :src="fullscreenImageUrl" class="price-remark-fullscreen-img"
+        @click.stop="isFullscreenImageOpen = false" />
+    </v-card>
+  </v-dialog>
+
 </template>
 
 <script setup>
@@ -819,6 +883,8 @@ import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
 import RealPriceReportExportDialog from './RealPriceReport/ExportDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
 import * as XLSX from 'xlsx';
+import { storage } from '@/firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 const userStore = useUserStore();
 const showCancelDialog = ref(false);
@@ -837,6 +903,16 @@ function openRealPriceReportDialog() {
   showRealPriceReportDialog.value = true;
 }
 const isPriceEditable = ref(false); // ✅ [新增] 控制價格欄位是否可編輯
+
+// ✅ [新增] 備註圖片：上傳/刪除狀態（延遲到儲存才動 Storage）
+const PRICE_REMARK_MAX_IMAGES = 5;
+const PRICE_REMARK_MAX_SIZE_MB = 5;
+const PRICE_REMARK_ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const priceRemarkPendingFiles = ref([]); // 待上傳的本地檔案：{ previewId, file, previewUrl }
+const priceRemarkPendingDeletions = ref([]); // 待刪除的已存在圖片：[{ url, path, ... }]
+const priceRemarkFileInputRef = ref(null);
+const isFullscreenImageOpen = ref(false);
+const fullscreenImageUrl = ref('');
 
 const savingText = ref('儲存中，請稍候...');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
@@ -1307,6 +1383,127 @@ function openPaymentSettings() {
   paymentSettingsDialog.value = true;
 }
 
+// ✅ [新增] 備註圖片：合併已存在圖片 + 待上傳圖片，給編輯模式預覽用
+const priceRemarkCombinedImages = computed(() => {
+  const existing = (editingData.value?.priceRemarkImages || []).map(img => ({
+    type: 'existing',
+    previewId: img.path || img.url,
+    previewUrl: img.url,
+    raw: img,
+  }));
+  const pending = priceRemarkPendingFiles.value.map(item => ({
+    type: 'pending',
+    previewId: item.previewId,
+    previewUrl: item.previewUrl,
+    raw: item,
+  }));
+  return [...existing, ...pending];
+});
+
+const priceRemarkTotalCount = computed(() => priceRemarkCombinedImages.value.length);
+
+function triggerPriceRemarkFilePicker() {
+  if (priceRemarkFileInputRef.value) {
+    priceRemarkFileInputRef.value.value = ''; // 允許重複選同一檔案
+    priceRemarkFileInputRef.value.click();
+  }
+}
+
+function handlePriceRemarkFileSelect(event) {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+
+  const remainingQuota = PRICE_REMARK_MAX_IMAGES - priceRemarkTotalCount.value;
+  if (remainingQuota <= 0) {
+    toast.error(`圖片數量已達上限 ${PRICE_REMARK_MAX_IMAGES} 張`);
+    return;
+  }
+
+  const accepted = [];
+  for (const file of files) {
+    if (accepted.length >= remainingQuota) {
+      toast.warning(`超過上限，僅保留前 ${remainingQuota} 張`);
+      break;
+    }
+    if (!PRICE_REMARK_ACCEPT_TYPES.includes(file.type)) {
+      toast.error(`不支援的格式：${file.name}（僅支援 JPG / PNG / WEBP）`);
+      continue;
+    }
+    if (file.size > PRICE_REMARK_MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`檔案過大：${file.name}（單張不可超過 ${PRICE_REMARK_MAX_SIZE_MB}MB）`);
+      continue;
+    }
+    accepted.push({
+      previewId: `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    });
+  }
+
+  if (accepted.length > 0) {
+    priceRemarkPendingFiles.value.push(...accepted);
+  }
+}
+
+function removePriceRemarkImage(item) {
+  if (item.type === 'pending') {
+    const idx = priceRemarkPendingFiles.value.findIndex(p => p.previewId === item.previewId);
+    if (idx !== -1) {
+      try { URL.revokeObjectURL(priceRemarkPendingFiles.value[idx].previewUrl); } catch (e) { /* noop */ }
+      priceRemarkPendingFiles.value.splice(idx, 1);
+    }
+  } else if (item.type === 'existing') {
+    const list = editingData.value?.priceRemarkImages || [];
+    const idx = list.findIndex(img => (img.path || img.url) === item.previewId);
+    if (idx !== -1) {
+      const removed = list[idx];
+      list.splice(idx, 1);
+      // 標記為待刪除（按「儲存變更」才真正刪除 Storage）
+      if (removed?.path) priceRemarkPendingDeletions.value.push(removed);
+    }
+  }
+}
+
+function openPriceRemarkFullscreen(url) {
+  if (!url) return;
+  fullscreenImageUrl.value = url;
+  isFullscreenImageOpen.value = true;
+}
+
+function clearPriceRemarkLocalState() {
+  for (const item of priceRemarkPendingFiles.value) {
+    try { URL.revokeObjectURL(item.previewUrl); } catch (e) { /* noop */ }
+  }
+  priceRemarkPendingFiles.value = [];
+  priceRemarkPendingDeletions.value = [];
+}
+
+async function uploadPriceRemarkPendingImages() {
+  if (priceRemarkPendingFiles.value.length === 0) return [];
+  const uploaded = [];
+  for (const item of priceRemarkPendingFiles.value) {
+    const safeName = item.file.name.replace(/[^\w.\-]/g, '_');
+    const path = `unitDetails/${props.projectId}/${props.unitData.unitId}/priceRemarks/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}`;
+    const fileRef = storageRef(storage, path);
+    const snapshot = await uploadBytes(fileRef, item.file);
+    const url = await getDownloadURL(snapshot.ref);
+    uploaded.push({ url, path, name: item.file.name, size: item.file.size, type: item.file.type });
+  }
+  return uploaded;
+}
+
+async function deletePriceRemarkMarkedImages() {
+  for (const img of priceRemarkPendingDeletions.value) {
+    if (!img?.path) continue;
+    try {
+      await deleteObject(storageRef(storage, img.path));
+    } catch (e) {
+      // 容錯：物件可能不存在，記錄但不阻斷儲存流程
+      console.warn('刪除備註圖片失敗:', img.path, e);
+    }
+  }
+}
+
 function startEditing() {
   isPriceEditable.value = false; // ✅ 每次進入編輯模式時，重置為預設不可編輯狀態
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
@@ -1317,6 +1514,11 @@ function startEditing() {
   if (!Array.isArray(editingData.value.landParcels)) {
     editingData.value.landParcels = [];
   }
+  // ✅ [新增] 備註圖片陣列初始化 + 重置 pending 狀態
+  if (!Array.isArray(editingData.value.priceRemarkImages)) {
+    editingData.value.priceRemarkImages = [];
+  }
+  clearPriceRemarkLocalState();
 
   // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
   if (props.unitData) {
@@ -1358,6 +1560,8 @@ function startEditing() {
 function cancelEditing() {
   isEditing.value = false;
   editingData.value = null;
+  // ✅ [新增] 取消編輯時釋放預覽 URL、丟棄 pending 變動，不影響 Storage
+  clearPriceRemarkLocalState();
 }
 
 // 5. [修改] saveChanges：儲存成功後才執行車位寫入
@@ -1393,6 +1597,22 @@ async function executeSaveChanges() {
   isSaving.value = true;
   savingText.value = '儲存中，請稍候...';
   try {
+    // ✅ [新增] 先上傳備註待上傳圖片，將 URL 合併到 priceRemarkImages
+    if (priceRemarkPendingFiles.value.length > 0) {
+      savingText.value = '正在上傳備註圖片...';
+      const uploaded = await uploadPriceRemarkPendingImages();
+      if (!Array.isArray(editingData.value.priceRemarkImages)) {
+        editingData.value.priceRemarkImages = [];
+      }
+      editingData.value.priceRemarkImages.push(...uploaded);
+      // 釋放 ObjectURL（即使後續流程失敗，URL 也應釋放）
+      for (const item of priceRemarkPendingFiles.value) {
+        try { URL.revokeObjectURL(item.previewUrl); } catch (e) { /* noop */ }
+      }
+      priceRemarkPendingFiles.value = [];
+      savingText.value = '儲存中，請稍候...';
+    }
+
     const data = editingData.value;
     const payload = {
       projectName: props.projectName,
@@ -1403,6 +1623,12 @@ async function executeSaveChanges() {
 
     const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message);
+
+    // ✅ [新增] Firestore 寫入成功後，才從 Storage 真正刪除已標記的舊備註圖片
+    if (priceRemarkPendingDeletions.value.length > 0) {
+      await deletePriceRemarkMarkedImages();
+      priceRemarkPendingDeletions.value = [];
+    }
 
     // ✅ [關鍵] 戶別資料儲存成功後，才寫入暫存的車位變動
     if (editingParkingSelection.value) {
@@ -3030,6 +3256,54 @@ onUnmounted(() => {
   color: #555;
   font-weight: 500;
   margin-bottom: 4px;
+}
+
+/* ✅ [新增] 備註圖片：全螢幕預覽容器 */
+.price-remark-fullscreen-card {
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.92) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: zoom-out;
+}
+.price-remark-fullscreen-img {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  display: block;
+}
+.price-remark-fullscreen-close {
+  position: absolute !important;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+}
+
+/* ✅ [新增] 備註圖片縮圖 */
+.price-remark-thumb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.price-remark-thumb-remove {
+  position: absolute !important;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+}
+.price-remark-thumb-pending {
+  position: absolute !important;
+  bottom: 2px;
+  left: 2px;
+  font-size: 10px !important;
+  height: 16px !important;
+  padding: 0 4px !important;
 }
 
 .price-block-value {
