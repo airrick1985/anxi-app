@@ -42,31 +42,46 @@
               <v-data-table :headers="batchHeaders" :items="processedBookingBatches" :loading="isBatchLoading"
                 :search="searchQuery" item-value="id" class="elevation-1">
                 <template v-slot:item.applicationWindow="{ item }">
-                  <div v-if="item.applicationStart && item.applicationEnd">
+                  <div>
                     <div class="d-flex align-center">
                       <v-chip size="x-small" color="teal-lighten-3" text-color="teal-darken-4" label
                         class="mr-1 font-weight-bold">起</v-chip>
-                      <span>{{ formatDisplayDateTime(item.applicationStart) }}</span>
+                      <span v-if="item.applicationStart">{{ formatDisplayDateTime(item.applicationStart) }}</span>
+                      <span v-else class="text-grey">未設定</span>
+                      <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                        color="primary" class="ml-1" title="修改預約開放時間"
+                        @click="openInlineEditDialog(item, 'applicationStart')"></v-btn>
                     </div>
                     <div class="d-flex align-center mt-1">
                       <v-chip size="x-small" color="pink-lighten-3" text-color="pink-darken-4" label
                         class="mr-1 font-weight-bold">迄</v-chip>
-                      <span>{{ formatDisplayDateTime(item.applicationEnd) }}</span>
+                      <span v-if="item.applicationEnd">{{ formatDisplayDateTime(item.applicationEnd) }}</span>
+                      <span v-else class="text-grey">未設定</span>
+                      <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                        color="primary" class="ml-1" title="修改預約結束時間"
+                        @click="openInlineEditDialog(item, 'applicationEnd')"></v-btn>
                     </div>
                   </div>
-                  <span v-else class="text-grey">未設定</span>
                 </template>
                 <template v-slot:item.bookingWindow="{ item }">
                   <div>
                     <div class="d-flex align-center">
                       <v-chip size="x-small" color="teal-lighten-3" text-color="teal-darken-4" label
                         class="mr-1 font-weight-bold">起</v-chip>
-                      <span>{{ item.bookingStart }}</span>
+                      <span v-if="item.bookingStart">{{ item.bookingStart }}</span>
+                      <span v-else class="text-grey">未設定</span>
+                      <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                        color="primary" class="ml-1" title="修改可預約起始日"
+                        @click="openInlineEditDialog(item, 'bookingStart')"></v-btn>
                     </div>
                     <div class="d-flex align-center mt-1">
                       <v-chip size="x-small" color="pink-lighten-3" text-color="pink-darken-4" label
                         class="mr-1 font-weight-bold">迄</v-chip>
-                      <span>{{ item.bookingEnd }}</span>
+                      <span v-if="item.bookingEnd">{{ item.bookingEnd }}</span>
+                      <span v-else class="text-grey">未設定</span>
+                      <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                        color="primary" class="ml-1" title="修改可預約結束日"
+                        @click="openInlineEditDialog(item, 'bookingEnd')"></v-btn>
                     </div>
                   </div>
                 </template>
@@ -114,24 +129,36 @@
                   <v-card-text class="py-2">
                     <div class="mb-2">
                       <div class="text-caption text-grey-darken-1">預約開放區間</div>
-                      <div>
+                      <div class="d-flex align-center">
                         <span class="font-weight-bold text-teal-darken-2 mr-1">起:</span>
                         <span>{{ formatDisplayDateTime(item.applicationStart) || '未設定' }}</span>
+                        <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                          color="primary" class="ml-1" title="修改預約開放時間"
+                          @click="openInlineEditDialog(item, 'applicationStart')"></v-btn>
                       </div>
-                      <div>
+                      <div class="d-flex align-center">
                         <span class="font-weight-bold text-pink-darken-2 mr-1">迄:</span>
                         <span>{{ formatDisplayDateTime(item.applicationEnd) || '未設定' }}</span>
+                        <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                          color="primary" class="ml-1" title="修改預約結束時間"
+                          @click="openInlineEditDialog(item, 'applicationEnd')"></v-btn>
                       </div>
                     </div>
                     <div>
                       <div class="text-caption text-grey-darken-1">可預約區間</div>
-                      <div>
+                      <div class="d-flex align-center">
                         <span class="font-weight-bold text-teal-darken-2 mr-1">起:</span>
                         <span>{{ item.bookingStart || '未設定' }}</span>
+                        <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                          color="primary" class="ml-1" title="修改可預約起始日"
+                          @click="openInlineEditDialog(item, 'bookingStart')"></v-btn>
                       </div>
-                      <div>
+                      <div class="d-flex align-center">
                         <span class="font-weight-bold text-pink-darken-2 mr-1">迄:</span>
                         <span>{{ item.bookingEnd || '未設定' }}</span>
+                        <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" density="comfortable"
+                          color="primary" class="ml-1" title="修改可預約結束日"
+                          @click="openInlineEditDialog(item, 'bookingEnd')"></v-btn>
                       </div>
                     </div>
                   </v-card-text>
@@ -1860,6 +1887,43 @@
       </div>
     </v-card>
 
+    <!-- 表格內聯編輯：批次日期區間單欄位修改 Dialog -->
+    <v-dialog v-model="inlineEditDialogOpen" max-width="380px">
+      <v-card>
+        <v-card-title class="d-flex align-center bg-primary text-white py-2">
+          <v-icon start>mdi-pencil-box-outline</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">{{ inlineEditDialogTitle }}</span>
+        </v-card-title>
+        <v-divider></v-divider>
+        <template v-if="inlineEditNeedsTime">
+          <v-tabs v-model="inlineEditState.pickerTab" grow color="primary">
+            <v-tab :value="0"><v-icon start>mdi-calendar</v-icon>日期</v-tab>
+            <v-tab :value="1"><v-icon start>mdi-clock-outline</v-icon>時間</v-tab>
+          </v-tabs>
+          <v-window v-model="inlineEditState.pickerTab" :touch="false">
+            <v-window-item :value="0">
+              <v-date-picker v-model="inlineEditState.tempDate" hide-header
+                @update:model-value="inlineEditState.pickerTab = 1"></v-date-picker>
+            </v-window-item>
+            <v-window-item :value="1">
+              <v-time-picker v-model="inlineEditState.tempTime" format="24hr"></v-time-picker>
+            </v-window-item>
+          </v-window>
+        </template>
+        <template v-else>
+          <v-date-picker v-model="inlineEditState.tempDate" hide-header></v-date-picker>
+        </template>
+        <v-divider></v-divider>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" :disabled="inlineEditState.isSaving"
+            @click="inlineEditDialogOpen = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" :loading="inlineEditState.isSaving"
+            @click="confirmInlineEdit">儲存</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="isPreviewDialogVisible" max-width="800px">
       <v-card v-if="batchToPreview">
         <v-card-title class="d-flex align-center primary-bg">
@@ -2065,7 +2129,14 @@
                   <template v-slot:activator="{ props }">
                     <v-text-field :model-value="formatDisplayDateTime(editedBatch.applicationStart)" label="預約開放時間"
                       prepend-inner-icon="mdi-calendar-clock" readonly v-bind="props" :rules="[v => !!v || '必填']"
-                      variant="outlined"></v-text-field>
+                      variant="outlined">
+                      <template v-slot:append-inner>
+                        <v-btn v-if="editedBatch.id" icon="mdi-content-save-outline" size="small" variant="text"
+                          color="success" density="comfortable" title="僅儲存此欄位（不影響下方設定方式）"
+                          :loading="inlineSavingDialogField === 'applicationStart'"
+                          @click.stop="saveDialogFieldInline('applicationStart')"></v-btn>
+                      </template>
+                    </v-text-field>
                   </template>
                   <v-card min-width="300">
                     <v-tabs v-model="activePickerTabStart" grow>
@@ -2096,7 +2167,14 @@
                   <template v-slot:activator="{ props }">
                     <v-text-field :model-value="formatDisplayDateTime(editedBatch.applicationEnd)" label="預約結束時間"
                       prepend-inner-icon="mdi-calendar-clock" readonly v-bind="props" :rules="[v => !!v || '必填']"
-                      variant="outlined"></v-text-field>
+                      variant="outlined">
+                      <template v-slot:append-inner>
+                        <v-btn v-if="editedBatch.id" icon="mdi-content-save-outline" size="small" variant="text"
+                          color="success" density="comfortable" title="僅儲存此欄位（不影響下方設定方式）"
+                          :loading="inlineSavingDialogField === 'applicationEnd'"
+                          @click.stop="saveDialogFieldInline('applicationEnd')"></v-btn>
+                      </template>
+                    </v-text-field>
                   </template>
                   <v-card min-width="300">
                     <v-tabs v-model="activePickerTabEnd" grow>
@@ -2126,7 +2204,14 @@
                   transition="scale-transition">
                   <template v-slot:activator="{ props }">
                     <v-text-field v-model="editedBatch.bookingStart" label="可預約起始日" prepend-inner-icon="mdi-calendar"
-                      readonly v-bind="props" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
+                      readonly v-bind="props" :rules="[v => !!v || '必填']" variant="outlined">
+                      <template v-slot:append-inner>
+                        <v-btn v-if="editedBatch.id" icon="mdi-content-save-outline" size="small" variant="text"
+                          color="success" density="comfortable" title="僅儲存此欄位（不影響下方設定方式）"
+                          :loading="inlineSavingDialogField === 'bookingStart'"
+                          @click.stop="saveDialogFieldInline('bookingStart')"></v-btn>
+                      </template>
+                    </v-text-field>
                   </template>
                   <v-date-picker v-model="tempBookingStartDate" @update:model-value="menuBookingStart = false"
                     title="選擇起始日" hide-header :max="editedBatch.bookingEnd"></v-date-picker>
@@ -2137,7 +2222,14 @@
                   transition="scale-transition">
                   <template v-slot:activator="{ props }">
                     <v-text-field v-model="editedBatch.bookingEnd" label="可預約結束日" prepend-inner-icon="mdi-calendar"
-                      readonly v-bind="props" :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
+                      readonly v-bind="props" :rules="[v => !!v || '必填']" variant="outlined">
+                      <template v-slot:append-inner>
+                        <v-btn v-if="editedBatch.id" icon="mdi-content-save-outline" size="small" variant="text"
+                          color="success" density="comfortable" title="僅儲存此欄位（不影響下方設定方式）"
+                          :loading="inlineSavingDialogField === 'bookingEnd'"
+                          @click.stop="saveDialogFieldInline('bookingEnd')"></v-btn>
+                      </template>
+                    </v-text-field>
                   </template>
                   <v-date-picker v-model="tempBookingEndDate" @update:model-value="menuBookingEnd = false" title="選擇結束日"
                     hide-header :min="editedBatch.bookingStart"></v-date-picker>
@@ -2955,6 +3047,7 @@ import {
   fetchProjectConfig,
   checkDateConflicts,
   saveBatchWithRules,
+  saveBookingBatch,
   fetchRulesForBatch,
   findDuplicateDateRules,
   fetchBookingBatches,
@@ -4156,6 +4249,19 @@ const selectedSlotForDetail = ref(null);
 // ── 預約批次 Dialog：設定方式切換（依日期 / 依方式）──
 const batchEditMode = ref('byDate'); // 'byDate' | 'byMethod'
 
+// ── 表格內聯編輯：直接於批次清單修改日期區間 ──
+// field 為 'applicationStart' | 'applicationEnd' | 'bookingStart' | 'bookingEnd'
+const inlineEditDialogOpen = ref(false);
+const inlineEditState = reactive({
+  batchId: null,
+  field: null,
+  pickerTab: 0,
+  tempDate: null,   // JS Date 物件
+  tempTime: '',     // 'HH:mm'，僅 application* 使用
+  isSaving: false,
+});
+const inlineSavingDialogField = ref(null); // 編輯 Dialog 內單欄位儲存中的欄位名稱
+
 // 依方式設定：目前選中的方式/子項目 target keys（複選；格式：'m:方式' 或 's:方式:子項目'）
 const methodModeTargetKeys = ref([]);
 // 依方式設定：批次輸入狀態
@@ -4320,6 +4426,199 @@ function showSnackbar(text, color = 'success') {
   snackbar.text = text;
   snackbar.color = color;
   snackbar.show = true;
+}
+
+// --- 內聯編輯：批次日期區間單欄位儲存 ---
+// 將 Firestore Timestamp / Date / 字串等多種來源統一轉為 JS Date
+function _toJsDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val === 'object') {
+    if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+    if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const inlineEditFieldLabels = {
+  applicationStart: '預約開放時間',
+  applicationEnd: '預約結束時間',
+  bookingStart: '可預約起始日',
+  bookingEnd: '可預約結束日',
+};
+
+const inlineEditNeedsTime = computed(() => {
+  return inlineEditState.field === 'applicationStart' || inlineEditState.field === 'applicationEnd';
+});
+
+const inlineEditDialogTitle = computed(() => {
+  const label = inlineEditFieldLabels[inlineEditState.field] || '';
+  return label ? `修改 ${label}` : '修改';
+});
+
+// 執行單欄位儲存（支援 Table 與 編輯 Dialog 兩處呼叫）
+// fieldName: 'applicationStart' | 'applicationEnd' | 'bookingStart' | 'bookingEnd'
+// value: applicationStart/End 為 JS Date；bookingStart/End 為 'YYYY-MM-DD' 字串
+async function inlineSaveBatchField(batchId, fieldName, value) {
+  if (!batchId) {
+    showSnackbar('找不到批次 ID，無法儲存', 'error');
+    return false;
+  }
+  const item = bookingBatches.value.find(b => b.id === batchId) || null;
+  // 若使用者目前正在編輯該批次，則跨欄位驗證以 editedBatch 為準（已更新但未儲存的另一側值）
+  const inEditingDialog = editedBatch.value && editedBatch.value.id === batchId;
+  const sibling = (key) => {
+    if (inEditingDialog && editedBatch.value[key] !== undefined && editedBatch.value[key] !== null && editedBatch.value[key] !== '') {
+      return editedBatch.value[key];
+    }
+    return item ? item[key] : null;
+  };
+
+  // 跨欄位驗證（沿用編輯 Dialog 內的限制：開始 < 結束、可預約起始 ≤ 結束）
+  if (fieldName === 'applicationStart') {
+    const end = _toJsDate(sibling('applicationEnd'));
+    if (end && value instanceof Date && value >= end) {
+      showSnackbar('預約開放時間必須早於預約結束時間', 'error');
+      return false;
+    }
+  } else if (fieldName === 'applicationEnd') {
+    const start = _toJsDate(sibling('applicationStart'));
+    if (start && value instanceof Date && value <= start) {
+      showSnackbar('預約結束時間必須晚於預約開放時間', 'error');
+      return false;
+    }
+  } else if (fieldName === 'bookingStart') {
+    const end = sibling('bookingEnd');
+    if (end && value && value > end) {
+      showSnackbar('可預約起始日不可晚於結束日', 'error');
+      return false;
+    }
+  } else if (fieldName === 'bookingEnd') {
+    const start = sibling('bookingStart');
+    if (start && value && value < start) {
+      showSnackbar('可預約結束日不可早於起始日', 'error');
+      return false;
+    }
+  }
+
+  try {
+    // 僅傳送 id 與單一欄位，saveBookingBatch 內部使用 setDoc(merge:true)，
+    // 不會影響 dailyRules / batchRuleLinks / dateRules 等關聯文件。
+    const res = await saveBookingBatch({ id: batchId, [fieldName]: value });
+    if (res.status !== 'success') throw new Error(res.message);
+
+    // 同步更新本地快取，避免重新撈取整批資料
+    const idx = bookingBatches.value.findIndex(b => b.id === batchId);
+    if (idx > -1) {
+      bookingBatches.value[idx] = { ...bookingBatches.value[idx], [fieldName]: value };
+    }
+    // 如果使用者目前在編輯 Dialog 中（同一筆批次），同步 editedBatch
+    if (editedBatch.value.id === batchId) {
+      editedBatch.value[fieldName] = value;
+    }
+    showSnackbar(`${inlineEditFieldLabels[fieldName] || '欄位'} 已更新`);
+    return true;
+  } catch (err) {
+    showSnackbar(`儲存失敗: ${err.message || '未知錯誤'}`, 'error');
+    return false;
+  }
+}
+
+// 從表格列開啟單欄位修改 Dialog
+function openInlineEditDialog(item, field) {
+  inlineEditState.batchId = item.id;
+  inlineEditState.field = field;
+  inlineEditState.pickerTab = 0;
+  inlineEditState.isSaving = false;
+
+  if (field === 'applicationStart' || field === 'applicationEnd') {
+    let d = _toJsDate(item[field]);
+    if (!d) {
+      d = new Date();
+      d.setMinutes(0, 0, 0);
+    }
+    inlineEditState.tempDate = d;
+    const pad = n => n.toString().padStart(2, '0');
+    inlineEditState.tempTime = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } else {
+    // bookingStart / bookingEnd 為 'YYYY-MM-DD' 字串
+    if (item[field]) {
+      // 用 'YYYY-MM-DDT00:00:00' 解析以避免時區偏差
+      inlineEditState.tempDate = new Date(`${item[field]}T00:00:00`);
+    } else {
+      inlineEditState.tempDate = new Date();
+    }
+    inlineEditState.tempTime = '';
+  }
+  inlineEditDialogOpen.value = true;
+}
+
+async function confirmInlineEdit() {
+  if (!inlineEditState.tempDate) {
+    showSnackbar('請選擇日期', 'error');
+    return;
+  }
+
+  let valueToSave;
+  if (inlineEditState.field === 'applicationStart' || inlineEditState.field === 'applicationEnd') {
+    if (!inlineEditState.tempTime) {
+      showSnackbar('請選擇時間', 'error');
+      return;
+    }
+    const [hh, mm] = inlineEditState.tempTime.split(':').map(Number);
+    const d = new Date(inlineEditState.tempDate);
+    d.setHours(hh, mm, 0, 0);
+    valueToSave = d;
+  } else {
+    valueToSave = formatDate(inlineEditState.tempDate);
+  }
+
+  inlineEditState.isSaving = true;
+  const ok = await inlineSaveBatchField(
+    inlineEditState.batchId,
+    inlineEditState.field,
+    valueToSave
+  );
+  inlineEditState.isSaving = false;
+  if (ok) {
+    inlineEditDialogOpen.value = false;
+  }
+}
+
+// 從編輯 Dialog 直接儲存單一欄位（不需先選擇日曆日期）
+async function saveDialogFieldInline(fieldName) {
+  if (!editedBatch.value.id) {
+    showSnackbar('新增批次請使用下方「儲存」按鈕一次完成', 'warning');
+    return;
+  }
+  let value = editedBatch.value[fieldName];
+
+  if (fieldName === 'applicationStart' || fieldName === 'applicationEnd') {
+    // 編輯 Dialog 內，applicationStart/End 在 saveApplicationStart/End 後為 'YYYY-MM-DDTHH:mm' 字串，
+    // 初始載入時為 Date 物件；統一轉為 Date。
+    if (typeof value === 'string') {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) {
+        showSnackbar('時間格式錯誤，請重新選擇', 'error');
+        return;
+      }
+      value = d;
+    } else if (!(value instanceof Date)) {
+      showSnackbar('請先選擇時間', 'error');
+      return;
+    }
+  } else {
+    // bookingStart / bookingEnd 為 'YYYY-MM-DD' 字串
+    if (!value) {
+      showSnackbar('請先選擇日期', 'error');
+      return;
+    }
+  }
+
+  inlineSavingDialogField.value = fieldName;
+  await inlineSaveBatchField(editedBatch.value.id, fieldName, value);
+  inlineSavingDialogField.value = null;
 }
 
 
