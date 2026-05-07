@@ -98,8 +98,8 @@
                 </v-btn>
               </template>
             </v-tooltip>
-            <!-- ✅ AI 客資分析按鈕 -->
-            <v-tooltip text="AI 客資分析" location="bottom">
+            <!-- ✅ AI 客資分析按鈕（限櫃台權限） -->
+            <v-tooltip v-if="isCurrentUserCounter" text="AI 客資分析" location="bottom">
               <template v-slot:activator="{ props: tipProps }">
                 <v-btn
                   v-bind="tipProps"
