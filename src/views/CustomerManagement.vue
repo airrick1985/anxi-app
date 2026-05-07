@@ -98,6 +98,24 @@
                 </v-btn>
               </template>
             </v-tooltip>
+            <!-- ✅ AI 客資分析按鈕 -->
+            <v-tooltip text="AI 客資分析" location="bottom">
+              <template v-slot:activator="{ props: tipProps }">
+                <v-btn
+                  v-bind="tipProps"
+                  color="deep-purple"
+                  variant="flat"
+                  :size="isMobile ? 'small' : 'default'"
+                  :icon="isMobile"
+                  :prepend-icon="isMobile ? undefined : 'mdi-robot'"
+                  @click="openAiAnalysisDialog"
+                  class="mr-1"
+                >
+                  <v-icon v-if="isMobile">mdi-robot</v-icon>
+                  <template v-if="!isMobile">AI客資分析</template>
+                </v-btn>
+              </template>
+            </v-tooltip>
           </v-toolbar>
 
 <v-card-text>
@@ -1506,6 +1524,169 @@
       </v-card>
     </v-dialog>
 
+    <!-- AI 客資分析設定 Dialog -->
+    <v-dialog v-model="aiAnalysisDialog" max-width="640" persistent>
+      <v-card class="rounded-xl">
+        <v-card-title class="bg-deep-purple text-white d-flex align-center">
+          <v-icon start>mdi-robot</v-icon>
+          AI 客資分析
+        </v-card-title>
+
+        <v-card-text class="pt-6">
+          <p class="text-subtitle-2 mb-2 font-weight-bold">📅 彙整資料區間</p>
+          <v-row dense>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="aiDateStart"
+                label="起始日期"
+                type="date"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                prepend-inner-icon="mdi-calendar"
+              />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="aiDateEnd"
+                label="結束日期"
+                type="date"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                prepend-inner-icon="mdi-calendar"
+              />
+            </v-col>
+          </v-row>
+
+          <div class="d-flex align-center mt-5 mb-1">
+            <span class="text-subtitle-2 font-weight-bold">👥 銷售人員</span>
+            <v-chip
+              v-if="aiSalesList.length"
+              size="x-small"
+              class="ml-2"
+              color="deep-purple"
+              variant="tonal"
+            >
+              已選 {{ aiSelectedSales.length }} / {{ aiSalesList.length }}
+            </v-chip>
+            <v-spacer />
+            <v-btn
+              variant="text"
+              size="small"
+              color="deep-purple"
+              @click="toggleAllSales(true)"
+            >全選</v-btn>
+            <v-btn
+              variant="text"
+              size="small"
+              @click="toggleAllSales(false)"
+            >全不選</v-btn>
+          </div>
+          <div
+            class="rounded pa-2"
+            style="max-height: 260px; overflow-y: auto; border: 1px solid #e0e0e0;"
+          >
+            <v-checkbox
+              v-for="sales in aiSalesList"
+              :key="sales.phone || sales.name"
+              v-model="aiSelectedSales"
+              :value="sales.phone || sales.name"
+              :label="sales.name"
+              density="compact"
+              hide-details
+              color="deep-purple"
+            />
+            <div v-if="!aiSalesList.length" class="text-center text-grey py-4">
+              (無銷售人員資料，請先載入客戶列表)
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="aiAnalysisDialog = false"
+            :disabled="isAnalyzing"
+          >取消</v-btn>
+          <v-btn
+            color="deep-purple"
+            variant="elevated"
+            prepend-icon="mdi-robot"
+            :loading="isAnalyzing"
+            :disabled="!aiSelectedSales.length || !aiDateStart || !aiDateEnd"
+            @click="startAiAnalysis"
+          >
+            開始 AI 分析
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- AI 客資分析結果 Dialog -->
+    <v-dialog v-model="showAnalysisDialog" max-width="700" scrollable>
+      <v-card>
+        <v-card-title>客戶狀況彙整報告</v-card-title>
+        <v-card-subtitle>
+          {{ aiDateStart }} ~ {{ aiDateEnd }} · AI 生成
+        </v-card-subtitle>
+        <v-divider />
+        <v-card-text
+          style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.8; color: #1a1a1a;"
+        >
+          {{ analysisReport }}
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-btn
+            variant="outlined"
+            size="small"
+            :loading="isDownloadingPng"
+            @click="downloadPng"
+          >
+            <v-icon start>mdi-image</v-icon>PNG
+          </v-btn>
+          <v-btn
+            variant="outlined"
+            size="small"
+            :loading="isDownloadingDocx"
+            @click="downloadDocx"
+          >
+            <v-icon start>mdi-file-word</v-icon>WORD
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="showAnalysisDialog = false">關閉</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :prepend-icon="analysisCopied ? 'mdi-check' : 'mdi-content-copy'"
+            @click="copyAnalysisReport"
+          >
+            {{ analysisCopied ? '已複製' : '複製報告' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- AI 分析中全屏遮罩 -->
+    <Teleport to="body">
+      <v-overlay
+        :model-value="isAnalyzing"
+        persistent
+        class="ai-analyzing-overlay"
+        style="z-index: 9999 !important; display: flex; align-items: center; justify-content: center;"
+      >
+        <div class="d-flex flex-column align-center ga-4">
+          <v-progress-circular indeterminate size="72" width="6" color="white" />
+          <div class="text-white text-h6">AI 分析中...</div>
+          <div class="text-white text-body-2 text-center" style="opacity: 0.8; max-width: 300px;">
+            正在彙整客戶互動記錄，請稍候
+          </div>
+        </div>
+      </v-overlay>
+    </Teleport>
+
   </v-container>
 </template>
 
@@ -1529,8 +1710,8 @@ import {
 import { db } from '@/firebase'; // ✅ 確保有引入 db
 
 
-import { 
-  fetchCustomerSettings, 
+import {
+  fetchCustomerSettings,
   saveCustomerSettings,
   uploadAttachmentImage,
   deleteAttachmentImage,
@@ -1541,8 +1722,14 @@ import {
   batchImportCustomers,
   listGoogleSheets,
   exportToGoogleSheet,
-  submitCustomerSheet
+  submitCustomerSheet,
+  fetchVipGuests,
+  analyzeCustomerStatus
 } from '@/api';
+import { calculateVipGuestStats } from '@/utils/analyticsCalculations';
+import html2canvas from 'html2canvas';
+import { saveAs } from 'file-saver';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { merge } from 'lodash-es';
 import draggable from 'vuedraggable';
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
@@ -1915,6 +2102,372 @@ async function handleSubmitNewCustomer() {
     alert(`新增失敗: ${error.message}`);
   } finally {
     isSubmittingNewCustomer.value = false;
+  }
+}
+
+
+// --- AI 客資分析功能 ---
+const aiAnalysisDialog = ref(false);
+const aiDateStart = ref('');
+const aiDateEnd = ref('');
+const aiSalesList = ref([]); // [{ name, phone }]
+const aiSelectedSales = ref([]); // [phone]
+
+const isAnalyzing = ref(false);
+const showAnalysisDialog = ref(false);
+const analysisReport = ref('');
+const analysisCopied = ref(false);
+const isDownloadingPng = ref(false);
+const isDownloadingDocx = ref(false);
+
+/**
+ * 從客戶列表抽出唯一銷售人員（依姓名去重，優先保留有電話的紀錄）
+ */
+function buildSalesListFromCustomers() {
+  const byName = new Map();   // name -> { name, phone }
+  const byPhone = new Map();  // phone -> { name, phone }（僅當無姓名時使用）
+
+  (customerList.value || []).forEach(c => {
+    const name = String(c['銷售人員'] || '').trim();
+    const phone = String(c['銷售人員電話'] || '').trim();
+    if (!name && !phone) return;
+
+    if (name) {
+      const existing = byName.get(name);
+      // 同名時，優先保留有電話的紀錄
+      if (!existing) {
+        byName.set(name, { name, phone });
+      } else if (!existing.phone && phone) {
+        existing.phone = phone;
+      }
+    } else {
+      // 無姓名才用電話作為 key（避免出現未具名項目重複）
+      if (!byPhone.has(phone)) {
+        byPhone.set(phone, { name: phone, phone });
+      }
+    }
+  });
+
+  // 若 byPhone 中的電話已存在於 byName 中，則跳過（避免重複）
+  const phonesInName = new Set(
+    Array.from(byName.values()).map(s => s.phone).filter(Boolean)
+  );
+  const phoneOnly = Array.from(byPhone.values())
+    .filter(s => !phonesInName.has(s.phone));
+
+  return [...byName.values(), ...phoneOnly].sort((a, b) =>
+    a.name.localeCompare(b.name, 'zh-TW')
+  );
+}
+
+/**
+ * 開啟 AI 客資分析 Dialog
+ */
+async function openAiAnalysisDialog() {
+  // 預設日期：本月起迄
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  aiDateStart.value = firstDay.toISOString().slice(0, 10);
+  aiDateEnd.value = today.toISOString().slice(0, 10);
+
+  // 確保有客戶列表，才能抽出銷售人員
+  if (!customerList.value || customerList.value.length === 0) {
+    await loadCustomerList();
+  }
+
+  aiSalesList.value = buildSalesListFromCustomers();
+  // 預設全部都勾選
+  aiSelectedSales.value = aiSalesList.value.map(s => s.phone || s.name);
+
+  aiAnalysisDialog.value = true;
+}
+
+function toggleAllSales(selectAll) {
+  if (selectAll) {
+    aiSelectedSales.value = aiSalesList.value.map(s => s.phone || s.name);
+  } else {
+    aiSelectedSales.value = [];
+  }
+}
+
+/**
+ * 構建報告頭部
+ */
+function buildAiReportHeader(projectNameStr, dateRange) {
+  return `客戶狀況彙整報告
+建案名稱：${projectNameStr}
+資料區間：${dateRange}
+
+【AI 分析提醒】
+本報告由 AI 自動分析生成，內容難免存在誤差，僅供參考使用，請結合實際業務情況審慎判斷。
+資料填寫越完整，AI 分析越精準 — 建議完整記錄客戶互動內容、購屋疑慮、客戶評等與後續追蹤狀態，有助於後續報告產出更具洞察力的建議。
+
+────────────────────────────────────
+
+`;
+}
+
+/**
+ * 開始 AI 分析
+ */
+async function startAiAnalysis() {
+  if (!aiSelectedSales.value.length || !aiDateStart.value || !aiDateEnd.value) return;
+  if (aiDateStart.value > aiDateEnd.value) {
+    alert('起始日期不可晚於結束日期');
+    return;
+  }
+
+  isAnalyzing.value = true;
+  try {
+    // 1. 抓取 VIP 客戶
+    const vipGuests = await fetchVipGuests(props.projectId);
+    if (!vipGuests || !Array.isArray(vipGuests) || vipGuests.length === 0) {
+      alert('此建案目前沒有可分析的客戶資料');
+      return;
+    }
+
+    // 2. 計算指定期間統計
+    const startDate = new Date(aiDateStart.value);
+    const endDate = new Date(aiDateEnd.value);
+    endDate.setHours(23, 59, 59, 999);
+    const stats = calculateVipGuestStats(vipGuests, { start: startDate, end: endDate });
+
+    if (!stats?.details?.length) {
+      alert('指定期間內沒有客戶互動紀錄，請調整日期區間');
+      return;
+    }
+
+    // 3. 依勾選銷售人員過濾
+    const selectedSet = new Set(aiSelectedSales.value);
+    const filteredGuests = stats.details.filter(g => {
+      const salesKey = g.salesPhone || g.salesName;
+      return selectedSet.has(salesKey) || selectedSet.has(g.salesName);
+    });
+
+    if (!filteredGuests.length) {
+      alert('所選銷售人員在指定期間內沒有客戶資料');
+      return;
+    }
+
+    // 4. 呼叫 Cloud Function 進行 AI 彙整
+    const dateRangeLabel = aiDateStart.value === aiDateEnd.value
+      ? aiDateStart.value
+      : `${aiDateStart.value} ~ ${aiDateEnd.value}`;
+
+    const result = await analyzeCustomerStatus({
+      guests: filteredGuests,
+      periodLabel: dateRangeLabel,
+      projectName: projectName.value,
+      projectId: props.projectId,
+    });
+
+    const header = buildAiReportHeader(projectName.value, dateRangeLabel);
+    analysisReport.value = header + (result.data.report || '');
+    aiAnalysisDialog.value = false;
+    showAnalysisDialog.value = true;
+  } catch (e) {
+    console.error('[AI 客資分析失敗]', e);
+    alert('AI 客資分析失敗，請稍後再試');
+  } finally {
+    isAnalyzing.value = false;
+  }
+}
+
+/**
+ * 複製分析報告
+ */
+async function copyAnalysisReport() {
+  try {
+    await navigator.clipboard.writeText(analysisReport.value);
+    analysisCopied.value = true;
+    setTimeout(() => {
+      analysisCopied.value = false;
+    }, 2000);
+  } catch (e) {
+    console.error('[複製失敗]', e);
+  }
+}
+
+/**
+ * 解析報告文本為 HTML 格式（用於 PNG）
+ */
+function renderReportHtml(reportText) {
+  const lines = reportText.split('\n');
+  return lines.map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return '<br />';
+
+    if (trimmed === '客戶狀況彙整報告') {
+      return `<h1 style="font-size: 22px; font-weight: bold; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #1976d2; color: #1a1a1a; text-align: center;">${trimmed}</h1>`;
+    }
+    if (/^(建案名稱|資料區間)：/.test(trimmed)) {
+      return `<p style="margin: 2px 0; font-size: 13px; color: #555; text-align: center;">${trimmed}</p>`;
+    }
+    if (/^【.+】$/.test(trimmed)) {
+      return `<h3 style="font-size: 14px; font-weight: bold; margin: 12px 0 6px 0; padding: 6px 10px; background: #fff3e0; border-left: 4px solid #fb8c00; color: #e65100;">${trimmed}</h3>`;
+    }
+    if (/^[─━—-]{6,}$/.test(trimmed)) {
+      return `<hr style="border: none; border-top: 1px dashed #bbb; margin: 14px 0;" />`;
+    }
+    if (/^[一二三四五六七八九十]+[、]/.test(trimmed)) {
+      return `<h2 style="font-size: 16px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #1a1a1a;">${trimmed}</h2>`;
+    }
+    if (/^\d+[.]/.test(trimmed) || /^[･]/.test(trimmed)) {
+      return `<p style="margin-left: 24px; margin-bottom: 4px; line-height: 1.6;">${trimmed}</p>`;
+    }
+    return `<p style="margin-bottom: 4px; line-height: 1.6;">${trimmed}</p>`;
+  }).join('');
+}
+
+/**
+ * 解析報告文本為 docx Paragraph 陣列
+ */
+function parseReportToParagraphs(reportText) {
+  const lines = reportText.split('\n');
+  const paragraphs = [];
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      paragraphs.push(new Paragraph({ text: '' }));
+      return;
+    }
+    if (trimmed === '客戶狀況彙整報告') {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, bold: true, size: 36 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 100, after: 200 }
+      }));
+      return;
+    }
+    if (/^(建案名稱|資料區間)：/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, size: 22, color: '555555' })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 60 }
+      }));
+      return;
+    }
+    if (/^【.+】$/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, bold: true, size: 24, color: 'E65100' })],
+        spacing: { before: 200, after: 80 }
+      }));
+      return;
+    }
+    if (/^[─━—-]{6,}$/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: '',
+        border: { bottom: { color: 'BBBBBB', space: 1, style: 'dashed', size: 6 } },
+        spacing: { before: 100, after: 100 }
+      }));
+      return;
+    }
+    if (/^[一二三四五六七八九十]+[、]/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: trimmed,
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 200, after: 100 }
+      }));
+      return;
+    }
+    if (/^\d+[.]/.test(trimmed) || /^[･]/.test(trimmed)) {
+      paragraphs.push(new Paragraph({
+        text: trimmed,
+        indent: { firstLine: 0, left: 360 },
+        spacing: { after: 50 }
+      }));
+      return;
+    }
+    paragraphs.push(new Paragraph({
+      text: trimmed,
+      spacing: { after: 50 }
+    }));
+  });
+
+  return paragraphs;
+}
+
+/**
+ * 取得日期區間標籤（用於檔名）
+ */
+function getAiDateRangeLabel() {
+  if (!aiDateStart.value || !aiDateEnd.value) return '';
+  return aiDateStart.value === aiDateEnd.value
+    ? aiDateStart.value
+    : `${aiDateStart.value}_${aiDateEnd.value}`;
+}
+
+/**
+ * 下載報告為 PNG
+ */
+async function downloadPng() {
+  isDownloadingPng.value = true;
+  try {
+    const container = document.createElement('div');
+    container.style.cssText = `
+      width: 794px;
+      min-height: 1123px;
+      padding: 60px;
+      background: white;
+      font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #1a1a1a;
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      box-sizing: border-box;
+    `;
+    container.innerHTML = renderReportHtml(analysisReport.value);
+    document.body.appendChild(container);
+
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
+    document.body.removeChild(container);
+
+    const fileName = `${projectName.value || '專案'}_客戶狀況彙整_${getAiDateRangeLabel()}_${new Date().toISOString().slice(0, 10)}.png`;
+    canvas.toBlob(blob => {
+      saveAs(blob, fileName);
+    });
+  } catch (e) {
+    console.error('[PNG 下載失敗]', e);
+    alert('PNG 下載失敗，請稍後再試');
+  } finally {
+    isDownloadingPng.value = false;
+  }
+}
+
+/**
+ * 下載報告為 DOCX
+ */
+async function downloadDocx() {
+  isDownloadingDocx.value = true;
+  try {
+    const paragraphs = parseReportToParagraphs(analysisReport.value);
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            size: { width: 11906, height: 16838 }
+          },
+          margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 }
+        },
+        children: paragraphs
+      }]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const fileName = `${projectName.value || '專案'}_客戶狀況彙整_${getAiDateRangeLabel()}_${new Date().toISOString().slice(0, 10)}.docx`;
+    saveAs(blob, fileName);
+  } catch (e) {
+    console.error('[DOCX 下載失敗]', e);
+    alert('DOCX 下載失敗，請稍後再試');
+  } finally {
+    isDownloadingDocx.value = false;
   }
 }
 
