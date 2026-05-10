@@ -695,6 +695,134 @@
           <template v-slot:item.payment_deposit_date="{ item }">{{ formatDate(item.payment_deposit_date) }}</template>
           <template v-slot:item.payment_complete_date="{ item }">{{ formatDate(item.payment_complete_date) }}</template>
           <template v-slot:item.payment_contract_date="{ item }">{{ formatDate(item.payment_contract_date) }}</template>
+
+          <!-- ✅ 加總列：表頭下方 -->
+          <template v-slot:body.prepend="{ columns }">
+            <tr v-if="summaryRow" class="summary-row summary-row-top">
+              <td
+                v-for="col in columns"
+                :key="`sum-top-${col.key}`"
+                :class="`text-${col.align || 'start'}`"
+              >
+                <template v-if="col.key === 'unitId'">
+                  合計 {{ summaryRow.count }} 戶
+                </template>
+                <template v-else-if="col.key === 'area_house_ping'">
+                  {{ formatNumber(summaryRow.areaTotal, 2) }}
+                </template>
+                <template v-else-if="col.key === 'area_terrace_ping'">
+                  <span v-if="summaryRow.terraceTotal > 0">{{ formatNumber(summaryRow.terraceTotal, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_list_house_total' || col.key === 'quote_mode_total_price'">
+                  {{ formatNumber(summaryRow.priceListTotal, 0) }}
+                </template>
+                <template v-else-if="col.key === 'unit_price_list' || col.key === 'unit_price_value'">
+                  <span v-if="summaryRow.unitPriceList !== null">{{ formatNumber(summaryRow.unitPriceList, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_floor_house_total'">
+                  {{ formatNumber(summaryRow.priceFloorTotal, 0) }}
+                </template>
+                <template v-else-if="col.key === 'unit_price_floor'">
+                  <span v-if="summaryRow.unitPriceFloor !== null" class="text-red">{{ formatNumber(summaryRow.unitPriceFloor, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_transaction_house'">
+                  <span v-if="summaryRow.priceTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.priceTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'unit_price_transaction'">
+                  <span v-if="summaryRow.unitPriceTrans !== null" class="text-success">{{ formatNumber(summaryRow.unitPriceTrans, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_floor_total'">
+                  <span v-if="summaryRow.parkingFloorTotal > 0" class="text-red">{{ formatNumber(summaryRow.parkingFloorTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_trans_total'">
+                  <span v-if="summaryRow.parkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.parkingTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'total_transaction'">
+                  <span v-if="summaryRow.totalTransactionTotal > 0" class="text-success">{{ formatNumber(summaryRow.totalTransactionTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'total_floor'">
+                  <span class="text-red">{{ formatNumber(summaryRow.totalFloorTotal, 0) }}</span>
+                </template>
+                <template v-else-if="col.key === 'price_diff'">
+                  <span :class="summaryRow.priceDiffTotal >= 0 ? 'text-success' : 'text-error'">
+                    {{ summaryRow.priceDiffTotal > 0 ? '+' : '' }}{{ formatNumber(summaryRow.priceDiffTotal, 0) }}
+                  </span>
+                </template>
+              </td>
+            </tr>
+          </template>
+
+          <!-- ✅ 加總列：資料最下方 -->
+          <template v-slot:body.append="{ columns }">
+            <tr v-if="summaryRow" class="summary-row summary-row-bottom">
+              <td
+                v-for="col in columns"
+                :key="`sum-bot-${col.key}`"
+                :class="`text-${col.align || 'start'}`"
+              >
+                <template v-if="col.key === 'unitId'">
+                  合計 {{ summaryRow.count }} 戶
+                </template>
+                <template v-else-if="col.key === 'area_house_ping'">
+                  {{ formatNumber(summaryRow.areaTotal, 2) }}
+                </template>
+                <template v-else-if="col.key === 'area_terrace_ping'">
+                  <span v-if="summaryRow.terraceTotal > 0">{{ formatNumber(summaryRow.terraceTotal, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_list_house_total' || col.key === 'quote_mode_total_price'">
+                  {{ formatNumber(summaryRow.priceListTotal, 0) }}
+                </template>
+                <template v-else-if="col.key === 'unit_price_list' || col.key === 'unit_price_value'">
+                  <span v-if="summaryRow.unitPriceList !== null">{{ formatNumber(summaryRow.unitPriceList, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_floor_house_total'">
+                  {{ formatNumber(summaryRow.priceFloorTotal, 0) }}
+                </template>
+                <template v-else-if="col.key === 'unit_price_floor'">
+                  <span v-if="summaryRow.unitPriceFloor !== null" class="text-red">{{ formatNumber(summaryRow.unitPriceFloor, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'price_transaction_house'">
+                  <span v-if="summaryRow.priceTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.priceTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'unit_price_transaction'">
+                  <span v-if="summaryRow.unitPriceTrans !== null" class="text-success">{{ formatNumber(summaryRow.unitPriceTrans, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_floor_total'">
+                  <span v-if="summaryRow.parkingFloorTotal > 0" class="text-red">{{ formatNumber(summaryRow.parkingFloorTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_trans_total'">
+                  <span v-if="summaryRow.parkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.parkingTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'total_transaction'">
+                  <span v-if="summaryRow.totalTransactionTotal > 0" class="text-success">{{ formatNumber(summaryRow.totalTransactionTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'total_floor'">
+                  <span class="text-red">{{ formatNumber(summaryRow.totalFloorTotal, 0) }}</span>
+                </template>
+                <template v-else-if="col.key === 'price_diff'">
+                  <span :class="summaryRow.priceDiffTotal >= 0 ? 'text-success' : 'text-error'">
+                    {{ summaryRow.priceDiffTotal > 0 ? '+' : '' }}{{ formatNumber(summaryRow.priceDiffTotal, 0) }}
+                  </span>
+                </template>
+              </td>
+            </tr>
+          </template>
         </v-data-table>
       </div>
 
@@ -2212,6 +2340,60 @@ const tableItems = computed(() => {
 
 
 
+// ✅ [新增] 列表模式加總列：依「目前篩選後資料」加總
+const summaryRow = computed(() => {
+  const items = filteredTableItems.value || [];
+  if (items.length === 0) return null;
+
+  let areaTotal = 0;
+  let terraceTotal = 0;
+  let priceListTotal = 0;
+  let priceFloorTotal = 0;
+  let priceTransTotal = 0;       // 房屋成交價加總
+  let parkingFloorTotal = 0;     // 車位底價加總
+  let parkingTransTotal = 0;     // 車位成交加總
+  let totalTransactionTotal = 0; // 成交總價(含車)加總
+  let totalFloorTotal = 0;       // 合計底價(含車)加總
+  let priceDiffTotal = 0;        // 溢差價加總（只計算有成交的戶別）
+
+  items.forEach((item) => {
+    areaTotal += Number(item.area_house_ping) || 0;
+    terraceTotal += Number(item.area_terrace_ping) || 0;
+    priceListTotal += Number(item.price_list_house_total) || 0;
+    priceFloorTotal += Number(item.price_floor_house_total) || 0;
+    priceTransTotal += Number(item.price_transaction_house) || 0;
+    parkingFloorTotal += Number(item.parking_floor_total) || 0;
+    parkingTransTotal += Number(item.parking_trans_total) || 0;
+    totalTransactionTotal += Number(item.total_transaction) || 0;
+    totalFloorTotal += Number(item.total_floor) || 0;
+    if (item.price_diff !== null && item.price_diff !== undefined) {
+      priceDiffTotal += Number(item.price_diff) || 0;
+    }
+  });
+
+  // 加權平均單價 = 對應總價加總 / 面積加總
+  const unitPriceList = areaTotal > 0 && priceListTotal > 0 ? priceListTotal / areaTotal : null;
+  const unitPriceFloor = areaTotal > 0 && priceFloorTotal > 0 ? priceFloorTotal / areaTotal : null;
+  const unitPriceTrans = areaTotal > 0 && priceTransTotal > 0 ? priceTransTotal / areaTotal : null;
+
+  return {
+    count: items.length,
+    areaTotal,
+    terraceTotal,
+    priceListTotal,
+    priceFloorTotal,
+    priceTransTotal,
+    parkingFloorTotal,
+    parkingTransTotal,
+    totalTransactionTotal,
+    totalFloorTotal,
+    priceDiffTotal,
+    unitPriceList,
+    unitPriceFloor,
+    unitPriceTrans,
+  };
+});
+
 // 5. 處理列表行點擊
 const handleRowClick = (event, { item }) => {
   // Vuetify 的 item 包裝在 Proxy 或物件中，視版本而定
@@ -3226,6 +3408,30 @@ overflow: hidden;
 }
 .gap-1 {
   gap: 4px;
+}
+
+/* ✅ 列表模式：加總列樣式（淺灰背景 + 粗體） */
+.list-view-container :deep(tr.summary-row > td) {
+  background-color: #f0f0f0 !important;
+  font-weight: 700 !important;
+  color: #1a3a6e !important;
+  font-size: 0.92rem !important;
+}
+
+/* 上方加總列：底部粗線分隔 */
+.list-view-container :deep(tr.summary-row-top > td) {
+  border-bottom: 2px solid #c0c0c0 !important;
+}
+
+/* 下方加總列：頂部粗線分隔 */
+.list-view-container :deep(tr.summary-row-bottom > td) {
+  border-top: 2px solid #c0c0c0 !important;
+}
+
+/* 加總列：滑鼠懸停時略加深，但不要像一般列那樣強烈 hover */
+.list-view-container :deep(tr.summary-row:hover > td) {
+  background-color: #e6e6e6 !important;
+  cursor: default;
 }
 
 /* ✅ 列表模式：露臺戶別整列背景加強 */
