@@ -1,5 +1,43 @@
 <template>
   <v-container>
+    <!-- ✅ 全局專案切換器（影響所有 Tab/Window） -->
+    <v-card flat class="mb-2 pa-2 d-flex align-center bg-grey-lighten-5 rounded-lg">
+      <v-icon color="primary" class="me-2">mdi-domain</v-icon>
+      <v-menu v-if="availableProjects.length > 1">
+        <template v-slot:activator="{ props: menuProps }">
+          <v-btn
+            v-bind="menuProps"
+            variant="tonal"
+            color="primary"
+            class="font-weight-bold text-none"
+            append-icon="mdi-chevron-down"
+            :size="isMobile ? 'small' : 'default'"
+          >
+            <span class="text-truncate" :style="{ maxWidth: isMobile ? '50vw' : '320px' }">
+              {{ projectName }}
+            </span>
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <v-list-item
+            v-for="proj in availableProjects"
+            :key="proj.id"
+            :value="proj.id"
+            @click="switchProject(proj.id)"
+            :active="proj.id === props.projectId"
+            color="primary"
+          >
+            <v-list-item-title>{{ proj.name }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+      <span v-else class="font-weight-bold text-grey-darken-3 text-truncate" :style="{ maxWidth: isMobile ? '50vw' : '320px' }">
+        {{ projectName }}
+      </span>
+      <v-spacer></v-spacer>
+      <span v-if="!isMobile" class="text-caption text-grey-darken-1">切換專案後所有頁籤同步更新</span>
+    </v-card>
+
     <v-tabs v-model="tab" color="primary" grow :touch="false">
       <v-tab value="management">客戶資料管理</v-tab>
       <v-tab value="leadDistribution" >聯絡名單</v-tab>
@@ -27,37 +65,8 @@
         <v-card class="bg-grey-lighten-5 h-100">
           <v-toolbar color="white" elevation="1" density="compact">
             <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3" style="min-width: 0;">
-              <!-- ✅ 專案切換選單 -->
-              <v-menu v-if="availableProjects.length > 1">
-                <template v-slot:activator="{ props: menuProps }">
-                  <v-btn
-                    v-bind="menuProps"
-                    variant="text"
-                    class="px-1 font-weight-bold text-grey-darken-3 text-none toolbar-project-btn"
-                    append-icon="mdi-chevron-down"
-                    :size="isMobile ? 'small' : 'default'"
-                  >
-                    <span class="text-truncate" style="max-width: 40vw;">
-                      {{ projectName }}
-                    </span>
-                    <span v-if="!isMobile" class="ml-1">客戶資料列表</span>
-                  </v-btn>
-                </template>
-                <v-list density="compact">
-                  <v-list-item
-                    v-for="proj in availableProjects"
-                    :key="proj.id"
-                    :value="proj.id"
-                    @click="switchProject(proj.id)"
-                    :active="proj.id === props.projectId"
-                    color="primary"
-                  >
-                    <v-list-item-title>{{ proj.name }}</v-list-item-title>
-                  </v-list-item>
-                </v-list>
-              </v-menu>
-              <span v-else class="text-truncate d-inline-block" style="max-width: 45vw; vertical-align: middle;">
-                {{ projectName }} <span v-if="!isMobile">客戶資料列表</span>
+              <span class="text-truncate d-inline-block" style="max-width: 45vw; vertical-align: middle;">
+                客戶資料列表
               </span>
             </v-toolbar-title>
             <v-spacer></v-spacer>
@@ -482,6 +491,7 @@
 
       <v-window-item value="leadDistribution">
     <LeadDistribution
+      :key="props.projectId"
       :projectId="props.projectId"
       :hide-back="true"
     />

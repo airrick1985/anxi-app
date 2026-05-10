@@ -205,6 +205,37 @@
   ></v-text-field>
 </v-col>
 
+<v-col cols="12" sm="2" class="mt-2 mt-sm-2">
+  <v-text-field
+    v-model="assignedStartDate"
+    label="指派時間(起)"
+    type="date"
+    variant="outlined"
+    density="compact"
+    hide-details
+    rounded="lg"
+    color="primary"
+    clearable
+    size="small"
+  ></v-text-field>
+</v-col>
+
+<v-col cols="12" sm="2" class="mt-2 mt-sm-2">
+  <v-text-field
+    v-model="assignedEndDate"
+    label="指派時間(迄)"
+    type="date"
+    variant="outlined"
+    density="compact"
+    hide-details
+    rounded="lg"
+    color="primary"
+    clearable
+    size="small"
+    :min="assignedStartDate"
+  ></v-text-field>
+</v-col>
+
 <v-col cols="12" class="mt-2">
       <!-- ✅ 優化：手機上縱向排列，平板以上橫向排列 -->
       <v-row no-gutters class="gap-2">
@@ -351,6 +382,10 @@
     :row-props="leadRowProps"
     class="rounded-lg elevation-1 d-none d-md-block"
   >
+    <template v-slot:item.assignedAt="{ item }">
+      <span class="text-caption">{{ item.assignedAt ? formatDateTime(item.assignedAt) : '-' }}</span>
+    </template>
+
     <template v-slot:item.status="{ item }">
       <v-chip
         :color="getStatusColor(item.status)"
@@ -1743,7 +1778,7 @@
 
 <script setup>
 import LeadDetailDialog from '@/components/LeadDetailDialog.vue'; // Import Component
-import { ref, computed, onMounted, reactive, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useUiStore } from '@/store/uiStore';
@@ -1929,11 +1964,15 @@ const editAITemplate = (rule) => {
   aiTab.value = 'add';
 };
 
+// ✅ 統一收集 Firestore 監聽器的 unsubscribe，於 onUnmounted 一併釋放
+const snapshotUnsubs = [];
+
 const fetchAITemplates = async () => {
   try {
-    onSnapshot(query(collection(db, 'aiLeadTemplates'), where('projectId', '==', props.projectId), orderBy('createdAt', 'desc')), (snap) => {
+    const unsub = onSnapshot(query(collection(db, 'aiLeadTemplates'), where('projectId', '==', props.projectId), orderBy('createdAt', 'desc')), (snap) => {
       customParsingRules.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     });
+    snapshotUnsubs.push(unsub);
   } catch (err) {
     console.error('獲取 AI 範本失敗', err);
   }
@@ -2510,6 +2549,7 @@ const statusHeaders = [
   { title: '預算', key: 'budget' },
   { title: '填表日期', key: 'date' },
   { title: '指派給', key: 'assignedName' },
+  { title: '指派時間', key: 'assignedAt' },
   { title: '狀態', key: 'status' },
   { title: '預約紀錄', key: 'reservationCount' }, // ✅ [優化] 使用 reservationCount 欄位支援排序
   { title: '不考慮原因', key: 'reason' },
@@ -2528,6 +2568,8 @@ const budgetSearch = ref([]);
 const startDate = ref(null);
 const endDate = ref(null);
 const dateSearch = ref([]);
+const assignedStartDate = ref(null);
+const assignedEndDate = ref(null);
 
 // 3. 自動從資料中提取現有的過濾選項 (確保勾選清單準確)
 const sourceOptions = computed(() => {
@@ -2635,6 +2677,22 @@ if (namePhoneSearch.value) {
     list = list.filter(l => reasonSearch.value.includes(l.reason || '未註明'));
   }
 
+  // 9. 指派時間範圍過濾
+  if (assignedStartDate.value) {
+    const sMs = new Date(assignedStartDate.value + 'T00:00:00').getTime();
+    list = list.filter(l => {
+      const ts = l.assignedAt?.toMillis ? l.assignedAt.toMillis() : 0;
+      return ts >= sMs;
+    });
+  }
+  if (assignedEndDate.value) {
+    const eMs = new Date(assignedEndDate.value + 'T23:59:59.999').getTime();
+    list = list.filter(l => {
+      const ts = l.assignedAt?.toMillis ? l.assignedAt.toMillis() : 0;
+      return ts > 0 && ts <= eMs;
+    });
+  }
+
   // ✅ 為每筆記錄添加預約計數欄位
   const enriched = list.map(item => ({
     ...item,
@@ -2670,13 +2728,14 @@ const fetchDeletedLeads = () => {
   const q = query(
     collection(db, 'leads'),
     where('projectId', '==', props.projectId),
-    where('isDeleted', '==', true), 
-    orderBy('deletedAt', 'desc')     
+    where('isDeleted', '==', true),
+    orderBy('deletedAt', 'desc')
   );
-  
-  onSnapshot(q, (snap) => {
+
+  const unsub = onSnapshot(q, (snap) => {
     deletedLeads.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   });
+  snapshotUnsubs.push(unsub);
 };
 
 const restoreLead = async (item) => {
@@ -3377,12 +3436,13 @@ onMounted(async () => {
   fetchAITemplates();
 
   // 1. 設定監聽名單資料
-  onSnapshot(query(collection(db, 'leads'), where('projectId', '==', props.projectId), where('isDeleted', '==', false), orderBy('createdAt', 'desc')), (snap) => {
+  const unsubLeads = onSnapshot(query(collection(db, 'leads'), where('projectId', '==', props.projectId), where('isDeleted', '==', false), orderBy('createdAt', 'desc')), (snap) => {
     allLeads.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   });
+  snapshotUnsubs.push(unsubLeads);
 
   // ✅ 新增：監聽預約記錄資料
-  onSnapshot(query(collection(db, 'viewing_reservations'), where('projectId', '==', props.projectId), where('status', '==', 'active')), (snap) => {
+  const unsubReservations = onSnapshot(query(collection(db, 'viewing_reservations'), where('projectId', '==', props.projectId), where('status', '==', 'active')), (snap) => {
     allReservations.value = snap.docs.map(d => {
       const data = d.data();
       return {
@@ -3393,6 +3453,7 @@ onMounted(async () => {
     });
     console.log('📋 預約記錄已加載，共', allReservations.value.length, '筆');
   });
+  snapshotUnsubs.push(unsubReservations);
 
   // ✅ 修改：改用 watch 確保使用者權限載入後才執行切換，避免 onMounted 執行時 userStore 還在載入
   watch(() => userStore.user, (newUser) => {
@@ -3422,13 +3483,14 @@ onMounted(async () => {
     where('projectId', '==', props.projectId)
   );
 
-onSnapshot(logsQuery, (snap) => {
+const unsubLogs = onSnapshot(logsQuery, (snap) => {
   // ✓ [打勾] 修改：在 map 時加入 leadId，方便後續與名單對接
   allProjectLogs.value = snap.docs.map(d => ({
     ...d.data(),
     leadId: d.ref.parent.parent.id // 取得父文件 (leads/{id}) 的 ID
   }));
 });
+snapshotUnsubs.push(unsubLogs);
 
 
   if (isAdmin.value || isReceptionist.value) {
@@ -3442,6 +3504,14 @@ onSnapshot(logsQuery, (snap) => {
     statusOptions.value = setSnap.data().statusOptions || statusOptions.value;
     reasonOptions.value = setSnap.data().reasonOptions || reasonOptions.value;
   }
+});
+
+// ✅ 元件卸載時釋放所有 Firestore 監聽器，避免切換建案後舊監聽器仍在背景運作
+onUnmounted(() => {
+  snapshotUnsubs.forEach(unsub => {
+    try { unsub(); } catch (e) { /* noop */ }
+  });
+  snapshotUnsubs.length = 0;
 });
 
 // 修改項目：圖表設定優化
