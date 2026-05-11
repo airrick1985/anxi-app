@@ -379,23 +379,36 @@
                         <v-icon start size="32" class="mr-2">mdi-calendar-edit</v-icon>
                         {{ type }}
                       </v-btn>
-                      <!-- 未開放：次色按鈕 + 狀態標籤 + 開放時間 -->
-                      <v-btn v-else block size="x-large" color="blue-grey-lighten-1" variant="elevated"
-                        class="py-6 text-h6 font-weight-bold rounded-xl" style="height: auto; min-height: 80px;"
-                        @click="selectBookingType(type)">
-                        <div class="d-flex flex-column align-center" style="width: 100%;">
-                          <div class="d-flex align-center">
-                            <v-icon start size="32" class="mr-2">mdi-calendar-clock</v-icon>
-                            {{ type }}
+                      <!-- 未開放：主色淺色 tonal 變體 + 狀態 chip + 開放時間 + 查看說明 CTA -->
+                      <v-btn v-else block size="x-large" color="primary" variant="tonal"
+                        class="py-4 text-h6 font-weight-bold rounded-xl text-none not-open-btn"
+                        style="height: auto; min-height: 96px;" @click="selectBookingType(type)">
+                        <div class="d-flex flex-column" style="width: 100%; gap: 6px;">
+                          <!-- 第一列：項目標題 + 尚未開放 chip -->
+                          <div class="d-flex align-center justify-space-between" style="width: 100%;">
+                            <div class="d-flex align-center">
+                              <v-icon start size="28" class="mr-2">mdi-calendar-clock</v-icon>
+                              <span>{{ type }}</span>
+                            </div>
+                            <v-chip size="x-small" color="orange" variant="flat">
+                              <v-icon start size="12">mdi-clock-outline</v-icon>
+                              尚未開放
+                            </v-chip>
                           </div>
-                          <v-chip size="x-small" color="orange" variant="flat" class="mt-2">
-                            <v-icon start size="12">mdi-clock-outline</v-icon>
-                            尚未開放
-                          </v-chip>
-                          <div v-if="getNextBatchForType(type)" class="text-caption text-white mt-1"
-                            style="opacity: 0.9; font-weight: 400;">
+                          <!-- 第二列：開放時間 -->
+                          <div v-if="getNextBatchForType(type)"
+                            class="text-caption text-medium-emphasis text-left"
+                            style="font-weight: 400; line-height: 1.4;">
+                            <v-icon size="14" class="mr-1">mdi-calendar-range</v-icon>
                             開放時間：{{ formatScheduleDateTime(getNextBatchForType(type).applicationStart) }}
                             ~ {{ formatScheduleDateTime(getNextBatchForType(type).applicationEnd) }}
+                          </div>
+                          <!-- 第三列：引導點擊查看說明 CTA -->
+                          <div class="text-body-2 d-flex align-center justify-center text-primary not-open-cta"
+                            style="font-weight: 600;">
+                            <v-icon size="16" class="mr-1">mdi-book-open-page-variant-outline</v-icon>
+                            點此查看預約說明及附件
+                            <v-icon size="16" class="ml-1">mdi-arrow-right</v-icon>
                           </div>
                         </div>
                       </v-btn>
@@ -3027,6 +3040,29 @@ const goBackToStep0 = () => {
 
 .faq-panel :deep(.v-expansion-panel-title--active) {
   background-color: rgba(106, 92, 231, 0.04);
+}
+
+/* 未開放預約項目按鈕：hover 時箭頭動一下，提示可點擊 */
+.not-open-btn :deep(.v-btn__content) {
+  width: 100%;
+}
+
+.not-open-btn .not-open-cta {
+  transition: opacity 0.2s ease;
+  opacity: 0.85;
+}
+
+.not-open-btn:hover .not-open-cta {
+  opacity: 1;
+}
+
+.not-open-btn:hover .not-open-cta .mdi-arrow-right {
+  transform: translateX(4px);
+  transition: transform 0.2s ease;
+}
+
+.not-open-btn .not-open-cta .mdi-arrow-right {
+  transition: transform 0.2s ease;
 }
 
 /* 聯絡/資訊按鈕的反光掃過動畫 (Shimmer Effect) */
