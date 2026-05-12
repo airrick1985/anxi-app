@@ -1062,6 +1062,7 @@ const displayFieldOptions = computed(() => {
     { key: 'bookerName', label: '預約人姓名' },
     { key: 'bookingType', label: '預約項目' },
     { key: 'inspectionMethod', label: '選擇方式' },
+    { key: 'bookingSubOption', label: '子項目' },
     { key: 'remarks', label: '重要備註' },
     { key: 'bookingRemarks', label: '預約備註' },
     { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
@@ -1114,7 +1115,7 @@ const selectedDisplayFields = useStorage(
 );
 // 當 displayFieldOptions 變化時，同步更新 selectedDisplayFields
 // - 若快取為空：全選
-// - 若已有快取：清除已不存在的 key，並自動加入新出現的動態欄位
+// - 若已有快取：清除已不存在的 key，並自動加入所有新出現的欄位（含基礎欄位與動態欄位）
 watch(displayFieldOptions, (newOptions) => {
   const validKeys = new Set(newOptions.map(f => f.key));
   if (selectedDisplayFields.value.length === 0 && newOptions.length > 0) {
@@ -1123,12 +1124,12 @@ watch(displayFieldOptions, (newOptions) => {
   } else if (newOptions.length > 0) {
     // 清除已不存在的舊 key
     const cleaned = selectedDisplayFields.value.filter(k => validKeys.has(k));
-    // 找出新出現的動態欄位 key，自動加入
+    // 找出新出現的欄位 key，自動加入（包含新增的 baseField 與 dynamicField）
     const existingKeys = new Set(selectedDisplayFields.value);
-    const newDynamicKeys = newOptions
-      .filter(f => f.isDynamic && !existingKeys.has(f.key))
+    const newKeys = newOptions
+      .filter(f => !existingKeys.has(f.key))
       .map(f => f.key);
-    selectedDisplayFields.value = [...cleaned, ...newDynamicKeys];
+    selectedDisplayFields.value = [...cleaned, ...newKeys];
   }
 }, { immediate: true });
 const pageTitle = computed(() => `${projectName.value} - 預約時間表`);

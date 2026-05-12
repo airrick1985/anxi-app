@@ -391,6 +391,120 @@
  <v-snackbar v-model="snackbar.show" :timeout="2000" :color="snackbar.color">
   {{ snackbar.text }}
 </v-snackbar>
+
+<!-- 戶別整合資訊 Modal（可拖移、不阻擋 grid 背景操作） -->
+<div
+   v-if="isHouseholdDetailVisible && selectedHouseholdForDetail"
+   class="household-detail-modal"
+   :style="{ top: detailModalPos.y + 'px', left: detailModalPos.x + 'px' }"
+>
+   <div class="hdm-header" @mousedown="startDetailDrag">
+      <v-icon size="small" class="mr-2">mdi-drag</v-icon>
+      <span class="hdm-title">
+         {{ selectedHouseholdForDetail.building || '' }} - {{ selectedHouseholdForDetail.unitId || '' }}
+         <span class="hdm-subtitle">戶別整合資訊</span>
+      </span>
+      <v-spacer></v-spacer>
+      <v-btn icon="mdi-close" variant="text" size="small" color="white" @click="closeHouseholdDetail"></v-btn>
+   </div>
+   <div class="hdm-body">
+      <!-- 基本資料 -->
+      <v-card variant="outlined" class="mb-3">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
+            <v-icon size="small" class="mr-1" color="primary">mdi-account-outline</v-icon>基本資料
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div class="hdm-row"><label>目前狀態</label><span>{{ selectedHouseholdForDetail.currentStatus || '—' }}</span></div>
+            <div class="hdm-row"><label>買方姓名</label><span>{{ selectedHouseholdForDetail.buyerName || '—' }}</span></div>
+            <div class="hdm-row"><label>買方電話</label><span>{{ selectedHouseholdForDetail.buyerPhone || '—' }}</span></div>
+            <div class="hdm-row"><label>買方 Email</label><span>{{ selectedHouseholdForDetail.buyerEmail || '—' }}</span></div>
+            <div class="hdm-row"><label>買方身分證</label><span>{{ selectedHouseholdForDetail.buyerIdNumber || '—' }}</span></div>
+            <div class="hdm-row"><label>車位</label><span>{{ selectedHouseholdForDetail.parkingLots || '—' }}</span></div>
+            <div class="hdm-row"><label>門牌</label><span>{{ selectedHouseholdForDetail.address || '—' }}</span></div>
+            <div class="hdm-row"><label>撥款日</label><span>{{ formatDetailDate(selectedHouseholdForDetail.appropriationDate) }}</span></div>
+            <div v-if="selectedHouseholdForDetail.remarks" class="hdm-row"><label>備註</label><span>{{ selectedHouseholdForDetail.remarks }}</span></div>
+         </v-card-text>
+      </v-card>
+
+      <!-- 預約資訊（依 type） -->
+      <v-card
+         v-for="type in detailBookingTypes"
+         :key="`bt-${type}`"
+         variant="outlined"
+         class="mb-3"
+      >
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-blue-lighten-5">
+            <v-icon size="small" class="mr-1" color="primary">mdi-calendar-clock-outline</v-icon>
+            {{ type }} 預約資訊
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div class="hdm-row">
+               <label>預約日期</label>
+               <span>{{ formatDetailDate(detailBookingInfo[type]?.date) || '—' }}</span>
+            </div>
+            <div class="hdm-row">
+               <label>時段</label>
+               <span>{{ detailBookingInfo[type]?.timeSlot || '—' }}</span>
+            </div>
+            <div class="hdm-row">
+               <label>選擇方式</label>
+               <span>{{ detailBookingInfo[type]?.method || '—' }}</span>
+            </div>
+            <div v-if="typesWithSubOptions.has(type)" class="hdm-row">
+               <label>子項目</label>
+               <span>{{ detailBookingInfo[type]?.subOption || '—' }}</span>
+            </div>
+            <div
+               v-for="f in (detailExtraFieldsByType[type] || [])"
+               :key="`mf-${type}-${f.id}`"
+               class="hdm-row"
+            >
+               <label>{{ f.label }}</label>
+               <span>{{ detailBookingInfo[type]?.bookingMethodDetails?.[f.id] || '—' }}</span>
+            </div>
+            <div
+               v-if="selectedHouseholdForDetail.customBatches?.[type]"
+               class="hdm-row"
+            >
+               <label>{{ type }}批次</label>
+               <span>{{ selectedHouseholdForDetail.customBatches[type] }}</span>
+            </div>
+         </v-card-text>
+      </v-card>
+
+      <!-- 報告與其他 -->
+      <v-card variant="outlined" class="mb-3">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
+            <v-icon size="small" class="mr-1" color="primary">mdi-file-document-outline</v-icon>報告 / 其他
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div class="hdm-row"><label>初驗報告上傳</label><span>{{ selectedHouseholdForDetail.initialReportUploadSwitch ? '開' : '關' }}</span></div>
+            <div class="hdm-row"><label>複驗報告上傳</label><span>{{ selectedHouseholdForDetail.reInspectionReportUploadSwitch ? '開' : '關' }}</span></div>
+            <div class="hdm-row"><label>允許重複預約</label><span>{{ selectedHouseholdForDetail.allowMultipleBookings ? '是' : '否' }}</span></div>
+            <div v-if="selectedHouseholdForDetail.inspectionReportFolderUrl" class="hdm-row">
+               <label>報告資料夾</label>
+               <span><a :href="selectedHouseholdForDetail.inspectionReportFolderUrl" target="_blank" rel="noopener">開啟</a></span>
+            </div>
+            <div v-if="selectedHouseholdForDetail.inspectionDocsUrl" class="hdm-row">
+               <label>驗屋文件</label>
+               <span><a :href="selectedHouseholdForDetail.inspectionDocsUrl" target="_blank" rel="noopener">開啟</a></span>
+            </div>
+            <div
+               v-if="Array.isArray(selectedHouseholdForDetail.customerMessages) && selectedHouseholdForDetail.customerMessages.filter(m => !m.isDeleted).length > 0"
+               class="hdm-row"
+            >
+               <label>客戶回傳</label>
+               <span>
+                  <v-btn size="x-small" color="info" variant="tonal"
+                     @click="openMessageDialog(selectedHouseholdForDetail)">
+                     共 {{ selectedHouseholdForDetail.customerMessages.filter(m => !m.isDeleted).length }} 筆，查看
+                  </v-btn>
+               </span>
+            </div>
+         </v-card-text>
+      </v-card>
+   </div>
+</div>
 </v-container>
 </template>
 
@@ -603,25 +717,14 @@ const buildAppointmentMap = (appointmentsList) => {
       map[unitId][bookingType] = {
         date: appt.appointmentDate || null,
         timeSlot: appt.appointmentTimeSlot || '',
-        method: formatAppointmentMethod(appt)
+        method: appt.inspectionMethod || '',                       // 純方式（不再與 subOption 合併）
+        subOption: appt.bookingSubOption || '',                    // 子項目獨立屬性
+        bookingMethodDetails: appt.bookingMethodDetails || {}      // 方式額外資訊（依 method.customFields）
       };
     }
   });
 
   return map;
-};
-
-/**
- * 組合選擇方式的顯示文字
- * 若有 bookingSubOption，顯示為 "{inspectionMethod} - {bookingSubOption}"
- */
-const formatAppointmentMethod = (appointment) => {
-  const method = appointment.inspectionMethod || '';
-  const subOption = appointment.bookingSubOption || '';
-  if (subOption) {
-    return `${method}-${subOption}`;
-  }
-  return method;
 };
 
 
@@ -819,7 +922,7 @@ const activeMessageCount = computed(() => {
 const openMessageDialog = (householdData) => {
    const msgs = householdData.customerMessages || [];
    if (msgs.length === 0) return;
-   
+
    // 正體中文註解：依日期排序（含已刪除），最新的在前面
    selectedHouseholdMessages.value = [...msgs].sort((a, b) => {
       const tA = a.createdAt?.seconds || 0;
@@ -830,6 +933,159 @@ const openMessageDialog = (householdData) => {
    selectedHouseholdDocId.value = householdData._docId;
    showDeletedMessages.value = false; // 每次開啟時重置
    isMessageDialogVisible.value = true;
+};
+
+// ───────────── 戶別詳情可拖移 Modal ─────────────
+const isHouseholdDetailVisible = ref(false);
+const selectedHouseholdForDetail = ref(null);
+const detailModalPos = ref({ x: 120, y: 80 });
+let _detailDragStart = null;
+
+const openHouseholdDetail = (clickedRow) => {
+   if (!clickedRow) return;
+   // 從最新的 rowData 重新查回該戶（避免 ag-grid cellRenderer 拿到的 row 是舊版本、缺 _bookingInfo）
+   const docId = clickedRow._docId;
+   let fresh = clickedRow;
+   if (docId && Array.isArray(rowData.value)) {
+      const found = rowData.value.find(r => r && r._docId === docId);
+      if (found) fresh = found;
+   }
+   // 保底：若仍無 _bookingInfo，從目前 appointmentsByUnitAndType 補上
+   if (fresh && !fresh._bookingInfo && fresh.unitId) {
+      fresh = { ...fresh, _bookingInfo: appointmentsByUnitAndType.value[fresh.unitId] || {} };
+   }
+   selectedHouseholdForDetail.value = fresh;
+   isHouseholdDetailVisible.value = true;
+   // 預設位置：水平置中、距頂 80px
+   if (typeof window !== 'undefined') {
+      const modalWidth = 600;
+      detailModalPos.value = {
+         x: Math.max(20, Math.floor((window.innerWidth - modalWidth) / 2)),
+         y: 80
+      };
+   }
+};
+
+// modal 開啟期間若 appointments / rowData 有更新，同步替換顯示的戶別資料
+watch([rowData, appointmentsByUnitAndType], () => {
+   if (!isHouseholdDetailVisible.value) return;
+   const cur = selectedHouseholdForDetail.value;
+   if (!cur) return;
+   const docId = cur._docId;
+   if (docId && Array.isArray(rowData.value)) {
+      const found = rowData.value.find(r => r && r._docId === docId);
+      if (found) {
+         const merged = found._bookingInfo
+            ? found
+            : { ...found, _bookingInfo: appointmentsByUnitAndType.value[found.unitId] || {} };
+         selectedHouseholdForDetail.value = merged;
+         return;
+      }
+   }
+   // fallback：直接合併最新 _bookingInfo
+   if (cur.unitId) {
+      selectedHouseholdForDetail.value = { ...cur, _bookingInfo: appointmentsByUnitAndType.value[cur.unitId] || {} };
+   }
+}, { deep: false });
+const closeHouseholdDetail = () => {
+   isHouseholdDetailVisible.value = false;
+   selectedHouseholdForDetail.value = null;
+};
+const onDetailDragMove = (e) => {
+   if (!_detailDragStart) return;
+   const dx = e.clientX - _detailDragStart.mouseX;
+   const dy = e.clientY - _detailDragStart.mouseY;
+   detailModalPos.value = {
+      x: _detailDragStart.modalX + dx,
+      y: Math.max(0, _detailDragStart.modalY + dy)
+   };
+};
+const onDetailDragEnd = () => {
+   _detailDragStart = null;
+   window.removeEventListener('mousemove', onDetailDragMove);
+   window.removeEventListener('mouseup', onDetailDragEnd);
+};
+const startDetailDrag = (e) => {
+   if (!e || e.button !== 0) return; // 只接受左鍵
+   _detailDragStart = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      modalX: detailModalPos.value.x,
+      modalY: detailModalPos.value.y
+   };
+   window.addEventListener('mousemove', onDetailDragMove);
+   window.addEventListener('mouseup', onDetailDragEnd);
+   e.preventDefault();
+};
+
+// modal 顯示用的 _bookingInfo：優先讀 appointmentsByUnitAndType，缺資料再從原始 appointments.value 即時重算
+const detailBookingInfo = computed(() => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h.unitId) return {};
+   const fromMap = appointmentsByUnitAndType.value?.[h.unitId];
+   if (fromMap && Object.keys(fromMap).length > 0) return fromMap;
+   if (Array.isArray(appointments.value) && appointments.value.length > 0) {
+      const subset = appointments.value.filter(a => a && a.unitId === h.unitId);
+      if (subset.length > 0) {
+         return buildAppointmentMap(subset)[h.unitId] || {};
+      }
+   }
+   return h._bookingInfo || {};
+});
+
+// 哪些 type 至少有一個未刪除 method 設了 subOptions（用於判斷是否要顯示「子項目」欄位）
+const typesWithSubOptions = computed(() => {
+   const result = new Set();
+   if (!projectConfig.value || !Array.isArray(projectConfig.value.bookingMenu)) return result;
+   for (const item of projectConfig.value.bookingMenu) {
+      if (!item || item.deleted || !item.title) continue;
+      const hasSubs = Array.isArray(item.methods)
+         && item.methods.some(m => m && !m.deleted && Array.isArray(m.subOptions) && m.subOptions.length > 0);
+      if (hasSubs) result.add(item.title);
+   }
+   return result;
+});
+
+// 依目前 projectConfig 的 bookingMenu 推出 modal 內可顯示的 type 清單 + 各 type 的「方式額外資訊」欄位定義
+const detailBookingTypes = computed(() => {
+   if (!projectConfig.value || !Array.isArray(projectConfig.value.bookingMenu)) return [];
+   return projectConfig.value.bookingMenu
+      .filter(i => i && !i.deleted && i.title)
+      .map(i => i.title);
+});
+
+const detailExtraFieldsByType = computed(() => {
+   const result = {};
+   if (!projectConfig.value || !Array.isArray(projectConfig.value.bookingMenu)) return result;
+   for (const item of projectConfig.value.bookingMenu) {
+      if (!item || item.deleted || !item.title) continue;
+      const seenLabels = new Set();
+      const fields = [];
+      if (Array.isArray(item.methods)) {
+         for (const method of item.methods) {
+            if (!method || method.deleted || !Array.isArray(method.customFields)) continue;
+            for (const cf of method.customFields) {
+               if (!cf || !cf.expanded || !cf.label || !cf.id) continue;
+               if (seenLabels.has(cf.label)) continue;
+               seenLabels.add(cf.label);
+               fields.push({ id: cf.id, label: cf.label });
+            }
+         }
+      }
+      result[item.title] = fields;
+   }
+   return result;
+});
+
+const formatDetailDate = (val) => {
+   if (!val) return '';
+   try {
+      const d = val instanceof Date ? val : new Date(val);
+      if (isNaN(d.getTime())) return '';
+      return format(d, 'yyyy/MM/dd');
+   } catch (_) {
+      return '';
+   }
 };
 
 /**
@@ -1002,7 +1258,25 @@ const baseColDefs = computed(() => {
     { headerName: '預約系統開關', field: 'showInMenu', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
     { headerName: '交屋', field: '交屋', pinned: 'left', width: 180, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer, valueGetter: params => !!params.data?.['交屋'] },
     { headerName: '棟別', field: 'building', width: 100, enableRowGroup: true },
-    { headerName: '戶號', field: 'unitId', pinned: 'left', width: 120, filter: 'agTextColumnFilter' },
+    {
+      headerName: '戶號',
+      field: 'unitId',
+      pinned: 'left',
+      width: 120,
+      filter: 'agTextColumnFilter',
+      cellRenderer: (params) => {
+        const link = document.createElement('a');
+        link.textContent = params.value || '';
+        link.style.cssText = 'cursor: pointer; color: #1976d2; text-decoration: underline; font-weight: 600;';
+        link.title = '點擊查看戶別整合資訊';
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openHouseholdDetail(params.data);
+        });
+        return link;
+      }
+    },
     { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
     { headerName: '買方姓名', field: 'buyerName', editable: true },
      { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
@@ -1013,11 +1287,7 @@ const baseColDefs = computed(() => {
     { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
     { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
     { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
-    { headerName: '初驗日期', field: 'initialInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-    { headerName: '初驗方式', field: 'initialInspectionMethod' },
     { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
-    { headerName: '複驗日期', field: 'reInspectionDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter },
-    { headerName: '複驗方式', field: 'reInspectionMethod' },
     { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
     { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
      { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false, cellRendererParams: { onDelete: confirmDeleteReport, onDownloadMark: confirmMarkDownloaded } } ,
@@ -1142,7 +1412,7 @@ const dynamicColDefs = computed(() => {
         },
       });
 
-      // 選擇方式欄位
+      // 選擇方式欄位（純方式）
       _bookingInfoCols.push({
         headerName: `${type}(選擇方式)`,
         field: `_booking_${type}_method`,
@@ -1152,6 +1422,48 @@ const dynamicColDefs = computed(() => {
           return params.data?._bookingInfo?.[type]?.method || '';
         },
       });
+
+      // 子項目欄位（緊接著父項目「選擇方式」之後顯示；該 type 下無任何 method 設定 subOptions 時不產生此欄）
+      if (typesWithSubOptions.value.has(type)) {
+        _bookingInfoCols.push({
+          headerName: `${type}(子項目)`,
+          field: `_booking_${type}_subOption`,
+          width: 160,
+          editable: false,
+          valueGetter: params => {
+            return params.data?._bookingInfo?.[type]?.subOption || '';
+          },
+        });
+      }
+
+      // 方式額外資訊欄位（依 bookingMenu[type].methods[*].customFields，只取 expanded === true，於此 type 內以 label 去重）
+      const menuItem = Array.isArray(projectConfig.value.bookingMenu)
+        ? projectConfig.value.bookingMenu.find(i => i && !i.deleted && i.title === type)
+        : null;
+      if (menuItem && Array.isArray(menuItem.methods)) {
+        const seenLabels = new Set();
+        for (const method of menuItem.methods) {
+          if (!method || method.deleted) continue;
+          if (!Array.isArray(method.customFields)) continue;
+          for (const cf of method.customFields) {
+            if (!cf || !cf.expanded || !cf.label || !cf.id) continue;
+            if (seenLabels.has(cf.label)) continue;
+            seenLabels.add(cf.label);
+            const fieldId = cf.id;
+            const fieldType = type;
+            _bookingInfoCols.push({
+              headerName: `${type}(${cf.label})`,
+              field: `_methodDetail_${type}_${fieldId}`,
+              width: 160,
+              editable: false,
+              valueGetter: params => {
+                const val = params.data?._bookingInfo?.[fieldType]?.bookingMethodDetails?.[fieldId];
+                return val === undefined || val === null ? '' : val;
+              },
+            });
+          }
+        }
+      }
     });
   }
 
@@ -1213,6 +1525,21 @@ const exportToExcel = () => {
         if (typeMatch) {
           const type = typeMatch[1];
           value = item._bookingInfo?.[type]?.method;
+        }
+      } else if (key.startsWith('_booking_') && key.endsWith('_subOption')) {
+        const typeMatch = key.match(/_booking_(.+)_subOption/);
+        if (typeMatch) {
+          const type = typeMatch[1];
+          value = item._bookingInfo?.[type]?.subOption;
+        }
+      } else if (key.startsWith('_methodDetail_')) {
+        // 形如 _methodDetail_{type}_{uuid}，UUID 不含底線，從尾端切出 fieldId 即可
+        const rest = key.substring('_methodDetail_'.length);
+        const lastIdx = rest.lastIndexOf('_');
+        if (lastIdx > 0) {
+          const type = rest.substring(0, lastIdx);
+          const fieldId = rest.substring(lastIdx + 1);
+          value = item._bookingInfo?.[type]?.bookingMethodDetails?.[fieldId];
         }
       } else if (key.includes('.')) {
         // 原有的巢狀欄位處理邏輯
@@ -1659,3 +1986,64 @@ onUnmounted(() => {
 });
 
 </script>
+
+<style scoped>
+.household-detail-modal {
+   position: fixed;
+   width: 600px;
+   max-width: calc(100vw - 24px);
+   max-height: calc(100vh - 100px);
+   background: #ffffff;
+   border-radius: 8px;
+   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.25);
+   z-index: 2400; /* 在 ag-grid 之上、Vuetify v-overlay 之下（v-overlay 預設 2400 開始，個別 dialog overlay 開到 ~2400+） */
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+}
+.hdm-header {
+   background: linear-gradient(90deg, #1976d2 0%, #1565c0 100%);
+   color: #ffffff;
+   padding: 8px 12px;
+   cursor: move;
+   user-select: none;
+   display: flex;
+   align-items: center;
+}
+.hdm-title {
+   font-weight: 600;
+   font-size: 0.95rem;
+}
+.hdm-subtitle {
+   font-weight: 400;
+   font-size: 0.8rem;
+   opacity: 0.85;
+   margin-left: 8px;
+}
+.hdm-body {
+   padding: 12px;
+   overflow-y: auto;
+   background: #fafafa;
+}
+.hdm-row {
+   display: flex;
+   align-items: flex-start;
+   padding: 4px 0;
+   border-bottom: 1px dashed #e0e0e0;
+   font-size: 0.875rem;
+   line-height: 1.5;
+}
+.hdm-row:last-child {
+   border-bottom: none;
+}
+.hdm-row label {
+   flex: 0 0 110px;
+   color: #616161;
+   font-weight: 500;
+}
+.hdm-row span {
+   flex: 1 1 auto;
+   word-break: break-all;
+   color: #212121;
+}
+</style>
