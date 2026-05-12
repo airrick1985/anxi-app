@@ -396,6 +396,7 @@
 <div
    v-if="isHouseholdDetailVisible && selectedHouseholdForDetail"
    class="household-detail-modal"
+   :class="{ 'is-edit-mode': isModalEditMode }"
    :style="{ top: detailModalPos.y + 'px', left: detailModalPos.x + 'px' }"
 >
    <div class="hdm-header" @mousedown="startDetailDrag">
@@ -409,6 +410,19 @@
          <span class="hdm-subtitle">戶別整合資訊</span>
       </span>
       <v-spacer></v-spacer>
+      <v-btn
+         class="mr-2"
+         size="small"
+         :variant="isModalEditMode ? 'flat' : 'outlined'"
+         :color="isModalEditMode ? 'warning' : 'white'"
+         :prepend-icon="isModalEditMode ? 'mdi-content-save-outline' : 'mdi-pencil-outline'"
+         :loading="_isSavingModalEdits"
+         @click.stop="isModalEditMode ? exitModalEditMode() : enterModalEditMode()"
+         @mousedown.stop
+         :title="isModalEditMode ? '點此儲存所有變更並退出編輯' : '點此進入編輯模式'"
+      >
+         {{ isModalEditMode ? '儲存並退出' : '進入編輯' }}
+      </v-btn>
       <v-btn
          class="mr-2"
          size="small"
@@ -432,41 +446,31 @@
          <v-card-text class="pt-2 pb-2">
             <div class="hdm-switch-row">
                <label>預約系統開關</label>
-               <v-switch
-                  :model-value="!!selectedHouseholdForDetail.showInMenu"
-                  @update:model-value="(v) => onModalToggleSwitch('showInMenu', v)"
+               <v-switch v-model="selectedHouseholdForDetail.showInMenu"
                   color="success" inset hide-details density="compact"
                ></v-switch>
             </div>
             <div class="hdm-switch-row">
                <label>交屋</label>
-               <v-switch
-                  :model-value="!!selectedHouseholdForDetail['交屋']"
-                  @update:model-value="(v) => onModalToggleSwitch('交屋', v)"
+               <v-switch v-model="selectedHouseholdForDetail['交屋']"
                   color="success" inset hide-details density="compact"
                ></v-switch>
             </div>
             <div class="hdm-switch-row">
                <label>初驗報告上傳</label>
-               <v-switch
-                  :model-value="!!selectedHouseholdForDetail.initialReportUploadSwitch"
-                  @update:model-value="(v) => onModalToggleSwitch('initialReportUploadSwitch', v)"
+               <v-switch v-model="selectedHouseholdForDetail.initialReportUploadSwitch"
                   color="success" inset hide-details density="compact"
                ></v-switch>
             </div>
             <div class="hdm-switch-row">
                <label>複驗報告上傳</label>
-               <v-switch
-                  :model-value="!!selectedHouseholdForDetail.reInspectionReportUploadSwitch"
-                  @update:model-value="(v) => onModalToggleSwitch('reInspectionReportUploadSwitch', v)"
+               <v-switch v-model="selectedHouseholdForDetail.reInspectionReportUploadSwitch"
                   color="success" inset hide-details density="compact"
                ></v-switch>
             </div>
             <div class="hdm-switch-row">
                <label>允許重複預約</label>
-               <v-switch
-                  :model-value="!!selectedHouseholdForDetail.allowMultipleBookings"
-                  @update:model-value="(v) => onModalToggleSwitch('allowMultipleBookings', v)"
+               <v-switch v-model="selectedHouseholdForDetail.allowMultipleBookings"
                   color="success" inset hide-details density="compact"
                ></v-switch>
             </div>
@@ -479,15 +483,71 @@
             <v-icon size="small" class="mr-1" color="primary">mdi-account-outline</v-icon>基本資料
          </v-card-title>
          <v-card-text class="pt-2 pb-2">
-            <div class="hdm-row"><label>目前狀態</label><span>{{ selectedHouseholdForDetail.currentStatus || '—' }}</span></div>
-            <div class="hdm-row"><label>買方姓名</label><span>{{ selectedHouseholdForDetail.buyerName || '—' }}</span></div>
-            <div class="hdm-row"><label>買方電話</label><span>{{ selectedHouseholdForDetail.buyerPhone || '—' }}</span></div>
-            <div class="hdm-row"><label>買方 Email</label><span>{{ selectedHouseholdForDetail.buyerEmail || '—' }}</span></div>
-            <div class="hdm-row"><label>買方身分證</label><span>{{ selectedHouseholdForDetail.buyerIdNumber || '—' }}</span></div>
-            <div class="hdm-row"><label>車位</label><span>{{ selectedHouseholdForDetail.parkingLots || '—' }}</span></div>
-            <div class="hdm-row"><label>門牌</label><span>{{ selectedHouseholdForDetail.address || '—' }}</span></div>
-            <div class="hdm-row"><label>撥款日</label><span>{{ formatDetailDate(selectedHouseholdForDetail.appropriationDate) }}</span></div>
-            <div v-if="selectedHouseholdForDetail.remarks" class="hdm-row"><label>備註</label><span>{{ selectedHouseholdForDetail.remarks }}</span></div>
+            <div class="hdm-row hdm-row-edit">
+               <label>目前狀態</label>
+               <v-text-field v-model="selectedHouseholdForDetail.currentStatus"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>買方姓名</label>
+               <v-text-field v-model="selectedHouseholdForDetail.buyerName"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>買方電話</label>
+               <v-text-field v-model="selectedHouseholdForDetail.buyerPhone"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>買方 Email</label>
+               <v-text-field v-model="selectedHouseholdForDetail.buyerEmail"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>買方身分證</label>
+               <v-text-field v-model="selectedHouseholdForDetail.buyerIdNumber"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>車位</label>
+               <v-text-field v-model="selectedHouseholdForDetail.parkingLots"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>門牌</label>
+               <v-text-field v-model="selectedHouseholdForDetail.address"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>撥款日</label>
+               <v-text-field type="date"
+                  :model-value="toDateInputValue(selectedHouseholdForDetail.appropriationDate)"
+                  @update:model-value="(v) => selectedHouseholdForDetail.appropriationDate = v"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit hdm-row-block">
+               <label>備註</label>
+               <v-textarea v-model="selectedHouseholdForDetail.remarks"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details rows="2" auto-grow
+                  placeholder="—"
+                  class="hdm-edit-field"></v-textarea>
+            </div>
          </v-card-text>
       </v-card>
 
@@ -527,12 +587,14 @@
                <label>{{ f.label }}</label>
                <span>{{ detailBookingInfo[type]?.bookingMethodDetails?.[f.id] || '—' }}</span>
             </div>
-            <div
-               v-if="selectedHouseholdForDetail.customBatches?.[type]"
-               class="hdm-row"
-            >
+            <div class="hdm-row hdm-row-edit">
                <label>{{ type }}批次</label>
-               <span>{{ selectedHouseholdForDetail.customBatches[type] }}</span>
+               <v-text-field
+                  :model-value="getBatchCodeForType(type)"
+                  @update:model-value="(v) => setBatchCodeForType(type, v)"
+                  :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
             </div>
          </v-card-text>
       </v-card>
@@ -1078,22 +1140,29 @@ const openMessageDialog = (householdData) => {
 const isHouseholdDetailVisible = ref(false);
 const selectedHouseholdForDetail = ref(null);
 const detailModalPos = ref({ x: 120, y: 80 });
+const isModalEditMode = ref(false); // 編輯模式總開關（預設關閉，避免誤觸修改）
+const _editModeSnapshot = ref(null); // 進入編輯時的原值快照（用於退出時 diff）
+const _isSavingModalEdits = ref(false);
 let _detailDragStart = null;
 
 const openHouseholdDetail = (clickedRow) => {
    if (!clickedRow) return;
    // 從最新的 rowData 重新查回該戶（避免 ag-grid cellRenderer 拿到的 row 是舊版本、缺 _bookingInfo）
    const docId = clickedRow._docId;
-   let fresh = clickedRow;
+   let base = clickedRow;
    if (docId && Array.isArray(rowData.value)) {
       const found = rowData.value.find(r => r && r._docId === docId);
-      if (found) fresh = found;
+      if (found) base = found;
    }
-   // 保底：若仍無 _bookingInfo，從目前 appointmentsByUnitAndType 補上
-   if (fresh && !fresh._bookingInfo && fresh.unitId) {
-      fresh = { ...fresh, _bookingInfo: appointmentsByUnitAndType.value[fresh.unitId] || {} };
-   }
+   // 做 shallow clone（含 customBatches 內層 clone），避免使用者編輯時 v-model 雙向綁定污染 rowData / appointments
+   const fresh = {
+      ...base,
+      customBatches: { ...(base.customBatches || {}) },
+      _bookingInfo: base._bookingInfo || appointmentsByUnitAndType.value[base.unitId] || {}
+   };
    selectedHouseholdForDetail.value = fresh;
+   isModalEditMode.value = false; // 每次開啟都重置為「檢視模式」，避免延續上次設定
+   _editModeSnapshot.value = null;
    isHouseholdDetailVisible.value = true;
    // 預設位置：水平置中、距頂 80px
    if (typeof window !== 'undefined') {
@@ -1127,6 +1196,14 @@ watch([rowData, appointmentsByUnitAndType], () => {
    }
 }, { deep: false });
 const closeHouseholdDetail = () => {
+   // 點 X 關閉 = 捨棄所有未儲存變更（不寫入 Firestore；本地 shallow clone 物件會在關閉時被丟掉，rowData 不受影響）
+   if (isModalEditMode.value) {
+      snackbar.text = '已捨棄未儲存的變更';
+      snackbar.color = 'info';
+      snackbar.show = true;
+   }
+   isModalEditMode.value = false;
+   _editModeSnapshot.value = null;
    isHouseholdDetailVisible.value = false;
    selectedHouseholdForDetail.value = null;
 };
@@ -1227,6 +1304,20 @@ const formatDetailDate = (val) => {
    }
 };
 
+// 把 Date / Timestamp / 字串 轉為 input[type=date] 所需的 yyyy-MM-dd 字串
+const toDateInputValue = (val) => {
+   if (!val) return '';
+   try {
+      let d = val;
+      if (val?.toDate && typeof val.toDate === 'function') d = val.toDate();
+      else if (!(val instanceof Date)) d = new Date(val);
+      if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+      return format(d, 'yyyy-MM-dd');
+   } catch (_) {
+      return '';
+   }
+};
+
 // 戶別整合 Modal — 驗屋報告（可能多筆）
 const inspectionReports = computed(() => {
    const arr = selectedHouseholdForDetail.value?.inspectionReportUrl;
@@ -1265,6 +1356,181 @@ const handleAdminBookingSuccess = () => {
    snackbar.text = `戶別 [${presetUnitIdForBooking.value}] 的預約已新增`;
    snackbar.color = 'success';
    snackbar.show = true;
+};
+
+// 戶別整合 Modal — 進入編輯模式：拍一份原值快照供退出時 diff
+const enterModalEditMode = () => {
+   if (!selectedHouseholdForDetail.value) return;
+   try {
+      _editModeSnapshot.value = JSON.parse(JSON.stringify(selectedHouseholdForDetail.value));
+   } catch (_) {
+      _editModeSnapshot.value = { ...selectedHouseholdForDetail.value };
+   }
+   isModalEditMode.value = true;
+};
+
+// 戶別整合 Modal — 退出編輯模式：diff 與快照、批次寫入 Firestore；無變更時直接離開
+const exitModalEditMode = async () => {
+   if (!isModalEditMode.value) return;
+   const h = selectedHouseholdForDetail.value;
+   const snap = _editModeSnapshot.value;
+   if (!h || !snap || !h._docId) {
+      _editModeSnapshot.value = null;
+      isModalEditMode.value = false;
+      return;
+   }
+
+   const boolFields = new Set(['showInMenu', '交屋', 'initialReportUploadSwitch', 'reInspectionReportUploadSwitch', 'allowMultipleBookings']);
+   const textFields = ['currentStatus', 'buyerName', 'buyerPhone', 'buyerEmail', 'buyerIdNumber',
+      'parkingLots', 'address', 'remarks', 'initialInspectionBatch', 'reInspectionBatch'];
+
+   const payload = {};
+
+   // 一般文字欄位
+   for (const f of textFields) {
+      const oldV = (snap[f] === '' || snap[f] === undefined) ? null : (snap[f] ?? null);
+      let newV = h[f];
+      if (newV === '' || newV === undefined) newV = null;
+      if (oldV !== newV) payload[f] = newV;
+   }
+
+   // 布林（開關）欄位
+   for (const f of boolFields) {
+      const oldV = !!snap[f];
+      const newV = !!h[f];
+      if (oldV !== newV) payload[f] = newV;
+   }
+
+   // 撥款日（input type=date 字串 vs 原始 Date/Timestamp）
+   const dateOld = toDateInputValue(snap.appropriationDate);
+   let dateNew = h.appropriationDate;
+   if (dateNew && typeof dateNew === 'object') dateNew = toDateInputValue(dateNew);
+   else if (typeof dateNew === 'string' && dateNew) dateNew = dateNew.substring(0, 10);
+   else dateNew = '';
+   if ((dateOld || '') !== (dateNew || '')) payload.appropriationDate = dateNew || null;
+
+   // customBatches diff（dot notation 個別欄位）
+   const oldCB = snap.customBatches || {};
+   const newCB = h.customBatches || {};
+   const allCBKeys = new Set([...Object.keys(oldCB), ...Object.keys(newCB)]);
+   for (const k of allCBKeys) {
+      const o = oldCB[k] || null;
+      const n = newCB[k] || null;
+      if (o !== n) payload[`customBatches.${k}`] = n;
+   }
+
+   if (Object.keys(payload).length === 0) {
+      snackbar.text = '無變更';
+      snackbar.color = 'info';
+      snackbar.show = true;
+      _editModeSnapshot.value = null;
+      isModalEditMode.value = false;
+      return;
+   }
+
+   _isSavingModalEdits.value = true;
+   try {
+      await updateHouseholdData(h._docId, payload);
+      snackbar.text = `已儲存 ${Object.keys(payload).length} 個欄位變更`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('Modal 批次儲存失敗:', err);
+      snackbar.text = `儲存失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+      // 回滾本地至快照值
+      try {
+         selectedHouseholdForDetail.value = { ...selectedHouseholdForDetail.value, ...snap };
+      } catch (_) { /* ignore */ }
+   } finally {
+      _isSavingModalEdits.value = false;
+      _editModeSnapshot.value = null;
+      isModalEditMode.value = false;
+   }
+};
+
+// 戶別整合 Modal — 一般欄位 inline 編輯（與 grid editable=true 的文字/日期欄位同步寫入 Firestore）
+const onModalSaveField = async (field, newValue) => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h._docId) return;
+   const oldValue = h[field];
+   const normalised = (newValue === '' || newValue === undefined) ? null : newValue;
+   if ((oldValue ?? null) === normalised) return; // 未變動就不寫
+   try {
+      await updateHouseholdData(h._docId, { [field]: normalised });
+      selectedHouseholdForDetail.value = { ...h, [field]: normalised };
+      snackbar.text = `已更新 [${field}]`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('Modal 編輯儲存失敗:', err);
+      snackbar.text = `更新失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   }
+};
+
+// 戶別整合 Modal — 將輸入值寫到 selectedHouseholdForDetail 對應位置（純本地，由退出編輯時 batch 寫入 Firestore）
+const setBatchCodeForType = (type, value) => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h) return;
+   const normalised = (value === '' || value === undefined) ? null : value;
+   if (type === '初驗') h.initialInspectionBatch = normalised;
+   else if (type === '複驗') h.reInspectionBatch = normalised;
+   else {
+      if (!h.customBatches) h.customBatches = {};
+      h.customBatches[type] = normalised;
+   }
+};
+
+// 戶別整合 Modal — 取得 type 對應目前的批次代碼（與 grid 顯示一致：customBatches 優先、再 fallback 到 initial/reInspectionBatch）
+const getBatchCodeForType = (type) => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h) return '';
+   const custom = h.customBatches?.[type];
+   if (custom != null && custom !== '') return custom;
+   if (type === '初驗') return h.initialInspectionBatch || '';
+   if (type === '複驗') return h.reInspectionBatch || '';
+   return '';
+};
+
+// 戶別整合 Modal — 批次代碼 inline 編輯（依 type 決定寫入 initialInspectionBatch / reInspectionBatch / customBatches.{type}）
+const onModalSaveBatchCode = async (type, newValue) => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h._docId) return;
+   const normalised = (newValue === '' || newValue === undefined) ? null : newValue;
+
+   let payload;
+   let oldValue;
+   if (type === '初驗') {
+      oldValue = h.initialInspectionBatch ?? null;
+      payload = { initialInspectionBatch: normalised };
+   } else if (type === '複驗') {
+      oldValue = h.reInspectionBatch ?? null;
+      payload = { reInspectionBatch: normalised };
+   } else {
+      oldValue = (h.customBatches && h.customBatches[type]) ?? null;
+      payload = { [`customBatches.${type}`]: normalised };
+   }
+   if (oldValue === normalised) return;
+
+   try {
+      await updateHouseholdData(h._docId, payload);
+      const next = { ...h };
+      if (type === '初驗') next.initialInspectionBatch = normalised;
+      else if (type === '複驗') next.reInspectionBatch = normalised;
+      else next.customBatches = { ...(h.customBatches || {}), [type]: normalised };
+      selectedHouseholdForDetail.value = next;
+      snackbar.text = `已更新 [${type}批次]`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('Modal 批次儲存失敗:', err);
+      snackbar.text = `更新失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   }
 };
 
 // 戶別整合 Modal — 切換開關（與 grid SwitchRenderer 同步寫入 Firestore）
@@ -2316,5 +2582,50 @@ onUnmounted(() => {
 .hdm-msg-table :deep(td) {
    font-size: 0.825rem !important;
    padding: 6px 8px !important;
+}
+/* inline 編輯欄位（plain variant 視覺接近純文字，hover/focus 時加底線提示） */
+.hdm-row-edit {
+   align-items: center;
+}
+.hdm-row-edit > label {
+   align-self: center;
+}
+.hdm-edit-field {
+   flex: 1 1 auto;
+   font-size: 0.875rem;
+}
+.hdm-edit-field :deep(.v-field) {
+   padding: 0;
+}
+.hdm-edit-field :deep(.v-field__input) {
+   min-height: 28px;
+   padding: 0;
+   font-size: 0.875rem;
+   color: #212121;
+}
+/* 只在「編輯模式」下顯示 hover/focus 的可編輯提示，避免檢視模式誤以為可點 */
+.household-detail-modal.is-edit-mode .hdm-edit-field :deep(.v-field__input:hover) {
+   background: rgba(25, 118, 210, 0.04);
+   border-radius: 3px;
+}
+.household-detail-modal.is-edit-mode .hdm-edit-field :deep(.v-field--focused) {
+   background: rgba(25, 118, 210, 0.07);
+   border-radius: 3px;
+}
+/* 檢視模式下文字顏色稍深、cursor 預設、視覺接近純文字 */
+.household-detail-modal:not(.is-edit-mode) .hdm-edit-field :deep(.v-field__input) {
+   cursor: default;
+}
+/* 檢視模式：開關不可點，但保留顏色狀態（綠色=開、灰色=關），不要整顆變灰 */
+.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-switch),
+.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-switch__control) {
+   pointer-events: none;
+}
+.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-selection-control) {
+   opacity: 1;
+}
+.hdm-row-block.hdm-row-edit > label {
+   align-self: flex-start;
+   margin-top: 4px;
 }
 </style>
