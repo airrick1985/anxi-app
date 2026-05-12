@@ -22,9 +22,47 @@
         </v-card>
 
 
-        <div v-if="projectConfig && projectConfig.logoUrl" class="d-flex justify-center py-2">
-          <img :src="projectConfig.logoUrl" alt="Project Logo" style="max-height: 40px; object-fit: contain;">
+        <div v-if="projectConfig" class="d-flex justify-center py-2">
+          <img v-if="projectConfig.logoUrl" :src="projectConfig.logoUrl" alt="Project Logo"
+            style="max-height: 40px; object-fit: contain; cursor: pointer;"
+            @click="openWelcomeModal">
+          <!-- 無 LOGO 時顯示一個極輕量的可點擊區域，仍供內部人員開啟歡迎視窗 -->
+          <div v-else class="welcome-dot-trigger" @click="openWelcomeModal" title=""></div>
         </div>
+
+        <!-- 歡迎視窗：一般客戶見到問候語可關閉；內部人員開啟此視窗後，於背景輸入對應 projectId 即啟用代填模式 -->
+        <v-dialog v-model="isWelcomeModalVisible" max-width="420">
+          <v-card>
+            <v-card-title class="text-h6 font-weight-bold">
+              {{ projectConfig?.name || '建案' }} 歡迎使用預約系統
+            </v-card-title>
+            <v-card-text>
+              <p class="mb-1">感謝您使用線上預約系統，請依步驟完成預約程序。</p>
+              <p class="text-caption text-grey-darken-1 mb-0">如需協助請洽現場服務人員。</p>
+              <div v-if="devMode" class="text-caption text-success mt-3">
+                <v-icon size="x-small">mdi-check-circle</v-icon>
+                目前已啟用代填模式
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-btn v-if="devMode" variant="text" color="error" @click="exitDevMode">關閉代填模式</v-btn>
+              <v-spacer></v-spacer>
+              <v-btn color="primary" variant="elevated" @click="closeWelcomeModal">關閉</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- DEV 模式：頂部提示橫條 -->
+        <v-alert v-if="devMode" type="warning" variant="tonal" density="compact" class="mb-2"
+          icon="mdi-shield-account-outline">
+          <div class="d-flex align-center">
+            <div class="flex-grow-1">
+              <strong>代填模式啟用中</strong>
+              <span class="text-caption d-block">已繞過「未開放 / 已截止 / 名額已滿」等前端限制，僅供內部人員為客戶代填使用。</span>
+            </div>
+            <v-btn size="small" variant="text" color="error" @click="exitDevMode">關閉</v-btn>
+          </div>
+        </v-alert>
 
         <v-card v-if="projectConfig" class="mx-auto" :loading="isLoading">
           <template v-if="isUploadMode">
@@ -1456,6 +1494,72 @@ const isCanceling = ref(false);
 const step = ref(0);
 const selectedBookingType = ref(null);
 
+// DEV（內部代填）模式：點頂部 LOGO 開啟歡迎視窗，於視窗顯示時於背景輸入對應 projectId 即啟用
+const isWelcomeModalVisible = ref(false);
+const devMode = ref(false);
+const DEV_MODE_STORAGE_KEY = 'bookingDevMode';
+
+// 背景按鍵 buffer：每次按鍵累積至 buffer，比對是否等於 projectId
+let devKeyBuffer = '';
+let devKeyResetTimer = null;
+
+function _handleDevKeydown(e) {
+  if (!e || typeof e.key !== 'string') return;
+  if (e.key.length !== 1) return;                 // 只接受可印字元
+  if (e.ctrlKey || e.metaKey || e.altKey) return; // 忽略含修飾鍵的組合
+  // 若使用者正在某個輸入欄位中輸入，不要攔截（避免影響正常欄位）— 此情境下 modal 內也已無輸入欄
+  const tag = (e.target?.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+
+  if (devKeyResetTimer) clearTimeout(devKeyResetTimer);
+
+  devKeyBuffer += e.key;
+  const pid = projectId.value || '';
+  if (pid.length > 0) {
+    if (devKeyBuffer.length > pid.length) {
+      devKeyBuffer = devKeyBuffer.slice(-pid.length);
+    }
+    if (devKeyBuffer === pid) {
+      devMode.value = true;
+      try { sessionStorage.setItem(DEV_MODE_STORAGE_KEY, projectId.value); } catch (_) { /* ignore */ }
+      devKeyBuffer = '';
+      _teardownDevHotkey();
+      isWelcomeModalVisible.value = false;
+      return;
+    }
+  }
+  // 3 秒無新按鍵自動清空 buffer，避免殘留
+  devKeyResetTimer = setTimeout(() => { devKeyBuffer = ''; }, 3000);
+}
+
+function _setupDevHotkey() {
+  devKeyBuffer = '';
+  window.addEventListener('keydown', _handleDevKeydown);
+}
+function _teardownDevHotkey() {
+  window.removeEventListener('keydown', _handleDevKeydown);
+  if (devKeyResetTimer) {
+    clearTimeout(devKeyResetTimer);
+    devKeyResetTimer = null;
+  }
+  devKeyBuffer = '';
+}
+
+function openWelcomeModal() {
+  isWelcomeModalVisible.value = true;
+  if (!devMode.value) _setupDevHotkey();
+}
+function closeWelcomeModal() {
+  isWelcomeModalVisible.value = false;
+  _teardownDevHotkey();
+}
+function exitDevMode() {
+  devMode.value = false;
+  try { sessionStorage.removeItem(DEV_MODE_STORAGE_KEY); } catch (_) { /* ignore */ }
+  isWelcomeModalVisible.value = false;
+  _teardownDevHotkey();
+}
+
 // 根據選取的預約項目，動態回傳對應的頁面設定
 const currentPageSettings = computed(() => {
   if (!projectConfig.value) return null;
@@ -1544,6 +1648,14 @@ watch(step, async (newStep) => {
 
 const availableBookingTypes = computed(() => {
   if (!projectConfig.value) return [];
+
+  // 內部代填模式：所有未刪除的項目都視為開放
+  if (devMode.value) {
+    if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
+      return projectConfig.value.bookingMenu.filter(item => !item.deleted).map(item => item.title);
+    }
+    return projectConfig.value.bookingTypes || [];
+  }
 
   // 當後端有回傳開放中的批次分類時，就只顯示這些項目；若是舊快取則先維持全部顯示
   const activeTypesArray = initialData.value?.activeBookingTypes;
@@ -1825,6 +1937,8 @@ const formatDisplayDate = (dateString) => {
 
 // [修改] 更新原本的 isBookingActive computed
 const isBookingActive = computed(() => {
+  // 內部代填模式下繞過所有未開放/已截止判斷
+  if (devMode.value) return true;
   // 只有當狀態碼為 OPEN 時，才允許預約
   return systemStatus.value.code === 'OPEN';
 });
@@ -1920,13 +2034,17 @@ const isDateAllowed = (date) => {
 
   // 條件二：日期不能在後端提供的「不可預約日」清單中
   const isGenerallyAvailable = !bookingSlots.value.unavailableDates.includes(dateStr);
+  if (!isGenerallyAvailable) return false;
 
-  // 條件三 (新)：該日期必須存在至少一個可預約的時段 (無論是否額滿)
-  // 使用 ?. (Optional Chaining) 語法安全地檢查屬性是否存在且長度大於 0
-  const hasDefinedSlots = (bookingSlots.value.timeSlotsByDate[dateStr]?.length || 0) > 0;
+  const slots = bookingSlots.value.timeSlotsByDate[dateStr] || [];
+  const hasDefinedSlots = slots.length > 0;
+  if (!hasDefinedSlots) return false;
 
-  // 必須同時滿足條件二和條件三
-  return isGenerallyAvailable && hasDefinedSlots;
+  // DEV 代填模式：即使整日全部已額滿也可選（內部人員需強制進入）
+  if (devMode.value) return true;
+
+  // 一般模式：至少要有一個非「已額滿」的時段，否則禁選整日
+  return slots.some(s => !String(s).includes('已額滿'));
 };
 
 // 授權書對話框狀態
@@ -2260,6 +2378,14 @@ onMounted(async () => {
   isLoading.value = true;
   loadingText.value = '正在載入建案資訊...';
 
+  // 還原內部代填模式（同個 session 內保留設定，避免 reload 後失效）
+  try {
+    const savedDev = sessionStorage.getItem(DEV_MODE_STORAGE_KEY);
+    if (savedDev && savedDev === projectId.value) {
+      devMode.value = true;
+    }
+  } catch (e) { /* ignore */ }
+
   try {
     // 呼叫 Pinia action 來獲取資料 (傳入 true 強制更新快取)
     const data = await projectStore.fetchProjectStaticData(projectId.value, true);
@@ -2349,7 +2475,8 @@ const proceedToNextBooking = async () => {
       formStep1.value.bookingType,
       formStep1.value.bookingMethod,
       projectId.value,
-      formStep1.value.subOption // 新增：傳遞子選項
+      formStep1.value.subOption, // 新增：傳遞子選項
+      devMode.value ? projectId.value : null
     );
 
     if (res.status === 'success' && res.data) {
@@ -2417,7 +2544,8 @@ const handleStep1Submit = async () => {
       formStep1.value.bookingType,
       formStep1.value.bookingMethod,
       projectId.value, // 傳入 projectId
-      formStep1.value.subOption // 新增：傳遞子選項
+      formStep1.value.subOption, // 新增：傳遞子選項
+      devMode.value ? projectId.value : null
     );
 
 
@@ -2496,7 +2624,9 @@ const handleGoBackAndRefresh = async () => {
       formStep1.value.unit,
       formStep1.value.bookingType,
       formStep1.value.bookingMethod,
-      projectId.value //  加入缺少的 projectId 參數
+      projectId.value, //  加入缺少的 projectId 參數
+      formStep1.value.subOption,
+      devMode.value ? projectId.value : null
     );
 
     if (res.status === 'success' && res.data) {
@@ -2601,7 +2731,9 @@ const submitBooking = async () => {
           formStep1.value.unit,
           formStep1.value.bookingType,
           formStep1.value.bookingMethod,
-          projectId.value
+          projectId.value,
+          formStep1.value.subOption,
+          devMode.value ? projectId.value : null
         );
         if (refreshRes.status === 'success' && refreshRes.data) {
           bookingSlots.value = refreshRes.data;
@@ -2963,6 +3095,7 @@ onUnmounted(() => {
   clearTimeoutTimer();
   // [新增] 清除計時器
   if (timerInterval) clearInterval(timerInterval);
+  _teardownDevHotkey();
 });
 
 

@@ -1985,7 +1985,7 @@
                         <v-icon size="x-small" color="primary" class="mr-1">mdi-sitemap-outline</v-icon>
                         <v-chip v-for="subOpt in previewBatchSubOptions" :key="subOpt"
                           size="x-small" variant="tonal" :color="slot.subOptionLimits[subOpt] !== undefined ? ((slot.subOptionLimits[subOpt] > 0) ? 'blue' : 'grey') : 'orange'" label>
-                          {{ subOpt }}: {{ slot.subOptionLimits[subOpt] !== undefined ? slot.subOptionLimits[subOpt] : '無限制' }}
+                          {{ subOpt }}: {{ slot.subOptionLimits[subOpt] === undefined ? '無限制' : (Number(slot.subOptionLimits[subOpt]) > 0 ? slot.subOptionLimits[subOpt] : '未開放') }}
                         </v-chip>
                       </div>
                     </div>
@@ -2660,6 +2660,12 @@
                   <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-2">
                     {{ methodModeCoverage.length }} 筆
                   </v-chip>
+                  <v-spacer></v-spacer>
+                  <v-btn v-if="methodModeCoverage.length > 0" size="x-small" color="error" variant="tonal"
+                    prepend-icon="mdi-delete-sweep-outline" @click="clearAllMethodCoverage"
+                    title="將目前清單中所有方式/子項目從對應時段移除">
+                    全部刪除
+                  </v-btn>
                 </div>
                 <div v-if="methodModeCoverage.length === 0" class="text-center text-grey pa-4 text-body-2">
                   所選項目尚未設定任何時段名額
@@ -3058,9 +3064,10 @@ import {
   uploadAttachmentImage,
   deleteAttachmentImage,
   updateProjectSheetSettings, // 設定用
-  listGoogleSheets,           // 列出 Sheet 
+  listGoogleSheets,           // 列出 Sheet
   syncHouseholdsToSheet,      // 同步
-  syncAppointmentsToSheet     // 同步預約
+  syncAppointmentsToSheet,    // 同步預約
+  markNewBookingItemsUnopened
 } from '@/api';
 
 
@@ -3931,28 +3938,61 @@ const saveMethod = async () => {
   const parentItem = projectSettings.value.bookingMenu[realParentIndex];
   if (!parentItem.methods) parentItem.methods = [];
 
+  // 收集本次「新增」的 method / subOption，用於同步至所有 batch 標記為「未開放」
+  const added = { methods: [], subOptions: [] };
+  const newSubOptions = Array.isArray(editedMethodSubOptions.value) ? editedMethodSubOptions.value : [];
+
   if (editedMethodIndex.value === -1) {
-    // Add new
+    // Add new — 整個 method 及其子選項都是新的
     parentItem.methods.push({
       title: editedMethodTitle.value,
       customFields: [],
       triggerAuthFlow: editedMethodTriggerAuth.value,
       askOwnerPresence: editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false,
-      subOptions: editedMethodSubOptions.value // 新增
+      subOptions: newSubOptions // 新增
+    });
+    added.methods.push(editedMethodTitle.value);
+    newSubOptions.forEach(s => {
+      if (typeof s === 'string' && s.trim()) added.subOptions.push(s);
     });
   } else {
     // Edit - 將過濾後的 method 索引轉為實際索引
     const realMethodIndex = getRealMethodIndex(realParentIndex, editedMethodIndex.value);
     if (realMethodIndex !== -1) {
-      parentItem.methods[realMethodIndex].title = editedMethodTitle.value;
-      parentItem.methods[realMethodIndex].triggerAuthFlow = editedMethodTriggerAuth.value;
-      parentItem.methods[realMethodIndex].askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false;
-      parentItem.methods[realMethodIndex].subOptions = editedMethodSubOptions.value; // 新增
+      const target = parentItem.methods[realMethodIndex];
+      const oldSubOptions = Array.isArray(target.subOptions) ? target.subOptions : [];
+      const oldSet = new Set(oldSubOptions);
+      newSubOptions.forEach(s => {
+        if (typeof s === 'string' && s.trim() && !oldSet.has(s)) added.subOptions.push(s);
+      });
+      target.title = editedMethodTitle.value;
+      target.triggerAuthFlow = editedMethodTriggerAuth.value;
+      target.askOwnerPresence = editedMethodTriggerAuth.value ? editedMethodAskPresence.value : false;
+      target.subOptions = newSubOptions; // 新增
     }
   }
 
   isMethodDialogVisible.value = false;
   await saveSettings();
+
+  // 同步：對所有現有 batch 的 dateRule 補入「未開放」標記（寫 0），避免被 fallback 為無限制
+  if (added.methods.length > 0 || added.subOptions.length > 0) {
+    try {
+      isSavingSettings.value = true;
+      const res = await markNewBookingItemsUnopened(projectId.value, added);
+      if (res.status === 'success') {
+        if (res.updatedRules > 0) {
+          showSnackbar(`已將新項目同步至 ${res.updatedRules} 筆日規則並標記為「未開放」，請至批次設定中開放並設定名額`, 'info');
+        }
+      } else {
+        showSnackbar(`同步至現有批次失敗：${res.message || '未知錯誤'}`, 'warning');
+      }
+    } catch (err) {
+      showSnackbar(`同步至現有批次失敗：${err?.message || err}`, 'warning');
+    } finally {
+      isSavingSettings.value = false;
+    }
+  }
 };
 
 const deleteMethod = async (parentIndex, methodIndex) => {
@@ -5748,6 +5788,24 @@ function removeMethodFromSlotCoverage(dateKey, slot, target) {
   if (!existingKeys.has(dateKey)) {
     selectedDaysForEditing.value = [...selectedDaysForEditing.value, parseISO(dateKey)];
   }
+}
+
+// 將「目前設定」清單中所有筆從對應 slot 移除（依方式設定模式專用）
+function clearAllMethodCoverage() {
+  const rows = methodModeCoverage.value || [];
+  if (rows.length === 0) return;
+
+  const targetLabels = methodModeSelectedTargets.value
+    .map(t => (t.type === 'subOption' ? `${t.parent} / ${t.subOption}` : t.method))
+    .join('、');
+  if (!confirm(`確定要清除目前已設定的 ${rows.length} 筆「${targetLabels}」覆蓋嗎？此動作將把這些方式/子項目從對應時段移除，僅在儲存批次後才生效。`)) return;
+
+  // 取 snapshot，避免遍歷過程因 reactive 變動導致漏刪
+  const snapshot = rows.map(r => ({ dateKey: r.dateKey, slot: r.slot, target: r.target }));
+  snapshot.forEach(({ dateKey, slot, target }) => {
+    removeMethodFromSlotCoverage(dateKey, slot, target);
+  });
+  showSnackbar(`已清除 ${snapshot.length} 筆覆蓋設定（仍需點選下方「儲存」才會寫入）`, 'info');
 }
 
 // 切換至依方式模式時，重置批次輸入狀態（保留 targetKey 以利連續操作）

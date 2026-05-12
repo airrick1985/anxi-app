@@ -751,7 +751,7 @@ exports.getAvailableSlots = onCall(async (request) => {
     }
     if (!batchCode) {
       console.error(`[${functionName}] ERROR: Batch code not assigned for ${bookingType}.`); // ✓ Log 錯誤
-      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 尚未開放，如有疑問請洽詢服務人員。`);
     }
     console.log(`[${functionName}] Household ${unitId} is assigned to batch code: ${batchCode}`); // ✓ Log
 
@@ -766,7 +766,7 @@ exports.getAvailableSlots = onCall(async (request) => {
 
     if (batchQuery.empty) {
       console.error(`[${functionName}] ERROR: Active batch not found for code ${batchCode}.`); // ✓ Log 錯誤
-      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 尚未開放，如有疑問請洽詢服務人員。`);
     }
     const batchDoc = batchQuery.docs[0];
     const batchData = batchDoc.data();
@@ -13291,8 +13291,11 @@ async function _handleCheckExistingBooking(data) {
  * [內部函式] 獲取可預約時段
  */
 async function _handleGetAvailableSlots(data) {
-  const { projectId, unitId, bookingType, bookingMethod, subOption } = data; // 新增 subOption
+  const { projectId, unitId, bookingType, bookingMethod, subOption, devBypass } = data; // 新增 subOption / devBypass
   const functionName = `_handleGetAvailableSlots (Project: ${projectId}, Unit: ${unitId})`;
+  // 內部代填模式：devBypass 必須等於 projectId 才視為有效
+  const isDevBypass = !!(devBypass && projectId && devBypass === projectId);
+  if (isDevBypass) console.log(`[${functionName}] DEV BYPASS active: skipping time / cap-0 / empty-day filters.`);
 
   // ... (此函數的完整內部邏輯保持不變，直接複製過來) ...
   // ... 只是確保所有 error 都被 HttpsError 捕捉或拋出 ...
@@ -13314,7 +13317,7 @@ async function _handleGetAvailableSlots(data) {
       batchCode = bookingType === '初驗' ? householdData.initialInspectionBatch : householdData.reInspectionBatch;
     }
     if (!batchCode) {
-      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 尚未開放，如有疑問請洽詢服務人員。`);
     }
     const batchQuery = await db.collection('bookingBatches')
       .where('projectId', '==', projectId)
@@ -13323,7 +13326,7 @@ async function _handleGetAvailableSlots(data) {
       .where('isDeleted', '==', false)
       .get();
     if (batchQuery.empty) {
-      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 未找到可使用的批次，請洽詢服務人員。`);
+      throw new HttpsError("not-found", `目前 ${unitId} ${bookingType} 尚未開放，如有疑問請洽詢服務人員。`);
     }
     const batchDoc = batchQuery.docs[0];
     const batchData = batchDoc.data();
@@ -13341,13 +13344,15 @@ async function _handleGetAvailableSlots(data) {
       throw new HttpsError("failed-precondition", `此預約批次 (${batchData.batchCode}) 的時間格式不正確，請聯繫管理員。`);
     }
     const now = new Date();
-    if (now < applicationStart) {
-      const startTimeString = applicationStart.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-      throw new HttpsError("failed-precondition", `此預約尚未開放，請於 ${startTimeString} 後再試。`);
-    }
-    if (now > applicationEnd) {
-      const endTimeString = applicationEnd.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-      throw new HttpsError("failed-precondition", `此預約已於 ${endTimeString} 截止。`);
+    if (!isDevBypass) {
+      if (now < applicationStart) {
+        const startTimeString = applicationStart.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+        throw new HttpsError("failed-precondition", `此預約尚未開放，請於 ${startTimeString} 後再試。`);
+      }
+      if (now > applicationEnd) {
+        const endTimeString = applicationEnd.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+        throw new HttpsError("failed-precondition", `此預約已於 ${endTimeString} 截止。`);
+      }
     }
     const linksQuery = await db.collection('batchRuleLinks')
       .where('projectId', '==', projectId)
@@ -13454,8 +13459,8 @@ async function _handleGetAvailableSlots(data) {
             // 子選項在 subOptionLimits 中有定義（包括 0 或 null）：使用子選項名額
             const subCap = slotInfo.subOptionLimits[subOption] ?? 0;
 
-            // ✓【防呆】如果子選項名額為 0，表示不提供此子選項，直接跳過
-            if (subCap === 0) {
+            // ✓【防呆】如果子選項名額為 0，表示不提供此子選項，直接跳過（DEV 代填模式下不跳過）
+            if (subCap === 0 && !isDevBypass) {
               console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has sub-option cap 0 for ${subOption}.`);
               continue;
             }
@@ -13500,9 +13505,12 @@ async function _handleGetAvailableSlots(data) {
                 remaining = Math.min(remaining, remainingFromMax);
               }
             } else if (methodCap === 0) {
-              // ✓【防呆】此方式名額設為 0，表示不提供此方式，直接跳過
-              console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has method cap 0 for ${bookingMethod}.`);
-              continue;
+              // ✓【防呆】此方式名額設為 0，表示不提供此方式，直接跳過（DEV 代填模式下不跳過）
+              if (!isDevBypass) {
+                console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has method cap 0 for ${bookingMethod}.`);
+                continue;
+              }
+              remaining = 0;
             } else {
               // 此方式未設定名額：共用時段總名額上限中的剩餘部分
               if (maxCapacity) {
@@ -13520,8 +13528,8 @@ async function _handleGetAvailableSlots(data) {
             // 向下相容：舊有全局 capacity
             const cap = slotInfo.capacity || 0;
 
-            // ✓【防呆】如果全局 capacity 為 0，表示不提供此時段，直接跳過
-            if (cap === 0) {
+            // ✓【防呆】如果全局 capacity 為 0，表示不提供此時段，直接跳過（DEV 代填模式下不跳過）
+            if (cap === 0 && !isDevBypass) {
               console.log(`[${functionName}] SKIP: Time slot ${timeSlot} on ${dateStr} has global capacity 0.`);
               continue;
             }
@@ -13539,7 +13547,8 @@ async function _handleGetAvailableSlots(data) {
         }
       }
       // 只有當天至少有一個時段有剩餘名額，才將該日期加入可選日期清單
-      if (hasAvailableSlot) {
+      // DEV 代填模式下，即使所有時段都「已額滿 / 未開放」也要列出，讓內部人員可選
+      if (hasAvailableSlot || (isDevBypass && slotsForDay.length > 0)) {
         timeSlotsByDate[dateStr] = slotsForDay;
       }
     });

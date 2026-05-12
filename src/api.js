@@ -2586,13 +2586,14 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
 
 /**
  * 獲取可預約的日期和時段 (V2: 呼叫 bookingApi 路由)
+ * @param {string} [devBypass] 內部代填模式下傳入 projectId 作為鑰匙，後端比對通過則繞過時間/cap=0 檢查
  */
-export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId, subOption) => {
+export const getBookingSlots = async (projectName, unitId, bookingType, bookingMethod, projectId, subOption, devBypass) => {
   try {
     // 修改：呼叫 bookingApiRouter
     const result = await bookingApiRouter({
       action: 'getAvailableSlots',
-      data: { projectId, unitId, bookingType, bookingMethod, projectName, subOption }
+      data: { projectId, unitId, bookingType, bookingMethod, projectName, subOption, devBypass }
     });
     // 修改：後端路由會直接回傳 { startDate, ... }，我們保持原有的包裝
     return {
@@ -3240,6 +3241,92 @@ export async function fetchRulesForBatch(batchId) {
   } catch (e) {
     console.error(`[api.js] fetchRulesForBatch: Error fetching rules for batch ${batchId}:`, e); // ✓ Log 錯誤
     return {}; // 發生錯誤時回傳空物件
+  }
+}
+
+/**
+ * 將新增的預約方式/子選項在該建案所有有效 dateRule 的每個 slot 標記為「未開放」(寫入 0)。
+ * 用途：避免新增方式/子選項時，舊有 slot 因 undefined 被後端 fallback 為「共用時段總名額」。
+ * 僅補入「尚未存在」的 key，不覆寫使用者既有設定。
+ * @param {string} projectId
+ * @param {{ methods?: string[], subOptions?: string[] }} added
+ * @returns {Promise<{status: 'success'|'error', updatedRules: number, message?: string}>}
+ */
+export async function markNewBookingItemsUnopened(projectId, added) {
+  if (!projectId) {
+    return { status: 'error', message: 'projectId 必填', updatedRules: 0 };
+  }
+  const newMethods = Array.isArray(added?.methods)
+    ? added.methods.filter(m => typeof m === 'string' && m.trim())
+    : [];
+  const newSubOptions = Array.isArray(added?.subOptions)
+    ? added.subOptions.filter(s => typeof s === 'string' && s.trim())
+    : [];
+  if (newMethods.length === 0 && newSubOptions.length === 0) {
+    return { status: 'success', updatedRules: 0 };
+  }
+
+  try {
+    const rulesRef = collection(db, "dateRules");
+    const rulesQuery = query(
+      rulesRef,
+      where("projectId", "==", projectId),
+      where("isDeleted", "==", false)
+    );
+    const rulesSnapshot = await getDocs(rulesQuery);
+    if (rulesSnapshot.empty) {
+      return { status: 'success', updatedRules: 0 };
+    }
+
+    const docsToUpdate = [];
+    rulesSnapshot.forEach(snap => {
+      const data = snap.data() || {};
+      const slots = data.slots || {};
+      const newSlots = JSON.parse(JSON.stringify(slots));
+      let changed = false;
+      Object.keys(newSlots).forEach(time => {
+        const slot = newSlots[time];
+        if (!slot || typeof slot !== 'object') return;
+        if (!slot.methodLimits || typeof slot.methodLimits !== 'object') slot.methodLimits = {};
+        if (!slot.subOptionLimits || typeof slot.subOptionLimits !== 'object') slot.subOptionLimits = {};
+        newMethods.forEach(m => {
+          if (!(m in slot.methodLimits)) {
+            slot.methodLimits[m] = 0;
+            changed = true;
+          }
+        });
+        newSubOptions.forEach(s => {
+          if (!(s in slot.subOptionLimits)) {
+            slot.subOptionLimits[s] = 0;
+            changed = true;
+          }
+        });
+      });
+      if (changed) {
+        docsToUpdate.push({ ref: snap.ref, slots: newSlots });
+      }
+    });
+
+    if (docsToUpdate.length === 0) {
+      return { status: 'success', updatedRules: 0 };
+    }
+
+    const now = serverTimestamp();
+    const chunkSize = 400; // Firestore writeBatch 上限 500，留緩衝
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const wb = writeBatch(db);
+      chunk.forEach(({ ref, slots }) => {
+        wb.update(ref, { slots, lastModified: now });
+      });
+      await wb.commit();
+    }
+
+    console.log(`[api.js] markNewBookingItemsUnopened: Updated ${docsToUpdate.length} dateRules for project ${projectId}.`);
+    return { status: 'success', updatedRules: docsToUpdate.length };
+  } catch (e) {
+    console.error('[api.js] markNewBookingItemsUnopened error:', e);
+    return { status: 'error', message: e.message || '同步失敗', updatedRules: 0 };
   }
 }
 
