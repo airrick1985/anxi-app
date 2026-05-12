@@ -2040,10 +2040,7 @@ const isDateAllowed = (date) => {
   const hasDefinedSlots = slots.length > 0;
   if (!hasDefinedSlots) return false;
 
-  // DEV 代填模式：即使整日全部已額滿也可選（內部人員需強制進入）
-  if (devMode.value) return true;
-
-  // 一般模式：至少要有一個非「已額滿」的時段，否則禁選整日
+  // 至少要有一個非「已額滿」的時段，否則禁選整日（DEV 代填模式亦同）
   return slots.some(s => !String(s).includes('已額滿'));
 };
 
