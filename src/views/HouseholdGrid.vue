@@ -281,7 +281,7 @@
                       <tbody>
                          <tr v-for="(value, key) in msg.data" :key="key">
                             <td class="bg-grey-lighten-4 font-weight-bold" style="width: 150px;">{{ getFieldLabel(msg, key) }}</td>
-                            <td>{{ value }}</td>
+                            <td>{{ getFieldDisplayValue(msg, key, value) }}</td>
                          </tr>
                       </tbody>
                    </v-table>
@@ -950,17 +950,49 @@ const formatMessageDate = (timestamp) => {
 
 // --- 動態欄位相關方法 ---
 // [新增] 取得欄位顯示名稱 (將 ID 轉為 Label)
+// 遞迴搜尋欄位定義（涵蓋第一層 customFields、radio options 下的 subFields、以及任何巢狀 subFields）
+const findFieldDef = (fields, fieldKey) => {
+   if (!Array.isArray(fields)) return null;
+   for (const f of fields) {
+      if (!f) continue;
+      if (f.id === fieldKey) return f;
+      if (Array.isArray(f.options)) {
+         for (const opt of f.options) {
+            const subDef = findFieldDef(opt?.subFields, fieldKey);
+            if (subDef) return subDef;
+         }
+      }
+      if (Array.isArray(f.subFields)) {
+         const subDef = findFieldDef(f.subFields, fieldKey);
+         if (subDef) return subDef;
+      }
+   }
+   return null;
+};
+
 const getFieldLabel = (msg, fieldKey) => {
    // 如果還沒載入設定，直接回傳 key
    if (!projectConfig.value || !projectConfig.value.customerMessageConfigs) return fieldKey;
-   
+
    // 1. 找到對應的功能設定
    const config = projectConfig.value.customerMessageConfigs.find(c => c.id === msg.configId);
-   if (!config || !config.customFields) return fieldKey;
-   
-   // 2. 找到對應的欄位定義
-   const field = config.customFields.find(f => f.id === fieldKey);
-   return field ? field.label : fieldKey;
+   if (!config || !Array.isArray(config.customFields)) return fieldKey;
+
+   // 2. 遞迴搜尋整顆欄位樹（含 options.subFields）
+   const field = findFieldDef(config.customFields, fieldKey);
+   return field?.label || fieldKey;
+};
+
+// 取得 radio / select 欄位的選項 label（若 value 是 option.id 則轉為 option.label）
+const getFieldDisplayValue = (msg, fieldKey, value) => {
+   if (value === null || value === undefined || value === '') return value;
+   if (!projectConfig.value || !projectConfig.value.customerMessageConfigs) return value;
+   const config = projectConfig.value.customerMessageConfigs.find(c => c.id === msg.configId);
+   if (!config || !Array.isArray(config.customFields)) return value;
+   const field = findFieldDef(config.customFields, fieldKey);
+   if (!field || !Array.isArray(field.options)) return value;
+   const matched = field.options.find(o => o?.id === value || o?.value === value || o?.label === value);
+   return matched?.label || value;
 };
 
 const baseColDefs = computed(() => {
