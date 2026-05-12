@@ -540,13 +540,18 @@
                   :readonly="!isModalEditMode"
                   variant="plain" density="compact" hide-details class="hdm-edit-field"></v-text-field>
             </div>
-            <div class="hdm-row hdm-row-edit hdm-row-block">
-               <label>備註</label>
+            <div class="hdm-remarks-block">
+               <div class="hdm-remarks-label">
+                  <v-icon size="small" color="grey-darken-1" class="mr-1">mdi-note-text-outline</v-icon>
+                  備註
+               </div>
                <v-textarea v-model="selectedHouseholdForDetail.remarks"
                   :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details rows="2" auto-grow
-                  placeholder="—"
-                  class="hdm-edit-field"></v-textarea>
+                  :variant="isModalEditMode ? 'outlined' : 'plain'"
+                  :rows="isModalEditMode ? 4 : 2"
+                  auto-grow hide-details density="compact"
+                  :placeholder="isModalEditMode ? '請輸入備註…' : '—'"
+                  class="hdm-edit-textarea"></v-textarea>
             </div>
          </v-card-text>
       </v-card>
@@ -2627,5 +2632,46 @@ onUnmounted(() => {
 .hdm-row-block.hdm-row-edit > label {
    align-self: flex-start;
    margin-top: 4px;
+}
+/* 備註區塊：獨立 block，標籤在上、textarea 佔滿全寬 */
+.hdm-remarks-block {
+   padding: 8px 0 4px;
+   border-top: 1px dashed #e0e0e0;
+   margin-top: 4px;
+}
+.hdm-remarks-label {
+   display: flex;
+   align-items: center;
+   color: #616161;
+   font-weight: 500;
+   font-size: 0.85rem;
+   margin-bottom: 6px;
+}
+.hdm-edit-textarea {
+   width: 100%;
+   font-size: 0.875rem;
+}
+.hdm-edit-textarea :deep(.v-field) {
+   width: 100%;
+}
+.hdm-edit-textarea :deep(.v-field--variant-outlined) {
+   border-radius: 6px;
+}
+.hdm-edit-textarea :deep(.v-field--variant-outlined .v-field__input) {
+   min-height: 110px;
+   padding: 10px 12px;
+   font-size: 0.9rem;
+   color: #212121;
+   line-height: 1.6;
+}
+.hdm-edit-textarea :deep(.v-field--variant-outlined textarea) {
+   min-height: 90px;
+}
+.hdm-edit-textarea :deep(.v-field--variant-plain .v-field__input) {
+   padding: 4px 0;
+   min-height: 24px;
+   line-height: 1.6;
+   color: #212121;
+   white-space: pre-wrap;
 }
 </style>
