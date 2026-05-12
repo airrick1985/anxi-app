@@ -1,15 +1,39 @@
 <template>
   <v-dialog :model-value="modelValue" @update:model-value="closeDialog" fullscreen scrollable transition="dialog-bottom-transition">
     <v-card style="background: #F5F5F7;">
-      <v-toolbar color="#f5f5f7" dark>
-        <v-btn icon dark @click="closeDialog">
+      <v-toolbar color="primary" density="comfortable" class="admin-booking-toolbar">
+        <v-btn icon @click="closeDialog" title="關閉">
           <v-icon>mdi-close</v-icon>
         </v-btn>
-        <v-toolbar-title>後台新增預約</v-toolbar-title>
+        <v-icon class="mr-2" size="22">mdi-calendar-plus</v-icon>
+        <v-toolbar-title class="d-flex align-center flex-wrap ga-1 admin-booking-title">
+          <span class="font-weight-bold">後台新增預約</span>
+          <template v-for="(p, i) in dialogTitleParts" :key="`tt-${i}`">
+            <span class="title-sep">·</span>
+            <span class="title-part">{{ p }}</span>
+          </template>
+        </v-toolbar-title>
         <v-spacer></v-spacer>
-        <v-toolbar-items>
-        </v-toolbar-items>
+        <v-chip color="white" variant="flat" size="small" class="text-primary font-weight-bold mr-2 d-none d-sm-inline-flex">
+          步驟 {{ step }} / {{ stepLabels.length }}
+        </v-chip>
       </v-toolbar>
+
+      <!-- Step Indicator (水平 pill 列) -->
+      <div class="admin-booking-stepper px-3 py-2">
+        <div class="d-flex align-center justify-center flex-wrap ga-2">
+          <div
+            v-for="(label, idx) in stepLabels"
+            :key="`step-pill-${idx}`"
+            class="step-pill"
+            :class="{ 'is-active': step === idx + 1, 'is-done': step > idx + 1 }"
+          >
+            <v-icon size="16" v-if="step > idx + 1" class="mr-1">mdi-check-circle</v-icon>
+            <span v-else class="step-num">{{ idx + 1 }}</span>
+            <span class="step-label">{{ label }}</span>
+          </div>
+        </div>
+      </div>
 
       <v-card-text>
         <v-window v-model="step" :touch="false">
@@ -19,7 +43,10 @@
                 <v-col cols="12" md="10" lg="8">
                         <v-card class="pa-4 pa-md-6">
 
-                  <h3 class="text-h6 mb-4">步驟一：選擇戶別</h3>
+                  <div class="step-section-header mb-4">
+                    <v-icon class="mr-2" color="primary">mdi-home-search-outline</v-icon>
+                    <span class="text-h6 font-weight-bold">選擇戶別</span>
+                  </div>
 
                   <v-text-field
                     v-model="searchKeyword"
@@ -121,29 +148,24 @@
                          <v-card variant="outlined">
                           <v-card-title class="text-subtitle-1">{{ selectedHouseholdDetails.unitId }}批次與文件</v-card-title>
                            <v-list density="compact">
-                            <v-list-item>
-  <v-list-item-title>初驗批次</v-list-item-title>
-  
-  <div v-if="initialBatchInfo.statusText" class="text-body-2 text-medium-emphasis">
-    {{ selectedHouseholdDetails.initialInspectionBatch }} /
-    <v-chip :color="initialBatchInfo.color" size="x-small" label class="ml-1">{{ initialBatchInfo.statusText }}</v-chip>
-    <div class="text-caption mt-1">{{ initialBatchInfo.range }}</div>
-  </div>
-  
-  <div v-else class="text-caption text-error">無指定批次，請確認是否已可初驗</div>
-                          </v-list-item>
-
-                          <v-list-item>
-                            <v-list-item-title>{{ dynamicBatchTitle }}</v-list-item-title>
-                            
-                            <div v-if="reInspectionBatchInfo.statusText" class="text-body-2 text-medium-emphasis">
-                              {{ dynamicBatchCode }} /
-                              <v-chip :color="reInspectionBatchInfo.color" size="x-small" label class="ml-1">{{ reInspectionBatchInfo.statusText }}</v-chip>
-                              <div class="text-caption mt-1">{{ reInspectionBatchInfo.range }}</div>
-                            </div>
-                            
-                            <div v-else class="text-caption text-error">無指定批次，請確認是否已開放</div>
-                          </v-list-item>
+                            <!-- 動態依該建案 availableBookingTypes 逐一顯示批次（取代寫死的初驗 / 複驗 / 對保） -->
+                            <v-list-item
+                              v-for="type in availableBookingTypes"
+                              :key="`batch-row-${type}`"
+                            >
+                              <v-list-item-title>{{ type }}批次</v-list-item-title>
+                              <template v-if="householdBatchByType[type]?.code">
+                                <div v-if="householdBatchByType[type]?.statusText" class="text-body-2 text-medium-emphasis">
+                                  {{ householdBatchByType[type].code }} /
+                                  <v-chip :color="householdBatchByType[type].color" size="x-small" label class="ml-1">{{ householdBatchByType[type].statusText }}</v-chip>
+                                  <div class="text-caption mt-1">{{ householdBatchByType[type].range }}</div>
+                                </div>
+                                <div v-else class="text-caption text-error">
+                                  批次代碼 {{ householdBatchByType[type].code }}：查無此批次設定
+                                </div>
+                              </template>
+                              <div v-else class="text-caption text-error">尚未指派批次</div>
+                            </v-list-item>
                             <v-list-item title="戶別文件">
                                <v-btn v-if="selectedHouseholdDetails.inspectionDocsUrl" size="small" variant="tonal" color="blue" :href="selectedHouseholdDetails.inspectionDocsUrl" target="_blank">開啟 {{ formStep1.unitId }} 文件夾</v-btn>
                                <span v-else>無</span>
@@ -188,7 +210,10 @@
               <v-row justify="center">
                 <v-col cols="12" md="10" lg="8">
                 <v-card class="pa-4 pa-md-6">
-                  <h3 class="text-h6 mb-4">步驟二：填寫預約資訊</h3>
+                  <div class="step-section-header mb-4">
+                    <v-icon class="mr-2" color="primary">mdi-form-textbox</v-icon>
+                    <span class="text-h6 font-weight-bold">填寫預約資訊</span>
+                  </div>
                   <v-form ref="step2FormRef">
                     <v-row dense>
                       <v-col cols="12" sm="6">
@@ -368,7 +393,10 @@
               <v-row justify="center">
                 <v-col cols="12" md="10" lg="8">
                   <v-card class="pa-4 pa-md-6">
-                    <h3 class="text-h6 mb-4">步驟三：確認預約資訊</h3>
+                    <div class="step-section-header mb-4">
+                      <v-icon class="mr-2" color="primary">mdi-check-decagram-outline</v-icon>
+                      <span class="text-h6 font-weight-bold">確認預約資訊</span>
+                    </div>
                     
                     <v-alert
                       v-if="dateSelectionAlert.show"
@@ -618,6 +646,8 @@ import {
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
   projectId: { type: String, required: true },
+  // [新增] 開啟時若帶入此戶號，會自動完成步驟一的戶別選取，直接進入後續步驟
+  preselectedUnitId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue', 'booking-success']);
@@ -877,108 +907,62 @@ const dialogModel = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
-const initialBatchInfo = computed(() => {
-  const code = selectedHouseholdDetails.value?.initialInspectionBatch; // 預期是 "8"
-  
-  // 1. 強制解開 Proxy，查看最真實的資料結構
-  const rawBatchDetails = JSON.parse(JSON.stringify(allBatchDetails.value));
-  
-  console.group('🔍 [Debug] 初驗批次查找診斷');
-  console.log('目標代碼 (code):', code);
-  console.log('所有批次資料 (rawBatchDetails):', rawBatchDetails);
-  console.log('第一層 Keys (預約類型):', Object.keys(rawBatchDetails));
-
-  // 2. 檢查第一層 Key
-  // 注意：這裡檢查是否真的有 "初驗" 這個 key (有些系統可能是 "Initial" 或 "驗屋")
-  const targetTypeKey = '初驗'; 
-  const batchGroup = rawBatchDetails[targetTypeKey];
-
-  if (!batchGroup) {
-    console.warn(`❌ 找不到類型 [${targetTypeKey}]。現有的類型是:`, Object.keys(rawBatchDetails));
-    console.groupEnd();
-    return {};
-  }
-
-  console.log(`✅ 找到類型 [${targetTypeKey}]，內含批次代碼 Keys:`, Object.keys(batchGroup));
-
-  // 3. 檢查第二層 Key (批次代碼)
-  // 嘗試直接用 key 查找
-  let info = batchGroup[code];
-  
-  if (!info) {
-      console.warn(`❌ 在 [${targetTypeKey}] 中找不到 Key 為 [${code}] 的資料。`);
-      
-      // 嘗試模糊查找 (例如數字 8 vs 字串 "8")
-      console.log('🔄 嘗試寬鬆查找...');
-      const foundKey = Object.keys(batchGroup).find(k => String(k) === String(code));
-      
-      if (foundKey) {
-          console.log(`✅ 找到寬鬆匹配的 Key: [${foundKey}]`);
-          info = batchGroup[foundKey];
-      } else {
-          // 4. 如果 Key 找不到，檢查是否使用了 Document ID 當作 Key，而 batchCode 存在於內容中？
-          console.log('🔄 嘗試遍歷內容查找 batchCode...');
-          const foundEntry = Object.values(batchGroup).find(item => String(item.batchCode) === String(code));
-          if (foundEntry) {
-               console.log('✅ 透過內容比對找到了對應資料:', foundEntry);
-               info = foundEntry;
-          } else {
-               console.error('❌ 徹底找不到對應的批次資料。');
-          }
-      }
-  } else {
-      console.log('✅ 直接查找成功。');
-  }
-
-  console.groupEnd();
-
-  if (!info) {
-    return {};
-  }
-  
-  return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
+// 取得戶別對應某 type 的批次代碼（優先 customBatches、再 fallback 到初驗/複驗的固定欄位）
+// Toolbar 動態標題與步驟指示器
+const stepLabels = ['選擇戶別', '填寫預約資訊', '確認送出'];
+const dialogTitleParts = computed(() => {
+    const parts = [];
+    if (projectName.value) parts.push(projectName.value);
+    const unitId = selectedHouseholdDetails.value?.unitId || formStep1.unitId;
+    if (unitId) parts.push(unitId);
+    const buyerName = selectedHouseholdDetails.value?.buyerName;
+    if (buyerName) parts.push(buyerName);
+    return parts;
 });
 
-const dynamicBatchTargetType = computed(() => {
-    return formStep2.bookingType !== '初驗' ? formStep2.bookingType : '複驗';
-});
+const _resolveBatchCodeForType = (type) => {
+    const h = selectedHouseholdDetails.value;
+    if (!h) return null;
+    const custom = h.customBatches?.[type];
+    if (custom) return custom;
+    if (type === '初驗') return h.initialInspectionBatch || null;
+    if (type === '複驗') return h.reInspectionBatch || null;
+    return null;
+};
 
-const dynamicBatchTitle = computed(() => {
-    return formStep2.bookingType !== '初驗' ? `${formStep2.bookingType}批次` : '複驗/其他批次';
-});
-
-const dynamicBatchCode = computed(() => {
-    const type = dynamicBatchTargetType.value;
-    return selectedHouseholdDetails.value?.customBatches?.[type] || selectedHouseholdDetails.value?.reInspectionBatch;
-});
-
-const reInspectionBatchInfo = computed(() => {
-    const code = dynamicBatchCode.value;
-    const type = dynamicBatchTargetType.value;
-    
-    console.log(`🔍 [Debug] Target Code (${type}):`, code);
-
-    if (!code) {
-      return {};
+// 依 type + code 在 allBatchDetails 中找到批次資料（含舊系統相容查找）
+const _resolveBatchInfo = (type, code) => {
+    if (!type || !code) return null;
+    const group = allBatchDetails.value?.[type];
+    let info = group?.[code] || group?.[String(code)] || null;
+    if (!info && group) {
+        info = Object.values(group).find(item => String(item?.batchCode) === String(code)) || null;
     }
-
-    let info = allBatchDetails.value[type]?.[code];
-    
-    if (!info && allBatchDetails.value[type]) {
-        info = allBatchDetails.value[type][String(code)];
+    // 對保/交屋等舊資料可能存在「複驗」群組底下
+    if (!info && type !== '複驗' && allBatchDetails.value?.['複驗']) {
+        const fallbackGroup = allBatchDetails.value['複驗'];
+        info = fallbackGroup[code] || fallbackGroup[String(code)] || null;
     }
+    return info;
+};
 
-    // 若仍找不到，且 type 不是複驗，則試著看看這 code 是不是原本舊系統裡作為「對保/交屋」設定在「複驗」的批次
-    if (!info && type !== '複驗' && allBatchDetails.value['複驗']) {
-        info = allBatchDetails.value['複驗']?.[code] || allBatchDetails.value['複驗'][String(code)];
+// 依 availableBookingTypes 動態算出每個 type 的批次代碼與批次資料（取代舊的初驗 / 動態複驗硬編碼）
+const householdBatchByType = computed(() => {
+    const result = {};
+    if (!selectedHouseholdDetails.value) return result;
+    const types = availableBookingTypes.value || [];
+    for (const type of types) {
+        const code = _resolveBatchCodeForType(type);
+        if (!code) {
+            result[type] = { code: null, info: null };
+            continue;
+        }
+        const info = _resolveBatchInfo(type, code);
+        result[type] = info
+            ? { code, info, statusText: info.statusText || '', color: info.color || 'primary', range: `${info.bookingStart} ~ ${info.bookingEnd}` }
+            : { code, info: null };
     }
-
-    console.log(`🔍 [Debug] Found Info (${type}):`, info);
-
-    if (!info) {
-      return {};
-    }
-    return { ...info, range: `${info.bookingStart} ~ ${info.bookingEnd}` };
+    return result;
 });
 
 // 判斷後台是否需要顯示「本人是否到場」問答
@@ -1433,10 +1417,17 @@ watch(() => projectStore.isLoading, (newVal) => {
 });
 
 // ✅ 5. 修改 watch (modelValue)
-watch(() => props.modelValue, (newVal) => {
+watch(() => props.modelValue, async (newVal) => {
     if (newVal) {
         // 當對話框打開時，載入初始資料
-        loadInitialData();
+        await loadInitialData();
+        // [新增] 若有預先指定的戶號，自動完成步驟一的戶別選擇，直接進入後續流程
+        if (props.preselectedUnitId) {
+            const exists = allProjectHouseholds.value.some(h => h.unitId === props.preselectedUnitId);
+            if (exists) {
+                await selectHouseholdFromSearch({ unitId: props.preselectedUnitId });
+            }
+        }
     } else {
         // 當對話框關閉時，重置所有狀態
         resetState();
@@ -1447,6 +1438,87 @@ watch(() => props.modelValue, (newVal) => {
 
 
 <style scoped>
+/* ─────────── 後台新增預約對話框 視覺優化 ─────────── */
+.admin-booking-toolbar :deep(.v-toolbar__content) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.admin-booking-title {
+  font-size: 1rem;
+  letter-spacing: 0;
+  min-width: 0;
+}
+.admin-booking-title .title-sep {
+  opacity: 0.55;
+  margin: 0 2px;
+}
+.admin-booking-title .title-part {
+  opacity: 0.92;
+  font-weight: 500;
+}
+
+/* Step Indicator */
+.admin-booking-stepper {
+  background: linear-gradient(180deg, rgba(33, 150, 243, 0.10) 0%, rgba(245, 245, 247, 0) 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #757575;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid #e0e0e0;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.step-pill .step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.step-pill.is-done {
+  background: rgba(76, 175, 80, 0.10);
+  border-color: rgba(76, 175, 80, 0.45);
+  color: #2e7d32;
+}
+.step-pill.is-active {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.35);
+}
+.step-pill.is-active .step-num {
+  background: #ffffff;
+  color: #1976d2;
+}
+.step-pill .step-label {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .step-pill .step-label { display: none; }
+  .step-pill { padding: 6px 10px; }
+}
+
+/* 各 step 內部標題列（與 toolbar / stepper 視覺一致） */
+.step-section-header {
+  display: flex;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(25, 118, 210, 0.18);
+}
+
 .custom-day-cell {
   position: relative;
   display: flex;

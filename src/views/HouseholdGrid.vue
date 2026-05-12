@@ -401,13 +401,78 @@
    <div class="hdm-header" @mousedown="startDetailDrag">
       <v-icon size="small" class="mr-2">mdi-drag</v-icon>
       <span class="hdm-title">
-         {{ selectedHouseholdForDetail.building || '' }} - {{ selectedHouseholdForDetail.unitId || '' }}
+         {{ projectName }}
+         <span v-if="selectedHouseholdForDetail.unitId" class="title-sep">-</span>
+         <span v-if="selectedHouseholdForDetail.unitId">{{ selectedHouseholdForDetail.unitId }}</span>
+         <span v-if="selectedHouseholdForDetail.buyerName" class="title-sep">-</span>
+         <span v-if="selectedHouseholdForDetail.buyerName">{{ selectedHouseholdForDetail.buyerName }}</span>
          <span class="hdm-subtitle">戶別整合資訊</span>
       </span>
       <v-spacer></v-spacer>
-      <v-btn icon="mdi-close" variant="text" size="small" color="white" @click="closeHouseholdDetail"></v-btn>
+      <v-btn
+         class="mr-2"
+         size="small"
+         variant="flat"
+         color="success"
+         prepend-icon="mdi-calendar-plus"
+         @click.stop="openAdminAddBookingForCurrentHousehold"
+         @mousedown.stop
+         title="為此戶別新增預約（後台代填）"
+      >
+         新增預約
+      </v-btn>
+      <v-btn icon="mdi-close" variant="text" size="small" color="white" @click.stop="closeHouseholdDetail" @mousedown.stop></v-btn>
    </div>
    <div class="hdm-body">
+      <!-- 功能開關 -->
+      <v-card variant="outlined" class="mb-3">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-green-lighten-5">
+            <v-icon size="small" class="mr-1" color="success">mdi-toggle-switch-outline</v-icon>功能開關
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div class="hdm-switch-row">
+               <label>預約系統開關</label>
+               <v-switch
+                  :model-value="!!selectedHouseholdForDetail.showInMenu"
+                  @update:model-value="(v) => onModalToggleSwitch('showInMenu', v)"
+                  color="success" inset hide-details density="compact"
+               ></v-switch>
+            </div>
+            <div class="hdm-switch-row">
+               <label>交屋</label>
+               <v-switch
+                  :model-value="!!selectedHouseholdForDetail['交屋']"
+                  @update:model-value="(v) => onModalToggleSwitch('交屋', v)"
+                  color="success" inset hide-details density="compact"
+               ></v-switch>
+            </div>
+            <div class="hdm-switch-row">
+               <label>初驗報告上傳</label>
+               <v-switch
+                  :model-value="!!selectedHouseholdForDetail.initialReportUploadSwitch"
+                  @update:model-value="(v) => onModalToggleSwitch('initialReportUploadSwitch', v)"
+                  color="success" inset hide-details density="compact"
+               ></v-switch>
+            </div>
+            <div class="hdm-switch-row">
+               <label>複驗報告上傳</label>
+               <v-switch
+                  :model-value="!!selectedHouseholdForDetail.reInspectionReportUploadSwitch"
+                  @update:model-value="(v) => onModalToggleSwitch('reInspectionReportUploadSwitch', v)"
+                  color="success" inset hide-details density="compact"
+               ></v-switch>
+            </div>
+            <div class="hdm-switch-row">
+               <label>允許重複預約</label>
+               <v-switch
+                  :model-value="!!selectedHouseholdForDetail.allowMultipleBookings"
+                  @update:model-value="(v) => onModalToggleSwitch('allowMultipleBookings', v)"
+                  color="success" inset hide-details density="compact"
+               ></v-switch>
+            </div>
+         </v-card-text>
+      </v-card>
+
       <!-- 基本資料 -->
       <v-card variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
@@ -472,15 +537,37 @@
          </v-card-text>
       </v-card>
 
-      <!-- 報告與其他 -->
+      <!-- 報告 / 其他 -->
       <v-card variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
             <v-icon size="small" class="mr-1" color="primary">mdi-file-document-outline</v-icon>報告 / 其他
          </v-card-title>
          <v-card-text class="pt-2 pb-2">
-            <div class="hdm-row"><label>初驗報告上傳</label><span>{{ selectedHouseholdForDetail.initialReportUploadSwitch ? '開' : '關' }}</span></div>
-            <div class="hdm-row"><label>複驗報告上傳</label><span>{{ selectedHouseholdForDetail.reInspectionReportUploadSwitch ? '開' : '關' }}</span></div>
-            <div class="hdm-row"><label>允許重複預約</label><span>{{ selectedHouseholdForDetail.allowMultipleBookings ? '是' : '否' }}</span></div>
+            <!-- 驗屋報告（多筆）-->
+            <div class="hdm-row hdm-row-block">
+               <label>
+                  驗屋報告
+                  <v-chip v-if="inspectionReports.length > 0" size="x-small" color="red" variant="tonal" class="ml-1">{{ inspectionReports.length }}</v-chip>
+               </label>
+               <div class="hdm-report-list">
+                  <div v-if="inspectionReports.length === 0" class="text-grey">—</div>
+                  <div v-for="(file, idx) in inspectionReports" :key="`rpt-${idx}`" class="hdm-report-item">
+                     <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-report-link" :class="{ 'is-downloaded': file.isDownloaded }">
+                        <v-icon size="small" :color="file.isDownloaded ? 'grey' : 'red'" class="mr-1">mdi-file-pdf-box</v-icon>
+                        <span>{{ file.name }}</span>
+                     </a>
+                     <div class="hdm-report-actions">
+                        <v-btn v-if="!file.isDownloaded" icon="mdi-check-circle-outline"
+                           variant="text" color="success" size="x-small" density="comfortable"
+                           @click.stop="onModalMarkReportDownloaded(file)" title="標記為已下載"></v-btn>
+                        <v-icon v-else color="success" size="small" class="mx-2" title="已下載">mdi-check-circle</v-icon>
+                        <v-btn icon="mdi-delete-outline"
+                           variant="text" color="error" size="x-small" density="comfortable"
+                           @click.stop="onModalDeleteReport(file)" title="刪除"></v-btn>
+                     </div>
+                  </div>
+               </div>
+            </div>
             <div v-if="selectedHouseholdForDetail.inspectionReportFolderUrl" class="hdm-row">
                <label>報告資料夾</label>
                <span><a :href="selectedHouseholdForDetail.inspectionReportFolderUrl" target="_blank" rel="noopener">開啟</a></span>
@@ -489,22 +576,73 @@
                <label>驗屋文件</label>
                <span><a :href="selectedHouseholdForDetail.inspectionDocsUrl" target="_blank" rel="noopener">開啟</a></span>
             </div>
-            <div
-               v-if="Array.isArray(selectedHouseholdForDetail.customerMessages) && selectedHouseholdForDetail.customerMessages.filter(m => !m.isDeleted).length > 0"
-               class="hdm-row"
-            >
-               <label>客戶回傳</label>
-               <span>
-                  <v-btn size="x-small" color="info" variant="tonal"
-                     @click="openMessageDialog(selectedHouseholdForDetail)">
-                     共 {{ selectedHouseholdForDetail.customerMessages.filter(m => !m.isDeleted).length }} 筆，查看
-                  </v-btn>
-               </span>
+         </v-card-text>
+      </v-card>
+
+      <!-- 客戶回傳訊息 -->
+      <v-card variant="outlined" class="mb-3">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-info-lighten-5 d-flex align-center">
+            <v-icon size="small" class="mr-1" color="info">mdi-message-text-outline</v-icon>
+            <span>客戶回傳訊息</span>
+            <v-chip size="x-small" :color="modalCustomerMessages.length > 0 ? 'info' : 'grey'" variant="tonal" class="ml-2">
+               {{ modalCustomerMessages.length }}
+            </v-chip>
+            <v-spacer></v-spacer>
+            <v-btn v-if="modalCustomerMessages.length > 0" size="x-small" variant="text" color="info"
+               prepend-icon="mdi-open-in-new"
+               @click="openMessageDialog(selectedHouseholdForDetail)">
+               完整檢視
+            </v-btn>
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div v-if="modalCustomerMessages.length === 0" class="text-caption text-grey text-center py-3">
+               尚無客戶回傳訊息
             </div>
+            <v-expansion-panels v-else variant="accordion" multiple density="compact">
+               <v-expansion-panel v-for="msg in modalCustomerMessages" :key="msg.id">
+                  <v-expansion-panel-title class="py-2">
+                     <div class="d-flex align-center flex-grow-1 ga-2">
+                        <span class="font-weight-bold text-body-2">{{ msg.functionName || '未命名功能' }}</span>
+                        <v-chip v-if="msg.status === 'new'" size="x-small" color="error" variant="flat">新</v-chip>
+                        <v-chip v-if="msg.attachments && msg.attachments.length > 0" size="x-small" color="primary" variant="outlined">
+                           <v-icon size="x-small">mdi-paperclip</v-icon>{{ msg.attachments.length }}
+                        </v-chip>
+                        <v-spacer></v-spacer>
+                        <span class="text-caption text-grey">{{ formatMessageDate(msg.createdAt) }}</span>
+                     </div>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text>
+                     <v-table density="compact" class="hdm-msg-table">
+                        <tbody>
+                           <tr v-for="(value, key) in msg.data" :key="key">
+                              <td class="bg-grey-lighten-4 font-weight-bold" style="width: 140px;">{{ getFieldLabel(msg, key) }}</td>
+                              <td>{{ getFieldDisplayValue(msg, key, value) }}</td>
+                           </tr>
+                        </tbody>
+                     </v-table>
+                     <div v-if="msg.attachments && msg.attachments.length > 0" class="mt-2 d-flex flex-wrap ga-1">
+                        <v-chip v-for="file in msg.attachments" :key="file.path"
+                           size="x-small" :href="file.url" target="_blank" rel="noopener noreferrer"
+                           color="primary" variant="outlined" prepend-icon="mdi-paperclip">
+                           {{ file.name }}
+                        </v-chip>
+                     </div>
+                  </v-expansion-panel-text>
+               </v-expansion-panel>
+            </v-expansion-panels>
          </v-card-text>
       </v-card>
    </div>
 </div>
+
+<!-- 後台新增預約對話框（從戶別整合資訊 Modal 觸發，自動預填戶別） -->
+<AdminAddBookingDialog
+   v-if="isAdminAddDialogVisible"
+   v-model="isAdminAddDialogVisible"
+   :project-id="projectId"
+   :preselected-unit-id="presetUnitIdForBooking"
+   @booking-success="handleAdminBookingSuccess"
+/>
 </v-container>
 </template>
 
@@ -522,6 +660,7 @@ import { AgGridVue } from "ag-grid-vue3";
 import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
+import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 
 
 // --- Store 和路由 ---
@@ -1085,6 +1224,65 @@ const formatDetailDate = (val) => {
       return format(d, 'yyyy/MM/dd');
    } catch (_) {
       return '';
+   }
+};
+
+// 戶別整合 Modal — 驗屋報告（可能多筆）
+const inspectionReports = computed(() => {
+   const arr = selectedHouseholdForDetail.value?.inspectionReportUrl;
+   if (!Array.isArray(arr)) return [];
+   return arr.filter(f => f && typeof f.name === 'string' && typeof f.url === 'string');
+});
+const onModalMarkReportDownloaded = (file) => {
+   if (!selectedHouseholdForDetail.value) return;
+   confirmMarkDownloaded(file, selectedHouseholdForDetail.value);
+};
+const onModalDeleteReport = (file) => {
+   if (!selectedHouseholdForDetail.value) return;
+   confirmDeleteReport(file, selectedHouseholdForDetail.value);
+};
+
+// 戶別整合 Modal — 客戶回傳訊息（未刪除筆數，依時間新→舊）
+const modalCustomerMessages = computed(() => {
+   const arr = selectedHouseholdForDetail.value?.customerMessages;
+   if (!Array.isArray(arr)) return [];
+   return arr
+      .filter(m => m && !m.isDeleted)
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+});
+
+// 戶別整合 Modal — 為當前戶別新增預約（沿用 AdminAddBookingDialog）
+const isAdminAddDialogVisible = ref(false);
+const presetUnitIdForBooking = ref('');
+const openAdminAddBookingForCurrentHousehold = () => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h.unitId) return;
+   presetUnitIdForBooking.value = h.unitId;
+   isAdminAddDialogVisible.value = true;
+};
+const handleAdminBookingSuccess = () => {
+   // listenToAppointments 會自動更新 grid + modal 的預約資訊；此處只給使用者一個成功提示
+   snackbar.text = `戶別 [${presetUnitIdForBooking.value}] 的預約已新增`;
+   snackbar.color = 'success';
+   snackbar.show = true;
+};
+
+// 戶別整合 Modal — 切換開關（與 grid SwitchRenderer 同步寫入 Firestore）
+const onModalToggleSwitch = async (field, newValue) => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h._docId) return;
+   try {
+      await updateHouseholdData(h._docId, { [field]: newValue });
+      // 樂觀更新本地 selectedHouseholdForDetail，避免等 onSnapshot 慢半拍
+      selectedHouseholdForDetail.value = { ...h, [field]: newValue };
+      snackbar.text = `戶別 [${h.unitId}] 的開關已更新`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+   } catch (err) {
+      console.error('Modal 切換開關失敗:', err);
+      snackbar.text = `更新失敗: ${err.message}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
    }
 };
 
@@ -1990,7 +2188,7 @@ onUnmounted(() => {
 <style scoped>
 .household-detail-modal {
    position: fixed;
-   width: 600px;
+   width: 720px;
    max-width: calc(100vw - 24px);
    max-height: calc(100vh - 100px);
    background: #ffffff;
@@ -2020,6 +2218,11 @@ onUnmounted(() => {
    opacity: 0.85;
    margin-left: 8px;
 }
+.hdm-title .title-sep {
+   opacity: 0.6;
+   margin: 0 4px;
+   font-weight: 400;
+}
 .hdm-body {
    padding: 12px;
    overflow-y: auto;
@@ -2045,5 +2248,73 @@ onUnmounted(() => {
    flex: 1 1 auto;
    word-break: break-all;
    color: #212121;
+}
+/* 驗屋報告 list（多筆） */
+.hdm-row-block {
+   align-items: stretch;
+   flex-direction: column;
+}
+.hdm-row-block > label {
+   flex: 0 0 auto;
+   margin-bottom: 4px;
+   display: flex;
+   align-items: center;
+}
+.hdm-report-list {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+   width: 100%;
+}
+.hdm-report-item {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   padding: 4px 6px;
+   background: #ffffff;
+   border: 1px solid #e0e0e0;
+   border-radius: 4px;
+}
+.hdm-report-link {
+   display: flex;
+   align-items: center;
+   flex: 1 1 auto;
+   min-width: 0;
+   color: #1976d2;
+   text-decoration: none;
+   font-size: 0.875rem;
+}
+.hdm-report-link:hover { text-decoration: underline; }
+.hdm-report-link.is-downloaded { color: #9e9e9e; }
+.hdm-report-link span {
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+}
+.hdm-report-actions {
+   display: flex;
+   align-items: center;
+   flex: 0 0 auto;
+   margin-left: 8px;
+}
+/* 開關 row */
+.hdm-switch-row {
+   display: flex;
+   align-items: center;
+   padding: 2px 0;
+   font-size: 0.875rem;
+}
+.hdm-switch-row label {
+   flex: 0 0 140px;
+   color: #424242;
+   font-weight: 500;
+}
+.hdm-switch-row :deep(.v-switch) {
+   margin: 0;
+}
+/* 客戶回傳訊息表格內部稍微緊湊 */
+.hdm-msg-table :deep(td) {
+   font-size: 0.825rem !important;
+   padding: 6px 8px !important;
 }
 </style>
