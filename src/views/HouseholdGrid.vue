@@ -512,7 +512,7 @@
                   placeholder="—"></v-text-field>
             </div>
             <div class="hdm-row hdm-row-edit">
-               <label>買方身分證</label>
+               <label>買方身分證(驗證碼)</label>
                <v-text-field v-model="selectedHouseholdForDetail.buyerIdNumber"
                   :readonly="!isModalEditMode"
                   variant="plain" density="compact" hide-details class="hdm-edit-field"
@@ -1838,7 +1838,7 @@ const baseColDefs = computed(() => {
      { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
     { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
     { headerName: '買方Email', field: 'buyerEmail', editable: true, minWidth: 200 },
-    { headerName: '買方身分證', field: 'buyerIdNumber', editable: true },
+    { headerName: '買方身分證(驗證碼)', field: 'buyerIdNumber', editable: true },
     { headerName: '車位', field: 'parkingLots', editable: true },
     { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
     { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },

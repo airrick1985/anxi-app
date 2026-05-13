@@ -215,10 +215,10 @@
                       <v-card-text>
                         <div class="d-flex align-center mb-4">
                           <div class="flex-grow-1">
-                            <v-switch v-model="projectSettings.validateId" label="啟用身分證驗證" true-value="ON"
+                            <v-switch v-model="projectSettings.validateId" label="啟用驗證碼機制(身分證、手機末碼..驗證碼)" true-value="ON"
                               false-value="OFF" color="primary" inset hide-details></v-switch>
                             <div class="text-caption text-grey-darken-1 ml-4 mt-n2">
-                              啟用後，客戶在預約時需輸入與產權人相符身分證號，以免預約時戶別及產權人不符</div>
+                              啟用後，客戶在預約時需輸入與產權人相符的驗證碼，以免預約時戶別及產權人不符</div>
                           </div>
                         </div>
                         <div class="d-flex align-center mb-6">
@@ -1643,8 +1643,8 @@
                                   color="success" density="compact" hide-details></v-switch>
                               </v-col>
                               <v-col cols="12" sm="6">
-                                <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證驗證"
-                                  color="success" density="compact" hide-details hint="啟用後需輸入身分證並比對後端權限"
+                                <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證或驗證碼"
+                                  color="success" density="compact" hide-details hint="啟用後需輸入身分證或驗證碼並比對後端權限"
                                   persistent-hint></v-switch>
                               </v-col>
                               <v-col cols="12" sm="6">

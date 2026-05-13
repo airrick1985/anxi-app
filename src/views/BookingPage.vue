@@ -96,7 +96,7 @@
                     <v-select v-model="uploadForm.unit" :items="uploadUnitList" item-title="unit" item-value="unit"
                       label="戶別" variant="outlined" :rules="[v => !!v || '必填']" :disabled="!uploadForm.building"
                       no-data-text="請先選擇棟別"></v-select>
-                    <v-text-field v-model="uploadForm.idNumber" label="身分證字號 (用於驗證)" variant="outlined"
+                    <v-text-field v-model="uploadForm.idNumber" label="身分證或驗證碼" variant="outlined"
                       :rules="[v => !!v || '必填']"></v-text-field>
                   </v-form>
                 </v-card-text>
@@ -206,7 +206,7 @@
 
                     <!-- ID Verification -->
                     <v-text-field v-if="currentCustomerMessageConfig?.enableIdVerification"
-                      v-model="customerMessageForm.idNumber" label="身分證字號 (驗證用)" variant="outlined"
+                      v-model="customerMessageForm.idNumber" label="身分證(驗證碼)" variant="outlined"
                       density="comfortable" class="mb-2"></v-text-field>
 
                     <v-divider class="my-3"></v-divider>
@@ -520,8 +520,8 @@
                   <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
 
 
-                    <v-text-field v-model="formStep1.idNumber" :label="isIdValidationRequired ? '輸入身分證字號' : '輸入身分證字號'"
-                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證'] : []" variant="outlined" class="mt-4"
+                    <v-text-field v-model="formStep1.idNumber" :label="isIdValidationRequired ? '輸入身分證(驗證碼)' : '輸入身分證(驗證碼)'"
+                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證或驗證碼'] : []" variant="outlined" class="mt-4"
                       :disabled="isLoading || !isBookingActive"></v-text-field>
 
                     <v-autocomplete v-model="formStep1.building" :items="initialData.buildings" label="棟別(選擇或輸入)"

@@ -140,7 +140,7 @@
                              <v-list-item title="買方姓名" :subtitle="selectedHouseholdDetails.buyerName || '無'"></v-list-item>
                              <v-list-item title="買方電話" :subtitle="selectedHouseholdDetails.buyerPhone || '無'"></v-list-item>
                              <v-list-item title="買方EMAIL" :subtitle="selectedHouseholdDetails.buyerEmail || '無'"></v-list-item>
-                             <v-list-item title="買方身分證" :subtitle="selectedHouseholdDetails.buyerIdNumber || '無'"></v-list-item>
+                             <v-list-item title="買方身分證(驗證碼)" :subtitle="selectedHouseholdDetails.buyerIdNumber || '無'"></v-list-item>
                           </v-list>
                         </v-card>
                       </v-col>

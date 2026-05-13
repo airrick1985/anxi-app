@@ -72,7 +72,7 @@ function renderInspectionSchedule() {
     const fixedLabels = new Set([
         "System ID (勿動)", "建立時間", "預約代碼", "狀態", "專案",
         "戶號", "地址", "預約項目", "預約方式", "預約日期", "預約時段",
-        "預約人姓名", "預約人電話", "預約人Email", "預約人身分證",
+        "預約人姓名", "預約人電話", "預約人Email", "預約人身分證(驗證碼)",
         "代理人姓名", "代理人電話", "上傳報告", "是否已確認銀行?", "承辦人電話", "承辦人姓名", "銀行及分行"
     ]);
     const dynamicLabels = sourceHeaders.filter(h => h && !fixedLabels.has(h));

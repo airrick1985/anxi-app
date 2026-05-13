@@ -407,7 +407,7 @@ const salesFieldDisplayNames = {
     // 買方資訊
     buyerName: '買方姓名',
     buyerPhone: '買方電話',
-    buyerIdNumber: '身分證字號',
+    buyerIdNumber: '身分證字號(驗證碼)',
     buyerEmail: 'Email',
 
     // 日期資訊

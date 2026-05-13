@@ -140,7 +140,7 @@ const fieldDisplayNames = {
   buyerName: '買方姓名',
   buyerPhone: '買方電話',
   buyerEmail: '買方EMAIL',
-  buyerIdNumber: '買方身分證',
+  buyerIdNumber: '買方身分證(驗證碼)',
   appropriationDate: '撥款日期',
   bank: '銀行',
   initialInspectionBatch: '初驗批次',

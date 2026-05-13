@@ -1840,7 +1840,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'salesStatus_quote', title: '報價系統狀態' },
     { key: 'buyerName', title: '買方姓名' },
     { key: 'buyerPhone', title: '買方電話' },
-    { key: 'buyerIdNumber', title: '身分證字號' },
+    { key: 'buyerIdNumber', title: '身分證(驗證碼)' },
     { key: 'buyerDateOfBirth', title: '出生年月日' },
     { key: 'buyerEmail', title: 'EMAIL' },
     { key: 'buyerMailingAddressCity', title: '通訊地址_縣市' },
