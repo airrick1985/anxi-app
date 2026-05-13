@@ -147,10 +147,13 @@ const handleSubmitSignature = async () => {
       .replace(/{委託人簽名圖檔}/g, sessionData.value.delegatorSignature) // 從後端取得
       .replace(/{委託人身分證字號}/g, sessionData.value.formData.委託人身分證)
       .replace(/{委託人戶籍地址}/g, sessionData.value.formData.委託人戶籍地)
+      .replace(/{委託人電話}/g, sessionData.value.formData.委託人電話 || '')
       .replace(/{受託人簽名圖檔}/g, delegateeSignature) // 使用剛剛簽的
       .replace(/{受託人身分證字號}/g, sessionData.value.formData.受託人身分證)
       .replace(/{受託人戶籍地址}/g, sessionData.value.formData.受託人戶籍地)
+      .replace(/{受託人電話}/g, sessionData.value.formData.受託人電話 || '')
       .replace(/{與委託人關係}/g, sessionData.value.formData.受託人關係 === '其他' ? (sessionData.value.formData.受託人關係其他 || '其他') : (sessionData.value.formData.受託人關係 || ''))
+      .replace(/{與受託人關係}/g, sessionData.value.formData.受託人關係 === '其他' ? (sessionData.value.formData.受託人關係其他 || '其他') : (sessionData.value.formData.受託人關係 || '')) // 向下相容更早期錯誤命名
       .replace(/{受託人關係}/g, sessionData.value.formData.受託人關係 === '其他' ? (sessionData.value.formData.受託人關係其他 || '其他') : (sessionData.value.formData.受託人關係 || '')) // 向下相容舊版變數名
       .replace(/{TODAY}/g, getMinguoDate());
 

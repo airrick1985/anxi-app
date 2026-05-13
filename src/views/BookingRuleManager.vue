@@ -756,36 +756,203 @@
                           <div v-if="isAdmin && authLetterEditMode === 'form'">
                             <v-alert type="info" variant="tonal" density="compact" class="mb-4" closable>
                               <v-icon start size="small">mdi-lightbulb-outline</v-icon>
-                              修改下方欄位後，點擊「套用至範本」即可自動產生授權書 HTML，支援使用 <code>{變數名稱}</code> 動態帶入資料。
+                              下方為「所見即所得」編輯區，排版即為最終預覽結果。
+                              <strong class="auth-var-inline mx-1" style="background:#fef3c7;">黃底</strong>區塊為動態變數的範例值（不可編輯），
+                              其餘文字、區段標題、欄位標籤皆可直接點按修改。完成後請點「套用至範本」儲存。
                             </v-alert>
 
-                            <v-row dense>
-                              <v-col cols="12">
-                                <div class="text-subtitle-2 font-weight-medium mb-1 d-flex align-center">
-                                  <v-icon size="small" class="mr-1" color="teal">mdi-text-box-outline</v-icon>
-                                  宣告文 (開場)
-                                </div>
-                                <v-textarea v-model="authLetterFields.declaration" variant="outlined" rows="3" auto-grow
-                                  density="compact" placeholder="茲因本人 (委託人) {委託人姓名} 不克親自辦理..."
-                                  hint="可使用變數：{委託人姓名}、{建案名稱}、{受託人姓名}、{與委託人關係}" persistent-hint></v-textarea>
-                              </v-col>
-                              <v-col cols="12">
-                                <div class="text-subtitle-2 font-weight-medium mb-1 d-flex align-center">
-                                  <v-icon size="small" class="mr-1" color="teal">mdi-shield-check-outline</v-icon>
-                                  授權範圍 (中段內文)
-                                </div>
-                                <v-textarea v-model="authLetterFields.scope" variant="outlined" rows="3" auto-grow
-                                  density="compact" placeholder="受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業..."></v-textarea>
-                              </v-col>
-                              <v-col cols="12" sm="6">
-                                <div class="text-subtitle-2 font-weight-medium mb-1 d-flex align-center">
-                                  <v-icon size="small" class="mr-1" color="teal">mdi-pen</v-icon>
-                                  結語 - 致函對象
-                                </div>
-                                <v-text-field v-model="authLetterFields.closing" variant="outlined" density="compact"
-                                  placeholder="{建案名稱} 專案團隊" hint="可使用變數：{建案名稱}" persistent-hint></v-text-field>
-                              </v-col>
-                            </v-row>
+                            <!-- 可點按插入的變數工具列 -->
+                            <v-sheet border rounded class="pa-3 mb-4" color="grey-lighten-5">
+                              <div class="d-flex flex-wrap align-center gap-2 mb-2">
+                                <v-icon size="small" color="primary">mdi-variable</v-icon>
+                                <span class="text-caption font-weight-medium">可用變數（點選欄位後再點變數即可插入游標位置）</span>
+                                <v-spacer></v-spacer>
+                                <span v-if="activeAuthFieldPath" class="text-caption text-success">
+                                  <v-icon size="x-small" color="success">mdi-cursor-text</v-icon>
+                                  目前作用欄位：{{ activeAuthFieldPath }}
+                                </span>
+                                <span v-else class="text-caption text-grey">尚未點選欄位</span>
+                              </div>
+                              <div class="d-flex flex-wrap gap-1">
+                                <v-chip v-for="item in AUTH_LETTER_VARIABLES" :key="item.v" size="small"
+                                  variant="tonal" :color="item.color" class="cursor-pointer"
+                                  @mousedown.prevent @click="insertAuthVariable(item.v)">
+                                  <v-icon start size="x-small">mdi-plus</v-icon>{{ item.v }}
+                                </v-chip>
+                              </div>
+                            </v-sheet>
+
+                            <!-- ========== WYSIWYG 文件樣式編輯器 ========== -->
+                            <div class="auth-letter-doc-editor">
+                              <!-- 頁首：Logo + 主標題 -->
+                              <header class="auth-doc-header">
+                                <img v-if="projectSettings.logoUrl" :src="projectSettings.logoUrl" class="auth-doc-logo" alt="Logo">
+                                <div v-else class="auth-doc-logo-placeholder">[ 建案 Logo ]</div>
+                                <h1 class="auth-doc-h1">驗屋授權書</h1>
+                              </header>
+
+                              <!-- 宣告文 -->
+                              <div class="auth-doc-section">
+                                <span class="auth-edit-tag">宣告文</span>
+                                <textarea v-model="authLetterFields.declaration"
+                                  class="auth-doc-input auth-doc-textarea auth-doc-body"
+                                  rows="3"
+                                  placeholder="茲因本人 (委託人) {委託人姓名} 不克親自辦理..."
+                                  @focus="(e) => handleAuthFieldFocus('declaration', e)"
+                                  @input="autoResizeTextarea"></textarea>
+                              </div>
+
+                              <!-- 授權標的 -->
+                              <div class="auth-doc-section">
+                                <h3 class="auth-doc-h3">
+                                  <span class="auth-edit-tag">標題</span>
+                                  <input v-model="authLetterFields.subjectTitle"
+                                    class="auth-doc-input auth-doc-h3-input"
+                                    placeholder="授權標的"
+                                    @focus="(e) => handleAuthFieldFocus('subjectTitle', e)" />
+                                </h3>
+                                <p class="auth-doc-p">建案：<strong class="auth-var-inline">{{ projectName || '測試建案' }}</strong></p>
+                                <p class="auth-doc-p">戶別：<strong class="auth-var-inline">A1-1</strong></p>
+                              </div>
+
+                              <!-- 授權範圍 -->
+                              <div class="auth-doc-section">
+                                <h3 class="auth-doc-h3">
+                                  <span class="auth-edit-tag">標題</span>
+                                  <input v-model="authLetterFields.scopeTitle"
+                                    class="auth-doc-input auth-doc-h3-input"
+                                    placeholder="授權範圍"
+                                    @focus="(e) => handleAuthFieldFocus('scopeTitle', e)" />
+                                </h3>
+                                <span class="auth-edit-tag">內文</span>
+                                <textarea v-model="authLetterFields.scope"
+                                  class="auth-doc-input auth-doc-textarea auth-doc-body"
+                                  rows="3"
+                                  placeholder="受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業..."
+                                  @focus="(e) => handleAuthFieldFocus('scope', e)"
+                                  @input="autoResizeTextarea"></textarea>
+                              </div>
+
+                              <!-- 委託人 / 受託人 雙欄表格 -->
+                              <table class="auth-doc-table">
+                                <tr>
+                                  <!-- 委託人 (立書人) -->
+                                  <td>
+                                    <div class="auth-doc-cell-title">
+                                      <span class="auth-edit-tag">標題</span>
+                                      <input v-model="authLetterFields.principalTitle"
+                                        class="auth-doc-input auth-doc-cell-title-input"
+                                        placeholder="委託人 (立書人)"
+                                        @focus="(e) => handleAuthFieldFocus('principalTitle', e)" />
+                                    </div>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.principalLabels.name"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="姓名"
+                                        @focus="(e) => handleAuthFieldFocus('principalLabels.name', e)" />：<span class="auth-var-inline">王大明</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.principalLabels.phone"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="聯絡電話"
+                                        @focus="(e) => handleAuthFieldFocus('principalLabels.phone', e)" />：<span class="auth-var-inline">0912-345-678</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.principalLabels.idNumber"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="身分證字號"
+                                        @focus="(e) => handleAuthFieldFocus('principalLabels.idNumber', e)" />：<span class="auth-var-inline">A123456789</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.principalLabels.address"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="戶籍地址"
+                                        @focus="(e) => handleAuthFieldFocus('principalLabels.address', e)" />：<span class="auth-var-inline">台北市信義區市府路1號</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.principalLabels.signature"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="簽名"
+                                        @focus="(e) => handleAuthFieldFocus('principalLabels.signature', e)" />：
+                                    </p>
+                                    <div class="auth-doc-signature-box">[ 委託人簽名圖檔 ]</div>
+                                  </td>
+                                  <!-- 受託人 -->
+                                  <td>
+                                    <div class="auth-doc-cell-title">
+                                      <span class="auth-edit-tag">標題</span>
+                                      <input v-model="authLetterFields.trusteeTitle"
+                                        class="auth-doc-input auth-doc-cell-title-input"
+                                        placeholder="受託人"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeTitle', e)" />
+                                    </div>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.name"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="姓名"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.name', e)" />：<span class="auth-var-inline">林小華</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.phone"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="聯絡電話"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.phone', e)" />：<span class="auth-var-inline">0987-654-321</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.idNumber"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="身分證字號"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.idNumber', e)" />：<span class="auth-var-inline">F223456789</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.relationship"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="與委託人關係"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.relationship', e)" />：<span class="auth-var-inline">配偶</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.address"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="戶籍地址"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.address', e)" />：<span class="auth-var-inline">台北市中正區重慶南路一段122號</span>
+                                    </p>
+                                    <p class="auth-doc-p">
+                                      <input v-model="authLetterFields.trusteeLabels.signature"
+                                        class="auth-doc-input auth-doc-label-input"
+                                        placeholder="簽名"
+                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.signature', e)" />：
+                                    </p>
+                                    <div class="auth-doc-signature-box">[ 受託人簽名圖檔 ]</div>
+                                  </td>
+                                </tr>
+                              </table>
+
+                              <!-- 結語 -->
+                              <footer class="auth-doc-footer">
+                                <p class="auth-doc-p">
+                                  <input v-model="authLetterFields.closingPrefix"
+                                    class="auth-doc-input auth-doc-footer-input"
+                                    placeholder="此致"
+                                    @focus="(e) => handleAuthFieldFocus('closingPrefix', e)" />
+                                </p>
+                                <p class="auth-doc-p">
+                                  <strong>
+                                    <input v-model="authLetterFields.closing"
+                                      class="auth-doc-input auth-doc-footer-input"
+                                      placeholder="{建案名稱} 專案團隊"
+                                      style="font-weight: bold;"
+                                      @focus="(e) => handleAuthFieldFocus('closing', e)" />
+                                  </strong>
+                                </p>
+                                <p class="auth-doc-p">
+                                  <input v-model="authLetterFields.dateLabel"
+                                    class="auth-doc-input auth-doc-footer-input"
+                                    placeholder="日期"
+                                    style="max-width: 80px;"
+                                    @focus="(e) => handleAuthFieldFocus('dateLabel', e)" />：<span class="auth-var-inline">{{ todayMinguoSample }}</span>
+                                </p>
+                              </footer>
+                            </div>
 
                             <v-divider class="my-4"></v-divider>
                             <div class="d-flex align-center gap-2">
@@ -811,25 +978,18 @@
                               進階模式：直接編輯 HTML 原始碼，可完全自訂表單欄位。修改後請切換至"預覽"確認效果。
                             </v-alert>
                             <div class="d-flex flex-wrap align-center mb-2 gap-2">
-                              <span class="text-caption font-weight-medium">可用變數：</span>
-                              <v-chip size="x-small" variant="tonal"> {建案名稱}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {戶別}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {委託人姓名}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {受託人姓名}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {委託人身分證字號}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {受託人身分證字號}</v-chip>
-                              <v-chip size="x-small" variant="tonal" color="orange"> {與委託人關係}</v-chip>
-                              <v-chip size="x-small" variant="tonal"> {TODAY}</v-chip>
-                              <v-chip size="x-small" variant="tonal" color="primary"> {logoUrl}</v-chip>
-                              <v-chip size="x-small" variant="tonal" color="primary"> {委託人簽名圖檔}</v-chip>
-                              <v-chip size="x-small" variant="tonal" color="primary"> {受託人簽名圖檔}</v-chip>
+                              <span class="text-caption font-weight-medium">可用變數（點選後可插入游標位置）：</span>
+                              <v-chip v-for="item in AUTH_LETTER_VARIABLES" :key="item.v" size="x-small"
+                                variant="tonal" :color="item.color" class="cursor-pointer"
+                                @mousedown.prevent @click="insertAuthVariable(item.v)">{{ item.v }}</v-chip>
                               <v-spacer></v-spacer>
                               <v-btn size="x-small" variant="tonal" color="warning"
                                 @click="loadDefaultAuthLetterTemplate">載入系統預設範本</v-btn>
                             </div>
                             <v-textarea v-model="projectSettings.authLetterTemplate" variant="outlined" rows="15"
                               auto-grow bg-color="grey-lighten-4" placeholder="請輸入 HTML 格式的授權書範本..."
-                              class="font-mono text-body-2"></v-textarea>
+                              class="font-mono text-body-2"
+                              @focus="(e) => handleAuthFieldFocus('authLetterTemplate', e)"></v-textarea>
                           </div>
                         </v-expand-transition>
 
@@ -3687,17 +3847,144 @@ const editedMethodTitle = ref('');
 const authLetterEditMode = ref('form'); // 三模式切換：'form' | 'html' | 'preview'
 
 // 表單編輯模式的欄位
-const authLetterFields = reactive({
+const DEFAULT_AUTH_LETTER_FIELDS = {
   declaration: '茲因本人 (委託人) {委託人姓名} 不克親自辦理「{建案名稱}」建案之房屋驗交相關事宜，特委託{與委託人關係} {受託人姓名} 君代為全權處理。',
   scope: '受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。',
-  closing: '{建案名稱} 專案團隊'
+  closing: '{建案名稱} 專案團隊',
+  // 區段標題
+  subjectTitle: '授權標的',
+  scopeTitle: '授權範圍',
+  closingPrefix: '此致',
+  dateLabel: '日期',
+  // 委託人 (立書人) 區段
+  principalTitle: '委託人 (立書人)',
+  principalLabels: {
+    name: '姓名',
+    phone: '聯絡電話',
+    idNumber: '身分證字號',
+    address: '戶籍地址',
+    signature: '簽名'
+  },
+  // 受託人 區段
+  trusteeTitle: '受託人',
+  trusteeLabels: {
+    name: '姓名',
+    phone: '聯絡電話',
+    idNumber: '身分證字號',
+    relationship: '與委託人關係',
+    address: '戶籍地址',
+    signature: '簽名'
+  }
+};
+
+const authLetterFields = reactive(JSON.parse(JSON.stringify(DEFAULT_AUTH_LETTER_FIELDS)));
+
+// 可用變數清單（給點按插入使用）
+const AUTH_LETTER_VARIABLES = [
+  { v: '{建案名稱}', color: 'default' },
+  { v: '{戶別}', color: 'default' },
+  { v: '{委託人姓名}', color: 'default' },
+  { v: '{委託人電話}', color: 'teal' },
+  { v: '{委託人身分證字號}', color: 'default' },
+  { v: '{委託人戶籍地址}', color: 'default' },
+  { v: '{受託人姓名}', color: 'default' },
+  { v: '{受託人電話}', color: 'teal' },
+  { v: '{受託人身分證字號}', color: 'default' },
+  { v: '{受託人戶籍地址}', color: 'default' },
+  { v: '{與委託人關係}', color: 'orange' },
+  { v: '{TODAY}', color: 'default' },
+  { v: '{logoUrl}', color: 'primary' },
+  { v: '{委託人簽名圖檔}', color: 'primary' },
+  { v: '{受託人簽名圖檔}', color: 'primary' }
+];
+
+// 點按變數插入功能：追蹤目前游標所在的輸入元素與資料路徑
+const activeAuthInputEl = ref(null);
+const activeAuthFieldPath = ref(null);
+
+const handleAuthFieldFocus = (path, event) => {
+  activeAuthFieldPath.value = path;
+  // 從 Vuetify wrapper 中取得真正的 input/textarea 元素
+  const target = event?.target;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+    activeAuthInputEl.value = target;
+  }
+};
+
+const getAuthFieldValue = (path) => {
+  // 特殊路徑：HTML 模式直接編輯整個範本
+  if (path === 'authLetterTemplate') return projectSettings.value.authLetterTemplate || '';
+
+  const parts = path.split('.');
+  let obj = authLetterFields;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (obj == null) return '';
+    obj = obj[parts[i]];
+  }
+  return (obj && obj[parts[parts.length - 1]]) || '';
+};
+
+const setAuthFieldValue = (path, value) => {
+  if (path === 'authLetterTemplate') {
+    projectSettings.value.authLetterTemplate = value;
+    return;
+  }
+
+  const parts = path.split('.');
+  let obj = authLetterFields;
+  for (let i = 0; i < parts.length - 1; i++) {
+    obj = obj[parts[i]];
+  }
+  obj[parts[parts.length - 1]] = value;
+};
+
+// 自動依內容調整 textarea 高度（WYSIWYG 編輯器使用）
+const autoResizeTextarea = (event) => {
+  const el = event?.target;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+};
+
+// 預覽用的民國日期樣本（給 WYSIWYG 編輯器顯示）
+const todayMinguoSample = computed(() => {
+  const d = new Date();
+  return `中華民國 ${d.getFullYear() - 1911} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
 });
 
+const insertAuthVariable = async (variable) => {
+  const el = activeAuthInputEl.value;
+  const path = activeAuthFieldPath.value;
+
+  if (!el || !path) {
+    // 沒有作用中欄位 → 嘗試複製到剪貼簿並提示
+    try {
+      await navigator.clipboard.writeText(variable);
+      showSnackbar(`請先點擊欲插入的欄位。已複製 ${variable} 至剪貼簿，可貼上使用。`, 'info');
+    } catch (e) {
+      showSnackbar(`請先點擊欲插入的欄位，再點選變數。`, 'warning');
+    }
+    return;
+  }
+
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const current = getAuthFieldValue(path);
+  const newValue = current.slice(0, start) + variable + current.slice(end);
+  setAuthFieldValue(path, newValue);
+
+  await nextTick();
+  el.focus();
+  const newPos = start + variable.length;
+  try { el.setSelectionRange(newPos, newPos); } catch (e) { /* 部分輸入類型不支援 */ }
+};
+
 const loadDefaultAuthLetterTemplate = () => {
-  // 同時更新表單欄位
-  authLetterFields.declaration = '茲因本人 (委託人) {委託人姓名} 不克親自辦理「{建案名稱}」建案之房屋驗交相關事宜，特委託{與委託人關係} {受託人姓名} 君代為全權處理。';
-  authLetterFields.scope = '受託人得代理委託人全權處理上述房地產之驗屋、點交相關作業，並有權簽署相關文件。此授權書效力等同委託人親自辦理。';
-  authLetterFields.closing = '{建案名稱} 專案團隊';
+  // 同時更新表單欄位（含區段標題、委託人/受託人標籤）
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_AUTH_LETTER_FIELDS));
+  Object.assign(authLetterFields, defaults);
+  authLetterFields.principalLabels = defaults.principalLabels;
+  authLetterFields.trusteeLabels = defaults.trusteeLabels;
   // 產生完整 HTML 範本
   projectSettings.value.authLetterTemplate = generateAuthLetterHtml(authLetterFields);
   showSnackbar('已載入系統預設授權書範本', 'info');
@@ -3705,6 +3992,8 @@ const loadDefaultAuthLetterTemplate = () => {
 
 // 從表單欄位產生完整 HTML 範本
 function generateAuthLetterHtml(fields) {
+  const pl = fields.principalLabels || {};
+  const tl = fields.trusteeLabels || {};
   return `<div style="padding: 40px; font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif; line-height: 1.8; color: #333; background-color: white;">
   <header style="text-align: center; margin-bottom: 40px;">
     <img src="{logoUrl}" alt="Logo" style="max-height: 60px; margin-bottom: 20px;">
@@ -3712,37 +4001,39 @@ function generateAuthLetterHtml(fields) {
   </header>
   <section>
     <p style="font-size: 16px;">${fields.declaration}</p>
-    <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">授權標的</h3>
+    <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">${fields.subjectTitle || '授權標的'}</h3>
     <p style="font-size: 16px;">建案：<strong>{建案名稱}</strong></p>
     <p style="font-size: 16px;">戶別：<strong>{戶別}</strong></p>
-    <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">授權範圍</h3>
+    <h3 style="font-size: 20px; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 30px;">${fields.scopeTitle || '授權範圍'}</h3>
     <p style="font-size: 16px;">${fields.scope}</p>
     <table style="width: 100%; margin-top: 40px; border-collapse: collapse; font-size: 16px;">
       <tr>
         <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;">
-          <strong style="display: block; margin-bottom: 10px;">委託人 (立書人)</strong>
-          <p style="margin: 5px 0;">姓名：{委託人姓名}</p>
-          <p style="margin: 5px 0;">身分證字號：{委託人身分證字號}</p>
-          <p style="margin: 5px 0;">戶籍地址：{委託人戶籍地址}</p>
-          <p style="margin: 5px 0;">簽名：</p>
+          <strong style="display: block; margin-bottom: 10px;">${fields.principalTitle || '委託人 (立書人)'}</strong>
+          <p style="margin: 5px 0;">${pl.name || '姓名'}：{委託人姓名}</p>
+          <p style="margin: 5px 0;">${pl.phone || '聯絡電話'}：{委託人電話}</p>
+          <p style="margin: 5px 0;">${pl.idNumber || '身分證字號'}：{委託人身分證字號}</p>
+          <p style="margin: 5px 0;">${pl.address || '戶籍地址'}：{委託人戶籍地址}</p>
+          <p style="margin: 5px 0;">${pl.signature || '簽名'}：</p>
           <img src="{委託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
         </td>
         <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;">
-          <strong style="display: block; margin-bottom: 10px;">受託人</strong>
-          <p style="margin: 5px 0;">姓名：{受託人姓名}</p>
-          <p style="margin: 5px 0;">身分證字號：{受託人身分證字號}</p>
-          <p style="margin: 5px 0;">與委託人關係：{與委託人關係}</p>
-          <p style="margin: 5px 0;">戶籍地址：{受託人戶籍地址}</p>
-          <p style="margin: 5px 0;">簽名：</p>
+          <strong style="display: block; margin-bottom: 10px;">${fields.trusteeTitle || '受託人'}</strong>
+          <p style="margin: 5px 0;">${tl.name || '姓名'}：{受託人姓名}</p>
+          <p style="margin: 5px 0;">${tl.phone || '聯絡電話'}：{受託人電話}</p>
+          <p style="margin: 5px 0;">${tl.idNumber || '身分證字號'}：{受託人身分證字號}</p>
+          <p style="margin: 5px 0;">${tl.relationship || '與委託人關係'}：{與委託人關係}</p>
+          <p style="margin: 5px 0;">${tl.address || '戶籍地址'}：{受託人戶籍地址}</p>
+          <p style="margin: 5px 0;">${tl.signature || '簽名'}：</p>
           <img src="{受託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
         </td>
       </tr>
     </table>
     <footer style="text-align: right; margin-top: 40px; font-size: 16px;">
-      <p>此致</p>
+      <p>${fields.closingPrefix || '此致'}</p>
       <p><strong>${fields.closing}</strong></p>
       <br>
-      <p>日期：{TODAY}</p>
+      <p>${fields.dateLabel || '日期'}：{TODAY}</p>
     </footer>
   </section>
 </div>`;
@@ -3779,10 +4070,25 @@ const parseAuthLetterFieldsFromTemplate = () => {
 };
 
 // 切換到表單模式時自動解析
+const autoResizeAllAuthTextareas = () => {
+  nextTick(() => {
+    document.querySelectorAll('.auth-doc-textarea').forEach(el => {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    });
+  });
+};
+
 watch(() => authLetterEditMode.value, (newMode) => {
   if (newMode === 'form') {
     parseAuthLetterFieldsFromTemplate();
+    autoResizeAllAuthTextareas();
   }
+});
+
+// 程式化變更值時（如「還原預設」、初始化載入）自動撐開高度
+watch([() => authLetterFields.declaration, () => authLetterFields.scope], () => {
+  autoResizeAllAuthTextareas();
 });
 
 const authLetterPreviewHtml = computed(() => {
@@ -3795,12 +4101,16 @@ const authLetterPreviewHtml = computed(() => {
     .replace(/{建案名稱}/g, projectName.value || '測試建案')
     .replace(/{戶別}/g, 'A1-1')
     .replace(/{委託人姓名}/g, '王大明')
+    .replace(/{委託人電話}/g, '0912-345-678')
     .replace(/{委託人身分證字號}/g, 'A123456789')
     .replace(/{委託人戶籍地址}/g, '台北市信義區市府路1號')
     .replace(/{受託人姓名}/g, '林小華')
+    .replace(/{受託人電話}/g, '0987-654-321')
     .replace(/{受託人身分證字號}/g, 'F223456789')
     .replace(/{受託人戶籍地址}/g, '台北市中正區重慶南路一段122號')
     .replace(/{與委託人關係}/g, '配偶')
+    .replace(/{與受託人關係}/g, '配偶') // 向下相容更早期錯誤命名
+    .replace(/{受託人關係}/g, '配偶') // 向下相容舊版變數名
     .replace(/{TODAY}/g, yyyymmdd)
     .replace(/{logoUrl}/g, projectSettings.value.logoUrl || '')
     .replace(/{委託人簽名圖檔}/g, 'https://dummyimage.com/200x80/cccccc/000000.png&text=Signature+1')
@@ -4709,6 +5019,11 @@ async function loadDataForProject() {
         projectSettings.value.appointmentsSheetTabName = settings.appointmentsSheetTabName || ''; // [新增]
         projectSettings.value.customerMessageConfigs = settings.customerMessageConfigs || []; // [新增] 客戶回傳功能
         projectSettings.value.authLetterTemplate = settings.authLetterTemplate || ''; // [新增] 授權書範本
+        // 載入完範本後，從 HTML 反解析回表單欄位，避免初始進入表單模式時被預設值覆蓋
+        if (projectSettings.value.authLetterTemplate) {
+          parseAuthLetterFieldsFromTemplate();
+          autoResizeAllAuthTextareas();
+        }
         projectSettings.value.bookingCapacityGroups = settings.bookingCapacityGroups || []; // [新增] 名額共用群組
 
         // --- Migration Logic for Page Settings By Item (NEW) ---
@@ -6466,5 +6781,201 @@ watch(menuAppEnd, (isOpen) => {
 
 .settings-form-container :deep(.v-window-item) {
   overflow: visible !important;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* ============================================================
+ * WYSIWYG 文件樣式編輯器（驗屋授權書表單編輯模式）
+ * 視覺上模擬最終預覽結果，所有可編輯欄位以無邊框內嵌方式呈現
+ * ============================================================ */
+.auth-letter-doc-editor {
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 40px;
+  font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif;
+  line-height: 1.8;
+  color: #333;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+}
+
+.auth-doc-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.auth-doc-logo {
+  max-height: 60px;
+  margin-bottom: 20px;
+}
+
+.auth-doc-logo-placeholder {
+  display: inline-block;
+  padding: 18px 30px;
+  margin-bottom: 20px;
+  border: 1px dashed #bdbdbd;
+  color: #9e9e9e;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.auth-doc-h1 {
+  font-size: 28px;
+  margin: 0;
+  font-weight: bold;
+}
+
+.auth-doc-section {
+  margin-top: 24px;
+}
+
+.auth-doc-h3 {
+  font-size: 20px;
+  font-weight: bold;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 8px;
+  margin: 30px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-doc-p {
+  font-size: 16px;
+  margin: 5px 0;
+  line-height: 1.8;
+}
+
+.auth-doc-body {
+  font-size: 16px;
+  line-height: 1.8;
+  width: 100%;
+  display: block;
+}
+
+.auth-doc-table {
+  width: 100%;
+  margin-top: 40px;
+  border-collapse: collapse;
+  font-size: 16px;
+}
+
+.auth-doc-table td {
+  width: 50%;
+  padding: 15px;
+  vertical-align: top;
+  border: 1px solid #ddd;
+}
+
+.auth-doc-cell-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.auth-doc-cell-title-input {
+  font-weight: bold;
+  font-size: 16px;
+  flex: 1;
+}
+
+.auth-doc-label-input {
+  display: inline-block;
+  width: auto;
+  min-width: 80px;
+  font-size: 16px;
+}
+
+.auth-doc-h3-input {
+  font-size: 20px;
+  font-weight: bold;
+  flex: 1;
+}
+
+.auth-doc-footer {
+  text-align: right;
+  margin-top: 40px;
+  font-size: 16px;
+}
+
+.auth-doc-footer-input {
+  font-size: 16px;
+  text-align: right;
+  display: inline-block;
+  width: auto;
+  min-width: 100px;
+}
+
+.auth-doc-signature-box {
+  display: inline-block;
+  width: 200px;
+  height: 60px;
+  border: 1px dashed #bdbdbd;
+  border-bottom: 1px solid #ccc;
+  text-align: center;
+  line-height: 60px;
+  color: #9e9e9e;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* 可編輯輸入框：透明背景、虛線下底、聚焦變色 */
+.auth-doc-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #c7d2fe;
+  outline: none;
+  font-family: inherit;
+  color: inherit;
+  padding: 1px 4px;
+  border-radius: 2px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-doc-input:hover {
+  background-color: #fffbeb;
+  border-bottom-color: #f59e0b;
+}
+
+.auth-doc-input:focus {
+  background-color: #eff6ff;
+  border-bottom: 2px solid #2563eb;
+  padding-bottom: 0;
+}
+
+.auth-doc-textarea {
+  resize: vertical;
+  overflow: hidden;
+  min-height: 60px;
+}
+
+/* 變數實際值（不可編輯，僅做預覽呈現） */
+.auth-var-inline {
+  display: inline-block;
+  padding: 0 4px;
+  background-color: #fef3c7;
+  border-radius: 3px;
+  color: #b45309;
+  font-weight: 500;
+}
+
+/* 編輯欄位類型小標籤 */
+.auth-edit-tag {
+  display: inline-block;
+  font-size: 10px;
+  background-color: #e0e7ff;
+  color: #3730a3;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+  vertical-align: middle;
+  margin-right: 4px;
+  user-select: none;
 }
 </style>

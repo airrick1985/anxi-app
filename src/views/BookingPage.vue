@@ -970,6 +970,8 @@
                 <p class="text-subtitle-1 font-weight-bold mb-2">委託人資訊 (屋主)</p>
                 <v-text-field v-model="authFormData.委託人姓名" label="委託人姓名" :rules="[v => !!v || '必填']" variant="outlined"
                   density="compact"></v-text-field>
+                <v-text-field v-model="authFormData.委託人電話" label="委託人電話" :rules="[v => !!v || '必填']" variant="outlined"
+                  density="compact"></v-text-field>
                 <v-text-field v-model="authFormData.委託人身分證" label="委託人身分證" :rules="[v => !!v || '必填']"
                   variant="outlined" density="compact"></v-text-field>
                 <v-text-field v-model="authFormData.委託人戶籍地" label="委託人戶籍地" :rules="[v => !!v || '必填']"
@@ -2095,6 +2097,7 @@ const getMinguoDate = () => {
 // 授權書表單資料
 const authFormData = ref({
   委託人姓名: '',
+  委託人電話: '',
   委託人身分證: '',
   委託人戶籍地: '',
   受託人姓名: '',
@@ -2115,6 +2118,9 @@ const currentPreviewAttachment = ref(null); // 當前預覽的附件
 
 // 打開授權書對話框
 const openAuthDialog = () => {
+  // 自動帶入已填寫的委託人 (預約人) 資訊
+  authFormData.value.委託人姓名 = authFormData.value.委託人姓名 || formStep2.value.姓名 || '';
+  authFormData.value.委託人電話 = authFormData.value.委託人電話 || formStep2.value.電話 || '';
   // 自動帶入已填寫的受託人資訊
   authFormData.value.受託人姓名 = formStep2.value.受託人姓名;
   authFormData.value.受託人電話 = formStep2.value.受託人電話;
@@ -2132,6 +2138,7 @@ const resetAuthFlow = () => {
   isSigningInitiated.value = false;
   authFormData.value = {
     委託人姓名: '',
+    委託人電話: '',
     委託人身分證: '',
     委託人戶籍地: '',
     受託人姓名: '',
