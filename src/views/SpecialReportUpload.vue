@@ -131,7 +131,7 @@ import { useRoute } from 'vue-router';
 import { projectUploadConfig } from '@/config/projectUploadData.js';
 import { triggerSpecialReportUpload } from '@/api';
 import { useToast } from 'vue-toastification';
-import fuyuLogo from '@/assets/fuyuLogo.png';
+import fuyuLogo from '@/assets/fuyuLogo.webp';
 
 
 // --- 核心狀態 ---

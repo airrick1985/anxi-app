@@ -37,7 +37,7 @@ import IconButton from '@/components/IconButton.vue';
 
 // 引入所有需要的圖片
 import databaseIcon from '@/assets/icons/database.png';
-import myBackgroundImage from '@/assets/login-bg.jpg';
+import myBackgroundImage from '@/assets/login-bg.webp';
 import subscriptionIcon from '@/assets/icons/subscription.png';
 import userManagementIcon from '@/assets/icons/user-management.png';
 import statusIcon from '@/assets/icons/status.png';

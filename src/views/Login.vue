@@ -157,7 +157,7 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
 
-import myBackgroundImage from '@/assets/login-bg.jpg';
+import myBackgroundImage from '@/assets/login-bg.webp';
 
 import { v4 as uuidv4 } from 'uuid';
 
