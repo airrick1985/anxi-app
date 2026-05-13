@@ -48,24 +48,21 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('ag-grid')) {
-            return 'ag-grid';
-          }
-          if (id.includes('firebase')) {
-            return 'firebase';
-          }
-          if (id.includes('date-fns')) {
-            return 'date-fns';
-          }
-          if (id.includes('xlsx')) {
-            return 'xlsx';
-          }
-          if (id.includes('vuetify')) {
-            return 'vuetify';
-          }
-          if (id.includes('node_modules')) {
-            return 'vendor';
-          }
+          if (id.includes('ag-grid')) return 'ag-grid';
+          if (id.includes('firebase')) return 'firebase';
+          if (id.includes('date-fns')) return 'date-fns';
+          if (id.includes('xlsx')) return 'xlsx';
+          if (id.includes('vuetify')) return 'vuetify';
+          if (id.includes('exceljs')) return 'exceljs';
+          if (id.includes('fabric')) return 'fabric';
+          if (id.includes('jspdf') || id.includes('html2canvas')) return 'pdf-tools';
+          if (id.includes('docx')) return 'docx';
+          if (id.includes('vue-pdf-embed') || id.includes('pdfjs-dist')) return 'pdf-viewer';
+          if (id.includes('@fullcalendar')) return 'fullcalendar';
+          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'tiptap';
+          if (id.includes('chart.js') || id.includes('vue-chartjs') || id.includes('chartjs-plugin')) return 'chart';
+          if (id.includes('shepherd')) return 'shepherd';
+          if (id.includes('node_modules')) return 'vendor';
         }
       }
     }
