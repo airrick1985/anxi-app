@@ -581,7 +581,7 @@ const products = ref([
 .hero-section {
   width: 100%;
   position: relative;
-  background-image: url('@/assets/home-banner.jpg');
+  background-image: url('@/assets/home-banner.webp');
   background-repeat: no-repeat;
   height: 60vh; 
   background-size: cover;

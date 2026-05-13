@@ -32,7 +32,7 @@
     "nodemailer": "^7.0.5",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"
