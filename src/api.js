@@ -5495,6 +5495,24 @@ export async function markAuthSessionComplete(payload) {
 
 
 /**
+ * [一次性回填] 將 appointments 中的受託人/委託人資訊
+ * 補入 households.authorizationLetterUrl 陣列項目（以 url 比對）
+ * @param {object} payload - { projectId: string, dryRun?: boolean }
+ * @returns {Promise<{ status: 'success' | 'error', dryRun?: boolean, stats?: object, message?: string }>}
+ */
+export async function backfillAuthLetterAgentInfo(payload) {
+  try {
+    const call = httpsCallable(functions, 'backfillAuthLetterAgentInfo');
+    const result = await call(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API backfillAuthLetterAgentInfo 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+
+/**
  * [API] 呼叫後端，執行上傳報告前的第一步驗證 (V2: 呼叫 bookingApi 路由)
  */
 export const verifyUploadPrerequisites = async (payload) => {

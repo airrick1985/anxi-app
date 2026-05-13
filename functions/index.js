@@ -7309,10 +7309,21 @@ exports.completeAuthSigningProcess = onCall({
       const householdRef = db.collection("households").doc(householdDocId);
       //  使用 arrayUnion 將新文件加入陣列，而不是覆蓋
       const _today = new Date().toISOString().slice(0, 10);
+      const _fd = sessionData.formData || {};
+      const _relationship = _fd.受託人關係 === '其他'
+        ? (_fd.受託人關係其他 || '其他')
+        : (_fd.受託人關係 || '');
       transaction.update(householdRef, {
         authorizationLetterUrl: admin.firestore.FieldValue.arrayUnion({
           name: `${sessionData.unitId}驗屋授權書-${_today}`,
-          url: finalUrl
+          url: finalUrl,
+          // 受託人資訊（用於 HouseholdGrid 顯示）
+          agentName: _fd.受託人姓名 || '',
+          agentPhone: _fd.受託人電話 || '',
+          agentRelationship: _relationship,
+          principalName: _fd.委託人姓名 || '',
+          principalPhone: _fd.委託人電話 || '',
+          signedAt: _today
         })
       });
     });
@@ -7397,6 +7408,128 @@ exports.completeAuthSigningProcess = onCall({
   }
 });
 //  END: 函式修改結束
+
+
+//  START: 一次性回填 — 將 appointments 中的受託人/委託人資訊
+//  補入 households.authorizationLetterUrl 陣列項目（用 url 比對）
+//  使用方式：
+//    callable({ projectId: "xxx", dryRun: true })  → 試跑，不實際寫入
+//    callable({ projectId: "xxx" })                → 正式回填
+exports.backfillAuthLetterAgentInfo = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+  timeoutSeconds: 540
+}, async (request) => {
+  const { projectId, dryRun = false } = request.data || {};
+  const functionName = `backfillAuthLetterAgentInfo`;
+
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 參數。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // 1. 取得該 project 所有 appointments，建立 url → appointment 索引
+    const apptSnap = await db.collection("appointments")
+      .where("projectId", "==", projectId)
+      .get();
+
+    const apptByUrl = new Map();
+    apptSnap.forEach(doc => {
+      const a = doc.data();
+      const url = a?.authorizationLetterUrl;
+      if (url && typeof url === 'string') {
+        // 若有重複 url（理論上不會）以後寫入的覆蓋先寫入的
+        apptByUrl.set(url, a);
+      }
+    });
+
+    console.log(`[${functionName}] 索引完成：${apptByUrl.size} 筆 appointments 含授權書 url`);
+
+    // 2. 取得該 project 所有 households
+    const householdsSnap = await db.collection("households")
+      .where("projectId", "==", projectId)
+      .get();
+
+    const stats = {
+      totalHouseholds: householdsSnap.size,
+      householdsWithLetters: 0,
+      householdsUpdated: 0,
+      lettersBackfilled: 0,
+      lettersSkippedAlreadyHasAgent: 0,
+      lettersWithNoMatchingAppointment: 0,
+      errors: []
+    };
+
+    const extractDate = (name) => {
+      if (!name || typeof name !== 'string') return '';
+      const m = name.match(/(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : '';
+    };
+
+    // 3. 遍歷 households 進行回填
+    for (const hDoc of householdsSnap.docs) {
+      const h = hDoc.data();
+      const letters = Array.isArray(h.authorizationLetterUrl) ? h.authorizationLetterUrl : [];
+      if (letters.length === 0) continue;
+
+      stats.householdsWithLetters++;
+
+      let docNeedsUpdate = false;
+      const newLetters = letters.map(letter => {
+        if (!letter || typeof letter !== 'object') return letter;
+
+        // 已有受託人資訊 → 跳過
+        if (letter.agentName || letter.agentPhone || letter.agentRelationship) {
+          stats.lettersSkippedAlreadyHasAgent++;
+          return letter;
+        }
+
+        // 用 url 比對 appointment
+        const appt = letter.url ? apptByUrl.get(letter.url) : null;
+        if (!appt) {
+          stats.lettersWithNoMatchingAppointment++;
+          return letter;
+        }
+
+        docNeedsUpdate = true;
+        stats.lettersBackfilled++;
+        return {
+          ...letter,
+          agentName: appt.agentName || '',
+          agentPhone: appt.agentPhone || '',
+          agentRelationship: appt.agentRelationship || '',
+          principalName: appt.principalName || '',
+          principalPhone: appt.principalPhone || '',
+          signedAt: letter.signedAt || extractDate(letter.name) || ''
+        };
+      });
+
+      if (docNeedsUpdate) {
+        if (!dryRun) {
+          try {
+            await hDoc.ref.update({ authorizationLetterUrl: newLetters });
+            stats.householdsUpdated++;
+          } catch (err) {
+            stats.errors.push(`${hDoc.id}: ${err.message}`);
+          }
+        } else {
+          stats.householdsUpdated++;
+        }
+      }
+    }
+
+    console.log(`[${functionName}] ${dryRun ? '【DRY RUN】' : ''}完成`, stats);
+    return { status: "success", dryRun, stats };
+
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `回填過程發生錯誤: ${error.message}`);
+  }
+});
+//  END: 一次性回填
 
 
 // START: 替換舊的 fetchUserDetailsForAdmin 函式

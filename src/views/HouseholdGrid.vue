@@ -659,12 +659,30 @@
             <div v-if="authLetters.length === 0" class="text-caption text-grey text-center py-3">
                尚未上傳驗屋授權書（受託人完成簽署後將自動歸檔於此）
             </div>
-            <div v-else class="hdm-report-list">
-               <div v-for="(file, idx) in authLetters" :key="`al-${idx}`" class="hdm-report-item">
-                  <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-report-link">
+            <div v-else class="hdm-auth-list">
+               <div v-for="(file, idx) in authLetters" :key="`al-${idx}`" class="hdm-auth-item">
+                  <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-auth-link">
                      <v-icon size="small" color="teal-darken-2" class="mr-1">mdi-file-sign</v-icon>
                      <span>{{ formatAuthLetterName(file, selectedHouseholdForDetail.unitId) }}</span>
+                     <v-icon size="x-small" color="grey" class="ml-1">mdi-open-in-new</v-icon>
                   </a>
+                  <div class="hdm-auth-meta">
+                     <div class="hdm-auth-meta-row">
+                        <label>受託人姓名</label>
+                        <span :class="{ 'text-grey': !file.agentName }">{{ file.agentName || '—' }}</span>
+                     </div>
+                     <div class="hdm-auth-meta-row">
+                        <label>與委託人關係</label>
+                        <span :class="{ 'text-grey': !file.agentRelationship }">{{ file.agentRelationship || '—' }}</span>
+                     </div>
+                     <div class="hdm-auth-meta-row">
+                        <label>受託人電話</label>
+                        <span :class="{ 'text-grey': !file.agentPhone }">
+                           <a v-if="file.agentPhone" :href="`tel:${file.agentPhone}`">{{ file.agentPhone }}</a>
+                           <template v-else>—</template>
+                        </span>
+                     </div>
+                  </div>
                </div>
             </div>
          </v-card-text>
@@ -752,7 +770,7 @@ import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
 import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.vue';
-import { formatAuthLetterName, extractAuthLetterDate } from '@/utils/authLetterName.js';
+import { formatAuthLetterName, extractAuthLetterDate, getLatestAgentInfo } from '@/utils/authLetterName.js';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 
 
@@ -1818,6 +1836,27 @@ const baseColDefs = computed(() => {
         return `<span style="background-color:#e0f2f1;color:#00695c;padding:2px 8px;border-radius:10px;font-weight:500;">已授權 ×${n}</span>`;
       },
     },
+    {
+      headerName: '受託人姓名',
+      colId: 'agentName',
+      width: 130,
+      editable: false,
+      valueGetter: (params) => getLatestAgentInfo(params.data?.authorizationLetterUrl).agentName,
+    },
+    {
+      headerName: '與委託人關係',
+      colId: 'agentRelationship',
+      width: 130,
+      editable: false,
+      valueGetter: (params) => getLatestAgentInfo(params.data?.authorizationLetterUrl).agentRelationship,
+    },
+    {
+      headerName: '受託人電話',
+      colId: 'agentPhone',
+      width: 140,
+      editable: false,
+      valueGetter: (params) => getLatestAgentInfo(params.data?.authorizationLetterUrl).agentPhone,
+    },
     { 
        headerName: '客戶回傳', 
        field: 'customerMessages', 
@@ -2624,6 +2663,60 @@ onUnmounted(() => {
    flex: 0 0 auto;
    margin-left: 8px;
 }
+/* 驗屋授權書清單（每筆含受託人 meta 區塊） */
+.hdm-auth-list {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+   width: 100%;
+}
+.hdm-auth-item {
+   padding: 8px 10px;
+   background: #ffffff;
+   border: 1px solid #e0e0e0;
+   border-left: 3px solid #00796b;
+   border-radius: 4px;
+}
+.hdm-auth-link {
+   display: flex;
+   align-items: center;
+   color: #00695c;
+   text-decoration: none;
+   font-size: 0.875rem;
+   font-weight: 500;
+   margin-bottom: 4px;
+}
+.hdm-auth-link:hover { text-decoration: underline; }
+.hdm-auth-meta {
+   display: grid;
+   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+   gap: 2px 12px;
+   padding-left: 22px;
+   padding-top: 4px;
+   border-top: 1px dashed #eeeeee;
+   margin-top: 4px;
+}
+.hdm-auth-meta-row {
+   display: flex;
+   align-items: center;
+   font-size: 0.8125rem;
+   gap: 6px;
+}
+.hdm-auth-meta-row label {
+   color: #757575;
+   min-width: 90px;
+   flex-shrink: 0;
+}
+.hdm-auth-meta-row span,
+.hdm-auth-meta-row a {
+   color: #424242;
+   word-break: break-all;
+}
+.hdm-auth-meta-row a {
+   color: #1976d2;
+   text-decoration: none;
+}
+.hdm-auth-meta-row a:hover { text-decoration: underline; }
 /* 開關 row */
 .hdm-switch-row {
    display: flex;
