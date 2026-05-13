@@ -7308,9 +7308,10 @@ exports.completeAuthSigningProcess = onCall({
       const householdDocId = `${sessionData.projectId}_${sessionData.unitId}`;
       const householdRef = db.collection("households").doc(householdDocId);
       //  使用 arrayUnion 將新文件加入陣列，而不是覆蓋
+      const _today = new Date().toISOString().slice(0, 10);
       transaction.update(householdRef, {
         authorizationLetterUrl: admin.firestore.FieldValue.arrayUnion({
-          name: `授權書-${new Date().toISOString().slice(0, 10)}`,
+          name: `${sessionData.unitId}驗屋授權書-${_today}`,
           url: finalUrl
         })
       });

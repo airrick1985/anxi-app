@@ -646,6 +646,30 @@
          </v-card-text>
       </v-card>
 
+      <!-- 驗屋授權書 -->
+      <v-card variant="outlined" class="mb-3">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-teal-lighten-5 d-flex align-center">
+            <v-icon size="small" class="mr-1" color="teal-darken-2">mdi-file-sign</v-icon>
+            <span>驗屋授權書</span>
+            <v-chip size="x-small" :color="authLetters.length > 0 ? 'teal' : 'grey'" variant="tonal" class="ml-2">
+               {{ authLetters.length > 0 ? `已授權 ${authLetters.length}` : '未授權' }}
+            </v-chip>
+         </v-card-title>
+         <v-card-text class="pt-2 pb-2">
+            <div v-if="authLetters.length === 0" class="text-caption text-grey text-center py-3">
+               尚未上傳驗屋授權書（受託人完成簽署後將自動歸檔於此）
+            </div>
+            <div v-else class="hdm-report-list">
+               <div v-for="(file, idx) in authLetters" :key="`al-${idx}`" class="hdm-report-item">
+                  <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-report-link">
+                     <v-icon size="small" color="teal-darken-2" class="mr-1">mdi-file-sign</v-icon>
+                     <span>{{ formatAuthLetterName(file, selectedHouseholdForDetail.unitId) }}</span>
+                  </a>
+               </div>
+            </div>
+         </v-card-text>
+      </v-card>
+
       <!-- 客戶回傳訊息 -->
       <v-card variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-info-lighten-5 d-flex align-center">
@@ -727,6 +751,8 @@ import { AgGridVue } from "ag-grid-vue3";
 import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
+import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.vue';
+import { formatAuthLetterName, extractAuthLetterDate } from '@/utils/authLetterName.js';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 
 
@@ -1329,6 +1355,19 @@ const inspectionReports = computed(() => {
    if (!Array.isArray(arr)) return [];
    return arr.filter(f => f && typeof f.name === 'string' && typeof f.url === 'string');
 });
+
+// 戶別整合 Modal — 驗屋授權書（可能多筆，依名稱中的日期由新→舊排序）
+const authLetters = computed(() => {
+   const arr = selectedHouseholdForDetail.value?.authorizationLetterUrl;
+   if (!Array.isArray(arr)) return [];
+   const list = arr.filter(f => f && typeof f.name === 'string' && typeof f.url === 'string');
+   // 後端產生的檔名格式可能含日期，從中抽出排序（由新→舊）
+   return list.slice().sort((a, b) => {
+      const da = extractAuthLetterDate(a.name);
+      const db = extractAuthLetterDate(b.name);
+      return db.localeCompare(da);
+   });
+});
 const onModalMarkReportDownloaded = (file) => {
    if (!selectedHouseholdForDetail.value) return;
    confirmMarkDownloaded(file, selectedHouseholdForDetail.value);
@@ -1762,6 +1801,23 @@ const baseColDefs = computed(() => {
      { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false, cellRendererParams: { onDelete: confirmDeleteReport, onDownloadMark: confirmMarkDownloaded } } ,
     { headerName: '驗屋報告資料夾', field: 'inspectionReportFolderUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
+    { headerName: '驗屋授權書', field: 'authorizationLetterUrl', cellRenderer: AuthLetterArrayRenderer, minWidth: 220, flex: 2, editable: false },
+    {
+      headerName: '授權狀態',
+      field: 'authorizationLetterUrl',
+      colId: 'authStatus',
+      width: 110,
+      editable: false,
+      valueGetter: (params) => {
+        const arr = params.data?.authorizationLetterUrl;
+        return Array.isArray(arr) ? arr.filter(f => f && f.url).length : 0;
+      },
+      cellRenderer: (params) => {
+        const n = params.value || 0;
+        if (n === 0) return '<span style="color:#9e9e9e;">未授權</span>';
+        return `<span style="background-color:#e0f2f1;color:#00695c;padding:2px 8px;border-radius:10px;font-weight:500;">已授權 ×${n}</span>`;
+      },
+    },
     { 
        headerName: '客戶回傳', 
        field: 'customerMessages', 

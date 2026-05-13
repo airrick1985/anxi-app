@@ -2703,6 +2703,7 @@ const submitBooking = async () => {
         companyName: finalBookingData.value.companyName,
         // 授權書相關
         principalName: authFormData.value.委託人姓名,
+        principalPhone: authFormData.value.委託人電話,
         principalIdNumber: authFormData.value.委託人身分證,
         principalAddress: authFormData.value.委託人戶籍地,
         agentName: finalBookingData.value.受託人姓名,
