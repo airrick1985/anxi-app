@@ -190,46 +190,13 @@
       </v-card>
     </v-dialog>
     
-    <!-- 新增：活動訊息彈窗 -->
-    <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-      <v-card class="d-flex flex-column">
-        <v-toolbar dark color="teal" density="compact">
-          <v-btn icon dark @click="isActivityDialogVisible = false">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <v-toolbar-title>活動訊息</v-toolbar-title>
-        </v-toolbar>
-        <div class="flex-grow-1" style="position: relative;">
-          <v-overlay
-            :model-value="isActivityLoading"
-            class="align-center justify-center"
-            persistent
-            scrim="rgba(0, 0, 0, 0.6)"
-          >
-            <div class="text-center">
-              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
-              <p class="mt-4 text-body-1">正在載入活動訊息...</p>
-            </div>
-          </v-overlay>
-          <div v-if="!isActivityLoading" class="fill-height">
-            <iframe
-              v-if="activitySlideEmbedUrl"
-              :src="activitySlideEmbedUrl"
-              frameborder="0"
-              width="100%"
-              height="100%"
-              allowfullscreen="true"
-              style="display: block;"
-            ></iframe>
-            <div v-else class="d-flex flex-column justify-center align-center fill-height">
-              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
-              <p class="mt-4 text-h6 text-grey">無法載入活動訊息</p>
-              <p class="text-body-1 text-grey">請確認後台是否已設定活動訊息 SLIDE ID。</p>
-            </div>
-          </div>
-        </div>
-      </v-card>
-    </v-dialog>
+    <!-- 活動訊息彈窗 (圖檔燈箱版) -->
+    <ActivityMessageViewer
+      v-model="isActivityDialogVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+      :can-upload="canUploadActivityMessage"
+    />
 
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
@@ -332,19 +299,19 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useParkingStore } from '@/store/parkingStore';
 import { useAdminStore } from '@/store/adminStore'; // 1. 引入 adminStore
-import { 
-  generateQuotePdf, 
+import {
+  generateQuotePdf,
   fetchSalesControlData,
   fetchQuotePersonnelList,
   fetchSalesPersonnelList, // 新增 Firestore 版本
   fetchPaymentTermTemplates, // 新增：期款範本 API
   selectApplicableTemplates, // 新增：範本選擇邏輯
-  fetchActivityMessageSlideId // 匯入新 API
 } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
 import PrintQuotation from '@/views/PrintQuotation.vue';
+import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -414,14 +381,13 @@ const availableTemplates = ref([]); // 符合條件的範本列表
 const selectedTemplateId = ref(''); // 使用者選擇的範本ID
 const currentQuoteItem = ref(null); // 目前處理的報價項目
 
-// --- 新增：活動訊息相關狀態 ---
+// --- 活動訊息相關狀態 ---
 const isActivityDialogVisible = ref(false);
-const activitySlideId = ref('');
-const isActivityLoading = ref(false);
 
-const activitySlideEmbedUrl = computed(() => {
-  if (!activitySlideId.value) return '';
-  return `https://docs.google.com/presentation/d/${activitySlideId.value}/embed?start=true&loop=true&delayms=3000`;
+const canUploadActivityMessage = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', projectName.value);
 });
 
 // ✅ [新增] 判斷是否顯示優付欄位 (與 PaymentSettings.vue 邏輯一致)
@@ -629,19 +595,9 @@ function applyNewRounding(value, method, roundingValue = 1) {
 // --- 其他所有函式 ---
 
 
-// --- 新增：處理活動訊息點擊事件 ---
-async function handleOpenActivityMessage() {
-  isActivityLoading.value = true;
+// --- 處理活動訊息點擊事件 ---
+function handleOpenActivityMessage() {
   isActivityDialogVisible.value = true;
-  activitySlideId.value = ''; // 重置舊的 ID
-  try {
-    const slideId = await fetchActivityMessageSlideId(projectName.value);
-    activitySlideId.value = slideId;
-  } catch (err) {
-    console.error('獲取活動訊息失敗:', err);
-  } finally {
-    isActivityLoading.value = false;
-  }
 }
 
 const showPackageDealColumns = computed(() => {

@@ -2485,6 +2485,141 @@ exports.handleSalesImageDelete = onCall(async (request) => {
 
 
 // =================================================================
+// 【新增】活動訊息圖片管理代理 Cloud Functions
+// =================================================================
+
+const ACTIVITY_MESSAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ACTIVITY_MESSAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+
+/**
+ * 驗證使用者是否擁有指定建案的「銷控系統」管理權限。
+ * 通過條件：roles 含「超級管理員/系統管理員」，或 userPermissions[projectId].systems 含「銷控系統」。
+ */
+async function _ensureActivityMessageManagePermission(anxiDb, userKey, projectId) {
+  if (!userKey) {
+    throw new HttpsError("unauthenticated", "缺少使用者識別 (userKey)。");
+  }
+  const userSnap = await anxiDb.collection("users").doc(userKey).get();
+  if (!userSnap.exists) {
+    throw new HttpsError("permission-denied", "找不到對應使用者資料。");
+  }
+  const roles = userSnap.data().roles || [];
+  if (roles.includes("超級管理員") || roles.includes("系統管理員")) return;
+
+  const permSnap = await anxiDb.collection("userPermissions").doc(userKey).get();
+  const permissions = permSnap.exists ? (permSnap.data().permissions || {}) : {};
+  const systems = permissions[projectId]?.systems || [];
+  if (!systems.includes("銷控系統")) {
+    throw new HttpsError("permission-denied", "您沒有此建案的「銷控系統」管理權限。");
+  }
+}
+
+/**
+ * 將原始檔名安全化：移除路徑分隔符與不可見字元，限制長度。
+ */
+function _safeActivityFileName(rawName) {
+  const base = String(rawName || 'file').replace(/[\\\/\r\n\t]+/g, '_').trim();
+  return base.length > 120 ? base.slice(0, 120) : base;
+}
+
+/**
+ * 代理上傳活動訊息圖片
+ * 入參：{ projectId, userKey, fileName, fileBase64, contentType }
+ * 回傳：{ status, downloadURL, storagePath }
+ */
+exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
+  const { projectId, userKey, fileName, fileBase64, contentType } = request.data || {};
+  const functionName = `handleActivityMessageUpload (Project: ${projectId})`;
+
+  if (!projectId || !fileName || !fileBase64 || !contentType) {
+    throw new HttpsError("invalid-argument", "缺少上傳所需的參數 (projectId/fileName/fileBase64/contentType)。");
+  }
+  if (!ACTIVITY_MESSAGE_ALLOWED_TYPES.includes(contentType)) {
+    throw new HttpsError("invalid-argument", `不支援的圖片格式：${contentType}，僅允許 JPG / PNG / WEBP。`);
+  }
+
+  const buffer = Buffer.from(fileBase64, 'base64');
+  if (buffer.length === 0) {
+    throw new HttpsError("invalid-argument", "檔案內容為空或 Base64 解碼失敗。");
+  }
+  if (buffer.length > ACTIVITY_MESSAGE_MAX_BYTES) {
+    throw new HttpsError("invalid-argument", `圖檔大小 ${(buffer.length / 1024 / 1024).toFixed(2)}MB 超過 2MB 上限。`);
+  }
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  await _ensureActivityMessageManagePermission(anxiDb, userKey, projectId);
+
+  try {
+    const safeName = _safeActivityFileName(fileName);
+    const storagePath = `projects/${projectId}/activityMessages/${Date.now()}_${safeName}`;
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(storagePath);
+
+    const stream = Readable.from(buffer);
+    await new Promise((resolve, reject) => {
+      stream.pipe(file.createWriteStream({
+        metadata: { contentType },
+        resumable: false
+      }))
+        .on('error', (err) => reject(err))
+        .on('finish', () => resolve());
+    });
+
+    await file.makePublic();
+    const publicUrl = file.publicUrl();
+
+    console.log(`[${functionName}] 活動訊息圖檔上傳成功: ${publicUrl}`);
+    return {
+      status: "success",
+      downloadURL: publicUrl,
+      storagePath
+    };
+  } catch (error) {
+    console.error(`[${functionName}] 上傳失敗:`, error);
+    throw new HttpsError("internal", `後端上傳活動訊息圖檔時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * 代理刪除活動訊息圖片 (含 Storage 檔案與 Firestore 記錄)
+ * 入參：{ projectId, userKey, docId, storagePath }
+ */
+exports.handleActivityMessageDelete = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
+  const { projectId, userKey, docId, storagePath } = request.data || {};
+  const functionName = `handleActivityMessageDelete (Project: ${projectId})`;
+
+  if (!projectId || !docId || !storagePath) {
+    throw new HttpsError("invalid-argument", "缺少刪除所需的參數 (projectId/docId/storagePath)。");
+  }
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  await _ensureActivityMessageManagePermission(anxiDb, userKey, projectId);
+
+  try {
+    const bucket = admin.storage().bucket();
+    try {
+      await bucket.file(storagePath).delete();
+      console.log(`[${functionName}] Storage 檔案已刪除: ${storagePath}`);
+    } catch (err) {
+      if (err.code === 404) {
+        console.warn(`[${functionName}] Storage 檔案不存在，略過: ${storagePath}`);
+      } else {
+        throw err;
+      }
+    }
+
+    await anxiDb.collection("activityMessages").doc(docId).delete();
+    console.log(`[${functionName}] Firestore 文件已刪除: ${docId}`);
+
+    return { status: "success", message: "活動訊息已成功刪除" };
+  } catch (error) {
+    console.error(`[${functionName}] 刪除失敗:`, error);
+    throw new HttpsError("internal", `後端刪除活動訊息時發生錯誤: ${error.message}`);
+  }
+});
+
+
+// =================================================================
 // /  【新增】銷控 SVG 圖片管理代理 Cloud Functions
 // =================================================================
 
@@ -7271,6 +7406,7 @@ exports.getAuthSigningSession = onCall(async (request) => {
 //  START: 修改 - 完成簽署流程並寄送通知信
 exports.completeAuthSigningProcess = onCall({
   region: "asia-east1",
+  memory: "512MiB",
   secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"], //  加入 secrets
 }, async (request) => {
   const { token, finalUrl } = request.data;

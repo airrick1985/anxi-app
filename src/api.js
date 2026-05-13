@@ -2192,23 +2192,6 @@ export async function backupSpreadsheet(projectName) {
   }, SALES_API);
 }
 
-/**
- * 獲取活動訊息的 Google Slide ID
- * @param {string} projectName - 建案名稱
- */
-export async function fetchActivityMessageSlideId(projectName) {
-  const response = await fetchPost({
-    action: 'get_activity_message_slide_id',
-    projectName,
-    token: 'anxi111003'
-  }, SALES_API);
-  if (response.status === 'success') {
-    return response.data.slideId;
-  }
-  throw new Error(response.message || '無法獲取活動訊息 Slide ID。');
-}
-
-
 // =============================================
 //  驗屋預約系統 API (Firestore 遷移版)
 // =============================================
@@ -4431,6 +4414,72 @@ export const deleteSalesImage = async (docId, storagePath) => {
   } catch (error) {
     console.error("呼叫 handleSalesImageDelete 雲端函式時發生錯誤:", error);
     throw new Error(error.message || "代理刪除失敗");
+  }
+};
+
+// =================================================================
+// 【新增】活動訊息圖片 API（取代舊版 Google Slides 嵌入）
+// =================================================================
+
+/**
+ * 即時監聽指定建案的活動訊息圖片列表（依 sortOrder 由大到小，最新的在前）
+ */
+export const listenToActivityMessages = (projectId, onDataChange, onError) => {
+  const q = query(
+    collection(db, "activityMessages"),
+    where("projectId", "==", projectId),
+    orderBy("sortOrder", "desc")
+  );
+  return onSnapshot(q, (snapshot) => {
+    const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    onDataChange(items);
+  }, (error) => {
+    console.error(`監聽活動訊息時發生錯誤 (Project: ${projectId}):`, error);
+    if (onError) onError(error);
+  });
+};
+
+/**
+ * 透過 Cloud Function 代理上傳活動訊息圖檔
+ * @returns {Promise<{downloadURL: string, storagePath: string}>}
+ */
+export const uploadActivityMessage = async ({ projectId, userKey, fileName, fileBase64, contentType }) => {
+  try {
+    const uploader = httpsCallable(functions, 'handleActivityMessageUpload');
+    const result = await uploader({ projectId, userKey, fileName, fileBase64, contentType });
+    if (result.data.status === 'success') return result.data;
+    throw new Error(result.data.message || '上傳失敗');
+  } catch (error) {
+    console.error("呼叫 handleActivityMessageUpload 雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "上傳失敗");
+  }
+};
+
+/**
+ * 寫入活動訊息 metadata 至 Firestore
+ */
+export const addActivityMessageMetadata = async (metadata) => {
+  const colRef = collection(db, "activityMessages");
+  const docRef = await addDoc(colRef, metadata);
+  return docRef.id;
+};
+
+/**
+ * 透過 Cloud Function 代理刪除活動訊息圖檔（含 Storage 與 Firestore）
+ */
+export const deleteActivityMessage = async ({ projectId, userKey, docId, storagePath }) => {
+  if (!projectId || !docId || !storagePath) {
+    throw new Error('缺少 projectId / docId / storagePath，無法刪除活動訊息。');
+  }
+  try {
+    const deleter = httpsCallable(functions, 'handleActivityMessageDelete');
+    const result = await deleter({ projectId, userKey, docId, storagePath });
+    if (result.data.status !== 'success') {
+      throw new Error(result.data.message || '刪除失敗');
+    }
+  } catch (error) {
+    console.error("呼叫 handleActivityMessageDelete 雲端函式時發生錯誤:", error);
+    throw new Error(error.message || "刪除失敗");
   }
 };
 

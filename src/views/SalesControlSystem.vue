@@ -1171,45 +1171,12 @@
       </v-card>
     </v-dialog>
 
-        <v-dialog v-model="isActivityDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
-      <v-card class="d-flex flex-column">
-        <v-toolbar dark color="#f5f5f7" density="compact">
-          <v-btn icon dark @click="isActivityDialogVisible = false">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <v-toolbar-title>活動訊息</v-toolbar-title>
-        </v-toolbar>
-        <div class="flex-grow-1" style="position: relative;">
-          <v-overlay
-            :model-value="isActivityLoading"
-            class="align-center justify-center"
-            persistent
-            scrim="rgba(0, 0, 0, 0.6)"
-          >
-            <div class="text-center">
-              <v-progress-circular indeterminate color="#008cff" size="64"></v-progress-circular>
-              <p class="mt-4 text-body-1">正在載入活動訊息...</p>
-            </div>
-          </v-overlay>
-          <div v-if="!isActivityLoading" class="fill-height">
-            <iframe
-              v-if="activitySlideEmbedUrl"
-              :src="activitySlideEmbedUrl"
-              frameborder="0"
-              width="100%"
-              height="100%"
-              allowfullscreen="true"
-              style="display: block;"
-            ></iframe>
-            <div v-else class="d-flex flex-column justify-center align-center fill-height">
-              <v-icon size="80" color="grey-lighten-1">mdi-alert-circle-outline</v-icon>
-              <p class="mt-4 text-h6 text-grey">無法載入活動訊息</p>
-              <p class="text-body-1 text-grey">請確認後台是否已設定活動訊息 SLIDE ID。</p>
-            </div>
-          </div>
-        </div>
-      </v-card>
-    </v-dialog>
+    <ActivityMessageViewer
+      v-model="isActivityDialogVisible"
+      :project-id="projectId"
+      :project-name="project.name"
+      :can-upload="canUploadActivityMessage"
+    />
 
 
     <v-dialog v-model="uploadDialog" max-width="600px" persistent>
@@ -1444,6 +1411,8 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue';
 import SalesBotChat from '@/components/SalesBotChat.vue';
 import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
+import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
+import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
@@ -2032,7 +2001,7 @@ const displayType = ref('住家');
 const priceDisplayMode = ref('list');
 
 const isActivityDialogVisible = ref(false);
-const isActivityLoading = ref(false);
+const userStore = useUserStore();
 
 const isAIAssistantDialogVisible = ref(false);
 const isAnalyticsPanelVisible = ref(false);
@@ -2059,10 +2028,10 @@ const allDataForModal = computed(() => {
     '銷售人員': salesPersonnel.value, 
   };
 });
-const activitySlideEmbedUrl = computed(() => {
-  const slideId = project.value.activityMessageSlideId;
-  if (!slideId) return '';
-  return `https://docs.google.com/presentation/d/${slideId}/embed?start=true&loop=true&delayms=3000`;
+const canUploadActivityMessage = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', project.value?.name);
 });
 
 // --- Computed Properties ---
@@ -2458,12 +2427,7 @@ function handleOpenSlideViewer() {
 }
 
 function handleOpenActivityMessage() {
-  isActivityLoading.value = true;
   isActivityDialogVisible.value = true;
-  
-  setTimeout(() => {
-    isActivityLoading.value = false;
-  }, 1200);
 }
 
 function navigateToSalesSettings() {
