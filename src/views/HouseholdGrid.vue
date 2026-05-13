@@ -2084,8 +2084,11 @@ const finalColDefs = computed(() => {
 // --- 匯出 Excel 功能 ---
 const exportToExcel = () => {
   // 1. 從 colDefs 提取欄位和標頭，並在開頭加入 _docId
-   const exportFields = ['_docId', ...finalColDefs.value.map(def => def.field)];
-   const chineseHeaders = ['文件ID', ...finalColDefs.value.map(def => def.headerName)];
+  //    對於只有 colId 沒有 field 的欄位（例如「受託人姓名/與委託人關係/受託人電話」），
+  //    用 colId 作為 key；兩者都缺則過濾掉避免後續 key.startsWith() crash
+   const exportableColDefs = finalColDefs.value.filter(def => def && (def.field || def.colId));
+   const exportFields = ['_docId', ...exportableColDefs.map(def => def.field || def.colId)];
+   const chineseHeaders = ['文件ID', ...exportableColDefs.map(def => def.headerName)];
 
 
   // 2. 排序資料
@@ -2135,6 +2138,14 @@ const exportToExcel = () => {
           const fieldId = rest.substring(lastIdx + 1);
           value = item._bookingInfo?.[type]?.bookingMethodDetails?.[fieldId];
         }
+      } else if (key === 'agentName' || key === 'agentPhone' || key === 'agentRelationship') {
+        // 受託人三欄：從 authorizationLetterUrl 陣列最新一筆取出
+        value = getLatestAgentInfo(item.authorizationLetterUrl)[key];
+      } else if (key === 'authStatus') {
+        // 授權狀態欄位（colId）：取陣列長度
+        const arr = item.authorizationLetterUrl;
+        const n = Array.isArray(arr) ? arr.filter(f => f && f.url).length : 0;
+        value = n > 0 ? `已授權 ×${n}` : '未授權';
       } else if (key.includes('.')) {
         // 原有的巢狀欄位處理邏輯
         const parts = key.split('.');
