@@ -9,11 +9,7 @@ import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導�
 import VueDraggableResizable from 'vue-draggable-resizable'
 import 'vue-draggable-resizable/style.css'
 
-// ✅【新增】AG Grid 模組註冊
-import { ModuleRegistry } from 'ag-grid-community';
-import { AllEnterpriseModule } from 'ag-grid-enterprise'; // 引入企業版所有模組
-
-ModuleRegistry.registerModules([ AllEnterpriseModule ]); // 註冊所有模組
+// AG Grid 模組註冊已移至 HouseholdGrid.vue（唯一消費者），首頁不再被迫載入 ag-grid 整包
 
 // ✅ 加入 Toast 套件
 import Toast from 'vue-toastification'

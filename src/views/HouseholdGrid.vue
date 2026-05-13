@@ -790,8 +790,11 @@ import { useUserStore } from '@/store/user';
 import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
-import "ag-grid-enterprise";
+import { ModuleRegistry } from "ag-grid-community";
+import { AllEnterpriseModule } from "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
+// 將 AG Grid 模組註冊延後至此（原本在 main.js）：只有進入到本頁時才會載入 ag-grid 相關 chunk
+ModuleRegistry.registerModules([AllEnterpriseModule]);
 import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
