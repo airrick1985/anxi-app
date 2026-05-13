@@ -24,15 +24,9 @@ import 'vue-toastification/dist/index.css'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. 導入插件
 
-// 直接註冊最小 SW（public/sw.js），僅為保留 PWA「安裝為 App」功能；SW 本身不做快取
-// 不透過 vite-plugin-pwa / virtual:pwa-register（那條路徑已被 stub 成 no-op）
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('Service Worker registration failed:', err);
-    });
-  });
-}
+// PWA 已停用，且不再註冊 Service Worker。
+// public/sw.js 仍會被瀏覽器自動更新檢查到 → 跑一次 activate 就會清掉舊快取並自我 unregister，
+// 之後新訪客完全不會有 SW 介入網路請求。
 
 /* import the fontawesome core */
 import { library } from '@fortawesome/fontawesome-svg-core';
