@@ -16,17 +16,26 @@
         </v-toolbar-title>
         <v-spacer></v-spacer>
         <v-btn
+          v-if="messages.length > 1"
+          :icon="isThumbnailVisible ? 'mdi-view-grid' : 'mdi-view-grid-outline'"
+          variant="text"
+          color="white"
+          :title="isThumbnailVisible ? '隱藏縮圖列表' : '顯示縮圖列表'"
+          @click="isThumbnailVisible = !isThumbnailVisible"
+        />
+        <v-btn
           v-if="canUpload"
           color="white"
           variant="outlined"
           prepend-icon="mdi-cloud-upload"
+          class="ml-2"
           @click="isUploadDialogOpen = true"
         >
           上傳圖檔
         </v-btn>
       </v-toolbar>
 
-      <div class="flex-grow-1 d-flex flex-column" style="position: relative; min-height: 0;">
+      <div class="flex-grow-1 d-flex" style="position: relative; min-height: 0;">
         <v-overlay
           :model-value="isLoading"
           class="align-center justify-center"
@@ -56,69 +65,106 @@
           </div>
 
           <template v-else>
-            <div class="flex-grow-1 d-flex justify-center align-center pa-4" style="min-height: 0;">
-              <v-carousel
-                v-model="currentIndex"
-                :show-arrows="messages.length > 1 ? 'hover' : false"
-                :cycle="false"
-                hide-delimiters
-                height="100%"
-                class="fill-height"
-                style="width: 100%;"
-              >
-                <v-carousel-item
-                  v-for="(item, idx) in messages"
-                  :key="item.id"
-                  :value="idx"
-                >
-                  <div class="d-flex justify-center align-center fill-height">
-                    <v-img
-                      :src="item.downloadURL"
-                      :alt="item.fileName"
-                      contain
-                      max-height="100%"
-                      max-width="100%"
-                    >
-                      <template v-slot:placeholder>
-                        <div class="d-flex justify-center align-center fill-height">
-                          <v-progress-circular indeterminate color="white"></v-progress-circular>
-                        </div>
-                      </template>
-                    </v-img>
-                  </div>
-                </v-carousel-item>
-              </v-carousel>
-            </div>
-
-            <div
-              class="thumbnail-bar d-flex align-center px-4 py-3"
-              style="background-color: rgba(0, 0, 0, 0.6); overflow-x: auto; flex-shrink: 0;"
-            >
+            <div class="lightbox-stage flex-grow-1" ref="stageRef">
               <div
-                v-for="(item, idx) in messages"
-                :key="item.id"
-                class="thumbnail-item mr-3 flex-shrink-0"
-                :class="{ 'is-active': idx === currentIndex }"
-                @click="currentIndex = idx"
+                v-if="currentMessage"
+                ref="panRef"
+                class="lightbox-pan-target"
+                @dblclick="toggleZoom"
               >
-                <v-img
-                  :src="item.downloadURL"
-                  :alt="item.fileName"
-                  cover
-                  width="80"
-                  height="80"
-                  class="rounded"
-                ></v-img>
+                <img
+                  :key="currentMessage.id"
+                  ref="imgRef"
+                  :src="currentMessage.downloadURL"
+                  :alt="currentMessage.fileName"
+                  class="lightbox-image"
+                  draggable="false"
+                  @load="onImageLoaded"
+                />
+              </div>
+
+              <!-- 左右切換 -->
+              <v-btn
+                v-if="messages.length > 1"
+                icon="mdi-chevron-left"
+                size="large"
+                class="nav-btn nav-prev"
+                @click="prev"
+              />
+              <v-btn
+                v-if="messages.length > 1"
+                icon="mdi-chevron-right"
+                size="large"
+                class="nav-btn nav-next"
+                @click="next"
+              />
+
+              <!-- 縮放控制 -->
+              <div class="zoom-controls">
                 <v-btn
-                  v-if="canUpload"
-                  icon="mdi-close"
-                  size="x-small"
-                  color="error"
-                  class="thumbnail-delete"
-                  @click.stop="confirmDelete(item)"
-                ></v-btn>
+                  icon="mdi-magnify-minus-outline"
+                  size="small"
+                  variant="text"
+                  color="white"
+                  @click="zoomOut"
+                />
+                <span class="scale-label">{{ scalePercent }}%</span>
+                <v-btn
+                  icon="mdi-magnify-plus-outline"
+                  size="small"
+                  variant="text"
+                  color="white"
+                  @click="zoomIn"
+                />
+                <v-divider vertical class="mx-1" color="white" />
+                <v-btn
+                  icon="mdi-image-filter-center-focus"
+                  size="small"
+                  variant="text"
+                  color="white"
+                  title="復位"
+                  @click="resetZoom"
+                />
+              </div>
+
+              <!-- 計數提示 -->
+              <div v-if="messages.length > 1" class="counter-pill">
+                {{ currentIndex + 1 }} / {{ messages.length }}
               </div>
             </div>
+
+            <!-- 側邊縮圖列（垂直） -->
+            <transition name="slide-panel">
+              <div
+                v-if="isThumbnailVisible && messages.length > 1"
+                class="thumbnail-panel"
+              >
+                <div
+                  v-for="(item, idx) in messages"
+                  :key="item.id"
+                  class="thumbnail-item"
+                  :class="{ 'is-active': idx === currentIndex }"
+                  @click="selectThumbnail(idx)"
+                >
+                  <v-img
+                    :src="item.downloadURL"
+                    :alt="item.fileName"
+                    cover
+                    width="80"
+                    height="80"
+                    class="rounded"
+                  ></v-img>
+                  <v-btn
+                    v-if="canUpload"
+                    icon="mdi-close"
+                    size="x-small"
+                    color="error"
+                    class="thumbnail-delete"
+                    @click.stop="confirmDelete(item)"
+                  ></v-btn>
+                </div>
+              </div>
+            </transition>
           </template>
         </template>
       </div>
@@ -231,7 +277,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import {
@@ -261,6 +307,11 @@ const messages = ref([]);
 const isLoading = ref(false);
 const currentIndex = ref(0);
 
+// 寬螢幕預設展開側邊縮圖列；窄螢幕（< 768px）預設收合，避免擠壓主圖
+const isThumbnailVisible = ref(
+  typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+);
+
 const isUploadDialogOpen = ref(false);
 const filePickerModel = ref([]);
 const stagedFiles = ref([]);
@@ -271,6 +322,122 @@ const pendingDeleteItem = ref(null);
 const isDeleting = ref(false);
 
 let unsubscribe = null;
+
+// --- 燈箱縮放/拖曳 (panzoom 動態載入) ---
+const stageRef = ref(null);
+const panRef = ref(null);
+const imgRef = ref(null);
+const currentScale = ref(1);
+const scalePercent = computed(() => Math.round(currentScale.value * 100));
+let panzoomInstance = null;
+let PanzoomCtor = null;
+let wheelBound = null;
+let panzoomChangeHandler = null;
+
+const currentMessage = computed(() => messages.value[currentIndex.value] || null);
+
+async function ensurePanzoom() {
+  if (PanzoomCtor) return PanzoomCtor;
+  const mod = await import('@panzoom/panzoom');
+  PanzoomCtor = mod.default;
+  return PanzoomCtor;
+}
+
+async function initPanzoom() {
+  await nextTick();
+  if (!panRef.value || !stageRef.value) return;
+  const Panzoom = await ensurePanzoom();
+
+  destroyPanzoom();
+
+  // 將 panzoom 套用在「包住 img 的 wrapper div」而非 img 本身：
+  // panzoom 以 CSS transform 縮放/平移，wrapper 沒有 max-width 干擾，scale 行為才會直觀
+  const targetEl = panRef.value;
+  panzoomInstance = Panzoom(targetEl, {
+    maxScale: 6,
+    minScale: 1,
+    step: 0.5,
+    cursor: 'grab',
+    startScale: 1,
+    animate: true,
+    // 預設禁止拖移：scale=1 時不能拖（圖片本來就 fit 容器，拖移無意義）
+    // 在 panzoomchange 事件中根據縮放程度動態開關
+    disablePan: true,
+  });
+  currentScale.value = 1;
+
+  wheelBound = (e) => panzoomInstance.zoomWithWheel(e);
+  stageRef.value.addEventListener('wheel', wheelBound, { passive: false });
+
+  panzoomChangeHandler = (e) => {
+    currentScale.value = e.detail.scale;
+    // 只有放大後才允許拖移
+    panzoomInstance?.setOptions({
+      disablePan: e.detail.scale <= 1.01,
+    });
+  };
+  targetEl.addEventListener('panzoomchange', panzoomChangeHandler);
+}
+
+function destroyPanzoom() {
+  if (panzoomInstance) {
+    if (wheelBound && stageRef.value) {
+      stageRef.value.removeEventListener('wheel', wheelBound);
+    }
+    if (panzoomChangeHandler && panRef.value) {
+      panRef.value.removeEventListener('panzoomchange', panzoomChangeHandler);
+    }
+    panzoomInstance.destroy();
+    panzoomInstance = null;
+    wheelBound = null;
+    panzoomChangeHandler = null;
+  }
+}
+
+function onImageLoaded() {
+  initPanzoom();
+}
+
+function zoomIn() { panzoomInstance?.zoomIn(); }
+function zoomOut() { panzoomInstance?.zoomOut(); }
+function resetZoom() { panzoomInstance?.reset(); }
+function toggleZoom() {
+  if (!panzoomInstance) return;
+  if (currentScale.value > 1.05) panzoomInstance.reset();
+  else panzoomInstance.zoom(2.5, { animate: true });
+}
+
+function prev() {
+  if (messages.value.length === 0) return;
+  resetZoom();
+  currentIndex.value = (currentIndex.value - 1 + messages.value.length) % messages.value.length;
+}
+function next() {
+  if (messages.value.length === 0) return;
+  resetZoom();
+  currentIndex.value = (currentIndex.value + 1) % messages.value.length;
+}
+
+function selectThumbnail(idx) {
+  if (idx === currentIndex.value) return;
+  resetZoom();
+  currentIndex.value = idx;
+}
+
+// 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界
+watch(isThumbnailVisible, async () => {
+  await nextTick();
+  if (panzoomInstance) initPanzoom();
+});
+
+function onKeydown(e) {
+  if (!props.modelValue) return;
+  if (e.key === 'ArrowLeft') prev();
+  else if (e.key === 'ArrowRight') next();
+  else if (e.key === '+' || e.key === '=') zoomIn();
+  else if (e.key === '-' || e.key === '_') zoomOut();
+  else if (e.key === '0') resetZoom();
+}
 
 function startListening() {
   if (!props.projectId) return;
@@ -303,8 +470,11 @@ watch(
   (open) => {
     if (open) {
       startListening();
+      document.addEventListener('keydown', onKeydown);
     } else {
       stopListening();
+      destroyPanzoom();
+      document.removeEventListener('keydown', onKeydown);
     }
   },
   { immediate: true }
@@ -312,6 +482,8 @@ watch(
 
 onUnmounted(() => {
   stopListening();
+  destroyPanzoom();
+  document.removeEventListener('keydown', onKeydown);
 });
 
 function close() {
@@ -460,16 +632,104 @@ async function executeDelete() {
 </script>
 
 <style scoped>
-.thumbnail-bar {
+.lightbox-stage {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0d0d0d;
+  min-height: 0;
+}
+
+.lightbox-pan-target {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  max-width: 100%;
+  /* 預設游標：fit 時 default、放大後變 grab（panzoom 套件會自動切換） */
+  touch-action: none;
+}
+
+.lightbox-image {
+  /* 預設以視窗高度為基準，寬度由比例自動決定；超出容器寬度時由 max-width 縮回 */
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  user-select: none;
+  -webkit-user-drag: none;
+  display: block;
+  /* 若圖片較寬：max-width 100% 會把它縮回，仍維持 contain 行為，但相比原本「兩維 max-100%」更偏好用滿高度 */
+  object-fit: contain;
+}
+
+.nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  color: white !important;
+}
+
+.nav-prev { left: 16px; }
+.nav-next { right: 16px; }
+
+.zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: rgba(0, 0, 0, 0.65);
+  padding: 4px 8px;
+  border-radius: 24px;
+  z-index: 5;
+  color: white;
+}
+
+.scale-label {
+  color: white;
+  font-size: 13px;
+  min-width: 44px;
+  text-align: center;
+}
+
+.counter-pill {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.thumbnail-panel {
+  width: 104px;
+  flex-shrink: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
-.thumbnail-bar::-webkit-scrollbar {
-  height: 8px;
+.thumbnail-panel::-webkit-scrollbar {
+  width: 6px;
 }
-.thumbnail-bar::-webkit-scrollbar-thumb {
+.thumbnail-panel::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .thumbnail-item {
@@ -478,6 +738,7 @@ async function executeDelete() {
   border: 2px solid transparent;
   border-radius: 6px;
   transition: border-color 0.15s ease;
+  flex-shrink: 0;
 }
 .thumbnail-item.is-active {
   border-color: #26a69a;
@@ -490,5 +751,16 @@ async function executeDelete() {
   position: absolute;
   top: -8px;
   right: -8px;
+}
+
+/* 縮圖面板進場 / 離場滑動動畫 */
+.slide-panel-enter-active,
+.slide-panel-leave-active {
+  transition: transform 0.25s ease, opacity 0.2s ease;
+}
+.slide-panel-enter-from,
+.slide-panel-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
 }
 </style>
