@@ -592,6 +592,32 @@
                <label>{{ f.label }}</label>
                <span>{{ detailBookingInfo[type]?.bookingMethodDetails?.[f.id] || '—' }}</span>
             </div>
+            <!-- 預約人聯絡資訊 -->
+            <div class="hdm-booker-divider"></div>
+            <div class="hdm-row">
+               <label>預約人姓名</label>
+               <span :class="{ 'text-grey': !detailBookingInfo[type]?.bookerName }">
+                  {{ detailBookingInfo[type]?.bookerName || '—' }}
+               </span>
+            </div>
+            <div class="hdm-row">
+               <label>預約人電話</label>
+               <span :class="{ 'text-grey': !detailBookingInfo[type]?.bookerPhone }">
+                  <a v-if="detailBookingInfo[type]?.bookerPhone" :href="`tel:${detailBookingInfo[type].bookerPhone}`">
+                     {{ detailBookingInfo[type].bookerPhone }}
+                  </a>
+                  <template v-else>—</template>
+               </span>
+            </div>
+            <div class="hdm-row">
+               <label>預約人 Email</label>
+               <span :class="{ 'text-grey': !detailBookingInfo[type]?.bookerEmail }">
+                  <a v-if="detailBookingInfo[type]?.bookerEmail" :href="`mailto:${detailBookingInfo[type].bookerEmail}`">
+                     {{ detailBookingInfo[type].bookerEmail }}
+                  </a>
+                  <template v-else>—</template>
+               </span>
+            </div>
             <div class="hdm-row hdm-row-edit">
                <label>{{ type }}批次</label>
                <v-text-field
@@ -969,7 +995,11 @@ const buildAppointmentMap = (appointmentsList) => {
         timeSlot: appt.appointmentTimeSlot || '',
         method: appt.inspectionMethod || '',                       // 純方式（不再與 subOption 合併）
         subOption: appt.bookingSubOption || '',                    // 子項目獨立屬性
-        bookingMethodDetails: appt.bookingMethodDetails || {}      // 方式額外資訊（依 method.customFields）
+        bookingMethodDetails: appt.bookingMethodDetails || {},     // 方式額外資訊（依 method.customFields）
+        // 預約人聯絡資訊
+        bookerName: appt.bookerName || '',
+        bookerPhone: appt.bookerPhone || '',
+        bookerEmail: appt.bookerEmail || ''
       };
     }
   });
@@ -2663,6 +2693,17 @@ onUnmounted(() => {
    flex: 0 0 auto;
    margin-left: 8px;
 }
+/* 預約資訊卡片內：將預約人聯絡資訊與上方欄位視覺區隔 */
+.hdm-booker-divider {
+   height: 1px;
+   background: #eeeeee;
+   margin: 6px 0 4px;
+}
+.hdm-row a {
+   color: #1976d2;
+   text-decoration: none;
+}
+.hdm-row a:hover { text-decoration: underline; }
 /* 驗屋授權書清單（每筆含受託人 meta 區塊） */
 .hdm-auth-list {
    display: flex;

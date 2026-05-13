@@ -7430,22 +7430,42 @@ exports.backfillAuthLetterAgentInfo = onCall({
   const db = new Firestore({ databaseId: "anxi-app" });
 
   try {
-    // 1. 取得該 project 所有 appointments，建立 url → appointment 索引
+    // 1A. 主資料源：authLetterSessions（每次受託人簽署的 session，含完整 formData）
+    const sessionSnap = await db.collection("authLetterSessions")
+      .where("projectId", "==", projectId)
+      .where("status", "==", "completed")
+      .get();
+
+    const sessionByUrl = new Map();
+    sessionSnap.forEach(doc => {
+      const s = doc.data();
+      const url = s?.finalDocumentUrl;
+      if (url && typeof url === 'string') {
+        sessionByUrl.set(url, s);
+      }
+    });
+
+    // 1B. 備援資料源：appointments（含 authorizationLetterUrl 的）
     const apptSnap = await db.collection("appointments")
       .where("projectId", "==", projectId)
       .get();
 
     const apptByUrl = new Map();
+    // 同時建 unitId 索引，做最後手段 fallback
+    const apptByUnitId = new Map();
     apptSnap.forEach(doc => {
       const a = doc.data();
       const url = a?.authorizationLetterUrl;
       if (url && typeof url === 'string') {
-        // 若有重複 url（理論上不會）以後寫入的覆蓋先寫入的
         apptByUrl.set(url, a);
+      }
+      if (a?.unitId && a?.agentName) {
+        if (!apptByUnitId.has(a.unitId)) apptByUnitId.set(a.unitId, []);
+        apptByUnitId.get(a.unitId).push(a);
       }
     });
 
-    console.log(`[${functionName}] 索引完成：${apptByUrl.size} 筆 appointments 含授權書 url`);
+    console.log(`[${functionName}] 索引完成：${sessionByUrl.size} 筆 sessions / ${apptByUrl.size} 筆 appointments 含授權書 url / ${apptByUnitId.size} 個 unitId 有 agentName`);
 
     // 2. 取得該 project 所有 households
     const householdsSnap = await db.collection("households")
@@ -7458,7 +7478,17 @@ exports.backfillAuthLetterAgentInfo = onCall({
       householdsUpdated: 0,
       lettersBackfilled: 0,
       lettersSkippedAlreadyHasAgent: 0,
-      lettersWithNoMatchingAppointment: 0,
+      lettersMatchedBySession: 0,        // 來自 authLetterSessions
+      lettersMatchedByAppointment: 0,    // 來自 appointments（url 精準比對）
+      lettersMatchedByUnitId: 0,         // 來自 appointments（unitId 比對，僅該戶只有一筆 appointment 時）
+      lettersWithNoMatch: 0,
+      // 診斷
+      sessionsWithUrl: sessionByUrl.size,
+      appointmentsWithAuthUrl: apptByUrl.size,
+      appointmentUnitIdsWithAgent: apptByUnitId.size,
+      sampleSessionUrls: Array.from(sessionByUrl.keys()).slice(0, 3),
+      sampleAppointmentUrls: Array.from(apptByUrl.keys()).slice(0, 3),
+      orphanLetterSamples: [],
       errors: []
     };
 
@@ -7486,24 +7516,74 @@ exports.backfillAuthLetterAgentInfo = onCall({
           return letter;
         }
 
-        // 用 url 比對 appointment
-        const appt = letter.url ? apptByUrl.get(letter.url) : null;
-        if (!appt) {
-          stats.lettersWithNoMatchingAppointment++;
-          return letter;
+        // === 多重資料源 fallback 匹配 ===
+        // 1️⃣ 主源：authLetterSessions（formData 含完整受託人資訊）
+        const session = letter.url ? sessionByUrl.get(letter.url) : null;
+        if (session && session.formData) {
+          const fd = session.formData;
+          const rel = fd.受託人關係 === '其他' ? (fd.受託人關係其他 || '其他') : (fd.受託人關係 || '');
+          docNeedsUpdate = true;
+          stats.lettersBackfilled++;
+          stats.lettersMatchedBySession++;
+          return {
+            ...letter,
+            agentName: fd.受託人姓名 || '',
+            agentPhone: fd.受託人電話 || '',
+            agentRelationship: rel,
+            principalName: fd.委託人姓名 || '',
+            principalPhone: fd.委託人電話 || '',
+            signedAt: letter.signedAt || extractDate(letter.name) || ''
+          };
         }
 
-        docNeedsUpdate = true;
-        stats.lettersBackfilled++;
-        return {
-          ...letter,
-          agentName: appt.agentName || '',
-          agentPhone: appt.agentPhone || '',
-          agentRelationship: appt.agentRelationship || '',
-          principalName: appt.principalName || '',
-          principalPhone: appt.principalPhone || '',
-          signedAt: letter.signedAt || extractDate(letter.name) || ''
-        };
+        // 2️⃣ 備援：appointments（url 精準比對）
+        const appt = letter.url ? apptByUrl.get(letter.url) : null;
+        if (appt) {
+          docNeedsUpdate = true;
+          stats.lettersBackfilled++;
+          stats.lettersMatchedByAppointment++;
+          return {
+            ...letter,
+            agentName: appt.agentName || '',
+            agentPhone: appt.agentPhone || '',
+            agentRelationship: appt.agentRelationship || '',
+            principalName: appt.principalName || '',
+            principalPhone: appt.principalPhone || '',
+            signedAt: letter.signedAt || extractDate(letter.name) || ''
+          };
+        }
+
+        // 3️⃣ 最後手段：該 unitId 在 appointments 中只有「一筆」有 agentName → 認為是該筆
+        //    （若有多筆，避免錯誤匹配，仍視為無法判斷）
+        const uid = h.unitId || hDoc.id?.split('_')[1];
+        const apptList = uid ? apptByUnitId.get(uid) : null;
+        if (apptList && apptList.length === 1) {
+          const a = apptList[0];
+          docNeedsUpdate = true;
+          stats.lettersBackfilled++;
+          stats.lettersMatchedByUnitId++;
+          return {
+            ...letter,
+            agentName: a.agentName || '',
+            agentPhone: a.agentPhone || '',
+            agentRelationship: a.agentRelationship || '',
+            principalName: a.principalName || '',
+            principalPhone: a.principalPhone || '',
+            signedAt: letter.signedAt || extractDate(letter.name) || ''
+          };
+        }
+
+        // 4️⃣ 完全找不到
+        stats.lettersWithNoMatch++;
+        if (stats.orphanLetterSamples.length < 5) {
+          stats.orphanLetterSamples.push({
+            unitId: uid || '',
+            name: letter.name || '',
+            url: letter.url || '',
+            apptCountForUnit: apptList ? apptList.length : 0
+          });
+        }
+        return letter;
       });
 
       if (docNeedsUpdate) {
