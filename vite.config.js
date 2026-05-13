@@ -55,7 +55,6 @@ export default defineConfig({
           if (id.includes('date-fns')) return 'date-fns';
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('html2canvas')) return 'html2canvas';
-          if (id.includes('fabric')) return 'fabric';
           if (id.includes('@fullcalendar')) return 'fullcalendar';
           if (id.includes('@tiptap') || id.includes('prosemirror')) return 'tiptap';
           if (id.includes('chart.js') || id.includes('vue-chartjs') || id.includes('chartjs-plugin')) return 'chart';
@@ -74,7 +73,8 @@ export default defineConfig({
             id.includes('docx') ||
             id.includes('vue-pdf-embed') ||
             id.includes('pdfjs-dist') ||
-            id.includes('shepherd')
+            id.includes('shepherd') ||
+            id.includes('fabric')
           ) {
             return undefined;
           }

@@ -292,7 +292,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'; // ✅ [修改] 加入 onBeforeRouteLeave
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
@@ -310,7 +310,8 @@ import {
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
-import PrintQuotation from '@/views/PrintQuotation.vue';
+// 改為 async 載入：PrintQuotation 帶入 fabric/jspdf 等大型套件，僅在使用者點「列印報價單」時才下載
+const PrintQuotation = defineAsyncComponent(() => import('@/views/PrintQuotation.vue'));
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 
 const route = useRoute();
