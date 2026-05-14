@@ -242,13 +242,25 @@
                           <template v-slot:title>
                             <div class="d-flex align-center justify-space-between">
                               <span class="text-subtitle-1 font-weight-medium text-truncate">{{ user.name }}</span>
-                              <v-btn
-                                icon="mdi-pencil"
-                                size="x-small"
-                                variant="text"
-                                color="primary"
-                                @click="openEditDialog(user.phone)"
-                              ></v-btn>
+                              <div class="d-flex align-center">
+                                <v-btn
+                                  v-if="canViewAndEditRoles"
+                                  icon="mdi-email"
+                                  size="x-small"
+                                  variant="text"
+                                  color="indigo"
+                                  title="傳送確認信"
+                                  @click="openEmailDialog(user)"
+                                ></v-btn>
+                                <v-btn
+                                  icon="mdi-pencil"
+                                  size="x-small"
+                                  variant="text"
+                                  color="primary"
+                                  title="編輯人員"
+                                  @click="openEditDialog(user.phone)"
+                                ></v-btn>
+                              </div>
                             </div>
                           </template>
                           <template v-slot:subtitle>
