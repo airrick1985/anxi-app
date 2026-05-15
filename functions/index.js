@@ -24045,6 +24045,105 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
 // =================================================================
 
 /**
+ * [Const] 預定義 Appointments 欄位順序（中文標題）
+ * 動態欄位（bookingMethodDetailsDisplay 展開）會插入到 inspectionCompanyName 之後、appointmentDate 之前。
+ * 各建案若有其他自訂 top-level 欄位，會自動 append 在最尾端。
+ */
+const APPOINTMENT_DEFINED_HEADERS = [
+  { key: '_id', label: 'System ID (勿動)' },
+  { key: 'createdAt', label: '建立時間' },
+  { key: 'bookingCode', label: '預約代碼' },
+  { key: 'status', label: '狀態' },
+  { key: 'projectId', label: '專案' },
+  { key: 'unitId', label: '戶號' },
+  { key: 'batchCode', label: '批次代碼' },
+  { key: 'batchId', label: '批次 ID' },
+  { key: 'address', label: '地址' },
+  { key: 'bookingType', label: '預約項目' },
+  { key: 'bookingSubOption', label: '預約子項目' },
+  { key: 'inspectionMethod', label: '預約方式' },
+  { key: 'inspectionCompanyName', label: '驗屋公司' },
+  // [動態欄位插入點]
+  { key: 'appointmentDate', label: '預約日期' },
+  { key: 'appointmentTimeSlot', label: '預約時段' },
+  { key: 'bookerName', label: '預約人姓名' },
+  { key: 'bookerPhone', label: '預約人電話' },
+  { key: 'bookerEmail', label: '預約人Email' },
+  { key: 'bookerIdNumber', label: '預約人身分證' },
+  { key: 'agentName', label: '代理人姓名' },
+  { key: 'agentPhone', label: '代理人電話' },
+  { key: 'principalName', label: '委託人姓名' },
+  { key: 'principalIdNumber', label: '委託人身分證' },
+  { key: 'principalAddress', label: '委託人地址' },
+  { key: 'authorizationLetterUrl', label: '授權書 URL' },
+  { key: 'reportUploaded', label: '上傳報告' }
+];
+
+// 內部用 / 不應該出現在 Sheet 的 key
+const APPOINTMENT_EXCLUDED_KEYS = new Set([
+  '_docId', 'id',
+  'bookingMethodDetails',         // map with UUID keys; 由 display 版本展開
+  'bookingMethodDetailsDisplay',  // 已展開為 _dynamic_*
+]);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * [Helper] 從一批 appointments 收集所有 bookingMethodDetailsDisplay 的 label
+ */
+function _collectAppointmentDynamicLabels(appointments) {
+  const labels = new Set();
+  appointments.forEach(appt => {
+    if (Array.isArray(appt.bookingMethodDetailsDisplay)) {
+      appt.bookingMethodDetailsDisplay.forEach(item => {
+        if (item && item.label && !UUID_PATTERN.test(item.label)) labels.add(item.label);
+      });
+    }
+  });
+  return [...labels];
+}
+
+/**
+ * [Helper] 從一批 appointments 收集所有未定義的 top-level key（自適應額外欄位）
+ */
+function _collectAppointmentExtraKeys(appointments) {
+  const definedKeys = new Set(APPOINTMENT_DEFINED_HEADERS.map(h => h.key));
+  const extras = new Set();
+  appointments.forEach(appt => {
+    Object.keys(appt || {}).forEach(k => {
+      if (definedKeys.has(k)) return;
+      if (APPOINTMENT_EXCLUDED_KEYS.has(k)) return;
+      if (k.startsWith('_')) return;          // 內部欄位（如 _docId）
+      if (UUID_PATTERN.test(k)) return;       // 避免 UUID key 直接成為欄位
+      extras.add(k);
+    });
+  });
+  return [...extras].sort();
+}
+
+/**
+ * [Helper] 依據一批 appointments 建立完整的 Header 列表（依序）
+ * 順序：定義欄位（前半） + 動態欄位 + 定義欄位（後半） + 自適應 extra
+ */
+function _buildAppointmentHeaders(appointments) {
+  const dynLabels = _collectAppointmentDynamicLabels(appointments);
+  const dynHeaders = dynLabels.map(label => ({ key: `_dynamic_${label}`, label }));
+
+  const insertIdx = APPOINTMENT_DEFINED_HEADERS.findIndex(h => h.key === 'appointmentDate');
+  const headers = [
+    ...APPOINTMENT_DEFINED_HEADERS.slice(0, insertIdx),
+    ...dynHeaders,
+    ...APPOINTMENT_DEFINED_HEADERS.slice(insertIdx),
+  ];
+
+  // 自適應額外欄位（建案專屬欄位等）使用 raw key 當 header label
+  const extras = _collectAppointmentExtraKeys(appointments);
+  extras.forEach(k => headers.push({ key: k, label: k }));
+
+  return headers;
+}
+
+/**
  * [API] 全量同步 Appointments 到 Google Sheet
  */
 exports.syncAppointmentsToSheet = onCall({
@@ -24065,7 +24164,6 @@ exports.syncAppointmentsToSheet = onCall({
   try {
     console.log(`[${functionName}] 開始同步預約: Project=${projectId} -> Sheet=${spreadsheetId} (${sheetName})`);
 
-    // 1. Fetch appointments
     const snapshot = await db.collection('appointments')
       .where('projectId', '==', projectId)
       .get();
@@ -24079,64 +24177,16 @@ exports.syncAppointmentsToSheet = onCall({
       appointments.push({ _docId: doc.id, ...doc.data() });
     });
 
-    // 2. Flatten Data
     const rows = appointments.map(appt => _flattenAppointmentForSheet(appt));
-
-    // 3. Define Headers
-    // 根據設計文件定義的欄位順序
-    const definedHeaders = [
-      { key: '_id', label: 'System ID (勿動)' },
-      { key: 'createdAt', label: '建立時間' },
-      { key: 'bookingCode', label: '預約代碼' },
-      { key: 'status', label: '狀態' },
-      { key: 'projectId', label: '專案' },
-      { key: 'unitId', label: '戶號' },
-      { key: 'address', label: '地址' },
-      { key: 'bookingType', label: '預約項目' },
-      { key: 'inspectionMethod', label: '預約方式' },
-      { key: 'appointmentDate', label: '預約日期' },
-      { key: 'appointmentTimeSlot', label: '預約時段' },
-      { key: 'bookerName', label: '預約人姓名' },
-      { key: 'bookerPhone', label: '預約人電話' },
-      { key: 'bookerEmail', label: '預約人Email' },
-      { key: 'bookerIdNumber', label: '預約人身分證' },
-      { key: 'agentName', label: '代理人姓名' },
-      { key: 'agentPhone', label: '代理人電話' },
-      { key: 'reportUploaded', label: '上傳報告' }
-    ];
-
-    // 動態收集所有 appointments 中 bookingMethodDetailsDisplay 的 label 作為額外欄位
-    const dynamicLabels = new Set();
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    appointments.forEach(appt => {
-      if (Array.isArray(appt.bookingMethodDetailsDisplay)) {
-        appt.bookingMethodDetailsDisplay.forEach(item => {
-          if (item.label && !uuidPattern.test(item.label)) dynamicLabels.add(item.label);
-        });
-      }
-    });
-    const dynamicHeaders = [...dynamicLabels].map(label => ({ key: `_dynamic_${label}`, label }));
-
-    // 在「預約方式」之後插入動態欄位
-    const insertIdx = definedHeaders.findIndex(h => h.key === 'inspectionMethod') + 1;
-    const allHeaders = [...definedHeaders];
-    allHeaders.splice(insertIdx, 0, ...dynamicHeaders);
-
+    const allHeaders = _buildAppointmentHeaders(appointments);
     const headerKeys = allHeaders.map(h => h.key);
     const headerRow = allHeaders.map(h => h.label);
-    const numColumns = allHeaders.length;
 
-    // 4. Transform Rows
     const values = [headerRow];
     rows.forEach(row => {
-      const rowData = headerKeys.map(key => {
-        let val = row[key];
-        return _formatValue(val);
-      });
-      values.push(rowData);
+      values.push(headerKeys.map(key => _formatValue(row[key])));
     });
 
-    // 5. Write to Sheet
     const sheets = await _getGoogleSheetClient();
 
     await sheets.spreadsheets.values.clear({
@@ -24151,7 +24201,7 @@ exports.syncAppointmentsToSheet = onCall({
       resource: { values },
     });
 
-    console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆`);
+    console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆，${allHeaders.length} 個欄位`);
     return { status: 'success', message: `成功同步 ${rows.length} 筆預約資料`, count: rows.length };
 
   } catch (error) {
@@ -24162,12 +24212,13 @@ exports.syncAppointmentsToSheet = onCall({
 
 /**
  * [Trigger] 當 Appointment 異動時同步
+ * 自適應：若資料含現有 Sheet 標題未涵蓋的欄位，會自動 append column。
  */
 exports.onAppointmentWrite = onDocumentWritten({
   document: "appointments/{appointmentId}",
-  database: "anxi-app", // Specify the database name
-  region: "asia-east1", // Ensure region matches if needed
-  memory: "512MiB",     // 預設 256MiB 不足，提升以避免 OOM
+  database: "anxi-app",
+  region: "asia-east1",
+  memory: "512MiB",
 }, async (event) => {
   const functionName = "onAppointmentWrite";
   const appointmentId = event.params.appointmentId;
@@ -24184,39 +24235,34 @@ exports.onAppointmentWrite = onDocumentWritten({
   const db = new Firestore({ databaseId: 'anxi-app' });
 
   try {
-    // 讀取 Project Settings
     const projectDoc = await db.collection('projects').doc(projectId).get();
     if (!projectDoc.exists) return;
 
     const settings = projectDoc.data();
     const spreadsheetId = settings.appointmentsSheetId;
     const sheetName = settings.appointmentsSheetTabName;
-
     if (!spreadsheetId || !sheetName) return;
 
     console.log(`[${functionName}] 偵測到異動，準備同步: ID=${appointmentId} -> Sheet=${spreadsheetId}`);
 
     const sheets = await _getGoogleSheetClient();
 
-    // Find Row Index (by ID in Col A)
-    const range = `'${sheetName}'!A:A`;
-    const response = await sheets.spreadsheets.values.get({
+    // 找出該 Row 位置（by ID in Col A）
+    const colAResp = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range,
+      range: `'${sheetName}'!A:A`,
     });
-
-    const values = response.data.values || [];
+    const colA = colAResp.data.values || [];
     let rowIndex = -1;
-
-    for (let i = 1; i < values.length; i++) {
-      if (values[i][0] === appointmentId) {
+    for (let i = 1; i < colA.length; i++) {
+      if (colA[i][0] === appointmentId) {
         rowIndex = i + 1;
         break;
       }
     }
 
+    // --- 刪除 ---
     if (!newData) {
-      // Delete
       if (rowIndex > -1) {
         const sheetId = await _getSheetIdByName(sheets, spreadsheetId, sheetName);
         if (sheetId !== null) {
@@ -24226,99 +24272,95 @@ exports.onAppointmentWrite = onDocumentWritten({
               requests: [{
                 deleteDimension: {
                   range: {
-                    sheetId: sheetId,
+                    sheetId,
                     dimension: 'ROWS',
                     startIndex: rowIndex - 1,
-                    endIndex: rowIndex
-                  }
-                }
-              }]
-            }
+                    endIndex: rowIndex,
+                  },
+                },
+              }],
+            },
           });
           console.log(`[${functionName}] 已刪除 Row ${rowIndex}`);
         }
       }
-    } else {
-      // Add or Update
-      const flattened = _flattenAppointmentForSheet({ _docId: appointmentId, ...newData });
+      return;
+    }
 
-      // Read Header to determine column order
-      const headerResp = await sheets.spreadsheets.values.get({
+    // --- 新增 / 更新 ---
+    const apptWithId = { _docId: appointmentId, ...newData };
+    const flattened = _flattenAppointmentForSheet(apptWithId);
+
+    // 讀取現有 Header
+    const headerResp = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${sheetName}'!1:1`,
+    });
+    let sheetHeaders = headerResp.data.values?.[0] || [];
+
+    // 若 Sheet 標題列為空，視為初次寫入，直接用本筆資料 build header
+    if (sheetHeaders.length === 0) {
+      const fullHeaders = _buildAppointmentHeaders([apptWithId]);
+      sheetHeaders = fullHeaders.map(h => h.label);
+      await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `'${sheetName}'!1:1`,
+        range: `'${sheetName}'!A1`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [sheetHeaders] },
       });
-      const headers = headerResp.data.values?.[0] || [];
+      console.log(`[${functionName}] Sheet 標題列為空，已寫入 ${sheetHeaders.length} 個欄位`);
+    }
 
-      if (headers.length === 0) {
-        console.warn(`[${functionName}] Sheet 標題列為空，無法執行單筆同步。`);
-        return;
-      }
+    // 計算「此筆 appointment 該有的完整 header」
+    const expectedHeaders = _buildAppointmentHeaders([apptWithId]);
+    const expectedLabelToKey = new Map(expectedHeaders.map(h => [h.label, h.key]));
 
-      // Map Data to Row
-      const definedHeaders = [
-        { key: '_id', label: 'System ID (勿動)' },
-        { key: 'createdAt', label: '建立時間' },
-        { key: 'bookingCode', label: '預約代碼' },
-        { key: 'status', label: '狀態' },
-        { key: 'projectId', label: '專案' },
-        { key: 'unitId', label: '戶號' },
-        { key: 'address', label: '地址' },
-        { key: 'bookingType', label: '預約項目' },
-        { key: 'inspectionMethod', label: '預約方式' },
-        { key: 'appointmentDate', label: '預約日期' },
-        { key: 'appointmentTimeSlot', label: '預約時段' },
-        { key: 'bookerName', label: '預約人姓名' },
-        { key: 'bookerPhone', label: '預約人電話' },
-        { key: 'bookerEmail', label: '預約人Email' },
-        { key: 'bookerIdNumber', label: '預約人身分證' },
-        { key: 'agentName', label: '代理人姓名' },
-        { key: 'agentPhone', label: '代理人電話' },
-        { key: 'reportUploaded', label: '上傳報告' }
-      ];
+    // 自適應：找出本筆 appointment 有、但 Sheet 標題沒有的新欄位 → append column
+    const sheetHeaderSet = new Set(sheetHeaders);
+    const newLabels = expectedHeaders
+      .map(h => h.label)
+      .filter(label => !sheetHeaderSet.has(label));
 
-      // 動態收集此筆 appointment 的 bookingMethodDetailsDisplay labels
-      const dynamicLabels = new Set();
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (Array.isArray(newData.bookingMethodDetailsDisplay)) {
-        newData.bookingMethodDetailsDisplay.forEach(item => {
-          if (item.label && !uuidPattern.test(item.label)) dynamicLabels.add(item.label);
-        });
-      }
-      const dynamicHeaders = [...dynamicLabels].map(label => ({ key: `_dynamic_${label}`, label }));
-      const insertIdx = definedHeaders.findIndex(h => h.key === 'inspectionMethod') + 1;
-      const allHeaders = [...definedHeaders];
-      allHeaders.splice(insertIdx, 0, ...dynamicHeaders);
-
-      const rowData = headers.map(headerLabel => {
-        const def = allHeaders.find(h => h.label === headerLabel);
-        if (def) {
-          return _formatValue(flattened[def.key]);
-        }
-        // 動態欄位 fallback：直接用 header label 查找 _dynamic_ key
-        const dynKey = `_dynamic_${headerLabel}`;
-        if (flattened[dynKey] !== undefined) return _formatValue(flattened[dynKey]);
-        return _formatValue(flattened[headerLabel]);
+    if (newLabels.length > 0) {
+      const newRow = [...sheetHeaders, ...newLabels];
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `'${sheetName}'!A1`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [newRow] },
       });
+      sheetHeaders = newRow;
+      console.log(`[${functionName}] 自適應新增 ${newLabels.length} 個欄位: ${newLabels.join(', ')}`);
+    }
 
-      // Ensure ID is in Col A logic (optional check)
+    // 依 Sheet 實際 Header 順序映射資料
+    const rowData = sheetHeaders.map(headerLabel => {
+      // 1) 從 expected map 找 key（含定義欄位、_dynamic_*、extras）
+      const key = expectedLabelToKey.get(headerLabel);
+      if (key) return _formatValue(flattened[key]);
+      // 2) Fallback：以 label 當動態欄位 key
+      const dynKey = `_dynamic_${headerLabel}`;
+      if (flattened[dynKey] !== undefined) return _formatValue(flattened[dynKey]);
+      // 3) Fallback：直接用 label 當 key（自訂欄位的 raw key）
+      return _formatValue(flattened[headerLabel]);
+    });
 
-      if (rowIndex > -1) {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `'${sheetName}'!A${rowIndex}`,
-          valueInputOption: 'USER_ENTERED',
-          resource: { values: [rowData] },
-        });
-        console.log(`[${functionName}] 已更新 Row ${rowIndex}`);
-      } else {
-        await sheets.spreadsheets.values.append({
-          spreadsheetId,
-          range: `'${sheetName}'!A1`,
-          valueInputOption: 'USER_ENTERED',
-          resource: { values: [rowData] },
-        });
-        console.log(`[${functionName}] 已新增 Row`);
-      }
+    if (rowIndex > -1) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `'${sheetName}'!A${rowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [rowData] },
+      });
+      console.log(`[${functionName}] 已更新 Row ${rowIndex}`);
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `'${sheetName}'!A1`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [rowData] },
+      });
+      console.log(`[${functionName}] 已新增 Row`);
     }
 
   } catch (error) {
@@ -24327,46 +24369,81 @@ exports.onAppointmentWrite = onDocumentWritten({
 });
 
 /**
- * [Helper] 扁平化 Appointment
+ * [Helper] 將任意值格式化（Timestamp / Date / 物件 / 陣列 → 字串）
+ * - Timestamp 轉 Asia/Taipei datetime
+ * - 陣列 → 用「、」串接（純值）或 JSON（含物件）
+ * - 物件 → JSON
  */
-function _flattenAppointmentForSheet(appt) {
-  const flat = { ...appt };
+function _formatAppointmentValue(val) {
+  if (val === undefined || val === null) return '';
 
-  // 移除原始的巢狀物件，避免 UUID key 或 JSON 被意外寫入
-  delete flat.bookingMethodDetails;
-  delete flat.bookingMethodDetailsDisplay;
-
-  flat['_id'] = appt._docId || appt.id;
-
-  // Date Formatting
-  const dateFields = ['createdAt', 'appointmentDate'];
-  dateFields.forEach(field => {
-    if (appt[field]) {
-      let dateObj;
-      if (appt[field].toDate) dateObj = appt[field].toDate(); // Firestore Timestamp
-      else if (appt[field] instanceof Date) dateObj = appt[field];
-      else dateObj = new Date(appt[field]); // String or Number
-
-      if (!isNaN(dateObj)) {
-        if (field === 'appointmentDate') {
-          flat[field] = dateObj.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Taipei' });
-        } else {
-          flat[field] = dateObj.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-        }
-      }
-    }
-  });
-
-  // Boolean
-  if (typeof flat['reportUploaded'] === 'boolean') {
-    flat['reportUploaded'] = flat['reportUploaded'] ? '是' : '否';
+  // Firestore Timestamp
+  if (val && typeof val.toDate === 'function') {
+    const d = val.toDate();
+    return d.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+  }
+  if (val instanceof Date) {
+    return val.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   }
 
-  // 動態欄位展開為獨立 key（以 _dynamic_ 前綴）
+  if (Array.isArray(val)) {
+    if (val.length === 0) return '';
+    const allPrimitive = val.every(v => v === null || (typeof v !== 'object'));
+    if (allPrimitive) return val.join('、');
+    return JSON.stringify(val);
+  }
+
+  if (typeof val === 'object') return JSON.stringify(val);
+  if (typeof val === 'boolean') return val ? '是' : '否';
+  return String(val);
+}
+
+/**
+ * [Helper] 扁平化 Appointment（自適應）
+ * - 保留所有 top-level 欄位（除 EXCLUDED_KEYS）
+ * - 日期欄位（createdAt / appointmentDate）特別格式化
+ * - bookingMethodDetailsDisplay 展開為 `_dynamic_<label>` 獨立 key
+ * - 其他任意 Timestamp / 巢狀物件由 _formatAppointmentValue 統一處理
+ */
+function _flattenAppointmentForSheet(appt) {
+  const flat = {};
+
+  // 1) 複製所有 top-level 欄位（除 EXCLUDED_KEYS）並統一格式化
+  Object.keys(appt || {}).forEach(k => {
+    if (APPOINTMENT_EXCLUDED_KEYS.has(k)) return;
+    flat[k] = _formatAppointmentValue(appt[k]);
+  });
+
+  // 2) ID
+  flat['_id'] = appt._docId || appt.id || '';
+
+  // 3) 日期欄位特別格式化
+  const formatDate = (val, dateOnly = false) => {
+    if (!val) return '';
+    let d;
+    if (val && typeof val.toDate === 'function') d = val.toDate();
+    else if (val instanceof Date) d = val;
+    else d = new Date(val);
+    if (!d || isNaN(d.getTime())) return '';
+    if (dateOnly) {
+      return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Taipei' });
+    }
+    return d.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+  };
+  if (appt.createdAt) flat['createdAt'] = formatDate(appt.createdAt);
+  if (appt.appointmentDate) flat['appointmentDate'] = formatDate(appt.appointmentDate, true);
+
+  // 4) Boolean 欄位
+  if (typeof appt.reportUploaded === 'boolean') {
+    flat['reportUploaded'] = appt.reportUploaded ? '是' : '否';
+  }
+
+  // 5) 動態欄位展開（bookingMethodDetailsDisplay → _dynamic_<label>）
   if (Array.isArray(appt.bookingMethodDetailsDisplay)) {
     appt.bookingMethodDetailsDisplay.forEach(item => {
-      if (item.label) {
-        flat[`_dynamic_${item.label}`] = Array.isArray(item.value) ? item.value.join(', ') : (item.value || '');
+      if (item && item.label && !UUID_PATTERN.test(item.label)) {
+        const v = item.value;
+        flat[`_dynamic_${item.label}`] = Array.isArray(v) ? v.join('、') : (v == null ? '' : String(v));
       }
     });
   }
