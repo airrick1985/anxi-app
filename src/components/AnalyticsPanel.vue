@@ -436,19 +436,19 @@
             <!-- 右側：銷況明細 -->
             <v-col cols="12" lg="6" class="pl-lg-2">
               <div class="section-title mb-4">📋 銷況明細</div>
-              <v-expansion-panels>
+              <v-expansion-panels multiple>
                 <v-expansion-panel
                   v-for="(count, status) in getFilteredByStatus()"
                   :key="status"
                   :class="status === '退戶' ? 'cancelled-panel' : ''"
                 >
-                  <template v-slot:title>
+                  <v-expansion-panel-title>
                     <span :class="status === '退戶' ? 'status-detail-text cancelled-status' : 'status-detail-text'">
                       {{ status }} {{ count }}戶 ({{ formatAmount(statistics.households.byStatusAmount[status] || 0) }}萬)
                     </span>
-                  </template>
+                  </v-expansion-panel-title>
 
-                  <v-card-text>
+                  <v-expansion-panel-text>
                     <div class="units-list">
                       <div
                         v-for="unit in statistics.households.byStatusUnits[status]"
@@ -463,7 +463,7 @@
                         </div>
                       </div>
                     </div>
-                  </v-card-text>
+                  </v-expansion-panel-text>
                 </v-expansion-panel>
               </v-expansion-panels>
               <div v-if="Object.keys(getFilteredByStatus()).length === 0" class="text-center text-grey py-4">
