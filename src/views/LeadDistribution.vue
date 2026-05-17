@@ -44,11 +44,11 @@
 
       <v-col cols="12">
         <v-tabs v-model="activeTab" color="primary" grow density="compact" :touch="false">
-          <v-tab v-if="isReceptionist || isAdmin" value="management">
-            <v-icon start>mdi-tray-arrow-down</v-icon>聯絡名單統計
-          </v-tab>
           <v-tab value="status">
             <v-icon start>mdi-clipboard-text-clock</v-icon>名單聯絡狀況
+          </v-tab>
+          <v-tab v-if="isReceptionist || isAdmin" value="management">
+            <v-icon start>mdi-tray-arrow-down</v-icon>聯絡名單統計
           </v-tab>
         </v-tabs>
 
@@ -1891,7 +1891,7 @@ const allProjectLogs = ref([]);
 
 
 // --- 狀態定義 ---
-const activeTab = ref('management');
+const activeTab = ref('status'); // 進入時預設停留在「名單聯絡狀況」
 const allLeads = ref([]);
 const deletedLeads = ref([]);
 const salesStaff = ref([]);
@@ -2512,29 +2512,51 @@ const deniedReasonChartData = computed(() => {
 });
 
 // ✅ 優化後的計算屬性：結合資料庫現有量與本次分配量
+// 將時間戳格式化為 YYYY-MM-DD HH:MM
+const formatYMDHM = (ms) => {
+  if (!ms) return null;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return null;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 const salesStaffWithCounts = computed(() => {
   return salesStaff.value.map(staff => {
     // A. 統計資料庫中已有的名單數量
-    const dbCount = allLeads.value.filter(l => l.assignedTo === staff.id).length;
-    
+    const dbLeads = allLeads.value.filter(l => l.assignedTo === staff.id);
+    const dbCount = dbLeads.length;
+
     // B. 即時統計本次預覽表格中已選擇該銷售人員的數量
     const previewCount = previewLeads.value.filter(l => l.assignedTo === staff.id).length;
-    
+
     // 總計 = 現有 + 預計
     const totalCount = dbCount + previewCount;
+
+    // C. 取得該銷售名下所有名單中「最後一次被分配」的時間
+    let lastAssignedMs = 0;
+    dbLeads.forEach(l => {
+      const ms = l.assignedAt?.toMillis ? l.assignedAt.toMillis()
+               : (l.assignedAt?.toDate ? l.assignedAt.toDate().getTime() : 0);
+      if (ms > lastAssignedMs) lastAssignedMs = ms;
+    });
+    const lastAssignedText = lastAssignedMs ? formatYMDHM(lastAssignedMs) : '尚未分配';
 
     return {
       ...staff,
       totalCount,
-      // 顯示格式：姓名 (現有+本次)
-      displayName: `${staff.name} (${totalCount})` 
+      lastAssignedMs,
+      // 顯示格式：姓名 (現有+本次) · 最後分配 YYYY-MM-DD HH:MM
+      displayName: `${staff.name} (${totalCount}) · 最後分配 ${lastAssignedText}`
     };
   }).sort((a, b) => {
-    // 🚩 這裡可以決定排序邏輯：
-    // a. 數量少到多 (推薦)：讓負載輕的人排在上面，方便櫃檯平均分配
-    return a.totalCount - b.totalCount; 
-    
-    // b. 數量多到少： return b.totalCount - a.totalCount;
+    // 🚩 排序邏輯：被分配的時間最早的排最前面
+    //（尚未分配者 lastAssignedMs = 0，視為最久未分配，最優先）
+    if (a.lastAssignedMs !== b.lastAssignedMs) {
+      return a.lastAssignedMs - b.lastAssignedMs;
+    }
+    // 時間相同時，再以數量少到多作為次要排序
+    return a.totalCount - b.totalCount;
   });
 });
 
