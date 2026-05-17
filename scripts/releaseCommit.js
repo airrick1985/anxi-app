@@ -1,22 +1,22 @@
-#!/usr/bin/env node
-/**
- * 跨平台 Release Commit
- *
- * 取代原本 package.json 裡寫死的：
- *   git commit -m "Release v$(node -p "require('./package.json').version")"
- *
- * 該寫法用了 bash 的 $(...) 指令替換，在 Windows（cmd.exe）下不會被替換，
- * 導致 commit 訊息變成字面字串 "Release v$(node -p require('./package.json').version)"。
- *
- * 本腳本改用 Node 直接讀版本號並產生 commit，Windows / macOS / Linux 皆正確。
- *
- * 用法：
- *   node scripts/releaseCommit.js           → Release v1.2.3
- *   node scripts/releaseCommit.js --date    → Release v1.2.3 - 2026-05-17 11:40:00 (Asia/Taipei)
- */
-const { execSync } = require('child_process');
-const pkg = require('../package.json');
+// scripts/releaseCommit.js
+//
+// 跨平台 Release Commit
+//
+// 取代原本 package.json 裡寫死的：
+//   git commit -m "Release v$(node -p "require('./package.json').version")"
+// 該寫法用了 bash 的 $(...) 指令替換，在 Windows（cmd.exe）下不會被替換，
+// 導致 commit 訊息變成字面字串。
+//
+// 本專案 package.json 為 "type": "module"，故本檔以 ESM 撰寫（與 bumpVersion.js 等一致）。
+//
+// 用法：
+//   node scripts/releaseCommit.js           → Release v1.2.3
+//   node scripts/releaseCommit.js --date    → Release v1.2.3 - 2026-05-17 11:40:00 (Asia/Taipei)
+import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
+const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf-8'));
 const version = pkg.version;
 const withDate = process.argv.includes('--date');
 
