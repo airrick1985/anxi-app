@@ -47,3 +47,6 @@ node_modules/
 .env
 .agent/
 temp_skill_repo/
+
+# 本機 Google Apps Script 草稿（不納入版控）
+gas_inspection_schedule.gs

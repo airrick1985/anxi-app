@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.567",
+  "version": "1.0.568",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -13,8 +13,8 @@
     "build:land-sections:force": "node scripts/fetch-land-sections.mjs --force",
     "update:manifest-version": "node scripts/updateManifestVersion.js",
     "generate:release-notes": "node scripts/generateReleaseNotes.js",
-    "release:github-pages": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && git add . && git commit -m \"Release v$(node -p \"require('./package.json').version\") - $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push && npm run deploy",
-    "release:publish": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && git add . && git commit -m \"Release v$(node -p \"require('./package.json').version\")\" && git push && npm run deploy"
+    "release:github-pages": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && node scripts/releaseCommit.js --date && git push && npm run deploy",
+    "release:publish": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && node scripts/releaseCommit.js && git push && npm run deploy"
   },
   "dependencies": {
     "@andy922200/vue-tw-zip-code-selector": "^1.0.1",
