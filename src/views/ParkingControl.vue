@@ -220,6 +220,7 @@
                 <v-combobox v-model="editedItem.type2" :items="['坡道平面', '坡道機械', '升降平面', '升降機械', '機械平面', '機械升降', '塔式車位']" label="車位形式 (坡平/機升...)" variant="outlined" density="compact" clearable></v-combobox>
                 <v-text-field v-model="editedItem.size" label="車位尺寸"  variant="outlined" density="compact" ></v-text-field>
                 <v-text-field v-model.number="editedItem.area" label="車位面積" suffix="m²" type="number" step="0.01" min="0" variant="outlined" density="compact"></v-text-field>
+                <v-text-field v-model.number="editedItem.area_ping" label="車位面積" suffix="坪" type="number" step="0.01" min="0" variant="outlined" density="compact"></v-text-field>
               </v-col>
               <v-col cols="12" sm="6">
                 <div class="form-section-title">價格資訊</div>
@@ -390,6 +391,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'type2', title: '車位形式' },
     { key: 'size', title: '車位尺寸' },
     { key: 'area', title: '車位面積(m²)', align: 'end' },
+    { key: 'area_ping', title: '車位面積_坪', align: 'end' },
     { key: 'price_list', title: '車位表價', align: 'end' },
     { key: 'price_floor', title: '車位底價', align: 'end' },   
     { key: 'price_transaction', title: '車位成交價', align: 'end' },

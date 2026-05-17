@@ -1005,7 +1005,7 @@ exports.getBookingInitialData = onCall(async (request) => {
  * 從前端接收 Excel 解析後的 JSON 資料，批次更新 salesParkings 集合
  * (V2 - 支援中文表頭)
  */
-exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets, memory: "512MiB" }, async (request) => {
   const xlsx = require("xlsx");
   const { projectId, parkingData } = request.data;
   const functionName = `uploadParkingLots (Project: ${projectId})`;
@@ -1047,7 +1047,7 @@ exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets
       const dataToSave = {};
 
       // 🔒 管理員控制的欄位列表（只有在 Excel 中明確提供時才更新）
-      const adminFields = ['area', 'floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type', 'type2'];
+      const adminFields = ['area', 'area_ping', 'floor', 'number', 'price_floor', 'price_list', 'projectId', 'size', 'slidePosition', 'spotId', 'type', 'type2'];
 
       // 🔄 遍歷 Excel 提供的所有欄位
       for (const [key, value] of Object.entries(row)) {
@@ -1063,7 +1063,7 @@ exports.uploadParkingLots = onCall({ region: "asia-east1", secrets: gmailSecrets
         }
 
         // ✅ [修改處]：將 number 和 floor 從數字轉換清單中移除，並獨立處理為字串
-        if (['price_list', 'price_floor', 'price_transaction', 'area'].includes(key)) {
+        if (['price_list', 'price_floor', 'price_transaction', 'area', 'area_ping'].includes(key)) {
           // 這些確實是數值（金額或面積），保持數字轉換
           dataToSave[key] = Number(value) || 0;
         }

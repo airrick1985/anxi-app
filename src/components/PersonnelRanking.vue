@@ -5,7 +5,7 @@
       :items="personnelStats"
       item-key="name"
       class="elevation-0"
-      density="comfortable"
+      density="compact"
     >
       <!-- 排名列 -->
       <template v-slot:item.rank="{ index }">
@@ -31,7 +31,7 @@
 
       <!-- 成交戶數列 -->
       <template v-slot:item.soldCount="{ item }">
-        <div class="text-center font-weight-bold text-h6 text-primary">
+        <div class="count-cell text-primary">
           {{ item.soldCount }}
         </div>
       </template>
@@ -61,7 +61,7 @@
 
       <!-- 退戶戶數列 -->
       <template v-slot:item.cancelledCount="{ item }">
-        <div class="text-center font-weight-bold text-h6 text-error">
+        <div class="count-cell text-error">
           {{ item.cancelledCount || 0 }}
         </div>
       </template>
@@ -89,12 +89,13 @@ const props = defineProps({
 })
 
 const headers = [
-  { title: '排名', key: 'rank', width: '60px', align: 'center' },
-  { title: '銷售人員', key: 'name', width: '120px' },
-  { title: '成交戶數', key: 'soldCount', width: '100px', align: 'center' },
-  { title: '退戶戶數', key: 'cancelledCount', width: '100px', align: 'center' },
-  { title: '銷售金額', key: 'totalAmount', width: '150px', align: 'end' },
-  { title: '溢差價', key: 'premiumAmount', width: '120px', align: 'end' },
+  { title: '排名', key: 'rank', width: '56px', align: 'center', sortable: false },
+  { title: '銷售人員', key: 'name', width: '100px' },
+  { title: '成交戶數', key: 'soldCount', width: '92px', align: 'center' },
+  { title: '退戶戶數', key: 'cancelledCount', width: '92px', align: 'center' },
+  // 銷售金額不設固定寬度：讓內容最多的此欄吸收多餘空間，其餘欄位保持緊湊
+  { title: '銷售金額', key: 'totalAmount', align: 'end' },
+  { title: '溢差價', key: 'premiumAmount', width: '100px', align: 'end' },
 ]
 
 
@@ -130,42 +131,57 @@ const getRankColor = (idx) => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-radius: 12px;
   overflow: hidden;
+  /* 不讓表格被寬版面拉開：限制寬度並置中，欄位自然靠攏 */
+  max-width: 760px;
+  margin-inline: auto;
 
-  :deep(.v-data-table) {
+  :deep(.v-table) {
     background-color: transparent;
   }
 
-  :deep(.v-data-table__header) {
+  /* Vuetify 3 DOM：表頭是 thead > tr > th，整列套漸層底 */
+  :deep(thead) {
     background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
-
-    th {
-      font-weight: 700 !important;
-      color: white !important;
-      border-bottom: none;
-      font-size: 12px !important;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-      padding: 10px 8px !important;
-      height: auto !important;
-    }
   }
 
-  :deep(.v-data-table__tr) {
-    border-bottom: 1px solid #f0f0f0;
-    transition: all 0.2s ease;
-
-    &:hover {
-      background-color: #f5f8ff;
-    }
-
-    td {
-      padding: 10px 8px;
-      font-size: 13px;
-    }
+  :deep(thead th) {
+    background: transparent !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    border-bottom: none !important;
+    font-size: 12.5px !important;
+    letter-spacing: 0.3px;
+    padding: 9px 10px !important;
+    height: auto !important;
+    white-space: nowrap !important;
   }
 
-  :deep(.v-data-table__tr:last-child) {
-    border-bottom: none;
+  /* 關鍵：表頭文字實際在這個 flex 內層 span，要在這裡強制不換行 */
+  :deep(thead th .v-data-table-header__content) {
+    white-space: nowrap !important;
+    flex-wrap: nowrap !important;
+  }
+
+  :deep(thead th .v-data-table-header__content > span) {
+    white-space: nowrap !important;
+  }
+
+  :deep(tbody td) {
+    padding: 7px 10px !important;
+    font-size: 13px;
+    border-bottom: 1px solid #eef1f5 !important;
+  }
+
+  :deep(tbody tr) {
+    transition: background-color 0.18s ease;
+  }
+
+  :deep(tbody tr:hover) {
+    background-color: #f5f8ff;
+  }
+
+  :deep(tbody tr:last-child td) {
+    border-bottom: none !important;
   }
 }
 
@@ -173,8 +189,18 @@ const getRankColor = (idx) => {
   display: flex;
   align-items: center;
   font-weight: 600;
+  font-size: 13.5px;
   color: #1a1a1a;
-  gap: 6px;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* 戶數：醒目但不過大，避免列被撐高、視覺空隙變大 */
+.count-cell {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .amount-cell {
@@ -182,33 +208,36 @@ const getRankColor = (idx) => {
 }
 
 .amount-value {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
-  line-height: 1.4;
+  line-height: 1.35;
   color: #1976d2;
+  white-space: nowrap;
 }
 
+/* 明細區改為置中包覆的小卡，移除原本依賴 td 內距的負邊界 */
 .status-breakdown-text {
-  margin-top: 12px;
-  font-size: 12px;
-  color: #666;
-  border-top: 2px solid #e8eaed;
-  padding-top: 10px;
-  background: #f9fafb;
-  padding: 10px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  color: #5f6b7a;
+  background: #f7f9fc;
+  border: 1px solid #eceff3;
   border-radius: 6px;
-  margin: 10px -12px -12px -12px;
+  text-align: left;
 }
 
 .status-line {
-  line-height: 1.6;
-  padding: 4px 0;
+  line-height: 1.55;
+  padding: 1px 0;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .premium-cell {
+  display: inline-block;
   text-align: right;
-  padding: 8px 12px;
+  padding: 3px 8px;
   border-radius: 6px;
 
   &.positive {
@@ -217,7 +246,8 @@ const getRankColor = (idx) => {
 
   span {
     font-weight: 700;
-    font-size: 14px;
+    font-size: 13.5px;
+    white-space: nowrap;
   }
 }
 </style>

@@ -454,12 +454,13 @@
                         v-for="unit in statistics.households.byStatusUnits[status]"
                         :key="unit.unitId"
                         :class="status === '退戶' ? 'unit-item cancelled-unit-item' : 'unit-item'"
-                        style="cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;"
-                        @click="openUnitDetail(unit)"
-                        @mouseover="$event.target.style.backgroundColor = status === '退戶' ? '#ffebee' : '#f0f7ff'"
-                        @mouseout="$event.target.style.backgroundColor = status === '退戶' ? 'transparent' : 'transparent'"
+                        @click="openUnitDetail(unit, status)"
                       >
                         <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping) }}萬/坪)-{{ unit.salesperson }}</span>
+                        <div v-if="status === '退戶'" class="cancelled-reason-text">
+                          <span class="reason-label">退戶原因</span>
+                          <span class="reason-value">{{ unit.cancelReasons && unit.cancelReasons.length ? unit.cancelReasons.join('、') : '未記錄' }}</span>
+                        </div>
                       </div>
                     </div>
                   </v-card-text>
@@ -524,6 +525,76 @@
       :contract-types="[]"
       @update:show="showUnitModal = $event"
     />
+
+    <!-- 退戶資訊 Dialog -->
+    <v-dialog v-model="showCancelledModal" max-width="520">
+      <v-card v-if="cancelledDetail">
+        <v-card-title class="d-flex justify-space-between align-center bg-red-lighten-5">
+          <span class="text-red-darken-2 font-weight-bold">
+            <v-icon start color="error">mdi-home-remove-outline</v-icon>退戶資訊
+          </span>
+          <v-btn icon="mdi-close" variant="text" size="small" @click="showCancelledModal = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text>
+          <div class="d-flex align-center mb-3">
+            <span class="text-h6 font-weight-bold">{{ cancelledDetail.unitId }}</span>
+            <v-chip class="ml-2" color="error" variant="tonal" size="small" label>已退戶</v-chip>
+          </div>
+
+          <v-row dense class="text-body-2">
+            <v-col cols="6"><span class="text-grey-darken-1">買方姓名</span></v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.buyerName || '—' }}</v-col>
+
+            <v-col cols="6"><span class="text-grey-darken-1">銷售人員</span></v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.salesperson || '—' }}</v-col>
+
+            <v-col cols="6"><span class="text-grey-darken-1">成交總價</span></v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ formatAmount(cancelledDetail.price_transaction_total) }} 萬</v-col>
+
+            <v-col cols="6"><span class="text-grey-darken-1">退戶日期</span></v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.cancellationDate || '—' }}</v-col>
+
+            <v-col cols="6"><span class="text-grey-darken-1">操作人員</span></v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.operatorName || '—' }}</v-col>
+          </v-row>
+
+          <v-divider class="my-3"></v-divider>
+
+          <div class="text-subtitle-2 font-weight-bold mb-2">
+            <v-icon size="small" color="error" class="mr-1">mdi-information-outline</v-icon>退戶原因
+          </div>
+          <div v-if="cancelledDetail.cancelReasons && cancelledDetail.cancelReasons.length">
+            <v-chip
+              v-for="(reason, idx) in cancelledDetail.cancelReasons"
+              :key="idx"
+              color="error"
+              variant="tonal"
+              size="small"
+              label
+              class="mr-2 mb-2"
+            >{{ reason }}</v-chip>
+          </div>
+          <div v-else class="text-caption text-grey">
+            本筆退戶記錄未記錄退戶原因
+          </div>
+
+          <v-divider class="my-3"></v-divider>
+
+          <div class="text-subtitle-2 font-weight-bold mb-2">
+            <v-icon size="small" color="info" class="mr-1">mdi-note-text-outline</v-icon>備註
+          </div>
+          <div v-if="cancelledDetail.cancelRemarks" class="pa-2 bg-blue-lighten-5 rounded text-body-2">
+            {{ cancelledDetail.cancelRemarks }}
+          </div>
+          <div v-else class="text-caption text-grey">未填寫備註</div>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="justify-end">
+          <v-btn variant="tonal" @click="showCancelledModal = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 客戶狀況彙整 Dialog -->
     <v-dialog v-model="showAnalysisDialog" max-width="700" scrollable>
@@ -648,6 +719,8 @@ const vipGuestStats = ref(null)
 const cancelledStats = ref(null)
 const showVipGuestList = ref(false)
 const showUnitModal = ref(false)
+const showCancelledModal = ref(false)
+const cancelledDetail = ref(null)
 const isAnalyzing = ref(false)
 const showAnalysisDialog = ref(false)
 const analysisReport = ref('')
@@ -1290,7 +1363,7 @@ const loadStatistics = async () => {
           statistics.value.households.byStatus['退戶'] = filtered.length
           statistics.value.households.byStatusAmount['退戶'] = totalAmount
 
-          // 準備退戶單位列表
+          // 準備退戶單位列表（含退戶資訊：退戶原因 / 退戶日期 / 備註 / 操作人員）
           statistics.value.households.byStatusUnits['退戶'] = filtered.map(item => ({
             unitId: item.unitId,
             unitName: item.unitName || item.unitId,
@@ -1298,7 +1371,16 @@ const loadStatistics = async () => {
                                      ((item.parkingDetails || []).reduce((s, p) => s + (Number(p.price_transaction) || 0), 0)),
             price_transaction_house: item.price_transaction_house || 0,
             area_house_ping: item.area_house_ping || 0,
-            salesperson: item.salesperson || '—'
+            salesperson: item.salesperson || '—',
+            // 📌 退戶專屬資訊
+            isCancelled: true,
+            cancelReasons: Array.isArray(item.cancelReasons) ? item.cancelReasons : [],
+            cancellationDate: item.cancellationDate?._seconds
+              ? formatDate(new Date(item.cancellationDate._seconds * 1000))
+              : '',
+            cancelRemarks: item.remarks || '',
+            operatorName: item._cancellationMeta?.operatorName || '',
+            buyerName: item.buyerName || ''
           }))
         }
 
@@ -1344,7 +1426,14 @@ const close = () => {
 /**
  * 打開單位詳細信息modal
  */
-const openUnitDetail = (unit) => {
+const openUnitDetail = (unit, status) => {
+  // 📌 退戶：開啟「退戶資訊」而非「戶別資訊」
+  if (status === '退戶' || unit?.isCancelled) {
+    cancelledDetail.value = unit
+    showCancelledModal.value = true
+    return
+  }
+
   // 📌 從projectData.households中查找完整的單位數據
   const completeUnitData = projectData.value.households?.find(h => h.unitId === unit.unitId)
 
@@ -1860,8 +1949,20 @@ watch(
 }
 
 .cancelled-unit-item {
+  /* 退戶資訊量較大，獨占整列並改為垂直堆疊，避免擠在 200px 格子內 */
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 14px 16px;
+  border-left: 4px solid #d32f2f;
   background: linear-gradient(135deg, #fff5f5 0%, #ffebee 100%);
   border-color: #ef9a9a;
+}
+
+.cancelled-unit-item .unit-info {
+  font-size: 14px;
+  color: #b71c1c;
 }
 
 .cancelled-unit-item:hover {
@@ -1898,6 +1999,36 @@ watch(
 .unit-info {
   font-weight: 600;
   color: #1a1a1a;
+  word-break: break-word;
+}
+
+.cancelled-reason-text {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px dashed #ef9a9a;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+
+.cancelled-reason-text .reason-label {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #d32f2f;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.cancelled-reason-text .reason-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #b71c1c;
   word-break: break-word;
 }
 

@@ -322,6 +322,14 @@
                 <span class="info-label">尺寸</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
               </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
+              </div>
             </div>
             <div class="info-section">
               <div class="section-title">價格資訊</div>
@@ -350,6 +358,14 @@
               <div class="info-row">
                 <span class="info-label">尺寸</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
               </div>
             </div>
             <div class="info-section">
@@ -380,6 +396,14 @@
               <div class="info-row">
                 <span class="info-label">尺寸</span>
                 <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">車位面積</span>
+                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
               </div>
             </div>
             <div class="info-section">
@@ -613,10 +637,11 @@ export default {
       return {
         backgroundColor: cs.bg,
         color: cs.text,
-        padding: '2px 8px',
-        borderRadius: '12px',
-        fontSize: '0.8rem',
-        fontWeight: 'bold'
+        padding: '5px 14px',
+        borderRadius: '999px',
+        fontSize: '0.95rem',
+        fontWeight: '700',
+        letterSpacing: '0.02em'
       };
     };
 
@@ -1315,20 +1340,24 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-/* 新增的 Modal 樣式 */
+/* 車位詳細資訊 Modal — 質感優化 */
 .detail-modal-overlay {
-  background: rgba(0, 0, 0, 0.6) !important;
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(6px);
 }
 
 .detail-modal-content {
-  max-width: 420px !important;
-  border-radius: 16px !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25) !important;
-  background: rgba(255, 255, 255, 0.95) !important;
-  backdrop-filter: blur(12px) !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 480px !important;
+  width: 92% !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 12px 28px rgba(0, 0, 0, 0.16),
+    0 32px 64px rgba(0, 0, 0, 0.22) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  overflow: hidden;
+  animation: modal-enter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes modal-enter {
@@ -1337,33 +1366,42 @@ export default {
 }
 
 .detail-header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
-  padding: 1.25rem 1.5rem !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  padding: 1.5rem 1.75rem !important;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.detail-header h3 {
+  font-size: 1.65rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em;
+  color: #0f172a;
 }
 
 .detail-body {
   padding: 0 !important;
-  max-height: calc(90vh - 80px);
+  max-height: calc(90vh - 88px);
   overflow-y: auto;
 }
 
 .detail-close-btn {
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(15, 23, 42, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: background 0.2s, transform 0.2s;
 }
 
 .detail-close-btn:hover {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(15, 23, 42, 0.12);
+  transform: rotate(90deg);
 }
 
 .info-section {
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.75rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
@@ -1372,31 +1410,49 @@ export default {
 }
 
 .section-title {
-  color: #6b7280;
-  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #475569;
+  font-size: 0.85rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  margin-bottom: 0.75rem;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+  margin-bottom: 0.9rem;
+}
+
+.section-title::before {
+  content: '';
+  width: 3px;
+  height: 0.95rem;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #3b82f6, #6366f1);
 }
 
 .info-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem 0;
+  align-items: baseline;
+  padding: 0.55rem 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
+}
+
+.info-row:last-child {
+  border-bottom: none;
 }
 
 .info-label {
-  color: #6b7280;
-  font-size: 0.9rem;
+  color: #64748b;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .info-value {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: #111827;
+  font-weight: 700;
+  font-size: 1.18rem;
+  color: #0f172a;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 車位按鈕化效果 */
