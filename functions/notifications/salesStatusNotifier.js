@@ -11,8 +11,16 @@ const { STATUS_STYLE, classifySalesStatus } = require('../utils/salesStatusGroup
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 
 function formatTimestamp(d = new Date()) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // ⚠️ 一律以台灣時間 (Asia/Taipei, UTC+8) 呈現。
+  // Cloud Functions 預設時區為 UTC，直接用 getHours() 會比台灣慢 8 小時。
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d);
+  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+  return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}`;
 }
 
 function safeText(v, fallback = '') {
