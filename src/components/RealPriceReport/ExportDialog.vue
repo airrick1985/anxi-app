@@ -365,7 +365,7 @@
               <v-btn color="primary" variant="flat"
                 :loading="exporting"
                 :disabled="loading || hasValidationErrors"
-                @click="onExport">
+                @click="showConfirmDialog = true">
                 <v-icon start>mdi-download</v-icon>
                 產生並下載 JSON
               </v-btn>
@@ -373,6 +373,48 @@
           </template>
           欄位格式錯誤：{{ validationErrors.map(e => e.label).join('、') }}
         </v-tooltip>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 下載前最終確認：申報不實罰則警示 -->
+  <v-dialog v-model="showConfirmDialog" max-width="560" persistent>
+    <v-card class="warn-card">
+      <v-card-title class="warn-title d-flex align-center py-4">
+        <v-icon start color="error" size="large">mdi-alert-octagon</v-icon>
+        下載前請務必再次確認
+      </v-card-title>
+      <v-divider color="error" thickness="2" />
+      <v-card-text class="pt-5 pb-2">
+        <ol class="warn-list">
+          <li>請確定<strong>金額、面積與合約相符</strong></li>
+          <li>請確定建物的<strong>共用部分面積已加上車位面積</strong></li>
+        </ol>
+
+        <div class="penalty-box mt-5">
+          <v-icon start color="error">mdi-gavel</v-icon>
+          申報登錄價格資訊不實，<br>
+          處以新臺幣 <span class="penalty-amount">3 萬元至 15 萬元</span> 罰鍰
+        </div>
+
+        <div class="disclaimer-box mt-4">
+          <v-icon start size="small">mdi-information-outline</v-icon>
+          免責聲明：本系統 <strong>ANXI 建案管理系統（安熙智慧有限公司）</strong>
+          僅提供申報資料之整理與格式產生，所有申報內容之正確性由申報人自行負責。
+          如申報資料有不實、錯誤或遺漏，致生任何行政裁罰或法律責任，
+          概由申報人承擔，與本系統及安熙智慧有限公司無涉。
+        </div>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="pa-3">
+        <v-spacer />
+        <v-btn variant="text" @click="showConfirmDialog = false">返回檢查</v-btn>
+        <v-btn color="error" variant="flat"
+          :loading="exporting"
+          @click="onConfirmExport">
+          <v-icon start>mdi-download</v-icon>
+          確認無誤，下載
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -419,6 +461,7 @@ const userStore = useUserStore();
 
 const loading = ref(false);
 const exporting = ref(false);
+const showConfirmDialog = ref(false);  // 下載前最終確認視窗
 const savingStepKey = ref('');  // 正在儲存為本案預設的 group key
 
 // 申報書序號：政府申報完成後回填，存於戶別文件 top-level reportNo
@@ -941,6 +984,12 @@ async function ensureLandSectionCodes(landData) {
   });
 }
 
+// 確認視窗按下「確認無誤，下載」→ 執行匯出；成功會連同主對話框一併關閉
+async function onConfirmExport() {
+  await onExport();
+  showConfirmDialog.value = false;
+}
+
 async function onExport() {
   exporting.value = true;
   try {
@@ -1104,5 +1153,76 @@ async function scrollToStep(step) {
 .field-group-label .req {
   color: #e30000;
   margin-right: 2px;
+}
+
+/* ============ 下載前最終確認：白底紅字警示 ============ */
+.warn-card {
+  background: #fff;
+  border: 2px solid #e30000;
+  border-radius: 10px;
+}
+.warn-title {
+  background: #fff;
+  color: #e30000;
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 1px;
+}
+.warn-list {
+  margin: 0;
+  padding-left: 22px;
+  color: #c62828;
+  font-size: 1.02rem;
+  line-height: 2.1;
+}
+.warn-list strong {
+  color: #e30000;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* 罰則警示：白底紅字 + 邊框 + 緩慢閃爍背景，最大化警告意味 */
+.penalty-box {
+  background: #fff;
+  border: 2.5px solid #e30000;
+  border-radius: 8px;
+  color: #e30000;
+  font-size: 1.18rem;
+  font-weight: 800;
+  line-height: 1.7;
+  text-align: center;
+  padding: 16px 14px;
+  letter-spacing: 1px;
+  box-shadow: 0 0 0 4px rgba(227, 0, 0, 0.08);
+  animation: penalty-flash 1.1s ease-in-out infinite alternate;
+}
+.penalty-box .penalty-amount {
+  display: inline-block;
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #fff;
+  background: #e30000;
+  padding: 1px 10px;
+  border-radius: 4px;
+  margin: 0 2px;
+}
+@keyframes penalty-flash {
+  from { background: #fff; }
+  to { background: #ffe9e9; }
+}
+/* 免責聲明：與罰則警示區隔，採低調灰底說明樣式 */
+.disclaimer-box {
+  background: #f5f5f7;
+  border: 1px solid #d8d8dc;
+  border-radius: 6px;
+  color: #555;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  padding: 10px 12px;
+  text-align: justify;
+}
+.disclaimer-box strong {
+  color: #333;
+  font-weight: 700;
 }
 </style>
