@@ -1103,6 +1103,28 @@ const closeSettingsDialog = () => { showSettingsDialog.value = false; };
 let personnelRef = null;
 let personnelListener = null;
 
+// --- 欄位變化後自動截圖（debounce 30 秒）---
+const CHANGE_SCREENSHOT_DELAY_MS = 30000;
+let changeScreenshotTimer = null;
+let lastPersonnelSignature = null; // null = 尚未收到首次快照（首次不觸發截圖）
+
+// 以 STAND BY 區 / 接待區 的人員全欄位產生簽章；依 id 排序確保穩定比對
+const buildPersonnelSignature = (list) =>
+  JSON.stringify(
+    [...list]
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+  );
+
+// 每次變化都重設 30 秒計時器，於最後一次變化滿 30 秒後截圖一次
+const scheduleChangeScreenshot = () => {
+  if (changeScreenshotTimer) clearTimeout(changeScreenshotTimer);
+  changeScreenshotTimer = setTimeout(() => {
+    changeScreenshotTimer = null;
+    console.log('[變化截圖] 距上次欄位變化已 30 秒，觸發自動截圖。');
+    captureAndSaveScreenshot();
+  }, CHANGE_SCREENSHOT_DELAY_MS);
+};
+
 // src/views/Standby.vue - setupRealtimeListener
 const setupRealtimeListener = () => {
   isLoading.value = true;
@@ -1153,6 +1175,16 @@ const setupRealtimeListener = () => {
 
     standbyPersonnel.value = finalStandby;
     servingPersonnel.value = finalServing;
+
+    // 偵測 STAND BY 區 / 接待區 欄位變化 → 變化後 30 秒自動截圖（首次載入不觸發）
+    const signature = buildPersonnelSignature(filteredPersonnel);
+    if (lastPersonnelSignature === null) {
+      lastPersonnelSignature = signature; // 首次快照僅記錄基準，不截圖
+    } else if (signature !== lastPersonnelSignature) {
+      lastPersonnelSignature = signature;
+      console.log('[變化截圖] 偵測到欄位變化，重設 30 秒截圖計時器。');
+      scheduleChangeScreenshot();
+    }
 
     isLoading.value = false;
   }, (error) => {
@@ -1595,7 +1627,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (clockInterval) clearInterval(clockInterval); 
+  if (clockInterval) clearInterval(clockInterval);
+  if (changeScreenshotTimer) clearTimeout(changeScreenshotTimer); // 清除變化截圖計時器
   stopRealtimeListener();
 
   // ✅ [新增] 移除監聽器，恢復瀏覽器預設行為 (避免影響其他頁面)
