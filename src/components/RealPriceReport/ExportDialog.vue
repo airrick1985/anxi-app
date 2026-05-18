@@ -458,6 +458,34 @@ const draft = ref({
   carData: [],
 });
 
+// ============ 共有部分面積(含車位) = 自動帶入共有部分面積 + 車位面積總和 ============
+// build_areaP 由 unitData.area_common_sqm 自動帶入，未含各車位面積；
+// 需再加上「車位資料」中有資料筆數的車位面積(car_area)。
+// 以 baseBuildAreaP 保留不含車位的基底，避免車位變動時重複累加。
+const baseBuildAreaP = ref(0);
+
+function sumCarArea(carData) {
+  return (Array.isArray(carData) ? carData : []).reduce((s, c) => {
+    const n = Number(c?.car_area);
+    return s + (isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+}
+
+// 將 baseBuildAreaP + 車位面積總和寫回 buildDataList[0].build_areaP
+// 連動：交易總面積(BuildTableEditor.totalArea) 為 5 欄位加總，build_areaP 一更新即同步
+function syncBuildAreaPWithCar() {
+  const list = draft.value.buildDataList;
+  if (!Array.isArray(list) || !list[0]) return;
+  const total = baseBuildAreaP.value + sumCarArea(draft.value.carData);
+  // 兩位小數，去除浮點誤差與多餘尾零
+  const nextStr = total ? String(Number(total.toFixed(2))) : '0';
+  if (String(list[0].build_areaP ?? '') !== nextStr) {
+    const arr = list.slice();
+    arr[0] = { ...arr[0], build_areaP: nextStr };
+    draft.value.buildDataList = arr;
+  }
+}
+
 const unitId = computed(() => props.unitData?.unitId || '');
 const building = computed(() => props.unitData?.building || '');
 
@@ -805,12 +833,15 @@ async function loadAll() {
         priceFormulas: props.priceFormulas,
       },
     });
+    // 基底 = 自動帶入的共有部分面積(不含車位)；隨後加上車位面積總和
+    baseBuildAreaP.value = Number(merged.buildData?.build_areaP) || 0;
     draft.value = {
       mainData: merged.mainData,
       landData: merged.landData,
       buildDataList: [merged.buildData],
       carData: merged.carData,
     };
+    syncBuildAreaPWithCar();
   } catch (e) {
     toast.error(`載入實價登錄資料失敗：${e.message}`);
   } finally {
@@ -831,6 +862,11 @@ watch(contractType, (val) => {
     draft.value.mainData = { ...draft.value.mainData, p1sp_code0505: val === '毛胚合約' ? 'Y' : '' };
   }
 });
+
+// 車位資料變動（新增/刪除/修改車位面積）→ 重算共有部分面積(含車位)
+watch(() => draft.value.carData, () => {
+  syncBuildAreaPWithCar();
+}, { deep: true });
 
 // 土地筆數：自動同步為 draft.landData 筆數，確保匯出 JSON 的 p1ma_cntalid 與實際資料一致
 watch(() => draft.value.landData?.length ?? 0, (len) => {
