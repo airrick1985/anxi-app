@@ -194,22 +194,52 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="showSettingsDialog" max-width="700" persistent scrollable>
-       <v-card :loading="isLoadingSettings">
-        <v-card-title class="text-h5">看板設定</v-card-title>
+    <v-dialog v-model="showSettingsDialog" max-width="760" persistent scrollable>
+       <v-card :loading="isLoadingSettings" rounded="lg" class="settings-dialog__card">
+        <v-card-title class="settings-dialog__bar">
+          <v-icon size="22" class="me-2" color="primary">mdi-view-dashboard-edit-outline</v-icon>
+          <span class="text-h6 font-weight-bold">看板設定</span>
+          <v-spacer></v-spacer>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            :disabled="isLoadingSettings"
+            @click="closeSettingsDialog"
+          ></v-btn>
+        </v-card-title>
         <v-divider></v-divider>
 
-<v-card-text style="max-height: 60vh;">
+<v-card-text class="settings-dialog__body">
       <fieldset class="settings-section personnel-section">            
-<legend class="text-subtitle-1 mb-2">顯示人員</legend>
+<header class="settings-block__head">
+              <v-icon class="settings-block__icon" color="primary">mdi-account-multiple-outline</v-icon>
+              <div class="settings-block__titles">
+                <div class="settings-block__title">顯示人員</div>
+                <div class="settings-block__hint">勾選要顯示在看板上的銷售人員</div>
+              </div>
+              <v-spacer></v-spacer>
+              <div class="settings-block__actions">
+                <v-chip size="small" variant="tonal" color="primary" label>
+                  已選 {{ selectedPersonnelInDialog.length }} / {{ selectablePersonnel.length }}
+                </v-chip>
+                <v-btn
+                  v-if="selectablePersonnel.length > 0"
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  :prepend-icon="allPersonnelSelected ? 'mdi-close-box-multiple-outline' : 'mdi-checkbox-multiple-marked-outline'"
+                  @click="toggleAllPersonnel"
+                >{{ allPersonnelSelected ? '全部取消' : '全部選取' }}</v-btn>
+              </div>
+            </header>
            <v-row dense>
                <v-col
-                 v-for="person in allAvailablePersonnel"
+                 v-for="person in selectablePersonnel"
                  :key="person.id"
-                 cols="12" sm="6" md="4" lg="3"
+                 cols="6" sm="4" md="3"
                >
                  <v-checkbox
-                   v-if="person && person.roles && !person.roles.includes('超級管理員')"
                    v-model="selectedPersonnelInDialog"
                    :label="person.name"
                    :value="person.id"
@@ -220,83 +250,180 @@
                  ></v-checkbox>
                  </v-col>
              </v-row>
-            <p v-if="allAvailablePersonnel.length === 0" class="no-personnel text-disabled mt-2">找不到可設定的人員。</p>
+            <v-alert
+              v-if="selectablePersonnel.length === 0"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mt-1"
+            >找不到可設定的人員。</v-alert>
           </fieldset>
 
           <fieldset class="settings-section color-section mt-4">
-            <legend class="text-subtitle-1 mb-3">狀態顏色</legend>
+            <header class="settings-block__head">
+              <v-icon class="settings-block__icon" color="primary">mdi-palette-outline</v-icon>
+              <div class="settings-block__titles">
+                <div class="settings-block__title">狀態顏色</div>
+                <div class="settings-block__hint">自訂各接待狀態在看板上的顯示色</div>
+              </div>
+            </header>
             <v-row dense>
               <v-col
                 v-for="(color, status) in tempStatusColors"
                 :key="status"
                 cols="12" sm="6"
-                class="d-flex align-center ga-3 mb-2"
               >
-                <span class="color-label text-capitalize">{{ statusMap[status] }}
-                  </span>
-                <v-menu
-                  location="bottom start"
-                  origin="top start"
-                  :close-on-content-click="false"
-                >
-                  <template v-slot:activator="{ props: menuProps }">
-                    <v-sheet
-                      v-bind="menuProps"
-                      :color="tempStatusColors[status]"
-                      width="80"
-                      height="32"
-                      rounded
-                      class="color-swatch elevation-1"
-                      style="cursor: pointer;"
-                    ></v-sheet>
-                  </template>
-                  <v-card flat>
-                     <v-color-picker
+                <div class="color-row">
+                  <span class="color-row__label">{{ statusMap[status] }}</span>
+                  <v-menu
+                    location="bottom start"
+                    origin="top start"
+                    :close-on-content-click="false"
+                  >
+                    <template v-slot:activator="{ props: menuProps }">
+                      <button type="button" v-bind="menuProps" class="color-row__trigger">
+                        <span
+                          class="color-row__swatch"
+                          :style="{ backgroundColor: tempStatusColors[status] }"
+                        ></span>
+                        <span class="color-row__hex">{{ tempStatusColors[status] }}</span>
+                        <v-icon size="16" class="color-row__chev">mdi-chevron-down</v-icon>
+                      </button>
+                    </template>
+                    <v-card flat>
+                      <v-color-picker
                         v-model="tempStatusColors[status]"
                         hide-inputs
                         show-swatches
                         elevation="0"
                         mode="hex"
-                     ></v-color-picker>
-                     <v-card-actions>
-                         <v-spacer></v-spacer>
-                         <span class="text-caption mr-2">{{ tempStatusColors[status] }}</span>
-                     </v-card-actions>
-                  </v-card>
-                </v-menu>
-                </v-col>
+                      ></v-color-picker>
+                    </v-card>
+                  </v-menu>
+                </div>
+              </v-col>
             </v-row>
           </fieldset>
 
           <fieldset class="settings-section alert-section mt-4">
-    <legend class="text-subtitle-1 mb-3">警示設定</legend>
-    <v-row dense>
-      <v-col cols="12" sm="6">
-        <v-text-field
-          v-model.number="tempAlertThresholdMinutes"
-          label="接待逾時 (分鐘)"
-          type="number"
-          variant="outlined"
-          density="compact"
-          suffix="分鐘"
-          hide-details
-          placeholder="預設 120"
-        ></v-text-field>
-      </v-col>
-    </v-row>
+    <header class="settings-block__head">
+      <v-icon class="settings-block__icon" color="primary">mdi-alarm-light-outline</v-icon>
+      <div class="settings-block__titles">
+        <div class="settings-block__title">警示設定</div>
+        <div class="settings-block__hint">接待時間超過設定值時，於看板標示提醒（預設 120 分鐘）</div>
+      </div>
+    </header>
+    <v-text-field
+      v-model.number="tempAlertThresholdMinutes"
+      label="接待逾時"
+      type="number"
+      variant="outlined"
+      density="comfortable"
+      suffix="分鐘"
+      hide-details
+      placeholder="120"
+      prepend-inner-icon="mdi-timer-sand"
+      class="settings-block__field"
+    ></v-text-field>
   </fieldset>
+
+          <fieldset class="settings-section screenshot-section mt-4">
+            <header class="settings-block__head">
+              <v-icon class="settings-block__icon" color="primary">mdi-camera-timer</v-icon>
+              <div class="settings-block__titles">
+                <div class="settings-block__title">自動截圖時段</div>
+                <div class="settings-block__hint">以台灣時間 (Asia/Taipei) 為準，需有人開著本頁面才會截圖</div>
+              </div>
+              <v-spacer></v-spacer>
+              <v-btn
+                variant="tonal"
+                color="primary"
+                size="small"
+                prepend-icon="mdi-plus"
+                @click="addScreenshotTime"
+              >新增時段</v-btn>
+            </header>
+
+            <v-row
+              v-for="(t, idx) in tempScreenshotTimes"
+              :key="idx"
+              dense
+              align="center"
+              class="time-row"
+            >
+              <v-col cols="auto">
+                <span class="time-row__index">{{ idx + 1 }}</span>
+              </v-col>
+              <v-col cols="7" sm="5">
+                <v-text-field
+                  v-model="tempScreenshotTimes[idx]"
+                  type="time"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  prepend-inner-icon="mdi-clock-outline"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="auto">
+                <v-btn
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  color="error"
+                  size="small"
+                  @click="removeScreenshotTime(idx)"
+                ></v-btn>
+              </v-col>
+            </v-row>
+
+            <v-btn
+              v-if="tempScreenshotTimes.length > 0"
+              variant="tonal"
+              color="primary"
+              size="small"
+              prepend-icon="mdi-plus"
+              block
+              class="time-row__add mt-1"
+              @click="addScreenshotTime"
+            >新增時段</v-btn>
+
+            <v-alert
+              v-if="tempScreenshotTimes.length === 0"
+              type="warning"
+              variant="tonal"
+              density="compact"
+              class="mt-1"
+            >目前未設定任何截圖時段，將不會自動截圖。</v-alert>
+
+            <div v-if="sortedScreenshotPreview.length > 0" class="time-preview">
+              <v-icon size="16" class="me-1">mdi-sort-clock-ascending-outline</v-icon>
+              <span class="time-preview__label">儲存後生效順序：</span>
+              <v-chip
+                v-for="h in sortedScreenshotPreview"
+                :key="h"
+                size="x-small"
+                variant="flat"
+                color="primary"
+                label
+                class="me-1 mb-1"
+              >{{ h }}</v-chip>
+            </div>
+          </fieldset>
 
 
         </v-card-text>
 
         <v-divider></v-divider>
-        <v-card-actions class="pa-4">
-      
+        <v-card-actions class="settings-dialog__footer">
+           <v-btn
+             variant="text"
+             :disabled="isLoadingSettings"
+             @click="closeSettingsDialog"
+           >取消</v-btn>
            <v-spacer></v-spacer>
-           <v-btn variant="text" @click="closeSettingsDialog">取消</v-btn>
            <v-btn
              color="primary"
              variant="flat"
+             prepend-icon="mdi-content-save-outline"
              @click="saveSettings"
              :disabled="isLoadingSettings"
              :loading="isLoadingSettings"
@@ -549,7 +676,12 @@ const showSettingsDialog = ref(false);
 const isAway = ref(false); // 用於 v-switch 的 v-model
 const isRevisit = ref(false); // 新增 isRevisit ref
 const isSavingStatus = ref(false); // 新增：用於控制按鈕 loading 狀態
-const lastTriggerMinute = ref(-1); // 新增：記錄上次觸發截圖的分鐘數，初始值設為 -1
+// --- 自動截圖時段 ---
+// 未設定過(欄位不存在)時的回退預設，維持舊有行為
+const DEFAULT_SCREENSHOT_TIMES = ['09:00', '12:00', '15:00', '18:00', '20:00'];
+const screenshotTimes = ref([]); // 實際生效時段 (台灣時間 "HH:mm")，供 updateClock 讀取
+const tempScreenshotTimes = ref([]); // 設定對話框編輯用暫存
+const lastTriggeredKey = ref(''); // 去重鍵：台灣時間 "yyyy-MM-dd HH:mm"，每個(日期,時段)只觸發一次
 const showSnackbar = ref(false); // 新增：控制 Snackbar 顯示
 const snackbarMessage = ref(''); // 新增：Snackbar 訊息內容
 const snackbarColor = ref('success'); // 新增：Snackbar 顏色 (預設成功)
@@ -586,52 +718,20 @@ const updateClock = () => {
     formattedTime.value = '時間載入錯誤';
   }
 
-  // --- 新增定時截圖觸發邏輯 ---
+  // --- 定時截圖觸發邏輯 (強制以台灣時間 Asia/Taipei 判斷) ---
   try {
-    // 獲取台灣時間的小時和分鐘
-    const currentHour = currentTime.value.getHours(); // 0-23
-    const currentMinute = currentTime.value.getMinutes(); // 0-59
+    // 取得台灣時間的 "yyyy-MM-dd HH:mm"，不受瀏覽器本機時區影響
+    const twKey = formatInTimeZone(currentTime.value, 'Asia/Taipei', 'yyyy-MM-dd HH:mm');
+    const nowHHmm = twKey.slice(11); // "HH:mm"
 
-    // 目標觸發時間 (小時, 分鐘)
-    const triggerTimes = [
-      { hour: 9, minute: 0 },
-      { hour: 12, minute: 0 },
-      { hour: 15, minute: 0 },
-      { hour: 18, minute: 0 },
-       { hour: 20, minute: 0 },
-    
-    ];
-
-    // 檢查是否符合任一觸發時間
-    const shouldTrigger = triggerTimes.some(time =>
-      time.hour === currentHour && time.minute === currentMinute
-    );
-
-    // 如果時間符合 且 這一分鐘還沒有觸發過
-    if (shouldTrigger && currentMinute !== lastTriggerMinute.value) {
-      console.log(`[定時截圖] 時間到達 ${currentHour}:${String(currentMinute).padStart(2, '0')}，觸發截圖。`);
-      lastTriggerMinute.value = currentMinute; // 記錄已觸發的分鐘數
-      
-      // 調用截圖函數 (不需要 await，讓它在背景執行)
-      captureAndSaveScreenshot(); 
-    } 
-    // 如果時間不符合目標分鐘，重置 lastTriggerMinute，允許下一分鐘觸發
-    else if (!shouldTrigger && currentMinute !== lastTriggerMinute.value) {
-      // 可以在這裡重置，確保如果錯過了一秒鐘，下一秒仍然可以觸發
-      // 但更簡單的方式是只在觸發時更新 lastTriggerMinute
+    // 命中任一設定時段，且該「日期+時段」尚未觸發過 → 截圖一次
+    if (screenshotTimes.value.includes(nowHHmm) && lastTriggeredKey.value !== twKey) {
+      console.log(`[定時截圖] 台灣時間到達 ${nowHHmm}，觸發截圖。`);
+      lastTriggeredKey.value = twKey; // 記錄已觸發；隔日同時段 key 不同可再次觸發
+      captureAndSaveScreenshot(); // 不 await，讓它在背景執行
     }
-    // 如果時間符合，但這一分鐘已經觸發過了，就不再動作
-    else if (shouldTrigger && currentMinute === lastTriggerMinute.value) {
-        // console.log(`[DEBUG] Time matches ${currentHour}:${currentMinute}, but already triggered this minute.`); // 可選的除錯日誌
-    }
-    // 如果時間不符合，且分鐘數和上次觸發相同（理論上不會發生在一分鐘內），也重置
-    else if (!shouldTrigger && currentMinute === lastTriggerMinute.value) {
-        lastTriggerMinute.value = -1; // 或其他非 0-59 的值
-    }
-
-
-  } catch(e) {
-      console.error("[定時截圖] 檢查時間或觸發截圖時發生錯誤:", e);
+  } catch (e) {
+    console.error("[定時截圖] 檢查時間或觸發截圖時發生錯誤:", e);
   }
   // --- 定時截圖邏輯結束 ---
 };
@@ -833,6 +933,59 @@ const savePersonnelStatusChange = () => {
     });
 }; // <-- savePersonnelStatusChange 函數結束
 
+// --- 自動截圖時段：工具函數 ---
+const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+// 由 config 解析出生效時段：
+// - screenshotTimes 為合法陣列(含空陣列) → 直接採用 (空陣列代表不自動截圖)
+// - 欄位不存在/非陣列 (舊資料) → 回退舊五時段，維持現行行為
+const resolveScreenshotTimes = (config) => {
+  if (config && Array.isArray(config.screenshotTimes)) {
+    return normalizeScreenshotTimes(config.screenshotTimes);
+  }
+  return [...DEFAULT_SCREENSHOT_TIMES];
+};
+
+// 正規化：trim → 驗證 → 補零 HH:mm → 去重 → 升冪排序
+const normalizeScreenshotTimes = (list) => {
+  const set = new Set();
+  for (const raw of (list || [])) {
+    const m = HHMM_RE.exec(String(raw ?? '').trim());
+    if (!m) continue;
+    set.add(`${m[1].padStart(2, '0')}:${m[2]}`);
+  }
+  return Array.from(set).sort();
+};
+
+const addScreenshotTime = () => {
+  tempScreenshotTimes.value.push('09:00');
+};
+
+const removeScreenshotTime = (idx) => {
+  tempScreenshotTimes.value.splice(idx, 1);
+};
+
+// 儲存後實際生效的順序預覽（即時排序去重，僅供顯示）
+const sortedScreenshotPreview = computed(() =>
+  normalizeScreenshotTimes(tempScreenshotTimes.value)
+);
+
+// --- 看板設定：人員多選輔助 ---
+const selectablePersonnel = computed(() =>
+  allAvailablePersonnel.value.filter(
+    p => p && p.roles && !p.roles.includes('超級管理員')
+  )
+);
+const allPersonnelSelected = computed(() =>
+  selectablePersonnel.value.length > 0 &&
+  selectablePersonnel.value.every(p => selectedPersonnelInDialog.value.includes(p.id))
+);
+const toggleAllPersonnel = () => {
+  selectedPersonnelInDialog.value = allPersonnelSelected.value
+    ? []
+    : selectablePersonnel.value.map(p => p.id);
+};
+
 // --- 設定 Dialog 相關 ---
 const openSettingsDialog = async () => {
   isLoadingSettings.value = true;
@@ -879,6 +1032,10 @@ const openSettingsDialog = async () => {
     alertThresholdMinutes.value = (loadedMinutes && Number(loadedMinutes) > 0) ? Number(loadedMinutes) : 120;
     tempAlertThresholdMinutes.value = alertThresholdMinutes.value;
 
+    // 自動截圖時段：以最新 config 為準，並同步編輯用暫存
+    screenshotTimes.value = resolveScreenshotTimes(currentConfig);
+    tempScreenshotTimes.value = [...screenshotTimes.value];
+
   } catch (error) {
     console.error("載入設定失敗:", error);
     alert(`載入設定失敗: ${error.message}`);
@@ -894,11 +1051,21 @@ const saveSettings = async () => {
   isLoadingSettings.value = true;
   try {
     // [修改] 組合一個完整的 config 物件來儲存
+    // 驗證自動截圖時段：任一筆不合法（含未選時間的空白列）即中止儲存並提示
+    const rawScreenshotTimes = tempScreenshotTimes.value.map(s => String(s ?? '').trim());
+    const invalidTimes = rawScreenshotTimes.filter(s => !HHMM_RE.test(s));
+    if (invalidTimes.length > 0) {
+      alert('自動截圖時段格式不正確：每一列都必須選擇有效時間。');
+      return; // finally 會重置 isLoadingSettings，對話框維持開啟讓使用者修正
+    }
+    const normalizedScreenshotTimes = normalizeScreenshotTimes(rawScreenshotTimes);
+
     const configToSave = {
       visiblePersonnelIds: selectedPersonnelInDialog.value,
       colors: tempStatusColors.value,
       // 確保值大於 0，否則使用預設 120
-      alertThresholdMinutes: Number(tempAlertThresholdMinutes.value) > 0 ? Number(tempAlertThresholdMinutes.value) : 120
+      alertThresholdMinutes: Number(tempAlertThresholdMinutes.value) > 0 ? Number(tempAlertThresholdMinutes.value) : 120,
+      screenshotTimes: normalizedScreenshotTimes
     };
     
     console.log('[DEBUG saveSettings] 準備儲存的完整設定:', JSON.stringify(configToSave));
@@ -912,7 +1079,8 @@ const saveSettings = async () => {
       visiblePersonnelIds.value = configToSave.visiblePersonnelIds;
       statusColorsConfig.value = JSON.parse(JSON.stringify(configToSave.colors));
       alertThresholdMinutes.value = configToSave.alertThresholdMinutes; // 更新主 ref
-      
+      screenshotTimes.value = [...configToSave.screenshotTimes]; // 更新生效時段，立即套用
+
       closeSettingsDialog();
 
       // (保持不變) 調用同步函數
@@ -1394,7 +1562,11 @@ onMounted(async () => {
     // ✅ [新增] 在 onMounted 時就載入正確的分鐘數
     const loadedMinutes = currentConfig.alertThresholdMinutes;
     alertThresholdMinutes.value = (loadedMinutes && Number(loadedMinutes) > 0) ? Number(loadedMinutes) : 120;
-    
+
+    // ✅ [新增] 載入自動截圖時段 (舊資料無此欄位 → 回退舊五時段)
+    screenshotTimes.value = resolveScreenshotTimes(currentConfig);
+    console.log('[onMounted] 自動截圖時段:', JSON.stringify(screenshotTimes.value));
+
     console.log('Loaded visiblePersonnelIds from Firestore:', visiblePersonnelIds.value);
     console.log(`[onMounted] Alert threshold set to: ${alertThresholdMinutes.value} minutes`); // ✅ 新增 Log
 
@@ -1537,29 +1709,162 @@ onUnmounted(() => {
   justify-content: flex-start; /* 讓 label 在左邊 */
 }
 
-/* 設定 Dialog */
+/* ===== 看板設定對話框 ===== */
+.settings-dialog__card {
+  overflow: hidden;
+}
+.settings-dialog__bar {
+  display: flex;
+  align-items: center;
+  padding: 14px 12px 14px 20px;
+}
+.settings-dialog__body {
+  max-height: 64vh;
+  padding: 20px 20px 12px;
+  background: rgba(var(--v-theme-on-surface), 0.015);
+}
+.settings-dialog__footer {
+  padding: 12px 20px;
+}
+
+/* 區塊卡片 */
 .settings-section {
-  border: none; /* 移除 fieldset 預設邊框 */
-  padding: 0;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 0 0 16px;
+  background: rgb(var(--v-theme-surface));
 }
-.settings-section legend {
-  padding: 0;
+.settings-section:last-child {
+  margin-bottom: 4px;
 }
-.color-label {
-  width: 70px; /* 固定標籤寬度 */
-  flex-shrink: 0; /* 防止標籤被壓縮 */
-  text-align: right;
-  margin-right: 5px;
+.settings-section.mt-4 {
+  margin-top: 0 !important;
 }
-.color-swatch {
-  border: 1px solid rgba(0,0,0,0.1);
+
+/* 區塊標題列 */
+.settings-block__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
-.color-hex {
-  font-family: monospace;
-  font-size: 0.9em;
+.settings-block__icon {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
-.v-card-text fieldset + fieldset {
-  margin-top: 1.5rem; /* 區塊間距 */
+.settings-block__titles {
+  min-width: 0;
+}
+.settings-block__title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.settings-block__hint {
+  font-size: 0.78rem;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.settings-block__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settings-block__field {
+  max-width: 260px;
+}
+
+/* 狀態顏色列 */
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 0;
+}
+.color-row__label {
+  width: 60px;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.color-row__trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
+  border-radius: 9px;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.color-row__trigger:hover {
+  border-color: rgba(var(--v-theme-primary), 0.65);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.color-row__swatch {
+  width: 28px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+.color-row__hex {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.8rem;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.color-row__chev {
+  opacity: .5;
+}
+
+/* 截圖時段列 */
+.time-row {
+  margin-bottom: 6px;
+}
+.time-row__add {
+  border: 1px dashed rgba(var(--v-theme-primary), 0.45);
+}
+.time-row__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.time-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(var(--v-theme-on-surface), 0.14);
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.time-preview__label {
+  font-size: 0.78rem;
+  margin-right: 8px;
+}
+
+/* 對話框內容捲軸 */
+.settings-dialog__body::-webkit-scrollbar {
+  width: 8px;
+}
+.settings-dialog__body::-webkit-scrollbar-thumb {
+  background: rgba(var(--v-theme-on-surface), 0.22);
+  border-radius: 4px;
+}
+.settings-dialog__body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 

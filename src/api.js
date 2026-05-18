@@ -7027,7 +7027,8 @@ export const fetchStandbyConfigAPI = async (projectId) => {
   const defaultConfig = {
     visiblePersonnelIds: [],
     colors: {},
-    alertThresholdMinutes: 120 // 預設 120 分鐘
+    alertThresholdMinutes: 120, // 預設 120 分鐘
+    screenshotTimes: [] // 自動截圖時段 "HH:mm" 陣列；空陣列 + 文件存在 = 不自動截圖；欄位不存在 = 前端回退舊五時段
   };
 
   if (!projectId) {
