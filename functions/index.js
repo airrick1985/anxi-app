@@ -12846,6 +12846,98 @@ exports.fetchStandbyScreenshots = onCall({
 });
 
 
+/**
+ * [Cloud Function - 排程] STAND BY 截圖 7 天保留期清理
+ * 每日台灣時間 03:30 執行：刪除 timestamp 超過 7 天的截圖
+ * （Storage 圖檔 + Firestore standbyScreenshots 文件），全域跨 projectId。
+ */
+exports.cleanupStandbyScreenshots = onSchedule({
+  region: "asia-east1",
+  schedule: "every day 03:30",
+  timeZone: "Asia/Taipei",
+  memory: "512MiB"
+}, async (event) => {
+  const functionName = "cleanupStandbyScreenshots";
+  const startedAt = Date.now();
+  const RETENTION_DAYS = 7;
+  const BATCH = 300; // 單批處理筆數 (Firestore batch 上限 500，取安全值)
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const bucket = getStorage().bucket();
+
+  // 截止點：執行當下往前推 7 天，timestamp 早於此者刪除
+  const cutoff = Timestamp.fromMillis(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  console.log(`[${functionName}] 排程啟動。保留 ${RETENTION_DAYS} 天，截止點 (UTC): ${cutoff.toDate().toISOString()}`);
+
+  let totalDeletedDocs = 0;
+  let totalStorageDeleted = 0;
+  let totalStorageFailed = 0;
+  let totalStorageSkipped = 0;
+
+  try {
+    const colRef = db.collection("standbyScreenshots");
+
+    // 分批迴圈，直到沒有過期資料
+    // 每批都從頭查詢 (已刪除者不再回傳)，避免游標複雜度
+    while (true) {
+      const snapshot = await colRef
+        .where("timestamp", "<", cutoff)
+        .orderBy("timestamp", "asc")
+        .limit(BATCH)
+        .get();
+
+      if (snapshot.empty) {
+        break;
+      }
+
+      // 1. 平行刪除 Storage 檔 (容錯：單筆失敗不中斷)
+      const storageResults = await Promise.allSettled(
+        snapshot.docs.map(docSnap => {
+          const storagePath = docSnap.data().storagePath;
+          if (!storagePath) {
+            totalStorageSkipped++;
+            console.warn(`[${functionName}] 文件 ${docSnap.id} 缺少 storagePath，略過 Storage 刪除。`);
+            return Promise.resolve();
+          }
+          return bucket.file(storagePath).delete({ ignoreNotFound: true });
+        })
+      );
+      storageResults.forEach((r, idx) => {
+        if (r.status === "fulfilled") {
+          totalStorageDeleted++;
+        } else {
+          totalStorageFailed++;
+          console.error(`[${functionName}] Storage 刪除失敗 (doc ${snapshot.docs[idx].id}):`, r.reason?.message || r.reason);
+        }
+      });
+
+      // 2. 批次刪除 Firestore 文件
+      const batch = db.batch();
+      snapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+      await batch.commit();
+
+      totalDeletedDocs += snapshot.size;
+      console.log(`[${functionName}] 本批刪除 ${snapshot.size} 筆 (累計 ${totalDeletedDocs})。`);
+
+      // 回傳數小於批次上限 → 已無更多過期資料
+      if (snapshot.size < BATCH) {
+        break;
+      }
+    }
+
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(
+      `[${functionName}] 完成。刪除 Firestore 文件 ${totalDeletedDocs} 筆；` +
+      `Storage 刪除 ${totalStorageDeleted}、失敗 ${totalStorageFailed}、略過 ${totalStorageSkipped}；` +
+      `耗時 ${elapsed}s。`
+    );
+  } catch (error) {
+    // 排程函式不丟出例外，避免無謂重試；僅記錄
+    console.error(`[${functionName}] 執行時發生錯誤 (已刪除 ${totalDeletedDocs} 筆):`, error);
+  }
+});
+
+
 
 // --- START: 新增 - 產生預約確認 Token ---
 /**
