@@ -718,7 +718,7 @@ const formatNumber = (val, frac = 2) => {
     if (isNaN(num)) return 'N/A';
     return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: frac });
 };
-onMounted(async () => {
+async function loadPageData() {
     loading.value = true;
 
     projectStore.setCurrentProject(projectId.value);
@@ -833,7 +833,8 @@ onMounted(async () => {
     } finally {
         loading.value = false;
     }
-});
+}
+onMounted(loadPageData);
 
 // --- 新增：範本選擇邏輯函數 ---
 
@@ -923,7 +924,7 @@ function openQuoteEditor() {
 }
 
 // ✅ [新增] 走「列印報價」進入（?pick=1）且報價單為空 → 開戶別選擇彈窗
-onMounted(async () => {
+async function maybeOpenPickerOnEntry() {
   if (route.query.pick === '1' && quoteStore.items.length === 0) {
     try {
       await salesDataStore.loadProjectData(projectId.value);
@@ -934,6 +935,21 @@ onMounted(async () => {
     }
     unitPickerVisible.value = true;
   }
+}
+onMounted(maybeOpenPickerOnEntry);
+
+// 切換建案（SPA 內，不 full reload，避免冷啟動時路由守衛建案資料未就緒）：
+// route param 變更 → 就地清空並重載本頁資料
+watch(projectId, async (newId, oldId) => {
+  if (!newId || newId === oldId) return;
+  parkingStore.cleanup();
+  error.value = null;
+  unitPickerVisible.value = false;
+  pickerUnits.value = [];
+  quoteStore.clearAllNegotiations();
+  quoteStore.clearQuote();
+  await loadPageData();
+  await maybeOpenPickerOnEntry();
 });
 
 // 報價設定內「新增戶別」：載入戶別清單（快取）後開啟選擇彈窗
@@ -956,17 +972,15 @@ function removeAllUnits() {
   confirmClearDialog.value = false;
 }
 
-// 切換建案（免回入口頁）：清空報價單後導向新建案的報價單設定並重新載入
+// 切換建案（免回入口頁；SPA 內導向，watch(projectId) 會就地清空並重載資料，
+// 不做 window.location.reload 以免冷啟動時路由守衛建案資料未就緒被踢回 Home）
 async function switchProject(p) {
   if (!p || p.id === projectId.value) return;
-  quoteStore.clearAllNegotiations();
-  quoteStore.clearQuote();
   await router.push({
     name: 'QuoteSettings',
     params: { projectName: p.id },
     query: { ...route.query },
   });
-  window.location.reload();
 }
 
 // 戶別選擇彈窗：確認 → 逐筆加入 quoteStore（沿用允許重複）
