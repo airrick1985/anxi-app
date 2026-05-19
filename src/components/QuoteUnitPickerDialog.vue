@@ -41,6 +41,8 @@
             ></v-select>
 
             <!-- 第二層：戶別（選棟別後出現） -->
+            <!-- 不綁 :key（避免解鎖時重建導致選單收回）；
+                 unitOptionsFor 內讀 unlocked.value → 解鎖後選單就地更新、保持展開 -->
             <v-select
               v-model="row.unitId"
               :items="unitOptionsFor(row.building)"
@@ -54,7 +56,39 @@
               clearable
               :disabled="!row.building"
               class="flex-grow-1"
-            ></v-select>
+            >
+              <template #item="{ props: itemProps, item }">
+                <v-list-item v-bind="itemProps" class="unit-opt">
+                  <template #title>
+                    <div class="unit-opt-line">
+                      <span class="unit-opt-id">{{ item.raw.unitId }}</span>
+                      <v-chip
+                        v-if="item.raw.sold"
+                        size="x-small"
+                        color="red"
+                        variant="flat"
+                        class="unit-opt-sold"
+                      >已售</v-chip>
+                      <span class="unit-opt-spacer"></span>
+                      <span class="unit-opt-meta">{{ item.raw.ping }} 坪</span>
+                      <span
+                        v-if="!item.raw.sold"
+                        class="unit-opt-meta unit-opt-price"
+                      >{{ item.raw.total.toLocaleString() }} 萬</span>
+                    </div>
+                  </template>
+                </v-list-item>
+              </template>
+              <template #selection="{ item }">
+                <span class="unit-opt-selection">
+                  <strong>{{ item.raw.unitId }}</strong>
+                  <span class="unit-opt-sel-meta">
+                    {{ item.raw.ping }} 坪<template v-if="!item.raw.sold"> · {{ item.raw.total.toLocaleString() }} 萬</template>
+                  </span>
+                  <span v-if="item.raw.sold" class="unit-opt-sel-sold">（已售）</span>
+                </span>
+              </template>
+            </v-select>
 
             <v-btn
               icon="mdi-close"
@@ -140,9 +174,18 @@ function unitOptionsFor(building) {
     .sort((a, b) => naturalCompare(a.unitId, b.unitId))
     .map((u) => {
       const sold = isSold(u);
+      const ping = Number(u.area_house_ping) || 0;
+      const total = Number(u.price_list_house_total) || 0;
       return {
-        title: sold ? `${u.unitId}（已售）` : u.unitId,
+        // 後備純文字（未套用 #item / #selection slot 時）；已售不顯示房屋總價
+        title: sold
+          ? `${u.unitId}　${ping} 坪（已售）`
+          : `${u.unitId}　${ping} 坪　${total.toLocaleString()} 萬`,
         value: u.unitId,
+        unitId: u.unitId,
+        ping,
+        total,
+        sold,
         disabled: sold && !unlocked.value,
         raw: u,
       };
@@ -220,22 +263,22 @@ function normalizeChar(ch) {
   return half.toLowerCase();
 }
 
-// --- 解鎖碼：彈窗開啟時於畫面輸入 aaaaaaaa ---
-// 改用 capture 階段監聽，且「不」略過選單焦點：
-// 因本彈窗無自由文字輸入框（皆為 v-select），即使游標停在選單上，
-// 連續輸入 aaaaaaaa 仍可被偵測並解鎖（修正先前卡在選單篩選的 BUG）。
-function onKeydown(e) {
-  // 只處理單一字元按鍵（a–z、數字、符號、全形字…即 typeahead 觸發鍵）
+// --- 解鎖碼：只要彈窗開著，無論棟別/戶別選單是否展開都能觸發 ---
+// 關鍵：v-select 開啟選單時，其 typeahead/導覽只攔截 keydown，幾乎不碰 keyup。
+//  - keydown：只負責「擋住」typeahead（preventDefault + 停止傳播），不做偵測
+//  - keyup ：負責偵測解鎖碼（選單開啟時 keydown 可能被 Vuetify 吃掉，keyup 不會）
+function onKeydownBlock(e) {
   if (typeof e.key !== 'string' || e.key.length !== 1) return;
-
-  // 彈窗開啟期間，任何字元鍵一律攔截，完全不讓 v-select 收到 →
-  // 解決「輸入 a 選單會依序往下選取」；也讓背景輸入解鎖碼不影響選單。
+  // 任何字元鍵一律攔截，不讓 v-select 收到（避免 typeahead 跳選）
   e.preventDefault();
   e.stopPropagation();
   if (typeof e.stopImmediatePropagation === 'function') {
     e.stopImmediatePropagation();
   }
+}
 
+function onKeyupDetect(e) {
+  if (typeof e.key !== 'string' || e.key.length !== 1) return;
   keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
   if (keyBuffer === UNLOCK_CODE) {
     keyBuffer = '';
@@ -250,11 +293,19 @@ function onKeydown(e) {
 }
 
 function attachListener() {
-  window.removeEventListener('keydown', onKeydown, true);
-  window.addEventListener('keydown', onKeydown, true);
+  // keydown：window+document capture 擋 typeahead（已用 stopImmediatePropagation 去重）
+  // keyup ：僅 window capture 偵測解鎖（capture 根節點必觸發，且不重複計數）
+  window.removeEventListener('keydown', onKeydownBlock, true);
+  document.removeEventListener('keydown', onKeydownBlock, true);
+  window.removeEventListener('keyup', onKeyupDetect, true);
+  window.addEventListener('keydown', onKeydownBlock, true);
+  document.addEventListener('keydown', onKeydownBlock, true);
+  window.addEventListener('keyup', onKeyupDetect, true);
 }
 function detachListener() {
-  window.removeEventListener('keydown', onKeydown, true);
+  window.removeEventListener('keydown', onKeydownBlock, true);
+  document.removeEventListener('keydown', onKeydownBlock, true);
+  window.removeEventListener('keyup', onKeyupDetect, true);
   keyBuffer = '';
 }
 
@@ -282,3 +333,69 @@ watch(
 
 onBeforeUnmount(detachListener);
 </script>
+
+<style scoped>
+.unit-opt {
+  min-height: 44px;
+}
+
+.unit-opt-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.unit-opt-id {
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: #263238;
+}
+
+.unit-opt-sold {
+  font-weight: 700;
+}
+
+.unit-opt-spacer {
+  flex: 1 1 auto;
+}
+
+.unit-opt-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.82rem;
+  color: #607d8b;
+  white-space: nowrap;
+}
+
+.unit-opt-price {
+  min-width: 6.5em;
+  justify-content: flex-end;
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.unit-opt-selection {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.unit-opt-selection strong {
+  font-size: 0.98rem;
+  color: #263238;
+}
+
+.unit-opt-sel-meta {
+  font-size: 0.8rem;
+  color: #607d8b;
+}
+
+.unit-opt-sel-sold {
+  font-size: 0.8rem;
+  color: #c62828;
+  font-weight: 700;
+}
+</style>

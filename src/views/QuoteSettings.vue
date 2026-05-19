@@ -20,9 +20,48 @@
   <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
   <v-btn v-if="!isPickEntry" icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
 
-  <div>
-    <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
-    <p class="text-grey-darken-1">建案: {{ projectName }}</p>
+  <div class="title-block">
+    <h1 class="text-h5 text-md-h4 font-weight-bold text-primary d-flex align-center">
+      <v-icon color="primary" class="mr-2">mdi-file-document-edit-outline</v-icon>
+      報價單設定
+    </h1>
+    <v-menu location="bottom start">
+      <template #activator="{ props }">
+        <v-chip
+          v-bind="props"
+          class="mt-2 project-chip"
+          color="primary"
+          variant="flat"
+          size="large"
+          label
+          link
+        >
+          <v-icon start>mdi-office-building-marker</v-icon>
+          建案：{{ projectName }}
+          <v-icon end>mdi-chevron-down</v-icon>
+        </v-chip>
+      </template>
+      <v-list density="comfortable" class="project-switch-list" max-height="60vh">
+        <v-list-subheader>切換建案</v-list-subheader>
+        <v-list-item
+          v-for="p in authorizedProjects"
+          :key="p.id"
+          :active="p.id === projectId"
+          :disabled="p.id === projectId"
+          @click="switchProject(p)"
+        >
+          <template #prepend>
+            <v-icon :color="p.id === projectId ? 'primary' : undefined">
+              {{ p.id === projectId ? 'mdi-check-circle' : 'mdi-office-building-outline' }}
+            </v-icon>
+          </template>
+          <v-list-item-title>{{ p.name }}</v-list-item-title>
+        </v-list-item>
+        <v-list-item v-if="authorizedProjects.length === 0" disabled>
+          <v-list-item-title class="text-grey">無可切換的建案</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
   </div>
 
   <v-spacer></v-spacer>
@@ -419,6 +458,13 @@ const projectName = computed(() => {
 // 是否由「列印報價」入口進入（?pick=1）→ 不提供返回功能
 const isPickEntry = computed(() => route.query.pick === '1');
 const confirmClearDialog = ref(false);
+
+// 可切換的建案：使用者於「報價系統」有權限的建案（供標題切換建案，免回入口頁）
+const authorizedProjects = computed(() =>
+  (projectStore.projectsList || []).filter(p =>
+    userStore.hasProjectPermission('報價系統', p.name)
+  )
+);
 
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
@@ -910,6 +956,19 @@ function removeAllUnits() {
   confirmClearDialog.value = false;
 }
 
+// 切換建案（免回入口頁）：清空報價單後導向新建案的報價單設定並重新載入
+async function switchProject(p) {
+  if (!p || p.id === projectId.value) return;
+  quoteStore.clearAllNegotiations();
+  quoteStore.clearQuote();
+  await router.push({
+    name: 'QuoteSettings',
+    params: { projectName: p.id },
+    query: { ...route.query },
+  });
+  window.location.reload();
+}
+
 // 戶別選擇彈窗：確認 → 逐筆加入 quoteStore（沿用允許重複）
 function onPickerConfirm(unitDataArr) {
   (unitDataArr || []).forEach(u => quoteStore.addItem(u));
@@ -926,7 +985,16 @@ function onPickerCancel() {
 
 <style scoped>
 
-.page-header { padding-bottom: 16px; border-bottom: 2px solid #e0e0e0; }
+.page-header { padding: 4px 0 16px; border-bottom: 2px solid #e0e0e0; gap: 8px; flex-wrap: wrap; }
+.title-block { min-width: 0; }
+.project-chip {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding-inline: 14px;
+  box-shadow: 0 2px 6px rgba(25, 118, 210, 0.25);
+}
+.project-chip :deep(.v-chip__content) { line-height: 1.4; }
 .quote-item-header { font-weight: bold; padding: 8px 16px; background-color: #f5f5f5; border-radius: 4px; margin-bottom: 8px; }
 .quote-item-header .item-cell { display: flex; justify-content: center; align-items: center; text-align: center; }
 .flex-1 { flex: 1; }
