@@ -17,14 +17,32 @@
     </v-overlay>
 
    <div class="page-header d-flex align-center">
-  <v-btn icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
-  
+  <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
+  <v-btn v-if="!isPickEntry" icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
+
   <div>
     <h1 class="text-h4 font-weight-bold text-primary">報價單設定</h1>
     <p class="text-grey-darken-1">建案: {{ projectName }}</p>
   </div>
 
   <v-spacer></v-spacer>
+
+  <v-btn
+    color="primary"
+    variant="tonal"
+    prepend-icon="mdi-home-plus"
+    class="mr-4"
+    @click="openUnitPicker"
+  >新增戶別</v-btn>
+
+  <v-btn
+    v-if="quoteStore.items.length > 0"
+    color="error"
+    variant="tonal"
+    prepend-icon="mdi-delete-sweep"
+    class="mr-4"
+    @click="confirmClearDialog = true"
+  >移除全部戶別</v-btn>
 
 <v-tooltip text="活動訊息" location="bottom">
   <template v-slot:activator="{ props }">
@@ -63,7 +81,14 @@
       <v-card-text>
         <div v-if="quoteStore.items.length === 0" class="text-center py-10">
           <p>報價單中沒有任何戶別。</p>
-          <v-btn color="primary" class="mt-4" @click="goBack">返回銷控表</v-btn>
+          <v-btn
+            v-if="isPickEntry"
+            color="primary"
+            class="mt-4"
+            prepend-icon="mdi-home-plus"
+            @click="openUnitPicker"
+          >新增戶別</v-btn>
+          <v-btn v-else color="primary" class="mt-4" @click="goBack">返回銷控表</v-btn>
         </div>
         <div v-else class="quote-list">
           <div class="quote-item-header d-none d-md-flex">
@@ -288,6 +313,30 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- 走「列印報價」進入時的戶別選擇彈窗（也供報價設定內「新增戶別」重複開啟） -->
+    <QuoteUnitPickerDialog
+      v-model="unitPickerVisible"
+      :units="pickerUnits"
+      @confirm="onPickerConfirm"
+      @cancel="onPickerCancel"
+    />
+
+    <!-- 移除全部戶別 確認 -->
+    <v-dialog v-model="confirmClearDialog" max-width="400" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon start color="error">mdi-delete-sweep</v-icon>
+          移除全部戶別
+        </v-card-title>
+        <v-card-text>確定要移除報價單中的全部戶別嗎？此動作無法復原。</v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="confirmClearDialog = false">取消</v-btn>
+          <v-btn color="error" variant="flat" @click="removeAllUnits">確定移除</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -313,6 +362,8 @@ import QuoteItem from '@/components/QuoteItem.vue';
 // 改為 async 載入：PrintQuotation 帶入 fabric/jspdf 等大型套件，僅在使用者點「列印報價單」時才下載
 const PrintQuotation = defineAsyncComponent(() => import('@/views/PrintQuotation.vue'));
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
+import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
+import { useSalesDataStore } from '@/store/salesDataStore';
 
 const route = useRoute();
 const router = useRouter();
@@ -321,6 +372,7 @@ const userStore = useUserStore();
 const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
 const adminStore = useAdminStore();
+const salesDataStore = useSalesDataStore();
 
 // ✅ [新增] 進入時清空所有議價調整（避免殘留）
 onMounted(() => {
@@ -364,6 +416,10 @@ const projectName = computed(() => {
   return projectStore.idToNameMap[projectId.value] || '載入中...';
 });
 
+// 是否由「列印報價」入口進入（?pick=1）→ 不提供返回功能
+const isPickEntry = computed(() => route.query.pick === '1');
+const confirmClearDialog = ref(false);
+
 const personnelOptions = ref([]);
 const canEditPersonnel = ref(false);
 const selectedPersonnel = ref(null);
@@ -374,6 +430,10 @@ const isGeneratingPdf = ref(false);
 const pdfResultDialog = ref(false);
 const generatedPdfUrl = ref('');
 const isQuoteEditorDialogVisible = ref(false);
+
+// ✅ [新增] 走「列印報價」(?pick=1) 進入時的戶別選擇彈窗
+const unitPickerVisible = ref(false);
+const pickerUnits = ref([]);
 
 // --- 新增：期款範本選擇相關狀態 ---
 const paymentTemplates = ref([]); // 存放所有期款範本
@@ -814,6 +874,51 @@ function goBack() {
 
 function openQuoteEditor() {
   isQuoteEditorDialogVisible.value = true;
+}
+
+// ✅ [新增] 走「列印報價」進入（?pick=1）且報價單為空 → 開戶別選擇彈窗
+onMounted(async () => {
+  if (route.query.pick === '1' && quoteStore.items.length === 0) {
+    try {
+      await salesDataStore.loadProjectData(projectId.value);
+      pickerUnits.value = salesDataStore.getProjectData(projectId.value).households || [];
+    } catch (e) {
+      console.error('[QuoteSettings] 載入戶別清單失敗:', e);
+      pickerUnits.value = [];
+    }
+    unitPickerVisible.value = true;
+  }
+});
+
+// 報價設定內「新增戶別」：載入戶別清單（快取）後開啟選擇彈窗
+async function openUnitPicker() {
+  if (!pickerUnits.value || pickerUnits.value.length === 0) {
+    try {
+      await salesDataStore.loadProjectData(projectId.value);
+      pickerUnits.value = salesDataStore.getProjectData(projectId.value).households || [];
+    } catch (e) {
+      console.error('[QuoteSettings] 載入戶別清單失敗:', e);
+      pickerUnits.value = [];
+    }
+  }
+  unitPickerVisible.value = true;
+}
+
+// 移除全部戶別
+function removeAllUnits() {
+  quoteStore.clearQuote();
+  confirmClearDialog.value = false;
+}
+
+// 戶別選擇彈窗：確認 → 逐筆加入 quoteStore（沿用允許重複）
+function onPickerConfirm(unitDataArr) {
+  (unitDataArr || []).forEach(u => quoteStore.addItem(u));
+  unitPickerVisible.value = false;
+}
+
+// 戶別選擇彈窗：取消 → 僅關閉彈窗（不提供返回，停留在報價設定）
+function onPickerCancel() {
+  unitPickerVisible.value = false;
 }
 
 

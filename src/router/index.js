@@ -103,6 +103,8 @@ const routes = [
   },
   {
     // ✅ 4. 修改「報價系統」入口
+    // 選建案後改導向「選擇功能」頁（QuoteFunctionSelect），由該頁分流到
+    // 銷控表(需密碼) 或 列印報價(QuoteSettings)。checkInToSystem 仍在 ProjectSelector 觸發。
     path: '/quote-system-entry',
     name: 'QuoteSystemEntry',
     component: ProjectSelector, // (保持延遲載入)
@@ -110,8 +112,22 @@ const routes = [
       requiresAuth: true,
       requiredSystem: '報價系統',
       layout: DefaultLayout, // ✅
-      targetRouteName: 'QuoteSystem',
+      targetRouteName: 'QuoteFunctionSelect',
       paramKey: 'projectName'
+    }
+  },
+  {
+    // ✅ 新增：報價系統「選擇功能」頁（銷控表 / 列印報價）
+    path: '/quote-function-select/:projectName',
+    name: 'QuoteFunctionSelect',
+    component: () => import('@/views/QuoteFunctionSelect.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '報價系統',
+      layout: DefaultLayout, // ✅
+      viewMode: 'quote',
+      title: '選擇功能'
     }
   },
 

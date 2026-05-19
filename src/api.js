@@ -319,6 +319,33 @@ export async function updateUserProfile(payload) {
 }
 
 
+/**
+ * 🔒 本地驗證使用者登入密碼（讀 Firestore users/{key} 比對 password 欄位）
+ * 沿用 updateUserProfile 的本地比對模式，不需後端部署。
+ * @param {string} key - 使用者手機號（users 文件 ID）
+ * @param {string} password - 使用者輸入之密碼
+ * @returns {Promise<{status:'success'|'error', message?:string}>}
+ */
+export async function verifyUserPassword(key, password) {
+  try {
+    if (!key) {
+      return { status: 'error', message: '無法取得使用者資訊，請重新登入' };
+    }
+    const userDocSnap = await getDoc(doc(db, 'users', key));
+    if (!userDocSnap.exists()) {
+      return { status: 'error', message: '找不到用戶資料，請重新登入' };
+    }
+    if (userDocSnap.data().password !== String(password)) {
+      return { status: 'error', message: '密碼錯誤' };
+    }
+    return { status: 'success' };
+  } catch (e) {
+    console.error('verifyUserPassword 錯誤:', e);
+    return { status: 'error', message: `驗證密碼時發生錯誤: ${e.message}` };
+  }
+}
+
+
 // 🔑 忘記密碼 (呼叫 Firebase Cloud Function)
 export async function forgotPasswordUser(key) {
   //console.log(`[api.js] forgotPasswordUser called with key: ${key}`);

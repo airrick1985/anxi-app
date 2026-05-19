@@ -98,7 +98,7 @@ function addItem(unitData) {
       internalId: uniqueId,
       unitId: unitData['戶別'],
       unitDetails: unitData,
-      isFirstTimeBuyer: '否',
+      isFirstTimeBuyer: '是', // 預設選「首購」
       usePackageDeal: false,
       selectedParking: [],
       // ★★★ 1. 新增：初始化 packageItems 屬性 ★★★

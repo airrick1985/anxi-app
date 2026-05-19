@@ -85,11 +85,20 @@
      ></v-checkbox>
 
 
-     <v-radio-group v-model="isFirstTimeBuyerModel" inline hide-details>
-      <template v-slot:label><span class="text-body-2">首購:</span></template>
-      <v-radio label="是" value="是" density="compact"></v-radio>
-      <v-radio label="否" value="否" density="compact"></v-radio>
-     </v-radio-group>
+     <div class="d-flex align-center" style="gap: 10px;">
+       <span class="text-body-2">首購:</span>
+       <v-btn-toggle
+         v-model="isFirstTimeBuyerModel"
+         mandatory
+         density="comfortable"
+         color="primary"
+         variant="outlined"
+         divided
+       >
+         <v-btn value="是" size="small">首購</v-btn>
+         <v-btn value="否" size="small">非首購</v-btn>
+       </v-btn-toggle>
+     </div>
     </v-list-item>
     
     <v-divider class="my-2"></v-divider>
@@ -152,10 +161,17 @@
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    
    <div class="item-cell flex-1">
-    <v-radio-group v-model="isFirstTimeBuyerModel" hide-details>
-        <v-radio label="首購" value="是"></v-radio>
-        <v-radio label="非首購" value="否"></v-radio>
-    </v-radio-group>
+    <v-btn-toggle
+      v-model="isFirstTimeBuyerModel"
+      mandatory
+      density="comfortable"
+      color="primary"
+      variant="outlined"
+      divided
+    >
+      <v-btn value="是" size="small">首購</v-btn>
+      <v-btn value="否" size="small">非首購</v-btn>
+    </v-btn-toggle>
    </div>
 
    <div class="item-cell flex-1" v-if="showPreferredPaymentOption">
@@ -206,8 +222,8 @@
       
       <!-- 桌面模式：並排顯示 -->
       <div v-if="!isMobile" class="d-flex ga-4 mb-2">
-        <!-- 一般期款（總價期款） - 左半邊 -->
-        <div v-if="generalPaymentCalculation.hasData" class="flex-1">
+        <!-- 一般期款（總價期款） - 約頁面 1/3 寬 -->
+        <div v-if="generalPaymentCalculation.hasData" class="payment-col">
           <v-card flat border>
             <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1">
               <v-icon start>mdi-calculator-variant</v-icon>
@@ -216,25 +232,35 @@
             <v-card-text class="pa-2">
               <div class="payment-items-grid">
                 <div 
-                  v-for="item in generalPaymentCalculation.items" 
+                  v-for="item in generalPaymentCalculation.items"
                   :key="item.id"
                   class="payment-item d-flex align-center py-1"
                   :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
                 >
                   <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
                     {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip 
-                      v-if="formatConditionalValue(item)" 
-                      size="x-small" 
-                      variant="outlined" 
-                      color="primary" 
+                    <v-chip
+                      v-if="formatConditionalValue(item)"
+                      size="x-small"
+                      variant="outlined"
+                      color="primary"
                       class="ml-2 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
                     </v-chip>
                   </span>
+                  <span class="payment-leader" aria-hidden="true"></span>
                   <span class="payment-amount font-weight-medium">
-                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
+                  </span>
+                </div>
+                <div class="payment-item payment-total">
+                  <span class="payment-name">總價</span>
+                  <span class="payment-leader" aria-hidden="true"></span>
+                  <span class="payment-amount">
+                    <span class="payment-amount-num">{{ (finalTotalPrice || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
                   </span>
                 </div>
               </div>
@@ -242,8 +268,8 @@
           </v-card>
         </div>
 
-        <!-- 配套期款 - 右半邊 -->
-        <div v-if="packagePaymentCalculation.hasData" class="flex-1">
+        <!-- 配套期款 - 約頁面 1/3 寬 -->
+        <div v-if="packagePaymentCalculation.hasData" class="payment-col">
           <v-card flat border>
             <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
               <v-icon start>mdi-tools</v-icon>
@@ -252,25 +278,35 @@
             <v-card-text class="pa-2">
               <div class="payment-items-grid">
                 <div 
-                  v-for="item in packagePaymentCalculation.items" 
+                  v-for="item in packagePaymentCalculation.items"
                   :key="item.id"
                   class="payment-item d-flex align-center py-1"
                   :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
                 >
                   <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
                     {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip 
-                      v-if="formatConditionalValue(item)" 
-                      size="x-small" 
-                      variant="outlined" 
-                      color="primary" 
+                    <v-chip
+                      v-if="formatConditionalValue(item)"
+                      size="x-small"
+                      variant="outlined"
+                      color="primary"
                       class="ml-2 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
                     </v-chip>
                   </span>
+                  <span class="payment-leader" aria-hidden="true"></span>
                   <span class="payment-amount font-weight-medium">
-                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
+                  </span>
+                </div>
+                <div class="payment-item payment-total">
+                  <span class="payment-name">總價</span>
+                  <span class="payment-leader" aria-hidden="true"></span>
+                  <span class="payment-amount">
+                    <span class="payment-amount-num">{{ (packagePrice || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
                   </span>
                 </div>
               </div>
@@ -278,9 +314,6 @@
           </v-card>
         </div>
 
-        <!-- 如果只有總價期款或只有配套期款，佔滿一半空間 -->
-        <div v-if="!generalPaymentCalculation.hasData && packagePaymentCalculation.hasData" class="flex-1"></div>
-        <div v-if="generalPaymentCalculation.hasData && !packagePaymentCalculation.hasData" class="flex-1"></div>
       </div>
 
       <!-- 手機模式：垂直堆疊顯示 -->
@@ -295,25 +328,35 @@
             <v-card-text class="pa-2">
               <div class="payment-items-grid">
                 <div 
-                  v-for="item in generalPaymentCalculation.items" 
+                  v-for="item in generalPaymentCalculation.items"
                   :key="item.id"
                   class="payment-item d-flex align-center py-1"
                   :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
                 >
                   <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
                     {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip 
-                      v-if="formatConditionalValue(item)" 
-                      size="x-small" 
-                      variant="outlined" 
-                      color="primary" 
+                    <v-chip
+                      v-if="formatConditionalValue(item)"
+                      size="x-small"
+                      variant="outlined"
+                      color="primary"
                       class="ml-1 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
                     </v-chip>
                   </span>
+                  <span class="payment-leader" aria-hidden="true"></span>
                   <span class="payment-amount font-weight-medium">
-                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
+                  </span>
+                </div>
+                <div class="payment-item payment-total">
+                  <span class="payment-name">總價</span>
+                  <span class="payment-leader" aria-hidden="true"></span>
+                  <span class="payment-amount">
+                    <span class="payment-amount-num">{{ (finalTotalPrice || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
                   </span>
                 </div>
               </div>
@@ -331,25 +374,35 @@
             <v-card-text class="pa-2">
               <div class="payment-items-grid">
                 <div 
-                  v-for="item in packagePaymentCalculation.items" 
+                  v-for="item in packagePaymentCalculation.items"
                   :key="item.id"
                   class="payment-item d-flex align-center py-1"
                   :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
                 >
                   <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
                     {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip 
-                      v-if="formatConditionalValue(item)" 
-                      size="x-small" 
-                      variant="outlined" 
-                      color="primary" 
+                    <v-chip
+                      v-if="formatConditionalValue(item)"
+                      size="x-small"
+                      variant="outlined"
+                      color="primary"
                       class="ml-1 payment-hint"
                     >
                       {{ formatConditionalValue(item) }}
                     </v-chip>
                   </span>
+                  <span class="payment-leader" aria-hidden="true"></span>
                   <span class="payment-amount font-weight-medium">
-                    {{ (item.calculatedValue || 0).toLocaleString() }} 萬
+                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
+                  </span>
+                </div>
+                <div class="payment-item payment-total">
+                  <span class="payment-name">總價</span>
+                  <span class="payment-leader" aria-hidden="true"></span>
+                  <span class="payment-amount">
+                    <span class="payment-amount-num">{{ (packagePrice || 0).toLocaleString() }}</span>
+                    <span class="payment-amount-unit">萬</span>
                   </span>
                 </div>
               </div>
@@ -1073,6 +1126,12 @@ const usePreferredPaymentModel = computed({
 
 
 
+// ✅ [修正 TDZ] finalTotalPrice / packagePrice 必須在 selectPaymentTemplate 及
+// watch(generalPaymentCalculation, { immediate:true }) 之前宣告，否則 setup 期間
+// 同步求值會發生 "Cannot access 'finalTotalPrice' before initialization"。
+const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.internalId));
+const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.internalId));
+
 // ★★★ 新增：期款範本選擇邏輯 ★★★
 
 /**
@@ -1213,8 +1272,6 @@ const hasAnyPaymentData = computed(() => {
            (props.paymentTermsData && props.paymentTermsData.length > 0); // 向後相容性
 });
 
-const packagePrice = computed(() => quoteStore.getPackagePrice(props.item.internalId));
-const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.internalId));
 const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.item.internalId));
 const displayHousePrice = computed(() => formatNumber(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
 const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPrice(props.item.internalId), 2));
@@ -1434,67 +1491,134 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
 
-/* 新增：期款顯示樣式 */
+/* 期款卡片欄：約頁面 1/3 寬（不放大、不縮小），單一或雙欄皆維持窄版 */
+.payment-col {
+  flex: 0 0 33.333%;
+  max-width: 33.333%;
+  min-width: 300px;
+}
+
+/* 期款顯示樣式（項目↔金額緊鄰對齊，提升質感與易讀性） */
 .payment-items-grid {
   max-height: 640px;
   overflow-y: auto;
+  padding: 2px 0;
 }
 
 .payment-item {
-  border-bottom: 1px solid #f0f0f0;
-  padding: 4px 8px;
-  transition: background-color 0.2s;
-}
-
-.payment-item:hover {
-  background-color: yellow;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #f2f2f2;
+  transition: background-color 0.12s ease;
 }
 
 .payment-item:last-child {
   border-bottom: none;
 }
 
-.payment-parent {
-  font-weight: 600;
-  background-color: rgba(33, 150, 243, 0.05);
+/* hover 維持黃色 */
+.payment-item:hover {
+  background-color: yellow;
 }
 
-.payment-child {
-  padding-left: 16px;
-  color: #666;
-  font-size: 0.9em;
-}
-
+/* 名稱：固定欄寬 → 金額緊鄰其後且跨列對齊（不再被頂到最右） */
 .payment-name {
-  flex: 0 1 auto;
+  flex: 0 0 14em;
+  box-sizing: border-box; /* 子項 padding 不撐寬 → 金額欄跨父子對齊 */
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   text-align: left;
-  max-width: 70%;
-  margin-right: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: #37474f;
+  min-width: 0;
 }
 
+/* 引導線已不需要（項目與金額已緊鄰），隱藏 */
+.payment-leader {
+  display: none;
+}
+
+/* 金額：緊接名稱欄、靠右對齊成欄 */
 .payment-amount {
-  color: #1976d2;
   flex: 0 0 auto;
-  font-weight: 600;
+  min-width: 5.5em;
   text-align: right;
-  margin-left: auto;
+  white-space: nowrap;
+  color: #1976d2;
+  font-weight: 700;
+}
+
+.payment-amount-num {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.02rem;
+  letter-spacing: 0.2px;
+}
+
+.payment-amount-unit {
+  margin-left: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #607d8b;
+}
+
+/* 父層級：左側強調邊與淡底色 */
+.payment-parent {
+  background-color: rgba(33, 150, 243, 0.06);
+  box-shadow: inset 3px 0 0 #1976d2; /* 改 inset 陰影：不佔版面，金額欄不位移 */
+}
+
+.payment-parent .payment-name {
+  font-weight: 700;
+  color: #1565c0;
+}
+
+/* 子層級：縮排套在名稱（不位移整列，金額欄維持對齊）、弱化 */
+.payment-child .payment-name {
+  padding-left: 14px;
+  color: #78909c;
+  font-size: 0.92em;
+}
+
+.payment-child .payment-amount {
+  color: #546e7a;
+  font-weight: 600;
+}
+
+/* 總價列：置於最後，紅色明顯易讀 */
+.payment-total {
+  border-top: 2px solid #ef9a9a;
+  background-color: #fff5f5;
+  margin-top: 2px;
+}
+
+.payment-total .payment-name {
+  font-weight: 800;
+  color: #c62828;
+  font-size: 1.02rem;
+}
+
+.payment-total .payment-amount {
+  color: #c62828;
+}
+
+.payment-total .payment-amount-num {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.payment-total .payment-amount-unit {
+  color: #c62828;
+  font-weight: 700;
 }
 
 /* 條件值提示標籤樣式 */
 .payment-hint {
-  opacity: 0.8;
+  opacity: 0.85;
   font-size: 0.7rem;
   height: 20px !important;
   vertical-align: middle;
-}
-
-.payment-name {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
 }
 </style>
