@@ -2515,6 +2515,70 @@ async function _ensureActivityMessageManagePermission(anxiDb, userKey, projectId
 }
 
 /**
+ * 驗證使用者是否擁有指定建案的「驗屋預約管理-修改」權限。
+ * 通過條件：roles 含「超級管理員/系統管理員」，或 userPermissions[projectId].systems 含「驗屋預約管理-修改」。
+ */
+async function _ensureInspectionEditPermission(anxiDb, userKey, projectId) {
+  if (!userKey) {
+    throw new HttpsError("unauthenticated", "缺少使用者識別 (userKey)，請重新登入。");
+  }
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId。");
+  }
+  const userSnap = await anxiDb.collection("users").doc(userKey).get();
+  if (!userSnap.exists) {
+    throw new HttpsError("permission-denied", "找不到對應使用者資料。");
+  }
+  const roles = userSnap.data().roles || [];
+  if (roles.includes("超級管理員") || roles.includes("系統管理員")) return;
+
+  const permSnap = await anxiDb.collection("userPermissions").doc(userKey).get();
+  const permissions = permSnap.exists ? (permSnap.data().permissions || {}) : {};
+  const systems = permissions[projectId]?.systems || [];
+  if (!systems.includes("驗屋預約管理-修改")) {
+    throw new HttpsError("permission-denied", "您沒有此建案的「驗屋預約管理-修改」權限，無法調整事件顏色。");
+  }
+}
+
+/**
+ * [內部函式] 儲存「驗屋預約時間表」事件顏色設定（共用、寫入 projects 文件）。
+ * data: { projectId, userKey, eventColorSettings: { admin:{類型:hex}, bookingPage:{類型:hex} } }
+ * 僅具該建案「驗屋預約管理-修改」權限者可寫入；其餘來源/欄位一律清洗。
+ */
+async function _handleSaveEventColorSettings(data) {
+  const { projectId, userKey, eventColorSettings } = data || {};
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId。");
+  }
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(anxiDb, userKey, projectId);
+
+  // 清洗：只保留 admin / bookingPage 兩個來源，值必須是 #RRGGBB
+  const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+  const sanitizeMap = (raw) => {
+    const out = {};
+    if (raw && typeof raw === "object") {
+      for (const [type, color] of Object.entries(raw)) {
+        if (typeof type === "string" && type && typeof color === "string" && HEX_RE.test(color)) {
+          out[type] = color.toUpperCase();
+        }
+      }
+    }
+    return out;
+  };
+  const sanitized = {
+    admin: sanitizeMap(eventColorSettings?.admin),
+    bookingPage: sanitizeMap(eventColorSettings?.bookingPage),
+  };
+
+  await anxiDb.collection("projects").doc(projectId).set(
+    { eventColorSettings: sanitized },
+    { merge: true }
+  );
+  return { status: "success", eventColorSettings: sanitized };
+}
+
+/**
  * 將原始檔名安全化：移除路徑分隔符與不可見字元，限制長度。
  */
 function _safeActivityFileName(rawName) {
@@ -16560,6 +16624,10 @@ exports.inspectionCalendarApi = onCall({
         return await _handleCancelAppointmentByAdmin(data);
       case 'updateAppointmentInspectors':
         return await _handleUpdateAppointmentInspectors(data);
+
+      // --- 事件顏色設定（共用、需「驗屋預約管理-修改」權限） ---
+      case 'saveEventColorSettings':
+        return await _handleSaveEventColorSettings(data);
 
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);

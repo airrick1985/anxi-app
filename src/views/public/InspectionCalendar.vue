@@ -494,15 +494,23 @@
             <div class="d-flex align-center mb-2">
               <v-avatar size="30" color="deep-orange-lighten-1" class="mr-2"><v-icon size="18" color="white">mdi-palette</v-icon></v-avatar>
               <div class="flex-grow-1">
-                <div class="text-subtitle-2 font-weight-bold">事件顏色</div>
+                <div class="text-subtitle-2 font-weight-bold d-flex align-center">
+                  事件顏色
+                  <v-chip size="x-small" label class="ml-2" color="indigo-lighten-4">全建案共用</v-chip>
+                </div>
                 <div class="text-caption text-grey-darken-1">為各預約項目類型指定事件底色，留空則沿用系統預設配色</div>
               </div>
-              <v-btn size="x-small" variant="text" color="primary" :disabled="!currentTypeOptions.length" @click="applyDefaultTypeColors">建議配色</v-btn>
-              <v-btn size="x-small" variant="text" color="grey" @click="clearAllTypeColors">全部清除</v-btn>
+              <template v-if="canEdit">
+                <v-btn size="x-small" variant="text" color="primary" :disabled="!currentTypeOptions.length" @click="applyDefaultTypeColors">建議配色</v-btn>
+                <v-btn size="x-small" variant="text" color="grey" @click="clearAllTypeColors">全部清除</v-btn>
+              </template>
             </div>
             <div class="text-caption text-grey-darken-1 mb-2">
               同一項目可依「<strong class="text-deep-orange">後台新增</strong>」與「<strong class="text-blue">前台預約</strong>」來源分別設定不同顏色。
             </div>
+            <v-alert v-if="!canEdit" type="info" variant="tonal" density="compact" class="mb-2 text-caption">
+              事件顏色為全建案共用設定，僅具「驗屋預約管理-修改」權限者可調整；目前為唯讀檢視。
+            </v-alert>
             <div v-if="!currentTypeOptions.length" class="text-caption text-grey">此建案尚未設定預約項目類型</div>
             <div v-else class="d-flex flex-column ga-3">
               <div v-for="t in currentTypeOptions" :key="t" class="pa-3 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
@@ -513,7 +521,7 @@
                       :color="src.key === 'admin' ? 'deep-orange-lighten-4' : 'blue-lighten-4'">
                       {{ src.label }}
                     </v-chip>
-                    <v-menu :close-on-content-click="false" location="bottom start">
+                    <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
                       <template #activator="{ props }">
                         <div v-bind="props" class="d-flex align-center justify-center mr-2 flex-shrink-0"
                           :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer',
@@ -532,16 +540,38 @@
                         </div>
                       </v-card>
                     </v-menu>
+                    <div v-else class="d-flex align-center justify-center mr-2 flex-shrink-0"
+                      :style="{ width:'32px', height:'32px', borderRadius:'8px',
+                        backgroundColor: getTypeColor(src.key, t) || '#ffffff',
+                        border: getTypeColor(src.key, t) ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
+                      <v-icon v-if="!getTypeColor(src.key, t)" size="16" color="grey">mdi-minus</v-icon>
+                    </div>
                     <v-chip size="small" label variant="flat" class="flex-shrink-0"
                       :style="{ backgroundColor: getTypeColor(src.key, t) || '#EEEEEE', color: getReadableTextColor(getTypeColor(src.key, t) || '#EEEEEE') }">
                       {{ getTypeColor(src.key, t) ? '預覽' : '預設' }}
                     </v-chip>
-                    <v-btn v-if="getTypeColor(src.key, t)" icon="mdi-close" size="x-small" variant="text" color="grey" class="ml-1 flex-shrink-0"
+                    <v-btn v-if="canEdit && getTypeColor(src.key, t)" icon="mdi-close" size="x-small" variant="text" color="grey" class="ml-1 flex-shrink-0"
                       @click="clearTypeColor(src.key, t)" title="清除此來源顏色"></v-btn>
                   </div>
                 </div>
               </div>
             </div>
+            <template v-if="canEdit">
+              <v-divider class="my-3"></v-divider>
+              <div class="d-flex align-center flex-wrap ga-2">
+                <v-chip v-if="colorSettingsDirty" size="small" color="warning" variant="tonal" prepend-icon="mdi-alert-circle-outline">
+                  有未儲存的變更
+                </v-chip>
+                <span v-else class="text-caption text-grey">變更後請按「儲存」才會套用給所有使用者</span>
+                <v-spacer></v-spacer>
+                <v-btn size="small" variant="text" color="grey" :disabled="!colorSettingsDirty || isSavingColors"
+                  @click="syncColorSettingsFromProject(true)">還原</v-btn>
+                <v-btn size="small" color="primary" variant="flat" :loading="isSavingColors"
+                  :disabled="!colorSettingsDirty" prepend-icon="mdi-content-save" @click="saveEventColorSettings">
+                  儲存事件顏色
+                </v-btn>
+              </div>
+            </template>
           </div>
         </v-card-text>
 
@@ -1236,10 +1266,22 @@ const SOURCE_KEYS = [
 function resolveSourceKey(source) {
   return source === 'admin' ? 'admin' : 'bookingPage';
 }
-const bookingTypeColorMap = useStorage(
-  `inspection_calendar_type_colors_v2_${projectId.value}`,
-  { admin: {}, bookingPage: {} }
-);
+// 事件顏色設定改為「資料庫共用」：讀取自 projects 文件、寫入需「驗屋預約管理-修改」權限。
+// 本地 ref 為編輯/顯示用的工作副本；按下「儲存」才寫回資料庫並套用給所有使用者。
+const bookingTypeColorMap = ref({ admin: {}, bookingPage: {} });
+const colorSettingsDirty = ref(false); // 是否有未儲存的變更
+const isSavingColors = ref(false);
+
+function normalizeColorSettings(raw) {
+  const pick = (m) => (m && typeof m === 'object' ? { ...m } : {});
+  return { admin: pick(raw?.admin), bookingPage: pick(raw?.bookingPage) };
+}
+// 從已載入的建案設定同步顏色；除非 force，否則不覆蓋尚未儲存的編輯
+function syncColorSettingsFromProject(force = false) {
+  if (colorSettingsDirty.value && !force) return;
+  bookingTypeColorMap.value = normalizeColorSettings(projectSettings.value?.eventColorSettings);
+  colorSettingsDirty.value = false;
+}
 function getTypeColor(srcKey, typeName) {
   return bookingTypeColorMap.value?.[srcKey]?.[typeName] || '';
 }
@@ -1250,15 +1292,18 @@ function setTypeColor(srcKey, typeName, color) {
     ...cur,
     [srcKey]: { ...(cur[srcKey] || {}), [typeName]: color },
   };
+  colorSettingsDirty.value = true;
 }
 function clearTypeColor(srcKey, typeName) {
   const cur = bookingTypeColorMap.value || {};
   const sub = { ...(cur[srcKey] || {}) };
   delete sub[typeName];
   bookingTypeColorMap.value = { ...cur, [srcKey]: sub };
+  colorSettingsDirty.value = true;
 }
 function clearAllTypeColors() {
   bookingTypeColorMap.value = { admin: {}, bookingPage: {} };
+  colorSettingsDirty.value = true;
 }
 // 兩組可辨識的建議色票：前台偏冷色淺底、後台偏暖色淺底，方便一眼分辨來源
 const PALETTE_BOOKINGPAGE = ['#E3F2FD', '#E1F5FE', '#E0F7FA', '#E8F5E9', '#F1F8E9', '#EDE7F6', '#E8EAF6', '#E0F2F1'];
@@ -1271,6 +1316,36 @@ function applyDefaultTypeColors() {
     adminMap[t] = PALETTE_ADMIN[i % PALETTE_ADMIN.length];
   });
   bookingTypeColorMap.value = { admin: adminMap, bookingPage: pageMap };
+  colorSettingsDirty.value = true;
+}
+// 儲存到資料庫（共用、套用給所有使用者）；僅具「驗屋預約管理-修改」權限者可用
+async function saveEventColorSettings() {
+  if (!canEdit.value) {
+    snackbarText.value = '您沒有「驗屋預約管理-修改」權限，無法儲存事件顏色。';
+    snackbar.value = true;
+    return;
+  }
+  isSavingColors.value = true;
+  try {
+    const payload = normalizeColorSettings(bookingTypeColorMap.value);
+    const res = await inspectionApi('saveEventColorSettings', {
+      projectId: projectId.value,
+      userKey: userStore.user?.key,
+      eventColorSettings: payload,
+    });
+    const saved = normalizeColorSettings(res?.data?.eventColorSettings || payload);
+    bookingTypeColorMap.value = saved;
+    if (projectSettings.value) projectSettings.value.eventColorSettings = saved;
+    colorSettingsDirty.value = false;
+    snackbarText.value = '事件顏色已儲存，並套用給所有使用者。';
+    snackbar.value = true;
+  } catch (err) {
+    console.error('儲存事件顏色失敗:', err);
+    snackbarText.value = `儲存失敗：${err?.message || '未知錯誤'}`;
+    snackbar.value = true;
+  } finally {
+    isSavingColors.value = false;
+  }
 }
 // 從 bookingMenu 取得所有選擇方式選項
 const currentMethodOptions = computed(() => {
@@ -2094,6 +2169,7 @@ onMounted(async () => {
 
     // 2. 儲存靜態資料
     projectSettings.value = projectConfig;
+    syncColorSettingsFromProject(); // 由建案設定載入共用的事件顏色
     minSelectableDate.value = dateRangeData.minDate;
     maxSelectableDate.value = dateRangeData.maxDate; // ✅ 修正了這裡的變數名稱
     dateRange.value = [startDate.value, endDate.value]; 
