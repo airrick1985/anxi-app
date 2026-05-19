@@ -2278,6 +2278,123 @@
                   <v-icon start size="small">mdi-alert-outline</v-icon>
                   名額模式已變更，儲存後將立即生效。若此批次已有客戶預約，名額計算方式會隨之改變。
                 </v-alert>
+
+                <!-- 共用名額：選擇共用範圍（相同項目分批 = 免設定；跨項目 = 需設定群組） -->
+                <v-sheet v-if="editedBatch.quotaMode === 'shared'" rounded="lg" border
+                  class="mt-3 pa-4 bg-blue-grey-lighten-5">
+                  <div class="d-flex flex-column flex-md-row ga-4">
+                    <!-- 左：此批次要與誰共用名額（選項上下堆疊） -->
+                    <div style="flex:0 0 300px; max-width:100%">
+                      <div class="text-body-2 font-weight-medium mb-3 d-flex align-center">
+                        <v-icon size="small" color="primary" class="mr-1">mdi-account-multiple-check-outline</v-icon>
+                        此批次要與誰共用名額？
+                      </div>
+
+                      <v-item-group v-model="editedBatch.sharedScope" mandatory class="d-flex flex-column ga-3">
+                        <v-item value="sameItem" v-slot="{ isSelected, toggle }">
+                          <v-card flat rounded="lg" class="pa-3" style="cursor:pointer"
+                            :color="isSelected ? 'primary' : undefined"
+                            :variant="isSelected ? 'flat' : 'outlined'" @click="toggle">
+                            <div class="d-flex align-center mb-1 font-weight-bold">
+                              <v-icon size="small" class="mr-1">mdi-file-multiple-outline</v-icon>
+                              「{{ currentBatchTypeLabel }}」的其他批次
+                            </div>
+                            <div class="text-caption"
+                              :class="isSelected ? 'text-blue-grey-lighten-4' : 'text-medium-emphasis'">
+                              同一項目分多個批次，系統自動共用，免設定。
+                            </div>
+                          </v-card>
+                        </v-item>
+
+                        <v-item value="crossItem" v-slot="{ isSelected, toggle }">
+                          <v-card flat rounded="lg" class="pa-3" style="cursor:pointer"
+                            :color="isSelected ? 'primary' : undefined"
+                            :variant="isSelected ? 'flat' : 'outlined'" @click="toggle">
+                            <div class="d-flex align-center mb-1 font-weight-bold">
+                              <v-icon size="small" class="mr-1">mdi-set-merge</v-icon>
+                              不同預約項目
+                            </div>
+                            <div class="text-caption"
+                              :class="isSelected ? 'text-blue-grey-lighten-4' : 'text-medium-emphasis'">
+                              例如初驗＋複驗共用名額，需設定群組。
+                            </div>
+                          </v-card>
+                        </v-item>
+                      </v-item-group>
+                    </div>
+
+                    <!-- 右：直接選共用項目（僅跨不同預約項目，與左側左右排列） -->
+                    <div v-if="editedBatch.sharedScope === 'crossItem'" class="flex-1-1">
+                      <div class="text-body-2 font-weight-medium mb-1">
+                        本批次「{{ currentBatchTypeLabel }}」要和哪些項目共用名額？
+                      </div>
+                      <div class="text-caption text-medium-emphasis mb-3 d-flex align-center">
+                        <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+                        此設定套用至整個建案
+                      </div>
+
+                      <div class="d-flex flex-wrap ga-2">
+                        <v-chip color="primary" variant="flat" label size="small"
+                          prepend-icon="mdi-lock">{{ currentBatchTypeLabel }}（本批次）</v-chip>
+                      </div>
+
+                      <v-chip-group v-if="sharedSelectableTypes.length > 0" v-model="sharedWithSelection" multiple
+                        column class="mt-1">
+                        <v-chip v-for="t in sharedSelectableTypes" :key="t" :value="t" filter
+                          variant="outlined" size="small">{{ t }}</v-chip>
+                      </v-chip-group>
+                      <div v-else class="text-caption text-medium-emphasis mt-2">尚無其他可共用的預約項目</div>
+
+                      <v-sheet rounded="lg" class="mt-3 pa-3 d-flex align-center"
+                        :color="sharedHasSelection ? 'green-lighten-5' : 'amber-lighten-5'">
+                        <v-icon size="small" class="mr-2"
+                          :color="sharedHasSelection ? 'green-darken-2' : 'amber-darken-3'">
+                          {{ sharedHasSelection ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline' }}
+                        </v-icon>
+                        <span v-if="sharedHasSelection" class="text-caption">
+                          {{ sharedPreviewParts.join(' ＋ ') }} → 同一時段共用名額
+                        </span>
+                        <span v-else class="text-caption">請至少選一個要共用名額的項目</span>
+                      </v-sheet>
+                    </div>
+
+                    <!-- 右：相同預約項目、同為共用名額的其他批次（僅檢視，一眼看到與誰共用） -->
+                    <div v-else class="flex-1-1">
+                      <div class="text-body-2 font-weight-medium mb-1">
+                        與本批次「{{ currentBatchTypeLabel }}」共用名額的其他批次
+                      </div>
+                      <div class="text-caption text-medium-emphasis mb-3 d-flex align-center">
+                        <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+                        同一預約項目、皆為「共用名額」的批次，會自動共用同一時段名額上限
+                      </div>
+
+                      <div v-if="sameTypeSharedBatches.length > 0" class="d-flex flex-column ga-2">
+                        <v-sheet v-for="b in sameTypeSharedBatches" :key="b.id" rounded="lg" border
+                          class="pa-3 bg-white d-flex align-center">
+                          <v-icon size="small" color="blue" class="mr-2">mdi-link-variant</v-icon>
+                          <div class="flex-1-1">
+                            <div class="text-body-2 font-weight-medium">{{ b.batchCode || '（未命名批次）' }}</div>
+                            <div v-if="b.bookingStart || b.bookingEnd"
+                              class="text-caption text-medium-emphasis">
+                              可預約 {{ b.bookingStart || '—' }} ~ {{ b.bookingEnd || '—' }}
+                            </div>
+                          </div>
+                          <v-chip size="x-small" color="blue" variant="tonal" label>共用</v-chip>
+                        </v-sheet>
+                      </div>
+                      <div v-else
+                        class="text-center text-medium-emphasis text-caption pa-4 rounded-lg border-dashed border bg-white">
+                        目前沒有其他「{{ currentBatchTypeLabel }}」的共用名額批次
+                      </div>
+
+                      <div v-if="sameTypeIsolatedCount > 0"
+                        class="text-caption text-medium-emphasis mt-2 d-flex align-center">
+                        <v-icon size="x-small" class="mr-1">mdi-lock-outline</v-icon>
+                        另有 {{ sameTypeIsolatedCount }} 個「獨立名額」批次不與本批次共用
+                      </div>
+                    </div>
+                  </div>
+                </v-sheet>
               </v-col>
             </v-row>
 
@@ -3585,6 +3702,87 @@ const availableBookingTypes = computed(() => {
   return bookingTypeOptions.value.filter(type => type !== '其他');
 });
 
+// 目前編輯批次的預約項目顯示名稱（含「其他」自訂值）
+const currentBatchTypeLabel = computed(() => {
+  return editedBatch.value.bookingType === '其他'
+    ? (customBookingType.value || '本批次')
+    : (editedBatch.value.bookingType || '本批次');
+});
+
+// 目前編輯批次的預約項目（實際字串，含「其他」自訂值；用於群組換算）
+const currentBatchTypeRaw = computed(() => {
+  return editedBatch.value.bookingType === '其他'
+    ? customBookingType.value
+    : editedBatch.value.bookingType;
+});
+
+// 「跨不同預約項目」時，使用者勾選要與本批次共用名額的其他項目
+const sharedWithSelection = ref([]);
+
+// 可勾選的其他項目（排除本批次自己）
+const sharedSelectableTypes = computed(() => {
+  return availableBookingTypes.value.filter(t => t !== currentBatchTypeRaw.value);
+});
+
+// 即時預覽：本批次 ＋ 已選項目
+const sharedPreviewParts = computed(() => {
+  return [currentBatchTypeLabel.value, ...sharedWithSelection.value];
+});
+const sharedHasSelection = computed(() => sharedWithSelection.value.length >= 1);
+
+// 「相同預約項目分批」檢視：列出同一 bookingType 的其他批次
+const sameTypeOtherBatches = computed(() => {
+  const ct = currentBatchTypeRaw.value;
+  if (!ct) return [];
+  return bookingBatches.value.filter(b =>
+    b && b.bookingType === ct && b.id !== editedBatch.value.id
+  );
+});
+// 其中同為「共用名額」者＝會與本批次自動共用同時段名額
+const sameTypeSharedBatches = computed(() =>
+  sameTypeOtherBatches.value.filter(b => (b.quotaMode || 'shared') === 'shared')
+);
+// 其中為「獨立名額」者＝不與本批次共用（僅提示數量）
+const sameTypeIsolatedCount = computed(() =>
+  sameTypeOtherBatches.value.filter(b => (b.quotaMode || 'shared') === 'isolated').length
+);
+
+// 開啟批次時：從專案層級群組推算本批次目前已與哪些項目共用（含本批次的第一個 ≥2 群組）
+function deriveSharedSelection(currentType) {
+  if (!currentType) return [];
+  const groups = projectSettings.value.bookingCapacityGroups || [];
+  const g = groups.find(x =>
+    x && Array.isArray(x.types) && x.types.includes(currentType) && x.types.length >= 2
+  );
+  if (!g) return [];
+  const known = new Set(availableBookingTypes.value);
+  return g.types.filter(t => t !== currentType && known.has(t));
+}
+
+// 儲存時：把使用者的勾選換算回專案層級 bookingCapacityGroups（後端不變）
+// - crossItem：S = 本批次 ∪ 已選；先把 S 內項目從既有群組剝離，再以 S 成為唯一權威群組
+// - sameItem：把本批次項目從群組移除，讓後端回到「僅同 bookingType 跨批次共用」
+function buildCapacityGroupsForSave() {
+  const existing = Array.isArray(projectSettings.value.bookingCapacityGroups)
+    ? JSON.parse(JSON.stringify(projectSettings.value.bookingCapacityGroups))
+    : [];
+  const currentType = currentBatchTypeRaw.value;
+  if (!currentType || editedBatch.value.quotaMode !== 'shared') return existing;
+
+  if (editedBatch.value.sharedScope === 'crossItem') {
+    const S = Array.from(new Set([currentType, ...sharedWithSelection.value])).filter(Boolean);
+    const cleaned = existing
+      .map(g => ({ ...g, types: (g.types || []).filter(t => !S.includes(t)) }))
+      .filter(g => Array.isArray(g.types) && g.types.length >= 2);
+    cleaned.push({ types: S });
+    return cleaned;
+  }
+
+  return existing
+    .map(g => ({ ...g, types: (g.types || []).filter(t => t !== currentType) }))
+    .filter(g => Array.isArray(g.types) && g.types.length >= 2);
+}
+
 const addCapacityGroup = () => {
   if (!projectSettings.value.bookingCapacityGroups) {
     projectSettings.value.bookingCapacityGroups = [];
@@ -4585,6 +4783,7 @@ const defaultBatch = {
   bookingEnd: '',
   dailyRules: {},
   quotaMode: 'shared', // 名額計算模式：'shared' 共用名額 | 'isolated' 獨立名額
+  sharedScope: 'sameItem', // 共用範圍：'sameItem' 相同預約項目分批（免設定）| 'crossItem' 跨不同預約項目（需群組）
 };
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]);
@@ -5213,11 +5412,22 @@ async function openBatchDialog(item = null) {
     }
     // 3. 使用處理過後的 itemFromServer
     // 載入 quotaMode 並暫存原始值（用於偵測是否修改並顯示警告）
+    // 共用範圍：優先用已存值；舊批次未存則依「該預約項目是否已在含 ≥2 項目的群組」推斷
+    let resolvedSharedScope = itemFromServer.sharedScope;
+    if (!resolvedSharedScope) {
+      const groups = projectSettings.value.bookingCapacityGroups || [];
+      const inCrossGroup = groups.some(g =>
+        g && Array.isArray(g.types) && g.types.includes(itemFromServer.bookingType) && g.types.length >= 2
+      );
+      resolvedSharedScope = inCrossGroup ? 'crossItem' : 'sameItem';
+    }
+
     editedBatch.value = {
       ...itemFromServer,
       dailyRules,
       quotaMode: itemFromServer.quotaMode || 'shared',  // 向下相容：舊批次預設 shared
-      _originalQuotaMode: itemFromServer.quotaMode || 'shared'
+      _originalQuotaMode: itemFromServer.quotaMode || 'shared',
+      sharedScope: resolvedSharedScope
     };
 
     if (!bookingTypeOptions.value.includes(item.bookingType)) {
@@ -5226,6 +5436,17 @@ async function openBatchDialog(item = null) {
     }
   } else {
     editedBatch.value = { ...defaultBatch, dailyRules: {}, quotaMode: 'shared' };
+  }
+
+  // 依目前批次推算「要與哪些項目共用名額」的勾選（僅 shared + crossItem）
+  {
+    const ct = editedBatch.value.bookingType === '其他'
+      ? customBookingType.value
+      : editedBatch.value.bookingType;
+    sharedWithSelection.value =
+      (editedBatch.value.quotaMode === 'shared' && editedBatch.value.sharedScope === 'crossItem')
+        ? deriveSharedSelection(ct)
+        : [];
   }
 
   // 預設不自動選取任何日期，讓使用者主動挑選要編輯 / 新增設定的日期
@@ -5394,6 +5615,18 @@ async function initiateSaveProcess() {
     return;
   }
 
+  // 共用名額且為「跨不同預約項目」時：必須至少勾選一個要共用名額的項目
+  // （「相同預約項目分批」情境後端依 bookingType 自動共用，免設定）
+  if (editedBatch.value.quotaMode === 'shared' && editedBatch.value.sharedScope === 'crossItem') {
+    if (!Array.isArray(sharedWithSelection.value) || sharedWithSelection.value.length === 0) {
+      showSnackbar(
+        `已選「不同預約項目」共用：請至少選一個要與本批次「${currentBatchTypeLabel.value}」共用名額的預約項目後才能儲存。`,
+        'error'
+      );
+      return;
+    }
+  }
+
   isSaving.value = true;
   await checkConflictsAndShowDialog();
   isSaving.value = false;
@@ -5544,6 +5777,21 @@ async function executeSave() {
     // Firebase SDK 會自動將 Date 物件轉換為 Timestamp 存入資料庫
     const res = await saveBatchWithRules(finalPayload);
     if (res.status !== 'success') throw new Error(res.message);
+
+    // 共用名額：把使用者的勾選換算回專案層級 bookingCapacityGroups（後端不變，僅在內容真的有變時才寫入）
+    if (editedBatch.value.quotaMode === 'shared') {
+      const newGroups = buildCapacityGroupsForSave();
+      const oldGroups = projectSettings.value.bookingCapacityGroups || [];
+      if (JSON.stringify(newGroups) !== JSON.stringify(oldGroups)) {
+        const capRes = await updateProjectSettings(projectId.value, {
+          bookingCapacityGroups: newGroups
+        });
+        if (capRes.status !== 'success') {
+          throw new Error(capRes.message || '名額共用設定儲存失敗');
+        }
+        projectSettings.value.bookingCapacityGroups = newGroups; // 同步記憶體，讓專案設定頁一致
+      }
+    }
 
     showSnackbar('儲存成功！');
     isConflictDialogVisible.value = false;
