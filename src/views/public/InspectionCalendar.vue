@@ -408,56 +408,139 @@
       @booking-success="handleBookingSuccess"
     />
 
-    <v-dialog v-model="isFilterDialogVisible" max-width="500px">
-      <v-card>
-        <v-card-title class="text-h6 d-flex align-center bg-grey-lighten-3">
-          <v-icon start>mdi-cog</v-icon>
-          篩選設定
+    <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable>
+      <v-card class="d-flex flex-column">
+        <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
+          <v-icon start>mdi-tune-variant</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">篩選與顯示設定</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isFilterDialogVisible = false"></v-btn>
         </v-card-title>
-        <v-divider></v-divider>
-        
-        <v-card-text class="pa-4">
-          <!-- 功能說明區塊 -->
-          <v-alert type="info" variant="tonal" density="compact" class="mb-4" border="start">
-            <div class="text-body-2">
-              透過以下篩選條件，您可以自訂時間表上要顯示的預約紀錄及其標籤內容。勾選的項目會即時反映在行事曆上。
-            </div>
-          </v-alert>
 
-          <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-1">狀態</v-label>
-            <div class="text-caption text-grey-darken-1 mb-2">選擇要在時間表上顯示的預約狀態</div>
-            <div class="d-flex align-center flex-wrap ga-2">
-              <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="black"></v-checkbox>
-              <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="black"></v-checkbox>
-              <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="black"></v-checkbox>
-            </div>
+        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
+          <div class="text-caption text-grey-darken-1 mb-4 d-flex align-center">
+            <v-icon size="16" class="mr-1" color="grey">mdi-information-outline</v-icon>
+            勾選或調整後會即時反映在時間表上，設定會記憶在此裝置。
           </div>
-          <v-divider class="my-3"></v-divider>
-          
-          <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-1">項目</v-label>
-            <div class="text-caption text-grey-darken-1 mb-2">選擇要顯示哪些預約項目類型（如初驗、複驗等）</div>
-            <div class="d-flex align-center flex-wrap ga-2">
-              <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
-            </div>
-          </div>
-          <v-divider class="my-3"></v-divider>
 
-          <div class="mb-3">
-            <v-label class="text-subtitle-1 font-weight-bold mb-1">選擇方式</v-label>
-            <div class="text-caption text-grey-darken-1 mb-2">篩選特定的預約方式（如屋主自驗、委託代驗等）</div>
-            <div class="d-flex align-center flex-wrap ga-2">
-              <v-checkbox v-for="method in currentMethodOptions" :key="method" v-model="selectedMethods" :label="method" :value="method" density="compact" hide-details color="black"></v-checkbox>
+          <!-- 狀態 -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="indigo-lighten-1" class="mr-2"><v-icon size="18" color="white">mdi-flag-variant</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">狀態</div>
+                <div class="text-caption text-grey-darken-1">要顯示的預約狀態</div>
+              </div>
+              <v-btn size="x-small" variant="text" @click="selectedStatuses = ['預約中','取消','已完成']">全選</v-btn>
+              <v-btn size="x-small" variant="text" color="grey" @click="selectedStatuses = []">清除</v-btn>
             </div>
+            <v-chip-group v-model="selectedStatuses" multiple column selected-class="text-primary">
+              <v-chip v-for="s in ['預約中','取消','已完成']" :key="s" :value="s" filter variant="outlined" size="small">{{ s }}</v-chip>
+            </v-chip-group>
           </div>
-          <v-divider class="my-3"></v-divider>
 
-          <div>
-            <v-label class="text-subtitle-1 font-weight-bold mb-1">標題顯示</v-label>
-            <div class="text-caption text-grey-darken-1 mb-2">設定每筆預約紀錄在時間表格子中要顯示的欄位資訊</div>
-            <div class="d-flex align-center flex-wrap ga-2">
-              <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="black"></v-checkbox>
+          <!-- 項目 -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="teal" class="mr-2"><v-icon size="18" color="white">mdi-format-list-bulleted-type</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">項目</div>
+                <div class="text-caption text-grey-darken-1">要顯示的預約項目類型（如初驗、複驗）</div>
+              </div>
+              <v-btn size="x-small" variant="text" @click="selectedTypes = [...currentTypeOptions]">全選</v-btn>
+              <v-btn size="x-small" variant="text" color="grey" @click="selectedTypes = []">清除</v-btn>
+            </div>
+            <v-chip-group v-if="currentTypeOptions.length" v-model="selectedTypes" multiple column selected-class="text-primary">
+              <v-chip v-for="t in currentTypeOptions" :key="t" :value="t" filter variant="outlined" size="small">{{ t }}</v-chip>
+            </v-chip-group>
+            <div v-else class="text-caption text-grey">此建案尚未設定預約項目類型</div>
+          </div>
+
+          <!-- 選擇方式 -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="cyan-darken-1" class="mr-2"><v-icon size="18" color="white">mdi-call-split</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">選擇方式</div>
+                <div class="text-caption text-grey-darken-1">篩選特定預約方式（如屋主自驗、委託代驗）</div>
+              </div>
+              <v-btn size="x-small" variant="text" @click="selectedMethods = [...currentMethodOptions]">全選</v-btn>
+              <v-btn size="x-small" variant="text" color="grey" @click="selectedMethods = []">清除</v-btn>
+            </div>
+            <v-chip-group v-if="currentMethodOptions.length" v-model="selectedMethods" multiple column selected-class="text-primary">
+              <v-chip v-for="m in currentMethodOptions" :key="m" :value="m" filter variant="outlined" size="small">{{ m }}</v-chip>
+            </v-chip-group>
+            <div v-else class="text-caption text-grey">此建案尚未設定選擇方式</div>
+          </div>
+
+          <!-- 標題顯示 -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="blue-grey" class="mr-2"><v-icon size="18" color="white">mdi-text-box-outline</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">標題顯示</div>
+                <div class="text-caption text-grey-darken-1">時間表格子中要顯示的欄位資訊</div>
+              </div>
+              <v-btn size="x-small" variant="text" @click="selectedDisplayFields = displayFieldOptions.map(f => f.key)">全選</v-btn>
+              <v-btn size="x-small" variant="text" color="grey" @click="selectedDisplayFields = []">清除</v-btn>
+            </div>
+            <v-chip-group v-model="selectedDisplayFields" multiple column selected-class="text-primary">
+              <v-chip v-for="field in displayFieldOptions" :key="field.key" :value="field.key" filter variant="outlined" size="small">{{ field.label }}</v-chip>
+            </v-chip-group>
+          </div>
+
+          <!-- 事件顏色 -->
+          <div class="bg-white rounded-lg pa-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="deep-orange-lighten-1" class="mr-2"><v-icon size="18" color="white">mdi-palette</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">事件顏色</div>
+                <div class="text-caption text-grey-darken-1">為各預約項目類型指定事件底色，留空則沿用系統預設配色</div>
+              </div>
+              <v-btn size="x-small" variant="text" color="primary" :disabled="!currentTypeOptions.length" @click="applyDefaultTypeColors">建議配色</v-btn>
+              <v-btn size="x-small" variant="text" color="grey" @click="clearAllTypeColors">全部清除</v-btn>
+            </div>
+            <div class="text-caption text-grey-darken-1 mb-2">
+              同一項目可依「<strong class="text-deep-orange">後台新增</strong>」與「<strong class="text-blue">前台預約</strong>」來源分別設定不同顏色。
+            </div>
+            <div v-if="!currentTypeOptions.length" class="text-caption text-grey">此建案尚未設定預約項目類型</div>
+            <div v-else class="d-flex flex-column ga-3">
+              <div v-for="t in currentTypeOptions" :key="t" class="pa-3 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
+                <div class="text-body-2 font-weight-bold mb-2">{{ t }}</div>
+                <div class="d-flex flex-wrap ga-4">
+                  <div v-for="src in SOURCE_KEYS" :key="src.key" class="d-flex align-center" style="min-width:230px;flex:1 1 230px;">
+                    <v-chip size="x-small" label variant="flat" class="mr-2 flex-shrink-0"
+                      :color="src.key === 'admin' ? 'deep-orange-lighten-4' : 'blue-lighten-4'">
+                      {{ src.label }}
+                    </v-chip>
+                    <v-menu :close-on-content-click="false" location="bottom start">
+                      <template #activator="{ props }">
+                        <div v-bind="props" class="d-flex align-center justify-center mr-2 flex-shrink-0"
+                          :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer',
+                            backgroundColor: getTypeColor(src.key, t) || '#ffffff',
+                            border: getTypeColor(src.key, t) ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
+                          <v-icon v-if="!getTypeColor(src.key, t)" size="16" color="grey">mdi-eyedropper-variant</v-icon>
+                        </div>
+                      </template>
+                      <v-card width="280">
+                        <v-color-picker :model-value="getTypeColor(src.key, t) || (src.key === 'admin' ? '#FFF3E0' : '#E3F2FD')"
+                          @update:model-value="setTypeColor(src.key, t, $event)" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
+                        <v-divider></v-divider>
+                        <div class="d-flex pa-2">
+                          <v-spacer></v-spacer>
+                          <v-btn size="small" variant="text" color="grey" @click="clearTypeColor(src.key, t)">清除（用預設）</v-btn>
+                        </div>
+                      </v-card>
+                    </v-menu>
+                    <v-chip size="small" label variant="flat" class="flex-shrink-0"
+                      :style="{ backgroundColor: getTypeColor(src.key, t) || '#EEEEEE', color: getReadableTextColor(getTypeColor(src.key, t) || '#EEEEEE') }">
+                      {{ getTypeColor(src.key, t) ? '預覽' : '預設' }}
+                    </v-chip>
+                    <v-btn v-if="getTypeColor(src.key, t)" icon="mdi-close" size="x-small" variant="text" color="grey" class="ml-1 flex-shrink-0"
+                      @click="clearTypeColor(src.key, t)" title="清除此來源顏色"></v-btn>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </v-card-text>
@@ -1138,8 +1221,57 @@ const currentTypeOptions = computed(() => {
   if (projectSettings.value && Array.isArray(projectSettings.value.bookingMenu) && projectSettings.value.bookingMenu.length > 0) {
     return projectSettings.value.bookingMenu.map(item => item.title).filter(Boolean);
   }
-  return []; 
+  return [];
 });
+// 時間表事件底色設定：依「來源」再依「預約項目類型」分別設定。
+// 結構：{ admin: { 類型: hex }, bookingPage: { 類型: hex } }
+//  - admin       → 後台新增（appointment.source === 'admin'）
+//  - bookingPage  → 前台預約（其餘皆視為前台，含舊資料無 source）
+// 本機儲存、依建案區分，由使用者在「篩選設定」中自訂；未設色者沿用系統預設配色。
+const SOURCE_KEYS = [
+  { key: 'admin', label: '後台新增' },
+  { key: 'bookingPage', label: '前台預約' },
+];
+// 明確標記 'admin' 才算後台；其餘（含 'bookingPage' 與舊資料 undefined）一律視為前台
+function resolveSourceKey(source) {
+  return source === 'admin' ? 'admin' : 'bookingPage';
+}
+const bookingTypeColorMap = useStorage(
+  `inspection_calendar_type_colors_v2_${projectId.value}`,
+  { admin: {}, bookingPage: {} }
+);
+function getTypeColor(srcKey, typeName) {
+  return bookingTypeColorMap.value?.[srcKey]?.[typeName] || '';
+}
+function setTypeColor(srcKey, typeName, color) {
+  if (!srcKey || !typeName || !color) return;
+  const cur = bookingTypeColorMap.value || {};
+  bookingTypeColorMap.value = {
+    ...cur,
+    [srcKey]: { ...(cur[srcKey] || {}), [typeName]: color },
+  };
+}
+function clearTypeColor(srcKey, typeName) {
+  const cur = bookingTypeColorMap.value || {};
+  const sub = { ...(cur[srcKey] || {}) };
+  delete sub[typeName];
+  bookingTypeColorMap.value = { ...cur, [srcKey]: sub };
+}
+function clearAllTypeColors() {
+  bookingTypeColorMap.value = { admin: {}, bookingPage: {} };
+}
+// 兩組可辨識的建議色票：前台偏冷色淺底、後台偏暖色淺底，方便一眼分辨來源
+const PALETTE_BOOKINGPAGE = ['#E3F2FD', '#E1F5FE', '#E0F7FA', '#E8F5E9', '#F1F8E9', '#EDE7F6', '#E8EAF6', '#E0F2F1'];
+const PALETTE_ADMIN = ['#FFF3E0', '#FFEBEE', '#FCE4EC', '#FFF8E1', '#FBE9E7', '#FFFDE7', '#F3E5F5', '#EFEBE9'];
+function applyDefaultTypeColors() {
+  const adminMap = {};
+  const pageMap = {};
+  currentTypeOptions.value.forEach((t, i) => {
+    pageMap[t] = PALETTE_BOOKINGPAGE[i % PALETTE_BOOKINGPAGE.length];
+    adminMap[t] = PALETTE_ADMIN[i % PALETTE_ADMIN.length];
+  });
+  bookingTypeColorMap.value = { admin: adminMap, bookingPage: pageMap };
+}
 // 從 bookingMenu 取得所有選擇方式選項
 const currentMethodOptions = computed(() => {
   const menu = projectSettings.value?.bookingMenu;
@@ -2017,10 +2149,27 @@ onUnmounted(() => {
 // --- 其他輔助函式 (保持不變) ---
 function handleCopy(value) { const { copy } = useClipboard({ source: value }); copy(value); snackbarText.value = '已複製到剪貼簿！'; snackbar.value = true; }
 function openUrl(url) { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
+// 依背景色明暗自動取得可讀的文字色（深底配白字、淺底配深字）
+function getReadableTextColor(bgHex) {
+  if (!bgHex) return '#212121';
+  let hex = String(bgHex).trim().replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  if (hex.length !== 6 || /[^0-9a-fA-F]/.test(hex)) return '#212121';
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  // 相對亮度（sRGB 加權），> 0.6 視為淺色
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#212121' : '#FFFFFF';
+}
 function getEventStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
   if (event.status === '取消') return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
   if (event.status === '已完成') return { backgroundColor: '#ECEFF1', color: '#546E7A' };
+  // 使用者在「篩選設定」依「來源(後台新增/前台預約) + 預約項目類型」設定的顏色優先
+  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
+  if (typeColor) return { backgroundColor: typeColor, color: getReadableTextColor(typeColor) };
+  // 未設定類型色 → 沿用原本關鍵字配色（向下相容）
   // ✅ 修正：確保 textToSearch 的欄位存在
   const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
   for (const config of CSS_KEYWORD_COLOR_MAP) {
@@ -2037,6 +2186,14 @@ function getAppointmentItemStyle(itemText) {
 function getExcelRowStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: 'FFFFFF', textColor: '000000' };
   if (event.status === '取消') return { backgroundColor: 'F5F5F5', textColor: '9E9E9E' };
+  // 使用者依「來源 + 預約項目類型」設定的顏色優先（Excel 色碼不含 #）
+  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
+  if (typeColor) {
+    return {
+      backgroundColor: typeColor.replace('#', '').toUpperCase(),
+      textColor: getReadableTextColor(typeColor).replace('#', '')
+    };
+  }
   // ✅ 修正：確保 textToSearch 的欄位存在
   const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
   for (const config of EXCEL_KEYWORD_COLOR_MAP) {

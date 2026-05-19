@@ -14359,6 +14359,7 @@ async function _handleSaveBooking(data) {
         bookingSubOption: bookingData.subOption || '', // 新增：記錄所選的第三層子選項
         batchCode: batchCode,    // 新增：記錄此預約所屬的批次代號（用於 isolated 模式的名額查詢）
         batchId: batchId,        // 新增：記錄此預約所屬的批次文件 ID
+        source: 'bookingPage',   // 新增：標註此筆預約為「前台預約頁」建立（與後台 'admin' 區隔）
       };
       transaction.set(appointmentRef, newAppointmentData);
       return { bookingCode, newAppointmentData };
@@ -15918,6 +15919,11 @@ async function _handleAddAppointmentAdmin(data) {
         reportUploaded: !['初驗', '複驗', '驗屋'].includes(newBookingData.bookingType),
         bookingRemarks: newBookingData.bookingRemarks || "",
         bookingMethodDetails: newBookingData.bookingMethodDetails || {},
+        bookingMethodDetailsDisplay: newBookingData.bookingMethodDetailsDisplay || [], // 補齊：與前台一致，供後台/報表顯示動態欄位
+        bookingSubOption: newBookingData.subOption || "", // 補齊：與前台一致，記錄第三層子選項（供子選項名額計算）
+        batchCode: batchCode || null,  // 補齊：與前台一致，isolated 名額模式查詢需要
+        batchId: batchId || null,      // 補齊：與前台一致，記錄所屬批次文件 ID
+        source: 'admin',               // 新增：標註此筆預約為「後台新增」
         createdByName: newBookingData.createdByName || null,
         lastModifiedByName: newBookingData.lastModifiedByName || null,
         isDeleted: false,
