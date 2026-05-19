@@ -552,31 +552,31 @@
 
 <v-dialog v-model="isBlockingDialogVisible" max-width="500px" persistent>
       <v-card v-if="blockingAppointmentDetails">
-        <v-card-title class="text-h6 d-flex align-center bg-red">
-          <v-icon start color="white">mdi-alert-octagon-outline</v-icon>
-          <span>無法新增預約</span>
+        <v-card-title class="text-h6 d-flex align-center bg-error">
+          <v-icon start color="white">mdi-alert-circle-outline</v-icon>
+          <span>請確認操作</span>
         </v-card-title>
         <v-card-text class="pt-4 text-body-1">
-          <p>您選擇的「<strong>{{ blockingAppointmentDetails.bookingType }}</strong>」已有進行中的預約。</p>
-          <p class="mt-4">請先取消以下紀錄，才能新增此項目的預約：</p>
+          <p>您選擇的「<strong>{{ blockingAppointmentDetails.bookingType }}</strong>」已有一筆進行中的預約。</p>
+          <p class="mt-4">詳細資訊如下：</p>
           <v-list density="compact" class="bg-red-lighten-5 rounded mt-2">
-            <v-list-item 
-              :title="blockingAppointmentDetails.bookerName" 
+            <v-list-item
+              :title="blockingAppointmentDetails.bookerName"
               :subtitle="blockingAppointmentDetails.unitId"
-              prepend-icon="mdi-account-alert-outline"
+              prepend-icon="mdi-account-clock-outline"
             ></v-list-item>
-            <v-list-item 
-              :title="blockingAppointmentDetails.appointmentDate?.toLocaleDateString()" 
+            <v-list-item
+              :title="blockingAppointmentDetails.appointmentDate?.toLocaleDateString()"
               :subtitle="blockingAppointmentDetails.appointmentTimeSlot"
-              prepend-icon="mdi-calendar-alert-outline"
+              prepend-icon="mdi-calendar-clock-outline"
             ></v-list-item>
           </v-list>
+          <p class="mt-4 font-weight-bold">您確定要為【{{ blockingAppointmentDetails.unitId }}】再新增一筆預約嗎？</p>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="red-darken-1" variant="text" @click="isBlockingDialogVisible = false">
-            關閉
-          </v-btn>
+          <v-btn variant="text" @click="handleCancelBlocking">取消</v-btn>
+          <v-btn color="error" variant="flat" @click="handleConfirmBlocking">繼續新增</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -867,6 +867,17 @@ function handleCancelContinue() {
   completedAppointmentDetails.value = null; // 清除已儲存的物件
 }
 
+function handleConfirmBlocking() {
+  isBlockingDialogVisible.value = false;
+  // 使用者選擇繼續，保留目前的預約項目選擇
+}
+
+function handleCancelBlocking() {
+  isBlockingDialogVisible.value = false;
+  formStep2.bookingType = null;
+  blockingAppointmentDetails.value = null; // 清除已儲存的物件
+}
+
 const showHistoryDetails = (appointment) => {
   // ✓ 將當前已載入的「戶別資料」與被點擊的「預約紀錄」合併
   const combinedData = {
@@ -1073,9 +1084,6 @@ watch(() => formStep2.bookingType, (newVal) => {
   if (blockingAppt) {
     blockingAppointmentDetails.value = blockingAppt; // 儲存整個物件
     isBlockingDialogVisible.value = true;
-    nextTick(() => {
-      formStep2.bookingType = null;
-    });
     return;
   }
 

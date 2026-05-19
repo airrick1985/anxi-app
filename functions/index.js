@@ -14120,8 +14120,11 @@ async function _handleGetBookingInitialData(data) {
  * [內部函式] 儲存預約
  */
 async function _handleSaveBooking(data) {
-  const { projectId, bookingData } = data;
+  const { projectId, bookingData, devBypass } = data;
   const functionName = `_handleSaveBooking (Project: ${projectId})`;
+  // 內部代填模式：devBypass 必須等於 projectId 才視為有效，通過則繞過已預約檢查（等同可重複預約）
+  const isDevBypass = !!(devBypass && projectId && devBypass === projectId);
+  if (isDevBypass) console.log(`[${functionName}] DEV BYPASS active: skipping duplicate-booking check.`);
 
   if (!projectId || !bookingData) {
     throw new HttpsError("invalid-argument", "缺少 projectId 或 bookingData。");
@@ -14185,8 +14188,8 @@ async function _handleSaveBooking(data) {
     const projectDoc = await projectRef.get();
     const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
-    // ✓ START: [新增] 提交時的雙重時間驗證
-    if (projectDoc.exists) {
+    // ✓ START: [新增] 提交時的雙重時間驗證（內部代填模式 isDevBypass 時整段略過）
+    if (projectDoc.exists && !isDevBypass) {
       const projectData = projectDoc.data();
 
       // 1. 檢查總開關
@@ -14252,8 +14255,8 @@ async function _handleSaveBooking(data) {
 
       const allowMultipleBookings = householdData.allowMultipleBookings === true;
 
-      // 只有在【不允許重複預約】時，才去查詢並阻擋
-      if (!allowMultipleBookings) {
+      // 只有在【不允許重複預約】且【非內部代填模式】時，才去查詢並阻擋
+      if (!allowMultipleBookings && !isDevBypass) {
         const appointmentsQueryDuplicate = db.collection('appointments').where('projectId', '==', projectId).where('unitId', '==', bookingData.unitId).where('bookingType', '==', bookingData.bookingType).where('status', '==', '預約中');
         const existingBookingSnapshot = await transaction.get(appointmentsQueryDuplicate);
         if (!existingBookingSnapshot.empty) {

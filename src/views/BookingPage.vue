@@ -33,7 +33,8 @@
         <!-- 歡迎視窗：一般客戶見到問候語可關閉；內部人員開啟此視窗後，於背景輸入對應 projectId 即啟用代填模式 -->
         <v-dialog v-model="isWelcomeModalVisible" max-width="420">
           <v-card>
-            <v-card-title class="text-h6 font-weight-bold">
+            <v-card-title class="text-h6 font-weight-bold" @click="onDevTitleTap"
+              style="user-select: none;">
               {{ projectConfig?.name || '建案' }} 歡迎使用預約系統
             </v-card-title>
             <v-card-text>
@@ -42,6 +43,16 @@
               <div v-if="devMode" class="text-caption text-success mt-3">
                 <v-icon size="x-small">mdi-check-circle</v-icon>
                 目前已啟用代填模式
+              </div>
+              <!-- 手機啟用器：連點標題達門檻後顯示，輸入對應 projectId 即啟用代填模式 -->
+              <div v-if="showDevActivator && !devMode" class="mt-3">
+                <v-text-field v-model="devProjectIdInput" label="內部代填啟用碼" variant="outlined"
+                  density="compact" hide-details autocomplete="off" autofocus
+                  @keyup.enter="activateDevModeFromInput"></v-text-field>
+                <div class="d-flex justify-end mt-2">
+                  <v-btn size="small" color="primary" variant="elevated"
+                    @click="activateDevModeFromInput">啟用代填模式</v-btn>
+                </div>
               </div>
             </v-card-text>
             <v-card-actions>
@@ -58,7 +69,10 @@
           <div class="d-flex align-center">
             <div class="flex-grow-1">
               <strong>代填模式啟用中</strong>
-              <span class="text-caption d-block">已繞過「未開放 / 已截止 / 名額已滿」等前端限制，僅供內部人員為客戶代填使用。</span>
+              <span class="text-caption d-block">
+                已解除下列限制：未開放 ・ 已截止 ・ 名額已滿 ・ 已預約（等同開啟「可重複預約」）。
+              </span>
+              <span class="text-caption d-block font-weight-medium">僅供內部人員為客戶代填使用，請審慎操作。</span>
             </div>
             <v-btn size="small" variant="text" color="error" @click="exitDevMode">關閉</v-btn>
           </div>
@@ -1505,6 +1519,31 @@ const DEV_MODE_STORAGE_KEY = 'bookingDevMode';
 let devKeyBuffer = '';
 let devKeyResetTimer = null;
 
+// 手機啟用：連點歡迎視窗標題達門檻 → 顯示隱藏輸入欄，輸入對應 projectId 後啟用
+// （電腦維持原本的背景按鍵方式，手機無實體鍵盤時改走此路徑）
+const DEV_TITLE_TAP_THRESHOLD = 5;
+const showDevActivator = ref(false);
+const devProjectIdInput = ref('');
+let devTitleTapCount = 0;
+let devTitleTapTimer = null;
+
+function _resetDevActivator() {
+  devTitleTapCount = 0;
+  if (devTitleTapTimer) { clearTimeout(devTitleTapTimer); devTitleTapTimer = null; }
+  showDevActivator.value = false;
+  devProjectIdInput.value = '';
+}
+
+// 共用啟用邏輯：背景按鍵與手機輸入兩條路徑皆呼叫此函式
+function _activateDevMode() {
+  devMode.value = true;
+  try { sessionStorage.setItem(DEV_MODE_STORAGE_KEY, projectId.value); } catch (_) { /* ignore */ }
+  devKeyBuffer = '';
+  _teardownDevHotkey();
+  _resetDevActivator();
+  isWelcomeModalVisible.value = false;
+}
+
 function _handleDevKeydown(e) {
   if (!e || typeof e.key !== 'string') return;
   if (e.key.length !== 1) return;                 // 只接受可印字元
@@ -1522,11 +1561,7 @@ function _handleDevKeydown(e) {
       devKeyBuffer = devKeyBuffer.slice(-pid.length);
     }
     if (devKeyBuffer === pid) {
-      devMode.value = true;
-      try { sessionStorage.setItem(DEV_MODE_STORAGE_KEY, projectId.value); } catch (_) { /* ignore */ }
-      devKeyBuffer = '';
-      _teardownDevHotkey();
-      isWelcomeModalVisible.value = false;
+      _activateDevMode();
       return;
     }
   }
@@ -1554,12 +1589,37 @@ function openWelcomeModal() {
 function closeWelcomeModal() {
   isWelcomeModalVisible.value = false;
   _teardownDevHotkey();
+  _resetDevActivator();
 }
 function exitDevMode() {
   devMode.value = false;
   try { sessionStorage.removeItem(DEV_MODE_STORAGE_KEY); } catch (_) { /* ignore */ }
   isWelcomeModalVisible.value = false;
   _teardownDevHotkey();
+  _resetDevActivator();
+}
+
+// 手機路徑：連點視窗標題達門檻 → 顯示隱藏的代填啟用輸入欄
+function onDevTitleTap() {
+  if (devMode.value || showDevActivator.value) return;
+  devTitleTapCount += 1;
+  if (devTitleTapTimer) clearTimeout(devTitleTapTimer);
+  if (devTitleTapCount >= DEV_TITLE_TAP_THRESHOLD) {
+    showDevActivator.value = true;
+    devTitleTapCount = 0;
+    return;
+  }
+  // 2 秒內未達門檻則重置計數
+  devTitleTapTimer = setTimeout(() => { devTitleTapCount = 0; }, 2000);
+}
+
+// 手機路徑：比對輸入框內容是否等於 projectId，相符才啟用
+function activateDevModeFromInput() {
+  if ((devProjectIdInput.value || '').trim() === (projectId.value || '')) {
+    _activateDevMode();
+  } else {
+    devProjectIdInput.value = '';
+  }
 }
 
 // 根據選取的預約項目，動態回傳對應的頁面設定
@@ -1952,6 +2012,8 @@ const isIdValidationRequired = computed(() => {
 
 // 計算目前選擇的戶別是否允許重複預約
 const selectedUnitAllowMultipleBookings = computed(() => {
+  // 內部代填模式：一律視為可重複預約，繞過已預約檢查
+  if (devMode.value) return true;
   if (!formStep1.value.unit || !unitList.value) return false;
   const selectedUnitData = unitList.value.find(u => u.unit === formStep1.value.unit);
   return selectedUnitData && selectedUnitData.allowMultipleBookings === true;
@@ -2687,6 +2749,8 @@ const submitBooking = async () => {
     // 準備預約資料
     const payload = {
       projectId: projectId.value,
+      // 內部代填模式：傳入 projectId 作為鑰匙，後端比對通過則繞過已預約檢查（等同可重複預約）
+      devBypass: devMode.value ? projectId.value : null,
       bookingData: {
         projectName: projectConfig.value.name,
         unitId: finalBookingData.value.戶別,
