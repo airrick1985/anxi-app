@@ -1,19 +1,18 @@
 <template>
-  <!-- FAB 浮動按鈕 -->
-  <v-btn
+  <!-- FAB：右側邊緣收合標籤（閒置半隱藏，hover/聚焦滑出） -->
+  <div
     v-if="showFab"
-    icon
-    color="red-darken-1"
-    size="small"
-    class="bug-report-fab"
-    elevation="6"
+    class="bug-report-tab"
+    role="button"
+    tabindex="0"
+    aria-label="系統問題回報"
     @click="openDialog"
+    @keydown.enter="openDialog"
+    @keydown.space.prevent="openDialog"
   >
-    <v-icon>mdi-help</v-icon>
-    <v-tooltip activator="parent" location="start">
-      系統問題回報
-    </v-tooltip>
-  </v-btn>
+    <v-icon class="bug-report-tab__icon">mdi-help-circle</v-icon>
+    <span class="bug-report-tab__label">問題回報</span>
+  </div>
 
   <!-- 回報 Dialog -->
   <v-dialog v-model="dialogVisible" max-width="650" persistent scrollable>
@@ -400,23 +399,64 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.bug-report-fab {
-  position: fixed !important;
-  bottom: 80px;
-  right: 20px;
+/* 右側邊緣收合標籤：閒置時只露出一小截，hover/聚焦時整個滑出 */
+.bug-report-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  /* 閒置：大部分縮回邊緣外，只露出約 34px（圖示） */
+  transform: translateY(-50%) translateX(calc(100% - 34px));
   z-index: 1000;
-  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 10px 12px;
+  background: #e53935; /* 對齊 Dialog 標題列 red-darken-1 */
+  color: #fff;
+  border-radius: 24px 0 0 24px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.bug-report-fab:hover {
-  transform: scale(1.1);
+.bug-report-tab:hover,
+.bug-report-tab:focus-visible {
+  /* 完全滑出，顯示文字 */
+  transform: translateY(-50%) translateX(0);
+  opacity: 1;
+  outline: none;
 }
 
-/* 行動裝置位置調整 */
+.bug-report-tab__icon {
+  font-size: 22px;
+}
+
+.bug-report-tab__label {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* 行動裝置：固定小窄條，點一下直接開（無 hover 兩段式） */
 @media (max-width: 600px) {
-  .bug-report-fab {
-    bottom: 72px;
-    right: 12px;
+  .bug-report-tab {
+    transform: translateY(-50%) translateX(calc(100% - 30px));
+    opacity: 0.7;
+    padding: 10px 10px 10px 8px;
+  }
+
+  .bug-report-tab:hover,
+  .bug-report-tab:focus-visible {
+    transform: translateY(-50%) translateX(calc(100% - 30px));
+    opacity: 0.7;
+  }
+
+  .bug-report-tab__label {
+    display: none;
   }
 }
 </style>
