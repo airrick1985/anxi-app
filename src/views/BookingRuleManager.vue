@@ -1011,6 +1011,55 @@
 
                   <!-- Tab 3: 預約頁面設定 -->
                   <v-window-item value="content" transition="fade-transition" reverse-transition="fade-transition">
+
+                    <!-- ====== 全建案共用：預約欄位標籤自訂 ====== -->
+                    <v-sheet v-if="projectSettings.fieldLabels" border rounded class="pa-4 mb-6 field-labels-block">
+                      <div class="d-flex align-center mb-1">
+                        <v-icon color="primary" class="mr-2" size="small">mdi-form-textbox</v-icon>
+                        <span class="text-subtitle-1 font-weight-bold">預約欄位標籤自訂</span>
+                        <v-chip size="x-small" color="primary" variant="tonal" class="ml-2">全建案共用</v-chip>
+                        <v-spacer></v-spacer>
+                        <v-btn size="x-small" variant="text" color="grey-darken-1"
+                          prepend-icon="mdi-restore" @click="resetAllFieldLabels">全部清空</v-btn>
+                      </div>
+                      <p class="text-caption text-grey-darken-1 mb-3">
+                        留空即沿用預設文字；hint 留空時前台不顯示提示。此設定不分預約項目，整個建案共用。
+                      </p>
+
+                      <div v-for="group in BOOKING_FIELD_LABEL_GROUPS" :key="group.group" class="mb-2">
+                        <div class="text-caption font-weight-bold text-primary mb-1 mt-2">{{ group.group }}</div>
+                        <v-table density="compact" class="field-labels-table">
+                          <thead>
+                            <tr>
+                              <th style="width: 28%;" class="text-caption">原本標籤</th>
+                              <th class="text-caption">自訂標籤</th>
+                              <th class="text-caption">自訂 hint（提示文字）</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="f in group.fields" :key="f.key">
+                              <td class="text-body-2 text-grey-darken-2">{{ f.defaultLabel }}</td>
+                              <td>
+                                <v-text-field
+                                  v-model="projectSettings.fieldLabels[f.key].label"
+                                  :placeholder="f.defaultLabel"
+                                  variant="plain" density="compact" hide-details
+                                  single-line clearable></v-text-field>
+                              </td>
+                              <td>
+                                <v-text-field
+                                  v-model="projectSettings.fieldLabels[f.key].hint"
+                                  placeholder="（留空不顯示）"
+                                  variant="plain" density="compact" hide-details
+                                  single-line clearable></v-text-field>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </v-table>
+                      </div>
+                    </v-sheet>
+                    <!-- ====== /預約欄位標籤自訂 ====== -->
+
                     <div v-if="!projectSettings.bookingMenu || projectSettings.bookingMenu.length === 0"
                       class="text-center text-grey pa-6 border rounded border-dashed my-6">
                       <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-file-tree</v-icon>
@@ -3323,6 +3372,7 @@ import { eachDayOfInterval, parseISO } from 'date-fns';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { useUserStore } from '@/store/user';
+import { BOOKING_FIELD_LABEL_GROUPS, ensureFieldLabelsShape, getDefaultLabel } from '@/utils/bookingFieldLabels';
 
 //  將所有來自 '@/api' 的引入合併成這一個
 import {
@@ -5225,6 +5275,9 @@ async function loadDataForProject() {
         }
         projectSettings.value.bookingCapacityGroups = settings.bookingCapacityGroups || []; // [新增] 名額共用群組
 
+        // --- Field Labels (per-project, shared across all booking items) ---
+        projectSettings.value.fieldLabels = ensureFieldLabelsShape(settings.fieldLabels);
+
         // --- Migration Logic for Page Settings By Item (NEW) ---
         projectSettings.value.pageSettingsByItem = settings.pageSettingsByItem || {};
 
@@ -5362,12 +5415,14 @@ async function loadDataForProject() {
       } else {
         // 如果從後端沒有讀取到任何設定，則使用預設值
         projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value));
+        projectSettings.value.fieldLabels = ensureFieldLabelsShape();
       }
 
     } catch (error) {
       showSnackbar(`載入頁面資料失敗: ${error.message}`, 'error');
       // 載入失敗時也使用預設值，確保頁面可以基本運作
       projectSettings.value = JSON.parse(JSON.stringify(defaultSettings.value));
+      projectSettings.value.fieldLabels = ensureFieldLabelsShape();
     } finally {
       isBatchLoading.value = false;
       isSettingsLoading.value = false; // 結束載入狀態
@@ -6526,6 +6581,12 @@ function addFaqItem() {
 
 function removeFaqItem(index) {
   projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro.faq.splice(index, 1);
+}
+
+// 清空所有自訂欄位標籤與 hint（沿用預設）
+function resetAllFieldLabels() {
+  projectSettings.value.fieldLabels = ensureFieldLabelsShape();
+  showSnackbar('已清空所有自訂欄位標籤，記得按「儲存設定」', 'info');
 }
 
 
