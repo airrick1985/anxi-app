@@ -625,7 +625,7 @@
 
                     <v-text-field ref="step1IdNumberField" v-model="formStep1.idNumber" :label="fieldLabel('idNumber')"
                       :hint="fieldHint('idNumber')" :persistent-hint="!!fieldHint('idNumber')"
-                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證或驗證碼'] : []" variant="outlined" class="mt-4"
+                      :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需輸入正確的驗證碼，若有疑問請洽詢客服'] : []" variant="outlined" class="mt-4"
                       :disabled="isLoading || !isBookingActive"></v-text-field>
 
                     <v-autocomplete v-model="formStep1.building" :items="initialData.buildings" :label="fieldLabel('building')"
