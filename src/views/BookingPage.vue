@@ -114,13 +114,14 @@
                       :rules="[v => !!v || '必填']"></v-text-field>
                   </v-form>
                 </v-card-text>
-                <v-card-actions class="pa-4">
-                  <v-spacer></v-spacer>
-                  <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadStep1Submit"
-                    :loading="isLoading" variant="elevated">
-                    確認資料，下一步
+                <div class="step-nav-actions step-nav-actions--single">
+                  <v-btn class="step-next-btn" size="x-large" variant="flat"
+                    @click="handleUploadStep1Submit" :loading="isLoading">
+                    <v-icon class="step-next-icon" start>mdi-check-circle-outline</v-icon>
+                    <span class="step-next-text">確認資料，下一步</span>
+                    <v-icon class="step-next-arrow" end>mdi-arrow-right</v-icon>
                   </v-btn>
-                </v-card-actions>
+                </div>
               </div>
               <div v-else-if="uploadStep === 2">
                 <v-card-text>
@@ -151,15 +152,19 @@
                     <input ref="fileInputRef" type="file" accept=".pdf" hidden @change="handleFileSelect">
                   </v-form>
                 </v-card-text>
-                <v-card-actions class="pa-4">
-                  <v-btn size="large" @click="uploadStep = 1" :disabled="isLoading">返回上一步</v-btn>
-                  <v-spacer></v-spacer>
-                  <v-btn :color="projectConfig.themeColor" size="large" @click="handleUploadSubmit" :loading="isLoading"
-                    variant="elevated">
-                    <v-icon left>mdi-upload</v-icon>
-                    確認上傳
+                <div class="step-nav-actions">
+                  <v-btn class="step-back-btn" size="large" variant="outlined"
+                    @click="uploadStep = 1" :disabled="isLoading">
+                    <v-icon start>mdi-arrow-left</v-icon>
+                    返回上一步
                   </v-btn>
-                </v-card-actions>
+                  <v-btn class="step-next-btn step-next-btn--finish" size="x-large" variant="flat"
+                    @click="handleUploadSubmit" :loading="isLoading">
+                    <v-icon class="step-next-icon" start>mdi-cloud-upload-outline</v-icon>
+                    <span class="step-next-text">確認上傳</span>
+                    <v-icon class="step-next-arrow" end>mdi-send</v-icon>
+                  </v-btn>
+                </div>
               </div>
             </div>
 
@@ -318,9 +323,16 @@
 
                 <div v-if="currentPageSettings.intro.alert.show">
 
-                  <v-btn block variant="outlined" class="mb-2" @click="isInstructionsDialogVisible = true">
-                    <v-icon start>mdi-file-document-outline</v-icon>
-                    點此閱讀預約說明
+                  <v-btn
+                    block
+                    size="large"
+                    variant="flat"
+                    class="mb-3 instructions-btn"
+                    @click="isInstructionsDialogVisible = true"
+                  >
+                    <v-icon class="instructions-btn-icon" start>mdi-file-document-multiple-outline</v-icon>
+                    <span class="instructions-btn-text">點此閱讀預約說明</span>
+                    <v-icon class="instructions-btn-arrow" end>mdi-arrow-right</v-icon>
                   </v-btn>
 
                   <v-checkbox v-if="currentPageSettings.intro.alert.showConfirmation" v-model="isInstructionsConfirmed"
@@ -328,24 +340,101 @@
                     :disabled="!isInstructionsConfirmed"></v-checkbox>
                 </div>
 
-                <v-dialog v-model="isInstructionsDialogVisible" max-width="800px" persistent>
-                  <v-card>
-                    <v-card-title class="text-h5 font-weight-bold text-center bg-red-darken-2">
-                      {{ currentPageSettings.intro.alert.title }}
-                    </v-card-title>
-                    <v-divider></v-divider>
-                    <v-card-text style="max-height: 60vh; overflow-y: auto;">
+                <v-dialog v-model="isInstructionsDialogVisible" max-width="820px" persistent
+                  scrollable class="instructions-dialog">
+                  <v-card class="instructions-card" rounded="xl" elevation="24">
+                    <!-- 標題列：漸層 + 圖示 -->
+                    <div class="instructions-header">
+                      <div class="instructions-header-bg"></div>
+                      <div class="instructions-header-content">
+                        <div class="instructions-header-icon">
+                          <v-icon size="32" color="white">mdi-file-document-multiple-outline</v-icon>
+                        </div>
+                        <div class="instructions-header-text">
+                          <div class="instructions-header-title">
+                            {{ currentPageSettings.intro.alert.title }}
+                          </div>
+                          <div class="instructions-header-subtitle">
+                            <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+                            請仔細閱讀以下內容
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 內文捲動區 -->
+                    <v-card-text
+                      ref="instructionsScrollEl"
+                      class="instructions-content"
+                      @scroll="handleInstructionsScroll"
+                    >
                       <div v-html="currentPageSettings.intro.alert.text" class="prose"></div>
+
+                      <!-- 末端提示：滑到底時顯示 -->
+                      <div v-if="currentPageSettings.intro.alert.showConfirmation" class="instructions-end-anchor">
+                        <v-divider class="mb-3"></v-divider>
+                        <div class="instructions-end-hint">
+                          <v-icon size="18" color="success" class="mr-1">mdi-check-circle</v-icon>
+                          您已閱讀完畢，請點擊下方按鈕確認
+                        </div>
+                      </div>
                     </v-card-text>
-                    <v-divider></v-divider>
-                    <v-card-actions class="pa-4">
-                      <v-spacer></v-spacer>
-                      <v-btn :color="currentPageSettings.intro.alert.showConfirmation ? 'success' : 'primary'"
-                        variant="elevated" size="large"
-                        @click="() => { isInstructionsConfirmed = true; isInstructionsDialogVisible = false; }">
-                        {{ currentPageSettings.intro.alert.showConfirmation ? '我已閱讀並同意' : '關閉' }}
+
+                    <!-- 未讀完提示條 -->
+                    <transition name="fade-slide">
+                      <div
+                        v-if="currentPageSettings.intro.alert.showConfirmation && !isInstructionsScrolledBottom"
+                        class="instructions-scroll-hint"
+                      >
+                        <v-icon size="18" class="mr-1 scroll-hint-icon">mdi-arrow-down-circle</v-icon>
+                        請向下滑動閱讀完整內容
+                      </div>
+                    </transition>
+
+                    <!-- 動作區 -->
+                    <div class="instructions-actions">
+                      <!-- showConfirmation：滑到底才出現「我已閱讀並同意，開始預約」 -->
+                      <template v-if="currentPageSettings.intro.alert.showConfirmation">
+                        <transition name="cta-rise" mode="out-in">
+                          <v-btn
+                            v-if="isInstructionsScrolledBottom"
+                            block
+                            size="x-large"
+                            variant="flat"
+                            class="instructions-cta-btn"
+                            @click="confirmInstructionsAndStartBooking"
+                          >
+                            <v-icon class="cta-check-icon" start>mdi-check-circle</v-icon>
+                            <span class="cta-text">我已閱讀並同意，開始預約</span>
+                            <v-icon class="cta-arrow-icon" end>mdi-arrow-right</v-icon>
+                          </v-btn>
+                          <v-btn
+                            v-else
+                            block
+                            size="x-large"
+                            variant="flat"
+                            class="instructions-cta-btn instructions-cta-btn--disabled"
+                            disabled
+                          >
+                            <v-icon start>mdi-lock-outline</v-icon>
+                            <span class="cta-text">請先閱讀完所有內容</span>
+                          </v-btn>
+                        </transition>
+                      </template>
+
+                      <!-- 純說明模式：直接顯示關閉 -->
+                      <v-btn
+                        v-else
+                        block
+                        size="x-large"
+                        variant="flat"
+                        class="instructions-close-btn"
+                        @click="isInstructionsDialogVisible = false"
+                      >
+                        <v-icon start>mdi-close</v-icon>
+                        <span class="cta-text">關閉</span>
                       </v-btn>
-                    </v-card-actions>
+                    </div>
                   </v-card>
                 </v-dialog>
 
@@ -534,38 +623,48 @@
                   <v-form ref="step1Form" @submit.prevent="handleStep1Submit">
 
 
-                    <v-text-field v-model="formStep1.idNumber" :label="isIdValidationRequired ? '輸入身分證(驗證碼)' : '輸入身分證(驗證碼)'"
+                    <v-text-field ref="step1IdNumberField" v-model="formStep1.idNumber" :label="fieldLabel('idNumber')"
+                      :hint="fieldHint('idNumber')" :persistent-hint="!!fieldHint('idNumber')"
                       :rules="isIdValidationRequired ? [v => !!v || '此戶別預約需驗證身分證或驗證碼'] : []" variant="outlined" class="mt-4"
                       :disabled="isLoading || !isBookingActive"></v-text-field>
 
-                    <v-autocomplete v-model="formStep1.building" :items="initialData.buildings" label="棟別(選擇或輸入)"
+                    <v-autocomplete v-model="formStep1.building" :items="initialData.buildings" :label="fieldLabel('building')"
+                      :hint="fieldHint('building')" :persistent-hint="!!fieldHint('building')"
                       variant="outlined" :rules="[v => !!v || '棟別為必填項']" :disabled="isLoading || !isBookingActive"
                       @update:model-value="onBuildingChange" clearable></v-autocomplete>
 
-                    <v-select v-model="formStep1.unit" :items="unitList" item-title="unit" item-value="unit" label="戶別"
+                    <v-select v-model="formStep1.unit" :items="unitList" item-title="unit" item-value="unit" :label="fieldLabel('unit')"
+                      :hint="fieldHint('unit')" :persistent-hint="!!fieldHint('unit')"
                       variant="outlined" :rules="[v => !!v || '戶別為必填項']"
                       :disabled="isLoading || !formStep1.building || !isBookingActive" no-data-text="請先選擇棟別"
                       @update:model-value="onUnitChange"></v-select>
 
-                    <v-text-field v-model="formStep1.address" label="門牌" variant="outlined" readonly
-                      disabled></v-text-field>
+                    <v-text-field v-model="formStep1.address" :label="fieldLabel('address')"
+                      :hint="fieldHint('address')" :persistent-hint="!!fieldHint('address')"
+                      variant="outlined" readonly disabled></v-text-field>
 
 
 
                     <v-select v-if="availableMethodOptions.length > 0" v-model="formStep1.bookingMethod"
-                      :items="availableMethodOptions" label="選擇方式" variant="outlined" :rules="[v => !!v || '選擇方式為必填項']"
+                      :items="availableMethodOptions" :label="fieldLabel('bookingMethod')"
+                      :hint="fieldHint('bookingMethod')" :persistent-hint="!!fieldHint('bookingMethod')"
+                      variant="outlined" :rules="[v => !!v || '選擇方式為必填項']"
                       :disabled="isLoading || !formStep1.unit || !isBookingActive" no-data-text="請先選擇預約項目"></v-select>
 
                     <!-- 新增：第三層子選項 (例如：銀行選擇) -->
                     <v-select v-if="availableSubOptions.length > 0" v-model="formStep1.subOption"
-                      :items="availableSubOptions" label="請選擇項目" variant="outlined" :rules="[v => !!v || '此項為必填']"
+                      :items="availableSubOptions" :label="fieldLabel('subOption')"
+                      :hint="fieldHint('subOption')" :persistent-hint="!!fieldHint('subOption')"
+                      variant="outlined" :rules="[v => !!v || '此項為必填']"
                       :disabled="isLoading || !formStep1.bookingMethod || !isBookingActive"></v-select>
 
 
 
 
                     <v-text-field v-if="formStep1.bookingMethod === '代驗公司'" v-model="formStep1.companyName"
-                      label="代驗公司名稱" variant="outlined" :rules="[v => !!v || '請輸入代驗公司名稱']"
+                      :label="fieldLabel('companyName')"
+                      :hint="fieldHint('companyName')" :persistent-hint="!!fieldHint('companyName')"
+                      variant="outlined" :rules="[v => !!v || '請輸入代驗公司名稱']"
                       :disabled="isLoading || !isBookingActive"></v-text-field>
 
 
@@ -593,11 +692,14 @@
 
                   </v-form>
                 </v-card-text>
-                <v-card-actions class="pa-4">
-                  <v-spacer></v-spacer>
-                  <v-btn :color="projectConfig.themeColor" :disabled="!isBookingActive" size="large"
-                    @click="handleStep1Submit" :loading="isLoading" variant="elevated">確認戶別，下一步</v-btn>
-                </v-card-actions>
+                <div class="step-nav-actions step-nav-actions--single">
+                  <v-btn class="step-next-btn" :disabled="!isBookingActive" size="x-large" variant="flat"
+                    @click="handleStep1Submit" :loading="isLoading">
+                    <v-icon class="step-next-icon" start>mdi-check-circle-outline</v-icon>
+                    <span class="step-next-text">確認戶別，下一步</span>
+                    <v-icon class="step-next-arrow" end>mdi-arrow-right</v-icon>
+                  </v-btn>
+                </div>
               </div>
 
               <div v-if="existingBookingInfoList.length > 0 && step === 1">
@@ -684,11 +786,14 @@
                 <v-card-text>
                   <h3 class="text-h6 mb-4">步驟二：填寫您的聯絡資訊與預約時段</h3>
                   <v-form ref="step2Form" @submit.prevent="handleStep2Submit">
-                    <v-text-field ref="step2NameField" label="姓名" v-model="formStep2.姓名" :rules="[v => !!v || '必填']"
-                      variant="outlined"></v-text-field>
-                    <v-text-field label="電話" v-model="formStep2.電話" :rules="[v => !!v || '必填']"
-                      variant="outlined"></v-text-field>
-                    <v-text-field ref="step2EmailField" label="EMAIL" v-model="formStep2.EMAIL"
+                    <v-text-field ref="step2NameField" :label="fieldLabel('name')" v-model="formStep2.姓名"
+                      :hint="fieldHint('name')" :persistent-hint="!!fieldHint('name')"
+                      :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
+                    <v-text-field :label="fieldLabel('phone')" v-model="formStep2.電話"
+                      :hint="fieldHint('phone')" :persistent-hint="!!fieldHint('phone')"
+                      :rules="[v => !!v || '必填']" variant="outlined"></v-text-field>
+                    <v-text-field ref="step2EmailField" :label="fieldLabel('email')" v-model="formStep2.EMAIL"
+                      :hint="fieldHint('email')" :persistent-hint="!!fieldHint('email')"
                       :rules="[v => !!v || '必填', v => /.+@.+\..+/.test(v) || 'E-mail 格式不正確']"
                       variant="outlined"></v-text-field>
 
@@ -790,173 +895,378 @@
                     </template>
                   </v-form>
                 </v-card-text>
-                <v-card-actions class="pa-4">
-                  <v-btn size="large" @click="step = 1" :disabled="isLoading">返回上一步</v-btn>
-                  <v-spacer></v-spacer>
-                  <v-btn :color="projectConfig.themeColor" size="large" @click="handleStep2Submit" :loading="isLoading"
-                    variant="elevated" :disabled="isLoading || (shouldShowAuthFlow && !isSigningInitiated)">
-                    確認預約資訊
+                <div class="step-nav-actions">
+                  <v-btn class="step-back-btn" size="large" variant="outlined"
+                    @click="step = 1" :disabled="isLoading">
+                    <v-icon start>mdi-arrow-left</v-icon>
+                    返回上一步
                   </v-btn>
-                </v-card-actions>
+                  <v-btn class="step-next-btn" size="x-large" variant="flat"
+                    @click="handleStep2Submit" :loading="isLoading"
+                    :disabled="isLoading || (shouldShowAuthFlow && !isSigningInitiated)">
+                    <v-icon class="step-next-icon" start>mdi-check-circle-outline</v-icon>
+                    <span class="step-next-text">確認預約資訊</span>
+                    <v-icon class="step-next-arrow" end>mdi-arrow-right</v-icon>
+                  </v-btn>
+                </div>
               </div>
 
-              <div v-if="step === 3">
-                <v-card-text>
+              <div v-if="step === 3" class="confirm-step">
+                <v-card-text class="confirm-content pa-0">
+                  <!-- 標題列：漸層 + 圖示 -->
+                  <div class="confirm-header">
+                    <div class="confirm-header-bg"></div>
+                    <div class="confirm-header-content">
+                      <div class="confirm-header-icon">
+                        <v-icon size="34" color="white">mdi-clipboard-check-multiple-outline</v-icon>
+                      </div>
+                      <div class="confirm-header-text">
+                        <div class="confirm-header-title">請確認您的預約資訊</div>
+                        <div class="confirm-header-subtitle">
+                          <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+                          資料確認無誤後，請點擊下方「送出預約」
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                  <v-alert type="info" variant="tonal" border="start" class="mb-4">
-                    <h3 class="text-h6 mb-2">請確認您的預約資訊</h3>
-                    <p>確認無誤後，請點擊下方的「送出預約」按鈕。</p>
-                  </v-alert>
-                  <v-list lines="two">
-                    <v-list-item title="建案名稱" :subtitle="projectConfig.name"></v-list-item>
-                    <v-list-item title="戶別" :subtitle="finalBookingData.戶別"></v-list-item>
-                    <v-list-item title="門牌" :subtitle="finalBookingData.address"></v-list-item>
-                    <v-list-item title="姓名" :subtitle="finalBookingData.姓名"></v-list-item>
-                    <v-list-item title="電話" :subtitle="finalBookingData.電話"></v-list-item>
-                    <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"></v-list-item>
+                  <div class="confirm-body">
+                    <!-- 倒數計時提醒 (置於頂部更明顯) -->
+                    <transition name="fade-slide">
+                      <div v-if="isTimeoutActive" class="confirm-timer-banner">
+                        <div class="confirm-timer-icon">
+                          <v-icon size="22" color="white">mdi-timer-sand-complete</v-icon>
+                        </div>
+                        <div class="confirm-timer-text">
+                          <div class="confirm-timer-title">請於時限內完成送出</div>
+                          <div class="confirm-timer-hint">逾時將需要重新操作</div>
+                        </div>
+                        <div class="confirm-timer-clock">
+                          <div class="confirm-timer-label">剩餘</div>
+                          <div class="confirm-timer-value">
+                            {{ Math.floor(remainingSeconds / 60) }}:{{ String(remainingSeconds % 60).padStart(2, '0') }}
+                          </div>
+                        </div>
+                      </div>
+                    </transition>
 
-                    <v-divider class="my-2"></v-divider>
-                    <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"></v-list-item>
-
-                    <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"></v-list-item>
-                    <v-list-item v-if="finalBookingData.subOption" title="子選項" :subtitle="finalBookingData.subOption"></v-list-item>
-
-                    <template v-if="shouldShowAuthFlow">
-                      <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"></v-list-item>
-                      <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話"></v-list-item>
-                      <v-list-item title="與委託人關係" :subtitle="finalBookingData.受託人關係"></v-list-item>
-                    </template>
-                    <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
-                      <v-list-item v-for="field in displayDynamicFields" :key="field.label" title=""
-                        :subtitle="field.value" prepend-icon="mdi-arrow-right-bottom" density="compact">
-                        <template v-slot:title>
-                          <span class="text-caption text-grey">{{ field.label }}</span>
-                        </template>
-                        <template v-slot:subtitle="{ subtitle }">
-                          <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
-                        </template>
-                      </v-list-item>
-                    </template>
-                    <v-list-item v-if="finalBookingData.companyName" title="代驗公司"
-                      :subtitle="finalBookingData.companyName"></v-list-item>
-                    <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"></v-list-item>
-                    <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"></v-list-item>
-                    <v-alert v-if="isTimeoutActive" type="info" variant="tonal" border="start" class="mb-4"
-                      icon="mdi-timer-sand">
-                      請於 <span class="font-weight-bold">{{ Math.floor(remainingSeconds / 60) }}:{{
-                        String(remainingSeconds %
-                          60).padStart(2, '0') }}</span> 分鐘內確認送出，逾時將需要重新操作。
-                    </v-alert>
-                  </v-list>
-
-                </v-card-text>
-
-                <v-card-actions class="pa-4">
-                  <v-btn size="large" @click="handleGoBackAndRefresh" :disabled="isLoading">返回修改</v-btn>
-                  <v-spacer></v-spacer>
-
-                  <v-btn color="success" size="large" @click="submitBooking" :loading="isLoading"
-                    variant="elevated">送出預約</v-btn>
-                </v-card-actions>
-              </div>
-
-              <div v-if="step === 4">
-                <v-card-text class="text-center py-8" ref="bookingResultCard">
-                  <v-icon size="64" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
-                  <h3 class="text-h5 mb-2">預約成功！</h3>
-                  <p class="mb-6">您的預約已確認，相關資訊已寄送至您的電子信箱。</p>
-
-                  <v-list lines="two" class="text-left" density="compact">
-
-                    <v-list-item title="預約代碼" :subtitle="savedBookingCode" prepend-icon="mdi-pound-box-outline">
-                      <template v-slot:subtitle="{ subtitle }">
-                        <span class="font-weight-bold text-h6 text-red-darken-2">{{ subtitle }}</span>
-                      </template>
-                    </v-list-item>
-
-                    <v-list-item title="建案名稱" :subtitle="projectConfig?.name || '載入中...'" prepend-icon="mdi-domain">
-                    </v-list-item>
-
-                    <v-list-item title="戶別" :subtitle="finalBookingData.戶別"
-                      prepend-icon="mdi-home-variant-outline"></v-list-item>
-                    <v-list-item title="門牌" :subtitle="finalBookingData.address"
-                      prepend-icon="mdi-map-marker-outline"></v-list-item>
-                    <v-list-item title="姓名" :subtitle="finalBookingData.姓名"
-                      prepend-icon="mdi-account-outline"></v-list-item>
-                    <v-list-item title="電話" :subtitle="finalBookingData.電話"
-                      prepend-icon="mdi-phone-outline"></v-list-item>
-                    <v-list-item title="EMAIL" :subtitle="finalBookingData.EMAIL"
-                      prepend-icon="mdi-email-outline"></v-list-item>
-
-                    <v-divider class="my-2"></v-divider>
-
-                    <v-list-item title="預約項目" :subtitle="finalBookingData.bookingType"
-                      prepend-icon="mdi-format-list-checks"></v-list-item>
-                    <v-list-item title="選擇方式" :subtitle="finalBookingData.bookingMethod"
-                      prepend-icon="mdi-account-search-outline"></v-list-item>
-                    <v-list-item v-if="finalBookingData.subOption" title="子選項" :subtitle="finalBookingData.subOption"
-                      prepend-icon="mdi-arrow-right-bottom"></v-list-item>
-
-                    <template v-if="shouldShowAuthFlow">
-                      <v-list-item title="受託人姓名" :subtitle="finalBookingData.受託人姓名"
-                        prepend-icon="mdi-arrow-right-bottom"></v-list-item>
-                      <v-list-item title="受託人電話" :subtitle="finalBookingData.受託人電話"
-                        prepend-icon="mdi-arrow-right-bottom"></v-list-item>
-                      <v-list-item title="與委託人關係" :subtitle="finalBookingData.受託人關係"
-                        prepend-icon="mdi-arrow-right-bottom"></v-list-item>
-                    </template>
-                    <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
-                      <v-list-item v-for="field in displayDynamicFields" :key="field.label" title=""
-                        :subtitle="field.value" prepend-icon="mdi-information-outline" density="compact">
-                        <template v-slot:title>
-                          <span class="text-caption text-grey">{{ field.label }}</span>
-                        </template>
-                        <template v-slot:subtitle="{ subtitle }">
-                          <span class="text-body-2 font-weight-medium text-high-emphasis">{{ subtitle }}</span>
-                        </template>
-                      </v-list-item>
-                    </template>
-                    <v-list-item v-if="finalBookingData.companyName" title="代驗公司"
-                      :subtitle="finalBookingData.companyName" prepend-icon="mdi-office-building"></v-list-item>
-                    <v-list-item title="預約日期" :subtitle="finalBookingData.預約日期"
-                      prepend-icon="mdi-calendar-check-outline"></v-list-item>
-                    <v-list-item title="預約時段" :subtitle="finalBookingData.預約時段"
-                      prepend-icon="mdi-clock-time-four-outline"></v-list-item>
-
-                    <div v-if="dynamicClosingText" class="mt-4">
-                      <v-alert border="start" variant="tonal" color="info" icon="mdi-information-outline" class="pa-4"
-                        prominent>
-                        <template v-slot:title>
-                          <div class="font-weight-bold">重要提醒</div>
-                        </template>
-                        <div class="prose" v-html="dynamicClosingText"></div>
-                      </v-alert>
+                    <!-- 預約時間 (featured) -->
+                    <div class="confirm-section confirm-section--featured">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#6c5ce7">mdi-calendar-clock</v-icon>
+                        預約時間
+                      </div>
+                      <div class="confirm-time-grid">
+                        <div class="confirm-time-card">
+                          <v-icon size="22" color="#6c5ce7" class="mb-1">mdi-calendar-check-outline</v-icon>
+                          <div class="confirm-time-label">預約日期</div>
+                          <div class="confirm-time-value">{{ finalBookingData.預約日期 }}</div>
+                        </div>
+                        <div class="confirm-time-card">
+                          <v-icon size="22" color="#6c5ce7" class="mb-1">mdi-clock-time-four-outline</v-icon>
+                          <div class="confirm-time-label">預約時段</div>
+                          <div class="confirm-time-value">{{ finalBookingData.預約時段 }}</div>
+                        </div>
+                      </div>
                     </div>
 
-                  </v-list>
+                    <!-- 戶別資訊 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-home-city-outline</v-icon>
+                        戶別資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">建案名稱</div>
+                          <div class="confirm-item-value">{{ projectConfig.name }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">戶別</div>
+                          <div class="confirm-item-value confirm-item-value--highlight">{{ finalBookingData.戶別 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">門牌</div>
+                          <div class="confirm-item-value">{{ finalBookingData.address }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 預約人資訊 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-account-circle-outline</v-icon>
+                        預約人資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">姓名</div>
+                          <div class="confirm-item-value">{{ finalBookingData.姓名 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">電話</div>
+                          <div class="confirm-item-value">{{ finalBookingData.電話 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">EMAIL</div>
+                          <div class="confirm-item-value confirm-item-value--email">{{ finalBookingData.EMAIL }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 受託人資訊 -->
+                    <div v-if="shouldShowAuthFlow" class="confirm-section confirm-section--accent">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#a855f7">mdi-account-arrow-right-outline</v-icon>
+                        受託人資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">受託人姓名</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人姓名 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">受託人電話</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人電話 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">與委託人關係</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人關係 }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 預約服務 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-format-list-checks</v-icon>
+                        預約服務
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">預約項目</div>
+                          <div class="confirm-item-value confirm-item-value--highlight">{{ finalBookingData.bookingType }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">選擇方式</div>
+                          <div class="confirm-item-value">{{ finalBookingData.bookingMethod }}</div>
+                        </div>
+                        <div v-if="finalBookingData.subOption" class="confirm-item">
+                          <div class="confirm-item-label">子選項</div>
+                          <div class="confirm-item-value">{{ finalBookingData.subOption }}</div>
+                        </div>
+                        <div v-if="finalBookingData.companyName" class="confirm-item">
+                          <div class="confirm-item-label">代驗公司</div>
+                          <div class="confirm-item-value">{{ finalBookingData.companyName }}</div>
+                        </div>
+                        <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
+                          <div v-for="field in displayDynamicFields" :key="field.label" class="confirm-item">
+                            <div class="confirm-item-label">{{ field.label }}</div>
+                            <div class="confirm-item-value">{{ field.value }}</div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
                 </v-card-text>
-                <v-card-actions class="pa-2">
-                  <v-row dense>
-                    <v-col cols="12" sm="auto" class="flex-grow-1">
-                      <v-btn prepend-icon="mdi-home" :color="projectConfig.themeColor" @click="goBackToStep0"
-                        variant="elevated" block>
-                        返回首頁
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="6" sm="auto">
-                      <v-btn prepend-icon="mdi-camera" :color="projectConfig.themeColor" @click="captureAndSave"
-                        variant="outlined" block>
-                        截圖
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="6" sm="auto">
-                      <v-btn prepend-icon="mdi-calendar-plus" :color="projectConfig.themeColor" @click="addToCalendar"
-                        variant="outlined" block>
-                        加入行事曆
-                      </v-btn>
-                    </v-col>
-                  </v-row>
-                </v-card-actions>
+
+                <!-- 動作區 -->
+                <div class="confirm-actions">
+                  <v-btn class="confirm-back-btn" size="large" variant="outlined"
+                    @click="handleGoBackAndRefresh" :disabled="isLoading">
+                    <v-icon start>mdi-arrow-left</v-icon>
+                    返回修改
+                  </v-btn>
+                  <v-btn class="confirm-submit-btn" size="x-large" variant="flat"
+                    @click="submitBooking" :loading="isLoading">
+                    <v-icon class="confirm-submit-check" start>mdi-check-decagram</v-icon>
+                    <span class="confirm-submit-text">送出預約</span>
+                    <v-icon class="confirm-submit-arrow" end>mdi-send</v-icon>
+                  </v-btn>
+                </div>
+              </div>
+
+              <div v-if="step === 4" class="success-step">
+                <v-card-text class="success-content pa-0" ref="bookingResultCard">
+                  <!-- 慶祝標題列 -->
+                  <div class="success-header">
+                    <div class="success-header-bg"></div>
+                    <div class="success-confetti">
+                      <span v-for="n in 12" :key="n" :style="{ '--i': n }"></span>
+                    </div>
+                    <div class="success-header-content">
+                      <div class="success-check-wrap">
+                        <div class="success-check-ring"></div>
+                        <div class="success-check-circle">
+                          <v-icon size="48" color="white">mdi-check-bold</v-icon>
+                        </div>
+                      </div>
+                      <h2 class="success-title">預約成功！</h2>
+                      <p class="success-subtitle">
+                        <v-icon size="16" class="mr-1">mdi-email-check-outline</v-icon>
+                        相關資訊已寄送至您的電子信箱
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="success-body">
+                    <!-- 預約代碼 (Hero 級資訊：給現場人員確認用) -->
+                    <div class="success-code-card">
+                      <div class="success-code-label">
+                        <v-icon size="16" class="mr-1">mdi-shield-check-outline</v-icon>
+                        您的預約代碼
+                      </div>
+                      <div class="success-code-value">{{ savedBookingCode }}</div>
+                      
+                    </div>
+
+                    <!-- 預約時間 (featured) -->
+                    <div class="confirm-section confirm-section--featured">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#6c5ce7">mdi-calendar-clock</v-icon>
+                        預約時間
+                      </div>
+                      <div class="confirm-time-grid">
+                        <div class="confirm-time-card">
+                          <v-icon size="22" color="#6c5ce7" class="mb-1">mdi-calendar-check-outline</v-icon>
+                          <div class="confirm-time-label">預約日期</div>
+                          <div class="confirm-time-value">{{ finalBookingData.預約日期 }}</div>
+                        </div>
+                        <div class="confirm-time-card">
+                          <v-icon size="22" color="#6c5ce7" class="mb-1">mdi-clock-time-four-outline</v-icon>
+                          <div class="confirm-time-label">預約時段</div>
+                          <div class="confirm-time-value">{{ finalBookingData.預約時段 }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 戶別資訊 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-home-city-outline</v-icon>
+                        戶別資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">建案名稱</div>
+                          <div class="confirm-item-value">{{ projectConfig?.name || '載入中...' }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">戶別</div>
+                          <div class="confirm-item-value confirm-item-value--highlight">{{ finalBookingData.戶別 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">門牌</div>
+                          <div class="confirm-item-value">{{ finalBookingData.address }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 預約人資訊 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-account-circle-outline</v-icon>
+                        預約人資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">姓名</div>
+                          <div class="confirm-item-value">{{ finalBookingData.姓名 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">電話</div>
+                          <div class="confirm-item-value">{{ finalBookingData.電話 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">EMAIL</div>
+                          <div class="confirm-item-value confirm-item-value--email">{{ finalBookingData.EMAIL }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 受託人資訊 -->
+                    <div v-if="shouldShowAuthFlow" class="confirm-section confirm-section--accent">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#a855f7">mdi-account-arrow-right-outline</v-icon>
+                        受託人資訊
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">受託人姓名</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人姓名 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">受託人電話</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人電話 }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">與委託人關係</div>
+                          <div class="confirm-item-value">{{ finalBookingData.受託人關係 }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 預約服務 -->
+                    <div class="confirm-section">
+                      <div class="confirm-section-title">
+                        <v-icon size="20" class="mr-2" color="#1a73e8">mdi-format-list-checks</v-icon>
+                        預約服務
+                      </div>
+                      <div class="confirm-section-body">
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">預約項目</div>
+                          <div class="confirm-item-value confirm-item-value--highlight">{{ finalBookingData.bookingType }}</div>
+                        </div>
+                        <div class="confirm-item">
+                          <div class="confirm-item-label">選擇方式</div>
+                          <div class="confirm-item-value">{{ finalBookingData.bookingMethod }}</div>
+                        </div>
+                        <div v-if="finalBookingData.subOption" class="confirm-item">
+                          <div class="confirm-item-label">子選項</div>
+                          <div class="confirm-item-value">{{ finalBookingData.subOption }}</div>
+                        </div>
+                        <div v-if="finalBookingData.companyName" class="confirm-item">
+                          <div class="confirm-item-label">代驗公司</div>
+                          <div class="confirm-item-value">{{ finalBookingData.companyName }}</div>
+                        </div>
+                        <template v-if="displayDynamicFields && displayDynamicFields.length > 0">
+                          <div v-for="field in displayDynamicFields" :key="field.label" class="confirm-item">
+                            <div class="confirm-item-label">{{ field.label }}</div>
+                            <div class="confirm-item-value">{{ field.value }}</div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+
+                    <!-- 重要提醒 (動態 HTML 內容) -->
+                    <div v-if="dynamicClosingText" class="success-notice">
+                      <div class="success-notice-title">
+                        <v-icon size="20" class="mr-2" color="#f59e0b">mdi-alert-circle-outline</v-icon>
+                        重要提醒
+                      </div>
+                      <div class="prose success-notice-body" v-html="dynamicClosingText"></div>
+                    </div>
+                  </div>
+                </v-card-text>
+
+                <!-- 動作區 -->
+                <div class="success-actions">
+                  <v-btn class="success-primary-btn" size="x-large" variant="flat"
+                    block @click="goBackToStep0">
+                    <v-icon class="success-primary-icon" start>mdi-home</v-icon>
+                    <span class="success-primary-text">返回首頁</span>
+                  </v-btn>
+                  <div class="success-secondary-row">
+                    <v-btn class="success-secondary-btn" size="large" variant="outlined" block @click="captureAndSave">
+                      <v-icon start>mdi-camera</v-icon>
+                      截圖
+                    </v-btn>
+                    <v-btn class="success-secondary-btn" size="large" variant="outlined" block @click="addToCalendar">
+                      <v-icon start>mdi-calendar-plus</v-icon>
+                      加入行事曆
+                    </v-btn>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -1281,6 +1591,7 @@ import { functions, storage } from '@/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue'; // Import DynamicFormRenderer
+import { resolveFieldLabel, resolveFieldHint } from '@/utils/bookingFieldLabels';
 
 
 
@@ -1459,11 +1770,57 @@ const isInstructionsConfirmed = ref(false);
 //  在 isInstructionsConfirmed 下方新增一個 ref
 const isInstructionsDialogVisible = ref(false);
 
+// 預約說明彈窗：偵測使用者是否已將內容捲動至底部
+const isInstructionsScrolledBottom = ref(false);
+const instructionsScrollEl = ref(null);
+
+const handleInstructionsScroll = (e) => {
+  const el = e.target;
+  if (!el) return;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 16) {
+    isInstructionsScrolledBottom.value = true;
+  }
+};
+
+// 彈窗開啟時重設狀態；若內容過短無需捲動則直接視為已讀
+watch(isInstructionsDialogVisible, (visible) => {
+  if (visible) {
+    isInstructionsScrolledBottom.value = false;
+    nextTick(() => {
+      // v-card-text 是 Vue 元件，需透過 $el 取得實際 DOM
+      const ref = instructionsScrollEl.value;
+      const el = ref?.$el || ref;
+      if (el && el.scrollHeight <= el.clientHeight + 16) {
+        isInstructionsScrolledBottom.value = true;
+      }
+    });
+  }
+});
+
+// 確認預約說明後：關閉彈窗並將焦點移至步驟一身分證輸入欄位
+const confirmInstructionsAndStartBooking = () => {
+  isInstructionsConfirmed.value = true;
+  isInstructionsDialogVisible.value = false;
+  // 等待彈窗關閉動畫結束、表單渲染完成後再聚焦
+  nextTick(() => {
+    setTimeout(() => {
+      const field = step1IdNumberField.value;
+      if (!field) return;
+      const el = field.$el;
+      if (el?.scrollIntoView) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      field.focus?.();
+    }, 350);
+  });
+};
+
 const route = useRoute();
 const dateAdapter = useDate();
 const projectStore = useProjectStore();
 const step1Form = ref(null);
 const step2Form = ref(null);
+const step1IdNumberField = ref(null);
 const step2NameField = ref(null);
 const step2EmailField = ref(null);
 const bookingResultCard = ref(null);
@@ -1628,6 +1985,10 @@ const currentPageSettings = computed(() => {
   if (!selectedBookingType.value) return projectConfig.value; // fallback 到全域設定
   return projectConfig.value.pageSettingsByItem?.[selectedBookingType.value] || projectConfig.value;
 });
+
+// 預約欄位標籤自訂：依 fieldLabels 動態解析；空值沿用預設
+const fieldLabel = (key) => resolveFieldLabel(projectConfig.value?.fieldLabels, key);
+const fieldHint = (key) => resolveFieldHint(projectConfig.value?.fieldLabels, key);
 const savedBookingCode = ref('');
 const existingBookingInfoList = ref([]); // Support multiple bookings
 const cancelingCode = ref(null); // Track which booking code is currently being canceled
@@ -1703,6 +2064,16 @@ watch(step, async (newStep) => {
         step2NameField.value.focus();
       }
     }, 500);
+  }
+
+  // 進入「請確認您的預約資訊」或「預約成功」頁時，將視窗捲動至頂部
+  if (newStep === 3 || newStep === 4) {
+    await nextTick();
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // 同時處理可能的內層滾動容器（保險作法）
+      document.documentElement?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    }, 100);
   }
 });
 
@@ -3261,6 +3632,1412 @@ const goBackToStep0 = () => {
 .not-open-btn:hover .not-open-cta .mdi-arrow-right {
   transform: translateX(4px);
   transition: transform 0.2s ease;
+}
+
+/* 預約說明按鈕：漸層 + 呼吸光暈 + hover 浮升，提升質感與引導性 */
+.instructions-btn {
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%) !important;
+  color: #fff !important;
+  height: 56px !important;
+  border-radius: 14px !important;
+  letter-spacing: 1px;
+  box-shadow:
+    0 6px 18px rgba(106, 92, 231, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  animation: instructions-pulse 2.8s ease-in-out infinite;
+}
+
+/* 高光斜掃效果（hover 時觸發） */
+.instructions-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.instructions-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 24px rgba(106, 92, 231, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+  animation: none;
+}
+
+.instructions-btn:hover::before {
+  animation: instructions-shine 0.9s ease forwards;
+}
+
+.instructions-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(106, 92, 231, 0.4);
+}
+
+.instructions-btn-icon {
+  font-size: 22px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.instructions-btn-text {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.instructions-btn-arrow {
+  font-size: 20px !important;
+  transition: transform 0.3s ease;
+}
+
+.instructions-btn:hover .instructions-btn-arrow {
+  transform: translateX(5px);
+}
+
+/* 呼吸光暈：未 hover 時持續吸引使用者目光 */
+@keyframes instructions-pulse {
+  0%, 100% {
+    box-shadow:
+      0 6px 18px rgba(106, 92, 231, 0.35),
+      0 0 0 0 rgba(106, 92, 231, 0.35),
+      0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 6px 18px rgba(106, 92, 231, 0.45),
+      0 0 0 8px rgba(106, 92, 231, 0),
+      0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+}
+
+/* 高光斜掃動畫 */
+@keyframes instructions-shine {
+  0% {
+    left: -75%;
+  }
+  100% {
+    left: 125%;
+  }
+}
+
+/* ===== 預約說明彈窗 ===== */
+.instructions-dialog :deep(.v-overlay__content) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.instructions-card {
+  overflow: hidden;
+  background: #fafbff;
+}
+
+/* 標題列：漸層 + 裝飾光暈 */
+.instructions-header {
+  position: relative;
+  padding: 28px 32px;
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%);
+  overflow: hidden;
+}
+
+.instructions-header-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(255, 255, 255, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 15% 80%, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.instructions-header-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.instructions-header-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.instructions-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.instructions-header-title {
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.instructions-header-subtitle {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+}
+
+/* 內文捲動區 */
+.instructions-content {
+  max-height: 58vh;
+  overflow-y: auto;
+  padding: 28px 32px 24px !important;
+  background: #fff;
+  scrollbar-width: thin;
+  scrollbar-color: #c5c7e0 transparent;
+}
+
+.instructions-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.instructions-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.instructions-content::-webkit-scrollbar-thumb {
+  background: #c5c7e0;
+  border-radius: 4px;
+}
+
+.instructions-content::-webkit-scrollbar-thumb:hover {
+  background: #9a9cc4;
+}
+
+.instructions-end-anchor {
+  margin-top: 24px;
+}
+
+.instructions-end-hint {
+  text-align: center;
+  color: #16a34a;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 未讀完提示條 */
+.instructions-scroll-hint {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(106, 92, 231, 0.08) 100%);
+  color: #6c5ce7;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px dashed rgba(106, 92, 231, 0.25);
+}
+
+.scroll-hint-icon {
+  animation: scroll-hint-bounce 1.5s ease-in-out infinite;
+}
+
+@keyframes scroll-hint-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
+}
+
+/* 動作區 */
+.instructions-actions {
+  padding: 20px 32px 28px;
+  background: linear-gradient(180deg, #ffffff 0%, #f3f4ff 100%);
+  border-top: 1px solid rgba(106, 92, 231, 0.12);
+}
+
+/* CTA 按鈕：我已閱讀並同意，開始預約 */
+.instructions-cta-btn {
+  height: 60px !important;
+  border-radius: 16px !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+  color: #fff !important;
+  box-shadow:
+    0 8px 24px rgba(17, 153, 142, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  animation: cta-pulse 2.5s ease-in-out infinite;
+}
+
+.instructions-cta-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.instructions-cta-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px rgba(17, 153, 142, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+  animation: none;
+}
+
+.instructions-cta-btn:hover::before {
+  animation: instructions-shine 0.9s ease forwards;
+}
+
+.instructions-cta-btn:active {
+  transform: translateY(0);
+}
+
+.cta-check-icon {
+  font-size: 24px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.cta-arrow-icon {
+  font-size: 22px !important;
+  transition: transform 0.3s ease;
+}
+
+.instructions-cta-btn:hover .cta-arrow-icon {
+  transform: translateX(6px);
+}
+
+.cta-text {
+  font-weight: 700;
+}
+
+/* CTA 呼吸動畫 */
+@keyframes cta-pulse {
+  0%, 100% {
+    box-shadow:
+      0 8px 24px rgba(17, 153, 142, 0.4),
+      0 0 0 0 rgba(17, 153, 142, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 8px 24px rgba(17, 153, 142, 0.5),
+      0 0 0 10px rgba(17, 153, 142, 0),
+      0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* 鎖定狀態按鈕 */
+.instructions-cta-btn--disabled {
+  background: #e0e3f0 !important;
+  color: #8a8fa8 !important;
+  box-shadow: none !important;
+  animation: none !important;
+  cursor: not-allowed;
+}
+
+.instructions-cta-btn--disabled::before {
+  display: none;
+}
+
+/* 純關閉按鈕 */
+.instructions-close-btn {
+  height: 56px !important;
+  border-radius: 14px !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #6c5ce7 0%, #a855f7 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 6px 18px rgba(106, 92, 231, 0.35);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instructions-close-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(106, 92, 231, 0.5);
+}
+
+/* CTA 出現動畫 */
+.cta-rise-enter-active,
+.cta-rise-leave-active {
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cta-rise-enter-from,
+.cta-rise-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+/* 滑動提示淡入淡出 */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* ===== 預約資訊確認頁 (step 3) ===== */
+.confirm-step {
+  background: linear-gradient(180deg, #fafbff 0%, #f3f4ff 100%);
+}
+
+.confirm-content {
+  background: transparent;
+}
+
+/* 標題列 */
+.confirm-header {
+  position: relative;
+  padding: 28px 28px;
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%);
+  overflow: hidden;
+}
+
+.confirm-header-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(255, 255, 255, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 15% 80%, rgba(255, 255, 255, 0.12) 0%, transparent 55%);
+  pointer-events: none;
+}
+
+.confirm-header-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.confirm-header-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.confirm-header-title {
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.confirm-header-subtitle {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+}
+
+/* 內文容器 */
+.confirm-body {
+  padding: 20px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 倒數計時 banner */
+.confirm-timer-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.3);
+  color: #fff;
+  animation: timer-glow 2s ease-in-out infinite;
+}
+
+@keyframes timer-glow {
+  0%, 100% { box-shadow: 0 6px 18px rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 6px 22px rgba(239, 68, 68, 0.5); }
+}
+
+.confirm-timer-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.confirm-timer-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.confirm-timer-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.confirm-timer-hint {
+  font-size: 0.75rem;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.confirm-timer-clock {
+  text-align: center;
+  padding: 4px 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.confirm-timer-label {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+}
+
+.confirm-timer-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+
+/* 區塊卡片 */
+.confirm-section {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow:
+    0 2px 8px rgba(26, 115, 232, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(26, 115, 232, 0.08);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.confirm-section:hover {
+  box-shadow:
+    0 6px 16px rgba(26, 115, 232, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.confirm-section--featured {
+  background: linear-gradient(135deg, #fff 0%, #f5f3ff 100%);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  box-shadow:
+    0 4px 14px rgba(106, 92, 231, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.confirm-section--accent {
+  background: linear-gradient(135deg, #fff 0%, #fdf4ff 100%);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.confirm-section-title {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.5px;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed rgba(100, 116, 139, 0.15);
+}
+
+.confirm-section-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 單筆項目 */
+.confirm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed rgba(100, 116, 139, 0.1);
+}
+
+.confirm-item:last-child {
+  border-bottom: none;
+}
+
+.confirm-item-label {
+  display: flex;
+  align-items: center;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.confirm-item-value {
+  color: #1e293b;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.confirm-item-value--highlight {
+  color: #6c5ce7;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.confirm-item-value--email {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* 預約時間：雙卡片網格 */
+.confirm-time-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.confirm-time-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 10px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 85, 247, 0.18);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.confirm-time-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(106, 92, 231, 0.15);
+}
+
+.confirm-time-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.confirm-time-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: 0.5px;
+}
+
+/* 動作區 */
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  padding: 20px;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.9) 30%, #fff 100%);
+  border-top: 1px solid rgba(26, 115, 232, 0.08);
+}
+
+.confirm-back-btn {
+  height: 56px !important;
+  border-radius: 14px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  border: 1.5px solid #cbd5e1 !important;
+  color: #475569 !important;
+  background: #fff !important;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.confirm-back-btn:hover {
+  border-color: #94a3b8 !important;
+  background: #f8fafc !important;
+  transform: translateY(-1px);
+}
+
+.confirm-submit-btn {
+  flex: 1;
+  height: 60px !important;
+  border-radius: 16px !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+  color: #fff !important;
+  box-shadow:
+    0 8px 24px rgba(17, 153, 142, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  animation: cta-pulse 2.5s ease-in-out infinite;
+}
+
+.confirm-submit-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.confirm-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px rgba(17, 153, 142, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+  animation: none;
+}
+
+.confirm-submit-btn:hover:not(:disabled)::before {
+  animation: instructions-shine 0.9s ease forwards;
+}
+
+.confirm-submit-btn:active {
+  transform: translateY(0);
+}
+
+.confirm-submit-check {
+  font-size: 22px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.confirm-submit-arrow {
+  font-size: 20px !important;
+  transition: transform 0.3s ease;
+}
+
+.confirm-submit-btn:hover .confirm-submit-arrow {
+  transform: translateX(5px);
+}
+
+.confirm-submit-text {
+  font-weight: 700;
+}
+
+/* 響應式：手機版調整 */
+@media (max-width: 600px) {
+  .confirm-header {
+    padding: 22px 18px;
+  }
+
+  .confirm-header-title {
+    font-size: 1.15rem;
+  }
+
+  .confirm-header-icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .confirm-body {
+    padding: 16px 14px 8px;
+  }
+
+  .confirm-section {
+    padding: 14px 14px;
+  }
+
+  .confirm-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .confirm-item-value {
+    text-align: left;
+  }
+
+  .confirm-actions {
+    flex-direction: column-reverse;
+    padding: 16px 14px;
+  }
+
+  .confirm-back-btn,
+  .confirm-submit-btn {
+    width: 100%;
+    height: 64px !important;
+    min-height: 64px !important;
+    font-size: 1.05rem !important;
+    border-radius: 16px !important;
+    padding: 0 20px !important;
+  }
+
+  /* 強制覆寫 Vuetify v-btn 內層高度與內距 */
+  .confirm-back-btn :deep(.v-btn__content),
+  .confirm-submit-btn :deep(.v-btn__content) {
+    min-height: 64px;
+    padding: 8px 0;
+    line-height: 1.2;
+  }
+
+  .confirm-submit-btn .confirm-submit-check {
+    font-size: 22px !important;
+  }
+
+  .confirm-submit-btn .confirm-submit-arrow {
+    font-size: 20px !important;
+  }
+
+  .confirm-submit-btn .confirm-submit-text {
+    font-size: 1.05rem;
+    letter-spacing: 1px;
+  }
+
+  .confirm-timer-banner {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .confirm-timer-value {
+    font-size: 1.1rem;
+  }
+}
+
+/* ===== 流程步驟導航區 (Step 1 / Step 2 / Upload Step 1 / Upload Step 2) ===== */
+/* 與「確認預約」「預約成功」頁面動作區風格一致 */
+.step-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.9) 30%, #fff 100%);
+  border-top: 1px solid rgba(26, 115, 232, 0.08);
+}
+
+.step-nav-actions--single {
+  justify-content: flex-end;
+}
+
+.step-back-btn {
+  height: 56px !important;
+  border-radius: 14px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  border: 1.5px solid #cbd5e1 !important;
+  color: #475569 !important;
+  background: #fff !important;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.step-back-btn:hover {
+  border-color: #94a3b8 !important;
+  background: #f8fafc !important;
+  transform: translateY(-1px);
+}
+
+.step-next-btn {
+  flex: 1;
+  height: 60px !important;
+  border-radius: 16px !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%) !important;
+  color: #fff !important;
+  box-shadow:
+    0 8px 24px rgba(106, 92, 231, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.step-next-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.step-next-btn:hover:not(:disabled):not(.v-btn--disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px rgba(106, 92, 231, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.step-next-btn:hover:not(:disabled):not(.v-btn--disabled)::before {
+  animation: instructions-shine 0.9s ease forwards;
+}
+
+.step-next-btn:active {
+  transform: translateY(0);
+}
+
+.step-next-btn.v-btn--disabled {
+  opacity: 0.55 !important;
+  filter: grayscale(0.25);
+}
+
+/* 上傳模式：完成動作改用綠色漸層 (送出感) */
+.step-next-btn--finish {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+  box-shadow:
+    0 8px 24px rgba(17, 153, 142, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.step-next-btn--finish:hover:not(:disabled):not(.v-btn--disabled) {
+  box-shadow:
+    0 12px 28px rgba(17, 153, 142, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.step-next-icon {
+  font-size: 22px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.step-next-arrow {
+  font-size: 20px !important;
+  transition: transform 0.3s ease;
+}
+
+.step-next-btn:hover:not(.v-btn--disabled) .step-next-arrow {
+  transform: translateX(5px);
+}
+
+.step-next-text {
+  font-weight: 700;
+}
+
+/* 響應式：手機版 */
+@media (max-width: 600px) {
+  .step-nav-actions {
+    flex-direction: column-reverse;
+    padding: 16px 14px;
+    gap: 10px;
+  }
+
+  .step-nav-actions--single {
+    flex-direction: column;
+  }
+
+  .step-back-btn,
+  .step-next-btn {
+    width: 100%;
+    height: 60px !important;
+    min-height: 60px !important;
+    font-size: 1rem !important;
+    border-radius: 16px !important;
+    padding: 0 20px !important;
+  }
+
+  .step-back-btn :deep(.v-btn__content),
+  .step-next-btn :deep(.v-btn__content) {
+    min-height: 60px;
+    padding: 8px 0;
+    line-height: 1.2;
+  }
+
+  .step-next-text {
+    font-size: 1rem;
+    letter-spacing: 0.8px;
+  }
+
+  .step-next-icon {
+    font-size: 20px !important;
+  }
+
+  .step-next-arrow {
+    font-size: 18px !important;
+  }
+}
+
+/* ===== 預約成功頁 (step 4) ===== */
+.success-step {
+  background: linear-gradient(180deg, #fafbff 0%, #f3f4ff 100%);
+}
+
+.success-content {
+  background: transparent;
+}
+
+/* 慶祝標題列：綠色漸層 + 紙花動畫 */
+.success-header {
+  position: relative;
+  padding: 36px 24px 32px;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  overflow: hidden;
+  text-align: center;
+}
+
+.success-header-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 80% 15%, rgba(255, 255, 255, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 20% 85%, rgba(255, 255, 255, 0.15) 0%, transparent 55%);
+  pointer-events: none;
+}
+
+/* 紙花裝飾 */
+.success-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.success-confetti span {
+  position: absolute;
+  top: -10px;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  opacity: 0;
+  animation: confetti-fall 3s ease-in calc(var(--i) * 0.2s) infinite;
+}
+
+.success-confetti span:nth-child(1)  { left: 8%;  background: #fde047; }
+.success-confetti span:nth-child(2)  { left: 18%; background: #f9a8d4; border-radius: 50%; }
+.success-confetti span:nth-child(3)  { left: 28%; background: #93c5fd; }
+.success-confetti span:nth-child(4)  { left: 38%; background: #fff;    border-radius: 50%; }
+.success-confetti span:nth-child(5)  { left: 48%; background: #fde047; }
+.success-confetti span:nth-child(6)  { left: 58%; background: #f9a8d4; border-radius: 50%; }
+.success-confetti span:nth-child(7)  { left: 68%; background: #93c5fd; }
+.success-confetti span:nth-child(8)  { left: 78%; background: #fff;    border-radius: 50%; }
+.success-confetti span:nth-child(9)  { left: 88%; background: #fde047; }
+.success-confetti span:nth-child(10) { left: 33%; background: #f9a8d4; }
+.success-confetti span:nth-child(11) { left: 63%; background: #93c5fd; border-radius: 50%; }
+.success-confetti span:nth-child(12) { left: 83%; background: #fde047; }
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(220px) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.success-header-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* 打勾圖示：擴散光環 + 漸入 */
+.success-check-wrap {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 16px;
+}
+
+.success-check-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  animation: success-ring-pulse 2s ease-out infinite;
+}
+
+@keyframes success-ring-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.success-check-circle {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.15),
+    inset 0 2px 8px rgba(255, 255, 255, 0.3);
+  animation: success-check-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes success-check-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.success-title {
+  color: #fff;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin: 0 0 8px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  animation: success-fade-up 0.6s ease-out 0.2s both;
+}
+
+.success-subtitle {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 0.9rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: success-fade-up 0.6s ease-out 0.35s both;
+}
+
+@keyframes success-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 內文容器 */
+.success-body {
+  padding: 20px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 預約代碼卡片 (Hero 級資訊) */
+.success-code-card {
+  position: relative;
+  padding: 22px 20px;
+  background:
+    linear-gradient(135deg, #fffbeb 0%, #fff 60%, #ecfeff 100%);
+  border-radius: 18px;
+  border: 2px dashed rgba(245, 158, 11, 0.4);
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.12);
+  overflow: hidden;
+}
+
+.success-code-card::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.success-code-card::after {
+  content: '';
+  position: absolute;
+  bottom: -40%;
+  left: -10%;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.success-code-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.success-code-value {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 3px;
+  background: linear-gradient(135deg, #d97706 0%, #dc2626 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Menlo', 'Consolas', monospace;
+  line-height: 1.2;
+  margin-bottom: 8px;
+  position: relative;
+  text-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+}
+
+.success-code-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #78716c;
+  font-size: 0.75rem;
+  font-weight: 500;
+  position: relative;
+}
+
+/* 重要提醒 */
+.success-notice {
+  background: linear-gradient(135deg, #fffbeb 0%, #fefce8 100%);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-left: 4px solid #f59e0b;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.08);
+}
+
+.success-notice-title {
+  display: flex;
+  align-items: center;
+  color: #92400e;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.success-notice-body {
+  color: #44403c;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* 動作區 */
+.success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.9) 30%, #fff 100%);
+  border-top: 1px solid rgba(26, 115, 232, 0.08);
+}
+
+.success-primary-btn {
+  height: 58px !important;
+  border-radius: 16px !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%) !important;
+  color: #fff !important;
+  box-shadow:
+    0 8px 22px rgba(106, 92, 231, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.success-primary-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.success-primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px rgba(106, 92, 231, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.success-primary-btn:hover::before {
+  animation: instructions-shine 0.9s ease forwards;
+}
+
+.success-primary-btn:active {
+  transform: translateY(0);
+}
+
+.success-primary-icon {
+  font-size: 22px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.success-primary-text {
+  font-weight: 700;
+}
+
+/* 次要動作 (截圖 / 加入行事曆) */
+.success-secondary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.success-secondary-btn {
+  height: 50px !important;
+  border-radius: 14px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  border: 1.5px solid #cbd5e1 !important;
+  color: #475569 !important;
+  background: #fff !important;
+  transition: all 0.25s ease;
+}
+
+.success-secondary-btn:hover {
+  border-color: #6c5ce7 !important;
+  color: #6c5ce7 !important;
+  background: #faf5ff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(106, 92, 231, 0.12);
+}
+
+/* 響應式：手機版 */
+@media (max-width: 600px) {
+  .success-header {
+    padding: 30px 18px 26px;
+  }
+
+  .success-check-wrap {
+    width: 78px;
+    height: 78px;
+  }
+
+  .success-check-circle {
+    width: 78px;
+    height: 78px;
+  }
+
+  .success-title {
+    font-size: 1.5rem;
+    letter-spacing: 1.5px;
+  }
+
+  .success-body {
+    padding: 16px 14px 8px;
+  }
+
+  .success-code-value {
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+  }
+
+  .success-actions {
+    padding: 16px 14px;
+  }
+
+  .success-primary-btn {
+    height: 54px !important;
+  }
 }
 
 .not-open-btn .not-open-cta .mdi-arrow-right {
