@@ -4510,6 +4510,36 @@ export const deleteActivityMessage = async ({ projectId, userKey, docId, storage
   }
 };
 
+/**
+ * 批次更新活動訊息排序
+ * @param {string[]} orderedIds 由「上到下（顯示順序）」的 docId 陣列；最上方者 sortOrder 最大
+ * 以目前時間為基準遞減配發 sortOrder，確保日後新上傳（Date.now() 較大）仍會排在最前面。
+ */
+export const updateActivityMessagesOrder = async (orderedIds) => {
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) return;
+  const batch = writeBatch(db);
+  const base = Date.now();
+  orderedIds.forEach((id, index) => {
+    batch.update(doc(db, "activityMessages", id), {
+      sortOrder: base - index,
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
+};
+
+/**
+ * 更新活動訊息的顯示／隱藏狀態
+ * hidden = true 時，一般瀏覽者不會看到該圖（僅管理模式可見並可切回顯示）
+ */
+export const updateActivityMessageVisibility = async (docId, hidden) => {
+  if (!docId) throw new Error('缺少 docId，無法更新顯示狀態。');
+  await updateDoc(doc(db, "activityMessages", docId), {
+    hidden: !!hidden,
+    updatedAt: serverTimestamp(),
+  });
+};
+
 //  START: 新增 checkInToSystem API 函式
 
 /**

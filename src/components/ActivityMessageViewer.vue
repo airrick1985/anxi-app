@@ -7,32 +7,70 @@
     transition="dialog-bottom-transition"
   >
     <v-card class="d-flex flex-column" style="background-color: #1a1a1a;">
-      <v-toolbar dark color="teal" density="compact">
-        <v-btn icon dark @click="close">
+      <v-toolbar
+        dark
+        density="comfortable"
+        flat
+        class="lightbox-toolbar"
+        :class="{ 'is-manage': canUpload && manageMode }"
+      >
+        <v-btn icon variant="text" color="white" class="ml-1" @click="close">
           <v-icon>mdi-close</v-icon>
         </v-btn>
-        <v-toolbar-title>
-          活動訊息<span v-if="projectName"> - {{ projectName }}</span>
-        </v-toolbar-title>
+
+        <div class="d-flex align-center toolbar-title-wrap">
+          <div class="title-badge mr-3">
+            <v-icon size="20" color="white">mdi-image-multiple-outline</v-icon>
+          </div>
+          <div class="d-flex flex-column toolbar-title-text">
+            <span class="title-main">活動訊息</span>
+            <span v-if="projectName" class="title-sub">{{ projectName }}</span>
+          </div>
+        </div>
+
         <v-spacer></v-spacer>
+
+        <!-- 管理工具：預設隱藏，需透過隱藏解鎖碼（連續輸入 aaaaaaaa）進入管理模式 -->
+        <template v-if="canUpload && manageMode">
+          <v-chip
+            color="amber-lighten-1"
+            variant="flat"
+            size="small"
+            prepend-icon="mdi-cog"
+            class="mr-2 d-none d-sm-flex font-weight-medium"
+          >
+            管理模式
+          </v-chip>
+          <v-btn
+            variant="flat"
+            color="white"
+            class="mr-2 upload-btn text-teal-darken-2"
+            prepend-icon="mdi-cloud-upload"
+            rounded="pill"
+            @click="isUploadDialogOpen = true"
+          >
+            上傳圖檔
+          </v-btn>
+          <v-btn
+            variant="text"
+            color="white"
+            prepend-icon="mdi-check"
+            title="退出管理模式"
+            @click="exitManageMode"
+          >
+            完成
+          </v-btn>
+        </template>
+
         <v-btn
-          v-if="messages.length > 1"
+          v-if="thumbnailAvailable"
           :icon="isThumbnailVisible ? 'mdi-view-grid' : 'mdi-view-grid-outline'"
           variant="text"
           color="white"
+          class="mr-1"
           :title="isThumbnailVisible ? '隱藏縮圖列表' : '顯示縮圖列表'"
           @click="isThumbnailVisible = !isThumbnailVisible"
         />
-        <v-btn
-          v-if="canUpload"
-          color="white"
-          variant="outlined"
-          prepend-icon="mdi-cloud-upload"
-          class="ml-2"
-          @click="isUploadDialogOpen = true"
-        >
-          上傳圖檔
-        </v-btn>
       </v-toolbar>
 
       <div class="flex-grow-1 d-flex" style="position: relative; min-height: 0;">
@@ -51,15 +89,15 @@
 
         <template v-if="!isLoading">
           <div
-            v-if="messages.length === 0"
+            v-if="displayMessages.length === 0"
             class="flex-grow-1 d-flex flex-column justify-center align-center text-white"
           >
             <v-icon size="80" color="grey-lighten-1">mdi-image-off-outline</v-icon>
             <p class="mt-4 text-h6">目前尚無活動訊息</p>
-            <p v-if="canUpload" class="text-body-1 text-grey-lighten-1">
+            <p v-if="canUpload && manageMode" class="text-body-1 text-grey-lighten-1">
               請點擊右上角「上傳圖檔」開始建立活動訊息。
             </p>
-            <p v-else class="text-body-1 text-grey-lighten-1">
+            <p v-else-if="!canUpload" class="text-body-1 text-grey-lighten-1">
               請聯絡有「銷控系統」權限的人員上傳活動圖檔。
             </p>
           </div>
@@ -83,16 +121,22 @@
                 />
               </div>
 
+              <!-- 已隱藏標示（管理模式下檢視到被隱藏的圖時提示） -->
+              <div v-if="manageMode && currentMessage?.hidden" class="hidden-badge">
+                <v-icon size="small" start>mdi-eye-off</v-icon>
+                此圖已隱藏（一般人員看不到）
+              </div>
+
               <!-- 左右切換 -->
               <v-btn
-                v-if="messages.length > 1"
+                v-if="displayMessages.length > 1"
                 icon="mdi-chevron-left"
                 size="large"
                 class="nav-btn nav-prev"
                 @click="prev"
               />
               <v-btn
-                v-if="messages.length > 1"
+                v-if="displayMessages.length > 1"
                 icon="mdi-chevron-right"
                 size="large"
                 class="nav-btn nav-next"
@@ -128,41 +172,70 @@
               </div>
 
               <!-- 計數提示 -->
-              <div v-if="messages.length > 1" class="counter-pill">
-                {{ currentIndex + 1 }} / {{ messages.length }}
+              <div v-if="displayMessages.length > 1" class="counter-pill">
+                {{ currentIndex + 1 }} / {{ displayMessages.length }}
               </div>
             </div>
 
-            <!-- 側邊縮圖列（垂直） -->
+            <!-- 側邊縮圖列（垂直，管理模式下可拖曳排序；管理模式即使只有一張也顯示，方便刪除/隱藏） -->
             <transition name="slide-panel">
               <div
-                v-if="isThumbnailVisible && messages.length > 1"
+                v-if="showThumbnailPanel"
                 class="thumbnail-panel"
               >
-                <div
-                  v-for="(item, idx) in messages"
-                  :key="item.id"
-                  class="thumbnail-item"
-                  :class="{ 'is-active': idx === currentIndex }"
-                  @click="selectThumbnail(idx)"
+                <draggable
+                  v-model="displayMessages"
+                  item-key="id"
+                  class="thumbnail-list"
+                  :disabled="!canUpload || !manageMode"
+                  handle=".thumb-drag-handle"
+                  animation="200"
+                  @change="onThumbnailReorder"
                 >
-                  <v-img
-                    :src="item.downloadURL"
-                    :alt="item.fileName"
-                    cover
-                    width="80"
-                    height="80"
-                    class="rounded"
-                  ></v-img>
-                  <v-btn
-                    v-if="canUpload"
-                    icon="mdi-close"
-                    size="x-small"
-                    color="error"
-                    class="thumbnail-delete"
-                    @click.stop="confirmDelete(item)"
-                  ></v-btn>
-                </div>
+                  <template #item="{ element: item, index: idx }">
+                    <div
+                      class="thumbnail-item"
+                      :class="{ 'is-active': idx === currentIndex, 'is-hidden': item.hidden }"
+                      @click="selectThumbnail(idx)"
+                    >
+                      <v-img
+                        :src="item.downloadURL"
+                        :alt="item.fileName"
+                        cover
+                        width="80"
+                        height="80"
+                        class="rounded"
+                      ></v-img>
+                      <div v-if="item.hidden" class="thumbnail-hidden-tag">已隱藏</div>
+                      <template v-if="canUpload && manageMode">
+                        <v-btn
+                          icon="mdi-drag"
+                          size="x-small"
+                          color="grey-darken-3"
+                          class="thumb-drag-handle"
+                          title="拖曳調整順序"
+                          @click.stop
+                        ></v-btn>
+                        <v-btn
+                          :icon="item.hidden ? 'mdi-eye-off' : 'mdi-eye'"
+                          size="x-small"
+                          :color="item.hidden ? 'grey-darken-2' : 'teal'"
+                          class="thumbnail-visibility"
+                          :loading="visibilityBusyId === item.id"
+                          :title="item.hidden ? '點擊改為顯示' : '點擊改為隱藏'"
+                          @click.stop="toggleVisibility(item)"
+                        ></v-btn>
+                        <v-btn
+                          icon="mdi-close"
+                          size="x-small"
+                          color="error"
+                          class="thumbnail-delete"
+                          @click.stop="confirmDelete(item)"
+                        ></v-btn>
+                      </template>
+                    </div>
+                  </template>
+                </draggable>
               </div>
             </transition>
           </template>
@@ -279,12 +352,15 @@
 <script setup>
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useToast } from 'vue-toastification';
+import draggable from 'vuedraggable';
 import { useUserStore } from '@/store/user';
 import {
   listenToActivityMessages,
   uploadActivityMessage,
   addActivityMessageMetadata,
   deleteActivityMessage,
+  updateActivityMessagesOrder,
+  updateActivityMessageVisibility,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 
@@ -312,6 +388,11 @@ const isThumbnailVisible = ref(
   typeof window !== 'undefined' ? window.innerWidth >= 768 : true
 );
 
+// 管理模式：預設關閉，純為瀏覽燈箱；連續輸入解鎖碼後才顯示上傳/刪除/排序工具
+const manageMode = ref(false);
+const UNLOCK_CODE = 'aaaaaaaa';
+let keyBuffer = '';
+
 const isUploadDialogOpen = ref(false);
 const filePickerModel = ref([]);
 const stagedFiles = ref([]);
@@ -320,6 +401,8 @@ const isUploading = ref(false);
 const isDeleteDialogOpen = ref(false);
 const pendingDeleteItem = ref(null);
 const isDeleting = ref(false);
+
+const visibilityBusyId = ref(null);
 
 let unsubscribe = null;
 
@@ -334,7 +417,26 @@ let PanzoomCtor = null;
 let wheelBound = null;
 let panzoomChangeHandler = null;
 
-const currentMessage = computed(() => messages.value[currentIndex.value] || null);
+// 顯示用清單：一般瀏覽只顯示未隱藏的圖；管理模式顯示全部（含已隱藏，供切換）
+// 可寫：拖曳排序時 vuedraggable 會在管理模式下回寫整份清單
+const displayMessages = computed({
+  get() {
+    return manageMode.value ? messages.value : messages.value.filter(m => !m.hidden);
+  },
+  set(val) {
+    messages.value = val;
+  },
+});
+
+const currentMessage = computed(() => displayMessages.value[currentIndex.value] || null);
+
+// 縮圖列：一般情況超過 1 張才出現；管理模式下只要有 1 張就出現（才能刪除/隱藏唯一一張）
+const hasManageTools = computed(() => props.canUpload && manageMode.value);
+const thumbnailAvailable = computed(() =>
+  displayMessages.value.length > 1 ||
+  (hasManageTools.value && displayMessages.value.length >= 1)
+);
+const showThumbnailPanel = computed(() => isThumbnailVisible.value && thumbnailAvailable.value);
 
 async function ensurePanzoom() {
   if (PanzoomCtor) return PanzoomCtor;
@@ -408,20 +510,58 @@ function toggleZoom() {
 }
 
 function prev() {
-  if (messages.value.length === 0) return;
+  const len = displayMessages.value.length;
+  if (len === 0) return;
   resetZoom();
-  currentIndex.value = (currentIndex.value - 1 + messages.value.length) % messages.value.length;
+  currentIndex.value = (currentIndex.value - 1 + len) % len;
 }
 function next() {
-  if (messages.value.length === 0) return;
+  const len = displayMessages.value.length;
+  if (len === 0) return;
   resetZoom();
-  currentIndex.value = (currentIndex.value + 1) % messages.value.length;
+  currentIndex.value = (currentIndex.value + 1) % len;
 }
 
 function selectThumbnail(idx) {
   if (idx === currentIndex.value) return;
   resetZoom();
   currentIndex.value = idx;
+}
+
+// 拖曳排序：vuedraggable 已就地更新 messages 順序，這裡同步 currentIndex 並持久化
+async function onThumbnailReorder(evt) {
+  const moved = evt?.moved;
+  if (moved) {
+    const { oldIndex, newIndex } = moved;
+    if (currentIndex.value === oldIndex) {
+      currentIndex.value = newIndex;
+    } else if (oldIndex < currentIndex.value && currentIndex.value <= newIndex) {
+      currentIndex.value -= 1;
+    } else if (newIndex <= currentIndex.value && currentIndex.value < oldIndex) {
+      currentIndex.value += 1;
+    }
+  }
+  try {
+    await updateActivityMessagesOrder(messages.value.map(m => m.id));
+  } catch (err) {
+    toast.error(`排序儲存失敗：${err.message}`);
+    // 失敗時 Firestore 順序未變，下一次快照會還原本地順序
+  }
+}
+
+// 切換單張圖片的隱藏／顯示
+async function toggleVisibility(item) {
+  if (!item || visibilityBusyId.value) return;
+  const nextHidden = !item.hidden;
+  visibilityBusyId.value = item.id;
+  try {
+    await updateActivityMessageVisibility(item.id, nextHidden);
+    toast.success(nextHidden ? '已設為隱藏（一般人員看不到）' : '已設為顯示', { timeout: 1500 });
+  } catch (err) {
+    toast.error(`更新顯示狀態失敗：${err.message}`);
+  } finally {
+    visibilityBusyId.value = null;
+  }
 }
 
 // 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界
@@ -439,6 +579,42 @@ function onKeydown(e) {
   else if (e.key === '0') resetZoom();
 }
 
+// --- 隱藏解鎖碼：連續輸入 aaaaaaaa 切換管理模式（僅具上傳權限者有效）---
+// 將輸入正規化為半形小寫，支援大小寫與全形（aaaaaaaa / AAAAAAAA / ａａａａａａａａ 皆可）。
+function normalizeChar(ch) {
+  const code = ch.charCodeAt(0);
+  const half = (code >= 0xff01 && code <= 0xff5e)
+    ? String.fromCharCode(code - 0xfee0)
+    : ch;
+  return half.toLowerCase();
+}
+
+// 切換管理模式：保留目前檢視的圖片（依 id 重新定位），進入時自動展開縮圖列以便操作
+function applyManageMode(next) {
+  const keepId = currentMessage.value?.id;
+  manageMode.value = next;
+  if (next) isThumbnailVisible.value = true;
+  const idx = keepId ? displayMessages.value.findIndex(m => m.id === keepId) : -1;
+  currentIndex.value = idx >= 0 ? idx : 0;
+}
+
+// 以 keyup 偵測（避免按鍵被其他元件的 keydown 攔截）
+function onUnlockKeyup(e) {
+  if (!props.canUpload) return;
+  if (typeof e.key !== 'string' || e.key.length !== 1) return;
+  keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
+  if (keyBuffer === UNLOCK_CODE) {
+    keyBuffer = '';
+    applyManageMode(!manageMode.value);
+    toast.success(manageMode.value ? '已進入管理模式' : '已退出管理模式', { timeout: 1500 });
+  }
+}
+
+function exitManageMode() {
+  applyManageMode(false);
+  toast.info('已退出管理模式', { timeout: 1500 });
+}
+
 function startListening() {
   if (!props.projectId) return;
   isLoading.value = true;
@@ -446,7 +622,7 @@ function startListening() {
     props.projectId,
     (items) => {
       messages.value = items;
-      if (currentIndex.value >= items.length) currentIndex.value = 0;
+      if (currentIndex.value >= displayMessages.value.length) currentIndex.value = 0;
       isLoading.value = false;
     },
     (error) => {
@@ -469,12 +645,17 @@ watch(
   () => props.modelValue,
   (open) => {
     if (open) {
+      manageMode.value = false;
+      keyBuffer = '';
       startListening();
       document.addEventListener('keydown', onKeydown);
+      window.addEventListener('keyup', onUnlockKeyup, true);
     } else {
+      manageMode.value = false;
       stopListening();
       destroyPanzoom();
       document.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('keyup', onUnlockKeyup, true);
     }
   },
   { immediate: true }
@@ -484,6 +665,7 @@ onUnmounted(() => {
   stopListening();
   destroyPanzoom();
   document.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('keyup', onUnlockKeyup, true);
 });
 
 function close() {
@@ -632,22 +814,79 @@ async function executeDelete() {
 </script>
 
 <style scoped>
-.lightbox-stage {
-  position: relative;
-  overflow: hidden;
+/* ---------- 標題列（質感漸層 + 圖示徽章 + 兩行標題） ---------- */
+.lightbox-toolbar {
+  /* 深淺 teal 漸層，營造層次與質感 */
+  background: linear-gradient(120deg, #0b3b39 0%, #0f766e 55%, #14a89a 100%) !important;
+  color: #fff !important;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.35);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+/* 管理模式：底線改琥珀色，強化「正在編輯」的狀態提示 */
+.lightbox-toolbar.is-manage {
+  border-bottom-color: rgba(255, 193, 7, 0.7);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), inset 0 -2px 0 rgba(255, 193, 7, 0.3);
+}
+
+.toolbar-title-wrap {
+  min-width: 0; /* 允許長建案名以省略號收尾 */
+}
+
+.title-badge {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  flex-shrink: 0;
+}
+
+.toolbar-title-text {
+  min-width: 0;
+  line-height: 1.18;
+}
+.title-main {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #fff;
+}
+.title-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+}
+
+.upload-btn {
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+
+.lightbox-stage {
+  position: relative;
+  overflow: hidden;
   background-color: #0d0d0d;
   min-height: 0;
 }
 
+/* 重點：pan-target 以 absolute 鋪滿 stage（貼齊父層左上角），圖片改在其內部置中。
+   panzoom 的滾輪焦點計算是相對「父層左上角 + 元素 margin + 元素中心」，
+   若改用 stage 的 flex 置中，會讓元素實際位置偏移而 panzoom 無從得知，
+   造成滾輪縮放焦點對不到滑鼠。鋪滿父層後 transform-origin(50% 50%) 即為 stage 中心，焦點才會跟隨滑鼠。 */
 .lightbox-pan-target {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  max-width: 100%;
   /* 預設游標：fit 時 default、放大後變 grab（panzoom 套件會自動切換） */
   touch-action: none;
 }
@@ -732,6 +971,12 @@ async function executeDelete() {
   border-radius: 3px;
 }
 
+.thumbnail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .thumbnail-item {
   position: relative;
   cursor: pointer;
@@ -751,6 +996,64 @@ async function executeDelete() {
   position: absolute;
   top: -8px;
   right: -8px;
+}
+
+.thumb-drag-handle {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  cursor: grab;
+  touch-action: none;
+}
+.thumb-drag-handle:active {
+  cursor: grabbing;
+}
+
+.thumbnail-visibility {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+}
+
+/* 已隱藏縮圖：圖片變淡，並在左下角標示 */
+.thumbnail-item.is-hidden :deep(.v-img) {
+  opacity: 0.4;
+}
+.thumbnail-hidden-tag {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  background-color: rgba(0, 0, 0, 0.72);
+  color: #ffca28;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* 主圖：管理模式檢視到已隱藏圖片的提示 */
+.hidden-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #ffca28;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* 拖曳排序時的占位/拖曳樣式 */
+.thumbnail-list .sortable-ghost {
+  opacity: 0.4;
+}
+.thumbnail-list .sortable-chosen {
+  border-color: #ffca28 !important;
 }
 
 /* 縮圖面板進場 / 離場滑動動畫 */
