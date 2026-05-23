@@ -3095,6 +3095,7 @@ const getSimpleExportData = async (filterFunc, sortFunc) => {
       if (endDate && log.date > endDate) return;
 
       rows.push({
+        'UID': item.id || '',
         '日期': log.date ? log.date.replace(/-/g, '/') : '',
         '新客/回訪': idx === 0 ? '新客' : '回訪',
         '銷售人員': item.latestSalesName || '',
@@ -3121,7 +3122,7 @@ const getSimpleExportData = async (filterFunc, sortFunc) => {
   rows.sort(sortFunc || defaultSort);
 
   // 編入順序
-  return rows.map((r, index) => ({ '順序': index + 1, ...r }));
+  return rows.map((r, index) => ({ 'UID': r['UID'] || '', '順序': index + 1, ...r }));
 };
 
 const executeSimpleExport = async () => {
@@ -3236,7 +3237,7 @@ const executeGoogleSync = async () => {
 
     // 2. 轉換為二維陣列 (Header + Data)
     const headers = [
-      '順序', '日期', '新客/回訪', '銷售人員', '客戶姓名', '來人（位）',
+      'UID', '順序', '日期', '新客/回訪', '銷售人員', '客戶姓名', '來人（位）',
       '年齡', '性別', '職業', '動機', '媒體', '區域',
       '洽談時間', '行動電話', '未買原因', '洽談紀錄'
     ];
@@ -3244,7 +3245,7 @@ const executeGoogleSync = async () => {
     const values = [headers];
     exportRows.forEach(row => {
       values.push([
-        row['順序'], row['日期'], row['新客/回訪'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
+        row['UID'], row['順序'], row['日期'], row['新客/回訪'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
         row['年齡'], row['性別'], row['職業'], row['動機'], row['媒體'], row['區域'],
         row['洽談時間'], row['行動電話'], row['未買原因'], row['洽談紀錄']
       ]);
