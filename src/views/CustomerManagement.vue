@@ -280,6 +280,7 @@
               <v-data-iterator
                 v-if="isMobile"
                 :items="filteredCustomerList"
+                :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
                 item-value="docId"
                 v-model:page="mobilePage"
                 :items-per-page="10"
