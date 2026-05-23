@@ -61,16 +61,67 @@
         <v-col cols="12" md="4">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
-            <v-select 
-              label="合約方式" 
-              :items="localContractOptions" 
-              v-model="editableData.contractType" 
-              class="mb-4" 
-              clearable
-            ></v-select> <v-radio-group v-model="editableData.isFirstTimeBuyer" inline label="是否首購" class="mb-4">
-              <v-radio label="是" :value="true"></v-radio>
-              <v-radio label="否" :value="false"></v-radio>
-            </v-radio-group>
+            <!-- 合約方式 -->
+            <div class="field-block mb-4">
+              <div class="field-label">
+                <v-icon size="18" color="indigo-darken-1">mdi-file-sign</v-icon>
+                <span>合約方式</span>
+              </div>
+              <v-chip-group
+                v-model="editableData.contractType"
+                selected-class="contract-chip--active"
+                column
+              >
+                <v-chip
+                  v-for="opt in localContractOptions"
+                  :key="opt"
+                  :value="opt"
+                  filter
+                  variant="outlined"
+                  class="contract-chip"
+                >
+                  {{ opt }}
+                </v-chip>
+              </v-chip-group>
+              <div
+                v-if="!localContractOptions || localContractOptions.length === 0"
+                class="text-caption text-grey-darken-1"
+              >
+                尚無合約方式選項
+              </div>
+            </div>
+
+            <!-- 是否首購 -->
+            <div class="field-block mb-4">
+              <div class="field-label">
+                <v-icon size="18" color="amber-darken-2">mdi-home-heart</v-icon>
+                <span>是否首購</span>
+              </div>
+              <v-btn-toggle
+                v-model="firstTimeBuyerModel"
+                mandatory
+                divided
+                rounded="lg"
+                class="firstbuyer-toggle w-100"
+              >
+                <v-btn
+                  :value="true"
+                  :color="firstTimeBuyerModel === true ? 'success' : undefined"
+                  variant="flat"
+                  class="flex-1-1"
+                >
+                  <v-icon start>mdi-check-circle</v-icon>是
+                </v-btn>
+                <v-btn
+                  :value="false"
+                  :color="firstTimeBuyerModel === false ? 'blue-grey-darken-1' : undefined"
+                  variant="flat"
+                  class="flex-1-1"
+                >
+                  <v-icon start>mdi-close-circle-outline</v-icon>否
+                </v-btn>
+              </v-btn-toggle>
+            </div>
             <div class="d-flex align-center gap-2 mb-2">
               <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="flex-1"></v-text-field>
               <v-btn icon="mdi-calculator" size="small" variant="text" color="primary" @click="openPriceNegotiationDialog" title="房屋成交價調整"></v-btn>
@@ -410,6 +461,15 @@ const editableData = computed({
   set: (newValue) => emit('update:modelValue', newValue)
 });
 
+// ✅ [新增] 是否首購顯示模型：資料為空值（非明確的 true/false）時，UI 一律視為「是」
+// 這保證畫面在任何時序下都顯示「是」；實際空值正規化寫回由下方 deep watch 處理
+const firstTimeBuyerModel = computed({
+  get: () => (editableData.value?.isFirstTimeBuyer === false ? false : true),
+  set: (val) => {
+    if (editableData.value) editableData.value.isFirstTimeBuyer = val;
+  }
+});
+
 // ✅ 2. 新增 Computed，將圖片物件陣列轉換為名稱字串陣列
 const salesImageOptions = computed(() => {
   return props.allSalesImages.map(img => img.imageName);
@@ -518,8 +578,9 @@ watch(
   { immediate: true }
 );
 
-// ✅ 3. 新增 Watcher，確保 salesImages 永遠是陣列
-watch(() => editableData.value, (newData) => {
+// ✅ 3. Watcher：確保 salesImages 永遠是陣列、衍伸銷售狀態，並套用成交資訊預設值
+// 同時監聽 localContractOptions，因 contractTypeOptions 為非同步傳入的 prop（初始可能為空陣列）
+watch([() => editableData.value, localContractOptions], ([newData, options]) => {
   if (!newData) return; // 如果 newData 是 null/undefined，則跳過
 
   let needsUpdate = false;
@@ -535,13 +596,27 @@ watch(() => editableData.value, (newData) => {
   // ✅ START: 新增 - 衍伸銷售狀態
   // 根據 "後台狀態" (salesStatus_backend) 決定 "銷售狀態" (salesStatus_quote)
   const newQuoteStatus = newData.salesStatus_backend ? "已售" : "";
-  
+
   // 只有在衍伸值與當前值不同時，才標記為需要更新
   if (newData.salesStatus_quote !== newQuoteStatus) {
     updatedData.salesStatus_quote = newQuoteStatus;
     needsUpdate = true;
   }
   // ✅ END: 新增
+
+  // ✅ 是否首購：空值（非明確 true/false，含 undefined/null/空字串）一律預設「是」
+  if (newData.isFirstTimeBuyer !== true && newData.isFirstTimeBuyer !== false) {
+    updatedData.isFirstTimeBuyer = true;
+    needsUpdate = true;
+  }
+
+  // ✅ 合約方式：尚未選取且選項含「一般合約」→ 預設選「一般合約」
+  const contractEmpty =
+    newData.contractType === undefined || newData.contractType === null || newData.contractType === '';
+  if (contractEmpty && Array.isArray(options) && options.includes('一般合約')) {
+    updatedData.contractType = '一般合約';
+    needsUpdate = true;
+  }
 
   // 如果需要更新 (任一邏輯觸發)，則發出一次 'update:modelValue' 事件
   if (needsUpdate) {
@@ -810,6 +885,42 @@ function savePriceNegotiation() {
 }
 .mb-2 {
   margin-bottom: 8px;
+}
+
+/* ===== 合約方式 / 是否首購 區塊美化 ===== */
+.field-block {
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #44546a;
+  margin-bottom: 8px;
+}
+.contract-chip {
+  font-weight: 500;
+}
+/* v-chip-group 選中的合約方式樣式（selected-class） */
+.contract-chip--active {
+  background-color: #1a3a6e !important;
+  border-color: #1a3a6e !important;
+  color: #ffffff !important;
+}
+/* 是否首購：兩顆按鈕平分寬度、等高 */
+.firstbuyer-toggle {
+  height: 44px;
+}
+.flex-1-1 {
+  flex: 1 1 0;
+}
+.firstbuyer-toggle :deep(.v-btn) {
+  height: 100%;
 }
 </style>
 

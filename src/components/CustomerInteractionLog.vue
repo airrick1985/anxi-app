@@ -62,8 +62,8 @@
                                         <div class="info-row mb-3">
                                             <span class="text-caption text-grey">銷售人員</span>
                                             <div class="d-flex flex-wrap gap-2 align-center">
-                                                <template v-if="guestData.profile?.['銷售人員'] && guestData.profile['銷售人員'].length > 0">
-                                                    <div v-for="(name, idx) in guestData.profile['銷售人員']" :key="idx"
+                                                <template v-if="salesPersonNames.length > 0">
+                                                    <div v-for="(name, idx) in salesPersonNames" :key="idx"
                                                         class="d-flex align-center">
                                                         <v-chip size="small" variant="flat"
                                                             :color="name === guestData.latestSalesName ? 'primary' : 'grey-lighten-2'"
@@ -711,7 +711,8 @@
             </v-card-text>
         </v-card>
 
-        <v-dialog v-model="isAddLogDialogVisible" max-width="600px" persistent>
+        <v-dialog v-model="isAddLogDialogVisible" max-width="600px" persistent
+            :fullscreen="$vuetify.display.smAndDown" scrollable>
             <v-card>
                 <v-card-title class="bg-teal text-white d-flex align-center">
                     <v-icon start>{{ editingLogId ? 'mdi-pencil' : 'mdi-pen-plus' }}</v-icon>
@@ -2204,6 +2205,20 @@ const displayedName = computed(() => {
     }
 
     return current;
+});
+
+// 銷售人員顯示用：將 profile.銷售人員 正規化為陣列
+// （兼容舊資料：可能是陣列、單一字串，或以、,/;； 分隔的多人字串；
+//  若不正規化，字串會被 v-for 逐字拆成單字 chip）
+const salesPersonNames = computed(() => {
+    const raw = guestData.value.profile?.['銷售人員'];
+    if (Array.isArray(raw)) {
+        return raw.filter(Boolean);
+    }
+    if (typeof raw === 'string' && raw.trim()) {
+        return raw.split(/[、,/;；]/).map(n => n.trim()).filter(Boolean);
+    }
+    return [];
 });
 
 const openTagDialog = () => {
