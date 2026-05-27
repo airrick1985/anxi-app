@@ -452,7 +452,7 @@ const routes = [
       requiresAuth: true,
       requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
       layout: DefaultLayout, // ✅
-      targetRouteName: 'InternalInspectionCalendar',
+      targetRouteName: 'HouseholdGrid',
       paramKey: 'projectId'
     }
   },

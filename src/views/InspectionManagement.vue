@@ -188,8 +188,8 @@ const projectName = computed(() => projectStore.idToNameMap[projectId.value] || 
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const primaryNav = [
-  { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
   { name: 'HouseholdGrid',              title: '戶別資料管理', icon: 'mdi-table-large' },
+  { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
   { name: 'InternalReportFolderManager',title: '驗屋報告管理', icon: 'mdi-folder-outline' },
 ];
 
@@ -255,7 +255,7 @@ async function switchProject(target) {
     userStore.setProjectName?.(target.name);
     projectStore.setCurrentProject(target.id);
 
-    const currentRouteName = route.name || 'InternalInspectionCalendar';
+    const currentRouteName = route.name || 'HouseholdGrid';
     await router.push({
       name: currentRouteName,
       params: { ...route.params, projectId: target.id },

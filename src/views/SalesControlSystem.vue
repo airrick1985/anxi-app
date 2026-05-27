@@ -2,273 +2,268 @@
   <div class="sales-control-page">
     
     <div class="toolbar d-none d-md-flex">
-      <!-- Project 選擇器 -->
-      <v-select
-        :model-value="projectId"
-        @update:model-value="switchProject"
-        :items="availableProjects"
-        item-title="name"
-        item-value="id"
-        label="選擇建案"
-        variant="outlined"
-        density="compact"
-        class="project-selector mr-4"
-        style="max-width: 200px"
-      ></v-select>
+      <!-- 群組 1：建案選擇 + 標題 -->
+      <div class="toolbar-group toolbar-group-title">
+        <v-select
+          :model-value="projectId"
+          @update:model-value="switchProject"
+          :items="availableProjects"
+          item-title="name"
+          item-value="id"
+          label="選擇建案"
+          variant="outlined"
+          density="compact"
+          class="project-selector"
+        ></v-select>
 
-      <span class="toolbar-title d-none d-sm-inline">{{ projectName }}-{{ pageTitle }}</span>
+        <span class="toolbar-title d-none d-sm-inline">{{ projectName }}-{{ pageTitle }}</span>
+      </div>
 
-      <v-btn-toggle
-        v-model="viewFormat"
-        color="indigo"
-        variant="outlined"
-        density="compact"
-        mandatory
-        class="ml-4"
-      >
-        <v-btn value="grid" prepend-icon="mdi-view-grid">網格</v-btn>
-        <v-btn value="list" prepend-icon="mdi-view-list">列表</v-btn>
-      </v-btn-toggle>
+      <span class="toolbar-divider" aria-hidden="true"></span>
 
-      <v-btn-toggle
-        v-model="displayType"
-        color="primary"
-        variant="outlined"
-        density="compact"
-        mandatory
-        class="ml-4"
-      >
-        <v-btn value="住家">住家</v-btn>
-        <v-btn value="店面">店面</v-btn>
-      </v-btn-toggle>
-      
-      <v-btn
-        v-if="viewFormat === 'list'"
-        class="ml-4"
-        :color="showFilterPanel ? 'primary' : 'black'"
-        :variant="showFilterPanel ? 'flat' : 'tonal'"
-        prepend-icon="mdi-filter-variant"
-        @click="showFilterPanel = !showFilterPanel"
-      >
-        篩選
-        <v-badge
-          v-if="activeFilterCount > 0"
-          color="error"
-          :content="activeFilterCount"
-          inline
-        ></v-badge>
-      </v-btn>
-      
-      <v-spacer></v-spacer>
+      <!-- 群組 2：檢視模式 + 篩選 -->
+      <div class="toolbar-group">
+        <v-btn-toggle
+          v-model="viewFormat"
+          color="indigo"
+          variant="outlined"
+          density="compact"
+          mandatory
+        >
+          <v-btn value="grid" prepend-icon="mdi-view-grid">網格</v-btn>
+          <v-btn value="list" prepend-icon="mdi-view-list">列表</v-btn>
+        </v-btn-toggle>
 
-      <v-btn-toggle
-        v-if="currentViewMode === 'sales' && viewFormat === 'grid'"
-        v-model="priceDisplayMode"
-        color="info"
-        variant="outlined"
-        density="compact"
-        mandatory
-        class="mr-4"
-      >
-        <v-btn value="list" size="small">表價</v-btn>
-        <v-btn value="floor" size="small">底價</v-btn>
-        <v-btn value="transaction" size="small">成交價</v-btn>
-      </v-btn-toggle>
+        <v-btn-toggle
+          v-model="displayType"
+          color="primary"
+          variant="outlined"
+          density="compact"
+          mandatory
+        >
+          <v-btn value="住家">住家</v-btn>
+          <v-btn value="店面">店面</v-btn>
+        </v-btn-toggle>
 
-      <v-badge
-        :content="itemCount"
-        :model-value="itemCount > 0"
-        color="error"
-      >
         <v-btn
-          icon="mdi-file-document-outline"
-          @click="isQuoteSidebarOpen = true"
-          title="查看報價單"
-        ></v-btn>
-      </v-badge>
-
-      <!-- 實價登錄申報提醒徽章：sales 模式且有待申報戶別時顯示 -->
-      <v-tooltip v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0" location="bottom">
-        <template #activator="{ props: ttp }">
+          v-if="viewFormat === 'list'"
+          :color="showFilterPanel ? 'primary' : 'black'"
+          :variant="showFilterPanel ? 'flat' : 'tonal'"
+          prepend-icon="mdi-filter-variant"
+          @click="showFilterPanel = !showFilterPanel"
+        >
+          篩選
           <v-badge
-            v-bind="ttp"
-            :content="pendingReportUnits.length"
-            :color="overdueReportCount > 0 ? 'error' : 'warning'"
-            class="ml-2"
-          >
-            <v-btn
+            v-if="activeFilterCount > 0"
+            color="error"
+            :content="activeFilterCount"
+            inline
+          ></v-badge>
+        </v-btn>
+      </div>
+
+      <!-- 群組 3：操作按鈕（推到右側） -->
+      <div class="toolbar-group toolbar-group-actions">
+        <v-btn-toggle
+          v-if="currentViewMode === 'sales' && viewFormat === 'grid'"
+          v-model="priceDisplayMode"
+          color="info"
+          variant="outlined"
+          density="compact"
+          mandatory
+        >
+          <v-btn value="list" size="small">表價</v-btn>
+          <v-btn value="floor" size="small">底價</v-btn>
+          <v-btn value="transaction" size="small">成交價</v-btn>
+        </v-btn-toggle>
+
+        <v-badge
+          :content="itemCount"
+          :model-value="itemCount > 0"
+          color="error"
+        >
+          <v-btn
+            icon="mdi-file-document-outline"
+            @click="isQuoteSidebarOpen = true"
+            title="查看報價單"
+          ></v-btn>
+        </v-badge>
+
+        <!-- 實價登錄申報提醒徽章：sales 模式且有待申報戶別時顯示 -->
+        <v-tooltip v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0" location="bottom">
+          <template #activator="{ props: ttp }">
+            <v-badge
+              v-bind="ttp"
+              :content="pendingReportUnits.length"
               :color="overdueReportCount > 0 ? 'error' : 'warning'"
-              variant="tonal"
-              icon="mdi-file-document-alert-outline"
-              @click="showReportReminderDialog = true"
-            />
-          </v-badge>
-        </template>
-        <span>
-          {{ pendingReportUnits.length }} 筆待申報實價登錄
-          <template v-if="overdueReportCount > 0">
-            （{{ overdueReportCount }} 筆已逾 30 天）
+            >
+              <v-btn
+                :color="overdueReportCount > 0 ? 'error' : 'warning'"
+                variant="tonal"
+                icon="mdi-file-document-alert-outline"
+                @click="showReportReminderDialog = true"
+              />
+            </v-badge>
           </template>
-        </span>
-      </v-tooltip>
+          <span>
+            {{ pendingReportUnits.length }} 筆待申報實價登錄
+            <template v-if="overdueReportCount > 0">
+              （{{ overdueReportCount }} 筆已逾 30 天）
+            </template>
+          </span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="openParkingCanvasEditor"
-            icon="mdi-car-side"
-          ></v-btn>
-        </template>
-        <span>車位銷控</span>
-      </v-tooltip>
+        <span class="toolbar-divider" aria-hidden="true"></span>
 
-      <v-tooltip location="bottom">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="handleOpenActivityMessage"
-            icon="mdi-bullhorn"
-          ></v-btn>
-        </template>
-        <span>最新活動訊息</span>
-      </v-tooltip>
+        <v-tooltip location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="openParkingCanvasEditor"
+              icon="mdi-car-side"
+            ></v-btn>
+          </template>
+          <span>車位銷控</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="navigateToParkingControl" 
-            :loading="false"
-            icon="mdi-car-cog"
-          ></v-btn>
-        </template>
-        <span>車位銷控管理</span>
-      </v-tooltip>
-      
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="isCancelledPurchaseDialogVisible = true"
-            icon="mdi-account-cancel"
-          ></v-btn>
-        </template>
-        <span>退戶記錄管理</span>
-      </v-tooltip>
+        <v-tooltip location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="handleOpenActivityMessage"
+              icon="mdi-bullhorn"
+            ></v-btn>
+          </template>
+          <span>最新活動訊息</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="isAIAssistantDialogVisible = true"
-            icon="mdi-robot-outline"
-          ></v-btn>
-        </template>
-        <span>AI 銷售助理</span>
-      </v-tooltip>
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="navigateToParkingControl"
+              :loading="false"
+              icon="mdi-car-cog"
+            ></v-btn>
+          </template>
+          <span>車位銷控管理</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="isAnalyticsPanelVisible = true"
-            icon="mdi-chart-box"
-          ></v-btn>
-        </template>
-        <span>銷控統計分析</span>
-      </v-tooltip>
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="isCancelledPurchaseDialogVisible = true"
+              icon="mdi-account-cancel"
+            ></v-btn>
+          </template>
+          <span>退戶記錄管理</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="exportToExcel"
-            icon="mdi-tray-arrow-down"
-          ></v-btn>
-        </template>
-        <span>下載戶別資料EXCEL</span>
-      </v-tooltip>
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="isAIAssistantDialogVisible = true"
+              icon="mdi-robot-outline"
+            ></v-btn>
+          </template>
+          <span>AI 銷售助理</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="uploadDialog = true"
-            icon="mdi-tray-arrow-up"
-          ></v-btn>
-        </template>
-        <span>上傳戶別資料EXCEL</span>
-      </v-tooltip>
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="isAnalyticsPanelVisible = true"
+              icon="mdi-chart-box"
+            ></v-btn>
+          </template>
+          <span>銷控統計分析</span>
+        </v-tooltip>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && project.paymentScheduleFolderUrl">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            :href="project.paymentScheduleFolderUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            icon="mdi-folder-google-drive"
-          ></v-btn>
-        </template>
-        <span>付款表資料夾</span>
-      </v-tooltip>
-     
-      <v-tooltip location="bottom">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="handleRefreshData"
-            :loading="isRefreshing"
-            icon="mdi-refresh"
-          ></v-btn>
-        </template>
-        <span>重新載入最新資料</span>
-      </v-tooltip>
+        <span class="toolbar-divider" aria-hidden="true" v-if="currentViewMode === 'sales'"></span>
 
-      <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="black"
-            variant="tonal"
-            class="ml-4"
-            @click="navigateToSalesSettings"
-            icon="mdi-cog"
-          ></v-btn>
-        </template>
-        <span>更多設定</span>
-      </v-tooltip>
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="exportToExcel"
+              icon="mdi-tray-arrow-down"
+            ></v-btn>
+          </template>
+          <span>下載戶別資料EXCEL</span>
+        </v-tooltip>
+
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="uploadDialog = true"
+              icon="mdi-tray-arrow-up"
+            ></v-btn>
+          </template>
+          <span>上傳戶別資料EXCEL</span>
+        </v-tooltip>
+
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && project.paymentScheduleFolderUrl">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              :href="project.paymentScheduleFolderUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon="mdi-folder-google-drive"
+            ></v-btn>
+          </template>
+          <span>付款表資料夾</span>
+        </v-tooltip>
+
+        <v-tooltip location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="handleRefreshData"
+              :loading="isRefreshing"
+              icon="mdi-refresh"
+            ></v-btn>
+          </template>
+          <span>重新載入最新資料</span>
+        </v-tooltip>
+
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="navigateToSalesSettings"
+              icon="mdi-cog"
+            ></v-btn>
+          </template>
+          <span>更多設定</span>
+        </v-tooltip>
+      </div>
     </div>
 
     <div class="content-wrapper">
@@ -2582,18 +2577,15 @@ const handleRefreshData = async () => {
   }
 };
 
-onMounted(async () => {
-  // 載入所有可用的建案列表
-  if (projectStore.projectsList.length === 0) {
-    await projectStore.fetchProjects();
-  }
-
-  console.log('🏗️ [SalesControlSystem] 開始載入銷控資料...');
+async function loadCurrentProjectData(targetId) {
+  if (!targetId) return;
+  console.log(`🏗️ [SalesControlSystem] 開始載入銷控資料: ${targetId}`);
   loading.value = true;
+  error.value = null;
   try {
-    await salesDataStore.loadProjectData(projectId.value);
-    await textStyleStore.fetchStyles(projectId.value);
-    await statusColorStore.fetchColors(projectId.value);
+    await salesDataStore.loadProjectData(targetId);
+    await textStyleStore.fetchStyles(targetId);
+    await statusColorStore.fetchColors(targetId);
     console.log(` [SalesControlSystem] 數據載入完成，戶別數量: ${salesHouseholds.value.length}`);
     if (import.meta.env.DEV) {
       const stats = salesDataStore.getCacheStats;
@@ -2606,13 +2598,31 @@ onMounted(async () => {
   } catch (err) {
     error.value = `讀取銷控資料時發生錯誤: ${err.message}`;
     console.error('❌ [SalesControlSystem] 銷控資料載入失敗:', err);
-    if (salesDataStore.getProjectData(projectId.value).households.length > 0) {
+    if (salesDataStore.getProjectData(targetId).households.length > 0) {
       console.log('⚠️ [SalesControlSystem] 使用緩存數據作為備用');
-      error.value = null; 
+      error.value = null;
     }
   } finally {
     loading.value = false;
   }
+}
+
+// 切換建案時（router.push 改變 route.params.projectName）重新載入新建案的資料
+// 元件不會 remount，所以 onMounted 不會再跑；需要 watch projectId 來補載入
+watch(projectId, async (newId, oldId) => {
+  if (!newId || newId === oldId) return;
+  console.log(`🔄 [SalesControlSystem] 偵測到建案切換: ${oldId} → ${newId}`);
+  reportSnackbarShown.value = false; // 新建案重置實價登錄提醒
+  await loadCurrentProjectData(newId);
+});
+
+onMounted(async () => {
+  // 載入所有可用的建案列表
+  if (projectStore.projectsList.length === 0) {
+    await projectStore.fetchProjects();
+  }
+
+  await loadCurrentProjectData(projectId.value);
 
   // 檢查是否需要保持 AnalyticsPanel 打開
   if (sessionStorage.getItem('keepAnalyticsPanelOpen') === 'true') {
@@ -2981,14 +2991,53 @@ overflow: hidden;
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0 8px;
+  padding: 8px 12px;
+  row-gap: 8px;
+  column-gap: 12px;
   flex-shrink: 0;
+  background-color: #ffffff;
+  border-bottom: 1px solid #eceff1;
+}
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.toolbar-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.toolbar-group-actions {
+  margin-left: auto;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 28px;
+  background-color: #e0e0e0;
+  flex-shrink: 0;
+  align-self: center;
 }
 .toolbar-title {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 600;
   color: #37474f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 280px;
+}
+
+/* 縮小螢幕時讓操作群組可以換行，並讓分隔線在換行後消失 */
+@media (max-width: 1400px) {
+  .toolbar-divider {
+    display: none;
+  }
 }
 .layout-grid {
   display: grid;
