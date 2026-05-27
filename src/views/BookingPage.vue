@@ -340,9 +340,11 @@
                     :disabled="!isInstructionsConfirmed"></v-checkbox>
                 </div>
 
-                <v-dialog v-model="isInstructionsDialogVisible" max-width="820px" persistent
-                  scrollable class="instructions-dialog">
-                  <v-card class="instructions-card" rounded="xl" elevation="24">
+                <v-dialog v-model="isInstructionsDialogVisible" :max-width="isMobile ? undefined : '820px'"
+                  :fullscreen="isMobile" persistent scrollable
+                  class="instructions-dialog" :class="{ 'instructions-dialog--fullscreen': isMobile }">
+                  <v-card class="instructions-card" :class="{ 'instructions-card--fullscreen': isMobile }"
+                    :rounded="isMobile ? 0 : 'xl'" :elevation="isMobile ? 0 : 24">
                     <!-- 標題列：漸層 + 圖示 -->
                     <div class="instructions-header">
                       <div class="instructions-header-bg"></div>
@@ -369,6 +371,42 @@
                       @scroll="handleInstructionsScroll"
                     >
                       <div v-html="currentPageSettings.intro.alert.text" class="prose"></div>
+
+                      <!-- 附件下載區塊（僅在有附件時顯示，置於閱讀完畢提示上方） -->
+                      <div
+                        v-if="currentPageSettings.intro.showAttachments && currentPageSettings.intro.attachments?.length > 0"
+                        class="dialog-attachments"
+                      >
+                        <div class="dialog-attachments-header">
+                          <v-icon size="20" class="mr-2" color="primary">mdi-paperclip</v-icon>
+                          <span class="dialog-attachments-title">相關附件下載</span>
+                          <v-chip size="x-small" color="primary" variant="tonal" class="ml-2">
+                            共 {{ currentPageSettings.intro.attachments.length }} 個
+                          </v-chip>
+                        </div>
+                        <div class="dialog-attachments-hint">
+                          <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+                          請點擊以預覽附件
+                        </div>
+                        <div class="dialog-attachments-list">
+                          <div
+                            v-for="(item, i) in currentPageSettings.intro.attachments"
+                            :key="item.url || i"
+                            class="dialog-attachment-item"
+                            @click="openAttachmentPreview(item)"
+                          >
+                            <div class="dialog-attachment-icon">
+                              <v-icon
+                                size="28"
+                                color="red"
+                                v-if="item.name.toLowerCase().endsWith('.pdf')"
+                              >mdi-file-pdf-box</v-icon>
+                              <v-icon size="28" color="blue-grey-darken-1" v-else>mdi-file-image-outline</v-icon>
+                            </div>
+                            <div class="dialog-attachment-name">{{ item.name }}</div>
+                          </div>
+                        </div>
+                      </div>
 
                       <!-- 末端提示：滑到底時顯示 -->
                       <div v-if="currentPageSettings.intro.alert.showConfirmation" class="instructions-end-anchor">
@@ -453,6 +491,23 @@
                     </v-expansion-panel>
                   </v-expansion-panels>
                 </div>
+                <div v-if="projectConfig && currentPageSettings.intro && currentPageSettings.intro.footer"
+                  class="text-caption text-grey text-center mt-4 prose" v-html="currentPageSettings.intro.footer">
+                </div>
+                <div v-if="currentPageSettings.intro && currentPageSettings.intro.contact" class="contact-info mt-6">
+                  <v-list-subheader>聯絡資訊</v-list-subheader>
+                  <v-list density="compact">
+                    <v-list-item v-if="currentPageSettings.intro.contact.name"
+                      prepend-icon="mdi-office-building-outline">
+                      <v-list-item-title>{{ currentPageSettings.intro.contact.name }}</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item v-if="currentPageSettings.intro.contact.phone" prepend-icon="mdi-phone-outline"
+                      :href="`tel:${currentPageSettings.intro.contact.phone}`">
+                      <v-list-item-title>{{ currentPageSettings.intro.contact.phone }}</v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </div>
+
                 <div
                   v-if="currentPageSettings.intro.showAttachments && currentPageSettings.intro.attachments?.length > 0"
                   class="mt-6">
@@ -469,25 +524,6 @@
                         <v-btn icon="mdi-download-outline" variant="text" color="grey" size="small"
                           @click.stop="downloadAttachment(item)"></v-btn>
                       </template>
-                    </v-list-item>
-                  </v-list>
-                </div>
-
-
-
-                <div v-if="projectConfig && currentPageSettings.intro && currentPageSettings.intro.footer"
-                  class="text-caption text-grey text-center mt-4 prose" v-html="currentPageSettings.intro.footer">
-                </div>
-                <div v-if="currentPageSettings.intro && currentPageSettings.intro.contact" class="contact-info mt-6">
-                  <v-list-subheader>聯絡資訊</v-list-subheader>
-                  <v-list density="compact">
-                    <v-list-item v-if="currentPageSettings.intro.contact.name"
-                      prepend-icon="mdi-office-building-outline">
-                      <v-list-item-title>{{ currentPageSettings.intro.contact.name }}</v-list-item-title>
-                    </v-list-item>
-                    <v-list-item v-if="currentPageSettings.intro.contact.phone" prepend-icon="mdi-phone-outline"
-                      :href="`tel:${currentPageSettings.intro.contact.phone}`">
-                      <v-list-item-title>{{ currentPageSettings.intro.contact.phone }}</v-list-item-title>
                     </v-list-item>
                   </v-list>
                 </div>
@@ -1369,28 +1405,63 @@
     </v-dialog>
 
     <!-- 附件預覽 Dialog -->
-    <v-dialog v-model="isAttachmentPreviewVisible" max-width="900px" height="90vh">
-      <v-card class="h-100 d-flex flex-column">
-        <v-card-title class="d-flex align-center bg-grey-lighten-4 py-2">
-          <span class="text-truncate">{{ currentPreviewAttachment?.name }}</span>
+    <v-dialog v-model="isAttachmentPreviewVisible"
+      :max-width="isMobile ? undefined : '900px'"
+      :height="isMobile ? undefined : '90vh'"
+      :fullscreen="isMobile"
+      class="attachment-preview-dialog">
+      <v-card class="h-100 d-flex flex-column attachment-preview-card">
+        <v-card-title class="attachment-preview-toolbar">
+          <span class="attachment-preview-name">{{ currentPreviewAttachment?.name }}</span>
           <v-spacer></v-spacer>
-          <v-btn icon="mdi-download" variant="text" color="primary"
+          <!-- 圖片縮放工具 -->
+          <template v-if="isImagePreview">
+            <v-btn icon="mdi-magnify-minus-outline" variant="text" size="small" density="comfortable"
+              :disabled="previewZoom <= 0.5" @click="zoomOutPreview"></v-btn>
+            <span class="preview-zoom-text">{{ Math.round(previewZoom * 100) }}%</span>
+            <v-btn icon="mdi-magnify-plus-outline" variant="text" size="small" density="comfortable"
+              :disabled="previewZoom >= 5" @click="zoomInPreview"></v-btn>
+            <v-btn icon="mdi-fit-to-page-outline" variant="text" size="small" density="comfortable"
+              title="符合畫面" @click="resetPreviewZoom"></v-btn>
+            <v-divider vertical class="mx-1"></v-divider>
+          </template>
+          <!-- PDF 外部開啟（行動裝置或 iframe 無法載入時的備援） -->
+          <v-btn v-if="isPdfPreview" icon="mdi-open-in-new" variant="text" size="small" density="comfortable"
+            title="在新分頁開啟" :href="currentPreviewAttachment?.url" target="_blank" rel="noopener"></v-btn>
+          <v-btn icon="mdi-download" variant="text" color="primary" size="small" density="comfortable"
             @click="downloadAttachment(currentPreviewAttachment)"></v-btn>
-          <v-btn icon="mdi-close" variant="text" @click="isAttachmentPreviewVisible = false"></v-btn>
+          <v-btn icon="mdi-close" variant="text" size="small" density="comfortable"
+            @click="isAttachmentPreviewVisible = false"></v-btn>
         </v-card-title>
         <v-divider></v-divider>
-        <v-card-text class="flex-grow-1 pa-0 d-flex justify-center align-center bg-grey-lighten-3"
-          style="min-height: 300px; position: relative;">
+        <v-card-text class="flex-grow-1 pa-0 attachment-preview-content">
           <!-- PDF 預覽 -->
-          <iframe v-if="currentPreviewAttachment?.name.toLowerCase().endsWith('.pdf')"
-            :src="currentPreviewAttachment?.url" type="application/pdf" width="100%" height="100%"
-            style="border: none;"></iframe>
+          <iframe v-if="isPdfPreview"
+            :src="currentPreviewAttachment?.url" type="application/pdf"
+            class="attachment-iframe"></iframe>
 
-          <!-- 圖片預覽 -->
-          <v-img v-else-if="currentPreviewAttachment?.url" :src="currentPreviewAttachment?.url" contain
-            max-height="100%" max-width="100%"></v-img>
+          <!-- 圖片預覽（含縮放/拖移） -->
+          <div v-else-if="isImagePreview"
+            class="image-zoom-container"
+            :class="{ 'is-zoomed': previewZoom > 1, 'is-panning': isPanningPreview }"
+            @wheel="onPreviewWheel"
+            @mousedown="onPreviewMouseDown"
+            @mousemove="onPreviewMouseMove"
+            @mouseup="onPreviewMouseUp"
+            @mouseleave="onPreviewMouseUp"
+            @touchstart="onPreviewTouchStart"
+            @touchmove="onPreviewTouchMove"
+            @touchend="onPreviewTouchEnd"
+            @touchcancel="onPreviewTouchEnd"
+            @dblclick="onPreviewDoubleClick">
+            <img :src="currentPreviewAttachment.url"
+              class="image-zoom-img"
+              :style="previewImageStyle"
+              draggable="false"
+              @dragstart.prevent />
+          </div>
 
-          <div v-else class="text-grey">無法預覽此檔案</div>
+          <div v-else class="d-flex justify-center align-center h-100 text-grey">無法預覽此檔案</div>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -1582,7 +1653,7 @@ import {
   initiateAuthSigningProcess,
   initiateBookingConfirmation
 } from '@/api';
-import { useDate } from 'vuetify';
+import { useDate, useDisplay } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
 
@@ -1817,6 +1888,7 @@ const confirmInstructionsAndStartBooking = () => {
 
 const route = useRoute();
 const dateAdapter = useDate();
+const { smAndDown: isMobile } = useDisplay();
 const projectStore = useProjectStore();
 const step1Form = ref(null);
 const step2Form = ref(null);
@@ -2548,6 +2620,132 @@ const delegatorSignaturePad = ref(null);
 
 const isAttachmentPreviewVisible = ref(false); // 附件預覽 Dialog
 const currentPreviewAttachment = ref(null); // 當前預覽的附件
+
+// 附件預覽：縮放/拖移狀態
+const previewZoom = ref(1);
+const previewTranslateX = ref(0);
+const previewTranslateY = ref(0);
+const isPanningPreview = ref(false);
+const panStartPreview = { x: 0, y: 0, tx: 0, ty: 0 };
+const pinchStartPreview = { distance: 0, zoom: 1 };
+
+const PREVIEW_ZOOM_MIN = 0.5;
+const PREVIEW_ZOOM_MAX = 5;
+
+const isPdfPreview = computed(() =>
+  !!currentPreviewAttachment.value?.name?.toLowerCase().endsWith('.pdf')
+);
+const isImagePreview = computed(() =>
+  !!currentPreviewAttachment.value?.url && !isPdfPreview.value
+);
+
+const previewImageStyle = computed(() => ({
+  transform: `translate3d(${previewTranslateX.value}px, ${previewTranslateY.value}px, 0) scale(${previewZoom.value})`,
+  transition: isPanningPreview.value ? 'none' : 'transform 0.18s ease',
+}));
+
+const clampZoom = (z) => Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, z));
+
+const resetPreviewZoom = () => {
+  previewZoom.value = 1;
+  previewTranslateX.value = 0;
+  previewTranslateY.value = 0;
+};
+
+const applyZoom = (newZoom) => {
+  const z = clampZoom(newZoom);
+  if (z <= 1) {
+    resetPreviewZoom();
+  } else {
+    previewZoom.value = z;
+  }
+};
+
+const zoomInPreview = () => applyZoom(previewZoom.value * 1.25);
+const zoomOutPreview = () => applyZoom(previewZoom.value / 1.25);
+
+const onPreviewWheel = (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  applyZoom(previewZoom.value * factor);
+};
+
+const onPreviewDoubleClick = () => {
+  if (previewZoom.value > 1) {
+    resetPreviewZoom();
+  } else {
+    applyZoom(2);
+  }
+};
+
+const onPreviewMouseDown = (e) => {
+  if (previewZoom.value <= 1) return;
+  isPanningPreview.value = true;
+  panStartPreview.x = e.clientX;
+  panStartPreview.y = e.clientY;
+  panStartPreview.tx = previewTranslateX.value;
+  panStartPreview.ty = previewTranslateY.value;
+};
+
+const onPreviewMouseMove = (e) => {
+  if (!isPanningPreview.value) return;
+  previewTranslateX.value = panStartPreview.tx + (e.clientX - panStartPreview.x);
+  previewTranslateY.value = panStartPreview.ty + (e.clientY - panStartPreview.y);
+};
+
+const onPreviewMouseUp = () => {
+  isPanningPreview.value = false;
+};
+
+const getTouchDistance = (touches) => {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+};
+
+const onPreviewTouchStart = (e) => {
+  if (e.touches.length === 2) {
+    pinchStartPreview.distance = getTouchDistance(e.touches);
+    pinchStartPreview.zoom = previewZoom.value;
+    isPanningPreview.value = false;
+  } else if (e.touches.length === 1 && previewZoom.value > 1) {
+    isPanningPreview.value = true;
+    panStartPreview.x = e.touches[0].clientX;
+    panStartPreview.y = e.touches[0].clientY;
+    panStartPreview.tx = previewTranslateX.value;
+    panStartPreview.ty = previewTranslateY.value;
+  }
+};
+
+const onPreviewTouchMove = (e) => {
+  if (e.touches.length === 2 && pinchStartPreview.distance > 0) {
+    e.preventDefault();
+    const newDistance = getTouchDistance(e.touches);
+    const scale = newDistance / pinchStartPreview.distance;
+    applyZoom(pinchStartPreview.zoom * scale);
+  } else if (e.touches.length === 1 && isPanningPreview.value) {
+    e.preventDefault();
+    previewTranslateX.value = panStartPreview.tx + (e.touches[0].clientX - panStartPreview.x);
+    previewTranslateY.value = panStartPreview.ty + (e.touches[0].clientY - panStartPreview.y);
+  }
+};
+
+const onPreviewTouchEnd = (e) => {
+  if (!e.touches || e.touches.length < 2) {
+    pinchStartPreview.distance = 0;
+  }
+  if (!e.touches || e.touches.length === 0) {
+    isPanningPreview.value = false;
+  }
+};
+
+// 切換附件或關閉 Dialog 時重置縮放
+watch(currentPreviewAttachment, () => {
+  resetPreviewZoom();
+});
+watch(isAttachmentPreviewVisible, (val) => {
+  if (!val) resetPreviewZoom();
+});
 
 // 打開授權書對話框
 const openAuthDialog = () => {
@@ -3737,9 +3935,67 @@ const goBackToStep0 = () => {
   overflow: hidden;
 }
 
+/* 手機全螢幕：取消圓角、占滿視窗 */
+.instructions-dialog--fullscreen :deep(.v-overlay__content) {
+  border-radius: 0;
+  max-height: 100dvh;
+  margin: 0;
+}
+
 .instructions-card {
   overflow: hidden;
   background: #fafbff;
+}
+
+.instructions-card--fullscreen {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 100dvh;
+  border-radius: 0 !important;
+}
+
+.instructions-card--fullscreen .instructions-header {
+  flex: 0 0 auto;
+  padding: 18px 18px;
+}
+
+.instructions-card--fullscreen .instructions-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.instructions-card--fullscreen .instructions-header-title {
+  font-size: 1.1rem;
+}
+
+.instructions-card--fullscreen .instructions-header-subtitle {
+  font-size: 0.78rem;
+}
+
+.instructions-card--fullscreen .instructions-content {
+  flex: 1 1 auto;
+  max-height: none;
+  padding: 20px 18px !important;
+  /* iOS 安全區左右內距 */
+  padding-left: max(18px, env(safe-area-inset-left)) !important;
+  padding-right: max(18px, env(safe-area-inset-right)) !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.instructions-card--fullscreen .instructions-scroll-hint {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+}
+
+.instructions-card--fullscreen .instructions-actions {
+  flex: 0 0 auto;
+  padding: 14px 18px;
+  /* iOS 安全區（含底部 home indicator） */
+  padding-left: max(18px, env(safe-area-inset-left));
+  padding-right: max(18px, env(safe-area-inset-right));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 
 /* 標題列：漸層 + 裝飾光暈 */
@@ -3832,6 +4088,192 @@ const goBackToStep0 = () => {
 
 .instructions-end-anchor {
   margin-top: 24px;
+}
+
+/* Dialog 內附件下載區塊 */
+.dialog-attachments {
+  margin-top: 28px;
+  padding: 18px 18px 16px;
+  background: linear-gradient(135deg, #f4f1ff 0%, #eef2ff 100%);
+  border: 1px solid #d8d2f5;
+  border-radius: 14px;
+}
+
+.dialog-attachments-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dialog-attachments-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #4a3fb8;
+  letter-spacing: 0.5px;
+}
+
+.dialog-attachments-hint {
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #6b6b8a;
+  margin-bottom: 12px;
+}
+
+.dialog-attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e5e0f7;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.dialog-attachment-item:hover {
+  background: #faf8ff;
+  border-color: #b9aee8;
+  transform: translateY(-1px);
+}
+
+.dialog-attachment-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.dialog-attachment-name {
+  flex: 1 1 auto;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2d2d44;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+  .dialog-attachments {
+    padding: 14px 12px;
+  }
+
+  .dialog-attachment-item {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .dialog-attachment-name {
+    font-size: 0.9rem;
+  }
+}
+
+/* ===== 附件預覽 Dialog ===== */
+.attachment-preview-card {
+  background: #1f1f23;
+}
+
+.attachment-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px !important;
+  background: #f5f5f7 !important;
+  min-height: 52px;
+}
+
+.attachment-preview-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2d2d44;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.preview-zoom-text {
+  min-width: 46px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4a4a6a;
+  user-select: none;
+}
+
+.attachment-preview-content {
+  background: #2c2c30;
+  position: relative;
+  overflow: hidden;
+}
+
+.attachment-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+  display: block;
+}
+
+.image-zoom-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: zoom-in;
+}
+
+.image-zoom-container.is-zoomed {
+  cursor: grab;
+}
+
+.image-zoom-container.is-zoomed.is-panning {
+  cursor: grabbing;
+}
+
+.image-zoom-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+@media (max-width: 600px) {
+  .attachment-preview-toolbar {
+    padding: 6px 8px !important;
+    min-height: 48px;
+  }
+
+  .attachment-preview-name {
+    font-size: 0.88rem;
+    margin-right: 4px;
+  }
+
+  .preview-zoom-text {
+    min-width: 40px;
+    font-size: 0.75rem;
+  }
 }
 
 .instructions-end-hint {
