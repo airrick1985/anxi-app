@@ -48,14 +48,14 @@
     "ag-grid-community": "^34.1.2",
     "ag-grid-enterprise": "^34.1.2",
     "ag-grid-vue3": "^34.1.2",
-    "axios": "^1.10.0",
+    "axios": "^1.16.0",
     "chart.js": "^4.5.1",
     "chartjs-plugin-datalabels": "^2.2.0",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "docx": "^9.6.1",
-    "dompurify": "^3.2.6",
+    "dompurify": "^3.4.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "fabric": "^5.5.2",
@@ -108,7 +108,7 @@
   "homepage": "https://airrick1985.github.io/anxi-app/",
   "type": "module",
   "overrides": {
-    "tar": "^7.5.7",
+    "tar": "^7.5.11",
     "protobufjs": "^7.5.9"
   }
 }
