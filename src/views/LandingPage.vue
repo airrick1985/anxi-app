@@ -9,25 +9,14 @@
           <p class="hero-desc">智慧整合 · 高效管理 · 數據驅動</p>
           
           <div class="hero-actions">
-            <v-btn 
-              color="primary" 
-              size="x-large" 
-              rounded="pill" 
-              :to="{ name: 'Login' }"
-              elevation="6"
-              class="cta-btn font-weight-bold px-8"
-              prepend-icon="mdi-login"
-            >
-              登入系統
-            </v-btn>
-            <v-btn 
+            <v-btn
               variant="outlined"
               color="white"
-              size="x-large" 
-              rounded="pill" 
-              href="https://lin.ee/rBZmaUG" 
+              size="x-large"
+              rounded="pill"
+              href="https://lin.ee/rBZmaUG"
               target="_blank"
-              class="cta-btn font-weight-bold px-8 ml-4"
+              class="cta-btn font-weight-bold px-8"
               prepend-icon="mdi-chat"
             >
               LINE 洽詢

@@ -50,8 +50,8 @@
     </v-card>
   </v-dialog>
 
-  <!-- 系統問題回報（全域浮動按鈕） -->
-  <SystemBugReport />
+  <!-- 系統問題回報（全域浮動按鈕，不顯示於 Landing Page） -->
+  <SystemBugReport v-if="showBugReport" />
   </template>
 
 <script setup>
@@ -82,6 +82,9 @@ const sessionErrorDialog = ref(false);
 const reloadPage = () => {
   window.location.reload();
 };
+
+// 系統問題回報浮動按鈕：不顯示於 Landing Page（首頁）
+const showBugReport = computed(() => route.name !== 'LandingPage');
 
 const layoutComponent = computed(() => {
   const layout = route.meta.layout;

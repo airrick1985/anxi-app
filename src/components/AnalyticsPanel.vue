@@ -100,9 +100,45 @@
           </div>
         </div>
 
-        <!-- 加載狀態 -->
-        <v-overlay v-if="isLoading" contained class="align-center justify-center">
-          <v-progress-circular indeterminate size="48" color="primary"></v-progress-circular>
+        <!-- 加載狀態：分步驟顯示後端執行進度 -->
+        <v-overlay
+          v-if="isLoading"
+          contained
+          persistent
+          class="align-center justify-center loading-overlay"
+        >
+          <div class="loading-card">
+            <v-progress-circular indeterminate size="56" width="5" color="primary" />
+            <div class="loading-title mt-4">正在載入統計資料…</div>
+            <div class="loading-subtitle">正在執行後端運算，請稍候</div>
+            <div class="loading-steps mt-5">
+              <div
+                v-for="(step, i) in loadingSteps"
+                :key="i"
+                class="loading-step"
+                :class="{
+                  'is-done': i < loadingStepIndex,
+                  'is-active': i === loadingStepIndex,
+                }"
+              >
+                <v-progress-circular
+                  v-if="i === loadingStepIndex"
+                  indeterminate
+                  size="18"
+                  width="2"
+                  color="primary"
+                  class="step-icon"
+                />
+                <v-icon v-else-if="i < loadingStepIndex" size="18" color="success" class="step-icon">
+                  mdi-check-circle
+                </v-icon>
+                <v-icon v-else size="18" color="grey-lighten-1" class="step-icon">
+                  mdi-circle-outline
+                </v-icon>
+                <span class="step-label">{{ step.label }}</span>
+              </div>
+            </div>
+          </div>
         </v-overlay>
 
         <!-- 錯誤提示 -->
@@ -713,6 +749,13 @@ const formatDateToInput = (date) => {
 
 const selectedPeriod = ref('today')
 const isLoading = ref(false)
+// 載入進度分步驟（讓用戶明確感知後端 function 正在執行）
+const loadingSteps = [
+  { label: '計算銷售與車位統計' },
+  { label: '查詢來人概況（後端運算）' },
+  { label: '查詢退戶資料（後端運算）' },
+]
+const loadingStepIndex = ref(0)
 const error = ref(null)
 const statistics = ref(null)
 const vipGuestStats = ref(null)
@@ -1173,6 +1216,7 @@ const statusColorMap = computed(() => {
 const loadStatistics = async () => {
   try {
     isLoading.value = true
+    loadingStepIndex.value = 0
     error.value = null
     vipGuestStats.value = null
 
@@ -1277,6 +1321,7 @@ const loadStatistics = async () => {
     }
 
     // 🔍 查詢並計算VIP客人的來人概況統計
+    loadingStepIndex.value = 1
     try {
       const vipGuests = await fetchVipGuests(props.projectId)
       if (vipGuests && Array.isArray(vipGuests)) {
@@ -1302,6 +1347,7 @@ const loadStatistics = async () => {
     }
 
     // 🔍 查詢退戶統計（過濾冷刪除的記錄）
+    loadingStepIndex.value = 2
     try {
       const result = await getCancelledPurchases(props.projectId, false)
       if (result.status === 'success' && Array.isArray(result.data)) {
@@ -2071,5 +2117,66 @@ watch(
 .chart-placeholder {
   border: 1px dashed #bdbdbd;
   background-color: #fafafa;
+}
+
+/* 載入進度卡片 */
+.loading-overlay :deep(.v-overlay__scrim) {
+  background: rgba(245, 247, 250, 0.88);
+  opacity: 1;
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 40px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  min-width: 280px;
+  max-width: 90vw;
+}
+
+.loading-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.loading-subtitle {
+  font-size: 13px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.loading-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.loading-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #9e9e9e;
+  transition: color 0.3s ease;
+}
+
+.loading-step .step-icon {
+  flex: none;
+}
+
+.loading-step.is-active {
+  color: #1976d2;
+  font-weight: 700;
+}
+
+.loading-step.is-done {
+  color: #2e7d32;
 }
 </style>
