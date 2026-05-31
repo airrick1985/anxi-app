@@ -105,6 +105,8 @@ function addItem(unitData) {
       packageItems: {},
       // ✅ [打勾] 新增：初始化期款計算結果
       calculatedPayments: [],
+      // ✅ [新增] 手動指定總價期款範本：category/templateId 皆為 null = 自動（依條件判斷）
+      manualTemplate: { category: null, templateId: null },
       // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
       negotiationState: {
         originalPrice: null,    // null = 未調整；首次調整時記錄原始價格
@@ -211,6 +213,23 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 更新手動指定的總價期款範本（category / templateId）
+  // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
+  function updateItemManualTemplate(internalId, payload) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      const current = item.manualTemplate || { category: null, templateId: null };
+      item.manualTemplate = { ...current, ...payload };
+    }
+  }
+
+  // ✅ [新增] 進入報價頁時正規化：將所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「是」（首購）
+  function resetAllToFirstTimeBuyer() {
+    items.value.forEach(item => {
+      item.isFirstTimeBuyer = '是';
+    });
+  }
+
   function clearQuote() {
     items.value = [];
   }
@@ -236,6 +255,8 @@ function addItem(unitData) {
     clearAllNegotiations,
     updateItemPackageItems,
     updateItemCalculatedPayments,
+    updateItemManualTemplate,
+    resetAllToFirstTimeBuyer,
     clearQuote
   };
 }, {

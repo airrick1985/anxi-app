@@ -423,17 +423,10 @@ onUnmounted(() => {
 });
 
 onBeforeRouteLeave((to, from, next) => {
-  // ✅ [新增] 離開時一律清空所有議價調整（下次進入無殘留）
+  // ✅ [修改] 離開報價設定一律清空：先還原議價調整，再清空報價單項目，
+  // 不再保留返回銷控/報價系統時的殘留（下次進入皆為全新報價）。
   quoteStore.clearAllNegotiations();
-
-  // 定義允許返回的頁面 (銷控系統 或 報價系統)
-  const allowedBackRoutes = ['SalesControlSystem', 'QuoteSystem'];
-
-  if (!allowedBackRoutes.includes(to.name)) {
-    // 如果使用者從設定頁直接跳去首頁或其他地方，也順手清空
-    console.log('[QuoteSettings] 跳離流程，清空報價單');
-    quoteStore.clearQuote();
-  }
+  quoteStore.clearQuote();
   next();
 });
 
@@ -720,6 +713,9 @@ const formatNumber = (val, frac = 2) => {
 };
 async function loadPageData() {
     loading.value = true;
+
+    // ✅ [新增] 進入報價頁正規化：所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「首購」
+    quoteStore.resetAllToFirstTimeBuyer();
 
     projectStore.setCurrentProject(projectId.value);
     

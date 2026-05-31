@@ -212,6 +212,66 @@
 <v-expand-transition>
   <div v-show="isPaymentDetailsVisible">
 
+    <!-- ✅ [新增] 總價期款範本手動指定（兩層連動：期款類別 → 範本名稱） -->
+    <div class="pa-2 manual-template-picker">
+      <div class="d-flex align-center flex-wrap ga-2">
+        <v-icon size="small" color="blue-darken-2">mdi-tune-variant</v-icon>
+        <span class="text-caption font-weight-medium text-blue-darken-2">總價期款設定</span>
+        <v-chip
+          size="x-small"
+          :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
+          variant="flat"
+          class="ml-1"
+        >
+          {{ isManualTemplateActive ? '手動指定' : '自動判斷' }}
+        </v-chip>
+
+        <v-select
+          v-model="manualCategoryModel"
+          :items="manualCategoryOptions"
+          label="期款類別"
+          placeholder="自動（依條件判斷）"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          style="max-width: 200px;"
+          class="ml-2"
+        ></v-select>
+
+        <v-select
+          v-model="manualTemplateIdModel"
+          :items="manualTemplateOptions"
+          item-title="templateName"
+          item-value="id"
+          label="選擇期款方式"
+          :disabled="!manualCategoryModel"
+          :placeholder="manualCategoryModel ? '請選擇範本' : '請先選期款類別'"
+          density="compact"
+          variant="outlined"
+          hide-details
+          style="max-width: 280px;"
+        >
+          <template v-slot:item="{ props: itemProps, item }">
+            <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+          </template>
+        </v-select>
+
+        <v-btn
+          v-if="isManualTemplateActive"
+          size="small"
+          variant="text"
+          color="grey-darken-1"
+          prepend-icon="mdi-restore"
+          @click="resetManualTemplate"
+        >
+          還原自動
+        </v-btn>
+      </div>
+    </div>
+
+    <v-divider></v-divider>
+
     <div v-if="isLoading" class="text-center pa-4">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
       <div class="mt-2 text-caption">付款方式計算中...</div>
@@ -1185,9 +1245,77 @@ function selectPaymentTemplate(paymentCategory) {
     return applicableTemplates[0];
 }
 
+// ★★★ 新增：手動指定總價期款範本（兩層連動選擇器） ★★★
+
+// 第一層：期款類別選項（取所有範本中 distinct 的 paymentCategory）
+const manualCategoryOptions = computed(() => {
+    const set = new Set();
+    (props.paymentTemplates || []).forEach(t => {
+        if (t.paymentCategory) set.add(t.paymentCategory);
+    });
+    return Array.from(set);
+});
+
+// 第一層 v-model：null = 自動（依條件判斷）
+const manualCategoryModel = computed({
+    get: () => props.item.manualTemplate?.category || null,
+    set: (value) => {
+        // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId
+        quoteStore.updateItemManualTemplate(props.item.internalId, {
+            category: value,
+            templateId: null
+        });
+    }
+});
+
+// 第二層：依所選類別列出該類別下所有範本（不受總價/首購/物件類型限制）
+const manualTemplateOptions = computed(() => {
+    const category = manualCategoryModel.value;
+    if (!category) return [];
+    return (props.paymentTemplates || [])
+        .filter(t => t.paymentCategory === category)
+        .map(t => {
+            const range = (t.minPrice || t.maxPrice)
+                ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
+                : '不限總價';
+            const subtitle = `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
+            return { id: t.id, templateName: t.templateName, subtitle };
+        });
+});
+
+// 第二層 v-model：已選範本 docId
+const manualTemplateIdModel = computed({
+    get: () => props.item.manualTemplate?.templateId || null,
+    set: (value) => {
+        quoteStore.updateItemManualTemplate(props.item.internalId, { templateId: value });
+    }
+});
+
+// 是否處於手動覆蓋狀態（已選定範本且該範本存在）
+const isManualTemplateActive = computed(() => {
+    const id = props.item.manualTemplate?.templateId;
+    return !!id && (props.paymentTemplates || []).some(t => t.id === id);
+});
+
+// 還原為自動（清空手動選擇）
+function resetManualTemplate() {
+    quoteStore.updateItemManualTemplate(props.item.internalId, { category: null, templateId: null });
+}
+
+// 實際採用的總價期款範本：手動優先（且優先於「優付」自動切換），否則走自動判斷
+const effectiveGeneralTemplate = computed(() => {
+    const manualId = props.item.manualTemplate?.templateId;
+    if (manualId) {
+        const found = (props.paymentTemplates || []).find(t => t.id === manualId);
+        if (found) return found; // 手動指定且存在 → 直接採用
+        // 找不到（範本已被刪除）→ fallback 回自動判斷
+    }
+    return selectPaymentTemplate('一般期款');
+});
+
 // ★★★ 新增：一般期款計算結果 ★★★
 const generalPaymentCalculation = computed(() => {
-    const template = selectPaymentTemplate('一般期款');
+    const template = effectiveGeneralTemplate.value;
     if (!template || !template.items) {
         return { hasData: false, items: [], templateName: '' };
     }
@@ -1490,6 +1618,12 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 }
 
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
+
+/* ✅ [新增] 總價期款範本手動指定區 */
+.manual-template-picker {
+  background-color: rgba(33, 150, 243, 0.04);
+  border-radius: 4px;
+}
 
 /* 期款卡片欄：約頁面 1/3 寬（不放大、不縮小），單一或雙欄皆維持窄版 */
 .payment-col {
