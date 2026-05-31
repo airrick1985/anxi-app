@@ -375,9 +375,15 @@ if (props.mode === 'quote') {
 
   activeEditorFloorPlan.value = null;
   editorFloorPlans.value = [];
-  
+
   try {
-    const result = await getFloorPlansAPI(props.projectId);
+    // ✓ 與樓層平面圖並行載入該建案的車位圖塊樣式（文字樣式 + 狀態顏色）
+    // store 內部以 currentProjectId 守衛，已載過同建案則直接跳過，重複呼叫零成本
+    const [result] = await Promise.all([
+      getFloorPlansAPI(props.projectId),
+      textStyleStore.fetchStyles(props.projectId),
+      statusColorStore.fetchColors(props.projectId),
+    ]);
     if (result.status === 'success' && result.data && result.data.length > 0) {
       result.data.sort((a, b) => 
         (a.floor || '').localeCompare(b.floor || '', 'zh-Hant', { numeric: true })
