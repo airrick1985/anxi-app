@@ -1393,6 +1393,35 @@ watch(generalPaymentCalculation, (newCalculation) => {
   deep: true       // 深度監聽
 });
 
+// ✅ [新增] 蒐集本戶別實際套用之期款範本的「套用期款時的說明」(applyNote)
+// 涵蓋一般/優付期款與配套期款；空值不收。供列印報價單於表格下方渲染。
+const appliedPaymentNotes = computed(() => {
+  const notes = [];
+
+  // 一般（含優付/手動指定）期款：以實際採用的範本為準
+  if (generalPaymentCalculation.value.hasData) {
+    const generalNote = effectiveGeneralTemplate.value?.applyNote;
+    if (generalNote && generalNote.trim()) notes.push(generalNote.trim());
+  }
+
+  // 配套期款：有套用時才取
+  if (packagePaymentCalculation.value.hasData) {
+    const packageTemplate = selectPaymentTemplate('配套期款');
+    const packageNote = packageTemplate?.applyNote;
+    if (packageNote && packageNote.trim()) notes.push(packageNote.trim());
+  }
+
+  return notes;
+});
+
+// ✅ [新增] 同步「套用期款時的說明」回 Pinia Store
+watch(appliedPaymentNotes, (notes) => {
+  quoteStore.updateItemPaymentNotes(props.item.internalId, notes);
+}, {
+  immediate: true,
+  deep: true
+});
+
 // ★★★ 新增：檢查是否有任何期款資料 ★★★
 const hasAnyPaymentData = computed(() => {
     return generalPaymentCalculation.value.hasData || 

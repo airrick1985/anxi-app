@@ -105,6 +105,8 @@ function addItem(unitData) {
       packageItems: {},
       // ✅ [打勾] 新增：初始化期款計算結果
       calculatedPayments: [],
+      // ✅ [新增] 初始化「套用期款時的說明」（來自所套用的期款範本 applyNote）
+      appliedPaymentNotes: [],
       // ✅ [新增] 手動指定總價期款範本：category/templateId 皆為 null = 自動（依條件判斷）
       manualTemplate: { category: null, templateId: null },
       // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
@@ -213,6 +215,16 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 儲存「套用期款時的說明」（來自所套用期款範本的 applyNote），供列印報價單渲染
+  function updateItemPaymentNotes(internalId, notes) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.appliedPaymentNotes = Array.isArray(notes)
+        ? notes.map(n => String(n || '').trim()).filter(Boolean)
+        : [];
+    }
+  }
+
   // ✅ [新增] 更新手動指定的總價期款範本（category / templateId）
   // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
   function updateItemManualTemplate(internalId, payload) {
@@ -255,6 +267,7 @@ function addItem(unitData) {
     clearAllNegotiations,
     updateItemPackageItems,
     updateItemCalculatedPayments,
+    updateItemPaymentNotes,
     updateItemManualTemplate,
     resetAllToFirstTimeBuyer,
     clearQuote

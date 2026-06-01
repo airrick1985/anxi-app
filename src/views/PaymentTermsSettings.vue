@@ -314,13 +314,28 @@
             label="期款類別"
             :items="['一般期款', '優付期款', '配套期款']"
             variant="outlined"
-            
-            class="mt-4" 
-            
+
+            class="mt-4"
+
             clearable
             hint="可選擇預設選項或輸入自訂類別"
             persistent-hint
           ></v-combobox>
+
+          <!-- ✅ [新增] 套用期款時的說明：報價單套用此範本時，會在表格下方顯示這排小字；留空則不顯示 -->
+          <v-textarea
+            v-model="templateDialog.applyNote"
+            label="套用期款時的說明"
+            variant="outlined"
+            class="mt-4"
+            rows="2"
+            auto-grow
+            clearable
+            counter
+            placeholder="例如：本期款方式之金額為預估值，實際以簽約合約為準。"
+            hint="報價單套用此範本時，會顯示於表格下方；留空則不顯示。"
+            persistent-hint
+          ></v-textarea>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -561,10 +576,12 @@ const templateDialog = ref({
   minPrice: '', 
   maxPrice: '', 
   buyerType: '非首購', 
-  paymentCategory: '一般期款', 
+  paymentCategory: '一般期款',
   // ✅ [新增] 物件類型相關欄位
-  propertyType: '住家', 
-  customPropertyType: '' 
+  propertyType: '住家',
+  customPropertyType: '',
+  // ✅ [新增] 套用期款時的說明
+  applyNote: ''
 });
 
 // ✅ [新增] 重複檢查 Dialog State
@@ -685,7 +702,9 @@ const openTemplateDialog = (template = null) => {
       paymentCategory: template.paymentCategory || '一般期款',
       // ✅ [新增] 載入物件類型
       propertyType: dialogType,
-      customPropertyType: customType
+      customPropertyType: customType,
+      // ✅ [新增] 載入套用期款時的說明
+      applyNote: template.applyNote || ''
     };
   } else {
     // 新增模式
@@ -700,7 +719,9 @@ const openTemplateDialog = (template = null) => {
       paymentCategory: '一般期款',
       // ✅ [新增] 初始化物件類型
       propertyType: '住家',
-      customPropertyType: ''
+      customPropertyType: '',
+      // ✅ [新增] 初始化套用期款時的說明
+      applyNote: ''
     };
   }
 };
@@ -737,6 +758,8 @@ const handleCopyConfirm = async () => {
       paymentCategory: copyDialog.value.sourceTemplate.paymentCategory || '一般期款',
       // ✅ [新增] 複製物件類型
       propertyType: copyDialog.value.sourceTemplate.propertyType || '住家',
+      // ✅ [新增] 複製套用期款時的說明
+      applyNote: copyDialog.value.sourceTemplate.applyNote || '',
     };
     // 儲存新範本
     await setPaymentTermTemplate(docId, newTemplate);
@@ -782,6 +805,8 @@ const handleTemplateSave = async () => {
     buyerType: templateDialog.value.buyerType,
     paymentCategory: templateDialog.value.paymentCategory,
     propertyType: finalPropertyType,
+    // ✅ [新增] 套用期款時的說明（trim 後存；空字串代表不顯示）
+    applyNote: (templateDialog.value.applyNote || '').trim(),
   };
 
   // ✅ [新增] 重複檢查邏輯

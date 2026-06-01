@@ -103,8 +103,19 @@
           </v-list-item>
 
           <v-divider class="my-4"></v-divider>
-          <v-list-subheader>資料</v-list-subheader>
-        
+          <v-list-subheader>版面</v-list-subheader>
+          <v-list-item>
+            <v-btn
+              @click="resetLayout"
+              block
+              variant="tonal"
+              color="warning"
+              prepend-icon="mdi-image-filter-center-focus"
+            >
+              重置位置（全部置中）
+            </v-btn>
+          </v-list-item>
+
         </v-list>
       </v-navigation-drawer>
 
@@ -427,6 +438,16 @@ const isSaving = ref(false);
 const isLoadingTemplate = ref(true);
 
 const textFontSize = 28;
+
+// ✅ 表格統一字體：系統內建微軟正黑體為主（跨 Windows 一致、免處理 web font 載入時序），
+//    備援 Noto Sans TC / PingFang TC / sans-serif。
+const tableFontFamily = "'Microsoft JhengHei', 'Noto Sans TC', 'PingFang TC', sans-serif";
+
+// ✅ 字級階層（type scale）：主資料／強調／輔助三層分明
+const FS_HEADER = textFontSize; // 表頭 28（粗體）
+const FS_BODY = 26;             // 內文（一般資料）
+const FS_EMPHASIS = 32;         // 強調（總價）
+const FS_SUB = 22;              // 輔助（露臺、期款百分比、期款說明）
 
 const pageContainerStyle = computed(() => {
   const canvasWidth = canvasSettings.value.width;
@@ -829,6 +850,13 @@ function addQuoteTable() {
   // ✅ 新增需求 1：最後一欄固定為 "備註"
   headers.push('備註');
 
+  // ✅ 金額欄位集合：這些欄位的數字採「右對齊」以利逐列比對大小
+  // （固定金額欄 + 所有動態期款欄；文字欄如戶別/面積/車位/備註維持置中）
+  const amountHeaders = new Set([
+    '房屋總價', '房屋單價', '車位價格', '配套價', '總價',
+    ...dynamicPaymentHeaders
+  ]);
+
   // (3) 準備每一列 (Rows) 的資料
   const rows = quoteStore.items.map(item => {
     const row = {};
@@ -869,7 +897,14 @@ function addQuoteTable() {
     
     // ✅ 新增需求 1 資料：首購/非首購判斷
   row['備註'] = (item.isFirstTimeBuyer === '是') ? '首購' : '非首購'; //
-  
+
+  // ✅ [新增] 該戶套用期款範本的「套用期款時的說明」(applyNote)，跟在此戶資料列下方渲染
+  // 以 __ 前綴避免被當成表格欄位；空字串代表此戶無說明、不額外渲染列
+  row.__paymentNote = (item.appliedPaymentNotes || [])
+    .map(n => String(n || '').trim())
+    .filter(Boolean)
+    .join('\n');
+
   return row;
 });
 
@@ -884,13 +919,27 @@ function addQuoteTable() {
     if (header === '面積') return 180; // 面積因為有露臺資訊，建議稍微加寬
     return 150;
   });
+
+  // ✅ [新增] 計算「期款欄位」在表格中的水平範圍（供期款說明小字置中對齊）
+  // 找出第一個與最後一個動態期款欄位的索引，累加其左側偏移與總跨距
+  let paymentColLeft = 0;
+  let paymentColSpan = 0;
+  if (dynamicPaymentHeaders.length > 0) {
+    const firstIdx = headers.indexOf(dynamicPaymentHeaders[0]);
+    const lastIdx = headers.indexOf(dynamicPaymentHeaders[dynamicPaymentHeaders.length - 1]);
+    for (let i = 0; i < firstIdx; i++) paymentColLeft += colWidths[i];
+    for (let i = firstIdx; i <= lastIdx; i++) paymentColSpan += colWidths[i];
+  }
   
-  // (4b) 基礎樣式 (保持不變)
-  const padding = 15; 
-  const verticalPadding = 25; 
-  const headerFill = '#f5f5f7';
-  const rowFill = '#ffffff';
-  const stroke = '#cccccc';
+  // (4b) 基礎樣式 — 柔和米灰風格 (暖色調、低對比、利於長時間閱讀)
+  const padding = 15;
+  const verticalPadding = 25;
+  const headerFill = '#e8e1d4';   // 暖灰表頭
+  const headerText = '#5a4f41';   // 深暖灰文字
+  const stroke = '#e2dacb';       // 柔和米色細邊框
+  const rowFillEven = '#ffffff';  // 偶數列：米白
+  const rowFillOdd = '#f7f2e9';   // 奇數列：淺米色斑馬紋
+  const noteRowFill = '#f2ece1';  // 期款說明列：稍深米色
 
   const tableObjects = [];
   let currentY = 0;
@@ -904,9 +953,10 @@ function addQuoteTable() {
       left: currentX + padding, 
       top: currentY + verticalPadding, 
       width: colWidths[colIndex] - (padding * 2),
-      fontSize: textFontSize, 
-      fontWeight: 'bold', 
-      fill: '#000',
+      fontFamily: tableFontFamily,
+      fontSize: FS_HEADER,
+      fontWeight: 'bold',
+      fill: headerText,
       textAlign: 'center'
     });
     headerTextBoxes.push(tb);
@@ -929,48 +979,64 @@ function addQuoteTable() {
   currentY += headerRowHeight;
 
   // (4d) 渲染資料列
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     currentX = 0;
     let rowTextBoxes = [];
     let maxRowHeight = 0;
+    // ✅ 斑馬紋：奇偶列交替底色
+    const rowFill = (rowIndex % 2 === 0) ? rowFillEven : rowFillOdd;
 
     headers.forEach((key, colIndex) => {
-      let currentFontSize = textFontSize;
-      let currentFill = '#333';
+      let currentFontSize = FS_BODY; // 內文字級
+      let currentFill = '#4a4a4a';
       let currentFontWeight = 'normal';
       let cellStyles = {}; // 用於存放單一 Cell 內部的多重樣式
 
-      // 總價樣式
+      // 總價樣式（強調字級）
       if (key === '總價') {
-        currentFontSize = textFontSize * 1.2; 
-        currentFill = '#C62828'; 
-        currentFontWeight = 'bold'; 
+        currentFontSize = FS_EMPHASIS;
+        currentFill = '#C62828';
+        currentFontWeight = 'bold';
       }
 
-      // ✅ 新增需求 2 樣式：處理面積欄位的露臺紅字
+      // ✅ 金額欄位右對齊，文字欄維持置中
+      const isAmountCol = amountHeaders.has(key);
+      const cellAlign = isAmountCol ? 'right' : 'center';
+
+      // ✅ 新增需求 2 樣式：處理面積欄位的露臺紅字（輔助字級）
       const cellText = String(row[key]);
       if (key === '面積' && cellText.includes('\n')) {
         const lines = cellText.split('\n');
         // lines[0] 為坪數，lines[1] 為 (露臺:XX.00坪)
         // Fabric styles 格式為 { 行索引: { 字元索引: { 屬性 } } }
-        cellStyles[1] = {}; 
+        cellStyles[1] = {};
         for (let i = 0; i < lines[1].length; i++) {
           cellStyles[1][i] = {
-            fontSize: textFontSize * 0.8, // 縮小字體
-            fill: '#C62828',             // 紅字
-            fontWeight: 'bold'            // 粗體
+            fontSize: FS_SUB,  // 輔助字級
+            fill: '#C62828',   // 紅字
+            fontWeight: 'bold' // 粗體
           };
         }
       }
-      
+
+      // ✅ 期款欄位的百分比第二行 (XX%) 採輔助字級、淡色，與金額主數字分層
+      if (isAmountCol && cellText.includes('\n')) {
+        const lines = cellText.split('\n');
+        cellStyles[1] = cellStyles[1] || {};
+        for (let i = 0; i < lines[1].length; i++) {
+          cellStyles[1][i] = { fontSize: FS_SUB, fill: '#8a8a8a' };
+        }
+      }
+
       const tb = new fabric.Textbox(cellText, {
         left: currentX + padding,
         top: currentY + verticalPadding,
         width: colWidths[colIndex] - (padding * 2),
-        fontSize: currentFontSize, 
+        fontFamily: tableFontFamily,
+        fontSize: currentFontSize,
         fill: currentFill,
         fontWeight: currentFontWeight,
-        textAlign: 'center',
+        textAlign: cellAlign,
         styles: cellStyles // ✅ 套用進階樣式
       });
       
@@ -992,6 +1058,36 @@ function addQuoteTable() {
       currentX += colWidths[colIndex];
     });
     currentY += dataRowHeight;
+
+    // ✅ [新增] (4d-2) 若此戶有「套用期款時的說明」，於資料列下方加一整列跨欄小字
+    if (row.__paymentNote) {
+      const tableTotalWidth = colWidths.reduce((sum, w) => sum + w, 0);
+      const notePadding = 12;
+      // ✅ 對齊「期款欄位」範圍並置中；若無期款欄位則退回整列置中
+      const noteAreaLeft = paymentColSpan > 0 ? paymentColLeft : 0;
+      const noteAreaWidth = paymentColSpan > 0 ? paymentColSpan : tableTotalWidth;
+      const noteTb = new fabric.Textbox(row.__paymentNote, {
+        left: noteAreaLeft + padding,
+        top: currentY + notePadding,
+        width: noteAreaWidth - (padding * 2),
+        fontFamily: tableFontFamily,
+        fontSize: FS_SUB, // 輔助字級
+        fill: '#C62828', // 紅字，加強明顯度
+        fontStyle: 'italic',
+        textAlign: 'center', // 置中對齊期款欄位
+        lineHeight: 1.4
+      });
+      const noteRowHeight = noteTb.height + (notePadding * 2);
+      // 跨整個表格寬度的背景列（米色，與資料列區隔）
+      tableObjects.push(new fabric.Rect({
+        left: 0, top: currentY,
+        width: tableTotalWidth, height: noteRowHeight,
+        fill: noteRowFill, stroke: stroke,
+      }));
+      noteTb.set('top', currentY + (noteRowHeight - noteTb.height) / 2);
+      tableObjects.push(noteTb);
+      currentY += noteRowHeight;
+    }
   });
 
   // (4e) 建立群組 (保持不變)
@@ -1006,7 +1102,8 @@ function addQuoteTable() {
 }
 
 // ✅ [新增] 議價調整提醒渲染函數
-function addNegotiationNotes(tableGroup) {
+// startTop 可選：未提供時預設緊貼表格底部（向後相容）
+function addNegotiationNotes(tableGroup, startTop = null) {
   // 1. 過濾有議價調整的 items
   const adjustedItems = quoteStore.items.filter(item =>
     item.negotiationState?.originalPrice !== null &&
@@ -1041,7 +1138,7 @@ function addNegotiationNotes(tableGroup) {
   // 4. 建立 Fabric.Textbox
   const textboxOptions = {
     left: tableGroup.left + 10,
-    top: tableGroup.top + tableGroup.getScaledHeight() + 12,
+    top: startTop ?? (tableGroup.top + tableGroup.getScaledHeight() + 12),
     width: tableGroup.getScaledWidth() - 20,
     fontSize: 13,
     fontWeight: 'bold',
@@ -1199,6 +1296,31 @@ function toggleEditMode() {
   updateCanvasMode(isEditMode.value);
 }
 
+// ✅ [新功能] 重置版面：將畫布上所有物件置中堆疊，方便使用者重新編排
+function resetLayout() {
+  if (!fabricCanvas.value) return;
+
+  const objects = fabricCanvas.value.getObjects();
+  if (objects.length === 0) {
+    toast.info('畫布上沒有可重置的物件');
+    return;
+  }
+
+  if (!confirm('確定要將畫布上所有物件移到中央嗎？\n（物件會集中堆疊於畫布中心，方便重新拖曳編排；尚未儲存版型前不會影響已存資料）')) {
+    return;
+  }
+
+  // 取消目前選取，逐一將每個物件置中（依其外框置中於畫布，與 originX/Y 無關）
+  fabricCanvas.value.discardActiveObject();
+  objects.forEach(obj => {
+    fabricCanvas.value.centerObject(obj);
+    obj.setCoords();
+  });
+  fabricCanvas.value.requestRenderAll();
+
+  toast.success('已將所有物件移到中央，請重新拖曳編排');
+}
+
 //  [新功能] 新增下載 PDF 函數
 function downloadPDF() {
   if (!fabricCanvas.value) return;
@@ -1235,52 +1357,60 @@ function downloadPDF() {
 }
 
 //  [打勾] 新增：插入銷售人員資訊的函數
-/**
- * @param {number} startY 插入的起始 Y 座標
- */
+// ✅ [修改] 銷售顧問 / 聯絡電話可儲存位置與大小：
+//    有儲存的版型 placeholder（options）時沿用其位置/大小/樣式；
+//    無則預設置於畫布右下角（右對齊）。字體一律統一為表格字體。
 function addPersonnelInfo(options = null, defaultStartY = 100) {
   if (!props.personnel || !props.personnel.name) {
     console.warn("缺少銷售人員資訊，不插入。");
     return [];
   }
 
-  const personnelFontSize = textFontSize * 0.8;
-  const personnelWidth = 400;
+  const personnelFontSize = textFontSize * 0.8; // ≈22.4
+  const personnelWidth = 460;
+  const margin = 50; // 距離畫布右 / 下邊界
+  const lineGap = personnelFontSize * 1.6;
 
-  // 預設值 (使用傳入的 defaultStartY)
+  // 預設位置：以畫布最終尺寸計算右下角座標
+  const canvasW = canvasSettings.value.width;
+  const canvasH = canvasSettings.value.height;
+  const blockLeft = canvasW - personnelWidth - margin;
+  const phoneTop = canvasH - margin - (personnelFontSize * 1.2);
+  const nameTop = phoneTop - lineGap;
+
   const defaultOptions = {
     name: {
-      left: 50,
-      top: defaultStartY, //  [打勾] 修正：現在 defaultStartY 已定義
+      left: blockLeft,
+      top: nameTop,
       width: personnelWidth,
       fontSize: personnelFontSize,
       fill: '#000',
       fontWeight: 'bold',
-      textAlign: 'left',
+      textAlign: 'right',
     },
     phone: {
-      left: 50,
-      top: defaultStartY + (personnelFontSize * 1.5), //  [打勾] 修正：現在 defaultStartY 已定義
+      left: blockLeft,
+      top: phoneTop,
       width: personnelWidth,
       fontSize: personnelFontSize,
       fill: '#000',
-      textAlign: 'left',
+      textAlign: 'right',
     }
   };
-  
+
+  // 有儲存的 placeholder 就沿用（位置/大小/樣式），否則用右下角預設
   const nameOptions = options?.name ? options.name : defaultOptions.name;
   const phoneOptions = options?.phone ? options.phone : defaultOptions.phone;
 
-  // (移除錯誤的 'if (!options)' 區塊)
-
+  // fontFamily 一律覆蓋為表格字體，確保整份報價單字體一致
   const nameText = new fabric.Textbox(
-    `銷售顧問：${props.personnel.name}`, 
-    nameOptions
+    `銷售顧問：${props.personnel.name}`,
+    { ...nameOptions, fontFamily: tableFontFamily }
   );
 
   const phoneText = new fabric.Textbox(
-    `聯絡電話：${props.personnel.phone}`, 
-    phoneOptions
+    `聯絡電話：${props.personnel.phone}`,
+    { ...phoneOptions, fontFamily: tableFontFamily }
   );
 
   nameText.set('isPersonnelInfo', 'name');
@@ -1402,6 +1532,12 @@ function serializeCanvas() {
     }
 
 
+    // ✅ [新增] 動態產生的議價提醒文字不存入版型，
+    // 否則重新載入時會與重新產生的內容重複。每次載入皆由資料即時重建。
+    if (obj.isNegotiationNote) {
+      continue;
+    }
+
     // 儲存靜態物件
     const serializedObj = serializeFabricObject(obj);
     if (serializedObj) {
@@ -1495,6 +1631,7 @@ async function loadAndRenderTemplate() {
       }
 
       // ✅ [新增] A.3.5: 議價調整提醒 (在表格下方)
+      // 註：「套用期款時的說明」已改為渲染在表格內、各戶資料列下方
       let notesEndY = null;
       if (tableGroup) {
         const notesBox = addNegotiationNotes(tableGroup);
@@ -1579,6 +1716,7 @@ async function renderDefaultItems() {
   }
 
   // ✅ [新增] B.1.5: 議價調整提醒
+  // 註：「套用期款時的說明」已改為渲染在表格內、各戶資料列下方
   let notesEndY = null;
   if (tableGroup) {
     const notesBox = addNegotiationNotes(tableGroup);
