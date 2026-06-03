@@ -35,6 +35,16 @@
                   <v-icon size="16" color="grey" class="ml-auto">mdi-pencil</v-icon>
                 </div>
 
+                <!-- 尚未選擇：顯示可點擊的 placeholder -->
+                <div
+                  v-else-if="!isEditingTime"
+                  class="native-dt-wrapper native-dt-wrapper--placeholder"
+                  @click="startEditTime"
+                >
+                  <span class="native-dt-placeholder">點此選擇日期</span>
+                  <v-icon size="18" color="grey" class="ml-auto">mdi-calendar</v-icon>
+                </div>
+
                 <!-- 編輯模式：原生日期時間選擇器 -->
                 <div v-else>
                   <div 
@@ -230,7 +240,7 @@
             {{ initStatus || '載入中...' }}
           </div>
           <div class="text-caption text-grey-darken-1 mt-2">
-            首次開啟可能需要幾秒喚醒伺服器，請稍候
+            資料處理中，請稍後。
           </div>
         </div>
       </v-overlay>
@@ -478,7 +488,7 @@ const props = defineProps({
 const initDialogData = async () => {
   pendingInits.value++;
   try {
-    initStatus.value = '連線後端、讀取銷售資料中...';
+    initStatus.value = '資料連線中...';
     await reservationStore.fetchProjectSales(props.projectId);
 
     if (isEdit.value) {
@@ -750,7 +760,7 @@ watch(() => props.modelValue, async (val) => {
   if (val) {
     pendingInits.value++;
     try {
-      initStatus.value = '連線後端、讀取銷售資料中...';
+      initStatus.value = '資料連線中...';
       await reservationStore.fetchProjectSales(props.projectId);
 
       if (isEdit.value) {
@@ -1037,6 +1047,24 @@ const formatDate = (ts) => {
     font-weight: 600;
     color: #212121;
     letter-spacing: 0.5px;
+}
+
+/* ===== 尚未選擇的 placeholder ===== */
+.native-dt-wrapper--placeholder {
+    cursor: pointer;
+}
+
+.native-dt-wrapper--placeholder:hover {
+    border-color: #1976d2;
+    background: #f5f9ff;
+}
+
+.native-dt-placeholder {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 500;
+    color: #9e9e9e;
+    letter-spacing: 0.3px;
 }
 
 /* ===== 確認/取消按鈕列 ===== */
