@@ -54,13 +54,13 @@
                 </v-col>
                 <v-col>
                   <div class="text-h6 font-weight-bold">{{ leadData?.name }}</div>
-                  <a 
+                  <a
                     :href="`tel:${leadData?.phone ? leadData.phone.replace(/\\D/g, '') : ''}`"
-                    class="text-subtitle-2 opacity-80 d-flex align-center text-white text-decoration-none mt-1"
+                    class="text-h6 font-weight-bold d-flex align-center text-white text-decoration-none mt-1"
                   >
-                    <v-icon size="16" class="me-1">mdi-phone</v-icon>
+                    <v-icon size="20" class="me-1">mdi-phone</v-icon>
                     <span>{{ leadData?.phone }}</span>
-                    <v-chip size="x-small" color="white" variant="flat" class="ms-2 text-indigo-darken-4 font-weight-bold">撥打</v-chip>
+                    <v-chip size="small" color="white" variant="flat" class="ms-2 text-indigo-darken-4 font-weight-bold">撥打</v-chip>
                   </a>
                 </v-col>
               </v-row>
@@ -494,6 +494,12 @@ onMounted(async () => {
     console.log(`[LeadReport] 初始化 LIFF...`);
     await liff.init({ liffId });
     if (!liff.isLoggedIn()) {
+      // ✅ LIFF 登入轉址常會在 OAuth 來回過程中遺失 hash route 的 query (?id=...)，
+      //    導致登入後落到「請選擇建案」入口頁而非本名單頁。
+      //    先把 leadId 暫存，登入完成後由入口頁 (LeadDistributionEntry) 接力導回 /contact。
+      try {
+        localStorage.setItem('pendingLeadReportId', JSON.stringify({ id: leadId, ts: Date.now() }));
+      } catch (e) { /* localStorage 不可用時忽略 */ }
       liff.login({ redirectUri: window.location.href });
       return;
     }
@@ -577,7 +583,7 @@ const openBookingDialog = () => {
  * 當預約儲存成功後的處理
  * @param {Object} bookingData 來自 Dialog 的預約資料
  */
-const onBookingSaved = (bookingData) => {
+const onBookingSaved = async (bookingData) => {
   // 1. 格式化時間 (處理 Timestamp 或 Date 物件)
   const rawDate = bookingData.reservationTime;
   const timeStr = rawDate?.toDate ? formatTime(rawDate) : new Date(rawDate).toLocaleString('zh-TW', { hour12: false });
@@ -594,12 +600,12 @@ const onBookingSaved = (bookingData) => {
   // 3. 填入詳細談話紀錄 TEXTAREA
   form.value.note = summary;
 
-
-
-// ✅ 4. 標記預約已完成
+  // ✅ 4. 標記預約已完成
   isBookingCompleted.value = true;
 
-  showMsg('預約成功，已自動帶入談話紀錄', 'success');
+  // ✅ 5. 預約成功後「自動送出回報」，避免業務忘記手動按送出，
+  //    導致名單明明已聯絡並完成預約，卻仍停留在「未處理」狀態
+  await submitReport('預約已建立，並已自動完成回報 ✅');
 };
 
 // ✅ 新增：計算按鈕文字
@@ -619,7 +625,7 @@ const isSubmitDisabled = computed(() => {
   return baseValidation || bookingValidation;
 });
 
-const submitReport = async () => {
+const submitReport = async (successMsg = '回報成功') => {
   const currentUserName = userStore.user?.name || '業務人員';
   try {
     uiStore.setLoading(true);
@@ -633,8 +639,10 @@ const submitReport = async () => {
       createdBy: currentUserName,
       createdAt: serverTimestamp()
     });
-    showMsg('回報成功', 'success');
-    form.value.note = '';
+    showMsg(typeof successMsg === 'string' ? successMsg : '回報成功', 'success');
+    // ✅ 送出成功後完整重置表單，避免（自動送出後）又誤點手動送出造成重複空白回報
+    form.value = { status: '', reason: '', note: '' };
+    isBookingCompleted.value = false;
     const logsSnap = await getDocs(query(collection(db, `leads/${leadId}/contactLogs`), orderBy('createdAt', 'desc')));
     historyLogs.value = logsSnap.docs.map(d => d.data());
   } catch (err) {

@@ -65,6 +65,19 @@ onMounted(async () => {
   await initializeAuth();
 });
 
+// ✅ 取出並清除暫存的名單回報 id（由 LeadReport 在登入前寫入）
+//    僅在 5 分鐘內有效，避免日後直接開入口頁時被舊資料挾持而誤跳轉
+const consumePendingLeadReportId = () => {
+  try {
+    const raw = localStorage.getItem('pendingLeadReportId');
+    if (!raw) return null;
+    localStorage.removeItem('pendingLeadReportId');
+    const { id, ts } = JSON.parse(raw);
+    if (id && (Date.now() - ts) < 5 * 60 * 1000) return id;
+  } catch (e) { /* 忽略解析錯誤 */ }
+  return null;
+};
+
 const initializeAuth = async () => {
   isLoading.value = true;
   errorMessage.value = '';
@@ -78,7 +91,17 @@ const initializeAuth = async () => {
     if (!liff.isLoggedIn()) {
       statusMessage.value = '正在導向 LINE 登入...';
       liff.login({ redirectUri: window.location.href });
-      return; 
+      return;
+    }
+
+    // ✅ 接力導回名單回報頁：
+    //    使用者原本要開的是 /contact?id=xxx，但 LIFF 登入轉址把 hash route 的 query 弄丟，
+    //    才落到本入口頁。此時 channel 已登入，直接把它導回正確的名單回報頁。
+    const pendingLeadId = consumePendingLeadReportId();
+    if (pendingLeadId) {
+      statusMessage.value = '正在開啟名單...';
+      router.replace({ name: 'LeadReport', query: { id: pendingLeadId } });
+      return;
     }
 
     // 2. 取得 LINE ID 並同步權限

@@ -215,6 +215,25 @@
                 > {{ isEdit ? '更新' : '新增' }}
                 </v-btn>
       </v-card-actions>
+
+      <!-- ✅ 初始化載入遮罩：讓使用者明確知道正在讀取後端 / 等候 Cloud Function 冷啟動 -->
+      <v-overlay
+        :model-value="initializing"
+        contained
+        persistent
+        scrim="white"
+        class="align-center justify-center init-overlay"
+      >
+        <div class="text-center px-6 py-8">
+          <v-progress-circular indeterminate color="primary" size="56" width="5"></v-progress-circular>
+          <div class="text-subtitle-1 font-weight-bold text-primary mt-4">
+            {{ initStatus || '載入中...' }}
+          </div>
+          <div class="text-caption text-grey-darken-1 mt-2">
+            首次開啟可能需要幾秒喚醒伺服器，請稍候
+          </div>
+        </div>
+      </v-overlay>
     </v-card>
 
     <v-dialog v-model="vipConflictDialog" max-width="450">
@@ -395,6 +414,12 @@ const isEditingTime = ref(false); // 是否正在編輯時間
 const PREDEFINED_TYPES = ['新客', '回訪', '簽約', '其他'];
 const customType = ref(''); // 「其他」類型的自訂輸入值
 
+// ✅ 開啟對話框時的初始化載入狀態（讀取銷售資料 / 等候 Cloud Function 冷啟動做衝突檢查）
+// 用計數器處理 watch(immediate) 與 onMounted 兩條初始化路徑可能同時進行的情況
+const pendingInits = ref(0);
+const initStatus = ref('');
+const initializing = computed(() => pendingInits.value > 0);
+
 // Date → 原生 input 值 (yyyy-MM-ddTHH:mm)
 const toDateTimeLocalString = (date) => {
   if (!date) return '';
@@ -451,6 +476,9 @@ const props = defineProps({
 
 // 2. 修改 initDialogData (處理新增模式)
 const initDialogData = async () => {
+  pendingInits.value++;
+  try {
+    initStatus.value = '連線後端、讀取銷售資料中...';
     await reservationStore.fetchProjectSales(props.projectId);
 
     if (isEdit.value) {
@@ -496,6 +524,9 @@ const initDialogData = async () => {
     // 編輯模式若為「簽約」則預載戶別資料供下拉使用
     if (formData.value.type === '簽約') ensureHouseholdsLoaded();
     conflictInfo.value = null;
+  } finally {
+    pendingInits.value--;
+  }
 };
 
 const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
@@ -717,58 +748,65 @@ const phoneRules = [
 // ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
-    await reservationStore.fetchProjectSales(props.projectId);
+    pendingInits.value++;
+    try {
+      initStatus.value = '連線後端、讀取銷售資料中...';
+      await reservationStore.fetchProjectSales(props.projectId);
 
-    if (isEdit.value) {
-      const d = props.initialData;
-      formData.value = {
-        ...d,
-        reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
-      };
-      // 編輯模式：若 type 不在預設清單，視為「其他」並還原自訂值
-      if (d.type && !PREDEFINED_TYPES.includes(d.type)) {
-        customType.value = d.type;
-        formData.value.type = '其他';
-      } else {
-        customType.value = '';
-      }
-    } else {
-      // ✅ 新增模式：優化指定銷售欄位預設值
-      let defaultSalesId = null;
-
-      // 取得當前用戶的 ID
-      const currentUserId = userStore.user?.key;
-
-      // 從可見銷售列表中查找當前用戶
-      if (currentUserId) {
-        const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
-        if (currentUserInSales) {
-          defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
+      if (isEdit.value) {
+        const d = props.initialData;
+        formData.value = {
+          ...d,
+          reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
+        };
+        // 編輯模式：若 type 不在預設清單，視為「其他」並還原自訂值
+        if (d.type && !PREDEFINED_TYPES.includes(d.type)) {
+          customType.value = d.type;
+          formData.value.type = '其他';
+        } else {
+          customType.value = '';
         }
-        // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
-      }
+      } else {
+        // ✅ 新增模式：優化指定銷售欄位預設值
+        let defaultSalesId = null;
 
-      formData.value = {
-        customerName: props.initialData?.customerName || '',
-        customerPhone: props.initialData?.customerPhone || '',
-        note: props.initialData?.note || '',
-        reservationTime: props.initialDate || null,
-        type: '新客',
-        salesId: defaultSalesId,
-        unitId: ''
-      };
-      customType.value = '';
+        // 取得當前用戶的 ID
+        const currentUserId = userStore.user?.key;
 
-      // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
-      if (formData.value.customerPhone) {
-        conflictInfo.value = null; // 先清除舊的 conflictInfo
-        await nextTick(); // 確保表單已更新
-        await handlePhoneBlur(); // 自動觸發檢查並等待完成
-        await nextTick(); // 確保 conflictInfo 已更新
+        // 從可見銷售列表中查找當前用戶
+        if (currentUserId) {
+          const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
+          if (currentUserInSales) {
+            defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
+          }
+          // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
+        }
+
+        formData.value = {
+          customerName: props.initialData?.customerName || '',
+          customerPhone: props.initialData?.customerPhone || '',
+          note: props.initialData?.note || '',
+          reservationTime: props.initialDate || null,
+          type: '新客',
+          salesId: defaultSalesId,
+          unitId: ''
+        };
+        customType.value = '';
+
+        // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
+        if (formData.value.customerPhone) {
+          initStatus.value = '檢查此號碼是否已有預約...';
+          conflictInfo.value = null; // 先清除舊的 conflictInfo
+          await nextTick(); // 確保表單已更新
+          await handlePhoneBlur(); // 自動觸發檢查並等待完成
+          await nextTick(); // 確保 conflictInfo 已更新
+        }
       }
+      // 編輯/新增模式皆檢查：若 type 為「簽約」則預載該建案戶別資料
+      if (formData.value.type === '簽約') ensureHouseholdsLoaded();
+    } finally {
+      pendingInits.value--;
     }
-    // 編輯/新增模式皆檢查：若 type 為「簽約」則預載該建案戶別資料
-    if (formData.value.type === '簽約') ensureHouseholdsLoaded();
   }
 }, { immediate: true });
 
@@ -1006,5 +1044,10 @@ const formatDate = (ts) => {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+/* ===== 初始化載入遮罩：提高白色 scrim 不透明度，蓋住半載入的表單 ===== */
+.init-overlay :deep(.v-overlay__scrim) {
+    opacity: 0.94;
 }
 </style>
