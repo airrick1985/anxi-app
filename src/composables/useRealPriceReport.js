@@ -264,8 +264,8 @@ export function autoMapMainFromUnit(unitData, projectDefaults = {}, extraContext
     mapped.p1ma_build7c = purpose.label;
   }
 
-  // ---- 樓層推導：從 unitId 解析 ----
-  const floor = parseFloorFromUnitId(unitData.unitId);
+  // ---- 樓層推導：優先用戶別獨立的 floor 欄位（unitId 內的數字是戶號而非樓層），無值時才退而解析 unitId ----
+  const floor = parseFloorFromUnitId(unitData.floor) ?? parseFloorFromUnitId(unitData.unitId);
   if (floor) {
     mapped.p1ma_build10_1 = formatFloorCode(floor);
     mapped.p1ma_build10_1c = floorNumberToChinese(floor);
