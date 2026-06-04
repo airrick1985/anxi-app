@@ -8267,9 +8267,8 @@ exports.sendUploadReminderForUnit = onCall({
   const functionName = "sendUploadReminderForUnit";
   const { projectId, unitId, bookingType, appointmentId } = request.data || {};
 
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', '需要登入才能寄送提醒。');
-  }
+  // 註：本系統採自訂登入（非 Firebase Auth），callable 不帶 Firebase Auth token，
+  // 故與其他後台 callable（如 manualTriggerSendReminders / cancelAppointmentByAdmin）一致，不檢查 request.auth。
   if (!projectId || !unitId || !bookingType) {
     throw new HttpsError('invalid-argument', '缺少必要參數 (projectId / unitId / bookingType)。');
   }

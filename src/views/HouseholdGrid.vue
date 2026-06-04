@@ -563,9 +563,18 @@
          variant="outlined"
          class="mb-3"
       >
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-blue-lighten-5">
+         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-blue-lighten-5 d-flex align-center">
             <v-icon size="small" class="mr-1" color="primary">mdi-calendar-clock-outline</v-icon>
-            {{ type }} 預約資訊
+            <span>{{ type }} 預約資訊</span>
+            <v-spacer></v-spacer>
+            <v-btn
+               v-if="detailBookingInfo[type]?.appointmentId"
+               size="x-small" variant="tonal" color="error"
+               prepend-icon="mdi-calendar-remove"
+               @click.stop="openCancelApptDialog(type)" @mousedown.stop
+               title="取消此筆預約（將通知預約人）">
+               取消預約
+            </v-btn>
          </v-card-title>
          <v-card-text class="pt-2 pb-2">
             <div class="hdm-row">
@@ -877,6 +886,39 @@
       </v-card-actions>
    </v-card>
 </v-dialog>
+
+<!-- 取消預約確認 -->
+<v-dialog v-model="cancelApptDialog.show" max-width="460px" persistent>
+   <v-card>
+      <v-card-title class="bg-error text-white d-flex align-center py-3">
+         <v-icon start>mdi-calendar-remove</v-icon>
+         <span class="text-h6">確認取消預約</span>
+      </v-card-title>
+      <v-card-text class="pt-4">
+         <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
+            此操作會將預約狀態改為「取消」、清除戶別對應的驗屋日期/方式，並寄送取消通知信給預約人，無法復原。
+         </v-alert>
+         <div class="hdm-row"><label>預約項目</label><span>{{ cancelApptDialog.type }}</span></div>
+         <div class="hdm-row"><label>預約日期</label><span>{{ cancelApptDialog.date }}</span></div>
+         <div class="hdm-row"><label>時段</label><span>{{ cancelApptDialog.timeSlot }}</span></div>
+         <div class="hdm-row"><label>預約人</label><span>{{ cancelApptDialog.bookerName || '—' }}</span></div>
+         <div class="hdm-row">
+            <label>通知信</label>
+            <span :class="{ 'text-grey': !cancelApptDialog.bookerEmail }">
+               {{ cancelApptDialog.bookerEmail || '（無 Email，不寄送通知）' }}
+            </span>
+         </div>
+      </v-card-text>
+      <v-divider></v-divider>
+      <v-card-actions class="pa-4">
+         <v-spacer></v-spacer>
+         <v-btn variant="text" :disabled="cancelApptDialog.cancelling" @click="cancelApptDialog.show = false">返回</v-btn>
+         <v-btn color="error" variant="flat" prepend-icon="mdi-calendar-remove"
+            :loading="cancelApptDialog.cancelling"
+            @click="confirmCancelAppt">確認取消預約</v-btn>
+      </v-card-actions>
+   </v-card>
+</v-dialog>
 </v-container>
 </template>
 
@@ -886,7 +928,7 @@ import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment } from '@/api';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { ModuleRegistry } from "ag-grid-community";
@@ -1663,6 +1705,60 @@ const sendReminderNow = async () => {
       snackbar.show = true;
    } finally {
       reminderDialog.sending = false;
+   }
+};
+
+// === 取消預約（沿用既有後端 cancelAppointment：狀態改「取消」、清空戶別驗屋欄位、寄送取消通知信） ===
+const cancelApptDialog = reactive({
+   show: false,
+   cancelling: false,
+   type: '',
+   appointmentId: null,
+   date: '',
+   timeSlot: '',
+   bookerName: '',
+   bookerEmail: ''
+});
+
+const openCancelApptDialog = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info || !info.appointmentId) return;
+   cancelApptDialog.type = type;
+   cancelApptDialog.appointmentId = info.appointmentId;
+   cancelApptDialog.date = formatDetailDate(info.date) || '—';
+   cancelApptDialog.timeSlot = info.timeSlot || '—';
+   cancelApptDialog.bookerName = info.bookerName || '';
+   cancelApptDialog.bookerEmail = info.bookerEmail || '';
+   cancelApptDialog.cancelling = false;
+   cancelApptDialog.show = true;
+};
+
+const confirmCancelAppt = async () => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h.unitId || !cancelApptDialog.appointmentId) return;
+   cancelApptDialog.cancelling = true;
+   try {
+      const res = await cancelAppointment(
+         cancelApptDialog.appointmentId,
+         projectId.value,
+         h.unitId,
+         cancelApptDialog.type
+      );
+      if (res && res.status === 'error') {
+         throw new Error(res.message || '取消預約失敗');
+      }
+      snackbar.text = `已取消 [${h.unitId}] 的「${cancelApptDialog.type}」預約`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+      cancelApptDialog.show = false;
+      // listenToAppointments 的 onSnapshot 會自動更新 grid 與 modal 的預約資訊
+   } catch (err) {
+      console.error('取消預約失敗:', err);
+      snackbar.text = `取消預約失敗: ${err.message || err}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      cancelApptDialog.cancelling = false;
    }
 };
 
