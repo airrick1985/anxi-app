@@ -627,6 +627,53 @@
                   variant="plain" density="compact" hide-details class="hdm-edit-field"
                   placeholder="—"></v-text-field>
             </div>
+            <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄 -->
+            <div v-if="shouldShowReminderBlock(type)" class="hdm-row hdm-row-block">
+               <label>
+                  <v-icon size="small" color="orange-darken-2" class="mr-1">mdi-email-alert-outline</v-icon>
+                  未上傳驗屋報告提醒
+                  <v-chip
+                     v-if="getReminderRecordsForType(type).length > 0"
+                     size="x-small" color="orange-darken-2" variant="tonal" class="ml-1">
+                     已寄 {{ getReminderRecordsForType(type).length }} 次
+                  </v-chip>
+               </label>
+
+               <!-- 未上傳天數 + 發送按鈕 -->
+               <div v-if="daysSinceNoUpload(type) !== null" class="hdm-reminder-head">
+                  <div class="hdm-reminder-days">
+                     <v-icon size="small" :color="daysSinceNoUpload(type) >= 0 ? 'red-darken-1' : 'grey'" class="mr-1">mdi-clock-alert-outline</v-icon>
+                     <template v-if="daysSinceNoUpload(type) >= 0">
+                        驗屋後 <strong class="mx-1">{{ daysSinceNoUpload(type) }}</strong> 天未上傳報告
+                     </template>
+                     <template v-else>尚未到驗屋日</template>
+                  </div>
+                  <v-btn
+                     v-if="isTypeReminderEligible(type)"
+                     size="x-small" variant="flat" color="orange-darken-2"
+                     prepend-icon="mdi-email-fast-outline"
+                     @click.stop="openReminderDialog(type)" @mousedown.stop
+                     title="預覽通知內容後寄送給預約人">
+                     發送提醒通知
+                  </v-btn>
+               </div>
+
+               <!-- 寄出紀錄 -->
+               <div class="hdm-reminder-list">
+                  <div
+                     v-if="getReminderRecordsForType(type).length === 0"
+                     class="text-caption text-grey">
+                     {{ detailBookingInfo[type]?.reportUploaded ? '報告已上傳，無提醒紀錄' : '尚未寄送提醒' }}
+                  </div>
+                  <div
+                     v-for="(sentAt, idx) in getReminderRecordsForType(type)"
+                     :key="`rmd-${type}-${idx}`"
+                     class="hdm-reminder-item">
+                     <v-icon size="x-small" color="orange-darken-2" class="mr-1">mdi-email-fast-outline</v-icon>
+                     <span>{{ sentAt }}</span>
+                  </div>
+               </div>
+            </div>
          </v-card-text>
       </v-card>
 
@@ -778,6 +825,58 @@
    :preselected-unit-id="presetUnitIdForBooking"
    @booking-success="handleAdminBookingSuccess"
 />
+
+<!-- 未上傳驗屋報告提醒：預覽後送出 -->
+<v-dialog v-model="reminderDialog.show" max-width="900px" persistent scrollable>
+   <v-card>
+      <v-card-title class="bg-orange-darken-2 text-white d-flex align-center py-3">
+         <v-icon start>mdi-email-fast-outline</v-icon>
+         <span class="text-h6">發送「未上傳驗屋報告」提醒</span>
+         <v-spacer></v-spacer>
+         <v-btn icon="mdi-close" variant="text" size="small" color="white"
+            :disabled="reminderDialog.sending" @click="reminderDialog.show = false"></v-btn>
+      </v-card-title>
+      <v-card-text class="pt-4">
+         <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            收件人（預約人）：<strong>{{ reminderDialog.bookerName || '—' }}</strong>
+            <span v-if="reminderDialog.bookerEmail"> &lt;{{ reminderDialog.bookerEmail }}&gt;</span>
+            <span v-else class="text-error">（缺少 Email，無法寄送）</span>
+            <br>預約項目：<strong>{{ reminderDialog.type }}</strong>
+            <span v-if="reminderDialog.appointmentDate">　驗屋日：{{ reminderDialog.appointmentDate }}</span>
+            <div class="text-caption mt-1">副本收件人由系統設定，並以密件副本(BCC)寄出、不會顯示給客戶。</div>
+         </v-alert>
+
+         <v-row>
+            <!-- 編輯區 -->
+            <v-col cols="12" md="6">
+               <div class="text-subtitle-2 font-weight-bold mb-2">編輯內容</div>
+               <label class="text-caption text-medium-emphasis">主旨</label>
+               <v-text-field v-model="reminderDialog.subject" variant="outlined" density="compact"
+                  class="mt-1 mb-3" hide-details></v-text-field>
+               <label class="text-caption text-medium-emphasis">內文</label>
+               <RichTextEditor v-model="reminderDialog.body" class="mt-1 mb-3" :placeholders="reminderEmailPlaceholders" />
+               <label class="text-caption text-medium-emphasis">提醒事項</label>
+               <RichTextEditor v-model="reminderDialog.reminder" class="mt-1" :placeholders="reminderEmailPlaceholders" />
+            </v-col>
+            <!-- 預覽區 -->
+            <v-col cols="12" md="6">
+               <div class="text-subtitle-2 font-weight-bold mb-2">即時預覽</div>
+               <div class="text-caption text-medium-emphasis mb-1">主旨：{{ reminderPreviewSubject }}</div>
+               <div class="reminder-preview-frame" v-html="reminderPreviewHtml"></div>
+            </v-col>
+         </v-row>
+      </v-card-text>
+      <v-divider></v-divider>
+      <v-card-actions class="pa-4">
+         <v-spacer></v-spacer>
+         <v-btn variant="text" :disabled="reminderDialog.sending" @click="reminderDialog.show = false">取消</v-btn>
+         <v-btn color="orange-darken-2" variant="flat" prepend-icon="mdi-send"
+            :loading="reminderDialog.sending"
+            :disabled="!reminderDialog.bookerEmail"
+            @click="sendReminderNow">確認送出</v-btn>
+      </v-card-actions>
+   </v-card>
+</v-dialog>
 </v-container>
 </template>
 
@@ -801,6 +900,9 @@ import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
 import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.vue';
 import { formatAuthLetterName, extractAuthLetterDate, getLatestAgentInfo } from '@/utils/authLetterName.js';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
+import RichTextEditor from '@/components/RichTextEditor.vue';
+import { functions } from '@/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 
 // --- Store 和路由 ---
@@ -1002,7 +1104,11 @@ const buildAppointmentMap = (appointmentsList) => {
         // 預約人聯絡資訊
         bookerName: appt.bookerName || '',
         bookerPhone: appt.bookerPhone || '',
-        bookerEmail: appt.bookerEmail || ''
+        bookerEmail: appt.bookerEmail || '',
+        // 驗屋報告未上傳提醒通知：寄出紀錄（Firestore Timestamp 陣列）與目前上傳狀態
+        reminderSentAt: Array.isArray(appt.reminderSentAt) ? appt.reminderSentAt : [],
+        reportUploaded: appt.reportUploaded === true,
+        appointmentId: appt._docId || null
       };
     }
   });
@@ -1383,6 +1489,180 @@ const formatDetailDate = (val) => {
       return format(d, 'yyyy/MM/dd');
    } catch (_) {
       return '';
+   }
+};
+
+// 將各種時間型別（Firestore Timestamp / Date / 字串 / 秒數物件）轉為 JS Date
+const toJsDate = (val) => {
+   if (!val) return null;
+   try {
+      if (val?.toDate && typeof val.toDate === 'function') return val.toDate();
+      if (val instanceof Date) return val;
+      if (typeof val?.seconds === 'number') return new Date(val.seconds * 1000);
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d;
+   } catch (_) {
+      return null;
+   }
+};
+
+// 驗屋報告未上傳提醒通知 — 取某預約項目的寄出紀錄（由新→舊，附完整時間字串）
+const getReminderRecordsForType = (type) => {
+   const arr = detailBookingInfo.value?.[type]?.reminderSentAt;
+   if (!Array.isArray(arr) || arr.length === 0) return [];
+   return arr
+      .map(ts => toJsDate(ts))
+      .filter(d => d instanceof Date && !isNaN(d.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime())
+      .map(d => format(d, 'yyyy/MM/dd HH:mm'));
+};
+
+// 建案的「提醒上傳條件」設定（uploadReminderConditions: [{ bookingType, methods:[..] }]）
+const uploadReminderConditions = computed(() => {
+   const c = projectConfig.value?.reportSettings?.uploadReminderConditions;
+   return Array.isArray(c) ? c : [];
+});
+
+// 某預約項目（含驗屋方式）是否落在「未上傳提醒」條件設定範圍內
+const isTypeConfiguredForReminder = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info) return false;
+   return uploadReminderConditions.value.some(c =>
+      c && c.bookingType === type &&
+      Array.isArray(c.methods) && c.methods.includes(info.method)
+   );
+};
+
+// 是否可實際寄送提醒（符合條件 + 尚未上傳 + 未交屋 + 有預約人 Email）
+const isTypeReminderEligible = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info) return false;
+   if (info.reportUploaded === true) return false; // 已上傳不需提醒
+   if (selectedHouseholdForDetail.value?.['交屋'] === true) return false; // 已交屋不再提醒
+   if (!info.bookerEmail) return false; // 無收件人
+   return isTypeConfiguredForReminder(type);
+};
+
+// 是否要顯示「未上傳提醒」區塊（符合條件設定，或曾經寄送過）
+const shouldShowReminderBlock = (type) =>
+   isTypeConfiguredForReminder(type) || getReminderRecordsForType(type).length > 0;
+
+// 某預約項目「驗屋後幾天未上傳報告」（以預約日為基準，僅在未上傳時計算）
+const daysSinceNoUpload = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info || info.reportUploaded === true) return null;
+   const d = toJsDate(info.date);
+   if (!d) return null;
+   const today = new Date();
+   today.setHours(0, 0, 0, 0);
+   const base = new Date(d);
+   base.setHours(0, 0, 0, 0);
+   const diff = Math.floor((today.getTime() - base.getTime()) / (1000 * 3600 * 24));
+   return diff;
+};
+
+// === 未上傳驗屋報告提醒：預覽後送出 ===
+const reminderEmailPlaceholders = [
+   { value: '{projectName}', text: '建案名稱' },
+   { value: '{unitId}', text: '戶別' },
+   { value: '{bookerName}', text: '預約人姓名' },
+   { value: '{appointmentDate}', text: '驗屋日期' },
+];
+const reminderDialog = reactive({
+   show: false,
+   sending: false,
+   type: '',
+   appointmentId: null,
+   bookerEmail: '',
+   bookerName: '',
+   appointmentDate: '',
+   subject: '',
+   body: '',
+   reminder: ''
+});
+
+// 將範本變數套入該戶實際資料
+const fillReminderVars = (tpl) => String(tpl || '')
+   .replace(/{projectName}/g, projectName.value || '')
+   .replace(/{unitId}/g, selectedHouseholdForDetail.value?.unitId || '')
+   .replace(/{bookerName}/g, reminderDialog.bookerName || '')
+   .replace(/{appointmentDate}/g, reminderDialog.appointmentDate || '');
+
+// 預覽用的完整 HTML（與後端信件外觀一致）
+const reminderPreviewHtml = computed(() => {
+   const pName = projectName.value || '';
+   const body = fillReminderVars(reminderDialog.body);
+   const reminder = fillReminderVars(reminderDialog.reminder);
+   const uploadUrl = projectConfig.value?.reportSettings?.uploadReminderEmail?.uploadUrl || '#';
+   const uploadBtn = `<p style="margin-top:25px;padding-top:20px;border-top:1px solid #eeeeee;text-align:center;"><a href="${uploadUrl}" target="_blank" style="display:inline-block;padding:10px 20px;background-color:#007bff;color:#ffffff;text-decoration:none;border-radius:5px;font-weight:bold;">點此前往上傳報告</a></p>`;
+   return `
+      <div style="font-family:'Helvetica Neue',Helvetica,Arial,'PingFang TC','Microsoft JhengHei',sans-serif;background-color:#f4f4f7;padding:20px;">
+        <div style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:8px;border:1px solid #e0e0e0;overflow:hidden;">
+          <div style="background-color:#ab0300;color:#ffffff;padding:20px;text-align:center;"><h2 style="margin:0;font-size:24px;">驗屋報告上傳提醒</h2></div>
+          <div style="padding:24px;line-height:1.6;color:#333333;">
+            ${body}
+            <div style="margin-top:20px;padding:15px;background-color:#f8f9fa;border-left:4px solid #17a2b8;">${reminder}</div>
+            ${uploadBtn}
+          </div>
+          <div style="background-color:#f4f4f7;padding:16px;text-align:center;font-size:12px;color:#777777;">
+            <p style="margin:0;">此為系統自動發送郵件，請勿直接回覆。</p>
+            <p style="margin:5px 0 0 0;">${pName} 驗屋報告系統</p>
+          </div>
+        </div>
+      </div>`;
+});
+
+const reminderPreviewSubject = computed(() => fillReminderVars(reminderDialog.subject));
+
+// 開啟「預覽後送出」對話框，預填建案範本
+const openReminderDialog = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info) return;
+   const tpl = projectConfig.value?.reportSettings?.uploadReminderEmail || {};
+   reminderDialog.type = type;
+   reminderDialog.appointmentId = info.appointmentId || null;
+   reminderDialog.bookerEmail = info.bookerEmail || '';
+   reminderDialog.bookerName = info.bookerName || '';
+   reminderDialog.appointmentDate = formatDetailDate(info.date) || '';
+   reminderDialog.subject = tpl.subject || '{projectName} {unitId} 未收到驗屋報告提醒';
+   reminderDialog.body = tpl.body || '<p>您已完成驗屋，但尚未收到您的驗屋報告。</p>';
+   reminderDialog.reminder = tpl.reminder || '';
+   reminderDialog.sending = false;
+   reminderDialog.show = true;
+};
+
+const sendReminderNow = async () => {
+   const h = selectedHouseholdForDetail.value;
+   if (!h || !h.unitId || !reminderDialog.type) return;
+   if (!reminderDialog.bookerEmail) {
+      snackbar.text = '此預約缺少預約人 Email，無法寄送';
+      snackbar.color = 'error';
+      snackbar.show = true;
+      return;
+   }
+   reminderDialog.sending = true;
+   try {
+      const fn = httpsCallable(functions, 'sendUploadReminderForUnit');
+      const res = await fn({
+         projectId: projectId.value,
+         unitId: h.unitId,
+         bookingType: reminderDialog.type,
+         appointmentId: reminderDialog.appointmentId,
+         subject: reminderDialog.subject,
+         body: reminderDialog.body,
+         reminder: reminderDialog.reminder
+      });
+      snackbar.text = res?.data?.message || `已寄送提醒至 ${reminderDialog.bookerEmail}`;
+      snackbar.color = 'success';
+      snackbar.show = true;
+      reminderDialog.show = false;
+   } catch (err) {
+      console.error('寄送未上傳報告提醒失敗:', err);
+      snackbar.text = `寄送失敗: ${err.message || err}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      reminderDialog.sending = false;
    }
 };
 
@@ -2706,6 +2986,46 @@ onUnmounted(() => {
    align-items: center;
    flex: 0 0 auto;
    margin-left: 8px;
+}
+/* 驗屋報告未上傳提醒通知：未上傳天數 + 發送按鈕 */
+.hdm-reminder-head {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 8px;
+   margin-bottom: 6px;
+}
+.hdm-reminder-days {
+   display: flex;
+   align-items: center;
+   font-size: 0.8125rem;
+   color: #424242;
+}
+/* Email 預覽框 */
+.reminder-preview-frame {
+   border: 1px solid #e0e0e0;
+   border-radius: 6px;
+   max-height: 60vh;
+   overflow-y: auto;
+   background: #f4f4f7;
+}
+/* 驗屋報告未上傳提醒通知：寄送紀錄清單 */
+.hdm-reminder-list {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+   width: 100%;
+}
+.hdm-reminder-item {
+   display: flex;
+   align-items: center;
+   padding: 3px 8px;
+   background: #fff8e1;
+   border: 1px solid #ffe0b2;
+   border-left: 3px solid #f57c00;
+   border-radius: 4px;
+   font-size: 0.8125rem;
+   color: #5d4037;
 }
 /* 預約資訊卡片內：將預約人聯絡資訊與上方欄位視覺區隔 */
 .hdm-booker-divider {

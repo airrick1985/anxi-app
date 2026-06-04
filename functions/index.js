@@ -7988,6 +7988,45 @@ exports.fetchManageableUsersWithDetails = onCall(async (request) => {
 
 
 /**
+ * [共用] 組裝「未上傳驗屋報告提醒」Email 的完整 HTML。
+ * 排程批次與單戶即時寄送共用此函式，確保信件外觀一致。
+ * @param {{ projectName: string, bodyHtml: string, reminderHtml?: string, uploadUrl?: string }} opts
+ */
+function buildUploadReminderEmailHtml({ projectName, bodyHtml, reminderHtml = '', uploadUrl = '' }) {
+  const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
+  return `
+                      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
+                        <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+
+                          <div style="background-color: #ab0300; color: #ffffff; padding: 20px; text-align: center;">
+                            <h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2>
+                          </div>
+
+                          <div style="padding: 24px; line-height: 1.6; color: #333333;">
+
+                            ${bodyHtml}
+
+                            <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">
+                              ${reminderHtml}
+                            </div>
+
+                            ${uploadButtonHtml}
+
+                          </div>
+
+                          <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+                            <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+                            <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
+                            <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+                              本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+                            </p>
+                          </div>
+
+                        </div>
+                      </div>`;
+}
+
+/**
  * [核心邏輯] 檢查並寄送未上傳報告提醒
  * 此函式包含所有商業邏輯，可被多個觸發器共用
  */
@@ -8127,43 +8166,17 @@ async function executeUploadReminderLogic() {
         let body = emailTemplate.body || "您已完成驗屋，但尚未收到您的驗屋報告。";
         body = body.replace(/{bookerName}/g, appointment.bookerName).replace(/{appointmentDate}/g, formattedApptDate).replace(/{unitId}/g, appointment.unitId);
 
-        const uploadButtonHtml = `<p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; text-align: center;"><a href="${emailTemplate.uploadUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">點此前往上傳報告</a></p>`;
-        const htmlBody = `
-                      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
-                        <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
-                          
-                          <div style="background-color: #ab0300; color: #ffffff; padding: 20px; text-align: center;">
-                            <h2 style="margin: 0; font-size: 24px;">驗屋報告上傳提醒</h2>
-                          </div>
-
-                          <div style="padding: 24px; line-height: 1.6; color: #333333;">
-                            
-                            ${body}
-
-                            <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #17a2b8;">
-                              ${emailTemplate.reminder || ''}
-                            </div>
-
-                            ${uploadButtonHtml}
-
-                          </div>
-
-                          <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
-                            <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
-                            <p style="margin: 5px 0 0 0;">${projectName} 驗屋報告系統</p>
-                            <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
-                              本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
-                            </p>
-                          </div>
-
-                        </div>
-                      </div>`;
-
+        const htmlBody = buildUploadReminderEmailHtml({
+          projectName,
+          bodyHtml: body,
+          reminderHtml: emailTemplate.reminder || '',
+          uploadUrl: emailTemplate.uploadUrl
+        });
 
         await mailTransport.sendMail({
           from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
           to: appointment.bookerEmail,
-          cc: ccEmails,
+          bcc: ccEmails, // 改用密件副本，副本收件者不會顯示給客戶
           subject: subject,
           html: htmlBody,
         });
@@ -8230,6 +8243,170 @@ exports.manualTriggerSendReminders = onCall({
     console.error(`[${functionName}] 手動觸發時發生錯誤:`, error);
     throw new HttpsError('internal', `執行手動提醒任務失敗: ${error.message}`);
   }
+});
+
+
+/**
+ * [API] 針對單一戶別（單筆預約）即時寄送「未上傳驗屋報告提醒」。
+ * 供「戶別整合資訊」Modal 預覽後送出使用。
+ * 沿用排程批次相同的範本外觀、CC（密件副本）收件人與 reminderSentAt 記錄機制，
+ * 但縮小到單筆預約、且略過「天數條件」(uploadReminderDays)。
+ *
+ * request.data:
+ *   - projectId  {string}  必填
+ *   - unitId     {string}  必填
+ *   - bookingType {string} 必填（預約項目，例如「初驗」）
+ *   - appointmentId {string} 選填（指定預約文件 ID；未提供則自動取該戶該項目最新一筆未上傳預約）
+ *   - subject / body / reminder {string} 選填（前端預覽時編輯後的內容；未提供則用建案範本）
+ */
+exports.sendUploadReminderForUnit = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+  secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (request) => {
+  const functionName = "sendUploadReminderForUnit";
+  const { projectId, unitId, bookingType, appointmentId } = request.data || {};
+
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '需要登入才能寄送提醒。');
+  }
+  if (!projectId || !unitId || !bookingType) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId / unitId / bookingType)。');
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  // 1. 讀取建案設定（範本、條件）
+  const projectDoc = await db.collection('projects').doc(projectId).get();
+  if (!projectDoc.exists) {
+    throw new HttpsError('not-found', `找不到建案 ${projectId}。`);
+  }
+  const projectData = projectDoc.data();
+  const projectName = projectData.name || projectId;
+  const settings = projectData.reportSettings || {};
+  const emailTemplate = settings.uploadReminderEmail || {};
+
+  // 2. 取得目標預約：優先用 appointmentId，否則取該戶該項目最新一筆未上傳預約
+  let apptRef = null;
+  let appointment = null;
+  if (appointmentId) {
+    const snap = await db.collection('appointments').doc(appointmentId).get();
+    if (!snap.exists) throw new HttpsError('not-found', `找不到預約 ${appointmentId}。`);
+    apptRef = snap.ref;
+    appointment = snap.data();
+  } else {
+    // 僅用等式過濾（免額外複合索引），其餘條件於記憶體篩選
+    const q = await db.collection('appointments')
+      .where('projectId', '==', projectId)
+      .where('unitId', '==', unitId)
+      .where('bookingType', '==', bookingType)
+      .get();
+    const candidates = q.docs.filter(d => {
+      const v = d.data();
+      return ['預約中', '已完成'].includes(v.status) && v.reportUploaded === false;
+    });
+    if (candidates.length === 0) throw new HttpsError('failed-precondition', `戶別 ${unitId} 的「${bookingType}」沒有未上傳報告的預約。`);
+    // 取 appointmentDate 最新的一筆
+    candidates.sort((a, b) => {
+      const da = a.data().appointmentDate?.toMillis?.() || 0;
+      const db2 = b.data().appointmentDate?.toMillis?.() || 0;
+      return db2 - da;
+    });
+    apptRef = candidates[0].ref;
+    appointment = candidates[0].data();
+  }
+
+  // 3. 伺服器端再驗證（不信任前端）
+  if (appointment.projectId !== projectId || appointment.unitId !== unitId || appointment.bookingType !== bookingType) {
+    throw new HttpsError('failed-precondition', '預約資料與指定戶別/項目不符。');
+  }
+  if (appointment.reportUploaded === true) {
+    throw new HttpsError('failed-precondition', '此預約的驗屋報告已上傳，無需提醒。');
+  }
+  if (!appointment.bookerEmail) {
+    throw new HttpsError('failed-precondition', '此預約缺少預約人 Email，無法寄送。');
+  }
+
+  // 3a. 驗證符合提醒條件設定 (uploadReminderConditions: [{ bookingType, methods: [..] }])
+  const rawConditions = Array.isArray(settings.uploadReminderConditions) ? settings.uploadReminderConditions : [];
+  const matched = rawConditions.some(c =>
+    c && c.bookingType === appointment.bookingType &&
+    Array.isArray(c.methods) && c.methods.includes(appointment.inspectionMethod)
+  );
+  if (!matched) {
+    throw new HttpsError('failed-precondition', `此預約 (${bookingType} / ${appointment.inspectionMethod || '未設方式'}) 不在提醒條件設定範圍內。`);
+  }
+
+  // 3b. 已交屋則不寄送
+  const householdDocId = `${projectId}_${unitId}`;
+  try {
+    const hh = await db.collection('households').doc(householdDocId).get();
+    if (hh.exists && hh.data()['交屋'] === true) {
+      throw new HttpsError('failed-precondition', `戶別 ${unitId} 已交屋，不再寄送提醒。`);
+    }
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.warn(`[${functionName}] 讀取戶別 ${householdDocId} 失敗，仍繼續寄送:`, e);
+  }
+
+  // 4. 組裝信件內容：優先用前端編輯後的內容，否則用建案範本
+  const formattedApptDate = appointment.appointmentDate?.toDate
+    ? appointment.appointmentDate.toDate().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' })
+    : '';
+  const fillVars = (tpl) => String(tpl || '')
+    .replace(/{projectName}/g, projectName)
+    .replace(/{unitId}/g, appointment.unitId || '')
+    .replace(/{bookerName}/g, appointment.bookerName || '')
+    .replace(/{appointmentDate}/g, formattedApptDate);
+
+  const rawSubject = (typeof request.data.subject === 'string' && request.data.subject.trim())
+    ? request.data.subject : (emailTemplate.subject || '{projectName} {unitId} 未收到驗屋報告通知');
+  const rawBody = (typeof request.data.body === 'string' && request.data.body.trim())
+    ? request.data.body : (emailTemplate.body || '您已完成驗屋，但尚未收到您的驗屋報告。');
+  const rawReminder = (typeof request.data.reminder === 'string')
+    ? request.data.reminder : (emailTemplate.reminder || '');
+
+  const subject = fillVars(rawSubject);
+  const htmlBody = buildUploadReminderEmailHtml({
+    projectName,
+    bodyHtml: fillVars(rawBody),
+    reminderHtml: fillVars(rawReminder),
+    uploadUrl: emailTemplate.uploadUrl
+  });
+
+  // 5. 寄送（密件副本，副本收件者不顯示給客戶）
+  const ccEmails = await getCcRecipients(projectId, "提醒上傳驗屋報告副本");
+  const mailTransport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+
+  try {
+    await mailTransport.sendMail({
+      from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
+      to: appointment.bookerEmail,
+      bcc: ccEmails,
+      subject,
+      html: htmlBody,
+    });
+  } catch (error) {
+    console.error(`[${functionName}] 寄送失敗:`, error);
+    throw new HttpsError('internal', `寄送提醒信失敗: ${error.message}`);
+  }
+
+  // 6. 記錄寄送時間戳記
+  const newTimestamp = admin.firestore.Timestamp.now();
+  await apptRef.update({
+    reminderSentAt: admin.firestore.FieldValue.arrayUnion(newTimestamp)
+  });
+
+  console.log(`[${functionName}] 已寄送單戶提醒至 ${appointment.bookerEmail} (戶別: ${unitId}, 項目: ${bookingType})`);
+  return {
+    status: "success",
+    message: `已寄送提醒至 ${appointment.bookerEmail}`,
+    sentTo: appointment.bookerEmail,
+    sentAt: newTimestamp.toMillis()
+  };
 });
 
 
