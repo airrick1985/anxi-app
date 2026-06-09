@@ -296,7 +296,6 @@
                         :enable-time-picker="false"
                         :month-change-on-scroll="false"
                         @update:model-value="onDateChange"
-                        :min-date="new Date()" 
                       >
                         <template #day="{ date }">
                         <div class="custom-day-cell">
