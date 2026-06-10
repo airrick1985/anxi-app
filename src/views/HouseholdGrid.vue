@@ -232,6 +232,7 @@
                    </template>
                    <template v-slot:append>
                       <v-chip v-if="!msg.isDeleted && msg.status === 'new'" color="error" size="small" class="mr-2">新訊息</v-chip>
+                      <v-chip v-if="msg.createdByAdmin" color="grey" size="small" variant="tonal" class="mr-2">後台建立</v-chip>
                       <!-- 冷刪除按鈕 -->
                       <v-btn
                          v-if="!msg.isDeleted"
@@ -796,6 +797,11 @@
                {{ modalCustomerMessages.length }}
             </v-chip>
             <v-spacer></v-spacer>
+            <v-btn size="x-small" variant="text" color="info"
+               prepend-icon="mdi-message-plus-outline"
+               @click="openAddMessageDialog">
+               新增
+            </v-btn>
             <v-btn v-if="modalCustomerMessages.length > 0" size="x-small" variant="text" color="info"
                prepend-icon="mdi-open-in-new"
                @click="openMessageDialog(selectedHouseholdForDetail)">
@@ -812,6 +818,7 @@
                      <div class="d-flex align-center flex-grow-1 ga-2">
                         <span class="font-weight-bold text-body-2">{{ msg.functionName || '未命名功能' }}</span>
                         <v-chip v-if="msg.status === 'new'" size="x-small" color="error" variant="flat">新</v-chip>
+                        <v-chip v-if="msg.createdByAdmin" size="x-small" color="grey" variant="tonal">後台建立</v-chip>
                         <v-chip v-if="msg.attachments && msg.attachments.length > 0" size="x-small" color="primary" variant="outlined">
                            <v-icon size="x-small">mdi-paperclip</v-icon>{{ msg.attachments.length }}
                         </v-chip>
@@ -851,6 +858,63 @@
    :preselected-unit-id="presetUnitIdForBooking"
    @booking-success="handleAdminBookingSuccess"
 />
+
+<!-- 後台代客戶建立回傳訊息對話框（從戶別整合資訊 Modal 觸發） -->
+<v-dialog v-model="isAddMessageDialogOpen" max-width="640px" persistent scrollable>
+   <v-card>
+      <v-card-title class="bg-info text-white d-flex align-center py-3">
+         <v-icon start>mdi-message-plus-outline</v-icon>
+         <span class="text-h6">新增客戶回傳訊息</span>
+         <v-spacer></v-spacer>
+         <v-btn icon="mdi-close" variant="text" size="small" color="white"
+            :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false"></v-btn>
+      </v-card-title>
+      <v-card-text class="pt-4" style="max-height: 75vh; overflow-y: auto;">
+         <v-alert v-if="customerMessageConfigList.length === 0" type="warning" variant="tonal" density="compact">
+            此建案尚未設定任何「客戶回傳功能」，請先到預約設定建立後再使用。
+         </v-alert>
+         <template v-else>
+            <div class="text-caption text-medium-emphasis mb-3">
+               為戶別 <strong>{{ selectedHouseholdForDetail?.unitId }}</strong> 代客戶建立一筆回傳訊息（不會通知客戶）。
+            </div>
+            <v-select
+               v-model="addMessageConfigId"
+               :items="customerMessageConfigList"
+               item-title="functionName"
+               item-value="id"
+               label="回傳功能"
+               variant="outlined" density="comfortable" class="mb-3" hide-details></v-select>
+            <v-form ref="addMessageFormRef">
+               <DynamicFormRenderer
+                  v-if="addMessageSelectedConfig && addMessageSelectedConfig.customFields && addMessageSelectedConfig.customFields.length > 0"
+                  :key="addMessageConfigId"
+                  :fields="addMessageSelectedConfig.customFields"
+                  v-model="addMessageDynamicData" />
+               <div v-else class="text-caption text-grey mb-2">此功能沒有需要填寫的欄位。</div>
+
+               <div v-if="addMessageSelectedConfig && addMessageSelectedConfig.enableFileUpload" class="mt-2">
+                  <p class="text-subtitle-2 font-weight-bold mb-1">附件上傳（最多10個，單檔30MB）</p>
+                  <v-file-input v-model="addMessageFiles" label="選擇檔案（圖片或PDF）" multiple chips show-size counter
+                     variant="outlined" density="comfortable" accept="image/*,.pdf"
+                     :rules="[
+                        v => !v || v.length <= 10 || '最多上傳 10 個檔案',
+                        v => !v || v.every(f => f.size <= 30 * 1024 * 1024) || '單一檔案不可超過 30MB'
+                     ]"></v-file-input>
+               </div>
+            </v-form>
+         </template>
+      </v-card-text>
+      <v-divider></v-divider>
+      <v-card-actions class="pa-4">
+         <v-spacer></v-spacer>
+         <v-btn variant="text" :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false">取消</v-btn>
+         <v-btn color="info" variant="flat" prepend-icon="mdi-content-save"
+            :loading="isSavingNewMessage"
+            :disabled="!addMessageSelectedConfig"
+            @click="saveNewCustomerMessage">儲存</v-btn>
+      </v-card-actions>
+   </v-card>
+</v-dialog>
 
 <!-- 未上傳驗屋報告提醒：預覽後送出 -->
 <v-dialog v-model="reminderDialog.show" max-width="900px" persistent scrollable>
@@ -960,8 +1024,11 @@ import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.v
 import { formatAuthLetterName, extractAuthLetterDate, getLatestAgentInfo } from '@/utils/authLetterName.js';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
-import { functions } from '@/firebase';
+import { functions, storage } from '@/firebase';
 import { httpsCallable } from 'firebase/functions';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Timestamp } from 'firebase/firestore';
+import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
 
 
 // --- Store 和路由 ---
@@ -1355,6 +1422,29 @@ const showDeletedMessages = ref(false); // 是否顯示已刪除訊息
 const messageActionLoading = ref(null); // 正在操作的訊息 ID
 const isConfirmingHardDeleteMsg = ref(false);
 const hardDeleteMsgTarget = ref(null);
+
+// --- 後台代客戶建立回傳訊息 ---
+const isAddMessageDialogOpen = ref(false);
+const addMessageConfigId = ref(null);
+const addMessageDynamicData = ref({});      // 動態表單值（依 config.customFields，鍵為 field.id）
+const addMessageFiles = ref([]);
+const isSavingNewMessage = ref(false);
+const addMessageFormRef = ref(null);
+
+// 此建案可用的客戶回傳功能設定（與客戶端 BookingPage 一致：列出全部）
+const customerMessageConfigList = computed(() => {
+   const arr = projectConfig.value?.customerMessageConfigs;
+   return Array.isArray(arr) ? arr.filter(c => c && c.id) : [];
+});
+const addMessageSelectedConfig = computed(() =>
+   customerMessageConfigList.value.find(c => c.id === addMessageConfigId.value) || null
+);
+
+// 切換回傳功能時清空已填欄位，避免殘留上一個功能的值
+watch(addMessageConfigId, () => {
+   addMessageDynamicData.value = {};
+   addMessageFiles.value = [];
+});
 
 // 正體中文註解：過濾後的訊息列表（依據 showDeletedMessages 開關決定是否顯示已刪除項目）
 const filteredMessages = computed(() => {
@@ -2225,6 +2315,75 @@ const executeHardDeleteMessage = async () => {
       messageActionLoading.value = null;
       isConfirmingHardDeleteMsg.value = false;
       hardDeleteMsgTarget.value = null;
+   }
+};
+
+// 後台代客戶建立回傳訊息 — 開啟對話框（預設選第一個功能）
+const openAddMessageDialog = () => {
+   addMessageConfigId.value = customerMessageConfigList.value[0]?.id || null;
+   addMessageDynamicData.value = {};
+   addMessageFiles.value = [];
+   isAddMessageDialogOpen.value = true;
+};
+
+// 後台代客戶建立回傳訊息 — 寫回 households.customerMessages（不通知客戶）
+const saveNewCustomerMessage = async () => {
+   const h = selectedHouseholdForDetail.value;
+   const config = addMessageSelectedConfig.value;
+   if (!h || !h._docId || !config) return;
+
+   // 動態表單必填驗證
+   if (addMessageFormRef.value) {
+      const { valid } = await addMessageFormRef.value.validate();
+      if (!valid) return;
+   }
+
+   isSavingNewMessage.value = true;
+   try {
+      // 1. 上傳附件（若該功能有開啟）
+      const uploadedAttachments = [];
+      if (config.enableFileUpload && Array.isArray(addMessageFiles.value) && addMessageFiles.value.length > 0) {
+         for (const file of addMessageFiles.value) {
+            const uniqueId = Date.now() + Math.floor(Math.random() * 1000);
+            const storagePath = `customer-messages/${projectId.value}/${config.id}/${uniqueId}_${file.name}`;
+            const fileRef = storageRef(storage, storagePath);
+            const snapshot = await uploadBytes(fileRef, file);
+            const downloadUrl = await getDownloadURL(snapshot.ref);
+            uploadedAttachments.push({ name: file.name, url: downloadUrl, path: storagePath, size: file.size, type: file.type });
+         }
+      }
+
+      // 2. 組訊息物件（與客戶端提交格式一致，另加 createdByAdmin 標記；status 用 read 不充當未讀新訊息）
+      const newMsg = {
+         id: crypto.randomUUID(),
+         createdAt: Timestamp.now(),
+         configId: config.id,
+         functionName: config.functionName || config.buttonText || '未命名功能',
+         data: { ...(addMessageDynamicData.value || {}) },
+         attachments: uploadedAttachments,
+         status: 'read',
+         createdByAdmin: true
+      };
+
+      // 3. 附加到陣列並寫回（建立新陣列，避免污染共用的 rowData）
+      const existing = Array.isArray(h.customerMessages) ? h.customerMessages : [];
+      const newArr = [...existing, newMsg];
+      await updateHouseholdData(h._docId, { customerMessages: newArr });
+
+      // 4. 本地即時更新（households 監聽稍後也會回填）
+      selectedHouseholdForDetail.value = { ...h, customerMessages: newArr };
+
+      snackbar.text = '已新增客戶回傳訊息';
+      snackbar.color = 'success';
+      snackbar.show = true;
+      isAddMessageDialogOpen.value = false;
+   } catch (err) {
+      console.error('新增客戶回傳訊息失敗:', err);
+      snackbar.text = `新增失敗: ${err.message || err}`;
+      snackbar.color = 'error';
+      snackbar.show = true;
+   } finally {
+      isSavingNewMessage.value = false;
    }
 };
 
