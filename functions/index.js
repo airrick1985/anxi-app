@@ -16317,8 +16317,8 @@ async function _handleAddAppointmentAdmin(data) {
  * [內部函式] 更新一筆預約紀錄，並同步更新戶別摘要
  */
 async function _handleUpdateAppointmentByAdmin(data) {
-  const { appointmentId, bookingPayload, householdDocId, householdPayload, force = false } = data;
-  const functionName = `_handleUpdateAppointmentByAdmin (ID: ${appointmentId}, Force: ${force})`;
+  const { appointmentId, bookingPayload, householdDocId, householdPayload, force = false, silent = false } = data;
+  const functionName = `_handleUpdateAppointmentByAdmin (ID: ${appointmentId}, Force: ${force}, Silent: ${silent})`;
 
   if (!appointmentId) {
     console.error(`[${functionName}] ERROR: Missing appointmentId.`);
@@ -16489,7 +16489,9 @@ async function _handleUpdateAppointmentByAdmin(data) {
       const projectId = originalAppointmentData.projectId;
       console.log(`[${functionName}] Checking if email should be sent... Email: ${bookerEmail}`);
 
-      if (bookerEmail && finalPayload && Object.keys(finalPayload).length > 0) {
+      if (silent) {
+        console.log(`[${functionName}] Silent mode enabled, skipping change notification email.`);
+      } else if (bookerEmail && finalPayload && Object.keys(finalPayload).length > 0) {
         console.log(`[${functionName}] Preparing email content...`);
         const changes = [];
         for (const key in finalPayload) {

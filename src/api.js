@@ -2432,7 +2432,7 @@ export async function addAppointmentAdmin(payload) {
  * [Firebase 版] 更新預約紀錄 (透過 Cloud Function 處理)
  * (V2: 呼叫 inspectionCalendarApi 路由)
  */
-export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false) {
+export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false, silent = false) {
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
@@ -2442,7 +2442,8 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
         bookingPayload: bookingUpdatePayload,
         householdDocId,
         householdPayload: householdUpdatePayload,
-        force: force
+        force: force,
+        silent: silent      // 為 true 時後端不寄「預約異動通知」email（戶別整合資訊 Modal 用）
       }
     });
     return result.data;

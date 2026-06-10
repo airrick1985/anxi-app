@@ -1951,7 +1951,7 @@ const measurePoints = ref([]);             // 當前操作中的座標點
 const currentMousePos = ref(null);         // [新增] 當前滑鼠位置 (用於引導線)
 const completedMeasurements = ref([]);     // 已完成的測量區塊
 const measureResultText = ref('請在圖上點兩點進行校準');
-const measureCalibrateCm = ref(120);       // 校準長度輸入
+const measureCalibrateCm = ref(500);       // 校準長度輸入
 
 // --- 刪除按鈕容器定位 (響應式) ---
 const measureOverlayPos = ref({ left: '0px', top: '0px', width: '0px', height: '0px' });
@@ -2180,7 +2180,7 @@ function calculateMeasureCalibration() {
   if (pts.length < 2) return;
   const p1 = pts[0], p2 = pts[1];
   const distPx = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-  const targetCm = measureCalibrateCm.value || 120;
+  const targetCm = measureCalibrateCm.value || 500;
   measurePxPerCm.value = distPx / targetCm;
   measureResultText.value = `校準完成！(比例: 1cm = ${measurePxPerCm.value.toFixed(2)}px)`;
 }
