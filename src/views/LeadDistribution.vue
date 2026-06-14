@@ -382,6 +382,10 @@
     :row-props="leadRowProps"
     class="rounded-lg elevation-1 d-none d-md-block"
   >
+    <template v-slot:item.date="{ item }">
+      <span class="text-caption">{{ formatLeadDate(item.date) }}</span>
+    </template>
+
     <template v-slot:item.assignedAt="{ item }">
       <span class="text-caption">{{ item.assignedAt ? formatDateTime(item.assignedAt) : '-' }}</span>
     </template>
@@ -520,7 +524,7 @@
 
             <v-col cols="6" class="ps-1 border-left-custom mt-1">
               <div class="info-label text-caption">填表日期</div>
-              <div class="info-value text-caption">{{ item.date || '無日期' }}</div>
+              <div class="info-value text-caption">{{ formatLeadDate(item.date) }}</div>
             </v-col>
 
           </v-row>
@@ -580,7 +584,7 @@
           </v-col>
           <v-col cols="12" class="mt-2">
             <div class="text-caption opacity-70">填表日期</div>
-            <div class="text-body-2 font-weight-bold">{{ currentLead?.date || '無日期' }}</div>
+            <div class="text-body-2 font-weight-bold">{{ formatLeadDate(currentLead?.date) }}</div>
           </v-col>
           
           <v-col cols="12" class="mt-2" v-if="currentLead?.note">
@@ -2684,14 +2688,22 @@ if (namePhoneSearch.value) {
   }
 
   // 7. 填表日期範圍過濾
+  //    ✅ 先用 formatLeadDate 將任意格式（含「2026年6月11日 下午9:46」）正規化為
+  //       yyyy/mm/dd 再比較，避免中文格式與 yyyy/mm/dd 字串比對錯誤
   if (startDate.value) {
     const sDate = startDate.value.replace(/-/g, '/');
-    list = list.filter(l => l.date && l.date >= sDate);
+    list = list.filter(l => {
+      const d = formatLeadDate(l.date);
+      return /^\d{4}\/\d{2}\/\d{2}$/.test(d) && d >= sDate;
+    });
   }
-  
+
   if (endDate.value) {
     const eDate = endDate.value.replace(/-/g, '/');
-    list = list.filter(l => l.date && l.date <= eDate);
+    list = list.filter(l => {
+      const d = formatLeadDate(l.date);
+      return /^\d{4}\/\d{2}\/\d{2}$/.test(d) && d <= eDate;
+    });
   }
 
   // 8. 不考慮原因過濾
@@ -3861,6 +3873,37 @@ const formatDateTime = (ts) => {
     second: '2-digit',
     hour12: false     // 24小時制
   }).replace(/\//g, '/'); // 確保斜線分隔
+};
+
+// ✅ [新增] 填表日期顯示專用：將任意日期格式統一轉為 yyyy/mm/dd
+// 支援：2026年6月11日 下午9:46、2026/1/2、2026-01-02、Date 可解析字串…
+const formatLeadDate = (raw) => {
+  if (!raw) return '無日期';
+  const str = raw.toString().trim();
+
+  // 1. 中文格式：2026年6月11日（忽略後面的時間，如「下午9:46」）
+  const zh = str.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (zh) {
+    return `${zh[1]}/${zh[2].padStart(2, '0')}/${zh[3].padStart(2, '0')}`;
+  }
+
+  // 2. 數字分隔格式：2026/1/2、2026-01-02、2026.1.2
+  const ymd = str.match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if (ymd) {
+    return `${ymd[1]}/${ymd[2].padStart(2, '0')}/${ymd[3].padStart(2, '0')}`;
+  }
+
+  // 3. 退而求其次：交給 Date 解析
+  const d = new Date(str.replace(/-/g, '/'));
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}/${m}/${day}`;
+  }
+
+  // 4. 無法解析則原樣呈現，避免遺失資訊
+  return str;
 };
 
 // ✓ [新增] 模式與檔案控制變數
