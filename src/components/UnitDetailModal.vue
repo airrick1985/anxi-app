@@ -520,6 +520,7 @@
                         <v-list dense>
                           <v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item>
                           <v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item>
+                          <v-list-item title="Email" :subtitle="unitData.buyerEmail || '-'"></v-list-item>
                           <v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item>
                           <v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item>
                           <v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item>
