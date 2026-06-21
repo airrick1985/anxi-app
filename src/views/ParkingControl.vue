@@ -166,6 +166,9 @@
         <template v-slot:item.status_backend="{ value }">
           <v-chip :color="getStatusColor(value)" size="small">{{ value || '可售' }}</v-chip>
         </template>
+        <template v-slot:item.salesperson="{ value }">
+          {{ formatSalespersons(value) }}
+        </template>
         <template v-slot:item.actions="{ item }">
           <v-icon size="small" @click="editItem(item)">mdi-pencil</v-icon>
         </template>
@@ -239,7 +242,7 @@
                 <v-text-field v-model="editedItem.buyerName" label="買方姓名" variant="outlined" density="compact"></v-text-field>
               </v-col>
               <v-col cols="12" sm="4">
-                <v-text-field v-model="editedItem.salesperson" label="銷售人員" variant="outlined" density="compact"></v-text-field>
+                <v-combobox v-model="editedItemSalesperson" label="銷售人員" variant="outlined" density="compact" multiple chips closable-chips clearable hint="可複選多位，或輸入後按 Enter" persistent-hint></v-combobox>
               </v-col>
               
               <v-col cols="12" sm="6">
@@ -358,6 +361,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import { listenToParkingLots, updateParkingLot, uploadParkingLots } from '@/api';
 import * as XLSX from 'xlsx-js-style';
+import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 
 // 接收 projectId 作為 prop
 const props = defineProps({
@@ -444,6 +448,14 @@ let unsubscribe = null;
 const dialog = ref(false);
 const isSaving = ref(false);
 const editedItem = ref({});
+
+// 銷售人員（複選）：相容舊單人字串與陣列，綁定 v-combobox(multiple)
+const editedItemSalesperson = computed({
+  get: () => normalizeSalespersons(editedItem.value?.salesperson),
+  set: (val) => {
+    if (editedItem.value) editedItem.value.salesperson = normalizeSalespersons(val);
+  }
+});
 const originalItem = ref({});
 const uploadDialog = ref(false);
 const uploadedFile = ref(null);

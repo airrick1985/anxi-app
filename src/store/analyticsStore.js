@@ -22,6 +22,7 @@ import {
   calculatePersonnelStats,
   getDateRange,
 } from '@/utils/analyticsCalculations'
+import { salespersonsInclude } from '@/utils/salespersonUtils'
 
 export const useAnalyticsStore = defineStore('analytics', () => {
   // ===============================================
@@ -149,10 +150,10 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     const households = projectData.households || []
     const parkings = projectData.parkings || []
 
-    // 篩選該銷售人員的已售戶別
+    // 篩選該銷售人員的已售戶別（複選：salesperson 為陣列，採包含判斷）
     const filtered = households.filter(
       h =>
-        h.salesperson === personName &&
+        salespersonsInclude(h.salesperson, personName) &&
         h.salesStatus_backend &&
         h.salesStatus_backend !== '' &&
         (!dateRange || new Date(h.payment_contract_date) >= dateRange.start)

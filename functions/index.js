@@ -59,6 +59,8 @@ const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-t
 const handlebars = require("handlebars");
 const fs = require("fs").promises; // 使用 promise 版本的 fs
 const path = require("path");
+// 銷售人員（salesperson / salespersonUserKey）複選共用工具
+const { normalizeSalespersons, formatSalespersons } = require("./utils/salesperson");
 //  1. 在頂部也引入 @puppeteer/browsers 的元件，方便下方使用
 
 
@@ -1228,9 +1230,9 @@ exports.uploadHouseholds = onCall({
         'packageBankAccount',     // 配套款匯款帳號
         'packageBankAccountName', // 配套款戶名
         'constructionMethod',     // 興建方式
-        'propertyType',           // ✅ [新增] 物件類型 (住家/店面/其他)
-        'salesperson',            // ✅ [新增] 銷售人員姓名（強制字串、trim）
-        'salespersonUserKey'      // ✅ [新增] 銷售人員 userKey (= salesPersonnel.phone)，需保留前導 0
+        'propertyType'            // ✅ [新增] 物件類型 (住家/店面/其他)
+        // 註：salesperson / salespersonUserKey 已改為「陣列（複選）」，
+        //     於下方獨立處理，不可在此強制轉字串
       ];
 
       // 正體中文註解：定義「興建方式」的有效選項
@@ -1263,31 +1265,34 @@ exports.uploadHouseholds = onCall({
         }
       }
 
-      // ✅ [新增] 銷售人員 ↔ userKey 一致性處理
+      // ✅ 銷售人員（複選）↔ userKey 一致性處理
+      // salesperson / salespersonUserKey 皆儲存為「字串陣列」。相容舊單人字串與逗號分隔字串。
       // 規則：
-      //  1) Excel 提供 salesperson 欄位且為空 → salesperson 與 salespersonUserKey 同步清為 null
-      //  2) Excel 提供 salesperson 姓名 + 同時提供非空 salespersonUserKey → 兩者皆採用 (trust user input)
-      //  3) Excel 提供 salesperson 姓名、salespersonUserKey 留白或欄位不存在 → 依姓名反查補上
+      //  1) Excel 提供 salesperson 欄位且為空 → salesperson 與 salespersonUserKey 同步清為 []
+      //  2) Excel 提供姓名 + 同時提供非空 salespersonUserKey → userKey 採用使用者輸入（trust input）
+      //  3) Excel 提供姓名、salespersonUserKey 留白或欄位不存在 → 逐一依姓名反查補上對應 userKey
       //  4) Excel 完全沒有 salesperson 欄位 → 不動現有資料 (依 merge: true)
       if (Object.prototype.hasOwnProperty.call(dataToSave, 'salesperson')) {
-        const name = dataToSave.salesperson ? String(dataToSave.salesperson).trim() : '';
-        if (!name) {
-          dataToSave.salesperson = null;
-          dataToSave.salespersonUserKey = null;
+        const names = normalizeSalespersons(dataToSave.salesperson);
+        if (names.length === 0) {
+          dataToSave.salesperson = [];
+          dataToSave.salespersonUserKey = [];
         } else {
-          const providedKey = dataToSave.salespersonUserKey
-            ? String(dataToSave.salespersonUserKey).trim() : '';
-          if (providedKey) {
-            dataToSave.salespersonUserKey = providedKey;
-          } else if (salespersonNameToUserKey.has(name)) {
-            dataToSave.salespersonUserKey = salespersonNameToUserKey.get(name);
+          dataToSave.salesperson = names;
+          const providedKeys = normalizeSalespersons(dataToSave.salespersonUserKey);
+          if (providedKeys.length > 0) {
+            // 使用者有提供 userKey → 直接採用（trust input）
+            dataToSave.salespersonUserKey = providedKeys;
           } else {
-            dataToSave.salespersonUserKey = null;
+            // 依各姓名反查 phone，過濾查不到的
+            dataToSave.salespersonUserKey = names
+              .map(n => (salespersonNameToUserKey.has(n) ? salespersonNameToUserKey.get(n) : null))
+              .filter(Boolean);
           }
         }
       } else if (Object.prototype.hasOwnProperty.call(dataToSave, 'salespersonUserKey')) {
-        // 邊界：只有 userKey 欄位、沒有姓名欄位 → 至少把空字串清為 null，避免污染既有資料
-        if (!dataToSave.salespersonUserKey) dataToSave.salespersonUserKey = null;
+        // 邊界：只有 userKey 欄位、沒有姓名欄位 → 正規化為陣列，避免污染既有資料
+        dataToSave.salespersonUserKey = normalizeSalespersons(dataToSave.salespersonUserKey);
       }
 
       // salesStatus_backend 與 status 必須連動
@@ -2977,7 +2982,7 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
 
     // 字串欄位去除前後空白
     const stringFields = [
-      'salesStatus_backend', 'salesStatus_quote', 'salesperson', 'salespersonUserKey', 'contractType',
+      'salesStatus_backend', 'salesStatus_quote', 'contractType',
       'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'remarks',
       'buyerMailingAddressCity', 'buyerMailingAddressDistrict', 'buyerMailingAddressDetail',
       'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail',
@@ -2994,6 +2999,15 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
           dataToSave[field] = null;
         }
       }
+    }
+
+    // ✅ 銷售人員（複選）：salesperson / salespersonUserKey 正規化為字串陣列
+    //    相容前端傳入陣列、舊單人字串、逗號分隔字串
+    if (Object.prototype.hasOwnProperty.call(dataToSave, 'salesperson')) {
+      dataToSave.salesperson = normalizeSalespersons(dataToSave.salesperson);
+    }
+    if (Object.prototype.hasOwnProperty.call(dataToSave, 'salespersonUserKey')) {
+      dataToSave.salespersonUserKey = normalizeSalespersons(dataToSave.salespersonUserKey);
     }
 
     // salesStatus_backend 與 status 必須連動
@@ -3069,7 +3083,9 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
             buyerUnitId: unitId, // 關聯到戶別
             price_transaction: parking.price_transaction ? Number(parking.price_transaction) : null,
             remarks: parking.remarks || '',
-            salesperson: parking.salesperson || null,
+            // 車位銷售人員（複選）：以戶別 salesperson 為準，正規化為陣列
+            salesperson: normalizeSalespersons(parking.salesperson || dataToSave.salesperson),
+            salespersonUserKey: normalizeSalespersons(parking.salespersonUserKey || dataToSave.salespersonUserKey),
             status: parking.status || null,
             status_backend: parking.status_backend || null,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -3351,7 +3367,8 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
       salesStatus_backend: null,
       status: null, // 與 salesStatus_backend 連動
       salesStatus_quote: null,
-      salesperson: null,
+      salesperson: [],          // 銷售人員（複選）清空
+      salespersonUserKey: [],   // 對應 userKey 一併清空
 
       // 其他
       referrerName: null,
@@ -3387,7 +3404,8 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
         buyerName: null,
         buyerUnitId: null,
         remarks: "",
-        salesperson: null,
+        salesperson: [],          // 銷售人員（複選）清空
+        salespersonUserKey: [],   // 對應 userKey 一併清空
         status: null,
         status_backend: null,
         price_transaction: null,
@@ -3637,8 +3655,8 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
         buyerPhone: data.buyerPhone || '',
         buyerIdNumber: data.buyerIdNumber || '',
         buyerEmail: data.buyerEmail || '',
-        // 銷售資訊
-        salesperson: data.salesperson || '',
+        // 銷售資訊（複選：正規化為陣列）
+        salesperson: normalizeSalespersons(data.salesperson),
         salesStatus_backend: data.salesStatus_backend || '',
         contractType: data.contractType || '',
         // 面積資訊
@@ -3904,6 +3922,9 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (reque
     delete householdRestoreData._cancellationMeta;
     delete householdRestoreData.parkingData;
     householdRestoreData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    // 銷售人員（複選）：備份可能是舊單人字串或新陣列，復原時統一正規化為陣列
+    householdRestoreData.salesperson = normalizeSalespersons(cancelledData.salesperson);
+    householdRestoreData.salespersonUserKey = normalizeSalespersons(cancelledData.salespersonUserKey);
 
     console.log(`[${functionName}] 準備復原 ${Object.keys(householdRestoreData).length} 個戶別欄位`);
     console.log(`[${functionName}] 準備復原 ${parkingBackup.length} 筆車位資料`);
@@ -3927,7 +3948,8 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (reque
         buyerUnitId: unitId,
         price_transaction: parkingData.price_transaction || null,
         remarks: parkingData.remarks || '',
-        salesperson: parkingData.salesperson || null,
+        salesperson: normalizeSalespersons(parkingData.salesperson),
+        salespersonUserKey: normalizeSalespersons(parkingData.salespersonUserKey),
         status: parkingData.status || null,
         status_backend: parkingData.status_backend || null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -17567,7 +17589,9 @@ exports.generatePaymentSheet = onCall({
 
     // --- 3. 複製模板檔案 ---
     const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
-    const newFileName = `${today}-${projectName}-付款表-${unitId}-${salespersonName || 'N/A'}`;
+    // 銷售人員（複選）：以逗號分隔全部，相容單人字串與陣列
+    const salespersonNameText = formatSalespersons(salespersonName, ',', '');
+    const newFileName = `${today}-${projectName}-付款表-${unitId}-${salespersonNameText || 'N/A'}`;
 
     console.log(`[${functionName}] 正在複製模板 ${templateId} 到資料夾 ${targetFolderId}...`);
 
@@ -17630,8 +17654,8 @@ exports.generatePaymentSheet = onCall({
     setData('戶別', unitId);
     setData('合約方式', data.contractType);
     setData('是否首購', data.isFirstTimeBuyer); // (setData 函數會處理 boolean)
-    setData('銷售人員', salespersonName);
-    setData('聯絡電話', data.salespersonPhone);
+    setData('銷售人員', salespersonNameText);
+    setData('聯絡電話', formatSalespersons(data.salespersonPhone, ',', ''));
     setData('房屋成交', data.housePrice);
     setData('配套總價', data.packageDealPrice);
     setData('配套價', data.packagePrice);
@@ -23745,6 +23769,10 @@ exports.syncSalesHouseholdsToSheet = onCall({
       const rowData = headers.map(key => {
         let val = row[key];
         if (val === undefined || val === null) return '';
+        // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
+        if (key === 'salesperson' || key === 'salespersonUserKey') {
+          return formatSalespersons(val, ',', '');
+        }
         if (typeof val === 'object') return JSON.stringify(val);
         return String(val);
       });
@@ -23990,6 +24018,10 @@ function _flattenSalesHouseholdForSheet(h) {
     flat['status'] = h.salesStatus_backend;
   }
 
+  // 銷售人員（複選）：陣列以逗號分隔，避免被 _formatValue 輸出成 JSON 字串
+  flat['salesperson'] = formatSalespersons(h.salesperson, ',', '');
+  flat['salespersonUserKey'] = formatSalespersons(h.salespersonUserKey, ',', '');
+
   // 衍生欄位即時計算（與前端 SalesControlSystem.vue computed 邏輯一致）
   // Why: 這些欄位不應儲存在 Firestore，避免與原始欄位不同步；改由同步時計算
   const parkingArr = Array.isArray(h['持有車位']) ? h['持有車位'] : [];
@@ -24055,6 +24087,10 @@ function _flattenCancelledPurchaseForSheet(doc) {
   if (Array.isArray(doc.cancelReasons)) {
     flat['cancelReasons'] = doc.cancelReasons.join(', ');
   }
+
+  // 銷售人員（複選）：陣列以逗號分隔，避免被序列化成 JSON 字串
+  flat['salesperson'] = formatSalespersons(doc.salesperson, ',', '');
+  flat['salespersonUserKey'] = formatSalespersons(doc.salespersonUserKey, ',', '');
 
   // 處理首購 Boolean
   if (typeof doc.isFirstTimeBuyer === 'boolean') {
@@ -24189,6 +24225,10 @@ exports.syncCancelledPurchasesToSheet = onCall({
       const rowData = headers.map(key => {
         let val = row[key];
         if (val === undefined || val === null) return '';
+        // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
+        if (key === 'salesperson' || key === 'salespersonUserKey') {
+          return formatSalespersons(val, ',', '');
+        }
         if (typeof val === 'object') return JSON.stringify(val);
         return String(val);
       });

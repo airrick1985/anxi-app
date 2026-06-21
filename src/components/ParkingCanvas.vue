@@ -433,7 +433,7 @@
               </div>
               <div class="info-row">
                 <span class="info-label">銷售人員</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.salesperson || '—' }}</span>
+                <span class="info-value">{{ formatSalespersons(selectedDetailSpot.parkingData.salesperson, '、', '—') }}</span>
               </div>
             </div>
           </template>
@@ -464,6 +464,7 @@ import {
   mdiPlus,  
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
+import { formatSalespersons } from '@/utils/salespersonUtils';
 
 export default {
   name: 'ParkingCanvas',
@@ -955,7 +956,7 @@ export default {
 
     const getDisplayFields = (mode, data) => {
       if (!data) return [{ key: 'number', value: 'N/A' }]; 
-      const fields = mode === 'backend' ? [{ key: 'number', value: data.number }, { key: 'price', value: data.price_transaction || data.price_list }, { key: 'buyerUnitId', value: data.buyerUnitId }, { key: 'buyerName', value: data.buyerName }, { key: 'salesperson', value: data.salesperson }, { key: 'size', value: data.size }, { key: 'type', value: data.type }] : data.status === '已售' ? [{ key: 'number', value: data.number }, { key: 'status', value: data.status }] : [{ key: 'number', value: data.number }, { key: 'price', value: data.price_list }, { key: 'size', value: data.size }, { key: 'type', value: data.type }];
+      const fields = mode === 'backend' ? [{ key: 'number', value: data.number }, { key: 'price', value: data.price_transaction || data.price_list }, { key: 'buyerUnitId', value: data.buyerUnitId }, { key: 'buyerName', value: data.buyerName }, { key: 'salesperson', value: formatSalespersons(data.salesperson, '、', '') }, { key: 'size', value: data.size }, { key: 'type', value: data.type }] : data.status === '已售' ? [{ key: 'number', value: data.number }, { key: 'status', value: data.status }] : [{ key: 'number', value: data.number }, { key: 'price', value: data.price_list }, { key: 'size', value: data.size }, { key: 'type', value: data.type }];
       return fields.filter(f => f.value);
     }
     
@@ -1105,6 +1106,7 @@ export default {
       containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, toolbarStyle, onToolbarDragStart, zoomControlsStyle, onZoomControlsDragStart, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, floorChipGroupStyle, onFloorChipGroupDragStart, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
+      formatSalespersons,
       mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus
     }
   }

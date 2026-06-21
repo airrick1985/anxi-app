@@ -24,14 +24,19 @@
               persistent-hint
             ></v-text-field>
             
-            <v-select 
-              label="銷售人員" 
-              :items="personnelOptions" 
-              v-model="editableData.salesperson" 
+            <v-select
+              label="銷售人員"
+              :items="personnelOptions"
+              v-model="salespersonList"
               class="mb-4"
               item-title="name"
               item-value="name"
+              multiple
+              chips
+              closable-chips
               clearable
+              hint="可複選多位銷售人員"
+              persistent-hint
             ></v-select> <v-combobox
               label="戶別圖片"
               v-model="editableData.salesImages"
@@ -409,6 +414,7 @@ import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
+import { normalizeSalespersons } from '@/utils/salespersonUtils';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 
 const props = defineProps({
@@ -484,6 +490,17 @@ const buyerPhonesList = computed({
   },
   set: (val) => {
     editableData.value.buyerPhone = Array.isArray(val) ? val.join(',') : val;
+  }
+});
+
+// ✅ 銷售人員複選：相容舊單人字串與新陣列，綁定 v-select(multiple)
+// 寫回 editableData.salesperson 一律存為陣列
+const salespersonList = computed({
+  get: () => normalizeSalespersons(editableData.value?.salesperson),
+  set: (val) => {
+    if (editableData.value) {
+      editableData.value.salesperson = normalizeSalespersons(val);
+    }
   }
 });
 
@@ -565,14 +582,21 @@ watch(() => props.modelValue.buyerDateOfBirth, (newVal) => {
 
 // ✅ [新增] 監聽銷售人員選擇變化，同步寫入 salespersonUserKey (來源：salesPersonnel.phone)
 // Why: salesHouseholds 原本只存姓名字串，造成同名衝突 / 改名失聯 / 反查效率差
+// 複選後：salesperson 為姓名陣列，salespersonUserKey 同步為對應 phone 陣列（順序一致、過濾無效值）
 watch(
   [() => editableData.value?.salesperson, () => props.personnelOptions],
-  ([name, options]) => {
+  ([names, options]) => {
     if (!editableData.value) return;
-    const matched = name ? (options || []).find(p => p?.name === name) : null;
-    const newKey = matched?.phone || null;
-    if (editableData.value.salespersonUserKey !== newKey) {
-      editableData.value.salespersonUserKey = newKey;
+    const nameArr = normalizeSalespersons(names);
+    const opts = options || [];
+    const newKeys = nameArr
+      .map(name => opts.find(p => p?.name === name)?.phone || null)
+      .filter(Boolean);
+    const current = Array.isArray(editableData.value.salespersonUserKey)
+      ? editableData.value.salespersonUserKey
+      : (editableData.value.salespersonUserKey ? [editableData.value.salespersonUserKey] : []);
+    if (JSON.stringify(current) !== JSON.stringify(newKeys)) {
+      editableData.value.salespersonUserKey = newKeys;
     }
   },
   { immediate: true }

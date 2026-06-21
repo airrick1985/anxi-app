@@ -116,6 +116,7 @@
 
 <script setup>
 import { defineProps, defineEmits, computed, onBeforeUnmount } from 'vue';
+import { normalizeSalespersons } from '@/utils/salespersonUtils';
 import { Doughnut, Bar } from 'vue-chartjs';
 import {
   Chart as ChartJS,
@@ -154,12 +155,19 @@ const reasonStats = computed(() => {
     .sort((a, b) => b[1] - a[1]);
 });
 
-// 業務員退戶統計
+// 業務員退戶統計（複選：平均分配制，一戶 N 人各分攤 1/N）
 const salespersonStats = computed(() => {
   const counts = {};
   validItems.value.forEach(item => {
-    const name = item.salesperson || '未知';
-    counts[name] = (counts[name] || 0) + 1;
+    const persons = normalizeSalespersons(item.salesperson);
+    if (persons.length === 0) {
+      counts['未知'] = (counts['未知'] || 0) + 1;
+      return;
+    }
+    const share = 1 / persons.length;
+    persons.forEach(name => {
+      counts[name] = (counts[name] || 0) + share;
+    });
   });
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1]);

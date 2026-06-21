@@ -218,6 +218,7 @@ import { db } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import TwCities from '@/assets/TwCities.json';
 import FormRenderItem from '@/components/FormRenderItem.vue';
+import { formatSalespersons } from '@/utils/salespersonUtils';
 import liff from '@line/liff';
 
 const route = useRoute();
@@ -492,7 +493,7 @@ const autoFillFields = () => {
          case 'buyerPhone': val = data.buyerPhone || ''; break;
          case 'buyerAddress': val = formatAddress(data) || ''; break;
          case 'buyerIdNumber': val = data.buyerIdNumber || ''; break;
-         case 'salesPerson': val = data.salesperson || ''; break;
+         case 'salesPerson': val = formatSalespersons(data.salesperson, '、', ''); break;
          case 'unitId': val = data.unitId || ''; break;
        }
        formData[f.id] = val;

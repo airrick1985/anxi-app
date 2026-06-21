@@ -492,7 +492,7 @@
                         :class="status === '退戶' ? 'unit-item cancelled-unit-item' : 'unit-item'"
                         @click="openUnitDetail(unit, status)"
                       >
-                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping) }}萬/坪)-{{ unit.salesperson }}</span>
+                        <span class="unit-info">{{ unit.unitId }}({{ formatAmount(unit.price_transaction_total) }}萬 / {{ calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping) }}萬/坪)-{{ formatSalespersons(unit.salesperson) }}</span>
                         <div v-if="status === '退戶'" class="cancelled-reason-text">
                           <span class="reason-label">退戶原因</span>
                           <span class="reason-value">{{ unit.cancelReasons && unit.cancelReasons.length ? unit.cancelReasons.join('、') : '未記錄' }}</span>
@@ -583,7 +583,7 @@
             <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.buyerName || '—' }}</v-col>
 
             <v-col cols="6"><span class="text-grey-darken-1">銷售人員</span></v-col>
-            <v-col cols="6" class="text-right font-weight-medium">{{ cancelledDetail.salesperson || '—' }}</v-col>
+            <v-col cols="6" class="text-right font-weight-medium">{{ formatSalespersons(cancelledDetail.salesperson, '、', '—') }}</v-col>
 
             <v-col cols="6"><span class="text-grey-darken-1">成交總價</span></v-col>
             <v-col cols="6" class="text-right font-weight-medium">{{ formatAmount(cancelledDetail.price_transaction_total) }} 萬</v-col>
@@ -707,6 +707,7 @@ import {
   calculateVipGuestStats,
   getDateRange,
 } from '@/utils/analyticsCalculations'
+import { normalizeSalespersons, formatSalespersons, salespersonShare } from '@/utils/salespersonUtils'
 import { fetchVipGuests, analyzeCustomerStatus, getCancelledPurchases } from '@/api'
 import html2canvas from 'html2canvas'
 import { saveAs } from 'file-saver'
@@ -975,7 +976,7 @@ const generateStatisticsText = () => {
           parkingText = parkings.map(p => `-${p.spotId}(${Math.floor(p.price_transaction)}萬)`).join('')
         }
 
-        text += `  • ${unit.unitId}(${Math.floor(unit.price_transaction_total)}萬 / ${unitPrice}萬/坪)${parkingText}-${unit.salesperson}\n`
+        text += `  • ${unit.unitId}(${Math.floor(unit.price_transaction_total)}萬 / ${unitPrice}萬/坪)${parkingText}-${formatSalespersons(unit.salesperson)}\n`
       })
     })
   }
@@ -1063,7 +1064,7 @@ const generateSimpleText = () => {
           if (units && units.length > 0) {
             // 為每個戶別添加銷售人員信息
             const unitDetails = units.map(u => {
-              const salesperson = u.salesperson || '未知'
+              const salesperson = formatSalespersons(u.salesperson, '、', '未知')
               return `${u.unitId}(${salesperson})`
             }).join('、')
             text += `${status}:${unitDetails}\n`
@@ -1384,14 +1385,18 @@ const loadStatistics = async () => {
           return sum + housePrice + parkingSum
         }, 0)
 
-        // 按業務員分組計算退戶數
+        // 按業務員分組計算退戶數（複選：平均分配制，一戶 N 人各分攤 1/N）
         const byPersonnel = {}
         filtered.forEach(item => {
-          const salesperson = item.salesperson || '未知'
-          if (!byPersonnel[salesperson]) {
-            byPersonnel[salesperson] = 0
+          const persons = normalizeSalespersons(item.salesperson)
+          if (persons.length === 0) {
+            byPersonnel['未知'] = (byPersonnel['未知'] || 0) + 1
+            return
           }
-          byPersonnel[salesperson]++
+          const share = salespersonShare(item.salesperson) // 1 / N
+          persons.forEach(p => {
+            byPersonnel[p] = (byPersonnel[p] || 0) + share
+          })
         })
 
         cancelledStats.value = { count: filtered.length, amount: totalAmount, byPersonnel }
@@ -1417,7 +1422,7 @@ const loadStatistics = async () => {
                                      ((item.parkingDetails || []).reduce((s, p) => s + (Number(p.price_transaction) || 0), 0)),
             price_transaction_house: item.price_transaction_house || 0,
             area_house_ping: item.area_house_ping || 0,
-            salesperson: item.salesperson || '—',
+            salesperson: formatSalespersons(item.salesperson, '、', '—'),
             // 📌 退戶專屬資訊
             isCancelled: true,
             cancelReasons: Array.isArray(item.cancelReasons) ? item.cancelReasons : [],

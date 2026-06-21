@@ -138,6 +138,9 @@
                                 item-title="name"
                                 item-value="name"
                                 :return-object="false"
+                                multiple
+                                chips
+                                closable-chips
                                 clearable
                             ></v-combobox>
                         </v-col>
@@ -528,6 +531,7 @@ import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
 import { formatInTimeZone } from 'date-fns-tz';
 import { generatePaymentSheet, exportSheetToPdf } from '@/api.js';
+import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 
 import { useProjectStore } from '@/store/projectStore';
 
@@ -579,11 +583,13 @@ const salesOptionsData = computed(() => props.allData['合約方式及是否首�
 
 
 const salesPhone = computed(() => {
-    if (!formData.value || !formData.value.銷售) return '';
-    
-
-    const personnel = personnelOptions.value.find(p => p.name === formData.value.銷售);
-    return personnel ? personnel.phone : '';
+    // 銷售人員（複選）：逐一反查 phone，逗號分隔
+    const names = normalizeSalespersons(formData.value?.銷售);
+    if (names.length === 0) return '';
+    return names
+        .map(name => personnelOptions.value.find(p => p.name === name)?.phone || '')
+        .filter(Boolean)
+        .join(',');
 });
 
 const ownedParkingSpots = computed(() => {
@@ -724,9 +730,8 @@ watch(() => props.show, (newVal) => {
 
             // ✓ 修正「銷售人員」(您回報的問題)
             // 正體中文註解：將 'salesperson' (英文 key) 的值，賦值給 '銷售' (中文 key)
-            if (props.unitData.salesperson) {
-                initialData['銷售'] = props.unitData.salesperson || '';
-            }
+            // 銷售人員（複選）：正規化為陣列（相容舊單人字串）
+            initialData['銷售'] = normalizeSalespersons(props.unitData.salesperson);
 
             // 1. 合約方式 (英文 key 'contractType' 映射到 中文 key '合約方式')
         if (props.unitData.contractType) {
@@ -863,7 +868,7 @@ const confirmSummaryItems = computed(() => {
         {
             label: '銷售人員',
             icon: 'mdi-account-outline',
-            value: data.銷售 || '-'
+            value: formatSalespersons(data.銷售)
         }
     ];
 });
@@ -970,7 +975,8 @@ async function handleGenerateDocument() {
 function prepareAndShowEmailModal() {
     console.log("準備彈出 Email 視窗...");
     const salesPersonnel = props.allData['銷售人員'] || [];
-    const currentSalesperson = formData.value.銷售;
+    // 銷售人員（複選）：當前戶別的所有銷售人員都視為「當前」
+    const currentSalespersons = normalizeSalespersons(formData.value.銷售);
 
     const recipients = salesPersonnel.map(person => {
         const name = person['銷售人員'];
@@ -978,7 +984,7 @@ function prepareAndShowEmailModal() {
 
         // 檢查此人是否需要被預設勾選
         const isPreset = person['付款表預選'] === 'Y';
-        const isCurrent = name === currentSalesperson;
+        const isCurrent = currentSalespersons.includes(name);
         
         return {
             name: name,

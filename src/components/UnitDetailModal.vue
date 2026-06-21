@@ -500,7 +500,7 @@
 
                           <v-list-item title="物件類型" :subtitle="unitData.propertyType || '-'"></v-list-item>
 
-                          <v-list-item title="銷售人員" :subtitle="unitData.salesperson || '-'"></v-list-item>
+                          <v-list-item title="銷售人員" :subtitle="formatSalespersons(unitData.salesperson)"></v-list-item>
                           <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
                           <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
                           <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
@@ -873,6 +873,7 @@ import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
+import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
@@ -985,7 +986,7 @@ const cancelDialogMessage = computed(() => {
 
   const unitId = `【${props.unitData.unitId}】`;
   const buyerName = props.unitData.buyerName || '—';
-  const salesperson = props.unitData.salesperson || '—';
+  const salesperson = formatSalespersons(props.unitData.salesperson, '、', '—');
   const parkingInfo = props.unitData['持有車位'] && props.unitData['持有車位'].length > 0
     ? props.unitData['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、')
     : '無';
@@ -2656,8 +2657,8 @@ async function syncOwnedParkingFields(unitId) {
     if (parking.id) {
       await updateParkingLot(parking.id, {
         status_backend: data.salesStatus_backend || null,
-        salesperson: data.salesperson || null,
-        salespersonUserKey: data.salespersonUserKey || null,
+        salesperson: normalizeSalespersons(data.salesperson),
+        salespersonUserKey: normalizeSalespersons(data.salespersonUserKey),
         buyerName: data.buyerName || null,
         updatedAt: new Date()
       });
@@ -2679,8 +2680,8 @@ async function commitParkingChanges(unitId, parkingList) {
         price_transaction: null,
         status: null,
         status_backend: null,
-        salesperson: null,
-        salespersonUserKey: null,
+        salesperson: [],
+        salespersonUserKey: [],
         remarks: null,
         updatedAt: new Date()
       });
@@ -2697,8 +2698,8 @@ async function commitParkingChanges(unitId, parkingList) {
         price_transaction: newParking.price_transaction || null,
         status: '已售',
         status_backend: editingData.value?.salesStatus_backend || null,
-        salesperson: editingData.value?.salesperson || null,
-        salespersonUserKey: editingData.value?.salespersonUserKey || null,
+        salesperson: normalizeSalespersons(editingData.value?.salesperson),
+        salespersonUserKey: normalizeSalespersons(editingData.value?.salespersonUserKey),
         remarks: newParking.remarks || null,
         updatedAt: new Date()
       });
@@ -2774,8 +2775,8 @@ const downloadExcel = () => {
     '總底價(萬)': formatNumber(totalFloorPrice.value),
     '溢差價(萬)': formatNumber(pricePremium.value),
     '銷控後台狀態': sourceData.salesStatus_backend || '',
-    '銷售人員': sourceData.salesperson || '',
-    '銷售人員userKey': sourceData.salespersonUserKey || '',
+    '銷售人員': formatSalespersons(sourceData.salesperson, ',', ''),
+    '銷售人員userKey': formatSalespersons(sourceData.salespersonUserKey, ',', ''),
     '小訂日期': formatDate(sourceData.payment_deposit_date),
 
     '補足日期': formatDate(sourceData.payment_complete_date) || formatDate(sourceData.payment_top_up_date), // 嘗試多種可能命名

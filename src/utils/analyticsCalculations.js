@@ -13,6 +13,8 @@
  * @created 2026-04-03
  */
 
+import { normalizeSalespersons, salespersonsInclude, salespersonShare } from './salespersonUtils'
+
 /**
  * 將各種日期格式轉換為 Date 對象
  */
@@ -508,7 +510,8 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
  */
 export const calculatePersonnelStats = (households, parkings, personnel, dateRange = null) => {
   // 篩選已售狀態的戶別（根據日期欄位判斷）
-  let filtered = households.filter(h => h.salesperson && isSoldHousehold(h))
+  // 銷售人員（複選）：salesperson 為陣列，至少有一位才納入
+  let filtered = households.filter(h => normalizeSalespersons(h.salesperson).length > 0 && isSoldHousehold(h))
 
   // 如果有日期範圍，進一步篩選該範圍內有成交的戶別
   if (dateRange) {
@@ -533,15 +536,19 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
   const soldHouseholds = filtered
 
   const stats = personnel.map(person => {
-    const personHouseholds = soldHouseholds.filter(h => h.salesperson === person.name)
+    const personHouseholds = soldHouseholds.filter(h => salespersonsInclude(h.salesperson, person.name))
 
     // 按狀態分組（同一戶別可能在多個狀態中出現）
     const byStatus = {}
     const byStatusAmount = {}
 
+    // ✅ 平均分配制：一戶有 N 位銷售人員時，每人各分攤 1/N
+    //    確保各人員加總後等於整體實際戶數/金額（不重複計算）
+
     personHouseholds.forEach(h => {
       const statuses = getHouseholdStatuses(h)
       const totalPrice = getUnitTotalTransactionPrice(h, parkings)
+      const share = salespersonShare(h.salesperson) // 1 / 該戶銷售人員數
 
       // 針對每個狀態分別計算
       statuses.forEach(status => {
@@ -554,23 +561,26 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
 
         if (!shouldCount) return
 
-        byStatus[status] = (byStatus[status] || 0) + 1
-        byStatusAmount[status] = (byStatusAmount[status] || 0) + totalPrice
+        byStatus[status] = (byStatus[status] || 0) + share
+        byStatusAmount[status] = (byStatusAmount[status] || 0) + totalPrice * share
       })
     })
 
-    // 已售戶數 = 該人員的不重複已售戶別數（已在上面依日期範圍篩選）
-    const soldCount = personHouseholds.length
-
-    // 銷售金額 = 該人員所有成交戶別的總金額（去重，已在上面依日期範圍篩選）
-    const totalAmount = personHouseholds.reduce(
-      (sum, h) => sum + getUnitTotalTransactionPrice(h, parkings),
+    // 已售戶數 = 該人員分攤的已售戶數合計（平均分配，可能為小數）
+    const soldCount = personHouseholds.reduce(
+      (sum, h) => sum + salespersonShare(h.salesperson),
       0
     )
 
-    // 溢差價 = 該人員的溢差價合計（已在上面依日期範圍篩選）
+    // 銷售金額 = 該人員所有成交戶別的分攤金額合計
+    const totalAmount = personHouseholds.reduce(
+      (sum, h) => sum + getUnitTotalTransactionPrice(h, parkings) * salespersonShare(h.salesperson),
+      0
+    )
+
+    // 溢差價 = 該人員的分攤溢差價合計
     const premiumAmount = personHouseholds.reduce(
-      (sum, h) => sum + getUnitPremium(h, parkings),
+      (sum, h) => sum + getUnitPremium(h, parkings) * salespersonShare(h.salesperson),
       0
     )
 
@@ -579,7 +589,7 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
       soldCount,
       totalAmount,
       premiumAmount,
-      householdCount: personHouseholds.length,
+      householdCount: soldCount,
       byStatus,
       byStatusAmount,
     }

@@ -7,6 +7,7 @@
 const axios = require('axios');
 const nodemailer = require('nodemailer');
 const { Firestore, FieldPath } = require('@google-cloud/firestore');
+const { normalizeSalespersons } = require('../utils/salesperson');
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 const PUBLIC_HOST = 'https://anxismart.com';
@@ -206,8 +207,10 @@ async function resolveRecipients({
   if (notifyUnitSalesPerson && unitId) {
     try {
       const householdDoc = await db.collection('salesHouseholds').doc(`${projectId}_${unitId}`).get();
-      const salesKey = householdDoc.exists ? (householdDoc.data().salespersonUserKey || '') : '';
-      if (salesKey) {
+      // 銷售人員（複選）：salespersonUserKey 可能為陣列或舊單人字串，逐一通知所有人
+      const rawKeys = householdDoc.exists ? householdDoc.data().salespersonUserKey : null;
+      const salesKeys = normalizeSalespersons(rawKeys);
+      for (const salesKey of salesKeys) {
         // 該戶銷售凌駕抑制名單：直接加入並覆蓋 source
         candidateKeys.add(salesKey);
         sourceByKey.set(salesKey, 'unitSalesPerson');

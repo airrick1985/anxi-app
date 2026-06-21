@@ -518,6 +518,10 @@
           </span>
         </template>
 
+        <template v-slot:item.salesperson="{ item }">
+          {{ formatSalespersons(item.salesperson) }}
+        </template>
+
           <template v-slot:header.isPreferredPayment="{ column }">
             <div class="d-flex flex-column justify-center align-center" style="height: 100%;">
               <span class="text-caption font-weight-bold mb-1">{{ column.title }}</span>
@@ -1410,7 +1414,8 @@ import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
-import { mdiViewDashboardVariantOutline } from '@mdi/js'; 
+import { mdiViewDashboardVariantOutline } from '@mdi/js';
+import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
@@ -1555,10 +1560,9 @@ const filteredTableItems = computed(() => {
             if (!matchStatus) return false;
         }
 
-        // 6. 銷售人員 (多選)
+        // 6. 銷售人員 (多選)：戶別 salesperson 已改為陣列，採交集判斷
         if (filters.salesperson && filters.salesperson.length > 0) {
-            
-            if (!item.salesperson || !filters.salesperson.includes(item.salesperson)) return false;
+            if (!salespersonsIntersect(item.salesperson, filters.salesperson)) return false;
         }
 
         // 7. 買方姓名 (模糊搜尋)
@@ -2680,7 +2684,11 @@ const exportToExcel = () => {
             }
 
             if (key === 'salesImages' && Array.isArray(value)) {
-                return value.join(','); 
+                return value.join(',');
+            }
+            // 銷售人員（複選）：陣列以逗號分隔匯出，重新上傳時再解析回陣列
+            if (key === 'salesperson' || key === 'salespersonUserKey') {
+                return formatSalespersons(value, ',', '');
             }
             if (value instanceof Date) {
                 return value.toISOString().split('T')[0];
@@ -2822,6 +2830,11 @@ const handleFileChange = () => {
                                 day: Number(match[3])
                             };
                         }
+                    }
+
+                    // ✅ [新增] 銷售人員（複選）：逗號分隔字串解析回陣列
+                    if (englishKey === 'salesperson' || englishKey === 'salespersonUserKey') {
+                        value = normalizeSalespersons(value);
                     }
 
                     newRow[englishKey] = value;

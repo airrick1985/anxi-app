@@ -103,6 +103,10 @@
               </div>
             </template>
 
+            <template v-slot:item.salesperson="{ item }">
+              {{ formatSalespersons(item.salesperson, '、', '—') }}
+            </template>
+
             <!-- 退戶原因 chips -->
             <template v-slot:item.cancelReasons="{ item }">
               <template v-if="item.cancelReasons && item.cancelReasons.length > 0">
@@ -181,7 +185,7 @@
                             <tr><td class="label-cell">電話</td><td>{{ item.buyerPhone || '—' }}</td></tr>
                             <tr><td class="label-cell">身分證</td><td>{{ item.buyerIdNumber || '—' }}</td></tr>
                             <tr><td class="label-cell">Email</td><td>{{ item.buyerEmail || '—' }}</td></tr>
-                            <tr><td class="label-cell">業務</td><td>{{ item.salesperson || '—' }}</td></tr>
+                            <tr><td class="label-cell">業務</td><td>{{ formatSalespersons(item.salesperson, '、', '—') }}</td></tr>
                             <tr><td class="label-cell">合約類型</td><td>{{ item.contractType || '—' }}</td></tr>
                           </tbody>
                         </v-table>
@@ -716,6 +720,7 @@ import { getCancelledPurchases, restoreCancelledPurchase, updateCancelReason, up
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
+import { formatSalespersons } from '@/utils/salespersonUtils';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -788,7 +793,7 @@ const filteredItems = computed(() => {
     const searchFields = [
       item.unitId,
       item.buyerName,
-      item.salesperson,
+      formatSalespersons(item.salesperson, ' ', ''),
       item.operatorName,
       item.area_house_ping,
       formatDate(item.cancellationDate),
@@ -954,7 +959,7 @@ function handleRestore(item) {
   const totalPrice = calculateTotalTransactionPrice(item);
   confirmDialog.message = `確定要將 <strong>【${item.unitId}】</strong> 的退戶資料復原嗎？<br><br>` +
     `買方：<strong>${item.buyerName || '—'}</strong><br>` +
-    `銷售人員：<strong>${item.salesperson || '—'}</strong><br>` +
+    `銷售人員：<strong>${formatSalespersons(item.salesperson, '、', '—')}</strong><br>` +
     `成交總價：<strong>${formatPrice(totalPrice)} 萬</strong><br>` +
     `車位：<strong>${item.parkingCount} 個</strong><br><br>` +
     `系統會將備份資料回寫至原始戶別，並恢復車位關聯。`;

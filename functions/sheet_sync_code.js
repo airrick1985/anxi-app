@@ -494,6 +494,10 @@ exports.syncSalesHouseholdsToSheet = onCall({
             const rowData = headers.map(key => {
                 let val = row[key];
                 if (val === undefined || val === null) return '';
+                // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
+                if (key === 'salesperson' || key === 'salespersonUserKey') {
+                    return Array.isArray(val) ? val.filter(Boolean).join(',') : String(val);
+                }
                 if (typeof val === 'object') return JSON.stringify(val);
                 return String(val);
             });

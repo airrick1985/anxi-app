@@ -99,6 +99,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { askSalesBotAPI, fetchProjectConfig } from '@/api';
+import { formatSalespersons } from '@/utils/salespersonUtils';
 import { useToast } from 'vue-toastification';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
@@ -211,7 +212,7 @@ const getContextData = () => {
         車位尺寸: p.size || p['車位尺寸'] || p['坪數'] || '標準',
         買方姓名: p.buyerName || null,
         對應戶別: p.buyerUnitId || null,
-        銷售人員: p.salesperson || null,
+        銷售人員: formatSalespersons(p.salesperson, '、', '') || null,
         備註: p.remarks || null,
     }));
 
@@ -237,7 +238,7 @@ const getContextData = () => {
         // 買方資訊
         買方姓名: u.buyerName || null,
         買方電話: u.buyerPhone || null,
-        銷售人員: u.salesperson || null,
+        銷售人員: formatSalespersons(u.salesperson, '、', '') || null,
         // 付款進度
         小訂日期: u.payment_deposit_date || null,
         小訂金額: u.payment_deposit_amount || null,
