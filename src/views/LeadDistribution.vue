@@ -933,9 +933,10 @@
       </v-card>
     </v-dialog>
 
-    <LeadSettingsDialog 
-      v-model="showSettings" 
-      :project-id="projectId" 
+    <LeadSettingsDialog
+      v-model="showSettings"
+      :project-id="projectId"
+      :staff-list="salesStaff"
       @settings-updated="onSettingsUpdated"
     />
 

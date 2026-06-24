@@ -37,6 +37,44 @@
           </div>
         </v-card>
 
+        <div class="text-subtitle-2 font-weight-bold mb-2 d-flex align-center">
+          <v-icon start color="info">mdi-account-multiple-check</v-icon>
+          分配通知對象 (固定通知主管／案場負責人)
+        </div>
+        <v-card variant="outlined" class="pa-4 mb-6 border-dashed">
+          <v-select
+            v-model="settings.notifyRecipients"
+            :items="staffList"
+            item-title="name"
+            item-value="id"
+            label="選擇固定接收分配通知的人員 (可複選)"
+            multiple
+            chips
+            closable-chips
+            density="compact"
+            variant="outlined"
+            hide-details
+          >
+            <template v-slot:item="{ props: itemProps, item }">
+              <v-list-item v-bind="itemProps">
+                <template v-slot:append>
+                  <v-chip
+                    :color="item.raw.lineId ? 'success' : 'grey'"
+                    size="x-small"
+                    label
+                  >
+                    {{ item.raw.lineId ? 'LINE已綁定' : '未綁定' }}
+                  </v-chip>
+                </template>
+              </v-list-item>
+            </template>
+          </v-select>
+          <div class="text-caption mt-2 text-grey">
+            ※ 名單分配後，除了被指派的銷售人員外，這裡選擇的主管也會固定收到 LINE 通知。<br>
+            ※ 未綁定 LINE 的人員即使勾選也收不到通知，請先請其完成 LINE 綁定。
+          </div>
+        </v-card>
+
         <div class="text-subtitle-2 font-weight-bold mb-2">
           <v-icon start color="primary">mdi-format-list-bulleted</v-icon>
           聯絡狀況選項 (Status)
@@ -115,7 +153,11 @@ import { db } from '@/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useUiStore } from '@/store/uiStore';
 
-const props = defineProps(['modelValue', 'projectId']);
+const props = defineProps({
+  modelValue: Boolean,
+  projectId: String,
+  staffList: { type: Array, default: () => [] }, // [{ id, name, lineId }]
+});
 const emit = defineEmits(['update:modelValue', 'settings-updated']);
 const uiStore = useUiStore();
 
@@ -128,7 +170,8 @@ const settings = ref({
   isRemindEnabled: false,
   remindTime: '15:00',
   statusOptions: ['不考慮', '已約賞屋', '空號', '未接'],
-  reasonOptions: ['家人討論', '總價太高', '單價太高', '暫不買房', '號碼錯誤/空號']
+  reasonOptions: ['家人討論', '總價太高', '單價太高', '暫不買房', '號碼錯誤/空號'],
+  notifyRecipients: [] // ✅ 本建案固定接收分配通知的人員 userId 陣列
 });
 
 const newItem = ref({ status: '', reason: '' });

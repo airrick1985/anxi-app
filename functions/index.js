@@ -21696,13 +21696,35 @@ exports.processAndAssignLead = onCall({
     await leadRef.update(updatePayload);
 
     // 4. 發送 LINE 通知 (使用資料庫內已存好的精準 source 與 budget)
-    //    收件者：指派的業務員 + 系統管理員（所有建案通用）
+    //    收件者：指派的業務員 + 本建案固定通知主管 + 系統管理員（所有建案通用）
     const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
     const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || '').trim();
+
+    // ✅ 本建案「固定通知人員」(主管/案場負責人)：即時查 users/{userId}.lineId
+    const managerLineIds = [];
+    try {
+      const settingsDoc = await db.collection("projectSettings").doc(projectId).get();
+      const notifyRecipients = settingsDoc.exists ? (settingsDoc.data().notifyRecipients || []) : [];
+      if (Array.isArray(notifyRecipients) && notifyRecipients.length > 0) {
+        const managerDocs = await Promise.all(
+          notifyRecipients.map(uid => db.collection("users").doc(uid).get())
+        );
+        managerDocs.forEach(d => {
+          const lid = (d.exists ? (d.data().lineId || '') : '').trim();
+          if (lid.startsWith('U')) managerLineIds.push(lid);
+        });
+      }
+    } catch (e) {
+      console.warn(`[${functionName}] 讀取固定通知人員失敗（不中斷分配）:`, e.message);
+    }
+
     if (channelToken) {
-      const recipients = [];
-      if (salesLineId && salesLineId.startsWith('U')) recipients.push(salesLineId);
-      if (adminLineId && adminLineId.startsWith('U')) recipients.push(adminLineId);
+      // 收件人去重：被分配業務員 + 本建案固定通知主管 + 系統管理員
+      const recipientSet = new Set();
+      if (salesLineId && salesLineId.startsWith('U')) recipientSet.add(salesLineId);
+      managerLineIds.forEach(lid => recipientSet.add(lid));
+      if (adminLineId && adminLineId.startsWith('U')) recipientSet.add(adminLineId);
+      const recipients = [...recipientSet];
       if (recipients.length > 0) {
         const notifyData = { ...leadData, ...updatePayload };
         try {
@@ -22287,6 +22309,28 @@ exports.batchImportAndAssignLeads = onCall({
     // 系統管理員 LINE ID（不論建案皆通知）
     const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || '').trim();
 
+    // ✅ [新增] 本建案「固定通知人員」(主管/案場負責人)：整批分配共用同一份，故只在迴圈前解析一次
+    //    設定來源：projectSettings/{projectId}.notifyRecipients（存 userId 陣列）
+    //    發送時即時查 users/{userId}.lineId，避免主管重新綁定後通知失效
+    const managerLineIds = [];
+    if (shouldNotify) {
+      try {
+        const settingsDoc = await db.collection("projectSettings").doc(projectId).get();
+        const notifyRecipients = settingsDoc.exists ? (settingsDoc.data().notifyRecipients || []) : [];
+        if (Array.isArray(notifyRecipients) && notifyRecipients.length > 0) {
+          const managerDocs = await Promise.all(
+            notifyRecipients.map(uid => db.collection("users").doc(uid).get())
+          );
+          managerDocs.forEach(d => {
+            const lid = (d.exists ? (d.data().lineId || '') : '').trim();
+            if (lid.startsWith('U')) managerLineIds.push(lid);
+          });
+        }
+      } catch (e) {
+        console.warn(`[${functionName}] 讀取固定通知人員失敗（不中斷分配）:`, e.message);
+      }
+    }
+
     for (const leadData of leads) {
       const payload = {
         name: leadData.name || "",
@@ -22325,9 +22369,12 @@ exports.batchImportAndAssignLeads = onCall({
           const salesLineId = userDoc.exists ? userDoc.data().lineId : null;
 
           if (channelToken) {
-            const recipients = [];
-            if (salesLineId && salesLineId.startsWith('U')) recipients.push(salesLineId);
-            if (adminLineId && adminLineId.startsWith('U')) recipients.push(adminLineId);
+            // 收件人去重：被分配業務員 + 本建案固定通知主管 + 系統管理員
+            const recipientSet = new Set();
+            if (salesLineId && salesLineId.startsWith('U')) recipientSet.add(salesLineId);
+            managerLineIds.forEach(lid => recipientSet.add(lid));
+            if (adminLineId && adminLineId.startsWith('U')) recipientSet.add(adminLineId);
+            const recipients = [...recipientSet];
             if (recipients.length > 0) {
               await _sendLeadAssignmentFlex(channelToken, recipients, payload, leadId);
             }
