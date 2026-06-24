@@ -1644,12 +1644,15 @@ export async function updateUserDetailsForAdmin(payload) {
     if (permissions && (Object.keys(permissions).length > 0 || adminRoles.includes('超級管理員'))) {
       console.log(`[updateUserDetailsForAdmin] 準備保存用戶 ${targetUserKey} 的權限:`, permissions);
       const permissionDocRef = doc(db, "userPermissions", targetUserKey);
+      // ⚠️ 不可使用 { merge: true }：Firestore 對 nested map 會做深層合併，
+      // 導致前端取消勾選（移除某個 system 或整個 project key）後，舊資料仍殘留。
+      // 前端每次都會重建完整的權限狀態 (newPermissionsObject)，故此處需整份覆寫。
       batch.set(permissionDocRef, {
         userName: basicInfo.name,
         permissions: permissions,
         lastModifiedBy: adminName,
         lastModifiedAt: serverTimestamp()
-      }, { merge: true });
+      });
     } else {
       console.warn(`[updateUserDetailsForAdmin] ⚠️ 權限未被保存 - permissions為空或非超級管理員:`, {
         hasPermissions: !!permissions,
