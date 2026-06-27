@@ -649,8 +649,20 @@
                     label="統一編號"
                   :readonly="getFieldPermission('companyTaxId') === 'R'"
                   variant="outlined"
-                  
+
                 ></v-text-field>
+              </v-col>
+              <v-col v-if="isSuperAdmin" cols="12">
+                <v-checkbox
+                  v-model="targetUser.basicInfo.allowMultiLogin"
+                  color="primary"
+                  hide-details
+                  density="comfortable"
+                  label="允許重複登入（不受單一裝置限制）"
+                ></v-checkbox>
+                <div class="text-caption text-medium-emphasis ml-2">
+                  勾選後，此帳號可在多個裝置／瀏覽器同時登入，不會互相強制登出。
+                </div>
               </v-col>
             </v-row>
             </v-form>
@@ -1593,7 +1605,7 @@ const openEditDialog = async (phone) => {
 const openCreateDialog = (phone = '') => {
   resetPhoneValidation();
   isNewUser.value = true;
-  targetUser.value = { basicInfo: { phone, name: '', email: '', password: '', companyName: '', companyTaxId: '', roles: [] }, permissions: {} };
+  targetUser.value = { basicInfo: { phone, name: '', email: '', password: '', companyName: '', companyTaxId: '', roles: [], allowMultiLogin: false }, permissions: {} };
   buildPermissionMatrix({});
   dialogVisible.value = true;
 };

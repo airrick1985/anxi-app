@@ -164,9 +164,14 @@ watch(() => userStore.user, (newUser) => {
       
       // ✅ [修改] 邏輯處理區塊
       if (docSnap.exists()) {
+        // ✅ 指定帳號可不受重複登入限制（多裝置同時在線），跳過 Session 比對
+        if (docSnap.data().allowMultiLogin === true) {
+          return;
+        }
+
         const serverSessionId = docSnap.data().activeSessionId;
         const clientSessionId = userStore.sessionId;
-        
+
         if (serverSessionId && clientSessionId && serverSessionId !== clientSessionId) {
           console.warn('[Session Check] Session ID mismatch! Forcing logout.');
           

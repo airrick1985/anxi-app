@@ -7835,7 +7835,7 @@ exports.backfillAuthLetterAgentInfo = onCall({
 
 
 // START: 替換舊的 fetchUserDetailsForAdmin 函式
-exports.fetchUserDetailsForAdmin = onCall(async (request) => {
+exports.fetchUserDetailsForAdmin = onCall({ memory: "512MiB" }, async (request) => {
   // 1. 同時獲取操作者(adminKey)與被查詢者(targetUserKey)的 key
   const { targetUserKey, adminKey } = request.data;
   const functionName = `fetchUserDetailsForAdmin`;
@@ -7904,7 +7904,9 @@ exports.fetchUserDetailsForAdmin = onCall(async (request) => {
           password: String(targetUserData.password || ''),
           companyName: targetUserData.companyName,
           companyTaxId: String(targetUserData.companyTaxId || ''),
-          roles: targetUserData.roles || []
+          roles: targetUserData.roles || [],
+          // 是否允許此帳號重複登入（多裝置同時在線，不受單一 Session 限制）
+          allowMultiLogin: targetUserData.allowMultiLogin === true
         },
         permissions: permissions
       }
@@ -22861,7 +22863,7 @@ exports.exportToGoogleSheet = onCall({
  * [管理者功能] 發送自定義 HTML 郵件
  * 支援富文本內容，僅限已登入的管理員呼叫
  */
-exports.sendCustomEmail = onCall({ region: "asia-east1", secrets: gmailSecrets }, async (request) => {
+exports.sendCustomEmail = onCall({ region: "asia-east1", secrets: gmailSecrets, memory: "512MiB" }, async (request) => {
   const db = new Firestore({ databaseId: 'anxi-app' });
   const { to, subject, htmlContent, adminKey, sessionId, attachments } = request.data;
 
@@ -22878,7 +22880,8 @@ exports.sendCustomEmail = onCall({ region: "asia-east1", secrets: gmailSecrets }
     }
 
     const userData = userDocSnap.data();
-    if (userData.activeSessionId !== sessionId) {
+    // 允許重複登入的帳號不受單一 Session 限制（多裝置時 activeSessionId 只會保留最後一次登入）
+    if (userData.allowMultiLogin !== true && userData.activeSessionId !== sessionId) {
       throw new HttpsError('unauthenticated', 'Session 已過期或無效，請重新登入');
     }
 
