@@ -3762,6 +3762,13 @@ const goBackToStep0 = () => {
   margin-bottom: 1rem;
 }
 
+/* TipTap 在後台以空白 <p></p> 表示空白列，前台 v-html 渲染時空段落會塌陷成 0 高度，
+   補一個不換行空白讓空白列維持一行高度，保留後台編輯時的排版效果。
+   v-html 內容不帶 scoped 屬性，需用 :deep() 才能套到渲染出的段落 */
+.prose :deep(p:empty::before) {
+  content: "\00a0";
+}
+
 .contact-info {
   margin-top: 1.5rem;
   padding-top: 1rem;
