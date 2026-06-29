@@ -1033,7 +1033,7 @@
                             <tr>
                               <th style="width: 28%;" class="text-caption">原本標籤</th>
                               <th class="text-caption">自訂標籤</th>
-                              <th class="text-caption">自訂 hint（提示文字）</th>
+                              <th class="text-caption">修改提示文字</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1067,12 +1067,23 @@
                     </div>
                     <div v-else>
                       <p class="text-subtitle-1 font-weight-bold mb-2">請選擇要設定的預約項目：</p>
-                      <v-chip-group v-model="selectedBookingItemForSetting" selected-class="bg-primary text-white"
-                        mandatory column class="mb-4">
+                      <v-chip-group v-model="selectedBookingItemForSetting"
+                        selected-class="bg-primary text-white font-weight-bold"
+                        mandatory column class="mb-2">
                         <v-chip v-for="item in activeBookingMenu" :key="item.title" :value="item.title"
-                          variant="outlined">{{
+                          variant="outlined" size="large"
+                          :prepend-icon="selectedBookingItemForSetting === item.title ? 'mdi-check-circle' : undefined">{{
                             item.title }}</v-chip>
                       </v-chip-group>
+
+                      <!-- 目前設定項目醒目提示：讓用戶捲動時也清楚知道正在設定哪個預約項目 -->
+                      <v-sheet v-if="selectedBookingItemForSetting"
+                        color="primary" rounded="lg" class="d-flex align-center px-4 py-3 mb-5 current-setting-banner"
+                        elevation="2">
+                        <v-icon color="white" class="mr-2">mdi-cog</v-icon>
+                        <span class="text-white">目前正在設定：</span>
+                        <span class="text-white text-h6 font-weight-bold ml-1">{{ selectedBookingItemForSetting }}</span>
+                      </v-sheet>
 
                       <div
                         v-if="selectedBookingItemForSetting && projectSettings.pageSettingsByItem && projectSettings.pageSettingsByItem[selectedBookingItemForSetting]">
@@ -1199,54 +1210,102 @@
                             </div>
                             <RichTextEditor v-model="item.a" class="mt-1"></RichTextEditor>
                           </v-sheet>
+
+                          <!-- 底部新增按鈕：問答多時免捲回頂端，可直接於下方繼續新增 -->
+                          <div class="d-flex justify-center mt-2">
+                            <v-btn color="primary" variant="flat" size="small" @click="addFaqItem"
+                              prepend-icon="mdi-plus">新增問答</v-btn>
+                          </div>
                         </div>
 
 
 
-                        <p class="text-h6 font-weight-bold mb-4">附件管理 (公開預約頁)</p>
+                        <p class="text-h6 font-weight-bold mb-2">附件管理 (公開預約頁)</p>
+                        <v-alert type="info" variant="tonal" density="compact" border="start" class="mb-4">
+                          下方「建案附件庫」為本建案所有預約項目<strong>共用</strong>。請先在附件庫上傳檔案，再於各預約項目<strong>勾選</strong>要顯示的附件。
+                        </v-alert>
 
+                        <!-- ====== 中樞：建案附件庫（共用） ====== -->
+                        <v-sheet border rounded class="pa-4 mb-6">
+                          <p class="text-subtitle-1 font-weight-bold mb-2">
+                            <v-icon start size="small" color="indigo">mdi-folder-multiple-outline</v-icon>
+                            建案附件庫（所有預約項目共用）
+                          </p>
+
+                          <v-file-input v-model="filesToUpload" label="選擇要上傳的附件 (圖片或 PDF)" multiple accept="image/*,.pdf"
+                            variant="outlined" density="compact" prepend-icon="mdi-paperclip" chips show-size counter
+                            class="mb-2"></v-file-input>
+
+                          <v-btn color="indigo" variant="flat" @click="uploadAttachments"
+                            :loading="isUploadingAttachments" :disabled="!filesToUpload || filesToUpload.length === 0"
+                            prepend-icon="mdi-upload" class="mb-4">
+                            上傳至附件庫
+                          </v-btn>
+
+                          <p class="text-subtitle-2 font-weight-medium mb-2">附件庫檔案：</p>
+                          <div
+                            v-if="!projectSettings.attachmentLibrary || projectSettings.attachmentLibrary.length === 0"
+                            class="text-center text-grey pa-4 border rounded border-dashed">
+                            附件庫尚無任何檔案
+                          </div>
+                          <v-list v-else density="compact" class="border rounded pa-0">
+                            <template v-for="(item, index) in projectSettings.attachmentLibrary"
+                              :key="item.path || item.url || index">
+                              <v-list-item>
+                                <template v-slot:prepend>
+                                  <v-icon color="red"
+                                    v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
+                                  <v-icon color="grey-darken-1" v-else>mdi-image-outline</v-icon>
+                                </template>
+                                <v-list-item-title>
+                                  <a :href="item.url" target="_blank" rel="noopener noreferrer"
+                                    class="text-decoration-none text-primary">{{ item.name }}</a>
+                                </v-list-item-title>
+                                <template v-slot:append>
+                                  <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small"
+                                    @click="deleteAttachment(index)" :loading="isDeletingAttachment === index"></v-btn>
+                                </template>
+                              </v-list-item>
+                              <v-divider
+                                v-if="index < projectSettings.attachmentLibrary.length - 1"></v-divider>
+                            </template>
+                          </v-list>
+                        </v-sheet>
+
+                        <!-- ====== 此預約項目顯示設定 ====== -->
                         <v-switch
                           v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"
-                          label="在公開預約頁面顯示附件區塊" color="primary" inset hint="啟用後，下方上傳的附件將顯示在預約頁面供客戶下載" persistent-hint
+                          label="在此預約項目的公開預約頁顯示附件區塊" color="primary" inset
+                          hint="啟用後，下方勾選的附件將顯示在此預約項目的頁面供客戶下載" persistent-hint
                           class="mb-4"></v-switch>
 
-                        <v-file-input v-model="filesToUpload" label="選擇要上傳的附件 (圖片或 PDF)" multiple accept="image/*,.pdf"
-                          variant="outlined" density="compact" prepend-icon="mdi-paperclip" chips show-size counter
-                          class="mb-2"></v-file-input>
-
-                        <v-btn color="indigo" variant="flat" @click="uploadAttachments"
-                          :loading="isUploadingAttachments" :disabled="!filesToUpload || filesToUpload.length === 0"
-                          prepend-icon="mdi-upload" class="mb-4">
-                          上傳選取的附件
-                        </v-btn>
-
-                        <p class="text-subtitle-1 font-weight-medium mb-2">已上傳的附件：</p>
+                        <p class="text-subtitle-1 font-weight-medium mb-2">勾選此預約項目要顯示的附件：</p>
                         <div
-                          v-if="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments || projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments.length === 0"
+                          v-if="!projectSettings.attachmentLibrary || projectSettings.attachmentLibrary.length === 0"
                           class="text-center text-grey pa-4 border rounded">
-                          尚未上傳任何附件
+                          請先於上方附件庫上傳檔案
                         </div>
                         <v-list v-else density="compact" class="border rounded pa-0">
-                          <template
-                            v-for="(item, index) in projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments"
-                            :key="item.url || index">
-                            <v-list-item>
+                          <template v-for="(item, index) in projectSettings.attachmentLibrary"
+                            :key="item.path || item.url || index">
+                            <v-list-item
+                              :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments">
                               <template v-slot:prepend>
-                                <v-icon color="red"
-                                  v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
-                                <v-icon color="grey-darken-1" v-else>mdi-image-outline</v-icon>
+                                <v-checkbox-btn
+                                  :model-value="isAttachmentSelected(item)"
+                                  @update:model-value="(val) => toggleAttachmentSelection(item, val)"
+                                  :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"></v-checkbox-btn>
                               </template>
                               <v-list-item-title>
-                                <a :href="item.url" target="_blank" rel="noopener noreferrer"
-                                  class="text-decoration-none text-primary">{{ item.name }}</a>
+                                <v-icon size="small" class="mr-1" color="red"
+                                  v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
+                                <v-icon size="small" class="mr-1" color="grey-darken-1"
+                                  v-else>mdi-image-outline</v-icon>
+                                {{ item.name }}
                               </v-list-item-title>
-                              <template v-slot:append>
-                                <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small"
-                                  @click="deleteAttachment(index)" :loading="isDeletingAttachment === index"></v-btn>
-                              </template>
                             </v-list-item>
                             <v-divider
-                              v-if="index < projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.attachments.length - 1"></v-divider>
+                              v-if="index < projectSettings.attachmentLibrary.length - 1"></v-divider>
                           </template>
                         </v-list>
                       </div>
@@ -3420,14 +3479,13 @@ const uploadAttachments = async () => {
 
   const results = await Promise.all(uploadPromises);
 
-  // 將成功上傳的結果加入 projectSettings
+  // 將成功上傳的結果加入「建案共用附件庫」(attachmentLibrary)
+  if (!Array.isArray(projectSettings.value.attachmentLibrary)) {
+    projectSettings.value.attachmentLibrary = []; // 確保陣列存在
+  }
   results.forEach(result => {
     if (result) {
-      const currentIntro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
-      if (!currentIntro.attachments) {
-        currentIntro.attachments = []; // 確保陣列存在
-      }
-      currentIntro.attachments.push(result);
+      projectSettings.value.attachmentLibrary.push(result);
       uploadSuccessCount++;
     }
   });
@@ -3450,17 +3508,16 @@ const uploadAttachments = async () => {
 };
 // --- END: ✓ 新增附件上傳邏輯 ---
 
-// --- START: ✓ 修改附件刪除邏輯 ---
-// 正體中文註解：刪除附件。現在改為從附件物件中直接讀取 'path' 屬性。
+// --- START: ✓ 修改附件刪除邏輯（改為從建案共用附件庫刪除） ---
+// 正體中文註解：從「建案附件庫」刪除附件，並同步移除所有預約項目對此附件的勾選。
 const deleteAttachment = async (index) => {
-  const currentIntro = projectSettings.value.pageSettingsByItem[selectedBookingItemForSetting.value].intro;
-  const attachmentToDelete = currentIntro.attachments?.[index];
-  if (!attachmentToDelete || !confirm(`您確定要刪除附件 "${attachmentToDelete.name}" 嗎？`)) {
+  const library = projectSettings.value.attachmentLibrary || [];
+  const attachmentToDelete = library[index];
+  if (!attachmentToDelete || !confirm(`您確定要從附件庫刪除「${attachmentToDelete.name}」嗎？\n刪除後，所有已勾選此附件的預約項目都將不再顯示。`)) {
     return;
   }
 
-  // 正體中文註解：檢查附件物件中是否有 'path' 屬性。
-  // 'path' 應該在 uploadAttachments 時由 api.js 的 uploadAttachmentImage 返回並儲存。
+  // 正體中文註解：檢查附件物件中是否有 'path' 屬性，用以定位 Storage 上的檔案。
   if (!attachmentToDelete.path) {
     showSnackbar(`刪除失敗：附件資料缺少 'path' 屬性，無法定位檔案。`, 'error');
     console.error("刪除附件失敗：物件缺少 path 屬性", attachmentToDelete);
@@ -3470,18 +3527,27 @@ const deleteAttachment = async (index) => {
   isDeletingAttachment.value = index; // 設置 loading 狀態
 
   try {
-    // 1. 正體中文註解：直接使用儲存的 path 屬性呼叫刪除 API
-    //    (api.js 中的 deleteAttachmentImage 已被修改為呼叫後端 Cloud Function)
+    // 1. 呼叫後端刪除 Storage 上的實體檔案
     await deleteAttachmentImage(attachmentToDelete.path);
 
-    // 2. 正體中文註解：從 projectSettings 陣列中移除
-    currentIntro.attachments.splice(index, 1);
+    // 2. 從建案共用附件庫移除
+    library.splice(index, 1);
 
-    // 3. 正體中文註解：儲存變更回 Firestore
-    showSnackbar(`附件 "${attachmentToDelete.name}" 已刪除，正在儲存...`, 'info');
-    await saveSettings(); // ✓ 儲存更新後的 attachments 陣列
+    // 3. 同步從所有預約項目的勾選清單移除此附件
+    const items = projectSettings.value.pageSettingsByItem || {};
+    Object.values(items).forEach(ps => {
+      const sel = ps?.intro?.selectedAttachmentPaths;
+      if (Array.isArray(sel)) {
+        const i = sel.indexOf(attachmentToDelete.path);
+        if (i !== -1) sel.splice(i, 1);
+      }
+    });
 
-    showSnackbar(`附件 "${attachmentToDelete.name}" 已成功刪除並儲存！`, 'success');
+    // 4. 儲存變更回 Firestore
+    showSnackbar(`附件「${attachmentToDelete.name}」已刪除，正在儲存...`, 'info');
+    await saveSettings();
+
+    showSnackbar(`附件「${attachmentToDelete.name}」已成功刪除並儲存！`, 'success');
 
   } catch (error) {
     console.error(`刪除附件 ${attachmentToDelete.name} 失敗:`, error);
@@ -3490,6 +3556,53 @@ const deleteAttachment = async (index) => {
     isDeletingAttachment.value = -1; // 清除 loading 狀態
   }
 };
+
+// --- 附件勾選邏輯：目前選取的預約項目，決定要顯示附件庫中的哪些檔案 ---
+// 判斷某附件是否已被目前預約項目勾選
+const isAttachmentSelected = (item) => {
+  const intro = projectSettings.value.pageSettingsByItem?.[selectedBookingItemForSetting.value]?.intro;
+  if (!intro || !Array.isArray(intro.selectedAttachmentPaths)) return false;
+  return intro.selectedAttachmentPaths.includes(item.path);
+};
+
+// 切換某附件在目前預約項目的勾選狀態
+const toggleAttachmentSelection = (item, val) => {
+  const intro = projectSettings.value.pageSettingsByItem?.[selectedBookingItemForSetting.value]?.intro;
+  if (!intro || !item?.path) return;
+  if (!Array.isArray(intro.selectedAttachmentPaths)) intro.selectedAttachmentPaths = [];
+  const idx = intro.selectedAttachmentPaths.indexOf(item.path);
+  if (val && idx === -1) intro.selectedAttachmentPaths.push(item.path);
+  else if (!val && idx !== -1) intro.selectedAttachmentPaths.splice(idx, 1);
+};
+
+// 附件庫向下相容遷移：
+// 舊資料每個預約項目各自存 intro.attachments；新邏輯改為「建案共用附件庫 attachmentLibrary」+
+// 「各項目勾選 intro.selectedAttachmentPaths」。此函式在載入設定後執行，將舊資料平滑升級。
+function migrateAttachmentLibrary() {
+  if (!Array.isArray(projectSettings.value.attachmentLibrary)) {
+    projectSettings.value.attachmentLibrary = [];
+  }
+  const lib = projectSettings.value.attachmentLibrary;
+  const libByPath = new Map(lib.filter(a => a && a.path).map(a => [a.path, a]));
+  const items = projectSettings.value.pageSettingsByItem || {};
+  Object.values(items).forEach(ps => {
+    const intro = ps?.intro;
+    if (!intro) return;
+    const oldList = Array.isArray(intro.attachments) ? intro.attachments : [];
+    // 將舊有的各項目附件併入共用附件庫（依 path 去重）
+    oldList.forEach(a => {
+      if (a && a.path && !libByPath.has(a.path)) {
+        libByPath.set(a.path, a);
+        lib.push(a);
+      }
+    });
+    // 初始化勾選清單：若尚無 selectedAttachmentPaths，沿用舊有 attachments 的 path，
+    // 確保升級後既有附件仍維持原本的顯示狀態。
+    if (!Array.isArray(intro.selectedAttachmentPaths)) {
+      intro.selectedAttachmentPaths = oldList.map(a => a && a.path).filter(Boolean);
+    }
+  });
+}
 
 
 
@@ -4010,6 +4123,7 @@ const defaultSettings = computed(() => ({
       { q: "驗屋時可以找親友或設計師陪同嗎？", a: "當然可以，歡迎您邀請親友或您的設計師一同前來，但請以兩人為限，以維持現場驗屋品質。" }
     ],
     attachments: [],
+    selectedAttachmentPaths: [], // 新邏輯：此預約項目要顯示的附件（對應建案附件庫的 path）
     showAttachments: false,
   },
   reportUploadIntro: {
@@ -5278,6 +5392,9 @@ async function loadDataForProject() {
         // --- Field Labels (per-project, shared across all booking items) ---
         projectSettings.value.fieldLabels = ensureFieldLabelsShape(settings.fieldLabels);
 
+        // --- 建案共用附件庫（中樞） ---
+        projectSettings.value.attachmentLibrary = settings.attachmentLibrary || [];
+
         // --- Migration Logic for Page Settings By Item (NEW) ---
         projectSettings.value.pageSettingsByItem = settings.pageSettingsByItem || {};
 
@@ -5344,6 +5461,9 @@ async function loadDataForProject() {
 
         // 呼叫 migration：確保每個 bookingMenu 項目都有 pageSettingsByItem
         ensurePageSettingsForItems();
+
+        // 呼叫 migration：將舊版「各項目獨立附件」整併為「建案共用附件庫 + 各項目勾選」
+        migrateAttachmentLibrary();
 
         // 2. 定義一個臨時的轉換函式 (處理 Firestore Timestamp / Seconds / String)
         const toDate = (val) => {

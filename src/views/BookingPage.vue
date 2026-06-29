@@ -374,14 +374,14 @@
 
                       <!-- 附件下載區塊（僅在有附件時顯示，置於閱讀完畢提示上方） -->
                       <div
-                        v-if="currentPageSettings.intro.showAttachments && currentPageSettings.intro.attachments?.length > 0"
+                        v-if="currentPageSettings.intro.showAttachments && currentAttachments.length > 0"
                         class="dialog-attachments"
                       >
                         <div class="dialog-attachments-header">
                           <v-icon size="20" class="mr-2" color="primary">mdi-paperclip</v-icon>
                           <span class="dialog-attachments-title">相關附件下載</span>
                           <v-chip size="x-small" color="primary" variant="tonal" class="ml-2">
-                            共 {{ currentPageSettings.intro.attachments.length }} 個
+                            共 {{ currentAttachments.length }} 個
                           </v-chip>
                         </div>
                         <div class="dialog-attachments-hint">
@@ -390,7 +390,7 @@
                         </div>
                         <div class="dialog-attachments-list">
                           <div
-                            v-for="(item, i) in currentPageSettings.intro.attachments"
+                            v-for="(item, i) in currentAttachments"
                             :key="item.url || i"
                             class="dialog-attachment-item"
                             @click="openAttachmentPreview(item)"
@@ -509,11 +509,11 @@
                 </div>
 
                 <div
-                  v-if="currentPageSettings.intro.showAttachments && currentPageSettings.intro.attachments?.length > 0"
+                  v-if="currentPageSettings.intro.showAttachments && currentAttachments.length > 0"
                   class="mt-6">
                   <v-list-subheader>附件下載</v-list-subheader>
                   <v-list density="compact">
-                    <v-list-item v-for="(item, i) in currentPageSettings.intro.attachments" :key="item.url || i"
+                    <v-list-item v-for="(item, i) in currentAttachments" :key="item.url || i"
                       @click="openAttachmentPreview(item)" link rounded="lg" class="mb-2 border">
                       <template v-slot:prepend>
                         <v-icon color="red" v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
@@ -2056,6 +2056,21 @@ const currentPageSettings = computed(() => {
   if (!projectConfig.value) return null;
   if (!selectedBookingType.value) return projectConfig.value; // fallback 到全域設定
   return projectConfig.value.pageSettingsByItem?.[selectedBookingType.value] || projectConfig.value;
+});
+
+// 解析目前預約項目要顯示的附件：
+// 新邏輯為「建案共用附件庫 (projectConfig.attachmentLibrary)」+「各項目勾選 (intro.selectedAttachmentPaths)」；
+// 若為舊資料（尚無 selectedAttachmentPaths 或附件庫）則回退使用 intro.attachments，確保向下相容。
+const currentAttachments = computed(() => {
+  const intro = currentPageSettings.value?.intro;
+  if (!intro) return [];
+  const library = projectConfig.value?.attachmentLibrary || [];
+  if (Array.isArray(intro.selectedAttachmentPaths) && library.length > 0) {
+    const byPath = new Map(library.filter(a => a && a.path).map(a => [a.path, a]));
+    return intro.selectedAttachmentPaths.map(p => byPath.get(p)).filter(Boolean);
+  }
+  // 舊資料回退
+  return Array.isArray(intro.attachments) ? intro.attachments : [];
 });
 
 // 預約欄位標籤自訂：依 fieldLabels 動態解析；空值沿用預設
