@@ -35,6 +35,7 @@
         </v-btn-toggle>
 
         <v-btn-toggle
+          v-if="viewFormat !== 'list'"
           v-model="displayType"
           color="primary"
           variant="outlined"
@@ -267,7 +268,29 @@
     </div>
 
     <div class="content-wrapper">
-      
+
+      <!-- ✅ [新增] 全域關鍵字搜尋（列表模式常駐，不需展開篩選面板） -->
+      <div v-if="viewFormat === 'list'" class="global-search-bar mb-2">
+        <v-text-field
+          v-model="filters.keyword"
+          placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註…（可空白分隔多關鍵字）"
+          prepend-inner-icon="mdi-magnify"
+          variant="solo"
+          density="compact"
+          hide-details
+          clearable
+          rounded="lg"
+          bg-color="white"
+          flat
+        >
+          <template #append-inner>
+            <span v-if="filters.keyword && filters.keyword.trim()" class="text-caption text-grey">
+              {{ filteredTableItems.length }} 筆
+            </span>
+          </template>
+        </v-text-field>
+      </div>
+
       <v-expand-transition>
   <div v-if="viewFormat === 'list' && showFilterPanel" class="filter-panel-container mb-2">
     <v-card variant="outlined" class="bg-white pa-3">
@@ -862,7 +885,7 @@
       </v-btn>
 
       
-      <v-menu top>
+      <v-menu top v-if="viewFormat !== 'list'">
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props">
             <v-icon>mdi-home-city-outline</v-icon>
@@ -1425,6 +1448,8 @@ const isMoreMenuOpen = ref(false);
 
 // 1. 修改 filters 定義 (加入銷控專用欄位)
 const filters = reactive({
+  // --- ✅ [新增] 全域關鍵字搜尋（跨所有欄位，空白分隔為 AND） ---
+  keyword: '',
   // --- 共用欄位 ---
   unitId: '',
   areaMin: null,
@@ -1468,6 +1493,7 @@ const personnelOptions = computed(() => {
 // 3. 修改 activeFilterCount (加入新欄位計數)
 const activeFilterCount = computed(() => {
   let count = 0;
+  if (filters.keyword && filters.keyword.trim()) count++;
   if (filters.unitId) count++;
   if (filters.areaMin || filters.areaMax) count++;
   if (filters.totalPriceMin || filters.totalPriceMax) count++;
@@ -1491,6 +1517,7 @@ const activeFilterCount = computed(() => {
 
 // 4. 修改 clearFilters (重置新欄位)
 const clearFilters = () => {
+  filters.keyword = '';
  filters.unitId = '';
   filters.areaMin = null; filters.areaMax = null;
   filters.totalPriceMin = null; filters.totalPriceMax = null;
@@ -1510,9 +1537,43 @@ const clearFilters = () => {
 
 };
 
+// ✅ [新增] 全域關鍵字搜尋輔助：把一筆 item 攤平成可搜尋字串（涵蓋所有欄位）
+const buildSearchBlob = (item) => {
+  const parts = [];
+  const pushVal = (val) => {
+    if (val === null || val === undefined || val === '') return;
+    if (Array.isArray(val)) { parts.push(formatSalespersons(val)); return; }
+    if (typeof val === 'object') {
+      // Firestore Timestamp / Date → YYYY-MM-DD
+      if (typeof val.toDate === 'function') { parts.push(val.toDate().toISOString().split('T')[0]); return; }
+      if (val instanceof Date) { parts.push(val.toISOString().split('T')[0]); return; }
+      return; // 其他物件（圖片陣列等）略過
+    }
+    parts.push(String(val));
+  };
+  // 依欄位定義攤平所有欄位
+  for (const col of COLUMN_DEFINITIONS) pushVal(item[col.key]);
+  // 補上衍生欄位（目前檢視模式狀態）
+  pushVal(item.status);
+  return parts.join(' ').toLowerCase();
+};
+
 // 5. 修改 filteredTableItems (加入篩選邏輯)
 const filteredTableItems = computed(() => {
+  // ✅ [新增] 全域關鍵字（空白分隔＝AND；全部符合才顯示）
+  const kwTokens = (filters.keyword || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
   return tableItems.value.filter(item => {
+    // 0. 全域關鍵字：跨所有欄位比對
+    if (kwTokens.length > 0) {
+      const blob = buildSearchBlob(item);
+      if (!kwTokens.every(tk => blob.includes(tk))) return false;
+    }
+
     // --- 基礎篩選 (共用) ---
     // 1. 戶別搜尋
     if (filters.unitId && !item.unitId.toLowerCase().includes(filters.unitId.toLowerCase())) return false;
@@ -2057,6 +2118,10 @@ const availableProjects = computed(() => projectStore.projectsList || []);
 
 // [Grid Computed]
 const filteredHouseholds = computed(() => {
+  // ✅ 列表模式：不區分住家/店面，一律列出
+  if (viewFormat.value === 'list') {
+    return salesHouseholds.value;
+  }
   if (displayType.value === '店面') {
     return salesHouseholds.value.filter(item => item.layout === '店面');
   }
@@ -3410,6 +3475,14 @@ overflow: hidden;
 /* 確保進度條文字清晰 */
 .text-body-1 {
   font-size: 1rem !important;
+}
+
+/* ✅ [新增] 全域搜尋列 */
+.global-search-bar {
+  max-width: 520px;
+}
+.global-search-bar :deep(.v-field) {
+  border: 1px solid #e0e0e0;
 }
 
 /* ✅ [新增] 篩選面板間距微調 */
