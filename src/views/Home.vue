@@ -87,7 +87,7 @@ const allButtons = ref([
     permissionArgs: ['超級管理員'], // 權限檢查，只檢查 roles 是否包含 '超級管理員'
     nav: { name: 'BackupManagement' } 
   },
-  { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'project', permissionArgs: ['訂閱管理', '安熙智慧'], nav: { name: 'SubscriptionManagement' } },
+  { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'system', permissionArgs: ['系統管理員', '超級管理員'], nav: { name: 'SubscriptionManagement' } },
   { id: 'UserManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
   { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
   { id: 'messageCenter', text: '訊息中心', icon: emailIcon, permissionType: 'loggedIn', nav: { name: 'MessageCenter' } },
@@ -172,14 +172,16 @@ onMounted(() => {
       case 'anySystem':
         // ✓ 您的 'anySystem' 邏輯已存在，完全符合需求
         return userStore.hasAnyPermission(button.permissionArgs);
-      case 'system':
+      case 'system': {
         //  修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles
-        // 如果 permissionArgs 的值是'超級管理員'或'系統管理員'等角色，就檢查 roles
-        if (['超級管理員', '系統管理員'].includes(button.permissionArgs[0])) {
-            return userRoles.includes(button.permissionArgs[0]);
+        // 若 permissionArgs 內含角色（超級管理員／系統管理員），就檢查 roles，命中任一角色即可
+        const roleArgs = button.permissionArgs.filter(arg => ['超級管理員', '系統管理員'].includes(arg));
+        if (roleArgs.length > 0) {
+            return roleArgs.some(role => userRoles.includes(role));
         }
         // 否則，維持原有的系統權限檢查
         return userStore.hasPermission(button.permissionArgs[0]);
+      }
       case 'getter':
         return userStore[button.permissionArgs[0]];
       case 'loggedIn':

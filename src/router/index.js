@@ -247,8 +247,7 @@ const routes = [
     component: SubscriptionManagement, // (保持延遲載入)
     meta: {
       requiresAuth: true,
-      requiredSystem: '訂閱管理',
-      requiredProjectForSystem: '安熙智慧',
+      requiredRoles: ['超級管理員', '系統管理員'],
       layout: DefaultLayout // ✅
     }
   },
