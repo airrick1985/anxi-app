@@ -248,13 +248,13 @@
               <v-col cols="12" sm="6">
                 <v-select
                   v-model="editedItem.status"
-                  :items="['已售']"
+                  :items="quoteStatusOptions"
                   label="銷控狀態 (報價系統)"
                   variant="outlined"
                   density="compact"
                   readonly
                   class="readonly-field"
-                  hint="此欄位會根據後台狀態自動變更"
+                  hint="此欄位會根據後台狀態自動變更（來賓車位 → 來賓車位，其餘 → 已售）"
                   persistent-hint
                 ></v-select>
               </v-col>
@@ -464,7 +464,9 @@ const isParsing = ref(false);
 const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
-const backendStatusOptions = ['小訂', '補足', '簽約', '保留'];
+const backendStatusOptions = ['小訂', '補足', '簽約', '保留', '來賓車位'];
+// 報價系統銷控狀態：由後台狀態自動對應（來賓車位 → 來賓車位，其餘 → 已售）
+const quoteStatusOptions = ['已售', '來賓車位'];
 
 
 // =================================================================
@@ -513,7 +515,12 @@ const goToSalesControlSystem = () => {
 };
 
 watch(() => editedItem.value.status_backend, (newValue) => {
-  if (editedItem.value) {
+  if (!editedItem.value) return;
+  if (newValue === '來賓車位') {
+    // 後台狀態為來賓車位 → 報價系統同步顯示來賓車位
+    editedItem.value.status = '來賓車位';
+  } else {
+    // 其餘後台狀態一律視為已售；清空後台狀態則一併清空
     editedItem.value.status = newValue ? '已售' : '';
   }
 });
@@ -546,6 +553,7 @@ const getStatusColor = (status) => {
   switch (status) {
     case '小訂': case '補足': case '簽約': return '#c0392b';
     case '保留': case '現場銷控': return '#b4a7d6';
+    case '來賓車位': return '#2980b9';
     case '已售': return 'grey';
     default: return '#239b56';
   }

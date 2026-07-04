@@ -7,13 +7,15 @@ import { useDebounceFn } from '@vueuse/core';
 const defaultColors = {
   backend: {
     '簽約': '#FFFF00',
-    '小訂': '#00FF00', 
+    '小訂': '#00FF00',
     '補足': '#f8788dff',
     '保留': '#00bfffff',
+    '來賓車位': '#87CEFA',
     'default': '#F5F5F5'
   },
   sales: {
     '已售': '#FFFF00',
+    '來賓車位': '#87CEFA',
     'default': '#F5F5F5'
   }
 };

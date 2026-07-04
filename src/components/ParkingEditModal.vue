@@ -290,14 +290,18 @@ const availableParkingOptions = computed(() => {
       const spotId = p.spotId || p['車位編號'] || 'undefined';
       const priceList = p.price_list || p['表價'] || p['車位表價'] || 'undefined';
       const isSold = p.status === '已售' || p['狀態'] === '已售' || p['銷控狀態'] === '已售';
+      const isGuest = p.status === '來賓車位' || p['狀態'] === '來賓車位' || p['銷控狀態'] === '來賓車位';
       const backendStatusText = p.status_backend || p['後台狀態'] ? ` - ${p.status_backend || p['後台狀態']}` : '';
-      
+
       // ✅ [修改] 根據是否已售，決定顯示格式
       let displayText = '';
-      
+
       if (isSold) {
         // 如果已售：顯示 "B2-120 (已售)"
         displayText = `${spotId} (已售)`;
+      } else if (isGuest) {
+        // 來賓車位：顯示 "B2-120 (來賓車位)"，不可選
+        displayText = `${spotId} (來賓車位)`;
       } else {
         // 如果未售：顯示 "B2-120 (300萬)"
         displayText = `${spotId} (${priceList}萬)`;
@@ -311,7 +315,7 @@ const availableParkingOptions = computed(() => {
       return {
         displayText: displayText,
         originalData: p,
-        disabled: isSold
+        disabled: isSold || isGuest
       };
     });
 });

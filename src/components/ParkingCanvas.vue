@@ -1,5 +1,5 @@
 <template>
-  <div class="parking-canvas-container center-xy" ref="containerRef">
+  <div class="parking-canvas-container center-xy" ref="containerRef" @wheel="onCanvasWheel">
 
     <div v-if="isCanvasLoading" class="modal-overlay" style="z-index: 100; position: absolute;">
       <div class="modal-content" style="max-width: 300px;">
@@ -12,9 +12,11 @@
       </div>
     </div>
     
-    <div 
-      class="parking-canvas-area" 
-      ref="canvasAreaRef" 
+    <!-- 內層捲動區：只有畫布會捲動，功能按鈕釘在外層四角不受影響 -->
+    <div class="canvas-scroll-area">
+    <div
+      class="parking-canvas-area"
+      ref="canvasAreaRef"
       :style="canvasAreaStyle" >
       <img 
         v-if="bgImageUrl"
@@ -66,12 +68,11 @@
         </div>
       </vue-drag-resize-rotate>
     </div>
-    
-   <div 
-      v-if="showTools" 
-      class="toolbar" 
-      :style="toolbarStyle" 
-      @mousedown="onToolbarDragStart"
+    </div>
+
+   <div
+      v-if="showTools"
+      class="toolbar"
     >
       <button v-if="allowImport" @click="openImportModal" class="btn btn-primary">
         <svg-icon type="mdi" :path="mdiDownload" class="icon"></svg-icon> 匯入車位資料
@@ -251,28 +252,22 @@
       </div>
     </div>
 
-    <div 
-      class="zoom-controls"
-      :style="zoomControlsStyle"
-      @mousedown="onZoomControlsDragStart"
-    >
-      <button @click="zoomOut" class="btn btn-sm btn-secondary btn-icon" :disabled="canvasScale <= 0.2">
-        <svg-icon type="mdi" :path="mdiMinus"></svg-icon>
-      </button>
-      <span>{{ Math.round(canvasScale * 100) }}%</span>
-      <button @click="zoomIn" class="btn btn-sm btn-secondary btn-icon" :disabled="canvasScale >= 2">
+    <div class="zoom-controls">
+      <button @click="zoomIn" class="zoom-btn" :disabled="canvasScale >= 2" title="放大 (Ctrl+滾輪)">
         <svg-icon type="mdi" :path="mdiPlus"></svg-icon>
       </button>
-      <button @click="fitToScreen" class="btn btn-sm btn-secondary">
-        最適
+      <div class="zoom-percent" title="目前縮放比例">{{ Math.round(canvasScale * 100) }}%</div>
+      <button @click="zoomOut" class="zoom-btn" :disabled="canvasScale <= 0.2" title="縮小 (Ctrl+滾輪)">
+        <svg-icon type="mdi" :path="mdiMinus"></svg-icon>
+      </button>
+      <div class="zoom-divider"></div>
+      <button @click="fitToScreen" class="zoom-btn zoom-btn-fit" title="最適大小（縮放至符合視窗寬度）">
+        <svg-icon type="mdi" :path="mdiFitToScreenOutline"></svg-icon>
+        <span class="zoom-fit-label">最適</span>
       </button>
     </div>
 
-    <div 
-      class="floor-chip-group" 
-      :style="floorChipGroupStyle" 
-      @mousedown="onFloorChipGroupDragStart"
-    >
+    <div class="floor-chip-group">
       <button
         v-for="plan in availableFloorPlans"
         :key="plan.id"
@@ -302,8 +297,8 @@
         </div>
         
         <div class="modal-body detail-body">
-          <!-- 報價模式且已售 -->
-          <template v-if="contextMode === 'quote' && selectedDetailSpot.parkingData.status === '已售'">
+          <!-- 報價模式且已售/來賓車位 -->
+          <template v-if="contextMode === 'quote' && ['已售', '來賓車位'].includes(selectedDetailSpot.parkingData.status)">
             <div class="info-section">
               <div class="section-title">基本資訊</div>
               <div class="info-row">
@@ -334,7 +329,7 @@
             <div class="info-section">
               <div class="section-title">價格資訊</div>
               <div class="info-row" style="justify-content: center; padding: 1.5rem 0;">
-                <span class="text-h5 font-weight-black" style="color: #dc3545;">已售</span>
+                <span class="text-h5 font-weight-black" :style="{ color: selectedDetailSpot.parkingData.status === '來賓車位' ? '#0d6efd' : '#dc3545' }">{{ selectedDetailSpot.parkingData.status }}</span>
               </div>
             </div>
           </template>
@@ -460,8 +455,9 @@ import {
   mdiClose, 
   mdiTrashCanOutline,
   mdiArrowExpandAll,
-  mdiMinus, 
-  mdiPlus,  
+  mdiMinus,
+  mdiPlus,
+  mdiFitToScreenOutline,
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
@@ -523,32 +519,6 @@ export default {
   setup(props, { emit }) {
     const toast = useToast(); 
 
-    // 工具列/縮放 拖曳狀態
-    const toolbarStyle = ref({
-      position: 'absolute',
-      top: '20px',
-      left: '20px',
-      zIndex: 10,
-      cursor: 'move',
-    });
-    const isDraggingToolbar = ref(false);
-    const dragStartX = ref(0);
-    const dragStartY = ref(0);
-    const toolbarInitialX = ref(0);
-    const toolbarInitialY = ref(0);
-    const zoomControlsStyle = ref({
-      position: 'absolute',
-      top: '20px',
-      right: '20px',
-      zIndex: 10,
-      cursor: 'move',
-    });
-    const isDraggingZoomControls = ref(false);
-    const zoomDragStartX = ref(0);
-    const zoomDragStartY = ref(0);
-    const zoomInitialX = ref(0);
-    const zoomInitialY = ref(0);
-
     // 車位屬性面板 拖曳狀態
     const propertiesPanelStyle = ref({
       top: '20px',
@@ -559,20 +529,6 @@ export default {
     const propertiesDragStartY = ref(0);
     const propertiesInitialX = ref(0);
     const propertiesInitialY = ref(0);
-
-    // Floor-chip-group 拖曳狀態
-    const floorChipGroupStyle = ref({
-      position: 'absolute',
-      top: '80px', 
-      right: '20px', 
-      zIndex: 10,
-      cursor: 'move',
-    });
-    const isDraggingFloorChipGroup = ref(false);
-    const floorChipDragStartX = ref(0);
-    const floorChipDragStartY = ref(0);
-    const floorChipInitialX = ref(0); 
-    const floorChipInitialY = ref(0); 
 
     // 畫布 DOM ref
     const canvasWidth = ref(1700) 
@@ -630,6 +586,7 @@ export default {
       const colors = {
         '可售': { bg: '#dcfce7', text: '#166534' },
         '已售': { bg: '#fee2e2', text: '#991b1b' },
+        '來賓車位': { bg: '#dbeafe', text: '#1e40af' },
         '保留': { bg: '#fef3c7', text: '#92400e' },
         '主管保留': { bg: '#e0e7ff', text: '#3730a3' },
         '預設': { bg: '#f3f4f6', text: '#374151' }
@@ -648,64 +605,11 @@ export default {
 
     // Methods
     const fitToScreen = () => {
-      if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) return;
-      const containerW = containerRef.value.clientWidth - 40; 
-      const containerH = containerRef.value.clientHeight - 40;
-      const naturalW = canvasWidth.value;
-      const naturalH = canvasHeight.value;
-      const scale = Math.min(containerW / naturalW, containerH / naturalH);
-      // 依據容器尺寸自動縮放（不再限制最大為 1）
+      if (!containerRef.value || !canvasWidth.value) return;
+      const containerW = containerRef.value.clientWidth - 40;
+      // 「最適」與載入預設縮放：符合寬度（超出的高度以捲動瀏覽）
+      const scale = containerW / canvasWidth.value;
       canvasScale.value = parseFloat(scale.toFixed(2));
-    };
-
-    const onToolbarDragStart = (e) => {
-      if (e.target.closest('button') || e.target.closest('input')) return; 
-      isDraggingToolbar.value = true;
-      const currentTop = parseInt(toolbarStyle.value.top, 10) || 20;
-      const currentLeft = parseInt(toolbarStyle.value.left, 10) || 20;
-      toolbarInitialX.value = currentLeft;
-      toolbarInitialY.value = currentTop;
-      dragStartX.value = e.clientX;
-      dragStartY.value = e.clientY;
-      document.addEventListener('mousemove', onToolbarDragMove);
-      document.addEventListener('mouseup', onToolbarDragEnd);
-    };
-    const onToolbarDragMove = (e) => {
-      if (!isDraggingToolbar.value) return;
-      const dx = e.clientX - dragStartX.value;
-      const dy = e.clientY - dragStartY.value;
-      toolbarStyle.value.left = `${toolbarInitialX.value + dx}px`;
-      toolbarStyle.value.top = `${toolbarInitialY.value + dy}px`;
-    };
-    const onToolbarDragEnd = () => {
-      isDraggingToolbar.value = false;
-      document.removeEventListener('mousemove', onToolbarDragMove);
-      document.removeEventListener('mouseup', onToolbarDragEnd);
-    };
-
-    const onZoomControlsDragStart = (e) => {
-      if (e.target.closest('button') || e.target.closest('input')) return; 
-      isDraggingZoomControls.value = true;
-      const currentTop = parseInt(zoomControlsStyle.value.top, 10) || 20;
-      const currentRight = parseInt(zoomControlsStyle.value.right, 10) || 20;
-      zoomInitialY.value = currentTop;
-      zoomInitialX.value = currentRight;
-      zoomDragStartX.value = e.clientX;
-      zoomDragStartY.value = e.clientY;
-      document.addEventListener('mousemove', onZoomControlsDragMove);
-      document.addEventListener('mouseup', onZoomControlsDragEnd);
-    };
-    const onZoomControlsDragMove = (e) => {
-      if (!isDraggingZoomControls.value) return;
-      const dx = e.clientX - zoomDragStartX.value;
-      const dy = e.clientY - zoomDragStartY.value;
-      zoomControlsStyle.value.top = `${zoomInitialY.value + dy}px`;
-      zoomControlsStyle.value.right = `${zoomInitialX.value - dx}px`; 
-    };
-    const onZoomControlsDragEnd = () => {
-      isDraggingZoomControls.value = false;
-      document.removeEventListener('mousemove', onZoomControlsDragMove);
-      document.removeEventListener('mouseup', onZoomControlsDragEnd);
     };
 
     const onPropertiesPanelDragStart = (e) => {
@@ -797,33 +701,15 @@ export default {
     const zoomIn = () => {
       canvasScale.value = parseFloat(Math.min(maxZoom, canvasScale.value + zoomStep).toFixed(2));
     };
+    // Ctrl + 滾輪縮放（不按 Ctrl 時維持原本的捲動行為）
+    const onCanvasWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      if (e.deltaY < 0) zoomIn();
+      else zoomOut();
+    };
     const zoomOut = () => {
       canvasScale.value = parseFloat(Math.max(minZoom, canvasScale.value - zoomStep).toFixed(2));
-    };
-
-    const onFloorChipGroupDragStart = (e) => {
-      if (e.target.closest('button')) return; 
-      isDraggingFloorChipGroup.value = true;
-      const currentTop = parseInt(floorChipGroupStyle.value.top, 10) || 80;
-      const currentRight = parseInt(floorChipGroupStyle.value.right, 10) || 20;
-      floorChipInitialY.value = currentTop;
-      floorChipInitialX.value = currentRight; 
-      floorChipDragStartX.value = e.clientX;
-      floorChipDragStartY.value = e.clientY;
-      document.addEventListener('mousemove', onFloorChipGroupDragMove);
-      document.addEventListener('mouseup', onFloorChipGroupDragEnd);
-    };
-    const onFloorChipGroupDragMove = (e) => {
-      if (!isDraggingFloorChipGroup.value) return;
-      const dx = e.clientX - floorChipDragStartX.value;
-      const dy = e.clientY - floorChipDragStartY.value;
-      floorChipGroupStyle.value.top = `${floorChipInitialY.value + dy}px`;
-      floorChipGroupStyle.value.right = `${floorChipInitialX.value - dx}px`; 
-    };
-    const onFloorChipGroupDragEnd = () => {
-      isDraggingFloorChipGroup.value = false;
-      document.removeEventListener('mousemove', onFloorChipGroupDragMove);
-      document.removeEventListener('mouseup', onFloorChipGroupDragEnd);
     };
 
     const fetchAvailableFloors = async () => {
@@ -932,7 +818,7 @@ export default {
     const getStatusColor = (mode, data) => {
       const statusColors = props.statusColors || {};
       const modeColors = statusColors[mode] || {};
-      let statusKey = !data ? 'default' : (mode === 'backend' ? (data.status_backend || 'default') : (data.status === '已售' ? '已售' : 'default'));
+      let statusKey = !data ? 'default' : (mode === 'backend' ? (data.status_backend || 'default') : (['已售', '來賓車位'].includes(data.status) ? data.status : 'default'));
       const defaultColorSet = { backgroundColor: '#f5f5f5', borderColor: '#000000', textColor: '#000000' };
       return modeColors[statusKey] || modeColors.default || defaultColorSet;
     };
@@ -956,7 +842,7 @@ export default {
 
     const getDisplayFields = (mode, data) => {
       if (!data) return [{ key: 'number', value: 'N/A' }]; 
-      const fields = mode === 'backend' ? [{ key: 'number', value: data.number }, { key: 'price', value: data.price_transaction || data.price_list }, { key: 'buyerUnitId', value: data.buyerUnitId }, { key: 'buyerName', value: data.buyerName }, { key: 'salesperson', value: formatSalespersons(data.salesperson, '、', '') }, { key: 'size', value: data.size }, { key: 'type', value: data.type }] : data.status === '已售' ? [{ key: 'number', value: data.number }, { key: 'status', value: data.status }] : [{ key: 'number', value: data.number }, { key: 'price', value: data.price_list }, { key: 'size', value: data.size }, { key: 'type', value: data.type }];
+      const fields = mode === 'backend' ? [{ key: 'number', value: data.number }, { key: 'price', value: data.price_transaction || data.price_list }, { key: 'buyerUnitId', value: data.buyerUnitId }, { key: 'buyerName', value: data.buyerName }, { key: 'salesperson', value: formatSalespersons(data.salesperson, '、', '') }, { key: 'size', value: data.size }, { key: 'type', value: data.type }] : ['已售', '來賓車位'].includes(data.status) ? [{ key: 'number', value: data.number }, { key: 'status', value: data.status }] : [{ key: 'number', value: data.number }, { key: 'price', value: data.price_list }, { key: 'size', value: data.size }, { key: 'type', value: data.type }];
       return fields.filter(f => f.value);
     }
     
@@ -1084,13 +970,7 @@ export default {
 
     onUnmounted(() => {
       if (resizeObserver) resizeObserver.disconnect();
-      document.removeEventListener('mousemove', onToolbarDragMove);
-      document.removeEventListener('mouseup', onToolbarDragEnd);
-      document.removeEventListener('mousemove', onZoomControlsDragMove);
-      document.removeEventListener('mouseup', onZoomControlsDragEnd);
       window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousemove', onFloorChipGroupDragMove);
-      document.removeEventListener('mouseup', onFloorChipGroupDragEnd);
       document.removeEventListener('mousemove', onPropertiesPanelDragMove);
       document.removeEventListener('mouseup', onPropertiesPanelDragEnd);
     });
@@ -1104,10 +984,11 @@ export default {
 
     return {
       containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
-      getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, toolbarStyle, onToolbarDragStart, zoomControlsStyle, onZoomControlsDragStart, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, floorChipGroupStyle, onFloorChipGroupDragStart, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
+      getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       formatSalespersons,
-      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus
+      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline,
+      onCanvasWheel
     }
   }
 }
@@ -1118,11 +999,17 @@ export default {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: auto; 
-  display: flex;
-  justify-content: flex-start; 
-  align-items: flex-start; 
+  overflow: hidden; /* 捲動交給內層 .canvas-scroll-area，功能按鈕才不會被捲走 */
   background-color: #f0f2f5;
+}
+
+.canvas-scroll-area {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 :deep(.parking-spot-item) {
@@ -1170,13 +1057,17 @@ export default {
 }
 
 .toolbar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
   display: flex;
   gap: 1rem;
   background: white;
   padding: 8px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  user-select: none; 
+  user-select: none;
 }
 
 .status-toggle {
@@ -1280,21 +1171,86 @@ export default {
 .btn-danger { background: #dc3545; color: white; }
 
 .zoom-controls {
+  position: absolute;
+  bottom: 24px;
+  right: 16px;
+  z-index: 10;
   background: white;
-  padding: 8px 12px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  border: 1px solid #e0e0e0;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.22);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  user-select: none; 
+  gap: 4px;
+  user-select: none;
 }
 
-.zoom-controls span {
-  font-size: 0.9rem;
-  width: 40px;
-  text-align: right;
+.zoom-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.zoom-btn svg {
+  width: 26px;
+  height: 26px;
+}
+
+.zoom-btn:hover:not(:disabled) {
+  background: #eaf2ff;
+  color: #007bff;
+}
+
+.zoom-btn:active:not(:disabled) {
+  background: #d8e8ff;
+}
+
+.zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.zoom-percent {
+  font-size: 0.8rem;
+  font-weight: 700;
   color: #333;
+  width: 44px;
+  text-align: center;
+  padding: 2px 0;
+}
+
+.zoom-divider {
+  width: 32px;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2px 0;
+}
+
+.zoom-btn-fit {
+  color: #007bff;
+}
+
+.zoom-btn-fit svg {
+  width: 22px;
+  height: 22px;
+}
+
+.zoom-fit-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 3px;
 }
 
 .btn.btn-icon {
@@ -1307,15 +1263,21 @@ export default {
 }
 
 .floor-chip-group {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
   display: flex;
-  flex-direction: column; 
-  gap: 10px; 
+  flex-direction: column;
+  gap: 10px;
   background: white;
-  padding: 10px; 
+  padding: 10px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  z-index: 10;
-  user-select: none; 
+  user-select: none;
+  /* 樓層太多時控制列自己捲動，避免蓋到縮放按鈕 */
+  max-height: calc(100% - 220px);
+  overflow-y: auto;
 }
 
 .floor-chip-group .btn {
