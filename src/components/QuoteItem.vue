@@ -9,7 +9,7 @@
      size="small"
      @click="emit('remove')"
     >
-     刪除
+     移除本戶
     </v-btn>
       </div>
 
@@ -205,92 +205,82 @@
     </v-btn>
    </div>
    <div class="item-cell flex-shrink-0">
-    <v-btn icon="mdi-close-circle-outline" variant="text" color="red" @click="emit('remove')"></v-btn>
+    <v-btn color="red" variant="flat" size="small" @click="emit('remove')">移除本戶</v-btn>
    </div>
     </div>
 
 <v-expand-transition>
   <div v-show="isPaymentDetailsVisible">
 
-    <!-- ✅ [新增] 總價期款範本手動指定（兩層連動：期款類別 → 範本名稱） -->
-    <div class="pa-2 manual-template-picker">
-      <div class="d-flex align-center flex-wrap ga-2">
-        <v-icon size="small" color="blue-darken-2">mdi-tune-variant</v-icon>
-        <span class="text-caption font-weight-medium text-blue-darken-2">總價期款設定</span>
-        <v-chip
-          size="x-small"
-          :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
-          variant="flat"
-          class="ml-1"
-        >
-          {{ isManualTemplateActive ? '手動指定' : '自動判斷' }}
-        </v-chip>
-
-        <v-select
-          v-model="manualCategoryModel"
-          :items="manualCategoryOptions"
-          label="期款類別"
-          placeholder="自動（依條件判斷）"
-          density="compact"
-          variant="outlined"
-          hide-details
-          clearable
-          style="max-width: 200px;"
-          class="ml-2"
-        ></v-select>
-
-        <v-select
-          v-model="manualTemplateIdModel"
-          :items="manualTemplateOptions"
-          item-title="templateName"
-          item-value="id"
-          label="選擇期款方式"
-          :disabled="!manualCategoryModel"
-          :placeholder="manualCategoryModel ? '請選擇範本' : '請先選期款類別'"
-          density="compact"
-          variant="outlined"
-          hide-details
-          style="max-width: 280px;"
-        >
-          <template v-slot:item="{ props: itemProps, item }">
-            <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
-          </template>
-        </v-select>
-
-        <v-btn
-          v-if="isManualTemplateActive"
-          size="small"
-          variant="text"
-          color="grey-darken-1"
-          prepend-icon="mdi-restore"
-          @click="resetManualTemplate"
-        >
-          還原自動
-        </v-btn>
-      </div>
-    </div>
-
-    <v-divider></v-divider>
-
     <div v-if="isLoading" class="text-center pa-4">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
       <div class="mt-2 text-caption">付款方式計算中...</div>
     </div>
 
-    <!-- 新的期款顯示邏輯 -->
-    <div v-else-if="hasAnyPaymentData" class="pa-2 bg-grey-lighten-5">
-      
-      <!-- 桌面模式：並排顯示 -->
-      <div v-if="!isMobile" class="d-flex ga-4 mb-2">
-        <!-- 一般期款（總價期款） - 約頁面 1/3 寬 -->
-        <div v-if="generalPaymentCalculation.hasData" class="payment-col">
+    <!-- 期款顯示邏輯（✅ [整合] 設定選單併入各期款卡片，桌機並排、手機直疊） -->
+    <div v-else class="pa-2 bg-grey-lighten-5">
+
+      <div v-if="hasNewTemplates" class="d-flex ga-4 mb-2" :class="{ 'flex-column': isMobile }">
+        <!-- 總價期款卡：標題 → 範本選單 → 明細 -->
+        <div class="payment-col" :class="{ 'payment-col-full': isMobile }">
           <v-card flat border>
-            <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1">
+            <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1 d-flex align-center">
               <v-icon start>mdi-calculator-variant</v-icon>
-              總價期款 ({{ generalPaymentCalculation.templateName }})
+              總價期款
+              <v-chip
+                size="x-small"
+                :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
+                variant="flat"
+                class="ml-2"
+              >
+                {{ isManualTemplateActive ? '手動指定' : '自動判斷' }}
+              </v-chip>
+              <v-spacer></v-spacer>
+              <v-btn
+                v-if="isManualTemplateActive"
+                icon="mdi-restore"
+                size="x-small"
+                variant="text"
+                color="grey-darken-1"
+                title="還原自動"
+                @click="resetManualTemplate"
+              ></v-btn>
             </v-card-title>
+
+            <div class="pa-2 d-flex flex-wrap ga-2 align-center picker-row picker-row-general">
+              <v-select
+                v-model="manualCategoryModel"
+                :items="manualCategoryOptions"
+                label="期款類別"
+                placeholder="自動（依條件判斷）"
+                density="compact"
+                variant="outlined"
+                hide-details
+                :clearable="isManualTemplateActive"
+                class="picker-category"
+              ></v-select>
+              <v-select
+                v-model="manualTemplateIdModel"
+                :items="manualTemplateOptions"
+                item-title="templateName"
+                item-value="id"
+                label="期款方式"
+                :disabled="!manualCategoryModel"
+                :placeholder="manualCategoryModel ? '請選擇範本' : '請先選期款類別'"
+                density="compact"
+                variant="outlined"
+                hide-details
+                class="picker-template"
+              >
+                <template v-slot:item="{ props: itemProps, item }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                </template>
+              </v-select>
+            </div>
+            <v-divider></v-divider>
+
             <v-card-text class="pa-2">
-              <div class="payment-items-grid">
+              <div v-if="generalPaymentCalculation.hasData" class="payment-items-grid">
                 <div 
                   v-for="item in generalPaymentCalculation.items"
                   :key="item.id"
@@ -324,19 +314,78 @@
                   </span>
                 </div>
               </div>
+              <div v-else class="text-center pa-3 text-red">
+                <v-icon size="20" class="mb-1">mdi-alert-circle-outline</v-icon>
+                <div class="text-body-2">缺少適用的期款範本，請調整上方選單或至後台確認。</div>
+                <div class="text-caption mt-1">
+                  條件：總價 {{ finalTotalPrice.toLocaleString() }}萬、
+                  {{ isFirstTimeBuyerModel === '是' ? '首購' : '非首購' }}
+                </div>
+              </div>
             </v-card-text>
           </v-card>
         </div>
 
-        <!-- 配套期款 - 約頁面 1/3 寬 -->
-        <div v-if="packagePaymentCalculation.hasData" class="payment-col">
+        <!-- 配套期款卡：標題 → 範本選單 → 明細（僅於勾選配套時顯示） -->
+        <div v-if="usePackageDealModel" class="payment-col" :class="{ 'payment-col-full': isMobile }">
           <v-card flat border>
-            <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
-              <v-icon start>mdi-tools</v-icon>
-              配套期款 ({{ packagePaymentCalculation.templateName }})
+            <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1 d-flex align-center">
+              <v-icon start>mdi-package-variant</v-icon>
+              配套期款
+              <v-chip
+                size="x-small"
+                :color="isManualPackageTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
+                variant="flat"
+                class="ml-2"
+              >
+                {{ isManualPackageTemplateActive ? '手動指定' : '自動判斷' }}
+              </v-chip>
+              <v-spacer></v-spacer>
+              <v-btn
+                v-if="isManualPackageTemplateActive"
+                icon="mdi-restore"
+                size="x-small"
+                variant="text"
+                color="grey-darken-1"
+                title="還原自動"
+                @click="resetManualPackageTemplate"
+              ></v-btn>
             </v-card-title>
+
+            <div class="pa-2 d-flex flex-wrap ga-2 align-center picker-row picker-row-package">
+              <v-select
+                v-model="manualPackageCategoryModel"
+                :items="packageCategoryOptions"
+                label="期款類別"
+                placeholder="自動（依條件判斷）"
+                density="compact"
+                variant="outlined"
+                hide-details
+                :clearable="isManualPackageTemplateActive"
+                class="picker-category"
+              ></v-select>
+              <v-select
+                v-model="manualPackageTemplateIdModel"
+                :items="manualPackageTemplateOptions"
+                item-title="templateName"
+                item-value="id"
+                label="期款方式"
+                :disabled="!manualPackageCategoryModel"
+                :placeholder="manualPackageCategoryModel ? '請選擇範本' : '請先選期款類別'"
+                density="compact"
+                variant="outlined"
+                hide-details
+                class="picker-template"
+              >
+                <template v-slot:item="{ props: itemProps, item }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                </template>
+              </v-select>
+            </div>
+            <v-divider></v-divider>
+
             <v-card-text class="pa-2">
-              <div class="payment-items-grid">
+              <div v-if="packagePaymentCalculation.hasData" class="payment-items-grid">
                 <div 
                   v-for="item in packagePaymentCalculation.items"
                   :key="item.id"
@@ -368,6 +417,12 @@
                     <span class="payment-amount-num">{{ (packagePrice || 0).toLocaleString() }}</span>
                     <span class="payment-amount-unit">萬</span>
                   </span>
+                </div>
+              </div>
+              <div v-else class="text-center pa-3 text-medium-emphasis">
+                <v-icon size="20" class="mb-1">mdi-information-outline</v-icon>
+                <div class="text-body-2">
+                  {{ packagePrice > 0 ? '無適用的配套期款範本，請調整上方選單或至後台確認。' : '尚未設定配套金額' }}
                 </div>
               </div>
             </v-card-text>
@@ -375,101 +430,6 @@
         </div>
 
       </div>
-
-      <!-- 手機模式：垂直堆疊顯示 -->
-      <template v-else>
-        <!-- 一般期款（總價期款） -->
-        <div v-if="generalPaymentCalculation.hasData" class="mb-4">
-          <v-card flat border class="mb-2">
-            <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1">
-              <v-icon start>mdi-calculator-variant</v-icon>
-              總價期款 ({{ generalPaymentCalculation.templateName }})
-            </v-card-title>
-            <v-card-text class="pa-2">
-              <div class="payment-items-grid">
-                <div 
-                  v-for="item in generalPaymentCalculation.items"
-                  :key="item.id"
-                  class="payment-item d-flex align-center py-1"
-                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
-                >
-                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
-                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip
-                      v-if="formatConditionalValue(item)"
-                      size="x-small"
-                      variant="outlined"
-                      color="primary"
-                      class="ml-1 payment-hint"
-                    >
-                      {{ formatConditionalValue(item) }}
-                    </v-chip>
-                  </span>
-                  <span class="payment-leader" aria-hidden="true"></span>
-                  <span class="payment-amount font-weight-medium">
-                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
-                    <span class="payment-amount-unit">萬</span>
-                  </span>
-                </div>
-                <div class="payment-item payment-total">
-                  <span class="payment-name">總價</span>
-                  <span class="payment-leader" aria-hidden="true"></span>
-                  <span class="payment-amount">
-                    <span class="payment-amount-num">{{ (finalTotalPrice || 0).toLocaleString() }}</span>
-                    <span class="payment-amount-unit">萬</span>
-                  </span>
-                </div>
-              </div>
-            </v-card-text>
-          </v-card>
-        </div>
-
-        <!-- 配套期款 -->
-        <div v-if="packagePaymentCalculation.hasData" class="mb-2">
-          <v-card flat border>
-            <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1">
-              <v-icon start>mdi-package-variant</v-icon>
-              配套期款 ({{ packagePaymentCalculation.templateName }})
-            </v-card-title>
-            <v-card-text class="pa-2">
-              <div class="payment-items-grid">
-                <div 
-                  v-for="item in packagePaymentCalculation.items"
-                  :key="item.id"
-                  class="payment-item d-flex align-center py-1"
-                  :class="{ 'payment-parent': !item.parentId, 'payment-child': item.parentId }"
-                >
-                  <span class="payment-name" :class="{ 'font-weight-bold': !item.parentId }">
-                    {{ item.parentId ? '　　' : '' }}{{ item.name }}
-                    <v-chip
-                      v-if="formatConditionalValue(item)"
-                      size="x-small"
-                      variant="outlined"
-                      color="primary"
-                      class="ml-1 payment-hint"
-                    >
-                      {{ formatConditionalValue(item) }}
-                    </v-chip>
-                  </span>
-                  <span class="payment-leader" aria-hidden="true"></span>
-                  <span class="payment-amount font-weight-medium">
-                    <span class="payment-amount-num">{{ (item.calculatedValue || 0).toLocaleString() }}</span>
-                    <span class="payment-amount-unit">萬</span>
-                  </span>
-                </div>
-                <div class="payment-item payment-total">
-                  <span class="payment-name">總價</span>
-                  <span class="payment-leader" aria-hidden="true"></span>
-                  <span class="payment-amount">
-                    <span class="payment-amount-num">{{ (packagePrice || 0).toLocaleString() }}</span>
-                    <span class="payment-amount-unit">萬</span>
-                  </span>
-                </div>
-              </div>
-            </v-card-text>
-          </v-card>
-        </div>
-      </template>
 
       <!-- 向後相容性：舊版本的 PaymentDetails -->
       <div v-if="!generalPaymentCalculation.hasData && !packagePaymentCalculation.hasData && paymentTermsData && paymentTermsData.length > 0">
@@ -494,14 +454,14 @@
           </div>
         </v-alert>
       </div>
-    </div>
-
-    <div v-else class="text-center pa-4 text-red bg-grey-lighten-4">
-      <v-icon size="24" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div>缺少有效的期款比例設定，請至後台確認。</div>
-      <div class="text-caption mt-1">
-        條件：總價 {{ finalTotalPrice.toLocaleString() }}萬、
-        {{ isFirstTimeBuyerModel === '是' ? '首購' : '非首購' }}
+      <!-- 無任何期款設定（新版範本與舊版資料皆無） -->
+      <div v-if="!hasNewTemplates && !(paymentTermsData && paymentTermsData.length > 0)" class="text-center pa-4 text-red bg-grey-lighten-4">
+        <v-icon size="24" class="mb-2">mdi-alert-circle-outline</v-icon>
+        <div>缺少有效的期款比例設定，請至後台確認。</div>
+        <div class="text-caption mt-1">
+          條件：總價 {{ finalTotalPrice.toLocaleString() }}萬、
+          {{ isFirstTimeBuyerModel === '是' ? '首購' : '非首購' }}
+        </div>
       </div>
     </div>
 
@@ -1247,23 +1207,35 @@ function selectPaymentTemplate(paymentCategory) {
 
 // ★★★ 新增：手動指定總價期款範本（兩層連動選擇器） ★★★
 
+// ✅ [新增] 是否有新版期款範本（決定是否顯示整合式期款卡片）
+const hasNewTemplates = computed(() => (props.paymentTemplates || []).length > 0);
+
 // 第一層：期款類別選項（取所有範本中 distinct 的 paymentCategory）
+// ✅ [修改] 排除「配套期款」：其期數基準為配套金額，與總價期款不同，不可套用於總價
 const manualCategoryOptions = computed(() => {
     const set = new Set();
     (props.paymentTemplates || []).forEach(t => {
-        if (t.paymentCategory) set.add(t.paymentCategory);
+        if (t.paymentCategory && t.paymentCategory !== '配套期款') set.add(t.paymentCategory);
     });
     return Array.from(set);
 });
 
-// 第一層 v-model：null = 自動（依條件判斷）
+// 第一層 v-model：手動值優先；自動模式下同步顯示系統實際採用的類別
 const manualCategoryModel = computed({
-    get: () => props.item.manualTemplate?.category || null,
+    get: () => {
+        if (props.item.manualTemplate?.category) return props.item.manualTemplate.category;
+        // ✅ [新增] 自動判斷（含優付自動切換）時，回填系統實際採用的類別供 UI 顯示
+        return effectiveGeneralTemplate.value?.paymentCategory || null;
+    },
     set: (value) => {
-        // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId
+        // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId；
+        // ✅ [新增] 若該類別下只有一個範本，直接預設選定該唯一選項
+        const candidates = value
+            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value)
+            : [];
         quoteStore.updateItemManualTemplate(props.item.internalId, {
             category: value,
-            templateId: null
+            templateId: candidates.length === 1 ? candidates[0].id : null
         });
     }
 });
@@ -1283,9 +1255,13 @@ const manualTemplateOptions = computed(() => {
         });
 });
 
-// 第二層 v-model：已選範本 docId
+// 第二層 v-model：手動值優先；自動模式下同步顯示系統實際採用的範本
 const manualTemplateIdModel = computed({
-    get: () => props.item.manualTemplate?.templateId || null,
+    get: () => {
+        if (props.item.manualTemplate?.templateId) return props.item.manualTemplate.templateId;
+        // ✅ [新增] 自動判斷（含優付自動切換）時，回填系統實際採用的範本供 UI 顯示
+        return effectiveGeneralTemplate.value?.id || null;
+    },
     set: (value) => {
         quoteStore.updateItemManualTemplate(props.item.internalId, { templateId: value });
     }
@@ -1302,6 +1278,88 @@ function resetManualTemplate() {
     quoteStore.updateItemManualTemplate(props.item.internalId, { category: null, templateId: null });
 }
 
+// ★★★ 新增：手動指定配套期款範本（兩層連動選擇器；類別僅限「配套期款」） ★★★
+
+// 第一層：期款類別選項（僅開放「配套期款」，且需有對應範本存在）
+const packageCategoryOptions = computed(() => {
+    const hasPackageTemplate = (props.paymentTemplates || []).some(t => t.paymentCategory === '配套期款');
+    return hasPackageTemplate ? ['配套期款'] : [];
+});
+
+// 第一層 v-model：手動值優先；自動模式下同步顯示系統實際採用的類別
+const manualPackageCategoryModel = computed({
+    get: () => {
+        if (props.item.manualPackageTemplate?.category) return props.item.manualPackageTemplate.category;
+        // ✅ [新增] 自動判斷（含優付自動套用）時，回填系統實際採用的類別供 UI 顯示
+        return effectivePackageTemplate.value ? '配套期款' : null;
+    },
+    set: (value) => {
+        // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId；
+        // ✅ [新增] 若該類別下只有一個範本，直接預設選定該唯一選項
+        const candidates = value
+            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value)
+            : [];
+        quoteStore.updateItemManualPackageTemplate(props.item.internalId, {
+            category: value,
+            templateId: candidates.length === 1 ? candidates[0].id : null
+        });
+    }
+});
+
+// 第二層：僅列出類別為「配套期款」的範本（不受總價/首購/物件類型限制）
+const manualPackageTemplateOptions = computed(() => {
+    if (!manualPackageCategoryModel.value) return [];
+    return (props.paymentTemplates || [])
+        .filter(t => t.paymentCategory === '配套期款')
+        .map(t => {
+            const range = (t.minPrice || t.maxPrice)
+                ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
+                : '不限總價';
+            const subtitle = `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
+            return { id: t.id, templateName: t.templateName, subtitle };
+        });
+});
+
+// 第二層 v-model：手動值優先；自動模式下同步顯示系統實際採用的範本
+const manualPackageTemplateIdModel = computed({
+    get: () => {
+        if (props.item.manualPackageTemplate?.templateId) return props.item.manualPackageTemplate.templateId;
+        // ✅ [新增] 自動判斷（含優付自動套用）時，回填系統實際採用的範本供 UI 顯示
+        return effectivePackageTemplate.value?.id || null;
+    },
+    set: (value) => {
+        quoteStore.updateItemManualPackageTemplate(props.item.internalId, { templateId: value });
+    }
+});
+
+// 是否處於手動覆蓋狀態（已選定範本、該範本存在且確為配套期款類別）
+const isManualPackageTemplateActive = computed(() => {
+    const id = props.item.manualPackageTemplate?.templateId;
+    return !!id && (props.paymentTemplates || []).some(t => t.id === id && t.paymentCategory === '配套期款');
+});
+
+// 還原為自動（清空手動選擇）
+function resetManualPackageTemplate() {
+    quoteStore.updateItemManualPackageTemplate(props.item.internalId, { category: null, templateId: null });
+}
+
+// 實際採用的配套期款範本：手動優先，否則走自動判斷（僅接受配套期款類別）
+const effectivePackageTemplate = computed(() => {
+    const manualId = props.item.manualPackageTemplate?.templateId;
+    if (manualId) {
+        const found = (props.paymentTemplates || []).find(t => t.id === manualId && t.paymentCategory === '配套期款');
+        if (found) return found; // 手動指定且存在 → 直接採用
+        // 找不到（範本已被刪除）→ fallback 回自動判斷
+    }
+    // ✅ [新增] 優付模式：總價期款採用優付時，配套期款預設選名稱含「優付」的範本
+    if (isGeneralUsingPreferred.value) {
+        const preferred = selectPreferredPackageTemplate();
+        if (preferred) return preferred;
+        // 找不到含「優付」的配套範本 → fallback 回一般自動判斷
+    }
+    return selectPaymentTemplate('配套期款');
+});
+
 // 實際採用的總價期款範本：手動優先（且優先於「優付」自動切換），否則走自動判斷
 const effectiveGeneralTemplate = computed(() => {
     const manualId = props.item.manualTemplate?.templateId;
@@ -1312,6 +1370,30 @@ const effectiveGeneralTemplate = computed(() => {
     }
     return selectPaymentTemplate('一般期款');
 });
+
+// ✅ [新增] 總價期款是否實際採用「優付期款」：
+// 涵蓋手動指定優付類別、及勾選優付後自動切換兩種情況；
+// 若尚無適用的總價範本（cat 為空），則以「優付」勾選狀態判斷
+const isGeneralUsingPreferred = computed(() => {
+    const cat = effectiveGeneralTemplate.value?.paymentCategory;
+    return cat === '優付期款' || (!cat && usePreferredPaymentModel.value);
+});
+
+// ✅ [新增] 優付模式下的預設配套範本：
+// 1. 先篩出名稱含「優付」的配套期款範本
+// 2. 多筆時優先取名稱含「首購」且不含「非首購」者（「非首購」字面包含「首購」，需先排除）
+function selectPreferredPackageTemplate() {
+    const candidates = (props.paymentTemplates || []).filter(t =>
+        t.paymentCategory === '配套期款' && (t.templateName || '').includes('優付')
+    );
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+    const firstBuyerCandidates = candidates.filter(t => {
+        const name = t.templateName || '';
+        return name.includes('首購') && !name.includes('非首購');
+    });
+    return firstBuyerCandidates[0] || candidates[0];
+}
 
 // ★★★ 新增：一般期款計算結果 ★★★
 const generalPaymentCalculation = computed(() => {
@@ -1344,8 +1426,8 @@ const packagePaymentCalculation = computed(() => {
     if (!usePackageDealModel.value || packagePrice.value <= 0) {
         return { hasData: false, items: [], templateName: '' };
     }
-    
-    const template = selectPaymentTemplate('配套期款');
+
+    const template = effectivePackageTemplate.value;
     if (!template || !template.items) {
         return { hasData: false, items: [], templateName: '' };
     }
@@ -1404,9 +1486,9 @@ const appliedPaymentNotes = computed(() => {
     if (generalNote && generalNote.trim()) notes.push(generalNote.trim());
   }
 
-  // 配套期款：有套用時才取
+  // 配套期款：有套用時才取（以實際採用的範本為準，含手動指定）
   if (packagePaymentCalculation.value.hasData) {
-    const packageTemplate = selectPaymentTemplate('配套期款');
+    const packageTemplate = effectivePackageTemplate.value;
     const packageNote = packageTemplate?.applyNote;
     if (packageNote && packageNote.trim()) notes.push(packageNote.trim());
   }
@@ -1422,11 +1504,38 @@ watch(appliedPaymentNotes, (notes) => {
   deep: true
 });
 
-// ★★★ 新增：檢查是否有任何期款資料 ★★★
-const hasAnyPaymentData = computed(() => {
-    return generalPaymentCalculation.value.hasData || 
-           packagePaymentCalculation.value.hasData ||
-           (props.paymentTermsData && props.paymentTermsData.length > 0); // 向後相容性
+// ★★★ 新增：列印報價單(含期款) 用資料 ★★★
+
+// 組裝列印用付款資料：general(實際採用的總價/優付期款) / package(配套期款) / notes
+// 與前端付款方式區完全一致：優付啟用時 general 即為優付期款；配套僅於前端有顯示時才有值
+const printPaymentData = computed(() => {
+    const buildBlock = (calc) => {
+        if (!calc || !calc.hasData) return null;
+        return {
+            templateName: calc.templateName,
+            rows: calc.items.map(it => ({
+                name: it.name,
+                isChild: !!it.parentId,
+                hint: formatConditionalValue(it),
+                value: it.calculatedValue || 0
+            }))
+        };
+    };
+
+    return {
+        general: buildBlock(generalPaymentCalculation.value),
+        generalIsPreferred: isGeneralUsingPreferred.value, // true 時列印標題用「優付期款」
+        package: buildBlock(packagePaymentCalculation.value),
+        notes: appliedPaymentNotes.value
+    };
+});
+
+// 同步列印用付款資料回 Pinia Store（供 QuotePrintDialog 渲染 A4 報價單）
+watch(printPaymentData, (data) => {
+  quoteStore.updateItemPrintPaymentData(props.item.internalId, data);
+}, {
+  immediate: true,
+  deep: true
 });
 
 const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.item.internalId));
@@ -1648,10 +1757,30 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
 
-/* ✅ [新增] 總價期款範本手動指定區 */
-.manual-template-picker {
+/* ✅ [整合] 期款卡片內的範本選單列（總價=藍色系、配套=綠色系，與卡片標題呼應） */
+.picker-row-general {
   background-color: rgba(33, 150, 243, 0.04);
-  border-radius: 4px;
+}
+
+.picker-row-package {
+  background-color: rgba(76, 175, 80, 0.06);
+}
+
+.picker-row .picker-category {
+  flex: 1 1 130px;
+  min-width: 130px;
+}
+
+.picker-row .picker-template {
+  flex: 2 1 170px;
+  min-width: 170px;
+}
+
+/* 手機直疊時期款卡片改為滿版 */
+.payment-col-full {
+  flex-basis: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* 期款卡片欄：約頁面 1/3 寬（不放大、不縮小），單一或雙欄皆維持窄版 */

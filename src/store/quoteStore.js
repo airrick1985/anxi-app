@@ -109,6 +109,10 @@ function addItem(unitData) {
       appliedPaymentNotes: [],
       // ✅ [新增] 手動指定總價期款範本：category/templateId 皆為 null = 自動（依條件判斷）
       manualTemplate: { category: null, templateId: null },
+      // ✅ [新增] 手動指定配套期款範本：類別固定為「配套期款」，templateId 為 null = 自動（依條件判斷）
+      manualPackageTemplate: { category: null, templateId: null },
+      // ✅ [新增] 列印報價單(含期款)用資料：{ general, preferred, package, notes }，由 QuoteItem 同步
+      printPaymentData: null,
       // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
       negotiationState: {
         originalPrice: null,    // null = 未調整；首次調整時記錄原始價格
@@ -235,6 +239,24 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 儲存列印報價單(含期款)用資料（由 QuoteItem 計算後同步）
+  function updateItemPrintPaymentData(internalId, data) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.printPaymentData = data;
+    }
+  }
+
+  // ✅ [新增] 更新手動指定的配套期款範本（category / templateId）
+  // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
+  function updateItemManualPackageTemplate(internalId, payload) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      const current = item.manualPackageTemplate || { category: null, templateId: null };
+      item.manualPackageTemplate = { ...current, ...payload };
+    }
+  }
+
   // ✅ [新增] 進入報價頁時正規化：將所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「是」（首購）
   function resetAllToFirstTimeBuyer() {
     items.value.forEach(item => {
@@ -269,6 +291,8 @@ function addItem(unitData) {
     updateItemCalculatedPayments,
     updateItemPaymentNotes,
     updateItemManualTemplate,
+    updateItemManualPackageTemplate,
+    updateItemPrintPaymentData,
     resetAllToFirstTimeBuyer,
     clearQuote
   };

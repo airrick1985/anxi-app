@@ -197,6 +197,70 @@ export async function fetchPaymentTermTemplates(projectId) {
   }
 }
 
+/* ==========================================================
+ * ✅ [新增] 報價單備註欄 API（quoteRemarks 集合，docId = projectId）
+ * 供「列印報價單(含期款)」每戶頁最下方渲染；銷控權限用戶可編輯
+ * ========================================================== */
+
+/**
+ * 讀取報價單備註
+ * @param {string} projectId
+ * @returns {Promise<object>} { status, data: { content, updatedAt, updatedBy } | null }
+ */
+export async function fetchQuoteRemark(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    const snap = await getDoc(doc(db, 'quoteRemarks', projectId));
+    return { status: 'success', data: snap.exists() ? snap.data() : null };
+  } catch (error) {
+    console.error('[api.js] fetchQuoteRemark error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 建立/更新報價單備註（setDoc 覆寫，同時記錄更新者與時間）
+ * @param {string} projectId
+ * @param {string} content - 富文本 HTML 內容
+ * @param {string} updatedBy - 更新者名稱
+ */
+export async function saveQuoteRemark(projectId, content, updatedBy = '') {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    await setDoc(doc(db, 'quoteRemarks', projectId), {
+      projectId,
+      content: String(content || ''),
+      updatedBy,
+      updatedAt: serverTimestamp(),
+    });
+    return { status: 'success' };
+  } catch (error) {
+    console.error('[api.js] saveQuoteRemark error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 刪除報價單備註
+ * @param {string} projectId
+ */
+export async function deleteQuoteRemark(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    await deleteDoc(doc(db, 'quoteRemarks', projectId));
+    return { status: 'success' };
+  } catch (error) {
+    console.error('[api.js] deleteQuoteRemark error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
 /**
  * 根據條件選擇適用的期款範本
  * @param {Array} templates - 所有範本列表

@@ -18,7 +18,7 @@
 
    <div class="page-header d-flex align-center">
   <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
-  <v-btn v-if="!isPickEntry" icon="mdi-arrow-left" variant="text" @click="goBack" class="mr-4"></v-btn>
+  <v-btn v-if="!isPickEntry" variant="outlined" @click="goBack" class="mr-4">返回銷控</v-btn>
 
   <div class="title-block">
     <h1 class="text-h5 text-md-h4 font-weight-bold text-primary d-flex align-center">
@@ -65,6 +65,16 @@
   </div>
 
   <v-spacer></v-spacer>
+
+  <!-- ✅ [新增] 報價單備註編輯器：僅銷控管理權限人員可見 -->
+  <v-btn
+    v-if="canEditQuoteRemark"
+    color="blue-grey-darken-2"
+    variant="tonal"
+    prepend-icon="mdi-note-edit-outline"
+    class="mr-4"
+    @click="isRemarkEditorVisible = true"
+  >報價單備註</v-btn>
 
   <v-btn
     color="primary"
@@ -192,14 +202,22 @@
                   :loading="loading"  ></v-text-field>
           </v-col>
           <v-col cols="12" md="8" class="text-right">
-          <v-btn 
-          color="green" 
+          <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別後每戶產生一頁 A4 報價單 -->
+          <v-btn
+          color="teal-darken-1"
           size="x-large"
-          
+          class="mr-3 mb-2 mb-md-0"
+          @click="isQuotePrintDialogVisible = true" prepend-icon="mdi-printer-outline"
+        >
+          列印報價單(含期款) </v-btn>
+          <v-btn
+          color="green"
+          size="x-large"
+
           @click="openQuoteEditor" prepend-icon="mdi-printer"
         >
           列印報價單 </v-btn>
-          
+
           </v-col>
         </v-row>
       </v-card-text>
@@ -260,6 +278,21 @@
       :project-id="projectId"
       :project-name="projectName"
       :can-upload="canUploadActivityMessage"
+    />
+
+    <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別 → 每戶一頁 A4 報價單 -->
+    <QuotePrintDialog
+      v-model="isQuotePrintDialogVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+      :personnel-name="selectedPersonnel?.name || ''"
+      :personnel-phone="personnelPhone"
+    />
+
+    <!-- ✅ [新增] 報價單備註富文本編輯器（銷控管理權限） -->
+    <QuoteRemarkEditorDialog
+      v-model="isRemarkEditorVisible"
+      :project-id="projectId"
     />
 
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
@@ -381,7 +414,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
-import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'; // ✅ [修改] 加入 onBeforeRouteLeave
+import { useRoute, useRouter } from 'vue-router';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -402,6 +435,8 @@ import QuoteItem from '@/components/QuoteItem.vue';
 const PrintQuotation = defineAsyncComponent(() => import('@/views/PrintQuotation.vue'));
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
+import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
+import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 
 const route = useRoute();
@@ -413,21 +448,8 @@ const parkingStore = useParkingStore();
 const adminStore = useAdminStore();
 const salesDataStore = useSalesDataStore();
 
-// ✅ [新增] 進入時清空所有議價調整（避免殘留）
-onMounted(() => {
-  quoteStore.clearAllNegotiations();
-});
-
 onUnmounted(() => {
     parkingStore.cleanup();
-});
-
-onBeforeRouteLeave((to, from, next) => {
-  // ✅ [修改] 離開報價設定一律清空：先還原議價調整，再清空報價單項目，
-  // 不再保留返回銷控/報價系統時的殘留（下次進入皆為全新報價）。
-  quoteStore.clearAllNegotiations();
-  quoteStore.clearQuote();
-  next();
 });
 
 const { 
@@ -483,6 +505,19 @@ const currentQuoteItem = ref(null); // 目前處理的報價項目
 
 // --- 活動訊息相關狀態 ---
 const isActivityDialogVisible = ref(false);
+
+// ✅ [新增] 列印報價單(含期款) 對話框
+const isQuotePrintDialogVisible = ref(false);
+
+// ✅ [新增] 報價單備註編輯器對話框
+const isRemarkEditorVisible = ref(false);
+
+// ✅ [新增] 報價單備註編輯權限：系統/超級管理員或具該案「銷控系統」權限（與活動訊息管理相同標準）
+const canEditQuoteRemark = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', projectName.value);
+});
 
 const canUploadActivityMessage = computed(() => {
   const roles = userStore.user?.roles || [];
