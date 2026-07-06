@@ -199,6 +199,66 @@ export const useReservationStore = defineStore('reservation', {
     },
 
     /**
+     * ✅ 同步預約資訊到聯絡名單 (leads)
+     * 依 projectId + 客戶電話 找出該建案所有符合的名單（含重複電話多筆）：
+     * - action = 'add' / 'update'：主檔狀態一律覆蓋為「已約賞屋」（並清除舊的未約原因）
+     * - action = 'cancel'：不動主檔狀態，僅補一筆取消日誌
+     * 每筆名單各寫入一筆 contactLogs 回報日誌
+     * 同步失敗不影響預約本身的成敗（僅記錄於 console）
+     */
+    async syncReservationToLeads(action, resData, operatorName = '') {
+      try {
+        const projectId = resData?.projectId;
+        const phone = resData?.customerPhone;
+        if (!projectId || !phone) return;
+
+        const snap = await getDocs(query(
+          collection(db, 'leads'),
+          where('projectId', '==', projectId),
+          where('phone', '==', phone),
+          where('isDeleted', '==', false)
+        ));
+        if (snap.empty) return;
+
+        // 預約時間格式化 (Timestamp 或 Date 皆可)
+        const t = resData.reservationTime;
+        const d = t?.toDate ? t.toDate() : (t ? new Date(t) : null);
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStr = d && !isNaN(d.getTime())
+          ? `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+          : '--';
+
+        const logStatus = { add: '已約賞屋', update: '預約異動', cancel: '預約取消' }[action] || '已約賞屋';
+        let summary = `【${logStatus}】\n時間：${timeStr}\n類型：${resData.type || '--'}\n姓名：${resData.customerName || ''}\n電話：${phone}\n銷售：${resData.salesName || '不指定'}\n備註：${resData.note || '無'}`;
+        if (action === 'cancel' && resData.cancelReason) {
+          summary += `\n取消原因：${resData.cancelReason}`;
+        }
+
+        const createdBy = `${operatorName || resData.operatorName || '系統'}（系統自動同步）`;
+
+        await Promise.all(snap.docs.map(async (leadDoc) => {
+          if (action !== 'cancel') {
+            await updateDoc(doc(db, 'leads', leadDoc.id), {
+              status: '已約賞屋',
+              reason: '',
+              lastReportedAt: serverTimestamp()
+            });
+          }
+          await addDoc(collection(db, `leads/${leadDoc.id}/contactLogs`), {
+            status: logStatus,
+            reason: '',
+            note: summary,
+            projectId,
+            createdBy,
+            createdAt: serverTimestamp()
+          });
+        }));
+      } catch (err) {
+        console.error('syncReservationToLeads Error:', err);
+      }
+    },
+
+    /**
      * 新增預約
      */
     async addReservation(payload) {
@@ -235,7 +295,10 @@ export const useReservationStore = defineStore('reservation', {
           ...docData,
           reservationTime: docData.reservationTime
         });
-        
+
+        // ✅ 同步到聯絡名單：狀態改「已約賞屋」+ 寫入回報日誌
+        await this.syncReservationToLeads('add', docData);
+
         return { success: true, id: docRef.id };
         
       } catch (err) {
@@ -270,6 +333,12 @@ export const useReservationStore = defineStore('reservation', {
             this.reservations[index] = { ...this.reservations[index], ...finalUpdateData };
         }
 
+        // ✅ 同步到聯絡名單：以更新後的完整文件為準，寫入「預約異動」日誌
+        const updatedSnap = await getDoc(docRef);
+        if (updatedSnap.exists()) {
+            await this.syncReservationToLeads('update', updatedSnap.data());
+        }
+
         return { success: true };
       } catch (err) {
         console.error("updateReservation Error:", err);
@@ -282,11 +351,11 @@ export const useReservationStore = defineStore('reservation', {
     /**
      * 取消預約 (冷刪除)
      */
-    async cancelReservation(id, cancelReason = '') {
+    async cancelReservation(id, cancelReason = '', operatorName = '') {
       this.loading = true;
       try {
         const docRef = doc(db, "viewing_reservations", id);
-        
+
         await updateDoc(docRef, {
             status: 'deleted',
             cancelReason: cancelReason,
@@ -296,6 +365,12 @@ export const useReservationStore = defineStore('reservation', {
         const index = this.reservations.findIndex(r => r.id === id);
         if (index !== -1) {
             this.reservations[index].status = 'deleted';
+        }
+
+        // ✅ 同步到聯絡名單：僅寫入「預約取消」日誌，不改動名單狀態
+        const cancelledSnap = await getDoc(docRef);
+        if (cancelledSnap.exists()) {
+            await this.syncReservationToLeads('cancel', cancelledSnap.data(), operatorName);
         }
 
         return { success: true };

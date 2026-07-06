@@ -733,7 +733,7 @@
 
         <div class="text-center mt-6">
           <v-btn 
-            :color="reportForm.status === '已約賞屋' && !isBookingCompleted ? 'grey-darken-1' : 'green'" 
+            color="green"
             size="x-large" 
             rounded="lg"
             elevation="2"
@@ -1484,17 +1484,17 @@
             rounded="lg"
             @click="handleParsing"
           >開始解析文本</v-btn>
-           <v-btn 
-          v-if="uploadStep === 2" 
-          color="success" 
-          variant="elevated" 
-          min-width="250" 
+           <v-btn
+          v-if="uploadStep === 2"
+          :color="summaryCount.unassigned > 0 ? 'grey' : 'success'"
+          variant="elevated"
+          min-width="250"
           rounded="lg"
-          :disabled="isCheckingDuplicates"
+          :disabled="isCheckingDuplicates || summaryCount.unassigned > 0"
           :loading="isImporting"
           @click="executeBatchImportAndAssign"
         >
-          確認無誤並執行分配 ({{ previewLeads.length }}筆)
+          {{ summaryCount.unassigned > 0 ? `尚未處理 (待指派 ${summaryCount.unassigned}筆)` : `確認無誤並執行分配 (${previewLeads.length}筆)` }}
         </v-btn>
         </v-card-actions>
       </v-card>
@@ -2285,18 +2285,15 @@ reportForm.value.note = summary;
 // ✅ 新增：按鈕文字計算
 const submitBtnText = computed(() => {
   if (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value) {
-    return '請先完成賞屋預約';
+    return '請確認已完成預約';
   }
   return '完成回報';
 });
 
 // ✅ 新增：按鈕禁用邏輯
 const isSubmitDisabled = computed(() => {
-  const baseValidation = !reportForm.value.status || (showReasonField.value && !reportForm.value.reason);
-  // ✅ 優化：若有「客資系統-櫃台」權限，即使未完成預約也可以提交
-  const hasReceptionistPermission = userSystems.value.includes('客資系統-櫃台');
-  const bookingValidation = (reportForm.value.status === '已約賞屋' && !isBookingCompleted.value && !hasReceptionistPermission);
-  return baseValidation || bookingValidation;
+  // ✅ 優化：未完成預約不再禁用按鈕，僅以按鈕文字「請確認已完成預約」提醒
+  return !reportForm.value.status || (showReasonField.value && !reportForm.value.reason);
 });
 
 // ✅ 狀態 Key 對應 (用於 CSS Class)
@@ -3200,6 +3197,14 @@ const handleParsing = async () => {
 const isImporting = ref(false);
 
 const executeBatchImportAndAssign = async () => {
+  // ⚠️ 檢查是否有尚未選擇銷售的名單，若有則提醒用戶並中止分配流程
+  const unassignedLeads = previewLeads.value.filter(l => !l.assignedTo);
+  if (unassignedLeads.length > 0) {
+    applySorting(); // 將未指派的名單排到最前面，方便用戶快速找到
+    showMsg(`⚠️ 尚有 ${unassignedLeads.length} 筆名單未選擇銷售，請先完成指派再執行分配`, 'warning');
+    return;
+  }
+
   try {
     // ✓ [打勾] 修正：手動開啟按鈕的 loading 狀態，解決看不到 LOADING 的問題
     isImporting.value = true; 

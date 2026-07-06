@@ -826,7 +826,7 @@ const resolveConflict = async (action) => {
     conflictDialog.value = false;
     if (action === 'replace') {
         if (conflictInfo.value?.id) {
-            await reservationStore.cancelReservation(conflictInfo.value.id, '系統：電話衝突，使用者選擇覆蓋');
+            await reservationStore.cancelReservation(conflictInfo.value.id, '系統：電話衝突，使用者選擇覆蓋', userStore.user?.name || '');
         }
     }
 };
@@ -920,7 +920,7 @@ const save = async () => {
 
 const confirmDelete = async () => {
     if (confirm('確定要取消此預約嗎？')) {
-        await reservationStore.cancelReservation(props.initialData.id, '使用者手動取消');
+        await reservationStore.cancelReservation(props.initialData.id, '使用者手動取消', userStore.user?.name || '');
         emit('deleted');
         closeDialog();
     }
