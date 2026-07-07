@@ -3002,46 +3002,57 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
     return { conflictingDates: [], nonConflictingDates: [] };
   }
   try {
-    // 步驟 1: 查找在指定日期中已存在的 *有效*「共享規則」
+    // ✓【修正 IN 30 限制】Firestore 'in' 查詢最多帶 30 個值，超過會拋錯
+    const MAX_IN_QUERY = 30;
+
+    // 步驟 1: 查找在指定日期中已存在的 *有效*「共享規則」（分批查詢避免超過 30）
     const rulesRef = collection(db, "dateRules");
-    // ✓【修改】增加 isDeleted 條件
-    const rulesQuery = query(rulesRef,
-      where("projectId", "==", projectId),
-      where("isShared", "==", true),
-      where("date", "in", dates),
-      where("isDeleted", "==", false) // ✓ 只查找有效的共享規則
-    );
-    const rulesSnapshot = await getDocs(rulesQuery);
+    const conflictingRulesMap = new Map();
+    for (let i = 0; i < dates.length; i += MAX_IN_QUERY) {
+      const dateChunk = dates.slice(i, i + MAX_IN_QUERY);
+      // ✓【修改】增加 isDeleted 條件
+      const rulesQuery = query(rulesRef,
+        where("projectId", "==", projectId),
+        where("isShared", "==", true),
+        where("date", "in", dateChunk),
+        where("isDeleted", "==", false) // ✓ 只查找有效的共享規則
+      );
+      const rulesSnapshot = await getDocs(rulesQuery);
+      rulesSnapshot.forEach(doc => {
+        conflictingRulesMap.set(doc.id, { ruleId: doc.id, ...doc.data(), sharedBy: [] });
+      });
+    }
     // 如果找不到有效的共享規則，直接返回無衝突
-    if (rulesSnapshot.empty) {
+    if (conflictingRulesMap.size === 0) {
       console.log(`[api.js] checkDateConflicts: No active shared rules found for dates.`); // ✓ Log
       return { conflictingDates: [], nonConflictingDates: dates };
     }
 
-    const conflictingRulesMap = new Map();
-    rulesSnapshot.forEach(doc => {
-      conflictingRulesMap.set(doc.id, { ruleId: doc.id, ...doc.data(), sharedBy: [] });
-    });
     const ruleIds = Array.from(conflictingRulesMap.keys());
 
-    // 步驟 2: 根據找到的規則 ID，查找所有 *有效* 的關聯批次 ID
+    // 步驟 2: 根據找到的規則 ID，查找所有 *有效* 的關聯批次 ID（分批查詢避免超過 30）
     const linksRef = collection(db, "batchRuleLinks");
-    // ✓【修改】增加 isDeleted 條件
-    const linksQuery = query(
-      linksRef,
-      where("ruleId", "in", ruleIds),
-      where("isDeleted", "==", false) // ✓ 只查找有效的連結
-    );
-    const linksSnapshot = await getDocs(linksQuery);
+    const linkDocs = [];
+    for (let i = 0; i < ruleIds.length; i += MAX_IN_QUERY) {
+      const ruleIdChunk = ruleIds.slice(i, i + MAX_IN_QUERY);
+      // ✓【修改】增加 isDeleted 條件
+      const linksQuery = query(
+        linksRef,
+        where("ruleId", "in", ruleIdChunk),
+        where("isDeleted", "==", false) // ✓ 只查找有效的連結
+      );
+      const linksSnapshot = await getDocs(linksQuery);
+      linksSnapshot.forEach(doc => linkDocs.push(doc));
+    }
     // 如果找不到有效的連結，理論上不該發生 (因為規則存在)，但仍做防禦性處理
-    if (linksSnapshot.empty) {
+    if (linkDocs.length === 0) {
       console.warn(`[api.js] checkDateConflicts: Found shared rules but no active links? Rule IDs:`, ruleIds); // ✓ Log 警告
       return { conflictingDates: [], nonConflictingDates: dates };
     }
 
     const batchIds = new Set();
     const ruleToBatchIdsMap = new Map();
-    linksSnapshot.forEach(doc => {
+    linkDocs.forEach(doc => {
       const { ruleId, batchId } = doc.data();
       // ✓【修改】排除當前正在編輯的批次 ID (如果提供了 currentBatchId)
       if (currentBatchId && batchId === currentBatchId) {
@@ -3060,19 +3071,23 @@ export async function checkDateConflicts(projectId, dates, currentBatchId = null
       return { conflictingDates: [], nonConflictingDates: dates };
     }
 
-    // 步驟 3: 根據批次 ID，一次性獲取所有 *有效* 批次的詳細資料
+    // 步驟 3: 根據批次 ID，獲取所有 *有效* 批次的詳細資料（分批查詢避免超過 30）
     const batchesRef = collection(db, "bookingBatches");
-    // ✓【修改】增加 isDeleted 條件
-    const batchesQuery = query(
-      batchesRef,
-      where(documentId(), 'in', Array.from(batchIds)),
-      where("isDeleted", "==", false) // ✓ 只獲取有效的批次資訊
-    );
-    const batchesSnapshot = await getDocs(batchesQuery);
+    const batchIdArray = Array.from(batchIds);
     const batchDetailsMap = new Map();
-    batchesSnapshot.forEach(doc => {
-      batchDetailsMap.set(doc.id, doc.data());
-    });
+    for (let i = 0; i < batchIdArray.length; i += MAX_IN_QUERY) {
+      const batchIdChunk = batchIdArray.slice(i, i + MAX_IN_QUERY);
+      // ✓【修改】增加 isDeleted 條件
+      const batchesQuery = query(
+        batchesRef,
+        where(documentId(), 'in', batchIdChunk),
+        where("isDeleted", "==", false) // ✓ 只獲取有效的批次資訊
+      );
+      const batchesSnapshot = await getDocs(batchesQuery);
+      batchesSnapshot.forEach(doc => {
+        batchDetailsMap.set(doc.id, doc.data());
+      });
+    }
 
     // 步驟 4: 組合出前端需要的 "預約項目(批次代號)" 格式
     conflictingRulesMap.forEach((rule, ruleId) => {
@@ -3277,24 +3292,28 @@ export async function fetchRulesForBatch(batchId) {
     const ruleIds = linksSnapshot.docs.map(doc => doc.data().ruleId);
     if (ruleIds.length === 0) return {}; // 再次檢查，雖然理論上不會發生
 
-    // 步驟 2: 透過有效的 ruleIds 一次性獲取所有 *未被刪除* 的規則內容
+    // 步驟 2: 透過有效的 ruleIds 獲取所有 *未被刪除* 的規則內容
+    // ✓【修正 IN 30 限制】Firestore 'in' 查詢最多帶 30 個值，超過會拋錯導致整包失敗
+    //   （造成后冠管理預覽全部顯示「無設定時段」，但 BookingPage 後端有分批故正常）
     const rulesRef = collection(db, "dateRules");
-    // ✓【修改】增加 isDeleted 條件
-    const rulesQuery = query(
-      rulesRef,
-      where(documentId(), 'in', ruleIds),
-      where("isDeleted", "==", false) // ✓ 只獲取有效的規則
-    );
-    const rulesSnapshot = await getDocs(rulesQuery);
-
-    // ✓【新增】收集所有規則，用於排序
-    const allRules = [];
-    rulesSnapshot.forEach(doc => {
-      allRules.push({
-        id: doc.id,
-        ...doc.data()
+    const MAX_IN_QUERY_RULES = 30; // Firestore 'in' 查詢上限
+    const allRules = []; // 收集所有規則，用於排序
+    for (let i = 0; i < ruleIds.length; i += MAX_IN_QUERY_RULES) {
+      const ruleIdChunk = ruleIds.slice(i, i + MAX_IN_QUERY_RULES);
+      // ✓【修改】增加 isDeleted 條件
+      const rulesQuery = query(
+        rulesRef,
+        where(documentId(), 'in', ruleIdChunk),
+        where("isDeleted", "==", false) // ✓ 只獲取有效的規則
+      );
+      const rulesSnapshot = await getDocs(rulesQuery);
+      rulesSnapshot.forEach(doc => {
+        allRules.push({
+          id: doc.id,
+          ...doc.data()
+        });
       });
-    });
+    }
 
     // ✓【新增】按 createdAt 排序，最新的規則優先
     allRules.sort((a, b) => {
