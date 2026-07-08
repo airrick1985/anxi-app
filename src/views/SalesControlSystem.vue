@@ -1439,6 +1439,7 @@ import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js';
 import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
+import { getUnitParkings, getParkingTransactionTotal, getUnitTotalTransactionPrice } from '@/utils/analyticsCalculations';
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
@@ -2718,8 +2719,12 @@ const exportToExcel = () => {
         return String(a.unitId).localeCompare(String(b.unitId), 'zh-TW', { numeric: true });
     });
 
+    // 車位加值欄位（僅供檢視，上傳時非 COLUMN_DEFINITIONS 標頭會被自動忽略）
+    const allParkings = salesParkings.value || [];
+    const PARKING_EXTRA_HEADERS = ['車位編號及價格', '合計車位價格', '合計成交總價'];
+
     const dataAsArray = sortedItems.map(item => {
-        return exportOrder.value.map(key => {
+        const row = exportOrder.value.map(key => {
             const value = item[key];
             if (key === 'buyerDateOfBirth') {
                 if (!value) return '';
@@ -2766,17 +2771,28 @@ const exportToExcel = () => {
             }
             return value;
         });
+
+        // 車位編號及價格（複數以逗號區隔）、合計車位價格、合計成交總價（房屋成交價+合計車位價格）
+        const mySpots = getUnitParkings(item, allParkings);
+        const parkingText = mySpots
+            .map(p => `${p.spotId ?? ''}(${Number(p.price_transaction) || 0})`)
+            .join(',');
+        const parkingTotal = getParkingTransactionTotal(item, allParkings);
+        const grandTotal = getUnitTotalTransactionPrice(item, allParkings);
+        row.push(parkingText, mySpots.length > 0 ? parkingTotal : '', grandTotal || '');
+        return row;
     });
 
+    const exportHeaders = [...chineseHeaders.value, ...PARKING_EXTRA_HEADERS];
     const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
-    const dataWithHeader = [warningRow, chineseHeaders.value, ...dataAsArray];
+    const dataWithHeader = [warningRow, exportHeaders, ...dataAsArray];
     const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
 
     const warningStyle = { font: { color: { rgb: "FFFF0000" }, bold: true }, fill: { fgColor: { rgb: "FFFFFF00" } } };
     ws['A1'].s = warningStyle;
-    
+
     if (!ws['!merges']) ws['!merges'] = [];
-    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: exportOrder.value.length - 1 } });
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: exportHeaders.length - 1 } });
 
     const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FFD3D3D3" } } };
     const range = XLSX.utils.decode_range(ws['!ref']);

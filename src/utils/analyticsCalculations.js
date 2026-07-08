@@ -183,14 +183,14 @@ const getHouseFloorPrice = (household) => {
 /**
  * 獲取單戶關聯的車位
  */
-const getUnitParkings = (household, allParkings) => {
+export const getUnitParkings = (household, allParkings) => {
   return allParkings.filter(p => p.buyerUnitId === household.unitId) || []
 }
 
 /**
  * 計算單戶車位成交價合計
  */
-const getParkingTransactionTotal = (household, allParkings) => {
+export const getParkingTransactionTotal = (household, allParkings) => {
   const parkings = getUnitParkings(household, allParkings)
   return parkings.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
 }
@@ -206,7 +206,7 @@ const getParkingFloorTotal = (household, allParkings) => {
 /**
  * 計算單戶成交總價 (房 + 車位)
  */
-const getUnitTotalTransactionPrice = (household, allParkings) => {
+export const getUnitTotalTransactionPrice = (household, allParkings) => {
   const housePrice = getHouseTransactionPrice(household)
   const parkingPrice = getParkingTransactionTotal(household, allParkings)
   const total = housePrice + parkingPrice
