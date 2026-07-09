@@ -47,7 +47,6 @@
         </v-btn-toggle>
 
         <v-btn
-          v-if="viewFormat === 'list'"
           :color="showFilterPanel ? 'primary' : 'black'"
           :variant="showFilterPanel ? 'flat' : 'tonal'"
           prepend-icon="mdi-filter-variant"
@@ -269,8 +268,8 @@
 
     <div class="content-wrapper">
 
-      <!-- ✅ [新增] 全域關鍵字搜尋（列表模式常駐，不需展開篩選面板） -->
-      <div v-if="viewFormat === 'list'" class="global-search-bar mb-2">
+      <!-- ✅ [新增] 全域關鍵字搜尋（列表/網格模式常駐，不需展開篩選面板） -->
+      <div class="global-search-bar mb-2">
         <v-text-field
           v-model="filters.keyword"
           placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註…（可空白分隔多關鍵字）"
@@ -292,7 +291,7 @@
       </div>
 
       <v-expand-transition>
-  <div v-if="viewFormat === 'list' && showFilterPanel" class="filter-panel-container mb-2">
+  <div v-if="showFilterPanel" class="filter-panel-container mb-2">
     <v-card variant="outlined" class="bg-white pa-3">
       <v-row dense>
         <v-col cols="12" sm="6" md="3">
@@ -454,9 +453,10 @@
             <div v-for="item in flatGridData" :key="item.key" class="data-cell">
              <div v-if="item.data"
   class="unit-card"
-  :class="{ 
+  :class="{
     'in-quote': quoteStore.isItemInQuote(item.data.unitId),
-    'has-terrace': item.data.area_terrace_ping > 0  
+    'has-terrace': item.data.area_terrace_ping > 0,
+    'filtered-out': isUnitFilteredOut(item.data)
   }"
   :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
   @click="openUnitDetail(item.data)"
@@ -857,7 +857,7 @@
       app
       grow  
     >
-    <v-btn @click="showFilterPanel = !showFilterPanel" v-if="viewFormat === 'list'">
+    <v-btn @click="showFilterPanel = !showFilterPanel">
         <v-badge
           :content="activeFilterCount"
           :model-value="activeFilterCount > 0"
@@ -1487,8 +1487,17 @@ const statusOptions = computed(() => {
   return ['(無)', ...salesParameters.value.map(p => p.statusName)];
 });
 
+// ✅ [修改] 銷售人員篩選選項：改為取用目前戶別資料內實際出現過的銷售人員
+//（而非人員設定名單，避免列出從未經手任何戶別的人員）
+// 取全部戶別（salesHouseholds），網格/列表模式選項一致，不受住家/店面切換影響
 const personnelOptions = computed(() => {
-  return salesPersonnel.value.map(p => p.name);
+  const names = new Set();
+  (salesHouseholds.value || []).forEach(u => {
+    normalizeSalespersons(u.salesperson).forEach(n => names.add(n));
+  });
+  return Array.from(names).sort((a, b) =>
+    String(a).localeCompare(String(b), 'zh-Hant', { numeric: true, sensitivity: 'base' })
+  );
 });
 
 // 3. 修改 activeFilterCount (加入新欄位計數)
@@ -1674,6 +1683,11 @@ const filteredTableItems = computed(() => {
     return true;
   });
 });
+
+// ✅ [新增] 網格模式篩選：沿用列表相同的篩選邏輯，取得符合條件的戶別集合
+const hasActiveFilters = computed(() => activeFilterCount.value > 0);
+const matchedUnitIdSet = computed(() => new Set(filteredTableItems.value.map(i => i.unitId)));
+const isUnitFilteredOut = (unit) => hasActiveFilters.value && !matchedUnitIdSet.value.has(unit.unitId);
 
 
 // ==========================================
@@ -3280,6 +3294,14 @@ overflow: hidden;
   background-color: #e9ecef;
   box-shadow: none;
   cursor: default;
+}
+/* ✅ [新增] 網格模式篩選：不符合篩選條件的戶別淡化顯示（保留棟別/樓層位置脈絡） */
+.unit-card.filtered-out {
+  opacity: 0.15;
+  filter: grayscale(1);
+}
+.unit-card.filtered-out:hover {
+  opacity: 0.5;
 }
 .unit-name {
   font-size: 0.95rem;
