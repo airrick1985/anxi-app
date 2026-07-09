@@ -63,13 +63,15 @@
     
     <v-list-item class="pl-0">
      <template v-if="showPackageDeal" v-slot:prepend>
-    <v-switch 
-            class="mr-4" 
-            v-model="usePackageDealModel" 
-            label="配套" 
-            color="primary" 
-            hide-details 
+    <v-switch
+            class="mr-4"
+            v-model="usePackageDealModel"
+            label="配套"
+            color="primary"
+            hide-details
             inset
+            :disabled="!isPackageDealAllowed"
+            :title="packageDisabledHint"
         ></v-switch>
      </template>
 
@@ -189,10 +191,11 @@
    <template v-if="showPackageDeal">
     
     <div class="item-cell flex-1">
-      <v-checkbox 
-        v-model="usePackageDealModel" 
-      
+      <v-checkbox
+        v-model="usePackageDealModel"
         hide-details
+        :disabled="!isPackageDealAllowed"
+        :title="packageDisabledHint"
       ></v-checkbox>
     </div>
     
@@ -1114,8 +1117,42 @@ const isFirstTimeBuyerBoolean = computed(() => isFirstTimeBuyerModel.value === '
 
 const usePackageDealModel = computed({
   get: () => props.item.usePackageDeal,
-  set: (value) => quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value)
+  set: (value) => {
+    // ✅ [新增] 超過配套總價上限的戶別禁止勾選配套
+    if (value === true && !isPackageDealAllowed.value) return;
+    quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value);
+  }
 });
+
+// ✅ [新增] 配套總價門檻（萬，由銷控權限人員於報價單設定頁設定；null = 不限制）
+const packagePriceThreshold = computed(() => {
+  const project = projectStore.getProjectById(props.projectId) || projectStore.currentProject;
+  const raw = project?.quotePackageThreshold;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num = Number(raw);
+  return Number.isFinite(num) && num > 0 ? num : null;
+});
+
+// ✅ [新增] 是否允許勾選配套：「未套配套的原始總價（房屋＋車位）」達到門檻(>=)才可勾選，避免被配套價本身影響
+const isPackageDealAllowed = computed(() => {
+  if (packagePriceThreshold.value === null) return true;
+  const housePrice = Number(props.item.unitDetails?.price_list_house_total) || 0;
+  const parkingTotal = quoteStore.getParkingTotalPrice(props.item.internalId);
+  return (housePrice + parkingTotal) >= packagePriceThreshold.value;
+});
+
+// ✅ [新增] 不可勾選時的提示文字
+const packageDisabledHint = computed(() => {
+  if (isPackageDealAllowed.value) return '';
+  return `總價未達配套門檻 ${packagePriceThreshold.value.toLocaleString()} 萬，不可勾選配套`;
+});
+
+// ✅ [新增] 若已勾選配套但因門檻調整（或車位變動後）變為不符資格，自動取消勾選
+watch(isPackageDealAllowed, (allowed) => {
+  if (!allowed && props.item.usePackageDeal) {
+    quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', false);
+  }
+}, { immediate: true });
 
 // ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
 const showPreferredPaymentOption = computed(() => {

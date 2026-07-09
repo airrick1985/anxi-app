@@ -76,6 +76,20 @@
     @click="isRemarkEditorVisible = true"
   >報價單備註</v-btn>
 
+  <!-- ✅ [新增] 配套總價門檻設定：僅銷控管理權限人員可見 -->
+  <v-tooltip v-if="canEditQuoteRemark" text="配套總價門檻設定" location="bottom">
+    <template v-slot:activator="{ props }">
+      <v-btn
+        v-bind="props"
+        icon="mdi-cash-lock"
+        color="blue-grey-darken-2"
+        variant="tonal"
+        class="mr-4"
+        @click="isPackageLimitDialogVisible = true"
+      ></v-btn>
+    </template>
+  </v-tooltip>
+
   <v-btn
     color="primary"
     variant="tonal"
@@ -295,6 +309,12 @@
       :project-id="projectId"
     />
 
+    <!-- ✅ [新增] 配套總價上限設定（銷控管理權限） -->
+    <QuotePackageLimitDialog
+      v-model="isPackageLimitDialogVisible"
+      :project-id="projectId"
+    />
+
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
         <v-card-title class="d-flex justify-space-between align-center">
@@ -437,6 +457,7 @@ import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
 import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
+import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 
 const route = useRoute();
@@ -511,6 +532,9 @@ const isQuotePrintDialogVisible = ref(false);
 
 // ✅ [新增] 報價單備註編輯器對話框
 const isRemarkEditorVisible = ref(false);
+
+// ✅ [新增] 配套總價上限設定對話框
+const isPackageLimitDialogVisible = ref(false);
 
 // ✅ [新增] 報價單備註編輯權限：系統/超級管理員或具該案「銷控系統」權限（與活動訊息管理相同標準）
 const canEditQuoteRemark = computed(() => {
