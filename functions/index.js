@@ -938,7 +938,7 @@ exports.getAvailableSlots = onCall(async (request) => {
 /**
  *  獲取預約頁面初始化所需的資料 (棟別列表、預約設定)
  */
-exports.getBookingInitialData = onCall(async (request) => {
+exports.getBookingInitialData = onCall({ memory: "512MiB" }, async (request) => {
   const db = new Firestore({ databaseId: 'anxi-app' });
   const { projectId } = request.data;
   if (!projectId) {
