@@ -2202,17 +2202,14 @@ const availableBookingTypes = computed(() => {
   return types;
 });
 
-// [新增] 檢查某個預約類型是否應該在前端顯示（基於 preDisplayOnFrontend）
+// [新增] 檢查某個預約項目是否要在 BookingPage 顯示入口
+// 由後台「預約頁面設定」中各預約項目的「客戶可見」開關控制（pageSettingsByItem[項目].visibleToCustomer）
+// 設為隱藏時，即使批次在開放期間，客戶也看不到此項目的入口；未設定時預設顯示
 const isTypeDisplayableOnFrontend = (typeName) => {
-  const allSchedules = initialData.value?.allBatchSchedules;
-  if (!allSchedules || !allSchedules[typeName]) return true; // 無排程資料時，預設顯示
-
-  const schedules = allSchedules[typeName];
-  // 只要此類型有任何批次設定 preDisplayOnFrontend=true，就應該顯示
-  return schedules.some(s => s.preDisplayOnFrontend !== false); // 預設為 true
+  return projectConfig.value?.pageSettingsByItem?.[typeName]?.visibleToCustomer !== false;
 };
 
-// [新增] 取得所有設定的預約服務類型（根據 preDisplayOnFrontend 過濾，用於 Step 0 常駐顯示）
+// [新增] 取得所有設定的預約服務類型（依「客戶可見」設定過濾，用於 Step 0 常駐顯示）
 const allBookingTypes = computed(() => {
   if (!projectConfig.value) return [];
 
@@ -2227,7 +2224,7 @@ const allBookingTypes = computed(() => {
     typeList = projectConfig.value.bookingTypes || [];
   }
 
-  // 過濾掉 preDisplayOnFrontend=false 的類型
+  // 過濾掉「客戶可見」設為隱藏的項目
   return typeList.filter(type => isTypeDisplayableOnFrontend(type));
 });
 

@@ -93,18 +93,6 @@
                     {{ item.quotaMode === 'isolated' ? '獨立名額' : '共用名額' }}
                   </v-chip>
                 </template>
-                <template v-slot:item.preDisplay="{ item }">
-                  <v-chip
-                    :color="item.preDisplayOnFrontend !== false ? 'green' : 'grey'"
-                    size="small"
-                    label
-                    variant="tonal">
-                    <v-icon start size="x-small">
-                      {{ item.preDisplayOnFrontend !== false ? 'mdi-eye' : 'mdi-eye-off' }}
-                    </v-icon>
-                    {{ item.preDisplayOnFrontend !== false ? '顯示' : '隱藏' }}
-                  </v-chip>
-                </template>
                 <template v-slot:item.statusText="{ item }">
                   <v-chip :color="getBatchStatus(item).color" size="small">
                     {{ item.statusText }}
@@ -1038,37 +1026,50 @@
                         留空即沿用預設文字；hint 留空時前台不顯示提示。此設定不分預約項目，整個建案共用。
                       </p>
 
-                      <div v-for="group in BOOKING_FIELD_LABEL_GROUPS" :key="group.group" class="mb-2">
-                        <div class="text-caption font-weight-bold text-primary mb-1 mt-2">{{ group.group }}</div>
-                        <v-table density="compact" class="field-labels-table">
-                          <thead>
-                            <tr>
-                              <th style="width: 28%;" class="text-caption">原本標籤</th>
-                              <th class="text-caption">自訂標籤</th>
-                              <th class="text-caption">修改提示文字</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr v-for="f in group.fields" :key="f.key">
-                              <td class="text-body-2 text-grey-darken-2">{{ f.defaultLabel }}</td>
-                              <td>
-                                <v-text-field
-                                  v-model="projectSettings.fieldLabels[f.key].label"
-                                  :placeholder="f.defaultLabel"
-                                  variant="plain" density="compact" hide-details
-                                  single-line clearable></v-text-field>
-                              </td>
-                              <td>
-                                <v-text-field
-                                  v-model="projectSettings.fieldLabels[f.key].hint"
-                                  placeholder="（留空不顯示）"
-                                  variant="plain" density="compact" hide-details
-                                  single-line clearable></v-text-field>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </v-table>
-                      </div>
+                      <v-expansion-panels multiple variant="accordion" class="field-labels-panels">
+                        <v-expansion-panel v-for="group in BOOKING_FIELD_LABEL_GROUPS" :key="group.group"
+                          elevation="0">
+                          <v-expansion-panel-title class="text-caption">
+                            <v-icon size="small" color="primary" class="mr-2">mdi-form-textbox</v-icon>
+                            <span class="font-weight-bold text-primary">{{ group.group }}</span>
+                            <span class="text-grey-darken-1 ml-2">（{{ group.fields.length }} 個欄位）</span>
+                            <v-chip v-if="customizedLabelCount(group) > 0" size="x-small" color="orange"
+                              variant="tonal" class="ml-2">
+                              已自訂 {{ customizedLabelCount(group) }} 項
+                            </v-chip>
+                          </v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                            <v-table density="compact" class="field-labels-table">
+                              <thead>
+                                <tr>
+                                  <th style="width: 28%;" class="text-caption">原本標籤</th>
+                                  <th class="text-caption">自訂標籤</th>
+                                  <th class="text-caption">修改提示文字</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr v-for="f in group.fields" :key="f.key">
+                                  <td class="text-body-2 text-grey-darken-2">{{ f.defaultLabel }}</td>
+                                  <td>
+                                    <v-text-field
+                                      v-model="projectSettings.fieldLabels[f.key].label"
+                                      :placeholder="f.defaultLabel"
+                                      variant="plain" density="compact" hide-details
+                                      single-line clearable></v-text-field>
+                                  </td>
+                                  <td>
+                                    <v-text-field
+                                      v-model="projectSettings.fieldLabels[f.key].hint"
+                                      placeholder="（留空不顯示）"
+                                      variant="plain" density="compact" hide-details
+                                      single-line clearable></v-text-field>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </v-table>
+                          </v-expansion-panel-text>
+                        </v-expansion-panel>
+                      </v-expansion-panels>
                     </v-sheet>
                     <!-- ====== /預約欄位標籤自訂 ====== -->
 
@@ -1084,7 +1085,8 @@
                         mandatory column class="mb-2">
                         <v-chip v-for="item in activeBookingMenu" :key="item.title" :value="item.title"
                           variant="outlined" size="large"
-                          :prepend-icon="selectedBookingItemForSetting === item.title ? 'mdi-check-circle' : undefined">{{
+                          :prepend-icon="selectedBookingItemForSetting === item.title ? 'mdi-check-circle' : undefined"
+                          :append-icon="isItemHiddenFromCustomer(item.title) ? 'mdi-eye-off' : undefined">{{
                             item.title }}</v-chip>
                       </v-chip-group>
 
@@ -1099,6 +1101,29 @@
 
                       <div
                         v-if="selectedBookingItemForSetting && projectSettings.pageSettingsByItem && projectSettings.pageSettingsByItem[selectedBookingItemForSetting]">
+
+                        <!-- 客戶可見開關：控制此預約項目是否顯示在客戶預約頁面的服務選單 -->
+                        <v-sheet
+                          :color="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false ? 'green-lighten-5' : 'grey-lighten-3'"
+                          rounded="lg" class="px-4 py-2 mb-4 d-flex align-center flex-wrap" border>
+                          <v-switch
+                            :model-value="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false"
+                            color="green" inset hide-details density="compact" class="flex-grow-0"
+                            :loading="itemVisibilitySaving ? 'warning' : false"
+                            :disabled="itemVisibilitySaving"
+                            @update:model-value="toggleItemVisibility(selectedBookingItemForSetting, $event)">
+                          </v-switch>
+                          <span class="font-weight-bold ml-2"
+                            :class="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false ? 'text-green-darken-2' : 'text-grey-darken-1'">
+                            <v-icon size="small" class="mr-1">
+                              {{ projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false ? 'mdi-eye' : 'mdi-eye-off' }}
+                            </v-icon>
+                            {{ projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false ? '客戶可以看到此預約項目' : '已對客戶隱藏此預約項目' }}
+                          </span>
+                          <span class="text-caption text-grey-darken-1 ml-3">
+                            關閉後，客戶在預約頁面將完全看不到此項目的入口（即使批次在開放期間）；切換後立即生效，不需按「儲存設定」。
+                          </span>
+                        </v-sheet>
 
                         <v-text-field
                           v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].pageTitle"
@@ -2520,25 +2545,6 @@
 
             <v-divider class="my-2"></v-divider>
             <v-row>
-              <v-col cols="12">
-                <div class="d-flex align-center mb-4">
-                  <v-switch v-model="editedBatch.preDisplayOnFrontend"
-                    label="預先顯示在前端（未開放也顯示）"
-                    color="primary"
-                    inset
-                    hide-details
-                    class="flex-shrink-1">
-                  </v-switch>
-                  <div class="text-caption text-grey-darken-1 ml-4">
-                    <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
-                    啟用時，此批次無論是否開放，都會顯示在前端。客戶可提前查看說明和開放時間。若關閉，批次只在開放期間顯示。
-                  </div>
-                </div>
-              </v-col>
-            </v-row>
-
-            <v-divider class="my-2"></v-divider>
-            <v-row>
               <v-col cols="12" sm="6" md="3">
                 <v-menu v-model="menuAppStart" :close-on-content-click="false" location="bottom"
                   transition="scale-transition">
@@ -3467,6 +3473,7 @@ import { BOOKING_FIELD_LABEL_GROUPS, ensureFieldLabelsShape, getDefaultLabel } f
 //  將所有來自 '@/api' 的引入合併成這一個
 import {
   updateProjectSettings,
+  updateBookingItemVisibility,
   fetchProjectConfig,
   checkDateConflicts,
   saveBatchWithRules,
@@ -3890,6 +3897,34 @@ const deletedBookingMenu = computed(() => {
   if (!projectSettings.value.bookingMenu) return [];
   return projectSettings.value.bookingMenu.filter(item => item.deleted);
 });
+
+// 該預約項目是否已對客戶隱藏（預約頁面設定的「客戶可見」開關，未設定時預設可見）
+function isItemHiddenFromCustomer(title) {
+  return projectSettings.value.pageSettingsByItem?.[title]?.visibleToCustomer === false;
+}
+
+// 切換預約項目「客戶可見」：立即寫入資料庫，不需按「儲存設定」
+const itemVisibilitySaving = ref(false);
+async function toggleItemVisibility(title, value) {
+  const newVal = value === true;
+  const ps = projectSettings.value.pageSettingsByItem?.[title];
+  const oldVal = ps ? ps.visibleToCustomer !== false : true;
+  if (ps) ps.visibleToCustomer = newVal; // 先更新畫面
+
+  itemVisibilitySaving.value = true;
+  try {
+    const res = await updateBookingItemVisibility(projectId.value, title, newVal);
+    if (res.status !== 'success') throw new Error(res.message);
+    showSnackbar(newVal
+      ? `「${title}」已設為客戶可見，立即生效`
+      : `「${title}」已對客戶隱藏，立即生效`);
+  } catch (err) {
+    if (ps) ps.visibleToCustomer = oldVal; // 儲存失敗時還原
+    showSnackbar(`儲存失敗: ${err.message || '未知錯誤'}`, 'error');
+  } finally {
+    itemVisibilitySaving.value = false;
+  }
+}
 
 // Derived Available Booking Types for Capacity Groups
 const availableBookingTypes = computed(() => {
@@ -4979,7 +5014,6 @@ const defaultBatch = {
   dailyRules: {},
   quotaMode: 'shared', // 名額計算模式：'shared' 共用名額 | 'isolated' 獨立名額
   sharedScope: 'sameItem', // 共用範圍：'sameItem' 相同預約項目分批（免設定）| 'crossItem' 跨不同預約項目（需群組）
-  preDisplayOnFrontend: true, // 是否預先顯示在前端，無論開放狀態
 };
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]);
@@ -5022,7 +5056,6 @@ const batchHeaders = [
   { title: '批次代號', key: 'batchCode' },
   { title: '預約項目', key: 'bookingType' },
   { title: '名額模式', key: 'quotaMode', sortable: true },
-  { title: '前端顯示', key: 'preDisplay', sortable: false },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
   { title: '可預約區間', key: 'bookingWindow', sortable: false },
   { title: '狀態', key: 'statusText', sortable: true },
@@ -5455,6 +5488,10 @@ async function loadDataForProject() {
               if (!existingIntro.datePickerReminder) {
                 existingIntro.datePickerReminder = { ...defaultSettings.value.intro.datePickerReminder };
               }
+            }
+            // 補齊「客戶可見」欄位（向下相容：未設定時預設可見）
+            if (projectSettings.value.pageSettingsByItem[item.title].visibleToCustomer === undefined) {
+              projectSettings.value.pageSettingsByItem[item.title].visibleToCustomer = true;
             }
           });
           // 預設選取第一個項目
@@ -6740,6 +6777,15 @@ function removeFaqItem(index) {
 function resetAllFieldLabels() {
   projectSettings.value.fieldLabels = ensureFieldLabelsShape();
   showSnackbar('已清空所有自訂欄位標籤，記得按「儲存設定」', 'info');
+}
+
+// 計算某個欄位群組中已自訂（標籤或提示文字非空）的欄位數，供收合面板標題顯示
+function customizedLabelCount(group) {
+  const labels = projectSettings.value.fieldLabels || {};
+  return group.fields.filter(f => {
+    const fl = labels[f.key];
+    return fl && ((fl.label && fl.label.trim()) || (fl.hint && fl.hint.trim()));
+  }).length;
 }
 
 

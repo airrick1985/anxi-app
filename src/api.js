@@ -22,6 +22,7 @@ import {
   Timestamp,
   addDoc,
   limit,
+  FieldPath,
 } from "firebase/firestore";
 import { format } from 'date-fns';
 
@@ -2607,6 +2608,32 @@ export async function updateProjectSettings(projectId, settingsData) {
     return { status: 'success' };
   } catch (e) {
     console.error('更新專案設定時發生錯誤:', e);
+    return { status: 'error', message: e.message };
+  }
+}
+
+/**
+ * [新增] 即時更新單一預約項目的「客戶可見」設定
+ * 只寫入 pageSettingsByItem.<項目>.visibleToCustomer 這一個巢狀欄位，
+ * 不影響該項目其他尚未儲存的頁面設定。
+ * @param {string} projectId 建案 ID
+ * @param {string} itemTitle 預約項目名稱
+ * @param {boolean} visible 是否客戶可見
+ */
+export async function updateBookingItemVisibility(projectId, itemTitle, visible) {
+  if (!projectId || !itemTitle) {
+    return { status: 'error', message: '缺少 projectId 或預約項目名稱。' };
+  }
+  try {
+    const projectDocRef = doc(db, "projects", projectId);
+    await updateDoc(
+      projectDocRef,
+      new FieldPath('pageSettingsByItem', itemTitle, 'visibleToCustomer'),
+      visible === true
+    );
+    return { status: 'success' };
+  } catch (e) {
+    console.error('更新預約項目客戶可見設定時發生錯誤:', e);
     return { status: 'error', message: e.message };
   }
 }
