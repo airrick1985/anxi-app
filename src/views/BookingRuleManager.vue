@@ -93,6 +93,18 @@
                     {{ item.quotaMode === 'isolated' ? '獨立名額' : '共用名額' }}
                   </v-chip>
                 </template>
+                <template v-slot:item.preDisplay="{ item }">
+                  <v-chip
+                    :color="item.preDisplayOnFrontend !== false ? 'green' : 'grey'"
+                    size="small"
+                    label
+                    variant="tonal">
+                    <v-icon start size="x-small">
+                      {{ item.preDisplayOnFrontend !== false ? 'mdi-eye' : 'mdi-eye-off' }}
+                    </v-icon>
+                    {{ item.preDisplayOnFrontend !== false ? '顯示' : '隱藏' }}
+                  </v-chip>
+                </template>
                 <template v-slot:item.statusText="{ item }">
                   <v-chip :color="getBatchStatus(item).color" size="small">
                     {{ item.statusText }}
@@ -2503,6 +2515,25 @@
                     </div>
                   </div>
                 </v-sheet>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-2"></v-divider>
+            <v-row>
+              <v-col cols="12">
+                <div class="d-flex align-center mb-4">
+                  <v-switch v-model="editedBatch.preDisplayOnFrontend"
+                    label="預先顯示在前端（未開放也顯示）"
+                    color="primary"
+                    inset
+                    hide-details
+                    class="flex-shrink-1">
+                  </v-switch>
+                  <div class="text-caption text-grey-darken-1 ml-4">
+                    <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+                    啟用時，此批次無論是否開放，都會顯示在前端。客戶可提前查看說明和開放時間。若關閉，批次只在開放期間顯示。
+                  </div>
+                </div>
               </v-col>
             </v-row>
 
@@ -4948,6 +4979,7 @@ const defaultBatch = {
   dailyRules: {},
   quotaMode: 'shared', // 名額計算模式：'shared' 共用名額 | 'isolated' 獨立名額
   sharedScope: 'sameItem', // 共用範圍：'sameItem' 相同預約項目分批（免設定）| 'crossItem' 跨不同預約項目（需群組）
+  preDisplayOnFrontend: true, // 是否預先顯示在前端，無論開放狀態
 };
 const editedBatch = ref({ ...defaultBatch });
 const selectedDaysForEditing = ref([]);
@@ -4990,6 +5022,7 @@ const batchHeaders = [
   { title: '批次代號', key: 'batchCode' },
   { title: '預約項目', key: 'bookingType' },
   { title: '名額模式', key: 'quotaMode', sortable: true },
+  { title: '前端顯示', key: 'preDisplay', sortable: false },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
   { title: '可預約區間', key: 'bookingWindow', sortable: false },
   { title: '狀態', key: 'statusText', sortable: true },

@@ -2202,19 +2202,33 @@ const availableBookingTypes = computed(() => {
   return types;
 });
 
-// [新增] 取得所有設定的預約服務類型（不過濾開放狀態，用於 Step 0 常駐顯示）
+// [新增] 檢查某個預約類型是否應該在前端顯示（基於 preDisplayOnFrontend）
+const isTypeDisplayableOnFrontend = (typeName) => {
+  const allSchedules = initialData.value?.allBatchSchedules;
+  if (!allSchedules || !allSchedules[typeName]) return true; // 無排程資料時，預設顯示
+
+  const schedules = allSchedules[typeName];
+  // 只要此類型有任何批次設定 preDisplayOnFrontend=true，就應該顯示
+  return schedules.some(s => s.preDisplayOnFrontend !== false); // 預設為 true
+};
+
+// [新增] 取得所有設定的預約服務類型（根據 preDisplayOnFrontend 過濾，用於 Step 0 常駐顯示）
 const allBookingTypes = computed(() => {
   if (!projectConfig.value) return [];
 
+  let typeList = [];
   // 從 bookingMenu 取得所有未刪除的項目
   if (projectConfig.value.bookingMenu && projectConfig.value.bookingMenu.length > 0) {
-    return projectConfig.value.bookingMenu
+    typeList = projectConfig.value.bookingMenu
       .filter(item => !item.deleted)
       .map(item => item.title);
+  } else {
+    // Fallback Legacy
+    typeList = projectConfig.value.bookingTypes || [];
   }
 
-  // Fallback Legacy
-  return projectConfig.value.bookingTypes || [];
+  // 過濾掉 preDisplayOnFrontend=false 的類型
+  return typeList.filter(type => isTypeDisplayableOnFrontend(type));
 });
 
 // [新增] 判斷使用者選取的預約服務是否在開放中的批次列表裡

@@ -968,17 +968,43 @@ exports.getBookingInitialData = onCall(async (request) => {
     });
     const buildings = Array.from(buildingsSet).sort((a, b) => a.localeCompare(b, 'zh-Hant-TW'));
 
-    // 任務新增: 從 batches 集合獲取這個建案狀態為「開放中」的批次的預約項目
-    const batchSnapshot = await db.collection('batches')
+    // 任務新增: 從 bookingBatches 集合獲取所有（非刪除的）批次資料，包含 preDisplayOnFrontend 和時間表
+    const batchSnapshot = await db.collection('bookingBatches')
       .where('projectId', '==', projectId)
-      .where('status', '==', '開放中')
+      .where('isDeleted', '==', false)
       .get();
 
     const activeBookingTypesSet = new Set();
+    const allBatchSchedulesMap = {}; // 格式: { '預約項目': [{ applicationStart, applicationEnd, preDisplayOnFrontend, ... }, ...] }
+
     batchSnapshot.forEach(doc => {
-      const bType = doc.data().bookingType;
+      const batchData = doc.data();
+      const bType = batchData.bookingType;
+
       if (bType) {
-        activeBookingTypesSet.add(bType);
+        // 檢查是否在開放期間（用於 activeBookingTypes）
+        const now = new Date();
+        const applicationStart = batchData.applicationStart ? new Date(batchData.applicationStart) : null;
+        const applicationEnd = batchData.applicationEnd ? new Date(batchData.applicationEnd) : null;
+
+        if (applicationStart && applicationEnd && now >= applicationStart && now <= applicationEnd) {
+          activeBookingTypesSet.add(bType);
+        }
+
+        // 構建 allBatchSchedules（包含完整的預約時間表和 preDisplayOnFrontend）
+        if (!allBatchSchedulesMap[bType]) {
+          allBatchSchedulesMap[bType] = [];
+        }
+
+        allBatchSchedulesMap[bType].push({
+          id: doc.id,
+          batchCode: batchData.batchCode,
+          applicationStart: batchData.applicationStart,
+          applicationEnd: batchData.applicationEnd,
+          bookingStart: batchData.bookingStart,
+          bookingEnd: batchData.bookingEnd,
+          preDisplayOnFrontend: batchData.preDisplayOnFrontend !== false ? true : false  // 預設為 true
+        });
       }
     });
 
@@ -992,7 +1018,8 @@ exports.getBookingInitialData = onCall(async (request) => {
       // 這裡回傳空陣列以保持相容性
       inspectionMethods: [],
       inspectionStaff: [],
-      activeBookingTypes: Array.from(activeBookingTypesSet)
+      activeBookingTypes: Array.from(activeBookingTypesSet),
+      allBatchSchedules: allBatchSchedulesMap  // 新增：包含所有批次的完整資料
     };
 
   } catch (error) {
