@@ -540,11 +540,16 @@
               <template v-slot:subtitle><div class="font-weight-medium">{{ eventToCancel.appointmentTimeSlot }}</div></template>
             </v-list-item>
           </v-list>
+          <v-divider class="my-3"></v-divider>
+          <CancelNotifyPicker v-if="isCancelConfirmDialogVisible && eventToCancel.id"
+            :project-id="eventToCancel.projectId || props.projectId"
+            :appointment-id="eventToCancel.id"
+            v-model="cancelNotifySelection" />
         </v-card-text>
         <v-card-actions class="pa-3">
           <v-spacer></v-spacer>
           <v-btn variant="text" @click="isCancelConfirmDialogVisible = false">返回</v-btn>
-          <v-btn color="error" variant="flat" :loading="isCancelling" @click="handleConfirmCancelBooking">確定取消</v-btn>
+          <v-btn color="error" variant="flat" :loading="isCancelling" :disabled="!cancelNotifySelection.ready" @click="handleConfirmCancelBooking">確定取消</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -641,6 +646,7 @@ import {
   updateAppointment,
   cancelAppointment,
 } from '@/api'; // ✅ 簡化 api 引入
+import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
@@ -657,6 +663,8 @@ const projectStore = useProjectStore();
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
 const isCancelling = ref(false);
+// 取消通知信收件對象勾選結果（由 CancelNotifyPicker 以 v-model 回傳）
+const cancelNotifySelection = ref({ ready: false, toBooker: false, cc: [] });
 const projectName = ref('');
 
 const dateAdapter = useDate();
@@ -830,6 +838,7 @@ async function handleSaveChangesFromDialog(payload) {
 
 function promptCancelBooking(event) {
   eventToCancel.value = event;
+  cancelNotifySelection.value = { ready: false, toBooker: false, cc: [] };
   isCancelConfirmDialogVisible.value = true;
 }
 
@@ -840,7 +849,8 @@ async function handleConfirmCancelBooking() {
             eventToCancel.value.id,
             eventToCancel.value.projectId,
             eventToCancel.value.unitId,
-            eventToCancel.value.bookingType
+            eventToCancel.value.bookingType,
+            { toBooker: cancelNotifySelection.value.toBooker, cc: cancelNotifySelection.value.cc }
         );
         
         isCancelConfirmDialogVisible.value = false;

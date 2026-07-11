@@ -2526,7 +2526,7 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
  * ✓ [Firebase 版] 取消一筆預約 (呼叫 Cloud Function)
  * (V2: 呼叫 inspectionCalendarApi 路由)
  */
-export async function cancelAppointment(appointmentId, projectId, unitId, bookingType) {
+export async function cancelAppointment(appointmentId, projectId, unitId, bookingType, notify = null) {
   if (!appointmentId || !projectId || !unitId || !bookingType) {
     return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
   }
@@ -2539,12 +2539,31 @@ export async function cancelAppointment(appointmentId, projectId, unitId, bookin
         appointmentId,
         projectId,
         unitId,
-        bookingType
+        bookingType,
+        // notify（可選）: { toBooker: boolean, cc: [email] } — 後台勾選的取消通知信收件對象；不帶則沿用舊行為
+        ...(notify ? { notify } : {})
       }
     });
     return result.data;
   } catch (error) {
     console.error("API cancelAppointment 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [後台用] 取得取消預約通知信可勾選的收件對象
+ * 回傳 { booker: { name, email }, ccRecipients: [{ name, email }] }
+ */
+export async function getCancelNotifyRecipients(projectId, appointmentId) {
+  try {
+    const result = await inspectionCalendarApiRouter({
+      action: 'getCancelNotifyRecipients',
+      data: { projectId, appointmentId }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API getCancelNotifyRecipients 錯誤:", error);
     return { status: 'error', message: error.message };
   }
 }
@@ -7700,7 +7719,7 @@ export async function liffUpdateAppointment(appointmentId, bookingUpdatePayload,
  * [LIFF用] 取消一筆預約
  * (V2: 呼叫 liffCalendarApi 路由)
  */
-export async function liffCancelAppointment(appointmentId, projectId, unitId, bookingType) {
+export async function liffCancelAppointment(appointmentId, projectId, unitId, bookingType, notify = null) {
   if (!appointmentId || !projectId || !unitId || !bookingType) {
     return { status: 'error', message: '前端錯誤：缺少取消預約所需的參數。' };
   }
@@ -7712,12 +7731,30 @@ export async function liffCancelAppointment(appointmentId, projectId, unitId, bo
         appointmentId,
         projectId,
         unitId,
-        bookingType
+        bookingType,
+        // notify（可選）: { toBooker: boolean, cc: [email] } — 勾選的取消通知信收件對象；不帶則沿用舊行為
+        ...(notify ? { notify } : {})
       }
     });
     return result.data;
   } catch (error) {
     console.error("API liffCancelAppointment 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * [LIFF用] 取得取消預約通知信可勾選的收件對象
+ */
+export async function liffGetCancelNotifyRecipients(projectId, appointmentId) {
+  try {
+    const result = await liffCalendarApiRouter({
+      action: 'getCancelNotifyRecipients',
+      data: { projectId, appointmentId }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API liffGetCancelNotifyRecipients 錯誤:", error);
     return { status: 'error', message: error.message };
   }
 }

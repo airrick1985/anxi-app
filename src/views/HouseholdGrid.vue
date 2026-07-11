@@ -977,18 +977,17 @@
       </v-card-title>
       <v-card-text class="pt-4">
          <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
-            此操作會將預約狀態改為「取消」、清除戶別對應的驗屋日期/方式，並寄送取消通知信給預約人，無法復原。
+            此操作會將預約狀態改為「取消」、清除戶別對應的驗屋日期/方式，並依下方勾選對象寄送取消通知信，無法復原。
          </v-alert>
          <div class="hdm-row"><label>預約項目</label><span>{{ cancelApptDialog.type }}</span></div>
          <div class="hdm-row"><label>預約日期</label><span>{{ cancelApptDialog.date }}</span></div>
          <div class="hdm-row"><label>時段</label><span>{{ cancelApptDialog.timeSlot }}</span></div>
          <div class="hdm-row"><label>預約人</label><span>{{ cancelApptDialog.bookerName || '—' }}</span></div>
-         <div class="hdm-row">
-            <label>通知信</label>
-            <span :class="{ 'text-grey': !cancelApptDialog.bookerEmail }">
-               {{ cancelApptDialog.bookerEmail || '（無 Email，不寄送通知）' }}
-            </span>
-         </div>
+         <v-divider class="my-3"></v-divider>
+         <CancelNotifyPicker v-if="cancelApptDialog.show && cancelApptDialog.appointmentId"
+            :project-id="projectId"
+            :appointment-id="cancelApptDialog.appointmentId"
+            v-model="cancelNotifySelection" />
       </v-card-text>
       <v-divider></v-divider>
       <v-card-actions class="pa-4">
@@ -996,6 +995,7 @@
          <v-btn variant="text" :disabled="cancelApptDialog.cancelling" @click="cancelApptDialog.show = false">返回</v-btn>
          <v-btn color="error" variant="flat" prepend-icon="mdi-calendar-remove"
             :loading="cancelApptDialog.cancelling"
+            :disabled="!cancelNotifySelection.ready"
             @click="confirmCancelAppt">確認取消預約</v-btn>
       </v-card-actions>
    </v-card>
@@ -1010,6 +1010,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
 import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
+import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { ModuleRegistry } from "ag-grid-community";
@@ -1835,6 +1836,9 @@ const cancelApptDialog = reactive({
    bookerEmail: ''
 });
 
+// 取消通知信收件對象勾選結果（由 CancelNotifyPicker 以 v-model 回傳）
+const cancelNotifySelection = ref({ ready: false, toBooker: false, cc: [] });
+
 const openCancelApptDialog = (type) => {
    const info = detailBookingInfo.value?.[type];
    if (!info || !info.appointmentId) return;
@@ -1845,6 +1849,7 @@ const openCancelApptDialog = (type) => {
    cancelApptDialog.bookerName = info.bookerName || '';
    cancelApptDialog.bookerEmail = info.bookerEmail || '';
    cancelApptDialog.cancelling = false;
+   cancelNotifySelection.value = { ready: false, toBooker: false, cc: [] };
    cancelApptDialog.show = true;
 };
 
@@ -1857,7 +1862,8 @@ const confirmCancelAppt = async () => {
          cancelApptDialog.appointmentId,
          projectId.value,
          h.unitId,
-         cancelApptDialog.type
+         cancelApptDialog.type,
+         { toBooker: cancelNotifySelection.value.toBooker, cc: cancelNotifySelection.value.cc }
       );
       if (res && res.status === 'error') {
          throw new Error(res.message || '取消預約失敗');

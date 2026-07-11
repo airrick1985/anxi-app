@@ -378,12 +378,18 @@
           </v-list-item>
         </v-list>
         <div class="text-red-darken-2 font-weight-bold mt-4">此操作無法復原！</div>
+        <v-divider class="my-3"></v-divider>
+        <CancelNotifyPicker v-if="isCancelConfirmDialogVisible && eventToCancel.id"
+          :project-id="eventToCancel.projectId"
+          :appointment-id="eventToCancel.id"
+          liff
+          v-model="cancelNotifySelection" />
       </v-card-text>
       <v-divider></v-divider>
       <v-card-actions class="pa-3">
         <v-spacer></v-spacer>
         <v-btn variant="text" @click="isCancelConfirmDialogVisible = false">返回</v-btn>
-        <v-btn color="red-darken-1" variant="flat" :loading="isCancelling" @click="handleConfirmCancelBooking">確定取消</v-btn>
+        <v-btn color="red-darken-1" variant="flat" :loading="isCancelling" :disabled="!cancelNotifySelection.ready" @click="handleConfirmCancelBooking">確定取消</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -433,6 +439,7 @@ import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
+import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 
 const router = useRouter(); 
 const { smAndDown, mobile } = useDisplay(); 
@@ -1122,8 +1129,12 @@ async function handleSaveAppointment(payload) {
   }
 }
 
+// 取消通知信收件對象勾選結果（由 CancelNotifyPicker 以 v-model 回傳）
+const cancelNotifySelection = ref({ ready: false, toBooker: false, cc: [] });
+
 function promptCancelBooking(event) {
   eventToCancel.value = event;
+  cancelNotifySelection.value = { ready: false, toBooker: false, cc: [] };
   isCancelConfirmDialogVisible.value = true;
 }
 
@@ -1132,7 +1143,8 @@ async function handleConfirmCancelBooking() {
   isCancelling.value = true;
   try {
     const { id, projectId, unitId, bookingType } = eventToCancel.value;
-   await liffCancelAppointment(id, projectId, unitId, bookingType);
+   await liffCancelAppointment(id, projectId, unitId, bookingType,
+      { toBooker: cancelNotifySelection.value.toBooker, cc: cancelNotifySelection.value.cc });
     showSnackbar('預約已成功取消', 'success');
     isCancelConfirmDialogVisible.value = false;
     isDialogVisible.value = false;

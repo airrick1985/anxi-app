@@ -15593,6 +15593,8 @@ exports.adminBookingApi = onCall({
         return await _handleUpdateAppointmentByAdmin(data);
       case 'cancelAppointment':
         return await _handleCancelAppointmentByAdmin(data);
+      case 'getCancelNotifyRecipients':
+        return await _handleGetCancelNotifyRecipients(data);
 
       // --- 預設情況 ---
       default:
@@ -16680,8 +16682,84 @@ async function _handleUpdateAppointmentByAdmin(data) {
  * @param {object} data - 包含 { appointmentId, projectId, unitId, bookingType }
  * @returns {Promise<object>}
  */
+// 取消通知信必寄角色：roles 含任一者即為必寄對象，不受前端勾選影響
+const CANCEL_NOTIFY_MANDATORY_ROLES = ['超級管理員', '系統管理員'];
+
+/**
+ * [後台取消預約用] 取得「驗屋系統信件副本」權限人員明細
+ * 回傳 [{ name, email, mandatory }]，mandatory 表示 roles 含超級管理員/系統管理員（必寄）
+ */
+async function getCancelCcRecipientDetails(db, projectId) {
+  const recipients = [];
+  const permSnapshot = await db.collection('userPermissions')
+    .where(`permissions.${projectId}.systems`, 'array-contains', '驗屋系統信件副本')
+    .get();
+  const userPhones = permSnapshot.docs.map(doc => doc.id);
+  // Firestore 'in' 查詢每批上限 30 筆，分批查詢
+  for (let i = 0; i < userPhones.length; i += 30) {
+    const batchPhones = userPhones.slice(i, i + 30);
+    const usersSnapshot = await db.collection('users')
+      .where(FieldPath.documentId(), 'in', batchPhones)
+      .get();
+    usersSnapshot.docs.forEach(doc => {
+      const userData = doc.data();
+      if (userData.email && typeof userData.email === 'string') {
+        const roles = Array.isArray(userData.roles) ? userData.roles : [];
+        recipients.push({
+          name: userData.name || '',
+          email: userData.email,
+          mandatory: roles.some(role => CANCEL_NOTIFY_MANDATORY_ROLES.includes(role))
+        });
+      }
+    });
+  }
+  return recipients;
+}
+
+/**
+ * [後台取消預約用] 取得取消通知信可勾選的收件對象
+ * 回傳預約人（以系統紀錄的 Email 為準）、可勾選的副本人員清單，
+ * 以及必寄對象清單（超級管理員/系統管理員，僅供前端顯示、不可取消勾選）
+ */
+async function _handleGetCancelNotifyRecipients(data) {
+  const { projectId, appointmentId } = data;
+  const functionName = `_handleGetCancelNotifyRecipients (ID: ${appointmentId})`;
+
+  if (!projectId || !appointmentId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 appointmentId。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  // 預約人資訊（Email 以系統紀錄為準）
+  let booker = { name: '', email: '' };
+  try {
+    const appointmentDoc = await db.collection("appointments").doc(appointmentId).get();
+    if (appointmentDoc.exists) {
+      const apptData = appointmentDoc.data();
+      booker = { name: apptData.bookerName || '', email: apptData.bookerEmail || '' };
+    }
+  } catch (error) {
+    console.error(`[${functionName}] 讀取預約資料失敗:`, error);
+  }
+
+  let ccRecipients = [];
+  let mandatoryRecipients = [];
+  try {
+    const details = await getCancelCcRecipientDetails(db, projectId);
+    ccRecipients = details.filter(r => !r.mandatory).map(r => ({ name: r.name, email: r.email }));
+    mandatoryRecipients = details.filter(r => r.mandatory).map(r => ({ name: r.name, email: r.email }));
+  } catch (error) {
+    console.error(`[${functionName}] 查找副本收件人失敗:`, error);
+  }
+
+  return { status: 'success', booker, ccRecipients, mandatoryRecipients };
+}
+
 async function _handleCancelAppointmentByAdmin(data) {
-  const { appointmentId, projectId, unitId, bookingType } = data;
+  // notify（可選）: { toBooker: boolean, cc: [email] } — 後台勾選的通知信收件對象。
+  // 未帶 notify 時（如客戶端預約查詢頁）沿用舊行為：寄給預約人並副本給全部「驗屋系統信件副本」人員。
+  const { appointmentId, projectId, unitId, bookingType, notify } = data;
   const functionName = `_handleCancelAppointmentByAdmin (ID: ${appointmentId})`;
 
   if (!appointmentId || !projectId || !unitId || !bookingType) {
@@ -16725,7 +16803,23 @@ async function _handleCancelAppointmentByAdmin(data) {
     console.log(`[${functionName}] 已成功將預約狀態更新為「取消」。`);
     await updateHouseholdSummary(db, projectId, unitId);
 
-    if (bookingData && bookingData.bookerEmail) {
+    // 依前端勾選決定收件對象；未帶 notify 時沿用舊行為（有預約人 Email 才寄，副本給全部名單）
+    const hasNotifyOption = notify && typeof notify === 'object';
+    const sendToBooker = (hasNotifyOption ? notify.toBooker === true : true) && !!(bookingData && bookingData.bookerEmail);
+    let ccToSend = [];
+    if (hasNotifyOption) {
+      // 勾選名單與伺服器端名單取交集，避免寄給名單外的地址；
+      // roles 含超級管理員/系統管理員者為必寄對象，不受勾選影響
+      const selectedCc = Array.isArray(notify.cc) ? notify.cc : [];
+      const ccDetails = await getCancelCcRecipientDetails(db, projectId);
+      ccToSend = [...new Set(
+        ccDetails.filter(r => r.mandatory || selectedCc.includes(r.email)).map(r => r.email)
+      )];
+    } else if (bookingData && bookingData.bookerEmail) {
+      ccToSend = await getCcRecipients(projectId, "驗屋系統信件副本");
+    }
+
+    if (bookingData && (sendToBooker || ccToSend.length > 0)) {
       const projectDoc = await db.collection('projects').doc(projectId).get();
       const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
 
@@ -16779,15 +16873,20 @@ async function _handleCancelAppointmentByAdmin(data) {
   </div>
 </div>`;
 
-      const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-      await mailTransport.sendMail({
-        to: bookingData.bookerEmail,
-        cc: ccRecipients,
+      // 依勾選結果組收件人：未勾預約人時，副本名單改為主收件人
+      const mailOptions = {
+        to: sendToBooker ? bookingData.bookerEmail : ccToSend,
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
-      console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
+      };
+      if (sendToBooker && ccToSend.length > 0) {
+        mailOptions.cc = ccToSend;
+      }
+      await mailTransport.sendMail(mailOptions);
+      console.log(`[${functionName}] 已寄送取消通知信 (to: ${JSON.stringify(mailOptions.to)}, cc: ${JSON.stringify(mailOptions.cc || [])})`);
+    } else {
+      console.log(`[${functionName}] 未勾選任何收件對象或預約人無 Email，略過寄送取消通知信。`);
     }
 
     //  回傳：路由函數會自動包裝
@@ -16851,6 +16950,8 @@ exports.inspectionCalendarApi = onCall({
         return await _handleUpdateAppointmentByAdmin(data);
       case 'cancelAppointment':
         return await _handleCancelAppointmentByAdmin(data);
+      case 'getCancelNotifyRecipients':
+        return await _handleGetCancelNotifyRecipients(data);
       case 'updateAppointmentInspectors':
         return await _handleUpdateAppointmentInspectors(data);
 
@@ -17204,6 +17305,8 @@ exports.liffCalendarApi = onCall({
         return await _handleUpdateAppointmentByAdmin(data);
       case 'cancelAppointment':
         return await _handleCancelAppointmentByAdmin(data);
+      case 'getCancelNotifyRecipients':
+        return await _handleGetCancelNotifyRecipients(data);
       case 'updateAppointmentInspectors':
         return await _handleUpdateAppointmentInspectors(data);
 
