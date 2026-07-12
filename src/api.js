@@ -7583,7 +7583,8 @@ export const uploadAttachmentImage = async (projectId, file) => {
     const result = await uploader({
       projectId: projectId,
       fileName: file.name,
-      fileBase64: fileBase64
+      fileBase64: fileBase64,
+      fileType: file.type || '' // ✓ 傳遞檔案真實 MIME type，讓後端寫入正確的 contentType
     });
 
     // 4. 檢查後端回傳狀態並返回結果

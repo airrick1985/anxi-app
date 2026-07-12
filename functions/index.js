@@ -13289,8 +13289,8 @@ exports.handleAttachmentUpload = onCall({
   memory: "1GiB", // 上傳圖片可能需要較多記憶體
   timeoutSeconds: 120 // 允許較長上傳時間
 }, async (request) => {
-  // 正體中文註解：從請求中獲取 projectId, 原始檔名, Base64 內容
-  const { projectId, fileName, fileBase64 } = request.data;
+  // 正體中文註解：從請求中獲取 projectId, 原始檔名, Base64 內容, 前端提供的 MIME type
+  const { projectId, fileName, fileBase64, fileType } = request.data;
   const functionName = `handleAttachmentUpload (Project: ${projectId})`;
 
   // 1. 驗證輸入
@@ -13311,15 +13311,48 @@ exports.handleAttachmentUpload = onCall({
 
     // 2. 將 Base64 轉為 Buffer
     const buffer = Buffer.from(fileBase64, 'base64');
+
+    // 2-1. 正體中文註解：依「檔案內容開頭的魔術數字」判斷真實格式，
+    //      避免副檔名與內容不符（例如假 PDF）導致瀏覽器用錯誤格式開啟。
+    const sniffContentType = (buf) => {
+      if (!buf || buf.length < 4) return null;
+      if (buf.slice(0, 4).toString('ascii') === '%PDF') return 'application/pdf';
+      if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'image/png';
+      if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'image/jpeg';
+      if (buf.slice(0, 3).toString('ascii') === 'GIF') return 'image/gif';
+      if (buf.length >= 12 && buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+      if (buf[0] === 0x42 && buf[1] === 0x4D) return 'image/bmp';
+      return null;
+    };
+    const sniffedType = sniffContentType(buffer);
+
+    // 2-2. 副檔名為 .pdf 但內容不是 PDF 時，直接拒絕上傳並回報明確錯誤，
+    //      防止損壞或來源錯誤的檔案進入附件庫後無法正常預覽。
+    if (/\.pdf$/i.test(fileName) && sniffedType !== 'application/pdf') {
+      console.error(`[${functionName}] 檔案 ${fileName} 副檔名為 PDF 但內容格式不符 (偵測結果: ${sniffedType || '無法辨識'})。`);
+      throw new HttpsError("invalid-argument", `檔案「${fileName}」的內容不是有效的 PDF，請確認來源檔案後重新上傳。`);
+    }
+
+    // 2-3. 決定最終 contentType：優先採用內容偵測結果，其次採用前端傳來的 MIME type；
+    //      兩者皆無時不設定，交由儲存函式庫依副檔名推斷。
+    const resolvedContentType = sniffedType || (typeof fileType === 'string' && fileType.includes('/') ? fileType : null);
+    const uploadMetadata = {
+      // 正體中文註解：contentDisposition 設為 inline 並帶上原始檔名，
+      // 讓瀏覽器直接以正確格式「預覽」，下載時也保留正確檔名。
+      contentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    };
+    if (resolvedContentType) {
+      uploadMetadata.contentType = resolvedContentType;
+    }
+    console.log(`[${functionName}] Resolved contentType for ${fileName}: ${resolvedContentType || '(由函式庫依副檔名推斷)'}`);
+
     // 3. 將 Buffer 轉為可讀流
     const stream = Readable.from(buffer);
 
     // 4. 使用 stream 上傳至 Firebase Storage
     await new Promise((resolve, reject) => {
       stream.pipe(file.createWriteStream({
-        // 正體中文註解：自動根據副檔名推斷 ContentType 可能不準確，
-        // 由於前端已限制 image/*，這裡可以設定為通用圖片類型或保持預設
-        // metadata: { contentType: 'image/png' },
+        metadata: uploadMetadata, // ✓ 明確寫入 contentType / contentDisposition，修正 PDF 預覽格式錯誤
         resumable: false // 小檔案不需要 resumable
       }))
         .on('error', (err) => {

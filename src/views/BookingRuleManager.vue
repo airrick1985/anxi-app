@@ -1259,7 +1259,7 @@
 
                         <p class="text-h6 font-weight-bold mb-2">附件管理 (公開預約頁)</p>
                         <v-alert type="info" variant="tonal" density="compact" border="start" class="mb-4">
-                          下方「建案附件庫」為本建案所有預約項目<strong>共用</strong>。請先在附件庫上傳檔案，再於各預約項目<strong>勾選</strong>要顯示的附件。
+                          下方「建案附件庫」為本建案所有預約項目<strong>共用</strong>。上傳後直接在清單中<strong>勾選</strong>要顯示於目前預約項目的附件。
                         </v-alert>
 
                         <!-- ====== 中樞：建案附件庫（共用） ====== -->
@@ -1279,7 +1279,16 @@
                             上傳至附件庫
                           </v-btn>
 
-                          <p class="text-subtitle-2 font-weight-medium mb-2">附件庫檔案：</p>
+                          <v-divider class="mb-3"></v-divider>
+
+                          <!-- 整合版：附件庫清單 ＋ 目前預約項目顯示勾選，同一清單完成所有操作 -->
+                          <v-switch
+                            v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"
+                            label="在此預約項目的公開預約頁顯示附件區塊" color="primary" inset
+                            hint="啟用後，下方勾選的附件將顯示在此預約項目的頁面供客戶下載" persistent-hint
+                            class="mb-4"></v-switch>
+
+                          <p class="text-subtitle-2 font-weight-medium mb-2">附件庫檔案（勾選＝顯示於此預約項目）：</p>
                           <div
                             v-if="!projectSettings.attachmentLibrary || projectSettings.attachmentLibrary.length === 0"
                             class="text-center text-grey pa-4 border rounded border-dashed">
@@ -1290,6 +1299,11 @@
                               :key="item.path || item.url || index">
                               <v-list-item>
                                 <template v-slot:prepend>
+                                  <v-checkbox-btn
+                                    :model-value="isAttachmentSelected(item)"
+                                    @update:model-value="(val) => toggleAttachmentSelection(item, val)"
+                                    :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"
+                                    class="mr-1 flex-grow-0"></v-checkbox-btn>
                                   <v-icon color="red"
                                     v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
                                   <v-icon color="grey-darken-1" v-else>mdi-image-outline</v-icon>
@@ -1309,42 +1323,6 @@
                           </v-list>
                         </v-sheet>
 
-                        <!-- ====== 此預約項目顯示設定 ====== -->
-                        <v-switch
-                          v-model="projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"
-                          label="在此預約項目的公開預約頁顯示附件區塊" color="primary" inset
-                          hint="啟用後，下方勾選的附件將顯示在此預約項目的頁面供客戶下載" persistent-hint
-                          class="mb-4"></v-switch>
-
-                        <p class="text-subtitle-1 font-weight-medium mb-2">勾選此預約項目要顯示的附件：</p>
-                        <div
-                          v-if="!projectSettings.attachmentLibrary || projectSettings.attachmentLibrary.length === 0"
-                          class="text-center text-grey pa-4 border rounded">
-                          請先於上方附件庫上傳檔案
-                        </div>
-                        <v-list v-else density="compact" class="border rounded pa-0">
-                          <template v-for="(item, index) in projectSettings.attachmentLibrary"
-                            :key="item.path || item.url || index">
-                            <v-list-item
-                              :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments">
-                              <template v-slot:prepend>
-                                <v-checkbox-btn
-                                  :model-value="isAttachmentSelected(item)"
-                                  @update:model-value="(val) => toggleAttachmentSelection(item, val)"
-                                  :disabled="!projectSettings.pageSettingsByItem[selectedBookingItemForSetting].intro.showAttachments"></v-checkbox-btn>
-                              </template>
-                              <v-list-item-title>
-                                <v-icon size="small" class="mr-1" color="red"
-                                  v-if="item.name.toLowerCase().endsWith('.pdf')">mdi-file-pdf-box</v-icon>
-                                <v-icon size="small" class="mr-1" color="grey-darken-1"
-                                  v-else>mdi-image-outline</v-icon>
-                                {{ item.name }}
-                              </v-list-item-title>
-                            </v-list-item>
-                            <v-divider
-                              v-if="index < projectSettings.attachmentLibrary.length - 1"></v-divider>
-                          </template>
-                        </v-list>
                       </div>
                     </div>
 
