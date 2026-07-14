@@ -1439,7 +1439,7 @@ import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js';
 import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
-import { getUnitParkings, getParkingTransactionTotal, getUnitTotalTransactionPrice } from '@/utils/analyticsCalculations';
+import { getUnitParkings, getParkingTransactionTotal, getParkingFloorTotal, getUnitTotalTransactionPrice, getUnitTotalFloorPrice } from '@/utils/analyticsCalculations';
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
@@ -2735,7 +2735,7 @@ const exportToExcel = () => {
 
     // 車位加值欄位（僅供檢視，上傳時非 COLUMN_DEFINITIONS 標頭會被自動忽略）
     const allParkings = salesParkings.value || [];
-    const PARKING_EXTRA_HEADERS = ['車位編號及價格', '合計車位價格', '合計成交總價'];
+    const PARKING_EXTRA_HEADERS = ['車位編號及價格', '車位合計底價', '合計車位價格', '合計成交總價', '合計成交底價'];
 
     const dataAsArray = sortedItems.map(item => {
         const row = exportOrder.value.map(key => {
@@ -2786,14 +2786,17 @@ const exportToExcel = () => {
             return value;
         });
 
-        // 車位編號及價格（複數以逗號區隔）、合計車位價格、合計成交總價（房屋成交價+合計車位價格）
+        // 車位編號及價格（複數以逗號區隔）、車位合計底價、合計車位價格、合計成交總價（房屋成交價+合計車位價格）、合計成交底價（房屋底價+車位合計底價，僅銷控後台狀態不為空時輸出）
         const mySpots = getUnitParkings(item, allParkings);
         const parkingText = mySpots
             .map(p => `${p.spotId ?? ''}(${Number(p.price_transaction) || 0})`)
             .join(',');
+        const parkingFloorTotal = getParkingFloorTotal(item, allParkings);
         const parkingTotal = getParkingTransactionTotal(item, allParkings);
         const grandTotal = getUnitTotalTransactionPrice(item, allParkings);
-        row.push(parkingText, mySpots.length > 0 ? parkingTotal : '', grandTotal || '');
+        const hasBackendStatus = String(item.salesStatus_backend || '').trim() !== '';
+        const grandFloorTotal = hasBackendStatus ? getUnitTotalFloorPrice(item, allParkings) : '';
+        row.push(parkingText, mySpots.length > 0 ? parkingFloorTotal : '', mySpots.length > 0 ? parkingTotal : '', grandTotal || '', grandFloorTotal || '');
         return row;
     });
 

@@ -198,7 +198,7 @@ export const getParkingTransactionTotal = (household, allParkings) => {
 /**
  * 計算單戶車位底價合計
  */
-const getParkingFloorTotal = (household, allParkings) => {
+export const getParkingFloorTotal = (household, allParkings) => {
   const parkings = getUnitParkings(household, allParkings)
   return parkings.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0)
 }
@@ -232,7 +232,7 @@ export const getUnitTotalTransactionPrice = (household, allParkings) => {
 /**
  * 計算單戶底價合計 (房 + 車位)
  */
-const getUnitTotalFloorPrice = (household, allParkings) => {
+export const getUnitTotalFloorPrice = (household, allParkings) => {
   const housePrice = getHouseFloorPrice(household)
   const parkingPrice = getParkingFloorTotal(household, allParkings)
   return housePrice + parkingPrice
