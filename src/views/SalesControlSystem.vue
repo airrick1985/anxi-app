@@ -2786,7 +2786,7 @@ const exportToExcel = () => {
             return value;
         });
 
-        // 車位編號及價格（複數以逗號區隔）、車位合計底價、合計車位價格、合計成交總價（房屋成交價+合計車位價格）、合計成交底價（房屋底價+車位合計底價，僅銷控後台狀態不為空時輸出）
+        // 車位編號及價格（複數以逗號區隔）、車位合計底價、合計車位價格、合計成交總價（房屋成交價+合計車位價格）、合計成交底價（房屋總底價+車位合計底價，僅銷控後台狀態不為空時輸出）
         const mySpots = getUnitParkings(item, allParkings);
         const parkingText = mySpots
             .map(p => `${p.spotId ?? ''}(${Number(p.price_transaction) || 0})`)
