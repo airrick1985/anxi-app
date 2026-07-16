@@ -4557,6 +4557,32 @@ const openEditBookingItemDialog = (item = null, index = -1) => {
   isBookingItemDialogVisible.value = true;
 };
 
+// 確保指定預約項目擁有 pageSettingsByItem 預設設定
+// (新增項目後不需重新載入頁面，即可直接進入「預約頁面設定」看到欄位)
+const ensurePageSettingsForItem = (title) => {
+  if (!title) return;
+  if (!projectSettings.value.pageSettingsByItem) {
+    projectSettings.value.pageSettingsByItem = {};
+  }
+  if (!projectSettings.value.pageSettingsByItem[title]) {
+    projectSettings.value.pageSettingsByItem[title] = {
+      pageTitle: defaultSettings.value.pageTitle,
+      visibleToCustomer: true,
+      intro: JSON.parse(JSON.stringify(defaultSettings.value.intro)),
+    };
+  }
+  // 補齊缺漏欄位 (向下相容)
+  const ps = projectSettings.value.pageSettingsByItem[title];
+  if (!ps.intro) ps.intro = JSON.parse(JSON.stringify(defaultSettings.value.intro));
+  if (!ps.intro.alert) ps.intro.alert = JSON.parse(JSON.stringify(defaultSettings.value.intro.alert));
+  if (!ps.intro.contact) ps.intro.contact = { ...defaultSettings.value.intro.contact };
+  if (!ps.intro.datePickerReminder) ps.intro.datePickerReminder = { ...defaultSettings.value.intro.datePickerReminder };
+  if (!Array.isArray(ps.intro.faq)) ps.intro.faq = [];
+  if (!Array.isArray(ps.intro.attachments)) ps.intro.attachments = [];
+  if (!Array.isArray(ps.intro.selectedAttachmentPaths)) ps.intro.selectedAttachmentPaths = [];
+  if (ps.visibleToCustomer === undefined) ps.visibleToCustomer = true;
+};
+
 const saveBookingItem = async () => {
   if (!editedBookingItemTitle.value.trim()) return;
 
@@ -4564,17 +4590,32 @@ const saveBookingItem = async () => {
     projectSettings.value.bookingMenu = [];
   }
 
+  const newTitle = editedBookingItemTitle.value;
+
   if (editedBookingItemIndex.value === -1) {
     // Add new
     projectSettings.value.bookingMenu.push({
-      title: editedBookingItemTitle.value,
+      title: newTitle,
       methods: [] // Start with empty methods
     });
+    // 立即建立預設頁面設定，讓「預約頁面設定」分頁可直接選到並設定
+    ensurePageSettingsForItem(newTitle);
   } else {
     // Edit existing - 將 activeBookingMenu 索引轉為實際索引
     const realIndex = getRealBookingMenuIndex(editedBookingItemIndex.value);
     if (realIndex !== -1) {
-      projectSettings.value.bookingMenu[realIndex].title = editedBookingItemTitle.value;
+      const oldTitle = projectSettings.value.bookingMenu[realIndex].title;
+      projectSettings.value.bookingMenu[realIndex].title = newTitle;
+      // 改名時把 pageSettingsByItem 的設定跟著搬到新名稱，避免原設定遺失
+      if (oldTitle !== newTitle && projectSettings.value.pageSettingsByItem?.[oldTitle]) {
+        if (!projectSettings.value.pageSettingsByItem[newTitle]) {
+          projectSettings.value.pageSettingsByItem[newTitle] = projectSettings.value.pageSettingsByItem[oldTitle];
+        }
+        delete projectSettings.value.pageSettingsByItem[oldTitle];
+        if (selectedBookingItemForSetting.value === oldTitle) {
+          selectedBookingItemForSetting.value = newTitle;
+        }
+      }
     }
   }
 
@@ -5042,6 +5083,12 @@ const batchHeaders = [
 
 
 const selectedBookingItemForSetting = ref('');
+
+// 安全網：切換「預約頁面設定」的項目時，若該項目尚無 pageSettingsByItem 設定則即時補建
+watch(selectedBookingItemForSetting, (title) => {
+  if (title) ensurePageSettingsForItem(title);
+});
+
 const processedBookingBatches = computed(() => {
   return bookingBatches.value.map(item => ({
     ...item,
