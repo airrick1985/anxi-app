@@ -52,6 +52,42 @@
   <div class="mt-4">戶別資料載入中...</div>
 </div>
 
+<!-- 資料數量統計列：篩選後即時更新 -->
+<div v-if="!isLoading && !error && hasInitialDataLoaded" class="d-flex align-center flex-wrap ga-2 mb-2">
+  <v-chip color="primary" size="small" label variant="tonal">
+    <v-icon start size="small">mdi-home-group</v-icon>
+    資料總數：{{ totalRowCount.toLocaleString() }} 筆
+  </v-chip>
+  <v-chip v-if="isGridFiltered" color="orange-darken-2" size="small" label variant="flat">
+    <v-icon start size="small">mdi-filter</v-icon>
+    篩選結果：{{ displayedRowCount.toLocaleString() }} / {{ totalRowCount.toLocaleString() }} 筆
+  </v-chip>
+
+  <!-- 已套用的篩選條件明細：可逐一移除 -->
+  <v-chip
+    v-for="f in activeFilterChips"
+    :key="f.colId"
+    color="orange-darken-2"
+    size="small"
+    label
+    variant="outlined"
+    closable
+    @click:close="clearColumnFilter(f.colId)"
+  >
+    <v-icon start size="small">mdi-filter-variant</v-icon>
+    {{ f.text }}
+  </v-chip>
+
+  <v-btn
+    v-if="isGridFiltered"
+    size="x-small"
+    variant="text"
+    color="grey-darken-1"
+    prepend-icon="mdi-filter-remove"
+    @click="clearAllFilters"
+  >清除全部篩選</v-btn>
+</div>
+
 <div v-if="!isLoading && !error" style="height: 75vh;">
   <ag-grid-vue
     v-if="hasInitialDataLoaded"
@@ -66,6 +102,8 @@
     :enableRangeSelection="true"
     @grid-ready="onGridReady"
     @cell-value-changed="onCellValueChanged"
+    @model-updated="updateRowCounts"
+    @filter-changed="updateRowCounts"
   >
   </ag-grid-vue>
 </div>
@@ -3027,6 +3065,83 @@ const confirmAndSave = async () => {
 const onGridReady = (params) => {
   console.log("AG Grid 已就緒");
   gridApi.value = params.api;
+  updateRowCounts();
+};
+
+// --- 資料數量統計（顯示於表格頂部，篩選後即時重算） ---
+const displayedRowCount = ref(0);
+const isGridFiltered = ref(false);
+const activeFilterChips = ref([]); // [{ colId, text }] 已套用的篩選條件明細
+const totalRowCount = computed(() => rowData.value.length);
+
+// 篩選條件類型的中文對照
+const FILTER_TYPE_LABELS = {
+  contains: '包含', notContains: '不包含', equals: '等於', notEqual: '不等於',
+  startsWith: '開頭是', endsWith: '結尾是', blank: '為空白', notBlank: '不為空白',
+  greaterThan: '大於', greaterThanOrEqual: '≥', lessThan: '小於', lessThanOrEqual: '≤',
+  inRange: '介於', true: '為開啟', false: '為關閉',
+};
+
+// 將日期字串 "2026-07-16 00:00:00" 簡化為 "2026-07-16"
+const shortDate = (val) => (typeof val === 'string' ? val.split(' ')[0] : val);
+
+// 將單一篩選條件轉成人類可讀文字
+const describeFilterCondition = (cond) => {
+  if (!cond) return '';
+  // 集合篩選 (勾選值)：列出前 3 個值
+  if (cond.filterType === 'set') {
+    const values = (cond.values || []).map(v => (v === null || v === '' ? '(空白)' : v));
+    const shown = values.slice(0, 3).join('、');
+    const more = values.length > 3 ? ` …等 ${values.length} 項` : '';
+    return `= ${shown}${more}`;
+  }
+  const label = FILTER_TYPE_LABELS[cond.type] || cond.type || '';
+  if (cond.type === 'blank' || cond.type === 'notBlank') return label;
+  if (cond.type === 'inRange') {
+    const from = cond.filter ?? shortDate(cond.dateFrom) ?? '';
+    const to = cond.filterTo ?? shortDate(cond.dateTo) ?? '';
+    return `${label} ${from} ~ ${to}`;
+  }
+  const value = cond.filter ?? shortDate(cond.dateFrom) ?? '';
+  return `${label}「${value}」`;
+};
+
+// 從 filterModel 建立各欄位的篩選明細 chips
+const buildFilterChips = () => {
+  const model = gridApi.value?.getFilterModel() || {};
+  return Object.entries(model).map(([colId, colModel]) => {
+    const headerName = gridApi.value.getColumn(colId)?.getColDef()?.headerName || colId;
+    let desc;
+    if (Array.isArray(colModel?.conditions)) {
+      // 多條件組合 (AND / OR)
+      const joiner = colModel.operator === 'OR' ? ' 或 ' : ' 且 ';
+      desc = colModel.conditions.map(describeFilterCondition).join(joiner);
+    } else {
+      desc = describeFilterCondition(colModel);
+    }
+    return { colId, text: `${headerName}：${desc}` };
+  });
+};
+
+// model-updated 於資料載入、篩選、排序後皆會觸發
+const updateRowCounts = () => {
+  if (!gridApi.value) return;
+  displayedRowCount.value = gridApi.value.getDisplayedRowCount();
+  isGridFiltered.value = gridApi.value.isAnyFilterPresent();
+  activeFilterChips.value = isGridFiltered.value ? buildFilterChips() : [];
+};
+
+// 移除單一欄位的篩選
+const clearColumnFilter = (colId) => {
+  if (!gridApi.value) return;
+  const model = gridApi.value.getFilterModel() || {};
+  delete model[colId];
+  gridApi.value.setFilterModel(Object.keys(model).length > 0 ? model : null);
+};
+
+// 清除全部篩選
+const clearAllFilters = () => {
+  gridApi.value?.setFilterModel(null);
 };
 
 

@@ -24,7 +24,7 @@
 
         <div v-if="projectConfig" class="d-flex justify-center py-2">
           <img v-if="projectConfig.logoUrl" :src="projectConfig.logoUrl" alt="Project Logo"
-            style="max-height: 40px; object-fit: contain; cursor: pointer;"
+            :class="['booking-page-logo', 'booking-page-logo--' + (projectConfig.logoSize || 'medium')]"
             @click="openWelcomeModal">
           <!-- 無 LOGO 時顯示一個極輕量的可點擊區域，仍供內部人員開啟歡迎視窗 -->
           <div v-else class="welcome-dot-trigger" @click="openWelcomeModal" title=""></div>
@@ -3779,6 +3779,33 @@ const goBackToStep0 = () => {
 </script>
 
 <style scoped>
+/* 頂部建案 LOGO：無論原圖寬高比例，自動縮放至合適大小
+   - 固定高度呈現（小圖會等比放大，避免過小），高度依後台「LOGO 顯示尺寸」設定（小/中/大）
+   - 超寬橫式 LOGO：受最大寬度限制，由 object-fit: contain 在框內等比縮小，
+     不變形、不裁切、不撐爆手機版面
+   - 尺寸定義需與 BookingRuleManager.vue 的 .logo-preview-img--* 預覽一致 */
+.booking-page-logo {
+  width: auto;
+  object-fit: contain;
+  object-position: center;
+  cursor: pointer;
+}
+
+.booking-page-logo--small {
+  height: 40px;
+  max-width: min(220px, 60vw);
+}
+
+.booking-page-logo--medium {
+  height: 56px;
+  max-width: min(300px, 75vw);
+}
+
+.booking-page-logo--large {
+  height: 80px;
+  max-width: min(400px, 90vw);
+}
+
 .prose {
   line-height: 1.8;
   font-size: 1rem;

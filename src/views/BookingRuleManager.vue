@@ -711,13 +711,29 @@
                     <p class="text-subtitle-1 font-weight-bold mb-2">預約系統首頁Logo上傳</p>
                     <div class="text-caption text-grey mb-2">建議尺寸 1800*500px</div>
                     <v-sheet border rounded class="pa-4 text-center">
-                      <v-img :src="projectSettings.logoUrl" height="60" contain class="mb-4 bg-grey-lighten-4">
-                        <template v-slot:placeholder>
-                          <div class="d-flex align-center justify-center fill-height">
-                            <span class="text-grey-darken-1">圖片檔案大小請勿超過 1MB</span>
-                          </div>
-                        </template>
-                      </v-img>
+                      <!-- 預覽：模擬預約頁面頂部的實際呈現效果 -->
+                      <div class="text-caption text-grey mb-1 text-left">預約頁面呈現預覽（依所選尺寸即時更新）：</div>
+                      <div class="logo-preview-bar mb-4">
+                        <img v-if="projectSettings.logoUrl" :src="projectSettings.logoUrl"
+                          :class="['logo-preview-img', 'logo-preview-img--' + (projectSettings.logoSize || 'medium')]"
+                          alt="Logo 預覽">
+                        <span v-else class="text-grey-darken-1">尚未上傳 LOGO（圖片檔案大小請勿超過 1MB）</span>
+                      </div>
+
+                      <!-- LOGO 顯示尺寸設定 -->
+                      <div class="d-flex align-center justify-center flex-wrap mb-1">
+                        <span class="text-body-2 mr-3 font-weight-medium">LOGO 顯示尺寸：</span>
+                        <v-btn-toggle v-model="projectSettings.logoSize" mandatory color="primary"
+                          variant="outlined" density="comfortable">
+                          <v-btn value="small">小</v-btn>
+                          <v-btn value="medium">中</v-btn>
+                          <v-btn value="large">大</v-btn>
+                        </v-btn-toggle>
+                      </div>
+                      <div class="text-caption text-grey mb-4">
+                        小：40px 高 / 中：56px 高 / 大：80px 高，依原圖等比縮放不變形；設定後請按「儲存設定」生效。
+                      </div>
+
                       <v-file-input label="選擇 Logo 圖片" accept="image/*" variant="outlined" density="compact"
                         prepend-icon="mdi-camera" hide-details @change="handleLogoUpload"></v-file-input>
                     </v-sheet>
@@ -4107,6 +4123,7 @@ const defaultSettings = computed(() => ({
   titleColor: '#FFFFFF',
   themeColor: '#0D47A1',
   logoUrl: '',
+  logoSize: 'medium', // 預約頁 LOGO 顯示尺寸: small(40px) / medium(56px) / large(80px)
   checkDuplicate: "OFF",
   validateId: "OFF",
   bookingTypes: [],
@@ -5450,6 +5467,7 @@ async function loadDataForProject() {
         projectSettings.value.publishStartTime = settings.publishStartTime ? new Date(settings.publishStartTime) : null;
         projectSettings.value.publishEndTime = settings.publishEndTime ? new Date(settings.publishEndTime) : null;
         projectSettings.value.logoUrl = settings.logoUrl || '';
+        projectSettings.value.logoSize = settings.logoSize || 'medium'; // LOGO 顯示尺寸 (小/中/大)
         projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle;
         projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
         projectSettings.value.themeColor = settings.themeColor || defaultSettings.value.themeColor;
@@ -7246,6 +7264,39 @@ watch(menuAppEnd, (isOpen) => {
 </script>
 
 <style scoped>
+/* LOGO 尺寸預覽：模擬 BookingPage 頂部呈現，尺寸定義需與 BookingPage.vue 的 .booking-page-logo--* 一致 */
+.logo-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 104px;
+}
+
+.logo-preview-img {
+  width: auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+.logo-preview-img--small {
+  height: 40px;
+  max-width: min(220px, 60vw);
+}
+
+.logo-preview-img--medium {
+  height: 56px;
+  max-width: min(300px, 75vw);
+}
+
+.logo-preview-img--large {
+  height: 80px;
+  max-width: min(400px, 90vw);
+}
+
 .primary-bg {
   background-color: #1a73e8;
   color: white;
