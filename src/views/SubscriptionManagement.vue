@@ -52,6 +52,49 @@
           <span v-else class="text-grey">{{ item.durationDays }}</span>
         </template>
         
+        <template v-slot:item.paymentRecords="{ item }">
+          <v-chip
+            v-if="paymentSummary(item)"
+            :color="paymentSummary(item).color"
+            size="small"
+            label
+            style="cursor: pointer;"
+            @click="openEditDialog(item)"
+          >
+            {{ paymentSummary(item).text }}
+          </v-chip>
+          <span v-else class="text-grey">—</span>
+        </template>
+
+        <template v-slot:item.attachments="{ item }">
+          <div class="d-flex align-center">
+            <template v-for="(att, i) in (item.attachments || []).slice(0, 3)" :key="i">
+              <v-avatar
+                v-if="isImageAttachment(att)"
+                size="32"
+                rounded
+                class="me-1 attachment-thumb"
+                style="cursor: pointer; border: 1px solid #e0e0e0;"
+                @click="openPreview(att)"
+              >
+                <v-img :src="att.url" cover></v-img>
+              </v-avatar>
+              <v-icon
+                v-else
+                color="red-darken-2"
+                size="32"
+                class="me-1"
+                style="cursor: pointer;"
+                @click="openPreview(att)"
+              >mdi-file-pdf-box</v-icon>
+            </template>
+            <span v-if="(item.attachments || []).length > 3" class="text-caption text-grey">
+              +{{ item.attachments.length - 3 }}
+            </span>
+            <span v-if="!item.attachments || item.attachments.length === 0" class="text-grey">—</span>
+          </div>
+        </template>
+
         <template v-slot:item.actions="{ item }">
           <v-icon class="me-2" @click="openEditDialog(item)">mdi-pencil</v-icon>
           <v-icon color="error" @click="openDeleteDialog(item)">mdi-delete</v-icon>
@@ -248,6 +291,164 @@
                 </v-card>
               </v-col>
               
+              <v-col cols="12">
+                <v-divider class="my-4"></v-divider>
+                <div class="d-flex align-center mb-2">
+                  <h3 class="text-h6 font-weight-medium">繳款紀錄</h3>
+                  <v-spacer></v-spacer>
+                  <v-btn color="primary" @click="addPaymentRecord" prepend-icon="mdi-plus">
+                    新增繳款紀錄
+                  </v-btn>
+                </div>
+
+                <div v-if="!editedItem.paymentRecords || editedItem.paymentRecords.length === 0"
+                     class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
+                  尚未建立任何繳款紀錄
+                </div>
+
+                <v-card
+                  v-for="(rec, index) in editedItem.paymentRecords"
+                  :key="rec.id || index"
+                  class="mb-3"
+                  variant="outlined"
+                >
+                  <v-card-text>
+                    <div class="d-flex align-center mb-2">
+                      <v-chip :color="paymentRecordStatus(rec).color" size="small" label>
+                        {{ paymentRecordStatus(rec).text }}
+                      </v-chip>
+                      <span v-if="remindersSentText(rec)" class="text-caption text-grey ms-3">
+                        {{ remindersSentText(rec) }}
+                      </span>
+                      <v-spacer></v-spacer>
+                      <v-btn icon="mdi-delete" color="error" variant="text" density="comfortable" @click="removePaymentRecord(index)"></v-btn>
+                    </div>
+                    <v-row align="center">
+                      <v-col cols="12" sm="6" md="3">
+                        <v-text-field
+                          v-model="rec.agreedDate"
+                          label="約定繳款日期*"
+                          type="date"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          :rules="rules.required"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6" md="3">
+                        <v-text-field
+                          v-model="rec.paidDate"
+                          label="繳款日期 (實際繳款日)"
+                          type="date"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          clearable
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6" md="3">
+                        <v-text-field
+                          v-model.number="rec.amount"
+                          label="金額"
+                          type="number"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          prefix="$"
+                        ></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6" md="3">
+                        <v-checkbox
+                          v-model="rec.invoiceIssued"
+                          label="已開發票請款"
+                          density="compact"
+                          hide-details
+                          color="primary"
+                        ></v-checkbox>
+                      </v-col>
+                      <v-col cols="12">
+                        <v-text-field
+                          v-model="rec.note"
+                          label="備註"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                          clearable
+                        ></v-text-field>
+                      </v-col>
+                    </v-row>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+
+              <v-col cols="12">
+                <v-divider class="my-4"></v-divider>
+                <h3 class="text-h6 font-weight-medium mb-2">附件資料 (PDF / 圖檔)</h3>
+
+                <v-file-input
+                  v-model="pendingAttachmentFiles"
+                  label="新增附件 (可多選，單檔上限 7MB)"
+                  accept="image/png, image/jpeg, image/gif, image/webp, application/pdf"
+                  prepend-icon="mdi-paperclip"
+                  variant="outlined"
+                  density="compact"
+                  multiple
+                  chips
+                  clearable
+                ></v-file-input>
+
+                <div v-if="(editedItem.attachments || []).length === 0 && pendingAttachmentFiles.length === 0"
+                     class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
+                  尚無附件資料
+                </div>
+
+                <v-card
+                  v-for="(att, index) in editedItem.attachments"
+                  :key="att.storagePath || index"
+                  class="mb-2"
+                  variant="outlined"
+                >
+                  <v-card-text class="d-flex align-center py-2">
+                    <v-avatar v-if="isImageAttachment(att)" size="48" rounded class="me-3" style="border: 1px solid #e0e0e0;">
+                      <v-img :src="att.url" cover></v-img>
+                    </v-avatar>
+                    <v-icon v-else color="red-darken-2" size="48" class="me-3">mdi-file-pdf-box</v-icon>
+                    <div class="flex-grow-1" style="min-width: 0;">
+                      <div class="text-body-2 text-truncate">{{ att.name }}</div>
+                      <div class="text-caption text-grey">
+                        {{ formatFileSize(att.size) }}
+                        <span v-if="att.uploadedAt"> · {{ att.uploadedAt.split('T')[0] }}</span>
+                      </div>
+                    </div>
+                    <v-btn icon="mdi-eye" variant="text" color="primary" @click="openPreview(att)"></v-btn>
+                    <v-btn icon="mdi-delete" variant="text" color="error" @click="markAttachmentForDelete(index)"></v-btn>
+                  </v-card-text>
+                </v-card>
+
+                <v-card
+                  v-for="(file, index) in pendingAttachmentFiles"
+                  :key="'pending-' + index"
+                  class="mb-2"
+                  variant="outlined"
+                  color="blue-lighten-5"
+                >
+                  <v-card-text class="d-flex align-center py-2">
+                    <v-icon :color="file.type === 'application/pdf' ? 'red-darken-2' : 'primary'" size="48" class="me-3">
+                      {{ file.type === 'application/pdf' ? 'mdi-file-pdf-box' : 'mdi-image' }}
+                    </v-icon>
+                    <div class="flex-grow-1" style="min-width: 0;">
+                      <div class="text-body-2 text-truncate">{{ file.name }}</div>
+                      <div class="text-caption text-grey">{{ formatFileSize(file.size) }} · 待上傳 (儲存時上傳)</div>
+                    </div>
+                    <v-btn icon="mdi-close" variant="text" @click="removePendingFile(index)"></v-btn>
+                  </v-card-text>
+                </v-card>
+
+                <div v-if="attachmentsToDelete.length > 0" class="text-caption text-red mt-1">
+                  已標記刪除 {{ attachmentsToDelete.length }} 個附件，將於儲存時移除。
+                </div>
+              </v-col>
+
               <v-col cols="12"><v-textarea v-model="editedItem.remarks" label="備註" rows="2"></v-textarea></v-col>
             </v-row>
           </v-container>
@@ -282,6 +483,31 @@
           </v-card-actions>
         </v-card>
       </v-dialog>
+
+    <v-dialog v-model="previewDialog" max-width="960px">
+      <v-card>
+        <v-toolbar density="compact" color="#004383" dark>
+          <v-toolbar-title class="text-body-1">{{ previewAttachment?.name }}</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-open-in-new" variant="text" @click="openInNewTab(previewAttachment?.url)"></v-btn>
+          <v-btn icon="mdi-close" variant="text" @click="previewDialog = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-0 bg-grey-lighten-3" style="height: 75vh;">
+          <v-img
+            v-if="previewAttachment && isImageAttachment(previewAttachment)"
+            :src="previewAttachment.url"
+            height="100%"
+            contain
+          ></v-img>
+          <iframe
+            v-else-if="previewAttachment"
+            :src="previewAttachment.url"
+            style="width: 100%; height: 100%; border: 0;"
+            title="附件預覽"
+          ></iframe>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -295,9 +521,10 @@ import {
     updateSubscription,
     deleteSubscription,
     //  1. 從 @/api.js 引入 SalesSettings 在用的函式
-    uploadSalesImage, 
-    updateProjectSalesSettings, 
-} from '@/api.js'; 
+    uploadSalesImage,
+    updateProjectSalesSettings,
+    deleteSalesImage,
+} from '@/api.js';
 //  2. 移除 firebase/storage 的 import，我們不再需要它
 // import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -322,6 +549,8 @@ const headers = [
     { title: '聯絡人', key: 'contactName' },
     { title: '聯絡人手機', key: 'contactPhone' },
     { title: '訂閱類型', key: 'subscriptionType' },
+    { title: '繳款紀錄', key: 'paymentRecords', sortable: false },
+    { title: '附件', key: 'attachments', sortable: false },
     { title: '操作', key: 'actions', sortable: false },
 ];
 
@@ -343,8 +572,10 @@ const defaultItem = {
     subscriptionType: '', 
     startDate: '', 
     endDate: '', 
-    paymentAmount: '', 
-    remarks: ''
+    paymentAmount: '',
+    remarks: '',
+    attachments: [],
+    paymentRecords: []
 };
 const editedItem = ref({ ...defaultItem });
 const itemToDelete = ref({});
@@ -365,6 +596,111 @@ watch(fileToUpload, (newFile) => {
     newIconPreview.value = URL.createObjectURL(newFile);
   }
 });
+
+// --- 繳款紀錄相關 ---
+function taiwanToday() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+}
+
+function daysUntil(dateStr) {
+  return Math.round((new Date(dateStr).getTime() - new Date(taiwanToday()).getTime()) / 86400000);
+}
+
+function addPaymentRecord() {
+  if (!editedItem.value.paymentRecords) {
+    editedItem.value.paymentRecords = [];
+  }
+  editedItem.value.paymentRecords.push({
+    id: `PAY-${Date.now()}-${editedItem.value.paymentRecords.length}`,
+    agreedDate: taiwanToday(),
+    paidDate: '',
+    amount: 0,
+    invoiceIssued: false,
+    note: '',
+    remindersSent: { d30: null, d14: null, d7: null },
+  });
+}
+
+function removePaymentRecord(index) {
+  editedItem.value.paymentRecords.splice(index, 1);
+}
+
+function paymentRecordStatus(rec) {
+  if (rec.paidDate) return { text: '已繳款', color: 'green' };
+  if (!rec.agreedDate) return { text: '未設定日期', color: 'grey' };
+  const diff = daysUntil(rec.agreedDate);
+  if (diff < 0) return { text: `已逾期 ${-diff} 天`, color: 'red' };
+  if (diff <= 30) return { text: `未繳款 (${diff} 天後到期)`, color: 'orange' };
+  return { text: '未繳款', color: 'blue-grey' };
+}
+
+function remindersSentText(rec) {
+  const sent = rec.remindersSent || {};
+  const labels = [];
+  if (sent.d30) labels.push('30天前');
+  if (sent.d14) labels.push('14天前');
+  if (sent.d7) labels.push('7天前');
+  return labels.length > 0 ? `已寄提醒: ${labels.join('、')}` : '';
+}
+
+// 列表摘要：最近一筆未繳款的約定日期與金額
+function paymentSummary(item) {
+  const recs = item.paymentRecords || [];
+  if (recs.length === 0) return null;
+  const unpaid = recs
+    .filter(r => !r.paidDate && r.agreedDate)
+    .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
+  if (unpaid.length === 0) return { text: '已繳清', color: 'green' };
+  const rec = unpaid[0];
+  const [, m, d] = rec.agreedDate.split('-');
+  const diff = daysUntil(rec.agreedDate);
+  const color = diff < 0 ? 'red' : (diff <= 30 ? 'orange' : 'blue-grey');
+  return { text: `${Number(m)}/${Number(d)} · $${(Number(rec.amount) || 0).toLocaleString()}`, color };
+}
+
+// --- 附件資料相關狀態 ---
+const MAX_ATTACHMENT_SIZE = 7 * 1024 * 1024; // 7MB (Base64 代理上傳的安全上限)
+const pendingAttachmentFiles = ref([]);
+const attachmentsToDelete = ref([]);
+const previewDialog = ref(false);
+const previewAttachment = ref(null);
+
+// v-file-input 清空時可能回傳 null，統一正規化為陣列
+watch(pendingAttachmentFiles, (val) => {
+  if (!val) pendingAttachmentFiles.value = [];
+});
+
+function isImageAttachment(att) {
+  if (att?.contentType) return att.contentType.startsWith('image/');
+  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(att?.url || '');
+}
+
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function openPreview(att) {
+  previewAttachment.value = att;
+  previewDialog.value = true;
+}
+
+function openInNewTab(url) {
+  if (url) window.open(url, '_blank');
+}
+
+function markAttachmentForDelete(index) {
+  const [removed] = editedItem.value.attachments.splice(index, 1);
+  if (removed?.storagePath) {
+    attachmentsToDelete.value.push(removed);
+  }
+}
+
+function removePendingFile(index) {
+  pendingAttachmentFiles.value = pendingAttachmentFiles.value.filter((_, i) => i !== index);
+}
 
 const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
 const subscriptionTypeSelection = ref('');
@@ -479,22 +815,34 @@ onMounted(loadData);
 
 function openEditDialog(item) {
     isEditing.value = !!item;
-    
+
     fileToUpload.value = null;
     if (newIconPreview.value) {
       URL.revokeObjectURL(newIconPreview.value);
       newIconPreview.value = null;
     }
 
+    pendingAttachmentFiles.value = [];
+    attachmentsToDelete.value = [];
+
     if (item) {
-        editedItem.value = { ...item, userLimitTiers: item.userLimitTiers || [] };
+        editedItem.value = {
+          ...item,
+          userLimitTiers: item.userLimitTiers || [],
+          attachments: (item.attachments || []).map(att => ({ ...att })),
+          paymentRecords: (item.paymentRecords || []).map(rec => ({
+            ...rec,
+            remindersSent: { ...(rec.remindersSent || { d30: null, d14: null, d7: null }) },
+          })),
+        };
         if (typeof editedItem.value.systemFunction === 'string') {
             editedItem.value.systemFunction = [editedItem.value.systemFunction];
         }
         const project = projects.value.find(p => p.name === item.projectName);
         editedItem.value.iconUrl = project ? project.iconUrl : '';
     } else {
-        editedItem.value = { ...defaultItem };
+        // 展開時給新的陣列，避免多次開啟 Dialog 共用 defaultItem 的同一個陣列參考
+        editedItem.value = { ...defaultItem, userLimitTiers: [], attachments: [], paymentRecords: [] };
     }
     
     const currentType = item ? item.subscriptionType : '';
@@ -595,13 +943,65 @@ async function save() {
                 projectId
             );
             
-            uploadedIconUrl = downloadURL; 
+            uploadedIconUrl = downloadURL;
             console.log('圖檔上傳成功, URL:', uploadedIconUrl);
+        }
+
+        // --- 步驟 1.5: 處理附件上傳 (PDF / 圖檔，使用 Base64 代理) ---
+        const filesToAttach = pendingAttachmentFiles.value || [];
+        if (filesToAttach.length > 0) {
+            const projectId = editedItem.value.projectId;
+            if (!projectId) {
+                throw new Error('必須先指定建案 ID 才能上傳附件。');
+            }
+            const oversized = filesToAttach.find(f => f.size > MAX_ATTACHMENT_SIZE);
+            if (oversized) {
+                throw new Error(`附件「${oversized.name}」超過 7MB 上限，請壓縮後再上傳。`);
+            }
+
+            for (const [index, file] of filesToAttach.entries()) {
+                const safeName = file.name.replace(/[^\w.\-]/g, '_');
+                const storagePath = `subscriptions/${projectId}/attachments/${Date.now()}_${index}_${safeName}`;
+                const base64 = await fileToBase64(file);
+                const { downloadURL } = await uploadSalesImage(
+                    storagePath,
+                    file.name,
+                    base64,
+                    projectId,
+                    file.type || 'application/octet-stream'
+                );
+                editedItem.value.attachments.push({
+                    name: file.name,
+                    url: downloadURL,
+                    storagePath: storagePath,
+                    contentType: file.type || '',
+                    size: file.size,
+                    uploadedAt: new Date().toISOString(),
+                });
+            }
+            console.log(`成功上傳 ${filesToAttach.length} 個附件。`);
+            // 上傳完成立即清空待上傳清單，避免儲存失敗重試時重複上傳
+            pendingAttachmentFiles.value = [];
         }
 
         // --- 步驟 2: 處理訂閱資料儲存 (既有邏輯) ---
         // ... (以下邏輯保持不變)
         const basePayload = { ...editedItem.value };
+        basePayload.attachments = editedItem.value.attachments || [];
+
+        // 正規化繳款紀錄：剔除無約定日期者、金額轉數字、保留 remindersSent、依約定日期排序
+        basePayload.paymentRecords = (editedItem.value.paymentRecords || [])
+          .filter(rec => rec.agreedDate)
+          .map((rec, idx) => ({
+            id: rec.id || `PAY-${Date.now()}-${idx}`,
+            agreedDate: rec.agreedDate,
+            paidDate: rec.paidDate || '',
+            amount: Number(rec.amount) || 0,
+            invoiceIssued: !!rec.invoiceIssued,
+            note: rec.note || '',
+            remindersSent: rec.remindersSent || { d30: null, d14: null, d7: null },
+          }))
+          .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
 
         if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {
           basePayload.userLimitTiers = basePayload.userLimitTiers.map(tier => ({
@@ -646,7 +1046,22 @@ async function save() {
             await Promise.all(creationPromises);
             alert(`成功新增 ${creationPromises.length} 筆訂閱！`);
         }
-        
+
+        // --- 步驟 2.5: 刪除已標記移除的附件 (Storage 檔案) ---
+        if (attachmentsToDelete.value.length > 0) {
+            for (const att of attachmentsToDelete.value) {
+                try {
+                    // 附件無 salesImages 紀錄，docId 僅為佔位 (後端刪除不存在的文件為 no-op)
+                    await deleteSalesImage(`subAttach_${Date.now()}`, att.storagePath);
+                } catch (delError) {
+                    // 刪除 Storage 檔案失敗不影響訂閱資料儲存結果
+                    console.warn('刪除附件檔案失敗 (不影響儲存):', att.storagePath, delError);
+                }
+            }
+            attachmentsToDelete.value = [];
+        }
+        pendingAttachmentFiles.value = [];
+
         // --- 步驟 3: 處理建案圖示 URL 更新 (使用 SalesSettings 的 API) ---
         if (uploadedIconUrl) {
             const projectId = editedItem.value.projectId;
