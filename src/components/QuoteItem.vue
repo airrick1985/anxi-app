@@ -18,8 +18,8 @@
       </div>
 
    <v-list lines="one" class="bg-transparent">
-    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div></template></v-list-item>
-    <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><strong>{{ displayUnitPrice }} 萬/坪</strong></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div><div v-if="showTerraceSplit" class="terrace-split">房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} <span class="terrace-split-plus">＋</span> 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }} <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span></div></div></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><strong>{{ displayUnitPrice }} 萬/坪</strong><div v-if="showTerraceUnitSplit" class="terrace-split"><span class="terrace-split-tag">露臺</span> {{ displayTerraceUnitPrice }} 萬/坪</div></div></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
     <v-list-item class="pl-0">
@@ -151,14 +151,31 @@
    </div>
 
    <div class="item-cell flex-1 highlight-dark">
-    <div class="d-flex align-center justify-center gap-2">
-      <span>{{ displayHousePrice }} 萬</span>
-      <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
-      <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn>
-      <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
+    <div class="d-flex flex-column align-center" style="width: 100%;">
+      <div class="d-flex align-center justify-center gap-2">
+        <span>{{ displayHousePrice }} 萬</span>
+        <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
+        <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn>
+        <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
+      </div>
+      <!-- ✅ [新增] 露臺戶表價拆分：房屋(不含露臺) ＋ 露臺 -->
+      <div v-if="showTerraceSplit" class="terrace-split">
+        房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }}
+        <span class="terrace-split-plus">＋</span>
+        露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }}
+        <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span>
+      </div>
     </div>
    </div>
-   <div class="item-cell flex-1">{{ displayUnitPrice }} 萬/坪</div>
+   <div class="item-cell flex-1">
+    <div class="d-flex flex-column align-center" style="width: 100%;">
+      <span>{{ displayUnitPrice }} 萬/坪</span>
+      <!-- ✅ [新增] 露臺戶：房屋/露臺單價分開呈現 -->
+      <div v-if="showTerraceUnitSplit" class="terrace-split">
+        <span class="terrace-split-tag">露臺</span> {{ displayTerraceUnitPrice }} 萬/坪
+      </div>
+    </div>
+   </div>
    <div class="item-cell flex-2"><v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    
@@ -1601,12 +1618,26 @@ watch(printPaymentData, (data) => {
 const parkingTotalPrice = computed(() => quoteStore.getParkingTotalPrice(props.item.internalId));
 const displayHousePrice = computed(() => formatNumber(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
 const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPrice(props.item.internalId), 2));
+// ✅ [新增] 露臺單價（僅露臺戶顯示）
+const displayTerraceUnitPrice = computed(() => formatNumber(quoteStore.getTerraceUnitPrice(props.item.internalId), 2));
 
 // ✅ [新增] 判斷是否有議價調整
 const hasNegotiation = computed(() => {
   const state = props.item.negotiationState;
   return state?.originalPrice !== null && state?.originalPrice !== undefined;
 });
+
+// ✅ [新增] 露臺戶「總價」拆分顯示條件
+// 議價或配套會使總價不再等於房屋表價+露臺表價，續顯示拆分會與總價矛盾，故此時隱藏
+const showTerraceSplit = computed(() => {
+  if (!quoteStore.hasTerraceSplit(props.item.internalId)) return false;
+  if (hasNegotiation.value) return false;
+  return Number(props.item?.unitDetails?.price_list_house_only) > 0;
+});
+
+// ✅ [新增] 露臺戶「單價」拆分顯示條件
+// 單價已改為房屋、露臺各自獨立換算，議價僅影響房屋單價，故露臺戶一律顯示
+const showTerraceUnitSplit = computed(() => quoteStore.hasTerraceSplit(props.item.internalId));
 
 // ✅ [新增] 計算調整差額：當前價格 - 原始價格
 const negotiationDelta = computed(() => {
@@ -1846,6 +1877,31 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 }
 
 .final-price { font-size: 1.2rem; font-weight: bold; color: #1E88E5; }
+
+/* ✅ [新增] 露臺戶表價拆分：次要層級，不與主價格搶視覺 */
+.terrace-split {
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #78909c;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.terrace-split-plus {
+  color: #b0bec5;
+  margin: 0 1px;
+}
+.terrace-split-area {
+  color: #b0bec5;
+}
+.terrace-split-tag {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 6px;
+  background-color: #eceff1;
+  color: #607d8b;
+  font-size: 0.62rem;
+}
 
 /* ✅ [整合] 期款卡片內的範本選單列（總價=藍色系、配套=綠色系，與卡片標題呼應） */
 .picker-row-general {

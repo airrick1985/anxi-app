@@ -382,6 +382,10 @@ function renderSheet(item, pageIndex, pageTotal) {
 
   const housePrice = quoteStore.getRawDisplayHousePrice(id);
   const unitPrice = quoteStore.getDisplayUnitPrice(id);
+  // ✅ [新增] 露臺戶：房屋單價與露臺單價分開計算
+  const hasTerraceSplit = quoteStore.hasTerraceSplit(id);
+  const terracePrice = quoteStore.getTerraceListPrice(id);
+  const terraceUnitPrice = quoteStore.getTerraceUnitPrice(id);
   const usePackage = !!item.usePackageDeal;
   const packagePrice = quoteStore.getPackagePrice(id);
   const total = quoteStore.getFinalTotalPrice(id);
@@ -399,10 +403,10 @@ function renderSheet(item, pageIndex, pageTotal) {
         ? `<span class="orig-price">${fmt(orig)}萬</span><span class="disc">已優惠 ${fmt(delta)}萬</span>`
         : `<span class="orig-price">${fmt(orig)}萬</span><span class="disc up">調整 +${fmt(-delta)}萬</span>`;
 
-      // 單價的優惠資訊：以原價/現價除以面積換算
+      // 單價的優惠資訊：以原價/現價除以面積換算（露臺價不計入，與房屋單價定義一致）
       const areaNum = Number(area);
       if (areaNum > 0) {
-        const origUnit = orig / areaNum;
+        const origUnit = (orig - terracePrice) / areaNum;
         const deltaUnit = delta / areaNum;
         unitPriceVal += delta > 0
           ? `<span class="orig-price">${fmt(origUnit, 2)}萬/坪</span><span class="disc">已優惠 ${fmt(deltaUnit, 2)}萬/坪</span>`
@@ -441,7 +445,12 @@ function renderSheet(item, pageIndex, pageTotal) {
     ['面積', `${fmt(area, 2)} 坪`],
     ['首購', item.isFirstTimeBuyer === '是' ? '首購' : '非首購'],
     ['房屋總價', housePriceVal],
-    ['房屋單價', unitPriceVal],
+    [hasTerraceSplit ? '房屋單價(不含露臺)' : '房屋單價', unitPriceVal],
+    // ✅ [新增] 露臺戶：獨立列出露臺價與露臺單價
+    ...(hasTerraceSplit ? [
+      ['露臺價', `${fmt(terracePrice)} 萬<span class="sub-note">${fmt(ud.area_terrace_ping, 2)} 坪</span>`],
+      ['露臺單價', `${fmt(terraceUnitPrice, 2)} 萬/坪`],
+    ] : []),
     ['車位', parkingCellVal],
     ['車位價格', parkingPrice > 0 ? `${parkingList.length > 1 ? '合計 ' : ''}${fmt(parkingPrice)} 萬` : '—'],
     ...(usePackage ? [
@@ -565,6 +574,7 @@ const SHEET_CSS = `
   .val .orig-price { text-decoration: line-through; color: #90a4ae; font-size: 8.5pt; margin-left: 1.5mm; }
   .val .disc { color: #2e7d32; font-size: 8.5pt; font-weight: 700; margin-left: 1mm; }
   .val .disc.up { color: #c62828; }
+  .val .sub-note { color: #90a4ae; font-size: 8.5pt; margin-left: 1.5mm; }
   .wide-strip {
     display: flex; align-items: stretch;
     border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden;

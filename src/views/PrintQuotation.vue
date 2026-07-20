@@ -875,7 +875,12 @@ function addQuoteTable() {
     row['面積'] = areaVal;
 
     row['房屋總價'] = formatNumber(quoteStore.getRawDisplayHousePrice(item.internalId)) + ' 萬';
-    row['房屋單價'] = formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2) + ' 萬/坪';
+    // ✅ [新增] 露臺戶：房屋單價與露臺單價分列呈現（沿用面積欄的換行慣例）
+    let unitPriceVal = formatNumber(quoteStore.getDisplayUnitPrice(item.internalId), 2) + ' 萬/坪';
+    if (quoteStore.hasTerraceSplit(item.internalId)) {
+      unitPriceVal += `\n(露臺${formatNumber(quoteStore.getTerraceUnitPrice(item.internalId), 2)}萬/坪)`;
+    }
+    row['房屋單價'] = unitPriceVal;
     row['車位'] = (item.selectedParking || []).map(p => p['車位編號']).join(', ') || '-';
     row['車位價格'] = formatNumber(quoteStore.getParkingTotalPrice(item.internalId)) + ' 萬';
     

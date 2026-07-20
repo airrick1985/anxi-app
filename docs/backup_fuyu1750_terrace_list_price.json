@@ -1,0 +1,176 @@
+{
+  "projectId": "fuyu1750",
+  "collection": "salesHouseholds",
+  "field": "price_list_terrace",
+  "backedUpAt": "2026-07-20T08:09:20.644Z",
+  "records": [
+    {
+      "docId": "fuyu1750_A-3",
+      "unitId": "A-3",
+      "area": 24.67,
+      "before_price_list_terrace": 532,
+      "after_price_list_terrace": 503,
+      "price_list_terrace_unit": 21.56
+    },
+    {
+      "docId": "fuyu1750_B-3",
+      "unitId": "B-3",
+      "area": 15.53,
+      "before_price_list_terrace": 336,
+      "after_price_list_terrace": 318,
+      "price_list_terrace_unit": 21.63
+    },
+    {
+      "docId": "fuyu1750_C-18",
+      "unitId": "C-18",
+      "area": 3.08,
+      "before_price_list_terrace": 75,
+      "after_price_list_terrace": 71,
+      "price_list_terrace_unit": 24.33
+    },
+    {
+      "docId": "fuyu1750_C-19",
+      "unitId": "C-19",
+      "area": 3.02,
+      "before_price_list_terrace": 74,
+      "after_price_list_terrace": 70,
+      "price_list_terrace_unit": 24.36
+    },
+    {
+      "docId": "fuyu1750_C-2",
+      "unitId": "C-2",
+      "area": 4.64,
+      "before_price_list_terrace": 101,
+      "after_price_list_terrace": 96,
+      "price_list_terrace_unit": 21.76
+    },
+    {
+      "docId": "fuyu1750_C-20",
+      "unitId": "C-20",
+      "area": 3.61,
+      "before_price_list_terrace": 88,
+      "after_price_list_terrace": 84,
+      "price_list_terrace_unit": 24.4
+    },
+    {
+      "docId": "fuyu1750_C-21",
+      "unitId": "C-21",
+      "area": 5.56,
+      "before_price_list_terrace": 135,
+      "after_price_list_terrace": 129,
+      "price_list_terrace_unit": 24.3
+    },
+    {
+      "docId": "fuyu1750_D-18",
+      "unitId": "D-18",
+      "area": 3.03,
+      "before_price_list_terrace": 73,
+      "after_price_list_terrace": 69,
+      "price_list_terrace_unit": 24.06
+    },
+    {
+      "docId": "fuyu1750_D-19",
+      "unitId": "D-19",
+      "area": 2.96,
+      "before_price_list_terrace": 71,
+      "after_price_list_terrace": 68,
+      "price_list_terrace_unit": 24.1
+    },
+    {
+      "docId": "fuyu1750_D-2",
+      "unitId": "D-2",
+      "area": 3.27,
+      "before_price_list_terrace": 70,
+      "after_price_list_terrace": 66,
+      "price_list_terrace_unit": 21.49
+    },
+    {
+      "docId": "fuyu1750_D-20",
+      "unitId": "D-20",
+      "area": 3.55,
+      "before_price_list_terrace": 86,
+      "after_price_list_terrace": 82,
+      "price_list_terrace_unit": 24.12
+    },
+    {
+      "docId": "fuyu1750_D-21",
+      "unitId": "D-21",
+      "area": 4.79,
+      "before_price_list_terrace": 115,
+      "after_price_list_terrace": 109,
+      "price_list_terrace_unit": 24.03
+    },
+    {
+      "docId": "fuyu1750_E-18",
+      "unitId": "E-18",
+      "area": 3.03,
+      "before_price_list_terrace": 73,
+      "after_price_list_terrace": 69,
+      "price_list_terrace_unit": 24.06
+    },
+    {
+      "docId": "fuyu1750_E-19",
+      "unitId": "E-19",
+      "area": 2.96,
+      "before_price_list_terrace": 71,
+      "after_price_list_terrace": 68,
+      "price_list_terrace_unit": 24.1
+    },
+    {
+      "docId": "fuyu1750_E-20",
+      "unitId": "E-20",
+      "area": 3.55,
+      "before_price_list_terrace": 86,
+      "after_price_list_terrace": 82,
+      "price_list_terrace_unit": 24.12
+    },
+    {
+      "docId": "fuyu1750_E-21",
+      "unitId": "E-21",
+      "area": 4.79,
+      "before_price_list_terrace": 115,
+      "after_price_list_terrace": 109,
+      "price_list_terrace_unit": 24.03
+    },
+    {
+      "docId": "fuyu1750_F-18",
+      "unitId": "F-18",
+      "area": 3.18,
+      "before_price_list_terrace": 77,
+      "after_price_list_terrace": 73,
+      "price_list_terrace_unit": 24.1
+    },
+    {
+      "docId": "fuyu1750_F-19",
+      "unitId": "F-19",
+      "area": 3.11,
+      "before_price_list_terrace": 75,
+      "after_price_list_terrace": 71,
+      "price_list_terrace_unit": 24.13
+    },
+    {
+      "docId": "fuyu1750_F-20",
+      "unitId": "F-20",
+      "area": 3.09,
+      "before_price_list_terrace": 75,
+      "after_price_list_terrace": 71,
+      "price_list_terrace_unit": 24.16
+    },
+    {
+      "docId": "fuyu1750_F-21",
+      "unitId": "F-21",
+      "area": 3.48,
+      "before_price_list_terrace": 84,
+      "after_price_list_terrace": 80,
+      "price_list_terrace_unit": 24.06
+    },
+    {
+      "docId": "fuyu1750_F-3",
+      "unitId": "F-3",
+      "area": 5.09,
+      "before_price_list_terrace": 111,
+      "after_price_list_terrace": 105,
+      "price_list_terrace_unit": 21.79
+    }
+  ]
+}

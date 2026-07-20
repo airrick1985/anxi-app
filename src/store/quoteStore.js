@@ -62,6 +62,25 @@ export const useQuoteStore = defineStore('quote', () => {
     };
   });
 
+  // ✅ [新增] 露臺價格（表價）：僅在該戶確有露臺坪數時才視為有效
+  // 配套模式下總價由配套價取代，無法對應原始露臺表價，故不拆分
+  const getTerraceListPrice = computed(() => {
+    return (internalId) => {
+      const item = items.value.find(i => i.internalId === internalId);
+      if (!item || item.usePackageDeal) return 0;
+      const terraceArea = Number(item.unitDetails.area_terrace_ping) || 0;
+      if (terraceArea <= 0) return 0;
+      return Number(item.unitDetails.price_list_terrace) || 0;
+    };
+  });
+
+  // ✅ [新增] 是否需拆分房屋/露臺單價
+  const hasTerraceSplit = computed(() => {
+    return (internalId) => getTerraceListPrice.value(internalId) > 0;
+  });
+
+  // ✅ [修正] 房屋單價：露臺價不計入分子（露臺坪本就不計入房屋總面積），
+  // 否則露臺戶的房屋單價會被灌水。無露臺者結果與原本相同。
   const getDisplayUnitPrice = computed(() => {
     return (internalId) => {
       const item = items.value.find(i => i.internalId === internalId);
@@ -69,7 +88,19 @@ export const useQuoteStore = defineStore('quote', () => {
       const area = Number(item.unitDetails.area_house_ping);
       if (!area) return 0;
       const housePrice = getRawDisplayHousePrice.value(internalId);
-      return (housePrice / area);
+      const terracePrice = getTerraceListPrice.value(internalId);
+      return ((housePrice - terracePrice) / area);
+    };
+  });
+
+  // ✅ [新增] 露臺單價 = 露臺價 / 露臺坪數
+  const getTerraceUnitPrice = computed(() => {
+    return (internalId) => {
+      const item = items.value.find(i => i.internalId === internalId);
+      if (!item) return 0;
+      const terraceArea = Number(item.unitDetails.area_terrace_ping) || 0;
+      if (terraceArea <= 0) return 0;
+      return getTerraceListPrice.value(internalId) / terraceArea;
     };
   });
 
@@ -282,6 +313,9 @@ function addItem(unitData) {
     getFinalTotalPrice,
     getRawDisplayHousePrice,
     getDisplayUnitPrice,
+    getTerraceListPrice,
+    getTerraceUnitPrice,
+    hasTerraceSplit,
     addItem,
     removeItem,
     updateUnitField,

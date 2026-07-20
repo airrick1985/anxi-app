@@ -220,11 +220,15 @@
           <v-btn
           color="teal-darken-1"
           size="x-large"
-          class="mr-3 mb-2 mb-md-0"
+          class="mb-2 mb-md-0"
+          :class="{ 'mr-3': showLegacyQuotePrintButton }"
           @click="isQuotePrintDialogVisible = true" prepend-icon="mdi-printer-outline"
         >
           列印報價單(含期款) </v-btn>
+          <!-- ✅ [停用] 舊版「列印報價單」：暫時隱藏，僅保留上方(含期款)版本。
+               欲恢復顯示，將 showLegacyQuotePrintButton 改為 true 即可。 -->
           <v-btn
+          v-if="showLegacyQuotePrintButton"
           color="green"
           size="x-large"
 
@@ -459,6 +463,10 @@ import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
+
+// ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
+// 改為 true 即可恢復顯示（相關的 openQuoteEditor / PrintQuotation 邏輯皆保留未刪除）。
+const showLegacyQuotePrintButton = false;
 
 const route = useRoute();
 const router = useRouter();

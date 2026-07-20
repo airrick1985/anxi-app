@@ -464,17 +464,10 @@
             <span class="unit-name">
               {{ item.data.unitId }}
               
+              <!-- ✅ [優化] 露臺標示：由 icon 改為小 chip，文字直接標明「露臺」 -->
               <v-tooltip location="top" v-if="item.data.area_terrace_ping && Number(item.data.area_terrace_ping) > 0">
                 <template v-slot:activator="{ props }">
-                  <v-icon 
-                    v-bind="props"
-                    size="x-small" 
-                    color="success" 
-                    class="ml-1"
-                    style="vertical-align: middle;"
-                  >
-                    mdi-balcony
-                  </v-icon>
+                  <span v-bind="props" class="terrace-chip">露台</span>
                 </template>
                 <span>含有露臺：{{ item.data.area_terrace_ping }} 坪</span>
               </v-tooltip>
@@ -3265,9 +3258,21 @@ overflow: hidden;
   background-image: linear-gradient(to right, rgba(76, 175, 80, 0.1), transparent) !important;
 }
 
-/* ✅ 新增：讓圖示更有質感 */
-.unit-card .v-icon.text-success {
-  filter: drop-shadow(0 0 1px rgba(0,0,0,0.2));
+/* ✅ [優化] 露臺標示小 chip：取代原本的 mdi-balcony 圖示，文字直接可讀 */
+.terrace-chip {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background-color: #4CAF50;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 400;
+  line-height: 15px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  cursor: help;
 }
 
 .unit-card.in-quote {

@@ -121,7 +121,8 @@
                   <v-col cols="12" md="3" v-if="viewMode === 'sales' && editingData.area_terrace_ping > 0">
                     <v-text-field v-model="editingData.price_floor_terrace" label="露臺底價" suffix="萬" type="number"
                       variant="outlined" bg-color="white" class="input-price-floor"
-                      :hint="`單價: ${editingFloorTerraceUnitPrice} 萬/坪`" persistent-hint></v-text-field>
+                      :hint="`露臺 ${formatNumber(editingData.area_terrace_ping, 2)} 坪 · 單價: ${editingFloorTerraceUnitPrice} 萬/坪`"
+                      persistent-hint></v-text-field>
                   </v-col>
 
                   <v-col cols="12" md="3" v-if="viewMode === 'sales'" class="d-flex align-center">
@@ -360,8 +361,37 @@
                               </div>
                               <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
                             </template>
+
+                            <!-- ✅ [新增] 表價拆分明細：與底價側一致的呈現 -->
+                            <div v-if="canShowListSplit" class="price-split">
+                              <div class="price-split-hint">含露臺，明細如下</div>
+                              <div class="price-split-row">
+                                <div class="price-split-part">
+                                  <div class="price-split-label">房屋(不含露臺)</div>
+                                  <div class="price-split-value">
+                                    {{ formatNumber(unitData.price_list_house_only) }} <span
+                                      class="price-split-currency">萬</span>
+                                  </div>
+                                  <div class="price-split-unit">{{ calculatedListHouseOnlyUnitPrice }} 萬/坪</div>
+                                </div>
+                                <div class="price-split-plus">＋</div>
+                                <div class="price-split-part">
+                                  <div class="price-split-label">
+                                    露臺
+                                    <span class="price-split-area">{{ formatNumber(unitData.area_terrace_ping, 2)
+                                      }} 坪</span>
+                                  </div>
+                                  <div class="price-split-value">
+                                    {{ formatNumber(unitData.price_list_terrace) }} <span
+                                      class="price-split-currency">萬</span>
+                                  </div>
+                                  <div class="price-split-unit">{{ calculatedListTerraceUnitPrice }} 萬/坪</div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </v-col>
+                        <!-- ✅ [優化] 底價整合區塊：總底價為主，有露臺時於下方併入房屋/露臺拆分明細 -->
                         <v-col v-if="viewMode === 'sales'" cols="12">
                           <div class="price-block mb-2">
                             <div class="price-block-title">房屋底價</div>
@@ -370,26 +400,33 @@
                                 class="price-block-currency">萬</span>
                             </div>
                             <div class="price-block-unit">({{ calculatedBaseUnitPrice }} 萬/坪)</div>
-                          </div>
-                        </v-col>
-                        <v-col v-if="viewMode === 'sales' && unitData.area_terrace_ping > 0" cols="12">
-                          <div class="price-block mb-2">
-                            <div class="price-block-title">房屋底價(不含露臺)</div>
-                            <div class="price-block-value text-grey-darken-2">
-                              {{ formatNumber(unitData.price_floor_house_only) }} <span
-                                class="price-block-currency">萬</span>
+
+                            <div v-if="unitData.area_terrace_ping > 0" class="price-split">
+                              <div class="price-split-hint">含露臺，明細如下</div>
+                              <div class="price-split-row">
+                                <div class="price-split-part">
+                                  <div class="price-split-label">房屋(不含露臺)</div>
+                                  <div class="price-split-value">
+                                    {{ formatNumber(unitData.price_floor_house_only) }} <span
+                                      class="price-split-currency">萬</span>
+                                  </div>
+                                  <div class="price-split-unit">{{ calculatedFloorHouseOnlyUnitPrice }} 萬/坪</div>
+                                </div>
+                                <div class="price-split-plus">＋</div>
+                                <div class="price-split-part">
+                                  <div class="price-split-label">
+                                    露臺
+                                    <span class="price-split-area">{{ formatNumber(unitData.area_terrace_ping, 2)
+                                      }} 坪</span>
+                                  </div>
+                                  <div class="price-split-value">
+                                    {{ formatNumber(unitData.price_floor_terrace) }} <span
+                                      class="price-split-currency">萬</span>
+                                  </div>
+                                  <div class="price-split-unit">{{ calculatedFloorTerraceUnitPrice }} 萬/坪</div>
+                                </div>
+                              </div>
                             </div>
-                            <div class="price-block-unit">({{ calculatedFloorHouseOnlyUnitPrice }} 萬/坪)</div>
-                          </div>
-                        </v-col>
-                        <v-col v-if="viewMode === 'sales' && unitData.area_terrace_ping > 0" cols="12">
-                          <div class="price-block mb-2">
-                            <div class="price-block-title">露臺底價</div>
-                            <div class="price-block-value text-grey-darken-2">
-                              {{ formatNumber(unitData.price_floor_terrace) }} <span
-                                class="price-block-currency">萬</span>
-                            </div>
-                            <div class="price-block-unit">({{ calculatedFloorTerraceUnitPrice }} 萬/坪)</div>
                           </div>
                         </v-col>
                         <v-col v-if="viewMode === 'sales' && unitData.price_transaction_house" cols="12">
@@ -1188,6 +1225,34 @@ const paymentSettingsDialog = ref(false);
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.price_list_house_total;
   const area = props.unitData?.area_house_ping;
+  if (price && area > 0) {
+    return formatNumber(price / area, 2);
+  }
+  return 'N/A';
+});
+
+// ✅ [新增] 表價拆分明細顯示條件：需有露臺；報價模式的已售戶在未解鎖前不揭露價格
+const canShowListSplit = computed(() => {
+  if (!(Number(props.unitData?.area_terrace_ping) > 0)) return false;
+  const isHiddenSoldQuote = props.viewMode === 'quote'
+    && props.unitData?.salesStatus_quote === '已售'
+    && !showHiddenPriceQuote.value;
+  return !isHiddenSoldQuote;
+});
+
+// ✅ [新增] 表價拆分單價：房屋(不含露臺) / 露臺，與底價側對稱
+const calculatedListHouseOnlyUnitPrice = computed(() => {
+  const price = props.unitData?.price_list_house_only;
+  const area = props.unitData?.area_house_ping;
+  if (price && area > 0) {
+    return formatNumber(price / area, 2);
+  }
+  return 'N/A';
+});
+
+const calculatedListTerraceUnitPrice = computed(() => {
+  const price = props.unitData?.price_list_terrace;
+  const area = props.unitData?.area_terrace_ping;
   if (price && area > 0) {
     return formatNumber(price / area, 2);
   }
@@ -3323,6 +3388,67 @@ onUnmounted(() => {
 .price-block-unit {
   font-size: 0.9rem;
   color: #757575;
+}
+
+/* ✅ [新增] 底價拆分明細（僅有露臺的戶別顯示）：次要層級，與主數字明顯區隔 */
+.price-split {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #ddd;
+}
+
+.price-split-hint {
+  font-size: 0.75rem;
+  color: #9e9e9e;
+  margin-bottom: 6px;
+}
+
+.price-split-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.price-split-part {
+  flex: 1;
+  min-width: 0;
+}
+
+.price-split-label {
+  font-size: 0.75rem;
+  color: #757575;
+  line-height: 1.3;
+}
+
+.price-split-area {
+  display: block;
+  font-size: 0.7rem;
+  color: #9e9e9e;
+}
+
+.price-split-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #424242;
+  line-height: 1.3;
+}
+
+.price-split-currency {
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.price-split-unit {
+  font-size: 0.72rem;
+  color: #9e9e9e;
+}
+
+.price-split-plus {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  color: #bdbdbd;
 }
 
 .custom-footer {
