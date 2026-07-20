@@ -118,6 +118,15 @@
             color="teal-darken-1"
             density="compact"
             hide-details
+            class="mr-8"
+          ></v-switch>
+          <!-- ✅ [新增] 主管簽核／用印欄 -->
+          <v-switch
+            v-model="optShowApproval"
+            label="主管簽核欄"
+            color="teal-darken-1"
+            density="compact"
+            hide-details
           ></v-switch>
         </div>
         <div class="d-flex align-center ga-3 mt-2">
@@ -213,6 +222,7 @@ const show = computed({
 // --- 列印選項 ---
 const optShowNegotiation = ref(true); // 顯示議價資訊（原價/優惠額），預設開啟
 const optShowNotes = ref(true);        // 列印期款說明（applyNote）
+const optShowApproval = ref(true);     // ✅ [新增] 主管簽核／用印欄，預設開啟
 const optQuoteDate = ref('');          // 報價日期（可自訂）
 const optValidUntil = ref('');         // 有效期限（選填）
 
@@ -269,6 +279,7 @@ watch(show, (visible) => {
     .filter(i => hasPaymentTemplate(i))
     .map(i => i.internalId);
   optShowNegotiation.value = true;
+  optShowApproval.value = true;
   optQuoteDate.value = isoTodayTW();
   optValidUntil.value = '';
   isRemarkExpanded.value = false;
@@ -486,6 +497,14 @@ function renderSheet(item, pageIndex, pageTotal) {
         <div class="remark-body">${remarkHtml.value}</div>
       </div>` : '';
 
+  // ✅ [新增] 主管簽核／用印欄：留白供實體簽名或蓋章，置於頁尾之上
+  const approvalBlock = optShowApproval.value ? `
+      <section class="approval">
+        <span class="ap-label">主管簽核<br><span class="ap-sub">／用印</span></span>
+        <span class="ap-area"></span>
+      </section>
+      <div class="ap-warn">⚠️ 本報價單須經主管簽核或用印始生效力，未經簽核用印者一律視為無效。</div>` : '';
+
   const validText = optValidUntil.value ? `　有效期限至：${fmtDate(optValidUntil.value)}` : '';
 
   return `
@@ -518,6 +537,7 @@ function renderSheet(item, pageIndex, pageTotal) {
     </div>
     ${notesHtml}
     ${remarkBlock}
+    ${approvalBlock}
 
     <footer class="foot">
       <div class="foot-person">銷售顧問：<b>${esc(props.personnelName || '—')}</b>　聯絡電話：<b>${esc(props.personnelPhone || '—')}</b></div>
@@ -653,6 +673,27 @@ const SHEET_CSS = `
   }
   .remark-body { padding: 2.5mm 4mm; font-size: 9.5pt; line-height: 1.8; color: #37474f; }
   .remark-body ul, .remark-body ol { padding-left: 6mm; }
+  /* ✅ [新增] 主管簽核／用印欄：右側大面積留白，供簽名或蓋章 */
+  .approval {
+    display: flex; align-items: stretch;
+    border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden;
+    margin-top: 4mm; min-height: 24mm;
+  }
+  .approval .ap-label {
+    width: 25mm; flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #f4f7fa; color: #546e7a;
+    font-size: 9.5pt; line-height: 1.5; text-align: center;
+    border-right: 1px solid #cfd8dc;
+  }
+  .approval .ap-label .ap-sub { font-size: 8.5pt; color: #78909c; }
+  .approval .ap-area { flex: 1; background: #fff; }
+  .ap-warn {
+    margin-top: 1.5mm;
+    font-size: 9pt; font-weight: 700; line-height: 1.5;
+    color: #c62828; text-align: center;
+    letter-spacing: 0.2pt;
+  }
   .foot {
     margin-top: auto; padding-top: 3mm; border-top: 1px solid #cfd8dc;
     display: flex; justify-content: space-between; align-items: baseline;
@@ -679,6 +720,9 @@ const SHEET_CSS = `
   .sheet.compact .notes li { font-size: 8.5pt; line-height: 1.55; }
   .sheet.compact .remark { margin-top: 3mm; }
   .sheet.compact .remark-body { padding: 2mm 4mm; font-size: 8.5pt; line-height: 1.6; }
+  .sheet.compact .approval { margin-top: 2.5mm; min-height: 18mm; }
+  .sheet.compact .approval .ap-label { font-size: 9pt; }
+  .sheet.compact .ap-warn { margin-top: 1mm; font-size: 8.5pt; }
 
   @page { size: A4 portrait; margin: 0; }
   @media print {
