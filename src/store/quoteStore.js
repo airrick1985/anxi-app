@@ -116,9 +116,10 @@ function addItem(unitData) {
       // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
       negotiationState: {
         originalPrice: null,    // null = 未調整；首次調整時記錄原始價格
-        activeMode: '',         // '' | 'perTsubo' | 'directAmount' - 最後使用的模式
+        activeMode: '',         // '' | 'perTsubo' | 'directAmount' | 'totalPrice' | 'both' - 最後使用的模式
         perTsuboValue: '',      // 每坪調整的值（獨立保存）
-        directAmountValue: ''   // 直接調整的值（獨立保存）
+        directAmountValue: '',  // 直接調整的值（獨立保存）
+        totalPriceValue: ''     // 直接輸入總價的值（獨立保存）
       }
     });
 
@@ -171,7 +172,8 @@ function addItem(unitData) {
         originalPrice: null,
         activeMode: '',
         perTsuboValue: '',
-        directAmountValue: ''
+        directAmountValue: '',
+        totalPriceValue: ''
       };
     }
   }
@@ -189,7 +191,8 @@ function addItem(unitData) {
         originalPrice: null,
         activeMode: '',
         perTsuboValue: '',
-        directAmountValue: ''
+        directAmountValue: '',
+        totalPriceValue: ''
       };
     });
   }

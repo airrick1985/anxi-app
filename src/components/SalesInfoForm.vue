@@ -303,7 +303,7 @@
                 density="compact"
                 hint="輸入負數表示每坪減少"
                 persistent-hint
-                @update:model-value="calculatePriceNegotiation"
+                @update:model-value="onPriceNegotiationAdjustmentInput"
               ></v-text-field>
             </div>
 
@@ -319,7 +319,23 @@
                 density="compact"
                 hint="輸入負數表示總價減少"
                 persistent-hint
-                @update:model-value="calculatePriceNegotiation"
+                @update:model-value="onPriceNegotiationAdjustmentInput"
+              ></v-text-field>
+            </div>
+
+            <!-- 第三欄：直接輸入總價 -->
+            <div class="mb-4">
+              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入總價 (萬)</label>
+              <v-text-field
+                v-model="priceNegotiationTotalPriceValue"
+                type="number"
+                suffix="萬"
+                placeholder="例如: 3000"
+                variant="outlined"
+                density="compact"
+                hint="直接以此金額作為成交總價，與上方調整欄位互斥"
+                persistent-hint
+                @update:model-value="onPriceNegotiationTotalPriceInput"
               ></v-text-field>
             </div>
           </div>
@@ -355,13 +371,19 @@
                 </span>
               </div>
 
+              <!-- 直接輸入總價 (僅在有值時顯示) -->
+              <div v-if="priceNegotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">直接輸入總價</span>
+                <span class="font-weight-bold">{{ Math.round(Number(priceNegotiationTotalPriceValue) || 0) }} 萬</span>
+              </div>
+
               <!-- 分隔線 (若有任一調整) -->
-              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== ''">
+              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== '' || priceNegotiationTotalPriceValue !== ''">
                 <v-divider class="my-2"></v-divider>
               </div>
 
               <!-- 調整合計 -->
-              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== ''" class="d-flex justify-space-between align-center mb-3">
+              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== '' || priceNegotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
                 <span class="text-grey-darken-2 font-weight-bold">調整合計</span>
                 <span :class="(priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
                   {{ (priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) > 0 ? '+' : '' }}{{ Math.round(priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) }} 萬
@@ -453,6 +475,7 @@ const isPermanentSameAsMailing = ref(false);
 const isPriceNegotiationDialogVisible = ref(false);
 const priceNegotiationPerTsuboValue = ref('');    // 每坪調整值
 const priceNegotiationDirectAmountValue = ref(''); // 直接調整值
+const priceNegotiationTotalPriceValue = ref('');   // 直接輸入總價
 const priceNegotiationResult = ref(0);             // 調整後的價格
 
 // ✅ 
@@ -839,6 +862,7 @@ function openPriceNegotiationDialog() {
   // 重置調整欄位
   priceNegotiationPerTsuboValue.value = '';
   priceNegotiationDirectAmountValue.value = '';
+  priceNegotiationTotalPriceValue.value = '';
 
   // 初始化調整後的價格為房屋表價
   const listPrice = Number(editableData.value?.price_list_house_total) || 0;
@@ -847,13 +871,39 @@ function openPriceNegotiationDialog() {
   isPriceNegotiationDialogVisible.value = true;
 }
 
+// 每坪/直接調整欄位輸入：與「直接輸入總價」互斥，先清空總價欄位
+function onPriceNegotiationAdjustmentInput() {
+  if (priceNegotiationTotalPriceValue.value !== '') {
+    priceNegotiationTotalPriceValue.value = '';
+  }
+  calculatePriceNegotiation();
+}
+
+// 直接輸入總價欄位輸入：與調整欄位互斥，先清空每坪/直接調整欄位
+function onPriceNegotiationTotalPriceInput() {
+  if (priceNegotiationPerTsuboValue.value !== '') {
+    priceNegotiationPerTsuboValue.value = '';
+  }
+  if (priceNegotiationDirectAmountValue.value !== '') {
+    priceNegotiationDirectAmountValue.value = '';
+  }
+  calculatePriceNegotiation();
+}
+
 function calculatePriceNegotiation() {
   const listPrice = Number(editableData.value?.price_list_house_total) || 0;
   const area = Number(editableData.value?.area_house_ping) || 0;
   const hasPerTsuboValue = priceNegotiationPerTsuboValue.value !== '';
   const hasDirectAmountValue = priceNegotiationDirectAmountValue.value !== '';
+  const hasTotalPriceValue = priceNegotiationTotalPriceValue.value !== '';
 
-  // 兩欄位都空 → 顯示原始表價（恢復狀態）
+  // 直接輸入總價 → 以輸入金額為準
+  if (hasTotalPriceValue) {
+    priceNegotiationResult.value = Math.round(Number(priceNegotiationTotalPriceValue.value) || 0);
+    return;
+  }
+
+  // 欄位都空 → 顯示原始表價（恢復狀態）
   if (!hasPerTsuboValue && !hasDirectAmountValue) {
     priceNegotiationResult.value = Math.round(listPrice);
     return;
@@ -878,9 +928,10 @@ function calculatePriceNegotiation() {
 function savePriceNegotiation() {
   const hasDirectAmount = priceNegotiationDirectAmountValue.value !== '';
   const hasPerTsubo = priceNegotiationPerTsuboValue.value !== '';
+  const hasTotalPrice = priceNegotiationTotalPriceValue.value !== '';
 
-  // 兩欄位都空 → 視同取消調整，恢復原始價格
-  if (!hasDirectAmount && !hasPerTsubo) {
+  // 欄位都空 → 視同取消調整，恢復原始價格
+  if (!hasDirectAmount && !hasPerTsubo && !hasTotalPrice) {
     isPriceNegotiationDialogVisible.value = false;
     return;
   }

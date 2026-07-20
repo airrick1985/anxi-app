@@ -515,7 +515,7 @@
                 density="compact"
                 hint="輸入負數表示每坪減少"
                 persistent-hint
-                @update:model-value="calculateNegotiatedPrice"
+                @update:model-value="onNegotiationAdjustmentInput"
               ></v-text-field>
             </div>
 
@@ -531,7 +531,23 @@
                 density="compact"
                 hint="輸入負數表示總價減少"
                 persistent-hint
-                @update:model-value="calculateNegotiatedPrice"
+                @update:model-value="onNegotiationAdjustmentInput"
+              ></v-text-field>
+            </div>
+
+            <!-- 第三欄：直接輸入總價 -->
+            <div class="mb-4">
+              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入總價 (萬)</label>
+              <v-text-field
+                v-model="negotiationTotalPriceValue"
+                type="number"
+                suffix="萬"
+                placeholder="例如: 3000"
+                variant="outlined"
+                density="compact"
+                hint="直接以此金額作為房屋總價，與上方調整欄位互斥"
+                persistent-hint
+                @update:model-value="onNegotiationTotalPriceInput"
               ></v-text-field>
             </div>
           </div>
@@ -567,8 +583,14 @@
                 </span>
               </div>
 
+              <!-- 直接輸入總價 (僅在有值時顯示) -->
+              <div v-if="negotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
+                <span class="text-grey-darken-2">直接輸入總價</span>
+                <span class="font-weight-bold">{{ Math.round(Number(negotiationTotalPriceValue) || 0) }} 萬</span>
+              </div>
+
               <!-- 分隔線 (若有任一調整) -->
-              <div v-if="negotiationPerTsuboValue !== '' || negotiationDirectAmountValue !== ''">
+              <div v-if="negotiationPerTsuboValue !== '' || negotiationDirectAmountValue !== '' || negotiationTotalPriceValue !== ''">
                 <v-divider class="my-2"></v-divider>
               </div>
 
@@ -637,7 +659,8 @@ const isParkingModalOpen = ref(false);
 const isNegotiationDialogVisible = ref(false);
 const negotiationPerTsuboValue = ref('');    // 每坪調整值
 const negotiationDirectAmountValue = ref(''); // 直接調整值
-const negotiationActiveMode = ref('');       // '' | 'perTsubo' | 'directAmount'
+const negotiationTotalPriceValue = ref('');  // 直接輸入總價
+const negotiationActiveMode = ref('');       // '' | 'perTsubo' | 'directAmount' | 'totalPrice' | 'both'
 const negotiatedPrice = ref(0);
 
 // ★★★ 2. 新增：支援項目名稱引用的新計算引擎 ★★★
@@ -1668,6 +1691,7 @@ function openNegotiationDialog() {
   const savedState = props.item.negotiationState;
   negotiationPerTsuboValue.value = savedState?.perTsuboValue || '';
   negotiationDirectAmountValue.value = savedState?.directAmountValue || '';
+  negotiationTotalPriceValue.value = savedState?.totalPriceValue || '';
   negotiationActiveMode.value = savedState?.activeMode || '';
 
   // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
@@ -1675,11 +1699,30 @@ function openNegotiationDialog() {
   negotiatedPrice.value = rawPrice;
 
   // 若有暫存數值，重新計算預覽
-  if (negotiationPerTsuboValue.value || negotiationDirectAmountValue.value) {
+  if (negotiationPerTsuboValue.value || negotiationDirectAmountValue.value || negotiationTotalPriceValue.value) {
     calculateNegotiatedPrice();
   }
 
   isNegotiationDialogVisible.value = true;
+}
+
+// 每坪/直接調整欄位輸入：與「直接輸入總價」互斥，先清空總價欄位
+function onNegotiationAdjustmentInput() {
+  if (negotiationTotalPriceValue.value !== '') {
+    negotiationTotalPriceValue.value = '';
+  }
+  calculateNegotiatedPrice();
+}
+
+// 直接輸入總價欄位輸入：與調整欄位互斥，先清空每坪/直接調整欄位
+function onNegotiationTotalPriceInput() {
+  if (negotiationPerTsuboValue.value !== '') {
+    negotiationPerTsuboValue.value = '';
+  }
+  if (negotiationDirectAmountValue.value !== '') {
+    negotiationDirectAmountValue.value = '';
+  }
+  calculateNegotiatedPrice();
 }
 
 function calculateNegotiatedPrice() {
@@ -1687,8 +1730,15 @@ function calculateNegotiatedPrice() {
   const area = Number(props.item.unitDetails.area_house_ping) || 0;
   const hasPerTsuboValue = negotiationPerTsuboValue.value !== '';
   const hasDirectAmountValue = negotiationDirectAmountValue.value !== '';
+  const hasTotalPriceValue = negotiationTotalPriceValue.value !== '';
 
-  // ✅ [優化] 兩欄位都空 → 顯示原始價格（恢復狀態）
+  // 直接輸入總價 → 以輸入金額為準
+  if (hasTotalPriceValue) {
+    negotiatedPrice.value = Math.round(Number(negotiationTotalPriceValue.value) || 0);
+    return;
+  }
+
+  // ✅ [優化] 欄位都空 → 顯示原始價格（恢復狀態）
   if (!hasPerTsuboValue && !hasDirectAmountValue) {
     const originalPrice = props.item.negotiationState?.originalPrice;
     negotiatedPrice.value = (originalPrice !== null && originalPrice !== undefined)
@@ -1716,9 +1766,10 @@ function calculateNegotiatedPrice() {
 function saveNegotiatedPrice() {
   const hasDirectAmount = negotiationDirectAmountValue.value !== '';
   const hasPerTsubo = negotiationPerTsuboValue.value !== '';
+  const hasTotalPrice = negotiationTotalPriceValue.value !== '';
 
-  // ✅ [新增] 兩欄位都空 → 視同取消調整，恢復原始價格
-  if (!hasDirectAmount && !hasPerTsubo) {
+  // ✅ [新增] 欄位都空 → 視同取消調整，恢復原始價格
+  if (!hasDirectAmount && !hasPerTsubo && !hasTotalPrice) {
     quoteStore.resetNegotiationPrice(props.item.internalId);
     isNegotiationDialogVisible.value = false;
     return;
@@ -1746,9 +1797,10 @@ function saveNegotiatedPrice() {
   // 保存新價格
   quoteStore.updateHousePrice(props.item.internalId, newPrice);
 
-  // 保存調整狀態：原始價格、調整方式、兩個調整值
-  // activeMode: 'perTsubo' | 'directAmount' | 'both' | ''
-  const activeMode = (hasPerTsubo && hasDirectAmount) ? 'both'
+  // 保存調整狀態：原始價格、調整方式、各調整值
+  // activeMode: 'perTsubo' | 'directAmount' | 'totalPrice' | 'both' | ''
+  const activeMode = hasTotalPrice ? 'totalPrice'
+    : (hasPerTsubo && hasDirectAmount) ? 'both'
     : hasDirectAmount ? 'directAmount'
     : hasPerTsubo ? 'perTsubo' : '';
 
@@ -1756,7 +1808,8 @@ function saveNegotiatedPrice() {
     originalPrice,
     activeMode,
     perTsuboValue: negotiationPerTsuboValue.value,
-    directAmountValue: negotiationDirectAmountValue.value
+    directAmountValue: negotiationDirectAmountValue.value,
+    totalPriceValue: negotiationTotalPriceValue.value
   });
 
   isNegotiationDialogVisible.value = false;
@@ -1767,10 +1820,10 @@ function resetNegotiation() {
   quoteStore.resetNegotiationPrice(props.item.internalId);
 }
 
-// ✅ [新增] 監聽 Modal 關閉：若兩欄位都空，自動清空調整狀態（不需按確認）
+// ✅ [新增] 監聽 Modal 關閉：若欄位都空，自動清空調整狀態（不需按確認）
 watch(isNegotiationDialogVisible, (isVisible) => {
-  if (!isVisible && negotiationPerTsuboValue.value === '' && negotiationDirectAmountValue.value === '') {
-    // Modal 關閉且兩欄位都空 → 清空調整狀態
+  if (!isVisible && negotiationPerTsuboValue.value === '' && negotiationDirectAmountValue.value === '' && negotiationTotalPriceValue.value === '') {
+    // Modal 關閉且欄位都空 → 清空調整狀態
     quoteStore.resetNegotiationPrice(props.item.internalId);
   }
 });
